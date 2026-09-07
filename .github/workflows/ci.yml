@@ -145,7 +145,7 @@ jobs:
             const r = JSON.parse(process.env.RESULT);
             const lines = r.installLines.map((l) => `    ${l}`).join('\n');
             const banner = r.dryRun
-              ? '\n> ⚠️ **Dry run** — the `NPM_TOKEN` secret is not configured, so nothing was actually published. See `docs/publishing.md` for the one-time admin setup.\n'
+              ? '\n> ⚠️ **Dry run** — the `NPM_TOKEN` secret is not configured, so nothing was actually published.\n'
               : '';
             const body = [
               marker,

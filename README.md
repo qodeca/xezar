@@ -31,11 +31,12 @@ your phone, working your backlog while you're away.
 
 ```bash
 cd your-repo
-npx cezar-cli        # → cockpit at http://localhost:4321
+cezar        # → cockpit at http://localhost:4321
 ```
 
-That's the whole setup. If your `claude` CLI is logged in (Pro/Max) and `gh` is
-authenticated, there is nothing else to configure. State lives in `.ai/cezar/`
+Build `cezar` once from this checkout ([Local development](#local-development)),
+then that is the whole setup. If your `claude` CLI is logged in (Pro/Max) and
+`gh` is authenticated, there is nothing else to configure. State lives in `.ai/cezar/`
 inside your repo — plain JSON, NDJSON and Markdown you can `cat` and fix by hand.
 
 ## A look inside
@@ -58,7 +59,7 @@ Plenty of tools wrap a single coding agent in a nicer window — a "Codex GUI", 
 conductor-style app, one-agent front-ends. cezar's bet is different. Three things
 it does better than any of them:
 
-- 🪶 **Genuinely zero config.** `npx cezar-cli` in your repo and you're running —
+- 🪶 **Genuinely zero config.** Run `cezar` in your repo and you're going —
   no wizard, no API keys, no env vars, no schema, no database. It rides the
   `claude` / `codex` / `opencode` / `pi` logins and the `gh` you already have, and every
   missing piece degrades gracefully instead of blocking you.
@@ -143,73 +144,33 @@ and an orchestrator keeps a whole queue of them moving.
 the [`codex` CLI](https://github.com/openai/codex), or
 [OpenCode](https://opencode.ai) — and, optionally, `git` and the `gh` CLI.
 
+Build the CLI once from this checkout and put `cezar` on your PATH (see
+[Local development](#local-development)), then, in any repo:
+
 ```bash
 cd your-repo
-npx cezar-cli              # start the cockpit for the current repo
-#   or: npx @open-mercato/cezar
+cezar                      # start the cockpit for the current repo
 ```
 
 The cockpit opens at `http://localhost:4321` (auto-picks the next free port if
 busy). Type a task, pick a workflow, hit **Start**. That's it.
 
 ```bash
-npx cezar-cli run "add a --json flag to the export command"   # headless, CI-friendly
-npx cezar-cli init                                            # scaffold .ai/cezar/
+cezar run "add a --json flag to the export command"   # headless, CI-friendly
+cezar init                                            # scaffold .ai/cezar/
 ```
 
 Both the `cezar` and `cez` commands are installed, so once it's on your PATH you
 can run either. No API key is ever used — cezar shells out to whichever agent
 CLIs you are already logged into, `claude` by default.
 
-> **Contributing?** [Local development](#local-development) shows how to get a
-> global `cezar` command straight off your checkout (`npm run install-as-command`)
-> — no publish needed.
+> **Working on cezar itself?** [Local development](#local-development) shows how
+> to get a global `cezar` command straight off your checkout
+> (`npm run install-as-command`) — no publish needed.
 
 > **Just kicking the tires?** Set `CEZ_DRY_RUN=1` to run against a bundled mock
 > instead of the real CLI — the whole cockpit works with no `claude` login, so
 > you can explore runs, diffs, variants and the review gate offline.
-
-### Nightly builds — help us shape cezar 🌙
-
-Every night we publish the trunk to npm, so the features landing in the next
-release are one command away:
-
-```bash
-npx cezar-cli@nightly      # everything merged as of last night
-```
-
-**Come build this with us.** cezar is shaped by the people who run it on real
-repos: if you try a nightly and something feels wrong — a workflow that stalls, a
-diff that reads badly, a runner that should exist — [open an
-issue](https://github.com/open-mercato/cezar/issues) and tell us. That feedback,
-early, is worth more than a bug report six weeks after a release, and it is how
-most of the features here got their final shape.
-
-**Know what you're installing.** A nightly is verified (typecheck, unit suites,
-packaged-CLI e2e — the same gate a release runs) but it is *not* a release: it
-can be rough, a flag or a screen may change under you, and something occasionally
-breaks in a way no test caught. Nothing is at risk beyond your patience — every
-task runs in its own git worktree and cezar never auto-merges — but if you need a
-boring day, stay on the stable release. Pin a nightly you liked with its exact
-version (`npx cezar-cli@0.9.2-nightly.20260813.126` — the cockpit prints the
-version it booted, and the date in it tells you how old the build is), and drop
-back to stable any time with a plain `npx cezar-cli`.
-
-### Preview builds
-
-Every green CI run also publishes an installable npm snapshot
-([how it works](docs/publishing.md)), so you can try code that has not even
-merged yet:
-
-```bash
-npx cezar-cli@develop      # current develop head
-```
-
-Every pull request gets its own preview too — the CI bot posts a sticky comment
-on the PR with the exact pinned version to copy-paste
-(`npx cezar-cli@<version>-pr<N>.<run>`). Nightlies and previews are all
-prerelease versions under their own dist-tags; a plain `npx cezar-cli` always
-resolves to the latest stable release.
 
 ---
 
@@ -324,8 +285,8 @@ Eight views, one browser window, all live over Server-Sent Events (seven until y
 | **Workflows** | Build a chain by drag-ordering skills, save it as portable YAML, import/export, or delete. Built-ins always come back. |
 | **Settings** | Appearance (dark/light theme, accent, density), agent backends, notifications, and the skills catalog. |
 
-The cockpit is a React app served pre-built from the package — `npx cezar-cli`
-still means no build step and no dev server on your machine — with a dark/light
+The cockpit is a React app served pre-built from the package — running `cezar`
+needs no dev server on your machine — with a dark/light
 theme, a ⌘K command palette, and bookmarklets that launch a task straight from
 a GitHub page.
 
@@ -655,12 +616,12 @@ strategy**, and never escalates silently: every privileged command is printed
 and verified, and it ends with a real authenticated end-to-end check.
 
 ```bash
-npx cezar-cli server-install   --platform ubuntu-vps   # stand it up
-npx cezar-cli server-deploy    --platform ubuntu-vps   # roll out a new version (reload the service)
-npx cezar-cli server-uninstall --platform ubuntu-vps   # reverse it
+cezar server-install   --platform ubuntu-vps   # stand it up
+cezar server-deploy    --platform ubuntu-vps   # roll out a new version (reload the service)
+cezar server-uninstall --platform ubuntu-vps   # reverse it
 
 # host a SECOND cockpit for another domain on the same box (ubuntu-vps):
-npx cezar-cli server-install   --platform ubuntu-vps --domain shop.example.com
+cezar server-install   --platform ubuntu-vps --domain shop.example.com
 ```
 
 On `ubuntu-vps` a single host can run several independent cockpits — add
@@ -672,7 +633,7 @@ nginx already owns `:80/:443`, cezar's would fight it for the ports. Install the
 service only and let your proxy front it:
 
 ```bash
-npx cezar-cli server-install --platform ubuntu-vps \
+cezar server-install --platform ubuntu-vps \
   --external-proxy --domain cezar.example.com --bind-host 172.17.0.1
 ```
 
@@ -759,7 +720,7 @@ as in [Quick start](#quick-start)).
 **2. Clone & install**
 
 ```bash
-git clone https://github.com/open-mercato/cezar.git
+git clone https://github.com/qodeca/cezar.git
 cd cezar
 npm install
 ```
@@ -784,7 +745,7 @@ Now `cd` into any other repo and run it:
 ```bash
 cd ~/some-other-project
 cezar            # cockpit for that repo, straight off your checkout
-cezar-cli --help # same binary; the name matches `npx cezar-cli`
+cezar-cli --help # same binary under its third alias
 ```
 
 **5. The change loop**
@@ -820,7 +781,7 @@ npm run dev          # server (API :4321) + Vite dev server, opens the cockpit i
 npm run dev:server   # tsx packages/cezar/src/index.ts — the API server alone
 npm run dev:web      # Vite dev server alone (proxies /api to :4321)
 npm run build        # tsc → packages/cezar/dist/, vite build → packages/cezar/web/dist/, then the pack gate
-npm run typecheck    # server + web (tsc --noEmit)
+npm run typecheck    # contract + api-client + server + web (tsc --noEmit)
 npm test             # vitest — server + cockpit unit suites
 npm run test:unit    # node:test — fast core-module tests
 npm run test:package # pack/install and exercise the built CLI

@@ -156,6 +156,6 @@ jobs:
             if [ "$PUBLISHED" = "true" ]; then
               echo "Published \`${ALIAS_NAME}@${VERSION}\` to \`latest\` and tagged \`v${VERSION}\`."
             else
-              echo "⚠️ Dry run — \`NPM_TOKEN\` is not configured, nothing was published. See \`docs/publishing.md\`."
+              echo "⚠️ Dry run — \`NPM_TOKEN\` is not configured, nothing was published."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
