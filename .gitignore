@@ -33,3 +33,6 @@ skills-lock.json
 
 # macOS finder metadata
 .DS_Store
+
+# local environment file — may hold tokens
+.env
