@@ -96,11 +96,11 @@ const RULES: Rule[] = [
     applies: styleSources,
   },
   {
-    name: 'fixture-serve-must-pin-cez-home',
-    why: "a spec-owned `cezar serve` takes its env from fixtureServeEnv(dataRoot) — a hand-rolled { CEZ_DRY_RUN } leaves CEZ_HOME at the developer's real ~/.cezar, so every run appends a dead /tmp fixture to their project registry",
-    // Line-level: a CEZ_DRY_RUN that is not accompanied by a CEZ_HOME on the same line. Both
+    name: 'fixture-serve-must-pin-xez-home',
+    why: "a spec-owned `xezar serve` takes its env from fixtureServeEnv(dataRoot) — a hand-rolled { XEZ_DRY_RUN } leaves XEZ_HOME at the developer's real ~/.xezar, so every run appends a dead /tmp fixture to their project registry",
+    // Line-level: a XEZ_DRY_RUN that is not accompanied by a XEZ_HOME on the same line. Both
     // fixtureServeEnv() and the specs that spell the pair inline satisfy it.
-    pattern: /^(?![^\n]*CEZ_HOME)[^\n]*\bCEZ_DRY_RUN\b/g,
+    pattern: /^(?![^\n]*XEZ_HOME)[^\n]*\bXEZ_DRY_RUN\b/g,
     applies: (f) => f.isE2e,
   },
   {

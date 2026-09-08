@@ -10,14 +10,14 @@ import type {
   ProviderStatusResponse,
   RunRecord,
   SkillsUpdateState,
-} from '@open-mercato/cezar-api-client'
+} from '@qodeca/xezar-api-client'
 import { AppShellContainer, repoChipOf, skillsUpdateMarkerOf } from '@/components/app-shell-container'
 import { ThemeProvider } from '@/components/theme-provider'
 
 const fetchMock = vi.fn<typeof fetch>()
 
 beforeEach(() => {
-  document.title = 'cezar'
+  document.title = 'xezar'
   vi.stubGlobal('fetch', fetchMock)
   // jsdom ships no matchMedia; the shell's breakpoint effect and the theme toggle need one.
   vi.stubGlobal(
@@ -36,8 +36,8 @@ const HEALTH: HealthResponse = {
   version: '0.1.3',
   projects: [],
   bootProject: 'default',
-  repoRoot: '/home/me/Projects/cezar',
-  repo: { root: '/home/me/Projects/cezar', branch: 'feat/cockpit', remote: 'origin' },
+  repoRoot: '/home/me/Projects/xezar',
+  repo: { root: '/home/me/Projects/xezar', branch: 'feat/cockpit', remote: 'origin' },
   checks: [],
   defaultRunner: 'claude',
   forge: null,
@@ -46,9 +46,9 @@ const HEALTH: HealthResponse = {
 
 /** One registered project — the degenerate workspace every existing install upgrades into. */
 const PROJECT = {
-  id: 'cezar',
-  name: 'cezar',
-  root: '/home/me/Projects/cezar',
+  id: 'xezar',
+  name: 'xezar',
+  root: '/home/me/Projects/xezar',
   addedAt: '2026-07-01T00:00:00.000Z',
   lastOpenedAt: '2026-07-20T12:00:00.000Z',
   source: 'local' as const,
@@ -128,9 +128,9 @@ const navBadge = () => document.querySelector('[data-slot="nav-badge"]')
 
 describe('repoChipOf', () => {
   it.each([
-    { name: 'a plain root', root: '/home/me/Projects/cezar', expected: 'cezar' },
-    { name: 'a trailing slash', root: '/home/me/cezar/', expected: 'cezar' },
-    { name: 'a windows path', root: 'C:\\Users\\me\\cezar', expected: 'cezar' },
+    { name: 'a plain root', root: '/home/me/Projects/xezar', expected: 'xezar' },
+    { name: 'a trailing slash', root: '/home/me/xezar/', expected: 'xezar' },
+    { name: 'a windows path', root: 'C:\\Users\\me\\xezar', expected: 'xezar' },
     { name: 'the filesystem root as a repo', root: '/', expected: null },
   ])('takes the basename of $name', ({ root, expected }) => {
     const chip = repoChipOf({ ...HEALTH, repo: { root, branch: 'main' } })
@@ -168,7 +168,7 @@ describe('sidebar wiring', () => {
 
     await waitFor(() => expect(repoChip()).not.toBeNull())
     // Basename of the root, then the branch — not the whole path.
-    expect(repoChip()?.textContent).toBe('cezar / feat/cockpit')
+    expect(repoChip()?.textContent).toBe('xezar / feat/cockpit')
     expect(versionChip()?.textContent).toBe('v0.1.3')
   })
 
@@ -265,14 +265,14 @@ describe('sidebar wiring', () => {
     renderShell()
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled())
-    // The honest empty state: cezar cannot answer what repo it is on, so it says nothing.
+    // The honest empty state: xezar cannot answer what repo it is on, so it says nothing.
     // It does not invent one, and it does not take the whole cockpit down with it.
     expect(repoChip()).toBeNull()
     expect(versionChip()).toBeNull()
     expect(screen.getByText('route content')).toBeTruthy()
   })
 
-  // CEZ_SINGLE_PROJECT pins this response to the boot row even when the saved registry has more.
+  // XEZ_SINGLE_PROJECT pins this response to the boot row even when the saved registry has more.
   // The shell must collapse from that ordinary one-row response, not grow a second capability
   // branch for navigation: flat nav, one quick-list, repo chip, no group headers.
   it('keeps the sidebar flat when single-project mode pins the registry to the boot project', async () => {
@@ -282,7 +282,7 @@ describe('sidebar wiring', () => {
         capabilities: { ...HEALTH.capabilities, singleProject: true },
       },
       '/api/v1/todos': [],
-      '/api/v1/projects': { projects: [PROJECT], bootProject: 'cezar', projectsDir: '/home/me/cezar/projects' },
+      '/api/v1/projects': { projects: [PROJECT], bootProject: 'xezar', projectsDir: '/home/me/xezar/projects' },
       '/api/v1/runs': [],
     })
     renderShell()
@@ -291,7 +291,7 @@ describe('sidebar wiring', () => {
     expect(document.querySelector('[data-slot="project-groups"]')).toBeNull()
     expect(screen.getByRole('navigation', { name: 'Main' })).toBeTruthy()
     expect(document.querySelector('[data-slot="task-quick-list"]')).not.toBeNull()
-    expect(repoChip()?.textContent).toBe('cezar / feat/cockpit')
+    expect(repoChip()?.textContent).toBe('xezar / feat/cockpit')
   })
 
   it('hides add-project chrome when health reports single-project mode', async () => {
@@ -301,7 +301,7 @@ describe('sidebar wiring', () => {
         capabilities: { ...HEALTH.capabilities, singleProject: true },
       },
       '/api/v1/todos': [],
-      '/api/v1/projects': { projects: [PROJECT], bootProject: 'cezar', projectsDir: '/home/me/cezar/projects' },
+      '/api/v1/projects': { projects: [PROJECT], bootProject: 'xezar', projectsDir: '/home/me/xezar/projects' },
       '/api/v1/runs': [],
     })
     renderShell()
@@ -318,11 +318,11 @@ describe('sidebar wiring', () => {
       '/api/v1/todos': [],
       '/api/v1/projects': {
         projects: [PROJECT, { ...PROJECT, id: 'shop', name: 'shop', lastOpenedAt: '2026-07-19T00:00:00.000Z' }],
-        bootProject: 'cezar',
-        projectsDir: '/home/me/cezar/projects',
+        bootProject: 'xezar',
+        projectsDir: '/home/me/xezar/projects',
       },
       '/api/v1/workspace/ui-state': {},
-      '/api/v1/p/cezar/runs': [],
+      '/api/v1/p/xezar/runs': [],
     })
     renderShell()
 
@@ -340,7 +340,7 @@ describe('sidebar wiring', () => {
     serve({ '/api/v1/health': { ...HEALTH, repo: null }, '/api/v1/todos': [] })
     renderShell()
 
-    // Running cezar outside a repo is supported: no repo chip, but the rest of the chrome is
+    // Running xezar outside a repo is supported: no repo chip, but the rest of the chrome is
     // real and must not vanish with it.
     await waitFor(() => expect(versionChip()).not.toBeNull())
     expect(versionChip()?.textContent).toBe('v0.1.3')
@@ -359,7 +359,7 @@ describe('sidebar wiring', () => {
         ],
       },
     })
-    renderShell('/p/cezar/')
+    renderShell('/p/xezar/')
 
     const banner = await screen.findByRole('status')
     expect(banner.textContent).toContain('No agent provider credentials were found.')
@@ -378,7 +378,7 @@ describe('sidebar wiring', () => {
         ],
       },
     })
-    renderShell('/p/cezar/')
+    renderShell('/p/xezar/')
 
     const alert = await screen.findByRole('alert')
     expect(alert.textContent).toContain(
@@ -433,10 +433,10 @@ describe('sidebar wiring', () => {
 describe('document title wiring', () => {
   const REGISTRY = {
     projects: [PROJECT],
-    bootProject: 'cezar',
-    projectsDir: '/home/me/cezar/projects',
+    bootProject: 'xezar',
+    projectsDir: '/home/me/xezar/projects',
   }
-  const HEALTH_WITH_BOOT = { ...HEALTH, bootProject: 'cezar' }
+  const HEALTH_WITH_BOOT = { ...HEALTH, bootProject: 'xezar' }
 
   it('combines the selected project with scoped page context', async () => {
     serve({
@@ -450,14 +450,14 @@ describe('document title wiring', () => {
     })
     renderShell('/p/shop/git')
 
-    await waitFor(() => expect(document.title).toBe('Storefront — Git · cezar'))
+    await waitFor(() => expect(document.title).toBe('Storefront — Git · xezar'))
   })
 
   it('falls back to the boot repository name when the registry is unavailable', async () => {
     serve({ '/api/v1/health': HEALTH_WITH_BOOT, '/api/v1/todos': [], '/api/v1/runs': [] })
-    renderShell('/p/cezar/')
+    renderShell('/p/xezar/')
 
-    await waitFor(() => expect(document.title).toBe('cezar — Tasks · cezar'))
+    await waitFor(() => expect(document.title).toBe('xezar — Tasks · xezar'))
   })
 
   it('keeps global settings and a no-repo task route free of invented project context', async () => {
@@ -469,11 +469,11 @@ describe('document title wiring', () => {
     })
     const global = renderShell('/settings/global/projects')
 
-    await waitFor(() => expect(document.title).toBe('Settings · cezar'))
+    await waitFor(() => expect(document.title).toBe('Settings · xezar'))
     global.unmount()
 
     renderShell('/tasks/missing')
-    await waitFor(() => expect(document.title).toBe('cezar'))
+    await waitFor(() => expect(document.title).toBe('xezar'))
   })
 
   it('updates after in-app navigation without remounting the shell', async () => {
@@ -483,11 +483,11 @@ describe('document title wiring', () => {
       '/api/v1/projects': REGISTRY,
       '/api/v1/runs': [],
     })
-    renderShell('/p/cezar/')
+    renderShell('/p/xezar/')
 
-    await waitFor(() => expect(document.title).toBe('cezar — Tasks · cezar'))
+    await waitFor(() => expect(document.title).toBe('xezar — Tasks · xezar'))
     fireEvent.click(screen.getByRole('link', { name: 'Git' }))
-    await waitFor(() => expect(document.title).toBe('cezar — Git · cezar'))
+    await waitFor(() => expect(document.title).toBe('xezar — Git · xezar'))
   })
 
   it('reacts to live project and task title cache updates', async () => {
@@ -505,7 +505,7 @@ describe('document title wiring', () => {
     const { client } = renderShell('/p/shop/tasks/run-1')
 
     await waitFor(() =>
-      expect(document.title).toBe('Storefront — Implement page titles · cezar'),
+      expect(document.title).toBe('Storefront — Implement page titles · xezar'),
     )
 
     act(() => {
@@ -519,7 +519,7 @@ describe('document title wiring', () => {
     })
 
     await waitFor(() =>
-      expect(document.title).toBe('Renamed storefront — Rename browser titles · cezar'),
+      expect(document.title).toBe('Renamed storefront — Rename browser titles · xezar'),
     )
   })
 })

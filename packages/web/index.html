@@ -10,15 +10,15 @@
       content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
     />
     <!-- Relative so Vite bundles the legacy logo out of web/ instead of duplicating it under a public dir. -->
-    <link rel="icon" href="/open-mercato.svg" />
-    <title>cezar</title>
+    <link rel="icon" href="/xezar.svg" />
+    <title>xezar</title>
     <!-- Theme before first paint — no flash. Mirrors resolveTheme()/applyResolvedTheme() in
-         src/lib/theme.ts; keep the two in sync. Shares the legacy cockpit's `cez-theme` key
+         src/lib/theme.ts; keep the two in sync. Shares the legacy cockpit's `xez-theme` key
          ('light' | 'dark' | 'system'); anything else falls back to dark, as legacy does. -->
     <script>
       (function () {
         try {
-          var pref = localStorage.getItem('cez-theme')
+          var pref = localStorage.getItem('xez-theme')
           var light =
             pref === 'light' ||
             (pref === 'system' && matchMedia('(prefers-color-scheme: light)').matches)
@@ -31,12 +31,12 @@
         // (src/lib/appearance.ts owns the contract; keep the two in sync). Defaults are the
         // absence of the attribute, so only the known deviations are stamped.
         try {
-          if (localStorage.getItem('cez-accent') === 'violet')
+          if (localStorage.getItem('xez-accent') === 'violet')
             document.documentElement.dataset.accent = 'violet'
-          var density = localStorage.getItem('cez-density')
+          var density = localStorage.getItem('xez-density')
           if (density === 'compact' || density === 'ultra')
             document.documentElement.dataset.density = density
-          if (localStorage.getItem('cez-width') === 'wide')
+          if (localStorage.getItem('xez-width') === 'wide')
             document.documentElement.dataset.width = 'wide'
         } catch (e) {
           // Storage unavailable — lime/comfortable defaults already apply.

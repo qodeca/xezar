@@ -15,7 +15,7 @@ import {
   type ProjectListEntry,
   type ProjectsResponse,
   type WorkspaceConfigResponse,
-} from '@open-mercato/cezar-api-client'
+} from '@qodeca/xezar-api-client'
 import { CenteredState } from '@/components/centered-state'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
@@ -131,7 +131,7 @@ function ProjectsPane({
         value={config.projectsDir}
         title="Default checkout folder"
         hint="Where “Clone from GitHub” puts new projects: <folder>/<project name>."
-        placeholder="~/cezar/projects"
+        placeholder="~/xezar/projects"
         slot="checkout"
         savedLabel="Checkout folder"
         footer="Only affects new checkouts; projects already registered keep their location."
@@ -267,7 +267,7 @@ function RegistryTable({
   return (
     <SettingsField
       title="Registered projects"
-      hint={`Every folder cezar has run in, plus the ones added from the GUI. “Tags” group connected repositories — give the API, the web app and the design system a shared “storefront” tag and the global Tasks page can show all three as one piece of work. “Max parallel” caps how many of that project's tasks run at once; the workspace limit (${workspaceMax}) still applies as an overall ceiling, so a per-project value above it has no extra effect until the workspace limit is raised. Removing a project only unregisters it — no files on disk are deleted.`}
+      hint={`Every folder xezar has run in, plus the ones added from the GUI. “Tags” group connected repositories — give the API, the web app and the design system a shared “storefront” tag and the global Tasks page can show all three as one piece of work. “Max parallel” caps how many of that project's tasks run at once; the workspace limit (${workspaceMax}) still applies as an overall ceiling, so a per-project value above it has no extra effect until the workspace limit is raised. Removing a project only unregisters it — no files on disk are deleted.`}
     >
       {registry.projects.length === 0 ? (
         <p data-slot="projects-empty" className="text-[13px] text-soft-foreground">
@@ -378,7 +378,7 @@ function ProjectRow({
           aria-label={`Remove ${project.name} from the workspace — unregisters it, no files are deleted`}
           // The boot project is refused server-side too (it re-registers itself at every start);
           // disabling here means the user gets the explanation before the click, not after.
-          title={isBoot ? 'cezar is serving this project — it re-registers itself at every start' : undefined}
+          title={isBoot ? 'xezar is serving this project — it re-registers itself at every start' : undefined}
           disabled={disabled || isBoot}
           onClick={onRemove}
         >
@@ -394,7 +394,7 @@ function ProjectRow({
  *
  * The point is cross-repo work: tag the API, the web app and the design system `storefront` and
  * the global Tasks page (`/tasks`) can show all three as one list, or split every project's tasks
- * by tag. Nothing else in cezar reads them, deliberately — a tag is a lens, not a permission, a
+ * by tag. Nothing else in xezar reads them, deliberately — a tag is a lens, not a permission, a
  * queue or a routing rule.
  *
  * Bound to the server value with no local mirror of the list: the chips render `project.tags`

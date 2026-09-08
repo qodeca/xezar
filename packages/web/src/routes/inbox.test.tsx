@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createQueryClient } from '@/api/query-client'
-import type { ProviderStatusResponse, RunRecord, TodoItem } from '@open-mercato/cezar-api-client'
+import type { ProviderStatusResponse, RunRecord, TodoItem } from '@qodeca/xezar-api-client'
 import { Toaster, resetToasts } from '@/components/ui/toaster'
 
 import { InboxRoute, isTodoRunnable, visibleTodos } from './inbox'
@@ -848,7 +848,7 @@ describe('the inbox gate (#471)', () => {
     // The distinction matters: "Inbox empty" would blame the agents for a switched-off feature.
     expect(screen.queryByText('Inbox empty')).toBeNull()
     // And it tells the user how to get it back.
-    expect(screen.getByText(/CEZ_FOLLOWUPS=1/)).toBeTruthy()
+    expect(screen.getByText(/XEZ_FOLLOWUPS=1/)).toBeTruthy()
     const header = document.querySelector('[data-route="inbox"] header')
     expect(header?.textContent).toContain('Disabled for this server; per-task Notes still run.')
     expect(header?.textContent).not.toContain('Follow-ups agents suggested')

@@ -1,6 +1,6 @@
 import { XIcon } from 'lucide-react'
 
-import type { ProviderStatusResponse } from '@open-mercato/cezar-api-client'
+import type { ProviderStatusResponse } from '@qodeca/xezar-api-client'
 import { Link } from '@/lib/project-router'
 import {
   type ProviderAuthDismissals,

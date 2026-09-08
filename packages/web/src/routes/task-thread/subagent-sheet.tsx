@@ -7,8 +7,7 @@ import type { ThreadAsk, ThreadEntry } from './thread-state'
 import { SessionTranscript, agentTranscriptSections } from './session-transcript'
 
 /**
- * The sub-agent drill-down (spec `.ai/specs/2026-07-20-grouped-subagent-display.md`
- * §"Drill-down sheet", issue #474; mockup `mockup-02-subagent-sheet.png`): one agent's full
+ * The sub-agent drill-down (#474; mockup `mockup-02-subagent-sheet.png`): one agent's full
  * child stream in a focused right-side panel, entered from an Agents-dock row.
  *
  * It reads the same reducer state the thread does and hands it to `SessionTranscript`, so

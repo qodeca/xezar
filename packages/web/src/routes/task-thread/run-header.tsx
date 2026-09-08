@@ -36,7 +36,7 @@ import {
   useRunHandoff,
   useRuns,
 } from '@/api/queries'
-import { DEFAULT_AGENT_ACCOUNT_ID, type ApiRun, type OpenTarget } from '@open-mercato/cezar-api-client'
+import { DEFAULT_AGENT_ACCOUNT_ID, type ApiRun, type OpenTarget } from '@qodeca/xezar-api-client'
 import { DiffStatLabel } from '@/components/diff-stat'
 import { TitleEditInput, useTitleEditor } from '@/components/editable-title'
 import { Pill } from '@/components/pill'
@@ -572,7 +572,7 @@ function MetaRow({
    *  plain text, because the route it used to link to is disabled. */
   automationsAvailable: boolean
 }) {
-  // #526: the issue chip may be synthesized from the CEZ:ISSUE marker, and the only repository
+  // #526: the issue chip may be synthesized from the XEZ:ISSUE marker, and the only repository
   // such a link may name is the one on screen — never the transcript's.
   const repoBase = useProjectRepoBase()
   // At most two references here, so this is a batch of one or two rather than of a table — but it
@@ -611,7 +611,7 @@ function MetaRow({
   // pick one.
   //
   // A reference with no URL still gets its chip, exactly as All tasks paints it: a number-only
-  // reference is what a `CEZ:PR` declaration looks like before any link is scraped, and the two
+  // reference is what a `XEZ:PR` declaration looks like before any link is scraped, and the two
   // pages read their repository from DIFFERENT places (this one from health's remote, All tasks
   // from the project registry's `repoUrl`) — so "no URL here" never means "nothing to show".
   // `ReferenceChip` degrades such a chip to inert text on its own.
@@ -632,7 +632,7 @@ function MetaRow({
   }
   // The one PR chip `taskReferences` cannot express: a forge URL whose last segment is not a
   // number (`taskPrUrl`'s own tolerance — an unrecognized forge still gets a working link, just
-  // without a number cezar would be inventing). Gated on that URL not being painted already,
+  // without a number xezar would be inventing). Gated on that URL not being painted already,
   // NOT on there being no chips at all: today every `pullRequestUrl` is a GitHub `…/pull/N` and
   // the two are the same test, but a forge whose PR URLs do not end in a number (#847's GitLab
   // adapter) would have a `prNumber` chip standing in front of a link that then never rendered.
@@ -677,7 +677,7 @@ function MetaRow({
         <span
           key="automation"
           data-slot="automation-origin"
-          title="Automations are off on this server (CEZ_AUTOMATIONS)"
+          title="Automations are off on this server (XEZ_AUTOMATIONS)"
           className="rounded-sm border border-border bg-card px-1.5 py-px text-[11px] font-medium"
         >
           Automation

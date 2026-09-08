@@ -1,14 +1,14 @@
-# @open-mercato/cezar-api-client
+# @qodeca/xezar-api-client
 
-The typed client for a [cezar](https://github.com/open-mercato/cezar) service, and the shared
+The typed client for a [xezar](https://github.com/qodeca/xezar) service, and the shared
 contract types behind it.
 
-cezar is a local cockpit for running AI agent tasks in your repo. It runs as an HTTP service,
+xezar is a local cockpit for running AI agent tasks in your repo. It runs as an HTTP service,
 and this package is how anything else talks to it — the cockpit UI is just its first consumer.
 
 ## Status
 
-**Not published yet.** The package is `private`: it is consumed inside the cezar
+**Not published yet.** The package is `private`: it is consumed inside the xezar
 workspace (the cockpit bundles it, the service's tests import it) and will be
 released once its surface settles — it still carries hand-written DTOs for the
 routes that have not been converted to the versioned, type-inferred surface, and
@@ -17,19 +17,19 @@ those shrink with every family that is.
 ## Use
 
 ```ts
-import { createCezarClient } from '@open-mercato/cezar-api-client'
-import type { AppType } from '@open-mercato/cezar/app-type'
+import { createXezarClient } from '@qodeca/xezar-api-client'
+import type { AppType } from '@qodeca/xezar/app-type'
 
-const cez = createCezarClient<AppType>({ baseUrl: 'http://127.0.0.1:4321' })
+const xez = createXezarClient<AppType>({ baseUrl: 'http://127.0.0.1:4321' })
 
-const res = await cez.api.v1['agent-config'].$get()
+const res = await xez.api.v1['agent-config'].$get()
 const files = await res.json() // shape inferred from the server's own handler
 ```
 
 The type argument is what makes the client typed: it is the service's own app type, so paths,
 request bodies and response shapes are checked at compile time against the routes that actually
 exist. It is supplied by you rather than imported here, so this package installs and runs
-without the service package present — `createCezarClient()` with no type argument is a working,
+without the service package present — `createXezarClient()` with no type argument is a working,
 untyped client.
 
 Only the versioned surface (`/api/v1/*`) is typed. The unversioned `/api/*` paths are frozen for

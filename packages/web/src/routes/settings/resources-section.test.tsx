@@ -5,13 +5,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { queryKeys, workspaceQueryKeys } from '@/api/queries'
 import { createQueryClient } from '@/api/query-client'
-import type { WorkspaceConfigResponse } from '@open-mercato/cezar-api-client'
+import type { WorkspaceConfigResponse } from '@qodeca/xezar-api-client'
 import { Toaster, resetToasts } from '@/components/ui/toaster'
 import { AppRoutes } from '@/routes'
 
 /**
  * Global settings → Resources (step 3.5): `maxParallel` and `memoryLimitMb` moved out of the
- * per-repo config into `~/.cezar/config.json` (spec §"Resource governance" — they protect the
+ * per-repo config into `~/.xezar/config.json` (spec §"Resource governance" — they protect the
  * host, not a repo). What this pins is the store: every read and write goes to
  * `/api/v1/workspace/config`, and the per-repo `/api/v1/config` is never touched from here — a
  * regression there would silently re-introduce a value the engine no longer reads.
@@ -27,7 +27,7 @@ function serve(resources: Partial<WorkspaceConfigResponse['resources']> = {}) {
   const state: WorkspaceConfigResponse = {
     agentDefaults: {},
     browseRoot: '~/',
-    projectsDir: '~/cezar/projects',
+    projectsDir: '~/xezar/projects',
     skillsAutoUpdate: null,
     effectiveSkillsAutoUpdate: true,
     composerDefaults: {
@@ -73,7 +73,7 @@ function gateSeededClient() {
   client.setQueryData(workspaceQueryKeys.projects, {
     projects: [],
     bootProject: 'boot',
-    projectsDir: '~/cezar/projects',
+    projectsDir: '~/xezar/projects',
   })
   return client
 }

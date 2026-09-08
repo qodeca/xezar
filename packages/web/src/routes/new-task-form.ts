@@ -1,7 +1,7 @@
-// A contract VALUE, not a type: which runners cezar can interrogate for a live catalog is decided
+// A contract VALUE, not a type: which runners xezar can interrogate for a live catalog is decided
 // once, by the schema `GET /api/v1/models` validates with, so the picker and the route cannot
 // disagree about who has discovery. It narrows `Runner` to `ModelDiscoveryRunner`.
-import { runnerDiscoversModels } from '@open-mercato/cezar-api-client'
+import { runnerDiscoversModels } from '@qodeca/xezar-api-client'
 import type {
   BackendCheck,
   CreateRunInput,
@@ -13,7 +13,7 @@ import type {
   Skill,
   UiState,
   WorkflowDef,
-} from '@open-mercato/cezar-api-client'
+} from '@qodeca/xezar-api-client'
 
 /**
  * The new-task form's picker rules and its POST body, as pure functions — the exact semantics
@@ -118,7 +118,7 @@ const NATIVE_MODEL_ID_PREFIX: Partial<Record<Runner, RegExp>> = {
  *
  *  This is the cockpit's half of the rule the server states structurally — a runner with no
  *  default provider cannot be contradicted, which is why `KNOWN_PRESETS_BY_RUNNER.pi` is empty
- *  in `packages/cezar/src/core/model-presets.ts`. Without it, adding pi's presets here would
+ *  in `packages/xezar/src/core/model-presets.ts`. Without it, adding pi's presets here would
  *  silently strip a pinned OpenCode model from the OpenCode picker.
  *
  *  It exempts a runner's PRESET LIST, never the vendor shapes above: those name a vendor's own
@@ -163,7 +163,7 @@ export function modelsForRunner(
     base.push({ id: model.id, label: model.label || model.id, desc: model.description })
   }
   // Native settings may contain a provider-specific/custom id that is not in
-  // cezar's static catalog. Keep it representable so the initial selection
+  // xezar's static catalog. Keep it representable so the initial selection
   // matches the agent's own configured default on every backend.
   for (const id of customIds) {
     if (!id || seen.has(id) || modelConflictsWithRunner(id, runner)) continue
@@ -173,7 +173,7 @@ export function modelsForRunner(
   return base
 }
 
-/** `auto` survives every discovery outcome — it is cezar's own entry (no `--model` at all), not
+/** `auto` survives every discovery outcome — it is xezar's own entry (no `--model` at all), not
  *  something a CLI can stop offering. */
 function autoPreset(presets: readonly ModelPreset[]): ModelPreset {
   return presets.find((preset) => preset.id === '') ?? { id: '', label: 'auto', desc: '' }

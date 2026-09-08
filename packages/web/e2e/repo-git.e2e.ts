@@ -29,7 +29,7 @@ const scoped = (path: string) => `/p/${bootProject}${path}`
 
 async function api<T>(path: string): Promise<T> {
   const res = await fetch(`${baseUrl}${path}`)
-  if (!res.ok) throw new Error(`cezar e2e: GET ${path} answered ${res.status}`)
+  if (!res.ok) throw new Error(`xezar e2e: GET ${path} answered ${res.status}`)
   return (await res.json()) as T
 }
 
@@ -123,10 +123,34 @@ describe('the repo view against the live dry-run server', () => {
     browser.waitForFunction(`document.querySelector('[data-slot="commit-meta"]') !== null`)
     expect(browser.url()).toBe(`${baseUrl}${scoped(`/git/commits/${picked.hash}`)}`)
     expect(browser.text('[data-slot="commit-meta"]')).toContain(picked.subject)
-    // The same <Diff> facade, one card per changed file.
-    browser.waitForFunction(
-      `document.querySelectorAll('[data-slot="diff-file"]').length === ${picked.files.length}`,
-    )
+
+    // The same <Diff> facade — but WHICH tier it renders depends on the commit, and this spec
+    // drives whatever the newest non-merge commit in this checkout happens to be. Asserting
+    // "one card per changed file" unconditionally was only ever true by luck: above
+    // DIFF_VIRTUALIZE_THRESHOLD rendered rows the diff windows the file cards, so a large
+    // commit keeps a BOUNDED number of them in the DOM and the count can never reach the
+    // changeset size. A repo-wide rename commit is enough to hit that, and the assertion then
+    // waits 25s for a number the component is designed never to produce.
+    // So assert per tier, reading the mode the component itself published.
+    browser.waitForFunction(`document.querySelector('[data-slot="diff-files"]') !== null`)
+    const virtualized =
+      String(
+        browser.evaluate(
+          `document.querySelector('[data-slot="diff-files"]').getAttribute('data-virtualized')`,
+        ),
+      ) === 'true'
+    if (virtualized) {
+      // Windowed: some cards, never all of them. That IS the contract for a big changeset.
+      browser.waitForFunction(`document.querySelectorAll('[data-slot="diff-file"]').length > 0`)
+      const rendered = browser.count('[data-slot="diff-file"]')
+      expect(rendered).toBeGreaterThan(0)
+      expect(rendered).toBeLessThan(picked.files.length)
+    } else {
+      // Flat: every file card is in the DOM, one per changed file.
+      browser.waitForFunction(
+        `document.querySelectorAll('[data-slot="diff-file"]').length === ${picked.files.length}`,
+      )
+    }
     // The way back is a link.
     expect(
       browser.evaluate(`document.querySelector('[data-slot="commit-back"]').getAttribute('href')`),

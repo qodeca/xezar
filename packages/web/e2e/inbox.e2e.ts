@@ -23,7 +23,7 @@ const sessionId = `e2e-inbox-${process.pid}`
 const DESKTOP = { width: 1440, height: 900 }
 
 // Where `src/index.ts` puts the data dir, for the server booted from this worktree.
-const dataDir = resolve(import.meta.dirname, '../../../.ai/cezar')
+const dataDir = resolve(import.meta.dirname, '../../../.ai/xezar')
 const todosFile = resolve(dataDir, 'todos.json')
 
 const CARD = '[data-slot="todo-card"]'
@@ -81,7 +81,7 @@ describe('the inbox against the live dry-run server', () => {
   it('an enabled empty inbox renders the shared CenteredState template', ({ skip }) => {
     skip(
       !followupsAvailable,
-      'the inbox is opt-in; run CEZ_FOLLOWUPS=1 npm run test:e2e -- --force',
+      'the inbox is opt-in; run XEZ_FOLLOWUPS=1 npm run test:e2e -- --force',
     )
     writeTodos([])
     browser.goto(`${baseUrl}/inbox`)
@@ -96,7 +96,7 @@ describe('the inbox against the live dry-run server', () => {
   it('real cards render LIVE from a server-side todos.json write — no reload', ({ skip }) => {
     skip(
       !followupsAvailable,
-      'the inbox is opt-in; run CEZ_FOLLOWUPS=1 npm run test:e2e -- --force',
+      'the inbox is opt-in; run XEZ_FOLLOWUPS=1 npm run test:e2e -- --force',
     )
     // An agent files two follow-ups while the page just sits there on /inbox.
     writeTodos([
@@ -140,7 +140,7 @@ describe('the inbox against the live dry-run server', () => {
   it('Dismiss checks the entry off — card gone, server inbox down to one', async ({ skip }) => {
     skip(
       !followupsAvailable,
-      'the inbox is opt-in; run CEZ_FOLLOWUPS=1 npm run test:e2e -- --force',
+      'the inbox is opt-in; run XEZ_FOLLOWUPS=1 npm run test:e2e -- --force',
     )
     browser.click(`${CARD}[data-id="e2e-inbox-1"] [data-action="todo-dismiss"]`)
 

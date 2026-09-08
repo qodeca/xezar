@@ -4,7 +4,7 @@ import * as React from 'react'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createQueryClient } from '@/api/query-client'
-import type { Skill } from '@open-mercato/cezar-api-client'
+import type { Skill } from '@qodeca/xezar-api-client'
 import { resetToasts, Toaster } from '@/components/ui/toaster'
 
 import { MAX_ATTACHMENT_BYTES } from './composer-attachments'
@@ -36,7 +36,7 @@ afterEach(() => {
 const SKILLS: Skill[] = [
   { name: 'global-deploy', description: 'Deploy from anywhere', body: '', path: '/g/global-deploy.md', source: 'global' },
   { name: 'om-fix', description: 'Fix an issue', body: '', path: '/p/om-fix.md', source: 'ai' },
-  { name: 'om-review', body: '', path: '/p/om-review.md', source: 'cezar' },
+  { name: 'om-review', body: '', path: '/p/om-review.md', source: 'xezar' },
 ]
 
 /** The composer fetches `/api/v1/skills` (only once `/` has been typed) and `/api/v1/ui-state`

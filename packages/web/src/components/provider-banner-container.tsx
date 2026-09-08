@@ -7,7 +7,7 @@ import {
   useWorkspaceUiState,
   workspaceQueryKeys,
 } from '@/api/queries'
-import type { WorkspaceUiState } from '@open-mercato/cezar-api-client'
+import type { WorkspaceUiState } from '@qodeca/xezar-api-client'
 import { ProviderBanner } from '@/components/provider-banner'
 import { toast } from '@/components/ui/toaster'
 import {

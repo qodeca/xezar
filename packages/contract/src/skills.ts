@@ -5,7 +5,7 @@ import { runRecordSchema } from './runs.ts';
 // ---- skills (`GET /skills`, `POST /skills/refresh`) ---------------------------------------
 
 /**
- * One discovered skill: repo (`.ai/skills`, `.ai/cezar/skills`), `npx skills` install dirs
+ * One discovered skill: repo (`.ai/skills`, `.ai/xezar/skills`), `npx skills` install dirs
  * (project + global), or a configured team skills repo (spec 005).
  */
 export const skillSchema = z.object({
@@ -15,7 +15,7 @@ export const skillSchema = z.object({
   interactive: z.literal(true).optional(),
   body: z.string(),
   path: z.string(),
-  source: z.enum(['ai', 'cezar', 'agents', 'global', 'team']),
+  source: z.enum(['ai', 'xezar', 'agents', 'global', 'team']),
   /** Team skills only: where the definition lives in its skills repo. */
   team: z
     .object({
@@ -54,7 +54,7 @@ export type ImportableSkill = z.infer<typeof importableSkillSchema>;
 
 // ---- follow-up inbox / todos (spec 007) ---------------------------------------------------
 
-/** One entry of `.ai/cezar/todos.json`, as `GET /todos` serves it (ids are backfilled on read). */
+/** One entry of `.ai/xezar/todos.json`, as `GET /todos` serves it (ids are backfilled on read). */
 export const todoItemSchema = z.object({
   id: z.string(),
   ts: z.string().optional(),

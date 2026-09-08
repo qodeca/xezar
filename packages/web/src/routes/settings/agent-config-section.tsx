@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { ApiError } from '@/api/client'
 import { useAgentConfig, useAgentConfigFile, useHealth, usePutAgentConfigFile } from '@/api/queries'
-import type { AgentConfigFile, AgentConfigListing, Runner } from '@open-mercato/cezar-api-client'
+import type { AgentConfigFile, AgentConfigListing, Runner } from '@qodeca/xezar-api-client'
 import { CenteredState } from '@/components/centered-state'
 import { CodeEditor } from '@/components/code-editor'
 import { Badge } from '@/components/ui/badge'
@@ -18,7 +18,7 @@ import { AGENT_DESCRIPTORS, descriptorFor, type AgentDescriptor } from './agent-
  * 2026-07-17-agent-config-by-agent): read and edit the coding agents' OWN config
  * files — raw, per scope, highlighted — grouped BY AGENT. An agent selector
  * first; the selected agent's pane holds its Settings, MCP and Memory files
- * together, driven by the per-agent descriptor table. cezar never re-serializes;
+ * together, driven by the per-agent descriptor table. xezar never re-serializes;
  * it shows each scope's file and the vendor's own documented precedence, and
  * never claims a merge it does not perform. Writing is a local-machine
  * capability: in hosted mode the whole section is read-only (the server refuses
@@ -197,13 +197,13 @@ function AgentPane({
 }
 
 /** Claude's user/local MCP scopes live in ~/.claude.json (Claude's own state
- *  file) — listed read-only; cezar never edits it. */
+ *  file) — listed read-only; xezar never edits it. */
 function UserMcpBlock({ userMcp }: { userMcp: NonNullable<AgentConfigListing['userMcp']> }) {
   return (
     <div data-slot="agent-config-user-mcp" className="mt-3">
       <h4 className="mb-1 text-[12px] font-semibold">User &amp; local scopes</h4>
       <p className="mb-2 text-[12px] text-soft-foreground">
-        Managed by <code className="font-mono">claude mcp add</code> in {userMcp.path} — cezar does not edit
+        Managed by <code className="font-mono">claude mcp add</code> in {userMcp.path} — xezar does not edit
         Claude’s state file.
       </p>
       {userMcp.readable ? (

@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { queryKeys, workspaceQueryKeys } from '@/api/queries'
 import { createQueryClient } from '@/api/query-client'
-import type { ConfigResponse } from '@open-mercato/cezar-api-client'
+import type { ConfigResponse } from '@qodeca/xezar-api-client'
 import { Toaster, resetToasts } from '@/components/ui/toaster'
 import { AppRoutes } from '@/routes'
 
@@ -67,7 +67,7 @@ function gateSeededClient() {
   client.setQueryData(workspaceQueryKeys.projects, {
     projects: [],
     bootProject: 'boot',
-    projectsDir: '~/cezar/projects',
+    projectsDir: '~/xezar/projects',
   })
   return client
 }

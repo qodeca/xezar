@@ -6,20 +6,20 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
-import { AgentBrowser, bootProjectId, cezarCli, fixtureServeEnv, removeDataRoot, stopFixtureServer } from './agent-browser'
+import { AgentBrowser, bootProjectId, xezarCli, fixtureServeEnv, removeDataRoot, stopFixtureServer } from './agent-browser'
 
 /**
- * The task quick-list, in a real browser, against a real cezar serving real runs.
+ * The task quick-list, in a real browser, against a real xezar serving real runs.
  *
  * Why this spec boots its own server instead of using the shared test env: the run store reads
- * `.ai/cezar/runs.json` **once, at startup** (`RunStore.open`) and is in-memory from then on, so
+ * `.ai/xezar/runs.json` **once, at startup** (`RunStore.open`) and is in-memory from then on, so
  * writing that file under the already-running instance would change nothing — the way the inbox
  * spec can, because todos are file-watched and re-broadcast. The list would just render the empty
  * state. And "whatever runs happen to be in the dev checkout" is not a fixture: it is whatever the
  * last person did.
  *
  * So: a throwaway data dir, a fixture `runs.json`, one `node dist/index.js serve --repo <tmp>`.
- * The fixture is not invented data — `runs.json` is cezar's documented state contract (a
+ * The fixture is not invented data — `runs.json` is xezar's documented state contract (a
  * `RunRecord[]`, the exact shape `GET /api/v1/runs` answers with and `src/runs/store.ts` parses with
  * zod). If a record here were wrong, the store would drop it and these assertions would fail.
  *
@@ -35,7 +35,7 @@ const runId = `e2e-quick-list-${process.pid}`
 const now = Date.now()
 const ago = (ms: number) => new Date(now - ms).toISOString()
 
-/** A `RunRecord[]` — cezar's on-disk run index. */
+/** A `RunRecord[]` — xezar's on-disk run index. */
 const FIXTURE = [
   {
     id: 'fix-review-pr',
@@ -51,7 +51,7 @@ const FIXTURE = [
     finishedAt: ago(26 * 60_000),
     tokensUsed: 128_400,
     diffStat: { adds: 128, dels: 14, files: 6 },
-    pullRequestUrl: 'https://github.com/open-mercato/cezar/pull/396',
+    pullRequestUrl: 'https://github.com/qodeca/xezar/pull/396',
     archived: false,
     steps: [],
   },
@@ -147,7 +147,7 @@ async function waitForHealth(url: string): Promise<void> {
     }
     await new Promise((r) => setTimeout(r, 250))
   }
-  throw new Error(`cezar e2e: the fixture server never answered at ${url}`)
+  throw new Error(`xezar e2e: the fixture server never answered at ${url}`)
 }
 
 let browser: AgentBrowser
@@ -177,14 +177,14 @@ const rowsIn = (label: string) =>
   })()`) as string[] | null
 
 beforeAll(async () => {
-  dataRoot = mkdtempSync(join(tmpdir(), 'cezar-e2e-'))
-  mkdirSync(join(dataRoot, '.ai/cezar'), { recursive: true })
-  writeFileSync(join(dataRoot, '.ai/cezar/runs.json'), JSON.stringify(FIXTURE, null, 2), 'utf8')
+  dataRoot = mkdtempSync(join(tmpdir(), 'xezar-e2e-'))
+  mkdirSync(join(dataRoot, '.ai/xezar'), { recursive: true })
+  writeFileSync(join(dataRoot, '.ai/xezar/runs.json'), JSON.stringify(FIXTURE, null, 2), 'utf8')
 
   const port = await freePort()
   baseUrl = `http://localhost:${port}`
-  server = spawn(process.execPath, [cezarCli, 'serve', '--repo', dataRoot, '--port', String(port), '--no-open'], {
-    // Dry-run + a pinned CEZ_HOME, exactly as the shared test env does — see `fixtureServeEnv`.
+  server = spawn(process.execPath, [xezarCli, 'serve', '--repo', dataRoot, '--port', String(port), '--no-open'], {
+    // Dry-run + a pinned XEZ_HOME, exactly as the shared test env does — see `fixtureServeEnv`.
     // Nothing in this spec starts a run, but the boot probes the backends.
     env: fixtureServeEnv(dataRoot),
     stdio: 'ignore',
@@ -285,7 +285,7 @@ describe('task quick-list', () => {
       const el = document.querySelector('[data-run-id="fix-review-pr"] [data-slot="pr-chip"]')
       return { href: el.href, target: el.target }
     })()`) as { href: string; target: string }
-    expect(chip.href).toBe('https://github.com/open-mercato/cezar/pull/396')
+    expect(chip.href).toBe('https://github.com/qodeca/xezar/pull/396')
     expect(chip.target).toBe('_blank')
 
     // Only the run that has one.
@@ -389,7 +389,7 @@ describe('tasks table overview', () => {
     expect(reviewRow.text).toContain('128.4k')
     expect(reviewRow.text).toContain('Structured changes endpoint for the git view')
     expect(reviewRow.text).not.toContain('add a structured changes endpoint plz')
-    expect(reviewRow.prHref).toBe('https://github.com/open-mercato/cezar/pull/396')
+    expect(reviewRow.prHref).toBe('https://github.com/qodeca/xezar/pull/396')
     expect(reviewRow.prTarget).toBe('_blank')
 
     browser.screenshot(`${artifactsDir}/tasks-table.png`)
@@ -557,7 +557,7 @@ describe('a row under width contention, in a column the user can widen', () => {
   /** Set the width through the stored preference and reload — the non-pointer path to a width,
    *  used where the assertion is about the LAYOUT at that width rather than about dragging. */
   const setStoredWidth = (width: number) => {
-    browser.evaluate(`localStorage.setItem('cez-sidebar-width', '${width}')`)
+    browser.evaluate(`localStorage.setItem('xez-sidebar-width', '${width}')`)
     browser.goto(`${wideUrl}/p/${wideProject}/`)
     browser.waitForFunction(`document.querySelector('${ROW_ID}') !== null`)
   }
@@ -572,10 +572,10 @@ describe('a row under width contention, in a column the user can widen', () => {
   }
 
   beforeAll(async () => {
-    wideRoot = mkdtempSync(join(tmpdir(), 'cezar-e2e-wide-'))
-    mkdirSync(join(wideRoot, '.ai/cezar'), { recursive: true })
+    wideRoot = mkdtempSync(join(tmpdir(), 'xezar-e2e-wide-'))
+    mkdirSync(join(wideRoot, '.ai/xezar'), { recursive: true })
     writeFileSync(
-      join(wideRoot, '.ai/cezar/runs.json'),
+      join(wideRoot, '.ai/xezar/runs.json'),
       JSON.stringify(
         [
           {
@@ -590,7 +590,7 @@ describe('a row under width contention, in a column the user can widen', () => {
             finishedAt: ago(3_600_000),
             tokensUsed: 512_000,
             diffStat: { adds: 59_514, dels: 12_160, files: 208 },
-            pullRequestUrl: 'https://github.com/open-mercato/cezar/pull/775',
+            pullRequestUrl: 'https://github.com/qodeca/xezar/pull/775',
             archived: false,
             steps: [],
           },
@@ -605,7 +605,7 @@ describe('a row under width contention, in a column the user can widen', () => {
     wideUrl = `http://localhost:${port}`
     wideServer = spawn(
       process.execPath,
-      [cezarCli, 'serve', '--repo', wideRoot, '--port', String(port), '--no-open'],
+      [xezarCli, 'serve', '--repo', wideRoot, '--port', String(port), '--no-open'],
       { env: fixtureServeEnv(wideRoot), stdio: 'ignore' }
     )
     await waitForHealth(wideUrl)
@@ -621,7 +621,7 @@ describe('a row under width contention, in a column the user can widen', () => {
     browser.setViewport(1440, 900)
     browser.goto(`${wideUrl}/p/${wideProject}/`)
     // A width the last test dragged must not leak into the next one — the preference is real.
-    browser.evaluate(`localStorage.removeItem('cez-sidebar-width')`)
+    browser.evaluate(`localStorage.removeItem('xez-sidebar-width')`)
     browser.goto(`${wideUrl}/p/${wideProject}/`)
     browser.waitForFunction(`document.querySelector('${ROW_ID}') !== null`)
   })
@@ -640,7 +640,7 @@ describe('a row under width contention, in a column the user can widen', () => {
 
     expect(painted.title).toBe('implementing comment threads across the whole thread view')
     expect(painted.chip).toBe('#775')
-    expect(painted.chipHref).toBe('https://github.com/open-mercato/cezar/pull/775')
+    expect(painted.chipHref).toBe('https://github.com/qodeca/xezar/pull/775')
     // The number was moved, not deleted — the stored title is still one hover away.
     expect(painted.tooltip).toBe(FULL_TITLE)
   })
@@ -708,7 +708,7 @@ describe('a row under width contention, in a column the user can widen', () => {
 
     browser.screenshot(`${artifactsDir}/quick-list-width-contention-420.png`, { viewport: true })
 
-    expect(browser.evaluate(`localStorage.getItem('cez-sidebar-width')`)).toBe('420')
+    expect(browser.evaluate(`localStorage.getItem('xez-sidebar-width')`)).toBe('420')
     browser.goto(`${wideUrl}/p/${wideProject}/`)
     browser.waitForFunction(`document.querySelector('${ROW_ID}') !== null`)
     expect(sidebarWidth()).toBe(420)
@@ -768,12 +768,12 @@ describe('empty quick-list', () => {
   let emptyProject: string
 
   beforeAll(async () => {
-    emptyRoot = mkdtempSync(join(tmpdir(), 'cezar-e2e-empty-'))
+    emptyRoot = mkdtempSync(join(tmpdir(), 'xezar-e2e-empty-'))
     const port = await freePort()
     emptyUrl = `http://localhost:${port}`
     emptyServer = spawn(
       process.execPath,
-      [cezarCli, 'serve', '--repo', emptyRoot, '--port', String(port), '--no-open'],
+      [xezarCli, 'serve', '--repo', emptyRoot, '--port', String(port), '--no-open'],
       { env: fixtureServeEnv(emptyRoot), stdio: 'ignore' }
     )
     await waitForHealth(emptyUrl)
@@ -785,7 +785,7 @@ describe('empty quick-list', () => {
     await removeDataRoot(emptyRoot)
   })
 
-  it('shows the honest empty state — a fresh cezar has nothing to list', () => {
+  it('shows the honest empty state — a fresh xezar has nothing to list', () => {
     browser.goto(`${emptyUrl}/p/${emptyProject}/`)
     browser.waitForFunction(`document.querySelector('[data-slot="quick-list"]') !== null`)
 

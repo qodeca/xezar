@@ -4,15 +4,22 @@ dist/
 .idea
 
 # Build artifact: the one README lives at the repo root and is copied into the published
-# package by packages/cezar/scripts/sync-readme.mjs. Never edit the copy.
-/packages/cezar/README.md
+# package by packages/xezar/scripts/sync-readme.mjs. Never edit the copy.
+/packages/xezar/README.md
 
-# cezar runtime state in this repo (runs, worktrees, launch-key)
-.ai/cezar/
+# xezar runtime state in this repo (runs, worktrees, launch-key)
+.ai/xezar/
 
 # locally installed agent skills (per-machine installs, not repo content)
 .agents/
 skills-lock.json
+
+# Agent-pipeline working records. These are per-run logs, handoffs, design drafts and
+# checkpoint screenshots — useful on the machine that produced them, noise in a public
+# repository. They were removed from the tree with the Xezar rename and stay local from now on.
+.ai/runs/
+.ai/specs/
+.ai/analysis/
 
 # agent-pipeline scratch state (worktrees, per-run QA artifacts, test-env working files)
 .ai/tmp/
@@ -23,7 +30,7 @@ skills-lock.json
 # `test-env-*.log` let a hand-named boot log get swept into a commit by the autosave.
 .ai/qa/*.log
 .ai/qa/.build-cache
-.ai/qa/cez-home/
+.ai/qa/xez-home/
 
 # local symlink into .agents/skills
 .claude/skills

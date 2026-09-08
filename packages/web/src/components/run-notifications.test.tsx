@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { createQueryClient } from '@/api/query-client'
 import { queryKeys, workspaceQueryKeys } from '@/api/queries'
-import type { RunRecord, RunStatus, WorkspaceUiState } from '@open-mercato/cezar-api-client'
+import type { RunRecord, RunStatus, WorkspaceUiState } from '@qodeca/xezar-api-client'
 import { RunNotifications } from './run-notifications'
 
 /**
@@ -97,7 +97,7 @@ describe('RunNotifications', () => {
     expect(constructed).toEqual([
       {
         title: 'Normalize the agent-event protocol',
-        options: { body: 'Task needs you', tag: 'cezar-run-r1' },
+        options: { body: 'Task needs you', tag: 'xezar-run-r1' },
       },
     ])
   })
@@ -113,8 +113,8 @@ describe('RunNotifications', () => {
     patch([run({ id: 'a', status: 'review' }), run({ id: 'b', status: 'failed' })])
 
     expect(constructed.map((n) => [n.options?.tag, n.options?.body])).toEqual([
-      ['cezar-run-a', 'Task needs review'],
-      ['cezar-run-b', 'Task failed'],
+      ['xezar-run-a', 'Task needs review'],
+      ['xezar-run-b', 'Task failed'],
     ])
   })
 

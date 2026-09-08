@@ -11,7 +11,7 @@ import type { Theme } from '@/lib/theme'
  * Settings → Appearance (R6 Step 1.3, spec §"Settings").
  *
  * Three knobs, each honest about where it persists:
- *  - THEME rides the existing theme system (localStorage `cez-theme`, shared with the legacy
+ *  - THEME rides the existing theme system (localStorage `xez-theme`, shared with the legacy
  *    cockpit and the pre-paint script) — per-browser by design, like every OS theme choice;
  *  - ACCENT + DENSITY persist in `ui-state.json` through the AppearanceProvider (additive
  *    `appearance` key), mirrored to localStorage for pre-paint.

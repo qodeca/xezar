@@ -82,7 +82,7 @@ function makeRepo(name: string): string {
   // so the seed never depends on the developer's global git config.
   execFileSync(
     'git',
-    ['-C', root, '-c', 'user.name=cezar e2e', '-c', 'user.email=e2e@example.invalid',
+    ['-C', root, '-c', 'user.name=xezar e2e', '-c', 'user.email=e2e@example.invalid',
      'commit', '-q', '--allow-empty', '-m', 'seed'],
     { stdio: 'ignore' },
   )
@@ -98,7 +98,7 @@ async function workspaceUiState(): Promise<{ sidebar?: { collapsed?: Record<stri
 /** The collapse map as THIS browser holds it — the cockpit's own storage since the map stopped
  *  being a workspace-wide setting every client had to share. */
 function storedCollapse(): Record<string, boolean> {
-  const raw = browser.evaluate(`localStorage.getItem('cez-sidebar-collapsed')`)
+  const raw = browser.evaluate(`localStorage.getItem('xez-sidebar-collapsed')`)
   return typeof raw === 'string' ? (JSON.parse(raw) as Record<string, boolean>) : {}
 }
 
@@ -117,7 +117,7 @@ beforeAll(async () => {
   // `ui-state.json` too: the collapse assertion below reads it to prove nothing was written
   // there, and a developer's scratch home must not come out of this run holding a seeded map.
   restoreHome = snapshotSharedHome('config.json', 'ui-state.json')
-  seedDir = mkdtempSync(join(tmpdir(), 'cezar-e2e-groups-'))
+  seedDir = mkdtempSync(join(tmpdir(), 'xezar-e2e-groups-'))
 
   // The boot entry as the registry already has it when it is registered — its `lastOpenedAt` is
   // what puts it first in the sidebar's most-recently-opened order, so the seeded siblings get

@@ -1,11 +1,10 @@
-import type { ToolStatus, UiItem, UiToolItem } from '@open-mercato/cezar-api-client'
+import type { ToolStatus, UiItem, UiToolItem } from '@qodeca/xezar-api-client'
 
 import { splitToolTitle } from './thread-groups'
 import type { ThreadEntry, ThreadTurn } from './thread-state'
 
 /**
- * The Agents dock's data (spec `.ai/specs/2026-07-20-grouped-subagent-display.md` §Collector,
- * issue #474): pure derivation of "which sub-agents belong to the current fan-out, and what is
+ * The Agents dock's data (#474): pure derivation of "which sub-agents belong to the current fan-out, and what is
  * each one doing" from the reduced turns the thread already renders.
  *
  * A sub-agent is any **parent-less** `toolKind: 'task'` item (spec Q3) — claude `Task`/`Agent`,

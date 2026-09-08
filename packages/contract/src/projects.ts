@@ -16,7 +16,7 @@ import { z } from 'zod';
  *
  * Deliberately a CLOSED object even though the server's persistence schema
  * (`src/workspace/config.ts`, `workspaceProjectSchema.passthrough()`) keeps unknown keys in the
- * file: passthrough is a durability promise about `~/.cezar/config.json`, not a promise that the
+ * file: passthrough is a durability promise about `~/.xezar/config.json`, not a promise that the
  * API answers arbitrary keys. Modelling it as a loose object here would also be unprovable — see
  * the note on the index signature in `src/server/contract-parity.workspace.test.ts`.
  */

@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { AgentBrowser, bootProjectId, cezarCli, fixtureServeEnv, removeDataRoot, stopFixtureServer } from './agent-browser'
+import { AgentBrowser, bootProjectId, xezarCli, fixtureServeEnv, removeDataRoot, stopFixtureServer } from './agent-browser'
 
 /**
  * The Changes tab (R5 Step 1.5) end-to-end against a LIVE dry run, same doctrine as
@@ -51,7 +51,7 @@ async function waitForHealth(url: string): Promise<void> {
     }
     await new Promise((r) => setTimeout(r, 250))
   }
-  throw new Error(`cezar e2e: the changes-tab server never answered at ${url}`)
+  throw new Error(`xezar e2e: the changes-tab server never answered at ${url}`)
 }
 
 async function waitForStatus(url: string, id: string, wanted: string[]): Promise<string> {
@@ -60,7 +60,7 @@ async function waitForStatus(url: string, id: string, wanted: string[]): Promise
     if (wanted.includes(record.status)) return record.status
     await new Promise((r) => setTimeout(r, 500))
   }
-  throw new Error(`cezar e2e: run ${id} never reached status "${wanted.join('/')}"`)
+  throw new Error(`xezar e2e: run ${id} never reached status "${wanted.join('/')}"`)
 }
 
 let browser: AgentBrowser
@@ -77,15 +77,15 @@ let runId: string
 let worktreePath: string
 
 beforeAll(async () => {
-  dataRoot = mkdtempSync(join(tmpdir(), 'cezar-e2e-changes-'))
+  dataRoot = mkdtempSync(join(tmpdir(), 'xezar-e2e-changes-'))
   const git = (...args: string[]) => execFileSync('git', ['-C', dataRoot, ...args])
   git('init', '-q', '-b', 'main')
-  git('config', 'user.email', 'e2e@cezar.test')
-  git('config', 'user.name', 'cezar e2e')
+  git('config', 'user.email', 'e2e@xezar.test')
+  git('config', 'user.name', 'xezar e2e')
   writeFileSync(join(dataRoot, 'README.md'), '# changes-tab e2e fixture repo\n', 'utf8')
   git('add', '.')
   git('commit', '-qm', 'init')
-  // A github.com remote makes `resolveForge` return the GitHub driver; under CEZ_DRY_RUN its
+  // A github.com remote makes `resolveForge` return the GitHub driver; under XEZ_DRY_RUN its
   // detect() answers available without touching the network. Nothing ever pushes to it.
   git('remote', 'add', 'origin', 'git@github.com:acme/changes-e2e.git')
 
@@ -93,11 +93,11 @@ beforeAll(async () => {
   baseUrl = `http://localhost:${port}`
   server = spawn(
     process.execPath,
-    [cezarCli, 'serve', '--repo', dataRoot, '--port', String(port), '--no-open'],
-    // CEZ_REVIEW_GATE=1 because this spec is ABOUT the gate: it is opt-in (#489, default OFF),
+    [xezarCli, 'serve', '--repo', dataRoot, '--port', String(port), '--no-open'],
+    // XEZ_REVIEW_GATE=1 because this spec is ABOUT the gate: it is opt-in (#489, default OFF),
     // so pinning it here is what makes the parked-at-review fixture reproducible instead of
     // depending on whatever the operator happens to export.
-    { env: fixtureServeEnv(dataRoot, { CEZ_REVIEW_GATE: '1' }), stdio: 'ignore' },
+    { env: fixtureServeEnv(dataRoot, { XEZ_REVIEW_GATE: '1' }), stdio: 'ignore' },
   )
   await waitForHealth(baseUrl)
   bootProject = await bootProjectId(baseUrl)
@@ -116,7 +116,7 @@ beforeAll(async () => {
   await waitForStatus(baseUrl, runId, ['waiting'])
   await fetch(`${baseUrl}/api/v1/runs/${runId}/finish`, { method: 'POST' })
   const parked = await waitForStatus(baseUrl, runId, ['review', 'done'])
-  if (parked !== 'review') throw new Error('cezar e2e: the dry run settled as done — no diff to review?')
+  if (parked !== 'review') throw new Error('xezar e2e: the dry run settled as done — no diff to review?')
 
   const record = (await (await fetch(`${baseUrl}/api/v1/runs/${runId}`)).json()) as { worktreePath: string }
   worktreePath = record.worktreePath
@@ -181,7 +181,7 @@ describe('the Changes tab against a live dry run', () => {
     // Terminal handoff is capability-gated and covered against both states in component tests;
     // this fixture pins only the primary policy actions.
     // The branch chip names the run's real branch.
-    expect(browser.text('[data-slot="git-toolbar"] [data-slot="branch-chip"]')).toContain('cez/')
+    expect(browser.text('[data-slot="git-toolbar"] [data-slot="branch-chip"]')).toContain('xez/')
 
     browser.screenshot(`${artifactsDir}/changes-desktop.png`)
   })

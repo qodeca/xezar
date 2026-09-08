@@ -2,14 +2,14 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import type { RunEvent } from '@open-mercato/cezar-api-client'
-import type { UiToolItem } from '@open-mercato/cezar-api-client'
+import type { RunEvent } from '@qodeca/xezar-api-client'
+import type { UiToolItem } from '@qodeca/xezar-api-client'
 
-import bashAndScreenshot from '../../../../cezar/src/core/__fixtures__/claude/bash-and-screenshot.expected.json'
-import failedAndDenied from '../../../../cezar/src/core/__fixtures__/claude/failed-and-denied.expected.json'
-import subagentTask from '../../../../cezar/src/core/__fixtures__/claude/subagent-task.expected.json'
-import thinkingEditWriteTodo from '../../../../cezar/src/core/__fixtures__/claude/thinking-edit-write-todo.expected.json'
-import opencodeToolLifecycle from '../../../../cezar/src/core/__fixtures__/opencode/tool-lifecycle.expected.json'
+import bashAndScreenshot from '../../../../xezar/src/core/__fixtures__/claude/bash-and-screenshot.expected.json'
+import failedAndDenied from '../../../../xezar/src/core/__fixtures__/claude/failed-and-denied.expected.json'
+import subagentTask from '../../../../xezar/src/core/__fixtures__/claude/subagent-task.expected.json'
+import thinkingEditWriteTodo from '../../../../xezar/src/core/__fixtures__/claude/thinking-edit-write-todo.expected.json'
+import opencodeToolLifecycle from '../../../../xezar/src/core/__fixtures__/opencode/tool-lifecycle.expected.json'
 import { groupThreadItems } from './thread-groups'
 import {
   ContextGroup,

@@ -1,3 +1,42 @@
+# Renamed to Xezar (2026-09-08)
+
+**Cezar is now Xezar.** Same tool, new identity: published as
+[`@qodeca/xezar`](https://www.npmjs.com/package/@qodeca/xezar) from
+[`qodeca/xezar`](https://github.com/qodeca/xezar), providing the `xezar` and `xez` commands.
+
+```bash
+npm install -g @qodeca/xezar
+```
+
+Xezar is an **independent application**, not an upgrade of Cezar. It keeps its own state —
+`~/.xezar/`, `.ai/xezar/`, `~/.cache/xez/` — and never reads, moves or deletes anything Cezar
+owns. An existing Cezar install keeps working, untouched, side by side.
+
+Everything a user has to change is listed in
+[BACKWARD_COMPATIBILITY.md → "The Xezar rename"](BACKWARD_COMPATIBILITY.md#the-xezar-rename--a-deliberate-clean-break-0101).
+The short version:
+
+- `CEZ_*` environment variables are now `XEZ_*` (see `.env.example`).
+- Agent markers `CEZ:DONE` / `CEZ:ASK` / … are now `XEZ:DONE` / `XEZ:ASK` / … — update any skill
+  or prompt that emits them.
+- Cockpit browser preferences (theme, accent, density, sidebar width, unsent drafts) reset once,
+  because they live under new storage keys.
+- Copy your history across by hand if you want it: `cp -R ~/.cezar/ ~/.xezar/` and
+  `cp -R .ai/cezar/ .ai/xezar/`. Both are plain files.
+
+Also in this release: the unscoped `cezar-cli` alias package is retired — there is now exactly
+one published package — and automatic npm publishing (PR previews, `develop` snapshots and the
+nightly channel) is gone. Releases are manual, owner-triggered and go straight to `latest`; see
+[docs/publishing.md](docs/publishing.md).
+
+> **About the entries below.** Everything under this line was written while the product was
+> called Cezar, published first as `@pat-lewczuk/cezar` and then as `@open-mercato/cezar` with
+> the unscoped `cezar-cli` alias. Those names are left exactly as they were written. A changelog
+> records what actually shipped, and renaming it retroactively would make it describe releases
+> that never existed. The old packages remain on npm, unchanged.
+
+---
+
 # 0.10.1 (2026-09-04)
 
 ## Highlights
@@ -41,7 +80,7 @@ rejection.
   dir that created it, and `claude --resume` under a different login would silently open an empty
   conversation. A host with one agent and one login sees exactly the composer it always saw.
   `POST /api/v1/runs/:id/continue` gained an optional `agentProfile`; an id that no longer exists
-  is a 400, matching `POST /api/v1/runs`. Spec: `.ai/specs/2026-07-29-agent-profiles.md`. (#924)
+  is a 400, matching `POST /api/v1/runs`. (#924)
 - ✨ **The composer takes a PDF, TXT or MD file the same way it already takes a screenshot.**
   Paperclip, ⌘V and drag-drop all used to either grey the file out or silently discard it, and the
   wire would have refused it regardless (`mediaType: /^image\//`). Every attachment-carrying route
@@ -228,7 +267,7 @@ reopens.
   are stored in `~/.cezar/config.json`, deduplicated case-insensitively, and read by nothing else
   in cezar — a tag is a lens, not a permission or a routing rule. `PATCH /api/v1/projects/:id`
   gained an optional `tags`; over ssh, `cezar projects tag <id> [<tag>…]` does the same thing.
-  Spec: `.ai/specs/2026-08-10-global-tasks-and-project-tags.md`. (#845)
+  (#845)
 - ✨ **A task's PR or issue chip now says where that PR or issue stands.** Every reference chip
   in the cockpit — sidebar rows, the per-project Tasks table, All tasks, the run header — carries
   the state of the thing it points at in three channels: colour (violet done, green fine, blue
@@ -244,7 +283,7 @@ reopens.
   re-asked; a hidden tab polls nothing), and dropped the moment cezar merges a PR itself. When
   there is nothing to show the chip stays neutral and says which kind of nothing on hover.
   Additive route: `GET /api/v1/github/ref-status?prs=&issues=`.
-  Spec: `.ai/specs/2026-08-11-reference-status-chips.md`. (#871)
+  (#871)
 - ✨ **Agent accounts: run one project on your work login and another on your personal one.** The
   same CLI logged in twice (`CLAUDE_CONFIG_DIR=~/.claude-klaudiusz claude`, or `CODEX_HOME` for
   Codex) is now something cezar can address. Add the config folder under **Settings → Agent
@@ -257,7 +296,7 @@ reopens.
   login there is no new control anywhere. Accounts live in `~/.cezar/agent-accounts.json`, so
   downgrading and upgrading cezar cannot lose them, and cezar never silently falls back to
   another account when the chosen one is unavailable. OpenCode is not supported yet: it keeps
-  credentials outside its config folder. Spec: `.ai/specs/2026-07-29-agent-profiles.md`.
+  credentials outside its config folder.
 - ✨ **Handing an issue or PR to the agent can pick which account runs it.** The GitHub tab's
   "Hand this to the agent" panel was the one start surface the agent-accounts work missed, so
   delegating an issue always ran on whatever the project's selection resolved to. It now offers

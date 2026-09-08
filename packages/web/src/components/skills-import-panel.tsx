@@ -4,7 +4,7 @@ import { useCallback, useMemo, useRef, useState } from 'react'
 
 import { applySkillsUpdate, checkSkillsUpdate, createRun, putWorkspaceUiState } from '@/api/client'
 import { queryKeys, useImportableSkills, useSkillsUpdate, useWorkspaceUiState, workspaceQueryKeys } from '@/api/queries'
-import type { SkillsUpdateState, WorkspaceUiState } from '@open-mercato/cezar-api-client'
+import type { SkillsUpdateState, WorkspaceUiState } from '@qodeca/xezar-api-client'
 import { Button } from '@/components/ui/button'
 import { CenteredState } from '@/components/centered-state'
 import {
@@ -43,7 +43,7 @@ function effectiveImported(uiState: WorkspaceUiState | undefined, allNames: read
  * The "Manage skills" panel (replaces the old promo banner, #391 follow-up): the default
  * `open-mercato/skills` catalog is no longer forced on the user, but it is not taken away either —
  * every skill is enabled by default (opt-out) and the user unchecks the ones they don't want. The
- * selection lives in the GLOBAL `~/.cezar/ui-state.json` (`importedSkills`, via the workspace
+ * selection lives in the GLOBAL `~/.xezar/ui-state.json` (`importedSkills`, via the workspace
  * ui-state) so it follows the person across projects rather than depending on the launch directory;
  * the gate that decides which team skills reach the catalog is server-side in `discoverSkills`, so
  * this panel only writes the selection. The first uncheck expands the "all on" default into an
@@ -179,7 +179,7 @@ export function ImportSkillsPanel({ projectId }: { projectId: string }) {
       <SkillsUpdateCard projectId={projectId} state={update.data} loadError={update.error} />
 
       <p className="mt-4 text-xs text-soft-foreground">
-        These checkboxes choose what cezar shows; updates refresh installed skill files.
+        These checkboxes choose what xezar shows; updates refresh installed skill files.
       </p>
 
       <div className="mt-4 flex items-center gap-2">

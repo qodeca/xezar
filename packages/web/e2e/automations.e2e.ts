@@ -11,7 +11,7 @@ let baseUrl: string
 let bootProject: string
 let automationId: string | undefined
 /** `capabilities.automations` (#801) — the shared environment boots WITHOUT the opt-in, which is
- *  what a default cezar does, so the enabled-path cases below skip unless it was turned on. */
+ *  what a default xezar does, so the enabled-path cases below skip unless it was turned on. */
 let automationsAvailable = false
 
 beforeAll(async () => {
@@ -43,18 +43,18 @@ describe('GitHub automations', () => {
     // The deep link still resolves — the route map is unchanged — but says the feature is off.
     browser.goto(`${baseUrl}/p/${bootProject}/automations`)
     browser.waitForFunction(`document.body.textContent.includes('GitHub automations are off')`)
-    expect(browser.text('main')).toContain('CEZ_AUTOMATIONS=1')
+    expect(browser.text('main')).toContain('XEZ_AUTOMATIONS=1')
     browser.screenshot(`${artifactsDir}/automations-disabled.png`)
 
     const refused = await fetch(`${baseUrl}/api/v1/automations`)
     expect(refused.status).toBe(409)
-    expect(((await refused.json()) as { error: string }).error).toContain('CEZ_AUTOMATIONS')
+    expect(((await refused.json()) as { error: string }).error).toContain('XEZ_AUTOMATIONS')
   }, 60_000)
 
   it('creates paused, previews safely, enables from a baseline, and exposes the log', async ({ skip }) => {
     skip(
       !automationsAvailable,
-      'automations are opt-in; run CEZ_AUTOMATIONS=1 npm run test:e2e -- --force',
+      'automations are opt-in; run XEZ_AUTOMATIONS=1 npm run test:e2e -- --force',
     )
     const name = `E2E issue triage ${process.pid}`
     browser.goto(`${baseUrl}/p/${bootProject}/automations/new`)

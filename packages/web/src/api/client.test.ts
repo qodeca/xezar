@@ -41,7 +41,7 @@ import {
   startTodo,
   retryProviderAuth,
 } from './client'
-import { setApiScope } from '@open-mercato/cezar-api-client'
+import { setApiScope } from '@qodeca/xezar-api-client'
 
 /** The one seam under test: every call must go through `fetch` and nothing else. */
 const fetchMock = vi.fn<typeof fetch>()
@@ -437,8 +437,8 @@ describe('response parsing', () => {
     const health = {
       version: '0.1.3',
       latestVersion: '0.2.0',
-      repoRoot: '/home/me/cezar',
-      repo: { root: '/home/me/cezar', branch: 'main', remote: 'origin' },
+      repoRoot: '/home/me/xezar',
+      repo: { root: '/home/me/xezar', branch: 'main', remote: 'origin' },
       checks: [{ name: 'claude', available: true, version: '2.0.1' }],
       defaultRunner: 'claude',
     }
@@ -496,12 +496,12 @@ describe('errors', () => {
   })
 
   it('carries the 409 extras the server pairs with the reason', async () => {
-    fail(409, JSON.stringify({ error: 'push failed: no upstream', manual: 'git merge cez/abc' }))
+    fail(409, JSON.stringify({ error: 'push failed: no upstream', manual: 'git merge xez/abc' }))
     const error = (await createRun({ task: 't', workflow: 'quick-task' }).catch((e: unknown) => e)) as ApiError
     expect(error.status).toBe(409)
     expect(error.message).toBe('push failed: no upstream')
     // The manual way out has to reach the UI — a 409 the user cannot act on is a dead end.
-    expect(error.manual).toBe('git merge cez/abc')
+    expect(error.manual).toBe('git merge xez/abc')
     expect(error.command).toBeUndefined()
     expect(error.exists).toBeUndefined()
   })
@@ -617,7 +617,7 @@ describe('history responses are validated at the boundary (#827)', () => {
     const error = (await getRunHistory('run-1').catch((e: unknown) => e)) as ApiError
     expect(error).toBeInstanceOf(ApiError)
     expect(error.status).toBe(200)
-    expect(error.message).toBe('the cezar server answered /runs/run-1/history with an unexpected body')
+    expect(error.message).toBe('the xezar server answered /runs/run-1/history with an unexpected body')
   })
 
   it('rejects a 200 whose page carries a non-array `events`', async () => {
@@ -633,7 +633,7 @@ describe('history responses are validated at the boundary (#827)', () => {
     expect(error).toBeInstanceOf(ApiError)
     expect(error.status).toBe(200)
     expect(error.message).toBe(
-      'the cezar server answered /runs/run-1/history-context with an unexpected body',
+      'the xezar server answered /runs/run-1/history-context with an unexpected body',
     )
   })
 

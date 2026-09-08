@@ -33,7 +33,7 @@ import { useParams } from 'react-router'
 
 import { ApiError, createWorkflow, deleteWorkflow, parseWorkflow, postPlan } from '@/api/client'
 import { queryKeys, useSkills, useUiState, useWorkflows } from '@/api/queries'
-import type { Skill, WorkflowDef, WorkflowStepDef } from '@open-mercato/cezar-api-client'
+import type { Skill, WorkflowDef, WorkflowStepDef } from '@qodeca/xezar-api-client'
 import { CenteredState } from '@/components/centered-state'
 import { SkillEmptyHintCompact } from '@/components/skill-empty-hint'
 import {
@@ -616,7 +616,7 @@ function WorkflowsBuilder({ routeName }: { routeName: string | undefined }) {
               {yaml}
             </pre>
             <p className="mt-2 text-[11.5px] leading-relaxed text-soft-foreground">
-              Portable — export this file and import it in any repo running cezar.
+              Portable — export this file and import it in any repo running xezar.
             </p>
           </aside>
         </div>
@@ -658,7 +658,7 @@ function WorkflowsBuilder({ routeName }: { routeName: string | undefined }) {
             <AlertDialogTitle>Delete workflow &ldquo;{trimmedName}&rdquo;?</AlertDialogTitle>
             <AlertDialogDescription>
               Removes {savedFile?.path?.split('/').pop() ?? 'the saved file'} from{' '}
-              <span className="font-mono">.ai/cezar/workflows/</span>. There is no undo.
+              <span className="font-mono">.ai/xezar/workflows/</span>. There is no undo.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

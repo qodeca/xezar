@@ -247,7 +247,7 @@ export interface UiAskQuestion {
 
 /**
  * The agent asked the user a structured multiple-choice question via a
- * `CEZ:ASK` marker. The run parks `waiting`; the cockpit renders clickable
+ * `XEZ:ASK` marker. The run parks `waiting`; the cockpit renders clickable
  * option chips. Resolution is client-side (the next user message closes the
  * card) — there is no `ask.resolved` event.
  */

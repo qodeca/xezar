@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { ProcessUsage, RunRecord } from '@open-mercato/cezar-api-client'
+import type { ProcessUsage, RunRecord } from '@qodeca/xezar-api-client'
 import {
   compareGroups,
   filterRuns,
@@ -117,8 +117,8 @@ describe('workflowLabel', () => {
 
 describe('filterRuns', () => {
   const runs = [
-    run({ id: 'a', title: 'Bump zod to v4', branch: 'cez/99aa11bb', workflow: 'quick-task' }),
-    run({ id: 'b', title: 'README tagline', branch: 'cez/e5f6a7b8', workflow: 'plan-then-do' }),
+    run({ id: 'a', title: 'Bump zod to v4', branch: 'xez/99aa11bb', workflow: 'quick-task' }),
+    run({ id: 'b', title: 'README tagline', branch: 'xez/e5f6a7b8', workflow: 'plan-then-do' }),
     run({
       id: 'c',
       title: 'Inbox follow-up',
@@ -215,7 +215,7 @@ describe('taskPrUrl', () => {
   })
 
   it('does not adopt an incidental PR for an issue-subject run that declared no PR (#526)', () => {
-    // om-prepare-issue for #524: CEZ:ISSUE declared, no CEZ:PR — #454 was only incidental
+    // om-prepare-issue for #524: XEZ:ISSUE declared, no XEZ:PR — #454 was only incidental
     // transcript text and must never surface as "the run's PR".
     const r = run({
       markerRefs: { issue: 524 },
@@ -383,7 +383,7 @@ describe('taskIssueUrl', () => {
     expect(taskIssueUrl(run({ issueNumber: 544 }))).toBeUndefined()
   })
 
-  it('synthesizes the issue link from the CEZ:ISSUE marker + the project repo (#526)', () => {
+  it('synthesizes the issue link from the XEZ:ISSUE marker + the project repo (#526)', () => {
     // The om-prepare-issue #524 record: issue known via the marker, but no `…/issues/524`
     // link was ever scanned. The cockpit's own repo makes the created issue reachable.
     const r = run({
@@ -422,12 +422,12 @@ describe('taskIssueUrl', () => {
 
 describe('githubRepoBase', () => {
   it.each([
-    ['https://github.com/open-mercato/cezar.git', 'https://github.com/open-mercato/cezar'],
-    ['https://github.com/open-mercato/cezar', 'https://github.com/open-mercato/cezar'],
-    ['https://user:token@github.com/open-mercato/cezar.git', 'https://github.com/open-mercato/cezar'],
-    ['git@github.com:open-mercato/cezar.git', 'https://github.com/open-mercato/cezar'],
-    ['ssh://git@github.com:22/open-mercato/cezar.git', 'https://github.com/open-mercato/cezar'],
-    ['https://github.com/open-mercato/cezar/', 'https://github.com/open-mercato/cezar'],
+    ['https://github.com/qodeca/xezar.git', 'https://github.com/qodeca/xezar'],
+    ['https://github.com/qodeca/xezar', 'https://github.com/qodeca/xezar'],
+    ['https://user:token@github.com/qodeca/xezar.git', 'https://github.com/qodeca/xezar'],
+    ['git@github.com:qodeca/xezar.git', 'https://github.com/qodeca/xezar'],
+    ['ssh://git@github.com:22/qodeca/xezar.git', 'https://github.com/qodeca/xezar'],
+    ['https://github.com/qodeca/xezar/', 'https://github.com/qodeca/xezar'],
   ])('normalizes %s', (remote, expected) => {
     expect(githubRepoBase(remote)).toBe(expected)
   })
@@ -438,7 +438,7 @@ describe('githubRepoBase', () => {
     ['a GitLab remote', 'git@gitlab.com:o/r.git'],
     ['a self-hosted forge', 'https://git.example.com/o/r.git'],
     ['a local path', '/srv/git/repo.git'],
-    ['a bare host with no owner', 'https://github.com/cezar'],
+    ['a bare host with no owner', 'https://github.com/xezar'],
   ])('has no GitHub base for %s', (_name, remote) => {
     expect(githubRepoBase(remote)).toBeUndefined()
   })

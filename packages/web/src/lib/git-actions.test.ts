@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { RunStatus } from '@open-mercato/cezar-api-client'
+import type { RunStatus } from '@qodeca/xezar-api-client'
 
 import { gitActionPolicy, type GitActionState } from './git-actions'
 
@@ -15,7 +15,7 @@ import { gitActionPolicy, type GitActionState } from './git-actions'
 const base: GitActionState = {
   status: 'review',
   hasWorktree: true,
-  branch: 'cez/abc12345',
+  branch: 'xez/abc12345',
   changedFiles: 3,
   remote: 'git@github.com:acme/demo.git',
   forge: { kind: 'github', available: true },

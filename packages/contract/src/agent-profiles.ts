@@ -17,7 +17,7 @@ import { providerIdSchema, providerStatusSchema } from './workspace.ts';
 /**
  * The id of the DISCOVERED account — the one `agentHomePaths()` finds from the environment.
  *
- * Reserved: never allocated to a stored account, never written to `~/.cezar/agent-accounts.json`.
+ * Reserved: never allocated to a stored account, never written to `~/.xezar/agent-accounts.json`.
  * It is a real, meaningful value on the wire in two places, and they are not the same thing:
  * `PUT …/agent-profiles/selection` takes it (like `null`) to CLEAR a repo back to the discovered
  * account, and `POST /api/v1/runs` takes it as `agentProfile` to mean "this task uses the
@@ -48,7 +48,7 @@ export type AgentAccountFile = z.infer<typeof agentAccountFileSchema>;
  *
  * A CLOSED object, on the same terms as `projectListEntrySchema`: `.passthrough()` on the
  * persistence side (`src/workspace/agent-accounts.ts`) is a durability promise about
- * `~/.cezar/agent-accounts.json`, not a promise that the API answers arbitrary keys.
+ * `~/.xezar/agent-accounts.json`, not a promise that the API answers arbitrary keys.
  */
 export const agentProfileSchema = z.object({
   /** `default` for the discovered profile, else the stored slug. */
@@ -65,7 +65,7 @@ export const agentProfileSchema = z.object({
   /** Whether the dir carries this agent's own marker files. ADVISORY: an unrecognised dir is
    *  still accepted, because "add profile → Connect → the CLI creates it" is the real flow. */
   looksValid: z.boolean(),
-  /** True for the profile cezar discovers from the environment. Never stored, never deletable. */
+  /** True for the profile xezar discovers from the environment. Never stored, never deletable. */
   isDefault: z.boolean(),
   /** This account's own authentication state — two Claude logins answer independently.
    *
@@ -106,7 +106,7 @@ export type AgentAccountSelection = z.infer<typeof agentAccountSelectionSchema>;
 /**
  * `GET /api/v1/workspace/agent-profiles` — every account, discovered defaults first.
  *
- * `editable` is false in hosted mode (`CEZ_REMOTE`), where the whole family is refused: defining
+ * `editable` is false in hosted mode (`XEZ_REMOTE`), where the whole family is refused: defining
  * a profile points an agent at a local directory, and the listing echoes absolute paths carrying
  * the username. Same posture as `PUT /api/v1/agent-config/:id`.
  */
@@ -120,8 +120,8 @@ export const agentProfilesResponseSchema = z.object({
   /** Which account each project uses, keyed by the project's realpath'd ROOT.
    *
    *  Served here rather than on `GET /api/v1/projects` because it is stored beside the accounts it
-   *  names (`~/.cezar/agent-accounts.json`) — one file, so deleting an account and scrubbing every
-   *  reference to it is one atomic write, and neither can be dropped by a cezar version that never
+   *  names (`~/.xezar/agent-accounts.json`) — one file, so deleting an account and scrubbing every
+   *  reference to it is one atomic write, and neither can be dropped by a xezar version that never
    *  heard of accounts. Empty in hosted mode, where the whole family is withheld. */
   selections: z.record(z.string(), agentAccountSelectionSchema),
   /** The machine-wide fallback account per provider, used by any repo that has chosen none. */

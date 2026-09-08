@@ -24,11 +24,11 @@ export type NavItem = {
    *  driver available — see `visibleNavItems`. */
   forge?: boolean
   /** Inbox-gated (#471): the item exists only while `/api/health` reports
-   *  `capabilities.followups` — the global inbox is opt-in via `CEZ_FOLLOWUPS=1`.
+   *  `capabilities.followups` — the global inbox is opt-in via `XEZ_FOLLOWUPS=1`.
    *  See `visibleNavItems`. */
   inbox?: boolean
   /** Automations-gated (#801): the item exists only while `/api/health` reports
-   *  `capabilities.automations` — GitHub automations are opt-in via `CEZ_AUTOMATIONS=1`.
+   *  `capabilities.automations` — GitHub automations are opt-in via `XEZ_AUTOMATIONS=1`.
    *  Independent of `forge`: the Automations item carries BOTH, because the feature needs a
    *  forge to poll AND the operator's opt-in to exist at all. See `visibleNavItems`. */
   automations?: boolean
@@ -65,8 +65,8 @@ export type NavAvailability = {
  * The nav items a surface should actually render: a gated item drops out — nav item AND tab —
  * unless the health payload says its feature is there. The forge-gated GitHub item needs the
  * forge driver (spec §"GitHub tab (forge tab)"); the Inbox item needs `capabilities.followups`,
- * which is off unless `CEZ_FOLLOWUPS=1` (#471); the Automations item needs a forge AND
- * `capabilities.automations`, which is off unless `CEZ_AUTOMATIONS=1` (#801).
+ * which is off unless `XEZ_FOLLOWUPS=1` (#471); the Automations item needs a forge AND
+ * `capabilities.automations`, which is off unless `XEZ_AUTOMATIONS=1` (#801).
  *
  * Gates are ANDed per item, never ORed, which is what lets one item carry two of them: an
  * automations opt-in on a repo with no GitHub remote still has nothing to poll.

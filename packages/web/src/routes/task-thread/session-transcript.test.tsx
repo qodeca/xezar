@@ -1,11 +1,11 @@
 import { cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { ApiRun, RunEvent, UiToolItem } from '@open-mercato/cezar-api-client'
+import type { ApiRun, RunEvent, UiToolItem } from '@qodeca/xezar-api-client'
 
-import claudeSubagent from '../../../../cezar/src/core/__fixtures__/claude/subagent-task.expected.json'
-import codexReview from '../../../../cezar/src/core/__fixtures__/codex/review-mode.expected.json'
-import opencodeSubtask from '../../../../cezar/src/core/__fixtures__/opencode/subtask-nested.expected.json'
+import claudeSubagent from '../../../../xezar/src/core/__fixtures__/claude/subagent-task.expected.json'
+import codexReview from '../../../../xezar/src/core/__fixtures__/codex/review-mode.expected.json'
+import opencodeSubtask from '../../../../xezar/src/core/__fixtures__/opencode/subtask-nested.expected.json'
 
 import {
   SessionTranscript,

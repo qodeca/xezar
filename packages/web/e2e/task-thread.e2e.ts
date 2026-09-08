@@ -5,11 +5,11 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { AgentBrowser, bootProjectId, cezarCli, fixtureServeEnv, removeDataRoot, stopFixtureServer } from './agent-browser'
+import { AgentBrowser, bootProjectId, xezarCli, fixtureServeEnv, removeDataRoot, stopFixtureServer } from './agent-browser'
 import record from './fixtures/thread-run.record.json'
 
 /**
- * The task thread (`/tasks/:id`, R3 Steps 1.1 + 1.2) in a real browser, against a real cezar
+ * The task thread (`/tasks/:id`, R3 Steps 1.1 + 1.2) in a real browser, against a real xezar
  * serving a run whose transcript is a REAL NDJSON file — `fixtures/thread-run.ndjson`, the
  * verbatim output of an R2 dry run (see fixtures/README.md), tool items and all. The server
  * replays it over the per-run SSE stream exactly as it would for any finished run, so what
@@ -27,7 +27,7 @@ const sessionId = `e2e-thread-${process.pid}`
 /** The recorded run (`fixtures/thread-run.record.json`, the store's own zod-checked shape),
  *  with the one legitimate user edit a run can carry: a PATCHed title summary — so the header
  *  assertions cover the edited-title path rather than echoing the raw auto-summary. */
-const RUN = { ...record, titleSummary: 'Explain what cezar does' }
+const RUN = { ...record, titleSummary: 'Explain what xezar does' }
 const RUN_ID: string = RUN.id
 
 function freePort(): Promise<number> {
@@ -51,7 +51,7 @@ async function waitForHealth(url: string): Promise<void> {
     }
     await new Promise((r) => setTimeout(r, 250))
   }
-  throw new Error(`cezar e2e: the fixture server never answered at ${url}`)
+  throw new Error(`xezar e2e: the fixture server never answered at ${url}`)
 }
 
 let browser: AgentBrowser
@@ -65,17 +65,17 @@ let bootProject: string
 const scoped = (path: string) => `/p/${bootProject}${path}`
 
 beforeAll(async () => {
-  dataRoot = mkdtempSync(join(tmpdir(), 'cezar-e2e-thread-'))
-  mkdirSync(join(dataRoot, '.ai/cezar/runs'), { recursive: true })
-  writeFileSync(join(dataRoot, '.ai/cezar/runs.json'), JSON.stringify([RUN], null, 2), 'utf8')
+  dataRoot = mkdtempSync(join(tmpdir(), 'xezar-e2e-thread-'))
+  mkdirSync(join(dataRoot, '.ai/xezar/runs'), { recursive: true })
+  writeFileSync(join(dataRoot, '.ai/xezar/runs.json'), JSON.stringify([RUN], null, 2), 'utf8')
   copyFileSync(
     resolve(import.meta.dirname, 'fixtures/thread-run.ndjson'),
-    join(dataRoot, '.ai/cezar/runs', `${RUN_ID}.ndjson`),
+    join(dataRoot, '.ai/xezar/runs', `${RUN_ID}.ndjson`),
   )
   // The agent screenshot the transcript's `image` line points at (served by the run itself).
   cpSync(
     resolve(import.meta.dirname, 'fixtures/thread-run-images'),
-    join(dataRoot, '.ai/cezar/runs', `${RUN_ID}-images`),
+    join(dataRoot, '.ai/xezar/runs', `${RUN_ID}-images`),
     { recursive: true },
   )
 
@@ -83,7 +83,7 @@ beforeAll(async () => {
   baseUrl = `http://localhost:${port}`
   server = spawn(
     process.execPath,
-    [cezarCli, 'serve', '--repo', dataRoot, '--port', String(port), '--no-open'],
+    [xezarCli, 'serve', '--repo', dataRoot, '--port', String(port), '--no-open'],
     { env: fixtureServeEnv(dataRoot), stdio: 'ignore' },
   )
   await waitForHealth(baseUrl)
@@ -162,7 +162,7 @@ describe('task thread', () => {
     expect(block.copy).toBe(true)
     expect(block.keywordText).toBe('const')
     // Streamdown owns how its custom token variable is painted; our contract is that Shiki
-    // maps the keyword to cezar's theme token and that the active palette defines that token.
+    // maps the keyword to xezar's theme token and that the active palette defines that token.
     expect(block.keywordToken).toBe('var(--syn-key)')
     expect(block.synKey).toMatch(/^#[0-9a-f]{6}$/i)
   })
@@ -324,7 +324,7 @@ describe('task thread', () => {
 
   it('shows the auto-summary title and the done pill in the header', () => {
     expect(browser.evaluate(`document.querySelector('[data-route="task-thread"] h1').textContent`)).toBe(
-      'Explain what cezar does',
+      'Explain what xezar does',
     )
     expect(browser.evaluate(`document.querySelector('[data-slot="pill"]').textContent`)).toBe('done')
     // The #381 money shot: tool cards (one expanded) + markdown + image, desktop width.
@@ -336,7 +336,7 @@ describe('task thread', () => {
       `document.querySelector('[data-slot="run-meta"]').textContent`,
     ) as string
     expect(meta).toContain('quick-task')
-    expect(meta).toContain('cez/fcd519dd')
+    expect(meta).toContain('xez/fcd519dd')
     expect(meta).toContain('+1 −0')
     expect(meta).toContain('3.6k tokens')
     expect(meta).toContain('$0.04')
@@ -348,7 +348,7 @@ describe('task thread', () => {
     // Branch renders as the mono chip, not plain text.
     expect(
       browser.evaluate(`document.querySelector('[data-slot="branch-chip"]').textContent`),
-    ).toBe('cez/fcd519dd')
+    ).toBe('xez/fcd519dd')
   })
 
   it('tabs point at the routed Session/Changes/Files surfaces; the done run offers the closed-run actions', () => {
@@ -384,7 +384,7 @@ describe('task thread', () => {
       `document.querySelector('[data-slot="resume-hint"]').textContent`,
     ) as string
     expect(hint).toContain('claude --resume 40169e05-629f-4d7c-853c-8a2a197255e4')
-    expect(hint).toContain('cd /tmp/cezar-fixture-hg7X')
+    expect(hint).toContain('cd /tmp/xezar-fixture-hg7X')
   })
 
   it('opens the Notes panel — an unseeded handoff reads as the honest empty state', () => {
@@ -408,7 +408,7 @@ describe('task thread', () => {
     browser.waitForFunction(`document.querySelector('[data-slot="title-input"]') !== null`)
     expect(
       browser.evaluate(`document.querySelector('[data-slot="title-input"]').value`),
-    ).toBe('Explain what cezar does')
+    ).toBe('Explain what xezar does')
 
     browser.fill('[data-slot="title-input"]', 'Renamed by the header e2e')
     browser.press('Enter')

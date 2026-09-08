@@ -86,7 +86,7 @@ function gateSeededClient(singleProject = false) {
   client.setQueryData(workspaceQueryKeys.projects, {
     projects: [],
     bootProject: 'boot',
-    projectsDir: '~/cezar/projects',
+    projectsDir: '~/xezar/projects',
   })
   return client
 }
@@ -279,8 +279,8 @@ describe('the appearance section (global scope)', () => {
     expect(screen.getByRole('radio', { name: 'Violet' }).getAttribute('aria-checked')).toBe('true')
     expect(screen.getByRole('radio', { name: 'Compact' }).getAttribute('aria-checked')).toBe('true')
     // The mirror follows the server, so the next cold load pre-paints the truth.
-    expect(localStorage.getItem('cez-accent')).toBe('violet')
-    expect(localStorage.getItem('cez-density')).toBe('compact')
+    expect(localStorage.getItem('xez-accent')).toBe('violet')
+    expect(localStorage.getItem('xez-density')).toBe('compact')
   })
 
   it('accent round-trip: apply immediately, PUT the FULL appearance object', async () => {
@@ -300,7 +300,7 @@ describe('the appearance section (global scope)', () => {
         appearance: { accent: 'violet', density: 'compact', width: 'narrow' },
       })
     })
-    expect(localStorage.getItem('cez-accent')).toBe('violet')
+    expect(localStorage.getItem('xez-accent')).toBe('violet')
   })
 
   it('density flips back to the default and the attribute comes OFF the root', async () => {
@@ -350,12 +350,12 @@ describe('the appearance section (global scope)', () => {
 
     fireEvent.click(screen.getByRole('radio', { name: 'Light' }))
     expect(document.documentElement.classList.contains('light')).toBe(true)
-    expect(localStorage.getItem('cez-theme')).toBe('light')
+    expect(localStorage.getItem('xez-theme')).toBe('light')
     expect(screen.getByRole('radio', { name: 'Light' }).getAttribute('aria-checked')).toBe('true')
 
     fireEvent.click(screen.getByRole('radio', { name: 'Dark' }))
     expect(document.documentElement.classList.contains('light')).toBe(false)
-    expect(localStorage.getItem('cez-theme')).toBe('dark')
+    expect(localStorage.getItem('xez-theme')).toBe('dark')
 
     // Theme is per-browser by design (pre-paint) — it must never leak into ui-state.json.
     await waitFor(() => {

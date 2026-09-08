@@ -2,7 +2,7 @@ import { TriangleAlertIcon, ZapIcon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { useHealth, useLaunchKey, useProjects, useSkills } from '@/api/queries'
-import type { Skill } from '@open-mercato/cezar-api-client'
+import type { Skill } from '@qodeca/xezar-api-client'
 import { repoChipOf } from '@/components/app-shell-container'
 import { CenteredState } from '@/components/centered-state'
 import { Input } from '@/components/ui/input'
@@ -64,7 +64,7 @@ export function BookmarkletPanel({ skills }: { skills: readonly Skill[] }) {
   const [auto, setAuto] = useState(false)
   const [filter, setFilter] = useState('')
   // THIS project's own launch key: `useLaunchKey` goes through the scoped API client, so under
-  // `/p/<id>/settings` it reads `/api/p/<id>/launch-key` — that repo's `.ai/cezar/launch-key`,
+  // `/p/<id>/settings` it reads `/api/p/<id>/launch-key` — that repo's `.ai/xezar/launch-key`,
   // which is the only secret the target cockpit scope will accept (multi-project spec, 3.6).
   const key = launchKey.data?.key ?? ''
   // Bake THIS cockpit's origin into the bookmarklets so a click opens the very instance that
@@ -95,7 +95,7 @@ export function BookmarkletPanel({ skills }: { skills: readonly Skill[] }) {
       <h2 className="text-base font-semibold">Run from GitHub</h2>
       <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">
         Drag a button below to your browser&apos;s bookmarks bar. On any GitHub PR or issue, click it
-        to open this cockpit directly. The cockpit must be running: <span className="font-mono">npx cezar</span>.
+        to open this cockpit directly. The cockpit must be running: <span className="font-mono">npx xezar</span>.
       </p>
 
       <label className="mt-4 flex items-center gap-2 text-[13px] font-medium">
@@ -113,7 +113,7 @@ export function BookmarkletPanel({ skills }: { skills: readonly Skill[] }) {
       <div data-slot="bm-generic" className="mt-4">
         {/* Generic launcher: no skill, auto forced off — it only prefills the form. */}
         <BookmarkletRow
-          label={repoName ? `cezar (${repoName}): this PR/issue` : 'cezar: this PR/issue'}
+          label={repoName ? `xezar (${repoName}): this PR/issue` : 'xezar: this PR/issue'}
           url={bookmarkletUrl('', false, key, origin, projectId)}
           hint="prefills the form — nothing starts by itself"
         />

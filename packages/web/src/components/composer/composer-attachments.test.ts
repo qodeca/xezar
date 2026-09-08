@@ -107,7 +107,7 @@ describe('attachmentMediaType', () => {
     expect(attachmentMediaType(fakeFile({ type: 'application/octet-stream', name: 'a.pdf' }))).toBe('application/pdf')
   })
 
-  it('answers null for a file cezar will not take, whatever it is called', () => {
+  it('answers null for a file xezar will not take, whatever it is called', () => {
     expect(attachmentMediaType(fakeFile({ type: 'application/zip', name: 'a.zip' }))).toBeNull()
     expect(attachmentMediaType(fakeFile({ type: 'text/html', name: 'a.html' }))).toBeNull()
   })

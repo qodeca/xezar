@@ -1,6 +1,6 @@
 import { hasAccountChoice, useAgentAccounts } from '@/api/agent-accounts'
 import { useConfig, useProviderStatus, useRunnerModels } from '@/api/queries'
-import type { CreateRunInput, Runner } from '@open-mercato/cezar-api-client'
+import type { CreateRunInput, Runner } from '@qodeca/xezar-api-client'
 import { PickerPill, RunnerPill, type RunnerAccountChoice } from '@/components/picker-pill'
 import { usableRunners } from '@/lib/provider-status'
 import {

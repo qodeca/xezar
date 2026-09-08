@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { AgentBrowser, bootProjectId, cezarCli, fixtureServeEnv, getJson, removeDataRoot, stopFixtureServer } from './agent-browser'
+import { AgentBrowser, bootProjectId, xezarCli, fixtureServeEnv, getJson, removeDataRoot, stopFixtureServer } from './agent-browser'
 
 /**
  * The full-screen /new composer (R4 Steps 1.1 + 1.3) end-to-end against a LIVE dry-run server:
@@ -14,7 +14,7 @@ import { AgentBrowser, bootProjectId, cezarCli, fixtureServeEnv, getJson, remove
  * the API readback pins the created run to the exact skill-chain shape plus the persisted
  * `lastTask`. The second describe proves the protected bookmarklet contract (spec 011,
  * BACKWARD_COMPATIBILITY.md) on full document loads of /new, with the REAL launch key read
- * from `.ai/cezar/launch-key` — the documented on-disk contract.
+ * from `.ai/xezar/launch-key` — the documented on-disk contract.
  */
 
 const artifactsDir = resolve(import.meta.dirname, '../../../.ai/qa/artifacts_e2e')
@@ -41,7 +41,7 @@ async function waitForHealth(url: string): Promise<void> {
     }
     await new Promise((r) => setTimeout(r, 250))
   }
-  throw new Error(`cezar e2e: the new-task server never answered at ${url}`)
+  throw new Error(`xezar e2e: the new-task server never answered at ${url}`)
 }
 
 let browser: AgentBrowser
@@ -56,11 +56,11 @@ const scoped = (path: string) => `/p/${bootProject}${path}`
 
 beforeAll(async () => {
   // A REAL git repo: the run needs a worktree, and the base-branch pill needs branches.
-  dataRoot = mkdtempSync(join(tmpdir(), 'cezar-e2e-new-task-'))
+  dataRoot = mkdtempSync(join(tmpdir(), 'xezar-e2e-new-task-'))
   const git = (...args: string[]) => execFileSync('git', ['-C', dataRoot, ...args])
   git('init', '-q', '-b', 'main')
-  git('config', 'user.email', 'e2e@cezar.test')
-  git('config', 'user.name', 'cezar e2e')
+  git('config', 'user.email', 'e2e@xezar.test')
+  git('config', 'user.name', 'xezar e2e')
   writeFileSync(join(dataRoot, 'README.md'), '# new-task e2e fixture repo\n', 'utf8')
   git('add', '.')
   git('commit', '-qm', 'init')
@@ -83,9 +83,9 @@ beforeAll(async () => {
   // `quick-task` is not a row of its own any more (it IS the "No skill" row), and a fixture with
   // only the built-in would leave the group empty for reasons that have nothing to do with the
   // grouping under test.
-  mkdirSync(join(dataRoot, '.ai/cezar/workflows'), { recursive: true })
+  mkdirSync(join(dataRoot, '.ai/xezar/workflows'), { recursive: true })
   writeFileSync(
-    join(dataRoot, '.ai/cezar/workflows/fix-and-verify.yaml'),
+    join(dataRoot, '.ai/xezar/workflows/fix-and-verify.yaml'),
     'name: fix-and-verify\ndescription: Fix, then prove it with the tests\nskills:\n  - lint-fix\n',
     'utf8',
   )
@@ -94,7 +94,7 @@ beforeAll(async () => {
   baseUrl = `http://localhost:${port}`
   server = spawn(
     process.execPath,
-    [cezarCli, 'serve', '--repo', dataRoot, '--port', String(port), '--no-open'],
+    [xezarCli, 'serve', '--repo', dataRoot, '--port', String(port), '--no-open'],
     { env: fixtureServeEnv(dataRoot), stdio: 'ignore' },
   )
   await waitForHealth(baseUrl)
@@ -292,7 +292,7 @@ describe('the bookmarklet contract on full /new loads (spec 011, Step 1.3)', () 
   it('auto=1 with the REAL launch key starts a run unattended and lands in its thread', async () => {
     // The documented on-disk contract: the server bakes this secret into the bookmarklets it
     // generates; only a page holding it may start runs. Read it exactly where users can.
-    const key = readFileSync(join(dataRoot, '.ai/cezar/launch-key'), 'utf8').trim()
+    const key = readFileSync(join(dataRoot, '.ai/xezar/launch-key'), 'utf8').trim()
     expect(key).not.toBe('')
     const before = await runCount()
 

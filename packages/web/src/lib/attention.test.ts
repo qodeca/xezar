@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { RunRecord, RunStatus } from '@open-mercato/cezar-api-client'
+import type { RunRecord, RunStatus } from '@qodeca/xezar-api-client'
 import type { StatusDotTone } from '@/components/status-dot'
 import {
   ATTENTION_RANK,
@@ -69,7 +69,7 @@ describe('deriveAttention', () => {
     // 'cancelled' when a run was interrupted). The dot follows the status, so an error string
     // must not turn a done run red — and must not fail to turn a failed one red either.
     it.each(ALL_STATUSES)('ignores a stray error message on a %s run', (status) => {
-      expect(deriveAttention(run({ status, error: 'interrupted — cezar process exited' }))).toEqual(
+      expect(deriveAttention(run({ status, error: 'interrupted — xezar process exited' }))).toEqual(
         deriveAttention(run({ status }))
       )
     })
@@ -110,7 +110,7 @@ describe('deriveAttention', () => {
     expect(JSON.stringify(record)).toBe(frozen)
   })
 
-  it('never claims a permission prompt — cezar emits none yet', () => {
+  it('never claims a permission prompt — xezar emits none yet', () => {
     // The bucket exists (the spec ranks it first) but R2's `permission.*` events are what will
     // feed it. Until then no record can produce it: this test is the guard that nothing invented
     // a source in the meantime.

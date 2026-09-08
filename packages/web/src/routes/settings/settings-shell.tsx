@@ -1,6 +1,6 @@
 import { ChevronRightIcon, SlidersHorizontalIcon } from 'lucide-react'
 import { Link as RouterLink, NavLink as RouterNavLink } from 'react-router'
-import type { Capabilities } from '@open-mercato/cezar-api-client'
+import type { Capabilities } from '@qodeca/xezar-api-client'
 import { Link as ScopedLink, NavLink as ScopedNavLink } from '@/lib/project-router'
 import { cn } from '@/lib/utils'
 import { ProjectGeneral } from './project-general'
@@ -104,7 +104,7 @@ function SectionNav({
           Global: settings are per USER, not per repo, said once where the choice to write there
           is being made. Project: WHICH repo, by its absolute path on disk. */}
       {scope === 'global' ? (
-        <p className="mt-auto px-2.5 pt-3 text-[11px] text-soft-foreground">Stored in ~/.cezar</p>
+        <p className="mt-auto px-2.5 pt-3 text-[11px] text-soft-foreground">Stored in ~/.xezar</p>
       ) : (
         <ProjectLocationNav />
       )}

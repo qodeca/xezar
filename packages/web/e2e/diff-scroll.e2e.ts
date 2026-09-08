@@ -6,16 +6,16 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { AgentBrowser, cezarCli, fixtureServeEnv, removeDataRoot, stopFixtureServer } from './agent-browser'
+import { AgentBrowser, xezarCli, fixtureServeEnv, removeDataRoot, stopFixtureServer } from './agent-browser'
 
 /**
  * Diff virtualization in a real browser (`components/diff/diff-scroll.ts` §"THE PERFORMANCE
  * RULE"), over a changeset this spec BUILDS — a throwaway git repo with a deliberately large
- * uncommitted diff, served by its own cezar instance.
+ * uncommitted diff, served by its own xezar instance.
  *
  * The fixture is generated rather than read from the checkout on purpose. An earlier version
  * of this spec measured whatever the working tree happened to hold, which made it silently
- * worthless the moment the tree was clean or small (cezar's autosave commits as a task runs,
+ * worthless the moment the tree was clean or small (xezar's autosave commits as a task runs,
  * so "small" is the normal state). A regression test for a size threshold has to control the
  * size.
  *
@@ -52,8 +52,8 @@ let browser: AgentBrowser
 let server: ChildProcess
 let repo: string
 let baseUrl: string
-/** The server's own count. NOT `FIXTURE_FILES`: booting cezar against the fixture writes
- *  `.ai/cezar/.gitignore` into it, which is itself an honest untracked change the view shows. */
+/** The server's own count. NOT `FIXTURE_FILES`: booting xezar against the fixture writes
+ *  `.ai/xezar/.gitignore` into it, which is itself an honest untracked change the view shows. */
 let changedFiles = 0
 
 function freePort(): Promise<number> {
@@ -77,7 +77,7 @@ async function waitForHealth(url: string): Promise<void> {
     }
     await new Promise((r) => setTimeout(r, 250))
   }
-  throw new Error(`cezar e2e: the fixture server never answered at ${url}`)
+  throw new Error(`xezar e2e: the fixture server never answered at ${url}`)
 }
 
 /** Commit a baseline, then rewrite every line — a big, honest modified-file diff. */
@@ -85,7 +85,7 @@ function buildFixtureRepo(dir: string): void {
   const git = (args: string[]) => execFileSync('git', args, { cwd: dir, stdio: 'ignore' })
   git(['init', '-q', '-b', 'main'])
   git(['config', 'user.email', 'e2e@example.com'])
-  git(['config', 'user.name', 'cezar e2e'])
+  git(['config', 'user.name', 'xezar e2e'])
   mkdirSync(join(dir, 'src'), { recursive: true })
   const write = (index: number, tag: string) =>
     writeFileSync(
@@ -119,14 +119,14 @@ function openChanges(mode: 'flat' | 'virtual') {
 }
 
 beforeAll(async () => {
-  repo = mkdtempSync(join(tmpdir(), 'cezar-e2e-diff-scroll-'))
+  repo = mkdtempSync(join(tmpdir(), 'xezar-e2e-diff-scroll-'))
   buildFixtureRepo(repo)
 
   const port = await freePort()
   baseUrl = `http://localhost:${port}`
   server = spawn(
     process.execPath,
-    [cezarCli, 'serve', '--repo', repo, '--port', String(port), '--no-open'],
+    [xezarCli, 'serve', '--repo', repo, '--port', String(port), '--no-open'],
     { env: fixtureServeEnv(repo), stdio: 'ignore' },
   )
   await waitForHealth(baseUrl)

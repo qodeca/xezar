@@ -76,7 +76,7 @@ import {
   putAgentConfigFile,
   retryProviderAuth,
 } from './client'
-import { queryScope, REFERENCE_STATUS_MAX, runnerDiscoversModels } from '@open-mercato/cezar-api-client'
+import { queryScope, REFERENCE_STATUS_MAX, runnerDiscoversModels } from '@qodeca/xezar-api-client'
 import { useProjectScope } from './project-scope-context'
 import { isReferenceStatus } from '@/lib/reference-status'
 import { githubRepoBase } from '@/lib/tasks-table'
@@ -101,7 +101,7 @@ import type {
   SetAgentConfigInput,
   UpdateAgentProfileInput,
   UpdateProjectInput,
-} from '@open-mercato/cezar-api-client'
+} from '@qodeca/xezar-api-client'
 import { subscribeTopic } from './ws'
 
 /**
@@ -228,11 +228,11 @@ export const workspaceQueryKeys = {
   /** The cross-project task index behind ⌘K. Workspace-led for the same reason the registry is:
    *  it answers for every project at once, so no scope owns it. */
   runsIndex: ['workspace', 'runs-index'] as const,
-  /** `~/.cezar/ui-state.json` via `GET/PUT /api/workspace/ui-state` (step 2.7) — cross-project
+  /** `~/.xezar/ui-state.json` via `GET/PUT /api/workspace/ui-state` (step 2.7) — cross-project
    *  GUI prefs, e.g. the sidebar's per-project collapse map (step 3.3), and — since step 3.5 —
    *  appearance + notifications, which describe the user rather than a repo. */
   uiState: ['workspace', 'ui-state'] as const,
-  /** `~/.cezar/config.json`'s settings slice via `GET/PUT /api/workspace/config` (step 2.7):
+  /** `~/.xezar/config.json`'s settings slice via `GET/PUT /api/workspace/config` (step 2.7):
    *  the global Resources knobs and the checkout root. */
   config: ['workspace', 'config'] as const,
   /** Agent accounts via `GET /api/v1/workspace/agent-profiles` (spec 2026-07-29-agent-profiles).
@@ -316,7 +316,7 @@ export function useProviderStatus() {
     // user-driven Connect/Check again/Try again actions update this same key immediately; a
     // background interval only re-probes unchanged credentials and can repeatedly challenge a
     // reverse-proxy-authenticated mobile browser. A focus refresh is allowed once the answer is
-    // five minutes old, covering credentials changed outside cezar without permanent polling.
+    // five minutes old, covering credentials changed outside xezar without permanent polling.
     staleTime: 5 * 60_000,
     refetchInterval: false,
     refetchOnWindowFocus: true,
@@ -599,7 +599,7 @@ export function useAgentAccountStatus(routeId: string, enabled: boolean) {
 /**
  * Sign IN to one agent account — the last mile of "add account → Connect → the CLI creates the
  * folder", which is the documented first-run sequence and the only way a second login can be
- * created from cezar.
+ * created from xezar.
  *
  * Invalidates both the account listing and the provider card: the login the user just opened is
  * for a named account, but the terminal they finish it in can equally be the discovered one, and a
@@ -640,7 +640,7 @@ export function useRecheckAgentAccount() {
 }
 
 /** Hand one of an account's config files to a local app. Nothing to invalidate — opening a file
- *  changes no cezar state, so this deliberately does NOT go through the shared mutation helper. */
+ *  changes no xezar state, so this deliberately does NOT go through the shared mutation helper. */
 export function useOpenAgentAccountFile() {
   return useMutation({
     mutationFn: (variables: { routeId: string } & OpenAgentAccountFileInput) => {
@@ -730,7 +730,7 @@ export function useHealth() {
  *
  * The boot-project guard is the load-bearing part. `/health` is WORKSPACE-level (project-scope.ts
  * `WORKSPACE_LEVEL`): the server always builds it from `bootRoot`, so its `repo.remote` names the
- * project cezar launched in, whichever project the URL is scoped to. Handing a non-boot project's
+ * project xezar launched in, whichever project the URL is scoped to. Handing a non-boot project's
  * task a link built from the boot project's repo would point at a completely different repository
  * — the same wrong-link defect #526 exists to kill.
  *
@@ -1118,7 +1118,7 @@ export function usePutAgentConfigFile(id: string) {
   })
 }
 
-/** The cross-project GUI state (`~/.cezar/ui-state.json`). Read once and cached — the sidebar
+/** The cross-project GUI state (`~/.xezar/ui-state.json`). Read once and cached — the sidebar
  *  applies its own writes optimistically and PUTs behind a debounce, so nothing polls this. */
 export function useWorkspaceUiState() {
   return useQuery({
@@ -1127,7 +1127,7 @@ export function useWorkspaceUiState() {
   })
 }
 
-/** The global settings slice of `~/.cezar/config.json` — Settings → Resources (step 3.5) and
+/** The global settings slice of `~/.xezar/config.json` — Settings → Resources (step 3.5) and
  *  the Projects pane's checkout root (step 4.4). Not scope-led: one workspace, one answer. */
 export function useWorkspaceConfig() {
   return useQuery({
@@ -1616,12 +1616,12 @@ function rememberConflict(key: string, conflicting: boolean): void {
  * Everything here is best-effort: private-mode quota errors, a disabled storage, a payload from a
  * future version — all degrade to the pre-persistence behaviour rather than breaking the cockpit.
  */
-const REMEMBERED_STORAGE_KEY = 'cez.reference-statuses.v1'
+const REMEMBERED_STORAGE_KEY = 'xez.reference-statuses.v1'
 /** The conflict axis, under its own key rather than inside the payload above: the status file's
  *  format is read by every bundle that has ever run in this tab, and widening its entries would
  *  make an older one discard every status it found there. A key it has never heard of it simply
  *  never reads. */
-const REMEMBERED_CONFLICTS_STORAGE_KEY = 'cez.reference-conflicts.v1'
+const REMEMBERED_CONFLICTS_STORAGE_KEY = 'xez.reference-conflicts.v1'
 
 /** Exported for tests: it runs once at module load, which is not a moment a test can observe. */
 export function restoreRememberedStatuses(): [string, ReferenceStatus][] {

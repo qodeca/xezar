@@ -184,7 +184,7 @@ describe('legacy flat bookmarklet URLs keep landing (BACKWARD_COMPATIBILITY.md Â
 
     browser.goto(`${baseUrl}/p/${encodeURIComponent(bootProject)}/settings/bookmarklets`)
     waitForGeneratedHref(linkIn('bm-generic'))
-    // The URL names the project AND carries that project's `.ai/cezar/launch-key` secret.
+    // The URL names the project AND carries that project's `.ai/xezar/launch-key` secret.
     expect(hrefOf(linkIn('bm-generic'))).toContain(`/p/${bootProject}/new?'+q`)
     expect(hrefOf(linkIn('bm-generic'))).toContain(`key=${scoped.key}&ref=`)
   })

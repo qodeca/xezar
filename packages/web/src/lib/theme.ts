@@ -7,7 +7,7 @@
  */
 
 /** Shared with the legacy cockpit (`web/app.js`), which reads/writes the same key. */
-export const THEME_STORAGE_KEY = 'cez-theme'
+export const THEME_STORAGE_KEY = 'xez-theme'
 
 /** The media query `system` follows. Light is the query (not dark) because dark is our default. */
 export const LIGHT_MEDIA_QUERY = '(prefers-color-scheme: light)'
@@ -15,7 +15,7 @@ export const LIGHT_MEDIA_QUERY = '(prefers-color-scheme: light)'
 export type Theme = 'light' | 'dark' | 'system'
 export type ResolvedTheme = 'light' | 'dark'
 
-/** Dark, matching the legacy page's `localStorage.getItem('cez-theme') || 'dark'`. */
+/** Dark, matching the legacy page's `localStorage.getItem('xez-theme') || 'dark'`. */
 export const DEFAULT_THEME: Theme = 'dark'
 
 /** Coerce anything (missing key, a future value, garbage) into a Theme. */

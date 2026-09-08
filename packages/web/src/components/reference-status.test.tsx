@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { REFERENCE_STATUS_MAX } from '@open-mercato/cezar-api-client'
+import { REFERENCE_STATUS_MAX } from '@qodeca/xezar-api-client'
 
 import {
   __clearRememberedStatusesForTests,
@@ -371,9 +371,9 @@ describe('statuses survive a reload', () => {
     renderChip()
     await waitFor(() => expect(chip().getAttribute('data-status')).toBe('merged'))
     // The save is coalesced behind a timer; let it land.
-    await waitFor(() => expect(window.sessionStorage.getItem('cez.reference-statuses.v1')).toContain('merged'))
+    await waitFor(() => expect(window.sessionStorage.getItem('xez.reference-statuses.v1')).toContain('merged'))
 
-    const persisted = window.sessionStorage.getItem('cez.reference-statuses.v1')!
+    const persisted = window.sessionStorage.getItem('xez.reference-statuses.v1')!
     expect(JSON.parse(persisted)).toContainEqual(['api\u0000PR#774', 'merged'])
   })
 
@@ -381,16 +381,16 @@ describe('statuses survive a reload', () => {
     // `restoreRememberedStatuses` runs once at module load — not a moment a test can observe, so
     // it is exercised directly. Everything here is best-effort: a corrupt or future-version
     // payload must degrade to "nothing remembered", never break the cockpit.
-    window.sessionStorage.setItem('cez.reference-statuses.v1', JSON.stringify([['api\u0000PR#774', 'merged']]))
+    window.sessionStorage.setItem('xez.reference-statuses.v1', JSON.stringify([['api\u0000PR#774', 'merged']]))
     expect(restoreRememberedStatuses()).toEqual([['api\u0000PR#774', 'merged']])
 
-    window.sessionStorage.setItem('cez.reference-statuses.v1', 'not json at all')
+    window.sessionStorage.setItem('xez.reference-statuses.v1', 'not json at all')
     expect(restoreRememberedStatuses()).toEqual([])
 
-    window.sessionStorage.setItem('cez.reference-statuses.v1', JSON.stringify({ shape: 'from a later version' }))
+    window.sessionStorage.setItem('xez.reference-statuses.v1', JSON.stringify({ shape: 'from a later version' }))
     expect(restoreRememberedStatuses()).toEqual([])
 
-    window.sessionStorage.setItem('cez.reference-statuses.v1', JSON.stringify([['ok', 'merged'], ['bad'], 42]))
+    window.sessionStorage.setItem('xez.reference-statuses.v1', JSON.stringify([['ok', 'merged'], ['bad'], 42]))
     expect(restoreRememberedStatuses()).toEqual([['ok', 'merged']])
   })
 
@@ -400,7 +400,7 @@ describe('statuses survive a reload', () => {
     // "additive" has to mean the unknown value is forgotten here rather than painted with a
     // presentation that does not exist.
     window.sessionStorage.setItem(
-      'cez.reference-statuses.v1',
+      'xez.reference-statuses.v1',
       JSON.stringify([
         ['api PR#774', 'merged'],
         ['api PR#775', 'queued-for-merge'],

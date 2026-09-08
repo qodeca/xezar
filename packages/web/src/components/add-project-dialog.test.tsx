@@ -4,7 +4,7 @@ import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createQueryClient } from '@/api/query-client'
-import type { FsBrowseResponse, ProjectListEntry } from '@open-mercato/cezar-api-client'
+import type { FsBrowseResponse, ProjectListEntry } from '@qodeca/xezar-api-client'
 import { AddProjectDialog } from '@/components/add-project-dialog'
 
 /**
@@ -33,9 +33,9 @@ function json(body: unknown, status = 200): Response {
 
 function project(over: Partial<ProjectListEntry> = {}): ProjectListEntry {
   return {
-    id: 'cezar',
-    name: 'cezar',
-    root: '/home/me/Projects/cezar',
+    id: 'xezar',
+    name: 'xezar',
+    root: '/home/me/Projects/xezar',
     addedAt: '2026-07-01T00:00:00.000Z',
     lastOpenedAt: '2026-07-20T12:00:00.000Z',
     source: 'local',
@@ -56,7 +56,7 @@ const PROJECTS: FsBrowseResponse = {
   path: '/home/me/Projects',
   parent: '/home/me',
   dirs: [
-    { name: 'cezar', path: '/home/me/Projects/cezar', isRepo: true },
+    { name: 'xezar', path: '/home/me/Projects/xezar', isRepo: true },
     { name: 'notes', path: '/home/me/Projects/notes', isRepo: false },
   ],
   truncated: false,
@@ -81,7 +81,7 @@ function serve({ browse = { '': json(HOME) }, projects = [], register }: Answers
       posted.push({ root })
       return register ? register(root) : json({ project: project({ id: 'added', root }) })
     }
-    if (url.pathname === '/api/v1/projects') return json({ projects, bootProject: 'cezar', projectsDir: '~/cezar/projects' })
+    if (url.pathname === '/api/v1/projects') return json({ projects, bootProject: 'xezar', projectsDir: '~/xezar/projects' })
     if (url.pathname === '/api/v1/fs/browse') {
       const answer = browse[url.searchParams.get('path') ?? '']
       if (answer === undefined) return json({ error: 'unexpected browse path' }, 500)
@@ -100,7 +100,7 @@ function renderDialog() {
   const onOpenChange = vi.fn()
   render(
     <QueryClientProvider client={createQueryClient()}>
-      <MemoryRouter initialEntries={['/p/cezar/']}>
+      <MemoryRouter initialEntries={['/p/xezar/']}>
         <AddProjectDialog open onOpenChange={onOpenChange} />
         <LocationProbe />
       </MemoryRouter>
@@ -137,7 +137,7 @@ describe('AddProjectDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open Projects' }))
     await waitFor(() => expect(breadcrumb().textContent).toBe('/home/me/Projects'))
     // The git repo is badged; the plain folder is not — and both are listed.
-    expect(within(rows().getByText('cezar').closest('button') as HTMLElement).getByText('git')).toBeTruthy()
+    expect(within(rows().getByText('xezar').closest('button') as HTMLElement).getByText('git')).toBeTruthy()
     expect(rows().getByText('notes')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: /Up one level/ }))
     await waitFor(() => expect(breadcrumb().textContent).toBe('/home/me'))
@@ -169,34 +169,34 @@ describe('AddProjectDialog', () => {
   it('marks an already-registered folder and navigates to it when the server answers 409', async () => {
     serve({
       browse: { '': json(PROJECTS) },
-      projects: [project({ id: 'cezar', root: '/home/me/Projects/cezar' })],
+      projects: [project({ id: 'xezar', root: '/home/me/Projects/xezar' })],
       // The registry dedupes by realpath and answers the EXISTING entry — not a dead end.
       register: (root) =>
-        json({ project: project({ id: 'cezar', root }), error: 'already registered as cezar' }, 409),
+        json({ project: project({ id: 'xezar', root }), error: 'already registered as xezar' }, 409),
     })
     renderDialog()
-    await waitFor(() => expect(rows().getByText('cezar')).toBeTruthy())
-    expect(within(rows().getByText('cezar').closest('button') as HTMLElement).getByText('already added')).toBeTruthy()
-    fireEvent.click(rows().getByText('cezar'))
+    await waitFor(() => expect(rows().getByText('xezar')).toBeTruthy())
+    expect(within(rows().getByText('xezar').closest('button') as HTMLElement).getByText('already added')).toBeTruthy()
+    fireEvent.click(rows().getByText('xezar'))
     fireEvent.click(addButton())
-    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/p/cezar/'))
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/p/xezar/'))
     expect(document.querySelector('[data-slot="add-project-error"]')).toBeNull()
   })
 
   it('shows a register refusal verbatim and stays put', async () => {
     serve({
       browse: { '': json(HOME) },
-      register: () => json({ error: 'not a project folder: ~ is your home directory or a cezar task worktree' }, 400),
+      register: () => json({ error: 'not a project folder: ~ is your home directory or a xezar task worktree' }, 400),
     })
     const { onOpenChange } = renderDialog()
     await waitFor(() => expect(addButton().disabled).toBe(false))
     fireEvent.click(addButton())
     await waitFor(() =>
       expect(document.querySelector('[data-slot="add-project-error"]')?.textContent).toBe(
-        'not a project folder: ~ is your home directory or a cezar task worktree',
+        'not a project folder: ~ is your home directory or a xezar task worktree',
       ),
     )
-    expect(screen.getByTestId('location').textContent).toBe('/p/cezar/')
+    expect(screen.getByTestId('location').textContent).toBe('/p/xezar/')
     expect(onOpenChange).not.toHaveBeenCalled()
     // Server messages quote unbreakable paths — they must wrap, not widen the grid column.
     expect(document.querySelector('[data-slot="add-project-error"]')?.className).toContain('break-words')

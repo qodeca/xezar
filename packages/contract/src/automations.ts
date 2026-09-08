@@ -1,5 +1,5 @@
 import { z } from 'zod';
-// An automation launches an ORDINARY cezar task, so the task it carries is the composer's own
+// An automation launches an ORDINARY xezar task, so the task it carries is the composer's own
 // run-creation input minus the keys an automation supplies itself. Consumed rather than
 // redeclared — the same one-way direction `./runs.ts` takes towards `./workflows.ts`.
 import { createRunInputBaseSchema } from './runs.ts';
@@ -9,8 +9,8 @@ import { createRunInputBaseSchema } from './runs.ts';
  * state, the manual "test filter" checks and the execution log.
  *
  * These shapes exist twice on purpose and only once as a DEFINITION of what the wire carries.
- * `packages/cezar/src/automations/types.ts` owns the STORAGE schemas: they are `.passthrough()`,
- * because a definitions/state/log file written by a newer cezar must survive a round trip through
+ * `packages/xezar/src/automations/types.ts` owns the STORAGE schemas: they are `.passthrough()`,
+ * because a definitions/state/log file written by a newer xezar must survive a round trip through
  * an older one rather than lose keys it has never heard of. The schemas here are the CLOSED wire
  * half of those files — every key the routes actually answer with, and no index signature, so a
  * consumer compiles against a shape rather than against `unknown`. `src/server/

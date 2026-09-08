@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
-import type { ReferenceStatus } from '@open-mercato/cezar-api-client'
+import type { ReferenceStatus } from '@qodeca/xezar-api-client'
 
 import { ReferenceChip, useCloseReferenceCard } from './reference-chip'
 import { REFERENCE_CONFLICT, REFERENCE_STATUS } from '@/lib/reference-status'

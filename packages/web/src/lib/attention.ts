@@ -1,4 +1,4 @@
-import type { RunRecord } from '@open-mercato/cezar-api-client'
+import type { RunRecord } from '@qodeca/xezar-api-client'
 
 /**
  * The one canonical attention function (spec, "Design system" → status grammar).
@@ -46,7 +46,7 @@ export interface Attention {
  * Whether a run is blocked on a permission prompt.
  *
  * Always false today, on purpose. The `permission` bucket is in the ladder because the spec puts
- * it there and because R2 reserves the `permission.*` agent events that will feed it — but cezar
+ * it there and because R2 reserves the `permission.*` agent events that will feed it — but xezar
  * emits none of them yet, and `RunRecord` carries no field that means "a tool wants approval".
  * Inventing one (say, treating every `waiting` as a permission prompt) would put a bucket in the
  * UI that no data backs. So the slot stays, wired to the truth: nothing.

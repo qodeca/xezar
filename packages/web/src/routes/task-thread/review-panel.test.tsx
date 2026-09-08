@@ -5,7 +5,7 @@ import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { createQueryClient } from '@/api/query-client'
-import type { ApiRun, RunStatus } from '@open-mercato/cezar-api-client'
+import type { ApiRun, RunStatus } from '@qodeca/xezar-api-client'
 import { Toaster, resetToasts } from '@/components/ui/toaster'
 
 import { AcceptCelebration, ReviewPanel } from './review-panel'
@@ -316,14 +316,14 @@ describe('the review gate on the thread', () => {
   it('Draft PR 409: the server message as a danger toast + the copyable manual merge line', async () => {
     stubFetch({
       'POST /api/v1/runs/r1/pr': () =>
-        jsonResponse({ error: 'gh pr create failed: not logged in', manual: 'git merge cez/r1' }, 409),
+        jsonResponse({ error: 'gh pr create failed: not logged in', manual: 'git merge xez/r1' }, 409),
     })
     renderWithProviders(<ReviewPanel run={run('review')} />)
 
     fireEvent.click(screen.getByRole('button', { name: /Draft PR/ }))
     await waitFor(() => {
       expect(document.querySelector('[data-slot="review-manual"]')?.textContent).toContain(
-        'manual path: git merge cez/r1',
+        'manual path: git merge xez/r1',
       )
     })
     const toastEl = document.querySelector('[data-slot="toast"]')

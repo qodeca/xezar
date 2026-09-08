@@ -1,7 +1,7 @@
 import { ChevronDownIcon, SettingsIcon } from 'lucide-react'
 import { Link } from '@/lib/project-router'
 
-import type { BackendCheck, HealthResponse, Runner } from '@open-mercato/cezar-api-client'
+import type { BackendCheck, HealthResponse, Runner } from '@qodeca/xezar-api-client'
 import { StatusDot } from '@/components/status-dot'
 import {
   DropdownMenu,
@@ -53,10 +53,10 @@ export function toolsBlocker(health: HealthResponse): string | null {
   return null
 }
 
-/** The trigger's hover tooltip: the cezar version, then the blocker if there is one — else
+/** The trigger's hover tooltip: the xezar version, then the blocker if there is one — else
  *  the optional tools still worth knowing about. Exported for the tests. */
 export function toolsTooltip(health: HealthResponse): string {
-  const base = `cezar v${health.version}`
+  const base = `xezar v${health.version}`
   const blocker = toolsBlocker(health)
   if (blocker) return `${base} · ${blocker}`
   const missing = health.checks.filter((check) => !check.available).map((check) => check.name)
@@ -79,7 +79,7 @@ export function forgeNote(health: HealthResponse): string | null {
 export function ToolsMenu({ health }: { health: HealthResponse | undefined }) {
   if (!health) return null
 
-  // Green when cez can actually work: at least one agent CLI is present and the default runner
+  // Green when xez can actually work: at least one agent CLI is present and the default runner
   // is among them. `pending` (amber), not `danger`, otherwise — per-row dots are where red lives.
   const blocker = toolsBlocker(health)
 

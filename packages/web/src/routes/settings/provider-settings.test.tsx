@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { createQueryClient } from '@/api/query-client'
-import type { ProviderStatusResponse } from '@open-mercato/cezar-api-client'
+import type { ProviderStatusResponse } from '@qodeca/xezar-api-client'
 import { Toaster, resetToasts } from '@/components/ui/toaster'
 import { applyProviderStatusRow } from '@/lib/provider-status'
 import { workspaceQueryKeys } from '@/api/queries'
@@ -170,7 +170,7 @@ describe('ProviderSettings', () => {
 
     expect(within(card('opencode')).getByRole('button', { name: 'Connect' })).toBeTruthy()
     expect(within(card('opencode')).getByRole('button', { name: 'Try again' })).toBeTruthy()
-    expect(within(card('opencode')).getByText(/cezar cannot validate.*task/i)).toBeTruthy()
+    expect(within(card('opencode')).getByText(/xezar cannot validate.*task/i)).toBeTruthy()
     fireEvent.click(within(card('opencode')).getByRole('button', { name: 'Check again' }))
     await within(card('opencode')).findByText('Not connected')
     expect(within(card('opencode')).getByRole('button', { name: 'Try again' })).toBeTruthy()

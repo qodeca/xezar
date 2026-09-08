@@ -16,7 +16,7 @@ import {
   useSendMessage,
 } from '@/api/queries'
 import { useRunHistory, type RunHistoryState } from '@/api/run-history'
-import type { ApiRun } from '@open-mercato/cezar-api-client'
+import type { ApiRun } from '@qodeca/xezar-api-client'
 import { CenteredState } from '@/components/centered-state'
 import { Composer } from '@/components/composer/composer'
 import { StatusDot } from '@/components/status-dot'
@@ -284,7 +284,7 @@ export function ThreadView({
     }
     return actions
   }, [edit, run.queuedMessages])
-  // #526: the footer's issue link may be synthesized from the CEZ:ISSUE marker, and the only
+  // #526: the footer's issue link may be synthesized from the XEZ:ISSUE marker, and the only
   // repository it may ever name is the one on screen — never the transcript's.
   const issueUrl = taskIssueUrl(run, useProjectRepoBase())
   const { search } = useLocation()

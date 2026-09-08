@@ -1,8 +1,8 @@
-# Remote access — host cezar on a server
+# Remote access — host xezar on a server
 
-By default the cezar cockpit runs on `localhost`. To reach it from another
+By default the xezar cockpit runs on `localhost`. To reach it from another
 machine — a shared team box, a VPS, your phone — put an **authenticated public
-front** in front of it. cezar ships an interactive, dependency-free installer
+front** in front of it. xezar ships an interactive, dependency-free installer
 that does exactly that, modularized by **platform strategy**.
 
 The wizard never escalates silently: **every privileged command is printed and
@@ -12,9 +12,9 @@ yourself. It's idempotent and resumable, and it ends with a real
 works behind its login.
 
 ```bash
-cezar server-install   --platform <id>   # install
-cezar server-deploy    --platform <id>   # redeploy a new version (reload the service)
-cezar server-uninstall --platform <id>   # reverse it
+xezar server-install   --platform <id>   # install
+xezar server-deploy    --platform <id>   # redeploy a new version (reload the service)
+xezar server-uninstall --platform <id>   # reverse it
 ```
 
 ## Available providers
@@ -41,43 +41,43 @@ platforms slot in without touching the engine.
 2. **Public front** — stand up the reverse proxy / tunnel that terminates
    TLS and challenges every request for a login.
 3. **Identity** — a username + password (type your own or auto-generate a
-   strong one). cezar stores only a hash; the app stays bound to loopback.
-4. **Autostart** — a service (systemd / launchd) that starts cezar now and
+   strong one). xezar stores only a hash; the app stays bound to loopback.
+4. **Autostart** — a service (systemd / launchd) that starts xezar now and
    keeps it up across reboots.
 5. **Verify** — confirm an anonymous request is challenged **and** an
-   authenticated one reaches cezar.
+   authenticated one reaches xezar.
 
 ## One unit, every project
 
-The autostart service runs cezar as one unix user, and a cockpit serves that
-user's **whole workspace** (`~/.cezar/config.json`), not only the repo you
+The autostart service runs xezar as one unix user, and a cockpit serves that
+user's **whole workspace** (`~/.xezar/config.json`), not only the repo you
 installed from. Hosting several repos therefore no longer needs one unit per
 repo: install once, then add the rest — **Settings → Projects** in the cockpit,
 or straight from an ssh session:
 
 ```bash
-cezar projects                     # what this host serves
-cezar projects add /srv/other-repo # register another checkout
-cezar projects remove other-repo   # registry entry only — the checkout stays
+xezar projects                     # what this host serves
+xezar projects add /srv/other-repo # register another checkout
+xezar projects remove other-repo   # registry entry only — the checkout stays
 ```
 
 The CLI edits the registry file directly, so it works whether or not the
 service is running; the cockpit picks the change up on the next page load.
 
 Need **disjoint** project sets on one box — one cockpit per customer, say? Give
-each instance its own home with `CEZ_HOME` (an `Environment=CEZ_HOME=/srv/cezar-homes/shop`
+each instance its own home with `XEZ_HOME` (an `Environment=XEZ_HOME=/srv/xezar-homes/shop`
 line in its systemd unit / launchd plist). Each home carries its own registry,
 global config and server state, so instances share nothing — and `--domain`
 already gives them separate ports, nginx sites and logins.
 
 ## Redeploying a new version
 
-`cezar server-deploy --platform <id>` is the standardized, per-strategy way to
-roll out a new cezar: it restarts the service and re-verifies. See each guide's
+`xezar server-deploy --platform <id>` is the standardized, per-strategy way to
+roll out a new xezar: it restarts the service and re-verifies. See each guide's
 **Updating / redeploying** section for the checkout-vs-npx details.
 
 To roll a server to a different build, check out the branch or tag you want in
-your cezar checkout, rebuild, and run `cezar server-deploy --platform <id>`.
+your xezar checkout, rebuild, and run `xezar server-deploy --platform <id>`.
 
 ---
 

@@ -1,4 +1,4 @@
-import type { RunRecord } from '@open-mercato/cezar-api-client'
+import type { RunRecord } from '@qodeca/xezar-api-client'
 
 /**
  * The read/unread grammar for *done items* (#unread-done-items) — the email-style "which
@@ -77,7 +77,7 @@ export function canBeUnread(run: ReadStateInput): boolean {
  * "Mark unread" (#775) takes the other road: it *clears* the receipt, and an absent one is
  * unread by this same clause.
  *
- * ISO-8601 strings compare lexicographically because every timestamp cezar writes is UTC
+ * ISO-8601 strings compare lexicographically because every timestamp xezar writes is UTC
  * (`toISOString()` → trailing `Z`), so `<` on the strings is `<` on the instants.
  */
 export function isUnread(run: ReadStateInput): boolean {

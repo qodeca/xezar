@@ -1,4 +1,4 @@
-import type { Runner } from '@open-mercato/cezar-api-client'
+import type { Runner } from '@qodeca/xezar-api-client'
 import type { TaskSource } from './new-task-form'
 
 /**
@@ -107,13 +107,13 @@ const EMPTY: NewTaskDraft = {
   generateFollowups: null,
 }
 
-const STORAGE_KEY = 'cez-new-task-draft'
+const STORAGE_KEY = 'xez-new-task-draft'
 
 /**
- * The per-project storage key (multi-project spec, "New task": `cez-new-task-draft:<projectId>`).
+ * The per-project storage key (multi-project spec, "New task": `xez-new-task-draft:<projectId>`).
  *
  * Drafts are project state — a half-typed task for the shop frontend must not surface in the
- * cezar composer when the project pill swaps scope — so each project gets its own key.
+ * xezar composer when the project pill swaps scope — so each project gets its own key.
  *
  * `null` (the argument's default) keeps the BARE legacy key. That is the same "unscoped means
  * byte-identical" invariant the rest of step 3.1 keeps (`apiPath`, `queryScope`): the boot

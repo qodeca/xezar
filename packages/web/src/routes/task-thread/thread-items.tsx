@@ -19,7 +19,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { ZoomableImage } from '@/components/zoomable-image'
 import { Link } from '@/lib/project-router'
-import { isImageAttachmentName, type FileDiff, type ToolKind, type UiToolItem } from '@open-mercato/cezar-api-client'
+import { isImageAttachmentName, type FileDiff, type ToolKind, type UiToolItem } from '@qodeca/xezar-api-client'
 import { cn } from '@/lib/utils'
 
 import { Markdown } from './markdown'

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { AgentBrowser, bootProjectId, cezarCli, fixtureServeEnv, removeDataRoot, stopFixtureServer } from './agent-browser'
+import { AgentBrowser, bootProjectId, xezarCli, fixtureServeEnv, removeDataRoot, stopFixtureServer } from './agent-browser'
 import { expectedRowCount, largeThreadEvents } from './fixtures/make-large-thread'
 import record from './fixtures/thread-run.record.json'
 
@@ -76,7 +76,7 @@ async function waitForHealth(url: string): Promise<void> {
     }
     await new Promise((r) => setTimeout(r, 250))
   }
-  throw new Error(`cezar e2e: the fixture server never answered at ${url}`)
+  throw new Error(`xezar e2e: the fixture server never answered at ${url}`)
 }
 
 let browser: AgentBrowser
@@ -160,11 +160,11 @@ function openThread(query = '') {
 }
 
 beforeAll(async () => {
-  dataRoot = mkdtempSync(join(tmpdir(), 'cezar-e2e-thread-scroll-'))
-  mkdirSync(join(dataRoot, '.ai/cezar/runs'), { recursive: true })
-  writeFileSync(join(dataRoot, '.ai/cezar/runs.json'), JSON.stringify([RUN], null, 2), 'utf8')
+  dataRoot = mkdtempSync(join(tmpdir(), 'xezar-e2e-thread-scroll-'))
+  mkdirSync(join(dataRoot, '.ai/xezar/runs'), { recursive: true })
+  writeFileSync(join(dataRoot, '.ai/xezar/runs.json'), JSON.stringify([RUN], null, 2), 'utf8')
   writeFileSync(
-    join(dataRoot, '.ai/cezar/runs', `${RUN_ID}.ndjson`),
+    join(dataRoot, '.ai/xezar/runs', `${RUN_ID}.ndjson`),
     largeThreadEvents(TURNS)
       .map((line) => JSON.stringify(line))
       .join('\n') + '\n',
@@ -175,7 +175,7 @@ beforeAll(async () => {
   baseUrl = `http://localhost:${port}`
   server = spawn(
     process.execPath,
-    [cezarCli, 'serve', '--repo', dataRoot, '--port', String(port), '--no-open'],
+    [xezarCli, 'serve', '--repo', dataRoot, '--port', String(port), '--no-open'],
     { env: fixtureServeEnv(dataRoot), stdio: 'ignore' },
   )
   await waitForHealth(baseUrl)

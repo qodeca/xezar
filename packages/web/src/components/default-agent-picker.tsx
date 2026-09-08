@@ -1,4 +1,4 @@
-import type { AgentProfile, ProviderStatusResponse, Runner } from '@open-mercato/cezar-api-client'
+import type { AgentProfile, ProviderStatusResponse, Runner } from '@qodeca/xezar-api-client'
 import { cn } from '@/lib/utils'
 import { providerStatusFor } from '@/lib/provider-status'
 import { RUNNERS } from '@/routes/new-task-form'
@@ -39,7 +39,7 @@ export function agentPickerRows(profiles: readonly AgentProfile[]): AgentPickerR
       runner,
       account: login.isDefault ? null : login.id,
       label: `${runner.label} · ${login.label}`,
-      // The folder, because the labels are cezar's invention and the folder is the account. A
+      // The folder, because the labels are xezar's invention and the folder is the account. A
       // folder the CLI has not written yet is called out rather than left looking fine: a run under
       // it fails on auth BY DESIGN — it must not quietly fall back to another login — so the place
       // to say so is where the choice is made.

@@ -10,7 +10,7 @@ import type {
   HealthResponse,
   ProviderStatusResponse,
   StepState,
-} from '@open-mercato/cezar-api-client'
+} from '@qodeca/xezar-api-client'
 import { resetToasts, Toaster } from '@/components/ui/toaster'
 import { Link } from '@/lib/project-router'
 

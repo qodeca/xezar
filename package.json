@@ -1,7 +1,7 @@
 {
-  "name": "cezar-monorepo",
+  "name": "xezar-monorepo",
   "private": true,
-  "description": "Workspace root for cezar. Publishes nothing itself — see packages/*.",
+  "description": "Workspace root for xezar. Publishes nothing itself — see packages/*.",
   "license": "MIT",
   "type": "module",
   "engines": {
@@ -10,34 +10,34 @@
   "workspaces": [
     "packages/contract",
     "packages/api-client",
-    "packages/cezar",
+    "packages/xezar",
     "packages/web"
   ],
   "scripts": {
     "build": "npm run build:server && npm run build:web && npm run check:pack",
-    "build:server": "npm run build -w @open-mercato/cezar",
-    "build:web": "npm run build -w @open-mercato/cezar-web",
-    "check:pack": "npm run check:pack -w @open-mercato/cezar",
+    "build:server": "npm run build -w @qodeca/xezar",
+    "build:web": "npm run build -w @qodeca/xezar-web",
+    "check:pack": "npm run check:pack -w @qodeca/xezar",
     "dev": "node scripts/dev.mjs",
-    "dev:server": "npm run dev -w @open-mercato/cezar --",
-    "dev:web": "npm run dev -w @open-mercato/cezar-web --",
-    "install-as-command": "npm run install-as-command -w @open-mercato/cezar",
-    "install-as-command:global": "npm run install-as-command:global -w @open-mercato/cezar",
-    "uninstall-as-command": "npm run uninstall-as-command -w @open-mercato/cezar",
-    "server-install": "npm run server-install -w @open-mercato/cezar --",
-    "server-deploy": "npm run server-deploy -w @open-mercato/cezar --",
-    "server-uninstall": "npm run server-uninstall -w @open-mercato/cezar --",
+    "dev:server": "npm run dev -w @qodeca/xezar --",
+    "dev:web": "npm run dev -w @qodeca/xezar-web --",
+    "install-as-command": "npm run install-as-command -w @qodeca/xezar",
+    "install-as-command:global": "npm run install-as-command:global -w @qodeca/xezar",
+    "uninstall-as-command": "npm run uninstall-as-command -w @qodeca/xezar",
+    "server-install": "npm run server-install -w @qodeca/xezar --",
+    "server-deploy": "npm run server-deploy -w @qodeca/xezar --",
+    "server-uninstall": "npm run server-uninstall -w @qodeca/xezar --",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:unit": "npm run test:unit -w @open-mercato/cezar",
-    "test:package": "npm run test:package -w @open-mercato/cezar",
+    "test:unit": "npm run test:unit -w @qodeca/xezar",
+    "test:package": "npm run test:package -w @qodeca/xezar",
     "test:e2e": "sh .ai/scripts/e2e.sh",
     "pretypecheck": "npm run build:server",
     "typecheck": "npm run typecheck:contract && npm run typecheck:client && npm run typecheck:server && npm run typecheck:web",
-    "typecheck:client": "npm run typecheck -w @open-mercato/cezar-api-client",
-    "typecheck:server": "npm run typecheck -w @open-mercato/cezar",
-    "typecheck:web": "npm run typecheck -w @open-mercato/cezar-web",
-    "typecheck:contract": "npm run typecheck -w @open-mercato/cezar-contract"
+    "typecheck:client": "npm run typecheck -w @qodeca/xezar-api-client",
+    "typecheck:server": "npm run typecheck -w @qodeca/xezar",
+    "typecheck:web": "npm run typecheck -w @qodeca/xezar-web",
+    "typecheck:contract": "npm run typecheck -w @qodeca/xezar-contract"
   },
   "devDependencies": {
     "tsx": "^4.19.0",
@@ -46,6 +46,6 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/qodeca/cezar"
+    "url": "https://github.com/qodeca/xezar"
   }
 }

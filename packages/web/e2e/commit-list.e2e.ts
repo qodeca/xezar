@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { AgentBrowser, cezarCli, fixtureServeEnv, removeDataRoot, stopFixtureServer } from './agent-browser'
+import { AgentBrowser, xezarCli, fixtureServeEnv, removeDataRoot, stopFixtureServer } from './agent-browser'
 import record from './fixtures/thread-run.record.json'
 
 /**
@@ -15,7 +15,7 @@ import record from './fixtures/thread-run.record.json'
  * WHY THIS ROUTE AND NOT THE REPO ONE. The repo Commits segment cannot reach the threshold —
  * `getLog` (src/server/git.ts) defaults to 20 and the server calls it without a count, so that
  * list is 20 rows by construction. The task tab's source, `collectRunCommits`, runs
- * `git log <merge-base>..HEAD` with NO cap, and cezar autosaves a commit per turn, so THIS is
+ * `git log <merge-base>..HEAD` with NO cap, and xezar autosaves a commit per turn, so THIS is
  * the list that actually grows. Testing the capped one would prove nothing.
  *
  * HONESTY NOTE: as with the diff spec, "bounded DOM" is the proxy for smoothness; frame timing
@@ -65,11 +65,11 @@ async function waitForHealth(url: string): Promise<void> {
     }
     await new Promise((r) => setTimeout(r, 250))
   }
-  throw new Error(`cezar e2e: the fixture server never answered at ${url}`)
+  throw new Error(`xezar e2e: the fixture server never answered at ${url}`)
 }
 
 /**
- * A worktree on `cez/…` carrying COMMITS commits past `main` — the shape the tab reads.
+ * A worktree on `xez/…` carrying COMMITS commits past `main` — the shape the tab reads.
  *
  * Built through ONE `git fast-import` rather than a `git commit` per commit. That is not
  * premature cleverness: spawning git 200 times from Node measured **79 seconds**, 85% of this
@@ -83,8 +83,8 @@ function buildWorktree(dir: string): void {
     execFileSync('git', args, { cwd: dir, stdio: input === undefined ? 'ignore' : ['pipe', 'ignore', 'ignore'], input })
   git(['init', '-q', '-b', 'main'])
 
-  const branch = `cez/${RUN_ID.slice(0, 8)}`
-  const who = 'cezar e2e <e2e@example.com> 1700000000 +0000'
+  const branch = `xez/${RUN_ID.slice(0, 8)}`
+  const who = 'xezar e2e <e2e@example.com> 1700000000 +0000'
   // `data <n>` is a BYTE count, so every payload goes through Buffer.byteLength.
   const blob = (body: string) => `M 100644 inline README.md\ndata ${Buffer.byteLength(body)}\n${body}\n`
   const commit = (message: string, tree = '') =>
@@ -116,9 +116,9 @@ function openCommits() {
 }
 
 beforeAll(async () => {
-  dataRoot = mkdtempSync(join(tmpdir(), 'cezar-e2e-commit-list-'))
-  const worktree = join(dataRoot, '.ai/cezar/worktrees', RUN_ID)
-  mkdirSync(join(dataRoot, '.ai/cezar/runs'), { recursive: true })
+  dataRoot = mkdtempSync(join(tmpdir(), 'xezar-e2e-commit-list-'))
+  const worktree = join(dataRoot, '.ai/xezar/worktrees', RUN_ID)
+  mkdirSync(join(dataRoot, '.ai/xezar/runs'), { recursive: true })
   buildWorktree(worktree)
 
   const run = {
@@ -128,18 +128,18 @@ beforeAll(async () => {
     titleSummary: 'Many commits',
     task: 'Commit repeatedly.',
     worktreePath: worktree,
-    branch: `cez/${RUN_ID.slice(0, 8)}`,
+    branch: `xez/${RUN_ID.slice(0, 8)}`,
     baseBranch: 'main',
     steps: [record.steps[0]],
     pullRequestUrl: undefined,
   }
-  writeFileSync(join(dataRoot, '.ai/cezar/runs.json'), JSON.stringify([run], null, 2), 'utf8')
+  writeFileSync(join(dataRoot, '.ai/xezar/runs.json'), JSON.stringify([run], null, 2), 'utf8')
 
   const port = await freePort()
   baseUrl = `http://localhost:${port}`
   server = spawn(
     process.execPath,
-    [cezarCli, 'serve', '--repo', dataRoot, '--port', String(port), '--no-open'],
+    [xezarCli, 'serve', '--repo', dataRoot, '--port', String(port), '--no-open'],
     { env: fixtureServeEnv(dataRoot), stdio: 'ignore' },
   )
   await waitForHealth(baseUrl)

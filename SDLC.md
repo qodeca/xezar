@@ -49,14 +49,14 @@ Priority is how urgent the work is; risk is how dangerous the change is to ship.
 
 When no priority label is set, infer one:
 
-- `priority-extreme` — the published CLI is broken for users (`npx cezar` fails), data loss in `.ai/cezar/`, or an active security incident.
+- `priority-extreme` — the published CLI is broken for users (`npm install -g @qodeca/xezar` or `npx @qodeca/xezar` fails), data loss in `.ai/xezar/`, or an active security incident.
 - `priority-high` — security hardening or a release-blocking regression.
 - `priority-medium` — ordinary bug fixes and net-new features (also the default reading of unset).
 - `priority-low` — cosmetic, docs-only, dependency bumps, follow-up cleanup.
 
 When no risk label is set, infer one:
 
-- `risk-high` — the runner seam (`packages/cezar/src/core/agent-runner.ts`), worktree/branch handling, the `.ai/cezar/` state file formats, the HTTP API surface, or broad cross-cutting edits.
+- `risk-high` — the runner seam (`packages/xezar/src/core/agent-runner.ts`), worktree/branch handling, the `.ai/xezar/` state file formats, the HTTP API surface, or broad cross-cutting edits.
 - `risk-medium` — an ordinary single-area change (also the default reading of unset).
 - `risk-low` — docs-only, typo, or isolated cosmetic changes.
 
@@ -68,7 +68,7 @@ One label lives outside this taxonomy: `do-not-close`, applied by humans to issu
 
 The one hard rule of this process: **a PR carrying `needs-qa` must not merge until it also carries `qa-approved`, even when every other check is green.** `om-merge-buddy` classifies such a PR as blocked; `om-approve-merge-pr` refuses to merge it.
 
-- Apply `needs-qa` to cockpit UI changes, new features, and other user-facing behavior that needs manual exercise (a `CEZ_DRY_RUN=1` session covers most cockpit flows without a real `claude` login).
+- Apply `needs-qa` to cockpit UI changes, new features, and other user-facing behavior that needs manual exercise (a `XEZ_DRY_RUN=1` session covers most cockpit flows without a real `claude` login).
 - `skip-qa` is the explicit opt-out for docs-only, dependency-only, CI-only, and similarly low-risk non-user-facing changes. Never combine it with `needs-qa`.
 - `qa-failed`, `do-not-merge`, and `blocked` are hard blocks regardless of every other signal. An active `qa` pipeline label means a tester is on the PR right now — never merge under an active tester.
 - The gate is satisfied when a QA reviewer tests the PR and applies `qa-approved`.

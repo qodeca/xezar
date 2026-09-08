@@ -1,5 +1,5 @@
 /**
- * The cezar API contract. See `../README.md` — one zod definition per shape, its TypeScript type
+ * The xezar API contract. See `../README.md` — one zod definition per shape, its TypeScript type
  * inferred from it, shared by the server, the api-client and the cockpit.
  */
 export * from './events.ts';

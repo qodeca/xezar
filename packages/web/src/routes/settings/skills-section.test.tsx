@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { queryKeys, workspaceQueryKeys } from '@/api/queries'
 import { createQueryClient } from '@/api/query-client'
-import type { SkillsUpdateState, WorkspaceConfigResponse } from '@open-mercato/cezar-api-client'
+import type { SkillsUpdateState, WorkspaceConfigResponse } from '@qodeca/xezar-api-client'
 import { AppRoutes } from '@/routes'
 
 let requests: Array<{ method: string; url: string; body?: unknown }> = []
@@ -17,7 +17,7 @@ function serve(
   requests = []
   const config: WorkspaceConfigResponse = {
     browseRoot: '~/',
-    projectsDir: '~/cezar/projects',
+    projectsDir: '~/xezar/projects',
     skillsAutoUpdate: null,
     effectiveSkillsAutoUpdate: true,
     composerDefaults: {
@@ -99,7 +99,7 @@ function renderSkills() {
   client.setQueryData(workspaceQueryKeys.projects, {
     projects: [],
     bootProject: 'boot',
-    projectsDir: '~/cezar/projects',
+    projectsDir: '~/xezar/projects',
   })
   render(
     <QueryClientProvider client={client}>
@@ -125,7 +125,7 @@ describe('Global settings → Skills', () => {
     })
     expect(toggle.getAttribute('aria-checked')).toBe('true')
     expect(screen.getByText('On (default)')).toBeTruthy()
-    expect(screen.getByText(/CEZ_SKILLS_AUTO_UPDATE supplies/)).toBeTruthy()
+    expect(screen.getByText(/XEZ_SKILLS_AUTO_UPDATE supplies/)).toBeTruthy()
     expect(await screen.findByText('No tracked Open Mercato installation found.')).toBeTruthy()
     expect((screen.getByRole('button', { name: 'Use default' }) as HTMLButtonElement).disabled).toBe(true)
   })

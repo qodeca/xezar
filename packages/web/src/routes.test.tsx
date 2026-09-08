@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createQueryClient } from './api/query-client'
 import { queryKeys, workspaceQueryKeys } from './api/queries'
-import type { ProjectsResponse, WorkspaceUiState } from '@open-mercato/cezar-api-client'
+import type { ProjectsResponse, WorkspaceUiState } from '@qodeca/xezar-api-client'
 import { AppearanceProvider } from './components/appearance-provider'
 import { ListViewProvider } from './components/list-view'
 import { ThemeProvider } from './components/theme-provider'
@@ -44,13 +44,13 @@ const BOOT = 'boot'
  *  payload never crashes. `followups: true` keeps the Inbox route's real heading. */
 const HEALTH = {
   version: '0.0.0-test',
-  repoRoot: '/home/u/cezar',
+  repoRoot: '/home/u/xezar',
   repo: null,
   checks: [],
   defaultRunner: 'claude',
   forge: null,
   capabilities: { localHandoff: true, followups: true, singleProject: false, automations: false },
-  projects: [{ id: BOOT, name: 'cezar' }],
+  projects: [{ id: BOOT, name: 'xezar' }],
   bootProject: BOOT,
 }
 
@@ -58,8 +58,8 @@ const REGISTRY: ProjectsResponse = {
   projects: [
     {
       id: BOOT,
-      name: 'cezar',
-      root: '/home/u/cezar',
+      name: 'xezar',
+      root: '/home/u/xezar',
       addedAt: '',
       lastOpenedAt: '',
       source: 'local',
@@ -76,7 +76,7 @@ const REGISTRY: ProjectsResponse = {
     },
   ],
   bootProject: BOOT,
-  projectsDir: '~/cezar/projects',
+  projectsDir: '~/xezar/projects',
 }
 
 /** The address bar, readable from assertions: MemoryRouter keeps its location internal, so the
@@ -162,32 +162,32 @@ function currentHash(): string | null {
 
 describe('pageTitleContext', () => {
   it.each([
-    ['/p/cezar/', 'Tasks'],
+    ['/p/xezar/', 'Tasks'],
     ['/new', 'New task'],
-    ['/p/cezar/compare/group-1', 'Compare'],
-    ['/p/cezar/git', 'Git'],
-    ['/p/cezar/git/commits/abc123', 'Git'],
-    ['/p/cezar/github/issues/543', 'GitHub'],
-    ['/p/cezar/skills', 'Skills'],
-    ['/p/cezar/inbox', 'Inbox'],
-    ['/p/cezar/workflows/quick-task', 'Workflows'],
-    ['/p/cezar/settings/agents', 'Settings'],
+    ['/p/xezar/compare/group-1', 'Compare'],
+    ['/p/xezar/git', 'Git'],
+    ['/p/xezar/git/commits/abc123', 'Git'],
+    ['/p/xezar/github/issues/543', 'GitHub'],
+    ['/p/xezar/skills', 'Skills'],
+    ['/p/xezar/inbox', 'Inbox'],
+    ['/p/xezar/workflows/quick-task', 'Workflows'],
+    ['/p/xezar/settings/agents', 'Settings'],
     ['/settings/global/projects', 'Settings'],
   ])('labels %s as %s', (pathname, pageLabel) => {
     expect(pageTitleContext(pathname)).toEqual({ pageLabel, taskId: null })
   })
 
   it.each([
-    '/p/cezar/tasks/run-1',
-    '/p/cezar/tasks/run-1/changes',
-    '/p/cezar/tasks/run-1/files',
-    '/p/cezar/tasks/run-1/commits/abc123',
+    '/p/xezar/tasks/run-1',
+    '/p/xezar/tasks/run-1/changes',
+    '/p/xezar/tasks/run-1/files',
+    '/p/xezar/tasks/run-1/commits/abc123',
   ])('returns the task lookup key for %s', (pathname) => {
     expect(pageTitleContext(pathname)).toEqual({ pageLabel: null, taskId: 'run-1' })
   })
 
   it('does not invent a label for an unknown route', () => {
-    expect(pageTitleContext('/p/cezar/not-a-route')).toEqual({ pageLabel: null, taskId: null })
+    expect(pageTitleContext('/p/xezar/not-a-route')).toEqual({ pageLabel: null, taskId: null })
   })
 })
 
@@ -358,7 +358,7 @@ describe('the global settings area (/settings/global)', () => {
       expect(currentPathname()).toBe(`/p/${BOOT}/${path}`)
       expect(routeName()).toBe('automations')
       expect(await screen.findByText('GitHub automations are off')).not.toBeNull()
-      expect(screen.getByText(/CEZ_AUTOMATIONS=1/)).not.toBeNull()
+      expect(screen.getByText(/XEZ_AUTOMATIONS=1/)).not.toBeNull()
     })
   }
 

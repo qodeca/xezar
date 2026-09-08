@@ -4,7 +4,7 @@ import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { createQueryClient } from '@/api/query-client'
-import type { Runner } from '@open-mercato/cezar-api-client'
+import type { Runner } from '@qodeca/xezar-api-client'
 
 import { engineBody, engineRunBody, type EnginePick, type ResolvedEngine, useResolvedEngine } from './engine-pills'
 

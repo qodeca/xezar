@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { queryKeys, workspaceQueryKeys } from '@/api/queries'
 import { createQueryClient } from '@/api/query-client'
-import type { ProjectListEntry, ProjectsResponse, WorkspaceConfigResponse } from '@open-mercato/cezar-api-client'
+import type { ProjectListEntry, ProjectsResponse, WorkspaceConfigResponse } from '@qodeca/xezar-api-client'
 import { Toaster, resetToasts } from '@/components/ui/toaster'
 import { AppRoutes } from '@/routes'
 
@@ -29,9 +29,9 @@ let failPatches: string | null = null
 
 const PROJECTS: ProjectListEntry[] = [
   {
-    id: 'cezar',
-    name: 'cezar',
-    root: '/home/piotr/Projects/cezar',
+    id: 'xezar',
+    name: 'xezar',
+    root: '/home/piotr/Projects/xezar',
     addedAt: '2026-07-20T09:00:00.000Z',
     lastOpenedAt: '2026-07-20T09:00:00.000Z',
     source: 'local',
@@ -41,7 +41,7 @@ const PROJECTS: ProjectListEntry[] = [
   {
     id: 'shop-backend',
     name: 'shop-backend',
-    root: '/home/piotr/cezar/projects/shop-backend',
+    root: '/home/piotr/xezar/projects/shop-backend',
     addedAt: '2026-07-20T09:00:00.000Z',
     lastOpenedAt: '2026-07-20T09:00:00.000Z',
     source: 'checkout',
@@ -75,13 +75,13 @@ function serve(answers: Answers = {}) {
   const registry: ProjectsResponse = {
     // Copies, not the shared PROJECTS objects: the PATCH handler mutates entries.
     projects: PROJECTS.map((p) => ({ ...p })),
-    bootProject: 'cezar',
-    projectsDir: '~/cezar/projects',
+    bootProject: 'xezar',
+    projectsDir: '~/xezar/projects',
   }
   const config: WorkspaceConfigResponse = {
     agentDefaults: {},
     browseRoot: '~/',
-    projectsDir: '~/cezar/projects',
+    projectsDir: '~/xezar/projects',
     skillsAutoUpdate: null,
     effectiveSkillsAutoUpdate: true,
     composerDefaults: {
@@ -156,11 +156,11 @@ function serve(answers: Answers = {}) {
 /** Seeds the step-3.2 route gates so the (unscoped) global settings shell renders immediately. */
 function gateSeededClient() {
   const client = createQueryClient()
-  client.setQueryData(queryKeys.health, { bootProject: 'cezar' })
+  client.setQueryData(queryKeys.health, { bootProject: 'xezar' })
   client.setQueryData(workspaceQueryKeys.projects, {
     projects: PROJECTS,
-    bootProject: 'cezar',
-    projectsDir: '~/cezar/projects',
+    bootProject: 'xezar',
+    projectsDir: '~/xezar/projects',
   })
   return client
 }
@@ -216,7 +216,7 @@ describe('Global settings → Projects', () => {
     serve()
     renderProjects()
     await waitFor(() => expect(rows()).toHaveLength(3))
-    expect(row('shop-backend')?.textContent).toContain('/home/piotr/cezar/projects/shop-backend')
+    expect(row('shop-backend')?.textContent).toContain('/home/piotr/xezar/projects/shop-backend')
     expect(row('shop-backend')?.textContent).toContain('checkout')
     // The `missing` row (step 3.3 greys it out in the sidebar) is actionable HERE.
     expect(row('old-spike')?.textContent).toContain('folder not found')
@@ -308,7 +308,7 @@ describe('Global settings → Projects', () => {
         { method: 'PUT', url: '/api/v1/workspace/config', body: { browseRoot: '~/source' } },
       ]),
     )
-    expect(rootInput()!.value).toBe('~/cezar/projects')
+    expect(rootInput()!.value).toBe('~/xezar/projects')
     expect(requests.filter((r) => r.method === 'GET' && r.url === '/api/v1/projects')).toHaveLength(0)
     await waitFor(() => expect(client.getQueryState(workspaceQueryKeys.fsBrowse(null))?.isInvalidated).toBe(true))
   })
@@ -425,8 +425,8 @@ describe('Global settings → Projects', () => {
       renderProjects()
       await waitFor(() => expect(rows()).toHaveLength(3))
 
-      fireEvent.change(tagInput('cezar')!, { target: { value: 'infra' } })
-      fireEvent.keyDown(tagInput('cezar')!, { key: ',' })
+      fireEvent.change(tagInput('xezar')!, { target: { value: 'infra' } })
+      fireEvent.keyDown(tagInput('xezar')!, { key: ',' })
       await waitFor(() => expect(patches().at(-1)!.body).toEqual({ tags: ['infra'] }))
     })
 
@@ -435,15 +435,15 @@ describe('Global settings → Projects', () => {
       renderProjects()
       await waitFor(() => expect(rows()).toHaveLength(3))
 
-      fireEvent.change(tagInput('cezar')!, { target: { value: 'infra' } })
-      fireEvent.keyDown(tagInput('cezar')!, { key: 'Enter' })
-      await waitFor(() => expect(tagChips('cezar')).toEqual(['infra']))
+      fireEvent.change(tagInput('xezar')!, { target: { value: 'infra' } })
+      fireEvent.keyDown(tagInput('xezar')!, { key: 'Enter' })
+      await waitFor(() => expect(tagChips('xezar')).toEqual(['infra']))
 
       // Same tag in a different case: the server would dedupe it away and answer 200, which
       // would look like it worked.
-      fireEvent.change(tagInput('cezar')!, { target: { value: 'INFRA' } })
-      fireEvent.keyDown(tagInput('cezar')!, { key: 'Enter' })
-      await waitFor(() => expect(tagInput('cezar')!.value).toBe(''))
+      fireEvent.change(tagInput('xezar')!, { target: { value: 'INFRA' } })
+      fireEvent.keyDown(tagInput('xezar')!, { key: 'Enter' })
+      await waitFor(() => expect(tagInput('xezar')!.value).toBe(''))
       expect(patches()).toHaveLength(1)
     })
 
@@ -453,19 +453,19 @@ describe('Global settings → Projects', () => {
       await waitFor(() => expect(rows()).toHaveLength(3))
 
       for (const tag of ['api', 'web']) {
-        fireEvent.change(tagInput('cezar')!, { target: { value: tag } })
-        fireEvent.keyDown(tagInput('cezar')!, { key: 'Enter' })
-        await waitFor(() => expect(tagChips('cezar')).toContain(tag))
+        fireEvent.change(tagInput('xezar')!, { target: { value: tag } })
+        fireEvent.keyDown(tagInput('xezar')!, { key: 'Enter' })
+        await waitFor(() => expect(tagChips('xezar')).toContain(tag))
       }
 
       fireEvent.click(
-        row('cezar')!.querySelector<HTMLButtonElement>('[data-action="project-tag-remove"]')!,
+        row('xezar')!.querySelector<HTMLButtonElement>('[data-action="project-tag-remove"]')!,
       )
-      await waitFor(() => expect(tagChips('cezar')).toEqual(['web']))
+      await waitFor(() => expect(tagChips('xezar')).toEqual(['web']))
 
-      fireEvent.keyDown(tagInput('cezar')!, { key: 'Backspace' })
+      fireEvent.keyDown(tagInput('xezar')!, { key: 'Backspace' })
       await waitFor(() => expect(patches().at(-1)!.body).toEqual({ tags: [] }))
-      await waitFor(() => expect(tagChips('cezar')).toEqual([]))
+      await waitFor(() => expect(tagChips('xezar')).toEqual([]))
     })
 
     it('autocompletes from the tags already used in the workspace', async () => {
@@ -476,15 +476,15 @@ describe('Global settings → Projects', () => {
       await waitFor(() => expect(rows()).toHaveLength(3))
 
       // Focusing the empty field answers "which tags exist here?" before a keystroke.
-      fireEvent.focus(tagInput('cezar')!)
+      fireEvent.focus(tagInput('xezar')!)
       await waitFor(() => expect(suggestions()).toEqual(['backend', 'storefront']))
 
-      fireEvent.change(tagInput('cezar')!, { target: { value: 'stor' } })
+      fireEvent.change(tagInput('xezar')!, { target: { value: 'stor' } })
       await waitFor(() => expect(suggestions()).toEqual(['storefront']))
 
       fireEvent.click(document.querySelector('[data-slot="project-tag-suggestion"]')!)
       await waitFor(() => expect(patches().at(-1)!.body).toEqual({ tags: ['storefront'] }))
-      await waitFor(() => expect(tagChips('cezar')).toEqual(['storefront']))
+      await waitFor(() => expect(tagChips('xezar')).toEqual(['storefront']))
     })
 
     it('stays open on the very click that opened it', async () => {
@@ -496,15 +496,15 @@ describe('Global settings → Projects', () => {
       renderProjects()
       await waitFor(() => expect(rows()).toHaveLength(3))
 
-      fireEvent.focus(tagInput('cezar')!)
+      fireEvent.focus(tagInput('xezar')!)
       await waitFor(() => expect(suggestions()).toEqual(['backend', 'storefront']))
 
-      fireEvent.focusIn(tagInput('cezar')!)
-      fireEvent.pointerDown(tagInput('cezar')!)
-      fireEvent.mouseDown(tagInput('cezar')!)
+      fireEvent.focusIn(tagInput('xezar')!)
+      fireEvent.pointerDown(tagInput('xezar')!)
+      fireEvent.mouseDown(tagInput('xezar')!)
 
       expect(suggestions()).toEqual(['backend', 'storefront'])
-      expect(tagInput('cezar')!.getAttribute('aria-expanded')).toBe('true')
+      expect(tagInput('xezar')!.getAttribute('aria-expanded')).toBe('true')
     })
 
     it('closes when focus really does leave the field', async () => {
@@ -513,10 +513,10 @@ describe('Global settings → Projects', () => {
       renderProjects()
       await waitFor(() => expect(rows()).toHaveLength(3))
 
-      fireEvent.focus(tagInput('cezar')!)
+      fireEvent.focus(tagInput('xezar')!)
       await waitFor(() => expect(suggestions()).toHaveLength(2))
 
-      fireEvent.blur(tagInput('cezar')!)
+      fireEvent.blur(tagInput('xezar')!)
       await waitFor(() => expect(suggestions()).toEqual([]))
     })
 
@@ -536,18 +536,18 @@ describe('Global settings → Projects', () => {
       renderProjects()
       await waitFor(() => expect(rows()).toHaveLength(3))
 
-      fireEvent.focus(tagInput('cezar')!)
+      fireEvent.focus(tagInput('xezar')!)
       await waitFor(() => expect(suggestions()).toEqual(['backend', 'storefront']))
 
-      fireEvent.keyDown(tagInput('cezar')!, { key: 'ArrowDown' })
-      fireEvent.keyDown(tagInput('cezar')!, { key: 'ArrowDown' })
+      fireEvent.keyDown(tagInput('xezar')!, { key: 'ArrowDown' })
+      fireEvent.keyDown(tagInput('xezar')!, { key: 'ArrowDown' })
       await waitFor(() =>
-        expect(tagInput('cezar')!.getAttribute('aria-activedescendant')).toBe(
-          'project-tag-suggestions-cezar-1',
+        expect(tagInput('xezar')!.getAttribute('aria-activedescendant')).toBe(
+          'project-tag-suggestions-xezar-1',
         ),
       )
 
-      fireEvent.keyDown(tagInput('cezar')!, { key: 'Enter' })
+      fireEvent.keyDown(tagInput('xezar')!, { key: 'Enter' })
       await waitFor(() => expect(patches().at(-1)!.body).toEqual({ tags: ['storefront'] }))
     })
 
@@ -556,10 +556,10 @@ describe('Global settings → Projects', () => {
       renderProjects()
       await waitFor(() => expect(rows()).toHaveLength(3))
 
-      fireEvent.change(tagInput('cezar')!, { target: { value: 'brand-new' } })
+      fireEvent.change(tagInput('xezar')!, { target: { value: 'brand-new' } })
       // Nothing to suggest — the field is a plain token input again.
       await waitFor(() => expect(suggestions()).toEqual([]))
-      fireEvent.keyDown(tagInput('cezar')!, { key: 'Enter' })
+      fireEvent.keyDown(tagInput('xezar')!, { key: 'Enter' })
       await waitFor(() => expect(patches().at(-1)!.body).toEqual({ tags: ['brand-new'] }))
     })
 
@@ -568,13 +568,13 @@ describe('Global settings → Projects', () => {
       renderProjects()
       await waitFor(() => expect(rows()).toHaveLength(3))
 
-      fireEvent.change(tagInput('cezar')!, { target: { value: 'stor' } })
+      fireEvent.change(tagInput('xezar')!, { target: { value: 'stor' } })
       await waitFor(() => expect(suggestions()).toEqual(['storefront']))
 
-      fireEvent.keyDown(tagInput('cezar')!, { key: 'Escape' })
+      fireEvent.keyDown(tagInput('xezar')!, { key: 'Escape' })
       await waitFor(() => expect(suggestions()).toEqual([]))
       // Dismissing a suggestion list is not the same gesture as abandoning the draft.
-      expect(tagInput('cezar')!.value).toBe('stor')
+      expect(tagInput('xezar')!.value).toBe('stor')
     })
 
     it('keeps the first tag when a second is added before the refetch lands', async () => {
@@ -587,16 +587,16 @@ describe('Global settings → Projects', () => {
       renderProjects()
       await waitFor(() => expect(rows()).toHaveLength(3))
 
-      fireEvent.change(tagInput('cezar')!, { target: { value: 'api' } })
-      fireEvent.keyDown(tagInput('cezar')!, { key: 'Enter' })
-      await waitFor(() => expect(tagChips('cezar')).toEqual(['api']))
+      fireEvent.change(tagInput('xezar')!, { target: { value: 'api' } })
+      fireEvent.keyDown(tagInput('xezar')!, { key: 'Enter' })
+      await waitFor(() => expect(tagChips('xezar')).toEqual(['api']))
 
-      fireEvent.change(tagInput('cezar')!, { target: { value: 'web' } })
-      fireEvent.keyDown(tagInput('cezar')!, { key: 'Enter' })
+      fireEvent.change(tagInput('xezar')!, { target: { value: 'web' } })
+      fireEvent.keyDown(tagInput('xezar')!, { key: 'Enter' })
 
       // The second request carries BOTH — it read the list the first one just produced.
       await waitFor(() => expect(patches().at(-1)!.body).toEqual({ tags: ['api', 'web'] }))
-      await waitFor(() => expect(tagChips('cezar')).toEqual(['api', 'web']))
+      await waitFor(() => expect(tagChips('xezar')).toEqual(['api', 'web']))
     })
 
     it('puts the row back when the server refuses the edit', async () => {
@@ -604,14 +604,14 @@ describe('Global settings → Projects', () => {
       renderProjects()
       await waitFor(() => expect(rows()).toHaveLength(3))
 
-      fireEvent.change(tagInput('cezar')!, { target: { value: 'infra' } })
-      fireEvent.keyDown(tagInput('cezar')!, { key: 'Enter' })
-      await waitFor(() => expect(tagChips('cezar')).toEqual(['infra']))
+      fireEvent.change(tagInput('xezar')!, { target: { value: 'infra' } })
+      fireEvent.keyDown(tagInput('xezar')!, { key: 'Enter' })
+      await waitFor(() => expect(tagChips('xezar')).toEqual(['infra']))
 
       // A 400 from here on: the optimistic chip must not survive a refusal.
       failPatches = 'tag too long'
-      fireEvent.change(tagInput('cezar')!, { target: { value: 'nope' } })
-      fireEvent.keyDown(tagInput('cezar')!, { key: 'Enter' })
+      fireEvent.change(tagInput('xezar')!, { target: { value: 'nope' } })
+      fireEvent.keyDown(tagInput('xezar')!, { key: 'Enter' })
 
       // `getAllByRole`: the successful first add left its own toast up, so there are two.
       await waitFor(() =>
@@ -619,7 +619,7 @@ describe('Global settings → Projects', () => {
           screen.getAllByRole('status').some((toast) => toast.textContent?.includes('tag too long')),
         ).toBe(true),
       )
-      await waitFor(() => expect(tagChips('cezar')).toEqual(['infra']))
+      await waitFor(() => expect(tagChips('xezar')).toEqual(['infra']))
     })
 
     it('never touches maxParallel when only tags change', async () => {
@@ -640,12 +640,12 @@ describe('Global settings → Projects', () => {
     })
   })
 
-  it('disables Remove for the project cezar is serving', async () => {
+  it('disables Remove for the project xezar is serving', async () => {
     serve()
     renderProjects()
     await waitFor(() => expect(rows()).toHaveLength(3))
     // The server refuses it too (it re-registers at every start); disabling explains it first.
-    expect(removeButton('cezar')?.disabled).toBe(true)
-    expect(removeButton('cezar')?.title).toContain('re-registers')
+    expect(removeButton('xezar')?.disabled).toBe(true)
+    expect(removeButton('xezar')?.title).toContain('re-registers')
   })
 })

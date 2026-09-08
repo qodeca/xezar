@@ -1,4 +1,4 @@
-import type { HealthResponse } from '@open-mercato/cezar-api-client'
+import type { HealthResponse } from '@qodeca/xezar-api-client'
 
 export interface UsageMetricVisibility {
   tokens: boolean

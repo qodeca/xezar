@@ -141,7 +141,7 @@ describe('the new-task draft store', () => {
     })
     // A fresh page has no in-memory cache but keeps localStorage: resetDraft removes storage, so
     // instead drop only the cache by round-tripping through a raw storage read.
-    const raw = localStorage.getItem('cez-new-task-draft') as string
+    const raw = localStorage.getItem('xez-new-task-draft') as string
     expect(JSON.parse(raw)).toMatchObject({
       text: 'do not lose me',
       variants: 2,
@@ -155,7 +155,7 @@ describe('the new-task draft store', () => {
   it('normalizes a malformed/older stored value instead of throwing', () => {
     // A cold read (cache null after resetDraft) hitting bad JSON must degrade to EMPTY.
     resetDraft()
-    localStorage.setItem('cez-new-task-draft', 'not json at all')
+    localStorage.setItem('xez-new-task-draft', 'not json at all')
     expect(readDraft()).toEqual({
       text: '',
       source: null,
@@ -170,7 +170,7 @@ describe('the new-task draft store', () => {
     })
 
     resetDraft()
-    localStorage.setItem('cez-new-task-draft', '{"text":42,"variants":9,"source":"nope","worktree":"x"}')
+    localStorage.setItem('xez-new-task-draft', '{"text":42,"variants":9,"source":"nope","worktree":"x"}')
     expect(readDraft()).toEqual({
       text: '',
       source: null,

@@ -3,7 +3,7 @@ import { useState } from 'react'
 
 import { reclaimWorktrees, removeRunWorktree } from '@/api/client'
 import { queryKeys, useWorktrees } from '@/api/queries'
-import type { WorktreeInfo } from '@open-mercato/cezar-api-client'
+import type { WorktreeInfo } from '@qodeca/xezar-api-client'
 import {
   AlertDialog,
   AlertDialogAction,

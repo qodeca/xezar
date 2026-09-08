@@ -42,7 +42,7 @@ export function pathnameProjectId(pathname: string): string | null {
 }
 
 /**
- * The flat, project-relative pathname — `/p/cezar/git/commits` → `/git/commits`. What the
+ * The flat, project-relative pathname — `/p/xezar/git/commits` → `/git/commits`. What the
  * nav's area matching (`activeNavPath`) and route-shaped `matchPath` patterns compare against;
  * they reason about the route map, which is project-agnostic.
  */

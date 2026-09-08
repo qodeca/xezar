@@ -2,7 +2,7 @@
  * The "no skills yet" copy shared by every empty state that tells a user where to drop skill
  * files — the Skills tab (`routes/skills.tsx`) and the workflow builder's skill palette
  * (`routes/workflows/workflows.tsx`). #374 (follow-up to #342): both used to mention only
- * `.ai/skills/`, while discovery also scans `.ai/cezar/skills/`, `.agents/skills/` (+ its
+ * `.ai/skills/`, while discovery also scans `.ai/xezar/skills/`, `.agents/skills/` (+ its
  * per-agent mirrors, e.g. `.claude/skills/`), the global `~/.agents/skills` /
  * `~/.claude/skills`, and the team skills repo (`src/skills.ts`). One shared list, so the two
  * SURFACES render the same copy.
@@ -18,7 +18,7 @@
  *  minus the per-agent mirrors (`.claude/skills` & co.), which the copy folds into one "agent
  *  mirrors like …" mention rather than listing five times. Pinned by
  *  `test/unit/skill-dirs.test.ts`; keep the two in step. */
-const SKILL_PROJECT_DIRS = ['.ai/cezar/skills/', '.ai/skills/', '.agents/skills/'] as const
+const SKILL_PROJECT_DIRS = ['.ai/xezar/skills/', '.ai/skills/', '.agents/skills/'] as const
 
 function Path({ children }: { children: string }) {
   return <span className="font-mono">{children}</span>

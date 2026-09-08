@@ -1,7 +1,7 @@
 import type {
   ProjectsResponse,
   WorkspaceLastLocation,
-} from '@open-mercato/cezar-api-client'
+} from '@qodeca/xezar-api-client'
 
 import { pathnameProjectId } from './project-router'
 
@@ -10,13 +10,13 @@ export type LocationParts = Pick<Location, 'pathname' | 'search' | 'hash'>
 /**
  * Where the remembered location lives: THIS browser, not the workspace file.
  *
- * It shipped in `~/.cezar/ui-state.json` and that made one answer serve every client — the phone
+ * It shipped in `~/.xezar/ui-state.json` and that made one answer serve every client — the phone
  * on the couch decided where the desktop's next bare-root launch landed, and two open cockpits
  * overwrote each other on every navigation. "The page this window was last on" describes a
- * browser, so it is stored per browser (like `cez-theme`). A server that still holds the legacy
+ * browser, so it is stored per browser (like `xez-theme`). A server that still holds the legacy
  * `lastLocation` key keeps it; nothing reads it any more.
  */
-export const LAST_LOCATION_STORAGE_KEY = 'cez-last-location'
+export const LAST_LOCATION_STORAGE_KEY = 'xez-last-location'
 
 /** The stored value, unvalidated — `locationToRestore` is what decides whether it is usable. */
 export function readStoredLastLocation(): unknown {

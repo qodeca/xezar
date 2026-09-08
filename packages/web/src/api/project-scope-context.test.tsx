@@ -3,7 +3,7 @@ import { StrictMode, useEffect } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { ProjectScopeProvider, useProjectScope } from './project-scope-context'
-import { getApiScope, queryScope, apiPath, setApiScope } from '@open-mercato/cezar-api-client'
+import { getApiScope, queryScope, apiPath, setApiScope } from '@qodeca/xezar-api-client'
 
 afterEach(() => {
   cleanup()
@@ -29,14 +29,14 @@ describe('ProjectScopeProvider', () => {
 
   it('scopes both the context and the module seam before the children render', () => {
     const view = render(
-      <ProjectScopeProvider projectId="cezar">
+      <ProjectScopeProvider projectId="xezar">
         <Probe />
       </ProjectScopeProvider>,
     )
     // The probe read apiPath/queryScope during ITS render — if the provider had waited
     // for an effect, the first paint would have fetched and cached under the wrong scope.
-    expect(view.getByTestId('probe').textContent).toBe('cezar|/api/v1/p/cezar|cezar|/api/v1/p/cezar/runs')
-    expect(getApiScope()).toBe('cezar')
+    expect(view.getByTestId('probe').textContent).toBe('xezar|/api/v1/p/xezar|xezar|/api/v1/p/xezar/runs')
+    expect(getApiScope()).toBe('xezar')
   })
 
   it('follows a projectId change and resets to unscoped on unmount', () => {

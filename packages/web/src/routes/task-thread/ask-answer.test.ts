@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import type { RunRecord, RunStatus, StepState } from '@open-mercato/cezar-api-client'
+import type { RunRecord, RunStatus, StepState } from '@qodeca/xezar-api-client'
 
 import { ApiError } from '@/api/client'
 import {
@@ -81,7 +81,7 @@ describe('resumeAfterIdleTeardown', () => {
   it.each([
     new ApiError(409, 'no agent session to resume'),
     new ApiError(409, 'cannot continue a waiting run'),
-    new ApiError(0, 'cannot reach the cezar server'),
+    new ApiError(0, 'cannot reach the xezar server'),
   ])('does not retry a non-transitional refusal: %s', async (error) => {
     const resume = vi.fn().mockRejectedValue(error)
     const wait = vi.fn().mockResolvedValue(undefined)

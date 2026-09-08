@@ -29,7 +29,7 @@ import {
   type ProviderId,
   type Runner,
   type SetWorkspaceConfigInput,
-} from '@open-mercato/cezar-api-client'
+} from '@qodeca/xezar-api-client'
 import { CenteredState } from '@/components/centered-state'
 import {
   AlertDialog,
@@ -53,7 +53,7 @@ import { modelCatalogStatus, modelsForRunner, RUNNERS } from '@/routes/new-task-
 import { AddAccountDialog } from './add-account-dialog'
 
 /**
- * Global settings → Agent accounts (spec `.ai/specs/2026-07-29-agent-profiles.md`).
+ * Global settings → Agent accounts.
  *
  * One tab per agent, because the questions a reader has are per agent — is it installed, which
  * version, am I signed in, which folder, and which logins do I have. Stacking every agent on one
@@ -345,13 +345,13 @@ function AgentTab({
  * "use it". Above the tabs because it is a cross-agent answer; splitting it into the per-agent tabs
  * would mean visiting all three to read one fact.
  *
- * DEFAULTS, never overrides. A project's own `.ai/cezar/config.json` still wins key by key, and a
+ * DEFAULTS, never overrides. A project's own `.ai/xezar/config.json` still wins key by key, and a
  * project that has already picked an account keeps it — so changing these can never quietly
  * re-point work someone already configured onto another subscription. The copy says so, because
  * "default" alone does not distinguish the two.
  *
  * Two stores for one click, the same split the rest of the feature makes: the runner and models go
- * to `~/.cezar/config.json`, the account to `~/.cezar/agent-accounts.json`. Neither is committable —
+ * to `~/.xezar/config.json`, the account to `~/.xezar/agent-accounts.json`. Neither is committable —
  * that is the point of them being here rather than in a repo's settings.
  */
 function DefaultsForNewProjects({ profiles }: { profiles: AgentProfilesResponse }) {
@@ -685,7 +685,7 @@ function AccountDetails({
         />
       </div>
 
-      {/* The discovered account carries no Rename/Remove at all — it is what cezar found, so either
+      {/* The discovered account carries no Rename/Remove at all — it is what xezar found, so either
           would imply a setting that does not exist. Nothing is rendered for it, not a disabled
           control, because a greyed-out Remove reads as "not allowed yet" rather than "not a thing". */}
       {account.isDefault ? null : (
@@ -754,10 +754,10 @@ function AccountDetails({
               >
                 Remove
               </Button>
-              {/* The label is cezar's own; the folder is the account. Saying so here is what keeps
+              {/* The label is xezar's own; the folder is the account. Saying so here is what keeps
                   Rename from reading as "point this at a different directory". */}
               <span className="text-xs text-muted-foreground">
-                Renaming changes what cezar calls this account, not its folder.
+                Renaming changes what xezar calls this account, not its folder.
               </span>
             </>
           )}
