@@ -186,6 +186,28 @@ network), reuses an already-healthy instance instead of double-booting, and writ
 
 `CEZ_DRY_RUN=1 npm run dev` still exercises the whole cockpit offline for manual verification.
 
+The wrapper takes no file filter, so iterating on ONE spec means booting the environment once and
+then running vitest against it directly — still through `npm`, never `npx`:
+
+```bash
+sh .ai/scripts/test-env-up.sh                                    # boot once, reuse
+npm test -- --config packages/web/e2e/vitest.config.ts thread-scroll
+npm test -- --config packages/web/e2e/vitest.config.ts github -t "opens an issue"
+sh .ai/scripts/test-env-down.sh                                  # always, when finished
+```
+
+Two rules the suite has learned the hard way, both worth following in a new spec:
+
+- **Never edit a spec — or anything it imports — while a run is in flight.** Files are loaded as
+  the run reaches them, so an edit part-way through leaves the specs that have already started
+  holding the old module and the ones that have not seen the new one. The result is a wave of
+  failures that have nothing to do with the change, in files the change never touched.
+- **Tear a fixture server down through the shared helpers** (`stopFixtureServer` / `removeDataRoot`
+  in `packages/web/e2e/agent-browser.ts`). `kill()` only delivers the signal: a server still
+  flushing its NDJSON races `rmSync` and throws `ENOTEMPTY` in a suite whose every test passed.
+  The helpers await the exit and retry the removal, and still report a directory that genuinely
+  cannot be deleted.
+
 ## Related documents
 
 - `AGENT_PROTOCOL.md` — the agent protocol: the runner seam, the v1 `AgentEvent` + v2 `UiEvent` streams, per-backend mapping, the golden-fixture testing contract, and the checklist for adding a new runner.
