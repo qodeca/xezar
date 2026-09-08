@@ -658,6 +658,7 @@ function TaskTableCell({
           <DirectionalUsage
             inputTokens={run.inputTokens}
             outputTokens={run.outputTokens}
+            totalTokens={run.tokensUsed || undefined}
             variant="table"
             omitWhenUnknown={false}
           />

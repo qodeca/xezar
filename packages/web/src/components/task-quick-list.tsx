@@ -13,7 +13,7 @@ import { toast } from '@/components/ui/toaster'
 import { deriveAttention } from '@/lib/attention'
 import { shortAge } from '@/lib/format'
 import { isReadDoneItem, isUnread } from '@/lib/read-state'
-import { directionalUsageText } from '@/components/directional-usage'
+import { directionalUsageText, totalUsageText } from '@/components/directional-usage'
 import {
   groupRuns,
   listCounts,
@@ -502,6 +502,11 @@ function variantLabel(run: RunRecord, showTokens: boolean, showCost: boolean): s
   const parts: string[] = [run.runner ?? 'claude']
   if (showTokens && (run.inputTokens !== undefined || run.outputTokens !== undefined)) {
     parts.push(directionalUsageText(run.inputTokens, run.outputTokens))
+  } else if (showTokens && run.tokensUsed) {
+    // A pre-#737 variant knows only what it spent in total (BACKWARD_COMPATIBILITY.md). Say
+    // that, bare: this subtitle is already a `runner · spend · cost` triple, so the unit the
+    // header spells out would only lengthen a row that truncates.
+    parts.push(totalUsageText(run.tokensUsed, false))
   }
   const cost = formatCost(run.costUsd)
   if (showCost && cost) parts.push(cost)

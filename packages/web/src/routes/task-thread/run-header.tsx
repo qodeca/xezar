@@ -687,12 +687,22 @@ function MetaRow({
   }
 
   const usage: ReactNode[] = []
-  if (showTokens && (run.inputTokens !== undefined || run.outputTokens !== undefined)) {
+  // `tokensUsed` is the fallback, not a co-equal: a run that recorded the split shows the
+  // split, and only a pre-#737 record — which has a total and no directions — falls back to
+  // its total. `|| undefined` keeps a 0 out of the chip, exactly as the directional guard
+  // keeps an unrecorded run out of it; a 0 that was genuinely METERED arrives as
+  // `inputTokens: 0`, which is `!== undefined` and still renders.
+  const legacyTokens = run.tokensUsed || undefined
+  if (
+    showTokens &&
+    (run.inputTokens !== undefined || run.outputTokens !== undefined || legacyTokens !== undefined)
+  ) {
     usage.push(
       <DirectionalUsage
         key="tokens"
         inputTokens={run.inputTokens}
         outputTokens={run.outputTokens}
+        totalTokens={legacyTokens}
       />,
     )
   }
