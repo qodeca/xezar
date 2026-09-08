@@ -62,7 +62,6 @@ Excluded: managing multiple projects, their registry, other projects' tasks, glo
 | F-14 | Xezar MUST automatically write local connection configuration inside the bound project's `.ai/xezar/`. The user configures the leader application once to use it. Not all applications automatically discover that file. Its name, format, and creation trigger remain open. |
 | F-15 | Connection data must not require pasting into chat. Any credentials remain local and outside Git; they must not enter history, tool responses, or event logs. |
 | F-16 | The server MUST reject global, foreign-project, expired-owner and otherwise invalid operations even when a client knows identifiers or tool names. Catalog filtering and prompt text do not replace enforcement. |
-
 | F-17 | Version one MUST run locally with client and Xezar on the same machine. Claude Code, Codex and OpenCode are required initial clients; validated adapters may be necessary for proactive reaction. Remote access is out of scope. |
 | F-18 | Exactly one active logical MCP client/session may own a project. UI stays concurrent; different projects may have different clients. Reject a second client with a protocol/transport-compliant project-occupied error. Multiple requests/streams of the same logical owner are not additional clients. No manual disconnect UI is added. |
 | F-19 | Detect confirmed process/channel closure and use background liveness checks without model turns to release occupancy after confirmed termination or expiry. Model silence and one HTTP/SSE ending are not session death. After expiry the old client must reconnect; no two owners can mutate. Lease/fencing/timeouts remain design details. |
@@ -89,13 +88,13 @@ Excluded: managing multiple projects, their registry, other projects' tasks, glo
 
 This is an **initial inventory of operation families from code**, not proof of completed coverage of every control. Function names are search anchors in the linked files. “Required equivalent” describes an outcome, not an approved MCP tool name.
 
-Sources: [UI client](../packages/web/src/api/client.ts), [UI queries and mutations](../packages/web/src/api/queries.ts), [routing](../packages/web/src/routes.tsx), [settings registry](../packages/web/src/routes/settings/registry.tsx), [server](../packages/xezar/src/server/server.ts).
+Sources: [UI client](../../packages/web/src/api/client.ts), [UI queries and mutations](../../packages/web/src/api/queries.ts), [routing](../../packages/web/src/routes.tsx), [settings registry](../../packages/web/src/routes/settings/registry.tsx), [server](../../packages/xezar/src/server/server.ts).
 
 | ID | UI action/family and code evidence | Required MCP equivalent | Boundary / mapping status |
 | --- | --- | --- | --- |
 | M-01 | Task lists/details: `getRuns`, `getRun`, `getRunHistory`, `getRunHistoryContext` | List, filter, and read tasks, history, and current state | Bound project only; global `getRunsIndex` must not leak into MCP. |
-| M-02 | New task form: `createRun`, `postPlan`, [new-task](../packages/web/src/routes/new-task.tsx) | Plan and start with every form option | Further audit of each field and default required. |
-| M-03 | Sessions: `sendMessage`, `continueRun`, `editQueuedMessage`, `removeQueuedMessage`, [task-thread](../packages/web/src/routes/task-thread/task-thread.tsx) | Questions, answers, continuation, and queued-message editing | Session state and authority to answer shared with UI. |
+| M-02 | New task form: `createRun`, `postPlan`, [new-task](../../packages/web/src/routes/new-task.tsx) | Plan and start with every form option | Further audit of each field and default required. |
+| M-03 | Sessions: `sendMessage`, `continueRun`, `editQueuedMessage`, `removeQueuedMessage`, [task-thread](../../packages/web/src/routes/task-thread/task-thread.tsx) | Questions, answers, continuation, and queued-message editing | Session state and authority to answer shared with UI. |
 | M-04 | Controls: `cancelRun`, `finishRun`, `cancelAutoResume` | Same task-process transitions | Cancel and Finish are not substitutes for resource scheduling; no arbitrary PID. |
 | M-05 | Organization: `patchRun`, `pinRun`, `archiveRun`, `archiveFinished`, `deleteRun`, seen/unseen actions | Metadata, pins, archives, deletion, read state | Audit shared user-state semantics; bulk actions remain project-local. |
 | M-06 | Inbox: `getTodos`, `startTodo`, `removeTodo` | Read, execute, or remove an item | Preserve current availability and feature flags. |
@@ -120,7 +119,7 @@ Sources: [UI client](../packages/web/src/api/client.ts), [UI queries and mutatio
 
 Before approving the solution design, inspect all active UI routes and components, context menus, shortcuts, forms, bulk operations, and error states. A client export alone proves neither a visible action nor complete UI coverage; inspect call sites, direct requests, and browser-local state.
 
-Every action needs a record with: UI source and symbol, availability conditions, inputs/outputs, rules and validation/quality rules, actual effect scope, MCP equivalent, test ID, and status “covered / global / presentation / open decision”. Split M-01–M-22 wherever rules differ. Product and engineering approve the inventory; an unresolved project action prevents a full-parity claim.
+Every action needs a record with: UI source and symbol, availability conditions, inputs/outputs, validation/quality rules, actual effect scope, MCP equivalent, test ID, and status “covered / global / presentation / open decision”. Split M-01–M-22 wherever rules differ. Product and engineering approve the inventory; an unresolved project action prevents a full-parity claim.
 
 ### Significant event catalog (agreed)
 
@@ -160,21 +159,21 @@ A human finishes or changes a task after the leader reads it. The leader's stale
 
 ## 8. Technical boundaries in the existing architecture
 
-- The [HTTP server](../packages/xezar/src/server/server.ts) exposes `/api/v1` and project routes `/api/v1/p/:projectId`. Route scope is not proof of MCP authorization. The server derives project identity from a trusted connection binding; it must not forward an arbitrary `projectId` to a global API client.
-- [ProjectContext](../packages/xezar/src/server/project-context.ts) joins the repository, RunStore, RunManager, and AutomationStore. **Proposal:** an MCP adapter invokes shared service operations with a narrowed context and resource checks. A loopback HTTP alternative needs equivalent project/owner enforcement; a proxy to every route is insufficient.
-- [RunManager](../packages/xezar/src/workflows/run.ts), [RunStore](../packages/xezar/src/runs/store.ts), and [WorkspaceSemaphore](../packages/xezar/src/workspace/semaphore.ts) retain ownership of task lifecycle, state, and limits. MCP adds neither a second queue nor its own agent-process controller. Cover new tasks, Continue, and restart recovery.
-- [Zod contracts](../packages/contract/src/index.ts) and [validators](../packages/xezar/src/server/validators.ts) anchor shared shapes and rules. Placement of MCP-specific schemas remains open. Any new HTTP API preserves the contracts, middleware, versioning, and chained route registration required by AGENTS.md.
-- [Global UI events](../packages/web/src/api/global-events.tsx), [task SSE](../packages/web/src/api/run-events.ts), and [WebSocket](../packages/xezar/src/server/ws.ts) update the cockpit. MCP should use the same state source after project filtering. An unfiltered workspace stream is prohibited. MCP client notification transport remains open.
-- The [UI settings registry](../packages/web/src/routes/settings/registry.tsx) separates project/global sections, but a section URL does not determine all effects. `agent-config` includes home files; accounts, resource limits, model locks, and skill updates can affect more than one project.
+- The [HTTP server](../../packages/xezar/src/server/server.ts) exposes `/api/v1` and project routes `/api/v1/p/:projectId`. Route scope is not proof of MCP authorization. The server derives project identity from a trusted connection binding; it must not forward an arbitrary `projectId` to a global API client.
+- [ProjectContext](../../packages/xezar/src/server/project-context.ts) joins the repository, RunStore, RunManager, and AutomationStore. **Proposal:** an MCP adapter invokes shared service operations with a narrowed context and resource checks. A loopback HTTP alternative needs equivalent project/owner enforcement; a proxy to every route is insufficient.
+- [RunManager](../../packages/xezar/src/workflows/run.ts), [RunStore](../../packages/xezar/src/runs/store.ts), and [WorkspaceSemaphore](../../packages/xezar/src/workspace/semaphore.ts) retain ownership of task lifecycle, state, and limits. MCP adds neither a second queue nor its own agent-process controller. Cover new tasks, Continue, and restart recovery.
+- [Zod contracts](../../packages/contract/src/index.ts) and [validators](../../packages/xezar/src/server/validators.ts) anchor shared shapes and rules. Placement of MCP-specific schemas remains open. Any new HTTP API preserves the contracts, middleware, versioning, and chained route registration required by AGENTS.md.
+- [Global UI events](../../packages/web/src/api/global-events.tsx), [task SSE](../../packages/web/src/api/run-events.ts), and [WebSocket](../../packages/xezar/src/server/ws.ts) update the cockpit. MCP should use the same state source after project filtering. An unfiltered workspace stream is prohibited. MCP client notification transport remains open.
+- The [UI settings registry](../../packages/web/src/routes/settings/registry.tsx) separates project/global sections, but a section URL does not determine all effects. `agent-config` includes home files; accounts, resource limits, model locks, and skill updates can affect more than one project.
 - **Agreed shared-setting boundary:** expose only safe effective limits/capabilities needed for this project. Allow project settings writes, never global account/limit/home-file administration. Field-by-field classification is engineering work. Any project override must be actually local in effect; do not expand global authority to implement it.
-- [Paths](../packages/xezar/src/paths.ts) and [CLI startup](../packages/xezar/src/index.ts) are integration points for the connection file and Git ignore maintenance. State must be recoverable and written without exposing secrets. File presence or location alone is not a security boundary.
-- The [agent protocol](../AGENT_PROTOCOL.md) describes execution backends; leader MCP is a separate control interface. It requires no new execution backend. Exposing MCP does not itself start a model inside Xezar. The built-in leader's runtime is specified in the companion document and consumes this interface.
+- [Paths](../../packages/xezar/src/paths.ts) and [CLI startup](../../packages/xezar/src/index.ts) are integration points for the connection file and Git ignore maintenance. State must be recoverable and written without exposing secrets. File presence or location alone is not a security boundary.
+- The [agent protocol](../../AGENT_PROTOCOL.md) describes execution backends; leader MCP is a separate control interface. It requires no new execution backend. Exposing MCP does not itself start a model inside Xezar. The built-in leader's runtime is specified in the companion document and consumes this interface.
 
 The hard boundary covers MCP server authority and the operations it exposes. It is not whole-machine isolation: an external application may have its own tools, and execution agents may have broad shell access. Those processes' permissions require separate description; MCP must not promise a sandbox that existing runners do not provide.
 
 ## 9. Whole-feature acceptance criteria
 
-**O — obligatory** criteria follow from agreed project coverage, isolation, shared state, and local connection setup. They describe behavior independently of transport. **P — proposed for approval** criteria specify additional engineering guarantees and must not be presented as product-owner-approved. Record their disposition and link accepted proposals to the implementation plan.
+**All acceptance cases are obligatory outcomes.** Proposed mechanisms and numeric limits remain engineering decisions; they cannot make isolation, idempotency, stale-write rejection, task survival, compatibility or asynchronous reaction optional.
 
 Shared fixture: projects A and B, separate tasks, groups, messages, workflows, files, and automations; leader client bound to A; human UI; controlled backends without personal accounts. Before isolation tests, record B's state and external effects. Afterwards inspect responses, events, leader-visible logs, and B's unchanged state. Checking an error code alone is insufficient.
 
@@ -196,7 +195,6 @@ Shared fixture: projects A and B, separate tasks, groups, messages, workflows, f
 | A-14 / O | Mutation executed but response lost | Retry same operation key; then intentionally submit identical work with a new key; test crash and collision | Same key gives original result/status without duplicate; new key permits new identical task. Conflicting payload and uncertain external outcome are explicit and never blindly repeated. | N-10; all mutations |
 | A-15 / O | Task runs; client disconnects and returns | Complete task offline, reconnect and retrieve events/state | Task/result survives; outstanding significant events and current state are delivered. No model status-poll loop or leader-slot heartbeat. Replay duplicates do not cause repeated effects. | F-19–21; N-05–06, N-10 |
 | A-16 / O | Older state and sessions exist, MCP absent/corrupt or server restarting | Start/recover/upgrade using designed procedure | Ordinary cockpit remains usable, compatible data retained, no expanded authority or two project owners. Built-in leader still requires manual resume after restart. | N-07–08; F-18–19 |
-
 | A-17 / O | Client A owns project P; UI is open | Connect a second logical client, open several requests/streams for A, and connect to another project | Reject only the competing owner with a documented compliant occupied-project error; same-owner requests and other projects work. No manual disconnect UI. | F-17–19 |
 | A-18 / O | Owner is idle but live, then crashes or expires | Run non-model liveness checks; race reconnect/new client and submit old-owner writes | Model silence does not release ownership; confirmed termination/expiry does. Exactly one owner wins, stale owner is fenced and must reconnect; started tasks continue. Test restart too. | F-18–21 |
 | A-19 / O | Each required client/adapter is connected, model idle | Start a long task, complete/fail/cancel/block it and emit every significant event class | Immediate acceptance is distinct from result. Delivery is observed and then a real model reaction occurs without status-polling turns. No event in logs alone counts as reaction proof. | F-17, F-20–21; E-01–06 |
@@ -217,7 +215,7 @@ The feature is **complete across the entire agreed scope** only when all of the 
 4. D-01–D-09 are resolved as needed for the released version. Documentation states the actual transport, startup method, connection file, supported clients, project/owner enforcement model, limitations, and setup without secrets in conversation.
 5. The settings-field matrix removes project/global ambiguity. Engineering proves A operations do not affect B through accounts, skills, or files. Negative tests cover each resource family, not just `projectId`.
 6. Demonstrate the complete human/leader flow: configuration → delegation → question/answer → completed result with evidence → next stage or corrections → further UI work. No global administration, newly added release engine, or built-in leader implementation is hidden in this MCP deliverable; existing UI merge/publication is explicitly in scope autonomously. The companion leader feature has its own acceptance gate.
-7. Implementation meets the repository quality gate in [AGENTS.md](../AGENTS.md) and [SDLC.md](../SDLC.md); MCP integration tests and UI/MCP evidence are reviewable. This applies to future implementation, not builds for this documentation change.
+7. Implementation meets the repository quality gate in [AGENTS.md](../../AGENTS.md) and [SDLC.md](../../SDLC.md); MCP integration tests and UI/MCP evidence are reviewable. This applies to future implementation, not builds for this documentation change.
 8. Product approves leader-action coverage and the responsible engineer approves technical evidence. Known limitations contradict no obligatory criterion.
 
 ## 10. Open decisions
@@ -237,3 +235,86 @@ The feature is **complete across the entire agreed scope** only when all of the 
 ## 11. Ready-for-implementation gate
 
 Product scope is settled as stated above; engineering closes field/action mapping and designs the local owner/event adapters. Engineering closes the UI inventory, actual project/global effects, and transport/security design. Every requirement has assigned evidence, and isolation/completeness-critical decisions are resolved. Only then should an implementation specification assign tool names, the connection filename, and startup commands.
+
+## 12. Engineering handoff and readiness audit
+
+**Approved event-reaction delivery hierarchy:** (1) use native event mechanisms when the client demonstrably reacts to them; (2) otherwise deliver a message through the official programmatic session interface; (3) use terminal text input only as a last fallback after runtime evidence proves reliability. This ordering is approved; terminal feasibility is not proven. Every event identifies Xezar as its source and must never impersonate user instructions or approval. If correct project/session targeting, separation from approval prompts/shell/user typing/active turns, and duplicate prevention cannot be established, refuse terminal delivery and expose a recoverable blocker. Tests must include each of these hazards, reconnect/retry and a real subsequent model reaction. No model polling, second logical owner, or wider project scope is introduced.
+
+
+This document is the standalone product contract for the MCP workstream. The linked compatibility report is its technical evidence appendix. No knowledge of the interview is required; earlier product decisions in conversation that conflict with this revision are superseded by this text.
+
+**Ready for planning:** yes. The scope, all three required clients, local-only operation, exclusive logical ownership, full project autonomy, immutable quality boundary, events, stale-write rejection and operation-key idempotency are specified. Engineering may choose transport/IPC, schemas, storage, version/lease values and packaging without asking the product owner about each routine detail, provided the required outcomes remain unchanged.
+
+**Ready for bounded implementation:** shared service adapters, project/owner validation, durable operation identity, state-version checks, event catalog/journal, and local setup/error UI can be designed and implemented against fixtures. Do not expose a partially protected real integration as complete. The existing UI inventory still requires field/action-level closure. No Daxko audit is needed for this MCP workstream.
+
+**Not yet ready to claim the entire feature implementable/certified without additional evidence:** generic native-client notifications are not proven to wake Codex/OpenCode models; Claude Channels has preview/eligibility constraints. A client-adapter spike must prove the selected integration in all three tools. All clients remain required; a supported native session that cannot be targeted needs an adapter/client extension, not removal from scope or model polling.
+
+Minimum interface contract to refine in design:
+
+- Session acquisition binds trusted project identity and one owner generation; occupied/expired responses are explicit and protocol-compliant, not fabricated standard error names.
+- Mutations carry expected state and stable operation identity. Acceptance returns identifiers and status; completed, failed, conflicted and uncertain outcomes are distinguishable. Reuse of the same operation key is not a fresh action.
+- Events expose project/resource/version, meaningful category, origin/causality and replay identity sufficient for deduplication. Every event handler reconciles authoritative state; delivery is distinct from model reaction.
+- UI and MCP call common business services; same validation and quality apply, while UI confirmation clicks are not MCP permissions. Project writes and safe shared reads are enforced independently of prompts.
+- Client-adapter contract includes initialization, role/server guidance, significant-event delivery, active/idle turn scheduling, reconnect, liveness and shutdown. It cannot acquire a second owner for the same leader.
+
+Suggested work packages: close UI/field inventory → implement common operations and ownership/version/idempotency fixtures → validate all client reaction adapters → implement replay and automatic UI synchronization → exercise complete A-01–23 acceptance on one candidate revision. Work packages may overlap; a transport spike is not a passed full-feature gate.
+
+Risks requiring engineering resolution: stale processes after expiry; external side effects with lost receipts; two independent streams delivering duplicates; human edits racing decisions; native-client integration limits; private data in global settings; prompt-based attempts to weaken quality. Product clarification is needed only if no supported adapter can meet the required native-client behavior or if a discovered UI action cannot be classified under the agreed project/global boundary. Do not silently relax either requirement.
+
+## 13. UX/UI design handoff
+
+This section completes the MCP design brief without adding a second leader UI, operation roles, manual disconnect, or secret-sharing steps. **Required** rows express agreed behavior or necessary visibility of it. **Proposal** rows give routine design guidance for review; labels and layout are not previously approved product decisions.
+
+### Existing UI evidence and information architecture
+
+The [settings registry](../../packages/web/src/routes/settings/registry.tsx) and [settings shell](../../packages/web/src/routes/settings/settings-shell.tsx) separate project and global settings and support desktop navigation/mobile drill-in. The [app shell](../../packages/web/src/components/app-shell.tsx) supplies project navigation and a mobile drawer; the [global events provider](../../packages/web/src/api/global-events.tsx) is the current shared-state update anchor. These are code observations, not evidence that an MCP settings screen already exists.
+
+**Proposed placement:** one project Settings entry named “MCP connection”, available from the active project and linked from leader setup when ownership is relevant. Its information hierarchy is: project identity and local-only scope → connection/client status → client-specific setup → capabilities and limitations → actionable errors. Keep transport/debug detail collapsed. Do not expose global administration as part of project MCP setup. Final route/title and breakpoint behavior are designer choices within the current shell.
+
+### Entry points and user journeys
+
+| ID / classification | Journey and required content/controls |
+| --- | --- |
+| U-M01 / required | From project settings, identify the bound project and that MCP client/Xezar must be on the same machine. Show configuration readiness and one-time setup guidance for Claude Code, Codex and OpenCode. The automatically generated project file is not described as automatically discovered by every client. |
+| U-M02 / proposal | Present client choice and short sequential instructions, a nonsecret local configuration location, and safe copyable setup guidance. Do not copy credentials into UI instructions/chat or add an editor for raw secret-bearing configuration. Mark adapter/Channels prerequisites and unsupported client versions explicitly. |
+| U-M03 / required | Connecting a second logical client shows that this project is occupied, not a generic server failure. Explain that UI still works and running tasks are unaffected. Offer setup/help and a client-side reconnect path when appropriate; no “Disconnect other client”, “Force takeover”, or manual disconnect control. Do not expose another owner's secret/session identifiers. |
+| U-M04 / required | Open task views reflect MCP actions without reload. A reconnect reconciles current state; pending or last-known data is not presented as newly confirmed. Important human edits reach the client without requiring the user to notify it manually. |
+| U-M05 / required | Stale-operation feedback distinguishes rejection from failure after execution. Explain that the leader must reread current state. Retried operation feedback shows original/current outcome, while a deliberately new identical task is allowed as a separate action. No UI “retry” silently generates a new operation identity. |
+| U-M06 / required | Capabilities distinguish usable project functions, unavailable dependencies, and read-only shared constraints. Full project authority includes delete/merge; do not introduce role toggles or permission checklists. Quality validation failures remain visible and cannot be dismissed as accepted exceptions. |
+| U-M07 / proposal | Operation status uses short labels such as “Accepted”, “Running”, “Completed”, “Failed”, “Conflict — not applied”, or “Outcome being verified”, with task/result navigation. An acknowledgement is never labeled completed. Preserve operation context on transient error. |
+| U-M08 / proposal | Keyboard-operable navigation, labeled controls, visible focus, meaningful non-color status text, polite status announcements, and readable errors. On narrow screens use the existing settings drill-in pattern; configuration paths wrap and controls remain usable without horizontal scrolling. Preserve light/dark behavior. |
+
+### State inventory and recovery
+
+| State | Visible meaning / action |
+| --- | --- |
+| Empty / configuration not generated | Project exists but connection configuration is not ready. Explain the prerequisite and generation outcome; do not require the user to manually invent connection data. |
+| Loading / discovering | Show bounded progress and selected project; withhold unconfirmed capability values. |
+| Ready / no active client | One-time setup guidance available; do not imply a running model or active session. |
+| Connecting | Distinguish connection establishment from model startup. Repeated transport requests are not multiple clients. |
+| Active logical client | “Connected” means owner/session live, not necessarily that the model is generating. UI can still mutate project state. |
+| Occupied / rejected second client | Project is in use. Explain automatic release after confirmed end/expiry; offer no forced takeover. |
+| Waiting | A task may await a human decision without MCP being disconnected. Link to the relevant question/task; do not change occupancy based on model silence. |
+| Leader paused | This is a leader state, not an MCP disconnect control. Refer to leader status only when applicable; avoid conflating pause and release. |
+| Server restarting / unavailable | Previously displayed data is last-known. After recovery show actual owner/configuration state; do not imply tasks were canceled or the leader resumed. |
+| Disconnected / reconnecting | Started tasks continue. State/results are reconciled after reconnect; show an actionable connection problem rather than “task failed”. |
+| Expired owner | Old client must reinitialize. Stale operation rejected; a new client may already own the project. |
+| Error / conflict / uncertain external outcome | State clearly whether no mutation occurred, it was accepted, or its outcome needs verification. Preserve identifiers for safe retry; never offer blind repeat with a new key. |
+| Unsupported / capability unavailable | Name the missing client/adapter/dependency or read-only boundary without disclosing secrets or other projects. Link to setup guidance, not global controls via MCP. |
+
+Suggested copy is descriptive, not a final localization catalog. Exact lease countdowns must not be designed before timing semantics exist; show truthful connection status without inventing a timeout.
+
+### UX acceptance and design readiness
+
+| ID / classification | Given / when | Expected design evidence | Traceability |
+| --- | --- | --- | --- |
+| UX-M01 / required | New user opens project MCP setup and selects each initial client | Journey identifies project, local-only scope, automatic file creation and actual one-time setup. No secrets in chat, misleading autodiscovery, or unsupported wakeup promise. | F-14–17; U-M01–02; A-01, A-23 |
+| UX-M02 / required | Another client already owns project; owner later expires | Occupied and expired states are distinguishable; reconnect guidance is actionable, no manual disconnect/takeover/roles, no cancellation claim. | F-18–21; U-M03; A-17–18 |
+| UX-M03 / required | MCP mutates while UI open, then UI reconnects | Updated state appears automatically, last-known/loading state is honest, and task/result navigation remains project-scoped. | F-13; U-M04; A-20 |
+| UX-M04 / required | Human edit invalidates a command; response loss causes retry | Conflict says not applied, retry preserves operation identity and shows original/status outcome; deliberate new action is distinct. | N-03, N-10; U-M05, U-M07; A-13–14 |
+| UX-M05 / required | Capability unavailable or quality gate failed | Clear reason and next legitimate action; no global edit control, quality waiver, hidden confirmation requirement or false completion. | F-04, F-12, F-22; U-M06; A-22 |
+| UX-M06 / proposal | Keyboard-only, screen-reader and narrow-screen walkthrough | Labeled focusable controls, understandable status/error announcements, non-color cues and usable layout. Review against existing UI patterns rather than assuming reuse is sufficient. | U-M08 |
+
+**Ready for UX planning/design:** project setup, capability/status, occupied/error/conflict/retry and live-sync states are specified; designers may choose layout/copy using the proposed settings placement. **Not ready for final setup copy and end-to-end usability sign-off:** actual adapter installation, transport errors and lease timings need engineering validation. These do not block designing unaffected states. No new product question is needed for routine layout. Escalate only a client integration that cannot meet automatic reaction or a genuine project/global ambiguity, not per-button choices.
+
+Design checklist: map U-M01–08 to screens/flows; account for every state above; include recovery and safe retry; document accessibility/responsive behavior; cross-reference UX-M01–06 and A-01–23; have engineering verify setup copy against the selected adapters. Whole-feature completion additionally requires all required UX cases; proposed layout/accessibility specifics receive explicit design review without weakening functional scope.
