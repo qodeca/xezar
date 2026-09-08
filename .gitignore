@@ -38,6 +38,9 @@ skills-lock.json
 .ai/qa/*.log
 .ai/qa/.build-cache
 .ai/qa/xez-home/
+# The empty agent-config sandbox test-env-up.sh points CLAUDE_CONFIG_DIR / CODEX_HOME /
+# XDG_CONFIG_HOME at, so a test boot reads no developer's real agent settings.
+.ai/qa/agent-home/
 
 # local symlink into .agents/skills
 .claude/skills

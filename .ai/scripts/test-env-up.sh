@@ -58,6 +58,20 @@ export XEZ_DRY_RUN=1
 # attaches to the same workspace the running instance was booted with.
 export XEZ_HOME="$QA_DIR/xez-home"
 
+# XEZ_HOME isolates what xezar WRITES; these isolate what it READS. The cockpit
+# deliberately seeds each runner's model from that agent's own settings file
+# (`readAgentModelDefaults` → `configAnswer`, server.ts), so a developer who has
+# opencode/claude/codex configured on this machine boots the test app with THEIR
+# models pre-filled — and a spec asserting an unset model then fails for them and
+# passes in CI, where nobody is logged in. Point the vendors' own documented
+# overrides at an empty sandbox so the suite sees the same blank host everywhere.
+# These are the exact vars `agentHomePaths()` honours (src/paths.ts); adding a
+# fourth agent home there means adding it here.
+export CLAUDE_CONFIG_DIR="$QA_DIR/agent-home/claude"
+export CODEX_HOME="$QA_DIR/agent-home/codex"
+export XDG_CONFIG_HOME="$QA_DIR/agent-home/xdg"
+mkdir -p "$CLAUDE_CONFIG_DIR" "$CODEX_HOME" "$XDG_CONFIG_HOME"
+
 FORCE=0
 FORCE_REBUILD=0
 for arg in "$@"; do
@@ -400,7 +414,7 @@ write_descriptor() {
       notes: "Booted from a production build after npm ci with XEZ_DRY_RUN=1, so workspace links/runtime dependencies are present, the agent CLIs are mocked, and no agent login/network is needed. No backing services. Stop with .ai/scripts/test-env-down.sh. App log: .ai/qa/test-env-app.log.",
     }, null, 2) + "\n");
   ' "$ENV_DESCRIPTOR" "$BASE_URL" "$PORT" "$APP_PID" \
-    "XEZ_DRY_RUN=1 XEZ_HOME=.ai/qa/xez-home node packages/xezar/dist/index.js --port $PORT --no-open" \
+    "XEZ_DRY_RUN=1 XEZ_HOME=.ai/qa/xez-home CLAUDE_CONFIG_DIR=.ai/qa/agent-home/claude CODEX_HOME=.ai/qa/agent-home/codex XDG_CONFIG_HOME=.ai/qa/agent-home/xdg node packages/xezar/dist/index.js --port $PORT --no-open" \
     "$BROWSER_INSTALLED" "$BROWSER_COMMAND" "$BROWSER_VERSION" "$BROWSER_NOTES" "$BROWSER_DESCRIPTOR" \
     "$SINGLE_PROJECT" "$(uname -s 2>/dev/null | grep -qi Linux && { grep -qiE 'microsoft|wsl' /proc/version 2>/dev/null && echo wsl2 || echo linux; } || echo darwin)"
 }

@@ -178,6 +178,15 @@ network), reuses an already-healthy instance instead of double-booting, and writ
 `.ai/qa/test-env.json` so QA skills attach to the same instance. Stop it with
 `.ai/scripts/test-env-down.sh`. Exit contract:
 
+**The boot is isolated in both directions, and a spec may rely on that.** `XEZ_HOME` pins what
+xezar *writes* (`.ai/qa/xez-home`); `CLAUDE_CONFIG_DIR`, `CODEX_HOME` and `XDG_CONFIG_HOME` pin
+what it *reads* (`.ai/qa/agent-home/*`, empty). The second half matters because the cockpit seeds
+each runner's model from that agent's own settings file by design — without it, a developer with
+opencode configured boots the suite with their own model pre-filled, and a spec asserting an unset
+model fails on their machine while passing in CI. Those three are exactly the vars
+`agentHomePaths()` honours (`packages/xezar/src/paths.ts`); a fourth agent home added there needs
+adding to `test-env-up.sh` too.
+
 | Exit     | Marker                    | Meaning                                                                                                           |
 | -------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | 0        | `TEST_E2E_STATUS=passed`  | every spec passed                                                                                                 |
