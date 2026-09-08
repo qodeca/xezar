@@ -36,3 +36,6 @@ skills-lock.json
 
 # local environment file — may hold tokens
 .env
+
+# local agent scratch — investigation notes, evidence, drafts
+/.local/
