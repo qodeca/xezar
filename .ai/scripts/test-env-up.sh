@@ -174,11 +174,27 @@ try_reuse() {
   http_ok "$url$HEALTH_PATH" || return 1
   http_ok "$url/" || return 1
 
-  # Fresh: within TTL and no tracked source newer than startedAt.
+  # Fresh: within TTL and no tracked source newer than the boot.
+  #
+  # The "newer than the boot" half compares against the DESCRIPTOR FILE, not against the
+  # `startedAt` string, and both halves of that matter.
+  #
+  #   - Precision. `startedAt` is written by `date -u +%FT%TZ`, which truncates to whole
+  #     seconds, while `find -newermt` compares with sub-second resolution. A source file
+  #     touched in the same wall-clock second as a fast boot therefore read as "changed since
+  #     boot", and the reuse path silently never fired. That is a real cost in the repo (a
+  #     needless 40s cold boot after any edit in the same second) and it made
+  #     `test/unit/test-env-launcher.test.ts` fail on CI, where the boot is fast enough to land
+  #     inside that second, while passing everywhere slower.
+  #   - Portability. `-newermt` is a GNU extension; BSD find (macOS) does not have it, so this
+  #     whole check silently did nothing there. `-newer <file>` is POSIX and works on both.
+  #
+  # The descriptor is written at the end of a successful boot, so its mtime IS the moment the
+  # environment became current — which is exactly what this wants to compare against.
   if [ -n "$started" ]; then
     age=$(node -e 'const t=Date.parse(process.argv[1]);process.stdout.write(String(isNaN(t)?1e9:Math.round((Date.now()-t)/1000)))' "$started")
     [ "$age" -le "$TEST_ENV_CACHE_TTL_SECONDS" ] || { log "descriptor is stale (${age}s old)"; return 1; }
-    newer=$(cd "$REPO_ROOT" && find $BUILD_INPUT_PATHS -newermt "$started" -type f -print -quit 2>/dev/null || true)
+    newer=$(cd "$REPO_ROOT" && find $BUILD_INPUT_PATHS -newer "$ENV_DESCRIPTOR" -type f -print -quit 2>/dev/null || true)
     [ -z "$newer" ] || { log "source changed since boot ($newer)"; return 1; }
   fi
 

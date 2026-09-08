@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, test } from 'node:test';
@@ -88,6 +88,52 @@ function descriptor(root: string): { baseUrl: string; app: { pid: number } } {
   };
 }
 
+/**
+ * The reuse check must survive `startedAt`'s one-second resolution.
+ *
+ * `write_descriptor` stamps `startedAt` with `date -u +%FT%TZ`, which truncates to whole
+ * seconds. The freshness check used to compare tracked sources against that string with
+ * `find -newermt`, which compares with sub-second precision — so a source file last touched
+ * anywhere inside the boot's own second read as "changed since boot", and the environment was
+ * needlessly rebuilt from scratch. It reproduced only when the boot was fast enough to finish
+ * inside that second, which is why it looked like a CI-only flake.
+ *
+ * This pins it deterministically by manufacturing the exact timing rather than racing for it.
+ */
+test('reuses an instance whose sources were last touched inside the boot second', { timeout: 60_000 }, async () => {
+  const fixture = makeFixture(hasSetsid);
+  const env = { ...process.env, PATH: fixture.path, TEST_ENV_CACHE_TTL_SECONDS: '600' };
+  const up = join(fixture.root, '.ai/scripts/test-env-up.sh');
+  const down = join(fixture.root, '.ai/scripts/test-env-down.sh');
+
+  const cold = spawnSync('/bin/sh', [up], { cwd: tmpdir(), encoding: 'utf8', env, timeout: 20_000 });
+  assert.equal(cold.status, 0, cold.stderr);
+  const first = descriptor(fixture.root);
+  launchedPids.add(first.app.pid);
+
+  // The race, made exact: a tracked input 0.5s into the boot second, the descriptor 0.9s in,
+  // and `startedAt` truncated to the second — precisely what a fast boot produces.
+  const descriptorPath = join(fixture.root, '.ai/qa/test-env.json');
+  const second = Math.floor(Date.now() / 1000);
+  const record = JSON.parse(readFileSync(descriptorPath, 'utf8')) as Record<string, unknown>;
+  record.startedAt = `${new Date(second * 1000).toISOString().slice(0, 19)}Z`;
+  writeFileSync(descriptorPath, `${JSON.stringify(record, null, 2)}\n`);
+  utimesSync(join(fixture.root, 'package.json'), second + 0.5, second + 0.5);
+  utimesSync(descriptorPath, second + 0.9, second + 0.9);
+
+  const warm = spawnSync('/bin/sh', [up], { encoding: 'utf8', env, timeout: 20_000 });
+  assert.equal(warm.status, 0, warm.stderr);
+  assert.match(
+    warm.stdout,
+    /TEST_ENV_REUSED=1/,
+    `a source touched inside the boot second is not a change.\n--- warm stderr ---\n${warm.stderr}`,
+  );
+  assert.equal(descriptor(fixture.root).app.pid, first.app.pid);
+
+  spawnSync('/bin/sh', [down], { encoding: 'utf8', env, timeout: 20_000 });
+  launchedPids.delete(first.app.pid);
+});
+
 for (const withSetsid of [true, false]) {
   test(
     `generated launcher survives its caller and stops by descriptor PID (${withSetsid ? 'setsid' : 'nohup fallback'})`,
@@ -129,7 +175,14 @@ for (const withSetsid of [true, false]) {
 
       const warm = spawnSync('/bin/sh', [up], { encoding: 'utf8', env, timeout: 20_000 });
       assert.equal(warm.status, 0, warm.stderr);
-      assert.match(warm.stdout, /TEST_ENV_REUSED=1/);
+      // The script LOGS why it declined to reuse ("descriptor is stale", "source changed since
+      // boot", …) and it logs to stderr. Asserting on stdout alone threw that away, which is
+      // why a reuse failure here read as an unexplainable flake; carry it into the message.
+      assert.match(
+        warm.stdout,
+        /TEST_ENV_REUSED=1/,
+        `the warm run did not reuse the instance.\n--- warm stderr ---\n${warm.stderr}\n--- cold stderr ---\n${cold.stderr}`,
+      );
       assert.equal(descriptor(fixture.root).app.pid, first.app.pid);
 
       const stopped = spawnSync('/bin/sh', [down], { encoding: 'utf8', env, timeout: 20_000 });
