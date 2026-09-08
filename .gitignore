@@ -10,6 +10,13 @@ dist/
 # xezar runtime state in this repo (runs, worktrees, launch-key)
 .ai/xezar/
 
+# The same state under the names Cezar used before the rename. A developer who ran Cezar in
+# this checkout still has these directories, and the rename moved the ignore rules off them —
+# which is exactly how four local-state files reached a commit once. They are not ours to
+# publish and not ours to delete, so they are ignored under BOTH names, permanently.
+.ai/cezar/
+.ai/qa/cez-home/
+
 # locally installed agent skills (per-machine installs, not repo content)
 .agents/
 skills-lock.json
