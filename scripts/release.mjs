@@ -97,14 +97,47 @@ if (!version) {
 }
 
 const dryRun = process.argv.includes('--dry-run');
-// Two ways to be authorised, and the script must be able to tell them apart so it can say
-// which one is missing. OIDC is the CI path: GitHub exposes the token-minting endpoint only
-// when the job was granted `id-token: write`, so its presence is what "this job can publish
-// via a trusted publisher" actually looks like from here. NODE_AUTH_TOKEN is the local path,
-// for a maintainer publishing by hand from a logged-in machine.
+
+// Same cross-platform npm resolution the publish step uses.
+const npmExecpath = process.env.npm_execpath;
+const npmArgv = (args) =>
+  npmExecpath ? [process.execPath, [npmExecpath, ...args]] : [process.platform === 'win32' ? 'npm.cmd' : 'npm', args];
+
+/**
+ * Is this process authorised to publish?
+ *
+ * Three ways, and the script has to tell them apart so it can say which one is missing:
+ *
+ *   - OIDC, the CI path. GitHub exposes the token-minting endpoint ONLY to a job granted
+ *     `id-token: write`, so its presence is exactly what "this job can publish through a
+ *     trusted publisher" looks like from in here.
+ *   - `NODE_AUTH_TOKEN`, for a CI that still passes a token in the environment.
+ *   - An `npm login` session, the by-hand path — and this one is NOT visible in the
+ *     environment. The credential lives in `~/.npmrc`, so the only honest test is to ask npm.
+ *     `whoami` is a cheap authenticated GET that answers 401 when the session is absent or
+ *     expired, which is precisely the question being asked.
+ *
+ * The `whoami` probe is skipped whenever one of the env signals is already present, so a
+ * release never adds a network round-trip it does not need.
+ */
 const oidc = Boolean(process.env.ACTIONS_ID_TOKEN_REQUEST_URL);
 const token = process.env.NODE_AUTH_TOKEN ?? '';
-if (!dryRun && !oidc && !token) {
+const loggedIn = () => {
+  const [file, args] = npmArgv(['whoami']);
+  try {
+    const who = execFileSync(file, args, {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      shell: !npmExecpath && process.platform === 'win32',
+    }).trim();
+    if (who) console.log(`release: authenticated as npm user ${who}.`);
+    return Boolean(who);
+  } catch {
+    return false;
+  }
+};
+
+if (!dryRun && !oidc && !token && !loggedIn()) {
   console.error('release: no npm credential — refusing to run.');
   console.error('release: a release must publish or fail; it must never report a dry run as one.');
   console.error(
@@ -126,15 +159,9 @@ console.log(
 // real publish from Actions. A trusted-publisher publish attests provenance anyway, but asking
 // for it explicitly keeps the flag honest if this ever runs on another CI.
 const provenance = !dryRun && oidc ? ['--provenance'] : [];
-// Same cross-platform npm resolution as scripts/release-snapshot.mjs.
-const npmExecpath = process.env.npm_execpath;
 const runNpm = (args, cwd) => {
-  if (npmExecpath) {
-    execFileSync(process.execPath, [npmExecpath, ...args], { cwd, stdio: 'inherit' });
-  } else {
-    const npmCli = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-    execFileSync(npmCli, args, { cwd, stdio: 'inherit', shell: process.platform === 'win32' });
-  }
+  const [file, full] = npmArgv(args);
+  execFileSync(file, full, { cwd, stdio: 'inherit', shell: !npmExecpath && process.platform === 'win32' });
 };
 const publish = (dir, label) => {
   const args = [

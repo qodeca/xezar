@@ -56,6 +56,9 @@ async function makeFixture(version = '0.1.5'): Promise<string> {
     )}\n`,
   );
   await writeFile(join(root, 'packages', 'xezar', 'index.js'), 'export {};\n');
+  // See runScript: empty npm configs, so no ambient login can authorise these runs.
+  await writeFile(join(root, 'empty-user.npmrc'), '');
+  await writeFile(join(root, 'empty-global.npmrc'), '');
   return root;
 }
 
@@ -73,6 +76,16 @@ function runScript(fixtureRoot: string, args: string[], extraEnv: Record<string,
     GITHUB_OUTPUT: join(fixtureRoot, 'github-output.txt'),
     NODE_AUTH_TOKEN: '',
     GITHUB_ACTIONS: '',
+    // Hide the developer's own `npm login` from these runs, and it is not a nicety.
+    // `scripts/release.mjs` treats a live npm session as a credential — correctly, that is how
+    // a maintainer publishes by hand — so on a logged-in machine the "no credential" case would
+    // sail past the guard and `npm publish` the fixture package FOR REAL. Empty config files
+    // give npm nowhere to read an auth token from, so the suite is anonymous wherever it runs.
+    // Two distinct files: npm refuses to load one path as both "user" and "global"
+    // ("double-loading config … as global, previously loaded as user") and exits before it
+    // resolves any config at all.
+    npm_config_userconfig: join(fixtureRoot, 'empty-user.npmrc'),
+    npm_config_globalconfig: join(fixtureRoot, 'empty-global.npmrc'),
     ...extraEnv,
   };
   return execFile(process.execPath, [script, ...args], { env, maxBuffer: 10 * 1024 * 1024 });
@@ -169,11 +182,13 @@ test('no credential at all FAILS the release instead of quietly dry-running', { 
     // No --dry-run flag, no OIDC endpoint, no NODE_AUTH_TOKEN.
     const error = await runScript(root, ['minor']).then(
       () => null,
-      (e: Error & { code?: number; stderr?: string }) => e,
+      (e: Error & { code?: number; stdout?: string; stderr?: string }) => e,
     );
     assert.ok(error, 'a release with no credential must exit non-zero');
     assert.notEqual(error.code, 0);
     assert.match(error.stderr ?? '', /refusing to run/);
+    // …and it refused BEFORE reaching npm, so nothing was ever offered to the registry.
+    assert.doesNotMatch(error.stdout ?? '', /npm publish/);
 
     // Nothing was stamped and nothing was claimed.
     assert.equal((await readPkg(root, 'packages', 'xezar')).version, '0.1.5');
