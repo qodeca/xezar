@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { RunsIndexResponse } from '@open-mercato/cezar-contract';
+import type { RunsIndexResponse } from '@qodeca/xezar-contract';
 import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { clearProjectProbeCache, listProjects, registerProject } from '../workspace/projects.ts';
@@ -36,30 +36,30 @@ function storedRun(over: Record<string, unknown> & { id: string; title: string }
 }
 
 describe('workspace runs index API', () => {
-  const savedHome = process.env.CEZ_HOME;
-  const savedDryRun = process.env.CEZ_DRY_RUN;
+  const savedHome = process.env.XEZ_HOME;
+  const savedDryRun = process.env.XEZ_DRY_RUN;
   let home: string;
   let repoRoot: string;
   let otherRoot: string;
   let store: RunStore;
 
   beforeEach(() => {
-    home = mkdtempSync(join(realpathSync(tmpdir()), 'cez-runs-index-home-'));
-    repoRoot = mkdtempSync(join(realpathSync(tmpdir()), 'cez-runs-index-boot-'));
-    otherRoot = mkdtempSync(join(realpathSync(tmpdir()), 'cez-runs-index-other-'));
-    process.env.CEZ_HOME = home;
-    process.env.CEZ_DRY_RUN = '1';
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    home = mkdtempSync(join(realpathSync(tmpdir()), 'xez-runs-index-home-'));
+    repoRoot = mkdtempSync(join(realpathSync(tmpdir()), 'xez-runs-index-boot-'));
+    otherRoot = mkdtempSync(join(realpathSync(tmpdir()), 'xez-runs-index-other-'));
+    process.env.XEZ_HOME = home;
+    process.env.XEZ_DRY_RUN = '1';
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     clearProjectProbeCache();
   });
 
   afterEach(() => {
     store.flush();
     for (const dir of [home, repoRoot, otherRoot]) rmSync(dir, { recursive: true, force: true });
-    if (savedHome === undefined) delete process.env.CEZ_HOME;
-    else process.env.CEZ_HOME = savedHome;
-    if (savedDryRun === undefined) delete process.env.CEZ_DRY_RUN;
-    else process.env.CEZ_DRY_RUN = savedDryRun;
+    if (savedHome === undefined) delete process.env.XEZ_HOME;
+    else process.env.XEZ_HOME = savedHome;
+    if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
+    else process.env.XEZ_DRY_RUN = savedDryRun;
   });
 
   const makeApp = (over: Partial<ServerDeps> = {}) =>
@@ -73,8 +73,8 @@ describe('workspace runs index API', () => {
 
   /** Give `root` a `runs.json` without ever opening a store on it — a genuinely COLD project. */
   const seedColdProject = (root: string, runs: unknown[]) => {
-    mkdirSync(join(root, '.ai/cezar'), { recursive: true });
-    writeFileSync(join(root, '.ai/cezar/runs.json'), JSON.stringify(runs), 'utf8');
+    mkdirSync(join(root, '.ai/xezar'), { recursive: true });
+    writeFileSync(join(root, '.ai/xezar/runs.json'), JSON.stringify(runs), 'utf8');
   };
 
   it('answers an empty index for an empty registry — never a 404', async () => {
@@ -306,8 +306,8 @@ describe('workspace runs index API', () => {
   it('skips a project whose folder is gone and degrades a corrupt index to no rows', async () => {
     await registerProject(repoRoot);
     await registerProject(otherRoot);
-    mkdirSync(join(otherRoot, '.ai/cezar'), { recursive: true });
-    writeFileSync(join(otherRoot, '.ai/cezar/runs.json'), '{ not json', 'utf8');
+    mkdirSync(join(otherRoot, '.ai/xezar'), { recursive: true });
+    writeFileSync(join(otherRoot, '.ai/xezar/runs.json'), '{ not json', 'utf8');
     const live = store.createRun({ title: 'Boot task', workflow: 'build', task: 't', steps: [] });
 
     const body = await getIndex();

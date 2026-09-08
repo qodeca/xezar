@@ -14,8 +14,8 @@ describe('loadConfig systemPrompt', () => {
   let repoRoot: string;
 
   beforeEach(() => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-config-'));
-    mkdirSync(join(repoRoot, '.ai/cezar'), { recursive: true });
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-config-'));
+    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
   });
 
   afterEach(() => {
@@ -23,7 +23,7 @@ describe('loadConfig systemPrompt', () => {
   });
 
   const write = (value: unknown) =>
-    writeFileSync(join(repoRoot, '.ai/cezar', 'config.json'), JSON.stringify(value), 'utf8');
+    writeFileSync(join(repoRoot, '.ai/xezar', 'config.json'), JSON.stringify(value), 'utf8');
 
   it('is undefined when no config file exists (zero-config default)', async () => {
     const config = await loadConfig(repoRoot);
@@ -71,7 +71,7 @@ describe('loadConfig systemPrompt', () => {
   });
 
   it('malformed JSON degrades to the full default (never throws)', async () => {
-    writeFileSync(join(repoRoot, '.ai/cezar', 'config.json'), '{not json', 'utf8');
+    writeFileSync(join(repoRoot, '.ai/xezar', 'config.json'), '{not json', 'utf8');
     const config = await loadConfig(repoRoot);
     expect(config.systemPrompt).toBeUndefined();
     expect(config.maxParallel).toBe(2);
@@ -159,28 +159,28 @@ describe('loadConfig systemPrompt', () => {
  */
 describe('resolveWorktreeRetention', () => {
   let repoRoot: string;
-  let cezHome: string;
-  const savedHome = process.env.CEZ_HOME;
+  let xezHome: string;
+  const savedHome = process.env.XEZ_HOME;
 
   beforeEach(() => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-retention-'));
-    mkdirSync(join(repoRoot, '.ai/cezar'), { recursive: true });
-    // Pinned so the suite never reads (or writes) the developer's real ~/.cezar.
-    cezHome = mkdtempSync(join(tmpdir(), 'cez-home-'));
-    process.env.CEZ_HOME = cezHome;
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-retention-'));
+    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
+    // Pinned so the suite never reads (or writes) the developer's real ~/.xezar.
+    xezHome = mkdtempSync(join(tmpdir(), 'xez-home-'));
+    process.env.XEZ_HOME = xezHome;
   });
 
   afterEach(() => {
-    if (savedHome === undefined) delete process.env.CEZ_HOME;
-    else process.env.CEZ_HOME = savedHome;
+    if (savedHome === undefined) delete process.env.XEZ_HOME;
+    else process.env.XEZ_HOME = savedHome;
     rmSync(repoRoot, { recursive: true, force: true });
-    rmSync(cezHome, { recursive: true, force: true });
+    rmSync(xezHome, { recursive: true, force: true });
   });
 
   const writeRepo = (value: unknown) =>
-    writeFileSync(join(repoRoot, '.ai/cezar', 'config.json'), JSON.stringify(value), 'utf8');
+    writeFileSync(join(repoRoot, '.ai/xezar', 'config.json'), JSON.stringify(value), 'utf8');
   const writeWorkspace = (value: unknown) =>
-    writeFileSync(join(cezHome, 'config.json'), JSON.stringify(value), 'utf8');
+    writeFileSync(join(xezHome, 'config.json'), JSON.stringify(value), 'utf8');
 
   it('inherits the workspace default when the repo sets nothing', async () => {
     writeWorkspace({ resources: { worktreeRetentionDefault: 4 } });
@@ -188,7 +188,7 @@ describe('resolveWorktreeRetention', () => {
   });
 
   it('inherits it when the repo has no config file at all', async () => {
-    rmSync(join(repoRoot, '.ai/cezar'), { recursive: true, force: true });
+    rmSync(join(repoRoot, '.ai/xezar'), { recursive: true, force: true });
     writeWorkspace({ resources: { worktreeRetentionDefault: 7 } });
     expect(await resolveWorktreeRetention(repoRoot)).toBe(7);
   });
@@ -222,7 +222,7 @@ describe('resolveWorktreeRetention', () => {
   });
 
   it('falls back to 10 when the workspace config is corrupt (unreadable)', async () => {
-    writeFileSync(join(cezHome, 'config.json'), '{ not json', 'utf8');
+    writeFileSync(join(xezHome, 'config.json'), '{ not json', 'utf8');
     expect(await resolveWorktreeRetention(repoRoot)).toBe(10);
   });
 
@@ -238,7 +238,7 @@ describe('resolveWorktreeRetention', () => {
   });
 
   it('treats a malformed repo config as unset', async () => {
-    writeFileSync(join(repoRoot, '.ai/cezar', 'config.json'), '{ nope', 'utf8');
+    writeFileSync(join(repoRoot, '.ai/xezar', 'config.json'), '{ nope', 'utf8');
     writeWorkspace({ resources: { worktreeRetentionDefault: 8 } });
     expect(await resolveWorktreeRetention(repoRoot)).toBe(8);
   });
@@ -255,8 +255,8 @@ describe('gatedSkillsRepos', () => {
   let repoRoot: string;
 
   beforeEach(() => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-gate-'));
-    mkdirSync(join(repoRoot, '.ai/cezar'), { recursive: true });
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-gate-'));
+    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
   });
 
   afterEach(() => {
@@ -264,7 +264,7 @@ describe('gatedSkillsRepos', () => {
   });
 
   const write = (value: unknown) =>
-    writeFileSync(join(repoRoot, '.ai/cezar', 'config.json'), JSON.stringify(value), 'utf8');
+    writeFileSync(join(repoRoot, '.ai/xezar', 'config.json'), JSON.stringify(value), 'utf8');
 
   const defaults = DEFAULT_SKILLS_REPOS.map((r) => r.repo);
 
@@ -288,7 +288,7 @@ describe('gatedSkillsRepos', () => {
   });
 
   it('degrades a malformed config to the vendor defaults (like loadConfig)', async () => {
-    writeFileSync(join(repoRoot, '.ai/cezar', 'config.json'), '{ nope', 'utf8');
+    writeFileSync(join(repoRoot, '.ai/xezar', 'config.json'), '{ nope', 'utf8');
     expect([...(await gatedSkillsRepos(repoRoot))]).toEqual(defaults);
   });
 });
@@ -304,26 +304,26 @@ describe('gatedSkillsRepos', () => {
  */
 describe('loadConfig machine-wide agent defaults', () => {
   let repoRoot: string;
-  let cezHome: string;
-  const savedHome = process.env.CEZ_HOME;
+  let xezHome: string;
+  const savedHome = process.env.XEZ_HOME;
 
   beforeEach(() => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-machine-defaults-'));
-    cezHome = mkdtempSync(join(tmpdir(), 'cez-machine-home-'));
-    mkdirSync(join(repoRoot, '.ai/cezar'), { recursive: true });
-    process.env.CEZ_HOME = cezHome;
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-machine-defaults-'));
+    xezHome = mkdtempSync(join(tmpdir(), 'xez-machine-home-'));
+    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
+    process.env.XEZ_HOME = xezHome;
   });
 
   afterEach(() => {
-    if (savedHome === undefined) delete process.env.CEZ_HOME;
-    else process.env.CEZ_HOME = savedHome;
-    for (const dir of [repoRoot, cezHome]) rmSync(dir, { recursive: true, force: true });
+    if (savedHome === undefined) delete process.env.XEZ_HOME;
+    else process.env.XEZ_HOME = savedHome;
+    for (const dir of [repoRoot, xezHome]) rmSync(dir, { recursive: true, force: true });
   });
 
   const writeRepo = (value: unknown) =>
-    writeFileSync(join(repoRoot, '.ai/cezar', 'config.json'), JSON.stringify(value), 'utf8');
+    writeFileSync(join(repoRoot, '.ai/xezar', 'config.json'), JSON.stringify(value), 'utf8');
   const writeMachine = (agentDefaults: unknown) =>
-    writeFileSync(join(cezHome, 'config.json'), JSON.stringify({ agentDefaults }), 'utf8');
+    writeFileSync(join(xezHome, 'config.json'), JSON.stringify({ agentDefaults }), 'utf8');
 
   it('fills a repo that has no config file at all', async () => {
     writeMachine({ runner: 'codex', models: { codex: 'gpt-5' } });
@@ -361,7 +361,7 @@ describe('loadConfig machine-wide agent defaults', () => {
   });
 
   it('degrades to the built-in default when the machine file is corrupt', async () => {
-    writeFileSync(join(cezHome, 'config.json'), '{not json', 'utf8');
+    writeFileSync(join(xezHome, 'config.json'), '{not json', 'utf8');
     expect((await loadConfig(repoRoot)).defaultRunner).toBe('claude');
   });
 

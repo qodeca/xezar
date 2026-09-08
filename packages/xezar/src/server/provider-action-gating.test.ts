@@ -45,9 +45,9 @@ describe('provider action gating', () => {
   let startRun: ReturnType<typeof vi.fn>;
   let sendMessage: ReturnType<typeof vi.fn>;
   let continueRun: ReturnType<typeof vi.fn>;
-  const savedModelsLocked = process.env.CEZ_AGENT_MODELS_LOCKED;
-  const savedDryRun = process.env.CEZ_DRY_RUN;
-  const savedFollowups = process.env.CEZ_FOLLOWUPS;
+  const savedModelsLocked = process.env.XEZ_AGENT_MODELS_LOCKED;
+  const savedDryRun = process.env.XEZ_DRY_RUN;
+  const savedFollowups = process.env.XEZ_FOLLOWUPS;
 
   const makeRun = (input: StartRunInput): RunRecord => store.createRun({
     title: 'Task',
@@ -76,11 +76,11 @@ describe('provider action gating', () => {
   };
 
   beforeEach(() => {
-    delete process.env.CEZ_AGENT_MODELS_LOCKED;
-    process.env.CEZ_DRY_RUN = '1';
-    process.env.CEZ_FOLLOWUPS = '1';
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-provider-action-gating-'));
-    dataDir = join(repoRoot, '.ai/cezar');
+    delete process.env.XEZ_AGENT_MODELS_LOCKED;
+    process.env.XEZ_DRY_RUN = '1';
+    process.env.XEZ_FOLLOWUPS = '1';
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-provider-action-gating-'));
+    dataDir = join(repoRoot, '.ai/xezar');
     store = RunStore.open(dataDir);
     startRun = vi.fn((_workflow: WorkflowDef, input: StartRunInput) => makeRun(input));
     sendMessage = vi.fn(() => true);
@@ -99,12 +99,12 @@ describe('provider action gating', () => {
   afterEach(() => {
     store.flush();
     rmSync(repoRoot, { recursive: true, force: true });
-    if (savedModelsLocked === undefined) delete process.env.CEZ_AGENT_MODELS_LOCKED;
-    else process.env.CEZ_AGENT_MODELS_LOCKED = savedModelsLocked;
-    if (savedDryRun === undefined) delete process.env.CEZ_DRY_RUN;
-    else process.env.CEZ_DRY_RUN = savedDryRun;
-    if (savedFollowups === undefined) delete process.env.CEZ_FOLLOWUPS;
-    else process.env.CEZ_FOLLOWUPS = savedFollowups;
+    if (savedModelsLocked === undefined) delete process.env.XEZ_AGENT_MODELS_LOCKED;
+    else process.env.XEZ_AGENT_MODELS_LOCKED = savedModelsLocked;
+    if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
+    else process.env.XEZ_DRY_RUN = savedDryRun;
+    if (savedFollowups === undefined) delete process.env.XEZ_FOLLOWUPS;
+    else process.env.XEZ_FOLLOWUPS = savedFollowups;
   });
 
   const expectDisabled = async (response: Response) => {
@@ -128,7 +128,7 @@ describe('provider action gating', () => {
   });
 
   it('keeps every runner selectable under the explicit model lock despite provider preferences', async () => {
-    process.env.CEZ_AGENT_MODELS_LOCKED = '1';
+    process.env.XEZ_AGENT_MODELS_LOCKED = '1';
     const response = await apiRequest(app, '/api/v1/runs', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -256,7 +256,7 @@ describe('provider action gating', () => {
 /**
  * The gate re-probes before it refuses (`providerActionError` in `server.ts`).
  *
- * Auth state is served stale-while-revalidate, so a cached "disconnected" can predate a login cezar
+ * Auth state is served stale-while-revalidate, so a cached "disconnected" can predate a login xezar
  * never saw — someone typing `claude auth login` in a terminal. Refusing on that would lock a user
  * out of their own cockpit with no way back but waiting, which is exactly what a short cache window
  * used to paper over, at the cost of making every reader of `GET /api/v1/providers/status`
@@ -266,14 +266,14 @@ describe('the gate verifies before it refuses', () => {
   let repoRoot: string;
   let store: RunStore;
   let startRun: ReturnType<typeof vi.fn>;
-  const savedDryRun = process.env.CEZ_DRY_RUN;
+  const savedDryRun = process.env.XEZ_DRY_RUN;
 
   beforeEach(() => {
     // The whole point is the real probe path, so dry-run (which reports everything connected) must
     // be off or these would pass without exercising anything.
-    delete process.env.CEZ_DRY_RUN;
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-gate-verify-'));
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    delete process.env.XEZ_DRY_RUN;
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-gate-verify-'));
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     startRun = vi.fn((_workflow: WorkflowDef, input: StartRunInput) => store.createRun({
       title: 'Task',
       workflow: 'quick-task',
@@ -286,8 +286,8 @@ describe('the gate verifies before it refuses', () => {
   afterEach(() => {
     store.flush();
     rmSync(repoRoot, { recursive: true, force: true });
-    if (savedDryRun === undefined) delete process.env.CEZ_DRY_RUN;
-    else process.env.CEZ_DRY_RUN = savedDryRun;
+    if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
+    else process.env.XEZ_DRY_RUN = savedDryRun;
   });
 
   /** A claude whose login state the test controls, with a clock it can advance. */
@@ -386,19 +386,19 @@ describe('provider availability preserves existing execution', () => {
   let store: RunStore;
   let manager: RunManager;
   let runId: string | undefined;
-  const savedDryRun = process.env.CEZ_DRY_RUN;
-  const savedCodexBin = process.env.CEZ_CODEX_BIN;
+  const savedDryRun = process.env.XEZ_DRY_RUN;
+  const savedCodexBin = process.env.XEZ_CODEX_BIN;
 
   beforeEach(() => {
-    process.env.CEZ_DRY_RUN = '1';
+    process.env.XEZ_DRY_RUN = '1';
     // Resolved from this file, not the cwd: the fixture is a sibling of the source under test,
     // so the path holds wherever vitest is invoked from and survives the tree moving.
-    process.env.CEZ_CODEX_BIN = join(
+    process.env.XEZ_CODEX_BIN = join(
       import.meta.dirname,
       '../core/__fixtures__/codex/mock-codex-app-server.mjs',
     );
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-provider-continuity-'));
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-provider-continuity-'));
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     manager = new RunManager(store, repoRoot);
   });
 
@@ -406,10 +406,10 @@ describe('provider availability preserves existing execution', () => {
     if (runId) manager.cancel(runId);
     store.flush();
     rmSync(repoRoot, { recursive: true, force: true });
-    if (savedDryRun === undefined) delete process.env.CEZ_DRY_RUN;
-    else process.env.CEZ_DRY_RUN = savedDryRun;
-    if (savedCodexBin === undefined) delete process.env.CEZ_CODEX_BIN;
-    else process.env.CEZ_CODEX_BIN = savedCodexBin;
+    if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
+    else process.env.XEZ_DRY_RUN = savedDryRun;
+    if (savedCodexBin === undefined) delete process.env.XEZ_CODEX_BIN;
+    else process.env.XEZ_CODEX_BIN = savedCodexBin;
   });
 
   const waitFor = async (predicate: () => boolean, timeoutMs = 15_000) => {

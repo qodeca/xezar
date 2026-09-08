@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { type Runner, runnerSchema } from './health.ts';
 
 /**
- * The workspace + settings families: `~/.cezar/config.json`'s settings slice, both GUI-pref bags
+ * The workspace + settings families: `~/.xezar/config.json`'s settings slice, both GUI-pref bags
  * (per-repo and workspace), the per-repo agent knobs, provider auth status, the host model
  * catalog, the skills-update state, and the "Open in…" targets.
  *
@@ -12,7 +12,7 @@ import { type Runner, runnerSchema } from './health.ts';
 // ---- workspace settings (`GET/PUT /api/v1/workspace/config`) --------------------------------
 
 /**
- * `GET/PUT /api/v1/workspace/config` — the settings slice of `~/.cezar/config.json` (step 2.7).
+ * `GET/PUT /api/v1/workspace/config` — the settings slice of `~/.xezar/config.json` (step 2.7).
  *
  * Global knobs only: the registry itself is `GET /api/v1/projects`, and `schemaVersion` (a
  * migration cursor, not a setting) is deliberately absent. `resources` is the workspace's
@@ -30,13 +30,13 @@ export const workspaceConfigResponseSchema = z.object({
   browseRoot: z.string(),
   /** Checkout root for GUI-cloned projects — stored as written (`~` kept). */
   projectsDir: z.string(),
-  /** Stored override; `null` means inherit `CEZ_SKILLS_AUTO_UPDATE`, then true. */
+  /** Stored override; `null` means inherit `XEZ_SKILLS_AUTO_UPDATE`, then true. */
   skillsAutoUpdate: z.boolean().nullable(),
   effectiveSkillsAutoUpdate: z.boolean(),
   composerDefaults: z.object({
     autonomous: z.boolean().nullable(),
     worktree: z.boolean().nullable(),
-    /** `'source-dependent'` when no `CEZ_AUTONOMOUS_DEFAULT` pins it either way. */
+    /** `'source-dependent'` when no `XEZ_AUTONOMOUS_DEFAULT` pins it either way. */
     inheritedAutonomous: z.union([z.boolean(), z.literal('source-dependent')]),
     inheritedWorktree: z.boolean(),
   }),
@@ -55,7 +55,7 @@ export const workspaceConfigResponseSchema = z.object({
    * Both keys are OPTIONAL on the wire, and that is load-bearing rather than lax: absent means
    * "this machine has no opinion, the built-in default applies", and it has to stay distinguishable
    * from a value someone chose or the fallback collapses into "always claude". Consulted only where
-   * the repo's own `.ai/cezar/config.json` is silent — a repo that chose is never overruled.
+   * the repo's own `.ai/xezar/config.json` is silent — a repo that chose is never overruled.
    */
   agentDefaults: z.object({
     runner: runnerSchema.optional(),
@@ -129,7 +129,7 @@ const taskTableUiStateSchema = z.looseObject({
 });
 
 /**
- * `GET/PUT /api/v1/ui-state` — the per-repo GUI prefs in `.ai/cezar/ui-state.json`.
+ * `GET/PUT /api/v1/ui-state` — the per-repo GUI prefs in `.ai/xezar/ui-state.json`.
  *
  * An OPEN bag on purpose (BACKWARD_COMPATIBILITY.md §3): unknown keys round-trip untouched, so a
  * newer cockpit's prefs survive an older server and a future pref needs no server change. Hence
@@ -167,7 +167,7 @@ export const uiStateSchema = z.looseObject({
   runsView: z.enum(['list', 'table']).optional(),
   /** The GitHub tab's last-selected sub-tab (#417). Absent → issues. */
   githubView: z.enum(['issues', 'prs']).optional(),
-  /** Settings → Appearance. The theme itself stays in localStorage (`cez-theme`) — it must
+  /** Settings → Appearance. The theme itself stays in localStorage (`xez-theme`) — it must
    *  pre-paint, and it is per-browser by design. */
   appearance: appearanceSchema.optional(),
   /** Follow-up prompt templates (#413). Absent → the built-in defaults; present (even `[]`) is
@@ -189,7 +189,7 @@ export const uiStateSchema = z.looseObject({
 export type UiState = z.infer<typeof uiStateSchema>;
 
 /**
- * `GET/PUT /api/v1/workspace/ui-state` — cross-project GUI prefs in `~/.cezar/ui-state.json`
+ * `GET/PUT /api/v1/workspace/ui-state` — cross-project GUI prefs in `~/.xezar/ui-state.json`
  * (multi-project spec, step 2.7).
  *
  * The same open bag as its per-repo twin above, and open for the same reason. The PUT merges
@@ -327,9 +327,9 @@ export const configResponseSchema = z.object({
   /** Keep the last N finished worktrees on disk (#483); 0 = unlimited. Older ones are reclaimed
    *  (directory only — branch kept, so work is recoverable). */
   worktreeRetention: z.number(),
-  /** Live title updates: null = no config key, the `CEZ_TITLE_UPDATES` env default (ON) decides. */
+  /** Live title updates: null = no config key, the `XEZ_TITLE_UPDATES` env default (ON) decides. */
   liveTitleUpdates: z.boolean().nullable(),
-  /** Optional review gate (#489): null = no config key, the `CEZ_REVIEW_GATE` env default (OFF)
+  /** Optional review gate (#489): null = no config key, the `XEZ_REVIEW_GATE` env default (OFF)
    *  decides. */
   reviewGate: z.boolean().nullable(),
 });
@@ -511,7 +511,7 @@ export const openTargetSchema = z.object({
 });
 export type OpenTarget = z.infer<typeof openTargetSchema>;
 
-/** `GET /api/v1/open-targets` — the detected local apps; empty in hosted mode (CEZ_REMOTE). */
+/** `GET /api/v1/open-targets` — the detected local apps; empty in hosted mode (XEZ_REMOTE). */
 export const openTargetsResponseSchema = z.object({
   targets: z.array(openTargetSchema),
 });

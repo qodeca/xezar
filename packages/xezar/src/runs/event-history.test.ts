@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import type { RunEvent } from '@open-mercato/cezar-contract';
+import type { RunEvent } from '@qodeca/xezar-contract';
 import {
   HistoryCursorError,
   canonicalSessionItems,
@@ -15,7 +15,7 @@ import {
 const dirs: string[] = [];
 
 function fixture(events: Array<Partial<RunEvent> & Pick<RunEvent, 'seq' | 'type'>>): string {
-  const dir = mkdtempSync(join(tmpdir(), 'cez-history-'));
+  const dir = mkdtempSync(join(tmpdir(), 'xez-history-'));
   dirs.push(dir);
   const file = join(dir, 'run.ndjson');
   writeFileSync(
@@ -130,7 +130,7 @@ describe('readRunHistoryPage', () => {
   });
 
   it('preserves UTF-8 when a multibyte code point crosses a reverse-read chunk boundary', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'cez-history-utf8-'));
+    const dir = mkdtempSync(join(tmpdir(), 'xez-history-utf8-'));
     dirs.push(dir);
     const file = join(dir, 'run.ndjson');
     const build = (padding: number) => {

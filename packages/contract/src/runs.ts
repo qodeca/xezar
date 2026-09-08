@@ -40,7 +40,7 @@ export type RunStatus = z.infer<typeof runStatusSchema>;
 /**
  * Sub-state of `running` (spec 2026-07-18-subagent-monitoring-status, #490): the agent ended its
  * turn still working on its own downstream work (a sub-agent, a monitored command) and said so
- * with the `CEZ:MONITORING` marker — a non-attention state, not "needs you".
+ * with the `XEZ:MONITORING` marker — a non-attention state, not "needs you".
  */
 export const runActivitySchema = z.enum(['monitoring']);
 export type RunActivity = z.infer<typeof runActivitySchema>;
@@ -169,7 +169,7 @@ export const runRecordSchema = z.object({
    *
    * `event` is a plain string rather than `automationEventSchema`: it is the event NAME the
    * launching definition matched, recorded on the run for the audit trail, and `src/runs/store.ts`
-   * persists it as free text so an older cezar can still read a record written by a newer one.
+   * persists it as free text so an older xezar can still read a record written by a newer one.
    */
   automation: z
     .object({
@@ -211,9 +211,9 @@ export const runRecordSchema = z.object({
   /** Server-side provenance: referenced-issue discovery currently owns `issueNumber`. */
   referencedIssueNumberSeeded: z.boolean().optional(),
   /** 'user' = renamed via PATCH, never auto-overwritten; 'marker' = agent-declared via
-   *  CEZ:TITLE (spec 2026-07-18-task-ref-markers); 'auto' = namer-owned. */
+   *  XEZ:TITLE (spec 2026-07-18-task-ref-markers); 'auto' = namer-owned. */
   titleOrigin: z.enum(['user', 'auto', 'marker']).optional(),
-  /** References the agent declared via CEZ:PR/CEZ:ISSUE markers — authoritative over the namer
+  /** References the agent declared via XEZ:PR/XEZ:ISSUE markers — authoritative over the namer
    *  for the matching kind. */
   markerRefs: z.object({ pr: z.number().optional(), issue: z.number().optional() }).optional(),
   /** The referenced tier's working set (distinct PR URLs spotted, capped server-side). */
@@ -369,7 +369,7 @@ export const runIndexEntrySchema = z.object({
    * The live CPU/RSS sample of this run's process tree, attached on the way out exactly as
    * `GET /runs` attaches it (`withUsage`) — never persisted.
    *
-   * It can ride a WORKSPACE-level answer because the sampler is process-wide: one cezar process
+   * It can ride a WORKSPACE-level answer because the sampler is process-wide: one xezar process
    * runs every project's agents, so `currentUsage(runId)` knows about a run whatever project it
    * belongs to. That is what lets a cross-project table show live usage without opening one
    * event stream per project (it could not — the run stream is project-scoped).
@@ -468,7 +468,7 @@ export const continueResponseSchema = z.object({ continued: z.literal(true) });
 export type ContinueResponse = z.infer<typeof continueResponseSchema>;
 
 /**
- * `POST /runs/:id/pr` (201, spec 009) — the draft PR's URL; `dryRun` marks the CEZ_DRY_RUN fake
+ * `POST /runs/:id/pr` (201, spec 009) — the draft PR's URL; `dryRun` marks the XEZ_DRY_RUN fake
  * (no push, no gh). Failure is a 409 whose `ApiError` carries the `manual` merge command instead.
  *
  * `dryRun` is REQUIRED: `createDraftPr`'s success outcome always sets it (`forge/types.ts`), so
@@ -608,7 +608,7 @@ export type PickVariantResponse = z.infer<typeof pickVariantResponseSchema>;
 
 /**
  * Non-image attachment types the composer may send (#950). Deliberately an allowlist and
- * deliberately short: cezar serves these files back from the cockpit's own origin, so every entry
+ * deliberately short: xezar serves these files back from the cockpit's own origin, so every entry
  * here is one more thing that must be safe to hand a browser. `image/*` stays a regex — narrowing
  * what the route has always accepted would be the breaking half of this change.
  *
@@ -637,7 +637,7 @@ export function isAttachmentMediaType(mediaType: string): boolean {
 /**
  * The on-disk extension for an attachment, derived from its media type ALONE — the user's own
  * filename never reaches the wire, and therefore never reaches a path. `img` is the pre-existing
- * catch-all for an image type cezar does not name (an SVG, a BMP), kept so those files land where
+ * catch-all for an image type xezar does not name (an SVG, a BMP), kept so those files land where
  * they always did.
  */
 export function attachmentExtension(mediaType: string): string {

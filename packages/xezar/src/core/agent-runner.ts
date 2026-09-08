@@ -1,6 +1,6 @@
 /**
  * The backend-agnostic seam for running one agent task. Adapted from
- * @cezar/core's `agents/agent-runner.ts`, trimmed for single-user local use:
+ * @xezar/core's `agents/agent-runner.ts`, trimmed for single-user local use:
  * no token-budget circuit breaker, no zod response schemas — one run is one
  * agent-CLI session streaming normalized events.
  *
@@ -53,7 +53,7 @@ export interface AgentRunSpec {
   /** Extra directories the agent may read/write besides `cwd`. */
   additionalDirectories?: string[];
   /** Extra env vars for the agent process (merged over `process.env`) —
-   *  e.g. CEZ_HANDOFF_FILE / CEZ_TODOS_FILE / CEZ_TASK_ID (spec 007). */
+   *  e.g. XEZ_HANDOFF_FILE / XEZ_TODOS_FILE / XEZ_TASK_ID (spec 007). */
   env?: Record<string, string>;
   model?: string;
   /** Wall-clock kill switch for the run (ms). */
@@ -88,7 +88,7 @@ export function prependSystemPrompt(systemPrompt: string | undefined, userPrompt
  * `interrupt()` (#703): the CLIs install their own handlers, so a session the
  * runner tore down on purpose comes back as a NON-ZERO exit. Paired with a
  * "we sent the signal" flag, this predicate keeps that teardown out of the
- * error path — an exit cezar caused is never an agent failure.
+ * error path — an exit xezar caused is never an agent failure.
  */
 export function isSignalTerminationExit(exitCode: number | null): boolean {
   return exitCode === 130 || exitCode === 137 || exitCode === 143;

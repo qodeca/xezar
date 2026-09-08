@@ -14,19 +14,19 @@ import { runMigrations, WORKSPACE_MIGRATIONS, type WorkspaceMigration } from './
  * one warning, never throws).
  */
 describe('workspace migrations', () => {
-  const originalHome = process.env.CEZ_HOME;
+  const originalHome = process.env.XEZ_HOME;
   let home: string;
   let repoRoot: string;
 
   beforeEach(() => {
-    home = mkdtempSync(join(tmpdir(), 'cez-migrations-home-'));
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-migrations-repo-'));
-    process.env.CEZ_HOME = home; // paths.ts sends all workspace paths here
+    home = mkdtempSync(join(tmpdir(), 'xez-migrations-home-'));
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-migrations-repo-'));
+    process.env.XEZ_HOME = home; // paths.ts sends all workspace paths here
   });
 
   afterEach(() => {
-    if (originalHome === undefined) delete process.env.CEZ_HOME;
-    else process.env.CEZ_HOME = originalHome;
+    if (originalHome === undefined) delete process.env.XEZ_HOME;
+    else process.env.XEZ_HOME = originalHome;
     chmodSync(home, 0o700); // undo the unwritable-home test before cleanup
     rmSync(home, { recursive: true, force: true });
     rmSync(repoRoot, { recursive: true, force: true });
@@ -34,8 +34,8 @@ describe('workspace migrations', () => {
   });
 
   const writeRepoFile = (name: string, value: unknown) => {
-    mkdirSync(join(repoRoot, '.ai/cezar'), { recursive: true });
-    writeFileSync(join(repoRoot, '.ai/cezar', name), JSON.stringify(value), 'utf8');
+    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
+    writeFileSync(join(repoRoot, '.ai/xezar', name), JSON.stringify(value), 'utf8');
   };
 
   const rawGlobalConfig = () =>
@@ -61,8 +61,8 @@ describe('workspace migrations', () => {
       notifications: { enabled: false },
       githubView: 'prs', // project-scoped — must NOT go global
     });
-    const repoConfigBefore = readFileSync(join(repoRoot, '.ai/cezar/config.json'), 'utf8');
-    const repoUiBefore = readFileSync(join(repoRoot, '.ai/cezar/ui-state.json'), 'utf8');
+    const repoConfigBefore = readFileSync(join(repoRoot, '.ai/xezar/config.json'), 'utf8');
+    const repoUiBefore = readFileSync(join(repoRoot, '.ai/xezar/ui-state.json'), 'utf8');
 
     await runMigrations({ bootRepoRoot: repoRoot });
 
@@ -76,8 +76,8 @@ describe('workspace migrations', () => {
     });
     expect(statSync(workspaceUiStatePath()).mode & 0o777).toBe(0o600);
     // additive: per-repo files are byte-identical
-    expect(readFileSync(join(repoRoot, '.ai/cezar/config.json'), 'utf8')).toBe(repoConfigBefore);
-    expect(readFileSync(join(repoRoot, '.ai/cezar/ui-state.json'), 'utf8')).toBe(repoUiBefore);
+    expect(readFileSync(join(repoRoot, '.ai/xezar/config.json'), 'utf8')).toBe(repoConfigBefore);
+    expect(readFileSync(join(repoRoot, '.ai/xezar/ui-state.json'), 'utf8')).toBe(repoUiBefore);
   });
 
   it('never overwrites keys already set globally (crash-interrupted re-run safety)', async () => {

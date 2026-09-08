@@ -32,7 +32,7 @@ describe('agentTmpEnv — per-run temp directory (#785)', () => {
   let dataDir: string;
 
   beforeEach(() => {
-    dataDir = mkdtempSync(join(realpathSync(tmpdir()), 'cez-agent-tmpdir-'));
+    dataDir = mkdtempSync(join(realpathSync(tmpdir()), 'xez-agent-tmpdir-'));
   });
 
   afterEach(() => {
@@ -73,7 +73,7 @@ describe('agentTmpEnv — per-run temp directory (#785)', () => {
     expect((thrown as Error).message).toContain('agent temp directory is not writable');
     expect((thrown as Error).message).toContain(join(dataDir, 'tmp', 'run-c'));
     // The remedy names the opt-out, so the message alone is enough to act on.
-    expect((thrown as Error).message).toContain('CEZ_AGENT_TMPDIR=0');
+    expect((thrown as Error).message).toContain('XEZ_AGENT_TMPDIR=0');
   });
 
   // The failure this exists for is a directory that exists and accepts an inode but
@@ -98,11 +98,11 @@ describe('agentTmpEnv — per-run temp directory (#785)', () => {
     expect(readdirSync(env.TMPDIR as string)).toEqual([]);
   });
 
-  describe('CEZ_AGENT_TMPDIR=0 opt-out', () => {
+  describe('XEZ_AGENT_TMPDIR=0 opt-out', () => {
     it('leaves the host TMPDIR in force and mints no directory', () => {
-      const host = mkdtempSync(join(realpathSync(tmpdir()), 'cez-host-tmp-'));
+      const host = mkdtempSync(join(realpathSync(tmpdir()), 'xez-host-tmp-'));
       try {
-        const env = agentTmpEnv(dataDir, 'run-f', { CEZ_AGENT_TMPDIR: '0', TMPDIR: host });
+        const env = agentTmpEnv(dataDir, 'run-f', { XEZ_AGENT_TMPDIR: '0', TMPDIR: host });
         expect(env).toEqual({});
         expect(existsSync(agentTmpDir(dataDir, 'run-f'))).toBe(false);
       } finally {
@@ -116,7 +116,7 @@ describe('agentTmpEnv — per-run temp directory (#785)', () => {
     it('does not preflight anything either, however broken the host TMPDIR is', () => {
       expect(() =>
         agentTmpEnv(dataDir, 'run-g', {
-          CEZ_AGENT_TMPDIR: '0',
+          XEZ_AGENT_TMPDIR: '0',
           TMPDIR: join(dataDir, 'does-not-exist'),
         }),
       ).not.toThrow();
@@ -124,14 +124,14 @@ describe('agentTmpEnv — per-run temp directory (#785)', () => {
 
     it('is not fooled by an unusable directory it would otherwise have minted', () => {
       writeFileSync(join(dataDir, 'tmp'), 'not a directory', 'utf8');
-      expect(agentTmpEnv(dataDir, 'run-h', { CEZ_AGENT_TMPDIR: '0' })).toEqual({});
+      expect(agentTmpEnv(dataDir, 'run-h', { XEZ_AGENT_TMPDIR: '0' })).toEqual({});
     });
 
     it('only an exact "0" disables it', () => {
       expect(agentTmpDirEnabled({})).toBe(true);
-      expect(agentTmpDirEnabled({ CEZ_AGENT_TMPDIR: '1' })).toBe(true);
-      expect(agentTmpDirEnabled({ CEZ_AGENT_TMPDIR: 'false' })).toBe(true);
-      expect(agentTmpDirEnabled({ CEZ_AGENT_TMPDIR: '0' })).toBe(false);
+      expect(agentTmpDirEnabled({ XEZ_AGENT_TMPDIR: '1' })).toBe(true);
+      expect(agentTmpDirEnabled({ XEZ_AGENT_TMPDIR: 'false' })).toBe(true);
+      expect(agentTmpDirEnabled({ XEZ_AGENT_TMPDIR: '0' })).toBe(false);
     });
   });
 });
@@ -140,7 +140,7 @@ describe('reaping the per-run temp directories (#785)', () => {
   let dataDir: string;
 
   beforeEach(() => {
-    dataDir = mkdtempSync(join(realpathSync(tmpdir()), 'cez-agent-tmpdir-reap-'));
+    dataDir = mkdtempSync(join(realpathSync(tmpdir()), 'xez-agent-tmpdir-reap-'));
   });
 
   afterEach(() => {
@@ -188,7 +188,7 @@ describe('reaping the per-run temp directories (#785)', () => {
     expect(existsSync(agentTmpDir(dataDir, 'orphan-1'))).toBe(false);
   });
 
-  // BACKWARD_COMPATIBILITY §3: `.ai/cezar/` is a protected surface. The sweep is
+  // BACKWARD_COMPATIBILITY §3: `.ai/xezar/` is a protected surface. The sweep is
   // confined to its own `tmp/` subtree and must never see a sibling.
   it('never touches sibling run state', () => {
     agentTmpEnv(dataDir, 'orphan', {});

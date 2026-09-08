@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { AgentBrowser, bootProjectId, cezarCli, fixtureServeEnv, removeDataRoot, stopFixtureServer } from './agent-browser'
+import { AgentBrowser, bootProjectId, xezarCli, fixtureServeEnv, removeDataRoot, stopFixtureServer } from './agent-browser'
 
 /**
  * The Files tab (R5 Step 1.6) end-to-end against a LIVE dry run, same doctrine as
@@ -51,7 +51,7 @@ async function waitForHealth(url: string): Promise<void> {
     }
     await new Promise((r) => setTimeout(r, 250))
   }
-  throw new Error(`cezar e2e: the files-tab server never answered at ${url}`)
+  throw new Error(`xezar e2e: the files-tab server never answered at ${url}`)
 }
 
 async function waitForStatus(url: string, id: string, wanted: string[]): Promise<string> {
@@ -60,7 +60,7 @@ async function waitForStatus(url: string, id: string, wanted: string[]): Promise
     if (wanted.includes(record.status)) return record.status
     await new Promise((r) => setTimeout(r, 500))
   }
-  throw new Error(`cezar e2e: run ${id} never reached status "${wanted.join('/')}"`)
+  throw new Error(`xezar e2e: run ${id} never reached status "${wanted.join('/')}"`)
 }
 
 let browser: AgentBrowser
@@ -76,11 +76,11 @@ const scoped = (path: string) => `/p/${bootProject}${path}`
 let runId: string
 
 beforeAll(async () => {
-  dataRoot = mkdtempSync(join(tmpdir(), 'cezar-e2e-files-'))
+  dataRoot = mkdtempSync(join(tmpdir(), 'xezar-e2e-files-'))
   const git = (...args: string[]) => execFileSync('git', ['-C', dataRoot, ...args])
   git('init', '-q', '-b', 'main')
-  git('config', 'user.email', 'e2e@cezar.test')
-  git('config', 'user.name', 'cezar e2e')
+  git('config', 'user.email', 'e2e@xezar.test')
+  git('config', 'user.name', 'xezar e2e')
   writeFileSync(join(dataRoot, 'README.md'), '# files-tab e2e fixture repo\n', 'utf8')
   mkdirSync(join(dataRoot, 'src'))
   writeFileSync(join(dataRoot, 'src', 'hello.ts'), "export const greeting = 'hello from the files tab'\n", 'utf8')
@@ -92,11 +92,11 @@ beforeAll(async () => {
   baseUrl = `http://localhost:${port}`
   server = spawn(
     process.execPath,
-    [cezarCli, 'serve', '--repo', dataRoot, '--port', String(port), '--no-open'],
-    // CEZ_REVIEW_GATE=1 because this spec is ABOUT the gate: it is opt-in (#489, default OFF),
+    [xezarCli, 'serve', '--repo', dataRoot, '--port', String(port), '--no-open'],
+    // XEZ_REVIEW_GATE=1 because this spec is ABOUT the gate: it is opt-in (#489, default OFF),
     // so pinning it here is what makes the parked-at-review fixture reproducible instead of
     // depending on whatever the operator happens to export.
-    { env: fixtureServeEnv(dataRoot, { CEZ_REVIEW_GATE: '1' }), stdio: 'ignore' },
+    { env: fixtureServeEnv(dataRoot, { XEZ_REVIEW_GATE: '1' }), stdio: 'ignore' },
   )
   await waitForHealth(baseUrl)
   bootProject = await bootProjectId(baseUrl)
@@ -114,7 +114,7 @@ beforeAll(async () => {
   await waitForStatus(baseUrl, runId, ['waiting'])
   await fetch(`${baseUrl}/api/v1/runs/${runId}/finish`, { method: 'POST' })
   const parked = await waitForStatus(baseUrl, runId, ['review', 'done'])
-  if (parked !== 'review') throw new Error('cezar e2e: the dry run settled as done — no worktree to browse?')
+  if (parked !== 'review') throw new Error('xezar e2e: the dry run settled as done — no worktree to browse?')
 
   browser = AgentBrowser.open(sessionId)
   browser.setViewport(1440, 900)

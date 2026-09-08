@@ -1,7 +1,6 @@
 /**
  * Golden tests for the codex app-server → v2 mapper: each fixture in
- * `__fixtures__/codex/` is a JSONL frame transcript (shapes from
- * `.ai/analysis/cockpit-ui-redesign/agent-event-protocols.md` §3); its
+ * `__fixtures__/codex/` is a JSONL frame transcript; its
  * `.expected.json` is the EXACT `UiEvent` sequence the mapper must produce.
  * All are wire-faithful except `todo-list`, which pins the tolerance arm for
  * codex's non-app-server transports — see the note on GOLDEN_FIXTURES.
@@ -870,8 +869,8 @@ describe('CodexAppServerRunner v2 wiring (against the bundled mock app-server)',
     await expect(session.result).resolves.toMatchObject({ sessionId: 'th_mock_1' });
   }, 30_000);
 
-  it('retains CEZ_CODEX_NETWORK=0 as an explicit restricted-sandbox opt-out', async () => {
-    vi.stubEnv('CEZ_CODEX_NETWORK', '0');
+  it('retains XEZ_CODEX_NETWORK=0 as an explicit restricted-sandbox opt-out', async () => {
+    vi.stubEnv('XEZ_CODEX_NETWORK', '0');
     try {
       const runner = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 60_000 });
       const session = runner.startSession(

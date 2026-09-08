@@ -5,7 +5,7 @@
 // UI had, now with HMR.
 //
 // The API port is probed here and pinned into BOTH processes (server via -p,
-// Vite proxy via CEZ_API_PORT — see packages/web/vite.config.ts). Without that,
+// Vite proxy via XEZ_API_PORT — see packages/web/vite.config.ts). Without that,
 // a cockpit already sitting on 4321 (another repo, an older npm install) would
 // silently answer the proxy with stale endpoints — 404s all over the UI.
 //
@@ -39,7 +39,7 @@ const npmExecpath = process.env.npm_execpath;
 const npmCli = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const run = (script, extraArgs) => {
   const args = ['run', script, '--', ...extraArgs];
-  const env = { ...process.env, CEZ_API_PORT: String(apiPort) };
+  const env = { ...process.env, XEZ_API_PORT: String(apiPort) };
   return npmExecpath
     ? spawn(process.execPath, [npmExecpath, ...args], { cwd: repoRoot, stdio: 'inherit', env })
     : spawn(npmCli, args, { cwd: repoRoot, stdio: 'inherit', env, shell: process.platform === 'win32' });

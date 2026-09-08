@@ -13,7 +13,7 @@ function git(cwd: string, ...args: string[]): void {
 }
 
 beforeEach(() => {
-  repo = mkdtempSync(join(tmpdir(), 'cez-seed-'));
+  repo = mkdtempSync(join(tmpdir(), 'xez-seed-'));
   git(repo, 'init', '-q');
   git(repo, 'config', 'user.email', 't@t.t');
   git(repo, 'config', 'user.name', 't');

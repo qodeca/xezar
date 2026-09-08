@@ -20,9 +20,9 @@ import { createApp } from './server.ts';
  * project field.
  */
 describe('usage SSE fan-out is scoped per project', () => {
-  const savedHome = process.env.CEZ_HOME;
-  const savedRemote = process.env.CEZ_REMOTE;
-  const savedDryRun = process.env.CEZ_DRY_RUN;
+  const savedHome = process.env.XEZ_HOME;
+  const savedRemote = process.env.XEZ_REMOTE;
+  const savedDryRun = process.env.XEZ_DRY_RUN;
   let home: string;
   let repoRoot: string;
   let otherRoot: string;
@@ -33,18 +33,18 @@ describe('usage SSE fan-out is scoped per project', () => {
   const closers: Array<() => Promise<void>> = [];
 
   beforeEach(async () => {
-    home = mkdtempSync(join(tmpdir(), 'cez-usage-home-'));
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-usage-boot-'));
-    otherRoot = mkdtempSync(join(tmpdir(), 'cez-usage-other-'));
-    process.env.CEZ_HOME = home;
-    delete process.env.CEZ_REMOTE;
-    process.env.CEZ_DRY_RUN = '1';
+    home = mkdtempSync(join(tmpdir(), 'xez-usage-home-'));
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-usage-boot-'));
+    otherRoot = mkdtempSync(join(tmpdir(), 'xez-usage-other-'));
+    process.env.XEZ_HOME = home;
+    delete process.env.XEZ_REMOTE;
+    process.env.XEZ_DRY_RUN = '1';
     for (const root of [repoRoot, otherRoot]) {
-      mkdirSync(join(root, '.ai/cezar'), { recursive: true });
-      writeFileSync(join(root, '.ai/cezar', 'config.json'), '{"skillsRepos": []}\n', 'utf8');
+      mkdirSync(join(root, '.ai/xezar'), { recursive: true });
+      writeFileSync(join(root, '.ai/xezar', 'config.json'), '{"skillsRepos": []}\n', 'utf8');
     }
     clearProjectProbeCache();
-    store = RunStore.open(join(repoRoot, '.ai/cezar'), { keepLive: true });
+    store = RunStore.open(join(repoRoot, '.ai/xezar'), { keepLive: true });
     bootRunId = store.createRun({
       title: 'boot',
       workflow: 'quick-task',
@@ -67,12 +67,12 @@ describe('usage SSE fan-out is scoped per project', () => {
     contexts.disposeAll();
     store.flush();
     for (const dir of [home, repoRoot, otherRoot]) rmSync(dir, { recursive: true, force: true });
-    if (savedHome === undefined) delete process.env.CEZ_HOME;
-    else process.env.CEZ_HOME = savedHome;
-    if (savedRemote === undefined) delete process.env.CEZ_REMOTE;
-    else process.env.CEZ_REMOTE = savedRemote;
-    if (savedDryRun === undefined) delete process.env.CEZ_DRY_RUN;
-    else process.env.CEZ_DRY_RUN = savedDryRun;
+    if (savedHome === undefined) delete process.env.XEZ_HOME;
+    else process.env.XEZ_HOME = savedHome;
+    if (savedRemote === undefined) delete process.env.XEZ_REMOTE;
+    else process.env.XEZ_REMOTE = savedRemote;
+    if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
+    else process.env.XEZ_DRY_RUN = savedDryRun;
   });
 
   /** Open one SSE stream and return an incremental until-reader. */

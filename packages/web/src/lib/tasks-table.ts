@@ -1,4 +1,4 @@
-import type { ProcessUsage, RunRecord, RunStatus } from '@open-mercato/cezar-api-client'
+import type { ProcessUsage, RunRecord, RunStatus } from '@qodeca/xezar-api-client'
 import { groupTitle, runTitle, type ListView } from '@/lib/task-groups'
 
 /**
@@ -141,7 +141,7 @@ export function taskPrUrl(run: TaskReferenceInput): string | undefined {
  * conversation is about (#407). Both are real and can coexist — a review task can open a
  * follow-up PR of its own — which is why this is a list and `taskPrUrl` is merely its head.
  *
- * The one suppression is #526: a run whose declared subject is an ISSUE (CEZ:ISSUE) and that
+ * The one suppression is #526: a run whose declared subject is an ISSUE (XEZ:ISSUE) and that
  * declared no PR must not adopt an incidental transcript PR as "its" PR — an `om-prepare-issue`
  * run linking a stray PR that merely appeared in its output is a false, misleading association.
  * It lives HERE, once, so the singular and plural accessors cannot drift apart on it.
@@ -162,11 +162,11 @@ function prUrls(run: TaskReferenceInput): string[] {
  * a discovered URL or nothing. */
 export function taskIssueUrl(run: TaskReferenceInput, repoBase?: string): string | undefined {
   if (run.referencedIssueUrl) return run.referencedIssueUrl
-  // #526: an issue-subject run (om-prepare-issue) knows its issue number from the CEZ:ISSUE
+  // #526: an issue-subject run (om-prepare-issue) knows its issue number from the XEZ:ISSUE
   // marker even when no full `…/issues/N` link was ever scanned into referencedIssueUrl.
   // Synthesize the link from the PROJECT's repo only — never from `referenced*Candidates` or
   // `referenced*Url`, which are transcript scrapings that routinely name other repositories:
-  // `CEZ:ISSUE=524` beside an incidental `github.com/other/repo/pull/1` would rebuild the exact
+  // `XEZ:ISSUE=524` beside an incidental `github.com/other/repo/pull/1` would rebuild the exact
   // wrong-link defect #526 exists to kill, just pointing at an issue instead of a PR.
   const number = run.markerRefs?.issue ?? run.issueNumber
   if (!number || !repoBase) return undefined
@@ -210,7 +210,7 @@ export interface TaskReference {
  * next kind of reference is one entry here and nothing else — and the PR half is `prUrls`, the
  * same list `taskPrUrl` takes its head from, so the two can never disagree about #407 or #526.
  * Order is strongest-first — the PR a task created, the PR it is about, then the issue — with one
- * thing ahead of all of them: a `CEZ:PR` declaration that NO scraped URL corroborates.
+ * thing ahead of all of them: a `XEZ:PR` declaration that NO scraped URL corroborates.
  *
  * That exception is narrow on purpose. Normally the declaration is already one of the URLs below
  * (the marker contract asks the agent to re-declare once it opens a PR of its own), and then

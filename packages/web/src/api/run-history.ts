@@ -1,8 +1,8 @@
 import { useInfiniteQuery, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import { useCallback, useMemo, useRef } from 'react'
 
-import type { RunEvent, RunHistoryPage } from '@open-mercato/cezar-api-client'
-import { queryScope } from '@open-mercato/cezar-api-client'
+import type { RunEvent, RunHistoryPage } from '@qodeca/xezar-api-client'
+import { queryScope } from '@qodeca/xezar-api-client'
 import { getRunHistory, getRunHistoryContext } from './client'
 import { useRunEvents } from './run-events'
 

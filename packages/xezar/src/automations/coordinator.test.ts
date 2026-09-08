@@ -6,7 +6,7 @@ import { AutomationCoordinator } from './coordinator.ts';
 
 const dirs: string[] = [];
 async function project(): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), 'cezar-coordinator-'));
+  const root = await mkdtemp(join(tmpdir(), 'xezar-coordinator-'));
   dirs.push(root);
   return root;
 }
@@ -16,8 +16,8 @@ describe('AutomationCoordinator', () => {
   it('discovers only projects carrying the optional definitions file', async () => {
     const first = await project();
     const second = await project();
-    await mkdir(join(first, '.ai/cezar'), { recursive: true });
-    await writeFile(join(first, '.ai/cezar/automations.json'), '{"version":1,"automations":[]}');
+    await mkdir(join(first, '.ai/xezar'), { recursive: true });
+    await writeFile(join(first, '.ai/xezar/automations.json'), '{"version":1,"automations":[]}');
     const coordinator = new AutomationCoordinator({
       listProjects: async () => [
         { id: 'first', root: first, status: 'ok' },
@@ -31,8 +31,8 @@ describe('AutomationCoordinator', () => {
 
   it('drops removed and gone projects without failing other handles', async () => {
     const root = await project();
-    await mkdir(join(root, '.ai/cezar'), { recursive: true });
-    await writeFile(join(root, '.ai/cezar/automations.json'), '{"version":1,"automations":[]}');
+    await mkdir(join(root, '.ai/xezar'), { recursive: true });
+    await writeFile(join(root, '.ai/xezar/automations.json'), '{"version":1,"automations":[]}');
     let status: 'ok' | 'missing' = 'ok';
     const coordinator = new AutomationCoordinator({
       listProjects: async () => [{ id: 'one', root, status }],

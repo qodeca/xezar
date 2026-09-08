@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { ProviderStatusResponse } from '@open-mercato/cezar-api-client'
+import type { ProviderStatusResponse } from '@qodeca/xezar-api-client'
 import {
   applyProviderStatusRow,
   mergeProviderStatusResponse,

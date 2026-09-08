@@ -21,21 +21,21 @@ function g(dir: string, ...args: string[]): string {
 }
 function initRepo(dir: string): void {
   g(dir, 'init', '-b', 'main');
-  g(dir, 'config', 'user.email', 'test@cezar.local');
-  g(dir, 'config', 'user.name', 'cezar-test');
+  g(dir, 'config', 'user.email', 'test@xezar.local');
+  g(dir, 'config', 'user.name', 'xezar-test');
   g(dir, 'config', 'commit.gpgsign', 'false');
 }
 
 describe('POST /api/v1/groups/:groupId/pick — review gate', () => {
-  const savedGate = process.env.CEZ_REVIEW_GATE;
+  const savedGate = process.env.XEZ_REVIEW_GATE;
   let repoRoot: string;
   let worktree: string;
   let store: RunStore;
   let app: Hono;
 
   beforeEach(() => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-pick-'));
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-pick-'));
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     app = createApp({
       repoRoot,
       store,
@@ -55,8 +55,8 @@ describe('POST /api/v1/groups/:groupId/pick — review gate', () => {
   afterEach(() => {
     store.flush();
     rmSync(repoRoot, { recursive: true, force: true });
-    if (savedGate === undefined) delete process.env.CEZ_REVIEW_GATE;
-    else process.env.CEZ_REVIEW_GATE = savedGate;
+    if (savedGate === undefined) delete process.env.XEZ_REVIEW_GATE;
+    else process.env.XEZ_REVIEW_GATE = savedGate;
   });
 
   /** A finished (`done`) group winner whose worktree holds a real diff vs base. */
@@ -82,7 +82,7 @@ describe('POST /api/v1/groups/:groupId/pick — review gate', () => {
     });
 
   it('gate off (default): a changed winner stays done', async () => {
-    delete process.env.CEZ_REVIEW_GATE;
+    delete process.env.XEZ_REVIEW_GATE;
     const winner = winnerRun();
     const res = await pick(winner.id);
     expect(res.status).toBe(200);
@@ -90,14 +90,14 @@ describe('POST /api/v1/groups/:groupId/pick — review gate', () => {
   });
 
   it('gate on + non-autonomous: the changed winner flips to review', async () => {
-    process.env.CEZ_REVIEW_GATE = '1';
+    process.env.XEZ_REVIEW_GATE = '1';
     const winner = winnerRun();
     await pick(winner.id);
     expect(store.getRun(winner.id)?.status).toBe('review');
   });
 
   it('gate on + autonomous: the winner stays done (autonomous wins)', async () => {
-    process.env.CEZ_REVIEW_GATE = '1';
+    process.env.XEZ_REVIEW_GATE = '1';
     const winner = winnerRun(true);
     await pick(winner.id);
     expect(store.getRun(winner.id)?.status).toBe('done');

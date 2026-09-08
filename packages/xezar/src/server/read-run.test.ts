@@ -19,8 +19,8 @@ describe('read receipts (#unread-done-items)', () => {
   let app: Hono;
 
   beforeEach(() => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-read-'));
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-read-'));
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     app = createApp({
       repoRoot,
       store,

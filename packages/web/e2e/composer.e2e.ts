@@ -5,12 +5,12 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { AgentBrowser, cezarCli, fixtureServeEnv, removeDataRoot, stopFixtureServer } from './agent-browser'
+import { AgentBrowser, xezarCli, fixtureServeEnv, removeDataRoot, stopFixtureServer } from './agent-browser'
 
 /**
  * The composer (R3 Step 2.1) end-to-end, against a LIVE dry-run session — not a replayed
- * fixture: a real `cezar` (CEZ_DRY_RUN=1) on a real tmp git repo runs a real task through the
- * mock claude, whose reply carries no CEZ:DONE marker, so the run parks at `waiting` — the
+ * fixture: a real `xezar` (XEZ_DRY_RUN=1) on a real tmp git repo runs a real task through the
+ * mock claude, whose reply carries no XEZ:DONE marker, so the run parks at `waiting` — the
  * exact state the composer exists for. What this spec proves is the full loop: type a reply
  * (with a `/` skill completion from this repo's own `.ai/skills`), send, and watch the
  * transcript grow over SSE because the server accepted and persisted the message.
@@ -46,7 +46,7 @@ async function waitForHealth(url: string): Promise<void> {
     }
     await new Promise((r) => setTimeout(r, 250))
   }
-  throw new Error(`cezar e2e: the composer server never answered at ${url}`)
+  throw new Error(`xezar e2e: the composer server never answered at ${url}`)
 }
 
 async function waitForStatus(url: string, id: string, wanted: string[]): Promise<string> {
@@ -55,7 +55,7 @@ async function waitForStatus(url: string, id: string, wanted: string[]): Promise
     if (wanted.includes(record.status)) return record.status
     await new Promise((r) => setTimeout(r, 500))
   }
-  throw new Error(`cezar e2e: run ${id} never reached status "${wanted.join('/')}"`)
+  throw new Error(`xezar e2e: run ${id} never reached status "${wanted.join('/')}"`)
 }
 
 let browser: AgentBrowser
@@ -66,11 +66,11 @@ let runId: string
 
 beforeAll(async () => {
   // A REAL git repo — the engine creates a worktree for the run, which needs a commit.
-  dataRoot = mkdtempSync(join(tmpdir(), 'cezar-e2e-composer-'))
+  dataRoot = mkdtempSync(join(tmpdir(), 'xezar-e2e-composer-'))
   const git = (...args: string[]) => execFileSync('git', ['-C', dataRoot, ...args])
   git('init', '-q', '-b', 'main')
-  git('config', 'user.email', 'e2e@cezar.test')
-  git('config', 'user.name', 'cezar e2e')
+  git('config', 'user.email', 'e2e@xezar.test')
+  git('config', 'user.name', 'xezar e2e')
   writeFileSync(join(dataRoot, 'README.md'), '# composer e2e fixture repo\n', 'utf8')
   git('add', '.')
   git('commit', '-qm', 'init')
@@ -88,12 +88,12 @@ beforeAll(async () => {
   baseUrl = `http://localhost:${port}`
   server = spawn(
     process.execPath,
-    [cezarCli, 'serve', '--repo', dataRoot, '--port', String(port), '--no-open'],
+    [xezarCli, 'serve', '--repo', dataRoot, '--port', String(port), '--no-open'],
     { env: fixtureServeEnv(dataRoot), stdio: 'ignore' },
   )
   await waitForHealth(baseUrl)
 
-  // Boot the run the composer will talk to. The mock's reply has no CEZ:DONE marker, so after
+  // Boot the run the composer will talk to. The mock's reply has no XEZ:DONE marker, so after
   // its first turn the session stays open and the run parks at `waiting`.
   const created = (await (
     await fetch(`${baseUrl}/api/v1/runs`, {
@@ -185,7 +185,7 @@ describe('the thread composer against a live waiting session', () => {
     // Replace the page's Web Speech global with a scriptable stand-in (see the header note).
     browser.evaluate(`(() => {
       class FakeRecognition {
-        start() { window.__cezRecognition = this }
+        start() { window.__xezRecognition = this }
         stop() {} abort() {}
       }
       window.SpeechRecognition = FakeRecognition
@@ -198,7 +198,7 @@ describe('the thread composer against a live waiting session', () => {
     expect(browser.text('[data-slot="dictation-transcript"]')).toContain('Listening…')
 
     // A partial result flows through the real component.
-    browser.evaluate(`window.__cezRecognition.onresult({
+    browser.evaluate(`window.__xezRecognition.onresult({
       resultIndex: 0,
       results: [{ isFinal: false, 0: { transcript: 'summarize what you did' } }],
     }) ?? true`)
@@ -209,7 +209,7 @@ describe('the thread composer against a live waiting session', () => {
   })
 
   it('insert puts the transcript into the textarea and restores the footer', () => {
-    browser.evaluate(`window.__cezRecognition.onresult({
+    browser.evaluate(`window.__xezRecognition.onresult({
       resultIndex: 0,
       results: [{ isFinal: true, 0: { transcript: 'summarize what you did' } }],
     }) ?? true`)

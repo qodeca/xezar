@@ -16,10 +16,10 @@ const GIT_ID = ['-c', 'user.name=test', '-c', 'user.email=test@local'];
  *
  * `model-identity.test.ts` pins the pure mapper; this suite pins the part the
  * PR actually ships — that the run WIRING uses it. It drives the real engine
- * under `CEZ_DRY_RUN=1` and asserts on both ends of the seam at once:
+ * under `XEZ_DRY_RUN=1` and asserts on both ends of the seam at once:
  *
  *  - the wire form the runner is handed (captured from the mock's argv via
- *    `CEZ_MOCK_ARGS_FILE`), and
+ *    `XEZ_MOCK_ARGS_FILE`), and
  *  - the identity persisted on the record (`RunRecord.modelIdentity`).
  *
  * Those two agreeing IS the property #405 exists to guarantee: "a run record
@@ -34,21 +34,21 @@ describe('model identity wiring (dry run)', () => {
   const savedEnv: Record<string, string | undefined> = {};
 
   beforeAll(async () => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-model-identity-'));
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-model-identity-'));
     argsFile = join(repoRoot, 'mock-args.ndjson');
-    savedEnv.CEZ_DRY_RUN = process.env.CEZ_DRY_RUN;
-    savedEnv.CEZ_MOCK_ARGS_FILE = process.env.CEZ_MOCK_ARGS_FILE;
-    savedEnv.CEZ_FOLLOWUPS = process.env.CEZ_FOLLOWUPS;
-    process.env.CEZ_DRY_RUN = '1';
-    process.env.CEZ_MOCK_ARGS_FILE = argsFile;
-    delete process.env.CEZ_FOLLOWUPS;
+    savedEnv.XEZ_DRY_RUN = process.env.XEZ_DRY_RUN;
+    savedEnv.XEZ_MOCK_ARGS_FILE = process.env.XEZ_MOCK_ARGS_FILE;
+    savedEnv.XEZ_FOLLOWUPS = process.env.XEZ_FOLLOWUPS;
+    process.env.XEZ_DRY_RUN = '1';
+    process.env.XEZ_MOCK_ARGS_FILE = argsFile;
+    delete process.env.XEZ_FOLLOWUPS;
     await run('git', ['init', '-q', '-b', 'main'], { cwd: repoRoot });
     writeFileSync(join(repoRoot, 'a.txt'), 'one\n');
     await run('git', ['add', '-A'], { cwd: repoRoot });
     await run('git', [...GIT_ID, 'commit', '-q', '-m', 'base'], { cwd: repoRoot });
-    mkdirSync(join(repoRoot, '.ai/cezar'), { recursive: true });
-    writeFileSync(join(repoRoot, '.ai/cezar', 'config.json'), JSON.stringify({ maxParallel: 1 }), 'utf8');
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
+    writeFileSync(join(repoRoot, '.ai/xezar', 'config.json'), JSON.stringify({ maxParallel: 1 }), 'utf8');
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     manager = new RunManager(store, repoRoot);
   });
 

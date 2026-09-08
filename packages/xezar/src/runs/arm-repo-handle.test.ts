@@ -31,14 +31,14 @@ describe('armRepoHandle (#945)', () => {
   const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
   it('hands a resolved handle to the store', async () => {
-    resolveRepoHandleMock.mockResolvedValue({ owner: 'open-mercato', name: 'cezar' });
+    resolveRepoHandleMock.mockResolvedValue({ owner: 'qodeca', name: 'xezar' });
     const { store, setRepoHandle } = fakeStore();
 
     armRepoHandle(store, '/repo');
     await settle();
 
     expect(resolveRepoHandleMock).toHaveBeenCalledWith('/repo');
-    expect(setRepoHandle).toHaveBeenCalledWith({ owner: 'open-mercato', name: 'cezar' });
+    expect(setRepoHandle).toHaveBeenCalledWith({ owner: 'qodeca', name: 'xezar' });
   });
 
   it('passes a null handle through — "unknown" is a first-class answer, not a failure', async () => {
@@ -75,8 +75,8 @@ describe('armRepoHandle (#945)', () => {
     expect(armRepoHandle(store, '/repo')).toBeUndefined();
     expect(setRepoHandle).not.toHaveBeenCalled(); // still pending — and the caller already moved on
 
-    release({ owner: 'open-mercato', name: 'cezar' });
+    release({ owner: 'qodeca', name: 'xezar' });
     await settle();
-    expect(setRepoHandle).toHaveBeenCalledWith({ owner: 'open-mercato', name: 'cezar' });
+    expect(setRepoHandle).toHaveBeenCalledWith({ owner: 'qodeca', name: 'xezar' });
   });
 });

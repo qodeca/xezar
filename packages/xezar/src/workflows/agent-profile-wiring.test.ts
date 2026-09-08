@@ -16,7 +16,7 @@ import { RunManager } from './run.ts';
  * neither (the mock CLI does not echo its environment).
  */
 describe('RunManager agent-profile resolution', () => {
-  const savedHome = process.env.CEZ_HOME;
+  const savedHome = process.env.XEZ_HOME;
   let home: string;
   let repoRoot: string;
   let store: RunStore;
@@ -33,10 +33,10 @@ describe('RunManager agent-profile resolution', () => {
   const seam = () => manager as unknown as Seam;
 
   beforeEach(async () => {
-    home = mkdtempSync(join(realpathSync(tmpdir()), 'cez-profile-wiring-home-'));
-    repoRoot = mkdtempSync(join(realpathSync(tmpdir()), 'cez-profile-wiring-repo-'));
-    process.env.CEZ_HOME = home;
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    home = mkdtempSync(join(realpathSync(tmpdir()), 'xez-profile-wiring-home-'));
+    repoRoot = mkdtempSync(join(realpathSync(tmpdir()), 'xez-profile-wiring-repo-'));
+    process.env.XEZ_HOME = home;
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     manager = new RunManager(store, repoRoot);
     await registerProject(repoRoot);
   });
@@ -44,8 +44,8 @@ describe('RunManager agent-profile resolution', () => {
   afterEach(() => {
     store.flush();
     for (const dir of [home, repoRoot]) rmSync(dir, { recursive: true, force: true });
-    if (savedHome === undefined) delete process.env.CEZ_HOME;
-    else process.env.CEZ_HOME = savedHome;
+    if (savedHome === undefined) delete process.env.XEZ_HOME;
+    else process.env.XEZ_HOME = savedHome;
   });
 
   const addAccount = async (id: string, provider: 'claude' | 'codex', dir: string) => {
@@ -80,12 +80,12 @@ describe('RunManager agent-profile resolution', () => {
     // The base run env only: the handoff contract (spec 007) plus the task-scoped
     // temp directory (#785). No ACCOUNT variable, which is this test's subject.
     expect(Object.keys(env).sort()).toEqual([
-      'CEZ_HANDOFF_FILE',
-      'CEZ_TASK_ID',
-      'CEZ_TODOS_FILE',
       'TEMP',
       'TMP',
       'TMPDIR',
+      'XEZ_HANDOFF_FILE',
+      'XEZ_TASK_ID',
+      'XEZ_TODOS_FILE',
     ]);
     expect(env.CLAUDE_CONFIG_DIR).toBeUndefined();
     expect(env.CODEX_HOME).toBeUndefined();
@@ -99,7 +99,7 @@ describe('RunManager agent-profile resolution', () => {
     expect(profileId).toBe('work');
     expect(env.CLAUDE_CONFIG_DIR).toBe(join(home, 'claude-klaudiusz'));
     // The handoff plumbing still rides along — the account is additive, not a replacement.
-    expect(env.CEZ_TASK_ID).toBe(run.id);
+    expect(env.XEZ_TASK_ID).toBe(run.id);
   });
 
   it('resolves each step of a MIXED-backend workflow against its own provider', async () => {

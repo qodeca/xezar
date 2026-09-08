@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSy
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AgentProfilesResponse, AgentProfileResponse } from '@open-mercato/cezar-contract';
+import type { AgentProfilesResponse, AgentProfileResponse } from '@qodeca/xezar-contract';
 import { agentAccountsPath } from '../paths.ts';
 import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
@@ -21,22 +21,22 @@ import { createApp, type ServerDeps } from './server.ts';
  */
 describe('agent profiles API', () => {
   const saved = {
-    home: process.env.CEZ_HOME,
-    remote: process.env.CEZ_REMOTE,
-    dryRun: process.env.CEZ_DRY_RUN,
+    home: process.env.XEZ_HOME,
+    remote: process.env.XEZ_REMOTE,
+    dryRun: process.env.XEZ_DRY_RUN,
   };
   let home: string;
   let repoRoot: string;
   let store: RunStore;
 
   beforeEach(() => {
-    home = mkdtempSync(join(realpathSync(tmpdir()), 'cez-profiles-home-'));
-    repoRoot = mkdtempSync(join(realpathSync(tmpdir()), 'cez-profiles-repo-'));
-    process.env.CEZ_HOME = home;
-    delete process.env.CEZ_REMOTE;
+    home = mkdtempSync(join(realpathSync(tmpdir()), 'xez-profiles-home-'));
+    repoRoot = mkdtempSync(join(realpathSync(tmpdir()), 'xez-profiles-repo-'));
+    process.env.XEZ_HOME = home;
+    delete process.env.XEZ_REMOTE;
     // Deterministic on any machine: no real agent CLIs are probed.
-    process.env.CEZ_DRY_RUN = '1';
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    process.env.XEZ_DRY_RUN = '1';
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     clearProjectProbeCache();
   });
 
@@ -44,9 +44,9 @@ describe('agent profiles API', () => {
     store.flush();
     for (const dir of [home, repoRoot]) rmSync(dir, { recursive: true, force: true });
     for (const [key, value] of [
-      ['CEZ_HOME', saved.home],
-      ['CEZ_REMOTE', saved.remote],
-      ['CEZ_DRY_RUN', saved.dryRun],
+      ['XEZ_HOME', saved.home],
+      ['XEZ_REMOTE', saved.remote],
+      ['XEZ_DRY_RUN', saved.dryRun],
     ] as const) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
@@ -113,7 +113,7 @@ describe('agent profiles API', () => {
         provider: 'claude',
         configDir: claudeDir('claude-klaudiusz'),
       });
-      // Under CEZ_DRY_RUN the peek answers from its own short-circuit, so assert the SHAPE
+      // Under XEZ_DRY_RUN the peek answers from its own short-circuit, so assert the SHAPE
       // contract instead: whatever the listing carries, the dedicated route is what probes.
       const res = await apiRequest(
         makeApp(),
@@ -445,7 +445,7 @@ describe('agent profiles API', () => {
     // Dry-run short-circuits provider auth entirely, which would make "no spawns" true for the
     // wrong reason. These two cases need the real probe path, with an injected command runner.
     beforeEach(() => {
-      delete process.env.CEZ_DRY_RUN;
+      delete process.env.XEZ_DRY_RUN;
     });
 
     it('probes NOTHING while building the listing', async () => {
@@ -680,7 +680,7 @@ describe('agent profiles API', () => {
     it('allows a terminal for the FOLDER, which is the case it does apply to', async () => {
       const account = await create('work', signedIn('claude-klaudiusz'));
       // #820: this reached the REAL launcher and opened a Terminal on whoever ran the suite,
-      // sitting in a `cez-profiles-home-*` fixture that `afterEach` had already deleted. Inject
+      // sitting in a `xez-profiles-home-*` fixture that `afterEach` had already deleted. Inject
       // the launcher instead — which also lets the assertion say what it means: `not.toBe(400)`
       // passed whether the target was accepted OR the launcher blew up behind it.
       const launched: Array<[string, string]> = [];
@@ -711,9 +711,9 @@ describe('agent profiles API', () => {
     });
   });
 
-  describe('hosted mode (CEZ_REMOTE)', () => {
+  describe('hosted mode (XEZ_REMOTE)', () => {
     beforeEach(() => {
-      process.env.CEZ_REMOTE = '1';
+      process.env.XEZ_REMOTE = '1';
     });
 
     it('withholds the listing — the absolute paths are the host disclosure', async () => {
@@ -821,7 +821,7 @@ describe('agent profiles API', () => {
       // ten minutes. Without an eviction, Connect after a `claude /logout` opens nothing and says
       // "already connected" — and contradicts this module's own claim that opening a login is an
       // explicit invalidation point rather than something that waits out a window.
-      delete process.env.CEZ_DRY_RUN;
+      delete process.env.XEZ_DRY_RUN;
       let loggedIn = true;
       let spawns = 0;
       const providerAuth = new ProviderAuthService({
@@ -845,7 +845,7 @@ describe('agent profiles API', () => {
         configDir: claudeDir('claude-klaudiusz'),
       });
       const warmed = spawns;
-      loggedIn = false; // …then log out behind cezar's back, as a terminal would.
+      loggedIn = false; // …then log out behind xezar's back, as a terminal would.
 
       const res = await apiRequest(app, '/api/v1/providers/connect', {
         method: 'POST',
@@ -867,7 +867,7 @@ describe('agent profiles API', () => {
         provider: 'claude',
         configDir: claudeDir('claude-klaudiusz'),
       });
-      process.env.CEZ_REMOTE = '1';
+      process.env.XEZ_REMOTE = '1';
       for (const profileId of [created.profile.id, 'no-such-account']) {
         const res = await apiRequest(makeApp(), '/api/v1/providers/connect', {
           method: 'POST',

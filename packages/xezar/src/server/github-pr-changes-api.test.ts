@@ -11,17 +11,17 @@ import { createApp } from './server.ts';
 describe('the GitHub PR changes API', () => {
   let repoRoot: string;
   let store: RunStore;
-  const previous = process.env.CEZ_DRY_RUN;
+  const previous = process.env.XEZ_DRY_RUN;
 
-  beforeAll(() => { process.env.CEZ_DRY_RUN = '1'; });
+  beforeAll(() => { process.env.XEZ_DRY_RUN = '1'; });
   afterAll(() => {
-    if (previous === undefined) delete process.env.CEZ_DRY_RUN;
-    else process.env.CEZ_DRY_RUN = previous;
+    if (previous === undefined) delete process.env.XEZ_DRY_RUN;
+    else process.env.XEZ_DRY_RUN = previous;
   });
   beforeEach(() => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-pr-changes-'));
-    mkdirSync(join(repoRoot, '.ai/cezar'), { recursive: true });
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-pr-changes-'));
+    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
   });
   afterEach(() => {
     store.flush();

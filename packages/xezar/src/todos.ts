@@ -6,8 +6,8 @@ import { join } from 'node:path';
 import { z } from 'zod';
 
 /**
- * The global follow-up inbox (spec 007): `.ai/cezar/todos.json`, a flat JSON
- * array agents append to (via CEZ_TODOS_FILE). Agent entries are external
+ * The global follow-up inbox (spec 007): `.ai/xezar/todos.json`, a flat JSON
+ * array agents append to (via XEZ_TODOS_FILE). Agent entries are external
  * data — each one is zod-validated on read and malformed ones are skipped
  * with a warning, never fatal. Server writes are serialized with an
  * in-process lock (the janitor `withLock` pattern) and land atomically
@@ -71,11 +71,11 @@ async function readRaw(dataDir: string): Promise<{ items: TodoItem[]; needsRewri
     parsed = JSON.parse(raw);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.warn(`[cez] todos.json is not valid JSON — showing an empty inbox (${message})`);
+    console.warn(`[xez] todos.json is not valid JSON — showing an empty inbox (${message})`);
     return { items: [], needsRewrite: false };
   }
   if (!Array.isArray(parsed)) {
-    console.warn('[cez] todos.json is not a JSON array — showing an empty inbox');
+    console.warn('[xez] todos.json is not a JSON array — showing an empty inbox');
     return { items: [], needsRewrite: false };
   }
   const items: TodoItem[] = [];
@@ -83,7 +83,7 @@ async function readRaw(dataDir: string): Promise<{ items: TodoItem[]; needsRewri
   for (const entry of parsed) {
     const result = todoSchema.safeParse(entry);
     if (!result.success) {
-      console.warn(`[cez] skipped a malformed todos.json entry: ${result.error.issues.map((i) => i.message).join('; ')}`);
+      console.warn(`[xez] skipped a malformed todos.json entry: ${result.error.issues.map((i) => i.message).join('; ')}`);
       continue;
     }
     if (!result.data.id) {
@@ -196,7 +196,7 @@ function startWatch(dataDir: string): TodosWatch {
     entry.watcher = watcher;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.warn(`[cez] todos watch unavailable — the Inbox updates on refresh only (${message})`);
+    console.warn(`[xez] todos watch unavailable — the Inbox updates on refresh only (${message})`);
   }
   watches.set(dataDir, entry);
   return entry;

@@ -1,23 +1,20 @@
-# AGENT_PROTOCOL.md — the cezar agent protocol
+# AGENT_PROTOCOL.md — the xezar agent protocol
 
-cezar runs coding-agent CLIs behind **one backend-agnostic seam** and renders
+xezar runs coding-agent CLIs behind **one backend-agnostic seam** and renders
 every backend through **one normalized event vocabulary**. This document is the
 operational contract for that seam: what a runner must implement, what it must
 emit, how the emissions are tested, and what a *new* runner (e.g. `pi`, PR #387)
 has to satisfy to be a first-class backend rather than a second-class one.
 
-It is the concise, load-bearing contract. The deep design record lives in
-`.ai/analysis/cockpit-ui-redesign/agent-event-protocols.md` (§7 schema, §7.1 the
-per-backend mapping tables) and the spec `.ai/specs/2026-07-14-cockpit-ui-redesign.md`
-(§"Normalized agent-event protocol v2", §"Backend parity requirement"). The code
-in `packages/cezar/src/core/` cites those two by section; this file cites the code. When the two
+It is the concise, load-bearing contract. The code
+in `packages/xezar/src/core/` implements it; this file cites the code. When the two
 disagree, **the code wins** — the golden fixtures and the parity test are
 executable, the prose is not.
 
 The protocol has **two layers that ship together**:
 
 - **v1 `AgentEvent`** — the original flat stream. Persisted in old NDJSON
-  recordings and still consumed by `cezar run`'s console renderer. Never
+  recordings and still consumed by `xezar run`'s console renderer. Never
   removed; old recordings must keep replaying forever.
 - **v2 `UiEvent`** — the normalized, item-lifecycle protocol the redesigned
   cockpit renders. Emitted **alongside** v1, never replacing it. A mixed NDJSON
@@ -25,11 +22,11 @@ The protocol has **two layers that ship together**:
 
 ---
 
-## 1. The runner seam (`packages/cezar/src/core/agent-runner.ts`)
+## 1. The runner seam (`packages/xezar/src/core/agent-runner.ts`)
 
 Every backend is one class implementing `AgentRunner`, constructed through the
-single factory `createRunner(backend)` in `packages/cezar/src/core/runner-factory.ts`. Nothing
-outside `packages/cezar/src/core/` should ever `new` a concrete runner or branch on the backend
+single factory `createRunner(backend)` in `packages/xezar/src/core/runner-factory.ts`. Nothing
+outside `packages/xezar/src/core/` should ever `new` a concrete runner or branch on the backend
 id — that is the whole point of the seam.
 
 ### Identity
@@ -88,14 +85,14 @@ A termination the runner itself caused is **not** an agent failure (#703).
 `interrupt()` signals outright; the agent CLIs install their own handlers and
 exit `128 + signal`. A runner MUST therefore record that it sent the signal and
 settle such an exit on the normal path — `isSignalTerminationExit(exitCode)`
-(`packages/cezar/src/core/agent-runner.ts`) plus a `note` — instead of throwing. Throwing makes
+(`packages/xezar/src/core/agent-runner.ts`) plus a `note` — instead of throwing. Throwing makes
 a finished run settle as `failed` and a cancelled run settle as `failed` too.
 
 That watchdog MUST gate its SIGKILL escalation on real termination, never on
 `ChildProcess.killed` (#844). Node sets `killed` when a signal is *delivered*,
 so the watchdog's own SIGTERM flips it while the CLI — which handles the
 signal — keeps running, and the escalation written for exactly that case is
-skipped. Use `trackChildExit(child)` (`packages/cezar/src/core/agent-runner.ts`),
+skipped. Use `trackChildExit(child)` (`packages/xezar/src/core/agent-runner.ts`),
 which seeds from `exitCode`/`signalCode` and listens for `exit`.
 
 `SessionOptions`:
@@ -115,7 +112,7 @@ Notable fields (full doc-comments in the source):
 - `userPrompt` (required), `systemPrompt?`, `images?` (first-message content
   blocks — pasted screenshots), `cwd` (the run dir and the only writable root),
   `model?`, `timeoutMs?`, `env?` (merged over `process.env` — carries
-  `CEZ_HANDOFF_FILE` / `CEZ_TODOS_FILE` / `CEZ_TASK_ID`).
+  `XEZ_HANDOFF_FILE` / `XEZ_TODOS_FILE` / `XEZ_TASK_ID`).
 - `allowedTools?` / `bashAllowlist?` / `additionalDirectories?` — tool access.
   **Caveat (#430):** the zero-config default (`DEFAULT_ALLOWED_TOOLS`) includes
   unrestricted `Bash`, and Codex/OpenCode do not honor `allowedTools` at all.
@@ -144,7 +141,7 @@ can be written to the claude CLI's stdin verbatim.
 ## 2. v1 `AgentEvent` — the flat stream
 
 The original normalized stream. Still emitted by every runner, still persisted,
-still rendered by `cezar run`. **Do not remove or rename a variant** — v1 event
+still rendered by `xezar run`. **Do not remove or rename a variant** — v1 event
 `type` strings are part of the on-disk NDJSON format.
 
 ```ts
@@ -166,7 +163,7 @@ Every v1 event stays **derivable** from the v2 stream, so a consumer can migrate
 one panel at a time. New work should read v2; v1 exists for the console renderer
 and old recordings.
 
-### Cezar-owned run metadata events
+### Xezar-owned run metadata events
 
 `provider-auth-required` is not emitted by a backend runner. The server derives it
 from an authoritative v1/v2 authentication error, persists a provider id, opaque
@@ -175,11 +172,11 @@ does not change backend parity or expose the raw error.
 
 ---
 
-## 3. v2 `UiEvent` — the normalized protocol (`packages/cezar/src/core/ui-events.ts`)
+## 3. v2 `UiEvent` — the normalized protocol (`packages/xezar/src/core/ui-events.ts`)
 
 Pure vocabulary: no runtime imports, no runner coupling. Mirrored into the
 api-client package at `packages/api-client/src/protocol/ui-events.ts`; the mirror is **checked**,
-not trusted — `packages/cezar/src/server/api-types.test.ts` asserts type-exactness between the
+not trusted — `packages/xezar/src/server/api-types.test.ts` asserts type-exactness between the
 two, so drift fails `npm run typecheck` (the gate) rather than the UI at runtime.
 
 ### Design rules baked in
@@ -246,10 +243,10 @@ type UiEvent =
 
 **AskUser (`ask.requested`, #473, #565).** The portable path remains
 backend-neutral: the agent asks a structured
-multiple-choice question by ending a turn with a `CEZ:ASK <json>` control marker
-(a sibling of `CEZ:DONE` / `CEZ:MONITORING`); the RunManager detects it on the
+multiple-choice question by ending a turn with a `XEZ:ASK <json>` control marker
+(a sibling of `XEZ:DONE` / `XEZ:MONITORING`); the RunManager detects it on the
 *assembled* turn text — uniform across claude, codex and opencode with no mapper
-work — validates the payload (`packages/cezar/src/core/ask.ts`, modeled on Claude Code's
+work — validates the payload (`packages/xezar/src/core/ask.ts`, modeled on Claude Code's
 `AskUserQuestion`: 1–4 questions, 2–4 options each, `header` ≤12 chars), emits
 `ask.requested` and parks the run `waiting`. The cockpit renders clickable option
 chips; the user's pick (or a free-form reply) rides the normal reply seam
@@ -292,7 +289,7 @@ standalone truth.
 
 ## 4. Per-backend mapping (summary)
 
-Each backend has a mapper (`packages/cezar/src/core/<backend>-ui-mapper.ts`) turning its wire
+Each backend has a mapper (`packages/xezar/src/core/<backend>-ui-mapper.ts`) turning its wire
 transport into `UiEvent`s. The authoritative table is
 `agent-event-protocols.md` §7.1; the load-bearing rows:
 
@@ -311,7 +308,7 @@ transport into `UiEvent`s. The authoritative table is
 
 **Mapper robustness contract.** Inputs come off the wire and may be `null`,
 partial or malformed. A mapper **must never throw**: unparseable NDJSON lines are
-skipped (`packages/cezar/src/core/ndjson.ts` + the mapper), unknown message/content types
+skipped (`packages/xezar/src/core/ndjson.ts` + the mapper), unknown message/content types
 produce **no events**, and malformed entries in a `plan.updated` payload are
 filtered out (a non-array plan emits no plan event at all). Mapper state is
 **explicit and immutable** — each mapper's map function takes `(frame, state)`
@@ -322,7 +319,7 @@ messages" tests).
 
 ---
 
-## 5. The tool display model (`packages/cezar/src/core/tool-display.ts`)
+## 5. The tool display model (`packages/xezar/src/core/tool-display.ts`)
 
 `toolDisplay(name, input)` turns a backend tool name + raw input into
 `{ toolKind, title, subtitle? }`, computed **once** in the protocol layer (never
@@ -334,7 +331,7 @@ heuristic subtitle. `mcp__server__tool` names collapse to `server.tool`.
 
 ---
 
-## 6. Backend parity — the hard rule (`packages/cezar/src/core/ui-parity.test.ts`)
+## 6. Backend parity — the hard rule (`packages/xezar/src/core/ui-parity.test.ts`)
 
 > Every capability in the parity matrix MUST be emitted by **every**
 > backend, so the GUI degrades **per-capability, never per-backend**.
@@ -350,8 +347,7 @@ or a new fixture set forgets one — a named row fails. The matrix:
 - sub-agent task items (Task / review-mode span / subtask parts) — one item per
   sub-agent: codex's `enteredReviewMode`/`exitedReviewMode` pair folds into a
   single `task` item with a running→completed lifecycle, so a consumer counting
-  task items counts agents, not frames (spec
-  `.ai/specs/2026-07-20-grouped-subagent-display.md`, #474)
+  task items counts agents, not frames (#474)
 - `usage.updated` with raw token counts
 - `turn.completed` with a `stopReason`
 - sub-agent **nesting** via `parentItemId` where the upstream wire attributes
@@ -361,11 +357,11 @@ A new backend is not "done" until it produces every row.
 
 ## 7. The golden-fixture testing contract
 
-Each backend has, under `packages/cezar/src/core/__fixtures__/<backend>/`:
+Each backend has, under `packages/xezar/src/core/__fixtures__/<backend>/`:
 
 - `<name>.ndjson` — a **wire-faithful** transcript of the backend's real output
   (shapes from `agent-event-protocols.md`, cross-checked against the backend's
-  actual CLI / the dry-run mock, e.g. `packages/cezar/scripts/mock-claude.mjs`).
+  actual CLI / the dry-run mock, e.g. `packages/xezar/scripts/mock-claude.mjs`).
 - `<name>.expected.json` — the **exact** `UiEvent[]` the mapper must produce for
   that transcript.
 
@@ -386,7 +382,7 @@ these events get persisted as NDJSON), and asserts `toStrictEqual` against the
 - **NDJSON** — one append-only `runs/<id>.ndjson` per run, one JSON object per
   line (`seq`, `ts`, `type`, free extra keys). Never rewrite, reorder or
   re-number; readers skip bad lines. Both v1 and v2 events live here; a mixed
-  file is valid. Cezar-owned task events are additive too: for example,
+  file is valid. Xezar-owned task events are additive too: for example,
   `provider-auth-required` records only `{ provider, authFailureId, stepId? }`
   when a runtime rejection needs user authorization; it never carries vendor
   error text or credentials.
@@ -400,14 +396,14 @@ these events get persisted as NDJSON), and asserts `toStrictEqual` against the
 
 A new backend is a **single class behind the seam** plus its mapper, fixtures and
 the parity row — never backend-specific types leaking past
-`packages/cezar/src/core/`. PR #387 added `pi` and enumerated every place the
+`packages/xezar/src/core/`. PR #387 added `pi` and enumerated every place the
 runner union was duplicated; that list is the concrete map, and the union now
 derives from one `RUNNER_IDS` tuple in `agent-runner.ts` so most of it is
 typecheck-enforced rather than hand-tracked.
 
 To be first-class:
 
-1. **Runner** — `packages/cezar/src/core/pi-runner.ts` implementing `AgentRunner` /
+1. **Runner** — `packages/xezar/src/core/pi-runner.ts` implementing `AgentRunner` /
    `AgentSession` (persistent process; `pid`; `sendMessage`/`end`/`interrupt`;
    `result`). Honor `AgentRunSpec` uniformly — use `prependSystemPrompt` if the
    backend has no native system-prompt channel.
@@ -417,14 +413,14 @@ To be first-class:
    type-exactness test guards drift).
 3. **Detection** — a `probePi()` in `backend-detect.ts` plus the `BackendCheck`
    name union; degrade gracefully when the CLI is absent (never fail boot). If it
-   needs a binary override, add `CEZ_PI_BIN` — and per AGENTS.md's zero-config
-   rule, document any new `CEZ_*` var in `.env.example` in the same commit.
-4. **Mapper** — `packages/cezar/src/core/<runner>-ui-mapper.ts` emitting the full
+   needs a binary override, add `XEZ_PI_BIN` — and per AGENTS.md's zero-config
+   rule, document any new `XEZ_*` var in `.env.example` in the same commit.
+4. **Mapper** — `packages/xezar/src/core/<runner>-ui-mapper.ts` emitting the full
    v2 `UiEvent` stream **alongside** v1. Never throw on malformed input; explicit
    immutable state.
 5. **v1 alongside v2** — wire `SessionOptions.onUiEvent`; keep the v1
    `AgentEvent` stream flowing unchanged.
-6. **Golden fixtures** — `packages/cezar/src/core/__fixtures__/<runner>/*.ndjson` +
+6. **Golden fixtures** — `packages/xezar/src/core/__fixtures__/<runner>/*.ndjson` +
    `*.expected.json`, wire-faithful and citing their upstream source, covering
    **every** parity matrix capability (§6), and a `<runner>-ui-mapper.test.ts`
    replaying them.
@@ -482,5 +478,3 @@ breaking change requiring the documented deprecation path.
 
 - `AGENTS.md` — repo working rules; the "Agent runners / backends" routing row.
 - `BACKWARD_COMPATIBILITY.md` — §7 (this protocol) and §2/§3 (SSE names, NDJSON).
-- `.ai/analysis/cockpit-ui-redesign/agent-event-protocols.md` — the deep design record (§7, §7.1).
-- `.ai/specs/2026-07-14-cockpit-ui-redesign.md` — the spec (protocol v2, parity requirement).

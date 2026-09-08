@@ -108,12 +108,12 @@ export const LAUNCH_SCRIPT_TTL_MS = 60_000;
  * the worktree, run `command`, then drop into an interactive shell so the window stays
  * open — and schedules its own removal (#785).
  *
- * Every "open in terminal" used to leave its `cez-term-*` directory behind forever. On a
- * host whose `/tmp` is a tmpfs that never reboots, cezar's own litter is part of what
+ * Every "open in terminal" used to leave its `xez-term-*` directory behind forever. On a
+ * host whose `/tmp` is a tmpfs that never reboots, xezar's own litter is part of what
  * exhausts the directory the agents' output capture depends on, so the opener cleans up
  * after itself. Deleting the script mid-run is safe: the emulator has already `exec`'d
  * bash on it, and POSIX keeps an unlinked file's inode alive for every open descriptor.
- * The timer is `unref`'d — a pending cleanup must never be the reason `cezar serve`
+ * The timer is `unref`'d — a pending cleanup must never be the reason `xezar serve`
  * refuses to exit.
  *
  * Exported for the regression test, which must prove the directory does not survive
@@ -124,7 +124,7 @@ export function createLaunchScript(
   command: string,
   ttlMs: number = LAUNCH_SCRIPT_TTL_MS,
 ): string {
-  const dir = mkdtempSync(join(tmpdir(), 'cez-term-'));
+  const dir = mkdtempSync(join(tmpdir(), 'xez-term-'));
   const scriptPath = join(dir, 'launch.sh');
   writeFileSync(scriptPath, `#!/usr/bin/env bash\ncd ${shellQuote(cwd)}\n${command}\nexec bash\n`, 'utf8');
   chmodSync(scriptPath, 0o755);
@@ -142,12 +142,12 @@ export function createLaunchScript(
 /**
  * A test that reaches a real launcher opens a window on the developer's machine — a Terminal on
  * macOS, a `cmd` window on Windows, an emulator on Linux — and #820 is what that looks like: a
- * suite run left a Terminal sitting in a `cez-profiles-home-*` fixture directory the same run had
+ * suite run left a Terminal sitting in a `xez-profiles-home-*` fixture directory the same run had
  * already deleted. Throwing beats returning `false`: a silent refusal would let the omission
  * survive as a passing test, and the fix is always the same one line — inject the launcher seam
  * (`openTerminal` / `openFile` / `openApp` on `ServerDeps`) instead of reaching the real one.
  *
- * `CEZ_ALLOW_TEST_SPAWN=1` is the deliberate exception, for a file that has replaced
+ * `XEZ_ALLOW_TEST_SPAWN=1` is the deliberate exception, for a file that has replaced
  * `node:child_process` with a mock: nothing reaches a real process there, and asserting the argv a
  * launcher WOULD pass is exactly how the Windows launcher-safety cases (#469, BatBadBut) are
  * pinned. Set it around those tests, never process-wide.
@@ -156,7 +156,7 @@ export function createLaunchScript(
  * could drift.
  */
 export function refuseSpawnUnderTest(bin: string, args: readonly string[]): void {
-  if (!process.env.VITEST || process.env.CEZ_ALLOW_TEST_SPAWN === '1') return;
+  if (!process.env.VITEST || process.env.XEZ_ALLOW_TEST_SPAWN === '1') return;
   throw new Error(
     `refusing to spawn a launcher from a test: ${[bin, ...args].join(' ')}\n` +
       'Inject the launcher (ServerDeps.openTerminal / openFile / openApp) instead of calling the real one.',

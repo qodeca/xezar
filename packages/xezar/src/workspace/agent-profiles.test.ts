@@ -20,17 +20,17 @@ import { DEFAULT_AGENT_ACCOUNT_ID, loadAgentAccounts } from './agent-accounts.ts
  * does not. They differ on purpose — see the assertions.
  */
 describe('agent profile resolution', () => {
-  const originalHome = process.env.CEZ_HOME;
+  const originalHome = process.env.XEZ_HOME;
   let home: string;
 
   beforeEach(() => {
-    home = mkdtempSync(join(tmpdir(), 'cez-profiles-'));
-    process.env.CEZ_HOME = home;
+    home = mkdtempSync(join(tmpdir(), 'xez-profiles-'));
+    process.env.XEZ_HOME = home;
   });
 
   afterEach(() => {
-    if (originalHome === undefined) delete process.env.CEZ_HOME;
-    else process.env.CEZ_HOME = originalHome;
+    if (originalHome === undefined) delete process.env.XEZ_HOME;
+    else process.env.XEZ_HOME = originalHome;
     rmSync(home, { recursive: true, force: true });
   });
 

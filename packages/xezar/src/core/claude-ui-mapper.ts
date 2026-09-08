@@ -3,8 +3,7 @@
  * parsed NDJSON stdout line into `UiEvent`s plus the next mapper state; the
  * runner calls it ALONGSIDE the v1 path (v1 events keep flowing unchanged).
  *
- * Contract: `.ai/analysis/cockpit-ui-redesign/agent-event-protocols.md` §1
- * (wire format) and §7.1 "Claude (stream-json)" (the mapping). Golden
+ * Contract: `AGENT_PROTOCOL.md` §4 (per-backend mapping). Golden
  * fixtures replaying real wire shapes live in `__fixtures__/claude/`.
  *
  * Robustness rule: input is untrusted wire data — the mapper never throws;

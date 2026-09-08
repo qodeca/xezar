@@ -15,36 +15,36 @@ import {
 } from './config.ts';
 
 /**
- * `~/.cezar/config.json` house rules under test (spec
+ * `~/.xezar/config.json` house rules under test (spec
  * 2026-07-20-multi-project-workspace, step 1.2): zero-config defaults, per-key
  * `.catch` degradation, `.passthrough()` forward compatibility, atomic `0600`
  * writes, and the read-modify-write merge that keeps concurrent writers from
  * dropping each other's registrations.
  */
 describe('workspace config', () => {
-  const originalHome = process.env.CEZ_HOME;
-  const originalBrowseRoot = process.env.CEZ_BROWSE_ROOT;
-  const originalProjectsDir = process.env.CEZ_PROJECTS_DIR;
-  const originalSkillsAutoUpdate = process.env.CEZ_SKILLS_AUTO_UPDATE;
+  const originalHome = process.env.XEZ_HOME;
+  const originalBrowseRoot = process.env.XEZ_BROWSE_ROOT;
+  const originalProjectsDir = process.env.XEZ_PROJECTS_DIR;
+  const originalSkillsAutoUpdate = process.env.XEZ_SKILLS_AUTO_UPDATE;
   let home: string;
 
   beforeEach(() => {
-    home = mkdtempSync(join(tmpdir(), 'cez-workspace-'));
-    process.env.CEZ_HOME = home; // paths.ts sends all workspace paths here
-    delete process.env.CEZ_BROWSE_ROOT;
-    delete process.env.CEZ_PROJECTS_DIR;
-    delete process.env.CEZ_SKILLS_AUTO_UPDATE;
+    home = mkdtempSync(join(tmpdir(), 'xez-workspace-'));
+    process.env.XEZ_HOME = home; // paths.ts sends all workspace paths here
+    delete process.env.XEZ_BROWSE_ROOT;
+    delete process.env.XEZ_PROJECTS_DIR;
+    delete process.env.XEZ_SKILLS_AUTO_UPDATE;
   });
 
   afterEach(() => {
-    if (originalHome === undefined) delete process.env.CEZ_HOME;
-    else process.env.CEZ_HOME = originalHome;
-    if (originalBrowseRoot === undefined) delete process.env.CEZ_BROWSE_ROOT;
-    else process.env.CEZ_BROWSE_ROOT = originalBrowseRoot;
-    if (originalProjectsDir === undefined) delete process.env.CEZ_PROJECTS_DIR;
-    else process.env.CEZ_PROJECTS_DIR = originalProjectsDir;
-    if (originalSkillsAutoUpdate === undefined) delete process.env.CEZ_SKILLS_AUTO_UPDATE;
-    else process.env.CEZ_SKILLS_AUTO_UPDATE = originalSkillsAutoUpdate;
+    if (originalHome === undefined) delete process.env.XEZ_HOME;
+    else process.env.XEZ_HOME = originalHome;
+    if (originalBrowseRoot === undefined) delete process.env.XEZ_BROWSE_ROOT;
+    else process.env.XEZ_BROWSE_ROOT = originalBrowseRoot;
+    if (originalProjectsDir === undefined) delete process.env.XEZ_PROJECTS_DIR;
+    else process.env.XEZ_PROJECTS_DIR = originalProjectsDir;
+    if (originalSkillsAutoUpdate === undefined) delete process.env.XEZ_SKILLS_AUTO_UPDATE;
+    else process.env.XEZ_SKILLS_AUTO_UPDATE = originalSkillsAutoUpdate;
     rmSync(home, { recursive: true, force: true });
     vi.restoreAllMocks();
   });
@@ -67,7 +67,7 @@ describe('workspace config', () => {
     expect(config).toEqual(defaultWorkspaceConfig());
     expect(config.schemaVersion).toBe(0);
     expect(config.browseRoot).toBe('~/');
-    expect(config.projectsDir).toBe('~/cezar/projects');
+    expect(config.projectsDir).toBe('~/xezar/projects');
     expect(config.resources).toEqual({ maxParallel: 2, maxMonitoringSessions: 2, monitoringWakeIntervalMinutes: 5, autoResumeOnUsageLimit: true, memoryLimitMb: null, worktreeRetentionDefault: 10 });
     expect(config.composerDefaults).toEqual({});
     expect(config.projects).toEqual([]);
@@ -103,8 +103,8 @@ describe('workspace config', () => {
   });
 
   it('takes zero-config roots from the environment while explicit stored values win', async () => {
-    process.env.CEZ_BROWSE_ROOT = '~/source';
-    process.env.CEZ_PROJECTS_DIR = '~/checkouts';
+    process.env.XEZ_BROWSE_ROOT = '~/source';
+    process.env.XEZ_PROJECTS_DIR = '~/checkouts';
     expect(defaultWorkspaceConfig()).toMatchObject({
       browseRoot: '~/source',
       projectsDir: '~/checkouts',
@@ -118,11 +118,11 @@ describe('workspace config', () => {
 
   it('resolves skills auto-update as explicit setting, then 0/1 env, then true', () => {
     expect(effectiveSkillsAutoUpdate({}, {})).toBe(true);
-    expect(effectiveSkillsAutoUpdate({}, { CEZ_SKILLS_AUTO_UPDATE: '0' })).toBe(false);
-    expect(effectiveSkillsAutoUpdate({}, { CEZ_SKILLS_AUTO_UPDATE: '1' })).toBe(true);
-    expect(effectiveSkillsAutoUpdate({}, { CEZ_SKILLS_AUTO_UPDATE: 'invalid' })).toBe(true);
-    expect(effectiveSkillsAutoUpdate({ skillsAutoUpdate: false }, { CEZ_SKILLS_AUTO_UPDATE: '1' })).toBe(false);
-    expect(effectiveSkillsAutoUpdate({ skillsAutoUpdate: true }, { CEZ_SKILLS_AUTO_UPDATE: '0' })).toBe(true);
+    expect(effectiveSkillsAutoUpdate({}, { XEZ_SKILLS_AUTO_UPDATE: '0' })).toBe(false);
+    expect(effectiveSkillsAutoUpdate({}, { XEZ_SKILLS_AUTO_UPDATE: '1' })).toBe(true);
+    expect(effectiveSkillsAutoUpdate({}, { XEZ_SKILLS_AUTO_UPDATE: 'invalid' })).toBe(true);
+    expect(effectiveSkillsAutoUpdate({ skillsAutoUpdate: false }, { XEZ_SKILLS_AUTO_UPDATE: '1' })).toBe(false);
+    expect(effectiveSkillsAutoUpdate({ skillsAutoUpdate: true }, { XEZ_SKILLS_AUTO_UPDATE: '0' })).toBe(true);
   });
 
   it('resolves composer defaults as stored value, exact 0/1 env, then fallback', () => {
@@ -154,13 +154,13 @@ describe('workspace config', () => {
     await mergeWriteWorkspaceConfig((config) => {
       config.schemaVersion = 1;
       config.resources.maxParallel = 4;
-      config.projects.push(project('cezar'));
+      config.projects.push(project('xezar'));
     });
     expect(statSync(workspaceConfigPath()).mode & 0o777).toBe(0o600);
     const config = await loadWorkspaceConfig();
     expect(config.schemaVersion).toBe(1);
     expect(config.resources.maxParallel).toBe(4);
-    expect(config.projects).toEqual([project('cezar')]);
+    expect(config.projects).toEqual([project('xezar')]);
   });
 
   it('a corrupt file degrades to defaults with one warning and is left on disk untouched', async () => {
@@ -180,8 +180,8 @@ describe('workspace config', () => {
   });
 
   it('every atomic write stages through its own tmp file (pid + random, never a shared name)', () => {
-    // Two cezar processes (a `serve` per repo, a settings PUT, `cezar run`)
-    // share `~/.cezar/` — a fixed `${path}.tmp` would let one writer O_TRUNC
+    // Two xezar processes (a `serve` per repo, a settings PUT, `xezar run`)
+    // share `~/.xezar/` — a fixed `${path}.tmp` would let one writer O_TRUNC
     // the other's staging file mid-write and rename corruption into place.
     const path = workspaceConfigPath();
     const a = atomicTmpPath(path);
@@ -196,11 +196,11 @@ describe('workspace config', () => {
 
   it('a merge-write leaves no staging file behind', async () => {
     await mergeWriteWorkspaceConfig((config) => {
-      config.projects.push(project('cezar'));
+      config.projects.push(project('xezar'));
     });
     const dir = readdirSync(dirname(workspaceConfigPath()));
     expect(dir.filter((name) => name.endsWith('.tmp'))).toEqual([]);
-    expect((await loadWorkspaceConfig()).projects.map((p) => p.id)).toEqual(['cezar']);
+    expect((await loadWorkspaceConfig()).projects.map((p) => p.id)).toEqual(['xezar']);
   });
 
   it('concurrent merge-writes from stale in-memory copies keep both writers projects', async () => {
@@ -225,7 +225,7 @@ describe('workspace config', () => {
     write({
       futureTopLevelKey: { nested: true },
       resources: { maxParallel: 3, futureResourceKey: 'kept' },
-      projects: [{ ...project('cezar'), futureProjectKey: 42 }],
+      projects: [{ ...project('xezar'), futureProjectKey: 42 }],
     });
     await mergeWriteWorkspaceConfig((config) => {
       config.schemaVersion = 1;
@@ -249,14 +249,14 @@ describe('workspace config', () => {
     const config = await loadWorkspaceConfig();
     expect(config.schemaVersion).toBe(0);
     expect(config.browseRoot).toBe('~/');
-    expect(config.projectsDir).toBe('~/cezar/projects');
+    expect(config.projectsDir).toBe('~/xezar/projects');
     expect(config.resources).toEqual({ maxParallel: 2, maxMonitoringSessions: 2, monitoringWakeIntervalMinutes: 5, autoResumeOnUsageLimit: true, memoryLimitMb: null, worktreeRetentionDefault: 10 });
     expect(config.projects).toEqual([project('good')]);
   });
 
   /**
    * #810 — the monitoring re-check cadence ships ON. It shipped as `null` and that
-   * made a `CEZ:MONITORING` run a dead end: #661 had already removed the idle timer
+   * made a `XEZ:MONITORING` run a dead end: #661 had already removed the idle timer
    * that used to bound a parked monitor, so nothing was left to resume it. `null`
    * remains reachable, but only as a deliberate operator choice.
    */

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Mock `claude` binary for CEZ_DRY_RUN=1 — emits a plausible stream-json
+// Mock `claude` binary for XEZ_DRY_RUN=1 — emits a plausible stream-json
 // session so the engine / store / GUI can be exercised without tokens.
 // Mirrors the real CLI's contract in SESSION mode: keeps reading {type:user}
 // NDJSON lines from stdin, answers each with a scripted turn (assistant
@@ -11,12 +11,12 @@ import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const emit = (obj) => process.stdout.write(`${JSON.stringify(obj)}\n`);
 
-// Testability hook: CEZ_MOCK_ARGS_FILE=<path> appends the argv this mock was
+// Testability hook: XEZ_MOCK_ARGS_FILE=<path> appends the argv this mock was
 // spawned with (one JSON array per line), so tests and dry-run proofs can
 // assert exactly what reached the CLI (e.g. `--append-system-prompt …`).
-if (process.env.CEZ_MOCK_ARGS_FILE) {
+if (process.env.XEZ_MOCK_ARGS_FILE) {
   try {
-    appendFileSync(process.env.CEZ_MOCK_ARGS_FILE, `${JSON.stringify(process.argv.slice(2))}\n`);
+    appendFileSync(process.env.XEZ_MOCK_ARGS_FILE, `${JSON.stringify(process.argv.slice(2))}\n`);
   } catch {
     // best effort — never break the mock over the hook
   }
@@ -32,11 +32,11 @@ const MOCK_SCREENSHOT_B64 =
 
 
 // Spec 007: behave like an agent that read the handoff/todos instructions —
-// append a progress line to CEZ_HANDOFF_FILE and a follow-up entry to
-// CEZ_TODOS_FILE, so the inbox loop is testable without tokens.
+// append a progress line to XEZ_HANDOFF_FILE and a follow-up entry to
+// XEZ_TODOS_FILE, so the inbox loop is testable without tokens.
 function writeHandoffAndTodo() {
   try {
-    const handoff = process.env.CEZ_HANDOFF_FILE;
+    const handoff = process.env.XEZ_HANDOFF_FILE;
     if (handoff) {
       const text = readFileSync(handoff, 'utf8');
       const line = `- ${new Date().toISOString()} — mock: implemented the change (dry run)\n`;
@@ -52,7 +52,7 @@ function writeHandoffAndTodo() {
     // best effort — the mock still answers without a handoff file
   }
   try {
-    const todosFile = process.env.CEZ_TODOS_FILE;
+    const todosFile = process.env.XEZ_TODOS_FILE;
     if (todosFile) {
       let items = [];
       try {
@@ -63,7 +63,7 @@ function writeHandoffAndTodo() {
       if (!Array.isArray(items)) items = [];
       items.push({
         ts: new Date().toISOString(),
-        taskId: process.env.CEZ_TASK_ID,
+        taskId: process.env.XEZ_TASK_ID,
         summary: 'Follow up: verify the mock change',
         suggestedPrompt: 'Verify the change from the previous task',
       });
@@ -77,13 +77,13 @@ function writeHandoffAndTodo() {
 async function respond(userText, imageCount) {
   turn += 1;
   await sleep(250);
-  // `mock:done` anywhere in the message → the reply ends with the CEZ:DONE
+  // `mock:done` anywhere in the message → the reply ends with the XEZ:DONE
   // completion marker (#347), so the auto-close path is testable dry.
-  const doneMarker = userText.includes('mock:done') ? '\n\nCEZ:DONE' : '';
-  // `mock:monitoring` → the reply ends with CEZ:MONITORING, the "still working
+  const doneMarker = userText.includes('mock:done') ? '\n\nXEZ:DONE' : '';
+  // `mock:monitoring` → the reply ends with XEZ:MONITORING, the "still working
   // on downstream work" marker (#490), so the monitoring-status path is testable dry.
-  const monitoringMarker = userText.includes('mock:monitoring') ? '\n\nCEZ:MONITORING' : '';
-  // `mock:ask` → the reply ends with a valid CEZ:ASK marker (#473), so the
+  const monitoringMarker = userText.includes('mock:monitoring') ? '\n\nXEZ:MONITORING' : '';
+  // `mock:ask` → the reply ends with a valid XEZ:ASK marker (#473), so the
   // AskUser card path (park `waiting` + emit `ask.requested`) is testable dry.
   // `mock:ask-bad` → a MALFORMED marker (invalid JSON), to prove graceful
   // degradation: the run still parks `waiting`, no ask card, prose preserved.
@@ -96,13 +96,13 @@ async function respond(userText, imageCount) {
   // the closer repair should still produce one card, note the recovery, and
   // strip the raw marker (which ends on `]`, not `}`).
   const askMarker = userText.includes('mock:ask-bad')
-    ? '\n\nCEZ:ASK {not valid json'
+    ? '\n\nXEZ:ASK {not valid json'
     : userText.includes('mock:ask-invalid')
-      ? '\n\nCEZ:ASK {"questions":[]}'
+      ? '\n\nXEZ:ASK {"questions":[]}'
       : userText.includes('mock:ask-truncated')
-        ? '\n\nCEZ:ASK {"questions":[{"header":"Lint scope","question":"How much of the lint backlog should I land now?","multiSelect":false,"options":[{"label":"First slice only"},{"label":"Rule by rule"},{"label":"Whole backlog"}]}]'
+        ? '\n\nXEZ:ASK {"questions":[{"header":"Lint scope","question":"How much of the lint backlog should I land now?","multiSelect":false,"options":[{"label":"First slice only"},{"label":"Rule by rule"},{"label":"Whole backlog"}]}]'
       : userText.includes('mock:ask-near')
-        ? '\n\nCEZ:ASK ' +
+        ? '\n\nXEZ:ASK ' +
           JSON.stringify({
             transportHint: 'render as chips',
             questions: [
@@ -118,7 +118,7 @@ async function respond(userText, imageCount) {
             ],
           })
       : userText.includes('mock:ask')
-      ? '\n\nCEZ:ASK ' +
+      ? '\n\nXEZ:ASK ' +
         JSON.stringify({
           questions: [
             {
@@ -135,7 +135,7 @@ async function respond(userText, imageCount) {
   // `mock:refs` → the reply carries the in-band task-reference markers
   // (spec 2026-07-18-task-ref-markers), so the declaration path is testable dry.
   const refsMarkers = userText.includes('mock:refs')
-    ? '\nCEZ:PR=4242\nCEZ:ISSUE=17\nCEZ:TITLE=implementing marker refs'
+    ? '\nXEZ:PR=4242\nXEZ:ISSUE=17\nXEZ:TITLE=implementing marker refs'
     : '';
 
   // `mock:slow` → hold the turn for ~25 s so queue states are observable.
@@ -159,11 +159,11 @@ async function respond(userText, imageCount) {
   // `mock:limit` → the envelope Claude Code emits when the subscription window is
   // exhausted: an `is_error` result whose text is the machine-readable
   // `Claude AI usage limit reached|<epoch seconds>` marker. Makes the auto-resume path
-  // (spec 2026-08-03-auto-resume-after-usage-limit) reachable under CEZ_DRY_RUN=1 for QA and
-  // the e2e smoke. `CEZ_MOCK_LIMIT_RESET_SECONDS` moves the reset instant (default 60 s out),
+  // (spec 2026-08-03-auto-resume-after-usage-limit) reachable under XEZ_DRY_RUN=1 for QA and
+  // the e2e smoke. `XEZ_MOCK_LIMIT_RESET_SECONDS` moves the reset instant (default 60 s out),
   // so a dry run can actually watch the resume fire instead of reading about it.
   if (userText.includes('mock:limit')) {
-    const configured = Number(process.env.CEZ_MOCK_LIMIT_RESET_SECONDS ?? '60');
+    const configured = Number(process.env.XEZ_MOCK_LIMIT_RESET_SECONDS ?? '60');
     const seconds = Number.isFinite(configured) ? configured : 60;
     emit({
       type: 'result',
@@ -214,8 +214,7 @@ async function respond(userText, imageCount) {
   // `mock:subagents` → a parallel fan-out: two `Task` spawns whose child items
   // carry `parent_tool_use_id`, interleaved the way a real fan-out interleaves,
   // then their results. Makes the Agents dock and its drill-down sheet reachable
-  // under CEZ_DRY_RUN=1 for QA, screenshots and the e2e smoke (spec
-  // `.ai/specs/2026-07-20-grouped-subagent-display.md` §"Testability hook", #474).
+  // under XEZ_DRY_RUN=1 for QA, screenshots and the e2e smoke (#474).
   // Derived from the `subagent-task.ndjson` golden fixture's wire shape.
   if (userText.includes('mock:subagents')) {
     const agents = [
@@ -324,10 +323,10 @@ async function respond(userText, imageCount) {
     return;
   }
 
-  // Task auto-naming spec: a naming call (marked `[cez-namer]`) answers a
+  // Task auto-naming spec: a naming call (marked `[xez-namer]`) answers a
   // deterministic short title + a PR classification of the sample number so
   // dry-run tests can assert the full apply pipeline.
-  if (userText.includes('[cez-namer]')) {
+  if (userText.includes('[xez-namer]')) {
     const numbered = /(?:^|\D)(\d{1,7})(?:\D|$)/.exec(userText);
     const name = JSON.stringify({
       title: 'implementing cr fixes',
@@ -352,11 +351,11 @@ async function respond(userText, imageCount) {
     return;
   }
 
-  // Spec 008: a planning call (marked `[cez-planner]` in the user prompt)
+  // Spec 008: a planning call (marked `[xez-planner]` in the user prompt)
   // gets a canned chain plan. The `code-review` skill is deliberately made up:
   // the planner's sanitizer strips unknown skills, and the step survives on
   // its prompt — which is exactly the path worth exercising in dry runs.
-  if (userText.includes('[cez-planner]')) {
+  if (userText.includes('[xez-planner]')) {
     const plan = JSON.stringify({
       title: 'implement-verify-review',
       steps: [
@@ -505,14 +504,14 @@ rl.on('line', (line) => {
   } catch {
     // keep placeholders
   }
-  // Testability hook: CEZ_MOCK_STDIN_FILE=<path> appends the FULL inbound
+  // Testability hook: XEZ_MOCK_STDIN_FILE=<path> appends the FULL inbound
   // text + image count (one JSON object per line) — the scripted replies
   // below only echo a truncated slice, so tests asserting exact wiring (e.g.
   // #357's pasted-attachment path note in the prompt) need the untruncated
   // text this hook captures.
-  if (process.env.CEZ_MOCK_STDIN_FILE) {
+  if (process.env.XEZ_MOCK_STDIN_FILE) {
     try {
-      appendFileSync(process.env.CEZ_MOCK_STDIN_FILE, `${JSON.stringify({ userText, imageCount })}\n`);
+      appendFileSync(process.env.XEZ_MOCK_STDIN_FILE, `${JSON.stringify({ userText, imageCount })}\n`);
     } catch {
       // best effort — never break the mock over the hook
     }

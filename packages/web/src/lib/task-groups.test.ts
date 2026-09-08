@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { RunRecord, RunStatus } from '@open-mercato/cezar-api-client'
+import type { RunRecord, RunStatus } from '@qodeca/xezar-api-client'
 import {
   BUCKET_ORDER,
   bucketOf,

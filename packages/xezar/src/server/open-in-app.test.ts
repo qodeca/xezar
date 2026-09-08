@@ -27,13 +27,13 @@ import { RUNNER_IDS } from '../core/agent-runner.ts';
 // exemption is still required because `refuseSpawnUnderTest` runs inside `runDetached` BEFORE
 // `spawn`, so it trips on the mock exactly as it would on the real thing. Scoped to the file and
 // restored afterwards, so no other suite inherits the exemption.
-const savedAllowSpawn = process.env.CEZ_ALLOW_TEST_SPAWN;
+const savedAllowSpawn = process.env.XEZ_ALLOW_TEST_SPAWN;
 beforeAll(() => {
-  process.env.CEZ_ALLOW_TEST_SPAWN = '1';
+  process.env.XEZ_ALLOW_TEST_SPAWN = '1';
 });
 afterAll(() => {
-  if (savedAllowSpawn === undefined) delete process.env.CEZ_ALLOW_TEST_SPAWN;
-  else process.env.CEZ_ALLOW_TEST_SPAWN = savedAllowSpawn;
+  if (savedAllowSpawn === undefined) delete process.env.XEZ_ALLOW_TEST_SPAWN;
+  else process.env.XEZ_ALLOW_TEST_SPAWN = savedAllowSpawn;
 });
 
 import {
@@ -71,7 +71,7 @@ describe('detectOpenTargets', () => {
     const STUBS = ['idea', 'pycharm', 'webstorm', 'goland', 'rubymine', 'phpstorm', 'clion', 'rider', 'studio'];
 
     function withStubsOnPath() {
-      stubDir = mkdtempSync(join(tmpdir(), 'cez-open-in-test-'));
+      stubDir = mkdtempSync(join(tmpdir(), 'xez-open-in-test-'));
       for (const name of STUBS) {
         const p = join(stubDir, name);
         // Marker files, not scripts: `resolveOnPath` probes them with `accessSync(X_OK)` and
@@ -207,7 +207,7 @@ describe('resolveOnPath (#469 Windows launcher safety)', () => {
   });
 
   function addStub(name: string): void {
-    stubDir ||= mkdtempSync(join(tmpdir(), 'cez-open-in-path-test-'));
+    stubDir ||= mkdtempSync(join(tmpdir(), 'xez-open-in-path-test-'));
     const stub = join(stubDir, name);
     writeFileSync(stub, '', 'utf8');
     chmodSync(stub, 0o755);

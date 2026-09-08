@@ -1,15 +1,13 @@
 /** Stable-release decisions — the pure half of `scripts/release.mjs`.
  *
- *  Sibling of `snapshot.ts`, but for the *owner-driven* `latest` channel. The
- *  `Release` workflow (`.github/workflows/release.yml`) is run manually and
- *  never fires from a push, so — unlike snapshots — a stable release is the only
- *  thing that ever moves the `latest` dist-tag (spec
- *  `.ai/specs/2026-07-18-npm-preview-publish.md`, #482).
+ *  There is exactly ONE publish channel: the owner-driven `latest` one. The `Release` workflow
+ *  (`.github/workflows/release.yml`) is `workflow_dispatch`-only and never fires from a push,
+ *  so nothing publishes to npm without a human asking for it by name (#482).
  *
  *  Two decisions live here so they stay unit-testable and side-effect-free: the next stable
- *  version for a given bump, and the pin style the release set is stamped with. Crucially,
- *  stable releases use a **caret** range — the opposite of the snapshot stamper's exact pin —
- *  so a stable `cezar-cli` picks up compatible patch releases of the implementation package.
+ *  version for a given bump, and the pin style the release set is stamped with. Stable releases
+ *  use a **caret** range, so a published service follows compatible releases of the api-client
+ *  and contract it was cut against.
  */
 
 import { stampManifestSet, type ReleaseManifests as ReleaseManifestSet } from './manifests.ts';
@@ -54,12 +52,9 @@ export type { ManifestLike, ReleaseManifests } from './manifests.ts';
 
 /** Stamp the release set to a stable version.
  *
- *  Mirror of `stampSnapshotManifests`, differing in exactly one decision: intra-release
- *  dependencies get a **caret** range (`^0.1.6`), not an exact pin. A stable `cezar-cli` should
- *  follow compatible releases of the implementation package, and a stable service should follow
- *  compatible releases of the api-client; a snapshot must pin the one exact build it was cut
- *  from. Everything else — which manifests exist, which sections carry the pin, what the alias
- *  inherits — lives in `manifests.ts` so the two channels cannot drift apart. */
+ *  Intra-release dependencies get a **caret** range (`^0.1.6`), so a published service follows
+ *  compatible releases of the api-client and the contract. Which manifests exist and which
+ *  sections carry the pin live in `manifests.ts`. */
 export function stampStableManifests(
   manifests: ReleaseManifestSet,
   version: string,

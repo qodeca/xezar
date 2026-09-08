@@ -13,7 +13,7 @@ import type {
   ProviderStatusResponse,
   RunEvent,
   RunStatus,
-} from '@open-mercato/cezar-api-client'
+} from '@qodeca/xezar-api-client'
 
 import { TaskThreadRoute, ThreadView } from './task-thread'
 import { buildTranscriptRows, mainTranscriptSections } from './session-transcript'
@@ -91,7 +91,7 @@ const line = (seq: number, type: string, rest: Record<string, unknown> = {}): Ru
 /** A small real-shaped transcript: dim lines, a v2 message, a tool, a v1 user reply. */
 const EVENTS: RunEvent[] = [
   line(1, 'lifecycle', { message: 'run started — workflow "quick-task" (runner: claude)' }),
-  line(2, 'note', { message: 'worktree ready — branch cez/r1 (base main)' }),
+  line(2, 'note', { message: 'worktree ready — branch xez/r1 (base main)' }),
   line(3, 'turn.started', { turnId: 'turn_1' }),
   line(4, 'item.completed', {
     item: { kind: 'message', id: 'item_1', role: 'assistant', text: 'It is a **cockpit** for agents.' },
@@ -156,7 +156,7 @@ describe('ThreadView', () => {
         ],
       },
     ]
-    const raw = `later:\n\nCEZ:ASK ${JSON.stringify({ questions })}`
+    const raw = `later:\n\nXEZ:ASK ${JSON.stringify({ questions })}`
     const events = [
       line(1, 'item.completed', {
         item: { kind: 'message', id: 'ask-message', role: 'assistant', text: raw },
@@ -164,12 +164,12 @@ describe('ThreadView', () => {
     ]
     renderView(<ThreadView run={run('running')} thread={reduceThread(events, { activeTurn: true })} />)
     expect(document.body.textContent).toContain('later:')
-    expect(document.body.textContent).not.toContain('CEZ:ASK')
+    expect(document.body.textContent).not.toContain('XEZ:ASK')
 
     cleanup()
     const settled = [...events, line(2, 'ask.requested', { requestId: 'ask-screenshot', questions })]
     renderView(<ThreadView run={run('waiting')} thread={reduceThread(settled)} />)
-    expect(document.body.textContent).not.toContain('CEZ:ASK')
+    expect(document.body.textContent).not.toContain('XEZ:ASK')
     expect(screen.getByText('Staff only')).not.toBeNull()
     expect(screen.getByText('Staff + customer self-service')).not.toBeNull()
   })
@@ -678,7 +678,7 @@ describe('ThreadView', () => {
 
   /**
    * #526 at the surface the user actually reported: run `6ab44452` (`om-prepare-issue`) created
-   * issue #524, declared `CEZ:ISSUE` and no `CEZ:PR`, and had one incidental PR (#454) scraped
+   * issue #524, declared `XEZ:ISSUE` and no `XEZ:PR`, and had one incidental PR (#454) scraped
    * out of its duplicate-search output. The footer linked #454 and never linked #524. Asserting
    * on the rendered anchors — not just the helpers — is what makes deleting or miswiring the
    * JSX fail.
@@ -689,20 +689,20 @@ describe('ThreadView', () => {
         run={run('done', {
           issueNumber: 524,
           markerRefs: { issue: 524 },
-          referencedPullRequestUrl: 'https://github.com/open-mercato/cezar/pull/454',
-          referencedPrCandidates: ['https://github.com/open-mercato/cezar/pull/454'],
+          referencedPullRequestUrl: 'https://github.com/qodeca/xezar/pull/454',
+          referencedPrCandidates: ['https://github.com/qodeca/xezar/pull/454'],
         })}
         thread={reduceThread(EVENTS)}
       />,
       undefined,
-      { repo: { root: '/repo', branch: 'main', remote: 'git@github.com:open-mercato/cezar.git' } },
+      { repo: { root: '/repo', branch: 'main', remote: 'git@github.com:qodeca/xezar.git' } },
     )
     await waitFor(() => {
       expect(document.querySelector('[data-slot="issue-link"]')).not.toBeNull()
     })
     const footer = document.querySelector('[data-slot="thread-footer"]')
     expect(footer?.querySelector('[data-slot="issue-link"]')?.getAttribute('href')).toBe(
-      'https://github.com/open-mercato/cezar/issues/524',
+      'https://github.com/qodeca/xezar/issues/524',
     )
     expect(footer?.querySelector('[data-slot="issue-link"]')?.textContent).toContain('Issue')
     expect(footer?.querySelector('[data-slot="pr-link"]')).toBeNull()
@@ -717,15 +717,15 @@ describe('ThreadView', () => {
   it('a task in a non-boot project synthesizes no issue link — health names the wrong repo (#526)', async () => {
     const issueRun = run('done', { markerRefs: { issue: 524 } })
     const health = {
-      bootProject: 'cezar',
-      repo: { root: '/repo', branch: 'main', remote: 'git@github.com:open-mercato/cezar.git' },
+      bootProject: 'xezar',
+      repo: { root: '/repo', branch: 'main', remote: 'git@github.com:qodeca/xezar.git' },
     }
 
     // Control — unscoped IS the boot project, so health's remote really is this task's repo.
     renderView(<ThreadView run={issueRun} thread={reduceThread(EVENTS)} />, undefined, health)
     await waitFor(() => {
       expect(document.querySelector('[data-slot="issue-link"]')?.getAttribute('href')).toBe(
-        'https://github.com/open-mercato/cezar/issues/524',
+        'https://github.com/qodeca/xezar/issues/524',
       )
     })
     cleanup()
@@ -746,15 +746,15 @@ describe('ThreadView', () => {
   it('a PR-subject closed run still gets its PR link and no invented issue link (#526)', () => {
     renderView(
       <ThreadView
-        run={run('done', { pullRequestUrl: 'https://github.com/open-mercato/cezar/pull/900' })}
+        run={run('done', { pullRequestUrl: 'https://github.com/qodeca/xezar/pull/900' })}
         thread={reduceThread(EVENTS)}
       />,
       undefined,
-      { repo: { root: '/repo', branch: 'main', remote: 'git@github.com:open-mercato/cezar.git' } },
+      { repo: { root: '/repo', branch: 'main', remote: 'git@github.com:qodeca/xezar.git' } },
     )
     const footer = document.querySelector('[data-slot="thread-footer"]')
     expect(footer?.querySelector('[data-slot="pr-link"]')?.getAttribute('href')).toBe(
-      'https://github.com/open-mercato/cezar/pull/900',
+      'https://github.com/qodeca/xezar/pull/900',
     )
     expect(footer?.querySelector('[data-slot="issue-link"]')).toBeNull()
   })
@@ -779,7 +779,7 @@ describe('ThreadView', () => {
   })
 
   it('the first real event replaces the queued placeholder', () => {
-    renderView(<ThreadView run={run('queued')} thread={reduceThread([line(1, 'lifecycle', { message: 'cezar restarted — task re-queued' })])} />)
+    renderView(<ThreadView run={run('queued')} thread={reduceThread([line(1, 'lifecycle', { message: 'xezar restarted — task re-queued' })])} />)
     expect(document.querySelector('[data-slot="queued-state"]')).toBeNull()
     expect(document.querySelector('[data-slot="note-line"]')?.textContent).toContain('re-queued')
   })

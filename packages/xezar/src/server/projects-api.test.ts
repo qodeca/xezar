@@ -12,7 +12,7 @@ import { realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { PROJECT_TAGS_MAX, PROJECT_TAG_MAX_LENGTH } from '@open-mercato/cezar-contract';
+import { PROJECT_TAGS_MAX, PROJECT_TAG_MAX_LENGTH } from '@qodeca/xezar-contract';
 import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { allocateProjectSlug, clearProjectProbeCache, listProjects, registerProject } from '../workspace/projects.ts';
@@ -57,43 +57,43 @@ interface HealthBody {
 }
 
 describe('workspace projects API', () => {
-  const savedHome = process.env.CEZ_HOME;
-  const savedRemote = process.env.CEZ_REMOTE;
-  const savedFollowups = process.env.CEZ_FOLLOWUPS;
-  const savedSingleProject = process.env.CEZ_SINGLE_PROJECT;
-  const savedDryRun = process.env.CEZ_DRY_RUN;
+  const savedHome = process.env.XEZ_HOME;
+  const savedRemote = process.env.XEZ_REMOTE;
+  const savedFollowups = process.env.XEZ_FOLLOWUPS;
+  const savedSingleProject = process.env.XEZ_SINGLE_PROJECT;
+  const savedDryRun = process.env.XEZ_DRY_RUN;
   let home: string;
   let repoRoot: string;
   let otherRoot: string;
   let store: RunStore;
 
   beforeEach(() => {
-    home = mkdtempSync(join(realpathSync(tmpdir()), 'cez-workspace-'));
-    repoRoot = mkdtempSync(join(realpathSync(tmpdir()), 'cez-projects-boot-'));
-    otherRoot = mkdtempSync(join(realpathSync(tmpdir()), 'cez-projects-other-'));
-    process.env.CEZ_HOME = home; // paths.ts sends all workspace paths here
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
-    delete process.env.CEZ_REMOTE;
-    delete process.env.CEZ_FOLLOWUPS;
-    delete process.env.CEZ_SINGLE_PROJECT;
+    home = mkdtempSync(join(realpathSync(tmpdir()), 'xez-workspace-'));
+    repoRoot = mkdtempSync(join(realpathSync(tmpdir()), 'xez-projects-boot-'));
+    otherRoot = mkdtempSync(join(realpathSync(tmpdir()), 'xez-projects-other-'));
+    process.env.XEZ_HOME = home; // paths.ts sends all workspace paths here
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    delete process.env.XEZ_REMOTE;
+    delete process.env.XEZ_FOLLOWUPS;
+    delete process.env.XEZ_SINGLE_PROJECT;
     // Deterministic on any machine: no network, no real agent CLIs.
-    process.env.CEZ_DRY_RUN = '1';
+    process.env.XEZ_DRY_RUN = '1';
     clearProjectProbeCache();
   });
 
   afterEach(() => {
     store.flush();
     for (const dir of [home, repoRoot, otherRoot]) rmSync(dir, { recursive: true, force: true });
-    if (savedHome === undefined) delete process.env.CEZ_HOME;
-    else process.env.CEZ_HOME = savedHome;
-    if (savedRemote === undefined) delete process.env.CEZ_REMOTE;
-    else process.env.CEZ_REMOTE = savedRemote;
-    if (savedFollowups === undefined) delete process.env.CEZ_FOLLOWUPS;
-    else process.env.CEZ_FOLLOWUPS = savedFollowups;
-    if (savedSingleProject === undefined) delete process.env.CEZ_SINGLE_PROJECT;
-    else process.env.CEZ_SINGLE_PROJECT = savedSingleProject;
-    if (savedDryRun === undefined) delete process.env.CEZ_DRY_RUN;
-    else process.env.CEZ_DRY_RUN = savedDryRun;
+    if (savedHome === undefined) delete process.env.XEZ_HOME;
+    else process.env.XEZ_HOME = savedHome;
+    if (savedRemote === undefined) delete process.env.XEZ_REMOTE;
+    else process.env.XEZ_REMOTE = savedRemote;
+    if (savedFollowups === undefined) delete process.env.XEZ_FOLLOWUPS;
+    else process.env.XEZ_FOLLOWUPS = savedFollowups;
+    if (savedSingleProject === undefined) delete process.env.XEZ_SINGLE_PROJECT;
+    else process.env.XEZ_SINGLE_PROJECT = savedSingleProject;
+    if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
+    else process.env.XEZ_DRY_RUN = savedDryRun;
   });
 
   const makeApp = (over: Partial<ServerDeps> = {}) =>
@@ -124,7 +124,7 @@ describe('workspace projects API', () => {
       // Unregistered boot repo (e.g. worktree/$HOME/unreadable workspace):
       // bootProject degrades to the repo's would-be slug, not an error.
       expect(body.bootProject).toBe(allocateProjectSlug(repoRoot, []));
-      expect(body.projectsDir).toBe('~/cezar/projects');
+      expect(body.projectsDir).toBe('~/xezar/projects');
     });
 
     it('lists registered projects with root + status and derives bootProject from the registry', async () => {
@@ -149,7 +149,7 @@ describe('workspace projects API', () => {
       });
       // Derived lazily by realpath lookup — the boot repo, not the other one.
       expect(body.bootProject).toBe(boot.id);
-      expect(body.projectsDir).toBe('~/cezar/projects');
+      expect(body.projectsDir).toBe('~/xezar/projects');
     });
 
     it('keeps an unregistered boot project distinct from a registered project with the same slug', async () => {
@@ -171,7 +171,7 @@ describe('workspace projects API', () => {
     it('pins flagged reads to the boot project without pruning stored projects', async () => {
       const boot = await registerProject(repoRoot);
       const other = await registerProject(otherRoot);
-      process.env.CEZ_SINGLE_PROJECT = '1';
+      process.env.XEZ_SINGLE_PROJECT = '1';
 
       const body = await getProjects({ bootProjectId: boot.id });
       expect(body.projects.map((project) => project.id)).toEqual([boot.id]);
@@ -217,12 +217,12 @@ describe('workspace projects API', () => {
         cloneCalls += 1;
         return { ok: false, error: 'must not run' };
       };
-      process.env.CEZ_SINGLE_PROJECT = '1';
+      process.env.XEZ_SINGLE_PROJECT = '1';
 
       const res = await apiRequest(makeApp({ cloneRunner }), '/api/v1/projects/checkout', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ url: 'open-mercato/cezar' }),
+        body: JSON.stringify({ url: 'qodeca/xezar' }),
       });
 
       expect(res.status).toBe(409);
@@ -234,7 +234,7 @@ describe('workspace projects API', () => {
     });
 
     it('refuses filesystem browsing with the stable error', async () => {
-      process.env.CEZ_SINGLE_PROJECT = '1';
+      process.env.XEZ_SINGLE_PROJECT = '1';
       const res = await apiRequest(
         makeApp(),
         `/api/v1/fs/browse?path=${encodeURIComponent(otherRoot)}`,
@@ -267,7 +267,7 @@ describe('workspace projects API', () => {
       const bus = new WorkspaceEventBus();
       const seen: string[] = [];
       bus.on((event) => seen.push(event));
-      process.env.CEZ_SINGLE_PROJECT = '1';
+      process.env.XEZ_SINGLE_PROJECT = '1';
 
       const { status, body } = await post({ root: otherRoot }, { workspaceEvents: bus });
 
@@ -358,7 +358,7 @@ describe('workspace projects API', () => {
       await mergeWriteWorkspaceConfig((config) => {
         config.browseRoot = checkoutRoot;
       });
-      process.env.CEZ_REMOTE = '1';
+      process.env.XEZ_REMOTE = '1';
       const refused = await post({ root: otherRoot });
       expect(refused.status).toBe(400);
       // The message must not name the root it is protecting (fs-browse's rule).
@@ -378,7 +378,7 @@ describe('workspace projects API', () => {
       await mergeWriteWorkspaceConfig((config) => {
         config.browseRoot = checkoutRoot;
       });
-      process.env.CEZ_REMOTE = '1';
+      process.env.XEZ_REMOTE = '1';
       const exists = await post({ root: otherRoot }); // real folder, outside
       const absent = await post({ root: join(otherRoot, 'nope') }); // never existed
       expect(exists.status).toBe(400);
@@ -400,7 +400,7 @@ describe('workspace projects API', () => {
       await mergeWriteWorkspaceConfig((config) => {
         config.browseRoot = checkoutRoot;
       });
-      process.env.CEZ_REMOTE = '1';
+      process.env.XEZ_REMOTE = '1';
       const typo = join(checkoutRoot, 'my-porject');
       const answer = await post({ root: typo });
       expect(answer.status).toBe(400);
@@ -418,7 +418,7 @@ describe('workspace projects API', () => {
       });
       const escape = join(checkoutRoot, 'escape');
       symlinkSync(otherRoot, escape);
-      process.env.CEZ_REMOTE = '1';
+      process.env.XEZ_REMOTE = '1';
       const answer = await post({ root: escape });
       expect(answer.status).toBe(400);
       expect(answer.body.error).toBe('folder is outside the browsable root');
@@ -446,7 +446,7 @@ describe('workspace projects API', () => {
     it('refuses removal in single-project mode before registry or context side effects', async () => {
       const other = await registerProject(otherRoot);
       const contexts = new ProjectContexts({ listProjects });
-      process.env.CEZ_SINGLE_PROJECT = '1';
+      process.env.XEZ_SINGLE_PROJECT = '1';
 
       const { status, body } = await del(other.id, { contexts });
 
@@ -477,13 +477,13 @@ describe('workspace projects API', () => {
     };
 
     it('deregisters the project, emits project-removed, and leaves every file on disk untouched', async () => {
-      // A realistic project: source, git metadata, and its own cezar state — the three things a
+      // A realistic project: source, git metadata, and its own xezar state — the three things a
       // user would be devastated to lose behind a button labelled "Remove".
       mkdirSync(join(otherRoot, '.git'), { recursive: true });
-      mkdirSync(join(otherRoot, '.ai/cezar/runs'), { recursive: true });
+      mkdirSync(join(otherRoot, '.ai/xezar/runs'), { recursive: true });
       writeFileSync(join(otherRoot, 'README.md'), '# keep me\n', 'utf8');
       writeFileSync(join(otherRoot, '.git/HEAD'), 'ref: refs/heads/main\n', 'utf8');
-      writeFileSync(join(otherRoot, '.ai/cezar/runs.json'), '[]\n', 'utf8');
+      writeFileSync(join(otherRoot, '.ai/xezar/runs.json'), '[]\n', 'utf8');
       clearProjectProbeCache();
       const other = await registerProject(otherRoot);
       const before = snapshot(otherRoot);
@@ -588,7 +588,7 @@ describe('workspace projects API', () => {
       const other = await registerProject(otherRoot);
       const before = readFileSync(workspaceConfigPath(), 'utf8');
       const { semaphore, refreshes } = countingSemaphore();
-      process.env.CEZ_SINGLE_PROJECT = '1';
+      process.env.XEZ_SINGLE_PROJECT = '1';
 
       const { status, body } = await patch(other.id, { maxParallel: 1 }, { semaphore });
 
@@ -720,7 +720,7 @@ describe('workspace projects API', () => {
     it('pins flagged health listings to the explicit boot identity', async () => {
       const boot = await registerProject(repoRoot);
       await registerProject(otherRoot);
-      process.env.CEZ_SINGLE_PROJECT = '1';
+      process.env.XEZ_SINGLE_PROJECT = '1';
 
       const body = await getHealth({ bootProjectId: boot.id });
       expect(body.projects).toEqual([{ id: boot.id, name: boot.name }]);
@@ -788,10 +788,10 @@ describe('workspace projects API', () => {
       expect(raw).not.toContain(otherRoot);
     });
 
-    it('hosted mode (CEZ_REMOTE=1): no absolute root at all — boot repo included (#431)', async () => {
+    it('hosted mode (XEZ_REMOTE=1): no absolute root at all — boot repo included (#431)', async () => {
       const boot = await registerProject(repoRoot);
       const other = await registerProject(otherRoot);
-      process.env.CEZ_REMOTE = '1';
+      process.env.XEZ_REMOTE = '1';
       const body = await getHealth();
       expect(body.repoRoot).toBe(basename(repoRoot)); // existing trim, untouched
       const raw = JSON.stringify(body);

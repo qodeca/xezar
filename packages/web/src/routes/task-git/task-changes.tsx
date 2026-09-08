@@ -5,7 +5,7 @@ import { useParams } from 'react-router'
 
 import { ApiError, createRunPr, getRunFile, openRunFileInApp, openRunInCli, pushRun, runFileRawUrl } from '@/api/client'
 import { queryKeys, useHealth, useRepo, useRun, useRunChanges } from '@/api/queries'
-import type { ApiRun } from '@open-mercato/cezar-api-client'
+import type { ApiRun } from '@qodeca/xezar-api-client'
 import { CenteredState } from '@/components/centered-state'
 import { Diff, type DiffHandle, type DiffMode } from '@/components/diff'
 import { toast } from '@/components/ui/toaster'
@@ -42,7 +42,7 @@ export function TaskChangesRoute() {
 function ChangesView({ run }: { run: ApiRun }) {
   const health = useHealth()
   // The remote that decides whether Push is offered comes from the PROJECT-scoped `/repo`, not
-  // from `/api/health.repo`: health is bound to the boot folder, so a cezar booted outside a git
+  // from `/api/health.repo`: health is bound to the boot folder, so a xezar booted outside a git
   // repo reported no remote for every project (#791).
   const repo = useRepo()
   // Poll while the run is active so writes appear as the agent makes them.

@@ -29,17 +29,17 @@ describe('POST /api/v1/runs/:id/continue override', () => {
   };
   let captured: { id: string; opts: ContinueOpts } | undefined;
   let home: string;
-  const savedDryRun = process.env.CEZ_DRY_RUN;
-  const savedHome = process.env.CEZ_HOME;
+  const savedDryRun = process.env.XEZ_DRY_RUN;
+  const savedHome = process.env.XEZ_HOME;
 
   beforeEach(() => {
-    process.env.CEZ_DRY_RUN = '1';
-    // Agent accounts resolve against `~/.cezar/` — pinned to a temp home so the machine's real
+    process.env.XEZ_DRY_RUN = '1';
+    // Agent accounts resolve against `~/.xezar/` — pinned to a temp home so the machine's real
     // logins can neither be read nor decide the outcome.
-    home = mkdtempSync(join(realpathSync(tmpdir()), 'cez-continue-home-'));
-    process.env.CEZ_HOME = home;
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-continue-'));
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    home = mkdtempSync(join(realpathSync(tmpdir()), 'xez-continue-home-'));
+    process.env.XEZ_HOME = home;
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-continue-'));
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     captured = undefined;
     runId = store.createRun({
       title: 't',
@@ -59,10 +59,10 @@ describe('POST /api/v1/runs/:id/continue override', () => {
   afterEach(() => {
     store.flush();
     for (const dir of [repoRoot, home]) rmSync(dir, { recursive: true, force: true });
-    if (savedDryRun === undefined) delete process.env.CEZ_DRY_RUN;
-    else process.env.CEZ_DRY_RUN = savedDryRun;
-    if (savedHome === undefined) delete process.env.CEZ_HOME;
-    else process.env.CEZ_HOME = savedHome;
+    if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
+    else process.env.XEZ_DRY_RUN = savedDryRun;
+    if (savedHome === undefined) delete process.env.XEZ_HOME;
+    else process.env.XEZ_HOME = savedHome;
   });
 
   /** One stored Claude login beside the discovered account. */
@@ -110,7 +110,7 @@ describe('POST /api/v1/runs/:id/continue override', () => {
 
   it('rejects a model override while locked but still permits switching runners', async () => {
     writeFileSync(
-      join(repoRoot, '.ai', 'cezar', 'config.json'),
+      join(repoRoot, '.ai', 'xezar', 'config.json'),
       JSON.stringify({ modelsLocked: true }),
       'utf8',
     );

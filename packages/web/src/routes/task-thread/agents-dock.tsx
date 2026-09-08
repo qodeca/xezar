@@ -1,14 +1,13 @@
 import { BotIcon, ChevronDownIcon } from 'lucide-react'
 import { useState } from 'react'
 
-import type { ToolStatus } from '@open-mercato/cezar-api-client'
+import type { ToolStatus } from '@qodeca/xezar-api-client'
 import { cn } from '@/lib/utils'
 
 import { activeSubagent, subagentActivityText, subagentCounts, type SubagentSummary } from './subagent-dock'
 
 /**
- * The Agents dock (spec `.ai/specs/2026-07-20-grouped-subagent-display.md` §"Agents dock",
- * issue #474; mockup `assets/grouped-subagent-display/mockup-01-agents-dock.png`): the current
+ * The Agents dock (#474; mockup `assets/grouped-subagent-display/mockup-01-agents-dock.png`): the current
  * fan-out's sub-agents, pinned above the composer as a sibling of the plan dock.
  *
  * It answers the one question the transcript cannot — *what is running right now* — because

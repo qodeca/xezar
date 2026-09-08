@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import type { RunRecord, RunStatus } from '@open-mercato/cezar-api-client'
+import type { RunRecord, RunStatus } from '@qodeca/xezar-api-client'
 import { wantsAttention } from '@/lib/attention'
 import {
   DEFAULT_NOTIFICATIONS,
@@ -165,7 +165,7 @@ describe('describeRunNotification', () => {
     expect(describeRunNotification(run({ status: 'waiting' }))).toEqual({
       title: 'Normalize the agent-event protocol',
       body: 'Task needs you',
-      tag: 'cezar-run-r1',
+      tag: 'xezar-run-r1',
     })
     expect(
       describeRunNotification(run({ status: 'review', titleSummary: 'Protocol cleanup' })).title,

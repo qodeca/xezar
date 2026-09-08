@@ -12,19 +12,19 @@ import { createApp, type WorkspaceConfigResponse } from './server.ts';
 
 /**
  * The workspace settings API (multi-project spec, step 2.7):
- * `GET/PUT /api/v1/workspace/config` — the settings slice of `~/.cezar/config.json`
+ * `GET/PUT /api/v1/workspace/config` — the settings slice of `~/.xezar/config.json`
  * with the `projectsDir` writability probe and the semaphore `refresh()` hook —
  * and `GET/PUT /api/v1/workspace/ui-state`, the global GUI state with the same
  * merge/key-cap semantics as the per-repo ui-state route. All workspace-level:
  * single-mount, never under `/api/v1/p/`.
  */
 describe('the workspace settings API (step 2.7)', () => {
-  const savedHome = process.env.CEZ_HOME;
-  const savedBrowseRoot = process.env.CEZ_BROWSE_ROOT;
-  const savedProjectsDir = process.env.CEZ_PROJECTS_DIR;
-  const savedSkillsAutoUpdate = process.env.CEZ_SKILLS_AUTO_UPDATE;
-  const savedAutonomousDefault = process.env.CEZ_AUTONOMOUS_DEFAULT;
-  const savedWorktreeDefault = process.env.CEZ_WORKTREE_DEFAULT;
+  const savedHome = process.env.XEZ_HOME;
+  const savedBrowseRoot = process.env.XEZ_BROWSE_ROOT;
+  const savedProjectsDir = process.env.XEZ_PROJECTS_DIR;
+  const savedSkillsAutoUpdate = process.env.XEZ_SKILLS_AUTO_UPDATE;
+  const savedAutonomousDefault = process.env.XEZ_AUTONOMOUS_DEFAULT;
+  const savedWorktreeDefault = process.env.XEZ_WORKTREE_DEFAULT;
   let home: string;
   let repoRoot: string;
   let store: RunStore;
@@ -32,17 +32,17 @@ describe('the workspace settings API (step 2.7)', () => {
   let app: Hono;
 
   beforeEach(() => {
-    home = mkdtempSync(join(tmpdir(), 'cez-workspace-api-'));
-    process.env.CEZ_HOME = home; // paths.ts sends all workspace paths here
-    delete process.env.CEZ_BROWSE_ROOT;
-    delete process.env.CEZ_PROJECTS_DIR;
-    delete process.env.CEZ_SKILLS_AUTO_UPDATE;
-    delete process.env.CEZ_AUTONOMOUS_DEFAULT;
-    delete process.env.CEZ_WORKTREE_DEFAULT;
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-workspace-api-repo-'));
-    mkdirSync(join(repoRoot, '.ai/cezar'), { recursive: true });
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
-    // The REAL semaphore with its production loader (which reads the CEZ_HOME
+    home = mkdtempSync(join(tmpdir(), 'xez-workspace-api-'));
+    process.env.XEZ_HOME = home; // paths.ts sends all workspace paths here
+    delete process.env.XEZ_BROWSE_ROOT;
+    delete process.env.XEZ_PROJECTS_DIR;
+    delete process.env.XEZ_SKILLS_AUTO_UPDATE;
+    delete process.env.XEZ_AUTONOMOUS_DEFAULT;
+    delete process.env.XEZ_WORKTREE_DEFAULT;
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-workspace-api-repo-'));
+    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    // The REAL semaphore with its production loader (which reads the XEZ_HOME
     // config), so the PUT → refresh() → cached-limits chain is observed end to
     // end. The routes never touch the manager — an empty stub is honest.
     semaphore = new WorkspaceSemaphore();
@@ -57,18 +57,18 @@ describe('the workspace settings API (step 2.7)', () => {
 
   afterEach(() => {
     store.flush();
-    if (savedHome === undefined) delete process.env.CEZ_HOME;
-    else process.env.CEZ_HOME = savedHome;
-    if (savedBrowseRoot === undefined) delete process.env.CEZ_BROWSE_ROOT;
-    else process.env.CEZ_BROWSE_ROOT = savedBrowseRoot;
-    if (savedProjectsDir === undefined) delete process.env.CEZ_PROJECTS_DIR;
-    else process.env.CEZ_PROJECTS_DIR = savedProjectsDir;
-    if (savedSkillsAutoUpdate === undefined) delete process.env.CEZ_SKILLS_AUTO_UPDATE;
-    else process.env.CEZ_SKILLS_AUTO_UPDATE = savedSkillsAutoUpdate;
-    if (savedAutonomousDefault === undefined) delete process.env.CEZ_AUTONOMOUS_DEFAULT;
-    else process.env.CEZ_AUTONOMOUS_DEFAULT = savedAutonomousDefault;
-    if (savedWorktreeDefault === undefined) delete process.env.CEZ_WORKTREE_DEFAULT;
-    else process.env.CEZ_WORKTREE_DEFAULT = savedWorktreeDefault;
+    if (savedHome === undefined) delete process.env.XEZ_HOME;
+    else process.env.XEZ_HOME = savedHome;
+    if (savedBrowseRoot === undefined) delete process.env.XEZ_BROWSE_ROOT;
+    else process.env.XEZ_BROWSE_ROOT = savedBrowseRoot;
+    if (savedProjectsDir === undefined) delete process.env.XEZ_PROJECTS_DIR;
+    else process.env.XEZ_PROJECTS_DIR = savedProjectsDir;
+    if (savedSkillsAutoUpdate === undefined) delete process.env.XEZ_SKILLS_AUTO_UPDATE;
+    else process.env.XEZ_SKILLS_AUTO_UPDATE = savedSkillsAutoUpdate;
+    if (savedAutonomousDefault === undefined) delete process.env.XEZ_AUTONOMOUS_DEFAULT;
+    else process.env.XEZ_AUTONOMOUS_DEFAULT = savedAutonomousDefault;
+    if (savedWorktreeDefault === undefined) delete process.env.XEZ_WORKTREE_DEFAULT;
+    else process.env.XEZ_WORKTREE_DEFAULT = savedWorktreeDefault;
     for (const dir of [home, repoRoot]) rmSync(dir, { recursive: true, force: true });
   });
 
@@ -90,7 +90,7 @@ describe('the workspace settings API (step 2.7)', () => {
     const body = (await res.json()) as WorkspaceConfigResponse & Record<string, unknown>;
     expect(body).toEqual({
       browseRoot: '~/',
-      projectsDir: '~/cezar/projects',
+      projectsDir: '~/xezar/projects',
       skillsAutoUpdate: null,
       effectiveSkillsAutoUpdate: true,
       composerDefaults: {
@@ -119,8 +119,8 @@ describe('the workspace settings API (step 2.7)', () => {
   });
 
   it('GET resolves both zero-config roots from the environment', async () => {
-    process.env.CEZ_BROWSE_ROOT = '~/source';
-    process.env.CEZ_PROJECTS_DIR = '~/clones';
+    process.env.XEZ_BROWSE_ROOT = '~/source';
+    process.env.XEZ_PROJECTS_DIR = '~/clones';
     const body = (await (await getConfig()).json()) as WorkspaceConfigResponse;
     expect(body).toMatchObject({ browseRoot: '~/source', projectsDir: '~/clones' });
   });
@@ -139,7 +139,7 @@ describe('the workspace settings API (step 2.7)', () => {
     expect(res.status).toBe(200);
     expect((await res.json()) as WorkspaceConfigResponse).toEqual({
       browseRoot: '~/',
-      projectsDir: '~/cezar/projects',
+      projectsDir: '~/xezar/projects',
       skillsAutoUpdate: null,
       effectiveSkillsAutoUpdate: true,
       composerDefaults: {
@@ -203,7 +203,7 @@ describe('the workspace settings API (step 2.7)', () => {
   });
 
   it('PUT stores explicit auto-update values and null clears back to the inherited env value', async () => {
-    process.env.CEZ_SKILLS_AUTO_UPDATE = '0';
+    process.env.XEZ_SKILLS_AUTO_UPDATE = '0';
     expect((await (await getConfig()).json()) as WorkspaceConfigResponse).toMatchObject({
       skillsAutoUpdate: null,
       effectiveSkillsAutoUpdate: false,
@@ -219,8 +219,8 @@ describe('the workspace settings API (step 2.7)', () => {
   });
 
   it('PUT stores and independently clears composer defaults while exposing env inheritance', async () => {
-    process.env.CEZ_AUTONOMOUS_DEFAULT = '1';
-    process.env.CEZ_WORKTREE_DEFAULT = '0';
+    process.env.XEZ_AUTONOMOUS_DEFAULT = '1';
+    process.env.XEZ_WORKTREE_DEFAULT = '0';
     const inherited = (await (await getConfig()).json()) as WorkspaceConfigResponse;
     expect(inherited.composerDefaults).toEqual({
       autonomous: null,
@@ -258,7 +258,7 @@ describe('the workspace settings API (step 2.7)', () => {
     writeFileSync(
       workspaceConfigPath(),
       JSON.stringify({
-        projects: [{ id: 'cezar', root: '/tmp/projects/cezar' }],
+        projects: [{ id: 'xezar', root: '/tmp/projects/xezar' }],
         futureKey: true,
       }),
       'utf8',
@@ -267,7 +267,7 @@ describe('the workspace settings API (step 2.7)', () => {
     const raw = rawConfig();
     // The merge-write materializes the entry's schema defaults (name, dates…) —
     // what matters is the registration itself survives a settings PUT.
-    expect(raw.projects).toMatchObject([{ id: 'cezar', root: '/tmp/projects/cezar' }]);
+    expect(raw.projects).toMatchObject([{ id: 'xezar', root: '/tmp/projects/xezar' }]);
     expect(raw.futureKey).toBe(true);
     expect((raw.resources as Record<string, unknown>).maxParallel).toBe(4);
   });
@@ -291,7 +291,7 @@ describe('the workspace settings API (step 2.7)', () => {
     expect(rawConfig().browseRoot).toBe(browseRoot);
     expect(readdirSync(browseRoot)).toEqual([]);
     expect(((await (await getConfig()).json()) as WorkspaceConfigResponse).projectsDir).toBe(
-      '~/cezar/projects',
+      '~/xezar/projects',
     );
   });
 
@@ -361,17 +361,17 @@ describe('the workspace settings API (step 2.7)', () => {
     expect(await res.json()).toEqual({});
   });
 
-  it('PUT merges shallowly into ~/.cezar/ui-state.json — later keys never drop earlier ones', async () => {
+  it('PUT merges shallowly into ~/.xezar/ui-state.json — later keys never drop earlier ones', async () => {
     expect((await putUiState({ appearance: { accent: 'violet' } })).status).toBe(200);
-    const res = await putUiState({ sidebar: { collapsed: { cezar: true } } });
+    const res = await putUiState({ sidebar: { collapsed: { xezar: true } } });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
       appearance: { accent: 'violet' },
-      sidebar: { collapsed: { cezar: true } },
+      sidebar: { collapsed: { xezar: true } },
     });
     expect(rawUiState()).toEqual({
       appearance: { accent: 'violet' },
-      sidebar: { collapsed: { cezar: true } },
+      sidebar: { collapsed: { xezar: true } },
     });
     // The workspace file, not the boot repo's — the per-repo twin stays empty.
     expect(await (await apiRequest(app, '/api/v1/ui-state')).json()).toEqual({});
@@ -516,7 +516,7 @@ describe('the workspace settings API (step 2.7)', () => {
   });
 
   it('rejects a malformed known key instead of writing garbage', async () => {
-    const res = await putUiState({ sidebar: { collapsed: { cezar: 'yes' } } });
+    const res = await putUiState({ sidebar: { collapsed: { xezar: 'yes' } } });
     expect(res.status).toBe(400);
     expect((await res.json()) as { error: string }).toHaveProperty('error');
     expect(() => readFileSync(workspaceUiStatePath(), 'utf8')).toThrow(); // nothing written

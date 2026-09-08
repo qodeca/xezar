@@ -82,14 +82,14 @@ const fixtures: Fixture[] = [];
  *  mocked here, so isolated runs genuinely succeed and can be observed
  *  overtaking root runs that are queued behind the lease. */
 function fixtureRepo(): Fixture {
-  const root = mkdtempSync(join(tmpdir(), 'cez-root-lease-'));
+  const root = mkdtempSync(join(tmpdir(), 'xez-root-lease-'));
   execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: root });
   execFileSync('git', [...GIT_ID, 'commit', '--allow-empty', '-q', '-m', 'base'], { cwd: root });
-  const store = RunStore.open(join(root, '.ai/cezar'));
+  const store = RunStore.open(join(root, '.ai/xezar'));
   const manager = new RunManager(store, root);
-  // Under `.ai/cezar` on purpose: nothing treats that directory as repository
+  // Under `.ai/xezar` on purpose: nothing treats that directory as repository
   // content, so the gate can never turn up in a worktree diff or the review gate.
-  const gate = join(root, '.ai/cezar', 'lease-gate');
+  const gate = join(root, '.ai/xezar', 'lease-gate');
   const started: string[] = [];
   const fixture: Fixture = {
     root,

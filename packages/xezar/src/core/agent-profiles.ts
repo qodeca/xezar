@@ -59,7 +59,7 @@ export function supportsProfiles(provider: ProviderId): boolean {
  * `{}` is load-bearing, not a convenience: `buildChildEnv` applies `extraEnv` AFTER its allowlist
  * and so bypasses it entirely, which makes this function the only thing standing between a
  * profile and the child environment. Returning nothing for the zero-config case means the
- * overwhelmingly common path adds literally no variable — the same environment cezar has always
+ * overwhelmingly common path adds literally no variable — the same environment xezar has always
  * spawned. It also means this can never emit one provider's variable for another provider's
  * process: the name comes from `PROFILE_ENV_VAR[provider]` and nowhere else.
  */

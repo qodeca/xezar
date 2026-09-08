@@ -23,8 +23,8 @@ import { createApp } from './server.ts';
 const V1 = '/api/v1';
 
 describe('the versioned API surface', () => {
-  const savedHome = process.env.CEZ_HOME;
-  const savedDryRun = process.env.CEZ_DRY_RUN;
+  const savedHome = process.env.XEZ_HOME;
+  const savedDryRun = process.env.XEZ_DRY_RUN;
   let home: string;
   let repoRoot: string;
   let store: RunStore;
@@ -33,16 +33,16 @@ describe('the versioned API surface', () => {
   let bootId: string;
 
   beforeEach(async () => {
-    home = mkdtempSync(join(tmpdir(), 'cez-v1-home-'));
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-v1-boot-'));
-    process.env.CEZ_HOME = home;
-    process.env.CEZ_DRY_RUN = '1';
+    home = mkdtempSync(join(tmpdir(), 'xez-v1-home-'));
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-v1-boot-'));
+    process.env.XEZ_HOME = home;
+    process.env.XEZ_DRY_RUN = '1';
     // `skillsRepos: []` keeps the workflow catalog hermetic — no background clone can warm a
     // cache between the legacy request and the versioned one.
-    mkdirSync(join(repoRoot, '.ai/cezar'), { recursive: true });
-    writeFileSync(join(repoRoot, '.ai/cezar', 'config.json'), '{"skillsRepos": []}\n', 'utf8');
+    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
+    writeFileSync(join(repoRoot, '.ai/xezar', 'config.json'), '{"skillsRepos": []}\n', 'utf8');
     clearProjectProbeCache();
-    store = RunStore.open(join(repoRoot, '.ai/cezar'), { keepLive: true });
+    store = RunStore.open(join(repoRoot, '.ai/xezar'), { keepLive: true });
     contexts = new ProjectContexts({ listProjects });
     bootId = (await registerProject(repoRoot)).id;
     app = createApp({
@@ -59,10 +59,10 @@ describe('the versioned API surface', () => {
     store.flush();
     rmSync(home, { recursive: true, force: true });
     rmSync(repoRoot, { recursive: true, force: true });
-    if (savedHome === undefined) delete process.env.CEZ_HOME;
-    else process.env.CEZ_HOME = savedHome;
-    if (savedDryRun === undefined) delete process.env.CEZ_DRY_RUN;
-    else process.env.CEZ_DRY_RUN = savedDryRun;
+    if (savedHome === undefined) delete process.env.XEZ_HOME;
+    else process.env.XEZ_HOME = savedHome;
+    if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
+    else process.env.XEZ_DRY_RUN = savedDryRun;
   });
 
   const answer = async (path: string): Promise<{ status: number; body: string }> => {

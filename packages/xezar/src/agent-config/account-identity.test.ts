@@ -15,7 +15,7 @@ describe('readAccountIdentity', () => {
   let home: string;
 
   beforeEach(() => {
-    home = mkdtempSync(join(tmpdir(), 'cez-identity-'));
+    home = mkdtempSync(join(tmpdir(), 'xez-identity-'));
   });
 
   afterEach(() => {

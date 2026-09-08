@@ -100,7 +100,7 @@ export async function getBranches(root: string): Promise<string[]> {
   } catch {
     // no remotes — local only
   }
-  return [...names].filter((n) => !n.startsWith('cez/')).sort((a, b) => a.localeCompare(b));
+  return [...names].filter((n) => !n.startsWith('xez/')).sort((a, b) => a.localeCompare(b));
 }
 
 /** One commit — message + stat + patch — for the Repo view's expandable rows. */

@@ -89,20 +89,20 @@ describe('parseShortstat', () => {
 
 describe('worktreeSizeBytes (#483)', () => {
   it('returns a positive byte count for a real directory', async () => {
-    const repo = await fixtureRepo('cez-du-');
+    const repo = await fixtureRepo('xez-du-');
     const size = await worktreeSizeBytes(repo);
     expect(size).not.toBeNull();
     expect(size!).toBeGreaterThan(0);
   });
 
   it('degrades to null for a path that does not exist (du errors)', async () => {
-    expect(await worktreeSizeBytes(join(tmpdir(), 'cez-du-nope-does-not-exist-12345'))).toBeNull();
+    expect(await worktreeSizeBytes(join(tmpdir(), 'xez-du-nope-does-not-exist-12345'))).toBeNull();
   });
 });
 
 describe('createWorktree recovery (real git)', () => {
   it('is idempotent when the task worktree is already registered', async () => {
-    const repo = await fixtureRepo('cez-worktree-idempotent-');
+    const repo = await fixtureRepo('xez-worktree-idempotent-');
     const runId = '11111111-1111-4111-8111-111111111111';
 
     const first = await createWorktree(repo, runId, 'main');
@@ -115,7 +115,7 @@ describe('createWorktree recovery (real git)', () => {
   });
 
   it('reattaches a surviving task branch after its worktree directory is deleted', async () => {
-    const repo = await fixtureRepo('cez-worktree-reattach-');
+    const repo = await fixtureRepo('xez-worktree-reattach-');
     const runId = '22222222-2222-4222-8222-222222222222';
     const first = await createWorktree(repo, runId, 'main');
     writeFileSync(join(first.path, 'progress.txt'), 'preserved\n');
@@ -133,9 +133,9 @@ describe('createWorktree recovery (real git)', () => {
   });
 
   it('preserves an unregistered non-empty managed path instead of deleting it', async () => {
-    const repo = await fixtureRepo('cez-worktree-preserve-');
+    const repo = await fixtureRepo('xez-worktree-preserve-');
     const runId = '33333333-3333-4333-8333-333333333333';
-    const path = join(repo, '.ai/cezar/worktrees', runId);
+    const path = join(repo, '.ai/xezar/worktrees', runId);
     const marker = join(path, 'uncommitted.txt');
     mkdirSync(path, { recursive: true });
     writeFileSync(marker, 'do not delete\n');
@@ -151,7 +151,7 @@ describe('worktreeShortstat (real git)', () => {
   let repo: string;
 
   beforeAll(async () => {
-    repo = mkdtempSync(join(tmpdir(), 'cez-shortstat-'));
+    repo = mkdtempSync(join(tmpdir(), 'xez-shortstat-'));
     await run('git', ['init', '-q', '-b', 'main'], { cwd: repo });
     writeFileSync(join(repo, 'a.txt'), 'one\ntwo\nthree\n');
     await run('git', ['add', '-A'], { cwd: repo });
@@ -180,7 +180,7 @@ describe('worktreeShortstat (real git)', () => {
   });
 
   it('answers null when the path is not a git worktree', async () => {
-    const plain = mkdtempSync(join(tmpdir(), 'cez-notgit-'));
+    const plain = mkdtempSync(join(tmpdir(), 'xez-notgit-'));
     try {
       expect(await worktreeShortstat(plain, 'main')).toBeNull();
     } finally {
@@ -192,7 +192,7 @@ describe('worktreeShortstat (real git)', () => {
     // Regression: anchoring to a moving base *name* (via merge-base) must stay
     // correct when the task syncs with its base — the routine merge that a
     // pinned fork commit would have inflated by swallowing every upstream commit.
-    const r = mkdtempSync(join(tmpdir(), 'cez-mergeback-'));
+    const r = mkdtempSync(join(tmpdir(), 'xez-mergeback-'));
     worktreeRoots.push(r);
     await run('git', ['init', '-q', '-b', 'main'], { cwd: r });
     writeFileSync(join(r, 'f.txt'), 'base\n');
@@ -226,14 +226,14 @@ describe('worktreeShortstat (real git)', () => {
   describe('repointed HEAD (#751)', () => {
     /** `main` + a task branch at main's tip + an `other` branch far ahead. */
     async function repoWithForeignBranch(): Promise<string> {
-      const r = mkdtempSync(join(tmpdir(), 'cez-repointed-'));
+      const r = mkdtempSync(join(tmpdir(), 'xez-repointed-'));
       worktreeRoots.push(r);
       await run('git', ['init', '-q', '-b', 'main'], { cwd: r });
       writeFileSync(join(r, 'f.txt'), 'base\n');
       await run('git', ['add', '-A'], { cwd: r });
       await run('git', [...GIT_ID, 'commit', '-q', '-m', 'c0'], { cwd: r });
       // The task's own branch: created off main and never committed to.
-      await run('git', ['branch', 'cez/x'], { cwd: r });
+      await run('git', ['branch', 'xez/x'], { cwd: r });
       // Somebody else's branch, with real commits on it.
       await run('git', ['checkout', '-q', '-b', 'other'], { cwd: r });
       writeFileSync(join(r, 'theirs.txt'), 'a\nb\nc\nd\ne\n'); // 5 adds that are NOT this task's
@@ -246,7 +246,7 @@ describe('worktreeShortstat (real git)', () => {
       const r = await repoWithForeignBranch();
       writeFileSync(join(r, 'mine.txt'), 'z\n'); // the 1 line this task actually produced
 
-      expect(await worktreeShortstat(r, 'main', { taskBranch: 'cez/x' })).toEqual({
+      expect(await worktreeShortstat(r, 'main', { taskBranch: 'xez/x' })).toEqual({
         adds: 1,
         dels: 0,
         files: 1,
@@ -267,10 +267,10 @@ describe('worktreeShortstat (real git)', () => {
 
     it('leaves the normal on-task-branch case exactly as it was — no `repointed` key', async () => {
       const r = await repoWithForeignBranch();
-      await run('git', ['checkout', '-q', 'cez/x'], { cwd: r });
+      await run('git', ['checkout', '-q', 'xez/x'], { cwd: r });
       writeFileSync(join(r, 'mine.txt'), 'z\n');
 
-      const stat = await worktreeShortstat(r, 'main', { taskBranch: 'cez/x' });
+      const stat = await worktreeShortstat(r, 'main', { taskBranch: 'xez/x' });
       expect(stat).toEqual({ adds: 1, dels: 0, files: 1 });
       expect(stat).not.toHaveProperty('repointed');
     });
@@ -280,7 +280,7 @@ describe('worktreeShortstat (real git)', () => {
       await run('git', ['checkout', '-q', '--detach'], { cwd: r });
       writeFileSync(join(r, 'mine.txt'), 'z\n');
 
-      expect(await worktreeShortstat(r, 'main', { taskBranch: 'cez/x' })).toEqual({
+      expect(await worktreeShortstat(r, 'main', { taskBranch: 'xez/x' })).toEqual({
         adds: 1,
         dels: 0,
         files: 1,
@@ -291,7 +291,7 @@ describe('worktreeShortstat (real git)', () => {
     it('answers an honest all-zeros (still flagged) when a repointed task changed nothing', async () => {
       const r = await repoWithForeignBranch();
 
-      expect(await worktreeShortstat(r, 'main', { taskBranch: 'cez/x' })).toEqual({
+      expect(await worktreeShortstat(r, 'main', { taskBranch: 'xez/x' })).toEqual({
         adds: 0,
         dels: 0,
         files: 0,
@@ -318,16 +318,16 @@ describe('worktreeShortstat (real git)', () => {
         env: { ...process.env, GIT_AUTHOR_DATE: iso, GIT_COMMITTER_DATE: iso },
       });
 
-      /** `main`, an untouched `cez/x`, and a foreign branch whose commits predate the run. */
+      /** `main`, an untouched `xez/x`, and a foreign branch whose commits predate the run. */
       async function repoWithOlderForeignBranch(): Promise<string> {
-        const r = mkdtempSync(join(tmpdir(), 'cez-baseline-'));
+        const r = mkdtempSync(join(tmpdir(), 'xez-baseline-'));
         worktreeRoots.push(r);
         const old = dated(LONG_AGO, r);
         await run('git', ['init', '-q', '-b', 'main'], { cwd: r });
         writeFileSync(join(r, 'f.txt'), 'base\n');
         await run('git', ['add', '-A'], { cwd: r });
         await run('git', [...GIT_ID, 'commit', '-q', '-m', 'c0'], old);
-        await run('git', ['branch', 'cez/x'], old);
+        await run('git', ['branch', 'xez/x'], old);
         await run('git', ['checkout', '-q', '-b', 'other'], old);
         writeFileSync(join(r, 'theirs.txt'), 'a\nb\nc\nd\ne\n'); // 5 lines that predate the run
         await run('git', ['add', '-A'], { cwd: r });
@@ -343,7 +343,7 @@ describe('worktreeShortstat (real git)', () => {
         writeFileSync(join(r, 'wip.txt'), 'w\n'); // uncommitted, also this run's
 
         expect(
-          await worktreeShortstat(r, 'main', { taskBranch: 'cez/x', runStartedAt: RUN_STARTED_AT }),
+          await worktreeShortstat(r, 'main', { taskBranch: 'xez/x', runStartedAt: RUN_STARTED_AT }),
         ).toEqual({ adds: 2, dels: 0, files: 2, repointed: true });
       });
 
@@ -351,7 +351,7 @@ describe('worktreeShortstat (real git)', () => {
         const r = await repoWithOlderForeignBranch();
 
         expect(
-          await worktreeShortstat(r, 'main', { taskBranch: 'cez/x', runStartedAt: RUN_STARTED_AT }),
+          await worktreeShortstat(r, 'main', { taskBranch: 'xez/x', runStartedAt: RUN_STARTED_AT }),
         ).toEqual({ adds: 0, dels: 0, files: 0, repointed: true });
       });
 
@@ -366,7 +366,7 @@ describe('worktreeShortstat (real git)', () => {
         await run('git', [...GIT_ID, 'commit', '-q', '-m', 'the run\'s work'], { cwd: r });
 
         expect(
-          await worktreeShortstat(r, 'main', { taskBranch: 'cez/x', runStartedAt: RUN_STARTED_AT }),
+          await worktreeShortstat(r, 'main', { taskBranch: 'xez/x', runStartedAt: RUN_STARTED_AT }),
         ).toEqual({ adds: 3, dels: 0, files: 1, repointed: true });
       });
 
@@ -387,7 +387,7 @@ describe('worktreeShortstat (real git)', () => {
         // The pre-run tip now trails the 3 merged-in upstream lines, so the merge-base
         // is the tighter anchor: `theirs.txt` (5, written before the run) drops out.
         expect(
-          await worktreeShortstat(r, 'main', { taskBranch: 'cez/x', runStartedAt: RUN_STARTED_AT }),
+          await worktreeShortstat(r, 'main', { taskBranch: 'xez/x', runStartedAt: RUN_STARTED_AT }),
         ).toEqual({ adds: 4, dels: 0, files: 2, repointed: true });
       });
     });
@@ -402,14 +402,14 @@ describe('worktreeShortstat (real git)', () => {
    */
   describe('a stale local base ref (real git)', () => {
     async function workRepoBehindOrigin(): Promise<string> {
-      const origin = mkdtempSync(join(tmpdir(), 'cez-stale-origin-'));
+      const origin = mkdtempSync(join(tmpdir(), 'xez-stale-origin-'));
       worktreeRoots.push(origin);
       await run('git', ['init', '-q', '-b', 'main'], { cwd: origin });
       writeFileSync(join(origin, 'f.txt'), 'base\n');
       await run('git', ['add', '-A'], { cwd: origin });
       await run('git', [...GIT_ID, 'commit', '-q', '-m', 'c0'], { cwd: origin });
 
-      const work = mkdtempSync(join(tmpdir(), 'cez-stale-work-'));
+      const work = mkdtempSync(join(tmpdir(), 'xez-stale-work-'));
       worktreeRoots.push(work);
       // `-c gc.auto=0` is `clone --config`: it lands in the new repo, so neither the clone
       // nor any later commit in it detaches a background gc that would still be writing
@@ -431,13 +431,13 @@ describe('worktreeShortstat (real git)', () => {
       const work = await workRepoBehindOrigin();
       // The task forks from the freshest base — exactly what `resolveBaseRef` does at
       // worktree-creation time — and commits one line.
-      await run('git', ['checkout', '-q', '-b', 'cez/x', 'origin/main'], { cwd: work });
+      await run('git', ['checkout', '-q', '-b', 'xez/x', 'origin/main'], { cwd: work });
       writeFileSync(join(work, 'mine.txt'), 'z\n');
       await run('git', ['add', '-A'], { cwd: work });
       await run('git', [...GIT_ID, 'commit', '-q', '-m', 'the task'], { cwd: work });
 
       // 1 line — not the 4 upstream lines the stale `main` would have swallowed.
-      expect(await worktreeShortstat(work, 'main', { taskBranch: 'cez/x' })).toEqual({
+      expect(await worktreeShortstat(work, 'main', { taskBranch: 'xez/x' })).toEqual({
         adds: 1,
         dels: 0,
         files: 1,
@@ -452,10 +452,10 @@ describe('worktreeShortstat (real git)', () => {
       writeFileSync(join(work, 'unpushed.txt'), 'local base work\n');
       await run('git', ['add', '-A'], { cwd: work });
       await run('git', [...GIT_ID, 'commit', '-q', '-m', 'unpushed base commit'], { cwd: work });
-      await run('git', ['checkout', '-q', '-b', 'cez/x'], { cwd: work });
+      await run('git', ['checkout', '-q', '-b', 'xez/x'], { cwd: work });
       writeFileSync(join(work, 'mine.txt'), 'z\n');
 
-      expect(await worktreeShortstat(work, 'main', { taskBranch: 'cez/x' })).toEqual({
+      expect(await worktreeShortstat(work, 'main', { taskBranch: 'xez/x' })).toEqual({
         adds: 1,
         dels: 0,
         files: 1,
@@ -468,7 +468,7 @@ describe('resolveBaseRef (real git)', () => {
   /** A work repo cloned from an `origin` that carries a `develop` branch, so
    *  both a local `develop` and `origin/develop` remote-tracking ref exist. */
   async function repoWithOrigin(): Promise<string> {
-    const origin = mkdtempSync(join(tmpdir(), 'cez-origin-'));
+    const origin = mkdtempSync(join(tmpdir(), 'xez-origin-'));
     worktreeRoots.push(origin);
     await run('git', ['init', '-q', '-b', 'main'], { cwd: origin });
     writeFileSync(join(origin, 'a.txt'), '1\n');
@@ -479,7 +479,7 @@ describe('resolveBaseRef (real git)', () => {
       writeFileSync(join(origin, 'a.txt'), `${n}\n`);
       await run('git', [...GIT_ID, 'commit', '-q', '-am', `c${n}`], { cwd: origin });
     }
-    const work = mkdtempSync(join(tmpdir(), 'cez-work-'));
+    const work = mkdtempSync(join(tmpdir(), 'xez-work-'));
     worktreeRoots.push(work);
     // `-c gc.auto=0` is `clone --config`: it lands in the new repo, so neither the clone
     // nor any later commit in it detaches a background gc that would still be writing
@@ -527,13 +527,13 @@ describe('resolveBaseRef (real git)', () => {
   });
 
   it('returns the local name for a local-only branch, and null when neither exists', async () => {
-    const repo = await fixtureRepo('cez-resolve-localonly-');
+    const repo = await fixtureRepo('xez-resolve-localonly-');
     expect(await resolveBaseRef(repo, 'main')).toBe('main');
     expect(await resolveBaseRef(repo, 'nope-no-such-branch')).toBeNull();
   });
 
   it('refuses an option-like base ref', async () => {
-    const repo = await fixtureRepo('cez-resolve-dashguard-');
+    const repo = await fixtureRepo('xez-resolve-dashguard-');
     expect(await resolveBaseRef(repo, '--upload-pack=evil')).toBeNull();
   });
 });

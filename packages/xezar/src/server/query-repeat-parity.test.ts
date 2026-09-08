@@ -22,10 +22,10 @@ describe('a repeated query key stays 200 (c.req.query took the first value)', ()
   let repoRoot: string
   let app: ReturnType<typeof createApp>
   beforeEach(() => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-rq-'))
-    mkdirSync(join(repoRoot, '.ai/cezar'), { recursive: true })
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-rq-'))
+    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true })
     app = createApp({
-      repoRoot, store: RunStore.open(join(repoRoot, '.ai/cezar')),
+      repoRoot, store: RunStore.open(join(repoRoot, '.ai/xezar')),
       manager: {} as RunManager, version: '0.0.0-test',
     })
   })

@@ -30,7 +30,7 @@ describe('POST /api/v1/todos/:id/start', () => {
   let store: RunStore;
   let app: Hono;
   let captured: StartRunInput | undefined;
-  const savedFollowups = process.env.CEZ_FOLLOWUPS;
+  const savedFollowups = process.env.XEZ_FOLLOWUPS;
 
   const writeTodos = (todos: TodoItem[]) => {
     mkdirSync(dataDir, { recursive: true });
@@ -41,9 +41,9 @@ describe('POST /api/v1/todos/:id/start', () => {
     // #471 (merged from main): the follow-up inbox is opt-in and this route 409s without the
     // capability. These assertions are about the #401/#413 body, so it is switched on explicitly
     // rather than inherited from whatever the dev box exports.
-    process.env.CEZ_FOLLOWUPS = '1';
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-todos-start-'));
-    dataDir = join(repoRoot, '.ai/cezar');
+    process.env.XEZ_FOLLOWUPS = '1';
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-todos-start-'));
+    dataDir = join(repoRoot, '.ai/xezar');
     store = RunStore.open(dataDir);
     captured = undefined;
     const manager = {
@@ -62,8 +62,8 @@ describe('POST /api/v1/todos/:id/start', () => {
   });
 
   afterEach(() => {
-    if (savedFollowups === undefined) delete process.env.CEZ_FOLLOWUPS;
-    else process.env.CEZ_FOLLOWUPS = savedFollowups;
+    if (savedFollowups === undefined) delete process.env.XEZ_FOLLOWUPS;
+    else process.env.XEZ_FOLLOWUPS = savedFollowups;
     store.flush();
     rmSync(repoRoot, { recursive: true, force: true });
   });
@@ -245,7 +245,7 @@ describe('POST /api/v1/todos/:id/start', () => {
 
   it('rejects a model override while locked but still permits choosing the runner', async () => {
     writeFileSync(
-      join(repoRoot, '.ai', 'cezar', 'config.json'),
+      join(repoRoot, '.ai', 'xezar', 'config.json'),
       JSON.stringify({ modelsLocked: true }),
       'utf8',
     );

@@ -11,7 +11,7 @@ export interface BackendCheck {
 }
 
 /**
- * Probe the host for everything cez leans on: the agent CLIs (`claude`, and
+ * Probe the host for everything xez leans on: the agent CLIs (`claude`, and
  * the optional `codex` / `opencode` / `pi` alternatives), `gh` (GitHub auth for
  * PR creation) and `git`. Nothing is required except at least one agent CLI —
  * the GUI degrades gracefully, only offers the runners that are present, and
@@ -29,14 +29,14 @@ export async function detectEnvironment(): Promise<BackendCheck[]> {
 }
 
 async function probeClaude(): Promise<BackendCheck> {
-  if (process.env.CEZ_DRY_RUN === '1') {
-    return { name: 'claude', available: true, version: 'mock (CEZ_DRY_RUN=1)' };
+  if (process.env.XEZ_DRY_RUN === '1') {
+    return { name: 'claude', available: true, version: 'mock (XEZ_DRY_RUN=1)' };
   }
-  // `CEZ_CLAUDE_BIN` like every other claude call site (the runner, provider-auth,
+  // `XEZ_CLAUDE_BIN` like every other claude call site (the runner, provider-auth,
   // open-in-app). Probing a bare `claude` reported "not installed" for a host whose
   // only install is at a custom path — which drops claude from the composer and the
   // installer's dependency step even though runs would have worked fine.
-  const bin = process.env.CEZ_CLAUDE_BIN ?? 'claude';
+  const bin = process.env.XEZ_CLAUDE_BIN ?? 'claude';
   try {
     const { stdout } = await exec(bin, ['--version'], { timeout: 10_000 });
     const version = stdout.trim();
@@ -65,7 +65,7 @@ async function probeClaude(): Promise<BackendCheck> {
 }
 
 async function probeCodex(): Promise<BackendCheck> {
-  const bin = process.env.CEZ_CODEX_BIN ?? 'codex';
+  const bin = process.env.XEZ_CODEX_BIN ?? 'codex';
   try {
     const { stdout } = await exec(bin, ['--version'], { timeout: 10_000 });
     return {
@@ -84,7 +84,7 @@ async function probeCodex(): Promise<BackendCheck> {
 }
 
 async function probeOpencode(): Promise<BackendCheck> {
-  const bin = process.env.CEZ_OPENCODE_BIN ?? 'opencode';
+  const bin = process.env.XEZ_OPENCODE_BIN ?? 'opencode';
   try {
     const { stdout } = await exec(bin, ['--version'], { timeout: 10_000 });
     return {
@@ -104,10 +104,10 @@ async function probeOpencode(): Promise<BackendCheck> {
 
 async function probePi(): Promise<BackendCheck> {
   // Dry-run stands the runner up on the shared mock, so report it present.
-  if (process.env.CEZ_DRY_RUN === '1') {
-    return { name: 'pi', available: true, version: 'mock (CEZ_DRY_RUN=1)' };
+  if (process.env.XEZ_DRY_RUN === '1') {
+    return { name: 'pi', available: true, version: 'mock (XEZ_DRY_RUN=1)' };
   }
-  const bin = process.env.CEZ_PI_BIN ?? 'pi';
+  const bin = process.env.XEZ_PI_BIN ?? 'pi';
   try {
     const { stdout } = await exec(bin, ['--version'], { timeout: 10_000 });
     return {

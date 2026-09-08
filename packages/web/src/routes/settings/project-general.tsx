@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router'
 
 import { useProjects, useWorkspaceConfig } from '@/api/queries'
-import type { Capabilities, ProjectListEntry } from '@open-mercato/cezar-api-client'
+import type { Capabilities, ProjectListEntry } from '@qodeca/xezar-api-client'
 import { Button } from '@/components/ui/button'
 import { useActiveProjectId } from '@/lib/project-router'
 import { ProjectFolderField } from './project-location'
@@ -28,7 +28,7 @@ import { SettingsField } from './settings-field'
  * are the same components the registry table uses. Two pages disagreeing about what "Remove"
  * does is exactly the failure this page could otherwise introduce.
  *
- * Split in two halves, because `CEZ_SINGLE_PROJECT=1` treats them differently. DESCRIBING the
+ * Split in two halves, because `XEZ_SINGLE_PROJECT=1` treats them differently. DESCRIBING the
  * project (folder, registry facts) stays true in every mode. MANAGING the registry — the
  * concurrency ceiling, Remove — is what single-project mode takes away: `PATCH`/`DELETE
  * /api/v1/projects/:id` both answer 409 there (server.ts), and `visibleSettingsSections` already
@@ -108,7 +108,7 @@ export function ProjectGeneral({ capabilities }: { capabilities?: Pick<Capabilit
   )
 }
 
-/** The registry entry, read out: what cezar probed about this folder the last time it looked.
+/** The registry entry, read out: what xezar probed about this folder the last time it looked.
  *  `canRemove` is whether the Remove field is rendered below — the missing-folder hint points at
  *  it, and must not point at a field single-project mode took away. */
 function ProjectFacts({ project, canRemove }: { project: ProjectListEntry; canRemove: boolean }) {
@@ -164,7 +164,7 @@ function ProjectFacts({ project, canRemove }: { project: ProjectListEntry; canRe
  * Deregister this project — the registry table's per-row Remove, offered where the user already
  * is. Same hook, same dialog, same words (remove-project.tsx).
  *
- * The boot project cannot be removed: cezar is serving it and re-registers it at every start, so
+ * The boot project cannot be removed: xezar is serving it and re-registers it at every start, so
  * the server 409s. Disabling here means the explanation arrives before the click rather than as
  * an error toast after it.
  *
@@ -195,7 +195,7 @@ function RemoveProject({ project, bootProject }: { project: ProjectListEntry; bo
           // reach it, then says what "Remove" actually does — the row context that makes a bare
           // "Remove" safe-sounding isn't read out with it.
           aria-label={`Remove ${project.name} from the workspace — unregisters it, no files are deleted`}
-          title={isBoot ? 'cezar is serving this project — it re-registers itself at every start' : undefined}
+          title={isBoot ? 'xezar is serving this project — it re-registers itself at every start' : undefined}
           disabled={isBoot || remove.isPending}
           onClick={() => setConfirming(project)}
           className="text-danger"
@@ -204,7 +204,7 @@ function RemoveProject({ project, bootProject }: { project: ProjectListEntry; bo
         </Button>
         {isBoot ? (
           <span data-slot="project-general-remove-boot" className="text-[11px] text-soft-foreground">
-            cezar is serving this project — it re-registers itself at every start.
+            xezar is serving this project — it re-registers itself at every start.
           </span>
         ) : null}
       </div>

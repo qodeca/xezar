@@ -24,9 +24,9 @@ import { WorkspaceEventBus, createApp } from './server.ts';
  * byte-identical shape (protected).
  */
 describe('GET /api/v1/workspace/events', () => {
-  const savedHome = process.env.CEZ_HOME;
-  const savedRemote = process.env.CEZ_REMOTE;
-  const savedDryRun = process.env.CEZ_DRY_RUN;
+  const savedHome = process.env.XEZ_HOME;
+  const savedRemote = process.env.XEZ_REMOTE;
+  const savedDryRun = process.env.XEZ_DRY_RUN;
   let home: string;
   let repoRoot: string;
   let otherRoot: string;
@@ -38,18 +38,18 @@ describe('GET /api/v1/workspace/events', () => {
   const closers: Array<() => Promise<void>> = [];
 
   beforeEach(async () => {
-    home = mkdtempSync(join(tmpdir(), 'cez-wsev-home-'));
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-wsev-boot-'));
-    otherRoot = mkdtempSync(join(tmpdir(), 'cez-wsev-other-'));
-    process.env.CEZ_HOME = home;
-    delete process.env.CEZ_REMOTE;
-    process.env.CEZ_DRY_RUN = '1';
+    home = mkdtempSync(join(tmpdir(), 'xez-wsev-home-'));
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-wsev-boot-'));
+    otherRoot = mkdtempSync(join(tmpdir(), 'xez-wsev-other-'));
+    process.env.XEZ_HOME = home;
+    delete process.env.XEZ_REMOTE;
+    process.env.XEZ_DRY_RUN = '1';
     for (const root of [repoRoot, otherRoot]) {
-      mkdirSync(join(root, '.ai/cezar'), { recursive: true });
-      writeFileSync(join(root, '.ai/cezar', 'config.json'), '{"skillsRepos": []}\n', 'utf8');
+      mkdirSync(join(root, '.ai/xezar'), { recursive: true });
+      writeFileSync(join(root, '.ai/xezar', 'config.json'), '{"skillsRepos": []}\n', 'utf8');
     }
     clearProjectProbeCache();
-    store = RunStore.open(join(repoRoot, '.ai/cezar'), { keepLive: true });
+    store = RunStore.open(join(repoRoot, '.ai/xezar'), { keepLive: true });
     contexts = new ProjectContexts({ listProjects });
     bus = new WorkspaceEventBus();
     bootId = (await registerProject(repoRoot)).id;
@@ -71,12 +71,12 @@ describe('GET /api/v1/workspace/events', () => {
     contexts.disposeAll();
     store.flush();
     for (const dir of [home, repoRoot, otherRoot]) rmSync(dir, { recursive: true, force: true });
-    if (savedHome === undefined) delete process.env.CEZ_HOME;
-    else process.env.CEZ_HOME = savedHome;
-    if (savedRemote === undefined) delete process.env.CEZ_REMOTE;
-    else process.env.CEZ_REMOTE = savedRemote;
-    if (savedDryRun === undefined) delete process.env.CEZ_DRY_RUN;
-    else process.env.CEZ_DRY_RUN = savedDryRun;
+    if (savedHome === undefined) delete process.env.XEZ_HOME;
+    else process.env.XEZ_HOME = savedHome;
+    if (savedRemote === undefined) delete process.env.XEZ_REMOTE;
+    else process.env.XEZ_REMOTE = savedRemote;
+    if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
+    else process.env.XEZ_DRY_RUN = savedDryRun;
   });
 
   /** Register the other project and build its context via a first API touch. */
@@ -271,7 +271,7 @@ describe('GET /api/v1/workspace/events', () => {
     await ws.readUntil('event: ping');
 
     try {
-      delete process.env.CEZ_DRY_RUN;
+      delete process.env.XEZ_DRY_RUN;
       const run = other.store.createRun({
         title: 'auth',
         workflow: 'quick-task',
@@ -300,7 +300,7 @@ describe('GET /api/v1/workspace/events', () => {
         authFailureId: 'auth-incident-1',
       }]);
     } finally {
-      process.env.CEZ_DRY_RUN = '1';
+      process.env.XEZ_DRY_RUN = '1';
     }
   });
 
@@ -335,13 +335,13 @@ describe('GET /api/v1/workspace/events', () => {
     });
 
     try {
-      delete process.env.CEZ_DRY_RUN;
+      delete process.env.XEZ_DRY_RUN;
       store.appendEvent(run.id, {
         type: 'error',
         message: 'Failed to authenticate. API Error: 401 OAuth access token has been revoked.',
       });
       await ws.readUntil('event: provider-status');
-      process.env.CEZ_DRY_RUN = '1';
+      process.env.XEZ_DRY_RUN = '1';
 
       const response = await apiRequest(app, '/api/v1/providers/claude/retry', {
         method: 'POST',
@@ -357,7 +357,7 @@ describe('GET /api/v1/workspace/events', () => {
         enabled: true,
       });
     } finally {
-      process.env.CEZ_DRY_RUN = '1';
+      process.env.XEZ_DRY_RUN = '1';
     }
   });
 

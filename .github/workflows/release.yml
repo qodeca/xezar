@@ -1,14 +1,13 @@
 name: Release
 
-# Stable `latest` releases are owner-driven and MANUAL — never a push
-# (spec .ai/specs/2026-07-18-npm-preview-publish.md, #482). Pushes to `develop`
-# and same-repo PRs publish previews via ci.yml's `publish-snapshot`; only this
-# workflow moves the `latest` dist-tag.
+# The ONLY workflow in this repository that publishes to npm, and the only one that can create
+# a release tag. It is `workflow_dispatch`-only and never fires from a push (#482): nothing
+# reaches the registry unless a maintainer asks for it by name and picks the bump.
 on:
   workflow_dispatch:
     inputs:
       bump:
-        description: 'Version bump (`existing` publishes the version already in packages/cezar/package.json)'
+        description: 'Version bump (`existing` publishes the version already in packages/xezar/package.json)'
         required: true
         default: patch
         type: choice
@@ -19,9 +18,7 @@ on:
           - existing
 
 permissions:
-  contents: write # create the release tag + GitHub Release via the API
-  id-token: write # npm provenance attestation
-  pull-requests: write # open the version-bump PR for patch/minor/major releases
+  contents: read
 
 concurrency:
   group: release-${{ github.ref }}
@@ -31,17 +28,21 @@ jobs:
   release:
     name: Release ${{ inputs.bump }} to npm (latest)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    # Releases from `main` (the stable trunk) or a `release/*` maintenance branch —
-    # the latter is how a patch line (e.g. `release/0.9.x`) ships fixes without the
-    # newer features already merged to `main`. Dispatch from the BRANCH, never a tag:
-    # workflow_dispatch reads this file from the ref it runs on, and a tag's copy is
-    # frozen, so a tag would still evaluate the old gate.
+    timeout-minutes: 30
+    # Releases from `main` (the stable trunk) or a `release/*` maintenance branch — the latter
+    # is how a patch line (e.g. `release/0.10.x`) ships fixes without the newer features already
+    # merged to `main`. Dispatch from the BRANCH, never a tag: workflow_dispatch reads this file
+    # from the ref it runs on, and a tag's copy is frozen, so a tag would still evaluate the old
+    # gate.
     if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/')
-    # Gate the publish behind a required-reviewer approval. If the environment
-    # isn't configured yet, GitHub creates it on first use without reviewers
-    # (non-blocking); add reviewers at Settings → Environments → production.
+    # Gate the publish behind a required-reviewer approval. If the environment isn't configured
+    # yet, GitHub creates it on first use without reviewers (non-blocking); add reviewers at
+    # Settings → Environments → production.
     environment: production
+    permissions:
+      contents: write # create the release tag + GitHub Release via the API
+      id-token: write # npm provenance attestation
+      pull-requests: write # open the version-bump PR for patch/minor/major releases
 
     steps:
       - name: Check out repository
@@ -59,30 +60,38 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # The same validation gate CI runs, on the exact revision being released — a green PR run
+      # is not a promise about the merge commit a release is cut from.
       - name: Verify before release
         run: |
           npm run typecheck
-          npm run test:unit
           npm test
+          npm run test:unit
 
       - name: Build application
         run: npm run build
 
+      # Packaging/install verification BEFORE anything is published: this packs the real
+      # tarball, installs it into an isolated consumer and runs the CLI out of it. A tarball
+      # that cannot be installed must never reach the registry, where the version is immutable.
+      - name: Verify the packaged CLI installs and runs
+        run: npm run test:package
+
+      # `scripts/release.mjs` FAILS if NODE_AUTH_TOKEN is empty — it never degrades to a dry
+      # run, so a green job here means the packages really went to npm.
       - name: Publish release
         id: release
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: node scripts/release.mjs "${{ inputs.bump }}"
 
-      # `main` is a protected branch (PR-only, signed commits required), so a
-      # release never pushes a commit to it directly — that push is rejected with
-      # GH013 "Cannot update this protected ref". Instead:
-      #   - `existing` (the version is already on main via its own PR) records
-      #     nothing new here; the tag + Release below capture the release point.
-      #   - patch/minor/major bump the manifests to a version that is NOT yet on
-      #     main, so they open a follow-up PR with the bump instead of pushing.
-      # The release tag itself is created from the released commit by the
-      # `Create GitHub Release` step via the API, which branch protection allows.
+      # `main` is PR-only, so a release never pushes a commit to it directly.
+      #   - `existing` (the version is already on main via its own PR) records nothing new here;
+      #     the tag + Release below capture the release point.
+      #   - patch/minor/major bump the manifests to a version that is NOT yet on main, so they
+      #     open a follow-up PR with the bump instead of pushing.
+      # The release tag itself is created from the released commit by the `Create GitHub
+      # Release` step via the API, which branch protection allows.
       - name: Open version-bump PR (patch/minor/major only)
         if: steps.release.outputs.published == 'true' && inputs.bump != 'existing'
         env:
@@ -93,45 +102,48 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git checkout -b "$BRANCH"
-          git add packages/api-client/package.json packages/cezar/package.json alias-cezar/package.json
+          git add packages/contract/package.json packages/api-client/package.json packages/xezar/package.json
           git commit -m "chore(release): v${VERSION}"
           git push origin "$BRANCH"
           gh pr create --base "${{ github.ref_name }}" --head "$BRANCH" \
             --title "chore(release): v${VERSION}" \
             --body "Record the \`v${VERSION}\` version bump that the Release workflow published to npm \`latest\`. Merge to keep \`${{ github.ref_name }}\`'s manifests in sync with the published version."
 
+      # The tag points at the exact commit the tarball was built from, so the release source and
+      # the npm artifact can never disagree about which revision shipped.
       - name: Create GitHub Release
         if: steps.release.outputs.published == 'true'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
-          RESULT: ${{ steps.release.outputs.version }}
+          VERSION: ${{ steps.release.outputs.version }}
           ROOT_NAME: ${{ steps.release.outputs.rootName }}
-          API_CLIENT_NAME: ${{ steps.release.outputs.apiClientName }}
-          ALIAS_NAME: ${{ steps.release.outputs.aliasName }}
         with:
           script: |
-            const version = process.env.RESULT;
-            const root = process.env.ROOT_NAME;
-            const apiClient = process.env.API_CLIENT_NAME;
-            const alias = process.env.ALIAS_NAME;
+            const version = process.env.VERSION;
+            const pkg = process.env.ROOT_NAME;
             const body = [
-              '## Published packages',
+              '## Published package',
               '',
-              '| Package | Version |',
-              '|---|---|',
-              `| \`${root}\` | \`${version}\` |`,
-              `| \`${apiClient}\` | \`${version}\` |`,
-              `| \`${alias}\` | \`${version}\` |`,
+              '| Package | Version | Dist-tag |',
+              '|---|---|---|',
+              `| \`${pkg}\` | \`${version}\` | \`latest\` |`,
               '',
               '### Install',
               '',
               '```bash',
-              `npx ${alias}@${version}`,
+              `npm install -g ${pkg}@${version}`,
+              'xezar --version',
+              'xezar serve',
               '```',
+              '',
+              '### Or run it without installing',
+              '',
+              '```bash',
+              `npx ${pkg}@${version}`,
+              '```',
+              '',
+              `Built from \`${context.sha}\`.`,
             ].join('\n');
-            // Creates the tag at the released commit if it doesn't exist yet —
-            // this is the release's only write to the repo, and one the branch
-            // protection ruleset permits (unlike a direct push to main).
             await github.rest.repos.createRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -148,14 +160,18 @@ jobs:
         env:
           VERSION: ${{ steps.release.outputs.version }}
           PUBLISHED: ${{ steps.release.outputs.published }}
-          ALIAS_NAME: ${{ steps.release.outputs.aliasName }}
+          ROOT_NAME: ${{ steps.release.outputs.rootName }}
         run: |
           {
             echo "## 🚀 Release ${VERSION}"
             echo ""
             if [ "$PUBLISHED" = "true" ]; then
-              echo "Published \`${ALIAS_NAME}@${VERSION}\` to \`latest\` and tagged \`v${VERSION}\`."
+              echo "Published \`${ROOT_NAME}@${VERSION}\` to \`latest\` and tagged \`v${VERSION}\`."
+              echo ""
+              echo '```bash'
+              echo "npm install -g ${ROOT_NAME}@${VERSION}"
+              echo '```'
             else
-              echo "⚠️ Dry run — \`NPM_TOKEN\` is not configured, nothing was published."
+              echo "⚠️ Nothing was published — this run did not perform a real release."
             fi
           } >> "$GITHUB_STEP_SUMMARY"

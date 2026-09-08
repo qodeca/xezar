@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/alert-dialog'
 
 /**
- * The confirm step for a link inside rendered markdown — cezar's replacement for Streamdown's
+ * The confirm step for a link inside rendered markdown — xezar's replacement for Streamdown's
  * own link-safety modal.
  *
  * WHY IT EXISTS AT ALL (this is a bug fix, not a restyle). Streamdown ships link safety ON by
@@ -54,7 +54,7 @@ export function LinkSafetyDialog({ isOpen, onClose, onConfirm, url }: LinkSafety
               with exactly the question the dialog was opened to answer. A <span> (block only
               by CSS) because the description renders a <p>, which cannot contain a <div>. */}
           <AlertDialogDescription>
-            It leaves cezar in a new tab. The words of a link in a transcript are the
+            It leaves xezar in a new tab. The words of a link in a transcript are the
             agent&apos;s — the address below is where it actually goes.
             {/* The full URL, never truncated: a shortened address is exactly the one a reader
                 cannot check. `wrap-anywhere` keeps a long one inside the dialog. */}

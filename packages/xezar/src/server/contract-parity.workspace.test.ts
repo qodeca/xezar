@@ -11,7 +11,7 @@ import type {
   agentProfilesResponseSchema,
   openAgentAccountFileResponseSchema,
   removeAgentProfileResponseSchema,
-} from '@open-mercato/cezar-contract';
+} from '@qodeca/xezar-contract';
 import type {
   fsBrowseResponseSchema,
   launchKeyResponseSchema,
@@ -19,8 +19,8 @@ import type {
   registerProjectResponseSchema,
   removeProjectResponseSchema,
   updateProjectResponseSchema,
-} from '@open-mercato/cezar-contract';
-import type { runsIndexResponseSchema } from '@open-mercato/cezar-contract';
+} from '@qodeca/xezar-contract';
+import type { runsIndexResponseSchema } from '@qodeca/xezar-contract';
 import type {
   configResponseSchema,
   openProjectInResponseSchema,
@@ -33,7 +33,7 @@ import type {
   uiStateSchema,
   workspaceConfigResponseSchema,
   workspaceUiStateSchema,
-} from '@open-mercato/cezar-contract';
+} from '@qodeca/xezar-contract';
 import type { AppType } from './app-type.ts';
 
 /**

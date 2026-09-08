@@ -2,11 +2,11 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { applyProviderEnablement, isProviderUsable } from './provider-availability.ts';
 
 describe('provider availability', () => {
-  const savedModelsLocked = process.env.CEZ_AGENT_MODELS_LOCKED;
+  const savedModelsLocked = process.env.XEZ_AGENT_MODELS_LOCKED;
 
   afterEach(() => {
-    if (savedModelsLocked === undefined) delete process.env.CEZ_AGENT_MODELS_LOCKED;
-    else process.env.CEZ_AGENT_MODELS_LOCKED = savedModelsLocked;
+    if (savedModelsLocked === undefined) delete process.env.XEZ_AGENT_MODELS_LOCKED;
+    else process.env.XEZ_AGENT_MODELS_LOCKED = savedModelsLocked;
   });
 
   const response = {
@@ -33,8 +33,8 @@ describe('provider availability', () => {
     expect(isProviderUsable({ provider: 'claude', status: 'disconnected', enabled: true })).toBe(false);
   });
 
-  it('ignores Cezar provider-disable preferences under the explicit model lock', () => {
-    process.env.CEZ_AGENT_MODELS_LOCKED = '1';
+  it('ignores Xezar provider-disable preferences under the explicit model lock', () => {
+    process.env.XEZ_AGENT_MODELS_LOCKED = '1';
 
     expect(applyProviderEnablement(response, ['claude', 'codex', 'opencode'])).toEqual({
       providers: [

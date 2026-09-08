@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { createQueryClient } from '@/api/query-client'
-import type { ApiRun, ChangesPayload, HealthResponse, RepoResponse } from '@open-mercato/cezar-api-client'
+import type { ApiRun, ChangesPayload, HealthResponse, RepoResponse } from '@qodeca/xezar-api-client'
 import { Toaster, resetToasts } from '@/components/ui/toaster'
 import type { GitActionBar } from '@/lib/git-actions'
 
@@ -30,7 +30,7 @@ const RUN: ApiRun = {
   tokensUsed: 0,
   archived: false,
   worktreePath: '/tmp/wt/r1',
-  branch: 'cez/abc12345',
+  branch: 'xez/abc12345',
   baseBranch: 'main',
   steps: [
     { id: 'task', name: 'Do the task', kind: 'agent', status: 'done', iterations: 1, tokensUsed: 0, sessionId: 's-1' },
@@ -215,14 +215,14 @@ describe('the Changes tab route', () => {
         jsonResponse({
           files: [],
           stat: { adds: 0, dels: 0, files: 0 },
-          repointedHead: { headBranch: 'review/pr-42', taskBranch: 'cez/abc12345' },
+          repointedHead: { headBranch: 'review/pr-42', taskBranch: 'xez/abc12345' },
         }),
     })
     renderChangesRoute()
 
     await waitFor(() => expect(document.querySelector('[data-slot="repointed-head-note"]')).not.toBeNull())
     expect(document.querySelector('[data-slot="repointed-head-note"]')?.textContent).toContain(
-      "HEAD is on review/pr-42, not this task's branch cez/abc12345 — showing only what this task changed there.",
+      "HEAD is on review/pr-42, not this task's branch xez/abc12345 — showing only what this task changed there.",
     )
   })
 
@@ -285,7 +285,7 @@ describe('the Changes tab route', () => {
   it('push clicks through to POST git/push and toasts the destination', async () => {
     const sent = stubFetch({
       'POST /api/v1/runs/r1/git/push': () =>
-        jsonResponse({ pushed: true, branch: 'cez/abc12345', remote: 'origin', upstreamSet: true }),
+        jsonResponse({ pushed: true, branch: 'xez/abc12345', remote: 'origin', upstreamSet: true }),
     })
     renderChangesRoute()
     await waitFor(() => expect(toolbarAction('push')?.disabled).toBe(false))
@@ -294,11 +294,11 @@ describe('the Changes tab route', () => {
       expect(sent.some((r) => r.method === 'POST' && r.path === '/api/v1/runs/r1/git/push')).toBe(true),
     )
     await waitFor(() =>
-      expect(document.body.textContent).toContain('Pushed cez/abc12345 to origin (upstream set)'),
+      expect(document.body.textContent).toContain('Pushed xez/abc12345 to origin (upstream set)'),
     )
   })
 
-  // #791: `/api/v1/health` reports the boot folder, so a cezar booted outside a git repo answered
+  // #791: `/api/v1/health` reports the boot folder, so a xezar booted outside a git repo answered
   // `repo: null` and Push went dark for every project. The remote must come from the
   // project-scoped `/repo` instead.
   it('offers Push from the project remote even when the boot folder has no git repo', async () => {
@@ -361,7 +361,7 @@ describe('GitToolbar renders policy fixtures verbatim', () => {
     render(
       <GitToolbar
         bar={bar}
-        branch="cez/abc12345"
+        branch="xez/abc12345"
         stat={{ adds: 12, dels: 3, files: 2 }}
         mode="unified"
         wrap={false}
@@ -427,7 +427,7 @@ describe('GitToolbar renders policy fixtures verbatim', () => {
 
   it('shows the branch chip and the aggregate ± stat', () => {
     renderToolbar({ primary: { id: 'commit', label: 'Commit', enabled: true }, secondary: [], menu: [] })
-    expect(document.querySelector('[data-slot="branch-chip"]')?.textContent).toContain('cez/abc12345')
+    expect(document.querySelector('[data-slot="branch-chip"]')?.textContent).toContain('xez/abc12345')
     const stat = document.querySelector('[data-slot="changes-stat"]')?.textContent
     expect(stat).toContain('+12')
     expect(stat).toContain('−3')

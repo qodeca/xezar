@@ -186,13 +186,13 @@ export class SkillsUpdateService {
   }
 
   private async performCheck(repoRoot: string, force = false, rejectIfBusy = false): Promise<SkillsUpdateState> {
-    if (process.env.CEZ_DRY_RUN === '1') {
+    if (process.env.XEZ_DRY_RUN === '1') {
       const checkedAt = new Date(this.now()).toISOString();
       const scopes = [blankScope('project'), blankScope('global')].map((scope) => ({ ...scope, status: 'current' as const, checkedAt }));
       const state = { ...this.makeState(scopes), status: 'current' as const, checkedAt };
       this.states.set(repoRoot, state); return state;
     }
-    const lockPath = join(this.home, '.cache', 'cez', 'skills-update.lock');
+    const lockPath = join(this.home, '.cache', 'xez', 'skills-update.lock');
     let release: (() => Promise<void>) | undefined;
     try {
       release = await this.acquireLock(lockPath, rejectIfBusy);
@@ -231,7 +231,7 @@ export class SkillsUpdateService {
   }
 
   private async performUpdate(repoRoot: string, rejectIfBusy: boolean): Promise<SkillsUpdateState> {
-    if (process.env.CEZ_DRY_RUN === '1') {
+    if (process.env.XEZ_DRY_RUN === '1') {
       const updatedAt = new Date(this.now()).toISOString();
       const scopes = [blankScope('project'), blankScope('global')].map((scope) => ({ ...scope, status: 'current' as const, checkedAt: updatedAt, updatedAt }));
       const state = { ...this.makeState(scopes), status: 'current' as const, checkedAt: updatedAt, updatedAt, needsUpgradeNotes: true };
@@ -242,7 +242,7 @@ export class SkillsUpdateService {
     if (!current?.checkedAt) current = await this.performCheck(repoRoot, false, rejectIfBusy);
     if (!current.available) return current;
 
-    const lockPath = join(this.home, '.cache', 'cez', 'skills-update.lock');
+    const lockPath = join(this.home, '.cache', 'xez', 'skills-update.lock');
     let release: (() => Promise<void>) | undefined;
     const completed = new Set<SkillsUpdateScope>();
     const outcomes: SkillsUpdateScopeState[] = [];

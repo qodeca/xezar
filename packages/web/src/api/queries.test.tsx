@@ -5,9 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError } from './client'
 import { createQueryClient } from './query-client'
-import { setApiScope } from '@open-mercato/cezar-api-client'
+import { setApiScope } from '@qodeca/xezar-api-client'
 import { ProjectScopeContext } from './project-scope-context'
-import type { GithubRefStatusData } from '@open-mercato/cezar-api-client'
+import type { GithubRefStatusData } from '@qodeca/xezar-api-client'
 import {
   refStatusRecheckAfter,
   useReferenceProjectId,
@@ -69,8 +69,8 @@ function wrapper() {
 
 const HEALTH = {
   version: '0.1.3',
-  repoRoot: '/home/me/cezar',
-  repo: { root: '/home/me/cezar', branch: 'main' },
+  repoRoot: '/home/me/xezar',
+  repo: { root: '/home/me/xezar', branch: 'main' },
   checks: [],
   defaultRunner: 'claude',
   capabilities: { localHandoff: true, followups: false, singleProject: false, automations: false },
@@ -122,7 +122,7 @@ class FakeHealthSocket {
 }
 
 describe('useRunnerModels', () => {
-  // One cache entry per runner (#794 for OpenCode, #784 for Claude): every runner cezar ships is
+  // One cache entry per runner (#794 for OpenCode, #784 for Claude): every runner xezar ships is
   // read from its own host catalog, so the fetch must follow the pick rather than name one CLI.
   it.each([
     ['codex', 'gpt-future'],
@@ -843,7 +843,7 @@ describe('useMarkRunUnseen', () => {
 
     act(() => result.current.mutate('run-1'))
     await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
-    const linked = { ...RUN, pullRequestUrl: 'https://github.com/open-mercato/cezar/pull/776' }
+    const linked = { ...RUN, pullRequestUrl: 'https://github.com/qodeca/xezar/pull/776' }
     client.setQueryData(queryKeys.runs.detail('run-1'), linked)
     client.setQueryData(queryKeys.runs.list(), [linked])
 
@@ -851,11 +851,11 @@ describe('useMarkRunUnseen', () => {
     await act(async () => deferred.resolve(json({ ...RUN, seenAt: undefined })))
 
     const detail = client.getQueryData<typeof linked>(queryKeys.runs.detail('run-1'))
-    expect(detail?.pullRequestUrl).toBe('https://github.com/open-mercato/cezar/pull/776')
+    expect(detail?.pullRequestUrl).toBe('https://github.com/qodeca/xezar/pull/776')
     // Absent, not blanked — `isUnread` keys on the field being missing.
     expect(detail && 'seenAt' in detail).toBe(false)
     const list = client.getQueryData<Array<typeof linked>>(queryKeys.runs.list())
-    expect(list?.[0]?.pullRequestUrl).toBe('https://github.com/open-mercato/cezar/pull/776')
+    expect(list?.[0]?.pullRequestUrl).toBe('https://github.com/qodeca/xezar/pull/776')
     expect(list?.[0] && 'seenAt' in list[0]).toBe(false)
   })
 
@@ -1038,7 +1038,7 @@ describe('useProjectRepoBase', () => {
   }
 
   const REGISTRY = [
-    { id: 'boot-id', name: 'boot', root: '/home/me/cezar', repoUrl: 'https://github.com/o/boot' },
+    { id: 'boot-id', name: 'boot', root: '/home/me/xezar', repoUrl: 'https://github.com/o/boot' },
     { id: 'proj-a', name: 'a', root: '/home/me/a', repoUrl: 'https://github.com/o/a' },
     { id: 'proj-b', name: 'b', root: '/home/me/b' },
   ]

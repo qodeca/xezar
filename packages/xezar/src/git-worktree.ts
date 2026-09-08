@@ -7,15 +7,15 @@ import { isSafeGitRef } from './git-refs.ts';
 
 /**
  * Git worktree per task (spec 006). Each run gets its own branch
- * `cez/<id8>` checked out into `.ai/cezar/worktrees/<runId>` so agents never
+ * `xez/<id8>` checked out into `.ai/xezar/worktrees/<runId>` so agents never
  * touch the user's working tree. Pattern ported from github-janitor's
  * `git.ts` (createWorktree / autosaveCommit), minus the bare clone — we're
  * already inside a working copy. Everything degrades: helpers never throw
  * except `createWorktree`, whose failure the caller turns into a note.
  */
 
-/** Repo-relative home of all task worktrees (gitignored via .ai/cezar/.gitignore). */
-export const WORKTREES_DIR = '.ai/cezar/worktrees';
+/** Repo-relative home of all task worktrees (gitignored via .ai/xezar/.gitignore). */
+export const WORKTREES_DIR = '.ai/xezar/worktrees';
 
 const DIFF_CAP = 400_000;
 
@@ -43,7 +43,7 @@ function git(cwd: string, args: string[]): Promise<GitResult> {
 }
 
 export function branchFor(runId: string): string {
-  return `cez/${runId.slice(0, 8)}`;
+  return `xez/${runId.slice(0, 8)}`;
 }
 
 /**
@@ -249,10 +249,10 @@ export async function removeWorktree(
 
 /**
  * Why an autosave commit happened. Only `periodic` is gated (behind
- * `CEZ_AUTOSAVE=1`, #471) — the three flushes always run so the branch ends
+ * `XEZ_AUTOSAVE=1`, #471) — the three flushes always run so the branch ends
  * holding the finished state. Before this was recorded, all four wrote the bare
- * message `cezar autosave`, so a user who had opted out of the periodic timer
- * still saw `cezar autosave` in `git log` and reasonably concluded the opt-out
+ * message `xezar autosave`, so a user who had opted out of the periodic timer
+ * still saw `xezar autosave` in `git log` and reasonably concluded the opt-out
  * was broken. Only commit *spacing* (~90 s ⇒ timer) told them apart.
  */
 export type AutosaveReason = 'periodic' | 'turn end' | 'run finalize' | 'pre-PR';
@@ -305,12 +305,12 @@ function hasConflictMarkers(text: string): boolean {
 }
 
 /**
- * Stage and commit everything in the worktree as a "cezar autosave" commit
+ * Stage and commit everything in the worktree as a "xezar autosave" commit
  * (janitor pattern) — the agent's progress is always recoverable from the
- * `cez/<id8>` branch history. Quietly a no-op when nothing changed.
+ * `xez/<id8>` branch history. Quietly a no-op when nothing changed.
  *
  * The message carries `reason` so the opt-in periodic timer and the always-on
- * flushes are distinguishable in `git log`; the `cezar autosave` prefix is kept
+ * flushes are distinguishable in `git log`; the `xezar autosave` prefix is kept
  * so existing log greps still match.
  *
  * Refuses to commit a worktree that is mid-merge or still carries conflict
@@ -326,24 +326,24 @@ export async function autosaveCommit(dir: string, reason: AutosaveReason): Promi
     // does not build. For the periodic and turn-end flushes the next one picks
     // the work up once the merge resolves; the pre-PR flush has no next one,
     // which is why callers get `refused` rather than a bare `false`.
-    console.warn(`[cezar] skipping ${reason} autosave in ${dir}: ${unresolved}`);
+    console.warn(`[xezar] skipping ${reason} autosave in ${dir}: ${unresolved}`);
     return 'refused';
   }
   await git(dir, ['add', '-A']);
   // Commit as the CURRENT git user, so the branch's commits (and any PR opened from it) are
   // attributed to the real author and pass CLA / attribution checks. The old hardcoded
-  // `cezar <cezar@local>` identity made every autosave look like a non-GitHub user. Fall back to
+  // `xezar <xezar@local>` identity made every autosave look like a non-GitHub user. Fall back to
   // that identity ONLY when the machine has no git identity configured — otherwise `git commit`
   // would fail and the autosave (the run's recovery point) would be lost.
   const identityArgs = (await gitHasIdentity(dir))
     ? []
-    : ['-c', 'user.name=cezar', '-c', 'user.email=cezar@local'];
+    : ['-c', 'user.name=xezar', '-c', 'user.email=xezar@local'];
   const commit = await git(dir, [
     ...identityArgs,
     'commit',
     '--no-verify',
     '-m',
-    `cezar autosave (${reason})`,
+    `xezar autosave (${reason})`,
   ]);
   return commit.ok ? 'committed' : 'failed';
 }
@@ -480,8 +480,8 @@ export async function worktreeDiff(
 /**
  * `git diff --stat` version of `worktreeDiff` (spec 010 — the variant
  * comparison columns). Same merge-base anchoring, and it stays whole-branch
- * for a reason of its own: variants are sibling cezar worktrees, each on its
- * own `cez/*` branch, and the column exists to compare their *committed* work
+ * for a reason of its own: variants are sibling xezar worktrees, each on its
+ * own `xez/*` branch, and the column exists to compare their *committed* work
  * against one another. Narrowing one variant to its uncommitted tree would
  * make the comparison meaningless rather than more honest. Returns '' on any
  * failure. (The task-diff rule the other surfaces follow: `git-diff-base.ts`.)
@@ -566,7 +566,7 @@ export async function worktreeShortstat(
 
 /**
  * Startup reconcile: `git worktree prune` + remove every directory under
- * `.ai/cezar/worktrees/` whose run id is no longer in the store (and its
+ * `.ai/xezar/worktrees/` whose run id is no longer in the store (and its
  * branch). Returns the removed run ids for the boot log. Never throws.
  */
 export async function pruneOrphans(

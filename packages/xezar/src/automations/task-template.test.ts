@@ -30,9 +30,9 @@ describe('automation task templates', () => {
   });
 
   it('launches through the ordinary manager and persists additive provenance', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'cezar-template-'));
+    const root = await mkdtemp(join(tmpdir(), 'xezar-template-'));
     try {
-      const store = RunStore.open(join(root, '.ai/cezar'));
+      const store = RunStore.open(join(root, '.ai/xezar'));
       const manager = {
         startRun: (workflow: { name: string; steps: Array<{ id: string; name?: string; command?: string }> }, input: { task: string }) =>
           store.createRun({ title: 'automation', workflow: workflow.name, task: input.task, steps: workflow.steps.map((step) => ({ id: step.id, name: step.name ?? step.id, kind: step.command ? 'check' as const : 'agent' as const })) }),
@@ -43,9 +43,9 @@ describe('automation task templates', () => {
   });
 
   it('reconciles a reserved receipt from persisted run provenance', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'cezar-reconcile-'));
+    const root = await mkdtemp(join(tmpdir(), 'xezar-reconcile-'));
     try {
-      const dataDir = join(root, '.ai/cezar');
+      const dataDir = join(root, '.ai/xezar');
       const runs = RunStore.open(dataDir);
       const run = runs.createRun({ title: 'x', workflow: 'quick-task', task: 'x', steps: [] });
       runs.updateRun(run.id, { automation: { automationId: 'one', automationRevision: 1, receiptId: 'receipt', event: 'issue.opened', githubUrl: candidate.url } });

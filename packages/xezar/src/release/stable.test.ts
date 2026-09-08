@@ -39,32 +39,30 @@ describe('stampStableManifests', () => {
   const set = (): ReleaseManifests => ({
     contract: { name: '@scope/contract', version: '0.1.5' },
     apiClient: { name: '@scope/client', version: '0.1.5' },
-    cezar: {
+    xezar: {
       name: '@scope/impl',
       version: '0.1.5',
       files: ['dist'],
       devDependencies: { '@scope/client': '^0.1.5' },
     },
-    alias: { name: 'impl-cli', version: '0.1.5', dependencies: { '@scope/impl': '^0.1.5' } },
   });
 
   it('stamps every manifest and keeps caret ranges on the intra-release pins', () => {
     const stamped = stampStableManifests(set(), '0.1.6');
 
+    expect(stamped.contract.version).toBe('0.1.6');
     expect(stamped.apiClient.version).toBe('0.1.6');
-    expect(stamped.cezar.version).toBe('0.1.6');
-    expect(stamped.alias.version).toBe('0.1.6');
-    expect(stamped.cezar.files).toEqual(['dist']); // passthrough untouched
-    // Caret, not an exact pin — the opposite of the snapshot stamper.
-    expect(stamped.alias.dependencies).toEqual({ '@scope/impl': '^0.1.6' });
-    expect(stamped.cezar.devDependencies).toEqual({ '@scope/client': '^0.1.6' });
+    expect(stamped.xezar.version).toBe('0.1.6');
+    expect(stamped.xezar.files).toEqual(['dist']); // passthrough untouched
+    // Caret, not an exact pin: a stable service follows compatible releases of its siblings.
+    expect(stamped.xezar.devDependencies).toEqual({ '@scope/client': '^0.1.6' });
   });
 
   it('re-pins the api-client wherever it is declared, so the dev→runtime move is transparent', () => {
     // Today the service only needs the client in its tests; the phase that single-sources the
     // DTOs moves it to `dependencies`. The release pipeline must not need to be told.
     const manifests = set();
-    manifests.cezar = {
+    manifests.xezar = {
       name: '@scope/impl',
       version: '0.1.5',
       dependencies: { '@scope/client': '^0.1.5', hono: '^4.6.0' },
@@ -72,15 +70,18 @@ describe('stampStableManifests', () => {
 
     const stamped = stampStableManifests(manifests, '0.1.6');
 
-    expect(stamped.cezar.dependencies).toEqual({ '@scope/client': '^0.1.6', hono: '^4.6.0' });
-    expect(stamped.cezar.devDependencies).toBeUndefined();
+    expect(stamped.xezar.dependencies).toEqual({ '@scope/client': '^0.1.6', hono: '^4.6.0' });
+    expect(stamped.xezar.devDependencies).toBeUndefined();
   });
 
-  it('lets the alias inherit repository/homepage/bugs from the service so provenance validates', () => {
-    const repository = { type: 'git', url: 'https://github.com/open-mercato/cezar' };
+  it('keeps the published package its own repository field, which provenance requires', () => {
+    // We publish with `--provenance`, and npm rejects (E422) any manifest whose
+    // `repository.url` does not match the repository the release is built from. Stamping must
+    // pass it through untouched rather than dropping or rewriting it.
+    const repository = { type: 'git', url: 'https://github.com/qodeca/xezar' };
     const manifests = set();
-    manifests.cezar = {
-      ...manifests.cezar,
+    manifests.xezar = {
+      ...manifests.xezar,
       repository,
       homepage: 'https://example.test',
       bugs: { url: 'https://example.test/issues' },
@@ -88,13 +89,20 @@ describe('stampStableManifests', () => {
 
     const stamped = stampStableManifests(manifests, '0.1.6');
 
-    expect(stamped.alias.repository).toEqual(repository);
-    expect(stamped.alias.homepage).toBe('https://example.test');
-    expect(stamped.alias.bugs).toEqual({ url: 'https://example.test/issues' });
+    expect(stamped.xezar.repository).toEqual(repository);
+    expect(stamped.xezar.homepage).toBe('https://example.test');
+    expect(stamped.xezar.bugs).toEqual({ url: 'https://example.test/issues' });
   });
 
-  it('leaves the alias untouched when the service declares no repository', () => {
-    expect('repository' in stampStableManifests(set(), '0.1.6').alias).toBe(false);
+  it('stamps exactly three manifests — the retired unscoped alias is not one of them', () => {
+    // The release used to carry a second, unscoped distribution package. Only `@qodeca/xezar`
+    // reaches the registry now, and a stray fourth member would resurrect the split identity
+    // this rename removed.
+    expect(Object.keys(stampStableManifests(set(), '0.1.6'))).toEqual([
+      'contract',
+      'apiClient',
+      'xezar',
+    ]);
   });
 
   it('stamps a private package like any other — it is in the release, just not on the registry', () => {
@@ -110,18 +118,18 @@ describe('stampStableManifests', () => {
     expect(stamped.apiClient.private).toBe(true);
     expect(isPublishable(stamped.apiClient)).toBe(false);
     // …and the service's pin against it still moves.
-    expect(stamped.cezar.devDependencies).toEqual({ '@scope/client': '^0.1.6' });
+    expect(stamped.xezar.devDependencies).toEqual({ '@scope/client': '^0.1.6' });
   });
 
   it('treats a manifest with no `private` flag as publishable', () => {
-    expect(isPublishable(set().cezar)).toBe(true);
+    expect(isPublishable(set().xezar)).toBe(true);
     expect(isPublishable({ name: 'x', version: '1.0.0', private: false })).toBe(true);
   });
 
   it('does not mutate its inputs', () => {
     const manifests = set();
     stampStableManifests(manifests, '0.1.6');
-    expect(manifests.cezar.version).toBe('0.1.5');
-    expect(manifests.alias.dependencies).toEqual({ '@scope/impl': '^0.1.5' });
+    expect(manifests.xezar.version).toBe('0.1.5');
+    expect(manifests.xezar.devDependencies).toEqual({ '@scope/client': '^0.1.5' });
   });
 });

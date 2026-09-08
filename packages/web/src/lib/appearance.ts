@@ -11,9 +11,9 @@
  * vanilla JS on purpose — it must run before the bundle exists. Change one, change the other.
  */
 
-export const ACCENT_STORAGE_KEY = 'cez-accent'
-export const DENSITY_STORAGE_KEY = 'cez-density'
-export const WIDTH_STORAGE_KEY = 'cez-width'
+export const ACCENT_STORAGE_KEY = 'xez-accent'
+export const DENSITY_STORAGE_KEY = 'xez-density'
+export const WIDTH_STORAGE_KEY = 'xez-width'
 
 /** The two accents the token sheet can express today: `lime` is `--primary` as shipped;
  *  `violet` swaps the `--primary` family onto the existing `--violet` tokens (index.css

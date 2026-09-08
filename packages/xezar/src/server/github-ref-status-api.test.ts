@@ -14,27 +14,27 @@ import { apiRequest } from './loopback-request.testkit.ts';
  * chip. The contract under test is the route's, not the driver's: both lists are optional but at
  * least one must name something, each is strictly validated (positive integers, ≤100 — a 400,
  * never a throw), and the payload maps only the numbers the forge actually knew about. Driven
- * through `CEZ_DRY_RUN=1`, so no `gh` is touched; the gh-shelling and degrade paths are the
+ * through `XEZ_DRY_RUN=1`, so no `gh` is touched; the gh-shelling and degrade paths are the
  * driver's own tests.
  */
 describe('the github ref-status API', () => {
   let repoRoot: string;
   let store: RunStore;
   let app: Hono;
-  const prevDryRun = process.env.CEZ_DRY_RUN;
+  const prevDryRun = process.env.XEZ_DRY_RUN;
 
   beforeAll(() => {
-    process.env.CEZ_DRY_RUN = '1';
+    process.env.XEZ_DRY_RUN = '1';
   });
   afterAll(() => {
-    if (prevDryRun === undefined) delete process.env.CEZ_DRY_RUN;
-    else process.env.CEZ_DRY_RUN = prevDryRun;
+    if (prevDryRun === undefined) delete process.env.XEZ_DRY_RUN;
+    else process.env.XEZ_DRY_RUN = prevDryRun;
   });
 
   beforeEach(() => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-ghrefstatus-'));
-    mkdirSync(join(repoRoot, '.ai/cezar'), { recursive: true });
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-ghrefstatus-'));
+    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     app = createApp({ repoRoot, store, manager: {} as RunManager, version: '0.0.0-test' });
   });
 

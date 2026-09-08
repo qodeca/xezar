@@ -12,7 +12,7 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 
 test('the release tarball installs and runs the dry-run CLI workflow', { timeout: 120_000 }, async () => {
-  const root = await mkdtemp(join(tmpdir(), 'cezar-package-e2e-'));
+  const root = await mkdtemp(join(tmpdir(), 'xezar-package-e2e-'));
 
   try {
     const packDir = join(root, 'pack');
@@ -46,21 +46,23 @@ test('the release tarball installs and runs the dry-run CLI workflow', { timeout
       { cwd: consumerDir, maxBuffer: 10 * 1024 * 1024 },
     );
 
-    const packageRoot = join(consumerDir, 'node_modules', '@open-mercato', 'cezar');
+    const packageRoot = join(consumerDir, 'node_modules', '@qodeca', 'xezar');
     const manifest = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8')) as {
-      bin: { cezar: string; cez: string; 'cezar-cli': string };
+      bin: { xezar: string; xez: string };
     };
-    assert.equal(manifest.bin.cezar, 'dist/index.js');
-    assert.equal(manifest.bin.cez, 'dist/index.js');
-    assert.equal(manifest.bin['cezar-cli'], 'dist/index.js');
-    const cliPath = join(packageRoot, manifest.bin.cezar);
+    assert.equal(manifest.bin.xezar, 'dist/index.js');
+    assert.equal(manifest.bin.xez, 'dist/index.js');
+    // Exactly two: the unscoped `cezar-cli` distribution is gone, so a third bin here would
+    // put a command on a consumer's PATH that nothing publishes.
+    assert.deepEqual(Object.keys(manifest.bin).sort(), ['xez', 'xezar']);
+    const cliPath = join(packageRoot, manifest.bin.xezar);
 
     const help = await execFile(process.execPath, [cliPath, '--help'], {
       cwd: consumerDir,
       maxBuffer: 10 * 1024 * 1024,
     });
-    assert.match(help.stdout, /cezar — local cockpit/);
-    assert.match(help.stdout, /cezar run "<task>"/);
+    assert.match(help.stdout, /xezar — local cockpit/);
+    assert.match(help.stdout, /xezar run "<task>"/);
 
     const fixtureRepo = join(root, 'fixture-repo');
     await mkdir(fixtureRepo);
@@ -69,31 +71,31 @@ test('the release tarball installs and runs the dry-run CLI workflow', { timeout
     await execFile('git', ['add', 'README.md'], { cwd: fixtureRepo });
     await execFile(
       'git',
-      ['-c', 'user.name=Cezar CI', '-c', 'user.email=ci@example.invalid', 'commit', '-m', 'test fixture'],
+      ['-c', 'user.name=Xezar CI', '-c', 'user.email=ci@example.invalid', 'commit', '-m', 'test fixture'],
       { cwd: fixtureRepo },
     );
 
-    // CEZ_HOME pins every workspace write (migrations, project registry,
+    // XEZ_HOME pins every workspace write (migrations, project registry,
     // server.json) to a temp dir — booting the real CLI must never touch the
-    // developer's real ~/.cezar.
-    const cezHome = join(root, 'cez-home');
+    // developer's real ~/.xezar.
+    const xezHome = join(root, 'xez-home');
     const run = await execFile(process.execPath, [cliPath, 'run', 'mock:done', '--repo', fixtureRepo], {
       cwd: consumerDir,
-      env: { ...process.env, CEZ_DRY_RUN: '1', CEZ_HOME: cezHome },
+      env: { ...process.env, XEZ_DRY_RUN: '1', XEZ_HOME: xezHome },
       timeout: 60_000,
       maxBuffer: 10 * 1024 * 1024,
     });
     assert.match(run.stdout, /run (done|review)/);
 
-    const runs = JSON.parse(await readFile(join(fixtureRepo, '.ai', 'cezar', 'runs.json'), 'utf8')) as Array<{
+    const runs = JSON.parse(await readFile(join(fixtureRepo, '.ai', 'xezar', 'runs.json'), 'utf8')) as Array<{
       status: string;
     }>;
     assert.equal(runs.length, 1);
     assert.ok(['done', 'review'].includes(runs[0]?.status ?? ''), 'the dry-run workflow should finish successfully');
 
     // Boot wiring (spec 2026-07-20-multi-project-workspace, step 1.5): the
-    // headless run migrated ~/.cezar and registered the boot repo.
-    const workspace = JSON.parse(await readFile(join(cezHome, 'config.json'), 'utf8')) as {
+    // headless run migrated ~/.xezar and registered the boot repo.
+    const workspace = JSON.parse(await readFile(join(xezHome, 'config.json'), 'utf8')) as {
       schemaVersion: number;
       disabledProviders?: string[];
       projects: Array<{ name: string; root: string }>;
@@ -105,11 +107,11 @@ test('the release tarball installs and runs the dry-run CLI workflow', { timeout
     );
 
     workspace.disabledProviders = ['claude'];
-    await writeFile(join(cezHome, 'config.json'), `${JSON.stringify(workspace, null, 2)}\n`, 'utf8');
+    await writeFile(join(xezHome, 'config.json'), `${JSON.stringify(workspace, null, 2)}\n`, 'utf8');
     await assert.rejects(
       execFile(process.execPath, [cliPath, 'run', 'mock:done must stay blocked', '--repo', fixtureRepo], {
         cwd: consumerDir,
-        env: { ...process.env, CEZ_DRY_RUN: '1', CEZ_HOME: cezHome },
+        env: { ...process.env, XEZ_DRY_RUN: '1', XEZ_HOME: xezHome },
         timeout: 60_000,
         maxBuffer: 10 * 1024 * 1024,
       }),
@@ -121,11 +123,11 @@ test('the release tarball installs and runs the dry-run CLI workflow', { timeout
       'headless run must honor the global provider preference',
     );
     const runsAfterDisabledAttempt = JSON.parse(
-      await readFile(join(fixtureRepo, '.ai', 'cezar', 'runs.json'), 'utf8'),
+      await readFile(join(fixtureRepo, '.ai', 'xezar', 'runs.json'), 'utf8'),
     ) as Array<{ status: string }>;
     assert.equal(runsAfterDisabledAttempt.length, 1, 'a disabled provider must not create a run');
     workspace.disabledProviders = [];
-    await writeFile(join(cezHome, 'config.json'), `${JSON.stringify(workspace, null, 2)}\n`, 'utf8');
+    await writeFile(join(xezHome, 'config.json'), `${JSON.stringify(workspace, null, 2)}\n`, 'utf8');
 
     const claudeShim = join(root, 'claude-shim.mjs');
     await writeFile(
@@ -148,21 +150,21 @@ if (args.join(' ') === 'auth status --json') {
         cwd: consumerDir,
         env: {
           ...process.env,
-          CEZ_CLAUDE_BIN: claudeShim,
-          CEZ_HOME: cezHome,
+          XEZ_CLAUDE_BIN: claudeShim,
+          XEZ_HOME: xezHome,
         },
         timeout: 60_000,
         maxBuffer: 10 * 1024 * 1024,
       },
     ).catch(() => undefined);
     const runsAfterAuthFailure = JSON.parse(
-      await readFile(join(fixtureRepo, '.ai', 'cezar', 'runs.json'), 'utf8'),
+      await readFile(join(fixtureRepo, '.ai', 'xezar', 'runs.json'), 'utf8'),
     ) as Array<{ id: string }>;
     assert.equal(runsAfterAuthFailure.length, 2, 'the runtime-auth fixture creates exactly one run');
     const authFailureRun = runsAfterAuthFailure.at(0);
     assert.ok(authFailureRun, 'the auth-failure fixture creates a run');
     const authFailureEvents = (await readFile(
-      join(fixtureRepo, '.ai', 'cezar', 'runs', `${authFailureRun.id}.ndjson`),
+      join(fixtureRepo, '.ai', 'xezar', 'runs', `${authFailureRun.id}.ndjson`),
       'utf8',
     )).trim().split('\n').map((line) => JSON.parse(line) as Record<string, unknown>);
     assert.ok(
@@ -173,23 +175,23 @@ if (args.join(' ') === 'auth status --json') {
       'headless runtime rejection must persist provider recovery guidance',
     );
 
-    // `cezar projects` (step 5.2) reads the same registry with no server
+    // `xezar projects` (step 5.2) reads the same registry with no server
     // running — the ssh-into-the-box view of Settings → Projects.
     const projects = await execFile(process.execPath, [cliPath, 'projects'], {
       cwd: consumerDir,
-      env: { ...process.env, CEZ_HOME: cezHome },
+      env: { ...process.env, XEZ_HOME: xezHome },
       timeout: 30_000,
       maxBuffer: 10 * 1024 * 1024,
     });
     assert.match(projects.stdout, /fixture-repo/);
     assert.match(projects.stdout, /1 project\(s\)/);
 
-    // server-install / server-uninstall dry-run round-trip. A separate CEZ_HOME
-    // isolates ~/.cezar/server.json from the project-registry fixture above;
-    // CEZ_DRY_RUN performs no real sudo.
-    assert.match(help.stdout, /cezar server-install/);
+    // server-install / server-uninstall dry-run round-trip. A separate XEZ_HOME
+    // isolates ~/.xezar/server.json from the project-registry fixture above;
+    // XEZ_DRY_RUN performs no real sudo.
+    assert.match(help.stdout, /xezar server-install/);
     const serverHome = join(root, 'server-home');
-    const serverEnv = { ...process.env, CEZ_DRY_RUN: '1', CEZ_HOME: serverHome };
+    const serverEnv = { ...process.env, XEZ_DRY_RUN: '1', XEZ_HOME: serverHome };
     const serverExec = { cwd: consumerDir, env: serverEnv, timeout: 60_000, maxBuffer: 10 * 1024 * 1024 } as const;
 
     await execFile(
@@ -233,7 +235,7 @@ if (args.join(' ') === 'auth status --json') {
       steps: Record<string, unknown>;
     };
     assert.equal(resumedExternal.externalProxy, true, 'a flag-less resume preserves external-proxy mode');
-    assert.ok(!resumedExternal.steps['nginx-proxy'], 'a flag-less resume does not add cezar-managed nginx');
+    assert.ok(!resumedExternal.steps['nginx-proxy'], 'a flag-less resume does not add xezar-managed nginx');
 
     // Unknown platform exits non-zero.
     await assert.rejects(

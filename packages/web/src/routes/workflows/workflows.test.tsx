@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { createQueryClient } from '@/api/query-client'
-import type { Skill, WorkflowDef, WorkflowsResponse } from '@open-mercato/cezar-api-client'
+import type { Skill, WorkflowDef, WorkflowsResponse } from '@qodeca/xezar-api-client'
 import { Toaster, resetToasts } from '@/components/ui/toaster'
 
 import { WorkflowsRoute } from './workflows'
@@ -19,7 +19,7 @@ afterEach(() => {
 
 const SKILLS: Skill[] = [
   { name: 'om-fix', description: 'Fix the thing', body: '', path: '.ai/skills/om-fix.md', source: 'ai' },
-  { name: 'om-review', description: 'Review it', body: '', path: '~/.cez/skills/om-review.md', source: 'global' },
+  { name: 'om-review', description: 'Review it', body: '', path: '~/.xez/skills/om-review.md', source: 'global' },
 ]
 
 const QUICK: WorkflowDef = {
@@ -34,7 +34,7 @@ const SHIP: WorkflowDef = {
   name: 'ship-it',
   description: 'Fix then review.',
   source: 'file',
-  path: '.ai/cezar/workflows/ship-it.yaml',
+  path: '.ai/xezar/workflows/ship-it.yaml',
   steps: [
     { id: 'om-fix', name: 'om-fix', skill: 'om-fix', prompt: '{{task}}' },
     { id: 'om-review', name: 'om-review', skill: 'om-review', prompt: '{{task}}' },
@@ -45,7 +45,7 @@ const SHIP: WorkflowDef = {
 const FULL: WorkflowDef = {
   name: 'crowded',
   source: 'file',
-  path: '.ai/cezar/workflows/crowded.yaml',
+  path: '.ai/xezar/workflows/crowded.yaml',
   steps: Array.from({ length: 8 }, (_, i) => ({
     id: `s${i + 1}`,
     name: 'om-fix',
@@ -190,7 +190,7 @@ describe('palette add / remove / the 8-step limit', () => {
 
     const hint = await screen.findByText(/No skills yet/)
     expect(hint.textContent).toContain('.ai/skills/')
-    expect(hint.textContent).toContain('.ai/cezar/skills/')
+    expect(hint.textContent).toContain('.ai/xezar/skills/')
     expect(hint.textContent).toContain('.agents/skills/')
   })
 })
@@ -314,7 +314,7 @@ describe('save', () => {
   it('a pure stack saves in the portable compact form', async () => {
     const sent = stubFetch({
       'POST /api/v1/workflows': [
-        () => jsonResponse({ path: '.ai/cezar/workflows/ship-it.yaml', name: 'ship-it' }, 201),
+        () => jsonResponse({ path: '.ai/xezar/workflows/ship-it.yaml', name: 'ship-it' }, 201),
       ],
     })
     renderAt('/workflows')
@@ -333,7 +333,7 @@ describe('save', () => {
     const sent = stubFetch({
       'POST /api/v1/workflows': [
         () => jsonResponse({ error: 'workflow file already exists', exists: true }, 409),
-        () => jsonResponse({ path: '.ai/cezar/workflows/ship-it.yaml', name: 'ship-it' }, 201),
+        () => jsonResponse({ path: '.ai/xezar/workflows/ship-it.yaml', name: 'ship-it' }, 201),
       ],
     })
     renderAt('/workflows')
@@ -367,7 +367,7 @@ describe('delete and “+ new”', () => {
   it('Delete exists only for saved files, confirms, DELETEs and resets the canvas', async () => {
     const sent = stubFetch({
       'DELETE /api/v1/workflows/ship-it': [
-        () => jsonResponse({ ok: true, path: '.ai/cezar/workflows/ship-it.yaml' }),
+        () => jsonResponse({ ok: true, path: '.ai/xezar/workflows/ship-it.yaml' }),
       ],
     })
     renderAt('/workflows')

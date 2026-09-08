@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { Skill, WorkflowDef } from '@open-mercato/cezar-api-client'
+import type { Skill, WorkflowDef } from '@qodeca/xezar-api-client'
 
 import {
   bumpSkillUsage,
@@ -28,7 +28,7 @@ const skill = (over: Partial<Skill> & Pick<Skill, 'name' | 'source'>): Skill => 
 describe('isProjectSkill / orderSkills (#377)', () => {
   it('classifies every server source value', () => {
     expect(isProjectSkill(skill({ name: 'a', source: 'ai' }))).toBe(true)
-    expect(isProjectSkill(skill({ name: 'b', source: 'cezar' }))).toBe(true)
+    expect(isProjectSkill(skill({ name: 'b', source: 'xezar' }))).toBe(true)
     expect(isProjectSkill(skill({ name: 'c', source: 'agents' }))).toBe(true)
     expect(isProjectSkill(skill({ name: 'd', source: 'global' }))).toBe(false)
     expect(isProjectSkill(skill({ name: 'e', source: 'team' }))).toBe(true)
@@ -154,7 +154,7 @@ describe('filterSkills (#380: filter without re-sorting — project-first surviv
   const skills = [
     skill({ name: 'global-deploy', source: 'global', description: 'Deploy from anywhere' }),
     skill({ name: 'project-deploy', source: 'ai' }),
-    skill({ name: 'project-review', source: 'cezar', description: 'Review the diff' }),
+    skill({ name: 'project-review', source: 'xezar', description: 'Review the diff' }),
   ]
 
   it('empty query keeps everything, project skills first', () => {

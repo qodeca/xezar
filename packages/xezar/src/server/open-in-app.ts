@@ -10,7 +10,7 @@ import { isWsl, translateToWindowsPath } from './wsl.ts';
 /**
  * "Open in…" session takeover (#open-in): detect the editors / file managers / terminals on THIS
  * machine, and open a run's worktree in the one the user picks — the desktop-app equivalent of
- * the "cd <path>" hint. Local-only; the server gates these behind `localHandoff` (CEZ_REMOTE).
+ * the "cd <path>" hint. Local-only; the server gates these behind `localHandoff` (XEZ_REMOTE).
  *
  * Detection is best-effort and cross-platform: an editor counts as present if its CLI is on PATH
  * or (macOS) its .app bundle is installed. Finder/file-manager and Terminal are always offered.
@@ -127,10 +127,10 @@ function editorAvailable(editor: EditorDef): boolean {
  *  terminal that resumes THIS run's session when the runner matches, or launches a fresh CLI in
  *  the worktree otherwise. The actual command is built server-side (needs the run's session). */
 const AGENT_CLIS: Array<{ runner: RunnerId; label: string; icon: string; bin: string; envBin?: string }> = [
-  { runner: 'claude', label: 'Claude CLI', icon: 'claude', bin: 'claude', envBin: process.env.CEZ_CLAUDE_BIN },
-  { runner: 'codex', label: 'Codex CLI', icon: 'codex', bin: 'codex', envBin: process.env.CEZ_CODEX_BIN },
-  { runner: 'opencode', label: 'OpenCode', icon: 'opencode', bin: 'opencode', envBin: process.env.CEZ_OPENCODE_BIN },
-  { runner: 'pi', label: 'pi CLI', icon: 'pi', bin: 'pi', envBin: process.env.CEZ_PI_BIN },
+  { runner: 'claude', label: 'Claude CLI', icon: 'claude', bin: 'claude', envBin: process.env.XEZ_CLAUDE_BIN },
+  { runner: 'codex', label: 'Codex CLI', icon: 'codex', bin: 'codex', envBin: process.env.XEZ_CODEX_BIN },
+  { runner: 'opencode', label: 'OpenCode', icon: 'opencode', bin: 'opencode', envBin: process.env.XEZ_OPENCODE_BIN },
+  { runner: 'pi', label: 'pi CLI', icon: 'pi', bin: 'pi', envBin: process.env.XEZ_PI_BIN },
 ];
 
 /** The runner behind a `cli:<runner>` open target, or null when the id isn't a CLI handoff. */

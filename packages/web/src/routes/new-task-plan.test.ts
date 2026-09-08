@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { WorkflowStepDef } from '@open-mercato/cezar-api-client'
+import type { WorkflowStepDef } from '@qodeca/xezar-api-client'
 
 import {
   buildPlannedRunBody,

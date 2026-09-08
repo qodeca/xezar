@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { AgentBrowser, bootProjectId, cezarCli, fixtureServeEnv, removeDataRoot, stopFixtureServer } from './agent-browser'
+import { AgentBrowser, bootProjectId, xezarCli, fixtureServeEnv, removeDataRoot, stopFixtureServer } from './agent-browser'
 
 const sessionId = `e2e-composer-defaults-${process.pid}`
 
@@ -36,7 +36,7 @@ async function waitForHealth(url: string): Promise<void> {
     }
     await new Promise((resolveWait) => setTimeout(resolveWait, 250))
   }
-  throw new Error(`cezar e2e: the composer-defaults server never answered at ${url}`)
+  throw new Error(`xezar e2e: the composer-defaults server never answered at ${url}`)
 }
 
 async function putDefaults(autonomous: boolean | null, worktree: boolean | null): Promise<void> {
@@ -59,11 +59,11 @@ function choose(selector: string, value: string): void {
 }
 
 beforeAll(async () => {
-  dataRoot = mkdtempSync(join(tmpdir(), 'cezar-e2e-composer-defaults-'))
+  dataRoot = mkdtempSync(join(tmpdir(), 'xezar-e2e-composer-defaults-'))
   const git = (...args: string[]) => execFileSync('git', ['-C', dataRoot, ...args])
   git('init', '-q', '-b', 'main')
-  git('config', 'user.email', 'e2e@cezar.test')
-  git('config', 'user.name', 'cezar e2e')
+  git('config', 'user.email', 'e2e@xezar.test')
+  git('config', 'user.name', 'xezar e2e')
   writeFileSync(join(dataRoot, 'README.md'), '# composer defaults fixture\n', 'utf8')
   mkdirSync(join(dataRoot, '.ai/skills'), { recursive: true })
   writeFileSync(
@@ -78,7 +78,7 @@ beforeAll(async () => {
   baseUrl = `http://localhost:${port}`
   server = spawn(
     process.execPath,
-    [cezarCli, 'serve', '--repo', dataRoot, '--port', String(port), '--no-open'],
+    [xezarCli, 'serve', '--repo', dataRoot, '--port', String(port), '--no-open'],
     { env: fixtureServeEnv(dataRoot), stdio: 'ignore' },
   )
   await waitForHealth(baseUrl)

@@ -19,7 +19,7 @@ interface Line {
 export function largeThreadEvents(turnCount: number): Array<Line & { seq: number; ts: string }> {
   const lines: Line[] = [
     { type: 'lifecycle', message: 'run started — workflow "quick-task" (runner: claude)' },
-    { type: 'note', message: 'worktree ready — branch cez/1a2b3c4d (base main)' },
+    { type: 'note', message: 'worktree ready — branch xez/1a2b3c4d (base main)' },
     { type: 'step-start', stepId: 'task', name: 'Do the task', kind: 'agent', iteration: 1 },
     { type: 'session.started', sessionId: 'a0000000-0000-4000-8000-000000000001', backend: 'claude', stepId: 'task' },
   ]

@@ -17,7 +17,7 @@ import { connectedProviderAuth } from './provider-auth.testkit.ts';
  * still passes — and the ui-state passthrough policy.
  */
 describe('request validation bounds (#429)', () => {
-  const savedRemote = process.env.CEZ_REMOTE;
+  const savedRemote = process.env.XEZ_REMOTE;
   let repoRoot: string;
   let store: RunStore;
   let app: Hono;
@@ -25,9 +25,9 @@ describe('request validation bounds (#429)', () => {
   let continueText: string | undefined;
 
   beforeEach(() => {
-    delete process.env.CEZ_REMOTE;
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-reqval-'));
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    delete process.env.XEZ_REMOTE;
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-reqval-'));
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     captured = undefined;
     continueText = undefined;
     const manager = {
@@ -54,8 +54,8 @@ describe('request validation bounds (#429)', () => {
   afterEach(() => {
     store.flush();
     rmSync(repoRoot, { recursive: true, force: true });
-    if (savedRemote === undefined) delete process.env.CEZ_REMOTE;
-    else process.env.CEZ_REMOTE = savedRemote;
+    if (savedRemote === undefined) delete process.env.XEZ_REMOTE;
+    else process.env.XEZ_REMOTE = savedRemote;
   });
 
   const postJson = (path: string, body: unknown) =>
@@ -158,7 +158,7 @@ describe('request validation bounds (#429)', () => {
     await apiRequest(app, `/api/v1/runs/${run.id}/pin`, { method: 'POST' });
     const res = await postJson(`/api/v1/runs/${run.id}/pin`, { pinned: false });
     expect(res.status).toBe(200);
-    // Absent, not `false`: the shape a cezar that never heard of pins would have written.
+    // Absent, not `false`: the shape a xezar that never heard of pins would have written.
     expect(await res.json()).not.toHaveProperty('pinned');
     expect(store.getRun(run.id)).not.toHaveProperty('pinned');
   });
@@ -198,7 +198,7 @@ describe('request validation bounds (#429)', () => {
     expect(res.status).toBe(200);
     const merged = (await res.json()) as Record<string, unknown>;
     expect(merged.someFuturePref).toBe('keep-me');
-    const onDisk = JSON.parse(readFileSync(join(repoRoot, '.ai/cezar/ui-state.json'), 'utf8'));
+    const onDisk = JSON.parse(readFileSync(join(repoRoot, '.ai/xezar/ui-state.json'), 'utf8'));
     expect(onDisk.someFuturePref).toBe('keep-me');
   });
 

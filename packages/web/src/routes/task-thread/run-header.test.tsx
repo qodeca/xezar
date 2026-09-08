@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { createQueryClient } from '@/api/query-client'
-import type { ApiRun, RunStatus, StepState } from '@open-mercato/cezar-api-client'
+import type { ApiRun, RunStatus, StepState } from '@qodeca/xezar-api-client'
 import { Toaster, resetToasts } from '@/components/ui/toaster'
 
 import { RunHeader } from './run-header'
@@ -724,7 +724,7 @@ describe('dense run details (#765)', () => {
     renderHeader(
       run('done', {
         id: freshRunId(),
-        branch: 'cez/r1',
+        branch: 'xez/r1',
         diffStat: { adds: 42, dels: 7, files: 3 },
         costUsd: 0.04,
       }),
@@ -746,7 +746,7 @@ describe('dense run details (#765)', () => {
 
     expect(details.className).not.toContain('hidden')
     expect(screen.getByRole('button', { name: 'Hide run details' }).getAttribute('aria-expanded')).toBe('true')
-    expect(details.textContent).toContain('cez/r1')
+    expect(details.textContent).toContain('xez/r1')
     expect(details.textContent).toContain('IN 24.6k · OUT 2.4k')
   })
 
@@ -843,7 +843,7 @@ describe('meta line, tabs, pill and resume hint', () => {
       run('done', {
         runner: 'codex',
         model: 'gpt-5.2-codex',
-        branch: 'cez/r1',
+        branch: 'xez/r1',
         diffStat: { adds: 42, dels: 7, files: 3 },
         costUsd: 0.04,
       }),
@@ -860,7 +860,7 @@ describe('meta line, tabs, pill and resume hint', () => {
       .toBe('codex · gpt-5.2-codex')
     // Still not loose text: everything runner/model-shaped is inside the badge, nowhere else.
     expect(meta.textContent?.replace(badge.textContent ?? '', '')).not.toContain('codex')
-    expect(within(meta).getByText('cez/r1').getAttribute('data-slot')).toBe('branch-chip')
+    expect(within(meta).getByText('xez/r1').getAttribute('data-slot')).toBe('branch-chip')
     expect(meta.querySelector('[data-slot="diff-stat"]')?.textContent).toBe('+42 −7')
     expect(meta.textContent).toContain('IN 24.6k · OUT 2.4k')
     expect(meta.textContent).toContain('$0.04')
@@ -880,7 +880,7 @@ describe('meta line, tabs, pill and resume hint', () => {
       automationRevision: 1,
       receiptId: 'r-1',
       event: 'issue.opened',
-      githubUrl: 'https://github.com/open-mercato/cezar/issues/801',
+      githubUrl: 'https://github.com/qodeca/xezar/issues/801',
     },
   })
 
@@ -946,28 +946,28 @@ describe('meta line, tabs, pill and resume hint', () => {
     {
       name: 'both',
       refs: {
-        referencedPullRequestUrl: 'https://github.com/open-mercato/cezar/pull/534',
-        referencedIssueUrl: 'https://github.com/open-mercato/cezar/issues/544',
+        referencedPullRequestUrl: 'https://github.com/qodeca/xezar/pull/534',
+        referencedIssueUrl: 'https://github.com/qodeca/xezar/issues/544',
       },
       pr: true,
       issue: true,
     },
     {
       name: 'PR only',
-      refs: { referencedPullRequestUrl: 'https://github.com/open-mercato/cezar/pull/534' },
+      refs: { referencedPullRequestUrl: 'https://github.com/qodeca/xezar/pull/534' },
       pr: true,
       issue: false,
     },
     {
       name: 'issue only',
-      refs: { referencedIssueUrl: 'https://github.com/open-mercato/cezar/issues/544' },
+      refs: { referencedIssueUrl: 'https://github.com/qodeca/xezar/issues/544' },
       pr: false,
       issue: true,
     },
     { name: 'neither', refs: {}, pr: false, issue: false },
   ])('shows discovered tracker chips next to the branch ($name)', ({ refs, pr, issue }) => {
     stubFetch()
-    renderHeader(run('done', { branch: 'cez/r1', ...refs }))
+    renderHeader(run('done', { branch: 'xez/r1', ...refs }))
     const meta = document.querySelector('[data-slot="run-meta"]') as HTMLElement
     const branch = meta.querySelector('[data-slot="branch-chip"]')
     const prChip = meta.querySelector('[data-slot="pr-chip"]')
@@ -976,12 +976,12 @@ describe('meta line, tabs, pill and resume hint', () => {
     expect(Boolean(prChip)).toBe(pr)
     expect(Boolean(issueChip)).toBe(issue)
     if (prChip) {
-      expect(prChip.getAttribute('href')).toBe('https://github.com/open-mercato/cezar/pull/534')
+      expect(prChip.getAttribute('href')).toBe('https://github.com/qodeca/xezar/pull/534')
       expect(prChip.textContent).toContain('#534')
       expect(branch?.nextElementSibling?.nextElementSibling).toBe(prChip)
     }
     if (issueChip) {
-      expect(issueChip.getAttribute('href')).toBe('https://github.com/open-mercato/cezar/issues/544')
+      expect(issueChip.getAttribute('href')).toBe('https://github.com/qodeca/xezar/issues/544')
       expect(issueChip.textContent).toContain('Issue #544')
     }
   })
@@ -998,8 +998,8 @@ describe('meta line, tabs, pill and resume hint', () => {
     })
     renderHeader(
       run('running', {
-        branch: 'cez/r1',
-        referencedPullRequestUrl: 'https://github.com/open-mercato/cezar/pull/534',
+        branch: 'xez/r1',
+        referencedPullRequestUrl: 'https://github.com/qodeca/xezar/pull/534',
       }),
     )
 
@@ -1027,17 +1027,17 @@ describe('meta line, tabs, pill and resume hint', () => {
     stubFetch()
     renderHeader(
       run('done', {
-        branch: 'cez/r1',
-        pullRequestUrl: 'https://github.com/open-mercato/cezar/pull/5366',
-        referencedPullRequestUrl: 'https://github.com/open-mercato/cezar/pull/4326',
+        branch: 'xez/r1',
+        pullRequestUrl: 'https://github.com/qodeca/xezar/pull/5366',
+        referencedPullRequestUrl: 'https://github.com/qodeca/xezar/pull/4326',
         markerRefs: { pr: 5366 },
       }),
     )
     const meta = document.querySelector('[data-slot="run-meta"]') as HTMLElement
     const chips = [...meta.querySelectorAll('[data-slot="pr-chip"]')]
     expect(chips.map((chip) => chip.getAttribute('href'))).toEqual([
-      'https://github.com/open-mercato/cezar/pull/5366',
-      'https://github.com/open-mercato/cezar/pull/4326',
+      'https://github.com/qodeca/xezar/pull/5366',
+      'https://github.com/qodeca/xezar/pull/4326',
     ])
     expect(chips.map((chip) => chip.textContent)).toEqual([
       expect.stringContaining('#5366'),
@@ -1053,15 +1053,15 @@ describe('meta line, tabs, pill and resume hint', () => {
       '/api/v1/projects': () =>
         jsonResponse({
           projects: [
-            { id: 'boot-id', name: 'cezar', root: '/home/me/cezar', repoUrl: 'https://github.com/open-mercato/cezar' },
+            { id: 'boot-id', name: 'xezar', root: '/home/me/xezar', repoUrl: 'https://github.com/qodeca/xezar' },
           ],
         }),
     })
-    renderHeader(run('done', { branch: 'cez/r1', prNumber: 901, markerRefs: { pr: 901 } }))
+    renderHeader(run('done', { branch: 'xez/r1', prNumber: 901, markerRefs: { pr: 901 } }))
     const meta = document.querySelector('[data-slot="run-meta"]') as HTMLElement
     await waitFor(() => {
       const chip = meta.querySelector('[data-slot="pr-chip"]')
-      expect(chip?.getAttribute('href')).toBe('https://github.com/open-mercato/cezar/pull/901')
+      expect(chip?.getAttribute('href')).toBe('https://github.com/qodeca/xezar/pull/901')
     })
   })
 
@@ -1072,7 +1072,7 @@ describe('meta line, tabs, pill and resume hint', () => {
     stubFetch({ '/api/v1/health': () => jsonResponse({ repo: {} }) })
     renderHeader(
       run('done', {
-        branch: 'cez/r1',
+        branch: 'xez/r1',
         pullRequestUrl: 'https://forge.example.com/o/r/merge_requests/spec-fix',
         prNumber: 42,
       }),
@@ -1089,8 +1089,8 @@ describe('meta line, tabs, pill and resume hint', () => {
     stubFetch({ '/api/v1/health': () => jsonResponse({ repo: {} }) })
     renderHeader(
       run('done', {
-        branch: 'cez/r1',
-        pullRequestUrl: 'https://github.com/open-mercato/cezar/pull/5366',
+        branch: 'xez/r1',
+        pullRequestUrl: 'https://github.com/qodeca/xezar/pull/5366',
         prNumber: 901,
       }),
     )

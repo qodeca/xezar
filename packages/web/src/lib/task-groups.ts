@@ -1,4 +1,4 @@
-import type { RunRecord } from '@open-mercato/cezar-api-client'
+import type { RunRecord } from '@qodeca/xezar-api-client'
 
 /**
  * How the task list is bucketed, sorted and collapsed — the pure half of the sidebar quick-list
@@ -127,7 +127,7 @@ export function runTitle(run: RunTitleInput): string {
 
 /**
  * The `NNN: ` reference prefix `postValidateTitle` writes onto every auto-named run
- * (`packages/cezar/src/runs/auto-name.ts`), split off the display title — issue #788, option C.
+ * (`packages/xezar/src/runs/auto-name.ts`), split off the display title — issue #788, option C.
  *
  * RENDER-ONLY. The stored `title`/`titleSummary` keep the prefix: it is what makes a run findable
  * by number in search, in the Tasks table and in the page title, and `runs.json` field semantics
@@ -199,7 +199,7 @@ export function queuePositions(runs: readonly RunRecord[]): Map<string, number> 
  *  - `queued` — oldest first, which is FIFO and therefore exactly the `#1 in queue` position the
  *    row already prints beside itself. Newest-first rendered those positions backwards.
  *
- * ISO-8601 strings compare lexicographically because every timestamp cezar writes is UTC
+ * ISO-8601 strings compare lexicographically because every timestamp xezar writes is UTC
  * (`toISOString()` → trailing `Z`), the same reason `read-state.ts` compares them directly.
  */
 export function sortRuns(runs: readonly RunRecord[], view: ListView): RunRecord[] {

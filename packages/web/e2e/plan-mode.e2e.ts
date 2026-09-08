@@ -5,11 +5,11 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { AgentBrowser, bootProjectId, cezarCli, fixtureServeEnv, getJson, removeDataRoot, stopFixtureServer } from './agent-browser'
+import { AgentBrowser, bootProjectId, xezarCli, fixtureServeEnv, getJson, removeDataRoot, stopFixtureServer } from './agent-browser'
 
 /**
  * Plan mode end-to-end (R4 Step 1.2, #383 + spec 008) against a LIVE dry-run server. Under
- * CEZ_DRY_RUN the planner runs the bundled mock CLI, which answers `[cez-planner]` calls with a
+ * XEZ_DRY_RUN the planner runs the bundled mock CLI, which answers `[xez-planner]` calls with a
  * DETERMINISTIC 3-step chain (Implement / Verify `npm test` / Review — whose made-up
  * `code-review` skill the sanitizer strips, leaving the prompt). So the whole loop is provable
  * without tokens: toggle → plan → review overlay → save-as-chain (+409 overwrite) → edit →
@@ -40,7 +40,7 @@ async function waitForHealth(url: string): Promise<void> {
     }
     await new Promise((r) => setTimeout(r, 250))
   }
-  throw new Error(`cezar e2e: the plan-mode server never answered at ${url}`)
+  throw new Error(`xezar e2e: the plan-mode server never answered at ${url}`)
 }
 
 let browser: AgentBrowser
@@ -55,11 +55,11 @@ const scoped = (path: string) => `/p/${bootProject}${path}`
 
 beforeAll(async () => {
   // A real git repo — ▶ Start creates a worktree for the planned run.
-  dataRoot = mkdtempSync(join(tmpdir(), 'cezar-e2e-plan-'))
+  dataRoot = mkdtempSync(join(tmpdir(), 'xezar-e2e-plan-'))
   const git = (...args: string[]) => execFileSync('git', ['-C', dataRoot, ...args])
   git('init', '-q', '-b', 'main')
-  git('config', 'user.email', 'e2e@cezar.test')
-  git('config', 'user.name', 'cezar e2e')
+  git('config', 'user.email', 'e2e@xezar.test')
+  git('config', 'user.name', 'xezar e2e')
   writeFileSync(join(dataRoot, 'README.md'), '# plan-mode e2e fixture repo\n', 'utf8')
   git('add', '.')
   git('commit', '-qm', 'init')
@@ -74,7 +74,7 @@ beforeAll(async () => {
   baseUrl = `http://localhost:${port}`
   server = spawn(
     process.execPath,
-    [cezarCli, 'serve', '--repo', dataRoot, '--port', String(port), '--no-open'],
+    [xezarCli, 'serve', '--repo', dataRoot, '--port', String(port), '--no-open'],
     { env: fixtureServeEnv(dataRoot), stdio: 'ignore' },
   )
   await waitForHealth(baseUrl)
@@ -113,7 +113,7 @@ async function clickStepControl(selector: string, expected: string): Promise<voi
       }
     }
   }
-  throw new Error(`cezar e2e: ${selector} never changed the step order`)
+  throw new Error(`xezar e2e: ${selector} never changed the step order`)
 }
 
 describe('plan mode against a live dry-run server', () => {

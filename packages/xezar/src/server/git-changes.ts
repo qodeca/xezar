@@ -7,8 +7,7 @@ import { resolveTaskDiffBase, type RepointedHead } from '../git-diff-base.ts';
 import { isSafeGitRef } from '../git-refs.ts';
 
 /**
- * Session git plumbing for the cockpit's Changes & Files tabs (redesign spec
- * `.ai/specs/2026-07-14-cockpit-ui-redesign.md` §"Git/session API additions").
+ * Session git plumbing for the cockpit's Changes & Files tabs.
  *
  * Structured diff (`collectChanges`), worktree browsing (`readWorktreePath`),
  * commit-all and push — all against an arbitrary directory so the same
@@ -264,7 +263,7 @@ export async function collectChanges(
   if (!isSafeGitRef(baseBranch)) return { ok: false, error: 'refusing option-like base ref' };
   const patchCap = opts.patchCap ?? PATCH_CAP;
   // `git add -N .` (intent-to-add) makes untracked files appear in the diff, but it MUTATES the
-  // index — fine in a task worktree cezar owns, but forbidden on the user's real main tree (a
+  // index — fine in a task worktree xezar owns, but forbidden on the user's real main tree (a
   // read-only GET must never stage files, #major-index-mutation). When `intentToAdd` is false we
   // build a SCRATCH index (GIT_INDEX_FILE) seeded from HEAD + intent-to-add, so untracked files
   // still show WITHOUT touching the user's real index.
@@ -272,7 +271,7 @@ export async function collectChanges(
   let scratchIndex: string | undefined;
   try {
     if (opts.intentToAdd === false) {
-      scratchIndex = join(tmpdir(), `cez-scratch-index-${process.pid}-${scratchSeq++}`);
+      scratchIndex = join(tmpdir(), `xez-scratch-index-${process.pid}-${scratchSeq++}`);
       env = { GIT_INDEX_FILE: scratchIndex };
       await git(dir, ['read-tree', 'HEAD'], env); // seed with tracked files; harmless if no HEAD
       await git(dir, ['add', '-N', '.'], env);

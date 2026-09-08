@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import { MODEL_DISCOVERY_RUNNERS, runnerDiscoversModels } from '@open-mercato/cezar-api-client'
-import type { BackendCheck, Skill, WorkflowDef } from '@open-mercato/cezar-api-client'
+import { MODEL_DISCOVERY_RUNNERS, runnerDiscoversModels } from '@qodeca/xezar-api-client'
+import type { BackendCheck, Skill, WorkflowDef } from '@qodeca/xezar-api-client'
 
 import {
   buildAutomationTask,
@@ -131,7 +131,7 @@ describe('model option resolution', () => {
     expect(modelConflictsWithRunner('my-org/custom-tune', 'codex')).toBe(false)
   })
 
-  it('every runner cezar ships reads its models from the host', () => {
+  it('every runner xezar ships reads its models from the host', () => {
     // #794 gave OpenCode a catalog and #784 gave Claude one, so the picker no longer has a
     // preset-only runner. The contract's list is the single source both the route and the picker
     // compile against — this asserts they still agree on who discovers.

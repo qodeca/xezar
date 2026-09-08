@@ -45,7 +45,7 @@ let threadRunId: string
 
 async function api<T>(path: string): Promise<T> {
   const res = await fetch(`${baseUrl}${path}`)
-  if (!res.ok) throw new Error(`cezar e2e: GET ${path} answered ${res.status}`)
+  if (!res.ok) throw new Error(`xezar e2e: GET ${path} answered ${res.status}`)
   return (await res.json()) as T
 }
 
@@ -62,7 +62,7 @@ async function waitForStatus(id: string, wanted: string[]): Promise<string> {
     if (wanted.includes(record.status)) return record.status
     await new Promise((r) => setTimeout(r, 500))
   }
-  throw new Error(`cezar e2e: run ${id} never reached status "${wanted.join('/')}"`)
+  throw new Error(`xezar e2e: run ${id} never reached status "${wanted.join('/')}"`)
 }
 
 beforeAll(async () => {
@@ -73,7 +73,7 @@ beforeAll(async () => {
   // The thread view needs a run. Prefer whatever the shared env already holds (newest live
   // record); only when the list is empty does this spec start one dry run — and then settles it
   // via /finish, so the shared env is never left holding an open session another spec would
-  // trip over. The run lands in `.ai/cezar/` (gitignored runtime state), same class of shared-env
+  // trip over. The run lands in `.ai/xezar/` (gitignored runtime state), same class of shared-env
   // write as the smoke spec's todos.json.
   const runs = await api<RunRecord[]>('/api/v1/runs')
   const existing = [...runs]
@@ -90,7 +90,7 @@ beforeAll(async () => {
       })
     ).json()) as { id: string }
     threadRunId = created.id
-    // The dry-run mock's reply carries no CEZ:DONE marker, so the run parks at `waiting`.
+    // The dry-run mock's reply carries no XEZ:DONE marker, so the run parks at `waiting`.
     const status = await waitForStatus(threadRunId, ['waiting', 'review', 'done', 'failed'])
     if (status === 'waiting') {
       await fetch(`${baseUrl}/api/v1/runs/${threadRunId}/finish`, { method: 'POST' })

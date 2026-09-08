@@ -41,19 +41,19 @@ import {
 describe('checkout — repo reference parsing', () => {
   it('accepts every GitHub spelling and normalizes to owner/repo', () => {
     for (const input of [
-      'open-mercato/cezar',
-      'https://github.com/open-mercato/cezar',
-      'https://github.com/open-mercato/cezar.git',
-      'http://www.github.com/open-mercato/cezar/',
-      'github.com/open-mercato/cezar',
-      'git@github.com:open-mercato/cezar.git',
-      'ssh://git@github.com/open-mercato/cezar',
-      '  open-mercato/cezar  ',
+      'qodeca/xezar',
+      'https://github.com/qodeca/xezar',
+      'https://github.com/qodeca/xezar.git',
+      'http://www.github.com/qodeca/xezar/',
+      'github.com/qodeca/xezar',
+      'git@github.com:qodeca/xezar.git',
+      'ssh://git@github.com/qodeca/xezar',
+      '  qodeca/xezar  ',
     ]) {
       expect(parseRepoRef(input), input).toEqual({
-        owner: 'open-mercato',
-        repo: 'cezar',
-        slug: 'open-mercato/cezar',
+        owner: 'qodeca',
+        repo: 'xezar',
+        slug: 'qodeca/xezar',
       });
     }
   });
@@ -62,8 +62,8 @@ describe('checkout — repo reference parsing', () => {
     for (const input of [
       '',
       '   ',
-      'cezar',
-      'open-mercato/cezar/extra',
+      'xezar',
+      'qodeca/xezar/extra',
       'https://gitlab.com/owner/repo',
       'https://evil.example/github.com/owner/repo',
       '--upload-pack=touch /tmp/pwned',
@@ -77,7 +77,7 @@ describe('checkout — repo reference parsing', () => {
   });
 
   it('a folder name is one boring path segment — never a traversal', () => {
-    expect(isValidCheckoutName('cezar')).toBe(true);
+    expect(isValidCheckoutName('xezar')).toBe(true);
     expect(isValidCheckoutName('my.repo_2-x')).toBe(true);
     for (const name of ['', '.', '..', '.ssh', 'a/b', 'a\\b', '../escape', '/abs', 'a'.repeat(200)]) {
       expect(isValidCheckoutName(name), name).toBe(false);
@@ -89,7 +89,7 @@ describe('checkout — the cleanup guard', () => {
   let root: string;
 
   beforeEach(() => {
-    root = mkdtempSync(join(realpathSync(tmpdir()), 'cez-checkout-root-'));
+    root = mkdtempSync(join(realpathSync(tmpdir()), 'xez-checkout-root-'));
   });
   afterEach(() => {
     rmSync(root, { recursive: true, force: true });
@@ -106,7 +106,7 @@ describe('checkout — the cleanup guard', () => {
   });
 
   it('REFUSES a directory outside the checkout root', async () => {
-    const outside = mkdtempSync(join(realpathSync(tmpdir()), 'cez-checkout-outside-'));
+    const outside = mkdtempSync(join(realpathSync(tmpdir()), 'xez-checkout-outside-'));
     writeFileSync(join(outside, 'precious.txt'), 'keep me', 'utf8');
     try {
       expect(await cleanupCheckout(root, outside)).toBe(false);
@@ -130,7 +130,7 @@ describe('checkout — the cleanup guard', () => {
     // The swap attack: the target we created is replaced by a link to somewhere
     // real. `realpath` alone would resolve it and (if the victim happened to sit
     // under the root) delete it — the lstat check is what stops the class.
-    const victim = mkdtempSync(join(realpathSync(tmpdir()), 'cez-checkout-victim-'));
+    const victim = mkdtempSync(join(realpathSync(tmpdir()), 'xez-checkout-victim-'));
     writeFileSync(join(victim, 'precious.txt'), 'keep me', 'utf8');
     const insideVictim = join(root, 'inside-victim');
     mkdirSync(insideVictim);
@@ -159,26 +159,26 @@ describe('checkout — the cleanup guard', () => {
 });
 
 describe('checkoutRepo — clone, failure cleanup, existing target', () => {
-  const savedDryRun = process.env.CEZ_DRY_RUN;
+  const savedDryRun = process.env.XEZ_DRY_RUN;
   let root: string;
 
   beforeEach(() => {
-    root = mkdtempSync(join(realpathSync(tmpdir()), 'cez-checkout-'));
-    // The `run: undefined` tests exercise the CEZ_DRY_RUN fake clone; without
+    root = mkdtempSync(join(realpathSync(tmpdir()), 'xez-checkout-'));
+    // The `run: undefined` tests exercise the XEZ_DRY_RUN fake clone; without
     // this the default runner shells out to a real `gh repo clone`.
-    process.env.CEZ_DRY_RUN = '1';
+    process.env.XEZ_DRY_RUN = '1';
   });
   afterEach(() => {
     rmSync(root, { recursive: true, force: true });
-    if (savedDryRun === undefined) delete process.env.CEZ_DRY_RUN;
-    else process.env.CEZ_DRY_RUN = savedDryRun;
+    if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
+    else process.env.XEZ_DRY_RUN = savedDryRun;
   });
 
   const events: unknown[] = [];
   const run = (opts: Partial<Parameters<typeof checkoutRepo>[0]> = {}) => {
     events.length = 0;
     return checkoutRepo({
-      url: 'open-mercato/cezar',
+      url: 'qodeca/xezar',
       projectsDir: root,
       onProgress: (event) => events.push(event),
       ...opts,
@@ -197,20 +197,20 @@ describe('checkoutRepo — clone, failure cleanup, existing target', () => {
     };
   };
 
-  it('the CEZ_DRY_RUN fake clone lands a repo at <projectsDir>/<repo> and reports done', async () => {
+  it('the XEZ_DRY_RUN fake clone lands a repo at <projectsDir>/<repo> and reports done', async () => {
     const result = await run({ run: undefined, checkoutId: 'co-1' });
     expect(result).toMatchObject({
       ok: true,
-      name: 'cezar',
-      target: join(root, 'cezar'),
+      name: 'xezar',
+      target: join(root, 'xezar'),
     });
-    expect(existsSync(join(root, 'cezar', '.git'))).toBe(true);
-    expect(readFileSync(join(root, 'cezar', 'README.md'), 'utf8')).toContain('cezar');
+    expect(existsSync(join(root, 'xezar', '.git'))).toBe(true);
+    expect(readFileSync(join(root, 'xezar', 'README.md'), 'utf8')).toContain('xezar');
     // Progress reached the caller BEFORE the terminal event — the whole reason
     // the stream exists (a silent spinner is the failure mode).
     expect(events.at(-1)).toEqual({
       checkoutId: 'co-1',
-      name: 'cezar',
+      name: 'xezar',
       phase: 'done',
     });
     expect(events.filter((e) => (e as { phase: string }).phase === 'cloning').length).toBeGreaterThan(0);
@@ -236,7 +236,7 @@ describe('checkoutRepo — clone, failure cleanup, existing target', () => {
     expect(result).toMatchObject({ ok: false, status: 500 });
     expect(result).toHaveProperty('error', expect.stringContaining('could not read Username'));
     // THE cleanup assertion: no half-clone survives a failure.
-    expect(existsSync(join(root, 'cezar'))).toBe(false);
+    expect(existsSync(join(root, 'xezar'))).toBe(false);
     expect(events.at(-1)).toMatchObject({ phase: 'error', checkoutId: 'co-2' });
     // …and because it was cleaned up, an immediate retry is a fresh clone
     // rather than the 409 a leftover directory would have produced.
@@ -250,7 +250,7 @@ describe('checkoutRepo — clone, failure cleanup, existing target', () => {
     };
     const result = await run({ run: thrower });
     expect(result).toMatchObject({ ok: false, status: 500 });
-    expect(existsSync(join(root, 'cezar'))).toBe(false);
+    expect(existsSync(join(root, 'xezar'))).toBe(false);
   });
 
   it('degrades to { error, reason } + 503 when gh is not installed', async () => {
@@ -262,11 +262,11 @@ describe('checkoutRepo — clone, failure cleanup, existing target', () => {
     const result = await run({ run: missing });
     expect(result).toMatchObject({ ok: false, status: 503 });
     expect(result).toHaveProperty('reason', expect.stringContaining('gh CLI not found'));
-    expect(existsSync(join(root, 'cezar'))).toBe(false);
+    expect(existsSync(join(root, 'xezar'))).toBe(false);
   });
 
   it('409s on an existing target and does NOT touch it', async () => {
-    const existing = join(root, 'cezar');
+    const existing = join(root, 'xezar');
     mkdirSync(existing, { recursive: true });
     writeFileSync(join(existing, 'precious.txt'), 'someone else lives here', 'utf8');
     // A runner that would destroy the folder if it were ever reached.
@@ -283,47 +283,47 @@ describe('checkoutRepo — clone, failure cleanup, existing target', () => {
   it('creates the checkout root on demand — a fresh install has never had one', async () => {
     const fresh = join(root, 'never', 'existed');
     const result = await checkoutRepo({
-      url: 'open-mercato/cezar',
+      url: 'qodeca/xezar',
       projectsDir: fresh,
       onProgress: () => {},
     });
-    expect(result).toMatchObject({ ok: true, target: join(fresh, 'cezar') });
+    expect(result).toMatchObject({ ok: true, target: join(fresh, 'xezar') });
   });
 });
 
 describe('POST /api/v1/projects/checkout', () => {
-  const savedHome = process.env.CEZ_HOME;
-  const savedDryRun = process.env.CEZ_DRY_RUN;
-  const savedProjectsDir = process.env.CEZ_PROJECTS_DIR;
-  const savedRemote = process.env.CEZ_REMOTE;
+  const savedHome = process.env.XEZ_HOME;
+  const savedDryRun = process.env.XEZ_DRY_RUN;
+  const savedProjectsDir = process.env.XEZ_PROJECTS_DIR;
+  const savedRemote = process.env.XEZ_REMOTE;
   let home: string;
   let repoRoot: string;
   let checkoutRoot: string;
   let store: RunStore;
 
   beforeEach(() => {
-    home = mkdtempSync(join(realpathSync(tmpdir()), 'cez-checkout-home-'));
-    repoRoot = mkdtempSync(join(realpathSync(tmpdir()), 'cez-checkout-boot-'));
-    checkoutRoot = join(home, 'cezar', 'projects');
-    process.env.CEZ_HOME = home;
-    process.env.CEZ_DRY_RUN = '1';
-    delete process.env.CEZ_PROJECTS_DIR;
-    delete process.env.CEZ_REMOTE;
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    home = mkdtempSync(join(realpathSync(tmpdir()), 'xez-checkout-home-'));
+    repoRoot = mkdtempSync(join(realpathSync(tmpdir()), 'xez-checkout-boot-'));
+    checkoutRoot = join(home, 'xezar', 'projects');
+    process.env.XEZ_HOME = home;
+    process.env.XEZ_DRY_RUN = '1';
+    delete process.env.XEZ_PROJECTS_DIR;
+    delete process.env.XEZ_REMOTE;
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     clearProjectProbeCache();
   });
 
   afterEach(() => {
     store.flush();
     for (const dir of [home, repoRoot]) rmSync(dir, { recursive: true, force: true });
-    if (savedHome === undefined) delete process.env.CEZ_HOME;
-    else process.env.CEZ_HOME = savedHome;
-    if (savedDryRun === undefined) delete process.env.CEZ_DRY_RUN;
-    else process.env.CEZ_DRY_RUN = savedDryRun;
-    if (savedProjectsDir === undefined) delete process.env.CEZ_PROJECTS_DIR;
-    else process.env.CEZ_PROJECTS_DIR = savedProjectsDir;
-    if (savedRemote === undefined) delete process.env.CEZ_REMOTE;
-    else process.env.CEZ_REMOTE = savedRemote;
+    if (savedHome === undefined) delete process.env.XEZ_HOME;
+    else process.env.XEZ_HOME = savedHome;
+    if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
+    else process.env.XEZ_DRY_RUN = savedDryRun;
+    if (savedProjectsDir === undefined) delete process.env.XEZ_PROJECTS_DIR;
+    else process.env.XEZ_PROJECTS_DIR = savedProjectsDir;
+    if (savedRemote === undefined) delete process.env.XEZ_REMOTE;
+    else process.env.XEZ_REMOTE = savedRemote;
   });
 
   const makeApp = (over: Partial<ServerDeps> = {}) =>
@@ -362,15 +362,15 @@ describe('POST /api/v1/projects/checkout', () => {
     const seen: { event: string; data: unknown }[] = [];
     bus.on((event, data) => seen.push({ event, data }));
 
-    const { status, body } = await post({ url: 'open-mercato/cezar', checkoutId: 'co-9' }, { workspaceEvents: bus });
+    const { status, body } = await post({ url: 'qodeca/xezar', checkoutId: 'co-9' }, { workspaceEvents: bus });
     expect(status).toBe(200);
     expect(body.project).toMatchObject({
-      name: 'cezar',
+      name: 'xezar',
       source: 'checkout',
       status: 'ok',
     });
-    expect(body.project?.root).toBe(join(checkoutRoot, 'cezar'));
-    expect(existsSync(join(checkoutRoot, 'cezar', '.git'))).toBe(true);
+    expect(body.project?.root).toBe(join(checkoutRoot, 'xezar'));
+    expect(existsSync(join(checkoutRoot, 'xezar', '.git'))).toBe(true);
 
     // The dialog's two feeds: `checkout-progress` while it runs, `project-added`
     // once at the end (which is what makes every open sidebar grow the group).
@@ -387,23 +387,23 @@ describe('POST /api/v1/projects/checkout', () => {
     expect((await listProjectsViaApi()).projects.map((p) => p.id)).toContain(body.project?.id);
   });
 
-  it('uses CEZ_PROJECTS_DIR as the zero-config checkout root and creates it recursively', async () => {
+  it('uses XEZ_PROJECTS_DIR as the zero-config checkout root and creates it recursively', async () => {
     const fromEnv = join(home, 'deep', 'environment', 'checkouts');
-    process.env.CEZ_PROJECTS_DIR = fromEnv;
-    const { status, body } = await post({ url: 'open-mercato/cezar' });
+    process.env.XEZ_PROJECTS_DIR = fromEnv;
+    const { status, body } = await post({ url: 'qodeca/xezar' });
     expect(status).toBe(200);
-    expect(body.project?.root).toBe(join(fromEnv, 'cezar'));
-    expect(existsSync(join(fromEnv, 'cezar', '.git'))).toBe(true);
+    expect(body.project?.root).toBe(join(fromEnv, 'xezar'));
+    expect(existsSync(join(fromEnv, 'xezar', '.git'))).toBe(true);
   });
 
   it('409s when the target folder already exists, leaving it and the registry untouched', async () => {
     await useCheckoutRoot();
-    const existing = join(checkoutRoot, 'cezar');
+    const existing = join(checkoutRoot, 'xezar');
     mkdirSync(existing, { recursive: true });
     writeFileSync(join(existing, 'precious.txt'), 'mine', 'utf8');
 
     const { status, body } = await post({
-      url: 'https://github.com/open-mercato/cezar.git',
+      url: 'https://github.com/qodeca/xezar.git',
     });
     expect(status).toBe(409);
     expect(body.error).toContain('already exists');
@@ -443,7 +443,7 @@ describe('POST /api/v1/projects/checkout', () => {
       error: 'spawn gh ENOENT',
       notFound: true,
     });
-    const { status, body } = await post({ url: 'open-mercato/cezar' }, { cloneRunner });
+    const { status, body } = await post({ url: 'qodeca/xezar' }, { cloneRunner });
     expect(status).toBe(503);
     expect(body.reason).toContain('gh auth login');
     expect(body.error).toBe(body.reason);
@@ -454,7 +454,7 @@ describe('POST /api/v1/projects/checkout', () => {
     for (const payload of [
       { url: 'https://gitlab.com/owner/repo' },
       { url: 'not a repo' },
-      { url: 'open-mercato/cezar', name: '../escape' },
+      { url: 'qodeca/xezar', name: '../escape' },
       {},
       { url: '  ' },
     ]) {
@@ -470,8 +470,8 @@ describe('POST /api/v1/projects/checkout', () => {
     // The 409-on-existing-dir path is about the folder, not the repo: two
     // checkouts of the same repo under different names are legitimate.
     await useCheckoutRoot();
-    expect((await post({ url: 'open-mercato/cezar', name: 'one' })).status).toBe(200);
-    const second = await post({ url: 'open-mercato/cezar', name: 'two' });
+    expect((await post({ url: 'qodeca/xezar', name: 'one' })).status).toBe(200);
+    const second = await post({ url: 'qodeca/xezar', name: 'two' });
     expect(second.status).toBe(200);
     expect((await listProjectsViaApi()).projects.map((p) => p.name).sort()).toEqual(['one', 'two']);
   });
@@ -481,13 +481,13 @@ describe('POST /api/v1/projects/checkout', () => {
     // not: the clone succeeds, and registration recognises the realpath.
     await useCheckoutRoot();
     mkdirSync(checkoutRoot, { recursive: true });
-    const target = join(checkoutRoot, 'cezar');
+    const target = join(checkoutRoot, 'xezar');
     mkdirSync(target, { recursive: true });
     const existing = await registerProject(target, 'local');
     rmSync(target, { recursive: true, force: true });
     clearProjectProbeCache();
 
-    const { status, body } = await post({ url: 'open-mercato/cezar' });
+    const { status, body } = await post({ url: 'qodeca/xezar' });
     expect(status).toBe(409);
     expect(body.error).toContain(existing.id);
     // The clone is still on disk — a successful checkout is never deleted by a

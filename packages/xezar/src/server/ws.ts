@@ -5,8 +5,6 @@ import { z } from 'zod';
 
 /**
  * The cockpit's WebSocket subscription bus (`GET /api/v1/ws`, upgrade-only).
- * Design + the subscribe/unsubscribe discipline: spec
- * `.ai/specs/2026-07-23-websocket-subscriptions.md`.
  *
  * One socket per cockpit, many topics per socket: the client sends
  * `{type:'subscribe'|'unsubscribe', topic}` frames and receives

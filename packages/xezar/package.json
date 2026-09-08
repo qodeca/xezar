@@ -1,13 +1,12 @@
 {
-  "name": "@open-mercato/cezar",
+  "name": "@qodeca/xezar",
   "version": "0.10.1",
-  "description": "Local cockpit for running and tracking AI agent tasks in your repo. Uses your logged-in `claude` CLI and `gh` — zero config, zero database.",
+  "description": "Local cockpit for running and tracking AI agent tasks in your repo. Uses your logged-in `claude` CLI and `gh` \u2014 zero config, zero database.",
   "license": "MIT",
   "type": "module",
   "bin": {
-    "cezar": "dist/index.js",
-    "cez": "dist/index.js",
-    "cezar-cli": "dist/index.js"
+    "xezar": "dist/index.js",
+    "xez": "dist/index.js"
   },
   "exports": {
     ".": "./dist/index.js",
@@ -51,8 +50,8 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@open-mercato/cezar-api-client": "^0.10.1",
-    "@open-mercato/cezar-contract": "^0.10.1",
+    "@qodeca/xezar-api-client": "^0.10.1",
+    "@qodeca/xezar-contract": "^0.10.1",
     "@types/node": "^20.14.0",
     "@types/ws": "^8.18.1",
     "esbuild": "^0.28.1",
@@ -62,10 +61,25 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/qodeca/cezar",
-    "directory": "packages/cezar"
+    "url": "https://github.com/qodeca/xezar",
+    "directory": "packages/xezar"
   },
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "homepage": "https://github.com/qodeca/xezar#readme",
+  "bugs": {
+    "url": "https://github.com/qodeca/xezar/issues"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "claude",
+    "codex",
+    "cli",
+    "cockpit",
+    "automation",
+    "git",
+    "github"
+  ]
 }

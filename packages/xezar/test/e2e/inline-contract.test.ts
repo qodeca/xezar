@@ -88,7 +88,7 @@ test('a repointed declaration type-checks with skipLibCheck OFF', async () => {
 
   // `skipLibCheck` is on in every tsconfig here, which is precisely what hid the broken import.
   // The probe turns it off and imports each repointed module the way a consumer would.
-  const scratch = await mkdtemp(join(tmpdir(), 'cezar-inline-contract-'));
+  const scratch = await mkdtemp(join(tmpdir(), 'xezar-inline-contract-'));
   try {
     const imports = declarations
       .map(({ file }, i) => `import type * as m${i} from '${file.replace(/\.d\.ts$/, '.js')}';`)

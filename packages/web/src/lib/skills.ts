@@ -1,4 +1,4 @@
-import type { Skill, WorkflowDef } from '@open-mercato/cezar-api-client'
+import type { Skill, WorkflowDef } from '@qodeca/xezar-api-client'
 
 /**
  * The shared skill presentation rules (#377/#380): the ⌘K palette, the composer's `/`
@@ -11,7 +11,7 @@ import type { Skill, WorkflowDef } from '@open-mercato/cezar-api-client'
  *  so they belong with project skills. Only `global` comes from the user's home catalog. */
 const PROJECT_SKILL_SOURCES: ReadonlySet<Skill['source']> = new Set([
   'ai',
-  'cezar',
+  'xezar',
   'agents',
   'team',
 ])

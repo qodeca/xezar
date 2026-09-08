@@ -11,7 +11,7 @@ import type {
   githubPrChangesDataSchema,
   githubPrMergeStateResponseSchema,
   githubRefStatusDataSchema,
-} from '@open-mercato/cezar-contract';
+} from '@qodeca/xezar-contract';
 import type {
   changesPayloadSchema,
   reclaimWorktreesResponseSchema,
@@ -20,7 +20,7 @@ import type {
   repoResponseSchema,
   worktreeEntrySchema,
   worktreesResponseSchema,
-} from '@open-mercato/cezar-contract';
+} from '@qodeca/xezar-contract';
 import type { AppType } from './app-type.ts';
 
 /**

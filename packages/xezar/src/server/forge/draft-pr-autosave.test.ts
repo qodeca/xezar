@@ -25,17 +25,17 @@ describe('createDraftPr pre-PR autosave (#471 follow-up)', () => {
   const input = () => ({
     repoRoot: repo,
     handoffText: '# Goal\n\nship it\n',
-    run: { worktreePath: repo, branch: 'cez/abc123', task: 'do the thing' } as RunRecord,
+    run: { worktreePath: repo, branch: 'xez/abc123', task: 'do the thing' } as RunRecord,
   });
 
   beforeEach(async () => {
-    repo = mkdtempSync(join(tmpdir(), 'cez-draft-pr-'));
+    repo = mkdtempSync(join(tmpdir(), 'xez-draft-pr-'));
     await git(['init', '-q', '-b', 'main']);
     writeFileSync(join(repo, 'a.txt'), 'base\n');
     await git(['add', '-A']);
     await git([...GIT_ID, 'commit', '-q', '-m', 'base']);
     warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    vi.stubEnv('CEZ_DRY_RUN', '1'); // stop before push/gh; the guard runs earlier
+    vi.stubEnv('XEZ_DRY_RUN', '1'); // stop before push/gh; the guard runs earlier
   });
 
   afterEach(() => {
@@ -76,7 +76,7 @@ describe('createDraftPr pre-PR autosave (#471 follow-up)', () => {
     expect(outcome.ok).toBe(true);
     // The final state landed on the branch before publishing.
     const { stdout } = await run('git', ['log', '-1', '--format=%s'], { cwd: repo });
-    expect(stdout.trim()).toBe('cezar autosave (pre-PR)');
+    expect(stdout.trim()).toBe('xezar autosave (pre-PR)');
   });
 
   it('publishes when there was nothing left to flush', async () => {

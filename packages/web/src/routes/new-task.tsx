@@ -39,7 +39,7 @@ import type {
   Runner,
   Skill,
   WorkflowDef,
-} from '@open-mercato/cezar-api-client'
+} from '@qodeca/xezar-api-client'
 import { TwinkleBackdrop } from '@/components/centered-state'
 import { Composer, type ComposerHandle } from '@/components/composer/composer'
 import { GhostCodeBackdrop } from '@/components/ghost-code-backdrop'
@@ -299,7 +299,7 @@ export function NewTaskRoute() {
   const autonomousOn = runMode.autonomous
 
   // Follow-up generation (#444) is offered only while the server has the global inbox on
-  // (#471, `CEZ_FOLLOWUPS=1`) — there is no inbox for the follow-ups to land in otherwise, and
+  // (#471, `XEZ_FOLLOWUPS=1`) — there is no inbox for the follow-ups to land in otherwise, and
   // the server pins the flag to false regardless, so a toggle would be a lie. Hidden, the value
   // is false, matching what the server will do. Health unknown → assume offered, the `hasGit`
   // rule above: the composer must not flicker its controls while health is in flight.
@@ -509,7 +509,7 @@ export function NewTaskRoute() {
       )
       // Run-mode choices live in the current draft; stable defaults come from workspace policy.
       // persisting the forced `false` would overwrite their real preference, so turning
-      // CEZ_FOLLOWUPS back on later would silently come up off.
+      // XEZ_FOLLOWUPS back on later would silently come up off.
       if (followupsToggleShown) {
         void putUiState({ lastGenerateFollowups: generateFollowupsOn })
           .then(() => queryClient.invalidateQueries({ queryKey: queryKeys.uiState }))

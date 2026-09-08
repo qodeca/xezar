@@ -4,8 +4,7 @@
  * the runner calls it ALONGSIDE the v1 path (v1 events keep flowing
  * unchanged).
  *
- * Contract: `.ai/analysis/cockpit-ui-redesign/agent-event-protocols.md` §3
- * (wire format) and §7.1 "Codex (app-server)" (the mapping). Golden fixtures
+ * Contract: `AGENT_PROTOCOL.md` §4 (per-backend mapping). Golden fixtures
  * replaying wire-faithful frame sequences live in `__fixtures__/codex/`.
  *
  * Robustness rule: input is untrusted wire data — the mapper never throws;
@@ -101,9 +100,7 @@ export interface CodexUiMapperState {
    *  Codex announces review mode as two disjoint frames (`enteredReviewMode`,
    *  `exitedReviewMode`) with different ids. Mapped literally that is two
    *  childless `task` items — which the Agents dock would read as two separate
-   *  sub-agents that each did nothing (spec
-   *  `.ai/specs/2026-07-20-grouped-subagent-display.md` §"Codex-mapper fix",
-   *  #474). This latch folds the pair into ONE item with a running→completed
+   *  sub-agents that each did nothing (#474). This latch folds the pair into ONE item with a running→completed
    *  lifecycle: the entered frame opens it, the exited frame completes that
    *  same id. An unpaired exit falls back to its own item, so a stream that
    *  starts mid-review still renders. */
@@ -339,7 +336,7 @@ function mapItemLifecycle(
   // entry the agent is executing.
   //
   // `todoList` is NOT an app-server item type — the v2 `ThreadItem` union has no
-  // todo variant, so this arm is dead on the transport cezar spawns. It is kept
+  // todo variant, so this arm is dead on the transport xezar spawns. It is kept
   // as cheap tolerance: these types are marked EXPERIMENTAL upstream, codex's
   // exec transport does emit a `todo_list` item, and a stray snapshot is better
   // rendered than dropped. The real plan channel is `turn/plan/updated`.
@@ -508,8 +505,7 @@ function collabParentItemId(params: Record<string, unknown>, state: CodexUiMappe
  *
  * `enteredReviewMode` opens the item (`running`); `exitedReviewMode` completes
  * **that same id**, so the cockpit sees one "Review" span with a lifecycle instead
- * of two childless task items that would read as two sub-agents (spec
- * `.ai/specs/2026-07-20-grouped-subagent-display.md` §"Codex-mapper fix", #474).
+ * of two childless task items that would read as two sub-agents (#474).
  *
  * The fallback matters: an exit with no open item — a resumed thread, a replay that
  * starts mid-review — still maps to its own completed item, so no frame is dropped.

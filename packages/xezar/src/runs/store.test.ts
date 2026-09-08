@@ -24,7 +24,7 @@ describe('RunStore — directional usage persistence', () => {
   let dataDir: string;
 
   beforeEach(() => {
-    dataDir = mkdtempSync(join(tmpdir(), 'cez-store-'));
+    dataDir = mkdtempSync(join(tmpdir(), 'xez-store-'));
   });
 
   afterEach(() => {
@@ -95,7 +95,7 @@ describe('RunStore — titleSummary + diffStat (#389)', () => {
   let dataDir: string;
 
   beforeEach(() => {
-    dataDir = mkdtempSync(join(tmpdir(), 'cez-store-'));
+    dataDir = mkdtempSync(join(tmpdir(), 'xez-store-'));
   });
 
   afterEach(() => {
@@ -302,7 +302,7 @@ describe('RunStore — titleSummary + diffStat (#389)', () => {
 describe('RunStore — PR auto-link only on real creation (#fake-pr)', () => {
   let dataDir: string;
   beforeEach(() => {
-    dataDir = mkdtempSync(join(tmpdir(), 'cez-store-'));
+    dataDir = mkdtempSync(join(tmpdir(), 'xez-store-'));
   });
   afterEach(() => {
     rmSync(dataDir, { recursive: true, force: true });
@@ -318,7 +318,7 @@ describe('RunStore — PR auto-link only on real creation (#fake-pr)', () => {
     const { store, run } = freshRun();
     store.appendEvent(run.id, {
       type: 'result',
-      result: 'Reviewed https://github.com/open-mercato/cezar/pull/1 — looks good, no changes needed.',
+      result: 'Reviewed https://github.com/qodeca/xezar/pull/1 — looks good, no changes needed.',
     } as never);
     expect(store.getRun(run.id)?.pullRequestUrl).toBeUndefined();
   });
@@ -327,18 +327,18 @@ describe('RunStore — PR auto-link only on real creation (#fake-pr)', () => {
     const { store, run } = freshRun();
     store.appendEvent(run.id, {
       type: 'result',
-      result: 'Opened a draft pull request: https://github.com/open-mercato/cezar/pull/42',
+      result: 'Opened a draft pull request: https://github.com/qodeca/xezar/pull/42',
     } as never);
-    expect(store.getRun(run.id)?.pullRequestUrl).toBe('https://github.com/open-mercato/cezar/pull/42');
+    expect(store.getRun(run.id)?.pullRequestUrl).toBe('https://github.com/qodeca/xezar/pull/42');
   });
 
   it('recognizes the raw `gh pr create` output form', () => {
     const { store, run } = freshRun();
     store.appendEvent(run.id, {
       type: 'result',
-      result: '$ gh pr create --draft\nhttps://github.com/open-mercato/cezar/pull/7',
+      result: '$ gh pr create --draft\nhttps://github.com/qodeca/xezar/pull/7',
     } as never);
-    expect(store.getRun(run.id)?.pullRequestUrl).toBe('https://github.com/open-mercato/cezar/pull/7');
+    expect(store.getRun(run.id)?.pullRequestUrl).toBe('https://github.com/qodeca/xezar/pull/7');
   });
 
   it('spots creation reported through a v2 tool item (nested under `item`)', () => {
@@ -353,10 +353,10 @@ describe('RunStore — PR auto-link only on real creation (#fake-pr)', () => {
         title: 'Ran gh pr create',
         status: 'completed',
         input: { command: 'gh pr create --draft --title "fix"' },
-        output: 'https://github.com/open-mercato/cezar/pull/9',
+        output: 'https://github.com/qodeca/xezar/pull/9',
       },
     });
-    expect(store.getRun(run.id)?.pullRequestUrl).toBe('https://github.com/open-mercato/cezar/pull/9');
+    expect(store.getRun(run.id)?.pullRequestUrl).toBe('https://github.com/qodeca/xezar/pull/9');
   });
 
   it('adopts the CREATED PR, not one referenced earlier in the same event (#495)', () => {
@@ -364,20 +364,20 @@ describe('RunStore — PR auto-link only on real creation (#fake-pr)', () => {
     store.appendEvent(run.id, {
       type: 'result',
       result:
-        'Read the linked PR https://github.com/open-mercato/cezar/pull/1 for context, then ' +
-        'opened a draft pull request: https://github.com/open-mercato/cezar/pull/500',
+        'Read the linked PR https://github.com/qodeca/xezar/pull/1 for context, then ' +
+        'opened a draft pull request: https://github.com/qodeca/xezar/pull/500',
     } as never);
     // The first URL in the text is the referenced one — the created URL wins.
-    expect(store.getRun(run.id)?.pullRequestUrl).toBe('https://github.com/open-mercato/cezar/pull/500');
+    expect(store.getRun(run.id)?.pullRequestUrl).toBe('https://github.com/qodeca/xezar/pull/500');
   });
 
   it('falls back to the URL before the phrase when gh prints it first', () => {
     const { store, run } = freshRun();
     store.appendEvent(run.id, {
       type: 'result',
-      result: 'https://github.com/open-mercato/cezar/pull/321\nDraft pull request created.',
+      result: 'https://github.com/qodeca/xezar/pull/321\nDraft pull request created.',
     } as never);
-    expect(store.getRun(run.id)?.pullRequestUrl).toBe('https://github.com/open-mercato/cezar/pull/321');
+    expect(store.getRun(run.id)?.pullRequestUrl).toBe('https://github.com/qodeca/xezar/pull/321');
   });
 
   // The claim must come from something that can speak FOR this run. Verbatim from the task that
@@ -417,10 +417,10 @@ describe('RunStore — PR auto-link only on real creation (#fake-pr)', () => {
         id: 't2',
         name: 'Edit',
         toolKind: 'edit',
-        title: 'packages/cezar/src/runs/store.test.ts',
+        title: 'packages/xezar/src/runs/store.test.ts',
         status: 'completed',
         input: {
-          new_string: "result: 'Opened a draft pull request: https://github.com/open-mercato/cezar/pull/42'",
+          new_string: "result: 'Opened a draft pull request: https://github.com/qodeca/xezar/pull/42'",
         },
       },
     });
@@ -436,23 +436,23 @@ describe('RunStore — PR auto-link only on real creation (#fake-pr)', () => {
         id: 't3',
         name: 'Bash',
         toolKind: 'execute',
-        title: 'Ran gh pr create --repo open-mercato/cezar --base main --head cez/x --title "fix…',
+        title: 'Ran gh pr create --repo qodeca/xezar --base main --head xez/x --title "fix…',
         status: 'completed',
-        input: { command: 'gh pr create --repo open-mercato/cezar --base main' },
-        output: 'https://github.com/open-mercato/cezar/pull/901',
+        input: { command: 'gh pr create --repo qodeca/xezar --base main' },
+        output: 'https://github.com/qodeca/xezar/pull/901',
       },
     });
     expect(store.getRun(run.id)?.pullRequestUrl).toBe(
-      'https://github.com/open-mercato/cezar/pull/901',
+      'https://github.com/qodeca/xezar/pull/901',
     );
   });
 });
 
 describe('RunStore — secret redaction before persistence (#427)', () => {
   let dataDir: string;
-  const saved = { GITHUB_TOKEN: process.env.GITHUB_TOKEN, CEZ_REDACT_SECRETS: process.env.CEZ_REDACT_SECRETS };
+  const saved = { GITHUB_TOKEN: process.env.GITHUB_TOKEN, XEZ_REDACT_SECRETS: process.env.XEZ_REDACT_SECRETS };
   beforeEach(() => {
-    dataDir = mkdtempSync(join(tmpdir(), 'cez-store-'));
+    dataDir = mkdtempSync(join(tmpdir(), 'xez-store-'));
   });
   afterEach(() => {
     rmSync(dataDir, { recursive: true, force: true });
@@ -466,7 +466,7 @@ describe('RunStore — secret redaction before persistence (#427)', () => {
 
   it('scrubs a host secret value from the NDJSON transcript', () => {
     process.env.GITHUB_TOKEN = 'gho_thisisarealsecrettoken123456';
-    delete process.env.CEZ_REDACT_SECRETS;
+    delete process.env.XEZ_REDACT_SECRETS;
     const store = RunStore.open(dataDir);
     const run = store.createRun({ title: 't', workflow: 'w', task: 'task', steps: [] });
     store.appendEvent(run.id, {
@@ -478,8 +478,8 @@ describe('RunStore — secret redaction before persistence (#427)', () => {
     expect(raw).toContain('[REDACTED]');
   });
 
-  it('scrubs a token shape even when it never lived in cezar’s env', () => {
-    delete process.env.CEZ_REDACT_SECRETS;
+  it('scrubs a token shape even when it never lived in xezar’s env', () => {
+    delete process.env.XEZ_REDACT_SECRETS;
     const store = RunStore.open(dataDir);
     const run = store.createRun({ title: 't', workflow: 'w', task: 'task', steps: [] });
     store.appendEvent(run.id, {
@@ -490,9 +490,9 @@ describe('RunStore — secret redaction before persistence (#427)', () => {
     expect(raw).not.toMatch(/AKIA|sk-ant/);
   });
 
-  it('CEZ_REDACT_SECRETS=0 opts out (escape hatch)', () => {
+  it('XEZ_REDACT_SECRETS=0 opts out (escape hatch)', () => {
     process.env.GITHUB_TOKEN = 'gho_thisisarealsecrettoken123456';
-    process.env.CEZ_REDACT_SECRETS = '0';
+    process.env.XEZ_REDACT_SECRETS = '0';
     const store = RunStore.open(dataDir);
     const run = store.createRun({ title: 't', workflow: 'w', task: 'task', steps: [] });
     store.appendEvent(run.id, {
@@ -510,7 +510,7 @@ describe('RunStore — secret redaction before persistence (#427)', () => {
    */
   it('scrubs a host secret from titleSummary and error before runs.json is written', () => {
     process.env.GITHUB_TOKEN = 'gho_thisisarealsecrettoken123456';
-    delete process.env.CEZ_REDACT_SECRETS;
+    delete process.env.XEZ_REDACT_SECRETS;
     const store = RunStore.open(dataDir);
     const run = store.createRun({ title: 't', workflow: 'w', task: 'task', steps: [] });
     store.updateRun(run.id, {
@@ -529,7 +529,7 @@ describe('RunStore — secret redaction before persistence (#427)', () => {
   });
 
   it('scrubs a token shape from a user-supplied title too', () => {
-    delete process.env.CEZ_REDACT_SECRETS;
+    delete process.env.XEZ_REDACT_SECRETS;
     const store = RunStore.open(dataDir);
     const run = store.createRun({ title: 't', workflow: 'w', task: 'task', steps: [] });
     store.updateRun(run.id, { title: 'rotate ghp_0123456789abcdefghijABCDEFGHIJ0123' });
@@ -537,7 +537,7 @@ describe('RunStore — secret redaction before persistence (#427)', () => {
   });
 
   it('leaves ordinary record fields alone', () => {
-    delete process.env.CEZ_REDACT_SECRETS;
+    delete process.env.XEZ_REDACT_SECRETS;
     const store = RunStore.open(dataDir);
     const run = store.createRun({ title: 't', workflow: 'w', task: 'task', steps: [] });
     store.updateRun(run.id, {
@@ -560,7 +560,7 @@ describe('RunStore — secret redaction before persistence (#427)', () => {
    */
   it('scrubs a host secret from steps[].error before runs.json is written', () => {
     process.env.GITHUB_TOKEN = 'gho_thisisarealsecrettoken123456';
-    delete process.env.CEZ_REDACT_SECRETS;
+    delete process.env.XEZ_REDACT_SECRETS;
     const store = RunStore.open(dataDir);
     const run = store.createRun({
       title: 't',
@@ -585,7 +585,7 @@ describe('RunStore — secret redaction before persistence (#427)', () => {
 
   it('leaves non-error step fields untouched (no over-redaction)', () => {
     process.env.GITHUB_TOKEN = 'gho_thisisarealsecrettoken123456';
-    delete process.env.CEZ_REDACT_SECRETS;
+    delete process.env.XEZ_REDACT_SECRETS;
     const store = RunStore.open(dataDir);
     const run = store.createRun({
       title: 't',
@@ -601,9 +601,9 @@ describe('RunStore — secret redaction before persistence (#427)', () => {
     expect(step?.tokensUsed).toBe(42);
   });
 
-  it('CEZ_REDACT_SECRETS=0 opts steps[].error out too', () => {
+  it('XEZ_REDACT_SECRETS=0 opts steps[].error out too', () => {
     process.env.GITHUB_TOKEN = 'gho_thisisarealsecrettoken123456';
-    process.env.CEZ_REDACT_SECRETS = '0';
+    process.env.XEZ_REDACT_SECRETS = '0';
     const store = RunStore.open(dataDir);
     const run = store.createRun({
       title: 't',
@@ -618,7 +618,7 @@ describe('RunStore — secret redaction before persistence (#427)', () => {
   /** #456 review: `updateRun` scrubbed `title` but `createRun` stored it raw. */
   it('scrubs a host secret from the title at creation time', () => {
     process.env.GITHUB_TOKEN = 'gho_thisisarealsecrettoken123456';
-    delete process.env.CEZ_REDACT_SECRETS;
+    delete process.env.XEZ_REDACT_SECRETS;
     const store = RunStore.open(dataDir);
     const run = store.createRun({
       title: 'rotate gho_thisisarealsecrettoken123456',
@@ -638,15 +638,15 @@ describe('RunStore — secret redaction before persistence (#427)', () => {
    *  so it stays verbatim by design. Pinning that decision. */
   it('leaves the task prompt unredacted (re-enqueue must replay it verbatim)', () => {
     process.env.GITHUB_TOKEN = 'gho_thisisarealsecrettoken123456';
-    delete process.env.CEZ_REDACT_SECRETS;
+    delete process.env.XEZ_REDACT_SECRETS;
     const store = RunStore.open(dataDir);
     const run = store.createRun({ title: 't', workflow: 'w', task: 'deploy the thing', steps: [] });
     expect(store.getRun(run.id)?.task).toBe('deploy the thing');
   });
 
-  it('CEZ_REDACT_SECRETS=0 opts runs.json out as well', () => {
+  it('XEZ_REDACT_SECRETS=0 opts runs.json out as well', () => {
     process.env.GITHUB_TOKEN = 'gho_thisisarealsecrettoken123456';
-    process.env.CEZ_REDACT_SECRETS = '0';
+    process.env.XEZ_REDACT_SECRETS = '0';
     const store = RunStore.open(dataDir);
     const run = store.createRun({ title: 't', workflow: 'w', task: 'task', steps: [] });
     store.updateRun(run.id, { titleSummary: 'gho_thisisarealsecrettoken123456' });
@@ -654,21 +654,21 @@ describe('RunStore — secret redaction before persistence (#427)', () => {
   });
 
   it('does not disturb a PR URL (redaction leaves non-secrets intact)', () => {
-    delete process.env.CEZ_REDACT_SECRETS;
+    delete process.env.XEZ_REDACT_SECRETS;
     const store = RunStore.open(dataDir);
     const run = store.createRun({ title: 't', workflow: 'w', task: 'task', steps: [] });
     store.appendEvent(run.id, {
       type: 'result',
-      result: 'Opened a draft pull request: https://github.com/open-mercato/cezar/pull/42',
+      result: 'Opened a draft pull request: https://github.com/qodeca/xezar/pull/42',
     } as never);
-    expect(store.getRun(run.id)?.pullRequestUrl).toBe('https://github.com/open-mercato/cezar/pull/42');
+    expect(store.getRun(run.id)?.pullRequestUrl).toBe('https://github.com/qodeca/xezar/pull/42');
   });
 });
 
 describe('RunStore — referenced-PR discovery (#407, spec 2026-07-16-pr-autodiscovery)', () => {
   let dataDir: string;
   beforeEach(() => {
-    dataDir = mkdtempSync(join(tmpdir(), 'cez-store-'));
+    dataDir = mkdtempSync(join(tmpdir(), 'xez-store-'));
   });
   afterEach(() => {
     rmSync(dataDir, { recursive: true, force: true });
@@ -684,11 +684,11 @@ describe('RunStore — referenced-PR discovery (#407, spec 2026-07-16-pr-autodis
     const { store, run } = freshRun();
     store.appendEvent(run.id, {
       type: 'result',
-      result: 'Reviewed https://github.com/open-mercato/cezar/pull/1 — looks good.',
+      result: 'Reviewed https://github.com/qodeca/xezar/pull/1 — looks good.',
     });
     const loaded = store.getRun(run.id);
     expect(loaded?.pullRequestUrl).toBeUndefined();
-    expect(loaded?.referencedPullRequestUrl).toBe('https://github.com/open-mercato/cezar/pull/1');
+    expect(loaded?.referencedPullRequestUrl).toBe('https://github.com/qodeca/xezar/pull/1');
   });
 
   it('sees PR URLs nested in v2 message items', () => {
@@ -699,11 +699,11 @@ describe('RunStore — referenced-PR discovery (#407, spec 2026-07-16-pr-autodis
         kind: 'message',
         id: 'm1',
         role: 'assistant',
-        text: 'Working on https://github.com/open-mercato/cezar/pull/4170 now.',
+        text: 'Working on https://github.com/qodeca/xezar/pull/4170 now.',
       },
     });
     expect(store.getRun(run.id)?.referencedPullRequestUrl).toBe(
-      'https://github.com/open-mercato/cezar/pull/4170',
+      'https://github.com/qodeca/xezar/pull/4170',
     );
   });
 
@@ -714,7 +714,7 @@ describe('RunStore — referenced-PR discovery (#407, spec 2026-07-16-pr-autodis
       item: {
         kind: 'reasoning',
         id: 'r1',
-        text: 'Maybe similar to https://github.com/open-mercato/cezar/pull/99?',
+        text: 'Maybe similar to https://github.com/qodeca/xezar/pull/99?',
       },
     });
     expect(store.getRun(run.id)?.referencedPullRequestUrl).toBeUndefined();
@@ -724,14 +724,14 @@ describe('RunStore — referenced-PR discovery (#407, spec 2026-07-16-pr-autodis
     const { store, run } = freshRun();
     store.appendEvent(run.id, {
       type: 'result',
-      result: 'See https://github.com/open-mercato/cezar/pull/1',
+      result: 'See https://github.com/qodeca/xezar/pull/1',
     });
     expect(store.getRun(run.id)?.referencedPullRequestUrl).toBe(
-      'https://github.com/open-mercato/cezar/pull/1',
+      'https://github.com/qodeca/xezar/pull/1',
     );
     store.appendEvent(run.id, {
       type: 'result',
-      result: 'Also related: https://github.com/open-mercato/cezar/pull/2',
+      result: 'Also related: https://github.com/qodeca/xezar/pull/2',
     });
     expect(store.getRun(run.id)?.referencedPullRequestUrl).toBeUndefined();
   });
@@ -741,23 +741,23 @@ describe('RunStore — referenced-PR discovery (#407, spec 2026-07-16-pr-autodis
     store.appendEvent(run.id, {
       type: 'result',
       result:
-        'Reviewing https://github.com/open-mercato/cezar/pull/4170; it supersedes https://github.com/open-mercato/cezar/pull/12.',
+        'Reviewing https://github.com/qodeca/xezar/pull/4170; it supersedes https://github.com/qodeca/xezar/pull/12.',
     });
     expect(store.getRun(run.id)?.referencedPullRequestUrl).toBe(
-      'https://github.com/open-mercato/cezar/pull/4170',
+      'https://github.com/qodeca/xezar/pull/4170',
     );
   });
 
   it('disambiguates by a PR number the prompt names as a pasted URL, not just a bare number', () => {
-    const { store, run } = freshRun('review https://github.com/open-mercato/cezar/pull/3777 please');
+    const { store, run } = freshRun('review https://github.com/qodeca/xezar/pull/3777 please');
     store.appendEvent(run.id, {
       type: 'result',
-      result: 'It supersedes https://github.com/open-mercato/cezar/pull/12.',
+      result: 'It supersedes https://github.com/qodeca/xezar/pull/12.',
     });
     // Two candidates now (3777 seeded from the prompt, 12 from the event); the
     // prompt names 3777 even though it only appears inside the URL path.
     expect(store.getRun(run.id)?.referencedPullRequestUrl).toBe(
-      'https://github.com/open-mercato/cezar/pull/3777',
+      'https://github.com/qodeca/xezar/pull/3777',
     );
   });
 
@@ -766,7 +766,7 @@ describe('RunStore — referenced-PR discovery (#407, spec 2026-07-16-pr-autodis
     store.appendEvent(run.id, {
       type: 'result',
       result:
-        'https://github.com/open-mercato/cezar/pull/170 and https://github.com/open-mercato/cezar/pull/70',
+        'https://github.com/qodeca/xezar/pull/170 and https://github.com/qodeca/xezar/pull/70',
     });
     // Neither 170 nor 70 is named (only "4170" is in the prompt) → ambiguous.
     expect(store.getRun(run.id)?.referencedPullRequestUrl).toBeUndefined();
@@ -776,21 +776,21 @@ describe('RunStore — referenced-PR discovery (#407, spec 2026-07-16-pr-autodis
     const { store, run } = freshRun();
     store.appendEvent(run.id, {
       type: 'result',
-      result: 'Opened a draft pull request: https://github.com/open-mercato/cezar/pull/42',
+      result: 'Opened a draft pull request: https://github.com/qodeca/xezar/pull/42',
     });
     store.appendEvent(run.id, {
       type: 'result',
-      result: 'Compare with https://github.com/open-mercato/cezar/pull/50',
+      result: 'Compare with https://github.com/qodeca/xezar/pull/50',
     });
     const loaded = store.getRun(run.id);
-    expect(loaded?.pullRequestUrl).toBe('https://github.com/open-mercato/cezar/pull/42');
+    expect(loaded?.pullRequestUrl).toBe('https://github.com/qodeca/xezar/pull/42');
     expect(loaded?.referencedPullRequestUrl).toBeUndefined();
   });
 
   it('seeds the referenced tier from a PR URL pasted into the task prompt', () => {
-    const { store, run } = freshRun('review https://github.com/open-mercato/cezar/pull/3777 please');
+    const { store, run } = freshRun('review https://github.com/qodeca/xezar/pull/3777 please');
     expect(store.getRun(run.id)?.referencedPullRequestUrl).toBe(
-      'https://github.com/open-mercato/cezar/pull/3777',
+      'https://github.com/qodeca/xezar/pull/3777',
     );
   });
 
@@ -798,15 +798,15 @@ describe('RunStore — referenced-PR discovery (#407, spec 2026-07-16-pr-autodis
     const { store, run } = freshRun();
     store.appendEvent(run.id, {
       type: 'result',
-      result: 'See https://github.com/open-mercato/cezar/pull/1',
+      result: 'See https://github.com/qodeca/xezar/pull/1',
     });
     store.flush();
     const reopened = RunStore.open(dataDir);
     expect(reopened.getRun(run.id)?.referencedPullRequestUrl).toBe(
-      'https://github.com/open-mercato/cezar/pull/1',
+      'https://github.com/qodeca/xezar/pull/1',
     );
     expect(reopened.getRun(run.id)?.referencedPrCandidates).toEqual([
-      'https://github.com/open-mercato/cezar/pull/1',
+      'https://github.com/qodeca/xezar/pull/1',
     ]);
     // legacy record without the fields still parses (see LEGACY_RUN above)
     writeFileSync(join(dataDir, 'runs.json'), JSON.stringify([LEGACY_RUN]), 'utf8');
@@ -818,7 +818,7 @@ describe('RunStore — referenced-PR discovery (#407, spec 2026-07-16-pr-autodis
 describe('RunStore — agent-declared marker refs (spec 2026-07-18-task-ref-markers)', () => {
   let dataDir: string;
   beforeEach(() => {
-    dataDir = mkdtempSync(join(tmpdir(), 'cez-store-'));
+    dataDir = mkdtempSync(join(tmpdir(), 'xez-store-'));
   });
   afterEach(() => {
     rmSync(dataDir, { recursive: true, force: true });
@@ -845,12 +845,12 @@ describe('RunStore — agent-declared marker refs (spec 2026-07-18-task-ref-mark
     store.appendEvent(run.id, {
       type: 'result',
       result:
-        'Comparing https://github.com/open-mercato/cezar/pull/500 with https://github.com/open-mercato/cezar/pull/777',
+        'Comparing https://github.com/qodeca/xezar/pull/500 with https://github.com/qodeca/xezar/pull/777',
     });
     expect(store.getRun(run.id)?.referencedPullRequestUrl).toBeUndefined(); // ambiguous
     store.applyMarkerRefs(run.id, { pr: 500 });
     expect(store.getRun(run.id)?.referencedPullRequestUrl).toBe(
-      'https://github.com/open-mercato/cezar/pull/500',
+      'https://github.com/qodeca/xezar/pull/500',
     );
   });
 
@@ -858,10 +858,10 @@ describe('RunStore — agent-declared marker refs (spec 2026-07-18-task-ref-mark
     const { store, run } = freshRun();
     store.appendEvent(run.id, {
       type: 'result',
-      result: 'Related work: https://github.com/open-mercato/cezar/pull/777',
+      result: 'Related work: https://github.com/qodeca/xezar/pull/777',
     });
     expect(store.getRun(run.id)?.referencedPullRequestUrl).toBe(
-      'https://github.com/open-mercato/cezar/pull/777',
+      'https://github.com/qodeca/xezar/pull/777',
     );
     store.applyMarkerRefs(run.id, { pr: 500 });
     const loaded = store.getRun(run.id);
@@ -874,15 +874,15 @@ describe('RunStore — agent-declared marker refs (spec 2026-07-18-task-ref-mark
     store.applyMarkerRefs(run.id, { pr: 500 });
     store.appendEvent(run.id, {
       type: 'result',
-      result: 'See https://github.com/open-mercato/cezar/pull/777 for prior art.',
+      result: 'See https://github.com/qodeca/xezar/pull/777 for prior art.',
     });
     expect(store.getRun(run.id)?.referencedPullRequestUrl).toBeUndefined();
     store.appendEvent(run.id, {
       type: 'result',
-      result: 'Now updating https://github.com/open-mercato/cezar/pull/500.',
+      result: 'Now updating https://github.com/qodeca/xezar/pull/500.',
     });
     expect(store.getRun(run.id)?.referencedPullRequestUrl).toBe(
-      'https://github.com/open-mercato/cezar/pull/500',
+      'https://github.com/qodeca/xezar/pull/500',
     );
   });
 
@@ -890,11 +890,11 @@ describe('RunStore — agent-declared marker refs (spec 2026-07-18-task-ref-mark
     const { store, run } = freshRun();
     store.appendEvent(run.id, {
       type: 'result',
-      result: 'See https://github.com/open-mercato/cezar/pull/777',
+      result: 'See https://github.com/qodeca/xezar/pull/777',
     });
     store.applyMarkerRefs(run.id, { issue: 500 });
     const loaded = store.getRun(run.id);
-    expect(loaded?.referencedPullRequestUrl).toBe('https://github.com/open-mercato/cezar/pull/777');
+    expect(loaded?.referencedPullRequestUrl).toBe('https://github.com/qodeca/xezar/pull/777');
     expect(loaded?.issueNumber).toBe(500);
     expect(loaded?.prNumber).toBeUndefined();
   });
@@ -903,11 +903,11 @@ describe('RunStore — agent-declared marker refs (spec 2026-07-18-task-ref-mark
     const { store, run } = freshRun();
     store.appendEvent(run.id, {
       type: 'result',
-      result: 'Opened a draft pull request: https://github.com/open-mercato/cezar/pull/42',
+      result: 'Opened a draft pull request: https://github.com/qodeca/xezar/pull/42',
     });
     store.applyMarkerRefs(run.id, { pr: 500 });
     expect(store.getRun(run.id)?.pullRequestUrl).toBe(
-      'https://github.com/open-mercato/cezar/pull/42',
+      'https://github.com/qodeca/xezar/pull/42',
     );
   });
 
@@ -966,7 +966,7 @@ describe('RunStore — agent-declared marker refs (spec 2026-07-18-task-ref-mark
     const { store, run } = freshRun('ship the devices work');
     store.appendEvent(run.id, {
       type: 'result',
-      result: 'Created a pull request: https://github.com/open-mercato/cezar/pull/42',
+      result: 'Created a pull request: https://github.com/qodeca/xezar/pull/42',
     });
     store.applyMarkerRefs(run.id, { pr: 42 });
     expect(store.getRun(run.id)?.prNumber).toBe(42);
@@ -996,7 +996,7 @@ describe('RunStore — agent-declared marker refs (spec 2026-07-18-task-ref-mark
     const { store, run } = freshRun('task');
     store.updateRun(run.id, {
       referencedPullRequestUrl: undefined,
-      referencedPrCandidates: ['https://github.com/open-mercato/cezar/pull/777'],
+      referencedPrCandidates: ['https://github.com/qodeca/xezar/pull/777'],
       markerRefs: { pr: 500 },
     });
     store.flush();
@@ -1006,13 +1006,13 @@ describe('RunStore — agent-declared marker refs (spec 2026-07-18-task-ref-mark
   it('never takes a referenced PR away from a record whose candidates no longer explain it', () => {
     const { store, run } = freshRun('task');
     store.updateRun(run.id, {
-      referencedPullRequestUrl: 'https://github.com/open-mercato/cezar/pull/777',
+      referencedPullRequestUrl: 'https://github.com/qodeca/xezar/pull/777',
       referencedPrCandidates: undefined,
       markerRefs: { pr: 777 },
     });
     store.flush();
     expect(RunStore.open(dataDir).getRun(run.id)?.referencedPullRequestUrl).toBe(
-      'https://github.com/open-mercato/cezar/pull/777',
+      'https://github.com/qodeca/xezar/pull/777',
     );
   });
 
@@ -1020,7 +1020,7 @@ describe('RunStore — agent-declared marker refs (spec 2026-07-18-task-ref-mark
     const { store, run } = freshRun('task');
     store.appendEvent(run.id, {
       type: 'result',
-      result: 'Created a pull request: https://github.com/open-mercato/cezar/pull/42',
+      result: 'Created a pull request: https://github.com/qodeca/xezar/pull/42',
     });
     store.applyMarkerRefs(run.id, { pr: 500 });
     const loaded = store.getRun(run.id);
@@ -1032,7 +1032,7 @@ describe('RunStore — agent-declared marker refs (spec 2026-07-18-task-ref-mark
 describe('RunStore — referenced-issue discovery (spec 2026-07-21-report-ref-discovery)', () => {
   let dataDir: string;
   beforeEach(() => {
-    dataDir = mkdtempSync(join(tmpdir(), 'cez-store-'));
+    dataDir = mkdtempSync(join(tmpdir(), 'xez-store-'));
   });
   afterEach(() => {
     rmSync(dataDir, { recursive: true, force: true });
@@ -1048,16 +1048,16 @@ describe('RunStore — referenced-issue discovery (spec 2026-07-21-report-ref-di
     const { store, run } = freshRun();
     store.appendEvent(run.id, {
       type: 'result',
-      result: 'Fixing https://github.com/open-mercato/cezar/issues/433 now.',
+      result: 'Fixing https://github.com/qodeca/xezar/issues/433 now.',
     });
     const loaded = store.getRun(run.id);
-    expect(loaded?.referencedIssueUrl).toBe('https://github.com/open-mercato/cezar/issues/433');
+    expect(loaded?.referencedIssueUrl).toBe('https://github.com/qodeca/xezar/issues/433');
     expect(loaded?.issueNumber).toBe(433);
   });
 
   it('keeps issue links from tool output display-only until the agent names them', () => {
     const { store, run } = freshRun();
-    const issueUrl = 'https://github.com/open-mercato/cezar/issues/99';
+    const issueUrl = 'https://github.com/qodeca/xezar/issues/99';
     store.appendEvent(run.id, {
       type: 'item.completed',
       item: {
@@ -1082,10 +1082,10 @@ describe('RunStore — referenced-issue discovery (spec 2026-07-21-report-ref-di
   });
 
   it('seeds an issue link while the run is still queued', () => {
-    const { store, run } = freshRun('Fix https://github.com/open-mercato/cezar/issues/554');
+    const { store, run } = freshRun('Fix https://github.com/qodeca/xezar/issues/554');
     const loaded = store.getRun(run.id);
     expect(loaded?.status).toBe('queued');
-    expect(loaded?.referencedIssueUrl).toBe('https://github.com/open-mercato/cezar/issues/554');
+    expect(loaded?.referencedIssueUrl).toBe('https://github.com/qodeca/xezar/issues/554');
     expect(loaded?.issueNumber).toBe(554);
   });
 
@@ -1094,11 +1094,11 @@ describe('RunStore — referenced-issue discovery (spec 2026-07-21-report-ref-di
     store.appendEvent(run.id, {
       type: 'result',
       result:
-        'Opened a draft pull request: https://github.com/open-mercato/cezar/pull/42 closing https://github.com/open-mercato/cezar/issues/7',
+        'Opened a draft pull request: https://github.com/qodeca/xezar/pull/42 closing https://github.com/qodeca/xezar/issues/7',
     });
     const loaded = store.getRun(run.id);
-    expect(loaded?.pullRequestUrl).toBe('https://github.com/open-mercato/cezar/pull/42');
-    expect(loaded?.referencedIssueUrl).toBe('https://github.com/open-mercato/cezar/issues/7');
+    expect(loaded?.pullRequestUrl).toBe('https://github.com/qodeca/xezar/pull/42');
+    expect(loaded?.referencedIssueUrl).toBe('https://github.com/qodeca/xezar/issues/7');
     expect(loaded?.issueNumber).toBe(7);
   });
 
@@ -1106,14 +1106,14 @@ describe('RunStore — referenced-issue discovery (spec 2026-07-21-report-ref-di
     const { store: firstStore, run } = freshRun();
     firstStore.appendEvent(run.id, {
       type: 'result',
-      result: 'See https://github.com/open-mercato/cezar/issues/1',
+      result: 'See https://github.com/qodeca/xezar/issues/1',
     });
     expect(firstStore.getRun(run.id)?.issueNumber).toBe(1);
     firstStore.flush();
     const store = RunStore.open(dataDir, { keepLive: true });
     store.appendEvent(run.id, {
       type: 'result',
-      result: 'Also https://github.com/open-mercato/cezar/issues/2',
+      result: 'Also https://github.com/qodeca/xezar/issues/2',
     });
     const loaded = store.getRun(run.id);
     expect(loaded?.referencedIssueUrl).toBeUndefined();
@@ -1125,11 +1125,11 @@ describe('RunStore — referenced-issue discovery (spec 2026-07-21-report-ref-di
     store.updateRun(run.id, { issueNumber: 12 });
     store.appendEvent(run.id, {
       type: 'result',
-      result: 'See https://github.com/open-mercato/cezar/issues/12',
+      result: 'See https://github.com/qodeca/xezar/issues/12',
     });
     store.appendEvent(run.id, {
       type: 'result',
-      result: 'Also https://github.com/open-mercato/cezar/issues/433',
+      result: 'Also https://github.com/qodeca/xezar/issues/433',
     });
     const loaded = store.getRun(run.id);
     expect(loaded?.referencedIssueUrl).toBeUndefined();
@@ -1141,23 +1141,23 @@ describe('RunStore — referenced-issue discovery (spec 2026-07-21-report-ref-di
     store.appendEvent(run.id, {
       type: 'result',
       result:
-        'Working https://github.com/open-mercato/cezar/issues/433, related to https://github.com/open-mercato/cezar/issues/12.',
+        'Working https://github.com/qodeca/xezar/issues/433, related to https://github.com/qodeca/xezar/issues/12.',
     });
     expect(store.getRun(run.id)?.referencedIssueUrl).toBe(
-      'https://github.com/open-mercato/cezar/issues/433',
+      'https://github.com/qodeca/xezar/issues/433',
     );
   });
 
-  it('a declared CEZ:ISSUE filters the candidates and owns issueNumber', () => {
+  it('a declared XEZ:ISSUE filters the candidates and owns issueNumber', () => {
     const { store, run } = freshRun();
     store.appendEvent(run.id, {
       type: 'result',
       result:
-        'See https://github.com/open-mercato/cezar/issues/1 and https://github.com/open-mercato/cezar/issues/2',
+        'See https://github.com/qodeca/xezar/issues/1 and https://github.com/qodeca/xezar/issues/2',
     });
     store.applyMarkerRefs(run.id, { issue: 2 });
     const loaded = store.getRun(run.id);
-    expect(loaded?.referencedIssueUrl).toBe('https://github.com/open-mercato/cezar/issues/2');
+    expect(loaded?.referencedIssueUrl).toBe('https://github.com/qodeca/xezar/issues/2');
     expect(loaded?.issueNumber).toBe(2);
   });
 
@@ -1166,7 +1166,7 @@ describe('RunStore — referenced-issue discovery (spec 2026-07-21-report-ref-di
     store.applyMarkerRefs(run.id, { issue: 500 });
     store.appendEvent(run.id, {
       type: 'result',
-      result: 'Mentioned in https://github.com/open-mercato/cezar/issues/9',
+      result: 'Mentioned in https://github.com/qodeca/xezar/issues/9',
     });
     expect(store.getRun(run.id)?.issueNumber).toBe(500);
   });
@@ -1175,13 +1175,13 @@ describe('RunStore — referenced-issue discovery (spec 2026-07-21-report-ref-di
 describe("RunStore — a task never adopts another repository's ref (#945)", () => {
   let dataDir: string;
   beforeEach(() => {
-    dataDir = mkdtempSync(join(tmpdir(), 'cez-store-repo-scope-'));
+    dataDir = mkdtempSync(join(tmpdir(), 'xez-store-repo-scope-'));
   });
   afterEach(() => {
     rmSync(dataDir, { recursive: true, force: true });
   });
 
-  const HANDLE = { owner: 'open-mercato', name: 'cezar' };
+  const HANDLE = { owner: 'qodeca', name: 'xezar' };
 
   /** A store that already knows which repository it is, as the background arming leaves it. */
   const scopedRun = (task = 'task', handle: typeof HANDLE | null = HANDLE) => {
@@ -1248,21 +1248,21 @@ describe("RunStore — a task never adopts another repository's ref (#945)", () 
     const { store, run } = scopedRun();
     store.appendEvent(run.id, {
       type: 'result',
-      result: 'Reviewed https://github.com/open-mercato/cezar/pull/407 — looks good.',
+      result: 'Reviewed https://github.com/qodeca/xezar/pull/407 — looks good.',
     });
     expect(store.getRun(run.id)?.referencedPullRequestUrl).toBe(
-      'https://github.com/open-mercato/cezar/pull/407',
+      'https://github.com/qodeca/xezar/pull/407',
     );
   });
 
   it('matches the handle case-insensitively', () => {
-    const { store, run } = scopedRun('task', { owner: 'Open-Mercato', name: 'Cezar' });
+    const { store, run } = scopedRun('task', { owner: 'Qodeca', name: 'Xezar' });
     store.appendEvent(run.id, {
       type: 'result',
-      result: 'See https://github.com/open-mercato/cezar/pull/407.',
+      result: 'See https://github.com/qodeca/xezar/pull/407.',
     });
     expect(store.getRun(run.id)?.referencedPullRequestUrl).toBe(
-      'https://github.com/open-mercato/cezar/pull/407',
+      'https://github.com/qodeca/xezar/pull/407',
     );
   });
 
@@ -1291,7 +1291,7 @@ describe("RunStore — a task never adopts another repository's ref (#945)", () 
     );
   });
 
-  it('vetoes a foreign URL a CEZ:PR marker declared', () => {
+  it('vetoes a foreign URL a XEZ:PR marker declared', () => {
     // The marker owns the resolution, but it can only ever pick from the candidate list — and a
     // foreign candidate is not adoptable, so the chip stays empty rather than pointing away.
     const { store, run } = scopedRun('task');
@@ -1348,9 +1348,9 @@ describe("RunStore — a task never adopts another repository's ref (#945)", () 
     it("keeps a stored URL from the project's own repo", () => {
       const { after } = reopenArmed({
         task: 'task',
-        referencedPullRequestUrl: 'https://github.com/open-mercato/cezar/pull/407',
+        referencedPullRequestUrl: 'https://github.com/qodeca/xezar/pull/407',
       });
-      expect(after?.referencedPullRequestUrl).toBe('https://github.com/open-mercato/cezar/pull/407');
+      expect(after?.referencedPullRequestUrl).toBe('https://github.com/qodeca/xezar/pull/407');
     });
 
     it('revokes an issueNumber this janitor seeded from the dropped URL', () => {
@@ -1366,7 +1366,7 @@ describe("RunStore — a task never adopts another repository's ref (#945)", () 
     });
 
     it('leaves an issueNumber it did NOT seed alone', () => {
-      // The prompt, the namer or a CEZ:ISSUE marker owns that number — dropping the foreign URL
+      // The prompt, the namer or a XEZ:ISSUE marker owns that number — dropping the foreign URL
       // must not take it with them.
       const { after } = reopenArmed({
         task: 'fix issue 42',
@@ -1394,7 +1394,7 @@ describe("RunStore — a task never adopts another repository's ref (#945)", () 
         task: 'task',
         referencedPullRequestUrl: undefined,
         referencedPrCandidates: [
-          'https://github.com/open-mercato/cezar/pull/1',
+          'https://github.com/qodeca/xezar/pull/1',
           'https://github.com/supabase/cli/pull/6056',
         ],
       });
@@ -1426,7 +1426,7 @@ describe("RunStore — a task never adopts another repository's ref (#945)", () 
     store.appendEvent(run.id, {
       type: 'result',
       result:
-        'Compare https://github.com/open-mercato/cezar/pull/1 with https://github.com/supabase/cli/pull/6056.',
+        'Compare https://github.com/qodeca/xezar/pull/1 with https://github.com/supabase/cli/pull/6056.',
     });
     expect(store.getRun(run.id)?.referencedPullRequestUrl).toBeUndefined();
   });
@@ -1436,7 +1436,7 @@ describe('RunStore — seq survives a restart (#424 symptom class)', () => {
   let dataDir: string;
 
   beforeEach(() => {
-    dataDir = mkdtempSync(join(tmpdir(), 'cez-store-seq-'));
+    dataDir = mkdtempSync(join(tmpdir(), 'xez-store-seq-'));
   });
 
   afterEach(() => {
@@ -1470,7 +1470,7 @@ describe('RunStore — provider authorization callouts', () => {
   let dataDir: string;
 
   beforeEach(() => {
-    dataDir = mkdtempSync(join(tmpdir(), 'cez-store-provider-auth-'));
+    dataDir = mkdtempSync(join(tmpdir(), 'xez-store-provider-auth-'));
   });
 
   afterEach(() => {
@@ -1505,13 +1505,13 @@ describe('RunStore — queuedMessages (#472)', () => {
   let dataDir: string;
 
   beforeEach(() => {
-    dataDir = mkdtempSync(join(tmpdir(), 'cez-store-'));
+    dataDir = mkdtempSync(join(tmpdir(), 'xez-store-'));
   });
 
   afterEach(() => {
     rmSync(dataDir, { recursive: true, force: true });
     delete process.env.GITHUB_TOKEN;
-    delete process.env.CEZ_REDACT_SECRETS;
+    delete process.env.XEZ_REDACT_SECRETS;
   });
 
   it('parses a runs.json written before the field existed', () => {
@@ -1554,7 +1554,7 @@ describe('RunStore — queuedMessages (#472)', () => {
    *  into `{{task}}` verbatim at dequeue, so redacting one would corrupt the run. */
   it('leaves a secret in a stacked message verbatim, exactly as it leaves `task`', () => {
     process.env.GITHUB_TOKEN = 'gho_thisisarealsecrettoken123456';
-    delete process.env.CEZ_REDACT_SECRETS;
+    delete process.env.XEZ_REDACT_SECRETS;
     const store = RunStore.open(dataDir);
     const run = store.createRun({ title: 't', workflow: 'w', task: 'deploy', steps: [] });
     store.updateRun(run.id, {
@@ -1572,7 +1572,7 @@ describe('RunStore — read receipts (#unread-done-items)', () => {
   let dataDir: string;
 
   beforeEach(() => {
-    dataDir = mkdtempSync(join(tmpdir(), 'cez-store-'));
+    dataDir = mkdtempSync(join(tmpdir(), 'xez-store-'));
   });
 
   afterEach(() => {
@@ -1755,7 +1755,7 @@ describe('RunStore — the legacy `claude-cli` runner id (#547)', () => {
   let dataDir: string;
 
   beforeEach(() => {
-    dataDir = mkdtempSync(join(tmpdir(), 'cez-store-'));
+    dataDir = mkdtempSync(join(tmpdir(), 'xez-store-'));
   });
 
   afterEach(() => {
@@ -1875,7 +1875,7 @@ describe('RunStore — pinned tasks (#935)', () => {
   let dataDir: string;
 
   beforeEach(() => {
-    dataDir = mkdtempSync(join(tmpdir(), 'cez-store-'));
+    dataDir = mkdtempSync(join(tmpdir(), 'xez-store-'));
   });
 
   afterEach(() => {
@@ -1900,7 +1900,7 @@ describe('RunStore — pinned tasks (#935)', () => {
 
   it('unpinning DELETES both keys rather than writing pinned:false', () => {
     // The compatibility promise (BACKWARD_COMPATIBILITY.md §3): an unpinned record is
-    // byte-identical to one written by a cezar that never heard of pins.
+    // byte-identical to one written by a xezar that never heard of pins.
     const store = RunStore.open(dataDir);
     const id = newRun(store);
     store.setPinned(id, true);

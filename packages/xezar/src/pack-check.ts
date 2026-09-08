@@ -10,7 +10,7 @@
 
 /** Human-readable problems with a would-be tarball; empty array = publishable.
  *
- *  Requirements (spec `.ai/specs/2026-07-14-cockpit-ui-redesign.md`, Serving):
+ *  Requirements:
  *  - `web/dist/index.html` — the built shell every GET serves.
  *  - at least one `web/dist/assets/*` file — the hashed JS/CSS bundles; an
  *    index.html alone renders a blank page.

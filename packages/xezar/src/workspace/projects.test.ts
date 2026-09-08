@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync,
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { PROJECT_TAGS_MAX, PROJECT_TAG_MAX_LENGTH } from '@open-mercato/cezar-contract';
+import { PROJECT_TAGS_MAX, PROJECT_TAG_MAX_LENGTH } from '@qodeca/xezar-contract';
 import { loadWorkspaceConfig, mergeWriteWorkspaceConfig } from './config.ts';
 import {
   allocateProjectSlug,
@@ -23,20 +23,20 @@ import {
  * write a byte inside the repo itself.
  */
 describe('workspace projects', () => {
-  const originalHome = process.env.CEZ_HOME;
+  const originalHome = process.env.XEZ_HOME;
   let home: string;
   let repos: string;
 
   beforeEach(() => {
-    home = mkdtempSync(join(realpathSync(tmpdir()), 'cez-workspace-'));
-    repos = mkdtempSync(join(realpathSync(tmpdir()), 'cez-repos-'));
-    process.env.CEZ_HOME = home; // paths.ts sends all workspace paths here
+    home = mkdtempSync(join(realpathSync(tmpdir()), 'xez-workspace-'));
+    repos = mkdtempSync(join(realpathSync(tmpdir()), 'xez-repos-'));
+    process.env.XEZ_HOME = home; // paths.ts sends all workspace paths here
     clearProjectProbeCache();
   });
 
   afterEach(() => {
-    if (originalHome === undefined) delete process.env.CEZ_HOME;
-    else process.env.CEZ_HOME = originalHome;
+    if (originalHome === undefined) delete process.env.XEZ_HOME;
+    else process.env.XEZ_HOME = originalHome;
     rmSync(home, { recursive: true, force: true });
     rmSync(repos, { recursive: true, force: true });
   });
@@ -60,9 +60,9 @@ describe('workspace projects', () => {
 
   describe('registerProject', () => {
     it('registers a new root with slug, name, timestamps and source', async () => {
-      const root = makeDir('cezar');
+      const root = makeDir('xezar');
       const entry = await registerProject(root);
-      expect(entry).toMatchObject({ id: 'cezar', root, name: 'cezar', source: 'local' });
+      expect(entry).toMatchObject({ id: 'xezar', root, name: 'xezar', source: 'local' });
       expect(entry.addedAt).not.toBe('');
       expect(entry.lastOpenedAt).toBe(entry.addedAt);
       expect((await loadWorkspaceConfig()).projects).toEqual([entry]);
@@ -248,20 +248,20 @@ describe('workspace projects', () => {
       expect(await shouldRegisterProject(makeRepo('normal-repo'))).toBe(true);
     });
 
-    it('suppresses a cezar task worktree root', async () => {
-      const worktree = makeDir('host-repo', '.ai', 'cezar', 'worktrees', 'abc12345');
+    it('suppresses a xezar task worktree root', async () => {
+      const worktree = makeDir('host-repo', '.ai', 'xezar', 'worktrees', 'abc12345');
       expect(await shouldRegisterProject(worktree)).toBe(false);
     });
 
     it('suppresses a repo nested deeper inside a task worktree', async () => {
-      const nested = join(repos, 'host', '.ai', 'cezar', 'worktrees', 'run-1', 'sub', 'repo');
+      const nested = join(repos, 'host', '.ai', 'xezar', 'worktrees', 'run-1', 'sub', 'repo');
       // Path need not exist — normalizeRoot degrades to resolve(); the guard
       // must still recognize the worktree marker on the raw spelling.
       expect(await shouldRegisterProject(nested)).toBe(false);
     });
 
     it('does not suppress a repo merely named like the marker pieces', async () => {
-      expect(await shouldRegisterProject(makeDir('cezar-worktrees'))).toBe(true);
+      expect(await shouldRegisterProject(makeDir('xezar-worktrees'))).toBe(true);
     });
 
     it('suppresses the home directory itself, in any spelling', async () => {

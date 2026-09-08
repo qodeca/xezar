@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import type { ProviderStatusResponse } from '@open-mercato/cezar-api-client'
+import type { ProviderStatusResponse } from '@qodeca/xezar-api-client'
 import { ProviderBanner } from './provider-banner'
 
 const DEFINITIVE_MISSING: ProviderStatusResponse = {
@@ -15,7 +15,7 @@ const DEFINITIVE_MISSING: ProviderStatusResponse = {
 
 function renderBanner(
   props: Partial<React.ComponentProps<typeof ProviderBanner>> = {},
-  entry = '/p/cezar/',
+  entry = '/p/xezar/',
 ) {
   return render(
     <MemoryRouter initialEntries={[entry]}>
@@ -164,7 +164,7 @@ describe('ProviderBanner', () => {
     })
 
     expect(screen.getByRole('link', { name: 'Open agent settings' }).getAttribute('href')).toBe(
-      '/p/cezar/settings/agents#providers',
+      '/p/xezar/settings/agents#providers',
     )
   })
 
@@ -182,7 +182,7 @@ describe('ProviderBanner', () => {
       name: 'Dismiss provider authentication alert',
     }))
     view.rerender(
-      <MemoryRouter initialEntries={['/p/cezar/']}>
+      <MemoryRouter initialEntries={['/p/xezar/']}>
         <ProviderBanner
           status={status}
           pending={false}
@@ -227,7 +227,7 @@ describe('ProviderBanner', () => {
     renderBanner()
 
     expect(screen.getByRole('link', { name: 'Configure providers' }).getAttribute('href')).toBe(
-      '/p/cezar/settings/agents#providers',
+      '/p/xezar/settings/agents#providers',
     )
   })
 

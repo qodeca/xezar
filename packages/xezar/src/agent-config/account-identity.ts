@@ -105,7 +105,7 @@ async function readClaudeIdentity(configDir: string): Promise<AccountIdentity> {
  * `refresh_token`, none of which this function so much as names.
  *
  * The signature is NOT verified, and that is correct here: this is a local file the user's own CLI
- * wrote, read to display who they are — not a token cezar is accepting as proof of anything.
+ * wrote, read to display who they are — not a token xezar is accepting as proof of anything.
  */
 async function readCodexIdentity(configDir: string): Promise<AccountIdentity> {
   const auth = await readJsonCapped(join(configDir, 'auth.json'));
@@ -161,7 +161,7 @@ export async function readAccountIdentity(
   if (provider === 'codex') return readCodexIdentity(configDir);
   return {
     available: false,
-    reason: 'OpenCode keeps its login outside its config folder, so cezar cannot read it.',
+    reason: 'OpenCode keeps its login outside its config folder, so xezar cannot read it.',
     fields: [],
   };
 }

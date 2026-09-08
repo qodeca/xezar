@@ -5,10 +5,10 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { AgentBrowser, cezarCli, fixtureServeEnv, removeDataRoot, stopFixtureServer } from './agent-browser'
+import { AgentBrowser, xezarCli, fixtureServeEnv, removeDataRoot, stopFixtureServer } from './agent-browser'
 
 /**
- * The review gate (R3 Step 2.2) end-to-end, against a LIVE dry run — cezar's core promise
+ * The review gate (R3 Step 2.2) end-to-end, against a LIVE dry run — xezar's core promise
  * that nothing auto-merges, walked in full: the mock claude's first turn touches `notes.md`
  * in the run's REAL worktree, so finishing the waiting session parks the run at `review`
  * (the settleSuccess rule). This spec then does what a reviewer does: reads the banner and
@@ -16,7 +16,7 @@ import { AgentBrowser, cezarCli, fixtureServeEnv, removeDataRoot, stopFixtureSer
  * transcript grows with the `Review feedback:` bubble), lets the run gate again, and accepts
  * — run done, celebration fired, banner gone.
  *
- * Draft PR success/409 stays in the component tests: even under CEZ_DRY_RUN the endpoint's
+ * Draft PR success/409 stays in the component tests: even under XEZ_DRY_RUN the endpoint's
  * failure modes are gh-dependent, and the semantics are fully pinned there.
  */
 
@@ -44,7 +44,7 @@ async function waitForHealth(url: string): Promise<void> {
     }
     await new Promise((r) => setTimeout(r, 250))
   }
-  throw new Error(`cezar e2e: the review-gate server never answered at ${url}`)
+  throw new Error(`xezar e2e: the review-gate server never answered at ${url}`)
 }
 
 async function waitForStatus(url: string, id: string, wanted: string[]): Promise<string> {
@@ -53,7 +53,7 @@ async function waitForStatus(url: string, id: string, wanted: string[]): Promise
     if (wanted.includes(record.status)) return record.status
     await new Promise((r) => setTimeout(r, 500))
   }
-  throw new Error(`cezar e2e: run ${id} never reached status "${wanted.join('/')}"`)
+  throw new Error(`xezar e2e: run ${id} never reached status "${wanted.join('/')}"`)
 }
 
 let browser: AgentBrowser
@@ -65,11 +65,11 @@ let runId: string
 beforeAll(async () => {
   // A REAL git repo — the engine creates a worktree, and the mock's notes.md write in it is
   // what gives this spec a genuine non-empty diff (and therefore the review parking).
-  dataRoot = mkdtempSync(join(tmpdir(), 'cezar-e2e-review-'))
+  dataRoot = mkdtempSync(join(tmpdir(), 'xezar-e2e-review-'))
   const git = (...args: string[]) => execFileSync('git', ['-C', dataRoot, ...args])
   git('init', '-q', '-b', 'main')
-  git('config', 'user.email', 'e2e@cezar.test')
-  git('config', 'user.name', 'cezar e2e')
+  git('config', 'user.email', 'e2e@xezar.test')
+  git('config', 'user.name', 'xezar e2e')
   writeFileSync(join(dataRoot, 'README.md'), '# review-gate e2e fixture repo\n', 'utf8')
   git('add', '.')
   git('commit', '-qm', 'init')
@@ -78,11 +78,11 @@ beforeAll(async () => {
   baseUrl = `http://localhost:${port}`
   server = spawn(
     process.execPath,
-    [cezarCli, 'serve', '--repo', dataRoot, '--port', String(port), '--no-open'],
-    // CEZ_REVIEW_GATE=1 because this spec is ABOUT the gate: it is opt-in (#489, default OFF),
+    [xezarCli, 'serve', '--repo', dataRoot, '--port', String(port), '--no-open'],
+    // XEZ_REVIEW_GATE=1 because this spec is ABOUT the gate: it is opt-in (#489, default OFF),
     // so pinning it here is what makes the parked-at-review fixture reproducible instead of
     // depending on whatever the operator happens to export.
-    { env: fixtureServeEnv(dataRoot, { CEZ_REVIEW_GATE: '1' }), stdio: 'ignore' },
+    { env: fixtureServeEnv(dataRoot, { XEZ_REVIEW_GATE: '1' }), stdio: 'ignore' },
   )
   await waitForHealth(baseUrl)
 
@@ -100,7 +100,7 @@ beforeAll(async () => {
   await waitForStatus(baseUrl, runId, ['waiting'])
   await fetch(`${baseUrl}/api/v1/runs/${runId}/finish`, { method: 'POST' })
   const parked = await waitForStatus(baseUrl, runId, ['review', 'done'])
-  if (parked !== 'review') throw new Error('cezar e2e: the dry run settled as done — no diff to review?')
+  if (parked !== 'review') throw new Error('xezar e2e: the dry run settled as done — no diff to review?')
 
   browser = AgentBrowser.open(sessionId)
   browser.setViewport(1440, 900)
@@ -179,9 +179,9 @@ describe('the review gate against a live parked run', () => {
     // The overlay lives ~1.5s — watch for it with an observer armed BEFORE the click, so the
     // assertion cannot lose a race against its own polling.
     browser.evaluate(`(() => {
-      window.__cezCelebrated = false
+      window.__xezCelebrated = false
       new MutationObserver(() => {
-        if (document.querySelector('[data-slot="accept-celebration"]')) window.__cezCelebrated = true
+        if (document.querySelector('[data-slot="accept-celebration"]')) window.__xezCelebrated = true
       }).observe(document.body, { childList: true, subtree: true })
       return true
     })()`)
@@ -194,7 +194,7 @@ describe('the review gate against a live parked run', () => {
     browser.click('[data-slot="review-accept"]')
 
     await waitForStatus(baseUrl, runId, ['done'])
-    browser.waitForFunction(`window.__cezCelebrated === true`)
+    browser.waitForFunction(`window.__xezCelebrated === true`)
     browser.screenshot(`${artifactsDir}/review-accepted.png`)
 
     // The gate is closed: banner gone, the footer reads as a closed session.

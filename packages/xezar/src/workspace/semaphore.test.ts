@@ -173,7 +173,7 @@ describe('WorkspaceSemaphore', () => {
 
   it('projectMaxParallel returns the per-project value when set, else the workspace cap', async () => {
     // Key by realpath'd temp dirs so normalizeRootSync resolves them identically.
-    const dirs = mkdtempSync(join(tmpdir(), 'cez-sema-'));
+    const dirs = mkdtempSync(join(tmpdir(), 'xez-sema-'));
     const capped = join(dirs, 'capped');
     const open = join(dirs, 'open');
     mkdirSync(capped, { recursive: true });
@@ -210,7 +210,7 @@ describe('WorkspaceSemaphore', () => {
     // lookup must realpath both, or the override silently falls back to the
     // workspace cap. A real symlink is the only way to prove normalizeRootSync
     // actually canonicalizes — an all-`/tmp` test passes even as a no-op.
-    const dirs = realpathSync(mkdtempSync(join(tmpdir(), 'cez-sema-link-')));
+    const dirs = realpathSync(mkdtempSync(join(tmpdir(), 'xez-sema-link-')));
     const real = join(dirs, 'real-root');
     const link = join(dirs, 'link-root'); // a symlink pointing at real-root
     mkdirSync(real, { recursive: true });

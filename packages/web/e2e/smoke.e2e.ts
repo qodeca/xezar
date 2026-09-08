@@ -70,7 +70,7 @@ afterAll(() => {
  *  Driving the storage key (rather than the toggle button) keeps this independent of where the
  *  toggle currently sits in the chrome. The toggle itself is covered by the unit tests. */
 function setTheme(theme: 'light' | 'dark'): void {
-  browser.evaluate(`localStorage.setItem('cez-theme', ${JSON.stringify(theme)})`)
+  browser.evaluate(`localStorage.setItem('xez-theme', ${JSON.stringify(theme)})`)
   browser.goto(baseUrl + scoped('/'))
 }
 
@@ -475,18 +475,18 @@ describe('mobile shell', () => {
  *
  * The interesting half is not that a socket opens — it is that a server-side change reaches the
  * rendered UI with nobody reloading anything. The inbox is the one path this suite can drive for
- * free: `.ai/cezar/todos.json` is a documented external contract (agents append to it via
- * `CEZ_TODOS_FILE`), the server watches the file and re-broadcasts the whole array on `todos`, and
+ * free: `.ai/xezar/todos.json` is a documented external contract (agents append to it via
+ * `XEZ_TODOS_FILE`), the server watches the file and re-broadcasts the whole array on `todos`, and
  * the nav badge renders whatever the todos query holds. So writing that file *is* a live event —
  * no fixture invented, nothing mocked.
  *
  * The `run` path is deliberately not asserted here: proving a live run's `run` events land would
- * need a run that actually executes, and CEZ_DRY_RUN's mock agent is not a fixture this step has.
+ * need a run that actually executes, and XEZ_DRY_RUN's mock agent is not a fixture this step has.
  * The jsdom tests cover those reducers against the exact payloads the server sends.
  */
 describe('global SSE stream', () => {
   // Where `src/index.ts` puts the data dir, for the server booted from this worktree.
-  const dataDir = resolve(import.meta.dirname, '../../../.ai/cezar')
+  const dataDir = resolve(import.meta.dirname, '../../../.ai/xezar')
   const todosFile = resolve(dataDir, 'todos.json')
   const BADGE = '[data-slot="nav-badge"]'
   let previousTodos: string | null = null
@@ -515,16 +515,16 @@ describe('global SSE stream', () => {
     // rather than answering and closing. That the *app's* own stream is open is what the badge test
     // below proves — an EventSource is not reachable from outside the bundle, and a test-only
     // handle hung off `window` to reach it would be scaffolding, not evidence.
-    browser.evaluate(`window.__cezProbe = new EventSource('/api/v1/events'), true`)
-    browser.waitForFunction(`window.__cezProbe.readyState === 1`)
-    expect(browser.evaluate('window.__cezProbe.readyState')).toBe(1)
-    browser.evaluate(`window.__cezProbe.close(), delete window.__cezProbe, true`)
+    browser.evaluate(`window.__xezProbe = new EventSource('/api/v1/events'), true`)
+    browser.waitForFunction(`window.__xezProbe.readyState === 1`)
+    expect(browser.evaluate('window.__xezProbe.readyState')).toBe(1)
+    browser.evaluate(`window.__xezProbe.close(), delete window.__xezProbe, true`)
   })
 
   it('live-updates the inbox badge from a server-side change, with no reload', ({ skip }) => {
     skip(
       !followupsAvailable,
-      'the shared environment has the opt-in inbox disabled; run CEZ_FOLLOWUPS=1 npm run test:e2e -- --force',
+      'the shared environment has the opt-in inbox disabled; run XEZ_FOLLOWUPS=1 npm run test:e2e -- --force',
     )
     writeTodos([])
     browser.goto(baseUrl + scoped('/'))

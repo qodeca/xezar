@@ -1,13 +1,13 @@
 import { useState } from 'react'
 
-import type { ApiRun } from '@open-mercato/cezar-api-client'
+import type { ApiRun } from '@qodeca/xezar-api-client'
 import { Button } from '@/components/ui/button'
 import { Link } from '@/lib/project-router'
 import { cn } from '@/lib/utils'
 
 import { useAskAnswer } from './ask-answer'
 import type { ThreadAsk } from './thread-state'
-import type { UiAskQuestion } from '@open-mercato/cezar-api-client'
+import type { UiAskQuestion } from '@qodeca/xezar-api-client'
 
 /** Format one answered question the way the agent reads it back. */
 function formatAnswer(question: UiAskQuestion, labels: string[]): string {
@@ -16,7 +16,7 @@ function formatAnswer(question: UiAskQuestion, labels: string[]): string {
 
 /**
  * The AskUser card (#473): the agent asked one or more structured multiple-choice
- * questions via `CEZ:ASK`; render each with clickable option chips. A single
+ * questions via `XEZ:ASK`; render each with clickable option chips. A single
  * single-select question resolves on one tap; any other shape (multiple
  * questions, or a multi-select question) collects every answer and resolves on
  * one **Send** that posts a single combined message — the reducer resolves the

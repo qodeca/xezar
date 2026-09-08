@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { GlobalEventsProvider } from '@/api/global-events'
 import { queryKeys } from '@/api/queries'
 import { createQueryClient } from '@/api/query-client'
-import type { ProcessUsage, RunRecord } from '@open-mercato/cezar-api-client'
+import type { ProcessUsage, RunRecord } from '@qodeca/xezar-api-client'
 import { ListViewProvider } from '@/components/list-view'
 import { TaskQuickListContainer } from '@/components/task-quick-list'
 import { TasksOverview, TasksOverviewRoute } from '@/routes/tasks-overview'
@@ -182,13 +182,13 @@ describe('TasksOverview — the table', () => {
           id: 'queued-issue',
           status: 'queued',
           issueNumber: 554,
-          referencedIssueUrl: 'https://github.com/open-mercato/cezar/issues/554',
+          referencedIssueUrl: 'https://github.com/qodeca/xezar/issues/554',
         }),
       ],
     })
     const chip = tableRow('queued-issue')?.querySelector('[data-slot="issue-chip"]')
     expect(chip?.textContent).toBe('Issue #554')
-    expect(chip?.getAttribute('href')).toBe('https://github.com/open-mercato/cezar/issues/554')
+    expect(chip?.getAttribute('href')).toBe('https://github.com/qodeca/xezar/issues/554')
   })
 
   it('fills the columns with the run facts, and honest dashes where no fact exists', () => {
@@ -199,7 +199,7 @@ describe('TasksOverview — the table', () => {
           title: 'Structured changes endpoint',
           status: 'review',
           workflow: 'feat',
-          branch: 'cez/8f31ab02',
+          branch: 'xez/8f31ab02',
           diffStat: { adds: 128, dels: 14, files: 6 },
           tokensUsed: 184_700,
           inputTokens: 184_700,
@@ -218,7 +218,7 @@ describe('TasksOverview — the table', () => {
       'needs review',
       'Structured changes endpoint',
       'feat',
-      'cez/8f31ab02',
+      'xez/8f31ab02',
       '+128 −14', // the ± column (R2 #389) — adds and dels, the mockup's pair
       '#402',
       '184.7k / 2.4k',
@@ -247,7 +247,7 @@ describe('TasksOverview — the table', () => {
           id: 'reviewer',
           title: 'Review PR 694',
           status: 'review',
-          branch: 'cez/d8ff6490',
+          branch: 'xez/d8ff6490',
           diffStat: { adds: 1, dels: 0, files: 1, repointed: true },
           createdAt: ago(20 * 60_000),
         }),
@@ -378,7 +378,7 @@ describe('TasksOverview — the table', () => {
       runs: [
         run({
           id: 'visibility',
-          branch: 'cez/visibility',
+          branch: 'xez/visibility',
           inputTokens: 184_700,
           outputTokens: 2_400,
           costUsd: 0.31,
@@ -783,7 +783,7 @@ describe('TasksOverview — header', () => {
   it('filters by title, branch and workflow through the search box', () => {
     renderOverview({
       runs: [
-        run({ id: 'a', title: 'Bump zod to v4', branch: 'cez/99aa11bb' }),
+        run({ id: 'a', title: 'Bump zod to v4', branch: 'xez/99aa11bb' }),
         run({ id: 'b', title: 'README tagline', workflow: 'plan-then-do' }),
       ],
     })
@@ -890,7 +890,7 @@ describe('TasksOverview — mobile cards and FAB', () => {
           titleSummary: 'Structured changes endpoint',
           status: 'review',
           workflow: 'feat',
-          branch: 'cez/8f31ab02',
+          branch: 'xez/8f31ab02',
           diffStat: { adds: 128, dels: 14, files: 6 },
           tokensUsed: 184_700,
           inputTokens: 184_700,
@@ -909,7 +909,7 @@ describe('TasksOverview — mobile cards and FAB', () => {
       '/tasks/c1'
     )
     expect(c.textContent).toContain('feat')
-    expect(c.textContent).toContain('cez/8f31ab02')
+    expect(c.textContent).toContain('xez/8f31ab02')
     // The meta row carries the diff pair, like the mockup card (branch · ± · tokens).
     expect(c.querySelector('[data-slot="diff-stat"]')?.textContent).toBe('+128 −14')
     expect(c.textContent).toContain('IN 184.7k · OUT 2.4k')
@@ -925,7 +925,7 @@ describe('TasksOverview — mobile cards and FAB', () => {
       runs: [
         run({
           id: 'hidden-card',
-          branch: 'cez/hidden',
+          branch: 'xez/hidden',
           diffStat: { adds: 2, dels: 1, files: 1 },
           tokensUsed: 184_700,
         }),
@@ -933,12 +933,12 @@ describe('TasksOverview — mobile cards and FAB', () => {
     })
     const hidden = card('hidden-card') as HTMLElement
     expect(hidden.textContent).not.toContain('184.7k')
-    expect(hidden.textContent).toContain('cez/hidden')
+    expect(hidden.textContent).toContain('xez/hidden')
     expect(hidden.querySelector('[data-slot="diff-stat"]')?.textContent).toBe('+2 −1')
   })
 
   it('shows no diff pair on a card whose run recorded none', () => {
-    renderOverview({ runs: [run({ id: 'c2', branch: 'cez/x' })] })
+    renderOverview({ runs: [run({ id: 'c2', branch: 'xez/x' })] })
     expect(card('c2')?.querySelector('[data-slot="diff-stat"]')).toBeNull()
   })
 

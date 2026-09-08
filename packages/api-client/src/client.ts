@@ -4,28 +4,28 @@ import type { ClientRequestOptions, ClientResponse } from 'hono/client'
 import type { SuccessStatusCode } from 'hono/utils/http-status'
 
 /**
- * The typed HTTP client for a cezar service.
+ * The typed HTTP client for a xezar service.
  *
  * `hc` reuses the SERVER's own route types, so the contract is the code: a wrong path, a wrong
  * request body or a misread response shape is a compile error, and nothing has to be mirrored
  * by hand. The app type comes from the service package
- * (`import type { AppType } from '@open-mercato/cezar/app-type'`) and is supplied by the
+ * (`import type { AppType } from '@qodeca/xezar/app-type'`) and is supplied by the
  * caller rather than imported here on purpose — this package must stay installable, and
  * usable at runtime, without the server package present:
  *
  * ```ts
- * import type { AppType } from '@open-mercato/cezar/app-type'
- * const cez = createCezarClient<AppType>({ baseUrl: 'http://127.0.0.1:4321' })
- * const res = await cez.api.v1['agent-config'].$get()
+ * import type { AppType } from '@qodeca/xezar/app-type'
+ * const xez = createXezarClient<AppType>({ baseUrl: 'http://127.0.0.1:4321' })
+ * const res = await xez.api.v1['agent-config'].$get()
  * ```
  *
  * Only the versioned surface (`/api/v1/*`) is typed. The legacy `/api/*` paths stay frozen for
  * the bookmarklets and scripts that already call them (BACKWARD_COMPATIBILITY.md §2) and are
  * deliberately not part of what a new consumer is invited to build on.
  */
-export interface CezarClientOptions {
+export interface XezarClientOptions {
   /**
-   * Where the service lives — `https://cezar.example.com`, or a path prefix behind a proxy.
+   * Where the service lives — `https://xezar.example.com`, or a path prefix behind a proxy.
    *
    * Defaults to `''` (same origin), which is the cockpit's own case: the service serves the
    * bundle and owns `/api/*` under the same authority, so a root-relative request is correct
@@ -46,18 +46,18 @@ export interface CezarClientOptions {
 }
 
 /**
- * Build a typed client for a cezar service.
+ * Build a typed client for a xezar service.
  *
  * `T` is the service's `AppType`. It is left unconstrained so that a JS consumer, or a
  * consumer that does not want the server package installed, still gets a working (untyped)
  * client instead of a type error.
  */
-export function createCezarClient<
+export function createXezarClient<
   // The three `any`s are Hono's own constraint on `hc` (Env, Schema, BasePath) — narrowing
   // them here would reject perfectly good app types. `Hono` as the default is the untyped
-  // fallback: `createCezarClient()` with no type argument still returns a working client.
+  // fallback: `createXezarClient()` with no type argument still returns a working client.
   T extends Hono<any, any, any> = Hono,
->(options: CezarClientOptions = {}): ReturnType<typeof hc<T>> {
+>(options: XezarClientOptions = {}): ReturnType<typeof hc<T>> {
   const { baseUrl = '', token, headers, fetch } = options
   return hc<T>(baseUrl, {
     headers: {
@@ -73,7 +73,7 @@ export function createCezarClient<
  *
  * `hc` types a call as the union of everything the handler can answer, error branches included:
  * a route that answers `{runner, models}` or `{error}` infers both. That is honest about the
- * wire, but a caller that treats a non-2xx as a thrown error (as cezar's client does) only ever
+ * wire, but a caller that treats a non-2xx as a thrown error (as xezar's client does) only ever
  * holds the success shape, and forcing it to narrow a union it can never see would be noise.
  *
  * Selecting the success branch is what makes an inferred type a drop-in replacement for the

@@ -5,7 +5,7 @@ import { loadWorkspaceConfig, type WorkspaceConfig } from './workspace/config.ts
 import { RUNNER_IDS } from './core/agent-runner.ts';
 
 /**
- * Optional advanced config at `.ai/cezar/config.json`. Zero-config rule:
+ * Optional advanced config at `.ai/xezar/config.json`. Zero-config rule:
  * a missing file behaves exactly like the default below, an unreadable or
  * invalid file degrades to the default too (never blocks startup). The key
  * can be overridden or emptied (`"skillsRepos": []` disables team skills).
@@ -37,7 +37,7 @@ const configSchema = z.object({
   /**
    * Count-based worktree retention (#483): keep the last N *finished*
    * worktrees materialized on disk; reclaim older ones (directory only — the
-   * `cez/<id8>` branch is kept, so the work stays recoverable). 0 = unlimited
+   * `xez/<id8>` branch is kept, so the work stays recoverable). 0 = unlimited
    * (never auto-reclaim). Default 10. `.catch(10)` keeps it additive-safe: a
    * bad value degrades to the default instead of discarding the rest.
    */
@@ -61,11 +61,11 @@ const configSchema = z.object({
    *  alias that answers strict JSON; naming is fire-and-forget and never blocks. */
   namerModel: z.string().min(1).default('haiku'),
   /** Live title updates: refresh the display title through the namer on each
-   *  turn end. Absent = the `CEZ_TITLE_UPDATES` env decides (default ON — owner
+   *  turn end. Absent = the `XEZ_TITLE_UPDATES` env decides (default ON — owner
    *  decision on PR #479). */
   liveTitleUpdates: z.boolean().optional(),
   /** Optional diff-first review gate (#489): when a successful run with changes
-   *  should park at `review` for a human. Absent = the `CEZ_REVIEW_GATE` env
+   *  should park at `review` for a human. Absent = the `XEZ_REVIEW_GATE` env
    *  decides (default OFF — the deliberate inverse of `liveTitleUpdates`).
    *  Autonomous runs always skip the gate regardless of this. */
   reviewGate: z.boolean().optional(),
@@ -101,13 +101,13 @@ const configSchema = z.object({
     .catch(undefined),
   /**
    * Make each coding agent's native model setting authoritative. This is an
-   * optional repo-level counterpart to `CEZ_AGENT_MODELS_LOCKED=1`; absent or
+   * optional repo-level counterpart to `XEZ_AGENT_MODELS_LOCKED=1`; absent or
    * false preserves the ordinary per-runner model selector.
    */
   modelsLocked: z.boolean().optional().catch(undefined),
 });
 
-export type CezConfig = z.infer<typeof configSchema>;
+export type XezConfig = z.infer<typeof configSchema>;
 
 /**
  * Fold the machine-wide agent defaults under a repo's own config (spec 2026-07-29-agent-profiles).
@@ -138,17 +138,17 @@ function withMachineDefaults(raw: unknown, machine: WorkspaceConfig['agentDefaul
 }
 
 /**
- * Read `.ai/cezar/config.json` on demand — never cached, never throws.
+ * Read `.ai/xezar/config.json` on demand — never cached, never throws.
  *
  * Also reads the machine-wide defaults, which is one more small JSON read and deliberately not
- * cached for the same reason this one is not: `~/.cezar/` is shared by every cezar process on the
+ * cached for the same reason this one is not: `~/.xezar/` is shared by every xezar process on the
  * machine, so a snapshot is a staleness bug.
  */
-export async function loadConfig(repoRoot: string): Promise<CezConfig> {
+export async function loadConfig(repoRoot: string): Promise<XezConfig> {
   const machine = (await loadWorkspaceConfig()).agentDefaults;
   let raw: string;
   try {
-    raw = await readFile(join(repoRoot, '.ai/cezar', 'config.json'), 'utf8');
+    raw = await readFile(join(repoRoot, '.ai/xezar', 'config.json'), 'utf8');
   } catch {
     return configSchema.parse(withMachineDefaults({}, machine));
   }
@@ -173,7 +173,7 @@ export async function loadConfig(repoRoot: string): Promise<CezConfig> {
 async function ownWorktreeRetention(repoRoot: string): Promise<number | undefined> {
   let raw: string;
   try {
-    raw = await readFile(join(repoRoot, '.ai/cezar', 'config.json'), 'utf8');
+    raw = await readFile(join(repoRoot, '.ai/xezar', 'config.json'), 'utf8');
   } catch {
     return undefined; // no file — nothing set
   }
@@ -206,7 +206,7 @@ export async function gatedSkillsRepos(repoRoot: string): Promise<Set<string>> {
   const none = new Set<string>();
   let raw: string;
   try {
-    raw = await readFile(join(repoRoot, '.ai/cezar', 'config.json'), 'utf8');
+    raw = await readFile(join(repoRoot, '.ai/xezar', 'config.json'), 'utf8');
   } catch {
     // No file — the defaults are in effect, so they are the opt-in set.
     return new Set(DEFAULT_SKILLS_REPOS.map((r) => r.repo));

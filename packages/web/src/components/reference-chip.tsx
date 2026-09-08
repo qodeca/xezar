@@ -14,7 +14,7 @@ import {
 } from 'lucide-react'
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import type * as React from 'react'
-import type { ReferenceStatus } from '@open-mercato/cezar-api-client'
+import type { ReferenceStatus } from '@qodeca/xezar-api-client'
 
 import { useReferenceStatus } from '@/components/reference-status'
 import type { ReferenceStatusEntry } from '@/api/queries'

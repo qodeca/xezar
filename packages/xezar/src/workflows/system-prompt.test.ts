@@ -49,12 +49,12 @@ describe('composeSystemPrompt', () => {
 });
 
 describe('handoff contract markers', () => {
-  it('teaches the CEZ:ASK structured-question marker with its schema (#473)', () => {
-    expect(HANDOFF_ONLY_INSTRUCTIONS).toContain('CEZ:ASK');
+  it('teaches the XEZ:ASK structured-question marker with its schema (#473)', () => {
+    expect(HANDOFF_ONLY_INSTRUCTIONS).toContain('XEZ:ASK');
     expect(HANDOFF_ONLY_INSTRUCTIONS).toContain('"questions"');
     expect(HANDOFF_ONLY_INSTRUCTIONS).toContain('"multiSelect"');
     // It rides in the combined contract every agent step receives.
-    expect(HANDOFF_INSTRUCTIONS).toContain('CEZ:ASK');
+    expect(HANDOFF_INSTRUCTIONS).toContain('XEZ:ASK');
   });
 });
 
@@ -93,9 +93,9 @@ describe('skill-aware task naming (#432)', () => {
 });
 
 /**
- * End-to-end through the real engine with CEZ_DRY_RUN=1: the config default
+ * End-to-end through the real engine with XEZ_DRY_RUN=1: the config default
  * and the per-run override must reach the claude CLI's argv verbatim
- * (`--append-system-prompt`, captured via the mock's CEZ_MOCK_ARGS_FILE hook)
+ * (`--append-system-prompt`, captured via the mock's XEZ_MOCK_ARGS_FILE hook)
  * and be echoed on the RunRecord.
  */
 describe('systemPrompt end-to-end (dry run)', () => {
@@ -111,34 +111,34 @@ describe('systemPrompt end-to-end (dry run)', () => {
   const savedEnv: Record<string, string | undefined> = {};
 
   beforeAll(async () => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-sysprompt-'));
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-sysprompt-'));
     argsFile = join(repoRoot, 'mock-args.ndjson');
     inheritedTodos = join(repoRoot, 'inherited-todos.json');
-    savedEnv.CEZ_DRY_RUN = process.env.CEZ_DRY_RUN;
-    savedEnv.CEZ_MOCK_ARGS_FILE = process.env.CEZ_MOCK_ARGS_FILE;
-    savedEnv.CEZ_TODOS_FILE = process.env.CEZ_TODOS_FILE;
-    savedEnv.CEZ_FOLLOWUPS = process.env.CEZ_FOLLOWUPS;
-    savedEnv.CEZ_AUTONAME = process.env.CEZ_AUTONAME;
-    process.env.CEZ_DRY_RUN = '1';
+    savedEnv.XEZ_DRY_RUN = process.env.XEZ_DRY_RUN;
+    savedEnv.XEZ_MOCK_ARGS_FILE = process.env.XEZ_MOCK_ARGS_FILE;
+    savedEnv.XEZ_TODOS_FILE = process.env.XEZ_TODOS_FILE;
+    savedEnv.XEZ_FOLLOWUPS = process.env.XEZ_FOLLOWUPS;
+    savedEnv.XEZ_AUTONAME = process.env.XEZ_AUTONAME;
+    process.env.XEZ_DRY_RUN = '1';
     // The global inbox is opt-in (#471). These assertions are about prompt composition and the
     // per-run opt-out, so they run on an inbox-enabled server; the gate itself is covered by
     // the suite below.
-    process.env.CEZ_FOLLOWUPS = '1';
+    process.env.XEZ_FOLLOWUPS = '1';
     // Dry-run skips naming by default (canned titles would clobber honest
     // heuristics in demos/e2e); '1' forces the mock path for these tests.
-    process.env.CEZ_AUTONAME = '1';
-    process.env.CEZ_MOCK_ARGS_FILE = argsFile;
-    // Simulate a nested cezar (an agent running `cez serve` / the test suite):
-    // the parent process already carries CEZ_TODOS_FILE. Runners spawn with
+    process.env.XEZ_AUTONAME = '1';
+    process.env.XEZ_MOCK_ARGS_FILE = argsFile;
+    // Simulate a nested xezar (an agent running `xez serve` / the test suite):
+    // the parent process already carries XEZ_TODOS_FILE. Runners spawn with
     // `{ ...process.env, ...spec.env }`, so `agentEnv` must *shadow* this for
     // every run — never merely omit the key — or an opted-out agent writes
     // follow-ups into the parent's inbox. Asserted per test below.
-    process.env.CEZ_TODOS_FILE = inheritedTodos;
+    process.env.XEZ_TODOS_FILE = inheritedTodos;
     await run('git', ['init', '-q', '-b', 'main'], { cwd: repoRoot });
     writeFileSync(join(repoRoot, 'a.txt'), 'one\n');
     await run('git', ['add', '-A'], { cwd: repoRoot });
     await run('git', [...GIT_ID, 'commit', '-q', '-m', 'base'], { cwd: repoRoot });
-    mkdirSync(join(repoRoot, '.ai/cezar'), { recursive: true });
+    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
     mkdirSync(join(repoRoot, '.ai/skills/om-auto-review-pr'), { recursive: true });
     writeFileSync(
       join(repoRoot, '.ai/skills/om-auto-review-pr/SKILL.md'),
@@ -146,11 +146,11 @@ describe('systemPrompt end-to-end (dry run)', () => {
       'utf8',
     );
     writeFileSync(
-      join(repoRoot, '.ai/cezar', 'config.json'),
+      join(repoRoot, '.ai/xezar', 'config.json'),
       JSON.stringify({ systemPrompt: CONFIG_PROMPT }),
       'utf8',
     );
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     // Cap 1 (workspace-level since step 2.5) serializes the suite's runs.
     manager = new RunManager(store, repoRoot, {
       semaphore: new WorkspaceSemaphore({ initial: { maxParallel: 1 } }),
@@ -236,7 +236,7 @@ describe('systemPrompt end-to-end (dry run)', () => {
     expect(after?.prNumber).toBe(437);
   }, 30_000);
 
-  it('turn-end refresh skips under CEZ_DRY_RUN and when the toggle or ownership forbids it', async () => {
+  it('turn-end refresh skips under XEZ_DRY_RUN and when the toggle or ownership forbids it', async () => {
     type Seam = {
       maybeRefreshTitle(id: string, text: string): Promise<void>;
       lastNamerKey: Map<string, string>;
@@ -244,28 +244,28 @@ describe('systemPrompt end-to-end (dry run)', () => {
     const seam = manager as unknown as Seam;
     const record = manager.startRun(skillWorkflow, { task: '437' });
 
-    // Dry-run guard (without the CEZ_AUTONAME=1 force): no key is recorded,
+    // Dry-run guard (without the XEZ_AUTONAME=1 force): no key is recorded,
     // the namer is never consulted.
-    const forced = process.env.CEZ_AUTONAME;
-    delete process.env.CEZ_AUTONAME;
+    const forced = process.env.XEZ_AUTONAME;
+    delete process.env.XEZ_AUTONAME;
     await seam.maybeRefreshTitle(record.id, 'made real progress on the fix');
     expect(seam.lastNamerKey.has(record.id)).toBe(false);
-    process.env.CEZ_AUTONAME = forced;
+    process.env.XEZ_AUTONAME = forced;
 
     // Outside dry-run, a fast-failing fake binary guards against real spawns.
-    const savedDry = process.env.CEZ_DRY_RUN;
-    const savedBin = process.env.CEZ_CLAUDE_BIN;
-    const savedToggle = process.env.CEZ_TITLE_UPDATES;
-    delete process.env.CEZ_DRY_RUN;
-    process.env.CEZ_CLAUDE_BIN = '/nonexistent/cez-test-claude';
+    const savedDry = process.env.XEZ_DRY_RUN;
+    const savedBin = process.env.XEZ_CLAUDE_BIN;
+    const savedToggle = process.env.XEZ_TITLE_UPDATES;
+    delete process.env.XEZ_DRY_RUN;
+    process.env.XEZ_CLAUDE_BIN = '/nonexistent/xez-test-claude';
     try {
       // Env default OFF → skip before any runner call.
-      process.env.CEZ_TITLE_UPDATES = '0';
+      process.env.XEZ_TITLE_UPDATES = '0';
       await seam.maybeRefreshTitle(record.id, 'more progress');
       expect(seam.lastNamerKey.has(record.id)).toBe(false);
 
       // Toggle ON but the title is user-owned → skip.
-      process.env.CEZ_TITLE_UPDATES = '1';
+      process.env.XEZ_TITLE_UPDATES = '1';
       store.updateRun(record.id, { title: 'Mine', titleSummary: 'Mine', titleOrigin: 'user' });
       await seam.maybeRefreshTitle(record.id, 'even more progress');
       expect(seam.lastNamerKey.has(record.id)).toBe(false);
@@ -277,18 +277,18 @@ describe('systemPrompt end-to-end (dry run)', () => {
       await seam.maybeRefreshTitle(record.id, 'progress worth naming');
       expect(seam.lastNamerKey.get(record.id)).toContain('progress worth naming');
     } finally {
-      if (savedDry === undefined) delete process.env.CEZ_DRY_RUN;
-      else process.env.CEZ_DRY_RUN = savedDry;
-      if (savedBin === undefined) delete process.env.CEZ_CLAUDE_BIN;
-      else process.env.CEZ_CLAUDE_BIN = savedBin;
-      if (savedToggle === undefined) delete process.env.CEZ_TITLE_UPDATES;
-      else process.env.CEZ_TITLE_UPDATES = savedToggle;
+      if (savedDry === undefined) delete process.env.XEZ_DRY_RUN;
+      else process.env.XEZ_DRY_RUN = savedDry;
+      if (savedBin === undefined) delete process.env.XEZ_CLAUDE_BIN;
+      else process.env.XEZ_CLAUDE_BIN = savedBin;
+      if (savedToggle === undefined) delete process.env.XEZ_TITLE_UPDATES;
+      else process.env.XEZ_TITLE_UPDATES = savedToggle;
     }
   }, 30_000);
 
   it('marker declarations outrank the namer (spec 2026-07-18-task-ref-markers)', async () => {
     const record = manager.startRun(skillWorkflow, { task: '437' });
-    await manager.recordTurnEnd(record.id, 'Working on it.\nCEZ:PR=500\nCEZ:TITLE=implementing marker refs');
+    await manager.recordTurnEnd(record.id, 'Working on it.\nXEZ:PR=500\nXEZ:TITLE=implementing marker refs');
     let after = store.getRun(record.id);
     expect(after?.prNumber).toBe(500);
     expect(after?.titleSummary).toBe('500: implementing marker refs');
@@ -324,7 +324,7 @@ describe('systemPrompt end-to-end (dry run)', () => {
     const textEvents = store.readEvents(id).filter((e) => e.type === 'text');
     expect(textEvents.length).toBeGreaterThan(0);
     for (const event of textEvents) {
-      expect(String(event.text)).not.toMatch(/^CEZ:(?:PR|ISSUE|TITLE)=/m);
+      expect(String(event.text)).not.toMatch(/^XEZ:(?:PR|ISSUE|TITLE)=/m);
     }
   }, 30_000);
 
@@ -400,29 +400,29 @@ describe('systemPrompt end-to-end (dry run)', () => {
   // guard would stop every run from producing inbox entries with the whole suite still green.
   // This suite explicitly enables the global inbox in beforeAll (#471).
   it('on an inbox-enabled server the agent gets the run own inbox, never an inherited one', async () => {
-    const todosFile = join(repoRoot, '.ai/cezar/todos.json');
+    const todosFile = join(repoRoot, '.ai/xezar/todos.json');
     rmSync(todosFile, { force: true });
     rmSync(inheritedTodos, { force: true });
     await runToEnd({ task: 'do the thing with follow-ups' });
-    expect(capturedSystemPrompt()).toContain('CEZ_TODOS_FILE');
+    expect(capturedSystemPrompt()).toContain('XEZ_TODOS_FILE');
     expect(existsSync(todosFile)).toBe(true);
     expect(existsSync(inheritedTodos)).toBe(false);
   }, 30_000);
 
   it('explicit opt-out keeps handoff behavior but removes inbox prompt and environment', async () => {
-    const todosFile = join(repoRoot, '.ai/cezar/todos.json');
+    const todosFile = join(repoRoot, '.ai/xezar/todos.json');
     rmSync(todosFile, { force: true });
     rmSync(inheritedTodos, { force: true });
     const id = await runToEnd({ task: 'do the thing quietly', generateFollowups: false });
     const record = store.getRun(id);
     expect(record?.generateFollowups).toBe(false);
     expect(capturedSystemPrompt()).toBe(composeSystemPrompt(CONFIG_PROMPT, HANDOFF_ONLY_INSTRUCTIONS));
-    expect(capturedSystemPrompt()).not.toContain('CEZ_TODOS_FILE');
+    expect(capturedSystemPrompt()).not.toContain('XEZ_TODOS_FILE');
     expect(existsSync(todosFile)).toBe(false);
-    // The opt-out must survive an inherited CEZ_TODOS_FILE (nested cezar):
+    // The opt-out must survive an inherited XEZ_TODOS_FILE (nested xezar):
     // omitting the key instead of shadowing it leaks into the parent's inbox.
     expect(existsSync(inheritedTodos)).toBe(false);
-    expect(readFileSync(join(repoRoot, '.ai/cezar/runs', `${id}.handoff.md`), 'utf8')).toContain(
+    expect(readFileSync(join(repoRoot, '.ai/xezar/runs', `${id}.handoff.md`), 'utf8')).toContain(
       'mock: implemented the change',
     );
 
@@ -437,7 +437,7 @@ describe('systemPrompt end-to-end (dry run)', () => {
     expect(capturedSystemPrompt(1)).toBe(
       composeSystemPrompt(CONFIG_PROMPT, HANDOFF_ONLY_INSTRUCTIONS),
     );
-    expect(capturedSystemPrompt(1)).not.toContain('CEZ_TODOS_FILE');
+    expect(capturedSystemPrompt(1)).not.toContain('XEZ_TODOS_FILE');
     expect(existsSync(todosFile)).toBe(false);
     expect(existsSync(inheritedTodos)).toBe(false);
   }, 30_000);
@@ -446,7 +446,7 @@ describe('systemPrompt end-to-end (dry run)', () => {
 /**
  * The global inbox gate, end-to-end through the real engine (#471).
  *
- * This drives `RunManager` directly — the same door `cezar run` and the inbox's own "▶ Run" use,
+ * This drives `RunManager` directly — the same door `xezar run` and the inbox's own "▶ Run" use,
  * and the reason the ceiling lives in the manager rather than in the HTTP route. A route-level
  * gate would leave every one of those callers writing todos.json on a server that has the inbox
  * off.
@@ -461,29 +461,29 @@ describe('the global follow-up gate (dry run)', () => {
   const savedEnv: Record<string, string | undefined> = {};
 
   beforeAll(async () => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-followup-gate-'));
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-followup-gate-'));
     argsFile = join(repoRoot, 'mock-args.ndjson');
     inheritedTodos = join(repoRoot, 'inherited-todos.json');
-    savedEnv.CEZ_DRY_RUN = process.env.CEZ_DRY_RUN;
-    savedEnv.CEZ_MOCK_ARGS_FILE = process.env.CEZ_MOCK_ARGS_FILE;
-    savedEnv.CEZ_TODOS_FILE = process.env.CEZ_TODOS_FILE;
-    savedEnv.CEZ_FOLLOWUPS = process.env.CEZ_FOLLOWUPS;
-    process.env.CEZ_DRY_RUN = '1';
-    process.env.CEZ_MOCK_ARGS_FILE = argsFile;
-    // A parent cezar's inbox, as in the suite above: the gate must not leak into it either.
-    process.env.CEZ_TODOS_FILE = inheritedTodos;
-    delete process.env.CEZ_FOLLOWUPS;
+    savedEnv.XEZ_DRY_RUN = process.env.XEZ_DRY_RUN;
+    savedEnv.XEZ_MOCK_ARGS_FILE = process.env.XEZ_MOCK_ARGS_FILE;
+    savedEnv.XEZ_TODOS_FILE = process.env.XEZ_TODOS_FILE;
+    savedEnv.XEZ_FOLLOWUPS = process.env.XEZ_FOLLOWUPS;
+    process.env.XEZ_DRY_RUN = '1';
+    process.env.XEZ_MOCK_ARGS_FILE = argsFile;
+    // A parent xezar's inbox, as in the suite above: the gate must not leak into it either.
+    process.env.XEZ_TODOS_FILE = inheritedTodos;
+    delete process.env.XEZ_FOLLOWUPS;
     await run('git', ['init', '-q', '-b', 'main'], { cwd: repoRoot });
     writeFileSync(join(repoRoot, 'a.txt'), 'one\n');
     await run('git', ['add', '-A'], { cwd: repoRoot });
     await run('git', [...GIT_ID, 'commit', '-q', '-m', 'base'], { cwd: repoRoot });
-    mkdirSync(join(repoRoot, '.ai/cezar'), { recursive: true });
+    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
     writeFileSync(
-      join(repoRoot, '.ai/cezar', 'config.json'),
+      join(repoRoot, '.ai/xezar', 'config.json'),
       JSON.stringify({ systemPrompt: CONFIG_PROMPT }),
       'utf8',
     );
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     // Cap 1 (workspace-level since step 2.5) serializes the suite's runs.
     manager = new RunManager(store, repoRoot, {
       semaphore: new WorkspaceSemaphore({ initial: { maxParallel: 1 } }),
@@ -524,17 +524,17 @@ describe('the global follow-up gate (dry run)', () => {
     return argv[argv.indexOf('--append-system-prompt') + 1] as string;
   };
 
-  it('without CEZ_FOLLOWUPS the agent is never told about the inbox', async () => {
-    const todosFile = join(repoRoot, '.ai/cezar/todos.json');
+  it('without XEZ_FOLLOWUPS the agent is never told about the inbox', async () => {
+    const todosFile = join(repoRoot, '.ai/xezar/todos.json');
     rmSync(todosFile, { force: true });
     rmSync(inheritedTodos, { force: true });
 
     const id = await runToEnd({ task: 'do the thing mock:done' });
 
     expect(capturedSystemPrompt()).toBe(composeSystemPrompt(CONFIG_PROMPT, HANDOFF_ONLY_INSTRUCTIONS));
-    expect(capturedSystemPrompt()).not.toContain('CEZ_TODOS_FILE');
+    expect(capturedSystemPrompt()).not.toContain('XEZ_TODOS_FILE');
     expect(existsSync(todosFile)).toBe(false);
-    // …and nothing leaked into the parent cezar's inbox either.
+    // …and nothing leaked into the parent xezar's inbox either.
     expect(existsSync(inheritedTodos)).toBe(false);
     // The record agrees, so a later continuation reads the same answer.
     expect(store.getRun(id)?.generateFollowups).toBe(false);
@@ -542,38 +542,38 @@ describe('the global follow-up gate (dry run)', () => {
 
   it('keeps the per-task handoff journal — #471 turns off the inbox, not the notes', async () => {
     const id = await runToEnd({ task: 'do the thing mock:done' });
-    expect(capturedSystemPrompt()).toContain('CEZ_HANDOFF_FILE');
-    expect(capturedSystemPrompt()).toContain('CEZ:DONE');
+    expect(capturedSystemPrompt()).toContain('XEZ_HANDOFF_FILE');
+    expect(capturedSystemPrompt()).toContain('XEZ:DONE');
     // The still-working marker rides in the same handoff contract (#490).
-    expect(capturedSystemPrompt()).toContain('CEZ:MONITORING');
+    expect(capturedSystemPrompt()).toContain('XEZ:MONITORING');
     // The task-reference markers too (spec 2026-07-18-task-ref-markers).
-    expect(capturedSystemPrompt()).toContain('CEZ:PR=<number>');
-    expect(capturedSystemPrompt()).toContain('CEZ:ISSUE=<number>');
-    expect(capturedSystemPrompt()).toContain('CEZ:TITLE=');
-    expect(readFileSync(join(repoRoot, '.ai/cezar/runs', `${id}.handoff.md`), 'utf8')).toContain(
+    expect(capturedSystemPrompt()).toContain('XEZ:PR=<number>');
+    expect(capturedSystemPrompt()).toContain('XEZ:ISSUE=<number>');
+    expect(capturedSystemPrompt()).toContain('XEZ:TITLE=');
+    expect(readFileSync(join(repoRoot, '.ai/xezar/runs', `${id}.handoff.md`), 'utf8')).toContain(
       'mock: implemented the change',
     );
   }, 30_000);
 
   it('a client asking for follow-ups cannot override the gate', async () => {
-    const todosFile = join(repoRoot, '.ai/cezar/todos.json');
+    const todosFile = join(repoRoot, '.ai/xezar/todos.json');
     rmSync(todosFile, { force: true });
     const id = await runToEnd({ task: 'do the thing mock:done', generateFollowups: true });
-    expect(capturedSystemPrompt()).not.toContain('CEZ_TODOS_FILE');
+    expect(capturedSystemPrompt()).not.toContain('XEZ_TODOS_FILE');
     expect(existsSync(todosFile)).toBe(false);
     expect(store.getRun(id)?.generateFollowups).toBe(false);
   }, 30_000);
 
   it('turning the flag on restores the inbox for a new run', async () => {
-    const todosFile = join(repoRoot, '.ai/cezar/todos.json');
+    const todosFile = join(repoRoot, '.ai/xezar/todos.json');
     rmSync(todosFile, { force: true });
-    process.env.CEZ_FOLLOWUPS = '1';
+    process.env.XEZ_FOLLOWUPS = '1';
     try {
       await runToEnd({ task: 'do the thing with follow-ups mock:done' });
-      expect(capturedSystemPrompt()).toContain('CEZ_TODOS_FILE');
+      expect(capturedSystemPrompt()).toContain('XEZ_TODOS_FILE');
       expect(existsSync(todosFile)).toBe(true);
     } finally {
-      delete process.env.CEZ_FOLLOWUPS;
+      delete process.env.XEZ_FOLLOWUPS;
     }
   }, 30_000);
 });

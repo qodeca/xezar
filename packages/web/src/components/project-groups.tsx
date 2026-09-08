@@ -3,7 +3,7 @@ import * as React from 'react'
 import { useLocation } from 'react-router'
 
 import { useHealth, usePinRun, useProjectRuns } from '@/api/queries'
-import type { ProjectListEntry } from '@open-mercato/cezar-api-client'
+import type { ProjectListEntry } from '@qodeca/xezar-api-client'
 import { useSidebarNavigate } from '@/components/app-shell'
 import { useListView } from '@/components/list-view'
 import { activeNavPath, visibleNavItems } from '@/components/nav-items'
@@ -35,7 +35,7 @@ const RECENT_LIMIT = 10
 
 /**
  * Read + write of the per-project collapse map (`lib/sidebar-collapse.ts`), which lives in
- * localStorage rather than `~/.cezar/ui-state.json`.
+ * localStorage rather than `~/.xezar/ui-state.json`.
  *
  * Seeded once from storage at mount, so the first paint already carries the user's answer — no
  * request to wait for, and no flash of the active-project default. React state is the live copy

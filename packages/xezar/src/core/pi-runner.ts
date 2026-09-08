@@ -20,7 +20,7 @@ const KILL_GRACE_MS = 10_000;
 const AUTO_END_DELAY_MS = 250;
 
 export interface PiRunnerOptions {
-  /** Override the binary name/path; defaults to `pi` on PATH (`CEZ_PI_BIN`). */
+  /** Override the binary name/path; defaults to `pi` on PATH (`XEZ_PI_BIN`). */
   bin?: string;
   /** Wall-clock timeout for a run (ms); per-spec `timeoutMs` still wins. */
   timeoutMs?: number;
@@ -39,7 +39,7 @@ export class PiRunner implements AgentRunner {
   private lastSession: AgentSession | null = null;
 
   constructor(opts: PiRunnerOptions = {}) {
-    this.bin = opts.bin ?? process.env.CEZ_PI_BIN ?? (process.env.CEZ_DRY_RUN === '1' ? mockPiPath() : 'pi');
+    this.bin = opts.bin ?? process.env.XEZ_PI_BIN ?? (process.env.XEZ_DRY_RUN === '1' ? mockPiPath() : 'pi');
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   }
 
@@ -129,7 +129,7 @@ export class PiRunner implements AgentRunner {
       child.kill('SIGTERM');
     };
 
-    write({ id: 'cezar-state', type: 'get_state' });
+    write({ id: 'xezar-state', type: 'get_state' });
     sendMessage([
       ...(spec.images ?? []),
       {
@@ -344,7 +344,7 @@ function wrapSpawnError(error: NodeJS.ErrnoException, bin: string): Error {
   return error;
 }
 
-/** Path to the bundled mock (`scripts/mock-pi-rpc.mjs`), for CEZ_DRY_RUN=1. */
+/** Path to the bundled mock (`scripts/mock-pi-rpc.mjs`), for XEZ_DRY_RUN=1. */
 function mockPiPath(): string {
   // Resolved the same way `mockClaudePath` is, rather than through `new URL().pathname`:
   // on Windows that yields a leading-slash `/C:/…` which `spawn` cannot execute.

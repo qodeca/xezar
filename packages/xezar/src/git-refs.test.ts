@@ -7,7 +7,7 @@ import { isSafeGitRef } from './git-refs.ts';
  */
 describe('isSafeGitRef', () => {
   it('accepts ordinary refs (branch names, shas, remote-tracking refs)', () => {
-    for (const ref of ['main', 'origin/main', 'cez/ab12cd34', 'HEAD', 'feature/x', 'a1b2c3d']) {
+    for (const ref of ['main', 'origin/main', 'xez/ab12cd34', 'HEAD', 'feature/x', 'a1b2c3d']) {
       expect(isSafeGitRef(ref)).toBe(true);
     }
   });

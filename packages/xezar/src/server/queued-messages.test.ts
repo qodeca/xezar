@@ -29,8 +29,8 @@ describe('queued prompt stack routes (#472)', () => {
   let rung: 'live' | 'queued' | 'starting' | 'closed';
 
   beforeEach(() => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-472-routes-'));
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-472-routes-'));
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     record = store.createRun({ title: 't', workflow: '(planned)', task: 'the task', steps: [] });
     // The record's own status now gates the early bounds checks (a finished run gets 409
     // rather than a bounds 400), so the fixture must look queued as well as answer on that rung.

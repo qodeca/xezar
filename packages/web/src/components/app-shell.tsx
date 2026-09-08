@@ -41,11 +41,11 @@ import {
 } from '@/lib/sidebar-width'
 import { cn } from '@/lib/utils'
 // The Open Mercato brand mark. A `public/` asset, not a bundled import: the service serves the
-// same file at this exact path (`GET /open-mercato.svg` — the favicon index.html points at), so
+// same file at this exact path (`GET /xezar.svg` — the favicon index.html points at), so
 // a second, hashed URL for the same picture would be one cache entry too many. Vite serves
 // `public/` at the root in dev and copies it into the build, so the path holds in both.
 // Its own gradient + rounded corners ARE the tile.
-const brandLogoUrl = '/open-mercato.svg'
+const brandLogoUrl = '/xezar.svg'
 
 /** Tailwind's `md`. The drawer is the `<md` affordance, so this must stay in step with the
  *  `md:hidden` / `md:flex` classes below — they are the same breakpoint expressed twice, once
@@ -70,7 +70,7 @@ export type AppShellProps = {
   unreadCount?: number | null
   /** A quiet, accessible marker on Skills when a checked update remains actionable. */
   skillsUpdateAvailable?: boolean
-  /** cezar version for the footer chip. Null until Step 3.1 reads it from `/api/health`. */
+  /** xezar version for the footer chip. Null until Step 3.1 reads it from `/api/health`. */
   version?: string | null
   /** The npm registry's newer version, when the server's update check found one (#368). The
    *  chip grows a pulsing pending dot + tooltip; absent or equal to `version`, it stays plain. */
@@ -84,10 +84,10 @@ export type AppShellProps = {
    *  passes the health payload's truth. */
   forgeAvailable?: boolean
   /** Inbox gating (#471): `false` drops the Inbox nav item and its badge — the global inbox is
-   *  opt-in via `CEZ_FOLLOWUPS=1`. Defaults to shown for the same reason as `forgeAvailable`. */
+   *  opt-in via `XEZ_FOLLOWUPS=1`. Defaults to shown for the same reason as `forgeAvailable`. */
   inboxAvailable?: boolean
   /** Automations gating (#801): `false` drops the Automations nav item — GitHub automations are
-   *  opt-in via `CEZ_AUTOMATIONS=1`. Defaults to shown for the same reason as `forgeAvailable`;
+   *  opt-in via `XEZ_AUTOMATIONS=1`. Defaults to shown for the same reason as `forgeAvailable`;
    *  the container passes the health payload's truth. */
   automationsAvailable?: boolean
   /** Single-project capability gating: hides workspace-expansion affordances. Defaults off so
@@ -163,7 +163,7 @@ export function AppShell({
 }: AppShellProps) {
   const { pathname } = useLocation()
   // The nav's area rules reason about the flat route map — strip any `/p/:projectId` prefix
-  // (multi-project spec, step 3.2) so `/p/cezar/git/commits` still lights Git.
+  // (multi-project spec, step 3.2) so `/p/xezar/git/commits` still lights Git.
   const areaPathname = stripProjectPrefix(pathname)
   const activeTo = activeNavPath(areaPathname)
   const current = activeNavItem(areaPathname)
@@ -244,7 +244,7 @@ export function AppShell({
         <MobileNavDrawer {...nav} onNavigate={() => setMenuOpen(false)} />
 
         <div className="grid min-w-0 flex-1 grid-rows-[auto_auto_1fr_auto] overflow-hidden">
-          <MobileTopBar title={current?.label ?? 'cezar'} />
+          <MobileTopBar title={current?.label ?? 'xezar'} />
 
           {banner ? (
             <div data-slot="banner-slot" className="row-start-2">
@@ -489,7 +489,7 @@ function SidebarContent({
     >
       <div className="flex items-center gap-[9px] px-3.5 pt-3.5 pb-2.5">
         <BrandTile />
-        <span className="text-[15px] font-semibold">cezar</span>
+        <span className="text-[15px] font-semibold">xezar</span>
         {/* With project groups mounted the boot repo/branch is one group header among many —
             a chip repeating it up here would just be the first group's header said twice. */}
         {repo && !projectGroups ? (

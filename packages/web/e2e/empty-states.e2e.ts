@@ -5,14 +5,14 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { AgentBrowser, bootProjectId, cezarCli, fixtureServeEnv, removeDataRoot, stopFixtureServer } from './agent-browser'
+import { AgentBrowser, bootProjectId, xezarCli, fixtureServeEnv, removeDataRoot, stopFixtureServer } from './agent-browser'
 
 /**
  * The CenteredState surfaces (Step 4.1), in a real browser: the no-tasks hero on the overview
  * and the 404 with its way back home.
  *
  * Same per-spec boot pattern as quick-list.e2e.ts, but over an EMPTY repo: a fresh data dir with
- * no `runs.json` is not a contrived fixture — it is exactly what `npx cezar-cli` serves on first
+ * no `runs.json` is not a contrived fixture — it is exactly what `npx @qodeca/xezar` serves on first
  * run, and the empty state is the first thing a new user sees. The store answers `[]`, honestly.
  */
 
@@ -39,7 +39,7 @@ async function waitForHealth(url: string): Promise<void> {
     }
     await new Promise((r) => setTimeout(r, 250))
   }
-  throw new Error(`cezar e2e: the empty-fixture server never answered at ${url}`)
+  throw new Error(`xezar e2e: the empty-fixture server never answered at ${url}`)
 }
 
 let browser: AgentBrowser
@@ -55,13 +55,13 @@ const scoped = (path: string) => `/p/${bootProject}${path}`
 const STATE = '[data-slot="centered-state"]'
 
 beforeAll(async () => {
-  dataRoot = mkdtempSync(join(tmpdir(), 'cezar-e2e-empty-states-'))
+  dataRoot = mkdtempSync(join(tmpdir(), 'xezar-e2e-empty-states-'))
 
   const port = await freePort()
   baseUrl = `http://localhost:${port}`
   server = spawn(
     process.execPath,
-    [cezarCli, 'serve', '--repo', dataRoot, '--port', String(port), '--no-open'],
+    [xezarCli, 'serve', '--repo', dataRoot, '--port', String(port), '--no-open'],
     { env: fixtureServeEnv(dataRoot), stdio: 'ignore' }
   )
   await waitForHealth(baseUrl)

@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import type { RunEvent } from '@open-mercato/cezar-api-client'
-import type { ToolStatus, UiToolItem } from '@open-mercato/cezar-api-client'
+import type { RunEvent } from '@qodeca/xezar-api-client'
+import type { ToolStatus, UiToolItem } from '@qodeca/xezar-api-client'
 
-import subagentTask from '../../../../cezar/src/core/__fixtures__/claude/subagent-task.expected.json'
-import thinkingEditWriteTodo from '../../../../cezar/src/core/__fixtures__/claude/thinking-edit-write-todo.expected.json'
+import subagentTask from '../../../../xezar/src/core/__fixtures__/claude/subagent-task.expected.json'
+import thinkingEditWriteTodo from '../../../../xezar/src/core/__fixtures__/claude/thinking-edit-write-todo.expected.json'
 import {
   contextGroupLabel,
   groupThreadItems,

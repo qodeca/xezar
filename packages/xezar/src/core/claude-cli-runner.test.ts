@@ -61,14 +61,14 @@ describe('buildClaudeArgs approval gate', () => {
   });
 
   it('enables Claude approval prompts only when explicitly requested', () => {
-    const args = buildClaudeArgs(spec, { CEZ_APPROVAL_GATE: '1' });
+    const args = buildClaudeArgs(spec, { XEZ_APPROVAL_GATE: '1' });
     const idx = args.indexOf('--permission-mode');
     expect(args[idx + 1]).toBe('acceptEdits');
   });
 });
 
 /**
- * #703 — a session cezar tore down itself must not settle as an agent
+ * #703 — a session xezar tore down itself must not settle as an agent
  * failure. Every agent CLI installs its own stop-signal handler and exits
  * `128 + signal`, so the runner sees a NON-ZERO code for a teardown it
  * asked for (goal achieved → `end()`, or a user cancel → `interrupt()`).
@@ -87,7 +87,7 @@ describe('isSignalTerminationExit', () => {
   });
 });
 
-describe('a teardown cezar initiated', () => {
+describe('a teardown xezar initiated', () => {
   const stubBin = fileURLToPath(
     new URL('./__fixtures__/claude/stub-ignores-eof-exits-143.mjs', import.meta.url),
   );
@@ -126,7 +126,7 @@ describe('a teardown cezar initiated', () => {
     });
     expect(events.at(-1)).toEqual({ type: 'done' });
     expect(
-      events.some((e) => e.type === 'note' && e.message.includes('terminated by cezar (code 143)')),
+      events.some((e) => e.type === 'note' && e.message.includes('terminated by xezar (code 143)')),
     ).toBe(true);
   }, 15_000);
 });
@@ -249,7 +249,7 @@ describe('ClaudeCliRunner token usage', () => {
     const mockBin = fileURLToPath(new URL('../../scripts/mock-claude.mjs', import.meta.url));
     const runner = new ClaudeCliRunner({ bin: mockBin, timeoutMs: 60_000 });
     const events: AgentEvent[] = [];
-    const cwd = mkdtempSync(join(tmpdir(), 'cez-claude-token-usage-'));
+    const cwd = mkdtempSync(join(tmpdir(), 'xez-claude-token-usage-'));
 
     try {
       const result = await runner.run(
@@ -257,9 +257,9 @@ describe('ClaudeCliRunner token usage', () => {
           userPrompt: 'fix the login redirect',
           cwd,
           env: {
-            CEZ_HANDOFF_FILE: '',
-            CEZ_MOCK_ARGS_FILE: '',
-            CEZ_TODOS_FILE: '',
+            XEZ_HANDOFF_FILE: '',
+            XEZ_MOCK_ARGS_FILE: '',
+            XEZ_TODOS_FILE: '',
           },
           sessionId: '5f701b42-382a-4a6e-b831-0ab9e56eff58',
         },

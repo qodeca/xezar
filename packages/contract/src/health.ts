@@ -41,7 +41,7 @@ export const capabilitiesSchema = z.object({
   followups: z.boolean(),
   singleProject: z.boolean(),
   /**
-   * `true` means `CEZ_AUTOMATIONS=1` opted this server into GitHub automations (#801). Off — the
+   * `true` means `XEZ_AUTOMATIONS=1` opted this server into GitHub automations (#801). Off — the
    * default — the whole feature is absent: no `Automations` nav item anywhere it is rendered, the
    * `/api/v1/…/automations*` family answers `409`, and the workspace scheduler never polls GitHub.
    *
@@ -49,7 +49,7 @@ export const capabilitiesSchema = z.object({
    */
   automations: z.boolean(),
   /**
-   * `false` means `CEZ_HIDE_TOKEN_METRICS=1` asks the browser to omit token counts and monetary
+   * `false` means `XEZ_HIDE_TOKEN_METRICS=1` asks the browser to omit token counts and monetary
    * cost (#481). The telemetry itself still rides in run/event payloads — this is presentation
    * only.
    *

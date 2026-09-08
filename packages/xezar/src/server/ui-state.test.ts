@@ -33,8 +33,8 @@ describe('PUT /api/v1/ui-state — promptTemplates', () => {
   });
 
   beforeEach(() => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-ui-state-'));
-    const dataDir = join(repoRoot, '.ai/cezar');
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-ui-state-'));
+    const dataDir = join(repoRoot, '.ai/xezar');
     app = createApp({
       repoRoot,
       store: RunStore.open(dataDir),

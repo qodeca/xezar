@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '@/api/client'
 import { AskCard } from './ask-card'
 import type { ThreadAsk } from './thread-state'
-import type { ApiRun, ProviderStatusResponse, StepState } from '@open-mercato/cezar-api-client'
+import type { ApiRun, ProviderStatusResponse, StepState } from '@qodeca/xezar-api-client'
 
 const mutateAsync = vi.fn().mockResolvedValue({})
 const continueAsync = vi.fn().mockResolvedValue({})
@@ -199,7 +199,7 @@ describe('AskCard', () => {
   })
 })
 
-// The question outlives its session: an idle timeout, a cezar restart, Finish or a cancel
+// The question outlives its session: an idle timeout, a xezar restart, Finish or a cancel
 // closes the session with the card still unanswered. Before this, every tap posted to
 // `POST /messages` and died on its `409 session closed` — silently.
 describe('AskCard — answering after the session has ended', () => {

@@ -17,7 +17,7 @@ import {
   toPastedContent,
   type PastedContent,
 } from './run.ts';
-import { attachmentExtension, isAttachmentMediaType, isImageAttachmentName } from '@open-mercato/cezar-contract';
+import { attachmentExtension, isAttachmentMediaType, isImageAttachmentName } from '@qodeca/xezar-contract';
 
 const run = promisify(execFile);
 const GIT_ID = ['-c', 'user.name=test', '-c', 'user.email=test@local'];
@@ -110,7 +110,7 @@ describe('attachment media types, extensions and blocks (#950)', () => {
     expect(attachmentExtension('text/plain')).toBe('txt');
     expect(attachmentExtension('text/markdown')).toBe('md');
     expect(attachmentExtension('text/x-markdown')).toBe('md');
-    // The pre-existing catch-all for an image type cezar does not name, kept so an SVG paste
+    // The pre-existing catch-all for an image type xezar does not name, kept so an SVG paste
     // still lands exactly where it always did.
     expect(attachmentExtension('image/svg+xml')).toBe('img');
   });
@@ -154,12 +154,12 @@ describe('attachment media types, extensions and blocks (#950)', () => {
 });
 
 /**
- * End-to-end through the real engine with CEZ_DRY_RUN=1 (#357): a pasted
- * screenshot must land as a real file under `.ai/cezar/runs/<id>-images/`
+ * End-to-end through the real engine with XEZ_DRY_RUN=1 (#357): a pasted
+ * screenshot must land as a real file under `.ai/xezar/runs/<id>-images/`
  * (named `pasted-<n>.<ext>`, never `screenshot-<n>.<ext>` — that prefix stays
  * reserved for the agent's own tool screenshots) and its absolute path must
  * reach the agent in the prompt/message text — verified via the mock's
- * CEZ_MOCK_STDIN_FILE hook, which captures the untruncated inbound text.
+ * XEZ_MOCK_STDIN_FILE hook, which captures the untruncated inbound text.
  */
 describe('pasted screenshots materialize to disk and reach the agent as file paths', () => {
   let repoRoot: string;
@@ -171,16 +171,16 @@ describe('pasted screenshots materialize to disk and reach the agent as file pat
   const savedEnv: Record<string, string | undefined> = {};
 
   beforeAll(async () => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-pasted-'));
-    dataDir = join(repoRoot, '.ai/cezar');
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-pasted-'));
+    dataDir = join(repoRoot, '.ai/xezar');
     argsFile = join(repoRoot, 'mock-args.ndjson');
     stdinFile = join(repoRoot, 'mock-stdin.ndjson');
-    savedEnv.CEZ_DRY_RUN = process.env.CEZ_DRY_RUN;
-    savedEnv.CEZ_MOCK_ARGS_FILE = process.env.CEZ_MOCK_ARGS_FILE;
-    savedEnv.CEZ_MOCK_STDIN_FILE = process.env.CEZ_MOCK_STDIN_FILE;
-    process.env.CEZ_DRY_RUN = '1';
-    process.env.CEZ_MOCK_ARGS_FILE = argsFile;
-    process.env.CEZ_MOCK_STDIN_FILE = stdinFile;
+    savedEnv.XEZ_DRY_RUN = process.env.XEZ_DRY_RUN;
+    savedEnv.XEZ_MOCK_ARGS_FILE = process.env.XEZ_MOCK_ARGS_FILE;
+    savedEnv.XEZ_MOCK_STDIN_FILE = process.env.XEZ_MOCK_STDIN_FILE;
+    process.env.XEZ_DRY_RUN = '1';
+    process.env.XEZ_MOCK_ARGS_FILE = argsFile;
+    process.env.XEZ_MOCK_STDIN_FILE = stdinFile;
     await run('git', ['init', '-q', '-b', 'main'], { cwd: repoRoot });
     writeFileSync(join(repoRoot, 'a.txt'), 'one\n');
     await run('git', ['add', '-A'], { cwd: repoRoot });

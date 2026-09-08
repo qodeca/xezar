@@ -10,11 +10,11 @@ import {
   resolveCodexExecutable,
 } from './codex-app-server-transport.ts';
 
-const originalBin = process.env.CEZ_CODEX_BIN;
+const originalBin = process.env.XEZ_CODEX_BIN;
 
 afterEach(() => {
-  if (originalBin === undefined) delete process.env.CEZ_CODEX_BIN;
-  else process.env.CEZ_CODEX_BIN = originalBin;
+  if (originalBin === undefined) delete process.env.XEZ_CODEX_BIN;
+  else process.env.XEZ_CODEX_BIN = originalBin;
 });
 
 function fakeChild(): { child: ChildProcessWithoutNullStreams; writes: string[] } {
@@ -30,7 +30,7 @@ function fakeChild(): { child: ChildProcessWithoutNullStreams; writes: string[] 
 
 describe('Codex app-server transport', () => {
   it('resolves an explicit executable before the environment fallback', () => {
-    process.env.CEZ_CODEX_BIN = '/host/codex';
+    process.env.XEZ_CODEX_BIN = '/host/codex';
     expect(resolveCodexExecutable('/configured/codex')).toBe('/configured/codex');
     expect(resolveCodexExecutable()).toBe('/host/codex');
   });
@@ -39,8 +39,8 @@ describe('Codex app-server transport', () => {
     const previousSecret = process.env.UNRELATED_TRANSPORT_SECRET;
     process.env.UNRELATED_TRANSPORT_SECRET = 'do-not-copy';
     try {
-      const env = buildCodexAppServerEnv({ CEZ_TASK_ID: 'task-1' });
-      expect(env.CEZ_TASK_ID).toBe('task-1');
+      const env = buildCodexAppServerEnv({ XEZ_TASK_ID: 'task-1' });
+      expect(env.XEZ_TASK_ID).toBe('task-1');
       expect(env.UNRELATED_TRANSPORT_SECRET).toBeUndefined();
     } finally {
       if (previousSecret === undefined) delete process.env.UNRELATED_TRANSPORT_SECRET;

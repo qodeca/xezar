@@ -23,10 +23,10 @@ vi.mock('node:child_process', async (importOriginal) => {
 /**
  * #703 backend parity — `claude-cli-runner.test.ts` proves the Claude half;
  * this is the same session-level shape for Codex. The fix only holds if BOTH
- * runners classify a cezar-initiated 128+signal exit as a teardown note rather
+ * runners classify a xezar-initiated 128+signal exit as a teardown note rather
  * than an agent failure, so the Codex branch needs its own regression.
  */
-describe('a teardown cezar initiated (codex app-server)', () => {
+describe('a teardown xezar initiated (codex app-server)', () => {
   const mockBin = fileURLToPath(
     new URL('./__fixtures__/codex/mock-codex-app-server.mjs', import.meta.url),
   );
@@ -49,7 +49,7 @@ describe('a teardown cezar initiated (codex app-server)', () => {
     );
     await firstText;
 
-    // The cancel path; the EOF watchdog reaches the same `terminatedByCezar`.
+    // The cancel path; the EOF watchdog reaches the same `terminatedByXezar`.
     session.interrupt();
     const result = await session.result;
 
@@ -57,7 +57,7 @@ describe('a teardown cezar initiated (codex app-server)', () => {
     expect(events.some((e) => e.type === 'error')).toBe(false);
     expect(events.at(-1)).toEqual({ type: 'done' });
     expect(
-      events.some((e) => e.type === 'note' && e.message.includes('terminated by cezar (code 143)')),
+      events.some((e) => e.type === 'note' && e.message.includes('terminated by xezar (code 143)')),
     ).toBe(true);
   }, 15_000);
 
@@ -81,7 +81,7 @@ describe('a teardown cezar initiated (codex app-server)', () => {
  * #844 — the runner's own SIGTERM sets `ChildProcess.killed`, so a watchdog
  * gated on `!child.killed` refused to escalate for exactly the app-server it
  * was written for: one that handles the signal and keeps running. The guard now
- * tracks real termination, and `terminatedByCezar` (#703) is still set before
+ * tracks real termination, and `terminatedByXezar` (#703) is still set before
  * every signal so the resulting 137/143 stays a teardown note, not a failure.
  */
 describe('SIGTERM→SIGKILL escalation for an app-server that survives SIGTERM', () => {

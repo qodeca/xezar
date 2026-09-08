@@ -237,13 +237,13 @@ const page = (
 
 describe('parseOwnerName', () => {
   it('splits a clean owner/name handle', () => {
-    expect(parseOwnerName('open-mercato/cezar')).toEqual({ owner: 'open-mercato', name: 'cezar' });
-    expect(parseOwnerName('  open-mercato/cezar\n')).toEqual({ owner: 'open-mercato', name: 'cezar' });
+    expect(parseOwnerName('qodeca/xezar')).toEqual({ owner: 'qodeca', name: 'xezar' });
+    expect(parseOwnerName('  qodeca/xezar\n')).toEqual({ owner: 'qodeca', name: 'xezar' });
   });
 
   it('returns null for anything that is not exactly two parts', () => {
     expect(parseOwnerName('')).toBeNull();
-    expect(parseOwnerName('cezar')).toBeNull();
+    expect(parseOwnerName('xezar')).toBeNull();
     expect(parseOwnerName('a/b/c')).toBeNull();
   });
 });
@@ -463,7 +463,7 @@ const ghByCwd = () =>
 
 describe('fetchGithub per-project list-cache isolation (step 2.6)', () => {
   beforeEach(() => {
-    vi.stubEnv('CEZ_DRY_RUN', ''); // dry-run would short-circuit the cache path we're testing
+    vi.stubEnv('XEZ_DRY_RUN', ''); // dry-run would short-circuit the cache path we're testing
     execFileMock.mockReset();
     ghByCwd();
   });
@@ -494,7 +494,7 @@ describe('fetchGithub per-project list-cache isolation (step 2.6)', () => {
 
 describe('fetchGithubComments per-project cache isolation (step 2.6)', () => {
   beforeEach(() => {
-    vi.stubEnv('CEZ_DRY_RUN', '');
+    vi.stubEnv('XEZ_DRY_RUN', '');
     execFileMock.mockReset();
     ghByCwd();
     __clearCommentsCacheForTests();
@@ -537,7 +537,7 @@ describe('detectGithubCached', () => {
     });
 
   beforeEach(() => {
-    vi.stubEnv('CEZ_DRY_RUN', ''); // dry-run would short-circuit the cache path we're testing
+    vi.stubEnv('XEZ_DRY_RUN', ''); // dry-run would short-circuit the cache path we're testing
     vi.useFakeTimers();
     vi.setSystemTime(0);
     execFileMock.mockReset();
@@ -986,7 +986,7 @@ describe('fetchGithubComments timeline integration (#525)', () => {
   const commented = (id: number) => ({ event: 'commented', ...comment(id) });
 
   beforeEach(() => {
-    vi.stubEnv('CEZ_DRY_RUN', '');
+    vi.stubEnv('XEZ_DRY_RUN', '');
     execFileMock.mockReset();
     __clearCommentsCacheForTests();
     __clearRepoHandleCacheForTests();
@@ -1046,9 +1046,9 @@ describe('fetchGithubComments timeline integration (#525)', () => {
       actor: { login: 'pkarw', id: 18116827, avatar_url: 'https://avatars.githubusercontent.com/u/18116827?v=4', type: 'User' },
       id: 5024963753,
       node_id: 'IC_kwDOShuET88AAAABK4LcqQ',
-      url: 'https://api.github.com/repos/open-mercato/cezar/issues/comments/5024963753',
-      html_url: 'https://github.com/open-mercato/cezar/issues/525#issuecomment-5024963753',
-      issue_url: 'https://api.github.com/repos/open-mercato/cezar/issues/525',
+      url: 'https://api.github.com/repos/qodeca/xezar/issues/comments/5024963753',
+      html_url: 'https://github.com/qodeca/xezar/issues/525#issuecomment-5024963753',
+      issue_url: 'https://api.github.com/repos/qodeca/xezar/issues/525',
       created_at: '2026-07-20T17:07:49Z',
       updated_at: '2026-07-20T17:07:49Z',
       author_association: 'MEMBER',
@@ -1067,7 +1067,7 @@ describe('fetchGithubComments timeline integration (#525)', () => {
       createdAt: '2026-07-20T17:07:49Z',
       body: '## 📸 Evidence\n\nThe GitHub tab detail thread as it renders today.',
       kind: 'comment',
-      url: 'https://github.com/open-mercato/cezar/issues/525#issuecomment-5024963753',
+      url: 'https://github.com/qodeca/xezar/issues/525#issuecomment-5024963753',
     });
     // The timeline-only extras must not leak onto the wire type.
     expect(normalized).not.toHaveProperty('event');
@@ -1306,9 +1306,9 @@ describe('resolveRepoHandle (#525 Phase 2)', () => {
     });
 
   it('parses the handle and serves the second call from the memo', async () => {
-    ghReturns('open-mercato/cezar');
-    expect(await resolveRepoHandle(repoRoot)).toEqual({ owner: 'open-mercato', name: 'cezar' });
-    expect(await resolveRepoHandle(repoRoot)).toEqual({ owner: 'open-mercato', name: 'cezar' });
+    ghReturns('qodeca/xezar');
+    expect(await resolveRepoHandle(repoRoot)).toEqual({ owner: 'qodeca', name: 'xezar' });
+    expect(await resolveRepoHandle(repoRoot)).toEqual({ owner: 'qodeca', name: 'xezar' });
     expect(execFileMock).toHaveBeenCalledTimes(1); // no second subprocess
   });
 
@@ -1326,8 +1326,8 @@ describe('resolveRepoHandle (#525 Phase 2)', () => {
     });
     expect(await resolveRepoHandle(repoRoot)).toBeNull();
 
-    ghReturns('open-mercato/cezar'); // the blip passes
-    expect(await resolveRepoHandle(repoRoot)).toEqual({ owner: 'open-mercato', name: 'cezar' });
+    ghReturns('qodeca/xezar'); // the blip passes
+    expect(await resolveRepoHandle(repoRoot)).toEqual({ owner: 'qodeca', name: 'xezar' });
     expect(execFileMock).toHaveBeenCalledTimes(2); // it DID retry
   });
 
@@ -1487,7 +1487,7 @@ describe('fetchPrChecks (#664)', () => {
  *  the rollup field and that PR rows come back with `checks: null` (hydrated lazily elsewhere). */
 describe('fetchGithub omits statusCheckRollup from the list call (#664)', () => {
   beforeEach(() => {
-    vi.stubEnv('CEZ_DRY_RUN', ''); // dry-run would short-circuit the gh path we are asserting on
+    vi.stubEnv('XEZ_DRY_RUN', ''); // dry-run would short-circuit the gh path we are asserting on
     execFileMock.mockReset();
   });
   afterEach(() => {
@@ -1568,7 +1568,7 @@ describe('searchGithubItems (#730)', () => {
   });
 
   beforeEach(() => {
-    vi.stubEnv('CEZ_DRY_RUN', '');
+    vi.stubEnv('XEZ_DRY_RUN', '');
     execFileMock.mockReset();
     __clearRepoHandleCacheForTests();
   });
@@ -1772,8 +1772,8 @@ describe('searchGithubItems (#730)', () => {
     expect(search?.[search.indexOf('--limit') + 1]).toBe(String(GH_SEARCH_MAX));
   });
 
-  it('honours `limit` and flags `truncated` in CEZ_DRY_RUN too, on the live rule (#838)', async () => {
-    vi.stubEnv('CEZ_DRY_RUN', '1');
+  it('honours `limit` and flags `truncated` in XEZ_DRY_RUN too, on the live rule (#838)', async () => {
+    vi.stubEnv('XEZ_DRY_RUN', '1');
 
     // '1' appears in every fixture issue number (142 / 139 / 135), so the cap has something to bite
     // on. Before #838 the dry-run branch returned ahead of `capped` and shipped all three unflagged
@@ -2643,7 +2643,7 @@ describe('fetchRefStatuses', () => {
  *  an in-payload degrade when `gh` is missing. Driven through `execFileMock` so no `gh` runs. */
 describe('fetchGithubRefStatus', () => {
   beforeEach(() => {
-    vi.stubEnv('CEZ_DRY_RUN', ''); // dry-run would short-circuit the gh path under test
+    vi.stubEnv('XEZ_DRY_RUN', ''); // dry-run would short-circuit the gh path under test
     execFileMock.mockReset();
     __clearRefStatusCacheForTests();
     __clearRepoHandleCacheForTests();
@@ -2949,7 +2949,7 @@ describe('fetchGithubRefStatus', () => {
     expect(execFileMock.mock.calls.filter((call) => (call[1] as string[])[0] === 'api').length).toBe(2);
   });
 
-  it('re-asks about a reference cezar itself changed', async () => {
+  it('re-asks about a reference xezar itself changed', async () => {
     // The self-inflicted staleness: after this server merges a PR, its cached status is a value we
     // KNOW is wrong, and the TTL would hold it for up to a minute. `forgetRefStatus` is what the
     // merge and draft-PR routes call so the next reader pays one query and gets the truth.

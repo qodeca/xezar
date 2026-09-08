@@ -14,7 +14,7 @@ import {
 } from 'lucide-react'
 import type { ComponentType, SVGProps } from 'react'
 
-import type { Capabilities } from '@open-mercato/cezar-api-client'
+import type { Capabilities } from '@qodeca/xezar-api-client'
 import { CenteredState } from '@/components/centered-state'
 import { AccountsSection } from './accounts-section'
 import { AgentConfigSection } from './agent-config-section'

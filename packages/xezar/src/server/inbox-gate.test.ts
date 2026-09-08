@@ -9,7 +9,7 @@ import { createApp, type ServerDeps } from './server.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 
 /**
- * The global follow-up inbox is opt-in (#471): `CEZ_FOLLOWUPS=1` turns it on,
+ * The global follow-up inbox is opt-in (#471): `XEZ_FOLLOWUPS=1` turns it on,
  * off is the default. Off, the reader degrades to an empty inbox (never a 404
  * — the feature is switched off, not missing), the mutators 409 as defense in
  * depth, and a run can never be told to write todos.json.
@@ -29,27 +29,27 @@ describe('inbox gate (#471)', () => {
   let repoRoot: string;
   let dataDir: string;
   let store: RunStore;
-  const savedFollowups = process.env.CEZ_FOLLOWUPS;
-  const savedRemote = process.env.CEZ_REMOTE;
+  const savedFollowups = process.env.XEZ_FOLLOWUPS;
+  const savedRemote = process.env.XEZ_REMOTE;
 
   beforeEach(() => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-inbox-'));
-    dataDir = join(repoRoot, '.ai/cezar');
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-inbox-'));
+    dataDir = join(repoRoot, '.ai/xezar');
     store = RunStore.open(dataDir);
     mkdirSync(dataDir, { recursive: true });
     // A pre-existing entry: the gate must hide it, never delete it.
     writeFileSync(join(dataDir, 'todos.json'), JSON.stringify([TODO]), 'utf8');
-    delete process.env.CEZ_FOLLOWUPS;
-    delete process.env.CEZ_REMOTE;
+    delete process.env.XEZ_FOLLOWUPS;
+    delete process.env.XEZ_REMOTE;
   });
 
   afterEach(() => {
     store.flush();
     rmSync(repoRoot, { recursive: true, force: true });
-    if (savedFollowups === undefined) delete process.env.CEZ_FOLLOWUPS;
-    else process.env.CEZ_FOLLOWUPS = savedFollowups;
-    if (savedRemote === undefined) delete process.env.CEZ_REMOTE;
-    else process.env.CEZ_REMOTE = savedRemote;
+    if (savedFollowups === undefined) delete process.env.XEZ_FOLLOWUPS;
+    else process.env.XEZ_FOLLOWUPS = savedFollowups;
+    if (savedRemote === undefined) delete process.env.XEZ_REMOTE;
+    else process.env.XEZ_REMOTE = savedRemote;
   });
 
   const app = (over: Partial<ServerDeps> = {}) =>
@@ -65,28 +65,28 @@ describe('inbox gate (#471)', () => {
     it('DELETE /api/v1/todos/:id 409s with a reason naming the flag', async () => {
       const res = await apiRequest(app(), `/api/v1/todos/${TODO.id}`, { method: 'DELETE' });
       expect(res.status).toBe(409);
-      expect(((await res.json()) as { error: string }).error).toContain('CEZ_FOLLOWUPS');
+      expect(((await res.json()) as { error: string }).error).toContain('XEZ_FOLLOWUPS');
     });
 
     it('POST /api/v1/todos/:id/start 409s rather than spawning a run', async () => {
       const res = await apiRequest(app(), `/api/v1/todos/${TODO.id}/start`, { method: 'POST' });
       expect(res.status).toBe(409);
-      expect(((await res.json()) as { error: string }).error).toContain('CEZ_FOLLOWUPS');
+      expect(((await res.json()) as { error: string }).error).toContain('XEZ_FOLLOWUPS');
     });
 
     it('hides entries without destroying them — the file is untouched', async () => {
       await apiRequest(app(), '/api/v1/todos');
       await apiRequest(app(), `/api/v1/todos/${TODO.id}`, { method: 'DELETE' });
       // Flipping the flag back on brings the same entry back.
-      process.env.CEZ_FOLLOWUPS = '1';
+      process.env.XEZ_FOLLOWUPS = '1';
       const res = await apiRequest(app(), '/api/v1/todos');
       expect(await res.json()).toEqual([TODO]);
     });
   });
 
-  describe('on (CEZ_FOLLOWUPS=1)', () => {
+  describe('on (XEZ_FOLLOWUPS=1)', () => {
     beforeEach(() => {
-      process.env.CEZ_FOLLOWUPS = '1';
+      process.env.XEZ_FOLLOWUPS = '1';
     });
 
     it('GET /api/v1/todos serves the real entries', async () => {

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { AgentBrowser, bootProjectId, cezarCli, fixtureServeEnv, removeDataRoot, stopFixtureServer } from './agent-browser'
+import { AgentBrowser, bootProjectId, xezarCli, fixtureServeEnv, removeDataRoot, stopFixtureServer } from './agent-browser'
 
 /**
  * The variants compare view (R3 Step 2.3) end-to-end, against a LIVE ×2 dry run — spec 010
@@ -42,7 +42,7 @@ async function waitForHealth(url: string): Promise<void> {
     }
     await new Promise((r) => setTimeout(r, 250))
   }
-  throw new Error(`cezar e2e: the variants server never answered at ${url}`)
+  throw new Error(`xezar e2e: the variants server never answered at ${url}`)
 }
 
 async function getRun(url: string, id: string): Promise<Record<string, unknown>> {
@@ -55,7 +55,7 @@ async function waitForStatus(url: string, id: string, wanted: string[]): Promise
     if (wanted.includes(String(record.status))) return String(record.status)
     await new Promise((r) => setTimeout(r, 500))
   }
-  throw new Error(`cezar e2e: run ${id} never reached status "${wanted.join('/')}"`)
+  throw new Error(`xezar e2e: run ${id} never reached status "${wanted.join('/')}"`)
 }
 
 let browser: AgentBrowser
@@ -74,11 +74,11 @@ let idB: string
 
 beforeAll(async () => {
   // A REAL git repo — mandatory for variants: the engine isolates each in its own worktree.
-  dataRoot = mkdtempSync(join(tmpdir(), 'cezar-e2e-variants-'))
+  dataRoot = mkdtempSync(join(tmpdir(), 'xezar-e2e-variants-'))
   const git = (...args: string[]) => execFileSync('git', ['-C', dataRoot, ...args])
   git('init', '-q', '-b', 'main')
-  git('config', 'user.email', 'e2e@cezar.test')
-  git('config', 'user.name', 'cezar e2e')
+  git('config', 'user.email', 'e2e@xezar.test')
+  git('config', 'user.name', 'xezar e2e')
   writeFileSync(join(dataRoot, 'README.md'), '# variants e2e fixture repo\n', 'utf8')
   git('add', '.')
   git('commit', '-qm', 'init')
@@ -87,11 +87,11 @@ beforeAll(async () => {
   baseUrl = `http://localhost:${port}`
   server = spawn(
     process.execPath,
-    [cezarCli, 'serve', '--repo', dataRoot, '--port', String(port), '--no-open'],
-    // CEZ_REVIEW_GATE=1 because this spec is ABOUT the gate: it is opt-in (#489, default OFF),
+    [xezarCli, 'serve', '--repo', dataRoot, '--port', String(port), '--no-open'],
+    // XEZ_REVIEW_GATE=1 because this spec is ABOUT the gate: it is opt-in (#489, default OFF),
     // so pinning it here is what makes the parked-at-review fixture reproducible instead of
     // depending on whatever the operator happens to export.
-    { env: fixtureServeEnv(dataRoot, { CEZ_REVIEW_GATE: '1' }), stdio: 'ignore' },
+    { env: fixtureServeEnv(dataRoot, { XEZ_REVIEW_GATE: '1' }), stdio: 'ignore' },
   )
   await waitForHealth(baseUrl)
   bootProject = await bootProjectId(baseUrl)
@@ -106,7 +106,7 @@ beforeAll(async () => {
   expect(created.runs).toHaveLength(2)
   const a = created.runs.find((r) => r.variant === 'A')
   const b = created.runs.find((r) => r.variant === 'B')
-  if (!a || !b) throw new Error('cezar e2e: POST /api/v1/runs did not answer variants A and B')
+  if (!a || !b) throw new Error('xezar e2e: POST /api/v1/runs did not answer variants A and B')
   idA = a.id
   idB = b.id
   groupId = a.groupId
@@ -117,7 +117,7 @@ beforeAll(async () => {
   for (const id of [idA, idB]) {
     await fetch(`${baseUrl}/api/v1/runs/${id}/finish`, { method: 'POST' })
     const parked = await waitForStatus(baseUrl, id, ['review', 'done'])
-    if (parked !== 'review') throw new Error(`cezar e2e: variant ${id} settled as done — no diff?`)
+    if (parked !== 'review') throw new Error(`xezar e2e: variant ${id} settled as done — no diff?`)
   }
 
   browser = AgentBrowser.open(sessionId)

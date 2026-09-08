@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { workspaceConfigPath } from '../paths.ts';
 
 /** The server-side switch that makes native agent settings authoritative. */
-export const AGENT_MODELS_LOCKED_ENV = 'CEZ_AGENT_MODELS_LOCKED';
+export const AGENT_MODELS_LOCKED_ENV = 'XEZ_AGENT_MODELS_LOCKED';
 
 const modelPolicyConfigSchema = z.object({
   modelsLocked: z.boolean().optional(),
@@ -23,7 +23,7 @@ export function agentModelsLocked(
   if (env[AGENT_MODELS_LOCKED_ENV] === '1') return true;
   const paths = [
     workspaceConfigPath(env),
-    ...(repoRoot ? [join(repoRoot, '.ai', 'cezar', 'config.json')] : []),
+    ...(repoRoot ? [join(repoRoot, '.ai', 'xezar', 'config.json')] : []),
   ];
   for (const path of paths) {
     try {

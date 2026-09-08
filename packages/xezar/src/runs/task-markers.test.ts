@@ -4,7 +4,7 @@ import { parseTaskMarkers, stripTaskMarkers } from './task-markers.ts';
 /** Spec 2026-07-18-task-ref-markers — the in-band declaration layer above the fuzzy tiers. */
 describe('parseTaskMarkers', () => {
   it('reads each marker off its own line', () => {
-    expect(parseTaskMarkers('Working on it.\nCEZ:PR=442\nCEZ:ISSUE=433\nCEZ:TITLE=fixing plan rendering\ndone soon')).toEqual({
+    expect(parseTaskMarkers('Working on it.\nXEZ:PR=442\nXEZ:ISSUE=433\nXEZ:TITLE=fixing plan rendering\ndone soon')).toEqual({
       pr: 442,
       issue: 433,
       title: 'fixing plan rendering',
@@ -12,28 +12,28 @@ describe('parseTaskMarkers', () => {
   });
 
   it('the last occurrence of a marker wins', () => {
-    expect(parseTaskMarkers('CEZ:PR=1\nsome progress\nCEZ:PR=500')).toEqual({ pr: 500 });
-    expect(parseTaskMarkers('CEZ:TITLE=first guess\nCEZ:TITLE=implementing comment threads')).toEqual({
+    expect(parseTaskMarkers('XEZ:PR=1\nsome progress\nXEZ:PR=500')).toEqual({ pr: 500 });
+    expect(parseTaskMarkers('XEZ:TITLE=first guess\nXEZ:TITLE=implementing comment threads')).toEqual({
       title: 'implementing comment threads',
     });
   });
 
   it('is line-anchored — prose mentions and inline text never parse', () => {
-    expect(parseTaskMarkers('I will emit CEZ:PR=442 when the PR exists')).toEqual({});
-    expect(parseTaskMarkers('  CEZ:PR=442')).toEqual({});
-    expect(parseTaskMarkers('CEZ:PR=442 (the review PR)')).toEqual({});
+    expect(parseTaskMarkers('I will emit XEZ:PR=442 when the PR exists')).toEqual({});
+    expect(parseTaskMarkers('  XEZ:PR=442')).toEqual({});
+    expect(parseTaskMarkers('XEZ:PR=442 (the review PR)')).toEqual({});
   });
 
   it('the instruction placeholder and junk values are inert', () => {
-    expect(parseTaskMarkers('CEZ:PR=<number>')).toEqual({});
-    expect(parseTaskMarkers('CEZ:PR=')).toEqual({});
-    expect(parseTaskMarkers('CEZ:PR=0')).toEqual({});
-    expect(parseTaskMarkers('CEZ:PR=99999999999')).toEqual({});
-    expect(parseTaskMarkers('CEZ:TITLE=   ')).toEqual({});
+    expect(parseTaskMarkers('XEZ:PR=<number>')).toEqual({});
+    expect(parseTaskMarkers('XEZ:PR=')).toEqual({});
+    expect(parseTaskMarkers('XEZ:PR=0')).toEqual({});
+    expect(parseTaskMarkers('XEZ:PR=99999999999')).toEqual({});
+    expect(parseTaskMarkers('XEZ:TITLE=   ')).toEqual({});
   });
 
   it('tolerates trailing whitespace and CRLF line endings', () => {
-    expect(parseTaskMarkers('CEZ:PR=7  \r\nCEZ:ISSUE=9\r\n')).toEqual({ pr: 7, issue: 9 });
+    expect(parseTaskMarkers('XEZ:PR=7  \r\nXEZ:ISSUE=9\r\n')).toEqual({ pr: 7, issue: 9 });
   });
 
   it('finds nothing in plain prose', () => {
@@ -47,19 +47,19 @@ describe('parseTaskMarkers — report-tier reference lines', () => {
   it('reads the human-friendly PR/Issue report lines', () => {
     const report = [
       'om-auto-create-pr: add dark mode',
-      'Issue: #433 (link: https://github.com/open-mercato/cezar/issues/433)',
-      'PR: #442 (link: https://github.com/open-mercato/cezar/pull/442)',
+      'Issue: #433 (link: https://github.com/qodeca/xezar/issues/433)',
+      'PR: #442 (link: https://github.com/qodeca/xezar/pull/442)',
       'Status: complete',
     ].join('\n');
     expect(parseTaskMarkers(report)).toEqual({ pr: 442, issue: 433 });
   });
 
-  it('a CEZ declaration in the same turn outranks a report line', () => {
+  it('a XEZ declaration in the same turn outranks a report line', () => {
     expect(
-      parseTaskMarkers('CEZ:PR=7\nPR: #442 (link: https://github.com/o/r/pull/442)'),
+      parseTaskMarkers('XEZ:PR=7\nPR: #442 (link: https://github.com/o/r/pull/442)'),
     ).toEqual({ pr: 7 });
     expect(
-      parseTaskMarkers('Issue: #9 (link: https://github.com/o/r/issues/9)\nCEZ:ISSUE=3'),
+      parseTaskMarkers('Issue: #9 (link: https://github.com/o/r/issues/9)\nXEZ:ISSUE=3'),
     ).toEqual({ issue: 3 });
   });
 
@@ -93,22 +93,22 @@ describe('parseTaskMarkers — report-tier reference lines', () => {
 
 describe('stripTaskMarkers', () => {
   it('removes complete marker lines and keeps the surrounding text', () => {
-    expect(stripTaskMarkers('Opened the PR.\nCEZ:PR=442\nCEZ:TITLE=fixing plan rendering\nNext: tests.')).toBe(
+    expect(stripTaskMarkers('Opened the PR.\nXEZ:PR=442\nXEZ:TITLE=fixing plan rendering\nNext: tests.')).toBe(
       'Opened the PR.\nNext: tests.',
     );
   });
 
   it('leaves prose mentions and non-marker lines alone', () => {
-    const text = 'I will emit CEZ:PR=442 later\nnormal line';
+    const text = 'I will emit XEZ:PR=442 later\nnormal line';
     expect(stripTaskMarkers(text)).toBe(text);
   });
 
-  it('is a no-op on text without any CEZ prefix', () => {
+  it('is a no-op on text without any XEZ prefix', () => {
     expect(stripTaskMarkers('plain progress update')).toBe('plain progress update');
   });
 
   it('leaves report-tier reference lines visible — they are human-readable by design', () => {
-    const text = 'PR: #442 (link: https://github.com/o/r/pull/442)\nCEZ:PR=442\ndone';
+    const text = 'PR: #442 (link: https://github.com/o/r/pull/442)\nXEZ:PR=442\ndone';
     expect(stripTaskMarkers(text)).toBe('PR: #442 (link: https://github.com/o/r/pull/442)\ndone');
   });
 });

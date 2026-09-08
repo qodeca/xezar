@@ -20,8 +20,8 @@ describe('PATCH /api/v1/runs/:id', () => {
   let run: RunRecord;
 
   beforeEach(() => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-patch-'));
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-patch-'));
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     app = createApp({
       repoRoot,
       store,

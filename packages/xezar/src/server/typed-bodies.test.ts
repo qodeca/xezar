@@ -1,6 +1,6 @@
 import type { ExtractSchema } from 'hono/types';
 import { describe, expect, it } from 'vitest';
-import { setWorkspaceUiStateInputSchema } from '@open-mercato/cezar-contract';
+import { setWorkspaceUiStateInputSchema } from '@qodeca/xezar-contract';
 import type { z } from 'zod';
 import type { AppType } from './app-type.ts';
 

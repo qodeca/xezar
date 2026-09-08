@@ -5,9 +5,8 @@
  * unchanged — including v1's HTTP-response-synthesized `turn-end`; only the
  * v2 stream uses the correct `session.idle` signal, fixing gap §5.9).
  *
- * Contract: `.ai/analysis/cockpit-ui-redesign/agent-event-protocols.md` §4
- * (wire format: Message/Part model, ToolState lifecycle) and §7.1
- * "OpenCode (SSE)" (the mapping). Golden fixtures replaying wire-faithful
+ * Contract: `AGENT_PROTOCOL.md` §4 (per-backend mapping: Message/Part model,
+ * ToolState lifecycle). Golden fixtures replaying wire-faithful
  * bus-event sequences live in `__fixtures__/opencode/`.
  *
  * Robustness rule: input is untrusted wire data — the mapper never throws;

@@ -26,15 +26,15 @@ describe('the follow-up "remembered last selection" store (#408 item 3)', () => 
 
   it('survives a cold read (page reload) via localStorage, not just an in-memory cache', () => {
     writeFollowupSelection({ workflow: null, skills: ['om-fix'] })
-    const raw = localStorage.getItem('cez-followup-selection') as string
+    const raw = localStorage.getItem('xez-followup-selection') as string
     expect(JSON.parse(raw)).toEqual({ workflow: null, skills: ['om-fix'] })
   })
 
   it('normalizes a malformed/older stored value instead of throwing', () => {
-    localStorage.setItem('cez-followup-selection', 'not json at all')
+    localStorage.setItem('xez-followup-selection', 'not json at all')
     expect(readFollowupSelection()).toEqual({ workflow: null, skills: [] })
 
-    localStorage.setItem('cez-followup-selection', '{"workflow":7,"skills":["a",2,"b"]}')
+    localStorage.setItem('xez-followup-selection', '{"workflow":7,"skills":["a",2,"b"]}')
     expect(readFollowupSelection()).toEqual({ workflow: null, skills: ['a', 'b'] })
   })
 })
@@ -58,9 +58,9 @@ describe('the follow-up per-item prompt draft store (#408 item 4)', () => {
 
   it('writing an empty string clears the entry rather than storing it', () => {
     writeFollowupPrompt(ISSUE_A, 'draft in progress')
-    expect(localStorage.getItem('cez-followup-prompt:' + ISSUE_A)).not.toBeNull()
+    expect(localStorage.getItem('xez-followup-prompt:' + ISSUE_A)).not.toBeNull()
     writeFollowupPrompt(ISSUE_A, '')
-    expect(localStorage.getItem('cez-followup-prompt:' + ISSUE_A)).toBeNull()
+    expect(localStorage.getItem('xez-followup-prompt:' + ISSUE_A)).toBeNull()
     expect(readFollowupPrompt(ISSUE_A)).toBe('')
   })
 })

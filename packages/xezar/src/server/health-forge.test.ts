@@ -36,52 +36,52 @@ interface HealthBody {
 describe('GET /api/v1/health — forge + capabilities', () => {
   let repoRoot: string;
   let store: RunStore;
-  const savedRemote = process.env.CEZ_REMOTE;
-  const savedFollowups = process.env.CEZ_FOLLOWUPS;
-  const savedSingleProject = process.env.CEZ_SINGLE_PROJECT;
-  const savedAutomations = process.env.CEZ_AUTOMATIONS;
-  const savedHideTokenMetrics = process.env.CEZ_HIDE_TOKEN_METRICS;
-  const savedHideTokenUsage = process.env.CEZ_HIDE_TOKEN_USAGE;
-  const savedHideCost = process.env.CEZ_HIDE_COST;
-  const savedDryRun = process.env.CEZ_DRY_RUN;
+  const savedRemote = process.env.XEZ_REMOTE;
+  const savedFollowups = process.env.XEZ_FOLLOWUPS;
+  const savedSingleProject = process.env.XEZ_SINGLE_PROJECT;
+  const savedAutomations = process.env.XEZ_AUTOMATIONS;
+  const savedHideTokenMetrics = process.env.XEZ_HIDE_TOKEN_METRICS;
+  const savedHideTokenUsage = process.env.XEZ_HIDE_TOKEN_USAGE;
+  const savedHideCost = process.env.XEZ_HIDE_COST;
+  const savedDryRun = process.env.XEZ_DRY_RUN;
 
   beforeEach(() => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-health-'));
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
-    delete process.env.CEZ_REMOTE;
-    // #471: the inbox is opt-in, so an ambient CEZ_FOLLOWUPS on the dev box
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-health-'));
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    delete process.env.XEZ_REMOTE;
+    // #471: the inbox is opt-in, so an ambient XEZ_FOLLOWUPS on the dev box
     // must not decide what these assertions see.
-    delete process.env.CEZ_FOLLOWUPS;
-    delete process.env.CEZ_SINGLE_PROJECT;
+    delete process.env.XEZ_FOLLOWUPS;
+    delete process.env.XEZ_SINGLE_PROJECT;
     // #801: automations are opt-in for the same reason, and the same ambient-env hazard applies.
-    delete process.env.CEZ_AUTOMATIONS;
-    delete process.env.CEZ_HIDE_TOKEN_METRICS;
-    delete process.env.CEZ_HIDE_TOKEN_USAGE;
-    delete process.env.CEZ_HIDE_COST;
+    delete process.env.XEZ_AUTOMATIONS;
+    delete process.env.XEZ_HIDE_TOKEN_METRICS;
+    delete process.env.XEZ_HIDE_TOKEN_USAGE;
+    delete process.env.XEZ_HIDE_COST;
     // Dry-run keeps the forge probe (and the claude check) off the network,
     // so the assertions are deterministic on any machine.
-    process.env.CEZ_DRY_RUN = '1';
+    process.env.XEZ_DRY_RUN = '1';
   });
 
   afterEach(() => {
     store.flush();
     rmSync(repoRoot, { recursive: true, force: true });
-    if (savedRemote === undefined) delete process.env.CEZ_REMOTE;
-    else process.env.CEZ_REMOTE = savedRemote;
-    if (savedFollowups === undefined) delete process.env.CEZ_FOLLOWUPS;
-    else process.env.CEZ_FOLLOWUPS = savedFollowups;
-    if (savedSingleProject === undefined) delete process.env.CEZ_SINGLE_PROJECT;
-    else process.env.CEZ_SINGLE_PROJECT = savedSingleProject;
-    if (savedAutomations === undefined) delete process.env.CEZ_AUTOMATIONS;
-    else process.env.CEZ_AUTOMATIONS = savedAutomations;
-    if (savedHideTokenMetrics === undefined) delete process.env.CEZ_HIDE_TOKEN_METRICS;
-    else process.env.CEZ_HIDE_TOKEN_METRICS = savedHideTokenMetrics;
-    if (savedHideTokenUsage === undefined) delete process.env.CEZ_HIDE_TOKEN_USAGE;
-    else process.env.CEZ_HIDE_TOKEN_USAGE = savedHideTokenUsage;
-    if (savedHideCost === undefined) delete process.env.CEZ_HIDE_COST;
-    else process.env.CEZ_HIDE_COST = savedHideCost;
-    if (savedDryRun === undefined) delete process.env.CEZ_DRY_RUN;
-    else process.env.CEZ_DRY_RUN = savedDryRun;
+    if (savedRemote === undefined) delete process.env.XEZ_REMOTE;
+    else process.env.XEZ_REMOTE = savedRemote;
+    if (savedFollowups === undefined) delete process.env.XEZ_FOLLOWUPS;
+    else process.env.XEZ_FOLLOWUPS = savedFollowups;
+    if (savedSingleProject === undefined) delete process.env.XEZ_SINGLE_PROJECT;
+    else process.env.XEZ_SINGLE_PROJECT = savedSingleProject;
+    if (savedAutomations === undefined) delete process.env.XEZ_AUTOMATIONS;
+    else process.env.XEZ_AUTOMATIONS = savedAutomations;
+    if (savedHideTokenMetrics === undefined) delete process.env.XEZ_HIDE_TOKEN_METRICS;
+    else process.env.XEZ_HIDE_TOKEN_METRICS = savedHideTokenMetrics;
+    if (savedHideTokenUsage === undefined) delete process.env.XEZ_HIDE_TOKEN_USAGE;
+    else process.env.XEZ_HIDE_TOKEN_USAGE = savedHideTokenUsage;
+    if (savedHideCost === undefined) delete process.env.XEZ_HIDE_COST;
+    else process.env.XEZ_HIDE_COST = savedHideCost;
+    if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
+    else process.env.XEZ_DRY_RUN = savedDryRun;
   });
 
   const makeApp = (over: Partial<ServerDeps> = {}) =>
@@ -149,8 +149,8 @@ describe('GET /api/v1/health — forge + capabilities', () => {
     expect(body.forge).toBeNull();
   });
 
-  it('hosted mode via CEZ_REMOTE=1: localHandoff:false', async () => {
-    process.env.CEZ_REMOTE = '1';
+  it('hosted mode via XEZ_REMOTE=1: localHandoff:false', async () => {
+    process.env.XEZ_REMOTE = '1';
     const body = await health();
     expect(body.capabilities).toEqual({
       localHandoff: false,
@@ -164,7 +164,7 @@ describe('GET /api/v1/health — forge + capabilities', () => {
   });
 
   it('hosted mode trims repoRoot to a basename — no absolute path/username leak (#431)', async () => {
-    process.env.CEZ_REMOTE = '1';
+    process.env.XEZ_REMOTE = '1';
     const body = await health();
     // The absolute checkout path (with the developer's username) must not be exposed to a
     // site/host that reads the CORS-open health endpoint in hosted mode.
@@ -209,8 +209,8 @@ describe('GET /api/v1/health — forge + capabilities', () => {
     expect((await health()).capabilities.followups).toBe(false);
   });
 
-  it('reports followups:true with CEZ_FOLLOWUPS=1', async () => {
-    process.env.CEZ_FOLLOWUPS = '1';
+  it('reports followups:true with XEZ_FOLLOWUPS=1', async () => {
+    process.env.XEZ_FOLLOWUPS = '1';
     expect((await health()).capabilities).toEqual({
       localHandoff: true,
       followups: true,
@@ -228,8 +228,8 @@ describe('GET /api/v1/health — forge + capabilities', () => {
     expect((await health()).capabilities.automations).toBe(false);
   });
 
-  it('reports automations:true with CEZ_AUTOMATIONS=1', async () => {
-    process.env.CEZ_AUTOMATIONS = '1';
+  it('reports automations:true with XEZ_AUTOMATIONS=1', async () => {
+    process.env.XEZ_AUTOMATIONS = '1';
     expect((await health()).capabilities).toEqual({
       localHandoff: true,
       followups: false,
@@ -241,8 +241,8 @@ describe('GET /api/v1/health — forge + capabilities', () => {
     });
   });
 
-  it('reports tokenMetrics:false with CEZ_HIDE_TOKEN_METRICS=1', async () => {
-    process.env.CEZ_HIDE_TOKEN_METRICS = '1';
+  it('reports tokenMetrics:false with XEZ_HIDE_TOKEN_METRICS=1', async () => {
+    process.env.XEZ_HIDE_TOKEN_METRICS = '1';
     expect((await health()).capabilities).toEqual({
       localHandoff: true,
       followups: false,
@@ -255,14 +255,14 @@ describe('GET /api/v1/health — forge + capabilities', () => {
   });
 
   it('reports independent token-only and cost-only presentation policies', async () => {
-    process.env.CEZ_HIDE_TOKEN_USAGE = '1';
+    process.env.XEZ_HIDE_TOKEN_USAGE = '1';
     expect((await health()).capabilities).toMatchObject({
       tokenMetrics: false,
       tokenUsageMetrics: false,
       costMetrics: true,
     });
-    delete process.env.CEZ_HIDE_TOKEN_USAGE;
-    process.env.CEZ_HIDE_COST = '1';
+    delete process.env.XEZ_HIDE_TOKEN_USAGE;
+    process.env.XEZ_HIDE_COST = '1';
     expect((await health()).capabilities).toMatchObject({
       tokenMetrics: false,
       tokenUsageMetrics: true,
@@ -275,20 +275,20 @@ describe('POST /api/v1/runs/:id/open-in-cli — hosted-mode defense in depth', (
   let repoRoot: string;
   let store: RunStore;
   let runId: string;
-  const savedRemote = process.env.CEZ_REMOTE;
+  const savedRemote = process.env.XEZ_REMOTE;
 
   beforeEach(() => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-handoff-'));
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-handoff-'));
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     runId = store.createRun({ title: 't', workflow: 'quick-task', task: 'do it', steps: [] }).id;
-    delete process.env.CEZ_REMOTE;
+    delete process.env.XEZ_REMOTE;
   });
 
   afterEach(() => {
     store.flush();
     rmSync(repoRoot, { recursive: true, force: true });
-    if (savedRemote === undefined) delete process.env.CEZ_REMOTE;
-    else process.env.CEZ_REMOTE = savedRemote;
+    if (savedRemote === undefined) delete process.env.XEZ_REMOTE;
+    else process.env.XEZ_REMOTE = savedRemote;
   });
 
   const post = (over: Partial<ServerDeps> = {}) =>
@@ -298,8 +298,8 @@ describe('POST /api/v1/runs/:id/open-in-cli — hosted-mode defense in depth', (
       { method: 'POST' },
     );
 
-  it('409s with a human reason when CEZ_REMOTE=1 — before any session lookup', async () => {
-    process.env.CEZ_REMOTE = '1';
+  it('409s with a human reason when XEZ_REMOTE=1 — before any session lookup', async () => {
+    process.env.XEZ_REMOTE = '1';
     const res = await post();
     expect(res.status).toBe(409);
     const body = (await res.json()) as { error: string };
@@ -320,7 +320,7 @@ describe('POST /api/v1/runs/:id/open-in-cli — hosted-mode defense in depth', (
   });
 
   it('unknown runs still 404 first', async () => {
-    process.env.CEZ_REMOTE = '1';
+    process.env.XEZ_REMOTE = '1';
     const app = createApp({ repoRoot, store, manager: {} as RunManager, version: '0.0.0-test' });
     const res = await apiRequest(app, '/api/v1/runs/nope/open-in-cli', { method: 'POST' });
     expect(res.status).toBe(404);

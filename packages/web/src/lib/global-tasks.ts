@@ -1,4 +1,4 @@
-import type { ProjectListEntry, RunIndexEntry } from '@open-mercato/cezar-api-client'
+import type { ProjectListEntry, RunIndexEntry } from '@qodeca/xezar-api-client'
 
 import { allProjectTags } from '@/lib/project-tags'
 import { runTitle } from '@/lib/task-groups'

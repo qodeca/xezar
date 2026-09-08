@@ -8,10 +8,10 @@ import { readWorkspaceUiState } from './workspace/ui-state.ts';
 /**
  * A skill is a Markdown file with optional YAML-ish frontmatter (`name`,
  * `description`). Discovered from the repo's `.ai/skills/` (shared with other
- * agent tooling), `.ai/cezar/skills/` (cez-local), the `npx skills` install
+ * agent tooling), `.ai/xezar/skills/` (xez-local), the `npx skills` install
  * dirs (`.agents/skills` + the per-agent mirrors, project and global), and
  * the configured team skills repos (spec 005 — bare clones, no checkout).
- * Adapted from @cezar/core's skill-catalog.
+ * Adapted from @xezar/core's skill-catalog.
  */
 export interface Skill {
   name: string;
@@ -20,7 +20,7 @@ export interface Skill {
   interactive?: true;
   body: string;
   path: string;
-  source: 'ai' | 'cezar' | 'agents' | 'global' | 'team';
+  source: 'ai' | 'xezar' | 'agents' | 'global' | 'team';
   /** Team skills only: where the definition lives in its skills repo. */
   team?: {
     repo: string;
@@ -44,7 +44,7 @@ export interface Skill {
    process, so adding a dir here without updating the hint makes the hint lie.
    That test pins this list and says where to go. */
 export const SKILL_DIRS: Array<{ dir: string; source: Skill['source'] }> = [
-  { dir: '.ai/cezar/skills', source: 'cezar' },
+  { dir: '.ai/xezar/skills', source: 'xezar' },
   { dir: '.ai/skills', source: 'ai' },
   { dir: '.agents/skills', source: 'agents' },
   { dir: '.claude/skills', source: 'agents' },
@@ -64,7 +64,7 @@ const GLOBAL_SKILL_DIRS: Array<{ dir: string; source: Skill['source'] }> = [
 
 /**
  * Discover the merged skill catalog for a repo. Name collisions resolve
- * local-first: `.ai/cezar/skills` → `.ai/skills` → `.agents/skills` + agent
+ * local-first: `.ai/xezar/skills` → `.ai/skills` → `.agents/skills` + agent
  * mirrors → global (`~/.agents/skills`, `~/.claude/skills`) → team repo
  * ("the user's repo is the source of truth"). Missing directories are fine —
  * an empty catalog is fully supported (steps fall back to their plain
@@ -73,7 +73,7 @@ const GLOBAL_SKILL_DIRS: Array<{ dir: string; source: Skill['source'] }> = [
  *
  * Opt-out gate: skills from a *default* (vendor) skills repo — `open-mercato/skills`
  * for the zero-config majority, see `gatedSkillsRepos` — appear unless the user has
- * curated them away. `importedSkills` in the GLOBAL `~/.cezar/ui-state.json` (not the
+ * curated them away. `importedSkills` in the GLOBAL `~/.xezar/ui-state.json` (not the
  * per-repo file — the selection describes the person and must not depend on the launch
  * directory, multi-project workspace) is a tri-state: ABSENT means "not curated" and
  * every default skill shows (the historical behavior — no upgrade break for existing

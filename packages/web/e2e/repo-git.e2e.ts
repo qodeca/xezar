@@ -29,7 +29,7 @@ const scoped = (path: string) => `/p/${bootProject}${path}`
 
 async function api<T>(path: string): Promise<T> {
   const res = await fetch(`${baseUrl}${path}`)
-  if (!res.ok) throw new Error(`cezar e2e: GET ${path} answered ${res.status}`)
+  if (!res.ok) throw new Error(`xezar e2e: GET ${path} answered ${res.status}`)
   return (await res.json()) as T
 }
 

@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { useLocation } from 'react-router'
 
 import { useHealth, useProjectRuns, useProjects, useRuns, useSkillsUpdate, useTodos } from '@/api/queries'
-import type { HealthResponse, SkillsUpdateState } from '@open-mercato/cezar-api-client'
+import type { HealthResponse, SkillsUpdateState } from '@qodeca/xezar-api-client'
 import { AppShell, type RepoChip } from '@/components/app-shell'
 import { CommandPalette } from '@/components/command-palette'
 import { ListViewProvider } from '@/components/list-view'
@@ -20,10 +20,10 @@ import { pageTitleContext } from '@/routes'
  * Derive the sidebar's repo chip from `/api/health`.
  *
  * Null — the chip renders nothing — whenever there is nothing true to say: health hasn't
- * answered yet, or cezar is running outside a git repository (`repo: null`), which is a
+ * answered yet, or xezar is running outside a git repository (`repo: null`), which is a
  * supported way to run it. An empty chip is honest; "loading…" or a guessed folder name is not.
  *
- * The name is the repo root's basename: `/home/me/Projects/cezar` → `cezar`. Both separators,
+ * The name is the repo root's basename: `/home/me/Projects/xezar` → `xezar`. Both separators,
  * because the server sends whatever path git gave it, and a trailing one is stripped first so
  * `/repo/` doesn't chip as an empty string.
  */

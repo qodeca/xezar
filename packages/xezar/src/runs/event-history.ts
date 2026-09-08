@@ -9,7 +9,7 @@ import {
   type RunHistoryContext,
   type RunHistoryEvent,
   type RunHistoryPage,
-} from '@open-mercato/cezar-contract';
+} from '@qodeca/xezar-contract';
 
 const READ_CHUNK_BYTES = 64 * 1024;
 const MAX_CURSOR_BYTES = 2_048;
@@ -149,11 +149,11 @@ export function canonicalSessionItems(events: readonly RunEvent[]): CanonicalIte
     } else if (v2Texts.length > 0) {
       const normalize = (text: string) =>
         text
-          .replace(/\s*CEZ:DONE\s*$/, '')
-          .replace(/\s*CEZ:MONITORING\s*$/, '')
-          .replace(/\s*CEZ:ASK[ \t]+\{[\s\S]*\}\s*$/, '')
+          .replace(/\s*XEZ:DONE\s*$/, '')
+          .replace(/\s*XEZ:MONITORING\s*$/, '')
+          .replace(/\s*XEZ:ASK[ \t]+\{[\s\S]*\}\s*$/, '')
           .split('\n')
-          .filter((line) => !/^CEZ:(?:PR=\d+|ISSUE=\d+|TITLE=.+)\s*$/.test(line))
+          .filter((line) => !/^XEZ:(?:PR=\d+|ISSUE=\d+|TITLE=.+)\s*$/.test(line))
           .join('\n')
           .replace(/\s+/g, '');
       const v2Normalized = new Set(v2Texts.map(normalize));

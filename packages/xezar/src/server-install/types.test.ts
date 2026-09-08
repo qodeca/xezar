@@ -15,8 +15,8 @@ describe('serverStateSchema', () => {
           status: 'done',
           created: {
             artifacts: [
-              { kind: 'owned', type: 'file', path: '/etc/nginx/sites-available/cezar' },
-              { kind: 'owned', type: 'htpasswd', path: '/etc/cezar/htpasswd' },
+              { kind: 'owned', type: 'file', path: '/etc/nginx/sites-available/xezar' },
+              { kind: 'owned', type: 'htpasswd', path: '/etc/xezar/htpasswd' },
             ],
           },
         },

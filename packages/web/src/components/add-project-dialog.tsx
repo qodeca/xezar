@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router'
 
 import { useProjects, useRegisterProject } from '@/api/queries'
-import type { FsBrowseDir } from '@open-mercato/cezar-api-client'
+import type { FsBrowseDir } from '@qodeca/xezar-api-client'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -22,8 +22,8 @@ import { FolderBrowser, useBrowseTarget } from '@/components/folder-browser'
  * navigates to the new project's scope. The browsing itself — and the three API shapes it is
  * faithful to — lives in `components/folder-browser.tsx`, shared with "Add agent account".
  *
- * A non-git folder is selectable: `isRepo` only earns a badge, because cezar degrades in a
- * non-git folder exactly as `cezar serve` does today, so gating selection on it would invent a
+ * A non-git folder is selectable: `isRepo` only earns a badge, because xezar degrades in a
+ * non-git folder exactly as `xezar serve` does today, so gating selection on it would invent a
  * restriction the server does not have.
  *
  * The register errors (a home directory, hosted-mode narrowing) are shown VERBATIM: the server
@@ -78,7 +78,7 @@ export function AddProjectDialog({
         <DialogHeader>
           <DialogTitle>Open local folder</DialogTitle>
           <DialogDescription>
-            Pick the folder cezar should run in. Git repos are marked; any folder works.
+            Pick the folder xezar should run in. Git repos are marked; any folder works.
           </DialogDescription>
         </DialogHeader>
 

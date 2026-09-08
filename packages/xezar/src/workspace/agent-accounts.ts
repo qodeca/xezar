@@ -2,18 +2,18 @@ import { realpathSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { posix, resolve, win32 } from 'node:path';
 import { z } from 'zod';
-import { DEFAULT_AGENT_ACCOUNT_ID } from '@open-mercato/cezar-contract';
+import { DEFAULT_AGENT_ACCOUNT_ID } from '@qodeca/xezar-contract';
 import { PROVIDER_IDS, type ProviderId } from '../core/provider-auth.ts';
 import { supportsProfiles } from '../core/agent-profiles.ts';
 import { agentAccountsPath, workspaceConfigPath } from '../paths.ts';
 import { atomicWriteJsonSync } from './config.ts';
 
 /**
- * `~/.cezar/agent-accounts.json` — the agent-accounts store (spec `2026-07-29-agent-profiles.md`).
+ * `~/.xezar/agent-accounts.json` — the agent-accounts store (spec `2026-07-29-agent-profiles.md`).
  *
  * ## Why its own file
  *
- * These keys started life in `config.json`, where their survival across a cezar downgrade rested
+ * These keys started life in `config.json`, where their survival across a xezar downgrade rested
  * on a `.passthrough()` modifier in the OTHER version's schema. That held for the versions in
  * this repo's history — measured, not assumed — but it is not a guarantee this repo can make on
  * behalf of a build someone switches to, and it fails completely in the one case that matters
@@ -27,7 +27,7 @@ import { atomicWriteJsonSync } from './config.ts';
  * ## House rules (the same ones `config.json` follows, for the same reasons)
  *
  * - every field optional/defaulted with `.catch`, so a bad value degrades per key;
- * - `.passthrough()` at every object level, so a NEWER cezar's keys survive an older one;
+ * - `.passthrough()` at every object level, so a NEWER xezar's keys survive an older one;
  * - per-entry salvage for `accounts` — one hand-edited row never evicts the rest;
  * - atomic tmp+rename at `0600` through the shared writer;
  * - a corrupt or unreadable file degrades to empty with ONE warning, never a boot failure.
@@ -44,10 +44,10 @@ import { atomicWriteJsonSync } from './config.ts';
 export const AGENT_ACCOUNT_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 /**
- * Reserved id meaning "the dir cezar discovers" (`agentHomePaths()`).
+ * Reserved id meaning "the dir xezar discovers" (`agentHomePaths()`).
  *
  * NEVER stored and never allocated: the default account is the zero-config answer, so an absent
- * file behaves exactly as cezar always has. Materializing it would turn a discovered fact into
+ * file behaves exactly as xezar always has. Materializing it would turn a discovered fact into
  * state a user has to maintain.
  *
  * Re-exported from the contract rather than spelled again here: the cockpit sends this exact string
@@ -184,7 +184,7 @@ export function defaultAgentAccountStore(): AgentAccountStore {
 /**
  * Read the store on demand — never cached, never throws.
  *
- * Not cached because `~/.cezar/` is shared by every cezar process on the machine, so a snapshot is
+ * Not cached because `~/.xezar/` is shared by every xezar process on the machine, so a snapshot is
  * a staleness bug; one small JSON read is free next to spawning a CLI.
  *
  * A missing file is the zero-config default (silent). A corrupt one degrades to the default with a
@@ -207,14 +207,14 @@ export async function loadAgentAccounts(): Promise<AgentAccountStore> {
   } catch {
     // malformed JSON — fall through to the warning + defaults
   }
-  console.warn(`[cez] agent accounts ${path} is corrupt — ignoring it (every project falls back to its default account)`);
+  console.warn(`[xez] agent accounts ${path} is corrupt — ignoring it (every project falls back to its default account)`);
   return defaultAgentAccountStore();
 }
 
 /**
  * Read-modify-write merge: re-read, apply `mutator`, atomic-rename write.
  *
- * Because every writer re-reads immediately before writing, two cezar processes editing different
+ * Because every writer re-reads immediately before writing, two xezar processes editing different
  * accounts converge instead of dropping each other's — last-writer-wins only inside the tiny
  * read→rename window, which is the same bargain `config.json` makes. Throws on write failure (a
  * read-only home); degrading is the caller's policy.
@@ -234,7 +234,7 @@ export async function mergeWriteAgentAccounts(
  *
  * Reads the RAW object rather than going through the workspace schema, because that schema no
  * longer names these keys — they only survive there as passthrough. Nothing is deleted from
- * `config.json`: an older cezar sharing this home keeps reading what it has always read, and this
+ * `config.json`: an older xezar sharing this home keeps reading what it has always read, and this
  * import is idempotent because it only runs while `agent-accounts.json` is absent.
  */
 async function importLegacyAccounts(): Promise<AgentAccountStore> {
@@ -259,7 +259,7 @@ async function importLegacyAccounts(): Promise<AgentAccountStore> {
   const imported = storeSchema.safeParse({ accounts: legacy.agentProfiles, selections });
   if (!imported.success) return defaultAgentAccountStore();
   // Only worth persisting when there was something to carry over; an empty import must not create
-  // a file, or the zero-config promise ("delete any of them and cezar rebuilds") gains a file that
+  // a file, or the zero-config promise ("delete any of them and xezar rebuilds") gains a file that
   // exists for no reason.
   if (imported.data.accounts.length === 0) return imported.data;
   try {

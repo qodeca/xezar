@@ -18,7 +18,7 @@ describe('buildNamerPrompt', () => {
       skillName: 'om-auto-review-pr',
       skillDescription: 'Review a PR by number.',
     });
-    expect(prompt.startsWith('[cez-namer]')).toBe(true);
+    expect(prompt.startsWith('[xez-namer]')).toBe(true);
     expect(prompt).toContain('Selected skill: /om-auto-review-pr');
     expect(prompt).toContain('review pr 437 with autofix');
     expect(prompt).toContain('pr 437');
@@ -112,13 +112,13 @@ describe('composeNameResult', () => {
 
 describe('generateRunName (dry run)', () => {
   it('answers a short, pr-classified title through the mock runner and never throws', async () => {
-    const saved = process.env.CEZ_DRY_RUN;
-    process.env.CEZ_DRY_RUN = '1';
+    const saved = process.env.XEZ_DRY_RUN;
+    process.env.XEZ_DRY_RUN = '1';
     try {
       const { mkdtempSync, rmSync } = await import('node:fs');
       const { tmpdir } = await import('node:os');
       const { join } = await import('node:path');
-      const root = mkdtempSync(join(tmpdir(), 'cez-namer-'));
+      const root = mkdtempSync(join(tmpdir(), 'xez-namer-'));
       try {
         const { generateRunName } = await import('./auto-name.ts');
         const result = await generateRunName(root, { task: '437', skillName: 'om-auto-review-pr' });
@@ -127,43 +127,43 @@ describe('generateRunName (dry run)', () => {
         rmSync(root, { recursive: true, force: true });
       }
     } finally {
-      if (saved === undefined) delete process.env.CEZ_DRY_RUN;
-      else process.env.CEZ_DRY_RUN = saved;
+      if (saved === undefined) delete process.env.XEZ_DRY_RUN;
+      else process.env.XEZ_DRY_RUN = saved;
     }
   }, 30_000);
 });
 
 describe('liveTitleUpdatesEnabled', () => {
-  const saved = process.env.CEZ_TITLE_UPDATES;
+  const saved = process.env.XEZ_TITLE_UPDATES;
   afterEach(() => {
-    if (saved === undefined) delete process.env.CEZ_TITLE_UPDATES;
-    else process.env.CEZ_TITLE_UPDATES = saved;
+    if (saved === undefined) delete process.env.XEZ_TITLE_UPDATES;
+    else process.env.XEZ_TITLE_UPDATES = saved;
   });
 
   it('defaults ON (owner decision, PR #479)', () => {
-    delete process.env.CEZ_TITLE_UPDATES;
+    delete process.env.XEZ_TITLE_UPDATES;
     expect(liveTitleUpdatesEnabled({})).toBe(true);
   });
 
   it('the env default turns it off with exactly "0"', () => {
-    expect(liveTitleUpdatesEnabled({}, { CEZ_TITLE_UPDATES: '0' })).toBe(false);
-    expect(liveTitleUpdatesEnabled({}, { CEZ_TITLE_UPDATES: '1' })).toBe(true);
-    expect(liveTitleUpdatesEnabled({}, { CEZ_TITLE_UPDATES: 'off' })).toBe(true);
+    expect(liveTitleUpdatesEnabled({}, { XEZ_TITLE_UPDATES: '0' })).toBe(false);
+    expect(liveTitleUpdatesEnabled({}, { XEZ_TITLE_UPDATES: '1' })).toBe(true);
+    expect(liveTitleUpdatesEnabled({}, { XEZ_TITLE_UPDATES: 'off' })).toBe(true);
   });
 
   it('the Settings toggle (config) wins over the env in both directions', () => {
     expect(liveTitleUpdatesEnabled({ liveTitleUpdates: false }, {})).toBe(false);
-    expect(liveTitleUpdatesEnabled({ liveTitleUpdates: true }, { CEZ_TITLE_UPDATES: '0' })).toBe(true);
-    expect(liveTitleUpdatesEnabled({ liveTitleUpdates: false }, { CEZ_TITLE_UPDATES: '1' })).toBe(false);
+    expect(liveTitleUpdatesEnabled({ liveTitleUpdates: true }, { XEZ_TITLE_UPDATES: '0' })).toBe(true);
+    expect(liveTitleUpdatesEnabled({ liveTitleUpdates: false }, { XEZ_TITLE_UPDATES: '1' })).toBe(false);
   });
 });
 
 describe('autoNamingActive', () => {
-  it('on by default; CEZ_AUTONAME=0 kills it; dry-run is off unless forced', () => {
+  it('on by default; XEZ_AUTONAME=0 kills it; dry-run is off unless forced', () => {
     expect(autoNamingActive({})).toBe(true);
-    expect(autoNamingActive({ CEZ_AUTONAME: '0' })).toBe(false);
-    expect(autoNamingActive({ CEZ_DRY_RUN: '1' })).toBe(false);
-    expect(autoNamingActive({ CEZ_DRY_RUN: '1', CEZ_AUTONAME: '1' })).toBe(true);
-    expect(autoNamingActive({ CEZ_DRY_RUN: '1', CEZ_AUTONAME: '0' })).toBe(false);
+    expect(autoNamingActive({ XEZ_AUTONAME: '0' })).toBe(false);
+    expect(autoNamingActive({ XEZ_DRY_RUN: '1' })).toBe(false);
+    expect(autoNamingActive({ XEZ_DRY_RUN: '1', XEZ_AUTONAME: '1' })).toBe(true);
+    expect(autoNamingActive({ XEZ_DRY_RUN: '1', XEZ_AUTONAME: '0' })).toBe(false);
   });
 });

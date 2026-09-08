@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import type { RunEvent } from '@open-mercato/cezar-api-client'
-import type { UiMessageItem, UiToolItem } from '@open-mercato/cezar-api-client'
+import type { RunEvent } from '@qodeca/xezar-api-client'
+import type { UiMessageItem, UiToolItem } from '@qodeca/xezar-api-client'
 
-import bashAndScreenshot from '../../../../cezar/src/core/__fixtures__/claude/bash-and-screenshot.expected.json'
-import failedAndDenied from '../../../../cezar/src/core/__fixtures__/claude/failed-and-denied.expected.json'
-import textTurn from '../../../../cezar/src/core/__fixtures__/claude/text-turn.expected.json'
-import thinkingEditWriteTodo from '../../../../cezar/src/core/__fixtures__/claude/thinking-edit-write-todo.expected.json'
+import bashAndScreenshot from '../../../../xezar/src/core/__fixtures__/claude/bash-and-screenshot.expected.json'
+import failedAndDenied from '../../../../xezar/src/core/__fixtures__/claude/failed-and-denied.expected.json'
+import textTurn from '../../../../xezar/src/core/__fixtures__/claude/text-turn.expected.json'
+import thinkingEditWriteTodo from '../../../../xezar/src/core/__fixtures__/claude/thinking-edit-write-todo.expected.json'
 import {
   latestPlanEntries,
   reduceThread,
@@ -162,20 +162,20 @@ describe('reduceThread — v1-only fallback (pre-v2 transcripts)', () => {
     expect(turns.flatMap((turn) => turn.items)).toEqual([])
   })
 
-  // Verbatim shapes from a real pre-R2 transcript (.ai/cezar/runs/2d012907….ndjson), trimmed.
+  // Verbatim shapes from a real pre-R2 transcript (.ai/xezar/runs/2d012907….ndjson), trimmed.
   const v1Only: RunEvent[] = [
     line(1, 'lifecycle', { message: 'run started — workflow "quick-task" (runner: claude)' }),
-    line(2, 'note', { message: 'worktree ready — branch cez/2d012907 (base main)' }),
+    line(2, 'note', { message: 'worktree ready — branch xez/2d012907 (base main)' }),
     line(3, 'step-start', { stepId: 'task', name: 'Do the task', kind: 'agent', iteration: 1 }),
     line(4, 'token-usage', { tokensUsed: 8993, stepId: 'task' }),
-    line(5, 'text', { text: "Hi! I'm Claude Code, working in your **cezar** project.", stepId: 'task' }),
+    line(5, 'text', { text: "Hi! I'm Claude Code, working in your **xezar** project.", stepId: 'task' }),
     line(7, 'tool-call', {
       id: 'toolu_01WJ',
       tool: 'Bash',
       input: { command: 'cat README.md | head -40', description: 'Read README' },
       stepId: 'task',
     }),
-    line(9, 'tool-result', { toolCallId: 'toolu_01WJ', result: '# cezar ⚡\n\nParallel coding agents…', stepId: 'task' }),
+    line(9, 'tool-result', { toolCallId: 'toolu_01WJ', result: '# xezar ⚡\n\nParallel coding agents…', stepId: 'task' }),
     line(10, 'user-message', { text: 'Now summarize it.', imageCount: 0, stepId: 'task' }),
     line(11, 'text', { text: 'It orchestrates coding agents in worktrees.', stepId: 'task' }),
     line(12, 'error', { message: 'claude exited with code 1' }),
@@ -191,7 +191,7 @@ describe('reduceThread — v1-only fallback (pre-v2 transcripts)', () => {
     expect(tool.id).toBe('toolu_01WJ')
     expect(tool.title).toBe('Ran cat README.md | head -40') // via the shared toolDisplay model
     expect(tool.status).toBe('completed') // v1 has no failure signal — none is invented
-    expect(tool.output).toContain('# cezar ⚡')
+    expect(tool.output).toContain('# xezar ⚡')
 
     // Turn 2: opened by the user-message, then the reply and the danger line.
     expect(turns[1]!.userMessage).toEqual({ text: 'Now summarize it.', imageCount: 0, images: [] })
@@ -208,12 +208,12 @@ describe('reduceThread — v1-only fallback (pre-v2 transcripts)', () => {
 })
 
 describe('reduceThread — mixed v1+v2 files (the dedup rule)', () => {
-  // Verbatim from an R2 dry-run transcript (CEZ_DRY_RUN=1, seq/ts as persisted): the v2 items
+  // Verbatim from an R2 dry-run transcript (XEZ_DRY_RUN=1, seq/ts as persisted): the v2 items
   // land FIRST, their v1 `text` twin one line later — the order the rule is grounded in.
   const md = '## Markdown fixture\n```ts\nconst answer: number = 42;\n```'
   const mixed: RunEvent[] = [
     line(1, 'lifecycle', { message: 'run started — workflow "quick-task" (runner: claude)' }),
-    line(2, 'note', { message: 'worktree ready — branch cez/01ec2e8c (base main)' }),
+    line(2, 'note', { message: 'worktree ready — branch xez/01ec2e8c (base main)' }),
     line(3, 'step-start', { stepId: 'task', name: 'Do the task', kind: 'agent', iteration: 1 }),
     line(4, 'session.started', { sessionId: 'b3440f00', backend: 'claude', stepId: 'task' }),
     line(5, 'turn.started', { turnId: 'turn_1', stepId: 'task' }),
@@ -299,16 +299,16 @@ describe('reduceThread — mixed v1+v2 files (the dedup rule)', () => {
     expect((turns[0]!.items[0] as UiMessageItem).text).toBe('Prose that only v1 ever described.')
   })
 
-  // The two vocabularies normalize markers differently — the server strips `CEZ:` from v1 `text`
+  // The two vocabularies normalize markers differently — the server strips `XEZ:` from v1 `text`
   // before persisting, v2 items carry it raw — so the twin match has to strip both sides or
   // every final message in a run would render twice.
-  it('matches a v1 twin against a v2 message whose text still carries its CEZ marker', () => {
+  it('matches a v1 twin against a v2 message whose text still carries its XEZ marker', () => {
     const finalTurn: RunEvent[] = [
       line(1, 'turn.started', { turnId: 'turn_1' }),
       line(2, 'item.started', {
         item: { kind: 'tool', id: 'toolu_A', name: 'Bash', toolKind: 'execute', title: 'Ran x', status: 'completed' },
       }),
-      line(3, 'item.completed', { item: { kind: 'message', id: 'item_1', role: 'assistant', text: 'All done.\n\nCEZ:DONE' } }),
+      line(3, 'item.completed', { item: { kind: 'message', id: 'item_1', role: 'assistant', text: 'All done.\n\nXEZ:DONE' } }),
       line(4, 'text', { text: 'All done.' }), // the server-stripped v1 twin
     ]
     const { turns } = reduceThread(finalTurn)
@@ -321,12 +321,12 @@ describe('reduceThread — legacy per-delta transcripts (codex/opencode runs rec
   // Verbatim shape from a real broken recording: the codex runner used to emit one v1 `text`
   // per streaming delta, so the file holds one line per token — and the exact-match dedup
   // never fired, rendering one paragraph per token. The v2 item carries the whole message.
-  const full = 'QA done — see github.com/open-mercato/cezar/pull/628\n\nCEZ:DONE'
+  const full = 'QA done — see github.com/qodeca/xezar/pull/628\n\nXEZ:DONE'
   // Per-token persistence: the server stripped markers per event (a split marker slips
-  // through: CE / Z / :D / ONE) and dropped whitespace-only deltas entirely.
-  const tokens = ['QA', ' done', ' —', ' see', ' github', '.com', '/open', '-merc', 'ato', '/ce', 'zar', '/p', 'ull', '/', '628', 'CE', 'Z', ':D', 'ONE']
+  // through: XE / Z / :D / ONE) and dropped whitespace-only deltas entirely.
+  const tokens = ['QA', ' done', ' —', ' see', ' github', '.com', '/qod', 'eca', '/xe', 'zar', '/p', 'ull', '/', '628', 'XE', 'Z', ':D', 'ONE']
 
-  it('drops a token run that reassembles the v2 message — including the split CEZ:DONE', () => {
+  it('drops a token run that reassembles the v2 message — including the split XEZ:DONE', () => {
     const events: RunEvent[] = [
       line(1, 'turn.started', { turnId: 'turn_1' }),
       line(2, 'item.started', { item: { kind: 'message', id: 'item_1', role: 'assistant', text: '' } }),
@@ -337,7 +337,7 @@ describe('reduceThread — legacy per-delta transcripts (codex/opencode runs rec
     const { turns } = reduceThread(events)
     expect(kinds(turns[0]!.items)).toEqual(['message'])
     expect((turns[0]!.items[0] as UiMessageItem).id).toBe('item_1')
-    expect((turns[0]!.items[0] as UiMessageItem).text).toBe('QA done — see github.com/open-mercato/cezar/pull/628')
+    expect((turns[0]!.items[0] as UiMessageItem).text).toBe('QA done — see github.com/qodeca/xezar/pull/628')
   })
 
   it('drops one run spanning TWO v2 messages (v1 tool suppression made them adjacent)', () => {
@@ -400,27 +400,27 @@ describe('reduceThread — live-stream mechanics', () => {
     expect((started.item as { text: string }).text).toBe('')
   })
 
-  it('strips a trailing CEZ:DONE from assistant messages — v2 carries it raw', () => {
+  it('strips a trailing XEZ:DONE from assistant messages — v2 carries it raw', () => {
     const events: RunEvent[] = [
       line(1, 'turn.started', { turnId: 'turn_1' }),
-      line(2, 'item.completed', { item: { kind: 'message', id: 'm1', role: 'assistant', text: 'All done.\n\nCEZ:DONE' } }),
+      line(2, 'item.completed', { item: { kind: 'message', id: 'm1', role: 'assistant', text: 'All done.\n\nXEZ:DONE' } }),
     ]
     const { turns } = reduceThread(events)
     expect((turns[0]!.items[0] as UiMessageItem).text).toBe('All done.')
   })
 
-  it('strips a trailing CEZ:MONITORING from assistant messages too (#490)', () => {
+  it('strips a trailing XEZ:MONITORING from assistant messages too (#490)', () => {
     const events: RunEvent[] = [
       line(1, 'turn.started', { turnId: 'turn_1' }),
       line(2, 'item.completed', {
-        item: { kind: 'message', id: 'm1', role: 'assistant', text: 'Spawned the reviewer, waiting on it.\n\nCEZ:MONITORING' },
+        item: { kind: 'message', id: 'm1', role: 'assistant', text: 'Spawned the reviewer, waiting on it.\n\nXEZ:MONITORING' },
       }),
     ]
     const { turns } = reduceThread(events)
     expect((turns[0]!.items[0] as UiMessageItem).text).toBe('Spawned the reviewer, waiting on it.')
   })
 
-  it('strips CEZ:PR/CEZ:ISSUE/CEZ:TITLE marker lines but keeps prose mentions (spec 2026-07-18-task-ref-markers)', () => {
+  it('strips XEZ:PR/XEZ:ISSUE/XEZ:TITLE marker lines but keeps prose mentions (spec 2026-07-18-task-ref-markers)', () => {
     const events: RunEvent[] = [
       line(1, 'turn.started', { turnId: 'turn_1' }),
       line(2, 'item.completed', {
@@ -428,12 +428,12 @@ describe('reduceThread — live-stream mechanics', () => {
           kind: 'message',
           id: 'm1',
           role: 'assistant',
-          text: 'Opened the PR.\nCEZ:PR=442\nCEZ:ISSUE=433\nCEZ:TITLE=implementing marker refs\nI will keep CEZ:PR=442 updated.',
+          text: 'Opened the PR.\nXEZ:PR=442\nXEZ:ISSUE=433\nXEZ:TITLE=implementing marker refs\nI will keep XEZ:PR=442 updated.',
         },
       }),
     ]
     const { turns } = reduceThread(events)
-    expect((turns[0]!.items[0] as UiMessageItem).text).toBe('Opened the PR.\nI will keep CEZ:PR=442 updated.')
+    expect((turns[0]!.items[0] as UiMessageItem).text).toBe('Opened the PR.\nI will keep XEZ:PR=442 updated.')
   })
 
   it('a malformed line costs itself, not the fold', () => {
@@ -664,7 +664,7 @@ describe('threadFilePaths — the @ mention source (today: what the tools touche
   })
 })
 
-describe('the v1 vocabulary sweep (cezar-code-map §3.2) — every persisted type renders or is a documented suppression', () => {
+describe('the v1 vocabulary sweep (xezar-code-map §3.2) — every persisted type renders or is a documented suppression', () => {
   const allItems = (events: RunEvent[]): ThreadEntry[] =>
     reduceThread(events).turns.flatMap((turn) => turn.items)
 
@@ -695,7 +695,7 @@ describe('the v1 vocabulary sweep (cezar-code-map §3.2) — every persisted typ
     ])
   })
 
-  // #936 — a note that reports something the user LOST (a discarded CEZ:ASK
+  // #936 — a note that reports something the user LOST (a discarded XEZ:ASK
   // question) opts into `tone: 'danger'` so it is not the dimmest line in the
   // thread. Anything else — including every note written before the field
   // existed — stays dim.
@@ -824,11 +824,11 @@ describe('reduceThread — AskUser cards (#473)', () => {
     ).toBe(false)
   })
 
-  it('strips a CEZ:ASK marker from a v2 assistant message when its turn holds the ask card', () => {
+  it('strips a XEZ:ASK marker from a v2 assistant message when its turn holds the ask card', () => {
     const markerJson = JSON.stringify({ questions: ASK.questions })
     const msg = allItems([
       line(1, 'item.completed', {
-        item: { kind: 'message', id: 'm1', role: 'assistant', text: `Pick one.\n\nCEZ:ASK ${markerJson}` },
+        item: { kind: 'message', id: 'm1', role: 'assistant', text: `Pick one.\n\nXEZ:ASK ${markerJson}` },
       }),
       line(2, 'ask.requested', ASK),
     ]).find((i) => i.kind === 'message') as { text: string } | undefined
@@ -839,7 +839,7 @@ describe('reduceThread — AskUser cards (#473)', () => {
     const markerJson = JSON.stringify({ questions: ASK.questions })
     const events = [
       line(1, 'item.completed', {
-        item: { kind: 'message', id: 'm1', role: 'assistant', text: `Pick one.\n\nCEZ:ASK ${markerJson}` },
+        item: { kind: 'message', id: 'm1', role: 'assistant', text: `Pick one.\n\nXEZ:ASK ${markerJson}` },
       }),
     ]
     const msg = reduceThread(events, { activeTurn: true }).turns[0]!.items.find(
@@ -852,8 +852,8 @@ describe('reduceThread — AskUser cards (#473)', () => {
   // invalid payload, or the session died before turn-end emitted ask.requested —
   // must stay visible. The card is the only other place the questions exist;
   // stripping without it deletes the agent's question from the thread entirely.
-  it('keeps a CEZ:ASK marker visible when no ask card landed in the turn', () => {
-    const raw = 'Zanim pójdziemy dalej, trzy pytania:\n\nCEZ:ASK {"questions":[]}'
+  it('keeps a XEZ:ASK marker visible when no ask card landed in the turn', () => {
+    const raw = 'Zanim pójdziemy dalej, trzy pytania:\n\nXEZ:ASK {"questions":[]}'
     const msg = allItems([
       line(1, 'item.completed', {
         item: { kind: 'message', id: 'm1', role: 'assistant', text: raw },
@@ -863,7 +863,7 @@ describe('reduceThread — AskUser cards (#473)', () => {
   })
 
   it('restores a hard-invalid marker when the active turn settles without a card', () => {
-    const raw = 'Pick one.\n\nCEZ:ASK {"questions":[]}'
+    const raw = 'Pick one.\n\nXEZ:ASK {"questions":[]}'
     const events = [
       line(1, 'item.completed', {
         item: { kind: 'message', id: 'm1', role: 'assistant', text: raw },
@@ -880,7 +880,7 @@ describe('reduceThread — AskUser cards (#473)', () => {
   })
 
   it("an ask card in ANOTHER turn does not license stripping this turn's marker", () => {
-    const raw = 'Second turn question:\n\nCEZ:ASK {"questions":[]}'
+    const raw = 'Second turn question:\n\nXEZ:ASK {"questions":[]}'
     const { turns } = reduceThread([
       line(1, 'text', { text: 'options' }),
       line(2, 'ask.requested', ASK),

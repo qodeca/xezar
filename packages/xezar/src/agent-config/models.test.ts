@@ -12,8 +12,8 @@ describe('readAgentModelDefaults', () => {
   });
 
   it('reads each agent format and honours project/local precedence', async () => {
-    const repo = mkdtempSync(join(tmpdir(), 'cez-native-models-repo-'));
-    const home = mkdtempSync(join(tmpdir(), 'cez-native-models-home-'));
+    const repo = mkdtempSync(join(tmpdir(), 'xez-native-models-repo-'));
+    const home = mkdtempSync(join(tmpdir(), 'xez-native-models-home-'));
     roots.push(repo, home);
     mkdirSync(join(repo, '.claude'), { recursive: true });
     mkdirSync(join(repo, '.codex'), { recursive: true });
@@ -37,8 +37,8 @@ describe('readAgentModelDefaults', () => {
   });
 
   it('falls back when a higher-precedence file is missing or malformed', async () => {
-    const repo = mkdtempSync(join(tmpdir(), 'cez-native-models-repo-'));
-    const home = mkdtempSync(join(tmpdir(), 'cez-native-models-home-'));
+    const repo = mkdtempSync(join(tmpdir(), 'xez-native-models-repo-'));
+    const home = mkdtempSync(join(tmpdir(), 'xez-native-models-home-'));
     roots.push(repo, home);
     mkdirSync(join(repo, '.claude'), { recursive: true });
     mkdirSync(join(home, '.claude'), { recursive: true });
@@ -49,8 +49,8 @@ describe('readAgentModelDefaults', () => {
   });
 
   it('reads Claude custom models from settings env and host ANTHROPIC_MODEL', async () => {
-    const repo = mkdtempSync(join(tmpdir(), 'cez-native-models-repo-'));
-    const home = mkdtempSync(join(tmpdir(), 'cez-native-models-home-'));
+    const repo = mkdtempSync(join(tmpdir(), 'xez-native-models-repo-'));
+    const home = mkdtempSync(join(tmpdir(), 'xez-native-models-home-'));
     roots.push(repo, home);
     mkdirSync(join(home, '.claude'), { recursive: true });
     writeFileSync(
@@ -67,8 +67,8 @@ describe('readAgentModelDefaults', () => {
   });
 
   it('pairs a Codex custom provider with its configured model', async () => {
-    const repo = mkdtempSync(join(tmpdir(), 'cez-native-models-repo-'));
-    const home = mkdtempSync(join(tmpdir(), 'cez-native-models-home-'));
+    const repo = mkdtempSync(join(tmpdir(), 'xez-native-models-repo-'));
+    const home = mkdtempSync(join(tmpdir(), 'xez-native-models-home-'));
     roots.push(repo, home);
     mkdirSync(join(home, '.codex'), { recursive: true });
     writeFileSync(
@@ -83,8 +83,8 @@ describe('readAgentModelDefaults', () => {
   });
 
   it('reads the effective Codex provider even when no native model is pinned', async () => {
-    const repo = mkdtempSync(join(tmpdir(), 'cez-native-models-repo-'));
-    const home = mkdtempSync(join(tmpdir(), 'cez-native-models-home-'));
+    const repo = mkdtempSync(join(tmpdir(), 'xez-native-models-repo-'));
+    const home = mkdtempSync(join(tmpdir(), 'xez-native-models-home-'));
     roots.push(repo, home);
     mkdirSync(join(home, '.codex'), { recursive: true });
     writeFileSync(join(home, '.codex', 'config.toml'), 'model_provider = "deepseek"\n');

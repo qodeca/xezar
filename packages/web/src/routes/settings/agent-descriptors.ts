@@ -1,4 +1,4 @@
-import type { AgentConfigFile, Runner } from '@open-mercato/cezar-api-client'
+import type { AgentConfigFile, Runner } from '@qodeca/xezar-api-client'
 
 /**
  * Per-agent descriptor driving the Settings → Agent config pane (spec

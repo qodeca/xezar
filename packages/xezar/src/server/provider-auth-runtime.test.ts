@@ -35,12 +35,12 @@ describe('watchProviderRuntimeAuthFailures', () => {
   let store: RunStore;
   let providerAuth: ProviderAuthService;
   const unwatchers: Array<() => void> = [];
-  const savedDryRun = process.env.CEZ_DRY_RUN;
+  const savedDryRun = process.env.XEZ_DRY_RUN;
 
   beforeEach(() => {
-    root = mkdtempSync(join(tmpdir(), 'cez-provider-auth-runtime-'));
-    store = RunStore.open(join(root, '.ai/cezar'));
-    delete process.env.CEZ_DRY_RUN;
+    root = mkdtempSync(join(tmpdir(), 'xez-provider-auth-runtime-'));
+    store = RunStore.open(join(root, '.ai/xezar'));
+    delete process.env.XEZ_DRY_RUN;
     const runCommand = vi.fn<RunProviderCommand>(async (executable) => ({
       stdout: CONNECTED_OUTPUT[providerForExecutable(executable)],
       stderr: '',
@@ -57,8 +57,8 @@ describe('watchProviderRuntimeAuthFailures', () => {
     for (const unwatch of unwatchers.splice(0)) unwatch();
     store.flush();
     rmSync(root, { recursive: true, force: true });
-    if (savedDryRun === undefined) delete process.env.CEZ_DRY_RUN;
-    else process.env.CEZ_DRY_RUN = savedDryRun;
+    if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
+    else process.env.XEZ_DRY_RUN = savedDryRun;
   });
 
   const watch = () => {

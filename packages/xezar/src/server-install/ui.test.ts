@@ -54,7 +54,7 @@ describe('createAutoUi', () => {
 
   it('never adopts a placeholder as an answer — it is a hint, not input', async () => {
     const ui = createAutoUi();
-    expect(await ui.text({ message: 'name', placeholder: 'cezar.ngrok.app' })).toBe('');
+    expect(await ui.text({ message: 'name', placeholder: 'xezar.ngrok.app' })).toBe('');
     expect(await ui.text({ message: 'name', placeholder: 'def', initialValue: 'real' })).toBe('real');
   });
 

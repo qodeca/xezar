@@ -20,9 +20,9 @@ describe('SSE responses defeat intermediary buffering', () => {
   let app: Hono;
 
   beforeEach(() => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-sse-headers-'));
-    mkdirSync(join(repoRoot, '.ai/cezar'), { recursive: true });
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-sse-headers-'));
+    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     app = createApp({ repoRoot, store, manager: {} as RunManager, version: '0.0.0-test' });
   });
 

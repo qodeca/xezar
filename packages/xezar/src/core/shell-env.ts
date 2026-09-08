@@ -5,7 +5,7 @@
  * A run executed under a second account only resumes under that same account: `claude --resume
  * <id>` reads `<CLAUDE_CONFIG_DIR>/sessions`, so a handoff without the variable does not fail
  * loudly — it silently starts a fresh conversation. The variable therefore has to travel with
- * every command cezar hands to a terminal, and it has to SURVIVE the command, because the window
+ * every command xezar hands to a terminal, and it has to SURVIVE the command, because the window
  * stays open and the user types the next `claude` in it themselves. Hence `export` / `set` rather
  * than a one-shot `VAR=v cmd` prefix.
  *

@@ -4,8 +4,8 @@ import { useState, type ReactNode } from 'react'
 import { hasAccountChoice, useAgentAccounts } from '@/api/agent-accounts'
 import { continueRun } from '@/api/client'
 import { queryKeys, useConfig, useRunnerModels } from '@/api/queries'
-import { DEFAULT_AGENT_ACCOUNT_ID } from '@open-mercato/cezar-api-client'
-import type { ApiRun, ContinueResponse, AttachmentInput, Runner } from '@open-mercato/cezar-api-client'
+import { DEFAULT_AGENT_ACCOUNT_ID } from '@qodeca/xezar-api-client'
+import type { ApiRun, ContinueResponse, AttachmentInput, Runner } from '@qodeca/xezar-api-client'
 import { PickerPill, RunnerPill } from '@/components/picker-pill'
 import {
   modelsForRunner,

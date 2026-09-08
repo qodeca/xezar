@@ -3,11 +3,8 @@
  * emits ALONGSIDE the v1 `AgentEvent` stream (never replacing it; mixed
  * NDJSON files stay valid — old recordings must keep replaying).
  *
- * Contract sources (authoritative, in this order):
- *  - `.ai/analysis/cockpit-ui-redesign/agent-event-protocols.md` §7 (schema)
- *    and §7.1 (per-backend mapping tables);
- *  - the spec `.ai/specs/2026-07-14-cockpit-ui-redesign.md`
- *    §"Normalized agent-event protocol v2".
+ * Contract source (authoritative): `AGENT_PROTOCOL.md` §3 ("v2 `UiEvent` —
+ *   the normalized protocol") and §4 (per-backend mapping tables).
  *
  * Design rules baked in:
  *  1. Item-lifecycle model (Codex/ACP style): one stable `id` per item with
@@ -345,7 +342,7 @@ export interface UiAskQuestion {
 
 /**
  * The agent asked the user a structured multiple-choice question via a
- * `CEZ:ASK` marker (spec `2026-07-18-askuser-across-runners`). Emitted by the
+ * `XEZ:ASK` marker (spec `2026-07-18-askuser-across-runners`). Emitted by the
  * RunManager off the assembled turn text — uniform across claude/codex/opencode
  * with no per-backend mapper work. The run parks `waiting`; the cockpit renders
  * clickable option chips. Resolution is client-side — the next user message for

@@ -53,17 +53,17 @@ describe('a run stopped by a usage limit resumes itself', () => {
   }
 
   beforeEach(async () => {
-    savedEnv.CEZ_DRY_RUN = process.env.CEZ_DRY_RUN;
-    savedEnv.CEZ_MOCK_LIMIT_RESET_SECONDS = process.env.CEZ_MOCK_LIMIT_RESET_SECONDS;
-    process.env.CEZ_DRY_RUN = '1';
+    savedEnv.XEZ_DRY_RUN = process.env.XEZ_DRY_RUN;
+    savedEnv.XEZ_MOCK_LIMIT_RESET_SECONDS = process.env.XEZ_MOCK_LIMIT_RESET_SECONDS;
+    process.env.XEZ_DRY_RUN = '1';
     // Far enough out that the schedule is unambiguous and the timer never fires mid-test.
-    process.env.CEZ_MOCK_LIMIT_RESET_SECONDS = '3600';
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-auto-resume-'));
+    process.env.XEZ_MOCK_LIMIT_RESET_SECONDS = '3600';
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-auto-resume-'));
     await run('git', ['init', '-q', '-b', 'main'], { cwd: repoRoot });
     writeFileSync(join(repoRoot, 'a.txt'), 'one\n');
     await run('git', ['add', '-A'], { cwd: repoRoot });
     await run('git', [...GIT_ID, 'commit', '-q', '-m', 'base'], { cwd: repoRoot });
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
   });
 
   afterEach(() => {
@@ -372,7 +372,7 @@ describe('a run stopped by a usage limit resumes itself', () => {
 
   it('retires a deadline no timer is holding when the setting is off', async () => {
     // The population `reconcileAutoResumes` exists for — a record promising a resume that no
-    // timer is holding — met by the setting being off: cezar restarted while it was off, the
+    // timer is holding — met by the setting being off: xezar restarted while it was off, the
     // config was hand-edited, or the project context was disposed mid-wait. Sweeping only the
     // armed timers leaves the deadline on the record, and a live `autoResumeAt` is not cosmetic:
     // `accountHolds()` reads it as a hold, so nothing new starts on that account, and the cockpit
@@ -579,7 +579,7 @@ describe('a run stopped by a usage limit resumes itself', () => {
     expect(store.getRun(record.id)?.autoResumeAt).toBeDefined();
     first.dispose();
 
-    // cezar was down when the window reopened — the deadline is already in the past, which the
+    // xezar was down when the window reopened — the deadline is already in the past, which the
     // re-arm floors to "fire now". The task text is swapped because a continuation carries the
     // run's own task back into the prompt (`hydrateQueuedContinuation`), and the mock replies to
     // `mock:limit` wherever it appears — this test is about the resume completing, not looping

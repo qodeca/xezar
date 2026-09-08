@@ -58,27 +58,27 @@ const memoryWorkspaceConfig = (disabledProviders: ProviderId[] = []) => {
 describe('workspace provider API', () => {
   let root: string;
   let store: RunStore;
-  const savedModelsLocked = process.env.CEZ_AGENT_MODELS_LOCKED;
-  const savedDryRun = process.env.CEZ_DRY_RUN;
-  const savedRemote = process.env.CEZ_REMOTE;
+  const savedModelsLocked = process.env.XEZ_AGENT_MODELS_LOCKED;
+  const savedDryRun = process.env.XEZ_DRY_RUN;
+  const savedRemote = process.env.XEZ_REMOTE;
 
   beforeEach(() => {
-    root = mkdtempSync(join(tmpdir(), 'cez-providers-api-'));
-    store = RunStore.open(join(root, '.ai/cezar'));
-    delete process.env.CEZ_AGENT_MODELS_LOCKED;
-    delete process.env.CEZ_DRY_RUN;
-    delete process.env.CEZ_REMOTE;
+    root = mkdtempSync(join(tmpdir(), 'xez-providers-api-'));
+    store = RunStore.open(join(root, '.ai/xezar'));
+    delete process.env.XEZ_AGENT_MODELS_LOCKED;
+    delete process.env.XEZ_DRY_RUN;
+    delete process.env.XEZ_REMOTE;
   });
 
   afterEach(() => {
     store.flush();
     rmSync(root, { recursive: true, force: true });
-    if (savedModelsLocked === undefined) delete process.env.CEZ_AGENT_MODELS_LOCKED;
-    else process.env.CEZ_AGENT_MODELS_LOCKED = savedModelsLocked;
-    if (savedDryRun === undefined) delete process.env.CEZ_DRY_RUN;
-    else process.env.CEZ_DRY_RUN = savedDryRun;
-    if (savedRemote === undefined) delete process.env.CEZ_REMOTE;
-    else process.env.CEZ_REMOTE = savedRemote;
+    if (savedModelsLocked === undefined) delete process.env.XEZ_AGENT_MODELS_LOCKED;
+    else process.env.XEZ_AGENT_MODELS_LOCKED = savedModelsLocked;
+    if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
+    else process.env.XEZ_DRY_RUN = savedDryRun;
+    if (savedRemote === undefined) delete process.env.XEZ_REMOTE;
+    else process.env.XEZ_REMOTE = savedRemote;
   });
 
   const service = (
@@ -169,7 +169,7 @@ describe('workspace provider API', () => {
   });
 
   it('GET /api/v1/providers/status skips probes and provider preferences under the explicit model lock', async () => {
-    process.env.CEZ_AGENT_MODELS_LOCKED = '1';
+    process.env.XEZ_AGENT_MODELS_LOCKED = '1';
     const runCommand = vi.fn<RunProviderCommand>();
     const workspaceConfig = memoryWorkspaceConfig(['claude', 'codex', 'opencode', 'pi']);
     const response = await apiRequest(app({
@@ -414,8 +414,8 @@ describe('workspace provider API', () => {
   });
 
   it('observes a lazy-project auth failure emitted during recovery', async () => {
-    const lazyRoot = mkdtempSync(join(tmpdir(), 'cez-providers-lazy-'));
-    const lazyStore = RunStore.open(join(lazyRoot, '.ai/cezar'), { keepLive: true });
+    const lazyRoot = mkdtempSync(join(tmpdir(), 'xez-providers-lazy-'));
+    const lazyStore = RunStore.open(join(lazyRoot, '.ai/xezar'), { keepLive: true });
     const run = lazyStore.createRun({
       title: 'lazy recovery',
       workflow: 'quick-task',
@@ -639,7 +639,7 @@ describe('workspace provider API', () => {
 
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({
-      error: 'Run this command on the machine hosting cezar.',
+      error: 'Run this command on the machine hosting xezar.',
       command: "'codex' login",
     });
     expect(openTerminal).not.toHaveBeenCalled();

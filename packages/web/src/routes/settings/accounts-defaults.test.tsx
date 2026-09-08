@@ -8,7 +8,7 @@ import { createQueryClient } from '@/api/query-client'
 import type {
   AgentProfilesResponse,
   WorkspaceConfigResponse,
-} from '@open-mercato/cezar-api-client'
+} from '@qodeca/xezar-api-client'
 import { Toaster, resetToasts } from '@/components/ui/toaster'
 import { AppRoutes } from '@/routes'
 
@@ -19,7 +19,7 @@ import { AppRoutes } from '@/routes'
  * separate page would mean adding an account here and going elsewhere to say "use it".
  *
  * What this pins is the STORES. One click answers one question but writes two files — the runner and
- * the models to `~/.cezar/config.json`, the account to `~/.cezar/agent-accounts.json` — and neither
+ * the models to `~/.xezar/config.json`, the account to `~/.xezar/agent-accounts.json` — and neither
  * may ever reach the per-repo `/api/v1/config`, which is committable. A regression there would
  * publish which login someone works under.
  */
@@ -76,7 +76,7 @@ function serve({
   requests = []
   const state: WorkspaceConfigResponse = {
     browseRoot: '~/',
-    projectsDir: '~/cezar/projects',
+    projectsDir: '~/xezar/projects',
     skillsAutoUpdate: null,
     effectiveSkillsAutoUpdate: true,
     composerDefaults: {
@@ -140,7 +140,7 @@ function renderAccounts() {
   client.setQueryData(workspaceQueryKeys.projects, {
     projects: [],
     bootProject: 'boot',
-    projectsDir: '~/cezar/projects',
+    projectsDir: '~/xezar/projects',
   })
   render(
     <QueryClientProvider client={client}>
@@ -188,7 +188,7 @@ describe('Agent accounts → Defaults for new projects', () => {
         if (url === '/api/v1/workspace/config') {
           return json({
             browseRoot: '~/',
-            projectsDir: '~/cezar/projects',
+            projectsDir: '~/xezar/projects',
             skillsAutoUpdate: null,
             effectiveSkillsAutoUpdate: true,
             composerDefaults: {

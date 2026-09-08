@@ -11,7 +11,7 @@ import type {
   RepoResponse,
   Skill,
   WorkflowsResponse,
-} from '@open-mercato/cezar-api-client'
+} from '@qodeca/xezar-api-client'
 import { resetToasts, Toaster } from '@/components/ui/toaster'
 import { AppRoutes } from '@/routes'
 
@@ -62,8 +62,8 @@ afterEach(() => {
 
 const HEALTH: HealthResponse = {
   version: '0.1.3',
-  repoRoot: '/home/u/cezar',
-  repo: { root: '/home/u/cezar', branch: 'main' },
+  repoRoot: '/home/u/xezar',
+  repo: { root: '/home/u/xezar', branch: 'main' },
   defaultRunner: 'claude',
   checks: [
     { name: 'claude', available: true, version: '2.0.44' },
@@ -72,7 +72,7 @@ const HEALTH: HealthResponse = {
   forge: null,
   capabilities: { localHandoff: true, tokenMetrics: true, tokenUsageMetrics: true, costMetrics: true, followups: true, singleProject: false, automations: false },
   projects: [
-    { id: BOOT, name: 'cezar' },
+    { id: BOOT, name: 'xezar' },
     { id: OTHER, name: 'shop-frontend' },
   ],
   bootProject: BOOT,
@@ -82,8 +82,8 @@ const REGISTRY: ProjectsResponse = {
   projects: [
     {
       id: BOOT,
-      name: 'cezar',
-      root: '/home/u/cezar',
+      name: 'xezar',
+      root: '/home/u/xezar',
       addedAt: '',
       lastOpenedAt: '2026-07-20T10:00:00.000Z',
       source: 'local',
@@ -102,7 +102,7 @@ const REGISTRY: ProjectsResponse = {
     },
   ],
   bootProject: BOOT,
-  projectsDir: '~/cezar/projects',
+  projectsDir: '~/xezar/projects',
 }
 
 const PROVIDERS: ProviderStatusResponse = {
@@ -131,7 +131,7 @@ const OTHER_WORKFLOWS: WorkflowsResponse = {
 }
 
 const REPO: RepoResponse = {
-  info: { root: '/home/u/cezar', branch: 'main' },
+  info: { root: '/home/u/xezar', branch: 'main' },
   status: [],
   log: [],
   branches: ['main'],
@@ -314,7 +314,7 @@ describe('switching project', () => {
     serve()
     renderAt(`/p/${BOOT}/new`)
     await composerReady()
-    fireEvent.change(textarea(), { target: { value: 'fix the cezar flake' } })
+    fireEvent.change(textarea(), { target: { value: 'fix the xezar flake' } })
 
     await switchProject(OTHER)
     await composerReady()
@@ -325,8 +325,8 @@ describe('switching project', () => {
     // The boot project keeps the bare legacy key (unscoped invariant); the second project
     // gets the spec's suffixed one.
     await waitFor(() => {
-      expect(JSON.parse(localStorage.getItem('cez-new-task-draft')!).text).toBe('fix the cezar flake')
-      expect(JSON.parse(localStorage.getItem(`cez-new-task-draft:${OTHER}`)!).text).toBe(
+      expect(JSON.parse(localStorage.getItem('xez-new-task-draft')!).text).toBe('fix the xezar flake')
+      expect(JSON.parse(localStorage.getItem(`xez-new-task-draft:${OTHER}`)!).text).toBe(
         'ship the storefront',
       )
     })
@@ -335,14 +335,14 @@ describe('switching project', () => {
     await switchProject(BOOT)
     await waitFor(() => expect(pathname()).toBe(`/p/${BOOT}/new`))
     await composerReady()
-    expect(textarea().value).toBe('fix the cezar flake')
+    expect(textarea().value).toBe('fix the xezar flake')
   })
 
   it('submits to the SELECTED project and clears only that project’s draft text', async () => {
     serve()
     renderAt(`/p/${BOOT}/new`)
     await composerReady()
-    fireEvent.change(textarea(), { target: { value: 'left behind in cezar' } })
+    fireEvent.change(textarea(), { target: { value: 'left behind in xezar' } })
 
     await switchProject(OTHER)
     await composerReady()
@@ -359,7 +359,7 @@ describe('switching project', () => {
 
     // Started runs land on the selected project's thread URL, and the other draft is intact.
     await waitFor(() => expect(pathname()).toBe(`/p/${OTHER}/tasks/run-1`))
-    expect(JSON.parse(localStorage.getItem('cez-new-task-draft')!).text).toBe('left behind in cezar')
-    expect(JSON.parse(localStorage.getItem(`cez-new-task-draft:${OTHER}`)!).text).toBe('')
+    expect(JSON.parse(localStorage.getItem('xez-new-task-draft')!).text).toBe('left behind in xezar')
+    expect(JSON.parse(localStorage.getItem(`xez-new-task-draft:${OTHER}`)!).text).toBe('')
   })
 })

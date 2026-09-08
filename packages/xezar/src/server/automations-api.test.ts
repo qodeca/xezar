@@ -16,23 +16,23 @@ describe('GitHub automation API', () => {
   let store: RunStore;
   // #801 turned the whole family into an opt-in capability. This suite is about what the routes
   // DO, so it opts in explicitly; what they answer while the flag is off is `automations-gate.test.ts`.
-  const savedAutomations = process.env.CEZ_AUTOMATIONS;
+  const savedAutomations = process.env.XEZ_AUTOMATIONS;
 
   beforeEach(() => {
-    root = mkdtempSync(join(tmpdir(), 'cezar-automation-api-'));
-    home = mkdtempSync(join(tmpdir(), 'cezar-automation-home-'));
-    process.env.CEZ_HOME = home;
-    process.env.CEZ_AUTOMATIONS = '1';
-    mkdirSync(join(root, '.ai/cezar'), { recursive: true });
-    store = RunStore.open(join(root, '.ai/cezar'));
+    root = mkdtempSync(join(tmpdir(), 'xezar-automation-api-'));
+    home = mkdtempSync(join(tmpdir(), 'xezar-automation-home-'));
+    process.env.XEZ_HOME = home;
+    process.env.XEZ_AUTOMATIONS = '1';
+    mkdirSync(join(root, '.ai/xezar'), { recursive: true });
+    store = RunStore.open(join(root, '.ai/xezar'));
   });
   afterEach(() => {
     store.flush();
     rmSync(root, { recursive: true, force: true });
     rmSync(home, { recursive: true, force: true });
-    delete process.env.CEZ_HOME;
-    if (savedAutomations === undefined) delete process.env.CEZ_AUTOMATIONS;
-    else process.env.CEZ_AUTOMATIONS = savedAutomations;
+    delete process.env.XEZ_HOME;
+    if (savedAutomations === undefined) delete process.env.XEZ_AUTOMATIONS;
+    else process.env.XEZ_AUTOMATIONS = savedAutomations;
   });
 
   const input = {
@@ -89,7 +89,7 @@ describe('GitHub automation API', () => {
     expect(check.status).toBe('error');
     const list = await apiRequest(server, '/api/v1/automations');
     expect(((await list.json()) as any).automations).toHaveLength(1);
-    expect(readFileOrEmpty(join(root, '.ai/cezar/automation-receipts.ndjson'))).toBe('');
+    expect(readFileOrEmpty(join(root, '.ai/xezar/automation-receipts.ndjson'))).toBe('');
   });
 
   it('shares API mutations with the workspace scheduler store', async () => {
@@ -102,8 +102,8 @@ describe('GitHub automation API', () => {
       coordinator,
       handle: (_projectId, sharedStore) => ({
         projectId: 'default',
-        owner: 'open-mercato',
-        repo: 'cezar',
+        owner: 'qodeca',
+        repo: 'xezar',
         store: sharedStore,
         poller: { poll: async () => ({ candidates: [], truncated: false, pages: 1 }) } as never,
       }),
@@ -136,7 +136,7 @@ describe('GitHub automation API', () => {
   });
 
   it('accepts preview as an automation-log result filter', async () => {
-    const automationStore = AutomationStore.open(join(root, '.ai/cezar'));
+    const automationStore = AutomationStore.open(join(root, '.ai/xezar'));
     automationStore.appendLog({
       automationId: 'previewed',
       revision: 1,

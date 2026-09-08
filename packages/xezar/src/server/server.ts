@@ -32,7 +32,7 @@ import {
   type PickVariantResponse,
   type RunIndexEntry,
   type RunsIndexResponse,
-} from '@open-mercato/cezar-contract';
+} from '@qodeca/xezar-contract';
 // A contract VALUE, like `workspaceUiStateSchema` in workspace/migrations.ts — the request
 // schema this route validates with is the same one the client compiles against.
 import {
@@ -40,7 +40,7 @@ import {
   modelDiscoveryRunnerSchema,
   openProjectInSchema,
   updateProjectInputSchema,
-} from '@open-mercato/cezar-contract';
+} from '@qodeca/xezar-contract';
 import { detectEnvironment } from '../core/backend-detect.ts';
 import { RUNNER_IDS } from '../core/agent-runner.ts';
 import type { ContentBlock } from '../core/agent-runner.ts';
@@ -89,7 +89,7 @@ import {
   runEventsQuerySchema,
   runHistoryQuerySchema,
   runIdParamSchema,
-} from '@open-mercato/cezar-contract';
+} from '@qodeca/xezar-contract';
 import { toPastedContent, type PastedContent, type RunManager } from '../workflows/run.ts';
 import { removeWorktree, worktreeDiff, worktreeDiffStat, worktreeSizeBytes } from '../git-worktree.ts';
 import { isReclaimable, reclaimWorktrees } from '../runs/retention.ts';
@@ -105,7 +105,7 @@ import {
   pushCurrentBranch,
   readWorktreePath,
 } from './git-changes.ts';
-import { gatedSkillsRepos, loadConfig, resolveWorktreeRetention, type CezConfig } from '../config.ts';
+import { gatedSkillsRepos, loadConfig, resolveWorktreeRetention, type XezConfig } from '../config.ts';
 import { findConfigFile } from '../agent-config/catalog.ts';
 import { readConfigFile, statConfigPath, writeConfigFile } from '../agent-config/files.ts';
 import { readAgentModelDefaults } from '../agent-config/models.ts';
@@ -225,7 +225,7 @@ export interface ServerDeps {
    *  the app (tests, future CLI hooks). */
   workspaceEvents?: WorkspaceEventBus;
   /** How `POST /api/projects/checkout` (step 4.3) actually clones. Defaults to
-   *  `gh repo clone` (or the `CEZ_DRY_RUN=1` fake) — injected by tests so the
+   *  `gh repo clone` (or the `XEZ_DRY_RUN=1` fake) — injected by tests so the
    *  route's guards, cleanup and error surfacing are exercised for real
    *  against real temp dirs, without a network or a `gh` binary. */
   cloneRunner?: CloneRunner;
@@ -422,10 +422,10 @@ export function projectRouteManifest(app: Hono): ProjectRouteInfo[] {
 }
 
 /** 409 body for the inbox mutators while the follow-up inbox is off (#471). */
-const FOLLOWUPS_OFF = 'the follow-up inbox is disabled — set CEZ_FOLLOWUPS=1 to enable it';
+const FOLLOWUPS_OFF = 'the follow-up inbox is disabled — set XEZ_FOLLOWUPS=1 to enable it';
 
 /** 409 body for every automations route while GitHub automations are off (#801). */
-const AUTOMATIONS_OFF = 'GitHub automations are disabled — set CEZ_AUTOMATIONS=1 to enable them';
+const AUTOMATIONS_OFF = 'GitHub automations are disabled — set XEZ_AUTOMATIONS=1 to enable them';
 
 // ---- variant-compare response shapes (spec 010) ----------------------------
 // Named and exported so `api-types.test.ts` can drift-guard the cockpit's
@@ -455,7 +455,7 @@ export interface RegisterProjectResponse {
 
 /** `DELETE /api/projects/:projectId` (multi-project spec, step 4.4) — the
  *  Projects settings pane's Remove. DEREGISTRATION ONLY: the entry leaves
- *  `~/.cezar/config.json` and nothing under the project root is read, moved or
+ *  `~/.xezar/config.json` and nothing under the project root is read, moved or
  *  deleted. `removed` is always true on a 200 (the failure paths are 404/409). */
 export interface RemoveProjectResponse {
   removed: true;
@@ -472,14 +472,14 @@ export interface UpdateProjectResponse {
 }
 
 /** `GET/PUT /api/workspace/config` (multi-project spec, step 2.7) — the
- *  settings slice of `~/.cezar/config.json`: global knobs ONLY, never the
+ *  settings slice of `~/.xezar/config.json`: global knobs ONLY, never the
  *  project registry (that is `GET /api/projects`' job). */
 export interface WorkspaceConfigResponse {
   /** Root exposed by the Add project directory browser (`~` kept). */
   browseRoot: string;
   /** Checkout root for GUI-cloned projects — stored as written (`~` kept). */
   projectsDir: string;
-  /** Stored override; null means inherit CEZ_SKILLS_AUTO_UPDATE, then true. */
+  /** Stored override; null means inherit XEZ_SKILLS_AUTO_UPDATE, then true. */
   skillsAutoUpdate: boolean | null;
   effectiveSkillsAutoUpdate: boolean;
   composerDefaults: {
@@ -639,7 +639,7 @@ const parseWorkflowSchema = z.object({
   yaml: z.string().min(1).max(100_000),
 });
 
-// Small GUI preferences persisted in `.ai/cezar/ui-state.json` (files, not a
+// Small GUI preferences persisted in `.ai/xezar/ui-state.json` (files, not a
 // DB): today just the last-used task source, so the form preselects what you
 // actually run. Unknown keys pass through — future prefs won't need a schema
 // dance.
@@ -656,8 +656,8 @@ const UI_STATE_MAX_KEYS = 200;
 
 /** Settings → Appearance (redesign R6): accent + density + reading width. ONE
  *  schema for both ui-state files — per-repo (the legacy home, kept so an older
- *  cezar in the same repo still honours it) and workspace
- *  (`~/.cezar/ui-state.json`, its post-migration home — multi-project spec,
+ *  xezar in the same repo still honours it) and workspace
+ *  (`~/.xezar/ui-state.json`, its post-migration home — multi-project spec,
  *  Data Model).
  *
  *  Every key is `.optional()` so an older ui-state.json parses unchanged, but
@@ -725,7 +725,7 @@ const uiStateSchema = z
     // ui-state.json without the key behaves as the default (issues).
     githubView: z.enum(['issues', 'prs']).optional(),
     // Settings → Appearance (redesign R6): accent + density. ADDITIVE — the theme itself
-    // stays in the browser (`cez-theme` localStorage, pre-paint). The cockpit always PUTs
+    // stays in the browser (`xez-theme` localStorage, pre-paint). The cockpit always PUTs
     // the whole object because the top-level merge below is shallow.
     appearance: appearanceSchema.optional(),
     // Follow-up prompt templates (#413): reusable snippets insertable into the GitHub hand-over
@@ -1014,7 +1014,7 @@ const FILE_FORMATS = ['application/json', 'image/*'] as const;
  *  can lie (e.g. a read-only mount still reports writable permission bits).
  *  Returns the failure message, or null when the directory is usable. */
 async function probeWritableDir(dir: string, create: boolean): Promise<string | null> {
-  const probe = join(dir, `.cez-write-probe-${process.pid}-${Date.now().toString(36)}`);
+  const probe = join(dir, `.xez-write-probe-${process.pid}-${Date.now().toString(36)}`);
   try {
     if (create) await mkdir(dir, { recursive: true });
     const info = await stat(dir);
@@ -1041,7 +1041,7 @@ export function createApp(deps: ServerDeps) {
   // handler body would silently pin it to the boot project, which the rename
   // turns into a compile error instead.
   const bootRoot = deps.repoRoot;
-  const bootDataDir = join(bootRoot, '.ai/cezar');
+  const bootDataDir = join(bootRoot, '.ai/xezar');
   const modelCatalog = deps.modelCatalog ?? new RunnerModelCatalog({
     adapters: {
       claude: { discover: () => discoverClaudeModels({ cwd: bootRoot }) },
@@ -1071,19 +1071,19 @@ export function createApp(deps: ServerDeps) {
    * The gate: why a run cannot start against `required`, or null when it can.
    *
    * VERIFY BEFORE YOU REFUSE. Auth state is served stale-while-revalidate (see
-   * `ProviderAuthService.status`), so a cached "disconnected" may predate a login cezar could not
+   * `ProviderAuthService.status`), so a cached "disconnected" may predate a login xezar could not
    * observe — someone running `claude auth login` in a terminal. Refusing on that would lock a user
    * out of their own cockpit with no way back but waiting. So a believed-unavailable provider is
    * re-probed, and only a refusal that survives the fresh answer is returned.
    *
    * The cost lands where it belongs: the common path (connected, warm) pays nothing at all, and the
-   * probe is only spawned when cezar is about to say no — a rare, interactive moment. This is also
+   * probe is only spawned when xezar is about to say no — a rare, interactive moment. This is also
    * what lets the cache hold a negative for a minute instead of five seconds, which is what made
    * every reader of `GET /providers/status` periodically pay for a CLI spawn.
    *
    * A runtime auth latch is deliberately NOT escaped by this: `withRuntimeFailures` keeps forcing
    * the row disconnected until the user acknowledges that exact incident, so the re-probe cannot
-   * talk cezar out of a rejection it actually observed.
+   * talk xezar out of a rejection it actually observed.
    */
   const providerActionError = async (
     required: readonly ProviderId[],
@@ -1153,7 +1153,7 @@ export function createApp(deps: ServerDeps) {
     }
   };
   // Hosted-mode gate (spec §"Deployment modes") — read per request so
-  // CEZ_REMOTE flips take effect live (and tests can toggle it).
+  // XEZ_REMOTE flips take effect live (and tests can toggle it).
   const capabilities = () => resolveCapabilities(process.env, bindHost);
   const singleProjectRefusal = (
     action: 'adding projects' | 'editing projects' | 'removing projects' | 'folder browsing',
@@ -1166,7 +1166,7 @@ export function createApp(deps: ServerDeps) {
   // The boot project's context is SEEDED from the deps the caller already
   // built (src/index.ts `serveCommand` did the recover/prune/launch-key work
   // at startup — observable boot behavior unchanged); it never enters the
-  // lazy map, so its `.ai/cezar` state is never double-opened. `id` starts as
+  // lazy map, so its `.ai/xezar` state is never double-opened. `id` starts as
   // the reserved alias when registration was suppressed — handlers never read
   // it; API payloads name the boot project via `resolveBootProject` instead.
   const bootContext: ProjectContext = {
@@ -1235,7 +1235,7 @@ export function createApp(deps: ServerDeps) {
   //   1. Host allowlist (loopback deployments only) — a request whose Host is
   //      not a loopback name did not really originate from this machine. A
   //      rebound `evil.com` still sends `Host: evil.com`, so this kills DNS
-  //      rebinding for reads AND writes. Skipped in hosted mode (CEZ_REMOTE /
+  //      rebinding for reads AND writes. Skipped in hosted mode (XEZ_REMOTE /
   //      non-loopback bind), where the reverse proxy forwards the real public
   //      Host and TLS+auth own the perimeter.
   //      The match runs through `isLoopbackHostHeader`, whose 127.0.0.0/8 test
@@ -1373,7 +1373,7 @@ export function createApp(deps: ServerDeps) {
     //
     // Served out of the Vite build: the file is a `public/` asset of the web package, which the
     // build copies verbatim into `web/dist`. One home, one URL — the same bytes this route
-    // hands out are what the bundle's own `<img src="/open-mercato.svg">` asks for.
+    // hands out are what the bundle's own `<img src="/xezar.svg">` asks for.
     // Without a build there is nothing to serve, which is a 404 rather than a crash (the shell
     // route answers the same dev-only state with its build hint).
     const path = join(distDir, name);
@@ -1396,7 +1396,7 @@ export function createApp(deps: ServerDeps) {
       // page instead of the app — the legacy fallback UI was deleted in R7.
       if (!hintLogged) {
         hintLogged = true;
-        console.log('cezar: web/dist is missing — run `npm run build:web` to build the cockpit');
+        console.log('xezar: web/dist is missing — run `npm run build:web` to build the cockpit');
       }
       return new Response(BUILD_HINT_HTML, {
         headers: { 'content-type': HTML_TYPE },
@@ -1425,8 +1425,8 @@ export function createApp(deps: ServerDeps) {
     });
   });
 
-  // The favicon packages/web/index.html points at (`/open-mercato.svg`).
-  app.get('/open-mercato.svg', staticFile('open-mercato.svg', 'image/svg+xml'));
+  // The favicon packages/web/index.html points at (`/xezar.svg`).
+  app.get('/xezar.svg', staticFile('xezar.svg', 'image/svg+xml'));
 
   // ---- meta ----------------------------------------------------------------
   // CORS — deliberately for /api/health ONLY (spec 011): the bookmarklets
@@ -1475,7 +1475,7 @@ export function createApp(deps: ServerDeps) {
       // checkout path and username (#431). Local mode keeps the full path (the
       // protected bookmarklet shape); hosted/remote mode trims it to a basename.
       // NB this narrows the VALUE of a field named in BACKWARD_COMPATIBILITY.md
-      // §2: the field is always present and a string, but under CEZ_REMOTE it is
+      // §2: the field is always present and a string, but under XEZ_REMOTE it is
       // no longer an absolute path. Deliberate — a hosted cockpit's paths are on
       // a machine the reader does not have anyway. See §2's `repoRoot` note.
       repoRoot: caps.localHandoff ? bootRoot : basename(bootRoot),
@@ -1510,7 +1510,7 @@ export function createApp(deps: ServerDeps) {
   // decides how often a revalidation is kicked off; on its own it bounds nothing,
   // because the revalidation is fire-and-forget. While a cockpit holds the
   // `health` topic the publisher's interval keeps the cache warm and the two are
-  // the same number — but the normal state of a background `cezar serve` is NO
+  // the same number — but the normal state of a background `xezar serve` is NO
   // subscriber, and then nothing refreshes the cache at all: the next `GET
   // /api/health`, an hour later, would answer with the boot pre-warm's payload
   // and only the request AFTER it would see the truth. That endpoint is the
@@ -1601,7 +1601,7 @@ export function createApp(deps: ServerDeps) {
   // `GET /api/health` reads a warm value instead of the cold ~1 s compute.
   if (deps.socketHub) void refreshHealth();
   /**
-   * Warm the whole of cezar's agent knowledge — the three discovered defaults AND every extra
+   * Warm the whole of xezar's agent knowledge — the three discovered defaults AND every extra
    * account — so no reader ever pays the first shell-out.
    *
    * Which login each agent is signed into is operating knowledge, not a settings-page detail: the
@@ -1768,7 +1768,7 @@ export function createApp(deps: ServerDeps) {
       const provider = body.data.provider as ProviderId;
       // A NAMED account is refused in hosted mode before anything is resolved, exactly like every
       // sibling route in the agent-profiles family. Checking later would already have read
-      // `~/.cezar/agent-accounts.json`, built a command carrying the account's absolute path (which
+      // `~/.xezar/agent-accounts.json`, built a command carrying the account's absolute path (which
       // both the success body and the hosted 409 echo), and — for a stored account — spawned a
       // probe. It would also answer `unknown account: <id>` for a wrong id, which is an enumeration
       // oracle for the very ids the hosted listing withholds. The bare-provider spelling keeps its
@@ -1796,7 +1796,7 @@ export function createApp(deps: ServerDeps) {
       // a connected answer there stands for CONNECTED_TTL_MS. Without this, Connect after a
       // `claude /logout` answers "already connected", opens nothing, and the user is stuck — and it
       // would contradict this module's own invariant that opening a login is one of the things
-      // cezar CAN observe and therefore invalidates explicitly rather than waiting out a window.
+      // xezar CAN observe and therefore invalidates explicitly rather than waiting out a window.
       if (!profile.isDefault) providerAuth.forgetProfileStatus(provider, profile.id);
       const row = profile.isDefault
         ? (await providerAuth.status({ refresh: true })).providers.find(
@@ -1817,7 +1817,7 @@ export function createApp(deps: ServerDeps) {
         return c.json({ error: row.hint ?? 'Authentication could not be verified. Try again.', command }, 409);
       }
       if (!capabilities().localHandoff) {
-        return c.json({ error: 'Run this command on the machine hosting cezar.', command }, 409);
+        return c.json({ error: 'Run this command on the machine hosting xezar.', command }, 409);
       }
       let opened = false;
       try {
@@ -2212,7 +2212,7 @@ export function createApp(deps: ServerDeps) {
 
     // Which account a PROJECT uses. On the accounts family rather than `PATCH /api/v1/projects`
     // because the selection is stored beside the accounts it names — one file, one atomic write,
-    // and nothing about it can be dropped by a cezar version that never heard of accounts.
+    // and nothing about it can be dropped by a xezar version that never heard of accounts.
     .put(
       '/workspace/agent-profiles/selection',
       jsonZodValidator(() => selectAgentProfileSchema),
@@ -2284,7 +2284,7 @@ export function createApp(deps: ServerDeps) {
             removed = store.accounts.length < before;
             if (!removed) return;
             // Scrub every reference IN THE SAME MUTATOR — the reason selections share this file.
-            // A two-call delete-then-scrub can be observed mid-way by another cezar process on
+            // A two-call delete-then-scrub can be observed mid-way by another xezar process on
             // this machine, which would then resolve a dangling id; harmless today (it degrades
             // to the default) but only by luck.
             for (const [root, selection] of Object.entries(store.selections)) {
@@ -2383,14 +2383,14 @@ export function createApp(deps: ServerDeps) {
       }
       if (!entry) return c.json({ error: `unknown project: ${id}` }, 404);
 
-      // The boot project is refused, not removed: `cezar serve` re-registers the
+      // The boot project is refused, not removed: `xezar serve` re-registers the
       // repo it was started in on every boot, so "removing" it would undo itself
       // at the next restart while breaking this session's sidebar in the
       // meantime. The pane disables the button and says the same thing.
       if (id === bootId) {
         return c.json(
           {
-            error: `cezar is serving ${entry.name} right now — it re-registers itself at every start, so it cannot be removed from here`,
+            error: `xezar is serving ${entry.name} right now — it re-registers itself at every start, so it cannot be removed from here`,
           },
           409,
         );
@@ -2414,7 +2414,7 @@ export function createApp(deps: ServerDeps) {
         // e.g. a read-only home — nothing was persisted (atomic tmp+rename).
         return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
       }
-      // Lost a race with another writer (or another cezar process): the entry is
+      // Lost a race with another writer (or another xezar process): the entry is
       // gone, which is what the caller wanted, but say it honestly.
       if (!removed) return c.json({ error: `unknown project: ${id}` }, 404);
       // In-process handles for a project no route can reach any more: store
@@ -2437,7 +2437,7 @@ export function createApp(deps: ServerDeps) {
     // never be degraded away by the next load's `.catch`.
     //
     // Deliberately NOT the home of the agent-account selection: that lives in
-    // `~/.cezar/agent-accounts.json` beside the accounts it names, so a cezar version that has
+    // `~/.xezar/agent-accounts.json` beside the accounts it names, so a xezar version that has
     // never heard of accounts cannot drop it (see workspace/agent-accounts.ts).
     .patch('/projects/:projectId', jsonZodValidator(updateProjectInputSchema), async (c) => {
       if (capabilities().singleProject) {
@@ -2586,7 +2586,7 @@ export function createApp(deps: ServerDeps) {
     }
     // Hosted mode: the same root the picker is narrowed to, re-checked — see
     // `isInsideBrowseRoot`. Local mode deliberately has NO containment: a
-    // project under `/srv/code` is a normal local setup and `cezar serve`
+    // project under `/srv/code` is a normal local setup and `xezar serve`
     // registers it today.
     //
     // Containment is asked in two halves, around the stat, and the split is
@@ -2628,15 +2628,15 @@ export function createApp(deps: ServerDeps) {
       };
     }
     // The boot-time auto-registration guard, applied to the manual gesture
-    // too: `$HOME` and cezar's own task worktrees are exactly as wrong a
-    // project root when a human clicks "Add project" as when `cezar serve`
+    // too: `$HOME` and xezar's own task worktrees are exactly as wrong a
+    // project root when a human clicks "Add project" as when `xezar serve`
     // would have registered them. Reachable from the dialog, which starts at
     // `~` and can add the folder it is showing.
     if (!(await shouldRegisterProject(requested))) {
       return {
         status: 400,
         body: {
-          error: `not a project folder: ${spelled} is your home directory or a cezar task worktree`,
+          error: `not a project folder: ${spelled} is your home directory or a xezar task worktree`,
         },
       };
     }
@@ -2678,8 +2678,8 @@ export function createApp(deps: ServerDeps) {
   // Deregister a project (multi-project spec, step 4.4 — Settings → Projects,
   // the per-row "Remove"). READ THIS BEFORE TOUCHING THE HANDLER: the ONLY
   // durable effect allowed here is dropping one entry from
-  // `~/.cezar/config.json`. There is deliberately no `rm`, no `rmdir`, no
-  // `RunStore.open` (which would `mkdir` `<root>/.ai/cezar/runs` and therefore
+  // `~/.xezar/config.json`. There is deliberately no `rm`, no `rmdir`, no
+  // `RunStore.open` (which would `mkdir` `<root>/.ai/xezar/runs` and therefore
   // WRITE into a folder the user just asked us to forget) anywhere below —
   // `removeProject` is a registry filter and `contexts.dispose` only tears down
   // in-process handles. Re-registering the same root later finds every task,
@@ -2783,7 +2783,7 @@ export function createApp(deps: ServerDeps) {
   // ---- workspace settings (multi-project spec, step 2.7) -------------------
   // WORKSPACE-level routes: single-mount (never mirrored under /api/p/),
   // same-origin. The config routes carry the settings UI's slice of
-  // `~/.cezar/config.json` — global knobs only; the registry stays on
+  // `~/.xezar/config.json` — global knobs only; the registry stays on
   // /api/projects above, and schemaVersion (a migration cursor, not a
   // setting) is deliberately omitted.
   const workspaceConfigBody = (config: WorkspaceConfig): WorkspaceConfigResponse => ({
@@ -2795,14 +2795,14 @@ export function createApp(deps: ServerDeps) {
       autonomous: config.composerDefaults.autonomous ?? null,
       worktree: config.composerDefaults.worktree ?? null,
       inheritedAutonomous:
-        process.env.CEZ_AUTONOMOUS_DEFAULT === '0'
+        process.env.XEZ_AUTONOMOUS_DEFAULT === '0'
           ? false
-          : process.env.CEZ_AUTONOMOUS_DEFAULT === '1'
+          : process.env.XEZ_AUTONOMOUS_DEFAULT === '1'
             ? true
             : 'source-dependent',
       inheritedWorktree: effectiveComposerDefault(
         undefined,
-        process.env.CEZ_WORKTREE_DEFAULT,
+        process.env.XEZ_WORKTREE_DEFAULT,
         true,
       ),
     },
@@ -2911,7 +2911,7 @@ export function createApp(deps: ServerDeps) {
       return c.json(workspaceConfigBody(written));
     })
 
-    // Global GUI state (`~/.cezar/ui-state.json`) — same parse/key-cap/shallow-
+    // Global GUI state (`~/.xezar/ui-state.json`) — same parse/key-cap/shallow-
     // merge semantics as the per-repo /api/v1/ui-state route below (the shared half
     // is `uiStateBodySchema`), but backed by the workspace file.
     .get('/workspace/ui-state', async (c) => c.json(await readWorkspaceUiState()))
@@ -3076,7 +3076,7 @@ export function createApp(deps: ServerDeps) {
     .get('/workflows', async (c) => c.json(await loadWorkflows(c.get('project').root)))
 
     // Save an approved plan as a reusable chain (spec 008): YAML in
-    // `.ai/cezar/workflows/<slug>.yaml` — from then on it's in the dropdown
+    // `.ai/xezar/workflows/<slug>.yaml` — from then on it's in the dropdown
     // like any other workflow.
     .post('/workflows', jsonZodValidator(saveWorkflowSchema), async (c) => {
       const { root: repoRoot } = c.get('project');
@@ -3192,7 +3192,7 @@ export function createApp(deps: ServerDeps) {
   const manualChecks = new Map<string, ManualCheck>();
 
   /**
-   * The automations gate (#801): with `CEZ_AUTOMATIONS` unset, every route of the feature
+   * The automations gate (#801): with `XEZ_AUTOMATIONS` unset, every route of the feature
    * answers 409 before touching a store, a lease or GitHub.
    *
    * Written as MIDDLEWARE rather than a line in each handler so the family cannot drift: a route
@@ -3462,10 +3462,10 @@ export function createApp(deps: ServerDeps) {
   const noteTodoStarted = async (dataDir: string, todoId: string, taskId: string): Promise<void> => {
     try {
       if (!(await markStarted(dataDir, todoId, taskId))) {
-        console.warn(`[cezar] inbox entry ${todoId} not marked started (unknown or already started)`);
+        console.warn(`[xezar] inbox entry ${todoId} not marked started (unknown or already started)`);
       }
     } catch (err) {
-      console.warn(`[cezar] could not mark inbox entry ${todoId} started: ${String(err)}`);
+      console.warn(`[xezar] could not mark inbox entry ${todoId} started: ${String(err)}`);
     }
   };
 
@@ -3576,7 +3576,7 @@ export function createApp(deps: ServerDeps) {
         // for follow-ups on a server that has them off gets a plain `false`
         // rather than an error — the run is still perfectly valid without them.
         // One decision here feeds the run record, the system prompt and
-        // CEZ_TODOS_FILE alike (RunManager.agentEnv).
+        // XEZ_TODOS_FILE alike (RunManager.agentEnv).
         generateFollowups: capabilities().followups ? parsed.data.generateFollowups : false,
       };
       const variants = parsed.data.variants ?? 1;
@@ -3589,7 +3589,7 @@ export function createApp(deps: ServerDeps) {
           return c.json(
             {
               error:
-                'parallel variants need a git repository (each variant runs in its own worktree) — run ×1 here, or start cezar inside a git repo',
+                'parallel variants need a git repository (each variant runs in its own worktree) — run ×1 here, or start xezar inside a git repo',
             },
             400,
           );
@@ -3862,7 +3862,7 @@ export function createApp(deps: ServerDeps) {
         return c.json(
           {
             error:
-              'local handoff is disabled — this cockpit runs in hosted mode (CEZ_REMOTE); resume the session from a machine that has the checkout',
+              'local handoff is disabled — this cockpit runs in hosted mode (XEZ_REMOTE); resume the session from a machine that has the checkout',
           },
           409,
         );
@@ -3901,7 +3901,7 @@ export function createApp(deps: ServerDeps) {
       if (!capabilities().localHandoff) {
         return c.json(
           {
-            error: 'local handoff is disabled — this cockpit runs in hosted mode (CEZ_REMOTE)',
+            error: 'local handoff is disabled — this cockpit runs in hosted mode (XEZ_REMOTE)',
           },
           409,
         );
@@ -4203,7 +4203,7 @@ export function createApp(deps: ServerDeps) {
     // Draft PR from the review gate (spec 009): final autosave → push →
     // `gh pr create --draft`; on success the run completes as done with the PR
     // badge. Failures come back as 409 with a `manual` merge command the GUI
-    // shows next to the toast. CEZ_DRY_RUN=1 fakes the URL (no push, no gh).
+    // shows next to the toast. XEZ_DRY_RUN=1 fakes the URL (no push, no gh).
     .post('/runs/:id/pr', async (c) => {
       const { root: repoRoot, dataDir, store, manager } = c.get('project');
       const id = c.req.param('id');
@@ -4227,7 +4227,7 @@ export function createApp(deps: ServerDeps) {
         return c.json({ error: outcome.error, manual: `git merge ${run.branch}` }, 409);
       }
       // A number the cockpit asked about BEFORE the pull request existed is cached as "this
-      // repository has no such number" — which is exactly what a `CEZ:PR=901` marker declared
+      // repository has no such number" — which is exactly what a `XEZ:PR=901` marker declared
       // ahead of the push looks like. It exists now.
       const createdNumber = refNumberFromUrl(outcome.url);
       if (createdNumber !== null) forgetRefStatus(repoRoot, createdNumber);
@@ -4372,7 +4372,7 @@ export function createApp(deps: ServerDeps) {
       const { root } = c.get('project');
       if (!capabilities().localHandoff) {
         return c.json(
-          { error: 'local handoff is disabled — this cockpit runs in hosted mode (CEZ_REMOTE)' },
+          { error: 'local handoff is disabled — this cockpit runs in hosted mode (XEZ_REMOTE)' },
           409,
         );
       }
@@ -5103,14 +5103,14 @@ export function createApp(deps: ServerDeps) {
 
   // The Settings → Agents knobs in one read (R6 Step 1.5) — an ADDITIVE
   // sibling of PUT /api/config below; /api/health keeps its protected shape.
-  const configAnswer = async (repoRoot: string, config: CezConfig) => {
+  const configAnswer = async (repoRoot: string, config: XezConfig) => {
     const nativeModels = await readAgentModelDefaults(repoRoot);
     const modelsLocked = agentModelsLocked(repoRoot);
     return {
       baseBranch: config.baseBranch ?? null,
       defaultRunner: config.defaultRunner,
       systemPrompt: config.systemPrompt ?? null,
-      // Native defaults seed each runner independently. A Cezar preset remains
+      // Native defaults seed each runner independently. A Xezar preset remains
       // selectable unless the operator opts into the fixed-model policy.
       defaultModels: modelsLocked
         ? nativeModels
@@ -5122,10 +5122,10 @@ export function createApp(deps: ServerDeps) {
       // on disk. 0 = unlimited. Always materialized (schema default 10).
       worktreeRetention: config.worktreeRetention,
       // Live title updates (task auto-naming spec): tri-state — null means "no
-      // config key, the CEZ_TITLE_UPDATES env default (ON) decides".
+      // config key, the XEZ_TITLE_UPDATES env default (ON) decides".
       liveTitleUpdates: config.liveTitleUpdates ?? null,
       // Optional review gate (#489): tri-state — null means "no config key, the
-      // CEZ_REVIEW_GATE env default (OFF) decides".
+      // XEZ_REVIEW_GATE env default (OFF) decides".
       reviewGate: config.reviewGate ?? null,
     };
   };
@@ -5266,7 +5266,7 @@ export function createApp(deps: ServerDeps) {
       if (def.tracked === 'outside-repo' && !capabilities().localHandoff) {
         return c.json(
           {
-            error: 'this file lives in your home directory and is not served in hosted mode (CEZ_REMOTE)',
+            error: 'this file lives in your home directory and is not served in hosted mode (XEZ_REMOTE)',
           },
           409,
         );
@@ -5284,7 +5284,7 @@ export function createApp(deps: ServerDeps) {
         return c.json(
           {
             error:
-              'editing agent config is disabled in hosted mode (CEZ_REMOTE) — edit it from the machine that owns the checkout',
+              'editing agent config is disabled in hosted mode (XEZ_REMOTE) — edit it from the machine that owns the checkout',
           },
           409,
         );
@@ -5441,7 +5441,7 @@ export function createApp(deps: ServerDeps) {
       // lazy `/github/ref-status` route fills it in.
       const referenceStatuses: RunsIndexResponse['referenceStatuses'] = {};
       for (const project of projects) {
-        // No folder, no runs to read. `not-git` still has an `.ai/cezar` worth indexing.
+        // No folder, no runs to read. `not-git` still has an `.ai/xezar` worth indexing.
         if (project.status === 'missing') continue;
         const owned = project.id === bootId ? bootContext : contexts.peek(project.id);
         // `listRuns()` already sorts newest-first; the disk reader returns file order, so both
@@ -5452,7 +5452,7 @@ export function createApp(deps: ServerDeps) {
         // is findable while you stand in its project and vanishes the moment you leave — the
         // exact asymmetry a cross-project finder exists to remove.
         const recent = (
-          owned ? owned.store.listRuns() : readRunIndexFromDisk(join(project.root, '.ai/cezar'))
+          owned ? owned.store.listRuns() : readRunIndexFromDisk(join(project.root, '.ai/xezar'))
         ).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
         if (recent.length > RUNS_INDEX_PER_PROJECT) truncated.push(project.id);
         const mentioned: number[] = [];
@@ -5555,7 +5555,7 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
   // SECURITY: default to loopback. This server executes agents locally and its endpoints are
   // same-origin-trusted (only /api/health is CORS-open); binding to a non-loopback host would
   // expose an agent-executing box to the network. `bindHost` exists only for a deliberate
-  // hosted/VPS deployment (which also flips CEZ_REMOTE to gate the local-handoff endpoints) —
+  // hosted/VPS deployment (which also flips XEZ_REMOTE to gate the local-handoff endpoints) —
   // src/index.ts never passes it, so the loopback guarantee holds for the normal CLI.
   const server = serve({
     fetch: app.fetch,

@@ -219,7 +219,7 @@ describe('snapshot persistence policy', () => {
 
 describe('golden-fixture replay through a real RunStore', () => {
   it('NDJSON gets seq/ts-stamped snapshots in order and zero item.delta lines; deltas ride the bus only', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'cez-sink-'));
+    const dir = mkdtempSync(join(tmpdir(), 'xez-sink-'));
     try {
       const store = RunStore.open(dir);
       const run = store.createRun({
@@ -311,7 +311,7 @@ describe('live-vs-disk equivalence', () => {
     // The streamed path really carried the content: the merged live delta
     // equals the fixture's raw-delta concatenation AND the final snapshot.
     const merged = wire.find((e) => e.type === 'item.delta' && e.itemId === 'item_cmd_1');
-    expect(merged?.delta).toBe('> cezar@0.1.0 test\n> vitest run\nTest Files  4 passed (4)\n');
+    expect(merged?.delta).toBe('> xezar@0.1.0 test\n> vitest run\nTest Files  4 passed (4)\n');
     const final = fromDisk.get('item_cmd_1') as UiToolItem;
     expect(final.output).toBe(merged?.delta);
     expect(final.status).toBe('completed');

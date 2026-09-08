@@ -246,7 +246,7 @@ export const ghCloneRunner: CloneRunner = (ref, dir, onLine, signal) =>
     });
   });
 
-/** `CEZ_DRY_RUN=1` — a fake clone so the dialog (and the tests) can exercise
+/** `XEZ_DRY_RUN=1` — a fake clone so the dialog (and the tests) can exercise
  *  the whole flow offline: a few progress lines and a plausible repo on disk.
  *  It writes only INSIDE the directory the caller already created. */
 export const dryRunCloneRunner: CloneRunner = async (ref, dir, onLine) => {
@@ -256,7 +256,7 @@ export const dryRunCloneRunner: CloneRunner = async (ref, dir, onLine) => {
   // a real clone would — the point of the dry run is the same shape, not the
   // same bytes.
   await mkdir(join(dir, '.git'), { recursive: true });
-  await writeFile(join(dir, 'README.md'), `# ${ref.repo}\n\n(CEZ_DRY_RUN=1 fake clone)\n`, 'utf8');
+  await writeFile(join(dir, 'README.md'), `# ${ref.repo}\n\n(XEZ_DRY_RUN=1 fake clone)\n`, 'utf8');
   onLine('Receiving objects: 100% (3/3), done.');
   return { ok: true };
 };
@@ -271,7 +271,7 @@ export interface CheckoutOptions {
   onProgress: (event: CheckoutProgressEvent) => void;
   checkoutId?: string | undefined;
   signal?: AbortSignal | undefined;
-  /** Test seam; defaults to `gh` (or the dry-run fake under `CEZ_DRY_RUN=1`). */
+  /** Test seam; defaults to `gh` (or the dry-run fake under `XEZ_DRY_RUN=1`). */
   run?: CloneRunner;
 }
 
@@ -323,7 +323,7 @@ export async function checkoutRepo(opts: CheckoutOptions): Promise<CheckoutResul
   const emit = (event: Omit<CheckoutProgressEvent, 'name' | 'checkoutId'>): void =>
     opts.onProgress({ ...event, name, ...(opts.checkoutId ? { checkoutId: opts.checkoutId } : {}) });
 
-  const run = opts.run ?? (process.env.CEZ_DRY_RUN === '1' ? dryRunCloneRunner : ghCloneRunner);
+  const run = opts.run ?? (process.env.XEZ_DRY_RUN === '1' ? dryRunCloneRunner : ghCloneRunner);
   let outcome: Awaited<ReturnType<CloneRunner>>;
   try {
     outcome = await run(ref, target, (line) => emit({ phase: 'cloning', line }), opts.signal);

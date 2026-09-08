@@ -90,7 +90,7 @@ export function reconcileAutomationReceipts(automationStore: import('./store.js'
       ...receipt,
       status: runId ? 'launched' : 'launch-error',
       runId,
-      error: runId ? undefined : 'Cezar restarted before run creation completed; explicit retry is available.',
+      error: runId ? undefined : 'Xezar restarted before run creation completed; explicit retry is available.',
       updatedAt: new Date().toISOString(),
     });
     reconciled++;

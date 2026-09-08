@@ -1,4 +1,4 @@
-import type { RunRecord, RunStatus } from '@open-mercato/cezar-api-client'
+import type { RunRecord, RunStatus } from '@qodeca/xezar-api-client'
 import { deriveAttention, wantsAttention } from './attention'
 
 /* Browser notifications (R6 Step 1.7, spec §"Cross-cutting"): the pure half.
@@ -125,6 +125,6 @@ export function describeRunNotification(run: RunRecord): RunNotificationContent 
   return {
     title: run.titleSummary ?? run.title,
     body: `Task ${label}`,
-    tag: `cezar-run-${run.id}`,
+    tag: `xezar-run-${run.id}`,
   }
 }

@@ -16,7 +16,7 @@ import {
 /**
  * The engine — pure control flow over a strategy's ordered steps. It never
  * knows what a step *does*, only `check`/`run`/`undo`. `runInstall` resumes
- * from `~/.cezar/server.json` (skips resolved steps unless `--reconfigure`
+ * from `~/.xezar/server.json` (skips resolved steps unless `--reconfigure`
  * names them); `runUninstall` walks completed steps in reverse. Both hold the
  * single-writer lock for their whole run.
  */
@@ -34,8 +34,8 @@ export interface RunOptions {
   runner?: Runner;
   /**
    * Instance id (slug) to act on. Omit / `default` for the original
-   * single-cockpit host (legacy `~/.cezar/server.json`); a domain-derived slug
-   * targets a named instance under `~/.cezar/server-instances/`.
+   * single-cockpit host (legacy `~/.xezar/server.json`); a domain-derived slug
+   * targets a named instance under `~/.xezar/server-instances/`.
    */
   instance?: string;
   /** Public domain for this instance — recorded up front so instance selection
@@ -44,7 +44,7 @@ export interface RunOptions {
   /** Loopback port for this instance. For a NEW named instance the caller
    * passes an auto-picked free port; a resume keeps the recorded one. */
   port?: number;
-  /** `--external-proxy`: an existing reverse proxy fronts cezar, so the
+  /** `--external-proxy`: an existing reverse proxy fronts xezar, so the
    * platform installs no nginx/SSL of its own. */
   externalProxy?: boolean;
   /** `--bind-host`: interface the cockpit binds so that proxy can reach it. */
@@ -77,7 +77,7 @@ function needsUndo(outcome: StepOutcome | undefined): outcome is StepOutcome {
 }
 
 /**
- * A `CEZ_DRY_RUN` preview persists a full ledger with no real side effects
+ * A `XEZ_DRY_RUN` preview persists a full ledger with no real side effects
  * (the packaged e2e round-trip depends on that). Two invariants keep previews
  * from destroying real state:
  *
@@ -94,7 +94,7 @@ function reconcileDryRun(state: ServerState, opts: RunOptions, ui: Ui): { persis
     return { persist: false };
   }
   if (!opts.dryRun && state.dryRun) {
-    ui.info('The recorded state came from a CEZ_DRY_RUN preview — starting from a clean slate.');
+    ui.info('The recorded state came from a XEZ_DRY_RUN preview — starting from a clean slate.');
     state.steps = {};
     state.installed = false;
     state.platform = undefined;
@@ -278,7 +278,7 @@ export async function runUninstall(strategy: PlatformStrategy, opts: RunOptions)
     const registeredProjects = (await loadWorkspaceConfig()).projects.length;
     if (registeredProjects > 0) {
       ctx.ui.warn(
-        `${registeredProjects} ${registeredProjects === 1 ? 'project is' : 'projects are'} registered in ~/.cezar/config.json.`,
+        `${registeredProjects} ${registeredProjects === 1 ? 'project is' : 'projects are'} registered in ~/.xezar/config.json.`,
       );
       const proceed = await ctx.ui.confirm({
         message: 'Removing this server will make them unavailable. Continue?',
@@ -310,7 +310,7 @@ export async function runUninstall(strategy: PlatformStrategy, opts: RunOptions)
     }
 
     // Drop entries that never had a system effect; anything left was recorded
-    // by a step id this binary doesn't know (a newer cezar) and was NOT
+    // by a step id this binary doesn't know (a newer xezar) and was NOT
     // reversed — keep its ledger and say so instead of silently erasing it.
     for (const id of Object.keys(state.steps)) {
       if (!needsUndo(state.steps[id])) delete state.steps[id];
@@ -320,8 +320,8 @@ export async function runUninstall(strategy: PlatformStrategy, opts: RunOptions)
     state.updatedAt = opts.now;
     if (leftover.length > 0) {
       ctx.ui.warn(
-        `Not reversed (recorded by a different cezar version): ${leftover.join(', ')}. ` +
-          'Their record is kept — re-run server-uninstall with the cezar version that installed them.',
+        `Not reversed (recorded by a different xezar version): ${leftover.join(', ')}. ` +
+          'Their record is kept — re-run server-uninstall with the xezar version that installed them.',
       );
       await ctx.save();
       return { status: 'failed', state };
@@ -345,7 +345,7 @@ export async function runUninstall(strategy: PlatformStrategy, opts: RunOptions)
 }
 
 /**
- * Reload the running cockpit to pick up a new cezar version — the standardized
+ * Reload the running cockpit to pick up a new xezar version — the standardized
  * `server-deploy` flow. Delegates to the platform's `redeploy` (restart service
  * + re-verify); holds the single-writer lock for the whole run.
  */

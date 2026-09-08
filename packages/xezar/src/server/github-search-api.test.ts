@@ -18,27 +18,27 @@ import { apiRequest } from './loopback-request.testkit.ts';
  * endpoint that asks the forge instead.
  *
  * The contract under test is the route boundary: zod-validated params (400 on anything malformed,
- * never a throw) and a `ForgeSearchData` payload. Driven through `CEZ_DRY_RUN=1` so no `gh` is
+ * never a throw) and a `ForgeSearchData` payload. Driven through `XEZ_DRY_RUN=1` so no `gh` is
  * touched — the gh-shelling, cross-state and degrade paths are covered in the driver's own suite.
  */
 describe('the github search API', () => {
   let repoRoot: string;
   let store: RunStore;
   let app: Hono;
-  const prevDryRun = process.env.CEZ_DRY_RUN;
+  const prevDryRun = process.env.XEZ_DRY_RUN;
 
   beforeAll(() => {
-    process.env.CEZ_DRY_RUN = '1';
+    process.env.XEZ_DRY_RUN = '1';
   });
   afterAll(() => {
-    if (prevDryRun === undefined) delete process.env.CEZ_DRY_RUN;
-    else process.env.CEZ_DRY_RUN = prevDryRun;
+    if (prevDryRun === undefined) delete process.env.XEZ_DRY_RUN;
+    else process.env.XEZ_DRY_RUN = prevDryRun;
   });
 
   beforeEach(() => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-ghsearch-'));
-    mkdirSync(join(repoRoot, '.ai/cezar'), { recursive: true });
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-ghsearch-'));
+    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     app = createApp({ repoRoot, store, manager: {} as RunManager, version: '0.0.0-test' });
   });
 

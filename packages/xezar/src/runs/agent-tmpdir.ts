@@ -22,7 +22,7 @@
  *      A run that cannot get a working temp directory fails immediately with a
  *      named, actionable error instead of spawning an agent that will run blind.
  *
- * `CEZ_AGENT_TMPDIR=0` opts out of BOTH — cezar keeps its hands off the temp
+ * `XEZ_AGENT_TMPDIR=0` opts out of BOTH — xezar keeps its hands off the temp
  * directory entirely and the pre-#785 behaviour is back, byte for byte. That is
  * deliberate: an escape hatch that still imposed the preflight would be a hatch
  * you cannot actually escape through, and this repo's graceful-degradation rule
@@ -76,7 +76,7 @@ export class AgentTempDirError extends Error {
       ?? (reason instanceof Error ? reason.message : String(reason));
     super(
       `agent temp directory is not writable: ${path} (${why}) — free disk space, `
-        + 'or set CEZ_AGENT_TMPDIR=0 to fall back to the host TMPDIR',
+        + 'or set XEZ_AGENT_TMPDIR=0 to fall back to the host TMPDIR',
     );
     this.name = 'AgentTempDirError';
     this.path = path;
@@ -84,9 +84,9 @@ export class AgentTempDirError extends Error {
 }
 
 /** Opt-out spelling matches the house style for default-on behaviour
- *  (`CEZ_AUTONAME=0`, `CEZ_SKILLS_AUTO_UPDATE=0`): only an exact `0` disables. */
+ *  (`XEZ_AUTONAME=0`, `XEZ_SKILLS_AUTO_UPDATE=0`): only an exact `0` disables. */
 export function agentTmpDirEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  return env.CEZ_AGENT_TMPDIR !== '0';
+  return env.XEZ_AGENT_TMPDIR !== '0';
 }
 
 /** Distinguishes concurrent probes from one process; the pid alone would let two
@@ -100,9 +100,9 @@ let probeSeq = 0;
  * directory that is merely *full but writable* passes, by design.
  */
 function probeWritable(dir: string): void {
-  const probe = join(dir, `.cez-tmp-probe-${process.pid}-${(probeSeq += 1)}`);
+  const probe = join(dir, `.xez-tmp-probe-${process.pid}-${(probeSeq += 1)}`);
   try {
-    writeFileSync(probe, 'cez');
+    writeFileSync(probe, 'xez');
   } catch (err) {
     throw new AgentTempDirError(dir, err);
   } finally {

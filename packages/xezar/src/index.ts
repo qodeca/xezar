@@ -36,17 +36,17 @@ import { registerProject, shouldRegisterProject } from './workspace/projects.ts'
 import { runProjectsCommand } from './workspace/projects-cli.ts';
 import { WorkspaceSemaphore } from './workspace/semaphore.ts';
 
-const HELP = `cezar — local cockpit for AI agent tasks in your repo
+const HELP = `xezar — local cockpit for AI agent tasks in your repo
 
 Usage:
-  cezar                     start the cockpit (server + GUI) for the current repo
-  cezar run "<task>"        run a task headless in the terminal
-  cezar init                scaffold .ai/cezar/ (example workflow + skill)
-  cezar projects            list the projects this cockpit serves
+  xezar                     start the cockpit (server + GUI) for the current repo
+  xezar run "<task>"        run a task headless in the terminal
+  xezar init                scaffold .ai/xezar/ (example workflow + skill)
+  xezar projects            list the projects this cockpit serves
                             (also: projects add [<dir>] · projects remove <id>)
-  cezar server-install      interactive wizard to host cezar on a server
-  cezar server-deploy       redeploy a new version (reload the service) + verify
-  cezar server-uninstall    reverse a server-install
+  xezar server-install      interactive wizard to host xezar on a server
+  xezar server-deploy       redeploy a new version (reload the service) + verify
+  xezar server-uninstall    reverse a server-install
 
 Options:
   -p, --port <n>              cockpit port (default 4321; server-install: this
@@ -66,16 +66,16 @@ Options:
       --bind-host <host>      host the cockpit binds (default 127.0.0.1). Use with
                               --external-proxy when the proxy runs in a container and
                               cannot reach loopback (e.g. docker bridge 172.17.0.1).
-                              cezar has NO built-in auth — never expose this publicly.
+                              xezar has NO built-in auth — never expose this publicly.
       --yes                   server-install: accept safe defaults (never auto-sudo)
       --reconfigure <ids>     server-install: force re-run of step id(s), comma-separated
       --reinstall             server-install: force re-run of every step (full reinstall)
   -h, --help                  show this help
 
 Zero config: uses your logged-in \`claude\` CLI (and \`gh\` for GitHub bits).
-Skills live in .ai/skills/, .ai/cezar/skills/ and your team skills repo
-(default open-mercato/skills; override via .ai/cezar/config.json);
-workflows in .ai/cezar/workflows/.`;
+Skills live in .ai/skills/, .ai/xezar/skills/ and your team skills repo
+(default open-mercato/skills; override via .ai/xezar/config.json);
+workflows in .ai/xezar/workflows/.`;
 
 async function main(): Promise<void> {
   const { values, positionals } = parseArgs({
@@ -132,7 +132,7 @@ async function main(): Promise<void> {
       // to that explicit identity. Mutations are left to their own guards.
       const projectArgs = positionals.slice(1);
       const isList = projectArgs.length === 0 || projectArgs[0] === 'list';
-      const bootProjectId = process.env.CEZ_SINGLE_PROJECT === '1' && isList
+      const bootProjectId = process.env.XEZ_SINGLE_PROJECT === '1' && isList
         ? await initWorkspace(repoRoot)
         : undefined;
       process.exitCode = await runProjectsCommand(projectArgs, { defaultRoot: repoRoot, bootProjectId });
@@ -171,7 +171,7 @@ async function main(): Promise<void> {
 
 /**
  * Boot-time workspace bookkeeping (spec 2026-07-20-multi-project-workspace,
- * "Boot flow"): run pending `~/.cezar` migrations first, then register the
+ * "Boot flow"): run pending `~/.xezar` migrations first, then register the
  * boot repo in the per-user project registry. Registration is suppressed for
  * task worktrees and `$HOME` itself (`shouldRegisterProject`) — the process
  * still serves those folders normally. Strictly non-fatal: the zero-config
@@ -190,7 +190,7 @@ async function initWorkspace(repoRoot: string): Promise<string | undefined> {
     if (await shouldRegisterProject(repoRoot)) return (await registerProject(repoRoot)).id;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.warn(`[cez] workspace registry unavailable (${message}) — continuing without it`);
+    console.warn(`[xez] workspace registry unavailable (${message}) — continuing without it`);
   }
   return undefined;
 }
@@ -233,7 +233,7 @@ async function serveCommand(
       console.log(`  cleaned ${orphans.length} orphaned worktree(s): ${orphans.map((id) => id.slice(0, 8)).join(', ')}`);
     }
     // Count-based worktree retention (#483): reclaim finished worktrees beyond
-    // the keep-limit (directory only — `cez/<id8>` branch kept, so recoverable).
+    // the keep-limit (directory only — `xez/<id8>` branch kept, so recoverable).
     // Best-effort; never blocks boot.
     const keep = await resolveWorktreeRetention(repoRoot).catch(() => DEFAULT_WORKTREE_RETENTION);
     const reclaimed = await reclaimWorktrees(repoRoot, store, keep).catch(() => [] as string[]);
@@ -259,17 +259,17 @@ async function serveCommand(
   void checkForUpdate(pkgName, version).then((latest) => {
     if (!latest) return;
     update.latest = latest;
-    console.log(`\n  ⬆ cezar ${latest} is available (running ${version}) — restart with: npx ${pkgName}@latest\n`);
+    console.log(`\n  ⬆ xezar ${latest} is available (running ${version}) — restart with: npx ${pkgName}@latest\n`);
   });
 
   const port = await pickPort(preferredPort);
-  // SECURITY: cezar executes agents. A non-loopback bind exposes that box to
-  // whatever can reach the interface, and cezar itself has NO auth — it is only
+  // SECURITY: xezar executes agents. A non-loopback bind exposes that box to
+  // whatever can reach the interface, and xezar itself has NO auth — it is only
   // for a deliberate hosted setup where a reverse proxy in front provides TLS +
   // auth (see `server-install --external-proxy`). Say so, loudly, every start.
   if (bindHost && !['127.0.0.1', 'localhost', '::1'].includes(bindHost)) {
     console.log(
-      `\n  ⚠ binding ${bindHost}:${port} — cezar has no built-in auth.\n` +
+      `\n  ⚠ binding ${bindHost}:${port} — xezar has no built-in auth.\n` +
         `    Only do this behind a reverse proxy that enforces authentication,\n` +
         `    and make sure this interface is not reachable from the internet.\n`,
     );
@@ -289,7 +289,7 @@ async function serveCommand(
   }, port);
   const url = `http://localhost:${port}`;
 
-  console.log(`\n  cezar v${version} — ${repoRoot}`);
+  console.log(`\n  xezar v${version} — ${repoRoot}`);
   console.log(`  ${repo ? `branch ${repo.branch}` : 'not a git repository (tasks run in place, one at a time; repo view is empty)'}`);
   for (const check of checks) {
     const mark = check.available ? '✓' : '✗';
@@ -298,7 +298,7 @@ async function serveCommand(
   }
   if (port !== preferredPort) console.log(`  (port ${preferredPort} was busy — using ${port})`);
   console.log(`\n  cockpit → ${url}\n`);
-  // Silenced by CEZ_NO_BANNER=1 or by dismissing the cockpit's banner (#391).
+  // Silenced by XEZ_NO_BANNER=1 or by dismissing the cockpit's banner (#391).
   await printSkillsBanner(repoRoot);
 
   const shutdown = () => {
@@ -356,7 +356,7 @@ async function runCommand(
   model: string | undefined,
 ): Promise<void> {
   if (!task) {
-    console.error('usage: cezar run "<task>" [--workflow name] [--model model]');
+    console.error('usage: xezar run "<task>" [--workflow name] [--model model]');
     process.exitCode = 1;
     return;
   }
@@ -441,9 +441,9 @@ async function runCommand(
   store.flush();
   const record = store.getRun(run.id);
   if (final === 'review') {
-    console.log(`\n  changes ready for review on branch ${record?.branch ?? '?'} — inspect them in the cockpit: npx cezar`);
+    console.log(`\n  changes ready for review on branch ${record?.branch ?? '?'} — inspect them in the cockpit: npx xezar`);
   }
-  console.log(`\nrun ${final} — ${record?.tokensUsed ?? 0} tokens — details in the cockpit: npx cezar`);
+  console.log(`\nrun ${final} — ${record?.tokensUsed ?? 0} tokens — details in the cockpit: npx xezar`);
   process.exitCode = final === 'done' || final === 'review' ? 0 : 1;
 }
 
@@ -509,7 +509,7 @@ async function serverCommand(
       const { createClackUi } = await import('./server-install/ui.ts');
       const answer = await createClackUi().text({
         message:
-          'This host already runs a cezar cockpit. Enter a NEW domain to host a second, independent instance — ' +
+          'This host already runs a xezar cockpit. Enter a NEW domain to host a second, independent instance — ' +
           'or leave blank to manage/redeploy the existing one.',
         placeholder: 'shop.example.com',
       });
@@ -555,7 +555,7 @@ async function serverCommand(
   }
 
   const runOpts = {
-    dryRun: process.env.CEZ_DRY_RUN === '1',
+    dryRun: process.env.XEZ_DRY_RUN === '1',
     assumeYes: flags.yes,
     reconfigure: new Set((flags.reconfigure ?? '').split(',').map((s) => s.trim()).filter(Boolean)),
     reinstall: Boolean(flags.reinstall),
@@ -567,7 +567,7 @@ async function serverCommand(
     // Only an install decides proxy mode; deploy/uninstall read it back from
     // the recorded state. Preserve an omitted flag as `undefined`: a flag-less
     // resume must keep an external-proxy install external instead of flipping
-    // it back to cezar-managed nginx/SSL.
+    // it back to xezar-managed nginx/SSL.
     ...(mode === 'install'
       ? { externalProxy: flags.externalProxy || undefined, bindHost: flags.bindHost }
       : {}),
@@ -585,12 +585,12 @@ async function serverCommand(
           ? await runDeploy(strategy, runOpts)
           : await runUninstall(strategy, runOpts);
     if (mode === 'install' && result.status === 'complete') {
-      console.log(`\n  cezar server-install (${label}) complete.`);
-      console.log(`  Redeploy a new version any time with: cezar server-deploy --platform ${chosen}${domainFlag}\n`);
+      console.log(`\n  xezar server-install (${label}) complete.`);
+      console.log(`  Redeploy a new version any time with: xezar server-deploy --platform ${chosen}${domainFlag}\n`);
     } else if (mode === 'deploy' && result.status === 'complete') {
-      console.log(`\n  cezar server-deploy (${label}) complete — the service was reloaded and verified.\n`);
+      console.log(`\n  xezar server-deploy (${label}) complete — the service was reloaded and verified.\n`);
     } else if (mode === 'uninstall' && result.status === 'complete') {
-      console.log(`\n  cezar server-uninstall (${label}) complete — the changes it made were reversed.\n`);
+      console.log(`\n  xezar server-uninstall (${label}) complete — the changes it made were reversed.\n`);
     }
     // complete + cancelled (resumable) exit 0; failed exits 1.
     process.exitCode = result.status === 'failed' ? 1 : 0;
@@ -603,8 +603,8 @@ async function serverCommand(
 // ---- init --------------------------------------------------------------------
 
 function initCommand(repoRoot: string): void {
-  const workflowsDir = join(repoRoot, '.ai/cezar', 'workflows');
-  const skillsDir = join(repoRoot, '.ai/cezar', 'skills');
+  const workflowsDir = join(repoRoot, '.ai/xezar', 'workflows');
+  const skillsDir = join(repoRoot, '.ai/xezar', 'skills');
   mkdirSync(workflowsDir, { recursive: true });
   mkdirSync(skillsDir, { recursive: true });
 
@@ -649,13 +649,13 @@ description: House rules the agent should follow in this repo.
     }
   }
   ensureDataGitignore(repoRoot);
-  console.log('\nDone. Start the cockpit with: npx cezar');
+  console.log('\nDone. Start the cockpit with: npx xezar');
 }
 
 // ---- helpers -----------------------------------------------------------------
 
 function openStore(repoRoot: string, opts?: { keepLive?: boolean }): RunStore {
-  const dataDir = join(repoRoot, '.ai/cezar');
+  const dataDir = join(repoRoot, '.ai/xezar');
   const store = RunStore.open(dataDir, opts);
   // Repo-scope the referenced tier (#945) — see `armRepoHandle`. Background, never awaited: a
   // `gh`-less or offline machine keeps working exactly as it did, just unscoped.
@@ -666,7 +666,7 @@ function openStore(repoRoot: string, opts?: { keepLive?: boolean }): RunStore {
 
 /** Keep run data out of the user's repo history; workflows/skills stay committable. */
 function ensureDataGitignore(repoRoot: string): void {
-  const path = join(repoRoot, '.ai/cezar', '.gitignore');
+  const path = join(repoRoot, '.ai/xezar', '.gitignore');
   const wanted = [
     'runs.json',
     'runs.json.tmp',
@@ -687,7 +687,7 @@ function ensureDataGitignore(repoRoot: string): void {
     'automation-poll.lock',
   ];
   try {
-    mkdirSync(join(repoRoot, '.ai/cezar'), { recursive: true });
+    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
     const current = existsSync(path) ? readFileSync(path, 'utf8') : '';
     const lines = current.split('\n');
     const missing = wanted.filter((w) => !lines.includes(w));
@@ -705,9 +705,9 @@ function readOwnName(): string {
   try {
     const here = dirname(fileURLToPath(import.meta.url));
     const pkg = JSON.parse(readFileSync(join(here, '..', 'package.json'), 'utf8')) as { name?: string };
-    return pkg.name ?? '@open-mercato/cezar';
+    return pkg.name ?? '@qodeca/xezar';
   } catch {
-    return '@open-mercato/cezar';
+    return '@qodeca/xezar';
   }
 }
 

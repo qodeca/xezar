@@ -3,7 +3,7 @@ import {
   isAttachmentMediaType,
   isImageMediaType,
   type AttachmentInput,
-} from '@open-mercato/cezar-api-client'
+} from '@qodeca/xezar-api-client'
 
 /**
  * The composer's attachment intake — paperclip, ⌘V paste, and drag-drop all funnel here, exactly
@@ -32,7 +32,7 @@ const EXTENSION_MEDIA_TYPES: Record<string, string> = {
 }
 
 /**
- * What cezar will call this file on the wire, or `null` when it will not take it at all.
+ * What xezar will call this file on the wire, or `null` when it will not take it at all.
  *
  * The browser's `type` wins when it is one the contract knows. When it is empty — a `.md` on
  * Windows, a file dragged out of some archive tools — the extension decides instead, because

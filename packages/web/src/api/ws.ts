@@ -1,7 +1,5 @@
 /**
  * The cockpit's one WebSocket to `/api/v1/ws` — the subscription bus that replaced polling.
- * Design + the subscribe/unsubscribe discipline: spec
- * `.ai/specs/2026-07-23-websocket-subscriptions.md`.
  *
  * The server hub (src/server/ws.ts) does work per TOPIC only while someone holds it, so the
  * client's whole job is honest bookkeeping: `subscribeTopic(topic, listener)` ref-counts

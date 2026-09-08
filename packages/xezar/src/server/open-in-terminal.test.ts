@@ -6,13 +6,13 @@ import { createLaunchScript, openInTerminal, refuseSpawnUnderTest, wslTerminalLa
 
 describe('wslTerminalLaunchers (#361 WSL support)', () => {
   it('tries Windows Terminal first, re-entering the distro through wsl.exe', () => {
-    const [first] = wslTerminalLaunchers('/tmp/cez-term-abc/launch.sh', 'Ubuntu');
-    expect(first).toEqual(['wt.exe', ['wsl.exe', '-d', 'Ubuntu', '--', '/tmp/cez-term-abc/launch.sh']]);
+    const [first] = wslTerminalLaunchers('/tmp/xez-term-abc/launch.sh', 'Ubuntu');
+    expect(first).toEqual(['wt.exe', ['wsl.exe', '-d', 'Ubuntu', '--', '/tmp/xez-term-abc/launch.sh']]);
   });
 
   it('falls back to a classic console window, same wsl.exe re-entry', () => {
-    const [, second] = wslTerminalLaunchers('/tmp/cez-term-abc/launch.sh', 'Ubuntu');
-    expect(second).toEqual(['conhost.exe', ['wsl.exe', '-d', 'Ubuntu', '--', '/tmp/cez-term-abc/launch.sh']]);
+    const [, second] = wslTerminalLaunchers('/tmp/xez-term-abc/launch.sh', 'Ubuntu');
+    expect(second).toEqual(['conhost.exe', ['wsl.exe', '-d', 'Ubuntu', '--', '/tmp/xez-term-abc/launch.sh']]);
   });
 
   // Regression guard for the BatBadBut class (CVE-2024-27980) that #459 fixed in the sibling
@@ -33,7 +33,7 @@ describe('wslTerminalLaunchers (#361 WSL support)', () => {
 });
 
 /**
- * #785: this opener used to `mkdtemp` a `cez-term-*` directory per launch and never
+ * #785: this opener used to `mkdtemp` a `xez-term-*` directory per launch and never
  * remove it. On a host whose `/tmp` is a tmpfs that never reboots, that litter is part
  * of what exhausts the directory the agents' output capture depends on — the failure
  * this issue is really about. Asserted on `createLaunchScript` rather than through
@@ -54,7 +54,7 @@ describe('launch-script cleanup (#785)', () => {
     const scriptPath = createLaunchScript('/some/worktree', 'claude --resume abc', 5);
     expect(existsSync(scriptPath)).toBe(true);
     expect(readFileSync(scriptPath, 'utf8')).toContain('claude --resume abc');
-    expect(dirname(scriptPath)).toMatch(/cez-term-/);
+    expect(dirname(scriptPath)).toMatch(/xez-term-/);
 
     expect(await waitGone(dirname(scriptPath))).toBe(true);
     expect(existsSync(scriptPath)).toBe(false);
@@ -92,26 +92,26 @@ describe('openInTerminal env (spec 2026-07-29-agent-profiles)', () => {
  * succeeding quietly.
  */
 describe('the spawn guard (#820)', () => {
-  const saved = process.env.CEZ_ALLOW_TEST_SPAWN;
+  const saved = process.env.XEZ_ALLOW_TEST_SPAWN;
   afterEach(() => {
-    if (saved === undefined) delete process.env.CEZ_ALLOW_TEST_SPAWN;
-    else process.env.CEZ_ALLOW_TEST_SPAWN = saved;
+    if (saved === undefined) delete process.env.XEZ_ALLOW_TEST_SPAWN;
+    else process.env.XEZ_ALLOW_TEST_SPAWN = saved;
   });
 
   it('refuses, naming the command and the seam to inject', () => {
-    delete process.env.CEZ_ALLOW_TEST_SPAWN;
+    delete process.env.XEZ_ALLOW_TEST_SPAWN;
     expect(() => refuseSpawnUnderTest('osascript', ['-e', 'tell application "Terminal"']))
       .toThrow(/refusing to spawn a launcher from a test: osascript -e tell application "Terminal"/)
     expect(() => refuseSpawnUnderTest('osascript', [])).toThrow(/ServerDeps\.openTerminal/);
   });
 
   it('lets a file that has mocked child_process through, explicitly', () => {
-    process.env.CEZ_ALLOW_TEST_SPAWN = '1';
+    process.env.XEZ_ALLOW_TEST_SPAWN = '1';
     expect(() => refuseSpawnUnderTest('osascript', ['-e', 'x'])).not.toThrow();
   });
 
   it('never fires outside a test run', () => {
-    delete process.env.CEZ_ALLOW_TEST_SPAWN;
+    delete process.env.XEZ_ALLOW_TEST_SPAWN;
     const vitest = process.env.VITEST;
     delete process.env.VITEST;
     try {
@@ -122,7 +122,7 @@ describe('the spawn guard (#820)', () => {
   });
 
   it('stops openInTerminal before it can reach the OS', async () => {
-    delete process.env.CEZ_ALLOW_TEST_SPAWN;
+    delete process.env.XEZ_ALLOW_TEST_SPAWN;
     // The exact call #820 reported: `openInApp('terminal', dir)` → `openInTerminal(dir, ':')`.
     await expect(openInTerminal('/tmp/some-account-folder', ':')).rejects.toThrow(/refusing to spawn/);
   });

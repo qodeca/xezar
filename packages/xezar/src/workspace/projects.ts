@@ -1,7 +1,7 @@
 import { realpath, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, join, resolve, sep } from 'node:path';
-import { PROJECT_TAGS_MAX, PROJECT_TAG_MAX_LENGTH } from '@open-mercato/cezar-contract';
+import { PROJECT_TAGS_MAX, PROJECT_TAG_MAX_LENGTH } from '@qodeca/xezar-contract';
 import { forgeKindOfRemote, forgeWebRoot, type ForgeKind } from '../server/forge/index.ts';
 import { getRepoInfo } from '../server/git.ts';
 import {
@@ -11,18 +11,18 @@ import {
 } from './config.ts';
 
 /**
- * Project registry operations over `~/.cezar/config.json` (spec
+ * Project registry operations over `~/.xezar/config.json` (spec
  * 2026-07-20-multi-project-workspace, "Project identity" + "Boot flow"):
  *
  * - `registerProject(root)` — realpath-normalize, dedupe by realpath, allocate
  *   a human-readable slug from `basename(root)`. Registration is additive and
  *   goes through the read-modify-write merge, so the worst race outcome
- *   between concurrent `cezar serve` processes is a lost `lastOpenedAt` bump —
+ *   between concurrent `xezar serve` processes is a lost `lastOpenedAt` bump —
  *   never a lost project.
  * - `listProjects()` — registry entries + a cheap per-root status/branch probe
  *   behind a short TTL cache, so a sidebar render never shells `git` N times.
  * - `removeProject(id)` — unregister only. It never touches any file inside
- *   the repo (a project's own state stays in `<repo>/.ai/cezar/`).
+ *   the repo (a project's own state stays in `<repo>/.ai/xezar/`).
  */
 
 /**
@@ -91,9 +91,9 @@ async function normalizeRoot(root: string): Promise<string> {
   }
 }
 
-/** True when `path` sits inside a cezar task worktree (`…/.ai/cezar/worktrees/…`). */
+/** True when `path` sits inside a xezar task worktree (`…/.ai/xezar/worktrees/…`). */
 function isInsideTaskWorktree(path: string): boolean {
-  const marker = `${sep}.ai${sep}cezar${sep}worktrees${sep}`;
+  const marker = `${sep}.ai${sep}xezar${sep}worktrees${sep}`;
   return `${path}${sep}`.includes(marker);
 }
 
@@ -103,8 +103,8 @@ function isInsideTaskWorktree(path: string): boolean {
  * normally, it just doesn't pollute the registry — when the resolved
  * `repoRoot` is:
  *
- * - inside any `…/.ai/cezar/worktrees/…` path (task worktrees and nested
- *   `cez` invocations — the same nesting reality the `CEZ_TODOS_FILE=''`
+ * - inside any `…/.ai/xezar/worktrees/…` path (task worktrees and nested
+ *   `xez` invocations — the same nesting reality the `XEZ_TODOS_FILE=''`
  *   guard in `workflows/run.ts` acknowledges), checked on both the raw and
  *   realpath'd spelling so neither a symlinked prefix nor a literal one
  *   slips through; or
@@ -287,7 +287,7 @@ export async function listProjects(selector?: ProjectListSelector): Promise<Proj
 
 /**
  * Remove `id` from the registry. Returns false when no such entry exists.
- * Pure unregistration: nothing inside the repo (worktrees, `.ai/cezar/`,
+ * Pure unregistration: nothing inside the repo (worktrees, `.ai/xezar/`,
  * run history) is touched — re-registering the same root later gets a fresh
  * slug but finds all its state intact.
  */

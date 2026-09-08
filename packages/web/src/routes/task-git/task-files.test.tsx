@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { createQueryClient } from '@/api/query-client'
-import type { ApiRun, HealthResponse, WorktreeEntry } from '@open-mercato/cezar-api-client'
+import type { ApiRun, HealthResponse, WorktreeEntry } from '@qodeca/xezar-api-client'
 
 import { TaskFilesRoute } from './task-files'
 
@@ -26,7 +26,7 @@ const RUN: ApiRun = {
   tokensUsed: 0,
   archived: false,
   worktreePath: '/tmp/wt/r1',
-  branch: 'cez/abc12345',
+  branch: 'xez/abc12345',
   baseBranch: 'main',
   steps: [
     { id: 'task', name: 'Do the task', kind: 'agent', status: 'done', iterations: 1, tokensUsed: 0, sessionId: 's-1' },

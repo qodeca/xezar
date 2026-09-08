@@ -10,7 +10,7 @@ import { createApp, startServer, type ServerDeps } from './server.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 
 /**
- * GitHub automations are opt-in (#801): `CEZ_AUTOMATIONS=1` turns them on, off is the default.
+ * GitHub automations are opt-in (#801): `XEZ_AUTOMATIONS=1` turns them on, off is the default.
  * Off, every route of the family answers `409` naming the flag — defense in depth behind the
  * cockpit's nav gate, so a bookmarked deep link or a script cannot drive a feature the operator
  * switched off.
@@ -37,33 +37,33 @@ describe('automations gate (#801)', () => {
   let dataDir: string;
   let store: RunStore;
   let automationId: string;
-  const savedAutomations = process.env.CEZ_AUTOMATIONS;
-  const savedFollowups = process.env.CEZ_FOLLOWUPS;
-  const savedRemote = process.env.CEZ_REMOTE;
+  const savedAutomations = process.env.XEZ_AUTOMATIONS;
+  const savedFollowups = process.env.XEZ_FOLLOWUPS;
+  const savedRemote = process.env.XEZ_REMOTE;
 
   beforeEach(() => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-automations-gate-'));
-    dataDir = join(repoRoot, '.ai/cezar');
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-automations-gate-'));
+    dataDir = join(repoRoot, '.ai/xezar');
     mkdirSync(dataDir, { recursive: true });
     store = RunStore.open(dataDir);
     // A pre-existing definition, written while the feature was on: the gate must hide it and
     // must never destroy it.
     const seed = AutomationStore.open(dataDir);
     automationId = seed.create(DEFINITION).id;
-    delete process.env.CEZ_AUTOMATIONS;
-    delete process.env.CEZ_FOLLOWUPS;
-    delete process.env.CEZ_REMOTE;
+    delete process.env.XEZ_AUTOMATIONS;
+    delete process.env.XEZ_FOLLOWUPS;
+    delete process.env.XEZ_REMOTE;
   });
 
   afterEach(() => {
     store.flush();
     rmSync(repoRoot, { recursive: true, force: true });
-    if (savedAutomations === undefined) delete process.env.CEZ_AUTOMATIONS;
-    else process.env.CEZ_AUTOMATIONS = savedAutomations;
-    if (savedFollowups === undefined) delete process.env.CEZ_FOLLOWUPS;
-    else process.env.CEZ_FOLLOWUPS = savedFollowups;
-    if (savedRemote === undefined) delete process.env.CEZ_REMOTE;
-    else process.env.CEZ_REMOTE = savedRemote;
+    if (savedAutomations === undefined) delete process.env.XEZ_AUTOMATIONS;
+    else process.env.XEZ_AUTOMATIONS = savedAutomations;
+    if (savedFollowups === undefined) delete process.env.XEZ_FOLLOWUPS;
+    else process.env.XEZ_FOLLOWUPS = savedFollowups;
+    if (savedRemote === undefined) delete process.env.XEZ_REMOTE;
+    else process.env.XEZ_REMOTE = savedRemote;
   });
 
   const app = (over: Partial<ServerDeps> = {}) =>
@@ -97,7 +97,7 @@ describe('automations gate (#801)', () => {
         const [, path, init] = routes(automationId).find(([name]) => name === label)!;
         const res = await apiRequest(app(), path, init);
         expect(res.status).toBe(409);
-        expect(((await res.json()) as { error: string }).error).toContain('CEZ_AUTOMATIONS');
+        expect(((await res.json()) as { error: string }).error).toContain('XEZ_AUTOMATIONS');
       },
     );
 
@@ -116,13 +116,13 @@ describe('automations gate (#801)', () => {
     it('gates the project-scoped mirror too, not just the boot alias', async () => {
       const res = await apiRequest(app(), '/api/v1/p/default/automations');
       expect(res.status).toBe(409);
-      expect(((await res.json()) as { error: string }).error).toContain('CEZ_AUTOMATIONS');
+      expect(((await res.json()) as { error: string }).error).toContain('XEZ_AUTOMATIONS');
     });
 
     it('hides definitions without destroying them — flipping the flag brings them back', async () => {
       await apiRequest(app(), '/api/v1/automations');
       await apiRequest(app(), `/api/v1/automations/${automationId}`, { method: 'DELETE' });
-      process.env.CEZ_AUTOMATIONS = '1';
+      process.env.XEZ_AUTOMATIONS = '1';
       const res = await apiRequest(app(), '/api/v1/automations');
       expect(res.status).toBe(200);
       const body = (await res.json()) as { automations: Array<{ id: string; name: string }> };
@@ -137,9 +137,9 @@ describe('automations gate (#801)', () => {
     });
   });
 
-  describe('on (CEZ_AUTOMATIONS=1)', () => {
+  describe('on (XEZ_AUTOMATIONS=1)', () => {
     beforeEach(() => {
-      process.env.CEZ_AUTOMATIONS = '1';
+      process.env.XEZ_AUTOMATIONS = '1';
     });
 
     it('serves the real definitions', async () => {
@@ -173,25 +173,25 @@ describe('automations gate (#801)', () => {
    *
    * Asserted at `startServer`, because that is where the scheduler is wired — `createApp` never
    * constructs one. The server binds an ephemeral loopback port and is closed immediately; nothing
-   * here talks to the network (`CEZ_DRY_RUN=1`) or to a real agent CLI.
+   * here talks to the network (`XEZ_DRY_RUN=1`) or to a real agent CLI.
    */
   describe('background scheduler', () => {
-    const savedHome = process.env.CEZ_HOME;
-    const savedDryRun = process.env.CEZ_DRY_RUN;
+    const savedHome = process.env.XEZ_HOME;
+    const savedDryRun = process.env.XEZ_DRY_RUN;
     let home: string;
 
     beforeEach(() => {
-      home = mkdtempSync(join(tmpdir(), 'cez-automations-gate-home-'));
-      process.env.CEZ_HOME = home;
-      process.env.CEZ_DRY_RUN = '1';
+      home = mkdtempSync(join(tmpdir(), 'xez-automations-gate-home-'));
+      process.env.XEZ_HOME = home;
+      process.env.XEZ_DRY_RUN = '1';
     });
 
     afterEach(() => {
       rmSync(home, { recursive: true, force: true });
-      if (savedHome === undefined) delete process.env.CEZ_HOME;
-      else process.env.CEZ_HOME = savedHome;
-      if (savedDryRun === undefined) delete process.env.CEZ_DRY_RUN;
-      else process.env.CEZ_DRY_RUN = savedDryRun;
+      if (savedHome === undefined) delete process.env.XEZ_HOME;
+      else process.env.XEZ_HOME = savedHome;
+      if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
+      else process.env.XEZ_DRY_RUN = savedDryRun;
       vi.restoreAllMocks();
     });
 
@@ -210,7 +210,7 @@ describe('automations gate (#801)', () => {
       } finally {
         server.close();
       }
-      expect(started).toHaveBeenCalledTimes(process.env.CEZ_AUTOMATIONS === '1' ? 1 : 0);
+      expect(started).toHaveBeenCalledTimes(process.env.XEZ_AUTOMATIONS === '1' ? 1 : 0);
     };
 
     it('never starts polling while the flag is off', async () => {
@@ -218,7 +218,7 @@ describe('automations gate (#801)', () => {
     });
 
     it('starts once the flag is on, so the gate is the only thing holding it back', async () => {
-      process.env.CEZ_AUTOMATIONS = '1';
+      process.env.XEZ_AUTOMATIONS = '1';
       await boot();
     });
   });

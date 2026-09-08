@@ -55,7 +55,7 @@ export function createClackUi(backend: PromptBackend = realBackend): Ui {
   // tests, which have no TTY.)
   if (backend === realBackend && (!process.stdin.isTTY || !process.stdout.isTTY)) {
     throw new PreflightError(
-      'this terminal is not interactive — re-run from a TTY, or pass --yes (or CEZ_DRY_RUN=1) for non-interactive mode',
+      'this terminal is not interactive — re-run from a TTY, or pass --yes (or XEZ_DRY_RUN=1) for non-interactive mode',
     );
   }
   const wrapValidate = (validate?: (v: string) => string | undefined) =>
@@ -119,7 +119,7 @@ export function createClackUi(backend: PromptBackend = realBackend): Ui {
 }
 
 /**
- * Non-interactive UI for `--yes`, `CEZ_DRY_RUN`, and unit tests. Prompts resolve
+ * Non-interactive UI for `--yes`, `XEZ_DRY_RUN`, and unit tests. Prompts resolve
  * to deterministic safe defaults (initial value, or the first option, or ""),
  * logs go to the console. It never touches stdin, so it can drive the engine
  * headless. Optional `answers` override defaults per-prompt-message.
@@ -130,7 +130,7 @@ export function createAutoUi(
   opts: {
     /**
      * Enforce each prompt's `validate` on auto-answers (real `--yes` runs must
-     * fail closed on an unanswerable prompt). Off for CEZ_DRY_RUN previews,
+     * fail closed on an unanswerable prompt). Off for XEZ_DRY_RUN previews,
      * which must walk every step with placeholder-grade values.
      */
     strictValidate?: boolean;
@@ -164,7 +164,7 @@ export function createAutoUi(
       return answer(opts.message, opts.initialValue ?? true);
     },
     // A placeholder is a HINT, never an answer — auto-adopting it turned the
-    // example domain `cezar.ngrok.app` into real input under `--yes`.
+    // example domain `xezar.ngrok.app` into real input under `--yes`.
     async text(o) {
       const v = String(answer(o.message, o.initialValue ?? ''));
       checkValid(o.message, v, o.validate);

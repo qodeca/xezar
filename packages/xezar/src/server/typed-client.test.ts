@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, expectTypeOf, it } from 'vitest';
-import { createCezarClient } from '@open-mercato/cezar-api-client';
+import { createXezarClient } from '@qodeca/xezar-api-client';
 import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { clearProjectProbeCache, listProjects, registerProject } from '../workspace/projects.ts';
@@ -26,25 +26,25 @@ import { createApp } from './server.ts';
  * settles (see the spec's open question about the server becoming its own workspace package),
  * a consumer-side copy of this test belongs wherever the type edge lands.
  */
-describe('createCezarClient<AppType>', () => {
-  const savedHome = process.env.CEZ_HOME;
-  const savedDryRun = process.env.CEZ_DRY_RUN;
+describe('createXezarClient<AppType>', () => {
+  const savedHome = process.env.XEZ_HOME;
+  const savedDryRun = process.env.XEZ_DRY_RUN;
   let home: string;
   let repoRoot: string;
   let store: RunStore;
   let contexts: ProjectContexts;
   let app: ReturnType<typeof createApp>;
-  let client: ReturnType<typeof createCezarClient<AppType>>;
+  let client: ReturnType<typeof createXezarClient<AppType>>;
 
   beforeEach(async () => {
-    home = mkdtempSync(join(tmpdir(), 'cez-typed-home-'));
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-typed-boot-'));
-    process.env.CEZ_HOME = home;
-    process.env.CEZ_DRY_RUN = '1';
-    mkdirSync(join(repoRoot, '.ai/cezar'), { recursive: true });
-    writeFileSync(join(repoRoot, '.ai/cezar', 'config.json'), '{"skillsRepos": []}\n', 'utf8');
+    home = mkdtempSync(join(tmpdir(), 'xez-typed-home-'));
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-typed-boot-'));
+    process.env.XEZ_HOME = home;
+    process.env.XEZ_DRY_RUN = '1';
+    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
+    writeFileSync(join(repoRoot, '.ai/xezar', 'config.json'), '{"skillsRepos": []}\n', 'utf8');
     clearProjectProbeCache();
-    store = RunStore.open(join(repoRoot, '.ai/cezar'), { keepLive: true });
+    store = RunStore.open(join(repoRoot, '.ai/xezar'), { keepLive: true });
     contexts = new ProjectContexts({ listProjects });
     await registerProject(repoRoot);
     app = createApp({
@@ -54,7 +54,7 @@ describe('createCezarClient<AppType>', () => {
       version: '0.0.0-test',
       contexts,
     });
-    client = createCezarClient<AppType>({
+    client = createXezarClient<AppType>({
       // Any absolute origin will do — the custom fetch below never leaves the process. The
       // `host` header is what the request-origin guard (#426) checks, and it has to look like
       // the loopback deployment a real cockpit is.
@@ -72,10 +72,10 @@ describe('createCezarClient<AppType>', () => {
     store.flush();
     rmSync(home, { recursive: true, force: true });
     rmSync(repoRoot, { recursive: true, force: true });
-    if (savedHome === undefined) delete process.env.CEZ_HOME;
-    else process.env.CEZ_HOME = savedHome;
-    if (savedDryRun === undefined) delete process.env.CEZ_DRY_RUN;
-    else process.env.CEZ_DRY_RUN = savedDryRun;
+    if (savedHome === undefined) delete process.env.XEZ_HOME;
+    else process.env.XEZ_HOME = savedHome;
+    if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
+    else process.env.XEZ_DRY_RUN = savedDryRun;
   });
 
   // The generous timeout is `/api/v1/health`'s: a cold read shells out to detect the installed

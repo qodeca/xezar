@@ -13,26 +13,26 @@ describe('the GitHub merge API', () => {
   let repoRoot: string;
   let store: RunStore;
   let app: Hono;
-  const previousDryRun = process.env.CEZ_DRY_RUN;
+  const previousDryRun = process.env.XEZ_DRY_RUN;
 
   beforeAll(() => {
-    process.env.CEZ_DRY_RUN = '1';
+    process.env.XEZ_DRY_RUN = '1';
   });
 
   afterAll(() => {
-    if (previousDryRun === undefined) delete process.env.CEZ_DRY_RUN;
-    else process.env.CEZ_DRY_RUN = previousDryRun;
+    if (previousDryRun === undefined) delete process.env.XEZ_DRY_RUN;
+    else process.env.XEZ_DRY_RUN = previousDryRun;
   });
 
   beforeEach(() => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-ghmerge-'));
-    mkdirSync(join(repoRoot, '.ai/cezar'), { recursive: true });
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-ghmerge-'));
+    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
     execFileSync('git', ['init', '-b', 'main'], { cwd: repoRoot });
     execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: repoRoot });
     execFileSync('git', ['config', 'user.name', 'Test'], { cwd: repoRoot });
     execFileSync('git', ['commit', '--allow-empty', '-m', 'init'], { cwd: repoRoot });
     execFileSync('git', ['remote', 'add', 'origin', 'https://github.com/acme/demo.git'], { cwd: repoRoot });
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     app = createApp({ repoRoot, store, manager: {} as RunManager, version: '0.0.0-test' });
   });
 

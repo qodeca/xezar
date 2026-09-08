@@ -4,7 +4,7 @@ import { buildChildEnv, looksSecret } from './agent-env.ts';
 /**
  * #427: the spawned backend must NOT inherit the full host environment. It
  * gets a curated allowlist — safe shell/toolchain vars + the backend's own
- * auth + gh + cezar's `CEZ_*` — and nothing else.
+ * auth + gh + xezar's `XEZ_*` — and nothing else.
  */
 describe('buildChildEnv — least-privilege child env (#427)', () => {
   const HOST: NodeJS.ProcessEnv = {
@@ -56,26 +56,26 @@ describe('buildChildEnv — least-privilege child env (#427)', () => {
     expect(codex.ANTHROPIC_API_KEY).toBeUndefined();
   });
 
-  it('keeps GITHUB_TOKEN for the gh handoff and the CEZ_* namespace', () => {
+  it('keeps GITHUB_TOKEN for the gh handoff and the XEZ_* namespace', () => {
     const src = {
       ...HOST,
       GITHUB_TOKEN: 'gho_token',
-      CEZ_DRY_RUN: '1',
-      CEZ_MOCK_ARGS_FILE: '/tmp/args',
+      XEZ_DRY_RUN: '1',
+      XEZ_MOCK_ARGS_FILE: '/tmp/args',
     };
     const env = buildChildEnv({ backend: 'claude', source: src });
     expect(env.GITHUB_TOKEN).toBe('gho_token');
-    expect(env.CEZ_DRY_RUN).toBe('1');
-    expect(env.CEZ_MOCK_ARGS_FILE).toBe('/tmp/args');
+    expect(env.XEZ_DRY_RUN).toBe('1');
+    expect(env.XEZ_MOCK_ARGS_FILE).toBe('/tmp/args');
   });
 
   it('applies extraEnv (spec.env) last so per-run vars always win', () => {
     const env = buildChildEnv({
       backend: 'claude',
       source: { ...HOST, PATH: '/host' },
-      extraEnv: { CEZ_HANDOFF_FILE: '/runs/x.md', PATH: '/override' },
+      extraEnv: { XEZ_HANDOFF_FILE: '/runs/x.md', PATH: '/override' },
     });
-    expect(env.CEZ_HANDOFF_FILE).toBe('/runs/x.md');
+    expect(env.XEZ_HANDOFF_FILE).toBe('/runs/x.md');
     expect(env.PATH).toBe('/override');
   });
 
@@ -116,7 +116,7 @@ describe('buildChildEnv — least-privilege child env (#427)', () => {
     it('the escape hatch does not resurrect the host value either', () => {
       const env = buildChildEnv({
         backend: 'claude',
-        source: { ...HOST, CEZ_AGENT_ENV_FULL: '1', Temp: 'C:\\Windows\\Temp' },
+        source: { ...HOST, XEZ_AGENT_ENV_FULL: '1', Temp: 'C:\\Windows\\Temp' },
         extraEnv: { TEMP: 'D:\\run-1' },
       });
       expect(env.Temp).toBeUndefined();
@@ -124,14 +124,14 @@ describe('buildChildEnv — least-privilege child env (#427)', () => {
     });
   });
 
-  it('opt-in CEZ_ENV_PASSTHROUGH forwards named extras', () => {
-    const src = { ...HOST, MY_TOOLCHAIN_DIR: '/opt/tc', CEZ_ENV_PASSTHROUGH: 'MY_TOOLCHAIN_DIR' };
+  it('opt-in XEZ_ENV_PASSTHROUGH forwards named extras', () => {
+    const src = { ...HOST, MY_TOOLCHAIN_DIR: '/opt/tc', XEZ_ENV_PASSTHROUGH: 'MY_TOOLCHAIN_DIR' };
     const env = buildChildEnv({ backend: 'claude', source: src });
     expect(env.MY_TOOLCHAIN_DIR).toBe('/opt/tc');
   });
 
-  it('opt-in CEZ_AGENT_ENV_FULL=1 restores legacy full inheritance (escape hatch)', () => {
-    const src = { ...HOST, CEZ_AGENT_ENV_FULL: '1' };
+  it('opt-in XEZ_AGENT_ENV_FULL=1 restores legacy full inheritance (escape hatch)', () => {
+    const src = { ...HOST, XEZ_AGENT_ENV_FULL: '1' };
     const env = buildChildEnv({ backend: 'claude', source: src });
     expect(env.AWS_SECRET_ACCESS_KEY).toBe(HOST.AWS_SECRET_ACCESS_KEY);
   });
@@ -142,13 +142,13 @@ describe('buildChildEnv — least-privilege child env (#427)', () => {
    * nothing. One parser, one answer — and the off/absent spellings must still
    * mean "stay hardened", since this hatch fails OPEN.
    */
-  it.each(['1', 'true', 'yes'])('CEZ_AGENT_ENV_FULL=%s enables the hatch', (value) => {
-    const env = buildChildEnv({ backend: 'claude', source: { ...HOST, CEZ_AGENT_ENV_FULL: value } });
+  it.each(['1', 'true', 'yes'])('XEZ_AGENT_ENV_FULL=%s enables the hatch', (value) => {
+    const env = buildChildEnv({ backend: 'claude', source: { ...HOST, XEZ_AGENT_ENV_FULL: value } });
     expect(env.AWS_SECRET_ACCESS_KEY).toBe(HOST.AWS_SECRET_ACCESS_KEY);
   });
 
-  it.each(['0', 'false', ''])('CEZ_AGENT_ENV_FULL=%s stays hardened', (value) => {
-    const env = buildChildEnv({ backend: 'claude', source: { ...HOST, CEZ_AGENT_ENV_FULL: value } });
+  it.each(['0', 'false', ''])('XEZ_AGENT_ENV_FULL=%s stays hardened', (value) => {
+    const env = buildChildEnv({ backend: 'claude', source: { ...HOST, XEZ_AGENT_ENV_FULL: value } });
     expect(env.AWS_SECRET_ACCESS_KEY).toBeUndefined();
   });
 });
@@ -205,10 +205,10 @@ describe('buildChildEnv — Windows-shaped env (#427 review)', () => {
     expect(env.Stripe_Secret_Key).toBeUndefined();
   });
 
-  it('honors lower-cased proxy vars and CEZ_* / passthrough case-insensitively', () => {
+  it('honors lower-cased proxy vars and XEZ_* / passthrough case-insensitively', () => {
     const env = buildChildEnv({
       backend: 'claude',
-      source: { ...WIN, http_proxy: 'http://p:3128', CEZ_ENV_PASSTHROUGH: 'my_tool_dir', my_tool_dir: 'C:\\tc' },
+      source: { ...WIN, http_proxy: 'http://p:3128', XEZ_ENV_PASSTHROUGH: 'my_tool_dir', my_tool_dir: 'C:\\tc' },
     });
     expect(env.http_proxy).toBe('http://p:3128');
     expect(env.my_tool_dir).toBe('C:\\tc');
@@ -297,7 +297,7 @@ describe('agent-profile config dirs reach the child', () => {
       }).CLAUDE_CONFIG_DIR,
     ).toBe('/home/u/.claude-klaudiusz');
     // The `CLAUDE_` prefix means a host-level override also rides in, which is what makes it the
-    // DEFAULT profile's dir rather than something cezar has to re-export.
+    // DEFAULT profile's dir rather than something xezar has to re-export.
     expect(
       buildChildEnv({
         backend: 'claude',
@@ -316,13 +316,13 @@ describe('agent-profile config dirs reach the child', () => {
     ).toBe('/home/u/.codex-klaudiusz');
   });
 
-  it('the per-run account still wins under the CEZ_AGENT_ENV_FULL escape hatch', () => {
+  it('the per-run account still wins under the XEZ_AGENT_ENV_FULL escape hatch', () => {
     // The hatch restores full inheritance, but `extraEnv` is applied last there too — otherwise
     // a host-level CLAUDE_CONFIG_DIR would silently outrank the account the user picked.
     const env = buildChildEnv({
       backend: 'claude',
       extraEnv: { CLAUDE_CONFIG_DIR: '/home/u/.claude-klaudiusz' },
-      source: { PATH: '/usr/bin', CEZ_AGENT_ENV_FULL: '1', CLAUDE_CONFIG_DIR: '/home/u/.claude' },
+      source: { PATH: '/usr/bin', XEZ_AGENT_ENV_FULL: '1', CLAUDE_CONFIG_DIR: '/home/u/.claude' },
     });
     expect(env.CLAUDE_CONFIG_DIR).toBe('/home/u/.claude-klaudiusz');
   });

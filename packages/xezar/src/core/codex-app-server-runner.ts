@@ -52,9 +52,9 @@ export interface CodexRunnerOptions {
  *
  * Auth = the host's logged-in ChatGPT/Codex session (or CODEX_API_KEY). The
  * agent runs autonomously via `sandbox: danger-full-access` +
- * `approvalPolicy: never`, matching cezar's default auto permission mode
+ * `approvalPolicy: never`, matching xezar's default auto permission mode
  * (spec 2026-07-17-permission-modes). Codex has no per-tool allowlist, so
- * `spec.allowedTools` is ignored. `CEZ_CODEX_NETWORK=0` retains the previous
+ * `spec.allowedTools` is ignored. `XEZ_CODEX_NETWORK=0` retains the previous
  * network-blocked `workspace-write` sandbox as an explicit restriction.
  */
 export class CodexAppServerRunner implements AgentRunner {
@@ -123,7 +123,7 @@ class CodexSession implements AgentSession {
   /** Set the moment WE signal the child (EOF watchdog, cancel, kill switch).
    *  codex handles the signal and exits 143, so without this the runner reads
    *  its own teardown as a codex failure (#703). */
-  private terminatedByCezar = false;
+  private terminatedByXezar = false;
   /** "Has the app-server really terminated?" — the question `child.killed`
    *  does not answer: it flips on signal delivery, so the SIGTERM this runner
    *  sends would otherwise veto its own SIGKILL escalation (#844). */
@@ -166,7 +166,7 @@ class CodexSession implements AgentSession {
         this.child.stdout.destroy();
         killTimer = setTimeout(() => {
           if (!this.hasExited()) {
-            this.terminatedByCezar = true;
+            this.terminatedByXezar = true;
             this.child.kill('SIGKILL');
           }
         }, KILL_GRACE_MS);
@@ -246,11 +246,11 @@ class CodexSession implements AgentSession {
       }
 
       // Our own EOF watchdog / cancel signal coming back as 143/137 — the
-      // teardown cezar asked for, not a codex failure (#703).
-      if (this.terminatedByCezar && isSignalTerminationExit(exitCode)) {
+      // teardown xezar asked for, not a codex failure (#703).
+      if (this.terminatedByXezar && isSignalTerminationExit(exitCode)) {
         this.emit({
           type: 'note',
-          message: `codex app-server did not exit on its own after close; terminated by cezar (code ${exitCode})`,
+          message: `codex app-server did not exit on its own after close; terminated by xezar (code ${exitCode})`,
         });
         this.emit({ type: 'done' });
         return base;
@@ -313,7 +313,7 @@ class CodexSession implements AgentSession {
           this.eofKillTimer = kill;
         },
         () => {
-          this.terminatedByCezar = true;
+          this.terminatedByXezar = true;
         },
       );
     } catch {
@@ -331,7 +331,7 @@ class CodexSession implements AgentSession {
       );
     }
     if (!this.hasExited()) {
-      this.terminatedByCezar = true;
+      this.terminatedByXezar = true;
       this.child.kill('SIGTERM');
     }
   }
@@ -346,8 +346,8 @@ class CodexSession implements AgentSession {
       cwd: this.spec.cwd,
       // Full access is the `auto` preset shared by all backends. Besides avoiding prompts, this
       // keeps container installs working when bubblewrap cannot create a UID map (#563).
-      // CEZ_CODEX_NETWORK=0 remains the backwards-compatible explicit sandbox opt-out.
-      sandbox: process.env.CEZ_CODEX_NETWORK === '0' ? 'workspace-write' : 'danger-full-access',
+      // XEZ_CODEX_NETWORK=0 remains the backwards-compatible explicit sandbox opt-out.
+      sandbox: process.env.XEZ_CODEX_NETWORK === '0' ? 'workspace-write' : 'danger-full-access',
       approvalPolicy: 'never',
     };
     if (this.spec.resume && this.spec.sessionId) {
@@ -498,7 +498,7 @@ class CodexSession implements AgentSession {
         // An interrupted/failed item never sees item/completed — surface its
         // partial prose before the turn boundary (run.ts reads markers there).
         this.textCoalescer.flush();
-        if (method === 'turn/failed' && !this.terminatedByCezar) {
+        if (method === 'turn/failed' && !this.terminatedByXezar) {
           const error = params.error as Record<string, unknown> | undefined;
           const message = stringField(error ?? {}, 'message') ?? 'codex turn failed';
           this.emit({ type: 'error', message });
@@ -587,12 +587,12 @@ const REASONING_SUMMARIES = new Set(['auto', 'concise', 'detailed', 'none']);
  * The reasoning-summary override sent on `turn/start` (TurnStartParams.summary).
  * Defaults to `auto` so reasoning is visible out of the box — without it the
  * app-server runs with its own default (no summary) and the reasoning thread
- * stays empty even when the model reasons. `CEZ_CODEX_REASONING` overrides the
+ * stays empty even when the model reasons. `XEZ_CODEX_REASONING` overrides the
  * default (`auto`/`concise`/`detailed`, or `none` to opt out); an unrecognized
  * value falls back to `auto`.
  */
 export function reasoningSummary(env: NodeJS.ProcessEnv = process.env): string {
-  const raw = env.CEZ_CODEX_REASONING?.trim().toLowerCase();
+  const raw = env.XEZ_CODEX_REASONING?.trim().toLowerCase();
   if (!raw) return 'auto';
   return REASONING_SUMMARIES.has(raw) ? raw : 'auto';
 }

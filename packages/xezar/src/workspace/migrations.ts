@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { workspaceUiStateSchema } from '@open-mercato/cezar-contract';
-import { cezarHomeDir, workspaceConfigPath } from '../paths.ts';
+import { workspaceUiStateSchema } from '@qodeca/xezar-contract';
+import { xezarHomeDir, workspaceConfigPath } from '../paths.ts';
 import { readUiState } from '../ui-state.ts';
 import { loadWorkspaceConfig, mergeWriteWorkspaceConfig } from './config.ts';
 import { mergeWriteWorkspaceUiState } from './ui-state.ts';
@@ -52,7 +52,7 @@ function asObject(value: unknown): Record<string, unknown> | null {
 }
 
 /**
- * The boot repo's `.ai/cezar/config.json` resource keys, read RAW (not through
+ * The boot repo's `.ai/xezar/config.json` resource keys, read RAW (not through
  * `loadConfig`) so only values the user explicitly set are imported — a
  * defaulted value must not masquerade as a preference. Bounds mirror the
  * workspace `resources` schema; out-of-range values are simply not imported.
@@ -60,7 +60,7 @@ function asObject(value: unknown): Record<string, unknown> | null {
 async function readRepoResourceKeys(
   repoRoot: string,
 ): Promise<{ maxParallel?: number; memoryLimitMb?: number }> {
-  const raw = await readRawObject(join(repoRoot, '.ai/cezar', 'config.json'));
+  const raw = await readRawObject(join(repoRoot, '.ai/xezar', 'config.json'));
   const out: { maxParallel?: number; memoryLimitMb?: number } = {};
   const maxParallel = raw?.maxParallel;
   if (typeof maxParallel === 'number' && Number.isInteger(maxParallel) && maxParallel >= 1 && maxParallel <= 16) {
@@ -81,15 +81,15 @@ async function readRepoResourceKeys(
 /**
  * Migration 001 — `schemaVersion 0 → 1`, the "current version up" migration:
  *
- * 1. Create `~/.cezar/config.json` with defaults if absent (the merge-write
+ * 1. Create `~/.xezar/config.json` with defaults if absent (the merge-write
  *    does this even when there is nothing to import).
  * 2. Booting inside a repo: import its `maxParallel`/`memoryLimitMb` into
  *    workspace `resources`, and its `appearance`/`notifications` ui-state
- *    keys into `~/.cezar/ui-state.json`. Keys already set globally are NEVER
+ *    keys into `~/.xezar/ui-state.json`. Keys already set globally are NEVER
  *    overwritten — presence is checked against the RAW global file (before
  *    defaults are applied), which is exactly what makes a crash-interrupted
  *    re-run safe: the first pass writes the keys, the re-run sees them set.
- * 3. Every per-repo file is left untouched in place, so an older cezar run in
+ * 3. Every per-repo file is left untouched in place, so an older xezar run in
  *    the same repo keeps working off its local copies.
  *
  * Registering the boot repo is NOT part of the migration — the normal boot
@@ -144,7 +144,7 @@ export const WORKSPACE_MIGRATIONS: readonly WorkspaceMigration[] = [migration001
 
 /**
  * Run every pending workspace migration — called at boot before anything else
- * touches `~/.cezar`. Reads `schemaVersion` (absent file or key → 0, which
+ * touches `~/.xezar`. Reads `schemaVersion` (absent file or key → 0, which
  * means "run everything" — safe because every migration is idempotent), runs
  * each migration with `to > current` in ascending order, and persists the new
  * `schemaVersion` after EACH one, so a crash resumes exactly where it left
@@ -158,7 +158,7 @@ export async function runMigrations(
   opts: { bootRepoRoot: string | null },
   migrations: readonly WorkspaceMigration[] = WORKSPACE_MIGRATIONS,
 ): Promise<void> {
-  const home = cezarHomeDir();
+  const home = xezarHomeDir();
   const ordered = [...migrations].sort((a, b) => a.to - b.to);
   let current = (await loadWorkspaceConfig()).schemaVersion;
   for (const migration of ordered) {
@@ -172,7 +172,7 @@ export async function runMigrations(
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.warn(
-        `[cez] workspace migration ${migration.id} failed (${message}) — booting with in-memory defaults`,
+        `[xez] workspace migration ${migration.id} failed (${message}) — booting with in-memory defaults`,
       );
       return;
     }

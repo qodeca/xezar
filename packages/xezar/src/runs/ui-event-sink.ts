@@ -1,9 +1,8 @@
 /**
  * Protocol-v2 persistence + fan-out policy for one agent session — the
  * RunManager feeds every `UiEvent` a runner emits (`SessionOptions.onUiEvent`)
- * through one sink instance and the sink decides, per the spec's performance
- * guardrails (§"Normalized agent-event protocol v2" and
- * `.ai/analysis/cockpit-ui-redesign/protocol-rationale-and-performance.md` §5):
+ * through one sink instance and the sink decides, per the performance
+ * guardrails in `AGENT_PROTOCOL.md` §8 ("Persistence & transport"):
  *
  *  - `item.delta` is COALESCED per item (~40 ms flush) onto the live wire
  *    only — raw deltas NEVER hit the NDJSON file; replay needs no delta

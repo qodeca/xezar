@@ -10,7 +10,7 @@ import { extractTaskRefs, refineTaskRefs, titleRefNumber, type TaskRefs } from '
  * INTENT — skill + arguments + prompt + PR/issue context, never the agent's
  * streamed words — into a short `<number>: <gerund phrase>` display title with
  * structured, regex-cross-checked PR/issue numbers. Mirrors the planner (spec
- * 008): `[cez-namer]` dry-run marker, strict JSON, never blocks, never fails a
+ * 008): `[xez-namer]` dry-run marker, strict JSON, never blocks, never fails a
  * run. This module is the pure half; the runner call lives in `generateRunName`.
  */
 
@@ -21,14 +21,14 @@ export const TITLE_MAX = 40;
 
 /**
  * Master switch for ALL LLM naming (creation-time and live refresh):
- * `CEZ_AUTONAME=0` kills it outright; under `CEZ_DRY_RUN=1` naming is off by
+ * `XEZ_AUTONAME=0` kills it outright; under `XEZ_DRY_RUN=1` naming is off by
  * default too (the mock's canned title would REPLACE honest heuristic titles
- * in demos and e2e) unless `CEZ_AUTONAME=1` forces it — the hook the dry-run
+ * in demos and e2e) unless `XEZ_AUTONAME=1` forces it — the hook the dry-run
  * naming tests use.
  */
 export function autoNamingActive(env: NodeJS.ProcessEnv = process.env): boolean {
-  if (env.CEZ_AUTONAME === '0') return false;
-  if (env.CEZ_DRY_RUN === '1' && env.CEZ_AUTONAME !== '1') return false;
+  if (env.XEZ_AUTONAME === '0') return false;
+  if (env.XEZ_DRY_RUN === '1' && env.XEZ_AUTONAME !== '1') return false;
   return true;
 }
 
@@ -37,7 +37,7 @@ export function autoNamingActive(env: NodeJS.ProcessEnv = process.env): boolean 
  * default, deviating from the cost-opt-in house rule; cost is bounded by the
  * cheap `namerModel`, one call per turn end, and the skip conditions in
  * `RunManager.recordTurnEnd`). Precedence: `config.liveTitleUpdates` (the
- * Settings toggle) wins over the `CEZ_TITLE_UPDATES` env default (`'0'` = off)
+ * Settings toggle) wins over the `XEZ_TITLE_UPDATES` env default (`'0'` = off)
  * wins over the built-in ON.
  */
 export function liveTitleUpdatesEnabled(
@@ -45,7 +45,7 @@ export function liveTitleUpdatesEnabled(
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
   if (config.liveTitleUpdates !== undefined) return config.liveTitleUpdates;
-  return env.CEZ_TITLE_UPDATES !== '0';
+  return env.XEZ_TITLE_UPDATES !== '0';
 }
 
 export const NAMER_SYSTEM_PROMPT =
@@ -78,11 +78,11 @@ export interface NameResult {
   issueNumber?: number;
 }
 
-/** The `[cez-namer]` marker lets the CEZ_DRY_RUN mock recognize a naming call. */
+/** The `[xez-namer]` marker lets the XEZ_DRY_RUN mock recognize a naming call. */
 export function buildNamerPrompt(ctx: NamerContext): string {
   const refs = advisoryRefs(ctx);
   const lines = [
-    '[cez-namer] Name this task.',
+    '[xez-namer] Name this task.',
     '',
     ...(ctx.skillName ? [`Selected skill: /${ctx.skillName}`] : []),
     ...(ctx.skillDescription ? [`Skill description: ${ctx.skillDescription}`] : []),
@@ -168,9 +168,9 @@ export async function generateRunName(repoRoot: string, ctx: NamerContext): Prom
         model,
         timeoutMs: NAMER_TIMEOUT_MS,
         // Shadow the argv-capture hook: dry-run tests capture the AGENT's argv
-        // through CEZ_MOCK_ARGS_FILE; the namer's bookkeeping call must not
+        // through XEZ_MOCK_ARGS_FILE; the namer's bookkeeping call must not
         // interleave lines into that file.
-        env: { ...profileEnv, CEZ_MOCK_ARGS_FILE: '' },
+        env: { ...profileEnv, XEZ_MOCK_ARGS_FILE: '' },
       });
       const composed = composeNameResult(result.text, ctx);
       if (composed) return composed;

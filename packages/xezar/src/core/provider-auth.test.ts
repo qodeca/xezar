@@ -29,21 +29,21 @@ const connectedResults: Record<string, ProviderCommandResult> = {
 };
 
 const originalEnv = {
-  CEZ_AGENT_MODELS_LOCKED: process.env.CEZ_AGENT_MODELS_LOCKED,
-  CEZ_DRY_RUN: process.env.CEZ_DRY_RUN,
-  CEZ_CLAUDE_BIN: process.env.CEZ_CLAUDE_BIN,
-  CEZ_CODEX_BIN: process.env.CEZ_CODEX_BIN,
-  CEZ_OPENCODE_BIN: process.env.CEZ_OPENCODE_BIN,
-  CEZ_PI_BIN: process.env.CEZ_PI_BIN,
+  XEZ_AGENT_MODELS_LOCKED: process.env.XEZ_AGENT_MODELS_LOCKED,
+  XEZ_DRY_RUN: process.env.XEZ_DRY_RUN,
+  XEZ_CLAUDE_BIN: process.env.XEZ_CLAUDE_BIN,
+  XEZ_CODEX_BIN: process.env.XEZ_CODEX_BIN,
+  XEZ_OPENCODE_BIN: process.env.XEZ_OPENCODE_BIN,
+  XEZ_PI_BIN: process.env.XEZ_PI_BIN,
 };
 
 beforeEach(() => {
-  delete process.env.CEZ_AGENT_MODELS_LOCKED;
-  delete process.env.CEZ_DRY_RUN;
-  delete process.env.CEZ_CLAUDE_BIN;
-  delete process.env.CEZ_CODEX_BIN;
-  delete process.env.CEZ_OPENCODE_BIN;
-  delete process.env.CEZ_PI_BIN;
+  delete process.env.XEZ_AGENT_MODELS_LOCKED;
+  delete process.env.XEZ_DRY_RUN;
+  delete process.env.XEZ_CLAUDE_BIN;
+  delete process.env.XEZ_CODEX_BIN;
+  delete process.env.XEZ_OPENCODE_BIN;
+  delete process.env.XEZ_PI_BIN;
 });
 
 afterEach(() => {
@@ -587,7 +587,7 @@ describe('ProviderAuthService', () => {
     });
 
     it('re-checks a NOT-connected answer sooner, so a terminal login is noticed on its own', async () => {
-      // cezar cannot see `claude auth login` happen, so a card that says disconnected has to find
+      // xezar cannot see `claude auth login` happen, so a card that says disconnected has to find
       // out for itself. A minute, not seconds: every expiry costs a background probe now that
       // reading revalidates behind the answer, and a polling cockpit would turn a five-second
       // window into a spawn every five seconds forever.
@@ -778,8 +778,8 @@ describe('ProviderAuthService', () => {
     });
   });
 
-  it('keeps CEZ_DRY_RUN connected and ignores runtime invalidation', async () => {
-    process.env.CEZ_DRY_RUN = '1';
+  it('keeps XEZ_DRY_RUN connected and ignores runtime invalidation', async () => {
+    process.env.XEZ_DRY_RUN = '1';
     const createAuthFailureId = vi.fn(() => 'unused-incident');
     const service = new ProviderAuthService({ runCommand: runner(), createAuthFailureId });
 
@@ -788,8 +788,8 @@ describe('ProviderAuthService', () => {
     await expect(statuses(service)).resolves.toMatchObject({ claude: { status: 'connected' } });
   });
 
-  it('keeps exact CEZ_AGENT_MODELS_LOCKED=1 connected without credential probes or runtime invalidation', async () => {
-    process.env.CEZ_AGENT_MODELS_LOCKED = '1';
+  it('keeps exact XEZ_AGENT_MODELS_LOCKED=1 connected without credential probes or runtime invalidation', async () => {
+    process.env.XEZ_AGENT_MODELS_LOCKED = '1';
     const runCommand = runner();
     const createAuthFailureId = vi.fn(() => 'unused-incident');
     const service = new ProviderAuthService({ runCommand, createAuthFailureId });
@@ -809,9 +809,9 @@ describe('ProviderAuthService', () => {
   });
 
   it.each(['0', 'true', 'yes', ''])(
-    'does not disable provider checks for CEZ_AGENT_MODELS_LOCKED=%j',
+    'does not disable provider checks for XEZ_AGENT_MODELS_LOCKED=%j',
     (value) => {
-      process.env.CEZ_AGENT_MODELS_LOCKED = value;
+      process.env.XEZ_AGENT_MODELS_LOCKED = value;
       expect(providerAuthChecksDisabled()).toBe(false);
     },
   );
@@ -856,9 +856,9 @@ describe('ProviderAuthService', () => {
     });
   });
 
-  it('uses CEZ_CODEX_BIN and CEZ_OPENCODE_BIN for both probe and login commands', async () => {
-    process.env.CEZ_CODEX_BIN = '/tools/codex custom';
-    process.env.CEZ_OPENCODE_BIN = '/tools/opencode custom';
+  it('uses XEZ_CODEX_BIN and XEZ_OPENCODE_BIN for both probe and login commands', async () => {
+    process.env.XEZ_CODEX_BIN = '/tools/codex custom';
+    process.env.XEZ_OPENCODE_BIN = '/tools/opencode custom';
     const runCommand = runner();
     const service = new ProviderAuthService({ runCommand, platform: 'linux' });
 
@@ -869,8 +869,8 @@ describe('ProviderAuthService', () => {
     expect(service.loginCommand('opencode')).toBe("'/tools/opencode custom' auth login");
   });
 
-  it('uses CEZ_PI_BIN for the model-availability probe and interactive login', async () => {
-    process.env.CEZ_PI_BIN = '/tools/pi custom';
+  it('uses XEZ_PI_BIN for the model-availability probe and interactive login', async () => {
+    process.env.XEZ_PI_BIN = '/tools/pi custom';
     const runCommand = runner((executable) =>
       executable === '/tools/pi custom' ? connectedResults.pi! : resultFor(executable));
     const service = new ProviderAuthService({ runCommand, platform: 'linux' });
@@ -880,8 +880,8 @@ describe('ProviderAuthService', () => {
     expect(service.loginCommand('pi')).toBe("'/tools/pi custom' /login");
   });
 
-  it('uses the documented CEZ_CLAUDE_BIN override for both probe and login commands', async () => {
-    process.env.CEZ_CLAUDE_BIN = '/tools/claude custom';
+  it('uses the documented XEZ_CLAUDE_BIN override for both probe and login commands', async () => {
+    process.env.XEZ_CLAUDE_BIN = '/tools/claude custom';
     const runCommand = runner((executable) =>
       executable === '/tools/claude custom' ? connectedResults.claude! : resultFor(executable));
     const service = new ProviderAuthService({ runCommand, platform: 'linux' });
@@ -892,8 +892,8 @@ describe('ProviderAuthService', () => {
   });
 
   it('renders POSIX and Windows login commands safely for executable special characters', () => {
-    process.env.CEZ_CODEX_BIN = "a path/'codex'";
-    process.env.CEZ_OPENCODE_BIN = 'C:\\Program Files\\op%en&co!de".exe';
+    process.env.XEZ_CODEX_BIN = "a path/'codex'";
+    process.env.XEZ_OPENCODE_BIN = 'C:\\Program Files\\op%en&co!de".exe';
 
     expect(new ProviderAuthService({ platform: 'linux' }).loginCommand('codex'))
       .toBe("'a path/'\\''codex'\\''' login");
@@ -901,8 +901,8 @@ describe('ProviderAuthService', () => {
       .toBe('"C:\\Program Files\\op^%en^&co^!de^".exe" auth login');
   });
 
-  it('reports all four providers connected in CEZ_DRY_RUN without executing a command', async () => {
-    process.env.CEZ_DRY_RUN = '1';
+  it('reports all four providers connected in XEZ_DRY_RUN without executing a command', async () => {
+    process.env.XEZ_DRY_RUN = '1';
     const runCommand = runner();
     const service = new ProviderAuthService({ runCommand });
 
@@ -1051,8 +1051,8 @@ describe('ProviderAuthService', () => {
       expect(calls).toBe(4);
     });
 
-    it('answers connected per account in CEZ_DRY_RUN without executing a command', async () => {
-      process.env.CEZ_DRY_RUN = '1';
+    it('answers connected per account in XEZ_DRY_RUN without executing a command', async () => {
+      process.env.XEZ_DRY_RUN = '1';
       const runCommand = runner();
       const service = new ProviderAuthService({ runCommand });
       await expect(service.profileStatus('claude', { id: 'work', configDir: '/work' })).resolves.toEqual({

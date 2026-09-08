@@ -48,12 +48,12 @@ describe('wslDistroName', () => {
 
 describe('toWindowsPath', () => {
   it('maps a /mnt/<drive> path to its native drive letter, not a UNC round-trip', () => {
-    expect(toWindowsPath('/mnt/c/Users/pat/projects/cezar', 'Ubuntu')).toBe('C:\\Users\\pat\\projects\\cezar');
+    expect(toWindowsPath('/mnt/c/Users/pat/projects/xezar', 'Ubuntu')).toBe('C:\\Users\\pat\\projects\\xezar');
     expect(toWindowsPath('/mnt/d', 'Ubuntu')).toBe('D:\\');
   });
 
   it('maps a distro-native path to \\\\wsl$\\<Distro>\\…', () => {
-    expect(toWindowsPath('/home/pat/projects/cezar', 'Ubuntu')).toBe('\\\\wsl$\\Ubuntu\\home\\pat\\projects\\cezar');
+    expect(toWindowsPath('/home/pat/projects/xezar', 'Ubuntu')).toBe('\\\\wsl$\\Ubuntu\\home\\pat\\projects\\xezar');
   });
 
   it('handles the distro root itself', () => {
@@ -67,7 +67,7 @@ describe('toWindowsPath', () => {
 
 describe('toPosixPath', () => {
   it('reverses a \\\\wsl$\\<Distro>\\… UNC path back to POSIX', () => {
-    expect(toPosixPath('\\\\wsl$\\Ubuntu\\home\\pat\\projects\\cezar')).toBe('/home/pat/projects/cezar');
+    expect(toPosixPath('\\\\wsl$\\Ubuntu\\home\\pat\\projects\\xezar')).toBe('/home/pat/projects/xezar');
   });
 
   it('also reverses the newer \\\\wsl.localhost\\<Distro>\\… form', () => {

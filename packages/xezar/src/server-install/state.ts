@@ -18,7 +18,7 @@ import {
 import { freshServerState, serverStateSchema, type ServerState, type StepOutcome } from './types.ts';
 
 /**
- * `~/.cezar/server.json` I/O and the single-writer lock. Reads degrade to a
+ * `~/.xezar/server.json` I/O and the single-writer lock. Reads degrade to a
  * fresh record on any corruption (house pattern — never crash the wizard);
  * writes are atomic (tmp + rename) and `0600`, since the file is the input to
  * uninstall's "reverse exactly what was created" logic.

@@ -5,12 +5,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { queryKeys, workspaceQueryKeys } from '@/api/queries'
 import { createQueryClient } from '@/api/query-client'
-import type { AgentProfile, AgentProfilesResponse } from '@open-mercato/cezar-api-client'
+import type { AgentProfile, AgentProfilesResponse } from '@qodeca/xezar-api-client'
 import { Toaster, resetToasts } from '@/components/ui/toaster'
 import { AppRoutes } from '@/routes'
 
 /**
- * Global settings → Agent accounts (spec `.ai/specs/2026-07-29-agent-profiles.md`).
+ * Global settings → Agent accounts.
  *
  * What this pins, in order of how easy each is to break:
  *
@@ -142,7 +142,7 @@ function serve(
         })
       }
       if (url === '/api/v1/projects' && method === 'GET') {
-        return json({ projects: [], bootProject: 'boot', projectsDir: '~/cezar/projects' })
+        return json({ projects: [], bootProject: 'boot', projectsDir: '~/xezar/projects' })
       }
       return new Promise<never>(() => {})
     }),
@@ -165,7 +165,7 @@ function renderAccounts() {
   client.setQueryData(workspaceQueryKeys.projects, {
     projects: [],
     bootProject: 'boot',
-    projectsDir: '~/cezar/projects',
+    projectsDir: '~/xezar/projects',
   })
   render(
     <QueryClientProvider client={client}>
@@ -223,7 +223,7 @@ describe('the agent accounts section', () => {
     // One tab at a time, so only the ACTIVE agent's rows are in the DOM.
     await waitFor(() => expect(rows()).toHaveLength(1))
     expect(document.body.textContent).toContain('discovered')
-    // The discovered profile is what cezar found — a Rename or Remove would imply a setting. Checked
+    // The discovered profile is what xezar found — a Rename or Remove would imply a setting. Checked
     // with the panel OPEN, since that is now the only place either could appear.
     await openDetails('default')
     expect(document.querySelector('[data-slot="account-manage"]')).toBeNull()
@@ -888,7 +888,7 @@ describe('the add-account dialog', () => {
 
     expect(screen.getByLabelText<HTMLSelectElement>('Agent').value).toBe('codex')
     // The placeholder follows too, so the example folder is not the wrong agent's. It stays a
-    // GENERIC name — this string ships to every cezar user, so it must not carry one person's.
+    // GENERIC name — this string ships to every xezar user, so it must not carry one person's.
     expect(dirField().placeholder).toBe('~/.codex-second')
   })
 

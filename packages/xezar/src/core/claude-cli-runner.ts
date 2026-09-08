@@ -47,8 +47,8 @@ export interface ClaudeCliRunnerOptions {
 }
 
 /**
- * The claude binary a spawn should use: an explicit override, else `CEZ_CLAUDE_BIN`, else the
- * bundled mock under `CEZ_DRY_RUN`, else `claude` on PATH.
+ * The claude binary a spawn should use: an explicit override, else `XEZ_CLAUDE_BIN`, else the
+ * bundled mock under `XEZ_DRY_RUN`, else `claude` on PATH.
  *
  * Exported so model discovery (`claude-model-catalog.ts`) resolves the executable exactly the
  * way execution does — the catalog and the runs it feeds cannot disagree about which CLI, and
@@ -56,9 +56,9 @@ export interface ClaudeCliRunnerOptions {
  */
 export function resolveClaudeExecutable(override?: string): string {
   if (override) return override;
-  // CEZ_DRY_RUN=1 swaps in the bundled mock so the cockpit / store /
+  // XEZ_DRY_RUN=1 swaps in the bundled mock so the cockpit / store /
   // GUI can be exercised without a logged-in claude or burning tokens.
-  return process.env.CEZ_CLAUDE_BIN ?? (process.env.CEZ_DRY_RUN === '1' ? mockClaudePath() : 'claude');
+  return process.env.XEZ_CLAUDE_BIN ?? (process.env.XEZ_DRY_RUN === '1' ? mockClaudePath() : 'claude');
 }
 
 /**
@@ -71,7 +71,7 @@ export function resolveClaudeExecutable(override?: string): string {
  *
  * Session mechanics (multi-turn stdin, EOF watchdog, reopen window) follow
  * github-janitor's `claudeRunner.ts`; the original single-turn adaptation
- * came from @cezar/core's `ClaudeCodeCliRunner`.
+ * came from @xezar/core's `ClaudeCodeCliRunner`.
  */
 export class ClaudeCliRunner implements AgentRunner {
   readonly backend = 'claude' as const;
@@ -161,9 +161,9 @@ export class ClaudeCliRunner implements AgentRunner {
     // wall-clock kill switch. claude installs its own SIGTERM handler and exits
     // 143 instead of dying from the signal, so without this flag our own
     // teardown reads as an agent failure (#703).
-    let terminatedByCezar = false;
+    let terminatedByXezar = false;
     const signalChild = (signal: 'SIGTERM' | 'SIGKILL'): void => {
-      terminatedByCezar = true;
+      terminatedByXezar = true;
       child.kill(signal);
     };
     // Every watchdog below asks "is the child still alive?" — and that question
@@ -244,11 +244,11 @@ export class ClaudeCliRunner implements AgentRunner {
           }
 
           // Claude reports `error_during_execution` while reacting to our
-          // teardown signal. Once cezar has signalled the child, that frame
+          // teardown signal. Once xezar has signalled the child, that frame
           // describes the intentional stop rather than an agent failure.
           // Normalize only this precise wire shape so genuine result errors
           // (authentication, limits, malformed sessions) stay authoritative.
-          const mappedMessage = normalizeIntentionalTeardownResult(msg, terminatedByCezar);
+          const mappedMessage = normalizeIntentionalTeardownResult(msg, terminatedByXezar);
           emitUi((state) => mapClaudeMessage(mappedMessage, state));
 
           let delta = 0;
@@ -302,13 +302,13 @@ export class ClaudeCliRunner implements AgentRunner {
         return { text, toolCalls, tokensUsed, sessionId: spec.sessionId };
       }
 
-      // A session cezar itself tore down (EOF watchdog after `end()`, or a
+      // A session xezar itself tore down (EOF watchdog after `end()`, or a
       // cancel) exits 143/137 — that is our own signal coming back, not an
       // agent failure, so it settles on the normal path with a note (#703).
-      if (terminatedByCezar && isSignalTerminationExit(exitCode)) {
+      if (terminatedByXezar && isSignalTerminationExit(exitCode)) {
         onEvent?.({
           type: 'note',
-          message: `claude CLI did not exit on its own after close; terminated by cezar (code ${exitCode})`,
+          message: `claude CLI did not exit on its own after close; terminated by xezar (code ${exitCode})`,
         });
         onEvent?.({ type: 'done' });
         return { text, toolCalls, tokensUsed, sessionId: spec.sessionId };
@@ -350,7 +350,7 @@ export class ClaudeCliRunner implements AgentRunner {
  * from stdin; `--output-format stream-json --verbose` gives per-event NDJSON;
  * `--permission-mode dontAsk` keeps headless runs non-interactive: tools in
  * `--allowedTools` proceed and everything else is denied instead of prompting.
- * `CEZ_APPROVAL_GATE=1` opts back into Claude's approval UI (#435).
+ * `XEZ_APPROVAL_GATE=1` opts back into Claude's approval UI (#435).
  */
 export function buildClaudeArgs(
   spec: AgentRunSpec,
@@ -363,7 +363,7 @@ export function buildClaudeArgs(
     'stream-json',
     '--verbose',
     '--permission-mode',
-    env.CEZ_APPROVAL_GATE === '1' ? 'acceptEdits' : 'dontAsk',
+    env.XEZ_APPROVAL_GATE === '1' ? 'acceptEdits' : 'dontAsk',
   ];
   if (spec.systemPrompt) {
     args.push('--append-system-prompt', spec.systemPrompt);
@@ -415,7 +415,7 @@ function truncate(s: string, max = 200): string {
   return s.length > max ? `${s.slice(0, max)}…` : s;
 }
 
-/** Path to the bundled mock (`scripts/mock-claude.mjs`), for CEZ_DRY_RUN=1. */
+/** Path to the bundled mock (`scripts/mock-claude.mjs`), for XEZ_DRY_RUN=1. */
 function mockClaudePath(): string {
   const here = dirname(fileURLToPath(import.meta.url));
   // here = <pkg>/dist/core (built) or <pkg>/src/core (tsx dev).
@@ -441,10 +441,10 @@ interface ClaudeStreamMessage {
 
 function normalizeIntentionalTeardownResult(
   msg: ClaudeStreamMessage,
-  terminatedByCezar: boolean,
+  terminatedByXezar: boolean,
 ): ClaudeStreamMessage {
   if (
-    terminatedByCezar
+    terminatedByXezar
     && msg.type === 'result'
     && msg.is_error === true
     && msg.subtype === 'error_during_execution'

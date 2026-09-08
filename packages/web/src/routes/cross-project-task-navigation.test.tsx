@@ -5,7 +5,7 @@ import { MemoryRouter, useLocation, useNavigate } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createQueryClient } from '@/api/query-client'
-import type { ProjectsResponse } from '@open-mercato/cezar-api-client'
+import type { ProjectsResponse } from '@qodeca/xezar-api-client'
 import { AppearanceProvider } from '@/components/appearance-provider'
 import { ListViewProvider } from '@/components/list-view'
 import { ThemeProvider } from '@/components/theme-provider'
@@ -33,23 +33,23 @@ const RUN_ID = 'r1'
 
 const HEALTH = {
   version: '0.0.0-test',
-  repoRoot: '/home/u/cezar',
+  repoRoot: '/home/u/xezar',
   repo: null,
   checks: [],
   defaultRunner: 'claude',
   forge: null,
   capabilities: { localHandoff: true, followups: true, singleProject: false, automations: false },
-  projects: [{ id: BOOT, name: 'cezar' }],
+  projects: [{ id: BOOT, name: 'xezar' }],
   bootProject: BOOT,
 }
 
 const REGISTRY: ProjectsResponse = {
   projects: [
-    { id: BOOT, name: 'cezar', root: '/home/u/cezar', addedAt: '', lastOpenedAt: '', source: 'local', status: 'ok' },
+    { id: BOOT, name: 'xezar', root: '/home/u/xezar', addedAt: '', lastOpenedAt: '', source: 'local', status: 'ok' },
     { id: 'other', name: 'other-repo', root: '/home/u/other', addedAt: '', lastOpenedAt: '', source: 'local', status: 'ok' },
   ],
   bootProject: BOOT,
-  projectsDir: '~/cezar/projects',
+  projectsDir: '~/xezar/projects',
 }
 
 /** The row the global Tasks page renders, and the record its thread then reads. */

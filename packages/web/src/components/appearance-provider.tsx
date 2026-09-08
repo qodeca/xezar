@@ -35,7 +35,7 @@ const AppearanceContext = React.createContext<AppearanceContextValue | null>(nul
  *   3. when `GET /api/workspace/ui-state` answers, the server value is authoritative — it is
  *      applied and mirrored, so the next cold load pre-paints the truth.
  *
- *  The store is the GLOBAL one (`~/.cezar/ui-state.json`) since the multi-project split
+ *  The store is the GLOBAL one (`~/.xezar/ui-state.json`) since the multi-project split
  *  (step 3.5, spec §"Settings split"): accent and density describe the person at the keyboard,
  *  not a repo, and this provider sits ABOVE the router — it has no project scope to write to
  *  in the first place. Migration 001 copied the pre-existing per-repo value up, so upgrading
@@ -111,6 +111,6 @@ export function AppearanceProvider({ children }: { children: React.ReactNode }) 
 
 export function useAppearance(): AppearanceContextValue {
   const context = React.useContext(AppearanceContext)
-  if (!context) throw new Error('cezar: useAppearance() must be called inside <AppearanceProvider>')
+  if (!context) throw new Error('xezar: useAppearance() must be called inside <AppearanceProvider>')
   return context
 }

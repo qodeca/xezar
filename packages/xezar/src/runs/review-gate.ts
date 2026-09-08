@@ -7,7 +7,7 @@
  * with the OPPOSITE default: OFF unless explicitly turned on.
  *
  * Precedence: the `config.reviewGate` Settings toggle wins when set; otherwise the
- * `CEZ_REVIEW_GATE` env decides — enabled ONLY by the exact string `'1'` (anything
+ * `XEZ_REVIEW_GATE` env decides — enabled ONLY by the exact string `'1'` (anything
  * else, including `'true'`/`'yes'`/unset, is off); otherwise off.
  *
  * Autonomy is applied by the callers, not here: a run parks at `review` only when
@@ -18,5 +18,5 @@ export function reviewGateEnabled(
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
   if (config.reviewGate !== undefined) return config.reviewGate;
-  return env.CEZ_REVIEW_GATE === '1';
+  return env.XEZ_REVIEW_GATE === '1';
 }

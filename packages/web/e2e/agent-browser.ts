@@ -17,14 +17,14 @@ const repoRoot = resolve(import.meta.dirname, '../../..')
 const descriptorPath = resolve(repoRoot, '.ai/qa/test-env.json')
 
 /**
- * The built CLI a spec spawns when it needs its OWN cezar rather than the shared test env
+ * The built CLI a spec spawns when it needs its OWN xezar rather than the shared test env
  * (a pinned `runs.json` fixture, an empty repo, a second project).
  *
  * Exported from here rather than re-derived per spec because it is one fact about the build
  * layout, and it has already moved once: `npm run build` emits the server into the workspace
- * package (`packages/cezar/dist`), not into a root-level `dist/`.
+ * package (`packages/xezar/dist`), not into a root-level `dist/`.
  */
-export const cezarCli = resolve(repoRoot, 'packages/cezar/dist/index.js')
+export const xezarCli = resolve(repoRoot, 'packages/xezar/dist/index.js')
 
 type EnvDescriptor = {
   baseUrl: string
@@ -38,24 +38,24 @@ export function readTestEnv(): EnvDescriptor {
     return JSON.parse(readFileSync(descriptorPath, 'utf8')) as EnvDescriptor
   } catch (cause) {
     throw new Error(
-      `cezar e2e: cannot read ${descriptorPath}. Run \`npm run test:e2e\`, which boots the env first.`,
+      `xezar e2e: cannot read ${descriptorPath}. Run \`npm run test:e2e\`, which boots the env first.`,
       { cause },
     )
   }
 }
 
 /**
- * The environment for a spec-owned `cezar serve` over a throwaway `dataRoot`.
+ * The environment for a spec-owned `xezar serve` over a throwaway `dataRoot`.
  *
- * `CEZ_DRY_RUN` is why these boots need no network and no agent login. `CEZ_HOME` is why they
+ * `XEZ_DRY_RUN` is why these boots need no network and no agent login. `XEZ_HOME` is why they
  * are *isolated*: since the multi-project workspace landed, booting in an unregistered folder
- * APPENDS it to `~/.cezar/config.json`, so an unpinned fixture server would (a) litter the
- * developer's real registry with a dead `/tmp/cezar-e2e-…` entry per run and (b) make every
+ * APPENDS it to `~/.xezar/config.json`, so an unpinned fixture server would (a) litter the
+ * developer's real registry with a dead `/tmp/xezar-e2e-…` entry per run and (b) make every
  * spec order-dependent — once the registry holds more than one project the sidebar renders
  * the grouped multi-project shell instead of the flat one these specs assert against.
  * Pinning it inside `dataRoot` means the spec's own `rmSync(dataRoot)` cleans it up too.
  *
- * The shared test env pins the same variable under `.ai/qa/cez-home`
+ * The shared test env pins the same variable under `.ai/qa/xez-home`
  * (`.ai/scripts/test-env-up.sh`); this is that rule for the specs that boot their own server.
  */
 export function fixtureServeEnv(
@@ -64,17 +64,17 @@ export function fixtureServeEnv(
 ): NodeJS.ProcessEnv {
   return {
     ...process.env,
-    // One line on purpose: the `fixture-serve-must-pin-cez-home` design guardian reads these
-    // two together, and a CEZ_DRY_RUN without CEZ_HOME beside it is exactly the mistake it
+    // One line on purpose: the `fixture-serve-must-pin-xez-home` design guardian reads these
+    // two together, and a XEZ_DRY_RUN without XEZ_HOME beside it is exactly the mistake it
     // exists to catch.
-    CEZ_DRY_RUN: '1', CEZ_HOME: resolve(dataRoot, '.cez-home'),
+    XEZ_DRY_RUN: '1', XEZ_HOME: resolve(dataRoot, '.xez-home'),
     // A fixture repo must hold exactly the skills the fixture wrote. Open Mercato skill updates
     // are default-on (AGENTS.md § Zero config), so a boot inside the six-hour window installs the
     // whole `om-*` collection INTO the fixture and every "these are the project skills"
     // assertion starts depending on the machine's cache and network. The shared test env
     // (`skills-update.e2e.ts` attaches to it) is where that behaviour is exercised on purpose;
     // `extra` can still turn it back on for a spec that wants it.
-    CEZ_SKILLS_AUTO_UPDATE: '0',
+    XEZ_SKILLS_AUTO_UPDATE: '0',
     ...extra,
   }
 }
@@ -109,7 +109,7 @@ export async function bootProjectId(baseUrl: string): Promise<string> {
   const { bootProject } = (await (await fetch(`${baseUrl}/api/v1/projects`)).json()) as {
     bootProject: string
   }
-  if (!bootProject) throw new Error(`cezar e2e: ${baseUrl}/api/v1/projects named no boot project`)
+  if (!bootProject) throw new Error(`xezar e2e: ${baseUrl}/api/v1/projects named no boot project`)
   return bootProject
 }
 
@@ -164,7 +164,7 @@ export class AgentBrowser {
   static open(session: string): AgentBrowser {
     const env = readTestEnv()
     if (!env.browser.installed) {
-      throw new Error(`cezar e2e: the agent-browser provider is not installed (${env.browser.notes})`)
+      throw new Error(`xezar e2e: the agent-browser provider is not installed (${env.browser.notes})`)
     }
     return new AgentBrowser(env.browser.command, session)
   }
@@ -180,11 +180,11 @@ export class AgentBrowser {
         maxBuffer: 32 * 1024 * 1024,
       })
     } catch (cause) {
-      throw new Error(`cezar e2e: agent-browser ${args.join(' ')} failed`, { cause })
+      throw new Error(`xezar e2e: agent-browser ${args.join(' ')} failed`, { cause })
     }
     const parsed = JSON.parse(stdout) as { success: boolean; data?: unknown; error?: unknown }
     if (!parsed.success) {
-      throw new Error(`cezar e2e: agent-browser ${args.join(' ')} → ${JSON.stringify(parsed.error)}`)
+      throw new Error(`xezar e2e: agent-browser ${args.join(' ')} → ${JSON.stringify(parsed.error)}`)
     }
     return (parsed.data ?? {}) as Record<string, unknown>
   }
@@ -309,7 +309,7 @@ export class AgentBrowser {
     const absolute = resolve(path)
     mkdirSync(dirname(absolute), { recursive: true })
     this.run(viewport ? ['screenshot', absolute] : ['screenshot', '--full', absolute])
-    if (statSync(absolute).size === 0) throw new Error(`cezar e2e: empty screenshot at ${absolute}`)
+    if (statSync(absolute).size === 0) throw new Error(`xezar e2e: empty screenshot at ${absolute}`)
     return absolute
   }
 

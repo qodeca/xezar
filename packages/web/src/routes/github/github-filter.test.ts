@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { GithubItem } from '@open-mercato/cezar-api-client'
+import type { GithubItem } from '@qodeca/xezar-api-client'
 
 import { allLabels, filterGithubItems, labelChipStyle, shouldSearchForge } from './github-filter'
 

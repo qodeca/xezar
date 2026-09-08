@@ -16,27 +16,27 @@ const MOCK_CODEX = join(HERE, '..', 'core', '__fixtures__', 'codex', 'mock-codex
 describe('recover() contains backend session failures (#562)', () => {
   let repoRoot: string;
   let store: RunStore;
-  const savedBin = process.env.CEZ_CODEX_BIN;
-  const savedPassthrough = process.env.CEZ_ENV_PASSTHROUGH;
+  const savedBin = process.env.XEZ_CODEX_BIN;
+  const savedPassthrough = process.env.XEZ_ENV_PASSTHROUGH;
   const savedReject = process.env.MOCK_CODEX_REJECT_RESUME;
 
   beforeEach(async () => {
-    process.env.CEZ_CODEX_BIN = MOCK_CODEX;
-    process.env.CEZ_ENV_PASSTHROUGH = 'MOCK_CODEX_REJECT_RESUME';
+    process.env.XEZ_CODEX_BIN = MOCK_CODEX;
+    process.env.XEZ_ENV_PASSTHROUGH = 'MOCK_CODEX_REJECT_RESUME';
     process.env.MOCK_CODEX_REJECT_RESUME = '1';
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-recover-session-'));
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-recover-session-'));
     await run('git', ['init', '-q', '-b', 'main'], { cwd: repoRoot });
     writeFileSync(join(repoRoot, 'a.txt'), 'one\n');
     await run('git', ['add', '-A'], { cwd: repoRoot });
     await run('git', [...GIT_ID, 'commit', '-q', '-m', 'base'], { cwd: repoRoot });
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
   });
 
   afterEach(() => {
-    if (savedBin === undefined) delete process.env.CEZ_CODEX_BIN;
-    else process.env.CEZ_CODEX_BIN = savedBin;
-    if (savedPassthrough === undefined) delete process.env.CEZ_ENV_PASSTHROUGH;
-    else process.env.CEZ_ENV_PASSTHROUGH = savedPassthrough;
+    if (savedBin === undefined) delete process.env.XEZ_CODEX_BIN;
+    else process.env.XEZ_CODEX_BIN = savedBin;
+    if (savedPassthrough === undefined) delete process.env.XEZ_ENV_PASSTHROUGH;
+    else process.env.XEZ_ENV_PASSTHROUGH = savedPassthrough;
     if (savedReject === undefined) delete process.env.MOCK_CODEX_REJECT_RESUME;
     else process.env.MOCK_CODEX_REJECT_RESUME = savedReject;
     store.flush();

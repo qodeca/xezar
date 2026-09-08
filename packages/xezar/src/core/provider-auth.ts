@@ -48,7 +48,7 @@ export type RunProviderCommand = (
 
 /**
  * The explicit environment lock delegates model and credential configuration
- * to each native coding agent. In that mode Cezar must not second-guess the
+ * to each native coding agent. In that mode Xezar must not second-guess the
  * agent's own credentials through the provider checks introduced by #652.
  *
  * Config-file model locks intentionally do not disable the checks: this bypass
@@ -79,7 +79,7 @@ const COMMAND_TIMEOUT_MS = 10_000;
  * certainly not changed. So a CONNECTED answer is kept for minutes.
  *
  * A NOT-CONNECTED answer is re-checked sooner, for ONE reason: display self-healing. If you log in
- * from a terminal, cezar cannot see it happen, so a card that says "disconnected" must eventually
+ * from a terminal, xezar cannot see it happen, so a card that says "disconnected" must eventually
  * find out on its own. The window is a minute rather than seconds because reading is now
  * stale-while-revalidate (see `status`): every expiry costs a background probe, and a cockpit
  * polling this endpoint would turn a five-second window into a spawn every five seconds, forever,
@@ -95,7 +95,7 @@ const COMMAND_TIMEOUT_MS = 10_000;
  * gone bad surfaces as a runtime auth failure, which is latched and overrides this cache on the spot
  * (`withRuntimeFailures`).
  *
- * Anything cezar CAN observe invalidates explicitly instead of waiting for either window: opening a
+ * Anything xezar CAN observe invalidates explicitly instead of waiting for either window: opening a
  * login (`POST /providers/connect`), repointing or removing an account (`forgetProfileStatus`), and
  * a runtime rejection.
  */
@@ -230,7 +230,7 @@ function parsePiStatus(result: ProviderCommandResult): ProviderConnectionState |
 const DESCRIPTORS: readonly ProviderDescriptor[] = [
   {
     id: 'claude',
-    executable: () => process.env.CEZ_CLAUDE_BIN ?? 'claude',
+    executable: () => process.env.XEZ_CLAUDE_BIN ?? 'claude',
     statusArgs: ['auth', 'status', '--json'],
     loginArgs: ['auth', 'login'],
     installHint: 'Install Claude Code, then run `claude auth login`.',
@@ -238,7 +238,7 @@ const DESCRIPTORS: readonly ProviderDescriptor[] = [
   },
   {
     id: 'codex',
-    executable: () => process.env.CEZ_CODEX_BIN ?? 'codex',
+    executable: () => process.env.XEZ_CODEX_BIN ?? 'codex',
     statusArgs: ['login', 'status'],
     loginArgs: ['login'],
     installHint: 'Install the Codex CLI, then run `codex login`.',
@@ -246,7 +246,7 @@ const DESCRIPTORS: readonly ProviderDescriptor[] = [
   },
   {
     id: 'opencode',
-    executable: () => process.env.CEZ_OPENCODE_BIN ?? 'opencode',
+    executable: () => process.env.XEZ_OPENCODE_BIN ?? 'opencode',
     statusArgs: ['auth', 'list'],
     loginArgs: ['auth', 'login'],
     installHint: 'Install OpenCode, then run `opencode auth login`.',
@@ -254,7 +254,7 @@ const DESCRIPTORS: readonly ProviderDescriptor[] = [
   },
   {
     id: 'pi',
-    executable: () => process.env.CEZ_PI_BIN ?? 'pi',
+    executable: () => process.env.XEZ_PI_BIN ?? 'pi',
     statusArgs: ['--list-models'],
     loginArgs: ['/login'],
     installHint: 'Install pi, then run `pi /login`.',
@@ -386,7 +386,7 @@ export class ProviderAuthService {
    * answer that is true NOW.
    */
   status(options?: { refresh?: boolean }): Promise<ProviderStatusResponse> {
-    if (process.env.CEZ_DRY_RUN === '1' || providerAuthChecksDisabled()) {
+    if (process.env.XEZ_DRY_RUN === '1' || providerAuthChecksDisabled()) {
       return Promise.resolve({
         providers: PROVIDER_IDS.map((provider) => ({ provider, status: 'connected' })),
       });
@@ -410,7 +410,7 @@ export class ProviderAuthService {
   }
 
   reportRuntimeAuthFailure(provider: ProviderId): RuntimeAuthFailureReport | null {
-    if (process.env.CEZ_DRY_RUN === '1' || providerAuthChecksDisabled()) return null;
+    if (process.env.XEZ_DRY_RUN === '1' || providerAuthChecksDisabled()) return null;
     const current = this.runtimeFailures.get(provider);
     const failure: RuntimeAuthFailure = {
       generation: ++this.nextRuntimeFailureGeneration,
@@ -518,7 +518,7 @@ export class ProviderAuthService {
     provider: ProviderId,
     profile: { id: string; configDir: string | null },
   ): Promise<ProviderStatus> {
-    if (process.env.CEZ_DRY_RUN === '1') {
+    if (process.env.XEZ_DRY_RUN === '1') {
       return { provider, status: 'connected', profileId: profile.id };
     }
     const key = profileCacheKey(provider, profile.id);
@@ -573,7 +573,7 @@ export class ProviderAuthService {
    * Callers that need a guaranteed-fresh answer call {@link status} or pass `refresh`.
    */
   peekProfileStatus(provider: ProviderId, profileId: string): ProviderStatus | undefined {
-    if (process.env.CEZ_DRY_RUN === '1') {
+    if (process.env.XEZ_DRY_RUN === '1') {
       return { provider, status: 'connected', profileId };
     }
     return this.completedProfiles.get(profileCacheKey(provider, profileId))?.status;
@@ -582,7 +582,7 @@ export class ProviderAuthService {
   /** The cached default-profile rows, or `undefined` when the probe has never completed. Same
    *  no-spawn contract as {@link peekProfileStatus}. */
   peekStatus(): ProviderStatusResponse | undefined {
-    if (process.env.CEZ_DRY_RUN === '1') {
+    if (process.env.XEZ_DRY_RUN === '1') {
       return { providers: PROVIDER_IDS.map((provider) => ({ provider, status: 'connected' })) };
     }
     if (!this.completed) return undefined;

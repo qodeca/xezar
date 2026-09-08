@@ -23,9 +23,9 @@ import type { FsBrowseResponse } from './fs-browse.ts';
  */
 describe('GET /api/v1/fs/browse (step 4.1)', () => {
   const savedHome = process.env.HOME;
-  const savedCezHome = process.env.CEZ_HOME;
-  const savedRemote = process.env.CEZ_REMOTE;
-  const savedBrowseRoot = process.env.CEZ_BROWSE_ROOT;
+  const savedXezHome = process.env.XEZ_HOME;
+  const savedRemote = process.env.XEZ_REMOTE;
+  const savedBrowseRoot = process.env.XEZ_BROWSE_ROOT;
   /** Stands in for the operator's `$HOME` — `os.homedir()` honors it on posix. */
   let home: string;
   /** A real directory that is NOT under `home`: the escape target. */
@@ -34,12 +34,12 @@ describe('GET /api/v1/fs/browse (step 4.1)', () => {
   let store: RunStore;
 
   beforeEach(() => {
-    home = realpathSync(mkdtempSync(join(tmpdir(), 'cez-fs-browse-home-')));
-    outside = realpathSync(mkdtempSync(join(tmpdir(), 'cez-fs-browse-outside-')));
+    home = realpathSync(mkdtempSync(join(tmpdir(), 'xez-fs-browse-home-')));
+    outside = realpathSync(mkdtempSync(join(tmpdir(), 'xez-fs-browse-outside-')));
     process.env.HOME = home;
-    process.env.CEZ_HOME = join(home, '.cezar');
-    delete process.env.CEZ_REMOTE; // local mode is the default under test
-    delete process.env.CEZ_BROWSE_ROOT;
+    process.env.XEZ_HOME = join(home, '.xezar');
+    delete process.env.XEZ_REMOTE; // local mode is the default under test
+    delete process.env.XEZ_BROWSE_ROOT;
 
     mkdirSync(join(home, 'projects/repo/.git'), { recursive: true });
     mkdirSync(join(home, 'projects/plain'), { recursive: true });
@@ -51,8 +51,8 @@ describe('GET /api/v1/fs/browse (step 4.1)', () => {
     symlinkSync(join(home, 'projects/repo'), join(home, 'link-inside'));
 
     const repoRoot = join(home, 'boot');
-    mkdirSync(join(repoRoot, '.ai/cezar'), { recursive: true });
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     app = createApp({
       repoRoot,
       store,
@@ -65,9 +65,9 @@ describe('GET /api/v1/fs/browse (step 4.1)', () => {
     store.flush();
     for (const [key, value] of [
       ['HOME', savedHome],
-      ['CEZ_HOME', savedCezHome],
-      ['CEZ_REMOTE', savedRemote],
-      ['CEZ_BROWSE_ROOT', savedBrowseRoot],
+      ['XEZ_HOME', savedXezHome],
+      ['XEZ_REMOTE', savedRemote],
+      ['XEZ_BROWSE_ROOT', savedBrowseRoot],
     ] as const) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
@@ -179,13 +179,13 @@ describe('GET /api/v1/fs/browse (step 4.1)', () => {
     beforeEach(() => {
       // Stored with a literal `~`, exactly as PUT /api/v1/workspace/config keeps
       // it — so this also proves the hosted root expands the tilde.
-      mkdirSync(join(home, '.cezar'), { recursive: true });
+      mkdirSync(join(home, '.xezar'), { recursive: true });
       writeFileSync(
         workspaceConfigPath(),
         JSON.stringify({ browseRoot: '~/projects', projectsDir: '~/checkouts' }),
         'utf8',
       );
-      process.env.CEZ_REMOTE = '1';
+      process.env.XEZ_REMOTE = '1';
     });
 
     it('roots the listing at browseRoot instead of projectsDir or home', async () => {
@@ -199,7 +199,7 @@ describe('GET /api/v1/fs/browse (step 4.1)', () => {
       const res = await browse(`?path=${encodeURIComponent(home)}`);
       expect(res.status).toBe(400);
       expect(await error(res)).toBe('path is outside the browsable root');
-      delete process.env.CEZ_REMOTE;
+      delete process.env.XEZ_REMOTE;
       expect((await browse(`?path=${encodeURIComponent(home)}`)).status).toBe(400);
     });
 
@@ -211,8 +211,8 @@ describe('GET /api/v1/fs/browse (step 4.1)', () => {
     });
   });
 
-  it('takes the zero-config browse root from CEZ_BROWSE_ROOT', async () => {
-    process.env.CEZ_BROWSE_ROOT = '~/projects';
+  it('takes the zero-config browse root from XEZ_BROWSE_ROOT', async () => {
+    process.env.XEZ_BROWSE_ROOT = '~/projects';
     const payload = await body(await browse());
     expect(payload.path).toBe(join(home, 'projects'));
     expect(payload.parent).toBeNull();

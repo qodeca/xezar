@@ -108,10 +108,10 @@ describe('BACKWARD_COMPATIBILITY.md §2 route inventory', () => {
   // A real app, because the route table is what is being inventoried. The deps are the minimum
   // `createApp` needs to build one: no run ever starts here, nothing is requested — the app is
   // only asked what routes it has.
-  const repoRoot = mkdtempSync(join(tmpdir(), 'cez-bc-inventory-'));
+  const repoRoot = mkdtempSync(join(tmpdir(), 'xez-bc-inventory-'));
   const app = createApp({
     repoRoot,
-    store: RunStore.open(join(repoRoot, '.ai/cezar')),
+    store: RunStore.open(join(repoRoot, '.ai/xezar')),
     manager: {} as RunManager,
     version: '0.0.0-test',
   });

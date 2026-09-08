@@ -18,7 +18,7 @@ import { RunManager, agentDirectories } from './run.ts';
  * prove nothing (the mock CLI does not echo its environment).
  */
 describe('RunManager — task-scoped agent TMPDIR (#785)', () => {
-  const savedHome = process.env.CEZ_HOME;
+  const savedHome = process.env.XEZ_HOME;
   let home: string;
   let repoRoot: string;
   let dataDir: string;
@@ -36,10 +36,10 @@ describe('RunManager — task-scoped agent TMPDIR (#785)', () => {
   const seam = () => manager as unknown as Seam;
 
   beforeEach(async () => {
-    home = mkdtempSync(join(realpathSync(tmpdir()), 'cez-agent-tmpdir-home-'));
-    repoRoot = mkdtempSync(join(realpathSync(tmpdir()), 'cez-agent-tmpdir-repo-'));
-    dataDir = join(repoRoot, '.ai/cezar');
-    process.env.CEZ_HOME = home;
+    home = mkdtempSync(join(realpathSync(tmpdir()), 'xez-agent-tmpdir-home-'));
+    repoRoot = mkdtempSync(join(realpathSync(tmpdir()), 'xez-agent-tmpdir-repo-'));
+    dataDir = join(repoRoot, '.ai/xezar');
+    process.env.XEZ_HOME = home;
     store = RunStore.open(dataDir);
     manager = new RunManager(store, repoRoot);
     await registerProject(repoRoot);
@@ -48,8 +48,8 @@ describe('RunManager — task-scoped agent TMPDIR (#785)', () => {
   afterEach(() => {
     store.flush();
     for (const dir of [home, repoRoot]) rmSync(dir, { recursive: true, force: true });
-    if (savedHome === undefined) delete process.env.CEZ_HOME;
-    else process.env.CEZ_HOME = savedHome;
+    if (savedHome === undefined) delete process.env.XEZ_HOME;
+    else process.env.XEZ_HOME = savedHome;
   });
 
   const newRun = () =>
@@ -121,18 +121,18 @@ describe('RunManager — task-scoped agent TMPDIR (#785)', () => {
     mkdirSync(dataDir, { recursive: true });
     writeFileSync(join(dataDir, 'tmp'), 'not a directory', 'utf8');
     await expect(seam().agentEnvForStep(run.id, 'claude')).rejects.toThrow(
-      /agent temp directory is not writable: .* — free disk space, or set CEZ_AGENT_TMPDIR=0/,
+      /agent temp directory is not writable: .* — free disk space, or set XEZ_AGENT_TMPDIR=0/,
     );
   });
 
-  describe('CEZ_AGENT_TMPDIR=0', () => {
-    const saved = process.env.CEZ_AGENT_TMPDIR;
+  describe('XEZ_AGENT_TMPDIR=0', () => {
+    const saved = process.env.XEZ_AGENT_TMPDIR;
     beforeEach(() => {
-      process.env.CEZ_AGENT_TMPDIR = '0';
+      process.env.XEZ_AGENT_TMPDIR = '0';
     });
     afterEach(() => {
-      if (saved === undefined) delete process.env.CEZ_AGENT_TMPDIR;
-      else process.env.CEZ_AGENT_TMPDIR = saved;
+      if (saved === undefined) delete process.env.XEZ_AGENT_TMPDIR;
+      else process.env.XEZ_AGENT_TMPDIR = saved;
     });
 
     it('restores the pre-#785 environment: no override, no directory', async () => {
@@ -141,7 +141,7 @@ describe('RunManager — task-scoped agent TMPDIR (#785)', () => {
       expect(env.TMPDIR).toBeUndefined();
       expect(existsSync(agentTmpDir(dataDir, run.id))).toBe(false);
       // The handoff contract is untouched by the opt-out.
-      expect(env.CEZ_TASK_ID).toBe(run.id);
+      expect(env.XEZ_TASK_ID).toBe(run.id);
     });
 
     // A run that started before #785 must still start with the hatch set — the
@@ -151,7 +151,7 @@ describe('RunManager — task-scoped agent TMPDIR (#785)', () => {
       mkdirSync(dataDir, { recursive: true });
       writeFileSync(join(dataDir, 'tmp'), 'not a directory', 'utf8');
       await expect(seam().agentEnvForStep(run.id, 'claude')).resolves.toMatchObject({
-        env: { CEZ_TASK_ID: run.id },
+        env: { XEZ_TASK_ID: run.id },
       });
     });
   });

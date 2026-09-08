@@ -3,7 +3,7 @@ import * as React from 'react'
 import { useNavigate as useRouterNavigate } from 'react-router'
 import { useHealth, useProjects, useRuns, useRunsIndex, useSkills, useUiState } from '@/api/queries'
 import { scopeTo, useActiveProjectId, useNavigate } from '@/lib/project-router'
-import type { ProjectListEntry, RunIndexEntry, RunRecord } from '@open-mercato/cezar-api-client'
+import type { ProjectListEntry, RunIndexEntry, RunRecord } from '@qodeca/xezar-api-client'
 import { visibleNavItems } from '@/components/nav-items'
 import { StatusDot } from '@/components/status-dot'
 import { NEXT_THEME } from '@/components/theme-toggle'
@@ -36,7 +36,7 @@ import { useCommandShortcut, useKeyShortcut } from '@/lib/use-command-shortcut'
 /** The programmatic-open seam: a window event rather than a context, so chrome that must stay
  *  presentational (the sidebar hint today, an onboarding nudge tomorrow) can open the palette
  *  without threading a setter through the tree. */
-export const OPEN_COMMAND_PALETTE_EVENT = 'cezar:open-command-palette'
+export const OPEN_COMMAND_PALETTE_EVENT = 'xezar:open-command-palette'
 
 export function openCommandPalette(): void {
   window.dispatchEvent(new Event(OPEN_COMMAND_PALETTE_EVENT))
@@ -157,7 +157,7 @@ const taskKey = (task: Pick<PaletteTask, 'projectId' | 'id'>): string =>
  * The section holds finished tasks you have not opened since they finished — `isUnread` from
  * `lib/read-state`, the SAME decider behind the Tasks nav badge and the sidebar rows, not a
  * re-derivation. It is headed "Recently finished" rather than "Unread" because that is what it
- * reads as: cezar only stamps a read receipt when you open a thread in the cockpit, so a task you
+ * reads as: xezar only stamps a read receipt when you open a thread in the cockpit, so a task you
  * followed in the terminal, or simply never clicked, stays technically unread for as long as it
  * exists. Sorted by when they FINISHED (not created) — the question is "what landed while I was
  * away", and that is the order to work through them in.

@@ -11,8 +11,8 @@ import { apiRequest } from './loopback-request.testkit.ts';
 import { createApp } from './server.ts';
 
 describe('workspace skills update API', () => {
-  const savedHome = process.env.CEZ_HOME;
-  const savedAutoUpdate = process.env.CEZ_SKILLS_AUTO_UPDATE;
+  const savedHome = process.env.XEZ_HOME;
+  const savedAutoUpdate = process.env.XEZ_SKILLS_AUTO_UPDATE;
   let home: string;
   let repoRoot: string;
   let missingRoot: string;
@@ -21,12 +21,12 @@ describe('workspace skills update API', () => {
   let app: Hono;
 
   beforeEach(async () => {
-    home = mkdtempSync(join(tmpdir(), 'cez-skills-update-api-'));
-    process.env.CEZ_HOME = home;
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-skills-update-repo-'));
+    home = mkdtempSync(join(tmpdir(), 'xez-skills-update-api-'));
+    process.env.XEZ_HOME = home;
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-skills-update-repo-'));
     missingRoot = join(home, 'gone');
-    mkdirSync(join(repoRoot, '.ai/cezar'), { recursive: true });
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     await mergeWriteWorkspaceConfig((config) => {
       config.projects = [
         { id: 'repo', name: 'Repo', root: repoRoot, addedAt: '', lastOpenedAt: '', source: 'local' },
@@ -41,10 +41,10 @@ describe('workspace skills update API', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     store.flush();
-    if (savedHome === undefined) delete process.env.CEZ_HOME;
-    else process.env.CEZ_HOME = savedHome;
-    if (savedAutoUpdate === undefined) delete process.env.CEZ_SKILLS_AUTO_UPDATE;
-    else process.env.CEZ_SKILLS_AUTO_UPDATE = savedAutoUpdate;
+    if (savedHome === undefined) delete process.env.XEZ_HOME;
+    else process.env.XEZ_HOME = savedHome;
+    if (savedAutoUpdate === undefined) delete process.env.XEZ_SKILLS_AUTO_UPDATE;
+    else process.env.XEZ_SKILLS_AUTO_UPDATE = savedAutoUpdate;
     rmSync(home, { recursive: true, force: true });
     rmSync(repoRoot, { recursive: true, force: true });
   });
@@ -113,10 +113,10 @@ describe('workspace skills update API', () => {
   });
 
   it('reports inherited and explicit off without disabling manual apply', async () => {
-    process.env.CEZ_SKILLS_AUTO_UPDATE = '0';
+    process.env.XEZ_SKILLS_AUTO_UPDATE = '0';
     let response = await apiRequest(app, '/api/v1/workspace/skills-update/apply', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ projectId: 'repo' }) });
     expect(await response.json()).toMatchObject({ autoUpdateEnabled: false, inherited: true, status: 'unavailable' });
-    process.env.CEZ_SKILLS_AUTO_UPDATE = '1';
+    process.env.XEZ_SKILLS_AUTO_UPDATE = '1';
     await mergeWriteWorkspaceConfig((config) => { config.skillsAutoUpdate = false; });
     response = await apiRequest(app, '/api/v1/workspace/skills-update/apply', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ projectId: 'repo' }) });
     expect(await response.json()).toMatchObject({ autoUpdateEnabled: false, inherited: false });

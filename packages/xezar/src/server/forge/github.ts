@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { z } from 'zod';
-import { REFERENCE_STATUS_MAX } from '@open-mercato/cezar-contract';
+import { REFERENCE_STATUS_MAX } from '@qodeca/xezar-contract';
 import { autosaveCommit } from '../../git-worktree.ts';
 import type {
   DraftPrInput,
@@ -71,7 +71,7 @@ export async function fetchGithubPrDiff(
   number: number,
   refresh = false,
 ): Promise<ForgePrDiffResult> {
-  if (process.env.CEZ_DRY_RUN === '1') return mockGithubPrDiff(number);
+  if (process.env.XEZ_DRY_RUN === '1') return mockGithubPrDiff(number);
   try {
     const head = ghPrHeadSchema.parse(
       JSON.parse(await gh(repoRoot, ['pr', 'view', String(number), '--json', 'headRefOid'])),
@@ -380,7 +380,7 @@ const CACHE_MS = 60_000;
 export const GH_MAX_LIMIT = 1000;
 
 export async function fetchGithub(repoRoot: string, refresh = false, limit = 30): Promise<GithubData> {
-  if (process.env.CEZ_DRY_RUN === '1') return mockGithub();
+  if (process.env.XEZ_DRY_RUN === '1') return mockGithub();
   const capped = Math.min(Math.max(limit, 1), GH_MAX_LIMIT);
   const hit = listCache.get(repoRoot);
   if (!refresh && hit && Date.now() - hit.at < CACHE_MS && hit.limit >= capped) {
@@ -597,7 +597,7 @@ export async function searchGithubItems(
   const trimmed = query.trim();
   if (trimmed === '') return { available: true, items: [] };
   const capped = Math.min(Math.max(limit, 1), GH_SEARCH_MAX);
-  if (process.env.CEZ_DRY_RUN === '1') {
+  if (process.env.XEZ_DRY_RUN === '1') {
     const mock = mockGithub();
     const pool = kind === 'issue' ? mock.issues : mock.prs;
     const needle = trimmed.replace(/^#/, '').toLowerCase();
@@ -675,7 +675,7 @@ export async function searchGithubItems(
   }
 }
 
-/** CEZ_DRY_RUN=1 — a small fixed catalog so the GitHub tab is demoable offline. */
+/** XEZ_DRY_RUN=1 — a small fixed catalog so the GitHub tab is demoable offline. */
 function mockGithub(): GithubData {
   const mk = (over: Partial<GithubItem> & Pick<GithubItem, 'kind' | 'number' | 'title' | 'body'>): GithubItem => ({
     author: 'mock',
@@ -691,7 +691,7 @@ function mockGithub(): GithubData {
     syncedAt: new Date().toISOString(),
     issues: [
       mk({ kind: 'issue', number: 142, title: 'Login form drops session on refresh', labels: ['bug', 'auth'], comments: 3, body: 'Repro: log in, hit reload — you land back on /login. The session cookie is set correctly, but the client store rehydrates before the cookie check resolves, so the auth guard redirects.' }),
-      mk({ kind: 'issue', number: 139, title: 'Add --json flag to cez CLI output', labels: ['enhancement', 'cli'], comments: 1, body: 'For scripting it would help if `cez list` and `cez status` could emit machine-readable JSON instead of the table view.' }),
+      mk({ kind: 'issue', number: 139, title: 'Add --json flag to xez CLI output', labels: ['enhancement', 'cli'], comments: 1, body: 'For scripting it would help if `xez list` and `xez status` could emit machine-readable JSON instead of the table view.' }),
       mk({ kind: 'issue', number: 135, title: 'Flaky e2e: worktree cleanup race on cancel', labels: ['bug', 'flaky-test'], comments: 6, body: 'Cancelling a run while the agent holds a file lock leaves a dangling worktree. The next run on the same branch then fails with "worktree already exists".' }),
     ],
     prs: [
@@ -1272,7 +1272,7 @@ export function __clearChecksCacheForTests(): void {
  * Numbers are de-duplicated, validated, and capped at `GH_CHECKS_MAX`.
  */
 export async function fetchGithubChecks(repoRoot: string, numbers: number[]): Promise<GithubChecksData> {
-  if (process.env.CEZ_DRY_RUN === '1') return mockGithubChecks(numbers);
+  if (process.env.XEZ_DRY_RUN === '1') return mockGithubChecks(numbers);
   const wanted = [...new Set(numbers)].filter((n) => Number.isInteger(n) && n > 0).slice(0, GH_CHECKS_MAX);
   const checks: Record<number, ChecksGlyph> = {};
   const misses: number[] = [];
@@ -1316,7 +1316,7 @@ export async function fetchGithubChecks(repoRoot: string, numbers: number[]): Pr
   }
 }
 
-/** CEZ_DRY_RUN=1 — glyphs straight from the mock catalog so the offline demo shows checks. */
+/** XEZ_DRY_RUN=1 — glyphs straight from the mock catalog so the offline demo shows checks. */
 function mockGithubChecks(numbers: number[]): GithubChecksData {
   const byNumber = new Map(mockGithub().prs.map((p) => [p.number, (p.checks ?? null) as ChecksGlyph]));
   const checks: Record<number, ChecksGlyph> = {};
@@ -1826,7 +1826,7 @@ export function __seedRefStatusCacheForTests(
 /**
  * Forget what we knew about one reference, so the next read asks GitHub again.
  *
- * Called where cezar itself CHANGES a pull request — it merges one, it opens one — because those
+ * Called where xezar itself CHANGES a pull request — it merges one, it opens one — because those
  * are the only forge changes this process can know about without asking. Everything else has to
  * be polled (GitHub cannot push to a cockpit with no public endpoint), but waiting out a TTL to
  * notice our own merge is a self-inflicted staleness: for up to a minute every chip would keep
@@ -2042,7 +2042,7 @@ export async function fetchGithubRefStatus(
 ): Promise<GithubRefStatusData> {
   const asPrs = sanitizeRefNumbers(input.prs);
   const asIssues = sanitizeRefNumbers(input.issues);
-  if (process.env.CEZ_DRY_RUN === '1') return mockGithubRefStatus(asPrs, asIssues);
+  if (process.env.XEZ_DRY_RUN === '1') return mockGithubRefStatus(asPrs, asIssues);
   const wanted = [...new Set([...asPrs, ...asIssues])];
 
   const resolved = { prs: {} as Record<number, ReferenceStatus>, issues: {} as Record<number, ReferenceStatus> };
@@ -2150,7 +2150,7 @@ function sanitizeRefNumbers(numbers: number[] | undefined): number[] {
   return [...new Set(numbers ?? [])].filter((n) => Number.isInteger(n) && n > 0).slice(0, GH_REF_STATUS_MAX);
 }
 
-/** CEZ_DRY_RUN=1 — statuses derived from the mock catalog so the offline demo paints real chips. */
+/** XEZ_DRY_RUN=1 — statuses derived from the mock catalog so the offline demo paints real chips. */
 function mockGithubRefStatus(prs: number[], issues: number[]): GithubRefStatusData {
   const catalog = mockGithub();
   const byPr = new Map(catalog.prs.map((p) => [p.number, p]));
@@ -2187,7 +2187,7 @@ export async function fetchGithubComments(
   number: number,
   refresh = false,
 ): Promise<ForgeCommentsData> {
-  if (process.env.CEZ_DRY_RUN === '1') return mockGithubComments(kind);
+  if (process.env.XEZ_DRY_RUN === '1') return mockGithubComments(kind);
   // NUL separator: cannot appear in a filesystem path, so roots can never alias.
   const key = `${repoRoot}\0${kind}#${number}`;
   const hit = commentsCache.get(key);
@@ -2309,7 +2309,7 @@ export async function fetchGithubComments(
   }
 }
 
-/** CEZ_DRY_RUN=1 — a small fixed thread (one image-bearing comment, plus a review for PRs) so
+/** XEZ_DRY_RUN=1 — a small fixed thread (one image-bearing comment, plus a review for PRs) so
  *  the whole feature is demoable and e2e-testable offline. */
 function mockGithubComments(kind: 'issue' | 'pr'): ForgeCommentsData {
   const base = Date.now() - 3_600_000;
@@ -2424,7 +2424,7 @@ function mockGithubComments(kind: 'issue' | 'pr'): ForgeCommentsData {
 }
 
 // ---- draft-PR creation (review gate, spec 009) ------------------------------
-// Final autosave-commit → `git push -u origin cez/<id8>` → `gh pr create
+// Final autosave-commit → `git push -u origin xez/<id8>` → `gh pr create
 // --draft`, all executed in the task worktree (gh picks the repo up from the
 // worktree's remote). Every failure maps to a one-line human error — the GUI
 // shows it as a toast plus the manual `git merge <branch>` fallback. Never throws.
@@ -2457,9 +2457,9 @@ export async function createDraftPr(input: DraftPrInput): Promise<DraftPrOutcome
     return { ok: false, error: 'could not commit the final changes — check git status in the worktree' };
   }
 
-  // DRY-RUN (CEZ_DRY_RUN=1): no push, no gh — simulate success with a fake PR
+  // DRY-RUN (XEZ_DRY_RUN=1): no push, no gh — simulate success with a fake PR
   // URL so the whole review → PR flow is testable without GitHub.
-  if (process.env.CEZ_DRY_RUN === '1') {
+  if (process.env.XEZ_DRY_RUN === '1') {
     return { ok: true, url: 'https://github.com/open-mercato/demo/pull/777', dryRun: true };
   }
 
@@ -2505,7 +2505,7 @@ export async function createDraftPr(input: DraftPrInput): Promise<DraftPrOutcome
 /**
  * PR body from the handoff journal: the "## Goal" section (task text as
  * fallback) + the first ~10 lines of "## Progress log" (newest first) +
- * the cezar footer.
+ * the xezar footer.
  */
 export function buildPrBody(handoffText: string, task: string): string {
   const goal = section(handoffText, '## Goal') || task.trim();
@@ -2516,7 +2516,7 @@ export function buildPrBody(handoffText: string, task: string): string {
     .join('\n');
   const parts = ['## Goal', '', goal];
   if (progress) parts.push('', '## Progress log', '', progress);
-  parts.push('', '---', '', '🤖 made with cezar');
+  parts.push('', '---', '', '🤖 made with xezar');
   return parts.join('\n');
 }
 
@@ -2565,7 +2565,7 @@ function execTool(args: string[], cwd: string, bin: string, timeoutMs = 30_000):
 let detectCache: { at: number; repoRoot: string; result: ForgeAvailability } | null = null;
 
 async function detectGithub(repoRoot: string): Promise<ForgeAvailability> {
-  if (process.env.CEZ_DRY_RUN === '1') return { available: true };
+  if (process.env.XEZ_DRY_RUN === '1') return { available: true };
   if (detectCache && detectCache.repoRoot === repoRoot && Date.now() - detectCache.at < CACHE_MS) {
     return detectCache.result;
   }
@@ -2599,7 +2599,7 @@ async function detectGithub(repoRoot: string): Promise<ForgeAvailability> {
  * dropping `forge.available` and blinking the sidebar item out until the background probe warmed.
  */
 export function detectGithubCached(repoRoot: string): ForgeAvailability | null {
-  if (process.env.CEZ_DRY_RUN === '1') return { available: true };
+  if (process.env.XEZ_DRY_RUN === '1') return { available: true };
   const cached =
     detectCache && detectCache.repoRoot === repoRoot ? detectCache.result : null;
   const fresh =
@@ -2734,7 +2734,7 @@ async function fetchPrMergeState(
   number: number,
   refresh = false,
 ): Promise<ForgePrMergeStateResult> {
-  if (process.env.CEZ_DRY_RUN === '1') {
+  if (process.env.XEZ_DRY_RUN === '1') {
     return {
       available: true,
       mergeState: normalizeMergeState(
@@ -2821,7 +2821,7 @@ async function mergePullRequest(
     if (!mergePreflightAllowed(current, input.overrideRules)) {
       return { merged: false, status: 409, error: current.blockers[0]?.message ?? 'The pull request is not eligible to merge.', code: current.eligibility, current };
     }
-    if (process.env.CEZ_DRY_RUN === '1') {
+    if (process.env.XEZ_DRY_RUN === '1') {
       evictGithubProjectCaches(repoRoot);
       return { merged: true, number, url: current.url, method: input.method, mergeCommitSha: 'abcdef0123456789abcdef0123456789abcdef01' };
     }
@@ -2880,7 +2880,7 @@ export function createGithubDriver(repoRoot: string, repoRef: GithubRepoRef | nu
     // Null covers everything from "no PR yet" to "gh missing" — the callers
     // (Create PR → View PR flip) treat all of it as "nothing to link".
     prStatus: async (branch) => {
-      if (process.env.CEZ_DRY_RUN === '1') return null;
+      if (process.env.XEZ_DRY_RUN === '1') return null;
       try {
         const out = await gh(repoRoot, ['pr', 'view', branch, '--json', 'number,url,state,isDraft,statusCheckRollup']);
         const pr = ghPrViewSchema.parse(JSON.parse(out));

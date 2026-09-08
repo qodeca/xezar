@@ -1,5 +1,5 @@
 {"type": "lifecycle", "message": "run started \u2014 workflow \"(planned)\" (runner: claude)", "seq": 1, "ts": "2026-07-21T10:00:00.000Z"}
-{"type": "note", "message": "worktree ready \u2014 branch cez/90bb394e (base feat/grouped-subagent-display)", "seq": 2, "ts": "2026-07-21T10:00:01.000Z"}
+{"type": "note", "message": "worktree ready \u2014 branch xez/90bb394e (base feat/grouped-subagent-display)", "seq": 2, "ts": "2026-07-21T10:00:01.000Z"}
 {"type": "step-start", "stepId": "task", "name": "agent-browser", "kind": "agent", "iteration": 1, "seq": 3, "ts": "2026-07-21T10:00:02.000Z"}
 {"type": "session.started", "sessionId": "237e5aa2-191c-4308-a4b2-5b9daa6ec2e8", "backend": "claude", "stepId": "task", "seq": 4, "ts": "2026-07-21T10:00:03.000Z"}
 {"type": "turn.started", "turnId": "turn_1", "stepId": "task", "seq": 5, "ts": "2026-07-21T10:00:04.000Z"}

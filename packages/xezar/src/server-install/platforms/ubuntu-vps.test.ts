@@ -45,14 +45,14 @@ function stepById(id: string): InstallStep {
 
 describe('ubuntu-vps ssl step', () => {
   let home: string;
-  const original = process.env.CEZ_HOME;
+  const original = process.env.XEZ_HOME;
   beforeEach(() => {
-    home = mkdtempSync(join(tmpdir(), 'cez-ssl-'));
-    process.env.CEZ_HOME = home;
+    home = mkdtempSync(join(tmpdir(), 'xez-ssl-'));
+    process.env.XEZ_HOME = home;
   });
   afterEach(() => {
-    if (original === undefined) delete process.env.CEZ_HOME;
-    else process.env.CEZ_HOME = original;
+    if (original === undefined) delete process.env.XEZ_HOME;
+    else process.env.XEZ_HOME = original;
     rmSync(home, { recursive: true, force: true });
   });
 
@@ -60,7 +60,7 @@ describe('ubuntu-vps ssl step', () => {
     const ids = ubuntuVps.steps(ctxWith({})).map((s) => s.id);
     expect(ids).toEqual(['deps', 'nginx-proxy', 'ssl', 'autostart', 'identity']);
     expect(stepById('ssl').optional).toBe(true);
-    // The service step is required now — after install cezar must actually run.
+    // The service step is required now — after install xezar must actually run.
     expect(stepById('autostart').optional).toBeFalsy();
     expect(stepById('identity').optional).toBeFalsy();
   });
@@ -72,7 +72,7 @@ describe('ubuntu-vps ssl step', () => {
     expect(ids).not.toContain('ssl');
   });
 
-  it('external-proxy verify passes when cezar answers on the bound host', async () => {
+  it('external-proxy verify passes when xezar answers on the bound host', async () => {
     const seen: string[] = [];
     const runner: Runner = {
       capture: async (program, args) => {
@@ -98,13 +98,13 @@ describe('ubuntu-vps ssl step', () => {
   });
 
   it('dry-run records the cert as a shared artifact and sets publicUrl', async () => {
-    const ui = { ...createAutoUi(), text: async (o: { message: string }) => (o.message.includes('Domain') ? 'cezar.example.com' : 'you@example.com') } as Ui;
+    const ui = { ...createAutoUi(), text: async (o: { message: string }) => (o.message.includes('Domain') ? 'xezar.example.com' : 'you@example.com') } as Ui;
     const ctx = ctxWith({ dryRun: true, ui });
     const created = await stepById('ssl').run(ctx);
     const cert = created?.artifacts.find((a) => a.type === 'cert');
     expect(cert?.kind).toBe('shared');
-    expect(cert?.name).toBe('cezar.example.com');
-    expect(ctx.state.publicUrl).toBe('https://cezar.example.com');
+    expect(cert?.name).toBe('xezar.example.com');
+    expect(ctx.state.publicUrl).toBe('https://xezar.example.com');
   });
 
   it('undo does NOT remove the cert — it only lists it', async () => {
@@ -147,7 +147,7 @@ describe('nginxVhost', () => {
   it('defaults to a catch-all server_name and can target a domain', () => {
     expect(nginxVhost(4321)).toContain('server_name _;');
     // The SSL step rewrites server_name to the domain so certbot --nginx can find it.
-    expect(nginxVhost(4321, 'cezar.example.com')).toContain('server_name cezar.example.com;');
+    expect(nginxVhost(4321, 'xezar.example.com')).toContain('server_name xezar.example.com;');
   });
 
   it('enables HTTP/2 so long-lived SSE streams do not exhaust the browser connection pool', () => {
@@ -155,9 +155,9 @@ describe('nginxVhost', () => {
   });
 
   it('defaults to the legacy htpasswd path but accepts an instance-scoped one', () => {
-    expect(nginxVhost(4321)).toContain('auth_basic_user_file /etc/cezar/htpasswd;');
-    expect(nginxVhost(4322, 'shop.example.com', '/etc/cezar/htpasswd-shop-example-com')).toContain(
-      'auth_basic_user_file /etc/cezar/htpasswd-shop-example-com;',
+    expect(nginxVhost(4321)).toContain('auth_basic_user_file /etc/xezar/htpasswd;');
+    expect(nginxVhost(4322, 'shop.example.com', '/etc/xezar/htpasswd-shop-example-com')).toContain(
+      'auth_basic_user_file /etc/xezar/htpasswd-shop-example-com;',
     );
   });
 });
@@ -177,9 +177,9 @@ describe('ubuntu-vps multi-instance artifact paths', () => {
     const ctx = { ...ctxWith({ ui, dryRun: true }), assumeYes: true } as InstallContext;
     const created = await stepById('nginx-proxy').run(ctx);
     const paths = (created?.artifacts ?? []).map((a) => a.path).filter(Boolean);
-    expect(paths).toContain('/etc/nginx/sites-available/cezar');
-    expect(paths).toContain('/etc/nginx/sites-enabled/cezar');
-    expect(paths).toContain('/etc/cezar/htpasswd');
+    expect(paths).toContain('/etc/nginx/sites-available/xezar');
+    expect(paths).toContain('/etc/nginx/sites-enabled/xezar');
+    expect(paths).toContain('/etc/xezar/htpasswd');
   });
 
   it('a named instance suffixes the nginx site + htpasswd with its slug', async () => {
@@ -188,15 +188,15 @@ describe('ubuntu-vps multi-instance artifact paths', () => {
     ctx.ui = { ...createAutoUi(), text: async () => 'ops', password: async () => 'longenough' } as Ui;
     const created = await stepById('nginx-proxy').run(ctx);
     const paths = (created?.artifacts ?? []).map((a) => a.path).filter(Boolean);
-    expect(paths).toContain('/etc/nginx/sites-available/cezar-shop-example-com');
-    expect(paths).toContain('/etc/nginx/sites-enabled/cezar-shop-example-com');
-    expect(paths).toContain('/etc/cezar/htpasswd-shop-example-com');
+    expect(paths).toContain('/etc/nginx/sites-available/xezar-shop-example-com');
+    expect(paths).toContain('/etc/nginx/sites-enabled/xezar-shop-example-com');
+    expect(paths).toContain('/etc/xezar/htpasswd-shop-example-com');
   });
 
-  it("a named instance's systemd unit is cezar-<slug>.service", async () => {
+  it("a named instance's systemd unit is xezar-<slug>.service", async () => {
     const created = await stepById('autostart').run(namedCtx());
     const svc = created?.artifacts.find((a) => a.type === 'service');
-    expect(svc?.name).toBe('cezar-shop-example-com.service');
+    expect(svc?.name).toBe('xezar-shop-example-com.service');
   });
 });
 
@@ -226,15 +226,15 @@ describe('ubuntu-vps nginx-proxy identity (interactive, dry-run)', () => {
 });
 
 describe('systemdUnit', () => {
-  it('runs cezar serve loopback with CEZ_REMOTE=1 and the port', () => {
-    const unit = systemdUnit('/srv/app', 4321, 'user', '/usr/local/bin/cezar');
-    expect(unit).toContain('Environment=CEZ_REMOTE=1');
-    expect(unit).toContain('ExecStart=/usr/local/bin/cezar serve --no-open --port 4321');
+  it('runs xezar serve loopback with XEZ_REMOTE=1 and the port', () => {
+    const unit = systemdUnit('/srv/app', 4321, 'user', '/usr/local/bin/xezar');
+    expect(unit).toContain('Environment=XEZ_REMOTE=1');
+    expect(unit).toContain('ExecStart=/usr/local/bin/xezar serve --no-open --port 4321');
     expect(unit).toContain('WorkingDirectory=/srv/app');
     expect(unit).toContain('WantedBy=default.target');
   });
   it('system scope pins User= and multi-user.target', () => {
-    const unit = systemdUnit('/srv/app', 5000, 'system', '/usr/local/bin/cezar');
+    const unit = systemdUnit('/srv/app', 5000, 'system', '/usr/local/bin/xezar');
     expect(unit).toContain('User=');
     expect(unit).toContain('WantedBy=multi-user.target');
   });
@@ -245,13 +245,13 @@ describe('systemdUnit', () => {
   });
 
   it('passes --bind-host when an external-proxy install needs a reachable interface', () => {
-    const unit = systemdUnit('/srv/app', 4321, 'user', '/usr/local/bin/cezar', '172.17.0.1');
-    expect(unit).toContain('ExecStart=/usr/local/bin/cezar serve --no-open --port 4321 --bind-host 172.17.0.1');
+    const unit = systemdUnit('/srv/app', 4321, 'user', '/usr/local/bin/xezar', '172.17.0.1');
+    expect(unit).toContain('ExecStart=/usr/local/bin/xezar serve --no-open --port 4321 --bind-host 172.17.0.1');
   });
 
   it('stays flag-free for loopback so existing units are unchanged', () => {
-    const plain = systemdUnit('/srv/app', 4321, 'user', '/usr/local/bin/cezar');
-    expect(systemdUnit('/srv/app', 4321, 'user', '/usr/local/bin/cezar', '127.0.0.1')).toBe(plain);
+    const plain = systemdUnit('/srv/app', 4321, 'user', '/usr/local/bin/xezar');
+    expect(systemdUnit('/srv/app', 4321, 'user', '/usr/local/bin/xezar', '127.0.0.1')).toBe(plain);
     expect(plain).not.toContain('--bind-host');
   });
 });
@@ -264,25 +264,25 @@ describe('serviceExecStart', () => {
   });
 
   it('uses the official npx alias when launched from the ephemeral _npx cache', () => {
-    expect(serviceExecStart({ ...base, pkgRoot: '/home/u/.npm/_npx/abcd/node_modules/cezar-cli', entryExists: false }))
-      .toBe('/n/npx --yes cezar-cli');
+    expect(serviceExecStart({ ...base, pkgRoot: '/home/u/.npm/_npx/abcd/node_modules/@qodeca/xezar', entryExists: false }))
+      .toBe('/n/npx --yes @qodeca/xezar');
   });
 
   it('falls back to a resolved global bin when the entry is missing', () => {
-    expect(serviceExecStart({ ...base, pkgRoot: '/pkg', entryExists: false, globalBin: '/usr/bin/cezar-cli' }))
-      .toBe('/n/node /usr/bin/cezar-cli');
+    expect(serviceExecStart({ ...base, pkgRoot: '/pkg', entryExists: false, globalBin: '/usr/bin/xezar' }))
+      .toBe('/n/node /usr/bin/xezar');
   });
 });
 
 describe('isNpxExecStart (#696)', () => {
   it('is true for the unpinned npx launch form', () => {
-    expect(isNpxExecStart('/home/u/.nvm/versions/node/v24/bin/npx --yes cezar-cli serve --no-open --port 4321')).toBe(true);
+    expect(isNpxExecStart('/home/u/.nvm/versions/node/v24/bin/npx --yes @qodeca/xezar serve --no-open --port 4321')).toBe(true);
   });
   it('is false for a checkout (<node> dist/index.js) unit', () => {
-    expect(isNpxExecStart('/usr/bin/node /home/cezar/cezar/dist/index.js serve --no-open --port 4321')).toBe(false);
+    expect(isNpxExecStart('/usr/bin/node /home/xezar/xezar/dist/index.js serve --no-open --port 4321')).toBe(false);
   });
   it('is false for a global bin unit (no npx)', () => {
-    expect(isNpxExecStart('/usr/bin/node /usr/bin/cezar-cli serve --no-open --port 4321')).toBe(false);
+    expect(isNpxExecStart('/usr/bin/node /usr/bin/xezar serve --no-open --port 4321')).toBe(false);
   });
 });
 
@@ -299,27 +299,27 @@ describe('ubuntu-vps redeploy npx-cache refresh (#696)', () => {
   }
 
   it('reports clearing the npx cache before restarting an npx-based unit', async () => {
-    const { ctx, infos } = recordingCtx('/n/npx --yes cezar-cli serve --no-open --port 4321');
+    const { ctx, infos } = recordingCtx('/n/npx --yes @qodeca/xezar serve --no-open --port 4321');
     await ubuntuVps.redeploy!(ctx);
-    expect(infos.some((message) => /clear cached cezar-cli|npx refetch/i.test(message))).toBe(true);
+    expect(infos.some((message) => /clear cached @qodeca\/xezar|npx refetch/i.test(message))).toBe(true);
   });
 
   it('does NOT touch the npx cache for a checkout-based unit', async () => {
-    const { ctx, infos } = recordingCtx('/usr/bin/node /home/cezar/cezar/dist/index.js serve --no-open --port 4321');
+    const { ctx, infos } = recordingCtx('/usr/bin/node /home/xezar/xezar/dist/index.js serve --no-open --port 4321');
     await ubuntuVps.redeploy!(ctx);
     expect(infos.some((message) => /npx/i.test(message))).toBe(false);
   });
 
-  it('really deletes only the cezar-cli entries in the npx cache', () => {
-    const cache = mkdtempSync(join(tmpdir(), 'cez-npx-'));
+  it('really deletes only the @qodeca/xezar entries in the npx cache', () => {
+    const cache = mkdtempSync(join(tmpdir(), 'xez-npx-'));
     const prev = process.env.npm_config_cache;
     process.env.npm_config_cache = cache;
     try {
-      mkdirSync(join(cache, '_npx', 'aaaa', 'node_modules', 'cezar-cli'), { recursive: true });
-      writeFileSync(join(cache, '_npx', 'aaaa', 'node_modules', 'cezar-cli', 'x'), '');
+      mkdirSync(join(cache, '_npx', 'aaaa', 'node_modules', '@qodeca', 'xezar'), { recursive: true });
+      writeFileSync(join(cache, '_npx', 'aaaa', 'node_modules', '@qodeca', 'xezar', 'x'), '');
       mkdirSync(join(cache, '_npx', 'bbbb', 'node_modules', 'prettier'), { recursive: true });
 
-      refreshNpxCacheForRedeploy(ctxWith({}), '/n/npx --yes cezar-cli serve --port 4321');
+      refreshNpxCacheForRedeploy(ctxWith({}), '/n/npx --yes @qodeca/xezar serve --port 4321');
 
       expect(existsSync(join(cache, '_npx', 'aaaa'))).toBe(false);
       expect(existsSync(join(cache, '_npx', 'bbbb'))).toBe(true);
@@ -331,13 +331,13 @@ describe('ubuntu-vps redeploy npx-cache refresh (#696)', () => {
   });
 
   it('aborts before restart when the npx cache cannot be read', async () => {
-    const cache = mkdtempSync(join(tmpdir(), 'cez-npx-'));
+    const cache = mkdtempSync(join(tmpdir(), 'xez-npx-'));
     const previousCache = process.env.npm_config_cache;
     process.env.npm_config_cache = cache;
     writeFileSync(join(cache, '_npx'), 'not a directory');
     const capture = vi.fn(async () => ({
       code: 0,
-      stdout: '/n/npx --yes cezar-cli serve --port 4321',
+      stdout: '/n/npx --yes @qodeca/xezar serve --port 4321',
       stderr: '',
     }));
     const interactive = vi.fn(async () => 0);
@@ -361,7 +361,7 @@ describe('ubuntu-vps autostart step (dry-run)', () => {
     const svc = created?.artifacts.find((a) => a.type === 'service');
     expect(svc?.kind).toBe('owned');
     expect(svc?.scope).toBe('user');
-    expect(svc?.name).toBe('cezar.service');
+    expect(svc?.name).toBe('xezar.service');
   });
 });
 
@@ -381,7 +381,7 @@ describe('ubuntu-vps identity step (end-to-end verify)', () => {
     };
   }
 
-  it('passes when cezar is up, anon is 401, and an authed request reaches it', async () => {
+  it('passes when xezar is up, anon is 401, and an authed request reaches it', async () => {
     const ctx = { ...ctxWith({ runner: curlRunner('200', '401') }), assumeYes: false } as InstallContext;
     ctx.prefs.cockpit = { user: 'ops', password: 'hunter2!' };
     // authed request (curl -K -) must return 2xx/3xx — model that by returning 200
@@ -401,7 +401,7 @@ describe('ubuntu-vps identity step (end-to-end verify)', () => {
     await expect(stepById('identity').run(ctx)).resolves.toEqual({ artifacts: [] });
   });
 
-  it('fails the run when cezar is down (nginx would 502)', async () => {
+  it('fails the run when xezar is down (nginx would 502)', async () => {
     const ctx = { ...ctxWith({ runner: curlRunner('000', '401') }), assumeYes: false } as InstallContext;
     await expect(stepById('identity').run(ctx)).rejects.toBeInstanceOf(StepAborted);
   });
@@ -517,7 +517,7 @@ describe('ubuntu-vps review fixes (PR #423)', () => {
   it('SSL re-run with TLS already configured updates server_name in place (no plain-HTTP rewrite)', async () => {
     const ui = {
       ...createAutoUi(),
-      text: async (o: { message: string }) => (o.message.includes('Domain') ? 'cezar.example.com' : 'you@example.com'),
+      text: async (o: { message: string }) => (o.message.includes('Domain') ? 'xezar.example.com' : 'you@example.com'),
     } as Ui;
     const commands: string[] = [];
     const ctx = {
@@ -553,7 +553,7 @@ describe('ubuntu-vps review fixes (PR #423)', () => {
     const ctx = { ...ctxWith({ runner }) } as InstallContext;
     await stepById('autostart').undo(ctx, {
       artifacts: [
-        { kind: 'owned', type: 'service', name: 'cezar.service', scope: 'user', path: '/tmp/does-not-exist.service' },
+        { kind: 'owned', type: 'service', name: 'xezar.service', scope: 'user', path: '/tmp/does-not-exist.service' },
         { kind: 'owned', type: 'linger', name: 'ops' },
       ],
     });
@@ -561,7 +561,7 @@ describe('ubuntu-vps review fixes (PR #423)', () => {
     // and without the linger artifact, it is left alone
     commands.length = 0;
     await stepById('autostart').undo(ctx, {
-      artifacts: [{ kind: 'owned', type: 'service', name: 'cezar.service', scope: 'user', path: '/tmp/does-not-exist.service' }],
+      artifacts: [{ kind: 'owned', type: 'service', name: 'xezar.service', scope: 'user', path: '/tmp/does-not-exist.service' }],
     });
     expect(commands.some((c) => c.includes('disable-linger'))).toBe(false);
   });

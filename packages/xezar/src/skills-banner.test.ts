@@ -14,21 +14,21 @@ let repoRoot: string;
 let printed: (string | undefined)[];
 const log = (line?: string) => void printed.push(line);
 
-/** Writes `.ai/cezar/ui-state.json` verbatim, so a malformed file can be tested too. */
+/** Writes `.ai/xezar/ui-state.json` verbatim, so a malformed file can be tested too. */
 function writeUiState(raw: string): void {
-  mkdirSync(join(repoRoot, '.ai/cezar'), { recursive: true });
-  writeFileSync(join(repoRoot, '.ai/cezar', 'ui-state.json'), raw, 'utf8');
+  mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
+  writeFileSync(join(repoRoot, '.ai/xezar', 'ui-state.json'), raw, 'utf8');
 }
 
 beforeEach(() => {
-  repoRoot = mkdtempSync(join(tmpdir(), 'cez-banner-'));
+  repoRoot = mkdtempSync(join(tmpdir(), 'xez-banner-'));
   printed = [];
-  delete process.env.CEZ_NO_BANNER;
+  delete process.env.XEZ_NO_BANNER;
 });
 
 afterEach(() => {
   rmSync(repoRoot, { recursive: true, force: true });
-  delete process.env.CEZ_NO_BANNER;
+  delete process.env.XEZ_NO_BANNER;
 });
 
 describe('printSkillsBanner', () => {
@@ -39,15 +39,15 @@ describe('printSkillsBanner', () => {
     expect(text).toContain("npx skills add open-mercato/skills --skill '*'");
   });
 
-  it('says WHY to install skills cezar already loads — the extra copy is for use outside cezar', async () => {
+  it('says WHY to install skills xezar already loads — the extra copy is for use outside xezar', async () => {
     await printSkillsBanner(repoRoot, log);
     const text = printed.join('\n');
-    expect(text).toContain('cezar already loads them');
-    expect(text).toContain('outside cezar');
+    expect(text).toContain('xezar already loads them');
+    expect(text).toContain('outside xezar');
   });
 
-  it('is silent when CEZ_NO_BANNER=1', async () => {
-    process.env.CEZ_NO_BANNER = '1';
+  it('is silent when XEZ_NO_BANNER=1', async () => {
+    process.env.XEZ_NO_BANNER = '1';
     await printSkillsBanner(repoRoot, log);
     expect(printed).toEqual([]);
   });
@@ -80,8 +80,8 @@ describe('printSkillsBanner', () => {
     await expect(shouldShowSkillsBanner(repoRoot)).resolves.toBe(true);
   });
 
-  it('honours only the exact 1 opt-out, like CEZ_DRY_RUN', async () => {
-    process.env.CEZ_NO_BANNER = '0';
+  it('honours only the exact 1 opt-out, like XEZ_DRY_RUN', async () => {
+    process.env.XEZ_NO_BANNER = '0';
     await expect(shouldShowSkillsBanner(repoRoot)).resolves.toBe(true);
   });
 

@@ -39,20 +39,24 @@ describe('planInstall', () => {
 });
 
 describe('globalShimPaths', () => {
-  it('maps all three bins under <prefix>/bin on POSIX', () => {
+  it('maps both bins under <prefix>/bin on POSIX', () => {
     expect(globalShimPaths('/usr/local', 'linux')).toEqual([
-      '/usr/local/bin/cezar',
-      '/usr/local/bin/cez',
-      '/usr/local/bin/cezar-cli',
+      '/usr/local/bin/xezar',
+      '/usr/local/bin/xez',
     ]);
   });
 
   it('uses <prefix>\\<name>.cmd on Windows', () => {
     expect(globalShimPaths('C:\\npm-global', 'win32')).toEqual([
-      'C:\\npm-global\\cezar.cmd',
-      'C:\\npm-global\\cez.cmd',
-      'C:\\npm-global\\cezar-cli.cmd',
+      'C:\\npm-global\\xezar.cmd',
+      'C:\\npm-global\\xez.cmd',
     ]);
+  });
+
+  it('installs no third command — the retired unscoped alias is not resurrected here', () => {
+    // `cezar-cli` was a second distribution name on npm. Keeping its shim would put a command
+    // on PATH that no published package backs.
+    expect(BIN_NAMES).toEqual(['xezar', 'xez']);
   });
 
   it('covers exactly the published bin names', () => {

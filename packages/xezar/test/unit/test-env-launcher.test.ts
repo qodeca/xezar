@@ -30,7 +30,7 @@ function commandPath(command: string): string {
 const hasSetsid = spawnSync('/bin/sh', ['-c', 'command -v setsid'], { stdio: 'ignore' }).status === 0;
 
 function makeFixture(withSetsid: boolean): { root: string; path: string } {
-  const root = mkdtempSync(join(tmpdir(), 'cez-test-env-launcher-'));
+  const root = mkdtempSync(join(tmpdir(), 'xez-test-env-launcher-'));
   fixtures.push(root);
   mkdirSync(join(root, '.ai/scripts'), { recursive: true });
   mkdirSync(join(root, '.ai/browsers'), { recursive: true });
@@ -53,9 +53,9 @@ function makeFixture(withSetsid: boolean): { root: string; path: string } {
     // the workspace layout rather than invent its own.
     `#!/bin/sh
 set -eu
-mkdir -p node_modules/zod packages/cezar/dist packages/cezar/web/dist
+mkdir -p node_modules/zod packages/xezar/dist packages/xezar/web/dist
 printf '{"name":"zod"}' > node_modules/zod/package.json
-cat > packages/cezar/dist/index.js <<'EOF'
+cat > packages/xezar/dist/index.js <<'EOF'
 const http = require('node:http');
 const port = Number(process.argv[process.argv.indexOf('--port') + 1]);
 http.createServer((req, res) => {
@@ -63,7 +63,7 @@ http.createServer((req, res) => {
   res.end(req.url === '/api/health' ? '{"ok":true}' : '<!doctype html>');
 }).listen(port, '127.0.0.1');
 EOF
-printf '<!doctype html>' > packages/cezar/web/dist/index.html
+printf '<!doctype html>' > packages/xezar/web/dist/index.html
 `,
     { mode: 0o755 },
   );

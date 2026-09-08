@@ -1,4 +1,4 @@
-import type { ApiRun, ProviderStatusResponse, Runner } from '@open-mercato/cezar-api-client'
+import type { ApiRun, ProviderStatusResponse, Runner } from '@qodeca/xezar-api-client'
 import { useProviderStatus } from '@/api/queries'
 import { providerStatusFor } from '@/lib/provider-status'
 

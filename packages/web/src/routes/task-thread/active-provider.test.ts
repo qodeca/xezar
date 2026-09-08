@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { ApiRun, ProviderStatusResponse } from '@open-mercato/cezar-api-client'
+import type { ApiRun, ProviderStatusResponse } from '@qodeca/xezar-api-client'
 
 import {
   activeProviderAvailability,

@@ -1,6 +1,6 @@
-/* cezar cockpit — Tailwind v4 entry point and the Mercato design-token definition site.
+/* xezar cockpit — Tailwind v4 entry point and the Mercato design-token definition site.
  *
- * Ported verbatim from the mockup token sheet (.ai/analysis/cockpit-ui-redesign/mercato-visuals.md §1).
+ * Ported verbatim from the mockup token sheet (`docs/mockups/tokens.css`).
  * Dark is the default theme; `.light` on <html> flips it.
  *
  * THIS FILE IS THE ONLY PLACE RAW HEX MAY APPEAR. Everything else — components, pages, tests —

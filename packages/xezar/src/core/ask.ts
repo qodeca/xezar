@@ -1,11 +1,10 @@
 /**
  * AskUser payload — the structured multiple-choice question an agent asks the
  * user, so the cockpit can render clickable option chips instead of the prose
- * fallback ("AskUserQuestion isn't available…"). See the spec
- * `.ai/specs/2026-07-18-askuser-across-runners.md`.
+ * fallback ("AskUserQuestion isn't available…").
  *
- * The agent emits this as a `CEZ:ASK <compact-json>` control marker (a sibling
- * of `CEZ:DONE` / `CEZ:MONITORING`), parsed on the assembled turn text in
+ * The agent emits this as a `XEZ:ASK <compact-json>` control marker (a sibling
+ * of `XEZ:DONE` / `XEZ:MONITORING`), parsed on the assembled turn text in
  * `src/workflows/run.ts` — uniform across claude, codex and opencode with no
  * per-backend mapper work. The shape is modeled 1:1 on Claude Code's built-in
  * `AskUserQuestion` (1–4 questions, 2–4 options each, `header` ≤12 chars,
@@ -84,17 +83,17 @@ export function parseAskRequest(value: unknown): AskRequest | null {
 }
 
 /**
- * The AskUser control marker: a trailing `CEZ:ASK <compact-json>` line (a
- * sibling of `CEZ:DONE` / `CEZ:MONITORING`). Detected on the *assembled* turn
+ * The AskUser control marker: a trailing `XEZ:ASK <compact-json>` line (a
+ * sibling of `XEZ:DONE` / `XEZ:MONITORING`). Detected on the *assembled* turn
  * text so delta-streaming backends can't split it — uniform across all three
  * backends. The JSON is greedily captured from the first `{` after the keyword
  * to the last `}` at end-of-text.
  */
-export const ASK_MARKER_RE = /CEZ:ASK[ \t]+(\{[\s\S]*\})\s*$/;
+export const ASK_MARKER_RE = /XEZ:ASK[ \t]+(\{[\s\S]*\})\s*$/;
 
 /** Looser than `ASK_MARKER_RE` so diagnostics can distinguish a malformed
  * trailing marker from ordinary assistant prose. */
-const ASK_MARKER_CANDIDATE_RE = /CEZ:ASK[ \t]+([\s\S]*)$/;
+const ASK_MARKER_CANDIDATE_RE = /XEZ:ASK[ \t]+([\s\S]*)$/;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -240,7 +239,7 @@ export function parseAskMarkerResult(turnText: string): AskMarkerParseResult {
 }
 
 /**
- * Extract and validate a trailing `CEZ:ASK <json>` marker from assembled turn
+ * Extract and validate a trailing `XEZ:ASK <json>` marker from assembled turn
  * text. Returns a strict or safely normalized `AskRequest`, or `null` when
  * there is no marker or its payload remains invalid (caller degrades to plain
  * text — the prose fallback is never made worse).
@@ -251,22 +250,22 @@ export function parseAskMarker(turnText: string): AskRequest | null {
 }
 
 /**
- * Strip a trailing `CEZ:ASK <json>` marker from one text event so transcripts
+ * Strip a trailing `XEZ:ASK <json>` marker from one text event so transcripts
  * stay free of protocol noise — but ONLY when the payload actually validates.
  * An invalid payload never becomes an ask card (`parseAskMarker` → `null`), so
  * stripping it would delete the agent's question from the transcript with
  * nothing to replace it; it stays visible as raw text instead — degraded but
  * answerable (the prose fallback is never made worse). Delta backends may split
  * the marker across events — then it stays visible; detection on the assembled
- * turn text is unaffected (same best-effort caveat as the `CEZ:DONE` /
- * `CEZ:MONITORING` strippers).
+ * turn text is unaffected (same best-effort caveat as the `XEZ:DONE` /
+ * `XEZ:MONITORING` strippers).
  *
- * The strip runs from the `CEZ:ASK` keyword to end-of-text rather than to a
+ * The strip runs from the `XEZ:ASK` keyword to end-of-text rather than to a
  * trailing `}`: a repaired payload (#936) may end on `]`, or on the last
  * character before the closers this module appended, and half a marker left
  * under a rendered card is protocol noise the card already replaced.
  */
 export function stripAskMarker(text: string): string {
   if (parseAskMarker(text) === null) return text;
-  return text.replace(/\s*CEZ:ASK[ \t]+[\s\S]*$/, '');
+  return text.replace(/\s*XEZ:ASK[ \t]+[\s\S]*$/, '');
 }

@@ -1,4 +1,4 @@
-import type { Runner } from '@open-mercato/cezar-api-client'
+import type { Runner } from '@qodeca/xezar-api-client'
 
 import { useAgentProfiles, useRepo } from '@/api/queries'
 import type { RunnerAccountChoice } from '@/components/picker-pill'

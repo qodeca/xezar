@@ -122,7 +122,7 @@ export async function writeConfigFile(
     await mkdir(dirname(target), { recursive: true });
     // Unique per write (not just per process) so two concurrent saves of the same
     // file can't rename the same tmp path over each other and tear the bytes.
-    const tmp = `${target}.cez-tmp-${process.pid}-${randomUUID()}`;
+    const tmp = `${target}.xez-tmp-${process.pid}-${randomUUID()}`;
     await writeFile(tmp, content, 'utf8');
     await rename(tmp, target);
     const written = await readFile(target, 'utf8');

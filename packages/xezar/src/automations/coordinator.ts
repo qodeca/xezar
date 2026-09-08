@@ -42,7 +42,7 @@ export class AutomationCoordinator {
         continue;
       }
       this.roots.set(project.id, project.root);
-      const definitions = join(project.root, '.ai/cezar/automations.json');
+      const definitions = join(project.root, '.ai/xezar/automations.json');
       if (existsSync(definitions)) this.store(project.id, project.root);
     }
   }
@@ -52,7 +52,7 @@ export class AutomationCoordinator {
     if (existing) return existing;
     const projectRoot = root ?? this.roots.get(projectId);
     if (!projectRoot) return undefined;
-    const store = AutomationStore.open(join(projectRoot, '.ai/cezar'), { warn: this.options.warn });
+    const store = AutomationStore.open(join(projectRoot, '.ai/xezar'), { warn: this.options.warn });
     this.stores.set(projectId, store);
     this.roots.set(projectId, projectRoot);
     return store;

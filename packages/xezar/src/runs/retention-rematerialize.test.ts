@@ -21,7 +21,7 @@ afterEach(() => {
 });
 
 async function fixtureRepo(): Promise<string> {
-  const root = mkdtempSync(join(tmpdir(), 'cez-retention-remat-'));
+  const root = mkdtempSync(join(tmpdir(), 'xez-retention-remat-'));
   roots.push(root);
   await run('git', ['init', '-q', '-b', 'main'], { cwd: root });
   writeFileSync(join(root, 'base.txt'), 'base\n');

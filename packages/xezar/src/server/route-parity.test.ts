@@ -31,12 +31,12 @@ const spellings = (bootId: string, path: string): [string, string, string] => [
 ];
 
 describe('project-route alias parity (unprefixed vs /api/v1/p/<boot> vs /api/v1/p/default)', () => {
-  const savedHome = process.env.CEZ_HOME;
-  const savedRemote = process.env.CEZ_REMOTE;
-  const savedFollowups = process.env.CEZ_FOLLOWUPS;
-  const savedSingleProject = process.env.CEZ_SINGLE_PROJECT;
-  const savedAutomations = process.env.CEZ_AUTOMATIONS;
-  const savedDryRun = process.env.CEZ_DRY_RUN;
+  const savedHome = process.env.XEZ_HOME;
+  const savedRemote = process.env.XEZ_REMOTE;
+  const savedFollowups = process.env.XEZ_FOLLOWUPS;
+  const savedSingleProject = process.env.XEZ_SINGLE_PROJECT;
+  const savedAutomations = process.env.XEZ_AUTOMATIONS;
+  const savedDryRun = process.env.XEZ_DRY_RUN;
   let home: string;
   let repoRoot: string;
   let otherRoot: string;
@@ -47,27 +47,27 @@ describe('project-route alias parity (unprefixed vs /api/v1/p/<boot> vs /api/v1/
   let runId: string;
 
   beforeEach(async () => {
-    home = mkdtempSync(join(tmpdir(), 'cez-parity-home-'));
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-parity-boot-'));
-    otherRoot = mkdtempSync(join(tmpdir(), 'cez-parity-other-'));
-    process.env.CEZ_HOME = home; // paths.ts sends all workspace paths here
-    delete process.env.CEZ_REMOTE;
-    delete process.env.CEZ_FOLLOWUPS;
-    delete process.env.CEZ_SINGLE_PROJECT;
+    home = mkdtempSync(join(tmpdir(), 'xez-parity-home-'));
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-parity-boot-'));
+    otherRoot = mkdtempSync(join(tmpdir(), 'xez-parity-other-'));
+    process.env.XEZ_HOME = home; // paths.ts sends all workspace paths here
+    delete process.env.XEZ_REMOTE;
+    delete process.env.XEZ_FOLLOWUPS;
+    delete process.env.XEZ_SINGLE_PROJECT;
     // #801: automations are opt-in, and this suite compares the REAL answers of every mirrored
     // route. Left off, the whole `/automations*` family would answer an identical 409 under all
     // three spellings — parity would pass while testing nothing about those routes.
-    process.env.CEZ_AUTOMATIONS = '1';
+    process.env.XEZ_AUTOMATIONS = '1';
     // Deterministic on any machine: no network, no real agent CLIs.
-    process.env.CEZ_DRY_RUN = '1';
+    process.env.XEZ_DRY_RUN = '1';
     // `skillsRepos: []` disables team skills — no background clone can warm a
     // cache between the first and third spelling of the /skills sweep.
     for (const root of [repoRoot, otherRoot]) {
-      mkdirSync(join(root, '.ai/cezar'), { recursive: true });
-      writeFileSync(join(root, '.ai/cezar', 'config.json'), '{"skillsRepos": []}\n', 'utf8');
+      mkdirSync(join(root, '.ai/xezar'), { recursive: true });
+      writeFileSync(join(root, '.ai/xezar', 'config.json'), '{"skillsRepos": []}\n', 'utf8');
     }
     clearProjectProbeCache();
-    store = RunStore.open(join(repoRoot, '.ai/cezar'), { keepLive: true });
+    store = RunStore.open(join(repoRoot, '.ai/xezar'), { keepLive: true });
     runId = store.createRun({
       title: 'parity',
       workflow: 'quick-task',
@@ -91,18 +91,18 @@ describe('project-route alias parity (unprefixed vs /api/v1/p/<boot> vs /api/v1/
     contexts.disposeAll();
     store.flush();
     for (const dir of [home, repoRoot, otherRoot]) rmSync(dir, { recursive: true, force: true });
-    if (savedHome === undefined) delete process.env.CEZ_HOME;
-    else process.env.CEZ_HOME = savedHome;
-    if (savedRemote === undefined) delete process.env.CEZ_REMOTE;
-    else process.env.CEZ_REMOTE = savedRemote;
-    if (savedFollowups === undefined) delete process.env.CEZ_FOLLOWUPS;
-    else process.env.CEZ_FOLLOWUPS = savedFollowups;
-    if (savedSingleProject === undefined) delete process.env.CEZ_SINGLE_PROJECT;
-    else process.env.CEZ_SINGLE_PROJECT = savedSingleProject;
-    if (savedAutomations === undefined) delete process.env.CEZ_AUTOMATIONS;
-    else process.env.CEZ_AUTOMATIONS = savedAutomations;
-    if (savedDryRun === undefined) delete process.env.CEZ_DRY_RUN;
-    else process.env.CEZ_DRY_RUN = savedDryRun;
+    if (savedHome === undefined) delete process.env.XEZ_HOME;
+    else process.env.XEZ_HOME = savedHome;
+    if (savedRemote === undefined) delete process.env.XEZ_REMOTE;
+    else process.env.XEZ_REMOTE = savedRemote;
+    if (savedFollowups === undefined) delete process.env.XEZ_FOLLOWUPS;
+    else process.env.XEZ_FOLLOWUPS = savedFollowups;
+    if (savedSingleProject === undefined) delete process.env.XEZ_SINGLE_PROJECT;
+    else process.env.XEZ_SINGLE_PROJECT = savedSingleProject;
+    if (savedAutomations === undefined) delete process.env.XEZ_AUTOMATIONS;
+    else process.env.XEZ_AUTOMATIONS = savedAutomations;
+    if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
+    else process.env.XEZ_DRY_RUN = savedDryRun;
   });
 
   /** Substitute representative values for a manifest path's params. */
@@ -233,7 +233,7 @@ describe('project-route alias parity (unprefixed vs /api/v1/p/<boot> vs /api/v1/
       method: 'DELETE',
     }));
     await expectParity('/groups/no-such-group/pick', json('POST', { runId: 'x' }));
-    // 409: the follow-up inbox is off (CEZ_FOLLOWUPS unset).
+    // 409: the follow-up inbox is off (XEZ_FOLLOWUPS unset).
     await expectParity('/todos/t1/start', json('POST', {}));
     // 200 non-GET without observable side effects (no worktrees exist).
     await expectParity('/worktrees/reclaim', json('POST', {}));

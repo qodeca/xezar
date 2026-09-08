@@ -5,13 +5,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ProjectScopeProvider } from '@/api/project-scope-context'
 import { createQueryClient } from '@/api/query-client'
-import type { HealthResponse, ProjectsResponse, Skill } from '@open-mercato/cezar-api-client'
+import type { HealthResponse, ProjectsResponse, Skill } from '@qodeca/xezar-api-client'
 import { BookmarkletPanel } from './bookmarklets-section'
 
 /**
  * #422: the bookmark's visible label (what a browser stamps as the bookmark's name when it is
  * dragged to the bookmarks bar) must include the current repo name so a person with several
- * cezar cockpits open can tell their bookmarks apart.
+ * xezar cockpits open can tell their bookmarks apart.
  *
  * Multi-project spec, step 3.6: the same generator, mounted under `/p/<id>/settings`, must bake
  * THAT project's URL prefix and THAT project's launch key — the second describe below.
@@ -23,8 +23,8 @@ const HEALTH: HealthResponse = {
   version: '0.1.5',
   projects: [],
   bootProject: 'default',
-  repoRoot: '/home/me/Projects/cezar',
-  repo: { root: '/home/me/Projects/cezar', branch: 'main' },
+  repoRoot: '/home/me/Projects/xezar',
+  repo: { root: '/home/me/Projects/xezar', branch: 'main' },
   checks: [],
   defaultRunner: 'claude',
   forge: null,
@@ -63,7 +63,7 @@ afterEach(() => {
  */
 function renderPanel(
   skills: readonly Skill[] = SKILLS,
-  { at = '/p/cezar/settings/bookmarklets', scope = null }: { at?: string; scope?: string | null } = {},
+  { at = '/p/xezar/settings/bookmarklets', scope = null }: { at?: string; scope?: string | null } = {},
 ) {
   return render(
     <QueryClientProvider client={createQueryClient()}>
@@ -90,8 +90,8 @@ describe('BookmarkletPanel repo-name labels (#422)', () => {
     serve({ '/api/v1/health': HEALTH, '/api/v1/launch-key': { key: 'sekret' } })
     renderPanel()
 
-    await waitFor(() => expect(label('cezar (cezar): this PR/issue')).toBeTruthy())
-    expect(label('/om-fix (cezar)')).toBeTruthy()
+    await waitFor(() => expect(label('xezar (xezar): this PR/issue')).toBeTruthy())
+    expect(label('/om-fix (xezar)')).toBeTruthy()
   })
 
   it('falls back to the plain, repo-less label while health is unknown', () => {
@@ -99,16 +99,16 @@ describe('BookmarkletPanel repo-name labels (#422)', () => {
     fetchMock.mockImplementation(() => new Promise<Response>(() => {}))
     renderPanel()
 
-    expect(label('cezar: this PR/issue')).toBeTruthy()
+    expect(label('xezar: this PR/issue')).toBeTruthy()
     expect(label('/om-fix')).toBeTruthy()
-    expect(label('/om-fix (cezar)')).toBeFalsy()
+    expect(label('/om-fix (xezar)')).toBeFalsy()
   })
 
   it('falls back to the plain label outside a git repository', async () => {
     serve({ '/api/v1/health': { ...HEALTH, repo: null }, '/api/v1/launch-key': { key: 'sekret' } })
     renderPanel()
 
-    await waitFor(() => expect(label('cezar: this PR/issue')).toBeTruthy())
+    await waitFor(() => expect(label('xezar: this PR/issue')).toBeTruthy())
     expect(label('/om-fix')).toBeTruthy()
   })
 })
@@ -118,9 +118,9 @@ describe('BookmarkletPanel repo-name labels (#422)', () => {
 const REGISTRY: ProjectsResponse = {
   projects: [
     {
-      id: 'cezar',
-      name: 'cezar',
-      root: '/home/me/Projects/cezar',
+      id: 'xezar',
+      name: 'xezar',
+      root: '/home/me/Projects/xezar',
       addedAt: '',
       lastOpenedAt: '',
       source: 'local',
@@ -136,8 +136,8 @@ const REGISTRY: ProjectsResponse = {
       status: 'ok',
     },
   ],
-  bootProject: 'cezar',
-  projectsDir: '~/cezar/projects',
+  bootProject: 'xezar',
+  projectsDir: '~/xezar/projects',
 }
 
 describe('BookmarkletPanel project scoping (multi-project spec, step 3.6)', () => {
@@ -158,17 +158,17 @@ describe('BookmarkletPanel project scoping (multi-project spec, step 3.6)', () =
     expect(hrefOf('bm-generic')).not.toContain('boot-key')
     // The name stamp comes from the registry entry for THIS project, not from `/api/v1/health`
     // (workspace-level: it always describes the boot repo).
-    expect(label('cezar (acme-repo): this PR/issue')).toBeTruthy()
+    expect(label('xezar (acme-repo): this PR/issue')).toBeTruthy()
     expect(label('/om-fix (acme-repo)')).toBeTruthy()
   })
 
   it('names the boot project too — it is unscoped, but the URL still says which project', async () => {
     serve({ '/api/v1/health': HEALTH, '/api/v1/projects': REGISTRY, '/api/v1/launch-key': { key: 'boot-key' } })
-    renderPanel(SKILLS, { at: '/p/cezar/settings/bookmarklets', scope: null })
+    renderPanel(SKILLS, { at: '/p/xezar/settings/bookmarklets', scope: null })
 
     await waitFor(() => expect(hrefOf('bm-generic')).toContain('key=boot-key'))
     // The boot project mounts UNSCOPED, so only the URL prefix can answer here.
-    expect(hrefOf('bm-generic')).toContain(`/p/cezar/new?'+q`)
+    expect(hrefOf('bm-generic')).toContain(`/p/xezar/new?'+q`)
     // …and the protected query grammar is untouched by the prefix.
     expect(hrefOf('bm-generic')).toContain(`q='auto=0&key=boot-key&ref='`)
   })
@@ -176,10 +176,10 @@ describe('BookmarkletPanel project scoping (multi-project spec, step 3.6)', () =
   it('falls back to the boot project when the URL carries no prefix at all', async () => {
     // A legacy flat URL still mid-redirect: health names the boot project, so the generated
     // launcher already lands where the redirect would have taken it.
-    serve({ '/api/v1/health': { ...HEALTH, bootProject: 'cezar' }, '/api/v1/launch-key': { key: 'k' } })
+    serve({ '/api/v1/health': { ...HEALTH, bootProject: 'xezar' }, '/api/v1/launch-key': { key: 'k' } })
     renderPanel(SKILLS, { at: '/settings/bookmarklets', scope: null })
 
-    await waitFor(() => expect(hrefOf('bm-generic')).toContain(`/p/cezar/new?'+q`))
+    await waitFor(() => expect(hrefOf('bm-generic')).toContain(`/p/xezar/new?'+q`))
   })
 
   it('degrades to the legacy flat /new when nothing names a project', async () => {

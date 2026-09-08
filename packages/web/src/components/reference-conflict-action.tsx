@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { ApiRun } from '@open-mercato/cezar-api-client'
+import type { ApiRun } from '@qodeca/xezar-api-client'
 
 import { useProjectRun } from '@/api/queries'
 import { ReferenceChip, useCloseReferenceCard } from '@/components/reference-chip'

@@ -13,7 +13,7 @@ const GIT_ID = ['-c', 'user.name=test', '-c', 'user.email=test@local'];
  * `autosaveCommit` must never capture a half-resolved merge (#471). The incident
  * behind that issue was an autosave committing conflict markers, and the flushes
  * that produce most autosave commits are deliberately ungated — so the guard,
- * not the `CEZ_AUTOSAVE` gate, is what actually prevents a recurrence.
+ * not the `XEZ_AUTOSAVE` gate, is what actually prevents a recurrence.
  */
 describe('autosave conflict guard (#471 follow-up)', () => {
   let repo: string;
@@ -23,7 +23,7 @@ describe('autosave conflict guard (#471 follow-up)', () => {
   const subject = async () => (await git(['log', '-1', '--format=%s'])).stdout.trim();
 
   beforeEach(async () => {
-    repo = mkdtempSync(join(tmpdir(), 'cez-autosave-conflict-'));
+    repo = mkdtempSync(join(tmpdir(), 'xez-autosave-conflict-'));
     await git(['init', '-q', '-b', 'main']);
     writeFileSync(join(repo, 'a.txt'), 'base\n');
     await git(['add', '-A']);
@@ -73,7 +73,7 @@ describe('autosave conflict guard (#471 follow-up)', () => {
     writeFileSync(join(repo, 'a.txt'), 'resolved\n');
     await git(['add', 'a.txt']);
     expect(await autosaveCommit(repo, 'turn end')).toBe('committed');
-    expect(await subject()).toBe('cezar autosave (turn end)');
+    expect(await subject()).toBe('xezar autosave (turn end)');
   });
 
   /**
@@ -95,7 +95,7 @@ describe('autosave conflict guard (#471 follow-up)', () => {
     // refuse legitimate autosaves of this repo's own docs.
     await trackThenRewrite('doc.md', 'Title\n=======\n\nbody\n');
     expect(await autosaveCommit(repo, 'turn end')).toBe('committed');
-    expect(await subject()).toBe('cezar autosave (turn end)');
+    expect(await subject()).toBe('xezar autosave (turn end)');
   });
 
   it('does not trip on a file that merely documents conflict markers', async () => {

@@ -8,7 +8,7 @@ import {
   useRetryProviderAuth,
   workspaceQueryKeys,
 } from '@/api/queries'
-import type { ProviderId, ProviderStatusResponse } from '@open-mercato/cezar-api-client'
+import type { ProviderId, ProviderStatusResponse } from '@qodeca/xezar-api-client'
 import { StatusDot, type StatusDotTone } from '@/components/status-dot'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
@@ -300,7 +300,7 @@ export function ProviderSettings() {
                 </div>
                 {incidentId !== undefined ? (
                   <p className="mt-2 text-xs text-soft-foreground">
-                    Use this after completing the provider sign-in flow. cezar cannot validate the
+                    Use this after completing the provider sign-in flow. xezar cannot validate the
                     credential without a task/model request; it will verify it on the next task.
                   </p>
                 ) : null}

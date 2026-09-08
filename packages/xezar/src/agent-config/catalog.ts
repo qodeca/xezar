@@ -2,13 +2,12 @@ import { join } from 'node:path';
 import type { RunnerId } from '../core/agent-runner.ts';
 
 /**
- * The catalog of coding-agent config files cezar can surface and edit (spec
- * `.ai/specs/2026-07-16-agent-config-files.md`). This file is the ONLY place
+ * The catalog of coding-agent config files xezar can surface and edit. This file is the ONLY place
  * vendor knowledge lives: where each agent keeps its files, at which scope, in
  * what format, and — the load-bearing part — the vendor's OWN documented
- * precedence, quoted so a UI label never claims a merge cezar does not perform.
+ * precedence, quoted so a UI label never claims a merge xezar does not perform.
  *
- * Hardcoding is the design. cezar's value here is knowing where the files are
+ * Hardcoding is the design. xezar's value here is knowing where the files are
  * and what the docs say; an unknown file is not shown rather than guessed at.
  * A raw editor cannot drift on a vendor's *schema*; it can drift on *paths and
  * precedence strings*, so every entry carries a `docsUrl` and this table is the
@@ -144,7 +143,7 @@ export const CONFIG_FILES: ConfigFileDef[] = [
     tracked: 'tracked',
     holdsMcp: true,
     precedence:
-      'Project-scoped MCP servers (key: mcpServers), shared via version control. Each requires approval before use; user- and local-scoped servers live in ~/.claude.json, which cezar does not edit.',
+      'Project-scoped MCP servers (key: mcpServers), shared via version control. Each requires approval before use; user- and local-scoped servers live in ~/.claude.json, which xezar does not edit.',
     docsUrl: CLAUDE_MCP_DOCS,
   },
   {

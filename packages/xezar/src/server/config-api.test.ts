@@ -21,24 +21,24 @@ describe('the config API', () => {
   let repoRoot: string;
   let homeRoot: string;
   const savedHome = process.env.HOME;
-  const savedCezHome = process.env.CEZ_HOME;
+  const savedXezHome = process.env.XEZ_HOME;
   const savedCodexHome = process.env.CODEX_HOME;
   const savedXdgConfigHome = process.env.XDG_CONFIG_HOME;
-  const savedModelsLocked = process.env.CEZ_AGENT_MODELS_LOCKED;
+  const savedModelsLocked = process.env.XEZ_AGENT_MODELS_LOCKED;
   let store: RunStore;
   let app: Hono;
 
   beforeEach(() => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-configapi-'));
-    homeRoot = mkdtempSync(join(tmpdir(), 'cez-configapi-home-'));
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-configapi-'));
+    homeRoot = mkdtempSync(join(tmpdir(), 'xez-configapi-home-'));
     process.env.HOME = homeRoot;
-    process.env.CEZ_HOME = join(homeRoot, '.cezar');
+    process.env.XEZ_HOME = join(homeRoot, '.xezar');
     process.env.CODEX_HOME = join(homeRoot, '.codex');
     process.env.XDG_CONFIG_HOME = join(homeRoot, '.config');
-    delete process.env.CEZ_AGENT_MODELS_LOCKED;
-    mkdirSync(join(repoRoot, '.ai/cezar'), { recursive: true });
-    mkdirSync(join(homeRoot, '.cezar'), { recursive: true });
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    delete process.env.XEZ_AGENT_MODELS_LOCKED;
+    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
+    mkdirSync(join(homeRoot, '.xezar'), { recursive: true });
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     // The config routes never touch the manager — an empty stub is honest.
     app = createApp({ repoRoot, store, manager: {} as RunManager, version: '0.0.0-test' });
   });
@@ -49,17 +49,17 @@ describe('the config API', () => {
     rmSync(homeRoot, { recursive: true, force: true });
     if (savedHome === undefined) delete process.env.HOME;
     else process.env.HOME = savedHome;
-    if (savedCezHome === undefined) delete process.env.CEZ_HOME;
-    else process.env.CEZ_HOME = savedCezHome;
+    if (savedXezHome === undefined) delete process.env.XEZ_HOME;
+    else process.env.XEZ_HOME = savedXezHome;
     if (savedCodexHome === undefined) delete process.env.CODEX_HOME;
     else process.env.CODEX_HOME = savedCodexHome;
     if (savedXdgConfigHome === undefined) delete process.env.XDG_CONFIG_HOME;
     else process.env.XDG_CONFIG_HOME = savedXdgConfigHome;
-    if (savedModelsLocked === undefined) delete process.env.CEZ_AGENT_MODELS_LOCKED;
-    else process.env.CEZ_AGENT_MODELS_LOCKED = savedModelsLocked;
+    if (savedModelsLocked === undefined) delete process.env.XEZ_AGENT_MODELS_LOCKED;
+    else process.env.XEZ_AGENT_MODELS_LOCKED = savedModelsLocked;
   });
 
-  const configPath = () => join(repoRoot, '.ai/cezar', 'config.json');
+  const configPath = () => join(repoRoot, '.ai/xezar', 'config.json');
   const rawFile = () => JSON.parse(readFileSync(configPath(), 'utf8')) as Record<string, unknown>;
 
   const get = () => apiRequest(app, '/api/v1/config');
@@ -104,11 +104,11 @@ describe('the config API', () => {
     expect((await getBody()).modelsLocked).toBe(false);
   });
 
-  it('locks native defaults and rejects Cezar model overrides', async () => {
-    process.env.CEZ_AGENT_MODELS_LOCKED = '1';
+  it('locks native defaults and rejects Xezar model overrides', async () => {
+    process.env.XEZ_AGENT_MODELS_LOCKED = '1';
     mkdirSync(join(homeRoot, '.codex'), { recursive: true });
     writeFileSync(join(homeRoot, '.codex', 'config.toml'), 'model = "gpt-5-codex"\n');
-    writeFileSync(configPath(), JSON.stringify({ defaultModels: { codex: 'cezar-codex' } }), 'utf8');
+    writeFileSync(configPath(), JSON.stringify({ defaultModels: { codex: 'xezar-codex' } }), 'utf8');
 
     const body = await getBody();
     expect(body.modelsLocked).toBe(true);
@@ -117,7 +117,7 @@ describe('the config API', () => {
     const res = await put({ defaultModels: { codex: 'other-model' } });
     expect(res.status).toBe(409);
     expect(((await res.json()) as { error: string }).error).toContain('models are locked');
-    expect(rawFile().defaultModels).toEqual({ codex: 'cezar-codex' });
+    expect(rawFile().defaultModels).toEqual({ codex: 'xezar-codex' });
   });
 
   it('supports the same lock through the optional repository config key', async () => {
@@ -125,7 +125,7 @@ describe('the config API', () => {
     writeFileSync(join(homeRoot, '.codex', 'config.toml'), 'model = "native-codex"\n');
     writeFileSync(
       configPath(),
-      JSON.stringify({ modelsLocked: true, defaultModels: { codex: 'cezar-codex' } }),
+      JSON.stringify({ modelsLocked: true, defaultModels: { codex: 'xezar-codex' } }),
       'utf8',
     );
 
@@ -137,7 +137,7 @@ describe('the config API', () => {
 
   it('supports a global workspace config lock across repositories', async () => {
     writeFileSync(
-      join(homeRoot, '.cezar', 'config.json'),
+      join(homeRoot, '.xezar', 'config.json'),
       JSON.stringify({ modelsLocked: true }),
       'utf8',
     );
@@ -247,9 +247,9 @@ describe('liveTitleUpdates round-trip (task auto-naming spec)', () => {
   let app: Hono;
 
   beforeEach(() => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-configapi-title-'));
-    mkdirSync(join(repoRoot, '.ai/cezar'), { recursive: true });
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-configapi-title-'));
+    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     app = createApp({ repoRoot, store, manager: {} as RunManager, version: '0.0.0-test' });
   });
 
@@ -265,7 +265,7 @@ describe('liveTitleUpdates round-trip (task auto-naming spec)', () => {
       body: JSON.stringify(body),
     });
   const rawFile = () =>
-    JSON.parse(readFileSync(join(repoRoot, '.ai/cezar', 'config.json'), 'utf8')) as Record<string, unknown>;
+    JSON.parse(readFileSync(join(repoRoot, '.ai/xezar', 'config.json'), 'utf8')) as Record<string, unknown>;
 
   it('sets, answers and clears the key (null → env default decides)', async () => {
     const off = (await (await put({ liveTitleUpdates: false })).json()) as Record<string, unknown>;
@@ -284,9 +284,9 @@ describe('reviewGate round-trip (optional review gate, #489)', () => {
   let app: Hono;
 
   beforeEach(() => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-configapi-gate-'));
-    mkdirSync(join(repoRoot, '.ai/cezar'), { recursive: true });
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-configapi-gate-'));
+    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     app = createApp({ repoRoot, store, manager: {} as RunManager, version: '0.0.0-test' });
   });
 
@@ -302,10 +302,10 @@ describe('reviewGate round-trip (optional review gate, #489)', () => {
       body: JSON.stringify(body),
     });
   const rawFile = () =>
-    JSON.parse(readFileSync(join(repoRoot, '.ai/cezar', 'config.json'), 'utf8')) as Record<string, unknown>;
+    JSON.parse(readFileSync(join(repoRoot, '.ai/xezar', 'config.json'), 'utf8')) as Record<string, unknown>;
 
   it('GET exposes reviewGate; PUT true/false/null round-trips and clears the raw key', async () => {
-    // Default (no config key) is null — the CEZ_REVIEW_GATE env (OFF) decides.
+    // Default (no config key) is null — the XEZ_REVIEW_GATE env (OFF) decides.
     expect(((await (await apiRequest(app, '/api/v1/config')).json()) as Record<string, unknown>).reviewGate).toBeNull();
 
     const on = (await (await put({ reviewGate: true })).json()) as Record<string, unknown>;

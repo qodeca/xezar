@@ -1,8 +1,8 @@
 /** Which browser UI a request for `/` gets.
  *
  *  The React cockpit built to `web/dist` is the only web UI — the legacy
- *  vanilla page (`web/app.js` + friends) was deleted in phase R7 of the spec
- *  `.ai/specs/2026-07-14-cockpit-ui-redesign.md`. A checkout without a build
+ *  vanilla page (`web/app.js` + friends) was deleted in phase R7 of the cockpit
+ *  redesign. A checkout without a build
  *  gets a small built-in hint page (`build-hint`), never a 404.
  */
 export type IndexTarget = 'dist' | 'build-hint';
@@ -25,7 +25,7 @@ export type GetTarget = IndexTarget | 'passthrough';
 /** Paths owned by routes registered before the catch-all: the built app's
  *  hashed bundles and the favicon. */
 function isStaticAsset(path: string): boolean {
-  return path.startsWith('/assets/') || path === '/open-mercato.svg';
+  return path.startsWith('/assets/') || path === '/xezar.svg';
 }
 
 /** Decide what any GET gets, so every route in the spec's map (`/tasks/:id/changes`,
@@ -52,7 +52,7 @@ export const BUILD_HINT_HTML = `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>cezar — build the cockpit</title>
+<title>xezar — build the cockpit</title>
 <style>
   body { margin: 0; display: grid; place-items: center; min-height: 100dvh;
          font: 15px/1.6 system-ui, sans-serif; background: #101014; color: #e8e8ea; }

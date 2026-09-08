@@ -36,17 +36,17 @@ function stubHub() {
 describe('health topic + cache (live-server path)', () => {
   let repoRoot: string;
   let store: RunStore;
-  const savedDryRun = process.env.CEZ_DRY_RUN;
-  const savedRemote = process.env.CEZ_REMOTE;
+  const savedDryRun = process.env.XEZ_DRY_RUN;
+  const savedRemote = process.env.XEZ_REMOTE;
 
   beforeEach(() => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-health-topic-'));
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-health-topic-'));
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     // Keeps the CLI/forge probes off the network so the payload is deterministic.
-    process.env.CEZ_DRY_RUN = '1';
-    // Health's `repoRoot` is trimmed in hosted mode, so an ambient CEZ_REMOTE on the dev box
+    process.env.XEZ_DRY_RUN = '1';
+    // Health's `repoRoot` is trimmed in hosted mode, so an ambient XEZ_REMOTE on the dev box
     // must not decide what these assertions see.
-    delete process.env.CEZ_REMOTE;
+    delete process.env.XEZ_REMOTE;
     // The cache's whole policy is clock arithmetic — `Date.now() - healthCache.at` against the
     // TTL and the staleness ceiling — so the clock is the thing these cases need to steer, and
     // vitest's fake-timer API is how you steer it. `toFake: ['Date']` is deliberate and is the
@@ -64,18 +64,18 @@ describe('health topic + cache (live-server path)', () => {
     vi.useRealTimers();
     store.flush();
     rmSync(repoRoot, { recursive: true, force: true });
-    if (savedDryRun === undefined) delete process.env.CEZ_DRY_RUN;
-    else process.env.CEZ_DRY_RUN = savedDryRun;
-    if (savedRemote === undefined) delete process.env.CEZ_REMOTE;
-    else process.env.CEZ_REMOTE = savedRemote;
+    if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
+    else process.env.XEZ_DRY_RUN = savedDryRun;
+    if (savedRemote === undefined) delete process.env.XEZ_REMOTE;
+    else process.env.XEZ_REMOTE = savedRemote;
     vi.restoreAllMocks();
   });
 
-  /** `defaultRunner` comes from `.ai/cezar/config.json`, so writing it is a cheap way to
+  /** `defaultRunner` comes from `.ai/xezar/config.json`, so writing it is a cheap way to
    *  change what a fresh snapshot would say without touching git or the CLI probes. */
   const setRunner = (runner: string): void => {
-    mkdirSync(join(repoRoot, '.ai/cezar'), { recursive: true });
-    writeFileSync(join(repoRoot, '.ai/cezar/config.json'), JSON.stringify({ defaultRunner: runner }));
+    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
+    writeFileSync(join(repoRoot, '.ai/xezar/config.json'), JSON.stringify({ defaultRunner: runner }));
   };
 
   const build = () => {
@@ -155,7 +155,7 @@ describe('health topic + cache (live-server path)', () => {
 
   // The regression this file exists for: the 5 s TTL says how often a revalidation is KICKED
   // OFF, not how old the served value may be — the revalidation is fire-and-forget. With no
-  // subscriber (a background `cezar serve` with no tab open) nothing else refreshes the cache,
+  // subscriber (a background `xezar serve` with no tab open) nothing else refreshes the cache,
   // so without a ceiling the next GET could answer with the boot payload an hour later.
   it('does not serve a payload older than the staleness ceiling', async () => {
     setRunner('claude');

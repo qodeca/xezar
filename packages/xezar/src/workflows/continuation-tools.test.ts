@@ -79,12 +79,12 @@ describe('a resumed session keeps its workflow step tools', () => {
 
   beforeEach(async () => {
     captured.specs.length = 0;
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-continue-tools-'));
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-continue-tools-'));
     await run('git', ['init', '-q', '-b', 'main'], { cwd: repoRoot });
     writeFileSync(join(repoRoot, 'a.txt'), 'one\n');
     await run('git', ['add', '-A'], { cwd: repoRoot });
     await run('git', [...GIT_ID, 'commit', '-q', '-m', 'base'], { cwd: repoRoot });
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     manager = new RunManager(store, repoRoot);
   });
 

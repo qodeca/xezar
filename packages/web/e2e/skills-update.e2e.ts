@@ -1,11 +1,11 @@
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { AgentBrowser, bootProjectId, readTestEnv } from './agent-browser'
 
 /**
- * Automatic Open Mercato skill updates against the real CEZ_DRY_RUN cockpit.
+ * Automatic Open Mercato skill updates against the real XEZ_DRY_RUN cockpit.
  *
  * Reachability: dry-run deliberately reports a deterministic `current` state with no tracked
  * installation, so this spec covers the inherited preference, its persisted override, the
@@ -14,11 +14,11 @@ import { AgentBrowser, bootProjectId, readTestEnv } from './agent-browser'
  * Chrome would require a production-only lock file and network-backed `npx skills check`.
  */
 
-const artifactsDir = resolve(
-  import.meta.dirname,
-  '../../../.ai/runs/2026-07-22-automatic-open-mercato-skills-updates/checkpoint-3-artifacts',
-)
-const workspaceConfig = resolve(import.meta.dirname, '../../../.ai/qa/cez-home/config.json')
+// QA evidence for this spec. `.ai/qa/artifacts_*/` is the gitignored artifact location the
+// pipeline reserves (see `.gitignore`), so the screenshots stay out of the repository.
+const artifactsDir = resolve(import.meta.dirname, '../../../.ai/qa/artifacts_skills-update')
+mkdirSync(artifactsDir, { recursive: true })
+const workspaceConfig = resolve(import.meta.dirname, '../../../.ai/qa/xez-home/config.json')
 const sessionId = `e2e-skills-update-${process.pid}`
 const DESKTOP = { width: 1440, height: 900 }
 const IPHONE = { width: 390, height: 844 }
@@ -30,7 +30,7 @@ let previousConfig: string | null = null
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${baseUrl}${path}`, init)
-  if (!response.ok) throw new Error(`cezar e2e: ${init?.method ?? 'GET'} ${path} answered ${response.status}`)
+  if (!response.ok) throw new Error(`xezar e2e: ${init?.method ?? 'GET'} ${path} answered ${response.status}`)
   return (await response.json()) as T
 }
 

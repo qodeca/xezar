@@ -129,8 +129,8 @@ describe('resolveCapabilities — localHandoff', () => {
     expect(resolveCapabilities({}, '127.0.0.1').localHandoff).toBe(true);
   });
 
-  it('is off when CEZ_REMOTE=1', () => {
-    expect(resolveCapabilities({ CEZ_REMOTE: '1' }, undefined).localHandoff).toBe(false);
+  it('is off when XEZ_REMOTE=1', () => {
+    expect(resolveCapabilities({ XEZ_REMOTE: '1' }, undefined).localHandoff).toBe(false);
   });
 
   it('is off for a non-loopback bind host', () => {
@@ -143,19 +143,19 @@ describe('resolveCapabilities — followups (#471)', () => {
     expect(resolveCapabilities({}, undefined).followups).toBe(false);
   });
 
-  it('is on with CEZ_FOLLOWUPS=1', () => {
-    expect(resolveCapabilities({ CEZ_FOLLOWUPS: '1' }, undefined).followups).toBe(true);
+  it('is on with XEZ_FOLLOWUPS=1', () => {
+    expect(resolveCapabilities({ XEZ_FOLLOWUPS: '1' }, undefined).followups).toBe(true);
   });
 
   it.each(['0', 'true', 'yes', '', 'on'])(
-    'stays off for CEZ_FOLLOWUPS=%j — only an exact "1" opts in',
+    'stays off for XEZ_FOLLOWUPS=%j — only an exact "1" opts in',
     (value) => {
-      expect(resolveCapabilities({ CEZ_FOLLOWUPS: value }, undefined).followups).toBe(false);
+      expect(resolveCapabilities({ XEZ_FOLLOWUPS: value }, undefined).followups).toBe(false);
     },
   );
 
   it('is independent of the deployment mode', () => {
-    expect(resolveCapabilities({ CEZ_FOLLOWUPS: '1', CEZ_REMOTE: '1' }, '0.0.0.0')).toEqual({
+    expect(resolveCapabilities({ XEZ_FOLLOWUPS: '1', XEZ_REMOTE: '1' }, '0.0.0.0')).toEqual({
       localHandoff: false,
       followups: true,
       singleProject: false,
@@ -172,14 +172,14 @@ describe('resolveCapabilities — singleProject', () => {
     expect(resolveCapabilities({}).singleProject).toBe(false);
   });
 
-  it('is on with CEZ_SINGLE_PROJECT=1', () => {
-    expect(resolveCapabilities({ CEZ_SINGLE_PROJECT: '1' }).singleProject).toBe(true);
+  it('is on with XEZ_SINGLE_PROJECT=1', () => {
+    expect(resolveCapabilities({ XEZ_SINGLE_PROJECT: '1' }).singleProject).toBe(true);
   });
 
   it.each(['0', 'true', 'yes', '', 'on'])(
-    'stays off for CEZ_SINGLE_PROJECT=%j — only an exact "1" opts in',
+    'stays off for XEZ_SINGLE_PROJECT=%j — only an exact "1" opts in',
     (value) => {
-      expect(resolveCapabilities({ CEZ_SINGLE_PROJECT: value }).singleProject).toBe(false);
+      expect(resolveCapabilities({ XEZ_SINGLE_PROJECT: value }).singleProject).toBe(false);
     },
   );
 });
@@ -189,21 +189,21 @@ describe('resolveCapabilities — automations (#801)', () => {
     expect(resolveCapabilities({}).automations).toBe(false);
   });
 
-  it('is on with CEZ_AUTOMATIONS=1', () => {
-    expect(resolveCapabilities({ CEZ_AUTOMATIONS: '1' }).automations).toBe(true);
+  it('is on with XEZ_AUTOMATIONS=1', () => {
+    expect(resolveCapabilities({ XEZ_AUTOMATIONS: '1' }).automations).toBe(true);
   });
 
   it.each(['0', 'true', 'yes', '', 'on'])(
-    'stays off for CEZ_AUTOMATIONS=%j — only an exact "1" opts in',
+    'stays off for XEZ_AUTOMATIONS=%j — only an exact "1" opts in',
     (value) => {
-      expect(resolveCapabilities({ CEZ_AUTOMATIONS: value }).automations).toBe(false);
+      expect(resolveCapabilities({ XEZ_AUTOMATIONS: value }).automations).toBe(false);
     },
   );
 
   // The three opt-in capabilities are independent switches; turning one on must never
   // imply another, or a user enabling automations would silently get the inbox too.
   it('does not turn on any other opt-in capability', () => {
-    expect(resolveCapabilities({ CEZ_AUTOMATIONS: '1' })).toMatchObject({
+    expect(resolveCapabilities({ XEZ_AUTOMATIONS: '1' })).toMatchObject({
       automations: true,
       followups: false,
       singleProject: false,
@@ -221,11 +221,11 @@ describe('resolveCapabilities — usage presentation', () => {
   });
 
   it.each([
-    [{ CEZ_HIDE_TOKEN_METRICS: '1' }, false, false, false],
-    [{ CEZ_HIDE_TOKEN_USAGE: '1' }, false, false, true],
-    [{ CEZ_HIDE_COST: '1' }, false, true, false],
-    [{ CEZ_HIDE_TOKEN_USAGE: '1', CEZ_HIDE_COST: '1' }, false, false, false],
-    [{ CEZ_HIDE_TOKEN_METRICS: '1', CEZ_HIDE_TOKEN_USAGE: '0', CEZ_HIDE_COST: '0' }, false, false, false],
+    [{ XEZ_HIDE_TOKEN_METRICS: '1' }, false, false, false],
+    [{ XEZ_HIDE_TOKEN_USAGE: '1' }, false, false, true],
+    [{ XEZ_HIDE_COST: '1' }, false, true, false],
+    [{ XEZ_HIDE_TOKEN_USAGE: '1', XEZ_HIDE_COST: '1' }, false, false, false],
+    [{ XEZ_HIDE_TOKEN_METRICS: '1', XEZ_HIDE_TOKEN_USAGE: '0', XEZ_HIDE_COST: '0' }, false, false, false],
   ] as const)(
     'resolves strict visibility for %o',
     (env, tokenMetrics, tokenUsageMetrics, costMetrics) => {
@@ -234,18 +234,18 @@ describe('resolveCapabilities — usage presentation', () => {
   );
 
   it.each(['0', 'true', 'yes', '', 'on'])(
-    'stays visible for CEZ_HIDE_TOKEN_METRICS=%j — only an exact "1" opts out',
+    'stays visible for XEZ_HIDE_TOKEN_METRICS=%j — only an exact "1" opts out',
     (value) => {
       expect(resolveCapabilities({
-        CEZ_HIDE_TOKEN_METRICS: value,
-        CEZ_HIDE_TOKEN_USAGE: value,
-        CEZ_HIDE_COST: value,
+        XEZ_HIDE_TOKEN_METRICS: value,
+        XEZ_HIDE_TOKEN_USAGE: value,
+        XEZ_HIDE_COST: value,
       })).toMatchObject({ tokenMetrics: true, tokenUsageMetrics: true, costMetrics: true });
     },
   );
 
   it('does not change telemetry visibility when another deployment capability is enabled', () => {
-    expect(resolveCapabilities({ CEZ_REMOTE: '1', CEZ_FOLLOWUPS: '1' })).toMatchObject({
+    expect(resolveCapabilities({ XEZ_REMOTE: '1', XEZ_FOLLOWUPS: '1' })).toMatchObject({
       tokenMetrics: true,
       tokenUsageMetrics: true,
       costMetrics: true,

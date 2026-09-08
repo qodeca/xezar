@@ -1,9 +1,8 @@
 import type { HighlighterCore } from 'shiki/core'
 
 /**
- * The ONE Shiki highlighter for the whole cockpit (spec, "Task thread" tech picks;
- * `.ai/analysis/cockpit-ui-redesign/diff-highlight-tech.md` §1). The thread's markdown code
- * blocks consume it now; R5's diff views share it — a second `createHighlighterCore` call
+ * The ONE Shiki highlighter for the whole cockpit ("Task thread" tech picks). The thread's
+ * markdown code blocks consume it now; R5's diff views share it — a second `createHighlighterCore` call
  * anywhere is a bug (it would instantiate the engine and re-fetch grammars twice).
  *
  * Bundle rules this module exists to enforce:
@@ -43,7 +42,7 @@ export interface SynHighlight {
  * near-foreground. `type: 'dark'` is nominal — the variables carry both palettes.
  */
 export const SYN_THEME = {
-  name: 'cezar-syn',
+  name: 'xezar-syn',
   type: 'dark' as const,
   fg: 'var(--syn-var)',
   bg: 'transparent',

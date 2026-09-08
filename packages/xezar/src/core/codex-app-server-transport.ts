@@ -17,7 +17,7 @@ interface PendingRequest {
 }
 
 export function resolveCodexExecutable(override?: string): string {
-  return override ?? process.env.CEZ_CODEX_BIN ?? 'codex';
+  return override ?? process.env.XEZ_CODEX_BIN ?? 'codex';
 }
 
 export function buildCodexAppServerEnv(extraEnv?: Record<string, string>): NodeJS.ProcessEnv {
@@ -80,7 +80,7 @@ export class CodexAppServerRpc {
 
   async initialize(): Promise<void> {
     await this.request('initialize', {
-      clientInfo: { name: 'cezar', title: 'cezar', version: '0.1.0' },
+      clientInfo: { name: 'xezar', title: 'xezar', version: '0.1.0' },
       capabilities: { experimentalApi: true },
     });
     this.notify('initialized', {});

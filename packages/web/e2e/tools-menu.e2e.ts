@@ -24,7 +24,7 @@ type Health = {
 const RUNNERS = new Set(['claude', 'codex', 'opencode', 'pi'])
 
 /** What (if anything) keeps the aggregate dot from green, derived from the live health answer the
- *  same way `toolsBlocker()` derives it: the dot is amber only when cez cannot start a task at all,
+ *  same way `toolsBlocker()` derives it: the dot is amber only when xez cannot start a task at all,
  *  not merely because an optional tool is absent. */
 function blockerFor(health: Health): string | null {
   const runners = health.checks.filter((check) => RUNNERS.has(check.name))
@@ -73,7 +73,7 @@ describe('tools menu', () => {
 
     const blocker = blockerFor(health)
     const missing = health.checks.filter((c) => !c.available).map((c) => c.name)
-    let expectedTitle = `cezar v${health.version}`
+    let expectedTitle = `xezar v${health.version}`
     if (blocker) expectedTitle += ` · ${blocker}`
     else if (missing.length > 0) expectedTitle += ` · optional: ${missing.join(', ')} not installed`
     expect(browser.evaluate(`document.querySelector('${TRIGGER}').getAttribute('title')`)).toBe(expectedTitle)
@@ -110,8 +110,8 @@ describe('tools menu', () => {
       const row = rows.find((r) => r.name === check.name)
       expect(row?.available).toBe(String(check.available))
       if (check.available) {
-        // The server's version string, verbatim (the shared env runs CEZ_DRY_RUN, so claude's
-        // may legitimately be "mock (CEZ_DRY_RUN=1)" — the point is fidelity, not the value).
+        // The server's version string, verbatim (the shared env runs XEZ_DRY_RUN, so claude's
+        // may legitimately be "mock (XEZ_DRY_RUN=1)" — the point is fidelity, not the value).
         expect(row?.version).toBe(check.version ?? 'not found')
         expect(row?.setupHref).toBeNull()
       } else {

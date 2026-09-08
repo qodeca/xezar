@@ -30,7 +30,7 @@ const ANSI_RE = /\u001B\[[0-9;]*[A-Za-z]/g;
 
 /** The host binary, resolved exactly like `OpencodeServerRunner` and the backend probe. */
 export function resolveOpencodeExecutable(bin?: string): string {
-  return bin ?? process.env.CEZ_OPENCODE_BIN ?? 'opencode';
+  return bin ?? process.env.XEZ_OPENCODE_BIN ?? 'opencode';
 }
 
 /**

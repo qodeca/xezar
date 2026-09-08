@@ -8,7 +8,7 @@ import { ProjectAutomationScheduler, WorkspaceAutomationScheduler } from './sche
 const dirs: string[] = [];
 afterEach(async () => Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true }))));
 async function setup() {
-  const dir = await mkdtemp(join(tmpdir(), 'cezar-scheduler-')); dirs.push(dir);
+  const dir = await mkdtemp(join(tmpdir(), 'xezar-scheduler-')); dirs.push(dir);
   const store = AutomationStore.open(dir);
   const definition = store.create({ name: 'Issues', enabled: true, events: ['issue.opened'], intervalSeconds: 300, filters: { lookbackDays: 7, maxRecords: 25 }, task: { prompt: 'Review' } }, 'one');
   return { store, definition };

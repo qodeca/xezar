@@ -103,10 +103,10 @@ test('ensureBareClone throws on an unsafe remote instead of shelling out', async
 // ---- integration: local clone still works, SHA pins, bad ref degrades --------
 
 test('listRemoteSkills clones a local repo, pins the SHA, and refuses a bad ref', async (t) => {
-  const home = mkdtempSync(join(tmpdir(), 'cez-home-'));
-  const srcDir = mkdtempSync(join(tmpdir(), 'cez-src-'));
+  const home = mkdtempSync(join(tmpdir(), 'xez-home-'));
+  const srcDir = mkdtempSync(join(tmpdir(), 'xez-src-'));
   const prevHome = process.env.HOME;
-  process.env.HOME = home; // redirect the ~/.cache/cez skills cache into temp
+  process.env.HOME = home; // redirect the ~/.cache/xez skills cache into temp
   t.after(() => {
     if (prevHome === undefined) delete process.env.HOME;
     else process.env.HOME = prevHome;
@@ -154,9 +154,9 @@ test('listRemoteSkills clones a local repo, pins the SHA, and refuses a bad ref'
 // ---- per-project team-skills cache isolation (multi-project workspace, 2.6) --
 
 test('team-skills cache is keyed by repoRoot — projects never see each other\'s skills', async (t) => {
-  const home = mkdtempSync(join(tmpdir(), 'cez-home-'));
+  const home = mkdtempSync(join(tmpdir(), 'xez-home-'));
   const prevHome = process.env.HOME;
-  process.env.HOME = home; // redirect the ~/.cache/cez skills cache into temp
+  process.env.HOME = home; // redirect the ~/.cache/xez skills cache into temp
   const dirs: string[] = [home];
   t.after(() => {
     if (prevHome === undefined) delete process.env.HOME;
@@ -166,7 +166,7 @@ test('team-skills cache is keyed by repoRoot — projects never see each other\'
 
   /** One local skills repo carrying a single directory skill named `name`. */
   const makeSkillsRepo = (name: string): string => {
-    const src = mkdtempSync(join(tmpdir(), `cez-src-${name}-`));
+    const src = mkdtempSync(join(tmpdir(), `xez-src-${name}-`));
     dirs.push(src);
     const g = (args: string[]) => execFileSync('git', args, { cwd: src, encoding: 'utf8' });
     g(['-c', 'init.defaultBranch=main', 'init']);
@@ -179,13 +179,13 @@ test('team-skills cache is keyed by repoRoot — projects never see each other\'
     return src;
   };
 
-  /** One project root whose `.ai/cezar/config.json` points at its own skills repo. */
+  /** One project root whose `.ai/xezar/config.json` points at its own skills repo. */
   const makeProjectRoot = (skillsRepo: string): string => {
-    const root = mkdtempSync(join(tmpdir(), 'cez-root-'));
+    const root = mkdtempSync(join(tmpdir(), 'xez-root-'));
     dirs.push(root);
-    mkdirSync(join(root, '.ai/cezar'), { recursive: true });
+    mkdirSync(join(root, '.ai/xezar'), { recursive: true });
     writeFileSync(
-      join(root, '.ai/cezar', 'config.json'),
+      join(root, '.ai/xezar', 'config.json'),
       JSON.stringify({ skillsRepos: [{ repo: skillsRepo, ref: 'main' }] }),
     );
     return root;

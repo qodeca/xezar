@@ -1,6 +1,6 @@
 /**
  * Update discovery (#368): a best-effort, fire-and-forget check against the
- * npm registry so the cockpit can tell the user a newer cezar exists — the
+ * npm registry so the cockpit can tell the user a newer xezar exists — the
  * root cause behind most "bug already fixed" reports is `npx` happily reusing
  * a stale cached version forever. Silent on any failure: offline, slow
  * registry or a weird payload must never affect startup.

@@ -6,8 +6,8 @@ import { CANCEL, PreflightError, type InstallContext, type InstallStep, type Pla
 import { depCheckStep, generatePassword, owned, shared, shquote, StepAborted, StepCancelled, StepSkipped, sudoStep, verifyCommand } from '../steps.ts';
 
 /**
- * The `ubuntu-vps` strategy: stand up an authenticated, proxied cezar on a bare
- * Ubuntu/Debian VPS. cezar itself stays loopback-bound; nginx is the single
+ * The `ubuntu-vps` strategy: stand up an authenticated, proxied xezar on a bare
+ * Ubuntu/Debian VPS. xezar itself stays loopback-bound; nginx is the single
  * public surface (TLS + htpasswd identity) forwarding to 127.0.0.1:<port>.
  *
  * Phase 1 ships deps → nginx+htpasswd → identity-verify (and their `undo`s).
@@ -27,19 +27,19 @@ function inst(ctx: InstallContext): string {
 }
 function vhostAvailable(ctx: InstallContext): string {
   const i = inst(ctx);
-  return i === 'default' ? '/etc/nginx/sites-available/cezar' : `/etc/nginx/sites-available/cezar-${i}`;
+  return i === 'default' ? '/etc/nginx/sites-available/xezar' : `/etc/nginx/sites-available/xezar-${i}`;
 }
 function vhostEnabled(ctx: InstallContext): string {
   const i = inst(ctx);
-  return i === 'default' ? '/etc/nginx/sites-enabled/cezar' : `/etc/nginx/sites-enabled/cezar-${i}`;
+  return i === 'default' ? '/etc/nginx/sites-enabled/xezar' : `/etc/nginx/sites-enabled/xezar-${i}`;
 }
 function htpasswdPath(ctx: InstallContext): string {
   const i = inst(ctx);
-  return i === 'default' ? '/etc/cezar/htpasswd' : `/etc/cezar/htpasswd-${i}`;
+  return i === 'default' ? '/etc/xezar/htpasswd' : `/etc/xezar/htpasswd-${i}`;
 }
 function unitName(ctx: InstallContext): string {
   const i = inst(ctx);
-  return i === 'default' ? 'cezar.service' : `cezar-${i}.service`;
+  return i === 'default' ? 'xezar.service' : `xezar-${i}.service`;
 }
 
 /** Best-effort current OS username, suggested as the default cockpit login. */
@@ -92,16 +92,16 @@ export function upstreamHost(ctx: InstallContext): string {
   return ctx.state.bindHost?.trim() || '127.0.0.1';
 }
 
-/** True once cezar answers on <host>:<port> (any HTTP status = the process is up). */
-async function isCezarUp(ctx: InstallContext, port: number): Promise<boolean> {
+/** True once xezar answers on <host>:<port> (any HTTP status = the process is up). */
+async function isXezarUp(ctx: InstallContext, port: number): Promise<boolean> {
   const code = await curlCode(ctx, [`http://${upstreamHost(ctx)}:${port}/`]);
   return code !== '000';
 }
 
-/** Poll the upstream until cezar responds or the attempts run out. */
-async function waitForCezar(ctx: InstallContext, port: number, attempts = 15): Promise<boolean> {
+/** Poll the upstream until xezar responds or the attempts run out. */
+async function waitForXezar(ctx: InstallContext, port: number, attempts = 15): Promise<boolean> {
   for (let i = 0; i < attempts; i++) {
-    if (await isCezarUp(ctx, port)) return true;
+    if (await isXezarUp(ctx, port)) return true;
     // `sleep 1` via the runner keeps this testable (no real timers in unit tests).
     if (i < attempts - 1) await ctx.runner.capture('sh', ['-c', 'sleep 1']);
   }
@@ -109,25 +109,25 @@ async function waitForCezar(ctx: InstallContext, port: number, attempts = 15): P
 }
 
 /**
- * After a service is enabled, wait for cezar to actually answer on the loopback
+ * After a service is enabled, wait for xezar to actually answer on the loopback
  * port. A running unit that crash-loops (bad WorkingDirectory, missing build)
  * would otherwise leave nginx proxying to nothing (502) while the installer
  * claims success. On failure, point the operator at the service logs.
  */
-async function confirmCezarRunning(ctx: InstallContext, statusCmd: string, logsCmd: string): Promise<void> {
+async function confirmXezarRunning(ctx: InstallContext, statusCmd: string, logsCmd: string): Promise<void> {
   if (ctx.dryRun) {
-    ctx.ui.info(`DRY RUN — would wait for cezar on ${upstreamHost(ctx)}:${ctx.state.primaryPort}.`);
+    ctx.ui.info(`DRY RUN — would wait for xezar on ${upstreamHost(ctx)}:${ctx.state.primaryPort}.`);
     return;
   }
   const sp = ctx.ui.spinner();
-  sp.start(`Waiting for cezar to start on 127.0.0.1:${ctx.state.primaryPort}…`);
-  const up = await waitForCezar(ctx, ctx.state.primaryPort);
-  sp.stop(up ? 'cezar is running.' : 'cezar did not come up.');
+  sp.start(`Waiting for xezar to start on 127.0.0.1:${ctx.state.primaryPort}…`);
+  const up = await waitForXezar(ctx, ctx.state.primaryPort);
+  sp.stop(up ? 'xezar is running.' : 'xezar did not come up.');
   if (!up) {
     ctx.ui.warn(
-      `cezar is not answering on 127.0.0.1:${ctx.state.primaryPort} yet — nginx will return 502 until it is.\n` +
+      `xezar is not answering on 127.0.0.1:${ctx.state.primaryPort} yet — nginx will return 502 until it is.\n` +
         `Check the service:\n  • ${statusCmd}\n  • ${logsCmd}\n` +
-        'Common causes: the WorkingDirectory has no built cezar, or the port is wrong.',
+        'Common causes: the WorkingDirectory has no built xezar, or the port is wrong.',
     );
   }
 }
@@ -137,21 +137,21 @@ async function confirmCezarRunning(ctx: InstallContext, statusCmd: string, logsC
  * `serverName` defaults to the catch-all `_`; the SSL step rewrites it to the
  * real domain so the `certbot --nginx` plugin can find this vhost to edit.
  */
-export function nginxVhost(port: number, serverName = '_', htpasswd = '/etc/cezar/htpasswd'): string {
-  return `# Managed by cezar server-install — do not edit by hand.
+export function nginxVhost(port: number, serverName = '_', htpasswd = '/etc/xezar/htpasswd'): string {
+  return `# Managed by xezar server-install — do not edit by hand.
 server {
     listen 80;
     listen [::]:80;
     server_name ${serverName};
 
     # HTTP/2 multiplexes every request over ONE TCP connection. Without it the
-    # browser's ~6-connections-per-origin HTTP/1.1 cap is exhausted by cezar's
+    # browser's ~6-connections-per-origin HTTP/1.1 cap is exhausted by xezar's
     # long-lived SSE run streams, and further requests block until tabs close.
     # Valid on the plain :80 block too; it only takes effect once the SSL step
     # adds a 443 ssl listener (certbot preserves this directive).
     http2 on;
 
-    auth_basic "cezar";
+    auth_basic "xezar";
     auth_basic_user_file ${htpasswd};
 
     location / {
@@ -162,7 +162,7 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
 
-        # cezar streams SSE (run events). Never buffer it, or the cockpit goes mute.
+        # xezar streams SSE (run events). Never buffer it, or the cockpit goes mute.
         proxy_buffering off;
         proxy_read_timeout 3600s;
         proxy_set_header Connection '';
@@ -219,7 +219,7 @@ const nginxProxyStep: InstallStep = {
     //    claiming a pre-existing nginx.
     const nginxWasPresent = await verifyCommand(ctx, 'nginx', ['-v']);
     await sudoStep(ctx, {
-      description: 'Install nginx (the public TLS + auth front for cezar).',
+      description: 'Install nginx (the public TLS + auth front for xezar).',
       command: 'apt-get update && apt-get install -y nginx',
       verify: (c) => verifyCommand(c, 'nginx', ['-v']),
     });
@@ -268,7 +268,7 @@ const nginxProxyStep: InstallStep = {
       if (how === 'generate') {
         password = generatePassword();
         ctx.ui.note(
-          `Username: ${user}\nPassword: ${password}\n\nSave these now — this is your cockpit login. cezar stores only a hash; the plaintext is not written anywhere and cannot be recovered.`,
+          `Username: ${user}\nPassword: ${password}\n\nSave these now — this is your cockpit login. xezar stores only a hash; the plaintext is not written anywhere and cannot be recovered.`,
           'Generated cockpit credentials',
         );
       } else {
@@ -287,7 +287,7 @@ const nginxProxyStep: InstallStep = {
       throw new StepAborted('a cockpit password (≥6 chars) is required — run server-install without --yes to set one');
     }
     // Keep the credentials in memory (never persisted) so the final verify step
-    // can prove an authenticated request actually reaches cezar over the proxy.
+    // can prove an authenticated request actually reaches xezar over the proxy.
     ctx.prefs.cockpit = { user, password };
 
     // 3) htpasswd file. The hash (not the plaintext) is embedded in the write
@@ -309,7 +309,7 @@ const nginxProxyStep: InstallStep = {
     await sudoStep(ctx, {
       description: 'Write the htpasswd identity file that nginx checks on every request.',
       note: `${htpasswd}\n\n${user}:<apr1 hash of your password>`,
-      command: `install -d -m 0755 /etc/cezar && cat > ${htpasswd} && chown root:www-data ${htpasswd} && chmod 0640 ${htpasswd}`,
+      command: `install -d -m 0755 /etc/xezar && cat > ${htpasswd} && chown root:www-data ${htpasswd} && chmod 0640 ${htpasswd}`,
       input: `${user}:${hash}\n`,
       inputLabel: 'credential line (username:hash)',
       verify: (c) => verifyCommand(c, 'test', ['-f', htpasswd]),
@@ -327,7 +327,7 @@ const nginxProxyStep: InstallStep = {
     const vhostEnbl = vhostEnabled(ctx);
     const vhost = nginxVhost(ctx.state.primaryPort, ctx.state.domain ?? '_', htpasswd);
     await writeFileStep(ctx, {
-      description: 'Write the cezar nginx site, enable it, and reload nginx.',
+      description: 'Write the xezar nginx site, enable it, and reload nginx.',
       path: vhostAvail,
       content: vhost,
       extra: `ln -sf ${vhostAvail} ${vhostEnbl} && rm -f /etc/nginx/sites-enabled/default && nginx -t && systemctl reload nginx`,
@@ -386,7 +386,7 @@ const nginxProxyStep: InstallStep = {
     return { artifacts };
   },
   async undo(ctx, created) {
-    // Remove the *known* cezar-owned paths (constants), so uninstall works even
+    // Remove the *known* xezar-owned paths (constants), so uninstall works even
     // if server.json was lost and the step was re-recorded with created=null.
     // Only re-enable the default site if the run recorded that it disabled it.
     const restoreDefault = (created?.artifacts ?? []).some((a) => a.type === 'nginx-default');
@@ -399,18 +399,18 @@ const nginxProxyStep: InstallStep = {
     if (sharedPkgs.length > 0) {
       ctx.ui.note(
         sharedPkgs.map((a) => a.removeHint ?? a.name ?? '').filter(Boolean).join('\n'),
-        'Installed for cezar but possibly used elsewhere — remove manually if unwanted',
+        'Installed for xezar but possibly used elsewhere — remove manually if unwanted',
       );
     }
-    // rmdir /etc/cezar only succeeds when empty, so removing one instance's
+    // rmdir /etc/xezar only succeeds when empty, so removing one instance's
     // htpasswd never nukes another instance's credentials in the same dir.
     const vhostEnbl = vhostEnabled(ctx);
     await sudoStep(ctx, {
-      description: 'Remove the cezar nginx site + htpasswd, reload nginx.',
+      description: 'Remove the xezar nginx site + htpasswd, reload nginx.',
       command:
         `rm -f ${vhostEnbl} ${vhostAvailable(ctx)} ${htpasswdPath(ctx)}` +
         restoreClause +
-        ` && { rmdir /etc/cezar 2>/dev/null || true; }` +
+        ` && { rmdir /etc/xezar 2>/dev/null || true; }` +
         ` && { nginx -t && systemctl reload nginx || true; }`,
       verify: (c) => verifyCommand(c, 'sh', ['-c', `! test -f ${vhostEnbl}`]),
     });
@@ -435,7 +435,7 @@ const sslStep: InstallStep = {
       ? ctx.state.domain
       : await ctx.ui.text({
           message: 'Domain pointing at this server (an A/AAAA record must resolve here)',
-          placeholder: 'cezar.example.com',
+          placeholder: 'xezar.example.com',
           validate: (v) => (HOSTNAME_RE.test(v.trim()) ? undefined : 'enter a valid domain'),
         });
     if (domain === CANCEL) throw new StepCancelled();
@@ -539,7 +539,7 @@ const sslStep: InstallStep = {
     if (pkgs.length > 0) {
       ctx.ui.note(
         pkgs.map((a) => a.removeHint ?? a.name ?? '').filter(Boolean).join('\n'),
-        'Installed for cezar but possibly used elsewhere — remove manually if unwanted',
+        'Installed for xezar but possibly used elsewhere — remove manually if unwanted',
       );
     }
     // The vhost (with certbot’s edits) is removed by the nginx-proxy step’s undo.
@@ -547,11 +547,11 @@ const sslStep: InstallStep = {
 };
 
 /**
- * systemd unit that runs cezar loopback-bound with CEZ_REMOTE=1.
+ * systemd unit that runs xezar loopback-bound with XEZ_REMOTE=1.
  *
  * `execStart` must be an ABSOLUTE command — systemd resolves the ExecStart
  * executable against its OWN compiled-in PATH (/usr/local/bin:/usr/bin:…), NOT
- * the unit's `Environment=PATH`, so a bare `cezar` gives status=203/EXEC
+ * the unit's `Environment=PATH`, so a bare `xezar` gives status=203/EXEC
  * ("Unable to locate executable"). `resolveExecStart` therefore returns an
  * absolute `"<node> <entry.js>"`. We still set `Environment=PATH` (with the
  * installer's node dir) for any child process the app spawns.
@@ -566,7 +566,7 @@ export function systemdUnit(
   const userLine = scope === 'system' ? `User=${userInfo().username}\n` : '';
   const installTarget = scope === 'system' ? 'multi-user.target' : 'default.target';
   // Give the service the operator's own PATH (node dir + the login PATH the CLI
-  // merged in, e.g. ~/.local/bin and nvm) so cezar can spawn claude / gh / codex
+  // merged in, e.g. ~/.local/bin and nvm) so xezar can spawn claude / gh / codex
   // at runtime — systemd's default PATH has none of those.
   const pathDirs = [dirname(process.execPath), ...(process.env.PATH ?? '').split(':'), '/usr/local/bin', '/usr/bin', '/bin']
     .filter((d, i, a) => d && d !== '.' && a.indexOf(d) === i);
@@ -577,16 +577,16 @@ export function systemdUnit(
   // byte-identical); an external-proxy install binds an interface its proxy can
   // actually reach — a container-based proxy cannot dial the host's loopback.
   const bind = bindHost?.trim() && bindHost.trim() !== '127.0.0.1' ? ` --bind-host ${bindHost.trim()}` : '';
-  return `# Managed by cezar server-install — do not edit by hand.
+  return `# Managed by xezar server-install — do not edit by hand.
 [Unit]
-Description=cezar cockpit
+Description=xezar cockpit
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 ${userLine}WorkingDirectory=${repoRoot}
-Environment=CEZ_REMOTE=1
+Environment=XEZ_REMOTE=1
 Environment=PATH=${sysd(pathDirs.join(':'))}
 ExecStart=${sysd(execStart)} serve --no-open --port ${port}${sysd(bind)}
 Restart=on-failure
@@ -597,18 +597,23 @@ WantedBy=${installTarget}
 `;
 }
 
-/** Our official npm package/alias — what `npx <this>` reinstalls the CLI as. */
-const OFFICIAL_CLI_PKG = 'cezar-cli';
+/** Our published npm package — what `npx <this>` reinstalls the CLI as. Also the npx cache
+ *  subdirectory name, which is why a scoped name is fine here: npm lays the cache out as
+ *  `_npx/<hash>/node_modules/<name>`, and `<name>` keeps its `@scope/` segment. */
+const OFFICIAL_CLI_PKG = '@qodeca/xezar';
+/** The commands the published package puts on PATH (see `src/install-as-command.ts`). A
+ *  package NAME is not a command name — `command -v @qodeca/xezar` can never match. */
+const OFFICIAL_CLI_BINS = ['xezar', 'xez'];
 
 /**
  * Decide the absolute ExecStart command for the service, mirroring how the
- * installer itself was launched so the box keeps running the same cezar:
+ * installer itself was launched so the box keeps running the same xezar:
  *
  *  - Launched via `npx <alias>` (the CLI package lives in npm's ephemeral
  *    `_npx` cache, which gets cleaned): the service can't point there, so it
- *    reinstalls-and-runs the same way — `<abs npx> --yes cezar-cli` (bare `npx`
+ *    reinstalls-and-runs the same way — `<abs npx> --yes @qodeca/xezar` (bare `npx`
  *    would 203/EXEC, so npx is made absolute).
- *  - A stable install (a checkout, or a global `cezar-cli`/`cezar`): run the
+ *  - A stable install (a checkout, or a global `xezar`/`xez`): run the
  *    CLI's own built entry `<node> <pkg>/dist/index.js`, or a resolved global
  *    bin. Absolute node + absolute script → systemd never resolves off PATH.
  */
@@ -629,7 +634,7 @@ export function serviceExecStart(opts: {
 async function resolveExecStart(ctx: InstallContext): Promise<string> {
   const node = process.execPath; // absolute node running this installer
   // The CLI's OWN package root (…/dist/server-install/platforms/ → up 3), NOT the
-  // repo being operated on — `--repo` / cwd can differ from where cezar lives.
+  // repo being operated on — `--repo` / cwd can differ from where xezar lives.
   const pkgRoot = resolve(fileURLToPath(new URL('../../..', import.meta.url)));
   const entry = join(pkgRoot, 'dist', 'index.js');
   let npxPath = join(dirname(node), 'npx');
@@ -643,11 +648,12 @@ async function resolveExecStart(ctx: InstallContext): Promise<string> {
 
   let globalBin: string | undefined;
   if (!existsSync(entry) && !/[/\\]_npx[/\\]/.test(pkgRoot)) {
-    const out = (await ctx.runner.capture('bash', ['-lc', `command -v ${OFFICIAL_CLI_PKG} || command -v cezar`])).stdout.trim();
+    const lookup = OFFICIAL_CLI_BINS.map((bin) => `command -v ${bin}`).join(' || ');
+    const out = (await ctx.runner.capture('bash', ['-lc', lookup])).stdout.trim();
     globalBin = out.split('\n').map((s) => s.trim()).filter(Boolean).pop();
     if (!globalBin) {
       ctx.ui.warn(
-        `Could not locate a built cezar to run (${entry} missing, no global ${OFFICIAL_CLI_PKG}).\n` +
+        `Could not locate a built xezar to run (${entry} missing, no global ${OFFICIAL_CLI_BINS.join(' / ')}).\n` +
           `Install it (npm i -g ${OFFICIAL_CLI_PKG}) or build the checkout, then re-run with --reconfigure autostart.`,
       );
     }
@@ -663,19 +669,19 @@ function npxCacheDir(): string {
   return join(base, '_npx');
 }
 
-/** True when a systemd `ExecStart` string launches cezar via npx (the unpinned
- *  `npx --yes cezar-cli` form) rather than a checkout (`<node> …/dist/index.js`)
+/** True when a systemd `ExecStart` string launches xezar via npx (the unpinned
+ *  `npx --yes @qodeca/xezar` form) rather than a checkout (`<node> …/dist/index.js`)
  *  or a global bin. */
 export function isNpxExecStart(execStart: string): boolean {
   return /\bnpx\b/.test(execStart) && execStart.includes(OFFICIAL_CLI_PKG);
 }
 
 /**
- * The npx trap (#696): `npx --yes cezar-cli` caches the resolved package under
+ * The npx trap (#696): `npx --yes @qodeca/xezar` caches the resolved package under
  * `~/.npm/_npx/<hash>` and reuses it forever — a service restart re-execs the
  * SAME cached build, so `server-deploy` would never actually update. Before
  * restarting an npx-based unit we delete the cache entries that contain
- * `cezar-cli`, so the next launch re-resolves `latest`. Surgical: other npx
+ * `@qodeca/xezar`, so the next launch re-resolves `latest`. Surgical: other npx
  * packages' caches are left untouched. A checkout / global-bin unit has no
  * npx cache to clear and is skipped (its restart picks up the new build/global
  * directly).
@@ -737,10 +743,10 @@ async function readExecStart(ctx: InstallContext, scope: 'user' | 'system', unit
 
 const autostartStep: InstallStep = {
   id: 'autostart',
-  // Required: after install the cockpit must actually be serving, so cezar runs
+  // Required: after install the cockpit must actually be serving, so xezar runs
   // as a systemd service — started now AND enabled on boot. (id kept as
   // `autostart` for state compatibility.)
-  title: 'Run cezar as a service (systemd — starts now + on boot)',
+  title: 'Run xezar as a service (systemd — starts now + on boot)',
   async check() {
     return false; // always (re)assert the service is installed and running
   },
@@ -756,7 +762,7 @@ const autostartStep: InstallStep = {
     if (userBus) {
       const unitPath = join(homedir(), '.config', 'systemd', 'user', UNIT_NAME);
       if (ctx.dryRun) {
-        ctx.ui.info(`DRY RUN — would write ${unitPath} and enable it (systemctl --user enable --now cezar).`);
+        ctx.ui.info(`DRY RUN — would write ${unitPath} and enable it (systemctl --user enable --now xezar).`);
       } else {
         mkdirSync(join(homedir(), '.config', 'systemd', 'user'), { recursive: true });
         writeFileSync(
@@ -767,7 +773,7 @@ const autostartStep: InstallStep = {
         await ctx.runner.interactive('systemctl', ['--user', 'daemon-reload']);
         await ctx.runner.interactive('systemctl', ['--user', 'enable', '--now', UNIT_NAME]);
         if ((await ctx.runner.capture('systemctl', ['--user', 'is-enabled', UNIT_NAME])).code !== 0) {
-          ctx.ui.warn('The user service did not enable cleanly — check `systemctl --user status cezar`.');
+          ctx.ui.warn('The user service did not enable cleanly — check `systemctl --user status xezar`.');
         }
       }
       // Linger lets the user service survive logout / start at boot — usually
@@ -786,7 +792,7 @@ const autostartStep: InstallStep = {
             r.stdout.includes('Linger=yes'),
           ),
       });
-      await confirmCezarRunning(ctx, 'systemctl --user status cezar', 'journalctl --user -u cezar -n 50 --no-pager');
+      await confirmXezarRunning(ctx, 'systemctl --user status xezar', 'journalctl --user -u xezar -n 50 --no-pager');
       const artifacts: StepArtifact[] = [owned('service', { name: UNIT_NAME, scope: 'user', path: unitPath })];
       if (!lingerWasOn) artifacts.push(owned('linger', { name: osUser }));
       return { artifacts };
@@ -794,13 +800,13 @@ const autostartStep: InstallStep = {
 
     // System unit fallback.
     await writeFileStep(ctx, {
-      description: 'Install the cezar systemd unit, start it now, and enable it at boot.',
+      description: 'Install the xezar systemd unit, start it now, and enable it at boot.',
       path: `/etc/systemd/system/${UNIT_NAME}`,
       content: systemdUnit(ctx.repoRoot, ctx.state.primaryPort, 'system', execStart, ctx.state.bindHost),
       extra: `systemctl daemon-reload && systemctl enable --now ${UNIT_NAME}`,
       verify: (c) => verifyCommand(c, 'systemctl', ['is-enabled', UNIT_NAME]),
     });
-    await confirmCezarRunning(ctx, 'sudo systemctl status cezar', 'sudo journalctl -u cezar -n 50 --no-pager');
+    await confirmXezarRunning(ctx, 'sudo systemctl status xezar', 'sudo journalctl -u xezar -n 50 --no-pager');
     return { artifacts: [owned('service', { name: UNIT_NAME, scope: 'system', path: `/etc/systemd/system/${UNIT_NAME}` })] };
   },
   async undo(ctx, created) {
@@ -818,7 +824,7 @@ const autostartStep: InstallStep = {
       }
     } else if (svc) {
       await sudoStep(ctx, {
-        description: 'Disable and remove the cezar systemd unit.',
+        description: 'Disable and remove the xezar systemd unit.',
         command: `systemctl disable --now ${UNIT_NAME}; rm -f /etc/systemd/system/${UNIT_NAME} && systemctl daemon-reload`,
         verify: (c) => verifyCommand(c, 'sh', ['-c', `! systemctl is-enabled ${UNIT_NAME}`]),
       });
@@ -839,7 +845,7 @@ const autostartStep: InstallStep = {
 /**
  * `--external-proxy` verification: confirm the cockpit is listening on the
  * interface the operator's proxy will dial, then hand them the routing snippet.
- * cezar ships no auth of its own, so this is also where we say — unmissably —
+ * xezar ships no auth of its own, so this is also where we say — unmissably —
  * that the front they own has to enforce it.
  */
 async function verifyBehindExternalProxy(ctx: InstallContext): Promise<{ artifacts: StepArtifact[] }> {
@@ -849,13 +855,13 @@ async function verifyBehindExternalProxy(ctx: InstallContext): Promise<{ artifac
   const domain = ctx.state.domain ?? '<your-domain>';
 
   if (ctx.dryRun) {
-    ctx.ui.info(`DRY RUN — would verify cezar answers on ${target} and print the proxy routing snippet.`);
+    ctx.ui.info(`DRY RUN — would verify xezar answers on ${target} and print the proxy routing snippet.`);
     return { artifacts: [] };
   }
 
-  if (!(await waitForCezar(ctx, port))) {
+  if (!(await waitForXezar(ctx, port))) {
     ctx.ui.error(
-      `cezar is not answering on ${target}.\n\n` +
+      `xezar is not answering on ${target}.\n\n` +
         `Diagnostics on the server:\n` +
         `  • systemctl --user status ${unitName(ctx)}   (or: sudo systemctl status ${unitName(ctx)})\n` +
         `  • sudo ss -ltnp | grep :${port}\n` +
@@ -869,7 +875,7 @@ async function verifyBehindExternalProxy(ctx: InstallContext): Promise<{ artifac
 
   ctx.ui.success(`Cockpit is up and listening on ${target}.`);
   ctx.ui.warn(
-    'cezar has NO built-in authentication in this mode — your reverse proxy MUST enforce it. ' +
+    'xezar has NO built-in authentication in this mode — your reverse proxy MUST enforce it. ' +
       'Anyone who can reach ' + target + ' can run agents on this box.',
   );
   ctx.ui.message(
@@ -879,18 +885,18 @@ async function verifyBehindExternalProxy(ctx: InstallContext): Promise<{ artifac
       ``,
       `  http:`,
       `    routers:`,
-      `      cezar:`,
+      `      xezar:`,
       `        rule: "Host(\`${domain}\`)"`,
       `        entryPoints: [websecure]`,
-      `        middlewares: [cezar-auth]`,
-      `        service: cezar`,
+      `        middlewares: [xezar-auth]`,
+      `        service: xezar`,
       `        tls: { certResolver: letsencrypt }`,
       `    services:`,
-      `      cezar:`,
+      `      xezar:`,
       `        loadBalancer:`,
       `          servers: [{ url: "${target}" }]`,
       `    middlewares:`,
-      `      cezar-auth:`,
+      `      xezar-auth:`,
       `        basicAuth:`,
       `          users: ["USER:$$apr1$$...."]   # htpasswd -nb user pass (double every $)`,
       ``,
@@ -903,17 +909,17 @@ async function verifyBehindExternalProxy(ctx: InstallContext): Promise<{ artifac
 
 const identityStep: InstallStep = {
   id: 'identity',
-  title: 'Verify the cockpit end-to-end (auth + HTTPS reach cezar)',
+  title: 'Verify the cockpit end-to-end (auth + HTTPS reach xezar)',
   async check() {
     return false; // always re-verify; it creates nothing
   },
   async run(ctx): Promise<{ artifacts: StepArtifact[] }> {
-    // External proxy: cezar installed no nginx, so there is no auth challenge of
+    // External proxy: xezar installed no nginx, so there is no auth challenge of
     // ours to probe. All we can (and should) verify is that the cockpit is
     // actually listening where the operator's proxy will look for it.
     if (ctx.state.externalProxy) return verifyBehindExternalProxy(ctx);
     if (ctx.dryRun) {
-      ctx.ui.info('DRY RUN — would verify auth (401 for anon) AND that an authenticated request reaches cezar.');
+      ctx.ui.info('DRY RUN — would verify auth (401 for anon) AND that an authenticated request reaches xezar.');
       return { artifacts: [] };
     }
     const port = ctx.state.primaryPort;
@@ -925,16 +931,16 @@ const identityStep: InstallStep = {
     // probe verifies THIS cockpit's vhost, not a sibling's.
     const host = ctx.state.domain ? ['-H', `Host: ${ctx.state.domain}`] : [];
 
-    // 1) Is cezar actually listening on the loopback upstream? nginx challenges
+    // 1) Is xezar actually listening on the loopback upstream? nginx challenges
     //    auth *before* proxying, so an anonymous 401 alone does NOT prove the
     //    backend is up — check the upstream directly.
-    const upstreamUp = await isCezarUp(ctx, port);
+    const upstreamUp = await isXezarUp(ctx, port);
 
     // 2) An anonymous request through nginx must be challenged (auth is active).
     const anonCode = await curlCode(ctx, [...tls, ...host, base]);
     const authEnforced = anonCode === '401';
 
-    // 3) The real proof: an AUTHENTICATED request reaches cezar (2xx/3xx — not
+    // 3) The real proof: an AUTHENTICATED request reaches xezar (2xx/3xx — not
     //    401/403 = bad creds, not 502/504 = upstream down). Credentials are read
     //    from stdin (curl -K -) so they never land in argv. `null` = not testable
     //    (a resume where the plaintext password is no longer in memory).
@@ -955,27 +961,27 @@ const identityStep: InstallStep = {
     const coreOk = upstreamUp && authEnforced && authedOk !== false;
     if (coreOk) {
       ctx.ui.success(
-        `Cockpit is live at ${url} — ${authedOk ? 'an authenticated request reached cezar' : 'auth is enforced and cezar is up'}. ` +
+        `Cockpit is live at ${url} — ${authedOk ? 'an authenticated request reached xezar' : 'auth is enforced and xezar is up'}. ` +
           'Log in with the username and password you set.',
       );
       if (!https) {
         ctx.ui.warn(
           'This cockpit is HTTP-only (no domain/SSL configured). To serve it over HTTPS with this same auth, ' +
-            're-run: cezar server-install --platform ubuntu-vps --reconfigure ssl',
+            're-run: xezar server-install --platform ubuntu-vps --reconfigure ssl',
         );
       }
       return { artifacts: [] };
     }
 
     const problems: string[] = [];
-    if (!upstreamUp) problems.push(`cezar is not listening on 127.0.0.1:${port} — the service is down, so nginx returns 502`);
+    if (!upstreamUp) problems.push(`xezar is not listening on 127.0.0.1:${port} — the service is down, so nginx returns 502`);
     if (!authEnforced) problems.push(`nginx did not challenge an anonymous request (got "${anonCode}") — basic auth may not be active`);
-    if (authedOk === false) problems.push('an authenticated request did not reach cezar (bad credentials, or the upstream is down)');
+    if (authedOk === false) problems.push('an authenticated request did not reach xezar (bad credentials, or the upstream is down)');
     ctx.ui.error(
       `The cockpit is NOT fully working yet:\n` +
         problems.map((p) => `  • ${p}`).join('\n') +
         `\n\nDiagnostics on the server:\n` +
-        `  • systemctl --user status cezar   (or: sudo systemctl status cezar)\n` +
+        `  • systemctl --user status xezar   (or: sudo systemctl status xezar)\n` +
         `  • sudo systemctl status nginx && sudo nginx -t\n` +
         `  • sudo ss -ltnp | grep -E ':80|:443|:${port}'\n` +
         `  • ports 80/443 open in ufw AND any cloud firewall (Hetzner/AWS)`,
@@ -1017,10 +1023,10 @@ export const ubuntuVps: PlatformStrategy = {
       if (holder && !/nginx/i.test(holder)) {
         ctx.ui.warn(
           `Port 80 is already served by "${holder}" on this host.\n` +
-            `cezar's ubuntu-vps install wants :80/:443 for its own nginx, so these will collide.\n\n` +
+            `xezar's ubuntu-vps install wants :80/:443 for its own nginx, so these will collide.\n\n` +
             `If that is a reverse proxy you rely on (Dokploy/Traefik, Coolify, Caddy), re-run with:\n` +
-            `  cezar server-install --platform ubuntu-vps --external-proxy${ctx.state.domain ? ` --domain ${ctx.state.domain}` : ''} [--bind-host 172.17.0.1]\n` +
-            `That installs the cezar service only and lets your proxy front it.`,
+            `  xezar server-install --platform ubuntu-vps --external-proxy${ctx.state.domain ? ` --domain ${ctx.state.domain}` : ''} [--bind-host 172.17.0.1]\n` +
+            `That installs the xezar service only and lets your proxy front it.`,
         );
       }
     }
@@ -1036,8 +1042,8 @@ export const ubuntuVps: PlatformStrategy = {
   },
   async redeploy(ctx: InstallContext) {
     const UNIT_NAME = unitName(ctx);
-    // Restart the systemd service so it picks up the new cezar (a fresh local
-    // build the unit runs from, or a newly published cezar-cli via npx), then
+    // Restart the systemd service so it picks up the new xezar (a fresh local
+    // build the unit runs from, or a newly published @qodeca/xezar via npx), then
     // re-run the same end-to-end verify install uses.
     const svc = (ctx.state.steps['autostart']?.created?.artifacts ?? []).find((a) => a.type === 'service');
     // No recorded artifact (older record, or the step was check()-satisfied):
@@ -1049,29 +1055,29 @@ export const ubuntuVps: PlatformStrategy = {
       svc?.scope === 'user' || svc?.scope === 'system' ? svc.scope : userUnitExists ? 'user' : 'system';
     // #696: an npx-launched unit re-execs its cached build on restart, so a
     // deploy that doesn't invalidate the npx cache never actually updates.
-    // Clear the cezar-cli cache first (read the live ExecStart to know the
+    // Clear the @qodeca/xezar cache first (read the live ExecStart to know the
     // launch form); a checkout / global unit is left alone.
     refreshNpxCacheForRedeploy(ctx, await readExecStart(ctx, scope, UNIT_NAME));
     if (ctx.dryRun) {
-      ctx.ui.info(`DRY RUN — would reload+restart the cezar ${scope} service and re-verify the cockpit.`);
+      ctx.ui.info(`DRY RUN — would reload+restart the xezar ${scope} service and re-verify the cockpit.`);
       return;
     }
-    ctx.ui.info(`Redeploying — restarting the cezar ${scope} service to pick up the new version.`);
+    ctx.ui.info(`Redeploying — restarting the xezar ${scope} service to pick up the new version.`);
     if (scope === 'user') {
       await ctx.runner.interactive('systemctl', ['--user', 'daemon-reload']);
       const code = await ctx.runner.interactive('systemctl', ['--user', 'restart', UNIT_NAME]);
-      if (code !== 0) ctx.ui.warn('systemctl --user restart returned non-zero — check `systemctl --user status cezar`.');
+      if (code !== 0) ctx.ui.warn('systemctl --user restart returned non-zero — check `systemctl --user status xezar`.');
     } else {
       await sudoStep(ctx, {
-        description: 'Reload systemd and restart the cezar service.',
+        description: 'Reload systemd and restart the xezar service.',
         command: `systemctl daemon-reload && systemctl restart ${UNIT_NAME}`,
         verify: (c) => verifyCommand(c, 'systemctl', ['is-active', UNIT_NAME]),
       });
     }
-    await confirmCezarRunning(
+    await confirmXezarRunning(
       ctx,
-      scope === 'user' ? 'systemctl --user status cezar' : 'sudo systemctl status cezar',
-      scope === 'user' ? 'journalctl --user -u cezar -n 50 --no-pager' : 'sudo journalctl -u cezar -n 50 --no-pager',
+      scope === 'user' ? 'systemctl --user status xezar' : 'sudo systemctl status xezar',
+      scope === 'user' ? 'journalctl --user -u xezar -n 50 --no-pager' : 'sudo journalctl -u xezar -n 50 --no-pager',
     );
     await identityStep.run(ctx); // throws StepAborted if the cockpit isn't fully working
   },

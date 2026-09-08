@@ -14,7 +14,7 @@ import type {
   Skill,
   WorkspaceConfigResponse,
   WorkflowsResponse,
-} from '@open-mercato/cezar-api-client'
+} from '@qodeca/xezar-api-client'
 import { resetToasts, Toaster } from '@/components/ui/toaster'
 
 import { readDraft, resetDraft, writeDraft } from './new-task-draft'
@@ -155,7 +155,7 @@ const CONFIG: ConfigResponse = {
 const WORKSPACE_CONFIG: WorkspaceConfigResponse = {
   agentDefaults: {},
   browseRoot: '~/',
-  projectsDir: '~/cezar/projects',
+  projectsDir: '~/xezar/projects',
   skillsAutoUpdate: null,
   effectiveSkillsAutoUpdate: true,
   composerDefaults: {
@@ -252,7 +252,7 @@ function serve(overrides: {
     createRunStatus: 201,
     launchKey: 'k-real',
     plan: PLAN,
-    saveWorkflow: [{ status: 201, body: { path: '.ai/cezar/workflows/my-chain.yaml', name: 'my chain' } }],
+    saveWorkflow: [{ status: 201, body: { path: '.ai/xezar/workflows/my-chain.yaml', name: 'my chain' } }],
     ...overrides,
   }
   requests = []
@@ -535,7 +535,7 @@ describe('picker data flows', () => {
     expect(document.querySelector('[data-slot="base-pill"]')).toBeNull()
   })
 
-  // #791: health is bound to the boot folder, so a cezar booted outside a git repo answered
+  // #791: health is bound to the boot folder, so a xezar booted outside a git repo answered
   // `repo: null` for EVERY project. Reading git state from the project-scoped `/repo` instead is
   // what keeps the worktree controls alive for a git project under a non-git boot root.
   it('gates variants on the project repo, not the boot folder: boot without git still offers worktrees', async () => {
@@ -1279,7 +1279,7 @@ describe('submit', () => {
 
   it('does not overwrite the remembered preference it never offered', async () => {
     // The user last chose "on". With the inbox off there is no toggle, so persisting the
-    // forced `false` would silently flip their choice for when CEZ_FOLLOWUPS comes back.
+    // forced `false` would silently flip their choice for when XEZ_FOLLOWUPS comes back.
     serve({ health: inboxOffHealth, uiState: { lastGenerateFollowups: true } })
     renderNewTask()
     await pillReady()
@@ -1931,7 +1931,7 @@ describe('save as chain', () => {
     serve({
       saveWorkflow: [
         { status: 409, body: { error: 'workflow file already exists: x.yaml', exists: true } },
-        { status: 201, body: { path: '.ai/cezar/workflows/my-chain.yaml', name: 'my chain' } },
+        { status: 201, body: { path: '.ai/xezar/workflows/my-chain.yaml', name: 'my chain' } },
       ],
     })
     renderNewTask()
@@ -2150,7 +2150,7 @@ describe('the composer runner pill carries the account', () => {
       'claude · Default/home/u/.claude'.replace(/\s+/g, ' '),
       'claude · Klaudiusz~/.claude-klaudiusz'.replace(/\s+/g, ' '),
     ])
-    // Each row names its folder: the labels are cezar's invention, the folder is the account.
+    // Each row names its folder: the labels are xezar's invention, the folder is the account.
     expect(options[1]?.textContent).toContain('~/.claude-klaudiusz')
   })
 

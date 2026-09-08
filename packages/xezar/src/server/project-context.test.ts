@@ -11,15 +11,15 @@ import { ProjectContextError, ProjectContexts, type ProjectContextSource } from 
  * step 2.1): nothing instantiated until first access, one instance per id,
  * missing roots never built, and a disposed context's manager stops
  * receiving usage-sampler ticks. The registry is injected as a plain
- * `listProjects` resolver so nothing here touches `~/.cezar`.
+ * `listProjects` resolver so nothing here touches `~/.xezar`.
  */
 describe('ProjectContexts', () => {
   let rootA: string;
   let rootB: string;
 
   beforeEach(() => {
-    rootA = mkdtempSync(join(tmpdir(), 'cez-ctx-a-'));
-    rootB = mkdtempSync(join(tmpdir(), 'cez-ctx-b-'));
+    rootA = mkdtempSync(join(tmpdir(), 'xez-ctx-a-'));
+    rootB = mkdtempSync(join(tmpdir(), 'xez-ctx-b-'));
   });
 
   afterEach(() => {
@@ -38,17 +38,17 @@ describe('ProjectContexts', () => {
     ]);
 
     // Construction instantiated nothing — no store dir, no launch-key.
-    expect(existsSync(join(rootA, '.ai/cezar'))).toBe(false);
-    expect(existsSync(join(rootB, '.ai/cezar'))).toBe(false);
+    expect(existsSync(join(rootA, '.ai/xezar'))).toBe(false);
+    expect(existsSync(join(rootB, '.ai/xezar'))).toBe(false);
     expect(contexts.ids()).toEqual([]);
 
     const first = await contexts.context('a');
     expect(first.id).toBe('a');
-    expect(first.dataDir).toBe(join(rootA, '.ai/cezar'));
+    expect(first.dataDir).toBe(join(rootA, '.ai/xezar'));
     expect(first.launchKey).not.toBe('');
-    expect(existsSync(join(rootA, '.ai/cezar', 'launch-key'))).toBe(true);
+    expect(existsSync(join(rootA, '.ai/xezar', 'launch-key'))).toBe(true);
     // Only the accessed project was built.
-    expect(existsSync(join(rootB, '.ai/cezar'))).toBe(false);
+    expect(existsSync(join(rootB, '.ai/xezar'))).toBe(false);
     expect(contexts.ids()).toEqual(['a']);
 
     const second = await contexts.context('a');
@@ -62,7 +62,7 @@ describe('ProjectContexts', () => {
   });
 
   it('uses the injected coordinator-owned automation store', async () => {
-    const automationStore = AutomationStore.open(join(rootA, '.ai/cezar'));
+    const automationStore = AutomationStore.open(join(rootA, '.ai/xezar'));
     const resolveAutomationStore = vi.fn(() => automationStore);
     const contexts = new ProjectContexts({
       listProjects: async () => [{ id: 'a', root: rootA, status: 'not-git' }],
@@ -83,7 +83,7 @@ describe('ProjectContexts', () => {
     });
     // Not built, and nothing written under the root.
     expect(contexts.peek('gone')).toBeUndefined();
-    expect(existsSync(join(rootA, '.ai/cezar'))).toBe(false);
+    expect(existsSync(join(rootA, '.ai/xezar'))).toBe(false);
   });
 
   it('throws unknown-project for an id the registry does not hold', async () => {
@@ -120,7 +120,7 @@ describe('ProjectContexts', () => {
     emitUsageForTest({});
     expect(spy).toHaveBeenCalledTimes(1); // unsubscribed — no further ticks
     // Store closed: the index landed on disk despite the debounced save.
-    expect(existsSync(join(rootA, '.ai/cezar', 'runs.json'))).toBe(true);
+    expect(existsSync(join(rootA, '.ai/xezar', 'runs.json'))).toBe(true);
     expect(ctx.store.listenerCount('event')).toBe(0);
 
     // Disposed id is gone from the map; the next access builds a fresh context.

@@ -11,7 +11,7 @@ import { apiRequest } from './loopback-request.testkit.ts';
 
 /**
  * `GET /api/v1/github/comments/:kind/:number` (#499 Phase 2). The contract under test: zod-validated
- * params (400 on garbage, never a throw), and — driven through `CEZ_DRY_RUN=1` so no `gh` is
+ * params (400 on garbage, never a throw), and — driven through `XEZ_DRY_RUN=1` so no `gh` is
  * touched — a `ForgeCommentsData` payload for a valid issue/PR request. The gh-shelling and the
  * degrade paths live in the driver; here we prove the route wiring and the param gate.
  */
@@ -19,20 +19,20 @@ describe('the github comments API', () => {
   let repoRoot: string;
   let store: RunStore;
   let app: Hono;
-  const prevDryRun = process.env.CEZ_DRY_RUN;
+  const prevDryRun = process.env.XEZ_DRY_RUN;
 
   beforeAll(() => {
-    process.env.CEZ_DRY_RUN = '1';
+    process.env.XEZ_DRY_RUN = '1';
   });
   afterAll(() => {
-    if (prevDryRun === undefined) delete process.env.CEZ_DRY_RUN;
-    else process.env.CEZ_DRY_RUN = prevDryRun;
+    if (prevDryRun === undefined) delete process.env.XEZ_DRY_RUN;
+    else process.env.XEZ_DRY_RUN = prevDryRun;
   });
 
   beforeEach(() => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-ghcomments-'));
-    mkdirSync(join(repoRoot, '.ai/cezar'), { recursive: true });
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-ghcomments-'));
+    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     app = createApp({ repoRoot, store, manager: {} as RunManager, version: '0.0.0-test' });
   });
 

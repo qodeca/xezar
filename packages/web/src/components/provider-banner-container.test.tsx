@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createQueryClient } from '@/api/query-client'
 import { workspaceQueryKeys } from '@/api/queries'
-import type { ProviderStatusResponse, WorkspaceUiState } from '@open-mercato/cezar-api-client'
+import type { ProviderStatusResponse, WorkspaceUiState } from '@qodeca/xezar-api-client'
 import { ProviderBannerContainer } from '@/components/provider-banner-container'
 import { resetToasts, Toaster } from '@/components/ui/toaster'
 
@@ -49,7 +49,7 @@ function seed(
 function renderContainer(client: QueryClient) {
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={['/p/cezar/']}>
+      <MemoryRouter initialEntries={['/p/xezar/']}>
         <ProviderBannerContainer />
         <Toaster />
       </MemoryRouter>

@@ -95,9 +95,9 @@ describe('AppShell', () => {
 
   it('grants scroll ownership only to exact scoped and unscoped main task routes', () => {
     expect(routeOwnsScrollArrival('/tasks/run-1')).toBe(true)
-    expect(routeOwnsScrollArrival('/p/cezar/tasks/run-1')).toBe(true)
+    expect(routeOwnsScrollArrival('/p/xezar/tasks/run-1')).toBe(true)
     expect(routeOwnsScrollArrival('/tasks/run-1/changes')).toBe(false)
-    expect(routeOwnsScrollArrival('/p/cezar/tasks/run-1/files')).toBe(false)
+    expect(routeOwnsScrollArrival('/p/xezar/tasks/run-1/files')).toBe(false)
     expect(routeOwnsScrollArrival('/tasks')).toBe(false)
   })
 
@@ -255,9 +255,9 @@ describe('AppShell', () => {
       expect(search.querySelector('kbd')?.textContent).toBe('Ctrl+K')
 
       const opened = vi.fn()
-      window.addEventListener('cezar:open-command-palette', opened)
+      window.addEventListener('xezar:open-command-palette', opened)
       fireEvent.click(search)
-      window.removeEventListener('cezar:open-command-palette', opened)
+      window.removeEventListener('xezar:open-command-palette', opened)
       expect(opened).toHaveBeenCalledTimes(1)
     })
 
@@ -303,8 +303,8 @@ describe('AppShell', () => {
     })
 
     it('renders the repo chip and version chip from props', () => {
-      renderShell('/', { repo: { name: 'cezar', branch: 'main' }, version: '1.2.3' })
-      expect(screen.getByText('cezar / main')).toBeTruthy()
+      renderShell('/', { repo: { name: 'xezar', branch: 'main' }, version: '1.2.3' })
+      expect(screen.getByText('xezar / main')).toBeTruthy()
       // The chip prefixes the raw semver from /api/v1/health — `v1.2.3`, mono, muted.
       expect(within(footer()).getByText('v1.2.3')).toBeTruthy()
     })
@@ -502,7 +502,7 @@ describe('AppShell', () => {
     })
 
     it('restores the width the browser remembers', () => {
-      localStorage.setItem('cez-sidebar-width', '350')
+      localStorage.setItem('xez-sidebar-width', '350')
       renderShell()
       // First paint, not an effect: a jump from 264 to 350 would be visible on every load.
       expect(sidebar().style.width).toBe('350px')
@@ -525,7 +525,7 @@ describe('AppShell', () => {
       drag(264, 344)
       expect(sidebar().style.width).toBe('344px')
       expect(handle().getAttribute('aria-valuenow')).toBe('344')
-      expect(localStorage.getItem('cez-sidebar-width')).toBe('344')
+      expect(localStorage.getItem('xez-sidebar-width')).toBe('344')
     })
 
     it('clamps a drag at both bounds rather than letting the column collapse or take over', () => {
@@ -571,7 +571,7 @@ describe('AppShell', () => {
       expect(sidebar().style.width).toBe('420px')
       fireEvent.keyDown(handle(), { key: 'Home' })
       expect(sidebar().style.width).toBe('264px')
-      expect(localStorage.getItem('cez-sidebar-width')).toBe('264')
+      expect(localStorage.getItem('xez-sidebar-width')).toBe('264')
     })
 
     it('leaves every other key to the browser — Tab must still move focus', () => {
@@ -583,16 +583,16 @@ describe('AppShell', () => {
     })
 
     it('resets to the default on double-click', () => {
-      localStorage.setItem('cez-sidebar-width', '400')
+      localStorage.setItem('xez-sidebar-width', '400')
       renderShell()
       expect(sidebar().style.width).toBe('400px')
       fireEvent.doubleClick(handle())
       expect(sidebar().style.width).toBe('264px')
-      expect(localStorage.getItem('cez-sidebar-width')).toBe('264')
+      expect(localStorage.getItem('xez-sidebar-width')).toBe('264')
     })
 
     it('does not follow the drawer: the `<md` overlay keeps its fixed 264px and no handle', () => {
-      localStorage.setItem('cez-sidebar-width', '400')
+      localStorage.setItem('xez-sidebar-width', '400')
       renderShell('/', { taskQuickList: <p>list</p> })
       fireEvent.click(screen.getByRole('button', { name: 'Open menu' }))
       const drawer = document.querySelector('[data-slot="mobile-nav-drawer"]') as HTMLElement

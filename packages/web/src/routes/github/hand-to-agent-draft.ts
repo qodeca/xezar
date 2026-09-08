@@ -23,7 +23,7 @@ export interface FollowupSelection {
 
 const EMPTY_SELECTION: FollowupSelection = { workflow: null, skills: [] }
 
-const SELECTION_KEY = 'cez-followup-selection'
+const SELECTION_KEY = 'xez-followup-selection'
 
 function normalizeSelection(raw: unknown): FollowupSelection {
   const obj = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
@@ -59,7 +59,7 @@ export function resetFollowupSelection(): void {
   }
 }
 
-const PROMPT_KEY_PREFIX = 'cez-followup-prompt:'
+const PROMPT_KEY_PREFIX = 'xez-followup-prompt:'
 
 /** An untouched item (never typed into, or already spent by a successful run) answers ''. */
 export function readFollowupPrompt(itemUrl: string): string {

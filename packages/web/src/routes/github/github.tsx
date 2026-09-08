@@ -32,7 +32,7 @@ import type {
   GithubMergeMethod,
   GithubPrMergeState,
   UiState,
-} from '@open-mercato/cezar-api-client'
+} from '@qodeca/xezar-api-client'
 import { CenteredState } from '@/components/centered-state'
 import { Diff, type DiffFileChange } from '@/components/diff'
 import type { EnginePick } from '@/components/engine-pills'
@@ -354,7 +354,7 @@ export function GithubRoute({
           <p className="text-xs leading-relaxed text-soft-foreground">
             The tab needs the <span className="font-mono">gh</span> CLI, logged in (
             <span className="font-mono">gh auth login</span>), and a repo with a GitHub remote.
-            Everything else in cezar works without it.
+            Everything else in xezar works without it.
           </p>
         </CenteredState>
       </div>

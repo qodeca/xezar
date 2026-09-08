@@ -5,7 +5,7 @@ import { Link } from 'react-router'
 
 import { putWorkspaceConfig } from '@/api/client'
 import { useWorkspaceConfig, workspaceQueryKeys } from '@/api/queries'
-import type { SetWorkspaceConfigInput, WorkspaceConfigResponse } from '@open-mercato/cezar-api-client'
+import type { SetWorkspaceConfigInput, WorkspaceConfigResponse } from '@qodeca/xezar-api-client'
 import { CenteredState } from '@/components/centered-state'
 import { Button } from '@/components/ui/button'
 import { toast } from '@/components/ui/toaster'
@@ -18,7 +18,7 @@ import { SettingsField } from './settings-field'
  * advance (#memory-guard).
  *
  * Both are workspace-level since the multi-project split (spec §"Resource governance"): they
- * protect the host, not a repo, so they live in `~/.cezar/config.json` and persist through
+ * protect the host, not a repo, so they live in `~/.xezar/config.json` and persist through
  * `PUT /api/workspace/config` — the merged answer lands straight in the workspace config query,
  * and the server refreshes the shared semaphore so a change takes effect without a restart.
  * Leftover per-repo `maxParallel`/`memoryLimitMb` keys were imported once by Migration 001 and
@@ -228,7 +228,7 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
 
       <SettingsField
         title="Auto-resume after a usage limit"
-        hint="When an agent stops because its provider usage limit is reached, cezar waits for the reset the provider named and continues the task 30 seconds later — up to 12 times in a row without you. Off leaves the task failed with its Continue button."
+        hint="When an agent stops because its provider usage limit is reached, xezar waits for the reset the provider named and continues the task 30 seconds later — up to 12 times in a row without you. Off leaves the task failed with its Continue button."
       >
         <select
           aria-label="Auto-resume after a usage limit"

@@ -36,7 +36,7 @@ import {
   attachmentExtension,
   isImageAttachmentName,
   isImageMediaType,
-} from '@open-mercato/cezar-contract';
+} from '@qodeca/xezar-contract';
 import type { AgentEvent, ContentBlock } from '../core/agent-runner.ts';
 import { discoverSkills, type Skill } from '../skills.ts';
 import { materializeSkillDir } from '../skills-remote.ts';
@@ -77,28 +77,28 @@ async function configuredModelProvider(
 export const IDLE_TIMEOUT_MS = 15 * 60_000;
 /**
  * Task-completion marker from the agent contract (HANDOFF_INSTRUCTIONS): a
- * turn whose text ends with `CEZ:DONE` means "goal achieved, nothing to ask" —
+ * turn whose text ends with `XEZ:DONE` means "goal achieved, nothing to ask" —
  * the session is closed right away instead of parking at `waiting` (#347).
  * Detection runs on the accumulated turn text so delta-streaming backends
  * (codex, opencode) can't split the marker across text events.
  */
-const DONE_MARKER_RE = /CEZ:DONE\s*$/;
+const DONE_MARKER_RE = /XEZ:DONE\s*$/;
 /**
  * Still-working marker from the agent contract (spec
  * 2026-07-18-subagent-monitoring-status, #490): a turn whose text ends with
- * `CEZ:MONITORING` means "I ended this turn but I'm still working on my own
+ * `XEZ:MONITORING` means "I ended this turn but I'm still working on my own
  * downstream work (a sub-agent / a command I'm monitoring), not waiting on the
- * user" — cezar parks it as `running`/`activity:'monitoring'` instead of
- * `waiting`, so the cockpit shows a non-attention state. `CEZ:DONE` wins if both
- * appear. Detected on accumulated turn text (like `CEZ:DONE`) so delta-streaming
+ * user" — xezar parks it as `running`/`activity:'monitoring'` instead of
+ * `waiting`, so the cockpit shows a non-attention state. `XEZ:DONE` wins if both
+ * appear. Detected on accumulated turn text (like `XEZ:DONE`) so delta-streaming
  * backends can't split the marker across text events.
  */
-const MONITORING_MARKER_RE = /CEZ:MONITORING\s*$/;
+const MONITORING_MARKER_RE = /XEZ:MONITORING\s*$/;
 /**
  * Preserve boundaries between complete assistant text blocks while a turn is
  * accumulated for marker parsing. The runners join these same v1 blocks with
  * newlines in `AgentRunResult`; matching that contract here prevents a
- * trailing `CEZ:TITLE=` block from absorbing later commentary (#623).
+ * trailing `XEZ:TITLE=` block from absorbing later commentary (#623).
  */
 export function appendTurnText(current: string, next: string): string {
   if (!current) return next;
@@ -109,12 +109,12 @@ export function appendTurnText(current: string, next: string): string {
  *  protocol noise. Delta backends may split the marker across events — then
  *  it stays visible; detection above is unaffected. */
 function stripDoneMarker(text: string): string {
-  return text.replace(/\s*CEZ:DONE\s*$/, '');
+  return text.replace(/\s*XEZ:DONE\s*$/, '');
 }
-/** Strip a trailing `CEZ:MONITORING` marker from one text event (see
+/** Strip a trailing `XEZ:MONITORING` marker from one text event (see
  *  `stripDoneMarker`; same delta-backend caveat). */
 function stripMonitoringMarker(text: string): string {
-  return text.replace(/\s*CEZ:MONITORING\s*$/, '');
+  return text.replace(/\s*XEZ:MONITORING\s*$/, '');
 }
 /** Emit the v2 `ask.requested` event for a parsed marker (the cockpit renders
  *  it as an ask card, #473). Returns the minted request id. */
@@ -130,12 +130,12 @@ function emitAskRequested(sink: UiEventSink, ask: AskRequest): string {
  * thread. Older events carry no `tone` and keep rendering dim. */
 function askMarkerRejection(result: AskMarkerParseResult): string | undefined {
   if (result.kind === 'invalid-json') {
-    return 'structured question ignored — CEZ:ASK payload is not valid JSON';
+    return 'structured question ignored — XEZ:ASK payload is not valid JSON';
   }
   if (result.kind !== 'invalid-structure') return undefined;
   const issue = result.issues[0];
   const location = issue?.path.length ? ` at ${issue.path.join('.')}` : '';
-  return `structured question ignored — CEZ:ASK payload failed validation${location}${issue ? `: ${issue.message}` : ''}`;
+  return `structured question ignored — XEZ:ASK payload failed validation${location}${issue ? `: ${issue.message}` : ''}`;
 }
 /** A persisted, auditable trace for a card that only rendered because the
  * payload's missing closers were appended (#936) — a repair can only lose what
@@ -146,10 +146,10 @@ function askMarkerRejection(result: AskMarkerParseResult): string | undefined {
  * is stripped along with the card, so a dim footnote could not be acted on. */
 function askMarkerRecovery(result: AskMarkerParseResult): string | undefined {
   return result.kind === 'valid' && result.repaired
-    ? 'structured question recovered from an unbalanced CEZ:ASK payload — check the options, and how many you may pick, match what was asked'
+    ? 'structured question recovered from an unbalanced XEZ:ASK payload — check the options, and how many you may pick, match what was asked'
     : undefined;
 }
-/** What a turn's trailing `CEZ:ASK` marker resolves to: the card to raise, and
+/** What a turn's trailing `XEZ:ASK` marker resolves to: the card to raise, and
  * the notes to persist alongside it. */
 type AskTurnOutcome = {
   ask: AskRequest | null;
@@ -161,7 +161,7 @@ type AskTurnOutcome = {
  * they are hand-duplicated, and `AGENTS.md` warns that a lifecycle change
  * applied to only one of them ships half a fix — the notes and their tones are
  * exactly that kind of change. `enabled` is the caller's own precondition (the
- * session is open, the turn is not a `CEZ:DONE`, and for an agent step, the run
+ * session is open, the turn is not a `XEZ:DONE`, and for an agent step, the run
  * is interactive); when false there is no marker to look for. */
 function resolveAskTurn(turnText: string, enabled: boolean): AskTurnOutcome {
   if (!enabled) return { ask: null, notes: [] };
@@ -173,15 +173,15 @@ function resolveAskTurn(turnText: string, enabled: boolean): AskTurnOutcome {
   if (recovery) notes.push({ message: recovery, tone: 'danger' });
   return { ask: result.kind === 'valid' ? result.request : null, notes };
 }
-/** Periodic "cezar autosave" commit in the task worktree (spec 006). */
+/** Periodic "xezar autosave" commit in the task worktree (spec 006). */
 export const AUTOSAVE_INTERVAL_MS = 90_000;
 
 /** The periodic autosave timer is opt-in (#471): off, a task branch carries only the
- *  agent's own commits plus the turn-end/pre-PR flushes — no mid-run "cezar autosave"
+ *  agent's own commits plus the turn-end/pre-PR flushes — no mid-run "xezar autosave"
  *  noise interleaving PR history. The flushes (`autosaveCommit` at turn end and before
  *  a draft PR) are NOT gated: the branch must still end holding the finished state. */
 export function periodicAutosaveEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  return env.CEZ_AUTOSAVE === '1';
+  return env.XEZ_AUTOSAVE === '1';
 }
 
 /**
@@ -192,11 +192,11 @@ export function periodicAutosaveEnabled(env: NodeJS.ProcessEnv = process.env): b
  * files or Git state. Isolated worktree runs are unaffected.
  */
 export function repositoryRootLockDisabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  return env.CEZ_DISABLE_REPO_LOCK === '1';
+  return env.XEZ_DISABLE_REPO_LOCK === '1';
 }
 
 const REPOSITORY_ROOT_LOCK_DISABLED_NOTE =
-  'repository-root lock disabled by CEZ_DISABLE_REPO_LOCK=1 (shared checkout is unsafe)';
+  'repository-root lock disabled by XEZ_DISABLE_REPO_LOCK=1 (shared checkout is unsafe)';
 
 interface ActiveRun {
   cancelled: boolean;
@@ -245,7 +245,7 @@ const MAX_AUTO_CONTINUES = 40;
 const AUTONOMOUS_NUDGE =
   'Continue working autonomously until the task is fully complete. Do not ask me for confirmation or clarification — make reasonable assumptions and proceed. When everything is done, end the session with your done signal.';
 const MONITORING_WAKE_NUDGE =
-  'Re-check the downstream work you were monitoring. Continue toward the task goal; emit CEZ:MONITORING again only if it is still pending.';
+  'Re-check the downstream work you were monitoring. Continue toward the task goal; emit XEZ:MONITORING again only if it is still pending.';
 
 /**
  * Auto-resume after a provider usage limit (spec 2026-08-03-auto-resume-after-usage-limit).
@@ -339,12 +339,12 @@ function resumeInFlight(run: Pick<RunRecord, 'status' | 'autoResumeAttempts'>): 
 }
 
 const AUTO_RESUME_PROMPT =
-  'The provider usage limit that interrupted this task has reset. Read the handoff file (CEZ_HANDOFF_FILE) to recover context, then continue the task from where you left off.';
+  'The provider usage limit that interrupted this task has reset. Read the handoff file (XEZ_HANDOFF_FILE) to recover context, then continue the task from where you left off.';
 /**
  * The wake instant as a human reads it — local, to the SECOND, with the zone named. The
  * transcript line is what someone scanning a stalled task actually reads, and "18:41" is not
  * enough to tell a wait that is nearly over from one that just started; the machine-readable ISO
- * copy lives on `RunRecord.autoResumeAt`. Server-side formatting is honest here because cezar is
+ * copy lives on `RunRecord.autoResumeAt`. Server-side formatting is honest here because xezar is
  * local-first: the process and the browser reading it are the same machine.
  */
 function formatWakeInstant(at: Date): string {
@@ -422,7 +422,7 @@ export function composeSystemPrompt(...parts: Array<string | undefined>): string
  * folder that holds its handoff file, plus its own temp directory when this run
  * got one (#785). Handing an agent a `TMPDIR` its file tools are not allowed to
  * write would trade one silent failure for another, so the two travel together;
- * under `CEZ_AGENT_TMPDIR=0` there is no per-run directory and the list is
+ * under `XEZ_AGENT_TMPDIR=0` there is no per-run directory and the list is
  * exactly what it always was.
  */
 export function agentDirectories(runsDir: string, env: Record<string, string>): string[] {
@@ -434,7 +434,7 @@ export function agentDirectories(runsDir: string, env: Record<string, string>): 
  * transcript already used, plus the absolute path that lets the agent
  * operate on the file itself — save it, `cp` it, attach it to a GitHub
  * issue/PR (#357). `path` is only ever an absolute path under
- * `.ai/cezar/runs/<runId>-images/` (see `RunManager.persistAttachment`).
+ * `.ai/xezar/runs/<runId>-images/` (see `RunManager.persistAttachment`).
  */
 /** Inverse of `attachmentExtension` (#472) — a persisted attachment is re-encoded from disk at
  *  dequeue and needs its media type back. Only ever asked about IMAGE names (a file reaches the
@@ -534,7 +534,7 @@ const VARIANT_HINTS: Record<string, string | undefined> = {
 };
 
 const RESTART_CONTINUATION_PROMPT =
-  'The cezar process restarted while you were working on this task. Read the handoff file (CEZ_HANDOFF_FILE) to recover context, then continue the task from where you left off.';
+  'The xezar process restarted while you were working on this task. Read the handoff file (XEZ_HANDOFF_FILE) to recover context, then continue the task from where you left off.';
 
 interface PendingContinuation {
   stepId: string;
@@ -561,9 +561,9 @@ interface PersistedAttachments {
  * stays open for follow-ups (`waiting`) until "finish", idle timeout, or
  * cancel. Runs queue behind the workspace-wide `maxParallel` slots (the shared
  * `WorkspaceSemaphore`, spec 2026-07-20 step 2.5) and each run executes in its
- * own git worktree on a `cez/<id8>` branch (spec 006), autosave-committed at
+ * own git worktree on a `xez/<id8>` branch (spec 006), autosave-committed at
  * turn end and before a draft PR — plus every 90 s when opted in via
- * CEZ_AUTOSAVE=1 (#471). Each autosave records its trigger in the commit
+ * XEZ_AUTOSAVE=1 (#471). Each autosave records its trigger in the commit
  * subject, so the always-on flushes are not mistaken for the opt-in timer.
  * The user's working tree is never touched.
  */
@@ -608,11 +608,11 @@ export class RunManager {
    * Runs normally isolate in worktrees and may execute in parallel. When that
    * isolation is unavailable (or explicitly disabled), access to `repoRoot` is
    * serialized by default so two agents cannot edit/revert the same files
-   * (#438). `CEZ_DISABLE_REPO_LOCK=1` deliberately bypasses this safety lease.
+   * (#438). `XEZ_DISABLE_REPO_LOCK=1` deliberately bypasses this safety lease.
    */
   private repoRootTail: Promise<void> = Promise.resolve();
 
-  /** `.ai/cezar` — where the per-task handoff files and todos.json live. */
+  /** `.ai/xezar` — where the per-task handoff files and todos.json live. */
   private readonly dataDir: string;
 
   /** Runs currently being paused by the memory guard — dedupes the ~2 s samples so one breach
@@ -647,7 +647,7 @@ export class RunManager {
     private readonly repoRoot: string,
     options: { semaphore?: WorkspaceSemaphore } = {},
   ) {
-    this.dataDir = join(repoRoot, '.ai/cezar');
+    this.dataDir = join(repoRoot, '.ai/xezar');
     this.semaphore = options.semaphore ?? new WorkspaceSemaphore();
     this.offSemaphore = this.semaphore.register({
       busySlots: () => this.busySlots(),
@@ -742,10 +742,10 @@ export class RunManager {
   /** Env the spawned claude gets so the agent can find its handoff file and
    *  the global inbox (spec 007; the inbox only when the run opted in).
    *
-   *  `CEZ_TODOS_FILE` is set to `''` rather than omitted when follow-ups are
+   *  `XEZ_TODOS_FILE` is set to `''` rather than omitted when follow-ups are
    *  off: runners spawn with `{ ...process.env, ...spec.env }`, so omitting the
    *  key would let a value inherited from *this* process through — a nested
-   *  cezar (an agent running `cez serve`/`cez run`/the test suite) would then
+   *  xezar (an agent running `xez serve`/`xez run`/the test suite) would then
    *  write follow-ups into the parent's inbox despite the opt-out. Empty is the
    *  established "absent" spelling — consumers guard with `if (todosFile)`.
    *
@@ -756,9 +756,9 @@ export class RunManager {
    *  turning into empty command output inside a running agent. */
   private agentEnv(runId: string, generateFollowups = true): Record<string, string> {
     return {
-      CEZ_HANDOFF_FILE: handoffPath(this.dataDir, runId),
-      CEZ_TASK_ID: runId,
-      CEZ_TODOS_FILE: generateFollowups ? todosPath(this.dataDir) : '',
+      XEZ_HANDOFF_FILE: handoffPath(this.dataDir, runId),
+      XEZ_TASK_ID: runId,
+      XEZ_TODOS_FILE: generateFollowups ? todosPath(this.dataDir) : '',
       ...agentTmpEnv(this.dataDir, runId),
     };
   }
@@ -776,7 +776,7 @@ export class RunManager {
    *   2. the run's composer override, but only for steps on the run's own runner;
    *   3. the project's stored selection, and failing that the discovered default.
    *
-   * Read fresh every time. `~/.cezar/config.json` is shared by every cezar process on this
+   * Read fresh every time. `~/.xezar/config.json` is shared by every xezar process on this
    * machine, so a cached snapshot is a staleness bug, and one small JSON read is free next to
    * spawning a CLI. Never throws: an unreadable home degrades to the default profile, which is
    * exactly the behaviour that predates profiles.
@@ -816,7 +816,7 @@ export class RunManager {
       // so a queued run picks it up at dequeue and every later resume reads the same answer.
       agentProfile: input.agentProfile,
       // The global inbox is the ceiling on the per-run flag (#471). Enforced here rather than
-      // at the HTTP route because `cezar run`, the inbox's own "▶ Run" and variants all reach
+      // at the HTTP route because `xezar run`, the inbox's own "▶ Run" and variants all reach
       // startRun directly — a route-level gate would leave those writing todos.json.
       generateFollowups: followupsEnabled() ? input.generateFollowups : false,
       // Persist autonomy on the record (#489) so the terminal review gate
@@ -1138,7 +1138,7 @@ export class RunManager {
 
   /**
    * Startup recovery (#367) — re-adopt runs that were live when the previous
-   * cezar process exited (requires the store opened with `keepLive`):
+   * xezar process exited (requires the store opened with `keepLive`):
    *  - `queued`  → back into the queue (FIFO by createdAt), from the persisted
    *    workflowDef (or the catalog by name for older records);
    *  - `waiting` → the turn was over and the ball was in the user's court —
@@ -1158,7 +1158,7 @@ export class RunManager {
     sweepAgentTmpDirs(this.dataDir, live.map((r) => r.id));
     for (const run of live) {
       if (run.status === 'queued') {
-        await this.reviveQueuedRun(run, 'cezar restarted');
+        await this.reviveQueuedRun(run, 'xezar restarted');
         continue;
       }
       if (run.status === 'waiting') {
@@ -1169,7 +1169,7 @@ export class RunManager {
         }
         this.store.appendEvent(run.id, {
           type: 'lifecycle',
-          message: 'cezar restarted — the open session was settled',
+          message: 'xezar restarted — the open session was settled',
         });
         await this.settleSuccess(run.id);
         continue;
@@ -1184,7 +1184,7 @@ export class RunManager {
       }
       this.store.updateRun(run.id, {
         status: 'failed',
-        error: 'interrupted — cezar process exited during the run',
+        error: 'interrupted — xezar process exited during the run',
         finishedAt,
         currentStepId: undefined,
       });
@@ -1198,12 +1198,12 @@ export class RunManager {
       this.store.appendEvent(run.id, {
         type: 'lifecycle',
         message: resumed.ok
-          ? 'cezar restarted — resuming the interrupted task from its last session'
-          : `cezar restarted — could not resume the interrupted task (${resumed.error ?? 'unknown'})`,
+          ? 'xezar restarted — resuming the interrupted task from its last session'
+          : `xezar restarted — could not resume the interrupted task (${resumed.error ?? 'unknown'})`,
       });
     }
     // Re-arm usage-limit resumes (spec 2026-08-03-auto-resume-after-usage-limit): the wait is
-    // routinely longer than a cezar session, so the deadline is durable and the timer is rebuilt
+    // routinely longer than a xezar session, so the deadline is durable and the timer is rebuilt
     // from it. `pump()` reconciles again on every sweep, so this is the fast path, not the only
     // one — see `reconcileAutoResumes`.
     this.reconcileAutoResumes();
@@ -1365,7 +1365,7 @@ export class RunManager {
     if (!this.semaphore.autoResumeOnUsageLimit()) {
       // Sweep the RECORDS, not the timer map. A record promising a resume that no timer is
       // holding is the exact population this method exists for, and it is also the one the
-      // setting can be switched off in front of: cezar restarted while it was off, the config
+      // setting can be switched off in front of: xezar restarted while it was off, the config
       // was hand-edited, or the project context was disposed mid-wait. Retiring only the armed
       // timers leaves such a record with a live `autoResumeAt`, which `accountHolds()` reads as
       // a deadline hold — so nothing new starts on that account, `rescueStalledQueue` treats the
@@ -1487,7 +1487,7 @@ export class RunManager {
       if (this.active.has(run.id) || this.starting.has(run.id)) continue;
       if (this.pendingJobs.has(run.id) || this.pendingContinuations.has(run.id)) continue;
       if (this.queue.includes(run.id)) continue;
-      console.warn(`[cez] queue watchdog: re-adopting queued run ${run.id} the engine had lost`);
+      console.warn(`[xez] queue watchdog: re-adopting queued run ${run.id} the engine had lost`);
       await this.reviveQueuedRun(run, 'queue watchdog');
     }
     if (this.queue.length === 0) return;
@@ -1506,7 +1506,7 @@ export class RunManager {
       return;
     }
     console.warn(
-      '[cez] queue watchdog: work is queued, nothing is running, and the usage-limit hold has no'
+      '[xez] queue watchdog: work is queued, nothing is running, and the usage-limit hold has no'
       + ' deadline behind it — starting the next task anyway',
     );
     this.forceNextPump = true;
@@ -1582,7 +1582,7 @@ export class RunManager {
   }
 
   /** Reclaim finished worktrees beyond the keep-limit (#483) — directory only,
-   *  `cez/<id8>` branch kept. Best-effort; a failure never affects run
+   *  `xez/<id8>` branch kept. Best-effort; a failure never affects run
    *  lifecycle. `review`/live runs are excluded by the selector. */
   private async enforceRetention(): Promise<void> {
     try {
@@ -1788,7 +1788,7 @@ export class RunManager {
         }
         attachments.push({ name, url, path });
       } catch {
-        // Degrade, never fail the boot (AGENTS.md): the user deleted `.ai/cezar/`
+        // Degrade, never fail the boot (AGENTS.md): the user deleted `.ai/xezar/`
         // or the file is unreadable — start with the text and say which attachment went.
         this.store.appendEvent(runId, {
           type: 'note',
@@ -2344,8 +2344,8 @@ export class RunManager {
         void this.recordTurnEnd(runId, turnText); // titleSummary + diffStat (#389)
         const sessionOpen = !state.cancelled && state.session?.open;
         const done = sessionOpen && DONE_MARKER_RE.test(turnText.trimEnd());
-        // `CEZ:ASK` → the user is genuinely blocked; wins over `CEZ:MONITORING`
-        // (a pending question is always attention), loses to `CEZ:DONE` (#473).
+        // `XEZ:ASK` → the user is genuinely blocked; wins over `XEZ:MONITORING`
+        // (a pending question is always attention), loses to `XEZ:DONE` (#473).
         const { ask, notes: askNotes } = resolveAskTurn(turnText, Boolean(sessionOpen) && !done);
         const monitoring =
           sessionOpen && !done && !ask && MONITORING_MARKER_RE.test(turnText.trimEnd());
@@ -2376,8 +2376,8 @@ export class RunManager {
               return true;
             })();
           if (!autoContinued) {
-            // `CEZ:ASK` → park `waiting` (attention) AND surface the structured
-            // question as an ask card (#473). `CEZ:MONITORING` → non-attention
+            // `XEZ:ASK` → park `waiting` (attention) AND surface the structured
+            // question as an ask card (#473). `XEZ:MONITORING` → non-attention
             // `running`/`activity:'monitoring'` (#490). Both share the waiting
             // lifecycle (free the slot, keep the idle timer); the autonomous
             // nudge above still wins over either.
@@ -2631,14 +2631,14 @@ export class RunManager {
     emit({ type: 'lifecycle', message: `run started — workflow "${workflow.name}" (runner: ${taskBackend})` });
 
     // Worktree per task (spec 006): the agent works on its own branch in
-    // `.ai/cezar/worktrees/<id>`, never in the user's working tree. A Git task
+    // `.ai/xezar/worktrees/<id>`, never in the user's working tree. A Git task
     // that requests isolation fails closed if the worktree cannot be
     // established; only explicit opt-out and non-Git modes run in place.
     const repo = await getRepoInfo(this.repoRoot);
     if (repo && input.worktree === false) {
       // Composer opt-out: run in the repo working tree, no branch/worktree. The
       // repository-root lease serializes these runs by default; the explicit
-      // CEZ_DISABLE_REPO_LOCK=1 escape hatch allows unsafe overlap.
+      // XEZ_DISABLE_REPO_LOCK=1 escape hatch allows unsafe overlap.
       // Pin the starting commit: the session's Changes and Commits views use it
       // as their stable lower bound while reading the current working copy.
       const startingCommit = await getHeadCommit(repo.root);
@@ -2931,7 +2931,7 @@ export class RunManager {
         emit({
           type: 'note',
           stepId: step.id,
-          message: `skill "${step.skill}" not found in .ai/cezar/skills, .ai/skills or the team skills repo — running with the plain prompt`,
+          message: `skill "${step.skill}" not found in .ai/xezar/skills, .ai/skills or the team skills repo — running with the plain prompt`,
         });
       }
     }
@@ -2941,7 +2941,7 @@ export class RunManager {
     // `deliverMessage`, so — like the continuation seam above (#811) — it needs the same
     // delivery-only `/skill` rewrite. Without it a task STARTED with `/om-...` as its first
     // message leaks the raw slash to the backend, which answers "Unknown command" even though
-    // Cezar lists the skill (#278). `state.skills` was populated by `discoverSkills` earlier in
+    // Xezar lists the skill (#278). `state.skills` was populated by `discoverSkills` earlier in
     // `execute`. Expand before the chain/check/attachment prefixes so the leading slash still
     // matches; a leading `/name` that is not a known skill passes through byte-for-byte.
     userPrompt = expandRegistrySlashSkillText(userPrompt, state.skills ?? []);
@@ -3011,8 +3011,8 @@ export class RunManager {
         void this.recordTurnEnd(runId, turnText); // titleSummary + diffStat (#389)
         const sessionOpen = !state.cancelled && state.session?.open;
         const done = interactive && sessionOpen && DONE_MARKER_RE.test(turnText.trimEnd());
-        // `CEZ:ASK` → the user is blocked; wins over `CEZ:MONITORING`, loses to
-        // `CEZ:DONE` (#473).
+        // `XEZ:ASK` → the user is blocked; wins over `XEZ:MONITORING`, loses to
+        // `XEZ:DONE` (#473).
         const { ask, notes: askNotes } = resolveAskTurn(
           turnText,
           Boolean(interactive && sessionOpen) && !done,
@@ -3036,9 +3036,9 @@ export class RunManager {
         const waiting = interactive && sessionOpen;
         if (waiting) {
           // Turn over, session open. Either the ball is in the user's court
-          // (`waiting`) — optionally with a structured `CEZ:ASK` question the
+          // (`waiting`) — optionally with a structured `XEZ:ASK` question the
           // cockpit renders as an ask card (#473) — or the agent declared it is
-          // still working on its own downstream work with `CEZ:MONITORING`, which
+          // still working on its own downstream work with `XEZ:MONITORING`, which
           // parks as `running`/`activity:'monitoring'`, a non-attention state,
           // instead of raising "needs you" (#490). Lifecycle is identical: the
           // run frees its slot and keeps the idle timer.
@@ -3063,7 +3063,7 @@ export class RunManager {
         if (this.store.getRun(runId)?.autoResumeAttempts !== undefined) {
           this.store.updateRun(runId, { autoResumeAttempts: undefined });
         }
-        // Cez's own heartbeat — the handoff stays current even when the
+        // Xez's own heartbeat — the handoff stays current even when the
         // agent forgets to write (spec 007).
         appendHandoffHeartbeat(
           this.dataDir,
@@ -3320,8 +3320,8 @@ export class RunManager {
     task: string,
     live?: { turnText?: string; diffStat?: string },
   ): Promise<void> {
-    // CEZ_AUTONAME=0 kills all LLM naming; dry-run skips it too unless
-    // CEZ_AUTONAME=1 forces the mock path — see autoNamingActive.
+    // XEZ_AUTONAME=0 kills all LLM naming; dry-run skips it too unless
+    // XEZ_AUTONAME=1 forces the mock path — see autoNamingActive.
     if (!autoNamingActive()) return;
     try {
       let skillDescription: string | undefined;
@@ -3358,7 +3358,7 @@ export class RunManager {
       this.applyTurnMarkers(runId, run, turnText);
       // Titles are the namer's job (task auto-naming spec) — turn text is
       // deliberately NEVER a title source; see maybeRefreshTitle below. The
-      // one exception is an explicit CEZ:TITLE declaration (applied above).
+      // one exception is an explicit XEZ:TITLE declaration (applied above).
       if (run.worktreePath && existsSync(run.worktreePath)) {
         // `taskBranch` + `runStartedAt` are what keep this number *this task's* (#751): a
         // review/QA run repoints the worktree onto the branch under review, and without the
@@ -3379,9 +3379,9 @@ export class RunManager {
 
   /**
    * In-band declarations from the finished turn (spec
-   * 2026-07-18-task-ref-markers): the main thread's own `CEZ:PR=` /
-   * `CEZ:ISSUE=` / `CEZ:TITLE=` lines, parsed from the accumulated turn text
-   * like `CEZ:DONE` — never from tool output. Declared numbers overwrite the
+   * 2026-07-18-task-ref-markers): the main thread's own `XEZ:PR=` /
+   * `XEZ:ISSUE=` / `XEZ:TITLE=` lines, parsed from the accumulated turn text
+   * like `XEZ:DONE` — never from tool output. Declared numbers overwrite the
    * regex/namer display tier (the store re-resolves the referenced-PR chip);
    * a declared title takes `titleOrigin: 'marker'`, which beats the namer but
    * never a user rename, and silences the live refresh below.
@@ -3406,8 +3406,8 @@ export class RunManager {
   /**
    * Live title refresh (task auto-naming spec, step 3): re-run the namer with
    * the turn's context. Skips: toggle off (`liveTitleUpdates` config over
-   * `CEZ_TITLE_UPDATES` env, default ON), user-owned title, marker-owned title
-   * (the agent declares via `CEZ:TITLE` — the token-saving fast path), dry-run
+   * `XEZ_TITLE_UPDATES` env, default ON), user-owned title, marker-owned title
+   * (the agent declares via `XEZ:TITLE` — the token-saving fast path), dry-run
    * mocks (canned answers add nothing), empty turn text, unchanged namer inputs.
    */
   private async maybeRefreshTitle(runId: string, turnText: string): Promise<void> {
@@ -3450,7 +3450,7 @@ export class RunManager {
    * runs never enter review; no worktree or an empty diff means plain `done`.
    *
    * The gate is opt-in (#489): the review park happens only when it is enabled
-   * (`reviewGateEnabled` — config toggle over the `CEZ_REVIEW_GATE` env, default
+   * (`reviewGateEnabled` — config toggle over the `XEZ_REVIEW_GATE` env, default
    * OFF) AND the run is not autonomous. Autonomous runs — and runs with the gate
    * off — settle straight to `done`, leaving the diff in the worktree untouched.
    */
@@ -3504,7 +3504,7 @@ export class RunManager {
    * Agent screenshot (an image block inside a tool result) or a user attachment —
    * a pasted screenshot, or since #950 a PDF/TXT/MD file: the base64 data never
    * enters the NDJSON event log — it lands as a file under
-   * `.ai/cezar/runs/<id>-images/` and the transcript event carries only the name +
+   * `.ai/xezar/runs/<id>-images/` and the transcript event carries only the name +
    * serving URL. `namePrefix` distinguishes the two origins on disk
    * (`screenshot-<n>.<ext>` for agent tool screenshots, `pasted-<n>.<ext>` for user
    * attachments, #357) and the absolute `path` lets the agent operate on the file
@@ -3640,7 +3640,7 @@ export class RunManager {
   }
 
   /** Autosave-commit the worktree every 90 s while the run lives (spec 006).
-   *  Opt-in via CEZ_AUTOSAVE=1 (#471) — see periodicAutosaveEnabled. */
+   *  Opt-in via XEZ_AUTOSAVE=1 (#471) — see periodicAutosaveEnabled. */
   private armAutosave(state: ActiveRun): void {
     if (!periodicAutosaveEnabled()) return;
     if (state.cwd === this.repoRoot || state.autosaveTimer) return;

@@ -12,7 +12,7 @@ import { apiRequest } from './loopback-request.testkit.ts';
 /**
  * `GET /api/v1/github/checks?prs=…` (#664). The contract under test: the `prs` list is zod-free but
  * strictly validated at the boundary (positive integers, non-empty, ≤100 — 400 on anything else,
- * never a throw), and — driven through `CEZ_DRY_RUN=1` so no `gh` is touched — a `GithubChecksData`
+ * never a throw), and — driven through `XEZ_DRY_RUN=1` so no `gh` is touched — a `GithubChecksData`
  * payload mapping each requested PR number to its glyph. The gh-shelling and degrade paths live in
  * the driver; here we prove the route wiring and the param gate.
  */
@@ -20,20 +20,20 @@ describe('the github checks API', () => {
   let repoRoot: string;
   let store: RunStore;
   let app: Hono;
-  const prevDryRun = process.env.CEZ_DRY_RUN;
+  const prevDryRun = process.env.XEZ_DRY_RUN;
 
   beforeAll(() => {
-    process.env.CEZ_DRY_RUN = '1';
+    process.env.XEZ_DRY_RUN = '1';
   });
   afterAll(() => {
-    if (prevDryRun === undefined) delete process.env.CEZ_DRY_RUN;
-    else process.env.CEZ_DRY_RUN = prevDryRun;
+    if (prevDryRun === undefined) delete process.env.XEZ_DRY_RUN;
+    else process.env.XEZ_DRY_RUN = prevDryRun;
   });
 
   beforeEach(() => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-ghchecks-'));
-    mkdirSync(join(repoRoot, '.ai/cezar'), { recursive: true });
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-ghchecks-'));
+    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     app = createApp({ repoRoot, store, manager: {} as RunManager, version: '0.0.0-test' });
   });
 

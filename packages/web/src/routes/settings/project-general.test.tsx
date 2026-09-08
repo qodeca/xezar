@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { ProjectListEntry } from '@open-mercato/cezar-api-client'
+import type { ProjectListEntry } from '@qodeca/xezar-api-client'
 import { queryKeys, workspaceQueryKeys } from '@/api/queries'
 import { createQueryClient } from '@/api/query-client'
 import { ListViewProvider } from '@/components/list-view'
@@ -19,7 +19,7 @@ import { AppRoutes } from '@/routes'
  */
 
 const ROOT = '/Users/me/code/demo-project'
-const BOOT_ROOT = '/Users/me/code/cezar'
+const BOOT_ROOT = '/Users/me/code/xezar'
 
 let requests: Array<{ method: string; url: string; body?: unknown }> = []
 
@@ -50,7 +50,7 @@ function project(id: 'boot' | 'demo') {
   return id === 'boot'
     ? {
         id: 'boot',
-        name: 'cezar',
+        name: 'xezar',
         root: BOOT_ROOT,
         addedAt: '2026-01-05T10:00:00.000Z',
         lastOpenedAt: '2026-07-31T10:00:00.000Z',
@@ -88,11 +88,11 @@ function seededClient({
   client.setQueryData(workspaceQueryKeys.projects, {
     projects: registry ?? [project('boot'), project('demo')],
     bootProject: 'boot',
-    projectsDir: '~/cezar/projects',
+    projectsDir: '~/xezar/projects',
   })
   client.setQueryData(workspaceQueryKeys.config, {
     browseRoot: '~/',
-    projectsDir: '~/cezar/projects',
+    projectsDir: '~/xezar/projects',
     skillsAutoUpdate: null,
     effectiveSkillsAutoUpdate: true,
     composerDefaults: {
@@ -192,7 +192,7 @@ describe('the General page', () => {
 
   it('refuses to remove the boot project before the click, with the reason', async () => {
     renderAt('/p/boot/settings')
-    const remove = await screen.findByRole('button', { name: /^Remove cezar from the workspace/ })
+    const remove = await screen.findByRole('button', { name: /^Remove xezar from the workspace/ })
     expect(remove.hasAttribute('disabled')).toBe(true)
     expect(document.querySelector('[data-slot="project-general-remove-boot"]')?.textContent).toContain(
       're-registers itself',
@@ -223,7 +223,7 @@ describe('the General page', () => {
   })
 
   it('single-project mode keeps what describes the project and drops what manages the registry', async () => {
-    // `CEZ_SINGLE_PROJECT=1` makes PATCH and DELETE `/api/v1/projects/:id` answer 409 (server.ts)
+    // `XEZ_SINGLE_PROJECT=1` makes PATCH and DELETE `/api/v1/projects/:id` answer 409 (server.ts)
     // and drops the whole global Projects section from the nav registry. Offering the same two
     // controls here would be a knob whose every change is refused; what the project IS stays true.
     renderAt('/settings', { singleProject: true, registry: [project('boot')] })
@@ -232,7 +232,7 @@ describe('the General page', () => {
     })
     expect(document.querySelector('[data-slot="project-facts"]')).not.toBeNull()
     expect(document.querySelector('[data-slot="project-location-path"]')?.textContent).toBe(BOOT_ROOT)
-    expect(screen.queryByLabelText('Max parallel tasks for cezar')).toBeNull()
+    expect(screen.queryByLabelText('Max parallel tasks for xezar')).toBeNull()
     expect(document.querySelector('[data-action="project-general-remove"]')).toBeNull()
   })
 

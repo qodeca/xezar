@@ -1,8 +1,7 @@
 /**
  * Golden tests for the claude stream-json → v2 mapper: each fixture in
  * `__fixtures__/claude/` is a wire-faithful NDJSON stdout transcript
- * (shapes from `.ai/analysis/cockpit-ui-redesign/agent-event-protocols.md`
- * §1 and the dry-run mock `scripts/mock-claude.mjs`); its `.expected.json`
+ * (shapes from the dry-run mock `scripts/mock-claude.mjs`); its `.expected.json`
  * is the EXACT `UiEvent` sequence the mapper must produce. Plus edge cases
  * (never-throw, state carry-over) and a live wiring test through the real
  * runner against the bundled mock CLI.
@@ -599,7 +598,7 @@ describe('ClaudeCliRunner v2 wiring (against the bundled mock CLI)', () => {
   const mockBin = join(HERE, '..', '..', 'scripts', 'mock-claude.mjs');
 
   it('preserves an is_error result message as an authoritative v1 error signal', async () => {
-    const cwd = await mkdtemp(join(tmpdir(), 'cez-claude-auth-error-'));
+    const cwd = await mkdtemp(join(tmpdir(), 'xez-claude-auth-error-'));
     try {
       const runner = new ClaudeCliRunner({ bin: mockBin, timeoutMs: 60_000 });
       const v1: AgentEvent[] = [];
@@ -621,7 +620,7 @@ describe('ClaudeCliRunner v2 wiring (against the bundled mock CLI)', () => {
   }, 30_000);
 
   it('emits v2 events through opts.onUiEvent while v1 events keep flowing', async () => {
-    const cwd = await mkdtemp(join(tmpdir(), 'cez-ui-mapper-'));
+    const cwd = await mkdtemp(join(tmpdir(), 'xez-ui-mapper-'));
     try {
       const runner = new ClaudeCliRunner({ bin: mockBin, timeoutMs: 60_000 });
       const v1: AgentEvent[] = [];
@@ -670,11 +669,11 @@ describe('ClaudeCliRunner v2 wiring (against the bundled mock CLI)', () => {
   }, 30_000);
 
   // The `mock:subagents` trigger is the dry-run testability hook for the Agents
-  // dock (spec `.ai/specs/2026-07-20-grouped-subagent-display.md`, #474): without
+  // dock (#474): without
   // it the dock is unreachable offline, so QA, screenshots and the e2e smoke all
   // depend on this wire shape staying correct.
   it('mock:subagents fans out two parented Task agents', async () => {
-    const cwd = await mkdtemp(join(tmpdir(), 'cez-ui-mapper-sub-'));
+    const cwd = await mkdtemp(join(tmpdir(), 'xez-ui-mapper-sub-'));
     try {
       const runner = new ClaudeCliRunner({ bin: mockBin, timeoutMs: 60_000 });
       const v2: UiEvent[] = [];

@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { createQueryClient } from '@/api/query-client'
-import type { WorktreesResponse } from '@open-mercato/cezar-api-client'
+import type { WorktreesResponse } from '@qodeca/xezar-api-client'
 import { Toaster, resetToasts } from '@/components/ui/toaster'
 import { WorktreesPanel } from './worktrees-panel'
 
@@ -59,7 +59,7 @@ const sample: WorktreesResponse = {
       runId: 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa',
       title: 'fix the login bug',
       status: 'done',
-      branch: 'cez/aaaaaaaa',
+      branch: 'xez/aaaaaaaa',
       sizeBytes: 5 * 1024 * 1024,
       finishedAt: '2026-07-01T00:00:00Z',
       reclaimable: true,
@@ -68,7 +68,7 @@ const sample: WorktreesResponse = {
       runId: 'bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb',
       title: 'review dialog',
       status: 'review',
-      branch: 'cez/bbbbbbbb',
+      branch: 'xez/bbbbbbbb',
       sizeBytes: null,
       finishedAt: null,
       reclaimable: false,

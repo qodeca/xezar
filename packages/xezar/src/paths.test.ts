@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import {
   DEFAULT_SERVER_INSTANCE,
   agentHomePaths,
-  cezarHomeDir,
+  xezarHomeDir,
   claudeStateFilePath,
   instanceSlug,
   serverInstancesDir,
@@ -15,48 +15,76 @@ import {
 } from './paths.ts';
 
 describe('paths', () => {
-  const original = process.env.CEZ_HOME;
+  const original = process.env.XEZ_HOME;
   afterEach(() => {
-    if (original === undefined) delete process.env.CEZ_HOME;
-    else process.env.CEZ_HOME = original;
+    if (original === undefined) delete process.env.XEZ_HOME;
+    else process.env.XEZ_HOME = original;
   });
 
-  it('defaults cezarHomeDir to ~/.cezar', () => {
-    delete process.env.CEZ_HOME;
-    expect(cezarHomeDir()).toBe(join(homedir(), '.cezar'));
+  it('defaults xezarHomeDir to ~/.xezar', () => {
+    delete process.env.XEZ_HOME;
+    expect(xezarHomeDir()).toBe(join(homedir(), '.xezar'));
   });
 
-  it('honors the CEZ_HOME override', () => {
-    process.env.CEZ_HOME = '/tmp/cez-home-test';
-    expect(cezarHomeDir()).toBe('/tmp/cez-home-test');
-    expect(serverStatePath()).toBe('/tmp/cez-home-test/server.json');
-    expect(serverLockPath()).toBe('/tmp/cez-home-test/server.install.lock');
+  // Xezar is an independent application, not an upgrade of Cezar (see BACKWARD_COMPATIBILITY.md
+  // "The Xezar rename"). These pin the isolation: Xezar must never resolve, read or adopt the
+  // other product's state, and must never honour its environment variable.
+  describe('identity isolation from Cezar', () => {
+    it('never resolves the Cezar home, with or without an override', () => {
+      delete process.env.XEZ_HOME;
+      const cezarHome = join(homedir(), '.cezar');
+      for (const path of [
+        xezarHomeDir(),
+        workspaceConfigPath(),
+        workspaceUiStatePath(),
+        serverStatePath(),
+        serverInstancesDir(),
+        serverLockPath(),
+      ]) {
+        expect(path.startsWith(cezarHome)).toBe(false);
+        expect(path).toContain('.xezar');
+      }
+    });
+
+    it('ignores CEZ_HOME — the other product\'s variable must not steer this one', () => {
+      delete process.env.XEZ_HOME;
+      const env = { CEZ_HOME: '/tmp/some-cezar-home' } as unknown as NodeJS.ProcessEnv;
+      expect(xezarHomeDir(env)).toBe(join(homedir(), '.xezar'));
+      expect(workspaceConfigPath(env)).toBe(join(homedir(), '.xezar', 'config.json'));
+    });
+  });
+
+  it('honors the XEZ_HOME override', () => {
+    process.env.XEZ_HOME = '/tmp/xez-home-test';
+    expect(xezarHomeDir()).toBe('/tmp/xez-home-test');
+    expect(serverStatePath()).toBe('/tmp/xez-home-test/server.json');
+    expect(serverLockPath()).toBe('/tmp/xez-home-test/server.install.lock');
   });
 
   it('the default instance keeps the legacy un-suffixed paths', () => {
-    process.env.CEZ_HOME = '/tmp/cez-home-test';
-    expect(serverStatePath(DEFAULT_SERVER_INSTANCE)).toBe('/tmp/cez-home-test/server.json');
-    expect(serverLockPath(DEFAULT_SERVER_INSTANCE)).toBe('/tmp/cez-home-test/server.install.lock');
+    process.env.XEZ_HOME = '/tmp/xez-home-test';
+    expect(serverStatePath(DEFAULT_SERVER_INSTANCE)).toBe('/tmp/xez-home-test/server.json');
+    expect(serverLockPath(DEFAULT_SERVER_INSTANCE)).toBe('/tmp/xez-home-test/server.install.lock');
   });
 
-  it('workspace config/ui-state live directly under the cezar home', () => {
-    delete process.env.CEZ_HOME;
-    expect(workspaceConfigPath()).toBe(join(homedir(), '.cezar', 'config.json'));
-    expect(workspaceUiStatePath()).toBe(join(homedir(), '.cezar', 'ui-state.json'));
+  it('workspace config/ui-state live directly under the xezar home', () => {
+    delete process.env.XEZ_HOME;
+    expect(workspaceConfigPath()).toBe(join(homedir(), '.xezar', 'config.json'));
+    expect(workspaceUiStatePath()).toBe(join(homedir(), '.xezar', 'ui-state.json'));
   });
 
-  it('workspace paths honor the CEZ_HOME override', () => {
-    process.env.CEZ_HOME = '/tmp/cez-home-test';
-    expect(workspaceConfigPath()).toBe('/tmp/cez-home-test/config.json');
-    expect(workspaceUiStatePath()).toBe('/tmp/cez-home-test/ui-state.json');
+  it('workspace paths honor the XEZ_HOME override', () => {
+    process.env.XEZ_HOME = '/tmp/xez-home-test';
+    expect(workspaceConfigPath()).toBe('/tmp/xez-home-test/config.json');
+    expect(workspaceUiStatePath()).toBe('/tmp/xez-home-test/ui-state.json');
   });
 
   it('a named instance lives under server-instances/, keyed by slug', () => {
-    process.env.CEZ_HOME = '/tmp/cez-home-test';
-    expect(serverInstancesDir()).toBe('/tmp/cez-home-test/server-instances');
-    expect(serverStatePath('shop-example-com')).toBe('/tmp/cez-home-test/server-instances/shop-example-com.json');
+    process.env.XEZ_HOME = '/tmp/xez-home-test';
+    expect(serverInstancesDir()).toBe('/tmp/xez-home-test/server-instances');
+    expect(serverStatePath('shop-example-com')).toBe('/tmp/xez-home-test/server-instances/shop-example-com.json');
     expect(serverLockPath('shop-example-com')).toBe(
-      '/tmp/cez-home-test/server-instances/shop-example-com.install.lock',
+      '/tmp/xez-home-test/server-instances/shop-example-com.install.lock',
     );
   });
 });
@@ -75,15 +103,15 @@ describe('instanceSlug', () => {
   });
 });
 
-it('an EMPTY CEZ_HOME falls back to the default instead of a relative cwd path', () => {
-  const original = process.env.CEZ_HOME;
-  process.env.CEZ_HOME = '';
+it('an EMPTY XEZ_HOME falls back to the default instead of a relative cwd path', () => {
+  const original = process.env.XEZ_HOME;
+  process.env.XEZ_HOME = '';
   try {
-    expect(cezarHomeDir().startsWith('/')).toBe(true);
-    expect(cezarHomeDir().endsWith('/.cezar')).toBe(true);
+    expect(xezarHomeDir().startsWith('/')).toBe(true);
+    expect(xezarHomeDir().endsWith('/.xezar')).toBe(true);
   } finally {
-    if (original === undefined) delete process.env.CEZ_HOME;
-    else process.env.CEZ_HOME = original;
+    if (original === undefined) delete process.env.XEZ_HOME;
+    else process.env.XEZ_HOME = original;
   }
 });
 
@@ -136,10 +164,10 @@ describe('claudeStateFilePath', () => {
     expect(claudeStateFilePath('/home/u/.claude-klaudiusz', env)).toBe('/home/u/.claude-klaudiusz/.claude.json');
   });
 
-  it('reads an account\'s OWN state file when the cezar process carries an override', () => {
-    // Review case: cezar started with CLAUDE_CONFIG_DIR=/opt/work, and `~/.claude` added as a NAMED
+  it('reads an account\'s OWN state file when the xezar process carries an override', () => {
+    // Review case: xezar started with CLAUDE_CONFIG_DIR=/opt/work, and `~/.claude` added as a NAMED
     // account (legal — the discovered account is /opt/work, so it is not a duplicate). The answer is
-    // the file INSIDE it, because that is the one the CLI will read when cezar runs that account as
+    // the file INSIDE it, because that is the one the CLI will read when xezar runs that account as
     // `CLAUDE_CONFIG_DIR=~/.claude claude`. The sibling would describe a login it never uses.
     const env = { HOME: '/home/u', CLAUDE_CONFIG_DIR: '/opt/work' } as NodeJS.ProcessEnv;
     expect(claudeStateFilePath('/home/u/.claude', env)).toBe('/home/u/.claude/.claude.json');

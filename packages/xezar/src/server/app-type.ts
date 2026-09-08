@@ -3,7 +3,7 @@ import type { createApp } from './server.ts';
 /**
  * The service's HTTP contract, as a type.
  *
- * This is the whole boundary between the cezar service and a typed consumer: Hono infers an
+ * This is the whole boundary between the xezar service and a typed consumer: Hono infers an
  * app's endpoint table from the app's *type*, and `hc<AppType>` turns that table into a client
  * whose paths, request bodies and response shapes are checked at compile time. No hand-written
  * mirror, no schema to author twice — the routes ARE the contract.

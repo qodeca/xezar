@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, afterEach, beforeEach } from 'vitest'
 
-// Nothing in this suite may write to the developer's own `~/.cezar`. Most cases pin
-// `CEZ_HOME` themselves, but the pin is one global for the whole worker and their
+// Nothing in this suite may write to the developer's own `~/.xezar`. Most cases pin
+// `XEZ_HOME` themselves, but the pin is one global for the whole worker and their
 // `afterEach` deletes it — so a write that outlives its test (a timeout is enough)
 // used to resolve the real home and replace the project registry with the fixture's.
 //
@@ -13,11 +13,11 @@ import { afterAll, afterEach, beforeEach } from 'vitest'
 // the NEXT write pointed at the sandbox. A test that wants the unpinned default
 // deletes the variable inside its own body (see `src/paths.test.ts`) — that still
 // works, because this hook runs after the test, not during it. The write guard in
-// `assertCezarHomeWriteIsSandboxed` catches whatever still slips through.
-const sandboxHome = mkdtempSync(join(realpathSync(tmpdir()), 'cez-vitest-home-'))
+// `assertXezarHomeWriteIsSandboxed` catches whatever still slips through.
+const sandboxHome = mkdtempSync(join(realpathSync(tmpdir()), 'xez-vitest-home-'))
 
 const pinSandboxHome = (): void => {
-  if (!process.env.CEZ_HOME) process.env.CEZ_HOME = sandboxHome
+  if (!process.env.XEZ_HOME) process.env.XEZ_HOME = sandboxHome
 }
 
 pinSandboxHome()

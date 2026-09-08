@@ -26,17 +26,17 @@ describe('createRunner returns the pi runner', () => {
 });
 
 describe('backend-detect handles an absent pi CLI', () => {
-  const saved = { bin: process.env.CEZ_PI_BIN, dry: process.env.CEZ_DRY_RUN };
+  const saved = { bin: process.env.XEZ_PI_BIN, dry: process.env.XEZ_DRY_RUN };
 
   beforeEach(() => {
-    delete process.env.CEZ_DRY_RUN; // real probe, not the mock short-circuit
-    process.env.CEZ_PI_BIN = join(tmpdir(), 'cez-pi-does-not-exist-xyz');
+    delete process.env.XEZ_DRY_RUN; // real probe, not the mock short-circuit
+    process.env.XEZ_PI_BIN = join(tmpdir(), 'xez-pi-does-not-exist-xyz');
   });
   afterEach(() => {
-    if (saved.bin === undefined) delete process.env.CEZ_PI_BIN;
-    else process.env.CEZ_PI_BIN = saved.bin;
-    if (saved.dry === undefined) delete process.env.CEZ_DRY_RUN;
-    else process.env.CEZ_DRY_RUN = saved.dry;
+    if (saved.bin === undefined) delete process.env.XEZ_PI_BIN;
+    else process.env.XEZ_PI_BIN = saved.bin;
+    if (saved.dry === undefined) delete process.env.XEZ_DRY_RUN;
+    else process.env.XEZ_DRY_RUN = saved.dry;
   });
 
   it('reports pi as unavailable with a hint, and never rejects (no boot failure)', async () => {
@@ -49,16 +49,16 @@ describe('backend-detect handles an absent pi CLI', () => {
 });
 
 describe('a dry-run pi session emits normalized AgentEvents', () => {
-  const saved = process.env.CEZ_DRY_RUN;
+  const saved = process.env.XEZ_DRY_RUN;
   let cwd: string;
 
   beforeEach(() => {
-    process.env.CEZ_DRY_RUN = '1'; // swap in the shared mock CLI
-    cwd = mkdtempSync(join(tmpdir(), 'cez-pi-run-'));
+    process.env.XEZ_DRY_RUN = '1'; // swap in the shared mock CLI
+    cwd = mkdtempSync(join(tmpdir(), 'xez-pi-run-'));
   });
   afterEach(() => {
-    if (saved === undefined) delete process.env.CEZ_DRY_RUN;
-    else process.env.CEZ_DRY_RUN = saved;
+    if (saved === undefined) delete process.env.XEZ_DRY_RUN;
+    else process.env.XEZ_DRY_RUN = saved;
     rmSync(cwd, { recursive: true, force: true });
   });
 

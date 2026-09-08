@@ -10,7 +10,7 @@
  *
  * **A stale local base ref.** `RunRecord.baseBranch` is a NAME (`main`),
  * resolved to a ref once, when the worktree was created. Nothing ever
- * fast-forwards the user's local `main` — cezar's agents only ever `git fetch`,
+ * fast-forwards the user's local `main` — xezar's agents only ever `git fetch`,
  * which moves `origin/main` — so on a repo the user does not pull, the local
  * ref drifts arbitrarily far behind. The merge-base then collapses onto that
  * stale tip and every upstream commit the task forked from or merged in counts
@@ -20,7 +20,7 @@
  * (`freshestBaseRef`) — the read-time twin of `resolveBaseRef`, which does the
  * same thing at worktree-creation time and cannot know what happens later.
  *
- * **A repointed HEAD.** cezar hands the agent a worktree on the task's own
+ * **A repointed HEAD.** xezar hands the agent a worktree on the task's own
  * branch, but nothing stops the agent from checking out another branch in it —
  * every `review/pr-NNN` and QA run does exactly that, and so does every skill
  * that opens its work on a named `feat/…` branch. The merge-base then silently
@@ -60,7 +60,7 @@ export interface GitRunResult {
 /** A caller-supplied `git` invocation, already bound to a working directory (and env). */
 export type GitRunner = (args: string[]) => Promise<GitRunResult>;
 
-/** The task branch cezar created vs. the branch HEAD actually sits on. */
+/** The task branch xezar created vs. the branch HEAD actually sits on. */
 export interface RepointedHead {
   headBranch: string;
   taskBranch: string;

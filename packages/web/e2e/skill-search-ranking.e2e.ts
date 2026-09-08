@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { AgentBrowser, cezarCli, fixtureServeEnv, removeDataRoot, stopFixtureServer } from './agent-browser'
+import { AgentBrowser, xezarCli, fixtureServeEnv, removeDataRoot, stopFixtureServer } from './agent-browser'
 
 /**
  * #484 end-to-end: skill search must rank the (almost-)exact match to the TOP wherever it is
@@ -42,7 +42,7 @@ async function waitForHealth(url: string): Promise<void> {
     }
     await new Promise((r) => setTimeout(r, 250))
   }
-  throw new Error(`cezar e2e: the skill-search server never answered at ${url}`)
+  throw new Error(`xezar e2e: the skill-search server never answered at ${url}`)
 }
 
 let browser: AgentBrowser
@@ -51,11 +51,11 @@ let dataRoot: string
 let baseUrl: string
 
 beforeAll(async () => {
-  dataRoot = mkdtempSync(join(tmpdir(), 'cezar-e2e-skill-search-'))
+  dataRoot = mkdtempSync(join(tmpdir(), 'xezar-e2e-skill-search-'))
   const git = (...args: string[]) => execFileSync('git', ['-C', dataRoot, ...args])
   git('init', '-q', '-b', 'main')
-  git('config', 'user.email', 'e2e@cezar.test')
-  git('config', 'user.name', 'cezar e2e')
+  git('config', 'user.email', 'e2e@xezar.test')
+  git('config', 'user.name', 'xezar e2e')
   writeFileSync(join(dataRoot, 'README.md'), '# skill-search e2e fixture repo\n', 'utf8')
   git('add', '.')
   git('commit', '-qm', 'init')
@@ -86,7 +86,7 @@ beforeAll(async () => {
   baseUrl = `http://localhost:${port}`
   server = spawn(
     process.execPath,
-    [cezarCli, 'serve', '--repo', dataRoot, '--port', String(port), '--no-open'],
+    [xezarCli, 'serve', '--repo', dataRoot, '--port', String(port), '--no-open'],
     { env: fixtureServeEnv(dataRoot), stdio: 'ignore' },
   )
   await waitForHealth(baseUrl)

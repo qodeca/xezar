@@ -26,20 +26,20 @@ describe('nginxVhost', () => {
     expect(v).toContain('proxy_pass http://127.0.0.1:4321;');
     expect(v).toContain('proxy_buffering off;');
     expect(v).toContain('http2 on;');
-    expect(v).toContain('auth_basic_user_file /etc/cezar/htpasswd;');
+    expect(v).toContain('auth_basic_user_file /etc/xezar/htpasswd;');
   });
 });
 
 describe('ubuntu-vps dry-run', () => {
   let home: string;
-  const original = process.env.CEZ_HOME;
+  const original = process.env.XEZ_HOME;
   beforeEach(() => {
-    home = mkdtempSync(join(tmpdir(), 'cez-ubuntu-'));
-    process.env.CEZ_HOME = home;
+    home = mkdtempSync(join(tmpdir(), 'xez-ubuntu-'));
+    process.env.XEZ_HOME = home;
   });
   afterEach(() => {
-    if (original === undefined) delete process.env.CEZ_HOME;
-    else process.env.CEZ_HOME = original;
+    if (original === undefined) delete process.env.XEZ_HOME;
+    else process.env.XEZ_HOME = original;
     rmSync(home, { recursive: true, force: true });
   });
 

@@ -3,7 +3,7 @@ import { PackageCheckIcon } from 'lucide-react'
 
 import { putWorkspaceConfig } from '@/api/client'
 import { useProjects, useSkillsUpdate, useWorkspaceConfig, workspaceQueryKeys } from '@/api/queries'
-import type { SetWorkspaceConfigInput, WorkspaceConfigResponse } from '@open-mercato/cezar-api-client'
+import type { SetWorkspaceConfigInput, WorkspaceConfigResponse } from '@qodeca/xezar-api-client'
 import { CenteredState } from '@/components/centered-state'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
@@ -96,7 +96,7 @@ function SkillsForm({
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
           <span>
             {inherited
-              ? 'No override is saved. CEZ_SKILLS_AUTO_UPDATE supplies the inherited default when set; otherwise it is on.'
+              ? 'No override is saved. XEZ_SKILLS_AUTO_UPDATE supplies the inherited default when set; otherwise it is on.'
               : 'An explicit workspace override is saved.'}
           </span>
           <Button

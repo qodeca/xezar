@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { cezarLaunchdPlist, launchdPlist, macosxNgrok } from './macosx-ngrok.ts';
+import { xezarLaunchdPlist, launchdPlist, macosxNgrok } from './macosx-ngrok.ts';
 import { availablePlatformIds, getStrategy } from '../strategies.ts';
 import { runInstall, runUninstall } from '../engine.ts';
 import { loadServerState } from '../state.ts';
@@ -13,14 +13,14 @@ const okRunner: Runner = { capture: async () => ({ code: 0, stdout: '', stderr: 
 
 describe('macosx-ngrok', () => {
   let home: string;
-  const original = process.env.CEZ_HOME;
+  const original = process.env.XEZ_HOME;
   beforeEach(() => {
-    home = mkdtempSync(join(tmpdir(), 'cez-mac-'));
-    process.env.CEZ_HOME = home;
+    home = mkdtempSync(join(tmpdir(), 'xez-mac-'));
+    process.env.XEZ_HOME = home;
   });
   afterEach(() => {
-    if (original === undefined) delete process.env.CEZ_HOME;
-    else process.env.CEZ_HOME = original;
+    if (original === undefined) delete process.env.XEZ_HOME;
+    else process.env.XEZ_HOME = original;
     rmSync(home, { recursive: true, force: true });
   });
 
@@ -30,24 +30,24 @@ describe('macosx-ngrok', () => {
   });
 
   it('launchdPlist embeds the port, basic-auth and reserved domain', () => {
-    const p = launchdPlist(4321, 'ops:hunter2', 'cezar.ngrok.app');
+    const p = launchdPlist(4321, 'ops:hunter2', 'xezar.ngrok.app');
     expect(p).toContain('<string>http</string>');
     expect(p).toContain('<string>4321</string>');
     expect(p).toContain('<string>ops:hunter2</string>');
-    expect(p).toContain('<string>cezar.ngrok.app</string>');
+    expect(p).toContain('<string>xezar.ngrok.app</string>');
     expect(p).toContain('<key>KeepAlive</key>');
   });
 
-  it('cezarLaunchdPlist embeds the argv, port, workdir and env', () => {
-    const p = cezarLaunchdPlist('/repo', 4321, ['/usr/local/bin/node', '/app/dist/index.js']);
+  it('xezarLaunchdPlist embeds the argv, port, workdir and env', () => {
+    const p = xezarLaunchdPlist('/repo', 4321, ['/usr/local/bin/node', '/app/dist/index.js']);
     expect(p).toContain('<string>/usr/local/bin/node</string>');
     expect(p).toContain('<string>/app/dist/index.js</string>');
     expect(p).toContain('<string>serve</string>');
     expect(p).toContain('<string>--no-open</string>');
     expect(p).toContain('<string>4321</string>');
     expect(p).toContain('<string>/repo</string>');
-    expect(p).toContain('<key>CEZ_REMOTE</key>');
-    expect(p).toContain('<string>ai.cezar.cockpit</string>');
+    expect(p).toContain('<key>XEZ_REMOTE</key>');
+    expect(p).toContain('<string>ai.xezar.cockpit</string>');
   });
 
   it('dry-run install walks every step and server-uninstall reverses it', async () => {
@@ -83,14 +83,14 @@ describe('macosx-ngrok', () => {
 
 describe('macosx-ngrok review fixes (PR #423)', () => {
   let home: string;
-  const original = process.env.CEZ_HOME;
+  const original = process.env.XEZ_HOME;
   beforeEach(() => {
-    home = mkdtempSync(join(tmpdir(), 'cez-mac-fix-'));
-    process.env.CEZ_HOME = home;
+    home = mkdtempSync(join(tmpdir(), 'xez-mac-fix-'));
+    process.env.XEZ_HOME = home;
   });
   afterEach(() => {
-    if (original === undefined) delete process.env.CEZ_HOME;
-    else process.env.CEZ_HOME = original;
+    if (original === undefined) delete process.env.XEZ_HOME;
+    else process.env.XEZ_HOME = original;
     rmSync(home, { recursive: true, force: true });
   });
 
@@ -155,7 +155,7 @@ describe('macosx-ngrok review fixes (PR #423)', () => {
     process.env.HOME = home; // node's os.homedir() honors $HOME on posix
     try {
       await ngrokStepOf().run(ctxFor(runner));
-      const p = join(home, 'Library', 'LaunchAgents', 'ai.cezar.ngrok.plist');
+      const p = join(home, 'Library', 'LaunchAgents', 'ai.xezar.ngrok.plist');
       const mode = statSync(p).mode & 0o777;
       expect(mode).toBe(0o600);
       expect(readFileSync(p, 'utf8')).toContain('ops:longenough'); // creds live here → hence 0600
@@ -197,7 +197,7 @@ describe('macosx-ngrok review fixes (PR #423)', () => {
     process.env.HOME = home;
     try {
       await ngrokStepOf().undo(ctxFor(runner), null);
-      expect(commands.some((c) => c[0] === 'bootout' && (c[1] ?? '').includes('ai.cezar.ngrok'))).toBe(true);
+      expect(commands.some((c) => c[0] === 'bootout' && (c[1] ?? '').includes('ai.xezar.ngrok'))).toBe(true);
     } finally {
       if (oldHome === undefined) delete process.env.HOME;
       else process.env.HOME = oldHome;
@@ -235,8 +235,8 @@ describe('macosx-ngrok review fixes (PR #423)', () => {
       else process.env.HOME = oldHome;
     }
     expect(domainValidate).toBeDefined();
-    expect(domainValidate?.('https://cezar.ngrok.app')).toBeDefined();
-    expect(domainValidate?.('cezar.ngrok.app')).toBeUndefined();
+    expect(domainValidate?.('https://xezar.ngrok.app')).toBeDefined();
+    expect(domainValidate?.('xezar.ngrok.app')).toBeUndefined();
     expect(domainValidate?.('')).toBeUndefined(); // blank = ephemeral, allowed
   });
 });

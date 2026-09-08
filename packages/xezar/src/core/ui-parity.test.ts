@@ -1,8 +1,7 @@
 /**
- * Backend-parity roll-up — the spec's hard rule made executable.
+ * Backend-parity roll-up — the hard rule made executable (`AGENT_PROTOCOL.md` §6).
  *
- * The spec (`.ai/specs/2026-07-14-cockpit-ui-redesign.md` §"Backend parity
- * requirement") demands that every capability in the parity matrix is
+ * Every capability in the parity matrix must be
  * emitted by EVERY backend, so the GUI degrades per-capability, never
  * per-backend. This table test asserts it over the golden fixtures' expected
  * outputs (the hand-verified wire-faithful contract for each mapper): if a

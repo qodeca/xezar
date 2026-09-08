@@ -102,7 +102,7 @@ export async function planChain(repoRoot: string, task: string): Promise<PlanRes
   };
 }
 
-/** The `[cez-planner]` marker lets the CEZ_DRY_RUN mock recognize a planning call. */
+/** The `[xez-planner]` marker lets the XEZ_DRY_RUN mock recognize a planning call. */
 function buildPlannerPrompt(task: string, skills: Skill[], verifyCommands: string[]): string {
   const catalog = skills.length
     ? skills.map((s) => `- ${s.name} — ${s.description ?? ''}`).join('\n')
@@ -111,7 +111,7 @@ function buildPlannerPrompt(task: string, skills: Skill[], verifyCommands: strin
     ? verifyCommands.map((c) => `- ${c}`).join('\n')
     : '(none detected)';
   return [
-    '[cez-planner] Plan a chain of steps for this task.',
+    '[xez-planner] Plan a chain of steps for this task.',
     '',
     'Task:',
     task,
@@ -217,7 +217,7 @@ function uniqueId(base: string, used: Set<string>): string {
 }
 
 /**
- * Best-effort structured-output extraction (trimmed from @cezar/core's
+ * Best-effort structured-output extraction (trimmed from @xezar/core's
  * `parseStructured`): try the whole string after stripping a ```json fence,
  * then scan for balanced top-level `{...}` blocks and return the first that
  * validates. Null when nothing does — the caller decides how to recover.

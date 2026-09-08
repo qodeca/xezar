@@ -165,14 +165,14 @@ describe('sudoStep secret channel (stdin, never argv)', () => {
     });
     await sudoStep(ctx, {
       description: 'write credentials',
-      command: 'cat > /etc/cezar/htpasswd && chmod 0640 /etc/cezar/htpasswd',
+      command: 'cat > /etc/xezar/htpasswd && chmod 0640 /etc/xezar/htpasswd',
       input: 'ops:$apr1$secret-hash\n',
       inputLabel: 'credential line',
       verify: async () => true,
     });
     expect(interactive).toHaveBeenCalledWith(
       'sudo',
-      ['bash', '-lc', 'cat > /etc/cezar/htpasswd && chmod 0640 /etc/cezar/htpasswd'],
+      ['bash', '-lc', 'cat > /etc/xezar/htpasswd && chmod 0640 /etc/xezar/htpasswd'],
       { input: 'ops:$apr1$secret-hash\n' },
     );
     const argv = interactive.mock.calls[0]?.[1] ?? [];
@@ -189,7 +189,7 @@ describe('sudoStep secret channel (stdin, never argv)', () => {
     const ctx = makeCtx({ ui });
     await sudoStep(ctx, {
       description: 'write credentials',
-      command: 'cat > /etc/cezar/htpasswd',
+      command: 'cat > /etc/xezar/htpasswd',
       input: 'ops:$apr1$secret-hash\n',
       inputLabel: 'credential line',
       verify: async () => true,

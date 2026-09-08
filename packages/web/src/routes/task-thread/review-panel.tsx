@@ -11,7 +11,7 @@ import { useEffect, useRef, useState } from 'react'
 
 import { ApiError, continueRun, createRunPr } from '@/api/client'
 import { queryKeys } from '@/api/queries'
-import type { ApiRun, RunStatus } from '@open-mercato/cezar-api-client'
+import type { ApiRun, RunStatus } from '@qodeca/xezar-api-client'
 import { TwinkleBackdrop } from '@/components/centered-state'
 import { RunDiff } from '@/components/run-diff'
 import { Button } from '@/components/ui/button'
@@ -26,7 +26,7 @@ import { useContinuationProvider } from './continuation-provider'
 import { useFinishRun } from './use-finish-run'
 
 /**
- * The review gate (spec 009, §"Task thread" review bullet) on the new surface — cezar's core
+ * The review gate (spec 009, §"Task thread" review bullet) on the new surface — xezar's core
  * promise that nothing auto-merges. The flow is UNCHANGED from web/app.js `renderReviewPanel`;
  * only the surface is redesigned: a violet review banner, the diff as collapsible per-file
  * sections (`RunDiff` in components/run-diff.tsx — shared with the variants compare view),

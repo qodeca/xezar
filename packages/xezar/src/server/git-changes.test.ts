@@ -50,8 +50,8 @@ function gAt(dir: string, iso: string, ...args: string[]): string {
 /** Fresh repo with identity configured and one initial commit on `main`. */
 function initRepo(dir: string): void {
   g(dir, 'init', '-b', 'main');
-  g(dir, 'config', 'user.email', 'test@cezar.local');
-  g(dir, 'config', 'user.name', 'cezar-test');
+  g(dir, 'config', 'user.email', 'test@xezar.local');
+  g(dir, 'config', 'user.name', 'xezar-test');
   g(dir, 'config', 'commit.gpgsign', 'false');
 }
 
@@ -59,7 +59,7 @@ describe('collectChanges — structured diff vs base', () => {
   let dir: string;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'cez-changes-'));
+    dir = mkdtempSync(join(tmpdir(), 'xez-changes-'));
     initRepo(dir);
   });
 
@@ -149,13 +149,13 @@ describe('collectChanges — structured diff vs base', () => {
     writeFileSync(join(dir, 'reviewed.txt'), 'resolved locally by this review task\n');
     g(dir, 'add', 'reviewed.txt');
 
-    const result = await collectChanges(dir, 'main', { taskBranch: 'cez/task1234' });
+    const result = await collectChanges(dir, 'main', { taskBranch: 'xez/task1234' });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.changes.files.map((file) => file.path)).toEqual(['reviewed.txt']);
     expect(result.changes.repointedHead).toEqual({
       headBranch: 'review/pr-42',
-      taskBranch: 'cez/task1234',
+      taskBranch: 'xez/task1234',
     });
   });
 
@@ -179,7 +179,7 @@ describe('collectChanges — structured diff vs base', () => {
     writeFileSync(join(dir, 'wip.txt'), 'uncommitted, also the run\'s\n');
 
     const result = await collectChanges(dir, 'main', {
-      taskBranch: 'cez/task1234',
+      taskBranch: 'xez/task1234',
       runStartedAt: '2026-06-01T00:00:00Z',
     });
     expect(result.ok).toBe(true);
@@ -187,7 +187,7 @@ describe('collectChanges — structured diff vs base', () => {
     expect(result.changes.files.map((file) => file.path).sort()).toEqual(['mine.txt', 'wip.txt']);
     expect(result.changes.repointedHead).toEqual({
       headBranch: 'review/pr-42',
-      taskBranch: 'cez/task1234',
+      taskBranch: 'xez/task1234',
     });
   });
 
@@ -195,12 +195,12 @@ describe('collectChanges — structured diff vs base', () => {
     writeFileSync(join(dir, 'base.txt'), 'base\n');
     g(dir, 'add', '-A');
     g(dir, 'commit', '-m', 'base');
-    g(dir, 'checkout', '-b', 'cez/task1234');
+    g(dir, 'checkout', '-b', 'xez/task1234');
     writeFileSync(join(dir, 'task.txt'), 'task change\n');
     g(dir, 'add', '-A');
     g(dir, 'commit', '-m', 'task change');
 
-    const result = await collectChanges(dir, 'main', { taskBranch: 'cez/task1234' });
+    const result = await collectChanges(dir, 'main', { taskBranch: 'xez/task1234' });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.changes.files.map((file) => file.path)).toEqual(['task.txt']);
@@ -266,7 +266,7 @@ describe('collectChanges — structured diff vs base', () => {
 
     const result = await collectChanges(dir, 'main', {
       intentToAdd: false,
-      taskBranch: 'cez/task1234',
+      taskBranch: 'xez/task1234',
       runStartedAt: '2026-06-01T00:00:00Z',
     });
     expect(result.ok).toBe(true);
@@ -351,7 +351,7 @@ describe('patchByPath — maps a diff section to the file it describes', () => {
 describe('collectRunCommits — the run branch commits since base', () => {
   let dir: string;
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'cez-runcommits-'));
+    dir = mkdtempSync(join(tmpdir(), 'xez-runcommits-'));
     initRepo(dir);
   });
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
@@ -376,7 +376,7 @@ describe('collectRunCommits — the run branch commits since base', () => {
       'first task commit',
     ]);
     // The base commit is excluded, and every commit carries a full sha + author.
-    expect(result.commits.every((c) => /^[0-9a-f]{40}$/.test(c.sha) && c.author === 'cezar-test')).toBe(true);
+    expect(result.commits.every((c) => /^[0-9a-f]{40}$/.test(c.sha) && c.author === 'xezar-test')).toBe(true);
   });
 
   it('is empty (not an error) when the branch has no commits past base', async () => {
@@ -393,7 +393,7 @@ describe('readWorktreePath — Files tab browsing', () => {
   let dir: string;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'cez-files-'));
+    dir = mkdtempSync(join(tmpdir(), 'xez-files-'));
     mkdirSync(join(dir, '.git')); // stand-in for repo internals
     mkdirSync(join(dir, 'sub'));
     writeFileSync(join(dir, 'a.txt'), 'alpha\n');
@@ -446,7 +446,7 @@ describe('readWorktreePath — Files tab browsing', () => {
 
   it('rejects reads THROUGH an intermediate symlinked directory (#blocker-symlink-traversal)', async () => {
     // A secret file outside the worktree, reached via a symlinked directory inside it.
-    const outside = mkdtempSync(join(tmpdir(), 'cez-secret-'));
+    const outside = mkdtempSync(join(tmpdir(), 'xez-secret-'));
     writeFileSync(join(outside, 'credentials.txt'), 'SECRET\n');
     symlinkSync(outside, join(dir, 'linkdir'));
 
@@ -513,14 +513,14 @@ describe('session git API routes', () => {
   let repoBaseSha: string;
 
   beforeEach(() => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-gitapi-'));
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-gitapi-'));
     initRepo(repoRoot);
     writeFileSync(join(repoRoot, '.gitignore'), '.ai/\nwt/\n');
     writeFileSync(join(repoRoot, 'root-base.txt'), 'base\n');
     g(repoRoot, 'add', '-A');
     g(repoRoot, 'commit', '-m', 'root base');
     repoBaseSha = g(repoRoot, 'rev-parse', 'HEAD').trim();
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     app = createApp({
       repoRoot,
       store,
@@ -634,7 +634,7 @@ describe('session git API routes', () => {
     const removed = store.createRun({ title: 'removed', workflow: 'quick-task', task: 'removed', steps: [] });
     store.updateRun(removed.id, {
       worktreePath: join(repoRoot, 'removed-worktree'),
-      branch: 'cez/removed',
+      branch: 'xez/removed',
       baseBranch: repoBaseSha,
     });
     store.updateRun(removed.id, { worktreePath: undefined, branch: undefined });
@@ -845,7 +845,7 @@ describe('session git API routes', () => {
   });
 
   it('POST git/push sets upstream on first push to a real remote', async () => {
-    const remote = mkdtempSync(join(tmpdir(), 'cez-remote-'));
+    const remote = mkdtempSync(join(tmpdir(), 'xez-remote-'));
     try {
       execFileSync('git', ['init', '--bare', remote], { encoding: 'utf8' });
       g(worktree, 'remote', 'add', 'origin', remote);
@@ -870,15 +870,15 @@ describe('repo git API routes (R5 Step 1.3 — main working tree)', () => {
   let store: RunStore;
 
   beforeEach(() => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-repoapi-'));
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-repoapi-'));
     initRepo(repoRoot);
-    // The RunStore lives inside the repo (.ai/cezar) — ignore it so it never
+    // The RunStore lives inside the repo (.ai/xezar) — ignore it so it never
     // shows up in /api/v1/repo/changes.
     writeFileSync(join(repoRoot, '.gitignore'), '.ai/\n');
     writeFileSync(join(repoRoot, 'base.txt'), 'base\n');
     g(repoRoot, 'add', '-A');
     g(repoRoot, 'commit', '-m', 'base');
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     app = createApp({
       repoRoot,
       store,
@@ -1019,7 +1019,7 @@ describe('repo git API routes (R5 Step 1.3 — main working tree)', () => {
     };
     expect(body.sha).toBe(sha);
     expect(body.subject).toBe('second: edit + add');
-    expect(body.author).toBe('cezar-test');
+    expect(body.author).toBe('xezar-test');
     expect(body.when.length).toBeGreaterThan(0);
     const byPath = new Map(body.files.map((f) => [f.path, f]));
     expect(byPath.get('base.txt')).toMatchObject({ status: 'modified', adds: 1, dels: 1 });
@@ -1127,7 +1127,7 @@ describe('createOrSwitchBranch — dash-guard on both operands (#431)', () => {
   let dir: string;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'cez-dashguard-'));
+    dir = mkdtempSync(join(tmpdir(), 'xez-dashguard-'));
     initRepo(dir);
     writeFileSync(join(dir, 'a.txt'), 'a\n');
     g(dir, 'add', '-A');
@@ -1159,7 +1159,7 @@ describe('createOrSwitchBranch — dash-guard on both operands (#431)', () => {
 
 describe('commitAll / pushCurrentBranch — direct degradation paths', () => {
   it('commitAll on a non-repo dir fails with a reason, never throws', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'cez-norepo-'));
+    const dir = mkdtempSync(join(tmpdir(), 'xez-norepo-'));
     try {
       const res = await commitAll(dir, 'msg');
       expect(res.ok).toBe(false);
@@ -1170,7 +1170,7 @@ describe('commitAll / pushCurrentBranch — direct degradation paths', () => {
   });
 
   it('pushCurrentBranch reports detached HEAD as a reason', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'cez-detached-'));
+    const dir = mkdtempSync(join(tmpdir(), 'xez-detached-'));
     try {
       initRepo(dir);
       writeFileSync(join(dir, 'a.txt'), 'a\n');

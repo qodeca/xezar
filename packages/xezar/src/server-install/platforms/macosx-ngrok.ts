@@ -13,7 +13,7 @@ import { brewInstallTool, brewRemoveHint, depCheckStep, HOSTNAME_RE, owned, shar
  * different platform — same engine, different steps.
  */
 
-const PLIST_LABEL = 'ai.cezar.ngrok';
+const PLIST_LABEL = 'ai.xezar.ngrok';
 const plistPath = (): string => join(homedir(), 'Library', 'LaunchAgents', `${PLIST_LABEL}.plist`);
 
 /**
@@ -46,7 +46,7 @@ export function launchdPlist(port: number, basicAuth: string, domain?: string, n
     .map((a) => `      <string>${escapeXml(a)}</string>`)
     .join('\n');
   return `<?xml version="1.0" encoding="UTF-8"?>
-<!-- Managed by cezar server-install — do not edit by hand. -->
+<!-- Managed by xezar server-install — do not edit by hand. -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
   <dict>
@@ -100,10 +100,10 @@ const ngrokStep: InstallStep = {
     // 3) reserved domain (optional → ephemeral URL)
     const domainInput = await ctx.ui.text({
       message: 'Reserved ngrok domain (leave blank for an ephemeral URL that changes on restart)',
-      placeholder: 'cezar.ngrok.app',
+      placeholder: 'xezar.ngrok.app',
       // Bare hostname only — `https://…` here used to yield `--domain https://…`
       // in the plist and a `https://https://…` publicUrl.
-      validate: (v) => (!v.trim() || HOSTNAME_RE.test(v.trim()) ? undefined : 'enter a bare hostname (no scheme), e.g. cezar.ngrok.app'),
+      validate: (v) => (!v.trim() || HOSTNAME_RE.test(v.trim()) ? undefined : 'enter a bare hostname (no scheme), e.g. xezar.ngrok.app'),
     });
     if (domainInput === CANCEL) throw new StepCancelled();
     // Guard against `String(undefined)` → `"undefined"` — @clack/prompts can
@@ -188,14 +188,16 @@ const ngrokStep: InstallStep = {
   },
 };
 
-/* ── autostart: run cezar itself as a launchd agent ─────────────────── */
+/* ── autostart: run xezar itself as a launchd agent ─────────────────── */
 
-const CEZAR_PLIST_LABEL = 'ai.cezar.cockpit';
-const OFFICIAL_CLI_PKG = 'cezar-cli';
-const cezarPlistPath = (): string => join(homedir(), 'Library', 'LaunchAgents', `${CEZAR_PLIST_LABEL}.plist`);
+const XEZAR_PLIST_LABEL = 'ai.xezar.cockpit';
+const OFFICIAL_CLI_PKG = '@qodeca/xezar';
+/** The commands that package puts on PATH — a package NAME is not a command name. */
+const OFFICIAL_CLI_BINS = ['xezar', 'xez'];
+const xezarPlistPath = (): string => join(homedir(), 'Library', 'LaunchAgents', `${XEZAR_PLIST_LABEL}.plist`);
 
-/** Resolve the argv array for the cezar launchd agent, mirroring how the CLI was launched. */
-async function resolveCezarArgv(ctx: InstallContext): Promise<string[]> {
+/** Resolve the argv array for the xezar launchd agent, mirroring how the CLI was launched. */
+async function resolveXezarArgv(ctx: InstallContext): Promise<string[]> {
   const node = process.execPath;
   const pkgRoot = resolve(fileURLToPath(new URL('../../..', import.meta.url)));
   const entry = join(pkgRoot, 'dist', 'index.js');
@@ -204,32 +206,33 @@ async function resolveCezarArgv(ctx: InstallContext): Promise<string[]> {
   if (/[/\\]_npx[/\\]/.test(pkgRoot)) return [npxPath, '--yes', OFFICIAL_CLI_PKG];
   if (ctx.dryRun || existsSync(entry)) return [node, entry];
 
-  const out = (await ctx.runner.capture('bash', ['-lc', `command -v ${OFFICIAL_CLI_PKG} || command -v cezar`])).stdout.trim();
+  const lookup = OFFICIAL_CLI_BINS.map((bin) => `command -v ${bin}`).join(' || ');
+  const out = (await ctx.runner.capture('bash', ['-lc', lookup])).stdout.trim();
   const globalBin = out.split('\n').map((s) => s.trim()).filter(Boolean).pop();
   if (globalBin) return [node, globalBin];
 
-  // No runnable cezar → installing a KeepAlive agent would make launchd
+  // No runnable xezar → installing a KeepAlive agent would make launchd
   // respawn-throttle a permanently failing job across reboots. Fail the step.
   throw new StepAborted(
-    `could not locate a runnable cezar (${entry} missing, no global ${OFFICIAL_CLI_PKG}) — ` +
+    `could not locate a runnable xezar (${entry} missing, no global ${OFFICIAL_CLI_BINS.join(' / ')}) — ` +
       `install it (npm i -g ${OFFICIAL_CLI_PKG}) or build the checkout, then re-run with --reconfigure autostart`,
   );
 }
 
-/** launchd agent that keeps the cezar cockpit running on the given port. */
-export function cezarLaunchdPlist(repoRoot: string, port: number, argv: string[]): string {
-  // Give the agent the operator's PATH so cezar can spawn claude/gh/codex.
+/** launchd agent that keeps the xezar cockpit running on the given port. */
+export function xezarLaunchdPlist(repoRoot: string, port: number, argv: string[]): string {
+  // Give the agent the operator's PATH so xezar can spawn claude/gh/codex.
   const pathDirs = [dirname(process.execPath), ...(process.env.PATH ?? '').split(':'), '/usr/local/bin', '/usr/bin', '/bin']
     .filter((d, i, a) => d && d !== '.' && a.indexOf(d) === i);
   const fullArgv = [...argv, 'serve', '--no-open', '--port', String(port)];
   const argXml = fullArgv.map((a) => `      <string>${escapeXml(a)}</string>`).join('\n');
   return `<?xml version="1.0" encoding="UTF-8"?>
-<!-- Managed by cezar server-install — do not edit by hand. -->
+<!-- Managed by xezar server-install — do not edit by hand. -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
   <dict>
     <key>Label</key>
-    <string>${CEZAR_PLIST_LABEL}</string>
+    <string>${XEZAR_PLIST_LABEL}</string>
     <key>ProgramArguments</key>
     <array>
 ${argXml}
@@ -238,7 +241,7 @@ ${argXml}
     <string>${escapeXml(repoRoot)}</string>
     <key>EnvironmentVariables</key>
     <dict>
-      <key>CEZ_REMOTE</key>
+      <key>XEZ_REMOTE</key>
       <string>1</string>
       <key>PATH</key>
       <string>${escapeXml(pathDirs.join(':'))}</string>
@@ -254,34 +257,34 @@ ${argXml}
 
 const autostartStep: InstallStep = {
   id: 'autostart',
-  title: 'Run cezar as a service (launchd — starts now + on boot)',
+  title: 'Run xezar as a service (launchd — starts now + on boot)',
   async check(ctx) {
     if (ctx.dryRun) return false;
-    return verifyCommand(ctx, 'test', ['-f', cezarPlistPath()]);
+    return verifyCommand(ctx, 'test', ['-f', xezarPlistPath()]);
   },
   async run(ctx): Promise<{ artifacts: StepArtifact[] }> {
-    const argv = await resolveCezarArgv(ctx);
-    const path = cezarPlistPath();
+    const argv = await resolveXezarArgv(ctx);
+    const path = xezarPlistPath();
     if (ctx.dryRun) {
       ctx.ui.info(`DRY RUN — would write ${path} and launchctl bootstrap it.`);
     } else {
       mkdirSync(join(homedir(), 'Library', 'LaunchAgents'), { recursive: true });
-      writeFileSync(path, cezarLaunchdPlist(ctx.repoRoot, ctx.state.primaryPort, argv), { encoding: 'utf8', mode: 0o600 });
+      writeFileSync(path, xezarLaunchdPlist(ctx.repoRoot, ctx.state.primaryPort, argv), { encoding: 'utf8', mode: 0o600 });
       chmodSync(path, 0o600);
       const uid = process.getuid ? process.getuid() : 0;
-      await ctx.runner.capture('launchctl', ['bootout', `gui/${uid}/${CEZAR_PLIST_LABEL}`]);
-      await bootstrapVerified(ctx, uid, CEZAR_PLIST_LABEL, path, 'the cezar cockpit agent');
+      await ctx.runner.capture('launchctl', ['bootout', `gui/${uid}/${XEZAR_PLIST_LABEL}`]);
+      await bootstrapVerified(ctx, uid, XEZAR_PLIST_LABEL, path, 'the xezar cockpit agent');
     }
-    return { artifacts: [owned('launchd', { name: CEZAR_PLIST_LABEL, path })] };
+    return { artifacts: [owned('launchd', { name: XEZAR_PLIST_LABEL, path })] };
   },
   async undo(ctx, created) {
     // Static label/path fallback — see the ngrok step's undo.
-    const path = (created?.artifacts ?? []).find((a) => a.type === 'launchd')?.path ?? cezarPlistPath();
+    const path = (created?.artifacts ?? []).find((a) => a.type === 'launchd')?.path ?? xezarPlistPath();
     if (ctx.dryRun) {
-      ctx.ui.info('DRY RUN — would launchctl bootout and remove the cezar agent.');
+      ctx.ui.info('DRY RUN — would launchctl bootout and remove the xezar agent.');
     } else {
       const uid = process.getuid ? process.getuid() : 0;
-      await ctx.runner.capture('launchctl', ['bootout', `gui/${uid}/${CEZAR_PLIST_LABEL}`]);
+      await ctx.runner.capture('launchctl', ['bootout', `gui/${uid}/${XEZAR_PLIST_LABEL}`]);
       rmSync(path, { force: true });
     }
   },
@@ -335,15 +338,15 @@ export const macosxNgrok: PlatformStrategy = {
     ];
   },
   async redeploy(ctx: InstallContext) {
-    // Restart both the cezar cockpit and the ngrok tunnel, then re-verify.
+    // Restart both the xezar cockpit and the ngrok tunnel, then re-verify.
     if (ctx.dryRun) {
-      ctx.ui.info('DRY RUN — would restart the cezar and ngrok launchd agents and re-verify.');
+      ctx.ui.info('DRY RUN — would restart the xezar and ngrok launchd agents and re-verify.');
       return;
     }
     const uid = process.getuid ? process.getuid() : 0;
-    ctx.ui.info('Redeploying — restarting the cezar cockpit.');
-    const cezarCode = await ctx.runner.interactive('launchctl', ['kickstart', '-k', `gui/${uid}/${CEZAR_PLIST_LABEL}`]);
-    if (cezarCode !== 0) ctx.ui.warn(`launchctl kickstart returned non-zero — check \`launchctl print gui/${uid}/${CEZAR_PLIST_LABEL}\`.`);
+    ctx.ui.info('Redeploying — restarting the xezar cockpit.');
+    const xezarCode = await ctx.runner.interactive('launchctl', ['kickstart', '-k', `gui/${uid}/${XEZAR_PLIST_LABEL}`]);
+    if (xezarCode !== 0) ctx.ui.warn(`launchctl kickstart returned non-zero — check \`launchctl print gui/${uid}/${XEZAR_PLIST_LABEL}\`.`);
     ctx.ui.info('Redeploying — restarting the ngrok tunnel.');
     const code = await ctx.runner.interactive('launchctl', ['kickstart', '-k', `gui/${uid}/${PLIST_LABEL}`]);
     if (code !== 0) ctx.ui.warn(`launchctl kickstart returned non-zero — check \`launchctl print gui/${uid}/${PLIST_LABEL}\`.`);

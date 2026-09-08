@@ -54,7 +54,7 @@ export class OpencodeServerRunner implements AgentRunner {
   private lastSession: OpencodeSession | null = null;
 
   constructor(opts: OpencodeRunnerOptions = {}) {
-    this.bin = opts.bin ?? process.env.CEZ_OPENCODE_BIN ?? 'opencode';
+    this.bin = opts.bin ?? process.env.XEZ_OPENCODE_BIN ?? 'opencode';
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_RUN_TIMEOUT_MS;
   }
 
@@ -319,7 +319,7 @@ class OpencodeSession implements AgentSession {
   }
 
   private async bootstrap(): Promise<void> {
-    const created = await this.http('POST', '/session', { title: 'cezar task' });
+    const created = await this.http('POST', '/session', { title: 'xezar task' });
     this.sessionId = stringField(created, 'id');
     if (!this.sessionId) throw new Error('opencode did not return a session id');
     this.emit({ type: 'session', sessionId: this.sessionId });

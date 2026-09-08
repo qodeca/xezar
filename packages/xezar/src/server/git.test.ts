@@ -20,7 +20,7 @@ describe('getRepoInfo — remote discovery', () => {
   let dir: string;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'cez-git-'));
+    dir = mkdtempSync(join(tmpdir(), 'xez-git-'));
     g(dir, 'init', '-q', '-b', 'main');
     g(dir, '-c', 'user.email=t@test', '-c', 'user.name=t', 'commit', '--allow-empty', '-q', '-m', 'init');
   });
@@ -65,7 +65,7 @@ describe('getRepoInfo — remote discovery', () => {
   });
 
   it('returns null outside a git repository', async () => {
-    const bare = mkdtempSync(join(tmpdir(), 'cez-nogit-'));
+    const bare = mkdtempSync(join(tmpdir(), 'xez-nogit-'));
     try {
       expect(await getRepoInfo(bare)).toBeNull();
       expect(await getHeadCommit(bare)).toBeNull();

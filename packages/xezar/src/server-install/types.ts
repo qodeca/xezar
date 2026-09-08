@@ -18,7 +18,7 @@ export type StepStatus = (typeof STEP_STATUSES)[number];
 
 /**
  * One thing a step created, tagged by who owns its removal:
- *  - `owned`  — cezar authored it and nothing else uses it → uninstall removes it.
+ *  - `owned`  — xezar authored it and nothing else uses it → uninstall removes it.
  *  - `shared` — a system tool the operator may now depend on (gh, agent CLIs,
  *    certbot + its renewal timer, the cert itself) → uninstall lists it with a
  *    manual removal hint instead of yanking it.
@@ -46,7 +46,7 @@ export type StepCreated = z.infer<typeof stepCreatedSchema>;
 
 /**
  * Persisted per-step outcome — the `steps` map in `server.json`. A status this
- * version doesn't know (written by a newer cezar) degrades to `failed`, which
+ * version doesn't know (written by a newer xezar) degrades to `failed`, which
  * keeps the record AND keeps it on uninstall's undo path — never to a parse
  * failure that would discard the whole ledger.
  */
@@ -57,15 +57,15 @@ export const stepOutcomeSchema = z.object({
 export type StepOutcome = z.infer<typeof stepOutcomeSchema>;
 
 /**
- * `~/.cezar/server.json` — host-level, install-once. Additive-safe: every new
- * field is optional / defaulted so an older cezar still parses a newer file
+ * `~/.xezar/server.json` — host-level, install-once. Additive-safe: every new
+ * field is optional / defaulted so an older xezar still parses a newer file
  * (BACKWARD_COMPATIBILITY cross-version-state rule). No secrets live here.
  */
 export const serverStateSchema = z
   .object({
     schema: z.literal(1).catch(1),
     /**
-     * Free string, not an enum: a `server.json` written by a newer cezar with a
+     * Free string, not an enum: a `server.json` written by a newer xezar with a
      * platform this version doesn't ship must still parse — the registry lookup
      * is where "unknown platform" is decided, with the ledger intact.
      */
@@ -73,7 +73,7 @@ export const serverStateSchema = z
     /**
      * Instance id (slug) this record belongs to — `default` for the original
      * single-cockpit host, or a domain-derived slug for a named instance under
-     * `~/.cezar/server-instances/`. Self-describing so tooling can list what a
+     * `~/.xezar/server-instances/`. Self-describing so tooling can list what a
      * host runs without re-deriving it from the filename.
      */
     instance: z.string().min(1).optional().catch(undefined),
@@ -83,7 +83,7 @@ export const serverStateSchema = z
     /**
      * External-reverse-proxy mode (`--external-proxy`): the box already has a
      * front (Dokploy/Traefik, Coolify, Caddy, an existing nginx) that owns
-     * :80/:443 and provides TLS + auth. cezar then installs NO nginx and NO
+     * :80/:443 and provides TLS + auth. xezar then installs NO nginx and NO
      * cert of its own — just the service — and that proxy routes to `bindHost`.
      */
     externalProxy: z.boolean().optional().catch(undefined),
@@ -95,7 +95,7 @@ export const serverStateSchema = z
     bindHost: z.string().optional().catch(undefined),
     /** Flips true only when every required step is `done`. */
     installed: z.boolean().default(false).catch(false),
-    /** True when this record was written by a CEZ_DRY_RUN preview — a real
+    /** True when this record was written by a XEZ_DRY_RUN preview — a real
      * install/uninstall treats it as no record at all (self-healing). */
     dryRun: z.boolean().optional().catch(undefined),
     /** ISO stamp set by the caller (Date.now is unavailable in some contexts). */
@@ -113,7 +113,7 @@ export const serverStateSchema = z
       .default({})
       .catch({}),
   })
-  // Unknown top-level fields written by a newer cezar survive a load+save
+  // Unknown top-level fields written by a newer xezar survive a load+save
   // round-trip — the file's own additive-safe contract.
   .passthrough();
 export type ServerState = z.infer<typeof serverStateSchema>;
@@ -129,7 +129,7 @@ export function freshServerState(): ServerState {
  * engine) never import the TUI library. Prompt methods resolve to the
  * `CANCEL` sentinel instead of throwing when the user aborts.
  */
-export const CANCEL = Symbol('cezar.ui.cancel');
+export const CANCEL = Symbol('xezar.ui.cancel');
 export type Cancellable<T> = T | typeof CANCEL;
 
 export interface SpinnerHandle {
@@ -186,7 +186,7 @@ export interface CommandResult {
 /**
  * Command execution seam. The engine supplies a real implementation; tests
  * inject a fake so `sudoStep` / `verifyCommand` are exercised without touching
- * the host. In `CEZ_DRY_RUN`, side-effecting runs are short-circuited by the
+ * the host. In `XEZ_DRY_RUN`, side-effecting runs are short-circuited by the
  * step helpers, not the runner.
  */
 export interface Runner {
@@ -217,15 +217,15 @@ export interface InstallContext {
    * host. Steps read this to build their instance-scoped paths.
    */
   instance: string;
-  /** Atomically persist `state` to this instance's `~/.cezar` record. */
+  /** Atomically persist `state` to this instance's `~/.xezar` record. */
   save(): Promise<void>;
-  /** CEZ_DRY_RUN — no real sudo, package installs, or network. */
+  /** XEZ_DRY_RUN — no real sudo, package installs, or network. */
   dryRun: boolean;
   /** `--yes`: auto-accept safe defaults; never invents a sudo password. */
   assumeYes: boolean;
   /** Step ids the user asked to force-rerun via `--reconfigure`. */
   reconfigure: ReadonlySet<string>;
-  /** Repo root the autostart service should run `cezar serve` in. */
+  /** Repo root the autostart service should run `xezar serve` in. */
   repoRoot: string;
   /** ISO timestamp for this run (passed in — Date.now guard). */
   now: string;
@@ -268,8 +268,8 @@ export interface PlatformStrategy {
   /** Ordered steps for this platform. */
   steps(ctx: InstallContext): InstallStep[];
   /**
-   * Reload the running cockpit to pick up a new cezar version (a fresh local
-   * build or a newly published `cezar-cli`) — the standardized `server-deploy`
+   * Reload the running cockpit to pick up a new xezar version (a fresh local
+   * build or a newly published `@qodeca/xezar`) — the standardized `server-deploy`
    * entry point. Typically: restart the service + re-verify. Throw `StepAborted`
    * to report a failed deploy.
    */

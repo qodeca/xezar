@@ -37,27 +37,30 @@ export function isPublishable(pkg: ManifestLike): boolean {
  * Every manifest a release stamps.
  *
  * The order of the fields is the order they must be PUBLISHED in, because each one depends on
- * the one before it: the alias is a bin-shim over the service, and the service (from the phase
- * where it stops merely testing against the client and starts importing it) depends on the
- * api-client. Publishing the dependent first would briefly advertise a version of its
- * dependency that does not exist on the registry yet.
+ * the one before it: the service (from the phase where it stops merely testing against the
+ * client and starts importing it) depends on the api-client, which depends on the contract.
+ * Publishing the dependent first would briefly advertise a version of its dependency that does
+ * not exist on the registry yet.
+ *
+ * There is exactly ONE published package in this set — the scoped service, `@qodeca/xezar`.
+ * The unscoped bin alias this pipeline used to carry was retired with the rename: a second
+ * distribution name is a second thing to keep in lockstep and a second way for a user to end up
+ * on a version the release never cut.
  */
 export interface ReleaseManifests {
   /**
    * The API contract (zod schemas + inferred types). FIRST in the stamped set because both the
    * api-client and the service depend on it, so its version has to settle before their pins are
    * rewritten. Like the api-client it is `private`, so it is stamped but never published — which
-   * is exactly why the service cannot simply depend on it at runtime: `packages/cezar/scripts/
+   * is exactly why the service cannot simply depend on it at runtime: `packages/xezar/scripts/
    * inline-contract.mjs` folds it into `dist/contract/` at build time instead. It moves to a real
    * publish the day that script is deleted.
    */
   contract: ManifestLike;
-  /** The contract package a consumer installs to talk to a cezar service. */
+  /** The contract package a consumer installs to talk to a xezar service. */
   apiClient: ManifestLike;
-  /** The published service + CLI. */
-  cezar: ManifestLike;
-  /** The unscoped bin alias, so `npx cezar-cli` works. */
-  alias: ManifestLike;
+  /** The published service + CLI — the only member of the set that reaches the registry. */
+  xezar: ManifestLike;
 }
 
 /** How a released package pins a sibling it depends on. */
@@ -84,42 +87,25 @@ export function pinDependency(pkg: ManifestLike, depName: string, range: string)
 /**
  * Stamp every manifest to `version` and re-pin the intra-release dependencies.
  *
- * Two pins, both derived from the manifests rather than hardcoded:
- *   - the alias → the service, so `npx <alias>@<v>` runs the matching CLI;
- *   - the service → the api-client, so a published service can never resolve a client build it
- *     was not released with.
- *
- * The alias also inherits `repository`/`homepage`/`bugs` from the service manifest: we publish
- * with `--provenance`, and npm rejects (E422) any manifest whose `repository.url` does not
- * match the building repo. The alias file carries none of its own, so it borrows the
- * service's — already correct, and being a git URL, unaffected by any npm-name rename.
+ * The pins are derived from the manifests rather than hardcoded: the service pins the
+ * api-client and the contract, so a published service can never resolve a client or contract
+ * build it was not released with.
  */
 export function stampManifestSet(
   manifests: ReleaseManifests,
   version: string,
   pin: PinStyle,
 ): ReleaseManifests {
-  const { contract, apiClient, cezar, alias } = manifests;
+  const { contract, apiClient, xezar } = manifests;
   const range = pin(version);
-
-  const inherited: Partial<ManifestLike> = {};
-  for (const field of ['repository', 'homepage', 'bugs'] as const) {
-    if (cezar[field] !== undefined) inherited[field] = cezar[field];
-  }
 
   return {
     contract: { ...contract, version },
     apiClient: pinDependency({ ...apiClient, version }, contract.name, range),
-    cezar: pinDependency(
-      pinDependency({ ...cezar, version }, apiClient.name, range),
+    xezar: pinDependency(
+      pinDependency({ ...xezar, version }, apiClient.name, range),
       contract.name,
       range,
     ),
-    alias: {
-      ...pinDependency({ ...alias, ...inherited, version }, cezar.name, range),
-      // The alias exists only to depend on the service — an unpinned or missing entry would
-      // make `npx <alias>` install nothing useful, so this one is asserted, not merged.
-      dependencies: { ...alias.dependencies, [cezar.name]: range },
-    },
   };
 }

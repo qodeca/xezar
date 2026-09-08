@@ -35,8 +35,8 @@ describe('attachment routes (#950)', () => {
   const PDF_B64 = Buffer.from('%PDF-1.4 fake\n').toString('base64');
 
   beforeEach(() => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-attachments-'));
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-attachments-'));
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     captured = undefined;
     delivered = undefined;
     const manager = {
@@ -150,7 +150,7 @@ describe('attachment routes (#950)', () => {
 
   describe('GET /api/v1/runs/:id/images/:file', () => {
     const seed = (id: string, name: string, body: string) => {
-      const dir = join(repoRoot, '.ai/cezar', 'runs', `${id}-images`);
+      const dir = join(repoRoot, '.ai/xezar', 'runs', `${id}-images`);
       mkdirSync(dir, { recursive: true });
       writeFileSync(join(dir, name), body);
     };

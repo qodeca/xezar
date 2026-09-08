@@ -42,11 +42,11 @@ describe('appendTurnText', () => {
     'preserves a marker boundary before later commentary during %s',
     () => {
       const turnText = appendTurnText(
-        'Issue claimed.\n\nCEZ:PR=635\nCEZ:TITLE=linking per-project limits',
+        'Issue claimed.\n\nXEZ:PR=635\nXEZ:TITLE=linking per-project limits',
         'The verification gate confirms the defect.',
       );
 
-      expect(turnText).toContain('CEZ:TITLE=linking per-project limits\nThe verification');
+      expect(turnText).toContain('XEZ:TITLE=linking per-project limits\nThe verification');
       expect(turnText).not.toContain('limitsThe');
       expect(parseTaskMarkers(turnText).title).toBe('linking per-project limits');
     },
@@ -66,8 +66,8 @@ describe('RunManager directional usage accounting', () => {
   let internal: UsageAccountingHarness;
 
   beforeEach(() => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-usage-accounting-'));
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-usage-accounting-'));
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     manager = new RunManager(store, repoRoot, {
       semaphore: new WorkspaceSemaphore({ initial: { maxParallel: 0 } }),
     });
@@ -155,14 +155,14 @@ describe('RunManager directional usage accounting', () => {
     store.flush();
 
     internal.beginUsageInvocation(run.id, state, 'work');
-    expect(RunStore.open(join(repoRoot, '.ai/cezar')).getRun(run.id)?.steps[0]).toMatchObject({
+    expect(RunStore.open(join(repoRoot, '.ai/xezar')).getRun(run.id)?.steps[0]).toMatchObject({
       usageInvocationsStarted: 1,
     });
 
     const persistedAtSink: StepState[] = [];
     const sink = {
       handle: (_event: UiEvent) => {
-        const persisted = RunStore.open(join(repoRoot, '.ai/cezar')).getRun(run.id)?.steps[0];
+        const persisted = RunStore.open(join(repoRoot, '.ai/xezar')).getRun(run.id)?.steps[0];
         if (persisted) persistedAtSink.push(persisted);
       },
     };
@@ -211,8 +211,8 @@ describe('RunManager directional usage accounting', () => {
 });
 
 it('parallel variants ignore a worktree opt-out and retain isolated mode', () => {
-  const repoRoot = mkdtempSync(join(tmpdir(), 'cez-variant-isolation-'));
-  const store = RunStore.open(join(repoRoot, '.ai/cezar'));
+  const repoRoot = mkdtempSync(join(tmpdir(), 'xez-variant-isolation-'));
+  const store = RunStore.open(join(repoRoot, '.ai/xezar'));
   try {
     const manager = new RunManager(store, repoRoot, {
       semaphore: new WorkspaceSemaphore({ initial: { maxParallel: 0 } }),
@@ -239,30 +239,30 @@ it('parallel variants ignore a worktree opt-out and retain isolated mode', () =>
  * Turn-end bookkeeping (#389, task auto-naming spec) against a REAL fixture
  * repo: `recordTurnEnd` is the exact method both agent-event paths fire on
  * `turn-end`, driven directly here because a live agent session is the only
- * other way to reach it. CEZ_AUTONAME=0 keeps the namer (an LLM call) out of
+ * other way to reach it. XEZ_AUTONAME=0 keeps the namer (an LLM call) out of
  * these fixtures — titles are ONLY ever namer-owned or user-owned now, never
  * derived from turn text.
  */
 describe('RunManager.recordTurnEnd', () => {
-  const savedAutoname = process.env.CEZ_AUTONAME;
+  const savedAutoname = process.env.XEZ_AUTONAME;
   beforeAll(() => {
-    process.env.CEZ_AUTONAME = '0';
+    process.env.XEZ_AUTONAME = '0';
   });
   afterAll(() => {
-    if (savedAutoname === undefined) delete process.env.CEZ_AUTONAME;
-    else process.env.CEZ_AUTONAME = savedAutoname;
+    if (savedAutoname === undefined) delete process.env.XEZ_AUTONAME;
+    else process.env.XEZ_AUTONAME = savedAutoname;
   });
   let repoRoot: string;
   let store: RunStore;
   let manager: RunManager;
 
   beforeAll(async () => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-turnend-'));
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-turnend-'));
     await run('git', ['init', '-q', '-b', 'main'], { cwd: repoRoot });
     writeFileSync(join(repoRoot, 'a.txt'), 'one\ntwo\nthree\n');
     await run('git', ['add', '-A'], { cwd: repoRoot });
     await run('git', [...GIT_ID, 'commit', '-q', '-m', 'base'], { cwd: repoRoot });
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     manager = new RunManager(store, repoRoot);
   });
 
@@ -365,11 +365,11 @@ describe('RunManager.recordTurnEnd', () => {
     await expect(manager.recordTurnEnd('nope', TURN_TEXT)).resolves.toBeUndefined();
   });
 
-  it('applies in-band CEZ markers from the turn text (spec 2026-07-18-task-ref-markers)', async () => {
+  it('applies in-band XEZ markers from the turn text (spec 2026-07-18-task-ref-markers)', async () => {
     const record = store.createRun({ title: 't', workflow: 'w', task: 'implement comment threads', steps: [] });
     await manager.recordTurnEnd(
       record.id,
-      'Progress so far.\nCEZ:PR=500\nCEZ:ISSUE=433\nCEZ:TITLE=implementing comment threads\nMore to come.',
+      'Progress so far.\nXEZ:PR=500\nXEZ:ISSUE=433\nXEZ:TITLE=implementing comment threads\nMore to come.',
     );
     const after = store.getRun(record.id);
     expect(after?.prNumber).toBe(500);
@@ -383,16 +383,16 @@ describe('RunManager.recordTurnEnd', () => {
   it('a marker title never overwrites a user rename — but the numbers still land', async () => {
     const record = store.createRun({ title: 't', workflow: 'w', task: 'task', steps: [] });
     store.updateRun(record.id, { title: 'My name', titleSummary: 'My name', titleOrigin: 'user' });
-    await manager.recordTurnEnd(record.id, 'CEZ:PR=500\nCEZ:TITLE=implementing comment threads');
+    await manager.recordTurnEnd(record.id, 'XEZ:PR=500\nXEZ:TITLE=implementing comment threads');
     const after = store.getRun(record.id);
     expect(after?.titleSummary).toBe('My name');
     expect(after?.titleOrigin).toBe('user');
     expect(after?.prNumber).toBe(500);
   });
 
-  it('a junk CEZ:TITLE never blanks the title', async () => {
+  it('a junk XEZ:TITLE never blanks the title', async () => {
     const record = store.createRun({ title: 't', workflow: 'w', task: 'task', steps: [] });
-    await manager.recordTurnEnd(record.id, 'CEZ:PR=500\nCEZ:TITLE=...');
+    await manager.recordTurnEnd(record.id, 'XEZ:PR=500\nXEZ:TITLE=...');
     const after = store.getRun(record.id);
     expect(after?.titleSummary).toBeUndefined();
     expect(after?.titleOrigin).toBeUndefined();
@@ -401,7 +401,7 @@ describe('RunManager.recordTurnEnd', () => {
 
   it('prose that merely mentions a marker changes nothing', async () => {
     const record = store.createRun({ title: 't', workflow: 'w', task: 'task', steps: [] });
-    await manager.recordTurnEnd(record.id, 'I will emit CEZ:PR=442 once the PR exists.');
+    await manager.recordTurnEnd(record.id, 'I will emit XEZ:PR=442 once the PR exists.');
     const after = store.getRun(record.id);
     expect(after?.markerRefs).toBeUndefined();
     expect(after?.prNumber).toBeUndefined();
@@ -422,8 +422,8 @@ describe('RunManager.continueRun override', () => {
   let manager: RunManager;
 
   beforeEach(() => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-continue-'));
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-continue-'));
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     manager = new RunManager(store, repoRoot);
     // No live agent — we only assert the synchronous persistence continueRun does before it
     // hands off to the (stubbed) continuation.
@@ -643,42 +643,42 @@ describe('RunManager.continueRun override', () => {
 /**
  * Optional review gate (#489, spec 2026-07-18-optional-review-gate): the
  * terminal `settleSuccess` transition parks a changed run at `review` ONLY when
- * the gate is enabled (config toggle over `CEZ_REVIEW_GATE`, default off) and the
+ * the gate is enabled (config toggle over `XEZ_REVIEW_GATE`, default off) and the
  * run is not autonomous. Driven directly through the private `settleSuccess`
  * (the same method `execute`, `runContinuation`, and `recover`'s waiting-run path
  * all call) against a real fixture worktree.
  */
 describe('RunManager.settleSuccess — optional review gate', () => {
-  const savedGate = process.env.CEZ_REVIEW_GATE;
-  const savedAutoname = process.env.CEZ_AUTONAME;
+  const savedGate = process.env.XEZ_REVIEW_GATE;
+  const savedAutoname = process.env.XEZ_AUTONAME;
   let repoRoot: string;
   let store: RunStore;
   let manager: RunManager;
 
   beforeAll(async () => {
-    process.env.CEZ_AUTONAME = '0';
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-reviewgate-'));
+    process.env.XEZ_AUTONAME = '0';
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-reviewgate-'));
     await run('git', ['init', '-q', '-b', 'main'], { cwd: repoRoot });
     writeFileSync(join(repoRoot, 'a.txt'), 'one\ntwo\nthree\n');
     await run('git', ['add', '-A'], { cwd: repoRoot });
     await run('git', [...GIT_ID, 'commit', '-q', '-m', 'base'], { cwd: repoRoot });
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     manager = new RunManager(store, repoRoot);
   });
 
   afterAll(() => {
     store.flush();
     rmSync(repoRoot, { recursive: true, force: true });
-    if (savedGate === undefined) delete process.env.CEZ_REVIEW_GATE;
-    else process.env.CEZ_REVIEW_GATE = savedGate;
-    if (savedAutoname === undefined) delete process.env.CEZ_AUTONAME;
-    else process.env.CEZ_AUTONAME = savedAutoname;
+    if (savedGate === undefined) delete process.env.XEZ_REVIEW_GATE;
+    else process.env.XEZ_REVIEW_GATE = savedGate;
+    if (savedAutoname === undefined) delete process.env.XEZ_AUTONAME;
+    else process.env.XEZ_AUTONAME = savedAutoname;
   });
 
   afterEach(() => {
-    delete process.env.CEZ_REVIEW_GATE;
+    delete process.env.XEZ_REVIEW_GATE;
     // Reset the config file each test so config.reviewGate never leaks across cases.
-    rmSync(join(repoRoot, '.ai/cezar', 'config.json'), { force: true });
+    rmSync(join(repoRoot, '.ai/xezar', 'config.json'), { force: true });
   });
 
   /** A fresh run + worktree holding a real diff (edit + new file) vs main. */
@@ -708,21 +708,21 @@ describe('RunManager.settleSuccess — optional review gate', () => {
   });
 
   it('gate on (env) + non-autonomous + changes → review', async () => {
-    process.env.CEZ_REVIEW_GATE = '1';
+    process.env.XEZ_REVIEW_GATE = '1';
     const record = await changedRun();
     await settle(record.id);
     expect(store.getRun(record.id)?.status).toBe('review');
   });
 
   it('gate on + autonomous + changes → done (autonomous wins — the #489 fix)', async () => {
-    process.env.CEZ_REVIEW_GATE = '1';
+    process.env.XEZ_REVIEW_GATE = '1';
     const record = await changedRun(true);
     await settle(record.id);
     expect(store.getRun(record.id)?.status).toBe('done');
   });
 
   it('gate on + no changes → done (the diff check stays first)', async () => {
-    process.env.CEZ_REVIEW_GATE = '1';
+    process.env.XEZ_REVIEW_GATE = '1';
     const record = await cleanRun();
     await settle(record.id);
     expect(store.getRun(record.id)?.status).toBe('done');
@@ -739,7 +739,7 @@ describe('RunManager.settleSuccess — optional review gate', () => {
  * are present and the engine's loop does iterate over both, proven below);
  * the root cause was that every step got the identical task text and shared
  * one run-level handoff journal, so the LAST step's fresh session — the only
- * one that honors `CEZ:DONE` as an early-completion signal — could read an
+ * one that honors `XEZ:DONE` as an early-completion signal — could read an
  * earlier step's own "done" report and conclude the whole run was already
  * finished, ending its first turn with the marker before doing its own
  * step's work. The fix (`chainStepNote`, `workflows/types.ts`) tells every
@@ -755,14 +755,14 @@ describe('a chain of 2 selected skills runs BOTH steps, in order (#410)', () => 
   const savedEnv: Record<string, string | undefined> = {};
 
   beforeAll(async () => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-410-'));
-    savedEnv.CEZ_DRY_RUN = process.env.CEZ_DRY_RUN;
-    process.env.CEZ_DRY_RUN = '1';
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-410-'));
+    savedEnv.XEZ_DRY_RUN = process.env.XEZ_DRY_RUN;
+    process.env.XEZ_DRY_RUN = '1';
     await run('git', ['init', '-q', '-b', 'main'], { cwd: repoRoot });
     writeFileSync(join(repoRoot, 'a.txt'), 'one\n');
     await run('git', ['add', '-A'], { cwd: repoRoot });
     await run('git', [...GIT_ID, 'commit', '-q', '-m', 'base'], { cwd: repoRoot });
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     manager = new RunManager(store, repoRoot);
   });
 
@@ -787,7 +787,7 @@ describe('a chain of 2 selected skills runs BOTH steps, in order (#410)', () => 
         { id: 'om-auto-verify-pr-ui', name: 'om-auto-verify-pr-ui', skill: 'om-auto-verify-pr-ui', prompt: '{{task}}' },
       ],
     };
-    // `mock:done` makes the mock's turn end with CEZ:DONE — needed so the
+    // `mock:done` makes the mock's turn end with XEZ:DONE — needed so the
     // last (interactive) step closes itself and the run reaches a terminal
     // status instead of parking at `waiting` for a real reply.
     const record = manager.startRun(workflow, { task: 'mock:done fix the PR', worktree: false });
@@ -844,14 +844,14 @@ describe('a single agent step plus a check step gets NO chain note (#410)', () =
   const savedEnv: Record<string, string | undefined> = {};
 
   beforeAll(async () => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-410-single-'));
-    savedEnv.CEZ_DRY_RUN = process.env.CEZ_DRY_RUN;
-    process.env.CEZ_DRY_RUN = '1';
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-410-single-'));
+    savedEnv.XEZ_DRY_RUN = process.env.XEZ_DRY_RUN;
+    process.env.XEZ_DRY_RUN = '1';
     await run('git', ['init', '-q', '-b', 'main'], { cwd: repoRoot });
     writeFileSync(join(repoRoot, 'a.txt'), 'one\n');
     await run('git', ['add', '-A'], { cwd: repoRoot });
     await run('git', [...GIT_ID, 'commit', '-q', '-m', 'base'], { cwd: repoRoot });
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     manager = new RunManager(store, repoRoot);
   });
 
@@ -901,12 +901,12 @@ describe('a single agent step plus a check step gets NO chain note (#410)', () =
 });
 
 /**
- * #490 — the `CEZ:MONITORING` marker parks a still-working turn-end as
+ * #490 — the `XEZ:MONITORING` marker parks a still-working turn-end as
  * `running`/`activity:'monitoring'` (a non-attention state) instead of
  * `waiting`, while a markerless turn-end still parks as `waiting`. Resuming
  * clears the activity. Driven dry through the mock (`mock:monitoring`).
  */
-describe('CEZ:MONITORING parks as running/monitoring, not waiting (#490)', () => {
+describe('XEZ:MONITORING parks as running/monitoring, not waiting (#490)', () => {
   // Fresh repo + manager per test: these runs PARK (they never reach a terminal
   // status), and a `worktree:false` parked run holds the exclusive repo-root
   // lock — so a shared manager would starve the next test. Isolation avoids that.
@@ -922,14 +922,14 @@ describe('CEZ:MONITORING parks as running/monitoring, not waiting (#490)', () =>
   };
 
   beforeEach(async () => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-490-'));
-    savedEnv.CEZ_DRY_RUN = process.env.CEZ_DRY_RUN;
-    process.env.CEZ_DRY_RUN = '1';
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-490-'));
+    savedEnv.XEZ_DRY_RUN = process.env.XEZ_DRY_RUN;
+    process.env.XEZ_DRY_RUN = '1';
     await run('git', ['init', '-q', '-b', 'main'], { cwd: repoRoot });
     writeFileSync(join(repoRoot, 'a.txt'), 'one\n');
     await run('git', ['add', '-A'], { cwd: repoRoot });
     await run('git', [...GIT_ID, 'commit', '-q', '-m', 'base'], { cwd: repoRoot });
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     manager = new RunManager(store, repoRoot);
     currentId = undefined;
   });
@@ -952,7 +952,7 @@ describe('CEZ:MONITORING parks as running/monitoring, not waiting (#490)', () =>
     }
   };
 
-  it('a CEZ:MONITORING turn-end parks the run as running/monitoring', async () => {
+  it('a XEZ:MONITORING turn-end parks the run as running/monitoring', async () => {
     const record = manager.startRun(SINGLE_STEP, { task: 'mock:monitoring keep going', worktree: false });
     currentId = record.id;
     await waitFor(record.id, (r) => r?.activity === 'monitoring');
@@ -966,7 +966,7 @@ describe('CEZ:MONITORING parks as running/monitoring, not waiting (#490)', () =>
   /**
    * #810 — the regression the two 0.9.2 reports describe. #661 removed the 15-minute
    * idle timer from the monitoring branch and replaced it with a wake timer that
-   * defaulted OFF, so a zero-config parked monitor had NO timer at all and cezar has no
+   * defaulted OFF, so a zero-config parked monitor had NO timer at all and xezar has no
    * other resume path (no process-exit callback, no CI webhook, no sub-agent-completion
    * event). It sat in `monitoring` until a human typed something. A default manager must
    * therefore publish a wake deadline: the run has to be able to resume itself.
@@ -1009,12 +1009,12 @@ describe('CEZ:MONITORING parks as running/monitoring, not waiting (#490)', () =>
     const record = manager.startRun(SINGLE_STEP, { task: 'mock:monitoring keep going', worktree: false });
     currentId = record.id;
     await waitFor(record.id, () => {
-      const path = join(repoRoot, '.ai/cezar/runs', `${record.id}.ndjson`);
+      const path = join(repoRoot, '.ai/xezar/runs', `${record.id}.ndjson`);
       if (!existsSync(path)) return false;
       const ndjson = readFileSync(path, 'utf8');
       return ndjson.includes('automatic monitoring wake-up (1/40)');
     });
-    const events = readFileSync(join(repoRoot, '.ai/cezar/runs', `${record.id}.ndjson`), 'utf8')
+    const events = readFileSync(join(repoRoot, '.ai/xezar/runs', `${record.id}.ndjson`), 'utf8')
       .trim().split('\n').map((line) => JSON.parse(line) as { type: string; message?: string });
     expect(events.some((event) => event.type === 'note' && event.message?.includes('(1/40)'))).toBe(true);
     expect(events.some((event) => event.type === 'user-message')).toBe(false);
@@ -1027,20 +1027,20 @@ describe('CEZ:MONITORING parks as running/monitoring, not waiting (#490)', () =>
     expect(store.getRun(record.id)?.activity).toBeUndefined();
   }, 30_000);
 
-  it('strips the CEZ:MONITORING marker from server-emitted v1 text events', async () => {
+  it('strips the XEZ:MONITORING marker from server-emitted v1 text events', async () => {
     const record = manager.startRun(SINGLE_STEP, { task: 'mock:monitoring keep going', worktree: false });
     currentId = record.id;
     await waitFor(record.id, (r) => r?.activity === 'monitoring');
-    // v1 `text` events are stripped server-side (like CEZ:DONE); v2 message items carry
+    // v1 `text` events are stripped server-side (like XEZ:DONE); v2 message items carry
     // the raw text and the thread reducer strips it on display (thread-state.test.ts).
-    const ndjson = readFileSync(join(repoRoot, '.ai/cezar/runs', `${record.id}.ndjson`), 'utf8');
+    const ndjson = readFileSync(join(repoRoot, '.ai/xezar/runs', `${record.id}.ndjson`), 'utf8');
     const v1Text = ndjson
       .trim()
       .split('\n')
       .map((l) => JSON.parse(l))
       .filter((e) => e.type === 'text');
     expect(v1Text.length).toBeGreaterThan(0);
-    expect(v1Text.some((e) => String(e.text).includes('CEZ:MONITORING'))).toBe(false);
+    expect(v1Text.some((e) => String(e.text).includes('XEZ:MONITORING'))).toBe(false);
   }, 30_000);
 
   it('resuming a monitoring run clears the activity', async () => {
@@ -1056,13 +1056,13 @@ describe('CEZ:MONITORING parks as running/monitoring, not waiting (#490)', () =>
 });
 
 /**
- * #473 — the `CEZ:ASK` marker parks a turn-end as `waiting` (attention, NOT
+ * #473 — the `XEZ:ASK` marker parks a turn-end as `waiting` (attention, NOT
  * monitoring) AND emits an `ask.requested` v2 event so the cockpit renders a
  * structured question as clickable chips. The marker is stripped from the v1
  * text; a markerless turn raises no ask. Driven dry through the mock
  * (`mock:ask`).
  */
-describe('CEZ:ASK parks as waiting and emits ask.requested (#473)', () => {
+describe('XEZ:ASK parks as waiting and emits ask.requested (#473)', () => {
   let repoRoot: string;
   let store: RunStore;
   let manager: RunManager;
@@ -1075,14 +1075,14 @@ describe('CEZ:ASK parks as waiting and emits ask.requested (#473)', () => {
   };
 
   beforeEach(async () => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-473-'));
-    savedEnv.CEZ_DRY_RUN = process.env.CEZ_DRY_RUN;
-    process.env.CEZ_DRY_RUN = '1';
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-473-'));
+    savedEnv.XEZ_DRY_RUN = process.env.XEZ_DRY_RUN;
+    process.env.XEZ_DRY_RUN = '1';
     await run('git', ['init', '-q', '-b', 'main'], { cwd: repoRoot });
     writeFileSync(join(repoRoot, 'a.txt'), 'one\n');
     await run('git', ['add', '-A'], { cwd: repoRoot });
     await run('git', [...GIT_ID, 'commit', '-q', '-m', 'base'], { cwd: repoRoot });
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     manager = new RunManager(store, repoRoot);
     currentId = undefined;
   });
@@ -1106,12 +1106,12 @@ describe('CEZ:ASK parks as waiting and emits ask.requested (#473)', () => {
   };
 
   const readEvents = (id: string): Array<Record<string, unknown>> =>
-    readFileSync(join(repoRoot, '.ai/cezar/runs', `${id}.ndjson`), 'utf8')
+    readFileSync(join(repoRoot, '.ai/xezar/runs', `${id}.ndjson`), 'utf8')
       .trim()
       .split('\n')
       .map((l) => JSON.parse(l));
 
-  it('a CEZ:ASK turn-end parks the run as waiting (attention) and emits ask.requested', async () => {
+  it('a XEZ:ASK turn-end parks the run as waiting (attention) and emits ask.requested', async () => {
     const record = manager.startRun(SINGLE_STEP, { task: 'mock:ask which library?', worktree: false });
     currentId = record.id;
     await waitFor(record.id, (r) => r?.status === 'waiting');
@@ -1126,13 +1126,13 @@ describe('CEZ:ASK parks as waiting and emits ask.requested (#473)', () => {
     expect(questions[0]!.options).toHaveLength(2);
   }, 30_000);
 
-  it('strips the CEZ:ASK marker from server-emitted v1 text events', async () => {
+  it('strips the XEZ:ASK marker from server-emitted v1 text events', async () => {
     const record = manager.startRun(SINGLE_STEP, { task: 'mock:ask pick one', worktree: false });
     currentId = record.id;
     await waitFor(record.id, (r) => r?.status === 'waiting');
     const v1Text = readEvents(record.id).filter((e) => e.type === 'text');
     expect(v1Text.length).toBeGreaterThan(0);
-    expect(v1Text.some((e) => String(e.text).includes('CEZ:ASK'))).toBe(false);
+    expect(v1Text.some((e) => String(e.text).includes('XEZ:ASK'))).toBe(false);
   }, 30_000);
 
   it('normalizes a near-valid presentation-only marker into exactly one ask card', async () => {
@@ -1148,7 +1148,7 @@ describe('CEZ:ASK parks as waiting and emits ask.requested (#473)', () => {
     }>;
     expect(questions[0]!.header).toBe('Implementati');
     expect(questions[0]!.options[0]).toEqual({ label: 'Minimal', description: 'd'.repeat(280) });
-    expect(events.filter((event) => event.type === 'text').some((event) => String(event.text).includes('CEZ:ASK'))).toBe(false);
+    expect(events.filter((event) => event.type === 'text').some((event) => String(event.text).includes('XEZ:ASK'))).toBe(false);
   }, 30_000);
 
   it('a markerless turn-end raises no ask.requested', async () => {
@@ -1158,7 +1158,7 @@ describe('CEZ:ASK parks as waiting and emits ask.requested (#473)', () => {
     expect(readEvents(record.id).some((e) => e.type === 'ask.requested')).toBe(false);
   }, 30_000);
 
-  it('a malformed CEZ:ASK degrades gracefully: parks waiting, no ask card', async () => {
+  it('a malformed XEZ:ASK degrades gracefully: parks waiting, no ask card', async () => {
     const record = manager.startRun(SINGLE_STEP, { task: 'mock:ask-bad choose', worktree: false });
     currentId = record.id;
     await waitFor(record.id, (r) => r?.status === 'waiting');
@@ -1179,7 +1179,7 @@ describe('CEZ:ASK parks as waiting and emits ask.requested (#473)', () => {
   // question vanished from the transcript entirely, leaving the user nothing
   // to answer. An invalid marker must survive as raw text (degraded but
   // answerable) and still park the run `waiting`.
-  it('a schema-invalid CEZ:ASK stays visible in v1 text — no card will ever render it', async () => {
+  it('a schema-invalid XEZ:ASK stays visible in v1 text — no card will ever render it', async () => {
     const record = manager.startRun(SINGLE_STEP, { task: 'mock:ask-invalid choose', worktree: false });
     currentId = record.id;
     await waitFor(record.id, (r) => r?.status === 'waiting');
@@ -1189,7 +1189,7 @@ describe('CEZ:ASK parks as waiting and emits ask.requested (#473)', () => {
     expect(rejections).toHaveLength(1);
     expect(rejections[0]!.tone).toBe('danger'); // see the malformed case above
     const assistantText = events.filter((e) => e.type === 'text');
-    expect(assistantText.some((e) => String(e.text).includes('CEZ:ASK {"questions":[]}'))).toBe(true);
+    expect(assistantText.some((e) => String(e.text).includes('XEZ:ASK {"questions":[]}'))).toBe(true);
   }, 30_000);
 
   // #936 — a payload one closing brace short used to die at `JSON.parse` and
@@ -1197,7 +1197,7 @@ describe('CEZ:ASK parks as waiting and emits ask.requested (#473)', () => {
   // transcript, and a dim note where the question should have been. The closer
   // repair recovers the card; the recovery is audited with its own note, and
   // the raw marker (which ends on `]`) is stripped along with it.
-  it('a CEZ:ASK missing its final brace still renders one card, notes the recovery, and strips the marker', async () => {
+  it('a XEZ:ASK missing its final brace still renders one card, notes the recovery, and strips the marker', async () => {
     const record = manager.startRun(SINGLE_STEP, { task: 'mock:ask-truncated choose', worktree: false });
     currentId = record.id;
     await waitFor(record.id, (r) => r?.status === 'waiting');
@@ -1216,14 +1216,14 @@ describe('CEZ:ASK parks as waiting and emits ask.requested (#473)', () => {
     // trace of the repair — it must not whisper (#936).
     expect(recoveries[0]!.tone).toBe('danger');
     expect(events.some((e) => e.type === 'note' && String(e.message).includes('ignored'))).toBe(false);
-    expect(events.filter((e) => e.type === 'text').some((e) => String(e.text).includes('CEZ:ASK'))).toBe(false);
+    expect(events.filter((e) => e.type === 'text').some((e) => String(e.text).includes('XEZ:ASK'))).toBe(false);
   }, 30_000);
 
   // The same recovery on the OTHER turn-end handler. `runContinuation`'s is
   // hand-duplicated from `runAgentStep`'s — AGENTS.md's standing warning that a
   // lifecycle change applied to one of them ships half a fix. Both now route
   // through `resolveAskTurn`; this pins that they stay indistinguishable.
-  it('recovers a truncated CEZ:ASK on a continuation turn identically', async () => {
+  it('recovers a truncated XEZ:ASK on a continuation turn identically', async () => {
     const record = manager.startRun(SINGLE_STEP, { task: 'do the first thing', worktree: false });
     currentId = record.id;
     await waitFor(record.id, (r) => r?.status === 'waiting');
@@ -1245,7 +1245,7 @@ describe('CEZ:ASK parks as waiting and emits ask.requested (#473)', () => {
     expect(recoveries[0]!.tone).toBe('danger');
     expect(String(recoveries[0]!.stepId)).toMatch(/^continue-/); // the continuation handler, not the step one
     expect(events.some((e) => e.type === 'note' && String(e.message).includes('ignored'))).toBe(false);
-    expect(events.filter((e) => e.type === 'text').some((e) => String(e.text).includes('CEZ:ASK'))).toBe(false);
+    expect(events.filter((e) => e.type === 'text').some((e) => String(e.text).includes('XEZ:ASK'))).toBe(false);
   }, 40_000);
 });
 
@@ -1268,11 +1268,11 @@ describe('RunManager.persistAttachment without a session (#472)', () => {
   ) => { name: string; url: string; path: string } | null;
   const persist = (id: string, prefix?: string) =>
     (manager as unknown as { persistAttachment: PersistFn }).persistAttachment(id, 'image/png', PNG, prefix);
-  const imagesDir = (id: string) => join(repoRoot, '.ai/cezar', 'runs', `${id}-images`);
+  const imagesDir = (id: string) => join(repoRoot, '.ai/xezar', 'runs', `${id}-images`);
 
   beforeEach(() => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-persist-'));
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-persist-'));
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     manager = new RunManager(store, repoRoot);
   });
 
@@ -1353,11 +1353,11 @@ describe('RunManager queued-stack mutators (#472)', () => {
   };
   const dequeue = (id: string) =>
     (manager as unknown as { pendingJobs: Map<string, unknown> }).pendingJobs.delete(id);
-  const imagesDir = (id: string) => join(repoRoot, '.ai/cezar', 'runs', `${id}-images`);
+  const imagesDir = (id: string) => join(repoRoot, '.ai/xezar', 'runs', `${id}-images`);
 
   beforeEach(() => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-stack-'));
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-stack-'));
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     manager = new RunManager(store, repoRoot);
   });
 
@@ -1666,8 +1666,8 @@ describe('RunManager.hydrateQueuedInput (#472)', () => {
     });
 
   beforeEach(() => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-hydrate-'));
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-hydrate-'));
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     manager = new RunManager(store, repoRoot);
   });
 
@@ -1713,7 +1713,7 @@ describe('RunManager.hydrateQueuedInput (#472)', () => {
 
   it('re-encodes stacked attachments from disk into stackedImages', () => {
     const r = store.createRun({ title: 't', workflow: 'w', task: 'look at this', steps: [] });
-    const dir = join(repoRoot, '.ai/cezar', 'runs', `${r.id}-images`);
+    const dir = join(repoRoot, '.ai/xezar', 'runs', `${r.id}-images`);
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, 'pasted-1.png'), 'the-bytes');
     stack(r.id, { text: 'see the mock', images: [`/api/v1/runs/${r.id}/images/pasted-1.png`] });
@@ -1728,7 +1728,7 @@ describe('RunManager.hydrateQueuedInput (#472)', () => {
 
   it('re-encodes initial task images from disk after a queued-run restart (#612)', () => {
     const r = store.createRun({ title: 't', workflow: 'w', task: 'look at this', steps: [] });
-    const dir = join(repoRoot, '.ai/cezar', 'runs', `${r.id}-images`);
+    const dir = join(repoRoot, '.ai/xezar', 'runs', `${r.id}-images`);
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, 'pasted-1.png'), 'the-task-bytes');
     store.updateRun(r.id, { taskImages: [`/api/v1/runs/${r.id}/images/pasted-1.png`] });
@@ -1753,7 +1753,7 @@ describe('RunManager.hydrateQueuedInput (#472)', () => {
    */
   it('never re-encodes a non-image attachment into an image block on restart', () => {
     const r = store.createRun({ title: 't', workflow: 'w', task: 'read the brief', steps: [] });
-    const dir = join(repoRoot, '.ai/cezar', 'runs', `${r.id}-images`);
+    const dir = join(repoRoot, '.ai/xezar', 'runs', `${r.id}-images`);
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, 'pasted-1.png'), 'the-task-bytes');
     writeFileSync(join(dir, 'pasted-2.pdf'), '%PDF-1.4 the-document-bytes');
@@ -1812,17 +1812,17 @@ describe('queued stacking reaches the backend (#472)', () => {
   };
 
   beforeAll(async () => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-472-e2e-'));
-    savedEnv.CEZ_DRY_RUN = process.env.CEZ_DRY_RUN;
-    process.env.CEZ_DRY_RUN = '1';
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-472-e2e-'));
+    savedEnv.XEZ_DRY_RUN = process.env.XEZ_DRY_RUN;
+    process.env.XEZ_DRY_RUN = '1';
     await run('git', ['init', '-q', '-b', 'main'], { cwd: repoRoot });
     writeFileSync(join(repoRoot, 'a.txt'), 'one\n');
     await run('git', ['add', '-A'], { cwd: repoRoot });
     await run('git', [...GIT_ID, 'commit', '-q', '-m', 'base'], { cwd: repoRoot });
-    mkdirSync(join(repoRoot, '.ai/cezar'), { recursive: true });
+    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
     // One slot, so the second run demonstrably waits in the queue.
-    writeFileSync(join(repoRoot, '.ai/cezar', 'config.json'), JSON.stringify({ maxParallel: 1 }));
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    writeFileSync(join(repoRoot, '.ai/xezar', 'config.json'), JSON.stringify({ maxParallel: 1 }));
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     manager = new RunManager(store, repoRoot);
   });
 
@@ -1890,8 +1890,8 @@ describe('recover() carries the queued stack exactly once (#472)', () => {
   };
 
   beforeEach(() => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-recover-'));
-    store = RunStore.open(join(repoRoot, '.ai/cezar'), { keepLive: true });
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-recover-'));
+    store = RunStore.open(join(repoRoot, '.ai/xezar'), { keepLive: true });
   });
 
   afterEach(() => {
@@ -1930,30 +1930,30 @@ describe('native Codex requestUserInput parks and resumes the run (#565)', () =>
   let store: RunStore;
   let manager: RunManager;
   let runId: string | undefined;
-  const savedDryRun = process.env.CEZ_DRY_RUN;
-  const savedCodexBin = process.env.CEZ_CODEX_BIN;
+  const savedDryRun = process.env.XEZ_DRY_RUN;
+  const savedCodexBin = process.env.XEZ_CODEX_BIN;
   const workflow: WorkflowDef = {
     name: 'quick-task', source: 'built-in', steps: [{ id: 'task', name: 'Task', prompt: '{{task}}' }],
   };
 
   beforeEach(async () => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-565-'));
-    delete process.env.CEZ_DRY_RUN;
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-565-'));
+    delete process.env.XEZ_DRY_RUN;
     // Resolved from this file, not the cwd: the fixture is a sibling of the source under test,
     // so the path holds wherever vitest is invoked from and survives the tree moving.
-    process.env.CEZ_CODEX_BIN = join(import.meta.dirname, '../core/__fixtures__/codex/mock-codex-app-server.mjs');
+    process.env.XEZ_CODEX_BIN = join(import.meta.dirname, '../core/__fixtures__/codex/mock-codex-app-server.mjs');
     await run('git', ['init', '-q', '-b', 'main'], { cwd: repoRoot });
     writeFileSync(join(repoRoot, 'a.txt'), 'one\n');
     await run('git', ['add', '-A'], { cwd: repoRoot });
     await run('git', [...GIT_ID, 'commit', '-q', '-m', 'base'], { cwd: repoRoot });
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     manager = new RunManager(store, repoRoot);
   });
 
   afterEach(() => {
     if (runId) manager.cancel(runId);
-    if (savedDryRun === undefined) delete process.env.CEZ_DRY_RUN; else process.env.CEZ_DRY_RUN = savedDryRun;
-    if (savedCodexBin === undefined) delete process.env.CEZ_CODEX_BIN; else process.env.CEZ_CODEX_BIN = savedCodexBin;
+    if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN; else process.env.XEZ_DRY_RUN = savedDryRun;
+    if (savedCodexBin === undefined) delete process.env.XEZ_CODEX_BIN; else process.env.XEZ_CODEX_BIN = savedCodexBin;
     store.flush();
     rmSync(repoRoot, { recursive: true, force: true });
   });
@@ -1972,7 +1972,7 @@ describe('native Codex requestUserInput parks and resumes the run (#565)', () =>
     });
     runId = record.id;
     await waitFor(() => store.getRun(record.id)?.status === 'waiting');
-    const eventsPath = join(repoRoot, '.ai/cezar/runs', `${record.id}.ndjson`);
+    const eventsPath = join(repoRoot, '.ai/xezar/runs', `${record.id}.ndjson`);
     expect(readFileSync(eventsPath, 'utf8')).toContain('"type":"ask.requested"');
     expect(manager.sendMessage(record.id, [{ type: 'text', text: 'Library: Vitest' }])).toBe(true);
     await waitFor(() => readFileSync(eventsPath, 'utf8').includes('"type":"turn-end"'));
@@ -2007,33 +2007,33 @@ describe('registry /skill expansion survives a continuation (#811)', () => {
   };
 
   beforeEach(async () => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-811-'));
-    savedDryRun = process.env.CEZ_DRY_RUN;
-    process.env.CEZ_DRY_RUN = '1';
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-811-'));
+    savedDryRun = process.env.XEZ_DRY_RUN;
+    process.env.XEZ_DRY_RUN = '1';
     await run('git', ['init', '-q', '-b', 'main'], { cwd: repoRoot });
     writeFileSync(join(repoRoot, 'a.txt'), 'one\n');
     await run('git', ['add', '-A'], { cwd: repoRoot });
     await run('git', [...GIT_ID, 'commit', '-q', '-m', 'base'], { cwd: repoRoot });
-    mkdirSync(join(repoRoot, '.ai/cezar/skills'), { recursive: true });
+    mkdirSync(join(repoRoot, '.ai/xezar/skills'), { recursive: true });
     writeFileSync(
-      join(repoRoot, '.ai/cezar/skills/demo-review.md'),
+      join(repoRoot, '.ai/xezar/skills/demo-review.md'),
       '---\nname: demo-review\ndescription: Review a diff.\n---\n\nRun the demo review playbook.\n',
     );
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     manager = new RunManager(store, repoRoot);
     runId = undefined;
   });
 
   afterEach(() => {
     if (runId) manager.cancel(runId);
-    if (savedDryRun === undefined) delete process.env.CEZ_DRY_RUN;
-    else process.env.CEZ_DRY_RUN = savedDryRun;
+    if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
+    else process.env.XEZ_DRY_RUN = savedDryRun;
     store.flush();
     rmSync(repoRoot, { recursive: true, force: true });
   });
 
   const eventsOf = (id: string) =>
-    readFileSync(join(repoRoot, '.ai/cezar/runs', `${id}.ndjson`), 'utf8')
+    readFileSync(join(repoRoot, '.ai/xezar/runs', `${id}.ndjson`), 'utf8')
       .trim()
       .split('\n')
       .map((line) => JSON.parse(line) as { type: string; text?: string; stepId?: string });
@@ -2112,7 +2112,7 @@ describe('registry /skill expansion survives a continuation (#811)', () => {
  * A task STARTED with `/om-...` as its first message is delivered straight to
  * `startSession` inside `execute`, never through `deliverMessage`, and #811 only
  * patched the continuation seam. So the opening prompt leaked the raw slash to the
- * backend, which answered "Unknown command" even though Cezar lists the skill.
+ * backend, which answered "Unknown command" even though Xezar lists the skill.
  *
  * The mock CLI echoes the prompt it received (`Okay — looking into: …`), so the
  * transcript is a faithful witness of what actually reached the backend.
@@ -2130,27 +2130,27 @@ describe("registry /skill expansion on a fresh run's opening prompt (#278)", () 
   };
 
   beforeEach(async () => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'cez-278-'));
-    savedDryRun = process.env.CEZ_DRY_RUN;
-    process.env.CEZ_DRY_RUN = '1';
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-278-'));
+    savedDryRun = process.env.XEZ_DRY_RUN;
+    process.env.XEZ_DRY_RUN = '1';
     await run('git', ['init', '-q', '-b', 'main'], { cwd: repoRoot });
     writeFileSync(join(repoRoot, 'a.txt'), 'one\n');
     await run('git', ['add', '-A'], { cwd: repoRoot });
     await run('git', [...GIT_ID, 'commit', '-q', '-m', 'base'], { cwd: repoRoot });
-    mkdirSync(join(repoRoot, '.ai/cezar/skills'), { recursive: true });
+    mkdirSync(join(repoRoot, '.ai/xezar/skills'), { recursive: true });
     writeFileSync(
-      join(repoRoot, '.ai/cezar/skills/demo-review.md'),
+      join(repoRoot, '.ai/xezar/skills/demo-review.md'),
       '---\nname: demo-review\ndescription: Review a diff.\n---\n\nRun the demo review playbook.\n',
     );
-    store = RunStore.open(join(repoRoot, '.ai/cezar'));
+    store = RunStore.open(join(repoRoot, '.ai/xezar'));
     manager = new RunManager(store, repoRoot);
     runId = undefined;
   });
 
   afterEach(() => {
     if (runId) manager.cancel(runId);
-    if (savedDryRun === undefined) delete process.env.CEZ_DRY_RUN;
-    else process.env.CEZ_DRY_RUN = savedDryRun;
+    if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
+    else process.env.XEZ_DRY_RUN = savedDryRun;
     store.flush();
     rmSync(repoRoot, { recursive: true, force: true });
   });
@@ -2161,7 +2161,7 @@ describe("registry /skill expansion on a fresh run's opening prompt (#278)", () 
   const eventsOf = (id: string) => {
     let raw: string;
     try {
-      raw = readFileSync(join(repoRoot, '.ai/cezar/runs', `${id}.ndjson`), 'utf8').trim();
+      raw = readFileSync(join(repoRoot, '.ai/xezar/runs', `${id}.ndjson`), 'utf8').trim();
     } catch {
       return [] as { type: string; text?: string; stepId?: string }[];
     }
