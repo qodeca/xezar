@@ -2,7 +2,7 @@
 # om-prepare-test-env: generated entrypoint (contract v2)
 # regenerate with: om-prepare-test-env --regenerate
 # history:
-#   2026-07-14 generated (cold ~40s, warm ~2s) — cezar has no backing services, so
+#   2026-07-14 generated (cold ~40s, warm ~2s) — xezar has no backing services, so
 #             the service-provisioning step of the contract is deliberately absent.
 #   2026-07-21 detach the app with nohup so non-interactive bootstrap shells do not
 #             terminate the healthy server immediately after the script exits.
@@ -38,25 +38,25 @@ HEALTH_TIMEOUT=60
 TEST_ENV_CACHE_TTL_SECONDS=${TEST_ENV_CACHE_TTL_SECONDS:-600}
 
 # The preparation chain: install workspace links/dependencies, server `tsc` →
-# packages/cezar/dist/, then `vite build` → packages/cezar/web/dist/. All are required — a
+# packages/xezar/dist/, then `vite build` → packages/xezar/web/dist/. All are required — a
 # fresh worktree has no node_modules, and the server serves the React cockpit from
-# packages/cezar/web/dist (missing it would silently test the fallback hint page).
+# packages/xezar/web/dist (missing it would silently test the fallback hint page).
 BUILD_COMMAND="npm ci && npm run build"
-BUILD_ARTIFACTS="node_modules/zod/package.json packages/cezar/dist/index.js packages/cezar/web/dist/index.html"
+BUILD_ARTIFACTS="node_modules/zod/package.json packages/xezar/dist/index.js packages/xezar/web/dist/index.html"
 # Fingerprint inputs — a change to any of these invalidates the cached build. Each workspace
 # contributes its own sources AND its own manifest: a dependency moved between packages
 # changes what gets bundled without touching a single source file.
-BUILD_INPUT_PATHS="packages/contract/src packages/contract/package.json packages/cezar/src packages/cezar/package.json packages/cezar/tsconfig.json packages/api-client/src packages/api-client/package.json packages/web/src packages/web/index.html packages/web/vite.config.ts packages/web/package.json package.json package-lock.json"
+BUILD_INPUT_PATHS="packages/contract/src packages/contract/package.json packages/xezar/src packages/xezar/package.json packages/xezar/tsconfig.json packages/api-client/src packages/api-client/package.json packages/web/src packages/web/index.html packages/web/vite.config.ts packages/web/package.json package.json package-lock.json"
 
-# CEZ_DRY_RUN=1 swaps the agent CLIs for the bundled mock, so booting needs no
+# XEZ_DRY_RUN=1 swaps the agent CLIs for the bundled mock, so booting needs no
 # `claude` login and reaches no network — the whole point for CI/e2e.
-export CEZ_DRY_RUN=1
+export XEZ_DRY_RUN=1
 
-# The real CLI writes workspace state at boot (~/.cezar migrations + project
-# registration) — pin CEZ_HOME under .ai/qa so a test boot never touches the
-# developer's real ~/.cezar. Kept stable (not per-boot) so the reuse path
+# The real CLI writes workspace state at boot (~/.xezar migrations + project
+# registration) — pin XEZ_HOME under .ai/qa so a test boot never touches the
+# developer's real ~/.xezar. Kept stable (not per-boot) so the reuse path
 # attaches to the same workspace the running instance was booted with.
-export CEZ_HOME="$QA_DIR/cez-home"
+export XEZ_HOME="$QA_DIR/xez-home"
 
 FORCE=0
 FORCE_REBUILD=0
@@ -109,7 +109,7 @@ json_get() { node -e '
 
 # ---- 2. lock — one bootstrap at a time --------------------------------------
 # Released when the bootstrap finishes rather than held for the environment's lifetime:
-# the server `readFileSync`s packages/cezar/dist/ and packages/cezar/web/dist/ per request, so a later rebuild under a
+# the server `readFileSync`s packages/xezar/dist/ and packages/xezar/web/dist/ per request, so a later rebuild under a
 # running app is picked up on the next reload instead of corrupting it. The reuse check's
 # "source newer than startedAt" test is what keeps a stale build from being tested.
 LOCK_HELD=0
@@ -164,7 +164,7 @@ try_reuse() {
   url=$(json_get "$ENV_DESCRIPTOR" baseUrl)
   started=$(json_get "$ENV_DESCRIPTOR" startedAt)
   requested_single_project=false
-  [ "${CEZ_SINGLE_PROJECT:-}" = 1 ] && requested_single_project=true
+  [ "${XEZ_SINGLE_PROJECT:-}" = 1 ] && requested_single_project=true
   [ "$(json_get "$ENV_DESCRIPTOR" environment.singleProject)" = "$requested_single_project" ] || return 1
   [ -n "$pid" ] && [ -n "$url" ] || return 1
   # A state file is a claim, not proof: the PID must still be alive…
@@ -320,13 +320,13 @@ start_app() {
   port_free "$PORT" || PORT=$(free_port)
   BASE_URL="http://127.0.0.1:$PORT"
 
-  log "starting cezar on $BASE_URL (CEZ_DRY_RUN=1)"
+  log "starting xezar on $BASE_URL (XEZ_DRY_RUN=1)"
   # --no-open: a test boot must never hijack the operator's browser.
   if command -v setsid >/dev/null 2>&1; then
-    (cd "$REPO_ROOT" && exec setsid nohup node packages/cezar/dist/index.js --port "$PORT" --no-open --repo "$REPO_ROOT" \
+    (cd "$REPO_ROOT" && exec setsid nohup node packages/xezar/dist/index.js --port "$PORT" --no-open --repo "$REPO_ROOT" \
       >"$APP_LOG" 2>&1 </dev/null) &
   else
-    (cd "$REPO_ROOT" && exec nohup node packages/cezar/dist/index.js --port "$PORT" --no-open --repo "$REPO_ROOT" \
+    (cd "$REPO_ROOT" && exec nohup node packages/xezar/dist/index.js --port "$PORT" --no-open --repo "$REPO_ROOT" \
       >"$APP_LOG" 2>&1 </dev/null) &
   fi
   APP_PID=$!
@@ -353,13 +353,13 @@ start_app() {
 # ---- 7. descriptor write ----------------------------------------------------
 write_descriptor() {
   SINGLE_PROJECT=false
-  [ "${CEZ_SINGLE_PROJECT:-}" = 1 ] && SINGLE_PROJECT=true
+  [ "${XEZ_SINGLE_PROJECT:-}" = 1 ] && SINGLE_PROJECT=true
   node -e '
     const fs = require("fs");
     const [out, baseUrl, port, pid, cmd, bInstalled, bCmd, bVer, bNotes, desc, singleProject, platform] = process.argv.slice(1);
     fs.writeFileSync(out, JSON.stringify({
       version: 1,
-      runId: "cezar-" + new Date().toISOString().slice(0, 10) + "-" + pid,
+      runId: "xezar-" + new Date().toISOString().slice(0, 10) + "-" + pid,
       status: "running",
       mode: "prod",
       baseUrl,
@@ -381,10 +381,10 @@ write_descriptor() {
       testRunner: { name: "other", config: "packages/web/e2e/vitest.config.ts" },
       platform,
       startedAt: new Date().toISOString().replace(/\.\d+Z$/, "Z"),
-      notes: "Booted from a production build after npm ci with CEZ_DRY_RUN=1, so workspace links/runtime dependencies are present, the agent CLIs are mocked, and no agent login/network is needed. No backing services. Stop with .ai/scripts/test-env-down.sh. App log: .ai/qa/test-env-app.log.",
+      notes: "Booted from a production build after npm ci with XEZ_DRY_RUN=1, so workspace links/runtime dependencies are present, the agent CLIs are mocked, and no agent login/network is needed. No backing services. Stop with .ai/scripts/test-env-down.sh. App log: .ai/qa/test-env-app.log.",
     }, null, 2) + "\n");
   ' "$ENV_DESCRIPTOR" "$BASE_URL" "$PORT" "$APP_PID" \
-    "CEZ_DRY_RUN=1 CEZ_HOME=.ai/qa/cez-home node packages/cezar/dist/index.js --port $PORT --no-open" \
+    "XEZ_DRY_RUN=1 XEZ_HOME=.ai/qa/xez-home node packages/xezar/dist/index.js --port $PORT --no-open" \
     "$BROWSER_INSTALLED" "$BROWSER_COMMAND" "$BROWSER_VERSION" "$BROWSER_NOTES" "$BROWSER_DESCRIPTOR" \
     "$SINGLE_PROJECT" "$(uname -s 2>/dev/null | grep -qi Linux && { grep -qiE 'microsoft|wsl' /proc/version 2>/dev/null && echo wsl2 || echo linux; } || echo darwin)"
 }

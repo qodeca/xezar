@@ -25,7 +25,7 @@ pid=$(node -e '
 
 # Only ever stop what this repo started; safe to run twice.
 if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-  log "stopping cezar (pid $pid)"
+  log "stopping xezar (pid $pid)"
   kill "$pid" 2>/dev/null || true
   waited=0
   while kill -0 "$pid" 2>/dev/null && [ "$waited" -lt 10 ]; do
