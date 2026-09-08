@@ -150,6 +150,35 @@ describe('useThreadScroll — route arrival (#761)', () => {
     expect((document.querySelector('[data-slot="main"]') as HTMLElement).scrollTop).toBe(1_500)
   })
 
+  it('keeps the jump-to-latest intent across the history reset it triggers', async () => {
+    // The reader is parked in the archive; the pill resets the history query, which empties
+    // and re-mounts the transcript. Without a recorded tail the fresh arrival would restore
+    // the parked offset and strand them at the top with the pill gone — the real-browser half
+    // is thread-scroll.e2e.ts "scrolling up shows the jump pill".
+    saveThreadScroll('run-c:main', { top: 0, atBottom: false })
+    const jumped = renderHook(() => useThreadScroll('run-c:main'))
+    render(
+      <main
+        ref={(element) => {
+          // jsdom has no scrollTo; the smooth follow-up write is not what this asserts.
+          if (element) Object.assign(element, { scrollTo: () => {} })
+        }}
+        data-slot="main"
+      >
+        <div ref={jumped.result.current.attachContent} />
+      </main>,
+    )
+    await act(async () => {
+      jumped.result.current.jumpToLatest()
+      await Promise.resolve()
+    })
+    cleanup()
+
+    render(<ArrivalHarness viewKey="run-c:main" />)
+
+    expect((document.querySelector('[data-slot="main"]') as HTMLElement).scrollTop).toBe(1_500)
+  })
+
   it('re-applies the destination owner when the task id changes in place', () => {
     saveThreadScroll('run-a:main', { top: 640, atBottom: false })
     saveThreadScroll('run-b:main', { top: 920, atBottom: false })

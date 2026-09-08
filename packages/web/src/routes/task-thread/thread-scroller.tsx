@@ -198,13 +198,20 @@ export function useThreadScroll(
     if (!scroller) return
     pendingRestoreRef.current = null
     stuckRef.current = true
+    // The pill's intent has to OUTLIVE this hook's refs. `onJumpToLatest` resets the history
+    // query, which empties the transcript and re-mounts it; the fresh mount re-runs arrival,
+    // reads the memory saved while the reader was parked (`atBottom: false`) and dutifully
+    // restores them to the position they just asked to leave — the pill hid, and the reader
+    // stayed at the top of the session. Recording the tail here is what makes that arrival
+    // agree with the button they pressed.
+    saveThreadScroll(viewKey, { top: scroller.scrollHeight - scroller.clientHeight, atBottom: true })
     void (onJumpToLatest?.() ?? Promise.resolve()).finally(() => {
       requestAnimationFrame(() => {
         const current = scrollElRef.current
         current?.scrollTo({ top: current.scrollHeight - current.clientHeight, behavior: 'smooth' })
       })
     })
-  }, [onJumpToLatest])
+  }, [onJumpToLatest, viewKey])
 
   // Arrival is the route-owned pre-paint write. AppShell deliberately does not reset task
   // routes, so a destination thread never exposes an intermediate top-of-transcript frame.
@@ -334,13 +341,23 @@ export function useThreadScroll(
     // stick or the pending restore. jsdom has no ResizeObserver; the hook degrades to
     // arrival-only behavior there, which is exactly what component tests exercise.
     let observer: ResizeObserver | undefined
+    let observedHeight = -1
     if (typeof ResizeObserver !== 'undefined') {
       observer = new ResizeObserver(() => {
         const pending = pendingRestoreRef.current
+        const height = scroller.scrollHeight
+        const heightSettled = height === observedHeight
+        observedHeight = height
         if (pending !== null) {
-          const maxTop = scroller.scrollHeight - scroller.clientHeight
+          const maxTop = height - scroller.clientHeight
           setOffset(Math.min(pending, maxTop))
-          if (maxTop >= pending) pendingRestoreRef.current = null // reached — restore done
+          // Reached AND still: landing on the offset once is not enough. A destination that is
+          // still resizing — the replay filling in, the live buffer compacting back to its
+          // newest page — moves content above the viewport, and the browser's scroll anchoring
+          // slides the reader off the position they were just restored to. Holding the restore
+          // until the transcript stops moving is what "re-applied until reachable" has to mean.
+          // A reader is never trapped by it: every unpinning gesture clears `pendingRestore`.
+          if (maxTop >= pending && heightSettled) pendingRestoreRef.current = null
         } else if (stuckRef.current) {
           toBottom()
         }
