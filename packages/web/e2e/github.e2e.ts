@@ -138,7 +138,11 @@ describe('the GitHub tab against the live dry-run server', () => {
 
     // The #385 dropdowns: the workflow cmdk menu opens and filters (read-only — nothing run).
     const workflows = await api<{ workflows: Array<{ name: string }> }>('/api/v1/workflows')
-    browser.click('[data-slot="gh-workflow-trigger"]')
+    // Keyboard-activated: the detail pane is still settling its markdown body when this runs,
+    // and a coordinate click that lands a few pixels off a moved chip reports success while
+    // the popover never opens. Focus + Enter is the same affordance without the geometry.
+    browser.evaluate(`document.querySelector('[data-slot="gh-workflow-trigger"]').focus()`)
+    browser.press('Enter')
     browser.waitForFunction(
       `document.querySelectorAll('[data-slot="gh-workflow-option"]').length === ${workflows.workflows.length}`,
     )

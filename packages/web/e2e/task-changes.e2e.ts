@@ -1,12 +1,12 @@
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { once } from 'node:events'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { AgentBrowser, bootProjectId, cezarCli, fixtureServeEnv } from './agent-browser'
+import { AgentBrowser, bootProjectId, cezarCli, fixtureServeEnv, removeDataRoot, stopFixtureServer } from './agent-browser'
 
 /**
  * The Changes tab (R5 Step 1.5) end-to-end against a LIVE dry run, same doctrine as
@@ -127,11 +127,8 @@ beforeAll(async () => {
 
 afterAll(async () => {
   browser?.close()
-  if (server && server.exitCode === null) {
-    server.kill()
-    await once(server, 'exit')
-  }
-  if (dataRoot) rmSync(dataRoot, { recursive: true, force: true })
+  await stopFixtureServer(server)
+  await removeDataRoot(dataRoot)
 })
 
 describe('the Changes tab against a live dry run', () => {

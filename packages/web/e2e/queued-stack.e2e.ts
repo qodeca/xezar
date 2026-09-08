@@ -1,11 +1,11 @@
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { AgentBrowser, cezarCli } from './agent-browser'
+import { AgentBrowser, cezarCli, removeDataRoot, stopFixtureServer } from './agent-browser'
 
 /**
  * Stacking, editing and removing a queued run's prompt (#472), end-to-end against a LIVE
@@ -138,10 +138,10 @@ beforeAll(async () => {
   browser.waitForFunction(`document.querySelector('[data-slot="composer"] textarea') !== null`)
 }, 180_000)
 
-afterAll(() => {
+afterAll(async () => {
   browser?.close()
-  server?.kill()
-  if (dataRoot) rmSync(dataRoot, { recursive: true, force: true })
+  await stopFixtureServer(server)
+  await removeDataRoot(dataRoot)
 })
 
 describe('a queued run’s prompt is amendable (#472)', () => {
@@ -186,6 +186,13 @@ describe('a queued run’s prompt is amendable (#472)', () => {
     browser.screenshot(`${artifactsDir}/queued-editing.png`)
     browser.click('[data-slot="user-bubble"][data-editing="true"] button:last-of-type')
 
+    // Wait for the EDITOR to close, not merely for the text to be somewhere on the page: a
+    // controlled `<textarea>` renders its value as the element's own text, so the draft
+    // satisfies a `body.textContent` check while the save is still in flight — and the bubble
+    // that is still editing has no Edit/Remove controls for the next case to reach.
+    browser.waitForFunction(
+      `document.querySelector('[data-slot="user-bubble"][data-editing="true"]') === null`,
+    )
     browser.waitForFunction(
       `document.body.textContent.includes('also update the changelog and the README')`,
     )

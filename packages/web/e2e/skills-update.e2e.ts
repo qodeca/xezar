@@ -67,6 +67,11 @@ describe('automatic Open Mercato skills updates', () => {
       config = await api('/api/v1/workspace/config')
     }
     expect(config.skillsAutoUpdate).toBe(false)
+    // Same reason as settings-agents: the API poll above runs on this spec's own connection,
+    // so the page may not have re-read the config yet. Wait for the copy, then assert it.
+    browser.waitForFunction(
+      `document.querySelector('[data-slot="skills-settings-section"]').textContent.includes('explicit workspace override')`,
+    )
     expect(browser.text('[data-slot="skills-settings-section"]')).toContain('explicit workspace override')
 
     browser.click('[data-action="skills-use-default"]')

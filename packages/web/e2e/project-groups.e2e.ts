@@ -63,10 +63,29 @@ function expectedNavHrefs(projectId: string): string[] {
 }
 
 /** A real (if empty) git repo, so the registry probe answers `ok` rather than `not-git` and the
- *  group renders its expandable form instead of the "folder not found" row. */
+ *  group renders its expandable form instead of the "folder not found" row.
+ *
+ *  It carries a GitHub remote because the GitHub nav item is classified PER PROJECT (#698,
+ *  `project.forge === 'github'` in project-groups.tsx) — the workspace-wide `gh` health answer
+ *  says nothing about a given folder. A remote-less seed simply has no GitHub row, which is
+ *  correct behavior and would leave this spec comparing a group nav against a workspace-wide
+ *  expectation it was never entitled to. */
 function makeRepo(name: string): string {
   const root = join(seedDir, name)
   execFileSync('git', ['init', '-q', '-b', 'main', root], { stdio: 'ignore' })
+  execFileSync('git', ['-C', root, 'remote', 'add', 'origin', `https://github.com/open-mercato/${name}.git`], {
+    stdio: 'ignore',
+  })
+  // One commit, so HEAD is born: `getRepoInfo` resolves the whole entry through
+  // `rev-parse --abbrev-ref HEAD`, which FAILS on an empty repo and takes the remote down with
+  // it — leaving a seed that looks remote-less to the registry. Identity is passed per command
+  // so the seed never depends on the developer's global git config.
+  execFileSync(
+    'git',
+    ['-C', root, '-c', 'user.name=cezar e2e', '-c', 'user.email=e2e@example.invalid',
+     'commit', '-q', '--allow-empty', '-m', 'seed'],
+    { stdio: 'ignore' },
+  )
   return root
 }
 

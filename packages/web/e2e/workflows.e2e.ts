@@ -65,6 +65,26 @@ const palettePill = (name: string) => `[data-slot="wb-skill"][data-skill="${name
 const addButton = (name: string) => `${palettePill(name)} [data-slot="wb-skill-add"]`
 const stepIdsJs = `[...document.querySelectorAll('[data-slot="wb-step"]')].map((s) => s.dataset.id).join(',')`
 
+/**
+ * Bring a control under the sticky page header into view and wait until it is genuinely the
+ * element at its own centre before clicking. The builder's toolbar buttons sit near the top of
+ * a long scrolling form: whichever row the previous case left on screen decides whether the
+ * header covers them, and a covered click is refused rather than silently mis-landing.
+ */
+function clickWhenReachable(selector: string): void {
+  browser.evaluate(
+    `document.querySelector(${JSON.stringify(selector)}).scrollIntoView({ block: 'center' })`,
+  )
+  browser.waitForFunction(`(() => {
+    const target = document.querySelector(${JSON.stringify(selector)})
+    if (target === null) return false
+    const box = target.getBoundingClientRect()
+    const atPoint = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)
+    return atPoint !== null && target.contains(atPoint)
+  })()`)
+  browser.click(selector)
+}
+
 describe('workflow builder against the live dry-run server', () => {
   it('builds a small workflow from the palette and previews the portable YAML', () => {
     browser.goto(`${baseUrl}/workflows`)
@@ -121,7 +141,7 @@ describe('workflow builder against the live dry-run server', () => {
 
   it('Save writes a real portable workflow file the server round-trips', () => {
     browser.fill('[data-slot="wb-name"]', FLOW)
-    browser.click('[data-slot="wb-save"]')
+    clickWhenReachable('[data-slot="wb-save"]')
     browser.waitForFunction(
       `document.querySelector('[data-slot="toaster"]')?.textContent.includes('Saved — ${FLOW}.yaml')`,
     )
@@ -149,7 +169,7 @@ describe('workflow builder against the live dry-run server', () => {
       '      retry: fix',
       '      max: 2',
     ].join('\n')
-    browser.click('[data-slot="wb-import"]')
+    clickWhenReachable('[data-slot="wb-import"]')
     browser.waitForFunction(`document.querySelector('[data-slot="wb-import-text"]') !== null`)
     browser.fill('[data-slot="wb-import-text"]', pasted)
     browser.click('[data-slot="wb-import-run"]')

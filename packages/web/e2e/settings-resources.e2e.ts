@@ -58,6 +58,30 @@ const gotoResources = () => {
   browser.waitForFunction(`document.querySelector('[data-slot="worktrees-section"]') !== null`)
 }
 
+/**
+ * Put a retention value in and save it. Typing is retried until it HOLDS: each save
+ * invalidates the config query, and the refetch that lands a moment later re-renders this
+ * field from the server — wiping a number typed into the gap between the two. Save is only
+ * pressed once it is live, since it stays disabled while the field still matches what is
+ * stored, and a click on a disabled button is silently dropped rather than reported.
+ */
+function saveRetention(value: string): void {
+  const field = '[data-slot="resources-worktree-retention"]'
+  browser.waitForFunction(`(() => {
+    const input = document.querySelector(${JSON.stringify(field)})
+    if (input === null) return false
+    if (input.value === ${JSON.stringify(value)}) return true
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
+    setter.call(input, ${JSON.stringify(value)})
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    return false
+  })()`)
+  browser.waitForFunction(
+    `document.querySelector('[data-action="resources-save-retention"]:not([disabled])') !== null`,
+  )
+  browser.click('[data-action="resources-save-retention"]')
+}
+
 describe('project settings → worktrees: retention against the live dry-run server', () => {
   it('renders the keep-last-N field and the worktrees panel', () => {
     gotoResources()
@@ -71,22 +95,19 @@ describe('project settings → worktrees: retention against the live dry-run ser
 
   it('editing the count and saving persists through PUT /api/v1/config', async () => {
     gotoResources()
-    browser.fill('[data-slot="resources-worktree-retention"]', '4')
-    browser.click('[data-action="resources-save-retention"]')
+    saveRetention('4')
     await waitForConfig((c) => c.worktreeRetention === 4)
   })
 
   it('0 saves as unlimited (a real value, not a clear)', async () => {
-    browser.fill('[data-slot="resources-worktree-retention"]', '0')
-    browser.click('[data-action="resources-save-retention"]')
+    saveRetention('0')
     const config = await waitForConfig((c) => c.worktreeRetention === 0)
     expect(config.worktreeRetention).toBe(0)
   })
 
   it('a cold load renders the persisted count — the field is a view of config.json', async () => {
     // Set a distinctive value, then reload from scratch.
-    browser.fill('[data-slot="resources-worktree-retention"]', '7')
-    browser.click('[data-action="resources-save-retention"]')
+    saveRetention('7')
     await waitForConfig((c) => c.worktreeRetention === 7)
 
     gotoResources()
@@ -96,8 +117,7 @@ describe('project settings → worktrees: retention against the live dry-run ser
     browser.screenshot(`${artifactsDir}/settings-resources.png`)
 
     // Neutralize for later suites (afterAll restores the file too).
-    browser.fill('[data-slot="resources-worktree-retention"]', '10')
-    browser.click('[data-action="resources-save-retention"]')
+    saveRetention('10')
     await waitForConfig((c) => c.worktreeRetention === 10)
   })
 })

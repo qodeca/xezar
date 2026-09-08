@@ -1,11 +1,11 @@
 import { spawn, type ChildProcess } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { AgentBrowser, cezarCli, fixtureServeEnv } from './agent-browser'
+import { AgentBrowser, cezarCli, fixtureServeEnv, removeDataRoot, stopFixtureServer } from './agent-browser'
 import record from './fixtures/subagents-run.record.json'
 
 /**
@@ -126,20 +126,32 @@ beforeAll(async () => {
   browser.setViewport(1440, 900)
 }, 180_000)
 
-afterAll(() => {
+afterAll(async () => {
   browser?.close()
-  server?.kill()
-  if (dataRoot) rmSync(dataRoot, { recursive: true, force: true })
+  await stopFixtureServer(server)
+  await removeDataRoot(dataRoot)
 })
 
 const DOCK = '[data-slot="agents-dock"]'
 const ROW = '[data-slot="agent-item"]'
 
+/**
+ * Open the run and EXPAND the dock. The dock ships collapsed (`DEFAULT_OPEN = false` in
+ * agents-dock.tsx): its one-line head answers "what is running now?" and the per-agent rows
+ * are an explicit disclosure. A full page load resets the per-run collapse memory, so every
+ * `goto` starts from that collapsed default and the expand below is what a reader would do.
+ */
+function openDockExpanded() {
+  browser.goto(`${baseUrl}/tasks/${RUN_ID}`)
+  // The dock mounts only once the replay has produced the fan-out.
+  browser.waitForFunction(`document.querySelector('${DOCK}') !== null`)
+  browser.click(`${DOCK} > button`)
+  browser.waitForFunction(`document.querySelectorAll('${ROW}').length === 2`)
+}
+
 describe('the Agents dock against a replayed fan-out', () => {
   it('docks both sub-agents with odometer, type badge, activity and tool count', () => {
-    browser.goto(`${baseUrl}/tasks/${RUN_ID}`)
-    // The dock mounts only once the replay has produced the fan-out.
-    browser.waitForFunction(`document.querySelectorAll('${ROW}').length === 2`)
+    openDockExpanded()
     browser.waitForFunction(
       `document.querySelector('[data-slot="agents-count"]')?.textContent.includes('2/2')`,
     )
@@ -166,8 +178,7 @@ describe('the Agents dock against a replayed fan-out', () => {
   }, 120_000)
 
   it('a row opens the drill-down sheet with that agent’s output and nobody else’s', () => {
-    browser.goto(`${baseUrl}/tasks/${RUN_ID}`)
-    browser.waitForFunction(`document.querySelectorAll('${ROW}').length === 2`)
+    openDockExpanded()
 
     // The second agent's row — a real dialog-opening button.
     browser.click(`${ROW}:nth-of-type(2) button`)
@@ -197,10 +208,22 @@ describe('the Agents dock against a replayed fan-out', () => {
   }, 120_000)
 
   it('the long agent panel scrolls, detaches from follow-tail, and exposes the jump pill', () => {
-    browser.goto(`${baseUrl}/tasks/${RUN_ID}`)
-    browser.waitForFunction(`document.querySelectorAll('${ROW}').length === 2`)
+    openDockExpanded()
     browser.click(`${ROW}:nth-of-type(1) button`)
     browser.waitForFunction(`document.querySelector('[data-slot="transcript-viewport"]') !== null`)
+    // This agent's 34 finished Bash cards are a tool STREAK, so the panel opens showing the
+    // last few under a "▸ N earlier tool calls" fold (thread-groups.ts §3). Unfold it — a
+    // reader inspecting a long agent does exactly this, and it is what makes the panel long
+    // enough to have a scroll position to detach from.
+    const streakTrigger = '[data-slot="transcript-viewport"] [data-slot="tool-streak"] > [data-slot="collapsible-trigger"]'
+    // Keyboard-activated, like progressive-history.e2e.ts's boundary: a synthetic click at the
+    // trigger's coordinates inside a sheet lands on the dialog layer and dismisses the panel.
+    browser.evaluate(`document.querySelector(${JSON.stringify(streakTrigger)}).focus()`)
+    browser.press('Enter')
+    browser.waitForFunction(`(() => {
+      const el = document.querySelector('[data-slot="transcript-viewport"]')
+      return el.scrollHeight > el.clientHeight
+    })()`)
 
     const metrics = JSON.parse(
       browser.evaluate(`JSON.stringify((() => {
@@ -230,8 +253,7 @@ describe('the Agents dock against a replayed fan-out', () => {
   }, 120_000)
 
   it('collapses to a one-line odometer', () => {
-    browser.goto(`${baseUrl}/tasks/${RUN_ID}`)
-    browser.waitForFunction(`document.querySelectorAll('${ROW}').length === 2`)
+    openDockExpanded()
 
     browser.click(`${DOCK} > button`)
     browser.waitForFunction(`document.querySelectorAll('${ROW}').length === 0`)

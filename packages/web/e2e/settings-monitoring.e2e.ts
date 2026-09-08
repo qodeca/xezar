@@ -78,7 +78,22 @@ describe('global Resources monitoring controls', () => {
     await waitForResources((resources) => resources.maxMonitoringSessions === 3)
 
     choose('[data-slot="resources-monitoring-wake-mode"]', 'interval')
-    browser.fill('[data-slot="resources-monitoring-wake-interval"]', '7')
+    // The capacity write above invalidates the workspace config, and the refetch that lands a
+    // moment later re-renders this form from the server's value — wiping a number typed into
+    // the freshly mounted input. Type until it holds, exactly as a reader would, and only then
+    // reach for Save (which stays disabled while the field still matches what is saved).
+    browser.waitForFunction(`(() => {
+      const input = document.querySelector('[data-slot="resources-monitoring-wake-interval"]')
+      if (input === null) return false
+      if (input.value === '7') return true
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
+      setter.call(input, '7')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+      return false
+    })()`)
+    browser.waitForFunction(
+      `document.querySelector('[data-action="resources-save-monitoring-wake"]:not([disabled])') !== null`,
+    )
     browser.click('[data-action="resources-save-monitoring-wake"]')
     await waitForResources((resources) => resources.monitoringWakeIntervalMinutes === 7)
 

@@ -61,10 +61,12 @@ describe('settings → appearance against the live dry-run server', () => {
     browser.goto(`${baseUrl}/settings/global/appearance`)
     browser.waitForFunction(`document.querySelector('[data-route="settings-global-appearance"]') !== null`)
 
-    // The GLOBAL nav: the original four sections plus the Open Mercato skills preference,
-    // and nothing project-scoped.
+    // The GLOBAL nav: the original four sections, the Open Mercato skills preference and the
+    // Agent accounts section (registered unconditionally in settings/registry.tsx), and
+    // nothing project-scoped.
     const nav = '[data-slot="settings-nav"][data-scope="global"]'
-    expect(browser.count(`${nav} [data-section]`)).toBe(5)
+    expect(browser.count(`${nav} [data-section]`)).toBe(6)
+    expect(browser.count(`${nav} [data-section="accounts"]`)).toBe(1)
     expect(browser.count(`${nav} [data-section="appearance"]`)).toBe(1)
     expect(browser.count(`${nav} [data-section="notifications"]`)).toBe(1)
     expect(browser.count(`${nav} [data-section="resources"]`)).toBe(1)

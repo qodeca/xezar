@@ -1,11 +1,11 @@
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { AgentBrowser, cezarCli, fixtureServeEnv } from './agent-browser'
+import { AgentBrowser, cezarCli, fixtureServeEnv, removeDataRoot, stopFixtureServer } from './agent-browser'
 import record from './fixtures/thread-run.record.json'
 
 /**
@@ -156,15 +156,10 @@ beforeAll(async () => {
   openCommits()
 }, 180_000)
 
-afterAll(() => {
+afterAll(async () => {
   browser?.close()
-  server?.kill()
-  // Cleanup races the dying server (see thread-scroll.e2e.ts) — litter, not a failure.
-  try {
-    if (dataRoot) rmSync(dataRoot, { recursive: true, force: true })
-  } catch {
-    /* the OS reaps it */
-  }
+  await stopFixtureServer(server)
+  await removeDataRoot(dataRoot)
 })
 
 describe(`the task Commits tab on a ${COMMITS}-commit branch`, () => {
