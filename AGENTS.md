@@ -184,6 +184,33 @@ network), reuses an already-healthy instance instead of double-booting, and writ
 | 0        | `TEST_E2E_STATUS=skipped` | agent-browser could not be provisioned (no network / unsupported platform); prints a loud banner — **not** a pass |
 | non-zero | `TEST_E2E_STATUS=failed`  | a spec failed, or the env could not boot                                                                          |
 
+**The boot isolates the agents' USER-SCOPE config, and a spec may rely on exactly that much.**
+`XEZ_HOME` pins what xezar *writes* (`.ai/qa/xez-home`); `CLAUDE_CONFIG_DIR`, `CODEX_HOME` and
+`OPENCODE_CONFIG_DIR` pin the user-scope files it *reads* (`.ai/qa/agent-home/*`, 0700, wiped on
+every cold boot), and `ANTHROPIC_MODEL` is unset because it outranks every settings file. This
+matters because the cockpit seeds each runner's model from that agent's own settings file by
+design — without it, a developer with opencode configured boots the suite with their own model
+pre-filled, and a spec asserting an unset model fails on their machine while passing in CI.
+
+Three limits are deliberate, and a spec must not assume past them:
+
+- **Project and local scope are NOT isolated.** `<repo>/.claude/settings.local.json` (the highest
+  model priority of all), `<repo>/opencode.json` and `<repo>/.codex/config.toml` resolve from the
+  repo root, not from any home, so no pin reaches them. A model key in one of those still leaks in.
+- **Credential discovery is NOT isolated.** Keychain and `XDG_DATA_HOME` are untouched, so the
+  cockpit still reports "credentials found". That is the safe direction — it means no credential
+  can be written into the tree — but the boot is not a blank host.
+- **OpenCode is pinned through `OPENCODE_CONFIG_DIR`, never `XDG_CONFIG_HOME`.** The XDG variable
+  is machine-wide: pinning it deauthenticated `gh` inside the boot and hid the developer's global
+  git config. If a future boot-path tool stores tokens under `$XDG_CONFIG_HOME` (`gcloud`, `op`,
+  `helm`, `flyctl`), pinning that variable would write them inside the repo.
+
+The pins are part of the reuse fingerprint (`environment.agentHome` in the descriptor), so an
+instance booted with different pins is never reused — the same rule `environment.singleProject`
+already follows. Those vars are exactly what `agentHomePaths()` honours
+(`packages/xezar/src/paths.ts`, precedence pinned by `paths.test.ts`); a fourth agent home added
+there needs adding to `test-env-up.sh` too.
+
 `XEZ_DRY_RUN=1 npm run dev` still exercises the whole cockpit offline for manual verification.
 
 The wrapper takes no file filter, so iterating on ONE spec means booting the environment once and

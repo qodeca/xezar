@@ -140,6 +140,45 @@ describe('agentHomePaths', () => {
     expect(paths.claude).toBe('/home/u/.claude');
   });
 
+  // OpenCode's own variable wins over the XDG one so that relocating ONE agent's config does not
+  // require moving every XDG-aware tool in the process — the e2e boot pins this to sandbox
+  // opencode without deauthenticating `gh` or hiding the developer's global git config.
+  it('prefers OPENCODE_CONFIG_DIR over XDG_CONFIG_HOME for opencode', () => {
+    const paths = agentHomePaths({
+      HOME: '/home/u',
+      OPENCODE_CONFIG_DIR: '/opt/opencode-cfg',
+      XDG_CONFIG_HOME: '/xdg',
+    } as NodeJS.ProcessEnv);
+    expect(paths.opencodeConfig).toBe('/opt/opencode-cfg');
+  });
+
+  it('uses OPENCODE_CONFIG_DIR verbatim — it names the config dir, not a parent', () => {
+    const paths = agentHomePaths({
+      HOME: '/home/u',
+      OPENCODE_CONFIG_DIR: '/opt/opencode-cfg',
+    } as NodeJS.ProcessEnv);
+    expect(paths.opencodeConfig).toBe('/opt/opencode-cfg');
+    expect(paths.opencodeConfig).not.toContain('opencode/opencode');
+  });
+
+  it('ignores a blank OPENCODE_CONFIG_DIR and falls back through XDG', () => {
+    const paths = agentHomePaths({
+      HOME: '/home/u',
+      OPENCODE_CONFIG_DIR: '  ',
+      XDG_CONFIG_HOME: '/xdg',
+    } as NodeJS.ProcessEnv);
+    expect(paths.opencodeConfig).toBe('/xdg/opencode');
+  });
+
+  it('leaves the other agents alone when only opencode is repointed', () => {
+    const paths = agentHomePaths({
+      HOME: '/home/u',
+      OPENCODE_CONFIG_DIR: '/opt/opencode-cfg',
+    } as NodeJS.ProcessEnv);
+    expect(paths.claude).toBe('/home/u/.claude');
+    expect(paths.codex).toBe('/home/u/.codex');
+  });
+
   it('falls back to USERPROFILE when HOME is unset', () => {
     const paths = agentHomePaths({ USERPROFILE: 'C:\\Users\\u' } as unknown as NodeJS.ProcessEnv);
     expect(paths.claude).toContain('.claude');

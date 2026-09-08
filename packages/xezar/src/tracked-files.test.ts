@@ -26,7 +26,17 @@ const trackedFiles = (): string[] =>
 
 describe('tracked files', () => {
   it('tracks no per-machine runtime state, under either product name', () => {
-    const stateDirs = [/^\.ai\/(xezar|cezar)\//, /^\.ai\/qa\/(xez|cez)-home\//, /^\.ai\/tmp\//];
+    // `.ai/qa/agent-home/` is the most credential-adjacent of these: the e2e boot points the
+    // agents' OWN config vars at it, so a `codex login` or `claude` login run while that env is
+    // active writes real credentials there. It is the newest directory and the one a future
+    // ignore-rule tidy-up would be likeliest to move a rule off — which is exactly how the
+    // incident in this file's header happened.
+    const stateDirs = [
+      /^\.ai\/(xezar|cezar)\//,
+      /^\.ai\/qa\/(xez|cez)-home\//,
+      /^\.ai\/qa\/agent-home\//,
+      /^\.ai\/tmp\//,
+    ];
     const leaked = trackedFiles().filter((file) => stateDirs.some((dir) => dir.test(file)));
     expect(leaked, 'local runtime state must never be committed').toEqual([]);
   });

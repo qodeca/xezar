@@ -38,6 +38,11 @@ skills-lock.json
 .ai/qa/*.log
 .ai/qa/.build-cache
 .ai/qa/xez-home/
+# The empty agent-config sandbox test-env-up.sh points CLAUDE_CONFIG_DIR / CODEX_HOME /
+# OPENCODE_CONFIG_DIR at, so a test boot reads no developer's real agent settings. Credential-
+# adjacent: a login run while that env is active writes real tokens here. Guarded by the
+# stateDirs check in packages/xezar/src/tracked-files.test.ts as well as by this rule.
+.ai/qa/agent-home/
 
 # local symlink into .agents/skills
 .claude/skills
