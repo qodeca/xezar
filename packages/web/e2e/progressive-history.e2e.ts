@@ -1,11 +1,11 @@
 import { spawn, type ChildProcess } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { AgentBrowser, bootProjectId, fixtureServeEnv } from './agent-browser'
+import { AgentBrowser, bootProjectId, fixtureServeEnv, removeDataRoot, stopFixtureServer } from './agent-browser'
 import { largeThreadEvents } from './fixtures/make-large-thread'
 import record from './fixtures/thread-run.record.json'
 
@@ -179,14 +179,10 @@ beforeAll(async () => {
   )
 }, 120_000)
 
-afterAll(() => {
+afterAll(async () => {
   browser?.close()
-  server?.kill()
-  try {
-    if (dataRoot) rmSync(dataRoot, { recursive: true, force: true })
-  } catch {
-    // The killed fixture may still be releasing its transcript file; the OS reaps the temp dir.
-  }
+  await stopFixtureServer(server)
+  await removeDataRoot(dataRoot)
 })
 
 describe('progressive long-session history', () => {
@@ -228,10 +224,18 @@ describe('progressive long-session history', () => {
     ))
     while (page < 5) {
       page += 1
-      activateHistoryBoundary()
-      browser.waitForFunction(
-        `document.querySelector('[data-slot="history-boundary"]')?.dataset.retainedPages === '${page}'`,
-      )
+      // Polled retry rather than one un-timed press: the boundary disables itself while a page
+      // is in flight and re-anchors the scroller on a frame after it lands, so a single
+      // activation aimed at either of those moments is dropped. Asking again until the count
+      // rises is safe HERE — this case is about the five-page ceiling, while the exactly-once
+      // gesture semantics are the previous case's, and it still presses once per page.
+      browser.waitForFunction(`(() => {
+        const boundary = document.querySelector('[data-slot="history-boundary"]')
+        if (boundary === null) return false
+        if (boundary.dataset.retainedPages === '${page}') return true
+        boundary.querySelector('button:not([disabled])')?.click()
+        return false
+      })()`)
     }
     expect(Number(browser.evaluate(
       `document.querySelector('[data-slot="history-boundary"]')?.dataset.retainedPages`,

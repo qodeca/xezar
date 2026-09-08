@@ -1,5 +1,6 @@
-import { execFileSync } from 'node:child_process'
-import { mkdirSync, readFileSync, statSync } from 'node:fs'
+import { execFileSync, type ChildProcess } from 'node:child_process'
+import { mkdirSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { setTimeout as delay } from 'node:timers/promises'
 import { dirname, resolve } from 'node:path'
 
 /**
@@ -110,6 +111,47 @@ export async function bootProjectId(baseUrl: string): Promise<string> {
   }
   if (!bootProject) throw new Error(`cezar e2e: ${baseUrl}/api/v1/projects named no boot project`)
   return bootProject
+}
+
+/**
+ * Tear a fixture server down the way its own data directory needs: signal it, then WAIT for
+ * the process to actually exit before anything touches its files. `kill()` only delivers the
+ * signal — the server can still be flushing its NDJSON transcript when the caller returns,
+ * which is what made `rmSync` throw `ENOTEMPTY` on a suite whose every test had passed.
+ *
+ * A server that ignores SIGTERM gets SIGKILL rather than a hang; the wait is bounded so a
+ * wedged fixture surfaces as its own slow teardown instead of a 60s hook timeout.
+ */
+export async function stopFixtureServer(server: ChildProcess | undefined): Promise<void> {
+  if (server === undefined || server.exitCode !== null || server.signalCode !== null) return
+  const exited = new Promise<void>((done) => server.once('exit', () => done()))
+  server.kill()
+  // `ref: false`: the race below leaves this timer pending, and a referenced one would hold
+  // the worker's event loop open for five seconds after every fixture teardown.
+  const escalate = delay(5_000, undefined, { ref: false }).then(() => {
+    if (server.exitCode === null && server.signalCode === null) server.kill('SIGKILL')
+    return exited
+  })
+  await Promise.race([exited, escalate])
+}
+
+/**
+ * Remove a fixture data root once its server is gone. The directory is this suite's own
+ * litter, so a removal that loses a race with the last write is retried rather than swallowed
+ * — and a removal that keeps failing is reported, not hidden: a data root that cannot be
+ * deleted is a fixture still holding it open, which is worth knowing.
+ */
+export async function removeDataRoot(dataRoot: string | undefined): Promise<void> {
+  if (!dataRoot) return
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      rmSync(dataRoot, { recursive: true, force: true })
+      return
+    } catch (error) {
+      if (attempt >= 10) throw error
+      await delay(100)
+    }
+  }
 }
 
 export class AgentBrowser {

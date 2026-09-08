@@ -1,11 +1,11 @@
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { AgentBrowser, bootProjectId, cezarCli, fixtureServeEnv } from './agent-browser'
+import { AgentBrowser, bootProjectId, cezarCli, fixtureServeEnv, removeDataRoot, stopFixtureServer } from './agent-browser'
 
 /**
  * The variants compare view (R3 Step 2.3) end-to-end, against a LIVE ×2 dry run — spec 010
@@ -124,10 +124,10 @@ beforeAll(async () => {
   browser.setViewport(1440, 900)
 }, 180_000)
 
-afterAll(() => {
+afterAll(async () => {
   browser?.close()
-  server?.kill()
-  if (dataRoot) rmSync(dataRoot, { recursive: true, force: true })
+  await stopFixtureServer(server)
+  await removeDataRoot(dataRoot)
 })
 
 describe('the variants compare view against two settled dry runs', () => {
@@ -192,7 +192,16 @@ describe('the variants compare view against two settled dry runs', () => {
 
   it('✔ Pick A confirms, archives B with its worktree removed, and lands on A at the gate', async () => {
     browser.click(`[data-slot="variant-column"][data-variant="A"] [data-slot="variant-pick"]`)
-    browser.waitForFunction(`document.querySelector('[data-slot="confirm-pick"]') !== null`)
+    // Present is not the same as reachable: the confirm dialog fades in over its own
+    // full-screen overlay, and a click fired while that overlay is still on top lands on the
+    // overlay. Wait until the button is genuinely the element under its own centre.
+    browser.waitForFunction(`(() => {
+      const button = document.querySelector('[data-slot="confirm-pick"]')
+      if (button === null) return false
+      const box = button.getBoundingClientRect()
+      const atPoint = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)
+      return atPoint !== null && button.contains(atPoint)
+    })()`)
     browser.click(`[data-slot="confirm-pick"]`)
 
     // Navigation to the winner's thread, where the review gate renders (A parked at review).

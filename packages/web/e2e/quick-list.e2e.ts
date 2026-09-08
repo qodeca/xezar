@@ -1,12 +1,12 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { createServer } from 'node:net'
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
-import { AgentBrowser, bootProjectId, cezarCli, fixtureServeEnv } from './agent-browser'
+import { AgentBrowser, bootProjectId, cezarCli, fixtureServeEnv, removeDataRoot, stopFixtureServer } from './agent-browser'
 
 /**
  * The task quick-list, in a real browser, against a real cezar serving real runs.
@@ -196,10 +196,10 @@ beforeAll(async () => {
   browser.setViewport(1440, 900)
 }, 90_000)
 
-afterAll(() => {
+afterAll(async () => {
   browser?.close()
-  server?.kill()
-  if (dataRoot) rmSync(dataRoot, { recursive: true, force: true })
+  await stopFixtureServer(server)
+  await removeDataRoot(dataRoot)
 })
 
 describe('task quick-list', () => {
@@ -226,11 +226,12 @@ describe('task quick-list', () => {
     // The review runs are what wants you; the terminal ones are history. The variant pair is one
     // tile, not two rows — so "Needs you" holds two things, not three.
     // Both are `review`, so the tie breaks on recency: the variant group started 30 minutes ago,
-    // the PR review 40 — newest first. The PR row reads title (the auto-SUMMARY, not the raw
-    // fixture title), then its `+128 −14` diff pair, then the PR chip.
+    // the PR review 40 — newest first. The PR row LEADS with its numbered reference chip
+    // (`#396`), then the title (the auto-SUMMARY, not the raw fixture title), then its
+    // `+128 −14` diff pair.
     expect(rowsIn('Needs you')).toEqual([
       'Add skills autocomplete to composer×2',
-      'Structured changes endpoint for the git view+128 −14PR',
+      '#396Structured changes endpoint for the git view+128 −14',
     ])
     // fix-done recorded a diff on its last turn; fix-failed predates diffStat and shows none.
     expect(rowsIn('Recent')).toEqual(['README parallel-agents tagline+9 −22h', 'Bump zod to v43h'])
@@ -611,9 +612,9 @@ describe('a row under width contention, in a column the user can widen', () => {
     wideProject = await bootProjectId(wideUrl)
   }, 90_000)
 
-  afterAll(() => {
-    wideServer?.kill()
-    if (wideRoot) rmSync(wideRoot, { recursive: true, force: true })
+  afterAll(async () => {
+    await stopFixtureServer(wideServer)
+    await removeDataRoot(wideRoot)
   })
 
   beforeEach(() => {
@@ -779,9 +780,9 @@ describe('empty quick-list', () => {
     emptyProject = await bootProjectId(emptyUrl)
   }, 60_000)
 
-  afterAll(() => {
-    emptyServer?.kill()
-    if (emptyRoot) rmSync(emptyRoot, { recursive: true, force: true })
+  afterAll(async () => {
+    await stopFixtureServer(emptyServer)
+    await removeDataRoot(emptyRoot)
   })
 
   it('shows the honest empty state — a fresh cezar has nothing to list', () => {

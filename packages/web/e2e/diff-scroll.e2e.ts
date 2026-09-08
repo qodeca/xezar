@@ -1,12 +1,12 @@
 import { execFileSync } from 'node:child_process'
 import { spawn, type ChildProcess } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { AgentBrowser, cezarCli, fixtureServeEnv } from './agent-browser'
+import { AgentBrowser, cezarCli, fixtureServeEnv, removeDataRoot, stopFixtureServer } from './agent-browser'
 
 /**
  * Diff virtualization in a real browser (`components/diff/diff-scroll.ts` §"THE PERFORMANCE
@@ -137,16 +137,10 @@ beforeAll(async () => {
   browser.setViewport(1440, 900)
 }, 120_000)
 
-afterAll(() => {
+afterAll(async () => {
   browser?.close()
-  server?.kill()
-  // The server may still be flushing its own state into the fixture as it dies; a temp dir
-  // that outlives the run is litter, not a failure, so cleanup never fails the suite.
-  try {
-    if (repo) rmSync(repo, { recursive: true, force: true })
-  } catch {
-    /* the OS reaps it */
-  }
+  await stopFixtureServer(server)
+  await removeDataRoot(repo)
 })
 
 describe(`diff virtualization on a generated ${FIXTURE_FILES}-file changeset`, () => {

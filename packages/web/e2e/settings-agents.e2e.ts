@@ -80,8 +80,10 @@ describe('settings → agents against the live dry-run server', () => {
   it('renders every knob, agent-agnostically named', () => {
     gotoAgents()
     browser.waitForFunction(`document.querySelector('[data-slot="agents-base-branch"]') !== null`)
-    expect(browser.count('[data-slot="agents-runner"] [role="radio"]')).toBe(3)
-    expect(browser.count('[data-slot="agents-model"]')).toBe(3)
+    // claude · codex · opencode · pi — `pi` is offered unconditionally (new-task-form.ts).
+    expect(browser.count('[data-slot="agents-runner"] [role="radio"]')).toBe(4)
+    // One model preset per runner, `pi` included.
+    expect(browser.count('[data-slot="agents-model"]')).toBe(4)
     expect(browser.count('[data-slot="agents-system-prompt"]')).toBe(1)
     // The dry-run repo is a git checkout, so the base-branch picker is the real control.
     expect(browser.count('[data-slot="agents-base-branch"]')).toBe(1)
@@ -91,6 +93,12 @@ describe('settings → agents against the live dry-run server', () => {
     gotoAgents()
     browser.click('[data-slot="agents-runner"] [data-value="codex"]')
     await waitForConfig((c) => c.defaultRunner === 'codex')
+    // The server having the value is not the cockpit having it: this spec polls the API over
+    // its own HTTP connection, while the page learns through the mutation's query invalidation.
+    // Wait for the control itself, then assert on it — the same contract, without the race.
+    browser.waitForFunction(
+      `document.querySelectorAll('[data-slot="agents-runner"] [data-value="codex"][aria-checked="true"]').length === 1`,
+    )
     expect(browser.count('[data-slot="agents-runner"] [data-value="codex"][aria-checked="true"]')).toBe(1)
   })
 

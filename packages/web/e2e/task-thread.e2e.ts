@@ -1,11 +1,11 @@
 import { spawn, type ChildProcess } from 'node:child_process'
-import { copyFileSync, cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, cpSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { AgentBrowser, bootProjectId, cezarCli, fixtureServeEnv } from './agent-browser'
+import { AgentBrowser, bootProjectId, cezarCli, fixtureServeEnv, removeDataRoot, stopFixtureServer } from './agent-browser'
 import record from './fixtures/thread-run.record.json'
 
 /**
@@ -96,10 +96,10 @@ beforeAll(async () => {
   browser.waitForFunction(`document.querySelectorAll('[data-slot="user-bubble"]').length >= 2`)
 }, 120_000)
 
-afterAll(() => {
+afterAll(async () => {
   browser?.close()
-  server?.kill()
-  if (dataRoot) rmSync(dataRoot, { recursive: true, force: true })
+  await stopFixtureServer(server)
+  await removeDataRoot(dataRoot)
 })
 
 describe('task thread', () => {
@@ -252,6 +252,12 @@ describe('task thread', () => {
   })
 
   it('the step rail maps the record steps to checklist rows over the progress bar', () => {
+    // The header ships the rail COLLAPSED (`WorkflowSteps` in step-rail.tsx): the one-line
+    // summary answers "where is this run?", and the per-step checklist is an explicit
+    // disclosure. Expand it the way a reader would before measuring the rows.
+    browser.click('[data-slot="workflow-steps"] > button')
+    browser.waitForFunction(`document.querySelector('[data-slot="step-progress"]') !== null`)
+
     const rail = browser.evaluate(`(() => {
       const rows = [...document.querySelectorAll('[data-slot="step-row"]')]
       return {
@@ -334,8 +340,11 @@ describe('task thread', () => {
     expect(meta).toContain('+1 −0')
     expect(meta).toContain('3.6k tokens')
     expect(meta).toContain('$0.04')
-    // The fixture is a claude run — the runner stays out of the line, like the mockup.
-    expect(meta).not.toContain('claude')
+    // The runner is the AgentBadge's to say (#416), not the meta prose's: it sits inside this
+    // line as its own hover-disclosed badge beside the token counter.
+    expect(
+      browser.evaluate(`document.querySelector('[data-slot="run-meta"] [data-slot="agent-badge"]').textContent`),
+    ).toContain('claude')
     // Branch renders as the mono chip, not plain text.
     expect(
       browser.evaluate(`document.querySelector('[data-slot="branch-chip"]').textContent`),
@@ -358,7 +367,17 @@ describe('task thread', () => {
     const actions = browser.evaluate(
       `[...document.querySelectorAll('[data-slot="run-actions"] button')].map((b) => b.textContent.trim())`,
     ) as string[]
-    expect(actions).toEqual(['Continue', 'Open in…', 'Notes', 'Archive', 'Delete'])
+    // `Mark unread` (#775) and `Pin` (#935) are computed from run state alongside the rest;
+    // run-header.test.tsx pins the same seven-item list.
+    expect(actions).toEqual([
+      'Continue',
+      'Open in…',
+      'Notes',
+      'Mark unread',
+      'Pin',
+      'Archive',
+      'Delete',
+    ])
 
     // The take-over hint, per-backend (the fixture's last agent session, in its worktree).
     const hint = browser.evaluate(

@@ -1,11 +1,11 @@
 import { spawn, type ChildProcess } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { AgentBrowser, bootProjectId, cezarCli, fixtureServeEnv } from './agent-browser'
+import { AgentBrowser, bootProjectId, cezarCli, fixtureServeEnv, removeDataRoot, stopFixtureServer } from './agent-browser'
 import { expectedRowCount, largeThreadEvents } from './fixtures/make-large-thread'
 import record from './fixtures/thread-run.record.json'
 
@@ -29,7 +29,17 @@ const artifactsDir = resolve(import.meta.dirname, '../../../.ai/qa/artifacts_e2e
 const sessionId = `e2e-thread-scroll-${process.pid}`
 
 const TURNS = 250
-const ROWS = expectedRowCount(TURNS) // 1002 — comfortably past the ~300 threshold
+/** The transcript's full size on disk — far more than any single screen ever holds, which is
+ *  the point: this fixture exists to make the reader page and the renderer window. */
+const ROWS = expectedRowCount(TURNS) // 1002
+/** `MAX_HISTORY_PAGES` in `packages/web/src/api/run-history.ts`. */
+const MAX_RETAINED_PAGES = 5
+/** Rows on screen once all five pages are retained: five × the 100-item page bound
+ *  (`RUN_HISTORY_PAGE_ITEMS`), plus the run's own task bubble, which is not a transcript item
+ *  and is therefore always there — the same arithmetic that makes a freshly opened thread 101
+ *  rows. Comfortably past the ~300 `VIRTUALIZE_THRESHOLD`, which is what lets the two
+ *  measurements below compare flat and windowed rendering of the SAME state. */
+const RETAINED_ROWS = 501
 
 const RUN_ID = 'aaaaaaaa-1111-4222-8333-bbbbbbbbcccc'
 /** The real record fixture, re-ided for the synthetic transcript; the untouched fields keep
@@ -107,13 +117,46 @@ function parkAt(target: string) {
   })()`)
 }
 
-/** Load the thread and wait until the SSE replay has finished growing it (the last turn's
- *  note is rendered) — every measurement below is over the complete transcript. */
+const BOUNDARY = `document.querySelector('[data-slot="history-boundary"]')`
+const retainedPages = () => Number(browser.evaluate(`${BOUNDARY}?.dataset.retainedPages ?? 0`))
+
+/**
+ * Page the transcript back until the cockpit holds every page it will retain.
+ *
+ * Transcript history is PROGRESSIVE: arrival paints only the newest `RUN_HISTORY_PAGE_ITEMS`
+ * (100) canonical items, and older pages load when the reader reaches the boundary. The client
+ * keeps a five-page window (`MAX_HISTORY_PAGES` in api/run-history.ts) — asking for a sixth
+ * drops the newest — so this is the largest thread a reader can ever have on screen at once,
+ * and it is the state every measurement below is taken over.
+ *
+ * Activation goes through the boundary's own button rather than a synthetic wheel gesture:
+ * it is the accessible control, and it cannot lose a race with the scroll anchor.
+ */
+function loadRetainedHistory() {
+  for (let page = retainedPages(); page > 0 && page < MAX_RETAINED_PAGES; page += 1) {
+    // Polled retry, like `parkAt` below and for the same reason: the boundary disables itself
+    // while a page is in flight and re-anchors the scroller on a requestAnimationFrame after
+    // it lands, so a single un-timed activation can be dropped between those two states.
+    // Asking again until the retained count actually rises is what a reader does, and it is
+    // the only formulation that does not encode a guessed delay.
+    browser.waitForFunction(`(() => {
+      const boundary = ${BOUNDARY}
+      if (boundary === null) return true // start of session — nothing older to ask for
+      if (Number(boundary.dataset.retainedPages ?? 0) > ${page}) return true
+      boundary.querySelector('button:not([disabled])')?.click()
+      return false
+    })()`)
+  }
+}
+
+/** Load the thread, wait until the SSE replay has finished growing it (the last turn's note is
+ *  rendered), then page history back to the full retained window. */
 function openThread(query = '') {
   browser.goto(`${baseUrl}${scoped(`/tasks/${RUN_ID}`)}${query}`)
   browser.waitForFunction(
     `document.querySelector('[data-slot="thread-rows"]') !== null && document.body.textContent.includes('goal achieved — session closed')`,
   )
+  loadRetainedHistory()
 }
 
 beforeAll(async () => {
@@ -142,17 +185,10 @@ beforeAll(async () => {
   browser.setViewport(1440, 900)
 }, 120_000)
 
-afterAll(() => {
+afterAll(async () => {
   browser?.close()
-  server?.kill()
-  // The killed server may still be flushing its NDJSON into dataRoot, which races rmSync and
-  // throws ENOTEMPTY — a suite-level failure on a run whose every test passed. A temp dir that
-  // outlives the run is litter, not a failure; the OS reaps it.
-  try {
-    if (dataRoot) rmSync(dataRoot, { recursive: true, force: true })
-  } catch {
-    /* the OS reaps it */
-  }
+  await stopFixtureServer(server)
+  await removeDataRoot(dataRoot)
 })
 
 describe('thread virtualization on a 1,000-row transcript', () => {
@@ -166,7 +202,10 @@ describe('thread virtualization on a 1,000-row transcript', () => {
     flatRows = rowCount()
     flatDom = domSize()
     flatAssistantWidth = assistantWidth()
-    expect(flatRows).toBe(ROWS) // the generator's own arithmetic, end to end
+    expect(flatRows).toBe(RETAINED_ROWS)
+    // Pagination is genuinely in play: the reader is holding a window, not the whole file.
+    expect(flatRows).toBeLessThan(ROWS)
+    expect(retainedPages()).toBe(MAX_RETAINED_PAGES)
     expect(flatAssistantWidth).toBeGreaterThan(200)
   }, 90_000)
 
