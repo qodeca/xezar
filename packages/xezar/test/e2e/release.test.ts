@@ -182,7 +182,7 @@ test('no credential at all FAILS the release instead of quietly dry-running', { 
     // No --dry-run flag, no OIDC endpoint, no NODE_AUTH_TOKEN.
     const error = await runScript(root, ['minor']).then(
       () => null,
-      (e: Error & { code?: number; stderr?: string }) => e,
+      (e: Error & { code?: number; stdout?: string; stderr?: string }) => e,
     );
     assert.ok(error, 'a release with no credential must exit non-zero');
     assert.notEqual(error.code, 0);
