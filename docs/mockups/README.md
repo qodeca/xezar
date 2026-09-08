@@ -12,6 +12,6 @@ Built on real xezar data (run `2d012907`'s actual NDJSON events, real skill name
 | [`tasks-home.html`](tasks-home.html) | Task table with editable titles, ± stats, live CPU/Mem; sidebar quick-list with variant groups | #389 |
 | [`settings-skills.html`](settings-skills.html) | Settings tab with registry sub-nav; skills project-first/bold | #377 |
 
-Screenshots (Playwright, 2× scale) in [`screenshots/`](screenshots/): `*-desktop.png` 1440×900 dark, `*-iphone.png` 390×844, `*-light.png` light theme, plus `thread-desktop-tools.png` (tool cards in view) and `new-task-desktop-clean.png` (dropdown closed).
+Open any file directly in a browser to see it — there are no rendered PNGs to keep in sync. Each mockup is responsive; narrow the window to 390px to see the phone layout, and add `class="light"` to `<html>` for the light theme.
 
 These are design targets for visual approval — the implementation is React + shadcn/ui, not these static files.

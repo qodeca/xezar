@@ -2328,7 +2328,11 @@ function mockGithubComments(kind: 'issue' | 'pr'): ForgeCommentsData {
       id: 2,
       author: 'lin',
       createdAt: at(600_000),
-      body: 'Here is the failing screen:\n\n![failure](https://avatars.githubusercontent.com/u/2?v=4)',
+      // An inline image, so the dry-run demo exercises the comment renderer's image path.
+      // It points at this app's OWN asset rather than a stranger's profile photo: this mock is
+      // what a public demo and every README screenshot show, and a real person's likeness has
+      // no business being either.
+      body: 'Here is the screen I attached:\n\n![attachment](/xezar.svg)',
       kind: 'comment',
       url: 'https://github.com/mock/repo/issues/1#issuecomment-2',
     },
