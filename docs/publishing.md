@@ -9,39 +9,50 @@ by hand.
 
 ---
 
-## One-time setup (repository owner)
+## How publishing is authenticated
 
-Both steps need an account with publish rights on the `@qodeca` npm scope and admin on the
-GitHub repository.
+**There is no npm token in this repository, and there is not meant to be one.**
 
-### 1. Create an npm automation token
+Publishing uses npm **trusted publishing** (OIDC). GitHub Actions mints a short-lived identity
+token for the release job, and npm checks it against a *trusted publisher* configured on the
+package — which names this repository *and this workflow file* by name. Nothing long-lived
+exists to expire, leak, or be copied out of CI, and a publish from any other workflow is
+rejected rather than quietly accepted.
 
-1. Sign in at <https://www.npmjs.com/> and open
-   **Account → Access Tokens → Generate New Token → Granular Access Token**.
-2. Give it **Read and write** on packages, scoped to `@qodeca/*` (or to `@qodeca/xezar` alone).
-3. Set an expiry you will actually renew, and copy the value once — npm never shows it again.
+`packages/xezar/src/release/publishing-surface.test.ts` fails the build if `NPM_TOKEN` or
+`NODE_AUTH_TOKEN` reappears in any workflow, or if `id-token: write` is granted anywhere but
+the release job.
 
-A *Granular Access Token* is preferred over a classic Automation token because it can be scoped
-to this package only. Either works; both bypass 2FA, which is what a CI publish needs.
+### One-time setup (repository owner)
 
-### 2. Store it as the `NPM_TOKEN` repository secret
+On <https://www.npmjs.com/package/@qodeca/xezar/access>, under **Trusted Publisher**, add a
+GitHub Actions publisher:
 
-<https://github.com/qodeca/xezar/settings/secrets/actions> → **New repository secret** →
-name `NPM_TOKEN`, value the token.
+| Field | Value |
+|---|---|
+| Organization or user | `qodeca` |
+| Repository | `xezar` |
+| Workflow filename | `release.yml` |
+| Environment name | `production` |
 
-Or from a terminal, without the value ever appearing in shell history or logs:
+The workflow filename is matched exactly, so **renaming `.github/workflows/release.yml` breaks
+publishing** until the publisher is updated. That is the point: the authorisation is tied to one
+named file, not to the repository as a whole.
 
-```bash
-gh secret set NPM_TOKEN -R qodeca/xezar   # paste the token at the prompt, then press Ctrl-D
-```
-
-### 3. (Optional but recommended) Require an approval on the `production` environment
-
-The release job runs in the `production` GitHub environment. Adding a required reviewer at
-<https://github.com/qodeca/xezar/settings/environments> means every publish pauses for a human
+Recommended alongside it: add a required reviewer to the `production` environment at
+<https://github.com/qodeca/xezar/settings/environments>, so every publish pauses for a human
 before it touches the registry.
 
----
+### The bootstrap exception
+
+Trusted publishing cannot perform a package's **first** publish: npm has nowhere to attach a
+publisher until the package exists. `@qodeca/xezar@0.10.1` was therefore published once by a
+maintainer from a logged-in machine (`npm login`, then `node scripts/release.mjs existing`),
+and the trusted publisher was configured immediately afterwards. Every release from `0.10.2`
+onward goes through the workflow with no credential stored anywhere.
+
+If you ever need to publish by hand again, `scripts/release.mjs` accepts a local `npm login`
+session as well — it fails only when it has *neither* an OIDC endpoint nor a token.
 
 ## Cutting a release
 
@@ -64,8 +75,8 @@ before it touches the registry.
 ### What a green run means
 
 A green `Release` run means the package **is on the registry**. `scripts/release.mjs` exits
-non-zero when `NODE_AUTH_TOKEN` is empty rather than degrading to a dry run, so a missing
-credential fails the job loudly instead of producing a green run that published nothing.
+non-zero when it has no credential rather than degrading to a dry run, so a misconfigured
+trusted publisher fails the job loudly instead of producing a green run that published nothing.
 
 To rehearse locally without publishing, pass the flag explicitly:
 
@@ -114,6 +125,7 @@ Then:
 | State | Do this |
 |---|---|
 | Nothing published; the job failed before `Publish release` | Fix the cause and re-dispatch the same bump. Nothing to undo. |
+| `npm error 404` or an auth error at the publish step | The trusted publisher is missing or does not match. Check owner/repo/**workflow filename**/environment at <https://www.npmjs.com/package/@qodeca/xezar/access>, and that the job still has `id-token: write`. |
 | Published, but no tag / no GitHub Release | Do **not** re-run the workflow — it would try to publish the same version again. Create the Release by hand at the released commit: `gh release create v<version> --target <sha> --title "v<version>" --notes "..."`. |
 | Published, but `latest` points at the wrong version | `npm dist-tag add @qodeca/xezar@<good-version> latest`. Moving a tag is safe; deleting a version is not. |
 | Published a broken build | Publish the FIX as a new patch version and move `latest` to it. Optionally `npm deprecate @qodeca/xezar@<bad> "broken; use <good>"`. |

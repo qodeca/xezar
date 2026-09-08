@@ -22,13 +22,20 @@
 // dist/ must exist for this script to even import. Stamping only rewrites the
 // version field, so no rebuild is needed.
 //
-// FAILS when NPM_TOKEN is missing. An earlier revision silently degraded to a
-// visible dry run, which meant a green `Release` run proved nothing: the summary
-// said "published" nowhere, but no human reads a summary of a job that went
-// green. A release either publishes or it fails, so a missing credential is an
-// error, not a mode. `--dry-run` stays available as an EXPLICIT flag for local
-// rehearsal. The workflow reads `version`/`published` from $GITHUB_OUTPUT and
-// cuts the tag + GitHub Release only on a real publish.
+// Authentication is npm TRUSTED PUBLISHING (OIDC) — this repository stores no
+// npm token at all. GitHub Actions mints a short-lived identity token for the
+// job, npm checks it against the trusted publisher configured on the package
+// (owner + repo + workflow filename), and the publish is authorised without any
+// secret existing to leak, expire, or be copied out. `docs/publishing.md` has
+// the one-time setup.
+//
+// FAILS when no credential is available, rather than degrading. An earlier
+// revision silently forced `--dry-run` when the token was absent and exited 0,
+// which meant a green `Release` run proved nothing: it published nothing and cut
+// no tag, and nobody reads the summary of a job that went green. A release
+// either publishes or it fails. `--dry-run` stays available as an EXPLICIT flag
+// for local rehearsal. The workflow reads `version`/`published` from
+// $GITHUB_OUTPUT and cuts the tag + GitHub Release only on a real publish.
 //
 // Usage: node scripts/release.mjs <patch|minor|major|existing> [--dry-run]
 // Env override for tests: XEZ_RELEASE_ROOT (defaults to the repo root).
@@ -90,12 +97,21 @@ if (!version) {
 }
 
 const dryRun = process.argv.includes('--dry-run');
+// Two ways to be authorised, and the script must be able to tell them apart so it can say
+// which one is missing. OIDC is the CI path: GitHub exposes the token-minting endpoint only
+// when the job was granted `id-token: write`, so its presence is what "this job can publish
+// via a trusted publisher" actually looks like from here. NODE_AUTH_TOKEN is the local path,
+// for a maintainer publishing by hand from a logged-in machine.
+const oidc = Boolean(process.env.ACTIONS_ID_TOKEN_REQUEST_URL);
 const token = process.env.NODE_AUTH_TOKEN ?? '';
-if (!dryRun && !token) {
-  console.error('release: NODE_AUTH_TOKEN is empty — refusing to run.');
+if (!dryRun && !oidc && !token) {
+  console.error('release: no npm credential — refusing to run.');
   console.error('release: a release must publish or fail; it must never report a dry run as one.');
-  console.error('release: set the NPM_TOKEN repository secret (see docs/publishing.md), then re-dispatch.');
-  console.error('release: to rehearse locally without publishing, pass --dry-run explicitly.');
+  console.error(
+    process.env.GITHUB_ACTIONS === 'true'
+      ? 'release: this job has no `id-token: write`, so npm cannot mint an OIDC token. Check the job\'s `permissions:` block, and that the package\'s trusted publisher on npmjs.com names THIS workflow file (see docs/publishing.md).'
+      : 'release: run `npm login` first, or pass --dry-run to rehearse without publishing.',
+  );
   process.exit(1);
 }
 
@@ -106,9 +122,10 @@ console.log(
   `release: stamped ${stampedNames.join(' + ')} to ${version} (bump ${bump}, dist-tag latest${dryRun ? ', dry run' : ''})`,
 );
 
-// Provenance needs the job's OIDC token (permissions: id-token: write); only
-// meaningful for a real publish from Actions.
-const provenance = !dryRun && process.env.GITHUB_ACTIONS === 'true' ? ['--provenance'] : [];
+// Provenance needs the job's OIDC token (permissions: id-token: write); only meaningful for a
+// real publish from Actions. A trusted-publisher publish attests provenance anyway, but asking
+// for it explicitly keeps the flag honest if this ever runs on another CI.
+const provenance = !dryRun && oidc ? ['--provenance'] : [];
 // Same cross-platform npm resolution as scripts/release-snapshot.mjs.
 const npmExecpath = process.env.npm_execpath;
 const runNpm = (args, cwd) => {

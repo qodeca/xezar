@@ -27,9 +27,18 @@ describe('publishing surface', () => {
     expect(workflows().map((w) => w.name).sort()).toEqual(['ci.yml', 'release.yml']);
   });
 
-  it('gives release.yml sole custody of the npm credential', () => {
-    const withToken = workflows().filter((w) => w.body.includes('NPM_TOKEN'));
-    expect(withToken.map((w) => w.name)).toEqual(['release.yml']);
+  it('stores no npm token anywhere — publishing is OIDC trusted publishing', () => {
+    // A token is a secret that can expire, leak or be copied out of CI. Trusted publishing
+    // replaces it with an identity GitHub mints per job and npm checks against the package's
+    // configured publisher. A reinstated `NPM_TOKEN` would quietly reintroduce all of that.
+    for (const w of workflows()) {
+      expect(w.body, `${w.name} must not reference an npm token`).not.toMatch(/NPM_TOKEN|NODE_AUTH_TOKEN/);
+    }
+  });
+
+  it('grants id-token only to the release job — that permission IS the credential', () => {
+    const withIdToken = workflows().filter((w) => w.body.includes('id-token: write'));
+    expect(withIdToken.map((w) => w.name)).toEqual(['release.yml']);
   });
 
   it('keeps every publish command out of ordinary CI', () => {

@@ -3,6 +3,13 @@ name: Release
 # The ONLY workflow in this repository that publishes to npm, and the only one that can create
 # a release tag. It is `workflow_dispatch`-only and never fires from a push (#482): nothing
 # reaches the registry unless a maintainer asks for it by name and picks the bump.
+#
+# There is NO npm token anywhere in this repository. Publishing authenticates with npm TRUSTED
+# PUBLISHING (OIDC): GitHub mints a short-lived identity token for this job, and npm checks it
+# against the trusted publisher configured on the package — which names this repository AND this
+# workflow file by name. Renaming this file, or copying the publish step into another workflow,
+# breaks the publish rather than silently succeeding from somewhere unexpected. The one-time
+# setup is in docs/publishing.md.
 on:
   workflow_dispatch:
     inputs:
@@ -41,7 +48,7 @@ jobs:
     environment: production
     permissions:
       contents: write # create the release tag + GitHub Release via the API
-      id-token: write # npm provenance attestation
+      id-token: write # mint the OIDC token npm trusted publishing authenticates with
       pull-requests: write # open the version-bump PR for patch/minor/major releases
 
     steps:
@@ -50,12 +57,17 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Trusted publishing needs npm 11.5.1+ for the OIDC exchange; `lts/*` ships well past
+      # that, and `registry-url` is what writes the .npmrc npm reads the registry from.
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: lts/*
           cache: npm
           registry-url: https://registry.npmjs.org
+
+      - name: Show npm version (trusted publishing needs >= 11.5.1)
+        run: npm --version
 
       - name: Install dependencies
         run: npm ci
@@ -77,12 +89,12 @@ jobs:
       - name: Verify the packaged CLI installs and runs
         run: npm run test:package
 
-      # `scripts/release.mjs` FAILS if NODE_AUTH_TOKEN is empty — it never degrades to a dry
-      # run, so a green job here means the packages really went to npm.
+      # `scripts/release.mjs` FAILS when it has no credential — it never degrades to a dry run,
+      # so a green job here means the package really went to npm. No `env:` block: the OIDC
+      # token is minted from the job's `id-token: write` permission, so there is no secret to
+      # pass in and none to leak.
       - name: Publish release
         id: release
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: node scripts/release.mjs "${{ inputs.bump }}"
 
       # `main` is PR-only, so a release never pushes a commit to it directly.

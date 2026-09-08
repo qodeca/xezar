@@ -159,14 +159,14 @@ test('the existing bump publishes the committed version verbatim', { timeout: 12
   }
 });
 
-test('a missing NPM token FAILS the release instead of quietly dry-running', { timeout: 120_000 }, async () => {
-  // Regression guard. The pipeline used to force `--dry-run` when NODE_AUTH_TOKEN was empty and
+test('no credential at all FAILS the release instead of quietly dry-running', { timeout: 120_000 }, async () => {
+  // Regression guard. The pipeline used to force `--dry-run` when the credential was absent and
   // exit 0, so an unconfigured repository produced a GREEN `Release` run that published nothing
   // and cut no tag. Green means published; anything else is a failure a human has to look at.
   const root = await makeFixture('0.1.5');
   try {
     await writeFile(join(root, 'github-output.txt'), '');
-    // No --dry-run flag and no NODE_AUTH_TOKEN.
+    // No --dry-run flag, no OIDC endpoint, no NODE_AUTH_TOKEN.
     const error = await runScript(root, ['minor']).then(
       () => null,
       (e: Error & { code?: number; stderr?: string }) => e,
@@ -179,6 +179,24 @@ test('a missing NPM token FAILS the release instead of quietly dry-running', { t
     assert.equal((await readPkg(root, 'packages', 'xezar')).version, '0.1.5');
     const output = await readFile(join(root, 'github-output.txt'), 'utf8');
     assert.doesNotMatch(output, /^published=true$/m);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('an OIDC-capable job needs no token — the id-token endpoint IS the credential', { timeout: 120_000 }, async () => {
+  // What a real `Release` run looks like: `permissions: id-token: write` makes GitHub expose the
+  // token-minting endpoint, and that is the whole credential. If this ever regressed to
+  // demanding NODE_AUTH_TOKEN, every trusted-publishing release would fail before npm was asked.
+  const root = await makeFixture('0.1.5');
+  try {
+    await writeFile(join(root, 'github-output.txt'), '');
+    const { stdout } = await runScript(root, ['minor', '--dry-run'], {
+      ACTIONS_ID_TOKEN_REQUEST_URL: 'https://example.test/token',
+      GITHUB_ACTIONS: 'true',
+    });
+    assert.match(stdout, /dist-tag latest/);
+    assert.doesNotMatch(stdout, /refusing to run/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
