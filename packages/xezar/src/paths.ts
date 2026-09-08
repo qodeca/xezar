@@ -150,8 +150,19 @@ export function serverLockPath(instance: string = DEFAULT_SERVER_INSTANCE): stri
 /**
  * Where each coding agent keeps its per-user config, honouring the env vars the
  * vendors document: `$CLAUDE_CONFIG_DIR` relocates Claude Code's home;
- * `$CODEX_HOME` relocates Codex's; `$XDG_CONFIG_HOME` relocates OpenCode's config
- * dir (falling back to `~/.config`). Read per call so tests and ops can set env live.
+ * `$CODEX_HOME` relocates Codex's; `$OPENCODE_CONFIG_DIR`, then `$XDG_CONFIG_HOME`,
+ * relocate OpenCode's config dir (falling back to `~/.config`). Read per call so
+ * tests and ops can set env live.
+ *
+ * OpenCode's own variable is checked FIRST because it is the narrow one. Reaching
+ * for `XDG_CONFIG_HOME` to move one agent's config relocates every XDG-aware tool
+ * in the process — inside xezar's own e2e boot that silently deauthenticated `gh`
+ * and hid the developer's global git config. `src/core/agent-profiles.ts` rejects
+ * `OPENCODE_CONFIG_DIR` for AGENT PROFILES, and rightly: it moves config without
+ * moving the credentials in `~/.local/share/opencode`, so a profile would swap
+ * settings while still billing the other account. That objection is about identity
+ * and does not reach here — this slot IS the config dir, nothing else, so the
+ * config-only variable is exactly the right precision for it.
  *
  * These are the DEFAULT profile's dirs. A second login of the same CLI is an
  * agent profile (`src/core/agent-profiles.ts`) and resolves through
@@ -164,7 +175,7 @@ export function agentHomePaths(env: NodeJS.ProcessEnv = process.env): AgentHomeP
   return {
     claude: env.CLAUDE_CONFIG_DIR?.trim() || join(home, '.claude'),
     codex: env.CODEX_HOME?.trim() || join(home, '.codex'),
-    opencodeConfig: join(xdgConfig, 'opencode'),
+    opencodeConfig: env.OPENCODE_CONFIG_DIR?.trim() || join(xdgConfig, 'opencode'),
   };
 }
 
