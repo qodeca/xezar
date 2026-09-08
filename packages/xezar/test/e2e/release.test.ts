@@ -76,6 +76,17 @@ function runScript(fixtureRoot: string, args: string[], extraEnv: Record<string,
     GITHUB_OUTPUT: join(fixtureRoot, 'github-output.txt'),
     NODE_AUTH_TOKEN: '',
     GITHUB_ACTIONS: '',
+    // The OIDC endpoint is a credential too — `scripts/release.mjs` reads
+    // `ACTIONS_ID_TOKEN_REQUEST_URL` as proof that npm can mint a token — and it exists in
+    // exactly one place: a job granted `id-token: write`. That is the Release job and nothing
+    // else, which is why leaving it inherited passed everywhere it was ever run and failed the
+    // first time it mattered. Inside the real release, the fixtures saw a live endpoint, decided
+    // they were authenticated, skipped the "refusing to run" guard and put `@scope/fake-client`
+    // to the actual registry (ENEEDAUTH, then a 120s timeout) — so the release gate failed on its
+    // own test harness rather than on the package. Blanked here, with the one case that is ABOUT
+    // OIDC opting back in through `extraEnv`, exactly as it already does.
+    ACTIONS_ID_TOKEN_REQUEST_URL: '',
+    ACTIONS_ID_TOKEN_REQUEST_TOKEN: '',
     // Hide the developer's own `npm login` from these runs, and it is not a nicety.
     // `scripts/release.mjs` treats a live npm session as a credential — correctly, that is how
     // a maintainer publishes by hand — so on a logged-in machine the "no credential" case would
