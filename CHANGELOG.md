@@ -37,6 +37,41 @@ nightly channel) is gone. Releases are manual, owner-triggered and go straight t
 
 ---
 
+# 0.10.2 (2026-09-08)
+
+## Highlights
+One shipped change: xezar now honours **`OPENCODE_CONFIG_DIR`** when it looks for OpenCode's
+config, ahead of the XDG fallback. Everything else in this release is test infrastructure and
+documentation, which the published package does not carry.
+
+## 🔧 Changed
+- 🔧 **`OPENCODE_CONFIG_DIR` is honoured for OpenCode's config dir.** `agentHomePaths()` checked
+  only `$XDG_CONFIG_HOME/opencode`, falling back to `~/.config/opencode`. It now checks
+  OpenCode's own variable first. Nothing changes for anyone who has not set it — the XDG lookup
+  and the `~/.config/opencode` default are unchanged and still apply in that order — so this is
+  additive. It matters because `XDG_CONFIG_HOME` is machine-wide: pointing it somewhere to move
+  one agent's config relocates every XDG-aware tool in the process, which inside xezar's own e2e
+  boot deauthenticated `gh` and hid the developer's global git config. The narrow variable moves
+  OpenCode's config and nothing else. Note it moves **config only** — OpenCode keeps credentials
+  in `~/.local/share/opencode` — which is exactly why it remains unusable for Agent accounts, a
+  distinction `src/core/agent-profiles.ts` documents and this change does not disturb. (#7)
+
+## 🚀 CI/CD & Infrastructure
+- 🚀 **The e2e boot no longer reads the developer's own agent settings.** The cockpit seeds each
+  runner's model from that agent's native settings file by design, and the test environment
+  pinned only `XEZ_HOME` — what xezar *writes*. So a developer with OpenCode configured booted
+  the suite with their own model pre-filled, and `settings-agents.e2e.ts` failed on their machine
+  while passing in CI, where nobody is logged in. `test-env-up.sh` now also pins
+  `CLAUDE_CONFIG_DIR`, `CODEX_HOME` and `OPENCODE_CONFIG_DIR` at an empty 0700 sandbox under
+  `.ai/qa/agent-home/`, wiped on every cold boot, and unsets `ANTHROPIC_MODEL`, which outranks
+  every settings file. The pins are part of the reuse fingerprint (`environment.agentHome`), so an
+  instance booted with different pins is never reused — without that, switching branches served
+  the stale un-isolated process for the rest of the TTL and the fix looked like it had not worked.
+  Project- and local-scope config in the repo is deliberately still not isolated; `AGENTS.md`
+  states the guarantee and its limits. (#7)
+
+---
+
 # 0.10.1 (2026-09-04)
 
 ## Highlights
