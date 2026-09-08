@@ -487,14 +487,27 @@ describe('TaskQuickList', () => {
       expect(link.closest('button')).toBeNull()
     })
 
-    it('omits unknown token directions while preserving independently visible cost', () => {
+    it('omits an entirely unrecorded spend while preserving independently visible cost', () => {
+      renderList({
+        runs: variants().map((v, i) =>
+          i === 0
+            ? { ...v, inputTokens: undefined, outputTokens: undefined, tokensUsed: 0 }
+            : v,
+        ),
+      })
+      fireEvent.click(screen.getByRole('button', { expanded: false }))
+      expect(row('va')?.textContent).toBe('Aclaude · $0.31')
+    })
+
+    it('falls back to the legacy total when a pre-#737 variant has no directions', () => {
       renderList({
         runs: variants().map((v, i) =>
           i === 0 ? { ...v, inputTokens: undefined, outputTokens: undefined } : v,
         ),
       })
       fireEvent.click(screen.getByRole('button', { expanded: false }))
-      expect(row('va')?.textContent).toBe('Aclaude · $0.31')
+      // The total it does know, bare — not the `IN 96.2k · OUT —` that would claim a split.
+      expect(row('va')?.textContent).toBe('Aclaude · 96.2k · $0.31')
     })
 
     it('gates variant token directions and cost independently', () => {

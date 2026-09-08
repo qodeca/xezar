@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
-import { DirectionalUsage, directionalUsageText } from './directional-usage'
+import { DirectionalUsage, directionalUsageText, totalUsageText } from './directional-usage'
 
 describe('DirectionalUsage', () => {
   it('uses the same compact direction order and an expanded accessible label', () => {
@@ -22,5 +22,27 @@ describe('DirectionalUsage', () => {
     expect(screen.getByText('— / —').getAttribute('aria-label')).toBe(
       'Input tokens: unknown; output tokens: unknown',
     )
+  })
+})
+
+describe('legacy total-only usage (#737 back-compat)', () => {
+  it('shows the total a pre-split record does know, and never invents a direction', () => {
+    render(<DirectionalUsage totalTokens={3_620} />)
+    const el = screen.getByText('3.6k tokens')
+    expect(el.getAttribute('aria-label')).toBe(
+      'Total tokens: 3,620; input/output split not recorded',
+    )
+    expect(el.getAttribute('data-usage')).toBe('total')
+  })
+
+  it('keeps the unit out of dense surfaces that already name the column', () => {
+    render(<DirectionalUsage totalTokens={128_400} variant="table" omitWhenUnknown={false} />)
+    expect(screen.getByText('128.4k')).not.toBeNull()
+    expect(totalUsageText(96_249, false)).toBe('96.2k')
+  })
+
+  it('prefers a recorded direction over the legacy total, including a metered zero', () => {
+    render(<DirectionalUsage inputTokens={0} outputTokens={0} totalTokens={3_620} />)
+    expect(screen.getByText('IN 0 · OUT 0')).not.toBeNull()
   })
 })
