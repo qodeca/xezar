@@ -64,7 +64,10 @@ fi
 
 # ---- 3. run the specs -------------------------------------------------------
 cd "$REPO_ROOT"
-if npx vitest run --config packages/web/e2e/vitest.config.ts; then
+# Through `npm`, never `npx` (AGENTS.md §Validation): vitest is a devDependency of this repo,
+# and `npx` will happily reach past the installed, version-pinned binary and fetch a different
+# one from the registry — a slow, networked, silently-different run of the UI gate.
+if npm test -- --config packages/web/e2e/vitest.config.ts; then
   echo "TEST_E2E_STATUS=passed"
   exit 0
 fi
