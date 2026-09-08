@@ -1,6 +1,6 @@
 {
   "name": "@qodeca/xezar-api-client",
-  "version": "0.10.1",
+  "version": "0.10.2",
   "description": "Typed client and shared contract types for the xezar cockpit HTTP API.",
   "license": "MIT",
   "private": true,
@@ -21,7 +21,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.test.json"
   },
   "dependencies": {
-    "@qodeca/xezar-contract": "^0.10.1",
+    "@qodeca/xezar-contract": "^0.10.2",
     "hono": "^4.6.0"
   },
   "devDependencies": {
