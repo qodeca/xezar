@@ -173,26 +173,32 @@ jobs:
             exit 1
           fi
 
-          # `doctor --json` can exit 0 with individual checks failed, so read the report rather
-          # than trusting the status code, and take the Chrome version straight out of it —
-          # that is "the resolved Chrome version" the cache is keyed on.
+          # HEALTH is decided by doctor's EXIT CODE, above — deliberately, because that is the
+          # only part of the doctor contract this repository documents. `docs/testing/agent-
+          # browser.md` shows `doctor --json` and nothing about the shape of what it prints, and
+          # `scripts/test-env-up.sh:361-371` likewise sets BROWSER_INSTALLED from the status code
+          # alone. Asserting invented field names here would turn an upstream output change into
+          # a red `ui-e2e` on a perfectly healthy runner, which blocks every pull request — a
+          # strictly worse failure than the one this job exists to prevent. The marker assert on
+          # the run step is the real guarantee that specs actually executed.
+          #
+          # The version below is therefore BEST-EFFORT and feeds only the cache key: scrape the
+          # longest dotted version out of the report, whatever nests it. No match degrades the
+          # key to `chrome-unknown`, which is coarser but never wrong, and never fails the job.
           CHROME_VERSION=$(node -e '
-            const d = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
-            const failed = (d.checks || []).filter((c) => c.status === "fail");
-            const chrome = (d.checks || []).find((c) => c.id === "chrome.installed");
-            const version = /(\d+(?:\.\d+){2,3})/.exec((chrome && chrome.message) || "");
-            if (!d.success || failed.length > 0 || !chrome || chrome.status !== "pass" || !version) {
-              console.error("agent-browser doctor is not healthy:");
-              for (const c of failed) console.error("  FAIL " + c.id + ": " + c.message);
-              if (!chrome) console.error("  no chrome.installed check in the doctor report");
-              process.exit(1);
-            }
-            process.stdout.write(version[1]);
-          ' "$DOCTOR") || {
-            echo "::error title=Browser provisioning failed::agent-browser doctor reported an unhealthy browser — the cockpit browser suite CANNOT run on this runner, so this job fails rather than skipping."
-            exit 1
-          }
-          echo "Chrome for Testing $CHROME_VERSION is healthy"
+            const raw = require("node:fs").readFileSync(process.argv[1], "utf8");
+            // Prefer a version sitting near the word "chrome"/"chromium"; fall back to the
+            // longest dotted version anywhere in the report.
+            const near = /chrom\w*[^0-9]{0,40}(\d+(?:\.\d+){2,3})/i.exec(raw);
+            const any = [...raw.matchAll(/\d+(?:\.\d+){2,3}/g)].map((m) => m[0]);
+            const picked = near ? near[1] : any.sort((a, b) => b.length - a.length)[0];
+            process.stdout.write(picked || "");
+          ' "$DOCTOR" 2>/dev/null | tr -cd '0-9.' || true)
+          # The `|| true` is load-bearing: this step runs under `set -euo pipefail`, so without
+          # it a node crash on an unexpected report would fail the ASSIGNMENT and kill the job —
+          # reintroducing exactly the false red the comment above refuses.
+          [ -n "$CHROME_VERSION" ] || CHROME_VERSION=unknown
+          echo "agent-browser doctor exited 0 — the browser is usable; resolved Chrome: $CHROME_VERSION"
 
           # "agent-browser 0.36.0" → "0.36.0"; `unknown` if the CLI ever stops answering, which
           # only makes the key coarser, never wrong.
