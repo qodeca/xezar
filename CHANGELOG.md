@@ -1,6 +1,40 @@
-# Unreleased
+# 0.11.1 (2026-09-09)
+
+## Highlights
+A bug-fix release from the first day of developing Xezar with Xezar. The user-visible fixes are
+the new-task composer keeping a brief that was written straight into the textarea and honouring
+the highlighted picker row on Enter, a task no longer binding itself to a GitHub issue on a
+passing `#N` mention, and the canonical test gate passing inside a task worktree. The one
+addition is `--version` / `-v` on the CLI.
+
+## ✨ Features
+- ✨ **`--version` / `-v` prints the installed package version.** Both the `xezar` and `xez`
+  commands accept the flag; it prints the bare version to stdout and exits 0, and it runs before
+  any repository or `~/.xezar` lookup, so it works outside a git repository too. `--help` lists
+  it and the flag inventory in `BACKWARD_COMPATIBILITY.md` records it. (#21)
 
 ## 🐛 Fixes
+- 🐛 **The new-task composer keeps a brief that was written straight into the textarea.** Text
+  set on the element by a browser automation tool (Chrome DevTools' `fill` past its typing
+  threshold), a form filler or an extension never reached the draft: the box showed it, Start
+  stayed disabled, and the next re-render — picking a skill or workflow — wiped it. The composer
+  now honours the native `input` event too, so the brief lands in the draft and survives any
+  later pick. Typing key by key was never affected. (#14, #26)
+- 🐛 **Enter in the skill/workflow picker commits the row shown as highlighted.** The picker now
+  owns its highlight, clamps it to the rows currently listed after every filter change, and
+  commits Enter from that same state instead of asking the DOM which row carries
+  `aria-selected` at that instant; a second Enter landing during the close animation no longer
+  toggles the pick back off. (#15, #26)
+- 🐛 **A task is bound to a GitHub issue only on an explicit reference.** An issue URL anywhere
+  in the brief, a worded reference such as `issue #N` in its opening line, or a GitHub closing
+  keyword (`Closes #N`, `Fixes #N`, `Resolves #N`) still binds the task; a passing `#N` mention
+  anywhere else in the text no longer does, so a brief that says "another task (issue #6) is
+  editing it" stays unbound instead of attaching itself to issue 6. (#25)
+- 🐛 **The om-* skill pack finds its pipeline config and tracker descriptor again.** 0.11.0 moved
+  `.ai/agentic.config.json` into `.xezar/` and dropped `.ai/trackers/github.md`, but the pack's
+  skills hard-code those `.ai/` paths, so every om-* skill failed to find them. Both files are
+  back where the pack reads them, with the `tracker` key restored; everything Xezar-owned stays
+  in `.xezar/`. (#24)
 - 🐛 **The canonical test gate now passes inside a xezar task worktree.** The shared test
   bootstrap pinned scratch to `<repo>/.local/test-tmp`, so when the checkout under test was itself
   a task worktree (`…/.local/xezar/worktrees/<runId>/`) every temp repo the tests created sat
@@ -9,7 +43,31 @@
   task, while CI in a plain checkout stayed green. Only in that case does scratch now move to a
   per-checkout `xezar-test-tmp-<hash>` directory under the OS temp dir, with the same Git ceiling
   and per-fixture cleanup; a normal checkout keeps its in-repo scratch and the registration guard
-  is untouched. Test infrastructure only; the published package does not carry it. (#19)
+  is untouched. Test infrastructure only; the published package does not carry it. (#19, #23)
+- 🐛 **The unit-test gate passes inside a task worktree on macOS.** The #19 change moved the
+  unit-test scratch dir to the OS temp dir inside a worktree, which exposed two test bugs:
+  `cli-version.test.ts` spawned the CLI with a bare `--import tsx` that cannot resolve from a
+  directory with no `node_modules` above it, and the main-module guard in
+  `scripts/migrate-local-state.mjs` compared a symlinked `argv[1]` (`/var/folders`) with the
+  real-path `import.meta.url` (`/private/var/folders`) and silently skipped the CLI block. The
+  loader is now resolved to an absolute URL and the guard compares real paths; a guard test
+  invokes the script through an explicit symlink so Linux CI pins it too. Test infrastructure
+  only. (#27, #29)
+
+## 📝 Specs & Documentation
+- 📝 **`AGENTS.md`, `CODE_REVIEW.md` and `README.md` describe the review gate, worktree
+  isolation and the API surface as the code actually behaves.** The review gate is optional and
+  off by default (the Settings → Agents toggle wins, otherwise only `XEZ_REVIEW_GATE=1` turns it
+  on, and autonomous runs always skip it); a git task that asks for isolation fails closed rather
+  than falling back to your checkout; and every route lives under `/api/v1`, validated through
+  the middleware trio with schemas in `packages/contract`. No runtime, default or contract
+  change. (#20)
+
+## 🚀 CI/CD & Infrastructure
+- 🚀 **`coverage/` is git-ignored.** The kit's worktree preflight requires test-coverage output
+  to be ignored, because the cockpit autosave runs `git add -A` and would otherwise commit it into
+  the task branch; the root `.gitignore` did not cover it, so every writing workflow in this
+  repository failed at its preflight step before doing any work. (#16)
 
 ---
 
@@ -51,21 +109,6 @@ nightly channel) is gone. Releases are manual, owner-triggered and go straight t
 > that never existed. The old packages remain on npm, unchanged.
 
 ---
-
-# Unreleased
-
-## 🐛 Fixes
-- 🐛 **The new-task composer keeps a brief that was written straight into the textarea.** Text
-  set on the element by a browser automation tool (Chrome DevTools' `fill` past its typing
-  threshold), a form filler or an extension never reached the draft: the box showed it, Start
-  stayed disabled, and the next re-render — picking a skill or workflow — wiped it. The composer
-  now honours the native `input` event too, so the brief lands in the draft and survives any
-  later pick. Typing key by key was never affected. (#14)
-- 🐛 **Enter in the skill/workflow picker commits the row shown as highlighted.** The picker now
-  owns its highlight, clamps it to the rows currently listed after every filter change, and
-  commits Enter from that same state instead of asking the DOM which row carries
-  `aria-selected` at that instant; a second Enter landing during the close animation no longer
-  toggles the pick back off. (#15)
 
 # 0.11.0 (2026-09-09)
 
