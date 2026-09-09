@@ -533,7 +533,7 @@ describe('ProviderSettings', () => {
         body: { authFailureId: 'open-1' },
       }),
     )
-    expect(await within(card('opencode')).findByText('Credentials found')).toBeTruthy()
+    expect(await within(card('opencode')).findByText('Configured')).toBeTruthy()
     expect(within(card('opencode')).getByText('Disabled')).toBeTruthy()
   })
 

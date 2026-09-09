@@ -229,7 +229,7 @@ export function ProviderSettings() {
                     <h3 className="text-[13px] font-semibold text-foreground">{provider.label}</h3>
                     <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
                       <StatusDot tone={presentation.tone} pulse={status.isPending} />
-                      <span>{presentation.label}</span>
+                      <span>{provider.id === 'opencode' && state === 'connected' ? 'Configured' : presentation.label}</span>
                       {current?.enabled === false ? <span>Disabled</span> : null}
                     </div>
                     {state === 'not-installed' ? (

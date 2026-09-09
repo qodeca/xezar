@@ -1,3 +1,13 @@
+# Unreleased
+
+## 🐛 Fixes
+- 🐛 **OpenCode recognizes configured local/LAN models without stored credentials.**
+  When `opencode auth list` reports no credentials, xezar checks `opencode models`
+  before marking the provider disconnected. A recognized model avoids an unnecessary
+  `opencode auth login` terminal, and the Providers card says **Configured** instead
+  of **Credentials found**. Failed discovery remains unverified; authentication
+  rejections from actual tasks still override the configuration check.
+
 # 0.11.1 (2026-09-09)
 
 ## Highlights
