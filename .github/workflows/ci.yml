@@ -20,8 +20,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Named from its own step list. It runs the five documented validation commands plus the
+  # pack check — no browser anywhere. The old name ("Unit, build, E2E, and package") read as
+  # a promise that the cockpit's 35 browser specs were covered here; they were not, and the
+  # `ui-e2e` job below is where they now run. `test:package` is an end-to-end exercise of the
+  # PACKAGED CLI, which is why "package" and not "E2E" is the honest word for it.
   verify:
-    name: Unit, build, E2E, and package
+    name: Typecheck, unit tests, build, and package
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -66,3 +71,199 @@ jobs:
       # nobody publishes.
       - name: Verify the release package packs
         run: npm pack --dry-run --ignore-scripts -w @qodeca/xezar
+
+  # The cockpit's browser suite: 35 `*.e2e.ts` specs that boot the real app and drive it in a
+  # real Chrome through the agent-browser provider (docs/testing/agent-browser.md). Until this
+  # job existed, CI never ran them, so every cockpit journey whose only coverage is a browser
+  # spec could regress into `main` behind a fully green run.
+  #
+  # A SEPARATE job, not a step inside `verify`, on purpose:
+  #   - the browser install (a native binary + Chrome for Testing) is isolated to this job, so
+  #     `verify` stays the fast gate and its 20-minute budget is untouched;
+  #   - the two jobs run side by side, so the added wall clock is the SLOWER of the two, not
+  #     the sum;
+  #   - a browser-provisioning failure reads as "the UI gate could not run" instead of
+  #     poisoning the unit/build result.
+  ui-e2e:
+    name: Cockpit browser e2e
+    runs-on: ubuntu-latest
+    # Measured: `time sh scripts/e2e.sh` = 3 min 48 s wall clock on an Apple-silicon laptop
+    # (2026-09-09) — 217 s of that is the 35 serial specs, the rest is `npm ci` + build + boot,
+    # with the browser already cached. A GitHub-hosted x64 runner is materially slower and, on
+    # a cold cache, also pays the agent-browser + Chrome-for-Testing download, so the realistic
+    # cold run is roughly 10–12 min. 30 is that with headroom, and it is a ceiling rather than
+    # a target: if the suite ever needs more, that is a regression worth failing on. `verify`
+    # keeps its own 20-minute budget — the jobs run side by side, so CI's added wall clock is
+    # the slower of the two, not the sum.
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Restore BEFORE provisioning, because the exact key is not knowable until the provider
+      # has resolved which Chrome for Testing build it wants. `actions/cache/restore` with a
+      # prefix in `restore-keys` gives the warm download; the exact version-pinned key is
+      # written by the save step below once `doctor` has reported it. Two paths, two different
+      # caches: the agent-browser CLI binary lives under the XDG tool cache, the browser itself
+      # under `~/.agent-browser/browsers`. Only `browsers/` is cached — the rest of
+      # `~/.agent-browser` is sockets and per-session state, which must never be restored.
+      - name: Restore the browser cache
+        id: browser-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/agent-tools/agent-browser
+            ~/.agent-browser/browsers
+          key: ${{ runner.os }}-${{ runner.arch }}-agent-browser-
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-agent-browser-
+
+      # The documented `ensure-installed` operation, run as its own step so that a provisioning
+      # failure is reported HERE, with the doctor output in the log, rather than surfacing later
+      # as a silent skip. `scripts/test-env-up.sh` looks for the binary at exactly this path, so
+      # the e2e run below reuses what this step installed instead of downloading it again.
+      - name: Provision agent-browser and verify doctor is healthy
+        id: browser
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOOL_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/agent-tools/agent-browser"
+          mkdir -p "$TOOL_DIR"
+          # This job is pinned to `ubuntu-latest`, so the release target is fixed. Asserting it
+          # rather than detecting it means a future runner change fails loudly here instead of
+          # downloading a binary that cannot execute.
+          if [ "$(uname -s)" != Linux ] || [ "$(uname -m)" != x86_64 ]; then
+            echo "::error title=Unexpected runner::ui-e2e assumes linux/x86_64, got $(uname -s)/$(uname -m)"
+            exit 1
+          fi
+          BIN="$TOOL_DIR/agent-browser-linux-x64"
+          if [ ! -x "$BIN" ]; then
+            echo "Downloading agent-browser (cold cache)"
+            curl -fL --retry 3 --connect-timeout 30 --max-time 600 \
+              -o "$BIN.tmp" \
+              https://github.com/vercel-labs/agent-browser/releases/latest/download/agent-browser-linux-x64
+            chmod 755 "$BIN.tmp"
+            mv "$BIN.tmp" "$BIN"
+          else
+            echo "Reusing the cached agent-browser binary"
+          fi
+
+          "$BIN" install || true
+          if ! "$BIN" doctor --json >/dev/null 2>&1; then
+            # Headless Chrome's shared libraries may be missing. GitHub-hosted runners have
+            # passwordless sudo, which is the elevation path the provider documents.
+            sudo -n "$BIN" install --with-deps || "$BIN" install --with-deps || true
+          fi
+
+          DOCTOR="$RUNNER_TEMP/agent-browser-doctor.json"
+          if ! "$BIN" doctor --json > "$DOCTOR" 2>"$RUNNER_TEMP/agent-browser-doctor.err"; then
+            echo "::error title=Browser provisioning failed::agent-browser doctor did not report healthy — the cockpit browser suite CANNOT run on this runner, so this job fails rather than skipping."
+            cat "$DOCTOR" || true
+            cat "$RUNNER_TEMP/agent-browser-doctor.err" || true
+            exit 1
+          fi
+
+          # `doctor --json` can exit 0 with individual checks failed, so read the report rather
+          # than trusting the status code, and take the Chrome version straight out of it —
+          # that is "the resolved Chrome version" the cache is keyed on.
+          CHROME_VERSION=$(node -e '
+            const d = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+            const failed = (d.checks || []).filter((c) => c.status === "fail");
+            const chrome = (d.checks || []).find((c) => c.id === "chrome.installed");
+            const version = /(\d+(?:\.\d+){2,3})/.exec((chrome && chrome.message) || "");
+            if (!d.success || failed.length > 0 || !chrome || chrome.status !== "pass" || !version) {
+              console.error("agent-browser doctor is not healthy:");
+              for (const c of failed) console.error("  FAIL " + c.id + ": " + c.message);
+              if (!chrome) console.error("  no chrome.installed check in the doctor report");
+              process.exit(1);
+            }
+            process.stdout.write(version[1]);
+          ' "$DOCTOR") || {
+            echo "::error title=Browser provisioning failed::agent-browser doctor reported an unhealthy browser — the cockpit browser suite CANNOT run on this runner, so this job fails rather than skipping."
+            exit 1
+          }
+          echo "Chrome for Testing $CHROME_VERSION is healthy"
+
+          # "agent-browser 0.36.0" → "0.36.0"; `unknown` if the CLI ever stops answering, which
+          # only makes the key coarser, never wrong.
+          CLI_VERSION=$("$BIN" --version 2>/dev/null | awk 'NR==1{print $NF}' | tr -cd '0-9A-Za-z.-')
+          [ -n "$CLI_VERSION" ] || CLI_VERSION=unknown
+          {
+            echo "cli-version=$CLI_VERSION"
+            echo "chrome-version=$CHROME_VERSION"
+            echo "cache-key=${RUNNER_OS}-${RUNNER_ARCH}-agent-browser-${CLI_VERSION}-chrome-${CHROME_VERSION}"
+          } >> "$GITHUB_OUTPUT"
+
+      # Saved with the exact resolved-Chrome key, so the next run restores that precise browser
+      # instead of re-downloading it. Skipped when the restore already matched this exact key.
+      - name: Save the browser cache
+        if: steps.browser-cache.outputs.cache-matched-key != steps.browser.outputs.cache-key
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/agent-tools/agent-browser
+            ~/.agent-browser/browsers
+          key: ${{ steps.browser.outputs.cache-key }}
+
+      # THE MARKER, NOT THE EXIT CODE.
+      #
+      # `scripts/e2e.sh` documents three outcomes, and only one of them is a pass:
+      #   exit 0 + TEST_E2E_STATUS=passed   every spec passed
+      #   exit 0 + TEST_E2E_STATUS=skipped  the provider could not be provisioned — NOT a pass
+      #   non-zero + TEST_E2E_STATUS=failed a spec failed, or the env could not boot
+      #
+      # A plain `- run: npm run test:e2e` would therefore be green while testing nothing on any
+      # runner where the browser did not come up. This step passes only on the literal
+      # `TEST_E2E_STATUS=passed` line; skipped and failed both fail the job, and the captured
+      # output says which.
+      - name: Run the cockpit browser e2e suite
+        shell: bash
+        env:
+          E2E_LOG: ${{ runner.temp }}/e2e-output.log
+        run: |
+          set -uo pipefail
+          set +e
+          npm run test:e2e 2>&1 | tee "$E2E_LOG"
+          run_status=${PIPESTATUS[0]}
+          set -e
+
+          if grep -qxF 'TEST_E2E_STATUS=passed' "$E2E_LOG"; then
+            if [ "$run_status" -ne 0 ]; then
+              echo "::error title=Contradictory e2e result::the suite printed TEST_E2E_STATUS=passed but exited $run_status"
+              exit 1
+            fi
+            echo "TEST_E2E_STATUS=passed — the cockpit browser suite ran and every spec passed."
+            exit 0
+          fi
+
+          if grep -qxF 'TEST_E2E_STATUS=skipped' "$E2E_LOG"; then
+            echo "::error title=The UI was NOT verified::the browser provider could not be provisioned, so no spec ran. scripts/e2e.sh exits 0 in this case; CI treats it as a FAILURE, never a pass. See the skip banner above for the reason."
+            exit 1
+          fi
+
+          echo "::error title=Cockpit browser e2e failed::the suite did not report TEST_E2E_STATUS=passed (exit $run_status). See the output above."
+          exit 1
+
+      # The app and build logs are the only way to tell a spec failure from an environment
+      # failure after the runner is gone.
+      - name: Upload the e2e logs
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ui-e2e-logs
+          path: |
+            .local/qa/test-env-app.log
+            .local/qa/test-env-build.log
+            .local/qa/test-env.json
+          if-no-files-found: ignore
+          retention-days: 7
