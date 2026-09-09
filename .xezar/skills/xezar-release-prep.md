@@ -7,6 +7,8 @@ description: Prepare a release
 
 Read docs/publishing.md and Release workflow. Prepare reviewable version/changelog/package inputs and verify build/check:pack/test:package. Only @qodeca/xezar publishes; the root and other workspaces are private. Release publication is only the existing manually dispatched Release workflow, when authorized. Ordinary CI never publishes. Preparation is not publication and green tests do not grant authority.
 
+This is the brief-driven fallback. For a whole patch/minor/major release with no hand-written changelog brief, launch the `release` workflow instead (`bump: patch`); it derives the changelog from the merged PRs (`xezar-release-changelog`) and, in its last step, merges it, dispatches the Release run and merges the bump PR (`xezar-release-publish`).
+
 ## Shared contract
 
 Before reading kit files in a standalone skill run, if `.xezar/checks/bootstrap.sh` is absent, run `bash "$(git rev-parse --path-format=absolute --git-common-dir)/../.xezar/checks/bootstrap.sh"`. If unavailable or refused, stop with that specific blocker. Never fabricate commands or copy runtime. Workflow launches already perform this step.

@@ -480,6 +480,57 @@ printf '{\n  "baseBranch": "main",\n  "worktreeRetention": 0,\n  "memoryLimitMb"
 expect_fail "a repo-level memoryLimitMb is rejected too (ignored identically)" \
   "which the scheduler ignores" node "$SCRIPT_DIR/catalog-check.mjs" "$root"
 
+# --- 1b. Changelog structure ---------------------------------------------------------------------
+# Added 2026-09-09 (#31). Two fix PRs each added their own `# Unreleased` section in different
+# places and the release had to consolidate them by hand. The `changelog` step of the `release`
+# workflow runs this check before it commits; each case here is one shape the check must refuse
+# or accept, on synthetic files, so the real CHANGELOG.md is never the fixture.
+printf '\n-- changelog structure --\n'
+CLC="$SCRIPT_DIR/changelog-check.sh"
+cl="$WORK/changelog"
+mkdir -p "$cl"
+
+printf '# Unreleased\n\n## 🐛 Fixes\n- 🐛 **a.** (#1)\n\n---\n\n# 0.1.0 (2026-01-01)\n\n- b\n' > "$cl/one.md"
+expect_ok "one Unreleased section above the newest dated release is accepted" "$CLC" --file "$cl/one.md"
+
+printf '# 0.1.0 (2026-01-01)\n\n- b\n\n---\n\n# 0.0.9 (2025-12-01)\n\n- c\n' > "$cl/none.md"
+expect_ok "a changelog with no Unreleased section is accepted" "$CLC" --file "$cl/none.md"
+
+printf '# Unreleased\n\n- a\n\n---\n\n# 0.1.0 (2026-01-01)\n\n- b\n\n# Unreleased\n\n- c\n' > "$cl/two.md"
+expect_fail "two Unreleased headings are refused (the #23/#26 shape)" \
+  "has 2 '# Unreleased' headings" "$CLC" --file "$cl/two.md"
+
+printf '# 0.1.0 (2026-01-01)\n\n- b\n\n---\n\n# Unreleased\n\n- c\n' > "$cl/below.md"
+expect_fail "an Unreleased heading below a dated release is refused" \
+  "below a dated release heading" "$CLC" --file "$cl/below.md"
+
+printf '# Unreleased\n\n- a\n\n```\n# Unreleased\n```\n\n# 0.1.0 (2026-01-01)\n' > "$cl/fence.md"
+expect_ok "a heading inside a fenced code block is not counted" "$CLC" --file "$cl/fence.md"
+
+printf '## Unreleased\n\n- not top level\n\n# 0.1.0 (2026-01-01)\n' > "$cl/h2.md"
+expect_ok "a second-level Unreleased heading is not a section and is ignored" "$CLC" --file "$cl/h2.md"
+
+# --require-version: the shape the release step must leave behind.
+printf '# 0.2.0 (2026-02-01)\n\n- new\n\n---\n\n# 0.1.0 (2026-01-01)\n\n- b\n' > "$cl/released.md"
+expect_ok "--require-version passes with exactly one target heading and no Unreleased" \
+  "$CLC" --file "$cl/released.md" --require-version 0.2.0
+expect_fail "--require-version refuses when the target heading is absent" \
+  "has 0 '# 0.3.0 (' headings" "$CLC" --file "$cl/released.md" --require-version 0.3.0
+printf '# 0.2.0 (2026-02-01)\n\n- new\n\n---\n\n# 0.2.0 (2026-02-01)\n\n- dup\n' > "$cl/twice.md"
+expect_fail "--require-version refuses a target recorded twice" \
+  "has 2 '# 0.2.0 (' headings" "$CLC" --file "$cl/twice.md" --require-version 0.2.0
+expect_fail "--require-version refuses a leftover Unreleased section" \
+  "still has an '# Unreleased' heading" "$CLC" --file "$cl/one.md" --require-version 0.1.0
+expect_fail "--require-version rejects a non-semver argument as usage, not as a pass" \
+  "wants a semver" "$CLC" --file "$cl/released.md" --require-version v0.2.0
+expect_fail "a missing changelog file is a failure, never a pass" \
+  "does not exist" "$CLC" --file "$cl/absent.md"
+
+# The real repository's changelog must satisfy the structural rule today; a regression here is
+# the exact consolidation problem the check exists for.
+expect_ok "the repo's own CHANGELOG.md has at most one Unreleased section, above every dated release" \
+  "$CLC" --file "$REPO_ROOT/CHANGELOG.md"
+
 # --- 2. Preflight: isolation --------------------------------------------------------------
 printf '\n-- preflight: isolation --\n'
 root="$(make_fixture iso)"
