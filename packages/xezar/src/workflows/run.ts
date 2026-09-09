@@ -63,7 +63,14 @@ import { DEFAULT_AGENT_ACCOUNT_ID } from '../workspace/agent-accounts.ts';
 import { WorkspaceSemaphore, type AccountHolds } from '../workspace/semaphore.ts';
 import { UiEventSink } from '../runs/ui-event-sink.ts';
 import type { UiEvent } from '../core/ui-events.ts';
-import { chainStepNote, DEFAULT_ALLOWED_TOOLS, stepKind, type WorkflowDef, type WorkflowStepDef } from './types.ts';
+import {
+  chainStepNote,
+  DEFAULT_ALLOWED_TOOLS,
+  stepKind,
+  stepTimeoutMs,
+  type WorkflowDef,
+  type WorkflowStepDef,
+} from './types.ts';
 
 const CHECK_OUTPUT_CAP = 20_000;
 
@@ -3139,8 +3146,10 @@ export class RunManager {
           env: stepProfile.env,
           model: backendModel,
           sessionId,
-          // Interactive sessions have no wall clock — the idle timer rules.
-          timeoutMs: interactive ? 0 : undefined,
+          // Interactive sessions have no wall clock — the idle timer rules. A
+          // step's own `timeout` (#22) outranks that; with the field absent
+          // this is byte-for-byte the pre-#22 `interactive ? 0 : undefined`.
+          timeoutMs: stepTimeoutMs(step, interactive),
         },
         onEvent,
         {

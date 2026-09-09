@@ -31,6 +31,12 @@ export const workflowStepDefSchema = z
     runner: runnerSchema.optional(),
     allowedTools: z.array(z.string()).optional(),
     bashAllowlist: z.array(z.string()).optional(),
+    /** This step's own wall-clock cap (#22): `45s` / `90m` / `2h`, or `none` for no cap.
+     *  Typed as a plain string here, exactly as `model` is: the DURATION FORMAT is validated
+     *  by `src/workflows/types.ts`'s `stepTimeoutSchema`, which is the single source of truth
+     *  for what a user may author (workflow YAML and the inline chain on `POST /runs` both go
+     *  through it). Restating the grammar here would be a second copy free to drift. */
+    timeout: z.string().optional(),
     // check step
     command: z.string().optional(),
     onFail: z

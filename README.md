@@ -463,6 +463,7 @@ steps:
     # model: opus                # optional per-step model override
     # runner: codex              # optional per-step backend: claude · codex · opencode · pi
     # allowedTools: [Read, Edit, Write, Grep, Glob, Bash]
+    # timeout: 90m               # optional per-step wall clock: 45s · 90m · 2h · none
   - id: verify
     name: Verify
     command: "npm test"          # a check step: exit 0 passes
@@ -474,6 +475,34 @@ steps:
 `{{task}}` is replaced with the task text you typed. When a check fails and loops
 back, its failing output is appended to the retried agent's prompt so the next
 attempt can see what broke.
+
+### How long a step may run
+
+Every agent step has a wall clock. Leave `timeout` out and nothing changes: the
+workflow's **last** step stays open for your follow-ups with no cap, and every
+**earlier** agent step is killed after **30 minutes** — which is fine for a
+review or a docs pass, and too short for a long investigate-and-implement step.
+`timeout` is how that step asks for more:
+
+```yaml
+  - id: investigate
+    prompt: "{{task}}"
+    timeout: 3h                  # this step only
+```
+
+- `45s`, `90m`, `2h` — whole numbers with `s`, `m` or `h`. Nothing else parses:
+  `90 minutes`, `1.5h` and `30d` are load-time errors, and so is `0s` (say
+  `none` if you mean no cap). The ceiling is `596h`, where Node's own timer
+  stops being able to count.
+- `none` — no wall clock at all. The step ends when the agent ends.
+- The field belongs to an **agent** step. A check step is a shell command, and
+  putting `timeout` on one is a load-time error rather than a key that quietly
+  does nothing.
+
+**All four backends honour it.** `claude`, `codex`, `opencode` and `pi` each arm
+the deadline from the same per-step value; on `claude` and `codex` a step that
+overruns is interrupted and then `SIGKILL`ed after a short grace period, while
+`opencode` and `pi` interrupt and wait for the session to close.
 
 Prefer skills over steps? A workflow can also be written in the portable
 shorthand — an ordered list of skill names, each becoming one agent step:
