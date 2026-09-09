@@ -36,7 +36,7 @@ const maintained = [
   '.ai/xezar/CLAUDE.md', '.ai/xezar/config.json', '.ai/xezar/.gitignore',
   '.ai/xezar/workflows/new.yaml', '.ai/xezar/skills/new.md', '.ai/xezar/checks/new.sh',
   '.ai/xezar/docs/new.md', '.ai/xezar/future-guide.md', '.ai/xezar/helpers/future.mjs',
-  '.xezar/agentic.config.json', 'scripts/migrate-local-state.mjs', 'docs/specs/new.md',
+  '.ai/agentic.config.json', '.ai/trackers/github.md', 'scripts/migrate-local-state.mjs', 'docs/specs/new.md',
   '.ai/xezar/docs/runs/guide.md', '.ai/xezar/docs/cache/guide.md',
 ];
 const kitRoot = '.xezar';

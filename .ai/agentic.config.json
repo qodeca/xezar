@@ -1,6 +1,7 @@
 {
   "version": 1,
   "baseBranch": "auto",
+  "tracker": "github",
   "browser": {
     "provider": "agent-browser"
   },
