@@ -147,8 +147,16 @@ describe('the GitHub tab against the live dry-run server', () => {
       `document.querySelectorAll('[data-slot="gh-workflow-option"]').length === ${workflows.workflows.length}`,
     )
     browser.fill('[data-slot="command-input"]', 'quick')
+    // cmdk scores each option's DESCRIPTION as well as its name, so one query can legitimately
+    // keep more than one workflow — `business-analysis`'s prose carries q…u…i…c…k in order.
+    // Assert what filtering actually promises (the list narrows and keeps the intended match)
+    // rather than an exact count that any workflow-description edit would break.
     browser.waitForFunction(
-      `document.querySelectorAll('[data-slot="gh-workflow-option"]').length === 1`,
+      `(() => {
+         const options = document.querySelectorAll('[data-slot="gh-workflow-option"]')
+         return options.length > 0 && options.length < ${workflows.workflows.length}
+           && document.querySelector('[data-slot="gh-workflow-option"][data-workflow="quick-task"]') !== null
+       })()`,
     )
 
     // Same settle rule as above: the screenshot must show the whole truth, nav item included.
