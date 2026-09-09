@@ -69,6 +69,17 @@ documentation, which the published package does not carry.
   the stale un-isolated process for the rest of the TTL and the fix looked like it had not worked.
   Project- and local-scope config in the repo is deliberately still not isolated; `AGENTS.md`
   states the guarantee and its limits. (#7)
+- 🚀 **The Release workflow can publish.** `0.10.2` is the first release it has ever cut: `0.10.1`
+  went out by hand under the bootstrap exception, so the first dispatch was also the first time
+  the pipeline ran end to end, and two faults surfaced that nothing earlier could have caught.
+  The release tests inherited `ACTIONS_ID_TOKEN_REQUEST_URL`, which `scripts/release.mjs` reads as
+  proof npm can mint a token; that variable exists only in a job holding `id-token: write`, so the
+  fixtures believed they were authenticated and offered a dummy package to the real registry,
+  failing the gate on its own harness. It is blanked now, alongside the credentials the helper
+  already hid, with the one OIDC case opting back in explicitly. Separately, the package's trusted
+  publisher had never been created despite `docs/publishing.md` recording that it had — that guide
+  now says so plainly, and documents the `Allow npm publish` permission whose absence produces a
+  404 that reads as if the package did not exist. (#9)
 
 ---
 

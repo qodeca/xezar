@@ -34,6 +34,16 @@ GitHub Actions publisher:
 | Repository | `xezar` |
 | Workflow filename | `release.yml` |
 | Environment name | `production` |
+| Allowed actions | tick **Allow `npm publish`** |
+
+**Tick the `npm publish` box.** It is off by default, and a publisher without it may only
+`npm stage publish` — which this workflow does not use. Leaving it off fails the release at the
+publish step with `npm error 404 … could not be found or you do not have permission`, naming the
+package as if it did not exist. Every field above produces that same 404 when it is wrong, so
+read the error as "npm rejected this identity", never as "the package is missing".
+
+npm marks these fields **fixed once the connection is created**: correcting a typo means deleting
+the publisher and adding it again, so check them before saving.
 
 The workflow filename is matched exactly, so **renaming `.github/workflows/release.yml` breaks
 publishing** until the publisher is updated. That is the point: the authorisation is tied to one
@@ -47,9 +57,14 @@ before it touches the registry.
 
 Trusted publishing cannot perform a package's **first** publish: npm has nowhere to attach a
 publisher until the package exists. `@qodeca/xezar@0.10.1` was therefore published once by a
-maintainer from a logged-in machine (`npm login`, then `node scripts/release.mjs existing`),
-and the trusted publisher was configured immediately afterwards. Every release from `0.10.2`
-onward goes through the workflow with no credential stored anywhere.
+maintainer from a logged-in machine (`npm login`, then `node scripts/release.mjs existing`).
+
+The trusted publisher was **not** created at that point, and this document said it had been. The
+gap stayed invisible for as long as nothing used it — the first dispatched release, `0.10.2`,
+failed at the publish step against an empty publisher form, twice, before anyone looked. If you
+bootstrap another package here, configure the publisher as a step of the bootstrap and dispatch a
+release to prove it, rather than recording an intention. `0.10.2` onward goes through the
+workflow with no credential stored anywhere.
 
 If you ever need to publish by hand again, `scripts/release.mjs` accepts a local `npm login`
 session as well — it fails only when it has *neither* an OIDC endpoint nor a token.
@@ -70,7 +85,12 @@ session as well — it fails only when it has *neither* an OIDC endpoint nor a t
    isolated consumer and runs the CLI from it), publishes to npm with `--tag latest` and
    `--provenance`, and creates the `v<version>` GitHub Release at the released commit.
 4. For `patch`/`minor`/`major` it also opens a `release/v<version>` PR carrying the manifest
-   bump, because `main` is PR-only. Merge it so the trunk matches the registry.
+   bump, because `main` is PR-only. Merge it so the trunk matches the registry. That PR is opened
+   by the Actions bot, so its CI sits at **action_required** until a maintainer approves the run
+   (`gh run list --branch release/v<version>`, then approve it in the Actions tab or with
+   `gh api -X POST repos/qodeca/xezar/actions/runs/<id>/approve`). Nothing is wrong; GitHub holds
+   bot-authored workflow runs by default. Until this PR lands, the trunk still names the previous
+   version while the registry serves the new one.
 
 ### What a green run means
 
@@ -125,7 +145,7 @@ Then:
 | State | Do this |
 |---|---|
 | Nothing published; the job failed before `Publish release` | Fix the cause and re-dispatch the same bump. Nothing to undo. |
-| `npm error 404` or an auth error at the publish step | The trusted publisher is missing or does not match. Check owner/repo/**workflow filename**/environment at <https://www.npmjs.com/package/@qodeca/xezar/access>, and that the job still has `id-token: write`. |
+| `npm error 404` or an auth error at the publish step | npm rejected the identity — the package is not missing. The trusted publisher is absent, does not match, or lacks the `npm publish` permission. Check owner/repo/**workflow filename**/environment and the **Allowed actions** tick at <https://www.npmjs.com/package/@qodeca/xezar/access>, and that the job still has `id-token: write`. |
 | Published, but no tag / no GitHub Release | Do **not** re-run the workflow — it would try to publish the same version again. Create the Release by hand at the released commit: `gh release create v<version> --target <sha> --title "v<version>" --notes "..."`. |
 | Published, but `latest` points at the wrong version | `npm dist-tag add @qodeca/xezar@<good-version> latest`. Moving a tag is safe; deleting a version is not. |
 | Published a broken build | Publish the FIX as a new patch version and move `latest` to it. Optionally `npm deprecate @qodeca/xezar@<bad> "broken; use <good>"`. |
