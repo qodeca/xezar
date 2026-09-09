@@ -2,7 +2,7 @@
 
 Research date: **2026-09-08**. Scope: Claude Code, Codex, OpenCode, and local-only Xezar MCP. This is documentation/source-of-interface verification, **not a runtime integration test**. No model turns, MCP servers, client configurations, or credentials were exercised. No dependencies were installed. The separate reference-process audit was completed statically on 2026-09-09; see the [source register](../builtin-project-leader/standard-process-source-audit.md). That update adds no client runtime evidence.
 
-Related requirements: [MCP](mcp-project-leader-requirements.md) and [built-in leader](../builtin-project-leader/builtin-project-leader-requirements.md). All three clients remain required for the initial release; the gaps below are implementation obligations, not waived scope.
+Related requirements: [MCP](mcp-project-leader-requirements.md) and [built-in leader](../builtin-project-leader/builtin-project-leader-requirements.md). The gaps this report names are carried as issues under [epic #67](https://github.com/qodeca/xezar/issues/67). All three clients remain required for the initial release; the gaps below are implementation obligations, not waived scope.
 
 ## Evidence status and versions
 

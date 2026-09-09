@@ -5,7 +5,7 @@ description: Merge the changelog PR, dispatch the authorized Release run, verify
 
 # Merge the changelog PR, dispatch the authorized Release run, verify npm, merge the bump PR
 
-You are the LAST step of the `release` workflow, on purpose: the engine kills every non-final agent step at 30 minutes (issue #22), and CI, the Release run, npm propagation and the bot's bump PR together take longer than that. Being last also keeps `XEZ:ASK` live, so every stop below is a question with the evidence so far, never a silent exit. Read docs/publishing.md first. The brief `{{task}}` and `release.json` in the evidence dir (written by the `changelog` step: target version, tag, kept PRs, commit) are your inputs; the accepted brief keys are documented in `xezar-release-changelog.md`.
+You are the LAST step of the `release` workflow, on purpose: only the last step is uncapped by default, and CI, the Release run, npm propagation and the bot's bump PR together take longer than the 30-minute default an earlier step falls through to. Since #22 an agent step can raise or drop that wall clock with its own `timeout` key, but no kit workflow sets one, so being last is still what buys the time — and it keeps `XEZ:ASK` live too. Every stop below is therefore a question with the evidence so far, never a silent exit. Read docs/publishing.md first. The brief `{{task}}` and `release.json` in the evidence dir (written by the `changelog` step: target version, tag, kept PRs, commit) are your inputs; the accepted brief keys are documented in `xezar-release-changelog.md`.
 
 Hard rules, all of them, for the whole step:
 

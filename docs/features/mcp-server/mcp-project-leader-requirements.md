@@ -6,6 +6,8 @@ Updated agreement: local-only MVP, one active logical client per project, full a
 
 Baseline: Xezar revision `6cd4aaa3605e8bcddf7bafd8f05ac96881ee35cc` and the current repository instructions. This is neither an approved protocol design nor a catalog of existing MCP tools.
 
+Tracked by [epic #67](https://github.com/qodeca/xezar/issues/67), which breaks this document into eight phases of implementation issues. That epic is the backlog; this document stays the contract.
+
 Related specification: [Built-in project leader and standard process kit](../builtin-project-leader/builtin-project-leader-requirements.md). MCP is an independent capability usable by external clients. The built-in leader is a separate extension that depends on this project-scoped MCP interface; it is outside the implementation scope of this document, not a rejected product feature.
 
 ## 1. Goal and value

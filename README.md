@@ -300,7 +300,7 @@ Five moves that make the cockpit worth the browser tab:
 
 ## Cockpit tour
 
-Eight views, one browser window, all live over Server-Sent Events (seven until you opt into the Inbox):
+Nine views, one browser window, all live over Server-Sent Events (seven by default — the Inbox and Automations are each opt-in):
 
 | View | What's in it |
 |---|---|
@@ -309,6 +309,7 @@ Eight views, one browser window, all live over Server-Sent Events (seven until y
 | **Inbox** | **Opt-in** (`XEZ_FOLLOWUPS=1`; hidden by default). Follow-ups an agent left behind (`todos.json`) — one click turns a suggestion into the next task, pre-wired to its suggested skill. Off, agents are never asked to leave follow-ups; each task's own **Notes** handoff journal is unaffected. |
 | **Git** | Branch, working-tree status, diff vs HEAD, recent commits (click one for its inline patch + GitHub link), and the configurable base branch that worktrees fork from and PRs target. |
 | **GitHub** | Open issues and PRs of the repo's origin, read through your logged-in `gh`. Hand an issue straight to the agent — pick a workflow and skills, one click runs it. |
+| **Automations** | **Opt-in** (`XEZ_AUTOMATIONS=1`; hidden by default). Scheduled GitHub watches: each automation polls on its own interval and launches a task when its bounded filter matches. Test a filter before enabling it, and read the per-check log. |
 | **Skills** | Local skills plus the team skills repo, with a rendered body + prompt preview. Refresh pulls the latest from the remote. |
 | **Workflows** | Build a chain by drag-ordering skills, save it as portable YAML, import/export, or delete. Built-ins always come back. |
 | **Settings** | Appearance (dark/light theme, accent, density), agent backends, notifications, and the skills catalog. |

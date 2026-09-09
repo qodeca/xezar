@@ -182,8 +182,9 @@ two, so drift fails `npm run typecheck` (the gate) rather than the UI at runtime
 ### Design rules baked in
 
 1. **Item-lifecycle model** (Codex/ACP style): one stable `id` per item with
-   `started → delta → updated → completed` phases. Two of the three backends are
-   natively item-shaped; claude maps trivially.
+   `started → delta → updated → completed` phases. Of the four backends in
+   `RUNNER_IDS`, codex and opencode are natively item-shaped; claude and pi are
+   mapped onto it.
 2. **ACP vocabulary** wherever a choice is arbitrary (tool status/kind, plan
    entries, diff shape, stop reasons) — ecosystem alignment.
 3. **Per-capability degradation, never per-backend** — see §6.
@@ -290,8 +291,8 @@ standalone truth.
 ## 4. Per-backend mapping (summary)
 
 Each backend has a mapper (`packages/xezar/src/core/<backend>-ui-mapper.ts`) turning its wire
-transport into `UiEvent`s. The authoritative table is
-`agent-event-protocols.md` §7.1; the load-bearing rows:
+transport into `UiEvent`s. Those mappers and their golden fixtures (§7) are the authority; the
+load-bearing rows:
 
 | v2 event / field | claude (stream-json) | codex (app-server JSON-RPC) | opencode (serve HTTP+SSE) |
 |---|---|---|---|
@@ -360,8 +361,8 @@ A new backend is not "done" until it produces every row.
 Each backend has, under `packages/xezar/src/core/__fixtures__/<backend>/`:
 
 - `<name>.ndjson` — a **wire-faithful** transcript of the backend's real output
-  (shapes from `agent-event-protocols.md`, cross-checked against the backend's
-  actual CLI / the dry-run mock, e.g. `packages/xezar/scripts/mock-claude.mjs`).
+  (shapes taken from the backend's own published protocol documentation and
+  cross-checked against its actual CLI / the dry-run mock, e.g. `packages/xezar/scripts/mock-claude.mjs`).
 - `<name>.expected.json` — the **exact** `UiEvent[]` the mapper must produce for
   that transcript.
 

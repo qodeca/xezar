@@ -133,7 +133,7 @@ The Manage-skills opt-out (`importedSkills` in the global `~/.xezar/ui-state.jso
 
 ## 6. npm package surface (`package.json`)
 
-- Name `@qodeca/xezar` — one published package, no alias distribution; `bin` entries `xezar` + `xez`; published `files`: `dist`, `packages/xezar/web/dist`, `packages/web/public/xezar.svg`, `scripts`, `README.md`; `engines.node >= 20`; `"type": "module"`.
+- Name `@qodeca/xezar` — one published package, no alias distribution; `bin` entries `xezar` + `xez`; published `files` (package-relative): `dist`, `web/dist`, `scripts`, `README.md` — the cockpit's `xezar.svg` reaches the tarball inside `web/dist`, copied there from `packages/web/public/` by the web build, and `README.md` is copied in from the repo root by `prebuild`; `engines.node >= 20`; `"type": "module"`.
 - The `exports` map publishes `.`, `./app-type` and `./package.json`, and nothing else. Once a package declares `exports`, Node hard-blocks every unlisted subpath, so adding one is a new compatibility surface and removing one breaks every consumer that imports it. `packages/xezar/test/e2e/package-exports.test.ts` resolves every advertised specifier from OUTSIDE the package, which is the only place that class of break is visible (#851).
 - `dist/index.js` must remain the bin entry, and `web/` must stay resolvable relative to `dist/server` (`resolveWebDir` walks `../../web`; the built cockpit lives at `packages/xezar/web/dist`).
 - The tarball MUST contain the built UI (`packages/xezar/web/dist/index.html` + hashed `packages/xezar/web/dist/assets/*`) — `npm run check:pack` (`packages/xezar/scripts/check-pack.mjs`, run as the last leg of `npm run build`, hence by `prepublishOnly`) enforces this; do not remove it from the build chain.
