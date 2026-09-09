@@ -203,6 +203,11 @@ const ROUTE_CASES: Array<[url: string, route: string, title: string]> = [
   // The real R5 tab routes: with fetch never answering they are honestly loading.
   ['/tasks/abc123/changes', 'task-changes', 'Loading changes…'],
   ['/tasks/abc123/files', 'task-files', 'Loading files…'],
+  // The Commits tab and its per-commit deep link (#49). Both URLs mount the SAME route, and its
+  // suspense fallback is the Changes tab's — so while fetch never answers they honestly report
+  // `task-changes`/"Loading changes…", not a commits-specific loading surface.
+  ['/tasks/abc123/commits', 'task-changes', 'Loading changes…'],
+  ['/tasks/abc123/commits/abc1234', 'task-changes', 'Loading changes…'],
   // The real compare view (Step R3 2.3): with fetch never answering it is honestly loading.
   ['/compare/grp-1', 'compare', 'Loading variants…'],
   // The real repo view (R5 Step 1.7): with fetch never answering it is honestly loading —
