@@ -2,11 +2,15 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   chainStepNote,
+  MAX_STEP_TIMEOUT_MS,
   normalizeWorkflowDoc,
+  parseStepTimeout,
   skillStackOf,
   skillsToSteps,
   stepsIssue,
+  stepTimeoutMs,
   workflowFileSchema,
+  workflowStepSchema,
   type WorkflowStepDef,
 } from '../../src/workflows/types.js';
 
@@ -68,6 +72,89 @@ test('only plain agent skill steps compact back to a portable stack', () => {
     skillStackOf([{ id: 'review', name: 'Custom name', skill: 'review', prompt: '{{task}}' }]),
     null,
   );
+  // #22: the compact `skills:` form has nowhere to put a per-step timeout, so a step
+  // carrying one is "richer" — compacting it would silently reset it to 30 minutes.
+  assert.equal(
+    skillStackOf([{ id: 'review', name: 'review', skill: 'review', prompt: '{{task}}', timeout: '90m' }]),
+    null,
+  );
+});
+
+// ---- per-step wall-clock timeout (#22) --------------------------------------------------
+// Non-final agent steps inherit the runner's 30-minute DEFAULT_RUN_TIMEOUT_MS and used to
+// have no way to raise it; two real bug-fix tasks were killed mid-investigate with nothing
+// committed. These pin the grammar, the two deliberate refusals, and the untouched default.
+
+test('parseStepTimeout reads the accepted duration units', () => {
+  assert.equal(parseStepTimeout('45s'), 45_000);
+  assert.equal(parseStepTimeout('90m'), 5_400_000);
+  assert.equal(parseStepTimeout('2h'), 7_200_000);
+  assert.equal(parseStepTimeout('1s'), 1_000);
+});
+
+test('parseStepTimeout maps the literal "none" to 0 — the runners\' "arm no deadline"', () => {
+  assert.equal(parseStepTimeout('none'), 0);
+});
+
+test('parseStepTimeout refuses anything outside the grammar', () => {
+  for (const bad of ['', '30', 'm', '30 m', '30M', '1.5h', '-5m', '30d', '90ms', 'never', 'none ', '+2h']) {
+    assert.equal(parseStepTimeout(bad), null, `expected ${JSON.stringify(bad)} to be refused`);
+  }
+});
+
+test('parseStepTimeout refuses a zero duration and anything past the setTimeout ceiling', () => {
+  // "0 seconds" reads as "kill it at once", which is the opposite of the 0 the runners
+  // use for "no cap" — `none` is the only spelling for that.
+  for (const zero of ['0s', '0m', '0h']) assert.equal(parseStepTimeout(zero), null);
+  // 2^31-1 ms is Node's setTimeout ceiling; past it the timer fires almost immediately,
+  // so accepting `1000h` would kill the step it was meant to protect.
+  assert.equal(parseStepTimeout('596h'), 596 * 3_600_000);
+  assert.ok((parseStepTimeout('596h') as number) <= MAX_STEP_TIMEOUT_MS);
+  assert.equal(parseStepTimeout('597h'), null);
+  assert.equal(parseStepTimeout('1000h'), null);
+});
+
+test('the step schema accepts a valid timeout and rejects an unknown format', () => {
+  assert.equal(workflowStepSchema.safeParse({ id: 'a', prompt: '{{task}}', timeout: '90m' }).success, true);
+  assert.equal(workflowStepSchema.safeParse({ id: 'a', prompt: '{{task}}', timeout: 'none' }).success, true);
+
+  const bad = workflowStepSchema.safeParse({ id: 'a', prompt: '{{task}}', timeout: '90 minutes' });
+  assert.equal(bad.success, false);
+  assert.match(bad.error?.issues[0]?.message ?? '', /timeout must be "none" or a positive duration/);
+});
+
+test('the step schema refuses a timeout on a check step — a shell command has no wall clock', () => {
+  const parsed = workflowStepSchema.safeParse({ id: 'verify', command: 'npm test', timeout: '90m' });
+  assert.equal(parsed.success, false);
+  assert.match(parsed.error?.issues[0]?.message ?? '', /a check step \(command\) has no wall clock/);
+});
+
+test('a workflow FILE with a per-step timeout loads', () => {
+  const parsed = workflowFileSchema.safeParse({
+    name: 'long-investigate',
+    steps: [
+      { id: 'investigate', prompt: '{{task}}', timeout: '3h' },
+      { id: 'verify', command: 'npm test' },
+    ],
+  });
+  assert.equal(parsed.success, true);
+  assert.equal(parsed.data?.steps?.[0]?.timeout, '3h');
+});
+
+test('stepTimeoutMs leaves the zero-config default EXACTLY where it was', () => {
+  // No `timeout` key: a non-final agent step still gets `undefined`, which is what falls
+  // through to the runner's own 30-minute DEFAULT_RUN_TIMEOUT_MS. This is the assertion
+  // that says "this change moved nothing for anyone who did not ask for it".
+  assert.equal(stepTimeoutMs({ id: 'work', prompt: '{{task}}' }, false), undefined);
+  // …and the workflow's last (interactive) step stays uncapped, as before.
+  assert.equal(stepTimeoutMs({ id: 'work', prompt: '{{task}}' }, true), 0);
+});
+
+test('stepTimeoutMs lets the step outrank both defaults', () => {
+  assert.equal(stepTimeoutMs({ id: 'work', prompt: '{{task}}', timeout: '90m' }, false), 5_400_000);
+  assert.equal(stepTimeoutMs({ id: 'work', prompt: '{{task}}', timeout: 'none' }, false), 0);
+  // A step may also tighten the interactive step, which was previously uncappable.
+  assert.equal(stepTimeoutMs({ id: 'work', prompt: '{{task}}', timeout: '45s' }, true), 45_000);
 });
 
 // #410: a chain of 2+ skills gave every step the SAME task text and shared

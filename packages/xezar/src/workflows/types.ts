@@ -2,6 +2,45 @@ import { z } from 'zod';
 import { RUNNER_IDS } from '../core/agent-runner.ts';
 
 /**
+ * Node's `setTimeout` ceiling (2^31-1 ms ≈ 24.8 days). A longer delay does not
+ * mean "later" — it overflows and fires almost immediately, so a step asking
+ * for `1000h` would be killed at once. Refused at load time instead (#22).
+ */
+export const MAX_STEP_TIMEOUT_MS = 2_147_483_647;
+
+const STEP_TIMEOUT_RE = /^(\d+)(s|m|h)$/;
+const STEP_TIMEOUT_UNIT_MS = { s: 1_000, m: 60_000, h: 3_600_000 } as const;
+
+/** The one message every surface shows for a `timeout` it cannot read (#22). */
+export const STEP_TIMEOUT_HINT =
+  'timeout must be "none" or a positive duration like "45s", "90m", "2h" (at most 24d)';
+
+/**
+ * A step's own wall-clock cap (#22), in milliseconds — or null when the string
+ * is not one this project accepts, which is a load-time error, never a silent
+ * fallback.
+ *
+ * `none` is the ONLY spelling for "no cap": it maps to 0, which is the value
+ * every runner already reads as "arm no deadline" (`limitMs > 0` guards the
+ * timer in all four). A zero-length duration (`0s`, `0m`) is refused rather
+ * than folded into that meaning — "0 seconds" reads as "kill it at once", and
+ * a field whose most literal reading is the opposite of what it does is worse
+ * than no field.
+ */
+export function parseStepTimeout(value: string): number | null {
+  if (value === 'none') return 0;
+  const match = STEP_TIMEOUT_RE.exec(value);
+  if (!match) return null;
+  const ms = Number(match[1]) * STEP_TIMEOUT_UNIT_MS[match[2] as keyof typeof STEP_TIMEOUT_UNIT_MS];
+  return ms > 0 && ms <= MAX_STEP_TIMEOUT_MS ? ms : null;
+}
+
+/** The authored `timeout` scalar: `none`, or `<digits><s|m|h>`. */
+export const stepTimeoutSchema = z
+  .string()
+  .refine((v) => parseStepTimeout(v) !== null, { message: STEP_TIMEOUT_HINT });
+
+/**
  * A workflow is an ordered list of steps. Two step kinds:
  *  - `agent` — one claude CLI run (prompt + optional skill + model + tools);
  *  - `check` — a shell command; exit 0 passes, non-zero can loop back to an
@@ -30,6 +69,14 @@ export const workflowStepSchema = z
     runner: z.enum(RUNNER_IDS).optional(),
     allowedTools: z.array(z.string()).optional(),
     bashAllowlist: z.array(z.string()).optional(),
+    /** This step's own wall-clock cap (#22): `45s` / `90m` / `2h`, or `none` for
+     *  no cap. ABSENT is the zero-config default and is not the same as `none`:
+     *  absent leaves the behaviour exactly as it was before this field existed —
+     *  the workflow's last step (which stays open for follow-ups) is uncapped,
+     *  and every earlier agent step inherits the runner's 30-minute
+     *  `DEFAULT_RUN_TIMEOUT_MS`. Non-final steps are what #22 is about: a long
+     *  investigate/implement step was killed mid-work with nothing committed. */
+    timeout: stepTimeoutSchema.optional(),
     // check step
     command: z.string().optional(),
     onFail: z
@@ -41,6 +88,11 @@ export const workflowStepSchema = z
   })
   .refine((s) => Boolean(s.command) !== Boolean(s.prompt ?? s.skill), {
     message: 'a step is either an agent step (prompt/skill) or a check step (command), not both',
+  })
+  // A check step is a shell command, not an agent session; nothing reads a wall
+  // clock there. Saying so at load time beats a key that quietly does nothing.
+  .refine((s) => !(s.command && s.timeout !== undefined), {
+    message: 'timeout applies to an agent step; a check step (command) has no wall clock',
   });
 
 /**
@@ -116,6 +168,7 @@ export function skillStackOf(steps: WorkflowStepDef[]): string[] | null {
     if (s.prompt !== undefined && s.prompt !== '{{task}}') return null;
     if (s.name !== undefined && s.name !== s.skill) return null;
     if (s.model || s.runner || s.allowedTools || s.bashAllowlist || s.onFail) return null;
+    if (s.timeout !== undefined) return null; // the compact form cannot carry it
     skills.push(s.skill);
   }
   return skills.length ? skills : null;
@@ -123,6 +176,28 @@ export function skillStackOf(steps: WorkflowStepDef[]): string[] | null {
 
 export function stepKind(step: WorkflowStepDef): 'agent' | 'check' {
   return step.command ? 'check' : 'agent';
+}
+
+/**
+ * The `AgentRunSpec.timeoutMs` an agent step spawns with (#22) — the single
+ * place that decision is made, so `run.ts` reads one call instead of a
+ * conditional it could get subtly different in a second construction site.
+ *
+ * Absent `timeout` reproduces the pre-#22 expression byte for byte:
+ * `interactive ? 0 : undefined`, where `undefined` falls through to the
+ * runner's own `DEFAULT_RUN_TIMEOUT_MS` (30 minutes). That is the zero-config
+ * default and this change must not move it.
+ *
+ * An unparseable string cannot reach here — `stepTimeoutSchema` rejects it at
+ * load time, on every surface that authors a step — but if one ever did, the
+ * fallback is today's behaviour rather than a crash or an arbitrary cap.
+ */
+export function stepTimeoutMs(step: WorkflowStepDef, interactive: boolean): number | undefined {
+  if (step.timeout !== undefined) {
+    const ms = parseStepTimeout(step.timeout);
+    if (ms !== null) return ms;
+  }
+  return interactive ? 0 : undefined;
 }
 
 /**
