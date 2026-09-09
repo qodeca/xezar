@@ -5,7 +5,7 @@ import { dirname, resolve } from 'node:path'
 
 /**
  * The agent-browser provider seam. Every e2e spec drives the app through this module and
- * never through a browser library directly, because `.ai/agentic.config.json` names the
+ * never through a browser library directly, because `.xezar/agentic.config.json` names the
  * provider (`browser.provider`) and `docs/testing/agent-browser.md` defines the operations.
  * Swapping providers must mean rewriting this file only.
  *
@@ -31,7 +31,7 @@ type EnvDescriptor = {
   browser: { installed: boolean; command: string; version: string; notes: string }
 }
 
-/** The shared descriptor written by .ai/scripts/test-env-up.sh — QA and e2e attach to the
+/** The shared descriptor written by scripts/test-env-up.sh — QA and e2e attach to the
  *  exact same instance rather than each booting their own. */
 export function readTestEnv(): EnvDescriptor {
   try {
@@ -56,7 +56,7 @@ export function readTestEnv(): EnvDescriptor {
  * Pinning it inside `dataRoot` means the spec's own `rmSync(dataRoot)` cleans it up too.
  *
  * The shared test env pins the same variable under `.local/qa/xez-home`
- * (`.ai/scripts/test-env-up.sh`); this is that rule for the specs that boot their own server.
+ * (`scripts/test-env-up.sh`); this is that rule for the specs that boot their own server.
  */
 export function fixtureServeEnv(
   dataRoot: string,

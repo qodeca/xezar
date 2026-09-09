@@ -170,13 +170,13 @@ The UI smoke suite is a **separate** command — it boots the real app and drive
 Chrome through the `agent-browser` provider (`docs/testing/agent-browser.md`):
 
 ```bash
-npm run test:e2e    # .ai/scripts/e2e.sh → test-env-up.sh + vitest (packages/web/e2e/)
+npm run test:e2e    # scripts/e2e.sh → test-env-up.sh + vitest (packages/web/e2e/)
 ```
 
 It boots the app on a free port with `XEZ_DRY_RUN=1` (agent CLIs mocked — no login, no
 network), reuses an already-healthy instance instead of double-booting, and writes
 `.local/qa/test-env.json` so QA skills attach to the same instance. Stop it with
-`.ai/scripts/test-env-down.sh`. Exit contract:
+`scripts/test-env-down.sh`. Exit contract:
 
 | Exit     | Marker                    | Meaning                                                                                                           |
 | -------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------- |
@@ -217,10 +217,10 @@ The wrapper takes no file filter, so iterating on ONE spec means booting the env
 then running vitest against it directly — still through `npm`, never `npx`:
 
 ```bash
-sh .ai/scripts/test-env-up.sh                                    # boot once, reuse
+sh scripts/test-env-up.sh                                    # boot once, reuse
 npm test -- --config packages/web/e2e/vitest.config.ts thread-scroll
 npm test -- --config packages/web/e2e/vitest.config.ts github -t "opens an issue"
-sh .ai/scripts/test-env-down.sh                                  # always, when finished
+sh scripts/test-env-down.sh                                  # always, when finished
 ```
 
 Two rules the suite has learned the hard way, both worth following in a new spec:
@@ -241,4 +241,4 @@ Two rules the suite has learned the hard way, both worth following in a new spec
 - `SDLC.md` — ticket flow, label state machine, QA gate, claim protocol.
 - `CODE_REVIEW.md` — what reviewers check and how severities are assigned.
 - `BACKWARD_COMPATIBILITY.md` — the public surfaces you must not break silently.
-- `.ai/agentic.config.json` — machine-readable pipeline config every om-* skill reads (base branch, validation commands, labels).
+- `.xezar/agentic.config.json` — machine-readable pipeline config every om-* skill reads (base branch, validation commands, labels).

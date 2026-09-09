@@ -6,7 +6,7 @@ be included by an autosave, commit, package, or project-kit snapshot.
 | Location | Classification and owner |
 | --- | --- |
 | `.xezar/` | Maintained project configuration, workflows, skills, checks and operator documentation; see [project layout](../project-layout.md). |
-| `.ai/agentic.config.json`, `.ai/scripts/`, `.ai/skills/`, `.ai/trackers/` | Maintained agent tooling. Scripts remain here; their outputs do not. |
+| `.xezar/agentic.config.json`, `.xezar/trackers/`, `scripts/` | Maintained agent tooling and repository scripts. They live here; their outputs do not. |
 | `docs/specs/`, `docs/testing/agent-browser.md` | Maintained specifications and browser contract. New specifications are not ignored working drafts. |
 | `.local/xezar/` | Engine run index, transcripts, attachments, handoffs, todos, UI state, automation state/logs/locks, temporary run directories and Git worktrees. |
 | `.local/qa/` | Test environment descriptor, bootstrap lock, build fingerprint, logs, screenshots, isolated Xezar home and vendor configuration sandboxes. |
@@ -32,9 +32,9 @@ deleted, moved or rewritten; move the files by hand as described in
 QA has a separate migration because it is repository development tooling:
 
 ```sh
-sh .ai/scripts/test-env-down.sh
-node .ai/scripts/migrate-local-state.mjs
-sh .ai/scripts/test-env-up.sh
+sh scripts/test-env-down.sh
+node scripts/migrate-local-state.mjs
+sh scripts/test-env-up.sh
 ```
 
 The stop script recognizes a legacy descriptor. The new launcher refuses a legacy descriptor

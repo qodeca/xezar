@@ -20,7 +20,7 @@ const sessionId = `e2e-settings-${process.pid}`
 
 const DESKTOP = { width: 1440, height: 900 }
 
-// Appearance persists in the WORKSPACE ui-state since step 3.5. `.ai/scripts/test-env-up.sh`
+// Appearance persists in the WORKSPACE ui-state since step 3.5. `scripts/test-env-up.sh`
 // pins `XEZ_HOME` under `.local/qa/xez-home`, so that — not the developer's `~/.xezar`, and not
 // the repo's `.local/xezar` — is the file this suite reads and restores.
 const xezHomeDir = resolve(import.meta.dirname, '../../../.local/qa/xez-home')

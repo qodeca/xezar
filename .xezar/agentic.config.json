@@ -1,7 +1,6 @@
 {
   "version": 1,
   "baseBranch": "auto",
-  "tracker": "github",
   "browser": {
     "provider": "agent-browser"
   },
@@ -57,7 +56,7 @@
     "runs": ".local/runs",
     "analysis": ".local/analysis",
     "specs": "docs/specs",
-    "scripts": ".ai/scripts",
+    "scripts": "scripts",
     "qa": ".local/qa"
   },
   "reviewChecklist": null

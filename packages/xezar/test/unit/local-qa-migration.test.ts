@@ -8,12 +8,12 @@ const repo = resolve(import.meta.dirname, '../../../..');
 const roots: string[] = [];
 function fixture(): string {
   const root = mkdtempSync(join(tmpdir(), 'xez-qa-migration-')); roots.push(root);
-  mkdirSync(join(root, '.ai/scripts'), { recursive: true }); mkdirSync(join(root, '.ai/qa'));
-  copyFileSync(join(repo, '.ai/scripts/migrate-local-state.mjs'), join(root, '.ai/scripts/migrate-local-state.mjs'));
-  copyFileSync(join(repo, '.ai/scripts/test-env-up.sh'), join(root, '.ai/scripts/test-env-up.sh'));
+  mkdirSync(join(root, 'scripts'), { recursive: true }); mkdirSync(join(root, '.ai/qa'), { recursive: true });
+  copyFileSync(join(repo, 'scripts/migrate-local-state.mjs'), join(root, 'scripts/migrate-local-state.mjs'));
+  copyFileSync(join(repo, 'scripts/test-env-up.sh'), join(root, 'scripts/test-env-up.sh'));
   return root;
 }
-function migrate(root: string) { return spawnSync(process.execPath, [join(root, '.ai/scripts/migrate-local-state.mjs')], { encoding: 'utf8' }); }
+function migrate(root: string) { return spawnSync(process.execPath, [join(root, 'scripts/migrate-local-state.mjs')], { encoding: 'utf8' }); }
 afterEach(() => roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })));
 test('preserves old QA bytes in an archive and is safe to run twice', () => {
   const root = fixture();
@@ -29,7 +29,7 @@ test('refuses active processes, corrupt descriptors and archives that already ex
   const root = fixture(); const file = join(root, '.ai/qa/test-env.json');
   writeFileSync(file, JSON.stringify({ app: { pid: process.pid }, status: 'running' }));
   assert.match(migrate(root).stderr, /process is alive/);
-  const boot = spawnSync('/bin/sh', [join(root, '.ai/scripts/test-env-up.sh')], { encoding: 'utf8' });
+  const boot = spawnSync('/bin/sh', [join(root, 'scripts/test-env-up.sh')], { encoding: 'utf8' });
   assert.equal(boot.status, 1); assert.match(boot.stderr, /legacy QA state exists/);
   writeFileSync(file, '{broken'); assert.match(migrate(root).stderr, /corrupt/);
   assert.equal(readFileSync(file, 'utf8'), '{broken');

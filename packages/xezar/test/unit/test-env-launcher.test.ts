@@ -32,11 +32,11 @@ const hasSetsid = spawnSync('/bin/sh', ['-c', 'command -v setsid'], { stdio: 'ig
 function makeFixture(withSetsid: boolean): { root: string; path: string } {
   const root = mkdtempSync(join(tmpdir(), 'xez-test-env-launcher-'));
   fixtures.push(root);
-  mkdirSync(join(root, '.ai/scripts'), { recursive: true });
+  mkdirSync(join(root, 'scripts'), { recursive: true });
   mkdirSync(join(root, 'docs/testing'), { recursive: true });
   mkdirSync(join(root, 'bin'), { recursive: true });
-  copyFileSync(join(repoRoot, '.ai/scripts/test-env-up.sh'), join(root, '.ai/scripts/test-env-up.sh'));
-  copyFileSync(join(repoRoot, '.ai/scripts/test-env-down.sh'), join(root, '.ai/scripts/test-env-down.sh'));
+  copyFileSync(join(repoRoot, 'scripts/test-env-up.sh'), join(root, 'scripts/test-env-up.sh'));
+  copyFileSync(join(repoRoot, 'scripts/test-env-down.sh'), join(root, 'scripts/test-env-down.sh'));
   writeFileSync(join(root, 'docs/testing/agent-browser.md'), '# test provider\n');
   writeFileSync(join(root, 'package.json'), '{"private":true}\n');
   writeFileSync(join(root, 'package-lock.json'), '{}\n');
@@ -103,8 +103,8 @@ function descriptor(root: string): { baseUrl: string; app: { pid: number } } {
 test('reuses an instance whose sources were last touched inside the boot second', { timeout: 60_000 }, async () => {
   const fixture = makeFixture(hasSetsid);
   const env = { ...process.env, PATH: fixture.path, TEST_ENV_CACHE_TTL_SECONDS: '600' };
-  const up = join(fixture.root, '.ai/scripts/test-env-up.sh');
-  const down = join(fixture.root, '.ai/scripts/test-env-down.sh');
+  const up = join(fixture.root, 'scripts/test-env-up.sh');
+  const down = join(fixture.root, 'scripts/test-env-down.sh');
 
   const cold = spawnSync('/bin/sh', [up], { cwd: tmpdir(), encoding: 'utf8', env, timeout: 20_000 });
   assert.equal(cold.status, 0, cold.stderr);
@@ -141,8 +141,8 @@ for (const withSetsid of [true, false]) {
     async () => {
       const fixture = makeFixture(withSetsid);
       const env = { ...process.env, PATH: fixture.path, TEST_ENV_CACHE_TTL_SECONDS: '600' };
-      const up = join(fixture.root, '.ai/scripts/test-env-up.sh');
-      const down = join(fixture.root, '.ai/scripts/test-env-down.sh');
+      const up = join(fixture.root, 'scripts/test-env-up.sh');
+      const down = join(fixture.root, 'scripts/test-env-down.sh');
       const callerPidFile = join(fixture.root, 'caller.pid');
 
       const coldCommand = withSetsid ? commandPath('setsid') : '/bin/sh';

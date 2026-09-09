@@ -21,13 +21,13 @@ set -eu
 # Everything below the next banner is generic contract logic; tweak only here.
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-# <root>/.ai/scripts/test-env-up.sh → <root>. Derived from the script's own path so this
+# <root>/scripts/test-env-up.sh → <root>. Derived from the script's own path so this
 # works unchanged inside a git worktree (no `git rev-parse`, no cwd assumption).
-REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)
+REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 
 # Never start a second environment while an old-path instance may still be running.
 if [ -f "$REPO_ROOT/.ai/qa/test-env.json" ] || [ -d "$REPO_ROOT/.ai/qa/test-env.lock" ]; then
-  echo "[test-env] legacy QA state exists: stop it with .ai/scripts/test-env-down.sh, then run node .ai/scripts/migrate-local-state.mjs" >&2
+  echo "[test-env] legacy QA state exists: stop it with scripts/test-env-down.sh, then run node scripts/migrate-local-state.mjs" >&2
   exit 1
 fi
 
@@ -444,8 +444,8 @@ write_descriptor() {
       mode: "prod",
       baseUrl,
       startedByThisRepo: true,
-      startScript: ".ai/scripts/test-env-up.sh",
-      stopScript: ".ai/scripts/test-env-down.sh",
+      startScript: "scripts/test-env-up.sh",
+      stopScript: "scripts/test-env-down.sh",
       app: { startCommand: cmd, port: Number(port), healthPath: "/api/v1/health", pid: Number(pid) },
       services: [],
       credentials: [],
@@ -461,7 +461,7 @@ write_descriptor() {
       testRunner: { name: "other", config: "packages/web/e2e/vitest.config.ts" },
       platform,
       startedAt: new Date().toISOString().replace(/\.\d+Z$/, "Z"),
-      notes: "Booted from a production build after npm ci with XEZ_DRY_RUN=1, so workspace links/runtime dependencies are present, the agent CLIs are mocked, and no agent login/network is needed. The agents\u2019 own user-scope config dirs are pinned to empty sandboxes under .local/qa/agent-home/ (environment.agentHome), so the app reads no model default from this machine; project-scope files in the repo are NOT isolated. No backing services. Stop with .ai/scripts/test-env-down.sh. App log: .local/qa/test-env-app.log.",
+      notes: "Booted from a production build after npm ci with XEZ_DRY_RUN=1, so workspace links/runtime dependencies are present, the agent CLIs are mocked, and no agent login/network is needed. The agents\u2019 own user-scope config dirs are pinned to empty sandboxes under .local/qa/agent-home/ (environment.agentHome), so the app reads no model default from this machine; project-scope files in the repo are NOT isolated. No backing services. Stop with scripts/test-env-down.sh. App log: .local/qa/test-env-app.log.",
     }, null, 2) + "\n");
   ' "$ENV_DESCRIPTOR" "$BASE_URL" "$PORT" "$APP_PID" \
     "XEZ_DRY_RUN=1 XEZ_HOME=.local/qa/xez-home CLAUDE_CONFIG_DIR=.local/qa/agent-home/claude CODEX_HOME=.local/qa/agent-home/codex OPENCODE_CONFIG_DIR=.local/qa/agent-home/opencode node packages/xezar/dist/index.js --repo $REPO_ROOT --port $PORT --no-open" \

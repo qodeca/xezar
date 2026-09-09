@@ -43,7 +43,7 @@ jobs:
         run: npm ci
 
       # The documented validation gate, in the documented order (SDLC.md,
-      # .ai/agentic.config.json → validation.commands).
+      # .xezar/agentic.config.json → validation.commands).
       - name: Typecheck
         run: npm run typecheck
 

@@ -83,7 +83,7 @@ export function archiveLegacyAgentic(root) {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
-    const root = resolve(import.meta.dirname, '../..');
+    const root = resolve(import.meta.dirname, '..');
     const agenticChanged = archiveLegacyAgentic(root);
     const changed = archiveLegacyQa(root);
     if (agenticChanged) console.log('Preserved legacy agentic records in .local/legacy-agentic; maintained specifications now belong in docs/specs.');

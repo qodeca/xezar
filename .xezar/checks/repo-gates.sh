@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Xezar project gates: the AGENTS/SDLC/.ai/agentic.config.json sequence,
+# Xezar project gates: the AGENTS/SDLC/.xezar/agentic.config.json sequence,
 # with dependency freshness and isolated kit fixture checks. UI smoke is separate.
 # Usage:  .xezar/checks/repo-gates.sh [--fast] [--list]
 #   --fast  skip `npm ci` ONLY when the installed dependencies
