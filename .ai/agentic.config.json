@@ -18,19 +18,13 @@
     "enabled": true,
     "pipeline": [
       "review",
-      "changes-requested",
-      "qa",
-      "qa-failed",
-      "merge-queue",
-      "blocked",
-      "do-not-merge"
+      "merge-queue"
     ],
     "category": [
       "bug",
-      "feature",
+      "enhancement",
       "refactor",
-      "security",
-      "dependencies",
+      "testing",
       "documentation"
     ],
     "meta": [
@@ -41,14 +35,9 @@
       "in-progress"
     ],
     "priority": [
-      "priority-low",
-      "priority-medium",
-      "priority-high",
-      "priority-extreme"
+      "priority-high"
     ],
     "risk": [
-      "risk-low",
-      "risk-medium",
       "risk-high"
     ]
   },

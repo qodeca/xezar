@@ -23,46 +23,41 @@ Work enters through two paths: a free-form task brief handed to an agent, or a f
 | Implement | Locate the minimal change surface (`om-root-cause`, read-only), then implement the change with regression tests and run the validation gate. Task briefs without a ticket go through `om-auto-create-pr`, which plans, implements phase by phase in an isolated worktree, and runs the same gate. | `om-root-cause` + `om-fix`, `om-auto-create-pr`, or a human author | Change complete, validation gate green |
 | PR | Commit, push, and open a PR against `main` with normalized labels. On a hand-worked branch, `om-check-and-commit` runs the gate, fixes obvious drift, and pushes when green. | `om-open-pr`, `om-auto-create-pr`, or `om-check-and-commit` | Open, labeled PR |
 | Review loop | The reviewer reads the diff against the `om-code-review` checklist and approves or requests changes. Requested changes are addressed (`om-auto-continue-pr` resumes agent PRs from the tracking plan) and the PR is re-reviewed until approved. | `om-auto-review-pr` (single PR), `om-review-prs` (sweep), or a human | Approving review submitted |
-| QA | A PR carrying `needs-qa` waits for manual QA. A QA reviewer tests it and records the outcome. See the QA gate below. | QA reviewer (manual) | `qa-approved` applied, or `qa-failed` routes it back |
+| QA | A PR carrying `needs-qa` waits for manual QA. A QA reviewer tests it and records the outcome. See the QA gate below. | QA reviewer (manual) | `qa-approved` applied, or the failure is recorded in a PR comment and `merge-queue` removed, which routes it back |
 | Merge | `om-merge-buddy` reports, read-only, which PRs can merge now and which are close but blocked. `om-approve-merge-pr` re-checks every gate, approves, and squash-merges. | `om-merge-buddy` + `om-approve-merge-pr`, or a human | PR squash-merged into `main` |
 | Post-merge housekeeping | Close issues the merged PR fixes; comment on issues whose PRs were closed without merging; turn leftover asks or review comments into tracked follow-up issues. | `om-sync-merged-pr-issues`, `om-followup-issue-from-pr` | Tracker reconciled, follow-ups filed |
 
 ## Label state machine
 
-Pipeline labels are mutually exclusive: a PR carries at most one, and it names where the PR sits in the flow.
+This section lists only labels that exist in `qodeca/xezar`. Verify with `gh label list --limit 200`, and create a label before this document tells anyone to apply it — a step that names a label the repository does not have stops the flow at its first `gh` call. The reproducible create list lives in `.ai/trackers/github.md` under **ensure-label-taxonomy**.
+
+Pipeline labels are mutually exclusive: a PR carries at most one, and it names where the PR sits in the flow. This repository defines two.
 
 - A ready, non-draft PR carries `review`.
-- The reviewer moves it: request changes → `changes-requested`; after fixes it returns to `review`; approval → `merge-queue`.
+- The reviewer approves and moves it to `merge-queue`. To request changes there is no label: the reviewer submits the review comments and removes `review`, and the author restores `review` when the fixes are pushed.
 - `merge-queue` is routing, not proof of QA: a `needs-qa` PR legitimately sits there until QA signs off.
-- Only a QA reviewer sets the `qa` pipeline label. They move a queued `needs-qa` PR from `merge-queue` to `qa` while testing, then back to `merge-queue` with `qa-approved` on pass, or to `qa-failed` on failure. Automated skills request QA with `needs-qa`; they never set `qa`.
-- `blocked` and `do-not-merge` are set and cleared by humans and stop the flow wherever it is.
+- A QA reviewer who picks up a queued `needs-qa` PR says so in a PR comment rather than in a label — there is no `qa` label. On a pass they apply `qa-approved`. On a failure they remove `merge-queue` and post what failed; there is no `qa-failed` label either.
+- To stop a PR wherever it is — a dependency, an unresolved decision, a deliberate hold — remove `merge-queue` and convert the PR to draft, saying why in a comment. Draft is the hard block, and it is enforced in code: `.xezar/checks/integration-preflight.sh` refuses to merge a draft PR. There is no `blocked` or `do-not-merge` label here.
 
 | Group | Labels | Exclusivity | Meaning |
 |---|---|---|---|
-| Pipeline | `review`, `changes-requested`, `qa`, `qa-failed`, `merge-queue`, `blocked`, `do-not-merge` | one at a time | Workflow state |
-| Category | `bug`, `feature`, `refactor`, `security`, `dependencies`, `documentation` | additive | Kind of change |
+| Pipeline | `review`, `merge-queue` | one at a time | Workflow state |
+| Category | `bug`, `enhancement`, `refactor`, `testing`, `documentation` | additive | Kind of change |
 | Meta | `needs-qa`, `skip-qa`, `qa-approved`, `qa-self-verified`, `in-progress` | additive | Process signals |
-| Priority | `priority-low`, `priority-medium`, `priority-high`, `priority-extreme` | one at a time; unset = medium | Urgency of the work |
-| Risk | `risk-low`, `risk-medium`, `risk-high` | one at a time; unset = medium | Blast radius of the change |
+| Priority | `priority-high` | opt-in; unset = ordinary urgency | Urgency of the work |
+| Risk | `risk-high` | opt-in; unset = ordinary blast radius | Blast radius of the change |
 
-Priority is how urgent the work is; risk is how dangerous the change is to ship. A one-line fix for a broken cockpit can be `priority-extreme` and `risk-low`; a large runner-seam refactor that can wait can be `priority-low` and `risk-high`. A PR inherits both from its source issue unless the scope clearly changed. When an automated skill adds or changes a pipeline or meta label, it leaves a short comment explaining why.
+Two more labels sit outside the change taxonomy and mark issues only: `epic` for a tracking issue with sub-issues, and `release-<version>` for work planned into a named release. A kind of change with no matching category label simply carries none; say what it is in the PR title and body instead of inventing a label.
 
-When no priority label is set, infer one:
+Priority is how urgent the work is; risk is how dangerous the change is to ship, and the two are independent: a one-line fix for a broken cockpit can be `priority-high` without being `risk-high`, and a large runner-seam refactor that can wait is `risk-high` without being `priority-high`. Both are single opt-in flags rather than scales — there is no low or medium label, and an unlabelled PR is ordinary on both axes. A PR inherits both from its source issue unless the scope clearly changed. When an automated skill adds or changes a pipeline or meta label, it leaves a short comment explaining why.
 
-- `priority-extreme` — the published CLI is broken for users (`npm install -g @qodeca/xezar` or `npx @qodeca/xezar` fails), data loss in `.local/xezar/`, or an active security incident.
-- `priority-high` — security hardening or a release-blocking regression.
-- `priority-medium` — ordinary bug fixes and net-new features (also the default reading of unset).
-- `priority-low` — cosmetic, docs-only, dependency bumps, follow-up cleanup.
+Apply `priority-high` when the work is a security fix, a release-blocking regression, or a break in the published CLI (`npm install -g @qodeca/xezar` or `npx @qodeca/xezar` fails) or in `.local/xezar/` state. Leave it off otherwise.
 
-When no risk label is set, infer one:
+Apply `risk-high` when the change touches the runner seam (`packages/xezar/src/core/agent-runner.ts`), worktree or branch handling, the `.local/xezar/` state file formats, or the HTTP API surface, or when it edits broadly across the tree. Leave it off for an ordinary single-area change and for docs-only work.
 
-- `risk-high` — the runner seam (`packages/xezar/src/core/agent-runner.ts`), worktree/branch handling, the `.local/xezar/` state file formats, the HTTP API surface, or broad cross-cutting edits.
-- `risk-medium` — an ordinary single-area change (also the default reading of unset).
-- `risk-low` — docs-only, typo, or isolated cosmetic changes.
+When signals conflict, apply the flag and say why in the label comment. A `risk-high` PR strengthens the case for `needs-qa` and deeper review even when it would otherwise look routine.
 
-When signals conflict, pick the higher label and say why in the label comment. A `risk-high` PR strengthens the case for `needs-qa` and deeper review even when it would otherwise look routine.
-
-One label lives outside this taxonomy: `do-not-close`, applied by humans to issues that housekeeping skills must never auto-close. Skills only ever read it.
+There is no `do-not-close` label. Housekeeping closes an issue only when a merged PR explicitly says it fixes it, so an issue that must survive a related merge is kept open by leaving `Fixes #<n>` out of the PR body and linking the issue in prose instead. A maintainer reopens anything closed in error.
 
 ## The QA gate
 
@@ -70,7 +65,8 @@ The one hard rule of this process: **a PR carrying `needs-qa` must not merge unt
 
 - Apply `needs-qa` to cockpit UI changes, new features, and other user-facing behavior that needs manual exercise (a `XEZ_DRY_RUN=1` session covers most cockpit flows without a real `claude` login).
 - `skip-qa` is the explicit opt-out for docs-only, dependency-only, CI-only, and similarly low-risk non-user-facing changes. Never combine it with `needs-qa`.
-- `qa-failed`, `do-not-merge`, and `blocked` are hard blocks regardless of every other signal. An active `qa` pipeline label means a tester is on the PR right now — never merge under an active tester.
+- A failed QA run is a hard block regardless of every other signal: the QA reviewer removes `merge-queue`, posts what failed, and removes `qa-approved` if it was applied in error. Never merge under an active tester — a tester who has picked the PR up says so in a comment, and that comment blocks the merge until they post the outcome.
+- The merge guard `.xezar/checks/lib/project-policy.mjs` additionally refuses any PR carrying `blocked`, `do-not-merge`, `qa` or `qa-failed`. This repository does not define those labels and this document never tells anyone to apply one; the check is a fail-safe for a fork that does define them, not a step in this flow.
 - The gate is satisfied when a QA reviewer tests the PR and applies `qa-approved`.
 - **Self-QA exception**: when no QA reviewer has capacity in time, any engineer may sign off instead — but only by (1) checking the PR out and running it locally, (2) exercising the affected flow, and (3) attaching evidence to the PR: a screenshot of it working, or a written account of what was exercised and the observed result. Then apply both `qa-approved` (so the gate passes) and `qa-self-verified` (so the exception is auditable). No evidence, no `qa-approved`.
 
