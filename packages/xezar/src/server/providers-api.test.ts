@@ -458,6 +458,26 @@ describe('workspace provider API', () => {
     }
   });
 
+  it.each([false, true])('OpenCode Connect recognizes native models and preserves runtime failures (failed=%s)', async (failed) => {
+    const providerAuth = service({}, async (executable, args) => ({
+      stdout: executable === 'opencode'
+        ? args[0] === 'models' ? 'dgx-spark/deepseek-v4-flash-vision\n' : '└  0 credentials\n'
+        : CONNECTED_OUTPUT[providerForExecutable(executable)],
+      stderr: '',
+      exitCode: 0,
+    }));
+    if (failed) providerAuth.reportRuntimeAuthFailure('opencode');
+    const openTerminal = vi.fn(async () => true);
+
+    const response = await connect(app({ providerAuth, openTerminal }), 'opencode');
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject(failed
+      ? { opened: true }
+      : { opened: false, connected: true });
+    expect(openTerminal).toHaveBeenCalledTimes(failed ? 1 : 0);
+  });
+
   it('POST still opens Claude login when a runtime latch overlays a connected probe', async () => {
     const providerAuth = service();
     providerAuth.reportRuntimeAuthFailure('claude');

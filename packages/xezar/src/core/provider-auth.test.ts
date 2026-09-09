@@ -315,11 +315,24 @@ describe('provider auth parsers', () => {
     await expect(statuses(service)).resolves.toMatchObject({ opencode: { status: 'connected' } });
   });
 
+  it('recognizes configured OpenCode models without stored credentials', async () => {
+    const runCommand = runner((executable, args) => executable === 'opencode'
+      ? { stdout: args[0] === 'models'
+        ? 'dgx-spark/deepseek-v4-flash-vision\n'
+        : '┌  Credentials ~/.local/share/opencode/auth.json\n└  0 credentials\n',
+      stderr: '', exitCode: 0 }
+      : resultFor(executable));
+    const service = new ProviderAuthService({ runCommand });
+
+    await expect(statuses(service)).resolves.toMatchObject({ opencode: { status: 'connected' } });
+    expect(runCommand).toHaveBeenCalledWith('opencode', ['models'], 10_000);
+  });
+
   it('recognizes an OpenCode decorated zero-credential list as disconnected', async () => {
     const service = new ProviderAuthService({
-      runCommand: runner((executable) => executable === 'opencode'
+      runCommand: runner((executable, args) => executable === 'opencode'
         ? {
-          stdout: [
+          stdout: args[0] === 'models' ? '' : [
             '┌  Credentials ~/.local/share/opencode/auth.json',
             '│',
             '└  0 credentials',
@@ -331,6 +344,20 @@ describe('provider auth parsers', () => {
     });
 
     await expect(statuses(service)).resolves.toMatchObject({ opencode: { status: 'disconnected' } });
+  });
+
+  it.each([
+    { stdout: 'unrecognized output', stderr: '', exitCode: 0 },
+    { stdout: 'local/model', stderr: '', exitCode: 1 },
+    { stdout: '', stderr: '', exitCode: null, timedOut: true },
+  ])('does not claim OpenCode is configured when model discovery fails: %j', async (models) => {
+    const service = new ProviderAuthService({
+      runCommand: runner((executable, args) => executable === 'opencode'
+        ? args[0] === 'models' ? models
+          : { stdout: '└  0 credentials\n', stderr: '', exitCode: 0 }
+        : resultFor(executable)),
+    });
+    await expect(statuses(service)).resolves.toMatchObject({ opencode: { status: 'unknown' } });
   });
 
   it.each([

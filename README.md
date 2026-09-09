@@ -602,6 +602,27 @@ host-local catalog yet, always shows its built-in entries. `auto` — send no
 model at all and let the CLI decide — is always available, and a model you
 pinned by hand stays selectable even when it is no longer advertised.
 
+**OpenCode connection checks include native model configuration.** A LAN/local
+provider can be configured without stored login credentials. When
+`opencode auth list` reports no stored or environment credentials, xezar also
+runs `opencode models`:
+
+- A successful listing with a recognized `provider/model` marks OpenCode as
+  configured. Connect recognizes that state without opening a login terminal.
+  The Providers card says **Configured**, rather than **Credentials found**.
+- A successful empty listing leaves OpenCode **Not connected**. Connect opens
+  `opencode auth login` to configure credentials.
+- A failed, unrecognized or timed-out listing reports **Could not verify**,
+  rather than assuming login is needed. Each CLI probe has a ten-second timeout.
+
+If OpenCode works directly but xezar asks you to connect, compare
+`opencode auth list` and `opencode models` from the same project directory and
+environment used by xezar. Zero credentials alone does not mean a local provider
+needs login. A model listing establishes configuration, not endpoint health or
+successful inference; an authentication rejection from an actual task still
+overrides the probe result and requires attention. Xezar does not add credentials
+or change OpenCode's provider configuration during these checks.
+
 **Pick a backend at three levels** (most specific wins):
 
 1. **Config default** — `"defaultRunner": "codex"` in `.xezar/config.json`.

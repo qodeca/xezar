@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { AGENT_MODELS_LOCKED_ENV } from './agent-model-policy.ts';
 import { profileEnv } from './agent-profiles.ts';
+import { parseOpencodeModels } from './opencode-model-catalog.ts';
 import { withEnvPrefix } from './shell-env.ts';
 
 export const PROVIDER_IDS = ['claude', 'codex', 'opencode', 'pi'] as const;
@@ -612,7 +613,27 @@ export class ProviderAuthService {
     if (result.errorCode) {
       return { provider: descriptor.id, status: 'unknown', hint: UNKNOWN_HINT };
     }
-    const status = descriptor.parse(result);
+    let status = descriptor.parse(result);
+    // A LAN/custom provider can be configured entirely in OpenCode's native config,
+    // with no auth.json entry or environment credential. Ask its model catalog before
+    // sending that user into login. This is configuration evidence, not an inference
+    // health check; authoritative runtime auth failures still override this probe.
+    if (descriptor.id === 'opencode' && status === 'disconnected') {
+      try {
+        const models = await (env === undefined
+          ? this.runCommand(descriptor.executable(), ['models'], COMMAND_TIMEOUT_MS)
+          : this.runCommand(descriptor.executable(), ['models'], COMMAND_TIMEOUT_MS, env));
+        if (models.timedOut) {
+          return { provider: descriptor.id, status: 'unknown', hint: TIMEOUT_HINT };
+        }
+        if (models.errorCode || models.exitCode !== 0) {
+          return { provider: descriptor.id, status: 'unknown', hint: UNKNOWN_HINT };
+        }
+        status = parseOpencodeModels(models.stdout).length > 0 ? 'connected' : 'disconnected';
+      } catch {
+        return { provider: descriptor.id, status: 'unknown', hint: UNKNOWN_HINT };
+      }
+    }
     if (status !== null) return { provider: descriptor.id, status };
     return { provider: descriptor.id, status: 'unknown', hint: UNKNOWN_HINT };
   }
