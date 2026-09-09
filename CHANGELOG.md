@@ -37,6 +37,21 @@ nightly channel) is gone. Releases are manual, owner-triggered and go straight t
 
 ---
 
+# Unreleased
+
+## 🐛 Fixes
+- 🐛 **The new-task composer keeps a brief that was written straight into the textarea.** Text
+  set on the element by a browser automation tool (Chrome DevTools' `fill` past its typing
+  threshold), a form filler or an extension never reached the draft: the box showed it, Start
+  stayed disabled, and the next re-render — picking a skill or workflow — wiped it. The composer
+  now honours the native `input` event too, so the brief lands in the draft and survives any
+  later pick. Typing key by key was never affected. (#14)
+- 🐛 **Enter in the skill/workflow picker commits the row shown as highlighted.** The picker now
+  owns its highlight, clamps it to the rows currently listed after every filter change, and
+  commits Enter from that same state instead of asking the DOM which row carries
+  `aria-selected` at that instant; a second Enter landing during the close animation no longer
+  toggles the pick back off. (#15)
+
 # 0.11.0 (2026-09-09)
 
 ## Highlights

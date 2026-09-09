@@ -197,6 +197,33 @@ export function Composer({
     setTrigger(next)
   }, [autocompleteSkills, disabled, getMentionCandidates])
 
+  // ---- text React did not see (#14) ---------------------------------------------------------
+  //
+  // A value written straight to the DOM — `textarea.value = …` followed by an `input` event, which
+  // is what browser automation (Chrome DevTools' `fill` past its typing threshold), form fillers
+  // and extensions do — never reaches React's synthetic `onChange`: React's value tracker records
+  // the programmatic write as already known, so the event looks like a no-op. The box then SHOWS
+  // the text while the draft is still empty, Start stays disabled, and the next re-render of the
+  // controlled textarea (picking a skill, toggling a pill) resyncs the box to the empty draft —
+  // the brief is gone. A native listener on the element sees every `input` event, tracker or
+  // not; it runs before React's root listener, so `textRef` is bumped eagerly and the synthetic
+  // handler below skips the duplicate write.
+  const nativeTextSyncRef = useRef<() => void>(() => {})
+  nativeTextSyncRef.current = () => {
+    const el = textareaRef.current
+    if (!el || el.value === textRef.current) return
+    textRef.current = el.value
+    setText(el.value)
+    syncTrigger()
+  }
+  useEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+    const onNativeInput = () => nativeTextSyncRef.current()
+    el.addEventListener('input', onNativeInput)
+    return () => el.removeEventListener('input', onNativeInput)
+  }, [])
+
   interface MenuCandidate {
     value: string
     insert: string
@@ -497,7 +524,8 @@ export function Composer({
             // 16px on touch widths — iOS zooms any focused input below 16px (spec mobile rule).
             className="block max-h-[220px] min-h-11 w-full resize-none bg-transparent px-3 pt-2.5 pb-1 text-base leading-normal outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed md:min-h-[54px] md:px-4 md:pt-3 md:text-sm"
             onChange={(event) => {
-              setText(event.target.value)
+              // The native `input` listener above may already have written this value (#14).
+              if (event.target.value !== textRef.current) setText(event.target.value)
               syncTrigger()
             }}
             onKeyDown={onKeyDown}

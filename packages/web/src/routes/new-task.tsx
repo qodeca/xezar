@@ -11,7 +11,7 @@ import {
   WorkflowIcon,
   XIcon,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { useParams, useSearchParams } from 'react-router'
 
 import { Link, useNavigate } from '@/lib/project-router'
@@ -1060,13 +1060,55 @@ function SourcePill({
   const toggle = (next: TaskSource) =>
     pick(source?.source === next.source && source.ref === next.ref ? null : next)
 
+  // The rows, in render order, each with its cmdk value and what picking it does (#15).
+  //
+  // The highlight is OURS, not cmdk's: `Command` is rendered with a controlled `value`, so every
+  // way the highlight moves — arrows, Home/End, pointer hover, cmdk's own select-first after a
+  // filter change — lands in `highlight`, and `activeValue` clamps it to a row that is actually
+  // in the CURRENT list (a highlight left on a row the filter just removed falls back to the
+  // first row). Enter commits `activeValue` through this same table rather than letting cmdk
+  // query the DOM for whichever row carries `aria-selected` at that instant, so what is
+  // committed is by construction the row rendered as highlighted. The `/` autocomplete in the
+  // composer keeps its highlight the same way (`activeValue` over `candidates`).
+  // The path suffix keeps skill values unique when a project skill shadows a global one.
+  const skillValue = (skill: Skill) => `skill ${skill.name} ${skill.path}`
+  const workflowValue = (workflow: WorkflowDef) => `workflow ${workflow.name}`
+  const NONE_VALUE = 'none no-skill'
+  const entries: Array<{ value: string; select: () => void }> = [
+    ...(noneMatches ? [{ value: NONE_VALUE, select: () => pick(null) }] : []),
+    ...[...mostUsed, ...project].map((skill) => ({
+      value: skillValue(skill),
+      select: () => toggle({ source: 'skill', ref: skill.name }),
+    })),
+    ...matchedWorkflows.map((workflow) => ({
+      value: workflowValue(workflow),
+      select: () => toggle({ source: 'workflow', ref: workflow.name }),
+    })),
+    ...global.map((skill) => ({
+      value: skillValue(skill),
+      select: () => toggle({ source: 'skill', ref: skill.name }),
+    })),
+  ]
+  const [highlight, setHighlight] = useState('')
+  const activeValue = entries.some((entry) => entry.value === highlight)
+    ? highlight
+    : (entries[0]?.value ?? '')
+  const onListKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Enter' || event.nativeEvent.isComposing) return
+    // preventDefault is also what tells cmdk's own key handler to stand down for this key.
+    event.preventDefault()
+    // The popover stays mounted (and focused) for its close animation after a pick; an Enter
+    // landing in that window would toggle the just-picked row straight back off.
+    if (!open) return
+    entries.find((entry) => entry.value === activeValue)?.select()
+  }
+
   const skillItem = (skill: Skill, emphasized: boolean) => {
     const selected = source?.source === 'skill' && source.ref === skill.name
     return (
       <CommandItem
         key={skill.path}
-        // The path suffix keeps values unique when a project skill shadows a global one.
-        value={`skill ${skill.name} ${skill.path}`}
+        value={skillValue(skill)}
         keywords={skillKeywords(skill.name, skill.description)}
         data-slot="source-option"
         data-source-kind="skill"
@@ -1150,7 +1192,10 @@ function SourcePill({
         open={open}
         onOpenChange={(next) => {
           setOpen(next)
-          if (!next) setSearch('')
+          if (!next) {
+            setSearch('')
+            setHighlight('')
+          }
         }}
       >
         {/* Split control, not a button inside a button: the trigger owns the menu, the ✕ owns
@@ -1178,7 +1223,12 @@ function SourcePill({
           sideOffset={8}
           className="w-[336px] max-w-[calc(100vw-2rem)] p-0"
         >
-          <Command shouldFilter={false}>
+          <Command
+            shouldFilter={false}
+            value={activeValue}
+            onValueChange={setHighlight}
+            onKeyDown={onListKeyDown}
+          >
             <CommandInput
               placeholder="search skills & workflows…"
               value={search}
@@ -1198,7 +1248,7 @@ function SourcePill({
               {noneMatches ? (
                 <CommandGroup>
                   <CommandItem
-                    value="none no-skill"
+                    value={NONE_VALUE}
                     keywords={['none', 'plain', ...skillKeywords(QUICK_TASK)]}
                     data-slot="source-option"
                     data-source-kind="none"
@@ -1234,7 +1284,7 @@ function SourcePill({
                     return (
                       <CommandItem
                         key={workflow.name}
-                        value={`workflow ${workflow.name}`}
+                        value={workflowValue(workflow)}
                         keywords={skillKeywords(workflow.name, workflow.description)}
                         data-slot="source-option"
                         data-source-kind="workflow"

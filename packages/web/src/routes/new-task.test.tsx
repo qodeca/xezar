@@ -2253,3 +2253,131 @@ describe('the composer runner pill carries the account', () => {
     expect(postedBody()).not.toHaveProperty('agentProfile')
   })
 })
+
+describe('the skill/workflow picker keeps the brief and honours the highlight (#14, #15)', () => {
+  // What Chrome DevTools' `fill` does past its typing threshold (and what form fillers and
+  // extensions do): write the value straight to the element, then fire a plain `input` event.
+  // React's value tracker records the write as already known, so its synthetic onChange never
+  // fires — the box shows the text while the draft is still empty. Typing key by key never hits
+  // this, which is why "a long brief makes the loss obvious" (#14).
+  const LONG_BRIEF =
+    'Fix the composer so that a long, carefully written brief survives a later change of mind '
+    + 'about which skill or workflow should run it — the text must stay exactly as typed.'
+  const writeStraightIntoTheBox = (text: string) => {
+    const el = textarea()
+    el.value = text
+    fireEvent.input(el)
+  }
+  const pickSource = async (ref: string) => {
+    fireEvent.click(sourcePill())
+    await screen.findByPlaceholderText('search skills & workflows…')
+    fireEvent.click(document.querySelector(`[data-slot="source-option"][data-source-ref="${ref}"]`)!)
+  }
+  const startButton = () => screen.getByRole('button', { name: 'Start task' }) as HTMLButtonElement
+
+  it('keeps a brief the browser wrote straight into the box when a WORKFLOW is picked (#14)', async () => {
+    serve()
+    renderNewTask()
+    await pillReady()
+
+    writeStraightIntoTheBox(LONG_BRIEF)
+    await waitFor(() => expect(startButton().disabled).toBe(false))
+
+    await pickSource('fix-and-verify')
+    await waitFor(() => expect(sourcePill().textContent).toContain('fix-and-verify'))
+    expect(textarea().value).toBe(LONG_BRIEF)
+    expect(startButton().disabled).toBe(false)
+    // The draft store — what a reload and the submit read — holds the brief too.
+    expect(readDraft().text).toBe(LONG_BRIEF)
+  })
+
+  it('keeps a brief the browser wrote straight into the box when a SKILL is picked (#14)', async () => {
+    serve()
+    renderNewTask()
+    await pillReady()
+
+    writeStraightIntoTheBox(LONG_BRIEF)
+    await waitFor(() => expect(startButton().disabled).toBe(false))
+
+    await pickSource('om-fix')
+    await waitFor(() => expect(sourcePill().textContent).toContain('om-fix'))
+    expect(textarea().value).toBe(LONG_BRIEF)
+    expect(startButton().disabled).toBe(false)
+    // A skill may still bring its own defaults — here the source-dependent Autonomous default —
+    // without touching the prompt.
+    expect(screen.getByRole('checkbox', { name: 'Autonomous' }).getAttribute('aria-checked')).toBe('true')
+    expect(readDraft().text).toBe(LONG_BRIEF)
+  })
+
+  it('Enter commits the highlighted option after the filter changed under a moved highlight (#15)', async () => {
+    // The issue's list: several `om-auto-*` skills, one skill and one WORKFLOW answering to
+    // "docs", the workflow last.
+    serve({
+      skills: [
+        { name: 'om-auto-continue-pr-loop', description: 'Continue a PR', body: '', path: '/p/om-auto-continue-pr-loop.md', source: 'ai' },
+        { name: 'om-auto-create-pr', description: 'Create a PR', body: '', path: '/p/om-auto-create-pr.md', source: 'ai' },
+        { name: 'xezar-docs-maintenance', description: 'Maintain owned documentation', body: '', path: '/p/xezar-docs-maintenance.md', source: 'ai' },
+      ],
+      workflows: {
+        workflows: [
+          { name: 'quick-task', description: 'Single step, no gates', source: 'built-in', steps: [] },
+          { name: 'docs-maintenance', description: 'Update documentation, then a draft PR.', source: 'file', steps: [] },
+        ],
+        issues: [],
+      },
+    })
+    renderNewTask()
+    await pillReady()
+
+    fireEvent.click(sourcePill())
+    const input = await screen.findByPlaceholderText('search skills & workflows…')
+    const visible = () =>
+      [...document.querySelectorAll<HTMLElement>('[data-slot="source-option"]')].map(
+        (option) => `${option.dataset.sourceKind}:${option.dataset.sourceRef ?? 'none'}`,
+      )
+    const highlighted = () =>
+      document.querySelector<HTMLElement>('[data-slot="source-option"][aria-selected="true"]')
+
+    // 1. filter, 2. move the highlight (ArrowUp at the top does not wrap), 3. replace the filter
+    fireEvent.change(input, { target: { value: 'om-auto' } })
+    await waitFor(() => expect(visible()).toEqual(['skill:om-auto-continue-pr-loop', 'skill:om-auto-create-pr']))
+    fireEvent.keyDown(input, { key: 'ArrowUp' })
+    fireEvent.change(input, { target: { value: 'docs' } })
+    await waitFor(() => expect(visible()).toEqual(['skill:xezar-docs-maintenance', 'workflow:docs-maintenance']))
+
+    // 4. End highlights the last row — the workflow — and 5. Enter must commit exactly that row.
+    fireEvent.keyDown(input, { key: 'End' })
+    await waitFor(() => expect(highlighted()?.dataset.sourceRef).toBe('docs-maintenance'))
+    expect(highlighted()?.dataset.sourceKind).toBe('workflow')
+    expect(document.querySelectorAll('[data-slot="source-option"][aria-selected="true"]')).toHaveLength(1)
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    await waitFor(() => expect(sourcePill().textContent).toContain('docs-maintenance'))
+    expect(sourcePill().dataset.sourceKind).toBe('workflow')
+    expect(readDraft().source).toEqual({ source: 'workflow', ref: 'docs-maintenance' })
+  })
+
+  it('a highlight left on a row the filter removed lands on a visible row, and Enter commits that row (#15)', async () => {
+    serve()
+    renderNewTask()
+    await pillReady()
+
+    fireEvent.click(sourcePill())
+    const input = await screen.findByPlaceholderText('search skills & workflows…')
+    const highlighted = () =>
+      document.querySelector<HTMLElement>('[data-slot="source-option"][aria-selected="true"]')
+
+    // Highlight the global `deploy` skill, then type a filter it does not answer to.
+    fireEvent.change(input, { target: { value: 'deploy' } })
+    await waitFor(() => expect(highlighted()?.dataset.sourceRef).toBe('deploy'))
+    fireEvent.change(input, { target: { value: 'fix' } })
+
+    // Nothing stale survives: the highlight is on a row that is actually listed, and Enter
+    // picks that row — never nothing, never the row that is gone.
+    await waitFor(() => expect(highlighted()).not.toBeNull())
+    const target = highlighted()!
+    expect(target.dataset.sourceRef).not.toBe('deploy')
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() => expect(sourcePill().textContent).toContain(target.dataset.sourceRef!))
+  })
+})
