@@ -10,7 +10,7 @@ be included by an autosave, commit, package, or project-kit snapshot.
 | `docs/specs/`, `docs/testing/agent-browser.md` | Maintained specifications and browser contract. New specifications are not ignored working drafts. |
 | `.local/xezar/` | Engine run index, transcripts, attachments, handoffs, todos, UI state, automation state/logs/locks, temporary run directories and Git worktrees. |
 | `.local/qa/` | Test environment descriptor, bootstrap lock, build fingerprint, logs, screenshots, isolated Xezar home and vendor configuration sandboxes. |
-| `.local/test-tmp/` | Unique temporary fixtures used by Vitest, node:test and inherited child tools. Each test owns cleanup of its own fixture. A Git ceiling prevents fixtures without a repository from discovering the parent checkout. |
+| `.local/test-tmp/` | Unique temporary fixtures used by Vitest, node:test and inherited child tools. Each test owns cleanup of its own fixture. A Git ceiling prevents fixtures without a repository from discovering the parent checkout. One exception: when the checkout under test is itself a xezar task worktree (`…/.local/xezar/worktrees/<runId>/`), scratch moves to a per-checkout `xezar-test-tmp-<hash>` directory under the OS temp dir instead, because the workspace registry refuses every project root beneath that ancestor and the temp repos the tests create would be refused with it (#19). Same ceiling, same per-fixture cleanup. |
 | `.local/runs/`, `.local/analysis/` | New agentic run records and working analyses selected by the maintained agentic config. |
 | `.local/legacy-qa/`, `.local/legacy-agentic/`, `.local/legacy-xezar/` | Preserved legacy local records. These are archives, not disposable caches. Ignored custom legacy kit files are kept local rather than accidentally published as maintained files. |
 | Primary checkout `.local/xezar-tasks/<runId>/` | Durable kit evidence, attempts and checkpoints, outside the task worktree that retention may remove. |
@@ -50,7 +50,8 @@ are preserved, not automatically declared maintained specifications.
 Use `test-env-down.sh` before cleaning test environment data. Cold QA boot deliberately
 recreates the vendor config sandbox; keep anything worth preserving outside `.local/qa` first.
 Tests continue to delete only their own unique temporary fixture. A failed test may leave
-scratch under `.local/test-tmp`; inspect it after all test processes stop before removing it.
+scratch under `.local/test-tmp` (or, inside a task worktree, under the OS temp dir's
+`xezar-test-tmp-<hash>`); inspect it after all test processes stop before removing it.
 Do not delete all of `.local` as a generic cache cleanup: it includes actual task history,
 local settings and durable evidence. Engine retention continues to operate on individual
 registered task worktrees; it does not own primary-checkout kit evidence or legacy archives.
