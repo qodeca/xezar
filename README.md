@@ -88,9 +88,11 @@ and an orchestrator keeps a whole queue of them moving.
   until it finishes. xezar streams every step — agent text, each tool call and
   its result, tokens and cost per step — live, and keeps the full replay.
 - 🧩 **One agent, one working tree, one thing at a time.** Kick off a second task and
-  it fights the first over your files. xezar runs each task in its **own git
-  worktree**, so two (or three) agents work in parallel without stepping on
-  each other — or on the branch you're editing.
+  it fights the first over your files. In a git repo xezar runs each task in its
+  **own git worktree** by default, so two (or three) agents work in parallel
+  without stepping on each other — or on the branch you're editing. (Flip the
+  composer's **Worktree** toggle off to run in your working tree instead; a
+  non-git folder always runs in place, one task at a time.)
 - 🗂️ **A backlog that needs babysitting.** Queue a stack of tasks and xezar
   **orchestrates** them: it runs up to your parallel limit and holds the rest in
   an ordered queue. Point it at a GitHub issue and it runs straight on that, so
@@ -101,9 +103,12 @@ and an orchestrator keeps a whole queue of them moving.
   flag and a run never parks to ask — it keeps going until the task is done. Pair
   it with a **skill** (a Markdown playbook) and you've got fire-and-forget
   automation: hand off "fix this", "upgrade that", "triage these" and walk away.
-- ✅ **The agent finishes and you have to trust it.** xezar ends non-trivial runs at
-  a **review gate**: inspect the diff, send notes back into the same session, or
-  push a **draft PR** — never an auto-merge.
+- ✅ **The agent finishes and you have to trust it.** Turn on the optional
+  **review gate** (Settings → Agents, or `XEZ_REVIEW_GATE=1`) and a run with a
+  diff parks in `review`: inspect the diff, send notes back into the same
+  session, or push a **draft PR**. It is off by default and autonomous runs
+  always skip it — their diff simply waits in the worktree. Either way, xezar
+  never auto-merges.
 - ♻️ **Losing a session when it fails.** Every run records its `claude` session id.
   Take it over interactively in one click (`claude --resume <id>`), or continue it
   in-process from the cockpit.
@@ -188,8 +193,14 @@ To upgrade later: `npm install -g @qodeca/xezar@latest`.
 You describe a task. xezar runs it as a **workflow** — an ordered list of agent
 steps and shell checks — shelling out to your locally installed agent CLI
 (Claude Code by default; Codex and OpenCode are drop-in alternatives, per task
-or per step). Each task gets its own git worktree; the cockpit streams every
-event live and parks the run at a review gate when there's a diff to inspect.
+or per step). In a git repo each task gets its own worktree by default — switch
+the composer's **Worktree** toggle off to run in the repo working tree (under
+xezar's repository-root lease), and a non-git directory runs in place. A git
+task that asks for a worktree it cannot create stops as `failed`; it never falls
+back to your checkout. The cockpit streams every event live. With the optional
+review gate on (`XEZ_REVIEW_GATE=1` or Settings → Agents; off by default,
+skipped by autonomous runs) a run with a diff parks at `review` for you to
+inspect.
 
 ```
    you type a task
@@ -202,7 +213,7 @@ event live and parks the run at a review gate when there's a diff to inspect.
         ▼
    ┌──────────────────────────────┐     ┌───────────────────────────────┐
    │  git worktree per task       │     │  agent CLI  (your login)      │
-   │  (isolated branch, parallel) │◄───►│ claude · codex · opencode · pi│
+   │  (default: isolated branch)  │◄───►│ claude · codex · opencode · pi│
    └──────────────────────────────┘     │  Bash open · no prompts       │
         │                                 └───────────────────────────────┘
         │  agent text · tool calls · tool results · tokens · cost
@@ -213,13 +224,16 @@ event live and parks the run at a review gate when there's a diff to inspect.
    │ ·Markdown    │                        │  Skills · Workflows      │
    └──────────────┘                        └──────────────────────────┘
                                                   │
-                                          review gate: read the diff →
-                                          send notes back · draft PR · finish
+                                          optional review gate (XEZ_REVIEW_GATE=1):
+                                          read the diff → send notes back ·
+                                          draft PR · finish
 ```
 
 When a check fails, the workflow can loop back to an earlier step (bounded by
-`max`) with the failing output appended to the retried agent's prompt. Nothing
-auto-merges: a run with changes rests in `review` until you act on it.
+`max`) with the failing output appended to the retried agent's prompt. Whether a
+run with changes rests in `review` depends on the optional review gate above;
+with it off (the default) the run settles to `done` and the diff stays in the
+worktree. Nothing auto-merges either way: merging is always your move.
 
 ---
 
@@ -229,7 +243,8 @@ Three words, no jargon — **task**, **skill**, **chain**:
 
 - 📋 **Tasks** are the unit of work. Every task is a **run**: `queued → running →
   review / done / failed / cancelled`, with a live event log, per-step token and
-  cost usage, cancel/delete, and — for anything with a diff — a review gate. Attach
+  cost usage, cancel/delete, and — when the optional review gate is on — a
+  `review` stop for anything with a diff. Attach
   screenshots, PDFs, `.txt` or `.md` files to the task (paperclip, ⌘V or drag-drop;
   the agent gets each one as a real file on disk), or send follow-up messages into
   the live session while it works.
@@ -262,15 +277,19 @@ Five moves that make the cockpit worth the browser tab:
 - 🪞 **Parallel variants (×2 / ×3).** Run the same task as competing agents in
   separate worktrees, then compare their diffs side by side and **pick** one —
   the losers are archived and their worktrees cleaned up.
-- 🧹 **Bounded worktree disk.** Each task runs in its own full checkout, so a busy
+- 🧹 **Bounded worktree disk.** By default each git task runs in its own full checkout, so a busy
   cockpit would otherwise grow without limit. xezar keeps only the last
   `worktreeRetention` **finished** worktrees on disk (default **10**; `0` =
   unlimited) and reclaims the rest — directory only, the `xez/<id8>` branch is
   always kept, so the work stays recoverable. Settings → Resources shows every
   worktree's disk use with per-row delete and a **Reclaim now** button.
-- 🛡️ **Review gate.** A finished run with changes waits in `review`. Read the diff,
-  type notes that go straight back into the agent's session, or push a
-  `gh pr create --draft`. You stay the merge button.
+- 🛡️ **Review gate (optional, off by default).** Turn it on in Settings → Agents
+  (`reviewGate` in `.xezar/config.json`, which wins when set) or with exactly
+  `XEZ_REVIEW_GATE=1`, and a finished, non-autonomous run with changes waits in
+  `review`. Read the diff, type notes that go straight back into the agent's
+  session, or push a `gh pr create --draft`. Autonomous runs always skip the
+  gate and finish as `done`. Gate on or off, you stay the merge button — xezar
+  never auto-merges.
 - 📱 **Runs on your coding server, drives from your pocket.** The cockpit is a
   responsive web app streaming over SSE, so the box running xezar can be a
   **VPS, cloud, or dedicated server** you never sit in front of. Point a browser
