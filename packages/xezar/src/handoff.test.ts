@@ -115,6 +115,7 @@ describe('marker vocabulary — instructions vs. parsers (#47)', () => {
     expect(parseTaskMarkers('XEZ:PR=442\t')).toEqual({ pr: 442 });
     expect(parseTaskMarkers('XEZ:ISSUE=47 \t ')).toEqual({ issue: 47 });
     expect(parseTaskMarkers('\tXEZ:PR=442')).toEqual({});
+    expect(parseTaskMarkers('  XEZ:ISSUE=47')).toEqual({});
     expect(parseTaskMarkers('XEZ: PR=442')).toEqual({});
     expect(parseTaskMarkers('XEZ:PR = 442')).toEqual({});
   });
@@ -336,6 +337,9 @@ describe('handoffProgressExcerpt', () => {
     expect(handoffProgressExcerpt('')).toBe('');
     expect(handoffProgressExcerpt('# Handoff — x\n\n## Resume notes\n- later\n')).toBe('');
     expect(handoffProgressExcerpt('## Progress log\n\n\n## Resume notes\n- later\n')).toBe('');
+    // A journal with no Progress log header at all must yield nothing, never a slice of
+    // whatever prose happens to sit at the header's would-be offset.
+    expect(handoffProgressExcerpt('no progress section here\n- but a bullet\n')).toBe('');
   });
 });
 
