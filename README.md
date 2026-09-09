@@ -869,6 +869,11 @@ npm run test:package # pack/install and exercise the built CLI
 npm run test:e2e     # real-browser cockpit suite (agent-browser)
 ```
 
+Coverage is measured separately, and is not part of the validation gate:
+`npm run test:coverage` runs the vitest suites under the v8 provider and writes line and branch
+numbers to `.local/coverage/`. The behaviour-led gap analysis built from it lives in
+[docs/testing/coverage-gaps.md](docs/testing/coverage-gaps.md).
+
 The stack is deliberately small: **TypeScript** (strict, ESM), **Hono** + SSE for
 the server, **Zod** at every boundary, **YAML** for workflows, and a **React 19 +
 Vite + Tailwind v4 + shadcn/ui** cockpit shipped pre-built in `packages/xezar/web/dist/` — the

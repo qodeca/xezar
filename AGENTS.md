@@ -155,6 +155,14 @@ npm run test:package # pack/install the release tarball and exercise the built C
 
 `npm test` and `npm run test:unit` are the fast unit gate: no server, no browser. They must stay that way. `npm run test:package` needs a completed `npm run build` (it packs the tarball).
 
+`npm run test:coverage` measures the three vitest projects with the v8 provider and writes to
+`.local/coverage/`. It is a **measurement, not a gate** – it is absent from the list above, CI does
+not run it, and it sees neither the node:test suites nor the browser suite, so a module the
+packaged-CLI tests exercise still reads as uncovered there. Before concluding that a behaviour is
+tested, read [docs/testing/coverage-gaps.md](docs/testing/coverage-gaps.md): it maps behaviours to
+the suite that actually covers them, and records where high line coverage sits on top of an
+untested behaviour.
+
 **Run vitest through npm, never `npx vitest`.** It is a devDependency of this repo, so `npm test`
 uses the installed, version-pinned binary; `npx` will happily reach past it and fetch a different
 version from the registry, which is a slow, networked, silently-different test run. To narrow a run,
