@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, test } from 'node:test';
@@ -36,4 +36,16 @@ test('refuses active processes, corrupt descriptors and archives that already ex
   writeFileSync(file, '{}'); mkdirSync(join(root, '.local/legacy-qa'), { recursive: true });
   assert.match(migrate(root).stderr, /already exists/);
   assert.equal(existsSync(file), true);
+});
+test('runs as a CLI when invoked through a symlinked path', () => {
+  // macOS's temp dir is a symlink (/var/folders → /private/var/folders): Node reports the real
+  // path in import.meta.url while argv[1] keeps the symlinked spelling, and a literal
+  // comparison in the main-module guard skipped the whole CLI block (#27).
+  const root = fixture(); const link = `${root}-link`; roots.push(link);
+  symlinkSync(root, link, 'dir');
+  writeFileSync(join(root, '.ai/qa/test-env.json'), '{"status":"stopped"}\n');
+  const result = spawnSync(process.execPath, [join(link, 'scripts/migrate-local-state.mjs')], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Preserved legacy QA/);
+  assert.equal(existsSync(join(root, '.local/legacy-qa/test-env.json')), true);
 });

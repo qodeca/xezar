@@ -9,11 +9,16 @@ import { promisify } from 'node:util';
 const execFile = promisify(execFileCallback);
 const packageRoot = resolve(import.meta.dirname, '../..');
 const entry = join(packageRoot, 'src', 'index.ts');
+// `--import` resolves a bare specifier from the child's cwd, and the "outside any repository"
+// case runs from the scratch dir — which, inside a task worktree, is under the OS temp dir
+// with no node_modules above it (#27). Resolve the loader here, where the repo's
+// node_modules is reachable, and hand the child the absolute URL instead.
+const tsxLoader = import.meta.resolve('tsx');
 
 // The CLI entry is run from source through tsx (already a root devDependency and the
 // loader this suite itself runs under), so the test needs no prior `npm run build`.
 async function runCli(args: string[], cwd: string): Promise<{ stdout: string; stderr: string }> {
-  return execFile(process.execPath, ['--import', 'tsx', entry, ...args], {
+  return execFile(process.execPath, ['--import', tsxLoader, entry, ...args], {
     cwd,
     // XEZ_HOME is pinned so a regression that reaches the workspace registry can
     // never write into the developer's real ~/.xezar.

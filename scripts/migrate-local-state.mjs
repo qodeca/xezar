@@ -81,7 +81,13 @@ export function archiveLegacyAgentic(root) {
   return true;
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+// Node resolves the main entry's symlinks before it sets import.meta.url, but argv[1] keeps the
+// spelling the caller used. Compare real paths, or a symlinked invocation path (macOS's
+// /var/folders → /private/var/folders temp dir, #27) silently skips the whole CLI block.
+function realPathOrSelf(path) {
+  try { return realpathSync(path); } catch { return resolve(path); }
+}
+if (process.argv[1] && realPathOrSelf(process.argv[1]) === realPathOrSelf(fileURLToPath(import.meta.url))) {
   try {
     const root = resolve(import.meta.dirname, '..');
     const agenticChanged = archiveLegacyAgentic(root);
