@@ -42,6 +42,60 @@ describe('extractTaskRefs', () => {
   it('a task naming both a PR and an issue keeps both', () => {
     expect(extractTaskRefs('port the fix from pr 441 onto issue #438')).toEqual({ prNumber: 441, issueNumber: 438 });
   });
+
+  // #18 — only explicit references bind; a passing mention is context.
+  describe('explicit references only (#18)', () => {
+    const readmeBrief =
+      'Add --version and -v flags to the CLI.\n\n' +
+      'Print the package version and exit 0.\n' +
+      'Do NOT touch README prose — another task (issue #6) is editing it.';
+
+    it('binds the issue-tab opener even when the body mentions another issue', () => {
+      expect(extractTaskRefs('Fix GitHub issue #6 — tighten the README wording\n\nRelated: issue #12 tracks the API docs.')).toEqual({
+        issueNumber: 6,
+      });
+      expect(extractTaskRefs('Address GitHub pull request #454 — show CI status\n\nContext: issue #12.')).toEqual({
+        prNumber: 454,
+      });
+    });
+
+    it('binds on a closing keyword anywhere in the body', () => {
+      expect(extractTaskRefs('Add --version to the CLI.\n\nPrint the version and exit.\n\nCloses #14')).toEqual({ issueNumber: 14 });
+      expect(extractTaskRefs('Add --version to the CLI.\n\nfixes #14 for good')).toEqual({ issueNumber: 14 });
+      expect(extractTaskRefs('Add --version to the CLI.\n\nResolved: #14')).toEqual({ issueNumber: 14 });
+      expect(extractTaskRefs('Add --version to the CLI.\n\nCloses qodeca/xezar#14')).toEqual({ issueNumber: 14 });
+      expect(extractTaskRefs('Fix #14: the title bug')).toEqual({ issueNumber: 14 });
+    });
+
+    it('does NOT bind on a passing mention deep in the brief', () => {
+      expect(extractTaskRefs(readmeBrief)).toEqual({});
+      expect(extractTaskRefs('Add --version to the CLI.\n\nSee the discussion in #6 for context.')).toEqual({});
+      expect(extractTaskRefs('Add --version to the CLI.\n\nUnrelated: pr 441 changed the build.')).toEqual({});
+    });
+
+    it('a closing keyword outranks a stray mention', () => {
+      expect(extractTaskRefs(`${readmeBrief}\n\nCloses #14`)).toEqual({ issueNumber: 14 });
+    });
+
+    it('a parenthesised aside in the opener is context, not the subject', () => {
+      expect(extractTaskRefs('Add --version flag (issue #6 owns the README) and -v')).toEqual({});
+      expect(extractTaskRefs('Fix issue #6 (see #7 for history)')).toEqual({ issueNumber: 6 });
+    });
+
+    it('the opener window ends after ~120 characters, sliding to a whitespace so no number is split', () => {
+      const padding = 'describe the settings page rendering bug in detail '.repeat(3); // 153 chars
+      expect(extractTaskRefs(`${padding}issue #12`)).toEqual({});
+      expect(extractTaskRefs(`${padding}#12`)).toEqual({});
+      // 'issue' starts at 113, '#12345' at 119 — a hard cut at 120 would read "#1".
+      const nearCut = `${'x'.repeat(112)} issue #12345`;
+      expect(extractTaskRefs(nearCut)).toEqual({ issueNumber: 12345 });
+    });
+
+    it('URLs still bind anywhere and still outrank worded forms', () => {
+      expect(extractTaskRefs(`${readmeBrief}\n\nhttps://github.com/qodeca/xezar/issues/21`)).toEqual({ issueNumber: 21 });
+      expect(extractTaskRefs('Fix GitHub issue #6 — x\n\nhttps://github.com/qodeca/xezar/issues/21')).toEqual({ issueNumber: 21 });
+    });
+  });
 });
 
 describe('titleRefNumber', () => {
