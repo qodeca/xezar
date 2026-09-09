@@ -82,11 +82,11 @@ export type AttentionInput = Pick<RunRecord, 'status' | 'activity' | 'autoResume
  * `RunRecord` → attention.
  *
  * The chain below *is* the priority order — first match wins, so `error` can never be masked by a
- * lower rung. Tones follow the mockups (`mockups/tasks-home.html`):
+ * lower rung. Status tones:
  *
  *  - `waiting` → amber/pending: the agent stopped and is asking you something.
  *  - `review` → violet, matching the violet PR chip beside it: there is work to look at.
- *    (The legacy UI painted both amber; the redesign splits them, per the mockup.)
+ *    (The legacy UI painted both amber; the redesign splits them.)
  *  - `running` → violet, pulsing.
  *  - `queued` → neutral and still: parked, not transitioning. Its row shows `#2` instead.
  *  - `done`/`failed` → the green/red outcome, still.

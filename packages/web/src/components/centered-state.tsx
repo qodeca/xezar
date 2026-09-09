@@ -81,7 +81,7 @@ type Twinkle = {
   opacity: number
 }
 
-/** The mockups' static scatter (new-task.html `.twinkles`), not a canvas: at 2–3px a dozen
+/** Static decorative scatter: at 2–3px a dozen
  *  positioned squares are indistinguishable from a particle field and cost nothing. Densest at
  *  the top, thinning down — the mask finishes the fade so nothing collides with the content. */
 const TWINKLES: Twinkle[] = [

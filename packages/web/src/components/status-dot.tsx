@@ -4,7 +4,7 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
 /* The 7px status dot — the design system's single carrier of status color.
- * Rows, pills and nav items stay neutral; the dot is what's tinted. See the mockups' `.dot-*` classes.
+ * Rows, pills and nav items stay neutral; the dot is what's tinted.
  * `pulse` marks a transitioning state (running / waiting) and uses Tailwind's stock `animate-pulse`
  * rather than a bespoke keyframe, per the design system's "quiet motion" rule.
  */

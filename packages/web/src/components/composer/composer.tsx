@@ -46,7 +46,7 @@ import { formatElapsed, useDictation } from './dictation'
  * `@` file mentions behind a provider seam,
  * the Dictation mic (paseo pattern), and the Alt+A / Alt+C quick replies.
  *
- * Visual contract: docs/mockups/thread.html `.composer` — card, borderless textarea, footer
+ * Visual layout: card, borderless textarea, footer
  * bar with paperclip · spacer · labeled Dictation · lime send.
  */
 export interface ComposerProps {

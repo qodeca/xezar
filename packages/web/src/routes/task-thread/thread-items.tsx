@@ -33,7 +33,7 @@ import type { ThreadEntry, ThreadImage, ThreadNote, ThreadProviderAuthRequired }
 export { isNearBottom }
 
 /**
- * The thread's per-entry building blocks (mockup: docs/mockups/thread.html). Presentational
+ * The thread's per-entry building blocks. Presentational
  * only — everything they show comes from the reducer's output and `groupThreadItems`; nothing
  * is derived here except open/closed UI state.
  */

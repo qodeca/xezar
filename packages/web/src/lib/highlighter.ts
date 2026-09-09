@@ -36,8 +36,8 @@ export interface SynHighlight {
 }
 
 /**
- * The TextMate theme over the `--syn-*` tokens. Scope→variable mapping follows the mockup's
- * hand-highlighted snippet (docs/mockups/thread.html): keywords/storage violet, strings green,
+ * The TextMate theme over the `--syn-*` tokens. Scope→variable mapping:
+ * keywords/storage violet, strings green,
  * functions/types blue, comments gray, numbers red, punctuation/operators dim, plain text
  * near-foreground. `type: 'dark'` is nominal — the variables carry both palettes.
  */

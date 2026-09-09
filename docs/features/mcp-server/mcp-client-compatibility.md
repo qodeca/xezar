@@ -1,8 +1,8 @@
 # Local MCP client compatibility and event-driven leader integration
 
-Research date: **2026-09-08**. Scope: Claude Code, Codex, OpenCode, and local-only Xezar MCP. This is documentation/source-of-interface verification, **not a runtime integration test**. No model turns, MCP servers, client configurations, or credentials were exercised. No dependencies were installed. The reference-process audit remains deferred.
+Research date: **2026-09-08**. Scope: Claude Code, Codex, OpenCode, and local-only Xezar MCP. This is documentation/source-of-interface verification, **not a runtime integration test**. No model turns, MCP servers, client configurations, or credentials were exercised. No dependencies were installed. The separate reference-process audit was completed statically on 2026-09-09; see the [source register](../builtin-project-leader/standard-process-source-audit.md). That update adds no client runtime evidence.
 
-Related requirements: [MCP](mcp-project-leader-requirements.md) and [built-in leader](builtin-project-leader-requirements.md). All three clients remain required for the initial release; the gaps below are implementation obligations, not waived scope.
+Related requirements: [MCP](mcp-project-leader-requirements.md) and [built-in leader](../builtin-project-leader/builtin-project-leader-requirements.md). All three clients remain required for the initial release; the gaps below are implementation obligations, not waived scope.
 
 ## Evidence status and versions
 
@@ -78,7 +78,7 @@ Use a durable application operation/idempotency key, bound to project, action, a
 - **Run a compatibility spike before claiming support:** tool call; project scope; second-client rejection; process crash/lease expiry/fencing; idle-but-live session; asynchronous completion causing a real model reaction; human event; replay/dedup; stale mutation; idempotent lost response; prompt persistence. Do not consume real user task permissions for these fixtures.
 - **Quality and authority are settled product rules**, not open transport questions: all project UI functions, including deletion and existing merge/publication, are autonomous; UI confirmation clicks need not be duplicated. Shared settings are safe read-only, and quality gates/acceptance cannot be weakened. Keep plan/goal decisions separate.
 
-No integration has been certified by this report. The documentation research establishes usable interfaces and a concrete adapter architecture, while identifying where implementation and real-client tests are still required. It does not resume the deferred reference-practice audit.
+No integration has been certified by this report. The documentation research establishes usable interfaces and a concrete adapter architecture, while identifying where implementation and real-client tests are still required. The separately completed 2026-09-09 source-practice audit does not change this report's uncertified runtime status.
 
 ## Approved event-reaction delivery hierarchy
 

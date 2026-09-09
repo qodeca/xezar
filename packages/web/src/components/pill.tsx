@@ -3,7 +3,7 @@ import * as React from "react"
 import { StatusDot, type StatusDotTone } from "@/components/status-dot"
 import { cn } from "@/lib/utils"
 
-/* The neutral status chip from the mockups' `.pill` class.
+/* The neutral status chip.
  * The chip itself stays `bg-muted`/`text-muted-foreground` in every state — pass `dot` to express
  * status, because in this design system the color lives in the dot, not in the fill.
  */

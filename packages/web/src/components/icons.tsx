@@ -3,7 +3,7 @@ import type { SVGProps } from 'react'
 /** Brand marks that lucide does not ship.
  *
  *  lucide-react 1.x removed every brand icon (no `GithubIcon`), so the forge nav item would
- *  otherwise have no mark. The path is the one the mockups use, kept at lucide's 24×24 viewBox
+ *  otherwise have no mark. The path uses lucide's 24×24 viewBox
  *  and `currentColor` fill so it sizes and themes exactly like its neighbours in the nav.
  */
 export function GithubIcon(props: SVGProps<SVGSVGElement>) {

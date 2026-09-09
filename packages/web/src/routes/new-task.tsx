@@ -106,8 +106,8 @@ import { buildPlannedRunBody, pendingPlanOf, type PendingPlan } from './new-task
 import { PlanReview } from './plan-review'
 
 /**
- * `/new` — the full-screen new-task hero (spec §"New task (full-screen, #386)"; visual
- * contract docs/mockups/new-task.html): centered composer card on the twinkle surface, the
+ * `/new` — the full-screen new-task hero (spec §"New task (full-screen, #386)"):
+ * centered composer card on the twinkle surface, the
  * picker pill row inside the card below the textarea, suggested-task ghost chips underneath.
  * In plan-first mode (#383, the `Start | Plan first` segment) submit runs `POST /api/plan`
  * and opens the review overlay (plan-review.tsx) instead of starting a run.

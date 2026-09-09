@@ -4,7 +4,7 @@ import { Slot } from "radix-ui"
 
 import { cn } from "@/lib/utils"
 
-/* Variant vocabulary comes from the mockups' `.btn-*` classes, not stock shadcn:
+/* Button variants follow the cockpit design system:
  * `primary` (lime) and `contrast` (inverse surface) are the two CTAs, `danger-ghost` is the
  * destructive affordance. There is deliberately no `secondary`/`link` — the design system doesn't use them.
  */
