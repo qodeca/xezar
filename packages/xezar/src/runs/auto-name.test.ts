@@ -24,6 +24,14 @@ describe('buildNamerPrompt', () => {
     expect(prompt).toContain('pr 437');
   });
 
+  it('advisory refs skip a passing mention deep in the brief (#18)', () => {
+    const prompt = buildNamerPrompt({
+      task: 'Add --version and -v flags.\n\nDo NOT touch README prose — another task (issue #6) is editing it.',
+    });
+    expect(prompt).not.toContain('References found programmatically');
+    expect(prompt).not.toContain('issue 6');
+  });
+
   it('includes turn context and diff stat only when given (live refresh)', () => {
     const base = buildNamerPrompt({ task: 't' });
     expect(base).not.toContain('Latest progress');
