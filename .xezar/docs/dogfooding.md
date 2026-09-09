@@ -18,3 +18,11 @@ Installation validation is reported in installation.md. Real-task entries follow
 - Observed: the fast gate recorded `failed` because a parallel issue (#19) broke five project-registration test files unrelated to the change. The attempt stays unsealed. The kit has no "known-unrelated failure" notion, so a blockage by a peer task always shows as an unsealed attempt and the leader decides (here: CI in a plain checkout is the gate). That conservative behaviour is correct; do not add a waiver knob.
 - Observed: the red-then-green proof works with the shared stash stack when the stash is tagged, applied by SHA and dropped by tag; a bare `git stash pop` is unsafe with peer worktrees.
 - Remaining limit: this entry covers one bugfix task with unit tests only; no UI smoke, no kit workflow steps, no root-sync or integration role was exercised.
+
+### 2026-09-09 — issue #27, single agent step (`quick-task`, no kit workflow) — real-task verified
+
+- Observed: the full canonical gate (`repo-gates.sh --fast`: typecheck, `npm test`, `test:unit`, build, `test:package`, infra fixtures) passed inside a task worktree on macOS for the first time, on Node 24.20 / npm 11.19, after the two test fixes in #27. Before the fix `test:unit` was the only red command; the cause was in the tests, not in the scratch relocation from #23.
+- Observed: `--record-gate-evidence` refuses to seal while the tree has uncommitted changes and asks for a commit plus a gate re-run. A single agent step therefore runs the gate twice: once as a development check, once after the commit for the seal. That is the correct conservative order; do not seal a pre-commit run.
+- Observed: the `.xezar/checks/worktree-setup.sh` exit code is lost through a pipe in zsh when read via `PIPESTATUS`; zsh spells it `pipestatus`. Read the `SETUP OK` line, or capture the status without a pipe.
+- Lesson (recommended): any test that spawns a child from inside the scratch dir must resolve loaders to an absolute URL and compare real paths in main-module guards, because scratch may sit under a symlinked OS temp dir. Recorded in `docs/testing/local-data.md`. A guard test using an explicit symlink now pins this on every platform, including Linux CI where scratch stays in-repo.
+- Remaining limit: one macOS machine; Windows was not exercised, and no UI smoke or kit workflow step ran.
