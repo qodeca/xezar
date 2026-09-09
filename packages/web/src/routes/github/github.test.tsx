@@ -2129,36 +2129,44 @@ describe('the follow-up prompt template menu (#413)', () => {
   const option = (id: string) =>
     document.querySelector<HTMLElement>(`[data-slot="prompt-template-option"][data-template="${id}"]`)
 
+  const templateTrigger = () =>
+    document.querySelector<HTMLElement>('[data-slot="prompt-template-trigger"]')!
+  const templateMenu = () => document.querySelector('[data-slot="prompt-template-menu"]')
+
   /**
-   * Click a mounted template option until the select provably lands. A re-render (the
-   * ui-state query resolving, a queries invalidation) can replace the option node between
-   * querying it and clicking it — a click on the detached node is a silent no-op, the race
-   * that made this suite flake (#413). Selecting closes the menu (`onSelect` →
-   * `setOpen(false)`), so re-query a FRESH node each retry and stop only once the options
-   * unmount: the insert has provably happened.
+   * Pick a template from the (already open) menu and wait until the insert PROVABLY lands in the
+   * textarea. Two races make this need a driving loop rather than one click plus one wait:
+   *
+   * - A re-render (the ui-state query resolving, a queries invalidation) can replace the option
+   *   node between querying it and clicking it, and a click on a detached node is a silent no-op
+   *   (#413) — so re-query a FRESH node on every retry.
+   * - `insertPromptTemplate` restores focus to the textarea inside a `requestAnimationFrame`, and
+   *   Radix dismisses an open popover when focus lands outside it. A frame deferred by a loaded CI
+   *   box therefore closes the NEXT menu with nothing selected (#28) — so reopen the menu when it
+   *   is gone instead of assuming the user's own click closed it.
+   *
+   * The stop condition is the TEXTAREA VALUE changing, never the options unmounting: an unmounted
+   * menu proves only that the popover closed, which is exactly what #28 turned out to be.
    */
   async function selectOption(id: string): Promise<void> {
+    const textarea = () => screen.getByLabelText('Custom prompt') as HTMLTextAreaElement
+    const before = textarea().value
     await waitFor(() => {
+      if (textarea().value !== before) return // the insert landed
+      if (!templateMenu()) {
+        fireEvent.click(templateTrigger())
+        throw new Error(`template menu is closed — reopening to pick "${id}"`)
+      }
       const node = option(id)
-      if (!node) return // menu closed — the select landed
+      if (!node) throw new Error(`template option "${id}" not mounted yet`)
       fireEvent.click(node)
-      throw new Error(`template option "${id}" still mounted — select has not landed yet`)
+      throw new Error(`template option "${id}" clicked — insert has not landed yet`)
     })
   }
 
-  /**
-   * Open the menu and click a specific template. Waits for *that* option to
-   * mount before clicking it, so a stale option from the previous (closing)
-   * popover can never satisfy the wait while the wanted one is still absent —
-   * the race that made this suite flake in CI (#413).
-   */
+  /** Open the menu and pick a template, waiting for the insert to land (see `selectOption`, which
+   *  opens the menu itself when it is closed — here it always is). */
   async function chooseTemplate(id: string): Promise<void> {
-    const textarea = () => screen.getByLabelText('Custom prompt') as HTMLTextAreaElement
-    const before = textarea().value
-    fireEvent.click(document.querySelector('[data-slot="prompt-template-trigger"]')!)
-    await waitFor(() => {
-      if (!option(id)) throw new Error(`template option "${id}" not mounted yet`)
-    })
     await selectOption(id)
   }
 
@@ -2216,6 +2224,42 @@ describe('the follow-up prompt template menu (#413)', () => {
     await waitFor(() =>
       expect(screen.getByLabelText('Custom prompt')).toHaveProperty(
         'value',
+        baseWith(
+          'Also add or update tests covering this change.\n\nAlso update any relevant documentation or comments.',
+        ),
+      ),
+    )
+  })
+
+  it('a deferred focus restore that dismisses the open menu still gets the template in (#28)', async () => {
+    // The CI flake, made deterministic. `insertPromptTemplate` restores focus to the textarea in a
+    // `requestAnimationFrame`; a loaded runner can defer that frame past the moment the NEXT menu
+    // opens, and Radix dismisses a popover when focus lands outside it. Holding the frames and
+    // releasing them with the menu open reproduces exactly that: the menu vanishes with nothing
+    // selected. `selectOption` must reopen it, not read the empty menu as "the insert landed".
+    const frames: FrameRequestCallback[] = []
+    vi.stubGlobal('requestAnimationFrame', (frame: FrameRequestCallback) => frames.push(frame))
+    stubFetch()
+    await openDetail()
+
+    await chooseTemplate('add-tests')
+    await waitFor(() =>
+      expect(promptValue()).toBe(baseWith('Also add or update tests covering this change.')),
+    )
+
+    fireEvent.click(templateTrigger())
+    await waitFor(() => {
+      if (!option('update-docs')) throw new Error('template option "update-docs" not mounted yet')
+    })
+    act(() => {
+      for (const frame of frames.splice(0)) frame(0)
+    })
+    // Pin the precondition: the late focus restore really did dismiss the menu on its own.
+    expect(option('update-docs')).toBeNull()
+
+    await selectOption('update-docs')
+    await waitFor(() =>
+      expect(promptValue()).toBe(
         baseWith(
           'Also add or update tests covering this change.\n\nAlso update any relevant documentation or comments.',
         ),
