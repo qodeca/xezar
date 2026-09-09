@@ -1,5 +1,7 @@
 node_modules/
 dist/
+# test-coverage output — generated, and kept out of the autosave's `git add -A` commits
+coverage/
 *.tsbuildinfo
 .idea
 
