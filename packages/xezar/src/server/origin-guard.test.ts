@@ -25,7 +25,7 @@ describe('request-origin guard (#426)', () => {
 
   beforeEach(() => {
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-guard-'));
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     delete process.env.XEZ_REMOTE;
     process.env.XEZ_DRY_RUN = '1'; // keeps the /api/v1/health probe off the network
     // Capturing stub (the start-run.test.ts pattern) — the guard runs before
@@ -301,7 +301,7 @@ describe('request-origin guard — hosted mode (#426)', () => {
 
   beforeEach(() => {
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-guard-hosted-'));
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     process.env.XEZ_REMOTE = '1';
     const manager = {
       startRun: (_workflow: WorkflowDef, input: StartRunInput) =>

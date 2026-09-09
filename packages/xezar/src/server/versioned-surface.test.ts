@@ -39,10 +39,11 @@ describe('the versioned API surface', () => {
     process.env.XEZ_DRY_RUN = '1';
     // `skillsRepos: []` keeps the workflow catalog hermetic — no background clone can warm a
     // cache between the legacy request and the versioned one.
-    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
-    writeFileSync(join(repoRoot, '.ai/xezar', 'config.json'), '{"skillsRepos": []}\n', 'utf8');
+    mkdirSync(join(repoRoot, '.local/xezar'), { recursive: true });
+    mkdirSync(join(repoRoot, '.xezar'), { recursive: true });
+    writeFileSync(join(repoRoot, '.xezar', 'config.json'), '{"skillsRepos": []}\n', 'utf8');
     clearProjectProbeCache();
-    store = RunStore.open(join(repoRoot, '.ai/xezar'), { keepLive: true });
+    store = RunStore.open(join(repoRoot, '.local/xezar'), { keepLive: true });
     contexts = new ProjectContexts({ listProjects });
     bootId = (await registerProject(repoRoot)).id;
     app = createApp({

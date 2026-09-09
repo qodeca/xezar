@@ -1,0 +1,32 @@
+name: dependency-maintenance
+description: Survey and update workspace dependencies in focused batches, verified by the full gates.
+steps:
+  - id: kit
+    name: Snapshot the local project kit
+    command: 'bash "$(git rev-parse --path-format=absolute --git-common-dir)/../.xezar/checks/bootstrap.sh"'
+  - id: preflight
+    name: Verify worktree isolation
+    command: ".xezar/checks/worktree-preflight.sh"
+  - id: setup
+    name: Prepare the worktree
+    command: ".xezar/checks/worktree-setup.sh"
+  - id: deps
+    name: Survey and update
+    prompt: "{{task}}"
+    skill: xezar-dependency-maintenance
+  - id: readiness
+    name: Confirm the task is not blocked
+    command: ".xezar/checks/worktree-preflight.sh --readiness"
+  - id: gates
+    name: Quality gates
+    command: ".xezar/checks/repo-gates.sh --fast"
+    onFail:
+      retry: deps
+      max: 2
+  - id: evidence
+    name: Seal the gate evidence
+    command: ".xezar/checks/worktree-preflight.sh --record-gate-evidence"
+  - id: handoff
+    name: Draft PR into main
+    prompt: "Hand off the dependency update for: {{task}}"
+    skill: xezar-handoff-draft-pr

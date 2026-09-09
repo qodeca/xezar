@@ -16,7 +16,7 @@ import { AgentBrowser, bootProjectId, xezarCli, fixtureServeEnv, getJson, remove
  * ▶ Start → the run's record carries the EXACT edited steps.
  */
 
-const artifactsDir = resolve(import.meta.dirname, '../../../.ai/qa/artifacts_e2e')
+const artifactsDir = resolve(import.meta.dirname, '../../../.local/qa/artifacts_e2e')
 const sessionId = `e2e-plan-mode-${process.pid}`
 
 function freePort(): Promise<number> {

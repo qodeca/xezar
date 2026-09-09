@@ -5,8 +5,8 @@ import { dirname, resolve } from 'node:path'
 
 /**
  * The agent-browser provider seam. Every e2e spec drives the app through this module and
- * never through a browser library directly, because `.ai/agentic.config.json` names the
- * provider (`browser.provider`) and `.ai/browsers/agent-browser.md` defines the operations.
+ * never through a browser library directly, because `.xezar/agentic.config.json` names the
+ * provider (`browser.provider`) and `docs/testing/agent-browser.md` defines the operations.
  * Swapping providers must mean rewriting this file only.
  *
  * Each exported function maps to one operation in that descriptor: open, snapshot, eval/get
@@ -14,7 +14,7 @@ import { dirname, resolve } from 'node:path'
  */
 
 const repoRoot = resolve(import.meta.dirname, '../../..')
-const descriptorPath = resolve(repoRoot, '.ai/qa/test-env.json')
+const descriptorPath = resolve(repoRoot, '.local/qa/test-env.json')
 
 /**
  * The built CLI a spec spawns when it needs its OWN xezar rather than the shared test env
@@ -31,7 +31,7 @@ type EnvDescriptor = {
   browser: { installed: boolean; command: string; version: string; notes: string }
 }
 
-/** The shared descriptor written by .ai/scripts/test-env-up.sh — QA and e2e attach to the
+/** The shared descriptor written by scripts/test-env-up.sh — QA and e2e attach to the
  *  exact same instance rather than each booting their own. */
 export function readTestEnv(): EnvDescriptor {
   try {
@@ -55,8 +55,8 @@ export function readTestEnv(): EnvDescriptor {
  * the grouped multi-project shell instead of the flat one these specs assert against.
  * Pinning it inside `dataRoot` means the spec's own `rmSync(dataRoot)` cleans it up too.
  *
- * The shared test env pins the same variable under `.ai/qa/xez-home`
- * (`.ai/scripts/test-env-up.sh`); this is that rule for the specs that boot their own server.
+ * The shared test env pins the same variable under `.local/qa/xez-home`
+ * (`scripts/test-env-up.sh`); this is that rule for the specs that boot their own server.
  */
 export function fixtureServeEnv(
   dataRoot: string,

@@ -1,0 +1,7 @@
+# Parallel work
+
+Leader owns plan/dependencies; specialists own focused tasks. Schedule shared files/spec registries, root writers, caches, ports, services and host limits. Worktrees do not isolate these. Read safe effective workspace limits; do not write global limits or copy the source cap of two.
+
+Independent tasks continue while dependent work awaits an answer. Waiting/running/monitoring, archival and leader pause are separate. Do not cancel to clear a queue. Read concise status/milestones, questions and completed evidence; do not repeatedly inspect live code/transcripts. Future product pushed-event requirements are not claimed implemented here.
+
+Store shared campaign context once at a stable primary project artifact; give each executor a short specialty delta, AC, boundaries and dependencies. Root conversation is not inherited. Inspect snapshots for reviews and revalidate head/base before accepting. Choose fan-out only when useful; no prescribed budget, reviewer count or round quota. Record observed resource contention before claiming parallel speedup.

@@ -7,8 +7,8 @@ dist/
 # package by packages/xezar/scripts/sync-readme.mjs. Never edit the copy.
 /packages/xezar/README.md
 
-# xezar runtime state in this repo (runs, worktrees, launch-key)
-.ai/xezar/
+# Xezar project instructions/workflows/skills/checks are maintained source.
+# Only local state is ignored: everything under /.local/, plus .xezar/.gitignore for the kit.
 
 # The same state under the names Cezar used before the rename. A developer who ran Cezar in
 # this checkout still has these directories, and the rename moved the ignore rules off them —
@@ -58,3 +58,6 @@ skills-lock.json
 
 # local agent scratch — investigation notes, evidence, drafts
 /.local/
+
+# Legacy QA contains only local data; new producers use .local/qa.
+/.ai/qa/

@@ -22,7 +22,7 @@ import { readSharedProjects, snapshotSharedHome, writeSharedProjects } from './w
  * (ordering, missing roots, badge attribution) are pinned in jsdom against fixtures.
  */
 
-const artifactsDir = resolve(import.meta.dirname, '../../../.ai/qa/artifacts_e2e')
+const artifactsDir = resolve(import.meta.dirname, '../../../.local/qa/artifacts_e2e')
 const sessionId = `e2e-project-groups-${process.pid}`
 const repoRoot = resolve(import.meta.dirname, '../../..')
 

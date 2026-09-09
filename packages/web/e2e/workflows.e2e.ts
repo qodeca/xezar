@@ -11,12 +11,12 @@ import { AgentBrowser, readTestEnv } from './agent-browser'
  * Reachability: fully reachable. The server discovers skills fresh on every GET, so the suite
  * seeds two real project skills into this worktree's `.ai/skills/` (removed in afterAll) and
  * builds a small workflow from them: palette → canvas adds, the YAML preview, Save (a real
- * file lands in `.ai/xezar/workflows/`, read back and parsed here), keyboard reorder through
+ * file lands in `.xezar/workflows/`, read back and parsed here), keyboard reorder through
  * dnd-kit's defaults, Import through the server's `/api/v1/workflows/parse`, and the 8-step
  * limit. The saved file is removed in afterAll so a developer's repo stays clean.
  */
 
-const artifactsDir = resolve(import.meta.dirname, '../../../.ai/qa/artifacts_e2e')
+const artifactsDir = resolve(import.meta.dirname, '../../../.local/qa/artifacts_e2e')
 const sessionId = `e2e-workflows-${process.pid}`
 
 const DESKTOP = { width: 1440, height: 900 }
@@ -26,7 +26,7 @@ const skillsDir = resolve(repoRoot, '.ai/skills')
 const ALPHA = 'e2e-wb-alpha'
 const BETA = 'e2e-wb-beta'
 const FLOW = 'e2e-wb-flow'
-const savedFlowPath = resolve(repoRoot, `.ai/xezar/workflows/${FLOW}.yaml`)
+const savedFlowPath = resolve(repoRoot, `.xezar/workflows/${FLOW}.yaml`)
 
 let browser: AgentBrowser
 let baseUrl: string

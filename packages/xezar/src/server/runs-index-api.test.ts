@@ -49,7 +49,7 @@ describe('workspace runs index API', () => {
     otherRoot = mkdtempSync(join(realpathSync(tmpdir()), 'xez-runs-index-other-'));
     process.env.XEZ_HOME = home;
     process.env.XEZ_DRY_RUN = '1';
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     clearProjectProbeCache();
   });
 
@@ -73,8 +73,8 @@ describe('workspace runs index API', () => {
 
   /** Give `root` a `runs.json` without ever opening a store on it — a genuinely COLD project. */
   const seedColdProject = (root: string, runs: unknown[]) => {
-    mkdirSync(join(root, '.ai/xezar'), { recursive: true });
-    writeFileSync(join(root, '.ai/xezar/runs.json'), JSON.stringify(runs), 'utf8');
+    mkdirSync(join(root, '.local/xezar'), { recursive: true });
+    writeFileSync(join(root, '.local/xezar/runs.json'), JSON.stringify(runs), 'utf8');
   };
 
   it('answers an empty index for an empty registry — never a 404', async () => {
@@ -306,8 +306,8 @@ describe('workspace runs index API', () => {
   it('skips a project whose folder is gone and degrades a corrupt index to no rows', async () => {
     await registerProject(repoRoot);
     await registerProject(otherRoot);
-    mkdirSync(join(otherRoot, '.ai/xezar'), { recursive: true });
-    writeFileSync(join(otherRoot, '.ai/xezar/runs.json'), '{ not json', 'utf8');
+    mkdirSync(join(otherRoot, '.local/xezar'), { recursive: true });
+    writeFileSync(join(otherRoot, '.local/xezar/runs.json'), '{ not json', 'utf8');
     const live = store.createRun({ title: 'Boot task', workflow: 'build', task: 't', steps: [] });
 
     const body = await getIndex();

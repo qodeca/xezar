@@ -64,7 +64,7 @@ describe('workspace provider API', () => {
 
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'xez-providers-api-'));
-    store = RunStore.open(join(root, '.ai/xezar'));
+    store = RunStore.open(join(root, '.local/xezar'));
     delete process.env.XEZ_AGENT_MODELS_LOCKED;
     delete process.env.XEZ_DRY_RUN;
     delete process.env.XEZ_REMOTE;
@@ -415,7 +415,7 @@ describe('workspace provider API', () => {
 
   it('observes a lazy-project auth failure emitted during recovery', async () => {
     const lazyRoot = mkdtempSync(join(tmpdir(), 'xez-providers-lazy-'));
-    const lazyStore = RunStore.open(join(lazyRoot, '.ai/xezar'), { keepLive: true });
+    const lazyStore = RunStore.open(join(lazyRoot, '.local/xezar'), { keepLive: true });
     const run = lazyStore.createRun({
       title: 'lazy recovery',
       workflow: 'quick-task',

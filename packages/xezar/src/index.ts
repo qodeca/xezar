@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { projectDataDir } from './project-data-paths.ts';
+import { projectKitDir } from './project-kit-paths.ts';
 import { parseArgs } from 'node:util';
 import { spawn, execFileSync } from 'node:child_process';
 import { createServer } from 'node:net';
@@ -41,7 +43,7 @@ const HELP = `xezar — local cockpit for AI agent tasks in your repo
 Usage:
   xezar                     start the cockpit (server + GUI) for the current repo
   xezar run "<task>"        run a task headless in the terminal
-  xezar init                scaffold .ai/xezar/ (example workflow + skill)
+  xezar init                scaffold .xezar/ (example workflow + skill)
   xezar projects            list the projects this cockpit serves
                             (also: projects add [<dir>] · projects remove <id>)
   xezar server-install      interactive wizard to host xezar on a server
@@ -73,9 +75,9 @@ Options:
   -h, --help                  show this help
 
 Zero config: uses your logged-in \`claude\` CLI (and \`gh\` for GitHub bits).
-Skills live in .ai/skills/, .ai/xezar/skills/ and your team skills repo
-(default open-mercato/skills; override via .ai/xezar/config.json);
-workflows in .ai/xezar/workflows/.`;
+Skills live in .ai/skills/, .xezar/skills/ and your team skills repo
+(default open-mercato/skills; override via .xezar/config.json);
+workflows in .xezar/workflows/.`;
 
 async function main(): Promise<void> {
   const { values, positionals } = parseArgs({
@@ -603,8 +605,8 @@ async function serverCommand(
 // ---- init --------------------------------------------------------------------
 
 function initCommand(repoRoot: string): void {
-  const workflowsDir = join(repoRoot, '.ai/xezar', 'workflows');
-  const skillsDir = join(repoRoot, '.ai/xezar', 'skills');
+  const workflowsDir = join(projectKitDir(repoRoot), 'workflows');
+  const skillsDir = join(projectKitDir(repoRoot), 'skills');
   mkdirSync(workflowsDir, { recursive: true });
   mkdirSync(skillsDir, { recursive: true });
 
@@ -655,7 +657,7 @@ description: House rules the agent should follow in this repo.
 // ---- helpers -----------------------------------------------------------------
 
 function openStore(repoRoot: string, opts?: { keepLive?: boolean }): RunStore {
-  const dataDir = join(repoRoot, '.ai/xezar');
+  const dataDir = projectDataDir(repoRoot);
   const store = RunStore.open(dataDir, opts);
   // Repo-scope the referenced tier (#945) — see `armRepoHandle`. Background, never awaited: a
   // `gh`-less or offline machine keeps working exactly as it did, just unscoped.
@@ -664,40 +666,16 @@ function openStore(repoRoot: string, opts?: { keepLive?: boolean }): RunStore {
   return store;
 }
 
-/** Keep run data out of the user's repo history; workflows/skills stay committable. */
+/** Keep run data out of the user's repo history; the kit in `.xezar/` stays committable. */
 function ensureDataGitignore(repoRoot: string): void {
-  const path = join(repoRoot, '.ai/xezar', '.gitignore');
-  const wanted = [
-    'runs.json',
-    'runs.json.tmp',
-    'runs/',
-    'worktrees/',
-    'tmp/', // per-run agent temp directories (#785)
-    'todos.json',
-    'todos.json.tmp',
-    'launch-key',
-    'automations.json',
-    'automations.json.tmp',
-    'automation-state.json',
-    'automation-state.json.tmp',
-    'automation-receipts.ndjson',
-    'automation-receipts.ndjson.tmp',
-    'automation-log.ndjson',
-    'automation-log.ndjson.tmp',
-    'automation-poll.lock',
-  ];
+  // A nested ignore protects local state even in repositories without a root ignore rule.
+  // Everything the engine writes lives under `.local/`, so one blanket rule covers it all.
   try {
-    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
-    const current = existsSync(path) ? readFileSync(path, 'utf8') : '';
-    const lines = current.split('\n');
-    const missing = wanted.filter((w) => !lines.includes(w));
-    if (missing.length > 0) {
-      const glue = current && !current.endsWith('\n') ? '\n' : '';
-      writeFileSync(path, `${current}${glue}${missing.join('\n')}\n`, 'utf8');
-    }
-  } catch {
-    // non-fatal
-  }
+    mkdirSync(join(repoRoot, '.local'), { recursive: true });
+    const ignore = join(repoRoot, '.local', '.gitignore');
+    const content = existsSync(ignore) ? readFileSync(ignore, 'utf8') : '';
+    if (!content.split('\n').includes('*')) writeFileSync(ignore, `${content}\n*\n`, 'utf8');
+  } catch { /* read-only repositories retain the normal degradation policy */ }
 }
 
 /** Own package name — for the npm-registry update check (#368). */

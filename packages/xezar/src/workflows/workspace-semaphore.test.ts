@@ -78,7 +78,7 @@ describe('workspace semaphore across RunManagers (step 2.5)', () => {
     semaphore: WorkspaceSemaphore,
   ): { store: RunStore; manager: RunManager; root: string } {
     const root = fixtureRepo(prefix, roots);
-    const store = RunStore.open(join(root, '.ai/xezar'));
+    const store = RunStore.open(join(root, '.local/xezar'));
     const manager = new RunManager(store, root, { semaphore });
     stores.push(store);
     managers.push(manager);
@@ -318,7 +318,7 @@ describe('workspace semaphore across RunManagers (step 2.5)', () => {
       initial: { maxParallel: 3 },
     });
     await semaphore.refresh();
-    const store = RunStore.open(join(root, '.ai/xezar'), { keepLive: true });
+    const store = RunStore.open(join(root, '.local/xezar'), { keepLive: true });
     const firstManager = new RunManager(store, root, { semaphore });
     stores.push(store);
 
@@ -410,7 +410,7 @@ describe('workspace semaphore across RunManagers (step 2.5)', () => {
   it('restart continuation releases its starting slot after becoming active', async () => {
     const root = fixtureRepo('xez-wsem-recover-starting-', roots);
     const semaphore = new WorkspaceSemaphore({ initial: { maxParallel: 1 } });
-    const store = RunStore.open(join(root, '.ai/xezar'), { keepLive: true });
+    const store = RunStore.open(join(root, '.local/xezar'), { keepLive: true });
     const manager = new RunManager(store, root, { semaphore });
     stores.push(store);
     managers.push(manager);

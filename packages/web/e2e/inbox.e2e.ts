@@ -17,13 +17,13 @@ import { AgentBrowser, readTestEnv } from './agent-browser'
  * the Run flow past the navigation stays unit-pinned in routes/inbox.test.tsx.
  */
 
-const artifactsDir = resolve(import.meta.dirname, '../../../.ai/qa/artifacts_e2e')
+const artifactsDir = resolve(import.meta.dirname, '../../../.local/qa/artifacts_e2e')
 const sessionId = `e2e-inbox-${process.pid}`
 
 const DESKTOP = { width: 1440, height: 900 }
 
 // Where `src/index.ts` puts the data dir, for the server booted from this worktree.
-const dataDir = resolve(import.meta.dirname, '../../../.ai/xezar')
+const dataDir = resolve(import.meta.dirname, '../../../.local/xezar')
 const todosFile = resolve(dataDir, 'todos.json')
 
 const CARD = '[data-slot="todo-card"]'

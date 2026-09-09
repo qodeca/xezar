@@ -55,7 +55,7 @@ export const workspaceConfigResponseSchema = z.object({
    * Both keys are OPTIONAL on the wire, and that is load-bearing rather than lax: absent means
    * "this machine has no opinion, the built-in default applies", and it has to stay distinguishable
    * from a value someone chose or the fallback collapses into "always claude". Consulted only where
-   * the repo's own `.ai/xezar/config.json` is silent — a repo that chose is never overruled.
+   * the repo's own `.xezar/config.json` is silent — a repo that chose is never overruled.
    */
   agentDefaults: z.object({
     runner: runnerSchema.optional(),
@@ -129,7 +129,7 @@ const taskTableUiStateSchema = z.looseObject({
 });
 
 /**
- * `GET/PUT /api/v1/ui-state` — the per-repo GUI prefs in `.ai/xezar/ui-state.json`.
+ * `GET/PUT /api/v1/ui-state` — the per-repo GUI prefs in `.local/xezar/ui-state.json`.
  *
  * An OPEN bag on purpose (BACKWARD_COMPATIBILITY.md §3): unknown keys round-trip untouched, so a
  * newer cockpit's prefs survive an older server and a future pref needs no server change. Hence

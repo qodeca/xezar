@@ -23,7 +23,7 @@ import record from './fixtures/subagents-run.record.json'
  * that is correct in jsdom but unmounted in the real cockpit would pass everything else.
  */
 
-const artifactsDir = resolve(import.meta.dirname, '../../../.ai/qa/artifacts_e2e')
+const artifactsDir = resolve(import.meta.dirname, '../../../.local/qa/artifacts_e2e')
 const sessionId = `e2e-agents-dock-${process.pid}`
 
 const RUN = record
@@ -60,8 +60,8 @@ let baseUrl: string
 
 beforeAll(async () => {
   dataRoot = mkdtempSync(join(tmpdir(), 'xezar-e2e-agents-'))
-  mkdirSync(join(dataRoot, '.ai/xezar/runs'), { recursive: true })
-  writeFileSync(join(dataRoot, '.ai/xezar/runs.json'), JSON.stringify([RUN], null, 2), 'utf8')
+  mkdirSync(join(dataRoot, '.local/xezar/runs'), { recursive: true })
+  writeFileSync(join(dataRoot, '.local/xezar/runs.json'), JSON.stringify([RUN], null, 2), 'utf8')
   // Derive a long attributed child stream from the real `mock:subagents` recording. The
   // source fixture stays verbatim; this test adds scale without pretending the runner emitted
   // data it cannot currently attribute (notably images, whose persisted v1 line has no parent).
@@ -102,7 +102,7 @@ beforeAll(async () => {
       }),
     )
     .join('\n')
-  writeFileSync(join(dataRoot, '.ai/xezar/runs', `${RUN_ID}.ndjson`), `${scaled}\n`, 'utf8')
+  writeFileSync(join(dataRoot, '.local/xezar/runs', `${RUN_ID}.ndjson`), `${scaled}\n`, 'utf8')
 
   const port = await freePort()
   baseUrl = `http://localhost:${port}`

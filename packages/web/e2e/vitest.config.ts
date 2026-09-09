@@ -1,3 +1,4 @@
+import '../../../scripts/test-local-state.mjs'
 import { defineConfig } from 'vitest/config'
 
 /**
@@ -18,7 +19,7 @@ export default defineConfig({
     fileParallelism: false,
     // Pins the shared env's workspace registry to the single-project shape before any spec runs,
     // and restores it afterwards — otherwise whatever the operator last registered in the
-    // gitignored `.ai/qa/xez-home` decides whether the sidebar renders its flat or its grouped
+    // gitignored `.local/qa/xez-home` decides whether the sidebar renders its flat or its grouped
     // shell, and every spec asserting flat-shell selectors becomes a coin flip. See the module.
     globalSetup: ['./workspace-registry.ts'],
     // A real browser is slower than jsdom, but a smoke test that needs more than this is broken.

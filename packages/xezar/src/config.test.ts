@@ -15,15 +15,17 @@ describe('loadConfig systemPrompt', () => {
 
   beforeEach(() => {
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-config-'));
-    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
+    mkdirSync(join(repoRoot, '.local/xezar'), { recursive: true });
   });
 
   afterEach(() => {
     rmSync(repoRoot, { recursive: true, force: true });
   });
 
-  const write = (value: unknown) =>
-    writeFileSync(join(repoRoot, '.ai/xezar', 'config.json'), JSON.stringify(value), 'utf8');
+  const write = (value: unknown) => {
+    mkdirSync(join(repoRoot, '.xezar'), { recursive: true });
+    writeFileSync(join(repoRoot, '.xezar', 'config.json'), JSON.stringify(value), 'utf8');
+  };
 
   it('is undefined when no config file exists (zero-config default)', async () => {
     const config = await loadConfig(repoRoot);
@@ -71,7 +73,8 @@ describe('loadConfig systemPrompt', () => {
   });
 
   it('malformed JSON degrades to the full default (never throws)', async () => {
-    writeFileSync(join(repoRoot, '.ai/xezar', 'config.json'), '{not json', 'utf8');
+    mkdirSync(join(repoRoot, '.xezar'), { recursive: true });
+    writeFileSync(join(repoRoot, '.xezar', 'config.json'), '{not json', 'utf8');
     const config = await loadConfig(repoRoot);
     expect(config.systemPrompt).toBeUndefined();
     expect(config.maxParallel).toBe(2);
@@ -164,7 +167,7 @@ describe('resolveWorktreeRetention', () => {
 
   beforeEach(() => {
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-retention-'));
-    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
+    mkdirSync(join(repoRoot, '.local/xezar'), { recursive: true });
     // Pinned so the suite never reads (or writes) the developer's real ~/.xezar.
     xezHome = mkdtempSync(join(tmpdir(), 'xez-home-'));
     process.env.XEZ_HOME = xezHome;
@@ -177,8 +180,10 @@ describe('resolveWorktreeRetention', () => {
     rmSync(xezHome, { recursive: true, force: true });
   });
 
-  const writeRepo = (value: unknown) =>
-    writeFileSync(join(repoRoot, '.ai/xezar', 'config.json'), JSON.stringify(value), 'utf8');
+  const writeRepo = (value: unknown) => {
+    mkdirSync(join(repoRoot, '.xezar'), { recursive: true });
+    writeFileSync(join(repoRoot, '.xezar', 'config.json'), JSON.stringify(value), 'utf8');
+  };
   const writeWorkspace = (value: unknown) =>
     writeFileSync(join(xezHome, 'config.json'), JSON.stringify(value), 'utf8');
 
@@ -188,7 +193,7 @@ describe('resolveWorktreeRetention', () => {
   });
 
   it('inherits it when the repo has no config file at all', async () => {
-    rmSync(join(repoRoot, '.ai/xezar'), { recursive: true, force: true });
+    rmSync(join(repoRoot, '.local/xezar'), { recursive: true, force: true });
     writeWorkspace({ resources: { worktreeRetentionDefault: 7 } });
     expect(await resolveWorktreeRetention(repoRoot)).toBe(7);
   });
@@ -238,7 +243,8 @@ describe('resolveWorktreeRetention', () => {
   });
 
   it('treats a malformed repo config as unset', async () => {
-    writeFileSync(join(repoRoot, '.ai/xezar', 'config.json'), '{ nope', 'utf8');
+    mkdirSync(join(repoRoot, '.xezar'), { recursive: true });
+    writeFileSync(join(repoRoot, '.xezar', 'config.json'), '{ nope', 'utf8');
     writeWorkspace({ resources: { worktreeRetentionDefault: 8 } });
     expect(await resolveWorktreeRetention(repoRoot)).toBe(8);
   });
@@ -256,15 +262,17 @@ describe('gatedSkillsRepos', () => {
 
   beforeEach(() => {
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-gate-'));
-    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
+    mkdirSync(join(repoRoot, '.local/xezar'), { recursive: true });
   });
 
   afterEach(() => {
     rmSync(repoRoot, { recursive: true, force: true });
   });
 
-  const write = (value: unknown) =>
-    writeFileSync(join(repoRoot, '.ai/xezar', 'config.json'), JSON.stringify(value), 'utf8');
+  const write = (value: unknown) => {
+    mkdirSync(join(repoRoot, '.xezar'), { recursive: true });
+    writeFileSync(join(repoRoot, '.xezar', 'config.json'), JSON.stringify(value), 'utf8');
+  };
 
   const defaults = DEFAULT_SKILLS_REPOS.map((r) => r.repo);
 
@@ -288,7 +296,8 @@ describe('gatedSkillsRepos', () => {
   });
 
   it('degrades a malformed config to the vendor defaults (like loadConfig)', async () => {
-    writeFileSync(join(repoRoot, '.ai/xezar', 'config.json'), '{ nope', 'utf8');
+    mkdirSync(join(repoRoot, '.xezar'), { recursive: true });
+    writeFileSync(join(repoRoot, '.xezar', 'config.json'), '{ nope', 'utf8');
     expect([...(await gatedSkillsRepos(repoRoot))]).toEqual(defaults);
   });
 });
@@ -310,7 +319,7 @@ describe('loadConfig machine-wide agent defaults', () => {
   beforeEach(() => {
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-machine-defaults-'));
     xezHome = mkdtempSync(join(tmpdir(), 'xez-machine-home-'));
-    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
+    mkdirSync(join(repoRoot, '.local/xezar'), { recursive: true });
     process.env.XEZ_HOME = xezHome;
   });
 
@@ -320,8 +329,10 @@ describe('loadConfig machine-wide agent defaults', () => {
     for (const dir of [repoRoot, xezHome]) rmSync(dir, { recursive: true, force: true });
   });
 
-  const writeRepo = (value: unknown) =>
-    writeFileSync(join(repoRoot, '.ai/xezar', 'config.json'), JSON.stringify(value), 'utf8');
+  const writeRepo = (value: unknown) => {
+    mkdirSync(join(repoRoot, '.xezar'), { recursive: true });
+    writeFileSync(join(repoRoot, '.xezar', 'config.json'), JSON.stringify(value), 'utf8');
+  };
   const writeMachine = (agentDefaults: unknown) =>
     writeFileSync(join(xezHome, 'config.json'), JSON.stringify({ agentDefaults }), 'utf8');
 

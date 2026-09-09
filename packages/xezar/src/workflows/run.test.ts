@@ -67,7 +67,7 @@ describe('RunManager directional usage accounting', () => {
 
   beforeEach(() => {
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-usage-accounting-'));
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     manager = new RunManager(store, repoRoot, {
       semaphore: new WorkspaceSemaphore({ initial: { maxParallel: 0 } }),
     });
@@ -155,14 +155,14 @@ describe('RunManager directional usage accounting', () => {
     store.flush();
 
     internal.beginUsageInvocation(run.id, state, 'work');
-    expect(RunStore.open(join(repoRoot, '.ai/xezar')).getRun(run.id)?.steps[0]).toMatchObject({
+    expect(RunStore.open(join(repoRoot, '.local/xezar')).getRun(run.id)?.steps[0]).toMatchObject({
       usageInvocationsStarted: 1,
     });
 
     const persistedAtSink: StepState[] = [];
     const sink = {
       handle: (_event: UiEvent) => {
-        const persisted = RunStore.open(join(repoRoot, '.ai/xezar')).getRun(run.id)?.steps[0];
+        const persisted = RunStore.open(join(repoRoot, '.local/xezar')).getRun(run.id)?.steps[0];
         if (persisted) persistedAtSink.push(persisted);
       },
     };
@@ -212,7 +212,7 @@ describe('RunManager directional usage accounting', () => {
 
 it('parallel variants ignore a worktree opt-out and retain isolated mode', () => {
   const repoRoot = mkdtempSync(join(tmpdir(), 'xez-variant-isolation-'));
-  const store = RunStore.open(join(repoRoot, '.ai/xezar'));
+  const store = RunStore.open(join(repoRoot, '.local/xezar'));
   try {
     const manager = new RunManager(store, repoRoot, {
       semaphore: new WorkspaceSemaphore({ initial: { maxParallel: 0 } }),
@@ -262,7 +262,7 @@ describe('RunManager.recordTurnEnd', () => {
     writeFileSync(join(repoRoot, 'a.txt'), 'one\ntwo\nthree\n');
     await run('git', ['add', '-A'], { cwd: repoRoot });
     await run('git', [...GIT_ID, 'commit', '-q', '-m', 'base'], { cwd: repoRoot });
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     manager = new RunManager(store, repoRoot);
   });
 
@@ -423,7 +423,7 @@ describe('RunManager.continueRun override', () => {
 
   beforeEach(() => {
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-continue-'));
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     manager = new RunManager(store, repoRoot);
     // No live agent — we only assert the synchronous persistence continueRun does before it
     // hands off to the (stubbed) continuation.
@@ -662,7 +662,7 @@ describe('RunManager.settleSuccess — optional review gate', () => {
     writeFileSync(join(repoRoot, 'a.txt'), 'one\ntwo\nthree\n');
     await run('git', ['add', '-A'], { cwd: repoRoot });
     await run('git', [...GIT_ID, 'commit', '-q', '-m', 'base'], { cwd: repoRoot });
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     manager = new RunManager(store, repoRoot);
   });
 
@@ -678,7 +678,7 @@ describe('RunManager.settleSuccess — optional review gate', () => {
   afterEach(() => {
     delete process.env.XEZ_REVIEW_GATE;
     // Reset the config file each test so config.reviewGate never leaks across cases.
-    rmSync(join(repoRoot, '.ai/xezar', 'config.json'), { force: true });
+    rmSync(join(repoRoot, '.xezar', 'config.json'), { force: true });
   });
 
   /** A fresh run + worktree holding a real diff (edit + new file) vs main. */
@@ -762,7 +762,7 @@ describe('a chain of 2 selected skills runs BOTH steps, in order (#410)', () => 
     writeFileSync(join(repoRoot, 'a.txt'), 'one\n');
     await run('git', ['add', '-A'], { cwd: repoRoot });
     await run('git', [...GIT_ID, 'commit', '-q', '-m', 'base'], { cwd: repoRoot });
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     manager = new RunManager(store, repoRoot);
   });
 
@@ -851,7 +851,7 @@ describe('a single agent step plus a check step gets NO chain note (#410)', () =
     writeFileSync(join(repoRoot, 'a.txt'), 'one\n');
     await run('git', ['add', '-A'], { cwd: repoRoot });
     await run('git', [...GIT_ID, 'commit', '-q', '-m', 'base'], { cwd: repoRoot });
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     manager = new RunManager(store, repoRoot);
   });
 
@@ -929,7 +929,7 @@ describe('XEZ:MONITORING parks as running/monitoring, not waiting (#490)', () =>
     writeFileSync(join(repoRoot, 'a.txt'), 'one\n');
     await run('git', ['add', '-A'], { cwd: repoRoot });
     await run('git', [...GIT_ID, 'commit', '-q', '-m', 'base'], { cwd: repoRoot });
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     manager = new RunManager(store, repoRoot);
     currentId = undefined;
   });
@@ -1009,12 +1009,12 @@ describe('XEZ:MONITORING parks as running/monitoring, not waiting (#490)', () =>
     const record = manager.startRun(SINGLE_STEP, { task: 'mock:monitoring keep going', worktree: false });
     currentId = record.id;
     await waitFor(record.id, () => {
-      const path = join(repoRoot, '.ai/xezar/runs', `${record.id}.ndjson`);
+      const path = join(repoRoot, '.local/xezar/runs', `${record.id}.ndjson`);
       if (!existsSync(path)) return false;
       const ndjson = readFileSync(path, 'utf8');
       return ndjson.includes('automatic monitoring wake-up (1/40)');
     });
-    const events = readFileSync(join(repoRoot, '.ai/xezar/runs', `${record.id}.ndjson`), 'utf8')
+    const events = readFileSync(join(repoRoot, '.local/xezar/runs', `${record.id}.ndjson`), 'utf8')
       .trim().split('\n').map((line) => JSON.parse(line) as { type: string; message?: string });
     expect(events.some((event) => event.type === 'note' && event.message?.includes('(1/40)'))).toBe(true);
     expect(events.some((event) => event.type === 'user-message')).toBe(false);
@@ -1033,7 +1033,7 @@ describe('XEZ:MONITORING parks as running/monitoring, not waiting (#490)', () =>
     await waitFor(record.id, (r) => r?.activity === 'monitoring');
     // v1 `text` events are stripped server-side (like XEZ:DONE); v2 message items carry
     // the raw text and the thread reducer strips it on display (thread-state.test.ts).
-    const ndjson = readFileSync(join(repoRoot, '.ai/xezar/runs', `${record.id}.ndjson`), 'utf8');
+    const ndjson = readFileSync(join(repoRoot, '.local/xezar/runs', `${record.id}.ndjson`), 'utf8');
     const v1Text = ndjson
       .trim()
       .split('\n')
@@ -1082,7 +1082,7 @@ describe('XEZ:ASK parks as waiting and emits ask.requested (#473)', () => {
     writeFileSync(join(repoRoot, 'a.txt'), 'one\n');
     await run('git', ['add', '-A'], { cwd: repoRoot });
     await run('git', [...GIT_ID, 'commit', '-q', '-m', 'base'], { cwd: repoRoot });
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     manager = new RunManager(store, repoRoot);
     currentId = undefined;
   });
@@ -1106,7 +1106,7 @@ describe('XEZ:ASK parks as waiting and emits ask.requested (#473)', () => {
   };
 
   const readEvents = (id: string): Array<Record<string, unknown>> =>
-    readFileSync(join(repoRoot, '.ai/xezar/runs', `${id}.ndjson`), 'utf8')
+    readFileSync(join(repoRoot, '.local/xezar/runs', `${id}.ndjson`), 'utf8')
       .trim()
       .split('\n')
       .map((l) => JSON.parse(l));
@@ -1268,11 +1268,11 @@ describe('RunManager.persistAttachment without a session (#472)', () => {
   ) => { name: string; url: string; path: string } | null;
   const persist = (id: string, prefix?: string) =>
     (manager as unknown as { persistAttachment: PersistFn }).persistAttachment(id, 'image/png', PNG, prefix);
-  const imagesDir = (id: string) => join(repoRoot, '.ai/xezar', 'runs', `${id}-images`);
+  const imagesDir = (id: string) => join(repoRoot, '.local/xezar', 'runs', `${id}-images`);
 
   beforeEach(() => {
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-persist-'));
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     manager = new RunManager(store, repoRoot);
   });
 
@@ -1353,11 +1353,11 @@ describe('RunManager queued-stack mutators (#472)', () => {
   };
   const dequeue = (id: string) =>
     (manager as unknown as { pendingJobs: Map<string, unknown> }).pendingJobs.delete(id);
-  const imagesDir = (id: string) => join(repoRoot, '.ai/xezar', 'runs', `${id}-images`);
+  const imagesDir = (id: string) => join(repoRoot, '.local/xezar', 'runs', `${id}-images`);
 
   beforeEach(() => {
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-stack-'));
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     manager = new RunManager(store, repoRoot);
   });
 
@@ -1667,7 +1667,7 @@ describe('RunManager.hydrateQueuedInput (#472)', () => {
 
   beforeEach(() => {
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-hydrate-'));
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     manager = new RunManager(store, repoRoot);
   });
 
@@ -1713,7 +1713,7 @@ describe('RunManager.hydrateQueuedInput (#472)', () => {
 
   it('re-encodes stacked attachments from disk into stackedImages', () => {
     const r = store.createRun({ title: 't', workflow: 'w', task: 'look at this', steps: [] });
-    const dir = join(repoRoot, '.ai/xezar', 'runs', `${r.id}-images`);
+    const dir = join(repoRoot, '.local/xezar', 'runs', `${r.id}-images`);
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, 'pasted-1.png'), 'the-bytes');
     stack(r.id, { text: 'see the mock', images: [`/api/v1/runs/${r.id}/images/pasted-1.png`] });
@@ -1728,7 +1728,7 @@ describe('RunManager.hydrateQueuedInput (#472)', () => {
 
   it('re-encodes initial task images from disk after a queued-run restart (#612)', () => {
     const r = store.createRun({ title: 't', workflow: 'w', task: 'look at this', steps: [] });
-    const dir = join(repoRoot, '.ai/xezar', 'runs', `${r.id}-images`);
+    const dir = join(repoRoot, '.local/xezar', 'runs', `${r.id}-images`);
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, 'pasted-1.png'), 'the-task-bytes');
     store.updateRun(r.id, { taskImages: [`/api/v1/runs/${r.id}/images/pasted-1.png`] });
@@ -1753,7 +1753,7 @@ describe('RunManager.hydrateQueuedInput (#472)', () => {
    */
   it('never re-encodes a non-image attachment into an image block on restart', () => {
     const r = store.createRun({ title: 't', workflow: 'w', task: 'read the brief', steps: [] });
-    const dir = join(repoRoot, '.ai/xezar', 'runs', `${r.id}-images`);
+    const dir = join(repoRoot, '.local/xezar', 'runs', `${r.id}-images`);
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, 'pasted-1.png'), 'the-task-bytes');
     writeFileSync(join(dir, 'pasted-2.pdf'), '%PDF-1.4 the-document-bytes');
@@ -1819,10 +1819,11 @@ describe('queued stacking reaches the backend (#472)', () => {
     writeFileSync(join(repoRoot, 'a.txt'), 'one\n');
     await run('git', ['add', '-A'], { cwd: repoRoot });
     await run('git', [...GIT_ID, 'commit', '-q', '-m', 'base'], { cwd: repoRoot });
-    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
+    mkdirSync(join(repoRoot, '.local/xezar'), { recursive: true });
     // One slot, so the second run demonstrably waits in the queue.
-    writeFileSync(join(repoRoot, '.ai/xezar', 'config.json'), JSON.stringify({ maxParallel: 1 }));
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    mkdirSync(join(repoRoot, '.xezar'), { recursive: true });
+    writeFileSync(join(repoRoot, '.xezar', 'config.json'), JSON.stringify({ maxParallel: 1 }));
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     manager = new RunManager(store, repoRoot);
   });
 
@@ -1891,7 +1892,7 @@ describe('recover() carries the queued stack exactly once (#472)', () => {
 
   beforeEach(() => {
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-recover-'));
-    store = RunStore.open(join(repoRoot, '.ai/xezar'), { keepLive: true });
+    store = RunStore.open(join(repoRoot, '.local/xezar'), { keepLive: true });
   });
 
   afterEach(() => {
@@ -1946,7 +1947,7 @@ describe('native Codex requestUserInput parks and resumes the run (#565)', () =>
     writeFileSync(join(repoRoot, 'a.txt'), 'one\n');
     await run('git', ['add', '-A'], { cwd: repoRoot });
     await run('git', [...GIT_ID, 'commit', '-q', '-m', 'base'], { cwd: repoRoot });
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     manager = new RunManager(store, repoRoot);
   });
 
@@ -1972,7 +1973,7 @@ describe('native Codex requestUserInput parks and resumes the run (#565)', () =>
     });
     runId = record.id;
     await waitFor(() => store.getRun(record.id)?.status === 'waiting');
-    const eventsPath = join(repoRoot, '.ai/xezar/runs', `${record.id}.ndjson`);
+    const eventsPath = join(repoRoot, '.local/xezar/runs', `${record.id}.ndjson`);
     expect(readFileSync(eventsPath, 'utf8')).toContain('"type":"ask.requested"');
     expect(manager.sendMessage(record.id, [{ type: 'text', text: 'Library: Vitest' }])).toBe(true);
     await waitFor(() => readFileSync(eventsPath, 'utf8').includes('"type":"turn-end"'));
@@ -2014,12 +2015,12 @@ describe('registry /skill expansion survives a continuation (#811)', () => {
     writeFileSync(join(repoRoot, 'a.txt'), 'one\n');
     await run('git', ['add', '-A'], { cwd: repoRoot });
     await run('git', [...GIT_ID, 'commit', '-q', '-m', 'base'], { cwd: repoRoot });
-    mkdirSync(join(repoRoot, '.ai/xezar/skills'), { recursive: true });
+    mkdirSync(join(repoRoot, '.xezar/skills'), { recursive: true });
     writeFileSync(
-      join(repoRoot, '.ai/xezar/skills/demo-review.md'),
+      join(repoRoot, '.xezar/skills/demo-review.md'),
       '---\nname: demo-review\ndescription: Review a diff.\n---\n\nRun the demo review playbook.\n',
     );
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     manager = new RunManager(store, repoRoot);
     runId = undefined;
   });
@@ -2033,7 +2034,7 @@ describe('registry /skill expansion survives a continuation (#811)', () => {
   });
 
   const eventsOf = (id: string) =>
-    readFileSync(join(repoRoot, '.ai/xezar/runs', `${id}.ndjson`), 'utf8')
+    readFileSync(join(repoRoot, '.local/xezar/runs', `${id}.ndjson`), 'utf8')
       .trim()
       .split('\n')
       .map((line) => JSON.parse(line) as { type: string; text?: string; stepId?: string });
@@ -2137,12 +2138,12 @@ describe("registry /skill expansion on a fresh run's opening prompt (#278)", () 
     writeFileSync(join(repoRoot, 'a.txt'), 'one\n');
     await run('git', ['add', '-A'], { cwd: repoRoot });
     await run('git', [...GIT_ID, 'commit', '-q', '-m', 'base'], { cwd: repoRoot });
-    mkdirSync(join(repoRoot, '.ai/xezar/skills'), { recursive: true });
+    mkdirSync(join(repoRoot, '.xezar/skills'), { recursive: true });
     writeFileSync(
-      join(repoRoot, '.ai/xezar/skills/demo-review.md'),
+      join(repoRoot, '.xezar/skills/demo-review.md'),
       '---\nname: demo-review\ndescription: Review a diff.\n---\n\nRun the demo review playbook.\n',
     );
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     manager = new RunManager(store, repoRoot);
     runId = undefined;
   });
@@ -2161,7 +2162,7 @@ describe("registry /skill expansion on a fresh run's opening prompt (#278)", () 
   const eventsOf = (id: string) => {
     let raw: string;
     try {
-      raw = readFileSync(join(repoRoot, '.ai/xezar/runs', `${id}.ndjson`), 'utf8').trim();
+      raw = readFileSync(join(repoRoot, '.local/xezar/runs', `${id}.ndjson`), 'utf8').trim();
     } catch {
       return [] as { type: string; text?: string; stepId?: string }[];
     }

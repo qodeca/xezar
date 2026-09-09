@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { z } from 'zod';
 
 /**
- * The global follow-up inbox (spec 007): `.ai/xezar/todos.json`, a flat JSON
+ * The global follow-up inbox (spec 007): `.local/xezar/todos.json`, a flat JSON
  * array agents append to (via XEZ_TODOS_FILE). Agent entries are external
  * data — each one is zod-validated on read and malformed ones are skipped
  * with a warning, never fatal. Server writes are serialized with an

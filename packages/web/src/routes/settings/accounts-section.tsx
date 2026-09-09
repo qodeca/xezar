@@ -345,7 +345,7 @@ function AgentTab({
  * "use it". Above the tabs because it is a cross-agent answer; splitting it into the per-agent tabs
  * would mean visiting all three to read one fact.
  *
- * DEFAULTS, never overrides. A project's own `.ai/xezar/config.json` still wins key by key, and a
+ * DEFAULTS, never overrides. A project's own `.xezar/config.json` still wins key by key, and a
  * project that has already picked an account keeps it — so changing these can never quietly
  * re-point work someone already configured onto another subscription. The copy says so, because
  * "default" alone does not distinguish the two.

@@ -12,7 +12,7 @@ import { AgentBrowser, bootProjectId, xezarCli, fixtureServeEnv, removeDataRoot,
  * The task quick-list, in a real browser, against a real xezar serving real runs.
  *
  * Why this spec boots its own server instead of using the shared test env: the run store reads
- * `.ai/xezar/runs.json` **once, at startup** (`RunStore.open`) and is in-memory from then on, so
+ * `.local/xezar/runs.json` **once, at startup** (`RunStore.open`) and is in-memory from then on, so
  * writing that file under the already-running instance would change nothing — the way the inbox
  * spec can, because todos are file-watched and re-broadcast. The list would just render the empty
  * state. And "whatever runs happen to be in the dev checkout" is not a fixture: it is whatever the
@@ -29,7 +29,7 @@ import { AgentBrowser, bootProjectId, xezarCli, fixtureServeEnv, removeDataRoot,
  * covered here. It is covered by the jsdom tests, which drive the component directly.
  */
 
-const artifactsDir = resolve(import.meta.dirname, '../../../.ai/qa/artifacts_e2e')
+const artifactsDir = resolve(import.meta.dirname, '../../../.local/qa/artifacts_e2e')
 const runId = `e2e-quick-list-${process.pid}`
 
 const now = Date.now()
@@ -178,8 +178,8 @@ const rowsIn = (label: string) =>
 
 beforeAll(async () => {
   dataRoot = mkdtempSync(join(tmpdir(), 'xezar-e2e-'))
-  mkdirSync(join(dataRoot, '.ai/xezar'), { recursive: true })
-  writeFileSync(join(dataRoot, '.ai/xezar/runs.json'), JSON.stringify(FIXTURE, null, 2), 'utf8')
+  mkdirSync(join(dataRoot, '.local/xezar'), { recursive: true })
+  writeFileSync(join(dataRoot, '.local/xezar/runs.json'), JSON.stringify(FIXTURE, null, 2), 'utf8')
 
   const port = await freePort()
   baseUrl = `http://localhost:${port}`
@@ -573,9 +573,9 @@ describe('a row under width contention, in a column the user can widen', () => {
 
   beforeAll(async () => {
     wideRoot = mkdtempSync(join(tmpdir(), 'xezar-e2e-wide-'))
-    mkdirSync(join(wideRoot, '.ai/xezar'), { recursive: true })
+    mkdirSync(join(wideRoot, '.local/xezar'), { recursive: true })
     writeFileSync(
-      join(wideRoot, '.ai/xezar/runs.json'),
+      join(wideRoot, '.local/xezar/runs.json'),
       JSON.stringify(
         [
           {

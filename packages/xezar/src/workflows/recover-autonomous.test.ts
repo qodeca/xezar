@@ -29,12 +29,12 @@ describe('recover() and the autonomous flag (#489)', () => {
 
   beforeEach(async () => {
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-recover-auto-'));
-    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
+    mkdirSync(join(repoRoot, '.local/xezar'), { recursive: true });
     await run('git', ['init', '-q', '-b', 'main'], { cwd: repoRoot });
     writeFileSync(join(repoRoot, 'a.txt'), 'one\n');
     await run('git', ['add', '-A'], { cwd: repoRoot });
     await run('git', [...GIT_ID, 'commit', '-q', '-m', 'base'], { cwd: repoRoot });
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
   });
 
   const frozen = () => new WorkspaceSemaphore({ initial: { maxParallel: 0 } });

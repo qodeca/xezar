@@ -40,8 +40,8 @@ describe('the workspace settings API (step 2.7)', () => {
     delete process.env.XEZ_AUTONOMOUS_DEFAULT;
     delete process.env.XEZ_WORKTREE_DEFAULT;
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-workspace-api-repo-'));
-    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    mkdirSync(join(repoRoot, '.local/xezar'), { recursive: true });
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     // The REAL semaphore with its production loader (which reads the XEZ_HOME
     // config), so the PUT → refresh() → cached-limits chain is observed end to
     // end. The routes never touch the manager — an empty stub is honest.

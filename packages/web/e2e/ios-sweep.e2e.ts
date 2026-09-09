@@ -28,7 +28,7 @@ import { AgentBrowser, readTestEnv } from './agent-browser'
  *     dist-less environment here would re-prove a pure function — not worth a live spec.
  */
 
-const artifactsDir = resolve(import.meta.dirname, '../../../.ai/qa/artifacts_e2e')
+const artifactsDir = resolve(import.meta.dirname, '../../../.local/qa/artifacts_e2e')
 const sessionId = `e2e-ios-${process.pid}`
 
 const IPHONE = { width: 390, height: 844 } // iPhone 14/15 CSS pixels
@@ -73,7 +73,7 @@ beforeAll(async () => {
   // The thread view needs a run. Prefer whatever the shared env already holds (newest live
   // record); only when the list is empty does this spec start one dry run — and then settles it
   // via /finish, so the shared env is never left holding an open session another spec would
-  // trip over. The run lands in `.ai/xezar/` (gitignored runtime state), same class of shared-env
+  // trip over. The run lands in `.local/xezar/` (gitignored runtime state), same class of shared-env
   // write as the smoke spec's todos.json.
   const runs = await api<RunRecord[]>('/api/v1/runs')
   const existing = [...runs]

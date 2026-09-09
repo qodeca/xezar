@@ -1,0 +1,301 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "repository": "daxko-platform",
+    "directory": ".ai/xezar",
+    "commit": "240783084fad65fca78f380ac2b409deb5ae8414",
+    "trackedFiles": 56
+  },
+  "note": "Maintained kit provenance/content inventory. Not a runtime seal or a claim of real-task validation. This manifest excludes its own bytes.",
+  "files": {
+    "checks/bootstrap.sh": "e918cc4c874b487eca15667307fac26a61821f115e4334b895590231180e9601",
+    "checks/catalog-check.mjs": "a229d8e6027473154d53c6e1e1984cd4ba62a6d3db38b32e51b5cf4af3214a81",
+    "checks/infra-tests.sh": "27547c675d7586e605ed902d84c14b9cdffb8e90562a2a6ded91138bdef16d36",
+    "checks/integration-preflight.sh": "a3de955127294d883f2fa899621e47307a3eec16da1adb4cc8860437628a3b8a",
+    "checks/lib/bootstrap.mjs": "92183e8e296d5b9f68a3d57bb82a8c7908ac600c637921c6869bbb5ea8f07d1a",
+    "checks/lib/common.sh": "6396e9e6be7c3303c5de58f78a3ffd7d4504b825a0a5c86ce826b18449bdb0cc",
+    "checks/lib/gate-record.sh": "49ab7de18f2284df2facdfc6813b0753afbd641db7821a0293107fdba6c6ea96",
+    "checks/lib/gate-results.mjs": "8918a74ce395e875dd6a47eaf381c09c1ac24be245c90879e8e5b7f8e7db2259",
+    "checks/lib/manifest.mjs": "35eec96f7caaf4fc899848f013a517be891f2001d6d2bbc0426d63600a02cc15",
+    "checks/lib/merge-intent.mjs": "679af89dbebdd3254baf4b3c443092fd36ffe6fe89e32efa0bc7be9289a7f923",
+    "checks/lib/project-policy.mjs": "fe7e333ee178d0a8ba9704a59d9273d773b042193ae330aab527239f9fc2ab41",
+    "checks/merge-recovery.sh": "a8d5028c997ed4a5ca14cd7509f12dceb5d479a610aba69abdeaa99d7ad91458",
+    "checks/repo-gates.sh": "6b42002fa5cf695ecd5a38bba4381bc26c82122558ddf76c4b706f49aa6af5cb",
+    "checks/resume-complete.sh": "7e16dff17a30d9e769278c4cd24c0fbce898f3ec11987f994c1c37f3658ee751",
+    "checks/root-sync-preflight.sh": "1e3c22a56bbed5a6e3e649f129e0fea73d8c0ba00fdc939d1afdd07ad5351b53",
+    "checks/verify-evidence.sh": "f0b21119c1a994e9bf45c1768a3e732b3a2cf8ef1c4a8b1695284bc07a59c198",
+    "checks/worktree-git.sh": "7e5be3f1f56c4ecaa6db8e85f76026f70e93ae06c263880ad62c6098cb9979e1",
+    "checks/worktree-preflight.sh": "468de25cb052fc528cc7a4737b34de6865c4c6e6b8358b17d6f1f0c6df9de30f",
+    "checks/worktree-setup.sh": "9abf422d1af7ab5aaf933904ad13f22656719388e69b45d2c7c41edc23816eae",
+    "checks/xezar-contract.test.mjs": "f575759fbe9f92231a9433e083509808f6a214fe9e777730929fae2c5de44739",
+    "docs/README.md": "7d02b38afa890ecb219c3029815243bb972de399a64579cf337a778be3d1b286",
+    "docs/business-analysis.md": "0afb07ea22dd25e69aadcfe3ed3310c7799528ad057fc31d05419ec11880af6f",
+    "docs/close-out.md": "913a4062ee0ae7c208c5247a8d1c28e0935c7777e9ea4aba771abcb5b5f1173a",
+    "docs/dogfooding.md": "16408155adaf606fb0a8fa16f18f9cdeb7384864fb6bd44741553e913b8cd874",
+    "docs/enhancement-ideas.md": "82c4012f70ecaa3d8585d326e64d77bdbbad1e16311f6a4671b1259252ff327c",
+    "docs/installation.md": "1af8ae4bdbb99c4e263a8d75e1c6555b9dc2cf7371177bfad8f685ff2c1590b2",
+    "docs/lessons-learned.md": "220693a40c1485fe26120607d0817cbc5f166fed7d74a8cce6557cf43f4efd93",
+    "docs/parallel-tasks.md": "5f97d7dd2fda948aac0849a1e3f5b4ec991bb20a72a149cee2590e9d187ef00a",
+    "docs/recovery.md": "2d5a16cbaebb3a4fa0567795368e7d028007a7b7ff27942dd5aebeaf80fae5b0",
+    "docs/single-task-pilot.md": "01edc20c146b057e4198ccc98bb3d7ed2b1a9a8c4ec2e128c935a8e265451aa9",
+    "docs/ui-operations.md": "833758ce731e3b1a872fdf935b683c6bd4886aba560f3f311a4eec70a31b2693",
+    "docs/upgrade-checklist.md": "f1334ae6c8b9972a1aa7c1fa8e8350e2270c679fb2de0b09f0ef0e34dd357628",
+    "docs/worktrees.md": "201f765ce7772d5a3d8b11132a9d5a9f7c6acb69485478298b718b6d8baaa451",
+    "workflows/address-review-findings.yaml": "9b0e6badde0bdbb16cacabf3e71dc37aa7d897eed4b8dba9ed6a3c57b9cea661",
+    "workflows/bug-fix.yaml": "1fe571c0e5367809dae88e695febb76b887b5ce8f37f00bef7e1f5cdd1bafc2a",
+    "workflows/business-analysis.yaml": "bceb7775650b327c73089140dfe56c7c1d13411fb371af82fcefa51efde93535",
+    "workflows/code-review.yaml": "b29c5de7ff3cb1d114c48a00b53b7942393a067a81a367eec1c8aa375a5844aa",
+    "workflows/dependency-maintenance.yaml": "0bbbc5a5928f017be6115442c38f9b1a8c4b9ae69ff43b5acff8b25998e3b84d",
+    "workflows/docs-maintenance.yaml": "70fd45fecda4aeeb491edb82edc02090da3d3dd97d9ef3a83e29612481995559",
+    "workflows/feature-implementation.yaml": "18a641770dca2d7b289bc3729129ded4ae1971a3028396c74785ad1602ac9da5",
+    "workflows/integration.yaml": "fd7feee2bfd254679ef930113d554bf36bdafcd23fe49c3648689bef53f92d53",
+    "workflows/issue-triage.yaml": "c92bcb980320420e343c99403ad082a127905f845d2fa89aee88803db20cfc93",
+    "workflows/plan-and-spec.yaml": "ed0ed607cbc0253b548631a9af1619db94bf1b4cc661a1ff19c31044cc093e5d",
+    "workflows/release-prep.yaml": "20c1c1f2924c7a4767c5a0351cfa3c543daa91dd4718138f77af8f715be62b76",
+    "workflows/root-sync.yaml": "7307adce63b477887c6befff4623085e945d5a2f00a5c20ea8a73effb3321dd9",
+    "workflows/testing-and-verification.yaml": "afd268a633f29490c6bd0761c39e20dcac72697b28165288309d5f8518194b41",
+    "skills/xezar-bug-investigation.md": "150ad89c9ba2e55896f6d2d150361c547fb59d75e8a619ef1a4454069d4efbb5",
+    "skills/xezar-business-analysis.md": "05aa8f49cf4d59316d2ad5d7d5ff8ed6e15300f3242c303da6cd86f887333aed",
+    "skills/xezar-code-review.md": "aa619ca2020ce9c51daaf274a2075bd87542a0d430e590dd358df4c05451661c",
+    "skills/xezar-dependency-maintenance.md": "318f017f92eb1c1512ac3de9b1a9bbb0b3fb274f4599b8e40422225d83269e0f",
+    "skills/xezar-docs-maintenance.md": "449f69dbf4973ad225d4a4921e6fc519a1c6e5488e64de835dcff2a809687b32",
+    "skills/xezar-handoff-draft-pr.md": "3dda596d436b85216850ba2a8271162fbb68cf2bc58274e412d0ef8fcab69f24",
+    "skills/xezar-implementation.md": "23ccdb3147ec19d71a48231decbdf95f48debb85e514695453f097e3bd37448a",
+    "skills/xezar-integration.md": "066a1d32d1842b0549a458c3f6aa29e756f69d2f3c3497db69ecaa641cb6a82f",
+    "skills/xezar-issue-triage.md": "9789e2e7083fdbbaa8449e9b1c43370a395c6766a76b6e91150348bf66c9725e",
+    "skills/xezar-planning-spec.md": "0213eec74a908c8907ace5e78772dca84828cf6e17b6b7de5724b1ff239649b3",
+    "skills/xezar-quality-gates.md": "7e51cb1a09788a903976b617909447351735588e6d7b1731082c848c312d4124",
+    "skills/xezar-release-prep.md": "7018fa6670a9032fed22d6c7b57bdbc63c3ec6d05328a9bd8c4fdd09ab2c477c",
+    "skills/xezar-review-response.md": "a1e6ddc8acb09cfa87c0d8e040db803fca69fc5e9ad8cf56ad249220f97ac4c3",
+    "skills/xezar-testing.md": "f228b31ef63923cf31c1c00141fdbdf2fb4b1b79dc2951c5324954564671e947",
+    "CLAUDE.md": "e639464312cee843dc74fb6d1f4407428ccfdb84e46ce23baa3aba711b769334",
+    "config.json": "4f81e076be6a248ea4ed1102a7f92bcb6acf9918787af1b8e79624e917d4d4ae",
+    ".gitignore": "a6e8b38de928de674f933aa575d4b0c22d3185bffd5f04d1d61ab8dfef8926fb"
+  },
+  "sourceMap": {
+    ".ai/xezar/.gitignore": {
+      "target": ".gitignore",
+      "sourceBlob": "7f76e9c02db6cdcf8010810c0122249ae0661399"
+    },
+    ".ai/xezar/checks/catalog-check.mjs": {
+      "target": "checks/catalog-check.mjs",
+      "sourceBlob": "98b2840cfe10f94ae31d56c797a364a7b3ed71f9"
+    },
+    ".ai/xezar/checks/infra-tests.sh": {
+      "target": "checks/infra-tests.sh",
+      "sourceBlob": "e67c214fdb9e8976a04d70ab283fb417985379df"
+    },
+    ".ai/xezar/checks/integration-preflight.sh": {
+      "target": "checks/integration-preflight.sh",
+      "sourceBlob": "df9ea4c242a7ffa12c18416d628651be20a9ca39"
+    },
+    ".ai/xezar/checks/lib/common.sh": {
+      "target": "checks/lib/common.sh",
+      "sourceBlob": "c421e2d7b0d213fc8334493fc651c4f70634ccb1"
+    },
+    ".ai/xezar/checks/lib/gate-record.sh": {
+      "target": "checks/lib/gate-record.sh",
+      "sourceBlob": "4c3b195927289625aa071dc610b43def18f7ea79"
+    },
+    ".ai/xezar/checks/lib/gate-results.mjs": {
+      "target": "checks/lib/gate-results.mjs",
+      "sourceBlob": "26c73cd354298a83c7fbf55cf1a0f25be528aa12"
+    },
+    ".ai/xezar/checks/lib/manifest.mjs": {
+      "target": "checks/lib/manifest.mjs",
+      "sourceBlob": "3ba569d334a890c1528a7b0f18c2213bea2f17cf"
+    },
+    ".ai/xezar/checks/lib/merge-intent.mjs": {
+      "target": "checks/lib/merge-intent.mjs",
+      "sourceBlob": "9a0c7f902abebca7166ca8d9672123383450e385"
+    },
+    ".ai/xezar/checks/merge-recovery.sh": {
+      "target": "checks/merge-recovery.sh",
+      "sourceBlob": "e88cf462a72a83b2fc2ddc59bcb78793679a87db"
+    },
+    ".ai/xezar/checks/repo-gates.sh": {
+      "target": "checks/repo-gates.sh",
+      "sourceBlob": "0074fc07b98bd6eda103104056997579ba054157"
+    },
+    ".ai/xezar/checks/resume-complete.sh": {
+      "target": "checks/resume-complete.sh",
+      "sourceBlob": "545e86ed200aaf54fa0ba3bbeb592b04ac9f93a8"
+    },
+    ".ai/xezar/checks/root-sync-preflight.sh": {
+      "target": "checks/root-sync-preflight.sh",
+      "sourceBlob": "ffc2200c6e4eab2de59f2b57dbb80a05f4cf2f46"
+    },
+    ".ai/xezar/checks/verify-evidence.sh": {
+      "target": "checks/verify-evidence.sh",
+      "sourceBlob": "f17dc2763aaa7c39f85e8da89b9b73965b00d7f3"
+    },
+    ".ai/xezar/checks/worktree-git.sh": {
+      "target": "checks/worktree-git.sh",
+      "sourceBlob": "87e4560f0cda52990c3d5836b51ae42c2c7a1f8e"
+    },
+    ".ai/xezar/checks/worktree-preflight.sh": {
+      "target": "checks/worktree-preflight.sh",
+      "sourceBlob": "a27ceaf6f34439900d45a9528ea3116f20675450"
+    },
+    ".ai/xezar/checks/worktree-setup.sh": {
+      "target": "checks/worktree-setup.sh",
+      "sourceBlob": "4d54249578fc246805fa567d583202154b857c46"
+    },
+    ".ai/xezar/config.json": {
+      "target": "config.json",
+      "sourceBlob": "4f9bffffb2568ae5af5d2516a3f4e3dc304f1590"
+    },
+    ".ai/xezar/docs/README.md": {
+      "target": "docs/README.md",
+      "sourceBlob": "57d454e36844c6aa4a390312bb09c258dd41ba45"
+    },
+    ".ai/xezar/docs/business-analysis.md": {
+      "target": "docs/business-analysis.md",
+      "sourceBlob": "e297536b9c60bb25fa96187ec82dac9c686b380f"
+    },
+    ".ai/xezar/docs/close-out.md": {
+      "target": "docs/close-out.md",
+      "sourceBlob": "cf9285e33b1872c2999e49e647e01f958a79369a"
+    },
+    ".ai/xezar/docs/enhancement-ideas.md": {
+      "target": "docs/enhancement-ideas.md",
+      "sourceBlob": "11b7a021048b133ee35e61cb71cc6134621e695c"
+    },
+    ".ai/xezar/docs/lessons-learned.md": {
+      "target": "docs/lessons-learned.md",
+      "sourceBlob": "1fdd1f4989d3a4c888f4051a9b77be5f59246be9"
+    },
+    ".ai/xezar/docs/parallel-tasks.md": {
+      "target": "docs/parallel-tasks.md",
+      "sourceBlob": "1133f7a2630b8fd3e0cf3e6d94e0d1b15da983b1"
+    },
+    ".ai/xezar/docs/recovery.md": {
+      "target": "docs/recovery.md",
+      "sourceBlob": "e0653da9b4cc03457d3d5a35a9658711ee860469"
+    },
+    ".ai/xezar/docs/single-task-pilot.md": {
+      "target": "docs/single-task-pilot.md",
+      "sourceBlob": "21cc5f4adaf5bb0c517ae7e745259c2c8fd8a29c"
+    },
+    ".ai/xezar/docs/ui-operations.md": {
+      "target": "docs/ui-operations.md",
+      "sourceBlob": "5db3db575c043b766528c5a444d44249a439d6f5"
+    },
+    ".ai/xezar/docs/upgrade-checklist.md": {
+      "target": "docs/upgrade-checklist.md",
+      "sourceBlob": "23b18f211b21400ce9a0d0d8f62ae50fc6672fe9"
+    },
+    ".ai/xezar/docs/worktrees.md": {
+      "target": "docs/worktrees.md",
+      "sourceBlob": "ea036308545a027c478f3c09f18499ebb1a9d5fe"
+    },
+    ".ai/xezar/skills/daxko-bug-investigation.md": {
+      "target": "skills/xezar-bug-investigation.md",
+      "sourceBlob": "b3a9b8eb64a46f33108de7cf5a7b8d472f43d838"
+    },
+    ".ai/xezar/skills/daxko-business-analysis.md": {
+      "target": "skills/xezar-business-analysis.md",
+      "sourceBlob": "c2aa93e24adf69457b62f416d7288abddf7b251f"
+    },
+    ".ai/xezar/skills/daxko-code-review.md": {
+      "target": "skills/xezar-code-review.md",
+      "sourceBlob": "31227f3a53074314315098686add5187811009bc"
+    },
+    ".ai/xezar/skills/daxko-dependency-maintenance.md": {
+      "target": "skills/xezar-dependency-maintenance.md",
+      "sourceBlob": "e2e7681b670459d841a0df2e34945ad4c58d3038"
+    },
+    ".ai/xezar/skills/daxko-docs-maintenance.md": {
+      "target": "skills/xezar-docs-maintenance.md",
+      "sourceBlob": "b7cc3b451ae368d623013c70a07aab7606b418ae"
+    },
+    ".ai/xezar/skills/daxko-handoff-draft-pr.md": {
+      "target": "skills/xezar-handoff-draft-pr.md",
+      "sourceBlob": "bcf9097dd0d2627a146b7226430ad101cdcbf3ae"
+    },
+    ".ai/xezar/skills/daxko-implementation.md": {
+      "target": "skills/xezar-implementation.md",
+      "sourceBlob": "ce1bbc7bf7995db686ae76a4f2a01ffba57dcc7e"
+    },
+    ".ai/xezar/skills/daxko-integration.md": {
+      "target": "skills/xezar-integration.md",
+      "sourceBlob": "c3a35035b3a9211fd4d0c51139e2708c68780fab"
+    },
+    ".ai/xezar/skills/daxko-issue-triage.md": {
+      "target": "skills/xezar-issue-triage.md",
+      "sourceBlob": "6cf01f73c373cd92e7c4edc0cb1267df292e5daf"
+    },
+    ".ai/xezar/skills/daxko-planning-spec.md": {
+      "target": "skills/xezar-planning-spec.md",
+      "sourceBlob": "8b4c49c68f52c7785a55c70d055c4b180add09a5"
+    },
+    ".ai/xezar/skills/daxko-quality-gates.md": {
+      "target": "skills/xezar-quality-gates.md",
+      "sourceBlob": "b8acc18ed741e99dabdb7c15cd910a4ce49ca0b4"
+    },
+    ".ai/xezar/skills/daxko-release-prep.md": {
+      "target": "skills/xezar-release-prep.md",
+      "sourceBlob": "037cf1cfceb5748cbd2117a893276b66b2e9f7e6"
+    },
+    ".ai/xezar/skills/daxko-review-response.md": {
+      "target": "skills/xezar-review-response.md",
+      "sourceBlob": "676729f4a0b8ef7ad0d4486ad11743285a0b3a47"
+    },
+    ".ai/xezar/skills/daxko-testing.md": {
+      "target": "skills/xezar-testing.md",
+      "sourceBlob": "6d6ea7cf89a91a8d15a4d743497c638546bf9d17"
+    },
+    ".ai/xezar/workflows/address-review-findings.yaml": {
+      "target": "workflows/address-review-findings.yaml",
+      "sourceBlob": "ad96e75a0009ea68febafaa6d14dfbefddb59717"
+    },
+    ".ai/xezar/workflows/bug-fix.yaml": {
+      "target": "workflows/bug-fix.yaml",
+      "sourceBlob": "56da48f54746ff28d69e42232a6ea77eb06a39bf"
+    },
+    ".ai/xezar/workflows/business-analysis.yaml": {
+      "target": "workflows/business-analysis.yaml",
+      "sourceBlob": "748787c751e3052301d393ee56bdf8ff434474c6"
+    },
+    ".ai/xezar/workflows/code-review.yaml": {
+      "target": "workflows/code-review.yaml",
+      "sourceBlob": "f7e99d9abc976c58a941584487629a6521762b6b"
+    },
+    ".ai/xezar/workflows/dependency-maintenance.yaml": {
+      "target": "workflows/dependency-maintenance.yaml",
+      "sourceBlob": "9fe0fd823aee2dfbe7effd03fdb9cc75892d74e1"
+    },
+    ".ai/xezar/workflows/docs-maintenance.yaml": {
+      "target": "workflows/docs-maintenance.yaml",
+      "sourceBlob": "ddec623d8d5a79ea48a297c5abb3da6d31a8351a"
+    },
+    ".ai/xezar/workflows/feature-implementation.yaml": {
+      "target": "workflows/feature-implementation.yaml",
+      "sourceBlob": "cb29cd648e9405f57aaf2cfa2514e84b224e2726"
+    },
+    ".ai/xezar/workflows/integration.yaml": {
+      "target": "workflows/integration.yaml",
+      "sourceBlob": "e5bd6b50ca9903ff3c9cc073b7e9c658204f2d87"
+    },
+    ".ai/xezar/workflows/issue-triage.yaml": {
+      "target": "workflows/issue-triage.yaml",
+      "sourceBlob": "2a00d2684437ab53069c69d89f21c542419dcd59"
+    },
+    ".ai/xezar/workflows/plan-and-spec.yaml": {
+      "target": "workflows/plan-and-spec.yaml",
+      "sourceBlob": "e51a0eb77fe77459a073b64914fa656ad56d0ec7"
+    },
+    ".ai/xezar/workflows/release-prep.yaml": {
+      "target": "workflows/release-prep.yaml",
+      "sourceBlob": "cef5d5dba61a01e1abd4c488565706acf17efbae"
+    },
+    ".ai/xezar/workflows/root-sync.yaml": {
+      "target": "workflows/root-sync.yaml",
+      "sourceBlob": "1142e1df315ea03aa46e1921745a266866fa6bab"
+    },
+    ".ai/xezar/workflows/testing-and-verification.yaml": {
+      "target": "workflows/testing-and-verification.yaml",
+      "sourceBlob": "30c72595d6953ba4aa76bcdb8ef72a10dbad018f"
+    }
+  }
+}

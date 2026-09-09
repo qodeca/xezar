@@ -40,11 +40,12 @@ describe('usage SSE fan-out is scoped per project', () => {
     delete process.env.XEZ_REMOTE;
     process.env.XEZ_DRY_RUN = '1';
     for (const root of [repoRoot, otherRoot]) {
-      mkdirSync(join(root, '.ai/xezar'), { recursive: true });
-      writeFileSync(join(root, '.ai/xezar', 'config.json'), '{"skillsRepos": []}\n', 'utf8');
+      mkdirSync(join(root, '.local/xezar'), { recursive: true });
+      mkdirSync(join(root, '.xezar'), { recursive: true });
+      writeFileSync(join(root, '.xezar', 'config.json'), '{"skillsRepos": []}\n', 'utf8');
     }
     clearProjectProbeCache();
-    store = RunStore.open(join(repoRoot, '.ai/xezar'), { keepLive: true });
+    store = RunStore.open(join(repoRoot, '.local/xezar'), { keepLive: true });
     bootRunId = store.createRun({
       title: 'boot',
       workflow: 'quick-task',

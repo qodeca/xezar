@@ -24,7 +24,7 @@ import { AgentBrowser, readTestEnv } from './agent-browser'
  * and proves the redirect delivers it, query intact, into the boot project's composer.
  */
 
-const artifactsDir = resolve(import.meta.dirname, '../../../.ai/qa/artifacts_e2e')
+const artifactsDir = resolve(import.meta.dirname, '../../../.local/qa/artifacts_e2e')
 const sessionId = `e2e-settings-bookmarklets-${process.pid}`
 
 const DESKTOP = { width: 1440, height: 900 }
@@ -184,7 +184,7 @@ describe('legacy flat bookmarklet URLs keep landing (BACKWARD_COMPATIBILITY.md Â
 
     browser.goto(`${baseUrl}/p/${encodeURIComponent(bootProject)}/settings/bookmarklets`)
     waitForGeneratedHref(linkIn('bm-generic'))
-    // The URL names the project AND carries that project's `.ai/xezar/launch-key` secret.
+    // The URL names the project AND carries that project's `.local/xezar/launch-key` secret.
     expect(hrefOf(linkIn('bm-generic'))).toContain(`/p/${bootProject}/new?'+q`)
     expect(hrefOf(linkIn('bm-generic'))).toContain(`key=${scoped.key}&ref=`)
   })

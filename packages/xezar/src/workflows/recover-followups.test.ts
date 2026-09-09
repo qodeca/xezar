@@ -32,12 +32,12 @@ describe('recover() and the follow-up ceiling (#471)', () => {
 
   beforeEach(async () => {
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-recover-'));
-    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
+    mkdirSync(join(repoRoot, '.local/xezar'), { recursive: true });
     await run('git', ['init', '-q', '-b', 'main'], { cwd: repoRoot });
     writeFileSync(join(repoRoot, 'a.txt'), 'one\n');
     await run('git', ['add', '-A'], { cwd: repoRoot });
     await run('git', [...GIT_ID, 'commit', '-q', '-m', 'base'], { cwd: repoRoot });
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
   });
 
   // Capped at 0 — recover() re-queues, the queue never drains, no agent is spawned.

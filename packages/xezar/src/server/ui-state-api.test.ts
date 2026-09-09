@@ -23,8 +23,8 @@ describe('the ui-state API — skillUsage (#408)', () => {
 
   beforeEach(() => {
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-uistateapi-'));
-    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    mkdirSync(join(repoRoot, '.local/xezar'), { recursive: true });
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     // The ui-state routes never touch the manager — an empty stub is honest.
     app = createApp({ repoRoot, store, manager: {} as RunManager, version: '0.0.0-test' });
   });
@@ -34,7 +34,7 @@ describe('the ui-state API — skillUsage (#408)', () => {
     rmSync(repoRoot, { recursive: true, force: true });
   });
 
-  const uiStatePath = () => join(repoRoot, '.ai/xezar', 'ui-state.json');
+  const uiStatePath = () => join(repoRoot, '.local/xezar', 'ui-state.json');
   const rawFile = () => JSON.parse(readFileSync(uiStatePath(), 'utf8')) as Record<string, unknown>;
 
   const get = () => apiRequest(app, '/api/v1/ui-state');

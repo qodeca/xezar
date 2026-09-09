@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { dirname, join } from 'node:path';
 
 /**
- * Per-task handoff journal (spec 007): `.ai/xezar/runs/<runId>.handoff.md`,
+ * Per-task handoff journal (spec 007): `.local/xezar/runs/<runId>.handoff.md`,
  * next to the run's NDJSON events and outside the task worktree — it survives
  * worktree removal. Xez seeds the skeleton and appends heartbeats; the agent
  * (told via XEZ_HANDOFF_FILE + the system-prompt fragment below) keeps the

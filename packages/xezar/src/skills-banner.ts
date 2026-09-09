@@ -11,7 +11,7 @@ import { readUiState } from './ui-state.ts';
  * Printed on `serve` start — a few lines in an already-chatty startup block. It has two off
  * switches, because a promo that cannot be silenced is a nag:
  *  - `XEZ_NO_BANNER=1` in the environment, and
- *  - `dismissedSkillsBanner` in `.ai/xezar/ui-state.json` — written by the cockpit banner until
+ *  - `dismissedSkillsBanner` in `.local/xezar/ui-state.json` — written by the cockpit banner until
  *    #603 removed it. The flag is still honoured, so anyone who dismissed it back then stays
  *    silenced; nothing writes it today.
  * Reading that flag follows the `src/config.ts` rule: a missing/unreadable/malformed state file

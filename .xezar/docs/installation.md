@@ -1,0 +1,36 @@
+# Installation, adaptation and qualification
+
+Source baseline: current `daxko-platform/.ai/xezar` at `240783084fad65fca78f380ac2b409deb5ae8414`, 56 tracked assets. Only that maintained current kit was used; no retired tree, task histories, credentials or domain SDK/API documentation. Reference comments/negative-fixture stories describe original design rationale, not observed Xezar behavior. The source checkout remains unchanged.
+
+This installation is for Xezar developing itself. Maintained files live and are versioned directly in `.xezar/`; there is no separate installer/archive directory. Local runs, worktrees and temp files live in `.local/xezar/`; check evidence and bootstrap snapshots also stay under `.local/`. The kit ignore file retains defensive rules for legacy local files. An ordinary new document or helper is visible by default. Never delete the whole `.xezar` directory to clear runtime: it now includes maintained source. Use existing task retention/cleanup controls for runtime, preserving source files and durable evidence.
+
+A committed kit reaches a new worktree through Git. Before the first commit, workflow bootstrap snapshots only maintained assets from the same primary repository, excluding application changes/runtime/secrets. It is not a new engine seeding hook. Conflicting task-local files are refused, and an existing snapshot is never silently refreshed. No application commit is required to use the installed catalog now. The user explicitly selected direct versioning; old whole-directory ignore policy has been replaced by local-path exclusions.
+
+## Adaptation map
+
+| Source family | Xezar installation | Evidence to require |
+| --- | --- | --- |
+| 13 workflow definitions | Same role names; xezar-* skills; main; no foreign provider pins; first kit snapshot command; eight bounded repair loops preserved | Strict catalog plus real Xezar loader and isolated bootstrap |
+| 14 skill roles | Rewritten for root AGENTS/SDLC/review/API/backward-compatibility rules and npm workspaces; technical/authority/stage roles preserved | Loader/frontmatter, guidance checks; future role-specific real-task observations |
+| 11 operational documents | Current local guidance for coordination, BA, checkpoints, evidence, recovery, close-out and upgrades; private historical backlog not imported | Maintained coverage and future dogfooding ledger |
+| common/setup | main discovery without required authored config; npm ci; package-lock/shrinkwrap/workspace/npmrc/patch/Node/npm fingerprint; read-only initialization | Isolation, dependency invalidation, no install on read-only, setup failure cases |
+| gates/record/results/verifier/manifest | Five actual AGENTS/SDLC/npm commands plus dependency preparation and kit fixtures; permitted dependency skip only; ordered attempts, full hashed logs, immutable history and independent current eligibility | Tamper/missing-log/latest-failure/unknown-schema/current-content/cross-task cases |
+| preflight/Git/resume | Task-derived identity, named-ref writes, current context and remaining-stage diagnosis; kit bytes included in tree fingerprint even when ignored | Wrong CWD/identity/ref, BLOCKED, dirty content, continuation and effect-free dry-run |
+| integration/root-sync | Actual named Xezar CI check; SDLC labels/QA; real hosting rules; squash per SDLC; root operation remains separate, fixed-target fast-forward under actual lease | Mock policy/current-head cases and synthetic root refusals; live hosting/lease remains unqualified |
+| merge recovery | Pre-recorded intent, narrow matching merge recovery, normal guards remain strict, no destructive rollback | Resolved/unresolved/mismatched-intent/blocked recovery tests |
+| fixture infrastructure | Retained behavioral families for identity, evidence, manifest, setup, resume, merge, policy, root and cleanup; replaced source-only Biome/Knip/private-doc assertions with Xezar loader/gates/bootstrap/SDLC/guidance tests | Positive controls, deliberate violations, no real ref/worktree effects |
+| settings | Optional main/reviewGate/systemPrompt installation values; no source models, global caps, skill repositories or secrets | Strict supported-key validation, defaults and actual loader; reviewGate=false avoids duplicate engine/skill handoff, never removes review/QA |
+
+Removed commands were source-only controls absent from Xezar (pnpm, Biome/Knip, REUSE, SDK generation/docs/changesets). They were replaced by the actual Xezar validation contract, not by no-op passes. UI smoke and manual QA remain separately required where SDLC says so; absence of a browser is not a pass. No live browser/model/hosting operation is performed by installation tests. Existing Release manual dispatch policy is retained; no direct npm publication.
+
+The bootstrap snapshot is a local workaround for the current engine's lack of check-file seeding. It copies only maintained assets into the correct fresh worktree, refusing foreign identity, symlinks and conflicting task content. No source changes or dirty application files from the primary checkout are copied. Active snapshots are reused, never silently refreshed. After a future tracked kit differs, deliberate reconciliation is required; no claim of a new product-wide automatic migration.
+
+Helper-only environment seams (not Xezar product configuration): `DOGFOOD_GH` substitutes an offline GitHub client in fixtures; `DOGFOOD_WORKFLOW` supplies optional evidence metadata; `DOGFOOD_GATE_LOG` is the child command's log location; `DOGFOOD_FIXTURE_GATE` controls only synthetic mini-gates. `DOGFOOD_ALLOW_ROOT_BOOTSTRAP` is the inherited one-run maintenance exception and must equal the actual `XEZ_TASK_ID`; it is never a persistent/global setting or authority grant. Ordinary writing workflows do not set it; root-sync uses its distinct checked resource path. Existing engine identity/lock variables retain their documented meaning. No new XEZ_* product flag is introduced.
+
+## Evidence status
+
+Adapted and statically loaded: all roles and optional config. Isolated fixture results are reported in the installation handoff with exact suite output and final managed digest. No real development task has yet exercised this installed candidate, no live client/browser pilot was run, and no recommendation is labelled real-task verified. In particular actual root lease ownership, live hosting policy/CI, checkpoint-only fresh coordinator continuity, UI questions/QA and meaningful speed/cost measurements remain for future authorized tasks.
+
+Run isolated checks with `bash .xezar/checks/infra-tests.sh`; run repository ignore/startup checks with `npm test -- packages/xezar/src/tracked-files.test.ts`. These never run real model tasks or the project's full application gates. The real future development gate is `bash .xezar/checks/repo-gates.sh --fast`; do not substitute its fixture stand-ins for application results. See dogfooding.md for observation/change/evidence and the threshold for a recommendation.
+
+Validation to date: full adapted behavioral suite **406 passed, 0 failed**; final bootstrap/loader/npm/policy/guidance suite **11 passed, 0 failed**. Direct-versioning ignore/startup tests: **7 passed, 0 failed**. No real model/browser/client/integration operation, application gate, commit or publication was performed.

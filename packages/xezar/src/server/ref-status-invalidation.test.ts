@@ -45,13 +45,13 @@ describe('a reference xezar changes itself is forgotten, not waited out', () => 
   beforeEach(() => {
     vi.mocked(forgetRefStatus).mockClear();
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-refinvalidate-'));
-    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
+    mkdirSync(join(repoRoot, '.local/xezar'), { recursive: true });
     execFileSync('git', ['init', '-b', 'main'], { cwd: repoRoot });
     execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: repoRoot });
     execFileSync('git', ['config', 'user.name', 'Test'], { cwd: repoRoot });
     execFileSync('git', ['commit', '--allow-empty', '-m', 'init'], { cwd: repoRoot });
     execFileSync('git', ['remote', 'add', 'origin', 'https://github.com/acme/demo.git'], { cwd: repoRoot });
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     app = createApp({
       repoRoot,
       store,

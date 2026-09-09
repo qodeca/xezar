@@ -21,7 +21,7 @@ import { AgentBrowser, bootProjectId, xezarCli, fixtureServeEnv, removeDataRoot,
  * always has a worktree; unit-tested).
  */
 
-const artifactsDir = resolve(import.meta.dirname, '../../../.ai/qa/artifacts_e2e')
+const artifactsDir = resolve(import.meta.dirname, '../../../.local/qa/artifacts_e2e')
 const sessionId = `e2e-files-${process.pid}`
 
 // 1×1 transparent PNG — real bytes so the <img> decode is a real test.

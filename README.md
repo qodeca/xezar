@@ -37,7 +37,7 @@ xezar        # → cockpit at http://localhost:4321
 ```
 
 That is the whole setup. If your `claude` CLI is logged in (Pro/Max) and
-`gh` is authenticated, there is nothing else to configure. State lives in `.ai/xezar/`
+`gh` is authenticated, there is nothing else to configure. The maintained project kit lives in `.xezar/`; runtime lives in `.local/xezar/`
 inside your repo — plain JSON, NDJSON and Markdown you can `cat` and fix by hand.
 
 ## A look inside
@@ -164,7 +164,7 @@ busy). Type a task, pick a workflow, hit **Start**. That's it.
 
 ```bash
 xezar run "add a --json flag to the export command"   # headless, CI-friendly
-xezar init                                            # scaffold .ai/xezar/
+xezar init                                            # scaffold .xezar/
 ```
 
 Both the `xezar` and `xez` commands are installed, so once it's on your PATH you
@@ -207,11 +207,11 @@ event live and parks the run at a review gate when there's a diff to inspect.
         │                                 └───────────────────────────────┘
         │  agent text · tool calls · tool results · tokens · cost
         ▼
-   ┌─────────────┐   SSE (replay + live)   ┌──────────────────────────┐
-   │ .ai/xezar/  │ ──────────────────────► │  cockpit  localhost:4321 │
-   │ JSON·NDJSON │                         │  Tasks · Git · GitHub ·  │
-   │ ·Markdown   │                         │  Skills · Workflows      │
-   └─────────────┘                         └──────────────────────────┘
+   ┌──────────────┐  SSE (replay + live)   ┌──────────────────────────┐
+   │ .local/xezar/│ ─────────────────────► │  cockpit  localhost:4321 │
+   │ JSON·NDJSON  │                        │  Tasks · Git · GitHub ·  │
+   │ ·Markdown    │                        │  Skills · Workflows      │
+   └──────────────┘                        └──────────────────────────┘
                                                   │
                                           review gate: read the diff →
                                           send notes back · draft PR · finish
@@ -234,7 +234,7 @@ Three words, no jargon — **task**, **skill**, **chain**:
   the agent gets each one as a real file on disk), or send follow-up messages into
   the live session while it works.
 - 📖 **Skills** are Markdown playbooks. Drop them in `.ai/skills/` or
-  `.ai/xezar/skills/`, or pull them from a shared **team skills repo** (a bare
+  `.xezar/skills/`, or pull them from a shared **team skills repo** (a bare
   git clone cached globally in `~/.cache/xez/`). A workflow step references one by
   `skill: <name>` and its body becomes the agent's extra system prompt — so you
   shape *how* the agent reasons without touching code.
@@ -308,7 +308,7 @@ it in. Each repo xezar boots in registers itself in a per-user registry at
 `~/.xezar/config.json` — the workspace file that also holds the global knobs
 (the parallel cap, the memory ceiling, the browse root, and the checkout root). Nothing is added to
 the repo: per-project state stays exactly where it was, in that repo's
-`.ai/xezar/`.
+`.local/xezar/`.
 
 Every view is project-scoped:
 
@@ -332,7 +332,7 @@ and task list — and the new-task composer names the project it will run in.
   partial directory removed.
 
 Removing a project (**Settings → Projects**) drops the registry entry only — the
-repo and its `.ai/xezar/` are never touched, so re-adding it later finds all its
+repo and its `.local/xezar/` are never touched, so re-adding it later finds all its
 tasks intact. The project xezar is currently serving can't be removed: it
 re-registers itself at the next start.
 
@@ -429,7 +429,9 @@ segment.
 
 ## Workflow format
 
-A workflow is a small YAML file in `.ai/xezar/workflows/`:
+See [project layout and legacy migration](docs/project-layout.md) for directory precedence and the offline migration command.
+
+A workflow is a small YAML file in `.xezar/workflows/`:
 
 ```yaml
 name: fix-and-verify
@@ -438,7 +440,7 @@ steps:
   - id: implement
     name: Implement
     prompt: "{{task}}"
-    skill: project-conventions   # optional — from .ai/skills or .ai/xezar/skills
+    skill: project-conventions   # optional — from .ai/skills or .xezar/skills
     # model: opus                # optional per-step model override
     # runner: codex              # optional per-step backend: claude · codex · opencode · pi
     # allowedTools: [Read, Edit, Write, Grep, Glob, Bash]
@@ -484,7 +486,7 @@ Useful environment variables:
 | Var | Effect |
 |---|---|
 | `XEZ_DRY_RUN=1` | Use the bundled mock instead of the real `claude` CLI — the entire cockpit works offline, for demos and development. |
-| `XEZ_AGENT_MODELS_LOCKED=1` | Globally lock each runner to the model configured in its native Claude/Codex/OpenCode settings while keeping runner selection available. Exact `1` also delegates authentication and provider enablement to those native agents, so Xezar skips its credential probes and provider-disable preferences. Existing Xezar presets are preserved but ignored, and an environment change requires a restart. The config-file equivalent is `"modelsLocked": true` in global `~/.xezar/config.json` or one repository's `.ai/xezar/config.json`; config-file locks do not disable provider checks. |
+| `XEZ_AGENT_MODELS_LOCKED=1` | Globally lock each runner to the model configured in its native Claude/Codex/OpenCode settings while keeping runner selection available. Exact `1` also delegates authentication and provider enablement to those native agents, so Xezar skips its credential probes and provider-disable preferences. Existing Xezar presets are preserved but ignored, and an environment change requires a restart. The config-file equivalent is `"modelsLocked": true` in global `~/.xezar/config.json` or one repository's `.xezar/config.json`; config-file locks do not disable provider checks. |
 | `XEZ_APPROVAL_GATE=1` | Opt into Claude's interactive approval UI; by default, unapproved tools are denied without interrupting the run. |
 | `XEZ_FOLLOWUPS=1` | Turn on the global follow-up **Inbox**: agents are asked to leave follow-ups in `todos.json` when they finish, and the Inbox view appears. Off by default — each task's own **Notes** handoff journal runs either way. |
 | `XEZ_AUTOMATIONS=1` | Turn on **GitHub automations**: the Automations view appears and xezar polls GitHub on each enabled automation's interval, launching tasks from what it finds. Off by default, and only the exact value `1` enables it — without it nothing polls GitHub, the automations endpoints answer `409`, and the nav item is absent. Read at boot, so restart after changing it; definitions, receipts and high-watermarks are retained, so unsetting it and restarting restores the feature without migration or data loss. |
@@ -508,7 +510,7 @@ Useful environment variables:
 | `GITHUB_TOKEN` | Fallback for GitHub reads/PRs when `gh` isn't authenticated. |
 | `XEZ_ENV_PASSTHROUGH=A,B` | Forward these extra host env vars to spawned agents. By default agents get a least-privilege env (safe shell/toolchain vars + the backend's own auth + `GITHUB_TOKEN` + `XEZ_*`), not your full environment — use this to add a var an agent needs. |
 | `XEZ_AGENT_ENV_FULL=1` | Escape hatch: give spawned agents the full host environment (pre-hardening behavior). Off by default; only set it if you understand that this hands every host secret to the agent process. |
-| `XEZ_AGENT_TMPDIR=0` | Stop giving each task its own temp directory and hand agents the host `TMPDIR` again (pre-#785 behavior). On by default: every run gets `TMPDIR`/`TEMP`/`TMP` pointing at `.ai/xezar/tmp/<task-id>`, created and write-probed before the agent spawns and reaped when the run ends, so concurrent tasks stop sharing one directory and a task refuses to start rather than run against a temp directory that silently swallows its shell output (see Troubleshooting below). Only an exact `0` disables it, and it disables the whole thing — the pre-spawn check included, so this stays an escape hatch you can actually take. |
+| `XEZ_AGENT_TMPDIR=0` | Stop giving each task its own temp directory and hand agents the host `TMPDIR` again (pre-#785 behavior). On by default: every run gets `TMPDIR`/`TEMP`/`TMP` pointing at `.local/xezar/tmp/<task-id>`, created and write-probed before the agent spawns and reaped when the run ends, so concurrent tasks stop sharing one directory and a task refuses to start rather than run against a temp directory that silently swallows its shell output (see Troubleshooting below). Only an exact `0` disables it, and it disables the whole thing — the pre-spawn check included, so this stays an escape hatch you can actually take. |
 | `XEZ_REDACT_SECRETS=0` | Disable scrubbing of credential values/token shapes from the on-disk state (the NDJSON transcript and the free-text fields of `runs.json`). On by default; leave it on. Best-effort defense-in-depth, not a guarantee: it catches known token shapes and the values of your own secret-named env vars, so a credential in neither category can still get through. |
 | `XEZ_TITLE_UPDATES=0` | Turn off the live task-title refresh (namer re-runs on each turn end). The Settings → Agents toggle overrides this default. |
 | `XEZ_AUTONAME=0` | Disable ALL LLM task naming (creation + live) — titles stay heuristic (`437: /om-auto-review-pr`). Under `XEZ_DRY_RUN=1` naming is already off unless forced with `XEZ_AUTONAME=1`. |
@@ -537,7 +539,7 @@ Under quota the file is *created* and the write then fails, so the backend reads
 back a zero-byte capture file and hands the agent an empty result.
 
 **Fix.** Since #785 xezar gives each task its own `TMPDIR` under
-`.ai/xezar/tmp/<task-id>` and write-probes it before spawning, so a broken temp
+`.local/xezar/tmp/<task-id>` and write-probes it before spawning, so a broken temp
 directory fails the task with `agent temp directory is not writable: …` on the
 task thread instead of corrupting its work. If you see that error, free space on
 the disk holding the repo. `XEZ_AGENT_TMPDIR=0` turns the whole mechanism off —
@@ -583,7 +585,7 @@ pinned by hand stays selectable even when it is no longer advertised.
 
 **Pick a backend at three levels** (most specific wins):
 
-1. **Config default** — `"defaultRunner": "codex"` in `.ai/xezar/config.json`.
+1. **Config default** — `"defaultRunner": "codex"` in `.xezar/config.json`.
 2. **Per task** — the backend picker next to the task box in the cockpit.
 3. **Per workflow step** — `runner:` on any step in the YAML.
 
@@ -666,7 +668,7 @@ works and how to redeploy new versions.
 ## Configuration (optional)
 
 Zero config is the default — everything below is opt-in via
-`.ai/xezar/config.json` (a missing or invalid file simply uses the defaults, and
+`.xezar/config.json` (a missing or invalid file simply uses the defaults, and
 never blocks startup):
 
 ```jsonc
@@ -701,7 +703,7 @@ Settings that belong to *you* rather than to a repo — the parallel cap
 root — live once in `~/.xezar/config.json`, alongside the
 [project registry](#multiple-projects-one-cockpit), and are edited from
 **Settings → Resources** and **Settings → Projects**. A `maxParallel` left over
-in a repo's `.ai/xezar/config.json` is imported into the workspace file the
+in a repo's `.xezar/config.json` is imported into the workspace file the
 first time xezar boots there, and ignored afterwards.
 
 ### Editing the agents' own config (Settings → Agent config)

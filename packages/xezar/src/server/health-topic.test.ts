@@ -41,7 +41,7 @@ describe('health topic + cache (live-server path)', () => {
 
   beforeEach(() => {
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-health-topic-'));
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     // Keeps the CLI/forge probes off the network so the payload is deterministic.
     process.env.XEZ_DRY_RUN = '1';
     // Health's `repoRoot` is trimmed in hosted mode, so an ambient XEZ_REMOTE on the dev box
@@ -71,11 +71,12 @@ describe('health topic + cache (live-server path)', () => {
     vi.restoreAllMocks();
   });
 
-  /** `defaultRunner` comes from `.ai/xezar/config.json`, so writing it is a cheap way to
+  /** `defaultRunner` comes from `.xezar/config.json`, so writing it is a cheap way to
    *  change what a fresh snapshot would say without touching git or the CLI probes. */
   const setRunner = (runner: string): void => {
-    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
-    writeFileSync(join(repoRoot, '.ai/xezar/config.json'), JSON.stringify({ defaultRunner: runner }));
+    mkdirSync(join(repoRoot, '.local/xezar'), { recursive: true });
+    mkdirSync(join(repoRoot, '.xezar'), { recursive: true });
+    writeFileSync(join(repoRoot, '.xezar/config.json'), JSON.stringify({ defaultRunner: runner }));
   };
 
   const build = () => {

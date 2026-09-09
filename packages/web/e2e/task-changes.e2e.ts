@@ -27,7 +27,7 @@ import { AgentBrowser, bootProjectId, xezarCli, fixtureServeEnv, removeDataRoot,
  * auth; the policy rules are pinned in git-actions.test.ts).
  */
 
-const artifactsDir = resolve(import.meta.dirname, '../../../.ai/qa/artifacts_e2e')
+const artifactsDir = resolve(import.meta.dirname, '../../../.local/qa/artifacts_e2e')
 const sessionId = `e2e-changes-${process.pid}`
 
 function freePort(): Promise<number> {

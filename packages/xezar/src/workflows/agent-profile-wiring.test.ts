@@ -36,7 +36,7 @@ describe('RunManager agent-profile resolution', () => {
     home = mkdtempSync(join(realpathSync(tmpdir()), 'xez-profile-wiring-home-'));
     repoRoot = mkdtempSync(join(realpathSync(tmpdir()), 'xez-profile-wiring-repo-'));
     process.env.XEZ_HOME = home;
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     manager = new RunManager(store, repoRoot);
     await registerProject(repoRoot);
   });

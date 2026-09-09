@@ -25,8 +25,8 @@ describe('workspace skills update API', () => {
     process.env.XEZ_HOME = home;
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-skills-update-repo-'));
     missingRoot = join(home, 'gone');
-    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    mkdirSync(join(repoRoot, '.local/xezar'), { recursive: true });
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     await mergeWriteWorkspaceConfig((config) => {
       config.projects = [
         { id: 'repo', name: 'Repo', root: repoRoot, addedAt: '', lastOpenedAt: '', source: 'local' },

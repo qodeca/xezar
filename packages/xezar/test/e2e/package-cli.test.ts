@@ -87,7 +87,7 @@ test('the release tarball installs and runs the dry-run CLI workflow', { timeout
     });
     assert.match(run.stdout, /run (done|review)/);
 
-    const runs = JSON.parse(await readFile(join(fixtureRepo, '.ai', 'xezar', 'runs.json'), 'utf8')) as Array<{
+    const runs = JSON.parse(await readFile(join(fixtureRepo, '.local', 'xezar', 'runs.json'), 'utf8')) as Array<{
       status: string;
     }>;
     assert.equal(runs.length, 1);
@@ -123,7 +123,7 @@ test('the release tarball installs and runs the dry-run CLI workflow', { timeout
       'headless run must honor the global provider preference',
     );
     const runsAfterDisabledAttempt = JSON.parse(
-      await readFile(join(fixtureRepo, '.ai', 'xezar', 'runs.json'), 'utf8'),
+      await readFile(join(fixtureRepo, '.local', 'xezar', 'runs.json'), 'utf8'),
     ) as Array<{ status: string }>;
     assert.equal(runsAfterDisabledAttempt.length, 1, 'a disabled provider must not create a run');
     workspace.disabledProviders = [];
@@ -158,13 +158,13 @@ if (args.join(' ') === 'auth status --json') {
       },
     ).catch(() => undefined);
     const runsAfterAuthFailure = JSON.parse(
-      await readFile(join(fixtureRepo, '.ai', 'xezar', 'runs.json'), 'utf8'),
+      await readFile(join(fixtureRepo, '.local', 'xezar', 'runs.json'), 'utf8'),
     ) as Array<{ id: string }>;
     assert.equal(runsAfterAuthFailure.length, 2, 'the runtime-auth fixture creates exactly one run');
     const authFailureRun = runsAfterAuthFailure.at(0);
     assert.ok(authFailureRun, 'the auth-failure fixture creates a run');
     const authFailureEvents = (await readFile(
-      join(fixtureRepo, '.ai', 'xezar', 'runs', `${authFailureRun.id}.ndjson`),
+      join(fixtureRepo, '.local', 'xezar', 'runs', `${authFailureRun.id}.ndjson`),
       'utf8',
     )).trim().split('\n').map((line) => JSON.parse(line) as Record<string, unknown>);
     assert.ok(

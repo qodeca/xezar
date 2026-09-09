@@ -63,11 +63,12 @@ describe('project-route alias parity (unprefixed vs /api/v1/p/<boot> vs /api/v1/
     // `skillsRepos: []` disables team skills — no background clone can warm a
     // cache between the first and third spelling of the /skills sweep.
     for (const root of [repoRoot, otherRoot]) {
-      mkdirSync(join(root, '.ai/xezar'), { recursive: true });
-      writeFileSync(join(root, '.ai/xezar', 'config.json'), '{"skillsRepos": []}\n', 'utf8');
+      mkdirSync(join(root, '.local/xezar'), { recursive: true });
+      mkdirSync(join(root, '.xezar'), { recursive: true });
+      writeFileSync(join(root, '.xezar', 'config.json'), '{"skillsRepos": []}\n', 'utf8');
     }
     clearProjectProbeCache();
-    store = RunStore.open(join(repoRoot, '.ai/xezar'), { keepLive: true });
+    store = RunStore.open(join(repoRoot, '.local/xezar'), { keepLive: true });
     runId = store.createRun({
       title: 'parity',
       workflow: 'quick-task',

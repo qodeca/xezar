@@ -34,7 +34,7 @@ function teamSkill(name: string, repo: string): Skill {
 }
 
 function localSkill(name: string): Skill {
-  return { name, body: `${name} body`, path: `/repo/.ai/xezar/skills/${name}.md`, source: 'xezar' };
+  return { name, body: `${name} body`, path: `/repo/.xezar/skills/${name}.md`, source: 'xezar' };
 }
 
 describe('readImportedSkills', () => {
@@ -105,7 +105,7 @@ describe('discoverSkills local entrypoints', () => {
   it('recognizes only scalar true as the interactive composer hint', async () => {
     const repoRoot = await mkdtemp(join(tmpdir(), 'xezar-skills-'));
     tempDirs.push(repoRoot);
-    const skillsDir = join(repoRoot, '.ai/xezar/skills');
+    const skillsDir = join(repoRoot, '.xezar/skills');
     await mkdir(skillsDir, { recursive: true });
     await writeFile(join(skillsDir, 'true.md'), '---\r\ninteractive: "true"\r\n---\r\nBody');
     await writeFile(join(skillsDir, 'false.md'), '---\ninteractive: false\n---\nBody');
@@ -126,7 +126,7 @@ describe('discoverSkills local entrypoints', () => {
   it('keeps flat and SKILL.md skills while excluding nested reference files', async () => {
     const repoRoot = await mkdtemp(join(tmpdir(), 'xezar-skills-'));
     tempDirs.push(repoRoot);
-    const skillsDir = join(repoRoot, '.ai/xezar/skills');
+    const skillsDir = join(repoRoot, '.xezar/skills');
     await mkdir(join(skillsDir, 'om-example/references'), { recursive: true });
     await mkdir(join(skillsDir, 'legacy/nested'), { recursive: true });
     await writeFile(join(skillsDir, 'flat.md'), '# Flat skill');

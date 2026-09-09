@@ -72,7 +72,7 @@ describe('workspace projects API', () => {
     repoRoot = mkdtempSync(join(realpathSync(tmpdir()), 'xez-projects-boot-'));
     otherRoot = mkdtempSync(join(realpathSync(tmpdir()), 'xez-projects-other-'));
     process.env.XEZ_HOME = home; // paths.ts sends all workspace paths here
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     delete process.env.XEZ_REMOTE;
     delete process.env.XEZ_FOLLOWUPS;
     delete process.env.XEZ_SINGLE_PROJECT;
@@ -480,10 +480,10 @@ describe('workspace projects API', () => {
       // A realistic project: source, git metadata, and its own xezar state — the three things a
       // user would be devastated to lose behind a button labelled "Remove".
       mkdirSync(join(otherRoot, '.git'), { recursive: true });
-      mkdirSync(join(otherRoot, '.ai/xezar/runs'), { recursive: true });
+      mkdirSync(join(otherRoot, '.local/xezar/runs'), { recursive: true });
       writeFileSync(join(otherRoot, 'README.md'), '# keep me\n', 'utf8');
       writeFileSync(join(otherRoot, '.git/HEAD'), 'ref: refs/heads/main\n', 'utf8');
-      writeFileSync(join(otherRoot, '.ai/xezar/runs.json'), '[]\n', 'utf8');
+      writeFileSync(join(otherRoot, '.local/xezar/runs.json'), '[]\n', 'utf8');
       clearProjectProbeCache();
       const other = await registerProject(otherRoot);
       const before = snapshot(otherRoot);

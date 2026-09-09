@@ -21,7 +21,7 @@ describe('PATCH /api/v1/runs/:id', () => {
 
   beforeEach(() => {
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-patch-'));
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     app = createApp({
       repoRoot,
       store,

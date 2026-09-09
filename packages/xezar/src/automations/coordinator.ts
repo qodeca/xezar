@@ -1,3 +1,4 @@
+import { projectDataDir } from '../project-data-paths.ts';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { AutomationStore } from './store.ts';
@@ -42,7 +43,7 @@ export class AutomationCoordinator {
         continue;
       }
       this.roots.set(project.id, project.root);
-      const definitions = join(project.root, '.ai/xezar/automations.json');
+      const definitions = join(projectDataDir(project.root), 'automations.json');
       if (existsSync(definitions)) this.store(project.id, project.root);
     }
   }
@@ -52,7 +53,7 @@ export class AutomationCoordinator {
     if (existing) return existing;
     const projectRoot = root ?? this.roots.get(projectId);
     if (!projectRoot) return undefined;
-    const store = AutomationStore.open(join(projectRoot, '.ai/xezar'), { warn: this.options.warn });
+    const store = AutomationStore.open(projectDataDir(projectRoot), { warn: this.options.warn });
     this.stores.set(projectId, store);
     this.roots.set(projectId, projectRoot);
     return store;

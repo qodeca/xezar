@@ -19,7 +19,7 @@
  *
  * Multi-project (spec, step 3.6): a generated launcher now names the project it was generated
  * from — `<origin>/p/<projectId>/new?…` — carrying that project's own launch key (each repo
- * keeps its own `.ai/xezar/launch-key`; the scoped API client already fetches the right one).
+ * keeps its own `.local/xezar/launch-key`; the scoped API client already fetches the right one).
  * Only the PATH gained a prefix: the query grammar after `?` is byte-identical, and already
  * saved flat `/new?…` bookmarklets keep landing because the cockpit permanently redirects
  * legacy paths onto the boot project's scoped twin (routes.tsx `LegacyPathRedirect`). Passing

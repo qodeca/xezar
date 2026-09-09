@@ -309,7 +309,7 @@ describe('POST /api/v1/projects/checkout', () => {
     process.env.XEZ_DRY_RUN = '1';
     delete process.env.XEZ_PROJECTS_DIR;
     delete process.env.XEZ_REMOTE;
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     clearProjectProbeCache();
   });
 

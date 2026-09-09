@@ -38,7 +38,7 @@ describe('POST /api/v1/open-in — the project folder in a local app', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-openproject-'));
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     delete process.env.XEZ_REMOTE;
   });
 

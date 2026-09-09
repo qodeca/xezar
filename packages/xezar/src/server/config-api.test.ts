@@ -36,9 +36,9 @@ describe('the config API', () => {
     process.env.CODEX_HOME = join(homeRoot, '.codex');
     process.env.XDG_CONFIG_HOME = join(homeRoot, '.config');
     delete process.env.XEZ_AGENT_MODELS_LOCKED;
-    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
+    mkdirSync(join(repoRoot, '.xezar'), { recursive: true });
     mkdirSync(join(homeRoot, '.xezar'), { recursive: true });
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     // The config routes never touch the manager — an empty stub is honest.
     app = createApp({ repoRoot, store, manager: {} as RunManager, version: '0.0.0-test' });
   });
@@ -59,7 +59,7 @@ describe('the config API', () => {
     else process.env.XEZ_AGENT_MODELS_LOCKED = savedModelsLocked;
   });
 
-  const configPath = () => join(repoRoot, '.ai/xezar', 'config.json');
+  const configPath = () => join(repoRoot, '.xezar', 'config.json');
   const rawFile = () => JSON.parse(readFileSync(configPath(), 'utf8')) as Record<string, unknown>;
 
   const get = () => apiRequest(app, '/api/v1/config');
@@ -248,8 +248,8 @@ describe('liveTitleUpdates round-trip (task auto-naming spec)', () => {
 
   beforeEach(() => {
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-configapi-title-'));
-    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    mkdirSync(join(repoRoot, '.xezar'), { recursive: true });
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     app = createApp({ repoRoot, store, manager: {} as RunManager, version: '0.0.0-test' });
   });
 
@@ -265,7 +265,7 @@ describe('liveTitleUpdates round-trip (task auto-naming spec)', () => {
       body: JSON.stringify(body),
     });
   const rawFile = () =>
-    JSON.parse(readFileSync(join(repoRoot, '.ai/xezar', 'config.json'), 'utf8')) as Record<string, unknown>;
+    JSON.parse(readFileSync(join(repoRoot, '.xezar', 'config.json'), 'utf8')) as Record<string, unknown>;
 
   it('sets, answers and clears the key (null → env default decides)', async () => {
     const off = (await (await put({ liveTitleUpdates: false })).json()) as Record<string, unknown>;
@@ -285,8 +285,8 @@ describe('reviewGate round-trip (optional review gate, #489)', () => {
 
   beforeEach(() => {
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-configapi-gate-'));
-    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    mkdirSync(join(repoRoot, '.xezar'), { recursive: true });
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     app = createApp({ repoRoot, store, manager: {} as RunManager, version: '0.0.0-test' });
   });
 
@@ -302,7 +302,7 @@ describe('reviewGate round-trip (optional review gate, #489)', () => {
       body: JSON.stringify(body),
     });
   const rawFile = () =>
-    JSON.parse(readFileSync(join(repoRoot, '.ai/xezar', 'config.json'), 'utf8')) as Record<string, unknown>;
+    JSON.parse(readFileSync(join(repoRoot, '.xezar', 'config.json'), 'utf8')) as Record<string, unknown>;
 
   it('GET exposes reviewGate; PUT true/false/null round-trips and clears the raw key', async () => {
     // Default (no config key) is null — the XEZ_REVIEW_GATE env (OFF) decides.

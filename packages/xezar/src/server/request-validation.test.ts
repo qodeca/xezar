@@ -27,7 +27,7 @@ describe('request validation bounds (#429)', () => {
   beforeEach(() => {
     delete process.env.XEZ_REMOTE;
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-reqval-'));
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     captured = undefined;
     continueText = undefined;
     const manager = {
@@ -198,7 +198,7 @@ describe('request validation bounds (#429)', () => {
     expect(res.status).toBe(200);
     const merged = (await res.json()) as Record<string, unknown>;
     expect(merged.someFuturePref).toBe('keep-me');
-    const onDisk = JSON.parse(readFileSync(join(repoRoot, '.ai/xezar/ui-state.json'), 'utf8'));
+    const onDisk = JSON.parse(readFileSync(join(repoRoot, '.local/xezar/ui-state.json'), 'utf8'));
     expect(onDisk.someFuturePref).toBe('keep-me');
   });
 

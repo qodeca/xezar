@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Hono } from 'hono';
@@ -24,7 +24,7 @@ describe('POST /api/v1/runs systemPrompt', () => {
 
   beforeEach(() => {
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-startrun-'));
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     captured = undefined;
     // #471: these assertions are about systemPrompt, so pin the inbox on and
     // let the dedicated suite below own the gate's behavior.
@@ -112,8 +112,9 @@ describe('POST /api/v1/runs systemPrompt', () => {
   });
 
   it('rejects a model override from repository lock config but still accepts a runner choice', async () => {
+    mkdirSync(join(repoRoot, '.xezar'), { recursive: true });
     writeFileSync(
-      join(repoRoot, '.ai', 'xezar', 'config.json'),
+      join(repoRoot, '.xezar', 'config.json'),
       JSON.stringify({ modelsLocked: true }),
       'utf8',
     );
@@ -145,7 +146,7 @@ describe('POST /api/v1/runs generateFollowups — the XEZ_FOLLOWUPS ceiling (#47
 
   beforeEach(() => {
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-startrun-followups-'));
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     captured = undefined;
     const manager = {
       startRun: (_workflow: WorkflowDef, input: StartRunInput) => {

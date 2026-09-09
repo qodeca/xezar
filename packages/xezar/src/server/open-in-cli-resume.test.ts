@@ -76,7 +76,7 @@ describe('POST /api/v1/runs/:id/open-in — agent CLI resume vs fresh launch', (
     // developer's real workspace and its answers would depend on who ran it.
     home = mkdtempSync(join(realpathSync(tmpdir()), 'xez-open-in-cli-home-'));
     process.env.XEZ_HOME = home;
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     delete process.env.XEZ_REMOTE;
     mockOpenInTerminal.mockClear();
   });

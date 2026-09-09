@@ -1,3 +1,4 @@
+import { projectDataDir } from './project-data-paths.ts';
 import { execFile } from 'node:child_process';
 import { existsSync, realpathSync, type Dirent } from 'node:fs';
 import { readdir, readFile, rm, stat } from 'node:fs/promises';
@@ -7,15 +8,15 @@ import { isSafeGitRef } from './git-refs.ts';
 
 /**
  * Git worktree per task (spec 006). Each run gets its own branch
- * `xez/<id8>` checked out into `.ai/xezar/worktrees/<runId>` so agents never
+ * `xez/<id8>` checked out into `.local/xezar/worktrees/<runId>` so agents never
  * touch the user's working tree. Pattern ported from github-janitor's
  * `git.ts` (createWorktree / autosaveCommit), minus the bare clone — we're
  * already inside a working copy. Everything degrades: helpers never throw
  * except `createWorktree`, whose failure the caller turns into a note.
  */
 
-/** Repo-relative home of all task worktrees (gitignored via .ai/xezar/.gitignore). */
-export const WORKTREES_DIR = '.ai/xezar/worktrees';
+/** Repo-relative home of all task worktrees (gitignored via .local/.gitignore). */
+export const WORKTREES_DIR = '.local/xezar/worktrees';
 
 const DIFF_CAP = 400_000;
 
@@ -81,7 +82,7 @@ export async function resolveBaseRef(repoRoot: string, base: string): Promise<st
 }
 
 export function worktreePathFor(repoRoot: string, runId: string): string {
-  return join(repoRoot, WORKTREES_DIR, runId);
+  return join(projectDataDir(repoRoot), 'worktrees', runId);
 }
 
 export interface WorktreeInfo {
@@ -150,7 +151,7 @@ export async function createWorktree(
   // option-like value would be argument injection.
   if (!isSafeGitRef(base)) throw new Error(`refusing option-like base ref: ${base}`);
   const branch = branchFor(runId);
-  const absolutePath = join(canonicalPath(repoRoot), WORKTREES_DIR, runId);
+  const absolutePath = join(projectDataDir(canonicalPath(repoRoot)), 'worktrees', runId);
   const branchRef = `refs/heads/${branch}`;
 
   // A missing directory can leave stale administrative metadata behind.
@@ -566,7 +567,7 @@ export async function worktreeShortstat(
 
 /**
  * Startup reconcile: `git worktree prune` + remove every directory under
- * `.ai/xezar/worktrees/` whose run id is no longer in the store (and its
+ * `.local/xezar/worktrees/` whose run id is no longer in the store (and its
  * branch). Returns the removed run ids for the boot log. Never throws.
  */
 export async function pruneOrphans(
@@ -576,7 +577,7 @@ export async function pruneOrphans(
   await git(repoRoot, ['worktree', 'prune']);
   let entries: Dirent[];
   try {
-    entries = await readdir(join(repoRoot, WORKTREES_DIR), { withFileTypes: true });
+    entries = await readdir(join(projectDataDir(repoRoot), 'worktrees'), { withFileTypes: true });
   } catch {
     return []; // no worktrees dir yet
   }

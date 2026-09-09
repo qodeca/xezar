@@ -36,7 +36,7 @@ describe('agent profiles API', () => {
     delete process.env.XEZ_REMOTE;
     // Deterministic on any machine: no real agent CLIs are probed.
     process.env.XEZ_DRY_RUN = '1';
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     clearProjectProbeCache();
   });
 

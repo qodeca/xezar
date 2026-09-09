@@ -14,11 +14,11 @@ import { AgentBrowser, bootProjectId, readTestEnv } from './agent-browser'
  * Chrome would require a production-only lock file and network-backed `npx skills check`.
  */
 
-// QA evidence for this spec. `.ai/qa/artifacts_*/` is the gitignored artifact location the
+// QA evidence for this spec. `.local/qa/artifacts_*/` is the gitignored artifact location the
 // pipeline reserves (see `.gitignore`), so the screenshots stay out of the repository.
-const artifactsDir = resolve(import.meta.dirname, '../../../.ai/qa/artifacts_skills-update')
+const artifactsDir = resolve(import.meta.dirname, '../../../.local/qa/artifacts_skills-update')
 mkdirSync(artifactsDir, { recursive: true })
-const workspaceConfig = resolve(import.meta.dirname, '../../../.ai/qa/xez-home/config.json')
+const workspaceConfig = resolve(import.meta.dirname, '../../../.local/qa/xez-home/config.json')
 const sessionId = `e2e-skills-update-${process.pid}`
 const DESKTOP = { width: 1440, height: 900 }
 const IPHONE = { width: 390, height: 844 }

@@ -1,11 +1,12 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { projectKitDir } from './project-kit-paths.ts';
 import { z } from 'zod';
 import { loadWorkspaceConfig, type WorkspaceConfig } from './workspace/config.ts';
 import { RUNNER_IDS } from './core/agent-runner.ts';
 
 /**
- * Optional advanced config at `.ai/xezar/config.json`. Zero-config rule:
+ * Optional advanced config at `.xezar/config.json`. Zero-config rule:
  * a missing file behaves exactly like the default below, an unreadable or
  * invalid file degrades to the default too (never blocks startup). The key
  * can be overridden or emptied (`"skillsRepos": []` disables team skills).
@@ -138,7 +139,7 @@ function withMachineDefaults(raw: unknown, machine: WorkspaceConfig['agentDefaul
 }
 
 /**
- * Read `.ai/xezar/config.json` on demand — never cached, never throws.
+ * Read `.xezar/config.json` on demand — never cached, never throws.
  *
  * Also reads the machine-wide defaults, which is one more small JSON read and deliberately not
  * cached for the same reason this one is not: `~/.xezar/` is shared by every xezar process on the
@@ -148,7 +149,7 @@ export async function loadConfig(repoRoot: string): Promise<XezConfig> {
   const machine = (await loadWorkspaceConfig()).agentDefaults;
   let raw: string;
   try {
-    raw = await readFile(join(repoRoot, '.ai/xezar', 'config.json'), 'utf8');
+    raw = await readFile(join(projectKitDir(repoRoot), 'config.json'), 'utf8');
   } catch {
     return configSchema.parse(withMachineDefaults({}, machine));
   }
@@ -173,7 +174,7 @@ export async function loadConfig(repoRoot: string): Promise<XezConfig> {
 async function ownWorktreeRetention(repoRoot: string): Promise<number | undefined> {
   let raw: string;
   try {
-    raw = await readFile(join(repoRoot, '.ai/xezar', 'config.json'), 'utf8');
+    raw = await readFile(join(projectKitDir(repoRoot), 'config.json'), 'utf8');
   } catch {
     return undefined; // no file — nothing set
   }
@@ -206,7 +207,7 @@ export async function gatedSkillsRepos(repoRoot: string): Promise<Set<string>> {
   const none = new Set<string>();
   let raw: string;
   try {
-    raw = await readFile(join(repoRoot, '.ai/xezar', 'config.json'), 'utf8');
+    raw = await readFile(join(projectKitDir(repoRoot), 'config.json'), 'utf8');
   } catch {
     // No file — the defaults are in effect, so they are the opt-in set.
     return new Set(DEFAULT_SKILLS_REPOS.map((r) => r.repo));

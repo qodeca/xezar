@@ -43,7 +43,7 @@ describe('POST /api/v1/todos/:id/start', () => {
     // rather than inherited from whatever the dev box exports.
     process.env.XEZ_FOLLOWUPS = '1';
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-todos-start-'));
-    dataDir = join(repoRoot, '.ai/xezar');
+    dataDir = join(repoRoot, '.local/xezar');
     store = RunStore.open(dataDir);
     captured = undefined;
     const manager = {
@@ -244,8 +244,9 @@ describe('POST /api/v1/todos/:id/start', () => {
   });
 
   it('rejects a model override while locked but still permits choosing the runner', async () => {
+    mkdirSync(join(repoRoot, '.xezar'), { recursive: true });
     writeFileSync(
-      join(repoRoot, '.ai', 'xezar', 'config.json'),
+      join(repoRoot, '.xezar', 'config.json'),
       JSON.stringify({ modelsLocked: true }),
       'utf8',
     );

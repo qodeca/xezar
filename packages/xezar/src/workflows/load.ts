@@ -1,6 +1,7 @@
 import { readdir, readFile } from 'node:fs/promises';
-import { extname, join, resolve } from 'node:path';
+import { extname, join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
+import { projectKitDir } from '../project-kit-paths.ts';
 import {
   QUICK_TASK_WORKFLOW,
   normalizeWorkflowDoc,
@@ -9,7 +10,11 @@ import {
   type WorkflowDef,
 } from './types.ts';
 
-export const WORKFLOWS_DIR = '.ai/xezar/workflows';
+export const WORKFLOWS_DIR = '.xezar/workflows';
+
+export function projectWorkflowsDir(repoRoot: string): string {
+  return join(projectKitDir(repoRoot), 'workflows');
+}
 
 export interface WorkflowLoadIssue {
   path: string;
@@ -18,13 +23,13 @@ export interface WorkflowLoadIssue {
 
 /**
  * Load the workflow catalog: the built-in `quick-task` plus every
- * `.ai/xezar/workflows/*.{yaml,yml}` in the repo. File workflows win name
+ * `.xezar/workflows/*.{yaml,yml}` in the repo. File workflows win name
  * collisions with built-ins. Invalid files are reported, never fatal.
  */
 export async function loadWorkflows(
   repoRoot: string,
 ): Promise<{ workflows: WorkflowDef[]; issues: WorkflowLoadIssue[] }> {
-  const dir = resolve(repoRoot, WORKFLOWS_DIR);
+  const dir = projectWorkflowsDir(repoRoot);
   const issues: WorkflowLoadIssue[] = [];
   const fromFiles: WorkflowDef[] = [];
 

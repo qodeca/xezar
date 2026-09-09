@@ -135,7 +135,7 @@ describe('createWorktree recovery (real git)', () => {
   it('preserves an unregistered non-empty managed path instead of deleting it', async () => {
     const repo = await fixtureRepo('xez-worktree-preserve-');
     const runId = '33333333-3333-4333-8333-333333333333';
-    const path = join(repo, '.ai/xezar/worktrees', runId);
+    const path = join(repo, '.local/xezar/worktrees', runId);
     const marker = join(path, 'uncommitted.txt');
     mkdirSync(path, { recursive: true });
     writeFileSync(marker, 'do not delete\n');

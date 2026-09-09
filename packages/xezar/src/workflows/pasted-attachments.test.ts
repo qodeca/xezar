@@ -155,7 +155,7 @@ describe('attachment media types, extensions and blocks (#950)', () => {
 
 /**
  * End-to-end through the real engine with XEZ_DRY_RUN=1 (#357): a pasted
- * screenshot must land as a real file under `.ai/xezar/runs/<id>-images/`
+ * screenshot must land as a real file under `.local/xezar/runs/<id>-images/`
  * (named `pasted-<n>.<ext>`, never `screenshot-<n>.<ext>` — that prefix stays
  * reserved for the agent's own tool screenshots) and its absolute path must
  * reach the agent in the prompt/message text — verified via the mock's
@@ -172,7 +172,7 @@ describe('pasted screenshots materialize to disk and reach the agent as file pat
 
   beforeAll(async () => {
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-pasted-'));
-    dataDir = join(repoRoot, '.ai/xezar');
+    dataDir = join(repoRoot, '.local/xezar');
     argsFile = join(repoRoot, 'mock-args.ndjson');
     stdinFile = join(repoRoot, 'mock-stdin.ndjson');
     savedEnv.XEZ_DRY_RUN = process.env.XEZ_DRY_RUN;

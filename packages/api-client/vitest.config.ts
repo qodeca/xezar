@@ -1,3 +1,4 @@
+import '../../scripts/test-local-state.mjs'
 import { defineConfig } from 'vitest/config'
 
 // Node environment on purpose: nothing in the api-client may need a DOM to be tested, and a

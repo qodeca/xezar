@@ -9,7 +9,7 @@ import { AgentBrowser, bootProjectId, readTestEnv } from './agent-browser'
  * both), type to filter, Enter to go.
  */
 
-const artifactsDir = resolve(import.meta.dirname, '../../../.ai/qa/artifacts_e2e')
+const artifactsDir = resolve(import.meta.dirname, '../../../.local/qa/artifacts_e2e')
 const runId = `e2e-palette-${process.pid}`
 
 const ROOT = '[cmdk-root]'

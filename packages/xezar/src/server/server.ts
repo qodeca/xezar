@@ -1,3 +1,5 @@
+import { projectDataDir } from '../project-data-paths.ts';
+import { projectKitDir } from '../project-kit-paths.ts';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { AutomationStore } from '../automations/store.ts';
@@ -58,7 +60,7 @@ import {
 import { applyProviderEnablement } from '../core/provider-availability.ts';
 import { RunnerModelCatalog } from '../core/runner-model-catalog.ts';
 import { currentUsage, onUsage } from '../core/process-usage.ts';
-import { WORKFLOWS_DIR, loadWorkflows } from '../workflows/load.ts';
+import { projectWorkflowsDir, loadWorkflows } from '../workflows/load.ts';
 import {
   QUICK_TASK_WORKFLOW,
   normalizeWorkflowDoc,
@@ -639,7 +641,7 @@ const parseWorkflowSchema = z.object({
   yaml: z.string().min(1).max(100_000),
 });
 
-// Small GUI preferences persisted in `.ai/xezar/ui-state.json` (files, not a
+// Small GUI preferences persisted in `.local/xezar/ui-state.json` (files, not a
 // DB): today just the last-used task source, so the form preselects what you
 // actually run. Unknown keys pass through — future prefs won't need a schema
 // dance.
@@ -1041,7 +1043,7 @@ export function createApp(deps: ServerDeps) {
   // handler body would silently pin it to the boot project, which the rename
   // turns into a compile error instead.
   const bootRoot = deps.repoRoot;
-  const bootDataDir = join(bootRoot, '.ai/xezar');
+  const bootDataDir = deps.store.dataDir;
   const modelCatalog = deps.modelCatalog ?? new RunnerModelCatalog({
     adapters: {
       claude: { discover: () => discoverClaudeModels({ cwd: bootRoot }) },
@@ -1166,7 +1168,7 @@ export function createApp(deps: ServerDeps) {
   // The boot project's context is SEEDED from the deps the caller already
   // built (src/index.ts `serveCommand` did the recover/prune/launch-key work
   // at startup — observable boot behavior unchanged); it never enters the
-  // lazy map, so its `.ai/xezar` state is never double-opened. `id` starts as
+  // lazy map, so its `.local/xezar` state is never double-opened. `id` starts as
   // the reserved alias when registration was suppressed — handlers never read
   // it; API payloads name the boot project via `resolveBootProject` instead.
   const bootContext: ProjectContext = {
@@ -2679,7 +2681,7 @@ export function createApp(deps: ServerDeps) {
   // the per-row "Remove"). READ THIS BEFORE TOUCHING THE HANDLER: the ONLY
   // durable effect allowed here is dropping one entry from
   // `~/.xezar/config.json`. There is deliberately no `rm`, no `rmdir`, no
-  // `RunStore.open` (which would `mkdir` `<root>/.ai/xezar/runs` and therefore
+  // `RunStore.open` (which would `mkdir` `<root>/.local/xezar/runs` and therefore
   // WRITE into a folder the user just asked us to forget) anywhere below —
   // `removeProject` is a registry filter and `contexts.dispose` only tears down
   // in-process handles. Re-registering the same root later finds every task,
@@ -3076,7 +3078,7 @@ export function createApp(deps: ServerDeps) {
     .get('/workflows', async (c) => c.json(await loadWorkflows(c.get('project').root)))
 
     // Save an approved plan as a reusable chain (spec 008): YAML in
-    // `.ai/xezar/workflows/<slug>.yaml` — from then on it's in the dropdown
+    // `.xezar/workflows/<slug>.yaml` — from then on it's in the dropdown
     // like any other workflow.
     .post('/workflows', jsonZodValidator(saveWorkflowSchema), async (c) => {
       const { root: repoRoot } = c.get('project');
@@ -3085,7 +3087,7 @@ export function createApp(deps: ServerDeps) {
       const issue = stepsIssue(steps);
       if (issue) return c.json({ error: issue }, 400);
       const slug = slugify(parsed.data.name) || 'chain';
-      const dir = join(repoRoot, WORKFLOWS_DIR);
+      const dir = projectWorkflowsDir(repoRoot);
       const path = join(dir, `${slug}.yaml`);
       // Pure skill stacks are written in the portable compact form (spec 012) —
       // `name` + `skills:` — so the file imports cleanly in any repo.
@@ -3123,7 +3125,7 @@ export function createApp(deps: ServerDeps) {
       if (wf.source !== 'file' || !wf.path) {
         return c.json({ error: 'built-in workflows cannot be deleted' }, 400);
       }
-      const dir = resolve(repoRoot, WORKFLOWS_DIR);
+      const dir = resolve(projectWorkflowsDir(repoRoot));
       const target = resolve(wf.path);
       if (!target.startsWith(dir + sep)) {
         return c.json({ error: 'refusing to delete a file outside the workflows dir' }, 400);
@@ -5137,7 +5139,8 @@ export function createApp(deps: ServerDeps) {
     })
 
     .put('/config', jsonZodValidator(() => setConfigSchema), async (c) => {
-      const { root: repoRoot, dataDir } = c.get('project');
+      const { root: repoRoot } = c.get('project');
+      const dataDir = projectKitDir(repoRoot);
       const parsed = { data: c.req.valid('json') };
       if (agentModelsLocked(repoRoot) && parsed.data.defaultModels !== undefined) {
         return c.json({ error: AGENT_MODELS_LOCKED_ERROR }, 409);
@@ -5441,7 +5444,7 @@ export function createApp(deps: ServerDeps) {
       // lazy `/github/ref-status` route fills it in.
       const referenceStatuses: RunsIndexResponse['referenceStatuses'] = {};
       for (const project of projects) {
-        // No folder, no runs to read. `not-git` still has an `.ai/xezar` worth indexing.
+        // No folder, no runs to read. `not-git` still has an `.local/xezar` worth indexing.
         if (project.status === 'missing') continue;
         const owned = project.id === bootId ? bootContext : contexts.peek(project.id);
         // `listRuns()` already sorts newest-first; the disk reader returns file order, so both
@@ -5452,7 +5455,7 @@ export function createApp(deps: ServerDeps) {
         // is findable while you stand in its project and vanishes the moment you leave — the
         // exact asymmetry a cross-project finder exists to remove.
         const recent = (
-          owned ? owned.store.listRuns() : readRunIndexFromDisk(join(project.root, '.ai/xezar'))
+          owned ? owned.store.listRuns() : readRunIndexFromDisk(projectDataDir(project.root))
         ).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
         if (recent.length > RUNS_INDEX_PER_PROJECT) truncated.push(project.id);
         const mentioned: number[] = [];

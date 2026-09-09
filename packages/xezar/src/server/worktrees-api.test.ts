@@ -37,8 +37,8 @@ describe('the worktrees API', () => {
     writeFileSync(join(repoRoot, 'base.txt'), 'base\n');
     await run('git', ['add', '-A'], { cwd: repoRoot });
     await run('git', [...GIT_ID, 'commit', '-q', '-m', 'base'], { cwd: repoRoot });
-    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    mkdirSync(join(repoRoot, '.local/xezar'), { recursive: true });
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     app = createApp({ repoRoot, store, manager: {} as RunManager, version: '0.0.0-test' });
   });
 
@@ -100,7 +100,8 @@ describe('the worktrees API', () => {
   });
 
   it('reflects the configured keep-limit', async () => {
-    writeFileSync(join(repoRoot, '.ai/xezar/config.json'), JSON.stringify({ worktreeRetention: 2 }), 'utf8');
+    mkdirSync(join(repoRoot, '.xezar'), { recursive: true });
+    writeFileSync(join(repoRoot, '.xezar/config.json'), JSON.stringify({ worktreeRetention: 2 }), 'utf8');
     expect((await getWorktrees()).keep).toBe(2);
   });
 
@@ -112,12 +113,14 @@ describe('the worktrees API', () => {
     );
     expect((await getWorktrees()).keep).toBe(4);
     // A repo that sets its own still wins — the workspace value only seeds.
-    writeFileSync(join(repoRoot, '.ai/xezar/config.json'), JSON.stringify({ worktreeRetention: 2 }), 'utf8');
+    mkdirSync(join(repoRoot, '.xezar'), { recursive: true });
+    writeFileSync(join(repoRoot, '.xezar/config.json'), JSON.stringify({ worktreeRetention: 2 }), 'utf8');
     expect((await getWorktrees()).keep).toBe(2);
   });
 
   it('POST /reclaim reclaims down to the limit and returns the reclaimed ids', async () => {
-    writeFileSync(join(repoRoot, '.ai/xezar/config.json'), JSON.stringify({ worktreeRetention: 1 }), 'utf8');
+    mkdirSync(join(repoRoot, '.xezar'), { recursive: true });
+    writeFileSync(join(repoRoot, '.xezar/config.json'), JSON.stringify({ worktreeRetention: 1 }), 'utf8');
     const oldId = await seed('44444444-4444-4444-8444-444444444444', 'done', '2026-07-01T00:00:00Z');
     await seed('55555555-5555-4555-8555-555555555555', 'done', '2026-07-09T00:00:00Z');
 

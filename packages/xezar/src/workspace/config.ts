@@ -130,7 +130,7 @@ const composerDefaultsSchema = z
 /**
  * What a repo that has said nothing runs (spec 2026-07-29-agent-profiles).
  *
- * The point is not to configure every checkout: a repo's own `.ai/xezar/config.json` still wins
+ * The point is not to configure every checkout: a repo's own `.xezar/config.json` still wins
  * key by key, and this is only consulted where that file is SILENT. Which is why every key here is
  * optional with no default — an absent `runner` has to stay distinguishable from one someone chose,
  * or "fall back to the machine default" collapses into "always claude".

@@ -14,10 +14,10 @@ let repoRoot: string;
 let printed: (string | undefined)[];
 const log = (line?: string) => void printed.push(line);
 
-/** Writes `.ai/xezar/ui-state.json` verbatim, so a malformed file can be tested too. */
+/** Writes `.local/xezar/ui-state.json` verbatim, so a malformed file can be tested too. */
 function writeUiState(raw: string): void {
-  mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
-  writeFileSync(join(repoRoot, '.ai/xezar', 'ui-state.json'), raw, 'utf8');
+  mkdirSync(join(repoRoot, '.local/xezar'), { recursive: true });
+  writeFileSync(join(repoRoot, '.local/xezar', 'ui-state.json'), raw, 'utf8');
 }
 
 beforeEach(() => {

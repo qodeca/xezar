@@ -25,7 +25,7 @@ import record from './fixtures/thread-run.record.json'
  *    viewport. Real-device keyboard behavior remains a manual checklist item.
  */
 
-const artifactsDir = resolve(import.meta.dirname, '../../../.ai/qa/artifacts_e2e')
+const artifactsDir = resolve(import.meta.dirname, '../../../.local/qa/artifacts_e2e')
 const sessionId = `e2e-thread-scroll-${process.pid}`
 
 const TURNS = 250
@@ -161,10 +161,10 @@ function openThread(query = '') {
 
 beforeAll(async () => {
   dataRoot = mkdtempSync(join(tmpdir(), 'xezar-e2e-thread-scroll-'))
-  mkdirSync(join(dataRoot, '.ai/xezar/runs'), { recursive: true })
-  writeFileSync(join(dataRoot, '.ai/xezar/runs.json'), JSON.stringify([RUN], null, 2), 'utf8')
+  mkdirSync(join(dataRoot, '.local/xezar/runs'), { recursive: true })
+  writeFileSync(join(dataRoot, '.local/xezar/runs.json'), JSON.stringify([RUN], null, 2), 'utf8')
   writeFileSync(
-    join(dataRoot, '.ai/xezar/runs', `${RUN_ID}.ndjson`),
+    join(dataRoot, '.local/xezar/runs', `${RUN_ID}.ndjson`),
     largeThreadEvents(TURNS)
       .map((line) => JSON.stringify(line))
       .join('\n') + '\n',

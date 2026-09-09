@@ -34,7 +34,7 @@ describe('inbox gate (#471)', () => {
 
   beforeEach(() => {
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-inbox-'));
-    dataDir = join(repoRoot, '.ai/xezar');
+    dataDir = join(repoRoot, '.local/xezar');
     store = RunStore.open(dataDir);
     mkdirSync(dataDir, { recursive: true });
     // A pre-existing entry: the gate must hide it, never delete it.

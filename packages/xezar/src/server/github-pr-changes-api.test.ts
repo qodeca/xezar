@@ -20,8 +20,8 @@ describe('the GitHub PR changes API', () => {
   });
   beforeEach(() => {
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-pr-changes-'));
-    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    mkdirSync(join(repoRoot, '.local/xezar'), { recursive: true });
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
   });
   afterEach(() => {
     store.flush();

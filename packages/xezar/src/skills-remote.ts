@@ -28,7 +28,7 @@ interface GitResult {
 
 /**
  * Hardening applied to *every* git invocation here (#428). The `repo`/`ref`
- * strings ultimately come from a file — `.ai/xezar/config.json` — that an
+ * strings ultimately come from a file — `.xezar/config.json` — that an
  * attacker might influence (a prompt-injected Write-only agent, a synced
  * config), so git must never be able to pick a remote-helper transport:
  *  - `protocol.ext.allow=never` / `fd.allow=never` kill the `ext::`/`fd::`
@@ -168,7 +168,7 @@ function warnUnsafeRemoteOnce(repo: string): void {
   console.warn(
     `[xez] ignoring skills repo ${JSON.stringify(repo)} — not an accepted source shape ` +
       `(owner/name, an https/http/ssh/git URL, git@host:path, or a local/file:// path). ` +
-      `Check "skillsRepos" in .ai/xezar/config.json.`,
+      `Check "skillsRepos" in .xezar/config.json.`,
   );
 }
 
@@ -250,7 +250,7 @@ interface SkillPathHit {
  * Match the janitor conventions plus our own:
  *  - `**\/SKILL.md`          → skill named after the parent directory (with references/)
  *  - `**\/commands/<n>.md`   → skill `<n>`
- *  - `.ai/skills/**\/*.md` or `.ai/xezar/skills/**\/*.md` → frontmatter/basename name
+ *  - `.ai/skills/**\/*.md` or `.xezar/skills/**\/*.md` (also legacy `.ai/xezar/skills`) → frontmatter/basename name
  */
 function matchSkillPath(line: string): SkillPathHit | null {
   if (line === 'SKILL.md' || line.endsWith('/SKILL.md')) {
@@ -261,7 +261,7 @@ function matchSkillPath(line: string): SkillPathHit | null {
   }
   const cmd = /(?:^|\/)commands\/([^/]+)\.md$/.exec(line);
   if (cmd) return { name: cmd[1] as string, kind: 'command' };
-  if (/(?:^|\/)\.ai\/(?:xezar\/)?skills\/.+\.md$/.test(line)) return { name: null, kind: 'markdown' };
+  if (/(?:^|\/)(?:\.xezar|\.ai(?:\/xezar)?)\/skills\/.+\.md$/.test(line)) return { name: null, kind: 'markdown' };
   return null;
 }
 
@@ -425,7 +425,7 @@ export function shouldPassiveFetch(opts: {
   return !opts.attempted || opts.now - opts.fetchedAt > opts.ttlMs;
 }
 // Both maps are keyed by `repoRoot` (multi-project workspace, step 2.6): each
-// project resolves its own `.ai/xezar/config.json` → `skillsRepos`, so one
+// project resolves its own `.xezar/config.json` → `skillsRepos`, so one
 // project's team-skill list must never be served under another project's scope.
 const teamSkillsByRoot = new Map<string, Skill[]>();
 const firstLoadByRoot = new Map<string, Promise<Skill[]>>();

@@ -1,0 +1,9 @@
+# Recovery, integration and root sync
+
+First read current task checkpoint/late steering and actual identity. resume-complete.sh --dry-run diagnoses remaining stages without effects (exit 2 means work remains); normal resume reuses only currently eligible evidence, otherwise runs needed gates/seal. Printing checkpoint pointers is not consuming them: the agent must read them. Do not replay an entire workflow or trust old green status. BLOCKED must stop normal readiness.
+
+Merge recovery: record intended operation with merge-recovery.sh before a separately authorized merge. Only a matching single merge may recover; ordinary worktree-git refuses resolved and unresolved merge markers. Never invent retrospective intent or automatic abort/reset. Mechanical recovery does not grant business authority or waive normal readiness. Read --help for exact arguments.
+
+Integration Mode A: named PR, main, exact head/base, existing authority record and current real policy/checks. integration-preflight.sh is read-only. Apply SDLC label/QA rules as well as hosting protections. Unknown API policy is not zero approvals; pending is not passed; already merged is reconciliation. Xezar uses squash merges per SDLC: verify the single parent/base and resulting content/commit, not a Daxko two-parent merge assumption. Verify CI at the resulting commit and remaining business scope.
+
+Root-sync Mode B is separate, Worktree OFF, actual engine root lock enabled, expected root/branch/head and fixed target, clean tree and fast-forward only. root-sync-preflight.sh cannot prove the manager lease: verify actual runtime ownership before mutation. A record or git -C from another worktree is not a lease. Finish promptly, release resource, record already-current no-op. Local fixtures do not prove live engine scheduling.

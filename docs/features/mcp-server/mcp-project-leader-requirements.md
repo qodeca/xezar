@@ -59,7 +59,7 @@ Excluded: managing multiple projects, their registry, other projects' tasks, glo
 | F-11 | The leader MUST hand work onward through existing UI operations: feedback, continuation, variants, next-stage tasks, commit/push/draft PR, and existing merge/publication. These are autonomous project capabilities; no new release engine is introduced. Optional runtime review status remains distinct from mandatory quality and business acceptance. |
 | F-12 | The leader MUST read/change project settings. Shared settings are read-only and reveal only needed effective capabilities/limits, without secrets, account identities, or other-project data. Global accounts, limits, and home files cannot be administered. The boundary is agreed; field mapping remains engineering work. |
 | F-13 | MCP effects MUST automatically update open UI without manual reload. UI reconciles current state on reconnect; significant human changes are emitted to the leader. One authoritative state and causal origins prevent echo loops. |
-| F-14 | Xezar MUST automatically write local connection configuration inside the bound project's `.ai/xezar/`. The user configures the leader application once to use it. Not all applications automatically discover that file. Its name, format, and creation trigger remain open. |
+| F-14 | Xezar MUST automatically write local connection configuration inside the bound project's `.local/xezar/`. The user configures the leader application once to use it. Not all applications automatically discover that file. Its name, format, and creation trigger remain open. |
 | F-15 | Connection data must not require pasting into chat. Any credentials remain local and outside Git; they must not enter history, tool responses, or event logs. |
 | F-16 | The server MUST reject global, foreign-project, expired-owner and otherwise invalid operations even when a client knows identifiers or tool names. Catalog filtering and prompt text do not replace enforcement. |
 | F-17 | Version one MUST run locally with client and Xezar on the same machine. Claude Code, Codex and OpenCode are required initial clients; validated adapters may be necessary for proactive reaction. Remote access is out of scope. |
@@ -138,7 +138,7 @@ Presentation-only changes, log lines and token counters do not trigger leader re
 
 ### S-01: connection and human collaboration
 
-1. Xezar creates local connection configuration for project A in its `.ai/xezar/`.
+1. Xezar creates local connection configuration for project A in its `.local/xezar/`.
 2. The user points the leader application at this connection once, following client-specific instructions. Connection data is not pasted into the conversation.
 3. The leader reads A's server-confirmed identity, configuration, and capabilities. It cannot switch to B.
 4. The leader chooses a workflow and starts a task; a human sees it in the UI, adds a requirement, and the leader reads that same change.
@@ -179,7 +179,7 @@ Shared fixture: projects A and B, separate tasks, groups, messages, workflows, f
 
 | ID / status | Given | When | Then / evidence | Traceability |
 | --- | --- | --- | --- | --- |
-| A-01 / O | Xezar runs for A; no local connection configuration exists. | Follow the agreed connection provisioning and one-time setup for every officially supported client. | Xezar writes configuration into A's `.ai/xezar/`. The client accesses A without manually authoring connection data or pasting it into chat. Instructions distinguish the one-time user step and do not assume autodiscovery. Evidence: each client setup and local-file inspection. | F-14–15; D-01, D-02, D-04 |
+| A-01 / O | Xezar runs for A; no local connection configuration exists. | Follow the agreed connection provisioning and one-time setup for every officially supported client. | Xezar writes configuration into A's `.local/xezar/`. The client accesses A without manually authoring connection data or pasting it into chat. Instructions distinguish the one-time user step and do not assume autodiscovery. Evidence: each client setup and local-file inspection. | F-14–15; D-01, D-02, D-04 |
 | A-02 / O | Connection bound to A; B contains identifiable resources. | Read A's identity, then supply B through a parameter, alias, or call content. | Legal A access works. No variation changes scope, reveals B, or acts on B. Server rejection also works with a custom client. | F-01–03, F-16; all M |
 | A-03 / O | Valid B IDs and mixed A/B resource lists are known. | Perform single/bulk reads and mutations, including B message inside A task, foreign run in a group, and B automation result ID. | Server validates every resource and relationship before access. B's data/state remain unchanged; no response reveals a foreign resource's existence. Partial-success policy for allowed items is explicit. | F-02, F-16, N-01; M-01, M-03–08, M-17–18 |
 | A-04 / O | A/B have distinct files/history; large lists and events exist. | Search, paginate, supply foreign cursors, absolute/`..`/symlink paths, and request workspace events. | Every returned item belongs to A and an authorized resource. No B content, names, metadata, or secrets appear in results, errors, or streams. Forbidden paths are rejected. | F-01–03, F-16, N-01; M-01, M-08, M-11, M-18 |
@@ -225,7 +225,7 @@ The feature is **complete across the entire agreed scope** only when all of the 
 | D-01 | Local transport, protocol negotiation, bridge and adapters | Local-only and all three initial clients are agreed. See compatibility report: stdio bridge plus client reaction adapters recommended; IPC/runtime tests remain design work. |
 | D-02 | Session binding, liveness, occupancy and handover | One logical owner/project, automatic release on confirmed death/expiry, no manual disconnect UI. Choose lease/fencing/timeout and restart behavior; old expired owner must reinitialize. |
 | D-03 | Shared/project field mapping | Product boundary settled: project writes, safe effective capability/limit reads only from global state. No global account/home-file/limit administration. Audit fields and implement enforcement. |
-| D-04 | Connection file and adapters | File remains local in project .ai/xezar; select format/name and one-time client setup, including real event-to-model integration. No universal autodiscovery. |
+| D-04 | Connection file and adapters | File remains local in project .local/xezar; select format/name and one-time client setup, including real event-to-model integration. No universal autodiscovery. |
 | D-05 | Async event and tool contract | Agreed significant-event catalog and no model polling; choose event IDs/order/replay/acknowledgements, negotiated features and adapters. |
 | D-06 | Version checks, durable operation keys, audit | Stale writes must be rejected and idempotency is mandatory. Specify exact keys, collision, restart, external-side-effect uncertainty and retention; not open product guarantees. |
 | D-07 | Existing merge/publication mapping | Settled: existing project UI actions autonomous, including delete/merge; no duplicated confirmation click. Preserve validation/quality and add no new release feature. |

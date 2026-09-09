@@ -80,7 +80,7 @@ describe('provider action gating', () => {
     process.env.XEZ_DRY_RUN = '1';
     process.env.XEZ_FOLLOWUPS = '1';
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-provider-action-gating-'));
-    dataDir = join(repoRoot, '.ai/xezar');
+    dataDir = join(repoRoot, '.local/xezar');
     store = RunStore.open(dataDir);
     startRun = vi.fn((_workflow: WorkflowDef, input: StartRunInput) => makeRun(input));
     sendMessage = vi.fn(() => true);
@@ -167,7 +167,8 @@ describe('provider action gating', () => {
 
   it('blocks planning when the configured default runner is disabled', async () => {
     mkdirSync(dataDir, { recursive: true });
-    writeFileSync(join(dataDir, 'config.json'), JSON.stringify({ defaultRunner: 'codex' }), 'utf8');
+    mkdirSync(join(repoRoot, '.xezar'), { recursive: true });
+    writeFileSync(join(repoRoot, '.xezar', 'config.json'), JSON.stringify({ defaultRunner: 'codex' }), 'utf8');
 
     const response = await apiRequest(app, '/api/v1/plan', {
       method: 'POST',
@@ -273,7 +274,7 @@ describe('the gate verifies before it refuses', () => {
     // be off or these would pass without exercising anything.
     delete process.env.XEZ_DRY_RUN;
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-gate-verify-'));
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     startRun = vi.fn((_workflow: WorkflowDef, input: StartRunInput) => store.createRun({
       title: 'Task',
       workflow: 'quick-task',
@@ -398,7 +399,7 @@ describe('provider availability preserves existing execution', () => {
       '../core/__fixtures__/codex/mock-codex-app-server.mjs',
     );
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-provider-continuity-'));
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     manager = new RunManager(store, repoRoot);
   });
 

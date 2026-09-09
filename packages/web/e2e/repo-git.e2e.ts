@@ -13,7 +13,7 @@ import { AgentBrowser, bootProjectId, readTestEnv } from './agent-browser'
  * `src/routes/repo-git/repo-git.test.tsx` against fixtures.
  */
 
-const artifactsDir = resolve(import.meta.dirname, '../../../.ai/qa/artifacts_e2e')
+const artifactsDir = resolve(import.meta.dirname, '../../../.local/qa/artifacts_e2e')
 const sessionId = `e2e-repo-git-${process.pid}`
 
 const DESKTOP = { width: 1440, height: 900 }
