@@ -73,6 +73,7 @@ Options:
       --reconfigure <ids>     server-install: force re-run of step id(s), comma-separated
       --reinstall             server-install: force re-run of every step (full reinstall)
   -h, --help                  show this help
+  -v, --version               print the version and exit
 
 Zero config: uses your logged-in \`claude\` CLI (and \`gh\` for GitHub bits).
 Skills live in .ai/skills/, .xezar/skills/ and your team skills repo
@@ -95,6 +96,7 @@ async function main(): Promise<void> {
       reconfigure: { type: 'string' },
       reinstall: { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false },
+      version: { type: 'boolean', short: 'v', default: false },
     },
     allowPositionals: true,
   });
@@ -109,6 +111,13 @@ async function main(): Promise<void> {
 
   if (values.help) {
     console.log(HELP);
+    return;
+  }
+
+  // Bare version string only — no banner, no update check, no repo lookup, so it
+  // works outside any git repository and never touches ~/.xezar.
+  if (values.version) {
+    console.log(readOwnVersion());
     return;
   }
 
