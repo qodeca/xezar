@@ -1,4 +1,23 @@
-# Unreleased
+# 0.11.2 (2026-09-09)
+
+## Highlights
+A small release from the second day of developing Xezar with Xezar. The one user-visible fix is
+OpenCode: a local or LAN model that is configured but carries no stored credentials is now
+recognised as **Configured** instead of being reported as disconnected, so Connect stops opening
+a login terminal you do not need. The rest is maintainer-facing — the project kit gains a
+`release` workflow that runs a whole release as one Xezar task, and the UI-leader pilot prompt
+gains its launch procedure, waiting pattern and a written scenario evaluation.
+
+## ✨ Features
+- ✨ **A whole release runs as one Xezar task.** The project kit gains a `release` workflow that
+  takes a one-line brief (`bump: patch`, optionally `version:` and `dry-run: true`): it derives
+  the `# <version> (<date>)` changelog section from the pull requests merged since the last `v*`
+  tag, folds every stray `# Unreleased` section into it, runs the canonical gates, merges the
+  changelog PR, dispatches the existing Release workflow once and merges the bot's bump PR. A new
+  `changelog-check.sh` refuses a changelog with more than one `# Unreleased` heading or one placed
+  below a dated release, which is the mistake the 0.11.1 release had to repair by hand. Kit and
+  documentation only — no engine source, no package manifest and no change to
+  `.github/workflows/`; nothing publishes outside the manually dispatched Release run. (#31, #33)
 
 ## 🐛 Fixes
 - 🐛 **OpenCode recognizes configured local/LAN models without stored credentials.**
@@ -6,7 +25,21 @@
   before marking the provider disconnected. A recognized model avoids an unnecessary
   `opencode auth login` terminal, and the Providers card says **Configured** instead
   of **Credentials found**. Failed discovery remains unverified; authentication
-  rejections from actual tasks still override the configuration check.
+  rejections from actual tasks still override the configuration check. (#34)
+
+## 📝 Specs & Documentation
+- 📝 **The UI-leader pilot prompt records how to launch the cockpit and how to wait on it.**
+  `docs/prompts/claude-code-ui-leader-prompt.md` gains a startup inventory, a sourced tool
+  comparison with a model-tier routing matrix, a checkpoint format, and a "Reliable browser
+  operation and waiting" section describing the cockpit launch procedure and the bounded
+  background-watcher pattern used in the 2026-09-09 dogfooding session. Documentation only. (#35)
+- 📝 **The UI-leader pilot prompt has a written scenario evaluation.**
+  `docs/features/builtin-project-leader/claude-code-ui-leader-evaluation.md` records 26 review
+  fixtures against the prompt's own clauses. Every row is marked *static-covered* and *not-run*:
+  it states which instruction addresses each expected decision, not that any model has followed
+  it, and the pilot guide keeps the procedure for a live run. Documentation only. (dfb690e)
+
+---
 
 # 0.11.1 (2026-09-09)
 
