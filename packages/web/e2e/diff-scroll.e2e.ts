@@ -29,7 +29,7 @@ import { AgentBrowser, xezarCli, fixtureServeEnv, removeDataRoot, stopFixtureSer
  *    at all: jsdom lays nothing out, so neither is observable in a unit test.
  */
 
-const artifactsDir = resolve(import.meta.dirname, '../../../.ai/qa/artifacts_e2e')
+const artifactsDir = resolve(import.meta.dirname, '../../../.local/qa/artifacts_e2e')
 const sessionId = `e2e-diff-scroll-${process.pid}`
 
 /**
@@ -52,8 +52,8 @@ let browser: AgentBrowser
 let server: ChildProcess
 let repo: string
 let baseUrl: string
-/** The server's own count. NOT `FIXTURE_FILES`: booting xezar against the fixture writes
- *  `.ai/xezar/.gitignore` into it, which is itself an honest untracked change the view shows. */
+/** The server's own count. NOT `FIXTURE_FILES`: booting xezar against the fixture writes its own
+ *  local state into it, so the view's honest count is whatever the server reports. */
 let changedFiles = 0
 
 function freePort(): Promise<number> {

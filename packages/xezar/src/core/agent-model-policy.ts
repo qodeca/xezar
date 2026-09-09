@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { workspaceConfigPath } from '../paths.ts';
+import { projectKitDir } from '../project-kit-paths.ts';
 
 /** The server-side switch that makes native agent settings authoritative. */
 export const AGENT_MODELS_LOCKED_ENV = 'XEZ_AGENT_MODELS_LOCKED';
@@ -23,7 +24,7 @@ export function agentModelsLocked(
   if (env[AGENT_MODELS_LOCKED_ENV] === '1') return true;
   const paths = [
     workspaceConfigPath(env),
-    ...(repoRoot ? [join(repoRoot, '.ai', 'xezar', 'config.json')] : []),
+    ...(repoRoot ? [join(projectKitDir(repoRoot), 'config.json')] : []),
   ];
   for (const path of paths) {
     try {

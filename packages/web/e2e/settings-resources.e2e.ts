@@ -13,14 +13,14 @@ import { AgentBrowser, readTestEnv } from './agent-browser'
  * the empty state) with the keep-limit footer.
  *
  * Reachability: fully reachable — the section needs no forge and no agent CLI. It mutates one
- * store, `.ai/xezar/config.json`, saved in beforeAll and restored byte-for-byte in afterAll.
+ * store, `.xezar/config.json`, saved in beforeAll and restored byte-for-byte in afterAll.
  */
 
-const artifactsDir = resolve(import.meta.dirname, '../../../.ai/qa/artifacts_e2e')
+const artifactsDir = resolve(import.meta.dirname, '../../../.local/qa/artifacts_e2e')
 const sessionId = `e2e-settings-resources-${process.pid}`
 const DESKTOP = { width: 1440, height: 900 }
-const dataDir = resolve(import.meta.dirname, '../../../.ai/xezar')
-const configFile = resolve(dataDir, 'config.json')
+const kitDir = resolve(import.meta.dirname, '../../../.xezar')
+const configFile = resolve(kitDir, 'config.json')
 
 let browser: AgentBrowser
 let baseUrl: string

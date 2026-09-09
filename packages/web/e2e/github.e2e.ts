@@ -16,7 +16,7 @@ import { AgentBrowser, bootProjectId, readTestEnv } from './agent-browser'
  * the shared env's run list must not grow side effects.
  */
 
-const artifactsDir = resolve(import.meta.dirname, '../../../.ai/qa/artifacts_e2e')
+const artifactsDir = resolve(import.meta.dirname, '../../../.local/qa/artifacts_e2e')
 const sessionId = `e2e-github-${process.pid}`
 
 const DESKTOP = { width: 1440, height: 900 }

@@ -24,8 +24,8 @@ describe('the agent-config API', () => {
   beforeEach(() => {
     delete process.env.XEZ_REMOTE;
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-agentcfg-'));
-    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    mkdirSync(join(repoRoot, '.local/xezar'), { recursive: true });
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     app = createApp({
       repoRoot,
       store,

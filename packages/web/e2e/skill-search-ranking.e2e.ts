@@ -18,7 +18,7 @@ import { AgentBrowser, xezarCli, fixtureServeEnv, removeDataRoot, stopFixtureSer
  * whose server order is the OPPOSITE of the desired match order, so an unranked list fails.
  */
 
-const artifactsDir = resolve(import.meta.dirname, '../../../.ai/qa/artifacts_e2e')
+const artifactsDir = resolve(import.meta.dirname, '../../../.local/qa/artifacts_e2e')
 const sessionId = `e2e-skill-search-${process.pid}`
 
 function freePort(): Promise<number> {

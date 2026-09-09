@@ -1,0 +1,14 @@
+name: code-review
+description: Review a PR or the current branch diff against this repo's architecture and conventions. Read-only.
+steps:
+  - id: kit
+    name: Snapshot the local project kit
+    command: 'bash "$(git rev-parse --path-format=absolute --git-common-dir)/../.xezar/checks/bootstrap.sh"'
+  - id: preflight
+    name: Report the checkout
+    command: ".xezar/checks/worktree-preflight.sh --allow-root"
+  - id: review
+    name: Review
+    prompt: "{{task}}"
+    skill: xezar-code-review
+    allowedTools: [Read, Grep, Glob, Bash]

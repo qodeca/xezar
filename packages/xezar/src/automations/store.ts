@@ -1,3 +1,4 @@
+import { ensureProjectDataIgnored } from '../project-data-paths.ts';
 import {
   closeSync,
   existsSync,
@@ -50,6 +51,7 @@ export class AutomationStore {
   private readonly secrets = collectSecretValues();
 
   static open(dataDir: string, options: AutomationStoreOptions = {}): AutomationStore {
+    ensureProjectDataIgnored(dataDir);
     const store = new AutomationStore(dataDir, options);
     store.load();
     return store;

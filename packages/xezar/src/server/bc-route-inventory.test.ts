@@ -111,7 +111,7 @@ describe('BACKWARD_COMPATIBILITY.md §2 route inventory', () => {
   const repoRoot = mkdtempSync(join(tmpdir(), 'xez-bc-inventory-'));
   const app = createApp({
     repoRoot,
-    store: RunStore.open(join(repoRoot, '.ai/xezar')),
+    store: RunStore.open(join(repoRoot, '.local/xezar')),
     manager: {} as RunManager,
     version: '0.0.0-test',
   });

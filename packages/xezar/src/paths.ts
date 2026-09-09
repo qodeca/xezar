@@ -98,7 +98,7 @@ export function workspaceConfigPath(env: NodeJS.ProcessEnv = process.env): strin
 
 /**
  * Global GUI state — the workspace twin of the per-repo
- * `.ai/xezar/ui-state.json`. Cross-project UI prefs live here; per-project
+ * `.local/xezar/ui-state.json`. Cross-project UI prefs live here; per-project
  * state (pinned runs, templates) stays in each repo's file.
  */
 export function workspaceUiStatePath(): string {

@@ -46,9 +46,10 @@ describe('model identity wiring (dry run)', () => {
     writeFileSync(join(repoRoot, 'a.txt'), 'one\n');
     await run('git', ['add', '-A'], { cwd: repoRoot });
     await run('git', [...GIT_ID, 'commit', '-q', '-m', 'base'], { cwd: repoRoot });
-    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
-    writeFileSync(join(repoRoot, '.ai/xezar', 'config.json'), JSON.stringify({ maxParallel: 1 }), 'utf8');
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    mkdirSync(join(repoRoot, '.local/xezar'), { recursive: true });
+    mkdirSync(join(repoRoot, '.xezar'), { recursive: true });
+    writeFileSync(join(repoRoot, '.xezar', 'config.json'), JSON.stringify({ maxParallel: 1 }), 'utf8');
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     manager = new RunManager(store, repoRoot);
   });
 

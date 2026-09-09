@@ -64,7 +64,7 @@ export function BookmarkletPanel({ skills }: { skills: readonly Skill[] }) {
   const [auto, setAuto] = useState(false)
   const [filter, setFilter] = useState('')
   // THIS project's own launch key: `useLaunchKey` goes through the scoped API client, so under
-  // `/p/<id>/settings` it reads `/api/p/<id>/launch-key` — that repo's `.ai/xezar/launch-key`,
+  // `/p/<id>/settings` it reads `/api/p/<id>/launch-key` — that repo's `.local/xezar/launch-key`,
   // which is the only secret the target cockpit scope will accept (multi-project spec, 3.6).
   const key = launchKey.data?.key ?? ''
   // Bake THIS cockpit's origin into the bookmarklets so a click opens the very instance that

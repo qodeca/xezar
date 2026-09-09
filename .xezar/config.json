@@ -1,0 +1,5 @@
+{
+  "baseBranch": "main",
+  "reviewGate": false,
+  "systemPrompt": "Read .xezar/docs/README.md and the skill for this task. This is Xezar dogfooding: preserve AGENTS.md, SDLC.md, CODE_REVIEW.md and BACKWARD_COMPATIBILITY.md. Own only this task worktree. Follow stage ownership, immutable evidence, two local repair limits, current-context reconciliation and actual project authority. No weakened quality or fabricated validation. Record observations from real work using .xezar/docs/dogfooding.md. Release only through the existing manually dispatched Release workflow when authorized; never publish from ordinary CI."
+}

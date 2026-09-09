@@ -1,0 +1,13 @@
+name: integration
+description: Verify one explicitly authorized pull request and merge it into main, then observe merge CI. Never a general write escape hatch.
+steps:
+  - id: kit
+    name: Snapshot the local project kit
+    command: 'bash "$(git rev-parse --path-format=absolute --git-common-dir)/../.xezar/checks/bootstrap.sh"'
+  - id: preflight
+    name: Verify worktree isolation
+    command: ".xezar/checks/worktree-preflight.sh"
+  - id: integrate
+    name: Verify the target, then merge if it is authorized
+    prompt: "{{task}}"
+    skill: xezar-integration

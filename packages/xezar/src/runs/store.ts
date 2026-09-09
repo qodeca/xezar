@@ -1,3 +1,4 @@
+import { ensureProjectDataIgnored } from '../project-data-paths.ts';
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
@@ -670,13 +671,14 @@ export class RunStore extends EventEmitter {
    *  exactly the pre-#945 behavior. */
   private repoHandle: RepoHandle | null | undefined;
 
-  private constructor(private readonly dataDir: string) {
+  private constructor(readonly dataDir: string) {
     super();
     this.setMaxListeners(100);
   }
 
   /** See `reconcileLoadedRun` for what `keepLive` (#367) decides about live-looking rows. */
   static open(dataDir: string, opts?: { keepLive?: boolean }): RunStore {
+    ensureProjectDataIgnored(dataDir);
     mkdirSync(join(dataDir, 'runs'), { recursive: true });
     const store = new RunStore(dataDir);
     const indexPath = join(dataDir, 'runs.json');
@@ -1053,7 +1055,7 @@ export class RunStore extends EventEmitter {
     const seq = this.nextSeq(runId);
     // Scrub credentials before the event touches disk or the live wire (#427):
     // tool-result output is persisted verbatim and served back over the API, so
-    // a secret in an agent's command output would otherwise land in `.ai/xezar/`.
+    // a secret in an agent's command output would otherwise land in `.local/xezar/`.
     const full: RunEvent = this.redact({ ...event, seq, ts: new Date().toISOString() });
     // Sync append keeps event order without a write queue; local NDJSON
     // appends at agent-event rates are effectively free.

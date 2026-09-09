@@ -1,7 +1,7 @@
+import { projectScratchDir } from '../project-data-paths.ts';
 import { execFile } from 'node:child_process';
 import { rmSync } from 'node:fs';
 import { lstat, open, readFile, readdir, realpath, stat } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { resolveTaskDiffBase, type RepointedHead } from '../git-diff-base.ts';
 import { isSafeGitRef } from '../git-refs.ts';
@@ -271,7 +271,7 @@ export async function collectChanges(
   let scratchIndex: string | undefined;
   try {
     if (opts.intentToAdd === false) {
-      scratchIndex = join(tmpdir(), `xez-scratch-index-${process.pid}-${scratchSeq++}`);
+      scratchIndex = join(projectScratchDir(dir), `xez-scratch-index-${process.pid}-${scratchSeq++}`);
       env = { GIT_INDEX_FILE: scratchIndex };
       await git(dir, ['read-tree', 'HEAD'], env); // seed with tracked files; harmless if no HEAD
       await git(dir, ['add', '-N', '.'], env);

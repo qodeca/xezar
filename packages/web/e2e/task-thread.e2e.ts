@@ -21,7 +21,7 @@ import record from './fixtures/thread-run.record.json'
  * from touching the run.
  */
 
-const artifactsDir = resolve(import.meta.dirname, '../../../.ai/qa/artifacts_e2e')
+const artifactsDir = resolve(import.meta.dirname, '../../../.local/qa/artifacts_e2e')
 const sessionId = `e2e-thread-${process.pid}`
 
 /** The recorded run (`fixtures/thread-run.record.json`, the store's own zod-checked shape),
@@ -66,16 +66,16 @@ const scoped = (path: string) => `/p/${bootProject}${path}`
 
 beforeAll(async () => {
   dataRoot = mkdtempSync(join(tmpdir(), 'xezar-e2e-thread-'))
-  mkdirSync(join(dataRoot, '.ai/xezar/runs'), { recursive: true })
-  writeFileSync(join(dataRoot, '.ai/xezar/runs.json'), JSON.stringify([RUN], null, 2), 'utf8')
+  mkdirSync(join(dataRoot, '.local/xezar/runs'), { recursive: true })
+  writeFileSync(join(dataRoot, '.local/xezar/runs.json'), JSON.stringify([RUN], null, 2), 'utf8')
   copyFileSync(
     resolve(import.meta.dirname, 'fixtures/thread-run.ndjson'),
-    join(dataRoot, '.ai/xezar/runs', `${RUN_ID}.ndjson`),
+    join(dataRoot, '.local/xezar/runs', `${RUN_ID}.ndjson`),
   )
   // The agent screenshot the transcript's `image` line points at (served by the run itself).
   cpSync(
     resolve(import.meta.dirname, 'fixtures/thread-run-images'),
-    join(dataRoot, '.ai/xezar/runs', `${RUN_ID}-images`),
+    join(dataRoot, '.local/xezar/runs', `${RUN_ID}-images`),
     { recursive: true },
   )
 

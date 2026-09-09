@@ -15,7 +15,7 @@ import { AgentBrowser, bootProjectId, readTestEnv } from './agent-browser'
  * scenario: a refetch must not lose selection. Nothing else mutates state.
  */
 
-const artifactsDir = resolve(import.meta.dirname, '../../../.ai/qa/artifacts_e2e')
+const artifactsDir = resolve(import.meta.dirname, '../../../.local/qa/artifacts_e2e')
 const sessionId = `e2e-settings-skills-${process.pid}`
 
 const DESKTOP = { width: 1440, height: 900 }

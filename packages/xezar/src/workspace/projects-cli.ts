@@ -162,7 +162,7 @@ async function removeCommand(id: string | undefined, io: ProjectsCommandIo): Pro
     io.error(`unknown project: ${id}`);
     return 1;
   }
-  io.log(`  - ${id} (registry entry only — the repo and its .ai/xezar/ are untouched)`);
+  io.log(`  - ${id} (registry entry only — the repo and its .local/xezar/ are untouched)`);
   return 0;
 }
 

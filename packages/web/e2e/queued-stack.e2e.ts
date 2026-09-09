@@ -25,7 +25,7 @@ import { AgentBrowser, xezarCli, removeDataRoot, stopFixtureServer } from './age
  * amended prompt is really what the backend receives when the run finally starts.
  */
 
-const artifactsDir = resolve(import.meta.dirname, '../../../.ai/qa/artifacts_e2e')
+const artifactsDir = resolve(import.meta.dirname, '../../../.local/qa/artifacts_e2e')
 const sessionId = `e2e-queued-stack-${process.pid}`
 
 function freePort(): Promise<number> {

@@ -39,7 +39,7 @@ describe('POST /api/v1/runs todoId', () => {
 
   beforeEach(() => {
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-todorun-'));
-    dataDir = join(repoRoot, '.ai/xezar');
+    dataDir = join(repoRoot, '.local/xezar');
     mkdirSync(dataDir, { recursive: true });
     store = RunStore.open(dataDir);
     started = 0;

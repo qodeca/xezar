@@ -23,8 +23,8 @@ describe('GitHub automation API', () => {
     home = mkdtempSync(join(tmpdir(), 'xezar-automation-home-'));
     process.env.XEZ_HOME = home;
     process.env.XEZ_AUTOMATIONS = '1';
-    mkdirSync(join(root, '.ai/xezar'), { recursive: true });
-    store = RunStore.open(join(root, '.ai/xezar'));
+    mkdirSync(join(root, '.local/xezar'), { recursive: true });
+    store = RunStore.open(join(root, '.local/xezar'));
   });
   afterEach(() => {
     store.flush();
@@ -89,7 +89,7 @@ describe('GitHub automation API', () => {
     expect(check.status).toBe('error');
     const list = await apiRequest(server, '/api/v1/automations');
     expect(((await list.json()) as any).automations).toHaveLength(1);
-    expect(readFileOrEmpty(join(root, '.ai/xezar/automation-receipts.ndjson'))).toBe('');
+    expect(readFileOrEmpty(join(root, '.local/xezar/automation-receipts.ndjson'))).toBe('');
   });
 
   it('shares API mutations with the workspace scheduler store', async () => {
@@ -136,7 +136,7 @@ describe('GitHub automation API', () => {
   });
 
   it('accepts preview as an automation-log result filter', async () => {
-    const automationStore = AutomationStore.open(join(root, '.ai/xezar'));
+    const automationStore = AutomationStore.open(join(root, '.local/xezar'));
     automationStore.appendLog({
       automationId: 'previewed',
       revision: 1,

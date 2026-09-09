@@ -8,7 +8,11 @@ set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)
-QA_DIR="$REPO_ROOT/.ai/qa"
+QA_DIR="$REPO_ROOT/.local/qa"
+# Compatibility: an old-path process must still be stoppable before migration.
+if [ ! -f "$QA_DIR/test-env.json" ] && [ -f "$REPO_ROOT/.ai/qa/test-env.json" ]; then
+  QA_DIR="$REPO_ROOT/.ai/qa"
+fi
 ENV_DESCRIPTOR="$QA_DIR/test-env.json"
 
 log() { echo "[test-env] $*" >&2; }

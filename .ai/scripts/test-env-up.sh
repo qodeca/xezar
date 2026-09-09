@@ -25,12 +25,18 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # works unchanged inside a git worktree (no `git rev-parse`, no cwd assumption).
 REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)
 
-QA_DIR="$REPO_ROOT/.ai/qa"
+# Never start a second environment while an old-path instance may still be running.
+if [ -f "$REPO_ROOT/.ai/qa/test-env.json" ] || [ -d "$REPO_ROOT/.ai/qa/test-env.lock" ]; then
+  echo "[test-env] legacy QA state exists: stop it with .ai/scripts/test-env-down.sh, then run node .ai/scripts/migrate-local-state.mjs" >&2
+  exit 1
+fi
+
+QA_DIR="$REPO_ROOT/.local/qa"
 ENV_DESCRIPTOR="$QA_DIR/test-env.json"
 LOCK_DIR="$QA_DIR/test-env.lock"
 CACHE_FILE="$QA_DIR/.build-cache"
 APP_LOG="$QA_DIR/test-env-app.log"
-BROWSER_DESCRIPTOR=".ai/browsers/agent-browser.md"
+BROWSER_DESCRIPTOR="docs/testing/agent-browser.md"
 
 PREFERRED_PORT=4321
 HEALTH_PATH="/api/v1/health"
@@ -53,7 +59,7 @@ BUILD_INPUT_PATHS="packages/contract/src packages/contract/package.json packages
 export XEZ_DRY_RUN=1
 
 # The real CLI writes workspace state at boot (~/.xezar migrations + project
-# registration) — pin XEZ_HOME under .ai/qa so a test boot never touches the
+# registration) — pin XEZ_HOME under .local/qa so a test boot never touches the
 # developer's real ~/.xezar. Kept stable (not per-boot) so the reuse path
 # attaches to the same workspace the running instance was booted with.
 export XEZ_HOME="$QA_DIR/xez-home"
@@ -184,7 +190,7 @@ emit() {
   cat <<EOF
 TEST_ENV_STATUS=running
 TEST_ENV_BASE_URL=$BASE_URL
-TEST_ENV_DESCRIPTOR=.ai/qa/test-env.json
+TEST_ENV_DESCRIPTOR=.local/qa/test-env.json
 TEST_ENV_REUSED=$reused
 BROWSER_PROVIDER=agent-browser
 BROWSER_INSTALLED=$BROWSER_INSTALLED
@@ -292,7 +298,7 @@ ensure_build() {
   fi
   log "building ($BUILD_COMMAND)"
   (cd "$REPO_ROOT" && sh -c "$BUILD_COMMAND" >"$QA_DIR/test-env-build.log" 2>&1) || {
-    log "build failed — see .ai/qa/test-env-build.log"
+    log "build failed — see .local/qa/test-env-build.log"
     tail -20 "$QA_DIR/test-env-build.log" >&2 || true
     exit 1
   }
@@ -300,7 +306,7 @@ ensure_build() {
   printf '%s' "$fp" > "$CACHE_FILE"
 }
 
-# ---- browser provider (per .ai/browsers/agent-browser.md: ensure-installed) --
+# ---- browser provider (per docs/testing/agent-browser.md: ensure-installed) --
 # Never fails the boot: e2e degrades to a loud SKIP when the provider is unavailable,
 # and everything else about the environment stays usable.
 BROWSER_INSTALLED=0
@@ -390,7 +396,7 @@ start_app() {
   waited=0
   while [ "$waited" -lt "$HEALTH_TIMEOUT" ]; do
     if ! kill -0 "$APP_PID" 2>/dev/null; then
-      log "the app exited during boot — see .ai/qa/test-env-app.log"
+      log "the app exited during boot — see .local/qa/test-env-app.log"
       tail -20 "$APP_LOG" >&2 || true
       exit 1
     fi
@@ -401,7 +407,7 @@ start_app() {
     sleep 1
     waited=$((waited + 1))
   done
-  log "health wait timed out after ${HEALTH_TIMEOUT}s — see .ai/qa/test-env-app.log"
+  log "health wait timed out after ${HEALTH_TIMEOUT}s — see .local/qa/test-env-app.log"
   kill "$APP_PID" 2>/dev/null || true
   exit 1
 }
@@ -417,7 +423,7 @@ start_app() {
 # 0700 because these are the destinations for `codex/auth.json` and, on Linux,
 # `claude/.credentials.json` if anyone ever logs in with the sandbox active. `mkdir -p` yields
 # 0755 under the default umask, which would make them the only world-readable agent dirs under
-# .ai/qa — `xez-home` is 0700 (workspace/config.ts creates it that way). Matching that here.
+# .local/qa — `xez-home` is 0700 (workspace/config.ts creates it that way). Matching that here.
 reset_agent_home() {
   rm -rf "$QA_DIR/agent-home"
   mkdir -p "$CLAUDE_CONFIG_DIR" "$CODEX_HOME" "$OPENCODE_CONFIG_DIR"
@@ -455,10 +461,10 @@ write_descriptor() {
       testRunner: { name: "other", config: "packages/web/e2e/vitest.config.ts" },
       platform,
       startedAt: new Date().toISOString().replace(/\.\d+Z$/, "Z"),
-      notes: "Booted from a production build after npm ci with XEZ_DRY_RUN=1, so workspace links/runtime dependencies are present, the agent CLIs are mocked, and no agent login/network is needed. The agents\u2019 own user-scope config dirs are pinned to empty sandboxes under .ai/qa/agent-home/ (environment.agentHome), so the app reads no model default from this machine; project-scope files in the repo are NOT isolated. No backing services. Stop with .ai/scripts/test-env-down.sh. App log: .ai/qa/test-env-app.log.",
+      notes: "Booted from a production build after npm ci with XEZ_DRY_RUN=1, so workspace links/runtime dependencies are present, the agent CLIs are mocked, and no agent login/network is needed. The agents\u2019 own user-scope config dirs are pinned to empty sandboxes under .local/qa/agent-home/ (environment.agentHome), so the app reads no model default from this machine; project-scope files in the repo are NOT isolated. No backing services. Stop with .ai/scripts/test-env-down.sh. App log: .local/qa/test-env-app.log.",
     }, null, 2) + "\n");
   ' "$ENV_DESCRIPTOR" "$BASE_URL" "$PORT" "$APP_PID" \
-    "XEZ_DRY_RUN=1 XEZ_HOME=.ai/qa/xez-home CLAUDE_CONFIG_DIR=.ai/qa/agent-home/claude CODEX_HOME=.ai/qa/agent-home/codex OPENCODE_CONFIG_DIR=.ai/qa/agent-home/opencode node packages/xezar/dist/index.js --repo $REPO_ROOT --port $PORT --no-open" \
+    "XEZ_DRY_RUN=1 XEZ_HOME=.local/qa/xez-home CLAUDE_CONFIG_DIR=.local/qa/agent-home/claude CODEX_HOME=.local/qa/agent-home/codex OPENCODE_CONFIG_DIR=.local/qa/agent-home/opencode node packages/xezar/dist/index.js --repo $REPO_ROOT --port $PORT --no-open" \
     "$BROWSER_INSTALLED" "$BROWSER_COMMAND" "$BROWSER_VERSION" "$BROWSER_NOTES" "$BROWSER_DESCRIPTOR" \
     "$SINGLE_PROJECT" "$(uname -s 2>/dev/null | grep -qi Linux && { grep -qiE 'microsoft|wsl' /proc/version 2>/dev/null && echo wsl2 || echo linux; } || echo darwin)" \
     "$AGENT_HOME_FINGERPRINT"

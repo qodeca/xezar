@@ -25,7 +25,7 @@ describe('per-task auto-resume cancellation', () => {
 
   beforeEach(() => {
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-auto-resume-api-'));
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     cancelled = [];
     app = createApp({
       repoRoot,

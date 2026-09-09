@@ -138,19 +138,20 @@ describe('systemPrompt end-to-end (dry run)', () => {
     writeFileSync(join(repoRoot, 'a.txt'), 'one\n');
     await run('git', ['add', '-A'], { cwd: repoRoot });
     await run('git', [...GIT_ID, 'commit', '-q', '-m', 'base'], { cwd: repoRoot });
-    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
+    mkdirSync(join(repoRoot, '.local/xezar'), { recursive: true });
     mkdirSync(join(repoRoot, '.ai/skills/om-auto-review-pr'), { recursive: true });
     writeFileSync(
       join(repoRoot, '.ai/skills/om-auto-review-pr/SKILL.md'),
       `---\nname: om-auto-review-pr\ndescription: ${SKILL_DESCRIPTION}\n---\n${SKILL_BODY}\n`,
       'utf8',
     );
+    mkdirSync(join(repoRoot, '.xezar'), { recursive: true });
     writeFileSync(
-      join(repoRoot, '.ai/xezar', 'config.json'),
+      join(repoRoot, '.xezar', 'config.json'),
       JSON.stringify({ systemPrompt: CONFIG_PROMPT }),
       'utf8',
     );
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     // Cap 1 (workspace-level since step 2.5) serializes the suite's runs.
     manager = new RunManager(store, repoRoot, {
       semaphore: new WorkspaceSemaphore({ initial: { maxParallel: 1 } }),
@@ -400,7 +401,7 @@ describe('systemPrompt end-to-end (dry run)', () => {
   // guard would stop every run from producing inbox entries with the whole suite still green.
   // This suite explicitly enables the global inbox in beforeAll (#471).
   it('on an inbox-enabled server the agent gets the run own inbox, never an inherited one', async () => {
-    const todosFile = join(repoRoot, '.ai/xezar/todos.json');
+    const todosFile = join(repoRoot, '.local/xezar/todos.json');
     rmSync(todosFile, { force: true });
     rmSync(inheritedTodos, { force: true });
     await runToEnd({ task: 'do the thing with follow-ups' });
@@ -410,7 +411,7 @@ describe('systemPrompt end-to-end (dry run)', () => {
   }, 30_000);
 
   it('explicit opt-out keeps handoff behavior but removes inbox prompt and environment', async () => {
-    const todosFile = join(repoRoot, '.ai/xezar/todos.json');
+    const todosFile = join(repoRoot, '.local/xezar/todos.json');
     rmSync(todosFile, { force: true });
     rmSync(inheritedTodos, { force: true });
     const id = await runToEnd({ task: 'do the thing quietly', generateFollowups: false });
@@ -422,7 +423,7 @@ describe('systemPrompt end-to-end (dry run)', () => {
     // The opt-out must survive an inherited XEZ_TODOS_FILE (nested xezar):
     // omitting the key instead of shadowing it leaks into the parent's inbox.
     expect(existsSync(inheritedTodos)).toBe(false);
-    expect(readFileSync(join(repoRoot, '.ai/xezar/runs', `${id}.handoff.md`), 'utf8')).toContain(
+    expect(readFileSync(join(repoRoot, '.local/xezar/runs', `${id}.handoff.md`), 'utf8')).toContain(
       'mock: implemented the change',
     );
 
@@ -477,13 +478,14 @@ describe('the global follow-up gate (dry run)', () => {
     writeFileSync(join(repoRoot, 'a.txt'), 'one\n');
     await run('git', ['add', '-A'], { cwd: repoRoot });
     await run('git', [...GIT_ID, 'commit', '-q', '-m', 'base'], { cwd: repoRoot });
-    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
+    mkdirSync(join(repoRoot, '.local/xezar'), { recursive: true });
+    mkdirSync(join(repoRoot, '.xezar'), { recursive: true });
     writeFileSync(
-      join(repoRoot, '.ai/xezar', 'config.json'),
+      join(repoRoot, '.xezar', 'config.json'),
       JSON.stringify({ systemPrompt: CONFIG_PROMPT }),
       'utf8',
     );
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     // Cap 1 (workspace-level since step 2.5) serializes the suite's runs.
     manager = new RunManager(store, repoRoot, {
       semaphore: new WorkspaceSemaphore({ initial: { maxParallel: 1 } }),
@@ -525,7 +527,7 @@ describe('the global follow-up gate (dry run)', () => {
   };
 
   it('without XEZ_FOLLOWUPS the agent is never told about the inbox', async () => {
-    const todosFile = join(repoRoot, '.ai/xezar/todos.json');
+    const todosFile = join(repoRoot, '.local/xezar/todos.json');
     rmSync(todosFile, { force: true });
     rmSync(inheritedTodos, { force: true });
 
@@ -550,13 +552,13 @@ describe('the global follow-up gate (dry run)', () => {
     expect(capturedSystemPrompt()).toContain('XEZ:PR=<number>');
     expect(capturedSystemPrompt()).toContain('XEZ:ISSUE=<number>');
     expect(capturedSystemPrompt()).toContain('XEZ:TITLE=');
-    expect(readFileSync(join(repoRoot, '.ai/xezar/runs', `${id}.handoff.md`), 'utf8')).toContain(
+    expect(readFileSync(join(repoRoot, '.local/xezar/runs', `${id}.handoff.md`), 'utf8')).toContain(
       'mock: implemented the change',
     );
   }, 30_000);
 
   it('a client asking for follow-ups cannot override the gate', async () => {
-    const todosFile = join(repoRoot, '.ai/xezar/todos.json');
+    const todosFile = join(repoRoot, '.local/xezar/todos.json');
     rmSync(todosFile, { force: true });
     const id = await runToEnd({ task: 'do the thing mock:done', generateFollowups: true });
     expect(capturedSystemPrompt()).not.toContain('XEZ_TODOS_FILE');
@@ -565,7 +567,7 @@ describe('the global follow-up gate (dry run)', () => {
   }, 30_000);
 
   it('turning the flag on restores the inbox for a new run', async () => {
-    const todosFile = join(repoRoot, '.ai/xezar/todos.json');
+    const todosFile = join(repoRoot, '.local/xezar/todos.json');
     rmSync(todosFile, { force: true });
     process.env.XEZ_FOLLOWUPS = '1';
     try {

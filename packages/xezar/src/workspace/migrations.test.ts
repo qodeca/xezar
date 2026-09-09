@@ -1,6 +1,6 @@
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { workspaceConfigPath, workspaceUiStatePath } from '../paths.ts';
 import { defaultWorkspaceConfig, loadWorkspaceConfig } from './config.ts';
@@ -33,9 +33,12 @@ describe('workspace migrations', () => {
     vi.restoreAllMocks();
   });
 
+  // Project config is maintained kit; UI state is local runtime. Two directories, on purpose.
+  const repoFile = (name: string) =>
+    join(repoRoot, name === 'config.json' ? '.xezar' : '.local/xezar', name);
   const writeRepoFile = (name: string, value: unknown) => {
-    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
-    writeFileSync(join(repoRoot, '.ai/xezar', name), JSON.stringify(value), 'utf8');
+    mkdirSync(dirname(repoFile(name)), { recursive: true });
+    writeFileSync(repoFile(name), JSON.stringify(value), 'utf8');
   };
 
   const rawGlobalConfig = () =>
@@ -61,8 +64,8 @@ describe('workspace migrations', () => {
       notifications: { enabled: false },
       githubView: 'prs', // project-scoped — must NOT go global
     });
-    const repoConfigBefore = readFileSync(join(repoRoot, '.ai/xezar/config.json'), 'utf8');
-    const repoUiBefore = readFileSync(join(repoRoot, '.ai/xezar/ui-state.json'), 'utf8');
+    const repoConfigBefore = readFileSync(join(repoRoot, '.xezar/config.json'), 'utf8');
+    const repoUiBefore = readFileSync(join(repoRoot, '.local/xezar/ui-state.json'), 'utf8');
 
     await runMigrations({ bootRepoRoot: repoRoot });
 
@@ -76,8 +79,8 @@ describe('workspace migrations', () => {
     });
     expect(statSync(workspaceUiStatePath()).mode & 0o777).toBe(0o600);
     // additive: per-repo files are byte-identical
-    expect(readFileSync(join(repoRoot, '.ai/xezar/config.json'), 'utf8')).toBe(repoConfigBefore);
-    expect(readFileSync(join(repoRoot, '.ai/xezar/ui-state.json'), 'utf8')).toBe(repoUiBefore);
+    expect(readFileSync(join(repoRoot, '.xezar/config.json'), 'utf8')).toBe(repoConfigBefore);
+    expect(readFileSync(join(repoRoot, '.local/xezar/ui-state.json'), 'utf8')).toBe(repoUiBefore);
   });
 
   it('never overwrites keys already set globally (crash-interrupted re-run safety)', async () => {

@@ -15,7 +15,7 @@ import { AgentBrowser, bootProjectId, readTestEnv } from './agent-browser'
  * so the assertions below are about that shell rather than the old placeholder.
  */
 
-const artifactsDir = resolve(import.meta.dirname, '../../../.ai/qa/artifacts_e2e')
+const artifactsDir = resolve(import.meta.dirname, '../../../.local/qa/artifacts_e2e')
 const runId = `e2e-${process.pid}`
 
 const DESKTOP = { width: 1440, height: 900 }
@@ -475,7 +475,7 @@ describe('mobile shell', () => {
  *
  * The interesting half is not that a socket opens — it is that a server-side change reaches the
  * rendered UI with nobody reloading anything. The inbox is the one path this suite can drive for
- * free: `.ai/xezar/todos.json` is a documented external contract (agents append to it via
+ * free: `.local/xezar/todos.json` is a documented external contract (agents append to it via
  * `XEZ_TODOS_FILE`), the server watches the file and re-broadcasts the whole array on `todos`, and
  * the nav badge renders whatever the todos query holds. So writing that file *is* a live event —
  * no fixture invented, nothing mocked.
@@ -486,7 +486,7 @@ describe('mobile shell', () => {
  */
 describe('global SSE stream', () => {
   // Where `src/index.ts` puts the data dir, for the server booted from this worktree.
-  const dataDir = resolve(import.meta.dirname, '../../../.ai/xezar')
+  const dataDir = resolve(import.meta.dirname, '../../../.local/xezar')
   const todosFile = resolve(dataDir, 'todos.json')
   const BADGE = '[data-slot="nav-badge"]'
   let previousTodos: string | null = null

@@ -54,11 +54,11 @@
   },
   "qaGate": true,
   "paths": {
-    "runs": ".ai/runs",
-    "analysis": ".ai/analysis",
-    "specs": ".ai/specs",
+    "runs": ".local/runs",
+    "analysis": ".local/analysis",
+    "specs": "docs/specs",
     "scripts": ".ai/scripts",
-    "qa": ".ai/qa"
+    "qa": ".local/qa"
   },
   "reviewChecklist": null
 }

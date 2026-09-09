@@ -85,11 +85,11 @@ function fixtureRepo(): Fixture {
   const root = mkdtempSync(join(tmpdir(), 'xez-root-lease-'));
   execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: root });
   execFileSync('git', [...GIT_ID, 'commit', '--allow-empty', '-q', '-m', 'base'], { cwd: root });
-  const store = RunStore.open(join(root, '.ai/xezar'));
+  const store = RunStore.open(join(root, '.local/xezar'));
   const manager = new RunManager(store, root);
-  // Under `.ai/xezar` on purpose: nothing treats that directory as repository
+  // Under `.local/xezar` on purpose: nothing treats that directory as repository
   // content, so the gate can never turn up in a worktree diff or the review gate.
-  const gate = join(root, '.ai/xezar', 'lease-gate');
+  const gate = join(root, '.local/xezar', 'lease-gate');
   const started: string[] = [];
   const fixture: Fixture = {
     root,

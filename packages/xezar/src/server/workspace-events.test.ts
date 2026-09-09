@@ -45,11 +45,12 @@ describe('GET /api/v1/workspace/events', () => {
     delete process.env.XEZ_REMOTE;
     process.env.XEZ_DRY_RUN = '1';
     for (const root of [repoRoot, otherRoot]) {
-      mkdirSync(join(root, '.ai/xezar'), { recursive: true });
-      writeFileSync(join(root, '.ai/xezar', 'config.json'), '{"skillsRepos": []}\n', 'utf8');
+      mkdirSync(join(root, '.local/xezar'), { recursive: true });
+      mkdirSync(join(root, '.xezar'), { recursive: true });
+      writeFileSync(join(root, '.xezar', 'config.json'), '{"skillsRepos": []}\n', 'utf8');
     }
     clearProjectProbeCache();
-    store = RunStore.open(join(repoRoot, '.ai/xezar'), { keepLive: true });
+    store = RunStore.open(join(repoRoot, '.local/xezar'), { keepLive: true });
     contexts = new ProjectContexts({ listProjects });
     bus = new WorkspaceEventBus();
     bootId = (await registerProject(repoRoot)).id;

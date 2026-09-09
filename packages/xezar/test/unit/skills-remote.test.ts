@@ -126,6 +126,10 @@ test('listRemoteSkills clones a local repo, pins the SHA, and refuses a bad ref'
   // A directory skill needs SKILL.md under a directory to be named after it.
   execFileSync('mkdir', ['-p', join(srcDir, 'greeter')]);
   writeFileSync(join(srcDir, 'greeter', 'SKILL.md'), '---\ndescription: hi\n---\nsay hi\n');
+  for (const [dir, name] of [['.xezar/skills', 'canonical-flat'], ['.ai/xezar/skills', 'legacy-flat']]) {
+    mkdirSync(join(srcDir, dir!), { recursive: true });
+    writeFileSync(join(srcDir, dir!, 'custom.md'), `---\nname: ${name}\n---\ncustom guidance\n`);
+  }
   g(['add', '-A']);
   g(['commit', '-m', 'init']);
   const sha = g(['rev-parse', 'HEAD']);
@@ -134,6 +138,8 @@ test('listRemoteSkills clones a local repo, pins the SHA, and refuses a bad ref'
 
   // Branch ref: skills come back and record the resolved commit.
   const onMain = await listRemoteSkills({ repo: srcDir, ref: 'main' });
+  assert.ok(onMain.some((s) => s.name === 'canonical-flat'));
+  assert.ok(onMain.some((s) => s.name === 'legacy-flat'));
   const greeter = onMain.find((s) => s.name === 'greeter');
   assert.ok(greeter, 'expected the directory skill to be listed');
   assert.equal(greeter?.team?.commit, sha);
@@ -179,13 +185,13 @@ test('team-skills cache is keyed by repoRoot — projects never see each other\'
     return src;
   };
 
-  /** One project root whose `.ai/xezar/config.json` points at its own skills repo. */
+  /** One project root whose `.xezar/config.json` points at its own skills repo. */
   const makeProjectRoot = (skillsRepo: string): string => {
     const root = mkdtempSync(join(tmpdir(), 'xez-root-'));
     dirs.push(root);
-    mkdirSync(join(root, '.ai/xezar'), { recursive: true });
+    mkdirSync(join(root, '.xezar'), { recursive: true });
     writeFileSync(
-      join(root, '.ai/xezar', 'config.json'),
+      join(root, '.xezar', 'config.json'),
       JSON.stringify({ skillsRepos: [{ repo: skillsRepo, ref: 'main' }] }),
     );
     return root;

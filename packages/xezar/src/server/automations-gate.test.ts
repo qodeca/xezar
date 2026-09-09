@@ -43,7 +43,7 @@ describe('automations gate (#801)', () => {
 
   beforeEach(() => {
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-automations-gate-'));
-    dataDir = join(repoRoot, '.ai/xezar');
+    dataDir = join(repoRoot, '.local/xezar');
     mkdirSync(dataDir, { recursive: true });
     store = RunStore.open(dataDir);
     // A pre-existing definition, written while the feature was on: the gate must hide it and

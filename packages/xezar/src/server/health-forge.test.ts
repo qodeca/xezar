@@ -47,7 +47,7 @@ describe('GET /api/v1/health — forge + capabilities', () => {
 
   beforeEach(() => {
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-health-'));
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     delete process.env.XEZ_REMOTE;
     // #471: the inbox is opt-in, so an ambient XEZ_FOLLOWUPS on the dev box
     // must not decide what these assertions see.
@@ -279,7 +279,7 @@ describe('POST /api/v1/runs/:id/open-in-cli — hosted-mode defense in depth', (
 
   beforeEach(() => {
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-handoff-'));
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     runId = store.createRun({ title: 't', workflow: 'quick-task', task: 'do it', steps: [] }).id;
     delete process.env.XEZ_REMOTE;
   });

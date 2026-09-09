@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { projectKitDir } from '../project-kit-paths.ts';
 import { workspaceUiStateSchema } from '@qodeca/xezar-contract';
 import { xezarHomeDir, workspaceConfigPath } from '../paths.ts';
 import { readUiState } from '../ui-state.ts';
@@ -52,7 +53,7 @@ function asObject(value: unknown): Record<string, unknown> | null {
 }
 
 /**
- * The boot repo's `.ai/xezar/config.json` resource keys, read RAW (not through
+ * The boot repo's `.xezar/config.json` resource keys, read RAW (not through
  * `loadConfig`) so only values the user explicitly set are imported — a
  * defaulted value must not masquerade as a preference. Bounds mirror the
  * workspace `resources` schema; out-of-range values are simply not imported.
@@ -60,7 +61,7 @@ function asObject(value: unknown): Record<string, unknown> | null {
 async function readRepoResourceKeys(
   repoRoot: string,
 ): Promise<{ maxParallel?: number; memoryLimitMb?: number }> {
-  const raw = await readRawObject(join(repoRoot, '.ai/xezar', 'config.json'));
+  const raw = await readRawObject(join(projectKitDir(repoRoot), 'config.json'));
   const out: { maxParallel?: number; memoryLimitMb?: number } = {};
   const maxParallel = raw?.maxParallel;
   if (typeof maxParallel === 'number' && Number.isInteger(maxParallel) && maxParallel >= 1 && maxParallel <= 16) {

@@ -14,7 +14,7 @@ describe('workspace model catalog API', () => {
 
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'xez-models-api-'));
-    store = RunStore.open(join(root, '.ai/xezar'));
+    store = RunStore.open(join(root, '.local/xezar'));
   });
 
   afterEach(() => {

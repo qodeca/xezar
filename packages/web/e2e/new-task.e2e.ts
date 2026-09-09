@@ -14,10 +14,10 @@ import { AgentBrowser, bootProjectId, xezarCli, fixtureServeEnv, getJson, remove
  * the API readback pins the created run to the exact skill-chain shape plus the persisted
  * `lastTask`. The second describe proves the protected bookmarklet contract (spec 011,
  * BACKWARD_COMPATIBILITY.md) on full document loads of /new, with the REAL launch key read
- * from `.ai/xezar/launch-key` — the documented on-disk contract.
+ * from `.local/xezar/launch-key` — the documented on-disk contract.
  */
 
-const artifactsDir = resolve(import.meta.dirname, '../../../.ai/qa/artifacts_e2e')
+const artifactsDir = resolve(import.meta.dirname, '../../../.local/qa/artifacts_e2e')
 const sessionId = `e2e-new-task-${process.pid}`
 
 function freePort(): Promise<number> {
@@ -83,9 +83,9 @@ beforeAll(async () => {
   // `quick-task` is not a row of its own any more (it IS the "No skill" row), and a fixture with
   // only the built-in would leave the group empty for reasons that have nothing to do with the
   // grouping under test.
-  mkdirSync(join(dataRoot, '.ai/xezar/workflows'), { recursive: true })
+  mkdirSync(join(dataRoot, '.xezar/workflows'), { recursive: true })
   writeFileSync(
-    join(dataRoot, '.ai/xezar/workflows/fix-and-verify.yaml'),
+    join(dataRoot, '.xezar/workflows/fix-and-verify.yaml'),
     'name: fix-and-verify\ndescription: Fix, then prove it with the tests\nskills:\n  - lint-fix\n',
     'utf8',
   )
@@ -292,7 +292,7 @@ describe('the bookmarklet contract on full /new loads (spec 011, Step 1.3)', () 
   it('auto=1 with the REAL launch key starts a run unattended and lands in its thread', async () => {
     // The documented on-disk contract: the server bakes this secret into the bookmarklets it
     // generates; only a page holding it may start runs. Read it exactly where users can.
-    const key = readFileSync(join(dataRoot, '.ai/xezar/launch-key'), 'utf8').trim()
+    const key = readFileSync(join(dataRoot, '.local/xezar/launch-key'), 'utf8').trim()
     expect(key).not.toBe('')
     const before = await runCount()
 

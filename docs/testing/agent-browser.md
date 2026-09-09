@@ -1,7 +1,7 @@
 # Browser provider: agent-browser
 
-This is the local, self-provisioning `agent-browser` implementation of the
-browser-provider contract in `TEMPLATE.md`. It uses native release binaries and
+This document defines the local, self-provisioning `agent-browser` provider
+used by the UI test environment. It uses native release binaries and
 Chrome for Testing. It never requires Node, a project package manager, a
 preinstalled browser, or a cloud-browser account.
 

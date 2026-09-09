@@ -1,3 +1,4 @@
+import { projectDataDir } from '../project-data-paths.ts';
 import { join } from 'node:path';
 import { AutomationStore } from '../automations/store.ts';
 import { reconcileAutomationReceipts } from '../automations/task-template.ts';
@@ -32,7 +33,7 @@ export interface ProjectContext {
   id: string;
   /** Realpath'd repo root the registry holds for this project. */
   root: string;
-  /** `<root>/.ai/xezar` — all of this project's on-disk state. */
+  /** `<root>/.local/xezar` — all of this project's on-disk state. */
   dataDir: string;
   store: RunStore;
   manager: RunManager;
@@ -206,7 +207,7 @@ export class ProjectContexts {
     if (!project) throw new ProjectContextError('unknown-project', projectId);
     if (project.status === 'missing') throw new ProjectContextError('missing-root', projectId);
 
-    const dataDir = join(project.root, '.ai/xezar');
+    const dataDir = projectDataDir(project.root);
     // keepLive + recover() (#367), same as serveCommand: runs that were live
     // when this project's context last existed are re-queued or resumed.
     const store = RunStore.open(dataDir, { keepLive: true });

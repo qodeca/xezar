@@ -33,7 +33,7 @@ const SKILLS: Skill[] = [
     description: 'A global skill',
   }),
   skill({ name: 'om-fix', source: 'ai', description: 'Fix an issue end to end' }),
-  skill({ name: 'om-review', source: 'xezar', path: '.ai/xezar/skills/om-review.md' }),
+  skill({ name: 'om-review', source: 'xezar', path: '.xezar/skills/om-review.md' }),
 ]
 
 const WORKFLOWS: WorkflowsResponse = {
@@ -215,7 +215,7 @@ describe('the catalog list', () => {
     await waitFor(() => {
       const text = document.querySelector('[data-slot="skill-rows"]')?.textContent ?? ''
       expect(text).toContain('.ai/skills/')
-      expect(text).toContain('.ai/xezar/skills/')
+      expect(text).toContain('.xezar/skills/')
       expect(text).toContain('.agents/skills/')
     })
     // No skills → the bookmarklet panel is the default detail (legacy fallback rule).

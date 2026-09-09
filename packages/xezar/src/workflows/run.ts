@@ -434,7 +434,7 @@ export function agentDirectories(runsDir: string, env: Record<string, string>): 
  * transcript already used, plus the absolute path that lets the agent
  * operate on the file itself — save it, `cp` it, attach it to a GitHub
  * issue/PR (#357). `path` is only ever an absolute path under
- * `.ai/xezar/runs/<runId>-images/` (see `RunManager.persistAttachment`).
+ * `.local/xezar/runs/<runId>-images/` (see `RunManager.persistAttachment`).
  */
 /** Inverse of `attachmentExtension` (#472) — a persisted attachment is re-encoded from disk at
  *  dequeue and needs its media type back. Only ever asked about IMAGE names (a file reaches the
@@ -612,7 +612,7 @@ export class RunManager {
    */
   private repoRootTail: Promise<void> = Promise.resolve();
 
-  /** `.ai/xezar` — where the per-task handoff files and todos.json live. */
+  /** `.local/xezar` — where the per-task handoff files and todos.json live. */
   private readonly dataDir: string;
 
   /** Runs currently being paused by the memory guard — dedupes the ~2 s samples so one breach
@@ -647,7 +647,7 @@ export class RunManager {
     private readonly repoRoot: string,
     options: { semaphore?: WorkspaceSemaphore } = {},
   ) {
-    this.dataDir = join(repoRoot, '.ai/xezar');
+    this.dataDir = store.dataDir;
     this.semaphore = options.semaphore ?? new WorkspaceSemaphore();
     this.offSemaphore = this.semaphore.register({
       busySlots: () => this.busySlots(),
@@ -1788,7 +1788,7 @@ export class RunManager {
         }
         attachments.push({ name, url, path });
       } catch {
-        // Degrade, never fail the boot (AGENTS.md): the user deleted `.ai/xezar/`
+        // Degrade, never fail the boot (AGENTS.md): the user deleted `.local/xezar/`
         // or the file is unreadable — start with the text and say which attachment went.
         this.store.appendEvent(runId, {
           type: 'note',
@@ -2631,7 +2631,7 @@ export class RunManager {
     emit({ type: 'lifecycle', message: `run started — workflow "${workflow.name}" (runner: ${taskBackend})` });
 
     // Worktree per task (spec 006): the agent works on its own branch in
-    // `.ai/xezar/worktrees/<id>`, never in the user's working tree. A Git task
+    // `.local/xezar/worktrees/<id>`, never in the user's working tree. A Git task
     // that requests isolation fails closed if the worktree cannot be
     // established; only explicit opt-out and non-Git modes run in place.
     const repo = await getRepoInfo(this.repoRoot);
@@ -2931,7 +2931,7 @@ export class RunManager {
         emit({
           type: 'note',
           stepId: step.id,
-          message: `skill "${step.skill}" not found in .ai/xezar/skills, .ai/skills or the team skills repo — running with the plain prompt`,
+          message: `skill "${step.skill}" not found in .xezar/skills, .ai/skills or the team skills repo — running with the plain prompt`,
         });
       }
     }
@@ -3504,7 +3504,7 @@ export class RunManager {
    * Agent screenshot (an image block inside a tool result) or a user attachment —
    * a pasted screenshot, or since #950 a PDF/TXT/MD file: the base64 data never
    * enters the NDJSON event log — it lands as a file under
-   * `.ai/xezar/runs/<id>-images/` and the transcript event carries only the name +
+   * `.local/xezar/runs/<id>-images/` and the transcript event carries only the name +
    * serving URL. `namePrefix` distinguishes the two origins on disk
    * (`screenshot-<n>.<ext>` for agent tool screenshots, `pasted-<n>.<ext>` for user
    * attachments, #357) and the absolute `path` lets the agent operate on the file

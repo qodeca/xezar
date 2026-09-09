@@ -252,7 +252,7 @@ function serve(overrides: {
     createRunStatus: 201,
     launchKey: 'k-real',
     plan: PLAN,
-    saveWorkflow: [{ status: 201, body: { path: '.ai/xezar/workflows/my-chain.yaml', name: 'my chain' } }],
+    saveWorkflow: [{ status: 201, body: { path: '.xezar/workflows/my-chain.yaml', name: 'my chain' } }],
     ...overrides,
   }
   requests = []
@@ -1931,7 +1931,7 @@ describe('save as chain', () => {
     serve({
       saveWorkflow: [
         { status: 409, body: { error: 'workflow file already exists: x.yaml', exists: true } },
-        { status: 201, body: { path: '.ai/xezar/workflows/my-chain.yaml', name: 'my chain' } },
+        { status: 201, body: { path: '.xezar/workflows/my-chain.yaml', name: 'my chain' } },
       ],
     })
     renderNewTask()

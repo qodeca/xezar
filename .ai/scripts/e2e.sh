@@ -23,7 +23,7 @@ skip() {
 #
 # Reason: $1
 #
-# The agent-browser provider (.ai/browsers/agent-browser.md) could not be
+# The agent-browser provider (docs/testing/agent-browser.md) could not be
 # provisioned here, so no spec ran. This is NOT a pass. Re-run on a machine with
 # network access to the GitHub Releases and Chrome-for-Testing hosts.
 ################################################################################
@@ -42,7 +42,7 @@ if ! sh "$SCRIPT_DIR/test-env-up.sh" "$@"; then
 fi
 
 # ---- 2. gate on the provider ------------------------------------------------
-DESCRIPTOR="$REPO_ROOT/.ai/qa/test-env.json"
+DESCRIPTOR="$REPO_ROOT/.local/qa/test-env.json"
 installed=$(node -e '
   const fs = require("fs");
   try {

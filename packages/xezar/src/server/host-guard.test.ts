@@ -31,8 +31,8 @@ describe('host-header guard (DNS rebinding)', () => {
     repoRoot = mkdtempSync(join(realpathSync(tmpdir()), 'xez-hostguard-repo-'));
     process.env.XEZ_HOME = home;
     delete process.env.XEZ_REMOTE;
-    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    mkdirSync(join(repoRoot, '.local/xezar'), { recursive: true });
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
   });
 
   afterEach(() => {

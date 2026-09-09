@@ -249,12 +249,12 @@ describe('workspace projects', () => {
     });
 
     it('suppresses a xezar task worktree root', async () => {
-      const worktree = makeDir('host-repo', '.ai', 'xezar', 'worktrees', 'abc12345');
+      const worktree = makeDir('host-repo', '.local', 'xezar', 'worktrees', 'abc12345');
       expect(await shouldRegisterProject(worktree)).toBe(false);
     });
 
     it('suppresses a repo nested deeper inside a task worktree', async () => {
-      const nested = join(repos, 'host', '.ai', 'xezar', 'worktrees', 'run-1', 'sub', 'repo');
+      const nested = join(repos, 'host', '.local', 'xezar', 'worktrees', 'run-1', 'sub', 'repo');
       // Path need not exist — normalizeRoot degrades to resolve(); the guard
       // must still recognize the worktree marker on the raw spelling.
       expect(await shouldRegisterProject(nested)).toBe(false);

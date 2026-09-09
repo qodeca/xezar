@@ -10,7 +10,7 @@ import { AgentBrowser, bootProjectId, readTestEnv } from './agent-browser'
  * exactly that, whatever this machine happens to have installed.
  */
 
-const artifactsDir = resolve(import.meta.dirname, '../../../.ai/qa/artifacts_e2e')
+const artifactsDir = resolve(import.meta.dirname, '../../../.local/qa/artifacts_e2e')
 const runId = `e2e-tools-${process.pid}`
 
 type Health = {

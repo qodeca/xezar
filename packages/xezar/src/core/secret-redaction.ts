@@ -3,7 +3,7 @@
  * (#427). Tool-result output is written verbatim to disk and served back over
  * the API, so the moment an agent runs a command whose output contains a
  * secret (`printenv`, `cat ~/.aws/credentials`, …) that secret would land in
- * `.ai/xezar/` — violating the "No secrets in state files" invariant
+ * `.local/xezar/` — violating the "No secrets in state files" invariant
  * (AGENTS.md / CODE_REVIEW.md).
  *
  * Two complementary strategies:

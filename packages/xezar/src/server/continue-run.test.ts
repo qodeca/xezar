@@ -39,7 +39,7 @@ describe('POST /api/v1/runs/:id/continue override', () => {
     home = mkdtempSync(join(realpathSync(tmpdir()), 'xez-continue-home-'));
     process.env.XEZ_HOME = home;
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-continue-'));
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     captured = undefined;
     runId = store.createRun({
       title: 't',
@@ -109,8 +109,9 @@ describe('POST /api/v1/runs/:id/continue override', () => {
   });
 
   it('rejects a model override while locked but still permits switching runners', async () => {
+    mkdirSync(join(repoRoot, '.xezar'), { recursive: true });
     writeFileSync(
-      join(repoRoot, '.ai', 'xezar', 'config.json'),
+      join(repoRoot, '.xezar', 'config.json'),
       JSON.stringify({ modelsLocked: true }),
       'utf8',
     );

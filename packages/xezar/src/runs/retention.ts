@@ -1,5 +1,5 @@
 // Count-based worktree retention (#483). A busy cockpit leaves one full repo
-// checkout per finished task under `.ai/xezar/worktrees/<runId>`; nothing bounds
+// checkout per finished task under `.local/xezar/worktrees/<runId>`; nothing bounds
 // the total, so disk saturates. This module decides *which* finished worktrees
 // to reclaim (directory only — the `xez/<id8>` branch is kept, so the work stays
 // recoverable) and the thin I/O enforcer that performs the reclaim. The selector

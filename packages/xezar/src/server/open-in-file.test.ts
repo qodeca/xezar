@@ -35,7 +35,7 @@ describe("POST /api/v1/runs/:id/open-in — target 'default' (local-mode file op
     writeFileSync(join(worktree, 'logo.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
     mkdirSync(join(worktree, 'sub'), { recursive: true });
     writeFileSync(join(worktree, 'sub', 'nested.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     runId = store.createRun({ title: 't', workflow: 'quick-task', task: 'do it', steps: [] }).id;
     store.updateRun(runId, { worktreePath: worktree });
     delete process.env.XEZ_REMOTE;

@@ -51,8 +51,8 @@ describe('GET /api/v1/fs/browse (step 4.1)', () => {
     symlinkSync(join(home, 'projects/repo'), join(home, 'link-inside'));
 
     const repoRoot = join(home, 'boot');
-    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
-    store = RunStore.open(join(repoRoot, '.ai/xezar'));
+    mkdirSync(join(repoRoot, '.local/xezar'), { recursive: true });
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
     app = createApp({
       repoRoot,
       store,

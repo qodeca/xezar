@@ -16,7 +16,7 @@ import { AgentBrowser, bootProjectId, xezarCli, fixtureServeEnv, removeDataRoot,
  * run, and the empty state is the first thing a new user sees. The store answers `[]`, honestly.
  */
 
-const artifactsDir = resolve(import.meta.dirname, '../../../.ai/qa/artifacts_e2e')
+const artifactsDir = resolve(import.meta.dirname, '../../../.local/qa/artifacts_e2e')
 
 function freePort(): Promise<number> {
   return new Promise((done, fail) => {

@@ -10,7 +10,7 @@ import { readTestEnv } from './agent-browser'
  *
  * Since the multi-project spec's Step 3.3 the cockpit renders the grouped multi-project sidebar
  * whenever the registry holds MORE THAN ONE project, and the flat one otherwise. The shared env
- * boots with `XEZ_HOME=.ai/qa/xez-home` (`.ai/scripts/test-env-up.sh`), which is a gitignored,
+ * boots with `XEZ_HOME=.local/qa/xez-home` (`.ai/scripts/test-env-up.sh`), which is a gitignored,
  * mutable scratch home: whatever the operator last registered there decides which of the two
  * shells the specs meet. That is not a property any spec should inherit by accident — a QA
  * session that registered three projects to capture sidebar screenshots turned `smoke.e2e.ts`
@@ -27,7 +27,7 @@ import { readTestEnv } from './agent-browser'
 
 const repoRoot = resolve(import.meta.dirname, '../../..')
 /** Mirrors `XEZ_HOME` in `.ai/scripts/test-env-up.sh` — change one, change the other. */
-const sharedHome = resolve(repoRoot, '.ai/qa/xez-home')
+const sharedHome = resolve(repoRoot, '.local/qa/xez-home')
 
 /** One registry entry, as `~/.xezar/config.json` stores it (src/workspace/config.ts). */
 export type RegistryProject = {
@@ -46,7 +46,7 @@ type SharedConfig = { projects?: RegistryProject[] } & Record<string, unknown>
  *
  * The guard is the point: everything in this module REWRITES workspace state, and the one file
  * it must never reach is the operator's real `~/.xezar/` — losing that means losing their whole
- * project list. `.ai/qa/xez-home` can only collide with it if the repo itself lives at `$HOME`,
+ * project list. `.local/qa/xez-home` can only collide with it if the repo itself lives at `$HOME`,
  * so that is exactly what is refused.
  */
 function sharedFile(name: string): string {

@@ -1,6 +1,7 @@
 import { readdir, readFile, realpath, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join, resolve, basename, dirname, extname } from 'node:path';
+import { projectKitDir } from './project-kit-paths.ts';
 import { gatedSkillsRepos } from './config.ts';
 import { getTeamSkillsCached } from './skills-remote.ts';
 import { readWorkspaceUiState } from './workspace/ui-state.ts';
@@ -8,7 +9,7 @@ import { readWorkspaceUiState } from './workspace/ui-state.ts';
 /**
  * A skill is a Markdown file with optional YAML-ish frontmatter (`name`,
  * `description`). Discovered from the repo's `.ai/skills/` (shared with other
- * agent tooling), `.ai/xezar/skills/` (xez-local), the `npx skills` install
+ * agent tooling), `.xezar/skills/` (xez-local), the `npx skills` install
  * dirs (`.agents/skills` + the per-agent mirrors, project and global), and
  * the configured team skills repos (spec 005 — bare clones, no checkout).
  * Adapted from @xezar/core's skill-catalog.
@@ -44,7 +45,7 @@ export interface Skill {
    process, so adding a dir here without updating the hint makes the hint lie.
    That test pins this list and says where to go. */
 export const SKILL_DIRS: Array<{ dir: string; source: Skill['source'] }> = [
-  { dir: '.ai/xezar/skills', source: 'xezar' },
+  { dir: '.xezar/skills', source: 'xezar' },
   { dir: '.ai/skills', source: 'ai' },
   { dir: '.agents/skills', source: 'agents' },
   { dir: '.claude/skills', source: 'agents' },
@@ -64,7 +65,7 @@ const GLOBAL_SKILL_DIRS: Array<{ dir: string; source: Skill['source'] }> = [
 
 /**
  * Discover the merged skill catalog for a repo. Name collisions resolve
- * local-first: `.ai/xezar/skills` → `.ai/skills` → `.agents/skills` + agent
+ * local-first: `.xezar/skills` → `.ai/skills` → `.agents/skills` + agent
  * mirrors → global (`~/.agents/skills`, `~/.claude/skills`) → team repo
  * ("the user's repo is the source of truth"). Missing directories are fine —
  * an empty catalog is fully supported (steps fall back to their plain
@@ -85,7 +86,7 @@ const GLOBAL_SKILL_DIRS: Array<{ dir: string; source: Skill['source'] }> = [
 export async function discoverSkills(repoRoot: string): Promise<Skill[]> {
   const [lists, gatedRepos, uiState] = await Promise.all([
     Promise.all([
-      ...SKILL_DIRS.map(({ dir, source }) => readMarkdownSkills(resolve(repoRoot, dir), source)),
+      ...SKILL_DIRS.map(({ dir, source }) => readMarkdownSkills(source === 'xezar' ? join(projectKitDir(repoRoot), 'skills') : resolve(repoRoot, dir), source)),
       ...GLOBAL_SKILL_DIRS.map(({ dir, source }) => readMarkdownSkills(dir, source)),
     ]),
     gatedSkillsRepos(repoRoot),

@@ -22,7 +22,7 @@ import { AgentBrowser, xezarCli, fixtureServeEnv, removeDataRoot, stopFixtureSer
  * a real partial transcript flowing through the real component.
  */
 
-const artifactsDir = resolve(import.meta.dirname, '../../../.ai/qa/artifacts_e2e')
+const artifactsDir = resolve(import.meta.dirname, '../../../.local/qa/artifacts_e2e')
 const sessionId = `e2e-composer-${process.pid}`
 
 function freePort(): Promise<number> {

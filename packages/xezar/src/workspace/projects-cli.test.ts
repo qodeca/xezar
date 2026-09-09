@@ -132,7 +132,7 @@ describe('xezar projects CLI', () => {
     });
 
     it('refuses a task worktree and $HOME, exactly like boot registration', async () => {
-      const worktree = makeDir('host', '.ai', 'xezar', 'worktrees', 'abc12345');
+      const worktree = makeDir('host', '.local', 'xezar', 'worktrees', 'abc12345');
       expect(await run('add', worktree)).toBe(1);
       expect(await run('add', homedir())).toBe(1);
       expect(io.err.join('\n')).toContain('refusing to register');

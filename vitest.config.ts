@@ -1,3 +1,4 @@
+import './scripts/test-local-state.mjs'
 import { defineConfig } from 'vitest/config'
 
 // Three packages, one `npm test`. Each owns its own vitest config — this file only names

@@ -1,6 +1,6 @@
+import { projectScratchDir } from '../project-data-paths.ts';
 import { spawn } from 'node:child_process';
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { shellQuote, withEnvPrefix } from '../core/shell-env.ts';
@@ -124,7 +124,7 @@ export function createLaunchScript(
   command: string,
   ttlMs: number = LAUNCH_SCRIPT_TTL_MS,
 ): string {
-  const dir = mkdtempSync(join(tmpdir(), 'xez-term-'));
+  const dir = mkdtempSync(join(projectScratchDir(cwd), 'xez-term-'));
   const scriptPath = join(dir, 'launch.sh');
   writeFileSync(scriptPath, `#!/usr/bin/env bash\ncd ${shellQuote(cwd)}\n${command}\nexec bash\n`, 'utf8');
   chmodSync(scriptPath, 0o755);

@@ -1,9 +1,10 @@
+import { projectDataDir } from './project-data-paths.ts';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { UiState } from '@qodeca/xezar-contract';
 
 /**
- * `.ai/xezar/ui-state.json` — small GUI preferences the cockpit persists (files, not a DB).
+ * `.local/xezar/ui-state.json` — small GUI preferences the cockpit persists (files, not a DB).
  * The server owns the schema and the writes (`PUT /api/ui-state` in `src/server/server.ts`);
  * this is the shared read path, so the CLI can honour a preference the cockpit set (#391's
  * `dismissedSkillsBanner`) without a second notion of where the file lives.
@@ -12,7 +13,7 @@ import type { UiState } from '@qodeca/xezar-contract';
  * `{}` — an absent preference, never a throw, never a blocked startup.
  */
 export function uiStatePath(repoRoot: string): string {
-  return join(repoRoot, '.ai/xezar', 'ui-state.json');
+  return join(projectDataDir(repoRoot), 'ui-state.json');
 }
 
 /**

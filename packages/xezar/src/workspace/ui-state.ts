@@ -5,7 +5,7 @@ import { atomicWriteJsonSync } from './config.ts';
 
 /**
  * `~/.xezar/ui-state.json` — global GUI state, the workspace twin of the
- * per-repo `.ai/xezar/ui-state.json` (spec 2026-07-20-multi-project-workspace,
+ * per-repo `.local/xezar/ui-state.json` (spec 2026-07-20-multi-project-workspace,
  * Data Model). Same split as `src/ui-state.ts`: this module owns the tolerant
  * read and the atomic write; the schema and key cap live at the route boundary
  * (`GET/PUT /api/workspace/ui-state`, step 2.7). The state is an opaque

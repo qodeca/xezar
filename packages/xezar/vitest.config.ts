@@ -1,3 +1,4 @@
+import '../../scripts/test-local-state.mjs'
 import { defineConfig } from 'vitest/config'
 
 // The service + CLI suite: Node ESM, no DOM, no bundler. `test/` is deliberately NOT included

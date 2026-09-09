@@ -41,10 +41,11 @@ describe('createXezarClient<AppType>', () => {
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-typed-boot-'));
     process.env.XEZ_HOME = home;
     process.env.XEZ_DRY_RUN = '1';
-    mkdirSync(join(repoRoot, '.ai/xezar'), { recursive: true });
-    writeFileSync(join(repoRoot, '.ai/xezar', 'config.json'), '{"skillsRepos": []}\n', 'utf8');
+    mkdirSync(join(repoRoot, '.local/xezar'), { recursive: true });
+    mkdirSync(join(repoRoot, '.xezar'), { recursive: true });
+    writeFileSync(join(repoRoot, '.xezar', 'config.json'), '{"skillsRepos": []}\n', 'utf8');
     clearProjectProbeCache();
-    store = RunStore.open(join(repoRoot, '.ai/xezar'), { keepLive: true });
+    store = RunStore.open(join(repoRoot, '.local/xezar'), { keepLive: true });
     contexts = new ProjectContexts({ listProjects });
     await registerProject(repoRoot);
     app = createApp({

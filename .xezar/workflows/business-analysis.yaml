@@ -1,0 +1,14 @@
+name: business-analysis
+description: Analyse the business need behind a request - problem, rules, alternatives, acceptance criteria - then recommend and ask. No code, no spec, no PR.
+steps:
+  - id: kit
+    name: Snapshot the local project kit
+    command: 'bash "$(git rev-parse --path-format=absolute --git-common-dir)/../.xezar/checks/bootstrap.sh"'
+  - id: preflight
+    name: Verify worktree isolation
+    command: ".xezar/checks/worktree-preflight.sh"
+  - id: analyse
+    name: Analyse, recommend and ask
+    prompt: "{{task}}"
+    skill: xezar-business-analysis
+    allowedTools: [Read, Grep, Glob, Bash]

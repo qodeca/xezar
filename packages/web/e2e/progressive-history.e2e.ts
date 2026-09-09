@@ -10,7 +10,7 @@ import { largeThreadEvents } from './fixtures/make-large-thread'
 import record from './fixtures/thread-run.record.json'
 
 const repoRoot = resolve(import.meta.dirname, '../../..')
-const artifactsDir = resolve(repoRoot, '.ai/qa/artifacts_e2e')
+const artifactsDir = resolve(repoRoot, '.local/qa/artifacts_e2e')
 const sessionId = `e2e-progressive-history-${process.pid}`
 const RUN_ID = 'cccccccc-1111-4222-8333-dddddddddddd'
 const RUN_B_ID = 'eeeeeeee-1111-4222-8333-ffffffffffff'
@@ -148,11 +148,11 @@ function parkCurrentThread(): number {
 
 beforeAll(async () => {
   dataRoot = mkdtempSync(join(tmpdir(), 'xezar-e2e-progressive-history-'))
-  mkdirSync(join(dataRoot, '.ai/xezar/runs'), { recursive: true })
-  writeFileSync(join(dataRoot, '.ai/xezar/runs.json'), JSON.stringify([RUN, RUN_B], null, 2), 'utf8')
+  mkdirSync(join(dataRoot, '.local/xezar/runs'), { recursive: true })
+  writeFileSync(join(dataRoot, '.local/xezar/runs.json'), JSON.stringify([RUN, RUN_B], null, 2), 'utf8')
   for (const runId of [RUN_ID, RUN_B_ID]) {
     writeFileSync(
-      join(dataRoot, '.ai/xezar/runs', `${runId}.ndjson`),
+      join(dataRoot, '.local/xezar/runs', `${runId}.ndjson`),
       events.map((event) => JSON.stringify(event)).join('\n') + '\n',
       'utf8',
     )

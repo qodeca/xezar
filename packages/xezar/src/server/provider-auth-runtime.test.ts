@@ -39,7 +39,7 @@ describe('watchProviderRuntimeAuthFailures', () => {
 
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'xez-provider-auth-runtime-'));
-    store = RunStore.open(join(root, '.ai/xezar'));
+    store = RunStore.open(join(root, '.local/xezar'));
     delete process.env.XEZ_DRY_RUN;
     const runCommand = vi.fn<RunProviderCommand>(async (executable) => ({
       stdout: CONNECTED_OUTPUT[providerForExecutable(executable)],
