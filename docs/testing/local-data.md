@@ -6,7 +6,7 @@ be included by an autosave, commit, package, or project-kit snapshot.
 | Location | Classification and owner |
 | --- | --- |
 | `.xezar/` | Maintained project configuration, workflows, skills, checks and operator documentation; see [project layout](../project-layout.md). |
-| `.xezar/agentic.config.json`, `.xezar/trackers/`, `scripts/` | Maintained agent tooling and repository scripts. They live here; their outputs do not. |
+| `.ai/agentic.config.json`, `.ai/trackers/`, `scripts/` | Maintained `om-*` pipeline config, tracker descriptor and repository scripts. The pack reads the `.ai/` paths by convention; their outputs do not live there. |
 | `docs/specs/`, `docs/testing/agent-browser.md` | Maintained specifications and browser contract. New specifications are not ignored working drafts. |
 | `.local/xezar/` | Engine run index, transcripts, attachments, handoffs, todos, UI state, automation state/logs/locks, temporary run directories and Git worktrees. |
 | `.local/qa/` | Test environment descriptor, bootstrap lock, build fingerprint, logs, screenshots, isolated Xezar home and vendor configuration sandboxes. |

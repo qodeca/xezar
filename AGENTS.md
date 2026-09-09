@@ -241,4 +241,4 @@ Two rules the suite has learned the hard way, both worth following in a new spec
 - `SDLC.md` — ticket flow, label state machine, QA gate, claim protocol.
 - `CODE_REVIEW.md` — what reviewers check and how severities are assigned.
 - `BACKWARD_COMPATIBILITY.md` — the public surfaces you must not break silently.
-- `.xezar/agentic.config.json` — machine-readable pipeline config every om-* skill reads (base branch, validation commands, labels).
+- `.ai/agentic.config.json` — machine-readable pipeline config every om-* skill reads (base branch, validation commands, labels).
