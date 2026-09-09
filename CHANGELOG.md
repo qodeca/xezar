@@ -1,3 +1,18 @@
+# Unreleased
+
+## 🐛 Fixes
+- 🐛 **The canonical test gate now passes inside a xezar task worktree.** The shared test
+  bootstrap pinned scratch to `<repo>/.local/test-tmp`, so when the checkout under test was itself
+  a task worktree (`…/.local/xezar/worktrees/<runId>/`) every temp repo the tests created sat
+  under that ancestor and the workspace registry's guard refused to register it — 18 tests in
+  `npm test` and one in `npm run test:package` failed with 400 or exit 1 on every dogfooding
+  task, while CI in a plain checkout stayed green. Only in that case does scratch now move to a
+  per-checkout `xezar-test-tmp-<hash>` directory under the OS temp dir, with the same Git ceiling
+  and per-fixture cleanup; a normal checkout keeps its in-repo scratch and the registration guard
+  is untouched. Test infrastructure only; the published package does not carry it. (#19)
+
+---
+
 # Renamed to Xezar (2026-09-08)
 
 **Cezar is now Xezar.** Same tool, new identity: published as
