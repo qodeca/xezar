@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile as execFileCallback } from 'node:child_process';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import test from 'node:test';
@@ -10,6 +10,23 @@ import { promisify } from 'node:util';
 const execFile = promisify(execFileCallback);
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+
+/**
+ * Every file in a tree keyed by its relative path, so two states of the same
+ * directory can be compared byte-for-byte. `.git` is skipped: git rewrites its
+ * own bookkeeping for reasons that have nothing to do with the command run.
+ */
+async function snapshotTree(dir: string, prefix = ''): Promise<Record<string, string>> {
+  const snapshot: Record<string, string> = {};
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    if (entry.name === '.git') continue;
+    const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+    const absolute = join(dir, entry.name);
+    if (entry.isDirectory()) Object.assign(snapshot, await snapshotTree(absolute, relative));
+    else snapshot[relative] = await readFile(absolute, 'utf8');
+  }
+  return snapshot;
+}
 
 test('the release tarball installs and runs the dry-run CLI workflow', { timeout: 120_000 }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'xezar-package-e2e-'));
@@ -241,6 +258,77 @@ if (args.join(' ') === 'auth status --json') {
     await assert.rejects(
       execFile(process.execPath, [cliPath, 'server-install', '--platform', 'nope'], serverExec),
       'unknown platform should exit 1',
+    );
+
+    // `xezar init` — the first command a new user types. It scaffolds the
+    // `.xezar/` project kit, and BACKWARD_COMPATIBILITY.md lists it as a
+    // protected CLI surface whose load-bearing rule is stated in AGENTS.md:
+    // init NEVER overwrites an existing file. Both failure modes are silent —
+    // an empty kit, or a workflow the user authored quietly replaced.
+    // A throwing `execFile` is a non-zero exit, so every call below that
+    // resolves has also asserted `init` exited 0.
+    const initRepo = join(root, 'init-repo');
+    await mkdir(initRepo);
+    await execFile('git', ['init', '--initial-branch=main'], { cwd: initRepo });
+    // XEZ_HOME keeps the run off the developer's real ~/.xezar, and keeps it
+    // clear of the `$HOME`-launch branch in `projectKitDir`.
+    const initEnv = { ...process.env, XEZ_HOME: join(root, 'init-home') };
+    const initExec = { cwd: initRepo, env: initEnv, timeout: 30_000, maxBuffer: 10 * 1024 * 1024 } as const;
+
+    const kitWorkflow = join(initRepo, '.xezar', 'workflows', 'fix-and-verify.yaml');
+    const kitSkill = join(initRepo, '.xezar', 'skills', 'project-conventions.md');
+    const dataIgnore = join(initRepo, '.local', '.gitignore');
+
+    const firstInit = await execFile(process.execPath, [cliPath, 'init'], initExec);
+    assert.match(firstInit.stdout, /fix-and-verify\.yaml/, 'init reports the workflow it wrote');
+    assert.match(
+      await readFile(kitWorkflow, 'utf8'),
+      /^name: fix-and-verify$/m,
+      'init scaffolds the example workflow',
+    );
+    assert.match(
+      await readFile(kitSkill, 'utf8'),
+      /^name: project-conventions$/m,
+      'init scaffolds the example skill',
+    );
+    assert.match(await readFile(dataIgnore, 'utf8'), /^\*$/m, 'init keeps run state out of git history');
+
+    // A second init over the untouched scaffold changes nothing at all.
+    const afterFirstInit = await snapshotTree(initRepo);
+    const secondInit = await execFile(process.execPath, [cliPath, 'init'], initExec);
+    assert.match(secondInit.stdout, /exists, left untouched/, 'init says it skipped the existing files');
+    assert.deepEqual(
+      await snapshotTree(initRepo),
+      afterFirstInit,
+      'a second init must leave every existing file byte-identical',
+    );
+
+    // The rule that matters: work the user authored survives. A hand-edited kit
+    // file, a hand-authored file inside `.xezar/`, and a file init never created.
+    const handEdited = 'name: fix-and-verify\n# hand edited by the user — must survive init\n';
+    await writeFile(kitWorkflow, handEdited, 'utf8');
+    const ownSkill = join(initRepo, '.xezar', 'skills', 'house-rules.md');
+    await writeFile(ownSkill, '# my own skill\n', 'utf8');
+    const unrelated = join(initRepo, 'NOTES.md');
+    await writeFile(unrelated, '# nothing to do with xezar\n', 'utf8');
+
+    const beforeThirdInit = await snapshotTree(initRepo);
+    await execFile(process.execPath, [cliPath, 'init'], initExec);
+    assert.deepEqual(
+      await snapshotTree(initRepo),
+      beforeThirdInit,
+      'init over a hand-edited kit must leave every file byte-identical',
+    );
+    assert.equal(
+      await readFile(kitWorkflow, 'utf8'),
+      handEdited,
+      'init must never overwrite a workflow the user edited',
+    );
+    assert.equal(await readFile(ownSkill, 'utf8'), '# my own skill\n', 'init must not touch a user-authored skill');
+    assert.equal(
+      await readFile(unrelated, 'utf8'),
+      '# nothing to do with xezar\n',
+      'init must not touch files it did not create',
     );
   } finally {
     await rm(root, { recursive: true, force: true });
