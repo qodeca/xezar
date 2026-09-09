@@ -37,6 +37,42 @@ nightly channel) is gone. Releases are manual, owner-triggered and go straight t
 
 ---
 
+# 0.11.0 (2026-09-09)
+
+## Highlights
+**The project layout moved, and the old one is no longer read.** A project's maintained kit now
+lives in `.xezar/` and its run state in `.local/xezar/`. Each is exactly one directory: no
+discovery step, no per-file overlay, no fallback. A repository that still holds only the old
+`.ai/xezar/` starts with default settings and an empty run history — nothing there is deleted,
+moved or rewritten, so the files stay on disk and can be moved by hand.
+
+**This is the one thing to read before upgrading.** If you have an existing project, move its
+files across before you start 0.11.0; the table is in
+[docs/project-layout.md](docs/project-layout.md), and the contract note is in
+[BACKWARD_COMPATIBILITY.md § 3](BACKWARD_COMPATIBILITY.md).
+
+## 💥 Breaking
+- 💥 **`.ai/xezar/` is not read any more — not as a kit, not as a run store.** Configuration,
+  workflows, skills, checks and guidance are read from `.xezar/`; runs, worktrees, scratch,
+  todos, UI state, the launch key and automations from `.local/xezar/`. The `migrate-layout`
+  command that used to move an old project is gone with its journal and its `--offline` flag, so
+  moving is a manual step now. Move maintained files into `.xezar/` and run state into
+  `.local/xezar/`; registered task worktrees must move through `git worktree move` so their Git
+  metadata stays valid. Nothing in the old directory is touched, so a mistaken move is
+  recoverable by copying again. (#11)
+
+## 🔧 Changed
+- 🔧 **One blanket ignore rule instead of a maintained list.** Everything the engine writes now
+  lives under `.local/`, so startup keeps a single `*` rule in `.local/.gitignore` rather than
+  appending each new state file to an ignore file inside the data directory. A new run-data file
+  can no longer be forgotten there. (#11)
+- 🔧 **A launch in your home directory can no longer overwrite your global settings.** When the
+  project kit path would collide with the per-user `~/.xezar/` workspace directory, it resolves
+  to that launch's own `.local/xezar/kit` instead. The per-user registry, preferences and agent
+  accounts are unaffected by any of this and do not move. (#11)
+
+---
+
 # 0.10.2 (2026-09-08)
 
 ## Highlights
