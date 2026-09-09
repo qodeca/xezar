@@ -72,5 +72,7 @@ Direct ad-hoc node:test commands should also load `scripts/test-local-state.mjs`
 the same scratch policy. A test that spawns a child process from inside scratch must not rely
 on the checkout being above it: resolve loaders such as `tsx` to an absolute URL before
 spawning, and compare real paths (not `argv[1]` spelling) in any main-module guard, because
-the OS temp dir may be a symlink (#27). No coverage or Playwright report producer is currently configured;
-future reporters should write beneath `.local` rather than introduce a root report directory.
+the OS temp dir may be a symlink (#27). One report producer is configured: `npm run test:coverage`
+writes the v8 coverage report to `.local/coverage/`, and `.gitignore`'s older root `coverage/` rule
+is a leftover that now matches nothing. No Playwright report producer exists. Future reporters
+follow the same rule – write beneath `.local` rather than introduce a root report directory.
