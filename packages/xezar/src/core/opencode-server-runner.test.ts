@@ -719,6 +719,37 @@ describe('a fetch that rejects at the transport level (#153)', () => {
     });
   }
 
+  /**
+   * #153 + #168 together. The three tests below fail the BLOCKING `/message`
+   * POST, which is the fallback route. Since #168 a server that has
+   * `prompt_async` never reaches that route, so naming the cause there only
+   * would leave the modern path with the same two opaque words the issue was
+   * filed about. This drives the async submit instead — the request that
+   * rejects is `POST /session/:id/prompt_async` — and requires the identical
+   * diagnosis. It is why the wrap lives in `request()` and not in `http()`.
+   */
+  it('names the cause on the async submit route too (#168 path)', async () => {
+    const restore = failFetchOnce('/prompt_async', undiciHeadersTimeout(), 42_000);
+    const { session, v1 } = start({ env: { MOCK_OPENCODE_ASYNC_PROMPT: '1' } });
+    let message = '';
+    try {
+      await session.result;
+      const event = v1.find((e) => e.type === 'error');
+      message = event && event.type === 'error' ? event.message : '';
+    } finally {
+      restore();
+      session.interrupt();
+    }
+
+    expect(message).toContain('opencode: fetch failed');
+    expect(message).toContain('after 42s');
+    // The path names the async route, so the reader can tell WHICH request died.
+    expect(message).toContain('POST /session/ses_mock_1/prompt_async');
+    expect(message).toContain('HeadersTimeoutError');
+    expect(message).toContain('UND_ERR_HEADERS_TIMEOUT');
+    expect(message.split('\n')).toHaveLength(1);
+  }, 30_000);
+
   it('names the undici cause, the elapsed seconds and what they mean', async () => {
     const message = await messageForPromptFailure(undiciHeadersTimeout(), 300_000);
 
