@@ -1,8 +1,8 @@
 import { act, cleanup, fireEvent, render, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { clearThreadScrollCaches, saveThreadScroll } from './thread-scroll'
-import { ThreadRows, useThreadScroll, type ThreadRow } from './thread-scroller'
+import { clearThreadScrollCaches, readThreadScroll, saveThreadScroll } from './thread-scroll'
+import { JumpToLatestPill, ThreadRows, useThreadScroll, type ThreadRow } from './thread-scroller'
 
 beforeEach(() => {
   // virtua measures with a ResizeObserver; jsdom has none and never lays anything out.
@@ -187,5 +187,323 @@ describe('useThreadScroll — route arrival (#761)', () => {
     view.rerender(<ArrivalHarness viewKey="run-b:main" />)
 
     expect((document.querySelector('[data-slot="main"]') as HTMLElement).scrollTop).toBe(920)
+  })
+})
+
+/**
+ * The intent handlers (research §6, the 1,000-row fixture): pinning follows a GESTURE, never a
+ * position. During replay the scroller's offset moves without the reader's hand — this hook
+ * pins it, virtua writes its own corrections, and the browser's scroll anchoring nudges it
+ * again — so a position-derived rule unpins at random. These cases drive the gestures directly
+ * and assert what the hook did with the pin, which is the only observable half in jsdom.
+ */
+describe('useThreadScroll — pinning follows intent', () => {
+  /** A scroller whose geometry the test owns. `scrollTop` is writable so the hook's own writes
+   *  are visible, and `at()` moves the reader without pretending jsdom laid anything out. */
+  function mountScroller(
+    options: Parameters<typeof useThreadScroll>[1] = {},
+    viewKey = 'r1:main',
+  ) {
+    let controls!: ReturnType<typeof useThreadScroll>
+    const Harness = () => {
+      controls = useThreadScroll(viewKey, options)
+      return (
+        <main data-slot="main">
+          <div ref={controls.attachContent} />
+        </main>
+      )
+    }
+    render(<Harness />)
+    const scroller = document.querySelector<HTMLElement>('[data-slot="main"]')!
+    Object.defineProperties(scroller, {
+      scrollTop: { value: 0, writable: true, configurable: true },
+      clientHeight: { value: 400, configurable: true },
+      scrollHeight: { value: 4_000, writable: true, configurable: true },
+    })
+    return {
+      scroller,
+      get controls() {
+        return controls
+      },
+      /** Put the reader at `top` and fire the scroll the browser would. */
+      at(top: number) {
+        scroller.scrollTop = top
+        act(() => {
+          fireEvent.scroll(scroller)
+        })
+      },
+      /** The tail offset for this geometry. */
+      bottom: 3_600,
+    }
+  }
+
+  it('shows the pill when the reader leaves the tail and hides it on return', () => {
+    const view = mountScroller()
+
+    view.at(1_000)
+    expect(view.controls.pillVisible).toBe(true)
+
+    view.at(view.bottom)
+    expect(view.controls.pillVisible).toBe(false)
+  })
+
+  it('remembers the parked position, and remembers the tail as the tail', () => {
+    const view = mountScroller({}, 'remember:main')
+
+    view.at(1_000)
+    expect(readThreadScroll('remember:main')).toEqual({ top: 1_000, atBottom: false })
+
+    view.at(view.bottom)
+    expect(readThreadScroll('remember:main')).toEqual({ top: 3_600, atBottom: true })
+  })
+
+  it('unpins on a wheel up, and growth then leaves the reader where they are', () => {
+    const view = mountScroller()
+    view.scroller.scrollTop = 1_000
+
+    act(() => {
+      fireEvent.wheel(view.scroller, { deltaY: -120 })
+    })
+    // Growth arrives (the agent streams another block) — a stuck thread would jump to the tail.
+    view.controls.restickIfStuck()
+
+    expect(view.scroller.scrollTop).toBe(1_000)
+  })
+
+  it('re-pins only when a recent DOWN gesture accompanies being near the tail', () => {
+    const view = mountScroller()
+
+    // Away from the tail, unpinned by a wheel up.
+    view.scroller.scrollTop = 1_000
+    act(() => {
+      fireEvent.wheel(view.scroller, { deltaY: -120 })
+    })
+
+    // Arriving near the tail with no intent at all must NOT re-pin: virtua's at-rest sub-pixel
+    // corrections near the tail would otherwise re-pin a reader who just wheeled up.
+    view.at(view.bottom)
+    view.scroller.scrollTop = 1_000
+    view.controls.restickIfStuck()
+    expect(view.scroller.scrollTop).toBe(1_000)
+
+    // A wheel DOWN is the intent; reaching the tail after it re-pins.
+    act(() => {
+      fireEvent.wheel(view.scroller, { deltaY: 120 })
+    })
+    view.at(view.bottom)
+    view.scroller.scrollTop = 1_000
+    view.controls.restickIfStuck()
+    expect(view.scroller.scrollTop).toBe(view.bottom)
+  })
+
+  it('lets the latest gesture win — an up gesture voids a recent down one', () => {
+    const view = mountScroller()
+
+    act(() => {
+      fireEvent.wheel(view.scroller, { deltaY: 120 })
+      fireEvent.wheel(view.scroller, { deltaY: -120 })
+    })
+    view.at(view.bottom)
+    view.scroller.scrollTop = 1_000
+    view.controls.restickIfStuck()
+
+    expect(view.scroller.scrollTop).toBe(1_000)
+  })
+
+  describe('keyboard', () => {
+    it('unpins on the up keys and loads an older page at the history start', () => {
+      const onLoadOlder = vi.fn().mockResolvedValue(undefined)
+      const view = mountScroller({ onLoadOlder })
+
+      act(() => {
+        fireEvent.keyDown(view.scroller, { key: 'PageUp' })
+      })
+
+      expect(onLoadOlder).toHaveBeenCalledTimes(1)
+      view.controls.restickIfStuck()
+      expect(view.scroller.scrollTop).toBe(0)
+    })
+
+    it('ignores a held key rather than requesting a page per repeat', () => {
+      const onLoadOlder = vi.fn().mockResolvedValue(undefined)
+      const view = mountScroller({ onLoadOlder })
+
+      act(() => {
+        fireEvent.keyDown(view.scroller, { key: 'ArrowUp', repeat: true })
+      })
+
+      expect(onLoadOlder).not.toHaveBeenCalled()
+    })
+
+    it('does not load older pages from the middle of the transcript', () => {
+      const onLoadOlder = vi.fn().mockResolvedValue(undefined)
+      const view = mountScroller({ onLoadOlder })
+      view.scroller.scrollTop = 2_000
+
+      act(() => {
+        fireEvent.keyDown(view.scroller, { key: 'Home' })
+      })
+
+      expect(onLoadOlder).not.toHaveBeenCalled()
+    })
+
+    it('treats the down keys as an intent to return to the tail', () => {
+      const view = mountScroller()
+      view.scroller.scrollTop = 1_000
+      act(() => {
+        fireEvent.wheel(view.scroller, { deltaY: -120 })
+        fireEvent.keyDown(view.scroller, { key: 'End' })
+      })
+
+      view.at(view.bottom)
+      view.scroller.scrollTop = 1_000
+      view.controls.restickIfStuck()
+
+      expect(view.scroller.scrollTop).toBe(view.bottom)
+    })
+
+    it('ignores keys that are not navigation', () => {
+      const onLoadOlder = vi.fn().mockResolvedValue(undefined)
+      const view = mountScroller({ onLoadOlder })
+
+      act(() => {
+        fireEvent.keyDown(view.scroller, { key: 'a' })
+      })
+
+      expect(onLoadOlder).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('scrollbar drag', () => {
+    it('unpins on a grab away from the tail, but keeps a drag back to it able to re-pin', () => {
+      const view = mountScroller()
+      view.scroller.scrollTop = 1_000
+
+      act(() => {
+        fireEvent.pointerDown(view.scroller)
+      })
+      // Unpinned right now…
+      view.controls.restickIfStuck()
+      expect(view.scroller.scrollTop).toBe(1_000)
+
+      // …but a scrollbar grab can go either way, so dragging to the tail re-pins.
+      view.at(view.bottom)
+      view.scroller.scrollTop = 1_000
+      view.controls.restickIfStuck()
+      expect(view.scroller.scrollTop).toBe(view.bottom)
+    })
+
+    it('leaves a grab at the tail pinned', () => {
+      const view = mountScroller()
+      view.scroller.scrollTop = view.bottom
+
+      act(() => {
+        fireEvent.pointerDown(view.scroller)
+      })
+      view.scroller.scrollTop = 1_000
+      view.controls.restickIfStuck()
+
+      expect(view.scroller.scrollTop).toBe(view.bottom)
+    })
+
+    it('loads one older page while dragging upward into the history start', () => {
+      const onLoadOlder = vi.fn().mockResolvedValue(undefined)
+      const view = mountScroller({ onLoadOlder })
+      view.scroller.scrollTop = 1_000
+      act(() => {
+        fireEvent.pointerDown(view.scroller)
+      })
+
+      // Dragging up: two scroll events inside the history start must arm the page ONCE.
+      view.at(500)
+      view.at(100)
+
+      expect(onLoadOlder).toHaveBeenCalledTimes(1)
+    })
+
+    it('arms nothing once the pointer is released', () => {
+      const onLoadOlder = vi.fn().mockResolvedValue(undefined)
+      const view = mountScroller({ onLoadOlder })
+      view.scroller.scrollTop = 1_000
+      act(() => {
+        fireEvent.pointerDown(view.scroller)
+        fireEvent.pointerUp(window)
+      })
+
+      view.at(100)
+
+      expect(onLoadOlder).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('touch', () => {
+    const touch = (y: number) => ({ touches: [{ clientY: y }] })
+
+    it('unpins on a downward finger drag and loads one older page at the start', () => {
+      const onLoadOlder = vi.fn().mockResolvedValue(undefined)
+      const view = mountScroller({ onLoadOlder })
+
+      act(() => {
+        fireEvent.touchStart(view.scroller, touch(100))
+        // Finger moving DOWN pans the content up, away from the tail.
+        fireEvent.touchMove(view.scroller, touch(160))
+        fireEvent.touchMove(view.scroller, touch(220))
+      })
+
+      // One page per gesture, not one per touchmove.
+      expect(onLoadOlder).toHaveBeenCalledTimes(1)
+      view.controls.restickIfStuck()
+      expect(view.scroller.scrollTop).toBe(0)
+    })
+
+    it('treats an upward finger drag as an intent to return to the tail', () => {
+      const view = mountScroller()
+      view.scroller.scrollTop = 1_000
+
+      act(() => {
+        fireEvent.touchStart(view.scroller, touch(300))
+        fireEvent.touchMove(view.scroller, touch(240))
+      })
+      view.at(view.bottom)
+      view.scroller.scrollTop = 1_000
+      view.controls.restickIfStuck()
+
+      expect(view.scroller.scrollTop).toBe(view.bottom)
+    })
+
+    it('ignores a jitter of one pixel or less', () => {
+      const onLoadOlder = vi.fn().mockResolvedValue(undefined)
+      const view = mountScroller({ onLoadOlder })
+
+      act(() => {
+        fireEvent.touchStart(view.scroller, touch(100))
+        fireEvent.touchMove(view.scroller, touch(101))
+      })
+
+      expect(onLoadOlder).not.toHaveBeenCalled()
+    })
+
+    it('ignores a touchmove that carries no touch point', () => {
+      const view = mountScroller()
+
+      act(() => {
+        fireEvent.touchStart(view.scroller, { touches: [] })
+        fireEvent.touchMove(view.scroller, { touches: [] })
+      })
+
+      expect(view.controls.pillVisible).toBe(false)
+    })
+  })
+})
+
+describe('JumpToLatestPill', () => {
+  it('is a labelled button that reports the jump', () => {
+    const onJump = vi.fn()
+    render(<JumpToLatestPill onJump={onJump} />)
+
+    const pill = document.querySelector<HTMLElement>('[data-slot="jump-to-latest"]')!
+    expect(pill.textContent).toContain('Jump to latest')
+    fireEvent.click(pill)
+    expect(onJump).toHaveBeenCalledTimes(1)
   })
 })
