@@ -47,6 +47,8 @@ Usage:
   xezar init                scaffold .xezar/ (example workflow + skill)
   xezar projects            list the projects this cockpit serves
                             (also: projects add [<dir>] · projects remove <id>)
+  xezar mcp                 MCP bridge for a coding agent — the agent starts it
+                            (stdio), in a project whose cockpit is running
   xezar server-install      interactive wizard to host xezar on a server
   xezar server-deploy       redeploy a new version (reload the service) + verify
   xezar server-uninstall    reverse a server-install
@@ -149,6 +151,14 @@ async function main(): Promise<void> {
         : undefined;
       process.exitCode = await runProjectsCommand(projectArgs, { defaultRoot: repoRoot, bootProjectId });
       return;
+    case 'mcp': {
+      // The MCP bridge (#86, D-01): stdio for the client, the project's socket for
+      // the running service. Starts no server, opens no port, registers nothing —
+      // so no `initWorkspace` here. Lazy, like server-install below.
+      const { runMcpCommand } = await import('./mcp/index.ts');
+      await runMcpCommand({ repoRoot, version: readOwnVersion() });
+      return;
+    }
     case 'server-install':
       await serverCommand('install', repoRoot, values.platform, {
         yes: Boolean(values.yes),
@@ -299,6 +309,14 @@ async function serveCommand(
     providerRuntimeAuth,
     workspaceEvents,
   }, port);
+  // The boot project's MCP socket (#86, D-01 § 5.4). Fire-and-forget: it never
+  // delays or fails boot (N-07), and a failure is one warning.
+  let mcpService: { close(): void } | undefined;
+  if (bootProjectId) {
+    void startMcpSocket(bootProjectId, version).then((handle) => {
+      mcpService = handle;
+    });
+  }
   const url = `http://localhost:${port}`;
 
   console.log(`\n  xezar v${version} — ${repoRoot}`);
@@ -315,6 +333,7 @@ async function serveCommand(
 
   const shutdown = () => {
     store.flush();
+    mcpService?.close();
     process.exit(0);
   };
   process.on('SIGINT', shutdown);
@@ -325,6 +344,21 @@ async function serveCommand(
   if (openBrowser) {
     const healthy = await waitForHealth(`${url}/api/v1/health`, 5_000);
     if (healthy) openUrl(url);
+  }
+}
+
+/**
+ * Open the MCP socket for `projectId`, or log ONE warning and return undefined. The
+ * module is imported lazily, so even a broken MCP module leaves a working cockpit.
+ */
+async function startMcpSocket(projectId: string, version: string): Promise<{ close(): void } | undefined> {
+  try {
+    const { startMcpService } = await import('./mcp/index.ts');
+    return await startMcpService({ projectId, version });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(`[xez] MCP bridge unavailable for this project (${message}) — the cockpit works without it`);
+    return undefined;
   }
 }
 
