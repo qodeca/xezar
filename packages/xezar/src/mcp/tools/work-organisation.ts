@@ -179,6 +179,13 @@ type RunValue = InferResponseType<RunRoutes['read']['$post'], 200>;
 type GroupValue = InferResponseType<Routes['groups'][':groupId']['$get'], 200>;
 type PickValue = InferResponseType<Routes['groups'][':groupId']['pick']['$post'], 200>;
 type StartTodoValue = InferResponseType<Routes['todos'][':id']['start']['$post'], 201>;
+type ArchiveFinishedValue = InferResponseType<Routes['runs']['archive-finished']['$post'], 200>;
+type ReadAllValue = InferResponseType<Routes['runs']['read-all']['$post'], 200>;
+type DeleteRunValue = InferResponseType<RunRoutes['$delete'], 200>;
+type QueuedMessageRoutes = RunRoutes['queued-messages'][':msgId'];
+type EditQueuedMessageValue = InferResponseType<QueuedMessageRoutes['$patch'], 200>;
+type RemoveQueuedMessageValue = InferResponseType<QueuedMessageRoutes['$delete'], 200>;
+type RemoveTodoValue = InferResponseType<Routes['todos'][':id']['$delete'], 200>;
 
 /** One project's work-organisation operations. Each is one named route; there is no raw path. */
 class WorkOrganisation {
@@ -199,24 +206,24 @@ class WorkOrganisation {
     return settle(read ? run.read.$post({ param }) : run.unread.$post({ param }), [200]);
   }
 
-  archiveFinished(): Promise<McpServiceResult<{ archived: number }>> {
+  archiveFinished(): Promise<McpServiceResult<ArchiveFinishedValue>> {
     return settle(this.routes.runs['archive-finished'].$post({ param: { projectId: this.projectId } }), [200]);
   }
 
-  markAllRead(): Promise<McpServiceResult<{ read: number }>> {
+  markAllRead(): Promise<McpServiceResult<ReadAllValue>> {
     return settle(this.routes.runs['read-all'].$post({ param: { projectId: this.projectId } }), [200]);
   }
 
-  deleteRun(id: string): Promise<McpServiceResult<{ deleted: boolean }>> {
+  deleteRun(id: string): Promise<McpServiceResult<DeleteRunValue>> {
     return settle(this.routes.runs[':id'].$delete({ param: { projectId: this.projectId, id } }), [200]);
   }
 
-  editQueuedMessage(id: string, msgId: string, text: string): Promise<McpServiceResult<{ message: { id: string; text: string } }>> {
+  editQueuedMessage(id: string, msgId: string, text: string): Promise<McpServiceResult<EditQueuedMessageValue>> {
     const param = { projectId: this.projectId, id, msgId };
     return settle(this.routes.runs[':id']['queued-messages'][':msgId'].$patch({ param, json: { text } }), [200]);
   }
 
-  removeQueuedMessage(id: string, msgId: string): Promise<McpServiceResult<{ removed: boolean }>> {
+  removeQueuedMessage(id: string, msgId: string): Promise<McpServiceResult<RemoveQueuedMessageValue>> {
     const param = { projectId: this.projectId, id, msgId };
     return settle(this.routes.runs[':id']['queued-messages'][':msgId'].$delete({ param }), [200]);
   }
@@ -234,7 +241,7 @@ class WorkOrganisation {
     return settle(this.routes.todos[':id'].start.$post({ param: { projectId: this.projectId, id }, json: body }), [201]);
   }
 
-  removeTodo(id: string): Promise<McpServiceResult<{ removed: boolean }>> {
+  removeTodo(id: string): Promise<McpServiceResult<RemoveTodoValue>> {
     return settle(this.routes.todos[':id'].$delete({ param: { projectId: this.projectId, id } }), [200]);
   }
 }
