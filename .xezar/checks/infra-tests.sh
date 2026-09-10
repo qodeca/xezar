@@ -2785,6 +2785,9 @@ make_gh_stub() {
 # Offline stand-in for `gh`. Serves recorded bodies; never opens a socket.
 [ "${1:-}" = "api" ] || { printf 'stub gh: only `api` is implemented, got "%s"\n' "${1:-}" >&2; exit 64; }
 path="${2:-}"
+# A query string selects a representation of the same resource, not a different one, so it is not
+# part of the key. `?per_page=100` (F-A7) must not need its own recorded body.
+path="${path%%\?*}"
 key="$(printf '%s' "$path" | tr '/' '_')"
 dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/responses"
 if [ -f "$dir/$key.fail" ]; then cat "$dir/$key.fail" >&2; exit 1; fi
@@ -2819,12 +2822,14 @@ integ_fixture() {
   # against run 34294613991. `integration` is reported as `integration / integration` because a
   # nested/reusable workflow renders as `<caller> / <job>`. A fixture that used the bare job id
   # would agree with the bug rather than catch it.
-  printf '{"check_runs":[
-    {"name":"verify","status":"completed","conclusion":"success"},
-    {"name":"reuse","status":"completed","conclusion":"success"},
-    {"name":"fixture-extra","status":"completed","conclusion":"success"},
-    {"name":"actionlint","status":"completed","conclusion":"success"},
-    {"name":"integration / integration","status":"completed","conclusion":"skipped"}]}\n' \
+  # F-A7 (#180): the real endpoint carries `started_at` on every run, so the baseline fixture does
+  # too. Several cases below deliberately DROP it to prove the ordering fails closed without it.
+  printf '{"total_count":5,"check_runs":[
+    {"name":"verify","status":"completed","conclusion":"success","started_at":"2026-09-10T13:00:00Z"},
+    {"name":"reuse","status":"completed","conclusion":"success","started_at":"2026-09-10T13:00:00Z"},
+    {"name":"fixture-extra","status":"completed","conclusion":"success","started_at":"2026-09-10T13:00:00Z"},
+    {"name":"actionlint","status":"completed","conclusion":"success","started_at":"2026-09-10T13:00:00Z"},
+    {"name":"integration / integration","status":"completed","conclusion":"skipped","started_at":"2026-09-10T13:00:00Z"}]}\n' \
     > "$r/repos_qodeca_xezar_commits_${GOOD_HEAD}_check-runs"
   # PRODUCTION SHAPE: no GitHub review at all. This workflow is solo, the same account authors
   # every PR, and GitHub forbids approving your own — PRs #118, #119 and #120 all merged with zero
@@ -2915,7 +2920,7 @@ printf '%s' "$out" | grep -q 'UNAVAILABLE' \
 
 # 8. A required check that failed.
 root="$(integ_fixture checkfail)"
-printf '{"check_runs":[
+printf '{"total_count":5,"check_runs":[
   {"name":"verify","status":"completed","conclusion":"failure"},
   {"name":"reuse","status":"completed","conclusion":"success"},
   {"name":"fixture-extra","status":"completed","conclusion":"success"},
@@ -2926,7 +2931,7 @@ integ_expect_refusal "a failing required check refuses" "$root" "checks.failed"
 
 # 9. Pending is pending. Rounding it up to a pass is the failure mode.
 root="$(integ_fixture pending)"
-printf '{"check_runs":[
+printf '{"total_count":5,"check_runs":[
   {"name":"verify","status":"in_progress","conclusion":null},
   {"name":"reuse","status":"completed","conclusion":"success"},
   {"name":"fixture-extra","status":"completed","conclusion":"success"},
@@ -2938,7 +2943,7 @@ integ_expect_refusal "a pending required check refuses rather than rounding up t
 # 10. THE PROJECT CONTRACT IS WIDER THAN THE BRANCH RULE. The ruleset enforces verify + reuse only;
 #     a green pair does not waive fixture-extra. This is the distinction F-PROT-01's follow-up names.
 root="$(integ_fixture branchsubset)"
-printf '{"check_runs":[
+printf '{"total_count":5,"check_runs":[
   {"name":"verify","status":"completed","conclusion":"success"},
   {"name":"reuse","status":"completed","conclusion":"success"},
   {"name":"fixture-extra","status":"completed","conclusion":"failure"},
@@ -2956,7 +2961,7 @@ integ_expect_refusal "passing only the branch-enforced subset does not waive the
 #      absent, blocking integration on a green build. It was never a false pass, and nothing here
 #      claims it was a security hole.
 root="$(integ_fixture realname-absent)"
-printf '{"check_runs":[
+printf '{"total_count":4,"check_runs":[
   {"name":"verify","status":"completed","conclusion":"success"},
   {"name":"reuse","status":"completed","conclusion":"success"},
   {"name":"fixture-extra","status":"completed","conclusion":"success"},
@@ -2965,7 +2970,7 @@ printf '{"check_runs":[
 integ_expect_refusal "the real check name missing entirely still refuses" "$root" "checks.absent"
 
 root="$(integ_fixture realname-success)"
-printf '{"check_runs":[
+printf '{"total_count":5,"check_runs":[
   {"name":"verify","status":"completed","conclusion":"success"},
   {"name":"reuse","status":"completed","conclusion":"success"},
   {"name":"fixture-extra","status":"completed","conclusion":"success"},
@@ -2975,7 +2980,7 @@ printf '{"check_runs":[
 integ_expect_ok "the real check name concluding success is accepted" "$root"
 
 root="$(integ_fixture realname-failure)"
-printf '{"check_runs":[
+printf '{"total_count":5,"check_runs":[
   {"name":"verify","status":"completed","conclusion":"success"},
   {"name":"reuse","status":"completed","conclusion":"success"},
   {"name":"fixture-extra","status":"completed","conclusion":"success"},
@@ -2988,7 +2993,7 @@ integ_expect_refusal "the real check name concluding failure refuses" "$root" "c
 # loosening the comparison: substring matching would accept this, and would also let `verify` be
 # satisfied by some future `verify-something-else`. Exact names only.
 root="$(integ_fixture realname-bare-id)"
-printf '{"check_runs":[
+printf '{"total_count":5,"check_runs":[
   {"name":"verify","status":"completed","conclusion":"success"},
   {"name":"reuse","status":"completed","conclusion":"success"},
   {"name":"fixture-extra","status":"completed","conclusion":"success"},
@@ -2999,7 +3004,7 @@ integ_expect_refusal "the bare job id does not satisfy the real check name" "$ro
 
 # A skip is permitted for the credential-gated check and for nothing else.
 root="$(integ_fixture disallowed-skip)"
-printf '{"check_runs":[
+printf '{"total_count":5,"check_runs":[
   {"name":"verify","status":"completed","conclusion":"skipped"},
   {"name":"reuse","status":"completed","conclusion":"success"},
   {"name":"fixture-extra","status":"completed","conclusion":"success"},
@@ -3014,6 +3019,231 @@ out="$(integ_run "$root")"
 printf '%s' "$out" | grep -q 'SKIPPED (credential-gated' \
   && ok "the credential-gated skip is reported as a skip, not as a pass" \
   || bad "the credential-gated skip is reported as a skip" "$out"
+
+# 10a2. F-A7 (2026-09-10, #180). SEVERAL RUNS OF ONE NAME ON ONE COMMIT.
+#
+# `gh run rerun` creates a NEW check run instead of mutating the old one, and one SHA reachable from
+# two refs gets an independent run per ref — so a required name routinely has two or three runs with
+# different outcomes. The shipped code read the FIRST one the API returned and stopped, and the
+# endpoint documents no ordering, so an older `success` could answer for a newer `failure`. That is
+# a FALSE PASS, the direction this whole file exists to prevent.
+#
+# Every fixture below puts the run that the OLD code would have picked FIRST in the array, because a
+# case whose array order agrees with the fix proves nothing about the bug.
+#
+# `verify` is the name under test throughout; the other four stay green so a refusal can only come
+# from what the case changed.
+# `total_count` is computed rather than written, so a case that adds a run cannot leave a stale count
+# behind and get refused for truncation instead of for the thing it is testing. Parsing here also
+# means a malformed case body fails loudly in the fixture rather than quietly inside the script.
+integ_verify_runs() { # <fixture root> <JSON for the `verify` runs, comma-separated>
+  node -e '
+    const fs = require("fs");
+    const list = JSON.parse("[" + process.argv[2] + `,
+      {"name":"reuse","status":"completed","conclusion":"success","started_at":"2026-09-10T13:00:00Z"},
+      {"name":"fixture-extra","status":"completed","conclusion":"success","started_at":"2026-09-10T13:00:00Z"},
+      {"name":"actionlint","status":"completed","conclusion":"success","started_at":"2026-09-10T13:00:00Z"},
+      {"name":"integration / integration","status":"completed","conclusion":"skipped","started_at":"2026-09-10T13:00:00Z"}]`);
+    fs.writeFileSync(process.argv[1], JSON.stringify({ total_count: list.length, check_runs: list }) + "\n");
+  ' "$1/.stub/responses/repos_qodeca_xezar_commits_${GOOD_HEAD}_check-runs" "$2" \
+    || bad "fixture body for $1" "integ_verify_runs could not build the check-runs JSON"
+}
+
+# THE BUG ITSELF. An older green listed first, a newer red second. Merging on this is exactly what
+# #180 reports, and the old `$1==n{print; exit}` read the green and passed.
+root="$(integ_fixture dup-older-green-masks-newer-red)"
+integ_verify_runs "$root" '
+  {"name":"verify","status":"completed","conclusion":"success","started_at":"2026-09-10T13:11:54Z"},
+  {"name":"verify","status":"completed","conclusion":"failure","started_at":"2026-09-10T13:23:14Z"}'
+integ_expect_refusal "an older green does not mask a newer red run of the same name" "$root" "checks.failed"
+out="$(integ_run "$root")"
+printf '%s' "$out" | grep -q 'newest of 2 runs' \
+  && ok "the refusal says the verdict came from the newest of several runs of that name" \
+  || bad "the refusal names the run it read" "$out"
+
+# The other direction, and the reason "every run must be green" was rejected: a re-run after a real
+# failure is a workflow this project uses (#177), and it has to be able to clear the gate.
+root="$(integ_fixture dup-newer-green-supersedes-red)"
+integ_verify_runs "$root" '
+  {"name":"verify","status":"completed","conclusion":"failure","started_at":"2026-09-10T13:23:14Z"},
+  {"name":"verify","status":"completed","conclusion":"success","started_at":"2026-09-10T13:39:16Z"}'
+integ_expect_ok "a newer green re-run supersedes an older red run of the same name" "$root"
+
+# Two greens are still green. A guard: it passes with and without the fix, and exists so a future
+# "all runs must be green" rewrite does not quietly land as the same shape.
+root="$(integ_fixture dup-both-green)"
+integ_verify_runs "$root" '
+  {"name":"verify","status":"completed","conclusion":"success","started_at":"2026-09-10T13:11:54Z"},
+  {"name":"verify","status":"completed","conclusion":"success","started_at":"2026-09-10T13:39:16Z"}'
+integ_expect_ok "two successful runs of one name still pass" "$root"
+
+# An unfinished run of a name is `pending` even when a finished green run of the same name exists,
+# and even when the green one is listed first. `in_progress` is what commit 46553b91 actually had.
+root="$(integ_fixture dup-green-then-in-progress)"
+integ_verify_runs "$root" '
+  {"name":"verify","status":"completed","conclusion":"success","started_at":"2026-09-10T13:32:07Z"},
+  {"name":"verify","status":"in_progress","conclusion":null,"started_at":"2026-09-10T13:39:16Z"}'
+integ_expect_refusal "a green run does not answer for an unfinished run of the same name" "$root" "checks.pending"
+
+# …including when the unfinished run is the OLDER one. It can still go red, and waiting is a
+# refusal that clears by itself.
+root="$(integ_fixture dup-older-in-progress)"
+integ_verify_runs "$root" '
+  {"name":"verify","status":"completed","conclusion":"success","started_at":"2026-09-10T13:39:16Z"},
+  {"name":"verify","status":"queued","conclusion":null,"started_at":"2026-09-10T13:11:54Z"}'
+integ_expect_refusal "an older unfinished run still holds the name pending" "$root" "checks.pending"
+
+# THE REAL COMMIT. `46553b9151f9e916a219e38534b0085b07608642` as #180 recorded it: three runs of one
+# name — an older failure, a later success, and one still in flight — listed newest-first, which is
+# the order that endpoint happened to return. Pending, because a run is unfinished.
+root="$(integ_fixture dup-real-46553b91)"
+integ_verify_runs "$root" '
+  {"name":"verify","status":"in_progress","conclusion":null,"started_at":"2026-09-10T13:39:16Z"},
+  {"name":"verify","status":"completed","conclusion":"success","started_at":"2026-09-10T13:32:07Z"},
+  {"name":"verify","status":"completed","conclusion":"failure","started_at":"2026-09-10T13:23:14Z"}'
+integ_expect_refusal "the real three-run commit from #180 refuses while a run is in flight" "$root" "checks.pending"
+
+# …and once that in-flight run finishes green, the same commit merges. Two greens newer than one
+# red is precisely the re-run workflow, and it must not be a permanent block.
+root="$(integ_fixture dup-real-46553b91-settled)"
+integ_verify_runs "$root" '
+  {"name":"verify","status":"completed","conclusion":"failure","started_at":"2026-09-10T13:23:14Z"},
+  {"name":"verify","status":"completed","conclusion":"success","started_at":"2026-09-10T13:32:07Z"},
+  {"name":"verify","status":"completed","conclusion":"success","started_at":"2026-09-10T13:39:16Z"}'
+integ_expect_ok "the same commit passes once every run of that name has finished green" "$root"
+
+# --- and the four ways the ordering has to fail CLOSED --------------------------------------------
+#
+# Without a readable order there is no "newest", so there is no answer — and no answer is a refusal.
+root="$(integ_fixture dup-missing-timestamp)"
+integ_verify_runs "$root" '
+  {"name":"verify","status":"completed","conclusion":"success"},
+  {"name":"verify","status":"completed","conclusion":"failure"}'
+integ_expect_refusal "two runs with no started_at refuse instead of picking one" "$root" "checks.ambiguous"
+
+root="$(integ_fixture dup-unparseable-timestamp)"
+integ_verify_runs "$root" '
+  {"name":"verify","status":"completed","conclusion":"success","started_at":"not-a-date"},
+  {"name":"verify","status":"completed","conclusion":"failure","started_at":"2026-09-10T13:23:14Z"}'
+integ_expect_refusal "an unparseable started_at refuses instead of sorting around it" "$root" "checks.ambiguous"
+
+# A tie only matters when it changes the answer, so a tie whose runs DISAGREE refuses…
+root="$(integ_fixture dup-tie-disagree)"
+integ_verify_runs "$root" '
+  {"name":"verify","status":"completed","conclusion":"success","started_at":"2026-09-10T13:39:16Z"},
+  {"name":"verify","status":"completed","conclusion":"failure","started_at":"2026-09-10T13:39:16Z"}'
+integ_expect_refusal "two runs tied as newest with different outcomes refuse" "$root" "checks.ambiguous"
+
+# …while a tie whose runs agree is decided, because no order could change it. This is the line that
+# keeps the fail-closed rule from becoming a second false refusal.
+root="$(integ_fixture dup-tie-agree)"
+integ_verify_runs "$root" '
+  {"name":"verify","status":"completed","conclusion":"success","started_at":"2026-09-10T13:39:16Z"},
+  {"name":"verify","status":"completed","conclusion":"success","started_at":"2026-09-10T13:39:16Z"}'
+integ_expect_ok "two runs tied as newest that agree are not ambiguous" "$root"
+
+# A single run needs no order at all, so it is read without a timestamp — the baseline behaviour
+# this change must not have broken.
+root="$(integ_fixture single-no-timestamp)"
+integ_verify_runs "$root" '
+  {"name":"verify","status":"completed","conclusion":"success"}'
+integ_expect_ok "one run of a name is read without needing a started_at" "$root"
+
+# A body whose shape is not what the API documents is UNREADABLE, and must not be reported as
+# `absent` — absent claims the response was read and named no such run.
+root="$(integ_fixture checkruns-malformed)"
+printf '{"check_runs":"not-a-list"}\n' \
+  > "$root/.stub/responses/repos_qodeca_xezar_commits_${GOOD_HEAD}_check-runs"
+integ_expect_refusal "an unexpected check-runs shape reports unreadable, not absent" "$root" "checks.unreadable"
+out="$(integ_run "$root")"
+printf '%s' "$out" | grep -q 'UNAVAILABLE' \
+  && ok "an unreadable check list is UNAVAILABLE rather than a named refusal" \
+  || bad "an unreadable check list is UNAVAILABLE" "$out"
+out="$(integ_run "$root")"
+printf '%s' "$out" | grep -q 'checks.absent' \
+  && bad "an unreadable check list is not reported as absent" "$out" \
+  || ok "an unreadable check list is not reported as absent"
+
+# A run whose name is not a string is the same class of surprise. `total_count` is correct here, so
+# the case can only be refused for the name.
+root="$(integ_fixture checkruns-bad-name)"
+printf '{"total_count":1,"check_runs":[{"name":123,"status":"completed","conclusion":"success"}]}\n' \
+  > "$root/.stub/responses/repos_qodeca_xezar_commits_${GOOD_HEAD}_check-runs"
+integ_expect_refusal "a check run with a non-string name reports unreadable" "$root" "checks.unreadable"
+
+# PAGINATION. The check-runs endpoint pages; a single request returns one page. Under "newest wins"
+# a run left on page two is not a missing detail — it may BE the newest run, and what stayed behind
+# is an older one that may be green. `total_count` is what the endpoint says exists, and a response
+# carrying fewer runs than that has not been read.
+root="$(integ_fixture checkruns-truncated)"
+printf '{"total_count":9,"check_runs":[
+  {"name":"verify","status":"completed","conclusion":"success","started_at":"2026-09-10T13:11:54Z"},
+  {"name":"reuse","status":"completed","conclusion":"success","started_at":"2026-09-10T13:00:00Z"},
+  {"name":"fixture-extra","status":"completed","conclusion":"success","started_at":"2026-09-10T13:00:00Z"},
+  {"name":"actionlint","status":"completed","conclusion":"success","started_at":"2026-09-10T13:00:00Z"},
+  {"name":"integration / integration","status":"completed","conclusion":"skipped","started_at":"2026-09-10T13:00:00Z"}]}\n' \
+  > "$root/.stub/responses/repos_qodeca_xezar_commits_${GOOD_HEAD}_check-runs"
+integ_expect_refusal "a check-runs page that is missing runs the endpoint reports refuses" "$root" "checks.unreadable"
+out="$(integ_run "$root")"
+printf '%s' "$out" | grep -q 'did not all fit in one page' \
+  && ok "the truncated-page refusal says the newest run may not have been read" \
+  || bad "the truncated-page refusal names pagination" "$out"
+
+# …and a body that does not say how many runs exist cannot be shown to be complete either.
+root="$(integ_fixture checkruns-no-total)"
+printf '{"check_runs":[
+  {"name":"verify","status":"completed","conclusion":"success","started_at":"2026-09-10T13:11:54Z"},
+  {"name":"reuse","status":"completed","conclusion":"success","started_at":"2026-09-10T13:00:00Z"},
+  {"name":"fixture-extra","status":"completed","conclusion":"success","started_at":"2026-09-10T13:00:00Z"},
+  {"name":"actionlint","status":"completed","conclusion":"success","started_at":"2026-09-10T13:00:00Z"},
+  {"name":"integration / integration","status":"completed","conclusion":"skipped","started_at":"2026-09-10T13:00:00Z"}]}\n' \
+  > "$root/.stub/responses/repos_qodeca_xezar_commits_${GOOD_HEAD}_check-runs"
+integ_expect_refusal "a check-runs body with no total_count refuses rather than assuming it is whole" "$root" "checks.unreadable"
+
+# The query string is a representation of the same resource, so the stub answers `?per_page=100`
+# from the recorded body — which is only true because the happy fixture still passes above. This
+# case pins the reason directly: a stub that keyed on the query would 404 and report UNAVAILABLE.
+root="$(integ_fixture checkruns-per-page)"
+out="$(integ_run "$root")"
+printf '%s' "$out" | grep -q 'could not read check runs' \
+  && bad "the paged request still reaches the recorded check-runs body" "$out" \
+  || ok "the paged request still reaches the recorded check-runs body"
+
+# THE SECOND COPY OF THE SAME DEFECT, in the same file: a context the BRANCH RULES enforce that the
+# project list does not name was resolved by the identical first-match-wins lookup. `external-gate`
+# is added to the ruleset here so that branch of the code is actually reached — the standard fixture
+# enforces only names PROJECT_CHECKS already covers, so it never runs.
+root="$(integ_fixture branch-required-dup)"
+printf '[{"type":"pull_request","parameters":{"required_approving_review_count":0}},
+  {"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"verify"},{"context":"external-gate"}]}}]\n' \
+  > "$root/.stub/responses/repos_qodeca_xezar_rules_branches_main"
+printf '{"total_count":7,"check_runs":[
+  {"name":"external-gate","status":"completed","conclusion":"success","started_at":"2026-09-10T13:11:54Z"},
+  {"name":"external-gate","status":"completed","conclusion":"failure","started_at":"2026-09-10T13:23:14Z"},
+  {"name":"verify","status":"completed","conclusion":"success","started_at":"2026-09-10T13:00:00Z"},
+  {"name":"reuse","status":"completed","conclusion":"success","started_at":"2026-09-10T13:00:00Z"},
+  {"name":"fixture-extra","status":"completed","conclusion":"success","started_at":"2026-09-10T13:00:00Z"},
+  {"name":"actionlint","status":"completed","conclusion":"success","started_at":"2026-09-10T13:00:00Z"},
+  {"name":"integration / integration","status":"completed","conclusion":"skipped","started_at":"2026-09-10T13:00:00Z"}]}\n' \
+  > "$root/.stub/responses/repos_qodeca_xezar_commits_${GOOD_HEAD}_check-runs"
+integ_expect_refusal "a branch-enforced context is judged by its newest run too" "$root" "checks.branch-required"
+
+# The positive control for that path, so the case above cannot be passing because the branch-rule
+# branch refuses everything it sees.
+root="$(integ_fixture branch-required-dup-ok)"
+printf '[{"type":"pull_request","parameters":{"required_approving_review_count":0}},
+  {"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"verify"},{"context":"external-gate"}]}}]\n' \
+  > "$root/.stub/responses/repos_qodeca_xezar_rules_branches_main"
+printf '{"total_count":7,"check_runs":[
+  {"name":"external-gate","status":"completed","conclusion":"failure","started_at":"2026-09-10T13:11:54Z"},
+  {"name":"external-gate","status":"completed","conclusion":"success","started_at":"2026-09-10T13:23:14Z"},
+  {"name":"verify","status":"completed","conclusion":"success","started_at":"2026-09-10T13:00:00Z"},
+  {"name":"reuse","status":"completed","conclusion":"success","started_at":"2026-09-10T13:00:00Z"},
+  {"name":"fixture-extra","status":"completed","conclusion":"success","started_at":"2026-09-10T13:00:00Z"},
+  {"name":"actionlint","status":"completed","conclusion":"success","started_at":"2026-09-10T13:00:00Z"},
+  {"name":"integration / integration","status":"completed","conclusion":"skipped","started_at":"2026-09-10T13:00:00Z"}]}\n' \
+  > "$root/.stub/responses/repos_qodeca_xezar_commits_${GOOD_HEAD}_check-runs"
+integ_expect_ok "a branch-enforced context whose newest run is green passes" "$root"
 
 # 10b. N-A2/N-A3 (2026-09-09 review). --issue is a plain number, and closure keywords are the ones
 #      people actually write.

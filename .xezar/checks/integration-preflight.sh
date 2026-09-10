@@ -383,56 +383,173 @@ fi
 # --- 7. Checks at the exact head ------------------------------------------------------------------
 # Two distinct requirements. GitHub enforces a subset; this project expects all of PROJECT_CHECKS.
 # Passing the enforced subset does not waive the rest, and pending is pending — never a pass.
+#
+# F-A7, 2026-09-10 (#180). ONE COMMIT CARRIES MANY RUNS OF ONE NAME, and this block used to read
+# only the first the API happened to return (`$1==n{print; exit}`). Two ordinary things produce
+# duplicates: `gh run rerun` creates a NEW check run rather than mutating the old one, and the same
+# SHA reachable from two refs gets an independent run per ref. The check-runs endpoint documents no
+# ordering guarantee, so "first returned" was neither the newest nor the worst — it was arbitrary,
+# and an arbitrary pick can hand back an older `success` while the newest run is red. That is a
+# FALSE PASS, the one direction this file exists to prevent, and unlike F-A1's false refusal it is
+# invisible: the gate simply prints `check <name>: success` and the merge proceeds.
+#
+# Observed on `46553b9151f9e916a219e38534b0085b07608642`: six runs, three named `Cockpit browser
+# e2e`, started 13:23:14 (failure), 13:32:07 (success) and 13:39:16 (success) UTC.
+#
+# THE RULE: per required NAME, the NEWEST run by `started_at` decides — but only once every run of
+# that name has finished.
+#
+#   1. no run of that name          -> checks.absent   (unchanged; absent is a refusal)
+#   2. ANY run of that name unfinished -> checks.pending
+#   3. otherwise the newest by `started_at` supplies the conclusion, read exactly as before
+#   4. anything that makes 2/3 undecidable -> checks.ambiguous
+#
+# Why newest-wins and not "every run must be green": a re-run after a genuinely red run is a
+# workflow this project uses (see #177, a flaky browser job), and "all green" would mean a SHA that
+# ever went red could never merge without being rewritten — that is a false refusal with no escape,
+# traded for a false pass. Newest-wins is also what GitHub's own required-status-checks does and
+# what a human reading the Checks tab concludes, so this gate neither contradicts nor out-trusts the
+# platform. Do NOT "fix" a future complaint here by taking the first `success` found: that is the
+# bug #180 named, and it is the one shape that is strictly worse than what was here before.
+#
+# Why rule 2 is "ANY unfinished" rather than "the newest is unfinished": an unfinished run can still
+# go red, and waiting is a refusal that CLEARS BY ITSELF in minutes — the cheapest possible
+# conservative answer. It also keeps `absent` and `pending` the distinct words they already were.
+#
+# FAILING CLOSED is the whole point, so every undecidable shape refuses rather than falling through:
+# a `started_at` missing or unparseable on any run that is being ordered, several newest runs tied
+# at the same instant with DIFFERENT conclusions, or a body whose shape is not what the API
+# documents. A tie whose conclusions AGREE is not undecidable and is accepted — the order cannot
+# change the answer. Grouping happens once, in node, and emits exactly ONE resolved line per
+# distinct name, which is what makes the `exit` in the two lookups below correct again.
+#
+# PAGINATION IS PART OF THE SAME BUG, and the rule above is what makes it load-bearing. This
+# endpoint pages, defaulting to 30 runs, and a single request returns the FIRST page only. Under the
+# old first-match-wins read a missing page could at worst produce a false REFUSAL (`checks.absent`).
+# Under "newest wins" a missing page is a false PASS: the newest run of a name can be on page two,
+# and what is left behind is an older one that may be green. `per_page=100` is asked for, and the
+# `total_count` the endpoint returns is compared against what actually arrived — a short read is
+# UNREADABLE, never a verdict on the runs that did arrive. No `--paginate`: it concatenates page
+# bodies into a stream that is not one JSON document, and a partial read that refuses is worth more
+# here than a multi-request read that has to be got right.
 if [ -n "$EXPECTED_HEAD" ]; then
-  if runs="$("$GH" api "repos/$REPO/commits/$EXPECTED_HEAD/check-runs" 2>&1)"; then
+  if runs="$("$GH" api "repos/$REPO/commits/$EXPECTED_HEAD/check-runs?per_page=100" 2>&1)"; then
     summary="$(printf '%s' "$runs" | node -e '
       let s=""; process.stdin.on("data",d=>s+=d).on("end",()=>{
+        const bad = () => process.stdout.write("MALFORMED");
         try {
           const o = JSON.parse(s);
+          const list = o?.check_runs;
+          if (!Array.isArray(list)) return bad();
+          // A response that does not say how many runs exist cannot be shown to be complete, and an
+          // incomplete list is the one input that turns "newest wins" into a false pass. The real
+          // endpoint always sends `total_count`; a body without it is a shape this script will not
+          // guess about.
+          if (!Number.isInteger(o.total_count)) return bad();
+          if (o.total_count > list.length) return process.stdout.write("TRUNCATED");
+          // Group by name. A name carrying a tab or a newline would split the record this script
+          // reads back, so it is an unexpected shape and refuses rather than being sanitised into
+          // something that might collide with a real check name.
+          const groups = new Map();
+          for (const r of list) {
+            if (!r || typeof r.name !== "string" || typeof r.status !== "string") return bad();
+            if (/[\t\r\n]/.test(r.name)) return bad();
+            if (!groups.has(r.name)) groups.set(r.name, []);
+            groups.get(r.name).push(r);
+          }
           const out = [];
-          for (const r of o?.check_runs ?? []) out.push(`${r.name}\t${r.status}\t${r.conclusion ?? ""}`);
+          for (const [name, rs] of groups) {
+            const unfinished = rs.filter((r) => r.status !== "completed");
+            if (unfinished.length) {
+              const detail = rs.length > 1
+                ? `${unfinished[0].status} (${unfinished.length} of ${rs.length} runs of that name have not finished)`
+                : unfinished[0].status;
+              out.push(`${name}\tpending\t${detail}\t${rs.length}`);
+              continue;
+            }
+            const concl = (r) => (typeof r.conclusion === "string" ? r.conclusion : "");
+            if (rs.length === 1) { out.push(`${name}\tcompleted\t${concl(rs[0])}\t1`); continue; }
+            // More than one finished run: an order is now load-bearing, so it must be readable.
+            const times = rs.map((r) => (typeof r.started_at === "string" ? Date.parse(r.started_at) : NaN));
+            const unreadable = times.filter((t) => !Number.isFinite(t)).length;
+            if (unreadable) {
+              out.push(`${name}\tambiguous\tstarted_at is missing or unparseable on ${unreadable} of ${rs.length} runs, so "newest" cannot be decided\t${rs.length}`);
+              continue;
+            }
+            const newestAt = Math.max(...times);
+            const newest = rs.filter((_, i) => times[i] === newestAt);
+            const distinct = [...new Set(newest.map(concl))];
+            if (distinct.length > 1) {
+              out.push(`${name}\tambiguous\t${newest.length} runs are tied as newest at ${new Date(newestAt).toISOString()} and disagree (${distinct.map((c) => c || "(none)").join(", ")})\t${rs.length}`);
+              continue;
+            }
+            out.push(`${name}\tcompleted\t${distinct[0]}\t${rs.length}`);
+          }
           process.stdout.write(out.join("\n"));
-        } catch { process.stdout.write(""); }});' 2>/dev/null)"
+        } catch { bad(); }});' 2>/dev/null)"
+    # One resolved line per distinct name, so `exit` stops at the only candidate there is.
+    check_line() { printf '%s\n' "$summary" | awk -F'\t' -v n="$1" '$1==n{print; exit}'; }
+    if [ "$summary" = "MALFORMED" ]; then
+      # An unreadable list is UNKNOWN, never green — and never `absent` either, which would claim
+      # to have read the response and found nothing in it.
+      unavail checks.unreadable "the check runs at $EXPECTED_HEAD were returned in a shape this script does not recognise. Unreadable is not absent, and not a pass."
+    elif [ "$summary" = "TRUNCATED" ]; then
+      unavail checks.unreadable "the check runs at $EXPECTED_HEAD did not all fit in one page, so the newest run of a required name may not have been read at all. A partial list is not a pass."
+    else
     for want in "${PROJECT_CHECKS[@]}"; do
-      line="$(printf '%s\n' "$summary" | awk -F'\t' -v n="$want" '$1==n{print; exit}')"
+      line="$(check_line "$want")"
       if [ -z "$line" ]; then
         refuse checks.absent "the project's required check \"$want\" has no run at $EXPECTED_HEAD"
         continue
       fi
-      status="$(printf '%s' "$line" | cut -f2)"
-      concl="$(printf '%s' "$line" | cut -f3)"
-      if [ "$status" != "completed" ]; then
-        refuse checks.pending "\"$want\" is $status at $EXPECTED_HEAD. Pending is pending; it is never a pass."
-      elif [ "$concl" = "success" ]; then
-        observe "check $want: success"
-      elif [ "$concl" = "skipped" ]; then
+      verdict="$(printf '%s' "$line" | cut -f2)"
+      detail="$(printf '%s' "$line" | cut -f3)"
+      count="$(printf '%s' "$line" | cut -f4)"
+      # Say when a verdict came out of several runs. A reader who is told "success" for a name that
+      # also has a red run deserves to know an order was applied to get there.
+      many=""
+      [ "$count" = "1" ] || many=" (newest of $count runs of that name)"
+      if [ "$verdict" = "pending" ]; then
+        refuse checks.pending "\"$want\" is $detail at $EXPECTED_HEAD. Pending is pending; it is never a pass."
+      elif [ "$verdict" = "ambiguous" ]; then
+        refuse checks.ambiguous "\"$want\" at $EXPECTED_HEAD: $detail. An order that cannot be decided is never a pass."
+      elif [ "$verdict" != "completed" ]; then
+        refuse checks.ambiguous "\"$want\" at $EXPECTED_HEAD resolved to \"$verdict\", which this script does not recognise."
+      elif [ "$detail" = "success" ]; then
+        observe "check $want: success$many"
+      elif [ "$detail" = "skipped" ]; then
         # A credential-gated skip is a fourth word, reported as itself. It is never folded into
         # "all green", and it is never silently accepted for a check that is not allowed to skip.
         allowed=0
         for s in "${SKIP_ALLOWED[@]}"; do [ "$s" = "$want" ] && allowed=1; done
         if [ "$allowed" = 1 ]; then
-          observe "check $want: SKIPPED (credential-gated; explicitly not a pass and not a failure)"
+          observe "check $want: SKIPPED (credential-gated; explicitly not a pass and not a failure)$many"
         else
-          refuse checks.skipped "\"$want\" was skipped at $EXPECTED_HEAD and is not permitted to skip"
+          refuse checks.skipped "\"$want\" was skipped at $EXPECTED_HEAD and is not permitted to skip$many"
         fi
       else
-        refuse checks.failed "\"$want\" concluded \"$concl\" at $EXPECTED_HEAD"
+        refuse checks.failed "\"$want\" concluded \"$detail\" at $EXPECTED_HEAD$many"
       fi
     done
-    # Anything the branch rules enforce that is not in the project list is still required.
+    # Anything the branch rules enforce that is not in the project list is still required, and it is
+    # resolved through the same grouping — a branch-enforced context has exactly the same
+    # duplicate-runs problem, and reading it any other way would leave half of #180 unfixed.
     if [ -n "$required_contexts" ]; then
       while IFS= read -r ctx; do
         [ -n "$ctx" ] || continue
         known=0
         for want in "${PROJECT_CHECKS[@]}"; do [ "$want" = "$ctx" ] && known=1; done
         [ "$known" = 1 ] && continue
-        line="$(printf '%s\n' "$summary" | awk -F'\t' -v n="$ctx" '$1==n{print; exit}')"
-        if [ -z "$line" ] || [ "$(printf '%s' "$line" | cut -f3)" != "success" ]; then
+        line="$(check_line "$ctx")"
+        if [ -z "$line" ] \
+          || [ "$(printf '%s' "$line" | cut -f2)" != "completed" ] \
+          || [ "$(printf '%s' "$line" | cut -f3)" != "success" ]; then
           refuse checks.branch-required "branch-enforced context \"$ctx\" is not successful at $EXPECTED_HEAD"
         fi
       done <<EOF
 $required_contexts
 EOF
+    fi
     fi
   else
     unavail checks.unreadable "could not read check runs at $EXPECTED_HEAD: $(printf '%s' "$runs" | head -1)"
