@@ -3,6 +3,8 @@ export const TASK_COLUMN_IDS = [
   'status',
   'task',
   'workflow',
+  'tool',
+  'model',
   'branch',
   'diff',
   'reference',
@@ -16,6 +18,8 @@ export const TASK_COLUMN_IDS = [
 export type TaskColumnId = (typeof TASK_COLUMN_IDS)[number]
 export type TaskColumnIcon =
   | 'workflow'
+  | 'tool'
+  | 'model'
   | 'branch'
   | 'diff'
   | 'reference'
@@ -52,6 +56,24 @@ export const TASK_COLUMNS = [
     align: 'left',
     width: '124px',
     icon: 'workflow',
+  },
+  {
+    id: 'tool',
+    label: 'Tool Name',
+    canFold: true,
+    defaultExpanded: true,
+    align: 'left',
+    width: '124px',
+    icon: 'tool',
+  },
+  {
+    id: 'model',
+    label: 'Model',
+    canFold: true,
+    defaultExpanded: true,
+    align: 'left',
+    width: '112px',
+    icon: 'model',
   },
   {
     id: 'branch',

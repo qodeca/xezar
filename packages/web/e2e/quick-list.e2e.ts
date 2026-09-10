@@ -396,11 +396,13 @@ describe('tasks table overview', () => {
   })
 
   it('fills the ± column where a run recorded a diff, and keeps the honest dash where none exists', () => {
-    // Column 5 is ± (Status | Task | Workflow | Branch | ±) — read it for every row at once.
+    // Column 7 is ± (Status | Task | Workflow | Tool Name | Model | Branch | ±) — read it for
+    // every row at once. Positional on purpose: it pins the table's column ORDER as well as the
+    // cell's content, which a `data-column-id` selector would stop doing.
     const diffs = browser.evaluate(`Object.fromEntries(
       [...document.querySelectorAll('${TABLE_ROW}')].map((tr) => [
         tr.dataset.runId,
-        tr.querySelector('td:nth-child(5)').textContent,
+        tr.querySelector('td:nth-child(7)').textContent,
       ])
     )`) as Record<string, string>
 

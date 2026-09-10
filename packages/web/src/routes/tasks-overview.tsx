@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ArchiveIcon,
+  BotIcon,
   CheckCheckIcon,
   ChevronsLeftIcon,
   ChevronsRightIcon,
@@ -18,6 +19,7 @@ import {
   ScaleIcon,
   SearchIcon,
   SearchXIcon,
+  SparklesIcon,
   WorkflowIcon,
 } from 'lucide-react'
 import * as React from 'react'
@@ -25,8 +27,8 @@ import { Link, useNavigate } from '@/lib/project-router'
 
 import { archiveFinished, markAllRunsSeen, patchRun } from '@/api/client'
 import { useRunUsage } from '@/api/global-events'
-import { queryKeys, useHealth, usePinRun, useReferenceProjectId, useRuns } from '@/api/queries'
-import type { RunRecord } from '@qodeca/xezar-api-client'
+import { queryKeys, useConfig, useHealth, usePinRun, useReferenceProjectId, useRuns } from '@/api/queries'
+import type { RunRecord, Runner } from '@qodeca/xezar-api-client'
 import { CenteredState } from '@/components/centered-state'
 import { DiffStatLabel } from '@/components/diff-stat'
 import { DirectionalUsage } from '@/components/directional-usage'
@@ -40,6 +42,7 @@ import { StatusDot } from '@/components/status-dot'
 import { Button } from '@/components/ui/button'
 import { toast } from '@/components/ui/toaster'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { ModelNameCell, ToolNameCell } from '@/components/task-agent'
 import { deriveAttention } from '@/lib/attention'
 import { shortAge } from '@/lib/format'
 import { isReadDoneItem, isUnread, unreadDoneCount } from '@/lib/read-state'
@@ -52,6 +55,7 @@ import {
   type TaskColumnIcon,
   type TaskColumnId,
 } from '@/lib/task-columns'
+import { RUNNER_LABEL, stepBackendCount, taskRunner } from '@/lib/runner-label'
 import { listCounts, queuePositions, runTitle, sortRuns, type ListView } from '@/lib/task-groups'
 import {
   compareGroups,
@@ -92,6 +96,7 @@ export function TasksOverview({
   now = Date.now(),
   showTokens = true,
   showCost = true,
+  defaultRunner,
   expandedColumns = normalizeExpandedColumns(undefined),
   onToggleColumn = () => undefined,
   columnsPending = false,
@@ -116,6 +121,10 @@ export function TasksOverview({
   /** Presentation capability; defaults visible for older health responses and direct renders. */
   showTokens?: boolean
   showCost?: boolean
+  /** This project's `defaultRunner` — what a task that chose no runner actually ran as. Undefined
+   *  only while `GET /config` is in flight; the Tool cell then falls back exactly as the run
+   *  header's `AgentBadge` does. */
+  defaultRunner?: Runner
   /** Workspace-global desktop column choices; absent ids use registry defaults. */
   expandedColumns?: NormalizedExpandedColumns
   onToggleColumn?: (id: TaskColumnId) => void
@@ -248,6 +257,7 @@ export function TasksOverview({
                         now={now}
                         columns={columns}
                         expandedColumns={expandedColumns}
+                        defaultRunner={defaultRunner}
                       />
                     ))}
                   </tbody>
@@ -265,6 +275,7 @@ export function TasksOverview({
                   now={now}
                   showTokens={showTokens}
                   showCost={showCost}
+                  defaultRunner={defaultRunner}
                   onTogglePin={pinToggle}
                 />
               ))}
@@ -475,6 +486,10 @@ function TaskColumnIconView({ icon }: { icon?: TaskColumnIcon }) {
   switch (icon) {
     case 'workflow':
       return <WorkflowIcon className={className} aria-hidden="true" />
+    case 'tool':
+      return <BotIcon className={className} aria-hidden="true" />
+    case 'model':
+      return <SparklesIcon className={className} aria-hidden="true" />
     case 'branch':
       return <GitBranchIcon className={className} aria-hidden="true" />
     case 'diff':
@@ -514,6 +529,7 @@ function TableRow({
   now,
   columns,
   expandedColumns,
+  defaultRunner,
 }: {
   run: RunRecord
   queuePosition: number | null
@@ -522,6 +538,7 @@ function TableRow({
   now: number
   columns: readonly TaskColumnDefinition[]
   expandedColumns: NormalizedExpandedColumns
+  defaultRunner?: Runner
 }) {
   const navigate = useNavigate()
   const attention = deriveAttention(run)
@@ -529,6 +546,8 @@ function TableRow({
   const to = `/tasks/${run.id}`
   const cost = formatCost(run.costUsd)
   const reference = taskReference(run)
+  const runner = taskRunner(run.runner, defaultRunner)
+  const backends = stepBackendCount(run.steps)
 
   return (
     <tr
@@ -572,6 +591,8 @@ function TableRow({
             scheduled={scheduled}
             reference={reference}
             cost={cost}
+            runner={runner}
+            backends={backends}
             to={to}
             onRename={onRename}
             onTogglePin={onTogglePin}
@@ -591,6 +612,8 @@ function TaskTableCell({
   scheduled,
   reference,
   cost,
+  runner,
+  backends,
   to,
   onRename,
   onTogglePin,
@@ -603,6 +626,8 @@ function TaskTableCell({
   scheduled: ReturnType<typeof scheduledResume>
   reference: ReturnType<typeof taskReference>
   cost: string
+  runner: ReturnType<typeof taskRunner>
+  backends: number
   to: string
   onRename: (id: string, title: string) => void
   onTogglePin?: (run: RunRecord, pinned: boolean) => void
@@ -632,6 +657,18 @@ function TaskTableCell({
       return (
         <td data-column-id={column.id} className={cn(TD_BASE, 'text-[12.5px] text-muted-foreground')}>
           {workflowLabel(run)}
+        </td>
+      )
+    case 'tool':
+      return (
+        <td data-column-id={column.id} className={cn(TD_BASE, 'max-w-0')}>
+          <ToolNameCell runner={runner.runner} inherited={runner.inherited} backends={backends} />
+        </td>
+      )
+    case 'model':
+      return (
+        <td data-column-id={column.id} className={cn(TD_BASE, 'max-w-0')}>
+          <ModelNameCell model={run.model} />
         </td>
       )
     case 'branch':
@@ -825,6 +862,7 @@ function TaskCard({
   now,
   showTokens,
   showCost,
+  defaultRunner,
   onTogglePin,
 }: {
   run: RunRecord
@@ -832,6 +870,7 @@ function TaskCard({
   now: number
   showTokens: boolean
   showCost: boolean
+  defaultRunner?: Runner
   onTogglePin?: (run: RunRecord, pinned: boolean) => void
 }) {
   const navigate = useNavigate()
@@ -844,6 +883,12 @@ function TaskCard({
   const readDone = isReadDoneItem(run)
   const cost = formatCost(run.costUsd)
   const hasDirectionalUsage = run.inputTokens !== undefined || run.outputTokens !== undefined
+  // The table is hidden below `md`, so the card's meta line is the ONLY place tool and model can
+  // be read on a phone. They sit right after the workflow, in the table's own column order.
+  const runner = taskRunner(run.runner, defaultRunner)
+  const backends = stepBackendCount(run.steps)
+  const extraBackends = backends > 1 ? backends - 1 : 0
+  const model = run.model ?? 'auto'
 
   return (
     <div
@@ -896,6 +941,23 @@ function TaskCard({
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-1.5 font-mono text-[11.5px] font-medium text-muted-foreground tabular-nums">
         <span>{workflowLabel(run)}</span>
+        <Sep />
+        <span
+          data-slot="task-card-tool"
+          data-inherited={runner.inherited || undefined}
+          className={cn(runner.inherited && 'text-soft-foreground')}
+        >
+          {RUNNER_LABEL[runner.runner]}
+          {extraBackends > 0 ? ` +${extraBackends}` : ''}
+        </span>
+        <Sep />
+        <span
+          data-slot="task-card-model"
+          data-inherited={run.model ? undefined : true}
+          className={cn(!run.model && 'text-soft-foreground')}
+        >
+          {model}
+        </span>
         {queuePosition !== null ? (
           <>
             <Sep />
@@ -968,6 +1030,9 @@ function BranchChip({ branch }: { branch: string }) {
 export function TasksOverviewRoute() {
   const runs = useRuns()
   const health = useHealth()
+  // The project this page is scoped to, not the boot project: `/api/health` describes the latter
+  // and would name the wrong runner on a scoped route. Same read as the run header's AgentBadge.
+  const config = useConfig()
   const metricVisibility = usageMetricVisibility(health.data)
   const [view, setView] = useListView()
   const queryClient = useQueryClient()
@@ -1029,6 +1094,7 @@ export function TasksOverviewRoute() {
         now={now}
         showTokens={metricVisibility.tokens}
         showCost={metricVisibility.cost}
+        defaultRunner={config.data?.defaultRunner}
         expandedColumns={taskTableColumns.expandedColumns}
         onToggleColumn={taskTableColumns.toggleColumn}
         columnsPending={taskTableColumns.isPending}
