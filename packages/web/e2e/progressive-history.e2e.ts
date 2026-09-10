@@ -114,6 +114,11 @@ const STILL_FRAMES = 8
 /** A bound on the wait, not a budget the assertions are judged against: an arrival that never
  *  stops moving is a real failure and must be reported as one, not silently sampled anyway. */
 const MAX_ARRIVAL_FRAMES = 900
+/** "At the live tail" — the scroller's own `NEAR_BOTTOM_SLACK_PX` (`thread-scroll.ts`), which is
+ *  what decides whether it stays pinned. Spelled here rather than imported because these specs
+ *  drive a real browser and bundle nothing, and used for BOTH directions: a tail arrival must be
+ *  inside it, and a parked departure must be outside it. */
+const NEAR_TAIL_PX = 80
 
 /**
  * Capture every destination-transcript animation frame around a client-side task switch, and
@@ -175,7 +180,10 @@ function navigateAndSampleArrival(runId: string): Arrival {
 }
 
 /**
- * Park the reader mid-transcript and return the offset they are ACTUALLY left at.
+ * Park the reader mid-transcript and return the settled departure — the offset they are ACTUALLY
+ * left at, WITH the geometry it has to be judged against. Both, because "it stopped moving" says
+ * nothing about WHERE it stopped: the caller has to be able to reject a departure that settled at
+ * the live tail, and `top` alone cannot tell it apart from a mid-transcript one.
  *
  * NOT the offset written — the write is only where it starts. Rows carry
  * `content-visibility: auto` with a `3rem` intrinsic-size placeholder, so a row that has never
@@ -195,7 +203,7 @@ function navigateAndSampleArrival(runId: string): Arrival {
  * same frame-counting unit, as {@link navigateAndSampleArrival}: the departure offset has to be
  * as final as the arrival one before a 1px budget can mean anything about the restore.
  */
-function parkCurrentThread(): number {
+function parkCurrentThread(): ArrivalSample {
   browser.evaluate(`(() => {
     const main = document.querySelector('[data-slot="main"]')
     main.dispatchEvent(new WheelEvent('wheel', { deltaY: -120, bubbles: true }))
@@ -207,8 +215,8 @@ function parkCurrentThread(): number {
     let previous = null
     const sample = () => {
       attempts += 1
-      const next = { top: main.scrollTop, height: main.scrollHeight }
-      still = previous && previous.top === next.top && previous.height === next.height ? still + 1 : 0
+      const next = { top: main.scrollTop, maxTop: main.scrollHeight - main.clientHeight }
+      still = previous && previous.top === next.top && previous.maxTop === next.maxTop ? still + 1 : 0
       previous = next
       if (still >= ${STILL_FRAMES}) {
         window.__xezParkSettled = next
@@ -220,7 +228,7 @@ function parkCurrentThread(): number {
     requestAnimationFrame(sample)
   })()`)
   browser.waitForFunction(`window.__xezParkSettled !== null`)
-  const settled = browser.evaluate(`window.__xezParkSettled`) as { top: number; height: number } | 'never-settled'
+  const settled = browser.evaluate(`window.__xezParkSettled`) as ArrivalSample | 'never-settled'
   // A park that never stops moving is a real failure and must be reported as one, never
   // silently sampled anyway — the same contract the arrival sampler keeps.
   if (settled === 'never-settled') {
@@ -228,7 +236,7 @@ function parkCurrentThread(): number {
       `xezar e2e: the parked thread never stopped moving in ${MAX_ARRIVAL_FRAMES} frames`,
     )
   }
-  return settled.top
+  return settled
 }
 
 beforeAll(async () => {
@@ -343,19 +351,28 @@ describe('progressive long-session history', () => {
       main.dispatchEvent(new Event('scroll', { bubbles: true }))
     })()`)
     browser.waitForFunction(
-      `(() => { const main = document.querySelector('[data-slot="main"]'); return main.scrollHeight - main.scrollTop - main.clientHeight < 80 })()`,
+      `(() => { const main = document.querySelector('[data-slot="main"]'); return main.scrollHeight - main.scrollTop - main.clientHeight < ${NEAR_TAIL_PX} })()`,
     )
 
     // Warm both query caches first. The destination transcript, not a loading placeholder, is
     // the surface whose paint ordering this regression measures.
     const firstTailArrival = navigateAndSampleArrival(RUN_B_ID)
-    expect(firstTailArrival.settled.maxTop - firstTailArrival.settled.top).toBeLessThan(80)
-    const parked = parkCurrentThread()
+    expect(firstTailArrival.settled.maxTop - firstTailArrival.settled.top).toBeLessThan(NEAR_TAIL_PX)
+    const departure = parkCurrentThread()
+    const parked = departure.top
     expect(parked).toBeGreaterThan(100)
+    // …and the departure has to still BE a cached reading position. Settling accepts whatever
+    // offset stops moving, so a departure that re-pinned to the live tail while the helper was
+    // waiting would hand back a perfectly valid-looking baseline — and the case below would then
+    // assert a tail-to-tail journey against it and pass, having exercised none of the cached
+    // restoration it is named for. The written mid-transcript offset used to rule that out for
+    // free, and settling gave it up; this is what buys it back. Same threshold as the tail
+    // assertions above, read the other way round.
+    expect(departure.maxTop - departure.top).toBeGreaterThan(NEAR_TAIL_PX)
 
     const liveTailArrival = navigateAndSampleArrival(RUN_ID)
     expect(Math.min(...liveTailArrival.samples.map(({ top }) => top))).toBeGreaterThan(40)
-    expect(liveTailArrival.settled.maxTop - liveTailArrival.settled.top).toBeLessThan(80)
+    expect(liveTailArrival.settled.maxTop - liveTailArrival.settled.top).toBeLessThan(NEAR_TAIL_PX)
 
     const cachedArrival = navigateAndSampleArrival(RUN_B_ID)
     // The regression this case is named for: no frame of the destination transcript is drawn at
@@ -378,7 +395,7 @@ describe('progressive long-session history', () => {
     browser.setViewport(390, 844)
     const mobileTailArrival = navigateAndSampleArrival(RUN_ID)
     expect(Math.min(...mobileTailArrival.samples.map(({ top }) => top))).toBeGreaterThan(40)
-    expect(mobileTailArrival.settled.maxTop - mobileTailArrival.settled.top).toBeLessThan(80)
+    expect(mobileTailArrival.settled.maxTop - mobileTailArrival.settled.top).toBeLessThan(NEAR_TAIL_PX)
     browser.screenshot(join(artifactsDir, 'progressive-history-thread-switch-mobile.png'), {
       viewport: true,
     })
