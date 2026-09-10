@@ -24,13 +24,18 @@ const scratch = (() => {
   return basename(inherited) === name ? inherited : join(inherited, name);
 })();
 mkdirSync(scratch, { recursive: true, mode: 0o700 });
-process.env.TMPDIR = scratch;
-process.env.TMP = scratch;
-process.env.TEMP = scratch;
+// Export the RESOLVED spelling. `os.tmpdir()` hands back the unresolved one (on macOS
+// `/var/folders/…`, a symlink to `/private/var/folders/…`), while every child tool that reports a
+// path back resolves it — `git rev-parse --show-toplevel` always answers the real path. A fixture
+// built from the unresolved spelling can therefore never compare equal to what such a tool
+// answers (#197). Resolving here once fixes that for every fixture instead of one at a time.
+const realScratch = realpathSync(scratch);
+process.env.TMPDIR = realScratch;
+process.env.TMP = realScratch;
+process.env.TEMP = realScratch;
 
 // A non-repository fixture must not discover the real checkout above .local and operate on
 // its Git index. Repositories explicitly initialized inside a fixture still resolve normally.
 const ceilings = (process.env.GIT_CEILING_DIRECTORIES ?? '').split(delimiter).filter(Boolean);
-const realScratch = realpathSync(scratch);
 if (!ceilings.includes(realScratch)) ceilings.push(realScratch);
 process.env.GIT_CEILING_DIRECTORIES = ceilings.join(delimiter);

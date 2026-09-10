@@ -94,6 +94,9 @@ class OpencodeSession implements AgentSession {
   private resolveExit!: () => void;
   private exited!: Promise<void>;
   private readonly sse = new AbortController();
+  /** Everything the server wrote to stderr, for the start-failure message —
+   *  see `stderrDetail`. */
+  private readonly stderrChunks: string[] = [];
   private readonly toolCalls: AgentToolCallRecord[] = [];
   private readonly textChunks: string[] = [];
   /** Per text-part cursor so only newly-appended text is buffered (deltas). */
@@ -149,10 +152,18 @@ class OpencodeSession implements AgentSession {
     private readonly onEvent: ((event: AgentEvent) => void) | undefined,
     private readonly opts: SessionOptions,
   ) {
-    // Random high port; the actual bound URL is read back from stdout.
-    const port = 40000 + Math.floor(Math.random() * 20000);
+    // `--port 0` is written out rather than left to the default, because it is
+    // a decision: opencode's own `serve` handles the collision, and does it in
+    // the only place that can — the process holding the socket. It prefers its
+    // conventional 4096 and takes a kernel-assigned ephemeral port when that is
+    // busy, so two concurrent sessions never fight over one number. What this
+    // replaces is one draw of `40000 + random * 20000` made HERE, with no probe
+    // and no retry: a collision killed the server before it listened and the
+    // session reported the far-away handshake failure instead (#184). xezar
+    // therefore never knows the port until the child says so — see
+    // `waitForServerUrl`, the single place it is learned.
     try {
-      this.child = nodeSpawn(bin, ['serve', '--hostname', '127.0.0.1', '--port', String(port)], {
+      this.child = nodeSpawn(bin, ['serve', '--hostname', '127.0.0.1', '--port', '0'], {
         cwd: spec.cwd,
         env: buildChildEnv({ backend: 'opencode', extraEnv: spec.env }),
       });
@@ -174,12 +185,12 @@ class OpencodeSession implements AgentSession {
     this.child.once('exit', () => this.resolveExit());
     this.child.once('close', () => this.resolveExit());
 
-    const stderrChunks: string[] = [];
     this.child.stderr.setEncoding('utf8');
-    this.child.stderr.on('data', (chunk: string) => stderrChunks.push(chunk));
+    this.child.stderr.on('data', (chunk: string) => this.stderrChunks.push(chunk));
 
-    // The server prints its URL on stdout once listening.
-    const urlReady = this.waitForServerUrl(port);
+    // The server prints its URL on stdout once listening — and that is the only
+    // way this side learns which port it took.
+    const urlReady = this.waitForServerUrl();
 
     const limitMs = spec.timeoutMs ?? timeoutMs;
     this.limitMs = limitMs;
@@ -310,13 +321,32 @@ class OpencodeSession implements AgentSession {
 
   // ---- server lifecycle ---------------------------------------------------
 
-  private waitForServerUrl(fallbackPort: number): Promise<string> {
+  /**
+   * The server's base URL, learned from the line `opencode serve` prints once
+   * it is listening. The child is started with `--port 0`, so this is the ONLY
+   * place the real port exists on this side.
+   *
+   * Both failure paths therefore REJECT. The 30s timeout used to resolve
+   * `http://127.0.0.1:<the port we asked for>` instead, which was a guess even
+   * when there was a number to guess: the handshake then failed one HTTP
+   * request later, as a connection error against a port nothing was listening
+   * on, and the run reported that instead of "the server never came up". With
+   * `--port 0` there is no number at all, so the fallback is not merely worse —
+   * it is unwritable. The timeout ITSELF stays, because it is what two live
+   * paths reach a terminal state through: a child that neither prints a URL nor
+   * exits, and a binary that never spawned (see the `close`/`exit` note below).
+   * Only its outcome changes.
+   */
+  private waitForServerUrl(): Promise<string> {
     return new Promise((resolve, reject) => {
       let buffer = '';
       const timer = setTimeout(() => {
         cleanup();
-        // Nothing parsed — try the port we asked for.
-        resolve(`http://127.0.0.1:${fallbackPort}`);
+        reject(
+          new Error(
+            `opencode serve printed no listening URL within ${Math.round(SERVER_START_TIMEOUT_MS / 1000)}s${this.stderrDetail()}`,
+          ),
+        );
       }, SERVER_START_TIMEOUT_MS);
       timer.unref?.();
       const onData = (chunk: string) => {
@@ -327,19 +357,53 @@ class OpencodeSession implements AgentSession {
           resolve(m[0]);
         }
       };
+      // Two events, and both are needed. `exit` says a process ran and is gone;
+      // `close` is the only point node guarantees its stdio is drained, and the
+      // child's last words are the whole value of the message below — read at
+      // `exit` they are still a race.
+      //
+      // `close` WITHOUT an `exit` is the other case entirely: an ENOENT spawn
+      // emits `error` and `close` and never `exit`, no process ever ran, and the
+      // pinned behaviour for a missing binary is the full start window rather
+      // than an instant rejection (see the missing-binary case in the tests).
+      // Rejecting on a bare `close` would quietly change that. A `close` that
+      // never follows an `exit` — a grandchild holding the pipe — is bounded by
+      // the timeout above.
+      let exited = false;
       const onExit = () => {
+        exited = true;
+      };
+      const onClose = () => {
+        if (!exited) return;
         cleanup();
-        reject(new Error('opencode serve exited before it started listening'));
+        reject(new Error(`opencode serve exited before it started listening${this.stderrDetail()}`));
       };
       const cleanup = () => {
         clearTimeout(timer);
         this.child.stdout.off('data', onData);
         this.child.off('exit', onExit);
+        this.child.off('close', onClose);
       };
       this.child.stdout.setEncoding('utf8');
       this.child.stdout.on('data', onData);
       this.child.once('exit', onExit);
+      this.child.on('close', onClose);
     });
+  }
+
+  /**
+   * The child's own last words, appended to a start failure — the same shape
+   * the codex and claude runners already use for theirs.
+   *
+   * Without it the user of a server that died on a port collision or a bad
+   * config saw only `opencode serve exited before it started listening`, while
+   * the reason sat unread in `stderrChunks`: the #184 complaint exactly. The
+   * last three lines, because a crash dump's tail is the part that names the
+   * cause.
+   */
+  private stderrDetail(): string {
+    const stderr = this.stderrChunks.join('').trim();
+    return stderr ? ` — ${stderr.split('\n').slice(-3).join(' | ')}` : '';
   }
 
   private async bootstrap(): Promise<void> {
