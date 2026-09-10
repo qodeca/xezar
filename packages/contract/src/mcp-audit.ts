@@ -68,7 +68,10 @@ export const auditEntrySchema = z.object({
   outcome: auditOutcomeSchema,
   /** MUST be server-derived. */
   origin: auditOriginSchema,
-  /** SHOULD — D-02's session fencing generation; absent for non-MCP origins. Its semantics are D-02's. */
+  /**
+   * SHOULD — the wall-clock ms prefix of the D-02.3 fencing token (`<ms>-<UUIDv4>`) the mutation
+   * arrived under; absent for non-MCP origins. Never the whole token: that passes the fence.
+   */
   ownerGeneration: z.number().int().nonnegative().optional(),
   /** SHOULD — `<projectId>/<operationId>` (D-06 § 5.2); absent for non-MCP origins. */
   operationKey: z.string().min(1).max(257).regex(/^[A-Za-z0-9_.:-]+\/[A-Za-z0-9_.:-]{8,128}$/).optional(),

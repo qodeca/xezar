@@ -77,7 +77,8 @@ describe('A: a cockpit write and the equivalent MCP write differ only in origin'
 
   it('adds the D-06 join fields for MCP only, leaving the shared fields identical', async () => {
     const trail = new AuditTrail({ projectId: 'alpha', dataDir: dataDirOf('alpha') }, { now });
-    const mcpJoin = { operationId: 'op-0001-abcd', ownerGeneration: 7 };
+    // A D-02.3 fencing token, `<wall-clock ms>-<UUIDv4>`, as the receipt journal is handed it.
+    const mcpJoin = { operationId: 'op-0001-abcd', ownerGeneration: '1789080413148-0b6f1c2e-9d4a-4c3b-8e7f-5a6b7c8d9e0f' };
     // The cockpit has no operation id or owner generation; D-06 § 10.2 says both are absent for it.
     trail.channel('ui').record({ ...pinOp('run-1'), ...mcpJoin }, { outcome: 'ok' });
     trail.channel('mcp').record({ ...pinOp('run-1'), ...mcpJoin }, { outcome: 'ok' });
@@ -86,7 +87,9 @@ describe('A: a cockpit write and the equivalent MCP write differ only in origin'
     expect(ui.operationKey).toBeUndefined();
     expect(ui.ownerGeneration).toBeUndefined();
     expect(mcp.operationKey).toBe('alpha/op-0001-abcd');
-    expect(mcp.ownerGeneration).toBe(7);
+    // Only the wall-clock prefix: the full token passes the owner fence, so it is authority.
+    expect(mcp.ownerGeneration).toBe(1789080413148);
+    expect(readFileSync(auditTrailPath(dataDirOf('alpha')), 'utf8')).not.toContain('0b6f1c2e');
     const shared = ({ origin: _o, operationKey: _k, ownerGeneration: _g, ...rest }: AuditEntry) => rest;
     expect(shared(mcp)).toEqual(shared(ui));
   });
@@ -203,7 +206,8 @@ describe('C: a credential in the connection configuration never enters the trail
           payload: { id: secret, prompt: `please use ${secret}` },
           expectedVersion: `rev1:run:${secret}:3:0123456789ab`,
           operationId: secret,
-          ownerGeneration: 1,
+          // A fencing token whose random half is the planted capability token.
+          ownerGeneration: `1789080413148-${capability}`,
         },
         { outcome: 'rejected', errorCode: 'not_found' },
       );

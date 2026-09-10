@@ -90,8 +90,12 @@ export interface AuditedOperation {
   expectedVersion?: string;
   /** MCP only — the client's `operationId` (D-06 § 5.2). */
   operationId?: string;
-  /** MCP only — D-02's session fencing generation. */
-  ownerGeneration?: number;
+  /**
+   * MCP only — the D-02.3 fencing token the mutation arrived under, `<wall-clock ms>-<UUIDv4>`, as
+   * the receipt journal records it. Only the wall-clock prefix is kept: the full token passes the
+   * owner's equality fence, so it is authority and never enters the trail.
+   */
+  ownerGeneration?: string;
 }
 
 export interface AuditSettlement {
@@ -221,7 +225,7 @@ export class AuditTrail {
     };
     const optional: Partial<AuditEntry> = {
       resource: resourceOf(settlement.resource) ?? resourceOf(op.resource),
-      ownerGeneration: origin === 'mcp' ? field('ownerGeneration', op.ownerGeneration) : undefined,
+      ownerGeneration: origin === 'mcp' ? field('ownerGeneration', fencingTokenMs(op.ownerGeneration)) : undefined,
       operationKey:
         origin === 'mcp' && op.operationId !== undefined
           ? field('operationKey', clean(`${this.scope.projectId}/${op.operationId}`))
@@ -314,6 +318,16 @@ export function canonicalJson(value: unknown): string {
 /** SHA-256, lowercase hex, of `canonicalJson(payload)`. */
 export function payloadDigest(payload: unknown): string {
   return createHash('sha256').update(canonicalJson(payload)).digest('hex');
+}
+
+/**
+ * The wall-clock prefix of a D-02.3 fencing token, `<ms>-<UUIDv4>` — the number D-06 § 10.2 keeps.
+ * D-02 names human-readable audit as the prefix's one consumer; the random half is what the fence
+ * compares, so it is dropped here. Anything not shaped like a token yields nothing.
+ */
+function fencingTokenMs(token: string | undefined): number | undefined {
+  const match = token === undefined ? null : /^(\d{1,15})-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.exec(token);
+  return match ? Number(match[1]) : undefined;
 }
 
 function safeDigest(payload: unknown): string | undefined {
