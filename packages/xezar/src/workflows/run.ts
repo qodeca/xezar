@@ -2301,6 +2301,26 @@ export class RunManager {
     persistedImages: ContentBlock[] = [],
     persistedAttachments: PersistedAttachment[] = [],
   ): Promise<void> {
+    // Continue has already been accepted. Preserve its input before asynchronous
+    // recovery or isolation refusal can stop startup; persistence is not runner receipt.
+    // Attachments pasted into the follow-up composer, on the same terms as a live-session
+    // message (#357): persisted to the run's own attachment store so the thread renders the
+    // bubble's images rather than a bare count, and handed to the agent as absolute paths
+    // appended to the prompt (so it can operate on them — and because codex/opencode drop image
+    // blocks before they reach the model). An image ALSO rides along as a base64 block so the
+    // model can view it; a file (#950) has nothing to view and travels as its path alone.
+    const freshAttachments = this.persistPastedAttachments(runId, images);
+    const openingImages = [...contentBlocksOf(images), ...persistedImages];
+    const attachments = [...freshAttachments, ...persistedAttachments];
+    this.store.appendEvent(runId, {
+      type: 'user-message',
+      stepId,
+      text: prompt,
+      imageCount: openingImages.filter((b) => b.type === 'image').length,
+      ...(attachments.length ? { images: attachments.map((saved) => saved.url) } : {}),
+    });
+
+
     // Continuation runs in the task's worktree when it still exists (spec
     // 006) — the resumed session sees exactly what the original run left.
     // Retention (#483) may have reclaimed this run's worktree directory while
@@ -2394,22 +2414,6 @@ export class RunManager {
       backend,
     });
     this.store.appendEvent(runId, { type: 'step-start', stepId, name: 'Continue', kind: 'agent', iteration: 1 });
-    // Attachments pasted into the follow-up composer, on the same terms as a live-session
-    // message (#357): persisted to the run's own attachment store so the thread renders the
-    // bubble's images rather than a bare count, and handed to the agent as absolute paths
-    // appended to the prompt (so it can operate on them — and because codex/opencode drop image
-    // blocks before they reach the model). An image ALSO rides along as a base64 block so the
-    // model can view it; a file (#950) has nothing to view and travels as its path alone.
-    const freshAttachments = this.persistPastedAttachments(runId, images);
-    const openingImages = [...contentBlocksOf(images), ...persistedImages];
-    const attachments = [...freshAttachments, ...persistedAttachments];
-    this.store.appendEvent(runId, {
-      type: 'user-message',
-      stepId,
-      text: prompt,
-      imageCount: openingImages.filter((b) => b.type === 'image').length,
-      ...(attachments.length ? { images: attachments.map((saved) => saved.url) } : {}),
-    });
 
     let stepCost = 0;
     let turnText = '';

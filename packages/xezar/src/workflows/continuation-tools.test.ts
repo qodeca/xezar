@@ -270,8 +270,15 @@ describe('a resumed session keeps its workflow step tools', () => {
           worktreeReclaimedAt: new Date().toISOString(), baseBranch: 'missing-base-ref',
         } : {}),
       });
-      expect(manager!.continueRun(id).ok).toBe(true);
+      expect(manager!.continueRun(id, {
+        text: 'Keep this correction for the next recovery.',
+        images: [{ type: 'file', mediaType: 'text/plain', data: Buffer.from('recovery notes').toString('base64') }],
+      }).ok).toBe(true);
       await expect.poll(() => store.getRun(id)?.error).toContain('continuation isolation unavailable');
+      const messages = store.readEvents(id).filter((event) => event.type === 'user-message');
+      expect(messages).toHaveLength(1);
+      expect(messages[0]).toMatchObject({ text: 'Keep this correction for the next recovery.', images: [expect.stringContaining('pasted-1.txt')] });
+      expect(readFileSync(join(repoRoot, '.local/xezar/runs', `${id}-images`, 'pasted-1.txt'), 'utf8')).toBe('recovery notes');
       expect(store.getRun(id)?.status).toBe('failed');
       expect(store.getRun(id)?.steps.at(-1)?.status).toBe('failed');
       expect(captured.specs).toHaveLength(0);
