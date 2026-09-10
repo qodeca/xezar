@@ -130,6 +130,9 @@ function buildFixture() {
   symlinkSync(join(bravoWorktree, 'secret.txt'), join(alphaWorktree, 'leak.txt'));
   symlinkSync(rootB, join(alphaWorktree, 'bravo'));
 
+  const alphaInPlace = storeA.createRun({ title: 'alpha in place', workflow: 'quick-task', task: 't', worktree: false, steps: [] });
+  storeA.updateRun(alphaInPlace.id, { status: 'running' });
+
   const alphaBulk1 = newRun(storeA, 'alpha bulk one');
   finished(storeA, alphaBulk1.id, '2026-09-02T10:00:00.000Z');
   const alphaBulk2 = newRun(storeA, 'alpha bulk two');
@@ -187,7 +190,7 @@ function buildFixture() {
   return {
     base, rootA, rootB, storeA, storeB, autoStoreA, autoStoreB, checks, bravoNames,
     bravoRun, bravoWorktree, bravoAutomation, bravoReceipt, bravoCheck,
-    alphaRun, alphaWorktree, alphaBulk1, alphaBulk2, alphaVariantA, alphaVariantB, alphaLegit, alphaStray,
+    alphaRun, alphaWorktree, alphaInPlace, alphaBulk1, alphaBulk2, alphaVariantA, alphaVariantB, alphaLegit, alphaStray,
     alphaLinked, alphaLinkedMate, alphaAutomation, alphaReceipt, alphaCheck, unstampedCheck,
   };
 }
@@ -407,6 +410,18 @@ describe('resource ownership (#88)', () => {
     expect(seen.audit).toEqual(Array(6).fill({ check: 'file', code: 'forbidden_path' }));
     expect(seen.eventsA).toEqual([]);
     expect(seen.log).toEqual([]);
+  });
+
+  it('refuses the engine runtime folder of a run that works in the project root (F-15)', async () => {
+    writeFileSync(join(projectDataDir(f.rootA), 'launch-key'), 'ALPHA-LAUNCH-KEY\n');
+    const seen = await attempt(async () => [
+      await fileFlow(f.alphaInPlace.id, '.local/xezar/launch-key'),
+      await fileFlow(f.alphaInPlace.id, '.LOCAL/xezar/runs.json'),
+    ]);
+    expect(seen.response).toEqual(Array(2).fill({ ok: false, code: 'forbidden_path', message: expect.stringContaining('path not allowed') }));
+    expect(JSON.stringify(seen)).not.toContain('ALPHA-LAUNCH-KEY');
+    // Control: the same run still reads the project's own files.
+    expect(await fileFlow(f.alphaInPlace.id, 'README.md')).toMatchObject({ ok: true, result: { kind: 'file', content: '# project-alpha\n' } });
   });
 
   it('refuses every file of a run whose worktree directory is a symlink into B', async () => {

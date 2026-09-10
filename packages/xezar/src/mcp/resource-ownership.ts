@@ -308,7 +308,8 @@ const MAX_PATH_LENGTH = 4_096;
 
 /**
  * A path inside a run's working directory (A-04). Refused BEFORE any content is read when it is
- * absolute, contains a `..` segment, a backslash, a NUL or a `.git` segment, or when ANY
+ * absolute, contains a `..` segment, a backslash, a NUL or a `.git` segment, starts in the
+ * engine's `.local/` runtime folder, or when ANY
  * component on the way to it is a symlink — each component is `lstat`ed in order, so the walk
  * never follows a link into another tree. A missing component is `not_found`.
  *
@@ -332,6 +333,9 @@ export async function ownWorktreeFile(
   const segments = raw.split('/').filter((s) => s !== '' && s !== '.');
   // `.git` compared case-insensitively: on a case-insensitive filesystem `.GIT` IS `.git`.
   if (segments.some((s) => s === '..' || s.toLowerCase() === '.git')) return refuse(scope, 'file', 'forbidden_path');
+  // A `worktree: false` run reads from the project root, where `.local/` holds the engine's
+  // runtime state — every task's transcript and the launch key, which F-15 forbids returning.
+  if (segments[0]?.toLowerCase() === '.local') return refuse(scope, 'file', 'forbidden_path');
 
   let current = dir.value.directory;
   for (const [i, segment] of segments.entries()) {
