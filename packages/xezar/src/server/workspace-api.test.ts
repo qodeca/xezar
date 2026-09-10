@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { workspaceConfigPath, workspaceUiStatePath } from '../paths.ts';
+import { DEFAULT_MEMORY_LIMIT_MB } from '../workspace/config.ts';
 import { WorkspaceSemaphore } from '../workspace/semaphore.ts';
 import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
@@ -39,6 +40,8 @@ describe('the workspace settings API (step 2.7)', () => {
     delete process.env.XEZ_SKILLS_AUTO_UPDATE;
     delete process.env.XEZ_AUTONOMOUS_DEFAULT;
     delete process.env.XEZ_WORKTREE_DEFAULT;
+    delete process.env.XEZ_FOLLOWUPS;
+    delete process.env.XEZ_ENV_PASSTHROUGH;
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-workspace-api-repo-'));
     mkdirSync(join(repoRoot, '.local/xezar'), { recursive: true });
     store = RunStore.open(join(repoRoot, '.local/xezar'));
@@ -93,6 +96,12 @@ describe('the workspace settings API (step 2.7)', () => {
       projectsDir: '~/xezar/projects',
       skillsAutoUpdate: null,
       effectiveSkillsAutoUpdate: true,
+      // F — the two boot-time env switches became stored settings. `null` = no stored key,
+      // so the env still decides; the `effective*` twin is what the cockpit renders.
+      followups: null,
+      effectiveFollowups: false,
+      agentEnvPassthrough: null,
+      effectiveAgentEnvPassthrough: [],
       composerDefaults: {
         autonomous: null,
         worktree: null,
@@ -104,7 +113,9 @@ describe('the workspace settings API (step 2.7)', () => {
         maxMonitoringSessions: 2,
         monitoringWakeIntervalMinutes: 5,
         autoResumeOnUsageLimit: true,
-        memoryLimitMb: null,
+        idleTimeoutMinutes: 15,
+        memoryLimitMb: DEFAULT_MEMORY_LIMIT_MB,
+        memoryLimitDefaultMb: DEFAULT_MEMORY_LIMIT_MB,
         worktreeRetentionDefault: 10,
       },
       // Machine-wide agent defaults (spec 2026-07-29-agent-profiles). EMPTY, not populated: absent
@@ -142,6 +153,12 @@ describe('the workspace settings API (step 2.7)', () => {
       projectsDir: '~/xezar/projects',
       skillsAutoUpdate: null,
       effectiveSkillsAutoUpdate: true,
+      // F — the two boot-time env switches became stored settings. `null` = no stored key,
+      // so the env still decides; the `effective*` twin is what the cockpit renders.
+      followups: null,
+      effectiveFollowups: false,
+      agentEnvPassthrough: null,
+      effectiveAgentEnvPassthrough: [],
       composerDefaults: {
         autonomous: null,
         worktree: null,
@@ -153,7 +170,9 @@ describe('the workspace settings API (step 2.7)', () => {
         maxMonitoringSessions: 3,
         monitoringWakeIntervalMinutes: 5,
         autoResumeOnUsageLimit: false,
+        idleTimeoutMinutes: 15,
         memoryLimitMb: 2048,
+        memoryLimitDefaultMb: DEFAULT_MEMORY_LIMIT_MB,
         worktreeRetentionDefault: 10,
       },
       // Untouched by a resources write, and still empty — the two live in the same file but answer
@@ -197,9 +216,89 @@ describe('the workspace settings API (step 2.7)', () => {
       maxMonitoringSessions: 2,
       monitoringWakeIntervalMinutes: 5,
       autoResumeOnUsageLimit: true,
-      memoryLimitMb: null,
+      idleTimeoutMinutes: 15,
+      memoryLimitMb: DEFAULT_MEMORY_LIMIT_MB,
+      memoryLimitDefaultMb: DEFAULT_MEMORY_LIMIT_MB,
       worktreeRetentionDefault: 3,
     });
+  });
+
+  /**
+   * A — the idle timeout round-trips through the API and reaches the shared cache the engine
+   * actually asks, not just the file. `null` is the "never close on idle" choice and, like
+   * `monitoringWakeIntervalMinutes`, must never be re-defaulted away.
+   */
+  it('PUT idleTimeoutMinutes round-trips and refreshes the semaphore cache', async () => {
+    expect(semaphore.idleTimeoutMinutes()).toBe(15); // the zero-config default
+    const res = await putConfig({ resources: { idleTimeoutMinutes: 120 } });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as WorkspaceConfigResponse).resources.idleTimeoutMinutes).toBe(120);
+    expect((rawConfig().resources as Record<string, unknown>).idleTimeoutMinutes).toBe(120);
+    expect(semaphore.idleTimeoutMinutes()).toBe(120);
+
+    await putConfig({ resources: { idleTimeoutMinutes: null } });
+    expect(
+      ((await (await getConfig()).json()) as WorkspaceConfigResponse).resources.idleTimeoutMinutes,
+    ).toBeNull();
+    expect(semaphore.idleTimeoutMinutes()).toBeNull();
+  });
+
+  it('rejects an out-of-bounds idle timeout with 400 and writes nothing', async () => {
+    for (const body of [{ idleTimeoutMinutes: 0 }, { idleTimeoutMinutes: 1441 }]) {
+      const res = await putConfig({ resources: body as never });
+      expect(res.status).toBe(400);
+    }
+    expect(semaphore.idleTimeoutMinutes()).toBe(15);
+  });
+
+  /**
+   * F — the two boot-time env switches are stored settings, and they refresh through the same
+   * `semaphore.refresh()` hook a `resources` write already fires, rather than a second reload
+   * path. `null` clears each key back to its env-decided default.
+   */
+  it('PUT followups round-trips, wins over the env, and null clears back to it', async () => {
+    process.env.XEZ_FOLLOWUPS = '1';
+    // Nothing stored: the env still decides, read live rather than from the cache.
+    expect(semaphore.storedFollowups()).toBeUndefined();
+    expect(semaphore.followupsEnabled()).toBe(true);
+
+    const on = (await (await putConfig({ followups: false })).json()) as WorkspaceConfigResponse;
+    expect(on.followups).toBe(false);
+    expect(on.effectiveFollowups).toBe(false); // the stored `false` beats XEZ_FOLLOWUPS=1
+    expect(rawConfig().followups).toBe(false);
+    expect(semaphore.storedFollowups()).toBe(false);
+    expect(semaphore.followupsEnabled()).toBe(false);
+
+    const cleared = (await (await putConfig({ followups: null })).json()) as WorkspaceConfigResponse;
+    expect(cleared.followups).toBeNull();
+    expect(cleared.effectiveFollowups).toBe(true); // back to the env
+    expect(rawConfig().followups).toBeUndefined();
+    expect(semaphore.storedFollowups()).toBeUndefined();
+    expect(semaphore.followupsEnabled()).toBe(true);
+  });
+
+  it('PUT agentEnvPassthrough round-trips, and an empty list is a real stored choice', async () => {
+    process.env.XEZ_ENV_PASSTHROUGH = 'FROM_ENV';
+    const set = (await (
+      await putConfig({ agentEnvPassthrough: ['VITEST_MAX_WORKERS'] })
+    ).json()) as WorkspaceConfigResponse;
+    expect(set.agentEnvPassthrough).toEqual(['VITEST_MAX_WORKERS']);
+    expect(set.effectiveAgentEnvPassthrough).toEqual(['VITEST_MAX_WORKERS']);
+    expect(semaphore.agentEnvPassthrough()).toEqual(['VITEST_MAX_WORKERS']);
+
+    const emptied = (await (await putConfig({ agentEnvPassthrough: [] })).json()) as WorkspaceConfigResponse;
+    expect(emptied.agentEnvPassthrough).toEqual([]);
+    // NOT the env: an empty stored list means "forward nothing", not "no opinion".
+    expect(emptied.effectiveAgentEnvPassthrough).toEqual([]);
+    expect(semaphore.agentEnvPassthrough()).toEqual([]);
+
+    const cleared = (await (
+      await putConfig({ agentEnvPassthrough: null })
+    ).json()) as WorkspaceConfigResponse;
+    expect(cleared.agentEnvPassthrough).toBeNull();
+    expect(cleared.effectiveAgentEnvPassthrough).toEqual(['FROM_ENV']);
+    expect(rawConfig().agentEnvPassthrough).toBeUndefined();
+    expect(semaphore.agentEnvPassthrough()).toEqual(['FROM_ENV']);
   });
 
   it('PUT stores explicit auto-update values and null clears back to the inherited env value', async () => {

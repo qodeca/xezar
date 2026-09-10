@@ -24,7 +24,6 @@ import {
   HANDOFF_ONLY_INSTRUCTIONS,
   HANDOFF_INSTRUCTIONS,
   appendHandoffHeartbeat,
-  followupsEnabled,
   handoffPath,
   seedHandoffFile,
 } from '../handoff.ts';
@@ -60,6 +59,7 @@ import { autoNamingActive, generateRunName, liveTitleUpdatesEnabled, postValidat
 import { reviewGateEnabled } from '../runs/review-gate.ts';
 import { resolveProfileEnvForRoot } from '../workspace/agent-profiles.ts';
 import { DEFAULT_AGENT_ACCOUNT_ID } from '../workspace/agent-accounts.ts';
+import { DEFAULT_IDLE_TIMEOUT_MINUTES } from '../workspace/config.ts';
 import { WorkspaceSemaphore, type AccountHolds } from '../workspace/semaphore.ts';
 import { UiEventSink } from '../runs/ui-event-sink.ts';
 import type { UiEvent } from '../core/ui-events.ts';
@@ -80,8 +80,16 @@ async function configuredModelProvider(
 ): Promise<string | undefined> {
   return readAgentModelProvider(backend, repoRoot).catch(() => undefined);
 }
-/** An interactive session that hears nothing from the user closes itself. */
-export const IDLE_TIMEOUT_MS = 15 * 60_000;
+/**
+ * An interactive session that hears nothing from the user closes itself.
+ *
+ * Kept as the module default so `stepTimeoutMs`-style callers and old imports still
+ * resolve, but enforcement no longer reads it directly: `armIdleTimer` asks the shared
+ * `WorkspaceSemaphore`, so `resources.idleTimeoutMinutes` takes effect on the next park
+ * without a restart. This constant IS that setting's default, via
+ * `DEFAULT_IDLE_TIMEOUT_MINUTES`.
+ */
+export const IDLE_TIMEOUT_MS = DEFAULT_IDLE_TIMEOUT_MINUTES * 60_000;
 /**
  * Task-completion marker from the agent contract (HANDOFF_INSTRUCTIONS): a
  * turn whose text ends with `XEZ:DONE` means "goal achieved, nothing to ask" —
@@ -740,11 +748,12 @@ export class RunManager {
     // rows this manager owns (multi-project spec, step 2.4).
     const runIds = Object.keys(snapshot).filter((runId) => this.active.has(runId));
     if (runIds.length === 0) return;
-    // Workspace limit from the shared semaphore's in-memory cache (step 2.5:
-    // refreshed at boot and on PUT /api/workspace/config — never N per-tick
-    // file reads across N projects). Legacy per-repo `memoryLimitMb` keys are
-    // ignored post-migration.
-    const limitMb = this.semaphore.memoryLimitMb();
+    // Limit from the shared semaphore's in-memory cache (step 2.5: refreshed at boot and
+    // on a config PUT — never N per-tick file reads across N projects). This repo's OWN
+    // `.xezar/config.json` `memoryLimitMb` wins when it sets one and the workspace ceiling
+    // applies otherwise (B2) — the same more-specific-wins rule `projectMaxParallel`
+    // follows. Before B2 the per-repo key saved successfully and was then ignored here.
+    const limitMb = this.semaphore.projectMemoryLimitMb(this.repoRoot);
     if (!limitMb || limitMb <= 0) return;
     const limitBytes = limitMb * 1024 * 1024;
     for (const runId of runIds) {
@@ -791,6 +800,14 @@ export class RunManager {
       XEZ_HANDOFF_FILE: handoffPath(this.dataDir, runId),
       XEZ_TASK_ID: runId,
       XEZ_TODOS_FILE: generateFollowups ? todosPath(this.dataDir) : '',
+      // The stored env-passthrough list (F), carried on the per-run env so it reaches EVERY
+      // backend through the one path they all share (`buildChildEnv(spec.env)`) — no runner
+      // seam change, and it is live because the semaphore refreshes on a config PUT. Set to
+      // `''` rather than omitted when the list is empty, for the same reason
+      // `XEZ_TODOS_FILE` is: the child inherits `process.env`, so an omitted key would let
+      // this process's own `XEZ_ENV_PASSTHROUGH` shine through and quietly override the
+      // stored "forward nothing" choice.
+      XEZ_ENV_PASSTHROUGH: this.semaphore.agentEnvPassthrough().join(','),
       ...agentTmpEnv(this.dataDir, runId),
     };
   }
@@ -850,7 +867,7 @@ export class RunManager {
       // The global inbox is the ceiling on the per-run flag (#471). Enforced here rather than
       // at the HTTP route because `xezar run`, the inbox's own "▶ Run" and variants all reach
       // startRun directly — a route-level gate would leave those writing todos.json.
-      generateFollowups: followupsEnabled() ? input.generateFollowups : false,
+      generateFollowups: this.semaphore.followupsEnabled() ? input.generateFollowups : false,
       // Persist autonomy on the record (#489) so the terminal review gate
       // (`settleSuccess`) and the group-pick winner-park can honor it — mid-run
       // auto-nudge reads `input.autonomous` (`execute`), but the record is the
@@ -1149,7 +1166,7 @@ export class RunManager {
     // safe either way — but a run queued while the inbox was on and recovered after it was
     // switched off would otherwise keep echoing `generateFollowups: true` on a run that
     // demonstrably produced none. Normalize the record, the way startRun does.
-    const generateFollowups = followupsEnabled() ? run.generateFollowups : false;
+    const generateFollowups = this.semaphore.followupsEnabled() ? run.generateFollowups : false;
     if (generateFollowups !== run.generateFollowups) {
       this.store.updateRun(run.id, { generateFollowups });
     }
@@ -2289,7 +2306,7 @@ export class RunManager {
     const record = this.store.getRun(runId);
     // The env is a live ceiling: a run created while the inbox was on must not keep writing
     // follow-ups after it is switched off.
-    const generateFollowups = followupsEnabled() && record?.generateFollowups !== false;
+    const generateFollowups = this.semaphore.followupsEnabled() && record?.generateFollowups !== false;
     const cwd =
       record?.worktreePath && existsSync(record.worktreePath)
         ? record.worktreePath
@@ -3219,7 +3236,7 @@ export class RunManager {
     let stepProfile: { env: Record<string, string>; profileId: string };
     try {
       stepProfile = await this.agentEnvForStep(runId, stepBackend, {
-        generateFollowups: followupsEnabled() && input.generateFollowups !== false,
+        generateFollowups: this.semaphore.followupsEnabled() && input.generateFollowups !== false,
       });
     } catch (err) {
       if (err instanceof AgentTempDirError) return err.message;
@@ -3239,7 +3256,7 @@ export class RunManager {
           systemPrompt: composeSystemPrompt(
             systemPrompt,
             extraSystemPrompt,
-            followupsEnabled() && input.generateFollowups !== false
+            this.semaphore.followupsEnabled() && input.generateFollowups !== false
               ? HANDOFF_INSTRUCTIONS
               : HANDOFF_ONLY_INSTRUCTIONS,
           ),
@@ -3674,17 +3691,28 @@ export class RunManager {
     }
   }
 
+  /**
+   * Arm the idle wall clock for a session that just parked at `waiting`.
+   *
+   * The duration comes from the shared semaphore's cached `resources.idleTimeoutMinutes`,
+   * so a change made in Settings applies to the next park with no restart. `null` means
+   * the operator chose "never close on idle": no timer is armed, and the only exits left
+   * are a user message and Cancel — both of which a `waiting` run already advertises.
+   */
   private armIdleTimer(runId: string, state: ActiveRun): void {
     this.clearIdleTimer(state);
+    const minutes = this.semaphore.idleTimeoutMinutes();
+    if (minutes === null) return;
+    const timeoutMs = minutes * 60_000;
     state.idleTimer = setTimeout(() => {
       if (state.session?.open && !state.cancelled) {
         this.store.appendEvent(runId, {
           type: 'lifecycle',
-          message: `session closed after ${Math.round(IDLE_TIMEOUT_MS / 60_000)}m of inactivity`,
+          message: `session closed after ${Math.round(timeoutMs / 60_000)}m of inactivity`,
         });
         state.session.end();
       }
-    }, IDLE_TIMEOUT_MS);
+    }, timeoutMs);
     state.idleTimer.unref?.();
   }
 

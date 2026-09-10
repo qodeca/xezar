@@ -85,6 +85,12 @@ describe('the config API', () => {
       worktreeRetention: 10,
       liveTitleUpdates: null,
       reviewGate: null,
+      // E — declared in the file schema since spec 008 but absent from this answer until
+      // now, so the only way to change them was to hand-edit `.xezar/config.json`. All three
+      // are `.default()`ed by the schema, hence materialized rather than tri-state.
+      plannerModel: 'sonnet',
+      namerModel: 'haiku',
+      skillsRepos: [{ repo: 'open-mercato/skills', ref: 'main' }],
     });
   });
 
@@ -178,6 +184,44 @@ describe('the config API', () => {
     expect(rawFile().defaultModels).toBeUndefined();
   });
 
+  /**
+   * E — `plannerModel`, `namerModel` and `skillsRepos` were declared in the file schema but
+   * absent from both the answer and `setConfigSchema`, so the only way to change them was to
+   * hand-edit `.xezar/config.json`. Same clear-on-null shape as every other knob here, with
+   * one deliberate exception: `skillsRepos: []` is stored, because an empty list is how a
+   * repo turns team skills OFF and `gatedSkillsRepos` reads the key's PRESENCE.
+   */
+  it('plannerModel and namerModel round-trip, and null clears each back to its default', async () => {
+    await put({ plannerModel: 'opus', namerModel: 'sonnet' });
+    expect(rawFile().plannerModel).toBe('opus');
+    expect(rawFile().namerModel).toBe('sonnet');
+    let body = await getBody();
+    expect(body.plannerModel).toBe('opus');
+    expect(body.namerModel).toBe('sonnet');
+
+    await put({ plannerModel: null, namerModel: null });
+    expect(rawFile().plannerModel).toBeUndefined();
+    expect(rawFile().namerModel).toBeUndefined();
+    body = await getBody();
+    expect(body.plannerModel).toBe('sonnet');
+    expect(body.namerModel).toBe('haiku');
+  });
+
+  it('skillsRepos round-trips, stores [] as a real value, and null clears to the catalog', async () => {
+    await put({ skillsRepos: [{ repo: 'acme/skills', ref: 'trunk' }] });
+    expect(rawFile().skillsRepos).toEqual([{ repo: 'acme/skills', ref: 'trunk' }]);
+    expect((await getBody()).skillsRepos).toEqual([{ repo: 'acme/skills', ref: 'trunk' }]);
+
+    // Stored, NOT treated as a clear: `[]` is the documented "no team skills" spelling.
+    await put({ skillsRepos: [] });
+    expect(rawFile().skillsRepos).toEqual([]);
+    expect((await getBody()).skillsRepos).toEqual([]);
+
+    await put({ skillsRepos: null });
+    expect(rawFile().skillsRepos).toBeUndefined();
+    expect((await getBody()).skillsRepos).toEqual([{ repo: 'open-mercato/skills', ref: 'main' }]);
+  });
+
   it('PUT merges into the raw file — user keys survive, defaults never materialize', async () => {
     writeFileSync(
       configPath(),
@@ -202,6 +246,12 @@ describe('the config API', () => {
       worktreeRetention: 10,
       liveTitleUpdates: null,
       reviewGate: null,
+      // E — declared in the file schema since spec 008 but absent from this answer until
+      // now, so the only way to change them was to hand-edit `.xezar/config.json`. All three
+      // are `.default()`ed by the schema, hence materialized rather than tri-state.
+      plannerModel: 'sonnet',
+      namerModel: 'haiku',
+      skillsRepos: [{ repo: 'me/skills', ref: 'main' }],
     });
   });
 

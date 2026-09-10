@@ -130,23 +130,31 @@ export function isLoopbackHostHeader(host: string | null | undefined): boolean {
  *  `XEZ_AUTOMATIONS=1` ⇒ GitHub automations exist (#801).
  *
  *  Read per request — cheap, and tests/ops can flip `XEZ_REMOTE` live. `followups` is honest
- *  per request too, but flipping it ON at runtime is only half a switch: the per-dataDir
- *  todos watch (step 2.3) is created by an SSE subscription, so connections opened while the
- *  flag was off never subscribed and get no live inbox updates until they reconnect. Hence
- *  the UI's "set XEZ_FOLLOWUPS=1 and restart xezar" wording — treat it as a boot-time flag.
+ *  per request too. Since F it is also a persisted SETTING: `followupsOverride` carries the
+ *  workspace config's stored value (`~/.xezar/config.json` `followups`), which wins over the
+ *  env when set, so the Settings toggle no longer needs a restart. One caveat survives and is
+ *  a display-only one: the per-dataDir todos watch (step 2.3) is created by an SSE
+ *  subscription, so a connection opened while the Inbox was off gets no live inbox pushes
+ *  until it reconnects — the run-level behaviour and this capability answer are both live.
  *
  *  `automations` carries the same caveat and for the same reason: the workspace scheduler is
  *  started once, on the server's `listening` event, so flipping the flag on afterwards gates
  *  the routes open without ever starting the poller. Boot-time flag, same wording. */
-export function resolveCapabilities(env: NodeJS.ProcessEnv = process.env, bindHost?: string): Capabilities {
+export function resolveCapabilities(
+  env: NodeJS.ProcessEnv = process.env,
+  bindHost?: string,
+  followupsOverride?: boolean,
+): Capabilities {
   const hideAllUsage = env.XEZ_HIDE_TOKEN_METRICS === '1';
   const tokenUsageMetrics = !hideAllUsage && env.XEZ_HIDE_TOKEN_USAGE !== '1';
   const costMetrics = !hideAllUsage && env.XEZ_HIDE_COST !== '1';
   return {
     localHandoff: env.XEZ_REMOTE !== '1' && isLoopbackHost(bindHost),
     // Deliberately not re-derived here: RunManager enforces the same predicate,
-    // and two spellings of "is the inbox on" would eventually disagree.
-    followups: followupsEnabled(env),
+    // and two spellings of "is the inbox on" would eventually disagree. The stored setting
+    // is threaded in rather than read here for exactly that reason — the semaphore owns the
+    // "stored wins, else env" rule and this reports its answer.
+    followups: followupsOverride ?? followupsEnabled(env),
     singleProject: env.XEZ_SINGLE_PROJECT === '1',
     automations: env.XEZ_AUTOMATIONS === '1',
     tokenMetrics: tokenUsageMetrics && costMetrics,

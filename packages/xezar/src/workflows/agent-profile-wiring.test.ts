@@ -83,6 +83,10 @@ describe('RunManager agent-profile resolution', () => {
       'TEMP',
       'TMP',
       'TMPDIR',
+      // The stored env-passthrough list (F). Always present, empty when nothing is stored
+      // and the env says nothing — omitting it would let a parent xezar's own
+      // `XEZ_ENV_PASSTHROUGH` shine through, the same leak `XEZ_TODOS_FILE` guards against.
+      'XEZ_ENV_PASSTHROUGH',
       'XEZ_HANDOFF_FILE',
       'XEZ_TASK_ID',
       'XEZ_TODOS_FILE',

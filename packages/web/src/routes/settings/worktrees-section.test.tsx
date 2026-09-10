@@ -35,6 +35,9 @@ function serve(config: Partial<ConfigResponse> = {}) {
     worktreeRetention: 10,
     liveTitleUpdates: null,
     reviewGate: null,
+    plannerModel: 'sonnet',
+    namerModel: 'haiku',
+    skillsRepos: [],
     ...config,
   }
   const json = (payload: unknown, status = 200) =>

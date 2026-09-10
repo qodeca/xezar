@@ -1,6 +1,12 @@
 import { realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { DEFAULT_MONITORING_WAKE_MINUTES, loadWorkspaceConfig } from './config.ts';
+import {
+  DEFAULT_IDLE_TIMEOUT_MINUTES,
+  DEFAULT_MEMORY_LIMIT_MB,
+  DEFAULT_MONITORING_WAKE_MINUTES,
+  loadWorkspaceConfig,
+} from './config.ts';
+import { loadConfig } from '../config.ts';
 
 /**
  * Workspace-wide resource governance (spec 2026-07-20-multi-project-workspace,
@@ -27,9 +33,14 @@ import { DEFAULT_MONITORING_WAKE_MINUTES, loadWorkspaceConfig } from './config.t
  *    calls it after a write — it re-reads the file and pumps every manager so
  *    a raised cap starts queued runs without a restart.
  *
- * Per-repo legacy `maxParallel`/`memoryLimitMb` keys are ignored by
- * enforcement post-migration (`loadConfig` still parses them for old files;
- * nothing consults them here).
+ * The per-repo `maxParallel` key stays ignored by enforcement post-migration (the
+ * workspace cap plus each registry entry's own `maxParallel` is the running ceiling).
+ * The per-repo `memoryLimitMb` key is NOT ignored any more (B2): it used to save
+ * successfully and then do nothing, which is the one outcome a setting must never have,
+ * and `BACKWARD_COMPATIBILITY.md` §2 promises the route keeps accepting it. It is now
+ * cached here alongside the registry's `maxParallel` overrides — same lookup shape
+ * (`projectMemoryLimitMb`), same no-per-tick-file-read invariant — so the more specific
+ * value wins for runs in that repo, exactly as per-project `maxParallel` already does.
  */
 
 /** The cached `resources` slice run enforcement consults. */
@@ -44,8 +55,31 @@ export interface WorkspaceResourceLimits {
   monitoringWakeIntervalMinutes?: number | null;
   /** Resume a run stopped by a provider usage limit when that limit resets. Default ON. */
   autoResumeOnUsageLimit?: boolean;
+  /** Wall clock for a session parked at `waiting`, in minutes; `null` = never close on
+   *  idle. Absent means "this loader predates the key" and reads as the default. */
+  idleTimeoutMinutes?: number | null;
   /** Per-task process-tree memory ceiling in MiB; null = no limit. */
   memoryLimitMb: number | null;
+  /**
+   * Per-project memory ceilings in MiB, keyed by realpath-normalized project root — the
+   * repo's own `.xezar/config.json` `memoryLimitMb` (B2). A root absent from the map
+   * inherits the workspace ceiling. Optional for the same reason `projectLimits` is: an
+   * older `load` stub that returns only the resource slice keeps working.
+   */
+  projectMemoryLimits?: ReadonlyMap<string, number>;
+  /**
+   * Stored follow-up **Inbox** override, or `undefined` when the workspace config says
+   * nothing and the `XEZ_FOLLOWUPS` env decides (F). Cached here so the per-request
+   * capability answer and every per-run read are live without a restart: `refresh()` is
+   * the one reload hook, and `PUT /api/v1/workspace/config` already calls it.
+   */
+  followups?: boolean;
+  /**
+   * Stored extra agent env-passthrough names, or `undefined` when the workspace config
+   * says nothing and `XEZ_ENV_PASSTHROUGH` decides (F). An empty array is a real stored
+   * choice ("forward nothing"), which is why this is not spelled `string[] | null`.
+   */
+  agentEnvPassthrough?: readonly string[];
   /**
    * Per-project concurrency ceilings, keyed by realpath-normalized project
    * root (the registry stores normalized `root`). A root absent from the map
@@ -113,7 +147,8 @@ const DEFAULT_LIMITS: WorkspaceResourceLimits = {
   maxMonitoringSessions: 2,
   monitoringWakeIntervalMinutes: DEFAULT_MONITORING_WAKE_MINUTES,
   autoResumeOnUsageLimit: true,
-  memoryLimitMb: null,
+  idleTimeoutMinutes: DEFAULT_IDLE_TIMEOUT_MINUTES,
+  memoryLimitMb: DEFAULT_MEMORY_LIMIT_MB,
 };
 
 /** Production loader: the `resources` slice of `~/.xezar/config.json`
@@ -123,18 +158,38 @@ const DEFAULT_LIMITS: WorkspaceResourceLimits = {
  *  The registry `root` is already realpath-normalized (`registerProject`), so
  *  the keys match `normalizeRootSync`'s output at lookup time. */
 async function loadResourceLimits(): Promise<WorkspaceResourceLimits> {
-  const { resources, projects } = await loadWorkspaceConfig();
+  const config = await loadWorkspaceConfig();
+  const { resources, projects } = config;
   const projectLimits = new Map<string, number>();
   for (const project of projects) {
     if (typeof project.maxParallel === 'number') projectLimits.set(project.root, project.maxParallel);
   }
+  // B2: each registered repo's OWN `memoryLimitMb`, read here rather than per tick. This is
+  // N small file reads per refresh (boot, and a config PUT), not N per 2-second sample — the
+  // invariant this class exists to hold. A repo that cannot be read contributes nothing and
+  // inherits the workspace ceiling, which is the safe direction.
+  const projectMemoryLimits = new Map<string, number>();
+  await Promise.all(
+    projects.map(async (project) => {
+      const own = await loadConfig(project.root).catch(() => null);
+      if (typeof own?.memoryLimitMb === 'number' && own.memoryLimitMb > 0) {
+        projectMemoryLimits.set(project.root, own.memoryLimitMb);
+      }
+    }),
+  );
   return {
     maxParallel: resources.maxParallel,
     maxMonitoringSessions: resources.maxMonitoringSessions,
     monitoringWakeIntervalMinutes: resources.monitoringWakeIntervalMinutes,
     autoResumeOnUsageLimit: resources.autoResumeOnUsageLimit,
+    idleTimeoutMinutes: resources.idleTimeoutMinutes,
     memoryLimitMb: resources.memoryLimitMb,
     projectLimits,
+    projectMemoryLimits,
+    ...(config.followups !== undefined ? { followups: config.followups } : {}),
+    ...(config.agentEnvPassthrough !== undefined
+      ? { agentEnvPassthrough: config.agentEnvPassthrough }
+      : {}),
   };
 }
 
@@ -205,6 +260,62 @@ export class WorkspaceSemaphore {
   /** Cached per-task memory ceiling (MiB), or null for no limit. */
   memoryLimitMb(): number | null {
     return this.limits.memoryLimitMb;
+  }
+
+  /**
+   * Wall clock for a session parked at `waiting`, in minutes, or `null` when the operator
+   * chose "never close on idle".
+   *
+   * Deliberately NOT `?? DEFAULT`, for the same reason as `monitoringWakeIntervalMinutes`
+   * (#810): `null` is a real user choice and `null ?? 15` would silently override it. Only
+   * an ABSENT key — an older `load` stub, a partial `initial` — reads as the default.
+   */
+  idleTimeoutMinutes(): number | null {
+    const configured = this.limits.idleTimeoutMinutes;
+    return configured === undefined ? DEFAULT_IDLE_TIMEOUT_MINUTES : configured;
+  }
+
+  /**
+   * The effective per-task memory ceiling for a manager's repo root (B2): the repo's own
+   * `.xezar/config.json` `memoryLimitMb` when it sets one, else the workspace ceiling.
+   * The more specific value wins, which is exactly how `projectMaxParallel` already
+   * behaves; a root with no entry inherits.
+   */
+  projectMemoryLimitMb(repoRoot: string): number | null {
+    const override = this.limits.projectMemoryLimits?.get(normalizeRootSync(repoRoot));
+    return override ?? this.memoryLimitMb();
+  }
+
+  /**
+   * Whether the follow-up Inbox is on, given the stored setting and the env fallback (F).
+   * The stored value wins whenever the workspace config sets one; absent falls back to the
+   * historical `XEZ_FOLLOWUPS=1` behaviour, unchanged.
+   */
+  /** The STORED Inbox override alone, or `undefined` when the workspace config says nothing
+   *  and the env still decides. `resolveCapabilities` needs the tri-state, not the resolved
+   *  boolean, so that "no opinion" keeps falling through to `XEZ_FOLLOWUPS`. */
+  storedFollowups(): boolean | undefined {
+    return this.limits.followups;
+  }
+
+  followupsEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+    const stored = this.limits.followups;
+    if (stored !== undefined) return stored;
+    return env.XEZ_FOLLOWUPS === '1';
+  }
+
+  /**
+   * Extra env-var NAMES forwarded to spawned agents (F). The stored list wins whenever the
+   * workspace config sets one — including an empty list, a real "forward nothing" choice —
+   * and absence falls back to parsing `XEZ_ENV_PASSTHROUGH` exactly as before.
+   */
+  agentEnvPassthrough(env: NodeJS.ProcessEnv = process.env): readonly string[] {
+    const stored = this.limits.agentEnvPassthrough;
+    if (stored !== undefined) return stored;
+    return (env.XEZ_ENV_PASSTHROUGH ?? '')
+      .split(',')
+      .map((name) => name.trim())
+      .filter(Boolean);
   }
 
   /**

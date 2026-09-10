@@ -43,6 +43,7 @@ import {
   modelDiscoveryRunnerSchema,
   openProjectInSchema,
   updateProjectInputSchema,
+  type WorkspaceConfigResponse,
 } from '@qodeca/xezar-contract';
 import { detectEnvironment } from '../core/backend-detect.ts';
 import { RUNNER_IDS } from '../core/agent-runner.ts';
@@ -117,6 +118,7 @@ import { listAgentConfig } from '../agent-config/service.ts';
 import { listConfigFiles, type AgentHomePaths } from '../agent-config/catalog.ts';
 import { readAccountIdentity } from '../agent-config/account-identity.ts';
 import {
+  DEFAULT_MEMORY_LIMIT_MB,
   PROJECT_ID_RE,
   defaultWorkspaceConfig,
   effectiveSkillsAutoUpdate,
@@ -477,36 +479,13 @@ export interface UpdateProjectResponse {
 
 /** `GET/PUT /api/workspace/config` (multi-project spec, step 2.7) — the
  *  settings slice of `~/.xezar/config.json`: global knobs ONLY, never the
- *  project registry (that is `GET /api/projects`' job). */
-export interface WorkspaceConfigResponse {
-  /** Root exposed by the Add project directory browser (`~` kept). */
-  browseRoot: string;
-  /** Checkout root for GUI-cloned projects — stored as written (`~` kept). */
-  projectsDir: string;
-  /** Stored override; null means inherit XEZ_SKILLS_AUTO_UPDATE, then true. */
-  skillsAutoUpdate: boolean | null;
-  effectiveSkillsAutoUpdate: boolean;
-  composerDefaults: {
-    autonomous: boolean | null;
-    worktree: boolean | null;
-    inheritedAutonomous: boolean | 'source-dependent';
-    inheritedWorktree: boolean;
-  };
-  resources: {
-    maxParallel: number;
-    maxMonitoringSessions: number;
-    monitoringWakeIntervalMinutes: number | null;
-    autoResumeOnUsageLimit: boolean;
-    memoryLimitMb: number | null;
-    worktreeRetentionDefault: number;
-  };
-  /** What a repo that has set none of its own runs (spec 2026-07-29-agent-profiles). Both keys
-   *  optional: absent means "no opinion", which must stay distinguishable from a chosen value. */
-  agentDefaults: {
-    runner?: ProviderId;
-    models?: { claude?: string; codex?: string; opencode?: string };
-  };
-}
+ *  project registry (that is `GET /api/projects`' job).
+ *
+ *  Re-exported from the contract, never re-declared. This used to be a hand-written
+ *  interface here — the shape AGENTS.md § The HTTP API forbids — and it had already drifted
+ *  (its `agentDefaults.models` never grew the `pi` key the schema has). One zod definition,
+ *  type inferred; `contract-parity.workspace.test.ts` proves the route agrees with it. */
+export type { WorkspaceConfigResponse };
 
 // ---- workspace SSE (multi-project spec, step 2.8) --------------------------
 
@@ -1161,7 +1140,11 @@ export function createApp(deps: ServerDeps) {
   };
   // Hosted-mode gate (spec §"Deployment modes") — read per request so
   // XEZ_REMOTE flips take effect live (and tests can toggle it).
-  const capabilities = () => resolveCapabilities(process.env, bindHost);
+  // The stored Inbox setting (F) wins over `XEZ_FOLLOWUPS` when the workspace config sets
+  // one. Read through the shared semaphore's cache so it is live: `refresh()` re-reads it on
+  // every workspace-config PUT, which is the one reload hook this file already fires.
+  const capabilities = () =>
+    resolveCapabilities(process.env, bindHost, deps.semaphore?.storedFollowups());
   const singleProjectRefusal = (
     action: 'adding projects' | 'editing projects' | 'removing projects' | 'folder browsing',
   ) => ({ error: `single-project mode is enabled; ${action} is disabled` });
@@ -2802,6 +2785,18 @@ export function createApp(deps: ServerDeps) {
     projectsDir: config.projectsDir,
     skillsAutoUpdate: config.skillsAutoUpdate ?? null,
     effectiveSkillsAutoUpdate: effectiveSkillsAutoUpdate(config),
+    // Tri-state (F): `null` means no stored key, so `XEZ_FOLLOWUPS` decides. The
+    // `effective*` twin is what the pane renders, so "(default)" and the actual state can
+    // both be shown without the client re-implementing the precedence rule.
+    followups: config.followups ?? null,
+    effectiveFollowups: config.followups ?? process.env.XEZ_FOLLOWUPS === '1',
+    agentEnvPassthrough: config.agentEnvPassthrough ?? null,
+    effectiveAgentEnvPassthrough:
+      config.agentEnvPassthrough ??
+      (process.env.XEZ_ENV_PASSTHROUGH ?? '')
+        .split(',')
+        .map((name) => name.trim())
+        .filter(Boolean),
     composerDefaults: {
       autonomous: config.composerDefaults.autonomous ?? null,
       worktree: config.composerDefaults.worktree ?? null,
@@ -2822,7 +2817,11 @@ export function createApp(deps: ServerDeps) {
       maxMonitoringSessions: config.resources.maxMonitoringSessions,
       monitoringWakeIntervalMinutes: config.resources.monitoringWakeIntervalMinutes,
       autoResumeOnUsageLimit: config.resources.autoResumeOnUsageLimit,
+      idleTimeoutMinutes: config.resources.idleTimeoutMinutes,
       memoryLimitMb: config.resources.memoryLimitMb,
+      // Reported, not stored: the settings pane names this machine's derived ceiling so the
+      // user can see what an unset `memoryLimitMb` actually means here (B1).
+      memoryLimitDefaultMb: DEFAULT_MEMORY_LIMIT_MB,
       worktreeRetentionDefault: config.resources.worktreeRetentionDefault,
     },
     // SPREAD, never `runner: maybeUndefined`: hono would type the key as always-present while
@@ -2839,7 +2838,16 @@ export function createApp(deps: ServerDeps) {
 
     .put('/workspace/config', jsonZodValidator(() => workspaceConfigUpdateSchema), async (c) => {
       const parsed = { data: c.req.valid('json') };
-      const { browseRoot, projectsDir, skillsAutoUpdate, composerDefaults, resources, agentDefaults } = parsed.data;
+      const {
+        browseRoot,
+        projectsDir,
+        skillsAutoUpdate,
+        followups,
+        agentEnvPassthrough,
+        composerDefaults,
+        resources,
+        agentDefaults,
+      } = parsed.data;
       for (const [configuredRoot, create] of [
         [browseRoot, false],
         [projectsDir, true],
@@ -2875,6 +2883,12 @@ export function createApp(deps: ServerDeps) {
           if (projectsDir !== undefined) config.projectsDir = projectsDir;
           if (skillsAutoUpdate === null) delete config.skillsAutoUpdate;
           else if (skillsAutoUpdate !== undefined) config.skillsAutoUpdate = skillsAutoUpdate;
+          // `null` clears the key back to the env default; `false`/`[]` are real stored
+          // choices and must survive as written (F).
+          if (followups === null) delete config.followups;
+          else if (followups !== undefined) config.followups = followups;
+          if (agentEnvPassthrough === null) delete config.agentEnvPassthrough;
+          else if (agentEnvPassthrough !== undefined) config.agentEnvPassthrough = agentEnvPassthrough;
           if (composerDefaults?.autonomous === null) delete config.composerDefaults.autonomous;
           else if (composerDefaults?.autonomous !== undefined) {
             config.composerDefaults.autonomous = composerDefaults.autonomous;
@@ -2892,6 +2906,9 @@ export function createApp(deps: ServerDeps) {
           }
           if (resources?.autoResumeOnUsageLimit !== undefined) {
             config.resources.autoResumeOnUsageLimit = resources.autoResumeOnUsageLimit;
+          }
+          if (resources?.idleTimeoutMinutes !== undefined) {
+            config.resources.idleTimeoutMinutes = resources.idleTimeoutMinutes;
           }
           if (resources?.memoryLimitMb !== undefined) config.resources.memoryLimitMb = resources.memoryLimitMb;
           if (resources?.worktreeRetentionDefault !== undefined) {
@@ -2918,7 +2935,11 @@ export function createApp(deps: ServerDeps) {
       }
       // A resource change takes effect WITHOUT a restart: refresh the shared
       // semaphore's in-memory snapshot and pump every manager (step 2.5's hook).
-      if (resources !== undefined) await deps.semaphore?.refresh();
+      // `followups` and `agentEnvPassthrough` are cached by the same semaphore snapshot
+      // (F), so they refresh through the same hook rather than a second reload path.
+      if (resources !== undefined || followups !== undefined || agentEnvPassthrough !== undefined) {
+        await deps.semaphore?.refresh();
+      }
       return c.json(workspaceConfigBody(written));
     })
 
@@ -2956,6 +2977,12 @@ export function createApp(deps: ServerDeps) {
     browseRoot: z.string().trim().min(1).max(4096).optional(),
     projectsDir: z.string().trim().min(1).max(4096).optional(),
     skillsAutoUpdate: z.boolean().nullable().optional(),
+    followups: z.boolean().nullable().optional(),
+    agentEnvPassthrough: z
+      .array(z.string().trim().min(1).max(200))
+      .max(64)
+      .nullable()
+      .optional(),
     composerDefaults: z
       .object({
         autonomous: z.boolean().nullable().optional(),
@@ -2968,6 +2995,7 @@ export function createApp(deps: ServerDeps) {
         maxMonitoringSessions: z.number().int().min(0).max(16).optional(),
         monitoringWakeIntervalMinutes: z.number().int().min(1).max(60).nullable().optional(),
         autoResumeOnUsageLimit: z.boolean().optional(),
+        idleTimeoutMinutes: z.number().int().min(1).max(1440).nullable().optional(),
         memoryLimitMb: z.number().int().min(0).max(1_048_576).nullable().optional(),
         worktreeRetentionDefault: z.number().int().min(0).max(1000).optional(),
       })
@@ -5138,6 +5166,13 @@ export function createApp(deps: ServerDeps) {
       // Optional review gate (#489): tri-state — null means "no config key, the
       // XEZ_REVIEW_GATE env default (OFF) decides".
       reviewGate: config.reviewGate ?? null,
+      // Planner/namer models and team skill sources (E). Declared in the file schema since
+      // spec 008 but absent from this answer and from `setConfigSchema`, so the only way to
+      // change them was to hand-edit `.xezar/config.json`. All three are `.default()`ed by
+      // the file schema, so they are always materialized here — never tri-state.
+      plannerModel: config.plannerModel,
+      namerModel: config.namerModel,
+      skillsRepos: config.skillsRepos,
     };
   };
   // ---- chained family: per-repo config (project-scoped) ----
@@ -5198,6 +5233,20 @@ export function createApp(deps: ServerDeps) {
           raw.memoryLimitMb = parsed.data.memoryLimitMb;
         }
       }
+      if (parsed.data.plannerModel !== undefined) {
+        if (parsed.data.plannerModel === null) delete raw.plannerModel;
+        else raw.plannerModel = parsed.data.plannerModel;
+      }
+      if (parsed.data.namerModel !== undefined) {
+        if (parsed.data.namerModel === null) delete raw.namerModel;
+        else raw.namerModel = parsed.data.namerModel;
+      }
+      if (parsed.data.skillsRepos !== undefined) {
+        // `null` clears back to the default catalog; `[]` is stored, because an empty list
+        // is how a repo turns team skills OFF (`gatedSkillsRepos` reads the key's presence).
+        if (parsed.data.skillsRepos === null) delete raw.skillsRepos;
+        else raw.skillsRepos = parsed.data.skillsRepos;
+      }
       if (parsed.data.defaultModels !== undefined) {
         // Per-runner merge, so setting codex's preset never clobbers claude's.
         const current =
@@ -5218,6 +5267,12 @@ export function createApp(deps: ServerDeps) {
       } catch (err) {
         return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
       }
+      // B2: the per-repo `memoryLimitMb` is enforced again, and enforcement reads it from
+      // the semaphore's cached snapshot — so this write has to refresh that snapshot, the
+      // same way `PUT /api/v1/workspace/config` and `PATCH /api/v1/projects/:id` do. Without
+      // it the key would save and do nothing until the next boot, which is the exact defect
+      // B2 exists to fix.
+      if (parsed.data.memoryLimitMb !== undefined) await deps.semaphore?.refresh();
       // Pre-R6 answer shape ({baseBranch, defaultRunner}) + additive R6 fields.
       return c.json(await configAnswer(repoRoot, await loadConfig(repoRoot)));
     });
@@ -5254,6 +5309,21 @@ export function createApp(deps: ServerDeps) {
     // Optional review gate toggle (Settings → Agents, #489): null clears the key
     // back to the env-default behavior (OFF).
     reviewGate: z.boolean().nullable().optional(),
+    // Planner/namer models and team skill sources (E). `null` clears each key back to its
+    // schema default; `skillsRepos: []` is a real value that disables team skills, which is
+    // why the empty array is stored rather than treated as a clear.
+    plannerModel: z.string().trim().min(1).max(200).nullable().optional(),
+    namerModel: z.string().trim().min(1).max(200).nullable().optional(),
+    skillsRepos: z
+      .array(
+        z.object({
+          repo: z.string().trim().min(1).max(500),
+          ref: z.string().trim().min(1).max(200).optional(),
+        }),
+      )
+      .max(32)
+      .nullable()
+      .optional(),
   });
   const setAgentConfigSchema = z.object({
     content: z.string().max(2_000_000),

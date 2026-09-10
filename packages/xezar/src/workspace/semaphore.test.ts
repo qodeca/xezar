@@ -1,7 +1,8 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_MEMORY_LIMIT_MB } from './config.ts';
 import { WorkspaceSemaphore, type SemaphoreParticipant } from './semaphore.ts';
 
 /** Unit surface of the shared workspace semaphore (spec 2026-07-20, step 2.5).
@@ -27,9 +28,156 @@ describe('WorkspaceSemaphore', () => {
   it('defaults to the workspace schema defaults before any refresh', () => {
     const sem = new WorkspaceSemaphore();
     expect(sem.maxParallel()).toBe(2);
-    expect(sem.memoryLimitMb()).toBeNull();
+    // B1 — the guard ships ON at a host-derived ceiling; it used to ship as `null` (no guard),
+    // which made the zero-config default the unsafe one.
+    expect(sem.memoryLimitMb()).toBe(DEFAULT_MEMORY_LIMIT_MB);
     expect(sem.monitoringWakeIntervalMinutes()).toBe(5); // #810 — monitoring must self-resume
+    expect(sem.idleTimeoutMinutes()).toBe(15); // A — unchanged default, now configurable
     expect(sem.busy()).toBe(0);
+  });
+
+  /**
+   * A — the idle timeout became a setting, and its default did NOT move. Same absent-vs-null
+   * discipline as `monitoringWakeIntervalMinutes`: only an ABSENT key reads as the shipped 15
+   * minutes, while an explicit `null` is the operator choosing "never close on idle" and must
+   * survive untouched.
+   */
+  describe('idleTimeoutMinutes (A)', () => {
+    it('keeps the shipped 15-minute default when the key is absent', () => {
+      const sem = new WorkspaceSemaphore({ initial: { idleTimeoutMinutes: undefined } });
+      expect(sem.idleTimeoutMinutes()).toBe(15);
+    });
+
+    it('honours a configured value', () => {
+      const sem = new WorkspaceSemaphore({ initial: { idleTimeoutMinutes: 90 } });
+      expect(sem.idleTimeoutMinutes()).toBe(90);
+    });
+
+    it('preserves an explicit null (never close on idle)', () => {
+      const sem = new WorkspaceSemaphore({ initial: { idleTimeoutMinutes: null } });
+      expect(sem.idleTimeoutMinutes()).toBeNull();
+    });
+
+    it('picks up a changed value through refresh(), with no restart', async () => {
+      let minutes: number | null = 15;
+      const sem = new WorkspaceSemaphore({
+        load: () =>
+          Promise.resolve({ maxParallel: 2, memoryLimitMb: null, idleTimeoutMinutes: minutes }),
+      });
+      minutes = 120;
+      await sem.refresh();
+      expect(sem.idleTimeoutMinutes()).toBe(120);
+      minutes = null;
+      await sem.refresh();
+      expect(sem.idleTimeoutMinutes()).toBeNull();
+    });
+  });
+
+  /**
+   * B2 — the per-repo `memoryLimitMb` used to save successfully and then do nothing, because
+   * enforcement consulted only the workspace ceiling. It now resolves the same more-specific-
+   * wins way `projectMaxParallel` already does.
+   */
+  describe('projectMemoryLimitMb (B2)', () => {
+    it("prefers the repo's own ceiling over the workspace one", () => {
+      const sem = new WorkspaceSemaphore({
+        initial: {
+          memoryLimitMb: 4096,
+          projectMemoryLimits: new Map([[realpathSync(tmpdir()), 1024]]),
+        },
+      });
+      expect(sem.projectMemoryLimitMb(realpathSync(tmpdir()))).toBe(1024);
+    });
+
+    it('inherits the workspace ceiling for a repo with no override', () => {
+      const sem = new WorkspaceSemaphore({
+        initial: { memoryLimitMb: 4096, projectMemoryLimits: new Map() },
+      });
+      expect(sem.projectMemoryLimitMb(realpathSync(tmpdir()))).toBe(4096);
+    });
+
+    it('inherits an explicit workspace null (no limit) rather than inventing one', () => {
+      const sem = new WorkspaceSemaphore({ initial: { memoryLimitMb: null } });
+      expect(sem.projectMemoryLimitMb(realpathSync(tmpdir()))).toBeNull();
+    });
+  });
+
+  /**
+   * B2, end to end through the PRODUCTION loader: a repo's `.xezar/config.json`
+   * `memoryLimitMb` used to save and then do nothing. It now reaches the cache enforcement
+   * reads, which is the only place the value could ever have mattered.
+   */
+  it('the production loader picks up a per-repo memoryLimitMb from .xezar/config.json', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'xez-sem-home-'));
+    const repo = mkdtempSync(join(tmpdir(), 'xez-sem-repo-'));
+    const savedHome = process.env.XEZ_HOME;
+    process.env.XEZ_HOME = home;
+    try {
+      mkdirSync(join(repo, '.xezar'), { recursive: true });
+      writeFileSync(join(repo, '.xezar', 'config.json'), JSON.stringify({ memoryLimitMb: 777 }));
+      mkdirSync(join(home), { recursive: true });
+      writeFileSync(
+        join(home, 'config.json'),
+        JSON.stringify({
+          resources: { memoryLimitMb: 4096 },
+          projects: [{ id: 'p1', root: realpathSync(repo), name: 'p1', addedAt: '2026-01-01T00:00:00.000Z' }],
+        }),
+      );
+      const sem = new WorkspaceSemaphore();
+      await sem.refresh();
+      expect(sem.memoryLimitMb()).toBe(4096);
+      expect(sem.projectMemoryLimitMb(repo)).toBe(777);
+    } finally {
+      if (savedHome === undefined) delete process.env.XEZ_HOME;
+      else process.env.XEZ_HOME = savedHome;
+      rmSync(home, { recursive: true, force: true });
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * F — both start-up switches became stored settings. The rule is the one `reviewGate` and
+   * `liveTitleUpdates` already follow: the stored value wins whenever there IS one, and
+   * absence falls through to the env exactly as before.
+   */
+  describe('followupsEnabled / agentEnvPassthrough (F)', () => {
+    it('falls back to XEZ_FOLLOWUPS when nothing is stored', () => {
+      const sem = new WorkspaceSemaphore();
+      expect(sem.followupsEnabled({ XEZ_FOLLOWUPS: '1' })).toBe(true);
+      expect(sem.followupsEnabled({})).toBe(false);
+      expect(sem.storedFollowups()).toBeUndefined();
+    });
+
+    it('lets a stored value win over the env, in both directions', () => {
+      const on = new WorkspaceSemaphore({ initial: { followups: true } });
+      expect(on.followupsEnabled({})).toBe(true);
+      const off = new WorkspaceSemaphore({ initial: { followups: false } });
+      expect(off.followupsEnabled({ XEZ_FOLLOWUPS: '1' })).toBe(false);
+    });
+
+    it('parses XEZ_ENV_PASSTHROUGH when nothing is stored', () => {
+      const sem = new WorkspaceSemaphore();
+      expect(sem.agentEnvPassthrough({ XEZ_ENV_PASSTHROUGH: 'A, B ,,C' })).toEqual(['A', 'B', 'C']);
+      expect(sem.agentEnvPassthrough({})).toEqual([]);
+    });
+
+    it('treats a stored EMPTY list as a real "forward nothing" choice', () => {
+      const sem = new WorkspaceSemaphore({ initial: { agentEnvPassthrough: [] } });
+      expect(sem.agentEnvPassthrough({ XEZ_ENV_PASSTHROUGH: 'SECRET' })).toEqual([]);
+    });
+
+    it('applies a changed list through refresh(), with no restart', async () => {
+      let names: readonly string[] = ['A'];
+      const sem = new WorkspaceSemaphore({
+        load: () =>
+          Promise.resolve({ maxParallel: 2, memoryLimitMb: null, agentEnvPassthrough: names }),
+      });
+      await sem.refresh();
+      expect(sem.agentEnvPassthrough({})).toEqual(['A']);
+      names = ['VITEST_MAX_WORKERS'];
+      await sem.refresh();
+      expect(sem.agentEnvPassthrough({})).toEqual(['VITEST_MAX_WORKERS']);
+    });
   });
 
   /** #810 — the getter used to be `?? null`. Flipping the default to 5 made that a trap:

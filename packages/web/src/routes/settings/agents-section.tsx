@@ -46,6 +46,15 @@ import { ProviderSettings } from './provider-settings'
 /** The server's validation cap for the system prompt (src/config.ts) — enforced here too so an
  *  over-limit draft is a disabled Save with a reason, not a 400 round-trip. */
 const SYSTEM_PROMPT_MAX = 20_000
+/** Team skill sources: `owner/name`, a git URL, or a local path — optionally `@ref`. Bounds
+ *  mirror the route so an invalid draft is a disabled Save, not a 400 round-trip. */
+const SKILLS_REPOS_MAX = 32
+
+/** One source per line; the default `main` ref is left implicit so the common case reads as
+ *  the bare `owner/name` a user would type. */
+function formatSkillsRepos(sources: { repo: string; ref: string }[]): string {
+  return sources.map((source) => (source.ref === 'main' ? source.repo : `${source.repo}@${source.ref}`)).join('\n')
+}
 
 export function AgentsSection() {
   const config = useConfig()
@@ -107,6 +116,38 @@ function AgentsForm({
   const trimmedPrompt = prompt.trim()
   const promptSaved = trimmedPrompt === (config.systemPrompt ?? '')
   const promptOverLimit = trimmedPrompt.length > SYSTEM_PROMPT_MAX
+
+  // E — planner/namer models and team skill sources. All three have lived in the file schema
+  // since spec 008 but had no route field and no control, so the only way to change them was
+  // to hand-edit `.xezar/config.json`.
+  //
+  // Defaulted, not asserted: a server that predates these keys answers without them, and
+  // reading `undefined.map` there would blank the whole pane. Same rule the Resources pane
+  // applies to `autoResumeOnUsageLimit` — the shipped default is the safe read.
+  const configuredPlanner = config.plannerModel ?? 'sonnet'
+  const configuredNamer = config.namerModel ?? 'haiku'
+  const configuredSkillsRepos = config.skillsRepos ?? []
+  const [planner, setPlanner] = useState(configuredPlanner)
+  const [namer, setNamer] = useState(configuredNamer)
+  const plannerSaved = planner.trim() === configuredPlanner
+  const namerSaved = namer.trim() === configuredNamer
+  const [skillsRepos, setSkillsRepos] = useState(formatSkillsRepos(configuredSkillsRepos))
+  const parsedSkillsRepos = skillsRepos
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      // Split on the LAST `@` so `git@github.com:me/skills` keeps its user, and a bare source
+      // means the default ref.
+      const at = line.lastIndexOf('@')
+      const hasRef = at > 0 && !line.slice(at + 1).includes('/') && !line.slice(at + 1).includes(':')
+      return hasRef ? { repo: line.slice(0, at), ref: line.slice(at + 1) } : { repo: line, ref: 'main' }
+    })
+  const skillsReposInvalid =
+    parsedSkillsRepos.length > SKILLS_REPOS_MAX || parsedSkillsRepos.some((source) => source.repo === '')
+  const skillsReposSaved =
+    !skillsReposInvalid &&
+    JSON.stringify(parsedSkillsRepos) === JSON.stringify(configuredSkillsRepos)
   const savePrompt = () =>
     save.mutate(
       { systemPrompt: trimmedPrompt === '' ? null : trimmedPrompt },
@@ -291,6 +332,148 @@ function AgentsForm({
             {config.reviewGate === null && ' (default)'}
           </span>
         </label>
+      </Field>
+
+      <Field
+        title="Planner and namer models"
+        hint="Two small background jobs: the planner turns a task into a chain of steps, the namer gives it its display title. Both are Claude aliases and are ignored when this project's default agent is not Claude."
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="grid gap-1.5 text-sm">
+            <span className="font-medium">Planner model</span>
+            <input
+              type="text"
+              aria-label="Planner model"
+              data-slot="agents-planner-model"
+              value={planner}
+              disabled={save.isPending}
+              placeholder="sonnet"
+              onChange={(event) => setPlanner(event.target.value)}
+              className="block w-full max-w-md rounded-md border border-input bg-card px-3 py-1.5 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
+            />
+          </label>
+          <label className="grid gap-1.5 text-sm">
+            <span className="font-medium">Namer model</span>
+            <input
+              type="text"
+              aria-label="Namer model"
+              data-slot="agents-namer-model"
+              value={namer}
+              disabled={save.isPending}
+              placeholder="haiku"
+              onChange={(event) => setNamer(event.target.value)}
+              className="block w-full max-w-md rounded-md border border-input bg-card px-3 py-1.5 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
+            />
+          </label>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            data-action="agents-save-planner-namer"
+            disabled={
+              (plannerSaved && namerSaved) ||
+              planner.trim() === '' ||
+              namer.trim() === '' ||
+              save.isPending
+            }
+            onClick={() =>
+              save.mutate(
+                { plannerModel: planner.trim(), namerModel: namer.trim() },
+                { onSuccess: () => toast('Planner and namer models saved') },
+              )
+            }
+          >
+            Save
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            data-action="agents-reset-planner-namer"
+            disabled={save.isPending}
+            onClick={() =>
+              save.mutate(
+                { plannerModel: null, namerModel: null },
+                {
+                  onSuccess: (result) => {
+                    setPlanner(result.plannerModel)
+                    setNamer(result.namerModel)
+                    toast('Back to the defaults (sonnet and haiku)')
+                  },
+                },
+              )
+            }
+          >
+            Use defaults
+          </Button>
+        </div>
+      </Field>
+
+      <Field
+        title="Team skill repositories"
+        hint="Extra skill playbooks pulled from git, one per line: owner/name, a git URL, or a local path — add @branch for a ref other than main. This project's own .xezar/skills always wins. Leave empty to use no team skills."
+      >
+        <textarea
+          aria-label="Team skill repositories"
+          data-slot="agents-skills-repos"
+          rows={3}
+          value={skillsRepos}
+          disabled={save.isPending}
+          placeholder="open-mercato/skills"
+          onChange={(event) => setSkillsRepos(event.target.value)}
+          className="block w-full max-w-md rounded-md border border-input bg-card px-3 py-1.5 font-mono text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
+        />
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            data-action="agents-save-skills-repos"
+            disabled={skillsReposSaved || skillsReposInvalid || save.isPending}
+            onClick={() =>
+              save.mutate(
+                { skillsRepos: parsedSkillsRepos },
+                {
+                  onSuccess: () =>
+                    toast(
+                      parsedSkillsRepos.length === 0
+                        ? 'Team skills off for this project'
+                        : `Using ${parsedSkillsRepos.length} team skill source${parsedSkillsRepos.length === 1 ? '' : 's'}`,
+                    ),
+                },
+              )
+            }
+          >
+            Save
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            data-action="agents-reset-skills-repos"
+            disabled={save.isPending}
+            onClick={() =>
+              save.mutate(
+                { skillsRepos: null },
+                {
+                  onSuccess: (result) => {
+                    setSkillsRepos(formatSkillsRepos(result.skillsRepos ?? []))
+                    toast('Back to the shared catalog')
+                  },
+                },
+              )
+            }
+          >
+            Use the shared catalog
+          </Button>
+        </div>
+        {skillsReposInvalid ? (
+          <p data-slot="agents-skills-repos-invalid" className="text-[11px] text-danger">
+            One source per line, at most {SKILLS_REPOS_MAX}.
+          </p>
+        ) : null}
       </Field>
 
       <Field

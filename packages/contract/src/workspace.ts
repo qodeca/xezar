@@ -33,6 +33,15 @@ export const workspaceConfigResponseSchema = z.object({
   /** Stored override; `null` means inherit `XEZ_SKILLS_AUTO_UPDATE`, then true. */
   skillsAutoUpdate: z.boolean().nullable(),
   effectiveSkillsAutoUpdate: z.boolean(),
+  /** Stored follow-up Inbox override (F); `null` = no stored key, `XEZ_FOLLOWUPS` decides. */
+  followups: z.boolean().nullable(),
+  /** What `followups` + the env actually resolve to right now — what the cockpit shows. */
+  effectiveFollowups: z.boolean(),
+  /** Stored extra agent env-passthrough names (F); `null` = no stored key,
+   *  `XEZ_ENV_PASSTHROUGH` decides. `[]` is a real stored "forward nothing". */
+  agentEnvPassthrough: z.array(z.string()).nullable(),
+  /** What `agentEnvPassthrough` + the env actually resolve to right now. */
+  effectiveAgentEnvPassthrough: z.array(z.string()),
   composerDefaults: z.object({
     autonomous: z.boolean().nullable(),
     worktree: z.boolean().nullable(),
@@ -46,7 +55,13 @@ export const workspaceConfigResponseSchema = z.object({
     monitoringWakeIntervalMinutes: z.number().nullable(),
     /** Resume a run a provider usage limit stopped, once the limit resets. Default `true`. */
     autoResumeOnUsageLimit: z.boolean(),
+    /** Wall clock for a session parked at `waiting`, in minutes; `null` = never close on
+     *  idle. Default 15. */
+    idleTimeoutMinutes: z.number().nullable(),
     memoryLimitMb: z.number().nullable(),
+    /** The host-derived ceiling an ABSENT `memoryLimitMb` falls back to (B1) — reported so
+     *  the settings pane can name the machine's own default instead of guessing it. */
+    memoryLimitDefaultMb: z.number(),
     worktreeRetentionDefault: z.number(),
   }),
   /**
@@ -80,6 +95,11 @@ export const setWorkspaceConfigInputSchema = z.object({
   browseRoot: z.string().trim().min(1).max(4096).optional(),
   projectsDir: z.string().trim().min(1).max(4096).optional(),
   skillsAutoUpdate: z.boolean().nullable().optional(),
+  /** Stored Inbox override (F): `null` clears the key back to the `XEZ_FOLLOWUPS` default. */
+  followups: z.boolean().nullable().optional(),
+  /** Stored env-passthrough names (F): `null` clears the key back to the
+   *  `XEZ_ENV_PASSTHROUGH` default; `[]` stores a real "forward nothing". */
+  agentEnvPassthrough: z.array(z.string().trim().min(1).max(200)).max(64).nullable().optional(),
   composerDefaults: z
     .object({
       autonomous: z.boolean().nullable().optional(),
@@ -107,6 +127,8 @@ export const setWorkspaceConfigInputSchema = z.object({
       maxMonitoringSessions: z.number().int().min(0).max(16).optional(),
       monitoringWakeIntervalMinutes: z.number().int().min(1).max(60).nullable().optional(),
       autoResumeOnUsageLimit: z.boolean().optional(),
+      /** `null` = never close an idle session; a number is minutes (1 to 1440). */
+      idleTimeoutMinutes: z.number().int().min(1).max(1440).nullable().optional(),
       memoryLimitMb: z.number().int().min(0).max(1_048_576).nullable().optional(),
       worktreeRetentionDefault: z.number().int().min(0).max(1000).optional(),
     })
@@ -332,6 +354,14 @@ export const configResponseSchema = z.object({
   /** Optional review gate (#489): null = no config key, the `XEZ_REVIEW_GATE` env default (OFF)
    *  decides. */
   reviewGate: z.boolean().nullable(),
+  /** Model the chain planner runs on (Claude aliases only; other backends pick their own).
+   *  Always materialized — the file schema defaults it to `sonnet` (E). */
+  plannerModel: z.string(),
+  /** Model the task namer runs on, same rule as `plannerModel`. Defaults to `haiku` (E). */
+  namerModel: z.string(),
+  /** Team skill sources (E). Always materialized: the file schema defaults it to the shared
+   *  catalog, and `[]` is a real "no team skills" choice. */
+  skillsRepos: z.array(z.object({ repo: z.string(), ref: z.string() })),
 });
 export type ConfigResponse = z.infer<typeof configResponseSchema>;
 
@@ -367,6 +397,21 @@ export const setConfigInputSchema = z.object({
   liveTitleUpdates: z.boolean().nullable().optional(),
   /** null clears the key back to the env-default behavior (OFF). */
   reviewGate: z.boolean().nullable().optional(),
+  /** `null` clears the key back to the schema default (`sonnet`). */
+  plannerModel: z.string().trim().min(1).max(200).nullable().optional(),
+  /** `null` clears the key back to the schema default (`haiku`). */
+  namerModel: z.string().trim().min(1).max(200).nullable().optional(),
+  /** `null` clears the key back to the default catalog; `[]` disables team skills. */
+  skillsRepos: z
+    .array(
+      z.object({
+        repo: z.string().trim().min(1).max(500),
+        ref: z.string().trim().min(1).max(200).optional(),
+      }),
+    )
+    .max(32)
+    .nullable()
+    .optional(),
 });
 export type SetConfigInput = z.infer<typeof setConfigInputSchema>;
 

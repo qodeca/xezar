@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { workspaceConfigPath } from '../paths.ts';
 import {
+  DEFAULT_MEMORY_LIMIT_MB,
   atomicTmpPath,
   defaultWorkspaceConfig,
   effectiveSkillsAutoUpdate,
@@ -68,7 +69,7 @@ describe('workspace config', () => {
     expect(config.schemaVersion).toBe(0);
     expect(config.browseRoot).toBe('~/');
     expect(config.projectsDir).toBe('~/xezar/projects');
-    expect(config.resources).toEqual({ maxParallel: 2, maxMonitoringSessions: 2, monitoringWakeIntervalMinutes: 5, autoResumeOnUsageLimit: true, memoryLimitMb: null, worktreeRetentionDefault: 10 });
+    expect(config.resources).toEqual({ maxParallel: 2, maxMonitoringSessions: 2, monitoringWakeIntervalMinutes: 5, autoResumeOnUsageLimit: true, idleTimeoutMinutes: 15, memoryLimitMb: DEFAULT_MEMORY_LIMIT_MB, worktreeRetentionDefault: 10 });
     expect(config.composerDefaults).toEqual({});
     expect(config.projects).toEqual([]);
     expect(warn).not.toHaveBeenCalled();
@@ -250,7 +251,7 @@ describe('workspace config', () => {
     expect(config.schemaVersion).toBe(0);
     expect(config.browseRoot).toBe('~/');
     expect(config.projectsDir).toBe('~/xezar/projects');
-    expect(config.resources).toEqual({ maxParallel: 2, maxMonitoringSessions: 2, monitoringWakeIntervalMinutes: 5, autoResumeOnUsageLimit: true, memoryLimitMb: null, worktreeRetentionDefault: 10 });
+    expect(config.resources).toEqual({ maxParallel: 2, maxMonitoringSessions: 2, monitoringWakeIntervalMinutes: 5, autoResumeOnUsageLimit: true, idleTimeoutMinutes: 15, memoryLimitMb: DEFAULT_MEMORY_LIMIT_MB, worktreeRetentionDefault: 10 });
     expect(config.projects).toEqual([project('good')]);
   });
 

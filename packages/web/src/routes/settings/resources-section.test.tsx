@@ -30,6 +30,10 @@ function serve(resources: Partial<WorkspaceConfigResponse['resources']> = {}) {
     projectsDir: '~/xezar/projects',
     skillsAutoUpdate: null,
     effectiveSkillsAutoUpdate: true,
+    followups: null,
+    effectiveFollowups: false,
+    agentEnvPassthrough: null,
+    effectiveAgentEnvPassthrough: [],
     composerDefaults: {
       autonomous: null,
       worktree: null,
@@ -40,6 +44,8 @@ function serve(resources: Partial<WorkspaceConfigResponse['resources']> = {}) {
       maxParallel: 2,
       maxMonitoringSessions: 2,
       monitoringWakeIntervalMinutes: null,
+      idleTimeoutMinutes: 15,
+      memoryLimitDefaultMb: 4096,
       autoResumeOnUsageLimit: true,
       memoryLimitMb: null,
       worktreeRetentionDefault: 10,
@@ -58,6 +64,16 @@ function serve(resources: Partial<WorkspaceConfigResponse['resources']> = {}) {
       if (url === '/api/v1/workspace/config' && method === 'GET') return json(state)
       if (url === '/api/v1/workspace/config' && method === 'PUT') {
         Object.assign(state.resources, (body?.resources ?? {}) as object)
+        // Top-level keys too (F) — a resources-only merge would make every followups /
+        // agentEnvPassthrough write look like a no-op to the readback.
+        if (body && 'followups' in body) {
+          state.followups = body.followups as boolean | null
+          state.effectiveFollowups = (body.followups as boolean | null) ?? false
+        }
+        if (body && 'agentEnvPassthrough' in body) {
+          state.agentEnvPassthrough = body.agentEnvPassthrough as string[] | null
+          state.effectiveAgentEnvPassthrough = (body.agentEnvPassthrough as string[] | null) ?? []
+        }
         return json(state)
       }
       return new Promise<never>(() => {})
@@ -100,6 +116,19 @@ const monitoringSelect = () => document.querySelector<HTMLSelectElement>('[data-
 const wakeMode = () => document.querySelector<HTMLSelectElement>('[data-slot="resources-monitoring-wake-mode"]')
 const wakeInterval = () => document.querySelector<HTMLInputElement>('[data-slot="resources-monitoring-wake-interval"]')
 const saveWake = () => document.querySelector<HTMLButtonElement>('[data-action="resources-save-monitoring-wake"]')
+const idleMode = () => document.querySelector<HTMLSelectElement>('[data-slot="resources-idle-mode"]')
+const idleInput = () => document.querySelector<HTMLInputElement>('[data-slot="resources-idle-timeout"]')
+const saveIdle = () => document.querySelector<HTMLButtonElement>('[data-action="resources-save-idle-timeout"]')
+const retentionDefault = () =>
+  document.querySelector<HTMLInputElement>('[data-slot="resources-worktree-retention-default"]')
+const saveRetentionDefault = () =>
+  document.querySelector<HTMLButtonElement>('[data-action="resources-save-retention-default"]')
+const followupsSelect = () => document.querySelector<HTMLSelectElement>('[data-slot="resources-followups"]')
+const passthroughInput = () => document.querySelector<HTMLInputElement>('[data-slot="resources-env-passthrough"]')
+const savePassthrough = () =>
+  document.querySelector<HTMLButtonElement>('[data-action="resources-save-env-passthrough"]')
+const clearPassthrough = () =>
+  document.querySelector<HTMLButtonElement>('[data-action="resources-clear-env-passthrough"]')
 
 afterEach(() => {
   act(() => resetToasts())
@@ -205,12 +234,15 @@ describe('Global settings → Resources', () => {
     expect(puts()).toHaveLength(0)
   })
 
-  it('worktree retention is NOT here — it stayed with the project', async () => {
+  it("a project's OWN worktree retention is still not here — only the workspace default is", async () => {
     serve()
     renderResources()
     await waitFor(() => expect(parallelSelect()).not.toBeNull())
+    // The per-repo control lives in the project's Worktrees pane and writes /api/v1/config.
     expect(document.querySelector('[data-slot="resources-worktree-retention"]')).toBeNull()
     expect(screen.queryByText('Keep last N worktrees')).toBeNull()
+    // The workspace DEFAULT is here now (E) — it was API-only before.
+    expect(retentionDefault()).not.toBeNull()
   })
 
   it('renders and saves New task On/Off/Inherit policy', async () => {
@@ -229,5 +261,143 @@ describe('Global settings → Resources', () => {
     await waitFor(() => expect(puts().at(-1)?.body).toEqual({
       composerDefaults: { worktree: true },
     }))
+  })
+
+  /**
+   * A — the idle timeout is reachable from the cockpit. Two modes: a duration, or "never",
+   * which must state plainly what it costs.
+   */
+  describe('idle timeout (A)', () => {
+    it('renders the configured value and saves a new one', async () => {
+      serve({ idleTimeoutMinutes: 15 })
+      renderResources()
+      await waitFor(() => expect(idleInput()).not.toBeNull())
+      expect(idleMode()!.value).toBe('timeout')
+      expect(idleInput()!.value).toBe('15')
+      expect(saveIdle()!.disabled).toBe(true) // unchanged
+
+      fireEvent.change(idleInput()!, { target: { value: '120' } })
+      fireEvent.click(saveIdle()!)
+      await waitFor(() => expect(puts().at(-1)?.body).toEqual({ resources: { idleTimeoutMinutes: 120 } }))
+    })
+
+    it('sends null for "never close" and says what that gives up', async () => {
+      serve({ idleTimeoutMinutes: 15 })
+      renderResources()
+      await waitFor(() => expect(idleMode()).not.toBeNull())
+
+      fireEvent.change(idleMode()!, { target: { value: 'never' } })
+      expect(idleInput()).toBeNull() // no duration to enter
+      const warning = document.querySelector('[data-slot="resources-idle-never-warning"]')
+      expect(warning?.textContent).toContain('Nothing will reclaim these sessions')
+      expect(warning?.textContent).toContain('Default: 15 minutes')
+
+      fireEvent.click(saveIdle()!)
+      await waitFor(() => expect(puts().at(-1)?.body).toEqual({ resources: { idleTimeoutMinutes: null } }))
+    })
+
+    it('refuses an out-of-range duration client-side, with no PUT', async () => {
+      serve({ idleTimeoutMinutes: 15 })
+      renderResources()
+      await waitFor(() => expect(idleInput()).not.toBeNull())
+      for (const value of ['0', '1441', '12.5']) {
+        fireEvent.change(idleInput()!, { target: { value } })
+        expect(saveIdle()!.disabled).toBe(true)
+      }
+      expect(puts()).toHaveLength(0)
+    })
+
+    it('renders "never close" as the saved state when the workspace stored null', async () => {
+      serve({ idleTimeoutMinutes: null })
+      renderResources()
+      await waitFor(() => expect(idleMode()).not.toBeNull())
+      expect(idleMode()!.value).toBe('never')
+      expect(saveIdle()!.disabled).toBe(true)
+    })
+  })
+
+  /** B1 — the pane names this machine's derived ceiling so an empty field is not a mystery. */
+  it('names the host-derived memory default beside the memory field', async () => {
+    serve({ memoryLimitDefaultMb: 8192, memoryLimitMb: null })
+    renderResources()
+    await waitFor(() => expect(memoryInput()).not.toBeNull())
+    expect(document.querySelector('[data-slot="resources-memory-default"]')?.textContent).toBe('8192')
+  })
+
+  /** E — the workspace worktree-retention default had no control at all. */
+  it('saves the workspace worktree-retention default', async () => {
+    serve({ worktreeRetentionDefault: 10 })
+    renderResources()
+    await waitFor(() => expect(retentionDefault()).not.toBeNull())
+    expect(retentionDefault()!.value).toBe('10')
+    expect(saveRetentionDefault()!.disabled).toBe(true)
+
+    fireEvent.change(retentionDefault()!, { target: { value: '3' } })
+    fireEvent.click(saveRetentionDefault()!)
+    await waitFor(() =>
+      expect(puts().at(-1)?.body).toEqual({ resources: { worktreeRetentionDefault: 3 } }),
+    )
+  })
+
+  /**
+   * F — the two boot-time env switches, now settings. Three states each: on, off, and
+   * "follow the environment" (`null`).
+   */
+  describe('Inbox and agent env passthrough (F)', () => {
+    it('saves the Inbox toggle and can hand it back to the environment', async () => {
+      serve()
+      renderResources()
+      await waitFor(() => expect(followupsSelect()).not.toBeNull())
+      expect(followupsSelect()!.value).toBe('inherit')
+
+      fireEvent.change(followupsSelect()!, { target: { value: 'on' } })
+      await waitFor(() => expect(puts().at(-1)?.body).toEqual({ followups: true }))
+
+      fireEvent.change(followupsSelect()!, { target: { value: 'inherit' } })
+      await waitFor(() => expect(puts().at(-1)?.body).toEqual({ followups: null }))
+    })
+
+    it('saves env-var NAMES, and an emptied field is a real "forward nothing"', async () => {
+      serve()
+      renderResources()
+      await waitFor(() => expect(passthroughInput()).not.toBeNull())
+
+      fireEvent.change(passthroughInput()!, { target: { value: 'VITEST_MAX_WORKERS, MY_TOOL_DIR' } })
+      fireEvent.click(savePassthrough()!)
+      await waitFor(() =>
+        expect(puts().at(-1)?.body).toEqual({
+          agentEnvPassthrough: ['VITEST_MAX_WORKERS', 'MY_TOOL_DIR'],
+        }),
+      )
+
+      fireEvent.change(passthroughInput()!, { target: { value: '' } })
+      fireEvent.click(savePassthrough()!)
+      await waitFor(() => expect(puts().at(-1)?.body).toEqual({ agentEnvPassthrough: [] }))
+    })
+
+    it('rejects anything that is not a variable name, with no PUT', async () => {
+      serve()
+      renderResources()
+      await waitFor(() => expect(passthroughInput()).not.toBeNull())
+      for (const value of ['MY_VAR=secret', '9LIVES', 'has space']) {
+        fireEvent.change(passthroughInput()!, { target: { value } })
+        expect(savePassthrough()!.disabled).toBe(true)
+      }
+      expect(puts()).toHaveLength(0)
+    })
+
+    it('clears the stored list back to the environment default', async () => {
+      serve()
+      renderResources()
+      await waitFor(() => expect(passthroughInput()).not.toBeNull())
+      // Nothing stored yet, so there is nothing to clear.
+      expect(clearPassthrough()!.disabled).toBe(true)
+
+      fireEvent.change(passthroughInput()!, { target: { value: 'A' } })
+      fireEvent.click(savePassthrough()!)
+      await waitFor(() => expect(clearPassthrough()!.disabled).toBe(false))
+      fireEvent.click(clearPassthrough()!)
+      await waitFor(() => expect(puts().at(-1)?.body).toEqual({ agentEnvPassthrough: null }))
+    })
   })
 })

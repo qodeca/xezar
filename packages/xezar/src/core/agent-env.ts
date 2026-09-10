@@ -330,8 +330,15 @@ export function buildChildEnv(opts: BuildChildEnvOptions): NodeJS.ProcessEnv {
   }
 
   const backendPrefixes = BACKEND_ALLOW_PREFIXES[opts.backend] ?? BACKEND_ALLOW_PREFIXES.claude;
+  // Per-run env first, host env second. `extraEnv` is where xezar puts the STORED
+  // passthrough list (Settings → Resources), and it has to outrank the host variable for the
+  // same reason it outranks it in the output: a xezar running inside a xezar would otherwise
+  // inherit the parent's list and silently widen the child's environment past what the
+  // operator chose. An empty string in `extraEnv` is a real "forward nothing" answer and
+  // deliberately does NOT fall through to the host — hence `!== undefined`, not `??`.
+  const passthroughRaw = readVar(extra as NodeJS.ProcessEnv, 'XEZ_ENV_PASSTHROUGH');
   const passthrough = upperSet(
-    (readVar(source, 'XEZ_ENV_PASSTHROUGH') ?? '')
+    (passthroughRaw !== undefined ? passthroughRaw : (readVar(source, 'XEZ_ENV_PASSTHROUGH') ?? ''))
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean),
