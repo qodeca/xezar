@@ -5464,10 +5464,29 @@ export function createApp(deps: ServerDeps) {
   const distinctStepBackends = (run: RunRecord): number =>
     new Set(run.steps.flatMap((step) => (step.backend ? [step.backend] : []))).size;
 
+  /**
+   * The runner a run RAN AS, in order of how good the evidence is — `undefined` only when the run
+   * carries none, which means it never started.
+   *
+   * `RunRecord.runner` is not "what the caller asked for": `execute` writes the resolved backend
+   * onto the record the moment a run begins (`workflows/run.ts`), so for anything that ever ran it
+   * is a fact. A record written before run-level backend affinity existed still has step backends,
+   * stamped at spawn — and resolving one of THOSE against today's `defaultRunner` would name a
+   * backend the run never touched.
+   */
+  const recordedRunner = (run: RunRecord): RunnerId | undefined => {
+    if (run.runner) return run.runner;
+    for (let index = run.steps.length - 1; index >= 0; index -= 1) {
+      const backend = run.steps[index]?.backend;
+      if (backend) return backend;
+    }
+    return undefined;
+  };
+
   const runIndexEntry = (
     projectId: string,
     run: RunRecord,
-    defaultRunner: RunnerId,
+    runner: { runner: RunnerId; inherited: boolean },
   ): RunIndexEntry => {
     const usage = currentUsage(run.id);
     const backends = distinctStepBackends(run);
@@ -5485,11 +5504,11 @@ export function createApp(deps: ServerDeps) {
     archived: run.archived,
     ...(run.autoResumeAt !== undefined ? { autoResumeAt: run.autoResumeAt } : {}),
     workflow: run.workflow,
-    // Resolved, and flagged when nobody chose it. The record holds only what the caller ASKED
-    // for; the run executes as `input.runner ?? config.defaultRunner` (`workflows/run.ts`), and
-    // a cross-project row has no cheap way to finish that resolution in the browser.
-    runner: run.runner ?? defaultRunner,
-    ...(run.runner === undefined ? { runnerInherited: true } : {}),
+    // Resolved HERE because rows span projects: the browser would need one config request per
+    // project to finish it. `inherited` marks the one case that is not history — a run carrying
+    // no evidence at all has not started, so the value is what it WOULD run as.
+    runner: runner.runner,
+    ...(runner.inherited ? { runnerInherited: true } : {}),
     ...(run.model !== undefined ? { model: run.model } : {}),
     // Only when it says something: 0 or 1 backend is every ordinary run, and a key nobody reads
     // is exactly the weight this slim row exists to refuse.
@@ -5562,14 +5581,29 @@ export function createApp(deps: ServerDeps) {
           owned ? owned.store.listRuns() : readRunIndexFromDisk(projectDataDir(project.root))
         ).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
         if (recent.length > RUNS_INDEX_PER_PROJECT) truncated.push(project.id);
-        // ONE config read per project, not per row: what a task that chose no runner actually ran
-        // as. `loadConfig` never throws and always materializes `defaultRunner`, so an absent or
-        // malformed `.xezar/config.json` degrades to the same 'claude' the engine itself would
-        // have used — never to a missing column.
-        const { defaultRunner } = await loadConfig(project.root);
+        // LAZY, and at most once per project. This route is polled every 15s and invalidated on a
+        // 400ms debounce during a run, so a config read per project per request would be dozens of
+        // file reads a second on a large registry. Almost every row answers for itself — a started
+        // run carries its own resolved `runner` — so in practice this never runs at all.
+        let projectDefault: RunnerId | undefined;
+        const defaultRunnerFor = async (): Promise<RunnerId> => {
+          if (projectDefault === undefined) {
+            try {
+              projectDefault = (await loadConfig(project.root)).defaultRunner;
+            } catch {
+              // Documented contract: this read degrades to fewer or plainer rows, never a 500.
+              projectDefault = 'claude';
+            }
+          }
+          return projectDefault;
+        };
         const mentioned: number[] = [];
         for (const run of recent.slice(0, RUNS_INDEX_PER_PROJECT)) {
-          runs.push(runIndexEntry(project.id, run, defaultRunner));
+          const recorded = recordedRunner(run);
+          const runner = recorded
+            ? { runner: recorded, inherited: false }
+            : { runner: await defaultRunnerFor(), inherited: true };
+          runs.push(runIndexEntry(project.id, run, runner));
           mentioned.push(...mentionedReferenceNumbers(run));
         }
         if (mentioned.length > 0) {

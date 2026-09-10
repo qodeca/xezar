@@ -55,7 +55,7 @@ import {
   type TaskColumnIcon,
   type TaskColumnId,
 } from '@/lib/task-columns'
-import { RUNNER_LABEL, stepBackendCount, taskRunner } from '@/lib/runner-label'
+import { modelLabel, runnerLabel, stepBackendCount, taskRunner } from '@/lib/runner-label'
 import { listCounts, queuePositions, runTitle, sortRuns, type ListView } from '@/lib/task-groups'
 import {
   compareGroups,
@@ -546,7 +546,7 @@ function TableRow({
   const to = `/tasks/${run.id}`
   const cost = formatCost(run.costUsd)
   const reference = taskReference(run)
-  const runner = taskRunner(run.runner, defaultRunner)
+  const runner = taskRunner(run.runner, run.steps, defaultRunner)
   const backends = stepBackendCount(run.steps)
 
   return (
@@ -885,10 +885,11 @@ function TaskCard({
   const hasDirectionalUsage = run.inputTokens !== undefined || run.outputTokens !== undefined
   // The table is hidden below `md`, so the card's meta line is the ONLY place tool and model can
   // be read on a phone. They sit right after the workflow, in the table's own column order.
-  const runner = taskRunner(run.runner, defaultRunner)
-  const backends = stepBackendCount(run.steps)
-  const extraBackends = backends > 1 ? backends - 1 : 0
-  const model = run.model ?? 'auto'
+  const runner = taskRunner(run.runner, run.steps, defaultRunner)
+  // Through the SAME pure rules the desktop cell uses. Spelling `+N` and `auto` out a second time
+  // here is what let the card and the table disagree about an empty-string model.
+  const tool = runnerLabel(runner.runner, stepBackendCount(run.steps))
+  const model = modelLabel(run.model)
 
   return (
     <div
@@ -947,16 +948,15 @@ function TaskCard({
           data-inherited={runner.inherited || undefined}
           className={cn(runner.inherited && 'text-soft-foreground')}
         >
-          {RUNNER_LABEL[runner.runner]}
-          {extraBackends > 0 ? ` +${extraBackends}` : ''}
+          {tool}
         </span>
         <Sep />
         <span
           data-slot="task-card-model"
-          data-inherited={run.model ? undefined : true}
-          className={cn(!run.model && 'text-soft-foreground')}
+          data-inherited={model.auto || undefined}
+          className={cn(model.auto && 'text-soft-foreground')}
         >
-          {model}
+          {model.text}
         </span>
         {queuePosition !== null ? (
           <>

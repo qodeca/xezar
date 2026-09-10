@@ -115,8 +115,9 @@ describe('workspace runs index API', () => {
   });
 
   it("resolves each row's runner against ITS OWN project's default, and carries the model verbatim", async () => {
-    // Two projects with different `defaultRunner`s is the case the browser cannot answer: rows
-    // span projects, so resolving client-side would be one config request per project.
+    // Two projects with different `defaultRunner`s, and rows from BOTH in one answer — the case
+    // the browser cannot finish, because doing so would be one config request per project. A
+    // build that read a single config per REQUEST would still pass without the boot row below.
     mkdirSync(join(otherRoot, '.xezar'), { recursive: true });
     writeFileSync(
       join(otherRoot, '.xezar/config.json'),
@@ -125,9 +126,19 @@ describe('workspace runs index API', () => {
     );
     await registerProject(repoRoot);
     await registerProject(otherRoot);
+    // The boot project configures nothing, so its own default is the shipped 'claude'.
+    const bootQueued = store.createRun({ title: 'Boot queued', workflow: 'build', task: 't', steps: [] });
+    store.updateRun(bootQueued.id, { status: 'queued', createdAt: '2026-07-15T09:00:00Z' });
     seedColdProject(otherRoot, [
-      // Chose nothing — this project's own default applies, and the row says so.
-      storedRun({ id: 'cold-inherited', title: 'Inherited', createdAt: '2026-07-15T12:00:00Z' }),
+      // Never started: no runner, no step backend. THIS is the inherited case — the value is what
+      // the task would run as, not what it ran as.
+      storedRun({
+        id: 'cold-queued',
+        title: 'Queued',
+        status: 'queued',
+        createdAt: '2026-07-15T12:00:00Z',
+        steps: [],
+      }),
       // Chose both. The model string is whatever the caller asked for, never a catalog lookup.
       storedRun({
         id: 'cold-chosen',
@@ -149,14 +160,50 @@ describe('workspace runs index API', () => {
     const body = await getIndex();
     const row = (id: string) => body.runs.find((entry) => entry.id === id)!;
 
-    expect(row('cold-inherited').runner).toBe('opencode');
-    expect(row('cold-inherited').runnerInherited).toBe(true);
-    expect(Object.keys(row('cold-inherited'))).not.toContain('model');
+    // Each against its OWN project: 'opencode' for the configured one, 'claude' for the boot one.
+    expect(row('cold-queued').runner).toBe('opencode');
+    expect(row('cold-queued').runnerInherited).toBe(true);
+    expect(Object.keys(row('cold-queued'))).not.toContain('model');
+    expect(row(bootQueued.id).runner).toBe('claude');
+    expect(row(bootQueued.id).runnerInherited).toBe(true);
 
     expect(row('cold-chosen').runner).toBe('codex');
     expect(Object.keys(row('cold-chosen'))).not.toContain('runnerInherited');
     expect(row('cold-chosen').model).toBe('gpt-5-codex');
     expect(row('cold-local').model).toBe('local/qwen3-coder-30b');
+  });
+
+  it('prefers a legacy record’s own step backend over today’s project default', async () => {
+    // `execute` has written the resolved `runner` onto every run it started since backend
+    // affinity landed, so a record without one is either queued or pre-affinity. For the
+    // pre-affinity case the steps stamped what actually spawned, and resolving THAT against the
+    // project's current default would name a backend the run never touched.
+    mkdirSync(join(otherRoot, '.xezar'), { recursive: true });
+    writeFileSync(
+      join(otherRoot, '.xezar/config.json'),
+      JSON.stringify({ defaultRunner: 'opencode' }),
+      'utf8',
+    );
+    await registerProject(repoRoot);
+    await registerProject(otherRoot);
+    seedColdProject(otherRoot, [
+      storedRun({
+        id: 'cold-legacy',
+        title: 'Pre-affinity record',
+        createdAt: '2026-07-15T12:00:00Z',
+        steps: [
+          { id: 's1', name: 'plan', kind: 'agent', status: 'done', iterations: 1, tokensUsed: 0, backend: 'codex' },
+          { id: 's2', name: 'check', kind: 'check', status: 'done', iterations: 1, tokensUsed: 0 },
+        ],
+      }),
+    ]);
+
+    const body = await getIndex();
+    const row = body.runs.find((entry) => entry.id === 'cold-legacy')!;
+
+    expect(row.runner).toBe('codex');
+    // History, not a projection — so it is NOT marked inherited.
+    expect(Object.keys(row)).not.toContain('runnerInherited');
   });
 
   it('derives the mixed-chain signal as a COUNT, because the row carries no steps', async () => {

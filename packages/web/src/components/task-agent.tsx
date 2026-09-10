@@ -1,10 +1,14 @@
 import type { Runner } from '@qodeca/xezar-api-client'
-import { RUNNER_LABEL } from '@/lib/runner-label'
+import { modelLabel, runnerLabel } from '@/lib/runner-label'
 import { cn } from '@/lib/utils'
 
 /**
  * "What ran this, and what model?" — the two cells the per-project and the cross-project tables
  * share, so the answer reads the same on both.
+ *
+ * The TEXT rules live in `lib/runner-label.ts`, not here: the phone card renders the same two
+ * facts as plain spans on its `font-mono` meta line and cannot host these components. Keeping the
+ * rules in one pure module is what stops `Claude Code +1` and `auto` from drifting between them.
  *
  * Two presentation rules, and both are about honesty rather than decoration:
  *
@@ -26,24 +30,24 @@ export function ToolNameCell({
   /** Distinct backends the run's recorded STEPS used; >1 means the chain was mixed. */
   backends?: number
 }) {
-  const label = RUNNER_LABEL[runner]
-  // A workflow can name a backend per step. When more than one actually ran, the task-level
-  // runner alone would be a half-truth, so the extras are counted rather than listed: the cell is
-  // ~120px, and "Claude Code, Codex, OpenCode" is not something anyone reads in a table.
-  const extra = backends > 1 ? backends - 1 : 0
-  const text = extra > 0 ? `${label} +${extra}` : label
+  const text = runnerLabel(runner, backends)
+  const mixed = backends > 1
   return (
     <span
       data-slot="task-tool"
       data-runner={runner}
       data-inherited={inherited || undefined}
-      data-mixed={extra > 0 || undefined}
+      data-mixed={mixed || undefined}
+      // Only when it ADDS something. A tooltip that repeats the visible text on every row is
+      // noise, and the inherited wording deliberately does not say "the project default": the
+      // per-project table resolves that from a `GET /config` that may still be in flight, and a
+      // claim about the project is not one this cell may make before the project has answered.
       title={
-        extra > 0
-          ? `${label} — this run's steps used ${backends} different backends`
+        mixed
+          ? `${text} — this run's steps used ${backends} different backends`
           : inherited
-            ? `${label} — the project default; this task did not choose one`
-            : label
+            ? `${text} — inherited; this task did not choose a runner`
+            : undefined
       }
       className={cn('block truncate text-[12.5px]', inherited ? 'text-soft-foreground' : 'text-muted-foreground')}
     >
@@ -54,12 +58,13 @@ export function ToolNameCell({
 
 /** The model string the run actually used — verbatim, or a muted `auto` when none was recorded. */
 export function ModelNameCell({ model }: { model?: string }) {
-  const auto = model === undefined || model === ''
-  const text = auto ? 'auto' : model
+  const { text, auto } = modelLabel(model)
   return (
     <span
       data-slot="task-model"
       data-inherited={auto || undefined}
+      // Always set: a model id is the one value in these tables long enough to truncate, so the
+      // full string has to stay recoverable.
       title={auto ? 'auto — no model was recorded; the backend picked one' : text}
       className={cn('block truncate font-mono text-[11.5px]', auto ? 'text-soft-foreground' : 'text-muted-foreground')}
     >

@@ -333,6 +333,17 @@ describe('TasksOverview — the table', () => {
         defaultRunner: 'opencode',
         runs: [
           run({ id: 'phone-chosen', runner: 'codex', model: 'gpt-5-codex' }),
+          run({
+            id: 'phone-mixed',
+            runner: 'claude',
+            // '' is the composer's own auto sentinel; it must read `auto` here exactly as it does
+            // in the table cell, never as a blank field.
+            model: '',
+            steps: [
+              { id: 'a', name: 'a', kind: 'agent', status: 'done', iterations: 1, tokensUsed: 0, backend: 'claude' },
+              { id: 'b', name: 'b', kind: 'agent', status: 'done', iterations: 1, tokensUsed: 0, backend: 'codex' },
+            ],
+          }),
           run({ id: 'phone-bare' }),
         ],
       })
@@ -340,6 +351,11 @@ describe('TasksOverview — the table', () => {
       const chosen = card('phone-chosen')
       expect(chosen?.querySelector('[data-slot="task-card-tool"]')?.textContent).toBe('Codex')
       expect(chosen?.querySelector('[data-slot="task-card-model"]')?.textContent).toBe('gpt-5-codex')
+      // The card renders the marker through the SAME rule as the cell — it used to spell it out
+      // a second time, and that is how the two drifted over an empty-string model.
+      const mixed = card('phone-mixed')
+      expect(mixed?.querySelector('[data-slot="task-card-tool"]')?.textContent).toBe('Claude Code +1')
+      expect(mixed?.querySelector('[data-slot="task-card-model"]')?.textContent).toBe('auto')
       const bare = card('phone-bare')
       expect(bare?.querySelector('[data-slot="task-card-tool"]')?.textContent).toBe('OpenCode')
       expect(bare?.querySelector('[data-slot="task-card-tool"]')?.getAttribute('data-inherited')).toBe('true')
@@ -1159,6 +1175,36 @@ describe('TasksOverviewRoute — wired to the app', () => {
   const overviewTab = (view: string) =>
     document.querySelector(`[data-slot="overview-tab"][data-view="${view}"]`) as HTMLElement
   const sidebarRow = (id: string) => document.querySelector(`[data-slot="task-row"][data-run-id="${id}"]`)
+
+  it("takes the Tool column's default runner from the PROJECT config, not from health", async () => {
+    // `/api/v1/health` describes the BOOT project and would name the wrong runner on a scoped
+    // route, so the two answer differently here on purpose: whichever one the route reads is
+    // the one the cell prints.
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input)
+      if (url === '/api/v1/runs') return json([run({ id: 'inherits', runner: undefined })])
+      if (url === '/api/v1/config') return json({ defaultRunner: 'opencode', defaultModels: {} })
+      if (url === '/api/v1/health') return json({ defaultRunner: 'codex', capabilities: {} })
+      return new Response('[]', { status: 200 })
+    })
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <MemoryRouter>
+          <ListViewProvider>
+            <TasksOverviewRoute />
+          </ListViewProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+
+    await waitFor(() => {
+      const cell = tableRow('inherits')?.querySelector('[data-slot="task-tool"]')
+      expect(cell?.textContent).toBe('OpenCode')
+    })
+    expect(tableRow('inherits')?.querySelector('[data-slot="task-tool"]')?.getAttribute('data-inherited')).toBe(
+      'true',
+    )
+  })
 
   it('shares the Active/Archived state with the sidebar — either set of tabs flips both', async () => {
     renderApp([run({ id: 'act', status: 'running' }), run({ id: 'arc', status: 'done', archived: true })])
