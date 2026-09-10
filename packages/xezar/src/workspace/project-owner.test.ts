@@ -1,9 +1,15 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { ftruncateSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+// Passthrough, so one case can interleave a peer's reap inside a renewal write.
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>();
+  return { ...actual, ftruncateSync: vi.fn(actual.ftruncateSync) };
+});
 import {
   MCP_PROJECT_OCCUPIED_CODE,
   MCP_PROJECT_OCCUPIED_REASON,
@@ -335,6 +341,27 @@ describe('ProjectOwnership — one owner per project (#99)', () => {
       expect(body).toMatchObject({ v: 1, token, renewedAt: clock.now() });
       expect(Object.keys(body).sort()).toEqual(['acquiredAt', 'host', 'pid', 'renewedAt', 'token', 'v']);
       expect(JSON.stringify(body)).not.toContain('leader'); // no session key on disk
+    });
+
+    it('does not extend its lease when a peer reaped the claim in the middle of the renewal write', async () => {
+      const dataDir = tempDir('xez-owner-');
+      const clock = fakeClock();
+      const owner = ownership({ dataDir, now: clock.now });
+      const oldToken = tokenOf(await owner.acquire('leader'));
+      const path = join(dataDir, OWNER_CLAIM_DIR, claims(dataDir)[0]!);
+      const actualTruncate = vi.mocked(ftruncateSync).getMockImplementation()!;
+      vi.mocked(ftruncateSync).mockImplementationOnce((fd, length) => {
+        unlinkSync(path); // the reap lands after our open, before our write is visible to anyone
+        actualTruncate(fd, length);
+      });
+      clock.advance(OWNER_RENEW_INTERVAL_MS);
+      owner.renewalTick();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      // It noticed, dropped the lost claim and re-acquired: the old token is fenced.
+      expect(owner.checkMutation(oldToken).ok).toBe(false);
+      expect(owner.sessionToken('leader')).not.toBe(oldToken);
+      expect(claims(dataDir)).toHaveLength(1);
+      expect(claims(dataDir)).not.toContain(path.split('/').pop());
     });
   });
 

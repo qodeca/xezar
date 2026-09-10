@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { closeSync, ftruncateSync, mkdirSync, openSync, readFileSync, readdirSync, statSync, unlinkSync, writeSync } from 'node:fs';
+import { closeSync, fstatSync, ftruncateSync, mkdirSync, openSync, readFileSync, readdirSync, statSync, unlinkSync, writeSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
@@ -330,11 +330,15 @@ export class ProjectOwnership {
       this.warnRenewal(error);
       return;
     }
+    let reaped = false;
     try {
       const bytes = Buffer.from(JSON.stringify(this.claimBody(holding.token, holding.acquiredAt, at)));
       writeSync(descriptor, bytes, 0, bytes.length, 0);
       ftruncateSync(descriptor, bytes.length);
-      holding.renewedAt = at;
+      // A peer may have unlinked the claim between our open and our write; the write then landed
+      // on an inode nobody can see, and extending our lease on it would be a lie.
+      reaped = fstatSync(descriptor).nlink === 0;
+      if (!reaped) holding.renewedAt = at;
     } catch (error) {
       // The on-disk lease was not extended, so neither is ours: we fence ourselves at the same
       // moment a peer may reap us, instead of writing on a lease nobody else can see.
@@ -342,6 +346,7 @@ export class ProjectOwnership {
     } finally {
       closeSync(descriptor);
     }
+    if (reaped) this.reacquire(holding.sessionKey);
   }
 
   /** Service shutdown: every session ends (D-02 § 5), and the claim goes with it. */
