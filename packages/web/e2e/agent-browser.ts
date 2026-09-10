@@ -154,6 +154,75 @@ export async function removeDataRoot(dataRoot: string | undefined): Promise<void
   }
 }
 
+/**
+ * The page-side halves of `AgentBrowser.diagnostics`.
+ *
+ * Each returns a STRING rather than an object: the CLI serializes an eval result through CDP, and
+ * a plain string is the one shape that survives every page state — including a document whose own
+ * `JSON.stringify` has been shadowed by app code, and an element handle, which CDP refuses.
+ */
+const WHERE_JS = `(() => {
+  try {
+    return JSON.stringify({
+      url: location.href,
+      readyState: document.readyState,
+      title: document.title,
+      rootChildren: document.getElementById('root')?.childElementCount ?? -1,
+    })
+  } catch (error) { return 'threw: ' + error }
+})()`
+
+/** Every `data-slot` value currently in the document, with how many nodes carry it. */
+const SLOT_CENSUS_JS = `(() => {
+  try {
+    const counts = {}
+    for (const node of document.querySelectorAll('[data-slot]')) {
+      counts[node.dataset.slot] = (counts[node.dataset.slot] ?? 0) + 1
+    }
+    const names = Object.keys(counts).sort()
+    return names.length === 0
+      ? '(no [data-slot] nodes at all)'
+      : names.map((n) => n + '×' + counts[n]).join(', ')
+  } catch (error) { return 'threw: ' + error }
+})()`
+
+/**
+ * The nodes carrying one `data-slot`, each with its own attributes and trimmed text.
+ *
+ * "The row I wanted is missing" and "the rows are all there but none carries the id I asked for"
+ * are different bugs with the same timeout, and only an enumeration tells them apart.
+ */
+function slotDigestJs(slot: string): string {
+  return `(() => {
+    try {
+      const nodes = [...document.querySelectorAll('[data-slot=' + ${JSON.stringify(JSON.stringify(slot))} + ']')]
+      if (nodes.length === 0) return '0 nodes'
+      return nodes.length + ' nodes: ' + nodes.slice(0, 12).map((node) => {
+        const attrs = [...node.attributes]
+          .filter((a) => a.name.startsWith('data-') || a.name === 'aria-current' || a.name === 'disabled')
+          .map((a) => a.name + '=' + JSON.stringify(a.value))
+          .join(' ')
+        return '{' + attrs + ' text=' + JSON.stringify((node.textContent ?? '').trim().slice(0, 60)) + '}'
+      }).join(' ')
+    } catch (error) { return 'threw: ' + error }
+  })()`
+}
+
+/** The `data-slot` values a failed selector or predicate mentioned, in first-seen order. */
+function slotsNamedIn(expression: string): string[] {
+  const found = new Set<string>()
+  for (const match of expression.matchAll(/data-slot=["']([^"']+)["']/g)) {
+    if (match[1] !== undefined) found.add(match[1])
+  }
+  return [...found]
+}
+
+/** One diagnostic value as a single readable line — `undefined` when the browser would not say. */
+function format(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined
+  return typeof value === 'string' ? value : JSON.stringify(value)
+}
+
 export class AgentBrowser {
   // A unique session per run, per the descriptor's rules — never attach to a user's profile.
   private constructor(
@@ -187,6 +256,79 @@ export class AgentBrowser {
       throw new Error(`xezar e2e: agent-browser ${args.join(' ')} → ${JSON.stringify(parsed.error)}`)
     }
     return (parsed.data ?? {}) as Record<string, unknown>
+  }
+
+  /**
+   * `run`, but for the failure path: it answers `undefined` instead of throwing.
+   *
+   * Everything the diagnostic below asks the browser is best-effort by construction. A page that
+   * just failed a wait is a page that may also refuse a snapshot, and a diagnostic that threw
+   * would replace the real failure with its own — which is precisely how rounds 1–3 of this
+   * blocker (#136, #148, #160) ended up diagnosed from a bare "timed out".
+   */
+  private safe(args: string[]): Record<string, unknown> | undefined {
+    try {
+      return this.run(args)
+    } catch {
+      return undefined
+    }
+  }
+
+  /**
+   * What the page held and what the server answered, at the moment a wait or a click gave up.
+   *
+   * This exists because a bare `Wait timed out after 25000ms` names neither. Three rounds of this
+   * suite's intermittent failures (#133→#136, #145→#148, #155→#160) were each diagnosed by hand
+   * from that one line, and the last of them turned out to be a real product bug (`POST
+   * /runs/:id/finish` answering `409`) that the timeout had been hiding all along. A failure that
+   * reports the DOM it was waiting on and the HTTP statuses behind it is the difference between
+   * one run and three.
+   *
+   * Never throws: see `safe`. Every section degrades to a `(unavailable)` line of its own.
+   */
+  private diagnostics(subject: string): string {
+    const lines: string[] = ['', `--- page diagnostics (${subject}) ---`]
+
+    const where = this.safe(['eval', WHERE_JS])
+    lines.push(`  where: ${format(where?.result) ?? '(unavailable)'}`)
+
+    // The slots the failed expression itself named — "what was there instead" is the question a
+    // missing `[data-slot="skill-row"][data-skill="…"]` actually raises, and only the expression
+    // knows which slot to enumerate.
+    for (const slot of slotsNamedIn(subject)) {
+      const found = this.safe(['eval', slotDigestJs(slot)])
+      lines.push(`  [data-slot="${slot}"]: ${format(found?.result) ?? '(unavailable)'}`)
+    }
+
+    const slots = this.safe(['eval', SLOT_CENSUS_JS])
+    lines.push(`  slots present: ${format(slots?.result) ?? '(unavailable)'}`)
+
+    const errors = (this.safe(['errors'])?.errors ?? []) as unknown[]
+    lines.push(`  page errors: ${errors.length === 0 ? 'none' : format(errors.slice(-5))}`)
+
+    const messages = (this.safe(['console'])?.messages ?? []) as Array<Record<string, unknown>>
+    const loud = messages.filter((m) => m.type === 'error' || m.type === 'warning')
+    lines.push(`  console (error/warning): ${loud.length === 0 ? 'none' : format(loud.slice(-5))}`)
+
+    // The API half of the answer. Only the app's own calls, reduced to the three fields that
+    // matter — a full request record is mostly headers and drowns the status it carries.
+    const requests = (this.safe(['network', 'requests'])?.requests ?? []) as Array<
+      Record<string, unknown>
+    >
+    const api = requests
+      .filter((r) => typeof r.url === 'string' && (r.url as string).includes('/api/'))
+      .slice(-25)
+      .map((r) => `${r.status ?? '???'} ${r.method ?? '?'} ${new URL(String(r.url)).pathname}`)
+    lines.push(`  api calls: ${api.length === 0 ? 'none recorded' : `\n    ${api.join('\n    ')}`}`)
+
+    const failed = requests
+      .filter((r) => typeof r.status === 'number' && ((r.status as number) >= 400 || r.status === 0))
+      .slice(-10)
+      .map((r) => `${r.status} ${r.method ?? '?'} ${r.url}`)
+    if (failed.length > 0) lines.push(`  NON-OK responses:\n    ${failed.join('\n    ')}`)
+
+    lines.push('--- end page diagnostics ---')
+    return lines.join('\n')
   }
 
   /** operation: open */
@@ -232,7 +374,11 @@ export class AgentBrowser {
    *  tap that opened it, it is mounted, "visible", and still entirely off-screen — sampling it in
    *  that window answers every question wrong. */
   waitForFunction(js: string): void {
-    this.run(['wait', '--fn', js])
+    try {
+      this.run(['wait', '--fn', js])
+    } catch (cause) {
+      throw new Error(`${(cause as Error).message}${this.diagnostics(js)}`, { cause })
+    }
   }
 
   /** operation: interact (`press`) — a key press against whatever currently has focus. */
@@ -289,7 +435,11 @@ export class AgentBrowser {
 
   /** operation: interact (`click`). */
   click(selector: string): void {
-    this.run(['click', selector])
+    try {
+      this.run(['click', selector])
+    } catch (cause) {
+      throw new Error(`${(cause as Error).message}${this.diagnostics(selector)}`, { cause })
+    }
   }
 
   /** operation: interact (`hover`) — hover-revealed affordances (the table's rename pencil)
