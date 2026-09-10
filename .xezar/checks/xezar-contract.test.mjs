@@ -59,7 +59,7 @@ test('SDLC policy never maps unknown labels or failed QA to merge eligibility',a
  assert.ok(projectPolicy({labels:[{name:'needs-qa'},{name:'skip-qa'}]}).refused);
  assert.equal(projectPolicy({labels:[{name:'needs-qa'},{name:'qa-approved'}]}).passed,true);
  assert.equal(projectPolicy({labels:[]}).passed,true);
- const source=fs.readFileSync(path.join(checks,'integration-preflight.sh'),'utf8');assert.match(source,/lib\/project-policy\.mjs/);assert.match(source,/PROJECT_CHECKS=\("Unit, build, E2E, and package"\)/);assert.match(source,/SKIP_ALLOWED=\(\)/);
+ const source=fs.readFileSync(path.join(checks,'integration-preflight.sh'),'utf8');assert.match(source,/lib\/project-policy\.mjs/);assert.match(source,/PROJECT_CHECKS=\("Typecheck, unit tests, build, and package" "Cockpit browser e2e"\)/);assert.match(source,/SKIP_ALLOWED=\(\)/);
 });
 test('guidance covers semantic analysis, stage ownership, squash policy and evidence tiers',()=>{
  const doc=fs.readFileSync(path.join(kit,'docs/business-analysis.md'),'utf8').toLowerCase();

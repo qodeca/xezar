@@ -56,7 +56,24 @@ GH="${DOGFOOD_GH:-gh}"
 # `integration / integration` is credential-gated. It may report `success` with its assertions
 # skipping internally, or `skipped` outright — both are legitimate, and `skipped` is reported as
 # its own fourth word, never folded into "all green".
-PROJECT_CHECKS=("Unit, build, E2E, and package")
+#
+# F-A2, 2026-09-10 (#147, folded into #128). `ci.yml` used to be ONE job named `Unit, build, E2E,
+# and package`. #128 (issue #60) splits it in two: `verify` is renamed to `Typecheck, unit tests,
+# build, and package` (it never ran a browser, so the old name over-promised) and a new `ui-e2e`
+# job named `Cockpit browser e2e` runs the 35 cockpit browser specs. Both are top-level jobs of
+# `ci.yml`, so neither renders as `<caller> / <job>`.
+#
+# This list HAD to move in the same commit as that rename, which is why #147 never got a pull
+# request of its own. The sequencing has no safe gap: landing the list first would require two
+# checks `main` does not yet produce, and landing it afterwards leaves a window in which the old
+# name exists on no run at all. Either way every merge through this gate is refused, because a
+# name that no run reports is `checks.absent` and absent is a refusal — correctly so, and that
+# refusal is deliberately NOT relaxed here. No fallback, no wildcard, no override: the only fix
+# for a renamed check is to state its new real name.
+#
+# Both names were read from the check-runs API on #128's own rebased head, never from `ci.yml`,
+# for the reason F-A1 records above.
+PROJECT_CHECKS=("Typecheck, unit tests, build, and package" "Cockpit browser e2e")
 SKIP_ALLOWED=()
 
 usage() {
