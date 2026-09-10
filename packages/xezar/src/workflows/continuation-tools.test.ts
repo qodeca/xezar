@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -241,4 +241,71 @@ describe('a resumed session keeps its workflow step tools', () => {
     expect(spec.bashAllowlist).toEqual(BASH);
     await settled(id);
   });
+  it.each([false, true])('accepted Continue restores archived visibility (queued=%s)', async (queued) => {
+    const id = terminalRun({ steps: [{ id: 'work', sessionId: 'sess-1' }] });
+    store.setArchived(id, true);
+    expect(manager!.continueRun(id, { text: 'resume' }, queued)).toEqual({ ok: true });
+    expect(store.getRun(id)?.archived).toBe(false);
+    expect(store.getRun(id)?.archivedAt).toBeUndefined();
+    if (queued) expect(store.getRun(id)?.status).toBe('queued');
+    else { await specAt(0); await settled(id); }
+  });
+
+  it('a refused Continue preserves archive membership', () => {
+    const id = terminalRun({ steps: [{ id: 'work' }] });
+    store.setArchived(id, true);
+    const stamp = store.getRun(id)?.archivedAt;
+    expect(manager!.continueRun(id).ok).toBe(false);
+    expect(store.getRun(id)?.archived).toBe(true);
+    expect(store.getRun(id)?.archivedAt).toBe(stamp);
+  });
+
+  it.each(['missing-directory', 'failed-restoration', 'removed-path'])(
+    'Continue refuses lost isolation before spawning: %s', async (scenario) => {
+      const id = terminalRun({ steps: [{ id: 'work', sessionId: 'sess-1' }] });
+      store.updateRun(id, {
+        branch: `xez/${id.slice(0, 8)}`,
+        worktreePath: scenario === 'removed-path' ? undefined : join(repoRoot, '.local/xezar/worktrees', id),
+        ...(scenario === 'failed-restoration' ? {
+          worktreeReclaimedAt: new Date().toISOString(), baseBranch: 'missing-base-ref',
+        } : {}),
+      });
+      expect(manager!.continueRun(id).ok).toBe(true);
+      await expect.poll(() => store.getRun(id)?.error).toContain('continuation isolation unavailable');
+      expect(store.getRun(id)?.status).toBe('failed');
+      expect(store.getRun(id)?.steps.at(-1)?.status).toBe('failed');
+      expect(captured.specs).toHaveLength(0);
+      expect(readFileSync(join(repoRoot, 'a.txt'), 'utf8')).toBe('one\n');
+      expect((await run('git', ['branch', '--show-current'], { cwd: repoRoot })).stdout.trim()).toBe('main');
+    },
+  );
+
+  it('Continue restores a reclaimed worktree and keeps its branch content', async () => {
+    const id = terminalRun({ steps: [{ id: 'work', sessionId: 'sess-1' }] });
+    const branch = `xez/${id.slice(0, 8)}`;
+    await run('git', ['checkout', '-b', branch], { cwd: repoRoot });
+    writeFileSync(join(repoRoot, 'a.txt'), 'task-only content\n');
+    await run('git', ['add', 'a.txt'], { cwd: repoRoot });
+    await run('git', [...GIT_ID, 'commit', '-qm', 'task change'], { cwd: repoRoot });
+    await run('git', ['checkout', 'main'], { cwd: repoRoot });
+    const path = join(repoRoot, '.local/xezar/worktrees', id);
+    store.updateRun(id, { branch, worktreePath: path, baseBranch: 'main', worktreeReclaimedAt: new Date().toISOString() });
+    expect(manager!.continueRun(id).ok).toBe(true);
+    const spec = await specAt(0);
+    // macOS may canonicalize /var to /private/var; compare the actual file, not that spelling.
+    expect(readFileSync(join(spec.cwd, 'a.txt'), 'utf8')).toBe('task-only content\n');
+    expect((await run('git', ['branch', '--show-current'], { cwd: spec.cwd })).stdout.trim()).toBe(branch);
+    expect(spec.cwd).not.toBe(repoRoot);
+    expect(store.getRun(id)?.worktreeReclaimedAt).toBeUndefined();
+    await settled(id);
+  });
+
+  it('explicit in-place Continue still opens in the primary checkout', async () => {
+    const id = terminalRun({ steps: [{ id: 'work', sessionId: 'sess-1' }] });
+    store.updateRun(id, { worktree: false });
+    expect(manager!.continueRun(id).ok).toBe(true);
+    expect((await specAt(0)).cwd).toBe(repoRoot);
+    await settled(id);
+  });
+
 });

@@ -63,7 +63,7 @@ export interface RematerializeStore {
  * run regains its isolated tree and becomes eligible for retention again;
  * without it the run would keep a directory on disk while staying invisible to
  * the enforcer forever (a leak). Returns true when it re-materialized.
- * Best-effort: never throws (the caller falls back to the repo root).
+ * Best-effort: never throws; the continuation caller refuses lost isolation before spawning.
  */
 export async function rematerializeReclaimedWorktree(
   repoRoot: string,

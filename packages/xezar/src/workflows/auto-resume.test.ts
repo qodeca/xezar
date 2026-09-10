@@ -332,6 +332,9 @@ describe('a run stopped by a usage limit resumes itself', () => {
     await expect
       .poll(() => store.getRun(waiting.id)?.startedAt, { timeout: 20_000 })
       .toBeDefined();
+    // startedAt is written before worktree/session setup finishes. Let the owned
+    // mock task finish before teardown deletes the directory it is still writing.
+    await settle(waiting.id);
   }, 60_000);
 
   it('watchdog: an in-place run it forces through is not handed back at the repo-root gate', async () => {
