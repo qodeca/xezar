@@ -30,6 +30,20 @@
 //                                    a tool that ends in `error`, and the
 //                                    non-JSON / comment frames an SSE client
 //                                    must ignore.
+//   MOCK_OPENCODE_ASYNC_PROMPT=1     serve `POST /session/:id/prompt_async`,
+//                                    the real server's submit-and-return route
+//                                    (204, empty body). In this mode the
+//                                    BLOCKING `/message` route reproduces the
+//                                    #168 wall: it streams the whole turn over
+//                                    the SSE feed and then destroys its own
+//                                    request socket without ever answering,
+//                                    which is exactly what a client sees when
+//                                    Node's fetch abandons the request at 300s
+//                                    — here in milliseconds. Combine with
+//                                    MOCK_OPENCODE_REJECT_PROMPT (both routes
+//                                    answer 500) or MOCK_OPENCODE_DROP_STREAM
+//                                    (accept, stream, then drop the SSE socket
+//                                    without ever going idle).
 //   MOCK_OPENCODE_SIGNAL_LOG=<path>  append every stop signal actually
 //                                    received, one per line — SIGKILL cannot
 //                                    be caught, so an escalation shows up as
@@ -52,6 +66,7 @@ const dropStream = process.env.MOCK_OPENCODE_DROP_STREAM === '1';
 const noSessionId = process.env.MOCK_OPENCODE_NO_SESSION_ID === '1';
 const rejectPrompt = process.env.MOCK_OPENCODE_REJECT_PROMPT === '1';
 const richTurn = process.env.MOCK_OPENCODE_RICH_TURN === '1';
+const asyncPrompt = process.env.MOCK_OPENCODE_ASYNC_PROMPT === '1';
 const signalLog = process.env.MOCK_OPENCODE_SIGNAL_LOG;
 
 const SESSION_ID = 'ses_mock_1';
@@ -78,6 +93,99 @@ const info = (extra) => ({
   ...extra,
 });
 
+/**
+ * The default scripted turn, published on the SSE bus. `respond` is called at
+ * the exact point the blocking prompt route answers — BEFORE the final text
+ * part and the `session.idle`, like the real server under streaming load. The
+ * async route passes a no-op, because it has already answered 204.
+ */
+const streamDefaultTurn = (respond) => {
+  send({ type: 'message.updated', properties: { info: info({}) } });
+  send({
+    type: 'message.part.updated',
+    properties: {
+      part: { id: 'prt_mock_t1', messageID: MESSAGE_ID, sessionID: SESSION_ID, type: 'text', text: 'Checking the working tree.' },
+    },
+  });
+  send({
+    type: 'message.part.updated',
+    properties: {
+      part: {
+        id: 'prt_mock_c1',
+        messageID: MESSAGE_ID,
+        sessionID: SESSION_ID,
+        type: 'tool',
+        callID: 'call_mock_1',
+        tool: 'bash',
+        state: { status: 'pending', input: { command: 'git status --short' }, raw: '{}' },
+      },
+    },
+  });
+  send({
+    type: 'message.part.updated',
+    properties: {
+      part: {
+        id: 'prt_mock_c1',
+        messageID: MESSAGE_ID,
+        sessionID: SESSION_ID,
+        type: 'tool',
+        callID: 'call_mock_1',
+        tool: 'bash',
+        state: { status: 'running', input: { command: 'git status --short' }, title: 'git status --short', time: { start: 1760000000100 } },
+      },
+    },
+  });
+  send({
+    type: 'message.part.updated',
+    properties: {
+      part: {
+        id: 'prt_mock_c1',
+        messageID: MESSAGE_ID,
+        sessionID: SESSION_ID,
+        type: 'tool',
+        callID: 'call_mock_1',
+        tool: 'bash',
+        state: {
+          status: 'completed',
+          input: { command: 'git status --short' },
+          output: ' M src/example.ts\n',
+          title: 'git status --short',
+          metadata: { exit: 0 },
+          time: { start: 1760000000100, end: 1760000000400 },
+        },
+      },
+    },
+  });
+  send({
+    type: 'message.updated',
+    properties: {
+      info: info({ cost: 0.0021, tokens: { input: 1200, output: 300, reasoning: 0, cache: { read: 0, write: 0 } } }),
+    },
+  });
+  respond();
+  setTimeout(() => {
+    send({
+      type: 'message.part.updated',
+      properties: {
+        part: {
+          id: 'prt_mock_t2',
+          messageID: MESSAGE_ID,
+          sessionID: SESSION_ID,
+          type: 'text',
+          text: 'Done.',
+          time: { start: 1760000000500, end: 1760000000600 },
+        },
+      },
+    });
+  }, 30);
+  setTimeout(() => {
+    send({ type: 'session.idle', properties: { sessionID: SESSION_ID } });
+    // A server that finishes and shuts itself down — teardown then finds
+    // the child already gone and must send no signal at all.
+    if (exitAfterIdle) setTimeout(() => process.exit(0), 30);
+  }, 90);
+};
+
 const server = createServer((req, res) => {
   const url = req.url ?? '';
   if (req.method === 'GET' && url.startsWith('/event')) {
@@ -99,6 +207,47 @@ const server = createServer((req, res) => {
     if (req.method === 'POST' && url === `/session/${SESSION_ID}/message` && rejectPrompt) {
       res.writeHead(500, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ error: 'no provider configured' }));
+      return;
+    }
+    if (req.method === 'POST' && url === `/session/${SESSION_ID}/prompt_async` && rejectPrompt) {
+      // A refusal reads the same on either route — the runner must report it
+      // just as clearly as it does on the blocking one.
+      res.writeHead(500, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: 'no provider configured' }));
+      return;
+    }
+    if (req.method === 'POST' && url === `/session/${SESSION_ID}/prompt_async` && asyncPrompt) {
+      // Submit and return: 204, no body, before a single event is published.
+      res.writeHead(204);
+      res.end();
+      if (dropStream) {
+        // Accepted, streamed a little, then the feed dies and no `session.idle`
+        // ever arrives. The turn must be released by the feed ending, not hang.
+        send({ type: 'message.updated', properties: { info: info({}) } });
+        send({
+          type: 'message.part.updated',
+          properties: {
+            part: { id: 'prt_mock_t1', messageID: MESSAGE_ID, sessionID: SESSION_ID, type: 'text', text: 'Partial answer', time: { start: 1760000000500, end: 1760000000600 } },
+          },
+        });
+        setTimeout(() => {
+          if (sse) {
+            sse.destroy();
+            sse = null;
+          }
+        }, 30);
+        return;
+      }
+      streamDefaultTurn(() => {});
+      return;
+    }
+    if (req.method === 'POST' && url === `/session/${SESSION_ID}/message` && asyncPrompt) {
+      // The blocking route WITH the wall the async route exists to avoid: the
+      // turn streams over the SSE feed exactly as it always does, and this
+      // request is never answered — its socket is destroyed instead, which is
+      // what the client sees when Node's fetch abandons the request at 300s.
+      // A runner that still waits here loses a healthy turn (#168).
+      streamDefaultTurn(() => setTimeout(() => res.destroy(), 20));
       return;
     }
     if (req.method === 'POST' && url === `/session/${SESSION_ID}/message` && richTurn) {
@@ -202,93 +351,12 @@ const server = createServer((req, res) => {
       return;
     }
     if (req.method === 'POST' && url === `/session/${SESSION_ID}/message`) {
-      send({ type: 'message.updated', properties: { info: info({}) } });
-      send({
-        type: 'message.part.updated',
-        properties: {
-          part: { id: 'prt_mock_t1', messageID: MESSAGE_ID, sessionID: SESSION_ID, type: 'text', text: 'Checking the working tree.' },
-        },
+      // Respond to the prompt POST BEFORE the final text part and the idle
+      // signal, like the real server under streaming load.
+      streamDefaultTurn(() => {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ info: info({ cost: 0.0021 }), parts: [] }));
       });
-      send({
-        type: 'message.part.updated',
-        properties: {
-          part: {
-            id: 'prt_mock_c1',
-            messageID: MESSAGE_ID,
-            sessionID: SESSION_ID,
-            type: 'tool',
-            callID: 'call_mock_1',
-            tool: 'bash',
-            state: { status: 'pending', input: { command: 'git status --short' }, raw: '{}' },
-          },
-        },
-      });
-      send({
-        type: 'message.part.updated',
-        properties: {
-          part: {
-            id: 'prt_mock_c1',
-            messageID: MESSAGE_ID,
-            sessionID: SESSION_ID,
-            type: 'tool',
-            callID: 'call_mock_1',
-            tool: 'bash',
-            state: { status: 'running', input: { command: 'git status --short' }, title: 'git status --short', time: { start: 1760000000100 } },
-          },
-        },
-      });
-      send({
-        type: 'message.part.updated',
-        properties: {
-          part: {
-            id: 'prt_mock_c1',
-            messageID: MESSAGE_ID,
-            sessionID: SESSION_ID,
-            type: 'tool',
-            callID: 'call_mock_1',
-            tool: 'bash',
-            state: {
-              status: 'completed',
-              input: { command: 'git status --short' },
-              output: ' M src/example.ts\n',
-              title: 'git status --short',
-              metadata: { exit: 0 },
-              time: { start: 1760000000100, end: 1760000000400 },
-            },
-          },
-        },
-      });
-      send({
-        type: 'message.updated',
-        properties: {
-          info: info({ cost: 0.0021, tokens: { input: 1200, output: 300, reasoning: 0, cache: { read: 0, write: 0 } } }),
-        },
-      });
-      // Respond to the prompt POST now — BEFORE the final text part and the
-      // idle signal, like the real server under streaming load.
-      res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ info: info({ cost: 0.0021 }), parts: [] }));
-      setTimeout(() => {
-        send({
-          type: 'message.part.updated',
-          properties: {
-            part: {
-              id: 'prt_mock_t2',
-              messageID: MESSAGE_ID,
-              sessionID: SESSION_ID,
-              type: 'text',
-              text: 'Done.',
-              time: { start: 1760000000500, end: 1760000000600 },
-            },
-          },
-        });
-      }, 30);
-      setTimeout(() => {
-        send({ type: 'session.idle', properties: { sessionID: SESSION_ID } });
-        // A server that finishes and shuts itself down — teardown then finds
-        // the child already gone and must send no signal at all.
-        if (exitAfterIdle) setTimeout(() => process.exit(0), 30);
-      }, 90);
       return;
     }
     res.writeHead(200, { 'content-type': 'application/json' });

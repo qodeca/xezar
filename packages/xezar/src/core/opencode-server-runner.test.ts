@@ -342,6 +342,114 @@ describe('cancelling a session', () => {
 });
 
 /**
+ * #168 — the prompt used to be POSTed to `/session/:id/message`, which answers
+ * only when the whole turn is over. Node's built-in fetch abandons a request
+ * whose headers have not arrived in 300s, so every turn longer than five
+ * minutes died as `opencode: fetch failed` while it was still working: run
+ * `09623ace` made 21 tool calls, the last one 1.1s before the wall, and its
+ * SSE feed was still delivering tool results at 300.5s.
+ *
+ * The mock reproduces that shape under `MOCK_OPENCODE_ASYNC_PROMPT=1`: the
+ * blocking route streams the whole turn over the feed and then destroys its own
+ * request socket without answering — the same rejection undici produces at
+ * 300s, arriving in milliseconds instead. **Nothing here waits 300 seconds.**
+ * The same flag serves `POST /session/:id/prompt_async`, the real server's
+ * submit-and-return route (verified against opencode 1.18.30: `204` with an
+ * empty body in ~10ms, then the turn streaming on the feed and ending with
+ * `session.idle`).
+ */
+describe('a turn that outlives the request that submitted it (#168)', () => {
+  const asyncPrompt = { MOCK_OPENCODE_ASYNC_PROMPT: '1' };
+
+  it('completes instead of dying when the blocking request would have been abandoned', async () => {
+    const { session, pid, v1, v2 } = start({ env: asyncPrompt });
+    try {
+      // Either outcome ends the wait, so the failure reads as "an error event
+      // arrived", not as a ten-second timeout.
+      await until(
+        () => v2.some((e) => e.type === 'turn.completed') || v1.some((e) => e.type === 'error'),
+        'the turn to end, one way or the other',
+      );
+
+      // This is the whole bug: a healthy turn must produce no error at all.
+      expect(v1.filter((e) => e.type === 'error')).toEqual([]);
+
+      session.end();
+      const result = await session.result;
+
+      // The turn ran to completion over the feed: both text blocks, the tool
+      // call and its result, and the usage the HTTP response used to carry.
+      expect([...result.text.split('\n')].sort()).toEqual(['Checking the working tree.', 'Done.']);
+      expect(v1).toContainEqual({
+        type: 'tool-result',
+        toolCallId: 'prt_mock_c1',
+        result: ' M src/example.ts\n',
+        isError: false,
+      });
+      expect(result.tokensUsed).toBe(1500);
+      expect(v1.filter((e) => e.type === 'turn-end')).toHaveLength(1);
+      expect(v1.at(-1)).toEqual({ type: 'done' });
+      const turnDone = v2.find((e) => e.type === 'turn.completed');
+      expect(turnDone).toMatchObject({ type: 'turn.completed', turnId: 'turn_1', stopReason: 'end_turn' });
+      expect(isAlive(pid)).toBe(false);
+    } finally {
+      session.interrupt();
+    }
+  }, 30_000);
+
+  /**
+   * GUARD — a genuine refusal must still be reported exactly as clearly as it
+   * was before. This passes with AND without the fix on purpose: it pins the
+   * error path, which the change must not make quieter. It is the async-route
+   * twin of 'surfaces the status and body when the prompt POST is rejected'.
+   */
+  it('GUARD: a refused prompt still names the status and the body', async () => {
+    const { session, pid, v1 } = start({ env: { ...asyncPrompt, MOCK_OPENCODE_REJECT_PROMPT: '1' } });
+    try {
+      await session.result;
+
+      const error = v1.find((e) => e.type === 'error');
+      expect(error).toBeDefined();
+      expect(error && error.type === 'error' ? error.message : '').toContain('→ 500');
+      expect(error && error.type === 'error' ? error.message : '').toContain('no provider configured');
+      expect(v1).toContainEqual({ type: 'turn-end' });
+      expect(v1.at(-1)).toEqual({ type: 'done' });
+      expect(isAlive(pid)).toBe(false);
+    } finally {
+      session.interrupt();
+    }
+  }, 30_000);
+
+  /**
+   * The one new state this change adds is "submitted, waiting for
+   * `session.idle`", and a state needs every exit from it named. `session.idle`
+   * is one; the feed ending is the second, and this is it — the server accepts
+   * the prompt, streams part of an answer and then drops the SSE socket without
+   * ever going idle. The turn must be released by that, not wait forever for an
+   * event that can no longer arrive. (The third exit, the server process
+   * itself exiting, is covered by 'sends no signal at all when the server
+   * already exited on its own'.)
+   */
+  it('releases the turn when the feed dies without ever going idle', async () => {
+    const { session, pid, v1 } = start({ env: { ...asyncPrompt, MOCK_OPENCODE_DROP_STREAM: '1' } });
+    try {
+      await until(() => v1.some((e) => e.type === 'turn-end'), 'the turn to be released');
+
+      session.end();
+      const result = await session.result;
+
+      // Whatever did arrive is kept; nothing hangs.
+      expect(result.text).toBe('Partial answer');
+      expect(v1.at(-1)).toEqual({ type: 'done' });
+      expect(signalsSeen()).toEqual(['SIGTERM']);
+      expect(isAlive(pid)).toBe(false);
+    } finally {
+      session.interrupt();
+    }
+  }, 30_000);
+});
+
+/**
  * #858 — `opencode serve` installs its own SIGTERM handler, so the teardown
  * watchdog must decide "is it dead?" from a real exit, never from
  * `ChildProcess.killed`, which Node flips the moment a signal is *delivered*.
