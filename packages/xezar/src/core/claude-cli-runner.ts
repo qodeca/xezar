@@ -14,7 +14,7 @@ import type {
 
 // Re-exported for backends and the run manager that still import them from here.
 export type { AgentSession, SessionOptions } from './agent-runner.ts';
-import { isSignalTerminationExit, trackChildExit } from './agent-runner.ts';
+import { foreignSignalExitMessage, isSignalTerminationExit, trackChildExit } from './agent-runner.ts';
 import { buildChildEnv } from './agent-env.ts';
 import { costWeightedTokens, type RawUsage } from './usage.ts';
 import { readNdjson } from './ndjson.ts';
@@ -317,7 +317,13 @@ export class ClaudeCliRunner implements AgentRunner {
       if (exitCode !== 0 && exitCode !== null) {
         const stderr = stderrChunks.join('').trim();
         const detail = stderr ? ` — ${stderr.split('\n').slice(-3).join(' | ')}` : '';
-        const msg = `claude CLI exited with code ${exitCode}${detail}`;
+        // Reaching here on a 128+signal code means the flag above was false:
+        // this CLI was signalled and xezar was not the one who signalled it.
+        // Say so instead of the bare `exited with code 143` that made #156
+        // indistinguishable from an ordinary agent crash.
+        const msg = isSignalTerminationExit(exitCode)
+          ? `${foreignSignalExitMessage('claude CLI', exitCode)}${detail}`
+          : `claude CLI exited with code ${exitCode}${detail}`;
         onEvent?.({ type: 'error', message: msg });
         throw new Error(msg);
       }

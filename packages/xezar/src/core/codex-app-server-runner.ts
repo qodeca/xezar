@@ -9,7 +9,12 @@ import type {
   ContentBlock,
   SessionOptions,
 } from './agent-runner.ts';
-import { isSignalTerminationExit, prependSystemPrompt, trackChildExit } from './agent-runner.ts';
+import {
+  foreignSignalExitMessage,
+  isSignalTerminationExit,
+  prependSystemPrompt,
+  trackChildExit,
+} from './agent-runner.ts';
 import {
   AUTO_END_DELAY_MS,
   DEFAULT_RUN_TIMEOUT_MS,
@@ -259,7 +264,11 @@ class CodexSession implements AgentSession {
       if (exitCode !== 0 && exitCode !== null) {
         const stderr = stderrChunks.join('').trim();
         const detail = stderr ? ` — ${stderr.split('\n').slice(-3).join(' | ')}` : '';
-        const message = `codex app-server exited with code ${exitCode}${detail}`;
+        // Same split as the claude runner (#156): a 128+signal code that got
+        // past the flag above was signalled by something other than xezar.
+        const message = isSignalTerminationExit(exitCode)
+          ? `${foreignSignalExitMessage('codex app-server', exitCode)}${detail}`
+          : `codex app-server exited with code ${exitCode}${detail}`;
         this.emit({ type: 'error', message });
         throw new Error(message);
       }

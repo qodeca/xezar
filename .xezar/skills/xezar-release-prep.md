@@ -19,4 +19,13 @@ The leader owns the goal/plan and adjudication. Specialists own technical eviden
 
 Writing-stage ownership: implement all code/tests/docs/release metadata, focused tests, self-review and focused commits before full gates. Run only `.xezar/checks/repo-gates.sh --fast` for final canonical evidence. Do not repeat the entire gate list in every agent step. Gate repair returns are at most two; quality-gates allows at most two repairs of the same failure. Preserve history when changing executors; no invented global retry allowance.
 
+Never kill by command-line pattern. `pkill -f <pattern>`, `killall` and `kill $(pgrep -f …)` match every
+process this user owns anywhere on the machine, and xezar hands each agent CLI its whole skill text as one
+`--append-system-prompt` argument — so a pattern lifted from a skill (`repo-gates.sh --fast` is the proven
+one) matches every peer agent running that skill and SIGTERMs all of them, while sparing you and your own
+ancestors so you never see the damage (#156: five agents lost mid-review). Kill your own children with
+`pkill -P $$`, or save the PID when you start the process and kill that PID. If a pattern is truly
+unavoidable, anchor it to this task's own worktree path, and check the match list first with `pgrep -fl`,
+which matches identically and signals nothing.
+
 Derive durable evidence with `.xezar/checks/lib/common.sh` (`resolve_task_paths`, `task_evidence_dir`): primary `.local/xezar-tasks/<runId>/`, not the task's reclaimable `.local` or engine tmp. Keep checkpoints concise. Never copy secrets, credentials, `.env`, personal agent configuration or unrelated source content. Reports distinguish observed, fixture-tested, live-verified and unknown. Record relevant dogfooding observations using `.xezar/docs/dogfooding.md`.

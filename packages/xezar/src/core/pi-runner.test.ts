@@ -14,9 +14,9 @@ import { detectEnvironment } from './backend-detect.js';
 import { createRunner } from './runner-factory.js';
 import { buildPiArgs, KILL_GRACE_MS, PiRunner } from './pi-runner.js';
 
-/** Only the escalation (#D) and text-coalescing (#151) tests below swap the child out; every
- *  other test in this file keeps spawning its real stub binary through the untouched `spawn`.
- *  Mirrors the identical hook in `claude-cli-runner.test.ts`. */
+/** Only the escalation (#D), text-coalescing (#151) and signal-termination (#156) tests below
+ *  swap the child out; every other test in this file keeps spawning its real stub binary
+ *  through the untouched `spawn`. Mirrors the identical hook in `claude-cli-runner.test.ts`. */
 const spawnHook = vi.hoisted(() => ({ override: null as null | (() => unknown) }));
 
 vi.mock('node:child_process', async (importOriginal) => {
@@ -99,6 +99,91 @@ describe('a dry-run pi session emits normalized AgentEvents', () => {
     expect(types.filter((t) => t === 'done')).toHaveLength(1);
     expect(result.text.length).toBeGreaterThan(0);
   });
+});
+
+/**
+ * #156 / #703 backend parity — pi tracked no "we sent the signal" bit at all,
+ * so its own teardown surfaced as `pi CLI exited with code 143` (a failure),
+ * and an outside kill surfaced as the same sentence. Both halves now have to
+ * say which one happened, exactly as the claude and codex runners do.
+ */
+describe('pi signal terminations', () => {
+  /** A child that exits on command — nothing here signals a real process. */
+  function startWithFakeChild(): {
+    signals: NodeJS.Signals[];
+    exit: (code: number) => void;
+    events: AgentEvent[];
+    session: ReturnType<PiRunner['startSession']>;
+  } {
+    const signals: NodeJS.Signals[] = [];
+    const emitter = new EventEmitter();
+    const stdout = new PassThrough();
+    const child = Object.assign(emitter, {
+      stdin: new PassThrough(),
+      stdout,
+      stderr: new PassThrough(),
+      exitCode: null as number | null,
+      signalCode: null as NodeJS.Signals | null,
+      killed: false,
+      pid: 4246,
+      kill: (signal: NodeJS.Signals) => {
+        signals.push(signal);
+        Object.assign(child, { killed: true });
+        return true;
+      },
+    }) as unknown as ChildProcessWithoutNullStreams;
+    const exit = (code: number) => {
+      Object.assign(child, { exitCode: code });
+      stdout.end(); // the CLI's stdout closes as it dies — ends the read loop
+      emitter.emit('exit', code, null);
+      emitter.emit('close', code, null);
+    };
+    spawnHook.override = () => child;
+    try {
+      const events: AgentEvent[] = [];
+      const session = new PiRunner({ bin: 'pi', timeoutMs: 0 }).startSession(
+        { userPrompt: 'do it', cwd: process.cwd() },
+        (event) => events.push(event),
+      );
+      return { signals, exit, events, session };
+    } finally {
+      spawnHook.override = null;
+    }
+  }
+
+  it('names the signal and says xezar did not send it', async () => {
+    const { signals, exit, events, session } = startWithFakeChild();
+
+    exit(143); // injected, never signalled — the #156 shape
+
+    await expect(session.result).rejects.toThrow(
+      /pi CLI was terminated by SIGTERM \(exit 143\) — xezar sent no signal/,
+    );
+    expect(signals).toEqual([]);
+    const error = events.find((event) => event.type === 'error');
+    expect(error?.type === 'error' && error.message).toContain('#156');
+  }, 15_000);
+
+  /** GUARD — a teardown xezar asked for stays an intentional stop (#703) and
+   *  must never pick up the "xezar sent no signal" wording. */
+  it('reports a xezar-initiated teardown as a teardown, not a failure', async () => {
+    const { signals, exit, events, session } = startWithFakeChild();
+
+    session.interrupt();
+    expect(signals).toEqual(['SIGTERM']);
+    exit(143);
+
+    await session.result;
+    expect(events.some((event) => event.type === 'error')).toBe(false);
+    expect(
+      events.some(
+        (event) => event.type === 'note' && event.message.includes('terminated by xezar (code 143)'),
+      ),
+    ).toBe(true);
+    expect(
+      events.some((event) => event.type === 'note' && event.message.includes('xezar sent no signal')),
+    ).toBe(false);
+  }, 15_000);
 });
 
 describe('pi RPC argv', () => {

@@ -94,6 +94,30 @@ export function isSignalTerminationExit(exitCode: number | null): boolean {
   return exitCode === 130 || exitCode === 137 || exitCode === 143;
 }
 
+/** The stop signal behind each exit code `isSignalTerminationExit` accepts. */
+const SIGNAL_EXIT_NAMES: Readonly<Record<number, string>> = {
+  130: 'SIGINT',
+  137: 'SIGKILL',
+  143: 'SIGTERM',
+};
+
+/**
+ * The one-line error for a `128 + signal` exit the runner did NOT ask for —
+ * the other half of the `terminatedByXezar` bit (#703).
+ *
+ * When that flag is false, the only thing the runner knows for certain is that
+ * it sent no signal itself; whether a peer process or the OS sent one it cannot
+ * see, so the message claims exactly that much and no more. Naming it is what
+ * would have turned #156 from a day of forensics into one read: five agent CLIs
+ * were SIGTERMed by a peer task's unscoped `pkill -f "repo-gates.sh --fast"`,
+ * which matches every agent carrying that string in its own
+ * `--append-system-prompt` argv — i.e. every agent running a kit skill.
+ */
+export function foreignSignalExitMessage(cli: string, exitCode: number): string {
+  const signal = SIGNAL_EXIT_NAMES[exitCode] ?? 'a stop signal';
+  return `${cli} was terminated by ${signal} (exit ${exitCode}) — xezar sent no signal, so another process on this machine or the OS killed it; an unscoped "pkill -f" run by a peer agent is the known cause (#156)`;
+}
+
 /** The slice of `ChildProcess` a termination tracker needs — keeps the helper
  *  usable from the transport layer and from test fakes alike. */
 export interface TrackableChild {

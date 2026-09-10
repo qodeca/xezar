@@ -234,6 +234,106 @@ describe('SIGTERM→SIGKILL escalation for a CLI that survives SIGTERM', () => {
   });
 });
 
+/**
+ * #156 — five agent CLIs were SIGTERMed by a peer task's unscoped
+ * `pkill -f "repo-gates.sh --fast"`, which matched their own
+ * `--append-system-prompt` argv. All five reported the bare
+ * `claude CLI exited with code 143`, indistinguishable from an agent crash,
+ * and the diagnosis cost a day. The runner already knows the difference:
+ * `terminatedByXezar` is false for a signal it did not send.
+ */
+describe('a signal xezar did not send', () => {
+  /** A child that exits on command — nothing here signals a real process. */
+  function fakeChild(): {
+    child: ChildProcessWithoutNullStreams;
+    signals: NodeJS.Signals[];
+    exit: (code: number) => void;
+  } {
+    const signals: NodeJS.Signals[] = [];
+    const emitter = new EventEmitter();
+    const stdout = new PassThrough();
+    const child = Object.assign(emitter, {
+      stdin: new PassThrough(),
+      stdout,
+      stderr: new PassThrough(),
+      exitCode: null as number | null,
+      signalCode: null as NodeJS.Signals | null,
+      killed: false,
+      pid: 4244,
+      kill: (signal: NodeJS.Signals) => {
+        signals.push(signal);
+        Object.assign(child, { killed: true });
+        return true;
+      },
+    }) as unknown as ChildProcessWithoutNullStreams;
+    const exit = (code: number) => {
+      Object.assign(child, { exitCode: code });
+      stdout.end(); // the CLI's stdout closes as it dies — ends the read loop
+      emitter.emit('exit', code, null);
+    };
+    return { child, signals, exit };
+  }
+
+  function startWithFakeChild(): {
+    fake: ReturnType<typeof fakeChild>;
+    events: AgentEvent[];
+    session: ReturnType<ClaudeCliRunner['startSession']>;
+  } {
+    const fake = fakeChild();
+    spawnHook.override = () => fake.child;
+    try {
+      const events: AgentEvent[] = [];
+      const session = new ClaudeCliRunner({ bin: 'claude', timeoutMs: 0 }).startSession(
+        { userPrompt: 'do it', cwd: process.cwd() },
+        (event) => events.push(event),
+      );
+      return { fake, events, session };
+    } finally {
+      spawnHook.override = null;
+    }
+  }
+
+  it('names the signal and says xezar did not send it', async () => {
+    const { fake, events, session } = startWithFakeChild();
+
+    // The #156 shape: an outside SIGTERM, so the CLI exits 143 having never
+    // been signalled by xezar. The exit is injected — no process is signalled.
+    fake.exit(143);
+
+    await expect(session.result).rejects.toThrow(
+      /claude CLI was terminated by SIGTERM \(exit 143\) — xezar sent no signal/,
+    );
+    expect(fake.signals).toEqual([]);
+    const error = events.find((event) => event.type === 'error');
+    expect(error?.type === 'error' && error.message).toContain('pkill -f');
+    expect(error?.type === 'error' && error.message).toContain('#156');
+  }, 15_000);
+
+  /**
+   * GUARD — this must keep passing exactly as it did before the #156 change.
+   * A teardown xezar itself asked for still settles as an intentional stop and
+   * must NOT pick up the new "xezar sent no signal" wording (#703).
+   */
+  it('leaves a xezar-initiated teardown reported as a teardown', async () => {
+    const { fake, events, session } = startWithFakeChild();
+
+    session.interrupt();
+    expect(fake.signals).toEqual(['SIGTERM']);
+    fake.exit(143);
+
+    await session.result;
+    expect(events.some((event) => event.type === 'error')).toBe(false);
+    expect(
+      events.some(
+        (event) => event.type === 'note' && event.message.includes('terminated by xezar (code 143)'),
+      ),
+    ).toBe(true);
+    expect(
+      events.some((event) => event.type === 'note' && event.message.includes('xezar sent no signal')),
+    ).toBe(false);
+  }, 15_000);
+});
+
 describe('prependSystemPrompt (codex/opencode delivery)', () => {
   it('prepends the prompt as a leading block of the first user message', () => {
     expect(prependSystemPrompt('Extra rules.', 'do it')).toBe('Extra rules.\n\n---\n\ndo it');

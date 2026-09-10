@@ -8,6 +8,8 @@
 // `MOCK_CODEX_IGNORE_EOF=1` switches to the #703 teardown shape instead: the
 // server stays deaf to stdin EOF (the CLI hang the EOF watchdog exists for)
 // and handles SIGTERM itself, exiting 143 rather than dying from the signal.
+// `MOCK_CODEX_FOREIGN_SIGNAL_EXIT=1` is the #156 mirror image: a clean turn
+// followed by an unsolicited 143, as if a peer process had signalled it.
 import { createInterface } from 'node:readline';
 
 const emit = (obj) => process.stdout.write(`${JSON.stringify(obj)}\n`);
@@ -110,6 +112,12 @@ rl.on('line', (line) => {
     emit({ method: 'item/completed', params: { threadId: 'th_mock_1', turnId: 'turn_mock_1', item: { type: 'commandExecution', id: 'item_c1', command: ['bash', '-lc', 'git status --short'], cwd: '/repo', status: 'completed', exitCode: 0 } } });
     emit({ method: 'thread/tokenUsage/updated', params: { threadId: 'th_mock_1', tokenUsage: { total: { totalTokens: 1500, inputTokens: 1200, outputTokens: 300 }, last: { totalTokens: 1500, inputTokens: 1200, outputTokens: 300 } } } });
     emit({ method: 'turn/completed', params: { turn: { id: 'turn_mock_1', status: 'completed' } } });
+    if (process.env.MOCK_CODEX_FOREIGN_SIGNAL_EXIT === '1') {
+      // #156 shape: something outside xezar SIGTERMs the app-server, which
+      // handles the signal itself and exits 143. The runner therefore sees a
+      // signal exit it never asked for — the case the message must name.
+      process.stdout.write('', () => process.exit(143));
+    }
   }
 });
 
