@@ -436,8 +436,16 @@ afterEach(async () => {
       const ctx = f.contexts.peek(id);
       if (!ctx) continue;
       const runs = ctx.store.listRuns().map((run) => run.id);
-      for (const runId of runs) ctx.manager.cancel(runId);
-      await waitFor(() => runs.every((runId) => !ctx.manager.isActive(runId)), 'cancelled runs to settle');
+      // Cancel on every poll, not once. A cancel that lands while an agent session is still
+      // being spawned sets `cancelled` but has no session to interrupt yet, and nothing
+      // re-checks it once the session opens — the interactive last step then stays open with
+      // no wall clock. Two parallel variants hit that window often enough to hang cleanup on a
+      // slow runner (CI run 34542479208, engine bug #229). Re-issuing the cancel reaches the
+      // session once it is up.
+      await waitFor(() => {
+        for (const runId of runs) if (ctx.manager.isActive(runId)) ctx.manager.cancel(runId);
+        return runs.every((runId) => !ctx.manager.isActive(runId));
+      }, 'cancelled runs to settle');
       await ctx.manager.dispose();
     }
     f.contexts.disposeAll();
