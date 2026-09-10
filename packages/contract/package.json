@@ -1,6 +1,6 @@
 {
   "name": "@qodeca/xezar-contract",
-  "version": "0.13.0",
+  "version": "0.13.1",
   "description": "The xezar HTTP API contract: zod schemas and the types inferred from them.",
   "license": "MIT",
   "type": "module",
