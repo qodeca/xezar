@@ -421,7 +421,7 @@ describe('the Changes tab route', () => {
 
     it('a 409 with no emulator copies the command instead of just failing', async () => {
       const writeText = vi.fn(async () => {})
-      vi.stubGlobal('navigator', { clipboard: { writeText } })
+      vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } })
       stubFetch({
         'POST /api/v1/runs/r1/open-in-cli': () =>
           jsonResponse(
@@ -444,6 +444,7 @@ describe('the Changes tab route', () => {
 
     it('a clipboard that refuses still shows the command to run by hand', async () => {
       vi.stubGlobal('navigator', {
+        ...navigator,
         clipboard: { writeText: vi.fn(async () => Promise.reject(new Error('denied'))) },
       })
       stubFetch({
@@ -466,7 +467,7 @@ describe('the Changes tab route', () => {
 
     it('any other failure is an ordinary danger toast, with nothing copied', async () => {
       const writeText = vi.fn(async () => {})
-      vi.stubGlobal('navigator', { clipboard: { writeText } })
+      vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } })
       stubFetch({
         'POST /api/v1/runs/r1/open-in-cli': () =>
           jsonResponse({ error: 'the session is still active in the engine' }, 409),
@@ -485,25 +486,32 @@ describe('the Changes tab route', () => {
 
   it('picking a file in the tree marks it selected and scrolls the diff to it', async () => {
     // jsdom lays nothing out and ships no `scrollIntoView`, which is what the facade's handle
-    // reaches for once it has found the file's element.
+    // reaches for once it has found the file's element. It has to be ASSIGNED (`vi.spyOn` refuses
+    // a property that does not exist) and DELETED again, or every test declared after this one
+    // runs in a different DOM than the ones declared before it — an order dependence that would
+    // pass today and surface as an unrelated failure the first time someone reorders the file.
     const scrollIntoView = vi.fn()
     Element.prototype.scrollIntoView = scrollIntoView
-    stubFetch()
-    renderChangesRoute()
-    await waitFor(() => expect(document.querySelectorAll('[data-slot="tree-file"]').length).toBe(2))
+    try {
+      stubFetch()
+      renderChangesRoute()
+      await waitFor(() => expect(document.querySelectorAll('[data-slot="tree-file"]').length).toBe(2))
 
-    const row = [...document.querySelectorAll('[data-slot="tree-file"]')].find((el) =>
-      el.textContent?.includes('a.ts'),
-    ) as HTMLElement
-    fireEvent.click(row)
+      const row = [...document.querySelectorAll('[data-slot="tree-file"]')].find((el) =>
+        el.textContent?.includes('a.ts'),
+      ) as HTMLElement
+      fireEvent.click(row)
 
-    // Selection goes through the facade's handle rather than the DOM: past the virtualization
-    // threshold the picked file may not be mounted to scroll to.
-    await waitFor(() =>
-      expect(document.querySelector('[data-slot="tree-file"][aria-current="true"]')?.textContent)
-        .toContain('a.ts'),
-    )
-    expect(scrollIntoView).toHaveBeenCalled()
+      // Selection goes through the facade's handle rather than the DOM: past the virtualization
+      // threshold the picked file may not be mounted to scroll to.
+      await waitFor(() =>
+        expect(document.querySelector('[data-slot="tree-file"][aria-current="true"]')?.textContent)
+          .toContain('a.ts'),
+      )
+      expect(scrollIntoView).toHaveBeenCalled()
+    } finally {
+      delete (Element.prototype as Partial<Element>).scrollIntoView
+    }
   })
 })
 

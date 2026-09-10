@@ -214,6 +214,11 @@ describe('PlanReview reordering', () => {
   it('moves a step up and down through the touch-honest buttons', () => {
     const props = renderPlan({ plan: { ...plan, steps: THREE_STEPS } })
 
+    // The two directions must produce DIFFERENT permutations. "Move step 2 up" and "move step 1
+    // down" are the same swap on a three-item list, so asserting both against one expected array
+    // passes with the up/down labels swapped: the mis-aimed second click would land on step 1's
+    // `up` button, which is disabled at index 0, React would deliver no click at all, and the
+    // stale last-call value would satisfy the assertion.
     fireEvent.click(screen.getByRole('button', { name: 'Move step 2 up' }))
     expect(props.onStepsChange).toHaveBeenLastCalledWith([
       THREE_STEPS[1],
@@ -221,12 +226,15 @@ describe('PlanReview reordering', () => {
       THREE_STEPS[2],
     ])
 
-    fireEvent.click(screen.getByRole('button', { name: 'Move step 1 down' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Move step 2 down' }))
     expect(props.onStepsChange).toHaveBeenLastCalledWith([
-      THREE_STEPS[1],
       THREE_STEPS[0],
       THREE_STEPS[2],
+      THREE_STEPS[1],
     ])
+
+    // …and both clicks were really delivered, which a disabled button would not do.
+    expect(props.onStepsChange).toHaveBeenCalledTimes(2)
   })
 
   it('disables the move that would fall off the end', () => {

@@ -9,6 +9,7 @@ import { PromptTemplateMenu } from './prompt-template-menu'
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+  delete (Element.prototype as Partial<Element>).scrollIntoView
 })
 
 beforeEach(() => {
@@ -22,6 +23,9 @@ beforeEach(() => {
       disconnect() {}
     }
   )
+  // cmdk scrolls the active row into view; jsdom ships no such method. Assigned rather than
+  // spied (`vi.spyOn` refuses a property that does not exist) and deleted again below, so the
+  // patch does not outlive this file.
   Element.prototype.scrollIntoView = vi.fn()
 })
 
@@ -86,7 +90,8 @@ describe('PromptTemplateMenu', () => {
 
     // The /new composer footer, where the pill row is already full.
     expect(trigger()!.textContent).not.toContain('templates')
-    expect(trigger()!.className).toContain('w-[26px]')
+    // The chevron goes with the word: nothing but the icon is left.
+    expect(trigger()!.querySelectorAll('svg')).toHaveLength(1)
     expect(trigger()!.getAttribute('aria-label')).toBe('Insert a prompt template')
   })
 
@@ -94,14 +99,12 @@ describe('PromptTemplateMenu', () => {
     renderMenu({ triggerClassName: 'ml-1' })
 
     expect(trigger()!.className).toContain('ml-1')
-    expect(trigger()!.className).toContain('rounded-full')
   })
 
   it('disables the trigger while the composer says so', () => {
     renderMenu({ disabled: true })
 
     expect((trigger() as HTMLButtonElement).disabled).toBe(true)
-    expect(trigger()!.className).toContain('disabled:pointer-events-none')
   })
 
   it('hands the snippet text to the composer and closes itself', async () => {

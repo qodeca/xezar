@@ -417,7 +417,7 @@ describe('the workflows list failing to load', () => {
     // A 5xx is retried once (query-client.ts), so this outlives waitFor's 1s default.
     await waitFor(
       () => expect(screen.getByRole('heading', { name: 'Could not load workflows' })).toBeTruthy(),
-      { timeout: 5_000 },
+      { timeout: 3_000 },
     )
     // The server's own words: the operator needs to know WHICH failure this was.
     expect(document.body.textContent).toContain('workflows dir is unreadable')
@@ -473,10 +473,15 @@ describe('the toolbar guards', () => {
 describe('export', () => {
   it('downloads the canvas YAML under the workflow’s slug, and releases the blob URL', async () => {
     vi.useFakeTimers()
+    let createObjectURL!: ReturnType<typeof vi.spyOn>
+    let revokeObjectURL!: ReturnType<typeof vi.spyOn>
     try {
-      const createObjectURL = vi.fn(() => 'blob:workflow')
-      const revokeObjectURL = vi.fn()
-      vi.stubGlobal('URL', { ...URL, createObjectURL, revokeObjectURL })
+      // `vi.spyOn`, NOT `vi.stubGlobal('URL', {...URL, …})`: spreading a constructor yields a plain
+      // object, so `new URL(…)` throws for the whole test — and fake timers are on below, which
+      // hands the router and TanStack Query a window in which to construct one and fail somewhere
+      // that points nowhere near here.
+      createObjectURL = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:workflow')
+      revokeObjectURL = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
       const clicked: HTMLAnchorElement[] = []
       const realClick = HTMLAnchorElement.prototype.click
       HTMLAnchorElement.prototype.click = function click(this: HTMLAnchorElement) {
@@ -505,6 +510,8 @@ describe('export', () => {
       }
     } finally {
       vi.useRealTimers()
+      createObjectURL.mockRestore()
+      revokeObjectURL.mockRestore()
     }
   })
 })

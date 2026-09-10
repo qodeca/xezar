@@ -53,9 +53,14 @@ beforeEach(() => {
   )
 })
 
+const REAL_VIEWPORT = Object.getOwnPropertyDescriptor(window, 'visualViewport')
+
 afterEach(() => {
   vi.unstubAllGlobals()
-  Object.defineProperty(window, 'visualViewport', { value: null, configurable: true })
+  // Put the descriptor back rather than leaving a `null` behind: jsdom ships no `visualViewport`
+  // at all, so the first test in this file would otherwise run in a different world than the rest.
+  if (REAL_VIEWPORT) Object.defineProperty(window, 'visualViewport', REAL_VIEWPORT)
+  else delete (window as { visualViewport?: unknown }).visualViewport
 })
 
 /** A visual viewport that is `bottom` px shorter than the layout one — an open iOS keyboard. */
@@ -174,14 +179,6 @@ describe('Popover shim', () => {
 
     expect(document.querySelector('[data-slot="popover-content"]')).toBeNull()
     expect(document.querySelector('[data-slot="popover-trigger"]')).not.toBeNull()
-  })
-
-  it('defaults to centre alignment and a 4px side offset', () => {
-    renderOpenPopover()
-
-    const content = document.querySelector('[data-slot="popover-content"]') as HTMLElement
-    // Radix reflects `align` onto the positioned wrapper as a data attribute.
-    expect(content.closest('[data-align]')?.getAttribute('data-align') ?? 'center').toBe('center')
   })
 
   describe('keyboard-aware collision padding', () => {

@@ -13,6 +13,19 @@ vi.mock('node:child_process', async (importOriginal) => {
   return { ...actual, spawn: spawnMock };
 });
 
+/**
+ * `isWsl()` is called with no arguments, so it falls through to reading `/proc/version` — which on
+ * a developer running xezar INSIDE WSL contains "microsoft", and the plain-Linux cases below would
+ * silently take the interop branch and fail on their machine only. The flag makes the branch the
+ * test's choice rather than the host's. `wslDistroName` stays real, so the distro-name validation
+ * is still exercised against the actual env var.
+ */
+const { wsl } = vi.hoisted(() => ({ wsl: { inside: false } }));
+vi.mock('./wsl.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./wsl.ts')>();
+  return { ...actual, isWsl: () => wsl.inside };
+});
+
 describe('wslTerminalLaunchers (#361 WSL support)', () => {
   it('tries Windows Terminal first, re-entering the distro through wsl.exe', () => {
     const [first] = wslTerminalLaunchers('/tmp/xez-term-abc/launch.sh', 'Ubuntu');
@@ -153,10 +166,14 @@ describe('the platform launch lines', () => {
     Object.defineProperty(process, 'platform', { value: platform, configurable: true });
   };
 
+  /** Every child the launchers spawned in this test, so the detach can be asserted. */
+  const spawned: (EventEmitter & { unref: ReturnType<typeof vi.fn> })[] = [];
+
   /** A spawned child that never errors — `runDetached` resolves true once its settle timer fires. */
   const quietChild = () => {
-    const child = new EventEmitter() as EventEmitter & { unref: () => void };
+    const child = new EventEmitter() as EventEmitter & { unref: ReturnType<typeof vi.fn> };
     child.unref = vi.fn();
+    spawned.push(child);
     return child;
   };
 
@@ -177,8 +194,10 @@ describe('the platform launch lines', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     spawnMock.mockReset();
+    spawned.length = 0;
     process.env.XEZ_ALLOW_TEST_SPAWN = '1';
     delete process.env.WSL_DISTRO_NAME;
+    wsl.inside = false;
   });
 
   afterEach(() => {
@@ -215,6 +234,10 @@ describe('the platform launch lines', () => {
         'tell application "Terminal" to do script "cd \'/tmp/my worktree\' && export CLAUDE_CONFIG_DIR=\'/home/u/.claude-work\'; claude --resume abc"',
       ]);
       expect(spawnMock.mock.calls[0]?.[2]).toEqual({ stdio: 'ignore', detached: true });
+      // …and it is actually let go of. A child that is spawned `detached` but never `unref`'d
+      // keeps the event loop alive, so `xezar serve` would refuse to exit for every terminal it
+      // has ever opened.
+      expect(spawned[0]?.unref).toHaveBeenCalled();
     });
 
     it('escapes the quotes and backslashes AppleScript would otherwise eat', async () => {
@@ -367,7 +390,8 @@ describe('the platform launch lines', () => {
   describe('WSL (#361)', () => {
     beforeEach(() => {
       setPlatform('linux');
-      // What WSL sets for every process it starts — `isWsl()` reads it without a mock.
+      wsl.inside = true;
+      // What WSL sets for every process it starts, and what `wslDistroName()` reads for real.
       process.env.WSL_DISTRO_NAME = 'Ubuntu-24.04';
     });
 

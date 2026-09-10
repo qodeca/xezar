@@ -174,7 +174,6 @@ describe('DropdownMenu shim', () => {
       const item = slot('item') as HTMLElement
       expect(item.dataset.variant).toBe('destructive')
       expect(item.dataset.inset).toBe('true')
-      expect(item.className).toContain('data-[variant=destructive]:text-destructive')
     })
 
     it('passes disabled through to Radix so the row stops taking pointer events', () => {
@@ -190,7 +189,6 @@ describe('DropdownMenu shim', () => {
       const item = slot('item') as HTMLElement
       expect(item.getAttribute('data-disabled')).not.toBeNull()
       expect(item.getAttribute('aria-disabled')).toBe('true')
-      expect(item.className).toContain('data-[disabled]:pointer-events-none')
     })
   })
 

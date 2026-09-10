@@ -26,6 +26,12 @@ const TONES: ReferenceStatusTone[] = [
 ]
 
 describe('REFERENCE_STATUS', () => {
+  // A REVIEW TRIP-WIRE, not a contract. `BACKWARD_COMPATIBILITY.md` §2 makes this vocabulary
+  // additive on purpose — a twelfth status is a sanctioned, non-breaking change, and an unknown
+  // one already renders neutral (see `isReferenceStatus` below, which is the promise that matters).
+  // Adding a value here is therefore meant to fail this one case, so that whoever adds it also
+  // adds the tone and hint rather than inheriting a colour by accident. Renaming or removing a
+  // value is the breaking direction, and this case catches that too.
   it('names exactly the eleven statuses the chip can paint', () => {
     expect(ALL_STATUSES).toEqual([
       'draft',

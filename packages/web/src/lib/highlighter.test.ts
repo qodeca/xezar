@@ -200,17 +200,29 @@ describe('every allowlisted grammar actually loads', () => {
   })
 
   it('covers every id the allowlist advertises, so a new grammar cannot skip this', () => {
-    // `supportedLanguages()` is canonical ids + aliases + plaintext spellings; the canonical ids
-    // are the ones with a loader, and each needs a sample above.
-    for (const id of Object.keys(SAMPLES)) expect(supportedLanguages()).toContain(id)
-    expect(Object.keys(SAMPLES)).toHaveLength(17)
+    // BOTH directions, or the guard does not guard. `supportedLanguages()` is canonical ids PLUS
+    // 16 aliases PLUS the plaintext spellings — 38 strings — so `SAMPLES ⊆ supportedLanguages()`
+    // is nearly free, and a hardcoded `toHaveLength(17)` beside it passes just as happily. An
+    // 18th loader would sail through both and never be load-tested, which is the one thing this
+    // case exists to prevent.
+    //
+    // `LANG_LOADERS` is module-private, so the canonical set is recovered the only way a caller
+    // can: every advertised spelling mapped through `canonicalLang`, which is the identity on a
+    // canonical id and resolves an alias onto one.
+    const canonical = new Set(
+      supportedLanguages()
+        .map((spelling) => canonicalLang(spelling))
+        .filter((id): id is string => id !== null),
+    )
+
+    expect([...canonical].sort()).toEqual(Object.keys(SAMPLES).sort())
   })
 })
 
 /**
- * Kept last in the file: `resetHighlighterForTests` drops the module-level singleton every test
- * above shares, and vitest runs a file's tests in order. A reset in the middle would make the
- * "is resident after the first load" case depend on where it ran.
+ * `resetHighlighterForTests` drops the module-level singleton every test in this file shares.
+ * That is safe wherever it runs — every case that needs a resident grammar awaits its own
+ * `highlight(...)` first, so none of them depends on a predecessor having warmed the core.
  */
 describe('resetHighlighterForTests (the cold-boot seam)', () => {
   it('drops the resident core and grammars, and the next load rebuilds them', async () => {

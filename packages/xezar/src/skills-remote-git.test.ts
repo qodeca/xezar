@@ -26,12 +26,23 @@ import type { Skill } from './skills.ts';
  * `HOME` — the same fixture shape `server/skills-api.test.ts` uses, for the same reason.
  */
 
-/** `~/.cache/xez/skills/…` resolves through `os.homedir()`, so the pin has to happen before
- *  the imports above are evaluated. `XEZ_HOME` does not cover that path. */
+/**
+ * `~/.cache/xez/skills/…` resolves through `os.homedir()`, so the pin has to happen before the
+ * imports above are evaluated. `XEZ_HOME` does not cover that path.
+ *
+ * Two consequences worth knowing before copying this pattern. `os.homedir()` reads `$HOME` on
+ * POSIX, so `assertXezarHomeWriteIsSandboxed` (`paths.ts`) computes its idea of "the real home"
+ * from the same variable and can no longer fire for the length of this file — the protection here
+ * is the `XEZ_HOME` pin from `vitest.setup.ts`, which still holds, so this costs defence in depth
+ * rather than the defence itself. And the name carries a random suffix as well as the pid: a
+ * SIGKILLed worker leaves its directory behind, and a later process that recycles the pid would
+ * otherwise inherit a half-written skills cache. (`mkdtemp` is not available here — `vi.hoisted`
+ * runs before this file's imports are evaluated, which is the whole point of it.)
+ */
 const fixedHome = vi.hoisted(() => {
   const previous = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
   const base = (process.env.TMPDIR || process.env.TEMP || '/tmp').replace(/[\\/]+$/, '');
-  const home = `${base}/xez-skills-remote-home-${process.pid}`;
+  const home = `${base}/xez-skills-remote-home-${process.pid}-${Math.random().toString(36).slice(2, 10)}`;
   process.env.HOME = home;
   process.env.USERPROFILE = home;
   return { home, previous };

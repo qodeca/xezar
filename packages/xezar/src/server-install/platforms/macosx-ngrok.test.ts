@@ -331,7 +331,7 @@ describe('macosx-ngrok steps in a real (non-dry) run', () => {
   /** A host where every probe succeeds and `launchctl print` reports the job loaded. */
   const healthyHost = () =>
     recordingRunner((program, args) => {
-      if (args.join(' ').includes('command -v')) return { code: 0, stdout: '/opt/homebrew/bin/xezar' };
+      if (args.join(' ').includes('command -v')) return { code: 0, stdout: '/opt/homebrew/bin/ngrok' };
       if (program === 'launchctl' && args[0] === 'print') return { code: 0, stdout: 'state = running' };
       if (program === 'curl') return { code: 0, stdout: '{"tunnels":[{"public_url":"https://x.ngrok.app"}]}' };
       return undefined;
@@ -344,7 +344,7 @@ describe('macosx-ngrok steps in a real (non-dry) run', () => {
       expect(await stepOf('ngrok').check(baseCtx(runner, { dryRun: true }))).toBe(false);
       expect(await stepOf('autostart').check(baseCtx(runner, { dryRun: true }))).toBe(false);
       expect(captured).toEqual([]);
-    })
+    });
 
     it('reports a step already satisfied when its plist is on disk', async () => {
       const seen: string[][] = [];
@@ -362,14 +362,14 @@ describe('macosx-ngrok steps in a real (non-dry) run', () => {
       // not hardcoded to the developer's.
       expect(seen[0]).toEqual(['-f', join(home, 'Library', 'LaunchAgents', 'ai.xezar.ngrok.plist')]);
       expect(seen[1]).toEqual(['-f', join(home, 'Library', 'LaunchAgents', 'ai.xezar.cockpit.plist')]);
-    })
+    });
 
     it('reports it unsatisfied when the probe fails', async () => {
       const { runner } = recordingRunner(() => ({ code: 1, stdout: '' }));
 
       expect(await stepOf('ngrok').check(baseCtx(runner))).toBe(false);
-    })
-  })
+    });
+  });
 
   describe('the ngrok step', () => {
     it('installs ngrok through brew when the host does not have it', async () => {
@@ -382,7 +382,7 @@ describe('macosx-ngrok steps in a real (non-dry) run', () => {
       await stepOf('ngrok').run(baseCtx(runner));
 
       expect(interactive).toContainEqual(['brew', ['install', 'ngrok/ngrok/ngrok']]);
-    })
+    });
 
     it('skips the brew install when ngrok already answers', async () => {
       const { runner, interactive } = healthyHost();
@@ -390,7 +390,7 @@ describe('macosx-ngrok steps in a real (non-dry) run', () => {
       await stepOf('ngrok').run(baseCtx(runner));
 
       expect(interactive.some(([program]) => program === 'brew')).toBe(false);
-    })
+    });
 
     it('records a reserved domain as a stable public URL', async () => {
       const { runner } = healthyHost();
@@ -407,7 +407,7 @@ describe('macosx-ngrok steps in a real (non-dry) run', () => {
       // The scheme is added HERE, which is why the prompt refuses one in the answer.
       expect(ctx.state.publicUrl).toBe('https://xezar.ngrok.app')
       expect(ctx.state.ephemeral).toBe(false)
-    })
+    });
 
     it('marks a blank domain as an ephemeral URL and records no public URL', async () => {
       const { runner } = healthyHost();
@@ -417,7 +417,37 @@ describe('macosx-ngrok steps in a real (non-dry) run', () => {
 
       expect(ctx.state.ephemeral).toBe(true)
       expect(ctx.state.publicUrl).toBeUndefined()
-    })
+    });
+
+    it('writes the ngrok binary the HOST actually has into the plist', async () => {
+      // Resolved rather than assumed, because Homebrew installs to /opt/homebrew on Apple Silicon
+      // and /usr/local on Intel. Hardcoding either one breaks the other half of the Macs silently:
+      // launchd simply never loads the job, and nothing in the cockpit says why.
+      const { runner } = recordingRunner((program, args) => {
+        if (args.join(' ').includes('command -v')) return { code: 0, stdout: '/usr/local/bin/ngrok' };
+        if (program === 'launchctl' && args[0] === 'print') return { code: 0, stdout: 'running' };
+        return undefined;
+      });
+
+      await stepOf('ngrok').run(baseCtx(runner));
+
+      const plist = readFileSync(join(home, 'Library', 'LaunchAgents', 'ai.xezar.ngrok.plist'), 'utf8');
+      expect(plist).toContain('<string>/usr/local/bin/ngrok</string>');
+      expect(plist).not.toContain('/opt/homebrew/bin/ngrok');
+    });
+
+    it('falls back to the Apple Silicon path only when the host cannot resolve one', async () => {
+      const { runner } = recordingRunner((program, args) => {
+        if (args.join(' ').includes('command -v')) return { code: 0, stdout: '' };
+        if (program === 'launchctl' && args[0] === 'print') return { code: 0, stdout: 'running' };
+        return undefined;
+      });
+
+      await stepOf('ngrok').run(baseCtx(runner));
+
+      const plist = readFileSync(join(home, 'Library', 'LaunchAgents', 'ai.xezar.ngrok.plist'), 'utf8');
+      expect(plist).toContain('<string>/opt/homebrew/bin/ngrok</string>');
+    });
 
     it('boots out any prior agent before bootstrapping the new one', async () => {
       const { runner, captured, interactive } = healthyHost();
@@ -429,8 +459,8 @@ describe('macosx-ngrok steps in a real (non-dry) run', () => {
       expect(bootout?.[1]?.[1]).toMatch(/^gui\/\d+\/ai\.xezar\.ngrok$/);
       expect(interactive.some(([program, args]) => program === 'launchctl' && args[0] === 'bootstrap')).toBe(true);
       expect(result!.artifacts.map((a) => a.type).sort()).toEqual(['launchd', 'ngrok-config']);
-    })
-  })
+    });
+  });
 
   describe('the autostart step', () => {
     it('writes the cockpit agent 0600 and bootstraps it under its own label', async () => {
@@ -450,7 +480,7 @@ describe('macosx-ngrok steps in a real (non-dry) run', () => {
       expect(result!.artifacts).toEqual([
         expect.objectContaining({ type: 'launchd', name: 'ai.xezar.cockpit', path }),
       ]);
-    })
+    });
 
     it('writes nothing at all in a dry run', async () => {
       const { runner, captured, interactive } = healthyHost();
@@ -462,7 +492,7 @@ describe('macosx-ngrok steps in a real (non-dry) run', () => {
       expect(interactive).toEqual([]);
       // The artifact is still recorded, so `server-uninstall` knows what a real run would leave.
       expect(result!.artifacts[0]).toMatchObject({ type: 'launchd', name: 'ai.xezar.cockpit' });
-    })
+    });
 
     it('undoes from the static label and path even when nothing was recorded', async () => {
       const { runner, captured } = healthyHost();
@@ -474,7 +504,7 @@ describe('macosx-ngrok steps in a real (non-dry) run', () => {
         'launchctl',
         ['bootout', expect.stringMatching(/^gui\/\d+\/ai\.xezar\.cockpit$/) as unknown as string],
       ]);
-    })
+    });
 
     it('touches nothing when undone in a dry run', async () => {
       const { runner, captured } = healthyHost();
@@ -482,8 +512,8 @@ describe('macosx-ngrok steps in a real (non-dry) run', () => {
       await stepOf('autostart').undo(baseCtx(runner, { dryRun: true }), null);
 
       expect(captured).toEqual([]);
-    })
-  })
+    });
+  });
 
   describe('the identity check', () => {
     it('is never considered already satisfied — it verifies, it does not install', async () => {
@@ -491,7 +521,7 @@ describe('macosx-ngrok steps in a real (non-dry) run', () => {
 
       expect(await stepOf('identity').check(baseCtx(runner))).toBe(false);
       expect(await stepOf('identity').check(baseCtx(runner, { dryRun: true }))).toBe(false);
-    })
+    });
 
     it('asks the ngrok local API whether a tunnel is actually up', async () => {
       const { runner, captured } = healthyHost();
@@ -502,7 +532,7 @@ describe('macosx-ngrok steps in a real (non-dry) run', () => {
       // A verification step creates nothing, so it has nothing to undo.
       expect(result!.artifacts).toEqual([]);
       await expect(stepOf('identity').undo(baseCtx(runner), null)).resolves.toBeUndefined();
-    })
+    });
 
     it('gives ngrok five tries before warning — it needs a moment to bind :4040', async () => {
       vi.useFakeTimers();
@@ -517,7 +547,7 @@ describe('macosx-ngrok steps in a real (non-dry) run', () => {
 
       // A warning, not a thrown step: the tunnel not being up yet is not a failed install.
       expect(captured.filter(([program]) => program === 'curl')).toHaveLength(5);
-    })
+    });
 
     it('probes nothing in a dry run', async () => {
       const { runner, captured } = healthyHost();
@@ -525,8 +555,8 @@ describe('macosx-ngrok steps in a real (non-dry) run', () => {
       await stepOf('identity').run(baseCtx(runner, { dryRun: true }));
 
       expect(captured).toEqual([]);
-    })
-  })
+    });
+  });
 
   describe('redeploy', () => {
     it('kickstarts both agents and re-verifies the tunnel', async () => {
@@ -543,7 +573,7 @@ describe('macosx-ngrok steps in a real (non-dry) run', () => {
       ]);
       // …and the identity check runs afterwards, so a redeploy that broke the tunnel says so.
       expect(captured).toContainEqual(['curl', ['-s', 'http://localhost:4040/api/tunnels']]);
-    })
+    });
 
     it('warns instead of throwing when a kickstart returns non-zero', async () => {
       const warnings: string[] = [];
@@ -561,7 +591,7 @@ describe('macosx-ngrok steps in a real (non-dry) run', () => {
       expect(warnings.filter((w) => w.includes('kickstart returned non-zero'))).toHaveLength(2);
       expect(warnings.some((w) => w.includes('ai.xezar.cockpit'))).toBe(true);
       expect(warnings.some((w) => w.includes('ai.xezar.ngrok'))).toBe(true);
-    })
+    });
 
     it('restarts nothing in a dry run', async () => {
       const { runner, interactive, captured } = healthyHost();
@@ -570,6 +600,6 @@ describe('macosx-ngrok steps in a real (non-dry) run', () => {
 
       expect(interactive).toEqual([]);
       expect(captured).toEqual([]);
-    })
-  })
-})
+    });
+  });
+});

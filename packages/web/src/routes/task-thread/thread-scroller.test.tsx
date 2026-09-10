@@ -507,3 +507,133 @@ describe('JumpToLatestPill', () => {
     expect(onJump).toHaveBeenCalledTimes(1)
   })
 })
+
+/**
+ * Content growth — the branch the file's own source comment says was learned the hard way, and
+ * the one a no-op `ResizeObserver` stub leaves entirely unexercised.
+ *
+ * "Reached AND still" is the rule: landing on the cached offset once is not enough, because a
+ * destination that is still resizing (the replay filling in, the live buffer compacting back to
+ * its newest page) moves content above the viewport and the browser's scroll anchoring slides the
+ * reader off the position they were just restored to. So the restore is re-applied on every growth
+ * and only released when the offset is reachable AND the height has stopped moving.
+ */
+describe('useThreadScroll — content growth', () => {
+  /** A `ResizeObserver` that hands the test its callback, so growth can be driven frame by frame. */
+  function mountWithObserver(viewKey: string) {
+    const callbacks: ResizeObserverCallback[] = []
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: ResizeObserverCallback) {
+          callbacks.push(callback)
+        }
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    )
+
+    let controls!: ReturnType<typeof useThreadScroll>
+    const Harness = () => {
+      controls = useThreadScroll(viewKey)
+      return (
+        <main data-slot="main">
+          <div ref={controls.attachContent} />
+        </main>
+      )
+    }
+    render(<Harness />)
+    const scroller = document.querySelector<HTMLElement>('[data-slot="main"]')!
+    Object.defineProperties(scroller, {
+      scrollTop: { value: 0, writable: true, configurable: true },
+      clientHeight: { value: 400, configurable: true },
+      scrollHeight: { value: 1_000, writable: true, configurable: true },
+    })
+    return {
+      scroller,
+      get controls() {
+        return controls
+      },
+      /** The transcript grows to `height`, and the observer fires as the browser's would. */
+      growTo(height: number) {
+        // `scrollHeight` is read-only on the DOM type; the harness redefined it as writable above.
+        ;(scroller as unknown as { scrollHeight: number }).scrollHeight = height
+        act(() => {
+          for (const callback of callbacks) callback([], {} as ResizeObserver)
+        })
+      },
+    }
+  }
+
+  it('follows growth to the tail while the reader is pinned', () => {
+    const view = mountWithObserver('grow-stuck:main')
+
+    view.growTo(4_000)
+    expect(view.scroller.scrollTop).toBe(3_600)
+
+    // Another streamed block: still pinned, so still at the bottom.
+    view.growTo(6_000)
+    expect(view.scroller.scrollTop).toBe(5_600)
+  })
+
+  it('holds a cached offset that is not reachable yet, and rides the growing bottom toward it', () => {
+    saveThreadScroll('grow-restore:main', { top: 3_000, atBottom: false })
+    const view = mountWithObserver('grow-restore:main')
+
+    // The replay has only filled in part of the transcript: 3 000 is past the end, so the restore
+    // clamps to the bottom rather than overshooting, and stays pending.
+    view.growTo(2_000)
+    expect(view.scroller.scrollTop).toBe(1_600)
+
+    // Now tall enough — but the height CHANGED on this frame, so the restore is applied and NOT
+    // released.
+    view.growTo(8_000)
+    expect(view.scroller.scrollTop).toBe(3_000)
+
+    // THE case the "AND still" half of the rule exists for: content above the viewport resizes,
+    // the browser's own scroll anchoring slides the reader off the offset they were just restored
+    // to, and the still-pending restore has to put them back. Releasing on "reached" alone would
+    // strand them here.
+    view.scroller.scrollTop = 2_400
+    view.growTo(9_000)
+    expect(view.scroller.scrollTop).toBe(3_000)
+
+    // Same height twice: reached and still. Now it is released.
+    view.growTo(9_000)
+    expect(view.scroller.scrollTop).toBe(3_000)
+
+    // Released means released — a later growth leaves a reader parked mid-transcript alone.
+    view.scroller.scrollTop = 2_400
+    view.growTo(12_000)
+    expect(view.scroller.scrollTop).toBe(2_400)
+  })
+
+  it('never traps the reader — an unpinning gesture abandons the pending restore', () => {
+    saveThreadScroll('grow-escape:main', { top: 3_000, atBottom: false })
+    const view = mountWithObserver('grow-escape:main')
+    view.growTo(2_000)
+
+    // The reader gives up waiting and scrolls away themselves.
+    act(() => {
+      fireEvent.wheel(view.scroller, { deltaY: -120 })
+    })
+    view.scroller.scrollTop = 500
+
+    // Growth now moves nothing: the restore was dropped and the pin is off.
+    view.growTo(8_000)
+    expect(view.scroller.scrollTop).toBe(500)
+  })
+
+  it('leaves an unpinned reader alone as the transcript grows under them', () => {
+    const view = mountWithObserver('grow-unpinned:main')
+    view.scroller.scrollTop = 500
+    act(() => {
+      fireEvent.wheel(view.scroller, { deltaY: -120 })
+    })
+
+    view.growTo(9_000)
+
+    expect(view.scroller.scrollTop).toBe(500)
+  })
+})

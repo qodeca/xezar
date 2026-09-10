@@ -7,9 +7,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const execFileMock = vi.hoisted(() => vi.fn());
 vi.mock('node:child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:child_process')>();
-  execFileMock.mockImplementation((...args: unknown[]) =>
-    (actual.execFile as (...a: unknown[]) => unknown)(...args),
-  );
+  // The default THROWS rather than forwarding to the real `execFile`. Forwarding would let a case
+  // that forgets `stubGh` spawn an actual `gh` — network, credentials and all — in a suite
+  // AGENTS.md requires to stay free of servers. A thrower fails in the test that caused it.
+  execFileMock.mockImplementation(() => {
+    throw new Error('execFile was called without stubGh() — this suite must never reach a real gh');
+  });
   return { ...actual, execFile: (...args: unknown[]) => execFileMock(...args) };
 });
 
@@ -241,26 +244,37 @@ describe('fetchGithubPrDiff', () => {
       expect(result.reason).toContain(`Only the first ${GH_PR_DIFF_FILE_CAP} files are shown.`);
     });
 
+    // FEW BIG FILES, not many small ones. The trim loop re-serializes the WHOLE array on every
+    // iteration (`github.ts` `while (… JSON.stringify({ …, files: kept }) > CAP)`), so the cost is
+    // quadratic in the number of files it has to drop. An earlier version of this fixture used
+    // 300 x 40 KB, which crosses the cap by 3x and needs ~200 iterations over ~12 MB: 1.2s alone,
+    // but 6s with several gate runs sharing the machine — over the 5s default, every time. 40 x
+    // 128 KB crosses the same cap in a handful of iterations and asserts exactly the same three
+    // things. The explicit budget below is the belt to that brace: a test about a SIZE cap should
+    // not share a timeout with several hundred sub-second unit tests.
     it('trims files from the end until the payload fits, and says the size limit did it', async () => {
-      // ~40 KB of patch each: 300 of them blow the 4 MB response cap, so the tail is dropped.
+      const BIG_FILES = 40;
       stubGh({
         headSha: '3'.repeat(40),
         pages: (page) =>
-          Array.from({ length: 100 }, (_, i) =>
-            file((page - 1) * 100 + i, { patch: 'y'.repeat(40 * 1024) }),
-          ),
+          page === 1
+            ? Array.from({ length: BIG_FILES }, (_, i) => file(i, { patch: 'y'.repeat(128 * 1024) }))
+            : [],
       });
 
       const result = await fetchGithubPrDiff('/repo-json', 7);
 
       if (!result.available) throw new Error('unreachable');
-      expect(result.files.length).toBeLessThan(GH_PR_DIFF_FILE_CAP);
+      // Under the file cap, so this is the SIZE cap talking and nothing else.
+      expect(BIG_FILES).toBeLessThan(GH_PR_DIFF_FILE_CAP);
+      expect(result.files.length).toBeLessThan(BIG_FILES);
       expect(result.files.length).toBeGreaterThan(0);
       expect(result.truncated).toBe(true);
       expect(result.reason).toContain('response size limit omitted some files');
+      expect(result.reason).not.toContain('Only the first');
       // The totals still describe the WHOLE pull request, not the trimmed slice.
-      expect(result.additions).toBe(600);
-    });
+      expect(result.additions).toBe(BIG_FILES * 2);
+    }, 20_000);
   });
 
   describe('degradation', () => {
