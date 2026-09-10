@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import http from 'node:http';
+import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -91,6 +92,58 @@ function signalsSeen(): string[] {
   } catch {
     return [];
   }
+}
+
+/** The handshake failure every case here shares a way of hitting: the server
+ *  process was gone before it ever printed a URL. */
+const SERVER_NEVER_STARTED = 'exited before it started listening';
+
+/**
+ * The one v1 `error` a case is ABOUT — not merely the first one in the stream.
+ *
+ * A session whose server never bound emits `opencode: opencode serve exited
+ * before it started listening` FIRST, so a case that reads
+ * `v1.find((e) => e.type === 'error')` reports a start failure as its own
+ * string mismatch ("expected 'opencode: opencode serve exited befor…' to
+ * contain '→ 500'"), which is how the port collision in #184 hid behind
+ * these assertions. Naming the start failure separately makes it fail as what
+ * it is; the needle then picks the error the case actually asserts on.
+ *
+ * NOT for a case whose subject IS the start failure — `a server that fails
+ * before or during the stream` asserts on exactly that message and must keep
+ * reading the stream directly, or this helper would throw the assertion away.
+ */
+function errorAbout(v1: AgentEvent[], needle: string): string {
+  const messages = v1.flatMap((e) => (e.type === 'error' ? [e.message] : []));
+  const startFailure = messages.find((m) => m.includes(SERVER_NEVER_STARTED));
+  if (startFailure) throw new Error(`the mock server never started: ${startFailure}`);
+  // Never `messages[0]`: handing back an unrelated error is the very confusion
+  // this helper exists to end, and it would do it silently.
+  return (
+    messages.find((m) => m.includes(needle)) ??
+    `no error matching ${needle}; saw: ${JSON.stringify(messages)}`
+  );
+}
+
+/**
+ * Hold a real loopback port, so a server pointed at it cannot bind.
+ *
+ * The kernel names the port (`listen(0)`), so no number is invented and the
+ * collision is a fact rather than a hope. Call `release` from a `finally`: a
+ * listener left bound holds the event loop open and outlives the case that
+ * opened it.
+ */
+async function occupyPort(): Promise<{ port: number; release: () => Promise<void> }> {
+  const holder = createServer();
+  const port = await new Promise<number>((resolve, reject) => {
+    holder.once('error', reject);
+    holder.listen(0, '127.0.0.1', () => {
+      const address = holder.address();
+      if (address !== null && typeof address === 'object') resolve(address.port);
+      else reject(new Error('the holder socket reported no port'));
+    });
+  });
+  return { port, release: () => new Promise<void>((resolve) => holder.close(() => resolve())) };
 }
 
 interface Started {
@@ -410,10 +463,9 @@ describe('a turn that outlives the request that submitted it (#168)', () => {
     try {
       await session.result;
 
-      const error = v1.find((e) => e.type === 'error');
-      expect(error).toBeDefined();
-      expect(error && error.type === 'error' ? error.message : '').toContain('→ 500');
-      expect(error && error.type === 'error' ? error.message : '').toContain('no provider configured');
+      const message = errorAbout(v1, '→ 500');
+      expect(message).toContain('→ 500');
+      expect(message).toContain('no provider configured');
       expect(v1).toContainEqual({ type: 'turn-end' });
       expect(v1.at(-1)).toEqual({ type: 'done' });
       expect(isAlive(pid)).toBe(false);
@@ -699,10 +751,13 @@ describe('a server that fails before or during the stream', () => {
       // A rejection, not an unhandled one: the session settles normally.
       const result = await session.result;
 
-      expect(v1).toContainEqual({
-        type: 'error',
-        message: 'opencode: opencode serve exited before it started listening',
-      });
+      // Read straight from the stream, never through `errorAbout`: THIS case's
+      // subject is the start failure that helper is built to raise.
+      const message = v1.flatMap((e) => (e.type === 'error' ? [e.message] : []))[0] ?? '';
+      expect(message).toContain('opencode: opencode serve exited before it started listening');
+      // …with the child's own last words folded in, so the reason travels with
+      // the failure instead of sitting unread in a buffer (#184).
+      expect(message).toContain('opencode: failed to start server');
       expect(v1.at(-1)).toEqual({ type: 'done' });
       expect(result.text).toBe('');
       expect(v1.some((e) => e.type === 'session')).toBe(false);
@@ -732,10 +787,9 @@ describe('a server that fails before or during the stream', () => {
     try {
       await session.result;
 
-      const error = v1.find((e) => e.type === 'error');
-      expect(error).toBeDefined();
-      expect(error && error.type === 'error' ? error.message : '').toContain('→ 500');
-      expect(error && error.type === 'error' ? error.message : '').toContain('no provider configured');
+      const message = errorAbout(v1, '→ 500');
+      expect(message).toContain('→ 500');
+      expect(message).toContain('no provider configured');
       // The failed turn still closes its v1 boundary before the session ends.
       expect(v1).toContainEqual({ type: 'turn-end' });
       expect(v1.at(-1)).toEqual({ type: 'done' });
@@ -857,8 +911,7 @@ describe('a request that fails at the transport level (#153)', () => {
     const { session, v1 } = start();
     try {
       await session.result;
-      const event = v1.find((e) => e.type === 'error');
-      return event && event.type === 'error' ? event.message : '';
+      return errorAbout(v1, 'POST /session/');
     } finally {
       restore();
       session.interrupt();
@@ -889,8 +942,7 @@ describe('a request that fails at the transport level (#153)', () => {
     let message = '';
     try {
       await session.result;
-      const event = v1.find((e) => e.type === 'error');
-      message = event && event.type === 'error' ? event.message : '';
+      message = errorAbout(v1, 'prompt_async');
     } finally {
       restore();
       session.interrupt();
@@ -1077,4 +1129,89 @@ describe('describeFetchFailure survives a hostile rejection value (#165)', () =>
     expectUsableMessage(render(new TypeError('fetch failed', { cause: circular })));
     expectUsableMessage(render(new TypeError('fetch failed', { cause: null })));
   });
+});
+
+/**
+ * #184 — the port handed to `opencode serve` used to be ONE draw of
+ * `40000 + Math.random() * 20000` made HERE: no probe, no retry, nothing that
+ * noticed the number was already taken. A collision killed the server before it
+ * listened, the session reported the far-away `opencode serve exited before it
+ * started listening`, and the reason — the child's own `EADDRINUSE` — was
+ * collected into a buffer nothing read.
+ *
+ * Both halves are gone by DELETION rather than by a better guess: xezar asks
+ * for `--port 0` and opencode resolves the collision in the only process that
+ * can, then names the port it took on stdout. So the two things worth pinning
+ * are that xezar picks no port, and that when the child cannot bind anyway the
+ * failure says so in the child's own words.
+ */
+describe('the port `opencode serve` is started on (#184)', () => {
+  it('picks no port of its own — it asks for 0 and runs on the one the child reports', async () => {
+    const argvLog = join(tmpDir, 'argv.log');
+    const { session, pid, v1, v2 } = start({ env: { MOCK_OPENCODE_ARGV_LOG: argvLog } });
+    try {
+      // One condition, not a `Promise.race`: the losing side of a race keeps
+      // polling for its full timeout and then rejects with nobody listening,
+      // which vitest reports against whatever test is running by then.
+      await until(
+        () => v2.some((e) => e.type === 'turn.completed') || v1.some((e) => e.type === 'done'),
+        'the turn to complete or the session to end',
+      );
+
+      // The whole regression, in the child's own command line: no number xezar
+      // invented, so no number it could collide with. The port the session
+      // actually spoke to came back from the child on stdout — which the
+      // completed turn above proves it reached.
+      expect(readFileSync(argvLog, 'utf8').trim()).toBe('serve --hostname 127.0.0.1 --port 0');
+      expect(v1.filter((e) => e.type === 'error')).toEqual([]);
+
+      session.end();
+      const result = await session.result;
+      expect(result.sessionId).toBe('ses_mock_1');
+      expect(v2[0]).toEqual({ type: 'session.started', sessionId: 'ses_mock_1', backend: 'opencode' });
+      expect(isAlive(pid)).toBe(false);
+    } finally {
+      session.interrupt();
+    }
+  }, 30_000);
+
+  /**
+   * The other half: a server that cannot bind at all. `--port 0` makes that
+   * vanishingly unlikely in the field, which is exactly why the message has to
+   * hold up when it happens — a bad config or a privileged port lands here too.
+   *
+   * Two mechanisms meet in one string, and the assertion is discriminating for
+   * both. The fixture's `'error'` listener turns an unhandled event into one
+   * named line: deleting it and re-running this case gives
+   * `… — } |  | Node.js v24.20.0`, the tail of node's crash dump, which names
+   * nothing. And the runner folds the child's stderr into its own rejection the
+   * way the codex and claude runners already do: without that half the message
+   * is the bare `opencode serve exited before it started listening` that #184
+   * was filed about, with the reason sitting unread in a buffer.
+   */
+  it('names the child\'s own reason when the server cannot bind', async () => {
+    const occupied = await occupyPort();
+    try {
+      const { session, pid, v1 } = start({
+        env: { MOCK_OPENCODE_LISTEN_PORT: String(occupied.port) },
+      });
+      try {
+        await session.result;
+
+        const message = v1.flatMap((e) => (e.type === 'error' ? [e.message] : []))[0] ?? '';
+        expect(message).toContain('opencode serve exited before it started listening');
+        expect(message).toContain('opencode: server error EADDRINUSE');
+        // Still a HANDLED failure: the session settles and the server is reaped.
+        expect(v1.at(-1)).toEqual({ type: 'done' });
+        expect(v1.some((e) => e.type === 'session')).toBe(false);
+        expect(isAlive(pid)).toBe(false);
+      } finally {
+        session.interrupt();
+      }
+    } finally {
+      // In a `finally` of its own: a listener that outlives the case holds the
+      // event loop open, and `start()` throwing above must not leave one bound.
+      await occupied.release();
+    }
+  }, 30_000);
 });
