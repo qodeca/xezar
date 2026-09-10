@@ -15,4 +15,6 @@ export * from './skills.ts';
 export * from './agent-config.ts';
 export * from './agent-profiles.ts';
 export * from './automations.ts';
+export * from './mcp-idempotency.ts';
 export * from './mcp-versioning.ts';
+export * from './mcp-journal.ts';
