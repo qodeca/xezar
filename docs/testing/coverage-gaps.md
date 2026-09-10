@@ -1,6 +1,7 @@
 # Test-coverage gap analysis
 
-Date: 2026-09-09. Branch: `feature/coverage-gap-audit`. Commit audited: `e437c24`.
+Date: 2026-09-09, measurements refreshed 2026-09-10. Branch: `feature/coverage-gap-audit`, then
+`feature/coverage-16-files`. Commit originally audited: `e437c24`.
 
 This document ranks xezar's regression risk by **behaviour**, not by file. Measured coverage
 appears in section 4 as supporting evidence only – it never drives the ranking. A behaviour that
@@ -17,21 +18,24 @@ absolute sense.
 
 ## 1. Executive summary – the three biggest regression risks
 
-### Risk 1 – the cockpit has 35 browser tests and CI runs none of them
+### Risk 1 – ~~the cockpit has 35 browser tests and CI runs none of them~~ — **CLOSED (#60)**
 
-*Measured.* `packages/web/e2e/` holds 35 `*.e2e.ts` specs covering the composer, the task thread,
-the diff and files tabs, GitHub, settings, automations and the review gate.
-`.github/workflows/ci.yml` runs `typecheck`, `test`, `test:unit`, `build`, `test:package` and a
-`npm pack --dry-run` – `npm run test:e2e` appears nowhere in it. The job is even named "Unit,
-build, E2E, and package", which reads as if it ran them.
+*Was:* `packages/web/e2e/` held 35 `*.e2e.ts` specs covering the composer, the task thread, the
+diff and files tabs, GitHub, settings, automations and the review gate, and `npm run test:e2e`
+appeared nowhere in `.github/workflows/ci.yml`. Worse, adding the step naively would have been
+green while testing nothing: `scripts/e2e.sh` prints `TEST_E2E_STATUS=skipped` and **exits 0** when
+the agent-browser provider cannot be provisioned, which is the likely path on a fresh
+`ubuntu-latest` runner with no browser cached.
 
-Worse, adding the step naively would be green while testing nothing. `scripts/e2e.sh:32-33` prints
-`TEST_E2E_STATUS=skipped` and **exits 0** when the agent-browser provider cannot be provisioned.
-On a fresh `ubuntu-latest` runner with no browser cached, that is the likely path.
+*Now:* #128 added a separate `ui-e2e` job to `ci.yml` — its own runner, its own browser cache and a
+30-minute ceiling, running beside `verify` so CI's added wall clock is the slower of the two rather
+than the sum. The step asserts on the marker instead of the exit code: it passes only on a literal
+`TEST_E2E_STATUS=passed` line, and **both** `skipped` and `failed` fail the job, each with an
+annotation naming which. The app and build logs upload as an artifact, so a spec failure stays
+distinguishable from an environment failure after the runner is gone.
 
-*Inferred.* The only thing standing between a cockpit rendering regression and `main` today is the
-manual `needs-qa` / `qa-approved` gate in `SDLC.md:67-75`, plus the self-QA exception. That is a
-human promise, not a gate.
+Kept here rather than deleted so the failure shape stays findable: **a suite whose skip path exits
+0 must be gated on its own success marker, never on its exit code.**
 
 ### Risk 2 – ~~`packages/contract` is not a vitest project~~ — **CLOSED (#120)**
 
@@ -67,13 +71,13 @@ and `serve` is what every other user types every day.
 
 | Suite | Command | Runner | Runs in CI? | Size (measured) |
 |---|---|---|---|---|
-| Server unit | `npm test` (project `server`) | vitest, node env | yes | 195 `*.test.ts` under `packages/xezar/src` |
-| Cockpit unit | `npm test` (project `web`) | vitest, jsdom | yes | 156 `*.test.ts(x)` under `packages/web/src` |
+| Server unit | `npm test` (project `server`) | vitest, node env | yes | 200 `*.test.ts` under `packages/xezar/src` |
+| Cockpit unit | `npm test` (project `web`) | vitest, jsdom | yes | 162 `*.test.ts(x)` under `packages/web/src` |
 | Api-client unit | `npm test` (project `api-client`) | vitest, node env | yes | 2 files |
 | Contract unit | `npm test` (project `contract`) | vitest, node env | yes | 2 files |
 | node:test core | `npm run test:unit` | node:test | yes | 10 files, `packages/xezar/test/unit/` |
 | Packaged CLI e2e | `npm run test:package` | node:test | yes | 4 files, `packages/xezar/test/e2e/` |
-| Browser e2e | `npm run test:e2e` | vitest + agent-browser + real Chrome | **no** | 35 files, `packages/web/e2e/` |
+| Browser e2e | `npm run test:e2e` | vitest + agent-browser + real Chrome | yes – its own `ui-e2e` job (#128) | 35 files, `packages/web/e2e/` |
 | Manual QA | `needs-qa` label | human | n/a | `SDLC.md:67-75` |
 
 One structural note that changes how the tables below read: the six `contract-parity*.test.ts`
@@ -252,8 +256,11 @@ appears above.
 
 ## 4. Measured coverage – evidence, not ranking
 
-Command: `npm run test:coverage` (added by this change). Provider `v8`, reporters `text` and
-`json-summary`, output under `.local/coverage/` per `docs/testing/local-data.md:75`. Exit code 0.
+Command: `npm run test:coverage`. Provider `v8`, reporters `text` and `json-summary`, output under
+`.local/coverage/` per `docs/testing/local-data.md:75`. Exit code 0. **Re-measured 2026-09-10** on
+`feature/coverage-16-files`, after the sixteen-file pass described below; the earlier `e437c24`
+numbers are gone rather than kept beside these, because two snapshots on one page get quoted
+interchangeably.
 
 **Scope limit, and it matters.** The run measures only what `npm test` executes – the three vitest
 projects. It does **not** measure `npm run test:unit` (node:test), `npm run test:package`
@@ -263,15 +270,18 @@ which is exactly why the ranking in section 5 is behaviour-led.
 
 | Workspace | Files in report | Line coverage | Branch coverage | Source files never loaded |
 |---|---|---|---|---|
-| `packages/contract` | 13 | **97.6 %** | 75.0 % | 0 of 13 |
-| `packages/api-client` | 5 | **100 %** | 95.8 % | 0 of 5 |
-| `packages/xezar` | 129 | **88.3 %** | 77.6 % | 6 of 127 |
-| `packages/web` | 206 | **92.7 %** | 85.8 % | 8 of 214 |
-| **All** | 353 | **90.3 %** | **81.3 %** | 14 |
+| `packages/contract` | 13 | **98.1 %** | 81.3 % | 1 of 13 |
+| `packages/api-client` | 5 | **100 %** | 95.8 % | 2 of 5 |
+| `packages/xezar` | 133 | **92.6 %** | 82.3 % | 10 of 133 |
+| `packages/web` | 211 | **95.1 %** | 87.7 % | 1 of 211 |
+| **All** | 362 | **93.7 %** | **84.7 %** | 14 |
 
-> **These percentages are a snapshot, not current status.** They were measured at `e437c24` on
-> `feature/coverage-gap-audit` and have not been re-run since; the tree has grown several thousand
-> lines of source and test in the meantime. Re-run `npm run test:coverage` before quoting a number.
+"Never loaded" counts files with zero covered lines, which includes the type-only modules that have
+no executable line at all — that is why the count did not move while the percentages did.
+
+> **These percentages are a snapshot, not current status.** Re-run `npm run test:coverage` before
+> quoting a number: the tree grows, and this report is a measurement, not a gate — CI never runs it,
+> so nothing stops it drifting.
 
 ### Where high line coverage coexists with an untested behaviour
 
@@ -282,6 +292,13 @@ which is exactly why the ranking in section 5 is behaviour-led.
 - `packages/web/src/components/task-agent.tsx` has **no co-located test**. Its coverage is incidental,
   via `routes/tasks-overview.test.tsx` and `routes/global-tasks.test.tsx`. The pure rules it renders
   do have their own tests (`lib/runner-label.test.ts`); the components themselves do not.
+- The four `components/ui/*` shims that used to sit in the never-loaded list are the sharpest case
+  of the general warning above, in reverse: `dropdown-menu.tsx` and `popover.tsx` both read as
+  56-67 % lines while being rendered on nearly every screen, because a wrapper's coverage comes
+  entirely from whoever happens to render it. Both now have co-located tests, and what those pin is
+  the part the incidental coverage never touched — the `data-slot` contract the browser specs
+  select on, and the visual-viewport merge that is the only reason `PopoverContent` is not a bare
+  re-export.
 - `packages/xezar/src/agent-config/model-settings/{claude,codex,opencode,pi}.ts` each measure
   **100 % lines and 100 % branches** with **zero co-located test files**. Their coverage is a side
   effect of the agent-config API tests.
@@ -297,34 +314,49 @@ which is exactly why the ranking in section 5 is behaviour-led.
   `server-install`, `server-uninstall`, `server-deploy`, `--help` and `--version` are all exercised
   by the node:test suites that CI does run, and `init` by `project-kit-cli.test.ts`. Its 0 % is a
   measurement artefact for those paths – but `serve` really is unguarded.
-- `packages/xezar/src/planner.ts` measures 37.5 % lines here while
-  `test/unit/planner.test.ts` covers two of its functions in a suite this run does not see.
-- `packages/xezar/src/server-install/*` measure 55-72 % here; parts of the install path are
-  exercised by `test/e2e/package-cli.test.ts` instead.
+- `packages/xezar/src/planner.ts` measures 85.4 % lines here (37.5 % at `e437c24`) while
+  `test/unit/planner.test.ts` covers two of its functions in a suite this run does not see. The
+  number moved without anyone testing the planner: this is a measurement, and measurements drift.
+- `packages/xezar/src/server-install/*` still measures unevenly (`ubuntu-vps.ts` 82.3 %,
+  `engine.ts` 85.5 %); parts of the install path are exercised by `test/e2e/package-cli.test.ts`
+  instead, and the branches those two platforms reach — `apt`, `launchctl`, `certbot`, a real
+  `nginx` — cannot be reached from a unit suite at all. What the vitest side can hold is the argv
+  each of them WOULD pass, which is what the platform tests assert.
 
 ### Lowest-covered files (measured, for orientation only)
 
+**No measured source file with an executable line is under 80 % lines any more.** The floor is
+`commit-dialog.tsx` and `use-finish-run.ts` at exactly 80.0 %; every file the `e437c24` snapshot
+listed here has moved above it. That is a fact about this report, not a promise about the code:
+read the branch column beside it, and remember the scope limit at the top of this section.
+
 | File | Lines | Branches |
 |---|---|---|
-| `packages/web/src/routes/automations/automations.tsx` | 23.9 % | 9.9 % |
-| `packages/web/src/routes/task-git/git-tab-loading.tsx` | 33.3 % | 16.7 % |
-| `packages/xezar/src/planner.ts` | 37.5 % | 20.0 % |
-| `packages/xezar/src/server/git.ts` | 47.7 % | 27.6 % |
-| `packages/xezar/src/server/open-in-terminal.ts` | 47.9 % | 40.9 % |
-| `packages/xezar/src/server-install/steps.ts` | 55.9 % | 50.0 % |
-| `packages/xezar/src/server-install/ui.ts` | 58.7 % | 63.6 % |
-| `packages/xezar/src/server/checkout.ts` | 63.0 % | 74.2 % |
-| `packages/xezar/src/skills-remote.ts` | 63.1 % | 41.8 % |
-| `packages/xezar/src/handoff.ts` | 65.8 % | 36.4 % |
-| `packages/xezar/src/workflows/load.ts` | 83.3 % | **40.0 %** |
+| `packages/web/src/routes/task-git/commit-dialog.tsx` | 80.0 % | **58.8 %** |
+| `packages/web/src/routes/task-thread/use-finish-run.ts` | 80.0 % | 100 % |
+| `packages/xezar/src/git-worktree.ts` | 82.1 % | 66.7 % |
+| `packages/xezar/src/server-install/platforms/ubuntu-vps.ts` | 82.3 % | **69.8 %** |
+| `packages/web/src/routes/settings/add-account-dialog.tsx` | 82.3 % | 73.9 % |
+| `packages/xezar/src/server/forge/github.ts` | 83.3 % | 74.0 % |
+| `packages/web/src/routes/workflows/workflows.tsx` | 83.6 % | **67.6 %** |
+| `packages/web/src/routes/task-git/task-changes.tsx` | 84.1 % | **71.7 %** |
+| `packages/xezar/src/planner.ts` | 85.4 % | **57.6 %** |
+| `packages/xezar/src/server-install/engine.ts` | 85.5 % | 76.3 % |
+
+The bolded branch numbers are where to look next, and one of them has a known cause worth writing
+down: `workflows.tsx` sits at 83.6 % lines against 67.6 % branches, and a large part of that gap is
+the dnd-kit drag handlers. `handleDragStart` / `handleDragOver` / `handleDragEnd` cannot be driven
+from jsdom, which lays nothing out and dispatches no pointer geometry, so drag-to-reorder is
+guarded only by `e2e/*.e2e.ts` — the keyboard and click paths into the same `moveStep` are what the
+unit suite can hold. The other bolded rows have not been diagnosed.
 
 Files absent from the report entirely: `packages/xezar/src/index.ts`,
-`packages/xezar/src/update-check.ts`, `packages/xezar/src/core/ui-events.ts`,
-`packages/xezar/src/server/app-type.ts`, `packages/xezar/src/server/forge/types.ts`,
-`packages/xezar/src/agent-config/model-settings/types.ts`, `packages/web/src/app.tsx`,
-`packages/web/src/main.tsx`, `packages/web/src/routes/task-git/task-commits.tsx`,
-`packages/web/src/components/diff/types.ts`, and four `components/ui/*` primitives. The `types.ts`
-and `app-type.ts` entries are type-only modules and are **excluded** as not testable.
+`packages/xezar/src/core/ui-events.ts`, `packages/xezar/src/server/app-type.ts`,
+`packages/xezar/src/server/forge/types.ts`,
+`packages/xezar/src/agent-config/model-settings/types.ts`, `packages/web/src/main.tsx`, and
+`packages/web/src/components/diff/types.ts`. The `types.ts` and `app-type.ts` entries are type-only
+modules and are **excluded** as not testable. `update-check.ts`, `app.tsx`, `task-commits.tsx` and
+the four `components/ui/*` primitives have since joined the report.
 
 ---
 
@@ -334,36 +366,45 @@ Ranked by regression risk – likelihood a change breaks it, how bad that is for
 invisible the breakage would be to the current gates. Each row maps to exactly one child issue of
 epic #42, and every child issue maps back to exactly one row.
 
+**A row's percentage moving does not close the row.** Several of the numbers below have risen since
+`e437c24` — some because tests were added for them, most because unrelated suites happened to load
+more of the file. The percentages here are refreshed to today's report so the evidence column is
+not lying, and a row is struck through only when a test was read that actually covers the
+behaviour it names. `handoff.ts` is the clearest instance of the difference: it now measures
+100 % / 100 %, and that number is a side effect, not a decision.
+
 | # | Gap | Why it ranks here | Evidence | Issue |
 |---|---|---|---|---|
-| R1 | Browser e2e suite never runs in CI, and its skip path exits 0 | 35 specs, zero gate coverage; a naive CI addition is green while testing nothing | `ci.yml` has no `test:e2e`; `scripts/e2e.sh:32-33` | #60 |
+| ~~R1~~ | ~~Browser e2e suite never runs in CI, and its skip path exits 0~~ — **closed** | fixed by #128: a separate `ui-e2e` job runs the suite and passes only on a literal `TEST_E2E_STATUS=passed` line, so the skip path fails the job instead of reading green | `ci.yml` `ui-e2e` job | #60 |
 | ~~R2~~ | ~~`packages/contract` has no vitest project and no tests~~ — **closed** | fixed by #120: the root config lists four projects and the package has two test files | `vitest.config.ts` | #61 |
 | ~~R3~~ | ~~`xezar init` has no test at any level~~ — **closed** | `project-kit-cli.test.ts` spawns the real CLI and covers both the scaffold and the never-overwrite half | `project-kit-cli.test.ts:20,29` | #62 |
 | R4 | `xezar serve` boot path has no CLI-level test | Default command; port auto-pick, orphan prune and `.local/.gitignore` upkeep all unguarded | `src/index.ts` absent from coverage | #43 |
-| R5 | `server/git.ts` at 27.6 % branches | Repo detection feeds worktrees, diffs and project registration; failures are silent and wrong, not loud | measured | #44 |
-| R6 | `backend-detect.ts` probes only asserted for `pi` | Graceful degradation when a CLI is absent is a zero-config promise | `pi-runner.test.ts:45-66`; 72.2 % branches | #45 |
-| R7 | `workflows/load.ts` at 40 % branches | Users commit workflow YAML; per-file degradation ("skipped") is a BC §4 break when it misfires | measured | #46 |
-| R8 | `handoff.ts` at 36.4 % branches | Parses `XEZ:DONE` / `XEZ:MONITORING`; a miss leaves a run parked with no exit | measured; BC §8 | #47 |
-| R9 | Automations cockpit route at 9.9 % branches, enabled path only in a gated e2e | Double-blind: the covering spec needs `XEZ_AUTOMATIONS=1` **and** CI never runs e2e | `e2e/automations.e2e.ts:54-58` | #48 |
-| R10 | Commits tab route has no cockpit unit test | `task-commits.tsx` absent from coverage; only its child component is e2e-tested | measured | #49 |
-| R11 | `app.tsx` and `main.tsx` never loaded by a unit test | The cockpit boot shell – providers, router, error boundary | measured | #50 |
+| R5 | `server/git.ts` — branch coverage (27.6 % at `e437c24`, 86.2 % now) | Repo detection feeds worktrees, diffs and project registration; failures are silent and wrong, not loud | measured; the rise is incidental, no `git.ts` behaviour was reviewed | #44 |
+| R6 | `backend-detect.ts` probes only asserted for `pi` | Graceful degradation when a CLI is absent is a zero-config promise | `pi-runner.test.ts:45-66`; the file now measures 100 % / 100 %, which says the lines run, not that the other three probes are asserted | #45 |
+| R7 | `workflows/load.ts` — branch coverage (40 % at `e437c24`, 90 % now) | Users commit workflow YAML; per-file degradation ("skipped") is a BC §4 break when it misfires | measured | #46 |
+| R8 | `handoff.ts` — branch coverage (36.4 % at `e437c24`, **100 %** now) | Parses `XEZ:DONE` / `XEZ:MONITORING`; a miss leaves a run parked with no exit | measured; BC §8. 100 % here is incidental coverage from the run-lifecycle suites — no co-located test was found | #47 |
+| R9 | Automations cockpit route at 68.1 % branches (9.9 % at `e437c24`), enabled path only in a gated e2e | The spec that covers the enabled flow needs `XEZ_AUTOMATIONS=1`, which neither `scripts/e2e.sh` nor the `ui-e2e` job sets — so it self-skips even now that CI runs e2e | `e2e/automations.e2e.ts:54-58` | #48 |
+| R10 | Commits tab route has no cockpit unit test | `task-commits.tsx` has since joined the report at 100 % lines / 87.8 % branches, but still has no co-located test — the coverage comes from elsewhere | measured | #49 |
+| R11 | `main.tsx` never loaded by a unit test | The cockpit boot shell – providers, router, error boundary. `app.tsx` now measures 100 %; `main.tsx` is still absent from the report entirely | measured | #50 |
 | R12 | `POST /skills/refresh` and the skills catalog GETs | Team-skill refresh is network-facing; only the generic parity loop touches the GETs | no test found | #51 |
 | R13 | `POST /plan` success path | Only rejection paths asserted; the planner response shape is type-checked, not exercised | no test found | #52 |
-| R14 | `GET /launch-key` has no behavioural assertion | Bookmarklet secret; a wrong value breaks every saved bookmarklet quietly | no test found | #53 |
+| R14 | `GET /launch-key` has no behavioural assertion | Bookmarklet secret; a wrong value breaks every saved bookmarklet quietly | no test found; `launch-key.ts` measures 100 % lines / 75 % branches, the textbook incidental number | #53 |
 | R15 | `createRunner` dispatch only asserted for `pi` | A mis-wired backend id would surface as "the wrong agent ran" | `pi-runner.test.ts:37-43` | #54 |
 | ~~R16~~ | ~~OpenCode runner teardown bypasses its golden mock server~~ — **closed** | the suite now drives the real `mock-opencode-serve.mjs`, removing the asymmetry with codex | `opencode-server-runner.test.ts` | #55 |
 | ~~R17~~ | ~~`server-install` steps/ui/platforms at 50-63 % branches, `server-deploy` untested~~ — **closed** | `server-deploy` now has help-text, real-invocation and unknown-platform coverage, and the install steps/ui gained tests with it | `test/e2e/package-cli.test.ts:271,284,291` | #56 |
-| R18 | `skills-remote.ts` at 41.8 % branches | Network-facing team-skill fetch and cache; must never block boot | measured | #57 |
-| R19 | `planner.ts` at 20 % branches, `update-check.ts` absent from coverage | Two loose top-level modules with weak or no guards | measured | #58 |
+| R18 | `skills-remote.ts` — branch coverage (41.8 % at `e437c24`, 86.9 % now) | Network-facing team-skill fetch and cache; must never block boot | measured; `skills-remote-git.test.ts` now drives the clone/list/materialize path against a real local git repo, so the rise is deliberate. What stays uncovered is the passive-load scheduler | #57 |
+| R19 | `planner.ts` at 57.6 % branches (20 % at `e437c24`); `update-check.ts` has joined the report at 100 % | Two loose top-level modules with weak or no guards; the planner's branch half is still the weakest number in the file list | measured | #58 |
 | R20 | Autonomous nudge delivery has no direct test | The mirrored monitoring wake is asserted; this half is not – exactly the asymmetry `AGENTS.md` warns about | `run.test.ts:1005-1021` vs no equivalent | #59 |
 
 ---
 
 ## 6. Gate structure, not just missing tests
 
-**Covered by a suite CI never executes.** The whole browser e2e layer – 35 specs. Every cockpit
-journey in section 3.3 whose only evidence is an `e2e/*.e2e.ts` file is, from CI's point of view,
-unguarded. The two clearest cases are the commits tab (R10) and the enabled automations flow (R9).
+**~~Covered by a suite CI never executes.~~ — closed by #128.** The browser e2e layer's 35 specs
+now run in CI as their own `ui-e2e` job, so a cockpit journey in section 3.3 whose only evidence is
+an `e2e/*.e2e.ts` file – the commits tab (R10) is the clearest – is gated after all. One exception
+survives: the enabled automations flow (R9) sits behind `XEZ_AUTOMATIONS=1`, which neither
+`scripts/e2e.sh` nor the CI job sets, so that spec self-skips and the flow stays ungated.
 
 **Covered only by manual QA.** `SDLC.md:93` states plainly that user-facing changes need the
 separate real-browser QA, and `CODE_REVIEW.md:3` repeats that `test:e2e` is "the QA layer", not part
@@ -426,7 +467,15 @@ progress indicator. No fallback was needed.
 
 ## 9. Method and limits
 
-- Coverage: one `npm run test:coverage` run, exit 0, on `feature/coverage-gap-audit` at `e437c24`.
+- Coverage: originally one `npm run test:coverage` run, exit 0, on `feature/coverage-gap-audit` at
+  `e437c24`. **Re-measured 2026-09-10** on `feature/coverage-16-files`, exit 0; every percentage in
+  sections 4 and 5 is from that second run, and the `e437c24` value is kept beside it wherever the
+  two disagree, so a reader can tell movement from a fresh reading.
+- The 2026-09-10 pass added tests for sixteen named files (see the PR that carries this edit). It
+  was a coverage-floor exercise, not a gap-closing one: the ranking in section 5 is unchanged by
+  it, because raising a file's percentage and covering the behaviour a row names are different
+  jobs. One of the sixteen is the exception where the two coincided: `skills-remote.ts` (R18), whose
+  new tests drive the real clone/list/materialize path rather than only executing it.
 - Test claims: every test cited was opened and read, or located by grep and then opened. Filenames
   alone were never treated as evidence of coverage.
 - **Git history is not usable as regression evidence in this checkout.** `git log` holds 39 commits,
