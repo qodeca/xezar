@@ -121,6 +121,23 @@ describe('agentHomePaths', () => {
     expect(paths.claude).toBe('/home/u/.claude');
     expect(paths.codex).toBe('/home/u/.codex');
     expect(paths.opencodeConfig).toBe('/home/u/.config/opencode');
+    expect(paths.pi).toBe('/home/u/.pi/agent');
+  });
+
+  // pi documents no home variable of its own (checked against pi 0.85.1) — `PI_PACKAGE_DIR` names
+  // the npm package, not the agent home — so `$HOME` is its whole relocation. Resolving it HERE
+  // rather than from `homedir()` at the call site is what keeps model discovery (#152) off a real
+  // home in tests and containers.
+  it('derives pi’s home from HOME, with no vendor variable of its own', () => {
+    expect(agentHomePaths({ HOME: '/tmp/sandbox' } as NodeJS.ProcessEnv).pi).toBe('/tmp/sandbox/.pi/agent');
+    // Nothing pi's binary reads may reach this slot, and no other agent's variable may either.
+    const unrelated = agentHomePaths({
+      HOME: '/home/u',
+      PI_PACKAGE_DIR: '/opt/pi-package',
+      XDG_CONFIG_HOME: '/xdg',
+      CLAUDE_CONFIG_DIR: '/opt/claude',
+    } as unknown as NodeJS.ProcessEnv);
+    expect(unrelated.pi).toBe('/home/u/.pi/agent');
   });
 
   it('honors agent-specific home overrides', () => {
@@ -177,6 +194,7 @@ describe('agentHomePaths', () => {
     } as NodeJS.ProcessEnv);
     expect(paths.claude).toBe('/home/u/.claude');
     expect(paths.codex).toBe('/home/u/.codex');
+    expect(paths.pi).toBe('/home/u/.pi/agent');
   });
 
   it('falls back to USERPROFILE when HOME is unset', () => {

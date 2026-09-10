@@ -39,6 +39,7 @@ import {
 // schema this route validates with is the same one the client compiles against.
 import {
   attachmentInputSchema,
+  MODEL_DISCOVERY_RUNNERS,
   modelDiscoveryRunnerSchema,
   openProjectInSchema,
   updateProjectInputSchema,
@@ -50,6 +51,7 @@ import { AGENT_MODELS_LOCKED_ERROR, agentModelsLocked } from '../core/agent-mode
 import { discoverClaudeModels } from '../core/claude-model-catalog.ts';
 import { discoverCodexModels } from '../core/codex-model-catalog.ts';
 import { discoverOpencodeModels } from '../core/opencode-model-catalog.ts';
+import { discoverPiModels } from '../core/pi-model-catalog.ts';
 import {
   PROVIDER_IDS,
   ProviderAuthService,
@@ -1049,6 +1051,9 @@ export function createApp(deps: ServerDeps) {
       claude: { discover: () => discoverClaudeModels({ cwd: bootRoot }) },
       codex: { discover: () => discoverCodexModels({ cwd: bootRoot }) },
       opencode: { discover: () => discoverOpencodeModels({ cwd: bootRoot }) },
+      // No `cwd`: pi's catalog is its per-user config, not a project-local answer, so this one
+      // adapter is correct for every project the workspace holds (#152).
+      pi: { discover: () => discoverPiModels() },
     },
   });
   const providerAuth = deps.providerAuth ?? new ProviderAuthService();
@@ -1638,9 +1643,13 @@ export function createApp(deps: ServerDeps) {
   // ---- chained family: host model catalog (workspace-level) ----
   const modelsRoutes = new Hono<ProjectApiEnv>()
     // `modelDiscoveryRunnerSchema` is the contract's own list of the runners with an
-    // authoritative host-local catalog (#794, #784), so the client compiles against exactly what
-    // this validates. A runner absent from it has no discovery path and this 400s.
-    .get('/models', queryZodValidator(z.object({ runner: z.union([z.string(), z.array(z.string()).transform((v) => v[0] as string)]).pipe(modelDiscoveryRunnerSchema) }), { message: 'runner must be claude, codex or opencode' }), async (c) => {
+    // authoritative host-local catalog (#794, #784, #152), so the client compiles against exactly
+    // what this validates. A runner absent from it has no discovery path and this 400s.
+    //
+    // The message is DERIVED from that list, never spelled out. It used to name the three runners
+    // literally, so adding a fourth here would have left it refusing `pi` by a name it no longer
+    // rejected — and a refusal that names the wrong set is worse than a generic one (#152).
+    .get('/models', queryZodValidator(z.object({ runner: z.union([z.string(), z.array(z.string()).transform((v) => v[0] as string)]).pipe(modelDiscoveryRunnerSchema) }), { message: `runner must be one of: ${MODEL_DISCOVERY_RUNNERS.join(', ')}` }), async (c) => {
       const query = { data: c.req.valid('query') };
       return c.json(await modelCatalog.get(query.data.runner));
     });

@@ -15,6 +15,7 @@ import {
   resolveModel,
   resolveRunner,
   resolveSource,
+  RUNNERS,
   sourceExists,
   startedRunPath,
   type TaskSource,
@@ -109,10 +110,19 @@ describe('model option resolution', () => {
     expect(modelsForRunner('codex', catalog, ['legacy-id']).at(-1)?.desc).toBe('Custom or legacy model')
   })
 
+  // GUARD (#152): the three runners that already discovered must be untouched by pi gaining a
+  // catalog. Each keeps its own fallback list, its own label and its own replace-on-live rule.
+  it('GUARD — claude, codex and opencode keep the exact presets they had', () => {
+    expect(MODELS_BY_RUNNER.claude.map((m) => m.id)).toEqual(['', 'opus', 'sonnet', 'haiku'])
+    expect(MODELS_BY_RUNNER.codex.map((m) => m.id)).toEqual([''])
+    expect(MODELS_BY_RUNNER.opencode.map((m) => m.id)).toEqual([''])
+  })
+
   it.each([
     ['codex', 'Codex'],
     ['claude', 'Claude'],
-  ] as const)('names %s in its stale/unavailable rows without exposing raw reasons', (runner, label) => {
+    ['opencode', 'OpenCode'],
+  ] as const)('GUARD — names %s in its stale/unavailable rows without exposing raw reasons', (runner, label) => {
     expect(modelCatalogStatus(runner, { runner, models: [], source: 'cache', stale: true, reason: 'raw' })).toBe(`Using cached ${label} model list`)
     expect(modelCatalogStatus(runner, { runner, models: [], source: 'unavailable', stale: false, reason: 'raw' })).toBe(`Latest ${label} models unavailable`)
     expect(modelCatalogStatus(runner, undefined, true)).toBe(`Latest ${label} models unavailable`)
@@ -132,11 +142,57 @@ describe('model option resolution', () => {
   })
 
   it('every runner xezar ships reads its models from the host', () => {
-    // #794 gave OpenCode a catalog and #784 gave Claude one, so the picker no longer has a
-    // preset-only runner. The contract's list is the single source both the route and the picker
-    // compile against — this asserts they still agree on who discovers.
-    expect(MODEL_DISCOVERY_RUNNERS).toEqual(['claude', 'codex', 'opencode'])
+    // #794 gave OpenCode a catalog, #784 gave Claude one and #152 gave pi one, so the picker no
+    // longer has a preset-only runner. The contract's list is the single source both the route
+    // and the picker compile against — this asserts they still agree on who discovers.
+    expect(MODEL_DISCOVERY_RUNNERS).toEqual(['claude', 'codex', 'opencode', 'pi'])
     expect(MODEL_DISCOVERY_RUNNERS.every((runner) => runnerDiscoversModels(runner))).toBe(true)
+    // The invariant, not the list: a runner in the picker with no catalog falls back to
+    // hard-coded vendor ids, which is exactly the #152 defect.
+    expect(RUNNERS.every((runner) => runnerDiscoversModels(runner.id))).toBe(true)
+  })
+
+  it('pi: the dropdown is built from the discovered config, never from a guess (#152)', () => {
+    // The reported host: pi configured with ONE local model and no Anthropic or OpenAI provider.
+    const catalog = {
+      runner: 'pi' as const,
+      models: [
+        {
+          id: 'dgx-spark/deepseek-v4-flash-vision',
+          label: 'dgx-spark/deepseek-v4-flash-vision',
+          description: 'via DGX Spark',
+        },
+      ],
+      source: 'live' as const,
+      stale: false,
+    }
+    const ids = modelsForRunner('pi', catalog).map((m) => m.id)
+    expect(ids).toEqual(['', 'dgx-spark/deepseek-v4-flash-vision'])
+    // The three ids the picker used to hard-code are gone, from the list AND from the source.
+    for (const invented of ['anthropic/claude-opus-4-8', 'anthropic/claude-sonnet-5', 'openai/gpt-5.1']) {
+      expect(ids).not.toContain(invented)
+      expect(MODELS_BY_RUNNER.pi.map((m) => m.id)).not.toContain(invented)
+    }
+  })
+
+  it('pi: auto alone when the host has no pi config, and the row still renders (#152)', () => {
+    // Degradation, three ways: no catalog fetched, an empty one, and a failed one. Each leaves a
+    // usable `auto`-only picker and a status line rather than an empty or invented list.
+    expect(modelsForRunner('pi').map((m) => m.id)).toEqual([''])
+    expect(MODELS_BY_RUNNER.pi.map((m) => m.id)).toEqual([''])
+    const empty = { runner: 'pi' as const, models: [], source: 'live' as const, stale: false }
+    expect(modelsForRunner('pi', empty).map((m) => m.id)).toEqual([''])
+    const failed = { runner: 'pi' as const, models: [], source: 'unavailable' as const, stale: false, reason: 'raw' }
+    expect(modelsForRunner('pi', failed).map((m) => m.id)).toEqual([''])
+    expect(modelCatalogStatus('pi', failed)).toBe('Latest pi models unavailable')
+    expect(modelCatalogStatus('pi', undefined)).toBeUndefined()
+  })
+
+  it('pi: a model pinned in native config stays selectable when discovery is down', () => {
+    const failed = { runner: 'pi' as const, models: [], source: 'unavailable' as const, stale: false }
+    expect(
+      modelsForRunner('pi', failed, ['dgx-spark/deepseek-v4-flash-vision']).map((m) => m.id),
+    ).toEqual(['', 'dgx-spark/deepseek-v4-flash-vision'])
   })
 
   it('opencode: auto alone until the host catalog answers (#794)', () => {
@@ -164,11 +220,12 @@ describe('model option resolution', () => {
     ).toEqual(['', 'openai/gpt-5.1'])
   })
 
-  it('never reads a provider-spanning runner’s preset as another runner’s exclusive model', () => {
-    // pi lists `openai/gpt-5.1` and `anthropic/claude-sonnet-5` as presets, and OpenCode serves
-    // the very same models from the very same providers. Counting pi's list as evidence of
-    // "belongs to another runner" would silently strip those ids from OpenCode's picker — the
-    // #794 bug, reintroduced through the back door.
+  it('GUARD — never reads a provider-spanning runner’s preset as another runner’s exclusive model', () => {
+    // pi and OpenCode read their models off the SAME host providers, so `openai/gpt-5.1` can
+    // legitimately appear under either. Counting one list as evidence of "belongs to another
+    // runner" would silently strip those ids from OpenCode's picker — the #794 bug, through the
+    // back door. Since #152 neither runner HAS a preset beyond `auto`, so the exemption cannot
+    // fire; this pins the outcome, which must not change whichever half is doing the work.
     for (const model of ['openai/gpt-5.1', 'anthropic/claude-sonnet-5']) {
       expect(modelConflictsWithRunner(model, 'opencode')).toBe(false)
       expect(modelConflictsWithRunner(model, 'pi')).toBe(false)

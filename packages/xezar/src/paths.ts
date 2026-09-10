@@ -164,6 +164,13 @@ export function serverLockPath(instance: string = DEFAULT_SERVER_INSTANCE): stri
  * and does not reach here — this slot IS the config dir, nothing else, so the
  * config-only variable is exactly the right precision for it.
  *
+ * pi is the one slot with NO vendor variable: it documents none, and its binary
+ * reads none (checked against pi 0.85.1, 2026-09-10) — `PI_PACKAGE_DIR` names the
+ * npm package, not the agent home. `src/core/agent-profiles.ts` records the same
+ * fact for profiles. So `$HOME`/`$USERPROFILE` is the whole of pi's relocation,
+ * and deriving it here rather than from `homedir()` at the call site is what keeps
+ * a test or a container off a real home — the reason this helper exists at all.
+ *
  * These are the DEFAULT profile's dirs. A second login of the same CLI is an
  * agent profile (`src/core/agent-profiles.ts`) and resolves through
  * `agentHomePathsForProfiles` instead — what this function answers is what the
@@ -176,6 +183,7 @@ export function agentHomePaths(env: NodeJS.ProcessEnv = process.env): AgentHomeP
     claude: env.CLAUDE_CONFIG_DIR?.trim() || join(home, '.claude'),
     codex: env.CODEX_HOME?.trim() || join(home, '.codex'),
     opencodeConfig: env.OPENCODE_CONFIG_DIR?.trim() || join(xdgConfig, 'opencode'),
+    pi: join(home, '.pi', 'agent'),
   };
 }
 
