@@ -14,6 +14,7 @@ steps:
     name: Prepare the release
     prompt: "{{task}}"
     skill: xezar-release-prep
+    timeout: 2h
   - id: readiness
     name: Confirm the task is not blocked
     command: ".xezar/checks/worktree-preflight.sh --readiness"

@@ -31,8 +31,23 @@ const notes = [];
 const err = (where, message) => errors.push(`${where}: ${message}`);
 
 // --- The schemas, transcribed from the Xezar source ----------------------------------
-// `packages/xezar/src/workflows/types.ts:13-44` (step), `:51-60` (file), read at
-// 6cd4aaa3605e8bcddf7bafd8f05ac96881ee35cc (`@qodeca/xezar` 0.10.1).
+// `packages/xezar/src/workflows/types.ts:52-96` (`workflowStepSchema`) and `:103-112`
+// (`workflowFileSchema`), re-read 2026-09-10 at 761c3535ba0a71977da23c3d170b767831016115
+// (`@qodeca/xezar` 0.11.2). The previous transcription was taken at
+// 6cd4aaa3605e8bcddf7bafd8f05ac96881ee35cc (0.10.1) and cited `:13-44` / `:51-60`; those
+// ranges no longer hold, which is why this note records what was actually opened.
+//
+// The re-read added one key: `timeout`, declared at `:79` (its scalar `stepTimeoutSchema`
+// at `:38-41`, and refused on a check step by the refine at `:94-96`). It is the per-step
+// wall clock #22 introduced. Until this set learned it, a workflow that set a fully
+// supported `timeout` was rejected below as an unknown step key that "would do nothing" —
+// the exact opposite of the truth.
+//
+// The lesson, for whoever adds the next engine field: a stale transcription of the schema
+// fails CLOSED. That is the safe direction — an invented key is still caught — but it also
+// silently blocks a real engine feature, and the refusal message argues confidently for the
+// wrong side. When the engine adds a step key, this set must be updated in the SAME change,
+// and the ranges above must be re-derived by opening the file rather than trusted.
 const STEP_KEYS = new Set([
   "id",
   "name",
@@ -44,6 +59,7 @@ const STEP_KEYS = new Set([
   "bashAllowlist",
   "command",
   "onFail",
+  "timeout",
 ]);
 const ON_FAIL_KEYS = new Set(["retry", "max"]);
 const FILE_KEYS = new Set(["name", "description", "steps", "skills"]);

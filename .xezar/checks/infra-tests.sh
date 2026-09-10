@@ -6,10 +6,21 @@
 # exit) and drives the real scripts against it, so a regression in the isolation rules
 # fails here rather than in production on someone's working tree.
 #
-# Run directly, or as the last gate in `.xezar/checks/repo-gates.sh`, or as the
-# `fixture-extra` job in `.github/workflows/ci.yml` (the job id keeps its Cezar-era name
-# because branch protection requires that check by name). It never calls repo-gates.sh
-# back, so there is no recursion.
+# Run directly, or as the last gate in `.xezar/checks/repo-gates.sh`. It never calls
+# repo-gates.sh back, so there is no recursion.
+#
+# 2026-09-10: this header used to add a third way — "or as a named job in
+# `.github/workflows/ci.yml`", said to keep a Cezar-era id because branch protection
+# required that check by name. That was false. `ci.yml` defines exactly one job, `verify`,
+# nothing under `.github/` references this script, and the named job never existed. (Do not
+# hunt for the claimed id by grepping this file: the same string is legitimate FIXTURE data
+# further down, feeding synthetic check names to the integration-preflight cases.)
+#
+# The falsehood was not harmless. This suite is the single most expensive item in the gate
+# — median 217.5s and p90 1110s across 174 recorded attempts, against a whole-gate median
+# of 353.6s — so a header claiming CI also runs it made everyone costing a local gate run
+# underestimate it. It is LOCAL-ONLY. If it ever does move to CI, restore the third way and
+# name the job that really runs it.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"

@@ -14,6 +14,7 @@ steps:
     name: Implement
     prompt: "{{task}}"
     skill: xezar-implementation
+    timeout: 2h
   - id: readiness
     name: Confirm the task is not blocked
     command: ".xezar/checks/worktree-preflight.sh --readiness"
