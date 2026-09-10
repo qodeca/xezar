@@ -57,9 +57,9 @@ coverage epic that closed twenty gaps.
   completed message, the way Codex and OpenCode already did, so a marker stays contiguous and
   parses. (#151, #163)
 - 🐛 **pi's models are discovered from its own config**, rather than reported as unavailable. (#152, #157)
-- 🐛 **The autonomous keep-going nudge fires on continued and recovered runs too.** It was wired at
-  only one of the two places an `ActiveRun` is built, so it worked on a new task and silently did
-  nothing after a Continue or a restart. (#141, #159)
+- 🐛 **The autonomous keep-going nudge fires on new, continued and recovered runs.** It previously
+  fired nowhere: the initial turn-end handler lacked the call, while continuation state lacked
+  the flag. Both paths now use the same helper. (#141, #159)
 - 🐛 **Accept is never lost at the review gate.** The turn is torn down before `review` is
   published, closing a race that could drop the acceptance. (#155, #160)
 - 🐛 **The queue watchdog settles its rescue in `dispose()`**, so a shutdown cannot leave a rescued
@@ -104,7 +104,7 @@ coverage epic that closed twenty gaps.
   paths, update-check, the planner, the cockpit boot shell, the Commits tab, the enabled
   automations route, and the `server-install` and `server-deploy` argument surfaces. The OpenCode
   runner's teardown test now drives its golden mock server instead of a mocked `node:child_process`.
-  Tracked as epic #42 and its twenty child issues (#43–#58, #62), delivered by #63 and
+  Tracked as epic #42 and its twenty child issues (#43–#62), delivered by #63 and
   #120–#144 and #154.
 - 🚀 **Vitest worker fan-out is capped** at `min(4, availableParallelism() - 1)`. Vitest's default
   is per *run*, so several concurrent gate runs on one machine meant roughly 180 worker processes
