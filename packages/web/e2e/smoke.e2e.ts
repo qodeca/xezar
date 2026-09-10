@@ -235,8 +235,20 @@ describe('cockpit app shell', () => {
     // Every URL below is a LEGACY flat one, so each load settles in two hops: the boot-project
     // redirect, then whatever the route itself redirects to. Sampling the nav before the last
     // hop reads the wrong screen's answer, so wait for the settled pathname each time.
-    const settleAt = (pathname: string) =>
+    //
+    // The pathname is NOT enough on its own, and this is the same race as #145: a client-side
+    // redirect writes `location` and React commits the re-render afterwards, so `aria-current`
+    // still names the PREVIOUS screen (or no screen at all) for a frame or two after the address
+    // bar has settled. That window loses on a fast laptop and wins on a shared runner. So wait
+    // for the marked nav row itself — the exact DOM `activeLabel()` reads — to resolve to the
+    // path we just settled on. `a.pathname` is the anchor's own resolved path, so this does not
+    // depend on how the scoped `Link` spells its href.
+    const settleAt = (pathname: string) => {
       browser.waitForFunction(`location.pathname === '${pathname}'`)
+      browser.waitForFunction(
+        `document.querySelector('[data-slot="sidebar"] nav a[aria-current="page"]')?.pathname === '${pathname}'`
+      )
+    }
 
     browser.goto(baseUrl + '/')
     settleAt(scoped('/'))

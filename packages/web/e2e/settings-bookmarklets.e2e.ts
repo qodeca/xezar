@@ -199,6 +199,18 @@ describe('legacy flat bookmarklet URLs keep landing (BACKWARD_COMPATIBILITY.md �
 
     // Normalized to the scoped twin — the address bar names the project the redirect chose.
     browser.waitForFunction(`location.pathname === '/p/${bootProject}/new'`)
+    // …and then the composer the redirect BUILT, before reading anything out of it. The pathname
+    // flips when the redirect navigates; the scoped route's own composer is committed on a later
+    // render, so a value read taken on the pathname alone can sample the pre-redirect textarea —
+    // or an empty one — while the address bar already says we arrived (#145). A non-empty
+    // textarea is the "this composer has consumed its deep link" signal; the exact text is still
+    // asserted below, so this waits for the dependency without weakening what is pinned.
+    // `?? ''` on purpose: `missing?.value !== ''` is `undefined !== ''`, which is TRUE, so the
+    // optional-chained form would pass for free on an absent textarea — the exact failure mode
+    // this wait exists to close.
+    browser.waitForFunction(
+      `(document.querySelector('[data-route="new"] [data-slot="composer"] textarea')?.value ?? '') !== ''`,
+    )
     // Every param survived the hop: the task text and the skill both arrived.
     expect(browser.evaluate(`document.querySelector('[data-slot="composer"] textarea').value`)).toBe(
       'legacy bookmarklet task',
