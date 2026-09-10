@@ -6,21 +6,10 @@
 # exit) and drives the real scripts against it, so a regression in the isolation rules
 # fails here rather than in production on someone's working tree.
 #
-# Run directly, or as the last gate in `.xezar/checks/repo-gates.sh`. It never calls
-# repo-gates.sh back, so there is no recursion.
-#
-# 2026-09-10: this header used to add a third way — "or as a named job in
-# `.github/workflows/ci.yml`", said to keep a Cezar-era id because branch protection
-# required that check by name. That was false. `ci.yml` defines exactly one job, `verify`,
-# nothing under `.github/` references this script, and the named job never existed. (Do not
-# hunt for the claimed id by grepping this file: the same string is legitimate FIXTURE data
-# further down, feeding synthetic check names to the integration-preflight cases.)
-#
-# The falsehood was not harmless. This suite is the single most expensive item in the gate
-# — median 217.5s and p90 1110s across 174 recorded attempts, against a whole-gate median
-# of 353.6s — so a header claiming CI also runs it made everyone costing a local gate run
-# underestimate it. It is LOCAL-ONLY. If it ever does move to CI, restore the third way and
-# name the job that really runs it.
+# Run directly for kit changes and in the unconditional CI job
+# `Xezar infrastructure fixtures`. The ordinary local gate runs repository-checks.sh;
+# this suite remains mandatory locally when checks/workflows change. No path-filter,
+# fingerprint cache or skip makes synthetic fixtures optional in CI.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -4031,8 +4020,8 @@ git -C "$outer" branch -qf "xez/deadbeef" HEAD
   || bad "an unrelated branch and an advancing main are invisible to the fixture-scoped check" \
        "a concurrent agent would fail this suite"
 
-# Run the actual Xezar-specific contract/bootstrap tests once. Synthetic mini gates never recurse here.
-expect_ok "Xezar loader, canonical npm gates, bootstrap, policy and guidance contracts" node --test "$SCRIPT_DIR/xezar-contract.test.mjs"
+# Run the maintained actual-repository checks once. They never invoke this suite.
+expect_ok "Actual repository catalog, changelog and contracts" bash "$SCRIPT_DIR/repository-checks.sh"
 
 expect_ok "Parallel gate ordering, evidence and owned cancellation" node --test "$SCRIPT_DIR/gate-parallel.test.mjs"
 

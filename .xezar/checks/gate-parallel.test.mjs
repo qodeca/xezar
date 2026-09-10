@@ -116,7 +116,7 @@ function outerFixture(body) {
  `);
  mkdirSync(join(dir,'bin'));writeFileSync(join(dir,'bin/package.json'),'{"type":"commonjs"}');
  writeFileSync(join(dir,'bin/npm'),`#!/usr/bin/env node\n${body}`,{mode:0o755});
- writeFileSync(join(target,'infra-tests.sh'),'#!/usr/bin/env bash\ntouch infra-ran\n',{mode:0o755});
+ writeFileSync(join(target,'repository-checks.sh'),'#!/usr/bin/env bash\ntouch infra-ran\n',{mode:0o755});
  return {dir,target,env:{...process.env,PATH:join(dir,'bin')+':'+process.env.PATH}};
 }
 function attemptFiles(dir){const list=[];for(const e of (existsSync(dir)?[...readdirSync(dir,{withFileTypes:true})]:[])) {const p=join(dir,e.name);if(e.isDirectory())list.push(...attemptFiles(p));else list.push(p);}return list;}
@@ -172,4 +172,17 @@ test('cancellation racing completed finalization reports the retained completed 
   assert.match(output,/finalization produced a completed record/);
   assert.doesNotMatch(output,/retained attempt is incomplete/);
  } finally {outer.kill('SIGTERM');}
+});
+
+
+test('ordinary build failure still runs package and records aggregate failure',()=>{
+ const f=fixture();
+ const build=f.entries.find(e=>e.index===5);
+ build.command=command(`const fs=require('node:fs');if(!fs.existsSync(${JSON.stringify(join(f.dir,'barriers/2.end'))}))throw Error('build before typecheck');fs.writeFileSync(${JSON.stringify(join(f.dir,'barriers/5.end'))},'');process.exitCode=3;`);
+ execute(f);const collected=collect(f);assert.equal(collected.status,0,collected.stderr);
+ const record=JSON.parse(readFileSync(join(f.dir,'result.json')));
+ assert.equal(record.result,'failed');assert.equal(record.commands.length,5);
+ assert.equal(record.commands.find(e=>e.name==='gate 5').status,'failed');
+ assert.equal(record.commands.find(e=>e.name==='gate 6').status,'passed');
+ assert.ok(existsSync(join(f.dir,'barriers/6.end')));
 });

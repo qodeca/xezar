@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { parse as parseYaml } from 'yaml';
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -25,7 +26,8 @@ test('real Xezar workflow loader and skill parser accept every local role withou
 test('canonical gates match the five actual validation commands in exact order',()=>{
  const list=JSON.parse(exec('bash',[path.join(checks,'repo-gates.sh'),'--list','--json']));
  const agreed=JSON.parse(fs.readFileSync(path.join(repo,'.ai/agentic.config.json'))).validation.commands;
- assert.deepEqual(list.gates.slice(1,-1).map(g=>g.command),agreed);
+ assert.deepEqual(list.gates.map(g=>g.command).filter(c=>agreed.includes(c)),agreed);
+ assert.equal(list.gates.at(-1).command,'.xezar/checks/repository-checks.sh');
  assert.equal(list.gates[0].command,'npm ci');
  const scripts=JSON.parse(fs.readFileSync(path.join(repo,'package.json'))).scripts;
  for(const c of agreed){const name=c==='npm test'?'test':c.slice('npm run '.length);assert.ok(scripts[name]);}
@@ -59,7 +61,7 @@ test('SDLC policy never maps unknown labels or failed QA to merge eligibility',a
  assert.ok(projectPolicy({labels:[{name:'needs-qa'},{name:'skip-qa'}]}).refused);
  assert.equal(projectPolicy({labels:[{name:'needs-qa'},{name:'qa-approved'}]}).passed,true);
  assert.equal(projectPolicy({labels:[]}).passed,true);
- const source=fs.readFileSync(path.join(checks,'integration-preflight.sh'),'utf8');assert.match(source,/lib\/project-policy\.mjs/);assert.match(source,/PROJECT_CHECKS=\("Typecheck, unit tests, build, and package" "Cockpit browser e2e"\)/);assert.match(source,/SKIP_ALLOWED=\(\)/);
+ const source=fs.readFileSync(path.join(checks,'integration-preflight.sh'),'utf8');assert.match(source,/lib\/project-policy\.mjs/);assert.match(source,/PROJECT_CHECKS=\("Typecheck, unit tests, build, and package" "Cockpit browser e2e" "Xezar infrastructure fixtures"\)/);assert.match(source,/SKIP_ALLOWED=\(\)/);
 });
 test('guidance covers semantic analysis, stage ownership, squash policy and evidence tiers',()=>{
  const doc=fs.readFileSync(path.join(kit,'docs/business-analysis.md'),'utf8').toLowerCase();
@@ -112,4 +114,16 @@ test('shared contracts reject a single skill dropping a guarantee', () => {
  const result=spawnSync(process.execPath,[catalog,root],{encoding:'utf8'});
  assert.notEqual(result.status,0);
  assert.match(result.stdout,/shared contract/i);
+});
+
+
+test('infrastructure CI is unconditional and agrees with the required integration check',()=>{
+ const ci=parseYaml(fs.readFileSync(path.join(repo,'.github/workflows/ci.yml'),'utf8'));
+ const job=ci.jobs['xezar-infra-fixtures'];
+ assert.equal(job.name,'Xezar infrastructure fixtures');
+ assert.equal(job.if,undefined);assert.equal(job.needs,undefined);assert.equal(job['continue-on-error'],undefined);
+ for(const event of ['pull_request','push']){assert.ok(ci.on[event]);assert.equal(ci.on[event].paths,undefined);assert.equal(ci.on[event]['paths-ignore'],undefined);}
+ assert.ok(job.steps.some(s=>s.run==='npm ci'));
+ assert.ok(job.steps.some(s=>s.run==='bash .xezar/checks/infra-tests.sh'));
+ for(const step of job.steps){assert.equal(step.if,undefined);assert.equal(step['continue-on-error'],undefined);}
 });

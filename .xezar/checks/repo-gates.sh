@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Xezar project gates: the AGENTS/SDLC/.ai/agentic.config.json sequence,
-# with dependency freshness and isolated kit fixture checks. UI smoke is separate.
+# with dependency freshness and actual repository checks. UI smoke is separate.
 # Usage:  .xezar/checks/repo-gates.sh [--fast] [--list]
 #   --fast  skip `npm ci` ONLY when the installed dependencies
 #           still match the manifests. `--fast` is a request, not a promise: freshness is
@@ -43,7 +43,7 @@ GATE_NAMES=(
   "npm run test:unit"
   "npm run build"
   "npm run test:package"
-  ".xezar/checks/infra-tests.sh"
+  ".xezar/checks/repository-checks.sh"
 )
 GATE_COMMANDS=(
   "npm ci"
@@ -52,7 +52,7 @@ GATE_COMMANDS=(
   "npm run test:unit"
   "npm run build"
   "npm run test:package"
-  ".xezar/checks/infra-tests.sh"
+  ".xezar/checks/repository-checks.sh"
 )
 
 # The list as JSON, and its digest. Both derived from the arrays above, so they cannot drift
@@ -128,7 +128,7 @@ if ! gate_attempt_begin "$(gate_names_json)" "$(gate_list_id)"; then
 fi
 
 # Only this shell reduces results; workers own separate files and process groups.
-# All command phases use the same supervisor, including install and the fixture tail.
+# All command phases use the same supervisor, including install and the repository-check tail.
 export GATE_RESULTS_MJS GATE_ATTEMPT_ID GATE_ATTEMPT_DIR GATE_LOG_DIR
 GATE_SCHEDULER_PID=""
 gate_cancel() {
