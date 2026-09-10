@@ -21,6 +21,12 @@ const RUN = {
   titleSummary: 'Progressively page a long session',
   task: 'Inspect a long session without downloading the archive.',
   status: 'running',
+  // This replay intentionally recovers in the fixture root. The golden record's
+  // unrelated /tmp worktree must not authorize a fallback from missing isolation.
+  worktree: false,
+  worktreePath: undefined,
+  branch: undefined,
+  baseBranch: undefined,
   finishedAt: undefined,
   steps: [record.steps[0]],
   pullRequestUrl: undefined,
