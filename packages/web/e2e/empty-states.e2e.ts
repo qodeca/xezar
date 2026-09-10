@@ -133,7 +133,19 @@ describe('the 404 route', () => {
 
   it('walks back to the tasks overview through the action', () => {
     browser.click(`[data-route="not-found"] a[href="${scoped('/')}"]`)
+    // The address bar first: the link navigated, and to this exact path.
     browser.waitForFunction(`location.pathname === '${scoped('/')}'`)
+    // …then the SCREEN, which is the thing the assertion below actually reads. A client-side
+    // hop writes `location` inside the click handler and React commits the new route afterwards,
+    // so a DOM read taken on the pathname alone can land in that gap — the 404 already
+    // unmounted, the overview not yet mounted — and `count()` honestly answers 0. That gap is
+    // wide enough to lose on a shared GitHub runner and narrow enough to win on a laptop, which
+    // is exactly how this line failed twice on CI while passing locally (#145).
+    //
+    // The pathname wait STAYS: it pins *where* we landed, which the element wait does not. The
+    // element wait pins *that the screen for it is on the page*. Same pattern as the `beforeAll`
+    // above, which already waits for `[data-route="not-found"]` rather than for its URL.
+    browser.waitForFunction(`document.querySelector('[data-route="tasks"]') !== null`)
     expect(browser.count('[data-route="tasks"]')).toBe(1)
   })
 })
