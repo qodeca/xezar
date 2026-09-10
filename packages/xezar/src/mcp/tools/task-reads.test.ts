@@ -12,16 +12,11 @@ import { createApp } from '../../server/server.ts';
 import type { RunManager } from '../../workflows/run.ts';
 import { clearProjectProbeCache, listProjects, registerProject } from '../../workspace/projects.ts';
 import { IPC_PROTOCOL_VERSION, LineFramer, encodeFrame, type McpToolResult } from '../ipc.ts';
+import type { ServiceDispatch } from '../service-adapter.ts';
 import { listenMcpSocket, type McpServiceHandle } from '../service.ts';
 import { defineTool, type McpTool, type McpToolContext } from '../tool.ts';
 import { tools } from './index.ts';
-import {
-  TASK_READ_PAGE_ITEMS,
-  TASK_READ_RESULT_BUDGET_BYTES,
-  taskReadsTool,
-  taskSummarySchema,
-  type TaskReadService,
-} from './task-reads.ts';
+import { TASK_READ_PAGE_ITEMS, TASK_READ_RESULT_BUDGET_BYTES, taskReadsTool, taskSummarySchema } from './task-reads.ts';
 
 /**
  * `task_read` (#91) driven the way a leader drives it: a `tools/call` frame over the project's
@@ -66,7 +61,7 @@ describe.skipIf(isWindows)('task_read — the task, history, Inbox and variant-g
     else process.env[key] = value;
   };
 
-  const wired = (service: TaskReadService): McpTool =>
+  const wired = (service: ServiceDispatch): McpTool =>
     defineTool({ ...taskReadsTool, call: (args, ctx) => taskReadsTool.call(args, { ...ctx, service } as McpToolContext) });
 
   beforeEach(async () => {
@@ -98,7 +93,7 @@ describe.skipIf(isWindows)('task_read — the task, history, Inbox and variant-g
     storeB = (await contexts.context(idB)).store;
 
     dispatched = [];
-    const service: TaskReadService = {
+    const service: ServiceDispatch = {
       request: (input, init) => {
         dispatched.push(new URL(input).pathname);
         return app.request(input, init);
@@ -378,7 +373,7 @@ describe.skipIf(isWindows)('task_read — the task, history, Inbox and variant-g
     expect(await refused(socketA, { view: 'list', cursor: mineCursor })).toMatch(/not issued for this read/);
 
     // Garbage and oversized cursors are refused before anything is read.
-    expect(await refused(socketA, { view: 'history', taskId: mine, cursor: 'not-a-cursor' })).toMatch(/not a task_read cursor/);
+    expect(await refused(socketA, { view: 'history', taskId: mine, cursor: 'not-a-cursor' })).toMatch(/Invalid cursor/);
     expect(await refused(socketA, { view: 'history', taskId: mine, cursor: 'x'.repeat(2_049) })).toMatch(/cursor/);
   });
 
@@ -395,7 +390,7 @@ describe.skipIf(isWindows)('task_read — the task, history, Inbox and variant-g
     // A task created mid-walk lands at the top and does not shift the pages still to come.
     const firstPage = await read(socketA, { view: 'list', status: ['done'], limit: 5 });
     task(storeA, 'Newest', { createdAt: '2026-08-01T10:00:00Z' });
-    const second = await read(socketA, { view: 'list', cursor: firstPage.nextCursor });
+    const second = await read(socketA, { view: 'list', status: ['done'], cursor: firstPage.nextCursor });
     expect(second.tasks).toEqual(pages[1]!.tasks);
 
     // The cursor keeps its filters; different filters with it are refused.
@@ -432,6 +427,41 @@ describe.skipIf(isWindows)('task_read — the task, history, Inbox and variant-g
     const partOne = await read(socketA, { view: 'task', taskId: huge });
     storeA.updateRun(huge, { title: 'Renamed mid-read' });
     expect(await refused(socketA, { view: 'task', taskId: huge, cursor: partOne.nextCursor })).toMatch(/changed while/);
+  });
+
+  // ---- M-07 / F-02: ownership beyond "the store has it" --------------------------------------
+
+  it('refuses a group, and a task, whose worktree is not this project’s — although the cockpit route still serves them', async () => {
+    const good = task(storeA, 'Variant A', { groupId: 'g1', variant: 'A' });
+    const stray = task(storeA, 'Variant B', { groupId: 'g1', variant: 'B' });
+    // A hand-edited index can point a record at another project's tree; the group read would
+    // compute that tree's diff and the task read would name its path.
+    storeA.updateRun(stray, { worktreePath: join(rootB, '.local/xezar/worktrees', stray) });
+    expect(await cockpit(`/api/v1/p/${idA}/groups/g1`)).toMatchObject({ groupId: 'g1' });
+
+    expect(await refused(socketA, { view: 'group', groupId: 'g1' })).toBe('No such variant group in this project.');
+    for (const view of ['task', 'history', 'context', 'handoff']) {
+      const answer = await refused(socketA, { view, taskId: stray });
+      expect(answer).toBe('No such task in this project.');
+      expect(answer).not.toContain(rootB);
+    }
+    expect(await read(socketA, { view: 'task', taskId: good })).toMatchObject({ view: 'task' });
+  });
+
+  it('keeps a list cursor inside B-04 whatever the filters hold', async () => {
+    const groupId = 'g'.repeat(128);
+    const query = '"'.repeat(100);
+    for (let i = 0; i < 3; i += 1) task(storeA, `T${i} ${query}`, { groupId, archived: true });
+    const page = await read(socketA, {
+      view: 'list',
+      limit: 1,
+      groupId,
+      query,
+      archived: 'only',
+      status: ['queued', 'running', 'waiting', 'review', 'done', 'failed', 'cancelled'],
+    });
+    expect((page.tasks as unknown[]).length).toBe(1);
+    expect(page.nextCursor!.length).toBeLessThanOrEqual(2_048);
   });
 
   // ---- the remaining edges ------------------------------------------------------------------

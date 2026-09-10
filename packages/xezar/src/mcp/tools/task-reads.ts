@@ -16,6 +16,15 @@ import {
 } from '@qodeca/xezar-contract';
 import { collectSecretValues, redactDeep } from '../../core/secret-redaction.ts';
 import { decodeLiveCursor, decodePageCursor } from '../../runs/event-history.ts';
+import {
+  openCursor,
+  ownGroup,
+  ownRun,
+  ownershipScope,
+  sealCursor,
+  type OwnershipScope,
+} from '../resource-ownership.ts';
+import type { ServiceDispatch } from '../service-adapter.ts';
 import { defineTool, errorResult, textResult, type McpToolContext, type McpToolResult } from '../tool.ts';
 
 /**
@@ -25,17 +34,18 @@ import { defineTool, errorResult, textResult, type McpToolContext, type McpToolR
  *
  * WHERE THE DATA COMES FROM. Every read is dispatched IN-PROCESS into the service's own
  * project-scoped routes — `runsRoutes`, `todosRoutes`, `groupsRoutes` — under
- * `/api/v1/p/<bound project>/…`, the same entry #89's service adapter uses. So the payload is
- * the cockpit's payload by construction (N-02, A-08): the same `withUsage`, the same variant
- * diff stats, the same Inbox capability ceiling. Nothing here opens a store or a file.
+ * `/api/v1/p/<bound project>/…`, through the same entry #89's service adapter takes. So the
+ * payload is the cockpit's payload by construction (N-02, A-08): the same `withUsage`, the same
+ * variant diff stats, the same Inbox capability ceiling. Nothing here opens a store or a file.
  *
- * ISOLATION (F-01, N-01, M-01, A-04). The project is `ctx.project` — the project whose socket
- * this call arrived on — and no argument can name another: the input schema is strict, so a
- * `project` key is refused rather than silently ignored. The only non-project path this module
- * ever requests is `/api/v1/health`, and only for the one Inbox capability boolean. There is no
- * path to the workspace runs index (`GET /api/v1/workspace/runs-index`, which spans every
- * project). Cursors are bound to the project, the view and the task that issued them; a cursor
- * from anywhere else is refused with an answer that names nothing of where it came from.
+ * ISOLATION (F-01, F-02, N-01, M-01, M-07, A-04). The project is `ctx.project` — the project
+ * whose socket this call arrived on — and no argument can name another: the input schema is
+ * strict, so a `project` key is refused rather than silently ignored. The only non-project path
+ * this module requests is `/api/v1/health`, and only for the one Inbox capability boolean. There
+ * is no path to the workspace runs index (`GET /api/v1/workspace/runs-index`, which spans every
+ * project). A task and every member of a variant group are proved to be the bound project's by
+ * #88's `ownRun` / `ownGroup` before anything about them is read, and every cursor is sealed
+ * with #88's `sealCursor` to the project and the resource it pages. A refusal names nothing.
  *
  * BOUNDS (N-06, D-09). One result is at most B-01's 40 000 serialized bytes and B-02's 100
  * items; a caller may ask for fewer items, never more, and a history read without a page size
@@ -55,21 +65,15 @@ import { defineTool, errorResult, textResult, type McpToolContext, type McpToolR
 export const TASK_READ_RESULT_BUDGET_BYTES = 40_000;
 /** D-09 B-02: the cockpit's own history page size, reused for every MCP list and history page. */
 export const TASK_READ_PAGE_ITEMS = RUN_HISTORY_PAGE_ITEMS;
-/** D-09 B-04: `runHistoryCursorSchema` already caps a cursor at this many characters. */
-const MAX_CURSOR_CHARS = 2_048;
 
 // ---- the service entry ---------------------------------------------------------------------
 
 /**
- * The running service's in-process entry — the Hono app `createApp` returns satisfies it, and
- * it is the same shape #89's adapter takes. `McpToolContext` does not carry it yet; until the
- * service hands it over, the tool answers that it is not connected instead of guessing.
+ * `McpToolContext` does not carry the service entry yet (the tool context is widened by the
+ * wiring that follows #89). Until the service hands it over, the tool answers that it is not
+ * connected instead of guessing.
  */
-export interface TaskReadService {
-  request(input: string, init?: RequestInit): Response | Promise<Response>;
-}
-
-type TaskReadContext = McpToolContext & { readonly service?: TaskReadService };
+type TaskReadContext = McpToolContext & { readonly service?: ServiceDispatch };
 
 // ---- input ---------------------------------------------------------------------------------
 
@@ -92,7 +96,7 @@ const inputSchema = z.strictObject({
   cursor: runHistoryCursorSchema
     .optional()
     .describe(
-      'The nextCursor of a previous task_read answer, to read the next page or part. Send the same view and task as that answer.',
+      'The nextCursor of a previous task_read answer, to read the next page or part. Send it with the same view, task and filters as that call.',
     ),
   limit: z
     .number()
@@ -123,8 +127,8 @@ const VIEW_ARGS: Record<View, { required: readonly ArgKey[]; allowed: readonly A
 
 /**
  * The task-list row (D-09 B-05): what a leader needs to pick a task to read — without the
- * record's `steps[]`, `workflowDef`, prompt text and system prompt, which are what make a full
- * record ~6 KB. `task` view returns the whole record.
+ * record's `steps[]`, `workflowDef`, prompt text, system prompt and worktree path, which are what
+ * make a full record ~6 KB. `task` view returns the whole record.
  */
 export const taskSummarySchema = apiRunSchema.pick({
   id: true,
@@ -157,13 +161,12 @@ export const taskSummarySchema = apiRunSchema.pick({
 });
 export type TaskSummary = z.infer<typeof taskSummarySchema>;
 
-const listFilterSchema = z.object({
-  status: z.array(runStatusSchema).optional(),
-  archived: archivedModeSchema,
-  groupId: idSchema.optional(),
-  query: z.string().optional(),
-});
-type ListFilter = z.infer<typeof listFilterSchema>;
+interface ListFilter {
+  status?: string[];
+  archived: z.infer<typeof archivedModeSchema>;
+  groupId?: string;
+  query?: string;
+}
 
 // ---- cursors -------------------------------------------------------------------------------
 
@@ -171,29 +174,28 @@ type ListFilter = z.infer<typeof listFilterSchema>;
 const partSchema = z.object({ id: z.string(), o: z.number().int().nonnegative(), h: z.string().regex(/^[a-f0-9]{16}$/) });
 type Part = z.infer<typeof partSchema>;
 
+const pageSizeSchema = z.number().int().min(1).max(TASK_READ_PAGE_ITEMS).optional();
+
 /**
- * Every cursor carries the project (`p`) and the view that issued it; a history cursor also
- * carries its task. Opaque to the client and deliberately unsigned: the dispatch is always to
- * the bound project, so a hand-made cursor can move within that project and nowhere else.
+ * What a cursor carries INSIDE #88's seal. The seal binds it to the project and the resource
+ * (`tasks`, `run:<id>:history`, …), so nothing here names either.
  */
 const cursorPayloadSchema = z.discriminatedUnion('k', [
   z.object({
     v: z.literal(1),
-    p: z.string(),
     k: z.literal('list'),
-    f: listFilterSchema,
+    /** A digest of the filters, not the filters: a 200-character query must not cost B-04. */
+    f: z.string().regex(/^[a-f0-9]{16}$/),
     /** The page size the walk started with, so a continuation need not repeat it. */
-    n: z.number().int().min(1).max(TASK_READ_PAGE_ITEMS).optional(),
+    n: pageSizeSchema,
     /** Keyset: the last row already delivered. */
     after: z.object({ createdAt: z.string(), id: z.string() }).optional(),
     x: partSchema.optional(),
   }),
   z.object({
     v: z.literal(1),
-    p: z.string(),
     k: z.literal('history'),
-    r: z.string(),
-    n: z.number().int().min(1).max(TASK_READ_PAGE_ITEMS).optional(),
+    n: pageSizeSchema,
     /** The cockpit's history view this walk started from: its file size and correction. */
     fs: z.number().int().nonnegative(),
     co: z.string().optional(),
@@ -201,44 +203,54 @@ const cursorPayloadSchema = z.discriminatedUnion('k', [
     before: z.number().int().nonnegative(),
     x: partSchema.optional(),
   }),
-  z.object({
-    v: z.literal(1),
-    p: z.string(),
-    k: z.enum(['task', 'context', 'handoff', 'inbox', 'group']),
-    /** The task or group the parts belong to; empty for the Inbox. */
-    key: z.string(),
-    x: partSchema,
-  }),
+  z.object({ v: z.literal(1), k: z.enum(['task', 'context', 'handoff', 'inbox', 'group']), x: partSchema }),
 ]);
 type CursorPayload = z.infer<typeof cursorPayloadSchema>;
 
-function encodeCursor(payload: CursorPayload): string {
-  const cursor = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
-  // Every input that lands in a cursor is itself bounded (ids 128, query 200), so this is a
-  // guard on this module's arithmetic, not on the caller.
-  if (cursor.length > MAX_CURSOR_CHARS) throw new Error('task_read cursor exceeded the D-09 B-04 bound');
-  return cursor;
+/** The resource a view's cursors page — the key #88's seal binds them to. */
+function resourceOf(view: View, key: string): string {
+  if (view === 'list') return 'tasks';
+  if (view === 'inbox') return 'inbox';
+  if (view === 'group') return `group:${key}`;
+  return `run:${key}:${view}`;
 }
 
-const FOREIGN_CURSOR =
-  'This cursor was not issued for this read. Send the cursor back with the same view and task that returned it, or read again without a cursor.';
+const INVALID_CURSOR = 'Invalid cursor: it was not issued for this read. Read again without a cursor to start from the first page.';
 
-/** Decode a cursor and prove it belongs to THIS project, view and task — or say it does not. */
-function decodeCursor(cursor: string, projectId: string, view: View, key: string): CursorPayload | string {
+function encodeCursor(scope: OwnershipScope, view: View, key: string, payload: CursorPayload): string {
+  return sealCursor(scope, resourceOf(view, key), JSON.stringify(payload));
+}
+
+/** Open a cursor sealed for THIS project and resource, or say it was not. */
+function decodeCursor<K extends CursorPayload['k']>(
+  scope: OwnershipScope,
+  view: View,
+  key: string,
+  cursor: string,
+): Extract<CursorPayload, { k: K }> | undefined {
+  const opened = openCursor(scope, resourceOf(view, key), cursor);
+  if (!opened.ok) return undefined;
   let json: unknown;
   try {
-    json = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
+    json = JSON.parse(opened.value);
   } catch {
-    return 'This cursor is not a task_read cursor. Read again without a cursor.';
+    return undefined;
   }
   const parsed = cursorPayloadSchema.safeParse(json);
-  if (!parsed.success) return 'This cursor is not a task_read cursor. Read again without a cursor.';
-  const payload = parsed.data;
-  // N-01: the answer names neither the other project nor its task — only that it is foreign.
-  if (payload.p !== projectId || payload.k !== view) return FOREIGN_CURSOR;
-  if (payload.k === 'history' && payload.r !== key) return FOREIGN_CURSOR;
-  if (payload.k !== 'history' && payload.k !== 'list' && payload.key !== key) return FOREIGN_CURSOR;
-  return payload;
+  return parsed.success && parsed.data.k === view ? (parsed.data as Extract<CursorPayload, { k: K }>) : undefined;
+}
+
+/**
+ * The #88 ownership scope for the bound project, over the records THIS call read from the
+ * project's own routes. It holds no automation records: task reads never touch automations.
+ */
+function scopeOver(root: string, runs: readonly ApiRun[] = []): OwnershipScope {
+  const byId = new Map(runs.map((run) => [run.id, run]));
+  return ownershipScope({
+    root,
+    store: { getRun: (id) => byId.get(id), listRuns: () => [...byId.values()] },
+    automationStore: { get: () => undefined, latestReceipts: () => new Map() },
+  });
 }
 
 // ---- the budget ----------------------------------------------------------------------------
@@ -246,7 +258,7 @@ function decodeCursor(cursor: string, projectId: string, view: View, key: string
 const bytes = (text: string): number => Buffer.byteLength(text, 'utf8');
 
 /** A stand-in for the longest cursor, so a page measured with it can never grow past B-01. */
-const CURSOR_PLACEHOLDER = 'x'.repeat(MAX_CURSOR_CHARS);
+const CURSOR_PLACEHOLDER = 'x'.repeat(2_048);
 
 const digest = (text: string): string => createHash('sha256').update(text).digest('hex').slice(0, 16);
 
@@ -287,7 +299,7 @@ interface Parted {
 /**
  * B-03: one item too large for a result is sent in parts. Every part is sized against the same
  * worst-case envelope, so the part count is fixed before part 1 is sent. Answers undefined when
- * an offset does not sit on a part boundary this function produced — a forged or stale cursor.
+ * an offset does not sit on a part boundary this function produced — a stale cursor.
  */
 function partOf(itemJson: string, offset: number, envelope: (chunk: Record<string, unknown>) => string): Parted | undefined {
   const room =
@@ -319,19 +331,40 @@ interface Answer {
   readonly body: unknown;
 }
 
+/** A value read from a route, or the answer that refused it. */
+type Read<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly answer: Answer };
+
 class TaskReader {
-  private readonly scope: string;
+  private readonly scopePath: string;
+  /** A scope for sealing cursors only; ownership checks build theirs over the records read. */
+  readonly scope: OwnershipScope;
 
   constructor(
-    private readonly service: TaskReadService,
-    readonly projectId: string,
+    private readonly service: ServiceDispatch,
+    readonly project: McpToolContext['project'],
   ) {
-    this.scope = `/api/v1/p/${encodeURIComponent(projectId)}`;
+    this.scopePath = `/api/v1/p/${encodeURIComponent(project.id)}`;
+    this.scope = scopeOver(project.root);
   }
 
   /** A project-scoped route. The path is built here from validated ids only. */
   get(path: string, as: 'json' | 'text' = 'json'): Promise<Answer> {
-    return this.dispatch(`${this.scope}${path}`, as);
+    return this.dispatch(`${this.scopePath}${path}`, as);
+  }
+
+  /** Every task of the project, as the cockpit's `GET /runs` answers them. */
+  async runs(): Promise<Read<ApiRun[]>> {
+    const answer = await this.get('/runs');
+    return answer.status === 200 ? { ok: true, value: z.array(apiRunSchema).parse(answer.body) } : { ok: false, answer };
+  }
+
+  /** One task, read from the project's own route AND proved the project's by #88's `ownRun`. */
+  async ownedRun(taskId: string): Promise<Read<ApiRun>> {
+    const answer = await this.get(`/runs/${encodeURIComponent(taskId)}`);
+    if (answer.status !== 200) return { ok: false, answer };
+    const run = apiRunSchema.parse(answer.body);
+    if (!ownRun(scopeOver(this.project.root, [run]), taskId).ok) return { ok: false, answer: { status: 404, body: undefined } };
+    return { ok: true, value: run };
   }
 
   /** The one capability this module needs outside the project scope: is the Inbox on. */
@@ -348,7 +381,13 @@ class TaskReader {
   }
 }
 
-/** A refusal the service answered with, in words a model can act on. */
+const NO_TASK = 'No such task in this project.';
+const NO_GROUP = 'No such variant group in this project.';
+
+/**
+ * A refusal the service answered with, in words a model can act on. Fixed texts only for "not
+ * found": a message that echoed an id or a path could name another project's resource (N-01).
+ */
 function refusal(answer: Answer, notFound: string): McpToolResult {
   if (answer.status === 404) return errorResult(notFound);
   const message =
@@ -356,7 +395,7 @@ function refusal(answer: Answer, notFound: string): McpToolResult {
       ? (answer.body as { error: string }).error
       : `xezar answered ${answer.status}`;
   if (answer.status === 400 || answer.status === 409) return errorResult(`${message}. Read again without a cursor.`);
-  throw new Error(`unexpected ${answer.status} from ${notFound}`);
+  throw new Error(`unexpected ${answer.status} for a task read`);
 }
 
 // ---- the tool ------------------------------------------------------------------------------
@@ -370,7 +409,7 @@ export const taskReadsTool = defineTool({
     '- task: one task’s full record. history: its events, newest page first; follow nextCursor for older events.',
     '- context: the plan and agent episode that frame the history. handoff: the task’s handoff journal.',
     '- inbox: the project’s Inbox items. group: one variant group, its tasks side by side.',
-    `Pages are bounded: at most ${TASK_READ_PAGE_ITEMS} items and ${TASK_READ_RESULT_BUDGET_BYTES} bytes. When an answer has a nextCursor, call again with the same view, task and that cursor.`,
+    `Pages are bounded: at most ${TASK_READ_PAGE_ITEMS} items and ${TASK_READ_RESULT_BUDGET_BYTES} bytes. When an answer has a nextCursor, call again with the same view, task and filters plus that cursor.`,
     'An item too large for one answer comes in parts ("part" of "parts"): join the "text" of every part in order, then parse it as JSON.',
     'This reads only the project this connection is bound to. Use it to assess state or recover after a lost answer, not to poll: task events are pushed.',
   ].join('\n'),
@@ -385,7 +424,7 @@ export const taskReadsTool = defineTool({
     }
     const argIssue = checkArgs(args);
     if (argIssue) return errorResult(argIssue);
-    const reader = new TaskReader(service, ctx.project.id);
+    const reader = new TaskReader(service, ctx.project);
     switch (args.view) {
       case 'list':
         return readList(reader, args);
@@ -394,9 +433,9 @@ export const taskReadsTool = defineTool({
       case 'inbox':
         return readInbox(reader, args.cursor);
       case 'group':
-        return readWhole(reader, 'group', args.groupId!, args.cursor);
+        return readGroup(reader, args.groupId!, args.cursor);
       default:
-        return readWhole(reader, args.view, args.taskId!, args.cursor);
+        return readTaskView(reader, args.view, args.taskId!, args.cursor);
     }
   },
 });
@@ -449,43 +488,41 @@ function filterFrom(args: Args): ListFilter {
   };
 }
 
-const sameFilter = (a: ListFilter, b: ListFilter): boolean => JSON.stringify(a) === JSON.stringify(b);
-
 async function readList(reader: TaskReader, args: Args): Promise<McpToolResult> {
-  let filter = filterFrom(args);
+  const filter = filterFrom(args);
+  const filterDigest = digest(JSON.stringify(filter));
   let position: { after?: { createdAt: string; id: string }; x?: Part } = {};
   let pageSize = args.limit;
   if (args.cursor !== undefined) {
-    const decoded = decodeCursor(args.cursor, reader.projectId, 'list', '');
-    if (typeof decoded === 'string') return errorResult(decoded);
-    if (decoded.k !== 'list') return errorResult(FOREIGN_CURSOR);
-    const asked = args.status || args.archived || args.groupId !== undefined || args.query !== undefined;
-    if (asked && !sameFilter(filter, decoded.f)) {
-      return errorResult('This cursor belongs to a list with other filters. Send the same filters, or none, with it.');
+    const decoded = decodeCursor<'list'>(reader.scope, 'list', '', args.cursor);
+    if (!decoded) return errorResult(INVALID_CURSOR);
+    if (decoded.f !== filterDigest) {
+      return errorResult('This cursor belongs to a list with other filters. Send it with the same filters as the call that returned it.');
     }
-    filter = decoded.f;
     position = { ...(decoded.after ? { after: decoded.after } : {}), ...(decoded.x ? { x: decoded.x } : {}) };
     pageSize ??= decoded.n;
   }
 
-  const listed = await reader.get('/runs');
-  if (listed.status !== 200) return refusal(listed, 'This project’s tasks could not be read.');
-  const rows = z
-    .array(apiRunSchema)
-    .parse(listed.body)
-    .filter((run) => matches(run, filter))
-    .sort(newestFirst);
+  const listed = await reader.runs();
+  if (!listed.ok) return refusal(listed.answer, 'This project’s tasks could not be read.');
+  const rows = listed.value.filter((run) => matches(run, filter)).sort(newestFirst);
   const after = position.after;
   const remaining = after ? rows.filter((run) => newestFirst(after, run) < 0) : rows;
   const summaries = remaining.map((run) => scrub(taskSummarySchema.parse(run)));
   const limit = pageSize ?? TASK_READ_PAGE_ITEMS;
-  const sized = pageSize !== undefined ? { n: pageSize } : {};
-  const cursorAfter = (row: TaskSummary): string =>
-    encodeCursor({ v: 1, p: reader.projectId, k: 'list', f: filter, ...sized, after: { createdAt: row.createdAt, id: row.id } });
+  const cursor = (fields: { after?: { createdAt: string; id: string }; x?: Part }): string =>
+    encodeCursor(reader.scope, 'list', '', {
+      v: 1,
+      k: 'list',
+      f: filterDigest,
+      ...(pageSize !== undefined ? { n: pageSize } : {}),
+      ...fields,
+    });
+  const cursorAfter = (row: TaskSummary): string => cursor({ after: { createdAt: row.createdAt, id: row.id } });
+  // While an oversized row is read in parts the keyset stays BEFORE it.
+  const partCursor = (x: Part): string => cursor({ ...(after ? { after } : {}), x });
 
   const head = summaries[0];
-  const partCursor = (x: Part): string =>
-    encodeCursor({ v: 1, p: reader.projectId, k: 'list', f: filter, ...sized, ...(after ? { after } : {}), x });
   if (position.x) {
     // Continuing one oversized row: it must still be the next row, unchanged.
     if (!head || head.id !== position.x.id || digest(JSON.stringify(head)) !== position.x.h) return errorResult(STALE_PART);
@@ -506,8 +543,7 @@ async function readList(reader: TaskReader, args: Args): Promise<McpToolResult> 
   return textResult(envelope(page, more && last ? cursorAfter(last) : undefined));
 }
 
-/** One list row too large for a result. While its parts are read the keyset stays BEFORE it;
- *  after the last part it moves past it. */
+/** One list row too large for a result; after its last part the keyset moves past it. */
 function listPart(
   row: TaskSummary,
   offset: number,
@@ -531,16 +567,16 @@ function listPart(
 // ---- history -------------------------------------------------------------------------------
 
 async function readHistory(reader: TaskReader, taskId: string, args: Args): Promise<McpToolResult> {
-  const notFound = `No task ${taskId} in this project.`;
   let walk: { fs: number; co?: string; before: number; x?: Part } | undefined;
   let pageSize = args.limit;
   if (args.cursor !== undefined) {
-    const decoded = decodeCursor(args.cursor, reader.projectId, 'history', taskId);
-    if (typeof decoded === 'string') return errorResult(decoded);
-    if (decoded.k !== 'history') return errorResult(FOREIGN_CURSOR);
+    const decoded = decodeCursor<'history'>(reader.scope, 'history', taskId, args.cursor);
+    if (!decoded) return errorResult(INVALID_CURSOR);
     walk = { fs: decoded.fs, before: decoded.before, ...(decoded.co ? { co: decoded.co } : {}), ...(decoded.x ? { x: decoded.x } : {}) };
     pageSize ??= decoded.n;
   }
+  const owned = await reader.ownedRun(taskId);
+  if (!owned.ok) return refusal(owned.answer, NO_TASK);
 
   // The cockpit's own page, either the newest or the one that ends just before `before`. The
   // older-page cursor is the cockpit's own shape, rebuilt from the view the walk started on.
@@ -558,7 +594,7 @@ async function readHistory(reader: TaskReader, taskId: string, args: Args): Prom
       ).toString('base64url')}`
     : '';
   const read = await reader.get(`/runs/${encodeURIComponent(taskId)}/history${query}`);
-  if (read.status !== 200) return refusal(read, notFound);
+  if (read.status !== 200) return refusal(read, NO_TASK);
   const page = runHistoryPageSchema.parse(read.body);
   // The walk stays on the view it started from: its file size and correction ride every cursor.
   const live = decodeLiveCursor(page.liveCursor);
@@ -567,11 +603,9 @@ async function readHistory(reader: TaskReader, taskId: string, args: Args): Prom
   const events = scrub(page.events);
   const limit = pageSize ?? TASK_READ_PAGE_ITEMS;
   const cursorBefore = (before: number, x?: Part): string =>
-    encodeCursor({
+    encodeCursor(reader.scope, 'history', taskId, {
       v: 1,
-      p: reader.projectId,
       k: 'history',
-      r: taskId,
       ...(pageSize !== undefined ? { n: pageSize } : {}),
       ...view,
       before,
@@ -648,7 +682,7 @@ async function readInbox(reader: TaskReader, cursor: string | undefined): Promis
   // The route answers `[]` both when the Inbox is empty and when it is switched off. Those must
   // not read the same to a leader (F-03), so an empty answer asks which one it was.
   if (items.length === 0 && !(await reader.inboxEnabled())) {
-    if (cursor !== undefined) return errorResult(FOREIGN_CURSOR);
+    if (cursor !== undefined) return errorResult(INVALID_CURSOR);
     return textResult(
       JSON.stringify({
         view: 'inbox',
@@ -658,37 +692,40 @@ async function readInbox(reader: TaskReader, cursor: string | undefined): Promis
       }),
     );
   }
-  return whole(reader.projectId, 'inbox', '', { available: true }, 'items', scrub(items), cursor);
+  return whole(reader.scope, 'inbox', '', { available: true }, 'items', scrub(items), cursor);
 }
 
 // ---- task, context, handoff, group ---------------------------------------------------------
 
-async function readWhole(
+async function readTaskView(
   reader: TaskReader,
-  view: 'task' | 'context' | 'handoff' | 'group',
-  key: string,
+  view: 'task' | 'context' | 'handoff',
+  taskId: string,
   cursor: string | undefined,
 ): Promise<McpToolResult> {
-  const id = encodeURIComponent(key);
-  if (view === 'group') {
-    const read = await reader.get(`/groups/${id}`);
-    if (read.status !== 200) return refusal(read, `No variant group ${key} in this project.`);
-    return whole(reader.projectId, 'group', key, {}, 'group', scrub(groupResponseSchema.parse(read.body)), cursor);
-  }
-  const notFound = `No task ${key} in this project.`;
-  if (view === 'task') {
-    const read = await reader.get(`/runs/${id}`);
-    if (read.status !== 200) return refusal(read, notFound);
-    return whole(reader.projectId, 'task', key, {}, 'task', scrub(apiRunSchema.parse(read.body)), cursor);
-  }
+  const run = await reader.ownedRun(taskId);
+  if (!run.ok) return refusal(run.answer, NO_TASK);
+  if (view === 'task') return whole(reader.scope, 'task', taskId, {}, 'task', scrub(run.value), cursor);
+  const id = encodeURIComponent(taskId);
   if (view === 'context') {
     const read = await reader.get(`/runs/${id}/history-context`);
-    if (read.status !== 200) return refusal(read, notFound);
-    return whole(reader.projectId, 'context', key, { taskId: key }, 'context', scrub(runHistoryContextSchema.parse(read.body)), cursor);
+    if (read.status !== 200) return refusal(read, NO_TASK);
+    return whole(reader.scope, 'context', taskId, { taskId }, 'context', scrub(runHistoryContextSchema.parse(read.body)), cursor);
   }
   const read = await reader.get(`/runs/${id}/handoff`, 'text');
-  if (read.status !== 200) return refusal(read, notFound);
-  return whole(reader.projectId, 'handoff', key, { taskId: key }, 'markdown', scrub(z.string().parse(read.body)), cursor);
+  if (read.status !== 200) return refusal(read, NO_TASK);
+  return whole(reader.scope, 'handoff', taskId, { taskId }, 'markdown', scrub(z.string().parse(read.body)), cursor);
+}
+
+async function readGroup(reader: TaskReader, groupId: string, cursor: string | undefined): Promise<McpToolResult> {
+  // M-07: a group is ONE resource. Every member is proved the project's — including where its
+  // worktree lives, because the group read computes each member's diff there — or none is read.
+  const runs = await reader.runs();
+  if (!runs.ok) return refusal(runs.answer, NO_GROUP);
+  if (!(await ownGroup(scopeOver(reader.project.root, runs.value), groupId)).ok) return errorResult(NO_GROUP);
+  const read = await reader.get(`/groups/${encodeURIComponent(groupId)}`);
+  if (read.status !== 200) return refusal(read, NO_GROUP);
+  return whole(reader.scope, 'group', groupId, {}, 'group', scrub(groupResponseSchema.parse(read.body)), cursor);
 }
 
 /**
@@ -697,7 +734,7 @@ async function readWhole(
  * refused instead of being spliced from two versions.
  */
 function whole(
-  projectId: string,
+  scope: OwnershipScope,
   view: 'task' | 'context' | 'handoff' | 'inbox' | 'group',
   key: string,
   head: Record<string, unknown>,
@@ -709,9 +746,8 @@ function whole(
   const h = digest(json);
   let offset = 0;
   if (cursor !== undefined) {
-    const decoded = decodeCursor(cursor, projectId, view, key);
-    if (typeof decoded === 'string') return errorResult(decoded);
-    if (decoded.k === 'list' || decoded.k === 'history') return errorResult(FOREIGN_CURSOR);
+    const decoded = decodeCursor<typeof view>(scope, view, key, cursor);
+    if (!decoded) return errorResult(INVALID_CURSOR);
     if (decoded.x.h !== h) return errorResult(STALE_PART);
     offset = decoded.x.o;
   } else {
@@ -722,8 +758,6 @@ function whole(
   const part = partOf(json, offset, envelope);
   if (!part) return errorResult(STALE_PART);
   const nextCursor =
-    part.next !== undefined
-      ? encodeCursor({ v: 1, p: projectId, k: view, key, x: { id: key, o: part.next, h } })
-      : undefined;
+    part.next !== undefined ? encodeCursor(scope, view, key, { v: 1, k: view, x: { id: key, o: part.next, h } }) : undefined;
   return textResult(envelope({ part: part.part, parts: part.parts, text: part.text, ...(nextCursor ? { nextCursor } : {}) }));
 }
