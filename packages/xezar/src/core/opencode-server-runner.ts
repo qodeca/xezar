@@ -504,11 +504,19 @@ class OpencodeSession implements AgentSession {
     body: unknown,
   ): Promise<Record<string, unknown>> {
     if (!this.baseUrl) throw new Error('opencode server not ready');
-    const res = await fetch(`${this.baseUrl}${path}`, {
-      method,
-      headers: body !== undefined ? { 'content-type': 'application/json' } : {},
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
+    // Only the transport rejection is wrapped — every successful response, and
+    // every non-2xx one, takes exactly the path it always did (#153).
+    const startedAt = Date.now();
+    let res: Response;
+    try {
+      res = await fetch(`${this.baseUrl}${path}`, {
+        method,
+        headers: body !== undefined ? { 'content-type': 'application/json' } : {},
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      });
+    } catch (err) {
+      throw new Error(describeFetchFailure(err, method, path, Date.now() - startedAt));
+    }
     if (!res.ok) {
       const detail = await res.text().catch(() => '');
       throw new Error(`${method} ${path} → ${res.status} ${detail.slice(0, 200)}`);
@@ -573,6 +581,71 @@ function safeStringify(value: unknown): string {
   } catch {
     return String(value);
   }
+}
+
+/** How deep `cause` is followed before the walk gives up — a cheap guard
+ *  against both a long chain and one that points back at itself. */
+const MAX_CAUSE_DEPTH = 4;
+
+const UNDICI_TIMEOUT_HINT =
+  "Node's built-in fetch gives up on a request that stays silent for 300s; a slow local model can take longer than that to answer.";
+
+/** Names/codes undici uses for its own 300s default. Matched on the rendered
+ *  cause text, so a nested one still counts. */
+const UNDICI_TIMEOUT_MARKERS = /UND_ERR_(?:HEADERS|BODY)_TIMEOUT|(?:Headers|Body)TimeoutError/i;
+
+/**
+ * Node's built-in fetch rejects EVERY transport failure as the same opaque
+ * `TypeError: fetch failed`. The reason lives in `.cause` — an undici
+ * `HeadersTimeoutError`, a reset socket, a refused connection — and the runner
+ * used to drop it, so a user had nothing to diagnose with (#153). One line,
+ * with the cause and the elapsed seconds that make undici's 300s default
+ * recognisable on sight.
+ */
+export function describeFetchFailure(
+  err: unknown,
+  method: string,
+  path: string,
+  elapsedMs: number,
+): string {
+  const head = err instanceof Error && err.message ? err.message : String(err);
+  const cause = describeCause((err as { cause?: unknown } | null | undefined)?.cause);
+  let message = `${head} after ${formatSeconds(elapsedMs)} (${method} ${path})`;
+  if (cause) message += ` — ${cause}`;
+  if (cause && UNDICI_TIMEOUT_MARKERS.test(cause)) message += `. ${UNDICI_TIMEOUT_HINT}`;
+  return message;
+}
+
+/**
+ * Render an error `cause` without assuming anything about its shape: it may be
+ * absent, a string, a plain object, a primitive, or an Error whose own `cause`
+ * carries the real reason. Always one line, never throws.
+ */
+function describeCause(value: unknown, depth = 0): string | undefined {
+  if (value === undefined || value === null || depth >= MAX_CAUSE_DEPTH) return undefined;
+  if (typeof value === 'string') return oneLine(value) || undefined;
+  if (typeof value !== 'object') return oneLine(String(value)) || undefined;
+
+  const rec = value as Record<string, unknown>;
+  const name = stringField(rec, 'name');
+  const code = stringField(rec, 'code');
+  const message = oneLine(stringField(rec, 'message') ?? '');
+  const label = name && code ? `${name} (${code})` : (name ?? (code ? `(${code})` : undefined));
+  const own = [label, message && message !== label ? message : undefined].filter(Boolean).join(': ');
+  const nested = describeCause(rec.cause, depth + 1);
+  if (!own) return nested ?? (oneLine(safeStringify(value)).slice(0, 200) || undefined);
+  return nested ? `${own} — caused by ${nested}` : own;
+}
+
+/** Seconds, so a 300s wall is obvious; one decimal below 10s so a fast failure
+ *  does not read as "after 0s". */
+function formatSeconds(ms: number): string {
+  const seconds = Math.max(0, ms) / 1000;
+  return `${seconds >= 10 ? Math.round(seconds) : Math.round(seconds * 10) / 10}s`;
+}
+
+function oneLine(text: string): string {
+  return text.replace(/\s+/g, ' ').trim();
 }
 
 function wrapSpawnError(err: unknown, bin: string): Error {
