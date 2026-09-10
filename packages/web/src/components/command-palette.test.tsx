@@ -81,6 +81,7 @@ function indexed(
     createdAt: '2026-07-14T10:00:00Z',
     archived: false,
     workflow: 'build',
+    runner: 'claude',
     ...overrides,
   }
 }

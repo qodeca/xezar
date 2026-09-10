@@ -334,6 +334,35 @@ export const runIndexEntrySchema = z.object({
    *  refinement `workflowLabel` applies needs `steps[]`, which this row deliberately omits, so
    *  a `(planned)` chain reads as itself here rather than as its first agent's name. */
   workflow: z.string(),
+  /**
+   * The backend this run actually executed as — RESOLVED, not the raw record field.
+   *
+   * `RunRecord.runner` is optional because the record keeps only what the caller ASKED for; the
+   * run itself executes as `input.runner ?? config.defaultRunner`. A project-scoped surface can
+   * finish that resolution in the browser because it already holds one `GET /config`. This one
+   * cannot: its rows span every registered project, and resolving per row would be one request
+   * per project. So the builder — which already iterates per project — reads that project's
+   * config once and answers the resolved value here.
+   */
+  runner: runnerSchema,
+  /** Present ONLY when true: the run recorded no `runner` of its own and `runner` above is the
+   *  project's default. The cockpit renders an inherited value muted — visible, but plainly
+   *  nobody's choice. Absent means the run chose its own. */
+  runnerInherited: z.boolean().optional(),
+  /** The model string the run recorded, VERBATIM (`RunRecord.model`). Absent means none was
+   *  recorded and the backend picked, which the cockpit prints as a muted `auto` — the same word
+   *  the task detail header uses. Never prettified through a catalog: a locally-hosted backend's
+   *  own id is the only honest answer. */
+  model: z.string().optional(),
+  /**
+   * How many DISTINCT backends this run's recorded steps used — a workflow may name one per step.
+   *
+   * A COUNT, deliberately, and present only when it is greater than 1. This row exists to be
+   * slim; `steps[]` is exactly the half it refuses to carry, so the mixed-chain signal is derived
+   * server-side and reduced to the one number the cell renders (`Claude Code +1`). Absent means
+   * one backend or none — which is every ordinary run.
+   */
+  stepBackends: z.number().optional(),
   /** The task's branch, when it has one — a column on the global page, and the one field that
    *  makes a cross-project row identifiable at a glance without opening it. */
   branch: z.string().optional(),

@@ -93,7 +93,17 @@ export function paletteScore(value: string, search: string, keywords?: string[])
  * no id to know. `null` therefore means "wherever we already are", which is exactly how the
  * scope-wrapping navigate reads an unprefixed target.
  */
-export type PaletteTask = Omit<RunIndexEntry, 'projectId'> & { projectId: string | null }
+/**
+ * The Tool/Model fields `RunIndexEntry` carries for the global TABLE are deliberately not part of
+ * a palette row. The palette shows a title, a status and a project; and the local half of this
+ * list is built from `RunRecord`s, whose project default this component never reads. A palette row
+ * carrying a GUESSED runner would be worse than one carrying none, so they are omitted rather than
+ * defaulted — add them here only alongside the config read that could resolve them honestly.
+ */
+export type PaletteTask = Omit<
+  RunIndexEntry,
+  'projectId' | 'runner' | 'runnerInherited' | 'model' | 'stepBackends'
+> & { projectId: string | null }
 
 /**
  * The runs `useRuns()` answered for, plus every other project's from the cross-project index.

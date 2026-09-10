@@ -114,6 +114,90 @@ describe('workspace runs index API', () => {
     contexts.disposeAll();
   });
 
+  it("resolves each row's runner against ITS OWN project's default, and carries the model verbatim", async () => {
+    // Two projects with different `defaultRunner`s is the case the browser cannot answer: rows
+    // span projects, so resolving client-side would be one config request per project.
+    mkdirSync(join(otherRoot, '.xezar'), { recursive: true });
+    writeFileSync(
+      join(otherRoot, '.xezar/config.json'),
+      JSON.stringify({ defaultRunner: 'opencode' }),
+      'utf8',
+    );
+    await registerProject(repoRoot);
+    await registerProject(otherRoot);
+    seedColdProject(otherRoot, [
+      // Chose nothing — this project's own default applies, and the row says so.
+      storedRun({ id: 'cold-inherited', title: 'Inherited', createdAt: '2026-07-15T12:00:00Z' }),
+      // Chose both. The model string is whatever the caller asked for, never a catalog lookup.
+      storedRun({
+        id: 'cold-chosen',
+        title: 'Chosen',
+        createdAt: '2026-07-15T11:00:00Z',
+        runner: 'codex',
+        model: 'gpt-5-codex',
+      }),
+      // A locally-hosted model id survives byte for byte.
+      storedRun({
+        id: 'cold-local',
+        title: 'Local',
+        createdAt: '2026-07-15T10:30:00Z',
+        runner: 'opencode',
+        model: 'local/qwen3-coder-30b',
+      }),
+    ]);
+
+    const body = await getIndex();
+    const row = (id: string) => body.runs.find((entry) => entry.id === id)!;
+
+    expect(row('cold-inherited').runner).toBe('opencode');
+    expect(row('cold-inherited').runnerInherited).toBe(true);
+    expect(Object.keys(row('cold-inherited'))).not.toContain('model');
+
+    expect(row('cold-chosen').runner).toBe('codex');
+    expect(Object.keys(row('cold-chosen'))).not.toContain('runnerInherited');
+    expect(row('cold-chosen').model).toBe('gpt-5-codex');
+    expect(row('cold-local').model).toBe('local/qwen3-coder-30b');
+  });
+
+  it('derives the mixed-chain signal as a COUNT, because the row carries no steps', async () => {
+    await registerProject(repoRoot);
+    await registerProject(otherRoot);
+    const step = (id: string, backend?: string) => ({
+      id,
+      name: id,
+      kind: 'agent',
+      status: 'done',
+      iterations: 1,
+      tokensUsed: 0,
+      ...(backend ? { backend } : {}),
+    });
+    seedColdProject(otherRoot, [
+      storedRun({
+        id: 'cold-mixed',
+        title: 'Mixed chain',
+        createdAt: '2026-07-15T12:00:00Z',
+        runner: 'claude',
+        steps: [step('plan', 'claude'), step('build', 'codex'), step('check')],
+      }),
+      storedRun({
+        id: 'cold-single',
+        title: 'One backend',
+        createdAt: '2026-07-15T11:00:00Z',
+        runner: 'claude',
+        steps: [step('plan', 'claude'), step('build', 'claude')],
+      }),
+    ]);
+
+    const body = await getIndex();
+    const row = (id: string) => body.runs.find((entry) => entry.id === id)!;
+
+    expect(row('cold-mixed').stepBackends).toBe(2);
+    // Absent when it would say nothing — one backend, or none, is every ordinary run.
+    expect(Object.keys(row('cold-single'))).not.toContain('stepBackends');
+    // And the expensive half still never reaches the wire; the count is the whole point.
+    expect(row('cold-mixed')).not.toHaveProperty('steps');
+  });
+
   it('sends the slim row — no steps, and optional keys absent rather than null', async () => {
     await registerProject(repoRoot);
     await registerProject(otherRoot);
@@ -147,6 +231,10 @@ describe('workspace runs index API', () => {
       // The global Tasks page's own columns: always-present workflow, plus branch/startedAt
       // when the run has them (this one does not — see the absent-key assertions below).
       workflow: 'build',
+      // Always present and RESOLVED: this record chose no runner, so the row carries the
+      // project's own `defaultRunner` and says out loud that nobody picked it.
+      runner: 'claude',
+      runnerInherited: true,
     });
     // The fat keys neither consumer has a use for never reach the wire — `workflow` rides along
     // as a plain string, `steps[]` and `workflowDef` (the expensive half) do not.
@@ -170,6 +258,10 @@ describe('workspace runs index API', () => {
       'peakRssBytes',
       'peakProcCount',
       'usage',
+      // No model was recorded and every step shared one backend (there are none), so neither
+      // key reaches the wire: the cockpit prints a muted `auto` and no mixed-chain marker.
+      'model',
+      'stepBackends',
     ]) {
       expect(Object.keys(row!), key).not.toContain(key);
     }

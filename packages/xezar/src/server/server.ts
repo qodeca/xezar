@@ -47,7 +47,7 @@ import {
 } from '@qodeca/xezar-contract';
 import { detectEnvironment } from '../core/backend-detect.ts';
 import { RUNNER_IDS } from '../core/agent-runner.ts';
-import type { ContentBlock } from '../core/agent-runner.ts';
+import type { ContentBlock, RunnerId } from '../core/agent-runner.ts';
 import { AGENT_MODELS_LOCKED_ERROR, agentModelsLocked } from '../core/agent-model-policy.ts';
 import { discoverClaudeModels } from '../core/claude-model-catalog.ts';
 import { discoverCodexModels } from '../core/codex-model-catalog.ts';
@@ -5453,8 +5453,24 @@ export function createApp(deps: ServerDeps) {
     return numbers;
   };
 
-  const runIndexEntry = (projectId: string, run: RunRecord): RunIndexEntry => {
+  /**
+   * How many DISTINCT backends a run's recorded steps used. A step that never ran recorded no
+   * backend and is not counted — absent is "nothing happened here", never a second backend.
+   *
+   * Derived HERE because the index row carries no `steps[]` by design (see the schema's header).
+   * The cockpit's `stepBackendCount` applies the identical rule to the fat record on the
+   * per-project table; keep the two the same.
+   */
+  const distinctStepBackends = (run: RunRecord): number =>
+    new Set(run.steps.flatMap((step) => (step.backend ? [step.backend] : []))).size;
+
+  const runIndexEntry = (
+    projectId: string,
+    run: RunRecord,
+    defaultRunner: RunnerId,
+  ): RunIndexEntry => {
     const usage = currentUsage(run.id);
+    const backends = distinctStepBackends(run);
     return {
     projectId,
     id: run.id,
@@ -5469,6 +5485,15 @@ export function createApp(deps: ServerDeps) {
     archived: run.archived,
     ...(run.autoResumeAt !== undefined ? { autoResumeAt: run.autoResumeAt } : {}),
     workflow: run.workflow,
+    // Resolved, and flagged when nobody chose it. The record holds only what the caller ASKED
+    // for; the run executes as `input.runner ?? config.defaultRunner` (`workflows/run.ts`), and
+    // a cross-project row has no cheap way to finish that resolution in the browser.
+    runner: run.runner ?? defaultRunner,
+    ...(run.runner === undefined ? { runnerInherited: true } : {}),
+    ...(run.model !== undefined ? { model: run.model } : {}),
+    // Only when it says something: 0 or 1 backend is every ordinary run, and a key nobody reads
+    // is exactly the weight this slim row exists to refuse.
+    ...(backends > 1 ? { stepBackends: backends } : {}),
     ...(run.branch !== undefined ? { branch: run.branch } : {}),
     ...(run.startedAt !== undefined ? { startedAt: run.startedAt } : {}),
     // The tracker-reference inputs, verbatim — the cockpit's `taskReference()` owns the rule
@@ -5537,9 +5562,14 @@ export function createApp(deps: ServerDeps) {
           owned ? owned.store.listRuns() : readRunIndexFromDisk(projectDataDir(project.root))
         ).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
         if (recent.length > RUNS_INDEX_PER_PROJECT) truncated.push(project.id);
+        // ONE config read per project, not per row: what a task that chose no runner actually ran
+        // as. `loadConfig` never throws and always materializes `defaultRunner`, so an absent or
+        // malformed `.xezar/config.json` degrades to the same 'claude' the engine itself would
+        // have used — never to a missing column.
+        const { defaultRunner } = await loadConfig(project.root);
         const mentioned: number[] = [];
         for (const run of recent.slice(0, RUNS_INDEX_PER_PROJECT)) {
-          runs.push(runIndexEntry(project.id, run));
+          runs.push(runIndexEntry(project.id, run, defaultRunner));
           mentioned.push(...mentionedReferenceNumbers(run));
         }
         if (mentioned.length > 0) {
