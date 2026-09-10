@@ -2785,11 +2785,22 @@ make_gh_stub() {
 # Offline stand-in for `gh`. Serves recorded bodies; never opens a socket.
 [ "${1:-}" = "api" ] || { printf 'stub gh: only `api` is implemented, got "%s"\n' "${1:-}" >&2; exit 64; }
 path="${2:-}"
+dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/responses"
+# The RAW path, query and all, is recorded so a case can assert what was actually asked for. G1
+# (#186 review): a stub that silently discards the query cannot tell "the request carried
+# `filter=all`" from "the request forgot it and got the whole history anyway".
+printf '%s\n' "$path" >> "$dir/requests.log"
 # A query string selects a representation of the same resource, not a different one, so it is not
 # part of the key. `?per_page=100` (F-A7) must not need its own recorded body.
-path="${path%%\?*}"
-key="$(printf '%s' "$path" | tr '/' '_')"
-dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/responses"
+base="${path%%\?*}"
+key="$(printf '%s' "$base" | tr '/' '_')"
+# …but `filter` is the one parameter that changes WHICH runs come back. When a case records a
+# `.filtered` body, that body is what GitHub's DEFAULT (`filter=latest`) would return, and a request
+# that does not ask for `filter=all` receives it. That is how a fixture can prove the query matters.
+case "$path" in
+  *filter=all*) : ;;
+  *) [ -f "$dir/$key.filtered" ] && key="$key.filtered" ;;
+esac
 if [ -f "$dir/$key.fail" ]; then cat "$dir/$key.fail" >&2; exit 1; fi
 if [ -f "$dir/$key" ]; then cat "$dir/$key"; exit 0; fi
 printf 'gh: Not Found (HTTP 404)\n' >&2
@@ -3036,7 +3047,7 @@ printf '%s' "$out" | grep -q 'SKIPPED (credential-gated' \
 # `total_count` is computed rather than written, so a case that adds a run cannot leave a stale count
 # behind and get refused for truncation instead of for the thing it is testing. Parsing here also
 # means a malformed case body fails loudly in the fixture rather than quietly inside the script.
-integ_verify_runs() { # <fixture root> <JSON for the `verify` runs, comma-separated>
+integ_verify_runs() { # <fixture root> <JSON for the `verify` runs, comma-separated> [.filtered suffix]
   node -e '
     const fs = require("fs");
     const list = JSON.parse("[" + process.argv[2] + `,
@@ -3044,22 +3055,77 @@ integ_verify_runs() { # <fixture root> <JSON for the `verify` runs, comma-separa
       {"name":"fixture-extra","status":"completed","conclusion":"success","started_at":"2026-09-10T13:00:00Z"},
       {"name":"actionlint","status":"completed","conclusion":"success","started_at":"2026-09-10T13:00:00Z"},
       {"name":"integration / integration","status":"completed","conclusion":"skipped","started_at":"2026-09-10T13:00:00Z"}]`);
+    // Every real run carries an id and an app; a case that does not care about either gets the same
+    // GitHub Actions app id this repository actually reports (15368) and a stable synthetic id, so
+    // the cross-provider refusal (G3) fires only for the cases that deliberately mix sources.
+    list.forEach((r, i) => {
+      if (r.id === undefined) r.id = 500000000 + i;
+      if (r.app === undefined) r.app = { id: 15368 };
+      if (r.app === null) delete r.app;
+    });
     fs.writeFileSync(process.argv[1], JSON.stringify({ total_count: list.length, check_runs: list }) + "\n");
-  ' "$1/.stub/responses/repos_qodeca_xezar_commits_${GOOD_HEAD}_check-runs" "$2" \
+  ' "$1/.stub/responses/repos_qodeca_xezar_commits_${GOOD_HEAD}_check-runs${3:-}" "$2" \
     || bad "fixture body for $1" "integ_verify_runs could not build the check-runs JSON"
 }
 
 # THE BUG ITSELF. An older green listed first, a newer red second. Merging on this is exactly what
 # #180 reports, and the old `$1==n{print; exit}` read the green and passed.
+#
+# G2 (#186 review): the refusal has to name WHICH run failed, so this case carries real-shaped ids
+# and asserts the deciding id — a count of alternatives is not an identity, and an operator
+# diagnosing a red gate should not have to reconstruct the selection by hand.
 root="$(integ_fixture dup-older-green-masks-newer-red)"
 integ_verify_runs "$root" '
-  {"name":"verify","status":"completed","conclusion":"success","started_at":"2026-09-10T13:11:54Z"},
-  {"name":"verify","status":"completed","conclusion":"failure","started_at":"2026-09-10T13:23:14Z"}'
+  {"id":102890959295,"name":"verify","status":"completed","conclusion":"success","started_at":"2026-09-10T13:11:54Z",
+   "html_url":"https://github.com/qodeca/xezar/actions/runs/34481135370/job/102890959295"},
+  {"id":102887870384,"name":"verify","status":"completed","conclusion":"failure","started_at":"2026-09-10T13:23:14Z",
+   "html_url":"https://github.com/qodeca/xezar/actions/runs/34481135370/job/102887870384"}'
 integ_expect_refusal "an older green does not mask a newer red run of the same name" "$root" "checks.failed"
 out="$(integ_run "$root")"
 printf '%s' "$out" | grep -q 'newest of 2 runs' \
   && ok "the refusal says the verdict came from the newest of several runs of that name" \
   || bad "the refusal names the run it read" "$out"
+printf '%s' "$out" | grep -q 'run 102887870384 started 2026-09-10T13:23:14Z' \
+  && ok "the refusal names the deciding run id and its start, not just how many there were" \
+  || bad "the refusal names the deciding run id and its start" "$out"
+printf '%s' "$out" | grep -qF 'job/102887870384' \
+  && ok "the refusal carries a link to the run an operator has to open" \
+  || bad "the refusal carries the deciding run URL" "$out"
+# …and it must name the RED one, not merely some id. A refusal quoting the green run would send the
+# operator to a page that shows a pass.
+printf '%s' "$out" | grep -q 'run 102890959295' \
+  && bad "the refusal points at the failing run, not the superseded green one" "$out" \
+  || ok "the refusal points at the failing run, not the superseded green one"
+
+# The same obligation on the other two refusal shapes: pending and ambiguous must be locatable too.
+root="$(integ_fixture identity-pending)"
+integ_verify_runs "$root" '
+  {"id":102893493207,"name":"verify","status":"completed","conclusion":"success","started_at":"2026-09-10T13:32:07Z"},
+  {"id":102895908183,"name":"verify","status":"in_progress","conclusion":null,"started_at":"2026-09-10T13:46:03Z"}'
+out="$(integ_run "$root")"
+printf '%s' "$out" | grep -q 'run 102895908183 started 2026-09-10T13:46:03Z is in_progress' \
+  && ok "a pending refusal names the run that has not finished" \
+  || bad "a pending refusal names the unfinished run" "$out"
+
+root="$(integ_fixture identity-tie)"
+integ_verify_runs "$root" '
+  {"id":102893493207,"name":"verify","status":"completed","conclusion":"success","started_at":"2026-09-10T13:39:16Z"},
+  {"id":102895908183,"name":"verify","status":"completed","conclusion":"failure","started_at":"2026-09-10T13:39:16Z"}'
+out="$(integ_run "$root")"
+printf '%s' "$out" | grep -q 'run 102893493207 .* concluded success' \
+  && printf '%s' "$out" | grep -q 'run 102895908183 .* concluded failure' \
+  && ok "an ambiguous tie names both tied runs and what each concluded" \
+  || bad "an ambiguous tie names both tied runs" "$out"
+
+# A pass says which run it read too. Silence about the selection is what let #180 hide for so long.
+root="$(integ_fixture identity-success)"
+integ_verify_runs "$root" '
+  {"id":102887870384,"name":"verify","status":"completed","conclusion":"failure","started_at":"2026-09-10T13:23:14Z"},
+  {"id":102895908183,"name":"verify","status":"completed","conclusion":"success","started_at":"2026-09-10T13:46:03Z"}'
+out="$(integ_run "$root")"
+printf '%s' "$out" | grep -q 'check verify: success (newest of 2 runs of that name) — run 102895908183' \
+  && ok "a passing check names the run that certified it and says it superseded another" \
+  || bad "a passing check names the run that certified it" "$out"
 
 # The other direction, and the reason "every run must be green" was rejected: a re-run after a real
 # failure is a workflow this project uses (#177), and it has to be able to clear the gate.
@@ -3209,6 +3275,121 @@ printf '%s' "$out" | grep -q 'could not read check runs' \
   && bad "the paged request still reaches the recorded check-runs body" "$out" \
   || ok "the paged request still reaches the recorded check-runs body"
 
+# --- G1 (#186 review): THE REQUEST IS PART OF THE POLICY -------------------------------------------
+#
+# The endpoint's DEFAULT is `filter=latest`, which reduces the set by COMPLETION time and by check
+# suite — a different rule from "every run, ordered by started_at". Measured on the real commit
+# `46553b91…`: the default answers 6 runs and `filter=all` answers 10. A response already narrowed
+# by someone else cannot evidence a policy about all of them.
+#
+# This is the case the previous round could not have: the stub now serves a `.filtered` body to any
+# request that does not ask for `filter=all`, so the fixture tests the QUERY and not merely that a
+# request arrived somewhere. The two bodies are built to disagree in the one direction that matters
+# — the hidden run is NEWER by `started_at` and RED, which is exactly the mismatch between ordering
+# by completion and ordering by start.
+root="$(integ_fixture filter-all-required)"
+# The whole history: a green that started early and a red that started later.
+integ_verify_runs "$root" '
+  {"id":102883935449,"name":"verify","status":"completed","conclusion":"success","started_at":"2026-09-10T13:00:00Z"},
+  {"id":102887870384,"name":"verify","status":"completed","conclusion":"failure","started_at":"2026-09-10T13:20:00Z"}'
+# What a default (`filter=latest`) request sees: the red one is gone, because it COMPLETED first.
+integ_verify_runs "$root" '
+  {"id":102883935449,"name":"verify","status":"completed","conclusion":"success","started_at":"2026-09-10T13:00:00Z"}' \
+  ".filtered"
+integ_expect_refusal "a required check is judged on the whole history, not the default filtered view" \
+  "$root" "checks.failed"
+out="$(integ_run "$root")"
+printf '%s' "$out" | grep -q 'run 102887870384' \
+  && ok "the run the default filter hides is the one the refusal names" \
+  || bad "the hidden run is the one the refusal names" "$out"
+# And the request itself is asserted, so a future edit cannot drop the parameter and stay green on
+# fixtures that happen to record only one body.
+grep -q 'check-runs?filter=all&per_page=100' "$root/.stub/responses/requests.log" \
+  && ok "the check-runs request explicitly asks for filter=all and per_page=100" \
+  || bad "the check-runs request asks for filter=all" "$(cat "$root/.stub/responses/requests.log" 2>&1)"
+
+# The control for that mechanism: the stub really does serve a different body when `filter=all` is
+# missing. Without this, the case above could pass because the `.filtered` body was never used.
+root="$(integ_fixture filter-stub-control)"
+integ_verify_runs "$root" '
+  {"id":1,"name":"verify","status":"completed","conclusion":"failure","started_at":"2026-09-10T13:20:00Z"}'
+integ_verify_runs "$root" '
+  {"id":2,"name":"verify","status":"completed","conclusion":"success","started_at":"2026-09-10T13:00:00Z"}' \
+  ".filtered"
+out="$( cd "$root" && "$root/.stub/gh" api "repos/qodeca/xezar/commits/${GOOD_HEAD}/check-runs?per_page=100" )"
+printf '%s' "$out" | grep -q '"conclusion":"success"' \
+  && ok "the stub serves the narrowed body to a request that omits filter=all" \
+  || bad "the stub serves the narrowed body without filter=all" "$out"
+out="$( cd "$root" && "$root/.stub/gh" api "repos/qodeca/xezar/commits/${GOOD_HEAD}/check-runs?filter=all&per_page=100" )"
+printf '%s' "$out" | grep -q '"conclusion":"failure"' \
+  && ok "the stub serves the whole history to a request that asks for filter=all" \
+  || bad "the stub serves the whole history with filter=all" "$out"
+
+# --- G3 (#186 review): EQUAL NAMES FROM DIFFERENT SOURCES ------------------------------------------
+#
+# Grouping keys on the display name, and GitHub can pin an expected APP per required context while
+# this script reads only names. Under newest-wins a newer green from an unrelated app would then
+# certify the required provider's red. No such collision has been observed on this repository —
+# every run is app 15368 — so the bounded correction is to refuse the group rather than to build a
+# policy engine or to claim an equivalence the script cannot deliver.
+root="$(integ_fixture provider-mixed)"
+integ_verify_runs "$root" '
+  {"id":701,"app":{"id":15368},"name":"verify","status":"completed","conclusion":"failure","started_at":"2026-09-10T13:00:00Z"},
+  {"id":702,"app":{"id":99999},"name":"verify","status":"completed","conclusion":"success","started_at":"2026-09-10T13:20:00Z"}'
+integ_expect_refusal "a newer green from a different app cannot certify another app's failure" \
+  "$root" "checks.ambiguous"
+out="$(integ_run "$root")"
+printf '%s' "$out" | grep -q 'run 701 .* from app 15368' \
+  && printf '%s' "$out" | grep -q 'run 702 .* from app 99999' \
+  && ok "the cross-provider refusal names both runs and the app each came from" \
+  || bad "the cross-provider refusal names the apps" "$out"
+
+# A run whose source cannot be read at all is the same answer, for the same reason.
+root="$(integ_fixture provider-unreadable)"
+integ_verify_runs "$root" '
+  {"id":703,"app":null,"name":"verify","status":"completed","conclusion":"failure","started_at":"2026-09-10T13:00:00Z"},
+  {"id":704,"app":{"id":15368},"name":"verify","status":"completed","conclusion":"success","started_at":"2026-09-10T13:20:00Z"}'
+integ_expect_refusal "a run with no readable source makes the group undecidable" "$root" "checks.ambiguous"
+
+# The control: one app across the group decides normally, so the refusal above is caused by the
+# mixture and not by the check existing. Every fixture in this section relies on that.
+root="$(integ_fixture provider-single-source)"
+integ_verify_runs "$root" '
+  {"id":705,"app":{"id":15368},"name":"verify","status":"completed","conclusion":"failure","started_at":"2026-09-10T13:00:00Z"},
+  {"id":706,"app":{"id":15368},"name":"verify","status":"completed","conclusion":"success","started_at":"2026-09-10T13:20:00Z"}'
+integ_expect_ok "two runs from the same app are decided by the newest as usual" "$root"
+
+# A single run is never a cross-provider question, so it needs no app at all — the same reasoning
+# that lets one run be read without a started_at.
+root="$(integ_fixture provider-single-run)"
+integ_verify_runs "$root" '
+  {"id":707,"app":null,"name":"verify","status":"completed","conclusion":"success","started_at":"2026-09-10T13:00:00Z"}'
+integ_expect_ok "one run of a name is read without needing a readable source" "$root"
+
+# --- G-OTHER (#186 review): a delimiter inside a field must not forge a verdict ---------------------
+#
+# The resolved record is tab-separated, so a `conclusion` of "success<TAB>…" would be read back as
+# `success` by `cut -f3`. Real conclusions are an enum, so this can only ever be an unexpected shape.
+#
+# The tab is written ESCAPED (`\\t` reaches the file as the two characters `\t`), which is the only
+# way to express it: a raw tab inside a JSON string is invalid JSON, so `JSON.parse` would reject the
+# body before any field was read and the case would pass for the wrong reason.
+root="$(integ_fixture conclusion-delimiter)"
+printf '{"total_count":1,"check_runs":[{"id":1,"app":{"id":15368},"name":"verify","status":"completed","conclusion":"success\\tforged","started_at":"2026-09-10T13:00:00Z"}]}\n' \
+  > "$root/.stub/responses/repos_qodeca_xezar_commits_${GOOD_HEAD}_check-runs"
+node -e 'const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).check_runs[0].conclusion;
+  process.exit(c === "success\tforged" ? 0 : 1)' \
+  "$root/.stub/responses/repos_qodeca_xezar_commits_${GOOD_HEAD}_check-runs" \
+  && ok "the delimiter fixture is valid JSON carrying a real tab, so it tests the field and not the parser" \
+  || bad "the delimiter fixture parses to a conclusion containing a tab" "see the recorded body"
+integ_expect_refusal "a conclusion carrying a tab is an unexpected shape, not a success" "$root" "checks.unreadable"
+
+# Count metadata that cannot be true is refused in both directions, not only when it is too large.
+root="$(integ_fixture count-impossible)"
+printf '{"total_count":0,"check_runs":[{"id":1,"app":{"id":15368},"name":"verify","status":"completed","conclusion":"success","started_at":"2026-09-10T13:00:00Z"}]}\n' \
+  > "$root/.stub/responses/repos_qodeca_xezar_commits_${GOOD_HEAD}_check-runs"
+integ_expect_refusal "a total_count smaller than the runs returned is refused as unreadable" "$root" "checks.unreadable"
+
 # THE SECOND COPY OF THE SAME DEFECT, in the same file: a context the BRANCH RULES enforce that the
 # project list does not name was resolved by the identical first-match-wins lookup. `external-gate`
 # is added to the ruleset here so that branch of the code is actually reached — the standard fixture
@@ -3218,8 +3399,8 @@ printf '[{"type":"pull_request","parameters":{"required_approving_review_count":
   {"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"verify"},{"context":"external-gate"}]}}]\n' \
   > "$root/.stub/responses/repos_qodeca_xezar_rules_branches_main"
 printf '{"total_count":7,"check_runs":[
-  {"name":"external-gate","status":"completed","conclusion":"success","started_at":"2026-09-10T13:11:54Z"},
-  {"name":"external-gate","status":"completed","conclusion":"failure","started_at":"2026-09-10T13:23:14Z"},
+  {"id":60000001,"app":{"id":15368},"name":"external-gate","status":"completed","conclusion":"success","started_at":"2026-09-10T13:11:54Z"},
+  {"id":60000002,"app":{"id":15368},"name":"external-gate","status":"completed","conclusion":"failure","started_at":"2026-09-10T13:23:14Z"},
   {"name":"verify","status":"completed","conclusion":"success","started_at":"2026-09-10T13:00:00Z"},
   {"name":"reuse","status":"completed","conclusion":"success","started_at":"2026-09-10T13:00:00Z"},
   {"name":"fixture-extra","status":"completed","conclusion":"success","started_at":"2026-09-10T13:00:00Z"},
@@ -3235,8 +3416,8 @@ printf '[{"type":"pull_request","parameters":{"required_approving_review_count":
   {"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"verify"},{"context":"external-gate"}]}}]\n' \
   > "$root/.stub/responses/repos_qodeca_xezar_rules_branches_main"
 printf '{"total_count":7,"check_runs":[
-  {"name":"external-gate","status":"completed","conclusion":"failure","started_at":"2026-09-10T13:11:54Z"},
-  {"name":"external-gate","status":"completed","conclusion":"success","started_at":"2026-09-10T13:23:14Z"},
+  {"id":60000003,"app":{"id":15368},"name":"external-gate","status":"completed","conclusion":"failure","started_at":"2026-09-10T13:11:54Z"},
+  {"id":60000004,"app":{"id":15368},"name":"external-gate","status":"completed","conclusion":"success","started_at":"2026-09-10T13:23:14Z"},
   {"name":"verify","status":"completed","conclusion":"success","started_at":"2026-09-10T13:00:00Z"},
   {"name":"reuse","status":"completed","conclusion":"success","started_at":"2026-09-10T13:00:00Z"},
   {"name":"fixture-extra","status":"completed","conclusion":"success","started_at":"2026-09-10T13:00:00Z"},
