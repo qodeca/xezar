@@ -1,13 +1,30 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { EventEmitter } from 'node:events';
+import { PassThrough } from 'node:stream';
+import { fileURLToPath } from 'node:url';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { AgentEvent } from './agent-runner.js';
+import type { AgentEvent, AgentRunResult } from './agent-runner.js';
+import type { UiEvent } from './ui-events.js';
 import { buildChildEnv } from './agent-env.js';
 import { detectEnvironment } from './backend-detect.js';
 import { createRunner } from './runner-factory.js';
 import { buildPiArgs, PiRunner } from './pi-runner.js';
+
+/** Only the coalescing tests below swap the child out; every other test in
+ *  this file keeps spawning the real mock CLI through the untouched `spawn`. */
+const spawnHook = vi.hoisted(() => ({ override: null as null | (() => unknown) }));
+
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>();
+  return {
+    ...actual,
+    spawn: (...args: Parameters<typeof actual.spawn>) =>
+      spawnHook.override ? spawnHook.override() : actual.spawn(...args),
+  };
+});
 
 /**
  * The `pi` runner (#387): a new AgentBackend slotted into the runner seam as
@@ -185,5 +202,179 @@ describe('pi spawns under pi credentials, not another runner', () => {
 
   it('keeps the seam identity pi-specific', () => {
     expect(new PiRunner().backend).toBe('pi');
+  });
+});
+
+/** #151 — pi streams text as deltas and emits one v1 `text` per delta, which
+ *  splits turn-end markers across events (appendTurnText joins events with a
+ *  newline, so a split marker is no longer contiguous and never parses). The
+ *  fix coalesces per completed message like codex and opencode. */
+describe('pi v1 text coalescing (claude parity, #151)', () => {
+  const fixture = readFileSync(
+    fileURLToPath(new URL('./__fixtures__/pi/v1-text-coalescing.ndjson', import.meta.url)),
+    'utf8',
+  );
+
+  afterEach(() => {
+    spawnHook.override = null;
+  });
+
+  /** A fake child the runner reads NDJSON from. Writes buffer, then `finish`
+   *  ends stdout and reports the exit code so the runner settles normally. */
+  function fakePiChild(): {
+    child: import('node:child_process').ChildProcessWithoutNullStreams;
+    write: (line: string) => void;
+    finish: (code: number) => void;
+  } {
+    const stdin = new PassThrough();
+    const stdout = new PassThrough();
+    const stderr = new PassThrough();
+    const emitter = new EventEmitter();
+    const child = Object.assign(emitter, {
+      stdin,
+      stdout,
+      stderr,
+      pid: 9876,
+      exitCode: null as number | null,
+      signalCode: null as NodeJS.Signals | null,
+      killed: false,
+      kill: () => {
+        Object.assign(child, { killed: true });
+        return true;
+      },
+    }) as unknown as import('node:child_process').ChildProcessWithoutNullStreams;
+    return {
+      child,
+      write: (line: string) => stdout.write(`${line}\n`),
+      finish: (code: number) => {
+        Object.assign(child, { exitCode: code });
+        stdout.end();
+        emitter.emit('close', code, null);
+      },
+    };
+  }
+
+  function feedStream(lines: string[], uiEvents?: UiEvent[]): {
+    events: AgentEvent[];
+    result: Promise<AgentRunResult>;
+  } {
+    const fake = fakePiChild();
+    spawnHook.override = () => fake.child;
+    const events: AgentEvent[] = [];
+    const session = new PiRunner({ bin: 'pi', timeoutMs: 20_000 }).startSession(
+      { userPrompt: 'do the thing', cwd: process.cwd() },
+      (event) => events.push(event),
+      uiEvents ? { onUiEvent: (e) => uiEvents.push(e) } : undefined,
+    );
+    for (const line of lines) fake.write(line);
+    fake.finish(0);
+    return { events, result: session.result };
+  }
+
+  it('emits ONE v1 text event per completed message, never per delta', async () => {
+    const { events, result } = feedStream(fixture.trim().split('\n').filter(Boolean));
+    await result;
+    const texts = events.filter((e) => e.type === 'text');
+    expect(texts).toEqual([
+      { type: 'text', text: 'Checking the working tree.' },
+      { type: 'text', text: 'All gates passed.' },
+    ]);
+  });
+
+  it('keeps the done marker contiguous when the delta stream splits it', async () => {
+    // The done marker is built at runtime so this source never contains the
+    // parseable literal (the parser would otherwise read it as a real emission).
+    const DONE = 'X-E-Z'.replaceAll('-', '') + ':DONE';
+    const { events, result } = feedStream([
+      JSON.stringify({ id: 's', type: 'response', command: 'get_state', success: true, data: { sessionId: 's1' } }),
+      JSON.stringify({ type: 'message_update', message: {}, assistantMessageEvent: { type: 'text_start', contentIndex: 0, partial: {} } }),
+      JSON.stringify({ type: 'message_update', message: {}, assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: ' tree is clean.\n\n' + DONE.slice(0, 3) } }),
+      JSON.stringify({ type: 'message_update', message: {}, assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: DONE.slice(3) } }),
+      JSON.stringify({ type: 'message_update', message: {}, assistantMessageEvent: { type: 'text_end', contentIndex: 0, content: ' tree is clean.\n\n' + DONE, partial: {} } }),
+      JSON.stringify({ type: 'message_end', message: { role: 'assistant', usage: { input: 1, output: 1, totalTokens: 2, cost: { total: 0 } } } }),
+      JSON.stringify({ type: 'agent_settled' }),
+    ]);
+    await result;
+    const texts = events.filter((e) => e.type === 'text');
+    // One coalesced event carries the whole marker, so the parser sees it intact.
+    expect(texts).toHaveLength(1);
+    const textEvent = texts[0] as Extract<AgentEvent, { type: 'text' }>;
+    expect(textEvent.text).toBe(' tree is clean.\n\n' + DONE);
+    // The done-marker regex (built at runtime) matches the assembled turn text.
+    const doneRe = new RegExp('X-E-Z'.replaceAll('-', '') + ':DONE\\s*$');
+    expect(doneRe.test(textEvent.text.trimEnd())).toBe(true);
+  });
+
+  /** A chunk is a whole message now, not a delta, so the result text has to
+   *  separate them the way claude, codex and opencode all do. Concatenating
+   *  would run two messages together ("…first message.Second message."). */
+  it('joins whole messages with a newline in the result text, like the other runners', async () => {
+    const { result } = feedStream(fixture.trim().split('\n').filter(Boolean));
+    const run = await result;
+    expect(run.text).toBe('Checking the working tree.\nAll gates passed.');
+  });
+
+  /** The coalescer only drains on `complete`/`flush`. pi's read loop can end
+   *  with neither: `interrupt()` (the timeout path) writes `{type:'abort'}` and
+   *  SIGTERMs at once, so stdout ends with no `message_end` and no
+   *  `agent_settled` — the case the runner itself notes as "pi RPC session
+   *  ended before agent_settled". Without a flush after the loop the buffered
+   *  prose is dropped, which is prose a pre-coalescing pi run used to keep. */
+  it('keeps buffered prose when the stream ends before message_end and agent_settled', async () => {
+    const { events, result } = feedStream([
+      JSON.stringify({ id: 's', type: 'response', command: 'get_state', success: true, data: { sessionId: 's1' } }),
+      JSON.stringify({ type: 'message_update', message: {}, assistantMessageEvent: { type: 'text_start', contentIndex: 0, partial: {} } }),
+      JSON.stringify({ type: 'message_update', message: {}, assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: 'Partial prose ' } }),
+      JSON.stringify({ type: 'message_update', message: {}, assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: 'before the kill.' } }),
+      // …and then the process dies: no text_end, no message_end, no agent_settled.
+    ]);
+    const run = await result;
+    const texts = events.filter((e) => e.type === 'text');
+    expect(texts).toEqual([{ type: 'text', text: 'Partial prose before the kill.' }]);
+    expect(run.text).toBe('Partial prose before the kill.');
+  });
+
+  /** GUARD: the post-loop flush must not re-emit text a `message_end` already
+   *  completed. `complete()` deletes the pending bucket, so a later `flush()`
+   *  finds nothing — this pins that and passes both with and without the fix. */
+  it('GUARD: a normally completed turn emits its text exactly once, never twice', async () => {
+    const { events, result } = feedStream([
+      JSON.stringify({ id: 's', type: 'response', command: 'get_state', success: true, data: { sessionId: 's1' } }),
+      JSON.stringify({ type: 'message_update', message: {}, assistantMessageEvent: { type: 'text_start', contentIndex: 0, partial: {} } }),
+      JSON.stringify({ type: 'message_update', message: {}, assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: 'Settled ' } }),
+      JSON.stringify({ type: 'message_update', message: {}, assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: 'prose.' } }),
+      JSON.stringify({ type: 'message_update', message: {}, assistantMessageEvent: { type: 'text_end', contentIndex: 0, content: 'Settled prose.', partial: {} } }),
+      JSON.stringify({
+        type: 'message_end',
+        message: { role: 'assistant', content: [{ type: 'text', text: 'Settled prose.' }], usage: { input: 1, output: 1, totalTokens: 2, cost: { total: 0 } } },
+      }),
+      JSON.stringify({ type: 'agent_settled' }),
+    ]);
+    const run = await result;
+    const texts = events.filter((e) => e.type === 'text');
+    expect(texts).toEqual([{ type: 'text', text: 'Settled prose.' }]);
+    expect(run.text).toBe('Settled prose.');
+  });
+
+  it('GUARD: the v2 item.delta stream still emits per delta, not coalesced', async () => {
+    const uiEvents: UiEvent[] = [];
+    const { result } = feedStream(
+      [
+        JSON.stringify({ id: 's', type: 'response', command: 'get_state', success: true, data: { sessionId: 's1' } }),
+        JSON.stringify({ type: 'message_update', message: {}, assistantMessageEvent: { type: 'text_start', contentIndex: 0, partial: {} } }),
+        JSON.stringify({ type: 'message_update', message: {}, assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: 'Hello ' } }),
+        JSON.stringify({ type: 'message_update', message: {}, assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: 'world' } }),
+        JSON.stringify({ type: 'message_update', message: {}, assistantMessageEvent: { type: 'text_end', contentIndex: 0, content: 'Hello world', partial: {} } }),
+        JSON.stringify({ type: 'message_end', message: { role: 'assistant', usage: { input: 1, output: 1, totalTokens: 2, cost: { total: 0 } } } }),
+        JSON.stringify({ type: 'agent_settled' }),
+      ],
+      uiEvents,
+    );
+    await result;
+    const deltas = uiEvents.filter((e) => e.type === 'item.delta' && e.field === 'text');
+    expect(deltas.map((d) => (d as Extract<UiEvent, { type: 'item.delta' }>).delta)).toEqual([
+      'Hello ',
+      'world',
+    ]);
   });
 });
