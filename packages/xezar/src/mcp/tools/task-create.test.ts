@@ -146,7 +146,20 @@ const tempDirs: string[] = [];
 let fixture: Fixture | undefined;
 // Every variable the fixture pins, restored after each case. The three agent homes and
 // ANTHROPIC_MODEL keep the developer's own agent settings out of `/config`'s `defaultModels`.
-const PINNED = ['XEZ_DRY_RUN', 'XEZ_HOME', 'XEZ_AUTONOMOUS_DEFAULT', 'CLAUDE_CONFIG_DIR', 'CODEX_HOME', 'OPENCODE_CONFIG_DIR', 'ANTHROPIC_MODEL'] as const;
+// XEZ_HANDOFF_FILE / XEZ_TODOS_FILE are unset because the real (dry-run) starts below spawn the
+// mock agent, which writes to whatever those name — inside a xezar task, that is the developer's
+// own handoff file and follow-up inbox.
+const PINNED = [
+  'XEZ_DRY_RUN',
+  'XEZ_HOME',
+  'XEZ_AUTONOMOUS_DEFAULT',
+  'CLAUDE_CONFIG_DIR',
+  'CODEX_HOME',
+  'OPENCODE_CONFIG_DIR',
+  'ANTHROPIC_MODEL',
+  'XEZ_HANDOFF_FILE',
+  'XEZ_TODOS_FILE',
+] as const;
 const saved = Object.fromEntries(PINNED.map((key) => [key, process.env[key]])) as Record<(typeof PINNED)[number], string | undefined>;
 
 const makeDir = (prefix: string): string => {
@@ -166,6 +179,8 @@ function setup(options: SetupOptions = {}, stubStart = true): Fixture {
     process.env[key] = join(home, key.toLowerCase());
   }
   delete process.env.ANTHROPIC_MODEL;
+  delete process.env.XEZ_HANDOFF_FILE;
+  delete process.env.XEZ_TODOS_FILE;
   writeFileSync(
     join(home, 'config.json'),
     JSON.stringify({ composerDefaults: options.composerDefaults ?? {} }),
