@@ -263,6 +263,68 @@ if (args.join(' ') === 'auth status --json') {
       'unknown platform should exit 1',
     );
 
+    // server-deploy — the redeploy an operator runs on a host that is ALREADY
+    // serving. Argument handling ONLY: every case below must be refused before
+    // the command reaches a machine, so nothing here attempts a real deploy.
+    // A fresh XEZ_HOME, because `serverHome` above now carries a recorded
+    // install and "no prior install" is exactly what these cases exercise.
+    assert.match(help.stdout, /xezar server-deploy/);
+    const deployHome = join(root, 'deploy-home');
+    const deployExec = {
+      cwd: consumerDir,
+      env: { ...process.env, XEZ_DRY_RUN: '1', XEZ_HOME: deployHome },
+      timeout: 60_000,
+      maxBuffer: 10 * 1024 * 1024,
+    } as const;
+
+    // An unknown platform must NAME the platform it rejected and list the valid
+    // ones — an operator who typed `--platform ubuntu` has to be able to see
+    // `ubuntu-vps` in the refusal.
+    await assert.rejects(
+      execFile(process.execPath, [cliPath, 'server-deploy', '--platform', 'ubuntu', '--yes'], deployExec),
+      (error: unknown) => {
+        const result = error as { stderr?: string };
+        assert.match(result.stderr ?? '', /unknown platform: ubuntu\b/);
+        assert.match(result.stderr ?? '', /ubuntu-vps/);
+        return true;
+      },
+      'server-deploy with an unknown platform should exit 1',
+    );
+
+    // No --platform AND no recorded install: deploy normally reads the platform
+    // back from the host's own record, so with no record the flag is required.
+    await assert.rejects(
+      execFile(process.execPath, [cliPath, 'server-deploy', '--yes'], deployExec),
+      (error: unknown) => {
+        const result = error as { stderr?: string };
+        assert.match(result.stderr ?? '', /--platform is required/);
+        assert.match(result.stderr ?? '', /ubuntu-vps/);
+        return true;
+      },
+      'server-deploy without --platform and without a recorded install should exit 1',
+    );
+
+    // `--yes` on a host with no prior install must say so and stop. The failure
+    // that matters is the quiet one: "redeploying" a service that was never
+    // installed, on someone else's machine.
+    await assert.rejects(
+      execFile(process.execPath, [cliPath, 'server-deploy', '--platform', 'ubuntu-vps', '--yes'], deployExec),
+      (error: unknown) => {
+        const result = error as { stdout?: string };
+        assert.match(result.stdout ?? '', /no completed .+ install is recorded on this host/);
+        assert.match(result.stdout ?? '', /server-install --platform ubuntu-vps/);
+        return true;
+      },
+      'server-deploy with nothing installed should exit 1',
+    );
+
+    // A refused deploy must leave no trace: it never installed anything, so it
+    // must not leave a record that a later uninstall would try to reverse.
+    await assert.rejects(
+      readFile(join(deployHome, 'server.json'), 'utf8'),
+      'a refused server-deploy must not write a server record',
+    );
+
     // `xezar init` — the first command a new user types. It scaffolds the
     // `.xezar/` project kit, and BACKWARD_COMPATIBILITY.md lists it as a
     // protected CLI surface whose load-bearing rule is stated in AGENTS.md:
