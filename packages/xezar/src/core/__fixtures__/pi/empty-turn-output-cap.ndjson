@@ -1,0 +1,7 @@
+{"id":"state","type":"response","command":"get_state","success":true,"data":{"sessionId":"pi-session-cap","model":{"id":"deepseek-v4-flash-vision"}}}
+{"type":"message_start","message":{"role":"assistant","content":[],"usage":{"input":36359,"output":0,"cacheRead":0,"cacheWrite":0,"totalTokens":36359,"cost":{"total":0}}}}
+{"type":"message_update","usage":{"input":36359,"output":1,"cacheRead":0,"cacheWrite":0,"totalTokens":36360,"cost":{"total":0}},"assistantMessageEvent":{"type":"thinking_start","contentIndex":0}}
+{"type":"message_update","usage":{"input":36359,"output":4096,"cacheRead":0,"cacheWrite":0,"totalTokens":40455,"cost":{"total":0}},"assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":"Now I understand the mock. Let me think about the test design more carefully."}}
+{"type":"message_update","usage":{"input":36359,"output":8192,"cacheRead":0,"cacheWrite":0,"totalTokens":44551,"cost":{"total":0}},"assistantMessageEvent":{"type":"thinking_end","contentIndex":0,"content":"Now I understand the mock. Let me think about the test design more carefully."}}
+{"type":"message_end","message":{"role":"assistant","content":[{"type":"thinking","thinking":"Now I understand the mock. Let me think about the test design more carefully."}],"api":"openai-completions","provider":"dgx-spark","model":"deepseek-v4-flash-vision","usage":{"input":36359,"output":8192,"cacheRead":0,"cacheWrite":0,"totalTokens":44551,"cost":{"total":0}},"stopReason":"length","timestamp":1757494841969}}
+{"type":"agent_settled"}

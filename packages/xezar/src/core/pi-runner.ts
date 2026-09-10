@@ -16,6 +16,7 @@ import { buildChildEnv } from './agent-env.js';
 import { readNdjson } from './ndjson.js';
 import { createPiUiState, mapPiRpcMessage, piTurnStarted } from './pi-ui-mapper.js';
 import { V1TextCoalescer } from './v1-text-coalescer.js';
+import type { StopReason } from './ui-events.js';
 
 const DEFAULT_TIMEOUT_MS = 30 * 60_000;
 /** Grace period between SIGTERM and SIGKILL, matching `claude-cli-runner`. Exported so the
@@ -86,6 +87,13 @@ export class PiRunner implements AgentRunner {
       textChunks.push(text);
       onEvent?.({ type: 'text', text });
     });
+    // Where this turn started in the two output accumulators. "Did the turn
+    // produce anything the user can see?" is then read off what was actually
+    // emitted, instead of a flag every emitting branch has to remember to set
+    // (#164). Taken at every `sendMessage`, because that is also where the v2
+    // turn boundary is drawn (`piTurnStarted`), steering included.
+    let turnTextMark = 0;
+    let turnToolMark = 0;
     let sessionId = spec.sessionId;
     let tokensUsed = 0;
     let spawnError: Error | null = null;
@@ -130,6 +138,8 @@ export class PiRunner implements AgentRunner {
       const mapped = piTurnStarted(piUi);
       piUi = mapped.state;
       for (const event of mapped.events) opts.onUiEvent?.(event);
+      turnTextMark = textChunks.length;
+      turnToolMark = toolCalls.length;
       settled = false;
       return true;
     };
@@ -248,6 +258,15 @@ export class PiRunner implements AgentRunner {
             // interrupted turn) before the turn boundary — the same flush codex
             // and opencode do on turn completion.
             textCoalescer.flush();
+            // A turn that emitted no assistant text and no tool call used to
+            // leave NOTHING in the transcript: the run just parked, and the one
+            // fact that explained it (`output` sitting on the model's cap) lived
+            // only in the raw NDJSON (#164). Say it in one line, before the turn
+            // boundary, and name a cause only when pi's own `stopReason` carried
+            // one.
+            if (textChunks.length === turnTextMark && toolCalls.length === turnToolMark) {
+              onEvent?.({ type: 'note', message: emptyTurnNote(piUi.stopReason) });
+            }
             onEvent?.({ type: 'turn-end' });
             if (opts.autoEndAfterFirstTurn && open && !autoEndTimer) {
               autoEndTimer = setTimeout(end, AUTO_END_DELAY_MS);
@@ -360,6 +379,19 @@ function toPiPrompt(content: ContentBlock[]): {
     else images.push({ type: 'image', data: block.source.data, mimeType: block.source.media_type });
   }
   return { message: text.join('\n'), images };
+}
+
+/**
+ * The one line a silent turn gets (#164). The cause is only ever the stop
+ * reason pi itself reported (`message_end.message.stopReason`, normalized by
+ * `pi-ui-mapper`); every other ending stays uncommitted about why, because the
+ * wire does not say.
+ */
+function emptyTurnNote(stopReason: StopReason): string {
+  if (stopReason === 'max_tokens') {
+    return 'pi: the model produced no output this turn — it hit the output token limit';
+  }
+  return 'pi: the model produced no output this turn — no assistant text and no tool call';
 }
 
 function usageValues(value: unknown): { weighted: number; cost: number } | undefined {

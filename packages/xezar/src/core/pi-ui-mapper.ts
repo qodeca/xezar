@@ -233,12 +233,48 @@ function completeTurn(reason: StopReason, state: PiUiMapperState): PiUiMapping {
 
 function mapMessageEnd(value: Record<string, unknown>, state: PiUiMapperState): PiUiMapping {
   const message = isRecord(value.message) ? value.message : undefined;
-  const usage = message && message.role === 'assistant' ? usageEvent(message.usage) : undefined;
-  if (!usage) return { events: [], state };
+  if (!message || message.role !== 'assistant') return { events: [], state };
+  // The authoritative stop reason rides `message_end.message.stopReason`, NOT a
+  // `message_update` delta: pi's agent loop consumes the model stream's `done`
+  // event itself and re-emits the finished AssistantMessage as `message_end`
+  // (pi 0.85 `@earendil-works/pi-agent-core` `agent-loop.js`
+  // `streamAssistantResponse`), so nothing downstream ever sees `done`. Reading
+  // only that delta flattened every stop to `end_turn` — including `length`,
+  // the output-cap truncation of #164, which then looked exactly like a model
+  // that finished normally with nothing left to say.
+  const stopReason = piStopReason(message.stopReason) ?? state.stopReason;
+  const usage = usageEvent(message.usage);
+  if (!usage) return { events: [], state: { ...state, stopReason } };
   return {
     events: [usage],
-    state: { ...state, turnUsage: usage.usage, turnCostUsd: usage.costUsd ?? null },
+    state: { ...state, stopReason, turnUsage: usage.usage, turnCostUsd: usage.costUsd ?? null },
   };
+}
+
+/**
+ * pi `AssistantMessage.stopReason` → normalized v2 `StopReason`.
+ *
+ * Vocabulary per pi's own RPC contract (`docs/rpc.md` §Types → AssistantMessage,
+ * pi 0.85.1): `"stop" | "length" | "toolUse" | "error" | "aborted"`. An
+ * unrecognized value returns undefined so the caller keeps the reason it had —
+ * a future pi word must never silently become `end_turn`.
+ */
+function piStopReason(value: unknown): StopReason | undefined {
+  switch (string(value)) {
+    case 'length':
+      return 'max_tokens';
+    case 'aborted':
+      return 'cancelled';
+    case 'error':
+      return 'error';
+    // `toolUse` ends a message, not the turn: pi runs the tools and streams
+    // another message, whose own stopReason then overwrites this one.
+    case 'toolUse':
+    case 'stop':
+      return 'end_turn';
+    default:
+      return undefined;
+  }
 }
 
 function usageEvent(value: unknown): Extract<UiEvent, { type: 'usage.updated' }> | undefined {
