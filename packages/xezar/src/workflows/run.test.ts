@@ -11,7 +11,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ContentBlock } from '../core/agent-runner.ts';
 import type { UiEvent } from '../core/ui-events.ts';
 import { createWorktree } from '../git-worktree.ts';
@@ -74,7 +74,14 @@ describe('RunManager directional usage accounting', () => {
     internal = manager as unknown as UsageAccountingHarness;
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    // #125. Every manager built in this file arms the 60 s queue watchdog, and its rescue is
+    // ASYNC: `clearInterval` alone stops the next tick, never the one already running. A manager
+    // left ticking after its temp root is removed appends NDJSON into a directory that no longer
+    // exists — an unhandled rejection attributed to whichever test happens to be running 60 s
+    // later. `dispose()` returns a promise that settles the in-flight rescue; awaiting it before
+    // `rmSync` is the whole fix, and every teardown below does the same.
+    await manager.dispose();
     store.flush();
     rmSync(repoRoot, { recursive: true, force: true });
   });
@@ -210,13 +217,15 @@ describe('RunManager directional usage accounting', () => {
   });
 });
 
-it('parallel variants ignore a worktree opt-out and retain isolated mode', () => {
+it('parallel variants ignore a worktree opt-out and retain isolated mode', async () => {
   const repoRoot = mkdtempSync(join(tmpdir(), 'xez-variant-isolation-'));
   const store = RunStore.open(join(repoRoot, '.local/xezar'));
+  let created: RunManager | undefined;
   try {
     const manager = new RunManager(store, repoRoot, {
       semaphore: new WorkspaceSemaphore({ initial: { maxParallel: 0 } }),
     });
+    created = manager;
     const records = manager.startVariants(
       {
         name: 'quick-task',
@@ -230,6 +239,7 @@ it('parallel variants ignore a worktree opt-out and retain isolated mode', () =>
 
     expect(records.map((record) => record.worktree)).toEqual([undefined, undefined]);
   } finally {
+    await created?.dispose(); // settle the queue watchdog before the root goes (#125)
     store.flush();
     rmSync(repoRoot, { recursive: true, force: true });
   }
@@ -266,7 +276,8 @@ describe('RunManager.recordTurnEnd', () => {
     manager = new RunManager(store, repoRoot);
   });
 
-  afterAll(() => {
+  afterAll(async () => {
+    await manager.dispose(); // settle the queue watchdog before the root goes (#125)
     store.flush();
     rmSync(repoRoot, { recursive: true, force: true });
   });
@@ -430,7 +441,8 @@ describe('RunManager.continueRun override', () => {
     (manager as unknown as { runContinuation: () => Promise<void> }).runContinuation = async () => {};
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await manager.dispose(); // settle the queue watchdog before the root goes (#125)
     store.flush();
     rmSync(repoRoot, { recursive: true, force: true });
   });
@@ -666,7 +678,8 @@ describe('RunManager.settleSuccess — optional review gate', () => {
     manager = new RunManager(store, repoRoot);
   });
 
-  afterAll(() => {
+  afterAll(async () => {
+    await manager.dispose(); // settle the queue watchdog before the root goes (#125)
     store.flush();
     rmSync(repoRoot, { recursive: true, force: true });
     if (savedGate === undefined) delete process.env.XEZ_REVIEW_GATE;
@@ -766,7 +779,8 @@ describe('a chain of 2 selected skills runs BOTH steps, in order (#410)', () => 
     manager = new RunManager(store, repoRoot);
   });
 
-  afterAll(() => {
+  afterAll(async () => {
+    await manager.dispose(); // settle the queue watchdog before the root goes (#125)
     for (const [key, value] of Object.entries(savedEnv)) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
@@ -855,7 +869,8 @@ describe('a single agent step plus a check step gets NO chain note (#410)', () =
     manager = new RunManager(store, repoRoot);
   });
 
-  afterAll(() => {
+  afterAll(async () => {
+    await manager.dispose(); // settle the queue watchdog before the root goes (#125)
     for (const [key, value] of Object.entries(savedEnv)) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
@@ -934,8 +949,9 @@ describe('XEZ:MONITORING parks as running/monitoring, not waiting (#490)', () =>
     currentId = undefined;
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     if (currentId) manager.cancel(currentId); // release the session + repo lock
+    await manager.dispose(); // settle the queue watchdog before the root goes (#125)
     for (const [key, value] of Object.entries(savedEnv)) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
@@ -1102,8 +1118,9 @@ describe('XEZ:ASK parks as waiting and emits ask.requested (#473)', () => {
     currentId = undefined;
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     if (currentId) manager.cancel(currentId);
+    await manager.dispose(); // settle the queue watchdog before the root goes (#125)
     for (const [key, value] of Object.entries(savedEnv)) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
@@ -1291,7 +1308,8 @@ describe('RunManager.persistAttachment without a session (#472)', () => {
     manager = new RunManager(store, repoRoot);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await manager.dispose(); // settle the queue watchdog before the root goes (#125)
     rmSync(repoRoot, { recursive: true, force: true });
   });
 
@@ -1376,7 +1394,8 @@ describe('RunManager queued-stack mutators (#472)', () => {
     manager = new RunManager(store, repoRoot);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await manager.dispose(); // settle the queue watchdog before the root goes (#125)
     rmSync(repoRoot, { recursive: true, force: true });
   });
 
@@ -1686,7 +1705,8 @@ describe('RunManager.hydrateQueuedInput (#472)', () => {
     manager = new RunManager(store, repoRoot);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await manager.dispose(); // settle the queue watchdog before the root goes (#125)
     rmSync(repoRoot, { recursive: true, force: true });
   });
 
@@ -1842,7 +1862,8 @@ describe('queued stacking reaches the backend (#472)', () => {
     manager = new RunManager(store, repoRoot);
   });
 
-  afterAll(() => {
+  afterAll(async () => {
+    await manager.dispose(); // settle the queue watchdog before the root goes (#125)
     for (const [key, value] of Object.entries(savedEnv)) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
@@ -1937,6 +1958,9 @@ describe('recover() carries the queued stack exactly once (#472)', () => {
       expect(jobsOf(manager).get(r.id)?.input.task).toBe(expected);
       // The record is never rewritten — that is what stops the compounding.
       expect(store.getRun(r.id)?.task).toBe('the original task');
+      // Asserted first, then torn down: this record stays `queued`, which is exactly the shape
+      // the queue watchdog re-adopts, and the root is removed in afterEach (#125).
+      await manager.dispose();
     }
   });
 });
@@ -1966,8 +1990,9 @@ describe('native Codex requestUserInput parks and resumes the run (#565)', () =>
     manager = new RunManager(store, repoRoot);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     if (runId) manager.cancel(runId);
+    await manager.dispose(); // settle the queue watchdog before the root goes (#125)
     if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN; else process.env.XEZ_DRY_RUN = savedDryRun;
     if (savedCodexBin === undefined) delete process.env.XEZ_CODEX_BIN; else process.env.XEZ_CODEX_BIN = savedCodexBin;
     store.flush();
@@ -2040,8 +2065,9 @@ describe('registry /skill expansion survives a continuation (#811)', () => {
     runId = undefined;
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     if (runId) manager.cancel(runId);
+    await manager.dispose(); // settle the queue watchdog before the root goes (#125)
     if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
     else process.env.XEZ_DRY_RUN = savedDryRun;
     store.flush();
@@ -2163,8 +2189,9 @@ describe("registry /skill expansion on a fresh run's opening prompt (#278)", () 
     runId = undefined;
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     if (runId) manager.cancel(runId);
+    await manager.dispose(); // settle the queue watchdog before the root goes (#125)
     if (savedDryRun === undefined) delete process.env.XEZ_DRY_RUN;
     else process.env.XEZ_DRY_RUN = savedDryRun;
     store.flush();
@@ -2227,4 +2254,140 @@ describe("registry /skill expansion on a fresh run's opening prompt (#278)", () 
     );
     expect(echoed?.text).toContain('/compact please');
   }, 40_000);
+});
+
+/**
+ * #125 — the queue watchdog's rescue is ASYNC, and `dispose()` used to end at `clearInterval`.
+ * That cancels the NEXT tick and does nothing about the tick already running, so a manager could
+ * still be suspended inside `reviveQueuedRun` — one await away from appending NDJSON — when its
+ * owner removed the data root under it. It surfaced as unhandled `ENOENT` rejections carrying the
+ * temp root of a describe block that had finished long before, attributed to whichever test
+ * happened to be running 60 s later. Coverage instrumentation lost the race reliably; machine
+ * load lost it under plain `npm test` too.
+ *
+ * The discipline is the one AGENTS.md already records for the e2e fixture servers: the signal is
+ * not the exit, so the helper awaits the exit.
+ */
+describe('RunManager.dispose settles the queue watchdog (#125)', () => {
+  let repoRoot: string;
+  let store: RunStore;
+  let manager: RunManager;
+
+  const WORKFLOW = {
+    name: 'quick-task',
+    source: 'built-in' as const,
+    steps: [{ id: 'work', name: 'Work', prompt: '{{task}}' }],
+  };
+
+  /** The exact wedge the watchdog exists for: a `queued` RECORD the engine holds nothing for. */
+  function seedLostQueuedRun(): string {
+    const record = store.createRun({
+      title: 'lost',
+      workflow: 'quick-task',
+      task: 'do the thing',
+      steps: [{ id: 'work', name: 'Work', kind: 'agent' }],
+    });
+    store.updateRun(record.id, { status: 'queued', workflowDef: WORKFLOW });
+    return record.id;
+  }
+
+  const ndjsonOf = (id: string) => {
+    const path = join(repoRoot, '.local/xezar/runs', `${id}.ndjson`);
+    return existsSync(path) ? readFileSync(path, 'utf8') : '';
+  };
+
+  beforeEach(() => {
+    repoRoot = mkdtempSync(join(tmpdir(), 'xez-watchdog-dispose-'));
+    store = RunStore.open(join(repoRoot, '.local/xezar'));
+    manager = new RunManager(store, repoRoot, {
+      semaphore: new WorkspaceSemaphore({ initial: { maxParallel: 0 } }),
+    });
+  });
+
+  afterEach(async () => {
+    await manager.dispose();
+    // One case removes its own root mid-test — that IS the teardown under examination.
+    if (existsSync(repoRoot)) {
+      store.flush();
+      rmSync(repoRoot, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * NEW BEHAVIOUR. Red without the fix: `dispose()` returned `void`, so `await` on it resolved
+   * immediately, `rmSync` removed the root, and the parked rescue then appended into a directory
+   * that no longer existed. Both halves of the fix are pinned — dispose WAITS (the sweep resolves
+   * instead of rejecting) and the rescue STOPS (no watchdog event was written).
+   */
+  it('awaits a rescue that is already in flight, so nothing writes after the root is removed', async () => {
+    const runId = seedLostQueuedRun();
+    // Park the sweep exactly where the race lives: inside the one await `reviveQueuedRun`
+    // crosses, with the NDJSON append still ahead of it. In production that await is
+    // `loadWorkflows` reading the disk; 20 ms of it makes the window deterministic.
+    (manager as unknown as { reviveWorkflow: () => Promise<unknown> }).reviveWorkflow = async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      return WORKFLOW;
+    };
+
+    const sweep = manager.rescueStalledQueue();
+    await manager.dispose();
+
+    expect(ndjsonOf(runId)).not.toContain('queue watchdog');
+    rmSync(repoRoot, { recursive: true, force: true });
+    await expect(sweep).resolves.toBeUndefined();
+  });
+
+  /**
+   * NEW BEHAVIOUR. A torn-down manager stays torn down: a tick that had already been handed to
+   * the event loop finds the flag and makes no moves, rather than re-populating the queue
+   * `dispose()` had just emptied.
+   */
+  it('makes a rescue that starts after dispose a no-op', async () => {
+    const runId = seedLostQueuedRun();
+    await manager.dispose();
+    await manager.rescueStalledQueue();
+    expect(ndjsonOf(runId)).not.toContain('queue watchdog');
+    expect(store.getRun(runId)?.status).toBe('queued');
+  });
+
+  /**
+   * GUARD — passes before and after the fix. The failsafe is what this whole change must not
+   * cost: a live manager still re-adopts a queued run the engine has lost, through the same path,
+   * with the same event.
+   */
+  it('still re-adopts a lost queued run while the manager is live (guard)', async () => {
+    const runId = seedLostQueuedRun();
+    await manager.rescueStalledQueue();
+    const pendingJobs = (manager as unknown as { pendingJobs: Map<string, unknown> }).pendingJobs;
+    expect(pendingJobs.has(runId)).toBe(true);
+    expect(ndjsonOf(runId)).toContain('queue watchdog — task re-queued');
+  });
+
+  /**
+   * GUARD — passes before and after the fix. The schedule did not move: the constructor still
+   * arms a repeating 60 s interval, and it is still the only thing that drives a rescue on its
+   * own. A shutdown path that quietly stopped the watchdog in normal operation would fail here.
+   */
+  it('still arms the rescue on the same repeating 60 s interval (guard)', async () => {
+    vi.useFakeTimers();
+    const armed = new RunManager(store, repoRoot, {
+      semaphore: new WorkspaceSemaphore({ initial: { maxParallel: 0 } }),
+    });
+    try {
+      let sweeps = 0;
+      (armed as unknown as { rescueStalledQueue: () => Promise<void> }).rescueStalledQueue =
+        async () => {
+          sweeps += 1;
+        };
+      await vi.advanceTimersByTimeAsync(59_000);
+      expect(sweeps).toBe(0); // not early
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(sweeps).toBe(1); // 60 s, unchanged
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(sweeps).toBe(2); // and it keeps repeating
+    } finally {
+      await armed.dispose();
+      vi.useRealTimers();
+    }
+  });
 });

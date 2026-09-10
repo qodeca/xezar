@@ -633,6 +633,17 @@ export class RunManager {
   /** The stalled-queue watchdog (see `rescueStalledQueue`). */
   private readonly queueWatchdog: ReturnType<typeof setInterval>;
 
+  /** The rescue sweeps that have STARTED and not settled yet (#125). `clearInterval` cancels the
+   *  next tick; it cannot cancel the tick already running, and a sweep is async — it awaits
+   *  `reviveWorkflow` before appending NDJSON. dispose() settles these so a torn-down manager is
+   *  provably finished writing before its caller removes the data root under it. */
+  private readonly rescuesInFlight = new Set<Promise<void>>();
+
+  /** Set by dispose(): this manager makes no further moves. Re-checked at every await boundary a
+   *  rescue crosses, because a sweep that was already past its first check when dispose() landed
+   *  would otherwise write an event — and re-populate the queue dispose() had just emptied. */
+  private disposed = false;
+
   /** Set by the watchdog for exactly one sweep: ignore the usage-limit hold and make progress. */
   private forceNextPump = false;
 
@@ -678,8 +689,20 @@ export class RunManager {
    * repo-root locks, and empties the queued state so nothing fires later.
    * Live sessions are NOT ended here: run lifecycle stays the caller's policy;
    * dispose only guarantees the manager makes no further moves on its own.
+   *
+   * Every side effect below is SYNCHRONOUS, so a caller that ignores the return value behaves
+   * exactly as it did before #125. The returned promise settles the one thing dispose cannot do
+   * synchronously: a queue-watchdog rescue that had already started. `clearInterval` stops the
+   * next tick, never the running one — the same discipline `AGENTS.md` records for the e2e
+   * fixture servers, where `kill()` only delivers the signal and the helper awaits the exit.
+   * Await it whenever the data root is about to be removed; a test that deletes its temp
+   * directory without awaiting is the ENOENT in #125.
+   *
+   * It never rejects: a sweep that fails still belongs to whoever started it (the watchdog floats
+   * it exactly as before), and teardown must not become a second place that error surfaces.
    */
-  dispose(): void {
+  dispose(): Promise<void> {
+    this.disposed = true;
     this.offUsage();
     this.offSemaphore();
     clearInterval(this.queueWatchdog);
@@ -700,6 +723,7 @@ export class RunManager {
     this.pendingContinuations.clear();
     this.memoryPausing.clear();
     this.lastNamerKey.clear();
+    return Promise.allSettled([...this.rescuesInFlight]).then(() => undefined);
   }
 
   /**
@@ -1075,8 +1099,14 @@ export class RunManager {
    * `continue-N` step and the session before it are durable, which is enough. Otherwise the
    * workflow is revived from the record. A run that can be neither is failed loudly rather than
    * left in the queue as a ghost.
+   *
+   * Both effects here — an NDJSON append and a queue push — must not outlive dispose(), so the
+   * flag is re-read after `reviveWorkflow`, the one await this method crosses (#125). Bailing
+   * leaves the record `queued`, which is exactly what it was: re-adoption is what boot recovery
+   * does for the next owner of this data directory.
    */
   private async reviveQueuedRun(run: RunRecord, reason: string): Promise<void> {
+    if (this.disposed) return;
     const queuedContinuation = [...run.steps]
       .reverse()
       .find((step) => step.status === 'pending' && step.id.startsWith('continue-'));
@@ -1101,6 +1131,7 @@ export class RunManager {
       return;
     }
     const workflow = await this.reviveWorkflow(run);
+    if (this.disposed) return;
     if (!workflow) {
       this.store.updateRun(run.id, {
         status: 'failed',
@@ -1483,13 +1514,30 @@ export class RunManager {
    * honest hold, with a real deadline behind it this time.
    *
    * Public so a test can drive the wedge directly instead of waiting out the interval.
+   *
+   * The sweep itself is `sweepStalledQueue`; this wrapper only publishes it to `rescuesInFlight`
+   * so dispose() can settle it (#125). Every entry point goes through here — the interval and the
+   * tests alike — so nothing can start a sweep that teardown cannot see. The schedule, the
+   * conditions and the effects are untouched.
    */
   async rescueStalledQueue(now = Date.now()): Promise<void> {
+    if (this.disposed) return;
+    const sweep = this.sweepStalledQueue(now);
+    this.rescuesInFlight.add(sweep);
+    try {
+      await sweep;
+    } finally {
+      this.rescuesInFlight.delete(sweep);
+    }
+  }
+
+  private async sweepStalledQueue(now: number): Promise<void> {
     // First, the worst shape: a record that says `queued` while the engine holds no job, no
     // continuation and no queue entry for it. `pump()` cannot see such a run — it iterates the
     // queue, and this one is not in it — so nothing will ever start it. Re-adopt it through the
     // same path boot recovery uses.
     for (const run of this.store.listRuns()) {
+      if (this.disposed) return;
       if (run.status !== 'queued') continue;
       if (this.active.has(run.id) || this.starting.has(run.id)) continue;
       if (this.pendingJobs.has(run.id) || this.pendingContinuations.has(run.id)) continue;
@@ -1497,6 +1545,7 @@ export class RunManager {
       console.warn(`[xez] queue watchdog: re-adopting queued run ${run.id} the engine had lost`);
       await this.reviveQueuedRun(run, 'queue watchdog');
     }
+    if (this.disposed) return;
     if (this.queue.length === 0) return;
     if (this.busySlots() > 0 || this.starting.size > 0) return;
     if (this.semaphore.busy() > 0) return;
