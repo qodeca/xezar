@@ -660,3 +660,147 @@ describe('a server that fails before or during the stream', () => {
     );
   }, 30_000);
 });
+
+/**
+ * #153 — three runs died at almost exactly 5m00s against a slow local model and
+ * every one of them reported the same five words: `opencode: fetch failed`.
+ * Node's built-in fetch rejects every transport failure as that one opaque
+ * `TypeError`, keeping the real reason (undici's own 300s `headersTimeout`) in
+ * `.cause`, which the runner discarded.
+ *
+ * The failure is INJECTED here — the real `fetch` is wrapped so one request
+ * rejects with the error undici would have thrown, and `Date.now` is offset by
+ * the elapsed time being simulated. Nothing in this suite waits 300 seconds.
+ */
+describe('a fetch that rejects at the transport level (#153)', () => {
+  /** Swap in a fetch that fails the FIRST request whose URL contains `match`,
+   *  pretending `advanceMs` of wall clock passed inside that request. */
+  function failFetchOnce(match: string, error: unknown, advanceMs: number): () => void {
+    const realFetch = globalThis.fetch;
+    const realNow = Date.now;
+    let offset = 0;
+    let fired = false;
+    Date.now = () => realNow.call(Date) + offset;
+    type FetchArgs = Parameters<typeof fetch>;
+    globalThis.fetch = ((input: FetchArgs[0], init?: FetchArgs[1]) => {
+      if (!fired && String(input).includes(match)) {
+        fired = true;
+        offset += advanceMs;
+        return Promise.reject(error);
+      }
+      return realFetch.call(globalThis, input, init);
+    }) as typeof fetch;
+    return () => {
+      globalThis.fetch = realFetch;
+      Date.now = realNow;
+    };
+  }
+
+  /** Run one session whose prompt POST fails, and return what the user is told. */
+  async function messageForPromptFailure(error: unknown, advanceMs: number): Promise<string> {
+    const restore = failFetchOnce('/message', error, advanceMs);
+    const { session, v1 } = start();
+    try {
+      await session.result;
+      const event = v1.find((e) => e.type === 'error');
+      return event && event.type === 'error' ? event.message : '';
+    } finally {
+      restore();
+      session.interrupt();
+    }
+  }
+
+  function undiciHeadersTimeout(): TypeError {
+    return new TypeError('fetch failed', {
+      cause: Object.assign(new Error('Headers Timeout Error'), {
+        name: 'HeadersTimeoutError',
+        code: 'UND_ERR_HEADERS_TIMEOUT',
+      }),
+    });
+  }
+
+  it('names the undici cause, the elapsed seconds and what they mean', async () => {
+    const message = await messageForPromptFailure(undiciHeadersTimeout(), 300_000);
+
+    expect(message).toContain('opencode: fetch failed');
+    // The 300s signature is the diagnosis; it has to be visible at a glance.
+    expect(message).toContain('after 300s');
+    expect(message).toContain('HeadersTimeoutError');
+    expect(message).toContain('UND_ERR_HEADERS_TIMEOUT');
+    expect(message).toContain("Node's built-in fetch");
+    // One line — this lands in a step error and an NDJSON event.
+    expect(message.split('\n')).toHaveLength(1);
+  }, 30_000);
+
+  it('carries a nested cause without the hint when the reason is not a timeout', async () => {
+    const socketError = Object.assign(new Error('other side closed'), { code: 'UND_ERR_SOCKET' });
+    const message = await messageForPromptFailure(
+      new TypeError('fetch failed', { cause: new Error('outer', { cause: socketError }) }),
+      12_000,
+    );
+
+    expect(message).toContain('after 12s');
+    expect(message).toContain('UND_ERR_SOCKET');
+    expect(message).toContain('other side closed');
+    expect(message).not.toContain("Node's built-in fetch");
+  }, 30_000);
+
+  it('stays sensible when the cause is absent, is not an Error, or is not an object', async () => {
+    // No cause at all — the elapsed time still has to be reported.
+    const bare = await messageForPromptFailure(new TypeError('fetch failed'), 2_500);
+    expect(bare).toContain('opencode: fetch failed after 2.5s');
+    expect(bare).toContain('POST /session/');
+
+    // A string cause: undici is not the only thing that sets one.
+    const stringCause = await messageForPromptFailure(
+      new TypeError('fetch failed', { cause: 'socket hang up' }),
+      1_000,
+    );
+    expect(stringCause).toContain('socket hang up');
+    expect(stringCause).toContain('after 1s');
+
+    // A plain object that is not an Error — no `name`, no `message`.
+    const objectCause = await messageForPromptFailure(
+      new TypeError('fetch failed', { cause: { code: 'ECONNRESET' } }),
+      500,
+    );
+    expect(objectCause).toContain('ECONNRESET');
+    expect(objectCause).toContain('after 0.5s');
+
+    // The rejection value is not even an Error.
+    const notAnError = await messageForPromptFailure('kaboom', 1_500);
+    expect(notAnError).toContain('opencode: kaboom after 1.5s');
+
+    // Nothing above may leave a stray newline or throw while being built.
+    for (const message of [bare, stringCause, objectCause, notAnError]) {
+      expect(message.split('\n')).toHaveLength(1);
+    }
+  }, 60_000);
+
+  /**
+   * GUARD — pins the behaviour that must NOT change. A request that succeeds
+   * takes exactly the path it always did: no wrapping, no extra event, the same
+   * transcript and the same session id. The non-2xx path has its own guard in
+   * 'surfaces the status and body when the prompt POST is rejected' above.
+   */
+  it('GUARD: leaves a successful request completely unchanged', async () => {
+    const { session, pid, v1, v2 } = start();
+    try {
+      // `session.idle`, not the HTTP turn-end: the two are separate sockets and
+      // the last streamed block can still be in flight when the POST returns.
+      await until(() => v2.some((e) => e.type === 'turn.completed'), 'the turn to complete');
+      session.end();
+      const result = await session.result;
+
+      expect(v1.some((e) => e.type === 'error')).toBe(false);
+      expect(v1[0]).toEqual({ type: 'session', sessionId: 'ses_mock_1' });
+      expect(v1.at(-1)).toEqual({ type: 'done' });
+      expect([...result.text.split('\n')].sort()).toEqual(['Checking the working tree.', 'Done.']);
+      expect(result.tokensUsed).toBe(1500);
+      expect(result.sessionId).toBe('ses_mock_1');
+      expect(isAlive(pid)).toBe(false);
+    } finally {
+      session.interrupt();
+    }
+  }, 30_000);
+});
