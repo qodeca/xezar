@@ -174,14 +174,61 @@ function navigateAndSampleArrival(runId: string): Arrival {
   return { samples, settled }
 }
 
+/**
+ * Park the reader mid-transcript and return the offset they are ACTUALLY left at.
+ *
+ * NOT the offset written — the write is only where it starts. Rows carry
+ * `content-visibility: auto` with a `3rem` intrinsic-size placeholder, so a row that has never
+ * been rendered contributes a guess instead of its height. Scrolling renders a fresh band, the
+ * guesses are replaced by real (smaller) heights, and the transcript keeps SHRINKING for
+ * several frames after the write — measured here, 5672px of content became 5020px. Part of what
+ * it loses is above the viewport, so the browser's own scroll anchoring (`overflow-anchor:
+ * auto`, the default) slides `scrollTop` down to keep the same content on screen: 2386 → 1944.
+ * Anchoring is what moves it, measured rather than assumed — with `overflow-anchor: none` on the
+ * same scroller the transcript still shrinks and `scrollTop` does not move at all.
+ *
+ * The scroller then records THAT offset as where the reader is, and its restore returns them to
+ * it — both correct. Reading `scrollTop` back synchronously captures a number the reader never
+ * ended on, and whether the assertion below notices is a race between the anchoring adjustment
+ * and the next navigation: this laptop leaves first and passes, a slower GitHub runner does not
+ * and fails by the size of the shrink (365px there, #177). So settle FIRST — same rule, and the
+ * same frame-counting unit, as {@link navigateAndSampleArrival}: the departure offset has to be
+ * as final as the arrival one before a 1px budget can mean anything about the restore.
+ */
 function parkCurrentThread(): number {
-  return Number(browser.evaluate(`(() => {
+  browser.evaluate(`(() => {
     const main = document.querySelector('[data-slot="main"]')
     main.dispatchEvent(new WheelEvent('wheel', { deltaY: -120, bubbles: true }))
     main.scrollTop = Math.max(160, Math.round((main.scrollHeight - main.clientHeight) / 2))
     main.dispatchEvent(new Event('scroll', { bubbles: true }))
-    return main.scrollTop
-  })()`))
+    window.__xezParkSettled = null
+    let attempts = 0
+    let still = 0
+    let previous = null
+    const sample = () => {
+      attempts += 1
+      const next = { top: main.scrollTop, height: main.scrollHeight }
+      still = previous && previous.top === next.top && previous.height === next.height ? still + 1 : 0
+      previous = next
+      if (still >= ${STILL_FRAMES}) {
+        window.__xezParkSettled = next
+        return
+      }
+      if (attempts < ${MAX_ARRIVAL_FRAMES}) requestAnimationFrame(sample)
+      else window.__xezParkSettled = 'never-settled'
+    }
+    requestAnimationFrame(sample)
+  })()`)
+  browser.waitForFunction(`window.__xezParkSettled !== null`)
+  const settled = browser.evaluate(`window.__xezParkSettled`) as { top: number; height: number } | 'never-settled'
+  // A park that never stops moving is a real failure and must be reported as one, never
+  // silently sampled anyway — the same contract the arrival sampler keeps.
+  if (settled === 'never-settled') {
+    throw new Error(
+      `xezar e2e: the parked thread never stopped moving in ${MAX_ARRIVAL_FRAMES} frames`,
+    )
+  }
+  return settled.top
 }
 
 beforeAll(async () => {
@@ -316,14 +363,15 @@ describe('progressive long-session history', () => {
     expect(Math.min(...cachedArrival.samples.map(({ top }) => top))).toBeGreaterThan(40)
     // …and the arrival ENDS on the position the reader parked at. One pixel of slack, and it is
     // for sub-pixel rounding of a single `scrollTop`/`handle.scrollTo` write on a fractional
-    // device pixel ratio — nothing else. There is no timing to absorb any more, so nothing else
-    // needs absorbing: `parked` was written to `scrollTop` and read back, and the restore writes
-    // that same number. Anything larger is the scroller landing somewhere else — a restore that
-    // missed, a re-pin to the live tail, or scroll anchoring dragging the reader off the offset
-    // they were just given. That is what the 200px budget this replaces could not distinguish
-    // from a slow machine, and a slow machine is what it ended up measuring: 365px on a GitHub
-    // runner, 0 here (#133). Measured here: settled exactly on `parked`, and 1825px off it with
-    // the cache restore disabled.
+    // device pixel ratio — nothing else. Nothing else needs absorbing, because the timing is
+    // absorbed WHERE IT HAPPENS: `parked` is the offset the departure SETTLED on, not the one it
+    // was written to, so the restore has one number to reproduce. Anything larger is the
+    // scroller landing somewhere else — a restore that missed, or a re-pin to the live tail.
+    // That is what the 200px budget this replaces could not distinguish from a slow machine
+    // (#133). The 365px this saw on a GitHub runner was neither: it was scroll anchoring moving
+    // the DEPARTURE after `parked` had been read, which is now settled for rather than budgeted
+    // for — see `parkCurrentThread` (#177). Measured here: settled exactly on `parked`, and
+    // 1825px off it with the cache restore disabled.
     expect(Math.abs(cachedArrival.settled.top - parked)).toBeLessThanOrEqual(1)
     browser.screenshot(join(artifactsDir, 'progressive-history-thread-switch.png'), { viewport: true })
 
