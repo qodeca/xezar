@@ -111,10 +111,24 @@ class OpencodeSession implements AgentSession {
   private tokensUsed = 0;
   private lastCost = 0;
   private turnInFlight = false;
+  /** Is the SSE feed connected right now? The asynchronous prompt submission
+   *  is only used while it is — `session.idle` on that feed is the only thing
+   *  that ends such a turn, so submitting without a feed would be a turn with
+   *  no ordinary way to finish. */
+  private feedLive = false;
+  /** Resolves once the SSE feed is gone. No `session.idle` can arrive after
+   *  that, so a turn waiting for one has to stop waiting (#168). */
+  private feedEnded!: Promise<void>;
+  private resolveFeedEnded!: () => void;
+  /** Resolver for the in-flight turn's `session.idle`; armed only while a
+   *  prompt that was submitted asynchronously is running. */
+  private turnIdle: (() => void) | undefined;
   /** Protocol v2 emission — additive alongside v1 (`onEvent` keeps flowing
    *  byte-identical); the channel is `opts.onUiEvent` (RunManager wiring
-   *  lands in R2 step 2.1). Unlike v1's HTTP-response-synthesized turn-end,
-   *  v2 takes its `turn.completed` from the wire `session.idle`. */
+   *  lands in R2 step 2.1). v2 has always taken its `turn.completed` from the
+   *  wire `session.idle`; since #168 v1's `turn-end` comes from the same event
+   *  whenever the prompt was submitted asynchronously, and is still
+   *  synthesized from the HTTP response on the blocking fallback. */
   private uiState: OpencodeUiMapperState = createOpencodeUiState();
   private autoEndTimer: NodeJS.Timeout | undefined;
   private spawnFailed: Error | null = null;
@@ -147,6 +161,9 @@ class OpencodeSession implements AgentSession {
 
     this.exited = new Promise<void>((resolve) => {
       this.resolveExit = resolve;
+    });
+    this.feedEnded = new Promise<void>((resolve) => {
+      this.resolveFeedEnded = resolve;
     });
     this.child.once('exit', () => this.resolveExit());
     this.child.once('close', () => this.resolveExit());
@@ -338,8 +355,9 @@ class OpencodeSession implements AgentSession {
   private async prompt(text: string): Promise<void> {
     if (!this.sessionId) return;
     this.turnInFlight = true;
-    // v2 turn boundary — the prompt POST is the turn start (§7.1); the end
-    // comes from the SSE `session.idle`, never from the HTTP response below.
+    // Turn boundary — the prompt POST is the turn start (§7.1); the end comes
+    // from the SSE `session.idle` (see `submitPrompt`), and only falls back to
+    // an HTTP response on a server that has no asynchronous submission route.
     this.emitUi(opencodeTurnStarted);
     const body: Record<string, unknown> = { parts: [{ type: 'text', text }] };
     // `spec.model` arrives already normalised to canonical `provider/model`
@@ -348,9 +366,23 @@ class OpencodeSession implements AgentSession {
     const id = parseModelIdentity(this.spec.model);
     if (id) body.model = { providerID: id.provider, modelID: id.model };
     try {
-      const res = await this.http('POST', `/session/${this.sessionId}/message`, body);
-      this.absorbUsage(res);
+      if (await this.submitPrompt(body)) {
+        // Accepted, and nothing is holding a socket open for the length of the
+        // turn — so the turn may now run as long as it needs to (#168). It has
+        // exactly three ways out and no fourth: the feed's `session.idle`, the
+        // feed itself ending, and the server exiting. `end()`, `interrupt()`
+        // and the run's wall-clock deadline all abort the feed, so every one of
+        // them arrives through the second.
+        await Promise.race([this.armTurnIdle(), this.feedEnded, this.exited]);
+      } else {
+        // No async route on this server (or it refused the submission): the
+        // blocking endpoint, exactly as it shipped before — its response is
+        // the turn end, and its status/body is the error when it fails.
+        const res = await this.http('POST', `/session/${this.sessionId}/message`, body);
+        this.absorbUsage(res);
+      }
     } finally {
+      this.turnIdle = undefined;
       this.turnInFlight = false;
       // A part that never saw `time.end` (abort, server quirk) still surfaces
       // its prose before the turn boundary (run.ts reads markers there).
@@ -363,13 +395,54 @@ class OpencodeSession implements AgentSession {
     }
   }
 
+  /**
+   * Hand the prompt to the server WITHOUT waiting for the turn it starts.
+   *
+   * `POST /session/:id/message` answers only once the whole turn is over, and
+   * Node's built-in fetch abandons a request whose response headers have not
+   * arrived within 300s. So on that endpoint every turn longer than five
+   * minutes died as `fetch failed` while it was still working — run
+   * `09623ace` made 21 tool calls, the last of them 1.1s before the wall
+   * (#168). `POST /session/:id/prompt_async` takes the same body and answers
+   * `204 No Content` as soon as the prompt is accepted (measured against
+   * opencode 1.18.30: 204 in ~10ms, the turn then streaming over the SSE feed
+   * and ending with `session.idle`), so nothing waits on a socket any more.
+   *
+   * Returns false when this server has no such route. An opencode too old to
+   * have it does NOT answer 404 — it serves its own web UI, `200` with an HTML
+   * body — so only an explicit `204` counts as accepted, and everything else
+   * falls back to the blocking endpoint that shipped before. That fallback is
+   * also what reports a genuine refusal: a 404 for an unknown session id or a
+   * 500 from a server with no provider reads identically on either route, and
+   * letting the blocking POST produce it keeps one error message, not two.
+   */
+  private async submitPrompt(body: Record<string, unknown>): Promise<boolean> {
+    if (!this.feedLive) return false;
+    const res = await this.request('POST', `/session/${this.sessionId}/prompt_async`, body);
+    if (res.status === 204) return true;
+    await res.text().catch(() => undefined); // drain, then fall back
+    return false;
+  }
+
+  /** Arm the waiter for this turn's `session.idle`. Called with no `await`
+   *  between the accepted submission and here, so no frame can be processed in
+   *  between and no idle can slip past the arming. */
+  private armTurnIdle(): Promise<void> {
+    return new Promise<void>((resolve) => {
+      this.turnIdle = resolve;
+    });
+  }
+
   // ---- SSE stream ---------------------------------------------------------
 
   /** Resolves once the SSE stream is CONNECTED (headers in) — the frames are
    *  then drained in the background. Callers await the connection so no
    *  event emitted after this resolves can be missed. */
   private async consumeEvents(): Promise<void> {
-    if (!this.baseUrl) return;
+    if (!this.baseUrl) {
+      this.resolveFeedEnded();
+      return;
+    }
     let res: Response;
     try {
       res = await fetch(`${this.baseUrl}/event`, {
@@ -377,9 +450,17 @@ class OpencodeSession implements AgentSession {
         signal: this.sse.signal,
       });
     } catch {
-      return; // aborted or server gone — the turn response still carries results
+      // Aborted or server gone. Without a feed there is no `session.idle`, so
+      // every prompt takes the blocking endpoint, whose response carries the
+      // results — the behaviour that shipped before #168.
+      this.resolveFeedEnded();
+      return;
     }
-    if (!res.body) return;
+    if (!res.body) {
+      this.resolveFeedEnded();
+      return;
+    }
+    this.feedLive = true;
     void this.readEvents(res.body.getReader());
   }
 
@@ -400,6 +481,12 @@ class OpencodeSession implements AgentSession {
       }
     } catch {
       // aborted — normal on end()/interrupt
+    } finally {
+      // The feed is the turn-end signal for an asynchronously submitted
+      // prompt; once it is gone, a turn still waiting for `session.idle` must
+      // be released rather than wait for something that can never arrive.
+      this.feedLive = false;
+      this.resolveFeedEnded();
     }
   }
 
@@ -430,6 +517,13 @@ class OpencodeSession implements AgentSession {
       this.absorbUsage(info);
     } else if (type === 'message.part.updated' || type === 'message.part.created') {
       this.handlePart((props.part as Record<string, unknown>) ?? props);
+    } else if (type === 'session.idle') {
+      // THE turn-end signal (§4.1), and the only one an asynchronously
+      // submitted prompt has. A foreign `sessionID` is a subtask's child
+      // session going quiet, never this turn — the same test the v2 mapper
+      // makes in `mapIdle`, including treating an absent id as this session's.
+      const sid = stringField(props, 'sessionID');
+      if (sid === undefined || sid === this.sessionId) this.turnIdle?.();
     }
   }
 
@@ -498,17 +592,28 @@ class OpencodeSession implements AgentSession {
 
   // ---- http ---------------------------------------------------------------
 
+  /**
+   * The one request/response fetch this session makes — `http()` for callers
+   * that want the parsed body, `submitPrompt()` for the one caller that has to
+   * read a STATUS instead (a `204` accept is indistinguishable from an older
+   * server's catch-all once the body is parsed). The SSE subscription in
+   * `consumeEvents` is deliberately its own long-lived fetch.
+   */
+  private async request(method: string, path: string, body: unknown): Promise<Response> {
+    if (!this.baseUrl) throw new Error('opencode server not ready');
+    return await fetch(`${this.baseUrl}${path}`, {
+      method,
+      headers: body !== undefined ? { 'content-type': 'application/json' } : {},
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  }
+
   private async http(
     method: string,
     path: string,
     body: unknown,
   ): Promise<Record<string, unknown>> {
-    if (!this.baseUrl) throw new Error('opencode server not ready');
-    const res = await fetch(`${this.baseUrl}${path}`, {
-      method,
-      headers: body !== undefined ? { 'content-type': 'application/json' } : {},
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
+    const res = await this.request(method, path, body);
     if (!res.ok) {
       const detail = await res.text().catch(() => '');
       throw new Error(`${method} ${path} → ${res.status} ${detail.slice(0, 200)}`);
