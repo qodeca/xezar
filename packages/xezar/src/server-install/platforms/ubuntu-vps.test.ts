@@ -5,14 +5,16 @@ import { join } from 'node:path';
 import {
   isNpxExecStart,
   nginxVhost,
+  portListener,
   refreshNpxCacheForRedeploy,
   serviceExecStart,
   systemdUnit,
   ubuntuVps,
+  upstreamHost,
 } from './ubuntu-vps.ts';
-import { StepAborted } from '../steps.ts';
+import { StepAborted, StepCancelled } from '../steps.ts';
 import { createAutoUi } from '../ui.ts';
-import type { InstallContext, InstallStep, Runner, Ui } from '../types.ts';
+import { CANCEL, type InstallContext, type InstallStep, type Runner, type Ui } from '../types.ts';
 
 const okRunner: Runner = { capture: async () => ({ code: 0, stdout: '', stderr: '' }), interactive: async () => 0 };
 
@@ -615,5 +617,406 @@ describe('ubuntu-vps preflight refuses incompatible hosts before installation', 
       expect(warn).toHaveBeenCalledWith(expect.stringContaining('--external-proxy --domain example.test'));
       expect(warn).toHaveBeenCalledWith(expect.stringContaining('docker-proxy'));
     } else expect(warn).not.toHaveBeenCalled();
+  });
+});
+
+describe('portListener', () => {
+  const withSs = (reply: { code: number; stdout: string }) =>
+    ctxWith({ runner: { capture: async () => ({ ...reply, stderr: '' }), interactive: async () => 0 } });
+
+  it('names the process squatting on the port, so a collision is explainable', async () => {
+    const ctx = withSs({
+      code: 0,
+      stdout:
+        'State  Recv-Q Send-Q Local Address:Port Peer Address:Port Process\n' +
+        'LISTEN 0      4096   0.0.0.0:4321       0.0.0.0:*         users:(("docker-proxy",pid=123,fd=4))\n',
+    });
+
+    expect(await portListener(ctx, 4321)).toBe('docker-proxy');
+  });
+
+  it('says "another process" when ss cannot see the owner (no root)', async () => {
+    const ctx = withSs({ code: 0, stdout: 'LISTEN 0 4096 0.0.0.0:4321 0.0.0.0:*\n' });
+
+    // Best effort by design: this only ever makes a collision readable, it never gates anything.
+    expect(await portListener(ctx, 4321)).toBe('another process');
+  });
+
+  it('is null when nothing is listening, when ss fails, and in a dry run', async () => {
+    expect(await portListener(withSs({ code: 0, stdout: 'Netid State ...\n' }), 4321)).toBeNull();
+    expect(await portListener(withSs({ code: 1, stdout: '' }), 4321)).toBeNull();
+    const dry = ctxWith({ dryRun: true, runner: { capture: async () => { throw new Error('no probing in a dry run') }, interactive: async () => 0 } });
+    expect(await portListener(dry, 4321)).toBeNull();
+  });
+});
+
+describe('upstreamHost', () => {
+  it('is loopback unless an external-proxy install bound the cockpit elsewhere', () => {
+    expect(upstreamHost(ctxWith({}))).toBe('127.0.0.1');
+    expect(upstreamHost(ctxWith({ state: { bindHost: '172.17.0.1' } }))).toBe('172.17.0.1');
+    // A blank pin is not a pin — it must not produce `http://:4321/`.
+    expect(upstreamHost(ctxWith({ state: { bindHost: '   ' } }))).toBe('127.0.0.1');
+  });
+});
+
+describe('ubuntu-vps nginx-proxy check()', () => {
+  it('is satisfied only when nginx is installed AND our site is enabled', async () => {
+    const answers = (nginx: number, site: number): Runner => ({
+      capture: async (program) => ({ code: program === 'nginx' ? nginx : site, stdout: '', stderr: '' }),
+      interactive: async () => 0,
+    });
+
+    expect(await stepById('nginx-proxy').check(ctxWith({ runner: answers(0, 0) }))).toBe(true);
+    // nginx present but no xezar site — a bare nginx must not read as "already configured".
+    expect(await stepById('nginx-proxy').check(ctxWith({ runner: answers(0, 1) }))).toBe(false);
+    expect(await stepById('nginx-proxy').check(ctxWith({ runner: answers(1, 0) }))).toBe(false);
+  });
+
+  it('probes nothing in a dry run', async () => {
+    const capture = vi.fn(async () => ({ code: 0, stdout: '', stderr: '' }));
+
+    expect(await stepById('nginx-proxy').check(ctxWith({ dryRun: true, runner: { capture, interactive: async () => 0 } }))).toBe(false);
+    expect(capture).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The credential prompts, which are the one place this installer can silently stand up a
+ * cockpit anyone on the internet can open. Every abandonment has to leave nothing behind, and
+ * the username has to stay a legal htpasswd left-hand side — a ":" there produces a login that
+ * can never succeed, with no error anywhere.
+ */
+describe('ubuntu-vps cockpit credentials', () => {
+  function identityCtx(ui: Partial<Ui>, assumeYes = false): InstallContext {
+    return {
+      ...ctxWith({ dryRun: true, ui: { ...createAutoUi(), ...ui } as Ui }),
+      assumeYes,
+    } as InstallContext;
+  }
+
+  it('refuses a username htpasswd cannot store', async () => {
+    let validate: ((v: string) => string | undefined) | undefined;
+    await stepById('nginx-proxy').run(
+      identityCtx(
+        {
+          text: async (o: { initialValue?: string; validate?: (v: string) => string | undefined }) => {
+            validate = o.validate;
+            return o.initialValue ?? 'ops';
+          },
+          select: async (o: { options: Array<{ value: unknown }> }) => o.options[0]?.value,
+        } as Partial<Ui>,
+      ),
+    );
+
+    expect(validate?.('ops')).toBeUndefined();
+    expect(validate?.('')).toBe('username is required');
+    // htpasswd's line format is `user:hash`.
+    expect(validate?.('ops:admin')).toContain('":"');
+    expect(validate?.('two words')).toContain('whitespace');
+  });
+
+  it('stops before writing anything when the username prompt is abandoned', async () => {
+    const select = vi.fn();
+    await expect(
+      stepById('nginx-proxy').run(identityCtx({ text: async () => CANCEL, select } as unknown as Partial<Ui>)),
+    ).rejects.toBeInstanceOf(StepCancelled);
+    expect(select).not.toHaveBeenCalled();
+  });
+
+  it('stops when the generate-or-type menu is abandoned', async () => {
+    const password = vi.fn();
+    await expect(
+      stepById('nginx-proxy').run(
+        identityCtx({
+          text: async (o: { initialValue?: string }) => o.initialValue ?? 'ops',
+          select: async () => CANCEL,
+          password,
+        } as unknown as Partial<Ui>),
+      ),
+    ).rejects.toBeInstanceOf(StepCancelled);
+    expect(password).not.toHaveBeenCalled();
+  });
+
+  it('takes a typed password when the operator declines the generated one', async () => {
+    const notes: string[] = [];
+    const ctx = identityCtx({
+      text: async (o: { initialValue?: string }) => o.initialValue ?? 'ops',
+      // The second option is "Type my own password".
+      select: async (o: { options: Array<{ value: unknown }> }) => o.options[1]?.value,
+      password: async () => 'typed-by-hand',
+      note: (m: string) => { notes.push(m) },
+    } as unknown as Partial<Ui>);
+
+    await stepById('nginx-proxy').run(ctx);
+
+    expect(ctx.prefs.cockpit?.password).toBe('typed-by-hand');
+    // Nothing is echoed back: only a GENERATED password is shown, because only then is this
+    // the operator's one chance to read it.
+    expect(notes.some((m) => m.includes('Password:'))).toBe(false);
+  });
+
+  it('stops when the typed password is abandoned', async () => {
+    await expect(
+      stepById('nginx-proxy').run(
+        identityCtx({
+          text: async (o: { initialValue?: string }) => o.initialValue ?? 'ops',
+          select: async (o: { options: Array<{ value: unknown }> }) => o.options[1]?.value,
+          password: async () => CANCEL,
+        } as unknown as Partial<Ui>),
+      ),
+    ).rejects.toBeInstanceOf(StepCancelled);
+  });
+
+  it('stops when the --yes password prompt is abandoned', async () => {
+    await expect(
+      stepById('nginx-proxy').run(
+        identityCtx(
+          {
+            text: async (o: { initialValue?: string }) => o.initialValue ?? 'ops',
+            password: async () => CANCEL,
+          } as unknown as Partial<Ui>,
+          true,
+        ),
+      ),
+    ).rejects.toBeInstanceOf(StepCancelled);
+  });
+
+  it('keeps the credentials in memory for the final verify, and never on disk', async () => {
+    const ctx = identityCtx(
+      {
+        text: async (o: { initialValue?: string }) => o.initialValue ?? 'ops',
+        password: async () => 'longenough',
+      } as unknown as Partial<Ui>,
+      true,
+    );
+
+    const created = await stepById('nginx-proxy').run(ctx);
+
+    expect(ctx.prefs.cockpit).toEqual({ user: expect.any(String), password: 'longenough' });
+    // The artifact records the htpasswd PATH and the login name — never the password.
+    expect(JSON.stringify(created?.artifacts)).not.toContain('longenough');
+  });
+});
+
+/**
+ * Uninstall of the service step. The rule the branches encode: reverse exactly what THIS install
+ * changed. Linger in particular may already have been on for someone else's user services, so
+ * turning it off because we saw it on would break a machine we never configured.
+ */
+describe('ubuntu-vps autostart undo', () => {
+  let unitDir: string;
+
+  beforeEach(() => {
+    unitDir = mkdtempSync(join(tmpdir(), 'xez-unit-'));
+  });
+  afterEach(() => {
+    rmSync(unitDir, { recursive: true, force: true });
+  });
+
+  function recording() {
+    const interactive: Array<[string, string[]]> = [];
+    const capture: Array<[string, string[]]> = [];
+    const runner: Runner = {
+      capture: async (program, args) => {
+        capture.push([program, args]);
+        return { code: 0, stdout: 'Linger=no', stderr: '' };
+      },
+      interactive: async (program, args) => {
+        interactive.push([program, args]);
+        return 0;
+      },
+    };
+    return { runner, interactive, capture };
+  }
+
+  const userService = (path: string) => ({
+    artifacts: [{ kind: 'owned' as const, type: 'service' as const, name: 'xezar.service', scope: 'user' as const, path }],
+  });
+
+  it('disables and deletes a user unit, then reloads the user daemon', async () => {
+    const path = join(unitDir, 'xezar.service');
+    writeFileSync(path, '[Unit]\n', 'utf8');
+    const { runner, interactive } = recording();
+
+    await stepById('autostart').undo(ctxWith({ runner }), userService(path));
+
+    expect(existsSync(path)).toBe(false);
+    expect(interactive).toEqual([
+      ['systemctl', ['--user', 'disable', '--now', 'xezar.service']],
+      ['systemctl', ['--user', 'daemon-reload']],
+    ]);
+  });
+
+  it('deletes nothing in a dry run', async () => {
+    const path = join(unitDir, 'xezar.service');
+    writeFileSync(path, '[Unit]\n', 'utf8');
+    const { runner, interactive } = recording();
+
+    await stepById('autostart').undo(ctxWith({ dryRun: true, runner }), userService(path));
+
+    expect(existsSync(path)).toBe(true);
+    expect(interactive).toEqual([]);
+  });
+
+  it('leaves linger alone when this install did not enable it', async () => {
+    const { runner, interactive, capture } = recording();
+
+    await stepById('autostart').undo(ctxWith({ runner }), userService(join(unitDir, 'gone.service')));
+
+    // A pre-existing linger may serve other user services — reversing it would break them.
+    const touchedLinger = [...interactive, ...capture].some(([, args]) => args.join(' ').includes('linger'));
+    expect(touchedLinger).toBe(false);
+  });
+
+  it('disables linger when the install recorded that it enabled it', async () => {
+    const notes: string[] = [];
+    const { runner } = recording();
+    const ctx = ctxWith({
+      dryRun: true,
+      runner,
+      ui: { ...createAutoUi(), info: (m: string) => notes.push(m), note: (m: string) => notes.push(m) } as Ui,
+    });
+
+    await stepById('autostart').undo(ctx, {
+      artifacts: [
+        { kind: 'owned', type: 'service', name: 'xezar.service', scope: 'user', path: join(unitDir, 'x.service') },
+        { kind: 'owned', type: 'linger', name: 'ops' },
+      ],
+    });
+
+    expect(notes.join('\n')).toContain('disable-linger');
+  });
+
+  it('takes the sudo path for a system-scoped unit', async () => {
+    const notes: string[] = [];
+    const { runner } = recording();
+    const ctx = ctxWith({
+      dryRun: true,
+      runner,
+      ui: { ...createAutoUi(), info: (m: string) => notes.push(m), note: (m: string) => notes.push(m) } as Ui,
+    });
+
+    await stepById('autostart').undo(ctx, {
+      artifacts: [
+        { kind: 'owned', type: 'service', name: 'xezar.service', scope: 'system', path: '/etc/systemd/system/xezar.service' },
+      ],
+    });
+
+    // A system unit lives in /etc and needs root — never an rmSync from this process.
+    expect(notes.join('\n')).toContain('/etc/systemd/system/xezar.service');
+  });
+
+  it('does nothing at all when no service was ever recorded', async () => {
+    const { runner, interactive, capture } = recording();
+
+    await stepById('autostart').undo(ctxWith({ runner }), null);
+
+    expect(interactive).toEqual([]);
+    expect(capture).toEqual([]);
+  });
+});
+
+/**
+ * `server-deploy`. Two things here are silent when wrong: restarting the WRONG scope's unit
+ * (the user unit is the install default, so defaulting to `system` sudo-restarts something that
+ * was never installed), and finishing without re-verifying — a deploy that broke the cockpit
+ * would exit 0.
+ */
+describe('ubuntu-vps redeploy', () => {
+  function deployCtx(over: Partial<InstallContext> = {}, runner?: Runner): InstallContext {
+    const ctx = {
+      ...ctxWith({ runner: runner ?? okRunner }),
+      ...over,
+    } as InstallContext;
+    return ctx;
+  }
+
+  /** A live host: the unit's ExecStart is a checkout launch, curl says everything is healthy. */
+  function healthyRunner() {
+    const interactive: Array<[string, string[]]> = [];
+    const runner: Runner = {
+      interactive: async (program, args) => {
+        interactive.push([program, args]);
+        return 0;
+      },
+      capture: async (program, args, opts) => {
+        if (program === 'curl') {
+          const target = args[args.length - 1] ?? '';
+          if (target.includes(':4321')) return { code: 0, stdout: '200', stderr: '' };
+          return { code: 0, stdout: opts?.input ? '200' : '401', stderr: '' };
+        }
+        if (args.join(' ').includes('ExecStart')) {
+          return { code: 0, stdout: 'ExecStart=/usr/bin/node /opt/xezar/dist/index.js serve', stderr: '' };
+        }
+        return { code: 0, stdout: '', stderr: '' };
+      },
+    };
+    return { runner, interactive };
+  }
+
+  const withRecordedScope = (scope: 'user' | 'system') => ({
+    schema: 1 as const,
+    installed: true,
+    primaryPort: 4321,
+    steps: {
+      autostart: {
+        status: 'done' as const,
+        created: { artifacts: [{ kind: 'owned' as const, type: 'service' as const, name: 'xezar.service', scope, path: '/x' }] },
+      },
+    },
+  });
+
+  it('restarts the USER unit the install recorded, then re-verifies end to end', async () => {
+    const { runner, interactive } = healthyRunner();
+    const ctx = deployCtx({ state: withRecordedScope('user'), assumeYes: false }, runner);
+    ctx.prefs.cockpit = { user: 'ops', password: 'hunter2!' };
+
+    await ubuntuVps.redeploy!(ctx);
+
+    expect(interactive).toContainEqual(['systemctl', ['--user', 'daemon-reload']]);
+    expect(interactive).toContainEqual(['systemctl', ['--user', 'restart', 'xezar.service']]);
+    // No sudo anywhere: a user-scope unit must never be restarted as root.
+    expect(interactive.some(([program]) => program === 'sudo')).toBe(false);
+  });
+
+  it('warns instead of throwing when the user restart returns non-zero', async () => {
+    const warnings: string[] = [];
+    const { runner } = healthyRunner();
+    const ctx = deployCtx(
+      {
+        state: withRecordedScope('user'),
+        assumeYes: false,
+        ui: { ...createAutoUi(), warn: (m: string) => warnings.push(m) } as Ui,
+      },
+      {
+        ...runner,
+        interactive: async (_program, args) => (args.includes('restart') ? 1 : 0),
+      },
+    );
+    ctx.prefs.cockpit = { user: 'ops', password: 'hunter2!' };
+
+    await ubuntuVps.redeploy!(ctx);
+
+    expect(warnings.some((w) => w.includes('systemctl --user restart returned non-zero'))).toBe(true);
+  });
+
+  it('fails the deploy when the cockpit does not come back', async () => {
+    const runner: Runner = {
+      interactive: async () => 0,
+      // Nothing answers: xezar is down, so nginx would serve 502.
+      capture: async (program) => ({ code: 0, stdout: program === 'curl' ? '000' : '', stderr: '' }),
+    };
+    const ctx = deployCtx({ state: withRecordedScope('user'), assumeYes: false }, runner);
+
+    // "complete" has to mean the cockpit actually works — a deploy that broke it must exit non-zero.
+    await expect(ubuntuVps.redeploy!(ctx)).rejects.toBeInstanceOf(StepAborted);
+  });
+
+  it('restarts nothing in a dry run', async () => {
+    const { runner, interactive } = healthyRunner();
+
+    await ubuntuVps.redeploy!(deployCtx({ dryRun: true, state: withRecordedScope('user') }, runner));
+
+    expect(interactive).toEqual([]);
   });
 });

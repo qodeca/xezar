@@ -23,7 +23,7 @@ command is verified before the installer moves on.
 
 - Ubuntu/Debian VPS with `apt`, reachable over SSH.
 - A **normal, sudo-capable user** (the wizard refuses to run as root).
-- At least one logged-in agent CLI on that user — `claude`, `codex`, or
+- At least one logged-in agent CLI on that user — `claude`, `codex`, `pi`, or
   OpenCode (experimental). (The installer can install `gh` and the npm-based CLIs for you.)
 - For HTTPS: a domain with a DNS `A`/`AAAA` record pointing at the box.
 - **Ports 80/443 free.** If another reverse proxy already owns them (Dokploy,
@@ -56,7 +56,7 @@ node packages/xezar/dist/index.js server-install --platform ubuntu-vps
 
 | Step | What happens |
 |------|--------------|
-| **Dependencies** | Detects `claude` / `codex` / `opencode` / `gh` / `git`; offers to install the missing ones. At least one agent CLI is required. |
+| **Dependencies** | Detects `claude` / `codex` / `opencode` / `pi` / `gh` / `git`; offers to install the missing ones. At least one agent CLI is required. |
 | **Reverse proxy** | Installs **nginx**, writes an `auth_basic` + SSE-safe proxy vhost, creates the **htpasswd** identity file, and — if `ufw` is active — allows `Nginx Full` (ports 80/443). |
 | **Domain + SSL** *(optional)* | Points the vhost's `server_name` at your domain, then runs `certbot --nginx` for a Let's Encrypt certificate with auto-redirect. Skippable — you can add it later. |
 | **Service** | Installs a **systemd** unit (rootless `--user` + linger where possible, else a system unit), **starts xezar now**, enables it on boot, and waits for it to answer on the loopback port. |
@@ -250,7 +250,7 @@ break other vhosts).
 
 | Symptom | Cause & fix |
 |---------|-------------|
-| `502 Bad Gateway` | xezar isn't running. `systemctl status xezar` / `journalctl -u xezar -n 50`. |
+| `502 Bad Gateway` | xezar isn't running. Default (user unit): `systemctl --user status xezar` / `journalctl --user -u xezar -n 50`. System-unit fallback: `sudo systemctl status xezar` / `sudo journalctl -u xezar -n 50`. |
 | `status=203/EXEC — Unable to locate executable` | An old unit with a bare `ExecStart`. Re-run `--reconfigure autostart`; the unit now uses an absolute `<node> <entry>`. |
 | "no gh / claude installed" but you have them | Launched from a non-login shell without `~/.local/bin`/nvm on PATH. The current installer merges your login-shell PATH; update and re-run. |
 | certbot "verification failed" but it succeeded | Fixed — verification now reads the world-readable nginx vhost, not root-only `/etc/letsencrypt/live`. |
@@ -258,6 +258,6 @@ break other vhosts).
 | nginx won't start: `Address already in use` | Another proxy (Dokploy/Coolify → Traefik, Caddy) owns :80/:443. Re-run with `--external-proxy` (see above). `sudo ss -ltnp \| grep -E ':80\|:443'` shows who holds them. |
 | `run server-install as a normal sudo-capable user, not root` | You're `root`. `adduser xezar && usermod -aG sudo xezar`, `su - xezar`, log your agent CLI in **as that user**, then re-run. |
 | External-proxy install: proxy returns 502 | Traefik runs in a container and can't reach `127.0.0.1`. Reinstall with `--bind-host 172.17.0.1` (or your `docker0` address). |
-| Cockpit stuck on an old version after `server-deploy` | npx-based unit whose cache wasn't refreshed (fixed in #696 — `server-deploy` now clears it). Manual: `rm -rf ~/.npm/_npx` as the service user, then `sudo systemctl restart xezar-<instance>`. |
+| Cockpit stuck on an old version after `server-deploy` | npx-based unit whose cache wasn't refreshed (fixed in #696 — `server-deploy` now clears it). Manual: `rm -rf ~/.npm/_npx` as the service user, then restart the unit — `systemctl --user restart xezar` for the default, or `sudo systemctl restart xezar` / `xezar-<slug>` for a system unit or a named instance. |
 
 ← Back to [Remote access overview](./README.md)

@@ -1,8 +1,30 @@
+import { EventEmitter } from 'node:events';
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createLaunchScript, openInTerminal, refuseSpawnUnderTest, wslTerminalLaunchers } from './open-in-terminal.ts';
+
+/** The seam the platform-branch tests below drive. Only `spawn` is replaced — `./wsl.ts` reaches
+ *  for `execFileSync` from the same module, and it must keep working. */
+const { spawnMock } = vi.hoisted(() => ({ spawnMock: vi.fn() }));
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>();
+  return { ...actual, spawn: spawnMock };
+});
+
+/**
+ * `isWsl()` is called with no arguments, so it falls through to reading `/proc/version` — which on
+ * a developer running xezar INSIDE WSL contains "microsoft", and the plain-Linux cases below would
+ * silently take the interop branch and fail on their machine only. The flag makes the branch the
+ * test's choice rather than the host's. `wslDistroName` stays real, so the distro-name validation
+ * is still exercised against the actual env var.
+ */
+const { wsl } = vi.hoisted(() => ({ wsl: { inside: false } }));
+vi.mock('./wsl.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./wsl.ts')>();
+  return { ...actual, isWsl: () => wsl.inside };
+});
 
 describe('wslTerminalLaunchers (#361 WSL support)', () => {
   it('tries Windows Terminal first, re-entering the distro through wsl.exe', () => {
@@ -125,5 +147,293 @@ describe('the spawn guard (#820)', () => {
     delete process.env.XEZ_ALLOW_TEST_SPAWN;
     // The exact call #820 reported: `openInApp('terminal', dir)` → `openInTerminal(dir, ':')`.
     await expect(openInTerminal('/tmp/some-account-folder', ':')).rejects.toThrow(/refusing to spawn/);
+  });
+});
+
+/**
+ * The platform branches, driven with `node:child_process` replaced — the one case
+ * `refuseSpawnUnderTest`'s doc comment names as the deliberate `XEZ_ALLOW_TEST_SPAWN=1`
+ * exception. Nothing here reaches a real process, and asserting the argv a launcher WOULD pass
+ * is the only way the quoting is pinned at all: every launch line is assembled by string
+ * concatenation, so a lost quote is a silent command injection into the user's own shell.
+ */
+describe('the platform launch lines', () => {
+  const realPlatform = process.platform;
+  const savedAllow = process.env.XEZ_ALLOW_TEST_SPAWN;
+  const savedDistro = process.env.WSL_DISTRO_NAME;
+
+  const setPlatform = (platform: NodeJS.Platform) => {
+    Object.defineProperty(process, 'platform', { value: platform, configurable: true });
+  };
+
+  /** Every child the launchers spawned in this test, so the detach can be asserted. */
+  const spawned: (EventEmitter & { unref: ReturnType<typeof vi.fn> })[] = [];
+
+  /** A spawned child that never errors — `runDetached` resolves true once its settle timer fires. */
+  const quietChild = () => {
+    const child = new EventEmitter() as EventEmitter & { unref: ReturnType<typeof vi.fn> };
+    child.unref = vi.fn();
+    spawned.push(child);
+    return child;
+  };
+
+  /** A child that reports the launcher is missing, the way an absent emulator does. */
+  const failingChild = () => {
+    const child = quietChild();
+    queueMicrotask(() => child.emit('error', new Error('ENOENT')));
+    return child;
+  };
+
+  /** Resolve `openInTerminal` with the 250 ms settle window driven by fake timers rather than
+   *  waited out — seven Linux candidates would otherwise cost nearly two seconds of real time. */
+  const settleAll = async (promise: Promise<boolean>): Promise<boolean> => {
+    await vi.advanceTimersByTimeAsync(250 * 10);
+    return promise;
+  };
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    spawnMock.mockReset();
+    spawned.length = 0;
+    process.env.XEZ_ALLOW_TEST_SPAWN = '1';
+    delete process.env.WSL_DISTRO_NAME;
+    wsl.inside = false;
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    setPlatform(realPlatform);
+    if (savedAllow === undefined) delete process.env.XEZ_ALLOW_TEST_SPAWN;
+    else process.env.XEZ_ALLOW_TEST_SPAWN = savedAllow;
+    if (savedDistro === undefined) delete process.env.WSL_DISTRO_NAME;
+    else process.env.WSL_DISTRO_NAME = savedDistro;
+  });
+
+  describe('macOS', () => {
+    beforeEach(() => setPlatform('darwin'));
+
+    it('activates Terminal, then hands it one `do script` line carrying the env', async () => {
+      spawnMock.mockImplementation(quietChild);
+
+      expect(
+        await settleAll(
+          openInTerminal('/tmp/my worktree', 'claude --resume abc', {
+            CLAUDE_CONFIG_DIR: '/home/u/.claude-work',
+          }),
+        ),
+      ).toBe(true);
+
+      // `export …;` rather than a `VAR=v cmd` prefix: the window stays open and the user types
+      // the next `claude` in it themselves, so the account has to survive the command.
+      expect(spawnMock).toHaveBeenCalledTimes(1);
+      expect(spawnMock.mock.calls[0]?.[0]).toBe('osascript');
+      expect(spawnMock.mock.calls[0]?.[1]).toEqual([
+        '-e',
+        'tell application "Terminal" to activate',
+        '-e',
+        'tell application "Terminal" to do script "cd \'/tmp/my worktree\' && export CLAUDE_CONFIG_DIR=\'/home/u/.claude-work\'; claude --resume abc"',
+      ]);
+      expect(spawnMock.mock.calls[0]?.[2]).toEqual({ stdio: 'ignore', detached: true });
+      // …and it is actually let go of. A child that is spawned `detached` but never `unref`'d
+      // keeps the event loop alive, so `xezar serve` would refuse to exit for every terminal it
+      // has ever opened.
+      expect(spawned[0]?.unref).toHaveBeenCalled();
+    });
+
+    it('escapes the quotes and backslashes AppleScript would otherwise eat', async () => {
+      spawnMock.mockImplementation(quietChild);
+
+      await settleAll(openInTerminal('/tmp/a"b\\c', ':'));
+
+      // Backslash first, then quote — the reverse order would double-escape the escapes.
+      expect(spawnMock.mock.calls[0]?.[1]?.[3]).toBe(
+        'tell application "Terminal" to do script "cd \'/tmp/a\\"b\\\\c\' && :"',
+      );
+    });
+
+    it('reports failure when Terminal cannot be reached at all', async () => {
+      spawnMock.mockImplementation(failingChild);
+
+      expect(await settleAll(openInTerminal('/tmp/w', ':'))).toBe(false);
+    });
+
+    it('reports failure when the spawn itself throws', async () => {
+      spawnMock.mockImplementation(() => {
+        throw new Error('EACCES');
+      });
+
+      // A throwing spawn is not an exception the caller has to handle — it is a false, and the
+      // caller shows the copy-the-command fallback.
+      expect(await settleAll(openInTerminal('/tmp/w', ':'))).toBe(false);
+    });
+  });
+
+  describe('Windows', () => {
+    beforeEach(() => setPlatform('win32'));
+
+    it('prefers Windows Terminal and renders the env as a persisting `set`', async () => {
+      spawnMock.mockImplementation(quietChild);
+
+      expect(
+        await settleAll(
+          openInTerminal('C:\\work\\wt', 'claude --resume abc', {
+            CLAUDE_CONFIG_DIR: 'C:\\Users\\u\\.claude-work',
+          }),
+        ),
+      ).toBe(true);
+
+      expect(spawnMock).toHaveBeenCalledTimes(1);
+      expect(spawnMock.mock.calls[0]?.slice(0, 2)).toEqual([
+        'cmd',
+        [
+          '/c',
+          'start',
+          '',
+          'wt',
+          '-d',
+          'C:\\work\\wt',
+          'cmd',
+          '/K',
+          'set "CLAUDE_CONFIG_DIR=C:\\Users\\u\\.claude-work" && claude --resume abc',
+        ],
+      ]);
+    });
+
+    it('falls back to a classic cmd window that cds itself in', async () => {
+      spawnMock.mockImplementationOnce(failingChild).mockImplementation(quietChild);
+
+      expect(await settleAll(openInTerminal('C:\\work\\wt', 'claude --resume abc'))).toBe(true);
+
+      expect(spawnMock).toHaveBeenCalledTimes(2);
+      expect(spawnMock.mock.calls[1]?.[1]).toEqual([
+        '/c',
+        'start',
+        '',
+        'cmd',
+        '/K',
+        'cd /d "C:\\work\\wt" && claude --resume abc',
+      ]);
+    });
+
+    it('gives up after both launchers fail', async () => {
+      spawnMock.mockImplementation(failingChild);
+
+      expect(await settleAll(openInTerminal('C:\\work\\wt', ':'))).toBe(false);
+      expect(spawnMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('refuses the whole launch when the env cannot be spelled for cmd.exe', async () => {
+      // `cmd.exe` has no escape inside a quoted `set`, so a `%` would expand. Fail closed
+      // BEFORE any spawn rather than open a window aimed at the wrong account.
+      expect(
+        await settleAll(openInTerminal('C:\\w', ':', { CLAUDE_CONFIG_DIR: 'C:\\%USERNAME%' })),
+      ).toBe(false);
+      expect(spawnMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Linux', () => {
+    beforeEach(() => setPlatform('linux'));
+
+    it('probes the emulators in order and stops at the first that starts', async () => {
+      spawnMock.mockImplementationOnce(failingChild).mockImplementation(quietChild);
+
+      expect(await settleAll(openInTerminal('/tmp/w', ':'))).toBe(true);
+
+      expect(spawnMock.mock.calls.map((call) => call[0])).toEqual([
+        'x-terminal-emulator',
+        'gnome-terminal',
+      ]);
+    });
+
+    it('tries every candidate before giving up, each on the temp launch script', async () => {
+      spawnMock.mockImplementation(failingChild);
+
+      expect(await settleAll(openInTerminal('/tmp/w', ':'))).toBe(false);
+
+      expect(spawnMock.mock.calls.map((call) => call[0])).toEqual([
+        'x-terminal-emulator',
+        'gnome-terminal',
+        'konsole',
+        'wezterm',
+        'kitty',
+        'alacritty',
+        'xterm',
+      ]);
+      // One script for the whole probe, and every candidate points at that same file.
+      const scripts = new Set(
+        spawnMock.mock.calls.map((call) => (call[1] as string[]).at(-1)),
+      );
+      expect(scripts.size).toBe(1);
+      expect([...scripts][0]).toMatch(/xez-term-[^/]+\/launch\.sh$/);
+    });
+
+    it('writes the cd, the env and the command into the script the emulator runs', async () => {
+      spawnMock.mockImplementation(quietChild);
+
+      await settleAll(
+        openInTerminal('/tmp/my worktree', 'claude --resume abc', {
+          CLAUDE_CONFIG_DIR: '/home/u/.claude-work',
+        }),
+      );
+
+      const scriptPath = (spawnMock.mock.calls[0]?.[1] as string[]).at(-1) as string;
+      // The script is the whole reason the Linux branch exists: it sidesteps seven different
+      // emulators' quoting rules, so the quoting has to be right exactly once, here.
+      expect(readFileSync(scriptPath, 'utf8')).toBe(
+        "#!/usr/bin/env bash\ncd '/tmp/my worktree'\nexport CLAUDE_CONFIG_DIR='/home/u/.claude-work'; claude --resume abc\nexec bash\n",
+      );
+      rmSync(dirname(scriptPath), { recursive: true, force: true });
+    });
+  });
+
+  describe('WSL (#361)', () => {
+    beforeEach(() => {
+      setPlatform('linux');
+      wsl.inside = true;
+      // What WSL sets for every process it starts, and what `wslDistroName()` reads for real.
+      process.env.WSL_DISTRO_NAME = 'Ubuntu-24.04';
+    });
+
+    it('goes through interop to a Windows terminal instead of a Linux emulator', async () => {
+      spawnMock.mockImplementation(quietChild);
+
+      expect(await settleAll(openInTerminal('/home/u/wt', ':'))).toBe(true);
+
+      const [bin, args] = spawnMock.mock.calls[0] as [string, string[]];
+      expect(bin).toBe('wt.exe');
+      // Re-enters THIS distro: the script path stays POSIX because wsl.exe reads its command
+      // line inside the distro, not on the Windows side.
+      expect(args.slice(0, 4)).toEqual(['wsl.exe', '-d', 'Ubuntu-24.04', '--']);
+      expect(args.at(-1)).toMatch(/^\/.*xez-term-[^/]+\/launch\.sh$/);
+      rmSync(dirname(args.at(-1) as string), { recursive: true, force: true });
+    });
+
+    it('falls back to a classic console window, and never probes a Linux emulator', async () => {
+      spawnMock.mockImplementationOnce(failingChild).mockImplementation(quietChild);
+
+      expect(await settleAll(openInTerminal('/home/u/wt', ':'))).toBe(true);
+      expect(spawnMock.mock.calls.map((call) => call[0])).toEqual(['wt.exe', 'conhost.exe']);
+    });
+
+    it('gives up on WSL rather than falling through to the Linux candidates', async () => {
+      spawnMock.mockImplementation(failingChild);
+
+      expect(await settleAll(openInTerminal('/home/u/wt', ':'))).toBe(false);
+      // Exactly the two interop launchers — there is no Linux desktop here to fall back to.
+      expect(spawnMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('substitutes WSL\'s own default for a distro name that fails validation', async () => {
+      // `wsl --import <name>` lets the user pick this, so it is untrusted input on a command
+      // line. A name like `a&calc&` must never reach one.
+      process.env.WSL_DISTRO_NAME = 'a&calc&';
+      spawnMock.mockImplementation(quietChild);
+
+      await settleAll(openInTerminal('/home/u/wt', ':'));
+
+      expect(spawnMock.mock.calls[0]?.[1]).toContain('Ubuntu');
+      expect(spawnMock.mock.calls[0]?.[1]).not.toContain('a&calc&');
+    });
   });
 });

@@ -22,7 +22,7 @@ equivalent).
 - An [ngrok account](https://dashboard.ngrok.com) and its **authtoken**.
 - A **reserved domain** on ngrok (recommended, so the URL is stable) — optional;
   without one you get an ephemeral URL.
-- At least one logged-in agent CLI — `claude`, `codex`, or OpenCode (experimental).
+- At least one logged-in agent CLI — `claude`, `codex`, `pi`, or OpenCode (experimental).
 
 ---
 
@@ -37,9 +37,9 @@ xezar server-install --platform macosx-ngrok
 | Step | What happens |
 |------|--------------|
 | **Dependencies** | Detects the agent CLIs / `gh` / `git`; offers to `brew install` the missing ones. |
-| **ngrok tunnel** | Installs ngrok if needed, saves your **authtoken** (passed via the environment, never on a command line `ps` could read), and configures the tunnel to the cockpit port with **`--basic-auth`** (username + password) and, if provided, your **reserved domain**. The agent plist embeds those credentials, so it is written `0600`. |
-| **Autostart** | Installs a **launchd** agent (`~/Library/LaunchAgents/ai.xezar.ngrok.plist`) with `RunAtLoad` + `KeepAlive` so the authenticated tunnel comes back automatically. |
-| **Verify** | Confirms the ngrok basic-auth gate is active. |
+| **Autostart** | Installs a **launchd** agent (`~/Library/LaunchAgents/ai.xezar.cockpit.plist`, written `0600`) with `RunAtLoad` + `KeepAlive` that runs the cockpit itself, so xezar comes back at login. The tunnel has its own agent, installed by the next step. |
+| **ngrok tunnel** | Installs ngrok if needed, saves your **authtoken** (passed via the environment, never on a command line `ps` could read), and configures the tunnel to the cockpit port with **`--basic-auth`** (username + password) and, if provided, your **reserved domain**. It installs a second launchd agent, `ai.xezar.ngrok`, whose plist embeds those credentials and is written `0600`. |
+| **Verify** | Confirms the tunnel came up — the installer polls ngrok's local API at `localhost:4040` for a public URL. Basic-auth is enforced by ngrok at its edge; the installer sends no request through the tunnel to test the gate. |
 
 The **username + password** you set become the ngrok `--basic-auth`
 credentials — what you type in the browser to reach the cockpit over the public
@@ -55,9 +55,9 @@ Reload the public tunnel with the standardized command:
 xezar server-deploy --platform macosx-ngrok
 ```
 
-`server-deploy` restarts the ngrok launchd agent and re-verifies the basic-auth
-gate. On macOS xezar itself runs locally — restart it the way you launched it;
-`server-deploy` reloads the tunnel that fronts it.
+`server-deploy` restarts **both** launchd agents — the xezar cockpit and the
+ngrok tunnel — and then re-verifies the tunnel. You no longer restart xezar by
+hand.
 
 To change the setup itself, the installer is idempotent:
 
@@ -65,6 +65,10 @@ To change the setup itself, the installer is idempotent:
 xezar server-install --platform macosx-ngrok --reconfigure autostart
 xezar server-install --platform macosx-ngrok --reinstall   # redo everything
 ```
+
+The step ids are `deps`, `autostart`, `ngrok` and `identity`. `--reconfigure
+autostart` re-runs the **cockpit** agent; to change the authtoken, the reserved
+domain or the basic-auth login, use `--reconfigure ngrok`.
 
 ---
 
@@ -74,8 +78,10 @@ xezar server-install --platform macosx-ngrok --reinstall   # redo everything
 xezar server-uninstall --platform macosx-ngrok
 ```
 
-Removes the launchd plist and the tunnel config xezar **owns**. Shared tools
-(ngrok, the agent CLIs, `gh`) are *listed* for manual removal, not deleted.
+Removes **both** launchd plists xezar **owns** (`ai.xezar.cockpit`,
+`ai.xezar.ngrok`) and the tunnel config. The ngrok **authtoken** stays in
+ngrok's own config, and shared tools (ngrok, the agent CLIs, `gh`) are *listed*
+for manual removal, not deleted.
 
 ---
 

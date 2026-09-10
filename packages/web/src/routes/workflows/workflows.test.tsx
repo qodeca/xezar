@@ -401,3 +401,173 @@ describe('delete and “+ new”', () => {
     await screen.findByText('Drop a skill here — or Import a workflow.yaml')
   })
 })
+
+describe('the workflows list failing to load', () => {
+  it('says so instead of rendering an empty builder that cannot save', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input) === '/api/v1/workflows'
+          ? jsonResponse({ error: 'workflows dir is unreadable' }, 500)
+          : jsonResponse([]),
+      ),
+    )
+    renderAt('/workflows')
+
+    // A 5xx is retried once (query-client.ts), so this outlives waitFor's 1s default.
+    await waitFor(
+      () => expect(screen.getByRole('heading', { name: 'Could not load workflows' })).toBeTruthy(),
+      { timeout: 3_000 },
+    )
+    // The server's own words: the operator needs to know WHICH failure this was.
+    expect(document.body.textContent).toContain('workflows dir is unreadable')
+    // No canvas at all — a builder seeded from a failed list would save over nothing.
+    expect(document.querySelector('[data-slot="wb-main"]')).toBeNull()
+  })
+})
+
+describe('the toolbar guards', () => {
+  const clickSlot = (slot: string) =>
+    fireEvent.click(document.querySelector<HTMLElement>(`[data-slot="${slot}"]`)!)
+
+  it('an unnamed workflow focuses the name box rather than POSTing', async () => {
+    const sent = stubFetch()
+    renderAt('/workflows')
+    await waitFor(() => expect(stepCards().length).toBeGreaterThan(0))
+    fireEvent.change(nameInput(), { target: { value: '   ' } })
+
+    clickSlot('wb-save')
+
+    // A name is the file's identity — there is nothing to write without one.
+    expect(document.activeElement).toBe(nameInput())
+    expect(sent.some((r) => r.method === 'POST' && r.path.endsWith('/workflows'))).toBe(false)
+  })
+
+  it('an empty paste does not reach the parser', async () => {
+    const sent = stubFetch()
+    renderAt('/workflows')
+    await waitFor(() => expect(stepCards().length).toBeGreaterThan(0))
+
+    clickSlot('wb-import')
+    await waitFor(() => expect(document.querySelector('[data-slot="wb-import-panel"]')).not.toBeNull())
+    fireEvent.change(document.querySelector('[data-slot="wb-import-text"]')!, { target: { value: '  \n ' } })
+    clickSlot('wb-import-run')
+
+    expect(sent.some((r) => r.path.includes('workflows/parse'))).toBe(false)
+  })
+
+  it('an empty brief does not reach the planner', async () => {
+    const sent = stubFetch()
+    renderAt('/workflows')
+    await waitFor(() => expect(stepCards().length).toBeGreaterThan(0))
+
+    clickSlot('wb-auto')
+    await waitFor(() => expect(document.querySelector('[data-slot="wb-auto-panel"]')).not.toBeNull())
+    fireEvent.change(document.querySelector('[data-slot="wb-auto-text"]')!, { target: { value: '   ' } })
+    clickSlot('wb-auto-run')
+
+    expect(sent.some((r) => r.method === 'POST' && r.path.includes('plan'))).toBe(false)
+  })
+})
+
+describe('export', () => {
+  it('downloads the canvas YAML under the workflow’s slug, and releases the blob URL', async () => {
+    vi.useFakeTimers()
+    let createObjectURL!: ReturnType<typeof vi.spyOn>
+    let revokeObjectURL!: ReturnType<typeof vi.spyOn>
+    try {
+      // `vi.spyOn`, NOT `vi.stubGlobal('URL', {...URL, …})`: spreading a constructor yields a plain
+      // object, so `new URL(…)` throws for the whole test — and fake timers are on below, which
+      // hands the router and TanStack Query a window in which to construct one and fail somewhere
+      // that points nowhere near here.
+      createObjectURL = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:workflow')
+      revokeObjectURL = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+      const clicked: HTMLAnchorElement[] = []
+      const realClick = HTMLAnchorElement.prototype.click
+      HTMLAnchorElement.prototype.click = function click(this: HTMLAnchorElement) {
+        clicked.push(this)
+      }
+      try {
+        stubFetch()
+        renderAt('/workflows')
+        await vi.waitFor(() => expect(stepCards().length).toBeGreaterThan(0))
+
+        fireEvent.click(document.querySelector<HTMLElement>('[data-slot="wb-export"]')!)
+
+        expect(clicked).toHaveLength(1)
+        expect(clicked[0]?.getAttribute('href')).toBe('blob:workflow')
+        // The slug, not the raw name — the file has to be a legal filename.
+        expect(clicked[0]?.getAttribute('download')).toBe('ship-it.yaml')
+        // The anchor is a throwaway: leaving it in the document would stack one per export.
+        expect(document.querySelector('a[download]')).toBeNull()
+
+        // Revoked on a delay rather than immediately — a same-tick revoke races the download.
+        expect(revokeObjectURL).not.toHaveBeenCalled()
+        vi.advanceTimersByTime(1_000)
+        expect(revokeObjectURL).toHaveBeenCalledWith('blob:workflow')
+      } finally {
+        HTMLAnchorElement.prototype.click = realClick
+      }
+    } finally {
+      vi.useRealTimers()
+      createObjectURL.mockRestore()
+      revokeObjectURL.mockRestore()
+    }
+  })
+})
+
+describe('the panels and the palette filter', () => {
+  const clickSlot = (slot: string) =>
+    fireEvent.click(document.querySelector<HTMLElement>(`[data-slot="${slot}"]`)!)
+
+  it('Cancel closes each panel and forgets what was typed in it', async () => {
+    stubFetch()
+    renderAt('/workflows')
+    await waitFor(() => expect(stepCards().length).toBeGreaterThan(0))
+
+    clickSlot('wb-import')
+    await waitFor(() => expect(document.querySelector('[data-slot="wb-import-panel"]')).not.toBeNull())
+    fireEvent.change(document.querySelector('[data-slot="wb-import-text"]')!, { target: { value: 'steps: []' } })
+    clickSlot('wb-import-cancel')
+    expect(document.querySelector('[data-slot="wb-import-panel"]')).toBeNull()
+
+    clickSlot('wb-auto')
+    await waitFor(() => expect(document.querySelector('[data-slot="wb-auto-panel"]')).not.toBeNull())
+    fireEvent.change(document.querySelector('[data-slot="wb-auto-text"]')!, { target: { value: 'ship it' } })
+    clickSlot('wb-auto-cancel')
+    expect(document.querySelector('[data-slot="wb-auto-panel"]')).toBeNull()
+
+    // Reopening must not resurrect the abandoned draft.
+    clickSlot('wb-import')
+    await waitFor(() => expect(document.querySelector('[data-slot="wb-import-panel"]')).not.toBeNull())
+    expect(document.querySelector<HTMLTextAreaElement>('[data-slot="wb-import-text"]')?.value).toBe('')
+  })
+
+  it('a saved-workflow chip loads that chain onto the canvas', async () => {
+    stubFetch()
+    renderAt('/workflows')
+    await waitFor(() => expect(stepCards().length).toBe(2))
+
+    const quickChip = document.querySelector<HTMLElement>('[data-slot="wb-load-chip"][data-name="quick-task"]')!
+    expect(quickChip.getAttribute('aria-pressed')).toBe('false')
+    fireEvent.click(quickChip)
+
+    await waitFor(() => expect(nameInput().value).toBe('quick-task'))
+    expect(stepIds()).toEqual(['task'])
+    expect(
+      document.querySelector('[data-slot="wb-load-chip"][data-name="quick-task"]')?.getAttribute('aria-pressed'),
+    ).toBe('true')
+  })
+
+  it('the palette filter narrows the skills without touching the canvas', async () => {
+    stubFetch()
+    renderAt('/workflows')
+    await waitFor(() => expect(document.querySelectorAll('[data-slot="wb-skill"]').length).toBe(2))
+
+    fireEvent.change(screen.getByLabelText('Filter skills'), { target: { value: 'review' } })
+
+    await waitFor(() => expect(document.querySelectorAll('[data-slot="wb-skill"]').length).toBe(1))
+    expect(document.querySelector('[data-slot="wb-skill"]')?.getAttribute('data-skill')).toBe('om-review')
+    expect(stepIds()).toEqual(['om-fix', 'om-review'])
+  })
+})

@@ -5,11 +5,14 @@ machine — a shared team box, a VPS, your phone — put an **authenticated publ
 front** in front of it. xezar ships an interactive, dependency-free installer
 that does exactly that, modularized by **platform strategy**.
 
-The wizard never escalates silently: **every privileged command is printed and
-verified**, and you choose to run it via `sudo` or paste it into a root shell
-yourself. It's idempotent and resumable, and it ends with a real
-**authenticated end-to-end check** — so "complete" means the cockpit actually
-works behind its login.
+On `ubuntu-vps` the wizard never escalates silently: **every privileged command
+is printed and verified**, and you choose to run it via `sudo` or paste it into a
+root shell yourself; `macosx-ngrok` needs no root at all. It's idempotent and
+resumable, and it ends with a verification step. On `ubuntu-vps` that is a real
+**authenticated end-to-end check** — anonymous is challenged, authenticated
+reaches xezar — so "complete" means the cockpit works behind its login. On
+`macosx-ngrok` it confirms the tunnel came up; the basic-auth gate is enforced by
+ngrok itself and is not probed.
 
 ```bash
 xezar server-install   --platform <id>   # install
@@ -33,9 +36,9 @@ platforms slot in without touching the engine.
 > resumes the first install. See
 > [Hosting several cockpits on one box](./ubuntu-vps.md#hosting-several-cockpits-on-one-box-multiple-domains).
 
-## How it works (all providers)
+## How it works (the shape, per provider)
 
-1. **Dependencies** — detect the agent CLIs (`claude`/`codex`/`opencode`),
+1. **Dependencies** — detect the agent CLIs (`claude`/`codex`/`opencode`/`pi`),
    `gh`, `git`; offer to install what's missing. (Tools in `~/.local/bin` / nvm
    are found via your login-shell PATH.)
 2. **Public front** — stand up the reverse proxy / tunnel that terminates
@@ -46,6 +49,10 @@ platforms slot in without touching the engine.
    keeps it up across reboots.
 5. **Verify** — confirm an anonymous request is challenged **and** an
    authenticated one reaches xezar.
+
+The order differs by provider: `ubuntu-vps` runs deps → public front (+identity)
+→ SSL → autostart → verify; `macosx-ngrok` runs deps → autostart → tunnel (public
+front and identity in one step) → verify.
 
 ## One unit, every project
 
@@ -65,8 +72,11 @@ The CLI edits the registry file directly, so it works whether or not the
 service is running; the cockpit picks the change up on the next page load.
 
 Need **disjoint** project sets on one box — one cockpit per customer, say? Give
-each instance its own home with `XEZ_HOME` (an `Environment=XEZ_HOME=/srv/xezar-homes/shop`
-line in its systemd unit / launchd plist). Each home carries its own registry,
+each instance its own home with `XEZ_HOME`: add
+`Environment=XEZ_HOME=/srv/xezar-homes/shop` to its systemd unit, or an
+`EnvironmentVariables` entry to its launchd plist. **The installer regenerates
+both files**, so re-apply the edit after any `--reconfigure autostart` or
+`--reinstall`. Each home carries its own registry,
 global config and server state, so instances share nothing — and `--domain`
 already gives them separate ports, nginx sites and logins.
 

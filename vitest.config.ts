@@ -4,7 +4,8 @@ import { defineConfig } from 'vitest/config'
 
 // Four packages, one `npm test`. Each owns its own vitest config — this file only names
 // them, so `npm test -w <pkg>` and the whole-repo run execute the identical setup:
-//   - packages/xezar     Node ESM (NodeNext, `.js` relative imports)
+//   - packages/xezar     Node ESM (NodeNext + rewriteRelativeImportExtensions, so relative
+//                        imports name the real `.ts` file and tsc rewrites the extension on emit)
 //   - packages/contract   the zod schemas every wire shape is defined by
 //   - packages/api-client the Node-free typed client over those schemas
 //   - packages/web        DOM code, resolved exactly as Vite bundles it

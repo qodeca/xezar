@@ -15,6 +15,11 @@ preinstalled browser, or a cloud-browser account.
 - Linux Chrome libraries may require root. The operation below performs the
   install itself when already root or passwordless elevation is available; it
   never delegates commands to the operator.
+- Two caches, two locations: the CLI binary lives at
+  `$XDG_CACHE_HOME/agent-tools/agent-browser`, the browser itself at
+  `~/.agent-browser/browsers`. Only `browsers/` is safe to restore from a cache —
+  the rest of `~/.agent-browser` is sockets and per-session state, and CI caches
+  exactly those two paths for that reason.
 
 ## Operations
 
@@ -187,3 +192,59 @@ ignore only an already-closed-session error.
   profile unless the operator explicitly requested that profile.
 - Keep all operation targets local to the application under test. Do not enable
   a cloud provider or send credentials to a remote browser service.
+
+## Running this repository's suite
+
+`AGENTS.md` § Validation owns the command, the exit contract and the four limits a spec
+must not assume past. What follows is the operating detail that lived there until it grew
+too long for a file every session loads.
+
+### What the boot pins, and why
+
+`XEZ_HOME` pins what xezar *writes* (`.local/qa/xez-home`). `CLAUDE_CONFIG_DIR`,
+`CODEX_HOME` and `OPENCODE_CONFIG_DIR` pin the user-scope files it *reads*
+(`.local/qa/agent-home/*`, mode 0700, wiped on every cold boot). `ANTHROPIC_MODEL` is
+unset because it outranks every settings file.
+
+That last one matters because the cockpit seeds each runner's model from that agent's own
+settings file by design. Without the unset, a developer with opencode configured boots the
+suite with their own model pre-filled, and a spec asserting an unset model fails on their
+machine while passing in CI.
+
+The pins are part of the reuse fingerprint (`environment.agentHome` in the descriptor), so
+an instance booted with different pins is never reused — the same rule
+`environment.singleProject` already follows. Three of those vars are what
+`agentHomePaths()` honours (`packages/xezar/src/paths.ts`, precedence pinned by
+`paths.test.ts`); `XEZ_HOME` is separate and pins only what xezar itself writes.
+`agentHomePaths()` has a fourth slot, pi, which has no vendor variable and therefore cannot
+be pinned at all. A fifth agent home that does have one needs adding to `test-env-up.sh`
+too.
+
+### Iterating on one spec
+
+The `npm run test:e2e` wrapper takes no file filter, so iterating on ONE spec means booting
+the environment once and then running vitest against it directly — still through `npm`,
+never `npx`:
+
+```bash
+sh scripts/test-env-up.sh                                    # boot once, reuse
+npm test -- --config packages/web/e2e/vitest.config.ts thread-scroll
+npm test -- --config packages/web/e2e/vitest.config.ts github -t "opens an issue"
+sh scripts/test-env-down.sh                                  # always, when finished
+```
+
+`XEZ_DRY_RUN=1 npm run dev` still exercises the whole cockpit offline for manual
+verification.
+
+### Two rules the suite learned the hard way
+
+- **Never edit a spec — or anything it imports — while a run is in flight.** Files are
+  loaded as the run reaches them, so an edit part-way through leaves the specs that have
+  already started holding the old module and the ones that have not seen the new one. The
+  result is a wave of failures that have nothing to do with the change, in files the change
+  never touched.
+- **Tear a fixture server down through the shared helpers** (`stopFixtureServer` /
+  `removeDataRoot` in `packages/web/e2e/agent-browser.ts`). `kill()` only delivers the
+  signal: a server still flushing its NDJSON races `rmSync` and throws `ENOTEMPTY` in a
+  suite whose every test passed. The helpers await the exit and retry the removal, and
+  still report a directory that genuinely cannot be deleted.

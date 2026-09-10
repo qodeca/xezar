@@ -1,6 +1,6 @@
 # Task operation and stage ownership
 
-Select the role workflow and actual available backend/model. Worktree ON for ordinary writing; integration/root-sync modes are separate. Read-only tasks may initialize evidence without dependencies. Bootstrap runs first; then development workflows run preflight → setup → author → readiness → gates → seal → handoff. Eight writing workflows allow at most two returns to their author step after failed gates. Standalone quality-gates allows two repairs of the same failure. Reassignment retains failure history, not a hidden counter reset.
+Select the role workflow and actual available backend/model. Worktree ON for ordinary writing; integration/root-sync modes are separate. Read-only tasks may initialize evidence without dependencies. Bootstrap runs first; then development workflows run preflight → setup → author → readiness → gates → seal → handoff. Nine writing workflows allow at most two returns to their author step after failed gates. Standalone quality-gates allows two repairs of the same failure. Reassignment retains failure history, not a hidden counter reset.
 
 The terminal agent step must remain last so XEZ:ASK can present options. An unresolved required decision in an earlier stage needs a BLOCKED record, and readiness must stop before gates; plain text is insufficient. Ask only outside existing authority, never for routine authorized operations. Do not interpret silence as consent.
 

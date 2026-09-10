@@ -1,5 +1,5 @@
 import { QueryClientProvider } from '@tanstack/react-query'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -350,6 +350,168 @@ describe('the Changes tab route', () => {
     await waitFor(() =>
       expect(document.querySelector('[aria-label="More git actions"]')).not.toBeNull(),
     )
+  })
+
+  it('a dead link renders the run-fetch error rather than an empty Changes tab', async () => {
+    stubFetch({ 'GET /api/v1/runs/r1': () => jsonResponse({ error: 'not found' }, 404) })
+    renderChangesRoute()
+
+    // The RUN fetch failed, so there is no run to build a toolbar from — the tab has to say so.
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Task not found' })).toBeTruthy())
+    expect(document.querySelector('[data-slot="git-toolbar"]')).toBeNull()
+  })
+
+  it('a push failure surfaces the server error as a danger toast', async () => {
+    stubFetch({
+      'POST /api/v1/runs/r1/git/push': () =>
+        jsonResponse({ error: 'failed to push some refs — the remote rejected it' }, 500),
+    })
+    renderChangesRoute()
+    await waitFor(() => expect(toolbarAction('push')?.disabled).toBe(false))
+
+    fireEvent.click(toolbarAction('push')!)
+
+    await waitFor(() =>
+      expect(document.body.textContent).toContain('the remote rejected it'),
+    )
+    expect(document.querySelector('[data-tone="danger"]')).not.toBeNull()
+  })
+
+  it('a Create PR failure surfaces the server error and leaves the button in place', async () => {
+    stubFetch({
+      'POST /api/v1/runs/r1/pr': () => jsonResponse({ error: 'gh: not authenticated' }, 500),
+    })
+    renderChangesRoute()
+    await waitFor(() => expect(toolbarAction('create-pr')?.disabled).toBe(false))
+
+    fireEvent.click(toolbarAction('create-pr')!)
+
+    await waitFor(() => expect(document.body.textContent).toContain('gh: not authenticated'))
+    // No PR URL arrived, so the policy must not flip to View PR.
+    expect(document.querySelector('a[data-action="view-pr"]')).toBeNull()
+  })
+
+  describe('the terminal handoff in the overflow menu', () => {
+    /** Radix opens the kebab on pointerdown; the item is not in the DOM until it does. */
+    async function openTerminalItem() {
+      const trigger = await waitFor(() => {
+        const el = document.querySelector('[aria-label="More git actions"]')
+        expect(el).not.toBeNull()
+        return el as HTMLElement
+      })
+      fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' })
+      const menu = await screen.findByRole('menu')
+      return within(menu).getByRole('menuitem', { name: 'Open in terminal' })
+    }
+
+    it('POSTs open-in-cli', async () => {
+      const sent = stubFetch({
+        'POST /api/v1/runs/r1/open-in-cli': () => jsonResponse({ opened: true }),
+      })
+      renderChangesRoute()
+
+      fireEvent.click(await openTerminalItem())
+
+      await waitFor(() =>
+        expect(sent.some((r) => r.method === 'POST' && r.path === '/api/v1/runs/r1/open-in-cli')).toBe(
+          true,
+        ),
+      )
+    })
+
+    it('a 409 with no emulator copies the command instead of just failing', async () => {
+      const writeText = vi.fn(async () => {})
+      vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } })
+      stubFetch({
+        'POST /api/v1/runs/r1/open-in-cli': () =>
+          jsonResponse(
+            { error: 'no terminal', command: 'cd /tmp/wt/r1 && claude --resume s-1' },
+            409,
+          ),
+      })
+      renderChangesRoute()
+
+      fireEvent.click(await openTerminalItem())
+
+      // Same fallback as the header's Terminal button: the user stays one paste away.
+      await waitFor(() =>
+        expect(writeText).toHaveBeenCalledWith('cd /tmp/wt/r1 && claude --resume s-1'),
+      )
+      await waitFor(() =>
+        expect(document.body.textContent).toContain('command copied to clipboard'),
+      )
+    })
+
+    it('a clipboard that refuses still shows the command to run by hand', async () => {
+      vi.stubGlobal('navigator', {
+        ...navigator,
+        clipboard: { writeText: vi.fn(async () => Promise.reject(new Error('denied'))) },
+      })
+      stubFetch({
+        'POST /api/v1/runs/r1/open-in-cli': () =>
+          jsonResponse(
+            { error: 'no terminal', command: 'cd /tmp/wt/r1 && claude --resume s-1' },
+            409,
+          ),
+      })
+      renderChangesRoute()
+
+      fireEvent.click(await openTerminalItem())
+
+      await waitFor(() =>
+        expect(document.body.textContent).toContain(
+          'Run manually: cd /tmp/wt/r1 && claude --resume s-1',
+        ),
+      )
+    })
+
+    it('any other failure is an ordinary danger toast, with nothing copied', async () => {
+      const writeText = vi.fn(async () => {})
+      vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } })
+      stubFetch({
+        'POST /api/v1/runs/r1/open-in-cli': () =>
+          jsonResponse({ error: 'the session is still active in the engine' }, 409),
+      })
+      renderChangesRoute()
+
+      fireEvent.click(await openTerminalItem())
+
+      await waitFor(() =>
+        expect(document.body.textContent).toContain('the session is still active in the engine'),
+      )
+      // No `command` in the answer, so there is nothing to paste.
+      expect(writeText).not.toHaveBeenCalled()
+    })
+  })
+
+  it('picking a file in the tree marks it selected and scrolls the diff to it', async () => {
+    // jsdom lays nothing out and ships no `scrollIntoView`, which is what the facade's handle
+    // reaches for once it has found the file's element. It has to be ASSIGNED (`vi.spyOn` refuses
+    // a property that does not exist) and DELETED again, or every test declared after this one
+    // runs in a different DOM than the ones declared before it — an order dependence that would
+    // pass today and surface as an unrelated failure the first time someone reorders the file.
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    try {
+      stubFetch()
+      renderChangesRoute()
+      await waitFor(() => expect(document.querySelectorAll('[data-slot="tree-file"]').length).toBe(2))
+
+      const row = [...document.querySelectorAll('[data-slot="tree-file"]')].find((el) =>
+        el.textContent?.includes('a.ts'),
+      ) as HTMLElement
+      fireEvent.click(row)
+
+      // Selection goes through the facade's handle rather than the DOM: past the virtualization
+      // threshold the picked file may not be mounted to scroll to.
+      await waitFor(() =>
+        expect(document.querySelector('[data-slot="tree-file"][aria-current="true"]')?.textContent)
+          .toContain('a.ts'),
+      )
+      expect(scrollIntoView).toHaveBeenCalled()
+    } finally {
+      delete (Element.prototype as Partial<Element>).scrollIntoView
+    }
   })
 })
 

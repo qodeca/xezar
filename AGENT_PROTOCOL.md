@@ -4,7 +4,8 @@ xezar runs coding-agent CLIs behind **one backend-agnostic seam** and renders
 every backend through **one normalized event vocabulary**. This document is the
 operational contract for that seam: what a runner must implement, what it must
 emit, how the emissions are tested, and what a *new* runner (e.g. `pi`, PR #387)
-has to satisfy to be a first-class backend rather than a second-class one.
+has to satisfy to be a first-class backend rather than a second-class one. `pi`
+(PR #387) was the last one added, and §9 is its worked example.
 
 It is the concise, load-bearing contract. The code
 in `packages/xezar/src/core/` implements it; this file cites the code. When the two
@@ -204,9 +205,12 @@ does not change backend parity or expose the raw error.
 ## 3. v2 `UiEvent` — the normalized protocol (`packages/xezar/src/core/ui-events.ts`)
 
 Pure vocabulary: no runtime imports, no runner coupling. Mirrored into the
-api-client package at `packages/api-client/src/protocol/ui-events.ts`; the mirror is **checked**,
-not trusted — `packages/xezar/src/server/api-types.test.ts` asserts type-exactness between the
-two, so drift fails `npm run typecheck` (the gate) rather than the UI at runtime.
+api-client package at `packages/api-client/src/protocol/ui-events.ts`. **That mirror is
+currently unguarded**: the type-exactness pair that used to pin it was retired when
+`@qodeca/xezar-contract` absorbed the hand-written response types, and
+`packages/xezar/src/server/api-types.test.ts` now checks only `RunEvent`. Until a guard
+returns, a change here MUST be applied to the mirror in the same commit — nothing fails
+if you forget.
 
 ### Design rules baked in
 
@@ -240,7 +244,7 @@ thread ids).
 type ToolStatus = 'pending' | 'running' | 'completed' | 'failed' | 'declined';
 type ToolKind   = 'read'|'edit'|'delete'|'move'|'search'|'execute'|'think'|'fetch'|'task'|'plan'|'other';
 type StopReason = 'end_turn'|'max_tokens'|'refusal'|'cancelled'|'timeout'|'error';
-type PlanStatus = 'pending' | 'in_progress' | 'completed';
+type PlanStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
 ```
 
 Supporting shapes: `PlanEntry` (`content`, `status`, `priority?`, `activeForm?`),
@@ -280,7 +284,7 @@ work — validates the payload (`packages/xezar/src/core/ask.ts`, modeled on Cla
 `AskUserQuestion`: 1–4 questions, 2–4 options each, `header` ≤12 chars), emits
 `ask.requested` and parks the run `waiting`. The cockpit renders clickable option
 chips; the user's pick (or a free-form reply) rides the normal reply seam
-(`POST /api/runs/:id/messages`), and the card resolves client-side when that
+(`POST /api/v1/runs/:id/messages`), and the card resolves client-side when that
 message lands (no `ask.resolved` event). Codex additionally bridges its native
 `item/tool/requestUserInput` server request onto the same event and routes the
 next answer back as the documented JSON-RPC response. Malformed or unsupported
@@ -323,6 +327,11 @@ Each backend has a mapper (`packages/xezar/src/core/<backend>-ui-mapper.ts`) tur
 transport into `UiEvent`s. Those mappers and their golden fixtures (§7) are the authority; the
 load-bearing rows:
 
+The table covers the first three backends. `pi` (`--mode rpc` JSONL) is mapped the
+same way, and its authority is `packages/xezar/src/core/pi-ui-mapper.ts` with the
+golden fixtures under `packages/xezar/src/core/__fixtures__/pi/`; `ui-parity.test.ts`
+runs all four.
+
 | v2 event / field | claude (stream-json) | codex (app-server JSON-RPC) | opencode (serve HTTP+SSE) |
 |---|---|---|---|
 | `session.started` | `system/init` (model, tools, cwd) | `thread/started` / `thread/start` result | `POST /session` response |
@@ -343,8 +352,8 @@ produce **no events**, and malformed entries in a `plan.updated` payload are
 filtered out (a non-array plan emits no plan event at all). Mapper state is
 **explicit and immutable** — each mapper's map function takes `(frame, state)`
 and returns `{ events, state }`, never mutating the passed-in state
-(`mapClaudeMessage` / `mapCodexNotification` / `mapOpencodeEvent`, each paired
-with a `create<Backend>UiState`; see the claude mapper's "state carries across
+(`mapClaudeMessage` / `mapCodexNotification` / `mapOpencodeEvent` / `mapPiRpcMessage`,
+each paired with a `create<Backend>UiState`; see the claude mapper's "state carries across
 messages" tests).
 
 ---
@@ -380,6 +389,8 @@ or a new fixture set forgets one — a named row fails. The matrix:
   task items counts agents, not frames (#474)
 - `usage.updated` with raw token counts
 - `turn.completed` with a `stopReason`
+- `turn.completed` with per-turn DIRECTIONAL usage (`usage.input` and
+  `usage.output` both > 0)
 - sub-agent **nesting** via `parentItemId` where the upstream wire attributes
   child work to a parent
 
@@ -422,7 +433,7 @@ these events get persisted as NDJSON), and asserts `toStrictEqual` against the
 
 ---
 
-## 9. Adding a new runner (the #387 `pi` checklist)
+## 9. Adding a new runner (the #387 `pi` checklist, as it was actually done)
 
 A new backend is a **single class behind the seam** plus its mapper, fixtures and
 the parity row — never backend-specific types leaking past
@@ -444,8 +455,8 @@ To be first-class:
    `claude-cli-runner.ts` is the reference.
 2. **Factory** — add the id to `RunnerId` / `RUNNER_IDS` (`agent-runner.ts`) and
    a `case` in `createRunner` (`runner-factory.ts`). Add `UiBackend` in
-   `ui-events.ts` **and its mirror** `packages/api-client/src/protocol/ui-events.ts` (the
-   type-exactness test guards drift).
+   `ui-events.ts` **and its mirror** `packages/api-client/src/protocol/ui-events.ts`
+   (nothing guards this today — see §3; keep the two files identical by hand).
 3. **Detection** — a `probePi()` in `backend-detect.ts` plus the `BackendCheck`
    name union; degrade gracefully when the CLI is absent (never fail boot). If it
    needs a binary override, add `XEZ_PI_BIN` — and per AGENTS.md's zero-config
@@ -463,7 +474,7 @@ To be first-class:
    row must pass. (If the backend has no wire parent attribution, document the
    nesting cell's substitute the way codex's review-mode items are handled.)
 8. **Plumbing** — the run-store `runner` enum, workflow step schema, the
-   `POST /api/runs` / `PUT /api/config` bodies, `resumeCommand()`, the web
+   `POST /api/v1/runs` / `PUT /api/v1/config` bodies, `resumeCommand()`, the web
    `Runner` type, composer pills/presets, and Settings → Agents. Keep additive
    so old `runs.json` records still parse (the `runner` enum keeps `claude-cli`
    parseable — follow that precedent).
@@ -478,10 +489,9 @@ To be first-class:
 
 ## 10. The plan channel (PR #443)
 
-PR #443 (`fix/issue-433-render-plan-todo`, open at the time of writing) hardens
-`plan.updated` across all three backends after finding the plan never reached the
-cockpit dock — for a different reason on each backend. Its direction, which any
-new runner should follow:
+PR #443 hardened `plan.updated` after finding the plan never reached the cockpit
+dock — for a different reason on each backend. It has landed; the rules below are
+current behaviour, and any new runner should follow them:
 
 - **Claude** — current-session plans use `TaskCreate` / `TaskUpdate` / `TaskList`
   (not only `TodoWrite`); classify all of them as plan tools and fold them into
@@ -497,8 +507,8 @@ new runner should follow:
   clears the dock (a malformed frame maps to zero events, never a wipe).
 
 The `plan.updated` **event name and payload structure are unchanged**; #443
-extends the *handling*, not the wire shape (on `main`, `PlanStatus` is the three
-values in §3).
+extended the *handling*, not the wire shape. `PlanStatus` has since gained a fourth
+value, `cancelled` — see §3.
 
 ---
 
