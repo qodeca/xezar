@@ -19,8 +19,10 @@
 // fails the suite otherwise. The empty registry is valid: the bridge still
 // handshakes and lists `health`.
 import type { McpTool } from '../tool.ts';
+import { taskReadsTool } from './task-reads.ts';
 import { discoverProjectTool } from './discovery.ts';
 
 export const tools: readonly McpTool[] = [
+  taskReadsTool,
   discoverProjectTool,
 ];
