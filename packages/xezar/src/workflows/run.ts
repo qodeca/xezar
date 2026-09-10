@@ -247,8 +247,9 @@ interface ActiveRun {
   };
 }
 
-/** Safety cap on autonomous auto-continues per run — stops a stuck agent from nudging forever. */
-const MAX_AUTO_CONTINUES = 40;
+/** Safety cap on autonomous auto-continues per run — stops a stuck agent from nudging forever.
+ *  Exported so the regression suite pins the bound against the real number instead of a copy. */
+export const MAX_AUTO_CONTINUES = 40;
 const AUTONOMOUS_NUDGE =
   'Continue working autonomously until the task is fully complete. Do not ask me for confirmation or clarification — make reasonable assumptions and proceed. When everything is done, end the session with your done signal.';
 const MONITORING_WAKE_NUDGE =
@@ -2293,7 +2294,19 @@ export class RunManager {
       record?.worktreePath && existsSync(record.worktreePath)
         ? record.worktreePath
         : this.repoRoot;
-    const state: ActiveRun = { cancelled: false, interrupt: () => undefined, cwd };
+    // Autonomy is re-read from the RECORD, the way restart recovery re-threads it into
+    // `execute`'s input: a continuation builds its OWN `ActiveRun`, and omitting the field here
+    // is what made every Continue and every recovered resume silently non-autonomous while the
+    // record still said otherwise (#141) — the same construction-site asymmetry `state.skills`
+    // hit in #811. `autoContinues` starts at 0 rather than `undefined` so `MAX_AUTO_CONTINUES`
+    // bounds this path too; the budget is per `ActiveRun`, so a Continue starts a fresh one.
+    const state: ActiveRun = {
+      cancelled: false,
+      interrupt: () => undefined,
+      cwd,
+      autonomous: record?.autonomous === true,
+      autoContinues: 0,
+    };
     this.active.set(runId, state);
     this.starting.delete(runId);
     if (state.cwd === this.repoRoot) {
@@ -2414,23 +2427,12 @@ export class RunManager {
           state.session?.end();
           return;
         }
+        let autoContinued = false;
         if (sessionOpen) {
           // Autonomous (#autonomous): never hand the ball back to the user. Nudge the agent to
-          // keep going (bounded by MAX_AUTO_CONTINUES) instead of parking at `waiting`.
-          const autoContinued =
-            state.autonomous &&
-            (state.autoContinues ?? 0) < MAX_AUTO_CONTINUES &&
-            !state.cancelled &&
-            (() => {
-              const sent = state.session?.sendMessage([{ type: 'text', text: AUTONOMOUS_NUDGE }]);
-              if (!sent) return false;
-              state.autoContinues = (state.autoContinues ?? 0) + 1;
-              this.store.appendEvent(runId, {
-                type: 'note',
-                message: `autonomous — continuing without pausing (${state.autoContinues}/${MAX_AUTO_CONTINUES})`,
-              });
-              return true;
-            })();
+          // keep going (bounded by MAX_AUTO_CONTINUES) instead of parking at `waiting`. Shared
+          // with `execute`'s turn-end handler — one sender, both sites (#141).
+          autoContinued = this.autoContinueTurn(runId, state);
           if (!autoContinued) {
             // `XEZ:ASK` → park `waiting` (attention) AND surface the structured
             // question as an ask card (#473). `XEZ:MONITORING` → non-attention
@@ -2466,7 +2468,9 @@ export class RunManager {
         appendHandoffHeartbeat(
           this.dataDir,
           runId,
-          `turn complete — status=${monitoring ? 'monitoring' : sessionOpen ? 'waiting' : 'running'}`,
+          // A nudged turn did NOT park — the agent is working again, so the heartbeat must not
+          // read `waiting` (#141; before the fix this branch was unreachable).
+          `turn complete — status=${autoContinued ? 'running' : monitoring ? 'monitoring' : sessionOpen ? 'waiting' : 'running'}`,
         );
       }
     };
@@ -2654,6 +2658,32 @@ export class RunManager {
       await endTurn();
       this.dropActive(runId);
     }
+  }
+
+  /**
+   * Autonomous turn end (#489): never hand the ball back to the user — nudge the agent to keep
+   * going and report whether the ball stayed with it. `false` means "park normally", which is
+   * every non-autonomous run, a run whose pause cleared `autonomous` (the memory-limit
+   * suppression above), a cancelled one, a closed session that cannot take the message, and a
+   * run that has spent its `MAX_AUTO_CONTINUES` budget.
+   *
+   * ONE helper, called from BOTH turn-end handlers, because the split is exactly what broke:
+   * `execute` set `autonomous` on its `ActiveRun` and its handler never read it, while
+   * `runContinuation`'s handler read it and its `ActiveRun` never set it — so the nudge fired
+   * nowhere and every autonomous run parked after one turn (#141). AGENTS.md names both traps:
+   * grep the TYPE at every construction site, and treat the two near-identical turn-end handlers
+   * as one place. Keep this the only sender of `AUTONOMOUS_NUDGE`.
+   */
+  private autoContinueTurn(runId: string, state: ActiveRun): boolean {
+    if (!state.autonomous || state.cancelled) return false;
+    if ((state.autoContinues ?? 0) >= MAX_AUTO_CONTINUES) return false;
+    if (!state.session?.sendMessage([{ type: 'text', text: AUTONOMOUS_NUDGE }])) return false;
+    state.autoContinues = (state.autoContinues ?? 0) + 1;
+    this.store.appendEvent(runId, {
+      type: 'note',
+      message: `autonomous — continuing without pausing (${state.autoContinues}/${MAX_AUTO_CONTINUES})`,
+    });
+    return true;
   }
 
   // ---- execution -----------------------------------------------------------
@@ -3112,7 +3142,13 @@ export class RunManager {
           return;
         }
         const waiting = interactive && sessionOpen;
-        if (waiting) {
+        // Autonomous (#autonomous): the turn is over and the session is open, which is exactly
+        // the moment this run must NOT park. Same helper, same bound, same note as
+        // `runContinuation`'s handler (#141) — the field `execute` has always set is finally
+        // read here. `interactive` still gates it: a mid-workflow step ends its own session and
+        // the next step follows, so there is no ball to hand back and nothing to nudge.
+        const autoContinued = waiting ? this.autoContinueTurn(runId, state) : false;
+        if (waiting && !autoContinued) {
           // Turn over, session open. Either the ball is in the user's court
           // (`waiting`) — optionally with a structured `XEZ:ASK` question the
           // cockpit renders as an ask card (#473) — or the agent declared it is
@@ -3146,7 +3182,7 @@ export class RunManager {
         appendHandoffHeartbeat(
           this.dataDir,
           runId,
-          `turn complete — status=${monitoring ? 'monitoring' : waiting ? 'waiting' : 'running'}`,
+          `turn complete — status=${autoContinued ? 'running' : monitoring ? 'monitoring' : waiting ? 'waiting' : 'running'}`,
         );
       }
     };
