@@ -18,7 +18,7 @@ Use a short command identity in the brief and the existing task checkpoint. It c
 |---|---|
 | Attempted | Exact command/draft, target, identity and submission time |
 | Server persisted or queued | Supported acknowledgement or matching persisted user-message; record which one |
-| Runner received | Exposed runner acknowledgement; otherwise unknown |
+| Runner received | Exposed runner acknowledgement; transcript persistence or queue acknowledgement alone is not runner receipt; otherwise unknown |
 | Acted upon | Agent response or artifact explicitly addressing the command |
 | Unresolved | Last confirmed state, missing evidence, investigation deadline and next trigger |
 
