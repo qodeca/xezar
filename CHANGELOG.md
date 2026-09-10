@@ -1,5 +1,7 @@
 # Unreleased
 
+# 0.13.0 (2026-09-10)
+
 ## Highlights
 Two user-visible changes lead this one. Six engine limits that the code already enforced but
 nobody could reach are now settings in the running cockpit, and the memory guard **ships on** —
@@ -37,6 +39,12 @@ coverage epic that closed twenty gaps.
   Settings → Resources. (#146)
 
 ## 🐛 Fixes
+- 🐛 **A failed page leaves the cockpit navigation available.** A route rendering error now
+  displays a recovery message with a retry button. Opening another page also recovers without
+  remounting the shell and its global subscriptions. (#50)
+- 🐛 **Slow OpenCode fallback turns can finish past five minutes.** Blocking prompt requests use
+  Node HTTP transport with cancellation controlled by the run. Real-model QA reproduced the old
+  failure at 301 seconds and a complete seven-file result at 457 seconds with the fix. (#153, #178)
 - 🐛 **A repo's own `memoryLimitMb` is honoured again.** It had become the one outcome a setting
   must never have: it saved successfully and then did nothing. A repo that sets its own value now
   overrides the workspace ceiling for its own runs, the same more-specific-wins lookup the parallel
@@ -82,6 +90,10 @@ coverage epic that closed twenty gaps.
 - 📝 **The PR #40 integration task's observations were added to the dogfooding ledger.** (#41)
 
 ## 🚀 CI/CD & Infrastructure
+- 🚀 **Remote installer refusal paths have additional offline tests.** Cancellation, rejected
+  credentials, incompatible hosts, root execution and existing proxy ownership are covered;
+  recursive server-install branch coverage exceeds 70%. macOS installer tests keep generated
+  launch-agent files inside their temporary fixture home. (#56)
 - 🚀 **Twenty coverage gaps closed.** A measured audit (`docs/testing/coverage-gaps.md`, plus a
   `test:coverage` script writing to `.local/coverage/`) ranked what the gates could not see, and
   the epic worked through it: `packages/contract` became a vitest project so a test written there

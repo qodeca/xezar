@@ -163,6 +163,7 @@ import { WorkspaceSemaphore } from '../workspace/semaphore.ts';
 import { mergeWriteWorkspaceUiState, readWorkspaceUiState } from '../workspace/ui-state.ts';
 import { checkoutRepo, type CloneRunner } from './checkout.ts';
 import { ProjectContextError, ProjectContexts, type ProjectContext } from './project-context.ts';
+import { ProjectWriterError } from '../runs/project-writer.ts';
 import { reviewGateEnabled } from '../runs/review-gate.ts';
 import { readUiState, uiStatePath } from '../ui-state.ts';
 import { agentHomePaths, expandTilde } from '../paths.ts';
@@ -1344,6 +1345,7 @@ export function createApp(deps: ServerDeps) {
     try {
       c.set('project', await contexts.context(raw));
     } catch (err) {
+      if (err instanceof ProjectWriterError) return c.json({ error: err.message }, 409);
       if (err instanceof ProjectContextError) {
         return err.reason === 'missing-root'
           ? c.json({ error: `project folder not found: ${err.projectId}` }, 409)
