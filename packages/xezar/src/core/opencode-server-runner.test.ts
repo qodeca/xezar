@@ -1,4 +1,6 @@
+import { EventEmitter } from 'node:events';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import http from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -450,6 +452,142 @@ describe('a turn that outlives the request that submitted it (#168)', () => {
 });
 
 /**
+ * #153 AC 2 — the BLOCKING fallback must not die at Node's fetch 300s wall
+ * either. #168 lifted the wall only where `POST /session/:id/prompt_async` can
+ * be used; `submitPrompt()` still returns false with no live SSE feed, with no
+ * such route, or on any other answer, and an older opencode does not even 404
+ * there — it serves its web UI, `200` with an HTML body. That is exactly the
+ * shape the DEFAULT mock has: `prompt_async` falls through to its catch-all
+ * `200 {}`, so these sessions genuinely take the blocking route.
+ *
+ * Measured on this machine (Node v24.20.0), a server that answers after 330s:
+ * `fetch` rejected after 301.0s with `HeadersTimeoutError
+ * (UND_ERR_HEADERS_TIMEOUT)`; the same request over `node:http` returned
+ * `200` after 330.0s. The wall is real and `node:http` does not have it.
+ *
+ * Nothing here waits 300 seconds. The wall is STOOD IN FOR: `fetch` is made to
+ * reject with the exact error undici throws at 300s, in milliseconds. A runner
+ * that still routes the blocking prompt through `fetch` therefore fails the
+ * same way it failed in production; one that does not never consults it.
+ */
+describe('the blocking fallback outlives the fetch transport wall (#153 AC 2)', () => {
+  /** Record every URL that reaches `fetch`, and reject the blocking prompt
+   *  POST the way undici does at its 300s `headersTimeout`. */
+  function watchFetch(): { seen: string[]; restore: () => void } {
+    const realFetch = globalThis.fetch;
+    const seen: string[] = [];
+    type FetchArgs = Parameters<typeof fetch>;
+    globalThis.fetch = ((input: FetchArgs[0], init?: FetchArgs[1]) => {
+      const url = String(input);
+      seen.push(url);
+      if (url.includes('/message')) {
+        return Promise.reject(
+          new TypeError('fetch failed', {
+            cause: Object.assign(new Error('Headers Timeout Error'), {
+              name: 'HeadersTimeoutError',
+              code: 'UND_ERR_HEADERS_TIMEOUT',
+            }),
+          }),
+        );
+      }
+      return realFetch.call(globalThis, input, init);
+    }) as typeof fetch;
+    return {
+      seen,
+      restore: () => {
+        globalThis.fetch = realFetch;
+      },
+    };
+  }
+
+  it('completes the turn instead of dying where fetch would have given up at 300s', async () => {
+    const { seen, restore } = watchFetch();
+    const { session, pid, v1, v2 } = start();
+    try {
+      await until(
+        () => v2.some((e) => e.type === 'turn.completed') || v1.some((e) => e.type === 'error'),
+        'the turn to end, one way or the other',
+      );
+
+      // The whole bug: a healthy turn on the blocking route must not error.
+      expect(v1.filter((e) => e.type === 'error')).toEqual([]);
+
+      session.end();
+      const result = await session.result;
+
+      // And it must deliver everything the turn produced, including the usage
+      // the blocking response carries.
+      expect([...result.text.split('\n')].sort()).toEqual(['Checking the working tree.', 'Done.']);
+      expect(result.tokensUsed).toBe(1500);
+      expect(v1.filter((e) => e.type === 'turn-end')).toHaveLength(1);
+      expect(v1.at(-1)).toEqual({ type: 'done' });
+
+      // The mechanism, pinned: the prompt POST never touched the transport
+      // that imposes the 300s wall. The SSE feed still does, deliberately.
+      expect(seen.filter((url) => url.includes('/message'))).toEqual([]);
+      expect(seen.some((url) => url.endsWith('/event'))).toBe(true);
+      expect(isAlive(pid)).toBe(false);
+    } finally {
+      restore();
+      session.interrupt();
+    }
+  }, 30_000);
+
+  /**
+   * CANCELLATION (AC 5) — removing the wall removes a bound, so every
+   * remaining exit from a blocking request that is never answered has to be
+   * named and proved. `MOCK_OPENCODE_NEVER_ANSWER_PROMPT=1` holds the socket
+   * open for ever; there are exactly two ways out and both are here. Before
+   * the change undici's 300s would have ended these too — a third exit that
+   * nobody chose and that killed healthy turns.
+   */
+  it('ends a never-answered blocking request on the run\'s own wall clock', async () => {
+    const { session, pid, v1 } = start({
+      env: { MOCK_OPENCODE_NEVER_ANSWER_PROMPT: '1' },
+      timeoutMs: 1_500,
+    });
+    try {
+      const started = Date.now();
+      await session.result;
+      const elapsed = Date.now() - started;
+
+      // The deadline, not the transport: it settles at the configured limit,
+      // nowhere near 300s, and says what happened.
+      expect(v1.some((e) => e.type === 'error' && e.message.includes('timed out'))).toBe(true);
+      expect(v1.at(-1)).toEqual({ type: 'done' });
+      expect(elapsed).toBeLessThan(15_000);
+      expect(signalsSeen()).toEqual(['SIGTERM']);
+      expect(isAlive(pid)).toBe(false);
+    } finally {
+      session.interrupt();
+    }
+  }, 30_000);
+
+  it('ends a never-answered blocking request on end(), with no wall clock at all', async () => {
+    // `timeoutMs: 0` is the uncapped run — the last, interactive workflow step.
+    // Nothing bounds the request but the user, and that must be enough.
+    const { session, pid, v1 } = start({
+      env: { MOCK_OPENCODE_NEVER_ANSWER_PROMPT: '1' },
+      timeoutMs: 0,
+    });
+    try {
+      await until(() => v1.some((e) => e.type === 'session'), 'the session handshake');
+      await sleep(200); // the prompt POST is in flight and will never answer
+
+      session.end();
+      await session.result;
+
+      expect(v1.at(-1)).toEqual({ type: 'done' });
+      expect(session.open).toBe(false);
+      expect(signalsSeen()).toEqual(['SIGTERM']);
+      expect(isAlive(pid)).toBe(false);
+    } finally {
+      session.interrupt();
+    }
+  }, 30_000);
+});
+
+/**
  * #858 — `opencode serve` installs its own SIGTERM handler, so the teardown
  * watchdog must decide "is it dead?" from a real exit, never from
  * `ChildProcess.killed`, which Node flips the moment a signal is *delivered*.
@@ -668,37 +806,54 @@ describe('a server that fails before or during the stream', () => {
  * `TypeError`, keeping the real reason (undici's own 300s `headersTimeout`) in
  * `.cause`, which the runner discarded.
  *
- * The failure is INJECTED here — the real `fetch` is wrapped so one request
+ * The failure is INJECTED here — the transport is wrapped so one request
  * rejects with the error undici would have thrown, and `Date.now` is offset by
  * the elapsed time being simulated. Nothing in this suite waits 300 seconds.
+ *
+ * Since AC 2 the request/response calls go over `node:http`, not `fetch`, so
+ * the injection point is `http.request`. The rejection VALUES stay undici's,
+ * because the formatter has to render whatever shape reaches it and the SSE
+ * feed still produces those.
  */
-describe('a fetch that rejects at the transport level (#153)', () => {
-  /** Swap in a fetch that fails the FIRST request whose URL contains `match`,
-   *  pretending `advanceMs` of wall clock passed inside that request. */
-  function failFetchOnce(match: string, error: unknown, advanceMs: number): () => void {
-    const realFetch = globalThis.fetch;
+describe('a request that fails at the transport level (#153)', () => {
+  /** Swap in a transport that fails the FIRST request whose URL contains
+   *  `match`, pretending `advanceMs` of wall clock passed inside it. The fake
+   *  `ClientRequest` speaks only what `sendRequest` uses: `on('error')`,
+   *  `setTimeout` and `end`. */
+  function failRequestOnce(match: string, error: unknown, advanceMs: number): () => void {
+    const realRequest = http.request;
     const realNow = Date.now;
     let offset = 0;
     let fired = false;
     Date.now = () => realNow.call(Date) + offset;
-    type FetchArgs = Parameters<typeof fetch>;
-    globalThis.fetch = ((input: FetchArgs[0], init?: FetchArgs[1]) => {
-      if (!fired && String(input).includes(match)) {
+    type RequestArgs = Parameters<typeof http.request>;
+    http.request = ((...args: RequestArgs) => {
+      if (!fired && String(args[0]).includes(match)) {
         fired = true;
         offset += advanceMs;
-        return Promise.reject(error);
+        const fake = new EventEmitter() as EventEmitter & Record<string, unknown>;
+        fake.setTimeout = () => fake;
+        fake.destroy = () => fake;
+        fake.end = () => {
+          setImmediate(() => fake.emit('error', error));
+          return fake;
+        };
+        return fake as unknown as ReturnType<typeof http.request>;
       }
-      return realFetch.call(globalThis, input, init);
-    }) as typeof fetch;
+      return (realRequest as (...a: RequestArgs) => ReturnType<typeof http.request>).apply(
+        http,
+        args,
+      );
+    }) as typeof http.request;
     return () => {
-      globalThis.fetch = realFetch;
+      http.request = realRequest;
       Date.now = realNow;
     };
   }
 
   /** Run one session whose prompt POST fails, and return what the user is told. */
   async function messageForPromptFailure(error: unknown, advanceMs: number): Promise<string> {
-    const restore = failFetchOnce('/message', error, advanceMs);
+    const restore = failRequestOnce('/message', error, advanceMs);
     const { session, v1 } = start();
     try {
       await session.result;
@@ -729,7 +884,7 @@ describe('a fetch that rejects at the transport level (#153)', () => {
    * diagnosis. It is why the wrap lives in `request()` and not in `http()`.
    */
   it('names the cause on the async submit route too (#168 path)', async () => {
-    const restore = failFetchOnce('/prompt_async', undiciHeadersTimeout(), 42_000);
+    const restore = failRequestOnce('/prompt_async', undiciHeadersTimeout(), 42_000);
     const { session, v1 } = start({ env: { MOCK_OPENCODE_ASYNC_PROMPT: '1' } });
     let message = '';
     try {

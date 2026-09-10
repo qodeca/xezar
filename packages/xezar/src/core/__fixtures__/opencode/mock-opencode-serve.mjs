@@ -44,6 +44,13 @@
 //                                    answer 500) or MOCK_OPENCODE_DROP_STREAM
 //                                    (accept, stream, then drop the SSE socket
 //                                    without ever going idle).
+//   MOCK_OPENCODE_NEVER_ANSWER_PROMPT=1  accept the blocking prompt POST and
+//                                    never answer it, holding the socket open
+//                                    for ever — the slow local model of #153
+//                                    once the 300s transport wall is gone.
+//                                    Only the run's own wall clock, `end()` or
+//                                    `interrupt()` can end such a turn, which
+//                                    is what those tests assert.
 //   MOCK_OPENCODE_SIGNAL_LOG=<path>  append every stop signal actually
 //                                    received, one per line — SIGKILL cannot
 //                                    be caught, so an escalation shows up as
@@ -67,6 +74,7 @@ const noSessionId = process.env.MOCK_OPENCODE_NO_SESSION_ID === '1';
 const rejectPrompt = process.env.MOCK_OPENCODE_REJECT_PROMPT === '1';
 const richTurn = process.env.MOCK_OPENCODE_RICH_TURN === '1';
 const asyncPrompt = process.env.MOCK_OPENCODE_ASYNC_PROMPT === '1';
+const neverAnswerPrompt = process.env.MOCK_OPENCODE_NEVER_ANSWER_PROMPT === '1';
 const signalLog = process.env.MOCK_OPENCODE_SIGNAL_LOG;
 
 const SESSION_ID = 'ses_mock_1';
@@ -248,6 +256,13 @@ const server = createServer((req, res) => {
       // what the client sees when Node's fetch abandons the request at 300s.
       // A runner that still waits here loses a healthy turn (#168).
       streamDefaultTurn(() => setTimeout(() => res.destroy(), 20));
+      return;
+    }
+    if (req.method === 'POST' && url === `/session/${SESSION_ID}/message` && neverAnswerPrompt) {
+      // Accepted and never answered — the socket just stays open. Since #153
+      // the client puts no wall of its own here, so the ONLY things that can
+      // end this turn are the run's wall clock, `end()` and `interrupt()`;
+      // each of them kills this server, which closes the socket.
       return;
     }
     if (req.method === 'POST' && url === `/session/${SESSION_ID}/message` && richTurn) {
