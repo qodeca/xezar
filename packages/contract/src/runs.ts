@@ -334,6 +334,43 @@ export const runIndexEntrySchema = z.object({
    *  refinement `workflowLabel` applies needs `steps[]`, which this row deliberately omits, so
    *  a `(planned)` chain reads as itself here rather than as its first agent's name. */
   workflow: z.string(),
+  /**
+   * The backend this run ran as — RESOLVED server-side, in order of how good the evidence is.
+   *
+   * 1. `RunRecord.runner`. NOT "what the caller asked for": `execute` writes the resolved backend
+   *    onto the record the moment a run starts, so for anything that ever ran this is a fact.
+   * 2. Otherwise the last step that recorded a backend — steps stamp theirs at spawn, so a record
+   *    written before run-level backend affinity still says what it used.
+   * 3. Otherwise the project's current `defaultRunner`, and only then is `runnerInherited` set.
+   *
+   * Resolved HERE rather than in the browser because these rows span every registered project:
+   * finishing step 3 client-side would be one config request per project. A project-scoped surface
+   * does it itself, from the one `GET /config` it already holds.
+   */
+  runner: runnerSchema,
+  /**
+   * Present ONLY when true: the run carried no runner and no step backend, so `runner` above is
+   * the project's current default.
+   *
+   * That is the one case that is not history. A run with no evidence at all has not started, so
+   * the value is what the task WOULD run as — which is why the cockpit renders it muted. Absent
+   * means the row is reporting what actually ran.
+   */
+  runnerInherited: z.boolean().optional(),
+  /** The model string the run recorded, VERBATIM (`RunRecord.model`). Absent means none was
+   *  recorded and the backend picked, which the cockpit prints as a muted `auto` — the same word
+   *  the task detail header uses. Never prettified through a catalog: a locally-hosted backend's
+   *  own id is the only honest answer. */
+  model: z.string().optional(),
+  /**
+   * How many DISTINCT backends this run's recorded steps used — a workflow may name one per step.
+   *
+   * A COUNT, deliberately, and present only when it is greater than 1. This row exists to be
+   * slim; `steps[]` is exactly the half it refuses to carry, so the mixed-chain signal is derived
+   * server-side and reduced to the one number the cell renders (`Claude Code +1`). Absent means
+   * one backend or none — which is every ordinary run.
+   */
+  stepBackends: z.number().int().min(2).optional(),
   /** The task's branch, when it has one — a column on the global page, and the one field that
    *  makes a cross-project row identifiable at a glance without opening it. */
   branch: z.string().optional(),

@@ -127,6 +127,9 @@ function serve({
     worktreeRetention: 10,
     liveTitleUpdates: null,
     reviewGate: null,
+    plannerModel: 'sonnet',
+    namerModel: 'haiku',
+    skillsRepos: [],
     ...config,
   }
   const json = (payload: unknown, status = 200) =>
@@ -694,4 +697,94 @@ describe('the agents form', () => {
       expect(pane?.textContent).toContain('can’t be resumed here')
     })
   })
+  /**
+   * E — planner/namer models and team skill sources. Declared in the file schema since spec
+   * 008 but absent from the route and from Settings, so the only way to change them was to
+   * hand-edit `.xezar/config.json`.
+   */
+  describe('planner, namer and team skill repositories (E)', () => {
+    const planner = () => document.querySelector<HTMLInputElement>('[data-slot="agents-planner-model"]')
+    const namer = () => document.querySelector<HTMLInputElement>('[data-slot="agents-namer-model"]')
+    const savePlannerNamer = () =>
+      document.querySelector<HTMLButtonElement>('[data-action="agents-save-planner-namer"]')
+    const repos = () => document.querySelector<HTMLTextAreaElement>('[data-slot="agents-skills-repos"]')
+    const saveRepos = () =>
+      document.querySelector<HTMLButtonElement>('[data-action="agents-save-skills-repos"]')
+    const resetRepos = () =>
+      document.querySelector<HTMLButtonElement>('[data-action="agents-reset-skills-repos"]')
+
+    it('renders the stored planner and namer models and saves a change', async () => {
+      serve({ config: { plannerModel: 'sonnet', namerModel: 'haiku' } })
+      renderAt('/settings/agents')
+      await waitFor(() => expect(planner()).not.toBeNull())
+      expect(planner()!.value).toBe('sonnet')
+      expect(namer()!.value).toBe('haiku')
+      expect(savePlannerNamer()!.disabled).toBe(true)
+
+      fireEvent.change(planner()!, { target: { value: 'opus' } })
+      fireEvent.click(savePlannerNamer()!)
+      await waitFor(() =>
+        expect(puts().at(-1)?.body).toEqual({ plannerModel: 'opus', namerModel: 'haiku' }),
+      )
+    })
+
+    it('"Use defaults" clears both keys with null', async () => {
+      serve({ config: { plannerModel: 'opus', namerModel: 'opus' } })
+      renderAt('/settings/agents')
+      await waitFor(() => expect(planner()).not.toBeNull())
+      fireEvent.click(document.querySelector<HTMLButtonElement>('[data-action="agents-reset-planner-namer"]')!)
+      await waitFor(() =>
+        expect(puts().at(-1)?.body).toEqual({ plannerModel: null, namerModel: null }),
+      )
+    })
+
+    it('renders team skill sources one per line and keeps the default ref implicit', async () => {
+      serve({
+        config: {
+          skillsRepos: [
+            { repo: 'open-mercato/skills', ref: 'main' },
+            { repo: 'acme/kit', ref: 'trunk' },
+          ],
+        },
+      })
+      renderAt('/settings/agents')
+      await waitFor(() => expect(repos()).not.toBeNull())
+      expect(repos()!.value).toBe('open-mercato/skills\nacme/kit@trunk')
+      expect(saveRepos()!.disabled).toBe(true)
+    })
+
+    it('parses a per-source ref and sends the array', async () => {
+      serve({ config: { skillsRepos: [{ repo: 'open-mercato/skills', ref: 'main' }] } })
+      renderAt('/settings/agents')
+      await waitFor(() => expect(repos()).not.toBeNull())
+      fireEvent.change(repos()!, { target: { value: 'acme/kit@trunk\nme/skills' } })
+      fireEvent.click(saveRepos()!)
+      await waitFor(() =>
+        expect(puts().at(-1)?.body).toEqual({
+          skillsRepos: [
+            { repo: 'acme/kit', ref: 'trunk' },
+            { repo: 'me/skills', ref: 'main' },
+          ],
+        }),
+      )
+    })
+
+    it('an emptied field sends [] — a real "no team skills", not a clear', async () => {
+      serve({ config: { skillsRepos: [{ repo: 'open-mercato/skills', ref: 'main' }] } })
+      renderAt('/settings/agents')
+      await waitFor(() => expect(repos()).not.toBeNull())
+      fireEvent.change(repos()!, { target: { value: '' } })
+      fireEvent.click(saveRepos()!)
+      await waitFor(() => expect(puts().at(-1)?.body).toEqual({ skillsRepos: [] }))
+    })
+
+    it('"Use the shared catalog" sends null', async () => {
+      serve({ config: { skillsRepos: [] } })
+      renderAt('/settings/agents')
+      await waitFor(() => expect(resetRepos()).not.toBeNull())
+      fireEvent.click(resetRepos()!)
+      await waitFor(() => expect(puts().at(-1)?.body).toEqual({ skillsRepos: null }))
+    })
+  })
+
 })

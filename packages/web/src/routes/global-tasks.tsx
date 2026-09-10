@@ -31,6 +31,7 @@ import { ReferenceChip } from '@/components/reference-chip'
 import { ResolveConflictsForRun } from '@/components/reference-conflict-action'
 import { ReferenceStatusProvider } from '@/components/reference-status'
 import { StatusDot } from '@/components/status-dot'
+import { ModelNameCell, ToolNameCell } from '@/components/task-agent'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { toast } from '@/components/ui/toaster'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -688,6 +689,11 @@ function TaskTable({
               <Th className="hidden w-[120px] xl:table-cell">Tags</Th>
               <Th className="w-[84px]">Ref</Th>
               <Th className="hidden w-[108px] xl:table-cell">Workflow</Th>
+              {/* Same degradation policy as Tags, Workflow, CPU and Mem: this page has no card
+                  fallback, so a column that cannot fit is hidden rather than allowed to push the
+                  table into horizontal scrolling at phone width. */}
+              <Th className="hidden w-[124px] xl:table-cell">Tool Name</Th>
+              <Th className="hidden w-[112px] xl:table-cell">Model</Th>
               {showCost ? <Th className="hidden w-[64px] text-right lg:table-cell">Cost</Th> : null}
               <Th className="hidden w-[56px] text-right xl:table-cell">CPU</Th>
               <Th className="hidden w-[84px] text-right xl:table-cell">Mem</Th>
@@ -839,6 +845,19 @@ function TaskRow({
       </td>
       <td className={cn(TD_BASE, 'hidden text-[12.5px] text-muted-foreground xl:table-cell')}>
         {run.workflow}
+      </td>
+      {/* Both resolved SERVER-side (`RunIndexEntry.runner` / `runnerInherited` / `stepBackends`):
+          a row here belongs to a different project than the one above it, so "the project's
+          default runner" is not something this page could ask for once. */}
+      <td className={cn(TD_BASE, 'hidden max-w-0 xl:table-cell')}>
+        <ToolNameCell
+          runner={run.runner}
+          inherited={run.runnerInherited === true}
+          backends={run.stepBackends ?? 0}
+        />
+      </td>
+      <td className={cn(TD_BASE, 'hidden max-w-0 xl:table-cell')}>
+        <ModelNameCell model={run.model} />
       </td>
       {showCost ? (
         <td

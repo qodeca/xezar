@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { workspaceConfigPath, workspaceUiStatePath } from '../paths.ts';
-import { defaultWorkspaceConfig, loadWorkspaceConfig } from './config.ts';
+import { DEFAULT_MEMORY_LIMIT_MB, defaultWorkspaceConfig, loadWorkspaceConfig } from './config.ts';
 import { runMigrations, WORKSPACE_MIGRATIONS, type WorkspaceMigration } from './migrations.ts';
 
 /**
@@ -139,7 +139,9 @@ describe('workspace migrations', () => {
     await runMigrations({ bootRepoRoot: repoRoot });
     const config = await loadWorkspaceConfig();
     expect(config.resources.maxParallel).toBe(2);
-    expect(config.resources.memoryLimitMb).toBeNull();
+    // Not imported, so the key stays absent and reads as the derived zero-config ceiling (B1)
+    // rather than the `null` it used to be.
+    expect(config.resources.memoryLimitMb).toBe(DEFAULT_MEMORY_LIMIT_MB);
   });
 
   it('an unwritable home degrades with ONE warning and never throws', async () => {

@@ -56,6 +56,15 @@ Installation validation is reported in installation.md. Real-task entries follow
 - Lesson (recommended): when adding a field to `workflowStepSchema`, four sites move together — the schema, `packages/contract/src/workflows.ts` (compile-time parity), the `skillStackOf` compact-form guard, and the cockpit's `workflowYaml` serializer. Missing either guard silently drops the field when a workflow round-trips through the builder; the type checker does not catch it, because both are `if` chains over optional keys.
 - Remaining limit: no real long-running step was executed with a raised cap — the wiring is proven at the `AgentRunSpec` seam and each runner's own timer is covered by its existing suite, but "a 3h step actually ran 3h" is unobserved. No UI smoke, no kit workflow step, and no `.xezar/` workflow was changed to use the field (a separate task).
 
+### 2026-09-10 — concurrent gate runs starving each other (observed during ordinary work, no dedicated task)
+
+- Goal: none — this was observed while several gate runs happened to be in flight at once, and is recorded because `parallel-tasks.md` asks for observed contention to be written down before parallel speedup is claimed.
+- Observed: vitest's default worker count is `availableParallelism() - 1`, which is per RUN. Ten concurrent gates on an 18-core machine therefore meant roughly 180 worker processes. The symptom was not a crash and not a failing assertion: unrelated suites timed out at 909s on a single file, and a different 17 files failed on every run. It reads as flakiness, which is why it survived a while.
+- Change: a cap in the repository's root `vitest.config.ts` — `min(4, availableParallelism() - 1)` — which holds the fan-out to about 8 of 18 cores at the shipped `maxParallel` of 2, and turns the ten-run worst case into roughly 2.2x oversubscription instead of 10x.
+- Regression/control: none, and this is the honest limit of the entry. The cap is reasoned from vitest's own default and the observed symptom; no timed before/after was run. It is also a deliberate NO-OP on CI (a 2-core runner resolves to 1, a 4-core to 3), so a green CI run is not evidence either way, and nothing in any suite pins the cap — removing it is green everywhere. Recorded as a gap in the repository's `docs/testing/coverage-gaps.md`.
+- Lesson (recommended): worktrees isolate files, not the host. When scheduling parallel tasks, the shared resource that bites first is CPU, and its symptom is a timeout in a suite that has nothing to do with the change.
+- Remaining limit: one macOS machine, one observation. Whether four workers per run is the right number on a smaller or much larger host is unmeasured.
+
 ### 2026-09-09 — PR #40 / issue #22, INTEGRATION task (`quick-task`, no kit workflow) — real-task verified
 
 - Goal: rebase, independently review and merge someone else's PR. Reviewer/integrator role, not author. Code head `58fd842` (v0.11.2) → merged as `e437c24`. The first recorded dogfooding task whose deliverable is a merge rather than a diff.

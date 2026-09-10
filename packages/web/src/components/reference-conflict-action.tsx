@@ -93,8 +93,8 @@ export function ResolveConflictsButton({
 /**
  * The same button for a row that only has an ID — the cross-project case.
  *
- * The global Tasks index ships a deliberately slim entry (no `steps`, no `runner`), and whether a
- * finished task can be reopened is a question only the full record answers. So it fetches one —
+ * The global Tasks index ships a deliberately slim entry (no `steps`), and whether a finished task
+ * can be reopened is a question only the full record answers. So it fetches one —
  * but only here, inside a panel that is already open, which is the whole reason the action is a
  * lazily mounted node: a hundred-row table costs nothing until somebody hovers a chip that is
  * actually conflicting, and then costs exactly one record.

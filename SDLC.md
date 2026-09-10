@@ -53,7 +53,7 @@ Priority is how urgent the work is; risk is how dangerous the change is to ship,
 
 Apply `priority-high` when the work is a security fix, a release-blocking regression, or a break in the published CLI (`npm install -g @qodeca/xezar` or `npx @qodeca/xezar` fails) or in `.local/xezar/` state. Leave it off otherwise.
 
-Apply `risk-high` when the change touches the runner seam (`packages/xezar/src/core/agent-runner.ts`), worktree or branch handling, the `.local/xezar/` state file formats, or the HTTP API surface, or when it edits broadly across the tree. Leave it off for an ordinary single-area change and for docs-only work.
+Apply `risk-high` when the change touches the runner seam (`packages/xezar/src/core/agent-runner.ts`), worktree or branch handling, the `.local/xezar/` state file formats, the per-user workspace file `~/.xezar/config.json` (its schema, its defaults, or what an absent key resolves to — it is shared by every xezar this user runs across every repo, and it carries the project registry), or the HTTP API surface, or when it edits broadly across the tree. Leave it off for an ordinary single-area change and for docs-only work.
 
 When signals conflict, apply the flag and say why in the label comment. A `risk-high` PR strengthens the case for `needs-qa` and deeper review even when it would otherwise look routine.
 

@@ -43,6 +43,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { RUNNER_LABEL } from '@/lib/runner-label'
 import { StatusDot, type StatusDotTone } from '@/components/status-dot'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from '@/components/ui/toaster'
@@ -87,13 +88,6 @@ import { AddAccountDialog } from './add-account-dialog'
  * 3. **Remove only ever DEREGISTERS.** No directory is touched, no session deleted. The confirm
  *    says so out loud, because "Remove" next to a path reads as "delete my folder".
  */
-
-const PROVIDER_LABEL: Record<ProviderId, string> = {
-  claude: 'Claude Code',
-  codex: 'Codex',
-  opencode: 'OpenCode',
-  pi: 'pi',
-}
 
 /** The vendor's own install/login instruction, shown when the CLI is not on this machine. */
 const PROVIDER_INSTALL: Record<ProviderId, string> = {
@@ -181,7 +175,7 @@ function AccountsPane({ data }: { data: AgentProfilesResponse }) {
         <TabsList variant="line" data-slot="accounts-tabs">
           {providers.map((provider) => (
             <TabsTrigger key={provider} value={provider} data-provider={provider}>
-              {PROVIDER_LABEL[provider]}
+              {RUNNER_LABEL[provider]}
             </TabsTrigger>
           ))}
         </TabsList>
@@ -327,7 +321,7 @@ function AgentTab({
 
       {!canCarryAccounts ? (
         <p data-slot="accounts-single-only" className="text-[11.5px] text-soft-foreground">
-          {PROVIDER_LABEL[provider]} can only hold one account here: it keeps its credentials
+          {RUNNER_LABEL[provider]} can only hold one account here: it keeps its credentials
           outside its config folder, so a second folder would change settings without changing the
           login — which would say “work account” while billing the other one.
         </p>
@@ -502,7 +496,7 @@ function AccountRow({ account, onRemove }: { account: AgentProfile; onRemove: ()
               <span data-slot="account-missing">— folder not created yet; Connect will make it</span>
             ) : !account.looksValid ? (
               <span data-slot="account-unrecognised">
-                — this folder does not look like {PROVIDER_LABEL[account.provider]} config yet
+                — this folder does not look like {RUNNER_LABEL[account.provider]} config yet
               </span>
             ) : null}
           </div>

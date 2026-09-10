@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { chmodSync, mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
+import { totalmem } from 'node:os';
 import { dirname } from 'node:path';
 import { z } from 'zod';
 // Contract VALUES, like `workspaceUiStateSchema` in workspace/migrations.ts: the tag bounds this
@@ -76,6 +77,71 @@ export type WorkspaceProject = z.infer<typeof workspaceProjectSchema>;
  */
 export const DEFAULT_MONITORING_WAKE_MINUTES = 5;
 
+/**
+ * Zero-config wall clock, in minutes, for a session parked at `waiting` with nothing
+ * from the user. The single source of truth for that default — the schema below and
+ * `WorkspaceSemaphore`'s fallback both read it.
+ *
+ * 15 minutes is what `IDLE_TIMEOUT_MS` hard-coded before this key existed, and it stays
+ * the default deliberately: the timer is the only thing that reclaims an interactive
+ * session nobody is talking to. What was missing was the ability to RAISE it — a task
+ * doing genuinely long work that ends a turn in prose instead of a marker reads as
+ * "waiting for the human", and 15 minutes later its session is gone.
+ *
+ * `null` is a real user choice meaning "never close on idle"; see the getter in
+ * `WorkspaceSemaphore` for why it is never replaced by this default.
+ */
+export const DEFAULT_IDLE_TIMEOUT_MINUTES = 15;
+
+/**
+ * Ceiling and floor for the DERIVED per-task memory default below.
+ *
+ * The ceiling exists because above ~8 GiB the guard stops protecting anything real: an
+ * agent process tree that large is runaway whatever the host's size, and a higher ceiling
+ * only buys false pauses on big builds. The floor exists because below ~1 GiB a normal
+ * agent plus one `npm ci` would trip the guard constantly, which is worse than no guard.
+ */
+const MEMORY_LIMIT_CEILING_MB = 8192;
+const MEMORY_LIMIT_FLOOR_MB = 1024;
+/** Share of host RAM the agent fleet may hold before the guard starts pausing runs. */
+const MEMORY_LIMIT_HOST_SHARE = 0.6;
+/** The `maxParallel` the derivation divides by — the shipped default, not the user's
+ *  current value. See `deriveDefaultMemoryLimitMb`. */
+const MEMORY_LIMIT_DIVISOR = 2;
+
+/**
+ * The zero-config per-task memory ceiling, derived from this host (B1).
+ *
+ * It shipped as `null` — no guard at all — and that made the zero-config default the
+ * UNSAFE one: a first-time user who never opens Settings gets the OS OOM-killer instead
+ * of the engine pausing one run. AGENTS.md § Zero config is explicit that the zero-config
+ * default must also be the safe default, so the guard is now on out of the box.
+ *
+ * `floor(totalMiB * 0.6 / 2)`, clamped to [1024, 8192]:
+ *   -  4 GiB host → 1228 MiB    -  16 GiB host → 4915 MiB
+ *   -  8 GiB host → 2457 MiB    - 128 GiB host → 8192 MiB (ceiling)
+ *
+ * The 0.6 leaves 40% of the machine for the OS, the cockpit, a browser and the user's own
+ * editor. The divisor is the SHIPPED `maxParallel` (2), deliberately not the user's
+ * current value: this is a per-run ceiling, and re-deriving it downwards behind someone
+ * who raised `maxParallel` would start pausing work they had no reason to expect to be
+ * paused. Someone who raises the cap can lower the ceiling in the same Settings pane.
+ *
+ * An explicit `null` in the file still means "no limit" and is never replaced by this.
+ */
+export function deriveDefaultMemoryLimitMb(totalBytes: number = totalmem()): number {
+  // A host that cannot report its memory (0/NaN) must not silently produce a 0 = "no
+  // limit" ceiling — fall back to the floor, which is the safe direction.
+  if (!Number.isFinite(totalBytes) || totalBytes <= 0) return MEMORY_LIMIT_FLOOR_MB;
+  const totalMb = totalBytes / (1024 * 1024);
+  const derived = Math.floor((totalMb * MEMORY_LIMIT_HOST_SHARE) / MEMORY_LIMIT_DIVISOR);
+  return Math.min(MEMORY_LIMIT_CEILING_MB, Math.max(MEMORY_LIMIT_FLOOR_MB, derived));
+}
+
+/** Resolved once per process — `totalmem()` does not change, and the schema needs a value,
+ *  not a thunk. */
+export const DEFAULT_MEMORY_LIMIT_MB = deriveDefaultMemoryLimitMb();
+
 const resourcesSchema = z
   .object({
     /** Workspace-wide parallel-task cap (moved from per-repo config.json). */
@@ -112,9 +178,48 @@ const resourcesSchema = z
      * it off leaves the run `failed` with its Continue button, exactly as before the feature.
      */
     autoResumeOnUsageLimit: z.boolean().default(true).catch(true),
-    /** Per-task memory ceiling in MiB; null = no limit (matches the file's
-     *  literal `"memoryLimitMb": null` in the spec's Data Model). */
-    memoryLimitMb: z.number().int().min(0).max(1_048_576).nullable().default(null).catch(null),
+    /**
+     * Wall clock, in minutes, for a session parked at `waiting` with nothing from the user
+     * before xezar closes it. `null` means "never close on idle".
+     *
+     * Default ON at 15 minutes — the value `IDLE_TIMEOUT_MS` hard-coded before this key
+     * existed, kept deliberately: the timer is the only thing that reclaims an interactive
+     * session nobody is talking to, and removing it would trade a working default for a
+     * knob. What this key adds is the ability to RAISE it, which is the real defect: a task
+     * doing genuinely long work that ends a turn in prose instead of a marker reads as
+     * "waiting for the human", and its session is gone 15 minutes later.
+     *
+     * `null` is offered because the failure it prevents is lost work, which is not
+     * recoverable, while what it costs is a session nothing reclaims, which the user can
+     * end with Cancel. Unlike the `XEZ:MONITORING` dead end of #810, a run parked at
+     * `waiting` renders as an attention state and holds no `maxParallel` slot, so it is
+     * visible and harmless rather than silently stuck. The UI states the trade-off.
+     */
+    idleTimeoutMinutes: z
+      .number()
+      .int()
+      .min(1)
+      .max(1440)
+      .nullable()
+      .default(DEFAULT_IDLE_TIMEOUT_MINUTES)
+      .catch(DEFAULT_IDLE_TIMEOUT_MINUTES),
+    /**
+     * Per-task memory ceiling in MiB; explicit `null` = no limit.
+     *
+     * ABSENT now derives a host-sized default (`DEFAULT_MEMORY_LIMIT_MB`) rather than
+     * `null` (B1). It shipped as `null` and that made the zero-config default the unsafe
+     * one — the OS OOM-killer instead of the engine pausing one run — which § Zero config
+     * forbids. An explicit `null` written by a user who wants no guard is still honoured:
+     * zod's `.default()` fills `undefined` only, never `null`.
+     */
+    memoryLimitMb: z
+      .number()
+      .int()
+      .min(0)
+      .max(1_048_576)
+      .nullable()
+      .default(DEFAULT_MEMORY_LIMIT_MB)
+      .catch(DEFAULT_MEMORY_LIMIT_MB),
     /** Default worktree retention for projects that don't override it. */
     worktreeRetentionDefault: z.number().int().min(0).max(1000).default(10).catch(10),
   })
@@ -192,6 +297,33 @@ const workspaceConfigSchema = z
     /** Global opt-in model policy. The native coding-agent model becomes
      * authoritative while runner choice remains available. */
     modelsLocked: z.boolean().optional().catch(undefined),
+    /**
+     * The follow-up **Inbox** switch, as a persisted setting (F).
+     *
+     * `XEZ_FOLLOWUPS=1` is boot-time only in practice, so a plain restart silently loses
+     * the Inbox. This key is the stored override: present wins, absent falls back to the
+     * env exactly as before. Optional with no default, because absent has to stay
+     * distinguishable from a value someone chose — the same tri-state shape
+     * `skillsAutoUpdate` and `modelsLocked` already use.
+     *
+     * Workspace-level, not per-repo, because the Inbox is a process-wide capability the
+     * cockpit reports once (`resolveCapabilities`), not a property of one checkout.
+     */
+    followups: z.boolean().optional().catch(undefined),
+    /**
+     * Extra host env vars forwarded to spawned agents, as a persisted setting (F) — the
+     * stored counterpart of `XEZ_ENV_PASSTHROUGH=A,B,C`.
+     *
+     * Present wins over the env (an empty array is a real choice meaning "forward
+     * nothing"); absent falls back to the env. Names only — never values, so this file
+     * never becomes a place a secret can be typed. Bounded like every other string here
+     * because it is parsed on every boot.
+     */
+    agentEnvPassthrough: z
+      .array(z.string().trim().min(1).max(200))
+      .max(64)
+      .optional()
+      .catch(undefined),
     // Function-form default/catch: mutators (step 1.3's registerProject) edit
     // these objects in place, so parses must never share one reference.
     resources: resourcesSchema.prefault(() => ({})).catch(() => resourcesSchema.parse({})),

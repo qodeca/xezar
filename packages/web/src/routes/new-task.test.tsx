@@ -150,6 +150,9 @@ const CONFIG: ConfigResponse = {
   worktreeRetention: 10,
   liveTitleUpdates: null,
   reviewGate: null,
+  plannerModel: 'sonnet',
+  namerModel: 'haiku',
+  skillsRepos: [],
 }
 
 const WORKSPACE_CONFIG: WorkspaceConfigResponse = {
@@ -158,6 +161,10 @@ const WORKSPACE_CONFIG: WorkspaceConfigResponse = {
   projectsDir: '~/xezar/projects',
   skillsAutoUpdate: null,
   effectiveSkillsAutoUpdate: true,
+  followups: null,
+  effectiveFollowups: false,
+  agentEnvPassthrough: null,
+  effectiveAgentEnvPassthrough: [],
   composerDefaults: {
     autonomous: null,
     worktree: null,
@@ -168,6 +175,8 @@ const WORKSPACE_CONFIG: WorkspaceConfigResponse = {
     maxParallel: 2,
     maxMonitoringSessions: 2,
     monitoringWakeIntervalMinutes: null,
+    idleTimeoutMinutes: 15,
+    memoryLimitDefaultMb: 4096,
     autoResumeOnUsageLimit: true,
     memoryLimitMb: null,
     worktreeRetentionDefault: 10,

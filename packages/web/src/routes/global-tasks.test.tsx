@@ -72,6 +72,11 @@ const RUNS: RunIndexEntry[] = [
     createdAt: '2026-07-14T10:00:00Z',
     archived: false,
     workflow: 'quick-task',
+    // Chose both: the product name and the model id are this run's own. `claude` on purpose —
+    // the conflict-panel case below spreads this row into a full record, and the provider-status
+    // stub only reports claude connected.
+    runner: 'claude',
+    model: 'opus',
     branch: 'feat/checkout',
     // Several at once: opened on an issue, about one PR, having created another.
     pullRequestUrl: 'https://github.com/acme/api/pull/42',
@@ -87,6 +92,9 @@ const RUNS: RunIndexEntry[] = [
     createdAt: '2026-07-14T09:00:00Z',
     archived: false,
     workflow: 'plan-first',
+    // Chose neither: the server resolved the project default and said so.
+    runner: 'claude',
+    runnerInherited: true,
     issueNumber: 7,
     referencedIssueUrl: 'https://github.com/acme/web/issues/7',
   },
@@ -98,6 +106,10 @@ const RUNS: RunIndexEntry[] = [
     createdAt: '2026-07-14T08:00:00Z',
     archived: false,
     workflow: 'quick-task',
+    // A mixed chain, and a model id nothing may prettify.
+    runner: 'opencode',
+    model: 'local/qwen3-coder-30b',
+    stepBackends: 2,
   },
 ]
 
@@ -751,6 +763,74 @@ describe('global tasks page', () => {
       const posted = sent.find((request) => request.method === 'POST' && request.path.includes('/messages'))
       expect(posted?.path).toBe('/api/v1/p/api/runs/a1/messages')
       expect(posted?.body).toMatchObject({ text: resolveConflictsPrompt(42) })
+    })
+  })
+
+  describe('the Tool Name and Model columns', () => {
+    const cellsFor = async (runId: string) => {
+      const row = await waitFor(() => {
+        const found = document.querySelector(`[data-slot="global-task-row"][data-run-id="${runId}"]`)
+        if (!found) throw new Error(`no row for ${runId} yet`)
+        return found
+      })
+      return {
+        tool: row.querySelector('[data-slot="task-tool"]'),
+        model: row.querySelector('[data-slot="task-model"]'),
+      }
+    }
+
+    it('reads the runner and model the INDEX resolved, without a per-row request', async () => {
+      stubFetch()
+      renderPage()
+      await screen.findByText('Add checkout endpoint')
+
+      // a1 recorded both. The model id is printed exactly as the run stored it.
+      const chosen = await cellsFor('a1')
+      expect(chosen.tool?.textContent).toBe('Claude Code')
+      expect(chosen.tool?.getAttribute('data-inherited')).toBeNull()
+      expect(chosen.model?.textContent).toBe('opus')
+      expect(chosen.model?.getAttribute('data-inherited')).toBeNull()
+
+      // w1 recorded neither: the SERVER resolved the project default and flagged it, because a
+      // row here belongs to a different project than the row above it.
+      const inherited = await cellsFor('w1')
+      expect(inherited.tool?.textContent).toBe('Claude Code')
+      expect(inherited.tool?.getAttribute('data-inherited')).toBe('true')
+      expect(inherited.tool?.className).toContain('text-soft-foreground')
+      expect(inherited.model?.textContent).toBe('auto')
+      expect(inherited.model?.getAttribute('data-inherited')).toBe('true')
+
+      // i1's chain used two backends, and its model runs on the user's own hardware — verbatim.
+      const mixed = await cellsFor('i1')
+      expect(mixed.tool?.textContent).toBe('OpenCode +1')
+      expect(mixed.tool?.getAttribute('data-mixed')).toBe('true')
+      expect(mixed.model?.textContent).toBe('local/qwen3-coder-30b')
+
+      // The whole point of resolving server-side: no extra round trip per row, per project.
+      expect(sent.filter((request) => request.path.includes('/config'))).toHaveLength(0)
+    })
+
+    it('hides both columns below xl, like Tags, Workflow, CPU and Mem', async () => {
+      stubFetch()
+      renderPage()
+      await screen.findByText('Add checkout endpoint')
+
+      const headers = [...document.querySelectorAll('[data-slot="global-tasks-table"] th')]
+      const tool = headers.find((cell) => cell.textContent === 'Tool Name')
+      const model = headers.find((cell) => cell.textContent === 'Model')
+      const workflow = headers.find((cell) => cell.textContent === 'Workflow')
+      // Immediately after Workflow, and on Workflow's own degradation policy: this page has no
+      // card fallback, so a column that cannot fit is hidden rather than allowed to scroll.
+      expect(headers.indexOf(tool!)).toBe(headers.indexOf(workflow!) + 1)
+      expect(headers.indexOf(model!)).toBe(headers.indexOf(workflow!) + 2)
+      expect(tool?.className).toContain('hidden')
+      expect(tool?.className).toContain('xl:table-cell')
+      expect(model?.className).toContain('hidden')
+      expect(model?.className).toContain('xl:table-cell')
+      const row = document.querySelector('[data-slot="global-task-row"]')
+      const cell = row?.querySelector('[data-slot="task-tool"]')?.closest('td')
+      expect(cell?.className).toContain('hidden')
+      expect(cell?.className).toContain('xl:table-cell')
     })
   })
 

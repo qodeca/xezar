@@ -18,7 +18,7 @@ import { createWorktree } from '../git-worktree.ts';
 import { RunStore, type RunRecord, type StepState } from '../runs/store.ts';
 import { WorkspaceSemaphore } from '../workspace/semaphore.ts';
 import { parseTaskMarkers } from '../runs/task-markers.ts';
-import { appendTurnText, RunManager } from './run.ts';
+import { appendTurnText, IDLE_TIMEOUT_MS, RunManager } from './run.ts';
 import type { WorkflowDef } from './types.ts';
 
 type UsageAccountingHarness = {
@@ -1050,6 +1050,78 @@ describe('XEZ:MONITORING parks as running/monitoring, not waiting (#490)', () =>
     expect(events.some((event) => event.type === 'note' && event.message?.includes('(1/40)'))).toBe(true);
     expect(events.some((event) => event.type === 'user-message')).toBe(false);
   }, 30_000);
+
+  /**
+   * A — the idle wall clock is a setting now (`resources.idleTimeoutMinutes`), read through
+   * the shared semaphore so a change in Settings applies to the next park with no restart.
+   * Its default did NOT move: 15 minutes is still what an unconfigured workspace arms.
+   */
+  it('honours a configured idle timeout and closes the parked session', async () => {
+    manager.dispose();
+    // 0.001 minutes = 60ms, the same trick the monitoring wake test uses.
+    manager = new RunManager(store, repoRoot, {
+      semaphore: new WorkspaceSemaphore({ initial: { idleTimeoutMinutes: 0.001 } }),
+    });
+    const record = manager.startRun(SINGLE_STEP, { task: 'just do the thing', worktree: false });
+    currentId = record.id;
+    await waitFor(record.id, () => {
+      const path = join(repoRoot, '.local/xezar/runs', `${record.id}.ndjson`);
+      if (!existsSync(path)) return false;
+      return readFileSync(path, 'utf8').includes('of inactivity');
+    });
+    const ndjson = readFileSync(join(repoRoot, '.local/xezar/runs', `${record.id}.ndjson`), 'utf8');
+    expect(ndjson).toContain('of inactivity');
+  }, 30_000);
+
+  it('keeps the 15-minute default when nothing is configured', async () => {
+    const record = manager.startRun(SINGLE_STEP, { task: 'just do the thing', worktree: false });
+    currentId = record.id;
+    await waitFor(record.id, (r) => r?.status === 'waiting');
+    const state = (manager as unknown as {
+      active: Map<string, { idleTimer?: NodeJS.Timeout }>;
+    }).active.get(record.id);
+    // Armed, and nowhere near firing — the default is unchanged, not removed.
+    expect(state?.idleTimer).toBeDefined();
+    expect(IDLE_TIMEOUT_MS).toBe(15 * 60_000);
+    expect(store.getRun(record.id)?.status).toBe('waiting');
+  }, 30_000);
+
+  it('arms no idle timer at all when the operator chose "never close"', async () => {
+    manager.dispose();
+    manager = new RunManager(store, repoRoot, {
+      semaphore: new WorkspaceSemaphore({ initial: { idleTimeoutMinutes: null } }),
+    });
+    const record = manager.startRun(SINGLE_STEP, { task: 'just do the thing', worktree: false });
+    currentId = record.id;
+    await waitFor(record.id, (r) => r?.status === 'waiting');
+    const state = (manager as unknown as {
+      active: Map<string, { idleTimer?: NodeJS.Timeout }>;
+    }).active.get(record.id);
+    expect(state?.idleTimer).toBeUndefined();
+    // The run is still parked and still reachable: a user message and Cancel are its exits.
+    expect(store.getRun(record.id)?.status).toBe('waiting');
+  }, 30_000);
+
+  /**
+   * F — the stored env-passthrough list reaches agents through the per-run env, which is the
+   * one path every backend shares (`buildChildEnv(spec.env)`). Read per run from the
+   * semaphore's cache, so a Settings change applies to the next task without a restart.
+   */
+  it('carries the stored env-passthrough list on every run env, live', async () => {
+    manager.dispose();
+    const semaphore = new WorkspaceSemaphore({
+      initial: { agentEnvPassthrough: ['VITEST_MAX_WORKERS'] },
+    });
+    manager = new RunManager(store, repoRoot, { semaphore });
+    const seam = manager as unknown as {
+      agentEnv: (runId: string, generateFollowups?: boolean) => Record<string, string>;
+    };
+    expect(seam.agentEnv('r1').XEZ_ENV_PASSTHROUGH).toBe('VITEST_MAX_WORKERS');
+    // A later refresh with a different stored list is picked up with no new manager.
+    (semaphore as unknown as { limits: { agentEnvPassthrough?: readonly string[] } }).limits
+      .agentEnvPassthrough = ['A', 'B'];
+    expect(seam.agentEnv('r1').XEZ_ENV_PASSTHROUGH).toBe('A,B');
+  });
 
   it('a markerless turn-end still parks as waiting with no activity', async () => {
     const record = manager.startRun(SINGLE_STEP, { task: 'just do the thing', worktree: false });

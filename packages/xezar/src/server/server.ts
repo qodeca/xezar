@@ -43,10 +43,11 @@ import {
   modelDiscoveryRunnerSchema,
   openProjectInSchema,
   updateProjectInputSchema,
+  type WorkspaceConfigResponse,
 } from '@qodeca/xezar-contract';
 import { detectEnvironment } from '../core/backend-detect.ts';
 import { RUNNER_IDS } from '../core/agent-runner.ts';
-import type { ContentBlock } from '../core/agent-runner.ts';
+import type { ContentBlock, RunnerId } from '../core/agent-runner.ts';
 import { AGENT_MODELS_LOCKED_ERROR, agentModelsLocked } from '../core/agent-model-policy.ts';
 import { discoverClaudeModels } from '../core/claude-model-catalog.ts';
 import { discoverCodexModels } from '../core/codex-model-catalog.ts';
@@ -117,6 +118,7 @@ import { listAgentConfig } from '../agent-config/service.ts';
 import { listConfigFiles, type AgentHomePaths } from '../agent-config/catalog.ts';
 import { readAccountIdentity } from '../agent-config/account-identity.ts';
 import {
+  DEFAULT_MEMORY_LIMIT_MB,
   PROJECT_ID_RE,
   defaultWorkspaceConfig,
   effectiveSkillsAutoUpdate,
@@ -477,36 +479,13 @@ export interface UpdateProjectResponse {
 
 /** `GET/PUT /api/workspace/config` (multi-project spec, step 2.7) — the
  *  settings slice of `~/.xezar/config.json`: global knobs ONLY, never the
- *  project registry (that is `GET /api/projects`' job). */
-export interface WorkspaceConfigResponse {
-  /** Root exposed by the Add project directory browser (`~` kept). */
-  browseRoot: string;
-  /** Checkout root for GUI-cloned projects — stored as written (`~` kept). */
-  projectsDir: string;
-  /** Stored override; null means inherit XEZ_SKILLS_AUTO_UPDATE, then true. */
-  skillsAutoUpdate: boolean | null;
-  effectiveSkillsAutoUpdate: boolean;
-  composerDefaults: {
-    autonomous: boolean | null;
-    worktree: boolean | null;
-    inheritedAutonomous: boolean | 'source-dependent';
-    inheritedWorktree: boolean;
-  };
-  resources: {
-    maxParallel: number;
-    maxMonitoringSessions: number;
-    monitoringWakeIntervalMinutes: number | null;
-    autoResumeOnUsageLimit: boolean;
-    memoryLimitMb: number | null;
-    worktreeRetentionDefault: number;
-  };
-  /** What a repo that has set none of its own runs (spec 2026-07-29-agent-profiles). Both keys
-   *  optional: absent means "no opinion", which must stay distinguishable from a chosen value. */
-  agentDefaults: {
-    runner?: ProviderId;
-    models?: { claude?: string; codex?: string; opencode?: string };
-  };
-}
+ *  project registry (that is `GET /api/projects`' job).
+ *
+ *  Re-exported from the contract, never re-declared. This used to be a hand-written
+ *  interface here — the shape AGENTS.md § The HTTP API forbids — and it had already drifted
+ *  (its `agentDefaults.models` never grew the `pi` key the schema has). One zod definition,
+ *  type inferred; `contract-parity.workspace.test.ts` proves the route agrees with it. */
+export type { WorkspaceConfigResponse };
 
 // ---- workspace SSE (multi-project spec, step 2.8) --------------------------
 
@@ -1161,7 +1140,11 @@ export function createApp(deps: ServerDeps) {
   };
   // Hosted-mode gate (spec §"Deployment modes") — read per request so
   // XEZ_REMOTE flips take effect live (and tests can toggle it).
-  const capabilities = () => resolveCapabilities(process.env, bindHost);
+  // The stored Inbox setting (F) wins over `XEZ_FOLLOWUPS` when the workspace config sets
+  // one. Read through the shared semaphore's cache so it is live: `refresh()` re-reads it on
+  // every workspace-config PUT, which is the one reload hook this file already fires.
+  const capabilities = () =>
+    resolveCapabilities(process.env, bindHost, deps.semaphore?.storedFollowups());
   const singleProjectRefusal = (
     action: 'adding projects' | 'editing projects' | 'removing projects' | 'folder browsing',
   ) => ({ error: `single-project mode is enabled; ${action} is disabled` });
@@ -2802,6 +2785,18 @@ export function createApp(deps: ServerDeps) {
     projectsDir: config.projectsDir,
     skillsAutoUpdate: config.skillsAutoUpdate ?? null,
     effectiveSkillsAutoUpdate: effectiveSkillsAutoUpdate(config),
+    // Tri-state (F): `null` means no stored key, so `XEZ_FOLLOWUPS` decides. The
+    // `effective*` twin is what the pane renders, so "(default)" and the actual state can
+    // both be shown without the client re-implementing the precedence rule.
+    followups: config.followups ?? null,
+    effectiveFollowups: config.followups ?? process.env.XEZ_FOLLOWUPS === '1',
+    agentEnvPassthrough: config.agentEnvPassthrough ?? null,
+    effectiveAgentEnvPassthrough:
+      config.agentEnvPassthrough ??
+      (process.env.XEZ_ENV_PASSTHROUGH ?? '')
+        .split(',')
+        .map((name) => name.trim())
+        .filter(Boolean),
     composerDefaults: {
       autonomous: config.composerDefaults.autonomous ?? null,
       worktree: config.composerDefaults.worktree ?? null,
@@ -2822,7 +2817,11 @@ export function createApp(deps: ServerDeps) {
       maxMonitoringSessions: config.resources.maxMonitoringSessions,
       monitoringWakeIntervalMinutes: config.resources.monitoringWakeIntervalMinutes,
       autoResumeOnUsageLimit: config.resources.autoResumeOnUsageLimit,
+      idleTimeoutMinutes: config.resources.idleTimeoutMinutes,
       memoryLimitMb: config.resources.memoryLimitMb,
+      // Reported, not stored: the settings pane names this machine's derived ceiling so the
+      // user can see what an unset `memoryLimitMb` actually means here (B1).
+      memoryLimitDefaultMb: DEFAULT_MEMORY_LIMIT_MB,
       worktreeRetentionDefault: config.resources.worktreeRetentionDefault,
     },
     // SPREAD, never `runner: maybeUndefined`: hono would type the key as always-present while
@@ -2839,7 +2838,16 @@ export function createApp(deps: ServerDeps) {
 
     .put('/workspace/config', jsonZodValidator(() => workspaceConfigUpdateSchema), async (c) => {
       const parsed = { data: c.req.valid('json') };
-      const { browseRoot, projectsDir, skillsAutoUpdate, composerDefaults, resources, agentDefaults } = parsed.data;
+      const {
+        browseRoot,
+        projectsDir,
+        skillsAutoUpdate,
+        followups,
+        agentEnvPassthrough,
+        composerDefaults,
+        resources,
+        agentDefaults,
+      } = parsed.data;
       for (const [configuredRoot, create] of [
         [browseRoot, false],
         [projectsDir, true],
@@ -2875,6 +2883,12 @@ export function createApp(deps: ServerDeps) {
           if (projectsDir !== undefined) config.projectsDir = projectsDir;
           if (skillsAutoUpdate === null) delete config.skillsAutoUpdate;
           else if (skillsAutoUpdate !== undefined) config.skillsAutoUpdate = skillsAutoUpdate;
+          // `null` clears the key back to the env default; `false`/`[]` are real stored
+          // choices and must survive as written (F).
+          if (followups === null) delete config.followups;
+          else if (followups !== undefined) config.followups = followups;
+          if (agentEnvPassthrough === null) delete config.agentEnvPassthrough;
+          else if (agentEnvPassthrough !== undefined) config.agentEnvPassthrough = agentEnvPassthrough;
           if (composerDefaults?.autonomous === null) delete config.composerDefaults.autonomous;
           else if (composerDefaults?.autonomous !== undefined) {
             config.composerDefaults.autonomous = composerDefaults.autonomous;
@@ -2892,6 +2906,9 @@ export function createApp(deps: ServerDeps) {
           }
           if (resources?.autoResumeOnUsageLimit !== undefined) {
             config.resources.autoResumeOnUsageLimit = resources.autoResumeOnUsageLimit;
+          }
+          if (resources?.idleTimeoutMinutes !== undefined) {
+            config.resources.idleTimeoutMinutes = resources.idleTimeoutMinutes;
           }
           if (resources?.memoryLimitMb !== undefined) config.resources.memoryLimitMb = resources.memoryLimitMb;
           if (resources?.worktreeRetentionDefault !== undefined) {
@@ -2918,7 +2935,11 @@ export function createApp(deps: ServerDeps) {
       }
       // A resource change takes effect WITHOUT a restart: refresh the shared
       // semaphore's in-memory snapshot and pump every manager (step 2.5's hook).
-      if (resources !== undefined) await deps.semaphore?.refresh();
+      // `followups` and `agentEnvPassthrough` are cached by the same semaphore snapshot
+      // (F), so they refresh through the same hook rather than a second reload path.
+      if (resources !== undefined || followups !== undefined || agentEnvPassthrough !== undefined) {
+        await deps.semaphore?.refresh();
+      }
       return c.json(workspaceConfigBody(written));
     })
 
@@ -2956,6 +2977,12 @@ export function createApp(deps: ServerDeps) {
     browseRoot: z.string().trim().min(1).max(4096).optional(),
     projectsDir: z.string().trim().min(1).max(4096).optional(),
     skillsAutoUpdate: z.boolean().nullable().optional(),
+    followups: z.boolean().nullable().optional(),
+    agentEnvPassthrough: z
+      .array(z.string().trim().min(1).max(200))
+      .max(64)
+      .nullable()
+      .optional(),
     composerDefaults: z
       .object({
         autonomous: z.boolean().nullable().optional(),
@@ -2968,6 +2995,7 @@ export function createApp(deps: ServerDeps) {
         maxMonitoringSessions: z.number().int().min(0).max(16).optional(),
         monitoringWakeIntervalMinutes: z.number().int().min(1).max(60).nullable().optional(),
         autoResumeOnUsageLimit: z.boolean().optional(),
+        idleTimeoutMinutes: z.number().int().min(1).max(1440).nullable().optional(),
         memoryLimitMb: z.number().int().min(0).max(1_048_576).nullable().optional(),
         worktreeRetentionDefault: z.number().int().min(0).max(1000).optional(),
       })
@@ -5138,6 +5166,13 @@ export function createApp(deps: ServerDeps) {
       // Optional review gate (#489): tri-state — null means "no config key, the
       // XEZ_REVIEW_GATE env default (OFF) decides".
       reviewGate: config.reviewGate ?? null,
+      // Planner/namer models and team skill sources (E). Declared in the file schema since
+      // spec 008 but absent from this answer and from `setConfigSchema`, so the only way to
+      // change them was to hand-edit `.xezar/config.json`. All three are `.default()`ed by
+      // the file schema, so they are always materialized here — never tri-state.
+      plannerModel: config.plannerModel,
+      namerModel: config.namerModel,
+      skillsRepos: config.skillsRepos,
     };
   };
   // ---- chained family: per-repo config (project-scoped) ----
@@ -5198,6 +5233,20 @@ export function createApp(deps: ServerDeps) {
           raw.memoryLimitMb = parsed.data.memoryLimitMb;
         }
       }
+      if (parsed.data.plannerModel !== undefined) {
+        if (parsed.data.plannerModel === null) delete raw.plannerModel;
+        else raw.plannerModel = parsed.data.plannerModel;
+      }
+      if (parsed.data.namerModel !== undefined) {
+        if (parsed.data.namerModel === null) delete raw.namerModel;
+        else raw.namerModel = parsed.data.namerModel;
+      }
+      if (parsed.data.skillsRepos !== undefined) {
+        // `null` clears back to the default catalog; `[]` is stored, because an empty list
+        // is how a repo turns team skills OFF (`gatedSkillsRepos` reads the key's presence).
+        if (parsed.data.skillsRepos === null) delete raw.skillsRepos;
+        else raw.skillsRepos = parsed.data.skillsRepos;
+      }
       if (parsed.data.defaultModels !== undefined) {
         // Per-runner merge, so setting codex's preset never clobbers claude's.
         const current =
@@ -5218,6 +5267,12 @@ export function createApp(deps: ServerDeps) {
       } catch (err) {
         return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
       }
+      // B2: the per-repo `memoryLimitMb` is enforced again, and enforcement reads it from
+      // the semaphore's cached snapshot — so this write has to refresh that snapshot, the
+      // same way `PUT /api/v1/workspace/config` and `PATCH /api/v1/projects/:id` do. Without
+      // it the key would save and do nothing until the next boot, which is the exact defect
+      // B2 exists to fix.
+      if (parsed.data.memoryLimitMb !== undefined) await deps.semaphore?.refresh();
       // Pre-R6 answer shape ({baseBranch, defaultRunner}) + additive R6 fields.
       return c.json(await configAnswer(repoRoot, await loadConfig(repoRoot)));
     });
@@ -5254,6 +5309,21 @@ export function createApp(deps: ServerDeps) {
     // Optional review gate toggle (Settings → Agents, #489): null clears the key
     // back to the env-default behavior (OFF).
     reviewGate: z.boolean().nullable().optional(),
+    // Planner/namer models and team skill sources (E). `null` clears each key back to its
+    // schema default; `skillsRepos: []` is a real value that disables team skills, which is
+    // why the empty array is stored rather than treated as a clear.
+    plannerModel: z.string().trim().min(1).max(200).nullable().optional(),
+    namerModel: z.string().trim().min(1).max(200).nullable().optional(),
+    skillsRepos: z
+      .array(
+        z.object({
+          repo: z.string().trim().min(1).max(500),
+          ref: z.string().trim().min(1).max(200).optional(),
+        }),
+      )
+      .max(32)
+      .nullable()
+      .optional(),
   });
   const setAgentConfigSchema = z.object({
     content: z.string().max(2_000_000),
@@ -5383,8 +5453,43 @@ export function createApp(deps: ServerDeps) {
     return numbers;
   };
 
-  const runIndexEntry = (projectId: string, run: RunRecord): RunIndexEntry => {
+  /**
+   * How many DISTINCT backends a run's recorded steps used. A step that never ran recorded no
+   * backend and is not counted — absent is "nothing happened here", never a second backend.
+   *
+   * Derived HERE because the index row carries no `steps[]` by design (see the schema's header).
+   * The cockpit's `stepBackendCount` applies the identical rule to the fat record on the
+   * per-project table; keep the two the same.
+   */
+  const distinctStepBackends = (run: RunRecord): number =>
+    new Set(run.steps.flatMap((step) => (step.backend ? [step.backend] : []))).size;
+
+  /**
+   * The runner a run RAN AS, in order of how good the evidence is — `undefined` only when the run
+   * carries none, which means it never started.
+   *
+   * `RunRecord.runner` is not "what the caller asked for": `execute` writes the resolved backend
+   * onto the record the moment a run begins (`workflows/run.ts`), so for anything that ever ran it
+   * is a fact. A record written before run-level backend affinity existed still has step backends,
+   * stamped at spawn — and resolving one of THOSE against today's `defaultRunner` would name a
+   * backend the run never touched.
+   */
+  const recordedRunner = (run: RunRecord): RunnerId | undefined => {
+    if (run.runner) return run.runner;
+    for (let index = run.steps.length - 1; index >= 0; index -= 1) {
+      const backend = run.steps[index]?.backend;
+      if (backend) return backend;
+    }
+    return undefined;
+  };
+
+  const runIndexEntry = (
+    projectId: string,
+    run: RunRecord,
+    runner: { runner: RunnerId; inherited: boolean },
+  ): RunIndexEntry => {
     const usage = currentUsage(run.id);
+    const backends = distinctStepBackends(run);
     return {
     projectId,
     id: run.id,
@@ -5399,6 +5504,15 @@ export function createApp(deps: ServerDeps) {
     archived: run.archived,
     ...(run.autoResumeAt !== undefined ? { autoResumeAt: run.autoResumeAt } : {}),
     workflow: run.workflow,
+    // Resolved HERE because rows span projects: the browser would need one config request per
+    // project to finish it. `inherited` marks the one case that is not history — a run carrying
+    // no evidence at all has not started, so the value is what it WOULD run as.
+    runner: runner.runner,
+    ...(runner.inherited ? { runnerInherited: true } : {}),
+    ...(run.model !== undefined ? { model: run.model } : {}),
+    // Only when it says something: 0 or 1 backend is every ordinary run, and a key nobody reads
+    // is exactly the weight this slim row exists to refuse.
+    ...(backends > 1 ? { stepBackends: backends } : {}),
     ...(run.branch !== undefined ? { branch: run.branch } : {}),
     ...(run.startedAt !== undefined ? { startedAt: run.startedAt } : {}),
     // The tracker-reference inputs, verbatim — the cockpit's `taskReference()` owns the rule
@@ -5467,9 +5581,29 @@ export function createApp(deps: ServerDeps) {
           owned ? owned.store.listRuns() : readRunIndexFromDisk(projectDataDir(project.root))
         ).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
         if (recent.length > RUNS_INDEX_PER_PROJECT) truncated.push(project.id);
+        // LAZY, and at most once per project. This route is polled every 15s and invalidated on a
+        // 400ms debounce during a run, so a config read per project per request would be dozens of
+        // file reads a second on a large registry. Almost every row answers for itself — a started
+        // run carries its own resolved `runner` — so in practice this never runs at all.
+        let projectDefault: RunnerId | undefined;
+        const defaultRunnerFor = async (): Promise<RunnerId> => {
+          if (projectDefault === undefined) {
+            try {
+              projectDefault = (await loadConfig(project.root)).defaultRunner;
+            } catch {
+              // Documented contract: this read degrades to fewer or plainer rows, never a 500.
+              projectDefault = 'claude';
+            }
+          }
+          return projectDefault;
+        };
         const mentioned: number[] = [];
         for (const run of recent.slice(0, RUNS_INDEX_PER_PROJECT)) {
-          runs.push(runIndexEntry(project.id, run));
+          const recorded = recordedRunner(run);
+          const runner = recorded
+            ? { runner: recorded, inherited: false }
+            : { runner: await defaultRunnerFor(), inherited: true };
+          runs.push(runIndexEntry(project.id, run, runner));
           mentioned.push(...mentionedReferenceNumbers(run));
         }
         if (mentioned.length > 0) {

@@ -1,7 +1,8 @@
+import type { ChildProcessWithoutNullStreams } from 'node:child_process';
+import { EventEmitter } from 'node:events';
 import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -11,10 +12,11 @@ import type { UiEvent } from './ui-events.js';
 import { buildChildEnv } from './agent-env.js';
 import { detectEnvironment } from './backend-detect.js';
 import { createRunner } from './runner-factory.js';
-import { buildPiArgs, PiRunner } from './pi-runner.js';
+import { buildPiArgs, KILL_GRACE_MS, PiRunner } from './pi-runner.js';
 
-/** Only the coalescing tests below swap the child out; every other test in
- *  this file keeps spawning the real mock CLI through the untouched `spawn`. */
+/** Only the escalation (#D) and text-coalescing (#151) tests below swap the child out; every
+ *  other test in this file keeps spawning its real stub binary through the untouched `spawn`.
+ *  Mirrors the identical hook in `claude-cli-runner.test.ts`. */
 const spawnHook = vi.hoisted(() => ({ override: null as null | (() => unknown) }));
 
 vi.mock('node:child_process', async (importOriginal) => {
@@ -376,5 +378,129 @@ describe('pi v1 text coalescing (claude parity, #151)', () => {
       'Hello ',
       'world',
     ]);
+  });
+});
+
+/**
+ * D — backend parity at the timeout seam (AGENT_PROTOCOL.md §AgentSession).
+ *
+ * pi honoured `spec.timeoutMs` from the start, but on expiry it only called `interrupt()`:
+ * one RPC abort and one SIGTERM. It declared `KILL_GRACE_MS` and never used it on the
+ * timeout path, so a pi that installs its own SIGTERM handler (or is wedged) was NEVER
+ * force-killed — `timeout:` was enforced for claude/codex/opencode and advisory for pi.
+ *
+ * The liveness question is `trackChildExit`, never `child.killed`/`child.exitCode == null`:
+ * Node flips `killed` the moment a signal is DELIVERED, so a CLI that handles SIGTERM keeps
+ * running with the flag already true, and an escalation gated on it never fires (#844).
+ */
+describe('pi wall-clock timeout escalates SIGTERM -> SIGKILL (D)', () => {
+  function signallableChild(): {
+    child: ChildProcessWithoutNullStreams;
+    signals: NodeJS.Signals[];
+    exit: (code: number) => void;
+  } {
+    const signals: NodeJS.Signals[] = [];
+    const emitter = new EventEmitter();
+    const child = Object.assign(emitter, {
+      stdin: new PassThrough(),
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+      exitCode: null as number | null,
+      signalCode: null as NodeJS.Signals | null,
+      killed: false,
+      pid: 5150,
+      // Node's semantics: delivery flips `killed`; a CLI with its own handler keeps running
+      // with `exitCode` still null.
+      kill: (signal: NodeJS.Signals) => {
+        signals.push(signal);
+        Object.assign(child, { killed: true });
+        return true;
+      },
+    }) as unknown as ChildProcessWithoutNullStreams;
+    const exit = (code: number) => {
+      Object.assign(child, { exitCode: code });
+      emitter.emit('exit', code, null);
+    };
+    return { child, signals, exit };
+  }
+
+  function withFakeChild(run: (fake: ReturnType<typeof signallableChild>) => void): void {
+    const fake = signallableChild();
+    spawnHook.override = () => fake.child;
+    vi.useFakeTimers();
+    try {
+      run(fake);
+    } finally {
+      vi.useRealTimers();
+      spawnHook.override = null;
+    }
+  }
+
+  it('force-kills a pi that survives the SIGTERM its timeout sent', () => {
+    withFakeChild((fake) => {
+      const session = new PiRunner({ bin: 'pi', timeoutMs: 20 }).startSession({
+        userPrompt: 'do it',
+        cwd: process.cwd(),
+      });
+      void session.result.catch(() => undefined);
+
+      vi.advanceTimersByTime(20);
+      expect(fake.signals).toEqual(['SIGTERM']);
+      // Delivered, not dead — the state that used to disable every escalation (#844).
+      expect(fake.child.killed).toBe(true);
+      expect(fake.child.exitCode).toBeNull();
+
+      vi.advanceTimersByTime(KILL_GRACE_MS);
+      expect(fake.signals).toEqual(['SIGTERM', 'SIGKILL']);
+    });
+  });
+
+  it('stops escalating once pi really exits after the SIGTERM', () => {
+    withFakeChild((fake) => {
+      const session = new PiRunner({ bin: 'pi', timeoutMs: 20 }).startSession({
+        userPrompt: 'do it',
+        cwd: process.cwd(),
+      });
+      void session.result.catch(() => undefined);
+
+      vi.advanceTimersByTime(20);
+      expect(fake.signals).toEqual(['SIGTERM']);
+      fake.exit(143);
+
+      vi.advanceTimersByTime(KILL_GRACE_MS);
+      expect(fake.signals).toEqual(['SIGTERM']);
+    });
+  });
+
+  it('still signals when the session had already auto-ended (the `open` guard)', () => {
+    // `autoEndAfterFirstTurn` sets `open = false`; the old `interrupt()` returned early on
+    // that, so the deadline fired into a no-op and nothing was ever killed.
+    withFakeChild((fake) => {
+      const session = new PiRunner({ bin: 'pi', timeoutMs: 20 }).startSession({
+        userPrompt: 'do it',
+        cwd: process.cwd(),
+      });
+      void session.result.catch(() => undefined);
+      session.end();
+      fake.signals.length = 0;
+
+      vi.advanceTimersByTime(20);
+      expect(fake.signals).toContain('SIGTERM');
+      vi.advanceTimersByTime(KILL_GRACE_MS);
+      expect(fake.signals).toContain('SIGKILL');
+    });
+  });
+
+  it('arms no wall clock at all when the step disabled it (timeoutMs: 0)', () => {
+    withFakeChild((fake) => {
+      const session = new PiRunner({ bin: 'pi', timeoutMs: 0 }).startSession({
+        userPrompt: 'do it',
+        cwd: process.cwd(),
+      });
+      void session.result.catch(() => undefined);
+
+      vi.advanceTimersByTime(60 * 60_000);
+      expect(fake.signals).toEqual([]);
+    });
   });
 });

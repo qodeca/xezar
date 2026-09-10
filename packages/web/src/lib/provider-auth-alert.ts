@@ -3,14 +3,9 @@ import type {
   ProviderStatusResponse,
   WorkspaceUiState,
 } from '@qodeca/xezar-api-client'
+import { RUNNER_LABEL } from './runner-label'
 
 const PROVIDERS: readonly ProviderId[] = ['claude', 'codex', 'opencode', 'pi']
-const LABELS: Record<ProviderId, string> = {
-  claude: 'Claude Code',
-  codex: 'Codex',
-  opencode: 'OpenCode',
-  pi: 'pi',
-}
 
 export interface ProviderAuthIncident {
   provider: ProviderId
@@ -50,7 +45,7 @@ export function visibleProviderAuthIncidents(
     ) return []
     return [{
       provider,
-      label: LABELS[provider],
+      label: RUNNER_LABEL[provider],
       authFailureId: row.authFailureId,
     }]
   })

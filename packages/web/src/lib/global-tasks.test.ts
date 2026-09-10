@@ -56,6 +56,7 @@ function run(overrides: Partial<RunIndexEntry> & { id: string; projectId: string
     createdAt: '2026-07-14T10:00:00Z',
     archived: false,
     workflow: 'quick-task',
+    runner: 'claude',
     ...overrides,
   }
 }

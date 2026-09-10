@@ -213,11 +213,13 @@ describe('TasksOverview — the table', () => {
       ],
     })
 
-    // Status | Task | Workflow | Branch | ± | PR | IN/OUT | Cost | CPU | Mem | Started
+    // Status | Task | Workflow | Tool Name | Model | Branch | ± | PR | IN/OUT | Cost | CPU | Mem | Started
     expect(cellsOf('full')).toEqual([
       'needs review',
       'Structured changes endpoint',
       'feat',
+      'Claude Code', // no `runner` on the record — the project default, resolved and shown muted
+      'auto', // no `model` either; the task detail header prints the same word
       'xez/8f31ab02',
       '+128 −14', // the ± column (R2 #389) — adds and dels, the mockup's pair
       '#402',
@@ -230,7 +232,21 @@ describe('TasksOverview — the table', () => {
     // No branch, no PR, no diff recorded, no cost yet — dashes, not zeros (a pre-R2 record has
     // no diffStat, and `+0 −0` would claim a measurement that never happened). Started falls
     // back to createdAt.
-    expect(cellsOf('bare')).toEqual(['needs you', 'Bare minimum', 'default', '—', '—', '—', '— / —', '—', '—', '—', '26m'])
+    expect(cellsOf('bare')).toEqual([
+      'needs you',
+      'Bare minimum',
+      'default',
+      'Claude Code',
+      'auto',
+      '—',
+      '—',
+      '—',
+      '— / —',
+      '—',
+      '—',
+      '—',
+      '26m',
+    ])
     // The pair is two colored halves, not one string — green adds, red dels (design tokens).
     const diff = tableRow('full')?.querySelector('[data-slot="diff-stat"]')
     expect(diff?.querySelector('.text-success')?.textContent).toBe('+128')
@@ -238,6 +254,114 @@ describe('TasksOverview — the table', () => {
     expect(diff?.getAttribute('title')).toBe('+128 −14 across 6 files')
     // Nothing was narrowed here, so nothing claims it was (#751).
     expect(diff?.getAttribute('data-repointed')).toBeNull()
+  })
+
+  describe('the Tool Name and Model columns', () => {
+    const toolCell = (id: string) => tableRow(id)?.querySelector('td[data-column-id="tool"] [data-slot="task-tool"]')
+    const modelCell = (id: string) => tableRow(id)?.querySelector('td[data-column-id="model"] [data-slot="task-model"]')
+
+    it('prints the product name for a recorded runner and the model id VERBATIM', () => {
+      renderOverview({
+        defaultRunner: 'claude',
+        runs: [
+          run({ id: 'chosen', runner: 'codex', model: 'gpt-5-codex' }),
+          // A model on somebody's own hardware. Nothing may map this through a catalog or invent
+          // a friendly name for it — the run used this string and the table says this string.
+          run({ id: 'local', runner: 'opencode', model: 'local/qwen3-coder-30b' }),
+        ],
+      })
+
+      expect(toolCell('chosen')?.textContent).toBe('Codex')
+      expect(modelCell('chosen')?.textContent).toBe('gpt-5-codex')
+      expect(toolCell('local')?.textContent).toBe('OpenCode')
+      expect(modelCell('local')?.textContent).toBe('local/qwen3-coder-30b')
+      // A value the run itself recorded is not muted — somebody chose it.
+      expect(toolCell('chosen')?.getAttribute('data-inherited')).toBeNull()
+      expect(modelCell('chosen')?.getAttribute('data-inherited')).toBeNull()
+      expect(toolCell('chosen')?.className).toContain('text-muted-foreground')
+      expect(toolCell('chosen')?.className).not.toContain('text-soft-foreground')
+    })
+
+    it("resolves an absent runner to the project's default and marks it inherited", () => {
+      renderOverview({ defaultRunner: 'opencode', runs: [run({ id: 'inherited' })] })
+
+      // Resolved, so the cell is useful — and muted, so a scan says nobody picked it.
+      expect(toolCell('inherited')?.textContent).toBe('OpenCode')
+      expect(toolCell('inherited')?.getAttribute('data-inherited')).toBe('true')
+      expect(toolCell('inherited')?.className).toContain('text-soft-foreground')
+    })
+
+    it("renders a missing model as a muted 'auto', the word the task header already uses", () => {
+      renderOverview({ defaultRunner: 'claude', runs: [run({ id: 'no-model', runner: 'claude' })] })
+
+      expect(modelCell('no-model')?.textContent).toBe('auto')
+      expect(modelCell('no-model')?.getAttribute('data-inherited')).toBe('true')
+      expect(modelCell('no-model')?.className).toContain('text-soft-foreground')
+    })
+
+    it('marks a run whose steps used more than one backend', () => {
+      const step = (id: string, backend?: RunRecord['runner']) => ({
+        id,
+        name: id,
+        kind: 'agent' as const,
+        status: 'done' as const,
+        iterations: 1,
+        tokensUsed: 0,
+        ...(backend ? { backend } : {}),
+      })
+      renderOverview({
+        defaultRunner: 'claude',
+        runs: [
+          run({
+            id: 'mixed',
+            runner: 'claude',
+            steps: [step('plan', 'claude'), step('build', 'codex'), step('check')],
+          }),
+          // One backend across every step is the ordinary case and wears no marker at all.
+          run({ id: 'single', runner: 'claude', steps: [step('plan', 'claude'), step('build', 'claude')] }),
+        ],
+      })
+
+      expect(toolCell('mixed')?.textContent).toBe('Claude Code +1')
+      expect(toolCell('mixed')?.getAttribute('data-mixed')).toBe('true')
+      expect(toolCell('single')?.textContent).toBe('Claude Code')
+      expect(toolCell('single')?.getAttribute('data-mixed')).toBeNull()
+    })
+
+    it('puts both on the phone card too — the table is hidden below md', () => {
+      renderOverview({
+        defaultRunner: 'opencode',
+        runs: [
+          run({ id: 'phone-chosen', runner: 'codex', model: 'gpt-5-codex' }),
+          run({
+            id: 'phone-mixed',
+            runner: 'claude',
+            // '' is the composer's own auto sentinel; it must read `auto` here exactly as it does
+            // in the table cell, never as a blank field.
+            model: '',
+            steps: [
+              { id: 'a', name: 'a', kind: 'agent', status: 'done', iterations: 1, tokensUsed: 0, backend: 'claude' },
+              { id: 'b', name: 'b', kind: 'agent', status: 'done', iterations: 1, tokensUsed: 0, backend: 'codex' },
+            ],
+          }),
+          run({ id: 'phone-bare' }),
+        ],
+      })
+
+      const chosen = card('phone-chosen')
+      expect(chosen?.querySelector('[data-slot="task-card-tool"]')?.textContent).toBe('Codex')
+      expect(chosen?.querySelector('[data-slot="task-card-model"]')?.textContent).toBe('gpt-5-codex')
+      // The card renders the marker through the SAME rule as the cell — it used to spell it out
+      // a second time, and that is how the two drifted over an empty-string model.
+      const mixed = card('phone-mixed')
+      expect(mixed?.querySelector('[data-slot="task-card-tool"]')?.textContent).toBe('Claude Code +1')
+      expect(mixed?.querySelector('[data-slot="task-card-model"]')?.textContent).toBe('auto')
+      const bare = card('phone-bare')
+      expect(bare?.querySelector('[data-slot="task-card-tool"]')?.textContent).toBe('OpenCode')
+      expect(bare?.querySelector('[data-slot="task-card-tool"]')?.getAttribute('data-inherited')).toBe('true')
+      expect(bare?.querySelector('[data-slot="task-card-model"]')?.textContent).toBe('auto')
+      expect(bare?.querySelector('[data-slot="task-card-model"]')?.getAttribute('data-inherited')).toBe('true')
+    })
   })
 
   it('annotates the ± column when the stat was measured on a repointed worktree (#751)', () => {
@@ -276,11 +400,25 @@ describe('TasksOverview — the table', () => {
     const headers = [...document.querySelectorAll('[data-slot="tasks-table"] th')].map(
       (cell) => cell.textContent,
     )
-    expect(headers).toEqual(['Status', 'Task', 'Workflow', 'Branch', '±', 'Ref', 'CPU', 'Mem', 'Started'])
+    expect(headers).toEqual([
+      'Status',
+      'Task',
+      'Workflow',
+      'Tool Name',
+      'Model',
+      'Branch',
+      '±',
+      'Ref',
+      'CPU',
+      'Mem',
+      'Started',
+    ])
     expect(cellsOf('hidden')).toEqual([
       'done',
       'Hidden metrics',
       'default',
+      'Claude Code',
+      'auto',
       '—',
       '—',
       '—',
@@ -290,7 +428,7 @@ describe('TasksOverview — the table', () => {
     ])
 
     const queued = tableRow('queued-hidden') as HTMLElement
-    expect(queued.querySelectorAll('td')).toHaveLength(8)
+    expect(queued.querySelectorAll('td')).toHaveLength(10)
     expect(queued.querySelector('[data-slot="queue-note"]')?.getAttribute('colspan')).toBe('2')
     expect(queued.textContent).not.toContain('12.0k')
     expect(queued.textContent).not.toContain('$0.02')
@@ -331,7 +469,8 @@ describe('TasksOverview — the table', () => {
     expect(screen.getByRole('button', { name: 'Expand Workflow column', pressed: false })).not.toBeNull()
     expect(screen.getByRole('button', { name: 'Fold Branch column', pressed: true })).not.toBeNull()
     expect(screen.getByRole('button', { name: 'Fold CPU column', pressed: true })).not.toBeNull()
-    expect(document.querySelectorAll('[data-slot="tasks-table"] thead button')).toHaveLength(9)
+    // Every foldable column: Workflow, Tool Name, Model, Branch, ±, Ref, IN/OUT, Cost, CPU, Mem, Started.
+    expect(document.querySelectorAll('[data-slot="tasks-table"] thead button')).toHaveLength(11)
     expect(document.querySelector('th[data-column-id="status"]')?.textContent).toBe('Status')
     expect(document.querySelector('th[data-column-id="task"]')?.textContent).toBe('Task')
   })
@@ -1036,6 +1175,36 @@ describe('TasksOverviewRoute — wired to the app', () => {
   const overviewTab = (view: string) =>
     document.querySelector(`[data-slot="overview-tab"][data-view="${view}"]`) as HTMLElement
   const sidebarRow = (id: string) => document.querySelector(`[data-slot="task-row"][data-run-id="${id}"]`)
+
+  it("takes the Tool column's default runner from the PROJECT config, not from health", async () => {
+    // `/api/v1/health` describes the BOOT project and would name the wrong runner on a scoped
+    // route, so the two answer differently here on purpose: whichever one the route reads is
+    // the one the cell prints.
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input)
+      if (url === '/api/v1/runs') return json([run({ id: 'inherits', runner: undefined })])
+      if (url === '/api/v1/config') return json({ defaultRunner: 'opencode', defaultModels: {} })
+      if (url === '/api/v1/health') return json({ defaultRunner: 'codex', capabilities: {} })
+      return new Response('[]', { status: 200 })
+    })
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <MemoryRouter>
+          <ListViewProvider>
+            <TasksOverviewRoute />
+          </ListViewProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+
+    await waitFor(() => {
+      const cell = tableRow('inherits')?.querySelector('[data-slot="task-tool"]')
+      expect(cell?.textContent).toBe('OpenCode')
+    })
+    expect(tableRow('inherits')?.querySelector('[data-slot="task-tool"]')?.getAttribute('data-inherited')).toBe(
+      'true',
+    )
+  })
 
   it('shares the Active/Archived state with the sidebar — either set of tabs flips both', async () => {
     renderApp([run({ id: 'act', status: 'running' }), run({ id: 'arc', status: 'done', archived: true })])
