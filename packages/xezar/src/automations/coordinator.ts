@@ -2,6 +2,7 @@ import { projectDataDir } from '../project-data-paths.ts';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { AutomationStore } from './store.ts';
+import { ownProjectData } from '../runs/project-writer.ts';
 
 export interface AutomationProjectSource {
   id: string;
@@ -53,6 +54,12 @@ export class AutomationCoordinator {
     if (existing) return existing;
     const projectRoot = root ?? this.roots.get(projectId);
     if (!projectRoot) return undefined;
+    try {
+      ownProjectData(projectDataDir(projectRoot));
+    } catch (error) {
+      this.options.warn?.(`Automation project is unavailable: ${error instanceof Error ? error.message : String(error)}`);
+      return undefined;
+    }
     const store = AutomationStore.open(projectDataDir(projectRoot), { warn: this.options.warn });
     this.stores.set(projectId, store);
     this.roots.set(projectId, projectRoot);

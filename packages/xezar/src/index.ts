@@ -19,6 +19,7 @@ import { DEFAULT_WORKTREE_RETENTION, loadConfig, resolveWorktreeRetention } from
 import { reclaimWorktrees } from './runs/retention.ts';
 import { armRepoHandle } from './runs/arm-repo-handle.ts';
 import { RunStore } from './runs/store.ts';
+import { ownProjectData } from './runs/project-writer.ts';
 import { RunManager } from './workflows/run.ts';
 import { loadWorkflows } from './workflows/load.ts';
 import { startServer, WorkspaceEventBus } from './server/server.ts';
@@ -667,6 +668,7 @@ description: House rules the agent should follow in this repo.
 
 function openStore(repoRoot: string, opts?: { keepLive?: boolean }): RunStore {
   const dataDir = projectDataDir(repoRoot);
+  ownProjectData(dataDir);
   const store = RunStore.open(dataDir, opts);
   // Repo-scope the referenced tier (#945) — see `armRepoHandle`. Background, never awaited: a
   // `gh`-less or offline machine keeps working exactly as it did, just unscoped.

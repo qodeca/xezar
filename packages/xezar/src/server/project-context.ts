@@ -7,6 +7,7 @@ import { pruneOrphans } from '../git-worktree.ts';
 import { armRepoHandle } from '../runs/arm-repo-handle.ts';
 import { reclaimWorktrees } from '../runs/retention.ts';
 import { RunStore } from '../runs/store.ts';
+import { ownProjectData } from '../runs/project-writer.ts';
 import { WorkspaceSemaphore } from '../workspace/semaphore.ts';
 import { RunManager } from '../workflows/run.ts';
 import { ensureLaunchKey } from './launch-key.ts';
@@ -208,6 +209,7 @@ export class ProjectContexts {
     if (project.status === 'missing') throw new ProjectContextError('missing-root', projectId);
 
     const dataDir = projectDataDir(project.root);
+    ownProjectData(dataDir);
     // keepLive + recover() (#367), same as serveCommand: runs that were live
     // when this project's context last existed are re-queued or resumed.
     const store = RunStore.open(dataDir, { keepLive: true });

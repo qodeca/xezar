@@ -579,3 +579,41 @@ describe('ubuntu-vps review fixes (PR #423)', () => {
     }
   });
 });
+
+
+describe('ubuntu-vps preflight refuses incompatible hosts before installation', () => {
+  it.each([
+    { name: 'dry-run', dryRun: true, os: 'Linux', apt: 0, uid: '1000', probes: [] },
+    { name: 'macOS', os: 'Darwin', apt: 0, uid: '1000', error: /requires Linux/, probes: ['uname'] },
+    { name: 'missing apt', os: 'Linux', apt: 1, uid: '1000', error: /requires apt/, probes: ['uname', 'apt-get'] },
+    { name: 'root', os: 'Linux', apt: 0, uid: '0', error: /not root/, probes: ['uname', 'apt-get', 'id'] },
+    { name: 'normal user', os: 'Linux', apt: 0, uid: '1000', probes: ['uname', 'apt-get', 'id', 'ss'] },
+    { name: 'external proxy', os: 'Linux', apt: 0, uid: '1000', externalProxy: true, probes: ['uname', 'apt-get', 'id'] },
+  ])('$name', async (row) => {
+    const probes: string[] = [];
+    const runner: Runner = {
+      capture: async (program) => {
+        probes.push(program);
+        return { code: program === 'apt-get' ? row.apt : 0, stdout: program === 'uname' ? row.os : program === 'id' ? row.uid : '', stderr: '' };
+      },
+      interactive: async () => { throw new Error('preflight must not install anything'); },
+    };
+    const result = ubuntuVps.preflight(ctxWith({ runner, dryRun: row.dryRun, state: { externalProxy: row.externalProxy } }));
+    if (row.error) await expect(result).rejects.toThrow(row.error);
+    else await expect(result).resolves.toBeUndefined();
+    expect(probes).toEqual(row.probes);
+  });
+
+  it.each(['docker-proxy', 'nginx', 'none'])('reports existing port owner %s accurately', async (owner) => {
+    const warn = vi.fn();
+    const runner: Runner = {
+      capture: async (program) => ({ code: 0, stdout: program === 'uname' ? 'Linux' : program === 'id' ? '1000' : program === 'ss' && owner !== 'none' ? `LISTEN 0 128 *:80 *:* users:(("${owner}",pid=123,fd=4))` : '', stderr: '' }),
+      interactive: async () => { throw new Error('unexpected installation'); },
+    };
+    await ubuntuVps.preflight(ctxWith({ runner, ui: { ...createAutoUi(), warn }, state: { domain: 'example.test' } }));
+    if (owner === 'docker-proxy') {
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('--external-proxy --domain example.test'));
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('docker-proxy'));
+    } else expect(warn).not.toHaveBeenCalled();
+  });
+});

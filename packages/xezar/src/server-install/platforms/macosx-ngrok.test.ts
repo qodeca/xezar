@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -7,7 +7,17 @@ import { availablePlatformIds, getStrategy } from '../strategies.ts';
 import { runInstall, runUninstall } from '../engine.ts';
 import { loadServerState } from '../state.ts';
 import { createAutoUi } from '../ui.ts';
-import type { Runner } from '../types.ts';
+import { CANCEL, type Runner } from '../types.ts';
+import { StepAborted, StepCancelled } from '../steps.ts';
+
+const fixtureHome = vi.hoisted(() => ({ path: '' }));
+vi.mock('node:os', async (importOriginal) => ({
+  ...await importOriginal<typeof import('node:os')>(),
+  homedir: () => {
+    if (!fixtureHome.path) throw new Error('test home is not initialized');
+    return fixtureHome.path;
+  },
+}));
 
 const okRunner: Runner = { capture: async () => ({ code: 0, stdout: '', stderr: '' }), interactive: async () => 0 };
 
@@ -16,6 +26,7 @@ describe('macosx-ngrok', () => {
   const original = process.env.XEZ_HOME;
   beforeEach(() => {
     home = mkdtempSync(join(tmpdir(), 'xez-mac-'));
+    fixtureHome.path = home;
     process.env.XEZ_HOME = home;
   });
   afterEach(() => {
@@ -86,6 +97,7 @@ describe('macosx-ngrok review fixes (PR #423)', () => {
   const original = process.env.XEZ_HOME;
   beforeEach(() => {
     home = mkdtempSync(join(tmpdir(), 'xez-mac-fix-'));
+    fixtureHome.path = home;
     process.env.XEZ_HOME = home;
   });
   afterEach(() => {
@@ -149,20 +161,11 @@ describe('macosx-ngrok review fixes (PR #423)', () => {
       },
       interactive: async () => 0,
     };
-    // point HOME-based plist path into the temp dir via a fake homedir? plistPath()
-    // uses the real homedir — instead assert through the file the step wrote.
-    const oldHome = process.env.HOME;
-    process.env.HOME = home; // node's os.homedir() honors $HOME on posix
-    try {
-      await ngrokStepOf().run(ctxFor(runner));
-      const p = join(home, 'Library', 'LaunchAgents', 'ai.xezar.ngrok.plist');
-      const mode = statSync(p).mode & 0o777;
-      expect(mode).toBe(0o600);
-      expect(readFileSync(p, 'utf8')).toContain('ops:longenough'); // creds live here → hence 0600
-    } finally {
-      if (oldHome === undefined) delete process.env.HOME;
-      else process.env.HOME = oldHome;
-    }
+    await ngrokStepOf().run(ctxFor(runner));
+    const p = join(home, 'Library', 'LaunchAgents', 'ai.xezar.ngrok.plist');
+    const mode = statSync(p).mode & 0o777;
+    expect(mode).toBe(0o600);
+    expect(readFileSync(p, 'utf8')).toContain('ops:longenough'); // creds live here → hence 0600
   });
 
   it('a failed launchctl bootstrap fails the step instead of recording done', async () => {
@@ -174,14 +177,7 @@ describe('macosx-ngrok review fixes (PR #423)', () => {
       },
       interactive: async (_p, args) => (args[0] === 'bootstrap' ? 5 : 0),
     };
-    const oldHome = process.env.HOME;
-    process.env.HOME = home;
-    try {
-      await expect(ngrokStepOf().run(ctxFor(runner))).rejects.toThrow(/launchctl could not load/);
-    } finally {
-      if (oldHome === undefined) delete process.env.HOME;
-      else process.env.HOME = oldHome;
-    }
+    await expect(ngrokStepOf().run(ctxFor(runner))).rejects.toThrow(/launchctl could not load/);
   });
 
   it('undo removes the agent from static label/path even with created:null', async () => {
@@ -193,15 +189,8 @@ describe('macosx-ngrok review fixes (PR #423)', () => {
       },
       interactive: async () => 0,
     };
-    const oldHome = process.env.HOME;
-    process.env.HOME = home;
-    try {
-      await ngrokStepOf().undo(ctxFor(runner), null);
-      expect(commands.some((c) => c[0] === 'bootout' && (c[1] ?? '').includes('ai.xezar.ngrok'))).toBe(true);
-    } finally {
-      if (oldHome === undefined) delete process.env.HOME;
-      else process.env.HOME = oldHome;
-    }
+    await ngrokStepOf().undo(ctxFor(runner), null);
+    expect(commands.some((c) => c[0] === 'bootout' && (c[1] ?? '').includes('ai.xezar.ngrok'))).toBe(true);
   });
 
   it('rejects a scheme-carrying domain (bare hostname only)', async () => {
@@ -226,17 +215,48 @@ describe('macosx-ngrok review fixes (PR #423)', () => {
         },
       },
     });
-    const oldHome = process.env.HOME;
-    process.env.HOME = home;
-    try {
-      await ngrokStepOf().run(ctx);
-    } finally {
-      if (oldHome === undefined) delete process.env.HOME;
-      else process.env.HOME = oldHome;
-    }
+    await ngrokStepOf().run(ctx);
     expect(domainValidate).toBeDefined();
     expect(domainValidate?.('https://xezar.ngrok.app')).toBeDefined();
     expect(domainValidate?.('xezar.ngrok.app')).toBeUndefined();
     expect(domainValidate?.('')).toBeUndefined(); // blank = ephemeral, allowed
   });
+  it.each(['authtoken', 'domain', 'username', 'password'])('cancelling %s stops before installing an agent', async (cancelAt) => {
+    const interactive = vi.fn<Runner['interactive']>(async () => 0);
+    const answer = (message: string) => {
+      const field = message.includes('authtoken') ? 'authtoken' : message.includes('domain') ? 'domain' : message.includes('username') ? 'username' : 'password';
+      return field === cancelAt ? CANCEL : field === 'domain' ? '' : 'longenough';
+    };
+    const ctx = ctxFor({ ...okRunner, interactive }, {
+      ui: { ...createAutoUi(), text: async (o: { message: string }) => answer(o.message), password: async (o: { message: string }) => answer(o.message) },
+    });
+    await expect(ngrokStepOf().run(ctx)).rejects.toBeInstanceOf(StepCancelled);
+    expect(interactive.mock.calls.every(([program]) => program !== 'launchctl')).toBe(true);
+    expect(() => statSync(join(home, 'Library', 'LaunchAgents'))).toThrow();
+  });
+
+  it('refuses rejected tokens before asking for domain or writing credentials', async () => {
+    const text = vi.fn();
+    await expect(ngrokStepOf().run(ctxFor({ ...okRunner, interactive: async () => 1 }, {
+      ui: { ...createAutoUi(), password: async () => 'bad-token', text },
+    }))).rejects.toBeInstanceOf(StepAborted);
+    expect(text).not.toHaveBeenCalled();
+    expect(() => statSync(join(home, 'Library', 'LaunchAgents'))).toThrow();
+  });
+
+  it('refuses a short basic-auth password before writing the agent', async () => {
+    await expect(ngrokStepOf().run(ctxFor(okRunner, {
+      ui: { ...createAutoUi(), text: async () => '', password: async (o: { message: string }) => o.message.includes('authtoken') ? 'token' : 'tiny' },
+    }))).rejects.toThrow(/password/);
+    expect(() => statSync(join(home, 'Library', 'LaunchAgents'))).toThrow();
+  });
+
+  it.each(['Linux', 'Darwin', 'dry-run'])('preflight checks host compatibility: %s', async (platform) => {
+    const capture = vi.fn(async () => ({ code: 0, stdout: platform, stderr: '' }));
+    const ctx = ctxFor({ ...okRunner, capture }, { dryRun: platform === 'dry-run' });
+    if (platform === 'Linux') await expect(macosxNgrok.preflight(ctx)).rejects.toThrow(/requires macOS/);
+    else await expect(macosxNgrok.preflight(ctx)).resolves.toBeUndefined();
+    expect(capture).toHaveBeenCalledTimes(platform === 'dry-run' ? 0 : 1);
+  });
+
 });

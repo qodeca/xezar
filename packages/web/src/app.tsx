@@ -9,6 +9,7 @@ import { AppearanceProvider } from './components/appearance-provider'
 import { LastLocationController } from './components/last-location-controller'
 import { ReferenceStatusRegistry } from './components/reference-status'
 import { RunNotifications } from './components/run-notifications'
+import { RouteErrorBoundary } from './components/route-error-boundary'
 import { ThemeProvider } from './components/theme-provider'
 import { Toaster } from './components/ui/toaster'
 import { AppRoutes } from './routes'
@@ -51,7 +52,9 @@ export function App() {
                   project. */}
               <ReferenceStatusRegistry>
                 <AppShellContainer>
-                  <AppRoutes />
+                  <RouteErrorBoundary>
+                    <AppRoutes />
+                  </RouteErrorBoundary>
                 </AppShellContainer>
               </ReferenceStatusRegistry>
               {/* One toast outlet for the whole app — `toast()` is a module-level call. */}

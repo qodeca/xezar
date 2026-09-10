@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useProjectScope } from './api/project-scope-context'
@@ -267,38 +267,26 @@ describe('<App /> — the boot shell', () => {
     expect(topics.release).toHaveBeenCalledTimes(1)
   })
 
-  /**
-   * PINS A GAP, not a guarantee (#50 asked for the opposite and the shell does not have it).
-   * There is no error boundary anywhere in packages/web/src, so a routed child that throws
-   * takes the whole document with it — sidebar included — and the reader gets a blank page with
-   * no way back. This test records exactly that, so the day a boundary is added it fails and
-   * has to be rewritten into the assertion #50 actually wants.
-   */
-  it('has NO error boundary — a throwing routed child blanks the whole shell', async () => {
-    const errors: unknown[] = []
-    const onError = (event: ErrorEvent): void => {
-      errors.push(event.error)
-      event.preventDefault()
-    }
-    window.addEventListener('error', onError)
+  it('contains a routed child error and can retry without remounting the shell subscriptions', async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    routeHole.renderNode = () => {
-      throw new Error('a routed child exploded')
-    }
-
+    routeHole.renderNode = () => <p>Healthy route</p>
     try {
-      renderApp(`/p/${SCOPED}/probe-hole`)
-      // The shell paints first — the throw only happens once the registry settles and the scoped
-      // route mounts, which is the realistic shape of this failure.
+      const view = renderApp(`/p/${BOOT}/probe-hole`)
+      await screen.findByText('Healthy route')
+      await waitFor(() => expect(topics.subscribeTopic).toHaveBeenCalledTimes(1))
+      routeHole.renderNode = () => { throw new Error('a routed child exploded') }
+      view.rerender(<App />)
+      await screen.findByRole('alert')
       expect(document.querySelector('[data-slot="app-shell"]')).not.toBeNull()
-
-      await waitFor(() => expect(document.querySelector('[data-slot="app-shell"]')).toBeNull())
-      // Nothing recoverable is left: no shell, no route, no message.
-      expect(document.querySelector('[data-route]')).toBeNull()
-      expect(document.body.textContent).toBe('')
-      expect(errors.some((error) => (error as Error | undefined)?.message === 'a routed child exploded')).toBe(true)
+      expect(screen.getByText('This page could not be displayed.')).toBeTruthy()
+      await waitFor(() => expect(topics.subscribeTopic.mock.calls.filter(([topic]) => topic === 'health')).toHaveLength(1))
+      expect(topics.release).not.toHaveBeenCalled()
+      routeHole.renderNode = () => <p>Recovered route</p>
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+      await screen.findByText('Recovered route')
+      expect(screen.queryByRole('alert')).toBeNull()
+      expect(topics.subscribeTopic.mock.calls.filter(([topic]) => topic === 'health')).toHaveLength(1)
     } finally {
-      window.removeEventListener('error', onError)
       consoleError.mockRestore()
     }
   })

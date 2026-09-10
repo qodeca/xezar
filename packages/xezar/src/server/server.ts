@@ -1,3 +1,5 @@
+import { EventCorrectionError } from '../runs/event-corrections.ts';
+import { validateLegacyHistoryResume } from '../runs/event-history.ts';
 import { projectDataDir } from '../project-data-paths.ts';
 import { projectKitDir } from '../project-kit-paths.ts';
 import { existsSync, readFileSync, statSync } from 'node:fs';
@@ -163,6 +165,7 @@ import { WorkspaceSemaphore } from '../workspace/semaphore.ts';
 import { mergeWriteWorkspaceUiState, readWorkspaceUiState } from '../workspace/ui-state.ts';
 import { checkoutRepo, type CloneRunner } from './checkout.ts';
 import { ProjectContextError, ProjectContexts, type ProjectContext } from './project-context.ts';
+import { ProjectWriterError } from '../runs/project-writer.ts';
 import { reviewGateEnabled } from '../runs/review-gate.ts';
 import { readUiState, uiStatePath } from '../ui-state.ts';
 import { agentHomePaths, expandTilde } from '../paths.ts';
@@ -1344,6 +1347,7 @@ export function createApp(deps: ServerDeps) {
     try {
       c.set('project', await contexts.context(raw));
     } catch (err) {
+      if (err instanceof ProjectWriterError) return c.json({ error: err.message }, 409);
       if (err instanceof ProjectContextError) {
         return err.reason === 'missing-root'
           ? c.json({ error: `project folder not found: ${err.projectId}` }, 409)
@@ -3664,6 +3668,7 @@ export function createApp(deps: ServerDeps) {
           );
         } catch (error) {
           if (error instanceof HistoryCursorError) return c.json({ error: error.message }, error.status);
+          if (error instanceof EventCorrectionError) return c.json({ error: error.message }, 409);
           throw error;
         }
       },
@@ -3676,7 +3681,12 @@ export function createApp(deps: ServerDeps) {
         const { store, dataDir } = c.get('project');
         const { id } = c.req.valid('param');
         if (!store.getRun(id)) return c.json({ error: 'not found' }, 404);
-        return c.json(await deriveRunContextEvents(join(dataDir, 'runs', `${id}.ndjson`)));
+        try {
+          return c.json(await deriveRunContextEvents(join(dataDir, 'runs', `${id}.ndjson`)));
+        } catch (error) {
+          if (error instanceof EventCorrectionError) return c.json({ error: error.message }, 409);
+          throw error;
+        }
       },
     )
 
@@ -4633,6 +4643,7 @@ export function createApp(deps: ServerDeps) {
           await validateLiveCursor(eventsPath, query.cursor);
         } catch (error) {
           if (error instanceof HistoryCursorError) return c.json({ error: error.message }, error.status);
+          if (error instanceof EventCorrectionError) return c.json({ error: error.message }, 409);
           throw error;
         }
       }
@@ -4641,6 +4652,14 @@ export function createApp(deps: ServerDeps) {
         query.afterSeq ?? 0,
         Number.isSafeInteger(lastEventId) && lastEventId >= 0 ? lastEventId : 0,
       );
+      if (!query.cursor) {
+        try { validateLegacyHistoryResume(eventsPath, requestedAfter); }
+        catch (error) {
+          if (error instanceof HistoryCursorError) return c.json({ error: error.message }, error.status);
+          if (error instanceof EventCorrectionError) return c.json({ error: error.message }, 409);
+          throw error;
+        }
+      }
       return streamSSENoBuffer(c, async (stream) => {
         let replaying = true;
         let maxSeq = requestedAfter;
