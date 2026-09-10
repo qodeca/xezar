@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
-import { ftruncateSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { ftruncateSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -157,6 +157,54 @@ describe('ProjectOwnership — one owner per project (#99)', () => {
     expect(claims(dataDir)).toHaveLength(1);
   });
 
+  it('retries a contended acquisition with full-jitter backoff doubling to the 200 ms cap', async () => {
+    const dataDir = tempDir('xez-owner-');
+    const pids = pidTable();
+    tokenOf(await ownership({ dataDir, isAlive: pids.isAlive, pid: 4201 }).acquire('owner'));
+    const waits: number[] = [];
+    const contender = ownership({ dataDir, isAlive: pids.isAlive, pid: 4202, random: () => 1, sleep: async (ms) => { waits.push(ms); } });
+    expect((await contender.acquire('contender')).outcome).toBe('occupied');
+    // random() = 1 exposes each window's upper bound: 25, 50, 100, then capped at 200 (D-02.2).
+    expect(waits).toEqual([25, 50, 100, 200]);
+  });
+
+  it('judges a half-written or unreadable claim by its pid and age: live blocks, stale or dead does not', async () => {
+    const dataDir = tempDir('xez-owner-');
+    const clock = fakeClock();
+    const pids = pidTable();
+    const dir = join(dataDir, OWNER_CLAIM_DIR);
+    mkdirSync(dir, { recursive: true });
+    const torn = join(dir, '4301-00000000-0000-4000-8000-000000000000.json');
+    writeFileSync(torn, '{"v":1,"tok'); // a contender died, or is still writing
+    utimesSync(torn, clock.now() / 1000, clock.now() / 1000);
+    const owner = ownership({ dataDir, now: clock.now, isAlive: pids.isAlive, pid: 4302 });
+    expect(owner.state()).toBe('owned');
+    expect((await owner.acquire('leader')).outcome).toBe('occupied'); // fail closed while fresh
+    clock.advance(OWNER_LEASE_MS + 1); // its file age now exceeds the lease
+    expect(owner.state()).toBe('expired');
+    tokenOf(await owner.acquire('leader'));
+    expect(claims(dataDir)).not.toContain('4301-00000000-0000-4000-8000-000000000000.json');
+
+    // A fresh torn claim whose pid is confirmed dead is reaped at once, age regardless.
+    owner.release('leader');
+    const dead = join(dir, '4303-00000000-0000-4000-8000-000000000000.json');
+    writeFileSync(dead, '');
+    utimesSync(dead, clock.now() / 1000, clock.now() / 1000);
+    pids.kill(4303);
+    tokenOf(await owner.acquire('leader'));
+    expect(claims(dataDir)).toHaveLength(1);
+  });
+
+  it('claims nothing after dispose: the service is going away', async () => {
+    const dataDir = tempDir('xez-owner-');
+    const owner = ownership({ dataDir });
+    tokenOf(await owner.acquire('leader'));
+    owner.dispose();
+    expect(claims(dataDir)).toEqual([]);
+    expect((await owner.acquire('late')).outcome).toBe('closed');
+    expect(claims(dataDir)).toEqual([]);
+  });
+
   it('leaves a different project unaffected', async () => {
     const clock = fakeClock();
     const projectA = ownership({ dataDir: tempDir('xez-owner-a-'), now: clock.now, projectId: 'proj-a' });
@@ -286,7 +334,7 @@ describe('ProjectOwnership — one owner per project (#99)', () => {
       expect(owner.state()).toBe('unowned');
     });
 
-    it('a resumed owner whose lease lapsed never renews it, and loses to the owner that took over', async () => {
+    it('a resumed owner whose claim was taken over does not resurrect it and is fenced', async () => {
       const dataDir = tempDir('xez-owner-');
       const clock = fakeClock();
       const pids = pidTable();
@@ -341,6 +389,24 @@ describe('ProjectOwnership — one owner per project (#99)', () => {
       expect(body).toMatchObject({ v: 1, token, renewedAt: clock.now() });
       expect(Object.keys(body).sort()).toEqual(['acquiredAt', 'host', 'pid', 'renewedAt', 'token', 'v']);
       expect(JSON.stringify(body)).not.toContain('leader'); // no session key on disk
+    });
+
+    it('never recreates a claim that vanished between renewals: it re-acquires under a new name and token', async () => {
+      const dataDir = tempDir('xez-owner-');
+      const clock = fakeClock();
+      const owner = ownership({ dataDir, now: clock.now });
+      const oldToken = tokenOf(await owner.acquire('leader'));
+      const oldName = claims(dataDir)[0]!;
+      unlinkSync(join(dataDir, OWNER_CLAIM_DIR, oldName)); // reaped, or wiped by hand
+      clock.advance(OWNER_RENEW_INTERVAL_MS); // well inside the lease
+      owner.renewalTick();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(claims(dataDir)).not.toContain(oldName);
+      expect(claims(dataDir)).toHaveLength(1);
+      expect(owner.checkMutation(oldToken).ok).toBe(false);
+      const newToken = owner.sessionToken('leader');
+      expect(newToken).toBeDefined();
+      expect(newToken).not.toBe(oldToken);
     });
 
     it('does not extend its lease when a peer reaped the claim in the middle of the renewal write', async () => {

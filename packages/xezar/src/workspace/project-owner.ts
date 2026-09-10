@@ -74,6 +74,22 @@ import {
  * What reaches a terminal state BECAUSE of this lease: an MCP session (fenced or expired), and
  * nothing else. No run, queue, worktree or executor does.
  *
+ * ## Known limits, named rather than hidden
+ *
+ * - **The wall clock, on purpose.** Leases compare `Date.now()` values, because a monotonic clock
+ *   stops while a laptop sleeps and would hide exactly the suspension the resumed-owner rule
+ *   exists for. The cost: a clock set BACKWARDS makes a claim read as fresh until the clock
+ *   catches up. A dead holder is still freed by the pid probe; only a frozen-but-alive holder
+ *   waits longer.
+ * - **Check, then act.** The fence runs before a mutation starts. A mutation that passed it is not
+ *   re-checked part-way through its own asynchronous work.
+ * - **The lease boundary between processes.** A peer that reads a claim a microsecond after its
+ *   lease lapsed may reap it while the owner is mid-renewal. The owner detects an unlinked claim
+ *   after writing (`nlink === 0`) and re-acquires; a reap landing after that check is caught on
+ *   the next tick. Two services cannot both hold a project's data anyway (`ownProjectData`).
+ * - **A connected but wedged bridge** keeps ownership until its transport closes: D-02.4 leaves an
+ *   application-level `ping` Open, and this module implements the three signals D-02 decided.
+ *
  * ## Where the claim lives (D-02.8)
  *
  * `<dataDir>/mcp-owner-claims/<pid>-<uuid>.json`, `0600`, in the bound project's own `.local/xezar`
@@ -217,6 +233,7 @@ export class ProjectOwnership {
   private tail: Promise<unknown> = Promise.resolve();
   private readonly pending = new Set<Ticket>();
   private warnedRenewal = false;
+  private disposed = false;
 
   constructor(options: ProjectOwnershipOptions) {
     this.projectId = options.projectId;
@@ -236,7 +253,8 @@ export class ProjectOwnership {
    * clients. A different session is refused with the project-occupied error.
    */
   acquire(sessionKey: string): Promise<AcquireResult> {
-    const ticket: Ticket = { sessionKey, closed: false };
+    // After `dispose` the service is going away: nothing may claim on its behalf any more.
+    const ticket: Ticket = { sessionKey, closed: this.disposed };
     this.pending.add(ticket);
     const run = this.tail.then(() => this.acquireSerial(ticket));
     this.tail = run.catch(() => undefined);
@@ -351,6 +369,7 @@ export class ProjectOwnership {
 
   /** Service shutdown: every session ends (D-02 § 5), and the claim goes with it. */
   dispose(): void {
+    this.disposed = true;
     for (const ticket of this.pending) ticket.closed = true;
     this.dropHolding();
   }
@@ -408,7 +427,15 @@ export class ProjectOwnership {
         }
         // Safe to reap only because our own claim is already published: a contender arriving now
         // sees us and stands down. Names are unique, so this can never remove a replacement's claim.
-        if (verdict === 'dead' || verdict === 'expired') unlinkIfPresent(path);
+        // The verdict is what admits us, not the unlink: a dead or expired claim we cannot remove
+        // (a read-only entry) blocks nobody, and every other contender reads the same verdict.
+        if (verdict === 'dead' || verdict === 'expired') {
+          try {
+            unlinkIfPresent(path);
+          } catch {
+            /* Left for the next acquirer; it is not an owner either way. */
+          }
+        }
       }
       return { token, claimPath, acquiredAt: at, renewedAt: at };
     } catch (error) {
@@ -428,17 +455,18 @@ export class ProjectOwnership {
    * claim is live until its pid is confirmed dead or its file outlives the lease.
    */
   private classify(path: string, pid: number): Verdict {
-    let raw: string;
+    let raw: string | undefined;
     try {
       raw = readFileSync(path, 'utf8');
     } catch (error) {
       if (isNotFound(error)) return 'gone'; // A refused contender removed its own claim.
-      throw error;
+      // Unreadable (EACCES, EISDIR, …): judged like a half-written claim, by pid and age, so one
+      // odd entry can neither block the project forever nor be mistaken for a free slot.
     }
     let claim: Claim | undefined;
     try {
-      const parsed = claimSchema.safeParse(JSON.parse(raw));
-      if (parsed.success) claim = parsed.data;
+      const parsed = raw === undefined ? undefined : claimSchema.safeParse(JSON.parse(raw));
+      if (parsed?.success) claim = parsed.data;
     } catch {
       /* A contender mid-write, or a torn renewal. Judged by pid and mtime below. */
     }
@@ -492,7 +520,15 @@ export class ProjectOwnership {
 
   private startTimer(): void {
     if (!this.autoRenew || this.timer) return;
-    this.timer = setInterval(() => this.renewalTick(), OWNER_RENEW_INTERVAL_MS);
+    // A throw here would be an uncaught exception in the service. A failed tick leaves the lease
+    // un-renewed, which expires on its own: the fail-closed outcome.
+    this.timer = setInterval(() => {
+      try {
+        this.renewalTick();
+      } catch (error) {
+        this.warnRenewal(error);
+      }
+    }, OWNER_RENEW_INTERVAL_MS);
     this.timer.unref();
   }
 
