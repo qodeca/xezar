@@ -305,6 +305,57 @@ describe('pi v1 text coalescing (claude parity, #151)', () => {
     expect(doneRe.test(textEvent.text.trimEnd())).toBe(true);
   });
 
+  /** A chunk is a whole message now, not a delta, so the result text has to
+   *  separate them the way claude, codex and opencode all do. Concatenating
+   *  would run two messages together ("…first message.Second message."). */
+  it('joins whole messages with a newline in the result text, like the other runners', async () => {
+    const { result } = feedStream(fixture.trim().split('\n').filter(Boolean));
+    const run = await result;
+    expect(run.text).toBe('Checking the working tree.\nAll gates passed.');
+  });
+
+  /** The coalescer only drains on `complete`/`flush`. pi's read loop can end
+   *  with neither: `interrupt()` (the timeout path) writes `{type:'abort'}` and
+   *  SIGTERMs at once, so stdout ends with no `message_end` and no
+   *  `agent_settled` — the case the runner itself notes as "pi RPC session
+   *  ended before agent_settled". Without a flush after the loop the buffered
+   *  prose is dropped, which is prose a pre-coalescing pi run used to keep. */
+  it('keeps buffered prose when the stream ends before message_end and agent_settled', async () => {
+    const { events, result } = feedStream([
+      JSON.stringify({ id: 's', type: 'response', command: 'get_state', success: true, data: { sessionId: 's1' } }),
+      JSON.stringify({ type: 'message_update', message: {}, assistantMessageEvent: { type: 'text_start', contentIndex: 0, partial: {} } }),
+      JSON.stringify({ type: 'message_update', message: {}, assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: 'Partial prose ' } }),
+      JSON.stringify({ type: 'message_update', message: {}, assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: 'before the kill.' } }),
+      // …and then the process dies: no text_end, no message_end, no agent_settled.
+    ]);
+    const run = await result;
+    const texts = events.filter((e) => e.type === 'text');
+    expect(texts).toEqual([{ type: 'text', text: 'Partial prose before the kill.' }]);
+    expect(run.text).toBe('Partial prose before the kill.');
+  });
+
+  /** GUARD: the post-loop flush must not re-emit text a `message_end` already
+   *  completed. `complete()` deletes the pending bucket, so a later `flush()`
+   *  finds nothing — this pins that and passes both with and without the fix. */
+  it('GUARD: a normally completed turn emits its text exactly once, never twice', async () => {
+    const { events, result } = feedStream([
+      JSON.stringify({ id: 's', type: 'response', command: 'get_state', success: true, data: { sessionId: 's1' } }),
+      JSON.stringify({ type: 'message_update', message: {}, assistantMessageEvent: { type: 'text_start', contentIndex: 0, partial: {} } }),
+      JSON.stringify({ type: 'message_update', message: {}, assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: 'Settled ' } }),
+      JSON.stringify({ type: 'message_update', message: {}, assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: 'prose.' } }),
+      JSON.stringify({ type: 'message_update', message: {}, assistantMessageEvent: { type: 'text_end', contentIndex: 0, content: 'Settled prose.', partial: {} } }),
+      JSON.stringify({
+        type: 'message_end',
+        message: { role: 'assistant', content: [{ type: 'text', text: 'Settled prose.' }], usage: { input: 1, output: 1, totalTokens: 2, cost: { total: 0 } } },
+      }),
+      JSON.stringify({ type: 'agent_settled' }),
+    ]);
+    const run = await result;
+    const texts = events.filter((e) => e.type === 'text');
+    expect(texts).toEqual([{ type: 'text', text: 'Settled prose.' }]);
+    expect(run.text).toBe('Settled prose.');
+  });
+
   it('GUARD: the v2 item.delta stream still emits per delta, not coalesced', async () => {
     const uiEvents: UiEvent[] = [];
     const { result } = feedStream(

@@ -238,11 +238,19 @@ export class PiRunner implements AgentRunner {
 
       const exitCode = await waitForExit(child);
       if (spawnError) throw spawnError;
+
+      // Timeout/interrupt can end the read loop mid-message — recover buffered
+      // prose. `interrupt()` aborts and SIGTERMs at once, so stdout can end with
+      // neither `message_end` nor `agent_settled` (the case noted below), and
+      // the coalescer would otherwise drop text a pre-coalescing pi run kept.
+      // Re-emission is impossible: `complete()` deletes the pending bucket, so a
+      // settled turn leaves nothing for this flush to find.
+      textCoalescer.flush();
       if (timedOut) {
         const message = `pi CLI timed out after ${Math.round((limitMs / 60_000) * 10) / 10}m and was killed`;
         onEvent?.({ type: 'error', message });
         onEvent?.({ type: 'done' });
-        return { text: textChunks.join('').trim(), toolCalls, tokensUsed, sessionId };
+        return { text: textChunks.join('\n').trim(), toolCalls, tokensUsed, sessionId };
       }
       if (exitCode !== 0 && exitCode !== null) {
         const detail = stderr.join('').trim().split('\n').slice(-3).join(' | ');
@@ -254,7 +262,7 @@ export class PiRunner implements AgentRunner {
       if (tokensUsed === 0) onEvent?.({ type: 'note', message: 'token usage not reported by pi CLI' });
       opts.onUiEvent?.({ type: 'session.ended', reason: piUi.stopReason });
       onEvent?.({ type: 'done' });
-      return { text: textChunks.join('').trim(), toolCalls, tokensUsed, sessionId };
+      return { text: textChunks.join('\n').trim(), toolCalls, tokensUsed, sessionId };
     })();
 
     const session: AgentSession = {
