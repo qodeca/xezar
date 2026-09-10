@@ -71,9 +71,32 @@ function setSelect(selector: string, value: string) {
   })()`)
 }
 
+/** Bumped per navigation, so each cold load can be told apart from the one before it. */
+let coldLoads = 0
+
+/**
+ * A cold load of Settings → Agents, waited for as a NEW document.
+ *
+ * The wait needs both halves. `agents-section` lives inside `AgentsForm`, which `AgentsSection`
+ * mounts only once `useConfig()` has resolved (`agents-loading` renders until then —
+ * routes/settings/agents-section.tsx:66-82), so it IS "GET /api/v1/config has answered" and it is
+ * the only query any assertion in this file depends on for the runner, model and prompt values.
+ *
+ * But it is equally true of the page being LEFT: every case here navigates to /settings/agents
+ * from /settings/agents, so a predicate about the section alone can be satisfied by the outgoing
+ * document and the assertions then run against the incoming one while it is still blank — which
+ * is what `expected +0 to be 1` looks like (#183). The marker rides in the query string, which
+ * `LegacyPathRedirect` carries through to /p/<boot>/settings/agents (routes.tsx), and only the new
+ * document can have it. No settings route reads the query string, so it changes nothing else.
+ */
 const gotoAgents = () => {
-  browser.goto(`${baseUrl}/settings/agents`)
-  browser.waitForFunction(`document.querySelector('[data-slot="agents-section"]') !== null`)
+  coldLoads += 1
+  const marker = `xezcold=${coldLoads}`
+  browser.goto(`${baseUrl}/settings/agents?${marker}`)
+  browser.waitForFunction(
+    `location.search.includes(${JSON.stringify(marker)})
+     && document.querySelector('[data-slot="agents-section"]') !== null`,
+  )
 }
 
 describe('settings → agents against the live dry-run server', () => {
@@ -117,6 +140,14 @@ describe('settings → agents against the live dry-run server', () => {
 
   it('base branch: picking a real branch persists; clearing goes back to the checkout', async () => {
     // Whatever branch the dry-run repo actually has, first option after "follow checked-out branch".
+    // `useRepo` is the one query on this screen that really is late for a control: the select is
+    // rendered only once `repo.data?.info` exists and its options come from `repo.data.branches`
+    // (agents-section.tsx:483-497), so wait for a branch option to exist before reading it. The
+    // read below cannot tell "this checkout has no branches" from "the list has not arrived yet",
+    // and both answer `''` (#183).
+    browser.waitForFunction(
+      `(document.querySelector('[data-slot="agents-base-branch"]')?.options.length ?? 0) > 1`,
+    )
     const branch = String(
       browser.evaluate(`document.querySelector('[data-slot="agents-base-branch"]').options[1]?.value ?? ''`),
     )
@@ -129,6 +160,17 @@ describe('settings → agents against the live dry-run server', () => {
   })
 
   it('a cold load renders the persisted knobs — the form is a view of config.json', async () => {
+    // No second wait here on purpose. `gotoAgents()` already returns on the new document with
+    // `useConfig()` resolved, and all three values below are set in the very commit that first
+    // renders the section: the checked runner is `config.defaultRunner` (default-agent-picker
+    // .tsx:104 — while `useAgentProfiles` is pending every row carries `account: null` and
+    // `accountFor` answers null, so the comparison reduces to the runner id), the model select's
+    // `value` is `config.defaultModels.claude` with `modelsForRunner`'s `customIds` guaranteeing
+    // the matching <option> exists whether or not the catalog has arrived, and the textarea is
+    // `useState(config.systemPrompt ?? '')`. Repeating the three as a wait would only make the
+    // three `expect`s below unfailable — a wrong persisted value could then surface as nothing
+    // but a wait timeout, and the diagnostics do not print `.value` or `aria-checked`.
+    // (`useRepo` IS genuinely late, but it gates only `agents-base-branch`, asserted elsewhere.)
     gotoAgents()
     expect(browser.count('[data-slot="agents-runner"] [data-value="codex"][aria-checked="true"]')).toBe(1)
     expect(
