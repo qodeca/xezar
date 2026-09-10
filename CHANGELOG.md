@@ -1,4 +1,37 @@
-# Unreleased
+# 0.13.1 (2026-09-10)
+
+## Highlights
+Continuing a task restores its Active visibility and preserves accepted messages and attachments
+when worktree recovery fails. Isolated tasks refuse to continue in the primary checkout if their
+worktree cannot be recovered. This release also improves validation execution, expands regression
+coverage, and restores a guard against drift in the cockpit's event protocol types.
+
+## 🐛 Fixes
+- 🐛 **Task continuation preserves visibility, isolation and accepted input.** Continuing an
+  archived task restores Active visibility. Tasks with recorded isolation stop before backend
+  startup if their worktree cannot be recovered, while accepted continuation text and attachments
+  remain in history. Explicit monitoring uses its timer and steering paths in both fresh and
+  continued sessions. The project gate runner also overlaps dependency-safe checks while retaining
+  complete failure and cancellation evidence; synthetic infrastructure fixtures run in required CI.
+  Role, recovery and release guidance now makes delivery and evidence boundaries explicit. (#189)
+
+## 📝 Specs & Documentation
+- 📝 **Transport QA and integration lessons are retained in the project log.** The condensed
+  report preserves the previously published OpenCode timeout measurements, gate-completion and
+  merged-tree checks, and the limits of that QA. A suspected process kill is explicitly unconfirmed;
+  these are historical observations, not new runtime changes or model qualification. (#191)
+
+## 🚀 CI/CD & Infrastructure
+- 🚀 **Regression coverage expands across sixteen server and cockpit files.** Tests exercise
+  UI controls, task views, workflow screens, server installation, GitHub operations and skill
+  discovery. The coverage gap analysis was remeasured, and a documentation audit corrected stale
+  installation, API, protocol and development guidance without changing application behavior. (#188)
+- 🚀 **The API client's UI-event mirror is checked against the server contract.** Type checks
+  cover all 34 protocol exports, including optional-property drift; an export-inventory test requires
+  new types to be mirrored and added to the comparison. The two copies already agreed, so this
+  restores a missing regression guard rather than changing event shapes. (#190, #192)
+
+---
 
 # 0.13.0 (2026-09-10)
 
