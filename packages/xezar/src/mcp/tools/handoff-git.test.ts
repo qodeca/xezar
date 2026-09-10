@@ -499,9 +499,9 @@ describe.skipIf(isWindows)('handoff_git — commit, push, draft PR, merge and br
 
     const WAIVER_RE = /approv|waive|waiver|exception|bypass|force|skip|ignore|confirm/i;
 
-    it('reports a merge attempt past a failing required check as a blocker, with or without overrideRules', async () => {
+    it('reports a merge attempt past a failing required check as a blocker', async () => {
       mergeStateFixture = failingRequired();
-      for (const extra of [{ overrideRules: true }, {}, { overrideRules: true, method: 'merge' }]) {
+      for (const extra of [{}, { method: 'merge' }]) {
         const result = await act({ action: 'merge', number: 128, expectedHeadSha: DRY_HEAD, ...extra });
         expect(result).toMatchObject({
           action: 'merge',
@@ -519,8 +519,10 @@ describe.skipIf(isWindows)('handoff_git — commit, push, draft PR, merge and br
 
     it('has no parameter, action or phrasing that declares an exception', async () => {
       mergeStateFixture = failingRequired();
-      const base = { action: 'merge', number: 128, expectedHeadSha: DRY_HEAD, overrideRules: true };
+      const base = { action: 'merge', number: 128, expectedHeadSha: DRY_HEAD };
       for (const exception of [
+        // The cockpit's admin-override flag is not the leader's to send (see the tool's header).
+        { overrideRules: true },
         { qualityException: true },
         { approvedBy: 'the human' },
         { humanApproval: true },
@@ -546,8 +548,7 @@ describe.skipIf(isWindows)('handoff_git — commit, push, draft PR, merge and br
       expect(Object.keys(listing.inputSchema.properties).filter((p) => WAIVER_RE.test(p))).toEqual([]);
       expect(listing.description).not.toMatch(/approv|waive|exception/i);
       expect(tools.map((t) => t.name).filter((n) => /merge|bypass|waive|override/.test(n))).toEqual([]);
-      // The one "override" there is is described as a forge permission that waives no quality check.
-      expect(JSON.stringify(listing.inputSchema.properties.overrideRules)).toMatch(/never waives a quality check/);
+      expect(Object.keys(listing.inputSchema.properties).filter((p) => /override/i.test(p))).toEqual([]);
     });
 
     it('treats a pending check of unknown requiredness and a missing review as blockers too', async () => {
@@ -557,24 +558,32 @@ describe.skipIf(isWindows)('handoff_git — commit, push, draft PR, merge and br
         eligibility: 'pending',
         blockers: [{ code: 'pending', message: 'Checks or GitHub mergeability are still pending.' }],
       };
-      const pending = await act({ action: 'merge', number: 128, expectedHeadSha: DRY_HEAD, overrideRules: true });
+      const pending = await act({ action: 'merge', number: 128, expectedHeadSha: DRY_HEAD });
       expect(pending).toMatchObject({ refusedBy: 'quality', blocker: true });
       expect((pending.blockers as Body[])[0]).toMatchObject({ code: 'check-pending' });
 
-      mergeStateFixture = {
-        ...failingRequired(),
-        checks: [{ name: 'test', state: 'passing', required: true }],
-        reviewDecision: 'review-required',
-        blockers: [{ code: 'reviews', message: 'A required review is missing.' }],
-      };
-      expect(await act({ action: 'merge', number: 128, expectedHeadSha: DRY_HEAD, overrideRules: true })).toMatchObject({
-        refusedBy: 'quality',
-        blockers: [{ code: 'review', message: 'A required review is missing.' }],
-      });
+      for (const [reviewDecision, message] of [
+        ['review-required', 'A required review is missing.'],
+        ['changes-requested', 'Changes were requested.'],
+      ] as const) {
+        mergeStateFixture = {
+          ...failingRequired(),
+          checks: [{ name: 'test', state: 'passing', required: true }],
+          reviewDecision,
+          blockers: [{ code: 'reviews', message }],
+        };
+        expect(await act({ action: 'merge', number: 128, expectedHeadSha: DRY_HEAD })).toMatchObject({
+          refusedBy: 'quality',
+          blockers: [{ code: 'review', message }],
+        });
+      }
       expect(merges()).toEqual([]);
     });
 
-    it('still lets overrideRules reach the forge for a forge-rule blocker with every quality check green', async () => {
+    it('refuses as a blocker whatever the forge does not call ready, even with every visible check green', async () => {
+      // A required check that has not reported yet, or one a ruleset requires, looks exactly like
+      // this: every check the forge lists is green or optional, and the forge still says "unknown".
+      // An admin override would merge it; the leader has none and reports the blocker instead.
       mergeStateFixture = {
         ...failingRequired(),
         checks: [
@@ -584,13 +593,23 @@ describe.skipIf(isWindows)('handoff_git — commit, push, draft PR, merge and br
         eligibility: 'unknown',
         blockers: [{ code: 'unknown', message: 'GitHub could not confirm every merge requirement.' }],
       };
-      const merged = await act({ action: 'merge', number: 128, expectedHeadSha: DRY_HEAD, overrideRules: true });
-      expect(merged).toMatchObject({ status: 'done', merged: true });
+      const refused = await act({ action: 'merge', number: 128, expectedHeadSha: DRY_HEAD });
+      expect(refused).toMatchObject({
+        action: 'merge',
+        status: 'failed',
+        refusedBy: 'forge',
+        blocker: true,
+        eligibility: 'unknown',
+        blockers: [{ code: 'unknown', message: 'GitHub could not confirm every merge requirement.' }],
+        nextAction: QUALITY_BLOCKER_NEXT_ACTION,
+      });
+      expect(merges()).toEqual([]);
+
+      // And a merge the forge DOES call ready is sent without any override flag at all.
+      mergeStateFixture = undefined;
+      expect(await act({ action: 'merge', number: 128, expectedHeadSha: DRY_HEAD })).toMatchObject({ status: 'done' });
       expect(merges()).toEqual([
-        {
-          call: 'POST /api/v1/p/leader/github/prs/128/merge',
-          body: { method: 'squash', expectedHeadSha: DRY_HEAD, overrideRules: true },
-        },
+        { call: 'POST /api/v1/p/leader/github/prs/128/merge', body: { method: 'squash', expectedHeadSha: DRY_HEAD } },
       ]);
     });
   });
@@ -664,6 +683,12 @@ describe.skipIf(isWindows)('handoff_git — commit, push, draft PR, merge and br
     await task('leader', { patch: { status: 'running' } });
     expect(await act({ action: 'branch', name: 'feature/widget' })).toMatchObject({
       status: 'failed',
+      refusedBy: 'policy',
+      task: { id: inPlace.id },
+    });
+    // A parked (`waiting`) session still holds the lease: it writes the moment it resumes.
+    runs.updateRun(inPlace.id, { status: 'waiting' });
+    expect(await act({ action: 'branch', name: 'feature/widget' })).toMatchObject({
       refusedBy: 'policy',
       task: { id: inPlace.id },
     });

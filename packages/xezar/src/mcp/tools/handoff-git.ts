@@ -43,14 +43,20 @@ import { defineTool, errorResult, textResult, type McpToolContext, type McpToolR
  * missing identity, a dirty-tree checkout conflict), and a refused draft PR carries the service's
  * `manual` fallback command.
  *
- * F-22 — THE LINE THIS TOOL MUST NOT CROSS. `overrideRules` exists because a repository may let
- * an administrator merge past its forge rules. It is a forge-permission escape and never a quality
- * waiver: a required check that is failing, pending or unreadable, a missing or changes-requested
- * review, or requirements GitHub cannot confirm are QUALITY blockers, and the merge is refused
- * before anything is dispatched — with or without `overrideRules`. There is no parameter, action or
- * phrasing that declares an exception, and the refusal is reported as a blocker with the next
- * legitimate action: repair the cause, or report the blocker (A-22). The input schema is strict,
- * so an extra "exception" key is an argument error, not an ignored field.
+ * F-22 — THE LINE THIS TOOL MUST NOT CROSS. The cockpit's merge box also sends `overrideRules`,
+ * because a repository may let an administrator merge past its forge rules. The leader does NOT
+ * get it. From the merge state the forge reports, a forge rule cannot be told apart from a quality
+ * requirement: a required check that has not reported yet, one required by a ruleset rather than
+ * classic protection, or one that turns red between two reads all surface as a generic `unknown`
+ * or a "not required" check, and an admin override would merge past each of them. So the leader
+ * merges ONLY what the forge itself calls ready (`canMerge`), and the service's own preflight
+ * re-reads the forge at merge time and requires the same, which also closes the gap between the
+ * tool's read and the merge. On top of that, a required check that is failing, pending or
+ * unreadable and a missing or changes-requested review are refused as QUALITY blockers before
+ * anything is dispatched. There is no parameter, action or phrasing that declares an exception,
+ * and every refusal is reported as a blocker with the next legitimate action: repair the cause, or
+ * report the blocker (A-22). The input schema is strict, so an extra key — `overrideRules`
+ * included — is an argument error, not an ignored field.
  *
  * Main-checkout branch operations respect the repository-root lease (M-10): a task running in
  * the main checkout holds that lease for its whole life, and a branch switch under it would move
@@ -128,13 +134,6 @@ const inputSchema = z
     method: githubMergeMethodSchema
       .optional()
       .describe("merge: one of the state's methods; defaults to its defaultMethod."),
-    overrideRules: z
-      .boolean()
-      .optional()
-      .describe(
-        'merge: ask GitHub to apply your repository permission to merge past unmet FORGE rules. It never ' +
-          'waives a quality check: failing, pending or unreadable required checks and missing reviews stay blockers.',
-      ),
     name: z.string().trim().min(1).max(200).optional().describe('branch: the branch to switch to or create.'),
     from: z.string().trim().min(1).max(200).optional().describe('branch: start point when creating.'),
   })
@@ -158,7 +157,7 @@ const ALLOWED: Record<Input['action'], ReadonlyArray<keyof Input>> = {
   push: ['action', 'taskId'],
   create_pr: ['action', 'taskId'],
   merge_state: ['action', 'number'],
-  merge: ['action', 'number', 'expectedHeadSha', 'method', 'overrideRules'],
+  merge: ['action', 'number', 'expectedHeadSha', 'method'],
   branch: ['action', 'name', 'from'],
 };
 
@@ -400,7 +399,7 @@ class Handoff {
     return answer({ action: 'merge_state', status: 'done', mergeState: read.state, qualityBlockers: blockers });
   }
 
-  async merge(args: { number: number; expectedHeadSha: string; method?: Input['method']; overrideRules?: boolean }) {
+  async merge(args: { number: number; expectedHeadSha: string; method?: Input['method'] }) {
     const read = await this.mergeState(args.number, 'merge');
     if (!read.ok) return read.result;
     const state = read.state;
@@ -414,6 +413,20 @@ class Handoff {
         blocker: true,
         number: args.number,
         blockers,
+        nextAction: QUALITY_BLOCKER_NEXT_ACTION,
+      });
+    }
+    // Anything the forge does not call ready is a blocker for the leader: an unmet requirement the
+    // forge cannot name may be a quality one (see the header), and there is no override to reach for.
+    if (!state.canMerge) {
+      return answer({
+        action: 'merge',
+        status: 'failed',
+        refusedBy: 'forge',
+        blocker: true,
+        number: args.number,
+        eligibility: state.eligibility,
+        blockers: state.blockers,
         nextAction: QUALITY_BLOCKER_NEXT_ACTION,
       });
     }
@@ -432,9 +445,9 @@ class Handoff {
         json: {
           method,
           // The head the LEADER reviewed — never the fresh one read above. The service re-validates
-          // it against the forge, so a stale review cannot merge.
+          // it against the forge, so a stale review cannot merge. No `overrideRules`, ever: without
+          // it the service's preflight demands a fresh `canMerge` at merge time.
           expectedHeadSha: args.expectedHeadSha,
-          ...(args.overrideRules === true && state.canOverride ? { overrideRules: true } : {}),
         },
       }),
     );
@@ -531,7 +544,6 @@ export const handoffGitTool = defineTool({
           number: args.number!,
           expectedHeadSha: args.expectedHeadSha!,
           method: args.method,
-          overrideRules: args.overrideRules,
         });
       case 'branch':
         return handoff.branch(args.name!, args.from);
