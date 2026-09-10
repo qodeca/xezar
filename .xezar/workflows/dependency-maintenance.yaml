@@ -14,6 +14,7 @@ steps:
     name: Survey and update
     prompt: "{{task}}"
     skill: xezar-dependency-maintenance
+    timeout: 2h
   - id: readiness
     name: Confirm the task is not blocked
     command: ".xezar/checks/worktree-preflight.sh --readiness"
