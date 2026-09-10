@@ -14,6 +14,7 @@ import type {
 import { buildChildEnv } from './agent-env.js';
 import { readNdjson } from './ndjson.js';
 import { createPiUiState, mapPiRpcMessage, piTurnStarted } from './pi-ui-mapper.js';
+import { V1TextCoalescer } from './v1-text-coalescer.js';
 
 const DEFAULT_TIMEOUT_MS = 30 * 60_000;
 const KILL_GRACE_MS = 10_000;
@@ -68,6 +69,14 @@ export class PiRunner implements AgentRunner {
     let piUi = createPiUiState();
     const textChunks: string[] = [];
     const toolCalls: AgentToolCallRecord[] = [];
+    // One v1 `text` per completed message, never per delta (claude parity): pi
+    // streams text as deltas, and a marker split across deltas would otherwise
+    // never parse (appendTurnText joins events with a newline, so a split
+    // marker is no longer contiguous). Streaming display rides v2 `item.delta`.
+    const textCoalescer = new V1TextCoalescer((text) => {
+      textChunks.push(text);
+      onEvent?.({ type: 'text', text });
+    });
     let sessionId = spec.sessionId;
     let tokensUsed = 0;
     let spawnError: Error | null = null;
@@ -172,10 +181,15 @@ export class PiRunner implements AgentRunner {
           } else if (value.type === 'message_update' && isRecord(value.assistantMessageEvent)) {
             const update = value.assistantMessageEvent;
             if (update.type === 'text_delta' && typeof update.delta === 'string') {
-              textChunks.push(update.delta);
-              onEvent?.({ type: 'text', text: update.delta });
+              textCoalescer.append(undefined, update.delta);
             }
           } else if (value.type === 'message_end' && isRecord(value.message) && value.message.role === 'assistant') {
+            // pi's `message_end.message` is the authoritative AgentMessage, so
+            // pass its text as the snapshot — the coalescer prefers it over the
+            // accumulated deltas. pi's streaming events carry no stable item id
+            // (contentIndex resets per message), so the anonymous '' bucket is
+            // the documented path.
+            textCoalescer.complete(undefined, contentText(value.message.content));
             const usage = usageValues(value.message.usage);
             if (usage) {
               tokensUsed += usage.weighted;
@@ -202,6 +216,10 @@ export class PiRunner implements AgentRunner {
             }
           } else if (value.type === 'agent_settled') {
             settled = true;
+            // Surface prose from a message that never reached `message_end` (an
+            // interrupted turn) before the turn boundary — the same flush codex
+            // and opencode do on turn completion.
+            textCoalescer.flush();
             onEvent?.({ type: 'turn-end' });
             if (opts.autoEndAfterFirstTurn && open && !autoEndTimer) {
               autoEndTimer = setTimeout(end, AUTO_END_DELAY_MS);

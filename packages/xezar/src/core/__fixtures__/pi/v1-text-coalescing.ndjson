@@ -1,0 +1,12 @@
+{"id":"xezar-state","type":"response","command":"get_state","success":true,"data":{"sessionId":"pi-session-v1"}}
+{"type":"message_update","message":{},"assistantMessageEvent":{"type":"text_start","contentIndex":0,"partial":{}}}
+{"type":"message_update","message":{},"assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"Checking the "}}
+{"type":"message_update","message":{},"assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"working tree."}}
+{"type":"message_update","message":{},"assistantMessageEvent":{"type":"text_end","contentIndex":0,"content":"Checking the working tree.","partial":{}}}
+{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"Checking the working tree."}],"usage":{"input":10,"output":5,"totalTokens":15,"cost":{"total":0.001}}}}
+{"type":"message_update","message":{},"assistantMessageEvent":{"type":"text_start","contentIndex":0,"partial":{}}}
+{"type":"message_update","message":{},"assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"All gates "}}
+{"type":"message_update","message":{},"assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"passed."}}
+{"type":"message_update","message":{},"assistantMessageEvent":{"type":"text_end","contentIndex":0,"content":"All gates passed.","partial":{}}}
+{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"All gates passed."}],"usage":{"input":10,"output":5,"totalTokens":15,"cost":{"total":0.001}}}}
+{"type":"agent_settled"}
