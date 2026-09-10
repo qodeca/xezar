@@ -176,3 +176,35 @@ describe('SIGTERM→SIGKILL escalation for an app-server that survives SIGTERM',
     });
   });
 });
+
+/**
+ * #156 backend parity — the claude runner learned to say who sent the signal
+ * behind a 128+signal exit; AGENT_PROTOCOL.md requires the codex branch to
+ * report it the same way instead of the bare `exited with code 143`.
+ */
+describe('a signal xezar did not send (codex app-server)', () => {
+  const mockBin = fileURLToPath(
+    new URL('./__fixtures__/codex/mock-codex-app-server.mjs', import.meta.url),
+  );
+
+  it('names the signal and says xezar did not send it', async () => {
+    const runner = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 });
+    const events: AgentEvent[] = [];
+    // The mock exits 143 on its own after a clean turn — the exit is injected,
+    // no process is signalled, and the runner never sets `terminatedByXezar`.
+    const session = runner.startSession(
+      {
+        userPrompt: 'check the working tree',
+        cwd: process.cwd(),
+        env: { MOCK_CODEX_FOREIGN_SIGNAL_EXIT: '1' },
+      },
+      (event) => events.push(event),
+    );
+
+    await expect(session.result).rejects.toThrow(
+      /codex app-server was terminated by SIGTERM \(exit 143\) — xezar sent no signal/,
+    );
+    const error = events.find((event) => event.type === 'error');
+    expect(error?.type === 'error' && error.message).toContain('#156');
+  }, 15_000);
+});

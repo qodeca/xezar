@@ -11,7 +11,7 @@ import type {
   ContentBlock,
   SessionOptions,
 } from './agent-runner.js';
-import { trackChildExit } from './agent-runner.js';
+import { foreignSignalExitMessage, isSignalTerminationExit, trackChildExit } from './agent-runner.js';
 import { buildChildEnv } from './agent-env.js';
 import { readNdjson } from './ndjson.js';
 import { createPiUiState, mapPiRpcMessage, piTurnStarted } from './pi-ui-mapper.js';
@@ -68,6 +68,7 @@ export class PiRunner implements AgentRunner {
     let open = true;
     let settled = true;
     let timedOut = false;
+    let terminatedByXezar = false;
     let autoEndTimer: NodeJS.Timeout | undefined;
     let killTimer: NodeJS.Timeout | undefined;
     let timeoutKillTimer: NodeJS.Timeout | undefined;
@@ -143,11 +144,18 @@ export class PiRunner implements AgentRunner {
       settled = false;
       return true;
     };
+    // The same bit the claude and codex runners keep (#703): set the moment WE
+    // signal this child, so its 128+signal exit reads as our own teardown and a
+    // signal exit WITHOUT it reads as one xezar never sent (#156).
+    const signalChild = (signal: 'SIGTERM'): void => {
+      terminatedByXezar = true;
+      child.kill(signal);
+    };
     const end = (): void => {
       if (!open) return;
       open = false;
       child.stdin.end();
-      killTimer = setTimeout(() => !hasExited() && child.kill('SIGTERM'), KILL_GRACE_MS);
+      killTimer = setTimeout(() => !hasExited() && signalChild('SIGTERM'), KILL_GRACE_MS);
       killTimer.unref?.();
     };
     /**
@@ -159,7 +167,7 @@ export class PiRunner implements AgentRunner {
     const interrupt = (): void => {
       if (open) write({ type: 'abort' });
       open = false;
-      if (!hasExited()) child.kill('SIGTERM');
+      if (!hasExited()) signalChild('SIGTERM');
     };
 
     write({ id: 'xezar-state', type: 'get_state' });
@@ -310,9 +318,28 @@ export class PiRunner implements AgentRunner {
         onEvent?.({ type: 'done' });
         return { text: textChunks.join('\n').trim(), toolCalls, tokensUsed, sessionId };
       }
+      // A teardown xezar itself asked for (`end()`'s watchdog, or a cancel)
+      // comes back as 143 because pi handles SIGTERM itself — our own signal,
+      // not a pi failure, so it settles on the normal path with a note (#703).
+      if (terminatedByXezar && isSignalTerminationExit(exitCode)) {
+        onEvent?.({
+          type: 'note',
+          message: `pi CLI did not exit on its own after close; terminated by xezar (code ${exitCode})`,
+        });
+        onEvent?.({ type: 'done' });
+        // `\n`, like the two return sites around it: #151 made pi join whole
+        // messages with a newline for parity with the other runners, and this
+        // exit path arrived from #156 while every join here was still `''`.
+        return { text: textChunks.join('\n').trim(), toolCalls, tokensUsed, sessionId };
+      }
       if (exitCode !== 0 && exitCode !== null) {
-        const detail = stderr.join('').trim().split('\n').slice(-3).join(' | ');
-        const message = `pi CLI exited with code ${exitCode}${detail ? ` — ${detail}` : ''}`;
+        const raw = stderr.join('').trim().split('\n').slice(-3).join(' | ');
+        const detail = raw ? ` — ${raw}` : '';
+        // Same split as the claude runner (#156): past the flag above, a
+        // 128+signal code means something other than xezar signalled pi.
+        const message = isSignalTerminationExit(exitCode)
+          ? `${foreignSignalExitMessage('pi CLI', exitCode)}${detail}`
+          : `pi CLI exited with code ${exitCode}${detail}`;
         onEvent?.({ type: 'error', message });
         throw new Error(message);
       }

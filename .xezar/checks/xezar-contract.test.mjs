@@ -65,6 +65,29 @@ test('guidance covers semantic analysis, stage ownership, squash policy and evid
  const doc=fs.readFileSync(path.join(kit,'docs/business-analysis.md'),'utf8').toLowerCase();
  for(const field of ['revision','intake','problem','evidence','material assumptions','scope','non-goals','business rules','status quo','alternatives','acceptance criteria','failure paths','unknowns','recommendation','authority'])assert.ok(doc.includes(field),field);
  for(const skill of fs.readdirSync(path.join(kit,'skills'))){const body=fs.readFileSync(path.join(kit,'skills',skill),'utf8');assert.match(body,/at most two/);assert.match(body,/late steering/);assert.match(body,/Never waive mandatory quality/);assert.match(body,/bootstrap\.sh/);}
+});
+// #156: a peer task's `pkill -f "repo-gates.sh --fast"` killed five agents,
+// because every skill body carries that literal and xezar passes the whole
+// body to the CLI as `--append-system-prompt`. The ban has to reach an agent
+// mid-task, so it lives in the same shared clause block the loop above pins —
+// in every skill AND in the kit guide, not in a document nobody opens.
+test('guidance bans unscoped pattern kills and names the safe forms',()=>{
+ const surfaces=[fs.readFileSync(path.join(kit,'CLAUDE.md'),'utf8'),
+  ...fs.readdirSync(path.join(kit,'skills')).map((s)=>fs.readFileSync(path.join(kit,'skills',s),'utf8'))];
+ assert.equal(surfaces.length,17);
+ for(const body of surfaces){
+  assert.match(body,/pkill -f/);            // the trap is named, not implied
+  assert.match(body,/--append-system-prompt/); // and so is WHY it reaches peers
+  assert.match(body,/pkill -P \$\$/);       // own children
+  assert.match(body,/pgrep -fl/);           // inspect before you signal
+ }
+ // And no kit shell script may itself run one. Comment lines are exempt (the
+ // existing SIGKILL notes); this file is not scanned because asserting on the
+ // rule means naming the commands it bans.
+ const walk=(dir)=>fs.readdirSync(dir,{withFileTypes:true}).flatMap((e)=>e.isDirectory()?walk(path.join(dir,e.name)):[path.join(dir,e.name)]);
+ const scripts=walk(path.join(kit,'checks')).filter((f)=>f.endsWith('.sh'));
+ assert.ok(scripts.length>=10);
+ for(const file of scripts)assert.doesNotMatch(fs.readFileSync(file,'utf8'),/^[^#\n]*\b(pkill|killall)\b/m,file);
  const recovery=fs.readFileSync(path.join(kit,'docs/recovery.md'),'utf8');assert.match(recovery,/squash/);assert.match(recovery,/cannot prove the manager lease/);
  const learning=fs.readFileSync(path.join(kit,'docs/dogfooding.md'),'utf8');for(const tier of ['adapted','fixture-tested','real-task verified','recommended'])assert.ok(learning.includes(tier));
 });
