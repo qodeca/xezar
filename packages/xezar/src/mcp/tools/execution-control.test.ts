@@ -96,7 +96,7 @@ const store = async (ws: Workspace, projectId: ProjectId) => (await ws.contexts.
 
 /** Validate exactly as the service does (`callTool` in ../service.ts), then call. */
 async function invoke(
-  ws: Pick<Workspace, 'app'> & { roots?: Workspace['roots'] },
+  ws: { app: ServiceDispatch; roots?: Workspace['roots'] },
   projectId: string,
   args: Record<string, unknown>,
   tool: McpTool = executionControlTool,
