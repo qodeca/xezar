@@ -130,6 +130,44 @@ _gate_slug() {
   printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]\{1,\}/-/g; s/^-//; s/-$//'
 }
 
+# Workers publish only their unique result. The parent is the sole aggregate writer.
+_gate_record_result() {
+  if [ -n "${GATE_WORKER_RESULT:-}" ]; then
+    node -e 'require("node:fs").writeFileSync(process.argv[1], process.argv[2], {flag:"wx", mode:0o600})' "$GATE_WORKER_RESULT" "$1"
+  else
+    node "$GATE_RESULTS_MJS" record --dir "$GATE_ATTEMPT_DIR" --json "$1"
+  fi
+}
+
+# Reduce only after the scheduler has joined. Missing/malformed results are orchestration
+# failure: the caller must leave the attempt incomplete, not merely return a failed shell code.
+gate_collect_worker() {
+  local index="$1" name="$2" command="$3" entry expected_log
+  expected_log="$(printf '%02d-%s.log' "$index" "$(_gate_slug "$name")")"
+  entry="$(node -e '
+    const fs = require("node:fs");
+    const [file, name, command, log, header] = process.argv.slice(1);
+    if (!fs.lstatSync(file).isFile()) throw Error("worker result is not a regular file");
+    const e = JSON.parse(fs.readFileSync(file, "utf8"));
+    const validStatus = e.status === "passed" && e.exitCode === 0 ||
+      e.status === "failed" && Number.isInteger(e.exitCode) && e.exitCode > 0 && e.exitCode <= 255 ||
+      e.status === "not-run" && e.exitCode === null;
+    if (e.name !== name || e.command !== command || e.log !== log || e.logHeader !== header ||
+        !validStatus || !Number.isFinite(Date.parse(e.startedAt)) ||
+        !Number.isFinite(Date.parse(e.endedAt)) || Date.parse(e.endedAt) < Date.parse(e.startedAt)) {
+      throw Error("worker result identity/status/timing mismatch");
+    }
+    process.stdout.write(JSON.stringify(e));
+  ' "$GATE_ATTEMPT_DIR/workers/$index.json" "$name" "bash -c $command" "$expected_log" "#xezar-gate-log $GATE_ATTEMPT_ID $name")" || return 1
+  # Render from validated durable evidence, not interleaved worker stdout. A broken
+  # output sink is orchestration failure even when the underlying command passed.
+  printf '\n=== %s ===\n%s\n--- log: %s/%s\n' "$name" "$entry" "$GATE_LOG_DIR" "$expected_log" || return 1
+  if [ -f "$GATE_LOG_DIR/$expected_log" ]; then
+    tail -n "$GATE_STDOUT_TAIL_FAIL" "$GATE_LOG_DIR/$expected_log" || return 1
+  fi
+  node "$GATE_RESULTS_MJS" record --dir "$GATE_ATTEMPT_DIR" --json "$entry"
+}
+
 # Run one gate. Returns the command's own exit status so callers can still branch on it.
 gate_run() {
   local name="$1"; shift
@@ -175,7 +213,7 @@ gate_run() {
   fi
   printf -- '--- log: %s\n' "$log_path"
 
-  node "$GATE_RESULTS_MJS" record --dir "$GATE_ATTEMPT_DIR" --json "$(_gate_json \
+  _gate_record_result "$(_gate_json \
     "name=$name" \
     "command=$*" \
     "status=$outcome" \
@@ -202,7 +240,7 @@ gate_note_skip() {
   GATE_INDEX=$((GATE_INDEX + 1))
   printf '\n=== %s ===\n' "$name"
   printf -- '--- SKIPPED: %s (%s)\n' "$name" "$reason"
-  node "$GATE_RESULTS_MJS" record --dir "$GATE_ATTEMPT_DIR" --json "$(_gate_json \
+  _gate_record_result "$(_gate_json \
     "name=$name" \
     "command=" \
     "status=skipped" \

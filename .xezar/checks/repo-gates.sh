@@ -96,7 +96,7 @@ if [ "$LIST" -eq 1 ]; then
     ' "$(gate_list_id)" "$(gate_list_json)"
     printf '\n'
   else
-    printf 'required gates, in CI order:\n'
+    printf 'required gates, in canonical reporting order:\n'
     for i in "${!GATE_NAMES[@]}"; do
       printf '  %-32s %s\n' "${GATE_NAMES[$i]}" "${GATE_COMMANDS[$i]}"
     done
@@ -127,41 +127,71 @@ if ! gate_attempt_begin "$(gate_names_json)" "$(gate_list_id)"; then
   exit 1
 fi
 
-failed=()
-
-for i in "${!GATE_NAMES[@]}"; do
-  name="${GATE_NAMES[$i]}"
-  gate_cmd="${GATE_COMMANDS[$i]}"
-
-  # The one permitted skip, and the one place it is decided.
-  if [ "$name" = "npm ci" ] && [ "$FAST" -eq 1 ]; then
-    gate_note_skip "$name" "deps-verified-current"
-    continue
+# Only this shell reduces results; workers own separate files and process groups.
+# All command phases use the same supervisor, including install and the fixture tail.
+export GATE_RESULTS_MJS GATE_ATTEMPT_ID GATE_ATTEMPT_DIR GATE_LOG_DIR
+GATE_SCHEDULER_PID=""
+gate_cancel() {
+  trap '' INT TERM
+  if [ -n "$GATE_SCHEDULER_PID" ]; then
+    kill -TERM "$GATE_SCHEDULER_PID" 2>/dev/null || true
+    wait "$GATE_SCHEDULER_PID" 2>/dev/null || true
   fi
-
-  if gate_run "$name" bash -c "$gate_cmd"; then
-    # Only a SUCCESSFUL install may claim the tree is current; stamping a failed one would
-    # let the next `--fast` run skip the install it still needs.
-    [ "$name" = "npm ci" ] && write_deps_stamp
+  if [ -f "$GATE_ATTEMPT_DIR/result.json" ]; then
+    printf '\nGATES INTERRUPTED: finalization produced a completed record; retained at %s/result.json.\n' "$GATE_ATTEMPT_DIR" >&2
   else
-    failed+=("$name")
+    printf '\nGATES INTERRUPTED: retained attempt is incomplete.\n' >&2
   fi
-done
+  exit 130
+}
+trap gate_cancel INT TERM
+
+gate_phase() {
+  local mode="$1"; shift
+  local index entries args=()
+  for index in "$@"; do
+    args+=("$index" "${GATE_NAMES[$((index - 1))]}" "${GATE_COMMANDS[$((index - 1))]}")
+  done
+  entries="$(node -e '
+    const args = process.argv.slice(1), entries = [];
+    for (let i = 0; i < args.length; i += 3) entries.push({index: Number(args[i]), name: args[i+1], command: args[i+2]});
+    process.stdout.write(JSON.stringify(entries));
+  ' "${args[@]}")" || return 1
+  node "$SCRIPT_DIR/lib/gate-parallel.mjs" "$SCRIPT_DIR/lib/gate-record.sh" "$mode" "$entries" &
+  GATE_SCHEDULER_PID=$!
+  wait "$GATE_SCHEDULER_PID"
+  local scheduler_rc=$?
+  GATE_SCHEDULER_PID=""
+  # A failed supervisor/reducer leaves no result.json, even if every tool exited zero.
+  [ "$scheduler_rc" -eq 0 ] || return 1
+  for index in "$@"; do
+    gate_collect_worker "$index" "${GATE_NAMES[$((index - 1))]}" "${GATE_COMMANDS[$((index - 1))]}" || return 1
+  done
+}
+
+if [ "$FAST" -eq 1 ]; then
+  gate_note_skip "npm ci" "deps-verified-current" || exit 1
+else
+  gate_phase serial 1 || exit 1
+  if node -e 'process.exit(JSON.parse(require("node:fs").readFileSync(process.argv[1])).status === "passed" ? 0 : 1)' "$GATE_ATTEMPT_DIR/workers/1.json"; then
+    write_deps_stamp || exit 1
+  fi
+fi
+gate_phase application 2 3 4 5 6 || exit 1
+gate_phase serial 7 || exit 1
 
 printf '\n==================== SUMMARY ====================\n'
+# Publishing result.json is the completion commit point. Bash may defer a signal
+# during finalization; the trap then reports the completed record instead of denying it.
 result="$(gate_attempt_complete)"
 complete_rc=$?
 printf 'attempt        %s\n' "$GATE_ATTEMPT_ID"
 printf 'record         %s/result.json\n' "$GATE_ATTEMPT_DIR"
 printf 'recorded       %s\n' "$result"
 
-if [ ${#failed[@]} -eq 0 ] && [ "$complete_rc" -eq 0 ]; then
+if [ "$complete_rc" -eq 0 ]; then
   printf 'ALL GATES PASSED\n'
   exit 0
-fi
-if [ ${#failed[@]} -gt 0 ]; then
-  printf 'FAILED OR NOT RUN (%d):\n' "${#failed[@]}"
-  printf '  - %s\n' "${failed[@]}"
 fi
 # The record can refuse an attempt the loop above thought was clean — a broken log, or a gate
 # with no recorded outcome at all. That disagreement is itself the failure.

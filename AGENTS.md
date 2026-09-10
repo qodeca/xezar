@@ -143,7 +143,7 @@ Rules that follow from that:
 
 ## Validation
 
-Before any commit or PR, run in order:
+Before any commit or PR, run every command below. This is canonical reporting order:
 
 ```bash
 npm run typecheck   # tsc --noEmit (api-client + server + web)
@@ -152,6 +152,8 @@ npm run test:unit   # node:test — fast core-module coverage (packages/xezar/te
 npm run build       # tsc → dist/, vite → packages/xezar/web/dist/, then the check:pack tarball gate
 npm run test:package # pack/install the release tarball and exercise the built CLI (packages/xezar/test/e2e/)
 ```
+
+Dependency installation runs alone. The canonical kit runner may then overlap three lanes: `typecheck → build → test:package`, `npm test`, and `npm run test:unit`. Join all lanes before kit fixture checks. Serial execution remains valid. Preserve the Vitest worker cap, execute every required command even after an ordinary gate failure, and leave cancelled command phases or unrecordable attempts incomplete. Atomic result publication is the completion commit point: if it finishes before a deferred cancellation is handled, retain and report the completed verdict. Only one reducer writes aggregate gate evidence. This schedule changes no command or acceptance requirement.
 
 `npm test` and `npm run test:unit` are the fast unit gate: no server, no browser. They must stay that way.
 
