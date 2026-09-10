@@ -1,5 +1,5 @@
 name: docs-maintenance
-description: Update documentation and regenerate the drift-gated docs/api reference, then a draft PR.
+description: Update maintained documentation and verify links/examples under actual generated-file rules, then a draft PR.
 steps:
   - id: kit
     name: Snapshot the local project kit

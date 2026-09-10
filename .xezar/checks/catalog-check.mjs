@@ -324,7 +324,8 @@ if (!existsSync(workflowsDir)) {
 // configuration. What is validated is the frontmatter: the name matches the filename, a
 // description exists, and `interactive: true` appears only on a read-only skill.
 if (existsSync(skillsDir)) {
-  const skillFiles = readdirSync(skillsDir).filter((f) => f.endsWith(".md"));
+  const skillFiles = readdirSync(skillsDir).filter((f) => f.endsWith(".md")).sort();
+  let sharedContract;
   for (const file of skillFiles) {
     const text = readFileSync(join(skillsDir, file), "utf8");
     const fm = /^---\n([\s\S]*?)\n---\n/.exec(text);
@@ -336,6 +337,16 @@ if (existsSync(skillsDir)) {
     if (!name) err(`skills/${file}`, 'frontmatter has no "name"');
     else if (name !== file.replace(/\.md$/, "")) {
       err(`skills/${file}`, `frontmatter name "${name}" does not match the filename`);
+    }
+    if (name?.startsWith("xezar-")) {
+      const shared = text.split("## Shared contract\n")[1];
+      // Standalone third-party/custom entries need not adopt the project's shared prose.
+      // The real-repository contract test requires it on the maintained 16 roles.
+      if (shared !== undefined) {
+        if (!shared.trim()) err(`skills/${file}`, "shared contract is empty");
+        else if (sharedContract === undefined) sharedContract = shared;
+        else if (shared !== sharedContract) err(`skills/${file}`, "shared contract differs from the other self-contained roles");
+      }
     }
     if (!/^description:\s*\S/m.test(fm[1])) err(`skills/${file}`, 'frontmatter has no "description"');
     // `interactive: true` is a composer SEED: it makes the New Task form pre-tick Worktree

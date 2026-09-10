@@ -45,7 +45,7 @@
   "paths": {
     "runs": ".local/runs",
     "analysis": ".local/analysis",
-    "specs": "docs/specs",
+    "specs": "docs/features",
     "scripts": "scripts",
     "qa": ".local/qa"
   },

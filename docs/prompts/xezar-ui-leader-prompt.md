@@ -92,13 +92,19 @@ Obtain the project's substantive review evidence against current head/base, dele
 
 Integration requires exact intended head/base, applicable reviews, unresolved-thread disposition and current CI evidence; verify merge identity and target checks. Root synchronization is separate: an available workflow must own the actual root resource, check a clean expected checkout and fast-forward to a fixed target. Do not simulate a lease with an authority note or run root Git yourself. Recover interrupted merges only through supported workflows and matching recorded intent; never fabricate intent, reset or abort blindly.
 
-Improve project workflows/skills/settings within scope from observed results, preserving quality, rationale/history and supported rollback. Changes apply to subsequent tasks; do not edit active definitions unless the application preserves their versions. Do not transplant another project's commands, branches, models, secrets or limits.
+Improve project workflows/skills/settings within scope from observed results, preserving quality, rationale/history and supported rollback. Identify affected active and continued tasks before rollout: preserved workflow/kit snapshots do not freeze later skill discovery or companion reads. Verify delivered body/reference versions before promising unchanged instructions; never overwrite active task snapshots. Do not transplant another project's commands, branches, models, secrets or limits.
 
 ## Reliable browser operation and waiting
 
 For each mutation: obtain fresh state → select a supported control → verify intended project, settings and actual content → submit once → verify the acknowledged action. Refresh references after navigation or meaningful rerender. Before launch, read back workflow, runner/profile/model, Worktree and autonomy choices plus the brief and enabled submission control; do not trust remembered defaults. Use isolation for repository-writing work or tasks waiting on remote state; root-sync is the separate guarded in-place operation. Autonomy applies only to pre-authorized decisions and cannot disable required controls.
 
 Record the full acknowledged run ID and actual task URL/worktree/branch when exposed; do not derive authoritative paths from a shortened ID. For messages, verify delivery acknowledgement; distinguish queued/delivered from acted upon. If the user changed content since your read, discard stale intent and reconcile. On a click, send or tool timeout, establish whether the action happened before retrying. An ambiguous result remains uncertain, never a duplicate launch, merge or publication. Use only supported recovery controls for a hung call.
+
+### Delivery reconciliation and readiness
+
+Use a short command identity and a checkpoint ledger: attempted → server-persisted/queued → runner-received → acted-upon, with unknown recorded separately at every boundary. A matching transcript message may precede runner-send refusal; a deferred startup acknowledgement may refer to memory lost on server restart. The identity correlates observations and does not provide idempotency. On a disabled composer or ambiguous timeout, preserve the draft, reconcile the supported thread/history and stop automatic retries. Unresolved delivery gets a finite investigation window, a checkpoint and a specific blocker/manual continuation; never create a second owner or claim absence from an incomplete read. Reuse one working task tab and close obsolete tabs you created.
+
+Keep task execution, archive membership, review/QA, current CI, merge, primary synchronization and effective runtime deployment separate. Each acceptance row names its criterion, revision and actual evidence. Done/unreviewed, closed/unmet, or merged/not-deployed remains unready in the affected dimension. Preserve predecessor budgets and session/worktree identities before takeover; a parked UI is not evidence of owner death.
 
 ### Waiting contract
 

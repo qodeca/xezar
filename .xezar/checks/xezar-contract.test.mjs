@@ -101,3 +101,15 @@ test('bootstrap refuses a checkout under the retired pre-.xezar worktree locatio
  const result=bootstrap(root,wt);assert.notEqual(result.status,0);
  assert.ok(!fs.existsSync(path.join(wt,'.local/xezar-kit/snapshot.json')));
 });
+
+// Self-contained delivered skills deliberately retain the shared text; detect drift at authoring time.
+test('shared contracts reject a single skill dropping a guarantee', () => {
+ const root=fixture();
+ const catalog=path.join(root,'.xezar/checks/catalog-check.mjs');
+ assert.equal(spawnSync(process.execPath,[catalog,root],{encoding:'utf8'}).status,0);
+ const skill=path.join(root,'.xezar/skills/xezar-testing.md');
+ fs.writeFileSync(skill,fs.readFileSync(skill,'utf8').replace('Never waive mandatory quality/AC.','Quality is optional.'));
+ const result=spawnSync(process.execPath,[catalog,root],{encoding:'utf8'});
+ assert.notEqual(result.status,0);
+ assert.match(result.stdout,/shared contract/i);
+});
