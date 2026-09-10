@@ -516,6 +516,62 @@ describe('remembering the last-selected tab (#417)', () => {
     expect(rows()[0]?.getAttribute('href')).toBe('/github/issues/142')
   })
 
+  it('opening /github renders no tab at all until ui-state answers — never a flash of Issues (#170)', async () => {
+    // The #170 race, deterministically. `useUiState` is a plain `useQuery`, so on a cold page
+    // load the remembered choice is unknown for as long as that request takes. Hold ui-state
+    // open while the LIST answers: without the pending guard the index route renders the whole
+    // Issues screen here — `gh-tabs`, `gh-rows`, the detail pane — and then throws it away when
+    // ui-state says `prs`, because `<Navigate/>` renders nothing for the commit it navigates in.
+    // A real Chrome recorded that empty middle state (`/github/prs :: (no gh-* slots at all)`),
+    // and `github.e2e.ts:119` clicked into it. Which query wins is scheduling, so the fix is to
+    // render neither tab until the answer is in.
+    let answerUiState = () => {}
+    const uiStateAnswered = new Promise<void>((resolve) => {
+      answerUiState = resolve
+    })
+    const sent = stubFetch({
+      'GET /api/v1/ui-state': async () => {
+        await uiStateAnswered
+        return jsonResponse({ githubView: 'prs' })
+      },
+    })
+    renderAt('/github')
+
+    // The list has been asked for and its (already resolved) payload has had every chance to
+    // reach the cache — this is the exact moment the old code painted the wrong tab.
+    await waitFor(() =>
+      expect(sent.some((request) => request.path.startsWith('/api/v1/github?'))).toBe(true),
+    )
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    })
+    expect(document.querySelector('[data-slot="gh-tabs"]')).toBeNull()
+    expect(document.querySelector('[data-slot="gh-list"]')).toBeNull()
+    expect(rows()).toHaveLength(0)
+
+    // And once it answers, the remembered tab still wins — the guard delays the choice, it does
+    // not replace it.
+    answerUiState()
+    await waitFor(() => expect(rows()).toHaveLength(1))
+    expect(rows()[0]?.getAttribute('href')).toBe('/github/prs/137')
+  })
+
+  it('a failed ui-state read falls through to Issues instead of spinning the tab (#170)', async () => {
+    // The guard must not become a way to hang — or to hammer — the tab. React Query re-enters
+    // `pending` whenever an errored, data-less query refetches, and `retryOnMount` fires that
+    // refetch every time an observer appears (the detail pane reads ui-state for `skillUsage`),
+    // so a guard written as `isPending` or `isLoading` oscillates forever. Both assertions below
+    // fail on those spellings: 1649 ui-state requests in two seconds instead of 2, and the tab
+    // never leaving the loading screen.
+    const sent = stubFetch({ 'GET /api/v1/ui-state': () => new Response('nope', { status: 404 }) })
+    renderAt('/github')
+
+    await waitFor(() => expect(rows()).toHaveLength(2))
+    expect(rows()[0]?.getAttribute('href')).toBe('/github/issues/142')
+    const uiStateReads = sent.filter((request) => request.path === '/api/v1/ui-state').length
+    expect(uiStateReads).toBeLessThan(5)
+  })
+
   it('clicking Issues while "prs" is remembered switches to Issues instead of bouncing back', async () => {
     // The regression this guards: without eagerly patching the query cache on click, the
     // index route would still read the stale "prs" remembered choice and redirect the click

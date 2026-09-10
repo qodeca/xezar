@@ -309,6 +309,35 @@ export function GithubRoute({
   // clicked resolves to "not among the open issues". `/github/prs` and `/github/prs/:n` never had
   // the bug precisely because they already shared one element type. Below the hooks, like every
   // other early return in this component.
+  //
+  // The pending branch is load-bearing and is NOT belt-and-braces (#170). `useUiState` is a plain
+  // `useQuery`, so on a cold `/github` page load `uiState.data` is `undefined` for as long as that
+  // request takes. Without this line the guard below reads false, the whole ISSUES screen renders
+  // — tabs, rows, detail pane — and is then thrown away the moment ui-state answers `prs`, because
+  // `<Navigate/>` renders nothing for the commit in which it navigates. A real Chrome recorded the
+  // three states in order: `/github :: gh-row×3, gh-tabs×1, …` → `/github/prs :: (no gh-* slots at
+  // all)` → the PRs screen. That is a flash of the wrong screen for the user, and it is what made
+  // `github.e2e.ts:119` intermittently red on CI — a click into `gh-tabs` that landed in the empty
+  // middle state. Whichever query wins the race is scheduling, not behaviour, so the index must
+  // not render EITHER tab until it knows which one it is restoring.
+  //
+  // Scoped to `index`: `/github/issues/:n` and `/github/prs` are authoritative on their own URL
+  // and never consult ui-state, so they must not wait for it.
+  //
+  // Spelled as "this query has never produced ANYTHING", never as `isPending` / `isLoading`, and
+  // that is not a style choice — those two oscillate here and spin the tab. React Query re-enters
+  // `status: 'pending'` whenever an errored, data-less query refetches, and `retryOnMount` fires
+  // exactly that refetch every time a new observer appears. The detail pane reads ui-state too
+  // (`skillUsage`), so a status-based guard loops: error → screen renders → the pane mounts →
+  // refetch → pending → loading screen → the pane unmounts → error → … Measured on a 404: 3939
+  // renders and 1649 ui-state requests in two seconds, against 2 without the guard. Both
+  // timestamps are monotonic — an answer or a failure sets one forever — so this condition can
+  // only go false once, and a failed read degrades to the default tab instead of a spinner.
+  const uiStateNeverAnswered = uiState.dataUpdatedAt === 0 && uiState.errorUpdatedAt === 0
+  if (index && uiStateNeverAnswered) {
+    return <GithubLoading />
+  }
+
   if (index && uiState.data?.githubView === 'prs') {
     return <Navigate to="/github/prs" replace />
   }
