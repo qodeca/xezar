@@ -1,10 +1,19 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import test from 'node:test';
+import test, { type TestContext } from 'node:test';
 import {
+  bareDirFor,
   ensureBareClone,
   getTeamSkillsCached,
   isPinnedSha,
@@ -12,6 +21,7 @@ import {
   listRemoteSkills,
   refreshTeamSkills,
   safeRemoteFor,
+  waitForTeamSkills,
 } from '../../src/skills-remote.js';
 
 // ---- safeRemoteFor: repo/URL injection guard (#428) --------------------------
@@ -209,4 +219,351 @@ test('team-skills cache is keyed by repoRoot — projects never see each other\'
   // A's scope was served B's skills. Each root must keep its own entry.
   assert.deepEqual(getTeamSkillsCached(rootA).map((s) => s.name), ['alpha-skill']);
   assert.deepEqual(getTeamSkillsCached(rootB).map((s) => s.name), ['beta-skill']);
+});
+
+// =============================================================================
+// Network and cache degradation (#57, coverage gap R18)
+//
+// The contract under test is a boot-time promise from AGENTS.md: "Missing dirs
+// are fine; team-skill loading never blocks on the network (background cache in
+// `~/.cache/xez/`)." Every case below therefore has to be reproducible with no
+// network at all — the fake `git` under `shimGit` is the seam, and a redirected
+// HOME keeps every clone inside a temp directory.
+// =============================================================================
+
+/**
+ * The real `git`, resolved once from the pristine PATH. `shimGit` replaces
+ * `git` on PATH for the duration of one test and delegates the calls it does
+ * not simulate (`rev-parse`, `ls-tree`, `show`) to this binary, so "the network
+ * failed but the local clone still reads" is reproduced exactly.
+ */
+const REAL_GIT = execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
+
+interface Sandbox {
+  /** The redirected HOME — the `~/.cache/xez/skills` clone cache lives here. */
+  home: string;
+  /** A temp directory, removed when the test ends. */
+  dir: (prefix: string) => string;
+  /** A local git repo carrying one directory skill named `name`. */
+  skillsRepo: (name: string) => string;
+  /** A project root whose `.xezar/config.json` lists exactly `sources`. */
+  projectRoot: (sources: { repo: string; ref: string }[]) => string;
+  /** chmod a directory read-only for this test; restored before cleanup. */
+  makeReadOnly: (path: string) => void;
+  /** Everything the module printed through `console.warn` during the test. */
+  warnings: string[];
+}
+
+/** Per-test scratch: redirected HOME and PATH, captured warnings, full cleanup. */
+function sandbox(t: TestContext): Sandbox {
+  const dirs: string[] = [];
+  const locked: string[] = [];
+  const dir = (prefix: string): string => {
+    const made = mkdtempSync(join(tmpdir(), prefix));
+    dirs.push(made);
+    return made;
+  };
+  const home = dir('xez-home-');
+  const prevHome = process.env.HOME;
+  const prevPath = process.env.PATH;
+  // `bareDirFor` resolves through os.homedir(), so redirecting HOME is what
+  // keeps every clone in this file out of the developer's real ~/.cache/xez.
+  process.env.HOME = home;
+  const warnings: string[] = [];
+  const prevWarn = console.warn;
+  console.warn = (...args: unknown[]) => {
+    warnings.push(args.map(String).join(' '));
+  };
+
+  t.after(() => {
+    console.warn = prevWarn;
+    if (prevHome === undefined) delete process.env.HOME;
+    else process.env.HOME = prevHome;
+    if (prevPath === undefined) delete process.env.PATH;
+    else process.env.PATH = prevPath;
+    // A directory a case made read-only has to be removable again.
+    for (const path of locked) {
+      try {
+        chmodSync(path, 0o700);
+      } catch {
+        // already gone
+      }
+    }
+    for (const made of dirs) rmSync(made, { recursive: true, force: true });
+  });
+
+  return {
+    home,
+    dir,
+    warnings,
+    makeReadOnly: (path: string) => {
+      locked.push(path);
+      chmodSync(path, 0o500);
+    },
+    skillsRepo: (name: string): string => {
+      const src = dir(`xez-src-${name}-`);
+      // The real binary: a fixture must keep building even with a shim on PATH.
+      const g = (args: string[]) => execFileSync(REAL_GIT, args, { cwd: src, encoding: 'utf8' });
+      g(['-c', 'init.defaultBranch=main', 'init']);
+      g(['config', 'user.email', 'test@example.com']);
+      g(['config', 'user.name', 'Test']);
+      mkdirSync(join(src, name));
+      writeFileSync(join(src, name, 'SKILL.md'), `---\ndescription: ${name}\n---\n${name} body\n`);
+      g(['add', '-A']);
+      g(['commit', '-m', 'init']);
+      return src;
+    },
+    projectRoot: (sources): string => {
+      const root = dir('xez-root-');
+      mkdirSync(join(root, '.xezar'), { recursive: true });
+      writeFileSync(join(root, '.xezar', 'config.json'), JSON.stringify({ skillsRepos: sources }));
+      return root;
+    },
+  };
+}
+
+interface GitShim {
+  /** Every invocation the fake `git` saw, in order. */
+  calls: () => { sub: string; args: string[] }[];
+  /** Unblock a hanging invocation — it then exits the way a killed git does. */
+  release: () => void;
+}
+
+/**
+ * Put a fake `git` in front of the real one on PATH. This is the module's own
+ * network seam: every remote operation goes through `execFile('git', …)` with
+ * `{ ...process.env }`, so the shim intercepts `clone`/`fetch` and no test here
+ * opens a socket. `fail` exits non-zero; `hang` blocks until `release()` and
+ * then exits `exitCode` — what `execFile`'s timeout + SIGKILL looks like to
+ * `git()` when a remote never answers. Anything else runs for real.
+ */
+function shimGit(
+  box: Sandbox,
+  opts: { fail?: string[]; hang?: string[]; exitCode?: number },
+): GitShim {
+  const dir = box.dir('xez-gitshim-');
+  const config = {
+    log: join(dir, 'calls.ndjson'),
+    release: join(dir, 'release'),
+    realGit: REAL_GIT,
+    fail: opts.fail ?? [],
+    hang: opts.hang ?? [],
+    exitCode: opts.exitCode ?? 128,
+    // A bug must never wedge the suite: a hang gives up on its own too.
+    hangCapMs: 20_000,
+  };
+  const shim = join(dir, 'git-shim.mjs');
+  writeFileSync(
+    shim,
+    `import { appendFileSync, existsSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+
+const CONFIG = ${JSON.stringify(config)};
+const args = process.argv.slice(2);
+
+// git's own \`-c key=value\` options come first; the subcommand is the first
+// remaining non-option argument.
+let sub = '';
+for (let i = 0; i < args.length; i += 1) {
+  if (args[i] === '-c') { i += 1; continue; }
+  if (args[i].startsWith('-')) continue;
+  sub = args[i];
+  break;
+}
+appendFileSync(CONFIG.log, JSON.stringify({ sub, args }) + '\\n');
+
+if (CONFIG.hang.includes(sub)) {
+  // Sleep synchronously: this process has to look like a git that never answers.
+  const clock = new Int32Array(new SharedArrayBuffer(4));
+  const deadline = Date.now() + CONFIG.hangCapMs;
+  while (!existsSync(CONFIG.release) && Date.now() < deadline) Atomics.wait(clock, 0, 0, 50);
+}
+if (CONFIG.fail.includes(sub) || CONFIG.hang.includes(sub)) {
+  process.stderr.write('fatal: simulated git failure (' + sub + ')\\n');
+  process.exit(CONFIG.exitCode);
+}
+const done = spawnSync(CONFIG.realGit, args, { stdio: 'inherit' });
+process.exit(done.status ?? 1);
+`,
+  );
+  const bin = join(dir, 'git');
+  writeFileSync(bin, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(shim)} "$@"\n`);
+  chmodSync(bin, 0o755);
+  process.env.PATH = `${dir}:${process.env.PATH ?? ''}`;
+
+  return {
+    calls: () =>
+      existsSync(config.log)
+        ? readFileSync(config.log, 'utf8')
+            .split('\n')
+            .filter(Boolean)
+            .map((line) => JSON.parse(line) as { sub: string; args: string[] })
+        : [],
+    release: () => writeFileSync(config.release, ''),
+  };
+}
+
+/** Poll until `predicate` holds, failing the test rather than hanging forever. */
+async function waitFor(predicate: () => boolean, what: string, timeoutMs = 10_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate()) {
+    if (Date.now() > deadline) assert.fail(`timed out waiting for ${what}`);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+}
+
+test('a failed fetch degrades to the cached clone instead of throwing', async (t) => {
+  const box = sandbox(t);
+  const src = box.skillsRepo('cached-skill');
+  const root = box.projectRoot([{ repo: src, ref: 'main' }]);
+
+  // Warm the cache for real — a local path is a documented source shape, so the
+  // first clone needs no network either.
+  assert.deepEqual((await refreshTeamSkills(root)).map((s) => s.name), ['cached-skill']);
+  assert.ok(existsSync(join(bareDirFor(src), 'HEAD')), 'expected a bare clone in the temp cache');
+
+  // Now the network is gone: `fetch` fails while every local read still works.
+  const git = shimGit(box, { fail: ['fetch'] });
+  // Not throwing is half the assertion; serving the cached catalog is the rest.
+  const afterFailure = await refreshTeamSkills(root);
+  assert.deepEqual(afterFailure.map((s) => s.name), ['cached-skill']);
+  assert.ok(
+    git.calls().some((c) => c.sub === 'fetch'),
+    'expected the failing fetch to actually be attempted',
+  );
+});
+
+test('a failed fetch with no cache returns an empty catalog and never throws', async (t) => {
+  const box = sandbox(t);
+  // A source that cannot be cloned and was never cached: an absent local path
+  // fails instantly and offline, exactly like an unreachable remote.
+  const missing = join(box.dir('xez-gone-'), 'never-existed');
+  const root = box.projectRoot([{ repo: missing, ref: 'main' }]);
+
+  // The boot must survive this. A throw here is "xezar will not start" on the
+  // machine of a user whose network is down (AGENTS.md).
+  assert.deepEqual(await refreshTeamSkills(root), []);
+  assert.deepEqual(getTeamSkillsCached(root), []);
+  assert.deepEqual(await waitForTeamSkills(root), []);
+  assert.equal(existsSync(join(bareDirFor(missing), 'HEAD')), false);
+  // Listing the same source directly is empty rather than an error, too.
+  assert.deepEqual(await listRemoteSkills({ repo: missing, ref: 'main' }), []);
+});
+
+test('a clone that hangs never blocks the catalog read, and a killed git degrades', async (t) => {
+  const box = sandbox(t);
+  const src = box.skillsRepo('slow-skill');
+  const root = box.projectRoot([{ repo: src, ref: 'main' }]);
+
+  // `clone` blocks until released, then exits 137 — the observable shape of the
+  // module's own clone timeout firing (the constant itself is not injectable).
+  const git = shimGit(box, { hang: ['clone'], exitCode: 137 });
+
+  const started = Date.now();
+  // The contract: "team-skill loading never blocks on the network". The read
+  // returns now, while the clone is still hanging in the background.
+  assert.deepEqual(getTeamSkillsCached(root), []);
+  const waited = Date.now() - started;
+  assert.ok(waited < 1_000, `the catalog read waited ${waited}ms on a hung git`);
+
+  // The event loop stays alive while git hangs...
+  await waitFor(() => git.calls().some((c) => c.sub === 'clone'), 'the hanging clone to start');
+  // ...and the load degrades to an empty catalog once the hung git is killed.
+  git.release();
+  assert.deepEqual(await waitForTeamSkills(root), []);
+  assert.deepEqual(await refreshTeamSkills(root), []);
+});
+
+test('a corrupt or truncated cache degrades to empty, and a missing one re-clones', async (t) => {
+  const box = sandbox(t);
+  const src = box.skillsRepo('fragile-skill');
+  const root = box.projectRoot([{ repo: src, ref: 'main' }]);
+  const bare = bareDirFor(src);
+
+  assert.deepEqual((await refreshTeamSkills(root)).map((s) => s.name), ['fragile-skill']);
+
+  // Truncated HEAD: the file is still there, so the "is there a clone?" probe
+  // passes and every git call under it fails. That must not crash.
+  writeFileSync(join(bare, 'HEAD'), '');
+  assert.deepEqual(await listRemoteSkills({ repo: src, ref: 'main' }), []);
+  assert.deepEqual(await refreshTeamSkills(root), []);
+
+  // Garbled ref store: HEAD is valid again, the refs are not.
+  writeFileSync(join(bare, 'HEAD'), 'ref: refs/heads/main\n');
+  writeFileSync(join(bare, 'packed-refs'), 'not a ref file at all\n');
+  assert.deepEqual(await listRemoteSkills({ repo: src, ref: 'main' }), []);
+  assert.deepEqual(await refreshTeamSkills(root), []);
+
+  // A cache that is simply gone degrades to a re-fetch: the skills come back.
+  rmSync(bare, { recursive: true, force: true });
+  assert.deepEqual((await refreshTeamSkills(root)).map((s) => s.name), ['fragile-skill']);
+});
+
+test('all three configured source shapes resolve, and unsafe ones never reach git', async (t) => {
+  const box = sandbox(t);
+  const local = box.skillsRepo('local-skill');
+  const unsafeRepo = "ext::sh -c 'touch /tmp/xez-issue-57-pwn'";
+  const root = box.projectRoot([
+    { repo: local, ref: 'main' }, // local path (BC §5)
+    { repo: 'acme/team-skills', ref: 'main' }, // GitHub shorthand
+    { repo: 'https://git.example.invalid/team/skills.git', ref: 'main' }, // full git URL
+    { repo: unsafeRepo, ref: 'main' }, // refused remote
+    { repo: local, ref: 'main..evil' }, // refused ref
+  ]);
+
+  // Cache the local source with the real binary first, then cut the network: the
+  // two remote shapes must be *attempted* without a packet leaving the machine.
+  await ensureBareClone(local);
+  const git = shimGit(box, { fail: ['clone', 'fetch'] });
+
+  const loaded = await refreshTeamSkills(root);
+  // An unreachable or refused source never hides a working one.
+  assert.deepEqual(loaded.map((s) => s.name), ['local-skill']);
+
+  const cloneArgs = git.calls().filter((c) => c.sub === 'clone').flatMap((c) => c.args);
+  assert.ok(
+    cloneArgs.includes('https://github.com/acme/team-skills.git'),
+    'GitHub shorthand must resolve to the canonical https remote',
+  );
+  assert.ok(
+    cloneArgs.includes('https://git.example.invalid/team/skills.git'),
+    'a full git URL must be passed through unchanged',
+  );
+  // The unsafe remote is refused before git runs at all — and it warns, because
+  // a bad config would otherwise just look like skills quietly disappearing.
+  assert.equal(
+    git.calls().some((c) => c.args.some((a) => a.includes('ext::'))),
+    false,
+    'an `ext::` remote-helper source must never be handed to git',
+  );
+  assert.ok(
+    box.warnings.some((w) => w.includes('ext::') && w.includes('skillsRepos')),
+    `expected one warning naming the refused source, got ${JSON.stringify(box.warnings)}`,
+  );
+  assert.equal(existsSync(join(bareDirFor('acme/team-skills'), 'HEAD')), false);
+});
+
+test('a read-only cache directory degrades instead of failing the boot', async (t) => {
+  const box = sandbox(t);
+  const src = box.skillsRepo('unwritable-skill');
+  const root = box.projectRoot([{ repo: src, ref: 'main' }]);
+
+  // `~/.cache` exists but cannot be written, so the clone has nowhere to go.
+  const cache = join(box.home, '.cache');
+  mkdirSync(cache, { recursive: true });
+  box.makeReadOnly(cache);
+  // Guard the premise: a user who *can* write a 0500 directory (root) would
+  // otherwise get a silent false pass here.
+  assert.throws(
+    () => writeFileSync(join(cache, 'probe'), ''),
+    /EACCES|EPERM/,
+    'this case needs a user that cannot write a 0500 directory',
+  );
+
+  assert.deepEqual(await refreshTeamSkills(root), []);
+  assert.deepEqual(getTeamSkillsCached(root), []);
+  assert.equal(existsSync(join(bareDirFor(src), 'HEAD')), false);
+  // Pinned, not endorsed: this path degrades *silently*. The module's header
+  // says team skills "quietly disappear"; only an unsafe source shape warns.
+  assert.deepEqual(box.warnings, []);
 });
