@@ -11,7 +11,7 @@ file with a low percentage that nothing depends on.
 **How to read the evidence.** Claims marked *measured* come from a command that was run or a test
 file that was opened and read. Claims marked *inferred* are judgements about likelihood and blast
 radius – second-guess those freely. Absence is scoped: "no test found for X in the suites
-examined" means the five suites listed in section 3 were searched, not that X is untested in some
+examined" means the seven suites listed in section 2 were searched, not that X is untested in some
 absolute sense.
 
 ---
@@ -100,9 +100,9 @@ package. They never call a handler, so they are not evidence that a route behave
 
 ## 3. Behaviour inventory
 
-Derived from the `AGENTS.md` task-routing table, the 30 chained route families in
+Derived from the `AGENTS.md` task-routing table, the 27 chained route families in
 `packages/xezar/src/server/server.ts`, the cockpit routes in `packages/web/src/routes.tsx`, the CLI
-dispatch in `packages/xezar/src/index.ts:129-178`, and the run lifecycle in
+dispatch in `packages/xezar/src/index.ts:130-179`, and the run lifecycle in
 `packages/xezar/src/workflows/run.ts`.
 
 Status key: **C** covered, **P** partially covered, **N** no test found in the suites examined,
@@ -122,10 +122,10 @@ Status key: **C** covered, **P** partially covered, **N** no test found in the s
 | `init` scaffolds `.xezar/` and never overwrites | server unit | `project-kit-cli.test.ts:20,29` — spawns the real CLI and asserts both halves | C |
 | `serve` boots: port auto-pick, orphan-worktree prune, `.local/.gitignore` upkeep | packaged CLI e2e | `test/e2e/package-cli.test.ts:442,484,490,454,459` boots the default command against the installed tarball (#43). No test found for `--repo`, `--bind-host` or `--no-open` | C |
 | `server-deploy` | packaged e2e | `test/e2e/package-cli.test.ts:271,284,291` — help text, a real `--platform ubuntu --yes` invocation, and the unknown-platform exit 1 (#56) | C |
-| **unknown command → exit 1 + help** | none | `src/index.ts:174-178` not exercised by any spawn found | **N** |
+| **unknown command → exit 1 + help** | none | `src/index.ts:175-178` not exercised by any spawn found | **N** |
 | npm package surface: bins, `exports`, tarball contents | packaged e2e + build | `test/e2e/package-exports.test.ts`; `scripts/check-pack.mjs` via `npm run build` | C |
 
-### 3.2 HTTP API – 30 route families (`packages/xezar/src/server/server.ts`)
+### 3.2 HTTP API – 27 route families, plus four cross-cutting concerns (`packages/xezar/src/server/server.ts`)
 
 Families are named by their **chained builder** (`const <name>Routes = new Hono()…`), not by line
 number. The line numbers this table used to carry had rotted in both directions and sent readers to
@@ -243,23 +243,24 @@ appears above.
 
 | Directory | Lines | Branches | Covered in inventory |
 |---|---|---|---|
-| `packages/xezar/src/` (loose files) | 80.3 % | 67.9 % | 3.1, 3.4, and gaps R8, R19 |
+| `packages/xezar/src/` (loose files) | 91.9 % | 80.8 % | 3.1, 3.4, and gaps R8, R19 |
 | `packages/xezar/src/agent-config/` | 97.2 % | 88.2 % | 3.2 (agent-config family) |
-| `packages/xezar/src/automations/` | 93.1 % | 75.1 % | 3.2 (automations family) |
-| `packages/xezar/src/core/` | 93.1 % | 81.8 % | 3.5 |
+| `packages/xezar/src/automations/` | 92.7 % | 74.6 % | 3.2 (automations family) |
+| `packages/xezar/src/core/` | 95.2 % | 84.2 % | 3.5 |
 | `packages/xezar/src/release/` | 95.5 % | 90.9 % | 3.1 (npm package surface) + `test/e2e/release.test.ts` |
-| `packages/xezar/src/runs/` | 96.1 % | 88.6 % | 3.4 |
-| `packages/xezar/src/server/` | 85.3 % | 74.4 % | 3.2 |
-| `packages/xezar/src/server-install/` | 72.5 % | 57.8 % | 3.1, gap R17 |
-| `packages/xezar/src/workflows/` | 90.6 % | 81.1 % | 3.4, gap R7 |
-| `packages/xezar/src/workspace/` | 97.9 % | 95.3 % | 3.2 (projects, workspace config) |
-| `packages/web/src/api/` | 94.2 % | 82.0 % | 3.3 (live updates) |
-| `packages/web/src/components/` | 95.7 % | 87.2 % | 3.3 |
-| `packages/web/src/lib/` | 97.7 % | 96.0 % | 3.3 |
-| `packages/web/src/routes/` | 89.5 % | 83.2 % | 3.3 |
+| `packages/xezar/src/runs/` | 96.8 % | 89.3 % | 3.4 |
+| `packages/xezar/src/server/` | 89.2 % | 77.8 % | 3.2 |
+| `packages/xezar/src/server-install/` | 89.6 % | 79.4 % | 3.1, gap R17 |
+| `packages/xezar/src/workflows/` | 92.3 % | 84.0 % | 3.4, gap R7 |
+| `packages/xezar/src/workspace/` | 98.0 % | 95.4 % | 3.2 (projects, workspace config) |
+| `packages/web/src/api/` | 95.9 % | 83.7 % | 3.3 (live updates) |
+| `packages/web/src/components/` | 96.5 % | 87.5 % | 3.3 |
+| `packages/web/src/lib/` | 99.2 % | 96.4 % | 3.3 |
+| `packages/web/src/routes/` | 93.3 % | 86.3 % | 3.3 |
+| `packages/web/src/` (loose files) | 100 % | 98.2 % | 3.3 (`app.tsx`, `routes.tsx`; `main.tsx` is absent from the report — see R11) |
 | `packages/web/src/assets/` | – | – | **Excluded**: static image assets, no executable code |
 | `packages/web/src/styles/` | – | – | **Excluded**: one CSS file, no executable code |
-| `packages/contract/src/` | 97.6 % | 75.0 % | Risk 2, gap R2 |
+| `packages/contract/src/` | 98.1 % | 81.3 % | Risk 2, gap R2 |
 | `packages/api-client/src/` | 100 % | 95.8 % | 3.2, 3.5 (protocol mirror) |
 
 ---
@@ -459,9 +460,9 @@ exception survives: the enabled automations flow (R9) sits behind `XEZ_AUTOMATIO
 neither `scripts/e2e.sh` nor the CI job sets, so that spec self-skips and the BROWSER-level flow
 stays ungated — the unit-level flow does run.
 
-**Covered only by manual QA.** `SDLC.md:93` states plainly that user-facing changes need the
+**Covered only by manual QA.** `SDLC.md:89` states plainly that user-facing changes need the
 separate real-browser QA, and `CODE_REVIEW.md:3` repeats that `test:e2e` is "the QA layer", not part
-of the review gate. `SDLC.md:75` allows a self-QA exception with attached evidence. So the last line
+of the review gate. `SDLC.md:71` allows a self-QA exception with attached evidence. So the last line
 of defence for cockpit rendering is a human running a browser and writing down what they saw.
 
 **Covered by typecheck, not by `npm test`.** The six `contract-parity*.test.ts` files and
@@ -474,10 +475,11 @@ surfaces. Three name an enforcing test (§2 HTTP API, §6 npm package, §7 agent
 tests all exist on disk. Six do not: §1 CLI, §3 state files, §4 workflow YAML, §5 skills Markdown,
 §8 marker vocabulary, §9 per-user workspace files. Two of those turn out to be well covered anyway
 once you look – `runs/store.test.ts:1754-1821` pins the legacy `claude-cli` fold for §3, and
-`runs/task-markers.test.ts` plus `handoff.test.ts` cover §8, though the latter only to 36.4 %
-branches. §1 is genuinely thin, and that is gaps R3, R4 and R17.
+`runs/task-markers.test.ts` plus `handoff.test.ts` cover §8, and since #47 the latter's branches
+are fully exercised (see R8). §1 was the thinnest, and that was gaps R3, R4 and R17 — all now
+closed, leaving only the unknown-command exit path (section 3.1).
 
-**A blind spot the drift guard itself declares.** `bc-route-inventory.test.ts:37-41` records that it
+**A blind spot the drift guard itself declares.** `bc-route-inventory.test.ts:36-40` records that it
 cannot see `/api/v1/ws`, because the WebSocket upgrade is not a Hono route. That entry is maintained
 by hand in `BACKWARD_COMPATIBILITY.md` §2 and nothing can catch it drifting.
 
@@ -487,17 +489,19 @@ by hand in `BACKWARD_COMPATIBILITY.md` §2 and nothing can catch it drifting.
 
 These were uncovered by the audit and are deliberately **not** child issues.
 
-1. **CI job name is misleading.** `.github/workflows/ci.yml` names the job "Unit, build, E2E, and
-   package"; it runs no E2E. Cosmetic, but it is why the gap survives – the name reads as coverage.
-   Fixing it means editing `.github/workflows/`, which is out of scope here. Folded into issue 1.
+1. ~~**CI job name is misleading.**~~ **Resolved by #128.** The job is now named "Typecheck, unit
+   tests, build, and package" (`ci.yml:29`), and the browser suite runs in its own `ui-e2e` job
+   (`ci.yml:87-88`). The lesson survives: a job name that promises coverage it does not deliver is
+   why the gap went unnoticed.
 2. ~~**`docs/testing/local-data.md:75` is now stale.**~~ **Resolved.** That line now reads "One
    report producer is configured: `npm run test:coverage` writes the v8 coverage report to
    `.local/coverage/`". The rule it sets still stands: reporters write beneath `.local`, never a root
    report directory.
-3. **The task table's COLUMN ORDER is pinned only in the suite CI never runs.**
+3. **The task table's COLUMN ORDER is pinned only in the browser suite.**
    `packages/web/e2e/quick-list.e2e.ts` reads the ± cell positionally (`td:nth-child(7)`, deliberately
    positional so it pins order as well as content). Every other column assertion is by
-   `data-column-id`, so a column inserted in the wrong place fails nothing in CI. See Risk 1.
+   `data-column-id`. Since #128 that spec does run in CI (`ui-e2e`), so the order is gated — but by a
+   single positional selector in one browser spec, not by any unit test. See Risk 1.
 4. **`.gitignore` already carries a root `coverage/` rule** that predates this change and now
    points at nothing, because the script writes to `.local/coverage/`. Harmless; noted so nobody
    re-adds a root reporter on the strength of it.
@@ -543,8 +547,8 @@ progress indicator. No fallback was needed.
   is unguarded.
 - Test claims: every test cited was opened and read, or located by grep and then opened. Filenames
   alone were never treated as evidence of coverage.
-- **Git history is not usable as regression evidence in this checkout.** `git log` holds 39 commits,
-  all dated 2026-09-07 to 2026-09-09, beginning with `1f729a7 chore: import cezar upstream
+- **Git history is not usable as regression evidence in this checkout.** As audited on
+  2026-09-09, `git log` held 39 commits, all dated 2026-09-07 to 2026-09-09, beginning with `1f729a7 chore: import cezar upstream
   baseline`. `git log --grep=fix -i` returns 13 commits; `--grep=regress -i` returns none. The
   incident numbers cited throughout `AGENTS.md` (#810, #811, #661, #591, #751, #694, #426, #430,
   #472) do not resolve against `qodeca/xezar`; they resolve against the predecessor repository

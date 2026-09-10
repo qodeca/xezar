@@ -12,8 +12,10 @@ and this package is how anything else talks to it — the cockpit UI is just its
 workspace (the cockpit bundles it, the service's tests import it) and will be
 released once its surface settles. Every shape it hands out is now inferred from a
 zod schema in `@qodeca/xezar-contract`: the hand-written `dto/*` mirror this barrel
-used to carry is gone, and so is the last hand-written response interface in the
-service's own `server.ts`.
+used to carry is gone. A few response interfaces are still declared by hand in the
+service's own `server.ts` (the four `/projects` routes), but they no longer live here —
+`contract-parity.workspace.test.ts` pins each one to its contract schema in both
+directions.
 
 ## Use
 
@@ -41,7 +43,7 @@ unversioned `/api/*` spelling was removed rather than frozen.
 - **Protocol types** (`UiEvent`, `UiItem`, `ToolDisplay`, …) — the agent event vocabulary the
   service streams over SSE, plus the pure `toolDisplay()` renderer for it.
 - **Scope helpers** (`apiPath`, `apiBase`, `queryScope`, `resolveApiUrl`, `API_PREFIX`, and the
-  `apiScope` / `apiBaseUrl` getters and setters) — the `/api/v1` ↔ `/api/v1/p/:projectId`
+  `getApiScope` / `setApiScope` / `getApiBaseUrl` / `setApiBaseUrl` accessors) — the `/api/v1` ↔ `/api/v1/p/:projectId`
   project-scope prefixing.
 - **The whole contract**, re-exported (`export * from '@qodeca/xezar-contract'`), so a consumer
   needs one import for both the schema it validates with and the type it compiles against.

@@ -113,7 +113,7 @@ and an orchestrator keeps a whole queue of them moving.
   Take it over interactively in one click (`claude --resume <id>`), or continue it
   in-process from the cockpit.
 - 🔀 **Locked into one agent vendor.** Most tools wed you to a single CLI. xezar
-  drives **Claude Code, Codex and OpenCode (experimental)** through one runner seam — set a
+  drives **Claude Code, Codex, OpenCode and pi (the last two experimental)** through one runner seam — set a
   default, pick a backend per task, or mix them inside one workflow (implement
   with one agent, review with another) — and through **OpenCode** you can point
   a run at **open-source or local models**, not just the big vendors. See
@@ -147,8 +147,9 @@ and an orchestrator keeps a whole queue of them moving.
 
 **Prerequisites:** Node 20+, at least one logged-in agent CLI — the
 [`claude` CLI](https://github.com/anthropics/claude-code) (Pro/Max subscription),
-the [`codex` CLI](https://github.com/openai/codex), or
-[OpenCode](https://opencode.ai) — and, optionally, `git` and the `gh` CLI.
+the [`codex` CLI](https://github.com/openai/codex),
+[OpenCode](https://opencode.ai), or [pi](https://github.com/badlogic/pi-mono) —
+and, optionally, `git` and the `gh` CLI.
 
 Install it once, then run it in any repo:
 
@@ -192,8 +193,8 @@ To upgrade later: `npm install -g @qodeca/xezar@latest`.
 
 You describe a task. xezar runs it as a **workflow** — an ordered list of agent
 steps and shell checks — shelling out to your locally installed agent CLI
-(Claude Code by default; Codex and OpenCode are drop-in alternatives, per task
-or per step). In a git repo each task gets its own worktree by default — switch
+(Claude Code by default; Codex, OpenCode and pi are drop-in alternatives, per
+task or per step). In a git repo each task gets its own worktree by default — switch
 the composer's **Worktree** toggle off to run in the repo working tree (under
 xezar's repository-root lease), and a non-git directory runs in place. A git
 task that asks for a worktree it cannot create stops as `failed`; it never falls
@@ -259,7 +260,7 @@ Three words, no jargon — **task**, **skill**, **chain**:
   AI draft a chain for your task that you review, trim and start. The built-in
   `quick-task` (one agent step) works with zero setup.
 
-Five moves that make the cockpit worth the browser tab:
+Six moves that make the cockpit worth the browser tab:
 
 - 🗃️ **Queue + orchestration.** Start as many tasks as you like: xezar runs up to
   `maxParallel` at once across every project (default **2**; a non-git directory
@@ -316,7 +317,7 @@ Nine views, one browser window, all live over Server-Sent Events (seven by defau
 | **Automations** | **Opt-in** (`XEZ_AUTOMATIONS=1`; hidden by default). Scheduled GitHub watches: each automation polls on its own interval and launches a task when its bounded filter matches. Test a filter before enabling it, and read the per-check log. |
 | **Skills** | Local skills plus the team skills repo, with a rendered body + prompt preview. Refresh pulls the latest from the remote. |
 | **Workflows** | Build a chain by drag-ordering skills, save it as portable YAML, import/export, or delete. Built-ins always come back. |
-| **Settings** | Appearance (dark/light theme, accent, density), agent backends, notifications, and the skills catalog. |
+| **Settings** | Appearance (dark/light theme, accent, density), agent backends and their own config files, agent accounts, notifications, machine resources, projects, and skill-update checks. |
 
 The cockpit is a React app served pre-built from the package — running `xezar`
 needs no dev server on your machine — with a dark/light
@@ -373,10 +374,11 @@ These read and write `~/.xezar/config.json` directly, so they work with the
 server stopped, and `XEZ_HOME` selects which workspace they operate on.
 
 Settings split along the same line: **General** (the project's folder, its
-registry facts, its parallel-task ceiling, and Remove), **Agents**,
-**Worktrees**, **Bookmarklets**, **Prompt templates** and **MCP** describe one
-repo and live under `/p/<projectId>/settings`; **Appearance**,
-**Notifications**, **Resources**, **Projects** and **Keyboard** are yours or the
+registry facts, its parallel-task ceiling, and Remove), **Agents**, **Agent
+config** (each agent's own settings, MCP and memory files), **Worktrees**,
+**Bookmarklets** and **Prompt templates** describe one repo and live under
+`/p/<projectId>/settings`; **Appearance**, **Notifications**, **Resources**,
+**Skills** (update checks), **Agent accounts** and **Projects** are yours or the
 machine's and live at `/settings/global`.
 
 ### Grouping connected repositories: tags and the All tasks page
@@ -623,16 +625,16 @@ On startup xezar probes which CLIs are installed and the cockpit only offers
 the backends it found — install any one of the four and you're operational.
 
 **Models come from your own machine.** The model picker does not ship a list of
-vendor releases that goes stale between xezar versions. For Claude, Codex and
-OpenCode xezar asks the CLI on your host what *it* currently offers (Claude
-Code's `list_models` control request; the Codex app-server's `model/list`;
-`opencode models`) and shows exactly that, in that order — so a model your
-account gained yesterday is selectable today with no xezar release, and one your
-provider retired stops being offered. Discovery is read-only, costs no tokens,
-and is cached briefly in memory. If the CLI is missing, logged out, too old or
-slow, the picker quietly falls back to that runner's built-in entries (`auto`
-plus Claude's tier aliases) and says so in a status row; `pi`, which has no
-host-local catalog yet, always shows its built-in entries. `auto` — send no
+vendor releases that goes stale between xezar versions. For each backend xezar
+reads what *your host* currently offers — Claude Code's `list_models` control
+request, the Codex app-server's `model/list`, `opencode models`, and for pi its
+own `~/.pi/agent/models.json` and `settings.json` — and shows exactly that, in
+that order, so a model your account gained yesterday is selectable today with no
+xezar release, and one your provider retired stops being offered. Discovery is
+read-only, costs no tokens, and is cached briefly in memory. If a CLI is
+missing, logged out, too old or slow — or pi has no providers configured yet —
+the picker quietly falls back to that runner's built-in entries (`auto` plus
+Claude's tier aliases) and says so in a status row. `auto` — send no
 model at all and let the CLI decide — is always available, and a model you
 pinned by hand stays selectable even when it is no longer advertised.
 
@@ -688,8 +690,8 @@ happens per task and per step, not inside a variant group.
 
 The seam is deliberately small: a backend is one class implementing the
 `AgentRunner` interface (`packages/xezar/src/core/agent-runner.ts`) that turns a prompt into
-a stream of normalized events. Other CLIs — pi, aider, whatever ships next —
-can slot in the same way.
+a stream of normalized events. `pi` was added exactly that way; other CLIs —
+aider, whatever ships next — can slot into the same seam.
 
 ---
 
@@ -823,8 +825,9 @@ cd xezar
 npm install
 ```
 
-**3. Build** — compiles the api-client and the server (`tsc → packages/xezar/dist/`) and the cockpit
-(`vite build → packages/xezar/web/dist/`), then runs the pack gate:
+**3. Build** — compiles the server (`tsc → packages/xezar/dist/`), folds the
+contract into `dist/contract/` so the published tarball resolves it, and builds
+the cockpit (`vite build → packages/xezar/web/dist/`), then runs the pack gate:
 
 ```bash
 npm run build

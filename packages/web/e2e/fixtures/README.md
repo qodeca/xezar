@@ -21,27 +21,30 @@ Alongside the transcript:
 - `thread-run-images/` — the `<id>-images/` directory the run persisted; the transcript's
   `image` line points into it via `/api/v1/runs/<id>/images/…`.
 
-To regenerate: build, boot `XEZ_DRY_RUN=1 node dist/index.js serve --repo <tmp-git-repo>`,
+To regenerate: build, boot
+`XEZ_DRY_RUN=1 XEZ_REVIEW_GATE=1 node packages/xezar/dist/index.js serve --repo <tmp-git-repo>`,
 POST a run whose task has no `mock:` marker, POST one `/messages` reply containing `mock:md`
-once it waits, POST `/finish` (twice: the mock's turn 1 touches `notes.md`, so the run parks
-at `review` first — the second finish accepts it), then copy `<tmp>/.local/xezar/runs/<id>.ndjson`,
+once it waits, POST `/finish` (twice: the mock's turn 1 touches `notes.md`, so with the gate on
+the run parks at `review` first — the second finish accepts it). `XEZ_REVIEW_GATE=1` is
+required because the review gate is OFF by default; without it the run settles straight to
+`done` and the transcript loses its review lifecycle lines. Then copy `<tmp>/.local/xezar/runs/<id>.ndjson`,
 `<id>-images/` and the `runs.json` entry here. Then re-apply the synthetic extension below.
 
 ## Synthetic extension (R3 Step 1.3 — plan dock, step rail, check-step cards)
 
-The mock claude (`scripts/mock-claude.mjs`) emits no `TodoWrite`, and `quick-task` has no
+The mock claude (`packages/xezar/scripts/mock-claude.mjs`) emits no `TodoWrite`, and `quick-task` has no
 check step, so the dry run cannot record those surfaces. The transcript therefore carries
 HAND-APPENDED lines (seqs renumbered), each faithful to a documented wire shape rather than
 invented:
 
 - Two `TodoWrite` sequences (`item.started` → `plan.updated` → v1 `tool-call` twin →
   `item.completed` → v1 `tool-result` twin), one per turn, shaped exactly like the golden
-  `src/core/__fixtures__/claude/thinking-edit-write-todo.*` pair (the R2 mapper's pinned
+  `packages/xezar/src/core/__fixtures__/claude/thinking-edit-write-todo.*` pair (the R2 mapper's pinned
   output, including the mapper's item-then-plan emission order). The second snapshot
   supersedes the first — the latest-plan-wins path the dock asserts.
 - A `verify` check step after the agent step: `step-start` (kind `check`) → the `$ npm test`
   note → `check-output` → `step-end`, the exact emission sequence of
-  `src/workflows/run.ts` `runCheckStep()`. `thread-run.record.json` carries the matching
+  `packages/xezar/src/workflows/run.ts` `runCheckStep()`. `thread-run.record.json` carries the matching
   `verify` entry in `steps` and `workflowDef` (which therefore no longer equals the stock
   built-in `quick-task` definition).
 
@@ -58,7 +61,7 @@ events with their v1 twins on one `seq` clock), repeated. The run record is
 
 `subagents-run.ndjson` is a REAL transcript with NO synthetic extension: the verbatim NDJSON a
 `XEZ_DRY_RUN=1` xezar persisted for a quick-task run whose task was `mock:subagents`. That
-trigger (`scripts/mock-claude.mjs`) replays a parallel fan-out — two `Task` spawns, then their
+trigger (`packages/xezar/scripts/mock-claude.mjs`) replays a parallel fan-out — two `Task` spawns, then their
 children interleaved with `parent_tool_use_id`, then the tool_results — which is exactly the
 shape the Agents dock groups. The only edit is timestamp normalization (`ts` values rewritten
 to a fixed 2026-07-21 sequence) so the fixture is stable; `seq` order and every payload are
@@ -68,6 +71,6 @@ untouched.
   with the id, title/task, branch and worktree path swapped for this run. Status `done`, so the
   store's `recover()` leaves it alone.
 
-To regenerate: build, boot `XEZ_DRY_RUN=1 node dist/index.js serve --repo <tmp-git-repo>`,
+To regenerate: build, boot `XEZ_DRY_RUN=1 node packages/xezar/dist/index.js serve --repo <tmp-git-repo>`,
 start a task whose text is `mock:subagents`, wait for it to settle, then copy
 `<tmp>/.local/xezar/runs/<id>.ndjson` here and normalize the timestamps.

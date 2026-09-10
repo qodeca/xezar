@@ -11,8 +11,10 @@
 #
 # 2026-09-10: this header used to add a third way — "or as a named job in
 # `.github/workflows/ci.yml`", said to keep a Cezar-era id because branch protection
-# required that check by name. That was false. `ci.yml` defines exactly one job, `verify`,
-# nothing under `.github/` references this script, and the named job never existed. (Do not
+# required that check by name. That was false. Nothing under `.github/` references this
+# script and the named job never existed. (The supporting count in the original note said
+# `ci.yml` defines exactly one job; it defines two, `verify` and `ui-e2e`, the second added
+# by 980b542 the same day. The conclusion is unaffected: neither runs this suite.) (Do not
 # hunt for the claimed id by grepping this file: the same string is legitimate FIXTURE data
 # further down, feeding synthetic check names to the integration-preflight cases.)
 #
