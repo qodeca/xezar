@@ -11,13 +11,16 @@ import type {
   ContentBlock,
   SessionOptions,
 } from './agent-runner.js';
+import { trackChildExit } from './agent-runner.js';
 import { buildChildEnv } from './agent-env.js';
 import { readNdjson } from './ndjson.js';
 import { createPiUiState, mapPiRpcMessage, piTurnStarted } from './pi-ui-mapper.js';
 import { V1TextCoalescer } from './v1-text-coalescer.js';
 
 const DEFAULT_TIMEOUT_MS = 30 * 60_000;
-const KILL_GRACE_MS = 10_000;
+/** Grace period between SIGTERM and SIGKILL, matching `claude-cli-runner`. Exported so the
+ *  escalation test can advance fake timers by the real value instead of a copy. */
+export const KILL_GRACE_MS = 10_000;
 const AUTO_END_DELAY_MS = 250;
 
 export interface PiRunnerOptions {
@@ -66,6 +69,12 @@ export class PiRunner implements AgentRunner {
     let timedOut = false;
     let autoEndTimer: NodeJS.Timeout | undefined;
     let killTimer: NodeJS.Timeout | undefined;
+    let timeoutKillTimer: NodeJS.Timeout | undefined;
+    // "Is the child still alive?" is NOT `child.killed`, which only reports signal DELIVERY —
+    // a CLI with its own SIGTERM handler flips that flag while the process runs on, and the
+    // escalation written for exactly that case never fires (#844). AGENT_PROTOCOL requires
+    // `trackChildExit`, which seeds from `exitCode`/`signalCode` and listens for `exit`.
+    const hasExited = trackChildExit(child);
     let piUi = createPiUiState();
     const textChunks: string[] = [];
     const toolCalls: AgentToolCallRecord[] = [];
@@ -128,14 +137,19 @@ export class PiRunner implements AgentRunner {
       if (!open) return;
       open = false;
       child.stdin.end();
-      killTimer = setTimeout(() => child.exitCode == null && child.kill('SIGTERM'), KILL_GRACE_MS);
+      killTimer = setTimeout(() => !hasExited() && child.kill('SIGTERM'), KILL_GRACE_MS);
       killTimer.unref?.();
     };
+    /**
+     * Hard stop. Deliberately NOT guarded by `if (!open) return` any more: the wall-clock
+     * deadline calls this, and a session that had already auto-ended (`autoEndAfterFirstTurn`
+     * closes stdin and sets `open = false`) would otherwise make the timeout a no-op. Only the
+     * RPC write needs the guard — signalling a live child never does.
+     */
     const interrupt = (): void => {
-      if (!open) return;
-      write({ type: 'abort' });
+      if (open) write({ type: 'abort' });
       open = false;
-      child.kill('SIGTERM');
+      if (!hasExited()) child.kill('SIGTERM');
     };
 
     write({ id: 'xezar-state', type: 'get_state' });
@@ -148,11 +162,23 @@ export class PiRunner implements AgentRunner {
     ]);
 
     const limitMs = spec.timeoutMs ?? this.timeoutMs;
+    // Wall-clock kill switch, now with the escalation every other backend already has (D).
+    // `interrupt()` alone was advisory: it sends the RPC abort and one SIGTERM, and a pi that
+    // installs its own handler — or is wedged in a syscall — simply keeps running, so a step's
+    // `timeout:` was enforced for claude/codex/opencode and merely a suggestion for pi.
+    // AGENT_PROTOCOL requires parity at this seam, so this mirrors `claude-cli-runner`
+    // line for line: interrupt, destroy stdout so the read loop cannot block forever, then
+    // SIGKILL after `KILL_GRACE_MS` if the process is still alive.
     const deadline =
       limitMs > 0
         ? setTimeout(() => {
             timedOut = true;
             interrupt();
+            child.stdout.destroy();
+            timeoutKillTimer = setTimeout(() => {
+              if (!hasExited()) child.kill('SIGKILL');
+            }, KILL_GRACE_MS);
+            timeoutKillTimer.unref?.();
           }, limitMs)
         : undefined;
     deadline?.unref?.();
@@ -160,6 +186,8 @@ export class PiRunner implements AgentRunner {
     const result = (async (): Promise<AgentRunResult> => {
       try {
         for await (const line of readNdjson(child.stdout)) {
+          // The deadline destroyed stdout; stop consuming whatever is still buffered.
+          if (timedOut) break;
           let value: unknown;
           try {
             value = JSON.parse(line);
@@ -229,6 +257,10 @@ export class PiRunner implements AgentRunner {
             onEvent?.({ type: 'note', message: string(value.error) ?? 'pi extension error' });
           }
         }
+      } catch (err) {
+        // A timeout destroys stdout, which surfaces here as a premature-close error —
+        // expected; rethrow anything else.
+        if (!timedOut) throw err;
       } finally {
         if (deadline) clearTimeout(deadline);
         if (autoEndTimer) clearTimeout(autoEndTimer);
@@ -236,7 +268,14 @@ export class PiRunner implements AgentRunner {
         open = false;
       }
 
+      // NOT cleared in the `finally` above, deliberately. Destroying stdout ends the read
+      // loop within a microtask, so a `finally` that cleared this would disarm the SIGKILL
+      // before its grace period had a chance to elapse — the escalation would exist in the
+      // source and never fire. It is `unref`'d (it cannot hold the process open) and it
+      // re-checks `hasExited()` before signalling, so leaving it armed until the child is
+      // genuinely gone is both safe and the only way it does its job.
       const exitCode = await waitForExit(child);
+      if (timeoutKillTimer) clearTimeout(timeoutKillTimer);
       if (spawnError) throw spawnError;
 
       // Timeout/interrupt can end the read loop mid-message — recover buffered
