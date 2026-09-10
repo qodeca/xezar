@@ -20,6 +20,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { ZoomableImage } from '@/components/zoomable-image'
 import { Link } from '@/lib/project-router'
 import { isImageAttachmentName, type FileDiff, type ToolKind, type UiToolItem } from '@qodeca/xezar-api-client'
+import { RUNNER_LABEL } from '@/lib/runner-label'
 import { cn } from '@/lib/utils'
 
 import { Markdown } from './markdown'
@@ -256,20 +257,13 @@ export function NoteLine({ note }: { note: ThreadNote }) {
   )
 }
 
-const PROVIDER_LABEL: Record<ThreadProviderAuthRequired['provider'], string> = {
-  claude: 'Claude Code',
-  codex: 'Codex',
-  opencode: 'OpenCode',
-  pi: 'pi',
-}
-
 /** Persisted recovery guidance for an authoritative runtime authentication rejection. */
 export function ProviderAuthRequiredCard({
   incident,
 }: {
   incident: ThreadProviderAuthRequired
 }) {
-  const label = PROVIDER_LABEL[incident.provider]
+  const label = RUNNER_LABEL[incident.provider]
   return (
     <div
       role="alert"

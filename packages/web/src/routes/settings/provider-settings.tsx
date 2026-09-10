@@ -14,13 +14,15 @@ import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { toast } from '@/components/ui/toaster'
 import { providerStatusFor } from '@/lib/provider-status'
+import { RUNNER_LABEL } from '@/lib/runner-label'
 
+/** Order and login hint are this card's own; the product NAME comes from the one shared map. */
 const PROVIDERS = [
-  { id: 'claude', label: 'Claude Code', login: 'claude auth login' },
-  { id: 'codex', label: 'Codex', login: 'codex login' },
-  { id: 'opencode', label: 'OpenCode', login: 'opencode auth login' },
-  { id: 'pi', label: 'pi', login: 'pi /login' },
-] as const
+  { id: 'claude', label: RUNNER_LABEL.claude, login: 'claude auth login' },
+  { id: 'codex', label: RUNNER_LABEL.codex, login: 'codex login' },
+  { id: 'opencode', label: RUNNER_LABEL.opencode, login: 'opencode auth login' },
+  { id: 'pi', label: RUNNER_LABEL.pi, login: 'pi /login' },
+] as const satisfies readonly { id: ProviderId; label: string; login: string }[]
 
 const providerWriteState = <T,>(value: T): Record<ProviderId, T> => ({
   claude: value,

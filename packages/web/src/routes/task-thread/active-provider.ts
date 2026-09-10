@@ -1,13 +1,7 @@
 import type { ApiRun, ProviderStatusResponse, Runner } from '@qodeca/xezar-api-client'
 import { useProviderStatus } from '@/api/queries'
 import { providerStatusFor } from '@/lib/provider-status'
-
-const PROVIDER_LABEL: Record<Runner, string> = {
-  claude: 'Claude Code',
-  codex: 'Codex',
-  opencode: 'OpenCode',
-  pi: 'pi',
-}
+import { RUNNER_LABEL } from '@/lib/runner-label'
 
 /** Mirrors the server's providerForActiveRun for POST /runs/:id/messages. */
 export function providerForActiveRun(run: ApiRun): Runner {
@@ -37,14 +31,14 @@ function providerAvailability(
     return {
       provider,
       usable: false,
-      reason: `${PROVIDER_LABEL[provider]} is disabled. Enable it in Settings → Agents → Providers.`,
+      reason: `${RUNNER_LABEL[provider]} is disabled. Enable it in Settings → Agents → Providers.`,
     }
   }
   if (row?.status !== 'connected') {
     return {
       provider,
       usable: false,
-      reason: `${PROVIDER_LABEL[provider]} credentials are unavailable. Authorize it in Settings → Agents → Providers.`,
+      reason: `${RUNNER_LABEL[provider]} credentials are unavailable. Authorize it in Settings → Agents → Providers.`,
     }
   }
   return { provider, usable: true }
