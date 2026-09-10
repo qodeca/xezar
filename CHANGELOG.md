@@ -59,6 +59,14 @@ coverage epic that closed twenty gaps.
   fence no longer triggers it. (#124, #149)
 - 🐛 **`gh` unavailable with an empty token now says so, with a hint**, instead of reporting a
   confusing detection failure. (#127, #150)
+- 🐛 **A CLI killed from outside xezar now names the signal.** A `128 + signal` exit the runner did
+  not cause used to surface as a bare exit code. It now says which signal, and that xezar sent
+  none — so another process or the OS did. The known cause is an unscoped `pkill -f` from a peer
+  agent: xezar passes a skill's whole text as one `--append-system-prompt` argument, so a pattern
+  that appears in any skill matches every agent running it. Five agents were killed mid-review that
+  way. The project kit and all 16 of its skills now ban pattern kills outright. (#156, #167)
+- 🐛 **pi records an output-cap stop, and says when a turn produced nothing**, instead of ending
+  silently. (#164, #166)
 
 ## 📝 Specs & Documentation
 - 📝 **The documentation was resynced with the code, twice.** The second sweep corrected statements
@@ -90,6 +98,13 @@ coverage epic that closed twenty gaps.
   and unrelated suites timing out at 909s — starvation that reads as flakiness. The cap is a
   deliberate no-op on CI's smaller runners, and `--maxWorkers=N` and `VITEST_MAX_WORKERS` still
   override it. (#146)
+- 🚀 **The browser suite pins itself to one worker, and defends that pin.** `VITEST_MAX_WORKERS` is
+  applied at the very end of vitest's config resolution, so it outranks both `fileParallelism: false`
+  and `--no-file-parallelism`. For this suite that is a correctness break rather than a speed
+  choice — the specs share one server and one set of on-disk fixtures, and several rewrite state
+  global to all of it, which is the shape behind four rounds of failures in files the change under
+  test never touched. The e2e config now deletes the variable, and a unit test fails if that stops
+  working. Export it for `npm test` freely; it no longer reaches `npm run test:e2e`. (#162, #169)
 - 🚀 **Browser e2e specs made host-independent**, and the commit spec now waits for the committed
   screen rather than the address bar. (#133, #136, #145, #148)
 

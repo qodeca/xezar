@@ -88,6 +88,15 @@ settle such an exit on the normal path — `isSignalTerminationExit(exitCode)`
 (`packages/xezar/src/core/agent-runner.ts`) plus a `note` — instead of throwing. Throwing makes
 a finished run settle as `failed` and a cancelled run settle as `failed` too.
 
+**The other half of that bit is an obligation too: when the runner sent NO signal and the CLI still
+exits `128 + signal`, name the signal.** Report it through `foreignSignalExitMessage(cli, exitCode)`
+(same file) rather than surfacing a bare exit code. The runner cannot know who sent it, so the
+message claims exactly what the runner does know — that xezar sent nothing — and no more. This is
+not cosmetic: #156 was five agent CLIs SIGTERMed by a peer task's unscoped
+`pkill -f "repo-gates.sh --fast"`, which matches every agent carrying that string in its own
+`--append-system-prompt` argv, i.e. every agent running a kit skill. A bare exit code turned that
+into a day of forensics; the named signal turns it into one read.
+
 That watchdog MUST gate its SIGKILL escalation on real termination, never on
 `ChildProcess.killed` (#844). Node sets `killed` when a signal is *delivered*,
 so the watchdog's own SIGTERM flips it while the CLI — which handles the
@@ -430,8 +439,9 @@ To be first-class:
    backend has no native system-prompt channel. Implement all THREE termination paths
    to the same standard (`end()`, `interrupt()`, and the `timeoutMs` deadline): each
    escalates SIGTERM→SIGKILL gated on `trackChildExit`, and each records that the runner
-   sent the signal so the exit settles on the normal path. See § the termination rules
-   above; `claude-cli-runner.ts` is the reference.
+   sent the signal so the exit settles on the normal path, and report a `128 + signal` exit the
+   runner did NOT cause through `foreignSignalExitMessage`. See § the termination rules above;
+   `claude-cli-runner.ts` is the reference.
 2. **Factory** — add the id to `RunnerId` / `RUNNER_IDS` (`agent-runner.ts`) and
    a `case` in `createRunner` (`runner-factory.ts`). Add `UiBackend` in
    `ui-events.ts` **and its mirror** `packages/api-client/src/protocol/ui-events.ts` (the
