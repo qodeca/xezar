@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { RunStore, type RunRecord } from '../runs/store.ts';
-import { RunManager } from './run.ts';
+import { MAX_AUTO_CONTINUES, RunManager } from './run.ts';
 import type { WorkflowDef } from './types.ts';
 
 const run = promisify(execFile);
@@ -25,7 +25,8 @@ const GIT_ID = ['-c', 'user.name=test', '-c', 'user.email=test@local'];
  * that is gone and `npm test` exits non-zero. The trip-wire is a property of
  * that file's runtime, not of any test in it: appending a no-op test that only
  * sleeps 16 s to `run.test.ts`, otherwise unchanged, reproduces the identical
- * failure. `run.test.ts` sits ~7 s under the line and this block needs ~13 s, so
+ * failure. `run.test.ts` sits ~7 s under the line and this block needs ~25 s (it
+ * grew when #141 made the nudge real and added two guard tests), so
  * it gets its own vitest worker and its own clock. Fold it back into
  * `run.test.ts` once #125 is fixed — there is no other reason for the split.
  *
@@ -38,24 +39,34 @@ const GIT_ID = ['-c', 'user.name=test', '-c', 'user.email=test@local'];
  * defect takes: `execute` (a freshly started run) and `runContinuation`
  * (Continue, and every restart-recovery resume).
  *
- * ⚠ THE NUDGE IS CURRENTLY DEAD CODE, at BOTH sites, in complementary ways —
- * the exact #811 shape, mirrored. `execute` sets `autonomous` on the `ActiveRun`
- * it builds (`run.ts:2596`) but its turn-end handler (`runAgentStep`,
- * `run.ts:3014`) never reads it; `runContinuation`'s turn-end handler
- * (`run.ts:2376`) DOES read `state.autonomous`, but the `ActiveRun` it builds
- * (`run.ts:2247`) never sets it. So `state.autonomous === true` is written at one
- * site and read only at the other, and the nudge fires nowhere. An autonomous run
- * therefore stops after one turn and parks — no error, no failed status, and to
- * the user it looks exactly like an agent that decided it was finished.
+ * ⚠ THE NUDGE USED TO BE DEAD CODE, at BOTH sites, in complementary ways — the
+ * exact #811 shape, mirrored. `execute` set `autonomous` on the `ActiveRun` it
+ * builds but its turn-end handler never read it; `runContinuation`'s turn-end
+ * handler DID read `state.autonomous`, but the `ActiveRun` it builds never set
+ * it. So `state.autonomous === true` was written at one site and read only at
+ * the other, and the nudge fired nowhere: an autonomous run stopped after one
+ * turn and parked — no error, no failed status, and to the user it looked
+ * exactly like an agent that decided it was finished.
  *
- * That defect is tracked as **#141**. Two tests below therefore PIN the current
- * broken behaviour instead of asserting the intent: they are named
- * `(pinned defect)` and every pinned expectation carries the value it must take
- * once #141 is fixed, marked `INTENDED:`. Fixing #141 turns them red on purpose —
- * they are the executable specification for that fix, and updating them to the
- * `INTENDED:` values is part of it. Fixing only the `execute` half leaves the
- * `runContinuation` test green, which is exactly the asymmetry #59 asks to have
- * asserted.
+ * **#141 fixed both halves** and the two tests that used to pin the defect now
+ * assert the intent instead (their `INTENDED:` markers are gone, replaced by the
+ * real expectation). One helper — `autoContinueTurn` — is the single sender of
+ * `AUTONOMOUS_NUDGE`, called from BOTH turn-end handlers, and `runContinuation`
+ * reads `autonomous` off the run record when it rebuilds its `ActiveRun`.
+ * Reverting either half alone turns exactly one of those two tests red, which is
+ * the asymmetry #59 asked to have asserted.
+ *
+ * ON COUNTING NUDGES. The dry-run mock answers every message and never volunteers
+ * `XEZ:DONE`, so a nudged autonomous run legitimately keeps going: nudge, turn,
+ * nudge, … until `MAX_AUTO_CONTINUES`. The tests therefore assert the FIRST note
+ * is `… (1/40)` and that at least one fired, rather than an exact total that only
+ * describes how fast the machine happened to be. The cap itself has its own guard
+ * test below.
+ *
+ * GUARD TESTS (must pass before AND after #141 — they pin what must NOT change):
+ * `a non-autonomous run …`, `an autonomous run that emitted XEZ:DONE …`,
+ * `a paused autonomous run …`, `the nudge stops at MAX_AUTO_CONTINUES` and
+ * `an autonomous run skips the review gate …`.
  */
 describe('the autonomous turn-end nudge (#489, gap R20)', () => {
   // Same isolation rule as the #490 block in `run.test.ts`: these runs PARK or
@@ -145,6 +156,19 @@ describe('the autonomous turn-end nudge (#489, gap R20)', () => {
   const nudgeNotes = (id: string): Array<Record<string, unknown>> =>
     readEvents(id).filter((e) => e.type === 'note' && String(e.message ?? '').includes(NUDGE_NOTE));
 
+  /** The live `ActiveRun` the turn-end handler reads, once the run has built it. */
+  type LiveState = { autonomous?: boolean; autoContinues?: number };
+  const waitForActiveRun = async (id: string, ms = 10_000): Promise<LiveState> => {
+    const states = (manager as unknown as { active: Map<string, LiveState> }).active;
+    const deadline = Date.now() + ms;
+    for (;;) {
+      const state = states.get(id);
+      if (state) return state;
+      if (Date.now() > deadline) throw new Error('ActiveRun not built in time');
+      await new Promise((r) => setTimeout(r, 10));
+    }
+  };
+
   /**
    * A turn-end reached, with nothing left in flight. The two settled shapes a
    * NON-nudged turn-end can take: parked `waiting` (the ball is with the user)
@@ -153,12 +177,11 @@ describe('the autonomous turn-end nudge (#489, gap R20)', () => {
   const settled = (r: RunRecord | undefined): boolean =>
     r?.status === 'waiting' || r?.status === 'done' || r?.status === 'review';
 
-  it('an autonomous run started through execute is NOT nudged at turn end — it parks as waiting (pinned defect)', async () => {
-    // #141. INTENDED: the turn-end nudges itself, records `… (1/40)` and stays
-    // out of `waiting`. ACTUAL: `runAgentStep`'s turn-end handler has no
-    // autonomous branch at all, so the run hands the ball straight back to the
-    // user after ONE turn. Wiring the nudge into `execute` turns the three
-    // `INTENDED:` expectations below.
+  it('an autonomous run started through execute IS nudged at turn end — it keeps going instead of parking (#141)', async () => {
+    // #141, the `execute` half: the handler now reads the `autonomous` this site
+    // has always set, so the turn-end nudges itself, records `… (1/40)` and stays
+    // out of `waiting`. Revert `execute`'s call to `autoContinueTurn` and this
+    // test goes red while the `runContinuation` one below stays green.
     const record = manager.startRun(SINGLE_STEP, {
       task: 'keep going on the login bug',
       worktree: false,
@@ -174,21 +197,22 @@ describe('the autonomous turn-end nudge (#489, gap R20)', () => {
     const state = (manager as unknown as {
       active: Map<string, { autonomous?: boolean }>;
     }).active.get(record.id);
-    expect(state?.autonomous).toBe(true); // `execute` DOES populate the state…
+    expect(state?.autonomous).toBe(true); // `execute` populates the state…
 
-    // …and the turn-end handler that would use it does not exist.
-    expect(nudgeNotes(record.id)).toHaveLength(0); // INTENDED (#141): one `… (1/40)` note
-    expect(inbound().some((text) => text.includes(NUDGE_TEXT))).toBe(false); // INTENDED (#141): true
-    expect(store.getRun(record.id)?.status).toBe('waiting'); // INTENDED (#141): still `running`
+    // …and the turn-end handler now reads it.
+    expect(nudgeNotes(record.id).length).toBeGreaterThan(0);
+    expect(String(nudgeNotes(record.id)[0]?.message)).toContain(`(1/${MAX_AUTO_CONTINUES})`);
+    expect(inbound().some((text) => text.includes(NUDGE_TEXT))).toBe(true);
+    expect(store.getRun(record.id)?.status).toBe('running'); // never parked
     // Whatever the outcome, the engine never fabricates a user turn — the same
     // rule the monitoring wake follows. This half is not a defect and must hold
     // before AND after #141: a nudge is the engine's own message.
     expect(readEvents(record.id).filter((e) => e.type === 'user-message')).toHaveLength(0);
   }, 30_000);
 
-  it('a non-autonomous run at the same turn end is not nudged — it parks as waiting', async () => {
-    // The control, and it must keep passing after #141 is fixed: a plain run
-    // still hands the ball back to the user.
+  it('a non-autonomous run at the same turn end is not nudged — it parks as waiting (guard)', async () => {
+    // GUARD, and the behaviour most at risk from #141: a plain run still hands
+    // the ball back to the user, exactly as before the fix. Passes both ways.
     const record = manager.startRun(SINGLE_STEP, {
       task: 'keep going on the login bug',
       worktree: false,
@@ -203,8 +227,8 @@ describe('the autonomous turn-end nudge (#489, gap R20)', () => {
     expect(store.getRun(record.id)?.status).toBe('waiting');
   }, 30_000);
 
-  it('an autonomous run that emitted XEZ:DONE is finished, not nudged', async () => {
-    // Also unchanged by #141: `XEZ:DONE` closes the session before the nudge
+  it('an autonomous run that emitted XEZ:DONE is finished, not nudged (guard)', async () => {
+    // GUARD, unchanged by #141: `XEZ:DONE` closes the session before the nudge
     // branch is reached, so the completion marker still outranks autonomy.
     const record = manager.startRun(SINGLE_STEP, {
       task: 'mock:done ship the fix',
@@ -219,13 +243,13 @@ describe('the autonomous turn-end nudge (#489, gap R20)', () => {
     expect(inbound().some((text) => text.includes(NUDGE_TEXT))).toBe(false);
   }, 30_000);
 
-  it('an autonomous run resumed through runContinuation is NOT nudged either — the second construction site (pinned defect)', async () => {
-    // #141, the #811 half. `runContinuation` is the ONE site whose turn-end
-    // handler does read `state.autonomous` — but the `ActiveRun` it builds omits
-    // the field, so the read is always `undefined`. Continue and every restart
-    // recovery therefore lose autonomy silently, exactly the way registry
-    // `/skill` expansion did. Fixing only `execute` leaves this test GREEN,
-    // which is the asymmetry #59 asks to have asserted.
+  it('an autonomous run resumed through runContinuation IS nudged too — the second construction site (#141)', async () => {
+    // #141, the #811 half. `runContinuation` is the site whose turn-end handler
+    // always read `state.autonomous` — the `ActiveRun` it builds now carries the
+    // field, read off the run record, so Continue and every restart recovery keep
+    // autonomy instead of losing it silently the way registry `/skill` expansion
+    // did. Fixing only `execute` leaves THIS test red: that is the asymmetry #59
+    // asked to have asserted, and it is the experiment #141 demands.
     const record = manager.startRun(SINGLE_STEP, {
       task: 'mock:done first pass',
       worktree: false,
@@ -245,19 +269,70 @@ describe('the autonomous turn-end nudge (#489, gap R20)', () => {
     await waitFor(record.id, (r) => nudgeNotes(record.id).length > beforeContinue || settled(r));
     await new Promise((r) => setTimeout(r, 750));
 
-    expect(nudgeNotes(record.id)).toHaveLength(beforeContinue); // INTENDED (#141): one more
-    expect(inbound().some((text) => text.includes(NUDGE_TEXT))).toBe(false); // INTENDED (#141): true
-    expect(store.getRun(record.id)?.status).toBe('waiting'); // INTENDED (#141): still `running`
-    // The cause, pinned beside the symptom: the RECORD says autonomous, the
-    // rebuilt `ActiveRun` the turn-end handler actually reads does not.
+    expect(nudgeNotes(record.id).length).toBeGreaterThan(beforeContinue);
+    // The continuation's own `ActiveRun` starts a fresh budget, so its first
+    // nudge is `(1/40)` — proof `autoContinues` is initialised here, not left
+    // `undefined` for `MAX_AUTO_CONTINUES` to compare against.
+    expect(String(nudgeNotes(record.id)[beforeContinue]?.message)).toContain(
+      `(1/${MAX_AUTO_CONTINUES})`,
+    );
+    expect(inbound().some((text) => text.includes(NUDGE_TEXT))).toBe(true);
+    expect(store.getRun(record.id)?.status).toBe('running'); // never parked
+    // The cause, asserted beside the symptom: the RECORD says autonomous, and so
+    // now does the rebuilt `ActiveRun` the turn-end handler actually reads.
     expect(store.getRun(record.id)?.autonomous).toBe(true);
     expect(
       (manager as unknown as { active: Map<string, { autonomous?: boolean }> })
         .active.get(record.id)?.autonomous,
-    ).toBeUndefined(); // INTENDED (#141): true
+    ).toBe(true);
   }, 30_000);
 
-  it('an autonomous run skips the review gate end to end, even with a real diff', async () => {
+  it('a paused autonomous run is not nudged — the pause holds and it parks (guard)', async () => {
+    // GUARD for the suppression in `enforceMemoryLimits`: a run paused over the
+    // memory limit clears `state.autonomous` precisely so the auto-continue
+    // cannot undo the pause. This reproduces that one write on the live
+    // `ActiveRun` and asserts the turn end honours it. Red the moment
+    // `autoContinueTurn` stops checking the flag.
+    const record = manager.startRun(SINGLE_STEP, {
+      task: 'keep going on the login bug',
+      worktree: false,
+      autonomous: true,
+    });
+    currentId = record.id;
+    const state = await waitForActiveRun(record.id);
+    state.autonomous = false; // exactly what the memory-limit pause writes
+    await waitFor(record.id, (r) => r?.status === 'waiting');
+    await new Promise((r) => setTimeout(r, 750));
+
+    expect(nudgeNotes(record.id)).toHaveLength(0);
+    expect(inbound().some((text) => text.includes(NUDGE_TEXT))).toBe(false);
+    expect(store.getRun(record.id)?.status).toBe('waiting');
+  }, 30_000);
+
+  it('the nudge stops at MAX_AUTO_CONTINUES — a spent budget parks (guard)', async () => {
+    // GUARD for the safety cap. Spending the budget up front is the whole test:
+    // an autonomous run whose `autoContinues` has reached the cap must park like
+    // any other run instead of nudging forever. Both construction sites read the
+    // same counter through the same helper, so this bounds both paths.
+    const record = manager.startRun(SINGLE_STEP, {
+      task: 'keep going on the login bug',
+      worktree: false,
+      autonomous: true,
+    });
+    currentId = record.id;
+    const state = await waitForActiveRun(record.id);
+    expect(state.autoContinues).toBe(0); // initialised, never `undefined`
+    state.autoContinues = MAX_AUTO_CONTINUES;
+    await waitFor(record.id, (r) => r?.status === 'waiting');
+    await new Promise((r) => setTimeout(r, 750));
+
+    expect(state.autonomous).toBe(true); // still autonomous — only the budget ran out
+    expect(nudgeNotes(record.id)).toHaveLength(0);
+    expect(inbound().some((text) => text.includes(NUDGE_TEXT))).toBe(false);
+    expect(store.getRun(record.id)?.status).toBe('waiting');
+  }, 30_000);
+
+  it('an autonomous run skips the review gate end to end, even with a real diff (guard)', async () => {
     // The unit-level twin lives in `run.test.ts`'s `settleSuccess` block; this
     // pins the same rule through the whole `execute` spine, where `autonomous`
     // has to survive from the composer input to the terminal transition. Not
