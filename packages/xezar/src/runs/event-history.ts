@@ -1,3 +1,4 @@
+import { acquireHistoryView } from './event-corrections.ts';
 import { createReadStream } from 'node:fs';
 import { open, stat } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
@@ -17,6 +18,7 @@ const MAX_CURSOR_BYTES = 2_048;
 const pageCursorSchema = z.object({
   v: z.literal(1),
   kind: z.literal('page'),
+  correction: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   direction: z.enum(['older', 'newer']),
   fileSize: z.number().int().nonnegative(),
   boundarySeq: z.number().int().nonnegative(),
@@ -25,6 +27,7 @@ const pageCursorSchema = z.object({
 const liveCursorSchema = z.object({
   v: z.literal(1),
   kind: z.literal('live'),
+  correction: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   offset: z.number().int().nonnegative(),
   boundarySeq: z.number().int().nonnegative(),
 });
@@ -400,10 +403,11 @@ export interface HistoryReadInstrumentation {
   retainedEvents: number;
 }
 
-export async function readRunHistoryPage(
+async function readRunHistoryPageFromView(
   filePath: string,
   cursor?: string,
   onRead?: (instrumentation: HistoryReadInstrumentation) => void,
+  correction?: string,
 ): Promise<RunHistoryPage> {
   const decoded = cursor === undefined ? undefined : decodePageCursor(cursor);
   const currentSize = await stat(filePath).then(({ size }) => size).catch(() => 0);
@@ -451,6 +455,7 @@ export async function readRunHistoryPage(
           olderCursor: encodeCursor({
             v: 1,
             kind: 'page',
+            ...(correction === undefined ? {} : { correction }),
             direction: 'older',
             fileSize: highWaterRead.fileSize,
             boundarySeq: oldest.firstSeq,
@@ -462,13 +467,14 @@ export async function readRunHistoryPage(
           newerCursor: encodeCursor({
             v: 1,
             kind: 'page',
+            ...(correction === undefined ? {} : { correction }),
             direction: 'newer',
             fileSize: highWaterRead.fileSize,
             boundarySeq: newest.lastSeq,
           }),
         }
       : {}),
-    liveCursor: encodeCursor({ v: 1, kind: 'live', offset: highWaterRead.fileSize, boundarySeq: asOfSeq }),
+    liveCursor: encodeCursor({ v: 1, kind: 'live', offset: highWaterRead.fileSize, boundarySeq: asOfSeq, ...(correction === undefined ? {} : { correction }) }),
     asOfSeq,
     hasOlder,
   };
@@ -487,7 +493,7 @@ const isSettledContextStatus = (status: string | undefined) =>
   status !== undefined && status !== 'pending' && status !== 'running';
 
 /** One forward pass retaining the latest Plan snapshot and only the selector-equivalent agent episode. */
-export async function deriveRunContextEvents(filePath: string): Promise<RunHistoryContext> {
+async function deriveRunContextEventsFromView(filePath: string): Promise<RunHistoryContext> {
   let latestPlan: RunHistoryEvent | undefined;
   let asOfSeq = 0;
   let turn = 0;
@@ -612,7 +618,7 @@ export async function deriveRunContextEvents(filePath: string): Promise<RunHisto
   return { contextEvents: [...contextEvents.values()].sort((a, b) => a.seq - b.seq), asOfSeq };
 }
 
-export async function readEventsAfterLiveCursor(filePath: string, cursor: string): Promise<{
+async function readEventsAfterLiveCursorFromView(filePath: string, cursor: string): Promise<{
   events: RunHistoryEvent[];
   boundarySeq: number;
 }> {
@@ -643,7 +649,7 @@ export async function readEventsAfterLiveCursor(filePath: string, cursor: string
   };
 }
 
-export async function validateLiveCursor(filePath: string, cursor: string): Promise<void> {
+async function validateLiveCursorFromView(filePath: string, cursor: string): Promise<void> {
   const decoded = decodeLiveCursor(cursor);
   let fileSize = 0;
   try {
@@ -655,4 +661,55 @@ export async function validateLiveCursor(filePath: string, cursor: string): Prom
   if (decoded.offset > fileSize) {
     throw new HistoryCursorError(409, 'history cursor is no longer valid — reload the newest page');
   }
+}
+
+
+function assertCorrectionGeneration(actual: string | undefined, expected: string | undefined): void {
+  if (actual !== expected) throw new HistoryCursorError(409, 'history was corrected — reload the newest page');
+}
+
+/** #185: hold an immutable corrected view across every asynchronous read. */
+export async function readRunHistoryPage(
+  filePath: string,
+  cursor?: string,
+  onRead?: (instrumentation: HistoryReadInstrumentation) => void,
+): Promise<RunHistoryPage> {
+  const view = acquireHistoryView(filePath);
+  try {
+    if (cursor !== undefined) assertCorrectionGeneration(decodePageCursor(cursor).correction, view.generation);
+    return await readRunHistoryPageFromView(view.path, cursor, onRead, view.generation);
+  } finally { view.release(); }
+}
+
+export async function deriveRunContextEvents(filePath: string): Promise<RunHistoryContext> {
+  const view = acquireHistoryView(filePath);
+  try { return await deriveRunContextEventsFromView(view.path); }
+  finally { view.release(); }
+}
+
+export async function readEventsAfterLiveCursor(filePath: string, cursor: string): Promise<{
+  events: RunHistoryEvent[];
+  boundarySeq: number;
+}> {
+  const view = acquireHistoryView(filePath);
+  try {
+    assertCorrectionGeneration(decodeLiveCursor(cursor).correction, view.generation);
+    return await readEventsAfterLiveCursorFromView(view.path, cursor);
+  } finally { view.release(); }
+}
+
+export async function validateLiveCursor(filePath: string, cursor: string): Promise<void> {
+  const view = acquireHistoryView(filePath);
+  try {
+    assertCorrectionGeneration(decodeLiveCursor(cursor).correction, view.generation);
+    await validateLiveCursorFromView(view.path, cursor);
+  } finally { view.release(); }
+}
+
+/** Legacy sequence-only resumes cannot distinguish contaminated client history. */
+export function validateLegacyHistoryResume(filePath: string, afterSeq: number): void {
+  const view = acquireHistoryView(filePath);
+  try {
+    if (afterSeq > 0) assertCorrectionGeneration(undefined, view.generation);
+  } finally { view.release(); }
 }

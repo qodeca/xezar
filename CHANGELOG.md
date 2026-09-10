@@ -39,6 +39,7 @@ coverage epic that closed twenty gaps.
   Settings → Resources. (#146)
 
 ## 🐛 Fixes
+- 🐛 **One process owns a project's task state.** A second server refuses before recovering another live server's tasks, including nested and symlink-equivalent paths. Dead owners recover automatically. Audited incident corrections can exclude exact erroneous history records from display while preserving the original append-only evidence. (#185)
 - 🐛 **A failed page leaves the cockpit navigation available.** A route rendering error now
   displays a recovery message with a retry button. Opening another page also recovers without
   remounting the shell and its global subscriptions. (#50)

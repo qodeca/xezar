@@ -1,3 +1,4 @@
+import { acquireHistoryView } from './event-corrections.ts';
 import { ensureProjectDataIgnored } from '../project-data-paths.ts';
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
@@ -1272,8 +1273,14 @@ export class RunStore extends EventEmitter {
   }
 
   readEvents(runId: string): RunEvent[] {
+    const view = acquireHistoryView(this.eventsPath(runId));
+    try { return this.readEventsAtPath(view.path); }
+    finally { view.release(); }
+  }
+
+  private readEventsAtPath(path: string): RunEvent[] {
     try {
-      const raw = readFileSync(this.eventsPath(runId), 'utf8');
+      const raw = readFileSync(path, 'utf8');
       return raw
         .split('\n')
         .filter(Boolean)
@@ -1333,7 +1340,8 @@ export class RunStore extends EventEmitter {
    *  of #424). One file read on the first post-restart append per run. */
   private rehydrateSeq(runId: string): number {
     let max = 0;
-    for (const event of this.readEvents(runId)) {
+    // Allocation includes quarantined raw sequence values: never reuse a persisted seq.
+    for (const event of this.readEventsAtPath(this.eventsPath(runId))) {
       if (typeof event.seq === 'number' && event.seq > max) max = event.seq;
     }
     return max;
