@@ -78,13 +78,15 @@ The claim is released when the work finishes — on success and on failure alike
 
 ## Validation gate
 
-Every PR passes the full validation gate before review sign-off, in this order:
+Every PR passes the full validation gate before review sign-off, in this canonical reporting order:
 
 - `npm run typecheck`
 - `npm test`
 - `npm run test:unit`
 - `npm run build`
 - `npm run test:package`
+
+Dependency installation runs alone. The canonical kit runner may then overlap three lanes: `typecheck → build → test:package`, `npm test`, and `npm run test:unit`. Join all lanes before `.xezar/checks/repository-checks.sh` (actual catalog, changelog and contract checks). Run `bash .xezar/checks/infra-tests.sh` locally as well for kit-check/workflow changes; its unconditional `Xezar infrastructure fixtures` CI job is required on every PR. Serial execution remains valid. Preserve the Vitest worker cap, execute every required command even after an ordinary gate failure, and leave cancelled command phases or unrecordable attempts incomplete. Atomic result publication is the completion commit point: if it finishes before a deferred cancellation is handled, retain and report the completed verdict. Only one reducer writes aggregate gate evidence. This schedule changes no command or acceptance requirement.
 
 Any non-zero exit fails the gate and blocks the PR. `npm test` is the fast server + cockpit unit/component suite (vitest) and `npm run test:unit` the node:test core-module suite; the build includes the `check:pack` tarball gate, and `npm run test:package` builds a release tarball, installs it into an isolated consumer, and exercises the offline CLI workflow. User-facing changes also need the separate real-browser QA (`npm run test:e2e`) described by the QA gate. The implementing skills run the configured gate before opening a PR, and `om-check-and-commit` runs it before pushing a hand-worked branch. The command list lives in `.ai/agentic.config.json`; when it changes, update it there and in this section together.
 

@@ -10,9 +10,9 @@ import { AgentBrowser, bootProjectId, readTestEnv } from './agent-browser'
  * Reachability: fully reachable. The server discovers skills fresh on every GET, so the
  * suite seeds two real project skills into this worktree's `.ai/skills/` (removed in
  * afterAll) — the catalog renders them bold and first (#377) next to whatever global skills
- * the host machine genuinely has. Refresh hits the real POST (no team repos configured in
- * dry-run → a fast no-op fetch answering the same catalog), which is exactly the #384
- * scenario: a refetch must not lose selection. Nothing else mutates state.
+ * the host machine genuinely has. Await initial catalog discovery before opening the UI,
+ * so Refresh tests the same-catalog #384 scenario rather than racing cold discovery.
+ * Refresh hits the real POST: a refetch must not lose selection.
  */
 
 const artifactsDir = resolve(import.meta.dirname, '../../../.local/qa/artifacts_e2e')
@@ -48,6 +48,10 @@ beforeAll(async () => {
     `---\nname: ${BETA}\ndescription: The second seeded skill\n---\n\nDo the beta thing.\n`,
     'utf8',
   )
+  // Default team discovery may still be running after the server becomes healthy.
+  const catalog = await fetch(`${baseUrl}/api/v1/skills?wait=1`)
+  expect(catalog.ok).toBe(true)
+  await catalog.json()
   browser = AgentBrowser.open(sessionId)
   browser.setViewport(DESKTOP.width, DESKTOP.height)
 })

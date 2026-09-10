@@ -73,7 +73,8 @@ GH="${DOGFOOD_GH:-gh}"
 #
 # Both names were read from the check-runs API on #128's own rebased head, never from `ci.yml`,
 # for the reason F-A1 records above.
-PROJECT_CHECKS=("Typecheck, unit tests, build, and package" "Cockpit browser e2e")
+# The fixture split adds a third unconditional check; old task snapshots must reconcile it.
+PROJECT_CHECKS=("Typecheck, unit tests, build, and package" "Cockpit browser e2e" "Xezar infrastructure fixtures")
 SKIP_ALLOWED=()
 
 usage() {
