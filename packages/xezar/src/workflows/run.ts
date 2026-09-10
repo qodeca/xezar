@@ -2549,10 +2549,34 @@ export class RunManager {
     if (session.pid !== undefined) registerRunProcess(runId, session.pid);
 
     const finishedAt = () => new Date().toISOString();
+    /**
+     * The turn's teardown — usage peaks, timers, and the turn-end autosave commit — runs
+     * BEFORE this turn's terminal status is published, which is the order `execute` already
+     * uses on the workflow path (`run finalize`, then `settleSuccess`, then `dropActive`,
+     * with no await between the last two). The continuation path had it the other way round,
+     * and that asymmetry is the second half of #155: `settleSuccess` published `review` and
+     * only then did the `finally` spawn git for `autosaveCommit`, so for the whole width of
+     * that commit the run advertised the review gate while still sitting in `active`.
+     * `finish()` refuses to accept a `review` run while `isActive(runId)` holds — the guard
+     * that stops a Finish from racing a send-back continuation into `done` — so a ✓ Accept
+     * arriving in that window answered `409 no open session` and the accept was lost, with
+     * the run left parked at `review` forever. Idempotent, because the terminal paths call it
+     * explicitly and `finally` calls it again for a throw that never reached one.
+     */
+    let turnTornDown = false;
+    const endTurn = async (): Promise<void> => {
+      if (turnTornDown) return;
+      turnTornDown = true;
+      this.recordUsagePeaks(runId);
+      this.clearIdleTimer(state);
+      this.clearAutosaveTimer(state);
+      if (state.cwd !== this.repoRoot) await autosaveCommit(state.cwd, 'turn end');
+    };
     try {
       await session.result;
       if (sessionError) throw new Error(sessionError);
       sink.sessionEnded(state.cancelled ? 'cancelled' : 'end_turn');
+      await endTurn();
       if (state.cancelled) {
         this.store.updateStep(runId, stepId, { status: 'cancelled', finishedAt: finishedAt() });
         this.store.updateRun(runId, { status: 'cancelled', finishedAt: finishedAt(), currentStepId: undefined });
@@ -2567,6 +2591,7 @@ export class RunManager {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       sink.sessionEnded('error', message);
+      await endTurn();
       this.store.updateStep(runId, stepId, { status: 'failed', error: message, finishedAt: finishedAt() });
       appendHandoffHeartbeat(this.dataDir, runId, `step "${stepId}" complete — status=failed`);
       this.store.updateRun(runId, {
@@ -2577,10 +2602,7 @@ export class RunManager {
       });
       this.store.appendEvent(runId, { type: 'lifecycle', message: `continue failed — ${message}` });
     } finally {
-      this.recordUsagePeaks(runId);
-      this.clearIdleTimer(state);
-      this.clearAutosaveTimer(state);
-      if (state.cwd !== this.repoRoot) await autosaveCommit(state.cwd, 'turn end');
+      await endTurn();
       this.dropActive(runId);
     }
   }
