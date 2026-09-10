@@ -34,9 +34,11 @@ import { PROJECT_ID_RE } from '../workspace/config.ts';
  *     (`.`/`..`), because the URL parser would resolve one and the call would land on a different
  *     route than the one named. A refused id is answered without any dispatch.
  *
- * ORIGIN. Every result carries `origin: 'mcp'`. Where that marker is PERSISTED (history, audit)
- * is D-06's decision and is not made here, so nothing is written for it: the record, the event
- * log and the files an MCP operation produces are the cockpit's, apart from this marker.
+ * ORIGIN. Every result carries `origin: 'mcp'`, derived from the door the call came through —
+ * never from client input, and never from a request header, which any local process could send
+ * (D-06 § 10.4 rule 1). Where it is PERSISTED is D-06's audit record (§ 10.2), a separate writer
+ * that is later work; D-06 § 12.1 adds no field to the run record. So nothing is written for it
+ * here: the record, the event log and the files an MCP operation produces are the cockpit's.
  *
  * NOT READ HERE. Nothing private to `RunManager` — in particular no `ActiveRun` field, which is
  * built at two sites (`execute`, `runContinuation`). An operation sees exactly what the route
