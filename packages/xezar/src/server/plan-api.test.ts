@@ -5,6 +5,7 @@ import type { Hono } from 'hono';
 import { planResponseSchema, workflowStepDefSchema } from '@qodeca/xezar-contract';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { RunStore } from '../runs/store.ts';
+import type { RunManager } from '../workflows/run.ts';
 import { createApp } from './server.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
 import { connectedProviderAuth } from './provider-auth.testkit.ts';
@@ -41,6 +42,10 @@ describe('POST /plan success body (#52)', () => {
     app = createApp({
       repoRoot,
       store,
+      // `POST /plan` never starts a run — the planner spawns its own one-shot session — so the
+      // manager is a required dep this route must not reach for. Left unimplemented on purpose:
+      // any call would throw and name itself in the failure.
+      manager: {} as unknown as RunManager,
       version: '0.0.0-test',
       providerAuth: connectedProviderAuth(),
     });
