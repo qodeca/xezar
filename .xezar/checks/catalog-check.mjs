@@ -362,18 +362,29 @@ if (!existsSync(configPath)) {
     for (const key of Object.keys(config)) {
       if (!CONFIG_KEYS.has(key)) err(".xezar/config.json", `unknown key "${key}" — Xezar ignores it`);
     }
-    // Two keys parse but are ignored by the engine, so committing either would document a
-    // limit that nothing enforces — worse than no key, because it reads as one.
-    //   maxParallel:   "Legacy per-repo `maxParallel` keys are ignored"   run.ts:931
-    //   memoryLimitMb: "Legacy per-repo `memoryLimitMb` keys are ignored" run.ts:713
-    // Both are workspace state in ~/.xezar/config.json.
-    const IGNORED_BY_ENGINE = {
-      maxParallel: "Parallelism is workspace state: ~/.xezar/config.json -> projects[].maxParallel and resources.maxParallel.",
-      memoryLimitMb: "The per-task memory ceiling is workspace state: ~/.xezar/config.json -> resources.memoryLimitMb.",
+    // Both keys below are refused in a COMMITTED project config, but for two different reasons,
+    // and the difference is load-bearing: the message has to say the true one.
+    //
+    // `maxParallel` really is ignored by the engine after migration 001 seeds it into the
+    // workspace file ("Legacy per-repo `maxParallel` keys are ignored", `run.ts`), so committing
+    // it would document a limit that nothing enforces — worse than no key, because it reads as
+    // one.
+    //
+    // `memoryLimitMb` is NOT ignored, and saying so was wrong from B2 onward: `run.ts` resolves it
+    // through `WorkspaceSemaphore.projectMemoryLimitMb(repoRoot)`, and a repo's own value
+    // overrides the workspace ceiling for that repo's runs. The refusal stands anyway, on kit
+    // POLICY: `.xezar/CLAUDE.md` says the committed project config carries no global resource
+    // limits, because this file travels to every checkout and a machine-sized ceiling is a
+    // property of a machine, not of the project. Set it per user, where it belongs.
+    const REFUSED_IN_PROJECT_CONFIG = {
+      maxParallel:
+        "The scheduler ignores it: parallelism is workspace state, in ~/.xezar/config.json -> projects[].maxParallel and resources.maxParallel. A committed key here would be a false promise.",
+      memoryLimitMb:
+        "The engine DOES honour a per-repo value, but the kit does not commit one: a memory ceiling is a property of a machine, not of a project, and this file travels to every checkout. Set it per user, in ~/.xezar/config.json -> resources.memoryLimitMb, or in an uncommitted local config.",
     };
-    for (const [key, where] of Object.entries(IGNORED_BY_ENGINE)) {
+    for (const [key, why] of Object.entries(REFUSED_IN_PROJECT_CONFIG)) {
       if (key in config) {
-        err(".xezar/config.json", `sets \`${key}\`, which the scheduler ignores. ${where} A committed key here would be a false promise.`);
+        err(".xezar/config.json", `must not set \`${key}\`. ${why}`);
       }
     }
     if (config.baseBranch != null && (typeof config.baseBranch !== "string" || !config.baseBranch.trim())) err("config", "baseBranch must be a nonempty string when supplied");

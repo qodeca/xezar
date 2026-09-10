@@ -67,8 +67,8 @@ and `serve` is what every other user types every day.
 
 | Suite | Command | Runner | Runs in CI? | Size (measured) |
 |---|---|---|---|---|
-| Server unit | `npm test` (project `server`) | vitest, node env | yes | 194 `*.test.ts` under `packages/xezar/src` |
-| Cockpit unit | `npm test` (project `web`) | vitest, jsdom | yes | 155 `*.test.ts(x)` under `packages/web/src` |
+| Server unit | `npm test` (project `server`) | vitest, node env | yes | 195 `*.test.ts` under `packages/xezar/src` |
+| Cockpit unit | `npm test` (project `web`) | vitest, jsdom | yes | 156 `*.test.ts(x)` under `packages/web/src` |
 | Api-client unit | `npm test` (project `api-client`) | vitest, node env | yes | 2 files |
 | Contract unit | `npm test` (project `contract`) | vitest, node env | yes | 2 files |
 | node:test core | `npm run test:unit` | node:test | yes | 10 files, `packages/xezar/test/unit/` |
@@ -176,9 +176,10 @@ HTTP API.
 | WebSocket topic bus, ref-counting, watchdog | cockpit unit | `api/ws.test.ts:92,106,188,236` | C |
 | Design-system rules (no raw hex, no `dark:`, no `100vh`) | cockpit unit | `design-guardian.test.ts` | C |
 | Bundle chunking config | cockpit unit | `vite-config.test.ts` | C |
+| The e2e suite's one-worker pin, and its deletion of `VITEST_MAX_WORKERS` | cockpit unit | `e2e-file-parallelism.test.ts` — one case per half: the env var is neutralized, and `fileParallelism: false` still states the intent declaratively | C |
 | Task-table Tool Name / Model columns (recorded vs inherited, verbatim model, mixed-chain `+N`, the phone card) | cockpit unit | `lib/runner-label.test.ts`; `routes/tasks-overview.test.tsx` (the "Tool Name and Model columns" describe); `routes/global-tasks.test.tsx` (same describe) | C |
 | Per-project table reads the PROJECT config, not health's boot-project answer | cockpit unit | `routes/tasks-overview.test.tsx` — "takes the Tool column's default runner from the PROJECT config, not from health" | C |
-| **Root vitest worker cap (`maxWorkers`)** | none | `vite-config.test.ts` guards the cockpit's chunking config; nothing guards the root `vitest.config.ts` cap, and the cap is a deliberate no-op on CI, so removing it is green everywhere | **N** |
+| **Root vitest worker cap (`maxWorkers`)** | none | `vite-config.test.ts` guards the cockpit's chunking config; nothing guards the root `vitest.config.ts` cap, and the cap is a deliberate no-op on CI, so removing it is green everywhere. Its SIBLING config guard now exists — `e2e-file-parallelism.test.ts` pins that the e2e config deletes `VITEST_MAX_WORKERS` (#162) — which is the shape this row is asking for, applied to the other file | **N** |
 | **App shell boot (`app.tsx`, `main.tsx`)** | none | both files **absent from the coverage report** – no unit test loads them | **N** |
 
 ### 3.4 Run and workflow lifecycle
@@ -217,7 +218,9 @@ HTTP API.
 | OpenCode runner teardown | server unit | `opencode-server-runner.test.ts` — driven against the real `__fixtures__/opencode/mock-opencode-serve.mjs`, the same binary the mapper fixtures use, rather than a mocked `node:child_process` (#55) | C |
 | **`createRunner` dispatch for claude / codex / opencode** | server unit (pi branch only) | `pi-runner.test.ts:37-43`; measured 80 % lines / 83 % branches | **P** |
 | **`detectEnvironment` probes for claude / codex / opencode / gh / git** | server unit (pi entry only) | `pi-runner.test.ts:45-66`; measured 73.8 % lines / 72.2 % branches | **P** |
-| pi wall-clock deadline escalates SIGTERM→SIGKILL | server unit | `pi-runner.test.ts:220-330` — four cases, including the `timeoutMs: 0` guard that must pass both ways | C |
+| pi wall-clock deadline escalates SIGTERM→SIGKILL | server unit | `pi-runner.test.ts` — four cases, including the `timeoutMs: 0` guard that must pass both ways | C |
+| A `128 + signal` exit the runner did NOT cause names its signal | server unit | `claude-cli-runner.test.ts` and `pi-runner.test.ts` (#156) — the other half of `terminatedByXezar`, contract in AGENT_PROTOCOL.md | C |
+| pi records an output-cap stop and an empty turn | server unit | `core/pi-empty-turn.test.ts`, plus the `pi/empty-turn-output-cap` golden fixture replayed by `pi-ui-mapper.test.ts` (#164) | C |
 
 ### 3.6 Directory sweep – nothing silently absent
 

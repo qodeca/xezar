@@ -472,13 +472,19 @@ steps:
 EOF
 printf '{\n  "baseBranch": "main",\n  "worktreeRetention": 0,\n  "maxParallel": 1\n}\n' \
   > "$root/.xezar/config.json"
-expect_fail "a repo-level maxParallel is rejected (the scheduler ignores it)" \
-  "which the scheduler ignores" node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+expect_fail "a repo-level maxParallel is rejected because the scheduler ignores it" \
+  "The scheduler ignores it" node "$SCRIPT_DIR/catalog-check.mjs" "$root"
 
+# Refused for a DIFFERENT reason, and the reason is what this case pins. The engine honours a
+# per-repo memoryLimitMb (B2: run.ts -> WorkspaceSemaphore.projectMemoryLimitMb), so the old
+# "which the scheduler ignores" wording was false and this assertion was keeping it alive. The
+# refusal is kit policy: a memory ceiling belongs to a machine, not to a file every checkout gets.
 printf '{\n  "baseBranch": "main",\n  "worktreeRetention": 0,\n  "memoryLimitMb": 16384\n}\n' \
   > "$root/.xezar/config.json"
-expect_fail "a repo-level memoryLimitMb is rejected too (ignored identically)" \
-  "which the scheduler ignores" node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+expect_fail "a repo-level memoryLimitMb is rejected on kit policy, not as ignored" \
+  "The engine DOES honour a per-repo value" node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+expect_fail "and its refusal never claims the scheduler ignores it" \
+  "must not set" node "$SCRIPT_DIR/catalog-check.mjs" "$root"
 
 # --- 1b. Changelog structure ---------------------------------------------------------------------
 # Added 2026-09-09 (#31). Two fix PRs each added their own `# Unreleased` section in different
