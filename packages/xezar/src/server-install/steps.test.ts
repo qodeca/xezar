@@ -1,9 +1,30 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createAutoUi } from './ui.ts';
-import { depCheckStep, generatePassword, sudoStep, StepAborted, StepSkipped, verifyCommand } from './steps.ts';
+import {
+  HOSTNAME_RE,
+  aptInstallTool,
+  brewInstallTool,
+  brewRemoveHint,
+  defaultRunner,
+  depCheckStep,
+  generatePassword,
+  hasPasswordlessSudo,
+  owned,
+  shared,
+  shquote,
+  sudoStep,
+  StepAborted,
+  StepCancelled,
+  StepSkipped,
+  verifyCommand,
+} from './steps.ts';
+import { runInstall, runUninstall, type RunOptions } from './engine.ts';
 import { RUNNER_IDS } from '../core/agent-runner.ts';
 import type { BackendCheck } from '../core/backend-detect.ts';
-import type { CommandResult, InstallContext, Runner, Ui } from './types.ts';
+import { CANCEL, type CommandResult, type InstallContext, type InstallStep, type PlatformStrategy, type Runner, type Ui } from './types.ts';
 
 function makeCtx(over: {
   ui?: Ui;
@@ -236,5 +257,511 @@ describe('depCheckStep — the agent-CLI gate', () => {
   it('stays unsatisfied in dry-run — the step must still be offered', async () => {
     const step = depCheckStep({ detect: async () => [check('claude', true)] });
     await expect(step.check!(makeCtx({ dryRun: true }))).resolves.toBe(false);
+  });
+});
+
+/** Capture everything a step said, in order, so ordering can be asserted. */
+function recordingUi(over: Partial<Ui> = {}): { ui: Ui; lines: string[]; notes: Array<[string, string | undefined]>; warns: string[] } {
+  const lines: string[] = [];
+  const notes: Array<[string, string | undefined]> = [];
+  const warns: string[] = [];
+  const ui: Ui = {
+    ...createAutoUi(),
+    info: (m) => lines.push(m),
+    message: (m) => lines.push(m),
+    success: (m) => lines.push(m),
+    error: (m) => lines.push(m),
+    warn: (m) => {
+      warns.push(m);
+      lines.push(m);
+    },
+    note: (m, t) => notes.push([m, t]),
+    ...over,
+  };
+  return { ui, lines, notes, warns };
+}
+
+/**
+ * `defaultRunner` is the only place in the installer that touches
+ * `child_process`, and every fake in this file is written against its contract.
+ * If the real implementation drifts from that contract — throws on a missing
+ * program, loses stderr, ignores `input` — every other test here keeps passing
+ * while the installer breaks on a real host. These cases run real (local,
+ * offline, port-free) children to pin it.
+ */
+describe('defaultRunner — the real child_process seam', () => {
+  it('captures stdout, stderr and the exit code without throwing on failure', async () => {
+    const result = await defaultRunner.capture(process.execPath, [
+      '-e',
+      'process.stdout.write("out"); process.stderr.write("err"); process.exit(3);',
+    ]);
+    expect(result).toEqual({ code: 3, stdout: 'out', stderr: 'err' });
+  });
+
+  it('feeds `input` through stdin, so a secret never has to ride in argv', async () => {
+    const result = await defaultRunner.capture(
+      process.execPath,
+      ['-e', 'process.stdin.on("data", (d) => process.stdout.write(d));'],
+      { input: 'ops:$apr1$secret-hash\n' },
+    );
+    expect(result).toEqual({ code: 0, stdout: 'ops:$apr1$secret-hash\n', stderr: '' });
+  });
+
+  it('reports a program that does not exist as code 127 instead of rejecting', async () => {
+    // A missing tool is the normal case on a fresh box: `capture` is the probe
+    // `verifyCommand` runs, so it has to answer "no" rather than crash the CLI.
+    const result = await defaultRunner.capture('xezar-no-such-program-56', ['--version']);
+    expect(result.code).toBe(127);
+  });
+
+  it('interactive resolves with the child exit code', async () => {
+    expect(await defaultRunner.interactive(process.execPath, ['-e', 'process.exit(7)'])).toBe(7);
+  });
+
+  it('interactive reports a missing program as 127 instead of rejecting', async () => {
+    expect(await defaultRunner.interactive('xezar-no-such-program-56', [])).toBe(127);
+  });
+
+  it('interactive pipes `input` to stdin and merges `env` for in-child expansion', async () => {
+    // The two secret channels that keep credentials out of `ps` output: stdin,
+    // and an env var the privileged command expands itself.
+    const code = await defaultRunner.interactive(
+      process.execPath,
+      [
+        '-e',
+        'let d = ""; process.stdin.on("data", (c) => { d += c; }); process.stdin.on("end", () => process.exit(d.trim() === process.env.XEZ_TEST_SECRET ? 0 : 1));',
+      ],
+      { input: 'pa55word\n', env: { XEZ_TEST_SECRET: 'pa55word' } },
+    );
+    expect(code).toBe(0);
+  });
+});
+
+describe('hasPasswordlessSudo', () => {
+  it('is false in dry-run and probes nothing at all', async () => {
+    const capture = vi.fn(async () => ({ code: 0, stdout: '', stderr: '' }));
+    expect(await hasPasswordlessSudo(makeCtx({ dryRun: true, runner: { capture } }))).toBe(false);
+    expect(capture).not.toHaveBeenCalled();
+  });
+
+  it('asks `sudo -n true` and answers with its exit code', async () => {
+    const capture = vi.fn(async () => ({ code: 0, stdout: '', stderr: '' }));
+    expect(await hasPasswordlessSudo(makeCtx({ runner: { capture } }))).toBe(true);
+    expect(capture).toHaveBeenCalledWith('sudo', ['-n', 'true']);
+    const denied = makeCtx({ runner: { capture: async () => ({ code: 1, stdout: '', stderr: '' }) } });
+    expect(await hasPasswordlessSudo(denied)).toBe(false);
+  });
+});
+
+describe('HOSTNAME_RE', () => {
+  it('accepts a bare DNS name', () => {
+    for (const host of ['example.com', 'shop.example.com', 'a-b.example.co.uk', 'XEZAR.Example.COM']) {
+      expect(HOSTNAME_RE.test(host)).toBe(true);
+    }
+  });
+
+  it('rejects a scheme, a path, a port, a bare label and anything a shell or nginx would read', () => {
+    // This regexp is what stops a --domain value reaching an nginx server_name
+    // or a shell command as something other than a hostname.
+    for (const host of [
+      'https://example.com',
+      'example.com/path',
+      'example.com:8080',
+      'example',
+      'exa mple.com',
+      'example.com;rm -rf /',
+      '-bad.example.com',
+      'example.com$(id)',
+      '',
+    ]) {
+      expect(HOSTNAME_RE.test(host)).toBe(false);
+    }
+  });
+});
+
+describe('shquote', () => {
+  it('quotes a plain command so it survives a copy-paste unchanged', () => {
+    expect(shquote('apt-get install -y nginx')).toBe("'apt-get install -y nginx'");
+  });
+
+  it('escapes an embedded single quote instead of ending the quoted string early', async () => {
+    // Proved through a real shell, not a hand-written escape sequence: the
+    // point of shquote is that `sudo bash -lc <quoted>` runs the exact string,
+    // and only a shell can testify to that.
+    const command = `printf %s 'it'\\''s here' > /tmp/x`;
+    const echoed = await defaultRunner.capture('sh', ['-c', `printf %s ${shquote(command)}`]);
+    expect(echoed.code).toBe(0);
+    expect(echoed.stdout).toBe(command);
+  });
+});
+
+describe('artifact helpers', () => {
+  it('owned() tags something uninstall must remove', () => {
+    expect(owned('file', { path: '/etc/nginx/sites-available/xezar' })).toEqual({
+      kind: 'owned',
+      type: 'file',
+      path: '/etc/nginx/sites-available/xezar',
+    });
+  });
+
+  it('shared() tags something uninstall must only list', () => {
+    expect(shared('package', { name: 'gh', removeHint: 'sudo apt-get remove -y gh' })).toEqual({
+      kind: 'shared',
+      type: 'package',
+      name: 'gh',
+      removeHint: 'sudo apt-get remove -y gh',
+    });
+  });
+});
+
+describe('sudoStep — what the operator is shown and asked', () => {
+  it('dry-run with a secret names the payload without ever printing it', async () => {
+    const { ui, lines } = recordingUi();
+    await sudoStep(makeCtx({ dryRun: true, ui }), {
+      description: 'write credentials',
+      command: 'cat > /etc/xezar/htpasswd',
+      input: 'ops:$apr1$secret-hash\n',
+      inputLabel: 'credential line',
+      verify: async () => true,
+    });
+    const shown = lines.join('\n');
+    expect(shown).toContain('DRY RUN');
+    expect(shown).toContain('credential line');
+    expect(shown).not.toContain('secret-hash');
+  });
+
+  it('prints the optional note above the raw command', async () => {
+    const { ui, lines } = recordingUi({ select: async () => 'delegate' as never, confirm: async () => true });
+    await sudoStep(makeCtx({ ui }), {
+      description: 'write the vhost',
+      note: 'server {\n  listen 80;\n}',
+      command: 'tee /etc/nginx/sites-available/xezar',
+      verify: async () => true,
+    });
+    const noteAt = lines.indexOf('server {\n  listen 80;\n}');
+    const commandAt = lines.findIndex((m) => m.startsWith('sudo bash -lc'));
+    expect(noteAt).toBeGreaterThanOrEqual(0);
+    expect(noteAt).toBeLessThan(commandAt);
+  });
+
+  it('warns about a non-zero sudo exit but still lets verify() have the last word', async () => {
+    // Some privileged commands exit non-zero and still leave the box correct
+    // (a service already enabled, an idempotent apt call). The verification
+    // probe, not the exit code, decides whether the step advanced.
+    const { ui, warns } = recordingUi({ select: async () => 'sudo' as never });
+    const ctx = makeCtx({ ui, runner: { interactive: async () => 2 } });
+    await sudoStep(ctx, { description: 'x', command: 'systemctl enable xezar', verify: async () => true });
+    expect(warns.some((m) => m.includes('code 2'))).toBe(true);
+  });
+
+  it('cancelling the sudo-vs-delegate prompt throws StepCancelled', async () => {
+    const { ui } = recordingUi({ select: async () => CANCEL as never });
+    await expect(
+      sudoStep(makeCtx({ ui }), { description: 'x', command: 'true', verify: async () => true }),
+    ).rejects.toBeInstanceOf(StepCancelled);
+  });
+
+  it('cancelling the "have you run it as root?" confirm throws StepCancelled', async () => {
+    const { ui } = recordingUi({
+      select: async () => 'delegate' as never,
+      confirm: async () => CANCEL as never,
+    });
+    await expect(
+      sudoStep(makeCtx({ ui }), { description: 'x', command: 'true', verify: async () => true }),
+    ).rejects.toBeInstanceOf(StepCancelled);
+  });
+
+  it('--yes without passwordless sudo delegates, and never blocks on a hidden prompt', async () => {
+    const interactive = vi.fn(async () => 0);
+    const select = vi.fn(async () => 'sudo' as never);
+    const confirm = vi.fn(async () => true);
+    const { ui } = recordingUi({ select, confirm });
+    const ctx = makeCtx({
+      assumeYes: true,
+      ui,
+      // `sudo -n true` fails ⇒ sudo would prompt for a password we do not have.
+      runner: { interactive, capture: async () => ({ code: 1, stdout: '', stderr: '' }) },
+    });
+    await sudoStep(ctx, { description: 'x', command: 'true', verify: async () => true });
+    expect(interactive).not.toHaveBeenCalled();
+    expect(select).not.toHaveBeenCalled();
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it('declining the redo prompt aborts the step', async () => {
+    const ui = scriptedUi(['delegate'], [true, false]); // run it; then "Try again?" = no
+    await expect(
+      sudoStep(makeCtx({ ui }), { description: 'x', command: 'true', verify: async () => false }),
+    ).rejects.toBeInstanceOf(StepAborted);
+  });
+
+  it('cancelling the retry-or-skip prompt on a skippable step throws StepCancelled', async () => {
+    const answers: Array<string | typeof CANCEL> = ['delegate', CANCEL];
+    const { ui } = recordingUi({ select: async () => answers.shift() as never, confirm: async () => true });
+    await expect(
+      sudoStep(makeCtx({ ui }), { description: 'ssl', command: 'certbot', skippable: true, verify: async () => false }),
+    ).rejects.toBeInstanceOf(StepCancelled);
+  });
+});
+
+describe('depCheckStep — installing, authorizing and rolling back', () => {
+  const check = (name: BackendCheck['name'], available: boolean, hint?: string): BackendCheck =>
+    hint === undefined ? { name, available } : { name, available, hint };
+
+  it('installs nothing and asks nothing when every dependency is already present', async () => {
+    const multiselect = vi.fn();
+    const { ui } = recordingUi({ multiselect });
+    const installTool = vi.fn(async () => {});
+    const step = depCheckStep({ detect: async () => [check('claude', true), check('gh', true)], installTool });
+    await expect(step.run(makeCtx({ ui }))).resolves.toEqual({ artifacts: [] });
+    expect(installTool).not.toHaveBeenCalled();
+    expect(multiselect).not.toHaveBeenCalled();
+  });
+
+  it('offers only the missing tools, never git, and installs exactly what was picked', async () => {
+    // `git` is the host's own prerequisite, not something the wizard installs —
+    // offering it invites an operator to "fix" a box that is already fine.
+    const multiselect = vi.fn(
+      async (_opts: { options: Array<{ value: unknown; label: string }> }) =>
+        ['gh', 'claude', 'opencode'] as never,
+    );
+    const { ui, notes } = recordingUi({ multiselect: multiselect as Ui['multiselect'] });
+    const installTool = vi.fn(async () => {});
+    const step = depCheckStep({
+      detect: async () => [
+        check('codex', true),
+        check('claude', false, 'run `claude login`'),
+        check('gh', false, 'run `gh auth login`'),
+        check('opencode', false),
+        check('git', false),
+      ],
+      installTool,
+    });
+    const created = await step.run(makeCtx({ ui }));
+    const offered = (multiselect.mock.calls[0]?.[0].options ?? []).map((o) => String(o.value));
+    expect(offered).toEqual(['claude', 'gh', 'opencode']);
+    expect(installTool.mock.calls.map((c) => (c as unknown as [InstallContext, string])[1])).toEqual([
+      'gh',
+      'claude',
+      'opencode',
+    ]);
+    // Every installed tool is recorded as `shared` with its own removal hint —
+    // uninstall lists these instead of yanking a tool the operator now uses.
+    expect(created?.artifacts).toEqual([
+      { kind: 'shared', type: 'package', name: 'gh', removeHint: 'sudo apt-get remove -y gh' },
+      { kind: 'shared', type: 'package', name: 'claude', removeHint: 'npm rm -g @anthropic-ai/claude-code' },
+      { kind: 'shared', type: 'package', name: 'opencode', removeHint: '# remove opencode manually' },
+    ]);
+    // The authorization instruction is shown only for tools that carry one.
+    expect(notes).toEqual([
+      ['run `gh auth login`', 'Authorize gh'],
+      ['run `claude login`', 'Authorize claude'],
+    ]);
+  });
+
+  it('cancelling the tool picker throws StepCancelled and installs nothing', async () => {
+    const installTool = vi.fn(async () => {});
+    const { ui } = recordingUi({ multiselect: async () => CANCEL as never });
+    const step = depCheckStep({ detect: async () => [check('gh', false)], installTool });
+    await expect(step.run(makeCtx({ ui }))).rejects.toBeInstanceOf(StepCancelled);
+    expect(installTool).not.toHaveBeenCalled();
+  });
+
+  it('a platform-specific removeHint reaches the recorded artifact', async () => {
+    const { ui } = recordingUi({ multiselect: async () => ['gh'] as never });
+    const step = depCheckStep({
+      detect: async () => [check('gh', false)],
+      installTool: async () => {},
+      removeHint: brewRemoveHint,
+    });
+    const created = await step.run(makeCtx({ ui }));
+    expect(created?.artifacts).toEqual([
+      { kind: 'shared', type: 'package', name: 'gh', removeHint: 'brew uninstall gh' },
+    ]);
+  });
+
+  it('undo lists the shared tools with their removal commands — it never removes them', async () => {
+    const { ui, notes } = recordingUi();
+    const step = depCheckStep();
+    await step.undo(makeCtx({ ui }), {
+      artifacts: [
+        shared('package', { name: 'gh', removeHint: 'sudo apt-get remove -y gh' }),
+        shared('package', { name: 'opencode' }),
+      ],
+    });
+    expect(notes).toHaveLength(1);
+    expect(notes[0]?.[0]).toBe('sudo apt-get remove -y gh\nopencode');
+    expect(notes[0]?.[1]).toMatch(/remove manually/);
+  });
+
+  it('undo says nothing when it installed nothing, and tolerates a null ledger', async () => {
+    const { ui, notes } = recordingUi();
+    const step = depCheckStep();
+    await step.undo(makeCtx({ ui }), { artifacts: [] });
+    await step.undo(makeCtx({ ui }), null);
+    expect(notes).toEqual([]);
+  });
+});
+
+describe('aptInstallTool (Ubuntu) — apt for gh, sudo npm for the agent CLIs', () => {
+  /** `--yes` + passwordless sudo, so every sudoStep runs straight through. */
+  const yesCtx = (over: { ui?: Ui; interactive?: Runner['interactive'] } = {}) =>
+    makeCtx({
+      assumeYes: true,
+      ui: over.ui,
+      runner: {
+        interactive: over.interactive ?? (async () => 0),
+        capture: async () => ({ code: 0, stdout: '', stderr: '' }),
+      },
+    });
+
+  it('installs gh through apt as a privileged step', async () => {
+    const interactive = vi.fn(async () => 0);
+    await aptInstallTool(yesCtx({ interactive }), 'gh');
+    expect(interactive).toHaveBeenCalledWith(
+      'sudo',
+      ['bash', '-lc', 'apt-get update && apt-get install -y gh'],
+      undefined,
+    );
+  });
+
+  it('installs an agent CLI globally with npm, under sudo (system node)', async () => {
+    const interactive = vi.fn(async () => 0);
+    await aptInstallTool(yesCtx({ interactive }), 'claude');
+    expect(interactive).toHaveBeenCalledWith(
+      'sudo',
+      ['bash', '-lc', 'npm install -g @anthropic-ai/claude-code'],
+      undefined,
+    );
+  });
+
+  it('points at the website for opencode rather than pretending to install it', async () => {
+    const { ui, notes } = recordingUi();
+    const interactive = vi.fn(async () => 0);
+    await aptInstallTool(yesCtx({ ui, interactive }), 'opencode');
+    expect(notes[0]?.[0]).toContain('opencode.ai');
+    expect(interactive).not.toHaveBeenCalled();
+  });
+
+  it('warns instead of guessing when it has no installer for a tool', async () => {
+    const { ui, warns } = recordingUi();
+    const interactive = vi.fn(async () => 0);
+    await aptInstallTool(yesCtx({ ui, interactive }), 'some-future-cli');
+    expect(warns.join('\n')).toContain('no known installer for some-future-cli');
+    expect(interactive).not.toHaveBeenCalled();
+  });
+});
+
+describe('brewInstallTool (macOS) — brew for gh, plain npm for the agent CLIs', () => {
+  it('installs gh with brew and never escalates to sudo', async () => {
+    const interactive = vi.fn(async () => 0);
+    await brewInstallTool(makeCtx({ runner: { interactive } }), 'gh');
+    expect(interactive).toHaveBeenCalledWith('brew', ['install', 'gh']);
+  });
+
+  it('installs an agent CLI with plain `npm install -g` — macOS needs no sudo here', async () => {
+    const interactive = vi.fn(async () => 0);
+    await brewInstallTool(makeCtx({ runner: { interactive } }), 'codex');
+    expect(interactive).toHaveBeenCalledWith('npm', ['install', '-g', '@openai/codex']);
+  });
+
+  it('dry-run prints both commands and runs neither', async () => {
+    const interactive = vi.fn(async () => 0);
+    const { ui, lines } = recordingUi();
+    const ctx = makeCtx({ dryRun: true, ui, runner: { interactive } });
+    await brewInstallTool(ctx, 'gh');
+    await brewInstallTool(ctx, 'codex');
+    expect(lines).toEqual([
+      'DRY RUN — would run: brew install gh',
+      'DRY RUN — would run: npm install -g @openai/codex',
+    ]);
+    expect(interactive).not.toHaveBeenCalled();
+  });
+});
+
+describe('brewRemoveHint', () => {
+  it('uses brew for gh, npm for the agent CLIs, and a manual note for anything else', () => {
+    expect(brewRemoveHint('gh')).toBe('brew uninstall gh');
+    expect(brewRemoveHint('claude')).toBe('npm rm -g @anthropic-ai/claude-code');
+    expect(brewRemoveHint('codex')).toBe('npm rm -g @openai/codex');
+    expect(brewRemoveHint('opencode')).toBe('# remove opencode manually');
+  });
+});
+
+/**
+ * Rollback scope. `engine.test.ts` already pins that a failing required step
+ * stops the run and that install-then-uninstall reverses each step in reverse
+ * order. The other half of that contract has no case: a step the run never
+ * reached must NOT be undone. An over-eager undo runs a removal against a host
+ * where nothing was created — deleting a file, a service or a cert that
+ * belonged to something else.
+ */
+describe('rollback scope — a step that never ran is never undone', () => {
+  let home: string;
+  const original = process.env.XEZ_HOME;
+
+  beforeEach(() => {
+    home = mkdtempSync(join(tmpdir(), 'xez-steps-rollback-'));
+    process.env.XEZ_HOME = home;
+  });
+  afterEach(() => {
+    if (original === undefined) delete process.env.XEZ_HOME;
+    else process.env.XEZ_HOME = original;
+    rmSync(home, { recursive: true, force: true });
+  });
+
+  const runOpts = (over: Partial<RunOptions> = {}): RunOptions => ({
+    dryRun: false,
+    assumeYes: true,
+    reconfigure: new Set(),
+    repoRoot: '/repo',
+    now: '2026-09-10T00:00:00.000Z',
+    ui: createAutoUi(),
+    runner: { capture: async () => ({ code: 0, stdout: '', stderr: '' }), interactive: async () => 0 },
+    ...over,
+  });
+
+  const fakeStep = (id: string, over: Partial<InstallStep> = {}): InstallStep => ({
+    id,
+    title: id,
+    check: vi.fn(async () => false),
+    run: vi.fn(async () => ({ artifacts: [{ kind: 'owned' as const, type: 'file', path: `/etc/${id}` }] })),
+    undo: vi.fn(async () => {}),
+    ...over,
+  });
+
+  const strategyOf = (steps: InstallStep[]): PlatformStrategy => ({
+    id: 'ubuntu-vps',
+    label: 'Ubuntu VPS',
+    preflight: async () => {},
+    steps: () => steps,
+    redeploy: async () => {},
+  });
+
+  it('undoes the failed step and everything before it, and leaves the untouched steps alone', async () => {
+    const first = fakeStep('first');
+    const failing = fakeStep('failing', {
+      run: vi.fn(async () => {
+        throw new StepAborted('verification failed');
+      }),
+    });
+    const never = fakeStep('never');
+    const install = await runInstall(strategyOf([first, failing, never]), runOpts());
+    expect(install.status).toBe('failed');
+    expect(never.run).not.toHaveBeenCalled();
+
+    const firstUndo = fakeStep('first');
+    const failingUndo = fakeStep('failing');
+    const neverUndo = fakeStep('never');
+    const result = await runUninstall(strategyOf([firstUndo, failingUndo, neverUndo]), runOpts());
+    expect(result.status).toBe('complete');
+    // The step that never ran has no record, so it has nothing to reverse.
+    expect(neverUndo.undo).not.toHaveBeenCalled();
+    // The step that failed mid-run IS reversed — it may have created artifacts
+    // before it failed, which is exactly the half-configured host this guards.
+    expect(failingUndo.undo).toHaveBeenCalledOnce();
+    expect(firstUndo.undo).toHaveBeenCalledWith(expect.anything(), {
+      artifacts: [{ kind: 'owned', type: 'file', path: '/etc/first' }],
+    });
   });
 });

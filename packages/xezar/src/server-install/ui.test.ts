@@ -85,4 +85,152 @@ describe('createAutoUi', () => {
     ui.message('sudo bash -lc ...');
     expect(sink).toHaveBeenCalledWith('sudo bash -lc ...');
   });
+
+  it('confirm defaults to yes when the prompt declares no initial value', async () => {
+    expect(await createAutoUi().confirm({ message: 'ok?' })).toBe(true);
+  });
+
+  it('select has nothing to pick when a prompt offers no options and no initial value', async () => {
+    expect(await createAutoUi().select({ message: 'pick', options: [] })).toBeUndefined();
+  });
+
+  it('spinner logs only the phases it is actually given a message for', () => {
+    const sink = vi.fn();
+    const spinner = createAutoUi({}, sink).spinner();
+    // A headless spinner must stay silent when the caller passes nothing —
+    // otherwise every start/stop pair prints a blank line into a CI log.
+    spinner.start();
+    spinner.stop();
+    expect(sink).not.toHaveBeenCalled();
+    spinner.start('installing');
+    spinner.message('halfway');
+    spinner.stop('done');
+    expect(sink.mock.calls.map((call) => call[0])).toEqual(['installing', 'halfway', 'done']);
+  });
+});
+
+/**
+ * The clack adapter is a thin passthrough, and "thin passthrough" is exactly
+ * the shape that rots silently: a surface wired to the wrong backend method
+ * (or to no backend at all) still type-checks and still returns. These cases
+ * pin each surface to the backend call it must make.
+ */
+describe('createClackUi — every surface reaches the backend it claims', () => {
+  it('routes intro, outro, note and each log level to clack', () => {
+    const calls: string[] = [];
+    const record =
+      (tag: string) =>
+      (message: unknown, title?: unknown) => {
+        calls.push(title === undefined ? `${tag}:${String(message)}` : `${tag}:${String(message)}|${String(title)}`);
+      };
+    const ui = createClackUi(
+      fakeBackend({
+        intro: record('intro') as never,
+        outro: record('outro') as never,
+        note: record('note') as never,
+        log: {
+          info: record('info'),
+          success: record('success'),
+          warn: record('warn'),
+          error: record('error'),
+          message: record('message'),
+          step: record('step'),
+        } as never,
+      }),
+    );
+    ui.intro('xezar server-install');
+    ui.outro('done');
+    ui.note('body', 'Authorize gh');
+    ui.info('i');
+    ui.success('s');
+    ui.warn('w');
+    ui.error('e');
+    expect(calls).toEqual([
+      'intro:xezar server-install',
+      'outro:done',
+      'note:body|Authorize gh',
+      'info:i',
+      'success:s',
+      'warn:w',
+      'error:e',
+    ]);
+  });
+
+  it('message() bypasses the note box and writes the raw line to stdout', () => {
+    // clack's note() draws a border that mangles a wrapped shell command, and a
+    // mangled command is one the operator cannot copy-paste. This surface must
+    // stay a plain stdout write.
+    const write = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    try {
+      createClackUi(fakeBackend({})).message("sudo bash -lc 'apt-get install -y nginx'");
+      expect(write).toHaveBeenCalledWith("\nsudo bash -lc 'apt-get install -y nginx'\n");
+    } finally {
+      write.mockRestore();
+    }
+  });
+
+  it('multiselect returns the picked list and defaults `required` to false', () => {
+    const multiselect = vi.fn().mockResolvedValue(['gh', 'codex']);
+    const ui = createClackUi(fakeBackend({ multiselect }));
+    return (async () => {
+      await expect(
+        ui.multiselect({ message: 'tools', options: [{ value: 'gh', label: 'gh' }] }),
+      ).resolves.toEqual(['gh', 'codex']);
+      // Not required: "install nothing" is a legitimate answer to the dependency
+      // picker, and a required multiselect would trap the operator in it.
+      expect((multiselect.mock.calls[0]?.[0] as { required?: boolean }).required).toBe(false);
+      await ui.multiselect({ message: 'tools', options: [], required: true });
+      expect((multiselect.mock.calls[1]?.[0] as { required?: boolean }).required).toBe(true);
+    })();
+  });
+
+  it('maps a cancelled multiselect, text and password to CANCEL, never a throw', async () => {
+    const cancelled = vi.fn().mockResolvedValue(CANCEL_SYMBOL);
+    const ui = createClackUi(
+      fakeBackend({ multiselect: cancelled, text: cancelled, password: cancelled }),
+    );
+    await expect(ui.multiselect({ message: 'm', options: [] })).resolves.toBe(CANCEL);
+    await expect(ui.text({ message: 't' })).resolves.toBe(CANCEL);
+    await expect(ui.password({ message: 'p' })).resolves.toBe(CANCEL);
+  });
+
+  it('wraps validate so an untouched prompt is validated as "" and never as undefined', async () => {
+    // clack hands validate() `undefined` while nothing has been typed. Every
+    // validator in this codebase takes a string, so an unwrapped call would
+    // throw inside the prompt loop instead of showing "required".
+    const seen: Array<string | undefined> = [];
+    const answerAfterValidating = (value: string) =>
+      vi.fn(async (opts: { validate?: (v: string | undefined) => string | undefined }) => {
+        seen.push(opts.validate?.(undefined));
+        return value;
+      });
+    const ui = createClackUi(
+      fakeBackend({
+        text: answerAfterValidating('shop.example.com') as never,
+        password: answerAfterValidating('hunter22') as never,
+      }),
+    );
+    const required = (v: string) => (v.length > 0 ? undefined : 'required');
+    await expect(ui.text({ message: 'domain', validate: required })).resolves.toBe('shop.example.com');
+    await expect(ui.password({ message: 'password', validate: required })).resolves.toBe('hunter22');
+    expect(seen).toEqual(['required', 'required']);
+  });
+
+  it('passes no validator through when the prompt declares none', async () => {
+    const text = vi.fn(async (opts: { validate?: unknown }) => String(opts.validate));
+    const ui = createClackUi(fakeBackend({ text: text as never }));
+    await expect(ui.text({ message: 'domain' })).resolves.toBe('undefined');
+  });
+
+  it('spinner delegates start, message and stop to the backend handle', () => {
+    const handle = { start: vi.fn(), message: vi.fn(), stop: vi.fn() };
+    const ui = createClackUi(fakeBackend({ spinner: (() => handle) as never }));
+    const spinner = ui.spinner();
+    spinner.start('installing');
+    spinner.message('halfway');
+    spinner.stop('done');
+    expect(handle.start).toHaveBeenCalledWith('installing');
+    expect(handle.message).toHaveBeenCalledWith('halfway');
+    expect(handle.stop).toHaveBeenCalledWith('done');
+  });
 });
