@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { appendFileSync, createReadStream, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync, writeSync } from 'node:fs';
+import { appendFileSync, createReadStream, existsSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync, writeSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -139,7 +139,11 @@ it.each(['changed', 'removed', 'truncated', 'replaced'])('refuses %s recovery in
   if (fault === 'changed') appendFileSync(`${path}.corrections.json`, ' ');
   if (fault === 'removed') rmSync(`${path}.corrections.json`);
   if (fault === 'truncated') writeFileSync(path, '');
-  if (fault === 'replaced') { rmSync(path); writeFileSync(path, raw); }
+  if (fault === 'replaced') {
+    // Keep the old inode allocated: unlink/recreate may reuse it immediately on Linux.
+    renameSync(path, `${path}.original`);
+    writeFileSync(path, raw);
+  }
   expect(() => acquireHistoryView(path)).toThrow('history correction cannot be verified');
 });
 
