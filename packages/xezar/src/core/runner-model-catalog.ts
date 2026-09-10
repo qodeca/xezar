@@ -96,7 +96,17 @@ export class RunnerModelCatalog {
   }
 }
 
+/** How each runner is named in its own failure message. A `Record` rather than the chained
+ *  ternary this replaced: that fell through to "OpenCode" for anything unrecognized, so pi's
+ *  first failure would have reported another backend's name (#152). A new runner id now fails to
+ *  compile here instead. */
+const RUNNER_DISPLAY_NAME: Record<RunnerId, string> = {
+  claude: 'Claude',
+  codex: 'Codex',
+  opencode: 'OpenCode',
+  pi: 'pi',
+};
+
 function unavailableReason(runner: RunnerId): string {
-  const name = runner === 'codex' ? 'Codex' : runner === 'claude' ? 'Claude' : 'OpenCode';
-  return `${name} model discovery is temporarily unavailable`;
+  return `${RUNNER_DISPLAY_NAME[runner]} model discovery is temporarily unavailable`;
 }

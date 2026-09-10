@@ -5,6 +5,7 @@ const HOME: AgentHomePaths = {
   claude: '/home/u/.claude',
   codex: '/home/u/.codex',
   opencodeConfig: '/home/u/.config/opencode',
+  pi: '/home/u/.pi/agent',
 };
 
 describe('agent-config catalog', () => {
