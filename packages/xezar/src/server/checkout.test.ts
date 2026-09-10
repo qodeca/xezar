@@ -1,4 +1,5 @@
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -149,6 +150,23 @@ describe('checkout — the cleanup guard', () => {
     }
   });
 
+  // `chmod` is advisory for root, so this case cannot be produced in a root container. Skipping
+  // is honest: the branch it covers is "the rm failed", and root cannot make an rm fail.
+  it.skipIf(process.getuid?.() === 0)('REFUSES to report success when the rm itself fails', async () => {
+    const target = join(root, 'repo');
+    mkdirSync(join(target, 'objects'), { recursive: true });
+    chmodSync(root, 0o555);
+    try {
+      // Every containment check passes — this is the last guard, the one that keeps a failed
+      // delete from being reported as a clean one (which would let the caller register a
+      // half-clone it believes is gone).
+      expect(await cleanupCheckout(root, target)).toBe(false);
+      expect(existsSync(target)).toBe(true);
+    } finally {
+      chmodSync(root, 0o755);
+    }
+  });
+
   it('REFUSES a path that does not exist, and a file', async () => {
     const file = join(root, 'a-file');
     writeFileSync(file, 'x', 'utf8');
@@ -279,6 +297,52 @@ describe('checkoutRepo — clone, failure cleanup, existing target', () => {
     // Not even a progress event: nothing about this attempt started.
     expect(events).toEqual([]);
   });
+
+  it('refuses a relative checkout root rather than resolving it against the server cwd', async () => {
+    // `projectsDir` is documented as ALREADY `~`-expanded and absolute. Resolving a relative one
+    // here would silently clone into whatever directory `xezar serve` happens to have been
+    // started from, which is never what the dialog previewed.
+    const result = await checkoutRepo({
+      url: 'qodeca/xezar',
+      projectsDir: 'relative/checkouts',
+      onProgress: () => {},
+    });
+    expect(result).toMatchObject({ ok: false, status: 500 });
+    expect(result).toHaveProperty('error', expect.stringContaining('not an absolute path'));
+    expect(existsSync(join(process.cwd(), 'relative'))).toBe(false);
+  });
+
+  it('reports an unusable checkout root as a 500 instead of throwing', async () => {
+    // A file where the root should be: `mkdir -p` fails with ENOTDIR. This is the same failure
+    // a read-only home produces, and it must read as "the root is not writable".
+    const file = join(root, 'a-file');
+    writeFileSync(file, 'x', 'utf8');
+    const result = await checkoutRepo({
+      url: 'qodeca/xezar',
+      projectsDir: join(file, 'checkouts'),
+      onProgress: () => {},
+    });
+    expect(result).toMatchObject({ ok: false, status: 500 });
+    expect(result).toHaveProperty('error', expect.stringContaining('checkout root is not writable'));
+  });
+
+  // See the cleanup case above: root ignores the permission bits this relies on.
+  it.skipIf(process.getuid?.() === 0)(
+    'a target that cannot be created is a 500, not the 409 reserved for "it already exists"',
+    async () => {
+      chmodSync(root, 0o555);
+      try {
+        const result = await run();
+        expect(result).toMatchObject({ ok: false, status: 500 });
+        // The distinction matters to the dialog: 409 tells the user to pick another name, 500
+        // tells them the root is broken. Getting them the wrong way round sends them in circles.
+        expect(result).toHaveProperty('error', expect.stringContaining('could not create'));
+        expect(events).toEqual([]);
+      } finally {
+        chmodSync(root, 0o755);
+      }
+    },
+  );
 
   it('creates the checkout root on demand — a fresh install has never had one', async () => {
     const fresh = join(root, 'never', 'existed');
