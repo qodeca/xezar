@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { RunStore, type RunRecord } from '../runs/store.ts';
 import { MAX_AUTO_CONTINUES, RunManager } from './run.ts';
 import type { WorkflowDef } from './types.ts';
+import { WorkspaceSemaphore } from '../workspace/semaphore.ts';
 
 const run = promisify(execFile);
 const GIT_ID = ['-c', 'user.name=test', '-c', 'user.email=test@local'];
@@ -348,4 +349,49 @@ describe('the autonomous turn-end nudge (#489, gap R20)', () => {
 
     expect(store.getRun(record.id)?.status).toBe('done'); // never `review`
   }, 30_000);
+  it.each([false, true])('explicit monitoring parks autonomy without an immediate nudge (Continue=%s)', async (continued) => {
+    const record = manager.startRun(SINGLE_STEP, {
+      task: continued ? 'mock:done first pass' : 'mock:monitoring waiting for CI',
+      worktree: false, autonomous: true,
+    });
+    currentId = record.id;
+    if (continued) {
+      await waitFor(record.id, (r) => r?.status === 'done');
+      expect(manager.continueRun(record.id, { text: 'mock:monitoring waiting for CI' }).ok).toBe(true);
+    }
+    await waitFor(record.id, () => nudgeNotes(record.id).length > 0 || Boolean(store.getRun(record.id)?.monitoringWakeAt));
+    expect(nudgeNotes(record.id)).toHaveLength(0);
+    expect(store.getRun(record.id)?.activity).toBe('monitoring');
+    expect(Date.parse(String(store.getRun(record.id)?.monitoringWakeAt))).toBeGreaterThan(Date.now());
+    expect(inbound().some((text) => text.includes(NUDGE_TEXT))).toBe(false);
+    // User steering remains a real wake source and DONE still closes the parked run.
+    expect(manager.sendMessage(record.id, [{ type: 'text', text: 'mock:done stop waiting' }])).toBe(true);
+    await waitFor(record.id, (r) => r?.status === 'done');
+    expect(store.getRun(record.id)?.monitoringWakeAt).toBeUndefined();
+  }, 30_000);
+
+  it.each([false, true])('autonomous monitoring still wakes on its timer and can be cancelled (Continue=%s)', async (continued) => {
+    manager.dispose();
+    manager = new RunManager(store, repoRoot, {
+      semaphore: new WorkspaceSemaphore({ initial: { monitoringWakeIntervalMinutes: 0.001 } }),
+    });
+    const record = manager.startRun(SINGLE_STEP, {
+      task: continued ? 'mock:done first pass' : 'mock:monitoring wait for a result',
+      worktree: false, autonomous: true,
+    });
+    currentId = record.id;
+    if (continued) {
+      await waitFor(record.id, (r) => r?.status === 'done');
+      expect(manager.continueRun(record.id, { text: 'mock:monitoring wait for a result' }).ok).toBe(true);
+    }
+    await waitFor(record.id, () => readEvents(record.id).some((e) =>
+      e.type === 'note' && String(e.message).includes('automatic monitoring wake-up (1/40)')));
+    await waitFor(record.id, () => inbound().some((text) => text.includes('Re-check the downstream work you were monitoring.')));
+    const userMessages = readEvents(record.id).filter((e) => e.type === 'user-message');
+    expect(userMessages).toHaveLength(continued ? 1 : 0);
+    manager.cancel(record.id);
+    await waitFor(record.id, (r) => r?.status === 'cancelled');
+    expect(store.getRun(record.id)?.monitoringWakeAt).toBeUndefined();
+  }, 30_000);
+
 });

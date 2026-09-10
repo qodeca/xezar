@@ -5,7 +5,7 @@
 # share a run with a worktree write.
 #
 # EVERY WAIT LIVES IN THE LAST STEP. The engine kills any agent step that is not the last step of
-# its workflow at 30 minutes (issue #22). CI on the changelog PR, the Release run, npm and the
+# its workflow at its configured timeout (default 30 minutes, issue #22). CI on the changelog PR, the Release run, npm and the
 # bot's bump PR together take longer than that, so the publish step (`handoff`) is the final
 # agent step: it is the only step that may block on remote state, and being last also keeps
 # XEZ:ASK live for every stop.

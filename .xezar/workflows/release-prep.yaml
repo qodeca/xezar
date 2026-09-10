@@ -1,5 +1,5 @@
 name: release-prep
-description: Audit changesets and draft release notes on a branch off main. Stops before merge and publish.
+description: Audit the requested release readiness and draft notes using the maintained publishing pipeline. Stops before merge and publish.
 steps:
   - id: kit
     name: Snapshot the local project kit

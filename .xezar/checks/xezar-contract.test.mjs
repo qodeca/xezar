@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { parse as parseYaml } from 'yaml';
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -25,7 +26,8 @@ test('real Xezar workflow loader and skill parser accept every local role withou
 test('canonical gates match the five actual validation commands in exact order',()=>{
  const list=JSON.parse(exec('bash',[path.join(checks,'repo-gates.sh'),'--list','--json']));
  const agreed=JSON.parse(fs.readFileSync(path.join(repo,'.ai/agentic.config.json'))).validation.commands;
- assert.deepEqual(list.gates.slice(1,-1).map(g=>g.command),agreed);
+ assert.deepEqual(list.gates.map(g=>g.command).filter(c=>agreed.includes(c)),agreed);
+ assert.equal(list.gates.at(-1).command,'.xezar/checks/repository-checks.sh');
  assert.equal(list.gates[0].command,'npm ci');
  const scripts=JSON.parse(fs.readFileSync(path.join(repo,'package.json'))).scripts;
  for(const c of agreed){const name=c==='npm test'?'test':c.slice('npm run '.length);assert.ok(scripts[name]);}
@@ -59,7 +61,7 @@ test('SDLC policy never maps unknown labels or failed QA to merge eligibility',a
  assert.ok(projectPolicy({labels:[{name:'needs-qa'},{name:'skip-qa'}]}).refused);
  assert.equal(projectPolicy({labels:[{name:'needs-qa'},{name:'qa-approved'}]}).passed,true);
  assert.equal(projectPolicy({labels:[]}).passed,true);
- const source=fs.readFileSync(path.join(checks,'integration-preflight.sh'),'utf8');assert.match(source,/lib\/project-policy\.mjs/);assert.match(source,/PROJECT_CHECKS=\("Typecheck, unit tests, build, and package" "Cockpit browser e2e"\)/);assert.match(source,/SKIP_ALLOWED=\(\)/);
+ const source=fs.readFileSync(path.join(checks,'integration-preflight.sh'),'utf8');assert.match(source,/lib\/project-policy\.mjs/);assert.match(source,/PROJECT_CHECKS=\("Typecheck, unit tests, build, and package" "Cockpit browser e2e" "Xezar infrastructure fixtures"\)/);assert.match(source,/SKIP_ALLOWED=\(\)/);
 });
 test('guidance covers semantic analysis, stage ownership, squash policy and evidence tiers',()=>{
  const doc=fs.readFileSync(path.join(kit,'docs/business-analysis.md'),'utf8').toLowerCase();
@@ -100,4 +102,48 @@ test('bootstrap refuses a checkout under the retired pre-.xezar worktree locatio
  const root=fixture();const id='cd123456-legacy';const wt=path.join(root,'.ai/xezar/worktrees',id);git(root,'worktree','add','-qb',`xez/${id.slice(0,8)}`,wt,'main');
  const result=bootstrap(root,wt);assert.notEqual(result.status,0);
  assert.ok(!fs.existsSync(path.join(wt,'.local/xezar-kit/snapshot.json')));
+});
+
+// Self-contained delivered skills deliberately retain the shared text; detect drift at authoring time.
+test('shared contracts reject a single skill dropping a guarantee', () => {
+ const root=fixture();
+ const catalog=path.join(root,'.xezar/checks/catalog-check.mjs');
+ assert.equal(spawnSync(process.execPath,[catalog,root],{encoding:'utf8'}).status,0);
+ const skill=path.join(root,'.xezar/skills/xezar-testing.md');
+ fs.writeFileSync(skill,fs.readFileSync(skill,'utf8').replace('Never waive mandatory quality/AC.','Quality is optional.'));
+ const result=spawnSync(process.execPath,[catalog,root],{encoding:'utf8'});
+ assert.notEqual(result.status,0);
+ assert.match(result.stdout,/shared contract/i);
+});
+
+
+test('infrastructure CI is unconditional and agrees with the required integration check',()=>{
+ const ci=parseYaml(fs.readFileSync(path.join(repo,'.github/workflows/ci.yml'),'utf8'));
+ const job=ci.jobs['xezar-infra-fixtures'];
+ assert.equal(job.name,'Xezar infrastructure fixtures');
+ assert.equal(job.if,undefined);assert.equal(job.needs,undefined);assert.equal(job['continue-on-error'],undefined);
+ for(const event of ['pull_request','push']){assert.ok(ci.on[event]);assert.equal(ci.on[event].paths,undefined);assert.equal(ci.on[event]['paths-ignore'],undefined);}
+ assert.ok(job.steps.some(s=>s.run==='npm ci'));
+ assert.ok(job.steps.some(s=>s.run==='bash .xezar/checks/infra-tests.sh'));
+ for(const step of job.steps){assert.equal(step.if,undefined);assert.equal(step['continue-on-error'],undefined);}
+});
+
+for (const change of ['missing', 'renamed', 'empty']) {
+ test(`maintained roles reject a ${change} shared contract`, () => {
+  const root=fixture();
+  const skill=path.join(root,'.xezar/skills/xezar-testing.md');
+  const original=fs.readFileSync(skill,'utf8');
+  const changed=change==='missing' ? original.split('## Shared contract\n')[0]
+   : change==='renamed' ? original.replace('## Shared contract\n','## Shared guarantees\n')
+   : original.split('## Shared contract\n')[0]+'## Shared contract\n';
+  fs.writeFileSync(skill,changed);
+  const result=spawnSync(process.execPath,[path.join(checks,'catalog-check.mjs'),root],{encoding:'utf8'});
+  assert.notEqual(result.status,0);
+  assert.match(result.stdout,/shared contract/i);
+ });
+}
+test('standalone custom skills need no project shared contract',()=>{
+ const root=fixture();
+ fs.writeFileSync(path.join(root,'.xezar/skills/xezar-custom.md'),'---\nname: xezar-custom\ndescription: A standalone custom skill\n---\nOwn instructions.\n');
+ assert.equal(spawnSync(process.execPath,[path.join(checks,'catalog-check.mjs'),root],{encoding:'utf8'}).status,0);
 });

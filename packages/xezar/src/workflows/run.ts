@@ -2235,6 +2235,12 @@ export class RunManager {
     // human got there first — and then the counter starts over, because the cap only exists to
     // bound UNATTENDED resumes.
     this.clearAutoResume(runId);
+    // Accepted Continue is explicit new work: make it discoverable in Active again.
+    // Refusals above leave the user's archive decision untouched.
+    if (run.archived) {
+      this.store.setArchived(runId, false);
+      this.store.appendEvent(runId, { type: 'note', message: 'unarchived for continuation' });
+    }
 
     const continuations = run.steps.filter((s) => s.id.startsWith('continue-')).length;
     const stepId = `continue-${continuations + 1}`;
@@ -2295,15 +2301,51 @@ export class RunManager {
     persistedImages: ContentBlock[] = [],
     persistedAttachments: PersistedAttachment[] = [],
   ): Promise<void> {
+    // Continue has already been accepted. Preserve its input before asynchronous
+    // recovery or isolation refusal can stop startup; persistence is not runner receipt.
+    // Attachments pasted into the follow-up composer, on the same terms as a live-session
+    // message (#357): persisted to the run's own attachment store so the thread renders the
+    // bubble's images rather than a bare count, and handed to the agent as absolute paths
+    // appended to the prompt (so it can operate on them — and because codex/opencode drop image
+    // blocks before they reach the model). An image ALSO rides along as a base64 block so the
+    // model can view it; a file (#950) has nothing to view and travels as its path alone.
+    const freshAttachments = this.persistPastedAttachments(runId, images);
+    const openingImages = [...contentBlocksOf(images), ...persistedImages];
+    const attachments = [...freshAttachments, ...persistedAttachments];
+    this.store.appendEvent(runId, {
+      type: 'user-message',
+      stepId,
+      text: prompt,
+      imageCount: openingImages.filter((b) => b.type === 'image').length,
+      ...(attachments.length ? { images: attachments.map((saved) => saved.url) } : {}),
+    });
+
+
     // Continuation runs in the task's worktree when it still exists (spec
     // 006) — the resumed session sees exactly what the original run left.
     // Retention (#483) may have reclaimed this run's worktree directory while
     // keeping its branch and worktreePath. Re-materialize it on resume and clear
     // the stamp so the session regains its isolated tree and the run is eligible
     // for retention again — otherwise it keeps a dir on disk while staying
-    // invisible to the enforcer forever. Best-effort; falls back to repoRoot.
+    // invisible to the enforcer forever. A failed restoration must not widen isolation.
     await rematerializeReclaimedWorktree(this.repoRoot, this.store, runId);
     const record = this.store.getRun(runId);
+    // A recorded path/branch proves prior isolation; an absent policy alone does not
+    // (legacy and non-git runs legitimately ran in place). Never resume that isolated
+    // session against primary while that isolation identity is still recorded.
+    // Legacy cleanup that erased BOTH path and branch cannot be distinguished
+    // from an old in-place run; it is not a qualified isolation recovery route.
+    if (record?.worktree !== false && (record?.worktreePath || record?.branch) &&
+        (!record.worktreePath || !existsSync(record.worktreePath))) {
+      const error = 'continuation isolation unavailable — restore the task worktree before retrying';
+      const finishedAt = new Date().toISOString();
+      this.store.updateStep(runId, stepId, { status: 'failed', error, finishedAt });
+      this.store.updateRun(runId, { status: 'failed', error, finishedAt, currentStepId: undefined });
+      this.store.appendEvent(runId, { type: 'lifecycle', message: `run failed — ${error}` });
+      this.starting.delete(runId);
+      this.dropActive(runId);
+      return;
+    }
     // The env is a live ceiling: a run created while the inbox was on must not keep writing
     // follow-ups after it is switched off.
     const generateFollowups = this.semaphore.followupsEnabled() && record?.generateFollowups !== false;
@@ -2372,22 +2414,6 @@ export class RunManager {
       backend,
     });
     this.store.appendEvent(runId, { type: 'step-start', stepId, name: 'Continue', kind: 'agent', iteration: 1 });
-    // Attachments pasted into the follow-up composer, on the same terms as a live-session
-    // message (#357): persisted to the run's own attachment store so the thread renders the
-    // bubble's images rather than a bare count, and handed to the agent as absolute paths
-    // appended to the prompt (so it can operate on them — and because codex/opencode drop image
-    // blocks before they reach the model). An image ALSO rides along as a base64 block so the
-    // model can view it; a file (#950) has nothing to view and travels as its path alone.
-    const freshAttachments = this.persistPastedAttachments(runId, images);
-    const openingImages = [...contentBlocksOf(images), ...persistedImages];
-    const attachments = [...freshAttachments, ...persistedAttachments];
-    this.store.appendEvent(runId, {
-      type: 'user-message',
-      stepId,
-      text: prompt,
-      imageCount: openingImages.filter((b) => b.type === 'image').length,
-      ...(attachments.length ? { images: attachments.map((saved) => saved.url) } : {}),
-    });
 
     let stepCost = 0;
     let turnText = '';
@@ -2449,13 +2475,14 @@ export class RunManager {
           // Autonomous (#autonomous): never hand the ball back to the user. Nudge the agent to
           // keep going (bounded by MAX_AUTO_CONTINUES) instead of parking at `waiting`. Shared
           // with `execute`'s turn-end handler — one sender, both sites (#141).
-          autoContinued = this.autoContinueTurn(runId, state);
+          autoContinued = !monitoring && this.autoContinueTurn(runId, state);
           if (!autoContinued) {
             // `XEZ:ASK` → park `waiting` (attention) AND surface the structured
             // question as an ask card (#473). `XEZ:MONITORING` → non-attention
             // `running`/`activity:'monitoring'` (#490). Both share the waiting
             // lifecycle (free the slot, keep the idle timer); the autonomous
-            // nudge above still wins over either.
+            // nudge may answer ASK in autonomous mode, but explicit monitoring
+            // parks with its bounded wake timer instead of spinning immediately.
             if (ask) emitAskRequested(sink, ask);
             if (monitoring) {
               this.store.updateRun(runId, { status: 'running', activity: 'monitoring' });
@@ -3164,7 +3191,7 @@ export class RunManager {
         // `runContinuation`'s handler (#141) — the field `execute` has always set is finally
         // read here. `interactive` still gates it: a mid-workflow step ends its own session and
         // the next step follows, so there is no ball to hand back and nothing to nudge.
-        const autoContinued = waiting ? this.autoContinueTurn(runId, state) : false;
+        const autoContinued = waiting && !monitoring ? this.autoContinueTurn(runId, state) : false;
         if (waiting && !autoContinued) {
           // Turn over, session open. Either the ball is in the user's court
           // (`waiting`) — optionally with a structured `XEZ:ASK` question the
