@@ -231,15 +231,28 @@ describe('a binary that exists but does not answer cleanly', () => {
     expect(result.hint).toContain("doesn't look like Claude Code");
   });
 
-  it('reports gh unavailable when `gh auth token` prints nothing', async () => {
+  it('reports gh unavailable with a hint and no version when `gh auth token` prints nothing', async () => {
     everythingInstalled();
     reply('gh', { kind: 'ok', stdout: '   \n' });
 
-    // Current behaviour: not available, and (unlike every other negative branch)
-    // no hint is attached. Pinned as-is — see the PR body.
+    // Fixed behaviour (#127): `gh` ran cleanly but printed no token, so it is
+    // unavailable and — unlike before — explains itself with a hint, and drops
+    // `version`, which used to assert the opposite of `available: false`.
     const result = await check('gh');
     expect(result.available).toBe(false);
-    expect(result.hint).toBeUndefined();
+    expect(result.hint).toBeTruthy();
+    expect(result.version).toBeUndefined();
+  });
+
+  it('still reports gh authenticated when `gh auth token` prints a token (guard)', async () => {
+    everythingInstalled();
+    reply('gh', { kind: 'ok', stdout: 'gho_exampletoken\n' });
+
+    // GUARD test: pins the load-bearing authenticated path, which the fix leaves
+    // unchanged. It passes before and after — see the PR body.
+    const result = await check('gh');
+    expect(result.available).toBe(true);
+    expect(result.version).toBe('authenticated');
   });
 });
 
