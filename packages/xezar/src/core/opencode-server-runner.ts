@@ -598,14 +598,25 @@ class OpencodeSession implements AgentSession {
    * read a STATUS instead (a `204` accept is indistinguishable from an older
    * server's catch-all once the body is parsed). The SSE subscription in
    * `consumeEvents` is deliberately its own long-lived fetch.
+   *
+   * Only the transport rejection is wrapped — every successful response, and
+   * every non-2xx one, takes exactly the path it always did (#153). The wrap
+   * sits HERE rather than in `http()` so that `submitPrompt()`, which reads a
+   * status off this same call, cannot be the one caller left with Node's
+   * opaque two-word `fetch failed`.
    */
   private async request(method: string, path: string, body: unknown): Promise<Response> {
     if (!this.baseUrl) throw new Error('opencode server not ready');
-    return await fetch(`${this.baseUrl}${path}`, {
-      method,
-      headers: body !== undefined ? { 'content-type': 'application/json' } : {},
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
+    const startedAt = Date.now();
+    try {
+      return await fetch(`${this.baseUrl}${path}`, {
+        method,
+        headers: body !== undefined ? { 'content-type': 'application/json' } : {},
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      });
+    } catch (err) {
+      throw new Error(describeFetchFailure(err, method, path, Date.now() - startedAt));
+    }
   }
 
   private async http(
@@ -666,6 +677,42 @@ function stringField(obj: Record<string, unknown>, key: string): string | undefi
   return typeof v === 'string' ? v : undefined;
 }
 
+/** Read a property off a value nobody vouched for. A rejection reason may define
+ *  `name`, `code`, `message` or `cause` as a getter that throws, and the error
+ *  formatter below must never be the thing that fails. */
+function safeField(value: unknown, key: string): unknown {
+  if (value === undefined || value === null) return undefined;
+  try {
+    return (value as Record<string, unknown>)[key];
+  } catch {
+    return undefined;
+  }
+}
+
+/** Read a string property off a value nobody vouched for — `stringField` for
+ *  the error path, where a throwing getter is a possibility. */
+function safeStringField(value: unknown, key: string): string | undefined {
+  const v = safeField(value, key);
+  return typeof v === 'string' ? v : undefined;
+}
+
+/** `String(value)` is not total: a null-prototype object has no `toString`, so
+ *  it throws "Cannot convert object to primitive value". */
+function safeString(value: unknown): string {
+  try {
+    return String(value);
+  } catch {
+    /* not stringable — try JSON below */
+  }
+  try {
+    const json = JSON.stringify(value);
+    if (typeof json === 'string') return json;
+  } catch {
+    /* not serializable either */
+  }
+  return '[unprintable]';
+}
+
 function numField(obj: Record<string, unknown>, key: string): number {
   const v = obj[key];
   return typeof v === 'number' ? v : 0;
@@ -674,10 +721,80 @@ function numField(obj: Record<string, unknown>, key: string): number {
 function safeStringify(value: unknown): string {
   if (typeof value === 'string') return value;
   try {
-    return JSON.stringify(value);
+    // NOT typed `string`: JSON.stringify returns undefined for a value it
+    // considers unrepresentable — an object whose `toJSON()` returns undefined,
+    // a function, a symbol — and a caller that trusts the annotation crashes.
+    const json = JSON.stringify(value);
+    if (typeof json === 'string') return json;
   } catch {
-    return String(value);
+    /* circular or otherwise unserializable */
   }
+  return safeString(value);
+}
+
+/** How deep `cause` is followed before the walk gives up — a cheap guard
+ *  against both a long chain and one that points back at itself. */
+const MAX_CAUSE_DEPTH = 4;
+
+const UNDICI_TIMEOUT_HINT =
+  "Node's built-in fetch gives up on a request that stays silent for 300s; a slow local model can take longer than that to answer.";
+
+/** Names/codes undici uses for its own 300s default. Matched on the rendered
+ *  cause text, so a nested one still counts. */
+const UNDICI_TIMEOUT_MARKERS = /UND_ERR_(?:HEADERS|BODY)_TIMEOUT|(?:Headers|Body)TimeoutError/i;
+
+/**
+ * Node's built-in fetch rejects EVERY transport failure as the same opaque
+ * `TypeError: fetch failed`. The reason lives in `.cause` — an undici
+ * `HeadersTimeoutError`, a reset socket, a refused connection — and the runner
+ * used to drop it, so a user had nothing to diagnose with (#153). One line,
+ * with the cause and the elapsed seconds that make undici's 300s default
+ * recognisable on sight.
+ */
+export function describeFetchFailure(
+  err: unknown,
+  method: string,
+  path: string,
+  elapsedMs: number,
+): string {
+  const ownMessage = err instanceof Error ? safeStringField(err, 'message') : undefined;
+  const head = ownMessage || safeString(err);
+  const cause = describeCause(safeField(err, 'cause'));
+  let message = `${head} after ${formatSeconds(elapsedMs)} (${method} ${path})`;
+  if (cause) message += ` — ${cause}`;
+  if (cause && UNDICI_TIMEOUT_MARKERS.test(cause)) message += `. ${UNDICI_TIMEOUT_HINT}`;
+  return message;
+}
+
+/**
+ * Render an error `cause` without assuming anything about its shape: it may be
+ * absent, a string, a plain object, a primitive, or an Error whose own `cause`
+ * carries the real reason. Always one line, never throws.
+ */
+function describeCause(value: unknown, depth = 0): string | undefined {
+  if (value === undefined || value === null || depth >= MAX_CAUSE_DEPTH) return undefined;
+  if (typeof value === 'string') return oneLine(value) || undefined;
+  if (typeof value !== 'object') return oneLine(String(value)) || undefined;
+
+  const name = safeStringField(value, 'name');
+  const code = safeStringField(value, 'code');
+  const message = oneLine(safeStringField(value, 'message') ?? '');
+  const label = name && code ? `${name} (${code})` : (name ?? (code ? `(${code})` : undefined));
+  const own = [label, message && message !== label ? message : undefined].filter(Boolean).join(': ');
+  const nested = describeCause(safeField(value, 'cause'), depth + 1);
+  if (!own) return nested ?? (oneLine(safeStringify(value)).slice(0, 200) || undefined);
+  return nested ? `${own} — caused by ${nested}` : own;
+}
+
+/** Seconds, so a 300s wall is obvious; one decimal below 10s so a fast failure
+ *  does not read as "after 0s". */
+function formatSeconds(ms: number): string {
+  const seconds = Math.max(0, ms) / 1000;
+  return `${seconds >= 10 ? Math.round(seconds) : Math.round(seconds * 10) / 10}s`;
+}
+
+function oneLine(text: string): string {
+  return text.replace(/\s+/g, ' ').trim();
 }
 
 function wrapSpawnError(err: unknown, bin: string): Error {
