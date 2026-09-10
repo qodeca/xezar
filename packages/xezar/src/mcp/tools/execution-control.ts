@@ -452,7 +452,7 @@ async function control(args: ExecutionControlInput, s: Services): Promise<McpToo
         return conflict(
           args,
           run,
-          `question ${args.questionId} is not this task's pending question (${pending.value.requestId}); nothing was sent`,
+          `that question is not this task's pending question (${pending.value.requestId}); nothing was sent`,
         );
       }
       let text: string;
@@ -486,7 +486,8 @@ async function control(args: ExecutionControlInput, s: Services): Promise<McpToo
     case 'edit_queued_message':
     case 'remove_queued_message': {
       const messageId = args.messageId!;
-      if (!validPathId(messageId)) return failed(args, `not a message id: ${JSON.stringify(messageId)}`);
+      // A fixed message: a refusal never echoes what the caller sent (#88, N-01).
+      if (!validPathId(messageId)) return failed(args, 'not a message id');
       if (run.status !== 'queued') {
         return conflict(args, run, `queued messages can be changed only while the task is queued; it is ${run.status}`);
       }
