@@ -105,15 +105,38 @@ function activateHistoryBoundary(): void {
 }
 
 type ArrivalSample = { top: number; maxTop: number }
+type Arrival = { samples: ArrivalSample[]; settled: ArrivalSample }
 
-/** Capture every destination-transcript animation frame around a client-side task switch. */
-function navigateAndSampleArrival(runId: string): ArrivalSample[] {
+/** Consecutive identical frames that count as "the arrival has stopped moving". Frames, not
+ *  milliseconds: the unit the scroller itself works in, so it means the same thing on a fast
+ *  laptop and on a slow CI runner. */
+const STILL_FRAMES = 8
+/** A bound on the wait, not a budget the assertions are judged against: an arrival that never
+ *  stops moving is a real failure and must be reported as one, not silently sampled anyway. */
+const MAX_ARRIVAL_FRAMES = 900
+
+/**
+ * Capture every destination-transcript animation frame around a client-side task switch, and
+ * keep sampling until the scroller has SETTLED — the same position and the same content height
+ * for {@link STILL_FRAMES} frames in a row.
+ *
+ * Position assertions belong on the settled frame, never on frame N of a fixed count. The
+ * scroller says why itself (`thread-scroller.tsx`): while a restore is pending, its
+ * ResizeObserver re-applies `min(parked, maxTop)` on every content growth and only releases the
+ * restore once `maxTop >= pending` AND the height has repeated. So an early frame legitimately
+ * sits at a clamped-down offset while the transcript is still filling in — how many frames that
+ * takes is a fact about the machine, which is exactly what a pixel budget over frame 0 ends up
+ * measuring.
+ */
+function navigateAndSampleArrival(runId: string): Arrival {
   const href = `/p/${bootProject}/tasks/${runId}`
   browser.evaluate(`(() => {
     const link = document.querySelector(${JSON.stringify(`a[href="${href}"]`)})
     if (!link) throw new Error('missing task navigation link: ${href}')
     window.__xezArrivalSamples = []
+    window.__xezArrivalSettled = null
     let attempts = 0
+    let still = 0
     const sample = () => {
       attempts += 1
       const main = document.querySelector('[data-slot="main"]')
@@ -122,18 +145,33 @@ function navigateAndSampleArrival(runId: string): ArrivalSample[] {
       )
       const ready = destination?.querySelector('[data-slot="thread-rows"]')
       if (main && ready) {
-        window.__xezArrivalSamples.push({
-          top: main.scrollTop,
-          maxTop: main.scrollHeight - main.clientHeight,
-        })
+        const previous = window.__xezArrivalSamples[window.__xezArrivalSamples.length - 1]
+        const next = { top: main.scrollTop, maxTop: main.scrollHeight - main.clientHeight }
+        still = previous && previous.top === next.top && previous.maxTop === next.maxTop
+          ? still + 1
+          : 0
+        window.__xezArrivalSamples.push(next)
+        if (still >= ${STILL_FRAMES}) {
+          window.__xezArrivalSettled = next
+          return
+        }
       }
-      if (window.__xezArrivalSamples.length < 6 && attempts < 120) requestAnimationFrame(sample)
+      if (attempts < ${MAX_ARRIVAL_FRAMES}) requestAnimationFrame(sample)
+      else window.__xezArrivalSettled = 'never-settled'
     }
     requestAnimationFrame(sample)
     link.click()
   })()`)
-  browser.waitForFunction(`window.__xezArrivalSamples?.length >= 6`)
-  return browser.evaluate(`window.__xezArrivalSamples`) as ArrivalSample[]
+  browser.waitForFunction(`window.__xezArrivalSettled !== null`)
+  const settled = browser.evaluate(`window.__xezArrivalSettled`) as ArrivalSample | 'never-settled'
+  const samples = browser.evaluate(`window.__xezArrivalSamples`) as ArrivalSample[]
+  if (settled === 'never-settled') {
+    throw new Error(
+      `xezar e2e: the arrival at ${runId} never settled in ${MAX_ARRIVAL_FRAMES} frames `
+      + `(last ${JSON.stringify(samples.slice(-4))})`,
+    )
+  }
+  return { samples, settled }
 }
 
 function parkCurrentThread(): number {
@@ -264,24 +302,35 @@ describe('progressive long-session history', () => {
     // Warm both query caches first. The destination transcript, not a loading placeholder, is
     // the surface whose paint ordering this regression measures.
     const firstTailArrival = navigateAndSampleArrival(RUN_B_ID)
-    expect(firstTailArrival.at(-1)!.maxTop - firstTailArrival.at(-1)!.top).toBeLessThan(80)
+    expect(firstTailArrival.settled.maxTop - firstTailArrival.settled.top).toBeLessThan(80)
     const parked = parkCurrentThread()
     expect(parked).toBeGreaterThan(100)
 
     const liveTailArrival = navigateAndSampleArrival(RUN_ID)
-    expect(Math.min(...liveTailArrival.map(({ top }) => top))).toBeGreaterThan(40)
-    expect(liveTailArrival.at(-1)!.maxTop - liveTailArrival.at(-1)!.top).toBeLessThan(80)
+    expect(Math.min(...liveTailArrival.samples.map(({ top }) => top))).toBeGreaterThan(40)
+    expect(liveTailArrival.settled.maxTop - liveTailArrival.settled.top).toBeLessThan(80)
 
     const cachedArrival = navigateAndSampleArrival(RUN_B_ID)
-    expect(Math.min(...cachedArrival.map(({ top }) => top))).toBeGreaterThan(40)
-    expect(Math.abs(cachedArrival[0]!.top - parked)).toBeLessThan(200)
-    expect(Math.abs(cachedArrival.at(-1)!.top - parked)).toBeLessThan(200)
+    // The regression this case is named for: no frame of the destination transcript is drawn at
+    // the top of the session. Every captured frame, so a flash that lasts one frame still fails.
+    expect(Math.min(...cachedArrival.samples.map(({ top }) => top))).toBeGreaterThan(40)
+    // …and the arrival ENDS on the position the reader parked at. One pixel of slack, and it is
+    // for sub-pixel rounding of a single `scrollTop`/`handle.scrollTo` write on a fractional
+    // device pixel ratio — nothing else. There is no timing to absorb any more, so nothing else
+    // needs absorbing: `parked` was written to `scrollTop` and read back, and the restore writes
+    // that same number. Anything larger is the scroller landing somewhere else — a restore that
+    // missed, a re-pin to the live tail, or scroll anchoring dragging the reader off the offset
+    // they were just given. That is what the 200px budget this replaces could not distinguish
+    // from a slow machine, and a slow machine is what it ended up measuring: 365px on a GitHub
+    // runner, 0 here (#133). Measured here: settled exactly on `parked`, and 1825px off it with
+    // the cache restore disabled.
+    expect(Math.abs(cachedArrival.settled.top - parked)).toBeLessThanOrEqual(1)
     browser.screenshot(join(artifactsDir, 'progressive-history-thread-switch.png'), { viewport: true })
 
     browser.setViewport(390, 844)
     const mobileTailArrival = navigateAndSampleArrival(RUN_ID)
-    expect(Math.min(...mobileTailArrival.map(({ top }) => top))).toBeGreaterThan(40)
-    expect(mobileTailArrival.at(-1)!.maxTop - mobileTailArrival.at(-1)!.top).toBeLessThan(80)
+    expect(Math.min(...mobileTailArrival.samples.map(({ top }) => top))).toBeGreaterThan(40)
+    expect(mobileTailArrival.settled.maxTop - mobileTailArrival.settled.top).toBeLessThan(80)
     browser.screenshot(join(artifactsDir, 'progressive-history-thread-switch-mobile.png'), {
       viewport: true,
     })

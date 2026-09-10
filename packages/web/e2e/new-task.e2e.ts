@@ -54,6 +54,83 @@ let bootProject: string
  *  what the cockpit's own links and its post-submit navigations actually spell. */
 const scoped = (path: string) => `/p/${bootProject}${path}`
 
+interface ProviderRow { provider: string; status: string; enabled: boolean }
+interface ComposerConfig { defaultRunner?: string; defaultModels?: Record<string, string> }
+
+/**
+ * The runner pill's inputs, read from the two endpoints the composer itself reads
+ * (`useProviderStatus` → `GET /providers/status`, `useAgentProfiles` →
+ * `GET /workspace/agent-profiles`). Row order is the server's PROVIDER_IDS order, which is the
+ * client's `RUNNER_ORDER` — the order `resolveRunner` falls back through.
+ */
+const providerRows = async (): Promise<ProviderRow[]> =>
+  (await getJson<{ providers: ProviderRow[] }>(`${baseUrl}/api/v1/providers/status`)).providers
+
+const usableRunners = async (): Promise<string[]> =>
+  (await providerRows())
+    .filter((row) => row.enabled && row.status === 'connected')
+    .map((row) => row.provider)
+
+/** `new-task.tsx`: the pill renders when there is a choice — more than one usable runner, or more
+ *  than one login for one of them (`hasAccountChoice`: one login is not a choice). */
+const pillExpected = async (): Promise<boolean> => {
+  const usable = await usableRunners()
+  if (usable.length > 1) return true
+  const { profiles } = await getJson<{ profiles: Array<{ provider: string }> }>(
+    `${baseUrl}/api/v1/workspace/agent-profiles`,
+  )
+  return usable.some((id) => profiles.filter((entry) => entry.provider === id).length > 1)
+}
+
+/** `resolveRunner(null, runners, defaultRunner ?? 'claude')` for an untouched composer. */
+const resolvedRunner = async (config: ComposerConfig): Promise<string> => {
+  const usable = await usableRunners()
+  const preferred = config.defaultRunner ?? 'claude'
+  return usable.includes(preferred) ? preferred : (usable[0] ?? 'claude')
+}
+
+/** Turn one agent off/on for this fixture host — the write behind Settings → Agents. */
+const setProviderEnabled = async (provider: string, enabled: boolean): Promise<void> => {
+  const response = await fetch(`${baseUrl}/api/v1/providers/${provider}/enabled`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  })
+  expect(response.status).toBe(200)
+}
+
+/**
+ * The runner pill is rendered from `GET /providers/status`, so a `count()` taken before that
+ * request has landed reports "no pill" for free — on any host. This is that settle signal: the
+ * response has been received AND the pill row has re-rendered off it, which is what the model
+ * pill leaving its disabled state means (`disabled={!providersReady}`, and `providersReady` is
+ * the provider query having succeeded). Both halves, because either alone can be true early:
+ * a model pill pinned by `modelsLocked` renders read-only rather than disabled at all.
+ */
+const composerPillRowReady = (): void => {
+  browser.waitForFunction(
+    `performance.getEntriesByType('resource')
+       .some((entry) => new URL(entry.name).pathname.endsWith('/providers/status'))`,
+  )
+  browser.waitForFunction(`(() => {
+    const pill = document.querySelector('[data-slot="model-pill"]')
+    return pill !== null && pill.disabled !== true
+  })()`)
+}
+
+/** Re-open /new so the pill row is built from the provider status as it stands NOW. A reload
+ *  rather than a wait on the live `provider-status` event: the point of the case that uses this
+ *  is the RULE, and it must not be able to pass or fail on how fast a push landed. */
+const reloadComposer = (): void => {
+  browser.goto(`${baseUrl}${scoped('/new')}`)
+  browser.waitForFunction(`document.querySelector('[data-route="new"]') !== null`)
+  browser.waitForFunction(`document.querySelector('[data-slot="version-chip"]') !== null`)
+  browser.waitForFunction(
+    `!document.querySelector('[data-slot="source-pill"]')?.textContent.includes('…')`,
+  )
+  composerPillRowReady()
+}
+
 beforeAll(async () => {
   // A REAL git repo: the run needs a worktree, and the base-branch pill needs branches.
   dataRoot = mkdtempSync(join(tmpdir(), 'xezar-e2e-new-task-'))
@@ -129,7 +206,7 @@ describe('the full-screen /new against a live dry-run server', () => {
     expect(browser.count('[data-slot="suggested-chip"]')).toBe(3)
   })
 
-  it('the pill row resolves: no source picked, runner pill iff >1 backend, base: main, ×1', async () => {
+  it('the pill row resolves: no source picked, runner pill by the choice rule, base: main, ×1', async () => {
     // Sources are ready once the pill stops showing its loading ellipsis. A resolved composer
     // picks NOTHING — the empty state is the default, so there is no name to wait for.
     browser.waitForFunction(
@@ -138,36 +215,78 @@ describe('the full-screen /new against a live dry-run server', () => {
     expect(browser.evaluate(
       `document.querySelector('[data-slot="source-pill"]')?.dataset.sourceKind`,
     )).toBe('none')
-    // Health must have SETTLED before judging the runner pill — the version chip renders from
-    // the same response, so it is the "health arrived" signal.
+    // Health must have SETTLED before judging the pill row — the version chip renders from
+    // the same response, so it is the "health arrived" signal. The provider status is a SECOND
+    // request, and it is the one the runner pill is actually built from.
     browser.waitForFunction(`document.querySelector('[data-slot="version-chip"]') !== null`)
-    // The rule under test is legacy's: pill iff the HOST offers >1 backend. The host's own
-    // CLIs are what they are (codex/opencode may genuinely be installed here), so assert
-    // consistency with the live health answer rather than assuming a bare machine.
-    const health = (await (await fetch(`${baseUrl}/api/v1/health`)).json()) as {
-      checks: Array<{ name: string; available: boolean }>
+    composerPillRowReady()
+    // The rule is the composer's own (`new-task.tsx`): the runner pill renders when there is a
+    // CHOICE to make — more than one usable runner, or more than one login for one of them —
+    // and a usable runner is a provider row that is `enabled` AND `connected`
+    // (`usableRunners`, `hasAccountChoice`). It is NOT the health check list: health reports
+    // which agent CLIs are installed on the machine, which is a different question and the one
+    // that made this assertion take a different branch on a bare `ubuntu-latest` runner than on
+    // a laptop with three agents installed. `scripts/test-env-up.sh` pins only the agents'
+    // USER-scope config, and AGENTS.md records that project scope, local scope and credential
+    // discovery are NOT isolated, so there is no bare-host assumption to fall back on either.
+    // Asserting the rule against the SAME two endpoints the component reads is what makes this
+    // hold on every host; the next case then drives both shapes of that input on purpose.
+    const expectPill = await pillExpected()
+    expect(browser.count('[data-slot="runner-pill"]')).toBe(expectPill ? 1 : 0)
+    const config = await getJson<ComposerConfig>(`${baseUrl}/api/v1/config`)
+    if (expectPill) {
+      // `resolveRunner(null, runners, defaultRunner ?? 'claude')`: an untouched composer shows the
+      // host's default runner when that one is usable, else the first usable one in RUNNER_ORDER.
+      // The label is `<runner>` or `<runner> · <login>`, so it contains the id either way.
+      expect(browser.text('[data-slot="runner-pill"]')).toContain(await resolvedRunner(config))
     }
-    const runners = ['claude', 'codex', 'opencode'].filter((id) =>
-      health.checks.some((c) => c.name === id && c.available),
+    // Same class of host dependence as the runner pill above, and the same treatment: the model
+    // pill shows the HOST's native default when the installed agent pins one
+    // (`readAgentModelDefaults` seeds `defaultModels` from the agent's own settings), and `auto`
+    // only when it does not. Asserting `auto` unconditionally failed on any machine whose claude
+    // settings name a model.
+    expect(browser.text('[data-slot="model-pill"]')).toContain(
+      config.defaultModels?.[await resolvedRunner(config)] || 'auto',
     )
-    if (runners.length > 1) {
-      expect(browser.count('[data-slot="runner-pill"]')).toBe(1)
-      expect(browser.text('[data-slot="runner-pill"]')).toContain('claude')
-    } else {
-      expect(browser.count('[data-slot="runner-pill"]')).toBe(0)
-    }
-    // Same rule as the runner pill above, for the same reason: the model pill shows the HOST's
-    // native default when the installed agent pins one (`readAgentModelDefaults` seeds
-    // `defaultModels` from the agent's own settings), and `auto` only when it does not. Asserting
-    // `auto` unconditionally failed on any machine whose claude settings name a model.
-    const config = await getJson<{ defaultModels?: Record<string, string> }>(
-      `${baseUrl}/api/v1/config`,
-    )
-    expect(browser.text('[data-slot="model-pill"]')).toContain(config.defaultModels?.claude || 'auto')
     expect(browser.text('[data-slot="variants-pill"]')).toContain('×1')
     expect(browser.text('[data-slot="base-pill"]')).toContain('base: main')
     browser.screenshot(`${artifactsDir}/new-task-hero.png`)
   })
+
+  it('both host shapes reach the same rule: one usable runner hides the pill, two show it', async () => {
+    // Host independence PROVEN, not assumed. The pill's input is a host fact — which agents are
+    // connected and enabled — so the spec drives that input to each of its two shapes through the
+    // same API Settings uses, and asserts what the composer renders for each. A bare CI runner
+    // and a developer laptop then reach the SAME two assertions instead of branching apart.
+    const config = await getJson<ComposerConfig>(`${baseUrl}/api/v1/config`)
+    const providers = (await providerRows()).map(({ provider }) => provider)
+    expect(providers.length).toBeGreaterThan(1)
+    // The first row stays enabled throughout; every other agent is the shape's variable.
+    const rest = providers.slice(1)
+
+    // Shape one: a single usable runner. This fixture's `XEZ_HOME` is a throwaway directory, so
+    // that runner has exactly one login and there is nothing left to choose — no pill. The rule
+    // is re-derived rather than hard-coded, so a host that somehow does offer a second login
+    // fails this loudly instead of quietly skipping the branch it was written to prove.
+    for (const provider of rest) await setProviderEnabled(provider, false)
+    reloadComposer()
+    expect(await pillExpected()).toBe(false)
+    expect(browser.count('[data-slot="runner-pill"]')).toBe(0)
+    // The composer still runs on that one runner: a hidden pill is "no choice", not "no agent".
+    expect(browser.evaluate(`document.querySelector('[data-slot="composer"] textarea').disabled`))
+      .toBe(false)
+
+    // Shape two: a second usable runner appears, and the choice becomes visible.
+    await setProviderEnabled(rest[0]!, true)
+    reloadComposer()
+    expect(await pillExpected()).toBe(true)
+    expect(browser.count('[data-slot="runner-pill"]')).toBe(1)
+    expect(browser.text('[data-slot="runner-pill"]')).toContain(await resolvedRunner(config))
+
+    // Leave the host as this suite found it — the later cases start real runs on it.
+    for (const provider of rest) await setProviderEnabled(provider, true)
+    reloadComposer()
+  }, 120_000)
 
   it('the source dropdown groups project skills first and picking one updates the pill', () => {
     browser.click('[data-slot="source-pill"]')
