@@ -1,3 +1,100 @@
+# Unreleased
+
+## Highlights
+Two user-visible changes lead this one. Six engine limits that the code already enforced but
+nobody could reach are now settings in the running cockpit, and the memory guard **ships on** —
+with no configuration at all xezar derives a ceiling from your machine's RAM and pauses a run
+that crosses it, where before it left the OS OOM-killer to do that job. Both task tables also
+gained a **Tool Name** and a **Model** column, so a list finally answers "what ran this, and on
+which model?" without opening a task. The rest is a long run of fixes at the agent seam and a
+coverage epic that closed twenty gaps.
+
+## ✨ Features
+- ✨ **Six engine limits are adjustable from the running cockpit.** The idle timeout that closes a
+  parked `waiting` session (`resources.idleTimeoutMinutes`, default 15, or *Never*), the default
+  worktree retention new projects inherit, the follow-up Inbox switch and the agent env-passthrough
+  list all became stored settings in `~/.xezar/config.json` with controls in Settings → Resources,
+  and `plannerModel`, `namerModel` and `skillsRepos` gained controls in Settings → Agents. The two
+  that used to be read from the environment only at boot (`XEZ_FOLLOWUPS`, `XEZ_ENV_PASSTHROUGH`)
+  now follow the stored value when one is set — a plain restart no longer loses your Inbox. Every
+  one takes effect on the next run with no restart, through the existing
+  `WorkspaceSemaphore.refresh()` hook rather than a second reload path. (#146)
+- ✨ **Both task tables show the tool and the model each task ran on.** Two new columns after
+  Workflow, visible by default: the backend's product name (`Claude Code`, `Codex`, `OpenCode`,
+  `pi`) and the model string the run actually used, printed **verbatim** — no catalog, no friendly
+  name, so a model on your own hardware reads exactly as the run recorded it. A value nobody chose
+  is shown muted, and a missing model reads `auto`. A workflow that used more than one backend
+  reads `Claude Code +1`. On a phone the same two facts sit on the task card. (#146)
+- ✨ **A workflow step can set its own wall clock.** `timeout:` on an agent step takes the literal
+  `none` or a duration in `s`, `m` or `h`. Absent stays a protected default: the last interactive
+  step is uncapped and every earlier agent step keeps the runner's 30-minute deadline. (#22, #40)
+
+## 🔧 Changed
+- 🔧 **The per-task memory guard now ships on.** An absent `resources.memoryLimitMb` used to mean
+  "no guard at all". It now derives a host-sized ceiling — `floor(totalMiB * 0.6 / 2)` clamped to
+  1024–8192 MiB — so an upgraded install starts pausing runs it previously let the OS kill. An
+  explicit `"memoryLimitMb": null` still means *no limit* and is never replaced. Adjust it in
+  Settings → Resources. (#146)
+
+## 🐛 Fixes
+- 🐛 **A repo's own `memoryLimitMb` is honoured again.** It had become the one outcome a setting
+  must never have: it saved successfully and then did nothing. A repo that sets its own value now
+  overrides the workspace ceiling for its own runs, the same more-specific-wins lookup the parallel
+  cap already used. (#146)
+- 🐛 **pi's wall-clock timeout escalates to SIGKILL, like every other backend.** On expiry pi sent
+  one SIGTERM and waited, so a step's `timeout:` was enforced for Claude, Codex and OpenCode and
+  merely advisory for pi. (#146)
+- 🐛 **pi's streamed text no longer splits a turn-end marker across events.** Text is coalesced per
+  completed message, the way Codex and OpenCode already did, so a marker stays contiguous and
+  parses. (#151, #163)
+- 🐛 **pi's models are discovered from its own config**, rather than reported as unavailable. (#152, #157)
+- 🐛 **The autonomous keep-going nudge fires on continued and recovered runs too.** It was wired at
+  only one of the two places an `ActiveRun` is built, so it worked on a new task and silently did
+  nothing after a Continue or a restart. (#141, #159)
+- 🐛 **Accept is never lost at the review gate.** The turn is torn down before `review` is
+  published, closing a race that could drop the acceptance. (#155, #160)
+- 🐛 **The queue watchdog settles its rescue in `dispose()`**, so a shutdown cannot leave a rescued
+  run half-handled. (#125, #158)
+- 🐛 **XEZ markers inside fenced code blocks are ignored.** An agent quoting a marker in a code
+  fence no longer triggers it. (#124, #149)
+- 🐛 **`gh` unavailable with an empty token now says so, with a hint**, instead of reporting a
+  confusing detection failure. (#127, #150)
+
+## 📝 Specs & Documentation
+- 📝 **The documentation was resynced with the code, twice.** The second sweep corrected statements
+  that had become false: `AGENTS.md` and `BACKWARD_COMPATIBILITY.md` both still said a repo's
+  `memoryLimitMb` was ignored, the README called the memory ceiling optional and said pi waits on a
+  timeout, and `packages/api-client/README.md` advertised hand-written DTOs that no longer exist and
+  an export that never did. `AGENT_PROTOCOL.md` gained the obligation whose absence let pi's
+  timeout ship as advisory: a wall-clock deadline MUST escalate SIGTERM→SIGKILL, and the two
+  constraints that had lived only in a code comment. (#146, 653d31f)
+- 📝 **Business requirements recorded for the Tasks view and the Inbox default.** Both are
+  requirements, not implemented features. (#64, #66)
+- 📝 **The SDLC label taxonomy was trimmed to the labels the repository actually has.** (#39, #65)
+- 📝 **The PR #40 integration task's observations were added to the dogfooding ledger.** (#41)
+
+## 🚀 CI/CD & Infrastructure
+- 🚀 **Twenty coverage gaps closed.** A measured audit (`docs/testing/coverage-gaps.md`, plus a
+  `test:coverage` script writing to `.local/coverage/`) ranked what the gates could not see, and
+  the epic worked through it: `packages/contract` became a vitest project so a test written there
+  actually runs, `xezar init` and `xezar serve` gained CLI-level tests, and coverage arrived for
+  `server/git.ts`, the workflow loader, the skills catalog routes, `POST /plan`, `GET /launch-key`,
+  backend detection, `createRunner` dispatch, the handoff journal, `skills-remote`'s degradation
+  paths, update-check, the planner, the cockpit boot shell, the Commits tab, the enabled
+  automations route, and the `server-install` and `server-deploy` argument surfaces. The OpenCode
+  runner's teardown test now drives its golden mock server instead of a mocked `node:child_process`.
+  Tracked as epic #42 and its twenty child issues (#43–#58, #62), delivered by #63 and
+  #120–#144 and #154.
+- 🚀 **Vitest worker fan-out is capped** at `min(4, availableParallelism() - 1)`. Vitest's default
+  is per *run*, so several concurrent gate runs on one machine meant roughly 180 worker processes
+  and unrelated suites timing out at 909s — starvation that reads as flakiness. The cap is a
+  deliberate no-op on CI's smaller runners, and `--maxWorkers=N` and `VITEST_MAX_WORKERS` still
+  override it. (#146)
+- 🚀 **Browser e2e specs made host-independent**, and the commit spec now waits for the committed
+  screen rather than the address bar. (#133, #136, #145, #148)
+
+---
+
 # 0.11.2 (2026-09-09)
 
 ## Highlights
