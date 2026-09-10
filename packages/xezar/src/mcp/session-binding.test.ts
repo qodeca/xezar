@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rename
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ProjectWriterError } from '../runs/project-writer.ts';
 import { RunStore } from '../runs/store.ts';
 import { ProjectContexts, type ProjectContext, type ProjectContextSource } from '../server/project-context.ts';
 import { bindMcpSession, McpScopeError, McpSessionBinding, type McpProjectContextSource } from './session-binding.ts';
@@ -284,6 +285,51 @@ describe('binding refuses an untrusted or ambiguous source', () => {
     expect(err.reason).toBe('unknown-project');
     expect(err.message).not.toContain(BOOT);
   });
+
+  it('re-checks the context id on every access, not only at bind time', async () => {
+    let answerFor = A;
+    const drifting: McpProjectContextSource = { context: () => fx.contexts.context(answerFor) };
+    const binding = await bindMcpSession(drifting, A);
+    expect((await binding.project()).id).toBe(A);
+    answerFor = BOOT;
+    const err = await refusal(binding.run(fx.aRunId));
+    expect(err.reason).toBe('unknown-project');
+    expect(err.projectId).toBe(A);
+    expect(err.message).not.toContain(BOOT);
+  });
+
+  it('refuses a root that is a symlink at bind time, even to a folder of its own', async () => {
+    const target = realpathSync(mkdtempSync(join(tmpdir(), 'xez-bind-target-')));
+    const link = `${target}-link`;
+    symlinkSync(target, link, 'dir');
+    try {
+      fx.registry.push({ id: 'linked', root: link, status: 'not-git' });
+      const err = await refusal(bindMcpSession(fx.source, 'linked'));
+      expect(err.reason).toBe('missing-root');
+      expect(err.message).not.toContain(link);
+      expect(err.message).not.toContain(target);
+    } finally {
+      fx.contexts.dispose('linked');
+      rmSync(link, { force: true });
+      rmSync(target, { recursive: true, force: true });
+    }
+  });
+
+  it('turns a writer or filesystem failure into `unavailable` without its path or pid', async () => {
+    for (const failure of [
+      new ProjectWriterError(join(fx.rootA, '.local/xezar'), 'live writer PID 4242'),
+      Object.assign(new Error(`EACCES: permission denied, mkdir '${fx.rootA}/.local/xezar'`), { code: 'EACCES' }),
+    ]) {
+      const failing: McpProjectContextSource = { context: () => Promise.reject(failure) };
+      const err = await refusal(bindMcpSession(failing, A));
+      expect(err.reason).toBe('unavailable');
+      expect(err.projectId).toBe(A);
+      expect(err.message).not.toContain(fx.rootA);
+      expect(err.message).not.toContain('4242');
+      // The original is kept for the service's own log.
+      expect(err.cause).toBe(failure);
+    }
+  });
 });
 
 describe('a session bound to a project whose root has disappeared', () => {
@@ -325,6 +371,19 @@ describe('a session bound to a project whose root has disappeared', () => {
       expect(statSync(fx.rootA).isDirectory()).toBe(true);
       expect((await refusal(binding.run(fx.aRunId))).reason).toBe('missing-root');
     } finally {
+      rmSync(`${fx.rootA}-moved`, { recursive: true, force: true });
+    }
+  });
+
+  it('fails closed when the root is moved away and a symlink back to the same folder takes its place', async () => {
+    // Same device and inode as at bind time — only the realpath comparison catches this.
+    const binding = await bindMcpSession(fx.source, A);
+    renameSync(fx.rootA, `${fx.rootA}-moved`);
+    try {
+      symlinkSync(`${fx.rootA}-moved`, fx.rootA, 'dir');
+      expect((await refusal(binding.project())).reason).toBe('missing-root');
+    } finally {
+      rmSync(fx.rootA, { force: true });
       rmSync(`${fx.rootA}-moved`, { recursive: true, force: true });
     }
   });

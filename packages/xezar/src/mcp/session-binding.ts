@@ -1,7 +1,6 @@
 import { realpathSync, statSync } from 'node:fs';
 import { runIdParamSchema } from '@qodeca/xezar-contract';
 import type { RunRecord } from '../runs/store.ts';
-import { ProjectWriterError } from '../runs/project-writer.ts';
 import {
   ProjectContextError,
   type ProjectContext,
@@ -52,7 +51,8 @@ import { RESERVED_PROJECT_IDS } from '../workspace/projects.ts';
 
 /** Why an MCP session cannot act. `unknown-project` / `missing-root` keep the meaning
  *  `ProjectContextError` gives them (404 / 409); `unavailable` is a bound project
- *  whose data another process owns; `not-in-project` is a resource this session
+ *  that could not be opened for any other reason (another process owns its data, a
+ *  filesystem error) — its cause stays server-side; `not-in-project` is a resource this session
  *  cannot see, whether it belongs to another project or to none. */
 export type McpScopeFailure = 'unknown-project' | 'missing-root' | 'unavailable' | 'not-in-project';
 
@@ -60,7 +60,7 @@ export type McpScopeFailure = 'unknown-project' | 'missing-root' | 'unavailable'
 const MESSAGES: Readonly<Record<McpScopeFailure, string>> = {
   'unknown-project': 'this MCP session is not bound to a registered xezar project; reconnect from the project folder',
   'missing-root': 'the project folder this MCP session is bound to is missing; restore it or reconnect from the project folder',
-  unavailable: 'the project this MCP session is bound to is in use by another xezar process',
+  unavailable: 'the project this MCP session is bound to cannot be opened right now; the cockpit log has the details',
   'not-in-project': 'no such resource in this project',
 };
 
@@ -70,8 +70,10 @@ export class McpScopeError extends Error {
     readonly reason: McpScopeFailure,
     /** The BOUND project's id — never a foreign or client-supplied one. */
     readonly projectId: string,
+    /** The underlying failure, for the service's own log only — never sent to a client. */
+    cause?: unknown,
   ) {
-    super(MESSAGES[reason]);
+    super(MESSAGES[reason], cause === undefined ? undefined : { cause });
     this.name = 'McpScopeError';
   }
 }
@@ -132,7 +134,11 @@ export class McpSessionBinding {
     const ctx = await resolveContext(contexts, trustedProjectId);
     if (ctx.id !== trustedProjectId) throw new McpScopeError('unknown-project', trustedProjectId);
     const root = rootIdentity(ctx.root);
-    if (!root) throw new McpScopeError('missing-root', trustedProjectId);
+    // The registry stores realpath'd roots. A root that no longer IS its own realpath
+    // was swapped for a symlink (or moved) after registration; pinning what it points
+    // at now would bind the session to whatever the link names — possibly another
+    // project's folder. Refuse instead of pinning.
+    if (!root || root.realpath !== ctx.root) throw new McpScopeError('missing-root', trustedProjectId);
     return new McpSessionBinding(trustedProjectId, contexts, root);
   }
 
@@ -196,10 +202,11 @@ async function resolveContext(contexts: McpProjectContextSource, projectId: stri
   try {
     return await contexts.context(projectId);
   } catch (err) {
-    if (err instanceof ProjectContextError) throw new McpScopeError(err.reason, projectId);
-    // The writer error names a data directory and a pid; neither may reach a client.
-    if (err instanceof ProjectWriterError) throw new McpScopeError('unavailable', projectId);
-    throw err;
+    if (err instanceof ProjectContextError) throw new McpScopeError(err.reason, projectId, err);
+    // Anything else — the writer error, or a raw fs error from building the context —
+    // can carry a data directory, a path or a pid in its message; none may reach a
+    // client. The original stays on `cause` for the service's own log.
+    throw new McpScopeError('unavailable', projectId, err);
   }
 }
 
