@@ -55,6 +55,17 @@
 //                                    received, one per line — SIGKILL cannot
 //                                    be caught, so an escalation shows up as
 //                                    "one SIGTERM logged, process gone".
+//   MOCK_OPENCODE_ARGV_LOG=<path>    write the arguments this process was
+//                                    started with. The runner asks for
+//                                    `--port 0` and reads the bound port back
+//                                    from stdout, so this file is the only
+//                                    place a test can see that xezar picked no
+//                                    port of its own (#184).
+//   MOCK_OPENCODE_LISTEN_PORT=<n>    bind THIS port instead of the one on the
+//                                    command line — the only way left to aim
+//                                    the server at a port that is already
+//                                    taken, now that the runner always asks
+//                                    for `--port 0`.
 import { appendFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 
@@ -64,7 +75,14 @@ const arg = (flag, fallback) => {
   return i >= 0 && args[i + 1] !== undefined ? args[i + 1] : fallback;
 };
 const hostname = arg('--hostname', '127.0.0.1');
-const port = Number(arg('--port', '0'));
+// `0` means "let the kernel pick", the same default the real `opencode serve`
+// documents and the only value the runner passes. A test that needs a specific
+// port (a bind failure) forces one through MOCK_OPENCODE_LISTEN_PORT.
+const forcedPort = process.env.MOCK_OPENCODE_LISTEN_PORT;
+const port = forcedPort !== undefined && forcedPort !== '' ? Number(forcedPort) : Number(arg('--port', '0'));
+
+const argvLog = process.env.MOCK_OPENCODE_ARGV_LOG;
+if (argvLog) appendFileSync(argvLog, `${args.join(' ')}\n`);
 
 const ignoreSigterm = process.env.MOCK_OPENCODE_IGNORE_SIGTERM === '1';
 const exitBeforeListen = process.env.MOCK_OPENCODE_EXIT_BEFORE_LISTEN === '1';
@@ -404,7 +422,23 @@ if (exitBeforeListen) {
   process.exit(1);
 }
 
+// A bind that fails has to NAME itself. With no 'error' listener the failure
+// is an unhandled event: the process dies without a word, and the runner's
+// handshake reports the far-away 'opencode serve exited before it started
+// listening' instead of the reason — which is how #184's port collision read
+// for as long as it did.
+server.on('error', (err) => {
+  process.stderr.write(`opencode: server error ${err.code ?? err.message}\n`);
+  process.exit(1);
+});
+
 server.listen(port, hostname, () => {
+  // The BOUND port, never the requested one. The runner asks for `--port 0`
+  // (opencode's own default) and learns the answer only from this line, so
+  // echoing the request back would announce `http://127.0.0.1:0` and send every
+  // request to a port nothing is listening on.
+  const bound = server.address();
+  const boundPort = bound && typeof bound === 'object' ? bound.port : port;
   // The runner reads the bound URL back from stdout, like the real server.
-  console.log(`opencode server listening on http://${hostname}:${port}`);
+  console.log(`opencode server listening on http://${hostname}:${boundPort}`);
 });
