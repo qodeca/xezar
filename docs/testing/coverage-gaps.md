@@ -53,9 +53,9 @@ line in the root `projects` list, or its tests are decoration.**
 *Measured.* `packages/xezar/src/index.ts` is **absent from the coverage report entirely** – no
 vitest test loads it. The node:test suites reach it only by spawning the binary:
 `test/unit/cli-version.test.ts` covers `--version` and `--help`; `test/e2e/package-cli.test.ts`
-spawns `run`, `projects`, `server-install` and `server-uninstall` against the installed tarball.
-No test found for `xezar init`, for the default `serve` command, for `server-deploy`, or for the
-unknown-command exit path, in the suites examined.
+spawns `run`, `projects`, `server-install`, `server-uninstall` and `server-deploy` against the
+installed tarball, and `project-kit-cli.test.ts` spawns `init`. Still no test found for the default
+`serve` command, or for the unknown-command exit path, in the suites examined.
 
 `BACKWARD_COMPATIBILITY.md:9-19` names all of these as protected surfaces, including the default
 port, the default workflow, and `run`'s exit-code semantics. `init` is what a new user types first,
@@ -67,7 +67,7 @@ and `serve` is what every other user types every day.
 
 | Suite | Command | Runner | Runs in CI? | Size (measured) |
 |---|---|---|---|---|
-| Server unit | `npm test` (project `server`) | vitest, node env | yes | 192 `*.test.ts` under `packages/xezar/src` |
+| Server unit | `npm test` (project `server`) | vitest, node env | yes | 194 `*.test.ts` under `packages/xezar/src` |
 | Cockpit unit | `npm test` (project `web`) | vitest, jsdom | yes | 155 `*.test.ts(x)` under `packages/web/src` |
 | Api-client unit | `npm test` (project `api-client`) | vitest, node env | yes | 2 files |
 | Contract unit | `npm test` (project `contract`) | vitest, node env | yes | 2 files |
@@ -107,7 +107,7 @@ Status key: **C** covered, **P** partially covered, **N** no test found in the s
 | `server-uninstall` | packaged e2e | `test/e2e/package-cli.test.ts:213` | C |
 | `init` scaffolds `.xezar/` and never overwrites | server unit | `project-kit-cli.test.ts:20,29` — spawns the real CLI and asserts both halves | C |
 | **`serve` boots: port auto-pick, `--repo`, `--bind-host`, `--no-open`, orphan-worktree prune, `.local/.gitignore` upkeep** | none | no CLI-level test found; server internals are tested separately | **N** |
-| **`server-deploy`** | none | no invocation found in `package-cli.test.ts` or elsewhere | **N** |
+| `server-deploy` | packaged e2e | `test/e2e/package-cli.test.ts:271,284,291` — help text, a real `--platform ubuntu --yes` invocation, and the unknown-platform exit 1 (#56) | C |
 | **unknown command → exit 1 + help** | none | `src/index.ts:174-178` not exercised by any spawn found | **N** |
 | npm package surface: bins, `exports`, tarball contents | packaged e2e + build | `test/e2e/package-exports.test.ts`; `scripts/check-pack.mjs` via `npm run build` | C |
 
@@ -214,7 +214,7 @@ HTTP API.
 | api-client protocol mirror stays type-exact | server unit | `server/api-types.test.ts` | C |
 | Claude runner teardown | server unit | `claude-cli-runner.test.ts:92` (stub script that ignores EOF) | C |
 | Codex runner against a mock app-server | server unit | `codex-app-server-runner.test.ts:31` + `mock-codex-app-server.mjs` | C |
-| **OpenCode runner teardown** | server unit, but through `vi.mock('node:child_process')` rather than the `mock-opencode-serve.mjs` its sibling backend uses | `opencode-server-runner.test.ts:9`; measured 85.6 % lines / 63.5 % branches | **P** |
+| OpenCode runner teardown | server unit | `opencode-server-runner.test.ts` — driven against the real `__fixtures__/opencode/mock-opencode-serve.mjs`, the same binary the mapper fixtures use, rather than a mocked `node:child_process` (#55) | C |
 | **`createRunner` dispatch for claude / codex / opencode** | server unit (pi branch only) | `pi-runner.test.ts:37-43`; measured 80 % lines / 83 % branches | **P** |
 | **`detectEnvironment` probes for claude / codex / opencode / gh / git** | server unit (pi entry only) | `pi-runner.test.ts:45-66`; measured 73.8 % lines / 72.2 % branches | **P** |
 | pi wall-clock deadline escalates SIGTERM→SIGKILL | server unit | `pi-runner.test.ts:220-330` — four cases, including the `timeoutMs: 0` guard that must pass both ways | C |
@@ -291,9 +291,9 @@ which is exactly why the ranking in section 5 is behaviour-led.
 ### Where the opposite is true – low coverage, well-guarded behaviour
 
 - `packages/xezar/src/index.ts` is **absent from the report entirely**, yet `run`, `projects`,
-  `server-install`, `server-uninstall`, `--help` and `--version` are all exercised by the node:test
-  suites that CI does run. Its 0 % is a measurement artefact for those paths – but `init`, `serve`
-  and `server-deploy` really are unguarded.
+  `server-install`, `server-uninstall`, `server-deploy`, `--help` and `--version` are all exercised
+  by the node:test suites that CI does run, and `init` by `project-kit-cli.test.ts`. Its 0 % is a
+  measurement artefact for those paths – but `serve` really is unguarded.
 - `packages/xezar/src/planner.ts` measures 37.5 % lines here while
   `test/unit/planner.test.ts` covers two of its functions in a suite this run does not see.
 - `packages/xezar/src/server-install/*` measure 55-72 % here; parts of the install path are
@@ -338,7 +338,7 @@ epic #42, and every child issue maps back to exactly one row.
 | ~~R3~~ | ~~`xezar init` has no test at any level~~ — **closed** | `project-kit-cli.test.ts` spawns the real CLI and covers both the scaffold and the never-overwrite half | `project-kit-cli.test.ts:20,29` | #62 |
 | R4 | `xezar serve` boot path has no CLI-level test | Default command; port auto-pick, orphan prune and `.local/.gitignore` upkeep all unguarded | `src/index.ts` absent from coverage | #43 |
 | R5 | `server/git.ts` at 27.6 % branches | Repo detection feeds worktrees, diffs and project registration; failures are silent and wrong, not loud | measured | #44 |
-| R6 | `backend-detect.ts` probes only asserted for `pi` | Graceful degradation when a CLI is absent is a zero-config promise | `pi-runner.test.ts:28-46`; 72.2 % branches | #45 |
+| R6 | `backend-detect.ts` probes only asserted for `pi` | Graceful degradation when a CLI is absent is a zero-config promise | `pi-runner.test.ts:45-66`; 72.2 % branches | #45 |
 | R7 | `workflows/load.ts` at 40 % branches | Users commit workflow YAML; per-file degradation ("skipped") is a BC §4 break when it misfires | measured | #46 |
 | R8 | `handoff.ts` at 36.4 % branches | Parses `XEZ:DONE` / `XEZ:MONITORING`; a miss leaves a run parked with no exit | measured; BC §8 | #47 |
 | R9 | Automations cockpit route at 9.9 % branches, enabled path only in a gated e2e | Double-blind: the covering spec needs `XEZ_AUTOMATIONS=1` **and** CI never runs e2e | `e2e/automations.e2e.ts:54-58` | #48 |
@@ -347,9 +347,9 @@ epic #42, and every child issue maps back to exactly one row.
 | R12 | `POST /skills/refresh` and the skills catalog GETs | Team-skill refresh is network-facing; only the generic parity loop touches the GETs | no test found | #51 |
 | R13 | `POST /plan` success path | Only rejection paths asserted; the planner response shape is type-checked, not exercised | no test found | #52 |
 | R14 | `GET /launch-key` has no behavioural assertion | Bookmarklet secret; a wrong value breaks every saved bookmarklet quietly | no test found | #53 |
-| R15 | `createRunner` dispatch only asserted for `pi` | A mis-wired backend id would surface as "the wrong agent ran" | `pi-runner.test.ts:20-27` | #54 |
-| R16 | OpenCode runner teardown bypasses its golden mock server | Backend asymmetry: codex uses the mock server, opencode uses `vi.mock` | `opencode-server-runner.test.ts:9` | #55 |
-| R17 | `server-install` steps/ui/platforms at 50-63 % branches, `server-deploy` untested | Remote-host install and redeploy; failures land on someone else's VPS | measured; no `server-deploy` test found | #56 |
+| R15 | `createRunner` dispatch only asserted for `pi` | A mis-wired backend id would surface as "the wrong agent ran" | `pi-runner.test.ts:37-43` | #54 |
+| ~~R16~~ | ~~OpenCode runner teardown bypasses its golden mock server~~ — **closed** | the suite now drives the real `mock-opencode-serve.mjs`, removing the asymmetry with codex | `opencode-server-runner.test.ts` | #55 |
+| ~~R17~~ | ~~`server-install` steps/ui/platforms at 50-63 % branches, `server-deploy` untested~~ — **closed** | `server-deploy` now has help-text, real-invocation and unknown-platform coverage, and the install steps/ui gained tests with it | `test/e2e/package-cli.test.ts:271,284,291` | #56 |
 | R18 | `skills-remote.ts` at 41.8 % branches | Network-facing team-skill fetch and cache; must never block boot | measured | #57 |
 | R19 | `planner.ts` at 20 % branches, `update-check.ts` absent from coverage | Two loose top-level modules with weak or no guards | measured | #58 |
 | R20 | Autonomous nudge delivery has no direct test | The mirrored monitoring wake is asserted; this half is not – exactly the asymmetry `AGENTS.md` warns about | `run.test.ts:1005-1021` vs no equivalent | #59 |
