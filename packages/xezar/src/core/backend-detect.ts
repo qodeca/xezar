@@ -130,7 +130,17 @@ async function probePi(): Promise<BackendCheck> {
 async function probeGh(): Promise<BackendCheck> {
   try {
     const { stdout } = await exec('gh', ['auth', 'token'], { timeout: 10_000 });
-    return { name: 'gh', available: stdout.trim().length > 0, version: 'authenticated' };
+    if (stdout.trim().length > 0) {
+      return { name: 'gh', available: true, version: 'authenticated' };
+    }
+    // `gh` ran cleanly but printed no token (cleared keyring entry, wrapper
+    // script, truncated config). The CLI is installed — do not blame the install
+    // — so this gets its own hint rather than the catch branch's wording.
+    return {
+      name: 'gh',
+      available: false,
+      hint: 'gh is installed but not authenticated — run `gh auth login` (only needed for PR creation)',
+    };
   } catch {
     return {
       name: 'gh',
