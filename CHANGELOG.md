@@ -1,5 +1,23 @@
 # Unreleased
 
+## 🐛 Fixes
+- 🐛 **The opencode runner no longer picks its own port — and it finally tells you why a
+  server did not start.** It drew one random port in 40000–60000 with no probe and no retry, so a
+  port that was already taken killed the child and reported `opencode serve exited before it
+  started listening` with no port, no code and no reason. `opencode serve` has handled this itself
+  all along: `--port 0` prefers 4096 and falls back to a free ephemeral port, and the runner
+  already reads the bound URL back from stdout. So the draw is gone rather than replaced. The
+  child's stderr is now folded into both start-failure messages, the way the Codex and Claude
+  runners already did, and the 30-second window rejects with what happened instead of resolving a
+  URL nothing is listening on. (#184)
+- 🐛 **Two cockpit browser specs stopped racing their own data.** `settings-agents.e2e.ts`
+  navigated to `/settings/agents` from `/settings/agents`, where every predicate about the section
+  is equally true of the page being left — so a cold load could assert against the outgoing
+  document and count 0 checked radios. `gotoAgents()` now waits for a marker only the incoming
+  document carries, and the base-branch case waits for the branch list that `GET /api/v1/repo`
+  fills instead of reading an option that may not exist yet. No sleeps, no relaxed assertions.
+  (#183)
+
 # 0.13.0 (2026-09-10)
 
 ## Highlights
