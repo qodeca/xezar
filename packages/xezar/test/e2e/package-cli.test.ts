@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
-import { execFile as execFileCallback } from 'node:child_process';
-import { mkdtemp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { execFile as execFileCallback, spawn } from 'node:child_process';
+import { once } from 'node:events';
+import { mkdtemp, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import test from 'node:test';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
@@ -330,7 +333,231 @@ if (args.join(' ') === 'auth status --json') {
       '# nothing to do with xezar\n',
       'init must not touch files it did not create',
     );
+
+    // `xezar serve` — the DEFAULT command, so a bare `xezar` is this boot. It
+    // does four things beyond starting an HTTP server, and each of them fails
+    // quietly: it picks the next free port when the requested one is taken
+    // (BACKWARD_COMPATIBILITY.md §1/§3), it honours `--repo`, it sweeps
+    // orphaned worktrees at startup (spec 006), and it keeps
+    // `<repo>/.local/.gitignore` blanket-ignoring run state — the upkeep whose
+    // absence once put run state into a user's history.
+    // Every boot goes through `withServe`, which always stops the process and
+    // always proves the port went free again: a stray listener would poison
+    // every later run on this machine.
+    const serveRepo = join(root, 'serve-repo');
+    await mkdir(serveRepo);
+    await execFile('git', ['init', '--initial-branch=main'], { cwd: serveRepo });
+    await writeFile(join(serveRepo, 'README.md'), '# serve fixture\n', 'utf8');
+    await execFile('git', ['add', 'README.md'], { cwd: serveRepo });
+    await execFile(
+      'git',
+      ['-c', 'user.name=Xezar CI', '-c', 'user.email=ci@example.invalid', 'commit', '-m', 'serve fixture'],
+      { cwd: serveRepo },
+    );
+
+    // A worktree directory with no matching run in `runs.json` — what a killed
+    // cockpit leaves behind. The store here is empty, so this entry is orphaned.
+    const orphanId = '00000000-dead-4000-8000-000000000001';
+    const orphanDir = join(serveRepo, '.local', 'xezar', 'worktrees', orphanId);
+    await mkdir(orphanDir, { recursive: true });
+    await writeFile(join(orphanDir, 'leftover.txt'), 'abandoned worktree\n', 'utf8');
+
+    // XEZ_HOME pins the workspace registry to a temp dir, XEZ_DRY_RUN keeps the
+    // boot off the real agent CLIs, XEZ_NO_BANNER keeps the skills banner out of
+    // the captured output.
+    const serveEnv = {
+      ...process.env,
+      XEZ_DRY_RUN: '1',
+      XEZ_HOME: join(root, 'serve-home'),
+      XEZ_NO_BANNER: '1',
+    };
+    const wantedPort = await freePort();
+    const firstBoot = await withServe(
+      cliPath,
+      ['--port', String(wantedPort), '--repo', serveRepo],
+      { cwd: consumerDir, env: serveEnv },
+      async ({ read, port }) => {
+        assert.equal(port, wantedPort, 'a free requested port is the port serve uses');
+        assert.equal(await healthStatus(port), 200, 'GET /api/v1/health answers 200 on the booted port');
+        assert.match(
+          read(),
+          new RegExp(`cleaned 1 orphaned worktree\\(s\\): ${orphanId.slice(0, 8)}`),
+          'the boot reports the orphaned worktree it swept',
+        );
+      },
+    );
+    assert.equal(
+      await exists(orphanDir),
+      false,
+      'startup prunes a worktree directory whose run no longer exists',
+    );
+    assert.match(
+      await readFile(join(serveRepo, '.local', '.gitignore'), 'utf8'),
+      /^\*$/m,
+      'a boot keeps run state out of the repository history',
+    );
+    // `--repo` is the whole reason the boot above touched `serve-repo` at all:
+    // the process working directory is `consumerDir`, which is not a git repo.
+    assert.match(firstBoot, /serve-repo$/m, 'serve reports the --repo directory as its root');
+    assert.match(firstBoot, /branch main/, 'serve reads git state from the --repo directory');
+    assert.equal(
+      await exists(join(consumerDir, '.local')),
+      false,
+      '--repo must keep every boot write out of the process working directory',
+    );
+
+    // Port fallback: hold the requested port with a listener this test owns, so
+    // the boot has to move. "address in use" instead of a cockpit is the failure
+    // this pins.
+    const busyPort = await freePort();
+    const squatter = createServer();
+    squatter.listen(busyPort, '127.0.0.1');
+    await once(squatter, 'listening');
+    try {
+      const fallbackBoot = await withServe(
+        cliPath,
+        ['--port', String(busyPort), '--repo', serveRepo],
+        { cwd: consumerDir, env: serveEnv },
+        async ({ port }) => {
+          assert.notEqual(port, busyPort, 'a taken port must not be the port serve uses');
+          assert.equal(await healthStatus(port), 200, 'the fallback port serves the cockpit');
+        },
+      );
+      assert.match(
+        fallbackBoot,
+        new RegExp(`port ${busyPort} was busy`),
+        'serve says on stdout that the requested port was taken',
+      );
+    } finally {
+      squatter.close();
+      await once(squatter, 'close');
+    }
   } finally {
     await rm(root, { recursive: true, force: true });
   }
 });
+
+async function exists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** A port that is free right now: bind :0, read what the OS handed out, release it. */
+async function freePort(): Promise<number> {
+  const probe = createServer();
+  probe.listen(0, '127.0.0.1');
+  await once(probe, 'listening');
+  const address = probe.address();
+  assert.ok(address && typeof address === 'object', 'the probe socket should report a port');
+  const port = address.port;
+  probe.close();
+  await once(probe, 'close');
+  return port;
+}
+
+/** True when nothing is listening on `port` — the no-server-left-behind check. */
+function portIsFree(port: number): Promise<boolean> {
+  return new Promise((resolveFree) => {
+    const probe = createServer();
+    probe.once('error', () => resolveFree(false));
+    probe.once('listening', () => probe.close(() => resolveFree(true)));
+    probe.listen(port, '127.0.0.1');
+  });
+}
+
+async function waitUntil(check: () => boolean | Promise<boolean>, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await check()) return true;
+    await sleep(100);
+  }
+  return false;
+}
+
+const COCKPIT_LINE = /cockpit → http:\/\/localhost:(\d+)/;
+
+/**
+ * `GET /api/v1/health`, with a bound on the wait. A socket that accepts and
+ * never answers — which is exactly what a bare listener on a squatted port does
+ * — would otherwise hang the whole suite instead of failing an assertion.
+ */
+async function healthStatus(port: number): Promise<number> {
+  const res = await fetch(`http://127.0.0.1:${port}/api/v1/health`, {
+    signal: AbortSignal.timeout(15_000),
+  });
+  return res.status;
+}
+
+/**
+ * Boot the packaged CLI's default command, run `body` against the port it
+ * actually chose, then stop it. The process is killed in a `finally` and the
+ * port is confirmed free afterwards, whatever the body did — a serve process
+ * that outlived its test would break every later run on the same machine.
+ * Returns everything the boot printed.
+ */
+async function withServe(
+  cliPath: string,
+  args: readonly string[],
+  options: { cwd: string; env: NodeJS.ProcessEnv },
+  body: (session: { read: () => string; port: number }) => Promise<void>,
+): Promise<string> {
+  const child = spawn(process.execPath, [cliPath, 'serve', '--no-open', ...args], {
+    cwd: options.cwd,
+    env: options.env,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let output = '';
+  child.stdout.setEncoding('utf8');
+  child.stdout.on('data', (chunk: string) => { output += chunk; });
+  child.stderr.setEncoding('utf8');
+  child.stderr.on('data', (chunk: string) => { output += chunk; });
+
+  // Last-resort reaper: a test that times out or throws in an unexpected place
+  // still unwinds through process exit, and the child must not outlive it.
+  const reap = () => { child.kill('SIGKILL'); };
+  process.once('exit', reap);
+  // Subscribed HERE, before anything can be awaited: a boot that crashes on its
+  // own (a busy port with no fallback does exactly that) emits `exit` while the
+  // assertions are still running, and a listener attached afterwards would wait
+  // for an event that already happened — a hang instead of a failure.
+  const exited = once(child, 'exit').catch(() => undefined);
+  let dead = false;
+  void exited.then(() => { dead = true; });
+
+  let port = 0;
+  let failure: unknown;
+  try {
+    // A crashed boot ends the wait immediately — no point spending the timeout
+    // watching a process that is already gone.
+    await waitUntil(() => COCKPIT_LINE.test(output) || dead, 60_000);
+    assert.match(output, COCKPIT_LINE, `serve never printed its cockpit line. Output:\n${output}`);
+    port = Number(COCKPIT_LINE.exec(output)?.[1]);
+    await body({ read: () => output, port });
+  } catch (err) {
+    failure = err;
+  } finally {
+    child.kill('SIGTERM');
+    // The losing side of this race must be cancelled: a pending 10 s timer would
+    // hold the test process open long after the assertions finished.
+    const giveUp = new AbortController();
+    const stopped = await Promise.race([
+      exited.then(() => true),
+      sleep(10_000, false, { signal: giveUp.signal }).catch(() => false),
+    ]);
+    giveUp.abort();
+    if (!stopped) {
+      child.kill('SIGKILL');
+      await exited;
+    }
+    process.off('exit', reap);
+  }
+
+  const freed = port > 0 ? await waitUntil(() => portIsFree(port), 10_000) : true;
+  if (failure) throw failure;
+  assert.ok(freed, `serve left a listener behind on port ${port}`);
+  return output;
+}
