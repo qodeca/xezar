@@ -1,4 +1,6 @@
 import { spawn as nodeSpawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import http from 'node:http';
+import https from 'node:https';
 import type {
   AgentEvent,
   AgentRunResult,
@@ -135,6 +137,10 @@ class OpencodeSession implements AgentSession {
   private timedOut = false;
   /** One teardown per session — see `terminate()`. */
   private signalled = false;
+  /** This run's wall clock in ms, `0` when the run is deliberately uncapped
+   *  (the last, interactive workflow step). It is also the ONLY bound on a
+   *  blocking prompt request — see `request()`. */
+  private readonly limitMs: number;
 
   constructor(
     private readonly bin: string,
@@ -176,6 +182,7 @@ class OpencodeSession implements AgentSession {
     const urlReady = this.waitForServerUrl(port);
 
     const limitMs = spec.timeoutMs ?? timeoutMs;
+    this.limitMs = limitMs;
     let deadline: NodeJS.Timeout | undefined;
     if (limitMs > 0) {
       deadline = setTimeout(() => {
@@ -445,6 +452,19 @@ class OpencodeSession implements AgentSession {
     }
     let res: Response;
     try {
+      // OPEN QUESTION, not a finding (#153, deliberately left unmeasured).
+      // This feed is still on `fetch`, unlike the request/response calls in
+      // `request()`, so undici's `bodyTimeout` — documented default also 300s
+      // — may apply to it. If it does, a feed that stays silent for 300s while
+      // a slow local model reasons is torn down, and since #168 a dying feed
+      // RELEASES the waiting turn: the symptom would be a turn ending early
+      // with partial output, not an error.
+      //   Evidence level: a reading of undici's documented default plus this
+      //   code as merged. Nobody has measured it, and nobody knows whether a
+      //   real `opencode serve` emits SSE keepalives inside that window (the
+      //   bundled mock models neither).
+      //   How to settle it: point a run at a slow local model and watch
+      //   whether the feed survives a long silent stretch.
       res = await fetch(`${this.baseUrl}/event`, {
         headers: { accept: 'text/event-stream' },
         signal: this.sse.signal,
@@ -593,27 +613,46 @@ class OpencodeSession implements AgentSession {
   // ---- http ---------------------------------------------------------------
 
   /**
-   * The one request/response fetch this session makes — `http()` for callers
+   * The one request/response call this session makes — `http()` for callers
    * that want the parsed body, `submitPrompt()` for the one caller that has to
    * read a STATUS instead (a `204` accept is indistinguishable from an older
    * server's catch-all once the body is parsed). The SSE subscription in
-   * `consumeEvents` is deliberately its own long-lived fetch.
+   * `consumeEvents` is deliberately its own long-lived stream.
+   *
+   * **This does not use `fetch`, and that is the whole point (#153 AC 2).**
+   * Node's built-in fetch applies undici's `headersTimeout`, whose default is
+   * 300s and which no standard `fetch` option can reach. `POST
+   * /session/:id/message` answers only when the turn is over, so on every path
+   * where `submitPrompt()` cannot use the asynchronous route — no live SSE
+   * feed, no `prompt_async` route (an older opencode serves its web UI there,
+   * `200` with an HTML body), or any other answer — a turn longer than five
+   * minutes died mid-work. `node:http` sets no response timeout unless one is
+   * asked for, so the wall is simply not there.
+   *
+   * The bound that remains is this run's own wall clock (`limitMs`), applied
+   * as a socket inactivity timeout so the transport can never be the thing
+   * that decides how long a turn may take — the run's configured deadline is.
+   * When the run is deliberately uncapped (`limitMs === 0`, the last
+   * interactive workflow step) the request is uncapped too: `end()`,
+   * `interrupt()` and the server exiting all still tear the socket down, and
+   * the asynchronous route already has exactly that property (#168).
    *
    * Only the transport rejection is wrapped — every successful response, and
    * every non-2xx one, takes exactly the path it always did (#153). The wrap
    * sits HERE rather than in `http()` so that `submitPrompt()`, which reads a
-   * status off this same call, cannot be the one caller left with Node's
-   * opaque two-word `fetch failed`.
+   * status off this same call, cannot be the one caller left with an opaque
+   * two-word failure.
    */
-  private async request(method: string, path: string, body: unknown): Promise<Response> {
+  private async request(method: string, path: string, body: unknown): Promise<HttpReply> {
     if (!this.baseUrl) throw new Error('opencode server not ready');
     const startedAt = Date.now();
     try {
-      return await fetch(`${this.baseUrl}${path}`, {
+      return await sendRequest(
+        `${this.baseUrl}${path}`,
         method,
-        headers: body !== undefined ? { 'content-type': 'application/json' } : {},
-        body: body !== undefined ? JSON.stringify(body) : undefined,
-      });
+        body !== undefined ? JSON.stringify(body) : undefined,
+        this.limitMs,
+      );
     } catch (err) {
       throw new Error(describeFetchFailure(err, method, path, Date.now() - startedAt));
     }
@@ -662,6 +701,70 @@ class OpencodeSession implements AgentSession {
 interface OpencodeEvent {
   type?: string;
   properties?: Record<string, unknown>;
+}
+
+/** The slice of a response this runner reads — `http()` parses the body,
+ *  `submitPrompt()` reads the status and drains. Deliberately the same three
+ *  members the WHATWG `Response` offered, so both callers are unchanged. */
+interface HttpReply {
+  status: number;
+  ok: boolean;
+  text(): Promise<string>;
+}
+
+/**
+ * One request/response exchange over `node:http`, with NO response timeout
+ * unless `timeoutMs` asks for one (see `OpencodeSession.request` for why that
+ * matters, #153). `node:http` is used in preference to undici's
+ * `Agent`/`Dispatcher` because `@qodeca/xezar` is published: raising
+ * `headersTimeout` through undici means shipping a new runtime dependency to
+ * every user for a limit Node's own http client simply does not impose.
+ *
+ * `agent: false` gives each request its own socket and destroys it afterwards,
+ * so nothing is pooled and no keep-alive socket outlives a session.
+ */
+function sendRequest(
+  url: string,
+  method: string,
+  body: string | undefined,
+  timeoutMs: number,
+): Promise<HttpReply> {
+  const target = new URL(url);
+  const transport = target.protocol === 'https:' ? https : http;
+  const headers: Record<string, string> =
+    body !== undefined
+      ? { 'content-type': 'application/json', 'content-length': String(Buffer.byteLength(body)) }
+      : {};
+  return new Promise<HttpReply>((resolve, reject) => {
+    const req = transport.request(target, { method, agent: false, headers }, (res) => {
+      const status = res.statusCode ?? 0;
+      res.setEncoding('utf8');
+      let text = '';
+      res.on('data', (chunk: string) => {
+        text += chunk;
+      });
+      // A connection that dies mid-body reaches the response, not the request.
+      res.on('error', reject);
+      res.on('end', () => {
+        resolve({ status, ok: status >= 200 && status < 300, text: () => Promise.resolve(text) });
+      });
+    });
+    if (timeoutMs > 0) {
+      // Socket inactivity, not total time: once bytes are flowing the clock
+      // restarts, so this only fires on a connection that has gone silent for
+      // as long as the whole run was allowed to take.
+      req.setTimeout(timeoutMs, () => {
+        req.destroy(
+          Object.assign(
+            new Error(`no response within the run's own ${Math.round(timeoutMs / 1000)}s limit`),
+            { code: 'XEZ_ERR_RUN_LIMIT' },
+          ),
+        );
+      });
+    }
+    req.on('error', reject);
+    req.end(body);
+  });
 }
 
 function textOf(content: ContentBlock[]): string {
@@ -744,12 +847,15 @@ const UNDICI_TIMEOUT_HINT =
 const UNDICI_TIMEOUT_MARKERS = /UND_ERR_(?:HEADERS|BODY)_TIMEOUT|(?:Headers|Body)TimeoutError/i;
 
 /**
- * Node's built-in fetch rejects EVERY transport failure as the same opaque
- * `TypeError: fetch failed`. The reason lives in `.cause` — an undici
- * `HeadersTimeoutError`, a reset socket, a refused connection — and the runner
- * used to drop it, so a user had nothing to diagnose with (#153). One line,
- * with the cause and the elapsed seconds that make undici's 300s default
- * recognisable on sight.
+ * Render whatever the transport rejected with as one diagnosable line (#153).
+ *
+ * It has two shapes to survive. Node's built-in fetch — still the SSE feed's
+ * transport — rejects EVERY failure as the same opaque `TypeError: fetch
+ * failed` and keeps the reason in `.cause`: an undici `HeadersTimeoutError`, a
+ * reset socket, a refused connection. `node:http`, which the request/response
+ * calls now use, rejects with the real error directly and carries its reason in
+ * a top-level `code` instead. Both end up with the cause and the elapsed
+ * seconds that make a 300s wall recognisable on sight.
  */
 export function describeFetchFailure(
   err: unknown,
@@ -759,11 +865,21 @@ export function describeFetchFailure(
 ): string {
   const ownMessage = err instanceof Error ? safeStringField(err, 'message') : undefined;
   const head = ownMessage || safeString(err);
-  const cause = describeCause(safeField(err, 'cause'));
+  // No `.cause` and a top-level `code` is the `node:http` shape — `socket hang
+  // up (ECONNRESET)` rather than a bare `socket hang up`.
+  const cause = describeCause(safeField(err, 'cause')) ?? topLevelCode(err, head);
   let message = `${head} after ${formatSeconds(elapsedMs)} (${method} ${path})`;
   if (cause) message += ` — ${cause}`;
   if (cause && UNDICI_TIMEOUT_MARKERS.test(cause)) message += `. ${UNDICI_TIMEOUT_HINT}`;
   return message;
+}
+
+/** A `node:http` rejection's own error code, when the message does not already
+ *  contain it (`connect ECONNREFUSED 127.0.0.1:41234` needs no help). */
+function topLevelCode(err: unknown, head: string): string | undefined {
+  const code = safeStringField(err, 'code');
+  if (!code || head.includes(code)) return undefined;
+  return code;
 }
 
 /**
