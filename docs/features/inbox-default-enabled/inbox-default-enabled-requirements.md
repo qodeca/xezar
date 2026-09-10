@@ -18,7 +18,7 @@ The following repository sources were read on the date above. They describe curr
 
 | Source | Observation |
 | --- | --- |
-| `README.md`, views and environment-variable tables | Inbox is opt-in through `XEZ_FOLLOWUPS=1` and hidden by default. Enabling it both shows the view and asks agents to leave follow-ups. Per-task Notes are independent and work either way. |
+| `README.md`, views and environment-variable tables | Inbox is opt-in and hidden by default. Enabling it both shows the view and asks agents to leave follow-ups. Per-task Notes are independent and work either way. As of 10 September 2026 the mechanism is no longer the env var alone: `followups` is a stored tri-state key in `~/.xezar/config.json`, set from Settings → Resources (`packages/web/src/routes/settings/resources-section.tsx`), and the stored value wins over `XEZ_FOLLOWUPS` with no restart. Absent inherits the env; explicit `null` clears back to it. |
 | `packages/web/src/routes/inbox.tsx` | Inbox is a separate route/view. When disabled, a direct visit explains that it is off. Runnable suggestions offer Run, which starts a task and opens its task view. Dismiss removes an entry. Entries already started are hidden from the pending Inbox. Not every entry is necessarily runnable. |
 | `packages/xezar/src/todos.ts` | Suggestions are stored in `todos.json`. Dismiss deletes the entry. Starting a suggestion records its task ID and retains the entry as an audit trail, while the UI hides it. |
 
@@ -38,10 +38,10 @@ Inbox was described in the conversation as a simple backlog of agents' suggestio
 ## Open business decisions
 
 1. **Visibility versus collection:** should only the Inbox section be visible by default, or should agents also be asked to produce follow-up suggestions by default? If visibility only is intended, clarify how the user should understand a visible section while collection remains off.
-2. **Explicit opt-out:** define how deliberate disabling should behave under the new default. Which existing explicit choices must remain respected, and how should a user turn Inbox off? No override of an explicit opt-out is agreed here.
-3. **Existing installations:** should the new default apply to existing installations as well as new ones? Distinguish an unset preference from an explicit choice; upgrade behavior is not yet agreed.
+2. **Explicit opt-out:** define how deliberate disabling should behave under the new default. Which existing explicit choices must remain respected, and how should a user turn Inbox off? No override of an explicit opt-out is agreed here. *(The mechanism this decision would attach to now exists: a stored `followups: false` is an explicit opt-out, set from Settings → Resources and outranking the env var. The business decision is still open; the "how does a user turn it off" half is answered.)*
+3. **Existing installations:** should the new default apply to existing installations as well as new ones? Distinguish an unset preference from an explicit choice; upgrade behavior is not yet agreed. *(The technical distinction this asks for is built and enforced: absent, explicit `null` and an explicit value are three different states in the stored schema. Only the policy question remains.)*
 
-The team can select the technical implementation after these outcomes are clear. A change to an environment variable's default requires matching `.env.example` and README updates under `AGENTS.md`; this draft does not make those changes or select a new flag.
+The team can select the technical implementation after these outcomes are clear. The implementable route is no longer a change to an environment variable's default or a new flag: it is the schema default of the stored `followups` key in `packages/xezar/src/workspace/config.ts`. `.env.example` already documents the new precedence, and `AGENTS.md` § Zero config now names "an env var gaining a stored config key that supersedes it" as a case its documentation rule covers.
 
 ## Acceptance criteria to finalize
 
@@ -54,7 +54,7 @@ The following criteria express the reported direction and existing behavior to p
 | AC-03 | Run an existing runnable suggestion. | A task is created and opened through the existing flow; the started suggestion leaves the pending Inbox and retains its existing audit record. |
 | AC-04 | Dismiss a suggestion. | The entry is removed through the existing behavior. |
 | AC-05 | Use per-task Notes with Inbox enabled or disabled. | Notes remain independently available. |
-| AC-06 | Start with an explicit opt-out or upgrade an existing installation. | Behavior matches the separately agreed opt-out and upgrade policy; no policy is silently invented. |
+| AC-06 | Start with an explicit opt-out or upgrade an existing installation. | Behavior matches the separately agreed opt-out and upgrade policy; no policy is silently invented. The opt-out is a stored `followups: false`, which outranks `XEZ_FOLLOWUPS` and needs no restart; an unset preference and an explicit `null` must stay distinguishable from it. |
 | AC-07 | Review the delivered scope. | Inbox remains a separate suggestions section. No full backlog, prioritization, automatic execution of suggestions, or expansion of Planned to tentative ideas is introduced. |
 
 ## Readiness

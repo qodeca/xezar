@@ -10,9 +10,10 @@ and this package is how anything else talks to it — the cockpit UI is just its
 
 **Not published yet.** The package is `private`: it is consumed inside the xezar
 workspace (the cockpit bundles it, the service's tests import it) and will be
-released once its surface settles — it still carries hand-written DTOs for the
-routes that have not been converted to the versioned, type-inferred surface, and
-those shrink with every family that is.
+released once its surface settles. Every shape it hands out is now inferred from a
+zod schema in `@qodeca/xezar-contract`: the hand-written `dto/*` mirror this barrel
+used to carry is gone, and so is the last hand-written response interface in the
+service's own `server.ts`.
 
 ## Use
 
@@ -32,17 +33,18 @@ exist. It is supplied by you rather than imported here, so this package installs
 without the service package present — `createXezarClient()` with no type argument is a working,
 untyped client.
 
-Only the versioned surface (`/api/v1/*`) is typed. The unversioned `/api/*` paths are frozen for
-consumers that already call them and are not part of what this client offers.
+There is one surface and it is versioned: everything answers under `/api/v1`, and the
+unversioned `/api/*` spelling was removed rather than frozen.
 
 ## Also exported
 
 - **Protocol types** (`UiEvent`, `UiItem`, `ToolDisplay`, …) — the agent event vocabulary the
   service streams over SSE, plus the pure `toolDisplay()` renderer for it.
-- **Scope helpers** (`scopeApiPath`, `apiBase`, …) — the `/api` ↔ `/api/p/:projectId`
+- **Scope helpers** (`apiPath`, `apiBase`, `queryScope`, `resolveApiUrl`, `API_PREFIX`, and the
+  `apiScope` / `apiBaseUrl` getters and setters) — the `/api/v1` ↔ `/api/v1/p/:projectId`
   project-scope prefixing.
-- **DTOs** for the routes that are not versioned yet. These are hand-maintained (and drift-
-  guarded against the service's own types) and shrink as each route family is converted.
+- **The whole contract**, re-exported (`export * from '@qodeca/xezar-contract'`), so a consumer
+  needs one import for both the schema it validates with and the type it compiles against.
 
 Everything here is Node-free: it bundles into a browser as readily as it imports into a Node
 process.

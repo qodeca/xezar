@@ -95,6 +95,26 @@ signal — keeps running, and the escalation written for exactly that case is
 skipped. Use `trackChildExit(child)` (`packages/xezar/src/core/agent-runner.ts`),
 which seeds from `exitCode`/`signalCode` and listens for `exit`.
 
+The **wall-clock deadline is a third termination path, and it carries the same
+obligation.** `AgentRunSpec.timeoutMs` is not advisory: when it expires a runner MUST
+escalate to `SIGKILL` after `KILL_GRACE_MS`, gated on `trackChildExit` exactly as above.
+Leaving it at a single `interrupt()` is what made a step's `timeout:` enforceable on some
+backends and merely a suggestion on another — the defect was invisible because the
+escalation branch existed in the source and simply never ran. `claude-cli-runner.ts` is the
+reference implementation; a new runner should mirror it rather than invent a variant.
+
+Two constraints on that path are load-bearing and neither is inferable from the code
+around them:
+
+- **Destroy stdout** when the deadline fires, or the NDJSON read loop can block forever on
+  a process that is ignoring the signal — and then **swallow the resulting premature-close
+  error while `timedOut`**, or a timeout surfaces as a spurious runner throw rather than as
+  the timeout it is.
+- **Do NOT clear the escalation timer in the read loop's `finally`.** Destroying stdout ends
+  that loop within a microtask, so a `finally` disarms the `SIGKILL` long before its grace
+  period elapses. Clear it after `waitForExit` instead. This is the single easiest way to
+  ship an escalation that is present in the diff, reviewed, and dead.
+
 `SessionOptions`:
 
 - `autoEndAfterFirstTurn?` — single-turn behavior for non-interactive workflow
@@ -407,7 +427,11 @@ To be first-class:
 1. **Runner** — `packages/xezar/src/core/pi-runner.ts` implementing `AgentRunner` /
    `AgentSession` (persistent process; `pid`; `sendMessage`/`end`/`interrupt`;
    `result`). Honor `AgentRunSpec` uniformly — use `prependSystemPrompt` if the
-   backend has no native system-prompt channel.
+   backend has no native system-prompt channel. Implement all THREE termination paths
+   to the same standard (`end()`, `interrupt()`, and the `timeoutMs` deadline): each
+   escalates SIGTERM→SIGKILL gated on `trackChildExit`, and each records that the runner
+   sent the signal so the exit settles on the normal path. See § the termination rules
+   above; `claude-cli-runner.ts` is the reference.
 2. **Factory** — add the id to `RunnerId` / `RUNNER_IDS` (`agent-runner.ts`) and
    a `case` in `createRunner` (`runner-factory.ts`). Add `UiBackend` in
    `ui-events.ts` **and its mirror** `packages/api-client/src/protocol/ui-events.ts` (the

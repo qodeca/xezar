@@ -97,7 +97,7 @@ and an orchestrator keeps a whole queue of them moving.
   **orchestrates** them: it runs up to your parallel limit and holds the rest in
   an ordered queue. Point it at a GitHub issue and it runs straight on that, so
   working the tracker down stops being a manual chore. Turn on the opt-in
-  **Inbox** (`XEZ_FOLLOWUPS=1`) and an agent's leftover follow-ups become the
+  **Inbox** (Settings → Resources, or `XEZ_FOLLOWUPS=1`) and an agent's leftover follow-ups become the
   next tasks too — one click each.
 - 🤖 **"Autonomous" means you still have to sit there.** Flip the **Autonomous**
   flag and a run never parks to ask — it keeps going until the task is done. Pair
@@ -269,18 +269,22 @@ Five moves that make the cockpit worth the browser tab:
   everything still `queued` is re-enqueued in order. It's the orchestration layer
   that turns "one agent at a time" into a backlog that drains itself.
 - 🧠 **Memory-aware runs.** Each run's whole process tree is sampled (~2 s) for CPU
-  and RSS, and its **peak memory** is recorded and shown in the task table. Set an
-  optional per-task **memory ceiling** (`memoryLimitMb`) and a run that crosses it
-  is *paused* — freeing its tree so the queue keeps advancing — and resumes on
-  demand. Event logs are append-only NDJSON and streamed rather than re-serialized,
+  and RSS, and its **peak memory** is recorded and shown in the task table. The
+  per-task **memory ceiling** (`memoryLimitMb`) is **on out of the box**: with no
+  setting at all xezar derives a host-sized ceiling from your machine's RAM, and a
+  run that crosses it is *paused* — freeing its tree so the queue keeps advancing —
+  and resumes on demand. Adjust it in **Settings → Resources**; an explicit
+  `"memoryLimitMb": null` still means *no limit*, and a repo that sets its own value
+  overrides the workspace ceiling for its own runs. Event logs are append-only NDJSON and streamed rather than re-serialized,
   and live UI deltas are coalesced so they never hit disk.
 - 🪞 **Parallel variants (×2 / ×3).** Run the same task as competing agents in
   separate worktrees, then compare their diffs side by side and **pick** one —
   the losers are archived and their worktrees cleaned up.
 - 🧹 **Bounded worktree disk.** By default each git task runs in its own full checkout, so a busy
   cockpit would otherwise grow without limit. xezar keeps only the last
-  `worktreeRetention` **finished** worktrees on disk (default **10**; `0` =
-  unlimited) and reclaims the rest — directory only, the `xez/<id8>` branch is
+  `worktreeRetention` **finished** worktrees on disk (default **10**, itself a
+  workspace setting — `resources.worktreeRetentionDefault`, which every project
+  without its own value inherits; `0` = unlimited) and reclaims the rest — directory only, the `xez/<id8>` branch is
   always kept, so the work stays recoverable. Settings → Resources shows every
   worktree's disk use with per-row delete and a **Reclaim now** button.
 - 🛡️ **Review gate (optional, off by default).** Turn it on in Settings → Agents
@@ -304,9 +308,9 @@ Nine views, one browser window, all live over Server-Sent Events (seven by defau
 
 | View | What's in it |
 |---|---|
-| **Tasks** | Every task with its status, live event stream (agent text · tool calls · tool results · pasted/generated screenshots and file attachments), tokens and cost. Continue, cancel, open in terminal (`claude --resume`), review the diff, or push a draft PR. |
+| **Tasks** | Every task with its status, the tool and model it ran on, live event stream (agent text · tool calls · tool results · pasted/generated screenshots and file attachments), tokens and cost. Continue, cancel, open in terminal (`claude --resume`), review the diff, or push a draft PR. |
 | **All tasks** | Every *registered project's* tasks in one table, filtered and grouped by tag, project, status or workflow — see [Grouping connected repositories](#grouping-connected-repositories-tags-and-the-all-tasks-page). Appears once a second project is registered. |
-| **Inbox** | **Opt-in** (`XEZ_FOLLOWUPS=1`; hidden by default). Follow-ups an agent left behind (`todos.json`) — one click turns a suggestion into the next task, pre-wired to its suggested skill. Off, agents are never asked to leave follow-ups; each task's own **Notes** handoff journal is unaffected. |
+| **Inbox** | **Opt-in**, hidden by default. Turn it on in **Settings → Resources** (the stored choice wins and needs no restart) or start with `XEZ_FOLLOWUPS=1`. Follow-ups an agent left behind (`todos.json`) — one click turns a suggestion into the next task, pre-wired to its suggested skill. Off, agents are never asked to leave follow-ups; each task's own **Notes** handoff journal is unaffected. |
 | **Git** | Branch, working-tree status, diff vs HEAD, recent commits (click one for its inline patch + GitHub link), and the configurable base branch that worktrees fork from and PRs target. |
 | **GitHub** | Open issues and PRs of the repo's origin, read through your logged-in `gh`. Hand an issue straight to the agent — pick a workflow and skills, one click runs it. |
 | **Automations** | **Opt-in** (`XEZ_AUTOMATIONS=1`; hidden by default). Scheduled GitHub watches: each automation polls on its own interval and launches a task when its bounded filter matches. Test a filter before enabling it, and read the per-check log. |
@@ -326,7 +330,7 @@ a GitHub page.
 One `xezar serve` hosts **every repo you work in**, not just the one you started
 it in. Each repo xezar boots in registers itself in a per-user registry at
 `~/.xezar/config.json` — the workspace file that also holds the global knobs
-(the parallel cap, the memory ceiling, the browse root, and the checkout root). Nothing is added to
+(the parallel cap, the memory ceiling, the idle timeout, the default worktree retention, the Inbox switch, the agent env passthrough list, the browse root, and the checkout root). Nothing is added to
 the repo: per-project state stays exactly where it was, in that repo's
 `.local/xezar/`.
 
@@ -501,9 +505,9 @@ review or a docs pass, and too short for a long investigate-and-implement step.
   does nothing.
 
 **All four backends honour it.** `claude`, `codex`, `opencode` and `pi` each arm
-the deadline from the same per-step value; on `claude` and `codex` a step that
-overruns is interrupted and then `SIGKILL`ed after a short grace period, while
-`opencode` and `pi` interrupt and wait for the session to close.
+the deadline from the same per-step value; on `claude`, `codex` and `pi` a step
+that overruns is interrupted and then `SIGKILL`ed after a short grace period,
+while `opencode` interrupts and waits for the session to close.
 
 Prefer skills over steps? A workflow can also be written in the portable
 shorthand — an ordered list of skill names, each becoming one agent step:
@@ -769,12 +773,24 @@ Run data (`runs.json`, NDJSON event logs, worktrees, `todos.json`) is
 git-ignored automatically; your workflows and skills stay committable.
 
 Settings that belong to *you* rather than to a repo — the parallel cap
-(`maxParallel`, default **2**), the per-task memory ceiling and the checkout
-root — live once in `~/.xezar/config.json`, alongside the
+(`maxParallel`, default **2**), the per-task memory ceiling, the **idle timeout**
+(`idleTimeoutMinutes`, default **15**), the default worktree retention
+(`worktreeRetentionDefault`), the Inbox switch and the agent env passthrough list,
+and the checkout root — live once in `~/.xezar/config.json`, alongside the
 [project registry](#multiple-projects-one-cockpit), and are edited from
-**Settings → Resources** and **Settings → Projects**. A `maxParallel` left over
-in a repo's `.xezar/config.json` is imported into the workspace file the
-first time xezar boots there, and ignored afterwards.
+**Settings → Resources** and **Settings → Projects**.
+
+The idle timeout is how long a task parked at `waiting` keeps its agent session
+alive with nobody talking to it. After it expires the session is closed. Set it to
+**Never** if you run long interactive sessions and would rather keep them — a
+waiting task holds no parallel-task slot, so your queue keeps moving either way,
+but its agent process stays alive and keeps using memory until you send it a
+message or cancel it.
+
+A `maxParallel` left over in a repo's `.xezar/config.json` is imported into the
+workspace file the first time xezar boots there, and ignored afterwards. A per-repo
+`memoryLimitMb` behaves differently on purpose: it is still honoured, and overrides
+the workspace ceiling for runs in that repo.
 
 ### Editing the agents' own config (Settings → Agent config)
 
