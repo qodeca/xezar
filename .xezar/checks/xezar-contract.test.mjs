@@ -127,3 +127,23 @@ test('infrastructure CI is unconditional and agrees with the required integratio
  assert.ok(job.steps.some(s=>s.run==='bash .xezar/checks/infra-tests.sh'));
  for(const step of job.steps){assert.equal(step.if,undefined);assert.equal(step['continue-on-error'],undefined);}
 });
+
+for (const change of ['missing', 'renamed', 'empty']) {
+ test(`maintained roles reject a ${change} shared contract`, () => {
+  const root=fixture();
+  const skill=path.join(root,'.xezar/skills/xezar-testing.md');
+  const original=fs.readFileSync(skill,'utf8');
+  const changed=change==='missing' ? original.split('## Shared contract\n')[0]
+   : change==='renamed' ? original.replace('## Shared contract\n','## Shared guarantees\n')
+   : original.split('## Shared contract\n')[0]+'## Shared contract\n';
+  fs.writeFileSync(skill,changed);
+  const result=spawnSync(process.execPath,[path.join(checks,'catalog-check.mjs'),root],{encoding:'utf8'});
+  assert.notEqual(result.status,0);
+  assert.match(result.stdout,/shared contract/i);
+ });
+}
+test('standalone custom skills need no project shared contract',()=>{
+ const root=fixture();
+ fs.writeFileSync(path.join(root,'.xezar/skills/xezar-custom.md'),'---\nname: xezar-custom\ndescription: A standalone custom skill\n---\nOwn instructions.\n');
+ assert.equal(spawnSync(process.execPath,[path.join(checks,'catalog-check.mjs'),root],{encoding:'utf8'}).status,0);
+});

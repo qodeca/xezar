@@ -64,6 +64,26 @@ const STEP_KEYS = new Set([
 const ON_FAIL_KEYS = new Set(["retry", "max"]);
 const FILE_KEYS = new Set(["name", "description", "steps", "skills"]);
 
+// Maintained project roles require the shared contract; custom skills remain standalone.
+const MAINTAINED_SKILLS = new Set([
+  "xezar-bug-investigation",
+  "xezar-business-analysis",
+  "xezar-code-review",
+  "xezar-dependency-maintenance",
+  "xezar-docs-maintenance",
+  "xezar-handoff-draft-pr",
+  "xezar-implementation",
+  "xezar-integration",
+  "xezar-issue-triage",
+  "xezar-planning-spec",
+  "xezar-quality-gates",
+  "xezar-release-changelog",
+  "xezar-release-prep",
+  "xezar-release-publish",
+  "xezar-review-response",
+  "xezar-testing",
+]);
+
 // The only skills that may keep `interactive: true` in frontmatter. It is a composer
 // SEED, not a lock: it pre-ticks Worktree OFF and Autonomous OFF. That is right for a
 // read-only run, which writes nothing and needs no isolated checkout, and wrong for
@@ -340,8 +360,10 @@ if (existsSync(skillsDir)) {
     }
     if (name?.startsWith("xezar-")) {
       const shared = text.split("## Shared contract\n")[1];
-      // Standalone third-party/custom entries need not adopt the project's shared prose.
-      // The real-repository contract test requires it on the maintained 16 roles.
+      if (MAINTAINED_SKILLS.has(name) && shared === undefined) {
+        err(`skills/${file}`, "maintained role is missing its shared contract");
+      }
+      // Custom entries opt into equality checking only when they include the section.
       if (shared !== undefined) {
         if (!shared.trim()) err(`skills/${file}`, "shared contract is empty");
         else if (sharedContract === undefined) sharedContract = shared;
