@@ -7,6 +7,34 @@
 // resolves BEFORE the final SSE parts and the `session.idle` — so a correct
 // v2 stream must take `turn.completed` from `session.idle`, not from the
 // HTTP response (which is where v1 synthesizes its `turn-end`).
+//
+// `opencode-server-runner.test.ts` (#55) drives the same binary through the
+// server-lifecycle failures a `vi.mock` of `node:child_process` cannot reach.
+// Every one of those is an opt-in env flag, so the DEFAULT script above stays
+// byte-identical to what the mapper test replays:
+//
+//   MOCK_OPENCODE_IGNORE_SIGTERM=1   handle SIGTERM and keep running — the
+//                                    real server's own handler, the shape that
+//                                    made #858's SIGKILL escalation necessary.
+//   MOCK_OPENCODE_EXIT_BEFORE_LISTEN=1  die before printing a URL: the server
+//                                    is gone before the runner's handshake.
+//   MOCK_OPENCODE_EXIT_AFTER_IDLE=1  exit cleanly right after `session.idle`,
+//                                    so teardown finds the child already dead.
+//   MOCK_OPENCODE_DROP_STREAM=1      publish `session.error` + `session.idle`
+//                                    mid-turn, then drop the SSE socket.
+//   MOCK_OPENCODE_NO_SESSION_ID=1    answer POST /session without an `id`.
+//   MOCK_OPENCODE_REJECT_PROMPT=1    answer the prompt POST with HTTP 500.
+//   MOCK_OPENCODE_RICH_TURN=1        the wider slice of the bus a real turn
+//                                    carries: the user's own message streaming
+//                                    back over the same feed, a reasoning part,
+//                                    a tool that ends in `error`, and the
+//                                    non-JSON / comment frames an SSE client
+//                                    must ignore.
+//   MOCK_OPENCODE_SIGNAL_LOG=<path>  append every stop signal actually
+//                                    received, one per line — SIGKILL cannot
+//                                    be caught, so an escalation shows up as
+//                                    "one SIGTERM logged, process gone".
+import { appendFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 
 const args = process.argv.slice(2);
@@ -17,12 +45,24 @@ const arg = (flag, fallback) => {
 const hostname = arg('--hostname', '127.0.0.1');
 const port = Number(arg('--port', '0'));
 
+const ignoreSigterm = process.env.MOCK_OPENCODE_IGNORE_SIGTERM === '1';
+const exitBeforeListen = process.env.MOCK_OPENCODE_EXIT_BEFORE_LISTEN === '1';
+const exitAfterIdle = process.env.MOCK_OPENCODE_EXIT_AFTER_IDLE === '1';
+const dropStream = process.env.MOCK_OPENCODE_DROP_STREAM === '1';
+const noSessionId = process.env.MOCK_OPENCODE_NO_SESSION_ID === '1';
+const rejectPrompt = process.env.MOCK_OPENCODE_REJECT_PROMPT === '1';
+const richTurn = process.env.MOCK_OPENCODE_RICH_TURN === '1';
+const signalLog = process.env.MOCK_OPENCODE_SIGNAL_LOG;
+
 const SESSION_ID = 'ses_mock_1';
 const MESSAGE_ID = 'msg_mock_1';
 
 let sse = null;
+const sendRaw = (frame) => {
+  if (sse) sse.write(frame);
+};
 const send = (event) => {
-  if (sse) sse.write(`data: ${JSON.stringify(event)}\n\n`);
+  sendRaw(`data: ${JSON.stringify(event)}\n\n`);
 };
 const info = (extra) => ({
   id: MESSAGE_ID,
@@ -51,7 +91,114 @@ const server = createServer((req, res) => {
   req.on('end', () => {
     if (req.method === 'POST' && url === '/session') {
       res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ id: SESSION_ID, title: 'xezar task' }));
+      // A server that answers the create call but names no session leaves the
+      // runner with nothing to prompt — it must say so, not press on.
+      res.end(JSON.stringify(noSessionId ? { title: 'xezar task' } : { id: SESSION_ID, title: 'xezar task' }));
+      return;
+    }
+    if (req.method === 'POST' && url === `/session/${SESSION_ID}/message` && rejectPrompt) {
+      res.writeHead(500, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: 'no provider configured' }));
+      return;
+    }
+    if (req.method === 'POST' && url === `/session/${SESSION_ID}/message` && richTurn) {
+      // The user's own prompt streams back over the same server-wide feed…
+      send({
+        type: 'message.updated',
+        properties: { info: { id: 'msg_mock_u1', sessionID: SESSION_ID, role: 'user', time: { created: 1760000000000 } } },
+      });
+      send({
+        type: 'message.part.updated',
+        properties: {
+          part: { id: 'prt_user_1', messageID: 'msg_mock_u1', sessionID: SESSION_ID, type: 'text', text: 'check the working tree' },
+        },
+      });
+      // …interleaved with frames an SSE client must survive: a comment
+      // keep-alive with no `data:` line, and a truncated JSON payload.
+      sendRaw(': keep-alive\n\n');
+      sendRaw('data: {"type":"message.part\n\n');
+      send({ type: 'message.created', properties: { info: info({}) } });
+      send({
+        type: 'message.part.updated',
+        properties: {
+          part: {
+            id: 'prt_mock_r1',
+            messageID: MESSAGE_ID,
+            sessionID: SESSION_ID,
+            type: 'reasoning',
+            text: 'The tree may be dirty.',
+            time: { start: 1760000000050, end: 1760000000080 },
+          },
+        },
+      });
+      send({
+        type: 'message.part.updated',
+        properties: {
+          part: {
+            id: 'prt_mock_c9',
+            messageID: MESSAGE_ID,
+            sessionID: SESSION_ID,
+            type: 'tool',
+            callID: 'call_mock_9',
+            tool: 'bash',
+            state: { status: 'pending', input: { command: 'npm test' }, raw: '{}' },
+          },
+        },
+      });
+      // The error state carries no `input` and no `title` (§4.2).
+      send({
+        type: 'message.part.updated',
+        properties: {
+          part: {
+            id: 'prt_mock_c9',
+            messageID: MESSAGE_ID,
+            sessionID: SESSION_ID,
+            type: 'tool',
+            callID: 'call_mock_9',
+            tool: 'bash',
+            state: { status: 'error', error: 'command not found: npm' },
+          },
+        },
+      });
+      send({
+        type: 'message.completed',
+        properties: {
+          info: info({ cost: 0.004, tokens: { input: 900, output: 100, reasoning: 40, cache: { read: 0, write: 0 } } }),
+        },
+      });
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ info: info({ cost: 0.004 }), parts: [] }));
+      setTimeout(() => send({ type: 'session.idle', properties: { sessionID: SESSION_ID } }), 30);
+      return;
+    }
+    if (req.method === 'POST' && url === `/session/${SESSION_ID}/message` && dropStream) {
+      // The provider connection dies mid-turn: the real server publishes the
+      // failure on the bus, goes idle (§4.1 — idle is THE turn-end signal, and
+      // a turn that saw `session.error` closes as stopReason 'error'), answers
+      // the prompt POST, and only then does the SSE socket itself go away.
+      send({ type: 'message.updated', properties: { info: info({}) } });
+      send({
+        type: 'message.part.updated',
+        properties: {
+          part: { id: 'prt_mock_t1', messageID: MESSAGE_ID, sessionID: SESSION_ID, type: 'text', text: 'Partial answer' },
+        },
+      });
+      send({
+        type: 'session.error',
+        properties: {
+          sessionID: SESSION_ID,
+          error: { name: 'ProviderError', data: { message: 'connection closed mid-stream' } },
+        },
+      });
+      send({ type: 'session.idle', properties: { sessionID: SESSION_ID } });
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ info: info({}), parts: [] }));
+      setTimeout(() => {
+        if (sse) {
+          sse.destroy();
+          sse = null;
+        }
+      }, 50);
       return;
     }
     if (req.method === 'POST' && url === `/session/${SESSION_ID}/message`) {
@@ -136,7 +283,12 @@ const server = createServer((req, res) => {
           },
         });
       }, 30);
-      setTimeout(() => send({ type: 'session.idle', properties: { sessionID: SESSION_ID } }), 90);
+      setTimeout(() => {
+        send({ type: 'session.idle', properties: { sessionID: SESSION_ID } });
+        // A server that finishes and shuts itself down — teardown then finds
+        // the child already gone and must send no signal at all.
+        if (exitAfterIdle) setTimeout(() => process.exit(0), 30);
+      }, 90);
       return;
     }
     res.writeHead(200, { 'content-type': 'application/json' });
@@ -144,8 +296,32 @@ const server = createServer((req, res) => {
   });
 });
 
+const noteSignal = (name) => {
+  if (!signalLog) return;
+  try {
+    appendFileSync(signalLog, `${name}\n`);
+  } catch {
+    // The test owns the path; a missing directory must not change the shape
+    // of the teardown being observed.
+  }
+};
+
+process.on('SIGTERM', () => {
+  noteSignal('SIGTERM');
+  // The real `opencode serve` installs its own SIGTERM handler. Under
+  // MOCK_OPENCODE_IGNORE_SIGTERM it keeps running after handling the signal —
+  // the #858 shape where only the SIGKILL escalation can end the process.
+  if (!ignoreSigterm) process.exit(0);
+});
+
+if (exitBeforeListen) {
+  // `opencode serve` dies before it ever prints a URL (port taken, bad config):
+  // the runner's handshake must surface that as a handled session error.
+  process.stderr.write('opencode: failed to start server\n');
+  process.exit(1);
+}
+
 server.listen(port, hostname, () => {
   // The runner reads the bound URL back from stdout, like the real server.
   console.log(`opencode server listening on http://${hostname}:${port}`);
 });
-process.on('SIGTERM', () => process.exit(0));
