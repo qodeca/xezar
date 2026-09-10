@@ -4,6 +4,7 @@
  */
 export * from './events.ts';
 export * from './health.ts';
+export * from './mcp-ownership.ts';
 export * from './runs.ts';
 export * from './repo.ts';
 export * from './github.ts';
@@ -14,4 +15,5 @@ export * from './skills.ts';
 export * from './agent-config.ts';
 export * from './agent-profiles.ts';
 export * from './automations.ts';
+export * from './mcp-versioning.ts';
 export * from './mcp-journal.ts';
