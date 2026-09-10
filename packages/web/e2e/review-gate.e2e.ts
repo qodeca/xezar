@@ -48,12 +48,18 @@ async function waitForHealth(url: string): Promise<void> {
 }
 
 async function waitForStatus(url: string, id: string, wanted: string[]): Promise<string> {
+  let seen = '(never read)'
   for (let attempt = 0; attempt < 120; attempt += 1) {
     const record = (await (await fetch(`${url}/api/v1/runs/${id}`)).json()) as { status: string }
     if (wanted.includes(record.status)) return record.status
+    seen = record.status
     await new Promise((r) => setTimeout(r, 500))
   }
-  throw new Error(`xezar e2e: run ${id} never reached status "${wanted.join('/')}"`)
+  // Naming where the run actually parked is the difference between "the accept was refused"
+  // and "the agent never finished its turn" — #155 spent two rounds unable to tell them apart.
+  throw new Error(
+    `xezar e2e: run ${id} never reached status "${wanted.join('/')}" — it is stuck at "${seen}"`,
+  )
 }
 
 let browser: AgentBrowser
@@ -192,6 +198,25 @@ describe('the review gate against a live parked run', () => {
       `(() => { const m = document.querySelector('[data-slot="main"]'); m.scrollTop = m.scrollHeight })()`,
     )
     browser.click('[data-slot="review-accept"]')
+
+    // The accept has to REGISTER, not merely be clicked. Wait for the first outcome the
+    // cockpit can show — the panel unmounting (accepted) or a danger toast (refused) — and
+    // name the refusal. #155 was `409 no open session`: the engine published `review` before
+    // the parked turn had finished tearing down, so an accept landing in that window was
+    // dropped on the floor with a red toast and the run stayed at `review` forever. Without
+    // this the only symptom was a bare 60-second status timeout, which pointed at neither the
+    // click nor the engine.
+    browser.waitForFunction(
+      `document.querySelector('[data-slot="review-panel"]') === null ||
+       document.querySelector('[data-slot="toast"][data-tone="danger"]') !== null`,
+    )
+    expect(
+      String(
+        browser.evaluate(
+          `document.querySelector('[data-slot="toast"][data-tone="danger"]')?.textContent ?? ''`,
+        ),
+      ),
+    ).toBe('')
 
     await waitForStatus(baseUrl, runId, ['done'])
     browser.waitForFunction(`window.__xezCelebrated === true`)
