@@ -5,9 +5,13 @@
  * Why a mirror and not an import: the server original lives in the NodeNext
  * program next to the runners that emit these events, and the types are the
  * contract, not the module graph. The mirror is *checked*, not trusted:
- * `src/server/api-types.test.ts` asserts type exactness between every
- * declaration here and the server's own, so a drift fails
- * `npm run typecheck` (the gate) instead of the UI at runtime.
+ * `packages/xezar/src/server/api-types.test.ts` pins every declaration here
+ * against the server's own, in both directions, so a drift fails
+ * `npm run typecheck` (the gate) instead of the UI at runtime. It also compares
+ * the two files' EXPORT LISTS at runtime, so a type added to one file and not
+ * the other fails before any shape is examined. Between the day the contract
+ * package retired the old guard and #190 there was none, and the claim in this
+ * header was false for that whole window — if you retire it again, say so here.
  *
  * This module MUST stay import-free so the NodeNext-side guard can reach it.
  * The field-level contract docs (per-backend mappings, ACP rationale) live on

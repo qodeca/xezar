@@ -205,12 +205,15 @@ does not change backend parity or expose the raw error.
 ## 3. v2 `UiEvent` — the normalized protocol (`packages/xezar/src/core/ui-events.ts`)
 
 Pure vocabulary: no runtime imports, no runner coupling. Mirrored into the
-api-client package at `packages/api-client/src/protocol/ui-events.ts`. **That mirror is
-currently unguarded**: the type-exactness pair that used to pin it was retired when
-`@qodeca/xezar-contract` absorbed the hand-written response types, and
-`packages/xezar/src/server/api-types.test.ts` now checks only `RunEvent`. Until a guard
-returns, a change here MUST be applied to the mirror in the same commit — nothing fails
-if you forget.
+api-client package at `packages/api-client/src/protocol/ui-events.ts`; the mirror is
+**checked**, not trusted. `packages/xezar/src/server/api-types.test.ts` pins every export
+of this file against its twin in both directions, so drift fails `npm run typecheck` (the
+gate) rather than the UI at runtime. An interface is pinned by shape AND by key set,
+because assignability alone cannot see a property that is optional on one side and absent
+on the other. The same file also compares the two EXPORT LISTS at runtime, so a type added
+here and not to the mirror fails before any shape is examined. That guard was absent
+between the day `@qodeca/xezar-contract` retired the original and #190; if it is ever
+retired again, say so here and in the mirror's own header.
 
 ### Design rules baked in
 
@@ -456,7 +459,7 @@ To be first-class:
 2. **Factory** — add the id to `RunnerId` / `RUNNER_IDS` (`agent-runner.ts`) and
    a `case` in `createRunner` (`runner-factory.ts`). Add `UiBackend` in
    `ui-events.ts` **and its mirror** `packages/api-client/src/protocol/ui-events.ts`
-   (nothing guards this today — see §3; keep the two files identical by hand).
+   — and add its pair to `api-types.test.ts`, which fails the gate until you do (see §3).
 3. **Detection** — a `probePi()` in `backend-detect.ts` plus the `BackendCheck`
    name union; degrade gracefully when the CLI is absent (never fail boot). If it
    needs a binary override, add `XEZ_PI_BIN` — and per AGENTS.md's zero-config
