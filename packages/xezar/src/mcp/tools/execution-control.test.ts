@@ -150,8 +150,15 @@ const asks = (s: RunStore, id: string) => s.readEvents(id).filter((e) => e.type 
 const userMessages = (s: RunStore, id: string) =>
   s.readEvents(id).filter((e) => e.type === 'user-message').map((e) => String(e.text));
 
+/** A xezar task running this suite has its OWN handoff file, inbox and task id in the env, and a
+ *  mock agent spawned here inherits the process env — so without this it appends its dry-run
+ *  lines to the real task's handoff file and inbox. */
+const AGENT_SESSION_ENV = ['XEZ_HANDOFF_FILE', 'XEZ_TODOS_FILE', 'XEZ_TASK_ID'] as const;
+const savedSessionEnv = Object.fromEntries(AGENT_SESSION_ENV.map((key) => [key, process.env[key]]));
+
 beforeEach(() => {
   process.env.XEZ_DRY_RUN = '1';
+  for (const key of AGENT_SESSION_ENV) delete process.env[key];
 });
 
 afterEach(async () => {
@@ -173,6 +180,10 @@ afterEach(async () => {
   else process.env.XEZ_DRY_RUN = savedDryRun;
   if (savedHome === undefined) delete process.env.XEZ_HOME;
   else process.env.XEZ_HOME = savedHome;
+  for (const key of AGENT_SESSION_ENV) {
+    if (savedSessionEnv[key] === undefined) delete process.env[key];
+    else process.env[key] = savedSessionEnv[key];
+  }
 });
 
 describe('no tool can terminate an arbitrary process', () => {
