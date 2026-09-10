@@ -1002,6 +1002,21 @@ describe('XEZ:MONITORING parks as running/monitoring, not waiting (#490)', () =>
     expect(state?.monitoringWakeTimer).toBeUndefined();
   }, 30_000);
 
+  /**
+   * The OTHER half of this pair — the autonomous turn-end nudge, the third and
+   * last way a parked run wakes itself — lives in the sibling file
+   * `run-autonomous-nudge.test.ts` (#59), not here beside its twin.
+   *
+   * It was split for one measured reason, and NOT because the two belong apart:
+   * a leaked `RunManager` in this file keeps its 60 s queue watchdog ticking
+   * after its temp root is gone (#125), so once this file's total runtime passes
+   * ~60 s the watchdog writes into a deleted directory and `npm test` exits
+   * non-zero. That trip-wire is a property of this file's RUNTIME, not of any
+   * one test: appending a no-op test that only sleeps 16 s to this file,
+   * unchanged, reproduces the identical failure. This file sits ~7 s under the
+   * line, so the nudge block's ~13 s had nowhere to go. A sibling file gets its
+   * own vitest worker and its own clock. Move it back once #125 is fixed.
+   */
   it('optionally wakes a parked monitor without fabricating a user message', async () => {
     manager.dispose();
     const semaphore = new WorkspaceSemaphore({ initial: { monitoringWakeIntervalMinutes: 0.001 } });
