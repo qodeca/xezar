@@ -128,16 +128,15 @@ describe('marker vocabulary — instructions vs. parsers (#47)', () => {
   });
 
   /**
-   * PINNED CURRENT BEHAVIOUR, not an endorsement (#47 says "pin the current behaviour,
-   * whatever it is"). The instructions tell the agent "Put markers in plain message text,
-   * never inside a code fence" — that rule is enforced by the agent's compliance alone.
-   * The parser is line-anchored and knows nothing about fences, so a marker demonstrated
-   * inside a ``` block still binds the task, and `stripTaskMarkers` then guts the block.
-   * Reported for a separate issue rather than fixed here.
+   * The instructions tell the agent "Put markers in plain message text, never inside a
+   * code fence". #124 made the parser enforce that rule instead of trusting the emitter:
+   * a marker demonstrated inside a fence is prose, exactly like the quoted and decorated
+   * mentions below, and `stripTaskMarkers` leaves it in place rather than gutting the
+   * block. The fence forms themselves are covered in `runs/task-markers.test.ts`.
    */
-  it('still parses a marker written inside a fenced code block', () => {
-    expect(parseTaskMarkers('For example:\n```\nXEZ:PR=442\n```\nthat is the shape.')).toEqual({ pr: 442 });
-    expect(stripTaskMarkers('```\nXEZ:PR=442\n```')).toBe('```\n```');
+  it('does not parse a marker written inside a fenced code block', () => {
+    expect(parseTaskMarkers('For example:\n```\nXEZ:PR=442\n```\nthat is the shape.')).toEqual({});
+    expect(stripTaskMarkers('```\nXEZ:PR=442\n```')).toBe('```\nXEZ:PR=442\n```');
   });
 
   /** Prose that merely mentions or quotes a marker is not an emission — the layer that
