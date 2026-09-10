@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { AgentEvent, AgentSession } from './agent-runner.ts';
 import type { UiEvent } from './ui-events.ts';
-import { KILL_GRACE_MS, OpencodeServerRunner } from './opencode-server-runner.ts';
+import { describeFetchFailure, KILL_GRACE_MS, OpencodeServerRunner } from './opencode-server-runner.ts';
 
 /**
  * #55 — this suite used to `vi.mock('node:child_process')` and hand the runner
@@ -778,6 +778,26 @@ describe('a fetch that rejects at the transport level (#153)', () => {
   }, 60_000);
 
   /**
+   * COVERAGE — the seventh shape the PR body documents, and the only one that
+   * had no test (#165 review). It is NOT a shapeless-looking object like
+   * `{ code: 'ECONNRESET' }`, which has a `code` and therefore renders through
+   * the labelled branch; it has no `name`, no `code`, no `message` and no
+   * nested `cause`, so it reaches the JSON fallback. This one passes with and
+   * without the fix — it pins behaviour that was already correct and untested.
+   */
+  it('renders a cause with no name, code, message or nested cause as JSON', async () => {
+    const message = await messageForPromptFailure(
+      new TypeError('fetch failed', { cause: { foo: 1 } }),
+      3_000,
+    );
+
+    expect(message).toContain('opencode: fetch failed after 3s');
+    expect(message).toContain('POST /session/');
+    expect(message).toContain('{"foo":1}');
+    expect(message.split('\n')).toHaveLength(1);
+  }, 30_000);
+
+  /**
    * GUARD — pins the behaviour that must NOT change. A request that succeeds
    * takes exactly the path it always did: no wrapping, no extra event, the same
    * transcript and the same session id. The non-2xx path has its own guard in
@@ -803,4 +823,72 @@ describe('a fetch that rejects at the transport level (#153)', () => {
       session.interrupt();
     }
   }, 30_000);
+});
+
+/**
+ * #165 review — `describeFetchFailure` is the last thing that runs before a
+ * transport failure reaches the user, so it must never be the thing that fails:
+ * a formatter that throws replaces a bad message with NO message at all.
+ *
+ * These call the exported helper directly rather than through the runner,
+ * because the point is the formatter's totality, not the runner's plumbing.
+ * None of these shapes is something Node's fetch produces today — they are what
+ * a function that formats an arbitrary rejection value has to survive.
+ */
+describe('describeFetchFailure survives a hostile rejection value (#165)', () => {
+  const render = (err: unknown): string =>
+    describeFetchFailure(err, 'POST', '/session/ses_1/message', 3_000);
+
+  /** Whatever the input, the frame the user needs is still there and it is one line. */
+  function expectUsableMessage(message: string): void {
+    expect(message).toContain('after 3s');
+    expect(message).toContain('POST /session/ses_1/message');
+    expect(message.split('\n')).toHaveLength(1);
+    expect(message.trim().length).toBeGreaterThan(0);
+  }
+
+  it('renders a cause whose toJSON() returns undefined', () => {
+    // `JSON.stringify` returns undefined — not a string — for this value, and
+    // the old `safeStringify` was typed `: string` and returned it anyway.
+    // The caller then did `.replace` on undefined and threw
+    // "Cannot read properties of undefined (reading 'replace')".
+    expectUsableMessage(render(new TypeError('fetch failed', { cause: { toJSON: () => undefined } })));
+  });
+
+  it('renders a rejection value with a null prototype', () => {
+    // `String(value)` is not total: with no prototype there is no `toString`,
+    // so it threw "Cannot convert object to primitive value".
+    expectUsableMessage(render(Object.create(null)));
+  });
+
+  it('renders a cause whose name getter throws', () => {
+    // Reading `.name` off the cause ran the getter, which threw straight
+    // through the formatter.
+    const cause = {
+      get name(): string {
+        throw new Error('boom');
+      },
+    };
+    expectUsableMessage(render(new TypeError('fetch failed', { cause })));
+  });
+
+  it('renders a rejection whose own cause getter throws', () => {
+    const err = Object.defineProperty(new TypeError('fetch failed'), 'cause', {
+      get(): never {
+        throw new Error('boom');
+      },
+    });
+    expectUsableMessage(render(err));
+  });
+
+  it('renders a circular cause and a null cause', () => {
+    // Both of these already worked; they are pinned here so the hardening above
+    // cannot regress them. `JSON.stringify` throws on the circular one and the
+    // `String` fallback catches it; `null` is short-circuited before any read.
+    const circular: Record<string, unknown> = { note: 'loops' };
+    circular.self = circular;
+
+    expectUsableMessage(render(new TypeError('fetch failed', { cause: circular })));
+    expectUsableMessage(render(new TypeError('fetch failed', { cause: null })));
+  });
 });

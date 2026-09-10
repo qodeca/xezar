@@ -677,6 +677,42 @@ function stringField(obj: Record<string, unknown>, key: string): string | undefi
   return typeof v === 'string' ? v : undefined;
 }
 
+/** Read a property off a value nobody vouched for. A rejection reason may define
+ *  `name`, `code`, `message` or `cause` as a getter that throws, and the error
+ *  formatter below must never be the thing that fails. */
+function safeField(value: unknown, key: string): unknown {
+  if (value === undefined || value === null) return undefined;
+  try {
+    return (value as Record<string, unknown>)[key];
+  } catch {
+    return undefined;
+  }
+}
+
+/** Read a string property off a value nobody vouched for — `stringField` for
+ *  the error path, where a throwing getter is a possibility. */
+function safeStringField(value: unknown, key: string): string | undefined {
+  const v = safeField(value, key);
+  return typeof v === 'string' ? v : undefined;
+}
+
+/** `String(value)` is not total: a null-prototype object has no `toString`, so
+ *  it throws "Cannot convert object to primitive value". */
+function safeString(value: unknown): string {
+  try {
+    return String(value);
+  } catch {
+    /* not stringable — try JSON below */
+  }
+  try {
+    const json = JSON.stringify(value);
+    if (typeof json === 'string') return json;
+  } catch {
+    /* not serializable either */
+  }
+  return '[unprintable]';
+}
+
 function numField(obj: Record<string, unknown>, key: string): number {
   const v = obj[key];
   return typeof v === 'number' ? v : 0;
@@ -685,10 +721,15 @@ function numField(obj: Record<string, unknown>, key: string): number {
 function safeStringify(value: unknown): string {
   if (typeof value === 'string') return value;
   try {
-    return JSON.stringify(value);
+    // NOT typed `string`: JSON.stringify returns undefined for a value it
+    // considers unrepresentable — an object whose `toJSON()` returns undefined,
+    // a function, a symbol — and a caller that trusts the annotation crashes.
+    const json = JSON.stringify(value);
+    if (typeof json === 'string') return json;
   } catch {
-    return String(value);
+    /* circular or otherwise unserializable */
   }
+  return safeString(value);
 }
 
 /** How deep `cause` is followed before the walk gives up — a cheap guard
@@ -716,8 +757,9 @@ export function describeFetchFailure(
   path: string,
   elapsedMs: number,
 ): string {
-  const head = err instanceof Error && err.message ? err.message : String(err);
-  const cause = describeCause((err as { cause?: unknown } | null | undefined)?.cause);
+  const ownMessage = err instanceof Error ? safeStringField(err, 'message') : undefined;
+  const head = ownMessage || safeString(err);
+  const cause = describeCause(safeField(err, 'cause'));
   let message = `${head} after ${formatSeconds(elapsedMs)} (${method} ${path})`;
   if (cause) message += ` — ${cause}`;
   if (cause && UNDICI_TIMEOUT_MARKERS.test(cause)) message += `. ${UNDICI_TIMEOUT_HINT}`;
@@ -734,13 +776,12 @@ function describeCause(value: unknown, depth = 0): string | undefined {
   if (typeof value === 'string') return oneLine(value) || undefined;
   if (typeof value !== 'object') return oneLine(String(value)) || undefined;
 
-  const rec = value as Record<string, unknown>;
-  const name = stringField(rec, 'name');
-  const code = stringField(rec, 'code');
-  const message = oneLine(stringField(rec, 'message') ?? '');
+  const name = safeStringField(value, 'name');
+  const code = safeStringField(value, 'code');
+  const message = oneLine(safeStringField(value, 'message') ?? '');
   const label = name && code ? `${name} (${code})` : (name ?? (code ? `(${code})` : undefined));
   const own = [label, message && message !== label ? message : undefined].filter(Boolean).join(': ');
-  const nested = describeCause(rec.cause, depth + 1);
+  const nested = describeCause(safeField(value, 'cause'), depth + 1);
   if (!own) return nested ?? (oneLine(safeStringify(value)).slice(0, 200) || undefined);
   return nested ? `${own} — caused by ${nested}` : own;
 }
