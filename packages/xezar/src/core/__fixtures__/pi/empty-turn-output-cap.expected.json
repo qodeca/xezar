@@ -1,0 +1,39 @@
+[
+  { "type": "turn.started", "turnId": "turn_1" },
+  {
+    "type": "session.started",
+    "sessionId": "pi-session-cap",
+    "backend": "pi",
+    "model": "deepseek-v4-flash-vision"
+  },
+  {
+    "type": "item.started",
+    "item": { "kind": "reasoning", "id": "turn_1_reasoning_0", "text": "" }
+  },
+  {
+    "type": "item.delta",
+    "itemId": "turn_1_reasoning_0",
+    "field": "reasoning",
+    "delta": "Now I understand the mock. Let me think about the test design more carefully."
+  },
+  {
+    "type": "item.completed",
+    "item": {
+      "kind": "reasoning",
+      "id": "turn_1_reasoning_0",
+      "text": "Now I understand the mock. Let me think about the test design more carefully."
+    }
+  },
+  {
+    "type": "usage.updated",
+    "usage": { "input": 36359, "output": 8192, "total": 44551, "cacheRead": 0, "cacheWrite": 0 },
+    "costUsd": 0
+  },
+  {
+    "type": "turn.completed",
+    "turnId": "turn_1",
+    "stopReason": "max_tokens",
+    "usage": { "input": 36359, "output": 8192, "total": 44551, "cacheRead": 0, "cacheWrite": 0 },
+    "costUsd": 0
+  }
+]
