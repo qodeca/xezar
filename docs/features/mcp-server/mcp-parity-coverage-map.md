@@ -46,13 +46,19 @@ compatibility record ([`mcp-client-behaviour-spike-report.md`](mcp-client-behavi
 
 | Case | Records | What is missing |
 | --- | --- | --- |
-| P-22 | I-138, I-139 | The leader is not told about project changes live. On the revision this suite was written against, `startMcpService` passes only `tools`; the event controller, echo guard and audit trail have no production caller, and no tool or notification delivers the project event journal. The composition task wires them; this case then becomes runnable. A blocked case runs as a vitest `todo` and is never counted as passing. |
+| P-22 | I-138, I-139 | The leader is not told about project changes live. No tool in the registry (`packages/xezar/src/mcp/tools/index.ts`) reads the project event journal, and the bridge sends no journal notification — found in the files examined at `e4228be`. PR #247 (open when this suite was written) composes the writer side: the journal, the event catalog, the echo guard and the audit trail, and hands the tools the service entry. It adds no leader-facing read, so this case stays blocked after it too. A blocked case runs as a vitest `todo` and is never counted as passing. |
 
-The cockpit half of A-08 that genuinely needs a browser — the open cockpit updating live when the
-leader changes something — depends on the same wiring, and is therefore not in
-`packages/web/e2e/` yet. Everything else in A-08 (each side reading, changing and taking over the
-other's task, and no MCP-only history or configuration) is proven at the route level by P-19, P-20
-and P-21.
+What P-19 already shows of I-138's outcome: a change the leader makes travels on the same project
+store bus the cockpit's SSE stream relays, and nothing reaches project B's bus. What is missing is
+the leader's side of the same stream.
+
+The cockpit half of A-08 that genuinely needs a browser — the open cockpit updating live while the
+leader changes something — is not in `packages/web/e2e/` for two reasons. The booted e2e server
+hands the MCP tools no service entry until PR #247 lands, so every tool call there answers "not
+connected". And the file name the brief proposed, `mcp-collaboration.spec.ts`, would never run:
+`packages/web/e2e/vitest.config.ts` collects `**/*.e2e.ts` only. Everything else in A-08 (each side
+reading, changing and taking over the other's task, and no MCP-only history or configuration) is
+proven at the route level by P-19, P-20 and P-21.
 
 ## Limits of this evidence
 
@@ -212,7 +218,7 @@ and P-21.
 | P-19 | A-08, A-05 | I-033, I-140 | the leader reads the human’s task, history and handoff as the cockpit does, and the human’s bus carries the leader’s change |
 | P-20 | A-08, A-07 | I-033, I-034, I-038, I-039 | either side takes over the other’s task, and one transcript records both |
 | P-21 | A-08, A-05 | I-001, I-018, I-010, I-110 | the same work through either door leaves the same files: no MCP-only history or configuration |
-| P-22 | A-08 | I-138, I-139 | **BLOCKED** — no MCP tool or notification delivers the project event journal yet: on this revision `startMcpService` passes only `tools`, and the event controller, echo guard and audit trail have no production caller (the composition task wires them) |
+| P-22 | A-08 | I-138, I-139 | **BLOCKED** — no MCP tool or notification delivers the project event journal to the leader: the tool registry (`tools/index.ts`) has no journal read and the bridge sends no journal notification. The writer side (journal, event catalog, echo guard, audit trail) is composed by PR #247, still open when this suite was written; a leader-facing read is still missing after it |
 | P-23 | A-09, A-05 | I-010, I-065, I-103, I-105, I-106, I-107, I-108, I-109 | a project setting written by the leader is the cockpit’s setting, byte for byte, B is untouched, and the system prompt never reaches a log |
 | P-24 | A-09, A-05 | I-104, I-007 | locked models are reported as a reason and refuse a model choice exactly as the cockpit does |
 | P-25 | A-09, A-08, A-05 | I-110 | the prompt-template list is read and replaced whole, and each door sees the other’s list |

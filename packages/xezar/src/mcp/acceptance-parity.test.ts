@@ -886,7 +886,7 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
       ['A-08'],
       ['I-138', 'I-139'],
       'the leader is told about the human’s changes live, through the project-filtered event stream',
-      'no MCP tool or notification delivers the project event journal yet: on this revision `startMcpService` passes only `tools`, and the event controller, echo guard and audit trail have no production caller (the composition task wires them)',
+      'no MCP tool or notification delivers the project event journal to the leader: the tool registry (`tools/index.ts`) has no journal read and the bridge sends no journal notification. The writer side (journal, event catalog, echo guard, audit trail) is composed by PR #247, still open when this suite was written; a leader-facing read is still missing after it',
     );
   });
 
