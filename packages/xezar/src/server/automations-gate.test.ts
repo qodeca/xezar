@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AutomationStore } from '../automations/store.ts';
 import { WorkspaceAutomationScheduler } from '../automations/scheduler.ts';
 import { RunStore } from '../runs/store.ts';
+import { SkillsUpdateCoordinator } from '../skills-update.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { createApp, startServer, type ServerDeps } from './server.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
@@ -195,22 +196,31 @@ describe('automations gate (#801)', () => {
       vi.restoreAllMocks();
     });
 
-    /** Boot on an ephemeral port, wait for `listening` to have run its warm-up, then close. */
+    /**
+     * Boot on an ephemeral port, wait for the `listening` warm-up to reach the automations gate
+     * (and, with the flag on, to get past it), then close.
+     *
+     * Both waits are on a real signal, never a fixed delay (#212). With the flag on, the warm-up
+     * runs `git` subprocesses per project before it starts the scheduler, which a loaded CI runner
+     * held past the 50 ms this used to wait. With it off, "never started" must not read the same
+     * as "the warm-up never got that far": the skills-update coordinator starts in the same
+     * callback, just before the gate, so its start is the proof the gate was reached.
+     */
     const boot = async (): Promise<void> => {
+      const reachedGate = vi.spyOn(SkillsUpdateCoordinator.prototype, 'start');
       const started = vi.spyOn(WorkspaceAutomationScheduler.prototype, 'start');
+      const on = process.env.XEZ_AUTOMATIONS === '1';
       const server = startServer(
         { repoRoot, store, manager: { isActive: () => false } as unknown as RunManager, version: '0.0.0-test' },
         0,
       );
       try {
-        await new Promise<void>((resolve) => server.once('listening', () => resolve()));
-        // The warm-up chain is `listProjects().then(…)`; a macrotask turn is enough for it to run
-        // to the point where it either starts the scheduler or returns early.
-        await new Promise((resolve) => setTimeout(resolve, 50));
+        await vi.waitFor(() => expect(reachedGate).toHaveBeenCalledTimes(1), { timeout: 4_000 });
+        if (on) await vi.waitFor(() => expect(started).toHaveBeenCalledTimes(1), { timeout: 4_000 });
       } finally {
         server.close();
       }
-      expect(started).toHaveBeenCalledTimes(process.env.XEZ_AUTOMATIONS === '1' ? 1 : 0);
+      expect(started).toHaveBeenCalledTimes(on ? 1 : 0);
     };
 
     it('never starts polling while the flag is off', async () => {

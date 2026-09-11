@@ -12,6 +12,12 @@ Installation validation is reported in installation.md. Real-task entries follow
 
 ## Real-task entries
 
+### 2026-09-11 — #307 (five false test signals), `bug-fix` workflow — real-task verified
+
+- Observed: **both gate repairs were spent on the task's own scratch tests, not on any fix.** Flake reproduction wants probes that run under the real vitest config, so they sat in the tree as `*-scratch.test.*`. Attempt 0001 failed 47 tests, all scratch; attempt 0002 failed typecheck and 45 tests on one scratch file that an interrupted proof script had copied back in, and that `git add` had staged. The real suite was green both times.
+- Lesson (recommended): a reproduction probe that must live under `packages/*/src` is copied in by the script that runs it and removed by that same script on the next line, never left for a later cleanup. Check `git status --short` for `scratch` before ending an investigate step, and commit the fix before starting a long proof run, so an interrupted run can only leave a dirty tree, never a committed probe.
+- Remaining limit: one macOS machine; the kit has no guard that refuses a `*-scratch.test.*` file, and adding one is a separate decision.
+
 ### 2026-09-09 — issue #18, single agent step (`quick-task`, no kit workflow) — real-task verified
 
 - Observed: `worktree-preflight.sh` (strict and `--readiness`), `worktree-setup.sh` and `repo-gates.sh --fast` ran standalone from a plain agent step. Setup on npm 11 prints "install-scripts not yet covered by allowScripts" warnings (esbuild, fsevents); they do not block.
