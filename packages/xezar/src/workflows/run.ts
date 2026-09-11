@@ -867,14 +867,27 @@ export class RunManager {
    * case pins. What is NOT bounded is an unbroken STREAM of them — a caller that keeps starting
    * work into a project it is tearing down gets what it asked for.
    *
+   * ## Each pass delivers its cancel ONCE — the bodies are what make that enough
+   *
+   * Re-issuing `cancel()` per pass reaches runs whose REGISTRY membership changed; it does not
+   * reach a run that was already in `active` when the pass ran, because the next re-issue waits
+   * on the same `Promise.allSettled` the stuck body is holding open. So the guarantee has to live
+   * in the body: every point at which a run body can park must consume a cancellation that
+   * arrived while it was elsewhere. Those points are `adoptActive` (the `starting` window),
+   * `acquireRepoRoot` (the lease wait, which races its own abort), the step loop's
+   * `if (state.cancelled) break`, `publishSession` (the gap between the loop's check and a live
+   * `state.interrupt`, which is what #199 hung on), and `state.interrupt()` itself once a session
+   * is up. Adding a new `await` inside a run body means asking which of those covers it.
+   *
    * ## If a tracked promise never settles
    *
    * `quiesce()` has no deadline of its own and stays pending — the caller's timeout is the only
-   * bound. That is deliberate. Cancellation is delivered (repeatedly), an agent step's own wall
-   * clock still applies, and a session that refuses to close is a real writer: returning early
-   * would hand the caller a promise that says "nothing is writing any more" while something is,
-   * which is the exact lie this method exists to remove. An invented deadline would only move the
-   * ENOTEMPTY a few hundred milliseconds later.
+   * bound. That is deliberate. Cancellation is delivered, an agent step's own wall clock still
+   * applies, and a session that refuses to close is a real writer: returning early would hand the
+   * caller a promise that says "nothing is writing any more" while something is, which is the
+   * exact lie this method exists to remove. An invented deadline would only move the ENOTEMPTY a
+   * few hundred milliseconds later — and, in the #199 hang, would have shipped a teardown that
+   * deleted a repository out from under a live agent CLI instead of failing loudly at 90 s.
    *
    * Never rejects, the same contract as dispose(): teardown must not become a second place a run's
    * error surfaces.
@@ -2046,6 +2059,48 @@ export class RunManager {
     return state.cancelled;
   }
 
+  /**
+   * Publish a freshly started agent session on the run's `ActiveRun`, and deliver any
+   * cancellation that arrived while the session was being BUILT.
+   *
+   * The twin of `adoptActive`, one phase later and for the same reason. `cancel()` stops a live
+   * turn by calling `state.interrupt()`, and between the step loop's own `state.cancelled` check
+   * and this moment that function is still the `() => undefined` placeholder: everything in
+   * between — `configuredModelProvider`, `agentEnvForStep`, a team skill's `materializeSkillDir`
+   * — is `await`ed, and a cancel landing in any of those gaps set the flag and delivered nothing.
+   *
+   * What that cost is a run that never ends, not a turn that runs one step too long (#199/#200).
+   * The session spawns anyway; an interactive step passes `timeoutMs: 0`, so the runner has no
+   * wall clock at all; and the turn-end handler computes `sessionOpen` as
+   * `!state.cancelled && session.open`, so a cancelled run neither parks at `waiting` nor closes
+   * the session on `XEZ:DONE`. The body then sits in `await session.result` for as long as the
+   * agent CLI keeps stdin open — which for the bundled mock is forever. `quiesce()` issues its
+   * cancel once per drain generation and only re-issues it after `Promise.allSettled` resolves,
+   * so a single missed delivery is a permanent hang: measured as the 90 s teardown timeout on a
+   * 2-core CI runner, where the widened gap makes the window easy to land in.
+   *
+   * ONE helper for both construction sites — `runAgentStep` and `runContinuation` — because they
+   * are the same moment written twice and had already drifted (only one of them re-stamped
+   * `currentStepId`). A third session site must come through here too, or it re-opens the hole.
+   */
+  private publishSession(
+    runId: string,
+    state: ActiveRun,
+    stepId: string,
+    session: AgentSession,
+  ): void {
+    state.session = session;
+    state.sessionEverOpened = true;
+    this.flushDeferred(runId);
+    state.currentStepId = stepId;
+    state.interrupt = () => session.interrupt();
+    if (session.pid !== undefined) registerRunProcess(runId, session.pid);
+    // The adopt. Ordering is load-bearing exactly as it is in `adoptActive`: `state.interrupt`
+    // already points at this session, so a `cancel()` arriving one tick later takes the ordinary
+    // path and this call is not a second, racing teardown.
+    if (state.cancelled) session.interrupt();
+  }
+
   isActive(runId: string): boolean {
     return this.active.has(runId) || this.starting.has(runId) || this.queue.includes(runId);
   }
@@ -2980,11 +3035,7 @@ export class RunManager {
       onEvent,
       { onUiEvent: (event) => this.handleRunnerUiEvent(runId, state, sink, event) },
     );
-    state.session = session;
-    state.sessionEverOpened = true;
-    this.flushDeferred(runId);
-    state.interrupt = () => session.interrupt();
-    if (session.pid !== undefined) registerRunProcess(runId, session.pid);
+    this.publishSession(runId, state, stepId, session);
 
     const finishedAt = () => new Date().toISOString();
     /**
@@ -3668,12 +3719,7 @@ export class RunManager {
       state.currentStepId = undefined;
       return err instanceof Error ? err.message : String(err);
     }
-    state.session = session;
-    state.sessionEverOpened = true;
-    this.flushDeferred(runId);
-    state.currentStepId = step.id;
-    state.interrupt = () => session.interrupt();
-    if (session.pid !== undefined) registerRunProcess(runId, session.pid);
+    this.publishSession(runId, state, step.id, session);
 
     try {
       const result = await session.result;

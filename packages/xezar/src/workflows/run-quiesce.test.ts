@@ -41,6 +41,10 @@ import type { WorkflowDef } from './types.ts';
  *     `quiescing` bail removed from `fireAutoResume()` ALONE.
  *   - REGRESSION `starts nothing new while it drains — a queue-watchdog sweep` — red with the
  *     `quiescing` bail removed from `rescueStalledQueue()` ALONE.
+ *   - REGRESSION `terminates when its own cancel lands between the step loop and the live
+ *     session` — red with `publishSession`'s trailing `if (state.cancelled) session.interrupt()`
+ *     removed: the drain never returns at all (#199), which is why that case carries a ceiling of
+ *     its own rather than leaning on the hook timeout.
  *
  * The last three exist because the case above them pinned no gate on its own, and because the
  * gates are NOT one check at three depths — that reading is wrong and it is what a future edit
@@ -151,6 +155,15 @@ function uncancellableGate(gate: string): WorkflowDef {
     steps: [{ id: 'hold', command: `exec node -e '${hold}' ${shellQuote(gate)}` }],
   };
 }
+
+/**
+ * Ceiling on the ONE case that asserts the drain terminates at all, and it is a fail-fast bound
+ * on a hang rather than a performance budget: without the fix the drain never returns, and
+ * without a bound of its own the case would report as a 40 s hook timeout in cleanup instead of
+ * as the failed assertion it is. Comfortably above the milliseconds a cancelled mock turn
+ * actually takes, comfortably below `TEST_TIMEOUT_MS`.
+ */
+const DRAIN_CEILING_MS = 20_000;
 
 /**
  * One AGENT step, so a case can reach the turn-end bookkeeping a check step never touches:
@@ -750,6 +763,68 @@ describe('RunManager.quiesce', () => {
         status: 'done',
         finishedAt: new Date().toISOString(),
       });
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'terminates when its own cancel lands between the step loop and the live session',
+    async () => {
+      // REGRESSION (#199). The drain hung for good on a 2-core CI runner and passed on every
+      // developer machine, which is what a window measured in `await`s looks like.
+      //
+      // `cancel()` stops a running turn by calling `state.interrupt()`. That function only points
+      // at the agent session from the moment `publishSession` installs it; between the step
+      // loop's own `if (state.cancelled) break` and that assignment it is the `() => undefined`
+      // placeholder, and everything in between — `configuredModelProvider`, `agentEnvForStep`, a
+      // team skill's `materializeSkillDir` — is awaited. A cancel landing in that gap used to set
+      // the flag and deliver nothing, and the run then had no exit at all: the session spawned
+      // regardless, an interactive step passes `timeoutMs: 0` so the runner has no wall clock,
+      // and the turn-end handler reads `sessionOpen` as `!state.cancelled && session.open` — so
+      // the run neither parked at `waiting` nor closed on its own `XEZ:DONE`. The body sat in
+      // `await session.result` while `quiesce()`, which re-issues its cancel only AFTER the
+      // `Promise.allSettled` that body is holding open, waited for it forever.
+      //
+      // Deterministic, not a race, and deliberately not load-dependent: `appendEvent` fans out to
+      // its listeners synchronously, `step-start` is emitted from the step loop one statement
+      // after the cancel check it just passed, and `quiesce()` runs synchronously up to its first
+      // await — so the cancel pass is guaranteed to land inside the window rather than merely
+      // likely to. (The opposite of what `uncancellableGate` needs from `step-start`, for the
+      // same underlying reason: it is emitted BEFORE the child exists.)
+      const fixture = fixtureRepo({ maxParallel: 1 });
+      let drain: Promise<void> | undefined;
+      const quiesceOnStepStart = (payload: { runId: string; event: { type: string } }): void => {
+        if (drain !== undefined || payload.event.type !== 'step-start') return;
+        drain = fixture.manager.quiesce();
+      };
+      fixture.store.on('event', quiesceOnStepStart);
+      // In place, like the reported run: the repository-root lease is one more await between the
+      // cancel check and the session, and `worktree: false` is the shape #199 was reported on.
+      const run = fixture.startWith(agentWorkflow, {
+        task: 'mock:done ship it',
+        worktree: false,
+      });
+      try {
+        await waitFor(() => drain !== undefined, `run ${run.id} to start its agent step`);
+      } finally {
+        fixture.store.off('event', quiesceOnStepStart);
+      }
+
+      const outcome = await Promise.race([
+        (drain as Promise<void>).then(() => 'drained' as const),
+        new Promise<'hung'>((resolve) => {
+          const timer = setTimeout(() => resolve('hung'), DRAIN_CEILING_MS);
+          timer.unref?.();
+        }),
+      ]);
+      // A second cancel DOES reach the session by now, so a red run tears its own child down
+      // instead of leaving teardown to wait out the same stuck body (and report as a timeout in
+      // cleanup rather than as this assertion).
+      if (outcome === 'hung') fixture.manager.cancel(run.id);
+      expect(outcome).toBe('drained');
+
+      expect(fixture.store.getRun(run.id)?.status).toBe('cancelled');
+      expect(fixture.manager.isActive(run.id)).toBe(false);
     },
     TEST_TIMEOUT_MS,
   );

@@ -38,6 +38,18 @@
   variant refuse for the few hundred milliseconds it lasts instead of acting on a task that is
   rebuilding its worktree. Removing a project also answers within a few seconds now even when the
   git it is waiting on is wedged, rather than leaving the request hanging. (#200)
+- 🐛 **Cancel now stops a task that is in the middle of starting its agent, instead of leaving
+  it running for good.** For the fraction of a second between a step beginning and its agent
+  session actually being up, `Cancel` marked the task cancelled and then reached a session that
+  did not exist yet — so nothing was delivered. The agent started anyway, and because a cancelled
+  task is not allowed to hand the ball back to you, the task neither finished nor parked: it sat
+  there running, with a live agent process, until the cockpit was restarted. The cancellation is
+  now handed to the session the instant it comes up, so the task stops within milliseconds
+  whichever side of that line the click lands on. Same hole, same fix, for a task resumed with
+  Continue. It also unwedges teardown: closing a project (or a test's cleanup) waits for the tasks
+  it just cancelled, and one undeliverable cancellation was enough to make that wait never end —
+  reproduced as a 90-second timeout on CI. (#199)
+
 - 🐛 **`xezar run` finishes when the task finishes, instead of sitting there for another
   minute.** The headless run printed `run done` and then stayed alive — up to 60 seconds — because
   the background team-skills cache warm it had kicked off was still waiting on `git clone`/`git
