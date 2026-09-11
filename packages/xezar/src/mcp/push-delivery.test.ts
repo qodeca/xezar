@@ -1,4 +1,6 @@
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import type { McpJournalRow, McpLeaderStatus } from '@qodeca/xezar-contract';
@@ -22,24 +24,32 @@ import { tools } from './tools/index.ts';
 /**
  * #309 — push delivery against the REAL composed service: `startMcpService` exactly as `xezar
  * serve` calls it, over a real `createApp`, store and run manager (`XEZ_DRY_RUN=1` mocks only the
- * task agent), the real `runBridge` a client spawns as `xez mcp`, and a leader started through the
+ * task agent), the real `runBridge` a client spawns as `xez mcp`, and a leader attached through the
  * real `POST /api/v1/mcp/leader`.
  *
- * The one stand-in is the `claude` binary the Claude Code adapter spawns for the leader: a script
- * that records every stdin line and echoes it back as Claude Code's `--replay-user-messages` does.
- * It never answers as a model, so nothing here is a model REACTION (A-19's second half) — only
- * delivery: rows that left the journal and reached the leader session's stdin. The leader's MCP
- * tool calls go through the in-process bridge, the connection that owns the project; a real
- * `claude` would spawn that bridge itself from the `--mcp-config` this test also checks.
+ * xezar starts no agent process (owner decision on #311): the person runs their own leader and
+ * connects it over MCP, and the only leader an event can be PUSHED to is one they attach — today an
+ * OpenCode `serve` session. The one stand-in here is that server: a fake `opencode serve` that
+ * answers the routes the OpenCode adapter calls and records every `prompt_async`. It never answers
+ * as a model, so nothing here is a model REACTION (A-19's second half) — only delivery: rows that
+ * left the journal and reached the leader's session. The leader's MCP tool calls go through the
+ * in-process bridge, the connection that owns the project, as OpenCode's own `xezar` MCP server would.
  *
  * Before #309 nothing in the service constructed an `EventController` or any adapter, so every
  * assertion on a delivered row below fails there — and the route answers 404.
  */
 
 const VERSION = '9.9.9-push';
+const SESSION = 'ses_pushdelivery00000000001';
 const tempDirs: string[] = [];
 const closers: Array<() => unknown> = [];
-const saved = { home: process.env.XEZ_HOME, dryRun: process.env.XEZ_DRY_RUN, remote: process.env.XEZ_REMOTE };
+const saved = {
+  home: process.env.XEZ_HOME,
+  dryRun: process.env.XEZ_DRY_RUN,
+  remote: process.env.XEZ_REMOTE,
+  claudeBin: process.env.XEZ_CLAUDE_BIN,
+  codexBin: process.env.XEZ_CODEX_BIN,
+};
 
 // A short home under /tmp: the socket path must stay under the OS limit (D-01 E5).
 const tmp = (prefix: string): string => {
@@ -57,51 +67,74 @@ beforeEach(() => {
 afterEach(async () => {
   for (const close of closers.splice(0).reverse()) await Promise.resolve(close()).catch(() => undefined);
   for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
-  for (const [key, value] of [['XEZ_HOME', saved.home], ['XEZ_DRY_RUN', saved.dryRun], ['XEZ_REMOTE', saved.remote]] as const) {
+  for (const [key, value] of [
+    ['XEZ_HOME', saved.home],
+    ['XEZ_DRY_RUN', saved.dryRun],
+    ['XEZ_REMOTE', saved.remote],
+    ['XEZ_CLAUDE_BIN', saved.claudeBin],
+    ['XEZ_CODEX_BIN', saved.codexBin],
+  ] as const) {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
   }
 });
 
-/** The `claude` the adapter spawns: records argv and every stdin line, echoes each as a replay. */
-function standInClaude(): { bin: string; received: () => string[]; argv: () => string[] | undefined } {
-  const dir = tmp('xzc-');
-  const script = join(dir, 'claude.mjs');
-  const receivedPath = join(dir, 'received.ndjson');
-  const argvPath = join(dir, 'argv.json');
-  writeFileSync(
-    script,
-    `import { appendFileSync, writeFileSync } from 'node:fs';
-import { createInterface } from 'node:readline';
-writeFileSync(${JSON.stringify(argvPath)}, JSON.stringify(process.argv.slice(2)));
-process.stdout.write(JSON.stringify({ type: 'system', subtype: 'init' }) + '\\n');
-createInterface({ input: process.stdin }).on('line', (line) => {
-  appendFileSync(${JSON.stringify(receivedPath)}, line + '\\n');
-  const frame = JSON.parse(line);
-  process.stdout.write(JSON.stringify({ type: 'user', isReplay: true, message: frame.message }) + '\\n');
-});
-`,
-    'utf8',
-  );
-  const bin = join(dir, 'claude');
-  writeFileSync(bin, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(script)} "$@"\n`, 'utf8');
-  chmodSync(bin, 0o755);
-  return {
-    bin,
-    received: () => (existsSync(receivedPath) ? readFileSync(receivedPath, 'utf8').split('\n').filter(Boolean) : []),
-    argv: () => (existsSync(argvPath) ? (JSON.parse(readFileSync(argvPath, 'utf8')) as string[]) : undefined),
-  };
+interface Submission {
+  tools?: Record<string, boolean>;
+  parts: Array<{ text: string; metadata?: { xezar?: { rows: string[] } } }>;
 }
 
-/** The journal rows each message the leader received carries (one JSON row per line, after the header). */
-function deliveredRows(lines: readonly string[]): McpJournalRow[] {
-  return lines.flatMap((line) => {
-    const text = (JSON.parse(line) as { message: { content: Array<{ text: string }> } }).message.content[0]!.text;
-    return text
-      .split('\n')
-      .filter((l) => l.startsWith('{'))
-      .map((l) => JSON.parse(l) as McpJournalRow);
+/**
+ * The OpenCode session the person runs (`opencode serve`), as far as the adapter talks to it: the
+ * session in the project folder, its `/event` stream, idle status, no pending prompt, and
+ * `prompt_async`. Records every submission; never starts a turn.
+ */
+async function fakeOpenCode(directory: string) {
+  const submissions: Submission[] = [];
+  const streams = new Set<ServerResponse>();
+  const history: unknown[] = [];
+  const server: Server = createServer((req: IncomingMessage, res: ServerResponse) => {
+    void (async () => {
+      let raw = '';
+      for await (const chunk of req) raw += chunk;
+      const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+      const route = `${req.method} ${url.pathname}`;
+      const json = (status: number, body: unknown): void => {
+        res.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify(body));
+      };
+      if (route === 'GET /event') {
+        res.writeHead(200, { 'content-type': 'text/event-stream' });
+        res.write(`data: ${JSON.stringify({ type: 'server.connected', properties: {} })}\n\n`);
+        streams.add(res);
+        res.on('close', () => streams.delete(res));
+        return;
+      }
+      if (route === `GET /session/${SESSION}`) return json(200, { id: SESSION, directory });
+      if (route === 'GET /session/status') return json(200, {});
+      if (route === 'GET /permission' || route === 'GET /question') return json(200, []);
+      if (route === `GET /session/${SESSION}/message`) return json(200, history);
+      if (route === `POST /session/${SESSION}/prompt_async`) {
+        const body = JSON.parse(raw) as Submission;
+        submissions.push(body);
+        history.push({ info: { id: `msg_${submissions.length}`, role: 'user' }, parts: body.parts });
+        res.writeHead(204).end();
+        return;
+      }
+      json(404, { name: 'NotFoundError', route });
+    })();
   });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  closers.push(async () => {
+    for (const stream of streams) stream.destroy();
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+  return {
+    baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+    submissions,
+    /** The event ids each submission carried, from its own `metadata.xezar` marker. */
+    delivered: (): string[] => submissions.flatMap((s) => s.parts.flatMap((p) => (p.metadata?.xezar?.rows ?? []).map((key) => key.split('@')[0]!))),
+  };
 }
 
 async function cockpit() {
@@ -141,16 +174,14 @@ async function cockpit() {
 }
 type Cockpit = Awaited<ReturnType<typeof cockpit>>;
 
-const BRIDGE = { command: '/usr/bin/env', args: ['xez-under-test', 'mcp'] };
-
-async function serve(c: Cockpit, claudeBin: string, codexBin?: string) {
+async function serve(c: Cockpit) {
   const handle = await startMcpService({
     projectId: c.id,
     version: VERSION,
     service: c.app,
     store: c.store,
     warn: () => {},
-    leader: { claudeBin, bridge: BRIDGE, heartbeatMs: 500, ...(codexBin ? { codexBin } : {}) },
+    leader: { heartbeatMs: 500 },
   });
   let open = true;
   const close = (): void => {
@@ -218,33 +249,26 @@ const okResult = (result: McpToolResult): McpToolResult => {
   return result;
 };
 
+const attach = (c: Cockpit, baseUrl: string) => c.human('POST', '/mcp/leader', { action: 'attach', client: 'opencode', baseUrl, sessionId: SESSION });
+
 describe('#309 — push delivery in the running service (A-19 delivery, A-20 no-echo-loop)', () => {
-  it('delivers a human change and a task outcome to the leader xezar started, and never the leader’s own echo', async () => {
+  it('delivers a human change and a task outcome to the OpenCode leader the person attached, and never the leader’s own echo', async () => {
     const c = await cockpit();
-    const claude = standInClaude();
-    await serve(c, claude.bin);
+    const oc = await fakeOpenCode(c.root);
+    await serve(c);
 
     // Nothing is attached yet: the route says so, and why.
     expect(await c.status()).toMatchObject({ available: true, leader: null, delivery: null, blocker: { code: 'no-leader-session' } });
-
-    // A person starts the leader. xezar spawns `claude -p` in stream-json mode with its own bridge.
-    const started = await c.human('POST', '/mcp/leader', { action: 'start', client: 'claude-code' });
-    expect(started.status).toBe(200);
-    expect(await started.json()).toMatchObject({ available: true, leader: { client: 'claude-code', state: 'running' }, blocker: null });
-    const argv = await until('the leader to start', () => claude.argv());
-    expect(argv).toEqual(expect.arrayContaining(['--input-format', 'stream-json', '--replay-user-messages', '--mcp-config']));
-    const mcpConfig = JSON.parse(argv[argv.indexOf('--mcp-config') + 1]!) as { mcpServers: { xezar: { command: string; args: string[] } } };
-    expect(mcpConfig.mcpServers.xezar).toMatchObject(BRIDGE);
-    // F-1 (QA on #311): the leader xezar starts has NO built-in tool, whatever the user's settings
-    // allow — `--allowedTools` only approves. The running service passes the restriction itself.
-    expect(argv[argv.indexOf('--tools') + 1]).toBe('');
-    expect(argv[argv.indexOf('--disallowedTools') + 1]!.split(',')).toEqual(expect.arrayContaining(['Bash', 'Edit', 'Write']));
-    expect(argv).toContain('--strict-mcp-config');
 
     // The leader's MCP connection opens its session: it owns the project, and a controller follows the journal for it.
     const leader = agent(c.root);
     okResult(await leader.call('leader_events', { action: 'read' }));
     await until('the owner session’s controller', async () => ((await c.status()) as { delivery: { state: string } | null }).delivery?.state === 'idle' || undefined);
+
+    // The person tells xezar where their OpenCode leader runs.
+    const attached = await attach(c, oc.baseUrl);
+    expect(attached.status).toBe(200);
+    expect(await attached.json()).toMatchObject({ available: true, leader: { client: 'opencode', state: 'attached' }, blocker: null });
 
     // 1. The leader changes the configuration itself: its echo reaches the journal as origin `leader`.
     okResult(await leader.call('project_config', { action: 'set_config', config: { baseBranch: 'develop' } }));
@@ -263,40 +287,44 @@ describe('#309 — push delivery in the running service (A-19 delivery, A-20 no-
     expect(human).toBeDefined();
     expect(done?.origin).toBe('system');
 
-    // Delivery: the human change and the task outcome reached the leader session's stdin.
+    // Delivery: the human change and the task outcome reached the attached session.
     const got = await until('both rows to reach the leader', () => {
-      const ids = deliveredRows(claude.received()).map((row) => row.eventId);
+      const ids = oc.delivered();
       return ids.includes(human!.eventId) && ids.includes(done!.eventId) ? ids : undefined;
     });
     // The echo guard held: no row the leader itself caused was delivered to it.
     const ownRows = journal.filter((row) => row.origin === 'leader');
     expect(ownRows.length).toBeGreaterThan(0);
     for (const row of ownRows) expect(got, `own echo ${row.kind} was delivered`).not.toContain(row.eventId);
+    // Every submission allows the turn only the xezar tools (#309 F-1).
+    for (const submission of oc.submissions) expect(submission.tools).toEqual({ '*': false, 'xezar_*': true });
 
     // No loop and no repeat: once everything is delivered, delivery goes quiet across several
-    // heartbeats (500 ms here), each row was written once, and no log, token or presentation
+    // heartbeats (500 ms here), each row was submitted once, and no log, token or presentation
     // event ever became a delivered row.
     const settled = await until('delivery to settle', async () => {
       const s = await c.status();
       return s.available && s.delivery?.state === 'idle' && s.delivery.deliveredSeq === s.delivery.latestSeq ? s : undefined;
     });
     expect(settled.available && settled.delivery?.deliveredSeq).toBe(journalRows(c.dataDir).at(-1)!.journalSeq);
-    const writes = claude.received().length;
+    const writes = oc.submissions.length;
     await new Promise((r) => setTimeout(r, 2_000));
-    expect(claude.received()).toHaveLength(writes);
-    const all = deliveredRows(claude.received());
-    expect(new Set(all.map((row) => row.eventId)).size).toBe(all.length);
-    for (const row of all) expect(PRESENTATION_EVENT_KINDS as readonly string[]).not.toContain(row.kind);
-    // Delivery is not reaction: the stand-in never answers as a model, so nothing is recorded as one.
+    expect(oc.submissions).toHaveLength(writes);
+    const all = oc.delivered();
+    expect(new Set(all).size).toBe(all.length);
+    const byId = new Map(journalRows(c.dataDir).map((row) => [row.eventId, row]));
+    for (const id of all) expect(PRESENTATION_EVENT_KINDS as readonly string[]).not.toContain(byId.get(id)?.kind);
+    // Delivery is not reaction: the fake never answers as a model, so nothing is recorded as one.
     expect(settled.available && settled.delivery?.reactedSeq).toBeLessThan(done!.journalSeq);
   }, 60_000);
 
-  it('keeps events for a session xezar cannot wake, states why, and delivers them once a leader starts', async () => {
+  it('keeps events while nothing is attached, says why, and delivers them once a leader is attached', async () => {
     const c = await cockpit();
-    const claude = standInClaude();
-    await serve(c, claude.bin);
+    const oc = await fakeOpenCode(c.root);
+    await serve(c);
 
-    // A client the user opened themselves owns the project: delivery is on, but there is nobody to wake.
+    // A client the person opened (Claude Code or Codex in a terminal) owns the project: delivery is on,
+    // but there is no address to push to.
     const own = agent(c.root);
     okResult(await own.call('leader_events', { action: 'read' }));
     expect((await c.human('PUT', '/config', { baseBranch: 'develop' })).status).toBe(200);
@@ -306,76 +334,68 @@ describe('#309 — push delivery in the running service (A-19 delivery, A-20 no-
       return s.available && s.delivery?.state === 'disconnected' ? s : undefined;
     });
     expect(blocked).toMatchObject({ leader: null, blocker: { code: 'no-leader-session' } });
+    expect(blocked.available && blocked.blocker?.message).toMatch(/leader_events/);
     expect(blocked.available && blocked.delivery?.deliveredSeq).toBeLessThan(kept.journalSeq);
+    // The pull still works for that leader: the kept row is there to read.
+    const read = okResult(await own.call('leader_events', { action: 'read' }));
+    expect(JSON.stringify(read.structuredContent)).toContain(kept.eventId);
 
-    // xezar will not start a second leader beside it, and hosted mode cannot start one at all.
-    const refused = await c.human('POST', '/mcp/leader', { action: 'start', client: 'claude-code' });
-    expect(refused.status).toBe(409);
-    expect(((await refused.json()) as { error: string }).error).toMatch(/another MCP client owns this project/);
+    // Hosted mode cannot attach a leader at all.
     process.env.XEZ_REMOTE = '1';
-    expect((await c.human('POST', '/mcp/leader', { action: 'start', client: 'claude-code' })).status).toBe(409);
+    expect((await attach(c, oc.baseUrl)).status).toBe(409);
     delete process.env.XEZ_REMOTE;
-    expect(claude.argv()).toBeUndefined();
+    expect(oc.submissions).toHaveLength(0);
 
-    // The user's client exits: its controller ends with its connection, and the row is still owed.
-    await own.end();
-    await until('the controller to end', async () => ((await c.status()) as { delivery: unknown }).delivery === null || undefined);
+    // Attaching delivers exactly what was never acknowledged, at once.
+    expect((await attach(c, oc.baseUrl)).status).toBe(200);
+    await until('the kept row to reach the leader', () => (oc.delivered().includes(kept.eventId) ? true : undefined));
 
-    // A leader xezar starts picks up exactly what was never acknowledged.
-    expect((await c.human('POST', '/mcp/leader', { action: 'start', client: 'claude-code' })).status).toBe(200);
-    const leader = agent(c.root);
-    okResult(await leader.call('leader_events', { action: 'read' }));
-    await until('the kept row to reach the leader', () =>
-      deliveredRows(claude.received()).some((row) => row.eventId === kept.eventId) ? true : undefined,
-    );
-
-    // Stopping the leader stops only the leader: the owner session keeps its controller.
+    // Detaching lets the session go; the owner keeps its controller, and the blocker is back.
     const stopped = await c.human('POST', '/mcp/leader', { action: 'stop' });
     expect(await stopped.json()).toMatchObject({ available: true, leader: null, blocker: { code: 'no-leader-session' } });
   }, 60_000);
 
-  it('refuses a Codex leader in this release, names #323 and #324, starts nothing, and still stops', async () => {
-    // Owner decision on #311: no benefit (#323, it receives no event) and a real cost (#324, it reaches
-    // the user's own Codex MCP servers unprompted). Re-enabling Codex is a deliberate act: this test
-    // goes red first.
+  it('starts no agent process: `start` and `resume` do not exist, for any client (owner decision on #311)', async () => {
+    // If a spawn path ever comes back, these stand-ins record it.
+    const dir = tmp('xzs-');
+    const marks = { claude: join(dir, 'claude-ran'), codex: join(dir, 'codex-ran') };
+    for (const [name, mark] of Object.entries(marks)) {
+      const bin = join(dir, name);
+      writeFileSync(bin, `#!/bin/sh\ntouch ${JSON.stringify(mark)}\nexit 1\n`, 'utf8');
+      chmodSync(bin, 0o755);
+    }
+    process.env.XEZ_CLAUDE_BIN = join(dir, 'claude');
+    process.env.XEZ_CODEX_BIN = join(dir, 'codex');
     const c = await cockpit();
-    const dir = tmp('xzx-');
-    const spawned = join(dir, 'spawned');
-    const codexBin = join(dir, 'codex');
-    writeFileSync(codexBin, `#!/bin/sh\ntouch ${JSON.stringify(spawned)}\nexit 1\n`, 'utf8');
-    chmodSync(codexBin, 0o755);
-    await serve(c, standInClaude().bin, codexBin);
+    await serve(c);
 
-    const refused = await c.human('POST', '/mcp/leader', { action: 'start', client: 'codex' });
-    expect(refused.status).toBe(409);
-    const { error } = (await refused.json()) as { error: string };
-    expect(error).toMatch(/Codex leader is not available in this release/);
-    expect(error).toContain('#323');
-    expect(error).toContain('#324');
-    expect(existsSync(spawned)).toBe(false);
+    for (const body of [
+      { action: 'start', client: 'claude-code' },
+      { action: 'start', client: 'codex' },
+      { action: 'start', client: 'opencode' },
+      { action: 'resume', client: 'claude-code' },
+    ]) {
+      expect((await c.human('POST', '/mcp/leader', body)).status, JSON.stringify(body)).toBe(400);
+    }
+    await new Promise((r) => setTimeout(r, 300));
+    expect(existsSync(marks.claude)).toBe(false);
+    expect(existsSync(marks.codex)).toBe(false);
     expect(await c.status()).toMatchObject({ available: true, leader: null });
-
-    // `resume` is Claude Code's alone in the contract, so a Codex resume never reaches the service.
-    expect((await c.human('POST', '/mcp/leader', { action: 'resume', client: 'codex' })).status).toBe(400);
-    // Stopping is never refused: refusing to stop something is worse than refusing to start it.
-    expect((await c.human('POST', '/mcp/leader', { action: 'stop' })).status).toBe(200);
-    // The other two clients are untouched by the refusal.
-    expect((await c.human('POST', '/mcp/leader', { action: 'start', client: 'claude-code' })).status).toBe(200);
   });
 
-  it('says the journal cannot be written, and refuses to start a leader that could never hear an event (O-3)', async () => {
+  it('says the journal cannot be written, and refuses to attach a leader that could never hear an event (O-3)', async () => {
     const c = await cockpit();
-    const claude = standInClaude();
+    const oc = await fakeOpenCode(c.root);
     // QA's reproduction: the journal's folder is a file, so no row can ever be recorded.
     mkdirSync(c.dataDir, { recursive: true });
     writeFileSync(join(c.dataDir, 'mcp'), 'not a folder\n', 'utf8');
-    await serve(c, claude.bin);
+    await serve(c);
 
     expect(await c.status()).toMatchObject({ available: true, leader: null, blocker: { code: 'journal-unwritable' } });
-    const refused = await c.human('POST', '/mcp/leader', { action: 'start', client: 'claude-code' });
+    const refused = await attach(c, oc.baseUrl);
     expect(refused.status).toBe(409);
     expect(((await refused.json()) as { error: string }).error).toMatch(/cannot write this project’s event journal/);
-    expect(claude.argv()).toBeUndefined();
+    expect(oc.submissions).toHaveLength(0);
   });
 
   it('ends delivery with the service, and reports no delivery for a project whose MCP service is not running', async () => {
@@ -383,7 +403,7 @@ describe('#309 — push delivery in the running service (A-19 delivery, A-20 no-
     expect(await c.status()).toEqual({ available: false, reason: expect.any(String) });
     expect((await c.human('POST', '/mcp/leader', { action: 'stop' })).status).toBe(409);
 
-    const handle = await serve(c, standInClaude().bin);
+    const handle = await serve(c);
     expect((await c.status()).available).toBe(true);
     handle.close();
     expect(await c.status()).toEqual({ available: false, reason: expect.any(String) });

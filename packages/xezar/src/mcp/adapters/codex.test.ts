@@ -11,12 +11,9 @@ import { EventController, type EventDispatch } from '../event-controller.ts';
 import { EventJournal } from '../event-journal.ts';
 import {
   CODEX_EVENT_SOURCE_NOTICE,
-  CODEX_LEADER_RESTRICTIONS,
   CodexReactionAdapter,
   codexReactionTarget,
-  codexRoleInstructionParams,
   codexTerminalDelivery,
-  openCodexLeaderThread,
   renderCodexEventMessage,
   type CodexAppServerLink,
 } from './codex.ts';
@@ -420,41 +417,6 @@ describe('heartbeat (N-06)', () => {
     await adapter.heartbeat(live());
     expect(server.requests).toEqual([{ method: 'thread/read', params: { threadId: 'thread-1' } }]);
     expect(server.modelInputs).toHaveLength(0);
-  });
-});
-
-describe('role instruction (X5)', () => {
-  it('uses developerInstructions, never baseInstructions, and supplies it on start and on resume alike', async () => {
-    const server = new FakeAppServer();
-    expect(await openCodexLeaderThread(server, { cwd: '/p', roleInstruction: ' lead ' })).toBe('thread-1');
-    expect(await openCodexLeaderThread(server, { cwd: '/p', roleInstruction: 'lead', resumeThreadId: 'thread-1' })).toBe('thread-1');
-    expect(server.requests).toEqual([
-      { method: 'thread/start', params: { cwd: '/p', developerInstructions: 'lead', ...CODEX_LEADER_RESTRICTIONS } },
-      { method: 'thread/resume', params: { threadId: 'thread-1', cwd: '/p', developerInstructions: 'lead', ...CODEX_LEADER_RESTRICTIONS } },
-    ]);
-    for (const request of server.requests) expect(request.params).not.toHaveProperty('baseInstructions');
-  });
-
-  it('restricts the leader thread on start AND resume: no shell, no write, no web (#309 F-1)', async () => {
-    // Codex accepts unknown config keys silently, so a renamed key fails OPEN. These exact names are
-    // the ones a live codex-cli 0.154.0 run showed taking effect (exec_command gone, patch refused).
-    expect(CODEX_LEADER_RESTRICTIONS).toEqual({
-      sandbox: 'read-only',
-      approvalPolicy: 'never',
-      config: { features: { shell_tool: false, unified_exec: false }, web_search: 'disabled' },
-    });
-    const server = new FakeAppServer();
-    await openCodexLeaderThread(server, { cwd: '/p' });
-    await openCodexLeaderThread(server, { cwd: '/p', resumeThreadId: 'thread-1' });
-    for (const request of server.requests) {
-      expect(request.params).toMatchObject({ sandbox: 'read-only', approvalPolicy: 'never' });
-      expect(request.params.config).toMatchObject({ features: { shell_tool: false, unified_exec: false } });
-    }
-  });
-
-  it('an empty role leaves Codex\'s own configuration in charge', () => {
-    expect(codexRoleInstructionParams(undefined)).toEqual({});
-    expect(codexRoleInstructionParams('   ')).toEqual({});
   });
 });
 

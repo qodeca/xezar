@@ -5,29 +5,20 @@ import { z } from 'zod';
  *
  * Push delivery is ON BY DEFAULT: every MCP session that owns a project gets an event controller
  * (#107) the moment it opens. What it cannot do on its own is reach a model — generic MCP
- * notifications start no turn in any of the three clients (D-05 § 4), so an event reaches a leader
- * only through a session xezar itself started (Claude Code, Codex) or was pointed at (OpenCode).
- * This route is how that leader session is started, attached, resumed or stopped. It never runs a
- * tool, and it refuses to start a leader while another MCP client owns the project, so it cannot
- * make the cockpit a second leader (spec `mcp-api-reference-spec.md` § 13).
+ * notifications start no turn in any of the three clients (D-05 § 4). An event therefore reaches a
+ * leader only through a session the person runs and tells xezar where to find: today an OpenCode
+ * `serve` session. xezar NEVER starts an agent process for a leader (owner decision on #311): the
+ * person runs their own leader, in their own terminal, with their own tool, and it connects to
+ * xezar over MCP. A Claude Code or Codex session in a terminal has no address to attach to, so it
+ * gets no push; it reads its events with the `leader_events` tool.
  */
-
-/** The three clients with a reaction adapter (#108–#110). */
-export const mcpLeaderClientSchema = z.enum(['claude-code', 'codex', 'opencode']);
-export type McpLeaderClient = z.infer<typeof mcpLeaderClientSchema>;
 
 /**
- * What the route does. `start` opens a NEW leader session (Claude Code: `claude -p` in stream-json
- * mode; Codex: an app-server thread), `resume` reopens the last Claude Code conversation, `attach`
- * names an OpenCode session the user already runs (`opencode serve`), and `stop` ends the leader
- * xezar started — never a task, and never the MCP session's hold on the project.
- *
- * `start` with `client: 'codex'` is part of the contract but REFUSED at runtime in release 0.14.0
- * (409, naming #323 and #324). It stays here so re-enabling it later is additive, not a break.
+ * What the route does. `attach` names an OpenCode session the person already runs
+ * (`opencode serve`); `stop` detaches it — never a task, never the OpenCode process, and never the
+ * MCP session's hold on the project. There is no `start` or `resume`: xezar spawns no leader.
  */
 export const mcpLeaderActionInputSchema = z.discriminatedUnion('action', [
-  z.strictObject({ action: z.literal('start'), client: z.enum(['claude-code', 'codex']) }),
-  z.strictObject({ action: z.literal('resume'), client: z.literal('claude-code') }),
   z.strictObject({
     action: z.literal('attach'),
     client: z.literal('opencode'),
@@ -38,10 +29,10 @@ export const mcpLeaderActionInputSchema = z.discriminatedUnion('action', [
 ]);
 export type McpLeaderActionInput = z.infer<typeof mcpLeaderActionInputSchema>;
 
-/** The leader session xezar started or attached, if any. `stopped`: it ended and can be resumed. */
+/** The leader session attached to the project, if any. */
 export const mcpLeaderSessionSchema = z.object({
-  client: mcpLeaderClientSchema,
-  state: z.enum(['running', 'stopped']),
+  client: z.literal('opencode'),
+  state: z.literal('attached'),
 });
 export type McpLeaderSession = z.infer<typeof mcpLeaderSessionSchema>;
 

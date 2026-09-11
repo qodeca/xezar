@@ -1,23 +1,18 @@
 # Unreleased
 
 ## ✨ Features
-- ✨ **Project events are now pushed to the leader.** The event controller and the Claude Code,
-  Codex and OpenCode reaction adapters were built and tested but never connected, so no event ever
-  reached a client. Now every MCP session that owns a project gets push delivery the moment it
-  opens — nothing to set up. An event can only wake a leader session xezar started or was pointed
-  at, so a new route, `POST /api/v1/mcp/leader`, starts a Claude Code leader, resumes the last one,
-  attaches an OpenCode session you run with `opencode serve`, or stops it (a Codex leader is refused
-  in this release: it receives no event yet, #323, and can reach your own Codex MCP servers, #324);
-  `GET /api/v1/mcp/leader` says what is delivered and, when nothing can be, why. xezar never starts
-  a leader by itself, and refuses to start one while another MCP client owns the project. A leader
-  never receives the echo of its own change. A leader xezar starts or attaches can use the xezar
-  tools and nothing else, whatever your own agent settings allow: Claude Code runs with no built-in
-  tool (`--tools ""`) and a deny list on top, a Codex leader thread runs read-only with its shell
-  switched off, and each event sent to an OpenCode session allows only `xezar_*` tools — OpenCode
-  keeps that rule on the attached session, so your own messages in it get only the xezar tools too.
-  `start` is refused, and the status says why, when the project's event journal cannot be written. A Claude Code or Codex session you opened yourself
-  still cannot be woken: its events wait in the journal and are read with `leader_events`. There is
-  no cockpit button yet. (#309)
+- ✨ **Project events can now be pushed to a leader you attach.** The event controller and the
+  reaction adapters were built and tested but never connected, so no event ever reached a client.
+  Now every MCP session that owns a project gets push delivery the moment it opens — nothing to set
+  up. An event can only wake a session xezar can address, so a new route,
+  `POST /api/v1/mcp/leader`, attaches the OpenCode session you run with `opencode serve` (or
+  detaches it), and `GET /api/v1/mcp/leader` says what is delivered and, when nothing can be, why.
+  xezar never starts an agent process for you. A Claude Code or Codex session in your terminal has
+  no address to attach to, so it gets no push: it reads its events with `leader_events`, as before.
+  A leader never receives the echo of its own change, and each event sent to OpenCode allows only
+  the `xezar_*` tools — OpenCode keeps that rule on the attached session, so your own messages in it
+  get only the xezar tools too. Attaching is refused, and the status says why, when the project's
+  event journal cannot be written. There is no cockpit button yet. (#309)
 - ✨ **One MCP client owns a project at a time.** A second coding agent that connects to a
   project another MCP client already holds is now refused with the project-occupied error
   (`-32080`, `com.qodeca.xezar/project-occupied`), which names nothing about the other client; the

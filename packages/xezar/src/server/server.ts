@@ -5592,12 +5592,12 @@ export function createApp(deps: ServerDeps) {
 
   // ---- chained family: the MCP leader's push-delivery path (project-scoped) ----
   // #309. Delivery itself is on by default and needs no route: every MCP session that owns the
-  // project gets an event controller when it opens. What a route is needed for is the one thing
-  // xezar must never do by itself — start a leader session an event can actually wake (Claude
-  // Code; Codex is refused in 0.14.0, #323/#324) or point it at one the user runs (OpenCode). It runs no tool, and it refuses to
-  // start a leader while another MCP client owns the project, so the cockpit never becomes a
-  // second leader (spec `mcp-api-reference-spec.md` § 13). Starting a process on this machine is
-  // a local-machine capability: hosted mode refuses it like every other local mutator.
+  // project gets an event controller when it opens. The route reads that state, and lets the person
+  // point xezar at the leader they run — `attach` an OpenCode `serve` session — or detach it. xezar
+  // starts no agent process (owner decision on #311); there is no `start` or `resume`. It runs no
+  // tool, so the cockpit never becomes a second leader (spec `mcp-api-reference-spec.md` § 13).
+  // Attaching makes this process talk to a local server by URL: a local-machine capability, so
+  // hosted mode refuses it like every other local mutator.
   const mcpLeaderStatus = (projectId: string): McpLeaderStatus =>
     projectLeader(projectId)?.status() ?? {
       available: false,
@@ -5607,7 +5607,7 @@ export function createApp(deps: ServerDeps) {
     .get('/mcp/leader', (c) => c.json(mcpLeaderStatus(c.get('project').id)))
     .post('/mcp/leader', jsonZodValidator(() => mcpLeaderActionInputSchema), async (c) => {
       if (!capabilities().localHandoff) {
-        return c.json({ error: 'a leader session is started on the machine that owns the checkout (this cockpit runs in hosted mode)' }, 409);
+        return c.json({ error: 'a leader session is attached from the machine that owns the checkout (this cockpit runs in hosted mode)' }, 409);
       }
       const port = projectLeader(c.get('project').id);
       if (!port) return c.json({ error: 'the MCP service is not running for this project' }, 409);
