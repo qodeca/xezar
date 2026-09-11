@@ -51,9 +51,13 @@ interface ClientSetup {
   caveat?: string
 }
 
-/** Copy with `backticked` names, rendered as `<code>` instead of literal backticks (#301, C1). */
+/**
+ * Copy with `backticked` names, rendered as `<code>` instead of literal backticks (#301, C1).
+ * The backtick is spelled `\x60`: the design guardian does not lex regex literals, and a literal
+ * backtick there opens a template string that hides every later comment from its stripper.
+ */
 function withCode(text: string): ReactNode {
-  return text.split(/`([^`]+)`/).map((part, i) =>
+  return text.split(/\x60([^\x60]+)\x60/).map((part, i) =>
     i % 2 ? (
       <code key={i} className="font-mono break-words">
         {part}
