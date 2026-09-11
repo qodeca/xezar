@@ -415,6 +415,13 @@ describe('an MCP-caused change reaches the open cockpit through the shared sourc
 
     const body = await stream.readUntil((b) => b.includes(id));
     expect(payloadsOf<{ id: string; project: string }>(body, 'run').some((run) => run.id === id && run.project === 'proj-a')).toBe(true);
+    // dispose() does not end a live step, and a step still writing when the temp root is removed
+    // is #125's ENOENT in whichever test runs next — so let the run finish first.
+    const deadline = Date.now() + 20_000;
+    while (!['done', 'failed', 'cancelled'].includes(h.storeA.getRun(id)?.status ?? '')) {
+      if (Date.now() > deadline) throw new Error('timed out waiting for the MCP-started run to finish');
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
     await (await h.contexts.context('proj-a')).manager.dispose();
   });
 });
