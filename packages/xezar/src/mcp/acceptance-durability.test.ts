@@ -1,12 +1,28 @@
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { PassThrough } from 'node:stream';
+
+import type { Hono } from 'hono';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { MCP_STALE_VERSION_GUIDANCE } from '@qodeca/xezar-contract';
 
 import { assertIsolated, createAbWorld, leaked, resultText, snapshotChanges, type AbWorld } from '../../test/helpers/ab-fixture.ts';
+import { projectDataDir } from '../project-data-paths.ts';
 import { RunStore } from '../runs/store.ts';
+import { apiRequest } from '../server/loopback-request.testkit.ts';
+import { ProjectContexts } from '../server/project-context.ts';
+import { connectedProviderAuth } from '../server/provider-auth.testkit.ts';
+import { WorkspaceEventBus, createApp } from '../server/server.ts';
+import { RunManager } from '../workflows/run.ts';
+import { registerProject } from '../workspace/projects.ts';
+import { WorkspaceSemaphore } from '../workspace/semaphore.ts';
+import { runBridge } from './bridge.ts';
 import { EventCatalog } from './event-catalog.ts';
 import { EventJournal } from './event-journal.ts';
-import { type McpToolResult } from './ipc.ts';
+import { resolveMcpTarget, startMcpService } from './index.ts';
+import { LineFramer, encodeFrame, type McpToolResult } from './ipc.ts';
 import { OperationReceiptStore } from './operation-receipts.ts';
 import { LeaderCursors, LeaderFeed, LeaderInbox, reactionOperationId, runStateReader, type LeaderDelivery } from './reconnect.ts';
 import { listenMcpSocket } from './service.ts';
@@ -14,6 +30,7 @@ import { McpServiceAdapter, type ServiceDispatch } from './service-adapter.ts';
 import { guardedRunMutation, runVersion } from './stale-write.ts';
 import type { McpToolContext } from './tool.ts';
 import { QUALITY_BLOCKER_NEXT_ACTION, handoffGitTool } from './tools/handoff-git.ts';
+import { tools } from './tools/index.ts';
 
 /**
  * #117 — the correctness and durability suite, whole-feature half: A-13, A-14, A-15, A-16, A-21 and
@@ -23,15 +40,14 @@ import { QUALITY_BLOCKER_NEXT_ACTION, handoffGitTool } from './tools/handoff-git
  * no account or secret. The store-level half is `test/unit/mcp-durability.test.ts`; the packed-CLI
  * upgrade half of A-16 is `test/e2e/mcp-upgrade.test.ts`.
  *
- * WHAT IS BLOCKED, AND WHY (the COMPOSITION NOTE of #117). The mechanisms these cases rest on — the
- * #100 stale-write check, the #101 receipts, the #103 journal, the #104 catalog and the #105
- * reconnect — are real and are exercised here over the project's real stores and doors. What was not
- * found in the files examined is their PRODUCTION CALLER: no registry tool hands out or checks a
- * version token, `task_create` keeps no receipt for its `operationId`, `startMcpService` passes the
- * socket only `tools` (no service entry, no journal, no catalog, no controller), and no tool exposes
- * a reconnect or an acknowledgement. Each of those tool-level halves is an `it.todo` below that names
- * exactly what is missing. A todo is not a pass: vitest reports it as a todo, and #117 records it as
- * BLOCKED until the composition lands.
+ * THE TOOL-LEVEL HALVES. A-13, A-14, A-15 and A-21 each have a second half that runs through the
+ * REAL composed MCP service (#243): `startMcpService` over the cockpit's own app, store and run
+ * manager, reached through the real `runBridge` over the project socket — the version on every read
+ * and `expectedVersion` on every run write (#250), a receipt for every `operationId` (#101, in the
+ * door), the journal and catalog (#103, #104) and `leader_events` (#251). The A/B world's sockets
+ * are bare `listenMcpSocket`s with none of those parts, so these halves build the world
+ * `composition.test.ts` builds instead. They were `it.todo` (BLOCKED) in #117's first delivery,
+ * before the composition landed.
  */
 
 const PROJECT_A = 'alpha-proj';
@@ -66,6 +82,205 @@ async function humanCreatesTask(w: AbWorld, task: string): Promise<string> {
   const res = await w.cockpit(`/api/v1/p/${PROJECT_A}/runs`, 'POST', { task, workflow: 'quick-task', worktree: false });
   expect(res.status, await res.clone().text()).toBeLessThan(300);
   return ((await json(res)) as { id: string }).id;
+}
+
+// ---- the composed service (#243, #250, #251) -----------------------------------------------------
+
+const COMPOSED_VERSION = '0.0.0-117';
+const composedDirs: string[] = [];
+const composedClosers: Array<() => unknown> = [];
+const savedEnv = { home: process.env.XEZ_HOME, dryRun: process.env.XEZ_DRY_RUN };
+
+afterEach(async () => {
+  for (const close of composedClosers.splice(0).reverse()) {
+    try {
+      await close();
+    } catch {
+      // A part the case already closed on purpose (a service restart).
+    }
+  }
+  for (const dir of composedDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  for (const [key, value] of [['XEZ_HOME', savedEnv.home], ['XEZ_DRY_RUN', savedEnv.dryRun]] as const) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+});
+
+// A short directory under /tmp, never the per-worker sandbox: that sits under the task's TMPDIR,
+// already past the 104-byte socket-path limit on macOS (D-01 E5).
+function shortTmp(prefix: string): string {
+  const dir = realpathSync(mkdtempSync(`/tmp/${prefix}`));
+  composedDirs.push(dir);
+  return dir;
+}
+
+/** A registered project with the cockpit's own app, store and run manager over it. */
+async function composedCockpit(maxParallel: number) {
+  process.env.XEZ_HOME = shortTmp('x117h-');
+  process.env.XEZ_DRY_RUN = '1';
+  const root = shortTmp('x117p-');
+  mkdirSync(join(root, '.xezar'), { recursive: true });
+  writeFileSync(join(root, '.xezar', 'config.json'), '{"skillsRepos": []}\n', 'utf8');
+  const { id } = await registerProject(root);
+  const semaphore = new WorkspaceSemaphore({ initial: { maxParallel }, load: async () => ({ maxParallel, memoryLimitMb: null }) });
+  const store = RunStore.open(projectDataDir(root), { keepLive: true });
+  const manager = new RunManager(store, root, { semaphore });
+  const contexts = new ProjectContexts({ listProjects: async () => [{ id, root, status: 'ok' }], semaphore });
+  const app = createApp({
+    repoRoot: root,
+    store,
+    manager,
+    version: COMPOSED_VERSION,
+    bootProjectId: id,
+    contexts,
+    semaphore,
+    workspaceEvents: new WorkspaceEventBus(),
+    providerAuth: connectedProviderAuth(),
+  });
+  composedClosers.push(() => {
+    manager.dispose();
+    store.flush();
+    contexts.disposeAll();
+  });
+  /** A person at the cockpit: the routes the browser calls, scoped to this project. */
+  const human = (method: string, path: string, body?: unknown): Promise<Response> =>
+    apiRequest(app as unknown as Hono, `/api/v1/p/${id}${path}`, {
+      method,
+      headers: { 'content-type': 'application/json' },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+  return { root, id, store, human, dataDir: store.dataDir, app };
+}
+type ComposedCockpit = Awaited<ReturnType<typeof composedCockpit>>;
+
+/** `startMcpService` exactly as `xezar serve` calls it, with an idempotent close for restarts. */
+async function serveComposed(c: ComposedCockpit): Promise<{ close(): void }> {
+  const handle = await startMcpService({ projectId: c.id, version: COMPOSED_VERSION, service: c.app, store: c.store, warn: () => {} });
+  let open = true;
+  const close = (): void => {
+    if (!open) return;
+    open = false;
+    handle.close();
+  };
+  composedClosers.push(close);
+  return { close };
+}
+
+/** The real stdio bridge, with a tiny JSON-RPC client in front of it — a coding agent's view. */
+function leaderClient(root: string) {
+  const input = new PassThrough();
+  const output = new PassThrough();
+  const pending = new Map<number, (result: McpToolResult) => void>();
+  const framer = new LineFramer(
+    (line) => {
+      const message = JSON.parse(line) as { id: number; result: McpToolResult };
+      pending.get(message.id)?.(message.result);
+      pending.delete(message.id);
+    },
+    () => {},
+  );
+  output.on('data', (chunk: Buffer) => framer.push(chunk));
+  const done = runBridge({ input, output, version: COMPOSED_VERSION, tools, resolveTarget: () => resolveMcpTarget(root) });
+  composedClosers.push(() => {
+    input.end();
+    return done;
+  });
+  let next = 1;
+  return {
+    call(name: string, args: Record<string, unknown>): Promise<McpToolResult> {
+      const rid = next++;
+      return new Promise((resolve) => {
+        pending.set(rid, resolve);
+        input.write(encodeFrame({ jsonrpc: '2.0', id: rid, method: 'tools/call', params: { name, arguments: args } }));
+      });
+    },
+  };
+}
+type Leader = ReturnType<typeof leaderClient>;
+
+const bodyOf = (result: McpToolResult): Record<string, unknown> =>
+  JSON.parse((result.content[0] as { text: string }).text) as Record<string, unknown>;
+const isStale = (result: McpToolResult): boolean => {
+  try {
+    return !result.isError && bodyOf(result).error === 'stale_version';
+  } catch {
+    return false;
+  }
+};
+
+/** What a leader does first: read the one task it means to change, and keep the version. */
+async function taskVersion(leader: Leader, runId: string): Promise<string> {
+  const read = await leader.call('task_read', { view: 'task', taskId: runId });
+  expect(read.isError, JSON.stringify(read)).toBeFalsy();
+  const version = bodyOf(read).version;
+  expect(typeof version).toBe('string');
+  return version as string;
+}
+
+/** The task's stored record as BYTES: the run index and the task's own event log. */
+function storedBytes(c: ComposedCockpit, runId: string): { index: Buffer; events: Buffer | null } {
+  c.store.flush();
+  const events = join(c.dataDir, 'runs', `${runId}.ndjson`);
+  return { index: readFileSync(join(c.dataDir, 'runs.json')), events: existsSync(events) ? readFileSync(events) : null };
+}
+
+function sameBytes(a: Buffer | null, b: Buffer | null): boolean {
+  return a === null || b === null ? a === b : a.equals(b);
+}
+
+async function humanStarts(c: ComposedCockpit, task: string): Promise<string> {
+  const res = await c.human('POST', '/runs', { task, workflow: 'quick-task', worktree: false });
+  expect(res.status, await res.clone().text()).toBeLessThan(300);
+  return ((await res.json()) as { id: string }).id;
+}
+
+interface LeaderEvent {
+  eventId: string;
+  kind: string;
+  journalSeq: number;
+  origin: string;
+  subject: { id: string };
+  standing: string;
+}
+interface LeaderTaskState {
+  id: string;
+  status: string | null;
+}
+interface LeaderRead {
+  status: 'ok';
+  events: LeaderEvent[];
+  nextCursor: string;
+  hasMore: boolean;
+  state: { tasks: LeaderTaskState[] };
+  position: { deliveredSeq: number; ackedSeq: number };
+  journalEpoch: string;
+}
+interface LeaderGap {
+  status: 'gap';
+  gap: { resumeCursor: string; recovery: { required: string; message: string } };
+  state: { tasks: LeaderTaskState[]; complete: boolean };
+}
+
+async function leaderRead<T = LeaderRead>(leader: Leader, args: Record<string, unknown> = {}): Promise<T> {
+  const result = await leader.call('leader_events', { action: 'read', ...args });
+  expect(result.isError, JSON.stringify(result)).toBeFalsy();
+  return result.structuredContent as T;
+}
+
+async function leaderAck(leader: Leader, cursor: string): Promise<{ status: string; ackedSeq: number }> {
+  const result = await leader.call('leader_events', { action: 'ack', cursor });
+  expect(result.isError, JSON.stringify(result)).toBeFalsy();
+  return result.structuredContent as { status: string; ackedSeq: number };
+}
+
+/** The rows the catalog actually wrote, straight from the journal file on disk. */
+function journalRowsOnDisk(dataDir: string): Array<{ kind: string; subject: { id: string } }> {
+  const path = join(dataDir, 'mcp', 'event-journal.ndjson');
+  if (!existsSync(path)) return [];
+  return readFileSync(path, 'utf8')
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as { kind: string; subject: { id: string } });
 }
 
 // ---- A-13 ----------------------------------------------------------------------------------------
@@ -138,9 +353,92 @@ describe('A-13 — a human changed a resource after the leader read it (N-03)', 
     expect(guardedRunMutation(w.a.store, id, leaderVersion, () => undefined).status).toBe('conflict');
   });
 
-  it.todo(
-    'BLOCKED (#117 composition): over the MCP socket — no registry tool hands the leader a version token or accepts `expectedVersion`, and `guardedRunMutation` has no production caller (not found in src/mcp/tools/*.ts)',
-  );
+  it("through the composed MCP service: a read version a human has since moved is refused on every write tool, the stored record stays byte-identical, and only a fresh read decides again", async () => {
+    // No free slot: the task stays queued, so only the two writers below can move it.
+    const c = await composedCockpit(0);
+    await serveComposed(c);
+    const leader = leaderClient(c.root);
+    const started = await leader.call('task_create', { action: 'start', operationId: 'op-117-a13-start', prompt: 'the first brief' });
+    expect(started.isError, JSON.stringify(started)).toBeFalsy();
+    const runId = (started.structuredContent as { subject: { id: string } }).subject.id;
+
+    // 1. The leader reads the task, and keeps the version its answer carries.
+    const leaderRead = await taskVersion(leader, runId);
+    expect(leaderRead).toBe(runVersion(c.store, runId));
+
+    // 2. The second path moves it: a human renames the task in the cockpit, sending no token at all.
+    expect((await c.human('PATCH', `/runs/${runId}`, { title: 'the title the HUMAN wrote' })).status).toBe(200);
+    const humanVersion = runVersion(c.store, runId);
+    expect(humanVersion).not.toBe(leaderRead);
+    const humanBytes = storedBytes(c, runId);
+    const humanRecord = JSON.stringify(c.store.getRun(runId));
+
+    // 3. The leader acts on its old read, through every tool that could change this task.
+    const attempts = [
+      await leader.call('organise_work', { action: 'set_title', runId, title: 'the title the LEADER wanted', expectedVersion: leaderRead }),
+      await leader.call('organise_work', { action: 'edit_brief', runId, task: 'the leader brief', expectedVersion: leaderRead }),
+      await leader.call('execution_control', { action: 'send_message', runId, text: 'and this', expectedVersion: leaderRead }),
+      await leader.call('execution_control', { action: 'cancel', runId, expectedVersion: leaderRead }),
+    ];
+    for (const attempt of attempts) {
+      expect(attempt.isError, JSON.stringify(attempt)).toBeFalsy();
+      expect(bodyOf(attempt)).toMatchObject({
+        status: 'conflict',
+        applied: false,
+        error: 'stale_version',
+        resource: { kind: 'run', id: runId },
+        currentVersion: humanVersion,
+        changedSince: true,
+        guidance: MCP_STALE_VERSION_GUIDANCE,
+      });
+    }
+    // Compared, not asserted: what is stored now is the very bytes the human left.
+    const after = storedBytes(c, runId);
+    expect(sameBytes(after.index, humanBytes.index), 'runs.json is byte-identical').toBe(true);
+    expect(sameBytes(after.events, humanBytes.events), "the task's event log is byte-identical").toBe(true);
+    expect(JSON.stringify(c.store.getRun(runId))).toBe(humanRecord);
+    expect(runVersion(c.store, runId)).toBe(humanVersion);
+
+    // 4. Concurrent leader calls on one fresh read: exactly one applies, every other is refused as stale.
+    const fresh = await taskVersion(leader, runId);
+    const racing = await Promise.all(
+      Array.from({ length: 6 }, (_, n) => leader.call('organise_work', { action: 'set_title', runId, title: `leader call ${n}`, expectedVersion: fresh })),
+    );
+    const bodies = racing.map(bodyOf);
+    expect(bodies.filter((body) => body.status === 'done'), JSON.stringify(bodies)).toHaveLength(1);
+    expect(bodies.filter((body) => body.status === 'conflict' && body.error === 'stale_version')).toHaveLength(5);
+    const winner = bodies.find((body) => body.status === 'done') as { run: { title: string } };
+    expect(c.store.getRun(runId)?.title).toBe(winner.run.title);
+  });
+
+  it('through the composed MCP service: a RUNNING task — a stale cancel is refused and the task keeps running; the leader re-reads and retries until its cancel lands (the #250 contract)', async () => {
+    const c = await composedCockpit(2);
+    await serveComposed(c);
+    const leader = leaderClient(c.root);
+    const runId = await humanStarts(c, 'mock:slow a task the leader will cancel');
+    await until('the task to run', () => c.store.getRun(runId)?.status === 'running');
+
+    // A cancel decided on a read that a human has since overtaken is refused, and nothing stops.
+    const stale = await taskVersion(leader, runId);
+    expect((await c.human('PATCH', `/runs/${runId}`, { title: 'renamed while it runs' })).status).toBe(200);
+    const refused = await leader.call('execution_control', { action: 'cancel', runId, expectedVersion: stale });
+    expect(bodyOf(refused)).toMatchObject({ status: 'conflict', applied: false, error: 'stale_version' });
+    expect(c.store.getRun(runId)?.status).toBe('running');
+
+    // Re-read, then retry. A running task's version also moves with every agent event, so a cancel
+    // can be refused as stale between the read and the call: that is the accepted #250 contract, not
+    // a defect, and the answer is to read again. The bound is only this test's, not a product limit.
+    let landed: McpToolResult | undefined;
+    let staleRetries = 0;
+    for (let attempt = 0; attempt < 10 && landed === undefined; attempt++) {
+      const result = await leader.call('execution_control', { action: 'cancel', runId, expectedVersion: await taskVersion(leader, runId) });
+      if (isStale(result)) staleRetries += 1;
+      else landed = result;
+    }
+    expect(landed, `still refused as stale after ${staleRetries} fresh reads`).toBeDefined();
+    expect(landed!.isError, JSON.stringify(landed)).toBeFalsy();
+    await until('the task to stop', () => c.store.getRun(runId)?.status === 'cancelled', 30_000);
+  }, 60_000);
 });
 
 // ---- A-14 ----------------------------------------------------------------------------------------
@@ -199,9 +497,73 @@ describe('A-14 — a mutation executed but its response lost (N-10)', () => {
     reopened.close();
   });
 
-  it.todo(
-    'BLOCKED (#117 composition): over the MCP socket — `task_create` accepts an `operationId` but keeps no #101 receipt for it, so a repeated key is not answered from a receipt (OperationReceiptStore has no production caller in src/mcp/tools/*.ts)',
-  );
+  it('through the composed MCP service: a repeated key is EXACTLY ONE task, also after the service restarts; a new key is TWO; a key reused for other work is refused', async () => {
+    // No free slot: every task stays queued, so the count is the count of effects.
+    const c = await composedCockpit(0);
+    const first = await serveComposed(c);
+    const leader = leaderClient(c.root);
+    const prompt = 'mock:done one piece of work, created over MCP';
+    const args = { action: 'start', operationId: 'op-117-a14-key-1', prompt };
+    const tasks = () => c.store.listRuns().filter((run) => run.task === prompt);
+
+    const created = await leader.call('task_create', args);
+    expect(created.isError, JSON.stringify(created)).toBeFalsy();
+    const runId = (created.structuredContent as { subject: { id: string } }).subject.id;
+    // The response was lost: the leader retries under the same key.
+    expect((await leader.call('task_create', args)).structuredContent).toMatchObject({ status: 'ok', replayed: true, resultRef: { kind: 'run', id: runId } });
+    expect(tasks()).toHaveLength(1);
+
+    // The service restarts between the call and the retry: the receipt survives it.
+    first.close();
+    await serveComposed(c);
+    const afterRestart = leaderClient(c.root);
+    expect((await afterRestart.call('task_create', args)).structuredContent).toMatchObject({ status: 'ok', replayed: true, resultRef: { kind: 'run', id: runId } });
+    expect(tasks()).toHaveLength(1);
+
+    // A collision: the same key for different work is refused, with no effect.
+    const collision = await afterRestart.call('task_create', { ...args, prompt: `${prompt}, but different` });
+    expect(collision.isError).toBe(true);
+    expect(collision.structuredContent).toMatchObject({ error: 'operation_key_conflict', mismatch: 'payload' });
+    expect(c.store.listRuns()).toHaveLength(1);
+
+    // Deliberately new identical work takes a new key, and is a second task.
+    const second = await afterRestart.call('task_create', { ...args, operationId: 'op-117-a14-key-2' });
+    expect(second.isError, JSON.stringify(second)).toBeFalsy();
+    expect(tasks()).toHaveLength(2);
+  });
+
+  it('through the composed MCP service: a crash between the effect and its receipt answers an explicit UNVERIFIED on retry, and the effect is never repeated', async () => {
+    const c = await composedCockpit(0);
+    const prompt = 'mock:done created just before the crash';
+    const args = { action: 'start', operationId: 'op-117-a14-crash', prompt };
+    const tasks = () => c.store.listRuns().filter((run) => run.task === prompt);
+
+    // The process that crashed: its receipt store wrote the intent under the door's own action id,
+    // ran the effect (a real task, through the cockpit's route) and died before the settled line —
+    // exactly what a SIGKILL leaves behind (the real SIGKILL is `test/unit/mcp-durability.test.ts`).
+    const crashed = OperationReceiptStore.open(c.dataDir);
+    void crashed.execute({
+      projectId: c.id,
+      operationId: args.operationId,
+      action: 'taskCreate.start',
+      payload: args,
+      reconcile: { kind: 'none' },
+      effect: async () => {
+        await humanStarts(c, prompt);
+        return new Promise(() => {}); // never settles: the process is gone
+      },
+    });
+    await until('the effect before the crash', () => tasks().length === 1);
+
+    // The service comes back, and the leader retries the key it never got an answer for.
+    await serveComposed(c);
+    const leader = leaderClient(c.root);
+    for (let retry = 0; retry < 2; retry++) {
+      const answer = await leader.call('task_create', args);
+      expect(answer.structuredContent, JSON.stringify(answer)).toMatchObject({ status: 'unverified', operationId: args.operationId });
+      expect(tasks(), 'the effect is never run a second time for the key').toHaveLength(1);
+    }
+  });
 });
 
 // ---- A-15 ----------------------------------------------------------------------------------------
@@ -275,9 +637,44 @@ describe('A-15 — a task completes while the client is offline (F-19–F-21, N-
     receipts.close();
   });
 
-  it.todo(
-    'BLOCKED (#117 composition): through the running service — `startMcpService` attaches no EventCatalog, EventJournal or EventController, so a task finishing while no client is connected leaves no journal row a reconnecting leader could be delivered (no production caller of EventCatalog.attach / EventJournal.open in src/)',
-  );
+  it('through the composed MCP service: a task that finishes with no leader connected is delivered by leader_events on reconnect, with its current state; a redelivery repeats no effect', async () => {
+    const c = await composedCockpit(2);
+    await serveComposed(c);
+
+    // Offline: no leader is connected. A human starts a task and the real RunManager finishes it.
+    const id = await humanStarts(c, 'mock:done finished while the leader was away');
+    await until('the task to finish', () => c.store.getRun(id)?.status === 'done');
+    await until('its journal row on disk', () => journalRowsOnDisk(c.dataDir).some((row) => row.kind === 'task.done' && row.subject.id === id));
+    const runsWhileAway = c.store.listRuns().length;
+
+    // Reconnect: one read hands over the outstanding event, then the current, authoritative state.
+    const leader = leaderClient(c.root);
+    const back = await leaderRead(leader);
+    expect(back).toMatchObject({ status: 'ok', hasMore: false });
+    const terminal = back.events.find((event) => event.kind === 'task.done' && event.subject.id === id);
+    expect(terminal, 'the completion is delivered on reconnect').toBeDefined();
+    expect(back.state.tasks).toContainEqual(expect.objectContaining({ id, status: 'done' }));
+    expect(bodyOf(await leader.call('task_read', { view: 'task', taskId: id }))).toMatchObject({ view: 'task', task: { id, status: 'done' } });
+    // Connecting and reading made no run and holds no slot: no leader heartbeat, no poll loop.
+    expect(c.store.listRuns()).toHaveLength(runsWhileAway);
+
+    // Not yet acknowledged: the same events come again, with the same identity (at-least-once).
+    const again = await leaderRead(leader);
+    expect(again.events.map((event) => event.eventId)).toEqual(back.events.map((event) => event.eventId));
+
+    // The leader's reaction is keyed by the event, so a redelivery repeats no effect.
+    const reactionKey = `op-117-react-${createHash('sha256').update(terminal!.eventId).digest('hex').slice(0, 24)}`;
+    const reaction = { action: 'start', operationId: reactionKey, prompt: 'mock:done review what finished' };
+    const reacted = await leader.call('task_create', reaction);
+    expect(reacted.isError, JSON.stringify(reacted)).toBeFalsy();
+    expect((await leader.call('task_create', reaction)).structuredContent).toMatchObject({ status: 'ok', replayed: true });
+    expect(c.store.listRuns().filter((run) => run.task === reaction.prompt)).toHaveLength(1);
+
+    // Acknowledged: the delivered events are never handed over again.
+    expect(await leaderAck(leader, back.nextCursor)).toMatchObject({ status: 'acked' });
+    const handled = new Set(back.events.map((event) => event.eventId));
+    expect((await leaderRead(leader)).events.filter((event) => handled.has(event.eventId))).toEqual([]);
+  }, 60_000);
 });
 
 // ---- A-16 ----------------------------------------------------------------------------------------
@@ -354,9 +751,87 @@ describe('A-21 — reconnect with a valid or an old cursor (F-21, N-10)', () => 
     expect(JSON.stringify(gap)).not.toContain(w.b.id);
   });
 
-  it.todo(
-    'BLOCKED (#117 composition): over the MCP socket — no registry tool exposes the #105 reconnect or an acknowledgement, so a leader cannot present a cursor or receive cursor_too_old through MCP (not found in src/mcp/tools/index.ts)',
-  );
+  it('through the composed MCP service: a valid cursor, an old cursor, duplicates and out-of-order acks — and a lost journal is an EXPLICIT gap that names the recovery path and recovers', async () => {
+    const c = await composedCockpit(0);
+    let service = await serveComposed(c);
+    const leader = leaderClient(c.root);
+
+    // A task that stays in flight (no free slot): the current state always carries it.
+    const inFlight = await humanStarts(c, 'mock:done waiting for a slot');
+    const first = await leaderRead(leader);
+    expect(first).toMatchObject({ status: 'ok', hasMore: false });
+    // The leader has taken in everything so far; its position is the cursor it will later present as OLD.
+    await leaderAck(leader, first.nextCursor);
+    const oldCursor = first.nextCursor;
+
+    // Away: a human changes the configuration, and two tasks fail.
+    expect((await c.human('PUT', '/config', { baseBranch: 'develop' })).status).toBe(200);
+    const failed = [0, 1].map((n) => {
+      const run = c.store.createRun({ title: `t${n}`, workflow: 'quick-task', task: `t${n}`, steps: [{ id: 'gate', name: 'Gate', kind: 'check' }] });
+      c.store.updateRun(run.id, { status: 'running' });
+      c.store.updateRun(run.id, { status: 'failed' });
+      return run.id;
+    });
+
+    // A valid cursor: exactly the outstanding events, in journal order, then the current state.
+    const valid = await leaderRead(leader);
+    expect(valid.events.map((event) => [event.kind, event.subject.id])).toEqual([
+      ['config.changed', 'project'],
+      ['task.failed', failed[0]],
+      ['task.failed', failed[1]],
+    ]);
+    const seqs = valid.events.map((event) => event.journalSeq);
+    expect(seqs).toEqual([...seqs].sort((a, b) => a - b));
+    expect(new Set(seqs).size).toBe(seqs.length);
+    for (const id of failed) expect(valid.state.tasks).toContainEqual(expect.objectContaining({ id, status: 'failed' }));
+
+    // Duplicates: until acknowledged, the same events come again with the same identity.
+    const duplicate = await leaderRead(leader);
+    expect(duplicate.events.map((event) => event.eventId)).toEqual(valid.events.map((event) => event.eventId));
+    const middle = (await leaderRead(leader, { limit: 1 })).nextCursor;
+
+    // Out-of-order acknowledgements: the newest wins; an older or repeated one never rewinds.
+    const lastSeq = seqs.at(-1)!;
+    expect(await leaderAck(leader, valid.nextCursor)).toMatchObject({ status: 'acked', ackedSeq: lastSeq });
+    expect(await leaderAck(leader, middle)).toMatchObject({ status: 'no-op', ackedSeq: lastSeq });
+    expect(await leaderAck(leader, valid.nextCursor)).toMatchObject({ status: 'no-op', ackedSeq: lastSeq });
+    expect(await leaderRead(leader)).toMatchObject({ status: 'ok', events: [] });
+
+    // An old cursor, presented explicitly, replays what is retained and leaves the acknowledgement alone.
+    const replay = await leaderRead(leader, { cursor: oldCursor });
+    expect(replay.events.map((event) => event.eventId)).toEqual(valid.events.map((event) => event.eventId));
+    expect(replay.position.ackedSeq).toBe(lastSeq);
+
+    // The journal is lost while xezar is down, then an event happens. The leader's position survives.
+    service.close();
+    rmSync(join(c.dataDir, 'mcp', 'event-journal.json'));
+    rmSync(join(c.dataDir, 'mcp', 'event-journal.ndjson'));
+    service = await serveComposed(c);
+    expect((await c.human('PUT', '/config', { baseBranch: 'main' })).status).toBe(200);
+
+    // An EXPLICIT gap: nothing replayed as if nothing happened, the recovery path named, the state beside it.
+    const raw = await leader.call('leader_events', { action: 'read' });
+    expect(raw.isError, JSON.stringify(raw)).toBeFalsy();
+    const headline = (raw.content[0] as { text: string }).text.split('\n')[0]!;
+    expect(headline).toMatch(/^GAP: events after your position are no longer retained/);
+    expect(headline).toMatch(/Read the current state below, then ack resumeCursor/);
+    const gap = raw.structuredContent as unknown as LeaderGap;
+    expect(gap).toMatchObject({ status: 'gap', gap: { recovery: { required: 'current-state' } }, state: { complete: true } });
+    expect(gap.gap.recovery.message).toMatch(/Read the current state first, then continue from resumeCursor/);
+    expect(gap).not.toHaveProperty('events');
+    // The state beside a gap is every task still in flight (no row names one); a settled task is
+    // read through the task tool, which is the current state the recovery message sends it to.
+    expect(gap.state.tasks).toContainEqual(expect.objectContaining({ id: inFlight, status: 'queued' }));
+    for (const id of failed) {
+      expect(bodyOf(await leader.call('task_read', { view: 'task', taskId: id }))).toMatchObject({ task: { id, status: 'failed' } });
+    }
+
+    // Following the named path recovers: ack the resume cursor, then read what the new journal holds.
+    expect(await leaderAck(leader, gap.gap.resumeCursor)).toMatchObject({ status: 'acked' });
+    const recovered = await leaderRead(leader);
+    expect(recovered.events.map((event) => event.kind)).toEqual(['config.changed']);
+    expect(recovered.journalEpoch).not.toBe(valid.journalEpoch);
+  });
 });
 
 // ---- A-22 ----------------------------------------------------------------------------------------
