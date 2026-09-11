@@ -136,6 +136,8 @@ export class CodexReactionAdapter implements ReactionAdapter {
   readonly #promptsSettled = new Set<() => void>();
   /** Newest journalSeq handed to app-server in an accepted request (duplicate guard). */
   #handedThrough = 0;
+  /** The gap (`oldestSeq:latestSeq`) already told to the leader, so a retry does not tell it twice. */
+  #gapHanded: string | undefined;
   /** The previous hand-off, so a retry decides only after it settled. */
   #inFlight: Promise<void> = Promise.resolve();
   #awaiting: AwaitingReaction[] = [];
@@ -177,7 +179,11 @@ export class CodexReactionAdapter implements ReactionAdapter {
     const fresh = dispatch.events.filter((row) => row.journalSeq > this.#handedThrough);
     const newest = fresh.at(-1)?.journalSeq;
     const shown = fresh.filter((row) => !this.#isEcho(row));
-    if (shown.length === 0 && (dispatch.recovery === undefined || fresh.length < dispatch.events.length)) {
+    // A gap is told once: a retried dispatch carries the same recovery, and it was already handed over.
+    const gap = dispatch.recovery;
+    const gapKey = gap === undefined ? undefined : `${gap.oldestSeq}:${gap.latestSeq}`;
+    const tellGap = gapKey !== undefined && gapKey !== this.#gapHanded;
+    if (shown.length === 0 && !tellGap) {
       // Nothing the leader has not been handed already, or only its own echoes: no turn to start.
       if (newest !== undefined) this.#handedThrough = newest;
       return;
@@ -185,8 +191,11 @@ export class CodexReactionAdapter implements ReactionAdapter {
     // Separation from approval prompts: never hand an event to a thread that is waiting on one.
     await this.#promptsClear(signal);
 
-    const text = renderCodexEventMessage({ ...dispatch, events: shown });
-    const handOff = this.#handOff(text, newest);
+    const { recovery: _told, ...rest } = dispatch;
+    const text = renderCodexEventMessage(tellGap && gap !== undefined ? { ...rest, events: shown, recovery: gap } : { ...rest, events: shown });
+    const handOff = this.#handOff(text, newest).then(() => {
+      if (tellGap) this.#gapHanded = gapKey;
+    });
     this.#inFlight = handOff.catch(() => undefined);
     await abortable(handOff, signal);
   }
@@ -466,7 +475,7 @@ export class CodexAppServerProcessLink implements CodexAppServerLink {
   }
 
   #markClosed(): void {
-    if (this.#closed && this.#listeners.size === 0) return;
+    if (this.#closed) return;
     this.#closed = true;
     this.#rpc.rejectPending();
   }

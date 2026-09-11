@@ -295,6 +295,23 @@ describe('duplicates (X6): a retry never starts a second turn', () => {
     expect(server.modelInputs[1]).not.toContain('xez109:1 ');
   });
 
+  it('a gap is told once: retrying the same recovery-only dispatch starts no second turn', async () => {
+    const server = new FakeAppServer();
+    const adapter = adapterOn(server);
+    const gap = { required: 'current-state' as const, oldestSeq: 5, latestSeq: 9, message: 'Some events are gone.' };
+    await adapter.deliver(dispatch([], { recovery: gap }), live());
+    await settle();
+    server.finishTurn();
+    await adapter.deliver(dispatch([], { recovery: gap }), live());
+    await settle();
+    expect(server.sent('turn/start') + server.sent('turn/steer')).toBe(1);
+    // A later row in the same retried dispatch still goes out, without repeating the gap.
+    await adapter.deliver(dispatch([row(10)], { recovery: gap }), live());
+    await settle();
+    expect(server.modelInputs).toHaveLength(2);
+    expect(server.modelInputs[1]).not.toContain('Gap:');
+  });
+
   it('a failed request hands nothing over, so the retry sends the rows again', async () => {
     const server = new FakeAppServer();
     server.failNext = 'turn/start';
@@ -463,14 +480,16 @@ describe('with the real journal and controller (#103, #107)', () => {
     return { category: 'E-01', kind: 'task.terminal', subject: { type: 'run', id: `run-${n}`, version: null }, origin: 'human', causedBy: null, summary: `task ${n} finished` };
   }
 
-  async function start(server: FakeAppServer, session = 'leader') {
+  async function start(server: FakeAppServer, session = 'leader'): Promise<EventController> {
     await owner.acquire(session);
     let controller: EventController | undefined;
     const adapter = new CodexReactionAdapter({ link: server, threadId: server.threadId, projectId: 'xez109', onReaction: (seq) => controller?.recordReaction(seq) });
     const started = EventController.start({ journal, ownership: owner, sessionKey: session, adapter, warn: () => {} });
-    controller = started.controller;
-    controllers.push(controller);
-    return controller;
+    if (started.outcome === 'refused') throw new Error(`controller refused: ${started.error.message}`);
+    const live: EventController = started.controller;
+    controller = live;
+    controllers.push(live);
+    return live;
   }
 
   it('a completion event is delivered and reacted to, separately, with no model request before it', async () => {

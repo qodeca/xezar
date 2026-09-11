@@ -119,7 +119,8 @@ Each is an engineering decision under requirements § 12. None changes an Agreed
    `clientUserMessageId`, X6). For a steer that is several seconds later (8.2 s in X3), and in between the controller
    correctly shows `deliveredSeq 1, reactedSeq 0`.
 3. **The adapter deduplicates, because app-server does not.** Two `turn/start` requests with the same
-   `clientUserMessageId` produced two turns and two model requests (X6).
+   `clientUserMessageId` produced two turns and two model requests (X6). A stated gap (the controller's `recovery`)
+   is told once in the same way: a retried dispatch carrying the same gap does not start a second turn.
 4. **Approval prompts block hand-off; the adapter never answers one.** Evidence: X8. The session's host answers prompts;
    `CodexAppServerLink` – the only thing the adapter holds – has no way to.
 5. **Role instruction in `developerInstructions` only, supplied on `thread/start` and on every `thread/resume`.**
