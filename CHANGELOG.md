@@ -1,5 +1,19 @@
 # Unreleased
 
+## ✨ Features
+- ✨ **A leader can mark its own draft pull request ready through MCP.** `handoff_git` gains a
+  `ready` action (the pull request number plus the head sha the leader reviewed), backed by a new
+  `POST /api/v1/github/prs/:number/ready` route that re-reads the forge and runs `gh pr ready`.
+  Until now `create_pr` opened a draft and nothing could move it forward without a browser or a
+  shell. A moved head is refused, an already-ready or closed pull request is refused in the
+  service's own words, and a failing required check or a changes-requested review is reported as a
+  blocker that no argument bypasses. (#262)
+- ✨ **Xezar now writes the MCP connection file itself.** When the MCP service starts it writes
+  `.local/xezar/mcp-connection.json` (D-04) atomically at mode `0600`, after making sure
+  `.local/.gitignore` exists: the project, this service process and the socket that really
+  listens. It holds no token and no secret. Nothing to author, no setting; a write that fails is
+  one warning and the MCP keeps working. This closes acceptance case A-01. (#262)
+
 ## 🐛 Fixes
 - 🐛 **Running the test suite inside a xezar task no longer writes into that task's handoff file
   and your follow-up inbox.** A gate inherits the task's `XEZ_HANDOFF_FILE`, `XEZ_TODOS_FILE`,
@@ -12,6 +26,19 @@
   and then the first migration reads it again before replacing it, and each read printed the same
   warning. The warning is now remembered per broken state; every read still goes to the file, so a
   repaired or newly broken config is seen immediately. (#281)
+- 🐛 **A leader can no longer delete a quality gate through MCP.** `project_config save_workflow`
+  with `overwrite: true` could replace a human's workflow and drop its `command: npm test` check
+  step with no refusal. An overwrite, a same-name save that would shadow a workflow, or a delete
+  that would remove a check step on disk is now refused as a quality-gate blocker naming the step,
+  and nothing is written. Saving a check step stays refused as before. D-03 now states the rule.
+  (#262)
+- 🐛 **Secret redaction is no longer defeated by a change of case.** The credential shapes were
+  matched in one case only, so a lower-cased AWS key id (which loses nothing by being lower-cased)
+  or an upper-cased GitHub, Slack, GitLab or Google token passed straight into run transcripts,
+  the MCP audit trail, the event journal, automation logs and MCP tool responses. The shapes now
+  match in any case, except the two whose prefix in another case is ordinary text (`sk-`, which
+  ends `TASK-` branch names, and `github_pat_`, which is also an env var name). The host's own
+  secret values now match in any case and in their URL-encoded form. (#272)
 - 🐛 **A laptop that changes networks no longer locks the cockpit out of its own data.** A
   writer claim records the hostname that wrote it, and a dead PID was reclaimable only when that
   hostname still matched — so renaming a machine (`.local` to `.lan` on a different network is

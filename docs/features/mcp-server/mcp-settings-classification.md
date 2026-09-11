@@ -168,6 +168,42 @@ most 32 characters). E-SINGLE remains as defence in depth.
 (`remove-project.tsx` is shared verbatim by the global registry table and the project's own General
 page). Component reuse is not a scope argument.
 
+### D-03-5 — Project workflow check steps → never added and never removed through MCP (F-22)
+
+Added on 2026-09-11 by [#262](https://github.com/qodeca/xezar/issues/262), after the #117 acceptance
+suite found this document silent on it (finding F-22 / A-22). Leader decision; not one of the four
+mismatches above.
+
+**Decision.** A project workflow is a `project-write` for its agent steps only. A check step (a step
+with `command`) is a quality gate, and MCP neither adds one nor removes or weakens one. Saving a
+check step was already refused. Now `project_config save_workflow` and `delete_workflow` are also
+refused when they would take away a check step that a workflow file **on disk** has:
+
+- an overwrite (`overwrite: true`) of the file the save writes (`.xezar/workflows/<slug>.yaml`)
+  while that file has a check step. Deleting the step, emptying its command and turning it into an
+  agent step are all this case, because an MCP save can carry no check step at all;
+- a save under the `name` of another workflow file that has a check step, which would shadow it;
+- a delete of a workflow whose file has a check step;
+- an overwrite target that cannot be parsed, because it cannot be shown to hold no check step.
+
+The refusal is a reported blocker in the tool's own words (`boundary: 'quality-gate'`,
+`blocker: true`), names each check step it would remove by step id and file, dispatches nothing and
+writes nothing. No argument makes it succeed, and the input schema stays strict, so an invented
+`force` or `qualityException` key is an argument error.
+
+**Reason.** Refusing to add a gate while allowing its removal protects nothing. A leader that can
+delete `npm test` from a workflow silently turns off that gate for every task the workflow runs
+afterwards. The project rule is that quality validation failures stay visible and cannot be
+dismissed as accepted exceptions. The safe default wins.
+
+**Enforcement.** The MCP layer (`packages/xezar/src/mcp/tools/project-config.ts`,
+`checkStepsAtRisk`) reads the workflow files from disk before it dispatches. It never trusts the
+caller's description of what is there. The cockpit's own Save and Delete are unchanged: a person
+changes a gate in the cockpit.
+
+**Rejected alternative.** Making the rule symmetric by letting MCP save check steps as well. F-08
+keeps arbitrary operating-system commands out of this surface.
+
 ---
 
 ## 4. The field matrix
@@ -462,6 +498,7 @@ absence from responses, errors and events (A-03, A-04, A-09, A-22):
 | Skills | A's leader runs the update CHECK and is refused the APPLY. The global skill installation is unchanged, and the check's response contains no scope state belonging to B. |
 | Registry | A's leader sends `PATCH /projects/<B>` with a valid B id, with `default`, and with B's slug spelled through every alias; each is refused, and B's `maxParallel` and `tags` are unchanged. `DELETE /projects/<anything>` is refused. |
 | Limits | A's leader writes A's `memoryLimitMb` and reads the workspace `resources`. B's runs keep their previous ceiling, and the workspace `resources` slice is unchanged. |
+| Quality gates (D-03-5) | A's leader overwrites, shadows and deletes a workflow whose file on disk has a check step. Each is refused as a quality-gate blocker naming the step, nothing is dispatched, and the file is byte-identical afterwards (`project-config.test.ts`; A-22 in `acceptance-durability.test.ts`). |
 | Secrets | Across every call above, plus a full session transcript and the event log, `.local/xezar/launch-key` never appears (F-15, A-12). |
 
 ---

@@ -29,6 +29,7 @@ import { tools } from './index.ts';
 import { versionForTest } from './version.testkit.ts';
 import {
   PROJECT_CONFIG_ACTIONS,
+  QUALITY_GATE_NEXT_ACTION,
   REFUSED_ACTIONS,
   projectConfigTool,
   structureOf,
@@ -715,6 +716,90 @@ describe('project_config: workflows', () => {
     const spy = spyService();
     expect((await invoke({ action: 'delete_workflow', name: '..' }, { service: spy })).result.isError).toBe(true);
     expect(spy.requests).toEqual([]);
+  });
+
+  it('F-22 (#262): an overwrite, a shadowing save or a delete that removes a check step is a blocker naming it', async () => {
+    const dir = join(ws.roots.a, '.xezar', 'workflows');
+    mkdirSync(dir, { recursive: true });
+    // The human's gates, as they are ON DISK: one at the path a save of "Gated" writes, one under
+    // another file name that a save of "Release" would shadow.
+    writeFileSync(
+      join(dir, 'gated.yaml'),
+      'name: Gated\nsteps:\n  - id: work\n    prompt: "{{task}}"\n  - id: tests\n    name: Unit tests\n    command: npm test\n',
+      'utf8',
+    );
+    writeFileSync(join(dir, 'human-release.yaml'), 'name: Release\nsteps:\n  - id: build\n    command: npm run build\n', 'utf8');
+    const spy = spyService();
+    const before = snapshot(ws.roots.a);
+    const gated = { file: join('.xezar', 'workflows', 'gated.yaml'), id: 'tests', name: 'Unit tests' };
+    const release = { file: join('.xezar', 'workflows', 'human-release.yaml'), id: 'build' };
+    const attempts: Array<[Record<string, unknown>, unknown]> = [
+      // Deleting the step.
+      [{ action: 'save_workflow', workflow: { name: 'Gated', steps: [{ id: 'work', prompt: '{{task}}' }], overwrite: true } }, gated],
+      // Turning it into a step that is not a check.
+      [
+        {
+          action: 'save_workflow',
+          workflow: { name: 'Gated', steps: [{ id: 'work', prompt: 'x' }, { id: 'tests', prompt: 'say the tests pass' }], overwrite: true },
+        },
+        gated,
+      ],
+      // The skills shorthand carries no check step either.
+      [{ action: 'save_workflow', workflow: { name: 'Gated', skills: ['alpha'], overwrite: true } }, gated],
+      // A new file under the same workflow name shadows the human's.
+      [{ action: 'save_workflow', workflow: { name: 'Release', steps: [{ id: 'build', prompt: 'x' }] } }, release],
+      // Deleting the workflow removes its gate with it.
+      [{ action: 'delete_workflow', name: 'Gated' }, gated],
+    ];
+    for (const [args, step] of attempts) {
+      const called = await invoke(args, { service: spy });
+      expect(called.result.isError, JSON.stringify(args)).toBe(true);
+      expect(called.structured).toMatchObject({
+        action: args.action,
+        refused: true,
+        blocker: true,
+        boundary: 'quality-gate',
+        checkSteps: [step],
+        nextAction: QUALITY_GATE_NEXT_ACTION,
+      });
+      expect(called.text).toMatch(/^Refused \(quality gate\): .+ Nothing was changed\.$/s);
+      expect(called.text).toContain(`"${(step as { id: string }).id}"`);
+      expect(called.json).not.toContain(ws.roots.a);
+    }
+    // No argument makes it succeed: a waiver-shaped key is an argument error, at either level.
+    for (const waiver of ['force', 'qualityException', 'approvedBy']) {
+      const nested = await invoke(
+        { action: 'save_workflow', workflow: { name: 'Gated', steps: [{ id: 'work', prompt: 'x' }], overwrite: true, [waiver]: true } },
+        { service: spy },
+      );
+      expect(nested.text, waiver).toMatch(/Invalid arguments/);
+      const top = await invoke(
+        { action: 'save_workflow', workflow: { name: 'Gated', steps: [{ id: 'work', prompt: 'x' }], overwrite: true }, [waiver]: true },
+        { service: spy },
+      );
+      expect(top.text, waiver).toMatch(/Invalid arguments/);
+    }
+    expect(spy.requests, 'nothing was dispatched').toEqual([]);
+    expect(snapshot(ws.roots.a)).toEqual(before);
+  });
+
+  it('F-22 (#262): a target that cannot be read is refused, and a workflow without a check step still overwrites', async () => {
+    const dir = join(ws.roots.a, '.xezar', 'workflows');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'broken.yaml'), 'name: [unterminated\n', 'utf8');
+    const spy = spyService();
+    const broken = await invoke(
+      { action: 'save_workflow', workflow: { name: 'Broken', steps: [{ id: 'a', prompt: 'x' }], overwrite: true } },
+      { service: spy },
+    );
+    expect(broken.structured).toMatchObject({ refused: true, blocker: true, boundary: 'quality-gate', checkSteps: [], unreadable: [join('.xezar', 'workflows', 'broken.yaml')] });
+    expect(readFileSync(join(dir, 'broken.yaml'), 'utf8')).toBe('name: [unterminated\n');
+    expect(spy.requests).toEqual([]);
+
+    // Control: the rule refuses the loss of a gate, not overwriting as such.
+    writeFileSync(join(dir, 'plain.yaml'), 'name: Plain\nsteps:\n  - id: a\n    prompt: one\n', 'utf8');
+    value(await invoke({ action: 'save_workflow', workflow: { name: 'Plain', steps: [{ id: 'a', prompt: 'two' }], overwrite: true } }));
+    expect(readFileSync(join(dir, 'plain.yaml'), 'utf8')).toContain('two');
   });
 });
 
