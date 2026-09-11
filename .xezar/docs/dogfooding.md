@@ -364,3 +364,12 @@ Installation validation is reported in installation.md. Real-task entries follow
 - Regression/control: on the unfixed check the 4 new empty-branch refusals were red and the other 476 cases passed (the plain-preflight, read-only-role and real-commit controls among them – they pass both ways). With the fix, 58 older cases went red: 16 fixtures sealed or verified evidence on a fresh, empty branch. They now start from one real commit (`add_worktree_with_work`); fixtures for plain preflight stay empty. Final run: 480 passed, 0 failed.
 - Observed: on this task's own worktree, local `main` was behind `origin/main`, and the refusal came from `refs/remotes/origin/main`. Checking only the local base ref would have let this empty branch through.
 - Remaining limit: a branch with commits whose net diff is empty (commit, then revert) still passes. The engine still marks a question-only step `done`; the refusal only moves the stop to readiness.
+
+### 2026-09-11 — issue #316, `bug-fix` step 1 (Reproduce and diagnose), `xezar-bug-investigation`, Claude Code — real-task verified
+
+- Goal: close the worktree-ownership gap #293 left on seven cockpit run routes. Base `ff05697`, macOS, Node 24.20.
+- Observed: **a follow-up a PR body calls "recorded" is not recorded until an issue exists.** #293 said so and nothing was filed; the leader found the gap by reading the PR. Filing the issue first (#316) was the brief's first action.
+- Observed: writing all fourteen A/B cases against the unfixed code first answered "is each route really exposed?" in one run: seven refusals red, seven controls green. The `git/push` case only showed harm after the test gave B a bare `origin`; without a remote the push fails anyway and the snapshot stays equal, which would have read as "not exposed".
+- Observed: reusing #293's rule meant exporting ONE function from `runs/retention.ts` and routing reclaim through it too, rather than re-composing `ownRun` + `ownWorktree` in `server.ts`. Two fixtures (`git-changes`, `ref-status-invalidation`) still put worktrees at arbitrary paths and went red, exactly the class #293 fixed in four other files.
+- Observed (problem, #320): the author step ended with its work uncommitted. The `gates` step ran the whole canonical list on the dirty tree and only the seal refused it; run-finalize autosave then committed the files. Fourth occurrence that day. Proposal filed: refuse a dirty tree at readiness, before any gate runs.
+- Remaining limit: no live cockpit was driven against a copied `.local/xezar`; the proof is the in-process A/B fixture.
