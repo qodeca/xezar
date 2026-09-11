@@ -21,6 +21,7 @@ import type {
   updateProjectResponseSchema,
 } from '@qodeca/xezar-contract';
 import type { runsIndexResponseSchema } from '@qodeca/xezar-contract';
+import type { mcpApiReferenceSchema } from '@qodeca/xezar-contract';
 import type {
   configResponseSchema,
   openProjectInResponseSchema,
@@ -162,7 +163,11 @@ describe('src/contract projects/workspace schemas match the routes exactly', () 
     200
   >;
 
+  // #284: the reference's `inputSchema` is an opaque JSON object, the one catchall in its shape.
+  type McpReference200 = InferResponseType<typeof client.api.v1.mcp.reference.$get, 200>;
+
   type _Checks = [
+    Assert<ExactOpen<z.infer<typeof mcpApiReferenceSchema>, McpReference200>>,
     // the registry
     Assert<Exact<z.infer<typeof projectsResponseSchema>, Projects200>>,
     // the cross-project task index behind ⌘K

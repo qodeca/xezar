@@ -1,6 +1,14 @@
 # Unreleased
 
 ## ✨ Features
+- ✨ **Browse the MCP API in the cockpit.** Project Settings has a new **MCP API** section, next to
+  MCP connection: every tool the MCP server exposes, one collapsed row each with its effect in
+  words (read-only, changes project state, destructive), and on expand its actions, its arguments
+  with the schema's own descriptions, whether it needs `expectedVersion` or takes an `operationId`,
+  and what it refuses. It reads one new route, `GET /api/v1/mcp/reference`, whose tool list is
+  exactly what the server's `tools/list` answers, and it works even when the MCP service is not
+  running. It is read-only by design: there is no "Try it", because running a tool from the cockpit
+  would make it a second leader on the project. Nothing to set up. (#284)
 - ✨ **A leader can mark its own draft pull request ready through MCP.** `handoff_git` gains a
   `ready` action (the pull request number plus the head sha the leader reviewed), backed by a new
   `POST /api/v1/github/prs/:number/ready` route that re-reads the forge and runs `gh pr ready`.

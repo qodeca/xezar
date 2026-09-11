@@ -1,5 +1,6 @@
 import {
   BellIcon,
+  BookOpenIcon,
   BookmarkIcon,
   BotIcon,
   FileCogIcon,
@@ -22,6 +23,7 @@ import { AgentConfigSection } from './agent-config-section'
 import { AgentsSection } from './agents-section'
 import { AppearanceSection } from './appearance'
 import { BookmarkletsSection } from './bookmarklets-section'
+import { McpApiSection } from './mcp-api-section'
 import { McpConnectionSection } from './mcp-connection-section'
 import { NotificationsSection } from './notifications-section'
 import { ProjectsSection } from './projects-section'
@@ -60,6 +62,7 @@ export type SettingsSectionId =
   | 'keyboard'
   | 'skills'
   | 'mcp-connection'
+  | 'mcp-api'
 
 /** Which settings area a section belongs to — and therefore which store it writes. */
 export type SettingsScope = 'project' | 'global'
@@ -140,6 +143,16 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     description: 'Which project the MCP leader is bound to, and one-time client setup.',
     icon: PlugIcon,
     component: McpConnectionSection,
+    scope: 'project',
+  },
+  {
+    // #284: the read-only reference of every tool the MCP server exposes. Beside MCP connection,
+    // never inside it: connection is setup, this is review (spec § 12.1, § 18.1).
+    id: 'mcp-api',
+    title: 'MCP API',
+    description: 'Every tool the MCP server exposes, read-only. Nothing here runs a tool.',
+    icon: BookOpenIcon,
+    component: McpApiSection,
     scope: 'project',
   },
   // ---- global scope (`/settings/global/…`) — the user and the machine, in mockup order -----
