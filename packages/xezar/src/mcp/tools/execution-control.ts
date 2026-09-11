@@ -1,8 +1,16 @@
-import { attachmentInputSchema, runIdParamSchema, type RunHistoryPage } from '@qodeca/xezar-contract';
+import {
+  attachmentInputSchema,
+  mcpExpectedVersionSchema,
+  runIdParamSchema,
+  staleVersionRejectionSchema,
+  type RunHistoryPage,
+  type StaleVersionRejection,
+} from '@qodeca/xezar-contract';
 import { hc } from 'hono/client';
 import { z } from 'zod';
 import type { AppType } from '../../server/app-type.ts';
 import { MCP_ORIGIN, McpServiceAdapter, type GetRunValue, type ServiceDispatch } from '../service-adapter.ts';
+import { staleRejectionIn } from '../stale-write.ts';
 import { defineTool, errorResult, textResult, type McpToolContext, type McpToolResult } from '../tool.ts';
 
 /**
@@ -33,6 +41,13 @@ import { defineTool, errorResult, textResult, type McpToolContext, type McpToolR
  * an optional `service` field on the context and answers an honest tool error when it is absent;
  * the service passing its app there is the one wiring step this tool cannot take from its own
  * file.
+ *
+ * STALE WRITES (#250, N-03). Every action changes the task, so every action requires the
+ * `expectedVersion` a `task_read` of it handed out, and sends it to the route, which compares it
+ * with the task's current version in the same synchronous stretch as the engine call. A task that
+ * moved since is refused with nothing applied (`status: "conflict"`, `error: "stale_version"`,
+ * `currentVersion`). The version moves with every event a task records, so a RUNNING task's
+ * version moves while its agent works: read it right before acting on a running task.
  */
 
 export const EXECUTION_CONTROL_ACTIONS = [
@@ -90,6 +105,9 @@ export const executionControlInputSchema = z
   .object({
     action: z.enum(EXECUTION_CONTROL_ACTIONS).describe('What to do with the task.'),
     runId: z.string().min(1).max(128).describe("The task's run id, in the project this connection is bound to."),
+    expectedVersion: mcpExpectedVersionSchema.describe(
+      'The `version` task_read returned for this task. Echo it verbatim; if the task changed since, nothing is applied.',
+    ),
     text: z
       .string()
       .max(100_000)
@@ -152,6 +170,8 @@ export const executionControlResultSchema = z.object({
   messageId: z.string().optional(),
   hadPendingAutoResume: z.boolean().optional(),
   reason: z.string().optional(),
+  // A stale-version refusal (#250) carries D-06 § 4.4's payload keys verbatim beside the above.
+  ...staleVersionRejectionSchema.omit({ status: true }).partial().shape,
   origin: z.literal(MCP_ORIGIN),
 });
 export type ExecutionControlResult = z.infer<typeof executionControlResultSchema>;
@@ -173,7 +193,7 @@ const scopedApi = (service: ServiceDispatch) =>
     },
   }).api.v1.p[':projectId'];
 
-type Answer<T> = { ok: true; status: number; value: T } | { ok: false; status: number; error: string };
+type Answer<T> = { ok: true; status: number; value: T } | { ok: false; status: number; error: string; body?: unknown };
 
 /** Map a service answer. A success without a JSON body is an error, never an empty value. */
 async function settle<T>(pending: Promise<Response>, success: readonly number[]): Promise<Answer<T>> {
@@ -187,7 +207,7 @@ async function settle<T>(pending: Promise<Response>, success: readonly number[])
     body && typeof body === 'object' && typeof (body as { error?: unknown }).error === 'string'
       ? (body as { error: string }).error
       : `service answered ${res.status}`;
-  return { ok: false, status: res.status, error };
+  return { ok: false, status: res.status, error, body };
 }
 
 /** The adapter's rule for a path parameter: a valid id that is not a dot segment. */
@@ -305,9 +325,18 @@ const conflict = (args: ExecutionControlInput, run: Run, reason: string) =>
 /** A bad target or a service failure: a tool error the model can correct. */
 const failed = (args: ExecutionControlInput, reason: string) => result(args, { accepted: false, status: 'failed', reason });
 
-/** The service refused: its 409 is a state conflict, anything else is a failure. */
-const refused = (args: ExecutionControlInput, run: Run, answer: { status: number; error: string }) =>
-  answer.status === 409 ? conflict(args, run, answer.error) : failed(args, answer.error);
+/** The task changed after the leader read it (#250): refused, nothing applied, never retried here. */
+function staleConflict(args: ExecutionControlInput, run: Run, stale: StaleVersionRejection): McpToolResult {
+  const { status: _conflict, ...payload } = stale;
+  return result(args, { accepted: false, status: 'conflict', runStatus: run.status, reason: stale.guidance, ...payload });
+}
+
+/** The service refused: a stale version, a state conflict (409), or a failure. */
+const refused = (args: ExecutionControlInput, run: Run, answer: { status: number; error: string; body?: unknown }) => {
+  const stale = staleRejectionIn(answer.body);
+  if (stale) return staleConflict(args, run, stale);
+  return answer.status === 409 ? conflict(args, run, answer.error) : failed(args, answer.error);
+};
 
 async function currentStatus(s: Services, runId: string, fallback: string): Promise<string> {
   const read = await s.adapter.getRun(runId);
@@ -330,30 +359,43 @@ async function pendingQuestion(s: Services, runId: string): Promise<Answer<Pendi
   }
 }
 
-async function postMessage(s: Services, runId: string, text: string | undefined, images: ExecutionControlInput['images']) {
+async function postMessage(
+  s: Services,
+  runId: string,
+  text: string | undefined,
+  images: ExecutionControlInput['images'],
+  expectedVersion: string,
+) {
   return settle<{ delivered: true } | { queued: true; message: { id: string } } | { deferred: true }>(
     s.api.runs[':id'].messages.$post({
       param: { projectId: s.projectId, id: runId },
-      json: { text: text ?? '', images: images ?? [] },
+      json: { text: text ?? '', images: images ?? [], expectedVersion },
     }),
     [200],
   );
 }
 
-async function postContinue(s: Services, runId: string, text: string | undefined, images: ExecutionControlInput['images']) {
+async function postContinue(
+  s: Services,
+  runId: string,
+  text: string | undefined,
+  images: ExecutionControlInput['images'],
+  expectedVersion: string,
+) {
   return settle<{ continued: true }>(
     s.api.runs[':id'].continue.$post({
       param: { projectId: s.projectId, id: runId },
-      json: { ...(text !== undefined ? { text } : {}), ...(images?.length ? { images } : {}) },
+      json: { ...(text !== undefined ? { text } : {}), ...(images?.length ? { images } : {}), expectedVersion },
     }),
     [200],
   );
 }
 
-/** `ask-answer.ts` `resumeAfterIdleTeardown`: retry only the idle-teardown 409, on its schedule. */
-async function continueAfterIdleTeardown(s: Services, runId: string, text: string) {
+/** `ask-answer.ts` `resumeAfterIdleTeardown`: retry only the idle-teardown 409, on its schedule. A
+ *  stale-version refusal is never retried: it is not the teardown, it is the answer. */
+async function continueAfterIdleTeardown(s: Services, runId: string, text: string, expectedVersion: string) {
   for (let retries = 0; ; retries += 1) {
-    const answer = await postContinue(s, runId, text, undefined);
+    const answer = await postContinue(s, runId, text, undefined, expectedVersion);
     const delay = IDLE_TEARDOWN_RETRY_DELAYS_MS[retries];
     if (answer.ok || answer.status !== 409 || answer.error !== IDLE_TEARDOWN_REFUSAL || delay === undefined) return answer;
     await s.wait(delay);
@@ -370,11 +412,14 @@ async function control(args: ExecutionControlInput, s: Services): Promise<McpToo
   if (!read.ok) return failed(args, read.error);
   const run = read.value;
   const id = run.id;
+  // Sent with every effect below; the route compares it with the task's current version (#250).
+  const version = args.expectedVersion;
+  const guard = { expectedVersion: version };
 
   switch (args.action) {
     case 'cancel': {
       if (!isActive(run)) return conflict(args, run, `cancel is offered only while the task is active; it is ${run.status}`);
-      const answer = await s.adapter.cancelRun(id);
+      const answer = await s.adapter.cancelRun(id, version);
       if (!answer.ok) return refused(args, run, answer);
       if (!answer.value.cancelled) return conflict(args, run, 'the task was no longer active, so nothing was cancelled');
       const after = await currentStatus(s, id, run.status);
@@ -395,7 +440,7 @@ async function control(args: ExecutionControlInput, s: Services): Promise<McpToo
         return conflict(args, run, `the task is ${run.status}, so finish means ${meaning} here, not ${args.finishAs}; nothing was changed`);
       }
       const answer = await settle<{ finished: true }>(
-        s.api.runs[':id'].finish.$post({ param: { projectId: s.projectId, id } }),
+        s.api.runs[':id'].finish.$post({ param: { projectId: s.projectId, id }, json: guard }),
         [200],
       );
       if (!answer.ok) return refused(args, run, answer);
@@ -412,7 +457,7 @@ async function control(args: ExecutionControlInput, s: Services): Promise<McpToo
         if (!hasText(text)) return conflict(args, run, 'sending a task at review back needs feedback: write what to change first');
         text = `${REVIEW_FEEDBACK_PREFIX}${text}`;
       }
-      const answer = await postContinue(s, id, text, args.images);
+      const answer = await postContinue(s, id, text, args.images, version);
       if (!answer.ok) return refused(args, run, answer);
       const after = await currentStatus(s, id, run.status);
       return result(args, { accepted: true, status: 'accepted', runStatus: after, delivery: 'continued' });
@@ -422,7 +467,7 @@ async function control(args: ExecutionControlInput, s: Services): Promise<McpToo
       // The composer's routing (`task-thread.tsx`): open session → send, queued → amend,
       // closed with a session → continue with the text, anything else → disabled.
       if (sessionOpen(run) || run.status === 'queued') {
-        const answer = await postMessage(s, id, args.text, args.images);
+        const answer = await postMessage(s, id, args.text, args.images, version);
         if (!answer.ok) return refused(args, run, answer);
         const delivery = messageDelivery(answer.value);
         const after = await currentStatus(s, id, run.status);
@@ -435,7 +480,7 @@ async function control(args: ExecutionControlInput, s: Services): Promise<McpToo
         });
       }
       if (!hasSession(run)) return conflict(args, run, 'Session closed — no session to resume.');
-      const answer = await postContinue(s, id, args.text, args.images);
+      const answer = await postContinue(s, id, args.text, args.images, version);
       if (!answer.ok) return refused(args, run, answer);
       const after = await currentStatus(s, id, run.status);
       return result(args, { accepted: true, status: 'accepted', runStatus: after, delivery: 'continued' });
@@ -469,15 +514,16 @@ async function control(args: ExecutionControlInput, s: Services): Promise<McpToo
       }
       const questionId = pending.value.requestId;
       if (mode === 'live') {
-        const answer = await postMessage(s, id, text, undefined);
+        const answer = await postMessage(s, id, text, undefined, version);
         if (answer.ok) {
           const after = await currentStatus(s, id, run.status);
           return result(args, { accepted: true, status: 'accepted', runStatus: after, delivery: messageDelivery(answer.value), questionId });
         }
-        // The record said live but the session had just closed: resume rather than drop it.
-        if (answer.status !== 409 || !hasSession(run)) return refused(args, run, answer);
+        // The record said live but the session had just closed: resume rather than drop it. A
+        // stale version is not that case — the task moved, and the leader must read it again.
+        if (answer.status !== 409 || !hasSession(run) || staleRejectionIn(answer.body)) return refused(args, run, answer);
       }
-      const answer = await continueAfterIdleTeardown(s, id, text);
+      const answer = await continueAfterIdleTeardown(s, id, text, version);
       if (!answer.ok) return refused(args, run, answer);
       const after = await currentStatus(s, id, run.status);
       return result(args, { accepted: true, status: 'accepted', runStatus: after, delivery: 'resumed', questionId });
@@ -497,18 +543,22 @@ async function control(args: ExecutionControlInput, s: Services): Promise<McpToo
           ? await settle<unknown>(
               s.api.runs[':id']['queued-messages'][':msgId'].$patch({
                 param,
-                json: { ...(args.text !== undefined ? { text: args.text } : {}), ...(args.images ? { images: args.images } : {}) },
+                json: {
+                  ...(args.text !== undefined ? { text: args.text } : {}),
+                  ...(args.images ? { images: args.images } : {}),
+                  ...guard,
+                },
               }),
               [200],
             )
-          : await settle<unknown>(s.api.runs[':id']['queued-messages'][':msgId'].$delete({ param }), [200]);
+          : await settle<unknown>(s.api.runs[':id']['queued-messages'][':msgId'].$delete({ param, json: guard }), [200]);
       if (!answer.ok) return refused(args, run, answer);
       return result(args, { accepted: true, status: 'done', runStatus: run.status, messageId });
     }
 
     case 'cancel_auto_resume': {
       const answer = await settle<{ cancelled: true }>(
-        s.api.runs[':id']['auto-resume'].$delete({ param: { projectId: s.projectId, id } }),
+        s.api.runs[':id']['auto-resume'].$delete({ param: { projectId: s.projectId, id }, json: guard }),
         [200],
       );
       if (!answer.ok) return refused(args, run, answer);
@@ -536,6 +586,7 @@ export function createExecutionControlTool(wait: (ms: number) => Promise<void> =
       'answer_question — answer the task\'s pending question by its questionId, with the option labels (answers) or free text; only the pending question can be answered, and a closed session is reopened to deliver it.',
       'edit_queued_message / remove_queued_message — change a message stacked on a queued task.',
       'cancel_auto_resume — stop a scheduled automatic resume after a usage limit.',
+      'Every action needs expectedVersion: the `version` task_read (view task) returned for this task. If the task changed since you read it, nothing is applied and the answer is status "conflict" with error "stale_version": read it again and decide again. A running task\'s version moves as its agent works, so read it right before acting.',
       'Targets tasks only by run id in the bound project; there is no process-level control. Plan approval and decisions outside the approved goal stay with the human.',
     ].join('\n'),
     inputSchema: executionControlInputSchema,

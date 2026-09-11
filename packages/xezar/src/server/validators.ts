@@ -145,6 +145,28 @@ export function jsonZodValidator<
 }
 
 /**
+ * `jsonZodValidator` for a route whose body is OPTIONAL on the wire: a route that took no body and
+ * gained an optional field (#250's `expectedVersion`). Same middleware, same runtime; only the
+ * request TYPE differs. Hono turns a validated `json` into a REQUIRED client argument, so the plain
+ * validator would make every existing bodyless call — `cancel.$post({ param })` — a compile error
+ * for no reason the wire knows about. Pass `absent` so a bodyless request still parses.
+ */
+export function optionalJsonZodValidator<
+  S extends z.ZodType,
+  E extends Env = Env,
+  P extends string = string,
+>(
+  schema: S,
+  options: JsonOptions = {},
+): MiddlewareHandler<E, P, { in: { json?: z.input<S> }; out: { json: z.output<S> } }> {
+  return jsonZodValidator<S, E, P>(schema, options) as unknown as MiddlewareHandler<
+    E,
+    P,
+    { in: { json?: z.input<S> }; out: { json: z.output<S> } }
+  >;
+}
+
+/**
  * Path params. No guard needed: these come off the matched URL, so there is no body to parse, no
  * content-type to gate on and no malformed-input path — Hono's own behaviour is already right.
  * The schema receives the whole param object (`{ provider: 'codex' }`), not a single value.

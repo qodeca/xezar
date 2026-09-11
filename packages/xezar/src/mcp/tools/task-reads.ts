@@ -10,6 +10,7 @@ import {
   runHistoryPageSchema,
   runIdParamSchema,
   runStatusSchema,
+  runVersionResponseSchema,
   todoItemSchema,
   type ApiRun,
   type RunHistoryEvent,
@@ -57,6 +58,13 @@ import { defineTool, errorResult, textResult, type McpToolContext, type McpToolR
  * RESULTS (D-05 § 6.8). The text block is a compact JSON object and is authoritative; no
  * `structuredContent` is added, because a second copy would double the bytes B-01 budgets.
  * Every payload passes the transcript's own secret scrub before it leaves (F-15).
+ *
+ * VERSIONS (#250, N-03). Every view of ONE task — task, history, context, handoff — carries that
+ * task's `version`, the token a mutating tool requires back as `expectedVersion`. It is read from
+ * the task's own `GET /runs/:id/version` BEFORE the value it describes, so it can only be older
+ * than what the leader saw: a change in between costs a spurious rejection, never a stale write
+ * that passes. The list and group views carry none — a version per row would scan every task's
+ * event file — so a leader reads the one task it means to change.
  */
 
 // ---- bounds (D-09) -------------------------------------------------------------------------
@@ -367,6 +375,12 @@ class TaskReader {
     return { ok: true, value: run };
   }
 
+  /** The task's stale-write token (#250). Callers read it BEFORE the value it goes out with. */
+  async version(taskId: string): Promise<Read<string>> {
+    const answer = await this.get(`/runs/${encodeURIComponent(taskId)}/version`);
+    return answer.status === 200 ? { ok: true, value: runVersionResponseSchema.parse(answer.body).version } : { ok: false, answer };
+  }
+
   /** The one capability this module needs outside the project scope: is the Inbox on. */
   async inboxEnabled(): Promise<boolean> {
     const answer = await this.dispatch('/api/v1/health', 'json');
@@ -411,6 +425,7 @@ export const taskReadsTool = defineTool({
     '- inbox: the project’s Inbox items. group: one variant group, its tasks side by side.',
     `Pages are bounded: at most ${TASK_READ_PAGE_ITEMS} items and ${TASK_READ_RESULT_BUDGET_BYTES} bytes. When an answer has a nextCursor, call again with the same view, task and filters plus that cursor.`,
     'An item too large for one answer comes in parts ("part" of "parts"): join the "text" of every part in order, then parse it as JSON.',
+    'task, history, context and handoff answers carry the task’s "version": send it as expectedVersion when you then change that task (organise_work, execution_control, handoff_git, project_config). A change is refused if the task moved after this read.',
     'This reads only the project this connection is bound to. Use it to assess state or recover after a lost answer, not to poll: task events are pushed.',
   ].join('\n'),
   inputSchema,
@@ -575,8 +590,11 @@ async function readHistory(reader: TaskReader, taskId: string, args: Args): Prom
     walk = { fs: decoded.fs, before: decoded.before, ...(decoded.co ? { co: decoded.co } : {}), ...(decoded.x ? { x: decoded.x } : {}) };
     pageSize ??= decoded.n;
   }
+  // The version first (#250): it can then only be older than the page it goes out with.
+  const version = await reader.version(taskId);
   const owned = await reader.ownedRun(taskId);
   if (!owned.ok) return refusal(owned.answer, NO_TASK);
+  if (!version.ok) return refusal(version.answer, NO_TASK);
 
   // The cockpit's own page, either the newest or the one that ends just before `before`. The
   // older-page cursor is the cockpit's own shape, rebuilt from the view the walk started on.
@@ -614,7 +632,7 @@ async function readHistory(reader: TaskReader, taskId: string, args: Args): Prom
   /** Where the cockpit page itself continues, if anywhere. */
   const olderThanPage = page.olderCursor ? decodePageCursor(page.olderCursor).boundarySeq : undefined;
   const envelope = (payload: Record<string, unknown>) =>
-    JSON.stringify({ view: 'history', taskId, asOfSeq: page.asOfSeq, ...payload });
+    JSON.stringify({ view: 'history', taskId, version: version.value, asOfSeq: page.asOfSeq, ...payload });
 
   if (walk?.x) {
     const target = events.at(-1);
@@ -703,18 +721,22 @@ async function readTaskView(
   taskId: string,
   cursor: string | undefined,
 ): Promise<McpToolResult> {
+  // The version first (#250): it can then only be older than the value it goes out with.
+  const version = await reader.version(taskId);
   const run = await reader.ownedRun(taskId);
   if (!run.ok) return refusal(run.answer, NO_TASK);
-  if (view === 'task') return whole(reader.scope, 'task', taskId, {}, 'task', scrub(run.value), cursor);
+  if (!version.ok) return refusal(version.answer, NO_TASK);
+  if (view === 'task') return whole(reader.scope, 'task', taskId, { version: version.value }, 'task', scrub(run.value), cursor);
   const id = encodeURIComponent(taskId);
+  const head = { taskId, version: version.value };
   if (view === 'context') {
     const read = await reader.get(`/runs/${id}/history-context`);
     if (read.status !== 200) return refusal(read, NO_TASK);
-    return whole(reader.scope, 'context', taskId, { taskId }, 'context', scrub(runHistoryContextSchema.parse(read.body)), cursor);
+    return whole(reader.scope, 'context', taskId, head, 'context', scrub(runHistoryContextSchema.parse(read.body)), cursor);
   }
   const read = await reader.get(`/runs/${id}/handoff`, 'text');
   if (read.status !== 200) return refusal(read, NO_TASK);
-  return whole(reader.scope, 'handoff', taskId, { taskId }, 'markdown', scrub(z.string().parse(read.body)), cursor);
+  return whole(reader.scope, 'handoff', taskId, head, 'markdown', scrub(z.string().parse(read.body)), cursor);
 }
 
 async function readGroup(reader: TaskReader, groupId: string, cursor: string | undefined): Promise<McpToolResult> {

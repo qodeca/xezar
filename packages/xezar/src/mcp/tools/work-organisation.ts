@@ -1,5 +1,5 @@
 import { lstat } from 'node:fs/promises';
-import { runIdParamSchema, runnerSchema } from '@qodeca/xezar-contract';
+import { mcpExpectedVersionSchema, runIdParamSchema, runnerSchema } from '@qodeca/xezar-contract';
 import { hc, type InferResponseType } from 'hono/client';
 import { z } from 'zod';
 import type { RunRecord } from '../../runs/store.ts';
@@ -18,6 +18,7 @@ import {
   type OwnershipScope,
 } from '../resource-ownership.ts';
 import { MCP_ORIGIN, McpServiceAdapter, type McpServiceResult, type ServiceDispatch } from '../service-adapter.ts';
+import { staleRejectionIn } from '../stale-write.ts';
 import { defineTool, errorResult, textResult, type McpToolContext, type McpToolResult } from '../tool.ts';
 
 /**
@@ -58,6 +59,13 @@ import { defineTool, errorResult, textResult, type McpToolContext, type McpToolR
  * never be steered into another tree. Bulk sweeps (`archive_finished`, `mark_all_read`) take no
  * caller ids: the candidate set is the bound project's own store, owned by construction — rule 3 of
  * #88's partial-success policy — and each applies to every candidate and says how many.
+ *
+ * Stale writes (#250, N-03): every action that changes ONE task requires the `expectedVersion` a
+ * `task_read` of that task handed out, and sends it to the route, which compares it with the
+ * task's current version in the same synchronous stretch as the store call. A task a human changed
+ * since is refused with nothing applied (`status: "conflict"`, `error: "stale_version"`). The
+ * bulk sweeps and the read-state flags take none: a sweep names no task, and `seenAt` is
+ * presentation, which the version deliberately does not cover (D-06 § 4.3).
  */
 
 /** The in-process service entry the tool dispatches through. `McpToolContext` does not carry it
@@ -99,25 +107,54 @@ const ACTIONS = [
 ] as const;
 type Action = (typeof ACTIONS)[number];
 
-type Field = 'runId' | 'title' | 'task' | 'messageId' | 'text' | 'todoId' | 'runner' | 'model' | 'prompt' | 'groupId' | 'cursor' | 'limit';
-const FIELDS: readonly Field[] = ['runId', 'title', 'task', 'messageId', 'text', 'todoId', 'runner', 'model', 'prompt', 'groupId', 'cursor', 'limit'];
+type Field =
+  | 'runId'
+  | 'expectedVersion'
+  | 'title'
+  | 'task'
+  | 'messageId'
+  | 'text'
+  | 'todoId'
+  | 'runner'
+  | 'model'
+  | 'prompt'
+  | 'groupId'
+  | 'cursor'
+  | 'limit';
+const FIELDS: readonly Field[] = [
+  'runId',
+  'expectedVersion',
+  'title',
+  'task',
+  'messageId',
+  'text',
+  'todoId',
+  'runner',
+  'model',
+  'prompt',
+  'groupId',
+  'cursor',
+  'limit',
+];
 
-/** Which arguments each action requires, and which it accepts besides. Anything else is refused. */
+/** Which arguments each action requires, and which it accepts besides. Anything else is refused.
+ *  `expectedVersion` is required by every action that changes one task (#250) — a missing one is a
+ *  validation refusal, never a write without the check. */
 const ACTION_FIELDS: Record<Action, { required: readonly Field[]; optional?: readonly Field[] }> = {
   list_queue: { required: [], optional: ['cursor', 'limit'] },
-  set_title: { required: ['runId', 'title'] },
-  edit_brief: { required: ['runId', 'task'] },
-  edit_queued_message: { required: ['runId', 'messageId', 'text'] },
-  remove_queued_message: { required: ['runId', 'messageId'] },
-  pin: { required: ['runId'] },
-  unpin: { required: ['runId'] },
-  archive: { required: ['runId'] },
-  restore: { required: ['runId'] },
+  set_title: { required: ['runId', 'expectedVersion', 'title'] },
+  edit_brief: { required: ['runId', 'expectedVersion', 'task'] },
+  edit_queued_message: { required: ['runId', 'expectedVersion', 'messageId', 'text'] },
+  remove_queued_message: { required: ['runId', 'expectedVersion', 'messageId'] },
+  pin: { required: ['runId', 'expectedVersion'] },
+  unpin: { required: ['runId', 'expectedVersion'] },
+  archive: { required: ['runId', 'expectedVersion'] },
+  restore: { required: ['runId', 'expectedVersion'] },
   archive_finished: { required: [] },
   mark_read: { required: ['runId'] },
   mark_unread: { required: ['runId'] },
   mark_all_read: { required: [] },
-  delete: { required: ['runId'] },
+  delete: { required: ['runId', 'expectedVersion'] },
   start_inbox_item: { required: ['todoId'], optional: ['runner', 'model', 'prompt'] },
   remove_inbox_item: { required: ['todoId'] },
   pick_variant: { required: ['groupId', 'runId'] },
@@ -132,6 +169,11 @@ const inputSchema = z
   .object({
     action: z.enum(ACTIONS).describe('What to do. See the tool description for each action.'),
     runId: segmentId('task').optional().describe('The task id. For pick_variant: the variant to keep.'),
+    expectedVersion: mcpExpectedVersionSchema
+      .optional()
+      .describe(
+        'Required by every action that changes one task (set_title, edit_brief, edit_queued_message, remove_queued_message, pin, unpin, archive, restore, delete): the `version` task_read gave you for it. Echo it verbatim.',
+      ),
     title: z.string().optional().describe('set_title: the new title.'),
     task: z.string().optional().describe('edit_brief: the replacement brief. Only while the task is queued.'),
     messageId: segmentId('message').optional().describe('edit_queued_message / remove_queued_message: the queued message id (list_queue shows them).'),
@@ -214,18 +256,18 @@ class WorkOrganisation {
     return settle(this.routes.runs['read-all'].$post({ param: { projectId: this.projectId } }), [200]);
   }
 
-  deleteRun(id: string): Promise<McpServiceResult<DeleteRunValue>> {
-    return settle(this.routes.runs[':id'].$delete({ param: { projectId: this.projectId, id } }), [200]);
+  deleteRun(id: string, expectedVersion: string): Promise<McpServiceResult<DeleteRunValue>> {
+    return settle(this.routes.runs[':id'].$delete({ param: { projectId: this.projectId, id }, json: { expectedVersion } }), [200]);
   }
 
-  editQueuedMessage(id: string, msgId: string, text: string): Promise<McpServiceResult<EditQueuedMessageValue>> {
+  editQueuedMessage(id: string, msgId: string, text: string, expectedVersion: string): Promise<McpServiceResult<EditQueuedMessageValue>> {
     const param = { projectId: this.projectId, id, msgId };
-    return settle(this.routes.runs[':id']['queued-messages'][':msgId'].$patch({ param, json: { text } }), [200]);
+    return settle(this.routes.runs[':id']['queued-messages'][':msgId'].$patch({ param, json: { text, expectedVersion } }), [200]);
   }
 
-  removeQueuedMessage(id: string, msgId: string): Promise<McpServiceResult<RemoveQueuedMessageValue>> {
+  removeQueuedMessage(id: string, msgId: string, expectedVersion: string): Promise<McpServiceResult<RemoveQueuedMessageValue>> {
     const param = { projectId: this.projectId, id, msgId };
-    return settle(this.routes.runs[':id']['queued-messages'][':msgId'].$delete({ param }), [200]);
+    return settle(this.routes.runs[':id']['queued-messages'][':msgId'].$delete({ param, json: { expectedVersion } }), [200]);
   }
 
   getGroup(groupId: string): Promise<McpServiceResult<GroupValue>> {
@@ -261,7 +303,7 @@ async function settle<T>(pending: Promise<Response>, success: readonly number[])
     body && typeof body === 'object' && typeof (body as { error?: unknown }).error === 'string'
       ? (body as { error: string }).error
       : `service answered ${res.status}`;
-  return { ok: false, origin: MCP_ORIGIN, status: res.status, error };
+  return { ok: false, origin: MCP_ORIGIN, status: res.status, error, body };
 }
 
 // ---- results ---------------------------------------------------------------------------------
@@ -312,7 +354,11 @@ function conflict(action: Action, reason: string, extra: Record<string, unknown>
   return textResult(json({ status: 'conflict', action, reason, ...extra }));
 }
 
-function refused(action: Action, result: { status: number; error: string }): McpToolResult {
+function refused(action: Action, result: { status: number; error: string; body?: unknown }): McpToolResult {
+  // The task changed after the leader read it (#250): D-06 § 4.4's rejection, verbatim — nothing
+  // was applied, and `currentVersion` makes the next read cheap. Never retried here (rule 3).
+  const stale = staleRejectionIn(result.body);
+  if (stale) return textResult(json({ ...stale, action }));
   if (result.status === 409) return conflict(action, result.error);
   return errorResult(`${action} was refused (${result.status}): ${result.error}`);
 }
@@ -393,11 +439,11 @@ function listQueue(scope: OwnershipScope, runs: readonly RunLike[], args: Args):
   return textResult(json({ ...page, ...next }));
 }
 
-async function archive(ops: WorkOrganisation, run: RunLike): Promise<McpToolResult> {
+async function archive(ops: WorkOrganisation, run: RunLike, expectedVersion: string): Promise<McpToolResult> {
   if (!run.archived && ACTIVE_STATUSES.has(run.status)) {
     return conflict('archive', `this task is ${run.status} — cancel it or let it finish, then archive it`, { run: slimRun(run) });
   }
-  const result = await ops.adapter.archiveRun(run.id, true);
+  const result = await ops.adapter.archiveRun(run.id, true, expectedVersion);
   return result.ok ? done('archive', { run: slimRun(result.value as RunLike) }) : refused('archive', result);
 }
 
@@ -514,11 +560,12 @@ async function perform(ops: WorkOrganisation, root: string, args: Args): Promise
       const owned = ownQueuedMessage(scope, args.runId, args.messageId);
       if (!owned.ok) return notOwned(args.action, owned);
       const { run, message } = owned.value;
+      const expectedVersion = need(args.expectedVersion);
       if (args.action === 'remove_queued_message') {
-        const result = await ops.removeQueuedMessage(run.id, message.id);
+        const result = await ops.removeQueuedMessage(run.id, message.id, expectedVersion);
         return result.ok ? done('remove_queued_message', { runId: run.id, removed: true }) : refused('remove_queued_message', result);
       }
-      const result = await ops.editQueuedMessage(run.id, message.id, need(args.text));
+      const result = await ops.editQueuedMessage(run.id, message.id, need(args.text), expectedVersion);
       if (!result.ok) return refused('edit_queued_message', result);
       return done('edit_queued_message', { runId: run.id, message: { id: result.value.message.id, chars: result.value.message.text.length } });
     }
@@ -529,25 +576,28 @@ async function perform(ops: WorkOrganisation, root: string, args: Args): Promise
   const owned = ownRun(scope, args.runId);
   if (!owned.ok) return notOwned(args.action, owned);
   const run = owned.value;
+  // Present for every action below except the read-state pair (the schema requires it), and
+  // sent to the route, which is where the check runs.
+  const expectedVersion = args.expectedVersion;
   switch (args.action) {
     case 'set_title':
-      return runResult('set_title', ops.adapter.patchRun(run.id, { title: need(args.title) }));
+      return runResult('set_title', ops.adapter.patchRun(run.id, { title: need(args.title), expectedVersion }));
     case 'edit_brief':
-      return runResult('edit_brief', ops.adapter.patchRun(run.id, { task: need(args.task) }));
+      return runResult('edit_brief', ops.adapter.patchRun(run.id, { task: need(args.task), expectedVersion }));
     case 'pin':
     case 'unpin':
-      return runResult(args.action, ops.adapter.pinRun(run.id, args.action === 'pin'));
+      return runResult(args.action, ops.adapter.pinRun(run.id, args.action === 'pin', need(expectedVersion)));
     case 'archive':
-      return archive(ops, run);
+      return archive(ops, run, need(expectedVersion));
     case 'restore':
-      return runResult('restore', ops.adapter.archiveRun(run.id, false));
+      return runResult('restore', ops.adapter.archiveRun(run.id, false, need(expectedVersion)));
     case 'mark_read':
     case 'mark_unread':
       return runResult(args.action, ops.setRead(run.id, args.action === 'mark_read'));
     case 'delete': {
       const refusal = await deletable(scope, run);
       if (refusal) return notOwned('delete', refusal);
-      const result = await ops.deleteRun(run.id);
+      const result = await ops.deleteRun(run.id, need(expectedVersion));
       if (!result.ok) return refused('delete', result);
       return done('delete', {
         runId: run.id,
@@ -572,6 +622,7 @@ export const organiseWorkTool = defineTool({
     '- delete: remove a task, its transcript, its worktree and its branch. Irreversible. Refused while the task is active.',
     '- start_inbox_item / remove_inbox_item: act on an Inbox item (needs the Inbox to be on).',
     '- pick_variant: keep one variant of a group. Refused until every variant has finished; then every other variant is archived and its worktree and branch are deleted. Irreversible.',
+    'Every action that changes one task needs expectedVersion: the `version` task_read (view task) returned for it. If the task changed since you read it, nothing is applied and the answer is status "conflict" with error "stale_version": read it again and decide again.',
     'No confirmation is needed for any action. Tasks have no priority and no dependencies: there is nothing to reorder. A refusal the task state caused comes back with status "conflict" and the reason.',
   ].join('\n'),
   inputSchema,

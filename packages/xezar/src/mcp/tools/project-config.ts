@@ -4,6 +4,7 @@ import {
   automationCheckInputSchema,
   automationEventSchema,
   automationLogResultSchema,
+  mcpExpectedVersionSchema,
   runIdParamSchema,
   saveWorkflowInputSchema,
   setAgentConfigInputSchema,
@@ -37,6 +38,7 @@ import { stripJsonComments } from '../../agent-config/validate.ts';
 import { agentHomePaths } from '../../paths.ts';
 import type { AppType } from '../../server/app-type.ts';
 import { MCP_ORIGIN, type ServiceDispatch } from '../service-adapter.ts';
+import { staleRejectionIn } from '../stale-write.ts';
 import { defineTool, errorResult, textResult, type McpToolContext, type McpToolResult } from '../tool.ts';
 
 /**
@@ -275,7 +277,8 @@ type Field =
   | 'checkId'
   | 'receiptId'
   | 'logQuery'
-  | 'runId';
+  | 'runId'
+  | 'expectedVersion';
 
 const FIELDS: readonly Field[] = [
   'config',
@@ -297,6 +300,7 @@ const FIELDS: readonly Field[] = [
   'receiptId',
   'logQuery',
   'runId',
+  'expectedVersion',
 ];
 
 const none = { required: [], optional: [] } as const;
@@ -337,7 +341,8 @@ const ACTION_FIELDS: Record<ProjectConfigAction, { required: readonly Field[]; o
   retry_automation_receipt: { required: ['receiptId'], optional: [] },
   list_worktrees: none,
   reclaim_worktrees: none,
-  remove_worktree: { required: ['runId'], optional: [] },
+  // Removing a task's worktree changes that task, so it needs its version (#250, N-03).
+  remove_worktree: { required: ['runId', 'expectedVersion'], optional: [] },
 };
 
 const isRefused = (action: string): action is RefusedAction => Object.hasOwn(REFUSED_ACTIONS, action);
@@ -438,6 +443,9 @@ export const projectConfigInputSchema = z
     receiptId: z.string().min(1).max(128).optional(),
     logQuery: automationLogQueryInputSchema.optional(),
     runId: z.string().min(1).max(128).optional().describe("remove_worktree: the task's run id."),
+    expectedVersion: mcpExpectedVersionSchema
+      .optional()
+      .describe('remove_worktree: the `version` task_read returned for the task. If the task changed since, nothing is removed.'),
   })
   .strict()
   .superRefine((args, ctx) => {
@@ -502,6 +510,13 @@ function ok(action: string, result: unknown): Result {
 }
 
 function failed(action: string, answer: Extract<Answer<unknown>, { ok: false }>, root: string): Result {
+  // The task changed after the leader read it (#250): an ordinary conflict, nothing applied — D-06
+  // § 4.4's rejection verbatim, not an error the leader must correct.
+  const stale = staleRejectionIn(answer.body);
+  if (stale) {
+    const payload = { action, origin: MCP_ORIGIN, ...stale };
+    return textResult(JSON.stringify(payload, null, 2), payload);
+  }
   const error = scrubPaths(answer.error, root);
   const exists = answer.body && typeof answer.body === 'object' && (answer.body as { exists?: unknown }).exists === true;
   return errorResult(`${action} was refused by xezar (${answer.status}): ${error}`, {
@@ -1132,7 +1147,7 @@ async function run(args: ProjectConfigInput & { action: ProjectConfigAction }, s
         return invalid(action, `not a run id: ${JSON.stringify(id)}`);
       }
       const answer = await settle<unknown>(
-        s.api.p[':projectId'].runs[':id']['remove-worktree'].$post({ param: { ...scope, id } }),
+        s.api.p[':projectId'].runs[':id']['remove-worktree'].$post({ param: { ...scope, id }, json: { expectedVersion: args.expectedVersion! } }),
         [200],
       );
       return answer.ok ? ok(action, { ...(answer.value as object), runId: id }) : fail(answer);

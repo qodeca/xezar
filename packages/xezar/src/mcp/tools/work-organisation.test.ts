@@ -12,6 +12,7 @@ import { WorkspaceSemaphore } from '../../workspace/semaphore.ts';
 import type { ServiceDispatch } from '../service-adapter.ts';
 import { toolListing, type McpToolContext, type McpToolResult } from '../tool.ts';
 import { tools } from './index.ts';
+import { versionForTest } from './version.testkit.ts';
 import { organiseWorkTool } from './work-organisation.ts';
 
 /**
@@ -100,6 +101,19 @@ const cockpit = (app: Workspace['app'], path: string, method = 'GET', body?: unk
 const context = async (ws: Workspace, projectId: string) => ws.contexts.context(projectId);
 const store = async (ws: Workspace, projectId: string) => (await context(ws, projectId)).store;
 
+/** The actions that change one task, and so need its version (#250). */
+const VERSIONED_ACTIONS: ReadonlySet<string> = new Set([
+  'set_title',
+  'edit_brief',
+  'edit_queued_message',
+  'remove_queued_message',
+  'pin',
+  'unpin',
+  'archive',
+  'restore',
+  'delete',
+]);
+
 /** A tools/call exactly as the service answers it: validate against the tool's schema, then call. */
 async function invoke(
   ws: Workspace,
@@ -107,6 +121,11 @@ async function invoke(
   opts: { projectId?: 'proj-a' | 'proj-b'; service?: ServiceDispatch | null } = {},
 ): Promise<McpToolResult> {
   const projectId = opts.projectId ?? 'proj-a';
+  // A leader reads a task right before it changes it (#250). The version rule itself is pinned in
+  // `stale-write-tools.test.ts`; here every call carries the version a fresh read would give.
+  if (VERSIONED_ACTIONS.has(String(args.action)) && !('expectedVersion' in args)) {
+    args = { ...args, expectedVersion: await versionForTest(ws.app, projectId, args.runId) };
+  }
   const parsed = organiseWorkTool.inputSchema.safeParse(args);
   if (!parsed.success) {
     return { content: [{ type: 'text', text: parsed.error.issues.map((i) => i.message).join('; ') }], isError: true };
