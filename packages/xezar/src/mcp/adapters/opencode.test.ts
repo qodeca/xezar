@@ -285,6 +285,19 @@ describe('role instruction — system and agent re-sent with every message (resu
     expect(oc.submissions[0]!.body.system).toBe(ROLE);
   });
 
+  it('allows the turn only the xezar tools, with "*" first — the last matching rule wins (#309 F-1)', async () => {
+    const { adapter } = adapterFor();
+    await adapter.deliver(dispatchOf(row()), live());
+    await adapter.deliver(dispatchOf(row({ journalSeq: 2 })), live());
+    expect(oc.submissions.length).toBeGreaterThan(0);
+    for (const { body } of oc.submissions) {
+      const tools = (body as Record<string, unknown>).tools;
+      expect(tools).toEqual({ '*': false, 'xezar_*': true });
+      // Reversed, OpenCode 1.18.30 offered no tool at all; never `"*": true`, which overrides every `ask`.
+      expect(Object.keys(tools as object)).toEqual(['*', 'xezar_*']);
+    }
+  });
+
   it('never reuses a messageID (OpenCode appends into the old message instead of starting a turn)', async () => {
     const { adapter } = adapterFor();
     await adapter.deliver(dispatchOf(row()), live());
