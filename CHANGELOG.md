@@ -23,6 +23,13 @@
   one warning and the MCP keeps working. This closes acceptance case A-01. (#262)
 
 ## 🐛 Fixes
+- 🐛 **One resumed task no longer freezes its account's whole queue.** After a provider usage
+  limit, a task that resumed itself held every other task on the same agent account in the queue
+  until its first resumed turn completed — hours, for a long turn — even with most slots free. The
+  hold now lasts only while the resume is testing whether the limit has lifted: once the resumed
+  turn has stayed live for two minutes, the tasks behind it start. A task waiting out a limit still
+  holds its account, other accounts are still untouched, and cancelling a running resume's
+  auto-resume now starts the waiting tasks at once. (#285)
 - 🐛 **Picking a variant or reclaiming worktrees in one project can no longer delete another
   project's worktree.** A copied or hand-edited `.local/xezar` (copying a repository folder is
   enough) leaves task records whose worktree path names the ORIGINAL project's worktree. Picking a
