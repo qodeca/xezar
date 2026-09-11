@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 import type { HealthResponse } from '@qodeca/xezar-api-client'
 import { useHealth, useProjects } from '@/api/queries'
 import { CenteredState } from '@/components/centered-state'
-import { useActiveProjectId } from '@/lib/project-router'
+import { Link, useActiveProjectId } from '@/lib/project-router'
 import { McpOperationFeedback, type McpOperation } from '@/routes/task-thread/mcp-operation-feedback'
 import { McpCapabilities } from './mcp-capabilities'
 import { McpConnectionState } from './mcp-connection-state'
@@ -329,6 +329,17 @@ export function McpConnectionSurface({
           <li>One active logical client may own a project at a time; the cockpit stays usable alongside it.</li>
           <li>Project-level operations are autonomous; global administration and quality gates are not part of the MCP surface.</li>
         </ul>
+        {/* #284: the read-only reference lives in its own section, one step away. */}
+        <p className="text-[13px] text-foreground">
+          <Link
+            to="/settings/mcp-api"
+            data-slot="mcp-api-link"
+            className="rounded-sm font-medium underline underline-offset-2 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          >
+            See every tool this server exposes
+          </Link>{' '}
+          <span className="text-muted-foreground">– a read-only reference, in MCP API.</span>
+        </p>
       </SettingsField>
 
       {/* #114: usable functions, unavailable dependencies, read-only shared limits, quality checks. */}
