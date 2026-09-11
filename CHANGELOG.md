@@ -163,6 +163,10 @@
   assertion also gained the settle guard its mirror already had. (#200)
 
 ## 📝 Specs & Documentation
+- 📝 **A design review is part of done for UI work.** The project kit, the implementation and
+  testing roles and the leader prompt now say that work with UI in scope, where such a review makes
+  sense, needs a UX/UI design review (`xezar-ux-design`) before it is done, and that the author's
+  manual QA is not one: it shows the surface works, not that it is the right design. (#297)
 - 📝 **The npm package page shows its screenshots and working links again.** npm publishes a copy
   of the root README, and its relative `docs/…` and `LICENSE` links pointed at files the package
   does not contain — 13 broken links on the 0.13.1 page, all six screenshots among them, and 23 in
