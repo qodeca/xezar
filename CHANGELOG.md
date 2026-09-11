@@ -11,6 +11,13 @@
   behaves exactly as before, so the cockpit is unchanged. And `organise_work` now refuses an
   argument it does not declare instead of dropping it, so a stray `projectId` can no longer look
   like it scoped a call — including the bulk `archive_finished` — to another project. (#271)
+- 🐛 **Secret redaction is no longer defeated by a change of case.** The credential shapes were
+  matched in one case only, so a lower-cased AWS key id (which loses nothing by being lower-cased)
+  or an upper-cased GitHub, Slack, GitLab or Google token passed straight into run transcripts,
+  the MCP audit trail, the event journal, automation logs and MCP tool responses. The shapes now
+  match in any case, except the two whose prefix in another case is ordinary text (`sk-`, which
+  ends `TASK-` branch names, and `github_pat_`, which is also an env var name). The host's own
+  secret values now match in any case and in their URL-encoded form. (#272)
 - 🐛 **A laptop that changes networks no longer locks the cockpit out of its own data.** A
   writer claim records the hostname that wrote it, and a dead PID was reclaimable only when that
   hostname still matched — so renaming a machine (`.local` to `.lan` on a different network is

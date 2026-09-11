@@ -94,6 +94,62 @@ describe('redactSecrets', () => {
   });
 });
 
+/**
+ * #272: the shapes were matched case-sensitively, so a credential printed in another case passed
+ * through. An AWS key id is upper-case letters and digits only, so its lower-cased copy IS the key
+ * id. Every value below is a fake of the right shape.
+ */
+describe('redactSecrets is not defeated by case (#272)', () => {
+  it('redacts an AWS access key id in lower and mixed case', () => {
+    const line = 'id=akiafakefakefake0000 temp=asiafakefakefake0000 mixed="AkiaFakeFakeFake0000"';
+    expect(redactSecrets(line, [])).toBe(`id=${REDACTED} temp=${REDACTED} mixed="${REDACTED}"`);
+  });
+
+  it('redacts the shapes whose prefix is not ordinary text in any case', () => {
+    const shapes = [
+      'GHP_FAKEFAKEFAKEFAKEFAKEFAKE0000', // GitHub PAT, upper-cased
+      'aizafakefakefakefakefakefakefakefake000', // Google API key, lower-cased
+      'YA29.FAKE-FAKE-FAKE', // Google OAuth token, upper-cased
+      'XOXB-0000000000-FAKEFAKEFAKE', // Slack, upper-cased
+      'GLPAT-FAKEFAKEFAKEFAKEFAKE', // GitLab, upper-cased
+    ];
+    for (const shape of shapes) expect(redactSecrets(`value: ${shape}`, [])).toBe(`value: ${REDACTED}`);
+  });
+
+  it('redacts a known secret value printed in another case', () => {
+    const secrets = collectSecretValues({ SERVICE_API_TOKEN: 'deadbeefcafe0000feedface1234' });
+    expect(redactSecrets('token DEADBEEFCAFE0000FEEDFACE1234 ok', secrets)).toBe(`token ${REDACTED} ok`);
+  });
+
+  it('redacts a known secret value in its URL-encoded form', () => {
+    const secrets = collectSecretValues({ DB_PASSWORD: 'Fake/P@ss+word-2026' });
+    const out = redactSecrets('postgres://app:Fake%2FP%40ss%2Bword-2026@db/prod and fake%2fp%40ss%2bword-2026', secrets);
+    expect(out).toBe(`postgres://app:${REDACTED}@db/prod and ${REDACTED}`);
+  });
+
+  // Guards — these pass before and after the fix. They pin what the fix must NOT change.
+  it('leaves text alone that only resembles a shape case-insensitively', () => {
+    const line = [
+      'branch TASK-1234-FIX-LOGIN-REDIRECT-HANDLER', // `sk-` stays case-sensitive
+      'GITHUB_PAT_READONLY_ORG_ACCESS_FOR_CI=unset', // an env var NAME, not a fine-grained PAT
+      'asiaPacificRegionConfig and akiaFeatureFlagEnabledForAll', // identifiers, not key ids
+      'Slovakia, Asia and akia',
+    ].join('\n');
+    expect(redactSecrets(line, [])).toBe(line);
+  });
+
+  it('is not defeated by surrounding whitespace or a wrapping quote', () => {
+    for (const wrapped of ['  AKIAFAKEFAKEFAKE0000  ', '"AKIAFAKEFAKEFAKE0000"', "'AKIAFAKEFAKEFAKE0000'"]) {
+      expect(redactSecrets(wrapped, [])).not.toContain('FAKEFAKEFAKE0000');
+    }
+  });
+
+  it('throws on a non-string rather than passing it through', () => {
+    expect(() => redactSecrets(42 as unknown as string, [])).toThrow(TypeError);
+    expect(() => redactSecrets(null as unknown as string, ['deadbeefcafe0000feedface1234'])).toThrow(TypeError);
+  });
+});
+
 describe('redactDeep', () => {
   it('scrubs string leaves in nested event structures', () => {
     const event = {
