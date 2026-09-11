@@ -174,6 +174,27 @@ describe('workspace config', () => {
     expect(readFileSync(workspaceConfigPath(), 'utf8')).toBe('{not json');
   });
 
+  // #267: boot loads the config, then migration 001 merge-writes it, which loads it again — two
+  // identical warnings per boot where AGENTS.md promises one.
+  it('warns once per corrupt state, while every load still reads the file afresh', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    write('{not json');
+    expect(await loadWorkspaceConfig()).toEqual(defaultWorkspaceConfig());
+    await mergeWriteWorkspaceConfig(() => {}); // the boot shape: a load, then a merge-write
+    expect(warn).toHaveBeenCalledTimes(1);
+
+    // Nothing is cached: the repaired file is what the next load returns …
+    write({ schemaVersion: 1, projects: [project('shop')] });
+    expect((await loadWorkspaceConfig()).projects).toEqual([project('shop')]);
+    // … and breaking it again is a new state, so it warns again, as does new broken content.
+    write('{not json');
+    await loadWorkspaceConfig();
+    expect(warn).toHaveBeenCalledTimes(2);
+    write('{still not json');
+    await loadWorkspaceConfig();
+    expect(warn).toHaveBeenCalledTimes(3);
+  });
+
   it('a non-object top level degrades to defaults too (never throws)', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     write('[1, 2, 3]');
