@@ -273,9 +273,11 @@ scripted endpoint's request log, the wire logs, the install output and a SHA-256
 private evidence folder, `.local/xezar-tasks/<runId>/pi-real-bridge/`. It is never committed. It holds no
 credentials: the only key string is the dummy value in the fixture `models.json`.
 
-**Harness defects found on the way, and how they were handled.** The first runs of three scenarios reported
-FAILED for reasons in the harness, not in pi: `second` started pi with an empty tool cache, `async` stopped
-reading before the queued messages arrived, and two checks read tool text cut at 600 characters. Each was
+**Harness defects found on the way, and how they were handled.** The first runs of four scenarios reported
+FAILED for reasons in the harness, not in pi: `second` started pi with an empty tool cache; `async` stopped
+reading before the queued messages arrived; `human` and `async` read text the harness had shortened for
+printing; and `stale` required `isError`, a requirement copied from the spike's stub, while the real bridge
+answers a conflict as an ordinary result by design. Each was
 fixed, and every short scenario was then run again, together, with the final harness (18:08–18:15 UTC). The
 verdicts above are from that run. The four idle scenarios ran earlier, with a harness that differed only in
 those fixes and in waiting for pi's `agent_end` rather than `agent_settled` after a prompt. Their checks use
