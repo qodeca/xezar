@@ -19,8 +19,12 @@
 // fails the suite otherwise. The empty registry is valid: the bridge still
 // handshakes and lists `health`.
 import type { McpTool } from '../tool.ts';
+import { taskReadsTool } from './task-reads.ts';
+import { executionControlTool } from './execution-control.ts';
 import { handoffGitTool } from './handoff-git.ts';
 
 export const tools: readonly McpTool[] = [
+  taskReadsTool,
+  executionControlTool,
   handoffGitTool,
 ];
