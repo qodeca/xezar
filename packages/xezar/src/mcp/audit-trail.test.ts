@@ -236,6 +236,45 @@ describe('C: a credential in the connection configuration never enters the trail
     }
   });
 
+  /** #272: the shape check was case-sensitive, so a lower-cased key id passed `clean()` verbatim. */
+  it('drops a credential-shaped identifier whatever its case', () => {
+    const dataDir = dataDirOf('alpha');
+    const knownToken = 'deadbeefcafe0000feedface1234'; // fake, hex, as a caller would know it
+    const trail = new AuditTrail({ projectId: 'alpha', dataDir }, { now, secretValues: () => [knownToken] });
+    const mcp = trail.channel('mcp');
+    const planted = ['akiafakefakefake0000', 'AkiaFakeFakeFake0000', 'asiafakefakefake0000', knownToken.toUpperCase()];
+    for (const id of planted) {
+      mcp.record(
+        { action: 'runs.get', resource: { kind: 'run', id }, operationId: id, expectedVersion: `rev1:run:${id}:3:0123456789ab` },
+        { outcome: 'rejected', errorCode: 'not_found' },
+      );
+    }
+    // Control: an ordinary identifier survives, so the fix is not "drop everything".
+    mcp.record({ action: 'runs.get', resource: { kind: 'run', id: 'run-asia-0001' }, operationId: 'op-control-0001' }, { outcome: 'ok' });
+
+    const raw = readFileSync(auditTrailPath(dataDir), 'utf8');
+    // Populated-input guarantee: every operation was written, only its secret-shaped fields dropped.
+    expect(raw.trim().split('\n')).toHaveLength(planted.length + 1);
+    for (const id of planted) expect(raw.toLowerCase()).not.toContain(id.toLowerCase());
+    const entries = trail.read().entries;
+    for (const entry of entries.slice(0, planted.length)) {
+      expect(entry.resource).toBeUndefined();
+      expect(entry.operationKey).toBeUndefined();
+      expect(entry.versionToken).toBeUndefined();
+    }
+    expect(entries.at(-1)).toMatchObject({ resource: { kind: 'run', id: 'run-asia-0001' }, operationKey: 'alpha/op-control-0001' });
+  });
+
+  /** Guard (passes before and after #272): a non-string identifier is never written through. */
+  it('writes nothing when an identifier is not a string', () => {
+    const warn = vi.fn();
+    const trail = new AuditTrail({ projectId: 'alpha', dataDir: dataDirOf('alpha') }, { now, warn });
+    const op = { action: 'runs.get', resource: { kind: 'run', id: 12345 } } as unknown as AuditedOperation;
+    expect(trail.channel('mcp').record(op, { outcome: 'ok' })).toBeNull();
+    expect(trail.read().entries).toEqual([]);
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
   it('refuses free text, paths and email addresses in identifier fields by shape', () => {
     const trail = new AuditTrail({ projectId: 'alpha', dataDir: dataDirOf('alpha') }, { now });
     trail.channel('ui').record(
