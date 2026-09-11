@@ -195,18 +195,30 @@ describe('no tool can terminate an arbitrary process', () => {
     for (const name of ['pid', 'processId', 'signal', 'filePath', 'cwd', 'exec_args', 'killSwitch', 'command'])
       expect(forbidden(name), name).toBe(true);
     for (const name of ['groupId', 'runId', 'rapid', 'messageId']) expect(forbidden(name), name).toBe(false);
-    const names = (schema: unknown): string[] => {
+    // Each property as its dotted path (`[]` for an array item), so one exemption can be exact.
+    const paths = (schema: unknown, prefix = ''): string[] => {
       if (!schema || typeof schema !== 'object') return [];
       const node = schema as { properties?: Record<string, unknown>; items?: unknown };
       return [
-        ...Object.keys(node.properties ?? {}),
-        ...Object.values(node.properties ?? {}).flatMap(names),
-        ...names(node.items),
+        ...Object.entries(node.properties ?? {}).flatMap(([key, child]) => [`${prefix}${key}`, ...paths(child, `${prefix}${key}.`)]),
+        ...paths(node.items, `${prefix.replace(/\.$/, '')}[].`),
       ];
     };
+    // The one exemption: a workflow CHECK step's `command` inside a `steps` list. It is the
+    // cockpit's own step shape (plan review start I-003, Save as chain I-005, workflow save I-087),
+    // run by the engine in the task's own worktree through the cockpit's route — not a control
+    // over a host process. Every other forbidden word stays forbidden, inside steps too.
+    const stepCommand = /(^|\.)steps\[\]\.command$/;
+    for (const path of ['steps[].command', 'plan.steps[].command']) expect(stepCommand.test(path), path).toBe(true);
+    for (const path of ['command', 'steps.command', 'steps[].onFail.command', 'stepsX[].command', 'steps[].pid'])
+      expect(stepCommand.test(path), path).toBe(false);
+    expect(paths({ properties: { steps: { items: { properties: { command: {}, cwd: {} } } } } })).toEqual(['steps', 'steps[].command', 'steps[].cwd']);
     expect(tools).toContain(executionControlTool);
     for (const tool of tools) {
-      for (const name of names(toolListing(tool).inputSchema)) expect(forbidden(name), `${tool.name}.${name}`).toBe(false);
+      for (const path of paths(toolListing(tool).inputSchema)) {
+        if (stepCommand.test(path)) continue;
+        expect(forbidden(path.split(/\.|\[\]/).filter(Boolean).pop() ?? path), `${tool.name}.${path}`).toBe(false);
+      }
     }
     // This tool names a task, never a process: its whole argument surface, pinned.
     const schema = toolListing(executionControlTool).inputSchema as { properties: Record<string, unknown> };
