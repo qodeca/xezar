@@ -10,6 +10,10 @@ Tracked by [#263](https://github.com/qodeca/xezar/issues/263). Related: [#261](h
 **Baseline revision:** `ef4b7683ebbbcd17c1ede26b7fd4f870546e7e74` (`main`, 2026-09-11). Every file, symbol and count
 below was read or measured at that revision. Counts move when tools change; re-derive them before relying on one.
 
+**Amended** on 2026-09-11 by [#274](https://github.com/qodeca/xezar/issues/274): prior-art research (Part 5), a UX
+design (Part 6) and what the research changes (Part 7). The amendment's measurements were taken at
+`6f699bf` (`main`), whose tool surface is the same as the baseline's. Entries it changes are marked "(amended, #274)".
+
 ## Summary for the owner
 
 You asked for "a Swagger kind of documentation for the MCP ... a way for a human to verify the design and API of the MCP
@@ -24,6 +28,13 @@ server", and then for "the swagger type of UI". This document specifies both hal
 What it deliberately does **not** have: a "Try it" button. Section 13 explains why. In short: running a tool from the
 cockpit would make the cockpit a second leader on the project and would forge the audit trail's "who did this".
 
+The amendment adds three things. **Prior art** (Part 5): the MCP Inspector is a debugging tool, not a reviewing tool;
+the MCP ecosystem has **no** convention for publishing a server's tools as a document; and the OpenAPI renderers get
+"read or write" for free from HTTP methods, which MCP does not have. **A UX design** (Part 6): who the page is for (the
+reviewer), what they must learn in thirty seconds, how the effect of every tool shows without opening it, how refusals
+are gathered in one place, and how the missing "Try it" reads as a decision. **What changed** (Part 7): most decisions
+are confirmed; four details change, and none of the five questions below changes.
+
 Five questions need your decision. They are at the end, under [Open questions for the owner](#open-questions-for-the-owner),
 each with a recommendation and what each choice costs.
 
@@ -34,6 +45,9 @@ each with a recommendation and what each choice costs.
 - [Part 2 – Technical solution](#part-2--technical-solution)
 - [Part 3 – Decisions](#part-3--decisions)
 - [Part 4 – Current state, honestly](#part-4--current-state-honestly)
+- [Part 5 – Prior art](#part-5--prior-art)
+- [Part 6 – UX design](#part-6--ux-design)
+- [Part 7 – What the research changes](#part-7--what-the-research-changes)
 - [Open questions for the owner](#open-questions-for-the-owner)
 
 ## The seven findings, checked
@@ -85,7 +99,7 @@ anything. They must be able to do four jobs without reading source code.
 | ID | Requirement | Traces to |
 | --- | --- | --- |
 | RF-01 | A Markdown reference MUST combine hand-written prose with generated tables. Each generated table MUST sit between a named pair of HTML comment markers, the pattern `mcp-parity-coverage-map.md` already uses. | J-1–J-4 |
-| RF-02 | One generated row per tool MUST give: name, title, one-line purpose, the four annotation hints as words, whether any action requires `expectedVersion`, and whether any action accepts `operationId`. An annotation the tool omits MUST read as "not stated (client default)", never as a guessed value. | J-1 |
+| RF-02 | One generated row per tool MUST give: name, title, one-line purpose, the four annotation hints as words, whether any action requires `expectedVersion`, and whether any action accepts `operationId`. An annotation the tool omits MUST read as "not stated", followed by the default the protocol tells a client to assume (S7 in 17.8), never as the tool's own value. A destructive or idempotent hint omitted by a read-only tool MUST read as "not applicable (read-only)", because the protocol gives it no meaning there. (amended, #274) | J-1 |
 | RF-03 | Per tool, a generated argument table MUST give each argument's name, type, whether it is required, its allowed values when it is an enum, and the schema's own description **verbatim**. | J-1 |
 | RF-04 | Per tool, a generated action list MUST give each action (the value of its `action`, `view` or `read` argument) and whether the action performs, reads or refuses. | J-1, J-3 |
 | RF-05 | A result section MUST show the shared envelope and, per tool, the status words it returns today, which field carries them, and whether a refusal is an error result or an ordinary result. Where tools disagree it MUST say so in words. | J-3 |
@@ -117,6 +131,13 @@ anything. They must be able to do four jobs without reading source code.
 | CV-05 | The page MUST show the coverage table with a filter by inventory status, and MUST show any never-passing coverage entry (CT-06) as prominently as a mapped one. | J-2 |
 | CV-06 | The page MUST contain no control that executes, simulates or prepares a tool call: no "Try it", no "Send", no request builder, no copy-as-command. See [section 13](#13-the-hard-boundary-no-try-it). | F-16, F-18, A-17, A-23, D-06 § 10.4 |
 | CV-07 | When the route answers "unavailable", the page MUST say so in one plain sentence with the reason, and the rest of the cockpit MUST keep working. | N-07 |
+| CV-08 | Before anything is expanded, a summary directly under the header MUST state: the number of tools; how many change project state and how many of those state they may be destructive; how many are read-only; the number of always-refused actions, linked to the refusals section; and the number of covered records served, naming every record not served. Every number MUST be computed from the route. See [18.2](#182-the-first-thirty-seconds). (added, #274) | J-1–J-3 |
+| CV-09 | Every collapsed tool row MUST show the tool's effect in words ("Read-only", "Changes project state", "Destructive", or "Read-only: not stated" with the assumed default) and its action counts by disposition. An effect filter (All, Changes project state, Read-only) MUST announce the new count. See [18.3](#183-scanning-eleven-tools-and-seeing-what-changes-things). (added, #274) | J-1, U-M08 |
+| CV-10 | Text inside a collapsed tool – action names, argument names, descriptions – MUST be reachable with the browser's find-in-page, and a match MUST open that tool. (added, #274) | J-1 |
+| CV-11 | The expanded tool MUST show its actions table before its arguments; list required arguments before optional ones; name types in words; show an enum of more than 10 values as its first 10 plus a control that reveals the rest; show the discriminator argument by reference to the actions table, not as a repeated enum; and show nesting beyond one level as path-prefixed rows, not as a third level of disclosure. See [18.4](#184-reading-a-schema-without-drowning). (added, #274) | J-1 |
+| CV-12 | One section MUST gather everything the server will not do, in three groups: never exposed, always refused (refusal-only actions and refused arguments, each with its boundary) and refused at call time (each saying whether it arrives as an error or an ordinary result, and labelled "declared, not derived" where true). Each expanded tool MUST show its own items from that section. A refused argument MUST NOT be shown as an optional input. See [18.5](#185-the-refusals-what-will-this-not-let-me-do). (added, #274) | J-3, J-4 |
+| CV-13 | The header MUST say in one sentence that the page is read-only by design and why. Each expanded tool MUST end with its cockpit equivalents ("Do this in the cockpit") from the coverage rows, or the justification where there is none. The page MUST NOT render a disabled or locked run control. See [18.6](#186-the-absent-try-it-deliberate-not-unfinished). (added, #274) | CV-06; F-18 |
+| CV-14 | The page MUST handle each state in [18.7](#187-failure-and-empty-states) with the text given there: loading, unavailable, MCP service not running, hosted mode, no tools besides `health`, a tool with no arguments, a schema it cannot lay out, an empty filter, and no unserved records. A schema it cannot lay out MUST affect only its own tool. (added, #274) | N-07, NF-02 |
 
 ### 6. Non-functional requirements that already bind this repository
 
@@ -176,10 +197,10 @@ reference fails `npm test`, which is a required CI check, so it cannot merge.** 
 | Artifact | Path | Generated? | Owner |
 | --- | --- | --- | --- |
 | This specification | `docs/features/mcp-api-reference/mcp-api-reference-spec.md` | No | #263 |
-| Machine-readable reference (AR-01) | `docs/features/mcp-server/mcp-api.json` | Yes, checked by DR-01 | #261 (in flight) |
-| Human-readable reference (RF-01) | `docs/features/mcp-server/mcp-api.md` | Prose by hand, tables generated, checked by DR-02 | #261 (in flight) |
+| Machine-readable reference (AR-01) | `docs/features/mcp-server/mcp-api.json` | Yes, checked by DR-01 | #261 (merged in #268) |
+| Human-readable reference (RF-01) | `docs/features/mcp-server/mcp-api.md` | Prose by hand, tables generated, checked by DR-02 | #261 (merged in #268) |
 | Coverage and result declaration (CT-01) | `packages/xezar/src/mcp/api-reference.ts` – **a shipped module, not a `.testkit.ts`** | No – declared data plus one builder function | Implementation issue to be filed |
-| Drift tests | `packages/xezar/src/mcp/mcp-api-doc.test.ts` | – | #261 (in flight) |
+| Drift tests | `packages/xezar/src/mcp/mcp-api-doc.test.ts` | – | #261 (merged in #268) |
 | Response schema (NF-05) | `packages/contract/src/mcp-api-reference.ts`, exported from `packages/contract/src/index.ts` | – | Implementation issue |
 | Read-only route (section 11) | a `mcpReferenceRoutes` family in `packages/xezar/src/server/server.ts`, chained into `v1` | – | Implementation issue |
 | Cockpit page (section 12) | `packages/web/src/routes/settings/mcp-api-section.tsx` plus one entry in `registry.tsx` | – | Implementation issue |
@@ -308,15 +329,23 @@ workspace-level single mount, would be the only MCP page whose data comes from o
   tools: [{ name, title?, description, inputSchema: <JSON Schema object>, annotations?,
             actions: [{ discriminator: 'action'|'view'|'read'|null, value: string|null,
                         disposition: 'performs'|'reads'|'refuses',
+                        boundary?: string,
                         records: string[], justification?: { serves: string[], reason: string },
                         requiresExpectedVersion: boolean, acceptsOperationId: boolean }],
+            refusedArguments: [{ name: string, boundary: string }],
             result: { field: string|null, words: string[], refusalIsError: 'always'|'never'|'depends',
                       declared: boolean } }],
   coverage: [{ record, status: 'covered'|'global', outcome, tool, action }],
   unserved: [{ record, reason }],
+  notExposed: [{ what: string, forbiddenBy: string[] }],
   origins: { journal: ['human','leader','system'], audit: ['ui','mcp','automation','cli'] } }
 | { available: false, reason: string }
 ```
+
+(amended, #274) `boundary` is present exactly when `disposition` is `refuses`; it is the one-line reason the page prints
+as "Refused – <boundary>" (12.4). `refusedArguments` comes from the declaration, because the listing cannot express it:
+`project_config`'s `projectId` is listed with an empty schema, which accepts anything, and only its description says it
+is never accepted (18.4). `notExposed` carries J-4's list as data, so the page hard-codes none of it (CV-02).
 
 `inputSchema` is typed as an opaque JSON object in the contract: it is JSON Schema, and describing JSON Schema in zod
 would be a second definition that can drift. Optional keys are spread conditionally, and literal discriminants use
@@ -357,28 +386,31 @@ server exposes"). Placement is [open question 4](#open-questions-for-the-owner).
 
 #### 12.2 Information architecture
 
-Top to bottom:
+Top to bottom (amended, #274 – the summary is new, and "not exposed" moved into the refusals section; the reasons are in
+[18.2](#182-the-first-thirty-seconds) and [18.5](#185-the-refusals-what-will-this-not-let-me-do)):
 
-1. **Header.** "xezar MCP server", the running version, the supported protocol revisions, and one sentence: "This page
-   describes the tools a leader can call. Nothing on it runs a tool."
-2. **What this server does not expose.** Resources, prompts, logging, account identity, secrets, other projects,
-   host processes – each with its requirement id (RF-08).
-3. **Tools.** One disclosure per tool, in registry order, `health` first. The collapsed row shows: name, title, the
-   effect label (12.3), and the number of actions.
+1. **Header.** "xezar MCP server", the running version, the supported protocol revisions, and one sentence that the page
+   is read-only by design and why (18.6), with a "Why?" disclosure.
+2. **Summary.** The five statements of 18.2 (CV-08).
+3. **Tools.** One disclosure per tool, in registry order, `health` first, with the effect filter above it. The collapsed
+   row shows: name, title, the effect label (12.4) and the action counts by disposition (CV-09).
 4. **Expanded tool.** Purpose (its own description, verbatim); the four hints as words; an **actions** table (action,
-   effect, records it serves or its justification, whether it needs `expectedVersion` or accepts `operationId`); an
-   **arguments** table (name, type, required, allowed values, description verbatim); the **result** block (field,
-   words, how a refusal arrives, and "declared, not derived" where true); and a closed "JSON Schema" disclosure showing
-   the raw `inputSchema`.
-5. **Coverage.** The record → tool action table with a filter by inventory status and a count of covered and not-served
+   effect, cockpit equivalent or justification, whether it needs `expectedVersion` or accepts `operationId`); an
+   **arguments** table laid out as 18.4 describes; the tool's own refusals (CV-12); the **result** block (field, words,
+   how a refusal arrives, and "declared, not derived" where true); "Do this in the cockpit" (CV-13); and a closed "JSON
+   Schema" disclosure showing the raw `inputSchema`.
+5. **What this server will not do.** The three groups of 18.5, including what it does not expose (RF-08).
+6. **Coverage.** The record → tool action table with a filter by inventory status and a count of covered and not-served
    records. Never-served entries sit at the top, labelled "Not served", with their reason.
-6. **Results and origins.** The shared envelope, the comparison table of 10.4, and the two `origin` vocabularies side by
+7. **Results and origins.** The shared envelope, the comparison table of 10.4, and the two `origin` vocabularies side by
    side.
 
 #### 12.3 Collapsed and expanded state
 
-- Every tool starts collapsed. A button with `aria-expanded` and `aria-controls` toggles it. "Expand all" and "Collapse
-  all" sit above the list.
+- Every tool starts collapsed. Each tool is a native `<details>` element with a `<summary>` row (amended, #274; R-13).
+  It keeps the disclosure semantics and keyboard behaviour, and the browser opens it by itself when find-in-page matches
+  text inside it (CV-10; 17.6). A script-driven collapsible that removes its content from the page would lose that. "Expand
+  all" and "Collapse all" sit above the list and set `open`.
 - A URL fragment `#tool-<name>` opens that tool expanded and moves focus to its heading, so a reviewer can link a
   colleague to one tool.
 - Expansion state is presentation: not stored, not sent to the server.
@@ -388,7 +420,9 @@ Top to bottom:
 Two layers, both in text:
 
 - **Tool level**, from annotations: `readOnlyHint: true` reads "Read-only"; otherwise "Changes project state", and
-  `destructiveHint: true` adds "Can delete or overwrite". An omitted hint reads "not stated (client default)".
+  `destructiveHint: true` (or not stated) adds "Destructive – may delete or overwrite". An omitted hint reads "not
+  stated" plus the default a client assumes. The words are the MCP Inspector's (amended, #274; R-12). The full table is
+  in [18.3](#183-scanning-eleven-tools-and-seeing-what-changes-things).
 - **Action level**, from the declaration: "Reads", "Changes", or "Refused – <boundary>". This matters because tools mix:
   `project_config` has `get_config` and `set_config`, and `handoff_git` has `repo` and `merge`. A check keeps the two
   layers honest: an action of a `readOnlyHint: true` tool may not be declared "Changes", and an action whose schema needs
@@ -454,6 +488,9 @@ button on a reference page.
 - It does not publish the reference outside the repository and the running cockpit: no website, no npm-published JSON.
 - It does not add a setting, an environment variable, a port, a dependency or a WebSocket topic.
 - It does not document the cockpit's HTTP API; `BACKWARD_COMPATIBILITY.md` § 2 remains that inventory.
+- It does not build a search box, a version-diff view, a samples panel, client setup snippets, links from an action to a
+  cockpit screen, a call history, a download button or reviewer comments. The reasons are in
+  [18.8](#188-what-we-will-not-build-and-why). (amended, #274)
 
 ### 15. Verification plan
 
@@ -469,6 +506,11 @@ button on a reference page.
 | CV-01–CV-05, DR-05 | Cockpit tests render from a fixture with an invented tool; collapsed by default; fragment opens a tool; labels present; filter announces. | cockpit unit |
 | CV-06 | Cockpit test: the page contains no `button`, `form` or link whose label or target suggests execution, and no `fetch` other than the reference query. | cockpit unit |
 | NF-07 | Structural accessibility test modelled on `mcp-a11y.test.tsx`. | cockpit unit |
+| CV-08, CV-09 | From a fixture with known hints: the summary's numbers equal the fixture's; each row shows its effect word and counts; a tool with no `readOnlyHint` reads "Read-only: not stated"; a read-only tool shows no destructive flag; the filter announces the new count. | cockpit unit |
+| CV-10 | Structural: each tool is a `details` element whose content stays in the page while collapsed. The find-in-page opening itself is browser behaviour and is checked in the 375 px walkthrough. | cockpit unit + manual QA |
+| CV-11 | Fixture with a 17-value enum, a discriminator, required and optional arguments and three-level nesting: order, "Show all 17", discriminator by reference, path-prefixed third level. | cockpit unit |
+| CV-12, CV-13 | Fixture with a refusal-only action and a refused argument: both appear in the refusals section and in their tool; the refused argument is not in the optional inputs; each tool ends with "Do this in the cockpit"; no disabled run control exists. | cockpit unit |
+| CV-14 | One case per state in 18.7, including a tool whose schema throws while rendering, with every other tool still present. | cockpit unit |
 | NF-08 | Real-browser walkthrough at 375 px, light and dark, keyboard only, recorded on the pull request (`needs-qa`). | manual QA |
 
 The cockpit half carries `needs-qa` under SDLC.md's QA gate. This specification itself is documentation only.
@@ -495,10 +537,15 @@ Each decision: the choice, the reason, and the alternative rejected. Ids are loc
 | R-05 | Actions that serve a requirement rather than a UI record carry a visible justification with a requirement id. | `health` exists for N-07 – so a client can learn the service is down – not for a cockpit control; forcing a record would be false. Whether any other action lacks a record is found by check C2, not assumed here. | Exempting them silently; inventing records. |
 | R-06 | The route derives from running code and answers even when the MCP service did not start. | Section 11: the listing is static, the page is most needed when MCP is broken, and N-07. | Serving committed `docs/` files; requiring the service. |
 | R-07 | The route is project-scoped and mounted at both spellings. | One scoping rule for every cockpit view; route-parity covers it for free. | A workspace-level single mount. |
-| R-08 | Annotations the tool omits are shown as "not stated (client default)". | The reference describes, it does not correct. | Showing the MCP default as if the tool had stated it. |
+| R-08 | Annotations the tool omits are shown as "not stated", followed by the default the protocol tells a client to assume. A destructive or idempotent hint on a read-only tool reads "not applicable". (amended, #274) | The reference describes, it does not correct. The defaults are documented (S7), so naming them is describing, not guessing, and it tells a reviewer what clients will actually do. | Showing the MCP default as if the tool had stated it; showing only "client default" without saying what that is. |
 | R-09 | No "Try it", in any form. | Section 13. | Four variants, all in 13. |
 | R-10 | Result vocabularies are documented as they are, and their disagreement is stated. | The work documents; it must not change what it documents (brief rule). Whether to unify is the owner's call. | Quietly normalising words on the page, which would describe a server that does not exist. |
 | R-11 | The paths of the generated documents follow the in-flight #261 brief. | Avoid two tasks writing the same files differently. | A new `docs/features/mcp-api-reference/` home for the artifacts. |
+| R-12 | The effect words are the MCP Inspector's: read-only, destructive, idempotent, open-world (added, #274). | They are what people who browse MCP servers already know (17.2). | New words of our own ("Can delete or overwrite" as the label). |
+| R-13 | Each tool is a native `<details>` element (added, #274). | Find-in-page opens it in current Chrome, Firefox and Safari (S20), so a reviewer can search argument names across collapsed tools. | A script-driven collapsible, which hides its content from find-in-page. |
+| R-14 | At most two disclosure levels below the page: a tool, then a nested object. Deeper fields are path-prefixed rows (added, #274). | More than two levels usually hurts (S18); real schemas nest three deep (18.4). | A disclosure per nesting level. |
+| R-15 | No search box (added, #274). | Eleven tools fit on one screen; the effect filter, find-in-page and links cover the need (18.3). | A search box like the Inspector's or Swagger UI's tag filter, which serve much larger surfaces. |
+| R-16 | In place of "Try it": a one-line reason in the header and a "Do this in the cockpit" list in each tool; no disabled control (added, #274). | No renderer explains its missing console (17.5); a disabled control misstates the reason; the cockpit door is the correctly audited one (13). | Silence; a disabled button; a link to documentation only. |
 
 ## Part 4 – Current state, honestly
 
@@ -546,6 +593,439 @@ Observed on 2026-09-11 around 08:10 UTC (`gh pr list -R qodeca/xezar --state ope
    document plumbing, not the API.
 6. **The count is 10 tools, not 8.** The #261 brief repeats the 8; its issue body already says 10.
 
+## Part 5 – Prior art
+
+Added by [#274](https://github.com/qodeca/xezar/issues/274). Parts 1 to 4 reasoned from this repository outward. This part
+looks at how the same problem is already solved elsewhere, so the page feels familiar where familiarity helps and differs
+only where this server's rules force it to.
+
+### 17. How other tools solve this
+
+#### 17.1 Method and limits
+
+- **Web access was available and used.** Every claim below carries its source and the date it was read. All sources were
+  read on **2026-09-11**. The table in 17.8 lists them.
+- Where a page summary could be wrong, the claim was re-checked against the raw source text. One summary was wrong: it
+  said the MCP Inspector's tool list shows annotation badges on each row. The Inspector's own UX specification says the
+  list row carries only the name and title (17.2). The corrected claim is the one used here.
+- Source code of other projects was read to learn **patterns**, not copied. No text or markup from any source is
+  reproduced here beyond single-word control labels, which are named so the reader can recognise them.
+- "I looked and could not find this" is recorded as a finding in 17.7, not left out.
+- Fetched pages were treated as evidence, not instructions. What they told the reader to run is listed in 17.7 as a
+  finding; nothing from them was installed or run.
+- The kit that produced this document has no research or design role (#274). Nothing in the workflow asked for sources,
+  dates, or a reader model, so the method above was improvised for this task. Treat it as a first attempt.
+
+#### 17.2 The MCP Inspector – familiar, but built for a different job
+
+**What it is.** The MCP project calls the Inspector its reference developer tool for **testing and debugging** MCP
+servers. It ships as one package with three clients: a web app, a command-line client and a terminal UI
+([S1](https://modelcontextprotocol.io/docs/tools/inspector), read 2026-09-11). The web client's backend guards its API with
+a per-launch token *because it can start processes on the user's machine*
+([S2](https://modelcontextprotocol.io/docs/2026-07-28/tools/inspector/web), read 2026-09-11).
+
+**How it lays out a tool.**
+
+- A **Tools** tab appears when the server declares the `tools` capability. It pairs a **searchable list** with a
+  **detail panel** ([S2](https://modelcontextprotocol.io/docs/2026-07-28/tools/inspector/web);
+  [S5](https://raw.githubusercontent.com/modelcontextprotocol/inspector/main/specification/v2_ux_interfaces.md), both read
+  2026-09-11).
+- A list row carries the tool's name and title, and nothing else: its declared inputs are `name`, `title`, `selected`
+  and `onClick` ([S5](https://raw.githubusercontent.com/modelcontextprotocol/inspector/main/specification/v2_ux_interfaces.md),
+  read 2026-09-11). **You cannot see from the list which tools change things.** You learn that only after you select a
+  tool.
+- The detail panel pins the title and the annotation badges at the top. Below them it shows the description, a list of
+  **schema findings** (lint warnings about the tool's own schema), and the input schema rendered **as a form**. An
+  **Execute** control is pinned at the bottom
+  ([S4](https://raw.githubusercontent.com/modelcontextprotocol/inspector/main/clients/web/src/components/groups/ToolDetailPanel/ToolDetailPanel.tsx),
+  read 2026-09-11). The file contains no confirmation step for destructive tools. The word "confirm" does not appear in
+  it.
+- Annotations become one-word badges: **read-only**, **destructive**, **idempotent**, **open-world**. Each has its own
+  colour, and the word is always printed on the badge
+  ([S3](https://raw.githubusercontent.com/modelcontextprotocol/inspector/main/clients/web/src/components/elements/AnnotationBadge/AnnotationBadge.tsx),
+  read 2026-09-11). The component is described as rendering one badge per **populated** field, so an omitted hint shows
+  nothing ([S5](https://raw.githubusercontent.com/modelcontextprotocol/inspector/main/specification/v2_ux_interfaces.md),
+  read 2026-09-11). Whether a hint set to `false` shows a badge was **not checked**.
+- Other tabs show the JSON-RPC transcript (**Protocol**), the server's `stderr` (**Console**), resources, prompts and
+  logs ([S2](https://modelcontextprotocol.io/docs/2026-07-28/tools/inspector/web), read 2026-09-11).
+
+**Verdict: a debugging tool, not a reviewing tool.** Its centre is the argument form and the Execute button. It is a
+client that connects to one server and calls it. A reviewer's questions – what is the whole surface, which parts change
+state, what is refused, does it match the promised coverage – are not what it is laid out for.
+
+**What we copy:** the vocabulary (tool name first, title second; the four hint words), the list-then-detail shape, hint
+labels always printed as words, and the idea of showing findings about a tool's own schema next to the tool.
+**What we do not copy:** the argument form, the Execute control, the transcript and console tabs, and connection
+management. The page also does better than the Inspector on one thing it does badly for a reviewer: the effect of every
+tool is visible **in the list**, without selecting anything (18.3).
+
+A person who wants to exercise xezar's tools can point a generic MCP client such as the Inspector at the bridge. That
+client is then subject to the same single-owner rule as any leader (F-18, A-17). That combination was **not tested** for
+this document.
+
+#### 17.3 Is there a convention for publishing a server's tool surface?
+
+**No. That is the finding.**
+
+- The MCP specification defines the tool list only as a **runtime** answer to `tools/list`. A tool has `name`, an
+  optional `title`, `description`, `inputSchema`, an optional `outputSchema` and optional `annotations` (plus `icons` and
+  `execution` in the 2025-11-25 revision). The specification says nothing about a document form of that list
+  ([S6](https://modelcontextprotocol.io/specification/2025-11-25/server/tools), read 2026-09-11).
+- The official registry's `server.json` describes identity, version, packages, remote endpoints and runtime arguments. It
+  holds **no list of tools**
+  ([S10](https://raw.githubusercontent.com/modelcontextprotocol/registry/refs/heads/main/docs/reference/server-json/generic-server-json.md),
+  read 2026-09-11).
+- The nearest proposal is **MCP Server Cards**. SEP-1649 (opened 2025-10-14, closed 2026-01-26, labelled draft) would
+  have let a card carry a static tool list
+  ([S9](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/1649), read 2026-09-11). Its successor,
+  SEP-2127, is open and in review, last updated 2026-09-10. It **deliberately leaves tools out of the card**, because the
+  tools a server exposes can vary by user, session, configuration and deployment. Clients are told to rely on
+  `tools/list` at runtime instead ([S8](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2127), read
+  2026-09-11).
+- A search for tools that turn a `tools/list` answer into a reference document found none. The results were MCP servers
+  that *work with* Markdown, not documentation generators for MCP servers (search run 2026-09-11; 17.7).
+
+**What it means here.** `mcp-api.json` (AR-01) is a local convention, not a standard format. It must not be named or
+described as a Server Card or as anything the ecosystem defines. SEP-2127's reason for excluding tools does not apply to
+this server, because xezar declares `listChanged: false` and its list does not vary by session. It does support R-06:
+the cockpit page reads the running code, not a committed file.
+
+#### 17.4 OpenAPI reference renderers – what each does for a reviewer
+
+The owner's word "Swagger" points at this family. What matters here is what each does for someone **judging** an API
+rather than calling it.
+
+| Reviewer need | Swagger UI | Redoc (community edition) | Stoplight Elements |
+| --- | --- | --- | --- |
+| Scan many operations | Operations grouped by tag. The default expansion shows the tag list with operations collapsed. An optional filter box narrows the view by tag ([S12](https://raw.githubusercontent.com/swagger-api/swagger-ui/master/docs/usage/configuration.md)). | Three panels: navigation, operation detail, and samples ([S13](https://redocly.com/docs/redoc/config)). Search is on unless `disableSearch` is set ([S13](https://redocly.com/docs/redoc/config)). | `sidebar` (the default), `responsive` and `stacked` layouts ([S15](https://raw.githubusercontent.com/stoplightio/elements/main/docs/getting-started/elements/elements-options.md)). |
+| See read versus write at a glance | Operations are HTTP methods. HTTP itself defines GET, HEAD, OPTIONS and TRACE as **safe** ([S21](https://www.rfc-editor.org/rfc/rfc9110.txt) § 9.2.1), so the method on every row answers the question for free. | Same, from the method. | Same, from the method. |
+| Read a schema without drowning | Models expand one level by default (`defaultModelsExpandDepth: 1`) ([S12](https://raw.githubusercontent.com/swagger-api/swagger-ui/master/docs/usage/configuration.md)). | No schema expanded by default (`schemasExpansionLevel: 0`). Long enums can be cut to a set number with the rest behind a control (`maxDisplayedEnumValues`) ([S13](https://redocly.com/docs/redoc/config)). | Not examined beyond the options page. |
+| Link a colleague to one operation | `deepLinking`, off by default ([S12](https://raw.githubusercontent.com/swagger-api/swagger-ui/master/docs/usage/configuration.md)). | Not examined. | History or hash routing ([S15](https://raw.githubusercontent.com/stoplightio/elements/main/docs/getting-started/elements/elements-options.md)). |
+| See what changed between versions | No option found. | No option found. | No option found. Change review lives in **separate tools**: oasdiff compares two descriptions and reports every change, or only the breaking ones ([S16](https://github.com/oasdiff/oasdiff)). |
+| See what an operation refuses | No option found for gathering refusals across operations (17.7). | No option found. | No option found. |
+
+All sources in this table were read on 2026-09-11.
+
+**What transfers:** collapsed by default with one level visible; long enums cut short with an honest "show all"; deep
+links to one item; change review done on the committed artifact, not inside the page.
+**What does not transfer:** the HTTP method badge. MCP has no method. `tools/call` is the only verb, and a tool such as
+`project_config` mixes reads and writes behind one name. **The page must supply by design what HTTP gives these renderers
+for free** (18.3).
+
+#### 17.5 References without "Try it"
+
+Each renderer handles the absence differently:
+
+- **Removed entirely.** Stoplight Elements has a `hideTryIt` option that removes the feature. A second option,
+  `hideTryItPanel`, hides only the panel and keeps the request sample
+  ([S15](https://raw.githubusercontent.com/stoplightio/elements/main/docs/getting-started/elements/elements-options.md),
+  read 2026-09-11).
+- **Never there.** Redoc's README lists a "Try-it console" among the features of its hosted product, not its community
+  edition ([S14](https://raw.githubusercontent.com/Redocly/redoc/main/README.md), read 2026-09-11). The community
+  edition is a read-only reference.
+- **Switched off per method.** In Swagger UI, `supportedSubmitMethods` lists the HTTP methods that may use "Try it out".
+  An empty list turns it off for every operation and still shows the operations
+  ([S12](https://raw.githubusercontent.com/swagger-api/swagger-ui/master/docs/usage/configuration.md), read 2026-09-11).
+  The documentation does not say whether the button then disappears or stays visible but inactive. That was **not
+  verified**.
+- Demand for a read-only Swagger UI is old. An issue asking to stop readers running POST operations while keeping the
+  documentation was opened on 2014-08-17 and is closed
+  ([S22](https://github.com/swagger-api/swagger-ui/issues/535), read 2026-09-11).
+
+None of the three documents a way to **tell the reader why** the control is absent (17.7). Removing it and never having
+it are both normal. Explaining the absence is this page's own design (18.6).
+
+#### 17.6 How people read reference pages
+
+- Most people **scan** a web page rather than read it word by word. Scanning is helped by meaningful headings,
+  highlighted keywords, one idea per paragraph, and putting the conclusion first
+  ([S17](https://www.nngroup.com/articles/how-users-read-on-the-web/), Nielsen, 1997; read 2026-09-11). The finding is
+  old. It is used here only for the layout rule "conclusion first".
+- **Progressive disclosure** shows the few most important things first and the rest on request. It fails when the split
+  is wrong or when the way to go deeper is unclear. Designs with **more than two levels** of disclosure usually suffer
+  ([S18](https://www.nngroup.com/articles/progressive-disclosure/), Nielsen, 2006; read 2026-09-11).
+- The W3C disclosure pattern is a button that toggles a region, with `aria-expanded` required and `aria-controls`
+  optional. Enter and Space activate it ([S19](https://www.w3.org/WAI/ARIA/apg/patterns/disclosure/), read
+  2026-09-11).
+- A native `<details>` element **opens itself when the browser's find-in-page matches text inside it**. Chrome has done
+  this since version 97, Firefox since 148 and Safari since 26.2 (MDN browser-compat-data, key `search_match_opens`,
+  [S20](https://raw.githubusercontent.com/mdn/browser-compat-data/main/html/elements/details.json), read 2026-09-11).
+  Content hidden by script-driven collapsibles is not found this way. This is the one research result that changes an
+  implementation choice already in this spec (12.3, R-13).
+
+#### 17.7 Looked for and not found, and what pages told us to do
+
+**Not found:**
+
+- A convention, format or tool for publishing an MCP server's tool surface as a document (17.3).
+- In Swagger UI, Redoc and Stoplight Elements (the configuration pages read): an option that explains to the reader why
+  "Try it" is absent; a view of what changed between two versions; a view that gathers what operations refuse. By memory,
+  and **not re-read today (UNVERIFIED)**: these renderers show each operation's error responses inside that operation.
+- In the Inspector: any confirmation before running a tool that states `destructiveHint` (checked in one file, S4 only).
+
+**Instructions found in fetched pages, and not followed:** S1 and S2 tell the reader to launch the Inspector with `npx`,
+and name switches that turn off its authentication and its loopback-only binding. A search-result snippet (S11) suggested
+piping a `tools/list` request into a package fetched with `npx`. None of this was run or installed. It is recorded only
+because the rule for this work is to report such instructions.
+
+#### 17.8 Sources
+
+All read 2026-09-11.
+
+| Id | Source |
+| --- | --- |
+| S1 | [MCP Inspector overview](https://modelcontextprotocol.io/docs/tools/inspector) |
+| S2 | [MCP Inspector web client](https://modelcontextprotocol.io/docs/2026-07-28/tools/inspector/web) |
+| S3 | [Inspector `AnnotationBadge.tsx`](https://raw.githubusercontent.com/modelcontextprotocol/inspector/main/clients/web/src/components/elements/AnnotationBadge/AnnotationBadge.tsx) (`main`) |
+| S4 | [Inspector `ToolDetailPanel.tsx`](https://raw.githubusercontent.com/modelcontextprotocol/inspector/main/clients/web/src/components/groups/ToolDetailPanel/ToolDetailPanel.tsx) (`main`) |
+| S5 | [Inspector `v2_ux_interfaces.md`](https://raw.githubusercontent.com/modelcontextprotocol/inspector/main/specification/v2_ux_interfaces.md) (`main`) |
+| S6 | [MCP specification 2025-11-25, Tools](https://modelcontextprotocol.io/specification/2025-11-25/server/tools) |
+| S7 | [MCP schema 2025-11-25, `schema.ts`](https://raw.githubusercontent.com/modelcontextprotocol/modelcontextprotocol/main/schema/2025-11-25/schema.ts) (`ToolAnnotations`) |
+| S8 | [SEP-2127, MCP Server Cards (PR #2127)](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2127) |
+| S9 | [SEP-1649, MCP Server Cards (issue #1649)](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/1649) |
+| S10 | [MCP registry `server.json` format](https://raw.githubusercontent.com/modelcontextprotocol/registry/refs/heads/main/docs/reference/server-json/generic-server-json.md) |
+| S11 | Web search "generate documentation from MCP server tools/list markdown generator tool reference docs" – no relevant result |
+| S12 | [Swagger UI configuration](https://raw.githubusercontent.com/swagger-api/swagger-ui/master/docs/usage/configuration.md) (`master`) |
+| S13 | [Redoc configuration](https://redocly.com/docs/redoc/config) |
+| S14 | [Redoc README](https://raw.githubusercontent.com/Redocly/redoc/main/README.md) (`main`) |
+| S15 | [Stoplight Elements options](https://raw.githubusercontent.com/stoplightio/elements/main/docs/getting-started/elements/elements-options.md) (`main`) |
+| S16 | [oasdiff](https://github.com/oasdiff/oasdiff) |
+| S17 | [How users read on the web](https://www.nngroup.com/articles/how-users-read-on-the-web/) (Nielsen Norman Group) |
+| S18 | [Progressive disclosure](https://www.nngroup.com/articles/progressive-disclosure/) (Nielsen Norman Group) |
+| S19 | [WAI-ARIA APG disclosure pattern](https://www.w3.org/WAI/ARIA/apg/patterns/disclosure/) |
+| S20 | [MDN browser-compat-data, `details`](https://raw.githubusercontent.com/mdn/browser-compat-data/main/html/elements/details.json) |
+| S21 | [RFC 9110, HTTP Semantics](https://www.rfc-editor.org/rfc/rfc9110.txt) § 9.2.1 |
+| S22 | [swagger-ui issue #535](https://github.com/swagger-api/swagger-ui/issues/535) |
+
+## Part 6 – UX design
+
+Section 12 says what is on the page. This part says **how a person uses it**: who they are, what they look for, and what
+makes the page succeed or fail at its one job, which is letting a human check the design of the MCP server.
+
+### 18. Designing for the reviewer
+
+#### 18.1 Who reads this page, and who we optimise for
+
+| Reader | What they are actually doing | Where they are best served | On this page |
+| --- | --- | --- | --- |
+| **A reviewer auditing the design** – the owner, or an engineer reviewing a pull request that changes a tool | Deciding whether the surface is **right**: complete, safe, consistent, honest about what it refuses, and matching the promised cockpit coverage. They read, compare and judge. They do not call anything. | Here, and in `mcp-api.md` / `mcp-api.json` in the pull request diff. | **Optimised for.** Every choice below serves this reader first. |
+| **Someone configuring a client** | Connecting Claude Code, Codex or OpenCode to this project once. | The **MCP connection** section, which already writes the client configuration and says whether the connection is available in this mode. | One link back to MCP connection. We accept being worse here: no setup snippets, no commands to copy. |
+| **An engineer debugging a call** | Asking why one call failed or returned what it did. | The leader's event journal, the audit record, the result and evidence views, the acceptance tests, and a generic MCP client such as the Inspector (17.2). | The page gives them the **vocabulary** to read a result – status words, how refusals arrive, the two origins. We accept being worse here: no call history, no request/response transcript, no replay. |
+
+The first reader decides the layout. When a choice helps a debugging engineer but slows a reviewer – a form, a
+transcript, a command to copy – the reviewer wins.
+
+#### 18.2 The first thirty seconds
+
+Most readers scan, so the page puts its conclusion first (17.6). Without expanding anything, the reviewer must be able
+to answer five questions:
+
+1. **What is this, and can I break anything here?** The header names the server and its version, and says in one line
+   that the page is read-only by design (18.6).
+2. **How big is the surface?** "11 tools, 103 actions that read or change, 20 actions that are always refused" (the
+   baseline counts in 10.1; the page computes them from the route, never from constants).
+3. **Which parts change things?** "7 tools can change project state, 4 of them state they may be destructive. 4 tools
+   are read-only." These are baseline counts, measured from the live listing on 2026-09-11. Read-only: `health`,
+   `task_read`, `discover_project`, `read_results_evidence`. The other seven change state – including `leader_events`,
+   whose acknowledge action writes a cursor, and `handoff_git`, which states no read-only hint at all (18.3).
+4. **What will it not let a leader do?** A count, and a link to the refusals section (18.5).
+5. **Does it cover what the cockpit can do?** "N of 89 covered records served", and every record **not** served named
+   right there, never behind a filter.
+
+These five lines are the **summary**. It sits directly under the header and is plain text, not a chart. Everything else
+on the page is detail for someone who has already read it.
+
+#### 18.3 Scanning eleven tools, and seeing what changes things
+
+The collapsed tool list **is** the scanning surface. There is no separate overview table that could disagree with it.
+
+**One row per tool, and the effect is on the row.** Each collapsed row shows, in this order: the tool name (monospace,
+because that is what appears in transcripts and pull request diffs), its title, its **effect**, and its action counts by
+kind, in the form "*n* read · *n* change · *n* refused". The Inspector shows only name and title in the list (17.2), and HTTP renderers
+get the effect for free from the method (17.4). This page has neither, so the effect must be printed on every row.
+
+**The effect words.** The page uses the Inspector's four hint words, so a reader who knows the Inspector recognises them
+(R-12), and adds one plain explanation:
+
+| The tool's hints | Row reads |
+| --- | --- |
+| `readOnlyHint: true` | **Read-only** |
+| `readOnlyHint: false`, `destructiveHint: false` | **Changes project state** |
+| `readOnlyHint: false`, `destructiveHint: true` or not stated | **Changes project state · Destructive** – may delete or overwrite |
+| `readOnlyHint` not stated | **Read-only: not stated** – clients assume it may change state (the protocol default, S7) – then the destructive rule above |
+
+The protocol's defaults are documented: a client that is not told assumes a tool is **not** read-only, **is**
+destructive, is **not** idempotent and **is** open-world. The destructive and idempotent hints mean something only when
+a tool is not read-only ([S7](https://raw.githubusercontent.com/modelcontextprotocol/modelcontextprotocol/main/schema/2025-11-25/schema.ts),
+read 2026-09-11). So the page says what the client will assume (R-08, amended), and it does not flag an omitted
+destructive hint on a read-only tool, where the hint has no meaning. Idempotent and open-world appear in the expanded
+tool, not on the row. They matter to a reviewer, but not in the first pass.
+
+Annotations are **hints**. The specification tells clients to treat them as untrusted unless the server is trusted
+([S6](https://modelcontextprotocol.io/specification/2025-11-25/server/tools), read 2026-09-11). That is why the action
+counts on the row come from the declaration, and why the check in 12.4 fails when the declaration and the hints
+disagree. The row shows what the server **claims**, and the check keeps the claim honest.
+
+**Finding a tool.** Eleven rows fit on one laptop screen, so there is no search box (R-15). Three things replace one:
+
+- an **effect filter** – All, Changes project state, Read-only – that announces the new count;
+- the browser's own **find-in-page**, which reaches argument names and descriptions inside collapsed tools, because each
+  tool is a native `<details>` element that opens itself on a match (17.6, R-13). "Which tools take `expectedVersion`?"
+  is one Ctrl+F;
+- a **link to one tool** (`#tool-<name>`), as in 12.3.
+
+**Order.** Registry order, `health` first – the same order as `tools/list` and `mcp-api.json`, so a reviewer who reads
+the page next to the JSON diff does not have to re-map anything. Grouping by effect was considered and rejected: the
+filter gives the same view without making the page disagree with the wire.
+
+#### 18.4 Reading a schema without drowning
+
+**What the real schemas look like** (measured from the live listing at the amendment baseline):
+
+- `project_config`: 22 arguments, one enum of 55 values (its `action`), nested three levels deep.
+- `task_create`: 17 arguments, three levels deep.
+- `health` and `discover_project`: no arguments at all.
+- Every listed schema is **flat**: one object holding the discriminator plus arguments that serve particular actions.
+  The schema does not say which argument belongs to which action. The argument's own description usually does – in
+  `project_config`, most descriptions start with the actions they serve, for example `set_config: …`.
+
+**The design:**
+
+1. **Actions before arguments.** The expanded tool opens with the **actions table**: the discriminator made readable,
+   grouped Reads / Changes / Refused, each action with its cockpit equivalent (18.6). The discriminator's argument row
+   then says "one of the 55 actions above" instead of listing 55 values a second time.
+2. **Required first.** Required arguments, then optional ones, each group in schema order. "Required" is a word, not an
+   asterisk.
+3. **Types in words.** "text", "whole number", "yes/no", "list of text", "object – 5 fields". The exact JSON Schema stays
+   one click away in the raw schema disclosure.
+4. **Long enums cut short.** An enum of more than 10 values shows the first 10 and a "Show all 17" control, as Redoc's
+   `maxDisplayedEnumValues` does (17.4). An enum of 10 or fewer shows in full.
+5. **At most two levels.** Tool, then a nested object. A third level of nesting is not a third disclosure: its fields
+   are listed under the second level with a path prefix (`workflow.steps[].prompt`). Designs with more than two levels
+   of disclosure usually suffer (17.6).
+6. **Descriptions verbatim.** The page shows the argument's own description exactly (RF-03). It does **not** parse the
+   `set_config: …` prefixes into a per-action mapping. That would be reading prose as data, which R-02 rejects. If a
+   per-action mapping is wanted later, it belongs in the declaration, labelled "declared, not derived".
+7. **Refused arguments are not inputs.** `project_config` lists `projectId` with an empty schema, which accepts
+   anything, and a description saying it is never accepted (measured). Shown plainly, it reads as an optional input of
+   any type, which is the opposite of the truth. The declaration names such arguments and the page shows them in the
+   refusals section and, in the argument table, as "Refused – <boundary>" (CV-12).
+
+#### 18.5 The refusals: "what will this NOT let me do?"
+
+Today the answer is scattered: a list of things not exposed, 20 refusal-only actions inside one tool's enum, refused
+arguments hidden in descriptions, and runtime refusals spread across ten result shapes. The page gathers them into **one
+section, "What this server will not do"**, in three groups. Each item is one line: what is refused, why (the boundary or
+the requirement), and how a leader finds out.
+
+| Group | What belongs in it | Source on the page |
+| --- | --- | --- |
+| **Never exposed** | No resources, prompts or logging; no account identity; no secret; no other project; no host-process control. Each with the requirement that forbids it (J-4). | Route field `notExposed` (section 11). |
+| **Always refused** | Every refusal-only action (`project_config`'s 20) and every refused argument (`projectId`), grouped by tool, each with its boundary. | Derived: action disposition `refuses` and the declared `refusedArguments`. |
+| **Refused at call time** | Refusals that depend on state: a stale write answered as a conflict (`expectedVersion`, #250); a second owner answered as project-occupied (A-17); `handoff_git` refused by policy, service, quality or forge; local hand-off in hosted mode. Each says whether the refusal arrives as an error result or as an ordinary result (10.4). | Declared, and labelled "declared, not derived" where true (10.4). |
+
+The same items also appear inside each expanded tool, filtered to that tool, so a reviewer finds them from either
+direction. The summary (18.2) links here with the count.
+
+#### 18.6 The absent "Try it": deliberate, not unfinished
+
+A reference page without a run button looks unfinished only when the page does not say why and leaves a gap where the
+button would be. Other renderers either remove the control or never had it, and none of them explains the absence (17.5).
+This page does three things:
+
+1. **One line, in the header, a human accepts:** "Read-only by design: running a tool from here would make the cockpit a
+   second leader on this project, and a project has exactly one." A "Why?" disclosure under it gives the three reasons
+   of section 13 in one sentence each. No "coming soon", and nothing that suggests a permission is missing.
+2. **Point to the right door instead of a button.** Where the Inspector puts its Execute control – the end of a tool's
+   detail – each expanded tool lists **"Do this in the cockpit"**: the cockpit equivalents of its changing actions, taken
+   from the coverage rows (record id and outcome label). An action with no cockpit equivalent shows its justification
+   instead. The reader learns where the effect is available, done through the door that is correctly audited as `ui`
+   (section 13, point 4). The label is text, not a link: the inventory records outcomes, not cockpit URLs. Adding links
+   would mean a per-record route table, which this feature does not build (18.8).
+3. **No disabled control.** No greyed-out "Try it", no locked icon. A disabled button says "you are not allowed yet". The
+   truth is "this page does not do that".
+
+#### 18.7 Failure and empty states
+
+Every state keeps the rest of the cockpit working (NF-02), and says what is true in one sentence.
+
+| State | What the page shows | What still works |
+| --- | --- | --- |
+| Loading (first fetch) | "Loading the tool list…" in a polite live region. No skeleton rows that could be mistaken for tools. | Everything. |
+| Route answers `available: false` | One sentence with the reason from the route (CV-07), and a link to MCP connection. No retry loop: the list cannot change while the process runs. | The rest of Settings, including MCP connection. |
+| MCP service not running | **The full page**, because the listing does not depend on the service (section 11, R-06). One status line on top: "The MCP service is not running now. This is what it exposes when it runs." The line uses the status MCP connection already shows. If that status cannot be read, the line is left out, not guessed. | The page is most useful in exactly this state (section 11). |
+| Hosted mode | The full page. The status line says what MCP connection says for this mode. | Same. |
+| Only `health` listed, or no tools | Header, summary ("This server lists no tools besides health"), and the refusals section. No empty table. | – |
+| A tool with no arguments | "Takes no arguments." in place of the argument table. The protocol recommends an empty object schema for such tools ([S6](https://modelcontextprotocol.io/specification/2025-11-25/server/tools), read 2026-09-11); the page reads that as "no arguments", not as an error. | – |
+| A schema the page cannot lay out as a table (an unknown keyword, `$ref`, a union it does not model) | That tool's argument area says "This schema uses a form the page does not lay out as a table. The exact schema is below." and opens the raw JSON disclosure. One tool's failure never blanks another tool or the page (a per-tool error boundary). | All other tools. |
+| Filter matches nothing | "No tools match this filter." with the filter still visible. | – |
+| Every covered record is served | The coverage section says so in one sentence and still shows the table. It does not disappear. | – |
+
+#### 18.8 What we will not build, and why
+
+| Not built | Why |
+| --- | --- |
+| "Try it", a request builder, copy-as-command | Section 13 and R-09. |
+| A disabled or locked run control | 18.6: it misstates the reason. |
+| A search box | Eleven tools fit on one screen; the filter, find-in-page and links cover it (R-15). Revisit when the list no longer fits on one screen. |
+| A version-diff view | Change review happens on the committed `mcp-api.json` and `mcp-api.md` in the pull request diff (R-01). Diff tooling is a separate tool in the OpenAPI world too (17.4). A breaking-change classifier is part of open question 2's follow-up, not this page. |
+| A code-samples or request-samples panel (Redoc's right panel) | It serves a caller, and this page's reader does not call (18.1). |
+| Client setup snippets | MCP connection owns setup (18.1). |
+| Links from an action to a cockpit screen | The inventory records outcomes, not URLs (18.6). |
+| A call history, transcript or replay | That is the debugging reader's job, served elsewhere (18.1). |
+| A download button for the JSON | The JSON is committed in the repository and published nowhere else (section 14). A running cockpit may describe a different version than any file. |
+| Reviewer comments or sign-off on the page | Review happens on the pull request. |
+
+#### 18.9 Accessibility and 375 px, extended
+
+The NF-07 and NF-08 bar and 12.5 stay as written. The design above adds:
+
+- **Tool disclosures are native `<details>`/`<summary>`** (R-13). They keep the disclosure semantics (17.6), open on
+  Enter and Space, and open themselves on find-in-page. "Expand all" and "Collapse all" set `open`. The fragment link
+  still opens the tool and moves focus to its heading.
+- The **summary** is a short list with a heading, not a table, so a screen reader reads it as five statements.
+- The **effect filter** is a labelled radio group. The new count is announced through the existing polite live region.
+- The **effect** on each row is a word, never only an icon or a colour. "Destructive" is always spelled out.
+- "**Show all N**" on a long enum is a disclosure with `aria-expanded` and says how many values it reveals.
+- At **375 px**: each collapsed row stacks name, then effect, then counts, with no sideways scroll. Nested fields use the
+  path prefix rather than deeper indentation, so depth never costs width. The header's read-only line wraps; it is never
+  cut off.
+
+## Part 7 – What the research changes
+
+Research can confirm a decision as easily as change it. Both results are recorded here, and each changed entry is
+updated in place above, so no contradiction is left for a reader to find.
+
+### 19. Decisions and questions, re-checked
+
+| Entry | What the research found | Result |
+| --- | --- | --- |
+| R-01 | Renderers do not show change between versions. Change review lives on committed descriptions and in separate diff tools (17.4). | **Confirmed.** |
+| R-02 | Nothing new. | Unchanged. |
+| R-03 | Nothing new. | Unchanged. |
+| R-04 | Nothing new. | Unchanged. |
+| R-05 | Nothing new. | Unchanged. |
+| R-06 | SEP-2127 excludes tools from static cards and tells clients to trust runtime discovery (17.3). | **Confirmed**, with a stronger reason. |
+| R-07 | Nothing new. | Unchanged. |
+| R-08 | The protocol documents the defaults a client assumes, and says two hints mean nothing on a read-only tool (S7). | **Changed:** the page and the generated reference state the assumed default, and suppress meaningless hints (RF-02, 18.3). |
+| R-09 | Leaving out a run control is normal (17.5). None of the renderers explains its absence. | **Confirmed and extended:** the one-line reason, the "Do this in the cockpit" pointer, and no disabled control (18.6, R-16). |
+| R-10 | Nothing new. | Unchanged. |
+| R-11 | Nothing new. | Unchanged. |
+| 8.2, OpenAPI rejected | There is no MCP-to-document convention (17.3). OpenAPI renderers rely on HTTP methods MCP does not have (17.4). | **Confirmed.** |
+| 11, route shape | The refusals design needs a boundary per refused action, refused arguments and the not-exposed list as data. | **Changed:** `boundary`, `refusedArguments` and `notExposed` added. |
+| 12.2, page order | The summary comes first (17.6, 18.2). The "not exposed" list joins the refusals section after the tools (18.5). | **Changed.** |
+| 12.3, disclosure mechanism | A native `<details>` opens on find-in-page in current Chrome, Firefox and Safari (S20). | **Changed:** native `<details>` (R-13). |
+| 12.4, effect words | The Inspector's four hint words are what people already know (17.2). | **Changed:** the Inspector's words (R-12). |
+| Open question 1 | Nothing new. | Unchanged. |
+| Open question 2 | The OpenAPI world separates reference rendering from breaking-change detection (oasdiff, 17.4). | Recommendation unchanged; a note is added. |
+| Open question 3 | Nothing new. | Unchanged. |
+| Open question 4 | The Inspector is a separate app, so familiarity is about words and shape, not placement (17.2). | Unchanged. |
+| Open question 5 | Nothing new. | Unchanged. |
+
+**Where our approach already matches the norm:** a committed, generated artifact checked in CI; a read-only reference
+with no console; collapsed-by-default detail; deep links to one item. Those parts of the spec were right before the
+research, and are now right with evidence.
+
 ## Open questions for the owner
 
 These are decisions a person should make, not an agent. Each has a recommendation and what each choice costs.
@@ -572,6 +1052,11 @@ Today that file protects the cockpit's HTTP API, CLI, state files and more, but 
   is not broken silently tomorrow, and the committed JSON makes breaks visible in the diff.
 - *No, keep it free to change until the first external users.* **Cost:** none now; the risk moves to users of saved
   leader prompts and client configurations.
+
+*Note from the prior-art research (added, #274):* in the OpenAPI world, finding breaking changes is done by a separate
+tool that compares two committed descriptions, not by the reference page (oasdiff, 17.4). If the answer is yes, the
+same split fits here: `mcp-api.json` is the committed description, and a follow-up could classify its diff. The
+recommendation does not change.
 
 **3. A tool action that the cockpit does not have (like #262's "mark ready"): amend the closed inventory, or allow a
 justification row?**
