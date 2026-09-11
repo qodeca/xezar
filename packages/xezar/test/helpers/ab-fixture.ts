@@ -120,6 +120,12 @@ export interface AbWorldOptions {
   hostile?: boolean;
   /** Plant D-04's connection file, with a credential, in A's data directory. Default false. */
   connection?: boolean;
+  /**
+   * Turn GitHub automations on (`XEZ_AUTOMATIONS=1`) for the life of the world, so automation
+   * routes answer about the automation instead of "disabled". No scheduler starts: `createApp`
+   * serves the routes, and the scheduler is `startServer`'s. Default false (the shipped default).
+   */
+  automations?: boolean;
 }
 
 export interface SideIds {
@@ -480,7 +486,10 @@ export async function createAbWorld(options: AbWorldOptions = {}): Promise<AbWor
     dryRun: process.env.XEZ_DRY_RUN,
     followups: process.env.XEZ_FOLLOWUPS,
     remote: process.env.XEZ_REMOTE,
+    automations: process.env.XEZ_AUTOMATIONS,
   };
+  if (options.automations) process.env.XEZ_AUTOMATIONS = '1';
+  else delete process.env.XEZ_AUTOMATIONS;
   // The socket lives under XEZ_HOME and a Unix socket path has a hard ~104-byte limit, which a
   // task's TMPDIR can exceed — so the home is short, under /tmp, whenever sockets are on.
   const home = mkdtempSync(join(withSockets ? realpathSync('/tmp') : realpathSync(tmpdir()), 'xez-ab-home-'));
@@ -819,6 +828,7 @@ export async function createAbWorld(options: AbWorldOptions = {}): Promise<AbWor
       ['XEZ_DRY_RUN', saved.dryRun],
       ['XEZ_FOLLOWUPS', saved.followups],
       ['XEZ_REMOTE', saved.remote],
+      ['XEZ_AUTOMATIONS', saved.automations],
     ] as const) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;

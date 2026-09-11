@@ -36,7 +36,6 @@ import {
 } from './resource-ownership.ts';
 import { McpServiceAdapter } from './service-adapter.ts';
 import { McpScopeError, bindMcpSession } from './session-binding.ts';
-import { toolListing } from './tool.ts';
 
 /**
  * #115 — the ISOLATION half of the whole-feature acceptance suite (requirements § 9): A-02, A-03,
@@ -129,6 +128,8 @@ describe.skipIf(process.platform === 'win32')('#115 isolation acceptance — A/B
         ['execution_control', { action: 'cancel_auto_resume', runId: w.a.ids.done, [key]: value }],
         ['handoff_git', { action: 'commit', taskId: w.a.ids.done, message: 'x', [key]: value }],
         ['task_create', { action: 'start_from_inbox', operationId: OPERATION, todoId: w.a.ids.todo, [key]: value }],
+        ['read_results_evidence', { read: 'summary', runId: w.a.ids.done, [key]: value }],
+        ['project_config', { action: 'list_workflows', [key]: value }],
       ];
       const aIds = new Set([...w.a.store.listRuns().map((r) => r.id), w.a.ids.message]);
       const seen = await w.observe(async () => {
@@ -142,11 +143,12 @@ describe.skipIf(process.platform === 'win32')('#115 isolation acceptance — A/B
         return answers;
       });
       judge(w, seen, ['responses', 'errors'], spellings);
-      expect(seen.response).toHaveLength(keys.length * spellings.length * 6);
+      expect(seen.response).toHaveLength(keys.length * spellings.length * calls('k', 'v').length);
       for (const { tool, key, result } of seen.response) {
         if (result.isError) {
           // Refused as an argument error, naming the key — the value is never read as a selector.
-          expect(text(result), `${tool} ${key}`).toMatch(/Invalid arguments|does not (apply|take)|Unrecognized key/);
+          // (`project_config` answers its own documented refusal, naming the boundary.)
+          expect(text(result), `${tool} ${key}`).toMatch(/Invalid arguments|does not (apply|take)|Unrecognized key|^Refused \(project binding\)/);
           continue;
         }
         // Accepted: the extra key was dropped and the call answered about A, and only A.
@@ -397,7 +399,8 @@ describe.skipIf(process.platform === 'win32')('#115 isolation acceptance — A/B
   });
 
   describe('A-03 — relationships that reach into B (hostile A records)', () => {
-    const world = withWorld({ hostile: true });
+    // Automations on, so an automation route answers about the automation, not "disabled".
+    const world = withWorld({ hostile: true, automations: true });
 
     it('a B message inside an A task, a foreign run in an A group, and a group reaching into B are refused whole', async () => {
       const w = world();
@@ -447,19 +450,45 @@ describe.skipIf(process.platform === 'win32')('#115 isolation acceptance — A/B
       expect(seen.events.a).toEqual([]);
     });
 
-    it('a B automation result is refused by the ownership check, and no tool takes an automation id yet', async () => {
+    it('a B automation, and a B automation result, are refused through project_config and by the ownership check', async () => {
       const w = world();
       const audit: OwnershipAuditEntry[] = [];
-      const listed = JSON.stringify(w.tools.map(toolListing));
-      const seen = await w.observe(() => {
+      const nowhere = { automation: nowhereId(), receipt: nowhereId(), run: nowhereId() };
+      const actions = (automationId: string, receiptId: string, runId: string): Array<Record<string, unknown>> => [
+        { action: 'get_automation', automationId },
+        { action: 'update_automation', automationId, automation: { name: 'taken over' } },
+        { action: 'enable_automation', automationId },
+        { action: 'pause_automation', automationId },
+        { action: 'delete_automation', automationId },
+        { action: 'get_automation_log', automationId },
+        { action: 'retry_automation_receipt', receiptId },
+        { action: 'remove_worktree', runId },
+      ];
+      const seen = await w.observe(async () => {
+        const out: Array<{ b: McpToolResult; nowhere: McpToolResult }> = [];
+        const bCalls = actions(w.b.ids.automation, w.b.ids.receipt, w.b.ids.done);
+        const nCalls = actions(nowhere.automation, nowhere.receipt, nowhere.run);
+        for (const [i, args] of bCalls.entries()) {
+          out.push({ b: await w.call('a', 'project_config', args), nowhere: await w.call('a', 'project_config', nCalls[i]!) });
+        }
         const scope = scopeA(w, audit);
         return {
-          receipt: [ownAutomationReceipt(scope, w.b.ids.receipt), ownAutomationReceipt(scope, nowhereId())],
-          automation: [ownAutomation(scope, w.b.ids.automation), ownAutomation(scope, nowhereId())],
+          tool: out,
+          receipt: [ownAutomationReceipt(scope, w.b.ids.receipt), ownAutomationReceipt(scope, nowhere.receipt)],
+          automation: [ownAutomation(scope, w.b.ids.automation), ownAutomation(scope, nowhere.automation)],
           control: [ownAutomationReceipt(scope, w.a.ids.receipt).ok, ownAutomation(scope, w.a.ids.automation).ok],
+          ownTool: await w.call('a', 'project_config', { action: 'get_automation', automationId: w.a.ids.automation }),
         };
       });
-      judge(w, seen, ['errors']);
+      const bIds = [w.b.ids.automation, w.b.ids.receipt, w.b.ids.done];
+      judge(w, seen, ['responses', 'errors'], bIds);
+      const unmask = (value: string, ids: string[]) => ids.reduce((acc, id) => acc.split(id).join('<ID>'), value);
+      for (const [i, { b, nowhere: n }] of seen.response.tool.entries()) {
+        expect(unmask(text(b), bIds), `project_config action ${i}`).toBe(unmask(text(n), Object.values(nowhere)));
+      }
+      // The control: A's own automation reads, so the refusals above are not a closed door.
+      expect(seen.response.ownTool.isError, text(seen.response.ownTool)).toBeFalsy();
+      expect(text(seen.response.ownTool)).toContain('ALPHA automation');
       const refused = { ok: false, code: 'not_found', message: 'not found in this project' };
       expect(seen.response.receipt).toEqual([refused, refused]);
       expect(seen.response.automation).toEqual([refused, refused]);
@@ -470,8 +499,7 @@ describe.skipIf(process.platform === 'win32')('#115 isolation acceptance — A/B
         { check: 'automation', code: 'not_found' },
         { check: 'automation', code: 'not_found' },
       ]);
-      // Scoped to the registry as it stands: no tool argument names an automation or its result.
-      expect(listed).not.toMatch(/"(automationId|receiptId|checkId|automation)"\s*:/);
+      expect(seen.events.a).toEqual([]);
     });
 
     it('the partial-success policy: a mixed A/B list proceeds for owned items only, reported by position', async () => {
@@ -723,16 +751,28 @@ describe.skipIf(process.platform === 'win32')('#115 isolation acceptance — A/B
         const linked = await ownWorktreeFile(scope, h.linked, 'notes.txt');
         const own = await ownWorktreeFile(scope, w.a.ids.done, 'notes.txt');
         const read = own.ok ? await readWorktreePath(own.value.directory, own.value.path) : own;
-        return { refused, linked, read };
+        // The same paths through the one tool that takes a path: read_results_evidence `files`.
+        const viaTool = [];
+        for (const path of paths) viaTool.push(await w.call('a', 'read_results_evidence', { read: 'files', runId: w.a.ids.done, path }));
+        const linkedTool = await w.call('a', 'read_results_evidence', { read: 'files', runId: h.linked, path: 'notes.txt' });
+        const ownTool = await w.call('a', 'read_results_evidence', { read: 'files', runId: w.a.ids.done, path: 'notes.txt' });
+        return { refused, linked, read, viaTool, linkedTool, ownTool };
       });
       judge(w, seen, ['file paths', 'errors'], [w.b.worktree, basename(w.b.root), w.b.ids.done]);
       for (const answer of seen.response.refused) expect(answer).toMatchObject({ ok: false, code: 'forbidden_path' });
       expect(seen.response.linked).toEqual({ ok: false, code: 'not_found', message: 'not found in this project' });
       expect(seen.response.read).toMatchObject({ kind: 'file', content: `${w.a.fileContent}\n` });
-      // The refusal log names the check and the code — never the path.
+      // The tool refuses every one of them, and still reads A's own file.
+      for (const [i, answer] of seen.response.viaTool.entries()) {
+        expect(answer.isError || /unavailable|not allowed|forbidden|not found/i.test(text(answer)), `path ${paths[i]}`).toBe(true);
+        expect(text(answer)).not.toContain(w.b.fileContent);
+      }
+      expect(text(seen.response.linkedTool)).not.toContain(w.b.fileContent);
+      expect(seen.response.linkedTool.isError || /unavailable|not found/i.test(text(seen.response.linkedTool))).toBe(true);
+      expect(seen.response.ownTool.isError, text(seen.response.ownTool)).toBeFalsy();
+      expect(text(seen.response.ownTool)).toContain(w.a.fileContent);
+      // The direct checks' refusal log names the check and the code — never the path.
       expect(audit).toEqual([...paths.map(() => ({ check: 'file', code: 'forbidden_path' })), { check: 'worktree', code: 'not_found' }]);
-      // Scoped to the registry as it stands: no MCP tool takes a file path argument at all.
-      expect(JSON.stringify(w.tools.map(toolListing))).not.toMatch(/"(path|file|filePath|dir|directory)"\s*:\s*\{/);
     });
 
     // KNOWN GAP #240, found by this suite: the single-task view refuses an A record whose worktree
