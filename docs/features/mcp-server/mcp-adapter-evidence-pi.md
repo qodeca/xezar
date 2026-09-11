@@ -28,7 +28,8 @@ version on the run date; 2.33.0 was **not tested**.
   `mcp.json` entry with `"directTools": true`. It added nothing to A's working tree.
 - **12 of the 13 behaviours PASS, 1 FAILS.** The failure is **prompt persistence**: after a session resume
   without `--append-system-prompt`, the role text was gone. With the flag given again it was back. This is
-  the same result as Claude Code, and the same rule follows: the adapter supplies the role on every start.
+  the same result as Claude Code, and the same rule follows: the adapter supplies the role on every start. It is a
+  known shape, not a pi defect, and a requirement for `adapters/pi.ts` (WP2, finding 1 below).
 - **Exclusive ownership holds with pi on either side.** It is on `main` since #302 (PR #305, `a0cf85e`).
   pi as the second client was refused. pi as the owner made a second client get `-32080`. After a service
   restart, pi's first call was fenced with `-32081` and not applied, and the next call worked with no human
@@ -198,8 +199,12 @@ What `HOME` still does: the adapter also reads `~/.config/mcp/mcp.json`, `~/.age
 
 For the reaction adapter (WP2):
 
-1. **Supply the role on every start.** `--append-system-prompt` is not kept in the session (prompt persistence FAIL).
-   Server `instructions` never reach the model.
+1. **Requirement: supply the role on every start, including every resume.** `--append-system-prompt` is not kept
+   in the session (prompt persistence FAIL), and server `instructions` never reach the model. This is a known shape,
+   not a pi defect: in the spike (T13) Claude Code and OpenCode fail the same row, for the same reason, and their
+   adapters re-supply the role. `adapters/pi.ts` must pass the
+   role on every pi start and every `--continue`/`--session` resume, and its runtime record must show the role marker
+   in the first model request after a resume.
 2. **Deliver with `steer` or `follow_up` when pi is busy.** A plain `prompt` is refused then. When idle, `prompt`
    starts a turn at once.
 3. **Build pi's arguments without a `--tools` allowlist**, or include the xezar tools in it. #330's run B showed that
