@@ -81,6 +81,7 @@ export const TOOL_ACTION_COVERAGE: Readonly<Record<string, ActionCoverage>> = {
   'handoff_git:push': { serves: ['I-056'] },
   'handoff_git:create_pr': { serves: ['I-051', 'I-057'] },
   'handoff_git:merge_state': { serves: ['I-075'] },
+  'handoff_git:ready': { unrecorded: 'marks the draft pull request create_pr opened (I-057) ready for review, the step before the merge (I-076); the cockpit has no such control, so no inventory record names it (#262)' },
   'handoff_git:merge': { serves: ['I-076'] },
   'handoff_git:branch': { serves: ['I-063', 'I-064'] },
 

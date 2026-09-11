@@ -7,6 +7,7 @@ import {
   githubMergeMethodSchema,
   githubMergeResponseSchema,
   githubPrMergeStateResponseSchema,
+  githubPrReadyResponseSchema,
   mcpExpectedVersionSchema,
   repoBranchResponseSchema,
   repoResponseSchema,
@@ -27,8 +28,8 @@ import { defineTool, errorResult, textResult, type McpToolContext, type McpToolR
 
 /**
  * `handoff_git` (#96) — how the leader hands work onward: commit, push, open the draft PR,
- * inspect merge readiness, invoke the EXISTING merge, and switch or create the repository's own
- * branches.
+ * inspect merge readiness, mark a draft ready for review (#262), invoke the EXISTING merge, and
+ * switch or create the repository's own branches.
  *
  * F-11 and D-07: these are the cockpit's own project operations, invoked autonomously — no
  * confirmation parameter, no second click — and nothing here is a new release engine. Every
@@ -109,7 +110,7 @@ function serviceError(answer: Answer): string {
 
 // ---- the input -----------------------------------------------------------------------------
 
-export const HANDOFF_ACTIONS = ['repo', 'commit', 'push', 'create_pr', 'merge_state', 'merge', 'branch'] as const;
+export const HANDOFF_ACTIONS = ['repo', 'commit', 'push', 'create_pr', 'merge_state', 'ready', 'merge', 'branch'] as const;
 
 /**
  * ONE strict object: the registry takes one entry per tool, and a strict schema is what turns an
@@ -122,6 +123,7 @@ const inputSchema = z
       'repo: read the main checkout (branch, branches, base, whether a remote exists, uncommitted count). ' +
         'commit / push / create_pr: act on one task (taskId). ' +
         'merge_state: read one pull request (number) fresh, with its quality blockers. ' +
+        'ready: mark a draft pull request ready for review (number, expectedHeadSha). ' +
         'merge: invoke the existing merge (number, expectedHeadSha). ' +
         'branch: switch to, or create and switch to, a branch of the main checkout (name, from).',
     ),
@@ -132,12 +134,12 @@ const inputSchema = z
         'commit / push / create_pr: the `version` task_read returned for the task. If the task changed since, nothing is done.',
       ),
     message: z.string().trim().min(1).max(5_000).optional().describe('commit: the commit message.'),
-    number: z.number().int().positive().optional().describe('merge_state / merge: the pull request number.'),
+    number: z.number().int().positive().optional().describe('merge_state / ready / merge: the pull request number.'),
     expectedHeadSha: z
       .string()
       .regex(/^[0-9a-f]{40}$/)
       .optional()
-      .describe('merge: the headSha of the state you reviewed. A moved head is refused, never merged.'),
+      .describe('ready / merge: the headSha of the state you reviewed. A moved head is refused, never readied or merged.'),
     method: githubMergeMethodSchema
       .optional()
       .describe("merge: one of the state's methods; defaults to its defaultMethod."),
@@ -157,6 +159,7 @@ const REQUIRED: Record<Input['action'], ReadonlyArray<keyof Input>> = {
   push: ['taskId', 'expectedVersion'],
   create_pr: ['taskId', 'expectedVersion'],
   merge_state: ['number'],
+  ready: ['number', 'expectedHeadSha'],
   merge: ['number', 'expectedHeadSha'],
   branch: ['name'],
 };
@@ -167,6 +170,7 @@ const ALLOWED: Record<Input['action'], ReadonlyArray<keyof Input>> = {
   push: ['action', 'taskId', 'expectedVersion'],
   create_pr: ['action', 'taskId', 'expectedVersion'],
   merge_state: ['action', 'number'],
+  ready: ['action', 'number', 'expectedHeadSha'],
   merge: ['action', 'number', 'expectedHeadSha', 'method'],
   branch: ['action', 'name', 'from'],
 };
@@ -218,6 +222,9 @@ export const QUALITY_BLOCKER_NEXT_ACTION =
 const STALE_HEAD_NEXT_ACTION =
   'The pull request head moved after the state you reviewed. Read merge_state again and review the new commits before merging.';
 
+const STALE_HEAD_READY_NEXT_ACTION =
+  'The pull request head moved after the state you reviewed. Read merge_state again and review the new commits before marking it ready.';
+
 // ---- F-22: what counts as a quality blocker ------------------------------------------------
 
 /**
@@ -247,6 +254,27 @@ export function qualityBlockers(state: GithubPrMergeState): Array<{ code: string
   for (const blocker of state.blockers) {
     if (QUALITY_BLOCKER_CODES.has(blocker.code) && !out.some((b) => b.message === blocker.message)) out.push(blocker);
   }
+  return out;
+}
+
+/**
+ * Every reason a draft should NOT be marked ready yet (#262): a required check that is already
+ * failing, and a review that asked for changes. Readying such a pull request asks reviewers to look
+ * at work whose own gate says it is not done. A pending check or a review nobody has given yet is
+ * not on this list: those are exactly what "ready for review" invites, and a draft never gets them
+ * otherwise. Like `qualityBlockers`, a check the forge could not classify counts as required.
+ */
+export function readyBlockers(state: GithubPrMergeState): Array<{ code: string; message: string }> {
+  const out: Array<{ code: string; message: string }> = [];
+  for (const check of state.checks) {
+    if (check.required !== false && check.state === 'failing') {
+      out.push({
+        code: 'check-failing',
+        message: `Required check "${check.name}" is failing${check.required === null ? ' (requiredness unknown, so it counts as required)' : ''}.`,
+      });
+    }
+  }
+  if (state.reviewDecision === 'changes-requested') out.push({ code: 'review', message: 'Changes were requested.' });
   return out;
 }
 
@@ -413,6 +441,53 @@ class Handoff {
     return answer({ action: 'merge_state', status: 'done', mergeState: read.state, qualityBlockers: blockers });
   }
 
+  /**
+   * Mark a draft ready through the forge's own path (#262). The quality verdict is judged on the
+   * fresh state first and nothing any argument says changes it; a pull request that is not an open
+   * draft is left to the SERVICE, whose own words ("already ready", "closed") reach the leader.
+   */
+  async ready(number: number, expectedHeadSha: string): Promise<McpToolResult> {
+    const read = await this.mergeState(number, 'ready');
+    if (!read.ok) return read.result;
+    const state = read.state;
+    if (state.state === 'open' && state.isDraft) {
+      const blockers = readyBlockers(state);
+      if (blockers.length > 0) {
+        return answer({
+          action: 'ready',
+          status: 'failed',
+          refusedBy: 'quality',
+          blocker: true,
+          number,
+          blockers,
+          nextAction: QUALITY_BLOCKER_NEXT_ACTION,
+        });
+      }
+    }
+    const res = await settle(
+      this.api.github.prs[':number'].ready.$post({
+        param: { ...this.scope, number: String(number) },
+        // The head the LEADER reviewed; the service re-reads the forge and refuses a moved one.
+        json: { expectedHeadSha },
+      }),
+    );
+    if (res.status === 200) {
+      const done = githubPrReadyResponseSchema.parse(res.body);
+      return answer({ action: 'ready', status: 'done', number: done.number, url: done.url, ready: true });
+    }
+    const body = (res.body ?? {}) as { code?: unknown };
+    if (body.code === 'stale-head') {
+      return answer({
+        action: 'ready',
+        status: 'conflict',
+        code: 'stale-head',
+        error: serviceError(res),
+        nextAction: STALE_HEAD_READY_NEXT_ACTION,
+      });
+    }
+    return serviceRefusal('ready', res, typeof body.code === 'string' ? { code: body.code } : {});
+  }
+
   async merge(args: { number: number; expectedHeadSha: string; method?: Input['method'] }) {
     const read = await this.mergeState(args.number, 'merge');
     if (!read.ok) return read.result;
@@ -522,16 +597,18 @@ class Handoff {
 
 export const handoffGitTool = defineTool({
   name: 'handoff_git',
-  title: 'Hand work onward: commit, push, draft PR, merge, branches',
+  title: 'Hand work onward: commit, push, draft PR, ready, merge, branches',
   description:
     "Hand a task's work onward through the cockpit's own operations: commit a task's worktree, push its branch, " +
-    'open its draft pull request, read a pull request\'s merge readiness, invoke the existing merge, and switch or ' +
+    'open its draft pull request, mark a draft pull request ready for review, read a pull request\'s merge readiness, ' +
+    'invoke the existing merge, and switch or ' +
     'create branches of the main checkout. Every action runs at once, with the same checks the cockpit applies; ' +
     "a refusal carries the service's own reason unchanged. commit, push and create_pr need the task's expectedVersion " +
     '(from task_read) and do nothing, answering status "conflict" with error "stale_version", if the task changed since. ' +
-    'A merge needs the headSha you reviewed and is refused ' +
-    'if the head moved. Failing, pending or unreadable required checks and missing reviews are blockers that no ' +
-    'argument bypasses: repair the cause or report the blocker.',
+    'ready and merge need the headSha you reviewed and are refused ' +
+    'if the head moved. Failing, pending or unreadable required checks and missing reviews are merge blockers, and a ' +
+    'failing required check or a changes-requested review blocks ready; no argument bypasses a blocker: repair the ' +
+    'cause or report the blocker.',
   inputSchema,
   annotations: { destructiveHint: true, openWorldHint: true },
   async call(args, ctx) {
@@ -555,6 +632,8 @@ export const handoffGitTool = defineTool({
         return handoff.createPr(args.taskId!, args.expectedVersion!);
       case 'merge_state':
         return handoff.readMergeState(args.number!);
+      case 'ready':
+        return handoff.ready(args.number!, args.expectedHeadSha!);
       case 'merge':
         return handoff.merge({
           number: args.number!,
