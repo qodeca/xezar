@@ -12,6 +12,14 @@ Installation validation is reported in installation.md. Real-task entries follow
 
 ## Real-task entries
 
+### 2026-09-11 — #333 (an MCP coverage floor forced together with test quality), `testing-and-verification` step 1, `xezar-testing`, Claude Code — real-task verified
+
+- Observed: **the red-first harness caught two of this task's own new tests passing either way, before any reviewer saw them.** Every new test ran against a named source break in an isolated `git archive` copy, never the task worktree (MCP source is frozen by #311). Run 1: 20 of 22 breaks went red; a list stale-part test and a surrogate-pair paging test stayed green. The first was fixed (a same-length rename, so only the digest can see the change); the second pinned a guard no input can reach and was dropped and recorded as dead code. Final: 28 named breaks, all red, every control green. A later case written for a mutation survivor (`task-reads.ts:564`) also passed with its break applied and was dropped the same way.
+- Observed: **a sampled mutation run found real gaps in files at 100 % coverage.** 158 regex-level mutants over 33 modules, five per file: 121 killed (76.6 %), 37 survived. `connection-file.ts` read 100 % lines and branches while deleting its `chmod 0600` broke nothing; `resource-ownership.ts` (98 / 92.5) let an unreadable worktree path pass. Six survivors in files this task could touch became seven tests, each shown red; the rest are classified in `docs/testing/coverage-gaps.md` § 10.3. One mutant in `ipc.ts` hung the suite for the full 600-second cap; the last files ran with 120 s.
+- Lesson (recommended): prove each new test red against a NAMED break with a scripted list (file, find, replace, test filter), in a throwaway copy, and keep the first run's results. The script is cheap to re-run after every fix, and its first run is the evidence that the check is not decoration.
+- Lesson (recommended): a mutation run on this scope is not a per-PR check (see `docs/testing/coverage-gaps.md` § 10.3). Split it by directory across two copies when the time box matters, and stop the first by its saved PID, never by pattern.
+- Remaining limit: one macOS machine; a regex-level sample, not StrykerJS; a mutant that hangs costs the full per-run timeout.
+
 ### 2026-09-11 — #295 (last of the #307 flakes), `bug-fix` workflow — real-task verified
 
 - Observed: **CPU load alone did not reproduce the flake; modelling the real neighbour did.** The unmodified `mcp/cli.test.ts` passed 41 of 41 under three parallel full `npm test` runs. Adding a loop that did what `package-cli.test.ts` port-fallback does (boot `serve` on a busy port so it walks up one) made it fail 2 of 53. The cause was the test harness trusting a probed-then-released port. macOS hands out ephemeral ports in order, so the next port is exactly where a walking cockpit lands. `xez serve` booted correctly in every captured failure.

@@ -241,6 +241,14 @@
   (#183)
 
 ## 📝 Specs & Documentation
+- 📝 **MCP tests are held to a coverage floor AND to proof that each one can fail.** `SDLC.md` now
+  requires every MCP source file to reach 80 % lines and 80 % branches from the MCP suites alone
+  (`npm run test:coverage:mcp`, new), and every new MCP test to be shown failing against a named
+  break of its behaviour, quoted in the PR. Meeting one half and missing the other is a fail; a file
+  below the floor needs a written exemption in `docs/testing/coverage-gaps.md`, and nothing in the
+  rule waives a mandatory check. A sampled mutation run over the MCP code found tests that passed
+  either way – among them a connection file that read 100 % while its `chmod` could be deleted –
+  and this change adds the real tests those gaps needed. No product behaviour changed. (#333)
 - 📝 **A release-level Definition of Done for 0.14.0.** `docs/releases/0.14.0-definition-of-done.md`
   sits beside the MCP feature's own eight clauses and covers the rest of the release: the security,
   engine and gate fixes, open-source readiness, documentation, the kit roles, the UI design review

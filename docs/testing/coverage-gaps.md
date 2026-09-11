@@ -557,3 +557,252 @@ progress indicator. No fallback was needed.
 - The thirteen `fix` commits that do exist cluster into three themes: test-gate and worktree
   isolation (3), release and CI mechanics (3), and cockpit behaviour (3). Two of those three themes
   are about the test infrastructure itself, which is consistent with the gaps ranked above.
+
+---
+
+## 10. MCP floor (#333)
+
+`SDLC.md` § The MCP test floor holds the MCP server to two requirements at once: every source file
+under `packages/xezar/src/mcp/` at 80 % lines **and** 80 % branches from the MCP suites alone, and
+every new test shown failing against a named break. This section is where that rule keeps its
+records – the measurement, the quality finding beside it, the behaviours held by suites v8 cannot
+see, and the written exemptions. It is dated like the rest of this document: re-measure before
+quoting a number.
+
+### 10.1 The command
+
+`npm run test:coverage:mcp` – vitest's `server` project, restricted to the MCP test files
+(`packages/xezar/src/mcp/`, `packages/xezar/src/server/mcp-*`,
+`packages/xezar/src/server/stale-write-routes*`), v8 provider, coverage included over
+`packages/xezar/src/mcp/**` minus `*.testkit.ts`, and a per-file threshold of 80 % lines and 80 %
+branches. It writes to `.local/coverage/mcp/` and exits non-zero naming each file under the floor.
+About 40 seconds on the machine that measured it; it does not run the other ~200 server test files,
+which is the point – coverage a module picks up from an unrelated test was never aimed at it.
+
+What it cannot see is listed in 10.4. It is not in CI and not in `.ai/agentic.config.json`: it
+fails on `main` until the #311-owned files in 10.6 are re-measured.
+
+### 10.2 Measured – before and after this change
+
+Measured 2026-09-11. Before: revision `11a6df3`, 915 tests. After: this branch, 933 tests – eighteen new, seven of them
+added because the mutation sample (10.3) named a gap – plus five in the contract project, which
+this command does not run (10.5). Same command both times.
+
+| File | Lines before | Branches before | Lines after | Branches after |
+|---|---|---|---|---|
+| `adapters/codex.ts` | 75.5 | 73.7 | 75.5 | 73.7 **below** |
+| `api-reference.ts` | 100.0 | 77.3 | 100.0 | 77.3 **below** |
+| `service.ts` | 92.6 | 78.4 | 92.6 | 78.4 **below** |
+| `index.ts` | 86.6 | 79.8 | 86.6 | 79.8 **below** |
+| `bridge.ts` | 87.5 | 71.4 | **92.1** | **80.0** |
+| `tools/results-evidence.ts` | 98.5 | 79.5 | **98.5** | **80.6** |
+| `tools/handoff-git.ts` | 94.9 | 77.0 | **97.0** | **81.6** |
+| `adapters/claude-code.ts` | 94.4 | 82.1 | 94.4 | 82.1 |
+| `tools/project-config.ts` | 98.4 | 82.4 | 98.4 | 82.4 |
+| `adapters/opencode.ts` | 95.4 | 83.2 | 95.4 | 83.2 |
+| `operation-receipts.ts` | 94.8 | 84.5 | 94.8 | 84.5 |
+| `tools/work-organisation.ts` | 97.2 | 84.9 | 97.2 | 84.9 |
+| `tools/task-reads.ts` | 94.1 | 77.1 | **98.4** | **85.0** |
+| `tools/leader-events.ts` | 92.3 | 86.1 | 92.3 | 86.1 |
+| `tools/task-create.ts` | 97.3 | 87.0 | 97.3 | 87.0 |
+| `tools/local-handoff.ts` | 100.0 | 87.3 | 100.0 | 87.3 |
+| `event-journal.ts` | 98.9 | 87.6 | 98.9 | 87.6 |
+| `event-controller.ts` | 93.7 | 87.7 | 93.7 | 87.7 |
+| `tools/execution-control.ts` | 98.9 | 88.7 | 98.9 | 88.7 |
+| `reconnect.ts` | 96.5 | 88.8 | 96.5 | 88.8 |
+| `stale-write.ts` | 100.0 | 89.8 | 100.0 | 89.8 |
+| `service-adapter.ts` | 97.8 | 92.3 | 97.8 | 92.3 |
+| `resource-ownership.ts` | 98.0 | 92.5 | 98.0 | 92.5 |
+| `event-catalog.ts` | 97.2 | 92.6 | 97.2 | 92.6 |
+| `tools/discovery.ts` | 97.1 | 89.7 | **97.1** | **93.1** |
+| `audit-trail.ts` | 99.0 | 92.7 | **99.0** | **94.8** |
+| `echo-guard.ts` | 100.0 | 96.0 | 100.0 | 96.0 |
+| `session-binding.ts` | 100.0 | 97.0 | 100.0 | 97.0 |
+| `connection-file.ts` | 100.0 | 100.0 | 100.0 | 100.0 |
+| `ipc.ts` | 100.0 | 100.0 | 100.0 | 100.0 |
+| `project-catalogs.ts` | 100.0 | 100.0 | 100.0 | 100.0 |
+| `protocol.ts` | 100.0 | 100.0 | 100.0 | 100.0 |
+| `tool.ts` | 100.0 | 100.0 | 100.0 | 100.0 |
+| `tools/index.ts` | 100.0 | 100.0 | 100.0 | 100.0 |
+
+Bold marks a number that moved. Two files where a real gap was closed did not move at all –
+`connection-file.ts` was already at 100 %, and `resource-ownership.ts` stayed at 92.5 % – which is
+the point of 10.3: the percentage could not see either gap, before or after.
+
+Aggregate after: 95.9 % lines, 85.1 % branches (before: 95.3 / 83.7). Every file that moved, moved because a test in
+10.3's list reaches a behaviour it did not reach before – none moved because a test called
+something and asserted nothing.
+
+### 10.3 The quality finding: a sampled mutation run
+
+**Method.** A regex-level stand-in for StrykerJS's default operators (equality, logical and
+relational operators, `!` removal, boolean literals, `if` negation, deletion of a one-line call
+statement; string literals excluded) found 3 136 candidate mutants across the 34 source files.
+Up to five per file were drawn with a fixed seed, applied one at a time in a throwaway
+`git archive` copy – never the task worktree – and run against the file's direct test importers;
+a mutant those did not kill was run against the whole MCP scope before it was called a survivor.
+Each run was capped (600 s, then 120 s for the last files); a mutant that hung the suite counts as
+killed, as Stryker counts a timeout. The script and every row are in the task's private evidence;
+the conclusions are here.
+
+**Result.** 158 mutants sampled over 33 modules (`tools/index.ts` has none): **121 killed
+(76.6 %), 37 survived**; 4 of the kills were runs that hung until their cap. Numbers are per module
+on the tree BEFORE this change, so each row reads beside the coverage the module had then.
+
+| Module | Lines before | Branches before | Mutants killed / sampled | Survivors |
+|---|---|---|---|---|
+| `tools/task-reads.ts` | 94.1 | 77.1 | 1 / 5 | 413 LogicalOperator, 561 RelationalOperator, 169 BooleanLiteral, 564 RelationalOperator |
+| `adapters/opencode.ts` | 95.4 | 83.2 | 2 / 5 | 496 StatementDeletion, 491 StatementDeletion, 470 LogicalOperator |
+| `index.ts` | 86.6 | 79.8 | 2 / 5 | 409 LogicalOperator, 187 StatementDeletion, 194 LogicalOperator |
+| `operation-receipts.ts` | 94.8 | 84.5 | 2 / 5 | 681 EqualityOperator, 459 StatementDeletion, 502 LogicalOperator |
+| `adapters/codex.ts` | 75.5 | 73.7 | 3 / 5 | 168 StatementDeletion, 473 StatementDeletion |
+| `audit-trail.ts` | 99.0 | 92.7 | 3 / 5 | 242 LogicalOperator, 251 RelationalOperator |
+| `tools/discovery.ts` | 97.1 | 89.7 | 3 / 5 | 247 BooleanLiteral, 180 EqualityOperator |
+| `tools/leader-events.ts` | 92.3 | 86.1 | 3 / 5 | 95 EqualityOperator, 153 EqualityOperator |
+| `tools/project-config.ts` | 98.4 | 82.4 | 3 / 5 | 1004 BooleanLiteral, 884 EqualityOperator |
+| `tools/work-organisation.ts` | 97.2 | 84.9 | 3 / 5 | 375 RelationalOperator, 303 BooleanLiteral |
+| `adapters/claude-code.ts` | 94.4 | 82.1 | 4 / 5 | 567 LogicalOperator |
+| `bridge.ts` | 87.5 | 71.4 | 4 / 5 | 421 BooleanLiteral |
+| `connection-file.ts` | 100.0 | 100.0 | 4 / 5 | 62 StatementDeletion |
+| `event-controller.ts` | 93.7 | 87.7 | 4 / 5 | 452 RelationalOperator |
+| `tools/handoff-git.ts` | 94.9 | 77.0 | 4 / 5 | 462 LogicalOperator |
+| `tools/results-evidence.ts` | 98.5 | 79.5 | 4 / 5 | 1155 EqualityOperator |
+| `tools/task-create.ts` | 97.3 | 87.0 | 4 / 5 | 384 BooleanLiteral |
+| `resource-ownership.ts` | 98.0 | 92.5 | 4 / 5 | 209 EqualityOperator |
+| `service-adapter.ts` | 97.8 | 92.3 | 4 / 5 | 67 StatementDeletion |
+| `service.ts` | 92.6 | 78.4 | 4 / 5 | 99 StatementDeletion |
+| `session-binding.ts` | 100.0 | 97.0 | 4 / 5 | 216 LogicalOperator |
+| `reconnect.ts` | 96.5 | 88.8 | 4 / 5 | 247 LogicalOperator |
+| `api-reference.ts` | 100.0 | 77.3 | 5 / 5 | – |
+| `echo-guard.ts` | 100.0 | 96.0 | 5 / 5 | – |
+| `event-catalog.ts` | 97.2 | 92.6 | 5 / 5 | – |
+| `event-journal.ts` | 98.9 | 87.6 | 5 / 5 | – |
+| `tools/execution-control.ts` | 98.9 | 88.7 | 5 / 5 | – |
+| `tools/local-handoff.ts` | 100.0 | 87.3 | 5 / 5 | – |
+| `stale-write.ts` | 100.0 | 89.8 | 5 / 5 | – |
+| `tool.ts` | 100.0 | 100.0 | 1 / 1 | – |
+| `project-catalogs.ts` | 100.0 | 100.0 | 4 / 4 | – |
+| `protocol.ts` | 100.0 | 100.0 | 3 / 3 | – |
+| `ipc.ts` | 100.0 | 100.0 | 5 / 5 | – |
+
+`tools/task-reads.ts` is the clearest case of the two halves disagreeing: 94.1 % lines, and four of
+its five sampled mutants survived. A 1-in-5 row is a sample of five, not a verdict – but a module
+whose lines all run while most of its sampled decisions can flip unnoticed is exactly what the floor
+alone would have passed.
+
+**Good numbers, weak tests – the modules to name.** `connection-file.ts` measured **100 % lines and
+100 % branches**, and deleting the `chmodSync` that keeps the descriptor at 0600 over a stale
+world-readable temp file broke no test. `audit-trail.ts` (99.0 / 92.7) let a secret-bearing action
+through with its `||` turned into `&&`, and let a 12-character caller secret go unredacted with `>=`
+turned into `>`. `tools/discovery.ts` (97.1 / 89.7) let gh's and git's reported availability flip.
+`resource-ownership.ts` (98.0 / 92.5) let an unreadable worktree path pass the ownership check
+that #316 exists to enforce. Each now has a test that is red against exactly that break.
+
+**Survivors, classified.** Closed here with a test shown red: `audit-trail.ts:242,251`,
+`connection-file.ts:62`, `tools/discovery.ts:180`, `tools/handoff-git.ts:462`,
+`resource-ownership.ts:209`. Equivalent or not reachable at runtime (no test can see them, by
+design): `bridge.ts:421` (the timer is already cleared), `service-adapter.ts:67` (nothing sends an
+`Origin` in process today), `tools/task-create.ts:384` (a type argument – a harness artefact),
+`event-controller.ts:452` (one extra back-off sleep after the last attempt). `tools/task-reads.ts:564` is near-equivalent: it
+decides only for a row whose JSON fits one part but not one page, a window a few bytes wide – a test
+written for it passed with the break applied and was dropped. Open, in files #311 does not own – the
+follow-up list: `tools/work-organisation.ts:303` (a success status with no body read as success),
+`session-binding.ts:216` (`.`/`..` run ids), `tools/discovery.ts:247` (a throwing forge probe read
+as available), `operation-receipts.ts:459,502,681` (the journal-unwritable warning, intent recovery,
+a torn last line), `reconnect.ts:247`, `tools/results-evidence.ts:1155`,
+`tools/task-reads.ts:169,413,561`, `tools/work-organisation.ts:375`,
+`tools/project-config.ts:884,1004`, `tools/leader-events.ts:95,153`. The node:test suites
+(`mcp-durability`, `mcp-isolation`) were run against the `operation-receipts.ts` and
+`reconnect.ts` survivors too – v8 cannot see them, and neither can a vitest-only mutation run – and
+they did not kill them either: those four are open, not covered elsewhere. Open, in #311's files:
+`adapters/claude-code.ts:567`, `adapters/codex.ts:168,473`, `adapters/opencode.ts:470,491,496`,
+`index.ts:187,194,409`, `service.ts:99` – the last is the socket directory's `chmod 0700`, the
+same shape as the connection-file gap.
+
+**What a full run would cost – and so where it belongs.** Measured here: a mutant killed by its
+direct tests took a median 6.9 s end to end (vitest boot included), a survivor needed a full MCP
+scope run of a median 38 s to be sure, and one hung mutant held a run for its whole cap. The
+sample's 158 mutants took 68 minutes of test runs in total, spread over three parallel copies. StrykerJS would
+generate more mutants than this sample's operators (string, object and array literals, optional
+chaining, whole blocks): roughly 5 000–8 000 on this scope is an *inferred* range, not a count.
+Even with Stryker's per-test coverage analysis and hot workers, that is hours of CPU on this
+machine – a periodic check, not a per-PR gate. Where it belongs: a release-gate run over
+`packages/xezar/src/mcp/**`, with every survivor triaged in writing like the list above, and
+Stryker's incremental mode on MCP-touching PRs once it is adopted (it re-tests only mutants in
+changed code, so a typical one-file MCP PR would be minutes). Adopting it adds a dev dependency and
+is the owner's decision (#333); until then, the per-PR form is the named break SDLC.md requires,
+and a reviewer re-applies it.
+
+### 10.4 Held by a suite v8 cannot see
+
+These behaviours are tested, in suites `npm run test:coverage:mcp` does not measure. They are
+recorded here so "covered elsewhere" is a fact with a file and a line, and so nobody writes a
+duplicate vitest test to move a percentage.
+
+| Behaviour | Suite | Evidence | Runs in CI? |
+|---|---|---|---|
+| A-13 stale leader write refused after a human change; concurrent calls, one applies | node:test | `test/unit/mcp-durability.test.ts:100,155` | yes (`npm run test:unit`) |
+| A-14 a lost response replays once, a collision is refused, a SIGKILL between effect and receipt is unverified | node:test | `test/unit/mcp-durability.test.ts:204,246,271,342` | yes |
+| A-16 absent or corrupt MCP state starts fresh, warns once, keeps the bad bytes; no two owners after a restart | node:test | `test/unit/mcp-durability.test.ts:416,466,558` | yes |
+| A-21 reconnect: valid cursor, cursor past retention, duplicates and out-of-order rows | node:test | `test/unit/mcp-durability.test.ts:587-667` | yes |
+| A-02, A-03, A-04, A-12 project isolation, partial success, foreign cursors, connection file kept out of Git | node:test | `test/unit/mcp-isolation.test.ts:73-299` (skipped on Windows) | yes |
+| A-16 an UPGRADED packaged cockpit with MCP state corrupt, deleted, hard-restarted | packaged CLI | `test/e2e/mcp-upgrade.test.ts:214` | yes (`npm run test:package`) |
+| `xez mcp` as a real subprocess: handshake, absent bridge, service down, a neighbour on the port | server unit, but the bridge runs in a CHILD process v8 does not follow | `src/mcp/cli.test.ts:120,153,165,203` | yes |
+| A-20 the open cockpit follows MCP changes; A-01/A-17/A-23 the MCP connection screen | browser | `packages/web/e2e/mcp-live-sync.e2e.ts:194,232`, `mcp-collaboration.e2e.ts` | yes (`ui-e2e`) |
+| A-01, A-17, A-18, A-19, A-20, A-23 with REAL Claude Code, Codex and OpenCode clients | node:test integration harness | `test/integration/mcp-real-clients.test.ts` | **no** – run by hand; results in `docs/features/mcp-server/mcp-client-acceptance-record.md` |
+
+The last row is the one to read twice: the real-client harness is outside every gate by design (it
+needs the real CLIs), so what it proves is only as current as its last recorded run.
+
+### 10.5 Held by behaviour, not by a percentage
+
+v8 marks every line of a zod declaration covered the moment the module is imported, so the
+contract's `mcp-*.ts` files carry no floor. What they carry instead: each piece of logic that can
+refuse has a test that makes it refuse.
+
+| Logic | Refusing test |
+|---|---|
+| `mcpCatalogEventSchema` – not a catalog kind, wrong category, not a catalog subject, E-04 not by a human | `packages/contract/src/mcp-event-catalog.test.ts` (#333). Until then the schema was used only as a positive oracle in `event-catalog.test.ts`, never seen to say no. |
+| `leaderNamesItsOperation` (`mcp-journal.ts`) – a `leader` row without its operation id | `event-journal.test.ts:169`, `echo-guard.test.ts:122`, `event-catalog.test.ts:513` |
+| The other `mcp-*.ts` files | Declarations only – no refinement, transform or function. Their shapes are pinned where they are parsed (the tool suites) and by `contract-parity*.test.ts` at compile time. |
+
+The MCP routes in `server.ts`, file-level coverage being meaningless for two routes in a 5 600-line
+file:
+
+| Route | Test |
+|---|---|
+| `GET /api/v1/mcp/reference` (and its scoped alias) | `server/mcp-reference-route.test.ts`, `server/mcp-reference-route.unavailable.test.ts` |
+| The stale-write check (`expectedVersion`) on every run-mutating route | `server/stale-write-routes.test.ts` – refused with nothing applied, a current version goes through, an absent one is the cockpit's unchanged path |
+
+### 10.6 Exemptions and sequencing
+
+**Exemption – `packages/xezar/src/mcp/api-reference.ts`, 77.3 % branches.** The five uncovered
+branches (`api-reference.ts:75,99,106,133,135`) handle registry shapes no current tool has: a
+guarded tool with no `action`/`view`/`read` discriminator, a listing with no `properties`, and a
+refused argument whose description is not a string. `buildMcpApiReference` reads the real registry
+and takes no tool list, so the only way to reach them is to fake the registry – a test of a tool
+that does not exist. What holds the behaviour today: `mcp-reference-route.test.ts:110-160` pins
+every current refusal and every guard against the live registry. **Ends when** a tool without a
+discriminator declares `expectedVersion` or `operationId`, or `REFUSED_ARGUMENTS` names an argument
+with no description: that PR reaches the branch with a real tool and adds the case.
+
+**Sequenced after #311, not exempt.** #311 (open, in QA) owns these files, so their source and the
+tests beside it were not touched here:
+
+| File | Lines | Branches | Why it waits |
+|---|---|---|---|
+| `adapters/codex.ts` | 75.5 | 73.7 | The uncovered block – `openCodexLeaderThread` and `CodexAppServerProcessLink`, lines ~380-500 – is deleted by #311. A test for code that is leaving is the behaviour this rule exists to stop. |
+| `index.ts` | 86.6 | 79.8 | #311 rewrites the service composition it covers. |
+| `service.ts` | 92.6 | 78.4 | #311 changes `answer()`, where the uncovered branches sit. |
+
+After #311 merges: re-run `npm run test:coverage:mcp` on `main`, close what remains with tests shown
+red, and only then make the command a CI step.
+
+### 10.7 Branches no real input reaches (found, not fixed – the source is frozen by #311)
+
+- `tools/results-evidence.ts:467` – the "never end a text page inside a surrogate pair" guard
+  cannot fire. A page end inside a pair costs 6 escaped bytes; completing the pair costs 4, so the
+  bisection always prefers the whole pair. A test that pinned the property passed with the guard
+  deleted, and was dropped rather than kept as coverage. Candidate for removal after #311.
+- `tools/task-reads.ts:281-285` – `escapedBytes` prices raw control characters and lone surrogates,
+  but its only input is `JSON.stringify` output, where both are already escaped to ASCII.

@@ -153,6 +153,11 @@ tested, read [docs/testing/coverage-gaps.md](docs/testing/coverage-gaps.md): it 
 the suite that actually covers them, and records where high line coverage sits on top of an
 untested behaviour.
 
+One scoped exception is a requirement rather than a measurement: `npm run test:coverage:mcp` holds
+every MCP source file to 80 % lines and 80 % branches, and a PR on the MCP scope must also show
+each new test failing against a named break. Neither half passes alone – see
+[SDLC.md § The MCP test floor](SDLC.md#the-mcp-test-floor).
+
 **Run vitest through npm, never `npx vitest`.** It is a devDependency of this repo, so `npm test`
 uses the installed, version-pinned binary; `npx` will happily reach past it and fetch a different
 version from the registry, which is a slow, networked, silently-different test run. To narrow a run,
