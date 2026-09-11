@@ -355,6 +355,69 @@ describe('#309 — push delivery in the running service (A-19 delivery, A-20 no-
     expect(await stopped.json()).toMatchObject({ available: true, leader: null, blocker: { code: 'no-leader-session' } });
   }, 60_000);
 
+  it('#331: says why nothing is delivered while a leader is attached but no MCP session owns the project', async () => {
+    const c = await cockpit();
+    const oc = await fakeOpenCode(c.root);
+    await serve(c);
+
+    // The ordinary first state: OpenCode connects its MCP server lazily, so attach comes first.
+    expect((await attach(c, oc.baseUrl)).status).toBe(200);
+    const before = await c.status();
+    expect(before).toMatchObject({ available: true, leader: { client: 'opencode', state: 'attached' }, delivery: null });
+    expect(before.available && before.blocker).toMatchObject({ code: 'no-owner-session' });
+    expect(before.available && before.blocker?.message).toMatch(/no MCP session owns this project/);
+
+    // The leader's MCP connection opens: now a controller follows the journal, and nothing is wrong.
+    const leader = agent(c.root);
+    okResult(await leader.call('leader_events', { action: 'read' }));
+    const after = await until('the controller to start', async () => {
+      const s = await c.status();
+      return s.available && s.delivery?.state === 'idle' ? s : undefined;
+    });
+    expect(after).toMatchObject({ leader: { client: 'opencode', state: 'attached' }, blocker: null });
+  });
+
+  it('#332: a new MCP session does not push again what the leader acknowledged through leader_events', async () => {
+    const c = await cockpit();
+    const oc = await fakeOpenCode(c.root);
+    await serve(c);
+
+    // Session 1 owns the project and the leader is attached: a human change is pushed.
+    const first = agent(c.root);
+    okResult(await first.call('leader_events', { action: 'read' }));
+    await until('session 1’s controller', async () => ((await c.status()) as { delivery: { state: string } | null }).delivery?.state === 'idle' || undefined);
+    expect((await attach(c, oc.baseUrl)).status).toBe(200);
+    expect((await c.human('PUT', '/config', { baseBranch: 'develop' })).status).toBe(200);
+    const a = journalRows(c.dataDir).find((row) => row.kind === 'config.changed')!;
+    await until('row A to be pushed', () => (oc.delivered().includes(a.eventId) ? true : undefined));
+
+    // The leader takes it into account and acknowledges it — through the pull tool, the only ack it has.
+    const read = okResult(await first.call('leader_events', { action: 'read' }));
+    const cursor = (read.structuredContent as { nextCursor: string }).nextCursor;
+    const acked = okResult(await first.call('leader_events', { action: 'ack', cursor }));
+    expect(acked.structuredContent).toMatchObject({ status: 'acked', ackedSeq: a.journalSeq });
+
+    // Session 1 ends. The person opens a fresh OpenCode conversation and attaches it; its MCP session
+    // opens. A fresh conversation has no memory of what the old one was sent, so before #332 every
+    // retained row from ackedSeq 0 was pushed into it again — a model turn the user pays for.
+    await first.end();
+    await until('session 1’s controller to end', async () => ((await c.status()) as { delivery: unknown }).delivery === null || undefined);
+    const fresh = await fakeOpenCode(c.root);
+    expect((await attach(c, fresh.baseUrl)).status).toBe(200);
+    const second = agent(c.root);
+    okResult(await second.call('leader_events', { action: 'read' }));
+    await until('session 2’s controller', async () => ((await c.status()) as { delivery: { state: string } | null }).delivery?.state === 'idle' || undefined);
+    await new Promise((r) => setTimeout(r, 1_500));
+    expect(fresh.delivered(), 'an acknowledged row was pushed again').not.toContain(a.eventId);
+    expect(await c.status()).toMatchObject({ delivery: { ackedSeq: a.journalSeq } });
+
+    // And session 2 still pushes what is new, once.
+    expect((await c.human('PUT', '/config', { baseBranch: 'main' })).status).toBe(200);
+    const b = journalRows(c.dataDir).filter((row) => row.kind === 'config.changed').at(-1)!;
+    await until('row B to be pushed', () => (fresh.delivered().includes(b.eventId) ? true : undefined));
+    expect(fresh.delivered()).toEqual([b.eventId]);
+  }, 60_000);
+
   it('starts no agent process: `start` and `resume` do not exist, for any client (owner decision on #311)', async () => {
     // If a spawn path ever comes back, these stand-ins record it.
     const dir = tmp('xzs-');

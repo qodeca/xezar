@@ -74,6 +74,18 @@ const NO_LEADER: McpLeaderBlocker = {
   fix: 'Keep using leader_events from your own leader, or attach the OpenCode session you run with `opencode serve`.',
 };
 
+/**
+ * #331: a leader is attached, but no MCP session owns the project, so no controller follows the
+ * journal and nothing is delivered. The ORDINARY first state: OpenCode connects its MCP servers
+ * lazily, so "attach first, MCP session later" is what a first user sees.
+ */
+const NO_OWNER_SESSION: McpLeaderBlocker = {
+  code: 'no-owner-session',
+  message:
+    'A leader is attached, but no MCP session owns this project yet, so nothing follows the event journal and nothing is delivered. OpenCode connects its xezar MCP server only when it first needs it. Events are kept in the journal meanwhile.',
+  fix: 'Let the attached OpenCode session call a xezar tool once (for example leader_events), so its MCP connection opens; delivery starts from the leader’s last acknowledgement.',
+};
+
 /** #309 O-3: a journal that records nothing has nothing to deliver, so a leader would never hear a thing. */
 const JOURNAL_UNWRITABLE: McpLeaderBlocker = {
   code: 'journal-unwritable',
@@ -89,6 +101,11 @@ export interface LeaderDeliveryOptions {
   readonly ownership: Pick<ProjectOwnership, 'projectId' | 'sessionToken' | 'state'>;
   /** The door's echo guard. Absent (it could not be built): no row is dropped as an echo. */
   readonly guard: Pick<EchoGuard, 'isOwn'> | undefined;
+  /**
+   * The leader's acknowledgement as the pull tool records it (`LeaderCursors`, #251) — the one
+   * source of truth the controller resumes and filters by (#332). Absent: only the controller's own.
+   */
+  readonly acknowledged?: () => number;
   readonly warn: (message: string) => void;
   /** Test seam. Production uses the controller's 30 s. */
   readonly heartbeatMs?: number;
@@ -128,6 +145,7 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
       sessionKey,
       adapter: this,
       warn: this.#opts.warn,
+      ...(this.#opts.acknowledged === undefined ? {} : { acknowledged: this.#opts.acknowledged }),
       ...(this.#opts.heartbeatMs === undefined ? {} : { heartbeatMs: this.#opts.heartbeatMs }),
     });
     if (started.outcome === 'started') this.#controllers.set(sessionKey, started.controller);
@@ -242,6 +260,8 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     if (!this.#opts.journal.writable) return JOURNAL_UNWRITABLE;
     const leader = this.#leader;
     if (leader === undefined) return NO_LEADER;
+    // Attached, but nobody owns the project: no controller, so nothing is delivered (#331).
+    if (this.#liveController() === undefined) return NO_OWNER_SESSION;
     const blocker = leader.status().blocker;
     return blocker
       ? { code: blocker.code, message: blocker.message, fix: 'Check that `opencode serve` is running in this project and the session id is right, then attach it again.' }

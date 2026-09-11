@@ -101,6 +101,8 @@ export async function startMcpService(opts: StartMcpServiceOptions): Promise<Mcp
         journal: parts.journal,
         ownership,
         guard: parts.guard,
+        // One acknowledgement (#332): the controller resumes after what the leader acked through leader_events.
+        ...(parts.cursors ? { acknowledged: () => parts.cursors!.position().ackedSeq } : {}),
         warn,
         ...(opts.leader?.heartbeatMs === undefined ? {} : { heartbeatMs: opts.leader.heartbeatMs }),
       })
@@ -192,6 +194,8 @@ function composeDoor(input: DoorInput): {
   /** For push delivery (#309): the rows it follows, and the guard that knows the leader's own operations. */
   journal: EventJournal | undefined;
   guard: EchoGuard | undefined;
+  /** The leader's pull cursors — whose acknowledgement push delivery honours too (#332). */
+  cursors: LeaderCursors | undefined;
   close(): void;
 } {
   const { projectId, dataDir, store, workspaceEvents, providerBaseline, warn } = input;
@@ -303,6 +307,7 @@ function composeDoor(input: DoorInput): {
     leaderEvents,
     journal,
     guard,
+    cursors,
     close() {
       if (closed) return;
       closed = true;

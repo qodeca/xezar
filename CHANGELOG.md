@@ -12,7 +12,10 @@
   A leader never receives the echo of its own change, and each event sent to OpenCode allows only
   the `xezar_*` tools — OpenCode keeps that rule on the attached session, so your own messages in it
   get only the xezar tools too. Attaching is refused, and the status says why, when the project's
-  event journal cannot be written. There is no cockpit button yet. (#309)
+  event journal cannot be written. An attached leader whose MCP connection has not opened yet is
+  reported as such, instead of as nothing wrong (#331), and what the leader acknowledged with
+  `leader_events` is never pushed to it again, not even into a fresh session (#332). There is no
+  cockpit button yet. (#309)
 - ✨ **One MCP client owns a project at a time.** A second coding agent that connects to a
   project another MCP client already holds is now refused with the project-occupied error
   (`-32080`, `com.qodeca.xezar/project-occupied`), which names nothing about the other client; the

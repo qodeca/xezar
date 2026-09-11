@@ -46,7 +46,9 @@ import { McpJournalCursorError, type EventJournal } from './event-journal.ts';
  *   Rows already delivered in this session are never dispatched again.
  * - **At-least-once (D-05 § 6.6).** A new session resumes after the leader's last ACK, not after
  *   the last delivery: a row handed to a previous client that the leader never acknowledged is
- *   outstanding, and F-21 says reconnect delivers it. The leader deduplicates on `eventId`. The
+ *   outstanding, and F-21 says reconnect delivers it. In production the leader acknowledges through
+ *   the pull tool (`leader_events ack`), so that record is the ACK read here (`acknowledged`, #332):
+ *   one source of truth, not two cursors that can disagree. The leader deduplicates on `eventId`. The
  *   echo guard (drop a `leader` row whose `causedBy` is the adapter's own operation) is the
  *   adapter's, per D-05 § 6.3: rows reach it whole.
  *
@@ -168,6 +170,14 @@ export interface EventControllerOptions {
   sessionKey: string;
   /** The client's reaction adapter. Absent: no client is configured, and the controller is inert. */
   adapter?: ReactionAdapter;
+  /**
+   * The leader's acknowledgement, owned ELSEWHERE — in production the pull tool's `LeaderCursors`
+   * (`leader_events ack`, #251), the one record of what the leader has taken into account (#332).
+   * When given, the controller reads it when a session starts and before every dispatch, and never
+   * pushes a row at or below it; `ack()` is then not the way the leader acknowledges. It answers the
+   * seq in the CURRENT journal epoch (0 when it counts in another), and is clamped to the head.
+   */
+  acknowledged?: () => number;
   /** Test seams. Production uses the defaults. */
   heartbeatMs?: number;
   random?: () => number;
@@ -194,6 +204,7 @@ export class EventController {
   readonly #ownership: EventControllerOptions['ownership'];
   readonly #sessionKey: string;
   readonly #adapter: ReactionAdapter | undefined;
+  readonly #acknowledged: (() => number) | undefined;
   readonly #statePath: string;
   readonly #heartbeatMs: number;
   readonly #random: () => number;
@@ -226,6 +237,7 @@ export class EventController {
     this.#ownership = opts.ownership;
     this.#sessionKey = opts.sessionKey;
     this.#adapter = opts.adapter;
+    this.#acknowledged = opts.acknowledged;
     this.#statePath = join(dirname(opts.journal.rowsPath), 'event-controller.json');
     this.#heartbeatMs = opts.heartbeatMs ?? EVENT_CONTROLLER_HEARTBEAT_MS;
     this.#random = opts.random ?? Math.random;
@@ -270,7 +282,8 @@ export class EventController {
     return {
       state: this.#state,
       deliveredSeq: this.#delivered,
-      ackedSeq: this.#acked,
+      // The leader's acknowledgement as it stands now, even between dispatches (#332).
+      ackedSeq: Math.max(this.#acked, this.#externalAck()),
       reactedSeq: this.#reacted,
       latestSeq: this.#journal.latestSeq,
     };
@@ -380,6 +393,8 @@ export class EventController {
     try {
       for (;;) {
         if (!this.#stillOwner()) return;
+        // The leader may have acknowledged through the pull tool since the last dispatch (#332).
+        this.#syncAck();
         const next = this.#next();
         if (next === undefined) return;
         if (next.lastSeq !== undefined) this.#handedOut = Math.max(this.#handedOut, next.lastSeq);
@@ -501,7 +516,7 @@ export class EventController {
   /** Where a starting controller reads from: after the last ACK, or the head for a first session. */
   #resume(): void {
     const journal = this.#journal;
-    const saved = this.#load();
+    let saved = this.#load();
     if (saved === 'absent' || saved === 'unreadable') {
       this.#position = journal.headCursor();
       this.#delivered = this.#acked = this.#reacted = journal.latestSeq;
@@ -510,6 +525,10 @@ export class EventController {
       return;
     }
     const firstRetained = journal.oldestSeq ?? journal.latestSeq + 1;
+    // The leader's own acknowledgement outranks the one this file remembers (#332): a new session
+    // owes only what the leader has NOT taken into account, however it acknowledged it.
+    const external = saved.epoch === journal.epoch ? this.#externalAck() : 0;
+    if (external > saved.ackedSeq) saved = { ...saved, ackedSeq: external };
     if (saved.epoch !== journal.epoch || saved.ackedSeq > journal.latestSeq || saved.ackedSeq < firstRetained - 1) {
       // The journal was recreated, or retention evicted rows the leader never acknowledged: they are
       // gone, so the gap is stated and replay starts at the oldest row that still exists.
@@ -524,6 +543,28 @@ export class EventController {
     this.#acked = saved.ackedSeq;
     this.#delivered = saved.ackedSeq;
     this.#reacted = Math.min(saved.reactedSeq, saved.ackedSeq);
+  }
+
+  /** The external acknowledgement, clamped to what this journal holds; 0 when there is none. */
+  #externalAck(): number {
+    if (this.#acknowledged === undefined) return 0;
+    let seq: number;
+    try {
+      seq = this.#acknowledged();
+    } catch {
+      return 0; // an unreadable source acknowledges nothing: at-least-once, never a skipped row
+    }
+    return Number.isSafeInteger(seq) && seq > 0 ? Math.min(seq, this.#journal.latestSeq) : 0;
+  }
+
+  /** Take the leader's acknowledgement from its owner. Monotonic: it never lowers anything. */
+  #syncAck(): void {
+    const seq = this.#externalAck();
+    if (seq <= this.#acked) return;
+    this.#acked = seq;
+    // A row the leader has taken into account is not owed, so it is not outstanding either.
+    this.#delivered = Math.max(this.#delivered, seq);
+    this.#persist();
   }
 
   #gap(): EventRecovery {
