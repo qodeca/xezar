@@ -207,19 +207,26 @@ describe.skipIf(process.platform === 'win32')('run routes and a record that name
     changes: { name: 'GET /runs/:id/changes', method: 'GET', path: (id) => `${A}/runs/${id}/changes` },
   };
 
-  /** Both hostile records at `route`: each answers like an unknown id, and nothing of B moves. */
+  /**
+   * Both hostile records at `route`: nothing of B moves, and the refusal says in plain words why
+   * and what to do (the cockpit shows the server's `error` as is — a bare "not found" on a row the
+   * user can see would be a dead end). An id A does not hold at all stays the plain 404.
+   */
   async function refusesBoth(route: RouteCase): Promise<void> {
     const h = w().hostile!;
     const before = w().snapshot('b');
     const indexBefore = readFileSync(bIndex(w()), null);
     const unknown = await answer(await w().cockpit(route.path(nowhereId()), route.method, route.body));
+    expect(unknown).toEqual({ status: 404, body: JSON.stringify({ error: 'not found' }) });
     for (const id of [h.stray, h.linked]) {
       const res = await answer(await w().cockpit(route.path(id), route.method, route.body));
       bWorktreeIntact();
       expect(readFileSync(bIndex(w()), null).equals(indexBefore), `${route.name} ran git inside B’s worktree`).toBe(true);
       expect(w().snapshot('b'), `${route.name} changed B`).toBe(before);
-      expect(res.status, `${route.name} with ${id === h.stray ? 'stray' : 'linked'}`).toBe(404);
-      expect(res).toEqual(unknown);
+      expect(res.status, `${route.name} with ${id === h.stray ? 'stray' : 'linked'}`).toBe(409);
+      const { error } = JSON.parse(res.body) as { error: string };
+      expect(error).toMatch(/^This task's worktree is outside this project/);
+      expect(error).toMatch(/Archive the task/);
       namesNothingOfB(w(), res.body);
       // The A record itself is left as it was: not deleted, not stripped, not finished by a PR.
       expect(w().a.store.getRun(id)).toBeDefined();
@@ -232,6 +239,15 @@ describe.skipIf(process.platform === 'win32')('run routes and a record that name
 
   it('DELETE refuses a record naming B’s worktree, and B’s directory is still there afterwards', async () => {
     await refusesBoth(routes.delete!);
+    // The way out the refusal names really works: archiving moves the row out of the list and
+    // still touches nothing of B.
+    const before = w().snapshot('b');
+    for (const id of [w().hostile!.stray, w().hostile!.linked]) {
+      expect((await w().cockpit(`${A}/runs/${id}/archive`, 'POST', {})).status).toBe(200);
+      expect(w().a.store.getRun(id)?.archived).toBe(true);
+    }
+    bWorktreeIntact();
+    expect(w().snapshot('b')).toBe(before);
   });
 
   it('control: DELETE still deletes A’s own task with its worktree, and one that never had a worktree', async () => {

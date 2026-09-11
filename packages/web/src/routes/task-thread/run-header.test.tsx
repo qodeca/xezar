@@ -504,6 +504,26 @@ describe('actions hit their endpoints', () => {
     expect(item.textContent).toBe('no agent session to resume')
     expect(item.getAttribute('data-tone')).toBe('danger')
   })
+
+  it('a delete refused because the worktree is outside this project says why and what to do, and stays on the task (#316)', async () => {
+    // The server's own sentence (`FOREIGN_WORKTREE` in server.ts): the row cannot be deleted,
+    // so the toast is the only place the user learns why and that Archive is the way out.
+    const refusal =
+      "This task's worktree is outside this project, so xezar will not touch it from here. Archive the task to hide it from your list."
+    const sent = stubFetch({ '/api/v1/runs/r1': () => jsonResponse({ error: refusal }, 409) })
+    renderHeader(run('done'))
+    fireEvent.click(actionBar().getByRole('button', { name: 'Delete' }))
+    const dialog = await screen.findByRole('alertdialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }))
+    const item = await screen.findByRole('status')
+    expect(item.textContent).toBe(refusal)
+    expect(item.getAttribute('data-tone')).toBe('danger')
+    expect(sent.some((r) => r.method === 'DELETE')).toBe(true)
+    // Unlike a successful delete, the task is still there — the page stays on it rather than
+    // going home as if it were gone.
+    expect(document.querySelector('[data-slot="home-probe"]')).toBeNull()
+    expect(actionBar().getByRole('button', { name: 'Delete' })).not.toBeNull()
+  })
 })
 
 /** Terminal now lives inside the Open in… menu: open it (Radix opens on pointerdown) and click
