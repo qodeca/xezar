@@ -253,6 +253,14 @@ Installation validation is reported in installation.md. Real-task entries follow
 - Observed (zsh, a sibling of the word-split trap above): an unquoted `--include=*.ts` in a zsh shell is a glob, and with no match zsh aborts the command with `no matches found` instead of passing the pattern to `grep`. Quote globs meant for another program.
 - Remaining limit: the issue forms were checked by parsing the YAML only; GitHub's own form renderer was not exercised, and nobody outside the project has used the contribution path yet.
 
+### 2026-09-11 — issue #287, `docs-maintenance` step 1 (Update docs), Claude Code — real-task verified
+
+- Goal: fix the npm package README's broken links in `packages/xezar/scripts/sync-readme.mjs`, correct stale MCP status lines, add a `docs/` map, and two small README facts. Base `a339671`. Node 24 / npm 11, macOS.
+- Observed (confirms the #261 entry): **a brief built from an audit must be checked line by line.** Of its claims, the live npm README held 13 relative links, not 14; `docs/features/` held 26 files, not 25, and is cited by path from code comments, tests, CHANGELOG and the kit, though never as a Markdown link; and `notes.md` is **not** tracked — it is already gitignored as the dry-run mock agent's output (`scripts/mock-claude.mjs`) and exists only as local junk in the primary checkout, so nothing was changed for it. A fourth stale "nothing here is implemented" line (`mcp-result-evidence-fields.md`) was found beside the anchor the brief named.
+- Observed: the published README cannot be verified in a browser from here — `npmjs.com` answers 403 to `curl` — so the evidence is `npm view @qodeca/xezar readme` (the registry's copy) plus a test over the real root README. How npmjs.com itself resolves a relative link against `repository.directory` stays unobserved; absolute URLs make the question moot.
+- Regression/control: forcing `absolutizeReadmeLinks` to return its input turned 2 of 5 cases red, with the first listing all 23 relative targets; restoring it made 5 of 5 pass. The root-README case (links stay relative) and the code-untouched case pass both ways by design — they are guards, not proofs.
+- Remaining limit: the absolute links point at `main`, so an npm page for an older version shows today's docs. The rendered npm page is only verified after the next release publishes.
+
 ### 2026-09-11 — issue #284, `feature-implementation` workflow, implement step (`xezar-implementation`), Claude Code — real-task verified
 
 - Goal: the browsable, read-only half of the MCP API reference (spec `mcp-api-reference-spec.md` § 12, § 18): one project-scoped route whose `tools` is exactly `tools/list`, and Settings → MCP API. No "Try it".

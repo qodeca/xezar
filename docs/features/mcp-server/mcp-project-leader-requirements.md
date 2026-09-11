@@ -237,7 +237,7 @@ The feature is **complete across the entire agreed scope** only when all of the 
 
 ## 11. Ready-for-implementation gate
 
-Product scope is settled as stated above; engineering closes field/action mapping and designs the local owner/event adapters. Engineering closes the UI inventory, actual project/global effects, and transport/security design. Every requirement has assigned evidence, and isolation/completeness-critical decisions are resolved. Only then should an implementation specification assign tool names, the connection filename, and startup commands.
+Product scope is settled as stated above; engineering closes field/action mapping and designs the local owner/event adapters. Engineering closes the UI inventory, actual project/global effects, and transport/security design. Every requirement has assigned evidence, and isolation/completeness-critical decisions are resolved. This gate was the precondition for assigning tool names, the connection filename and startup commands. It has since been passed (status updated 2026-09-11): [D-04](mcp-d04-connection-file-decision.md) fixes the connection file and client setup, and the [MCP API reference](mcp-api.md) publishes the tool names.
 
 ## 12. Engineering handoff and readiness audit
 

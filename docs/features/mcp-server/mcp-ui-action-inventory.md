@@ -355,5 +355,6 @@ match the symbols that exist. Recorded so a later reader does not grep for a nam
   passing test.
 - Tool names, granularity and the transport. Section 11 defers all three to the
   ready-for-implementation gate; every entry above states an outcome only.
-- Any claim that MCP is implemented. The feature is not implemented at this revision; this is the
-  coverage contract it will be measured against.
+- Any claim that MCP was implemented at this revision. It was not then. The MCP server has since
+  shipped (status updated 2026-09-11), and this inventory is the coverage contract it is measured
+  against — see the [parity coverage map](mcp-parity-coverage-map.md).

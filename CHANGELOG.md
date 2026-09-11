@@ -137,6 +137,17 @@
   assertion also gained the settle guard its mirror already had. (#200)
 
 ## 📝 Specs & Documentation
+- 📝 **The npm package page shows its screenshots and working links again.** npm publishes a copy
+  of the root README, and its relative `docs/…` and `LICENSE` links pointed at files the package
+  does not contain — 13 broken links on the 0.13.1 page, all six screenshots among them, and 23 in
+  the next release. The build now rewrites every relative link and image in that copy to an
+  absolute GitHub URL; the root README keeps its relative links, and a test fails if a relative
+  link survives the copy. (#287)
+- 📝 **A map of `docs/`.** `docs/README.md` says what each directory holds and who it is for, and
+  `docs/features/README.md` says up front that those files are the internal engineering and
+  decision record, not a user guide. Four MCP records no longer claim the shipped feature is
+  unimplemented, the README documents `XEZ_CODEX_REASONING`, and the README and `--help` say that
+  the default `open-mercato/skills` repository is not a leftover of the Cezar rename. (#287)
 - 📝 **The MCP server has a reviewable API reference.** `docs/features/mcp-server/mcp-api.md`
   lists every tool, its arguments (the schema's own descriptions), the results each tool really
   returns — including where the tools' status words disagree — the two meanings of `origin`, and
