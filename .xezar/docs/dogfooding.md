@@ -12,6 +12,14 @@ Installation validation is reported in installation.md. Real-task entries follow
 
 ## Real-task entries
 
+### 2026-09-11 — #330 WP1 (pi against the real MCP bridge), `testing-and-verification` step `tests`, `xezar-testing`, Claude Code — real-task verified
+
+- Evidence: run 95c0a6da. A private node harness (real `xezar serve`, real bridge, pi in RPC mode, scripted endpoint) in the primary evidence directory; the committed output is `docs/features/mcp-server/mcp-adapter-evidence-pi.md`.
+- Observed: **four of the first scenario verdicts were wrong, and all four were the harness, not the product.** `human` and `async` matched against text the harness had already shortened for printing; `async` also read its results before the queued messages had arrived; `second` started the client with an empty tool cache, which is not the case it meant to test; `stale` required `isError`, although the real bridge answers a conflict as an ordinary result by design (U-M05) – the requirement was copied from the spike's stub. A fifth mislabelled a probe: "700 s after the last call" ran 440 s after it, because a call in between reset the idle clock the probe was about.
+- Lesson (recommended): keep the full observed value in a check and shorten it only where it is printed; when a result is FAILED, read the raw transcript before writing it down; when a probe is about "time since X", compute it from the last X, not from the scenario start. Re-run every affected scenario together on the final harness and say in the record which runs used an earlier revision.
+- Observed: a non-final step cannot end its turn to wait for a long run (the `XEZ:DONE` rule). Long scenarios ran as background commands in parallel with the short ones, and the step waited on their completion notices. `Monitor` was refused in this session's permission mode; a background `until` loop did the same job.
+- Remaining limit: one task, one machine; the harness stays private, so the lesson is not enforced by any check.
+
 ### 2026-09-11 — #295 (last of the #307 flakes), `bug-fix` workflow — real-task verified
 
 - Observed: **CPU load alone did not reproduce the flake; modelling the real neighbour did.** The unmodified `mcp/cli.test.ts` passed 41 of 41 under three parallel full `npm test` runs. Adding a loop that did what `package-cli.test.ts` port-fallback does (boot `serve` on a busy port so it walks up one) made it fail 2 of 53. The cause was the test harness trusting a probed-then-released port. macOS hands out ephemeral ports in order, so the next port is exactly where a walking cockpit lands. `xez serve` booted correctly in every captured failure.
