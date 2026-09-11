@@ -219,6 +219,15 @@ Installation validation is reported in installation.md. Real-task entries follow
 - Remaining limit: neither role has run in a real task. Unknown: whether a real model keeps the citation discipline, whether pi accepts `websearch`/`webfetch` in `--tools`, and whether planning/implementation agents read `xezar-ux-design` unprompted, since no existing workflow names it. Owner/next trigger: the first real `research` run, e.g. the #274 prior-art question.
 - Observed: the first full gate run failed only on `todos.test.ts` › "unsubscribe stops delivery…", a known flake (#204) in a file this kit-only diff does not touch. Run alone it failed 1 of 3 times, so load is not required to trigger it. Repair was a re-run on a rebased head, not a test edit: a source/test change belongs to #204, not to this task.
 
+### 2026-09-11 — issue #271 (item 1 also #240), `bug-fix` workflow, investigate step (`xezar-bug-investigation`), Claude Code — real-task verified
+
+- Goal: verify three findings a triage of the task inbox raised against the MCP tools, then fix the real ones with red-without-fix proof. Base `ef4b768`; all three were confirmed in source before any fix.
+- Observed: a finding's file list is a hypothesis, not a scope. The `pick_variant` guard could not be fixed in the tool alone: the route `POST /groups/:groupId/pick` took no version at all, so the fix also moved its request shape into `packages/contract` and added the check in `server.ts`.
+- Observed: the red proof by "copy aside, check out `origin/main`, restore" silently did nothing the first time. In zsh an unquoted `$LIST` does not word-split, so `cp` and `git show` received one bogus path, nothing was swapped, and the "without fix" run was green. Only a post-check caught it. Run the swap as a bash script with an array, and print the swapped files' diff before trusting any red or green.
+- Observed: making a lenient schema strict turned two existing tests red that had pinned the lenient behaviour on purpose (A-02 "the one lenient schema", F-04 "extra keys do not reach the call"). Those are intended behaviour changes, not regressions; say so in the PR rather than only updating the expectation.
+- Red/green: 13 tests in 5 files fail on `origin/main` sources and pass with the fix. Controls that pass both ways: the route's "current token goes through" and "no token is the cockpit", and the tool's "goes through on a fresh read". Logs in the task's primary evidence directory (`red-proof/`).
+- Remaining limit: the pick's version covers the KEPT variant only. A human change to another variant after the leader's read (a rename, a pin) is not detected; only an active variant is refused, by the cockpit's all-terminal precondition the tool mirrors.
+
 ### 2026-09-11 — issue #262, `feature-implementation` workflow, implement step — real-task verified
 
 - Goal: close four MCP leader gaps in one task (draft PR → ready, base-branch reachability, F-22 quality-gate removal, D-04 connection file). Code base `ef4b768`, branch `xez/b9b4feb6`, Node 24.20, macOS.

@@ -832,6 +832,16 @@ export const runVersionGuardInputSchema = z.object({
 });
 export type RunVersionGuardInput = z.input<typeof runVersionGuardInputSchema>;
 
+/**
+ * `POST /groups/:groupId/pick` — `runId` names the variant to keep. `expectedVersion` is THAT
+ * variant's version: the pick archives every other variant and deletes their worktrees and
+ * branches, so a pick made on a read a human has since overtaken must apply nothing (#271).
+ */
+export const pickVariantInputSchema = runVersionGuardInputSchema.extend({
+  runId: z.string().min(1),
+});
+export type PickVariantInput = z.input<typeof pickVariantInputSchema>;
+
 /** `POST /runs/:id/archive` (#429) — an absent body archives; `{archived: false}` restores. */
 export const archiveRunInputSchema = runVersionGuardInputSchema.extend({
   archived: z.boolean().optional(),

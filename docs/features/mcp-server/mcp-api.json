@@ -245,7 +245,7 @@
   {
     "name": "organise_work",
     "title": "Organise tasks",
-    "description": "Organise this project's tasks the way the xezar cockpit does. Pick one `action`:\n- list_queue: the queued tasks, oldest first (the order they start in), with their brief and queued message ids. Paginated: pass `next` back as `cursor`.\n- set_title: rename a task (any status).\n- edit_brief / edit_queued_message / remove_queued_message: change a queued task before it starts. Refused once the task has started.\n- pin / unpin, archive / restore, mark_read / mark_unread: per-task flags. Archive is refused while the task is queued, running or waiting.\n- archive_finished / mark_all_read: sweep every finished task of this project.\n- delete: remove a task, its transcript, its worktree and its branch. Irreversible. Refused while the task is active.\n- start_inbox_item / remove_inbox_item: act on an Inbox item (needs the Inbox to be on).\n- pick_variant: keep one variant of a group. Refused until every variant has finished; then every other variant is archived and its worktree and branch are deleted. Irreversible.\nEvery action that changes one task needs expectedVersion: the `version` task_read (view task) returned for it. If the task changed since you read it, nothing is applied and the answer is status \"conflict\" with error \"stale_version\": read it again and decide again.\nNo confirmation is needed for any action. Tasks have no priority and no dependencies: there is nothing to reorder. A refusal the task state caused comes back with status \"conflict\" and the reason.",
+    "description": "Organise this project's tasks the way the xezar cockpit does. Pick one `action`:\n- list_queue: the queued tasks, oldest first (the order they start in), with their brief and queued message ids. Paginated: pass `next` back as `cursor`.\n- set_title: rename a task (any status).\n- edit_brief / edit_queued_message / remove_queued_message: change a queued task before it starts. Refused once the task has started.\n- pin / unpin, archive / restore, mark_read / mark_unread: per-task flags. Archive is refused while the task is queued, running or waiting.\n- archive_finished / mark_all_read: sweep every finished task of this project.\n- delete: remove a task, its transcript, its worktree and its branch. Irreversible. Refused while the task is active.\n- start_inbox_item / remove_inbox_item: act on an Inbox item (needs the Inbox to be on).\n- pick_variant: keep one variant of a group. Refused until every variant has finished; then every other variant is archived and its worktree and branch are deleted. Irreversible.\nEvery action that changes one task needs expectedVersion: the `version` task_read (view task) returned for it — for pick_variant, the variant you keep. If the task changed since you read it, nothing is applied and the answer is status \"conflict\" with error \"stale_version\": read it again and decide again.\nNo confirmation is needed for any action. Tasks have no priority and no dependencies: there is nothing to reorder. A refusal the task state caused comes back with status \"conflict\" and the reason.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -280,7 +280,7 @@
           "pattern": "^[A-Za-z0-9._-]+$"
         },
         "expectedVersion": {
-          "description": "Required by every action that changes one task (set_title, edit_brief, edit_queued_message, remove_queued_message, pin, unpin, archive, restore, delete): the `version` task_read gave you for it. Echo it verbatim.",
+          "description": "Required by every action that changes one task (set_title, edit_brief, edit_queued_message, remove_queued_message, pin, unpin, archive, restore, delete) and by pick_variant: the `version` task_read gave you for that task — for pick_variant, the variant you keep. Echo it verbatim.",
           "type": "string",
           "minLength": 1,
           "maxLength": 512
@@ -351,7 +351,8 @@
       },
       "required": [
         "action"
-      ]
+      ],
+      "additionalProperties": false
     },
     "annotations": {
       "readOnlyHint": false,

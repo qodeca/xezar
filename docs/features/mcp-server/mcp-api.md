@@ -164,16 +164,16 @@ Takes no arguments. Unknown arguments are rejected.
 > - delete: remove a task, its transcript, its worktree and its branch. Irreversible. Refused while the task is active.
 > - start_inbox_item / remove_inbox_item: act on an Inbox item (needs the Inbox to be on).
 > - pick_variant: keep one variant of a group. Refused until every variant has finished; then every other variant is archived and its worktree and branch are deleted. Irreversible.
-> Every action that changes one task needs expectedVersion: the `version` task_read (view task) returned for it. If the task changed since you read it, nothing is applied and the answer is status "conflict" with error "stale_version": read it again and decide again.
+> Every action that changes one task needs expectedVersion: the `version` task_read (view task) returned for it — for pick_variant, the variant you keep. If the task changed since you read it, nothing is applied and the answer is status "conflict" with error "stale_version": read it again and decide again.
 > No confirmation is needed for any action. Tasks have no priority and no dependencies: there is nothing to reorder. A refusal the task state caused comes back with status "conflict" and the reason.
 
-Unknown arguments are NOT rejected: the schema does not set `additionalProperties: false`.
+Unknown arguments are rejected.
 
 | Argument | Type | Required | Limits | Description (verbatim from the schema) |
 | --- | --- | --- | --- | --- |
 | `action` | `list_queue` \| `set_title` \| `edit_brief` \| `edit_queued_message` \| `remove_queued_message` \| `pin` \| `unpin` \| `archive` \| `restore` \| `archive_finished` \| `mark_read` \| `mark_unread` \| `mark_all_read` \| `delete` \| `start_inbox_item` \| `remove_inbox_item` \| `pick_variant` | yes |  | What to do. See the tool description for each action. |
 | `runId` | string | no | min length 1, max length 128, pattern `^[A-Za-z0-9._-]+$` | The task id. For pick_variant: the variant to keep. |
-| `expectedVersion` | string | no | min length 1, max length 512 | Required by every action that changes one task (set_title, edit_brief, edit_queued_message, remove_queued_message, pin, unpin, archive, restore, delete): the `version` task_read gave you for it. Echo it verbatim. |
+| `expectedVersion` | string | no | min length 1, max length 512 | Required by every action that changes one task (set_title, edit_brief, edit_queued_message, remove_queued_message, pin, unpin, archive, restore, delete) and by pick_variant: the `version` task_read gave you for that task — for pick_variant, the variant you keep. Echo it verbatim. |
 | `title` | string | no |  | set_title: the new title. |
 | `task` | string | no |  | edit_brief: the replacement brief. Only while the task is queued. |
 | `messageId` | string | no | min length 1, max length 128, pattern `^[A-Za-z0-9._-]+$` | edit_queued_message / remove_queued_message: the queued message id (list_queue shows them). |
@@ -896,7 +896,9 @@ changes a tool. Each finding is reported for a separate decision.
 2. **`organise_work` silently drops unknown arguments.** Its input schema is the only one that does
    not set `additionalProperties: false`. The argument table shows this. A misspelled argument, or
    an `operationId`, is stripped rather than refused. Filed as
-   [#265](https://github.com/qodeca/xezar/issues/265).
+   [#265](https://github.com/qodeca/xezar/issues/265). Fixed by
+   [#271](https://github.com/qodeca/xezar/issues/271): the input is strict now, and the argument
+   table above is regenerated from it.
 3. **The audit origin has one live value.** `ui`, `automation` and `cli` are in the enum, but only the
    MCP door records an audit entry. The audit trail cannot yet compare a leader's change with a
    human's. Filed as [#266](https://github.com/qodeca/xezar/issues/266).
