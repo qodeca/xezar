@@ -739,6 +739,24 @@ describe.skipIf(isWindows)('handoff_git — commit, push, draft PR, merge and br
     expect(merges()).toHaveLength(7);
   });
 
+  // Found by the #333 mutation sample: `open && isDraft` → `||` left every test green.
+  it('leaves a pull request that is not an open draft to the service, even with a failing check', async () => {
+    for (const patch of [{ isDraft: false }, { state: 'closed' as const, isDraft: true }]) {
+      mergeStateFixture = {
+        number: 128, title: 't', url: 'u', state: 'open', headRef: 'h', baseRef: 'main', headSha: DRY_HEAD,
+        mergeable: 'mergeable', reviewDecision: 'changes-requested', checks: [{ name: 'test', state: 'failing', required: true }],
+        methods: ['squash'], defaultMethod: 'squash', eligibility: 'blocked', blockers: [], canMerge: false, canOverride: false,
+        ...patch,
+      } as GithubPrMergeState;
+      dispatched = [];
+      const answered = await act({ action: 'ready', number: 128, expectedHeadSha: DRY_HEAD });
+      // Not the tool's quality verdict: the service decides, in its own words, what a ready PR or a
+      // closed one means – and it is asked.
+      expect(answered.refusedBy).not.toBe('quality');
+      expect(dispatched.map((d) => d.call)).toContain('POST /api/v1/p/leader/github/prs/128/ready');
+    }
+  });
+
   it('holds a draft back from ready only on a failing check or requested changes — never on work that ready invites (#262)', () => {
     const draft = (patch: Partial<GithubPrMergeState>): GithubPrMergeState => ({
       number: 1,
