@@ -1,7 +1,13 @@
-import { mcpToolListingSchema, type McpApiReference, type McpNotExposed } from '@qodeca/xezar-contract';
+import {
+  mcpToolListingSchema,
+  type McpApiReference,
+  type McpGuard,
+  type McpNotExposed,
+  type McpToolListing,
+} from '@qodeca/xezar-contract';
 import { HEALTH_TOOL } from './bridge.ts';
 import { SERVER_CAPABILITIES, SUPPORTED_PROTOCOL_VERSIONS } from './protocol.ts';
-import { toolListing } from './tool.ts';
+import { toolListing, type McpTool } from './tool.ts';
 import { tools } from './tools/index.ts';
 import { REFUSED_ACTIONS } from './tools/project-config.ts';
 
@@ -64,14 +70,44 @@ const REFUSED_ACTIONS_BY_TOOL: Readonly<Record<string, Readonly<Record<string, {
 
 const DISCRIMINATORS = ['action', 'view', 'read'] as const;
 
-/** The values of a listed schema's discriminator argument, or `[]` when it has none. */
-function discriminatorValues(inputSchema: Record<string, unknown>): string[] {
+/** A listed schema's discriminator argument and its values, or null when it has none. */
+function discriminatorOf(inputSchema: Record<string, unknown>): { name: string; values: string[] } | null {
   const properties = (inputSchema.properties ?? {}) as Record<string, { enum?: unknown }>;
-  for (const key of DISCRIMINATORS) {
-    const values = properties[key]?.enum;
-    if (Array.isArray(values)) return values.filter((v): v is string => typeof v === 'string');
+  for (const name of DISCRIMINATORS) {
+    const values = properties[name]?.enum;
+    if (Array.isArray(values)) return { name, values: values.filter((v): v is string => typeof v === 'string') };
   }
-  return [];
+  return null;
+}
+
+const discriminatorValues = (inputSchema: Record<string, unknown>): string[] => discriminatorOf(inputSchema)?.values ?? [];
+
+/** The two guards only MCP carries: the stale-write token (#250) and the idempotency key. */
+const GUARDS = ['expectedVersion', 'operationId'] as const;
+
+/**
+ * #301 — which actions of `tool` are refused without each guard it lists, asked of the tool's OWN
+ * input schema: every performing action is validated with nothing but its discriminator, and an
+ * issue on the guard's path means that action needs it. The listing cannot answer this (a flat
+ * schema lists the guard as optional at the top), and the tool's description is prose.
+ *
+ * This reads what the schema ENFORCES, so it is only as complete as the schema: a rule a tool checks
+ * in its handler instead is invisible here. `mcp-reference-route.test.ts` pins the real registry's
+ * answer, so moving a rule out of a schema shows up as a failing test, not as a quietly wrong page.
+ */
+function guardsOf(tool: McpTool, listed: McpToolListing, refused: Readonly<Record<string, unknown>>): McpGuard[] {
+  const properties = (listed.inputSchema.properties ?? {}) as Record<string, unknown>;
+  const discriminator = discriminatorOf(listed.inputSchema);
+  const needs = (argument: string, probe: Record<string, unknown>): boolean => {
+    const parsed = tool.inputSchema.safeParse(probe);
+    return !parsed.success && parsed.error.issues.some((issue) => issue.path[0] === argument);
+  };
+  return GUARDS.filter((argument) => Object.hasOwn(properties, argument)).map((argument) => {
+    if (!discriminator) return { tool: tool.name, argument, everyCall: needs(argument, {}), requiredBy: [] };
+    const performing = discriminator.values.filter((action) => !Object.hasOwn(refused, action));
+    const requiredBy = performing.filter((action) => needs(argument, { [discriminator.name]: action }));
+    return { tool: tool.name, argument, everyCall: performing.length > 0 && requiredBy.length === performing.length, requiredBy };
+  });
 }
 
 export function buildMcpApiReference(xezarVersion: string): McpApiReference {
@@ -79,6 +115,7 @@ export function buildMcpApiReference(xezarVersion: string): McpApiReference {
   // does not describe throws here, instead of being stripped from the page without a word.
   const listing = mcpToolListingSchema.array().parse([HEALTH_TOOL, ...tools.map(toolListing)]);
   const byName = new Map(listing.map((tool) => [tool.name, tool]));
+  const guards = tools.flatMap((tool) => guardsOf(tool, byName.get(tool.name)!, REFUSED_ACTIONS_BY_TOOL[tool.name] ?? {}));
 
   const refusedActions = listing.flatMap((tool) => {
     const refused = REFUSED_ACTIONS_BY_TOOL[tool.name] ?? {};
@@ -106,6 +143,7 @@ export function buildMcpApiReference(xezarVersion: string): McpApiReference {
     tools: listing,
     refusedActions,
     refusedArguments,
+    guards,
     notExposed: NOT_EXPOSED.map((item) => ({ ...item, forbiddenBy: [...item.forbiddenBy] })),
   };
 }

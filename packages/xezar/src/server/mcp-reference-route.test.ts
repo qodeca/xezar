@@ -123,6 +123,45 @@ describe('GET /api/v1/mcp/reference (#284)', () => {
     expect(body.notExposed.length).toBeGreaterThan(0);
   });
 
+  it('derives which actions need each guard from the tools’ own schemas, never from their prose (#301)', async () => {
+    const body = mcpApiReferenceSchema.parse(JSON.parse((await read()).text));
+    if (!body.available) throw new Error('unavailable');
+    const by = new Map(body.guards.map((g) => [`${g.tool}.${g.argument}`, g]));
+
+    // Populated-input guard: every guard a tool lists has an entry, so "no entry" can never be
+    // the derivation quietly finding nothing.
+    const listed = body.tools.flatMap((t) =>
+      ['expectedVersion', 'operationId'].filter((g) => Object.hasOwn((t.inputSchema.properties ?? {}) as object, g)).map((g) => `${t.name}.${g}`),
+    );
+    expect([...by.keys()].sort()).toEqual(listed.sort());
+    expect(listed.length).toBeGreaterThanOrEqual(5);
+
+    // The answers a reviewer is owed. organise_work lists expectedVersion as optional at the top
+    // of a flat schema, and the page once read "accepted, not required" for it.
+    expect(by.get('organise_work.expectedVersion')).toEqual({
+      tool: 'organise_work',
+      argument: 'expectedVersion',
+      everyCall: false,
+      requiredBy: ['set_title', 'edit_brief', 'edit_queued_message', 'remove_queued_message', 'pin', 'unpin', 'archive', 'restore', 'delete', 'pick_variant'],
+    });
+    // handoff_git's rule lives in its schema since #301: back in the handler, this reads [].
+    expect(by.get('handoff_git.expectedVersion')?.requiredBy).toEqual(['commit', 'push', 'create_pr']);
+    expect(by.get('project_config.expectedVersion')?.requiredBy).toEqual(['remove_worktree']);
+    expect(by.get('execution_control.expectedVersion')?.everyCall).toBe(true);
+    expect(by.get('task_create.operationId')?.everyCall).toBe(true);
+
+    // Each "needs" is real: the same call WITH the guard is no longer refused for it.
+    const guardValue: Record<string, string> = { expectedVersion: 'v1', operationId: 'op-1234567890' };
+    for (const guard of body.guards) {
+      const tool = tools.find((t) => t.name === guard.tool)!;
+      for (const action of guard.requiredBy) {
+        const parsed = tool.inputSchema.safeParse({ action, [guard.argument]: guardValue[guard.argument] });
+        const onGuard = parsed.success ? [] : parsed.error.issues.filter((i) => i.path[0] === guard.argument);
+        expect(onGuard, `${guard.tool} ${action}`).toEqual([]);
+      }
+    }
+  });
+
   it('answers byte-identically under the project-scoped spellings', async () => {
     const plain = await read();
     for (const path of [`/api/v1/p/${bootId}/mcp/reference`, '/api/v1/p/default/mcp/reference']) {
