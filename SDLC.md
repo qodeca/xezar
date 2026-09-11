@@ -4,6 +4,8 @@
 
 This file documents how work flows from ticket to merged PR in this repository. The agent skills configured in `.ai/agentic.config.json` enforce the process; humans read it here. PRs target `main`; issues and PRs live in GitHub, and every tracker operation runs through the `gh` CLI.
 
+**Contributing as a person?** Start with [CONTRIBUTING.md](CONTRIBUTING.md). The `om-*` skills named below are this project's internal automation; you do not need them.
+
 Work enters through two paths: a free-form task brief handed to an agent, or a filed ticket. Both converge on the same review loop, the same validation gate, and the same merge gates.
 
 ## Roles

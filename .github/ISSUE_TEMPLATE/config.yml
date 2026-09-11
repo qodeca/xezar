@@ -1,0 +1,7 @@
+# Blank issues stay enabled on purpose: SECURITY.md's escalation fallback is a public issue that
+# says only "I am waiting on a private report", and neither form fits that.
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/qodeca/xezar/security/advisories/new
+    about: Report privately. Do not open a public issue for a vulnerability – see SECURITY.md.

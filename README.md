@@ -19,6 +19,7 @@ your phone, working your backlog while you're away.
 
 [A look inside](#a-look-inside) · [What xezar does best](#what-xezar-does-best) · [What it solves](#what-it-solves) · [Who it's for](#who-its-for) · [Quick start](#quick-start) · [How it works](#how-it-works) · [Core concepts](#core-concepts) · [Cockpit tour](#cockpit-tour) · [Agent backends](#coding-agent-backends) · [Remote access](#remote-access-host-xezar-on-a-server)
 
+[![CI](https://github.com/qodeca/xezar/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/qodeca/xezar/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/@qodeca/xezar?color=cb3837&logo=npm)](https://www.npmjs.com/package/@qodeca/xezar)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Node 20+](https://img.shields.io/badge/Node-20%2B-339933)
@@ -27,6 +28,10 @@ your phone, working your backlog while you're away.
 ![No database](https://img.shields.io/badge/database-none-success)
 
 </div>
+
+> **Project status: early.** xezar is 0.x and moves fast. This repository opened on 2026-09-07; the
+> code is older and shipped before under the name Cezar. Expect rough edges, and expect breaking
+> changes in minor releases – each one is called out in the [CHANGELOG](CHANGELOG.md).
 
 ---
 
@@ -905,6 +910,14 @@ Every module is meant to be read in one sitting.
 What lives where under `docs/`, and who each part is for, is mapped in
 [docs/README.md](docs/README.md). `docs/features/` is the internal engineering and decision
 record, not a user guide.
+
+---
+
+## Contributing
+
+Bug reports, ideas and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) is the short path
+from a change to a merged pull request. Report security problems privately, as described in
+[SECURITY.md](SECURITY.md).
 
 ---
 
