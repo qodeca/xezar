@@ -1,0 +1,1460 @@
+[
+  {
+    "name": "health",
+    "title": "xezar health",
+    "description": "Report whether the xezar cockpit is running for the project this session was started in, and which project that is.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "idempotentHint": true,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "task_read",
+    "title": "Read tasks",
+    "description": "Read this project’s tasks. Choose one view:\n- list: task summaries, newest first, filterable by status, archived, groupId and query.\n- task: one task’s full record. history: its events, newest page first; follow nextCursor for older events.\n- context: the plan and agent episode that frame the history. handoff: the task’s handoff journal.\n- inbox: the project’s Inbox items. group: one variant group, its tasks side by side.\nPages are bounded: at most 100 items and 40000 bytes. When an answer has a nextCursor, call again with the same view, task and filters plus that cursor.\nAn item too large for one answer comes in parts (\"part\" of \"parts\"): join the \"text\" of every part in order, then parse it as JSON.\nThe first answer of a task, history, context or handoff read (no cursor) carries the task’s \"version\": send it as expectedVersion when you then change that task (organise_work, execution_control, handoff_git, project_config). A change is refused if the task moved after this read.\nThis reads only the project this connection is bound to. Use it to assess state or recover after a lost answer, not to poll: task events are pushed.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "view": {
+          "type": "string",
+          "enum": [
+            "list",
+            "task",
+            "history",
+            "context",
+            "handoff",
+            "inbox",
+            "group"
+          ],
+          "description": "list = the project’s tasks (summaries, newest first); task = one task’s full record; history = one task’s event history, newest page first; context = the plan and agent episode that frame a task’s history; handoff = a task’s handoff journal (markdown); inbox = the project’s Inbox items; group = one variant group, its tasks side by side."
+        },
+        "taskId": {
+          "description": "Task id. Required for task, history, context and handoff.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._-]+$"
+        },
+        "groupId": {
+          "description": "Variant group id. Required for group; with list, keeps only that group’s tasks.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._-]+$"
+        },
+        "cursor": {
+          "description": "The nextCursor of a previous task_read answer, to read the next page or part. Send it with the same view, task and filters as that call.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        },
+        "limit": {
+          "description": "list and history: at most this many tasks or events per page (default and ceiling 100).",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "status": {
+          "description": "list: keep only these statuses.",
+          "minItems": 1,
+          "maxItems": 7,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "waiting",
+              "review",
+              "done",
+              "failed",
+              "cancelled"
+            ]
+          }
+        },
+        "archived": {
+          "description": "list: exclude archived tasks (default), include them, or show only them.",
+          "type": "string",
+          "enum": [
+            "exclude",
+            "include",
+            "only"
+          ]
+        },
+        "query": {
+          "description": "list: case-insensitive text to find in a task’s title, prompt or branch.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "view"
+      ],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "execution_control",
+    "title": "Control a task and talk to its session",
+    "description": "Control one of this project's own tasks, as the cockpit's buttons and composer do. Each action is allowed only in the states the cockpit allows it and is otherwise refused with nothing changed (status \"conflict\" and a reason).\ncancel — stop a queued, running or waiting task; it ends cancelled and keeps its worktree.\nfinish — finishAs \"close_session\" closes a waiting task's session; finishAs \"accept_review\" accepts a task at review without a PR.\ncontinue — reopen a closed task's last session, with optional text; for a task at review, text is required and is sent back as review feedback.\nsend_message — routed by state: an open session receives it, a queued task gets it folded into its prompt, a closed task with a session is continued with it; otherwise refused.\nanswer_question — answer the task's pending question by its questionId, with the option labels (answers) or free text; only the pending question can be answered, and a closed session is reopened to deliver it.\nedit_queued_message / remove_queued_message — change a message stacked on a queued task.\ncancel_auto_resume — stop a scheduled automatic resume after a usage limit.\nEvery action needs expectedVersion: the `version` task_read (view task) returned for this task. If the task changed since you read it, nothing is applied and the answer is status \"conflict\" with error \"stale_version\": read it again and decide again. A running task's version moves as its agent works, so read it right before acting.\nTargets tasks only by run id in the bound project; there is no process-level control. Plan approval and decisions outside the approved goal stay with the human.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "cancel",
+            "finish",
+            "continue",
+            "send_message",
+            "answer_question",
+            "edit_queued_message",
+            "remove_queued_message",
+            "cancel_auto_resume"
+          ],
+          "description": "What to do with the task."
+        },
+        "runId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "The task's run id, in the project this connection is bound to."
+        },
+        "expectedVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "description": "The `version` task_read returned for this task. Echo it verbatim; if the task changed since, nothing is applied."
+        },
+        "text": {
+          "description": "Message, continuation prompt, review feedback, free-form answer, or the new text of a queued message.",
+          "type": "string",
+          "maxLength": 100000
+        },
+        "images": {
+          "description": "Attachments (base64) for send_message, continue or edit_queued_message — the same four the composer allows.",
+          "maxItems": 4,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "mediaType": {
+                "type": "string"
+              },
+              "data": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 7000000
+              }
+            },
+            "required": [
+              "mediaType",
+              "data"
+            ]
+          }
+        },
+        "finishAs": {
+          "description": "Which finish you mean: close_session for a waiting task, accept_review to accept a task at review without a PR. Refused when it does not match the task.",
+          "type": "string",
+          "enum": [
+            "close_session",
+            "accept_review"
+          ]
+        },
+        "questionId": {
+          "description": "The pending question's id (its ask requestId).",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "answers": {
+          "description": "One entry per question, in the order the question card lists them.",
+          "minItems": 1,
+          "maxItems": 4,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "choices": {
+                "minItems": 1,
+                "maxItems": 4,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 60
+                },
+                "description": "Option labels for this question, exactly as the question lists them. One for a single-select question."
+              }
+            },
+            "required": [
+              "choices"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "messageId": {
+          "description": "A queued message's id.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "required": [
+        "action",
+        "runId",
+        "expectedVersion"
+      ],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "discover_project",
+    "title": "Discover the bound project",
+    "description": "Read which xezar project this session is bound to, its effective capabilities and limits, and which actions are available. Every action that is unavailable or read-only says why. Call it at the start of a session and again after a person changes settings. It takes no arguments: the project comes from the connection, never from a parameter.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "idempotentHint": true,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "organise_work",
+    "title": "Organise tasks",
+    "description": "Organise this project's tasks the way the xezar cockpit does. Pick one `action`:\n- list_queue: the queued tasks, oldest first (the order they start in), with their brief and queued message ids. Paginated: pass `next` back as `cursor`.\n- set_title: rename a task (any status).\n- edit_brief / edit_queued_message / remove_queued_message: change a queued task before it starts. Refused once the task has started.\n- pin / unpin, archive / restore, mark_read / mark_unread: per-task flags. Archive is refused while the task is queued, running or waiting.\n- archive_finished / mark_all_read: sweep every finished task of this project.\n- delete: remove a task, its transcript, its worktree and its branch. Irreversible. Refused while the task is active.\n- start_inbox_item / remove_inbox_item: act on an Inbox item (needs the Inbox to be on).\n- pick_variant: keep one variant of a group. Refused until every variant has finished; then every other variant is archived and its worktree and branch are deleted. Irreversible.\nEvery action that changes one task needs expectedVersion: the `version` task_read (view task) returned for it — for pick_variant, the variant you keep. If the task changed since you read it, nothing is applied and the answer is status \"conflict\" with error \"stale_version\": read it again and decide again.\nNo confirmation is needed for any action. Tasks have no priority and no dependencies: there is nothing to reorder. A refusal the task state caused comes back with status \"conflict\" and the reason.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "list_queue",
+            "set_title",
+            "edit_brief",
+            "edit_queued_message",
+            "remove_queued_message",
+            "pin",
+            "unpin",
+            "archive",
+            "restore",
+            "archive_finished",
+            "mark_read",
+            "mark_unread",
+            "mark_all_read",
+            "delete",
+            "start_inbox_item",
+            "remove_inbox_item",
+            "pick_variant"
+          ],
+          "description": "What to do. See the tool description for each action."
+        },
+        "runId": {
+          "description": "The task id. For pick_variant: the variant to keep.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._-]+$"
+        },
+        "expectedVersion": {
+          "description": "Required by every action that changes one task (set_title, edit_brief, edit_queued_message, remove_queued_message, pin, unpin, archive, restore, delete) and by pick_variant: the `version` task_read gave you for that task — for pick_variant, the variant you keep. Echo it verbatim.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "title": {
+          "description": "set_title: the new title.",
+          "type": "string"
+        },
+        "task": {
+          "description": "edit_brief: the replacement brief. Only while the task is queued.",
+          "type": "string"
+        },
+        "messageId": {
+          "description": "edit_queued_message / remove_queued_message: the queued message id (list_queue shows them).",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._-]+$"
+        },
+        "text": {
+          "description": "edit_queued_message: the replacement text.",
+          "type": "string"
+        },
+        "todoId": {
+          "description": "start_inbox_item / remove_inbox_item: the Inbox item id.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._-]+$"
+        },
+        "runner": {
+          "description": "start_inbox_item: the agent backend; omitted means the project default.",
+          "type": "string",
+          "enum": [
+            "claude",
+            "codex",
+            "opencode",
+            "pi"
+          ]
+        },
+        "model": {
+          "description": "start_inbox_item: the model; omitted means the backend default.",
+          "type": "string"
+        },
+        "prompt": {
+          "description": "start_inbox_item: extra instructions appended to the item.",
+          "type": "string"
+        },
+        "groupId": {
+          "description": "pick_variant: the variant group id.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._-]+$"
+        },
+        "cursor": {
+          "description": "list_queue: the `next` value of the previous page.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        },
+        "limit": {
+          "description": "list_queue: at most this many items (default and maximum 100).",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "task_create",
+    "title": "Create or plan a task",
+    "description": "Create a task in this project with the New task form's options, defaults and validation, plan one first, start an Inbox entry, or save a planned step list as a workflow. Options you omit resolve exactly as the form resolves them for this project. `start` returns promptly with the run id and status `accepted`; it does not wait for the task, so read the task status separately. A git task that asks for a worktree and cannot get one is marked failed before any step runs; it never falls back to the checkout.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "default": "start",
+          "description": "`start` (default) creates a task like the New task form. `plan` asks the planner for steps. `start_from_inbox` starts an Inbox entry. `save_plan` saves a step list as a project workflow.",
+          "type": "string",
+          "enum": [
+            "start",
+            "plan",
+            "start_from_inbox",
+            "save_plan"
+          ]
+        },
+        "operationId": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "description": "Client-generated key for this operation (8–128 chars). Reuse it only to repeat the same operation."
+        },
+        "prompt": {
+          "description": "The task text (start, plan; up to 100000 chars), or extra instructions (start_from_inbox; up to 20000 chars).",
+          "type": "string"
+        },
+        "images": {
+          "description": "Attachments (start): up to 4, base64 images, plain text, markdown or PDF.",
+          "maxItems": 4,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "mediaType": {
+                "type": "string"
+              },
+              "data": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 7000000
+              }
+            },
+            "required": [
+              "mediaType",
+              "data"
+            ]
+          }
+        },
+        "source": {
+          "description": "What the task runs (start): a skill or a workflow by name. Omit or null for the plain built-in `quick-task`.",
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "skill",
+                    "workflow"
+                  ]
+                },
+                "ref": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "source",
+                "ref"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "steps": {
+          "description": "An inline step list (start from a reviewed plan, or save_plan). Not combined with `source`.",
+          "minItems": 1,
+          "maxItems": 8,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "name": {
+                "type": "string"
+              },
+              "prompt": {
+                "type": "string"
+              },
+              "skill": {
+                "type": "string"
+              },
+              "model": {
+                "type": "string"
+              },
+              "runner": {
+                "type": "string",
+                "enum": [
+                  "claude",
+                  "codex",
+                  "opencode",
+                  "pi"
+                ]
+              },
+              "allowedTools": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "bashAllowlist": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "timeout": {
+                "type": "string"
+              },
+              "command": {
+                "type": "string"
+              },
+              "onFail": {
+                "type": "object",
+                "properties": {
+                  "retry": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "max": {
+                    "default": 2,
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "retry"
+                ]
+              }
+            },
+            "required": [
+              "id"
+            ]
+          }
+        },
+        "model": {
+          "description": "Model id (start, start_from_inbox). Omit for the runner's configured default; '' means auto.",
+          "type": "string"
+        },
+        "runner": {
+          "description": "Agent backend (start, start_from_inbox). Omit for the project default.",
+          "type": "string",
+          "enum": [
+            "claude",
+            "codex",
+            "opencode",
+            "pi"
+          ]
+        },
+        "agentProfile": {
+          "description": "Agent account id (start only). Omit to follow the project's selection.",
+          "type": "string",
+          "maxLength": 64
+        },
+        "variants": {
+          "description": "1–3 competing runs (start). Above 1 needs git and always uses worktrees.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
+        },
+        "worktree": {
+          "description": "false runs in the repo working tree (start, single runs only). Omit for the workspace default.",
+          "type": "boolean"
+        },
+        "autonomous": {
+          "description": "true never pauses for the user (start). Omit for the workspace default.",
+          "type": "boolean"
+        },
+        "generateFollowups": {
+          "description": "false stops follow-up inbox entries (start). Omit for on.",
+          "type": "boolean"
+        },
+        "todoId": {
+          "description": "The Inbox entry: the one to start (start_from_inbox), or the one this task came from (start).",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "name": {
+          "description": "Workflow name (save_plan, up to 80 chars).",
+          "type": "string"
+        },
+        "description": {
+          "description": "Workflow description (save_plan).",
+          "type": "string"
+        },
+        "overwrite": {
+          "description": "save_plan: replace an existing workflow of that name. Ask the user first.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "operationId"
+      ],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "handoff_git",
+    "title": "Hand work onward: commit, push, draft PR, merge, branches",
+    "description": "Hand a task's work onward through the cockpit's own operations: commit a task's worktree, push its branch, open its draft pull request, read a pull request's merge readiness, invoke the existing merge, and switch or create branches of the main checkout. Every action runs at once, with the same checks the cockpit applies; a refusal carries the service's own reason unchanged. commit, push and create_pr need the task's expectedVersion (from task_read) and do nothing, answering status \"conflict\" with error \"stale_version\", if the task changed since. A merge needs the headSha you reviewed and is refused if the head moved. Failing, pending or unreadable required checks and missing reviews are blockers that no argument bypasses: repair the cause or report the blocker.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "repo",
+            "commit",
+            "push",
+            "create_pr",
+            "merge_state",
+            "merge",
+            "branch"
+          ],
+          "description": "repo: read the main checkout (branch, branches, base, whether a remote exists, uncommitted count). commit / push / create_pr: act on one task (taskId). merge_state: read one pull request (number) fresh, with its quality blockers. merge: invoke the existing merge (number, expectedHeadSha). branch: switch to, or create and switch to, a branch of the main checkout (name, from)."
+        },
+        "taskId": {
+          "description": "The task to commit, push or publish.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "expectedVersion": {
+          "description": "commit / push / create_pr: the `version` task_read returned for the task. If the task changed since, nothing is done.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "message": {
+          "description": "commit: the commit message.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 5000
+        },
+        "number": {
+          "description": "merge_state / merge: the pull request number.",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "expectedHeadSha": {
+          "description": "merge: the headSha of the state you reviewed. A moved head is refused, never merged.",
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "method": {
+          "description": "merge: one of the state's methods; defaults to its defaultMethod.",
+          "type": "string",
+          "enum": [
+            "merge",
+            "squash",
+            "rebase"
+          ]
+        },
+        "name": {
+          "description": "branch: the branch to switch to or create.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "from": {
+          "description": "branch: start point when creating.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "destructiveHint": true,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "read_results_evidence",
+    "title": "Read task results and evidence",
+    "description": "Read what a task produced and the project's GitHub state, each answer identified by the revision it describes. Task reads (need runId): summary, history, changes (the task's own diff, anchored like the cockpit's Changes tab), files (path), commits, commit (sha), handoff. Repository reads: repo, repo_changes, repo_commit (sha). GitHub reads: github, github_comments, github_checks, github_search, github_ref_status, pr_merge_state, pr_changes. Every task read returns revision.headSha. Pass it back later as expectedHeadSha to learn whether that evidence is still current (freshness: 'stale' when the tree moved). evidence: 'unavailable' means it cannot be read now (for example the worktree was reclaimed) — never that nothing changed. 'done' is not proof that checks passed. Answers are paged (page.next); a page that is one large item comes as fragments to concatenate. This is a read for assessment, not a status poll.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "read": {
+          "type": "string",
+          "enum": [
+            "summary",
+            "history",
+            "changes",
+            "files",
+            "commits",
+            "commit",
+            "handoff",
+            "repo",
+            "repo_changes",
+            "repo_commit",
+            "github",
+            "github_comments",
+            "github_checks",
+            "github_search",
+            "github_ref_status",
+            "pr_merge_state",
+            "pr_changes"
+          ],
+          "description": "Which evidence to read."
+        },
+        "runId": {
+          "description": "The task id. Required by every task read.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "path": {
+          "description": "files: a path relative to the task working directory; omit for its root.",
+          "type": "string",
+          "maxLength": 4096
+        },
+        "sha": {
+          "description": "commit / repo_commit: the commit to read.",
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{4,40}$"
+        },
+        "number": {
+          "description": "github_comments / pr_merge_state / pr_changes: the issue or PR number.",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 2147483647
+        },
+        "kind": {
+          "description": "github_comments / github_search: issue or pull request.",
+          "type": "string",
+          "enum": [
+            "issue",
+            "pr"
+          ]
+        },
+        "prs": {
+          "description": "github_checks / github_ref_status: PR numbers.",
+          "minItems": 1,
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 2147483647
+          }
+        },
+        "issues": {
+          "description": "github_ref_status: issue numbers.",
+          "minItems": 1,
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 2147483647
+          }
+        },
+        "query": {
+          "description": "github_search: the search text.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "limit": {
+          "description": "github / github_search: how many items to ask GitHub for.",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 100
+        },
+        "refresh": {
+          "description": "GitHub reads: bypass the cockpit cache.",
+          "type": "boolean"
+        },
+        "expectedHeadSha": {
+          "description": "The revision.headSha of an earlier read. The answer says whether that evidence is still current.",
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{7,40}$"
+        },
+        "cursor": {
+          "description": "The page.next value of the previous page of this same read.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        }
+      },
+      "required": [
+        "read"
+      ],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true
+    }
+  },
+  {
+    "name": "project_config",
+    "title": "Project configuration",
+    "description": "Read and change THIS project's own configuration: its settings (agent, models, system prompt, review gate, base branch, worktree retention, memory limit), its registry entry (concurrency cap and tags), prompt templates, in-repo agent config files, workflows, skills, GitHub automations and worktrees. Shared settings are readable only as effective limits and capabilities (get_limits, get_capabilities, get_account). Workspace-wide settings, agent accounts, account identity, home files, the project registry and host folders are outside this boundary and are refused with the reason.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "get_config",
+            "set_config",
+            "get_project",
+            "set_project",
+            "get_prompt_templates",
+            "set_prompt_templates",
+            "get_limits",
+            "get_capabilities",
+            "get_account",
+            "list_agent_config",
+            "read_agent_config",
+            "write_agent_config",
+            "list_workflows",
+            "parse_workflow",
+            "save_workflow",
+            "delete_workflow",
+            "list_skills",
+            "get_skill",
+            "list_importable_skills",
+            "refresh_skills",
+            "check_skill_updates",
+            "list_automations",
+            "get_automation",
+            "create_automation",
+            "update_automation",
+            "delete_automation",
+            "enable_automation",
+            "pause_automation",
+            "check_automation",
+            "get_automation_check",
+            "get_automation_log",
+            "retry_automation_receipt",
+            "list_worktrees",
+            "reclaim_worktrees",
+            "remove_worktree",
+            "set_provider_enabled",
+            "connect_provider",
+            "retry_provider",
+            "create_account",
+            "update_account",
+            "remove_account",
+            "select_account",
+            "check_account_status",
+            "get_account_details",
+            "open_account_file",
+            "set_workspace_config",
+            "set_workspace_ui_state",
+            "browse_folders",
+            "add_project",
+            "clone_project",
+            "remove_project",
+            "apply_skill_updates",
+            "import_skills",
+            "get_launch_key",
+            "open_in_app"
+          ],
+          "description": "What to do in the project this connection is bound to. Actions outside the project boundary (workspace settings, accounts, the project registry, host folders) are answered with a refusal that names the boundary."
+        },
+        "projectId": {
+          "description": "Never accepted: the project is the one this connection is bound to, and a call that names one is refused."
+        },
+        "config": {
+          "description": "set_config: the project's own settings to change. null clears a key back to its default.",
+          "type": "object",
+          "properties": {
+            "baseBranch": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "defaultRunner": {
+              "type": "string",
+              "enum": [
+                "claude",
+                "codex",
+                "opencode",
+                "pi"
+              ]
+            },
+            "systemPrompt": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 20000
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "defaultModels": {
+              "type": "object",
+              "properties": {
+                "claude": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 200
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "codex": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 200
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "opencode": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 200
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "pi": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 200
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            },
+            "memoryLimitMb": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 1048576
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "worktreeRetention": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 1000
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "liveTitleUpdates": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "reviewGate": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "plannerModel": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "namerModel": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "skillsRepos": {
+              "anyOf": [
+                {
+                  "maxItems": 32,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "repo": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 500
+                      },
+                      "ref": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      }
+                    },
+                    "required": [
+                      "repo"
+                    ]
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "project": {
+          "description": "set_project: this project's concurrency cap (maxParallel, null inherits the workspace cap) and/or its tags (whole list).",
+          "type": "object",
+          "properties": {
+            "maxParallel": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 16
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "tags": {
+              "anyOf": [
+                {
+                  "maxItems": 20,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "promptTemplates": {
+          "description": "set_prompt_templates: the WHOLE list of follow-up prompt templates; [] is an empty list.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              },
+              "skills": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "id",
+              "label",
+              "text"
+            ]
+          }
+        },
+        "fileId": {
+          "description": "An agent config file id from list_agent_config — never a path.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "content": {
+          "description": "write_agent_config: the full new file content.",
+          "type": "string",
+          "maxLength": 2000000
+        },
+        "version": {
+          "description": "write_agent_config: the version from the read you based the edit on; null when the file does not exist yet.",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "yaml": {
+          "description": "parse_workflow: workflow YAML to validate and normalise.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100000
+        },
+        "workflow": {
+          "description": "save_workflow: name plus exactly one of steps (agent steps: prompt or skill) or skills. Check steps (shell commands) are not accepted. An existing file is refused unless overwrite is true.",
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "description": {
+              "type": "string",
+              "maxLength": 2000
+            },
+            "skills": {
+              "minItems": 1,
+              "maxItems": 8,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "overwrite": {
+              "type": "boolean"
+            },
+            "steps": {
+              "minItems": 1,
+              "maxItems": 8,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "prompt": {
+                    "type": "string"
+                  },
+                  "skill": {
+                    "type": "string"
+                  },
+                  "model": {
+                    "type": "string"
+                  },
+                  "runner": {
+                    "type": "string",
+                    "enum": [
+                      "claude",
+                      "codex",
+                      "opencode",
+                      "pi"
+                    ]
+                  },
+                  "allowedTools": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "bashAllowlist": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "timeout": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "additionalProperties": false
+        },
+        "name": {
+          "description": "delete_workflow / get_skill: the workflow or skill name.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "wait": {
+          "description": "Skill reads: wait for a cold team-skill cache to load first.",
+          "type": "boolean"
+        },
+        "refresh": {
+          "description": "get_capabilities: probe provider status now instead of serving the cached answer.",
+          "type": "boolean"
+        },
+        "automationId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "automation": {
+          "description": "create_automation: the cockpit form — name, prompt template, enable. Trigger: new issue, every 5 minutes, last 7 days, at most 25 records; task workflow quick-task.",
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "prompt": {
+              "type": "string",
+              "minLength": 1
+            },
+            "enable": {
+              "description": "Enable from a current-time baseline (existing matches will not launch). Default false.",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "name",
+            "prompt"
+          ],
+          "additionalProperties": false
+        },
+        "update": {
+          "description": "update_automation: a new name and/or prompt plus expectedRevision from your last read; everything else is kept.",
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "prompt": {
+              "type": "string",
+              "minLength": 1
+            },
+            "expectedRevision": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "expectedRevision"
+          ],
+          "additionalProperties": false
+        },
+        "mode": {
+          "description": "check_automation: preview counts matches; execute launches them.",
+          "type": "string",
+          "enum": [
+            "preview",
+            "execute"
+          ]
+        },
+        "checkId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "receiptId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "logQuery": {
+          "type": "object",
+          "properties": {
+            "automationId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "result": {
+              "type": "string",
+              "enum": [
+                "launched",
+                "no-match",
+                "duplicate",
+                "rate-limited",
+                "error",
+                "baseline",
+                "preview"
+              ]
+            },
+            "event": {
+              "type": "string",
+              "enum": [
+                "pull_request.opened",
+                "issue.opened",
+                "issue.labeled",
+                "issue.unlabeled"
+              ]
+            },
+            "since": {
+              "description": "ISO timestamp; only newer rows.",
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+            },
+            "cursor": {
+              "description": "Row sequence to continue from.",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          "additionalProperties": false
+        },
+        "runId": {
+          "description": "remove_worktree: the task's run id.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "expectedVersion": {
+          "description": "remove_worktree: the `version` task_read returned for the task. If the task changed since, nothing is removed.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "local_handoff",
+    "title": "Open a task or the project in an app on the xezar host",
+    "description": "Hand a task or the project off to a desktop app — a terminal resuming the task’s agent session, an editor, the file manager. Every app opens on the XEZAR HOST MACHINE (the computer running the xezar service), never on the machine your MCP client runs on. When the xezar host has no desktop to hand off to (hosted mode), every action answers \"unavailable\" with the reason and opens nothing. When no terminal emulator is found, the answer carries fallbackCommand to run in a terminal on the xezar host. No per-operation confirmation is needed: opening an app is a project operation inside the approved goal. Goal and definition-of-done decisions stay with the human and are not offered here, and no parameter can waive a quality gate or an acceptance criterion.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "list_apps",
+            "open_task_in_terminal",
+            "open_task_in_app",
+            "open_project_in_app"
+          ],
+          "description": "list_apps: the apps installed on the xezar host. open_task_in_terminal: resume the task’s agent session in a terminal on the xezar host. open_task_in_app: open the task’s worktree in an app on the xezar host. open_project_in_app: open the project folder in an app on the xezar host."
+        },
+        "runId": {
+          "description": "The task's run id, in the project this connection is bound to.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "target": {
+          "description": "An app id from list_apps (for example \"finder\", \"terminal\", \"vscode\", \"cli:claude\").",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false
+    }
+  },
+  {
+    "name": "leader_events",
+    "title": "Read and acknowledge project events",
+    "description": "Read this project's significant events (task outcomes, questions, quality gates, human changes, executor availability) since you last acknowledged them, and acknowledge them.\nCall read when you connect or reconnect. It returns the outstanding events in order, each with a stable eventId and a standing (current, superseded or unjudged), then the current state of the tasks they name — the state is the authority, an event is history.\nWhen hasMore is true, read again at once; otherwise do not poll — call read again on your next connection.\nAfter you have taken a page into account, ack its nextCursor. Until you do, read returns the same events again, so drop any eventId you already handled. Acknowledging an older cursor changes nothing.\nstatus \"gap\" means events after your position are no longer retained: nothing is replayed, the current state is included, and you continue by acking resumeCursor.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "read",
+            "ack"
+          ],
+          "description": "read: the events outstanding since your last acknowledged position, then the current state of the tasks they name. ack: record that you have taken every event up to cursor into account."
+        },
+        "cursor": {
+          "description": "read: replay after this cursor instead of your acknowledged position (optional; it never moves the acknowledgement). ack: required — the nextCursor of a page, or the resumeCursor of a gap.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        },
+        "limit": {
+          "description": "read: events per page, at most 100.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    }
+  }
+]

@@ -1,7 +1,8 @@
 # MCP server for a single-project leader — requirements draft
 
-Status: **requirements draft; the feature is not implemented**. Date: 2026-09-08.
+Status: **requirements contract; the feature is implemented** (`xezar mcp` and the tools inside `xezar serve`). Date: 2026-09-08; status updated 2026-09-11.
 Audience: product owner and engineering team.
+API reference: [MCP API reference](mcp-api.md) — every tool, its arguments and results, and which tool action serves each inventory record.
 Updated agreement: local-only MVP, one active logical client per project, full autonomous project actions, mandatory events/conflict rejection/idempotency, and non-waivable quality. Technical research: [client compatibility and recommendation](mcp-client-compatibility.md).
 
 Baseline: Xezar revision `6cd4aaa3605e8bcddf7bafd8f05ac96881ee35cc` and the current repository instructions. This is neither an approved protocol design nor a catalog of existing MCP tools.
