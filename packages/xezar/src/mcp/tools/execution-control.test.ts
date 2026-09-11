@@ -204,7 +204,7 @@ describe('no tool can terminate an arbitrary process', () => {
         ...paths(node.items, `${prefix.replace(/\.$/, '')}[].`),
       ];
     };
-    // The one exemption: a workflow CHECK step's `command` inside a `steps` list. It is the
+    // Exemption one: a workflow CHECK step's `command` inside a `steps` list. It is the
     // cockpit's own step shape (plan review start I-003, Save as chain I-005, workflow save I-087),
     // run by the engine in the task's own worktree through the cockpit's route — not a control
     // over a host process. Every other forbidden word stays forbidden, inside steps too.
@@ -213,10 +213,15 @@ describe('no tool can terminate an arbitrary process', () => {
     for (const path of ['command', 'steps.command', 'steps[].onFail.command', 'stepsX[].command', 'steps[].pid'])
       expect(stepCommand.test(path), path).toBe(false);
     expect(paths({ properties: { steps: { items: { properties: { command: {}, cwd: {} } } } } })).toEqual(['steps', 'steps[].command', 'steps[].cwd']);
+    // Exemption two, by exact tool and top-level field: a file read's `path` is relative to the
+    // task's own worktree and confined there by `ownWorktreeFile` (A-04: absolute, `..`, `.git` and
+    // symlinked paths are refused — pinned in results-evidence.test.ts). It names no process.
+    const confinedPaths = new Set(['read_results_evidence.path']);
     expect(tools).toContain(executionControlTool);
     for (const tool of tools) {
       for (const path of paths(toolListing(tool).inputSchema)) {
         if (stepCommand.test(path)) continue;
+        if (confinedPaths.has(`${tool.name}.${path}`)) continue;
         expect(forbidden(path.split(/\.|\[\]/).filter(Boolean).pop() ?? path), `${tool.name}.${path}`).toBe(false);
       }
     }

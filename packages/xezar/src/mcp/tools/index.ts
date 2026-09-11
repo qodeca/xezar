@@ -25,6 +25,8 @@ import { discoverProjectTool } from './discovery.ts';
 import { organiseWorkTool } from './work-organisation.ts';
 import { taskCreateTool } from './task-create.ts';
 import { handoffGitTool } from './handoff-git.ts';
+import { resultsEvidenceTool } from './results-evidence.ts';
+import { projectConfigTool } from './project-config.ts';
 
 export const tools: readonly McpTool[] = [
   taskReadsTool,
@@ -33,4 +35,6 @@ export const tools: readonly McpTool[] = [
   organiseWorkTool,
   taskCreateTool,
   handoffGitTool,
+  resultsEvidenceTool,
+  projectConfigTool,
 ];
