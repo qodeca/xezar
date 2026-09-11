@@ -1,6 +1,6 @@
 # Result and evidence fields a leader needs to assess a revision
 
-Status: **field record; nothing here is implemented**. Date: 2026-09-10.
+Status: **field record; implemented by the `read_results_evidence` MCP tool** (`packages/xezar/src/mcp/tools/results-evidence.ts`, #95). Date: 2026-09-10; status updated 2026-09-11.
 Audience: engineering. Baseline revision: `9fdcf0e878999783db6c2a69dec93a7d00ccea44`.
 
 Delivers [#78](https://github.com/qodeca/xezar/issues/78), Phase 1 of [epic #67](https://github.com/qodeca/xezar/issues/67),
@@ -12,7 +12,7 @@ separately and cited here by name only.
 This is an agreed field list plus the reconciliation that produced it. It is **not** a schema change, a route
 change or a protocol design: Phase 3 turns the "to be added" rows below into zod. Every symbol below was read in
 the source at the baseline revision and is cited `path:line`. Where a requirements document and the source
-disagreed, the source won and the disagreement is recorded under [Corrections](#corrections).
+disagreed, the source won and the disagreement is recorded under [Corrections](#10-corrections).
 
 ## 1. The one rule
 

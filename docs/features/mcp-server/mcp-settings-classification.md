@@ -1,6 +1,6 @@
 # MCP settings classification (D-03) — field by field
 
-Status: **classification for a feature that is not implemented**. Date: 2026-09-10.
+Status: **classification record; the feature is implemented** (`packages/xezar/src/mcp/tools/project-config.ts` applies this classification). Date: 2026-09-10; status updated 2026-09-11.
 Audience: product owner and engineering team.
 Baseline: Xezar revision `9fdcf0e878999783db6c2a69dec93a7d00ccea44` (v0.13.1) and the current repository
 instructions. Delivers [issue #77](https://github.com/qodeca/xezar/issues/77), phase 1 of
