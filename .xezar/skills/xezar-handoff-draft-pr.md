@@ -9,6 +9,8 @@ Consume current checkpoint/late steering, then verify current evidence with work
 
 Inputs: sealed complete committed candidate and current steering. Output: one evidence-bound draft PR/handoff naming current head/base, CI identity and remaining work. No late source changes or duplicate PR; route repairs back to author and revalidation.
 
+A verification-only run – no commits over the base, passed by the evidence directory's `VERIFICATION` record – has no branch to push and no pull request to open. Push nothing and open nothing; report the verified revision, where the findings are posted, and the gate outcomes on this head.
+
 ## Shared contract
 
 Before reading kit files in a standalone skill run, if `.xezar/checks/bootstrap.sh` is absent, run `bash "$(git rev-parse --path-format=absolute --git-common-dir)/../.xezar/checks/bootstrap.sh"`. If unavailable or refused, stop with that specific blocker. Never fabricate commands or copy runtime. Workflow launches already perform this step.

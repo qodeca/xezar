@@ -242,7 +242,7 @@ describe('pasted screenshots materialize to disk and reach the agent as file pat
     };
     manager.startRun(holder, { task: 'occupy the only slot', worktree: false });
     const record = manager.startRun(workflow, {
-      task: 'save the pasted screenshot to disk',
+      task: 'mock:done save the pasted screenshot to disk',
       images: [image],
       worktree: false,
     });
@@ -302,7 +302,7 @@ describe('pasted screenshots materialize to disk and reach the agent as file pat
     };
     manager.startRun(holder, { task: 'occupy the only slot', worktree: false });
     const record = manager.startRun(workflow, {
-      task: 'read the attached brief',
+      task: 'mock:done read the attached brief',
       images: [
         { type: 'file', mediaType: 'text/markdown', data: BRIEF_MD_B64 },
         { type: 'file', mediaType: 'application/pdf', data: TINY_PDF_B64 },

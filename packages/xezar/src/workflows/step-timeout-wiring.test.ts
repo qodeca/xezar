@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AgentRunSpec } from '../core/agent-runner.ts';
+import type { AgentEvent, AgentRunSpec } from '../core/agent-runner.ts';
 import { DEFAULT_RUN_TIMEOUT_MS } from '../core/claude-cli-runner.ts';
 import { RunStore } from '../runs/store.ts';
 import { RunManager } from './run.ts';
@@ -23,10 +23,16 @@ vi.mock('../core/runner-factory.ts', () => ({
   createRunner: () => ({
     backend: 'claude' as const,
     run: async () => ({ text: '', toolCalls: [], tokensUsed: 0 }),
-    startSession: (spec: AgentRunSpec) => {
+    startSession: (spec: AgentRunSpec, onEvent: (event: AgentEvent) => void) => {
       captured.specs.push(spec);
       return {
-        result: Promise.resolve({ text: 'ok', toolCalls: [], tokensUsed: 0 }),
+        // A finished turn that ends with `XEZ:DONE`: a non-final step is only done when its
+        // turn says so (#317), and these cases need every step to spawn.
+        result: Promise.resolve().then(() => {
+          onEvent({ type: 'text', text: 'ok\n\nXEZ:DONE' });
+          onEvent({ type: 'turn-end' });
+          return { text: 'ok', toolCalls: [], tokensUsed: 0 };
+        }),
         sendMessage: () => false,
         end: () => {},
         interrupt: () => {},
