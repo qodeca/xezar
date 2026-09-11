@@ -87,10 +87,11 @@ export type CancelRunValue = InferResponseType<RunApi['cancel']['$post'], 200>;
 export type ArchiveRunValue = InferResponseType<RunApi['archive']['$post'], 200>;
 export type PinRunValue = InferResponseType<RunApi['pin']['$post'], 200>;
 
-/** One operation's outcome. A refusal keeps the service's own status and message. */
+/** One operation's outcome. A refusal keeps the service's own status and message, and its body —
+ *  which is how a stale-version 409 (#250) is told apart from every other 409. */
 export type McpServiceResult<T> =
   | { ok: true; origin: typeof MCP_ORIGIN; status: number; value: T }
-  | { ok: false; origin: typeof MCP_ORIGIN; status: number; error: string };
+  | { ok: false; origin: typeof MCP_ORIGIN; status: number; error: string; body?: unknown };
 
 /** Thrown only by the constructor: an adapter bound to no valid project must not exist at all. */
 export class McpServiceAdapterError extends Error {
@@ -139,20 +140,26 @@ export class McpServiceAdapter {
     return this.withRunId(runId, (param) => this.api.runs[':id'].$patch({ param, json: input }), [200]);
   }
 
-  cancelRun(runId: string): Promise<McpServiceResult<CancelRunValue>> {
-    return this.withRunId(runId, (param) => this.api.runs[':id'].cancel.$post({ param }), [200]);
+  /** `expectedVersion` (#250) is the stale-write guard: the route refuses the change when the run
+   *  moved since that version was read. Every MCP tool that mutates a run passes one. */
+  cancelRun(runId: string, expectedVersion?: string): Promise<McpServiceResult<CancelRunValue>> {
+    return this.withRunId(runId, (param) => this.api.runs[':id'].cancel.$post({ param, json: guard(expectedVersion) }), [200]);
   }
 
-  archiveRun(runId: string, archived = true): Promise<McpServiceResult<ArchiveRunValue>> {
+  archiveRun(runId: string, archived = true, expectedVersion?: string): Promise<McpServiceResult<ArchiveRunValue>> {
     return this.withRunId(
       runId,
-      (param) => this.api.runs[':id'].archive.$post({ param, json: { archived } }),
+      (param) => this.api.runs[':id'].archive.$post({ param, json: { archived, ...guard(expectedVersion) } }),
       [200],
     );
   }
 
-  pinRun(runId: string, pinned = true): Promise<McpServiceResult<PinRunValue>> {
-    return this.withRunId(runId, (param) => this.api.runs[':id'].pin.$post({ param, json: { pinned } }), [200]);
+  pinRun(runId: string, pinned = true, expectedVersion?: string): Promise<McpServiceResult<PinRunValue>> {
+    return this.withRunId(
+      runId,
+      (param) => this.api.runs[':id'].pin.$post({ param, json: { pinned, ...guard(expectedVersion) } }),
+      [200],
+    );
   }
 
   private scope(): { projectId: string } {
@@ -184,8 +191,13 @@ export class McpServiceAdapter {
       }
       return { ok: true, origin: MCP_ORIGIN, status: res.status, value: body as T };
     }
-    return { ok: false, origin: MCP_ORIGIN, status: res.status, error: errorMessage(body, res.status) };
+    return { ok: false, origin: MCP_ORIGIN, status: res.status, error: errorMessage(body, res.status), body };
   }
+}
+
+/** The guard as a body fragment: present only when there is a version to send. */
+function guard(expectedVersion: string | undefined): { expectedVersion?: string } {
+  return expectedVersion === undefined ? {} : { expectedVersion };
 }
 
 function runIdRefusal(runId: string): string | null {

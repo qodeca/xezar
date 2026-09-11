@@ -95,8 +95,8 @@ describe('GET /launch-key (value contract, #53)', () => {
     clearProjectProbeCache();
   });
 
-  afterEach(() => {
-    contexts?.disposeAll();
+  afterEach(async () => {
+    await contexts?.disposeAll();
     store?.flush();
     for (const dir of [home, bootRoot, otherRoot]) rmSync(dir, { recursive: true, force: true });
     if (savedHome === undefined) delete process.env.XEZ_HOME;

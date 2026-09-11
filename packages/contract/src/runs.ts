@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { runnerSchema } from './health.ts';
 import { referenceStatusSchema } from './github.ts';
+import { mcpVersionTokenSchema } from './mcp-versioning.ts';
 // The chain shapes belong to the workflows family; the run record embeds one, so this file
 // consumes them rather than redeclaring. One-way on purpose — see the header of `./workflows.ts`.
 import { workflowDefSchema, workflowStepDefSchema } from './workflows.ts';
@@ -794,6 +795,7 @@ export const messageInputSchema = z
   .object({
     text: z.string().max(100_000).default(''),
     images: z.array(attachmentInputSchema).max(4).default([]),
+    expectedVersion: mcpVersionTokenSchema.optional(),
   })
   .refine((m) => m.text.trim().length > 0 || m.images.length > 0, {
     message: 'message needs text or at least one attachment',
@@ -809,5 +811,78 @@ export type MessageInput = z.input<typeof messageInputSchema>;
 export const patchRunInputSchema = z.object({
   title: z.string().trim().min(1).max(300).optional(),
   task: z.string().trim().min(1).max(100_000).optional(),
+  expectedVersion: mcpVersionTokenSchema.optional(),
 });
 export type PatchRunInput = z.input<typeof patchRunInputSchema>;
+
+// ---- the stale-write guard (#250, N-03) -------------------------------------------------------
+//
+// Every route that mutates ONE run accepts an optional `expectedVersion`: the `version` a read of
+// that run handed out (`GET /runs/:id/version`). When it is sent, the route compares it with the
+// run's CURRENT token right before the effect, in the same synchronous stretch as the store call,
+// and a mismatch answers 409 `staleVersionRejectionSchema` with nothing applied. When it is
+// absent the route behaves exactly as it always has — that is the cockpit, which never sends one.
+// The MCP tools make it REQUIRED on their side (D-06 § 4.4 rule 4), so "no token" can never reach
+// a leader's write as a silent pass. Optional here is what keeps this additive for every client.
+
+/** The guard alone: the body of a run mutation that carries nothing else. The whole body stays
+ *  optional on the wire, so a bodyless call keeps meaning what it always meant. */
+export const runVersionGuardInputSchema = z.object({
+  expectedVersion: mcpVersionTokenSchema.optional(),
+});
+export type RunVersionGuardInput = z.input<typeof runVersionGuardInputSchema>;
+
+/** `POST /runs/:id/archive` (#429) — an absent body archives; `{archived: false}` restores. */
+export const archiveRunInputSchema = runVersionGuardInputSchema.extend({
+  archived: z.boolean().optional(),
+});
+export type ArchiveRunInput = z.input<typeof archiveRunInputSchema>;
+
+/** `POST /runs/:id/pin` (#935) — the archive route's shape: an absent body pins, `{pinned: false}`
+ *  unpins. */
+export const pinRunInputSchema = runVersionGuardInputSchema.extend({
+  pinned: z.boolean().optional(),
+});
+export type PinRunInput = z.input<typeof pinRunInputSchema>;
+
+/**
+ * `PATCH /runs/:id/queued-messages/:msgId` (#472). PATCH semantics are load-bearing: an omitted
+ * field keeps its current value, so the cockpit edits text without re-uploading attachments.
+ */
+export const queuedMessagePatchInputSchema = runVersionGuardInputSchema
+  .extend({
+    text: z.string().max(100_000).optional(),
+    images: z.array(attachmentInputSchema).max(4).optional(),
+  })
+  .refine((m) => m.text !== undefined || m.images !== undefined, {
+    message: 'message edit needs text or attachments',
+  });
+export type QueuedMessagePatchInput = z.input<typeof queuedMessagePatchInputSchema>;
+
+/**
+ * `POST /runs/:id/continue` (spec 003 / #401). Every field optional, so an empty POST reopens the
+ * last session on the run's current backend. `agentProfile` mirrors `POST /runs`' own bound.
+ */
+export const continueRunInputSchema = runVersionGuardInputSchema.extend({
+  text: z.string().max(100_000, 'must be at most 100000 characters').optional(),
+  images: z.array(attachmentInputSchema).max(4).optional(),
+  runner: runnerSchema.optional(),
+  model: z.string().max(200).optional(),
+  agentProfile: z.string().max(64).optional(),
+});
+export type ContinueRunInput = z.input<typeof continueRunInputSchema>;
+
+/** `POST /runs/:id/git/commit` — `git add -A && git commit` in the run's worktree. */
+export const gitCommitInputSchema = runVersionGuardInputSchema.extend({
+  message: z.string().trim().min(1, 'must not be empty').max(5_000),
+});
+export type GitCommitInput = z.input<typeof gitCommitInputSchema>;
+
+/**
+ * `GET /runs/:id/version` — the run's stale-write token as of this read (D-06 § 4.2). Opaque: a
+ * client echoes it back as `expectedVersion` and never parses it. A reader that also reads the
+ * record reads THIS first, so the token can only be older than what it saw — which costs a
+ * spurious rejection at worst, never a stale write passing.
+ */
+export const runVersionResponseSchema = z.object({ version: mcpVersionTokenSchema });
+export type RunVersionResponse = z.infer<typeof runVersionResponseSchema>;

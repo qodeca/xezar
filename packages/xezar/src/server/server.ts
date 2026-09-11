@@ -26,7 +26,7 @@ import type { Next } from 'hono';
 import { serve, type ServerType } from '@hono/node-server';
 import { bodyLimit } from 'hono/body-limit';
 import { streamSSE } from 'hono/streaming';
-import { jsonZodValidator, paramZodValidator, queryZodValidator } from './validators.ts';
+import { jsonZodValidator, optionalJsonZodValidator, paramZodValidator, queryZodValidator } from './validators.ts';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod';
 import {
@@ -66,6 +66,7 @@ import { applyProviderEnablement } from '../core/provider-availability.ts';
 import { RunnerModelCatalog } from '../core/runner-model-catalog.ts';
 import { currentUsage, onUsage } from '../core/process-usage.ts';
 import { projectWorkflowsDir, loadWorkflows } from '../workflows/load.ts';
+import { reportProjectChange } from '../mcp/project-catalogs.ts';
 import {
   QUICK_TASK_WORKFLOW,
   normalizeWorkflowDoc,
@@ -97,6 +98,18 @@ import {
   runHistoryQuerySchema,
   runIdParamSchema,
 } from '@qodeca/xezar-contract';
+// The run-mutation request shapes, each carrying the optional stale-write guard (#250).
+import {
+  archiveRunInputSchema,
+  continueRunInputSchema,
+  gitCommitInputSchema,
+  messageInputSchema,
+  patchRunInputSchema,
+  pinRunInputSchema,
+  queuedMessagePatchInputSchema,
+  runVersionGuardInputSchema,
+} from '@qodeca/xezar-contract';
+import { runVersion, staleRunWrite } from '../mcp/stale-write.ts';
 import { toPastedContent, type PastedContent, type RunManager } from '../workflows/run.ts';
 import { removeWorktree, worktreeDiff, worktreeDiffStat, worktreeSizeBytes } from '../git-worktree.ts';
 import { isReclaimable, reclaimWorktrees } from '../runs/retention.ts';
@@ -270,6 +283,9 @@ export interface ServerDeps {
   socketHub?: SocketHub;
   /** Re-arm the workspace automation timer after definition mutations. */
   automationsChanged?: () => void;
+  /** `startServer` only: handed the app it built, so the MCP socket (src/index.ts) dispatches
+   *  into the SAME route table in-process (#243). `createApp` ignores it. */
+  onApp?: (app: ReturnType<typeof createApp>) => void;
 }
 
 // ---- project-scoped routing (multi-project spec, step 2.2) -----------------
@@ -435,6 +451,51 @@ const FOLLOWUPS_OFF = 'the follow-up inbox is disabled — set XEZ_FOLLOWUPS=1 t
 
 /** 409 body for every automations route while GitHub automations are off (#801). */
 const AUTOMATIONS_OFF = 'GitHub automations are disabled — set XEZ_AUTOMATIONS=1 to enable them';
+
+/**
+ * How long `DELETE /projects/:id` waits on either of its project-lifecycle promises — a context
+ * still opening, then the removed context's last background writes — before answering anyway
+ * (#200). One bound per wait, applied through `withinTeardownBound`.
+ *
+ * `RunManager.dispose()` deliberately carries NO deadline — an invented one there would only
+ * move an ENOTEMPTY a few hundred milliseconds later, which is the right call for a teardown
+ * helper whose caller is about to delete the directory. An HTTP request is the opposite case:
+ * it must answer. The realistic tail is short (the 409 above already refused the removal if any
+ * run is active, and a retention sweep stops after its current iteration), but that iteration
+ * is `git worktree remove --force` + `rm -rf` + `git worktree prune`, and `git()` in
+ * `git-worktree.ts` passes no `timeout` to `execFile` — so a git blocked on `index.lock` or a
+ * stalled network mount would hang the request with no response and no recovery.
+ *
+ * Deliberately bounded HERE and not by giving `git()` a timeout: the same helper runs
+ * `git worktree add` and `git fetch`, which are legitimately slow on a large repository, so a
+ * blanket timeout would turn a slow clone into a failed run. What the bound gives up is only
+ * the tail of the guarantee: the registry entry is already gone and the context is already out
+ * of the map, so the answer stays true — a sweep that outlives it can still stamp a record, the
+ * pre-#200 behaviour, and only for a project no route can reach.
+ */
+const PROJECT_TEARDOWN_WAIT_MS = 5_000;
+
+/**
+ * Wait for one of `DELETE /projects/:id`'s two project-lifecycle promises — the in-flight build
+ * before the running-tasks guard, the teardown after the removal — and answer anyway once
+ * `PROJECT_TEARDOWN_WAIT_MS` is up.
+ *
+ * One helper for both because the reason is the same one, and because two hand-rolled races in
+ * one handler drift: neither wait may turn a request into something that cannot answer. Both
+ * outcomes are swallowed deliberately — the route's answer does not depend on how either promise
+ * settled, and a build that lost its project rejects by design.
+ */
+async function withinTeardownBound(work: Promise<unknown>): Promise<void> {
+  await Promise.race([
+    work.then(
+      () => undefined,
+      () => undefined,
+    ),
+    new Promise<void>((resolve) => {
+      setTimeout(resolve, PROJECT_TEARDOWN_WAIT_MS).unref?.();
+    }),
+  ]);
+}
 
 // ---- variant-compare response shapes (spec 010) ----------------------------
 // Named and exported so `api-types.test.ts` can drift-guard the cockpit's
@@ -740,18 +801,6 @@ const uiStateSchema = z
   })
   .passthrough();
 
-// Editable titles (#389), and the initial prompt while the run is still queued
-// (#472 — rejected with 409 on any other status by the handler).
-const patchRunSchema = z.object({
-  title: z.string().trim().min(1).max(300).optional(),
-  task: z.string().trim().min(1).max(100_000).optional(),
-});
-
-// Session commit (redesign R5 — §"Git/session API additions").
-const gitCommitSchema = z.object({
-  message: z.string().trim().min(1, 'must not be empty').max(5_000),
-});
-
 // "Open in…" (#open-in / #365): `target` selects the app; `path` (optional, worktree-relative)
 // narrows the target's own worktree/repo-root default to one file — used by the diff pane's
 // "open in default app" action for images. Containment is re-checked server-side via
@@ -761,29 +810,6 @@ const openInSchema = z.object({
   target: z.string().trim().min(1, 'target required').max(200),
   path: z.string().max(1_000).optional(),
 });
-
-// Attachment-carrying bodies validate with the CONTRACT's `attachmentInputSchema` (#950) —
-// images plus the short PDF/TXT/MD allowlist, ~5 MB each once base64-decoded. Imported rather
-// than mirrored here, so the wire cannot drift from what the cockpit compiles against.
-const messageSchema = z
-  .object({
-    text: z.string().max(100_000).default(''),
-    images: z.array(attachmentInputSchema).max(4).default([]),
-  })
-  .refine((m) => m.text.trim().length > 0 || m.images.length > 0, {
-    message: 'message needs text or at least one attachment',
-  });
-
-// PATCH semantics are load-bearing here: an omitted field keeps its current value.
-// In particular, the cockpit edits text without re-uploading existing attachments.
-const queuedMessagePatchSchema = z
-  .object({
-    text: z.string().max(100_000).optional(),
-    images: z.array(attachmentInputSchema).max(4).optional(),
-  })
-  .refine((m) => m.text !== undefined || m.images !== undefined, {
-    message: 'message edit needs text or attachments',
-  });
 
 // Queued prompt stack bounds (#472). The per-message bounds mirror `messageSchema`
 // above; the one that actually matters is the FOLDED total, because 20 messages of
@@ -802,22 +828,6 @@ function foldedLength(task: string, stack: Array<{ text: string }>): number {
     .filter((part) => part.length > 0)
     .join('\n\n').length;
 }
-
-// "Continue"/"Send back" body (spec 003 / #401): every field optional, so an empty POST reopens
-// the last session on the run's current backend (backward compat). A runner/model/account override
-// lets the follow-up composer choose which engine handles the continuation. `text` stays bounded
-// like the live-session message `text` (#429), and `images` like a live-session message's — the
-// follow-up composer is a full composer, so a screenshot pasted into it must reach the reopened
-// session rather than being silently dropped.
-const continueSchema = z.object({
-  text: z.string().max(100_000, 'must be at most 100000 characters').optional(),
-  images: z.array(attachmentInputSchema).max(4).optional(),
-  runner: z.enum(RUNNER_IDS).optional(),
-  model: z.string().max(200).optional(),
-  /** Agent account for the reopened session (spec 2026-07-29-agent-profiles). Bound mirrors
-   *  `POST /runs`' own `agentProfile`. Omitted = keep the account the run is already on. */
-  agentProfile: z.string().max(64).optional(),
-});
 
 // Inbox "▶ Run" body (spec 007 / #401 / #413): every field optional, and the whole body is
 // optional too, so an empty POST — every client before the pills and the composer — starts on
@@ -842,19 +852,6 @@ const startTodoSchema = z
 /** Hono env for `POST /todos/:id/start`: the guard in front of that route publishes the resolved
  *  entry so the handler does not re-read `todos.json` a second time in the same request. */
 type TodoStartEnv = ProjectApiEnv & { Variables: { todo: TodoItem } };
-
-// `POST /api/runs/:id/archive` (#429) — no body archives; `{archived:false}`
-// un-archives. A tiny schema so the route follows the safeParse convention.
-const archiveSchema = z.object({
-  archived: z.boolean().optional(),
-});
-
-// `POST /api/v1/runs/:id/pin` (#935) — no body pins; `{pinned:false}` unpins. The archive
-// route's shape, deliberately: it is the same kind of per-task flag, and a second spelling for
-// "absent means do the thing" would be one more rule for a client to remember.
-const pinSchema = z.object({
-  pinned: z.boolean().optional(),
-});
 
 // Request-body size guards (#429). A generous global cap keeps a single
 // localhost request from being unbounded (the largest legit body is 4 pasted
@@ -2394,6 +2391,16 @@ export function createApp(deps: ServerDeps) {
         );
       }
 
+      // A project whose context is still BUILDING is not a project with no runs: its store opens
+      // with `keepLive` and `manager.recover()` re-queues or resumes every live-looking row, so
+      // the guard below — which reads the already-built context only — would count zero for a
+      // project that is at this moment bringing agents back, and remove it out from under them.
+      // Let the build finish, then count. Bounded for the same reason the teardown below is: a
+      // build that outlives the bound leaves the pre-existing answer (nothing built, zero runs)
+      // rather than a project that can never be removed.
+      const opening = contexts.pending(id);
+      if (opening) await withinTeardownBound(opening);
+
       const active = activeRunCount(id);
       if (active > 0) {
         return c.json(
@@ -2417,7 +2424,27 @@ export function createApp(deps: ServerDeps) {
       if (!removed) return c.json({ error: `unknown project: ${id}` }, 404);
       // In-process handles for a project no route can reach any more: store
       // closed (index flushed), manager's timers and usage subscription dropped.
-      contexts.dispose(id);
+      //
+      // AWAITED (#200): the manager's promise is what settles the background writes it could not
+      // stop synchronously — a worktree-retention sweep spawning git and stamping records. Not
+      // awaiting it let the response go out while a sweep was still writing into the removed
+      // project's `.local/xezar`, and a re-add inside that window could see the stale in-memory
+      // index overwrite the fresh one. There is no run to wait for: the 409 above already refused
+      // the removal if this process owns any.
+      //
+      // BOUNDED, because this is a request and not a teardown helper: `dispose()` has no deadline
+      // by design and the git it waits on has no `execFile` timeout, so an unbounded await is a
+      // request that can never answer. `dispose()` removed the context from the map
+      // synchronously, so the floated remainder is invisible to every route; see
+      // `PROJECT_TEARDOWN_WAIT_MS`. The answer is the same however it settles — the removal has
+      // already happened, and this is only the wait for the last writes.
+      //
+      // Covers a context that was still BUILDING when the removal landed, too: `dispose()` ends
+      // the registration first, so that build tears itself down instead of publishing, and the
+      // promise awaited here is the one that settles its store and manager. The answer stays
+      // `{ removed: true }` — the registry entry is gone, which is what the caller asked for, and
+      // the racing build was never a context anyone could reach.
+      await withinTeardownBound(contexts.dispose(id));
       workspaceEvents.emit('project-removed', { id });
       const body: RemoveProjectResponse = { removed: true, id };
       return c.json(body);
@@ -2701,6 +2728,12 @@ export function createApp(deps: ServerDeps) {
    * rejected for the same reason as the `rm` above: `RunStore.open` creates
    * directories, and a stale `running` row left by a crashed process would
    * become a 409 the user could never clear.
+   *
+   * "No context, no agent to strand" holds for a project nobody has touched. It does NOT hold for
+   * a project whose context is being built RIGHT NOW — that build opened its store with
+   * `keepLive` and its `manager.recover()` re-queues or resumes exactly the runs this guard
+   * exists to protect — so the caller waits for an in-flight build (`contexts.pending`) before
+   * asking, and only then is zero an answer about the project rather than about the map.
    */
   const activeRunCount = (projectId: string): number => {
     const ctx = contexts.peek(projectId);
@@ -3152,6 +3185,8 @@ export function createApp(deps: ServerDeps) {
         const message = err instanceof Error ? err.message : String(err);
         return c.json({ error: message }, 500);
       }
+      // E-05 (#252): the project leader hears of it. No catalog for this project → no row.
+      reportProjectChange(c.get('project').id, (catalog) => catalog.workflowChanged({ name: parsed.data.name, change: 'saved' }));
       return c.json({ path, name: parsed.data.name }, 201);
     })
 
@@ -3176,6 +3211,7 @@ export function createApp(deps: ServerDeps) {
       } catch (err) {
         return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
       }
+      reportProjectChange(c.get('project').id, (catalog) => catalog.workflowChanged({ name, change: 'deleted' }));
       return c.json({ ok: true, path: target });
     })
 
@@ -3524,7 +3560,7 @@ export function createApp(deps: ServerDeps) {
     // sweep above, and under the same registration-order guard.
     .post('/runs/read-all', (c) => c.json({ read: c.get('project').store.markAllRead() }))
 
-    .post('/runs/:id/archive', jsonZodValidator(archiveSchema, { absent: ({}) }), async (c) => {
+    .post('/runs/:id/archive', jsonZodValidator(archiveRunInputSchema, { absent: ({}) }), async (c) => {
       const { store } = c.get('project');
       const id = c.req.param('id');
       // An empty/absent body archives (the common case); a malformed body degrades
@@ -3533,6 +3569,11 @@ export function createApp(deps: ServerDeps) {
       // `setArchived` itself — the bulk sweep must obey it too (spec
       // 2026-08-03-auto-resume-after-usage-limit).
       const parsed = { data: c.req.valid('json') };
+      // An unknown run is a 404 before any version is compared — the answer it always got.
+      if (!store.getRun(id)) return c.json({ error: 'not found' }, 404);
+      // The stale-write guard (#250): checked in the same synchronous stretch as the write.
+      const stale = staleRunWrite(store, id, parsed.data.expectedVersion);
+      if (stale) return c.json(stale, 409);
       const run = store.setArchived(id, parsed.data.archived !== false);
       return run ? c.json(run) : c.json({ error: 'not found' }, 404);
     })
@@ -3541,19 +3582,29 @@ export function createApp(deps: ServerDeps) {
     // twin in every respect: an absent body pins (the common case), the answer is the updated
     // record, and the change rides the existing `run` SSE because `setPinned` touches. No new
     // event and no new response shape.
-    .post('/runs/:id/pin', jsonZodValidator(pinSchema, { absent: ({}) }), (c) => {
+    .post('/runs/:id/pin', jsonZodValidator(pinRunInputSchema, { absent: ({}) }), (c) => {
       const { store } = c.get('project');
-      const run = store.setPinned(c.req.param('id'), c.req.valid('json').pinned !== false);
+      const id = c.req.param('id');
+      const { pinned, expectedVersion } = c.req.valid('json');
+      // An unknown run is a 404 before any version is compared — the answer it always got.
+      if (!store.getRun(id)) return c.json({ error: 'not found' }, 404);
+      // The stale-write guard (#250): checked in the same synchronous stretch as the write.
+      const stale = staleRunWrite(store, id, expectedVersion);
+      if (stale) return c.json(stale, 409);
+      const run = store.setPinned(id, pinned !== false);
       return run ? c.json(run) : c.json({ error: 'not found' }, 404);
     })
 
     // The per-task off switch for that resume (the workspace setting is Settings → Resources).
     // Idempotent: a run with nothing pending answers 200 too, because "this task will not
     // resume itself" is equally true either way.
-    .delete('/runs/:id/auto-resume', (c) => {
+    .delete('/runs/:id/auto-resume', optionalJsonZodValidator(runVersionGuardInputSchema, { absent: ({}) }), (c) => {
       const { store, manager } = c.get('project');
       const id = c.req.param('id');
       if (!store.getRun(id)) return c.json({ error: 'not found' }, 404);
+      // The stale-write guard (#250): checked in the same synchronous stretch as the write.
+      const stale = staleRunWrite(store, id, c.req.valid('json').expectedVersion);
+      if (stale) return c.json(stale, 409);
       manager.cancelAutoResume(id);
       return c.json({ cancelled: true as const });
     })
@@ -3654,6 +3705,16 @@ export function createApp(deps: ServerDeps) {
       return run ? c.json(withUsage(run)) : c.json({ error: 'not found' }, 404);
     })
 
+    // The run's stale-write token (#250, D-06 § 4.2) — what a caller echoes back as
+    // `expectedVersion` on a run mutation. Its own route rather than a field of the record above,
+    // so the cockpit's reads neither change shape nor pay for it (it scans the run's event file).
+    // A reader that wants both reads THIS first: an older token costs a spurious rejection at
+    // worst, while a token newer than the record it read would let a stale write through.
+    .get('/runs/:id/version', (c) => {
+      const version = runVersion(c.get('project').store, c.req.param('id'));
+      return version === undefined ? c.json({ error: 'not found' }, 404) : c.json({ version });
+    })
+
     .get(
       '/runs/:id/history',
       paramZodValidator(runIdParamSchema),
@@ -3696,11 +3757,15 @@ export function createApp(deps: ServerDeps) {
     // actually displays). The auto-summarizer only ever fills an *unset*
     // titleSummary (RunManager.recordTurnEnd), so an edit wins over any past or
     // future auto-summary. Answers the updated record.
-    .patch('/runs/:id', jsonZodValidator(patchRunSchema), async (c) => {
+    .patch('/runs/:id', jsonZodValidator(patchRunInputSchema), async (c) => {
       const { store, manager } = c.get('project');
       const id = c.req.param('id');
       if (!store.getRun(id)) return c.json({ error: 'not found' }, 404);
       const parsed = { data: c.req.valid('json') };
+      // The stale-write guard (#250). Everything from here to the writes below is synchronous, so
+      // the check and both writes run in one stretch.
+      const stale = staleRunWrite(store, id, parsed.data.expectedVersion);
+      if (stale) return c.json(stale, 409);
       // The prompt is editable only while the run is still queued (#472). Checked
       // BEFORE the title write so a rejected PATCH is a no-op rather than a partial
       // one. `title` itself keeps working on any status — no regression to #389.
@@ -3730,17 +3795,20 @@ export function createApp(deps: ServerDeps) {
       return c.json(store.getRun(id));
     })
 
-    .post('/runs/:id/cancel', (c) => {
+    .post('/runs/:id/cancel', optionalJsonZodValidator(runVersionGuardInputSchema, { absent: ({}) }), (c) => {
       const { store, manager } = c.get('project');
       const id = c.req.param('id');
       if (!store.getRun(id)) return c.json({ error: 'not found' }, 404);
+      // The stale-write guard (#250): checked in the same synchronous stretch as the write.
+      const stale = staleRunWrite(store, id, c.req.valid('json').expectedVersion);
+      if (stale) return c.json(stale, 409);
       const cancelled = manager.cancel(id);
       return c.json({ cancelled });
     })
 
     // Live-session participation (spec 002): deliver a user message (text +
     // pasted screenshots) into the run's open claude session.
-    .post('/runs/:id/messages', jsonZodValidator(messageSchema), async (c) => {
+    .post('/runs/:id/messages', jsonZodValidator(messageInputSchema), async (c) => {
       const { store, manager } = c.get('project');
       const id = c.req.param('id');
       const run = store.getRun(id);
@@ -3755,6 +3823,10 @@ export function createApp(deps: ServerDeps) {
         const blocked = await providerActionError([providerForActiveRun(run)]);
         if (blocked) return c.json({ error: blocked }, 409);
       }
+      // The stale-write guard (#250), after the last `await`: from here through the delivery
+      // ladder every step is synchronous, so the check and the delivery run in one stretch.
+      const stale = staleRunWrite(store, id, parsed.data.expectedVersion);
+      if (stale) return c.json(stale, 409);
       const content: PastedContent[] = [
         ...parsed.data.images.map(toPastedContent),
         ...(parsed.data.text.trim() ? [{ type: 'text', text: parsed.data.text } satisfies ContentBlock] : []),
@@ -3800,7 +3872,7 @@ export function createApp(deps: ServerDeps) {
 
     // Edit / remove a stacked message (#472). Registered before any conflicting
     // `/:id` route so `queued-messages` never matches as a run id.
-    .patch('/runs/:id/queued-messages/:msgId', jsonZodValidator(queuedMessagePatchSchema), async (c) => {
+    .patch('/runs/:id/queued-messages/:msgId', jsonZodValidator(queuedMessagePatchInputSchema), async (c) => {
       const { store, manager } = c.get('project');
       const id = c.req.param('id');
       const run = store.getRun(id);
@@ -3832,6 +3904,9 @@ export function createApp(deps: ServerDeps) {
         );
       }
 
+      // The stale-write guard (#250): checked in the same synchronous stretch as the write.
+      const stale = staleRunWrite(store, id, parsed.data.expectedVersion);
+      if (stale) return c.json(stale, 409);
       const images: PastedContent[] | undefined = parsed.data.images?.map(toPastedContent);
       const message = manager.editQueuedMessage(id, msgId, {
         ...(parsed.data.text !== undefined ? { text: parsed.data.text } : {}),
@@ -3841,7 +3916,7 @@ export function createApp(deps: ServerDeps) {
       return c.json({ message });
     })
 
-    .delete('/runs/:id/queued-messages/:msgId', (c) => {
+    .delete('/runs/:id/queued-messages/:msgId', optionalJsonZodValidator(runVersionGuardInputSchema, { absent: ({}) }), (c) => {
       const { store, manager } = c.get('project');
       const id = c.req.param('id');
       const run = store.getRun(id);
@@ -3850,22 +3925,28 @@ export function createApp(deps: ServerDeps) {
       if (!(run.queuedMessages ?? []).some((m) => m.id === msgId)) {
         return c.json({ error: 'not found' }, 404);
       }
+      // The stale-write guard (#250): checked in the same synchronous stretch as the write.
+      const stale = staleRunWrite(store, id, c.req.valid('json').expectedVersion);
+      if (stale) return c.json(stale, 409);
       if (!manager.removeQueuedMessage(id, msgId)) return c.json({ error: 'run already started' }, 409);
       return c.json({ removed: true });
     })
 
     // "Finish": gracefully close a waiting session — the run completes as done.
-    .post('/runs/:id/finish', (c) => {
+    .post('/runs/:id/finish', optionalJsonZodValidator(runVersionGuardInputSchema, { absent: ({}) }), (c) => {
       const { store, manager } = c.get('project');
       const id = c.req.param('id');
       if (!store.getRun(id)) return c.json({ error: 'not found' }, 404);
+      // The stale-write guard (#250): checked in the same synchronous stretch as the write.
+      const stale = staleRunWrite(store, id, c.req.valid('json').expectedVersion);
+      if (stale) return c.json(stale, 409);
       const finished = manager.finish(id);
       if (!finished) return c.json({ error: 'no open session' }, 409);
       return c.json({ finished: true });
     })
 
     // "Continue" (spec 003): reopen a finished run's session in-process.
-    .post('/runs/:id/continue', jsonZodValidator(continueSchema, { absent: ({}) }), async (c) => {
+    .post('/runs/:id/continue', jsonZodValidator(continueRunInputSchema, { absent: ({}) }), async (c) => {
       const { root: repoRoot, store, manager } = c.get('project');
       const id = c.req.param('id');
       const run = store.getRun(id);
@@ -3887,6 +3968,10 @@ export function createApp(deps: ServerDeps) {
         const account = await resolveWorkspaceProfile(provider, parsed.data.agentProfile);
         if ('error' in account) return c.json({ error: account.error }, 400);
       }
+      // The stale-write guard (#250), after the last `await`, so the check and the reopen run in
+      // one synchronous stretch.
+      const stale = staleRunWrite(store, id, parsed.data.expectedVersion);
+      if (stale) return c.json(stale, 409);
       const result = manager.continueRun(id, {
         text: parsed.data.text,
         images: parsed.data.images?.map(toPastedContent),
@@ -4215,24 +4300,30 @@ export function createApp(deps: ServerDeps) {
       });
     })
 
-    .post('/runs/:id/git/commit', jsonZodValidator(gitCommitSchema), async (c) => {
+    .post('/runs/:id/git/commit', jsonZodValidator(gitCommitInputSchema), async (c) => {
       const { store } = c.get('project');
       const run = store.getRun(c.req.param('id'));
       if (!run) return c.json({ error: 'not found' }, 404);
       const worktree = worktreeOf(run);
       if (!worktree) return c.json({ error: NO_WORKTREE }, 409);
       const parsed = { data: c.req.valid('json') };
+      // The stale-write guard (#250), right before the (async) effect starts.
+      const stale = staleRunWrite(store, run.id, parsed.data.expectedVersion);
+      if (stale) return c.json(stale, 409);
       const result = await commitAll(worktree, parsed.data.message);
       if (!result.ok) return c.json({ error: result.error }, 409);
       return c.json({ committed: true, sha: result.sha });
     })
 
-    .post('/runs/:id/git/push', async (c) => {
+    .post('/runs/:id/git/push', optionalJsonZodValidator(runVersionGuardInputSchema, { absent: ({}) }), async (c) => {
       const { root: repoRoot, store } = c.get('project');
       const run = store.getRun(c.req.param('id'));
       if (!run) return c.json({ error: 'not found' }, 404);
       const worktree = worktreeOf(run);
       if (!worktree) return c.json({ error: NO_WORKTREE }, 409);
+      // The stale-write guard (#250), right before the (async) effect starts.
+      const stale = staleRunWrite(store, run.id, c.req.valid('json').expectedVersion);
+      if (stale) return c.json(stale, 409);
       const result = await pushCurrentBranch(worktree);
       if (!result.ok) return c.json({ error: result.error }, 409);
       // A push is the event that changes what the chips say about this task's pull requests —
@@ -4253,7 +4344,7 @@ export function createApp(deps: ServerDeps) {
     // `gh pr create --draft`; on success the run completes as done with the PR
     // badge. Failures come back as 409 with a `manual` merge command the GUI
     // shows next to the toast. XEZ_DRY_RUN=1 fakes the URL (no push, no gh).
-    .post('/runs/:id/pr', async (c) => {
+    .post('/runs/:id/pr', optionalJsonZodValidator(runVersionGuardInputSchema, { absent: ({}) }), async (c) => {
       const { root: repoRoot, dataDir, store, manager } = c.get('project');
       const id = c.req.param('id');
       const run = store.getRun(id);
@@ -4267,6 +4358,9 @@ export function createApp(deps: ServerDeps) {
           400,
         );
       }
+      // The stale-write guard (#250), right before the (async) effect starts.
+      const stale = staleRunWrite(store, id, c.req.valid('json').expectedVersion);
+      if (stale) return c.json(stale, 409);
       const outcome = await createDraftPr({
         repoRoot,
         run,
@@ -4294,23 +4388,29 @@ export function createApp(deps: ServerDeps) {
 
     // Archived tasks keep their worktree for inspection; this is the explicit
     // "🧹 Remove worktree" cleanup (spec 006).
-    .post('/runs/:id/remove-worktree', async (c) => {
+    .post('/runs/:id/remove-worktree', optionalJsonZodValidator(runVersionGuardInputSchema, { absent: ({}) }), async (c) => {
       const { root: repoRoot, store, manager } = c.get('project');
       const id = c.req.param('id');
       const run = store.getRun(id);
       if (!run) return c.json({ error: 'not found' }, 404);
       if (manager.isActive(id)) return c.json({ error: 'run is active — cancel it first' }, 409);
+      // The stale-write guard (#250), right before the (async) effect starts.
+      const stale = staleRunWrite(store, id, c.req.valid('json').expectedVersion);
+      if (stale) return c.json(stale, 409);
       if (run.worktreePath) await removeWorktree(repoRoot, run.worktreePath, run.branch);
       store.updateRun(id, { worktreePath: undefined, branch: undefined });
       return c.json({ removed: true });
     })
 
-    .delete('/runs/:id', async (c) => {
+    .delete('/runs/:id', optionalJsonZodValidator(runVersionGuardInputSchema, { absent: ({}) }), async (c) => {
       const { root: repoRoot, store, manager } = c.get('project');
       const id = c.req.param('id');
       if (manager.isActive(id)) return c.json({ error: 'run is active — cancel it first' }, 409);
       const run = store.getRun(id);
       if (!run) return c.json({ error: 'not found' }, 404);
+      // The stale-write guard (#250), right before the (async) effect starts.
+      const stale = staleRunWrite(store, id, c.req.valid('json').expectedVersion);
+      if (stale) return c.json(stale, 409);
       // Delete cleans up after itself: worktree + branch go with the run (spec 006).
       if (run.worktreePath) await removeWorktree(repoRoot, run.worktreePath, run.branch);
       return store.deleteRun(id) ? c.json({ deleted: true }) : c.json({ error: 'not found' }, 404);
@@ -5216,6 +5316,8 @@ export function createApp(deps: ServerDeps) {
       } catch {
         // missing or malformed — start fresh
       }
+      // What the file held before, per key — so E-05 names only the keys this write really changed.
+      const before = new Map(Object.entries(raw).map(([key, value]) => [key, JSON.stringify(value)]));
       if (parsed.data.baseBranch !== undefined) {
         if (parsed.data.baseBranch === null) delete raw.baseBranch;
         else raw.baseBranch = parsed.data.baseBranch;
@@ -5292,6 +5394,11 @@ export function createApp(deps: ServerDeps) {
       // it the key would save and do nothing until the next boot, which is the exact defect
       // B2 exists to fix.
       if (parsed.data.memoryLimitMb !== undefined) await deps.semaphore?.refresh();
+      // E-05 (#252): key NAMES only, never values. A write that changed nothing reports nothing.
+      const changed = [...new Set([...before.keys(), ...Object.keys(raw)])].filter(
+        (key) => before.get(key) !== (key in raw ? JSON.stringify(raw[key]) : undefined),
+      );
+      if (changed.length > 0) reportProjectChange(c.get('project').id, (catalog) => catalog.configChanged({ keys: changed }));
       // Pre-R6 answer shape ({baseBranch, defaultRunner}) + additive R6 fields.
       return c.json(await configAnswer(repoRoot, await loadConfig(repoRoot)));
     });
@@ -5399,6 +5506,8 @@ export function createApp(deps: ServerDeps) {
       );
       if (out === null) return c.json({ error: 'unknown config file' }, 404);
       if (!out.ok) return c.json({ error: out.error }, out.status);
+      // E-05 (#252), after the hosted-mode 409 above and never before it: a refused write is no change.
+      reportProjectChange(c.get('project').id, (catalog) => catalog.agentConfigChanged({ id: c.req.param('id') }));
       return c.json(out.read);
     });
 
@@ -5717,6 +5826,7 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
     socketHub,
     automationsChanged: () => rescheduleAutomations(),
   });
+  deps.onApp?.(app);
   // SECURITY: default to loopback. This server executes agents locally and its endpoints are
   // same-origin-trusted (only /api/health is CORS-open); binding to a non-loopback host would
   // expose an agent-executing box to the network. `bindHost` exists only for a deliberate

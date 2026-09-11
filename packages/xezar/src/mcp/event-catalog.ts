@@ -80,7 +80,20 @@ export interface EventOriginContext {
   readonly runId?: string;
 }
 
-const originScope = new AsyncLocalStorage<EventOriginContext>();
+/**
+ * The origin of the call in flight, and whether that call is still in flight. `AsyncLocalStorage`
+ * alone would also hand the context to every async chain the call merely STARTED — a task started
+ * through MCP runs for minutes on the promise chain its start created, and its completion would read
+ * as the leader's own change, which the echo guard then hides from the leader (#243). `live` ends
+ * that at the call's own settlement, so only a change made within the call inherits its origin.
+ */
+const originScope = new AsyncLocalStorage<{ readonly context: EventOriginContext; live: boolean }>();
+
+/** The origin of the change being made right now, if an origin-marked call is still making it. */
+function currentOrigin(): EventOriginContext | undefined {
+  const scope = originScope.getStore();
+  return scope?.live ? scope.context : undefined;
+}
 
 /**
  * Intents left by an origin-marked call for a run whose effect lands after the call returned. One
@@ -102,7 +115,25 @@ export function withEventOrigin<T>(context: EventOriginContext, fn: () => T): T 
     throw new Error('only a leader change carries an operation id');
   }
   if (context.runId !== undefined) pendingIntents.set(context.runId, context);
-  return originScope.run(context, fn);
+  const scope = { context, live: true };
+  const end = (): void => {
+    scope.live = false;
+  };
+  let result: T;
+  try {
+    result = originScope.run(scope, fn);
+  } catch (err) {
+    end();
+    throw err;
+  }
+  const pending = result as { then?: unknown };
+  // Observed, never rethrown from here: the caller still receives `result` itself, rejection and all.
+  if (pending !== null && typeof pending === 'object' && typeof pending.then === 'function') {
+    (result as PromiseLike<unknown>).then(end, end);
+  } else {
+    end();
+  }
+  return result;
 }
 
 /** The journal as the catalog writes it — `EventJournal` satisfies it. */
@@ -337,14 +368,14 @@ export class EventCatalog {
   /** The origin of a status transition: the current call, else an intent left for this run, else
    *  the default. Consumes the intent either way — it was for this transition. */
   #transitionOrigin(runId: string, fallback: McpJournalOrigin): EventOriginContext {
-    const current = originScope.getStore();
+    const current = currentOrigin();
     const intent = pendingIntents.get(runId);
     pendingIntents.delete(runId);
     return current ?? intent ?? { origin: fallback, causedBy: null };
   }
 
   #originOr(fallback: McpJournalOrigin): EventOriginContext {
-    return originScope.getStore() ?? { origin: fallback, causedBy: null };
+    return currentOrigin() ?? { origin: fallback, causedBy: null };
   }
 
   #appendRun(kind: McpEventKind, runId: string, origin: EventOriginContext, summary: string): void {

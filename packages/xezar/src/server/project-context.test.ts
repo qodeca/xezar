@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AutomationStore } from '../automations/store.ts';
 import { emitUsageForTest } from '../core/process-usage.ts';
+import type { RunStore } from '../runs/store.ts';
+import { RunManager } from '../workflows/run.ts';
 import { ProjectContextError, ProjectContexts, type ProjectContextSource } from './project-context.ts';
 
 /**
@@ -23,12 +25,49 @@ describe('ProjectContexts', () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     rmSync(rootA, { recursive: true, force: true });
     rmSync(rootB, { recursive: true, force: true });
   });
 
   function makeContexts(projects: ProjectContextSource[]): ProjectContexts {
     return new ProjectContexts({ listProjects: async () => projects });
+  }
+
+  /**
+   * A context map whose builds can be parked one at a time, so a removal can be landed at the
+   * one moment that used to be invisible: after the build read the registry, before it published.
+   *
+   * `listProjects` SNAPSHOTS the registry before parking on purpose — a build that started before
+   * a removal keeps the view it read, which is what makes the race a race. Resolve `gates[n]` to
+   * let build n finish; the gate is registered synchronously, so `gates.length` is also the count
+   * of builds that were actually started.
+   */
+  function gatedContexts(registry: () => ProjectContextSource[]): {
+    contexts: ProjectContexts;
+    gates: (() => void)[];
+    /** Every store a build opened, in order, each carrying a subscriber of the kind the workspace
+     *  SSE and the provider watcher attach through `onStoreCreated` — so "the store was closed"
+     *  is an assertion with something to lose. */
+    stores: RunStore[];
+    built: string[];
+  } {
+    const gates: (() => void)[] = [];
+    const contexts = new ProjectContexts({
+      listProjects: async () => {
+        const snapshot = registry();
+        await new Promise<void>((resolve) => gates.push(resolve));
+        return snapshot;
+      },
+    });
+    const stores: RunStore[] = [];
+    contexts.onStoreCreated((store) => {
+      stores.push(store);
+      store.on('event', () => {});
+    });
+    const built: string[] = [];
+    contexts.onContextBuilt((ctx) => built.push(ctx.id));
+    return { contexts, gates, stores, built };
   }
 
   it('builds lazily: nothing on construction, first access builds, second returns the same instance', async () => {
@@ -71,7 +110,7 @@ describe('ProjectContexts', () => {
     const context = await contexts.context('a');
     expect(context.automationStore).toBe(automationStore);
     expect(resolveAutomationStore).toHaveBeenCalledWith('a', rootA);
-    contexts.disposeAll();
+    await contexts.disposeAll();
   });
 
   it('never instantiates a missing-root project (even when the directory happens to exist)', async () => {
@@ -116,7 +155,7 @@ describe('ProjectContexts', () => {
     emitUsageForTest({});
     expect(spy).toHaveBeenCalledTimes(1);
 
-    expect(contexts.dispose('a')).toBe(true);
+    await expect(contexts.dispose('a')).resolves.toBe(true);
     emitUsageForTest({});
     expect(spy).toHaveBeenCalledTimes(1); // unsubscribed — no further ticks
     // Store closed: the index landed on disk despite the debounced save.
@@ -127,7 +166,7 @@ describe('ProjectContexts', () => {
     expect(contexts.peek('a')).toBeUndefined();
     const rebuilt = await contexts.context('a');
     expect(rebuilt).not.toBe(ctx);
-    contexts.dispose('a');
+    await contexts.dispose('a');
   });
 
   it('onContextBuilt: fires once per build (not cached hits), unsubscribes cleanly, and a throwing listener never fails the build', async () => {
@@ -150,12 +189,114 @@ describe('ProjectContexts', () => {
     const b = await contexts.context('b');
     expect(b.id).toBe('b'); // built fine with only the throwing listener left
     expect(built).toEqual(['a']); // unsubscribed — not notified for b
-    contexts.disposeAll();
+    await contexts.disposeAll();
   });
 
-  it('dispose() of a never-built project is a no-op returning false', () => {
+  it('dispose() of a never-built project is a no-op returning false', async () => {
     const contexts = makeContexts([{ id: 'a', root: rootA, status: 'not-git' }]);
-    expect(contexts.dispose('a')).toBe(false);
+    await expect(contexts.dispose('a')).resolves.toBe(false);
+  });
+
+  /**
+   * The two removal-versus-build races (#199/#200 follow-up). Both were reachable for as long as
+   * `dispose()` read `contexts` only: a build that was still in flight was invisible to it, so
+   * the build published itself into the map AFTERWARDS and `context()` — which reads `contexts`
+   * first — went on serving every scoped route of a removed project from a context holding an
+   * open store, a live manager and this process's writer claim.
+   */
+  describe('a removal that races a build', () => {
+    it('never lets the finished build publish itself: it is torn down, and context() refuses it', async () => {
+      let registry: ProjectContextSource[] = [{ id: 'a', root: rootA, status: 'not-git' }];
+      const { contexts, gates, stores, built } = gatedContexts(() => registry);
+      const managerDispose = vi.spyOn(RunManager.prototype, 'dispose');
+
+      const inFlight = contexts.context('a');
+      expect(gates).toHaveLength(1); // parked mid-build, registry already read
+
+      // The user removes the project from the sidebar while that build is still running.
+      registry = [];
+      const removed = contexts.dispose('a');
+      gates[0]!();
+
+      // The build finished into a registration that no longer exists, and says so: by the time
+      // it had a context to hand out, `a` was an unknown project — a 404 at the route layer.
+      await expect(inFlight).rejects.toMatchObject({
+        name: 'ProjectContextError',
+        reason: 'unknown-project',
+        projectId: 'a',
+      });
+      await expect(removed).resolves.toBe(true);
+
+      // Unreachable: nothing in the map, and no route can be bound to what the build produced.
+      expect(contexts.peek('a')).toBeUndefined();
+      expect(contexts.ids()).toEqual([]);
+      // Never announced either — the workspace SSE and the provider watcher subscribe through
+      // `onContextBuilt`, and attaching them to a store that is about to close is the same leak
+      // one step removed.
+      expect(built).toEqual([]);
+
+      // Released, not merely orphaned: manager disposed, index flushed, subscribers detached.
+      expect(stores).toHaveLength(1);
+      expect(managerDispose).toHaveBeenCalledTimes(1);
+      expect(stores[0]!.listenerCount('event')).toBe(0);
+      expect(existsSync(join(rootA, '.local/xezar', 'runs.json'))).toBe(true);
+    });
+
+    it('gives a project re-added mid-build its own context, and releases the build the removal orphaned', async () => {
+      // Same id, same root, before and after: re-adding a folder hands back the same slug, which
+      // is exactly the case a post-build registry re-check cannot tell from "never removed".
+      const registry: ProjectContextSource[] = [{ id: 'a', root: rootA, status: 'not-git' }];
+      const { contexts, gates, stores, built } = gatedContexts(() => registry);
+      const managerDispose = vi.spyOn(RunManager.prototype, 'dispose');
+
+      const stale = contexts.context('a');
+      stale.catch(() => undefined); // asserted below; never an unhandled rejection meanwhile
+      expect(gates).toHaveLength(1);
+
+      const removed = contexts.dispose('a');
+      // Re-added while the first build is still parked — its first API touch must not be handed
+      // the build that belongs to the registration the user just deleted.
+      const fresh = contexts.context('a');
+      expect(gates).toHaveLength(2);
+
+      gates[0]!(); // the orphaned build finishes first, the way a slow recover() would
+      await expect(stale).rejects.toMatchObject({ reason: 'unknown-project' });
+      await expect(removed).resolves.toBe(true);
+      expect(managerDispose).toHaveBeenCalledTimes(1); // the loser's manager, and only it
+      expect(stores[0]!.listenerCount('event')).toBe(0);
+      expect(built).toEqual([]); // the loser was never announced to anyone
+
+      gates[1]!();
+      const ctx = await fresh;
+      expect(stores).toHaveLength(2);
+      expect(contexts.peek('a')).toBe(ctx);
+      expect(ctx.store).toBe(stores[1]);
+      expect(ctx.store).not.toBe(stores[0]); // no route is served off the orphaned store
+      expect(stores[1]!.listenerCount('event')).toBe(1); // …and the live one is untouched
+      expect(built).toEqual(['a']);
+
+      await expect(contexts.dispose('a')).resolves.toBe(true);
+      expect(managerDispose).toHaveBeenCalledTimes(2);
+    });
+
+    it('disposeAll() covers a build in flight, so shutdown leaves no store open behind it', async () => {
+      const registry: ProjectContextSource[] = [{ id: 'a', root: rootA, status: 'not-git' }];
+      const { contexts, gates, stores } = gatedContexts(() => registry);
+      const managerDispose = vi.spyOn(RunManager.prototype, 'dispose');
+
+      const inFlight = contexts.context('a');
+      inFlight.catch(() => undefined);
+      expect(gates).toHaveLength(1);
+
+      const closed = contexts.disposeAll();
+      gates[0]!();
+      await closed;
+
+      await expect(inFlight).rejects.toBeInstanceOf(ProjectContextError);
+      expect(contexts.ids()).toEqual([]);
+      expect(managerDispose).toHaveBeenCalledTimes(1);
+      expect(stores[0]!.listenerCount('event')).toBe(0);
+    });
   });
 
   it('disposeAll() tears down every built context', async () => {
@@ -174,7 +315,7 @@ describe('ProjectContexts', () => {
       'enforceMemoryLimit',
     );
 
-    contexts.disposeAll();
+    await contexts.disposeAll();
     expect(contexts.ids()).toEqual([]);
     emitUsageForTest({});
     expect(spyA).not.toHaveBeenCalled();

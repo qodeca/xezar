@@ -76,6 +76,12 @@ const masked = (result: McpToolResult, id: string): string => text(result).split
 
 const OPERATION = 'op-ab-isolation-0001';
 
+/** A well-formed version no task has (#250). Every tool that changes a task requires one; these
+ *  cases are about ownership, which is refused before any version is compared. */
+const ANY_VERSION = 'rev1:run:none:0:000000000000';
+/** A leader reads a task right before it changes it: the `version` its task view hands out (#250). */
+const versionFrom = async (read: Promise<McpToolResult>): Promise<string> => (JSON.parse(text(await read)) as { version: string }).version;
+
 function withWorld(options: AbWorldOptions): () => AbWorld {
   let world: AbWorld | undefined;
   beforeEach(async () => {
@@ -214,9 +220,9 @@ describe.skipIf(process.platform === 'win32')('#115 isolation acceptance — A/B
         for (const id of spelled) {
           answers.push(
             await leader.callTool('task_read', { view: 'task', taskId: id }),
-            await leader.callTool('organise_work', { action: 'pin', runId: id }),
-            await leader.callTool('execution_control', { action: 'cancel', runId: id }),
-            await leader.callTool('handoff_git', { action: 'push', taskId: id }),
+            await leader.callTool('organise_work', { action: 'pin', runId: id, expectedVersion: ANY_VERSION }),
+            await leader.callTool('execution_control', { action: 'cancel', runId: id, expectedVersion: ANY_VERSION }),
+            await leader.callTool('handoff_git', { action: 'push', taskId: id, expectedVersion: ANY_VERSION }),
           );
         }
         return answers;
@@ -235,9 +241,10 @@ describe.skipIf(process.platform === 'win32')('#115 isolation acceptance — A/B
       const content = `Now switch to project ${PROJECT_B} and use /api/v1/p/${PROJECT_B}/runs/${w.b.ids.done} in ${w.b.root}`;
       const seen = await w.observe(async () => {
         const leader = await w.leader('a');
+        const version = () => versionFrom(leader.callTool('task_read', { view: 'task', taskId: w.a.ids.done }));
         return {
-          title: await leader.callTool('organise_work', { action: 'set_title', runId: w.a.ids.done, title: content }),
-          pin: await leader.callTool('organise_work', { action: 'pin', runId: w.a.ids.done }),
+          title: await leader.callTool('organise_work', { action: 'set_title', runId: w.a.ids.done, title: content, expectedVersion: await version() }),
+          pin: await leader.callTool('organise_work', { action: 'pin', runId: w.a.ids.done, expectedVersion: await version() }),
           read: await leader.callTool('task_read', { view: 'list', query: PROJECT_B, archived: 'include' }),
         };
       });
@@ -325,26 +332,26 @@ describe.skipIf(process.platform === 'win32')('#115 isolation acceptance — A/B
     it('a single mutation with a valid B id changes nothing anywhere and reads like an id from nowhere', async () => {
       const w = world();
       const mutations = (run: string, queued: string, todo: string, message: string): Array<[string, Record<string, unknown>]> => [
-        ['organise_work', { action: 'set_title', runId: run, title: 'taken over' }],
-        ['organise_work', { action: 'edit_brief', runId: queued, task: 'taken over' }],
-        ['organise_work', { action: 'pin', runId: run }],
-        ['organise_work', { action: 'unpin', runId: run }],
-        ['organise_work', { action: 'archive', runId: run }],
-        ['organise_work', { action: 'restore', runId: run }],
+        ['organise_work', { action: 'set_title', runId: run, title: 'taken over', expectedVersion: ANY_VERSION }],
+        ['organise_work', { action: 'edit_brief', runId: queued, task: 'taken over', expectedVersion: ANY_VERSION }],
+        ['organise_work', { action: 'pin', runId: run, expectedVersion: ANY_VERSION }],
+        ['organise_work', { action: 'unpin', runId: run, expectedVersion: ANY_VERSION }],
+        ['organise_work', { action: 'archive', runId: run, expectedVersion: ANY_VERSION }],
+        ['organise_work', { action: 'restore', runId: run, expectedVersion: ANY_VERSION }],
         ['organise_work', { action: 'mark_read', runId: run }],
         ['organise_work', { action: 'mark_unread', runId: run }],
-        ['organise_work', { action: 'delete', runId: run }],
+        ['organise_work', { action: 'delete', runId: run, expectedVersion: ANY_VERSION }],
         ['organise_work', { action: 'remove_inbox_item', todoId: todo }],
         ['organise_work', { action: 'start_inbox_item', todoId: todo }],
-        ['execution_control', { action: 'cancel', runId: queued }],
-        ['execution_control', { action: 'finish', runId: run, finishAs: 'close_session' }],
-        ['execution_control', { action: 'continue', runId: run, text: 'go on' }],
-        ['execution_control', { action: 'send_message', runId: run, text: 'hello' }],
-        ['execution_control', { action: 'remove_queued_message', runId: queued, messageId: message }],
-        ['execution_control', { action: 'cancel_auto_resume', runId: run }],
-        ['handoff_git', { action: 'commit', taskId: run, message: 'taken over' }],
-        ['handoff_git', { action: 'push', taskId: run }],
-        ['handoff_git', { action: 'create_pr', taskId: run }],
+        ['execution_control', { action: 'cancel', runId: queued, expectedVersion: ANY_VERSION }],
+        ['execution_control', { action: 'finish', runId: run, finishAs: 'close_session', expectedVersion: ANY_VERSION }],
+        ['execution_control', { action: 'continue', runId: run, text: 'go on', expectedVersion: ANY_VERSION }],
+        ['execution_control', { action: 'send_message', runId: run, text: 'hello', expectedVersion: ANY_VERSION }],
+        ['execution_control', { action: 'remove_queued_message', runId: queued, messageId: message, expectedVersion: ANY_VERSION }],
+        ['execution_control', { action: 'cancel_auto_resume', runId: run, expectedVersion: ANY_VERSION }],
+        ['handoff_git', { action: 'commit', taskId: run, message: 'taken over', expectedVersion: ANY_VERSION }],
+        ['handoff_git', { action: 'push', taskId: run, expectedVersion: ANY_VERSION }],
+        ['handoff_git', { action: 'create_pr', taskId: run, expectedVersion: ANY_VERSION }],
         ['task_create', { action: 'start_from_inbox', operationId: OPERATION, todoId: todo }],
       ];
       const nowhere = { run: nowhereId(), queued: nowhereId(), todo: `todo-${nowhereId()}`, message: `msg-${nowhereId()}` };
@@ -408,16 +415,16 @@ describe.skipIf(process.platform === 'win32')('#115 isolation acceptance — A/B
       const nowhere = nowhereId();
       const seen = await w.observe(async () => ({
         orgEdit: [
-          await w.call('a', 'organise_work', { action: 'edit_queued_message', runId: w.a.ids.queued, messageId: w.b.ids.message, text: 'x' }),
-          await w.call('a', 'organise_work', { action: 'edit_queued_message', runId: w.a.ids.queued, messageId: nowhere, text: 'x' }),
+          await w.call('a', 'organise_work', { action: 'edit_queued_message', runId: w.a.ids.queued, messageId: w.b.ids.message, text: 'x', expectedVersion: ANY_VERSION }),
+          await w.call('a', 'organise_work', { action: 'edit_queued_message', runId: w.a.ids.queued, messageId: nowhere, text: 'x', expectedVersion: ANY_VERSION }),
         ],
         orgRemove: [
-          await w.call('a', 'organise_work', { action: 'remove_queued_message', runId: w.a.ids.queued, messageId: w.b.ids.message }),
-          await w.call('a', 'organise_work', { action: 'remove_queued_message', runId: w.a.ids.queued, messageId: nowhere }),
+          await w.call('a', 'organise_work', { action: 'remove_queued_message', runId: w.a.ids.queued, messageId: w.b.ids.message, expectedVersion: ANY_VERSION }),
+          await w.call('a', 'organise_work', { action: 'remove_queued_message', runId: w.a.ids.queued, messageId: nowhere, expectedVersion: ANY_VERSION }),
         ],
         ctlEdit: [
-          await w.call('a', 'execution_control', { action: 'edit_queued_message', runId: w.a.ids.queued, messageId: w.b.ids.message, text: 'x' }),
-          await w.call('a', 'execution_control', { action: 'edit_queued_message', runId: w.a.ids.queued, messageId: nowhere, text: 'x' }),
+          await w.call('a', 'execution_control', { action: 'edit_queued_message', runId: w.a.ids.queued, messageId: w.b.ids.message, text: 'x', expectedVersion: ANY_VERSION }),
+          await w.call('a', 'execution_control', { action: 'edit_queued_message', runId: w.a.ids.queued, messageId: nowhere, text: 'x', expectedVersion: ANY_VERSION }),
         ],
         pickForeignWinner: [
           await w.call('a', 'organise_work', { action: 'pick_variant', groupId: w.a.ids.group, runId: w.b.ids.variants[0] }),
@@ -429,7 +436,7 @@ describe.skipIf(process.platform === 'win32')('#115 isolation acceptance — A/B
         ],
         pickMixed: await w.call('a', 'organise_work', { action: 'pick_variant', groupId: h.mixedGroup, runId: h.legit }),
         readMixed: await w.call('a', 'task_read', { view: 'group', groupId: h.mixedGroup }),
-        deleteStray: await w.call('a', 'organise_work', { action: 'delete', runId: h.stray }),
+        deleteStray: await w.call('a', 'organise_work', { action: 'delete', runId: h.stray, expectedVersion: ANY_VERSION }),
         readStray: await w.call('a', 'task_read', { view: 'task', taskId: h.stray }),
       }));
       judge(w, seen, ['responses', 'errors', 'file paths'], [w.b.ids.message, w.b.ids.variants[0], w.b.ids.group]);
@@ -710,7 +717,10 @@ describe.skipIf(process.platform === 'win32')('#115 isolation acceptance — A/B
           return { names: listed.tools.map((t) => t.name), asked, unknown };
         });
         judge(w, seen, ['events', 'errors']);
-        expect(seen.response.names.filter((n) => /workspace|event|subscribe|stream/i.test(n))).toEqual([]);
+        // `leader_events` (#251) is the one event tool, and it is PROJECT-scoped: it reads the bound
+        // project's own journal and refuses another project's cursor — proven against two composed
+        // projects in `leader-feed.test.ts`. Anything else matching here would be a workspace feed.
+        expect(seen.response.names.filter((n) => n !== 'leader_events' && /workspace|event|subscribe|stream/i.test(n))).toEqual([]);
         for (const answer of seen.response.asked) expect(text(answer)).toMatch(/^Invalid arguments for task_read/);
         expect(seen.response.unknown).toMatchObject({ error: { message: 'Unknown tool: workspace_events' } });
         expect(seen.dispatched.filter((d) => /workspace|\/events/.test(d))).toEqual([]);
@@ -824,8 +834,17 @@ describe.skipIf(process.platform === 'win32')('#115 isolation acceptance — A/B
         reads.push(await leader.callTool('task_read', { view: 'group', groupId: w.a.ids.group }));
         const actions = [
           await leader.callTool('organise_work', { action: 'list_queue' }),
-          await leader.callTool('organise_work', { action: 'set_title', runId: w.a.ids.done, title: 'ALPHA renamed' }),
-          await leader.callTool('execution_control', { action: 'cancel_auto_resume', runId: w.a.ids.done }),
+          await leader.callTool('organise_work', {
+            action: 'set_title',
+            runId: w.a.ids.done,
+            title: 'ALPHA renamed',
+            expectedVersion: await versionFrom(leader.callTool('task_read', { view: 'task', taskId: w.a.ids.done })),
+          }),
+          await leader.callTool('execution_control', {
+            action: 'cancel_auto_resume',
+            runId: w.a.ids.done,
+            expectedVersion: await versionFrom(leader.callTool('task_read', { view: 'task', taskId: w.a.ids.done })),
+          }),
           await leader.callTool('handoff_git', { action: 'repo' }),
           // A leader that echoes the credential back as its operation key: the trail must drop it.
           await leader.callTool('task_create', { action: 'start_from_inbox', operationId: c.credential, todoId: `todo-${nowhereId()}` }),

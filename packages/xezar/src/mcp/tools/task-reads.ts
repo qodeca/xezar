@@ -10,6 +10,7 @@ import {
   runHistoryPageSchema,
   runIdParamSchema,
   runStatusSchema,
+  runVersionResponseSchema,
   todoItemSchema,
   type ApiRun,
   type RunHistoryEvent,
@@ -57,6 +58,15 @@ import { defineTool, errorResult, textResult, type McpToolContext, type McpToolR
  * RESULTS (D-05 § 6.8). The text block is a compact JSON object and is authoritative; no
  * `structuredContent` is added, because a second copy would double the bytes B-01 budgets.
  * Every payload passes the transcript's own secret scrub before it leaves (F-15).
+ *
+ * VERSIONS (#250, N-03). The first answer of a read of ONE task — task, history, context, handoff —
+ * carries that task's `version`, the token a mutating tool requires back as `expectedVersion`. It
+ * is read from the task's own `GET /runs/:id/version` BEFORE the value it describes, so it can only
+ * be older than what the leader saw: a change in between costs a spurious rejection, never a stale
+ * write that passes. A continuation (a call with a cursor) carries none: a later history page is
+ * pinned to the walk's first view of the file, and a version read now could describe events it
+ * does not show. The list and group views carry none — a version per row would scan every task's
+ * event file — so a leader reads the one task it means to change.
  */
 
 // ---- bounds (D-09) -------------------------------------------------------------------------
@@ -259,6 +269,8 @@ const bytes = (text: string): number => Buffer.byteLength(text, 'utf8');
 
 /** A stand-in for the longest cursor, so a page measured with it can never grow past B-01. */
 const CURSOR_PLACEHOLDER = 'x'.repeat(2_048);
+/** A stand-in for the longest version (`mcpVersionTokenSchema`'s bound): room reserved for one. */
+const VERSION_ROOM = 'v'.repeat(512);
 
 const digest = (text: string): string => createHash('sha256').update(text).digest('hex').slice(0, 16);
 
@@ -367,6 +379,12 @@ class TaskReader {
     return { ok: true, value: run };
   }
 
+  /** The task's stale-write token (#250). Callers read it BEFORE the value it goes out with. */
+  async version(taskId: string): Promise<Read<string>> {
+    const answer = await this.get(`/runs/${encodeURIComponent(taskId)}/version`);
+    return answer.status === 200 ? { ok: true, value: runVersionResponseSchema.parse(answer.body).version } : { ok: false, answer };
+  }
+
   /** The one capability this module needs outside the project scope: is the Inbox on. */
   async inboxEnabled(): Promise<boolean> {
     const answer = await this.dispatch('/api/v1/health', 'json');
@@ -411,6 +429,7 @@ export const taskReadsTool = defineTool({
     '- inbox: the project’s Inbox items. group: one variant group, its tasks side by side.',
     `Pages are bounded: at most ${TASK_READ_PAGE_ITEMS} items and ${TASK_READ_RESULT_BUDGET_BYTES} bytes. When an answer has a nextCursor, call again with the same view, task and filters plus that cursor.`,
     'An item too large for one answer comes in parts ("part" of "parts"): join the "text" of every part in order, then parse it as JSON.',
+    'The first answer of a task, history, context or handoff read (no cursor) carries the task’s "version": send it as expectedVersion when you then change that task (organise_work, execution_control, handoff_git, project_config). A change is refused if the task moved after this read.',
     'This reads only the project this connection is bound to. Use it to assess state or recover after a lost answer, not to poll: task events are pushed.',
   ].join('\n'),
   inputSchema,
@@ -575,8 +594,14 @@ async function readHistory(reader: TaskReader, taskId: string, args: Args): Prom
     walk = { fs: decoded.fs, before: decoded.before, ...(decoded.co ? { co: decoded.co } : {}), ...(decoded.x ? { x: decoded.x } : {}) };
     pageSize ??= decoded.n;
   }
+  // #250: only the FIRST page of a walk carries the version, read before the page. A later page is
+  // pinned to the walk's first view of the file, so a version read now could describe events that
+  // page does not show — a stale write would then pass on it.
+  const version = args.cursor === undefined ? await reader.version(taskId) : undefined;
   const owned = await reader.ownedRun(taskId);
   if (!owned.ok) return refusal(owned.answer, NO_TASK);
+  if (version && !version.ok) return refusal(version.answer, NO_TASK);
+  const stamp = version?.ok ? { version: version.value } : {};
 
   // The cockpit's own page, either the newest or the one that ends just before `before`. The
   // older-page cursor is the cockpit's own shape, rebuilt from the view the walk started on.
@@ -614,23 +639,27 @@ async function readHistory(reader: TaskReader, taskId: string, args: Args): Prom
   /** Where the cockpit page itself continues, if anywhere. */
   const olderThanPage = page.olderCursor ? decodePageCursor(page.olderCursor).boundarySeq : undefined;
   const envelope = (payload: Record<string, unknown>) =>
-    JSON.stringify({ view: 'history', taskId, asOfSeq: page.asOfSeq, ...payload });
+    JSON.stringify({ view: 'history', taskId, ...stamp, asOfSeq: page.asOfSeq, ...payload });
+  // Every size is measured as if a version were present, so what fits never depends on whether
+  // this answer carries one.
+  const sizing = (payload: Record<string, unknown>) =>
+    JSON.stringify({ view: 'history', taskId, version: VERSION_ROOM, asOfSeq: page.asOfSeq, ...payload });
 
   if (walk?.x) {
     const target = events.at(-1);
     if (!target || String(target.seq) !== walk.x.id || digest(JSON.stringify(target)) !== walk.x.h) return errorResult(STALE_PART);
-    return historyPart(target, walk.x.o, events.length > 1 || olderThanPage !== undefined, envelope, cursorBefore);
+    return historyPart(target, walk.x.o, events.length > 1 || olderThanPage !== undefined, envelope, sizing, cursorBefore);
   }
 
   // Newest first: take the longest suffix of the cockpit page that fits the item and byte bounds.
   let start = events.length;
   while (start > 0 && events.length - start < limit) {
     const candidate = events.slice(start - 1);
-    if (bytes(envelope({ events: candidate, hasOlder: true, nextCursor: CURSOR_PLACEHOLDER })) > TASK_READ_RESULT_BUDGET_BYTES) break;
+    if (bytes(sizing({ events: candidate, hasOlder: true, nextCursor: CURSOR_PLACEHOLDER })) > TASK_READ_RESULT_BUDGET_BYTES) break;
     start -= 1;
   }
   if (start === events.length && events.length > 0) {
-    return historyPart(events.at(-1)!, 0, events.length > 1 || olderThanPage !== undefined, envelope, cursorBefore);
+    return historyPart(events.at(-1)!, 0, events.length > 1 || olderThanPage !== undefined, envelope, sizing, cursorBefore);
   }
   // Everything before `events[start]` is still to read: the next page is the cockpit's page that
   // ends just below it. Taking the whole page, the cockpit's own older boundary applies.
@@ -646,11 +675,12 @@ function historyPart(
   offset: number,
   olderExists: boolean,
   envelope: (payload: Record<string, unknown>) => string,
+  sizing: (payload: Record<string, unknown>) => string,
   cursorBefore: (before: number, x?: Part) => string,
 ): McpToolResult {
   const json = JSON.stringify(event);
   const h = digest(json);
-  const wrap = (chunk: Record<string, unknown>) => envelope({ seq: event.seq, hasOlder: true, ...chunk });
+  const wrap = (chunk: Record<string, unknown>) => sizing({ seq: event.seq, hasOlder: true, ...chunk });
   const part = partOf(json, offset, wrap);
   if (!part) return errorResult(STALE_PART);
   // While parts remain, the walk stays on this event (`before` just above it); after the last
@@ -703,18 +733,23 @@ async function readTaskView(
   taskId: string,
   cursor: string | undefined,
 ): Promise<McpToolResult> {
+  // #250: the first answer of a read carries the version, read BEFORE the value it goes out with,
+  // so it can only be older than what the leader saw. A continuation carries none (see `whole`).
+  const version = cursor === undefined ? await reader.version(taskId) : undefined;
   const run = await reader.ownedRun(taskId);
   if (!run.ok) return refusal(run.answer, NO_TASK);
-  if (view === 'task') return whole(reader.scope, 'task', taskId, {}, 'task', scrub(run.value), cursor);
+  if (version && !version.ok) return refusal(version.answer, NO_TASK);
+  const stamp = version?.ok ? { version: version.value } : {};
+  if (view === 'task') return whole(reader.scope, 'task', taskId, {}, 'task', scrub(run.value), cursor, stamp);
   const id = encodeURIComponent(taskId);
   if (view === 'context') {
     const read = await reader.get(`/runs/${id}/history-context`);
     if (read.status !== 200) return refusal(read, NO_TASK);
-    return whole(reader.scope, 'context', taskId, { taskId }, 'context', scrub(runHistoryContextSchema.parse(read.body)), cursor);
+    return whole(reader.scope, 'context', taskId, { taskId }, 'context', scrub(runHistoryContextSchema.parse(read.body)), cursor, stamp);
   }
   const read = await reader.get(`/runs/${id}/handoff`, 'text');
   if (read.status !== 200) return refusal(read, NO_TASK);
-  return whole(reader.scope, 'handoff', taskId, { taskId }, 'markdown', scrub(z.string().parse(read.body)), cursor);
+  return whole(reader.scope, 'handoff', taskId, { taskId }, 'markdown', scrub(z.string().parse(read.body)), cursor, stamp);
 }
 
 async function readGroup(reader: TaskReader, groupId: string, cursor: string | undefined): Promise<McpToolResult> {
@@ -732,6 +767,10 @@ async function readGroup(reader: TaskReader, groupId: string, cursor: string | u
  * A view whose answer is ONE value: sent whole when it fits, in parts when it does not (B-03).
  * The parts are bound to a digest of the value part 1 read, so a value that changes mid-read is
  * refused instead of being spliced from two versions.
+ *
+ * `stamp` marks a view of ONE task (#250): its `version` rides the first answer only, and every
+ * part is sized as if a version of the longest possible length were present, so part boundaries
+ * are the same whether or not this answer carries one — and whatever the version's length.
  */
 function whole(
   scope: OwnershipScope,
@@ -741,9 +780,12 @@ function whole(
   field: string,
   value: unknown,
   cursor: string | undefined,
+  stamp?: { version?: string },
 ): McpToolResult {
   const json = JSON.stringify(value);
   const h = digest(json);
+  const out = { ...head, ...(stamp?.version !== undefined ? { version: stamp.version } : {}) };
+  const room = stamp ? { ...head, version: VERSION_ROOM } : head;
   let offset = 0;
   if (cursor !== undefined) {
     const decoded = decodeCursor<typeof view>(scope, view, key, cursor);
@@ -751,11 +793,11 @@ function whole(
     if (decoded.x.h !== h) return errorResult(STALE_PART);
     offset = decoded.x.o;
   } else {
-    const full = JSON.stringify({ view, ...head, [field]: value });
+    const full = JSON.stringify({ view, ...out, [field]: value });
     if (bytes(full) <= TASK_READ_RESULT_BUDGET_BYTES) return textResult(full);
   }
-  const envelope = (chunk: Record<string, unknown>) => JSON.stringify({ view, ...head, field, ...chunk });
-  const part = partOf(json, offset, envelope);
+  const envelope = (chunk: Record<string, unknown>) => JSON.stringify({ view, ...out, field, ...chunk });
+  const part = partOf(json, offset, (chunk) => JSON.stringify({ view, ...room, field, ...chunk }));
   if (!part) return errorResult(STALE_PART);
   const nextCursor =
     part.next !== undefined ? encodeCursor(scope, view, key, { v: 1, k: view, x: { id: key, o: part.next, h } }) : undefined;

@@ -11,6 +11,7 @@ import { RunStore } from '../../runs/store.ts';
 import { ProjectContexts, type ProjectContextSource } from '../../server/project-context.ts';
 import { connectedProviderAuth } from '../../server/provider-auth.testkit.ts';
 import { createApp } from '../../server/server.ts';
+import { versionForTest } from './version.testkit.ts';
 import type { RunManager } from '../../workflows/run.ts';
 import { WorkspaceSemaphore } from '../../workspace/semaphore.ts';
 import { IPC_PROTOCOL_VERSION, LineFramer, encodeFrame, type McpToolResult } from '../ipc.ts';
@@ -176,7 +177,16 @@ describe.skipIf(isWindows)('handoff_git — commit, push, draft PR, merge and br
   });
 
   /** One `tools/call` over a project's socket, exactly as the bridge sends it. */
-  function call(args: Record<string, unknown>, project: 'leader' | 'plain' = 'leader'): Promise<McpToolResult> {
+  /** A leader reads a task right before it commits, pushes or publishes it (#250); the version rule
+   *  itself is pinned in `stale-write-tools.test.ts`. */
+  async function call(args: Record<string, unknown>, project: 'leader' | 'plain' = 'leader'): Promise<McpToolResult> {
+    if (['commit', 'push', 'create_pr'].includes(String(args.action)) && !('expectedVersion' in args)) {
+      args = { ...args, expectedVersion: await versionForTest(app, project, args.taskId) };
+    }
+    return callRaw(args, project);
+  }
+
+  function callRaw(args: Record<string, unknown>, project: 'leader' | 'plain' = 'leader'): Promise<McpToolResult> {
     return new Promise((resolve, reject) => {
       const socket = createConnection(socketPath[project]);
       const framer = new LineFramer(
