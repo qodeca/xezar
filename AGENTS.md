@@ -156,7 +156,10 @@ untested behaviour.
 One scoped exception is a requirement rather than a measurement: `npm run test:coverage:mcp` holds
 every MCP source file to 80 % lines and 80 % branches, and a PR on the MCP scope must also show
 each new test failing against a named break. Neither half passes alone – see
-[SDLC.md § The MCP test floor](SDLC.md#the-mcp-test-floor).
+[SDLC.md § The MCP test floor](SDLC.md#the-mcp-test-floor). Its release-time counterpart is
+`npm run test:mutation:mcp`: StrykerJS over the same code and the same suites, run by the `release`
+workflow before anything is published and never by `npm test` or CI, because a full run takes too
+long for either ([coverage-gaps.md § 10.8](docs/testing/coverage-gaps.md#108-the-release-gate-stryker-over-the-mcp-code)).
 
 **Run vitest through npm, never `npx vitest`.** It is a devDependency of this repo, so `npm test`
 uses the installed, version-pinned binary; `npx` will happily reach past it and fetch a different

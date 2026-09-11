@@ -249,6 +249,16 @@
   rule waives a mandatory check. A sampled mutation run over the MCP code found tests that passed
   either way – among them a connection file that read 100 % while its `chmod` could be deleted –
   and this change adds the real tests those gaps needed. No product behaviour changed. (#333)
+- 🐛 **Three MCP safety checks now have tests that would catch their regression.** The mutation run
+  found that no test failed when the audit trail wrote a secret-bearing action or left a 12-character
+  caller secret unredacted, when the MCP connection file lost its private `0600` mode, or when an
+  unreadable worktree path passed the ownership check that guards deletes. Each now has a test shown
+  failing against exactly that break. No product code changed. (#337)
+- 🔧 **A mutation gate for every release.** `npm run test:mutation:mcp` runs StrykerJS over the MCP
+  code with the MCP suites, and the `release` and `release-prep` workflows run it first, stopping
+  below its score floor of 80 (the first full run measured 81.39 % over 11 292 mutants in 3 h 40 min). It is a development-only tool: it never reaches the published package, and
+  a test fails if it ever does. One mutant that hangs is stopped by a per-mutant timeout instead of
+  stalling the release. (#333)
 - 📝 **A release-level Definition of Done for 0.14.0.** `docs/releases/0.14.0-definition-of-done.md`
   sits beside the MCP feature's own eight clauses and covers the rest of the release: the security,
   engine and gate fixes, open-source readiness, documentation, the kit roles, the UI design review

@@ -584,16 +584,17 @@ fails on `main` until the #311-owned files in 10.6 are re-measured.
 
 ### 10.2 Measured – before and after this change
 
-Measured 2026-09-11. Before: revision `11a6df3`, 915 tests. After: this branch, 933 tests – eighteen new, seven of them
-added because the mutation sample (10.3) named a gap – plus five in the contract project, which
+Measured 2026-09-11. Before: revision `11a6df3`, 915 tests. After: this branch, 939 tests – twenty-four new, seven of them
+added because the mutation sample (10.3) named a gap and six because checking #311's diff showed the
+`service.ts` and `index.ts` gaps were not leaving (10.6) – plus five in the contract project, which
 this command does not run (10.5). Same command both times.
 
 | File | Lines before | Branches before | Lines after | Branches after |
 |---|---|---|---|---|
 | `adapters/codex.ts` | 75.5 | 73.7 | 75.5 | 73.7 **below** |
 | `api-reference.ts` | 100.0 | 77.3 | 100.0 | 77.3 **below** |
-| `service.ts` | 92.6 | 78.4 | 92.6 | 78.4 **below** |
-| `index.ts` | 86.6 | 79.8 | 86.6 | 79.8 **below** |
+| `service.ts` | 92.6 | 78.4 | **94.7** | **90.2** |
+| `index.ts` | 86.6 | 79.8 | 86.6 | **80.7** |
 | `bridge.ts` | 87.5 | 71.4 | **92.1** | **80.0** |
 | `tools/results-evidence.ts` | 98.5 | 79.5 | **98.5** | **80.6** |
 | `tools/handoff-git.ts` | 94.9 | 77.0 | **97.0** | **81.6** |
@@ -629,7 +630,7 @@ Bold marks a number that moved. Two files where a real gap was closed did not mo
 `connection-file.ts` was already at 100 %, and `resource-ownership.ts` stayed at 92.5 % – which is
 the point of 10.3: the percentage could not see either gap, before or after.
 
-Aggregate after: 95.9 % lines, 85.1 % branches (before: 95.3 / 83.7). Every file that moved, moved because a test in
+Aggregate after: 96.0 % lines, 85.3 % branches (before: 95.3 / 83.7). Every file that moved, moved because a test in
 10.3's list reaches a behaviour it did not reach before – none moved because a test called
 something and asserted nothing.
 
@@ -709,29 +710,24 @@ written for it passed with the break applied and was dropped. Open, in files #31
 follow-up list: `tools/work-organisation.ts:303` (a success status with no body read as success),
 `session-binding.ts:216` (`.`/`..` run ids), `tools/discovery.ts:247` (a throwing forge probe read
 as available), `operation-receipts.ts:459,502,681` (the journal-unwritable warning, intent recovery,
-a torn last line), `reconnect.ts:247`, `tools/results-evidence.ts:1155`,
+a torn last line), `tools/results-evidence.ts:1155`,
 `tools/task-reads.ts:169,413,561`, `tools/work-organisation.ts:375`,
 `tools/project-config.ts:884,1004`, `tools/leader-events.ts:95,153`. The node:test suites
 (`mcp-durability`, `mcp-isolation`) were run against the `operation-receipts.ts` and
 `reconnect.ts` survivors too – v8 cannot see them, and neither can a vitest-only mutation run – and
 they did not kill them either: those four are open, not covered elsewhere. Open, in #311's files:
-`adapters/claude-code.ts:567`, `adapters/codex.ts:168,473`, `adapters/opencode.ts:470,491,496`,
+`reconnect.ts:247` (#311 changes `reconnect.ts`; an earlier version of this list put it on the other
+side), `adapters/claude-code.ts:567`, `adapters/codex.ts:168,473`, `adapters/opencode.ts:470,491,496`,
 `index.ts:187,194,409`, `service.ts:99` – the last is the socket directory's `chmod 0700`, the
-same shape as the connection-file gap.
+same shape as the connection-file gap. Every open survivor is tracked in #338; the three that could
+have shipped a leak or an ownership pass in 0.14.0 are #337, closed here.
 
-**What a full run would cost – and so where it belongs.** Measured here: a mutant killed by its
-direct tests took a median 6.9 s end to end (vitest boot included), a survivor needed a full MCP
-scope run of a median 38 s to be sure, and one hung mutant held a run for its whole cap. The
-sample's 158 mutants took 68 minutes of test runs in total, spread over three parallel copies. StrykerJS would
-generate more mutants than this sample's operators (string, object and array literals, optional
-chaining, whole blocks): roughly 5 000–8 000 on this scope is an *inferred* range, not a count.
-Even with Stryker's per-test coverage analysis and hot workers, that is hours of CPU on this
-machine – a periodic check, not a per-PR gate. Where it belongs: a release-gate run over
-`packages/xezar/src/mcp/**`, with every survivor triaged in writing like the list above, and
-Stryker's incremental mode on MCP-touching PRs once it is adopted (it re-tests only mutants in
-changed code, so a typical one-file MCP PR would be minutes). Adopting it adds a dev dependency and
-is the owner's decision (#333); until then, the per-PR form is the named break SDLC.md requires,
-and a reviewer re-applies it.
+**What a full run costs – measured, not inferred.** The sample's own cost: a mutant killed by its
+direct tests took a median 6.9 s end to end, a survivor needed a full MCP scope run of a median 38 s
+to be sure, and the 158 mutants took 68 minutes over three parallel copies. The sample's *inferred*
+"5 000–8 000 mutants" for a real StrykerJS run was **too low**: Stryker generates **12 530** on this
+scope. The real run, its cost and its score are in 10.8 – it is a release gate now, adopted on the
+sample's recommendation, and the per-PR form stays the named break SDLC.md requires.
 
 ### 10.4 Held by a suite v8 cannot see
 
@@ -747,7 +743,7 @@ duplicate vitest test to move a percentage.
 | A-21 reconnect: valid cursor, cursor past retention, duplicates and out-of-order rows | node:test | `test/unit/mcp-durability.test.ts:587-667` | yes |
 | A-02, A-03, A-04, A-12 project isolation, partial success, foreign cursors, connection file kept out of Git | node:test | `test/unit/mcp-isolation.test.ts:73-299` (skipped on Windows) | yes |
 | A-16 an UPGRADED packaged cockpit with MCP state corrupt, deleted, hard-restarted | packaged CLI | `test/e2e/mcp-upgrade.test.ts:214` | yes (`npm run test:package`) |
-| `xez mcp` as a real subprocess: handshake, absent bridge, service down, a neighbour on the port | server unit, but the bridge runs in a CHILD process v8 does not follow | `src/mcp/cli.test.ts:120,153,165,203` | yes |
+| `xez mcp` as a real subprocess: handshake, absent bridge, service down, a neighbour on the port, and a directory xezar never served answering `not-registered` (the branch at `index.ts:395`) | server unit, but the bridge runs in a CHILD process v8 does not follow | `src/mcp/cli.test.ts:120,153,165,199,203` | yes |
 | A-20 the open cockpit follows MCP changes; A-01/A-17/A-23 the MCP connection screen | browser | `packages/web/e2e/mcp-live-sync.e2e.ts:194,232`, `mcp-collaboration.e2e.ts` | yes (`ui-e2e`) |
 | A-01, A-17, A-18, A-19, A-20, A-23 with REAL Claude Code, Codex and OpenCode clients | node:test integration harness | `test/integration/mcp-real-clients.test.ts` | **no** – run by hand; results in `docs/features/mcp-server/mcp-client-acceptance-record.md` |
 
@@ -786,17 +782,39 @@ every current refusal and every guard against the live registry. **Ends when** a
 discriminator declares `expectedVersion` or `operationId`, or `REFUSED_ARGUMENTS` names an argument
 with no description: that PR reaches the branch with a real tool and adds the case.
 
-**Sequenced after #311, not exempt.** #311 (open, in QA) owns these files, so their source and the
-tests beside it were not touched here:
+**Exemption – `packages/xezar/src/mcp/adapters/codex.ts`, 75.5 % lines, 73.7 % branches.** Measured
+2026-09-11 against #311's own diff (`gh pr diff 311`, whose base is this branch's `11a6df3`, so the line
+numbers agree). 27 lines are uncovered, in two groups:
 
-| File | Lines | Branches | Why it waits |
-|---|---|---|---|
-| `adapters/codex.ts` | 75.5 | 73.7 | The uncovered block – `openCodexLeaderThread` and `CodexAppServerProcessLink`, lines ~380-500 – is deleted by #311. A test for code that is leaving is the behaviour this rule exists to stop. |
-| `index.ts` | 86.6 | 79.8 | #311 rewrites the service composition it covers. |
-| `service.ts` | 92.6 | 78.4 | #311 changes `answer()`, where the uncovered branches sit. |
+- **15 are deleted by #311** – `openCodexLeaderThread` and `CodexAppServerProcessLink`
+  (`codex.ts:392-480`, `511`). A test for code that is leaving is the behaviour this rule exists to stop.
+- **12 stay** – `dispose` (`167-168`), the thread filter and turn bookkeeping in `#observe`
+  (`250-251`, `260`, `271-272`, `284`), the version suffix in `renderCodexEventMessage` (`311`), an
+  already-aborted signal and a non-`Error` rejection in `abortable` (`485`, `496`), and the `turnId`
+  fallback in `turnIdOf` (`505`). Real tests reach them, and they are not written here only because
+  their home is `adapters/codex.test.ts`, which #311 rewrites: a second test file written now would be
+  written blind to #311's version of those tests and would likely duplicate them.
 
-After #311 merges: re-run `npm run test:coverage:mcp` on `main`, close what remains with tests shown
-red, and only then make the command a CI step.
+What holds the behaviour today: `adapters/codex.test.ts` drives `#observe` for the leader's own
+thread and `deliver` end to end; the real-client harness (10.4, last row) drives Codex itself.
+**Ends when** #311 merges – re-measure on `main` and test the 12 kept lines in `codex.test.ts` (#338) –
+or when #311 is closed unmerged, which ends it at once: then the whole file is tested as it stands.
+
+**Corrected 2026-09-11: `service.ts` and `index.ts` were never "leaving".** An earlier version of this
+section sequenced both after #311 on the claim that #311 rewrites the code their uncovered branches
+sit in. #311's diff touches **none** of those lines: it adds a session observer to `service.ts` and
+push-delivery wiring to `index.ts`, beside them. So they were tested instead of exempted
+(`service-answers.test.ts`, each case red against a named break in #335), and both are above the
+floor now. What was left uncovered in `service.ts` and why: the `closed` answer to `session/open`
+(`service.ts:255-257`) goes to a connection that is already gone, so nothing can observe it; the
+`String(err)` arms at `247` and `284` only change a log line; `chmod` failing after `listen`
+(`124-125`) and an `lstat` error other than ENOENT (`151`) need a filesystem that fails on cue. In
+`index.ts`, the unregistered-directory answer (`395`) is held by `cli.test.ts:199` in a child process
+(10.4), and was not duplicated.
+
+After #311 merges: re-run `npm run test:coverage:mcp` on `main` – #311 adds `leader-delivery.ts` and
+`project-leaders.ts`, which have never been measured – close what remains with tests shown red, and
+only then make the command a CI step.
 
 ### 10.7 Branches no real input reaches (found, not fixed – the source is frozen by #311)
 
@@ -806,3 +824,52 @@ red, and only then make the command a CI step.
   deleted, and was dropped rather than kept as coverage. Candidate for removal after #311.
 - `tools/task-reads.ts:281-285` – `escapedBytes` prices raw control characters and lone surrogates,
   but its only input is `JSON.stringify` output, where both are already escaped to ASCII.
+
+### 10.8 The release gate: Stryker over the MCP code
+
+`npm run test:mutation:mcp` – StrykerJS 9.6.1 over `packages/xezar/src/mcp/**`, killed by the MCP
+suites alone (`packages/xezar/vitest.mutation.config.ts`, the same files 10.1 measures). It is a
+**release** gate: the `release` and `release-prep` workflows run it as their first check step, before
+anything is authored, and the manual dispatch path in [publishing.md](../publishing.md) says to run
+it by hand. It is in no per-PR gate, in `npm test` or in CI – see the cost below. Config and its
+reasons: `packages/xezar/stryker.config.mjs`.
+
+**Measured, 2026-09-12, revision `ac726df` on an 18-core macOS laptop shared with other tasks, concurrency 4.**
+
+| | |
+|---|---|
+| Mutants generated | 12 530 |
+| Ignored as static (`ignoreStatic`) | 1 238 |
+| Tested | 11 292 |
+| Killed / timed out / survived / no coverage / errors | 7 928 / 1 261 / 1 426 / 675 / 2 |
+| **Mutation score** | **81.39 %** (86.57 % over covered code) |
+| Wall clock | 3 h 40 min (220 min), dry run 43 s |
+| Tests per mutant | 19.2 on average |
+
+`thresholds.break` is **80**, the same number as the coverage floor and for the same reason: it is a
+floor, not a target. The measured 81.39 % clears it by 1.39 points, which is thin on purpose – the
+survivors in #338 are what raises it.
+
+**Four things this gate does not tell you, and the fifth it tells you wrong if you forget it:**
+
+1. **The score is whole-scope, not per file.** Unlike the coverage floor, Stryker's `break` is one
+   number for the run. Per file the spread is wide today: `adapters/` 64.3 % (claude-code 67.3,
+   codex 63.5, opencode 62.1 – all #311's files), `operation-receipts.ts` 66.5, `event-controller.ts`
+   69.6, `service.ts` 75.6, `index.ts` 76.6, against `project-catalogs.ts` and `tool.ts` at 100. A
+   per-file mutation floor would fail today; adopting one is a decision, not a tightening (#338).
+2. **A timeout counts as detected.** 1 261 of the 9 189 "detected" mutants are timeouts, and a busy
+   machine produces more of them – the same run on an idle machine scores slightly lower, not
+   higher. Read a score near the floor with the machine's load in mind before blaming a PR.
+3. **675 mutants have no coverage at all.** They are counted in the score (as not detected), and
+   they are where the coverage floor and this gate say the same thing twice.
+4. **Static mutants are not measured.** 1 238 of them – module-level tables, regexes and schema
+   declarations – would need all 932 MCP tests each, which is what made the first attempt a ~60-hour
+   run. What they would have measured is pinned where the value is used (10.5).
+5. **It measures the MCP suites only.** A mutant killed by a suite v8 cannot see (10.4) still counts
+   as survived here, because this run does not execute those suites. Check 10.4 before writing a
+   vitest test for a survivor.
+
+The survivors are listed in **#338**, not here: this section records the method and its cost, and the
+run's own HTML/JSON report (`.local/mutation/mcp/`) is the list. The three survivors that could have
+shipped a secret leak, a world-readable connection file or an unreadable-worktree ownership pass were
+#337, closed in #335.
