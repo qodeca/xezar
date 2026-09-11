@@ -20,6 +20,15 @@ const pinSandboxHome = (): void => {
   if (!process.env.XEZ_HOME) process.env.XEZ_HOME = sandboxHome
 }
 
+// `gh` 2.100 records a telemetry `device-id` under `$HOME/.local/state/gh` on EVERY
+// invocation, `gh --version` included. The app starts `gh repo view` and `gh auth token`
+// as background probes no test awaits, so a probe outliving its test recreated the
+// test's temporary HOME just as `afterEach` removed it: `ENOTEMPTY` on one run in ten,
+// and a leaked HOME on most of the rest (#260). With telemetry off `gh` writes nothing
+// there, and a test run sends no telemetry from a fixture home either. Forced, not
+// defaulted: `GH_TELEMETRY=log` still records the id.
+process.env.GH_TELEMETRY = '0'
+
 pinSandboxHome()
 beforeEach(pinSandboxHome)
 // Registered before any suite's own hooks, so vitest runs it last on the way out —
