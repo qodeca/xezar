@@ -34,6 +34,14 @@
   one warning and the MCP keeps working. This closes acceptance case A-01. (#262)
 
 ## 🐛 Fixes
+- 🐛 **The project kit no longer seals gate evidence for a branch with none of the task's work.**
+  An author step that ended on a question in prose – no code and no `BLOCKED` file – was marked
+  done. Readiness then passed, because its only scope check read "no `BLOCKED` file" as "not
+  blocked", and the evidence step sealed the base commit itself. `worktree-preflight.sh
+  --readiness`, `--record-gate-evidence` and `--verify-gate-evidence` now refuse a branch whose HEAD
+  is already in its base (`branch.has-own-commits`), even after the base moved on. Plain preflight
+  and the read-only roles are unchanged. The shared contract of all 18 kit skills now says a
+  non-final step that stops for a decision writes `BLOCKED` first. (#312)
 - 🐛 **Settings → MCP API no longer tells a reviewer a guard is optional when it is not.** The page
   read "accepted, not required" for `organise_work`'s `expectedVersion`, while that tool refuses
   ten actions without it; `handoff_git` and `project_config` read the same. The reference route now
