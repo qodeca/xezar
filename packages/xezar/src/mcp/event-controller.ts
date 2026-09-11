@@ -138,10 +138,33 @@ export interface ReactionAdapter {
   /**
    * Hand `dispatch` to the client application — NON-MODEL. Resolve once the client's transport
    * accepted it; reject, or honour `signal`, when it did not. Resolving is delivery, not reaction.
+   * Resolve with a `DeliveryReceipt` when not every row was really handed over (the leader's own
+   * echoes are not); resolving with nothing means all of them were.
    */
-  deliver(dispatch: EventDispatch, signal: AbortSignal): Promise<void>;
+  deliver(dispatch: EventDispatch, signal: AbortSignal): Promise<void | DeliveryReceipt>;
   /** Optional non-model liveness probe (N-06). A rejection marks the transport disconnected. */
   heartbeat?(signal: AbortSignal): Promise<void>;
+}
+
+/**
+ * What an adapter says about a dispatch it settled: the newest row it REALLY handed to the client,
+ * or `null` for none (every row was one the leader caused itself). `deliveredSeq` counts only
+ * these, so it never claims a row reached the leader when it did not (QA on #311).
+ */
+export interface DeliveryReceipt {
+  readonly handedThrough: number | null;
+}
+
+/**
+ * Delivery FACTS, recorded where attempts really succeed or fail — not inferred from the state
+ * machine (QA on #311, round four: a status derived from states it did not enumerate read "nothing
+ * wrong" through every `dispatching`/`recovering` round of a hung leader).
+ */
+export interface EventControllerHealth {
+  /** A row is owed and not yet settled (handed over, or deliberately not sent as the leader's own). */
+  owed: boolean;
+  /** When the most recent attempt — a delivery or a liveness probe — failed, with none succeeding since; else null. */
+  failingSince: number | null;
 }
 
 export type EventControllerState = 'inert' | 'idle' | 'dispatching' | 'recovering' | 'disconnected' | 'ended';
@@ -243,6 +266,10 @@ export class EventController {
    * STARTS, not something that happened, so no status field ever reports it (#332, QA on #311).
    */
   #floor = 0;
+  /** The newest row SETTLED this session: handed over, or deliberately not sent (the leader's own echo). */
+  #handled = 0;
+  /** A fact, not a state: when the last attempt failed with no success since (see `health()`). */
+  #failingSince: number | null = null;
   /** The newest row this session has handed to `deliver`, delivered or still in flight. */
   #handedOut = 0;
   #recovery: EventRecovery | undefined;
@@ -311,6 +338,18 @@ export class EventController {
       ackedSeq: this.#ackedNow(),
       reactedSeq: this.#reacted,
       latestSeq: this.#journal.latestSeq,
+    };
+  }
+
+  /**
+   * Facts about delivery right now, independent of which state the controller happens to be in. A
+   * reader decides from these, never from `state`: a hung transport spends most of its failing time
+   * in `dispatching` and `recovering`, not `disconnected`.
+   */
+  health(): EventControllerHealth {
+    return {
+      owed: this.#active() && this.#journal.latestSeq > Math.max(this.#handled, this.#floor),
+      failingSince: this.#failingSince,
     };
   }
 
@@ -426,7 +465,7 @@ export class EventController {
         if (next.lastSeq !== undefined) this.#handedOut = Math.max(this.#handedOut, next.lastSeq);
         const delivered = await this.#deliverBounded(next.dispatch);
         if (!this.#active()) return;
-        if (!delivered) {
+        if (delivered === false) {
           this.#state = 'disconnected';
           if (!this.#warnedDelivery) {
             this.#warnedDelivery = true;
@@ -440,8 +479,13 @@ export class EventController {
         this.#state = 'idle';
         this.#position = next.nextCursor;
         this.#recovery = undefined;
-        // A redelivery (at-least-once) never lowers what was already handed over.
-        if (next.lastSeq !== undefined) this.#delivered = Math.max(this.#delivered, next.lastSeq);
+        if (next.lastSeq !== undefined) {
+          this.#handled = Math.max(this.#handled, next.lastSeq);
+          // Only rows REALLY handed over count as delivered; a receipt says which (the leader's own
+          // echoes are settled but never delivered). A redelivery never lowers the count.
+          const handed = delivered.receipt === undefined ? next.lastSeq : delivered.receipt.handedThrough;
+          if (handed !== null) this.#delivered = Math.max(this.#delivered, handed);
+        }
         this.#persist();
       }
     } finally {
@@ -484,13 +528,18 @@ export class EventController {
     }
   }
 
-  /** One bounded recovery round over the SAME rows. No attempt can start a turn on its own. */
-  async #deliverBounded(dispatch: EventDispatch): Promise<boolean> {
+  /**
+   * One bounded recovery round over the SAME rows. No attempt can start a turn on its own. Every
+   * attempt's outcome is recorded as a fact (`#failingSince`) the moment it is known.
+   */
+  async #deliverBounded(dispatch: EventDispatch): Promise<{ receipt: DeliveryReceipt | undefined } | false> {
     const adapter = this.#adapter!;
     for (let attempt = 0; attempt < EVENT_DELIVERY_ATTEMPTS; attempt++) {
       if (!this.#active()) return false;
       this.#state = attempt === 0 ? 'dispatching' : 'recovering';
-      if (await this.#attempt((signal) => adapter.deliver(dispatch, signal))) return true;
+      const outcome = await this.#attempt((signal) => adapter.deliver(dispatch, signal));
+      this.#recordOutcome(outcome.ok);
+      if (outcome.ok) return { receipt: outcome.value === undefined ? undefined : outcome.value };
       if (attempt < EVENT_DELIVERY_ATTEMPTS - 1) {
         await this.#sleep(this.#random() * Math.min(EVENT_DELIVERY_BACKOFF_CAP_MS, BACKOFF_BASE_MS * 2 ** attempt));
       }
@@ -502,7 +551,7 @@ export class EventController {
    * One call into the adapter, bounded by one heartbeat interval: an attempt that has not settled in
    * a whole liveness period is a dead transport, and it must not hold the queue behind it.
    */
-  async #attempt(call: (signal: AbortSignal) => Promise<void>): Promise<boolean> {
+  async #attempt<T>(call: (signal: AbortSignal) => Promise<T>): Promise<{ ok: true; value: T } | { ok: false }> {
     const attempt = new AbortController();
     const abort = (): void => attempt.abort();
     this.#closed.signal.addEventListener('abort', abort, { once: true });
@@ -516,10 +565,9 @@ export class EventController {
     work.catch(() => {});
     gaveUp.catch(() => {});
     try {
-      await Promise.race([work, gaveUp]);
-      return true;
+      return { ok: true, value: await Promise.race([work, gaveUp]) };
     } catch {
-      return false;
+      return { ok: false };
     } finally {
       clearTimeout(timer);
       this.#closed.signal.removeEventListener('abort', abort);
@@ -535,7 +583,8 @@ export class EventController {
     const probe = this.#adapter?.heartbeat;
     if (probe === undefined || this.#state !== 'idle' || this.#busy) return;
     this.#busy = true;
-    const alive = await this.#attempt((signal) => probe.call(this.#adapter, signal));
+    const alive = (await this.#attempt((signal) => probe.call(this.#adapter, signal))).ok;
+    this.#recordOutcome(alive);
     if (this.#active() && !alive) this.#state = 'disconnected';
     this.#release();
   }
@@ -580,6 +629,7 @@ export class EventController {
       if (this.#position === undefined) this.#floor = Math.min(Math.max(this.#floor, 0), firstRetained - 1);
       this.#recovery = this.#gap();
     }
+    this.#handled = this.#floor;
     this.#persist();
   }
 
@@ -592,6 +642,12 @@ export class EventController {
     } catch {
       return { seq: 0, sameEpoch: true }; // an unreadable record owes everything retained: at-least-once, never a skipped row
     }
+  }
+
+  /** The fact behind `health().failingSince`: set at the first failure, cleared by the next success. */
+  #recordOutcome(ok: boolean): void {
+    if (ok) this.#failingSince = null;
+    else this.#failingSince ??= Date.now();
   }
 
   /** The explicit acknowledgement as its owner records it now; 0 when there is none. */

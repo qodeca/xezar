@@ -40,7 +40,9 @@ export type McpLeaderSession = z.infer<typeof mcpLeaderSessionSchema>;
  * The event controller of the MCP session that owns the project, when one is open. The three
  * cursors are D-05 § 6.6's, stay apart, and each reports only what HAPPENED — never where pushing
  * happened to start (QA on #311):
- * - `deliveredSeq`: the newest row really handed to the attached leader, in this journal;
+ * - `deliveredSeq`: the newest row really handed to the attached leader, in this journal. A row
+ *   the leader caused itself (its own echo) is never handed to it and never counted, so this can stay
+ *   below `latestSeq` with nothing wrong — and it says nothing about those rows;
  * - `ackedSeq`: the newest row the leader acknowledged with an explicit tool call — the same record
  *   `leader_events` keeps, so the two never disagree; 0 until it acknowledges;
  * - `reactedSeq`: the newest row a model turn was really seen to carry; 0 until one is.

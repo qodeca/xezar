@@ -3,7 +3,7 @@ import type { McpJournalRow, McpLeaderActionInput, McpLeaderBlocker, McpLeaderSe
 import type { ProjectOwnership } from '../workspace/project-owner.ts';
 import { OpenCodeReactionAdapter } from './adapters/opencode.ts';
 import type { EchoGuard } from './echo-guard.ts';
-import { EventController, type CursorAdvance, type EventDispatch, type LeaderRecord, type ReactionAdapter } from './event-controller.ts';
+import { EventController, type CursorAdvance, type DeliveryReceipt, type EventDispatch, type LeaderRecord, type ReactionAdapter } from './event-controller.ts';
 import type { EventJournal } from './event-journal.ts';
 import type { LeaderActResult, ProjectLeaderPort } from './project-leaders.ts';
 
@@ -87,15 +87,23 @@ const NO_OWNER_SESSION: McpLeaderBlocker = {
 };
 
 /**
- * A session owns the project and a leader is attached, but delivery keeps failing and the adapter
- * named no reason — a refused request, a dropped connection. Without this the status would read
- * "nothing wrong" while the controller sits `disconnected` (QA on #311: no field may report success
- * that did not happen).
+ * An attempt to hand events to the attached leader has failed, nothing has succeeded since, and
+ * events are waiting — a refused request, a dropped connection, a server that accepts and never
+ * answers. Reported from the controller's recorded FACTS (`health()`), in whatever state it is in:
+ * a hung leader keeps it in `dispatching`/`recovering` for most of a round, and a status derived from
+ * `disconnected` alone read "nothing wrong" through all of it (QA on #311, round four).
  */
 const DELIVERY_FAILING: McpLeaderBlocker = {
   code: 'delivery-failing',
   message:
-    'Events cannot be handed to the attached leader right now; xezar retries every 30 seconds while this MCP session owns the project. Nothing is lost: the events stay in the journal.',
+    'Events are waiting, and the last attempt to hand them to the attached leader failed; xezar keeps retrying while this MCP session owns the project. Nothing is lost: the events stay in the journal.',
+  fix: 'Check that `opencode serve` is running and answering (a paused or hung process accepts connections but never answers), or attach the session again.',
+};
+
+/** The same fact with nothing waiting: the attached leader failed its liveness check. */
+const LEADER_NOT_ANSWERING: McpLeaderBlocker = {
+  code: 'leader-not-answering',
+  message: 'The attached leader did not answer xezar’s last liveness check. Nothing is waiting right now, but the next event would not reach it.',
   fix: 'Check that `opencode serve` is running and answering, or attach the session again.',
 };
 
@@ -173,13 +181,15 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
 
   // ---- the controller's side: `ReactionAdapter` ----------------------------------------------
 
-  async deliver(dispatch: EventDispatch, signal: AbortSignal): Promise<void> {
+  async deliver(dispatch: EventDispatch, signal: AbortSignal): Promise<DeliveryReceipt> {
     const leader = this.#leader;
     if (leader === undefined) throw new Error(NO_LEADER.message);
     const events = dispatch.events.filter((row) => !this.#isEcho(row));
-    // Only the leader's own echoes: nothing to tell it, so this is delivered as nothing — no turn.
-    if (events.length === 0 && dispatch.recovery === undefined) return;
+    // Only the leader's own echoes: nothing to tell it, so nothing is handed over — and the receipt
+    // says so, so deliveredSeq never counts a row the leader was not sent (QA on #311).
+    if (events.length === 0 && dispatch.recovery === undefined) return { handedThrough: null };
     await leader.deliver({ ...dispatch, events }, signal);
+    return { handedThrough: events.at(-1)?.journalSeq ?? null };
   }
 
   async heartbeat(signal: AbortSignal): Promise<void> {
@@ -268,6 +278,11 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     return this.#leader === undefined ? null : { client: 'opencode', state: 'attached' };
   }
 
+  /**
+   * The blocker is a rule over FACTS, in order: the journal can be written; a leader is attached; a
+   * session owns the project; the adapter named no problem; no attempt has failed since the last
+   * success. It reads no controller state, so a state added later cannot slip past it.
+   */
   #blocker(): McpLeaderBlocker | null {
     // Before anything about the leader: with no journal, even an attached leader hears nothing.
     if (!this.#opts.journal.writable) return JOURNAL_UNWRITABLE;
@@ -280,7 +295,11 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     if (blocker) {
       return { code: blocker.code, message: blocker.message, fix: 'Check that `opencode serve` is running in this project and the session id is right, then attach it again.' };
     }
-    // Failing with no reason the adapter could name is still failing.
-    return controller.state === 'disconnected' ? DELIVERY_FAILING : null;
+    // From FACTS the controller recorded, never from its state machine (QA on #311, round four): a
+    // failed attempt with no success since is a blocker in `dispatching`, `recovering` and
+    // `disconnected` alike. `state` is shown, and decides nothing.
+    const health = controller.health();
+    if (health.failingSince !== null) return health.owed ? DELIVERY_FAILING : LEADER_NOT_ANSWERING;
+    return null;
   }
 }

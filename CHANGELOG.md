@@ -17,7 +17,9 @@
   `leader_events` is never pushed to it again, not even into a fresh session (#332). Events that
   arrive before the leader's first MCP session are pushed when it opens, and the delivery status
   and `leader_events` report only what really happened — nothing delivered, acknowledged or
-  reacted to is ever claimed for a row that was not. There is no cockpit button yet. (#309)
+  reacted to is ever claimed for a row that was not, and a leader that stops answering (even one
+  that still accepts connections) is reported as soon as an attempt fails, whatever the delivery is
+  doing. There is no cockpit button yet. (#309)
 - ✨ **One MCP client owns a project at a time.** A second coding agent that connects to a
   project another MCP client already holds is now refused with the project-occupied error
   (`-32080`, `com.qodeca.xezar/project-occupied`), which names nothing about the other client; the

@@ -91,8 +91,11 @@ interface Submission {
  */
 async function fakeOpenCode(directory: string) {
   const submissions: Submission[] = [];
-  /** Set `failPrompts` to answer every submission with a 500 — delivery failing for no nameable reason. */
-  const control = { failPrompts: false };
+  /**
+   * `failPrompts`: answer every submission with a 500 — delivery failing for no nameable reason.
+   * `hangPrompts`: accept every submission and never answer — a paused or hung `opencode serve`.
+   */
+  const control = { failPrompts: false, hangPrompts: false };
   const streams = new Set<ServerResponse>();
   const history: unknown[] = [];
   const server: Server = createServer((req: IncomingMessage, res: ServerResponse) => {
@@ -117,6 +120,7 @@ async function fakeOpenCode(directory: string) {
       if (route === `GET /session/${SESSION}/message`) return json(200, history);
       if (route === `POST /session/${SESSION}/prompt_async`) {
         if (control.failPrompts) return json(500, { name: 'UnknownError' });
+        if (control.hangPrompts) return; // accepted, never answered: the client's own timeout ends it
         const body = JSON.parse(raw) as Submission;
         submissions.push(body);
         history.push({ info: { id: `msg_${submissions.length}`, role: 'user' }, parts: body.parts });
@@ -535,6 +539,63 @@ describe('#309 — push delivery in the running service (A-19 delivery, A-20 no-
       return st.available && st.delivery?.state === 'idle' && st.delivery.deliveredSeq === st.delivery.latestSeq ? st : undefined;
     });
     expect(ok.available && ok.blocker).toBeNull();
+  }, 60_000);
+
+  it('QA on #311, round four: a hung leader is a blocker in every state a retry passes through, not only disconnected', async () => {
+    const c = await cockpit();
+    const oc = await fakeOpenCode(c.root);
+    await serve(c);
+    const leader = agent(c.root);
+    okResult(await leader.call('leader_events', { action: 'read' }));
+    expect((await attach(c, oc.baseUrl)).status).toBe(200);
+
+    // SIGSTOP in miniature: the server takes the request and never answers.
+    oc.control.hangPrompts = true;
+    expect((await c.human('PUT', '/config', { baseBranch: 'develop' })).status).toBe(200);
+    // The first attempt times out after one heartbeat (500 ms here). From then on the controller KNOWS.
+    await until('the first attempt to fail', async () => ((await c.status()) as { blocker: { code: string } | null }).blocker?.code === 'delivery-failing' || undefined);
+    const samples: Array<{ state: string | undefined; blocker: string | null }> = [];
+    const end = Date.now() + 2_500;
+    while (Date.now() < end) {
+      const st = await c.status();
+      if (st.available) samples.push({ state: st.delivery?.state, blocker: st.blocker?.code ?? null });
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    // Every read, in every state, names the failure — and the reads really span the retry states.
+    expect(samples.filter((sample) => sample.blocker !== 'delivery-failing'), JSON.stringify(samples.slice(0, 5))).toEqual([]);
+    expect(new Set(samples.map((sample) => sample.state))).toContain('recovering');
+
+    // The server comes back: the row goes through, and the blocker goes with the failure.
+    oc.control.hangPrompts = false;
+    const ok = await until('delivery to recover', async () => {
+      const st = await c.status();
+      return st.available && st.delivery?.deliveredSeq === st.delivery?.latestSeq && st.blocker === null ? st : undefined;
+    });
+    expect(ok.available && ok.delivery?.deliveredSeq).toBe(1);
+  }, 60_000);
+
+  it('QA on #311, round four: deliveredSeq counts only rows really handed over — never the leader’s own echo', async () => {
+    const c = await cockpit();
+    const oc = await fakeOpenCode(c.root);
+    await serve(c);
+    const leader = agent(c.root);
+    okResult(await leader.call('leader_events', { action: 'read' }));
+    await until('the controller', async () => ((await c.status()) as { delivery: { state: string } | null }).delivery?.state === 'idle' || undefined);
+    expect((await attach(c, oc.baseUrl)).status).toBe(200);
+
+    // The leader changes the configuration itself: its echo is settled, never sent, never counted.
+    okResult(await leader.call('project_config', { action: 'set_config', config: { baseBranch: 'develop' } }));
+    const echo = journalRows(c.dataDir).find((row) => row.kind === 'config.changed' && row.origin === 'leader')!;
+    await new Promise((r) => setTimeout(r, 1_200));
+    expect(oc.submissions).toHaveLength(0);
+    expect(await c.status()).toMatchObject({ delivery: { state: 'idle', deliveredSeq: 0, latestSeq: echo.journalSeq }, blocker: null });
+
+    // A person's change right after it is handed over — and counted.
+    expect((await c.human('PUT', '/config', { baseBranch: 'main' })).status).toBe(200);
+    const human = journalRows(c.dataDir).at(-1)!;
+    await until('the human row to be pushed', () => (oc.delivered().includes(human.eventId) ? true : undefined));
+    await until('the count to follow', async () => ((await c.status()) as { delivery: { deliveredSeq: number } }).delivery.deliveredSeq === human.journalSeq || undefined);
+    expect(oc.delivered()).toEqual([human.eventId]);
   }, 60_000);
 
   it('starts no agent process: `start` and `resume` do not exist, for any client (owner decision on #311)', async () => {
