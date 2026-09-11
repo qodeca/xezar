@@ -14,6 +14,9 @@ below was read or measured at that revision. Counts move when tools change; re-d
 design (Part 6) and what the research changes (Part 7). The amendment's measurements were taken at
 `6f699bf` (`main`), whose tool surface is the same as the baseline's. Entries it changes are marked "(amended, #274)".
 
+**Design pass** on 2026-09-11 by [#296](https://github.com/qodeca/xezar/issues/296): a critique of Part 6 and a review of
+the two MCP pages that shipped since (Part 8). Entries it changes are marked "(design pass, #296)".
+
 ## Summary for the owner
 
 You asked for "a Swagger kind of documentation for the MCP ... a way for a human to verify the design and API of the MCP
@@ -35,6 +38,11 @@ reviewer), what they must learn in thirty seconds, how the effect of every tool 
 are gathered in one place, and how the missing "Try it" reads as a decision. **What changed** (Part 7): most decisions
 are confirmed; four details change, and none of the five questions below changes.
 
+The **design pass** (Part 8) reviewed Part 6 and the two pages that shipped. Its verdict: the structure holds. The summary
+should name the tools that change state rather than count them; the page must say when its data is missing instead of
+printing filler; refusals group by boundary. The built page lacks the two parts that answer a reviewer's main questions –
+the effect of each action, and coverage. Findings in the code are listed in 20.8 for assignment, not changed.
+
 Five questions need your decision. They are at the end, under [Open questions for the owner](#open-questions-for-the-owner),
 each with a recommendation and what each choice costs.
 
@@ -48,6 +56,7 @@ each with a recommendation and what each choice costs.
 - [Part 5 – Prior art](#part-5--prior-art)
 - [Part 6 – UX design](#part-6--ux-design)
 - [Part 7 – What the research changes](#part-7--what-the-research-changes)
+- [Part 8 – Design pass](#part-8--design-pass)
 - [Open questions for the owner](#open-questions-for-the-owner)
 
 ## The seven findings, checked
@@ -131,13 +140,13 @@ anything. They must be able to do four jobs without reading source code.
 | CV-05 | The page MUST show the coverage table with a filter by inventory status, and MUST show any never-passing coverage entry (CT-06) as prominently as a mapped one. | J-2 |
 | CV-06 | The page MUST contain no control that executes, simulates or prepares a tool call: no "Try it", no "Send", no request builder, no copy-as-command. See [section 13](#13-the-hard-boundary-no-try-it). | F-16, F-18, A-17, A-23, D-06 § 10.4 |
 | CV-07 | When the route answers "unavailable", the page MUST say so in one plain sentence with the reason, and the rest of the cockpit MUST keep working. | N-07 |
-| CV-08 | Before anything is expanded, a summary directly under the header MUST state: the number of tools; how many change project state and how many of those state they may be destructive; how many are read-only; the number of always-refused actions, linked to the refusals section; and the number of covered records served, naming every record not served. Every number MUST be computed from the route. See [18.2](#182-the-first-thirty-seconds). (added, #274) | J-1–J-3 |
+| CV-08 | Before anything is expanded, a summary directly under the header MUST state: the number of tools and of actions, never merging reads with changes; **by name**, the tools that change project state, those of them that state they may be destructive, and any tool that does not state whether it is read-only; the number of always-refused actions, linked to the refusals section; and the number of covered records served, naming every record not served – or, when coverage is not available, one sentence saying so and where it is recorded. Every number and name MUST be computed from the route. See [18.2](#182-the-first-thirty-seconds). (added, #274; amended, design pass #296 – names, not counts) | J-1–J-3 |
 | CV-09 | Every collapsed tool row MUST show the tool's effect in words ("Read-only", "Changes project state", "Destructive", or "Read-only: not stated" with the assumed default) and its action counts by disposition. An effect filter (All, Changes project state, Read-only) MUST announce the new count. See [18.3](#183-scanning-eleven-tools-and-seeing-what-changes-things). (added, #274) | J-1, U-M08 |
 | CV-10 | Text inside a collapsed tool – action names, argument names, descriptions – MUST be reachable with the browser's find-in-page, and a match MUST open that tool. (added, #274) | J-1 |
-| CV-11 | The expanded tool MUST show its actions table before its arguments; list required arguments before optional ones; name types in words; show an enum of more than 10 values as its first 10 plus a control that reveals the rest; show the discriminator argument by reference to the actions table, not as a repeated enum; and show nesting beyond one level as path-prefixed rows, not as a third level of disclosure. See [18.4](#184-reading-a-schema-without-drowning). (added, #274) | J-1 |
+| CV-11 | The expanded tool MUST show its actions table before its arguments; list required arguments before optional ones; name types in words; show an enum of more than 10 values as its first 10 plus a control that reveals the rest; show the discriminator argument by reference to the actions table, not as a repeated enum; and show nesting beyond one level as path-prefixed rows, not as a third level of disclosure. The actions MUST be grouped Reads / Changes / Refused; while action effects are not declared, performing actions MUST show as a compact list of names with no effect word. An open tool MUST end with a control that closes it and returns focus to its row. See [18.4](#184-reading-a-schema-without-drowning). (added, #274; extended, design pass #296) | J-1 |
 | CV-12 | One section MUST gather everything the server will not do, in three groups: never exposed, always refused (refusal-only actions and refused arguments, each with its boundary) and refused at call time (each saying whether it arrives as an error or an ordinary result, and labelled "declared, not derived" where true). Each expanded tool MUST show its own items from that section. A refused argument MUST NOT be shown as an optional input. See [18.5](#185-the-refusals-what-will-this-not-let-me-do). (added, #274) | J-3, J-4 |
-| CV-13 | The header MUST say in one sentence that the page is read-only by design and why. Each expanded tool MUST end with its cockpit equivalents ("Do this in the cockpit") from the coverage rows, or the justification where there is none. The page MUST NOT render a disabled or locked run control. See [18.6](#186-the-absent-try-it-deliberate-not-unfinished). (added, #274) | CV-06; F-18 |
-| CV-14 | The page MUST handle each state in [18.7](#187-failure-and-empty-states) with the text given there: loading, unavailable, MCP service not running, hosted mode, no tools besides `health`, a tool with no arguments, a schema it cannot lay out, an empty filter, and no unserved records. A schema it cannot lay out MUST affect only its own tool. (added, #274) | N-07, NF-02 |
+| CV-13 | The header MUST say in one sentence that the page is read-only by design and why. Each expanded tool MUST end with its cockpit equivalents ("Do this in the cockpit") from the coverage rows, or the justification where there is none. When neither is available the place stays empty: the page MUST NOT make a general claim it cannot back. The page MUST NOT render a disabled or locked run control. See [18.6](#186-the-absent-try-it-deliberate-not-unfinished). (added, #274; amended, design pass #296) | CV-06; F-18 |
+| CV-14 | The page MUST handle each state in [18.7](#187-failure-and-empty-states) with the text given there: loading, unavailable, MCP service not running, hosted mode, no tools besides `health`, a tool with no arguments, a schema it cannot lay out, an empty filter, no unserved records, action effects not declared, and coverage not available (the last two added, design pass #296). A schema it cannot lay out MUST affect only its own tool. (added, #274) | N-07, NF-02 |
 
 ### 6. Non-functional requirements that already bind this repository
 
@@ -545,7 +554,7 @@ Each decision: the choice, the reason, and the alternative rejected. Ids are loc
 | R-13 | Each tool is a native `<details>` element (added, #274). | Find-in-page opens it in current Chrome, Firefox and Safari (S20), so a reviewer can search argument names across collapsed tools. | A script-driven collapsible, which hides its content from find-in-page. |
 | R-14 | At most two disclosure levels below the page: a tool, then a nested object. Deeper fields are path-prefixed rows (added, #274). | More than two levels usually hurts (S18); real schemas nest three deep (18.4). | A disclosure per nesting level. |
 | R-15 | No search box (added, #274). | Eleven tools fit on one screen; the effect filter, find-in-page and links cover the need (18.3). | A search box like the Inspector's or Swagger UI's tag filter, which serve much larger surfaces. |
-| R-16 | In place of "Try it": a one-line reason in the header and a "Do this in the cockpit" list in each tool; no disabled control (added, #274). | No renderer explains its missing console (17.5); a disabled control misstates the reason; the cockpit door is the correctly audited one (13). | Silence; a disabled button; a link to documentation only. |
+| R-16 | In place of "Try it": a one-line reason in the header and a "Do this in the cockpit" list in each tool, taken only from coverage rows and empty where there are none; no disabled control (added, #274; amended, design pass #296). | No renderer explains its missing console (17.5); a disabled control misstates the reason; the cockpit door is the correctly audited one (13). | Silence; a disabled button; a link to documentation only. |
 
 ## Part 4 – Current state, honestly
 
@@ -815,6 +824,19 @@ makes the page succeed or fail at its one job, which is letting a human check th
 The first reader decides the layout. When a choice helps a debugging engineer but slows a reviewer – a form, a
 transcript, a command to copy – the reviewer wins.
 
+**What brings the reviewer here** (design pass, #296). The table names the reader; it did not name the questions they
+arrive with. There are three, and the page serves two of them:
+
+1. *"This pull request changes a tool – did it get more dangerous?"* The diff of `mcp-api.md` and `mcp-api.json`
+   answers this, not the page (R-01): the page shows one version, the running one. The page only makes the words in
+   that diff mean something.
+2. *"Can the leader do X?"* – delete a task, merge, touch workspace settings, open an app on the host. One scan should
+   answer it: find the action and read its effect, or find it refused and see which boundary refuses it.
+3. *"Is anything the cockpit does missing from MCP?"* – the coverage question (J-2).
+
+What they do with the answer: approve or request changes on a pull request, file an issue, or answer the owner. None of
+these needs a number. Each needs a **name** – the tool, the action, the boundary, the record.
+
 #### 18.2 The first thirty seconds
 
 Most readers scan, so the page puts its conclusion first (17.6). Without expanding anything, the reviewer must be able
@@ -834,6 +856,29 @@ to answer five questions:
 
 These five lines are the **summary**. It sits directly under the header and is plain text, not a chart. Everything else
 on the page is detail for someone who has already read it.
+
+**Names, not counts** (design pass, #296). The built page (#284) shows these lines as counts, and a count is the wrong
+unit: "7 tools can change project state" sends the reviewer to find which seven in a list further down. So:
+
+- Item 3 **names** the tools that can change state, those of them that state they may be destructive, and any tool
+  that does not state `readOnlyHint` (today `handoff_git` – a finding about the server, which the page should make
+  visible, not soften). Eleven names fit in two lines.
+- Item 2 becomes a clause of item 1, and never merges reads with changes. "104 actions that read or change" joins the
+  one distinction the page exists to keep apart.
+- Item 4 stays a count with its link. The header's own "It does not expose: …" sentence is cut: with item 4 and the
+  refusals section, it was the third statement of the same list above the fold.
+- Item 5 is never silently absent. While coverage is not available, the line says so and names where coverage is
+  recorded (18.7).
+- The read-only-by-design sentence (18.6) is one line with its "Why?", not a boxed callout. On the built page the box is
+  the heaviest block above the fold, and it answers the author's question ("why is there no Try it?"), not the
+  reviewer's.
+
+**The three things a reviewer keeps** (design pass, #296). If a reviewer holds only three things from this page, they
+are: (1) which tools **and which actions** can change or destroy state; (2) where the fence is – what is refused, and by
+which boundary; (3) whether cockpit coverage is complete. The summary names the first, counts and links the second, and
+states the third. Everything else – version, protocol revisions, the four hints, argument types – is reference detail.
+When only part of the page can ship, these three ship first; a header and a summary without them do not do the job
+(20.3).
 
 #### 18.3 Scanning eleven tools, and seeing what changes things
 
@@ -866,6 +911,15 @@ Annotations are **hints**. The specification tells clients to treat them as untr
 counts on the row come from the declaration, and why the check in 12.4 fails when the declaration and the hints
 disagree. The row shows what the server **claims**, and the check keeps the claim honest.
 
+**The row says which tool could; only the action says which call does** (design pass, #296). Tool-level hints are
+coarse on this server. Four of the seven changing tools state they may be destructive, and `project_config`'s
+"Destructive" covers 35 performing actions, most of them `get_*` and `list_*`. A reviewer asking "can the leader delete a
+workflow?" learns from the row only that the tool could. The audit happens at the action level (12.4), which depends on
+the declaration (10.2). When an action's effect is **not declared**, the action shows no effect word, and one line above
+the actions says that the effects are not declared and that the tool's description is the source. The page never prints
+filler that reads like an answer: the built page prints "Reads or changes" on each of 78 actions, which is true of all
+of them and tells the reader nothing.
+
 **Finding a tool.** Eleven rows fit on one laptop screen, so there is no search box (R-15). Three things replace one:
 
 - an **effect filter** – All, Changes project state, Read-only – that announces the new count;
@@ -893,7 +947,11 @@ filter gives the same view without making the page disagree with the wire.
 
 1. **Actions before arguments.** The expanded tool opens with the **actions table**: the discriminator made readable,
    grouped Reads / Changes / Refused, each action with its cockpit equivalent (18.6). The discriminator's argument row
-   then says "one of the 55 actions above" instead of listing 55 values a second time.
+   then says "one of the 55 actions above" instead of listing 55 values a second time. (design pass, #296) The groups
+   are the point: 55 ungrouped lines are a scroll, not a table. While effects are not declared (18.3), performing
+   actions show as a compact, wrapped list of names – the names (`delete_workflow`, `remove_worktree`) are the best
+   evidence left – and refused actions as their own group. Inside a tool, a refused action shows its name and boundary;
+   its reason is written once, in the refusals section (18.5).
 2. **Required first.** Required arguments, then optional ones, each group in schema order. "Required" is a word, not an
    asterisk.
 3. **Types in words.** "text", "whole number", "yes/no", "list of text", "object – 5 fields". The exact JSON Schema stays
@@ -910,6 +968,18 @@ filter gives the same view without making the page disagree with the wire.
    anything, and a description saying it is never accepted (measured). Shown plainly, it reads as an optional input of
    any type, which is the opposite of the truth. The declaration names such arguments and the page shows them in the
    refusals section and, in the argument table, as "Refused – <boundary>" (CV-12).
+8. **The two guards, in words that are true** (design pass, #296). In a flat schema `expectedVersion` is optional at the
+   top level even where every changing action needs it. The built page reads "accepted, not required" for
+   `organise_work`, whose own description says every action that changes a task needs it. Where the schema lists a
+   guard as optional, the page says "optional in the schema – which actions need it is not declared", until the
+   declaration says it per action.
+
+**Where it breaks in practice** (measured on the built page, design pass #296). Open, `project_config` is 4,113 px tall
+at 1280 px and 5,549 px at 375 px, and its arguments start about 2,100 px into it. Descriptions run up to 1,638
+characters (`execution_control`) and open each tool verbatim. That order stays: on this server the description is where
+action-level truth lives until the declaration ships (`organise_work`: "delete: … Irreversible"). The design adds two
+things: the compact action list above, and a control at the end of each open tool that closes it and returns focus to
+its row, so a reader 5,000 px deep does not have to scroll back to find it.
 
 #### 18.5 The refusals: "what will this NOT let me do?"
 
@@ -921,11 +991,16 @@ the requirement), and how a leader finds out.
 | Group | What belongs in it | Source on the page |
 | --- | --- | --- |
 | **Never exposed** | No resources, prompts or logging; no account identity; no secret; no other project; no host-process control. Each with the requirement that forbids it (J-4). | Route field `notExposed` (section 11). |
-| **Always refused** | Every refusal-only action (`project_config`'s 20) and every refused argument (`projectId`), grouped by tool, each with its boundary. | Derived: action disposition `refuses` and the declared `refusedArguments`. |
+| **Always refused** | Every refusal-only action (`project_config`'s 20) and every refused argument (`projectId`), grouped by **boundary**, each line naming its tool (amended, design pass #296). | Derived: action disposition `refuses` and the declared `refusedArguments`. |
 | **Refused at call time** | Refusals that depend on state: a stale write answered as a conflict (`expectedVersion`, #250); a second owner answered as project-occupied (A-17); `handoff_git` refused by policy, service, quality or forge; local hand-off in hosted mode. Each says whether the refusal arrives as an error result or as an ordinary result (10.4). | Declared, and labelled "declared, not derived" where true (10.4). |
 
 The same items also appear inside each expanded tool, filtered to that tool, so a reviewer finds them from either
 direction. The summary (18.2) links here with the count.
+
+**Why by boundary** (design pass, #296). 20 of the 21 always-refused items belong to one tool, so grouping by tool is no
+grouping. The reviewer's question is where the fence runs, and today the answer has seven parts: workspace settings (6),
+agent accounts (5), host process (3), project registry (3), and account identity, host filesystem and secret (1 each),
+plus the refused `projectId` argument.
 
 #### 18.6 The absent "Try it": deliberate, not unfinished
 
@@ -941,7 +1016,10 @@ This page does three things:
    from the coverage rows (record id and outcome label). An action with no cockpit equivalent shows its justification
    instead. The reader learns where the effect is available, done through the door that is correctly audited as `ui`
    (section 13, point 4). The label is text, not a link: the inventory records outcomes, not cockpit URLs. Adding links
-   would mean a per-record route table, which this feature does not build (18.8).
+   would mean a per-record route table, which this feature does not build (18.8). (design pass, #296) Where the
+   coverage rows are not available, this place stays empty. A general sentence is not a fallback: the built page says
+   "every project action this tool performs has its own control in the cockpit" on every tool, including `health`,
+   which has no cockpit control at all (R-05).
 3. **No disabled control.** No greyed-out "Try it", no locked icon. A disabled button says "you are not allowed yet". The
    truth is "this page does not do that".
 
@@ -960,6 +1038,8 @@ Every state keeps the rest of the cockpit working (NF-02), and says what is true
 | A schema the page cannot lay out as a table (an unknown keyword, `$ref`, a union it does not model) | That tool's argument area says "This schema uses a form the page does not lay out as a table. The exact schema is below." and opens the raw JSON disclosure. One tool's failure never blanks another tool or the page (a per-tool error boundary). | All other tools. |
 | Filter matches nothing | "No tools match this filter." with the filter still visible. | – |
 | Every covered record is served | The coverage section says so in one sentence and still shows the table. It does not disappear. | – |
+| Action effects not declared (design pass, #296) | No effect word on any action. One line above the actions: "Which of these actions change state is not declared yet. The description above is the source." | Everything else in the tool. |
+| Coverage not available (design pass, #296) | The coverage section and summary item 5 say in one sentence that coverage is not shown here and name where it is recorded (`docs/features/mcp-server/mcp-api.md`). Never left out without a word: a reviewer cannot notice a section that is not there. | – |
 
 #### 18.8 What we will not build, and why
 
@@ -975,6 +1055,7 @@ Every state keeps the rest of the cockpit working (NF-02), and says what is true
 | A call history, transcript or replay | That is the debugging reader's job, served elsewhere (18.1). |
 | A download button for the JSON | The JSON is committed in the repository and published nowhere else (section 14). A running cockpit may describe a different version than any file. |
 | Reviewer comments or sign-off on the page | Review happens on the pull request. |
+| A tools × effects matrix, an effect badge per action, a boxed read-only callout, the header's "does not expose" sentence, per-tool "Do this in the cockpit" text without data (design pass, #296) | Considered and rejected, or cut. The reasons are in 20.7. |
 
 #### 18.9 Accessibility and 375 px, extended
 
@@ -990,6 +1071,10 @@ The NF-07 and NF-08 bar and 12.5 stay as written. The design above adds:
 - At **375 px**: each collapsed row stacks name, then effect, then counts, with no sideways scroll. Nested fields use the
   path prefix rather than deeper indentation, so depth never costs width. The header's read-only line wraps; it is never
   cut off.
+- Effect words are separated by spacing, not by a character: at 375 px the built page leaves a lone "·" at a line end.
+  (design pass, #296)
+- The close control at the end of an open tool (18.4) is a button named with the tool's name, reachable by keyboard,
+  and returns focus to that tool's row. (design pass, #296)
 
 ## Part 7 – What the research changes
 
@@ -1260,3 +1345,7 @@ route, a contract schema, a Settings section and a manual QA pass.
   of Done (#119) on one candidate revision.
 - *Ship both in 0.14.0.* **Cost:** one more `needs-qa` cockpit change inside the release, and the #119 acceptance run
   must include it; roughly one implementation task plus QA.
+
+*Note from the design pass (added, #296):* the page has since shipped (#291), without the action declaration and without
+the coverage section – the two parts that answer a reviewer's questions 2 and 3 (18.1). If the page stays in 0.14.0, it
+should ship with them, or at least say on the page that they are missing (18.7). The recommendation above is unchanged.
