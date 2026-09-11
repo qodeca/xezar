@@ -1610,6 +1610,26 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
 const REPO_ROOT = new URL('../../../../', import.meta.url);
 const INVENTORY = new URL('docs/features/mcp-server/mcp-ui-action-inventory.md', REPO_ROOT);
 const COVERAGE_MAP = new URL('docs/features/mcp-server/mcp-parity-coverage-map.md', REPO_ROOT);
+/** The browser half of A-08. It runs only under `npm run test:e2e`; here it is only READ, for its case titles. */
+const BROWSER_SPEC = new URL('packages/web/e2e/mcp-collaboration.e2e.ts', REPO_ROOT);
+
+interface BrowserCase {
+  readonly id: string;
+  readonly acceptance: readonly string[];
+  readonly records: readonly string[];
+  readonly title: string;
+}
+
+/** The browser cases, from their titles: `it('B-nn (A-xx, A-yy) [I-nnn I-mmm] what it proves'`. */
+function browserCases(): BrowserCase[] {
+  const source = readFileSync(BROWSER_SPEC, 'utf8');
+  return [...source.matchAll(/\bit\(\s*'(B-\d{2}) \(([^)]*)\) \[([^\]]*)\] ([^']+)'/g)].map((m) => ({
+    id: m[1]!,
+    acceptance: m[2]!.split(', ').filter(Boolean),
+    records: m[3]!.split(' ').filter(Boolean),
+    title: m[4]!,
+  }));
+}
 
 type InventoryStatus = 'covered' | 'global' | 'presentation';
 
@@ -1622,10 +1642,12 @@ function readInventory(): Map<string, InventoryStatus> {
   return rows;
 }
 
-/** The two published tables, generated from the registry — what the map must say verbatim. */
-function expectedTables(inventory: Map<string, InventoryStatus>): { records: string; cases: string } {
+/** The three published tables, generated from the registry and the browser spec — what the map must say verbatim. */
+function expectedTables(inventory: Map<string, InventoryStatus>): { records: string; cases: string; browser: string } {
   const byRecord = new Map<string, string[]>();
   for (const c of CASES) for (const r of c.records) byRecord.set(r, [...(byRecord.get(r) ?? []), c.blocker ? `${c.id} (BLOCKED)` : c.id]);
+  const browser = browserCases();
+  for (const c of browser) for (const r of c.records) byRecord.set(r, [...(byRecord.get(r) ?? []), c.id]);
   const recordRows = [...inventory]
     .filter(([id, status]) => status === 'covered' || byRecord.has(id))
     .map(([id, status]) => `| ${id} | ${status} | ${(byRecord.get(id) ?? []).join(', ')} |`);
@@ -1633,6 +1655,11 @@ function expectedTables(inventory: Map<string, InventoryStatus>): { records: str
   return {
     records: ['| Record | Inventory status | Cases |', '| --- | --- | --- |', ...recordRows].join('\n'),
     cases: ['| Case | Acceptance | Records | What it proves |', '| --- | --- | --- | --- |', ...caseRows].join('\n'),
+    browser: [
+      '| Case | Acceptance | Records | What it proves |',
+      '| --- | --- | --- | --- |',
+      ...browser.map((c) => `| ${c.id} | ${c.acceptance.join(', ')} | ${c.records.join(', ')} | ${c.title} |`),
+    ].join('\n'),
   };
 }
 
@@ -1669,10 +1696,26 @@ describe('A-05 — the coverage matrix against the closed inventory', () => {
     expect(presentation).toEqual([]);
   });
 
+  it('the browser half of A-08 exists, and every one of its cases names A-08 and inventory records', () => {
+    const inventory = readInventory();
+    const source = readFileSync(BROWSER_SPEC, 'utf8');
+    const cases = browserCases();
+    // A title that misses the `B-nn (…) [ … ]` shape would silently drop out of the map; count them loosely too.
+    expect(cases.length, 'browser cases the title pattern parsed').toBe([...source.matchAll(/\bit(?:\.\w+)?\(\s*['"`]B-\d/g)].length);
+    expect(cases.length).toBeGreaterThan(0);
+    expect(new Set(cases.map((c) => c.id)).size).toBe(cases.length);
+    for (const c of cases) {
+      expect(c.acceptance, c.id).toContain('A-08');
+      expect(c.records.length, c.id).toBeGreaterThan(0);
+      for (const r of c.records) expect(inventory.get(r), `${c.id} names ${r}`).toBe('covered');
+    }
+  });
+
   it('the published coverage map says exactly what this suite registers, both ways', () => {
     const doc = readFileSync(COVERAGE_MAP, 'utf8');
     const expected = expectedTables(readInventory());
     expect(publishedBlock(doc, 'records'), `regenerate the records table:\n${expected.records}`).toBe(expected.records);
     expect(publishedBlock(doc, 'cases'), `regenerate the cases table:\n${expected.cases}`).toBe(expected.cases);
+    expect(publishedBlock(doc, 'browser'), `regenerate the browser table:\n${expected.browser}`).toBe(expected.browser);
   });
 });
