@@ -12,6 +12,13 @@ Installation validation is reported in installation.md. Real-task entries follow
 
 ## Real-task entries
 
+### 2026-09-11 — #330 WP0 (the pi requirements amendment), `docs-maintenance` step `docs`, `xezar-docs-maintenance`, Claude Code — real-task verified
+
+- Evidence: run 267881ec, base `2e5a537`. The brief was an exact table in #330: seven lines of an accepted requirements document, each with its quoted current text and its replacement, line numbers taken two `main` commits earlier.
+- Observed: **matching the quoted text first, then counting diff hunks, is a cheap proof of "change nothing else".** Each quote was located with `grep -n` before any edit (all seven matched, at unchanged line numbers); after the edits `git diff -U0 <file> | grep '^@@'` showed exactly seven one-line hunks at those lines. Lesson (recommended): for an exact-list amendment, state both numbers in the report – quotes matched, hunks changed – so a reviewer can check the claim without reading the whole file.
+- Observed: **an approved amendment can leave a companion requirement out of step.** A repository-wide search for the old wording ("all three clients") found the built-in leader requirements (L-D01) still naming three clients. The owner's approval covered only the listed lines, so it went to an issue (#336, no release label) instead of into the diff. Dated decision and evidence records that say "three" were left as they are.
+- Remaining limit: one task; no check enforces either step.
+
 ### 2026-09-11 — #330 WP1 (pi against the real MCP bridge), `testing-and-verification` step `tests`, `xezar-testing`, Claude Code — real-task verified
 
 - Evidence: run 95c0a6da. A private node harness (real `xezar serve`, real bridge, pi in RPC mode, scripted endpoint) in the primary evidence directory; the committed output is `docs/features/mcp-server/mcp-adapter-evidence-pi.md`.

@@ -241,6 +241,13 @@
   (#183)
 
 ## 📝 Specs & Documentation
+- 📝 **pi is a fourth required MCP leader client, through an extension.** The MCP requirements now
+  name Claude Code, Codex, OpenCode and pi as the required initial clients. pi itself ships no MCP
+  support, by design, so it counts through the third-party `pi-mcp-adapter` extension, which pi's
+  one-time setup installs; the requirements say so in the text. The connection-file decision (D-04)
+  gains pi's one-time setup and a four-client comparison, and the client compatibility report gains
+  a dated pi addendum. A requirements change only: pi has no reaction adapter, setup card or
+  acceptance column yet. (#330)
 - 📝 **A release-level Definition of Done for 0.14.0.** `docs/releases/0.14.0-definition-of-done.md`
   sits beside the MCP feature's own eight clauses and covers the rest of the release: the security,
   engine and gate fixes, open-source readiness, documentation, the kit roles, the UI design review
