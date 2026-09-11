@@ -1574,8 +1574,10 @@ expect_fail "clearing it does not conjure gate evidence" \
 
 # --- 7b. An empty branch is not a task's work (#312) ---------------------------------------------
 #
-# THE INCIDENT. Run b86c6066's author step ended its turn on a design question in prose: no code, no
-# `XEZ:ASK`, no BLOCKED file. The engine marked the step done — only the last agent step is
+# THE INCIDENT. Run b86c6066's author step ended its turn on a design question: no code and no
+# BLOCKED file. (Its session transcript shows the turn ended on an `XEZ:ASK` line, which the cockpit
+# strips from the thread, so it read as prose; the engine ignored that marker in a non-final step
+# until #317.) The engine marked the step done — only the last agent step is
 # interactive — and readiness, whose only scope check was "is there a BLOCKED file", read the
 # ABSENT file as "not blocked". The gates then ran on the base commit and the evidence step sealed
 # `a0cf85e`, the manifest's own baseSha: a valid, verifiable seal for a branch holding none of the
@@ -1617,6 +1619,58 @@ fi
 printf 'export const seed = 3;\n' > "$wt/seed.ts"
 git -C "$wt" -c user.email=t@t -c user.name=t commit -qam "the task's work"
 expect_ok "a branch with a real commit over its base passes readiness" run_in "$wt" "$PF" --readiness
+
+# --- 7c. The gates judge committed work only (#320) ----------------------------------------------
+#
+# The evidence step refuses to seal a dirty tree, and readiness used to let one through: four tasks
+# in one day paid for a complete gate run — typecheck, vitest, unit, build, package — before the
+# seal said "the task tree has uncommitted changes". Readiness now asks the sealer's own question
+# first. `gates` below is a stub that only records that it started: the point is WHICH command runs,
+# and the ordering pin in §7 (readiness before gates, no onFail) is what makes that the workflow's.
+printf '\n-- dirty tree --\n'
+root="$(make_fixture dirty-tree)"
+wt="$(add_worktree "$root" "$RUN_A")"
+PF="$root/.xezar/checks/worktree-preflight.sh"
+printf 'export const seed = 4;\n' > "$wt/seed.ts"
+git -C "$wt" -c user.email=t@t -c user.name=t commit -qam "the task's work"
+gates_ran="$root/.local/gates-ran"
+readiness_then_gates() { run_in "$wt" "$PF" --readiness && : > "$gates_ran"; }
+
+# An edit the author step never committed: the dogfooding-note case (4ac055cb).
+printf 'export const seed = 5;\n' > "$wt/seed.ts"
+rm -f "$gates_ran"
+expect_fail "readiness refuses a tree with an uncommitted edit" \
+  "gitstate.committed" readiness_then_gates
+[ ! -e "$gates_ran" ] \
+  && ok "and no gate command starts after that refusal" \
+  || bad "and no gate command starts after that refusal" "the stub gates ran on a dirty tree"
+expect_fail "the refusal says what to do, not only what is wrong" \
+  "then re-run readiness and the gates" run_in "$wt" "$PF" --readiness
+git -C "$wt" checkout -q -- seed.ts
+
+# A new file the author never added counts too — `git add` is the step that gets forgotten.
+printf 'export const extra = 1;\n' > "$wt/extra.ts"
+expect_fail "readiness refuses a tree with an untracked new file" \
+  "extra.ts" run_in "$wt" "$PF" --readiness
+
+# Guards that pass both ways: plain preflight runs on trees that are rightly mid-work, and the
+# read-only roles never run readiness at all.
+expect_ok "plain preflight still accepts a dirty tree" run_in "$wt" "$PF"
+if grep -q -- '--readiness' \
+  "$REPO_ROOT/.xezar/workflows/business-analysis.yaml" "$REPO_ROOT/.xezar/workflows/research.yaml"; then
+  bad "read-only roles never reach the dirty-tree refusal" "business-analysis or research now runs --readiness"
+else
+  ok "read-only roles never reach the dirty-tree refusal"
+fi
+
+# The control: commit it, and readiness passes and the gates start.
+git -C "$wt" add extra.ts
+git -C "$wt" -c user.email=t@t -c user.name=t commit -qm "the forgotten file"
+rm -f "$gates_ran"
+expect_ok "a committed tree passes readiness" readiness_then_gates
+[ -e "$gates_ran" ] \
+  && ok "and the gates start on it" \
+  || bad "and the gates start on it" "the stub gates never ran on a clean, committed tree"
 
 # --- 8. Manifest safety ------------------------------------------------------------------------------
 printf '\n-- manifest --\n'

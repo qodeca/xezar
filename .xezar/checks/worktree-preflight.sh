@@ -25,11 +25,12 @@
 #   worktree-preflight.sh --allow-root         tolerate the primary checkout (read-only
 #                                              workflows: review, triage)
 #   worktree-preflight.sh --readiness          full check, plus: refuse when the task marked
-#                                              itself blocked, or when its branch has no
-#                                              commits over the base (#312). Runs BEFORE the
+#                                              itself blocked, when its branch has no
+#                                              commits over the base (#312), or when its tree
+#                                              has uncommitted changes (#320). Runs BEFORE the
 #                                              gates so an unresolved decision stops the
 #                                              workflow without paying for a full gate run
-#                                              first. Both evidence modes repeat both checks
+#                                              first. Both evidence modes repeat the first two
 #   worktree-preflight.sh --merge-recovery     full check with ONE narrow exception: an
 #                                              interrupted merge that exactly matches this run's
 #                                              recorded merge intent is admitted instead of
@@ -67,8 +68,8 @@ usage() {
   printf 'modes:\n'
   printf '  (no flag)                 strict isolation check, for a writing workflow\n'
   printf '  --allow-root              also accept the primary checkout, for a read-only workflow\n'
-  printf '  --readiness               strict, plus refuse when this task recorded a BLOCKED decision\n'
-  printf '                            or its branch has no commits over the base\n'
+  printf '  --readiness               strict, plus refuse when this task recorded a BLOCKED decision,\n'
+  printf '                            its branch has no commits over the base, or its tree is dirty\n'
   printf '  --merge-recovery          strict, but admit the ONE interrupted merge this run recorded\n'
   printf '                            an intent for before starting it. Admits nothing else, and\n'
   printf '                            never aborts, resets or resolves anything\n'
@@ -328,11 +329,12 @@ done
 # --- Blocked-scope guard and gate evidence --------------------------------------------
 #
 # An intermediate `XEZ:ASK` does NOT park the run: only the last agent step of a workflow
-# is interactive, so a question raised while implementing prints as text and the workflow
-# marches on into the gates. This is the explicit stop that replaces the pause the agent
-# could not get: a task that could not resolve its own scope writes a BLOCKED file, and
-# the workflow goes no further. (`packages/xezar/src/workflows/run.ts:2799` —
-# `const interactive = i === lastAgentIdx && i === workflow.steps.length - 1;`)
+# is interactive. Until #317 a question raised while implementing printed as text and the
+# workflow marched on into the gates; an engine with #317 fails a non-final step that ends
+# without `XEZ:DONE` (`unfinishedStepReason` in `packages/xezar/src/workflows/run.ts`), but a
+# task on an older build does not get that stop. This is the explicit stop that does not
+# depend on the engine: a task that could not resolve its own scope writes a BLOCKED file,
+# and the workflow goes no further.
 #
 # It is checked in `--readiness` FIRST, which the workflows run between the implementation
 # step and the gates. Stopping there costs a second; stopping after the gates would burn a
@@ -385,6 +387,19 @@ if [ "$MODE" = "readiness" ] || [ "$MODE" = "record-gate-evidence" ] || [ "$MODE
       fail branch.has-own-commits "branch \"$BRANCH\" has no commits over its base — HEAD ${HEAD_SHA:0:12} is already contained in $empty_base. There is no work here to gate, seal or hand off. If the author step stopped for a decision, it must write the task's BLOCKED file; if no change is the honest outcome, report that and end the run instead of sealing."
     fi
   fi
+fi
+
+# --- The work is committed before the gates judge it (#320) ------------------------------
+#
+# The evidence step seals a COMMIT, and refuses a dirty tree ("the task tree has uncommitted
+# changes"). Readiness used to let that tree through, so four tasks in one day paid for a complete
+# gate run — typecheck, the whole vitest suite, unit tests, build, package test — and only then
+# learned the result could never be sealed. The same predicate the sealer uses, asked here, in the
+# one mode that runs straight before the gates. Only `--readiness`: plain preflight runs on trees
+# that are rightly mid-work, and the read-only roles (business-analysis, research) never run it.
+if [ "$MODE" = "readiness" ] && task_tree_is_dirty; then
+  dirty_paths="$(cd "$TASK_CWD" && git status --porcelain 2>/dev/null | head -5 | sed 's/^...//' | tr '\n' ' ')"
+  fail gitstate.committed "the task tree has uncommitted changes (${dirty_paths% }). The gates judge the commit and the seal refuses a dirty tree, so running them now would spend a full gate run for nothing. Commit the work — bash .xezar/checks/worktree-git.sh commit -m \"...\" — then re-run readiness and the gates."
 fi
 
 # --- Sealing, and what changed about it ------------------------------------------------

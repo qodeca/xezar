@@ -160,7 +160,8 @@ describe('model identity wiring (dry run)', () => {
   }, 40_000);
 
   it('Claude gateway models run with their provider-qualified wire id', async () => {
-    const id = await runToEnd({ task: 'do the thing', model: 'deepseek/deepseek-v4-flash' });
+    // `mock:done`: the agent step is not the last one, so it is only done when it says so (#317).
+    const id = await runToEnd({ task: 'mock:done do the thing', model: 'deepseek/deepseek-v4-flash' });
     const record = store.getRun(id);
     expect(record?.status).toBe('done');
     expect(record?.modelIdentity).toBe('deepseek/deepseek-v4-flash');

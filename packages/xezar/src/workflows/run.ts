@@ -110,6 +110,35 @@ const DONE_MARKER_RE = /XEZ:DONE\s*$/;
  */
 const MONITORING_MARKER_RE = /XEZ:MONITORING\s*$/;
 /**
+ * Why a NON-FINAL agent step may not be marked `done` (#317), or null when it may.
+ *
+ * Such a step runs one turn and its session closes by itself, so it has no way to wait for an
+ * answer — and until #317 nothing decided it was done except "the session ended without an
+ * error". Run b86c6066's implement step ended on an `XEZ:ASK` design question, was marked done,
+ * and readiness, gates and the seal all ran on a branch with no work in it.
+ *
+ * The decision now belongs to the agent contract every step is given (`HANDOFF_INSTRUCTIONS`):
+ * `XEZ:DONE` means "my goal is achieved", and a turn that ends without it is "waiting on the
+ * user". A turn that ends on anything else — a question, the monitoring marker, or plain prose —
+ * stops the workflow here instead of carrying on without an answer. Deliberately fail-closed on
+ * plain prose: that is the case no agent-side marker can report, and the one the BLOCKED file
+ * could not catch either. `turnText` is null when the session ended without finishing a turn.
+ */
+export function unfinishedStepReason(turnText: string | null): string | null {
+  const text = turnText?.trimEnd() ?? '';
+  if (DONE_MARKER_RE.test(text)) return null;
+  const next =
+    'A step before the last one cannot wait for an answer, so the workflow stopped here instead of ' +
+    'carrying on without one. Read the step\'s last message, then Continue this task to answer it.';
+  if (parseAskMarkerResult(text).kind !== 'none') {
+    return `the agent ended its turn on a question (XEZ:ASK) instead of finishing the step. ${next}`;
+  }
+  if (MONITORING_MARKER_RE.test(text)) {
+    return `the agent ended its turn still waiting on its own work (XEZ:MONITORING) instead of finishing the step. ${next}`;
+  }
+  return `the agent ended its turn without the XEZ:DONE completion marker, so nothing says the step's work is finished — it may be waiting on a question. ${next}`;
+}
+/**
  * Preserve boundaries between complete assistant text blocks while a turn is
  * accumulated for marker parsing. The runners join these same v1 blocks with
  * newlines in `AgentRunResult`; matching that contract here prevents a
@@ -3592,6 +3621,9 @@ export class RunManager {
     const startTokens = stepRecord?.tokensUsed ?? 0;
     let stepCost = stepRecord?.costUsd ?? 0;
     let turnText = '';
+    // The text of the step's last FINISHED turn — what `unfinishedStepReason` judges a non-final
+    // step by (#317). Null until a turn ends, so a session that closed mid-turn is not done either.
+    let lastTurnText: string | null = null;
     let sessionError: string | undefined;
     const sink = this.makeUiSink(runId, step.id);
     const onEvent = (event: AgentEvent) => {
@@ -3646,6 +3678,7 @@ export class RunManager {
           !done &&
           !ask &&
           MONITORING_MARKER_RE.test(turnText.trimEnd());
+        lastTurnText = turnText;
         turnText = '';
         for (const note of askNotes) emit({ type: 'note', stepId: step.id, ...note });
         if (done) {
@@ -3795,6 +3828,9 @@ export class RunManager {
       // events to the RunManager — only it knows how the session settled).
       sink.sessionEnded(state.cancelled ? 'cancelled' : 'end_turn');
       this.store.updateStep(runId, step.id, { tokensUsed: startTokens + result.tokensUsed });
+      // A session that ended cleanly is not a finished step (#317). The last step keeps its own
+      // rules — it is interactive, parks at `waiting` and closes on `XEZ:DONE` or idle.
+      if (!interactive && !state.cancelled) return unfinishedStepReason(lastTurnText);
       return null;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
