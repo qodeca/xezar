@@ -119,14 +119,20 @@ describe.skipIf(isWindows)('task_read — the task, history, Inbox and variant-g
     restore('XEZ_REMOTE', saved.remote);
   });
 
-  /** One `tools/call` over a project's socket, exactly as the bridge sends it. */
+  /** One `tools/call` over a project's socket, exactly as the bridge sends it: on a session (#302). */
   function call(socketPath: string, args: Record<string, unknown>): Promise<McpToolResult> {
     return new Promise((resolve, reject) => {
       const socket = createConnection(socketPath);
       const framer = new LineFramer(
         (line) => {
+          const response = JSON.parse(line) as { id: number; ok: boolean; result?: McpToolResult; error?: { message: string } };
+          if (response.id === 0 && response.ok) {
+            socket.write(
+              encodeFrame({ v: IPC_PROTOCOL_VERSION, id: 1, method: 'tools/call', params: { name: 'task_read', arguments: args } }),
+            );
+            return;
+          }
           socket.end();
-          const response = JSON.parse(line) as { ok: boolean; result?: McpToolResult; error?: { message: string } };
           if (response.ok) resolve(response.result!);
           else reject(new Error(response.error?.message));
         },
@@ -134,11 +140,7 @@ describe.skipIf(isWindows)('task_read — the task, history, Inbox and variant-g
       );
       socket.on('data', (chunk: Buffer) => framer.push(chunk));
       socket.on('error', reject);
-      socket.on('connect', () =>
-        socket.write(
-          encodeFrame({ v: IPC_PROTOCOL_VERSION, id: 1, method: 'tools/call', params: { name: 'task_read', arguments: args } }),
-        ),
-      );
+      socket.on('connect', () => socket.write(encodeFrame({ v: IPC_PROTOCOL_VERSION, id: 0, method: 'session/open' })));
     });
   }
 

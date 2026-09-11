@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { closeSync, fstatSync, ftruncateSync, mkdirSync, openSync, readFileSync, readdirSync, statSync, unlinkSync, writeSync } from 'node:fs';
+import { closeSync, fstatSync, ftruncateSync, mkdirSync, openSync, readFileSync, readdirSync, rmdirSync, statSync, unlinkSync, writeSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
@@ -162,7 +162,7 @@ export function projectOccupiedError(projectId: string): McpProjectOccupiedError
   return {
     code: MCP_PROJECT_OCCUPIED_CODE,
     message:
-      'This project is already connected to another MCP client. It becomes available when that client disconnects or its session expires; try again then.',
+      'This project is occupied: it is already connected to another MCP client. It becomes available when that client disconnects or its session expires; try again then.',
     data: { reason: MCP_PROJECT_OCCUPIED_REASON, projectId, retryable: true },
   };
 }
@@ -511,6 +511,15 @@ export class ProjectOwnership {
     } catch (error) {
       // The claim outlives us on disk; its lease ages out and the next acquirer reaps it.
       console.warn(`[xezar] could not remove MCP owner claim for project ${this.projectId}: ${String(error)}`);
+      return;
+    }
+    // A project nobody owns keeps no owner directory: an MCP session leaves no trace in the
+    // project's data once it ends. Only an EMPTY directory goes — `rmdir` refuses anything else, so
+    // a peer's claim is never touched — and the next acquisition recreates it (D-02.8).
+    try {
+      rmdirSync(this.dir);
+    } catch {
+      /* Not empty, already gone, or not ours to remove: all fine. */
     }
   }
 

@@ -1,6 +1,9 @@
+import { randomUUID } from 'node:crypto';
 import { chmod, lstat, mkdir, unlink } from 'node:fs/promises';
 import { createConnection, createServer, type Socket } from 'node:net';
 import { assertXezarHomeWriteIsSandboxed } from '../paths.ts';
+import { projectDataDir } from '../project-data-paths.ts';
+import { ProjectOwnership, sessionExpiredError } from '../workspace/project-owner.ts';
 import {
   IPC_PROTOCOL_VERSION,
   LineFramer,
@@ -24,6 +27,27 @@ import { errorResult, type McpTool, type McpToolContext, type McpToolResult } fr
  * HTTP leg, so § 8's "equivalent enforcement for a loopback HTTP alternative" does
  * not arise; the same-user boundary is the directory's 0700 and the socket's 0600
  * (D-01 E7).
+ *
+ * ## One connection is one MCP session (#302, D-02)
+ *
+ * The bridge keeps ONE connection for the life of its `xez mcp` process. The session key is minted
+ * here, per connection — never read from a frame, so no client can name or borrow another's
+ * session. `session/open` makes that session the project's owner through `ProjectOwnership`
+ * (D-02.2) or answers project-occupied; `health` and `tools/call` need the session to still own the
+ * project, and every mutating call is fenced on its token right before it runs (D-02.3).
+ *
+ * Who ends a session, and nothing else does (D-02.4):
+ * - the connection closing — the bridge exited, was killed, or its client went away. That is the
+ *   "confirmed termination" signal, observed in milliseconds (D-02 X2);
+ * - the owner's lease lapsing, which only a frozen service can cause, because the renewal timer
+ *   runs in this process and needs no request and no model turn. MODEL SILENCE IS NOT SESSION
+ *   DEATH: an idle connection keeps its project for as long as it stays open;
+ * - the service stopping (`close()`), which ends every session (D-02 § 5).
+ * One request finishing, failing or timing out ends nothing.
+ *
+ * Ending a session touches the owner claim and nothing else (N-05). A tool call still running
+ * when its connection closes runs to completion — its answer is simply not sent — and no path
+ * here reaches a run: a disconnect never cancels a task.
  */
 
 export interface McpServiceOptions {
@@ -39,6 +63,10 @@ export interface McpServiceOptions {
   readonly context?: Readonly<Record<string, unknown>>;
   /** The MCP door: wraps every tool call whose arguments parsed (see `startMcpService`). */
   readonly door?: McpDoor;
+  /** Where the owner claims live (D-02.8). Defaults to the project's own `.local/xezar`. */
+  readonly dataDir?: string;
+  /** Test seam: the owner slot to enforce. Production builds one per socket. */
+  readonly ownership?: ProjectOwnership;
 }
 
 /**
@@ -71,11 +99,15 @@ export async function listenMcpSocket(opts: McpServiceOptions): Promise<McpServi
   await chmod(dir, 0o700);
   await clearStaleSocket(location.path);
 
+  // Built only once the socket path is ours: it writes nothing until a session opens.
+  const ownership =
+    opts.ownership ??
+    new ProjectOwnership({ dataDir: opts.dataDir ?? projectDataDir(opts.project.root), projectId: opts.project.id });
   const sockets = new Set<Socket>();
   const server = createServer((socket) => {
     sockets.add(socket);
     socket.on('close', () => sockets.delete(socket));
-    serveConnection(socket, opts);
+    serveConnection(socket, opts, ownership);
   });
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
@@ -99,6 +131,8 @@ export async function listenMcpSocket(opts: McpServiceOptions): Promise<McpServi
     close() {
       for (const socket of sockets) socket.destroy();
       server.close();
+      // D-02 § 5: a service that stops ends every session, and its claim goes with it.
+      ownership.dispose();
     },
   };
 }
@@ -134,23 +168,29 @@ function socketIsLive(path: string): Promise<boolean> {
   });
 }
 
-function serveConnection(socket: Socket, opts: McpServiceOptions): void {
+function serveConnection(socket: Socket, opts: McpServiceOptions, ownership: ProjectOwnership): void {
+  // Minted here, per connection. Nothing a client sends can choose it.
+  const sessionKey = randomUUID();
   socket.on('error', () => {
     // A bridge that vanished mid-answer is not the cockpit's problem.
   });
+  // Confirmed termination (D-02.4 signal 1): the connection is the session, so its close frees the
+  // project at once. `release` touches the owner claim and nothing else — calls still running go
+  // on running, and no run is touched (N-05).
+  socket.once('close', () => ownership.release(sessionKey));
   const send = (response: IpcResponse): void => {
     if (!socket.destroyed) socket.write(encodeFrame(response));
   };
   const framer = new LineFramer(
     (line) => {
-      void answer(line, opts).then(send);
+      void answer(line, opts, ownership, sessionKey).then(send);
     },
     () => send(failure(null, 'bad-frame', 'frame too large')),
   );
   socket.on('data', (chunk: Buffer) => framer.push(chunk));
 }
 
-async function answer(line: string, opts: McpServiceOptions): Promise<IpcResponse> {
+async function answer(line: string, opts: McpServiceOptions, ownership: ProjectOwnership, sessionKey: string): Promise<IpcResponse> {
   let json: unknown;
   try {
     json = JSON.parse(line);
@@ -168,7 +208,10 @@ async function answer(line: string, opts: McpServiceOptions): Promise<IpcRespons
   }
   const ctx: McpToolContext = { ...opts.context, project: opts.project, xezarVersion: opts.version };
   switch (request.method) {
+    case 'session/open':
+      return openSession(request.id, ownership, sessionKey, opts.project.id);
     case 'health': {
+      if (ownership.sessionToken(sessionKey) === undefined) return expired(request.id, opts.project.id);
       const result: HealthResult = {
         ipcVersion: IPC_PROTOCOL_VERSION,
         xezarVersion: opts.version,
@@ -177,18 +220,51 @@ async function answer(line: string, opts: McpServiceOptions): Promise<IpcRespons
       return { v: IPC_PROTOCOL_VERSION, id: request.id, ok: true, result };
     }
     case 'tools/call': {
+      // The token this request is bound to, taken as it arrives; the fence below compares it again.
+      const token = ownership.sessionToken(sessionKey);
+      if (token === undefined) return expired(request.id, opts.project.id);
       const params = toolCallParamsSchema.safeParse(request.params);
       if (!params.success) return failure(request.id, 'invalid-params', 'tools/call needs a tool name');
       const tool = opts.tools.find((t) => t.name === params.data.name);
       if (!tool) return failure(request.id, 'unknown-tool', `unknown tool: ${params.data.name}`);
-      return { v: IPC_PROTOCOL_VERSION, id: request.id, ok: true, result: await callTool(tool, params.data.arguments, ctx, opts.door) };
+      const outcome = await callTool(tool, params.data.arguments, ctx, opts.door, () => ownership.checkMutation(token).ok);
+      if (outcome === 'fenced') return expired(request.id, opts.project.id);
+      return { v: IPC_PROTOCOL_VERSION, id: request.id, ok: true, result: outcome };
     }
     default:
       return failure(request.id, 'unknown-method', `unknown method: ${request.method}`);
   }
 }
 
-async function callTool(tool: McpTool, args: unknown, ctx: McpToolContext, door?: McpDoor): Promise<McpToolResult> {
+/** Make this connection's session the project's owner, or say why not (D-02.2, § 4). */
+async function openSession(id: number, ownership: ProjectOwnership, sessionKey: string, projectId: string): Promise<IpcResponse> {
+  let acquired;
+  try {
+    acquired = await ownership.acquire(sessionKey);
+  } catch (err) {
+    // The claim could not be written (a read-only data directory, a full disk). Fail closed: no
+    // session, so no call runs. The path stays in the cockpit's log, never in a response (F-15).
+    console.warn(`[xez] MCP owner claim failed: ${err instanceof Error ? err.message : String(err)}`);
+    return failure(id, 'internal', 'xezar could not record which MCP client owns this project; the cockpit log has the details');
+  }
+  switch (acquired.outcome) {
+    case 'owner':
+      return { v: IPC_PROTOCOL_VERSION, id, ok: true, result: { owner: true } };
+    case 'occupied':
+      return { ...failure(id, 'project-occupied', acquired.error.message), rpcError: acquired.error };
+    case 'closed':
+      // The connection is gone; nobody reads this answer.
+      return expired(id, projectId);
+  }
+}
+
+async function callTool(
+  tool: McpTool,
+  args: unknown,
+  ctx: McpToolContext,
+  door: McpDoor | undefined,
+  stillOwner: () => boolean,
+): Promise<McpToolResult | 'fenced'> {
   const parsed = tool.inputSchema.safeParse(args ?? {});
   // An argument error is a tool result, not a protocol error, so the model can
   // correct itself (MCP 2025-11-25, "Error Handling").
@@ -196,6 +272,9 @@ async function callTool(tool: McpTool, args: unknown, ctx: McpToolContext, door?
     const issues = parsed.error.issues.map((i) => `${i.path.join('.') || '(arguments)'}: ${i.message}`);
     return errorResult(`Invalid arguments for ${tool.name}: ${issues.join('; ')}`);
   }
+  // The fence (D-02.3): equality with the live owner's token, immediately before anything that can
+  // change state. A read changes nothing, so it only needed the session check on arrival.
+  if (tool.annotations?.readOnlyHint !== true && !stillOwner()) return 'fenced';
   try {
     const invoke = (): Promise<McpToolResult> => tool.call(parsed.data, ctx);
     return await (door ? door({ tool, args: parsed.data as Record<string, unknown>, ctx }, invoke) : invoke());
@@ -205,6 +284,11 @@ async function callTool(tool: McpTool, args: unknown, ctx: McpToolContext, door?
     console.warn(`[xez] MCP tool ${tool.name} failed: ${err instanceof Error ? err.message : String(err)}`);
     return errorResult(`${tool.name} failed inside xezar; the cockpit's log has the details.`);
   }
+}
+
+function expired(id: number, projectId: string): IpcResponse {
+  const rpcError = sessionExpiredError(projectId);
+  return { ...failure(id, 'session-expired', rpcError.message), rpcError };
 }
 
 function failure(

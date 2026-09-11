@@ -1,6 +1,17 @@
 # Unreleased
 
 ## ✨ Features
+- ✨ **One MCP client owns a project at a time.** A second coding agent that connects to a
+  project another MCP client already holds is now refused with the project-occupied error
+  (`-32080`, `com.qodeca.xezar/project-occupied`), which names nothing about the other client; the
+  owner's own concurrent requests and every other project are unaffected. An owner that simply
+  goes quiet keeps the project for as long as its client runs — xezar renews the hold itself, with
+  no model turn. The project is freed the moment the owning client exits or is killed, or when
+  xezar restarts; a client that lost its hold is told once (`-32081`, session expired) and its
+  bridge reconnects on its own. Nothing here stops, cancels or pauses a running task, and there is
+  still no disconnect or take-over button. Under the hood `xez mcp` now keeps one connection to
+  xezar for its whole life instead of one per tool call, so run the bridge and the cockpit from
+  the same xezar version: an older bridge is told so in plain words. Nothing to set up. (#302)
 - ✨ **Browse the MCP API in the cockpit.** Project Settings has a new **MCP API** section, next to
   MCP connection: every tool the MCP server exposes, one collapsed row each with its effect in
   words (read-only, changes project state, destructive), and on expand its actions, its arguments

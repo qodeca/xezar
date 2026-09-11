@@ -12,6 +12,7 @@ import { collectSecretValues } from '../core/secret-redaction.ts';
 import { projectDataDir } from '../project-data-paths.ts';
 import type { RunStore } from '../runs/store.ts';
 import { loadWorkspaceConfig } from '../workspace/config.ts';
+import type { ProjectOwnership } from '../workspace/project-owner.ts';
 import { AuditTrail, type AuditChannel } from './audit-trail.ts';
 import { runBridge, type ServiceTarget } from './bridge.ts';
 import { writeMcpConnectionFile } from './connection-file.ts';
@@ -54,6 +55,7 @@ export interface StartMcpServiceOptions {
   /** Provider rows as they are now — the catalog's E-06 baseline. A failure means "no baseline". */
   readonly providerBaseline?: () => Promise<readonly ProviderStatus[]>;
   /** Test seams, as for `listenMcpSocket`. Production uses the process's own. */
+  readonly ownership?: ProjectOwnership;
   readonly env?: NodeJS.ProcessEnv;
   readonly platform?: NodeJS.Platform;
   readonly warn?: (message: string) => void;
@@ -95,6 +97,9 @@ export async function startMcpService(opts: StartMcpServiceOptions): Promise<Mcp
         ...(parts.leaderEvents ? { leaderEvents: parts.leaderEvents } : {}),
       },
       door: parts.door,
+      // The owner claims live beside the store the cockpit writes (D-02.8).
+      dataDir,
+      ...(opts.ownership ? { ownership: opts.ownership } : {}),
     });
     // D-04: written once the socket it names really listens, so the file never points at nothing.
     // A failure is one warning and an MCP the client can still reach by the registry (N-07).
