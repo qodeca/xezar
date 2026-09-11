@@ -18,7 +18,7 @@ import { IPC_PROTOCOL_VERSION, LineFramer, encodeFrame, type McpToolResult } fro
 import type { ServiceDispatch } from '../service-adapter.ts';
 import { listenMcpSocket, type McpServiceHandle } from '../service.ts';
 import { defineTool, toolListing, type McpTool, type McpToolContext } from '../tool.ts';
-import { QUALITY_BLOCKER_NEXT_ACTION, handoffGitTool, qualityBlockers } from './handoff-git.ts';
+import { QUALITY_BLOCKER_NEXT_ACTION, handoffGitTool, qualityBlockers, readyBlockers } from './handoff-git.ts';
 import { tools } from './index.ts';
 
 /**
@@ -64,6 +64,8 @@ describe.skipIf(isWindows)('handoff_git — commit, push, draft PR, merge and br
   let dispatched: Array<{ call: string; body: unknown }>;
   /** When set, the fresh merge state the tool reads is this fixture instead of the dry-run one. */
   let mergeStateFixture: GithubPrMergeState | undefined;
+  /** When set, the service's answer to the merge POST itself (the request is still recorded). */
+  let mergeAnswerFixture: { status: number; body: Body } | undefined;
 
   const makeDir = (prefix: string, base = realpathSync(tmpdir())): string => {
     const dir = realpathSync(mkdtempSync(join(base, prefix)));
@@ -145,6 +147,7 @@ describe.skipIf(isWindows)('handoff_git — commit, push, draft PR, merge and br
 
     dispatched = [];
     mergeStateFixture = undefined;
+    mergeAnswerFixture = undefined;
     const service: ServiceDispatch = {
       request: async (input, init) => {
         const url = new URL(input);
@@ -152,6 +155,12 @@ describe.skipIf(isWindows)('handoff_git — commit, push, draft PR, merge and br
         dispatched.push({ call: `${init?.method ?? 'GET'} ${url.pathname}`, body });
         if (mergeStateFixture && url.pathname.endsWith('/merge-state')) {
           return new Response(JSON.stringify({ available: true, mergeState: mergeStateFixture }), {
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+        if (mergeAnswerFixture && init?.method === 'POST' && url.pathname.endsWith('/merge')) {
+          return new Response(JSON.stringify(mergeAnswerFixture.body), {
+            status: mergeAnswerFixture.status,
             headers: { 'content-type': 'application/json' },
           });
         }
@@ -694,6 +703,83 @@ describe.skipIf(isWindows)('handoff_git — commit, push, draft PR, merge and br
     expect(qualityBlockers(state([{ name: 'lint', state: 'unknown', required: null }]))).toEqual([
       { code: 'check-unknown', message: 'Required check "lint" is unknown (requiredness unknown, so it counts as required).' },
     ]);
+  });
+
+  it("reports the merge route's own eligibility refusal as a blocker, and any other refusal as a plain one", async () => {
+    // The fresh state said ready, then the SERVICE's merge-time preflight found the forge no longer
+    // is (a check turned red in between). That is still a quality blocker, in the service's words:
+    // a leader told "failed" without "blocker" would reasonably try the merge again.
+    for (const code of ['blocked', 'pending', 'unauthorized', 'terminal', 'unknown']) {
+      mergeAnswerFixture = { status: 409, body: { code, error: `GitHub says the pull request is ${code}.` } };
+      expect(await act({ action: 'merge', number: 128, expectedHeadSha: DRY_HEAD })).toEqual({
+        action: 'merge',
+        status: 'failed',
+        refusedBy: 'service',
+        blocker: true,
+        httpStatus: 409,
+        code,
+        error: `GitHub says the pull request is ${code}.`,
+        nextAction: QUALITY_BLOCKER_NEXT_ACTION,
+      });
+    }
+    // A refusal that is not about eligibility is passed on as the service's failure, with its code,
+    // and never dressed up as a quality blocker.
+    mergeAnswerFixture = { status: 502, body: { code: 'forge-error', error: 'GitHub did not answer.' } };
+    const plain = await act({ action: 'merge', number: 128, expectedHeadSha: DRY_HEAD });
+    expect(plain).toEqual({
+      action: 'merge',
+      status: 'failed',
+      refusedBy: 'service',
+      httpStatus: 502,
+      error: 'GitHub did not answer.',
+      code: 'forge-error',
+    });
+    mergeAnswerFixture = { status: 502, body: { error: 'GitHub did not answer.' } };
+    expect(await act({ action: 'merge', number: 128, expectedHeadSha: DRY_HEAD })).not.toHaveProperty('code');
+    expect(merges()).toHaveLength(7);
+  });
+
+  it('holds a draft back from ready only on a failing check or requested changes — never on work that ready invites (#262)', () => {
+    const draft = (patch: Partial<GithubPrMergeState>): GithubPrMergeState => ({
+      number: 1,
+      title: 't',
+      url: 'u',
+      state: 'open',
+      isDraft: true,
+      headRef: 'h',
+      baseRef: 'b',
+      headSha: DRY_HEAD,
+      mergeable: 'mergeable',
+      reviewDecision: 'review-required',
+      checks: [],
+      methods: ['squash'],
+      defaultMethod: 'squash',
+      eligibility: 'blocked',
+      blockers: [],
+      canMerge: false,
+      canOverride: false,
+      ...patch,
+    });
+    // A failing check the forge could not classify counts as required: unknown evidence is never a pass.
+    expect(readyBlockers(draft({ checks: [{ name: 'e2e', state: 'failing', required: null }] }))).toEqual([
+      { code: 'check-failing', message: 'Required check "e2e" is failing (requiredness unknown, so it counts as required).' },
+    ]);
+    expect(readyBlockers(draft({ checks: [{ name: 'test', state: 'failing', required: true }] }))).toEqual([
+      { code: 'check-failing', message: 'Required check "test" is failing.' },
+    ]);
+    expect(readyBlockers(draft({ reviewDecision: 'changes-requested' }))).toEqual([{ code: 'review', message: 'Changes were requested.' }]);
+    // What "ready for review" exists to invite is not a blocker: a check still running, a review
+    // nobody has given yet, and an optional check that failed.
+    expect(
+      readyBlockers(
+        draft({
+          checks: [
+            { name: 'e2e', state: 'pending', required: null },
+            { name: 'lint', state: 'failing', required: false },
+          ],
+        }),
+      ),
+    ).toEqual([]);
   });
 
   // ---- branches ----------------------------------------------------------------------------
