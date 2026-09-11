@@ -25,6 +25,15 @@ steps:
   - id: setup
     name: Prepare the worktree
     command: ".xezar/checks/worktree-setup.sh"
+  # The MCP mutation gate (#333): Stryker over packages/xezar/src/mcp/**, failing below the score
+  # in packages/xezar/stryker.config.mjs. A release gate and not a per-PR one, because a full run
+  # is hours of CPU (docs/testing/coverage-gaps.md § 10.3). It runs FIRST, before anything is
+  # authored: it tests the code being released, which the changelog step does not touch, and a
+  # failure is fixed by tests in their own PR, never by retrying the changelog. A check step has
+  # no wall clock; Stryker's per-mutant timeout is what keeps one bad mutant from stalling it.
+  - id: mutation
+    name: MCP mutation gate (Stryker)
+    command: "npm run test:mutation:mcp"
   - id: changelog
     name: Write the changelog entry from merged PRs
     prompt: "{{task}}"

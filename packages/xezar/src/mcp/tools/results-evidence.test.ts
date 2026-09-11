@@ -695,3 +695,67 @@ describe('isolation and refusals', () => {
     expect(existsSync(join(ws.roots.a, '.local/xezar/runs.json'))).toBe(false);
   });
 });
+
+describe('what the leader is told when a page or the service is not what the read expected', () => {
+  /** The real app behind a door that can rewrite or replace one route's answer. */
+  const doorTool = (ws: Workspace, door: (input: string, init?: RequestInit) => Promise<Response> | undefined) =>
+    createResultsEvidenceTool(() => ({
+      request: (input: string, init?: RequestInit) => door(input, init) ?? ws.app.request(input, init),
+    }));
+  const run = async (tool: ReturnType<typeof doorTool>, ws: Workspace, args: ResultsEvidenceInput) => {
+    const result = await tool.call(resultsEvidenceInputSchema.parse(args), contextFor(ws));
+    return { isError: result.isError === true, text: (result.content[0] as { text: string }).text };
+  };
+
+  it("reads a pull request whose head IS the task's head as `same`, and as `different` once the task moves on", async () => {
+    const ws = setup();
+    const task = await finishedTask(ws);
+    commitFile(task.worktree, 'feature.txt', 'the feature\n');
+    const taskHead = head(task.worktree);
+    // The forge reports the head this task pushed: the dry-run forge's fixed sha, replaced by it.
+    const pushedHead = { sha: taskHead };
+    const tool = doorTool(ws, (input, init) => {
+      if (!input.includes('/merge-state')) return undefined;
+      return (async () => {
+        const real = (await (await ws.app.request(input, init)).json()) as { mergeState: Record<string, unknown> };
+        return Response.json({ ...real, mergeState: { ...real.mergeState, headSha: pushedHead.sha } });
+      })();
+    });
+    const same = JSON.parse((await run(tool, ws, { read: 'pr_merge_state', number: 42, runId: task.id })).text) as Envelope;
+    expect(same.forgeRevision).toEqual({ prHeadSha: taskHead, runHeadSha: taskHead, match: 'same' });
+
+    const moved = commitFile(task.worktree, 'later.txt', 'not pushed yet\n');
+    const different = JSON.parse((await run(tool, ws, { read: 'pr_merge_state', number: 42, runId: task.id })).text) as Envelope;
+    expect(different.forgeRevision).toEqual({ prHeadSha: taskHead, runHeadSha: moved, match: 'different' });
+  }, 30_000);
+
+  it("passes a 400's reason on, answers a 404 as not found, and keeps a 5xx's body out of the answer (F-15)", async () => {
+    const ws = setup();
+    const task = await finishedTask(ws);
+    const answer = { status: 500, body: { error: 'EACCES reading /home/someone/.ssh/id_rsa with token=ghp_leakme' } };
+    const tool = doorTool(ws, (input) =>
+      input.includes('/changes') ? Promise.resolve(Response.json(answer.body, { status: answer.status })) : undefined,
+    );
+
+    const failed = await run(tool, ws, { read: 'changes', runId: task.id });
+    expect(failed).toEqual({ isError: true, text: "read 'changes' failed inside xezar; the cockpit's log has the details." });
+    expect(failed.text).not.toContain('ghp_leakme');
+
+    Object.assign(answer, { status: 503 });
+    expect((await run(tool, ws, { read: 'changes', runId: task.id })).text).toBe(
+      "read 'changes' failed inside xezar; the cockpit's log has the details.",
+    );
+
+    Object.assign(answer, { status: 400, body: { error: 'the path is outside the worktree' } });
+    expect(await run(tool, ws, { read: 'changes', runId: task.id })).toEqual({
+      isError: true,
+      text: "read 'changes' was refused: the path is outside the worktree",
+    });
+
+    Object.assign(answer, { status: 404, body: { error: 'run gone' } });
+    const missing = await run(tool, ws, { read: 'changes', runId: task.id });
+    expect(missing.isError).toBe(true);
+    expect(missing.text).not.toContain('run gone');
+    expect(missing.text).toBe((await call(ws, { read: 'summary', runId: 'no-such-task' })).text);
+  }, 30_000);
+});

@@ -10,6 +10,11 @@ steps:
   - id: setup
     name: Prepare the worktree
     command: ".xezar/checks/worktree-setup.sh"
+  # The MCP mutation gate (#333) – the same release gate the `release` workflow runs first; see
+  # the comment there.
+  - id: mutation
+    name: MCP mutation gate (Stryker)
+    command: "npm run test:mutation:mcp"
   - id: prep
     name: Prepare the release
     prompt: "{{task}}"

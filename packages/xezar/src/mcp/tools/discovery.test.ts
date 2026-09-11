@@ -188,6 +188,37 @@ describe('discover_project — unavailable actions carry a reason', () => {
     expect(JSON.stringify(discovery)).not.toContain('octo-org');
   });
 
+  // Found by the #333 mutation sample: flipping `available === true` in `toolCheck` left every test
+  // green, because nothing read the `tools` list a leader checks before reaching for gh or git.
+  it('reports gh and git as the health checks found them, with a remedy only for the missing one', () => {
+    const check = (gh: boolean, git: boolean) =>
+      buildDiscovery(
+        facts({
+          health: {
+            checks: [
+              { name: 'claude', available: true, version: '2.1.0 (Claude Code)' },
+              { name: 'gh', available: gh },
+              { name: 'git', available: git },
+            ],
+          },
+        }),
+      ).tools;
+    expect(check(true, true)).toEqual([
+      { name: 'gh', available: true },
+      { name: 'git', available: true },
+    ]);
+    expect(check(false, true)).toEqual([
+      { name: 'gh', available: false, reason: expect.stringMatching(/gh auth login/) },
+      { name: 'git', available: true },
+    ]);
+    expect(check(true, false)).toEqual([
+      { name: 'gh', available: true },
+      { name: 'git', available: false, reason: 'git is not installed on this machine.' },
+    ]);
+    // A check the health probe never ran is not a pass.
+    expect(buildDiscovery(facts({ health: { checks: [] } })).tools.map((t) => t.available)).toEqual([false, false]);
+  });
+
   it('with GitHub reachable, the GitHub area is available', () => {
     expect(actionOf(buildDiscovery(facts()), 'github')).toEqual({ id: 'github', label: expect.any(String), status: 'available' });
   });

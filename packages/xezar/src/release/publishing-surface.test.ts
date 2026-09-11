@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -93,4 +94,28 @@ describe('publishing surface', () => {
       expect(pkg.name.startsWith('@qodeca/xezar')).toBe(true);
     }
   });
+
+  it('keeps the MCP mutation run (Stryker) out of what a user installs', () => {
+    // #333: Stryker is a release gate over the MCP code, and a devDependency only. A user who
+    // installs @qodeca/xezar must get neither its ~140 packages nor its config files.
+    const manifest = JSON.parse(
+      readFileSync(join(repoRoot, 'packages', 'xezar', 'package.json'), 'utf8'),
+    ) as Record<string, unknown> & { files: string[]; devDependencies: Record<string, string> };
+    const stryker = (deps: unknown) => Object.keys((deps ?? {}) as Record<string, string>).filter((n) => n.startsWith('@stryker-mutator/'));
+    expect(stryker(manifest.devDependencies)).toEqual(['@stryker-mutator/core', '@stryker-mutator/vitest-runner']);
+    for (const field of ['dependencies', 'optionalDependencies', 'peerDependencies', 'bundleDependencies', 'bundledDependencies']) {
+      expect(stryker(manifest[field]), `${field} must not name Stryker`).toEqual([]);
+    }
+    // What the tarball holds is npm's answer, not a reading of `files`: an entry like "." or a
+    // glob ships the run's config without naming it.
+    const packed = JSON.parse(
+      execFileSync('npm', ['pack', '--dry-run', '--json', '--ignore-scripts'], {
+        cwd: join(repoRoot, 'packages', 'xezar'),
+        encoding: 'utf8',
+      }),
+    ) as Array<{ files: Array<{ path: string }> }>;
+    const runFiles = ['stryker.config.mjs', 'vitest.mutation.config.ts'];
+    const shipped = packed[0]!.files.map((f) => f.path).filter((p) => runFiles.includes(p) || p.startsWith('.stryker-tmp/'));
+    expect(shipped, 'the mutation run must not reach the tarball').toEqual([]);
+  }, 60_000);
 });

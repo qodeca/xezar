@@ -52,6 +52,8 @@
   "devDependencies": {
     "@qodeca/xezar-api-client": "^0.13.1",
     "@qodeca/xezar-contract": "^0.13.1",
+    "@stryker-mutator/core": "^9.6.1",
+    "@stryker-mutator/vitest-runner": "^9.6.1",
     "@types/node": "^20.14.0",
     "@types/ws": "^8.18.1",
     "esbuild": "^0.28.1",

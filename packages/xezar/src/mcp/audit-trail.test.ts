@@ -287,6 +287,37 @@ describe('C: a credential in the connection configuration never enters the trail
     expect(raw).not.toContain('/Users');
     expect(trail.read().entries).toHaveLength(2);
   });
+
+  // Both found by the #333 mutation sample: swapping the `||` of the action check for `&&`, and the
+  // `>=` of the known-secret floor for `>`, each left every test in this file green.
+  it('refuses a whole entry whose ACTION carries a known secret, rather than writing the action', () => {
+    const knownToken = 'deadbeefcafe0000feedface1234';
+    const warn = vi.fn();
+    const trail = new AuditTrail({ projectId: 'alpha', dataDir: dataDirOf('alpha') }, { now, warn, secretValues: () => [knownToken] });
+    // A dotted id the action pattern accepts, whose second half is the secret.
+    expect(trail.channel('mcp').record({ action: `runs.${knownToken}`, operationId: 'op-leak-0001' }, { outcome: 'ok' })).toBeNull();
+    // One warning, and it names no detail of the operation (the error class only).
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0]?.[0])).not.toContain(knownToken);
+    // Control: the same caller's ordinary action is written, so the refusal is about the secret.
+    expect(trail.channel('mcp').record({ action: 'runs.get', operationId: 'op-fine-0001' }, { outcome: 'ok' })).not.toBeNull();
+    const raw = readFileSync(auditTrailPath(dataDirOf('alpha')), 'utf8');
+    expect(raw).not.toContain(knownToken);
+    expect(trail.read().entries.map((e) => e.action)).toEqual(['runs.get']);
+  });
+
+  it('treats a caller secret of exactly the 12-character floor as a secret, and a shorter one as a word', () => {
+    const atFloor = 'plainword-12';
+    const belowFloor = 'plainword-1';
+    expect([atFloor.length, belowFloor.length]).toEqual([12, 11]);
+    const trail = new AuditTrail({ projectId: 'alpha', dataDir: dataDirOf('alpha') }, { now, secretValues: () => [atFloor, belowFloor] });
+    trail.channel('mcp').record({ action: 'runs.get', resource: { kind: 'run', id: atFloor }, operationId: 'op-floor-0001' }, { outcome: 'ok' });
+    trail.channel('mcp').record({ action: 'runs.get', resource: { kind: 'run', id: belowFloor }, operationId: 'op-floor-0002' }, { outcome: 'ok' });
+    const [secret, word] = trail.read().entries;
+    expect(secret?.resource).toBeUndefined();
+    expect(word?.resource).toEqual({ kind: 'run', id: belowFloor });
+    expect(readFileSync(auditTrailPath(dataDirOf('alpha')), 'utf8')).not.toContain(atFloor);
+  });
 });
 
 describe('D: an entry for project A is invisible to a reader scoped to project B (N-01)', () => {

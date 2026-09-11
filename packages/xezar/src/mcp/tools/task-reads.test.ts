@@ -431,6 +431,36 @@ describe.skipIf(isWindows)('task_read — the task, history, Inbox and variant-g
     expect(await refused(socketA, { view: 'task', taskId: huge, cursor: partOne.nextCursor })).toMatch(/changed while/);
   });
 
+  it('reads an oversized LIST row in parts that fit B-01 in UTF-8 bytes and never split a character, then pages on', async () => {
+    const older = task(storeA, 'Older', { createdAt: '2026-01-01T00:00:00.000Z' });
+    // A failed run whose error alone is far over the budget, and multi-byte: CJK costs 3 bytes and
+    // an emoji 4 — a surrogate PAIR in UTF-16, which a part boundary must never cut in two. Every
+    // `read` below also holds the answer to TASK_READ_RESULT_BUDGET_BYTES in UTF-8 bytes.
+    const error = '漢🙂🙂🙂'.repeat(12_000);
+    const huge = task(storeA, 'Huge', { status: 'failed', error, createdAt: '2026-01-02T00:00:00.000Z' });
+
+    const pages = await walk(socketA, { view: 'list' });
+    const parts = pages.filter((page) => page.part !== undefined);
+    expect(parts.length).toBeGreaterThan(2);
+    expect(parts.map((page) => page.part)).toEqual(parts.map((_, i) => i + 1));
+    expect(parts.every((page) => page.parts === parts.length && page.taskId === huge)).toBe(true);
+    for (const page of parts) {
+      expect(page.text).not.toMatch(/[\uD800-\uDBFF]$/);
+      expect(page.text).not.toMatch(/^[\uDC00-\uDFFF]/);
+    }
+    expect(JSON.parse(parts.map((page) => page.text).join(''))).toMatchObject({ id: huge, status: 'failed', error });
+    // After its last part the keyset moves past the big row, to the next one, exactly once.
+    expect(pages.flatMap((page) => ((page.tasks as Array<{ id: string }> | undefined) ?? []).map((t) => t.id))).toEqual([older]);
+
+    // A row that changes between parts is refused, never spliced from two versions — even when the
+    // change leaves every part boundary where it was (same length, same bytes), so only the row's
+    // digest can tell the two versions apart.
+    const partOne = await read(socketA, { view: 'list' });
+    expect(partOne.part).toBe(1);
+    storeA.updateRun(huge, { title: 'Hugo' });
+    expect(await refused(socketA, { view: 'list', cursor: partOne.nextCursor })).toMatch(/changed while/);
+  });
+
   // ---- M-07 / F-02: ownership beyond "the store has it" --------------------------------------
 
   it('refuses a group, and a task, whose worktree is not this project’s — and the cockpit’s group route refuses the group too (#288)', async () => {

@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createConnection, createServer, type Server } from 'node:net';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
@@ -251,6 +251,110 @@ describe('bridge → service over the project socket', () => {
       error: { code: 'version-mismatch' },
       serviceVersion: '1.2.3',
     });
+  });
+});
+
+/**
+ * A stand-in service that grants `session/open` (unless told otherwise) and answers every other
+ * request with whatever `answer` returns — a raw line, so a reply the bridge cannot parse is
+ * expressible too.
+ */
+async function scriptedService(
+  name: string,
+  answer: (req: { v: number; id: number; method: string }) => string,
+  sessionOpen?: (req: { v: number; id: number }) => string,
+): Promise<string> {
+  const path = join(home, `${name}.sock`);
+  const server: Server = createServer((socket) => {
+    const framer = new LineFramer((line) => {
+      const req = JSON.parse(line) as { v: number; id: number; method: string };
+      if (req.method === 'session/open') {
+        socket.write(sessionOpen ? sessionOpen(req) : encodeFrame({ v: req.v, id: req.id, ok: true, result: { owner: true } }));
+      } else {
+        socket.write(answer(req));
+      }
+    }, () => {});
+    socket.on('data', (c: Buffer) => framer.push(c));
+  });
+  await new Promise<void>((r) => server.listen(path, r));
+  handles.push({ close: () => server.close() });
+  return path;
+}
+
+/**
+ * D-01 § 5: every way of not reaching xezar reaches the leader as an ordinary tool result that names
+ * WHICH way, because each needs a different remedy — start the cockpit, run as the right user, or
+ * align the versions. A mapping that collapsed two of them would send someone to fix the wrong thing,
+ * so each case asserts the status AND the remedy text, and the ones beside it must not match.
+ */
+describe('bridge — each unreachable or refusing service reads as its own failure (D-01 § 5)', () => {
+  it('reads a stale socket left by a dead cockpit (ECONNREFUSED) as not running', async () => {
+    const path = join(home, 'stale.sock');
+    execFileSync(process.execPath, ['-e', `require('net').createServer().listen(${JSON.stringify(path)}, () => process.exit(0))`]);
+    expect(statSync(path).isSocket()).toBe(true);
+    const b = bridge({ target: socketTarget(path) });
+    const res = await b.request('tools/call', { name: 'health' });
+    expect(res.result).toMatchObject({ isError: true, structuredContent: { status: 'not-running' } });
+    expect(text(res)).toMatch(/^xezar is not running for project Alpha \(alpha\)\. Start the cockpit/);
+  });
+
+  // Root ignores socket permissions, so the refusal cannot be provoked there.
+  it.skipIf(process.getuid?.() === 0)('reads a socket this user may not open (EACCES) as permission denied, never as not running', async () => {
+    const svc = await service();
+    chmodSync(svc.path, 0o000);
+    const b = bridge({ target: socketTarget(svc.path) });
+    const res = await b.request('tools/call', { name: 'health' });
+    expect(res.result).toMatchObject({ isError: true, structuredContent: { status: 'refused' } });
+    expect(text(res)).toBe(
+      "xezar's socket for project Alpha (alpha) refused this user (permission denied). The bridge must run as the same user as the cockpit.",
+    );
+  });
+
+  it('reads an answer it cannot parse as a version mismatch naming this bridge, not as a crash', async () => {
+    const path = await scriptedService('garbled', () => '{"surprise":true}\n');
+    const b = bridge({ target: socketTarget(path) });
+    const res = await b.request('tools/call', { name: 'health' });
+    expect(res.result).toMatchObject({ isError: true, structuredContent: { status: 'version-mismatch' } });
+    expect(text(res)).toBe(
+      'xezar for project Alpha (alpha) answered in a format this bridge (xezar 1.2.3) does not understand. Run the bridge and the cockpit from the same xezar version.',
+    );
+  });
+
+  it("names BOTH versions when the service refuses the bridge's protocol version", async () => {
+    const path = await scriptedService('newer', (req) =>
+      encodeFrame({ v: req.v, id: req.id, ok: false, error: { code: 'version-mismatch', message: 'v99 only' }, serviceVersion: '9.9.9' }),
+    );
+    const b = bridge({ target: socketTarget(path) });
+    const res = await b.request('tools/call', { name: 'health' });
+    expect(res.result).toMatchObject({ isError: true, structuredContent: { status: 'version-mismatch' } });
+    expect(text(res)).toBe(
+      'The running xezar (9.9.9) and this bridge (xezar 1.2.3) speak different bridge protocols. Run both from the same xezar version.',
+    );
+  });
+
+  it("passes any other refusal on with the service's own reason, as refused", async () => {
+    const path = await scriptedService('locked', (req) =>
+      encodeFrame({ v: req.v, id: req.id, ok: false, error: { code: 'internal', message: 'the run index is locked' } }),
+    );
+    const b = bridge({ target: socketTarget(path) });
+    const res = await b.request('tools/call', { name: 'health' });
+    expect(res.result).toMatchObject({ isError: true, structuredContent: { status: 'refused' } });
+    expect(text(res)).toBe('xezar refused the request: the run index is locked');
+  });
+
+  it('never treats a session/open answer without the owner grant as ownership', async () => {
+    let served = 0;
+    const path = await scriptedService(
+      'no-grant',
+      () => ((served += 1), ''),
+      (req) => encodeFrame({ v: req.v, id: req.id, ok: true, result: { owner: false } }),
+    );
+    const b = bridge({ target: socketTarget(path), timeoutMs: 500 });
+    const res = await b.request('tools/call', { name: 'health' });
+    expect(res.result).toMatchObject({ isError: true, structuredContent: { status: 'version-mismatch' } });
+    expect(text(res)).toBe('xezar answered session/open with an unexpected shape.');
+    // The call never ran under a session that does not own the project.
+    expect(served).toBe(0);
   });
 });
 

@@ -241,6 +241,24 @@
   (#183)
 
 ## 📝 Specs & Documentation
+- 📝 **MCP tests are held to a coverage floor AND to proof that each one can fail.** `SDLC.md` now
+  requires every MCP source file to reach 80 % lines and 80 % branches from the MCP suites alone
+  (`npm run test:coverage:mcp`, new), and every new MCP test to be shown failing against a named
+  break of its behaviour, quoted in the PR. Meeting one half and missing the other is a fail; a file
+  below the floor needs a written exemption in `docs/testing/coverage-gaps.md`, and nothing in the
+  rule waives a mandatory check. A sampled mutation run over the MCP code found tests that passed
+  either way – among them a connection file that read 100 % while its `chmod` could be deleted –
+  and this change adds the real tests those gaps needed. No product behaviour changed. (#333)
+- 🐛 **Three MCP safety checks now have tests that would catch their regression.** The mutation run
+  found that no test failed when the audit trail wrote a secret-bearing action or left a 12-character
+  caller secret unredacted, when the MCP connection file lost its private `0600` mode, or when an
+  unreadable worktree path passed the ownership check that guards deletes. Each now has a test shown
+  failing against exactly that break. No product code changed. (#337)
+- 🔧 **A mutation gate for every release.** `npm run test:mutation:mcp` runs StrykerJS over the MCP
+  code with the MCP suites, and the `release` and `release-prep` workflows run it first, stopping
+  below its score floor of 80 (the first full run measured 81.39 % over 11 292 mutants in 3 h 40 min). It is a development-only tool: it never reaches the published package, and
+  a test fails if it ever does. One mutant that hangs is stopped by a per-mutant timeout instead of
+  stalling the release. (#333)
 - 📝 **pi is a fourth required MCP leader client, through an extension.** The MCP requirements now
   name Claude Code, Codex, OpenCode and pi as the required initial clients. pi itself ships no MCP
   support, by design, so it counts through the third-party `pi-mcp-adapter` extension, which pi's

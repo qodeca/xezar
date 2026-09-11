@@ -56,10 +56,15 @@ How to review a diff in this repository. Applies to humans and to the `om-code-r
 - Web UI changes belong under `packages/web/` and follow the accepted React 19 + Vite + Tailwind v4 + shadcn/ui architecture. Keep `packages/xezar/web/dist` reproducible from source, preserve light/dark/system themes and mobile/accessibility behavior, and add unit/component tests for changed behavior. A backend id → product name map, or a task-table column added outside `lib/task-columns.ts`, is a **finding**: `packages/web/src/lib/runner-label.ts` and `lib/task-columns.ts` are the single definitions, and the file exists because the same four pairs had already been copied into five components. This is the one place § Review priorities' "push back on new abstractions" does not apply — the abstraction is already there and the finding is not using it. (The legacy vanilla UI was retired in R7; the React cockpit is the only UI, and `/new` is the React composer.)
 - User-facing errors are one human-readable line (the `createDraftPr` pattern), not stack traces.
 
+### MCP test floor
+
+- A diff touching `packages/xezar/src/mcp/**`, `packages/contract/src/mcp-*.ts` or an MCP route in `server.ts` leaves every file it changes at or above the floor of `npm run test:coverage:mcp` and lowers none; any other file below the floor must already carry its exemption or sequencing record in `docs/testing/coverage-gaps.md` § 10 (`SDLC.md` § The MCP test floor).
+- Every new or changed test on that scope arrives with a named break and its quoted red output. Re-apply at least one break per test file and run the test: a test that stays green with its behaviour broken is a finding, whatever the percentage says.
+
 ## Severity guidance
 
 - **Blocker** (request changes): data loss or corruption in `.local/xezar/`; a degradation path turned into a hard failure; unvalidated request body on a mutating route, or one validated inside the handler instead of through the validator middleware; secret written to disk; server exposed beyond localhost or CORS widened; path traversal; breaking a surface in `BACKWARD_COMPATIBILITY.md` without the required path; typecheck/build red.
-- **Major** (request changes unless trivially fixed in-review): incorrect run/step state transitions; SSE replay duplication or event loss; unbounded input reaching files or processes; a schema field added as required when old files carry it as absent.
+- **Major** (request changes unless trivially fixed in-review): incorrect run/step state transitions; SSE replay duplication or event loss; unbounded input reaching files or processes; a schema field added as required when old files carry it as absent; an MCP test with no named break, or an MCP file the diff changes left below the floor with no written exemption.
 - **Minor** (approve with comments): missing spec citation on non-obvious code; inconsistent error shape; naming/style drift; missed `wx`/tmp+rename on a low-stakes write.
 - **Nit**: wording, formatting, comment polish. Never blocks.
 
