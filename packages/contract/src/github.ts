@@ -342,6 +342,23 @@ export const githubMergeResponseSchema = z.object({
 });
 export type GithubMergeResponse = z.infer<typeof githubMergeResponseSchema>;
 
+/**
+ * `POST /api/v1/github/prs/:number/ready` — mark a draft pull request ready for review. The head
+ * the caller reviewed is the compare-and-swap, exactly as for the merge: a moved head is refused.
+ */
+export const githubPrReadyInputSchema = z
+  .object({ expectedHeadSha: z.string().regex(/^[0-9a-f]{40}$/) })
+  .strict();
+export type GithubPrReadyInput = z.infer<typeof githubPrReadyInputSchema>;
+
+/** The 200 branch only. Every refusal (403/404/409/502) is an `ApiError`, so `ready` is pinned. */
+export const githubPrReadyResponseSchema = z.object({
+  ready: z.literal(true),
+  number: z.number(),
+  url: z.string(),
+});
+export type GithubPrReadyResponse = z.infer<typeof githubPrReadyResponseSchema>;
+
 /** One changed file of a pull request's diff. */
 export const githubPrChangeSchema = z.object({
   path: z.string(),
