@@ -209,6 +209,33 @@ describe('bridge → service over the project socket', () => {
     expect(res.result).toMatchObject({ isError: true, structuredContent: { status: 'timeout' } });
   });
 
+  it('never tells the model to blindly retry a call whose connection closed mid-flight', async () => {
+    // A write that passed the fence still finishes in the service, so "call again" could run it twice.
+    const path = join(home, 'drops.sock');
+    const drops: Server = createServer((socket) => {
+      const framer = new LineFramer((line) => {
+        const req = JSON.parse(line) as { v: number; id: number; method: string };
+        if (req.method === 'session/open') socket.write(encodeFrame({ v: req.v, id: req.id, ok: true, result: { owner: true } }));
+        else socket.destroy();
+      }, () => {});
+      socket.on('data', (c: Buffer) => framer.push(c));
+    });
+    await new Promise<void>((r) => drops.listen(path, r));
+    handles.push({ close: () => drops.close() });
+    const b = bridge({ target: socketTarget(path) });
+    await b.request('initialize', { protocolVersion: '2025-06-18' });
+    const res = await b.request('tools/call', { name: 'health' });
+    expect(res.result).toMatchObject({ isError: true, structuredContent: { status: 'unreachable' } });
+    expect(text(res)).toMatch(/whether this call ran is unknown/);
+    expect(text(res)).not.toMatch(/call again to check/i);
+  });
+
+  it('still answers initialize when looking for the service throws', async () => {
+    const b = bridge({ target: () => Promise.reject(new Error('registry exploded')) });
+    const res = await b.request('initialize', { protocolVersion: '2025-06-18' });
+    expect(res.result).toMatchObject({ serverInfo: { name: 'xezar' } });
+  });
+
   it('refuses legibly across bridge protocol versions', async () => {
     const svc = await service();
     const answer = await new Promise<string>((resolve) => {

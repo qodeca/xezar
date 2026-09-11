@@ -145,18 +145,19 @@ export function runBridge(opts: BridgeOptions): Promise<void> {
         // D-02.6: `initialize` is where a session acquires the project. Only a live competing
         // owner turns it into an error; a service that is not running still gets a healthy
         // handshake (N-07), and the first call tries again.
-        void session.initialize().then((refused) => {
-          if (refused) {
-            refuse(id, refused);
-            return;
-          }
+        const handshake = (): void =>
           respond(id, {
             protocolVersion: negotiateProtocolVersion(init.data.protocolVersion),
             capabilities: SERVER_CAPABILITIES,
             serverInfo: { name: 'xezar', title: 'xezar', version: opts.version },
             instructions: INSTRUCTIONS,
           });
-        });
+        void session.initialize().then(
+          (refused) => (refused ? refuse(id, refused) : handshake()),
+          // A failure to even look for the service is not a competing owner: the handshake stays
+          // healthy (N-07) and the first call tries again, rather than `initialize` never answering.
+          handshake,
+        );
         return;
       }
       case 'ping':
@@ -527,7 +528,9 @@ function unreachable(
       );
     case 'closed':
       return errorResult(
-        `xezar for project ${label} closed the connection before answering — it may have stopped. Call again to check.`,
+        // Not "call again": a write that passed the fence still finishes in the service, so a blind
+        // retry could do it twice (a fenced session's other calls in flight land here too).
+        `xezar for project ${label} closed the connection before answering, so whether this call ran is unknown — it may have stopped, or this session was fenced. Check the outcome before calling again.`,
         { status: 'unreachable' },
       );
     case 'bad-response':
