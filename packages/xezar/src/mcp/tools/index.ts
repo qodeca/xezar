@@ -23,6 +23,7 @@ import { taskReadsTool } from './task-reads.ts';
 import { executionControlTool } from './execution-control.ts';
 import { discoverProjectTool } from './discovery.ts';
 import { organiseWorkTool } from './work-organisation.ts';
+import { taskCreateTool } from './task-create.ts';
 import { projectConfigTool } from './project-config.ts';
 
 export const tools: readonly McpTool[] = [
@@ -30,5 +31,6 @@ export const tools: readonly McpTool[] = [
   executionControlTool,
   discoverProjectTool,
   organiseWorkTool,
+  taskCreateTool,
   projectConfigTool,
 ];
