@@ -12,6 +12,13 @@ Installation validation is reported in installation.md. Real-task entries follow
 
 ## Real-task entries
 
+### 2026-09-11 — #295 (last of the #307 flakes), `bug-fix` workflow — real-task verified
+
+- Observed: **CPU load alone did not reproduce the flake; modelling the real neighbour did.** The unmodified `mcp/cli.test.ts` passed 41 of 41 under three parallel full `npm test` runs. Adding a loop that did what `package-cli.test.ts` port-fallback does (boot `serve` on a busy port so it walks up one) made it fail 2 of 53. The cause was the test harness trusting a probed-then-released port. macOS hands out ephemeral ports in order, so the next port is exactly where a walking cockpit lands. `xez serve` booted correctly in every captured failure.
+- Observed: the first investigate session ended mid-reproduction after about 15 minutes, with background loops killed, no commit and no report, and readiness then refused the empty branch. Lesson (recommended): before a long background proof run, write the resume notes and the counts so far to the handoff file, so a lost session still leaves the evidence.
+- Regression/control: the new case (a neighbour cockpit on the requested port) was red with the old helper body put back and green with the fix. The three original cases pass both ways; they are guards. After the fix: 120 of 120 under the same load plus the neighbour loop, and 20 of 20 alone.
+- Remaining limit: one macOS machine. The exact `ECONNRESET` text was not captured; the same wrong-server path gave timeouts, a `UND_ERR_SOCKET` and three silent passes against the neighbour. Three sibling harnesses keep the pattern (#325).
+
 ### 2026-09-11 — #307 (five false test signals), `bug-fix` workflow — real-task verified
 
 - Observed: **both gate repairs were spent on the task's own scratch tests, not on any fix.** Flake reproduction wants probes that run under the real vitest config, so they sat in the tree as `*-scratch.test.*`. Attempt 0001 failed 47 tests, all scratch; attempt 0002 failed typecheck and 45 tests on one scratch file that an interrupted proof script had copied back in, and that `git add` had staged. The real suite was green both times.
