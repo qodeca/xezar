@@ -282,6 +282,9 @@ export interface ServerDeps {
   socketHub?: SocketHub;
   /** Re-arm the workspace automation timer after definition mutations. */
   automationsChanged?: () => void;
+  /** `startServer` only: handed the app it built, so the MCP socket (src/index.ts) dispatches
+   *  into the SAME route table in-process (#243). `createApp` ignores it. */
+  onApp?: (app: ReturnType<typeof createApp>) => void;
 }
 
 // ---- project-scoped routing (multi-project spec, step 2.2) -----------------
@@ -5725,6 +5728,7 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
     socketHub,
     automationsChanged: () => rescheduleAutomations(),
   });
+  deps.onApp?.(app);
   // SECURITY: default to loopback. This server executes agents locally and its endpoints are
   // same-origin-trusted (only /api/health is CORS-open); binding to a non-loopback host would
   // expose an agent-executing box to the network. `bindHost` exists only for a deliberate
