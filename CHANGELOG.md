@@ -147,6 +147,15 @@
   maps every `covered` inventory record to the tool action that serves it, checked both ways. The
   tables and the JSON are regenerated from the real tool registry, so a tool change that is not
   reflected in the reference fails `npm test`. (#261)
+- 📝 **The repository now has a security policy, a contribution path and issue templates.**
+  `SECURITY.md` says in its first sentence that xezar runs AI agents with shell access on your
+  machine, then draws the line between "working as designed" and "a vulnerability", naming the
+  guard in the code behind each claim. It sends reports to GitHub's private reporting and gives a
+  fallback that discloses nothing. `CONTRIBUTING.md` is the short human path to a merged pull
+  request and says plainly that the `om-*` skills in `SDLC.md` are internal automation an outside
+  contributor does not need. Also added: `CODE_OF_CONDUCT.md` (Contributor Covenant 3.0), bug and
+  feature issue forms, a pull-request template, and a CI badge and project-status note in the
+  README. (#283)
 
 # 0.13.1 (2026-09-10)
 

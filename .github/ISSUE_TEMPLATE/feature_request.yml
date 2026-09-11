@@ -1,0 +1,29 @@
+name: Feature request
+description: Suggest a change to what xezar does.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you are trying to do, and what stops you today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like
+      description: The behaviour you want. A sketch of the cockpit, the CLI or the workflow YAML helps.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you tried instead
+      description: Workarounds or other tools you considered.
+    validations:
+      required: false
+  - type: markdown
+    attributes:
+      value: |
+        xezar is zero config by design: a feature that needs a setting before it works is usually the wrong shape. See "Zero config" in [AGENTS.md](https://github.com/qodeca/xezar/blob/main/AGENTS.md).
