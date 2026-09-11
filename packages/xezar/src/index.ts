@@ -23,6 +23,9 @@ import { ownProjectData } from './runs/project-writer.ts';
 import { RunManager } from './workflows/run.ts';
 import { loadWorkflows } from './workflows/load.ts';
 import { startServer, WorkspaceEventBus } from './server/server.ts';
+// Type-only: erased at run time, so the MCP module stays a lazy import (N-07).
+import type { ServiceDispatch } from './mcp/service-adapter.ts';
+import type { ProviderStatus } from '@qodeca/xezar-contract';
 import {
   ProviderRuntimeAuthObserver,
   recoverWithProviderRuntimeAuthObservation,
@@ -285,6 +288,7 @@ async function serveCommand(
   });
 
   const port = await pickPort(preferredPort);
+  let app: ServiceDispatch | undefined;
   // SECURITY: xezar executes agents. A non-loopback bind exposes that box to
   // whatever can reach the interface, and xezar itself has NO auth — it is only
   // for a deliberate hosted setup where a reverse proxy in front provides TLS +
@@ -308,13 +312,32 @@ async function serveCommand(
     providerAuth,
     providerRuntimeAuth,
     workspaceEvents,
+    onApp: (built) => {
+      app = built;
+    },
   }, port);
-  // The boot project's MCP socket (#86, D-01 § 5.4). Fire-and-forget: it never
-  // delays or fails boot (N-07), and a failure is one warning.
+  // The boot project's MCP socket (#86, D-01 § 5.4), composed over the same app and store
+  // the cockpit uses (#243). Fire-and-forget: it never delays or fails boot (N-07), and a
+  // failure is one warning.
   let mcpService: { close(): void } | undefined;
+  let stopping = false;
   if (bootProjectId) {
-    void startMcpSocket(bootProjectId, version).then((handle) => {
-      mcpService = handle;
+    void startMcpSocket({
+      projectId: bootProjectId,
+      version,
+      service: app,
+      store,
+      workspaceEvents,
+      // The same rows `GET /providers/status` answers, so E-06 starts from what the cockpit shows.
+      providerBaseline: async () => {
+        const discovered = await providerAuth.status();
+        if (providerAuthChecksDisabled()) return applyProviderEnablement(discovered, []).providers;
+        return applyProviderEnablement(discovered, (await loadWorkspaceConfig()).disabledProviders).providers;
+      },
+    }).then((handle) => {
+      // A shutdown that won the race still releases what the late start composed.
+      if (stopping) handle?.close();
+      else mcpService = handle;
     });
   }
   const url = `http://localhost:${port}`;
@@ -332,8 +355,10 @@ async function serveCommand(
   await printSkillsBanner(repoRoot);
 
   const shutdown = () => {
-    store.flush();
+    stopping = true;
+    // MCP first, so no MCP listener is still attached while the store flushes.
     mcpService?.close();
+    store.flush();
     process.exit(0);
   };
   process.on('SIGINT', shutdown);
@@ -351,10 +376,24 @@ async function serveCommand(
  * Open the MCP socket for `projectId`, or log ONE warning and return undefined. The
  * module is imported lazily, so even a broken MCP module leaves a working cockpit.
  */
-async function startMcpSocket(projectId: string, version: string): Promise<{ close(): void } | undefined> {
+async function startMcpSocket(opts: {
+  projectId: string;
+  version: string;
+  service: ServiceDispatch | undefined;
+  store: RunStore;
+  workspaceEvents: WorkspaceEventBus;
+  providerBaseline: () => Promise<readonly ProviderStatus[]>;
+}): Promise<{ close(): void } | undefined> {
   try {
     const { startMcpService } = await import('./mcp/index.ts');
-    return await startMcpService({ projectId, version });
+    return await startMcpService({
+      projectId: opts.projectId,
+      version: opts.version,
+      store: opts.store,
+      workspaceEvents: opts.workspaceEvents,
+      providerBaseline: opts.providerBaseline,
+      ...(opts.service ? { service: opts.service } : {}),
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.warn(`[xez] MCP bridge unavailable for this project (${message}) — the cockpit works without it`);
