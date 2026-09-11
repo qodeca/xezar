@@ -25,6 +25,7 @@ import { loadWorkflows } from './workflows/load.ts';
 import { startServer, WorkspaceEventBus } from './server/server.ts';
 // Type-only: erased at run time, so the MCP module stays a lazy import (N-07).
 import type { ServiceDispatch } from './mcp/service-adapter.ts';
+import type { ProviderStatus } from '@qodeca/xezar-contract';
 import {
   ProviderRuntimeAuthObserver,
   recoverWithProviderRuntimeAuthObservation,
@@ -321,7 +322,19 @@ async function serveCommand(
   let mcpService: { close(): void } | undefined;
   let stopping = false;
   if (bootProjectId) {
-    void startMcpSocket({ projectId: bootProjectId, version, service: app, store }).then((handle) => {
+    void startMcpSocket({
+      projectId: bootProjectId,
+      version,
+      service: app,
+      store,
+      workspaceEvents,
+      // The same rows `GET /providers/status` answers, so E-06 starts from what the cockpit shows.
+      providerBaseline: async () => {
+        const discovered = await providerAuth.status();
+        if (providerAuthChecksDisabled()) return applyProviderEnablement(discovered, []).providers;
+        return applyProviderEnablement(discovered, (await loadWorkspaceConfig()).disabledProviders).providers;
+      },
+    }).then((handle) => {
       // A shutdown that won the race still releases what the late start composed.
       if (stopping) handle?.close();
       else mcpService = handle;
@@ -368,6 +381,8 @@ async function startMcpSocket(opts: {
   version: string;
   service: ServiceDispatch | undefined;
   store: RunStore;
+  workspaceEvents: WorkspaceEventBus;
+  providerBaseline: () => Promise<readonly ProviderStatus[]>;
 }): Promise<{ close(): void } | undefined> {
   try {
     const { startMcpService } = await import('./mcp/index.ts');
@@ -375,6 +390,8 @@ async function startMcpSocket(opts: {
       projectId: opts.projectId,
       version: opts.version,
       store: opts.store,
+      workspaceEvents: opts.workspaceEvents,
+      providerBaseline: opts.providerBaseline,
       ...(opts.service ? { service: opts.service } : {}),
     });
   } catch (err) {

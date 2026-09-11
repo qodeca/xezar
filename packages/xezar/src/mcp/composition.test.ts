@@ -4,6 +4,7 @@ import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
+import type { McpJournalRow } from '@qodeca/xezar-contract';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { projectDataDir } from '../project-data-paths.ts';
 import { RunStore } from '../runs/store.ts';
@@ -55,12 +56,12 @@ afterEach(async () => {
 });
 
 /** A registered project with the cockpit's own app, store and manager over it. */
-async function cockpit() {
+async function cockpit(maxParallel = 2) {
   const root = tmp('xzp-');
   mkdirSync(join(root, '.xezar'), { recursive: true });
   writeFileSync(join(root, '.xezar', 'config.json'), '{"skillsRepos": []}\n', 'utf8');
   const { id } = await registerProject(root);
-  const semaphore = new WorkspaceSemaphore({ initial: { maxParallel: 2 }, load: async () => ({ maxParallel: 2, memoryLimitMb: null }) });
+  const semaphore = new WorkspaceSemaphore({ initial: { maxParallel }, load: async () => ({ maxParallel, memoryLimitMb: null }) });
   const store = RunStore.open(projectDataDir(root), { keepLive: true });
   const manager = new RunManager(store, root, { semaphore });
   const contexts = new ProjectContexts({ listProjects: async () => [{ id, root, status: 'ok' }], semaphore });
@@ -130,6 +131,16 @@ const auditLines = (dataDir: string): Array<Record<string, unknown>> => {
   return readFileSync(path, 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line) as Record<string, unknown>);
 };
 
+/** The rows the catalog actually wrote, straight from the journal file on disk. */
+const journalRows = (dataDir: string): McpJournalRow[] => {
+  const path = join(dataDir, 'mcp', 'event-journal.ndjson');
+  if (!existsSync(path)) return [];
+  return readFileSync(path, 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line) as McpJournalRow);
+};
+
+/** The E-01–E-03 rows a settled task can end in (done, review, waiting with or without a question). */
+const SETTLED_KINDS = ['task.done', 'result.ready', 'task.blocked', 'question.asked'];
+
 describe('the composed MCP service, through the real bridge and socket', () => {
   it('starts a task through the cockpit services, takes it through its lifecycle, and records the operation', async () => {
     const c = await cockpit();
@@ -150,6 +161,16 @@ describe('the composed MCP service, through the real bridge and socket', () => {
       return s === 'done' || s === 'review' || s === 'waiting' || s === 'failed' ? s : undefined;
     });
     expect(status).not.toBe('failed');
+
+    // #104: the catalog wrote the task's outcome into the project journal — a real row, on disk.
+    // The engine settled it, so it is `system`, even though the leader started the task: a
+    // completion the leader asked for is still news to the leader (F-13).
+    const outcome = await until('the outcome row', () =>
+      journalRows(c.dataDir).find((row) => row.subject.id === runId && SETTLED_KINDS.includes(row.kind)),
+    );
+    expect(outcome).toMatchObject({ projectId: c.id, subject: { type: 'run', id: runId }, origin: 'system', causedBy: null });
+    expect(outcome.category).toMatch(/^E-0[123]$/);
+    expect(outcome.subject.version).toMatch(/^rev1:run:/);
 
     // #101: a dropped response retried under the same key replays — no second task.
     const retried = await client.call('task_create', { action: 'start', operationId: 'op-compose-0001', prompt: 'say hello' });
@@ -176,6 +197,53 @@ describe('the composed MCP service, through the real bridge and socket', () => {
     handle.close();
     const reopened = EventJournal.open({ dataDir: c.dataDir, projectId: c.id, secretValues: [] });
     reopened.close();
+  });
+
+  it("writes an MCP cancel as the leader's change, naming the operation that caused it", async () => {
+    // No free slot: the task the leader starts stays queued in the cockpit's own manager.
+    const c = await cockpit(0);
+    const handle = await startMcpService({ projectId: c.id, version: VERSION, service: c.app, store: c.store });
+    closers.push(() => handle.close());
+    const client = agent(c.root);
+    const started = await client.call('task_create', { action: 'start', operationId: 'op-compose-0003', prompt: 'wait' });
+    expect(started.isError, JSON.stringify(started)).toBeFalsy();
+    const queued = { id: (started.structuredContent as { subject: { id: string } }).subject.id };
+    expect(c.store.getRun(queued.id)?.status).toBe('queued');
+
+    const cancelled = await client.call('execution_control', { action: 'cancel', runId: queued.id });
+    expect(cancelled.isError, JSON.stringify(cancelled)).toBeFalsy();
+    expect(cancelled.structuredContent, JSON.stringify(cancelled)).toMatchObject({ runStatus: 'cancelled' });
+    const row = await until('the cancel row', () =>
+      journalRows(c.dataDir).find((r) => r.subject.id === queued.id && r.kind === 'task.cancelled'),
+    );
+    // Without the door's origin marker the catalog reads a cancel as a person's (its honest default).
+    expect(row).toMatchObject({ category: 'E-01', origin: 'leader' });
+    expect(row.causedBy).toMatch(/^mcp-door\./);
+    expect(auditLines(c.dataDir).map((entry) => entry.action)).toEqual(['taskCreate.start', 'executionControl.cancel']);
+    expect(auditLines(c.dataDir)[1]).toMatchObject({ origin: 'mcp', outcome: 'ok', resource: { kind: 'run', id: queued.id } });
+  });
+
+  it('F-15: no secret from the host environment enters a journal row', async () => {
+    const c = await cockpit();
+    const secret = 'Zq8vK2mW9xR4tY7pL3nB';
+    const handle = await startMcpService({
+      projectId: c.id,
+      version: VERSION,
+      service: c.app,
+      store: c.store,
+      env: { ...process.env, COMPOSE_PROBE_TOKEN: secret },
+    });
+    closers.push(() => handle.close());
+    // A failing quality gate whose step id carries the value — the catalog names the step in its summary.
+    const run = c.store.createRun({ title: 't', workflow: 'quick-task', task: 't', steps: [{ id: `gate-${secret}`, name: 'Gate', kind: 'check' }] });
+    c.store.updateRun(run.id, { status: 'running' });
+    c.store.updateStep(run.id, `gate-${secret}`, { status: 'failed' });
+    c.store.updateRun(run.id, { status: 'failed' });
+
+    const rows = journalRows(c.dataDir).filter((r) => r.subject.id === run.id);
+    expect(rows.map((r) => r.kind)).toEqual(['gate.failed', 'task.failed']);
+    const raw = readFileSync(join(c.dataDir, 'mcp', 'event-journal.ndjson'), 'utf8');
+    expect(raw).not.toContain(secret);
   });
 
   it('a key reused for different work is refused without running the tool again', async () => {

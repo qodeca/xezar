@@ -1,6 +1,13 @@
+import { randomUUID } from 'node:crypto';
 import { realpath } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
-import { operationIdSchema, type AuditResource, type OperationAnswer, type OperationResultRef } from '@qodeca/xezar-contract';
+import {
+  operationIdSchema,
+  type AuditResource,
+  type OperationAnswer,
+  type OperationResultRef,
+  type ProviderStatus,
+} from '@qodeca/xezar-contract';
 import { collectSecretValues } from '../core/secret-redaction.ts';
 import { projectDataDir } from '../project-data-paths.ts';
 import type { RunStore } from '../runs/store.ts';
@@ -8,6 +15,7 @@ import { loadWorkspaceConfig } from '../workspace/config.ts';
 import { AuditTrail, type AuditChannel } from './audit-trail.ts';
 import { runBridge, type ServiceTarget } from './bridge.ts';
 import { EchoGuard } from './echo-guard.ts';
+import { EventCatalog, withEventOrigin, type WorkspaceEventSource } from './event-catalog.ts';
 import { EventJournal } from './event-journal.ts';
 import { mcpSocketLocation } from './ipc.ts';
 import { OperationReceiptStore, runByKeyReconciler, type EffectOutcome } from './operation-receipts.ts';
@@ -33,8 +41,13 @@ export interface StartMcpServiceOptions {
   readonly version: string;
   /** The running app's in-process entry: every tool dispatches into the cockpit's own routes (N-02). */
   readonly service?: ServiceDispatch;
-  /** The project's own store — the one the cockpit writes. Receipts reconcile a run against it. */
+  /** The project's own store — the one the cockpit writes. The catalog listens to it, and
+   *  receipts reconcile a run against it. */
   readonly store?: RunStore;
+  /** The host-wide workspace bus: the catalog's E-06 source (`provider-status`). */
+  readonly workspaceEvents?: WorkspaceEventSource;
+  /** Provider rows as they are now — the catalog's E-06 baseline. A failure means "no baseline". */
+  readonly providerBaseline?: () => Promise<readonly ProviderStatus[]>;
   /** Test seams, as for `listenMcpSocket`. Production uses the process's own. */
   readonly env?: NodeJS.ProcessEnv;
   readonly platform?: NodeJS.Platform;
@@ -53,10 +66,13 @@ export interface StartMcpServiceOptions {
 export async function startMcpService(opts: StartMcpServiceOptions): Promise<McpServiceHandle> {
   const project = (await loadWorkspaceConfig()).projects.find((p) => p.id === opts.projectId);
   if (!project) throw new Error(`project ${opts.projectId} is not in the workspace registry`);
+  const providerBaseline = await opts.providerBaseline?.().catch(() => undefined);
   const parts = composeDoor({
     projectId: project.id,
     dataDir: opts.store?.dataDir ?? projectDataDir(project.root),
     store: opts.store,
+    workspaceEvents: opts.workspaceEvents,
+    providerBaseline,
     env: opts.env ?? process.env,
     warn: opts.warn ?? ((message) => console.warn(message)),
   });
@@ -88,6 +104,8 @@ interface DoorInput {
   projectId: string;
   dataDir: string;
   store: RunStore | undefined;
+  workspaceEvents: WorkspaceEventSource | undefined;
+  providerBaseline: readonly ProviderStatus[] | undefined;
   env: NodeJS.ProcessEnv;
   warn: (message: string) => void;
 }
@@ -98,14 +116,17 @@ interface DoorInput {
  * start — the tools keep working, exactly as they did before any part existed.
  *
  * - the project's event journal (#103), opened with this host's real secret list (F-15);
+ * - the E-01–E-06 catalog (#104), deriving rows from the SAME store and workspace bus the cockpit
+ *   drives (N-02); every MCP mutation runs inside `withEventOrigin`, so a change it causes is
+ *   the leader's, with the operation that caused it;
  * - operation receipts (#101) for every call that carries an `operationId`;
  * - the echo guard (#106): the operation is recorded as this leader's own BEFORE it runs;
  * - the audit trail (#102), stamped `mcp` because this is the MCP door (D-06 § 10.4 rule 1).
  *
- * Read-only tools pass straight through: a read has no effect to deduplicate or to audit.
+ * Read-only tools pass straight through: a read has no effect to deduplicate, attribute or audit.
  */
 function composeDoor(input: DoorInput): { door: McpDoor; close(): void } {
-  const { projectId, dataDir, store, warn } = input;
+  const { projectId, dataDir, store, workspaceEvents, providerBaseline, warn } = input;
   const closers: Array<() => void> = [];
   const attempt = <T>(what: string, open: () => T): T | undefined => {
     try {
@@ -120,6 +141,20 @@ function composeDoor(input: DoorInput): { door: McpDoor; close(): void } {
     EventJournal.open({ dataDir, projectId, secretValues: collectSecretValues(input.env), warn }),
   );
   if (journal) closers.push(() => journal.close());
+  // Pushed after the journal, so it detaches first: no row can reach a closed journal.
+  const catalog =
+    journal && store
+      ? attempt('event catalog', () =>
+          EventCatalog.attach({
+            journal,
+            store,
+            ...(workspaceEvents ? { workspaceEvents } : {}),
+            ...(providerBaseline ? { providerBaseline } : {}),
+            warn,
+          }),
+        )
+      : undefined;
+  if (catalog) closers.push(() => catalog.detach());
 
   const receipts = attempt('operation receipts', () =>
     OperationReceiptStore.open(dataDir, {
@@ -143,12 +178,19 @@ function composeDoor(input: DoorInput): { door: McpDoor; close(): void } {
     if (tool.annotations?.readOnlyHint === true) return invoke();
     const operationId = operationIdOf(args);
     const action = actionId(tool.name, args.action);
-    const issued = operationId !== undefined && guard ? () => guard.issue(operationId, invoke) : invoke;
+    const target = targetOf(args);
+    // The origin is the door's, never the client's (D-05 § 6.3): every mutation through here is the
+    // leader's. A tool without an `operationId` field still needs one for the catalog and the echo
+    // guard, so the door mints it; it never reaches a receipt, which only a client key may create.
+    const causedBy = operationId ?? `mcp-door.${randomUUID()}`;
+    const marked = (): Promise<McpToolResult> =>
+      withEventOrigin({ origin: 'leader', causedBy, ...(target ? { runId: target.id } : {}) }, invoke);
+    const issued = guard ? () => guard.issue(causedBy, marked) : marked;
     const op = {
       action,
       payload: args,
       ...(operationId === undefined ? {} : { operationId }),
-      ...(targetOf(args) ? { resource: targetOf(args) } : {}),
+      ...(target ? { resource: target } : {}),
     };
     let result: McpToolResult;
     try {
