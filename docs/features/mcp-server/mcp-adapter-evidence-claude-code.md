@@ -6,10 +6,12 @@ of [epic #67](https://github.com/qodeca/xezar/issues/67). Covers F-17, F-20, F-2
 
 Run date: **2026-09-11**, 03:40–04:10 UTC. Repository base: `c1ffa95` (main), plus the adapter in
 `packages/xezar/src/mcp/adapters/claude-code.ts` on branch `xez/3bb8bc35`. Host: macOS (Darwin 25.6.0, arm64),
-Node v24.20.0. The branch was then merged up to `74bc465` before handoff. Every file the live run exercised
+Node v24.20.0. The branch was then merged up to `74bc465`, and later `ef557fb`, before handoff. Every file the live run exercised
 (`mcp/service.ts`, `mcp/bridge.ts`, `mcp/event-controller.ts`, `mcp/event-journal.ts`, `src/index.ts`) is
 unchanged between the two (`git diff --stat c1ffa95..74bc465` on them is empty), and the unit suite passes on
-the merged base. The later base only adds MCP tools to the list the model is offered.
+the merged base. `74bc465` only adds MCP tools to the list the model is offered. `ef557fb` adds the #104
+event-catalog module (`mcp/event-catalog.ts`); at that revision nothing outside its own tests and the
+contract index imports it, so it does not change what the running service does.
 
 ## Answer first
 
@@ -29,7 +31,8 @@ the merged base. The later base only adds MCP tools to the list the model is off
   frame as "no model answered" and keeps the rows owed. A code review found this case; the first version of
   the adapter would have over-reported it.
 - **Two gaps in `main` were found and worked around in the harness, not fixed here.** Nothing constructs the
-  adapter in the service yet. No production code emits E-01–E-06 journal rows yet (#104 is open). Also, the
+  adapter in the service yet. No running service code emits E-01–E-06 journal rows yet: #104 was still open during the live runs, and
+  merged at `ef557fb` as a module nothing imports. Also, the
   MCP task tools answer `task_create is not connected to the xezar service in this session` (finding F-1).
 
 ## How to read this record
@@ -84,8 +87,8 @@ wrapper script. The spike's Codex incident (a wrapper overriding the isolated ho
 
 **Stand-ins, stated so nobody mistakes them for product behaviour:**
 
-1. **The harness appends the journal rows.** Nothing in `main` emits E-01–E-06 yet (#104 is an open pull
-   request). Each appended row uses the D-05 § 6.3 envelope, validated by the real journal.
+1. **The harness appends the journal rows.** Nothing in `main` emitted E-01–E-06 during the runs (#104
+   was an open pull request; it merged afterwards at `ef557fb`, and nothing imports it yet). Each appended row uses the D-05 § 6.3 envelope, validated by the real journal.
 2. **The harness wires the controller and the adapter.** The MCP service does not construct either yet
    (**Read from source**: `mcp/service.ts` builds a tool context with only `project` and `xezarVersion`).
 3. **The harness plays the human** by calling the cockpit's own `POST /api/v1/runs`, because the MCP task
@@ -225,7 +228,7 @@ Each blocker keeps Claude Code in scope. None is solved by model polling.
 | --- | --- | --- | --- |
 | OB-1 | No supported interface wakes a Claude Code session **the user opened themselves** | **Claude Code Channels**, once an eligible account and organisation are allowed and a run shows the model reacting. Until then, the adapter-owned session (this adapter) is the working route | Channels did not register (CH1); eligibility needs an account decision |
 | OB-5 | No real-model reaction evidence (A-19) | The harness in this record, pointed at a real model on the release-candidate revision, under a separate decision about which account may be used | Not attempted: the fixture rules forbid personal accounts |
-| OB-6 | Nothing constructs the adapter in the running service, and nothing emits journal rows | Service wiring that opens the journal, starts the controller for the owning session and hands it this adapter; the #104 emitter | Not in `main` at `c1ffa95`; the harness did both (Stand-ins 1 and 2) |
+| OB-6 | Nothing constructs the adapter in the running service, and nothing emits journal rows | Service wiring that opens the journal, starts the controller for the owning session and hands it this adapter; calling the #104 emitter (`mcp/event-catalog.ts`) from the places state changes | Wiring not in `main` at `ef557fb`; the emitter module is, unused. The harness did both (Stand-ins 1 and 2) |
 | OB-8 | The echo guard learns the session's own `operationId`s from the `assistant` frame that carries the tool call. If Claude Code ever starts the MCP call before printing that frame, a row caused by it could reach `deliver` first and pass the guard | An operation list fed from the xezar side (the service knows which session sent each operation) instead of from stdout | Raised by the code review; not observed and not tested live. The consequence is one extra message the leader deduplicates, not a lost event |
 | OB-7 | The production path runs without `--bare`, on the user's own login | A run on a machine and account allowed for it | Not attempted: same account rule as OB-5 |
 
