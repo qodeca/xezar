@@ -144,7 +144,7 @@
   whichever side of that line the click lands on. Same hole, same fix, for a task resumed with
   Continue. It also unwedges teardown: closing a project (or a test's cleanup) waits for the tasks
   it just cancelled, and one undeliverable cancellation was enough to make that wait never end —
-  reproduced as a 90-second timeout on CI. (#199)
+  reproduced as a 90-second timeout on CI. (#199, #229)
 
 - 🐛 **`xezar run` finishes when the task finishes, instead of sitting there for another
   minute.** The headless run printed `run done` and then stayed alive — up to 60 seconds — because
