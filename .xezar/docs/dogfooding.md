@@ -278,6 +278,14 @@ Installation validation is reported in installation.md. Real-task entries follow
 - Observed: a live self-QA of engine-only behaviour was cheap. It used the built CLI with `XEZ_DRY_RUN=1`, a pinned `XEZ_HOME`, `TMPDIR=/tmp`, and a small `node --import tsx` seed through the real `RunStore`. With one proven worktree and `worktreeRetention: 1`, a manual reclaim correctly returns `[]`. A real task had to start and finish before the task-end sweep showed real reclaim work. Read an empty result against the keep-limit before calling it a regression.
 - Remaining limit: unit and route level only, with no UI smoke. The same unproved-path pattern is still open in `DELETE /runs/:id`, `remove-worktree`, `git/commit`, `git/push`, `/pr`, `/diff` and `/changes`; see #288.
 
+### 2026-09-11 — issue #285, `bug-fix` workflow, investigate step (`xezar-bug-investigation`), Claude Code — real-task verified
+
+- Goal: stop one resumed task from holding its agent account's whole queue after a usage limit, without removing the hold that stops the stampede. Base `a339671`, branch `xez/8232dcda`. Node 24 / npm 11, macOS.
+- Observed: **the issue's suggested proof point was wrong, and the source said so.** It proposed treating a resumed session's first streamed event as proof that the limit lifted. A refused Claude turn streams its session init and a synthetic assistant frame before the `is_error` result, so any "it said something" signal is true for the doomed turn too. The fix uses the one backend-neutral fact instead: the resumed turn is still running two minutes after its step started (a refused turn lives about 200 ms). Check a brief's proposed signal against what the failing case actually emits.
+- Observed: the red proof by file swap (`git show origin/main:<file> > <file>`, run, restore from a copy in the evidence directory) works with no shared stash and no risk to peer worktrees. It is the cleaner form of the #18 and #22 protocol when the fix is in one source file.
+- Observed: one end-to-end case can hold both a guard and a proof. Its "still held" assertions passed on `origin/main` and only its "queue moves" poll went red; reporting which assertion is which kept the claim honest.
+- Remaining limit: the two-minute proof window is a judgement, not a measurement against a real provider; no real limited account was exercised.
+
 ### 2026-09-11 — issue #286, `bug-fix` workflow, investigate step (`xezar-bug-investigation`), Claude Code — real-task observed, fixture-tested
 
 - Goal: confirm or refute "a task worktree without `node_modules` resolves `@qodeca/xezar-contract` from the primary checkout", and only if confirmed make the gate fail loudly.

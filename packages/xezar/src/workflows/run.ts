@@ -286,6 +286,17 @@ export const MAX_AUTO_RESUMES = 12;
  * note instead of fired, so the only tasks a sweep can revive are ones someone is still waiting on.
  */
 export const AUTO_RESUME_MISSED_WINDOW_MS = 24 * 60 * 60_000;
+/**
+ * How long a resumed turn must stay live before it counts as proof that the limit lifted (#285).
+ *
+ * The in-flight hold exists for the window where a resume is TESTING the account: a limit that
+ * has not lifted refuses the turn at its first API call, and the measured doomed run lives about
+ * 200 ms. A turn still running minutes later got past that call, so holding every other task on
+ * the account until it COMPLETES — which a long turn may not do for hours — is the hold outliving
+ * its purpose. Not the first streamed event: a refused Claude turn still streams its session init
+ * and a synthetic assistant frame before the error, so "it said something" proves nothing.
+ */
+export const AUTO_RESUME_PROOF_MS = 2 * 60_000;
 
 /**
  * How often the queue checks that it is not wedged.
@@ -352,6 +363,22 @@ function resumeInFlight(run: Pick<RunRecord, 'status' | 'autoResumeAttempts'>): 
   return (
     run.autoResumeAttempts !== undefined && (run.status === 'queued' || run.status === 'running')
   );
+}
+
+/**
+ * Has this resume's turn stayed live long enough to prove the window open (#285)? Read off the
+ * durable record — the running step's own `startedAt` — so a restart answers exactly as the
+ * process that started the turn would have. A resume still `queued` has proven nothing.
+ */
+function resumeProven(
+  run: Pick<RunRecord, 'status' | 'currentStepId' | 'steps'>,
+  now: number,
+  proofMs: number,
+): boolean {
+  if (run.status !== 'running' || !run.currentStepId) return false;
+  const startedAt = run.steps.find((step) => step.id === run.currentStepId)?.startedAt;
+  const at = startedAt ? Date.parse(startedAt) : Number.NaN;
+  return Number.isFinite(at) && now - at >= proofMs;
 }
 
 const AUTO_RESUME_PROMPT =
@@ -616,6 +643,12 @@ export class RunManager {
    *  from the record rather than losing the wait. Runs here are `failed` and therefore NOT in
    *  `active`, which is why the timer cannot live on an `ActiveRun` like the monitoring one. */
   private readonly autoResumeTimers = new Map<string, NodeJS.Timeout>();
+  /** Wake-ups for the instant a live resume's proof window closes (#285). The hold lifts by
+   *  derivation, and a derived release is not an event, so these are only the pump that notices;
+   *  the hold itself stays on the records. */
+  private readonly resumeProofTimers = new Set<NodeJS.Timeout>();
+  /** `AUTO_RESUME_PROOF_MS`, overridable only so a test need not wait two minutes. */
+  private readonly resumeProofMs: number;
   private pumping = false;
   /** A pump that arrived while one was in flight — replayed by `pump()`'s own
    *  loop so a slot freed mid-sweep is never a lost wakeup. */
@@ -737,10 +770,11 @@ export class RunManager {
   constructor(
     private readonly store: RunStore,
     private readonly repoRoot: string,
-    options: { semaphore?: WorkspaceSemaphore } = {},
+    options: { semaphore?: WorkspaceSemaphore; resumeProofMs?: number } = {},
   ) {
     this.dataDir = store.dataDir;
     this.semaphore = options.semaphore ?? new WorkspaceSemaphore();
+    this.resumeProofMs = options.resumeProofMs ?? AUTO_RESUME_PROOF_MS;
     this.offSemaphore = this.semaphore.register({
       busySlots: () => this.busySlots(),
       pump: () => this.pump(),
@@ -816,6 +850,8 @@ export class RunManager {
     }
     for (const timer of this.autoResumeTimers.values()) clearTimeout(timer);
     this.autoResumeTimers.clear();
+    for (const timer of this.resumeProofTimers) clearTimeout(timer);
+    this.resumeProofTimers.clear();
     this.active.clear();
     this.waiting.clear();
     this.starting.clear();
@@ -1853,7 +1889,10 @@ export class RunManager {
       if (run.status === 'failed' && run.autoResumeAt) {
         const at = Date.parse(run.autoResumeAt);
         if (Number.isFinite(at) && at > now) deadline.add(key());
-      } else if (resumeInFlight(run)) {
+      } else if (resumeInFlight(run) && !resumeProven(run, now, this.resumeProofMs)) {
+        // A resume whose turn has stayed live past the proof window has tested the account and
+        // found it open; holding the queue for the rest of that turn is the #285 freeze. The
+        // counter stays on the record — the cap still reads it — only the hold ends here.
         inFlight.add(key());
       }
     }
@@ -1873,17 +1912,38 @@ export class RunManager {
     const run = this.store.getRun(runId);
     if (!run) return false;
     const pending = run.autoResumeAt !== undefined || this.autoResumeTimers.has(runId);
+    // A resume already running has neither a deadline nor a timer — `continueRun` retired both —
+    // yet its counter is what holds the account, so clearing it is a release too (#285).
+    const holding = run.autoResumeAttempts !== undefined;
     this.clearAutoResume(runId);
     if (pending) {
       this.store.appendEvent(runId, {
         type: 'note',
         message: 'automatic resume cancelled for this task',
       });
-      // This run may have been the last thing holding its account's queue — nothing else will
-      // notice, since the hold is derived and its release is not an event.
-      void this.pump();
     }
+    // This run may have been the last thing holding its account's queue — nothing else will
+    // notice, since the hold is derived and its release is not an event.
+    if (pending || holding) void this.pump();
     return true;
+  }
+
+  /**
+   * Pump the whole workspace once a live resume's proof window has closed (#285). The hold is
+   * workspace-wide — one account can be queued in several projects — so this is `release()`,
+   * not this manager's own pump. It carries no state: whether the hold has lifted is decided by
+   * `accountHolds()` from the record when the pump reads it, so a turn that failed or finished
+   * first just makes this a no-op pump. The slack keeps a timer that fires a millisecond early
+   * from reading a window that has not quite closed yet.
+   */
+  private armResumeProofPump(): void {
+    const timer = setTimeout(() => {
+      this.resumeProofTimers.delete(timer);
+      if (this.disposed) return;
+      void this.semaphore.release();
+    }, this.resumeProofMs + 250);
+    timer.unref?.();
+    this.resumeProofTimers.add(timer);
   }
 
   /** Retire a pending resume — timer, deadline and counter. The counter goes too because every
@@ -2807,6 +2867,9 @@ export class RunManager {
       backend,
     });
     this.store.appendEvent(runId, { type: 'step-start', stepId, name: 'Continue', kind: 'agent', iteration: 1 });
+    // An automatic resume's turn is now live. If it is still running when the proof window
+    // closes, its hold lifts (`resumeProven`) — and the queue behind it has to hear about that.
+    if (this.store.getRun(runId)?.autoResumeAttempts !== undefined) this.armResumeProofPump();
 
     let stepCost = 0;
     let turnText = '';
@@ -2897,11 +2960,12 @@ export class RunManager {
             this.releaseSlot();
           }
         }
-        // A turn that completed is the ONLY evidence the provider's window actually reopened, so
-        // it is what retires the consecutive-resume counter — which in turn releases the account
-        // hold for every other task queued behind it (spec
-        // 2026-08-03-auto-resume-after-usage-limit). `settleSuccess` does the same for a run that
-        // finishes outright; this covers the far more common "parked for the user" ending.
+        // A turn that completed is the strongest evidence the provider's window actually reopened,
+        // so it is what retires the consecutive-resume counter — and with it any account hold
+        // still standing for every other task queued behind it (spec
+        // 2026-08-03-auto-resume-after-usage-limit). A long turn has usually lifted that hold
+        // already, by staying live past `AUTO_RESUME_PROOF_MS` (#285). `settleSuccess` does the
+        // same for a run that finishes outright; this covers the "parked for the user" ending.
         if (this.store.getRun(runId)?.autoResumeAttempts !== undefined) {
           this.store.updateRun(runId, { autoResumeAttempts: undefined });
         }
