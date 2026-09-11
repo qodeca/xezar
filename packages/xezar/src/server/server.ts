@@ -5573,7 +5573,7 @@ export function createApp(deps: ServerDeps) {
   // #309. Delivery itself is on by default and needs no route: every MCP session that owns the
   // project gets an event controller when it opens. What a route is needed for is the one thing
   // xezar must never do by itself — start a leader session an event can actually wake (Claude
-  // Code, Codex) or point it at one the user runs (OpenCode). It runs no tool, and it refuses to
+  // Code; Codex is refused in 0.14.0, #323/#324) or point it at one the user runs (OpenCode). It runs no tool, and it refuses to
   // start a leader while another MCP client owns the project, so the cockpit never becomes a
   // second leader (spec `mcp-api-reference-spec.md` § 13). Starting a process on this machine is
   // a local-machine capability: hosted mode refuses it like every other local mutator.

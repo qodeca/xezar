@@ -21,6 +21,9 @@ export type McpLeaderClient = z.infer<typeof mcpLeaderClientSchema>;
  * mode; Codex: an app-server thread), `resume` reopens the last Claude Code conversation, `attach`
  * names an OpenCode session the user already runs (`opencode serve`), and `stop` ends the leader
  * xezar started — never a task, and never the MCP session's hold on the project.
+ *
+ * `start` with `client: 'codex'` is part of the contract but REFUSED at runtime in release 0.14.0
+ * (409, naming #323 and #324). It stays here so re-enabling it later is additive, not a break.
  */
 export const mcpLeaderActionInputSchema = z.discriminatedUnion('action', [
   z.strictObject({ action: z.literal('start'), client: z.enum(['claude-code', 'codex']) }),

@@ -5,8 +5,9 @@
   Codex and OpenCode reaction adapters were built and tested but never connected, so no event ever
   reached a client. Now every MCP session that owns a project gets push delivery the moment it
   opens — nothing to set up. An event can only wake a leader session xezar started or was pointed
-  at, so a new route, `POST /api/v1/mcp/leader`, starts a Claude Code or Codex leader, resumes the
-  last Claude Code one, attaches an OpenCode session you run with `opencode serve`, or stops it;
+  at, so a new route, `POST /api/v1/mcp/leader`, starts a Claude Code leader, resumes the last one,
+  attaches an OpenCode session you run with `opencode serve`, or stops it (a Codex leader is refused
+  in this release: it receives no event yet, #323, and can reach your own Codex MCP servers, #324);
   `GET /api/v1/mcp/leader` says what is delivered and, when nothing can be, why. xezar never starts
   a leader by itself, and refuses to start one while another MCP client owns the project. A leader
   never receives the echo of its own change. A leader xezar starts or attaches can use the xezar

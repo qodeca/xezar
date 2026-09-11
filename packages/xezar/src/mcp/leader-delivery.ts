@@ -79,8 +79,19 @@ const NO_LEADER: McpLeaderBlocker = {
   code: 'no-leader-session',
   message:
     'No leader session xezar can reach is attached to this project, so events are kept in the journal, not delivered. xezar cannot wake a Claude Code or Codex session you opened yourself: MCP notifications start no turn, and typing into your terminal is refused.',
-  fix: 'Start the leader from xezar (Claude Code or Codex), or attach the OpenCode session you run with `opencode serve`.',
+  fix: 'Start a Claude Code leader from xezar, or attach the OpenCode session you run with `opencode serve`.',
 };
+
+/**
+ * The Codex leader is REFUSED in release 0.14.0 (owner decision on #311). The contract still accepts
+ * `client: 'codex'` — removing it would be a break to undo later — but `start` answers 409 with this
+ * text. Two findings together: it receives no event today (#323), so the path has no benefit, and it
+ * can call the user's own Codex MCP servers and plugins with no prompt (#324), so it has a real cost.
+ * `#startCodex` stays, unreachable, for the release that fixes both; re-enabling it means changing
+ * this refusal AND the test that pins it (`push-delivery.test.ts`). `stop` still stops a Codex leader.
+ */
+export const CODEX_LEADER_REFUSED =
+  'The Codex leader is not available in this release: it does not receive xezar events yet (#323), and it can call your own Codex MCP servers and plugins without asking (#324). Follow those two issues on github.com/qodeca/xezar for when it returns. Start a Claude Code leader, or attach an OpenCode session, instead.';
 
 /** #309 O-3: a journal that records nothing has nothing to deliver, so a leader would never hear a thing. */
 const JOURNAL_UNWRITABLE: McpLeaderBlocker = {
@@ -211,6 +222,8 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
       this.#stopLeader();
       return { ok: true, status: this.status() };
     }
+    // Before every other check: the answer does not depend on the journal or the owner (#323, #324).
+    if (input.action === 'start' && input.client === 'codex') return { ok: false, error: CODEX_LEADER_REFUSED };
     // Starting a leader that can never receive an event would answer 200 with a blocker-free status
     // for a path that delivers nothing (#309 O-3). Refuse, and say why.
     if (!this.#opts.journal.writable) return { ok: false, error: JOURNAL_UNWRITABLE.message };

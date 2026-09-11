@@ -143,14 +143,14 @@ type Cockpit = Awaited<ReturnType<typeof cockpit>>;
 
 const BRIDGE = { command: '/usr/bin/env', args: ['xez-under-test', 'mcp'] };
 
-async function serve(c: Cockpit, claudeBin: string) {
+async function serve(c: Cockpit, claudeBin: string, codexBin?: string) {
   const handle = await startMcpService({
     projectId: c.id,
     version: VERSION,
     service: c.app,
     store: c.store,
     warn: () => {},
-    leader: { claudeBin, bridge: BRIDGE, heartbeatMs: 500 },
+    leader: { claudeBin, bridge: BRIDGE, heartbeatMs: 500, ...(codexBin ? { codexBin } : {}) },
   });
   let open = true;
   const close = (): void => {
@@ -333,6 +333,35 @@ describe('#309 — push delivery in the running service (A-19 delivery, A-20 no-
     const stopped = await c.human('POST', '/mcp/leader', { action: 'stop' });
     expect(await stopped.json()).toMatchObject({ available: true, leader: null, blocker: { code: 'no-leader-session' } });
   }, 60_000);
+
+  it('refuses a Codex leader in this release, names #323 and #324, starts nothing, and still stops', async () => {
+    // Owner decision on #311: no benefit (#323, it receives no event) and a real cost (#324, it reaches
+    // the user's own Codex MCP servers unprompted). Re-enabling Codex is a deliberate act: this test
+    // goes red first.
+    const c = await cockpit();
+    const dir = tmp('xzx-');
+    const spawned = join(dir, 'spawned');
+    const codexBin = join(dir, 'codex');
+    writeFileSync(codexBin, `#!/bin/sh\ntouch ${JSON.stringify(spawned)}\nexit 1\n`, 'utf8');
+    chmodSync(codexBin, 0o755);
+    await serve(c, standInClaude().bin, codexBin);
+
+    const refused = await c.human('POST', '/mcp/leader', { action: 'start', client: 'codex' });
+    expect(refused.status).toBe(409);
+    const { error } = (await refused.json()) as { error: string };
+    expect(error).toMatch(/Codex leader is not available in this release/);
+    expect(error).toContain('#323');
+    expect(error).toContain('#324');
+    expect(existsSync(spawned)).toBe(false);
+    expect(await c.status()).toMatchObject({ available: true, leader: null });
+
+    // `resume` is Claude Code's alone in the contract, so a Codex resume never reaches the service.
+    expect((await c.human('POST', '/mcp/leader', { action: 'resume', client: 'codex' })).status).toBe(400);
+    // Stopping is never refused: refusing to stop something is worse than refusing to start it.
+    expect((await c.human('POST', '/mcp/leader', { action: 'stop' })).status).toBe(200);
+    // The other two clients are untouched by the refusal.
+    expect((await c.human('POST', '/mcp/leader', { action: 'start', client: 'claude-code' })).status).toBe(200);
+  });
 
   it('says the journal cannot be written, and refuses to start a leader that could never hear an event (O-3)', async () => {
     const c = await cockpit();
