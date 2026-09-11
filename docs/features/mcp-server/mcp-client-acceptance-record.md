@@ -9,19 +9,25 @@ plus the two test files this record describes; no product file differs from `mai
 (arm64), Node v24.20.0. Clients, as installed on the host: **Claude Code 2.1.268**, **Codex CLI 0.154.0**,
 **OpenCode 1.18.30**. These are installed versions, not certified minimums.
 
+**A-01 re-run, 2026-09-11, [#262](https://github.com/qodeca/xezar/issues/262).** Only the A-01 cases were
+run again, on branch `xez/b9b4feb6` (`main` at `ef4b768` plus the #262 changes, uncommitted at the time of the
+run), with the same clients and versions on the same host. All five A-01 legs **PASSED**, including the
+connection file, which the MCP service now writes. `mcp-real-clients.test.ts` itself was not changed. The rows
+below for A-17 to A-23 are from the original run and were not re-run.
+
 ## Answer first
 
 | Case | Claude Code | Codex | OpenCode | Product-level checks | What is missing |
 | --- | --- | --- | --- | --- | --- |
-| **A-01** setup | client leg **PASSED** | client leg **PASSED** | client leg **PASSED** | connection file: **FAILED**; tools reach the service: **PASSED** | **A-01 is FAILED**: nothing in the product writes D-04's `.local/xezar/mcp-connection.json` |
+| **A-01** setup | client leg **PASSED** | client leg **PASSED** | client leg **PASSED** | connection file: **PASSED** (#262); tools reach the service: **PASSED** | Nothing — **A-01 is PASSED** since #262 |
 | **A-17** competing owner | **FAILED** | **FAILED** | **FAILED** | second bridge admitted: **FAILED**; same-owner concurrency and project B: pass | Exclusive ownership over a live session is not wired |
 | **A-18** liveness, fencing, restart | — | — | — | **FAILED** (task survival and restart survival pass; fencing and idle-owner exclusivity fail) | Same as A-17 |
 | **A-19** delivery and model reaction | **BLOCKED** | **BLOCKED** | **BLOCKED** | acceptance vs result and journal emission: **PASSED** | No delivery path to any client; no real model may run in a § 9 fixture |
 | **A-20** live sync | — | — | — | cockpit half (browser): **PASSED**; leader half: **BLOCKED** on one clause | The no-recursive-loop clause needs push delivery to be observable |
 | **A-23** exclusive owner, three clients | **FAILED** | **FAILED** | **FAILED** | — | Exclusivity (A-17) and reaction (A-19); the built-in-leader half was **NOT RUN** (out of scope) |
 
-**No case in this record passes as a whole.** A-01's three client legs pass, A-20's cockpit half passes, and
-A-19's product half passes; every whole case is FAILED or BLOCKED. The leader decided (2026-09-11)
+**A-01 passes as a whole since #262; no other case does.** A-20's cockpit half passes and A-19's product half
+passes; every other whole case is FAILED or BLOCKED. The leader decided (2026-09-11)
 that push delivery with a real model reaction, exclusive ownership over a live session and multi-project MCP
 are outside release 0.14.0; this record shows exactly where that boundary bites and passes nothing on
 documentation.
@@ -98,7 +104,7 @@ with a `MANIFEST.sha256`):
 
 ## Results, per case
 
-### A-01 — provisioning and one-time setup: FAILED
+### A-01 — provisioning and one-time setup: PASSED (since #262; FAILED in the original run)
 
 | Check | Claude Code | Codex | OpenCode |
 | --- | --- | --- | --- |
@@ -112,7 +118,9 @@ with a `MANIFEST.sha256`):
 
 Product-level:
 
-- **FAILED — the connection file.** A real `xezar serve` opened the MCP socket and wrote no
+- **PASSED since #262 — the connection file.** In the re-run a real `xezar serve` wrote
+  `<root>/.local/xezar/mcp-connection.json`, mode `600`, matched by `.local/.gitignore`. What the original run
+  observed, kept for the record: **FAILED** — a real `xezar serve` opened the MCP socket and wrote no
   `<root>/.local/xezar/mcp-connection.json`. D-04.1 and D-04.3 decided that file and its trigger; in the files
   examined, `mcp-connection.json` is named only by tests (`ab-fixture.ts` plants it for A-12). The discovery the
   clients actually use — the workspace registry plus the socket under `XEZ_HOME` (D-01 § 4) — works without it,

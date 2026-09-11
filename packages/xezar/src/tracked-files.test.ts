@@ -53,6 +53,10 @@ const localRuntime = [
   '.kit-bootstrap-lock/file', '.kit-stage-123/file', '.env', '.env.local',
 ].map((file) => `${kitRoot}/${file}`);
 
+// Written only under the project data dir, never under the kit: D-04's MCP connection descriptor
+// and its atomic-write sibling (src/mcp/connection-file.ts, #262).
+const engineOnly = ['mcp-connection.json', 'mcp-connection.json.tmp'].map((file) => `.local/xezar/${file}`);
+
 describe('tracked files', () => {
   it('tracks no per-machine runtime state, under either product name', () => {
     // `.ai/qa/agent-home/` is the most credential-adjacent of these: the e2e boot points the
@@ -93,7 +97,7 @@ describe('maintained Xezar project kit versus local runtime', () => {
     for (const file of maintainedLayouts) expect(ignored(file), file).toBe(false);
   });
   it('ignores local state without hiding maintained directories', () => {
-    for (const file of [...localRuntime, '.local/qa/agent-home/token', '.local/test-tmp/fixture', '.local/xezar/runs.json']) expect(ignored(file), file).toBe(true);
+    for (const file of [...localRuntime, ...engineOnly, '.local/qa/agent-home/token', '.local/test-tmp/fixture', '.local/xezar/runs.json']) expect(ignored(file), file).toBe(true);
   });
   it('startup ignores every engine-written path without touching the maintained kit', () => {
     // Execute only the actual helper body; importing the CLI would boot a real process.
@@ -110,6 +114,7 @@ describe('maintained Xezar project kit versus local runtime', () => {
       expect(readFileSync(join(temp, '.local/.gitignore'), 'utf8')).toBe('\n*\n');
       for (const file of maintainedLayouts) expect(ignored(file, temp), file).toBe(false);
       for (const file of localRuntime) expect(ignored(file.replace(`${kitRoot}/`, '.local/xezar/'), temp), file).toBe(true);
+      for (const file of engineOnly) expect(ignored(file, temp), file).toBe(true);
       // The old location is no longer engine state, so nothing blanket-ignores it either.
       expect(ignored('.ai/xezar/config.json', temp)).toBe(false);
     } finally { rmSync(temp, { recursive: true, force: true }); }
