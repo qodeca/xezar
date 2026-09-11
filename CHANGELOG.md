@@ -15,6 +15,13 @@
   one warning and the MCP keeps working. This closes acceptance case A-01. (#262)
 
 ## 🐛 Fixes
+- 🐛 **One resumed task no longer freezes its account's whole queue.** After a provider usage
+  limit, a task that resumed itself held every other task on the same agent account in the queue
+  until its first resumed turn completed — hours, for a long turn — even with most slots free. The
+  hold now lasts only while the resume is testing whether the limit has lifted: once the resumed
+  turn has stayed live for two minutes, the tasks behind it start. A task waiting out a limit still
+  holds its account, other accounts are still untouched, and cancelling a running resume's
+  auto-resume now starts the waiting tasks at once. (#285)
 - 🐛 **Running the test suite inside a xezar task no longer writes into that task's handoff file
   and your follow-up inbox.** A gate inherits the task's `XEZ_HANDOFF_FILE`, `XEZ_TODOS_FILE`,
   `XEZ_TASK_ID` and `XEZ_ENV_PASSTHROUGH`, and a test that drove the dry-run mock agent handed them
