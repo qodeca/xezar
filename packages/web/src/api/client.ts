@@ -53,6 +53,7 @@ import type {
   HealthResponse,
   AttachmentInput,
   LaunchKeyResponse,
+  McpApiReference,
   MessageInput,
   EditQueuedMessageResponse,
   MessageResponse,
@@ -1957,6 +1958,16 @@ export async function getWorktrees(opts?: ReadOptions): Promise<WorktreesRespons
       init(opts),
     ),
     '/worktrees',
+  )
+}
+
+/** The read-only MCP API reference (Settings → MCP API, #284): exactly what the MCP server's
+ *  `tools/list` answers, plus its refusals. Nothing here — or anywhere in the cockpit — runs a
+ *  tool: that would make the cockpit a second leader (spec `mcp-api-reference-spec.md` § 13). */
+export async function getMcpApiReference(opts?: ReadOptions): Promise<McpApiReference> {
+  return unwrap(
+    await xez.api.v1.p[':projectId'].mcp.reference.$get({ param: { projectId: queryScope() } }, init(opts)),
+    '/mcp/reference',
   )
 }
 

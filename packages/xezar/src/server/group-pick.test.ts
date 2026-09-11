@@ -1,9 +1,10 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { worktreePathFor } from '../git-worktree.ts';
 import { RunStore, type RunRecord } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { createApp } from './server.ts';
@@ -34,7 +35,9 @@ describe('POST /api/v1/groups/:groupId/pick — review gate', () => {
   let app: Hono;
 
   beforeEach(() => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'xez-pick-'));
+    // Realpath'd: the pick proves each member's worktree is `<real root>/.local/xezar/worktrees/<id>`
+    // (#288), and a macOS temp dir sits behind the `/var` → `/private/var` link.
+    repoRoot = realpathSync(mkdtempSync(join(tmpdir(), 'xez-pick-')));
     store = RunStore.open(join(repoRoot, '.local/xezar'));
     app = createApp({
       repoRoot,
@@ -43,13 +46,6 @@ describe('POST /api/v1/groups/:groupId/pick — review gate', () => {
       manager: { isActive: () => false, cancel: () => {} } as unknown as RunManager,
       version: '0.0.0-test',
     });
-    worktree = join(repoRoot, 'wt');
-    mkdirSync(worktree);
-    initRepo(worktree);
-    writeFileSync(join(worktree, 'base.txt'), 'base\n');
-    g(worktree, 'add', '-A');
-    g(worktree, 'commit', '-m', 'base');
-    g(worktree, 'checkout', '-b', 'task');
   });
 
   afterEach(() => {
@@ -62,6 +58,14 @@ describe('POST /api/v1/groups/:groupId/pick — review gate', () => {
   /** A finished (`done`) group winner whose worktree holds a real diff vs base. */
   function winnerRun(autonomous?: boolean): RunRecord {
     const run = store.createRun({ title: 't', workflow: 'w', task: 't', autonomous, steps: [] });
+    // The worktree sits where xezar puts every task's: named after the task, under the project.
+    worktree = worktreePathFor(repoRoot, run.id);
+    mkdirSync(worktree, { recursive: true });
+    initRepo(worktree);
+    writeFileSync(join(worktree, 'base.txt'), 'base\n');
+    g(worktree, 'add', '-A');
+    g(worktree, 'commit', '-m', 'base');
+    g(worktree, 'checkout', '-b', 'task');
     store.updateRun(run.id, {
       groupId: 'g1',
       variant: 'A',

@@ -93,6 +93,7 @@ import {
 } from '../runs/event-history.ts';
 import { readRunIndexFromDisk } from '../runs/run-index.ts';
 import { isV2WireEventType } from '../runs/ui-event-sink.ts';
+import type { McpApiReference } from '@qodeca/xezar-contract';
 import {
   githubPrReadyInputSchema,
   runEventsQuerySchema,
@@ -111,6 +112,7 @@ import {
   queuedMessagePatchInputSchema,
   runVersionGuardInputSchema,
 } from '@qodeca/xezar-contract';
+import { ownGroup, ownershipScope } from '../mcp/resource-ownership.ts';
 import { runVersion, staleRunWrite } from '../mcp/stale-write.ts';
 import { toPastedContent, type PastedContent, type RunManager } from '../workflows/run.ts';
 import { removeWorktree, worktreeDiff, worktreeDiffStat, worktreeSizeBytes } from '../git-worktree.ts';
@@ -4416,18 +4418,22 @@ export function createApp(deps: ServerDeps) {
 
   // ---- parallel variants (spec 010) -----------------------------------------
 
-  const groupRuns = (store: RunStore, groupId: string): RunRecord[] =>
-    store
-      .listRuns()
-      .filter((r) => r.groupId === groupId)
-      .sort((a, b) => (a.variant ?? '').localeCompare(b.variant ?? ''));
+  // A group's members, in variant order — but only when EVERY member is this project's (#288).
+  // A member's `worktreePath` is data: a copied or hand-edited `.local/xezar` can name another
+  // project's worktree, and the read runs git inside each member's path while the pick deletes the
+  // losers'. `ownGroup` refuses such a group whole, exactly as it does for MCP (M-07), and the
+  // refusal is the same 404 an unknown group gets, so it names nothing of the other project.
+  const ownedGroupRuns = async (project: ProjectContext, groupId: string): Promise<RunRecord[] | null> => {
+    const owned = await ownGroup(ownershipScope(project), groupId);
+    return owned.ok ? owned.value.runs : null;
+  };
 
   // ---- chained family: variant groups (project-scoped) ----
   const groupsRoutes = new Hono<ProjectApiEnv>()
     .get('/groups/:groupId', async (c) => {
-      const { dataDir, store } = c.get('project');
-      const runs = groupRuns(store, c.req.param('groupId'));
-      if (runs.length === 0) return c.json({ error: 'not found' }, 404);
+      const { dataDir } = c.get('project');
+      const runs = await ownedGroupRuns(c.get('project'), c.req.param('groupId'));
+      if (!runs) return c.json({ error: 'not found' }, 404);
       const detailed = await Promise.all(
         runs.map(async (r): Promise<GroupVariant> => ({
           id: r.id,
@@ -4457,8 +4463,8 @@ export function createApp(deps: ServerDeps) {
     // alive, archived, and their worktrees + branches removed.
     .post('/groups/:groupId/pick', jsonZodValidator(pickVariantInputSchema), async (c) => {
       const { root: repoRoot, dataDir, store, manager } = c.get('project');
-      const runs = groupRuns(store, c.req.param('groupId'));
-      if (runs.length === 0) return c.json({ error: 'not found' }, 404);
+      const runs = await ownedGroupRuns(c.get('project'), c.req.param('groupId'));
+      if (!runs) return c.json({ error: 'not found' }, 404);
       const parsed = { data: c.req.valid('json') };
       const winner = runs.find((r) => r.id === parsed.data.runId);
       if (!winner) return c.json({ error: 'runId is not part of this group' }, 404);
@@ -5540,6 +5546,27 @@ export function createApp(deps: ServerDeps) {
       return c.json(out.read);
     });
 
+  // ---- chained family: the MCP API reference (project-scoped, read-only) ----
+  // #284, spec `mcp-api-reference-spec.md` § 11. The tool registry is loaded LAZILY, as
+  // `startMcpSocket` loads the service, so the cockpit's static import graph never includes it
+  // and a broken MCP module answers `{available: false, reason}` instead of breaking the app.
+  // It does NOT need the MCP service: the listing is static code, and this page is most needed
+  // on a machine where MCP did not start (N-07). The list is fixed for the life of the process
+  // (`listChanged: false`), so the answer is built once. A GET with no side effect — and there
+  // is deliberately no route that runs a tool from here (spec § 13).
+  let mcpReference: Promise<McpApiReference> | undefined;
+  const readMcpReference = (): Promise<McpApiReference> =>
+    (mcpReference ??= import('../mcp/api-reference.ts')
+      .then((m) => m.buildMcpApiReference(version))
+      .catch((err: unknown): McpApiReference => {
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(`[xez] MCP API reference unavailable (${message}) — the cockpit works without it`);
+        return { available: false, reason: `The MCP tool list could not be loaded: ${message}` };
+      }));
+  const mcpReferenceRoutes = new Hono<ProjectApiEnv>().get('/mcp/reference', async (c) =>
+    c.json(await readMcpReference()),
+  );
+
   // Repo view branch actions: switch to an existing branch, or create one
   // (from `from` or HEAD) and switch. Predictable git failures — invalid
   // name, unknown `from`, dirty-tree checkout conflict — are 409 + reason.
@@ -5575,7 +5602,8 @@ export function createApp(deps: ServerDeps) {
     .route('/', githubRoutes)
     .route('/', repoRoutes)
     .route('/', configRoutes)
-    .route('/', agentConfigRoutes);
+    .route('/', agentConfigRoutes)
+    .route('/', mcpReferenceRoutes);
 
   // ---- chained family: the cross-project run index (workspace-level) -------
   /**

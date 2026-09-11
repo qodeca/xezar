@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Hono } from 'hono';
@@ -47,7 +47,8 @@ const savedDryRun = process.env.XEZ_DRY_RUN;
 beforeEach(() => {
   // `POST /runs/:id/pr` fakes its URL under dry run: no push, no `gh`.
   process.env.XEZ_DRY_RUN = '1';
-  repoRoot = mkdtempSync(join(tmpdir(), 'xez-stale-routes-'));
+  // Realpath'd: the variant pick proves each worktree is under the REAL project root (#288).
+  repoRoot = realpathSync(mkdtempSync(join(tmpdir(), 'xez-stale-routes-')));
   store = RunStore.open(join(repoRoot, '.local/xezar'));
   calls = [];
   const manager = new Proxy(

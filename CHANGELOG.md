@@ -1,6 +1,14 @@
 # Unreleased
 
 ## ✨ Features
+- ✨ **Browse the MCP API in the cockpit.** Project Settings has a new **MCP API** section, next to
+  MCP connection: every tool the MCP server exposes, one collapsed row each with its effect in
+  words (read-only, changes project state, destructive), and on expand its actions, its arguments
+  with the schema's own descriptions, whether it needs `expectedVersion` or takes an `operationId`,
+  and what it refuses. It reads one new route, `GET /api/v1/mcp/reference`, whose tool list is
+  exactly what the server's `tools/list` answers, and it works even when the MCP service is not
+  running. It is read-only by design: there is no "Try it", because running a tool from the cockpit
+  would make it a second leader on the project. Nothing to set up. (#284)
 - ✨ **A leader can mark its own draft pull request ready through MCP.** `handoff_git` gains a
   `ready` action (the pull request number plus the head sha the leader reviewed), backed by a new
   `POST /api/v1/github/prs/:number/ready` route that re-reads the forge and runs `gh pr ready`.
@@ -15,6 +23,43 @@
   one warning and the MCP keeps working. This closes acceptance case A-01. (#262)
 
 ## 🐛 Fixes
+- 🐛 **The project kit refuses to judge a task whose workspace packages load from another
+  checkout.** A task worktree lives inside the primary checkout, so when its own
+  `node_modules/@qodeca/xezar-contract` link is missing, node does not fail — it walks up and loads
+  the primary checkout's `packages/contract` source instead, whatever branch and edits that has. A
+  test in a bare task worktree was seen importing the primary's contract and missing the branch's
+  own change. `worktree-setup.sh` and `repo-gates.sh` now check that every workspace package
+  resolves to the task's own copy before they stamp the install or run a gate, and stop with the
+  exact borrowed path when it does not; a `--fast` gate treats such a tree as stale and reinstalls.
+  Commands run by hand before setup are not covered. (#286)
+- 🐛 **One resumed task no longer freezes its account's whole queue.** After a provider usage
+  limit, a task that resumed itself held every other task on the same agent account in the queue
+  until its first resumed turn completed — hours, for a long turn — even with most slots free. The
+  hold now lasts only while the resume is testing whether the limit has lifted: once the resumed
+  turn has stayed live for two minutes, the tasks behind it start. A task waiting out a limit still
+  holds its account, other accounts are still untouched, and cancelling a running resume's
+  auto-resume now starts the waiting tasks at once. (#285)
+- 🐛 **Picking a variant or reclaiming worktrees in one project can no longer delete another
+  project's worktree.** A copied or hand-edited `.local/xezar` (copying a repository folder is
+  enough) leaves task records whose worktree path names the ORIGINAL project's worktree. Picking a
+  variant deleted the losers' paths, reclaiming deleted every over-limit path, and reading the
+  variant group ran git inside each member's path, all without checking whose path it was. The
+  group read and the pick now refuse a group with such a member (the same `404` an unknown group
+  gets, naming nothing of the other project), and reclaim — through Settings, MCP, boot and every
+  task's end — leaves such records alone and still reclaims this project's own. Both use the
+  existing MCP ownership checks. A caller could never NAME another project's group, task or
+  automation at this project's routes, and still cannot. (#288)
+- 🐛 **Running the test suite inside a xezar task no longer writes into that task's handoff file
+  and your follow-up inbox.** A gate inherits the task's `XEZ_HANDOFF_FILE`, `XEZ_TODOS_FILE`,
+  `XEZ_TASK_ID` and `XEZ_ENV_PASSTHROUGH`, and a test that drove the dry-run mock agent handed them
+  on — so every gate run added a "Follow up: verify the mock change" entry to the real inbox and a
+  mock line to the real handoff file (more than half of one live inbox was that one entry). The
+  shared test preload now drops those four variables once, so every test and every child process it
+  starts begins without them. (#281)
+- 🐛 **A corrupt `~/.xezar/config.json` is reported once per boot, not twice.** Boot reads the file
+  and then the first migration reads it again before replacing it, and each read printed the same
+  warning. The warning is now remembered per broken state; every read still goes to the file, so a
+  repaired or newly broken config is seen immediately. (#281)
 - 🐛 **Three MCP scope and safety holes are closed.** `task_read`'s list view now holds every row
   to the same ownership rule as a single-task read, so a record whose worktree is another
   project's no longer appears in the list, its total, its search or any page — it used to carry
@@ -118,6 +163,17 @@
   assertion also gained the settle guard its mirror already had. (#200)
 
 ## 📝 Specs & Documentation
+- 📝 **The npm package page shows its screenshots and working links again.** npm publishes a copy
+  of the root README, and its relative `docs/…` and `LICENSE` links pointed at files the package
+  does not contain — 13 broken links on the 0.13.1 page, all six screenshots among them, and 23 in
+  the next release. The build now rewrites every relative link and image in that copy to an
+  absolute GitHub URL; the root README keeps its relative links, and a test fails if a relative
+  link survives the copy. (#287)
+- 📝 **A map of `docs/`.** `docs/README.md` says what each directory holds and who it is for, and
+  `docs/features/README.md` says up front that those files are the internal engineering and
+  decision record, not a user guide. Four MCP records no longer claim the shipped feature is
+  unimplemented, the README documents `XEZ_CODEX_REASONING`, and the README and `--help` say that
+  the default `open-mercato/skills` repository is not a leftover of the Cezar rename. (#287)
 - 📝 **The MCP server has a reviewable API reference.** `docs/features/mcp-server/mcp-api.md`
   lists every tool, its arguments (the schema's own descriptions), the results each tool really
   returns — including where the tools' status words disagree — the two meanings of `origin`, and
@@ -126,6 +182,15 @@
   maps every `covered` inventory record to the tool action that serves it, checked both ways. The
   tables and the JSON are regenerated from the real tool registry, so a tool change that is not
   reflected in the reference fails `npm test`. (#261)
+- 📝 **The repository now has a security policy, a contribution path and issue templates.**
+  `SECURITY.md` says in its first sentence that xezar runs AI agents with shell access on your
+  machine, then draws the line between "working as designed" and "a vulnerability", naming the
+  guard in the code behind each claim. It sends reports to GitHub's private reporting and gives a
+  fallback that discloses nothing. `CONTRIBUTING.md` is the short human path to a merged pull
+  request and says plainly that the `om-*` skills in `SDLC.md` are internal automation an outside
+  contributor does not need. Also added: `CODE_OF_CONDUCT.md` (Contributor Covenant 3.0), bug and
+  feature issue forms, a pull-request template, and a CI badge and project-status note in the
+  README. (#283)
 
 # 0.13.1 (2026-09-10)
 

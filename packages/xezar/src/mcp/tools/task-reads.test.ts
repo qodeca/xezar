@@ -431,13 +431,15 @@ describe.skipIf(isWindows)('task_read — the task, history, Inbox and variant-g
 
   // ---- M-07 / F-02: ownership beyond "the store has it" --------------------------------------
 
-  it('refuses a group, and a task, whose worktree is not this project’s — although the cockpit route still serves them', async () => {
+  it('refuses a group, and a task, whose worktree is not this project’s — and the cockpit’s group route refuses the group too (#288)', async () => {
     const good = task(storeA, 'Variant A', { groupId: 'g1', variant: 'A' });
     const stray = task(storeA, 'Variant B', { groupId: 'g1', variant: 'B' });
     // A hand-edited index can point a record at another project's tree; the group read would
     // compute that tree's diff and the task read would name its path.
     storeA.updateRun(stray, { worktreePath: join(rootB, '.local/xezar/worktrees', stray) });
-    expect(await cockpit(`/api/v1/p/${idA}/groups/g1`)).toMatchObject({ groupId: 'g1' });
+    const route = await apiRequest(app, `/api/v1/p/${idA}/groups/g1`);
+    expect(route.status).toBe(404);
+    expect(await route.text()).not.toContain(rootB);
 
     expect(await refused(socketA, { view: 'group', groupId: 'g1' })).toBe('No such variant group in this project.');
     for (const view of ['task', 'history', 'context', 'handoff']) {

@@ -57,6 +57,7 @@ import {
   checkSkillsUpdate,
   applySkillsUpdate,
   getWorktrees,
+  getMcpApiReference,
   editQueuedMessage,
   markRunSeen,
   markRunUnseen,
@@ -186,6 +187,10 @@ export const queryKeys = {
   /** The worktree management panel (`GET /api/worktrees`, #483). */
   get worktrees() {
     return [queryScope(), 'worktrees'] as const
+  },
+  /** The read-only MCP API reference (`GET /api/v1/mcp/reference`, #284). */
+  get mcpApiReference() {
+    return [queryScope(), 'mcp-api-reference'] as const
   },
   github: (params: { limit?: number } = {}) => [queryScope(), 'github', params.limit ?? null] as const,
   /** Lazy PR checks glyphs (`GET /api/github/checks`, #664), keyed by the sorted PR numbers so the
@@ -1076,6 +1081,17 @@ export function useWorktrees() {
   return useQuery({
     queryKey: queryKeys.worktrees,
     queryFn: ({ signal }) => getWorktrees({ signal }),
+  })
+}
+
+/** The MCP API reference (#284). The tool list is fixed for the life of the server process
+ *  (`listChanged: false`), so it is fetched once: no polling, no topic, no refetch on focus. */
+export function useMcpApiReference() {
+  return useQuery({
+    queryKey: queryKeys.mcpApiReference,
+    queryFn: ({ signal }) => getMcpApiReference({ signal }),
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
   })
 }
 

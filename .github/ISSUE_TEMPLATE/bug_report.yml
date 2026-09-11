@@ -1,0 +1,87 @@
+name: Bug report
+description: Something in xezar does not work as documented.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Security problem?** Do not use this form. Report it privately – see [SECURITY.md](https://github.com/qodeca/xezar/blob/main/SECURITY.md).
+
+        Please remove tokens, keys and private paths from anything you paste below.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you saw. Paste error text as text, not as a screenshot.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: How to reproduce
+      description: The smallest set of steps that shows the problem, starting from `xezar` in a repository.
+      placeholder: |
+        1. cd into a repository and run `xezar`
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: xezar version
+      description: The output of `xezar --version`.
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: macOS 15.5, Ubuntu 24.04, Windows 11 + WSL2, ...
+    validations:
+      required: true
+  - type: input
+    id: node
+    attributes:
+      label: Node version
+      description: The output of `node --version`.
+    validations:
+      required: true
+  - type: dropdown
+    id: backend
+    attributes:
+      label: Agent backend
+      description: Which agent the failing task used. Pick every one that shows the problem.
+      multiple: true
+      options:
+        - claude (Claude Code)
+        - codex (Codex)
+        - opencode (OpenCode)
+        - pi
+        - none – the problem is not in an agent run
+    validations:
+      required: true
+  - type: dropdown
+    id: dry-run
+    attributes:
+      label: Was XEZ_DRY_RUN set?
+      description: "`XEZ_DRY_RUN=1` replaces the real agent CLIs with a bundled mock."
+      options:
+        - "No"
+        - "Yes – XEZ_DRY_RUN=1"
+        - "I do not know"
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Logs, screenshots, the workflow you used, or when the problem started.
+    validations:
+      required: false

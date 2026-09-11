@@ -70,8 +70,10 @@ import type { WorkflowDef } from '../workflows/types.ts';
  * 3. **Server-computed sweeps** (`ownSweep`: archive-finished, read-all, reclaim). The candidate
  *    set comes only from the bound project's own store, so no caller id is involved. Archive and
  *    read-all change only store records and are owned by construction. Reclaim DELETES worktree
- *    directories and its service cannot be told to skip one element, so every worktree-bearing
- *    record must be contained, or the whole sweep is refused before it starts.
+ *    directories, so `ownSweep` refuses the whole sweep unless every worktree-bearing record is
+ *    contained. No production path calls that branch (#288): the enforcer itself
+ *    (`reclaimWorktrees` in `runs/retention.ts`) now leaves out, per record, every worktree it
+ *    cannot prove with `ownRun` / `ownWorktree`, for the route and the unattended sweeps alike.
  */
 
 /** Why a resource was refused. Deliberately coarse: a finer code would be an existence oracle. */
@@ -389,7 +391,13 @@ export function ownAutomationReceipt(scope: OwnershipScope, receiptId: unknown):
  */
 const owners = new WeakMap<object, string>();
 
-/** Record which project created `record`. Called where the record is created. */
+/**
+ * Record which project created `record`. NO production code calls this, nor `ownAutomationCheck`
+ * below (#288): the only reader of a check, `GET /automation-checks/:checkId`, is workspace-level
+ * and has no bound project to compare a stamp against. Nothing is protected by this pair today —
+ * the MCP `get_automation_check` action proves a check's owner another way, by looking its
+ * automation up in the bound project.
+ */
 export function stampOwner(record: object, project: Pick<OwnershipProject, 'root'>): void {
   owners.set(record, canonical(project.root));
 }

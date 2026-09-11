@@ -55,8 +55,9 @@ describe('the worktrees API', () => {
     status: 'done' | 'review' | 'running',
     finishedAt?: string,
   ): Promise<string> {
-    const wt = await createWorktree(repoRoot, id, 'main');
     const rec = store.createRun({ title: `run ${id.slice(0, 4)}`, workflow: 'w', task: 't', steps: [] });
+    // Named after the task itself, as xezar names every worktree: reclaim proves that path (#288).
+    const wt = await createWorktree(repoRoot, rec.id, 'main');
     store.updateRun(rec.id, { status, finishedAt, worktreePath: wt.path, branch: wt.branch });
     return rec.id;
   }

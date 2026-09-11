@@ -9,6 +9,7 @@ import { WorkspaceSemaphore } from '../workspace/semaphore.ts';
 import {
   AUTO_RESUME_GRACE_MS,
   AUTO_RESUME_MISSED_WINDOW_MS,
+  AUTO_RESUME_PROOF_MS,
   MAX_AUTO_RESUMES,
   RunManager,
 } from './run.ts';
@@ -349,6 +350,131 @@ describe('a run stopped by a usage limit resumes itself', () => {
     const settled = manager.accountHolds();
     expect(settled.deadline.size + settled.inFlight.size).toBe(0);
   }, 30_000);
+
+  it('a resumed turn live past the proof window stops holding its account; one still inside it holds (#285)', async () => {
+    // The field shape: the resume fired, its turn is running and has been for hours, and the
+    // counter is still on the record because only a COMPLETED turn retires it. Every other task
+    // on that account sat `queued` behind it with free slots. The hold is for the window where a
+    // resume is testing whether the limit has lifted — a doomed turn dies in well under a second —
+    // not for the whole of a long turn that has already proven it.
+    manager = new RunManager(store, repoRoot);
+    const record = manager.startRun(workflow, { task: 'mock:limit ship it', worktree: false });
+    await settle(record.id);
+    const account = 'claude:default';
+    // Waiting out the limit: a deadline hold, whatever the clock says up to that deadline.
+    expect([...manager.accountHolds().deadline]).toContain(account);
+
+    const startedAt = Date.now();
+    store.addStep(record.id, { id: 'continue-1', name: 'Continue', kind: 'agent' });
+    store.updateStep(record.id, 'continue-1', {
+      status: 'running',
+      startedAt: new Date(startedAt).toISOString(),
+    });
+    store.updateRun(record.id, {
+      status: 'running',
+      currentStepId: 'continue-1',
+      autoResumeAt: undefined,
+      autoResumeAttempts: 1,
+    });
+    // Still testing the window: the hold MUST stand — this is the guard the stampede needed.
+    expect([...manager.accountHolds(startedAt + 1_000).inFlight]).toContain(account);
+    // Live past the proof window: the window is proven, and the hold must lift.
+    const proven = manager.accountHolds(startedAt + AUTO_RESUME_PROOF_MS);
+    expect(proven.deadline.size + proven.inFlight.size).toBe(0);
+    // …while the counter stays for the cap, which is its other reader.
+    expect(store.getRun(record.id)?.autoResumeAttempts).toBe(1);
+
+    // Derived from the durable record, so a restarted engine gives the same two answers.
+    const restarted = new RunManager(store, repoRoot);
+    expect([...restarted.accountHolds(startedAt + 1_000).inFlight]).toContain(account);
+    expect(restarted.accountHolds(startedAt + AUTO_RESUME_PROOF_MS).inFlight.size).toBe(0);
+    await restarted.dispose();
+
+    // A resume still QUEUED for a slot has proven nothing, however long it has waited.
+    store.updateRun(record.id, { status: 'queued', currentStepId: undefined });
+    expect([...manager.accountHolds(startedAt + 10 * AUTO_RESUME_PROOF_MS).inFlight]).toContain(account);
+  }, 30_000);
+
+  it('the queue behind a live resume starts once the proof window passes, and not before (#285)', async () => {
+    // End to end through the real scheduler: one account, a task queued behind a resume. The
+    // queued task must not start while the account waits out the limit, nor while the resume is
+    // testing the window — and must start once the resumed turn has stayed live past the proof
+    // window, WHILE that turn is still running. Nothing else pumps here: the resumed run holds a
+    // slot, so the watchdog stays out of it, and the only wake-up is the proof window's own.
+    const proofMs = 4_000;
+    const first = new RunManager(store, repoRoot);
+    const record = first.startRun(workflow, { task: 'mock:limit resume me' });
+    await settle(record.id);
+    await first.dispose();
+    // The next window opens in two seconds, and the resumed turn is a long one.
+    store.updateRun(record.id, {
+      task: 'mock:slow resume me',
+      autoResumeAt: new Date(Date.now() + 2_000).toISOString(),
+    });
+
+    manager = new RunManager(store, repoRoot, {
+      semaphore: new WorkspaceSemaphore({ initial: { maxParallel: 2 } }),
+      resumeProofMs: proofMs,
+    });
+    const queued = manager.startRun(workflow, { task: 'mock:done fresh work' });
+    // Half one: the account is waiting out the limit, so the fresh task is held.
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(store.getRun(queued.id)?.status).toBe('queued');
+    expect([...manager.accountHolds().deadline]).toContain('claude:default');
+
+    // The resume fires and its turn goes live.
+    await expect
+      .poll(() => store.getRun(record.id)?.steps.find((s) => s.id === 'continue-1')?.status, {
+        timeout: 15_000,
+        interval: 20,
+      })
+      .toBe('running');
+    // Half two: inside the proof window the resume is still testing — the hold stands.
+    expect(store.getRun(queued.id)?.startedAt).toBeUndefined();
+    expect([...manager.accountHolds().inFlight]).toContain('claude:default');
+
+    // …and once it has stayed live past the window, the queue moves while the resume still runs.
+    await expect
+      .poll(() => store.getRun(queued.id)?.startedAt, { timeout: 12_000 })
+      .toBeDefined();
+    expect(store.getRun(record.id)?.status).toBe('running');
+    expect(store.getRun(record.id)?.autoResumeAttempts).toBe(1);
+    await settle(queued.id);
+  }, 60_000);
+
+  it('cancelling a live resume lifts its hold at once — the queue behind it starts (#285)', async () => {
+    // A resumed run that is already `running` has no deadline and no armed timer — `continueRun`
+    // retired both — so cancelling it used to clear the counter without pumping, and the queue
+    // behind it stayed still until some unrelated event happened to pump it.
+    const first = new RunManager(store, repoRoot);
+    const record = first.startRun(workflow, { task: 'mock:limit resume me' });
+    await settle(record.id);
+    await first.dispose();
+    store.addStep(record.id, { id: 'continue-1', name: 'Continue', kind: 'agent' });
+    store.updateStep(record.id, 'continue-1', { status: 'running', startedAt: new Date().toISOString() });
+    store.updateRun(record.id, {
+      status: 'running',
+      currentStepId: 'continue-1',
+      autoResumeAt: undefined,
+      autoResumeAttempts: 1,
+    });
+
+    manager = new RunManager(store, repoRoot, {
+      semaphore: new WorkspaceSemaphore({ initial: { maxParallel: 2 } }),
+    });
+    const queued = manager.startRun(workflow, { task: 'mock:done fresh work' });
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(store.getRun(queued.id)?.status).toBe('queued');
+
+    expect(manager.cancelAutoResume(record.id)).toBe(true);
+    await expect
+      .poll(() => store.getRun(queued.id)?.startedAt, { timeout: 10_000 })
+      .toBeDefined();
+    await settle(queued.id);
+    // The hand-written `running` record is not the engine's — settle it so teardown's straggler
+    // check asks only about runs the engine really owns.
+    store.updateRun(record.id, { status: 'failed' });
+  }, 40_000);
 
   it('lets two resumes on one account both run — they must not hold each other', async () => {
     // The deadlock this exists to prevent, seen live: two tasks hit the limit together, both

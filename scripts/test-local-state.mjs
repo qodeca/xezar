@@ -34,6 +34,18 @@ process.env.TMPDIR = realScratch;
 process.env.TMP = realScratch;
 process.env.TEMP = realScratch;
 
+// The wiring a parent xezar hands ITS agent (`RunManager.agentEnv`): the task's own handoff file,
+// the machine's follow-up inbox, the task id, and the stored env-passthrough list. When a gate runs
+// inside a xezar task, this process inherits all four, and every child a test spawns with
+// `{ ...process.env }` inherits them again — so the dry-run mock agent, which writes to whatever
+// XEZ_HANDOFF_FILE and XEZ_TODOS_FILE name, appended to the REAL task's handoff file and the REAL
+// inbox once per gate run (#267: 124 identical "Follow up: verify the mock change" entries).
+// Deleted here, once, rather than at each spawn site: this file is the one preload every vitest
+// config and both node:test gates load, so a spawn site added tomorrow is covered without anyone
+// remembering to copy a scrub. A test that needs one of these sets it inside its own body.
+export const TASK_BOUND_ENV = ['XEZ_HANDOFF_FILE', 'XEZ_TODOS_FILE', 'XEZ_TASK_ID', 'XEZ_ENV_PASSTHROUGH'];
+for (const name of TASK_BOUND_ENV) delete process.env[name];
+
 // A non-repository fixture must not discover the real checkout above .local and operate on
 // its Git index. Repositories explicitly initialized inside a fixture still resolve normally.
 const ceilings = (process.env.GIT_CEILING_DIRECTORIES ?? '').split(delimiter).filter(Boolean);

@@ -19,6 +19,7 @@ your phone, working your backlog while you're away.
 
 [A look inside](#a-look-inside) · [What xezar does best](#what-xezar-does-best) · [What it solves](#what-it-solves) · [Who it's for](#who-its-for) · [Quick start](#quick-start) · [How it works](#how-it-works) · [Core concepts](#core-concepts) · [Cockpit tour](#cockpit-tour) · [Agent backends](#coding-agent-backends) · [Remote access](#remote-access-host-xezar-on-a-server)
 
+[![CI](https://github.com/qodeca/xezar/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/qodeca/xezar/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/@qodeca/xezar?color=cb3837&logo=npm)](https://www.npmjs.com/package/@qodeca/xezar)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Node 20+](https://img.shields.io/badge/Node-20%2B-339933)
@@ -27,6 +28,10 @@ your phone, working your backlog while you're away.
 ![No database](https://img.shields.io/badge/database-none-success)
 
 </div>
+
+> **Project status: early.** xezar is 0.x and moves fast. This repository opened on 2026-09-07; the
+> code is older and shipped before under the name Cezar. Expect rough edges, and expect breaking
+> changes in minor releases – each one is called out in the [CHANGELOG](CHANGELOG.md).
 
 ---
 
@@ -548,6 +553,7 @@ Useful environment variables:
 | `XEZ_AUTOSAVE=1` | Re-enable the periodic (90 s) autosave commit in task worktrees. Off by default (#471) — turn-end and pre-PR flushes always run, so branches still end complete. Every autosave names its trigger in the commit subject (`xezar autosave (periodic)` vs `(turn end)` / `(run finalize)` / `(pre-PR)`), so the flushes you keep are distinguishable from the timer you disabled. |
 | `XEZ_CLAUDE_BIN=/path/to/claude` | Override which `claude` binary is used. |
 | `XEZ_CODEX_BIN=/path/to/codex` | Override which `codex` binary is used. |
+| `XEZ_CODEX_REASONING=concise` | The reasoning summary Codex is asked for on each turn: `auto` (the default, so the reasoning thread is visible), `concise`, `detailed`, or `none` to opt out. An unrecognised value falls back to `auto`. |
 | `XEZ_OPENCODE_BIN=/path/to/opencode` | Override which `opencode` binary is used. |
 | `XEZ_PI_BIN=/path/to/pi` | Override which `pi` binary is used. |
 | `CLAUDE_CONFIG_DIR`, `CODEX_HOME` | The agents' **own** variables, honoured where the vendor documents one. Setting one moves that agent's **default account** — the config folder xezar discovers, credentials included. A *second* login of the same CLI is deliberately not an environment setting, since one process-wide value cannot differ per project: add it under **Settings → Agent accounts** and pick it per project. |
@@ -570,7 +576,7 @@ Useful environment variables:
 | `XEZ_TITLE_UPDATES=0` | Turn off the live task-title refresh (namer re-runs on each turn end). The Settings → Agents toggle overrides this default. |
 | `XEZ_AUTONAME=0` | Disable ALL LLM task naming (creation + live) — titles stay heuristic (`437: /om-auto-review-pr`). Under `XEZ_DRY_RUN=1` naming is already off unless forced with `XEZ_AUTONAME=1`. |
 | `XEZ_REVIEW_GATE=1` | Turn ON the optional diff-first review gate (#489): a successful, non-autonomous run with changes parks at `review` (Accept / Send back / Draft PR) instead of finishing. Off by default — changed runs settle to `done` with the diff left in the worktree. Only `1` enables. The Settings → Agents toggle overrides this; autonomous runs always skip it. |
-| `XEZ_NO_BANNER=1` | Skip the `open-mercato/skills` banner on `xezar serve` startup. (The cockpit no longer shows a banner — its skills now live on the Skills page's Manage panel — so this env var is the terminal banner's only switch.) |
+| `XEZ_NO_BANNER=1` | Skip the `open-mercato/skills` banner on `xezar serve` startup. That is the default team skills repository — a separate, maintained repository, not a leftover of the rename from Cezar. (The cockpit no longer shows a banner — its skills now live on the Skills page's Manage panel — so this env var is the terminal banner's only switch.) |
 | `VITE_XEZ_API_BASE=http://localhost:4321` | **Build time only**, and only when the cockpit bundle is deployed apart from the service it talks to. Empty (the default) means "the origin that served this page", which is right for both normal cases: the CLI serves the bundle itself, and `npm run dev` proxies `/api` to the local service. A deployment that must be configured without a rebuild can put `<meta name="xez-api-base" content="…">` in the served HTML instead, which wins over this. |
 
 ### Troubleshooting: the agent's shell returns nothing
@@ -750,6 +756,7 @@ never blocks startup):
 ```jsonc
 {
   "skillsRepos": [{ "repo": "open-mercato/skills", "ref": "main" }], // team skills; [] disables
+  // open-mercato/skills is a separate, maintained skills repository, not a leftover of the Cezar rename.
   // Team-skill repos are code-trusted: a skill body becomes an agent system prompt.
   // Only owner/name, https/ssh URLs, or local paths (`/abs`, `./rel`, `~/dir`,
   // `C:\dir`) are accepted — no ext::/fd:: transport helpers. Write a relative
@@ -899,6 +906,18 @@ the server, **Zod** at every boundary, **YAML** for workflows, and a **React 19 
 Vite + Tailwind v4 + shadcn/ui** cockpit shipped pre-built in `packages/xezar/web/dist/` — the
 published package carries the built app, so `npx` users never run a bundler.
 Every module is meant to be read in one sitting.
+
+What lives where under `docs/`, and who each part is for, is mapped in
+[docs/README.md](docs/README.md). `docs/features/` is the internal engineering and decision
+record, not a user guide.
+
+---
+
+## Contributing
+
+Bug reports, ideas and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) is the short path
+from a change to a merged pull request. Report security problems privately, as described in
+[SECURITY.md](SECURITY.md).
 
 ---
 
