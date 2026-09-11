@@ -91,6 +91,8 @@ interface Submission {
  */
 async function fakeOpenCode(directory: string) {
   const submissions: Submission[] = [];
+  /** Set `failPrompts` to answer every submission with a 500 — delivery failing for no nameable reason. */
+  const control = { failPrompts: false };
   const streams = new Set<ServerResponse>();
   const history: unknown[] = [];
   const server: Server = createServer((req: IncomingMessage, res: ServerResponse) => {
@@ -114,6 +116,7 @@ async function fakeOpenCode(directory: string) {
       if (route === 'GET /permission' || route === 'GET /question') return json(200, []);
       if (route === `GET /session/${SESSION}/message`) return json(200, history);
       if (route === `POST /session/${SESSION}/prompt_async`) {
+        if (control.failPrompts) return json(500, { name: 'UnknownError' });
         const body = JSON.parse(raw) as Submission;
         submissions.push(body);
         history.push({ info: { id: `msg_${submissions.length}`, role: 'user' }, parts: body.parts });
@@ -132,6 +135,7 @@ async function fakeOpenCode(directory: string) {
   return {
     baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
     submissions,
+    control,
     /** The event ids each submission carried, from its own `metadata.xezar` marker. */
     delivered: (): string[] => submissions.flatMap((s) => s.parts.flatMap((p) => (p.metadata?.xezar?.rows ?? []).map((key) => key.split('@')[0]!))),
   };
@@ -416,6 +420,121 @@ describe('#309 — push delivery in the running service (A-19 delivery, A-20 no-
     const b = journalRows(c.dataDir).filter((row) => row.kind === 'config.changed').at(-1)!;
     await until('row B to be pushed', () => (fresh.delivered().includes(b.eventId) ? true : undefined));
     expect(fresh.delivered()).toEqual([b.eventId]);
+  }, 60_000);
+
+  it('QA on #311: the first session pushes what arrived before it, and no cursor claims what did not happen — across a restart too', async () => {
+    const c = await cockpit();
+    const oc = await fakeOpenCode(c.root);
+    let service = await serve(c);
+
+    // QA's exact state: a fresh project, a leader attached, two cockpit changes, THEN the first MCP session.
+    expect((await attach(c, oc.baseUrl)).status).toBe(200);
+    expect((await c.human('PUT', '/config', { baseBranch: 'develop' })).status).toBe(200);
+    expect((await c.human('PUT', '/config', { baseBranch: 'main' })).status).toBe(200);
+    const rows = journalRows(c.dataDir).filter((row) => row.kind === 'config.changed');
+    expect(rows.map((row) => row.journalSeq)).toEqual([1, 2]);
+
+    const leader = agent(c.root);
+    const read = okResult(await leader.call('leader_events', { action: 'read' }));
+    // The rows arrived after the leader's record began, so they are owed — and they are pushed.
+    await until('both rows to be pushed', () => (rows.every((row) => oc.delivered().includes(row.eventId)) ? true : undefined));
+    const settled = await until('delivery to settle', async () => {
+      const st = await c.status();
+      return st.available && st.delivery?.state === 'idle' && st.delivery.deliveredSeq === 2 ? st : undefined;
+    });
+    // Delivered: yes, really. Acknowledged: no — nobody called ack. Reacted: no — the fake never answers as a model.
+    expect(settled.available && settled.delivery).toMatchObject({ deliveredSeq: 2, ackedSeq: 0, reactedSeq: 0 });
+    // One acknowledgement: the pull tool's record and the push status say the same thing.
+    expect((read.structuredContent as { position: { ackedSeq: number } }).position.ackedSeq).toBe(0);
+
+    // A restart keeps them agreeing: history stays history, and nothing is invented.
+    await leader.end();
+    service.close();
+    service = await serve(c);
+    const again = agent(c.root);
+    const after = okResult(await again.call('leader_events', { action: 'read' }));
+    const resumed = await until('the new session’s controller', async () => {
+      const st = await c.status();
+      return st.available && st.delivery ? st : undefined;
+    });
+    expect(resumed.available && resumed.delivery).toMatchObject({ deliveredSeq: 2, ackedSeq: 0, reactedSeq: 0 });
+    expect((after.structuredContent as { position: { ackedSeq: number; reactedSeq: number } }).position).toMatchObject({ ackedSeq: 0, reactedSeq: 0 });
+  }, 60_000);
+
+  it('QA on #311: rows the leader acknowledged through leader_events while nothing was attached are not pushed later', async () => {
+    const c = await cockpit();
+    const oc = await fakeOpenCode(c.root);
+    await serve(c);
+
+    // A session owns the project and nothing is attached: a change waits in the journal.
+    const leader = agent(c.root);
+    okResult(await leader.call('leader_events', { action: 'read' }));
+    expect((await c.human('PUT', '/config', { baseBranch: 'develop' })).status).toBe(200);
+    const r = journalRows(c.dataDir).find((row) => row.kind === 'config.changed')!;
+    await until('the controller to hold it', async () => ((await c.status()) as { delivery: { state: string } | null }).delivery?.state === 'disconnected' || undefined);
+
+    // The leader reads it and acknowledges it, by pull — mid-session, after this controller started.
+    const read = okResult(await leader.call('leader_events', { action: 'read' }));
+    okResult(await leader.call('leader_events', { action: 'ack', cursor: (read.structuredContent as { nextCursor: string }).nextCursor }));
+
+    // Now a leader is attached. The acknowledged row is not owed any more; a new one is.
+    expect((await attach(c, oc.baseUrl)).status).toBe(200);
+    expect((await c.human('PUT', '/config', { baseBranch: 'main' })).status).toBe(200);
+    const s2 = journalRows(c.dataDir).filter((row) => row.kind === 'config.changed').at(-1)!;
+    await until('the new row to be pushed', () => (oc.delivered().includes(s2.eventId) ? true : undefined));
+    expect(oc.delivered(), 'a row the leader acknowledged was pushed').toEqual([s2.eventId]);
+    expect(await c.status()).toMatchObject({ delivery: { ackedSeq: r.journalSeq } });
+  }, 60_000);
+
+  it('QA on #311: a leader record created after rows already exist replays none of them, and claims none of them', async () => {
+    const c = await cockpit();
+    const oc = await fakeOpenCode(c.root);
+    let service = await serve(c);
+    expect((await c.human('PUT', '/config', { baseBranch: 'develop' })).status).toBe(200);
+    expect((await c.human('PUT', '/config', { baseBranch: 'main' })).status).toBe(200);
+    service.close();
+    // The leader's record is gone (an upgrade from before it existed, or a person deleted it).
+    rmSync(join(c.dataDir, 'mcp', 'leader-cursors.json'));
+    service = await serve(c);
+
+    expect((await attach(c, oc.baseUrl)).status).toBe(200);
+    const leader = agent(c.root);
+    const read = okResult(await leader.call('leader_events', { action: 'read' }));
+    expect((read.structuredContent as { fresh: boolean; position: unknown }).fresh).toBe(true);
+    // A new leader reads current state; the backlog is not owed, and not pretended to be acknowledged.
+    expect((read.structuredContent as { position: unknown }).position).toEqual({ deliveredSeq: 0, ackedSeq: 0, reactedSeq: 0 });
+    await until('the controller', async () => ((await c.status()) as { delivery: { state: string } | null }).delivery?.state === 'idle' || undefined);
+    expect(await c.status()).toMatchObject({ delivery: { deliveredSeq: 0, ackedSeq: 0, reactedSeq: 0, latestSeq: 2 } });
+
+    expect((await c.human('PUT', '/config', { baseBranch: 'develop' })).status).toBe(200);
+    const next = journalRows(c.dataDir).at(-1)!;
+    await until('the new row to be pushed', () => (oc.delivered().includes(next.eventId) ? true : undefined));
+    expect(oc.delivered()).toEqual([next.eventId]);
+  }, 60_000);
+
+  it('QA on #311: a delivery that keeps failing for no nameable reason is a blocker, never "nothing wrong"', async () => {
+    const c = await cockpit();
+    const oc = await fakeOpenCode(c.root);
+    await serve(c);
+    const leader = agent(c.root);
+    okResult(await leader.call('leader_events', { action: 'read' }));
+    expect((await attach(c, oc.baseUrl)).status).toBe(200);
+
+    oc.control.failPrompts = true;
+    expect((await c.human('PUT', '/config', { baseBranch: 'develop' })).status).toBe(200);
+    const failing = await until('the controller to give up this round', async () => {
+      const st = await c.status();
+      return st.available && st.delivery?.state === 'disconnected' ? st : undefined;
+    });
+    expect(failing.available && failing.blocker).toMatchObject({ code: 'delivery-failing' });
+
+    // It recovers on its own at the next heartbeat, and the blocker goes with it.
+    oc.control.failPrompts = false;
+    const ok = await until('delivery to recover', async () => {
+      const st = await c.status();
+      return st.available && st.delivery?.state === 'idle' && st.delivery.deliveredSeq === st.delivery.latestSeq ? st : undefined;
+    });
+    expect(ok.available && ok.blocker).toBeNull();
   }, 60_000);
 
   it('starts no agent process: `start` and `resume` do not exist, for any client (owner decision on #311)', async () => {

@@ -3,7 +3,7 @@ import type { McpJournalRow, McpLeaderActionInput, McpLeaderBlocker, McpLeaderSe
 import type { ProjectOwnership } from '../workspace/project-owner.ts';
 import { OpenCodeReactionAdapter } from './adapters/opencode.ts';
 import type { EchoGuard } from './echo-guard.ts';
-import { EventController, type CursorAdvance, type EventDispatch, type ReactionAdapter } from './event-controller.ts';
+import { EventController, type CursorAdvance, type EventDispatch, type LeaderRecord, type ReactionAdapter } from './event-controller.ts';
 import type { EventJournal } from './event-journal.ts';
 import type { LeaderActResult, ProjectLeaderPort } from './project-leaders.ts';
 
@@ -83,7 +83,20 @@ const NO_OWNER_SESSION: McpLeaderBlocker = {
   code: 'no-owner-session',
   message:
     'A leader is attached, but no MCP session owns this project yet, so nothing follows the event journal and nothing is delivered. OpenCode connects its xezar MCP server only when it first needs it. Events are kept in the journal meanwhile.',
-  fix: 'Let the attached OpenCode session call a xezar tool once (for example leader_events), so its MCP connection opens; delivery starts from the leader’s last acknowledgement.',
+  fix: 'Let the attached OpenCode session call a xezar tool once (for example leader_events), so its MCP connection opens; it then receives every event it has not acknowledged.',
+};
+
+/**
+ * A session owns the project and a leader is attached, but delivery keeps failing and the adapter
+ * named no reason — a refused request, a dropped connection. Without this the status would read
+ * "nothing wrong" while the controller sits `disconnected` (QA on #311: no field may report success
+ * that did not happen).
+ */
+const DELIVERY_FAILING: McpLeaderBlocker = {
+  code: 'delivery-failing',
+  message:
+    'Events cannot be handed to the attached leader right now; xezar retries every 30 seconds while this MCP session owns the project. Nothing is lost: the events stay in the journal.',
+  fix: 'Check that `opencode serve` is running and answering, or attach the session again.',
 };
 
 /** #309 O-3: a journal that records nothing has nothing to deliver, so a leader would never hear a thing. */
@@ -102,10 +115,10 @@ export interface LeaderDeliveryOptions {
   /** The door's echo guard. Absent (it could not be built): no row is dropped as an echo. */
   readonly guard: Pick<EchoGuard, 'isOwn'> | undefined;
   /**
-   * The leader's acknowledgement as the pull tool records it (`LeaderCursors`, #251) — the one
-   * source of truth the controller resumes and filters by (#332). Absent: only the controller's own.
+   * The leader's acknowledgement record (`LeaderCursors`, #251) — the ONE acknowledgement the
+   * controller resumes by, filters by and reports (#332). Absent: the controller's own.
    */
-  readonly acknowledged?: () => number;
+  readonly leaderRecord?: LeaderRecord;
   readonly warn: (message: string) => void;
   /** Test seam. Production uses the controller's 30 s. */
   readonly heartbeatMs?: number;
@@ -145,7 +158,7 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
       sessionKey,
       adapter: this,
       warn: this.#opts.warn,
-      ...(this.#opts.acknowledged === undefined ? {} : { acknowledged: this.#opts.acknowledged }),
+      ...(this.#opts.leaderRecord === undefined ? {} : { leaderRecord: this.#opts.leaderRecord }),
       ...(this.#opts.heartbeatMs === undefined ? {} : { heartbeatMs: this.#opts.heartbeatMs }),
     });
     if (started.outcome === 'started') this.#controllers.set(sessionKey, started.controller);
@@ -261,10 +274,13 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     const leader = this.#leader;
     if (leader === undefined) return NO_LEADER;
     // Attached, but nobody owns the project: no controller, so nothing is delivered (#331).
-    if (this.#liveController() === undefined) return NO_OWNER_SESSION;
+    const controller = this.#liveController();
+    if (controller === undefined) return NO_OWNER_SESSION;
     const blocker = leader.status().blocker;
-    return blocker
-      ? { code: blocker.code, message: blocker.message, fix: 'Check that `opencode serve` is running in this project and the session id is right, then attach it again.' }
-      : null;
+    if (blocker) {
+      return { code: blocker.code, message: blocker.message, fix: 'Check that `opencode serve` is running in this project and the session id is right, then attach it again.' };
+    }
+    // Failing with no reason the adapter could name is still failing.
+    return controller.state === 'disconnected' ? DELIVERY_FAILING : null;
   }
 }

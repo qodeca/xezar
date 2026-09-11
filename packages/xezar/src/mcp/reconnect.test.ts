@@ -269,7 +269,10 @@ describe('acceptance 3 — a cursor older than retention (A-21, D-09 B-19)', () 
     let clock = T0;
     let journal = openJournal(() => clock);
     let cursors = openCursors(journal);
-    expect(cursors.position().ackedSeq).toBe(10);
+    // The record begins at the head: rows 1–10 are not owed. That is a starting point, not an
+    // acknowledgement the leader made, so it reports none (QA on #311).
+    expect(cursors.owedAfter()).toEqual({ seq: 10, sameEpoch: true });
+    expect(cursors.position()).toEqual({ deliveredSeq: 0, ackedSeq: 0, reactedSeq: 0 });
     journal.close();
 
     // Meanwhile the project kept working, and 15 days later retention (10 000 rows, 14 days) has

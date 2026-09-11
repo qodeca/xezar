@@ -14,6 +14,7 @@ import {
 
 import type { RunStore } from '../runs/store.ts';
 import { atomicTmpPath } from '../workspace/config.ts';
+import type { LeaderRecord } from './event-controller.ts';
 import type { EventJournal } from './event-journal.ts';
 import { runVersion } from './stale-write.ts';
 
@@ -100,6 +101,12 @@ const cursorsFileSchema = z.looseObject({
   epoch: z.string().min(1).max(64),
   deliveredSeq: z.number().int().nonnegative(),
   reactedSeq: z.number().int().nonnegative(),
+  /**
+   * False when `acked` is only where the record BEGAN (a leader with no acknowledgement yet), true once
+   * the leader acknowledged through the tool. Absent in files written before QA on #311: treated as an
+   * acknowledgement, which is what those files meant.
+   */
+  ackedByLeader: z.boolean().optional(),
   /** The acknowledged position: a cursor the journal minted, its seq, and the epoch it counts in. */
   acked: z.object({
     epoch: z.string().min(1).max(64),
@@ -132,11 +139,12 @@ export interface LeaderCursorsOptions {
 /**
  * The leader's delivered / acked / reacted positions for one project, persisted (tmp+rename,
  * `0600`). Written, never required: a missing file is a leader that has never connected, and it
- * starts at the journal head. A corrupt one does the same with ONE warning, set aside as `.corrupt`,
+ * starts at the journal head — recorded as where rows begin to be owed, and reported as nothing
+ * delivered, acknowledged or reacted, because none of that happened. A corrupt one does the same with ONE warning, set aside as `.corrupt`,
  * and the reconnect answer says `fresh: true` so a start from "now" is stated rather than implied.
  * An unwritable directory keeps the positions in memory with one warning; nothing throws.
  */
-export class LeaderCursors {
+export class LeaderCursors implements LeaderRecord {
   readonly path: string;
   #state: CursorsFile;
   #fresh = false;
@@ -173,9 +181,25 @@ export class LeaderCursors {
     const same = this.#state.epoch === this.#journal.epoch;
     return {
       deliveredSeq: same ? this.#state.deliveredSeq : 0,
-      ackedSeq: this.#state.acked.epoch === this.#journal.epoch ? this.#state.acked.seq : 0,
+      // Only an explicit acknowledgement: where a new record began is not one (QA on #311).
+      ackedSeq: this.#state.acked.epoch === this.#journal.epoch && this.#state.ackedByLeader !== false ? this.#state.acked.seq : 0,
       reactedSeq: same ? this.#state.reactedSeq : 0,
     };
+  }
+
+  /**
+   * Where rows start being OWED to the leader — its last acknowledgement, or where its record began —
+   * for push delivery (`LeaderRecord`, #332). A record from a recreated journal owes the new one from
+   * its start: `sameEpoch` false, and the reader states the gap.
+   */
+  owedAfter(): { seq: number; sameEpoch: boolean } {
+    const sameEpoch = this.#state.acked.epoch === this.#journal.epoch;
+    return { seq: sameEpoch ? this.#state.acked.seq : 0, sameEpoch };
+  }
+
+  /** The last row the leader acknowledged through the tool; 0 when it never has (`LeaderRecord`). */
+  acknowledged(): number {
+    return this.position().ackedSeq;
   }
 
   /** Non-model: the transport handed rows through `seq` to the client (D-05 § 6.6). Monotonic. */
@@ -216,6 +240,7 @@ export class LeaderCursors {
     this.#state = {
       ...this.#state,
       deliveredSeq: Math.max(this.#state.deliveredSeq, seq),
+      ackedByLeader: true,
       acked: { epoch, seq, cursor },
     };
     this.#save();
@@ -233,7 +258,10 @@ export class LeaderCursors {
       this.#fresh = true;
       const seq = this.#journal.latestSeq;
       const epoch = this.#journal.epoch;
-      return { v: 1, projectId, epoch, deliveredSeq: seq, reactedSeq: seq, acked: { epoch, seq, cursor: this.#journal.headCursor() } };
+      // The record BEGINS at the head: rows before it are not owed (F-21, a new leader reads current
+      // state). That is a starting point, not a delivery, an acknowledgement or a reaction, so all
+      // three report 0 until they really happen (QA on #311).
+      return { v: 1, projectId, epoch, deliveredSeq: 0, reactedSeq: 0, ackedByLeader: false, acked: { epoch, seq, cursor: this.#journal.headCursor() } };
     };
     if (!existsSync(this.path)) {
       const state = atHead();

@@ -89,11 +89,14 @@ import { McpJournalCursorError, type EventJournal } from './event-journal.ts';
  * ## Where its state lives
  *
  * `<dataDir>/mcp/event-controller.json`, beside the journal: `{ v, projectId, epoch, deliveredSeq,
- * ackedSeq, reactedSeq }`, written by atomic tmp+rename after every change (D-05 N4: persisted per
- * delivery, not batched). Written, never required: no file means a project whose first session
- * starts at the journal head (nothing was ever owed to a leader that did not exist; it reads current
- * state, F-21); an unreadable file starts at the head WITH a stated gap; an unwritable directory
- * keeps the cursors in memory with one warning.
+ * ackedSeq, reactedSeq, floorSeq }`, written by atomic tmp+rename after every change (D-05 N4:
+ * persisted per delivery, not batched). Written, never required. With a leader record (production)
+ * the file keeps only real history — what was pushed and what reacted — and WHERE pushing starts
+ * comes from the leader's record. Standalone, no file means a first session that starts at the
+ * journal head (nothing was ever owed to a leader that did not exist; it reads current state, F-21),
+ * and an unreadable file starts at the head WITH a stated gap. Either way no reported cursor is ever
+ * set to a position nothing reached (QA on #311): a start is a floor, not a delivery. An unwritable
+ * directory keeps the cursors in memory with one warning.
  */
 
 /** Heartbeat and liveness period. B-17 / D-05 N6, reusing the hub's `HEARTBEAT_MS` (`server/ws.ts`). */
@@ -157,6 +160,18 @@ export interface CursorAdvance {
   seq: number;
 }
 
+/** The leader's acknowledgement record as the controller reads it. `LeaderCursors` implements it. */
+export interface LeaderRecord {
+  /**
+   * Rows after `seq` are owed to the leader: its last acknowledgement, or — for a leader with no
+   * acknowledgement yet — where its record began (#251: the journal head the first time xezar kept
+   * one). `sameEpoch` false: the record counts in a journal that has since been recreated.
+   */
+  owedAfter(): { seq: number; sameEpoch: boolean };
+  /** The last row the leader acknowledged with an explicit tool call; 0 when it never has. */
+  acknowledged(): number;
+}
+
 export type EventControllerStart =
   | { outcome: 'started' | 'inert'; controller: EventController }
   | { outcome: 'refused'; error: McpProjectOccupiedError | McpSessionExpiredError };
@@ -171,13 +186,13 @@ export interface EventControllerOptions {
   /** The client's reaction adapter. Absent: no client is configured, and the controller is inert. */
   adapter?: ReactionAdapter;
   /**
-   * The leader's acknowledgement, owned ELSEWHERE — in production the pull tool's `LeaderCursors`
-   * (`leader_events ack`, #251), the one record of what the leader has taken into account (#332).
-   * When given, the controller reads it when a session starts and before every dispatch, and never
-   * pushes a row at or below it; `ack()` is then not the way the leader acknowledges. It answers the
-   * seq in the CURRENT journal epoch (0 when it counts in another), and is clamped to the head.
+   * The leader's own record of what it has taken into account — in production the pull tool's
+   * `LeaderCursors` (#251), the ONE acknowledgement (#332). When given, the controller keeps no rival
+   * cursor: it pushes only rows after `owedAfter()`, read when a session starts AND before every
+   * dispatch, and reports `acknowledged()` as `ackedSeq`. Absent: the controller's own cursor file
+   * and `ack()` stand in (#107's standalone shape, and its tests).
    */
-  acknowledged?: () => number;
+  leaderRecord?: LeaderRecord;
   /** Test seams. Production uses the defaults. */
   heartbeatMs?: number;
   random?: () => number;
@@ -192,6 +207,8 @@ const savedSchema = z.object({
   deliveredSeq: z.number().int().nonnegative(),
   ackedSeq: z.number().int().nonnegative(),
   reactedSeq: z.number().int().nonnegative(),
+  /** Where pushing resumes. Absent in files written before #332's fix: the ack stood in for it. */
+  floorSeq: z.number().int().nonnegative().optional(),
 });
 type Saved = z.infer<typeof savedSchema>;
 
@@ -204,7 +221,7 @@ export class EventController {
   readonly #ownership: EventControllerOptions['ownership'];
   readonly #sessionKey: string;
   readonly #adapter: ReactionAdapter | undefined;
-  readonly #acknowledged: (() => number) | undefined;
+  readonly #leaderRecord: LeaderRecord | undefined;
   readonly #statePath: string;
   readonly #heartbeatMs: number;
   readonly #random: () => number;
@@ -215,9 +232,17 @@ export class EventController {
   #state: EventControllerState;
   /** Read strictly after this cursor next; `undefined` reads from the oldest retained row. */
   #position: string | undefined;
+  /** The newest row really handed to the client, in this or an earlier session of this epoch. */
   #delivered = 0;
+  /** An explicit acknowledgement through `ack()` — only when there is no leader record. */
   #acked = 0;
+  /** The newest row a model turn was really seen to carry. */
   #reacted = 0;
+  /**
+   * Rows at or below this are not owed to this session, so they are never pushed. It is WHERE PUSHING
+   * STARTS, not something that happened, so no status field ever reports it (#332, QA on #311).
+   */
+  #floor = 0;
   /** The newest row this session has handed to `deliver`, delivered or still in flight. */
   #handedOut = 0;
   #recovery: EventRecovery | undefined;
@@ -237,7 +262,7 @@ export class EventController {
     this.#ownership = opts.ownership;
     this.#sessionKey = opts.sessionKey;
     this.#adapter = opts.adapter;
-    this.#acknowledged = opts.acknowledged;
+    this.#leaderRecord = opts.leaderRecord;
     this.#statePath = join(dirname(opts.journal.rowsPath), 'event-controller.json');
     this.#heartbeatMs = opts.heartbeatMs ?? EVENT_CONTROLLER_HEARTBEAT_MS;
     this.#random = opts.random ?? Math.random;
@@ -282,8 +307,8 @@ export class EventController {
     return {
       state: this.#state,
       deliveredSeq: this.#delivered,
-      // The leader's acknowledgement as it stands now, even between dispatches (#332).
-      ackedSeq: Math.max(this.#acked, this.#externalAck()),
+      // Only an explicit acknowledgement, as its owner records it now (#332).
+      ackedSeq: this.#ackedNow(),
       reactedSeq: this.#reacted,
       latestSeq: this.#journal.latestSeq,
     };
@@ -300,6 +325,7 @@ export class EventController {
     if (journalSeq <= this.#acked) return { status: 'unchanged', seq: this.#acked };
     if (journalSeq > this.#journal.latestSeq) return { status: 'ahead', seq: this.#acked };
     this.#acked = journalSeq;
+    this.#floor = Math.max(this.#floor, journalSeq);
     this.#persist();
     return { status: 'advanced', seq: this.#acked };
   }
@@ -394,7 +420,7 @@ export class EventController {
       for (;;) {
         if (!this.#stillOwner()) return;
         // The leader may have acknowledged through the pull tool since the last dispatch (#332).
-        this.#syncAck();
+        this.#syncFloor();
         const next = this.#next();
         if (next === undefined) return;
         if (next.lastSeq !== undefined) this.#handedOut = Math.max(this.#handedOut, next.lastSeq);
@@ -414,7 +440,8 @@ export class EventController {
         this.#state = 'idle';
         this.#position = next.nextCursor;
         this.#recovery = undefined;
-        if (next.lastSeq !== undefined) this.#delivered = next.lastSeq;
+        // A redelivery (at-least-once) never lowers what was already handed over.
+        if (next.lastSeq !== undefined) this.#delivered = Math.max(this.#delivered, next.lastSeq);
         this.#persist();
       }
     } finally {
@@ -440,8 +467,8 @@ export class EventController {
         this.#recovery = this.#gap();
         continue;
       }
-      // Rows the leader already acknowledged are not owed again (a resumed session starts here).
-      const events = page.events.filter((row) => row.journalSeq > this.#acked);
+      // Rows at or below the floor are not owed (the leader acknowledged them, or they predate it).
+      const events = page.events.filter((row) => row.journalSeq > this.#floor);
       if (events.length === 0 && page.events.length > 0) {
         this.#position = page.nextCursor;
         continue;
@@ -513,57 +540,77 @@ export class EventController {
     this.#release();
   }
 
-  /** Where a starting controller reads from: after the last ACK, or the head for a first session. */
+  /**
+   * Where a starting controller reads from, and what it reports. The two are kept apart, because
+   * conflating them is how a first session once reported rows as delivered, acknowledged and
+   * reacted to that never reached anyone (QA on #311, D-05 § 6.6):
+   * - REPORTED cursors come only from things that happened: `deliveredSeq` and `reactedSeq` from
+   *   this file's record of real pushes and turns in the SAME journal epoch (0 otherwise), and
+   *   `ackedSeq` from an explicit acknowledgement.
+   * - The FLOOR is where pushing resumes: with a leader record, after what the leader is owed
+   *   (`owedAfter`); standalone (#107), after the file's last ack, or the head for a first session.
+   */
   #resume(): void {
     const journal = this.#journal;
-    let saved = this.#load();
-    if (saved === 'absent' || saved === 'unreadable') {
-      this.#position = journal.headCursor();
-      this.#delivered = this.#acked = this.#reacted = journal.latestSeq;
-      if (saved === 'unreadable') this.#recovery = this.#gap();
-      this.#persist();
-      return;
-    }
+    const saved = this.#load();
+    const own = typeof saved === 'object' && saved.epoch === journal.epoch ? saved : undefined;
+    this.#delivered = own ? Math.min(own.deliveredSeq, journal.latestSeq) : 0;
+    this.#reacted = own ? Math.min(own.reactedSeq, this.#delivered) : 0;
+    this.#acked = own && this.#leaderRecord === undefined ? Math.min(own.ackedSeq, journal.latestSeq) : 0;
     const firstRetained = journal.oldestSeq ?? journal.latestSeq + 1;
-    // The leader's own acknowledgement outranks the one this file remembers (#332): a new session
-    // owes only what the leader has NOT taken into account, however it acknowledged it.
-    const external = saved.epoch === journal.epoch ? this.#externalAck() : 0;
-    if (external > saved.ackedSeq) saved = { ...saved, ackedSeq: external };
-    if (saved.epoch !== journal.epoch || saved.ackedSeq > journal.latestSeq || saved.ackedSeq < firstRetained - 1) {
-      // The journal was recreated, or retention evicted rows the leader never acknowledged: they are
-      // gone, so the gap is stated and replay starts at the oldest row that still exists.
-      this.#position = undefined;
-      this.#delivered = this.#acked = this.#reacted = firstRetained - 1;
-      this.#recovery = this.#gap();
-      this.#persist();
-      return;
-    }
-    // A new session has received nothing yet: redeliver everything after the last ack (at-least-once).
     this.#position = undefined;
-    this.#acked = saved.ackedSeq;
-    this.#delivered = saved.ackedSeq;
-    this.#reacted = Math.min(saved.reactedSeq, saved.ackedSeq);
-  }
-
-  /** The external acknowledgement, clamped to what this journal holds; 0 when there is none. */
-  #externalAck(): number {
-    if (this.#acknowledged === undefined) return 0;
-    let seq: number;
-    try {
-      seq = this.#acknowledged();
-    } catch {
-      return 0; // an unreadable source acknowledges nothing: at-least-once, never a skipped row
+    let gap: boolean;
+    if (this.#leaderRecord !== undefined) {
+      // One acknowledgement (#332): owed is what the leader's own record says, never this file.
+      const owed = this.#owedAfter();
+      this.#floor = owed.sameEpoch ? owed.seq : 0;
+      gap = !owed.sameEpoch || this.#floor < firstRetained - 1;
+    } else if (saved === 'absent' || saved === 'unreadable') {
+      // Standalone first session: nothing was owed to a leader that did not exist; it reads current state (F-21).
+      this.#floor = journal.latestSeq;
+      this.#position = journal.headCursor();
+      gap = saved === 'unreadable';
+    } else {
+      this.#floor = own ? Math.max(own.ackedSeq, own.floorSeq ?? own.ackedSeq) : 0;
+      gap = own === undefined || this.#floor > journal.latestSeq || this.#floor < firstRetained - 1;
     }
-    return Number.isSafeInteger(seq) && seq > 0 ? Math.min(seq, this.#journal.latestSeq) : 0;
+    if (gap) {
+      // Rows this session was owed are gone (journal recreated, or evicted unacknowledged): say so, and
+      // resume at the oldest row that still exists — or, for an unreadable file, at the head.
+      if (this.#position === undefined) this.#floor = Math.min(Math.max(this.#floor, 0), firstRetained - 1);
+      this.#recovery = this.#gap();
+    }
+    this.#persist();
   }
 
-  /** Take the leader's acknowledgement from its owner. Monotonic: it never lowers anything. */
-  #syncAck(): void {
-    const seq = this.#externalAck();
-    if (seq <= this.#acked) return;
-    this.#acked = seq;
-    // A row the leader has taken into account is not owed, so it is not outstanding either.
-    this.#delivered = Math.max(this.#delivered, seq);
+  /** The leader record's owed-after position, clamped to this journal; nothing readable owes everything. */
+  #owedAfter(): { seq: number; sameEpoch: boolean } {
+    try {
+      const owed = this.#leaderRecord!.owedAfter();
+      const seq = Number.isSafeInteger(owed.seq) && owed.seq > 0 ? Math.min(owed.seq, this.#journal.latestSeq) : 0;
+      return { seq, sameEpoch: owed.sameEpoch };
+    } catch {
+      return { seq: 0, sameEpoch: true }; // an unreadable record owes everything retained: at-least-once, never a skipped row
+    }
+  }
+
+  /** The explicit acknowledgement as its owner records it now; 0 when there is none. */
+  #ackedNow(): number {
+    if (this.#leaderRecord === undefined) return this.#acked;
+    try {
+      const seq = this.#leaderRecord.acknowledged();
+      return Number.isSafeInteger(seq) && seq > 0 ? Math.min(seq, this.#journal.latestSeq) : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  /** Raise the floor to what the leader's record says it is owed after. Monotonic; reports nothing. */
+  #syncFloor(): void {
+    if (this.#leaderRecord === undefined) return;
+    const owed = this.#owedAfter();
+    if (!owed.sameEpoch || owed.seq <= this.#floor) return;
+    this.#floor = owed.seq;
     this.#persist();
   }
 
@@ -590,7 +637,7 @@ export class EventController {
     } catch {
       /* reported below */
     }
-    this.#warn(`[xez] MCP event controller state for project ${this.projectId} is unreadable — starting at the journal head with a stated gap`);
+    this.#warn(`[xez] MCP event controller state for project ${this.projectId} is unreadable — its cursors restart at 0${this.#leaderRecord ? '' : ', pushing from the journal head with a stated gap'}`);
     return 'unreadable';
   }
 
@@ -602,6 +649,7 @@ export class EventController {
       deliveredSeq: this.#delivered,
       ackedSeq: this.#acked,
       reactedSeq: this.#reacted,
+      floorSeq: this.#floor,
     };
     const tmp = `${this.#statePath}.tmp`;
     try {

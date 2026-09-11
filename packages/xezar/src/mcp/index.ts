@@ -101,8 +101,8 @@ export async function startMcpService(opts: StartMcpServiceOptions): Promise<Mcp
         journal: parts.journal,
         ownership,
         guard: parts.guard,
-        // One acknowledgement (#332): the controller resumes after what the leader acked through leader_events.
-        ...(parts.cursors ? { acknowledged: () => parts.cursors!.position().ackedSeq } : {}),
+        // One acknowledgement (#332): the leader's pull record is what push resumes by, filters by and reports.
+        ...(parts.cursors ? { leaderRecord: parts.cursors } : {}),
         warn,
         ...(opts.leader?.heartbeatMs === undefined ? {} : { heartbeatMs: opts.leader.heartbeatMs }),
       })
