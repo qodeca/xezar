@@ -1,3 +1,85 @@
+# Unreleased
+
+## 🐛 Fixes
+- 🐛 **A laptop that changes networks no longer locks the cockpit out of its own data.** A
+  writer claim records the hostname that wrote it, and a dead PID was reclaimable only when that
+  hostname still matched — so renaming a machine (`.local` to `.lan` on a different network is
+  enough) turned the machine's own leftover claim into a `foreign-host writer claim` that only a
+  hand-deleted runtime file could clear. A claim now also carries an opaque, hashed **platform
+  machine id**, and when that id matches, the recorded hostname is display-only. No file to create,
+  migrate or repair: the id is read from the host (`IOPlatformUUID`, `/etc/machine-id`,
+  `MachineGuid`), and a host that cannot identify itself falls back to exactly today's hostname
+  rule. The change is one-way — identity can turn a refusal into a reclaim, never the reverse — so
+  a genuinely foreign live claim is refused exactly as before, and that one-way promise is about
+  the scan of OTHER processes' claims. The second place the hostname was load-bearing — a process
+  re-checking its OWN claim — is fixed differently rather than by the same rule: it now identifies
+  a claim by process id and machine and never by hostname at all, so a laptop that changes network
+  while `xez serve` is running no longer refuses itself, and a host that cannot name itself falls
+  back to the process id alone. Claims already on disk
+  keep their old meaning, which means one stale claim may still block once after upgrading; the
+  refusal now names the file, both hostnames and the PID so clearing it is one obvious step. (#199)
+- 🐛 **A shut-down `RunManager` can no longer be writing into a data root its owner has
+  finished with.** `enforceRetention` was fired as an untracked promise, so `dispose()` could
+  resolve while a worktree-retention sweep was still spawning `git worktree remove` inside the
+  repository — the guarantee `dispose()` documents, missing at one of its call sites. The sweep is
+  now enrolled in the set `dispose()` awaits, re-checks the disposed flag before it spawns and
+  again before every directory it removes, and `pump()` stops after dispose instead of re-arming
+  from records the teardown just cleared. Removing a project from Settings gets the same
+  guarantee end to end: tearing a project context down now waits for its manager before closing
+  the store, and `DELETE /projects/:id` waits for that — previously the promise was dropped, so
+  a sweep could still stamp records into a store nobody owned and a quick re-add could see stale
+  state overwrite fresh. A new `quiesce()` (cancel everything live, wait for the bodies, then
+  dispose) is the stop-then-dispose helper several tests were hand-rolling three different ways;
+  while it drains, the scheduler starts nothing new, and a run that has been accepted but has not
+  registered yet — the window a Continue spends re-materializing its worktree — can now be
+  cancelled instead of running an agent turn nobody could stop. Two visible consequences of that
+  window counting as active: `Cancel` reports `cancelled: true` for a task caught mid-Continue
+  where it used to report `false` and do nothing, and Create PR, Remove worktree, Delete and Pick
+  variant refuse for the few hundred milliseconds it lasts instead of acting on a task that is
+  rebuilding its worktree. Removing a project also answers within a few seconds now even when the
+  git it is waiting on is wedged, rather than leaving the request hanging. (#200)
+- 🐛 **Cancel now stops a task that is in the middle of starting its agent, instead of leaving
+  it running for good.** For the fraction of a second between a step beginning and its agent
+  session actually being up, `Cancel` marked the task cancelled and then reached a session that
+  did not exist yet — so nothing was delivered. The agent started anyway, and because a cancelled
+  task is not allowed to hand the ball back to you, the task neither finished nor parked: it sat
+  there running, with a live agent process, until the cockpit was restarted. The cancellation is
+  now handed to the session the instant it comes up, so the task stops within milliseconds
+  whichever side of that line the click lands on. Same hole, same fix, for a task resumed with
+  Continue. It also unwedges teardown: closing a project (or a test's cleanup) waits for the tasks
+  it just cancelled, and one undeliverable cancellation was enough to make that wait never end —
+  reproduced as a 90-second timeout on CI. (#199)
+
+- 🐛 **`xezar run` finishes when the task finishes, instead of sitting there for another
+  minute.** The headless run printed `run done` and then stayed alive — up to 60 seconds — because
+  the background team-skills cache warm it had kicked off was still waiting on `git clone`/`git
+  fetch` over the network, and a running git child holds the process open. The command already
+  had its answer and had already declined to use that clone's result, so the wait bought nothing
+  and, on a slow network, looked exactly like a hang. A remote git started by the skills cache no
+  longer keeps a process alive past its own work; a clone that is still running when a one-shot
+  command is done is dropped and re-attempted next time, leaving no half-built cache behind. The
+  cockpit (`xezar serve`) is unaffected — it stays up for the whole clone as before — and nothing
+  about the command's exit code changes. (#249)
+- 🐛 **Removing a project while it is still opening now actually removes it.** Opening a project
+  crosses several steps — its store, a worktree sweep, crash recovery — and a removal that landed
+  inside that window tore down nothing, because teardown only knew about projects that had
+  finished opening. The half-open project then finished and installed itself anyway, so every
+  screen and API route for the removed project kept working on top of an open store this process
+  still owned. A project that is opening is now tracked as belonging to a specific registration:
+  if it is removed first, the work in progress is closed instead of published, and if it is removed
+  and added again, the new one gets its own fresh state rather than inheriting the old one's.
+  Removing also waits for an opening project to finish before checking for running tasks, so a
+  project that is at that moment resuming tasks after a restart is refused with the usual "finish
+  them first" message instead of being removed out from under them. (#200)
+
+- 🐛 **`auto-resume.test.ts` stopped deleting its own repository out from under two live
+  runs.** `startedAt` is stamped before `getRepoInfo`, `createWorktree` and the agent spawn, so a
+  poll that waits for it returns with runs still mid-spawn; the teardown then raced `git worktree
+  add` and failed as `ENOTEMPTY` in its own cleanup. Teardown now cancels, drains, disposes,
+  flushes and only then removes — and when a run is still live it leaks the temp directory and
+  fails saying so, rather than letting the delete report a fault it did not cause. The queue-hold
+  assertion also gained the settle guard its mirror already had. (#200)
+
 # 0.13.1 (2026-09-10)
 
 ## Highlights

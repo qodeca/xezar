@@ -165,7 +165,7 @@ describe('workspace projects API', () => {
       const scoped = await apiRequest(makeApp({ contexts }), `/api/v1/p/${registered.id}/repo`);
       expect(scoped.status).toBe(200);
       expect(contexts.peek(registered.id)?.root).toBe(await realpath(registeredRoot));
-      contexts.disposeAll();
+      await contexts.disposeAll();
     });
 
     it('pins flagged reads to the boot project without pruning stored projects', async () => {
@@ -458,7 +458,7 @@ describe('workspace projects API', () => {
         other.id,
       ]);
       expect(contexts.peek(other.id)).toBeUndefined();
-      contexts.disposeAll();
+      await contexts.disposeAll();
     });
 
     const del = async (id: string, over: Partial<ServerDeps> = {}) => {
@@ -534,7 +534,50 @@ describe('workspace projects API', () => {
       expect(allowed.status).toBe(200);
       // The store/manager handles are dropped with the entry (step 2.1's dispose).
       expect(contexts.peek(other.id)).toBeUndefined();
-      contexts.disposeAll();
+      await contexts.disposeAll();
+    });
+
+    it('waits for a context still opening before counting its runs, so a project mid-open cannot be removed out from under recovery', async () => {
+      const other = await registerProject(otherRoot);
+      // A build parked after it has read the registry — the window in which `peek()` answers
+      // "nothing built" for a project that is at this moment opening its store and recovering.
+      let release!: () => void;
+      const parked = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const contexts = new ProjectContexts({
+        listProjects: async () => {
+          const snapshot = await listProjects();
+          await parked;
+          return snapshot;
+        },
+      });
+      // `manager.recover()` re-queues or resumes every live-looking row a crashed session left,
+      // which is why a project mid-build is not a project with no runs. Standing in for that at
+      // the moment of publication keeps the case off recovery's own timing: the run exists exactly
+      // when the running-tasks guard can first see it.
+      contexts.onContextBuilt((ctx) => {
+        ctx.store.createRun({ title: 'recovered', workflow: 'quick-task', task: 'x', steps: [] });
+      });
+
+      const opening = contexts.context(other.id);
+      const removal = del(other.id, { contexts });
+      // Released on a timer rather than immediately, because the removal has to REACH the guard
+      // while the build is still in flight — that is the race. The margin only fails in the loud
+      // direction: a machine slow enough to miss it fails this case, it never passes by accident.
+      const timer = setTimeout(release, 150);
+
+      const { status, body } = await removal;
+      clearTimeout(timer);
+      expect(status).toBe(409);
+      expect(body.runningTasks).toBe(1);
+      expect(body.error).toMatch(/running task/);
+      // A refused removal is a no-op: still registered, and the context it was still opening is
+      // now open and usable.
+      expect((await getProjects()).projects.map((p) => p.id)).toContain(other.id);
+      expect(contexts.peek(other.id)).toBeDefined();
+      await opening;
+      await contexts.disposeAll();
     });
 
     it('404s an unknown id and a malformed one, without touching the registry', async () => {

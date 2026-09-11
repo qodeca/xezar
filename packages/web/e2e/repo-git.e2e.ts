@@ -77,10 +77,46 @@ describe('the repo view against the live dry-run server', () => {
         `[...document.querySelectorAll('[data-slot="repo-changes"] h2')].some((h) => h.textContent === 'Working tree clean')`,
       )
     } else {
+      // The file TREE is the tier-independent enumeration: pure presentation over the same
+      // payload, directories open by default, never windowed — so one node per changed file
+      // holds however the diff beside it chooses to render.
       browser.waitForFunction(
-        `document.querySelectorAll('[data-slot="diff-file"]').length === ${changes.files.length}`,
+        `document.querySelectorAll('[data-slot="tree-file"]').length === ${changes.files.length}`,
       )
       expect(browser.count('[data-slot="changes-tree"]')).toBe(1)
+
+      // The diff cards are the same <Diff> facade the commit view below uses, and WHICH tier
+      // it renders depends on how big this checkout's working tree happens to be — which no
+      // spec controls. Asserting "one card per changed file" unconditionally was only ever
+      // true by luck: above DIFF_VIRTUALIZE_THRESHOLD rendered rows the cards go through
+      // virtua, which bounds the DOM, so the count can never reach the changeset size and the
+      // assertion waits 25s for a number the component is designed never to produce. An
+      // ordinary feature branch is enough to cross it — 23 dirty files / 2,190 rows did.
+      // So assert per tier, reading the mode the component itself published.
+      browser.waitForFunction(`document.querySelector('[data-slot="diff-files"]') !== null`)
+      const virtualized =
+        String(
+          browser.evaluate(
+            `document.querySelector('[data-slot="diff-files"]').getAttribute('data-virtualized')`,
+          ),
+        ) === 'true'
+      browser.waitForFunction(`document.querySelectorAll('[data-slot="diff-file"]').length > 0`)
+      if (virtualized) {
+        // Windowed: some cards, never more than the changeset. Deliberately a looser bound
+        // than the commit case's `toBeLessThan` below — a commit in this repo is a many-file
+        // squash merge, but a working tree can be two enormous files, which crosses the ROW
+        // threshold while still fitting every card in the window. That the window bounds the
+        // DOM at all is pinned by src/components/diff/diff-virtualize.test.tsx; what this
+        // spec owes is that the view tells the API's story, and the tree above says that.
+        const rendered = browser.count('[data-slot="diff-file"]')
+        expect(rendered).toBeGreaterThan(0)
+        expect(rendered).toBeLessThanOrEqual(changes.files.length)
+      } else {
+        // Flat: every file card is in the DOM, one per changed file.
+        browser.waitForFunction(
+          `document.querySelectorAll('[data-slot="diff-file"]').length === ${changes.files.length}`,
+        )
+      }
     }
 
     browser.screenshot(`${artifactsDir}/repo-git-desktop.png`)
