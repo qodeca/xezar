@@ -13,7 +13,7 @@ Related specification: [Built-in project leader and standard process kit](../bui
 
 ## 1. Goal and value
 
-An external AI model running in Claude Code, Codex, or OpenCode (all three are required initial clients) acts as project leader and operates Xezar through MCP. A human continues working in the cockpit. Both use the same state, business logic, rules, and permissions.
+An external AI model running in Claude Code, Codex, OpenCode, or pi (all four are required initial clients; pi needs the third-party `pi-mcp-adapter` extension, because pi itself ships no MCP support) acts as project leader and operates Xezar through MCP. A human continues working in the cockpit. Both use the same state, business logic, rules, and permissions.
 
 The value is end-to-end project coordination without manually clicking through the leader's instructions: organizing work, delegating, responding to blockers, assessing results, and handing work to the next stage. Scope includes **every project action available to the leader in the UI**, including configuration, work organization, and execution management. A “start task / read status” toolset alone does not meet the goal.
 
@@ -65,7 +65,7 @@ Excluded: managing multiple projects, their registry, other projects' tasks, glo
 | F-14 | Xezar MUST automatically write local connection configuration inside the bound project's `.local/xezar/`. The user configures the leader application once to use it. Not all applications automatically discover that file. Its name, format, and creation trigger remain open. |
 | F-15 | Connection data must not require pasting into chat. Any credentials remain local and outside Git; they must not enter history, tool responses, or event logs. |
 | F-16 | The server MUST reject global, foreign-project, expired-owner and otherwise invalid operations even when a client knows identifiers or tool names. Catalog filtering and prompt text do not replace enforcement. |
-| F-17 | Version one MUST run locally with client and Xezar on the same machine. Claude Code, Codex and OpenCode are required initial clients; validated adapters may be necessary for proactive reaction. Remote access is out of scope. |
+| F-17 | Version one MUST run locally with client and Xezar on the same machine. Claude Code, Codex, OpenCode and pi are required initial clients; pi is supported through the `pi-mcp-adapter` extension, which its one-time setup installs. Validated adapters may be necessary for proactive reaction. Remote access is out of scope. |
 | F-18 | Exactly one active logical MCP client/session may own a project. UI stays concurrent; different projects may have different clients. Reject a second client with a protocol/transport-compliant project-occupied error. Multiple requests/streams of the same logical owner are not additional clients. No manual disconnect UI is added. |
 | F-19 | Detect confirmed process/channel closure and use background liveness checks without model turns to release occupancy after confirmed termination or expiry. Model silence and one HTTP/SSE ending are not session death. After expiry the old client must reconnect; no two owners can mutate. Lease/fencing/timeouts remain design details. |
 | F-20 | Long operations MUST be asynchronous: return acceptance and an operation/task ID, then automatically deliver significant events and enable client/model reaction without continuous model polling. Delivery to an application and starting a model turn are separately verified outcomes. |
@@ -204,7 +204,7 @@ Shared fixture: projects A and B, separate tasks, groups, messages, workflows, f
 | A-20 / O | UI open and leader event feed connected | Mutate through MCP, then make significant human changes in UI | UI updates without reload; human changes reach leader. Reconnect reconciles. No recursive leader loop from operation echoes, logs, tokens or visual changes. | F-13, F-20–21 |
 | A-21 / O | Events pending while client offline | Reconnect with valid/old cursor and duplicates/out-of-order events | Outstanding significant events plus current state delivered; gaps explicit and recoverable. No duplicate decision/effect. Retention is documented from design, not assumed. | F-21; N-10 |
 | A-22 / O | Global settings and mandatory quality controls exist | Attempt global admin or weakening gates/acceptance, including via an approval request | Only safe effective reads allowed; no secrets/foreign identities. Weakening is prohibited, not an approval option. Solution repaired or blocker reported. | F-12, F-22 |
-| A-23 / O | Native client or built-in leader owns P | Attempt to start the other; test three clients on local-only setup | Same exclusive owner rule applies; handover requires old ownership to end, no covert second leader. Claude Code, Codex and OpenCode each pass local setup and reaction tests. | F-17–21 |
+| A-23 / O | Native client or built-in leader owns P | Attempt to start the other; test four clients on local-only setup | Same exclusive owner rule applies; handover requires old ownership to end, no covert second leader. Claude Code, Codex, OpenCode and pi each pass local setup and reaction tests. | F-17–21 |
 
 Implementation tests should use isolated data and `XEZ_DRY_RUN=1`, without personal accounts or secrets. Real MCP clients and agreed transports need separate integration validation. This documentation change does not run those tests or claim these criteria have passed.
 
@@ -225,7 +225,7 @@ The feature is **complete across the entire agreed scope** only when all of the 
 
 | ID | Decision | Constraint / proposal |
 | --- | --- | --- |
-| D-01 | Local transport, protocol negotiation, bridge and adapters | Local-only and all three initial clients are agreed. See compatibility report: stdio bridge plus client reaction adapters recommended; IPC/runtime tests remain design work. |
+| D-01 | Local transport, protocol negotiation, bridge and adapters | Local-only and all four initial clients are agreed. See compatibility report: stdio bridge plus client reaction adapters recommended; IPC/runtime tests remain design work. |
 | D-02 | Session binding, liveness, occupancy and handover | One logical owner/project, automatic release on confirmed death/expiry, no manual disconnect UI. Choose lease/fencing/timeout and restart behavior; old expired owner must reinitialize. |
 | D-03 | Shared/project field mapping | Product boundary settled: project writes, safe effective capability/limit reads only from global state. No global account/home-file/limit administration. Audit fields and implement enforcement. |
 | D-04 | Connection file and adapters | File remains local in project .local/xezar; select format/name and one-time client setup, including real event-to-model integration. No universal autodiscovery. |
@@ -246,11 +246,11 @@ Product scope is settled as stated above; engineering closes field/action mappin
 
 This document is the standalone product contract for the MCP workstream. The linked compatibility report is its technical evidence appendix. No knowledge of the interview is required; earlier product decisions in conversation that conflict with this revision are superseded by this text.
 
-**Ready for planning:** yes. The scope, all three required clients, local-only operation, exclusive logical ownership, full project autonomy, immutable quality boundary, events, stale-write rejection and operation-key idempotency are specified. Engineering may choose transport/IPC, schemas, storage, version/lease values and packaging without asking the product owner about each routine detail, provided the required outcomes remain unchanged.
+**Ready for planning:** yes. The scope, all four required clients, local-only operation, exclusive logical ownership, full project autonomy, immutable quality boundary, events, stale-write rejection and operation-key idempotency are specified. Engineering may choose transport/IPC, schemas, storage, version/lease values and packaging without asking the product owner about each routine detail, provided the required outcomes remain unchanged.
 
 **Ready for bounded implementation:** shared service adapters, project/owner validation, durable operation identity, state-version checks, event catalog/journal, and local setup/error UI can be designed and implemented against fixtures. Do not expose a partially protected real integration as complete. The existing UI inventory still requires field/action-level closure. No Daxko audit is needed for this MCP workstream.
 
-**Not yet ready to claim the entire feature implementable/certified without additional evidence:** generic native-client notifications are not proven to wake Codex/OpenCode models; Claude Channels has preview/eligibility constraints. A client-adapter spike must prove the selected integration in all three tools. All clients remain required; a supported native session that cannot be targeted needs an adapter/client extension, not removal from scope or model polling.
+**Not yet ready to claim the entire feature implementable/certified without additional evidence:** generic native-client notifications are not proven to wake Codex/OpenCode models, and do not wake pi (observed with pi 0.85.1 and pi-mcp-adapter 2.32.1); Claude Channels has preview/eligibility constraints. A client-adapter spike must prove the selected integration in all four tools. All clients remain required; a supported native session that cannot be targeted needs an adapter/client extension, not removal from scope or model polling.
 
 Minimum interface contract to refine in design:
 
@@ -278,7 +278,7 @@ The [settings registry](../../../packages/web/src/routes/settings/registry.tsx) 
 
 | ID / classification | Journey and required content/controls |
 | --- | --- |
-| U-M01 / required | From project settings, identify the bound project and that MCP client/Xezar must be on the same machine. Show configuration readiness and one-time setup guidance for Claude Code, Codex and OpenCode. The automatically generated project file is not described as automatically discovered by every client. |
+| U-M01 / required | From project settings, identify the bound project and that MCP client/Xezar must be on the same machine. Show configuration readiness and one-time setup guidance for Claude Code, Codex, OpenCode and pi (including installing the `pi-mcp-adapter` extension). The automatically generated project file is not described as automatically discovered by every client. |
 | U-M02 / proposal | Present client choice and short sequential instructions, a nonsecret local configuration location, and safe copyable setup guidance. Do not copy credentials into UI instructions/chat or add an editor for raw secret-bearing configuration. Mark adapter/Channels prerequisites and unsupported client versions explicitly. |
 | U-M03 / required | Connecting a second logical client shows that this project is occupied, not a generic server failure. Explain that UI still works and running tasks are unaffected. Offer setup/help and a client-side reconnect path when appropriate; no “Disconnect other client”, “Force takeover”, or manual disconnect control. Do not expose another owner's secret/session identifiers. |
 | U-M04 / required | Open task views reflect MCP actions without reload. A reconnect reconciles current state; pending or last-known data is not presented as newly confirmed. Important human edits reach the client without requiring the user to notify it manually. |

@@ -4,6 +4,8 @@ Research date: **2026-09-08**. Scope: Claude Code, Codex, OpenCode, and local-on
 
 Related requirements: [MCP](mcp-project-leader-requirements.md) and [built-in leader](../builtin-project-leader/builtin-project-leader-requirements.md). The gaps this report names are carried as issues under [epic #67](https://github.com/qodeca/xezar/issues/67). All three clients remain required for the initial release; the gaps below are implementation obligations, not waived scope.
 
+**Addendum, 2026-09-11:** pi became a fourth required initial client ([#330](https://github.com/qodeca/xezar/issues/330)). See [Addendum 2026-09-11: pi](#addendum-2026-09-11-pi). The body of this report is unchanged and covers the three clients it names.
+
 ## Evidence status and versions
 
 - **Verified documentation:** an official page explicitly describes the interface; this does not certify a working Xezar integration.
@@ -83,3 +85,22 @@ No integration has been certified by this report. The documentation research est
 ## Approved event-reaction delivery hierarchy
 
 **Approved event-reaction delivery hierarchy:** (1) use native event mechanisms when the client demonstrably reacts to them; (2) otherwise deliver a message through the official programmatic session interface; (3) use terminal text input only as a last fallback after runtime evidence proves reliability. This ordering is approved; terminal feasibility is not proven. Every event identifies Xezar as its source and must never impersonate user instructions or approval. If correct project/session targeting, separation from approval prompts/shell/user typing/active turns, and duplicate prevention cannot be established, refuse terminal delivery and expose a recoverable blocker. Tests must include each of these hazards, reconnect/retry and a real subsequent model reaction. No model polling, second logical owner, or wider project scope is introduced.
+
+## Addendum 2026-09-11: pi
+
+Added by [#330](https://github.com/qodeca/xezar/issues/330) (WP0). The owner approved pi as a fourth required initial client, on the condition that pi can work with MCP servers; the condition was met through a third-party extension. The body above is the 2026-09-08 record for the other three clients and is not revised by this addendum.
+
+**Evidence status differs from the body.** The body is documentation research only. The pi facts below include **runtime** evidence: the real `pi` binary with the extension, run on 2026-09-11 against the real `xezar mcp` bridge of a real `xezar serve` at `5031bf8`, with a scripted model endpoint. The runs, their labels and their limits are in the [pi evidence record](mcp-adapter-evidence-pi.md); #330 holds the earlier probe against a stub. Local versions: pi **0.85.1** (`@earendil-works/pi-coding-agent`), pi-mcp-adapter **2.32.1**, Node **v24.20.0**. These are installed versions, not certified minimums.
+
+| Client | Local transport and project setup | Event-to-model reaction | Leader instruction mechanism |
+| --- | --- | --- | --- |
+| pi, with `pi-mcp-adapter` | **pi itself ships no MCP client, by design:** "**No MCP.** Build CLI tools with READMEs (see Skills), or build an extension that adds MCP support." (pi `README.md:499`); pi "intentionally does not include built-in MCP" (`docs/usage.md:309`). The third-party `pi-mcp-adapter` extension (MIT, `github.com/nicobailon/pi-mcp-adapter`) adds a stdio MCP client. Installed with `pi install npm:pi-mcp-adapter`; configured by an `mcp.json` entry. Setup: [D-04 § 3.4](mcp-d04-connection-file-decision.md#34-pi). **Executed:** connected to the real bridge, offered all 11 xezar tools, and called them; only the bound project's data reached pi. Without the extension, pi offered 0 xezar tools. | **Native: no.** Server notifications started no pi turn, and pi sent no `resources/subscribe` (executed against #330's stub; the real bridge sends no notifications). **Adapter surface:** pi's RPC mode (`--mode rpc`, the mode Xezar's pi runner uses): `prompt` starts a turn when pi is idle; while pi is busy a plain `prompt` is refused, and `steer` or `follow_up` is delivered after the running turn (executed, with the harness standing in for an adapter; no pi reaction adapter exists yet). | `--append-system-prompt`. Server `instructions` never reached the model (executed). The flag is not kept across a session resume (executed), so the role must be supplied again on every start and resume, as for Claude Code. |
+
+Further pi findings, each from the pi evidence record or #330:
+
+- **Declared client capabilities:** `sampling: {}` and `elicitation: { form: {} }`; no `roots` (executed). Xezar's bridge uses neither: its server capabilities are tools only (`packages/xezar/src/mcp/protocol.ts`), and neither word appears in its non-test source.
+- **Xezar's pi runner hides MCP tools.** With the `--tools` allowlist the runner builds, the extension's tools disappear (executed in #330, run B). A pi reaction adapter must build its own arguments.
+- **An idle pi gives up the project after about 10 minutes** with the extension's defaults, because the extension closes an idle server. `"lifecycle": "keep-alive"` on the xezar entry prevents that (executed).
+- **The capability is third-party and moves fast.** 2.33.0 was published on the run date and was not tested.
+
+Material gaps for pi, in the terms of this report: no pi reaction adapter exists yet, and a real model's reaction is unverified, as for the other three clients. No integration is certified by this addendum either; the acceptance record gains a pi column only when the runs for it exist.
