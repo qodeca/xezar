@@ -174,6 +174,14 @@ turn text: `XEZ:DONE` (#347), `XEZ:MONITORING` (#490), and the task-reference ma
 are an agent-facing contract: skills, prompts, and running agents rely on an emitted marker
 meaning what it meant when their session started.
 
+`XEZ:DONE` in a NON-FINAL agent step (#317): that step is done only when its last turn ends with
+the marker. Before #317 an absent marker there was inert and the step was marked done whenever its
+session closed cleanly, so a step that ended on a question carried the workflow on without the
+answer. An emitted `XEZ:DONE` still does what it did; what changed is that its absence now fails
+the step with a message naming the marker, and the run stops (Continue reopens that session). The
+last agent step keeps its interactive rules. A custom workflow whose earlier agent steps finish
+without the marker is affected; there is deliberately no flag to restore the old default.
+
 Breaking: removing or renaming a marker, or changing what an emitted marker does (e.g. making
 `XEZ:PR` gate an action instead of steering display). Additive is fine — a new `XEZ:*` marker is
 inert prose to older xezars, which is the property that keeps the vocabulary forward-compatible.

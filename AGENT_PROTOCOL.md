@@ -285,7 +285,9 @@ multiple-choice question by ending a turn with a `XEZ:ASK <json>` control marker
 *assembled* turn text — uniform across claude, codex and opencode with no mapper
 work — validates the payload (`packages/xezar/src/core/ask.ts`, modeled on Claude Code's
 `AskUserQuestion`: 1–4 questions, 2–4 options each, `header` ≤12 chars), emits
-`ask.requested` and parks the run `waiting`. The cockpit renders clickable option
+`ask.requested` and parks the run `waiting` — in the workflow's last agent step, the
+only one that can wait. An earlier step runs one turn, so the same marker there fails
+the step and stops the run (#317, `unfinishedStepReason`). The cockpit renders clickable option
 chips; the user's pick (or a free-form reply) rides the normal reply seam
 (`POST /api/v1/runs/:id/messages`), and the card resolves client-side when that
 message lands (no `ask.resolved` event). Codex additionally bridges its native

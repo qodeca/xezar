@@ -443,7 +443,9 @@ describe('provider availability preserves existing execution', () => {
     const engine = manager as unknown as { pump: () => Promise<void> };
     const pausedPump = vi.spyOn(engine, 'pump').mockResolvedValue();
     const run = manager.startRun(workflow, {
-      task: 'mock:native-codex-ask choose a library',
+      // `mock:done` ends the Claude step's turn with `XEZ:DONE`, so the run reaches its later
+      // provider step (#317); the Codex mock ignores it and still raises its native question.
+      task: 'mock:done mock:native-codex-ask choose a library',
       runner: 'claude',
       worktree: false,
     });

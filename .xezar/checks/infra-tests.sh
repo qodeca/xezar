@@ -1574,8 +1574,10 @@ expect_fail "clearing it does not conjure gate evidence" \
 
 # --- 7b. An empty branch is not a task's work (#312) ---------------------------------------------
 #
-# THE INCIDENT. Run b86c6066's author step ended its turn on a design question in prose: no code, no
-# `XEZ:ASK`, no BLOCKED file. The engine marked the step done — only the last agent step is
+# THE INCIDENT. Run b86c6066's author step ended its turn on a design question: no code and no
+# BLOCKED file. (Its session transcript shows the turn ended on an `XEZ:ASK` line, which the cockpit
+# strips from the thread, so it read as prose; the engine ignored that marker in a non-final step
+# until #317.) The engine marked the step done — only the last agent step is
 # interactive — and readiness, whose only scope check was "is there a BLOCKED file", read the
 # ABSENT file as "not blocked". The gates then ran on the base commit and the evidence step sealed
 # `a0cf85e`, the manifest's own baseSha: a valid, verifiable seal for a branch holding none of the
@@ -1617,6 +1619,116 @@ fi
 printf 'export const seed = 3;\n' > "$wt/seed.ts"
 git -C "$wt" -c user.email=t@t -c user.name=t commit -qam "the task's work"
 expect_ok "a branch with a real commit over its base passes readiness" run_in "$wt" "$PF" --readiness
+
+# --- 7c. The gates judge committed work only (#320) ----------------------------------------------
+#
+# The evidence step refuses to seal a dirty tree, and readiness used to let one through: four tasks
+# in one day paid for a complete gate run — typecheck, vitest, unit, build, package — before the
+# seal said "the task tree has uncommitted changes". Readiness now asks the sealer's own question
+# first. `gates` below is a stub that only records that it started: the point is WHICH command runs,
+# and the ordering pin in §7 (readiness before gates, no onFail) is what makes that the workflow's.
+printf '\n-- dirty tree --\n'
+root="$(make_fixture dirty-tree)"
+wt="$(add_worktree "$root" "$RUN_A")"
+PF="$root/.xezar/checks/worktree-preflight.sh"
+printf 'export const seed = 4;\n' > "$wt/seed.ts"
+git -C "$wt" -c user.email=t@t -c user.name=t commit -qam "the task's work"
+gates_ran="$root/.local/gates-ran"
+readiness_then_gates() { run_in "$wt" "$PF" --readiness && : > "$gates_ran"; }
+
+# An edit the author step never committed: the dogfooding-note case (4ac055cb).
+printf 'export const seed = 5;\n' > "$wt/seed.ts"
+rm -f "$gates_ran"
+expect_fail "readiness refuses a tree with an uncommitted edit" \
+  "gitstate.committed" readiness_then_gates
+[ ! -e "$gates_ran" ] \
+  && ok "and no gate command starts after that refusal" \
+  || bad "and no gate command starts after that refusal" "the stub gates ran on a dirty tree"
+expect_fail "the refusal says what to do, not only what is wrong" \
+  "then re-run readiness and the gates" run_in "$wt" "$PF" --readiness
+git -C "$wt" checkout -q -- seed.ts
+
+# A new file the author never added counts too — `git add` is the step that gets forgotten.
+printf 'export const extra = 1;\n' > "$wt/extra.ts"
+expect_fail "readiness refuses a tree with an untracked new file" \
+  "extra.ts" run_in "$wt" "$PF" --readiness
+
+# Guards that pass both ways: plain preflight runs on trees that are rightly mid-work, and the
+# read-only roles never run readiness at all.
+expect_ok "plain preflight still accepts a dirty tree" run_in "$wt" "$PF"
+if grep -q -- '--readiness' \
+  "$REPO_ROOT/.xezar/workflows/business-analysis.yaml" "$REPO_ROOT/.xezar/workflows/research.yaml"; then
+  bad "read-only roles never reach the dirty-tree refusal" "business-analysis or research now runs --readiness"
+else
+  ok "read-only roles never reach the dirty-tree refusal"
+fi
+
+# The control: commit it, and readiness passes and the gates start.
+git -C "$wt" add extra.ts
+git -C "$wt" -c user.email=t@t -c user.name=t commit -qm "the forgotten file"
+rm -f "$gates_ran"
+expect_ok "a committed tree passes readiness" readiness_then_gates
+[ -e "$gates_ran" ] \
+  && ok "and the gates start on it" \
+  || bad "and the gates start on it" "the stub gates never ran on a clean, committed tree"
+
+# --- 7d. A run that verifies and authors nothing -------------------------------------------------
+#
+# Run c5a99f15 was QA of PR #311 in `testing-and-verification`: it read another branch, ran a real
+# service, posted findings and made no commit, by design. §7b's refusal fired on it. Its git state is
+# the same as b86c6066's, and a test-writing run uses the same workflow, so the separating signal is
+# a record the task writes: VERIFICATION, naming the commit it verified and where the findings are.
+printf '\n-- verification-only run --\n'
+root="$(make_fixture verification-only)"
+wt="$(add_worktree "$root" "$RUN_A")"
+PF="$root/.xezar/checks/worktree-preflight.sh"
+ev="$root/.local/xezar-tasks/$RUN_A"
+mkdir -p "$ev"
+# The revision under QA: another branch's head, never checked out into this task's worktree.
+other_pr="$(git -C "$root" -c user.email=t@t -c user.name=t commit-tree 'HEAD^{tree}' -p HEAD -m "another PR's head")"
+git -C "$root" update-ref refs/heads/other-pr "$other_pr"
+gates_ran="$root/.local/gates-ran"
+readiness_then_gates() { run_in "$wt" "$PF" --readiness && : > "$gates_ran"; }
+
+# The default is unchanged: no record, and an empty branch is still refused — and the refusal
+# names the record, so an honest verification run knows what to write.
+expect_fail "with no record, an empty branch is still refused" \
+  "branch.has-own-commits" run_in "$wt" "$PF" --readiness
+expect_fail "and the refusal says how a verification-only run declares itself" \
+  "VERIFICATION" run_in "$wt" "$PF" --readiness
+
+# The fix: a well-formed record lets the commitless run through all three modes' empty-branch check.
+printf 'QA of PR #311 at its head.\nverified: %s\nfindings: https://example.invalid/pr/311#comment\n' \
+  "$other_pr" > "$ev/VERIFICATION"
+rm -f "$gates_ran"
+expect_ok "a verification-only run with a well-formed record passes readiness" readiness_then_gates
+[ -e "$gates_ran" ] \
+  && ok "and the gates start on it" \
+  || bad "and the gates start on it" "the stub gates never ran for a declared verification run"
+expect_fail "the evidence step reaches its own question, not the empty-branch refusal" \
+  "no gate attempt recorded" run_in "$wt" "$PF" --record-gate-evidence
+
+# A record that cannot say what was verified excuses nothing.
+printf 'verified: %s\n' "$other_pr" > "$ev/VERIFICATION"
+expect_fail "a record with no findings line is refused" \
+  "scope.verification-record" run_in "$wt" "$PF" --readiness
+printf 'verified: %s\nfindings: here\n' "${other_pr:0:12}" > "$ev/VERIFICATION"
+expect_fail "a record with an abbreviated sha is refused" \
+  "scope.verification-record" run_in "$wt" "$PF" --readiness
+printf 'verified: %s\nfindings: here\n' "0123456789abcdef0123456789abcdef01234567" > "$ev/VERIFICATION"
+expect_fail "a record naming a commit this repository does not have is refused" \
+  "is not a commit in this repository" run_in "$wt" "$PF" --readiness
+: > "$ev/VERIFICATION"
+expect_fail "an empty record is refused" \
+  "scope.verification-record" run_in "$wt" "$PF" --readiness
+
+# BLOCKED is checked first and is not softened by a record: the QA run that stops for a decision
+# (c5a99f15 did) still stops.
+printf 'verified: %s\nfindings: here\n' "$other_pr" > "$ev/VERIFICATION"
+printf 'Do the Codex findings block the PR?\n' > "$ev/BLOCKED"
+expect_fail "a BLOCKED decision still stops a verification-only run" \
+  "scope.not-blocked" run_in "$wt" "$PF" --readiness
+rm "$ev/BLOCKED" "$ev/VERIFICATION"
 
 # --- 8. Manifest safety ------------------------------------------------------------------------------
 printf '\n-- manifest --\n'

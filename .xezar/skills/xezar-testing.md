@@ -7,6 +7,8 @@ Add meaningful verification for the approved scope. Use the installed pinned run
 
 Inputs: behavior/AC and current coverage evidence. Output: deterministic tests of observable boundaries and error paths, identifying unit, integration and browser coverage separately. Missing dependencies or unchanged-source failures are not passes or proof of environmental cause.
 
+A run that only verifies a revision that already exists – QA of another branch or PR, an acceptance re-run over one final revision – and was never asked to change source makes no commit, and readiness refuses an empty branch unless the task says why. Before ending, write the primary evidence directory's `VERIFICATION` file: a `verified: <full 40-character sha of the revision you verified>` line (fetch it first if it is not local) and a `findings: <where the result is posted>` line. A run asked to add or change tests never writes it: no commit there is a failure, and the refusal is right. `BLOCKED` still wins over it.
+
 If the scope has UI, browser or manual QA is not a design review: where such a review makes sense, a separate `xezar-ux-design` review is part of done, because QA proves it works, not that it is the right design.
 
 ## Shared contract

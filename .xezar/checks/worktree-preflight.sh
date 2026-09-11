@@ -25,11 +25,12 @@
 #   worktree-preflight.sh --allow-root         tolerate the primary checkout (read-only
 #                                              workflows: review, triage)
 #   worktree-preflight.sh --readiness          full check, plus: refuse when the task marked
-#                                              itself blocked, or when its branch has no
-#                                              commits over the base (#312). Runs BEFORE the
+#                                              itself blocked, when its branch has no
+#                                              commits over the base (#312), or when its tree
+#                                              has uncommitted changes (#320). Runs BEFORE the
 #                                              gates so an unresolved decision stops the
 #                                              workflow without paying for a full gate run
-#                                              first. Both evidence modes repeat both checks
+#                                              first. Both evidence modes repeat the first two
 #   worktree-preflight.sh --merge-recovery     full check with ONE narrow exception: an
 #                                              interrupted merge that exactly matches this run's
 #                                              recorded merge intent is admitted instead of
@@ -67,8 +68,9 @@ usage() {
   printf 'modes:\n'
   printf '  (no flag)                 strict isolation check, for a writing workflow\n'
   printf '  --allow-root              also accept the primary checkout, for a read-only workflow\n'
-  printf '  --readiness               strict, plus refuse when this task recorded a BLOCKED decision\n'
-  printf '                            or its branch has no commits over the base\n'
+  printf '  --readiness               strict, plus refuse when this task recorded a BLOCKED decision,\n'
+  printf '                            its branch has no commits over the base (unless the task recorded\n'
+  printf '                            a VERIFICATION of an existing revision), or its tree is dirty\n'
   printf '  --merge-recovery          strict, but admit the ONE interrupted merge this run recorded\n'
   printf '                            an intent for before starting it. Admits nothing else, and\n'
   printf '                            never aborts, resets or resolves anything\n'
@@ -328,11 +330,12 @@ done
 # --- Blocked-scope guard and gate evidence --------------------------------------------
 #
 # An intermediate `XEZ:ASK` does NOT park the run: only the last agent step of a workflow
-# is interactive, so a question raised while implementing prints as text and the workflow
-# marches on into the gates. This is the explicit stop that replaces the pause the agent
-# could not get: a task that could not resolve its own scope writes a BLOCKED file, and
-# the workflow goes no further. (`packages/xezar/src/workflows/run.ts:2799` —
-# `const interactive = i === lastAgentIdx && i === workflow.steps.length - 1;`)
+# is interactive. Until #317 a question raised while implementing printed as text and the
+# workflow marched on into the gates; an engine with #317 fails a non-final step that ends
+# without `XEZ:DONE` (`unfinishedStepReason` in `packages/xezar/src/workflows/run.ts`), but a
+# task on an older build does not get that stop. This is the explicit stop that does not
+# depend on the engine: a task that could not resolve its own scope writes a BLOCKED file,
+# and the workflow goes no further.
 #
 # It is checked in `--readiness` FIRST, which the workflows run between the implementation
 # step and the gates. Stopping there costs a second; stopping after the gates would burn a
@@ -362,8 +365,16 @@ if [ "$MODE" = "readiness" ] || [ "$MODE" = "record-gate-evidence" ] || [ "$MODE
   # "Empty" means HEAD is an ancestor of the base — not HEAD == base tip, which a base that moved on
   # after the fork would defeat. Both spellings of the base are tried, and either one containing
   # HEAD refuses. A check that cannot be evaluated refuses too. Plain preflight is untouched: setup
-  # runs it on a fresh, rightly empty branch. Every workflow reaching these modes ends in a pull
-  # request or a release, and neither exists without a commit.
+  # runs it on a fresh, rightly empty branch.
+  #
+  # One kind of run is honestly commitless: a verification of a revision that already exists — QA of
+  # another PR's branch, an acceptance re-run over one final revision. Run c5a99f15 (QA of #311) was
+  # one, and this check refused it. Its git state is byte-identical to b86c6066's (HEAD in the base,
+  # a clean tree), and both used the same workflow as a test-writing run would, so neither git nor
+  # the workflow name can separate them. Only the task knows, so the task must SAY it: a
+  # VERIFICATION record in its evidence directory, naming the commit it verified and where the
+  # findings are. An absent record keeps the refusal — the default is still "an empty branch is not
+  # work". A record that does not name a real commit refuses too. BLOCKED is checked first and wins.
   empty_base=""
   checked_bases=0
   if [ -z "${HEAD_SHA:-}" ]; then
@@ -382,9 +393,39 @@ if [ "$MODE" = "readiness" ] || [ "$MODE" = "record-gate-evidence" ] || [ "$MODE
     if [ "$checked_bases" -eq 0 ]; then
       fail branch.has-own-commits "no base ref resolved, so whether this branch carries any work cannot be evaluated"
     elif [ -n "$empty_base" ]; then
-      fail branch.has-own-commits "branch \"$BRANCH\" has no commits over its base — HEAD ${HEAD_SHA:0:12} is already contained in $empty_base. There is no work here to gate, seal or hand off. If the author step stopped for a decision, it must write the task's BLOCKED file; if no change is the honest outcome, report that and end the run instead of sealing."
+      verification_record="${evidence_dir:+$evidence_dir/VERIFICATION}"
+      if [ -n "$verification_record" ] && [ -f "$verification_record" ]; then
+        verified_sha="$(sed -n 's/^verified:[[:space:]]*\([0-9a-fA-F]\{40\}\)[[:space:]]*$/\1/p' "$verification_record" | head -n 1)"
+        verified_findings="$(sed -n 's/^findings:[[:space:]]*\(.*[^[:space:]]\)[[:space:]]*$/\1/p' "$verification_record" | head -n 1)"
+        if [ -z "$verified_sha" ]; then
+          fail scope.verification-record "branch \"$BRANCH\" has no commits over its base, and its VERIFICATION record ($verification_record) has no \"verified: <full 40-character commit sha>\" line, so it cannot say what this run verified."
+        elif ! git -C "$TASK_CWD" cat-file -e "$verified_sha^{commit}" 2>/dev/null; then
+          fail scope.verification-record "branch \"$BRANCH\" has no commits over its base, and its VERIFICATION record names $verified_sha, which is not a commit in this repository. Fetch the revision you verified, or correct the record."
+        elif [ -z "$verified_findings" ]; then
+          fail scope.verification-record "branch \"$BRANCH\" has no commits over its base, and its VERIFICATION record ($verification_record) has no \"findings: <where the result is posted>\" line."
+        else
+          info "own commits   none — a verification-only run, by its VERIFICATION record"
+          info "verified      $verified_sha"
+          info "findings      $verified_findings"
+        fi
+      else
+        fail branch.has-own-commits "branch \"$BRANCH\" has no commits over its base — HEAD ${HEAD_SHA:0:12} is already contained in $empty_base. There is no work here to gate, seal or hand off. If the author step stopped for a decision, it must write the task's BLOCKED file. If this run only verifies a revision that already exists and was never asked to change source (QA of another branch, an acceptance re-run), record that in ${evidence_dir:-the task evidence directory}/VERIFICATION with a \"verified: <commit sha>\" line and a \"findings: <where the result is posted>\" line. A run that was asked to change source must not write that record."
+      fi
     fi
   fi
+fi
+
+# --- The work is committed before the gates judge it (#320) ------------------------------
+#
+# The evidence step seals a COMMIT, and refuses a dirty tree ("the task tree has uncommitted
+# changes"). Readiness used to let that tree through, so four tasks in one day paid for a complete
+# gate run — typecheck, the whole vitest suite, unit tests, build, package test — and only then
+# learned the result could never be sealed. The same predicate the sealer uses, asked here, in the
+# one mode that runs straight before the gates. Only `--readiness`: plain preflight runs on trees
+# that are rightly mid-work, and the read-only roles (business-analysis, research) never run it.
+if [ "$MODE" = "readiness" ] && task_tree_is_dirty; then
+  dirty_paths="$(cd "$TASK_CWD" && git status --porcelain 2>/dev/null | head -5 | sed 's/^...//' | tr '\n' ' ')"
+  fail gitstate.committed "the task tree has uncommitted changes (${dirty_paths% }). The gates judge the commit and the seal refuses a dirty tree, so running them now would spend a full gate run for nothing. Commit the work — bash .xezar/checks/worktree-git.sh commit -m \"...\" — then re-run readiness and the gates."
 fi
 
 # --- Sealing, and what changed about it ------------------------------------------------

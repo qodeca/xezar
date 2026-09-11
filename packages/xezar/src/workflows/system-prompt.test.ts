@@ -213,7 +213,8 @@ describe('systemPrompt end-to-end (dry run)', () => {
   }
 
   it('no override: the config default reaches the CLI and is echoed on the record', async () => {
-    const id = await runToEnd({ task: 'do the thing' });
+    // `mock:done`: the agent step is not the last one, so it is only done when it says so (#317).
+    const id = await runToEnd({ task: 'mock:done do the thing' });
     const record = store.getRun(id);
     expect(record?.status).toMatch(/^(done|review)$/);
     expect(record?.systemPrompt).toBe(CONFIG_PROMPT);
