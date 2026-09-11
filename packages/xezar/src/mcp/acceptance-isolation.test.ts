@@ -710,7 +710,10 @@ describe.skipIf(process.platform === 'win32')('#115 isolation acceptance — A/B
           return { names: listed.tools.map((t) => t.name), asked, unknown };
         });
         judge(w, seen, ['events', 'errors']);
-        expect(seen.response.names.filter((n) => /workspace|event|subscribe|stream/i.test(n))).toEqual([]);
+        // `leader_events` (#251) is the one event tool, and it is PROJECT-scoped: it reads the bound
+        // project's own journal and refuses another project's cursor — proven against two composed
+        // projects in `leader-feed.test.ts`. Anything else matching here would be a workspace feed.
+        expect(seen.response.names.filter((n) => n !== 'leader_events' && /workspace|event|subscribe|stream/i.test(n))).toEqual([]);
         for (const answer of seen.response.asked) expect(text(answer)).toMatch(/^Invalid arguments for task_read/);
         expect(seen.response.unknown).toMatchObject({ error: { message: 'Unknown tool: workspace_events' } });
         expect(seen.dispatched.filter((d) => /workspace|\/events/.test(d))).toEqual([]);
