@@ -87,6 +87,16 @@
   fails saying so, rather than letting the delete report a fault it did not cause. The queue-hold
   assertion also gained the settle guard its mirror already had. (#200)
 
+## 📝 Specs & Documentation
+- 📝 **The MCP server has a reviewable API reference.** `docs/features/mcp-server/mcp-api.md`
+  lists every tool, its arguments (the schema's own descriptions), the results each tool really
+  returns — including where the tools' status words disagree — the two meanings of `origin`, and
+  the rules each call follows, with links to the decision records. `mcp-api.json` beside it is
+  exactly what `tools/list` answers, for diffing and JSON Schema viewers. A new traceability table
+  maps every `covered` inventory record to the tool action that serves it, checked both ways. The
+  tables and the JSON are regenerated from the real tool registry, so a tool change that is not
+  reflected in the reference fails `npm test`. (#261)
+
 # 0.13.1 (2026-09-10)
 
 ## Highlights
