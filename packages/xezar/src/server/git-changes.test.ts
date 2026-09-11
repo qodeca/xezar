@@ -1,9 +1,10 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { worktreePathFor } from '../git-worktree.ts';
 import { RunStore, type RunRecord } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import {
@@ -513,7 +514,7 @@ describe('session git API routes', () => {
   let repoBaseSha: string;
 
   beforeEach(() => {
-    repoRoot = mkdtempSync(join(tmpdir(), 'xez-gitapi-'));
+    repoRoot = realpathSync(mkdtempSync(join(tmpdir(), 'xez-gitapi-')));
     initRepo(repoRoot);
     writeFileSync(join(repoRoot, '.gitignore'), '.ai/\nwt/\n');
     writeFileSync(join(repoRoot, 'root-base.txt'), 'base\n');
@@ -528,15 +529,17 @@ describe('session git API routes', () => {
       version: '0.0.0-test',
     });
     // The "worktree" fixture is a plain repo — the routes only need a git
-    // dir the record points at, not a literal `git worktree add` product.
-    worktree = join(repoRoot, 'wt');
-    mkdirSync(worktree);
+    // dir the record points at, not a literal `git worktree add` product —
+    // but it sits where xezar puts a run's worktree, because the routes
+    // refuse a record that names any other directory (#316).
+    run = store.createRun({ title: 't', workflow: 'quick-task', task: 't', steps: [] });
+    worktree = worktreePathFor(repoRoot, run.id);
+    mkdirSync(worktree, { recursive: true });
     initRepo(worktree);
     writeFileSync(join(worktree, 'base.txt'), 'base\n');
     g(worktree, 'add', '-A');
     g(worktree, 'commit', '-m', 'base');
     g(worktree, 'checkout', '-b', 'task');
-    run = store.createRun({ title: 't', workflow: 'quick-task', task: 't', steps: [] });
     store.updateRun(run.id, { worktreePath: worktree, baseBranch: 'main', branch: 'task' });
   });
 

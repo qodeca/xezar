@@ -82,6 +82,14 @@
   task's end — leaves such records alone and still reclaims this project's own. Both use the
   existing MCP ownership checks. A caller could never NAME another project's group, task or
   automation at this project's routes, and still cannot. (#288)
+- 🐛 **Deleting a task, removing its worktree, committing, pushing, opening its draft PR, or
+  viewing its diff or changes can no longer reach another project's worktree.** The same stray
+  records as above also drove these seven task actions: delete and Remove worktree ran `rm -rf` on
+  the other project's worktree, commit, push and draft PR wrote to it, and the diff and changes
+  views ran git inside it. Each now checks the task's worktree with the same rule reclaim uses and
+  refuses a stray record, and the cockpit says why in plain words: the task's worktree is outside
+  this project, xezar will not touch it, and archiving the task moves it out of the list. This
+  project's own tasks work as before. (#316)
 - 🐛 **Running the test suite inside a xezar task no longer writes into that task's handoff file
   and your follow-up inbox.** A gate inherits the task's `XEZ_HANDOFF_FILE`, `XEZ_TODOS_FILE`,
   `XEZ_TASK_ID` and `XEZ_ENV_PASSTHROUGH`, and a test that drove the dry-run mock agent handed them
