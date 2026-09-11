@@ -575,12 +575,15 @@ describe.skipIf(isWindows)('handoff_git — commit, push, draft PR, merge and br
         const exceptionValues = values.filter((v) => /bypass|waive|override|exception|admin|force/i.test(v));
         expect({ tool: tool.name, values: exceptionValues }).toEqual({ tool: tool.name, values: [] });
         // Only handoff_git may name a merge at all: the two actions (read, then merge) and the
-        // forge's `merge` method beside squash and rebase.
+        // forge's `merge` method beside squash and rebase. The one other name allowed is the
+        // evidence tool's `pr_merge_state` — a READ of the same cockpit route (#95), exactly that
+        // value and nothing else; its file never reaches the merge route (checked below).
         const mergeValues = values.filter((v) => /merge/i.test(v));
-        expect({ tool: tool.name, merge: mergeValues }).toEqual({
-          tool: tool.name,
-          merge: tool === handoffGitTool ? ['merge_state', 'merge', 'merge'] : [],
-        });
+        const allowedMerge: Record<string, string[]> = {
+          [handoffGitTool.name]: ['merge_state', 'merge', 'merge'],
+          read_results_evidence: ['pr_merge_state'],
+        };
+        expect({ tool: tool.name, merge: mergeValues }).toEqual({ tool: tool.name, merge: allowedMerge[tool.name] ?? [] });
       }
 
       // And no other tool reaches the forge's merge route, whatever its arguments are called.
