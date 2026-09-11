@@ -251,6 +251,25 @@ describe('every run-mutating route refuses a stale expectedVersion (#250)', () =
     expect(store.getRun(task.id)?.pinned).not.toBe(true);
   });
 
+  it('a route that took no body still ignores a body that is not a JSON object', async () => {
+    for (const body of ['null', '[]', '"x"', '42']) {
+      const task = newRun();
+      calls.length = 0;
+      const res = await apiRequest(app, run(task.id, '/cancel'), { method: 'POST', headers: { 'content-type': 'application/json' }, body });
+      expect(res.status, body).toBe(200);
+      expect(calls, body).toEqual(['cancel']);
+    }
+  });
+
+  it('an unknown task is a 404 with or without a token, never a stale-version 409', async () => {
+    for (const c of [CASES[2]!, CASES[3]!]) {
+      for (const token of [undefined, 'rev1:run:none:0:000000000000']) {
+        const res = await send(c, 'no-such-task', { ...c.body, ...(token ? { expectedVersion: token } : {}) });
+        expect(res.status, `${c.name} ${token ?? 'no token'}`).toBe(404);
+      }
+    }
+  });
+
   it('refuses an empty token at the validation boundary, never as a pass', async () => {
     const task = newRun();
     const res = await send(CASES[3]!, task.id, { expectedVersion: '' });

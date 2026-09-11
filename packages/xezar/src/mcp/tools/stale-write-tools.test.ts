@@ -316,6 +316,19 @@ describe('task_read hands out the version (#250)', () => {
     expect(record).toBeGreaterThan(version);
   });
 
+  it('only the first answer of a walk carries one: a later history page is pinned to an older view', async () => {
+    const task = newRun();
+    for (let i = 0; i < 5; i++) store.appendEvent(task.id, { type: 'note', message: `step ${i}` });
+    const first = JSON.parse(text(await call(taskReadsTool, { view: 'history', taskId: task.id, limit: 2 }))) as Record<string, unknown>;
+    expect(first.version).toBe(runVersion(store, task.id));
+    expect(typeof first.nextCursor).toBe('string');
+    // A human acts between the pages: the version moves, and the older page must not vouch for it.
+    await humanRenames(task.id);
+    const next = JSON.parse(text(await call(taskReadsTool, { view: 'history', taskId: task.id, limit: 2, cursor: first.nextCursor }))) as Record<string, unknown>;
+    expect(next).not.toHaveProperty('version');
+    expect((next.events as unknown[]).length).toBeGreaterThan(0);
+  });
+
   it('the list view carries none — a leader reads the one task it means to change', async () => {
     newRun();
     const list = JSON.parse(text(await call(taskReadsTool, { view: 'list' }))) as Record<string, unknown>;

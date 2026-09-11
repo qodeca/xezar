@@ -16,6 +16,7 @@ import {
 } from '../../test/helpers/ab-fixture.ts';
 import type { RunRecord } from '../runs/store.ts';
 import type { ServiceDispatch } from './service-adapter.ts';
+import { runVersion } from './stale-write.ts';
 import { toolListing, type McpToolContext, type McpToolResult } from './tool.ts';
 import { handoffGitTool, QUALITY_BLOCKER_NEXT_ACTION } from './tools/handoff-git.ts';
 import { tools } from './tools/index.ts';
@@ -115,7 +116,29 @@ function ok(result: McpToolResult): Record<string, any> {
 }
 
 async function mcp(w: AbWorld, tool: string, args: Record<string, unknown> = {}): Promise<Record<string, any>> {
-  return ok(await w.call('a', tool, args));
+  return ok(await w.call('a', tool, withVersion(w, tool, args)));
+}
+
+/** The tool actions that change one task, and so require its version (#250, N-03). */
+const VERSIONED: Record<string, ReadonlySet<string> | 'all'> = {
+  organise_work: new Set(['set_title', 'edit_brief', 'edit_queued_message', 'remove_queued_message', 'pin', 'unpin', 'archive', 'restore', 'delete']),
+  execution_control: 'all',
+  handoff_git: new Set(['commit', 'push', 'create_pr']),
+  project_config: new Set(['remove_worktree']),
+};
+
+/**
+ * A leader reads a task right before it changes it (#250): the version is the task's CURRENT one,
+ * computed from A's own store with the same function the read route uses, so it adds no dispatch
+ * to any observation. A task A does not have gets a well-formed version that matches nothing, and
+ * the tool's own refusal for that id is what the case then sees. Stale writes are proved in
+ * `composition.test.ts` (A-13) and `tools/stale-write-tools.test.ts`, not here.
+ */
+function withVersion(w: AbWorld, tool: string, args: Record<string, unknown>): Record<string, unknown> {
+  const actions = VERSIONED[tool];
+  if (!actions || 'expectedVersion' in args || (actions !== 'all' && !actions.has(String(args.action)))) return args;
+  const id = typeof args.runId === 'string' ? args.runId : typeof args.taskId === 'string' ? args.taskId : undefined;
+  return { ...args, expectedVersion: (id !== undefined ? runVersion(w.a.store, id) : undefined) ?? 'rev1:run:none:0:000000000000' };
 }
 
 /** The human's door: a same-origin cockpit request, answered as status and parsed JSON. */

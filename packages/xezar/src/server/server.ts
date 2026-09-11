@@ -3484,6 +3484,8 @@ export function createApp(deps: ServerDeps) {
       // `setArchived` itself — the bulk sweep must obey it too (spec
       // 2026-08-03-auto-resume-after-usage-limit).
       const parsed = { data: c.req.valid('json') };
+      // An unknown run is a 404 before any version is compared — the answer it always got.
+      if (!store.getRun(id)) return c.json({ error: 'not found' }, 404);
       // The stale-write guard (#250): checked in the same synchronous stretch as the write.
       const stale = staleRunWrite(store, id, parsed.data.expectedVersion);
       if (stale) return c.json(stale, 409);
@@ -3499,6 +3501,8 @@ export function createApp(deps: ServerDeps) {
       const { store } = c.get('project');
       const id = c.req.param('id');
       const { pinned, expectedVersion } = c.req.valid('json');
+      // An unknown run is a 404 before any version is compared — the answer it always got.
+      if (!store.getRun(id)) return c.json({ error: 'not found' }, 404);
       // The stale-write guard (#250): checked in the same synchronous stretch as the write.
       const stale = staleRunWrite(store, id, expectedVersion);
       if (stale) return c.json(stale, 409);

@@ -1,5 +1,6 @@
 import type { Context, Env, MiddlewareHandler } from 'hono';
 import { validator } from 'hono/validator';
+import { z as zod } from 'zod';
 import type { z } from 'zod';
 
 /**
@@ -150,6 +151,10 @@ export function jsonZodValidator<
  * request TYPE differs. Hono turns a validated `json` into a REQUIRED client argument, so the plain
  * validator would make every existing bodyless call — `cancel.$post({ param })` — a compile error
  * for no reason the wire knows about. Pass `absent` so a bodyless request still parses.
+ *
+ * Such a route used to ignore whatever body it was sent, and it still ignores one that is not a
+ * JSON OBJECT (`null`, `[]`, `"x"`): that parses as `absent`, so the only new way to be refused is
+ * a wrong value in a field the route now reads.
  */
 export function optionalJsonZodValidator<
   S extends z.ZodType,
@@ -159,7 +164,12 @@ export function optionalJsonZodValidator<
   schema: S,
   options: JsonOptions = {},
 ): MiddlewareHandler<E, P, { in: { json?: z.input<S> }; out: { json: z.output<S> } }> {
-  return jsonZodValidator<S, E, P>(schema, options) as unknown as MiddlewareHandler<
+  const absent = 'absent' in options ? options.absent : null;
+  const tolerant = zod.preprocess(
+    (value) => (value !== null && typeof value === 'object' && !Array.isArray(value) ? value : absent),
+    schema,
+  );
+  return jsonZodValidator(tolerant, options) as unknown as MiddlewareHandler<
     E,
     P,
     { in: { json?: z.input<S> }; out: { json: z.output<S> } }

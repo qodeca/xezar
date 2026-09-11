@@ -47,7 +47,10 @@ import { defineTool, errorResult, textResult, type McpToolContext, type McpToolR
  * with the task's current version in the same synchronous stretch as the engine call. A task that
  * moved since is refused with nothing applied (`status: "conflict"`, `error: "stale_version"`,
  * `currentVersion`). The version moves with every event a task records, so a RUNNING task's
- * version moves while its agent works: read it right before acting on a running task.
+ * version moves while its agent works: read it right before acting on a running task. The same holds
+ * for an answer that meets an idle close: the close changes the task, so the resume after it is
+ * refused as stale rather than retried with a fresh version — the leader reads again and answers
+ * again (D-06 § 4.4 rule 3).
  */
 
 export const EXECUTION_CONTROL_ACTIONS = [
