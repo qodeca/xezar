@@ -26,6 +26,31 @@ async function waitFor(assertion: () => void, timeoutMs = 4000, intervalMs = 25)
   }
 }
 
+/**
+ * Write `file` until `delivered()` holds. A write that lands while macOS is still registering a
+ * fresh watch is DROPPED, not delayed — a probe for #204 lost 9 of 15 such writes outright, and a
+ * rewrite always arrived about 310 ms later — and nothing reports when registration is done. A
+ * delivered event is the only proof the watch is live, so rewrite once per debounce window until
+ * one lands. Rewriting sooner would restart the 300 ms debounce instead of letting it fire.
+ */
+async function writeUntilDelivered(
+  file: string,
+  content: string,
+  delivered: () => boolean,
+  timeoutMs = 4000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    await fs.writeFile(file, content);
+    const rewriteAt = Date.now() + 600;
+    while (Date.now() < rewriteAt) {
+      if (delivered()) return;
+      if (Date.now() >= deadline) throw new Error(`no change event for ${file} within ${timeoutMs} ms`);
+      await new Promise((r) => setTimeout(r, 25));
+    }
+  }
+}
+
 describe('per-dataDir todos watch (step 2.3)', () => {
   let root: string;
   let dirA: string;
@@ -79,11 +104,14 @@ describe('per-dataDir todos watch (step 2.3)', () => {
     subscribe(dirA, () => second++);
 
     offFirst();
-    // Same FSEvents settle as above: under a loaded full suite a write that lands the instant
-    // watch() returns can be missed entirely, and nothing else ever rewrites the file.
-    await new Promise((resolve) => setTimeout(resolve, 400));
-    await fs.writeFile(todosPath(dirA), JSON.stringify([{ id: 't2', summary: 'still watched' }]));
-    await waitFor(() => expect(second).toBeGreaterThan(0));
+    // No fixed settle: a write that lands the instant watch() returns can be missed entirely
+    // (#204), so keep writing until the surviving subscriber proves the watch is live. Both
+    // callbacks would fire on the same emit, so `first` staying 0 is still the whole claim.
+    await writeUntilDelivered(
+      todosPath(dirA),
+      JSON.stringify([{ id: 't2', summary: 'still watched' }]),
+      () => second > 0,
+    );
     expect(first).toBe(0);
   });
 
