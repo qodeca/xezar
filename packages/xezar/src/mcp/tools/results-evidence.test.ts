@@ -256,6 +256,15 @@ function commitFile(dir: string, path: string, content: string | Buffer, message
 const withoutCommittedAt = (commits: Array<Record<string, unknown>>) =>
   commits.map(({ committedAt: _at, ...rest }) => rest);
 
+// `when` is git's relative `%cr` ("3 seconds ago"): two reads a moment apart can honestly
+// disagree on it under load, so rows are compared without it and `when` is checked for shape.
+const RELATIVE_WHEN = /^\d+ \w+(, \d+ \w+)? ago$/;
+const withoutWhen = (rows: unknown) =>
+  (rows as Array<Record<string, unknown>>).map(({ when, ...rest }) => {
+    expect(when).toMatch(RELATIVE_WHEN);
+    return rest;
+  });
+
 beforeEach(() => {
   process.env.XEZ_DRY_RUN = '1';
   delete process.env.GITHUB_TOKEN;
@@ -329,7 +338,7 @@ describe('a completed task, read through MCP and through the cockpit', () => {
     const commits = await evidence(ws, { read: 'commits', runId: task.id });
     const cockpitCommits = (await cockpit(ws, `/runs/${task.id}/commits`)).json() as { commits: Array<Record<string, unknown>> };
     const mcpCommits = commits.data?.commits as Array<Record<string, unknown>>;
-    expect(withoutCommittedAt(mcpCommits)).toEqual(cockpitCommits.commits);
+    expect(withoutWhen(withoutCommittedAt(mcpCommits))).toEqual(withoutWhen(cockpitCommits.commits));
     for (const commit of mcpCommits) expect(commit.committedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(commits.revision).toMatchObject({ headSha: headA2, baseSha: main, taskDiffBaseSha: main });
     const one = await allPages(ws, { read: 'commit', runId: task.id, sha: headA });
@@ -624,7 +633,7 @@ describe('the project repository reads', () => {
     expect((repo.data?.info as { remote: string }).remote).toBe('https://github.com/example-org/example-repo.git');
     expect(repo.revision?.headSha).toBe(head(ws.roots.a));
     const cockpitRepo = (await cockpit(ws, '/repo')).json() as { log: unknown; branches: unknown };
-    expect(repo.data?.log).toEqual(cockpitRepo.log);
+    expect(withoutWhen(repo.data?.log)).toEqual(withoutWhen(cockpitRepo.log));
     expect(repo.data?.branches).toEqual(cockpitRepo.branches);
 
     writeFileSync(join(ws.roots.a, 'README.md'), '# fixture, edited\n');
