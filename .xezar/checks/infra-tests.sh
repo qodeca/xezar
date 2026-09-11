@@ -153,6 +153,19 @@ add_worktree() {
   printf '%s/.local/xezar/worktrees/%s' "$root" "$runid"
 }
 
+# A task worktree that already carries the task's work: one real commit over main. Readiness and
+# both evidence modes refuse a branch with no commits over its base (#312, §7b), so every fixture
+# that seals or verifies gate evidence starts here — sealing an empty branch is the bug, not a
+# setup shortcut. Fixtures that test plain preflight keep `add_worktree`, which stays empty.
+add_worktree_with_work() {
+  local wt
+  wt="$(add_worktree "$@")" || return 1
+  printf 'export const work = 1;\n' > "$wt/work.ts"
+  git -C "$wt" -c user.email=t@t -c user.name=t add work.ts || return 1
+  git -C "$wt" -c user.email=t@t -c user.name=t commit -q -m "the task's work" || return 1
+  printf '%s' "$wt"
+}
+
 RUN_A="aaaaaaaa-0000-4000-8000-000000000001"
 RUN_B="bbbbbbbb-0000-4000-8000-000000000002"
 FIXTURE_ID8_A="$(printf '%s' "$RUN_A" | cut -c1-8)"
@@ -972,7 +985,7 @@ rm "$GATES_ROOT/$head_sha/9997-linked"
 # --- 6c. Sealing --------------------------------------------------------------------------------
 printf '\n-- gate evidence: sealing --\n'
 root="$(make_fixture sealing)"
-wt="$(add_worktree "$root" "$RUN_A")"
+wt="$(add_worktree_with_work "$root" "$RUN_A")"
 CHECKS="$root/.xezar/checks"
 PF="$CHECKS/worktree-preflight.sh"
 MANIFEST="$root/.local/xezar-tasks/$RUN_A/manifest.json"
@@ -1005,7 +1018,7 @@ expect_fail "an older pass cannot be sealed once a newer attempt failed" \
 
 # A changed gate list invalidates an attempt produced by the old one.
 root="$(make_fixture sealing-list)"
-wt="$(add_worktree "$root" "$RUN_A")"
+wt="$(add_worktree_with_work "$root" "$RUN_A")"
 CHECKS="$root/.xezar/checks"
 drive "$wt" "$CHECKS" "deadbeef-not-the-real-list" "$REQUIRED_ALL" "${ALL_PASS[@]}" > /dev/null
 expect_fail "an attempt run against a different command list cannot be sealed" \
@@ -1013,7 +1026,7 @@ expect_fail "an attempt run against a different command list cannot be sealed" \
 
 # Changed inputs, and an uncommitted tree.
 root="$(make_fixture sealing-inputs)"
-wt="$(add_worktree "$root" "$RUN_A")"
+wt="$(add_worktree_with_work "$root" "$RUN_A")"
 CHECKS="$root/.xezar/checks"
 drive "$wt" "$CHECKS" "$LIST_ID" "$REQUIRED_ALL" "${ALL_PASS[@]}" > /dev/null
 printf 'export const seed = 42;\n' > "$wt/seed.ts"
@@ -1053,14 +1066,14 @@ expect_fail "a new commit voids the seal" \
 
 # Verification with nothing sealed is a failure, never an implicit pass.
 root="$(make_fixture no-evidence)"
-wt="$(add_worktree "$root" "$RUN_A")"
+wt="$(add_worktree_with_work "$root" "$RUN_A")"
 expect_fail "verification with no sealed evidence fails" \
   "never verified as green" run_in "$wt" "$root/.xezar/checks/worktree-preflight.sh" --verify-gate-evidence
 
 # Evidence from before this contract stays history. It is never promoted to a verified result
 # by inference, and it is never silently converted.
 root="$(make_fixture legacy-evidence)"
-wt="$(add_worktree "$root" "$RUN_A")"
+wt="$(add_worktree_with_work "$root" "$RUN_A")"
 node "$SCRIPT_DIR/lib/manifest.mjs" "$root/.local/xezar-tasks/$RUN_A/manifest.json" \
   --init "runId=$RUN_A" --set-json 'gateEvidence={"headSha":"abc","fingerprint":"deadbeef","at":"2026-01-01T00:00:00Z"}'
 expect_fail "pre-contract evidence is not accepted as verification" \
@@ -1070,7 +1083,7 @@ expect_fail "pre-contract evidence is not accepted as verification" \
 # --- 6d. The seal is immutable; CI observations are not -------------------------------------------
 printf '\n-- gate evidence: seal versus CI --\n'
 root="$(make_fixture ci-observations)"
-wt="$(add_worktree "$root" "$RUN_A")"
+wt="$(add_worktree_with_work "$root" "$RUN_A")"
 CHECKS="$root/.xezar/checks"
 MANIFEST="$root/.local/xezar-tasks/$RUN_A/manifest.json"
 drive "$wt" "$CHECKS" "$LIST_ID" "$REQUIRED_ALL" "${ALL_PASS[@]}" > /dev/null
@@ -1125,7 +1138,7 @@ out="$(run_in "$other_root" "$other_root/.xezar/checks/verify-evidence.sh" "$RUN
 
 # Tampering with the sealed record or one of its logs is caught by the digests.
 root="$(make_fixture verify-tamper)"
-wt="$(add_worktree "$root" "$RUN_A")"
+wt="$(add_worktree_with_work "$root" "$RUN_A")"
 CHECKS="$root/.xezar/checks"
 MANIFEST="$root/.local/xezar-tasks/$RUN_A/manifest.json"
 drive "$wt" "$CHECKS" "$LIST_ID" "$REQUIRED_ALL" "${ALL_PASS[@]}" > /dev/null
@@ -1245,7 +1258,7 @@ att="$(attempt_dir_of "$out")"
 # so a later attempt can supersede it, and the seal carries the anomaly rather than forgetting
 # it. Nothing is deleted and no empty commit is invented to escape.
 root="$(make_fixture malformed-recovery)"
-wt="$(add_worktree "$root" "$RUN_A")"
+wt="$(add_worktree_with_work "$root" "$RUN_A")"
 CHECKS="$root/.xezar/checks"
 MANIFEST="$root/.local/xezar-tasks/$RUN_A/manifest.json"
 GATES_ROOT="$root/.local/xezar-tasks/$RUN_A/gates"
@@ -1285,7 +1298,7 @@ rm -rf "$GATES_ROOT/$head_sha/unorderable-attempt"
 # with itself, and printed VERIFIED for a revision the gates never ran on. The `ffffff…` case
 # above only ever exercised the missing-object branch.
 root="$(make_fixture seal-binding)"
-wt="$(add_worktree "$root" "$RUN_A")"
+wt="$(add_worktree_with_work "$root" "$RUN_A")"
 CHECKS="$root/.xezar/checks"
 MANIFEST="$root/.local/xezar-tasks/$RUN_A/manifest.json"
 VERIFY="$CHECKS/verify-evidence.sh"
@@ -1366,7 +1379,7 @@ expect_fail "strict current certification refuses inputs it could not measure" \
 # rather than its outcome ("failed"). A draft PR then quoted a green seal that the newest
 # recorded outcome for that exact head contradicted.
 root="$(make_fixture current-eligibility)"
-wt="$(add_worktree "$root" "$RUN_A")"
+wt="$(add_worktree_with_work "$root" "$RUN_A")"
 CHECKS="$root/.xezar/checks"
 VERIFY="$CHECKS/verify-evidence.sh"
 drive "$wt" "$CHECKS" "$LIST_ID" "$REQUIRED_ALL" "${ALL_PASS[@]}" > /dev/null
@@ -1412,7 +1425,7 @@ printf '%s' "$out" | grep -q "was not observed by the caller" \
 # ask the same strict question. The auditor was the one that did not supply the current observations,
 # so it answered for a different reason than the other two. These cases pin the agreement.
 root="$(make_fixture caller-agreement)"
-wt="$(add_worktree "$root" "$RUN_A")"
+wt="$(add_worktree_with_work "$root" "$RUN_A")"
 CHECKS="$root/.xezar/checks"
 VERIFY="$CHECKS/verify-evidence.sh"
 drive "$wt" "$CHECKS" "$LIST_ID" "$REQUIRED_ALL" "${ALL_PASS[@]}" > /dev/null
@@ -1452,7 +1465,7 @@ printf '%s' "$out" | grep -q "not observed by the caller" \
 
 # An interrupted newest attempt is the same boundary, and it must read as interrupted.
 root="$(make_fixture current-eligibility-interrupted)"
-wt="$(add_worktree "$root" "$RUN_A")"
+wt="$(add_worktree_with_work "$root" "$RUN_A")"
 CHECKS="$root/.xezar/checks"
 GATES_ROOT="$root/.local/xezar-tasks/$RUN_A/gates"
 head_sha="$(git -C "$wt" rev-parse HEAD)"
@@ -1475,7 +1488,7 @@ printf '%s' "$out" | grep -qF "is interrupted" \
 # C3. A CI observation for another revision must not sit in the list looking like this seal's
 # corroboration. The three things CI can legitimately test stay apart instead of being flattened.
 root="$(make_fixture ci-binding)"
-wt="$(add_worktree "$root" "$RUN_A")"
+wt="$(add_worktree_with_work "$root" "$RUN_A")"
 CHECKS="$root/.xezar/checks"
 MANIFEST="$root/.local/xezar-tasks/$RUN_A/manifest.json"
 OBSERVE="$CHECKS/lib/gate-results.mjs"
@@ -1549,11 +1562,61 @@ expect_ok "every writing workflow puts readiness before its gates step" \
   ' "$REPO_ROOT/.xezar/workflows"
 
 rm "$root/.local/xezar-tasks/$RUN_A/BLOCKED"
+# A resolved decision leads to work, and readiness needs that work to exist (§7b): the branch gets
+# its real commit here, so this case keeps testing BLOCKED alone.
+printf 'export const seed = 2;\n' > "$wt/seed.ts"
+git -C "$wt" -c user.email=t@t -c user.name=t commit -qam "the work the decision unblocked"
 expect_ok "clearing the decision unblocks readiness" run_in "$wt" "$PF" --readiness
 # Clearing the blocker removes the blocker, and nothing else. The evidence step still has to
 # find a real recorded gate attempt — an unblocked task is not thereby a tested one.
 expect_fail "clearing it does not conjure gate evidence" \
   "no gate attempt recorded" run_in "$wt" "$PF" --record-gate-evidence
+
+# --- 7b. An empty branch is not a task's work (#312) ---------------------------------------------
+#
+# THE INCIDENT. Run b86c6066's author step ended its turn on a design question in prose: no code, no
+# `XEZ:ASK`, no BLOCKED file. The engine marked the step done — only the last agent step is
+# interactive — and readiness, whose only scope check was "is there a BLOCKED file", read the
+# ABSENT file as "not blocked". The gates then ran on the base commit and the evidence step sealed
+# `a0cf85e`, the manifest's own baseSha: a valid, verifiable seal for a branch holding none of the
+# task's work. Absent input and "checked, and fine" were the same branch.
+#
+# Every workflow that runs these three modes ends in a draft pull request or a release, and neither
+# exists without a commit, so an empty branch is never an honest success for them. The read-only
+# roles (business-analysis, research) run plain preflight only and are unaffected — pinned below.
+printf '\n-- empty branch --\n'
+root="$(make_fixture empty-branch)"
+wt="$(add_worktree "$root" "$RUN_A")"
+PF="$root/.xezar/checks/worktree-preflight.sh"
+
+# The bug: every one of these used to exit 0 on a branch whose HEAD is the base commit.
+expect_fail "readiness refuses a branch with zero commits over its base" \
+  "branch.has-own-commits" run_in "$wt" "$PF" --readiness
+expect_fail "and the evidence step cannot seal it" \
+  "branch.has-own-commits" run_in "$wt" "$PF" --record-gate-evidence
+expect_fail "and handoff cannot verify it" \
+  "branch.has-own-commits" run_in "$wt" "$PF" --verify-gate-evidence
+
+# Not an equality test. The base moving on after the fork leaves HEAD != base tip, yet the branch
+# still carries nothing of its own — HEAD is an ancestor of the base.
+git -C "$root" -c user.email=t@t -c user.name=t commit -q --allow-empty -m "main moved on"
+expect_fail "an empty branch is refused even after its base moved ahead" \
+  "branch.has-own-commits" run_in "$wt" "$PF" --readiness
+
+# Guards that pass both ways: the modes with no gate to seal keep accepting a fresh, empty task.
+expect_ok "plain preflight still accepts an empty branch (setup runs before any work)" \
+  run_in "$wt" "$PF"
+if grep -q -- '--readiness\|--record-gate-evidence\|--verify-gate-evidence' \
+  "$REPO_ROOT/.xezar/workflows/business-analysis.yaml" "$REPO_ROOT/.xezar/workflows/research.yaml"; then
+  bad "read-only roles never reach the empty-branch refusal" "business-analysis or research now runs a gated preflight mode"
+else
+  ok "read-only roles never reach the empty-branch refusal"
+fi
+
+# The control: one real commit and readiness passes again.
+printf 'export const seed = 3;\n' > "$wt/seed.ts"
+git -C "$wt" -c user.email=t@t -c user.name=t commit -qam "the task's work"
+expect_ok "a branch with a real commit over its base passes readiness" run_in "$wt" "$PF" --readiness
 
 # --- 8. Manifest safety ------------------------------------------------------------------------------
 printf '\n-- manifest --\n'
@@ -2239,7 +2302,7 @@ expect_ok "no recovery script ever aborts, resets or cleans" \
 printf '\n-- resumed completion --\n'
 
 root="$(make_fixture resume)"
-wt="$(add_worktree "$root" "$RUN_A")"
+wt="$(add_worktree_with_work "$root" "$RUN_A")"
 CHECKS="$root/.xezar/checks"
 RC="$CHECKS/resume-complete.sh"
 
@@ -2376,7 +2439,7 @@ MINI
 root="$(make_fixture resume-driven)"
 write_mini_gates "$root"
 git -C "$root" -c user.email=t@t -c user.name=t commit -qam "mini gates" >/dev/null 2>&1
-wt="$(add_worktree "$root" "$RUN_A")"
+wt="$(add_worktree_with_work "$root" "$RUN_A")"
 RC="$root/.xezar/checks/resume-complete.sh"
 MANIFEST="$root/.local/xezar-tasks/$RUN_A/manifest.json"
 GATES_ROOT="$root/.local/xezar-tasks/$RUN_A/gates"
@@ -2785,7 +2848,7 @@ expect_ok "evidence and fixture scratch are independent paths" \
 
 # Sealed evidence survives a reclaimed worktree, which is the reason for the split.
 root="$(make_fixture reclaimed)"
-wt="$(add_worktree "$root" "$RUN_A")"
+wt="$(add_worktree_with_work "$root" "$RUN_A")"
 CHECKS="$root/.xezar/checks"
 drive "$wt" "$CHECKS" "$LIST_ID" "$REQUIRED_ALL" "${ALL_PASS[@]}" > /dev/null
 run_in "$wt" "$CHECKS/worktree-preflight.sh" --record-gate-evidence >/dev/null 2>&1

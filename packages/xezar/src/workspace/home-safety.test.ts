@@ -113,9 +113,25 @@ describe('xezar home write safety', () => {
     // any single defence is removed.
     const packageRoot = fileURLToPath(new URL('../..', import.meta.url));
     const vitestBin = join(packageRoot, '..', '..', 'node_modules', '.bin', 'vitest');
-    const env: NodeJS.ProcessEnv = { ...process.env, HOME: fakeUserHome };
+    //
+    // That expected failure must stay in this process's captured output. On a GitHub runner the
+    // child inherits `GITHUB_ACTIONS`, which turns on vitest's GitHub reporter, and
+    // `GITHUB_STEP_SUMMARY`, which that reporter appends to — so a job that passed showed the
+    // child's red report (#194). The env below is what a CI job hands down, pointed at a scratch
+    // summary, so the check runs on every machine and not only on CI.
+    const summary = join(pinned, 'step-summary.md');
+    writeFileSync(summary, '');
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      HOME: fakeUserHome,
+      GITHUB_ACTIONS: 'true',
+      GITHUB_STEP_SUMMARY: summary,
+    };
     delete env.XEZ_HOME;
     delete env.VITEST;
+    // Cut the child off from the job's reporting; its output stays in `run.stdout`.
+    delete env.GITHUB_ACTIONS;
+    delete env.GITHUB_STEP_SUMMARY;
 
     const run = spawnSync(
       vitestBin,
@@ -127,6 +143,7 @@ describe('xezar home write safety', () => {
     // What matters is what it left behind outside its sandbox.
     expect(run.error).toBeUndefined();
     expect(existsSync(join(fakeUserHome, '.xezar'))).toBe(false);
+    expect(readFileSync(summary, 'utf8')).toBe('');
   }, 180_000);
 
   it('allows writes outside the real xezar home, and is inert outside vitest', () => {

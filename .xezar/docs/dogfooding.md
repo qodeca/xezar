@@ -12,6 +12,12 @@ Installation validation is reported in installation.md. Real-task entries follow
 
 ## Real-task entries
 
+### 2026-09-11 — #307 (five false test signals), `bug-fix` workflow — real-task verified
+
+- Observed: **both gate repairs were spent on the task's own scratch tests, not on any fix.** Flake reproduction wants probes that run under the real vitest config, so they sat in the tree as `*-scratch.test.*`. Attempt 0001 failed 47 tests, all scratch; attempt 0002 failed typecheck and 45 tests on one scratch file that an interrupted proof script had copied back in, and that `git add` had staged. The real suite was green both times.
+- Lesson (recommended): a reproduction probe that must live under `packages/*/src` is copied in by the script that runs it and removed by that same script on the next line, never left for a later cleanup. Check `git status --short` for `scratch` before ending an investigate step, and commit the fix before starting a long proof run, so an interrupted run can only leave a dirty tree, never a committed probe.
+- Remaining limit: one macOS machine; the kit has no guard that refuses a `*-scratch.test.*` file, and adding one is a separate decision.
+
 ### 2026-09-09 — issue #18, single agent step (`quick-task`, no kit workflow) — real-task verified
 
 - Observed: `worktree-preflight.sh` (strict and `--readiness`), `worktree-setup.sh` and `repo-gates.sh --fast` ran standalone from a plain agent step. Setup on npm 11 prints "install-scripts not yet covered by allowScripts" warnings (esbuild, fsevents); they do not block.
@@ -347,3 +353,14 @@ Installation validation is reported in installation.md. Real-task entries follow
 - Observed: **the brief's "stash the fix" red-proof step does not apply when the fix is already merged.** The honest equivalent is to revert the fix's lines in place, run, and `git checkout -- <file>`. A clean tree makes that safe, and it avoids the shared stash stack.
 - Observed (sibling, not fixed): a cancel during a check step is honoured, but `close` waits for every process holding the shell's stdout. In a standalone probe, `sleep 4; echo after` closed at 4012 ms against 303 ms for a single command. The children run on after the cancel.
 - Remaining limit: the red proofs are in-process with the bundled mock. No real Claude/Codex/OpenCode/pi session was cancelled mid-spawn; each runner's `interrupt()` was read, not exercised here.
+
+### 2026-09-11 — issue #312, `bug-fix` step 1 (Reproduce and diagnose), `xezar-bug-investigation`, Claude Code — fixture-tested; the guard is not yet real-task verified
+
+- Evidence: run b86c6066 (`feature-implementation`, #309). Its event log shows `readiness` PREFLIGHT OK, then `gate evidence sealed  a0cf85e…` – the manifest's own `baseSha`. Gate attempt `0001` ran on that head. The handoff step caught it by hand 8 minutes later and wrote a `BLOCKED` note; no check did.
+- Observed: **"who marks this step done?" found the cause in one step.** A non-final agent step is not interactive, so a question in prose or `XEZ:ASK` ends it `done`. The shared contract told agents to use `XEZ:ASK` "in an interactive terminal agent step", but said nothing about the other steps.
+- Observed: readiness had one scope check, "is there a `BLOCKED` file". An absent file read as "not blocked", with no populated-input guarantee.
+- Change: readiness and both evidence modes refuse when HEAD is an ancestor of `refs/heads/<base>` or `refs/remotes/origin/<base>` (`branch.has-own-commits`). An ancestor test, not an equality test, so a base that moved on does not hide an empty branch. A check that cannot be evaluated refuses. The shared contract of all 18 skills gains one additive sentence: write `BLOCKED` before stopping for a decision.
+- Scope check: 9 workflows run these modes. All end in a draft PR or a release, and neither exists without a commit. `business-analysis` and `research` run plain preflight only; a fixture case pins that.
+- Regression/control: on the unfixed check the 4 new empty-branch refusals were red and the other 476 cases passed (the plain-preflight, read-only-role and real-commit controls among them – they pass both ways). With the fix, 58 older cases went red: 16 fixtures sealed or verified evidence on a fresh, empty branch. They now start from one real commit (`add_worktree_with_work`); fixtures for plain preflight stay empty. Final run: 480 passed, 0 failed.
+- Observed: on this task's own worktree, local `main` was behind `origin/main`, and the refusal came from `refs/remotes/origin/main`. Checking only the local base ref would have let this empty branch through.
+- Remaining limit: a branch with commits whose net diff is empty (commit, then revert) still passes. The engine still marks a question-only step `done`; the refusal only moves the stop to readiness.

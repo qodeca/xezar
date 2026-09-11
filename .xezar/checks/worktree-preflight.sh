@@ -25,9 +25,11 @@
 #   worktree-preflight.sh --allow-root         tolerate the primary checkout (read-only
 #                                              workflows: review, triage)
 #   worktree-preflight.sh --readiness          full check, plus: refuse when the task marked
-#                                              itself blocked. Runs BEFORE the gates so an
-#                                              unresolved decision stops the workflow without
-#                                              paying for a full gate run first
+#                                              itself blocked, or when its branch has no
+#                                              commits over the base (#312). Runs BEFORE the
+#                                              gates so an unresolved decision stops the
+#                                              workflow without paying for a full gate run
+#                                              first. Both evidence modes repeat both checks
 #   worktree-preflight.sh --merge-recovery     full check with ONE narrow exception: an
 #                                              interrupted merge that exactly matches this run's
 #                                              recorded merge intent is admitted instead of
@@ -66,6 +68,7 @@ usage() {
   printf '  (no flag)                 strict isolation check, for a writing workflow\n'
   printf '  --allow-root              also accept the primary checkout, for a read-only workflow\n'
   printf '  --readiness               strict, plus refuse when this task recorded a BLOCKED decision\n'
+  printf '                            or its branch has no commits over the base\n'
   printf '  --merge-recovery          strict, but admit the ONE interrupted merge this run recorded\n'
   printf '                            an intent for before starting it. Admits nothing else, and\n'
   printf '                            never aborts, resets or resolves anything\n'
@@ -345,6 +348,41 @@ if [ "$MODE" = "readiness" ] || [ "$MODE" = "record-gate-evidence" ] || [ "$MODE
       cat "$evidence_dir/BLOCKED"
       printf '\n'
       fail scope.not-blocked "the task recorded an unresolved decision in $evidence_dir/BLOCKED — the workflow stops here. No gates, no pull request, until a human resolves it."
+    fi
+  fi
+
+  # --- The branch carries this task's work (#312) ---------------------------------------
+  #
+  # No BLOCKED file is ABSENT input, not a verdict: it cannot tell "decided, and done" from "the
+  # author step stopped without writing anything". Run b86c6066 was the second: its author step
+  # ended on a question in prose, the engine marked it done, readiness found no BLOCKED file, and
+  # the evidence step sealed the base commit itself — a valid seal for a branch holding none of the
+  # task's work. This asks the question the file cannot answer, and depends on no agent complying.
+  #
+  # "Empty" means HEAD is an ancestor of the base — not HEAD == base tip, which a base that moved on
+  # after the fork would defeat. Both spellings of the base are tried, and either one containing
+  # HEAD refuses. A check that cannot be evaluated refuses too. Plain preflight is untouched: setup
+  # runs it on a fresh, rightly empty branch. Every workflow reaching these modes ends in a pull
+  # request or a release, and neither exists without a commit.
+  empty_base=""
+  checked_bases=0
+  if [ -z "${HEAD_SHA:-}" ]; then
+    fail branch.has-own-commits "HEAD could not be resolved, so whether this branch carries any work cannot be evaluated"
+  else
+    for base_ref in "refs/heads/$BASE_BRANCH" "refs/remotes/origin/$BASE_BRANCH"; do
+      git -C "$TASK_CWD" rev-parse --verify --quiet "$base_ref" >/dev/null 2>&1 || continue
+      checked_bases=$((checked_bases + 1))
+      git -C "$TASK_CWD" merge-base --is-ancestor "$HEAD_SHA" "$base_ref" >/dev/null 2>&1
+      case $? in
+        0) empty_base="$base_ref" ;;
+        1) info "own commits   $(git -C "$TASK_CWD" rev-list --count "$base_ref..$HEAD_SHA" 2>/dev/null) over $base_ref" ;;
+        *) fail branch.has-own-commits "could not compare HEAD with $base_ref, so whether this branch carries any work cannot be evaluated" ;;
+      esac
+    done
+    if [ "$checked_bases" -eq 0 ]; then
+      fail branch.has-own-commits "no base ref resolved, so whether this branch carries any work cannot be evaluated"
+    elif [ -n "$empty_base" ]; then
+      fail branch.has-own-commits "branch \"$BRANCH\" has no commits over its base — HEAD ${HEAD_SHA:0:12} is already contained in $empty_base. There is no work here to gate, seal or hand off. If the author step stopped for a decision, it must write the task's BLOCKED file; if no change is the honest outcome, report that and end the run instead of sealing."
     fi
   fi
 fi

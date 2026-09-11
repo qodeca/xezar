@@ -233,7 +233,10 @@ async function composerReady(sourceLabel = 'Skill') {
 /** Open the project pill and pick a project by id. */
 async function switchProject(projectId: string) {
   fireEvent.click(projectPill())
-  await screen.findByPlaceholderText('search projects…')
+  const search = await screen.findByPlaceholderText('search projects…')
+  // The picker must still own focus. If a picker closed a moment earlier hands focus back to its
+  // own trigger now, this one reads that as a focus-outside and dismisses itself (#237).
+  expect(document.activeElement).toBe(search)
   fireEvent.click(document.querySelector(`[data-slot="project-option"][data-project-id="${projectId}"]`)!)
 }
 
@@ -289,6 +292,11 @@ describe('switching project', () => {
     // A leading `null` is the "No skill" row; the built-in `quick-task` has no row of its own.
     expect(sourceRefs()).toEqual([null, 'om-fix'])
     fireEvent.keyDown(document.body, { key: 'Escape' })
+    // Radix hands focus back to the closed picker's trigger one macrotask AFTER it closes. Open
+    // the project picker before that and the hand-back lands inside its lifetime and closes it —
+    // every time, in a probe; the option click only lost the race once the close had rendered
+    // (#237). A person cannot click inside that tick; wait for the hand-back like one would.
+    await waitFor(() => expect(document.activeElement).toBe(sourcePill()))
 
     await switchProject(OTHER)
     await waitFor(() => expect(pathname()).toBe(`/p/${OTHER}/new`))
