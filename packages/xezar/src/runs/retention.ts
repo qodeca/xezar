@@ -5,7 +5,9 @@
 // recoverable) and the thin I/O enforcer that performs the reclaim. The selector
 // is pure and unit-testable; the enforcer never throws (helper discipline).
 import { existsSync } from 'node:fs';
+import { lstat } from 'node:fs/promises';
 import { createWorktree, removeWorktree } from '../git-worktree.ts';
+import { ownRun, ownWorktree, ownershipScope, type OwnershipProject } from '../mcp/resource-ownership.ts';
 import type { RunRecord, RunStatus } from './store.ts';
 
 /** The "finished" status set — mirrors `RunStore.archiveFinished`. A run at the
@@ -116,6 +118,45 @@ export interface ReclaimOptions {
   shouldStop?: () => boolean;
 }
 
+/** Reclaim looks up no automation, so that half of the ownership scope refuses everything. */
+const NO_AUTOMATIONS = { get: () => undefined, latestReceipts: () => new Map() } as unknown as OwnershipProject['automationStore'];
+
+/**
+ * The reclaimable runs whose worktree is provably this project's own (#288). A record's
+ * `worktreePath` is data — a copied or hand-edited `.local/xezar` can name another project's
+ * worktree — and reclaim deletes that directory. So a candidate must name this project's
+ * `<root>/.local/xezar/worktrees/<id>` (`ownRun`), and a directory that exists there must be a
+ * real one reached through no symlink (`ownWorktree`). A directory that is already gone reaches
+ * nothing and stays a candidate, so its stamp is still written. Anything else is left out BEFORE
+ * selection: it neither counts against `keep` nor is touched. Per record rather than `ownSweep`'s
+ * whole-sweep refusal, because this also runs unattended at boot and at every task's end, where
+ * refusing the whole sweep would silently switch retention (#483) off for the project.
+ */
+async function ownedReclaimable(repoRoot: string, runs: readonly RunRecord[]): Promise<RunRecord[]> {
+  const byId = new Map(runs.map((r) => [r.id, r]));
+  const scope = ownershipScope({
+    root: repoRoot,
+    store: { getRun: (id) => byId.get(id), listRuns: () => [...runs] },
+    automationStore: NO_AUTOMATIONS,
+  });
+  const owned: RunRecord[] = [];
+  for (const run of runs) {
+    if (!isReclaimable(run) || !ownRun(scope, run.id).ok) continue;
+    if ((await ownWorktree(scope, run.id)).ok || (await isAbsent(run.worktreePath!))) owned.push(run);
+  }
+  return owned;
+}
+
+/** Nothing at `path`, not even a dangling link. Any other answer is not "absent" (fail closed). */
+async function isAbsent(path: string): Promise<boolean> {
+  try {
+    await lstat(path);
+    return false;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === 'ENOENT';
+  }
+}
+
 export async function reclaimWorktrees(
   repoRoot: string,
   store: RetentionStore,
@@ -128,7 +169,7 @@ export async function reclaimWorktrees(
   const runs = store.listRuns();
   const byId = new Map(runs.map((r) => [r.id, r]));
   const reclaimed: string[] = [];
-  for (const id of selectReclaimableWorktrees(runs, keep)) {
+  for (const id of selectReclaimableWorktrees(await ownedReclaimable(repoRoot, runs), keep)) {
     // Per iteration, not once before the loop: each pass costs a git spawn and a record write,
     // and the caller's ownership can end between any two of them. Returning what was already
     // reclaimed is honest — those directories really are gone.
