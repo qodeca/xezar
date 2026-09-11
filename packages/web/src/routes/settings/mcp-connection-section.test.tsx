@@ -191,9 +191,62 @@ describe('MCP connection section hard boundaries (F-15, U-M02, U-M01)', () => {
     expect(text).not.toContain('automatically detects')
     // …and it must state the negation plainly for each client.
     expect(text).toContain('does not discover')
-    expect(text).toContain('NOT automatic')
+    expect(container.querySelectorAll('[data-slot="mcp-client-not-automatic"]')).toHaveLength(3)
+    for (const line of container.querySelectorAll('[data-slot="mcp-client-not-automatic"]')) {
+      expect(line.textContent).toMatch(/^Not automatic: .+ does not discover \.local\/xezar\/mcp-connection\.json/)
+    }
     // No unprocessed unicode escape ("\u2014") may leak into rendered text — a JSX attribute
     // string does not process \u escapes, so a copy edit that reaches for one shows up here.
     expect(text).not.toContain('\\u')
+  })
+})
+
+describe('MCP connection section copy (#301, the design pass on #296)', () => {
+  it('renders backticked names as code, never as literal backticks (C1)', async () => {
+    const { container } = renderSection()
+    await waitFor(() => expect(container.textContent).toContain('Claude Code'))
+    expect(container.textContent).not.toContain('`')
+    const codes = [...container.querySelectorAll('[data-slot="mcp-connection-section"] code')].map((el) => el.textContent)
+    expect(codes).toContain('.local/xezar/mcp-connection.json')
+    expect(codes).toContain('opencode.json')
+  })
+
+  it('speaks to the user, not in the requirement document’s or the code’s voice (C2, C4, C7)', async () => {
+    const { container } = renderSection()
+    await waitFor(() => expect(container.textContent).toContain('Claude Code'))
+    const text = container.textContent ?? ''
+    expect(text).not.toContain('stated plainly')
+    expect(text).not.toContain('NOT automatic')
+    expect(text).not.toContain('Nothing here reads that file')
+    expect(container.querySelector('[data-slot="mcp-connection-status-unreported"]')?.textContent).toBe(
+      'This page cannot tell whether a client is connected. Your leader client shows it.',
+    )
+  })
+
+  it('leaves out a section no route can fill, instead of showing it empty (C3)', async () => {
+    const { container } = renderSection()
+    await waitFor(() => expect(container.textContent).toContain('Claude Code'))
+    expect(container.textContent).not.toContain('Operation outcomes')
+    expect(container.querySelector('[data-slot="mcp-operations"]')).toBeNull()
+  })
+
+  it('puts the one-time setup right after the binding and the scope, and the status after the setup (C4, C5)', async () => {
+    const { container } = renderSection()
+    await waitFor(() => expect(container.textContent).toContain('Claude Code'))
+    const slots = ['mcp-project', 'mcp-local-only', 'mcp-readiness', 'mcp-client-claude-code', 'mcp-connection-status', 'mcp-capabilities']
+    const order = slots.map((slot) => container.querySelector(`[data-slot="${slot}"]`))
+    for (const [i, el] of order.entries()) expect(el, slots[i]).toBeTruthy()
+    for (let i = 1; i < order.length; i++) {
+      expect(order[i - 1]!.compareDocumentPosition(order[i]!) & Node.DOCUMENT_POSITION_FOLLOWING, slots[i]).toBeTruthy()
+    }
+  })
+
+  it('has one capability section, and keeps the way to the MCP API reference (C8)', async () => {
+    const { container } = renderSection()
+    await waitFor(() => expect(container.textContent).toContain('Claude Code'))
+    expect(container.textContent).not.toContain('Capabilities and limitations')
+    expect(container.querySelector('[data-slot="mcp-api-link"]')?.getAttribute('href')).toContain('/settings/mcp-api')
+    // The one fact the dropped bullets held that no other section said.
+    expect(container.textContent).toContain('one client may own it at a time')
   })
 })
