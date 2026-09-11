@@ -23,6 +23,15 @@
   one warning and the MCP keeps working. This closes acceptance case A-01. (#262)
 
 ## 🐛 Fixes
+- 🐛 **The project kit refuses to judge a task whose workspace packages load from another
+  checkout.** A task worktree lives inside the primary checkout, so when its own
+  `node_modules/@qodeca/xezar-contract` link is missing, node does not fail — it walks up and loads
+  the primary checkout's `packages/contract` source instead, whatever branch and edits that has. A
+  test in a bare task worktree was seen importing the primary's contract and missing the branch's
+  own change. `worktree-setup.sh` and `repo-gates.sh` now check that every workspace package
+  resolves to the task's own copy before they stamp the install or run a gate, and stop with the
+  exact borrowed path when it does not; a `--fast` gate treats such a tree as stale and reinstalls.
+  Commands run by hand before setup are not covered. (#286)
 - 🐛 **One resumed task no longer freezes its account's whole queue.** After a provider usage
   limit, a task that resumed itself held every other task on the same agent account in the queue
   until its first resumed turn completed — hours, for a long turn — even with most slots free. The

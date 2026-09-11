@@ -184,6 +184,9 @@ if deps_are_fresh; then
 else
   printf '  deps          installing (npm ci)\n'
   npm ci || fatal "npm ci failed"
+  # Before the stamp: a tree whose workspace packages load from the primary checkout is not
+  # current, and a stamp would tell the gates' --fast path it is (#286).
+  deps_resolve_in_task || fatal "the install left workspace packages resolving outside this task"
   write_deps_stamp || fatal "could not write the dependency stamp"
   printf '  deps          installed\n'
 fi
