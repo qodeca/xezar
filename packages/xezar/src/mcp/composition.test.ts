@@ -19,6 +19,7 @@ import { runBridge } from './bridge.ts';
 import { EventJournal } from './event-journal.ts';
 import { resolveMcpTarget, startMcpService } from './index.ts';
 import { LineFramer, encodeFrame, type McpToolResult } from './ipc.ts';
+import { runVersion } from './stale-write.ts';
 import { tools } from './tools/index.ts';
 
 /**
@@ -210,7 +211,10 @@ describe('the composed MCP service, through the real bridge and socket', () => {
     const queued = { id: (started.structuredContent as { subject: { id: string } }).subject.id };
     expect(c.store.getRun(queued.id)?.status).toBe('queued');
 
-    const cancelled = await client.call('execution_control', { action: 'cancel', runId: queued.id });
+    // A leader reads the task before it acts on it, and acts on the version it read (#250).
+    const read = await client.call('task_read', { view: 'task', taskId: queued.id });
+    const expectedVersion = (JSON.parse((read.content[0] as { text: string }).text) as { version: string }).version;
+    const cancelled = await client.call('execution_control', { action: 'cancel', runId: queued.id, expectedVersion });
     expect(cancelled.isError, JSON.stringify(cancelled)).toBeFalsy();
     expect(cancelled.structuredContent, JSON.stringify(cancelled)).toMatchObject({ runStatus: 'cancelled' });
     const row = await until('the cancel row', () =>
@@ -221,6 +225,75 @@ describe('the composed MCP service, through the real bridge and socket', () => {
     expect(row.causedBy).toMatch(/^mcp-door\./);
     expect(auditLines(c.dataDir).map((entry) => entry.action)).toEqual(['taskCreate.start', 'executionControl.cancel']);
     expect(auditLines(c.dataDir)[1]).toMatchObject({ origin: 'mcp', outcome: 'ok', resource: { kind: 'run', id: queued.id } });
+  });
+
+  it("A-13: a leader write based on a stale read is refused, and the human's state stays byte-identical (#250)", async () => {
+    // No free slot: the task stays queued, so nothing but the two writers below can move it.
+    const c = await cockpit(0);
+    const handle = await startMcpService({ projectId: c.id, version: VERSION, service: c.app, store: c.store });
+    closers.push(() => handle.close());
+    const client = agent(c.root);
+    const body = (result: McpToolResult) => JSON.parse((result.content[0] as { text: string }).text) as Record<string, unknown>;
+    const started = await client.call('task_create', { action: 'start', operationId: 'op-compose-0013', prompt: 'the first brief' });
+    expect(started.isError, JSON.stringify(started)).toBeFalsy();
+    const runId = (started.structuredContent as { subject: { id: string } }).subject.id;
+
+    // 1. The leader reads the task and keeps the version its answer carries.
+    const leaderRead = body(await client.call('task_read', { view: 'task', taskId: runId })).version as string;
+    expect(leaderRead).toBe(runVersion(c.store, runId));
+
+    // 2. A human changes it from the cockpit — the second path, which sends no token at all.
+    const human = await c.app.request(`/api/v1/p/${c.id}/runs/${runId}`, {
+      method: 'PATCH',
+      headers: { host: '127.0.0.1', 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'the human’s title', task: 'the human’s brief' }),
+    });
+    expect(human.status).toBe(200);
+    const humanVersion = runVersion(c.store, runId);
+    expect(humanVersion).not.toBe(leaderRead);
+
+    // 3. The leader acts on its old read, through every tool that could change this task.
+    c.store.flush();
+    const bytes = () => {
+      c.store.flush();
+      return {
+        index: readFileSync(join(c.dataDir, 'runs.json')),
+        events: existsSync(join(c.dataDir, 'runs', `${runId}.ndjson`)) ? readFileSync(join(c.dataDir, 'runs', `${runId}.ndjson`)) : null,
+      };
+    };
+    const before = bytes();
+    const attempts = [
+      await client.call('organise_work', { action: 'set_title', runId, title: 'the leader’s title', expectedVersion: leaderRead }),
+      await client.call('organise_work', { action: 'edit_brief', runId, task: 'the leader’s brief', expectedVersion: leaderRead }),
+      await client.call('execution_control', { action: 'send_message', runId, text: 'and this', expectedVersion: leaderRead }),
+      await client.call('execution_control', { action: 'cancel', runId, expectedVersion: leaderRead }),
+    ];
+    for (const attempt of attempts) {
+      expect(attempt.isError, JSON.stringify(attempt)).toBeFalsy();
+      expect(body(attempt)).toMatchObject({
+        status: 'conflict',
+        applied: false,
+        error: 'stale_version',
+        resource: { kind: 'run', id: runId },
+        currentVersion: humanVersion,
+        changedSince: true,
+      });
+    }
+    // Refused, and PROVED unapplied: the task's files are the same bytes the human left.
+    expect(bytes()).toEqual(before);
+    expect(c.store.getRun(runId)).toMatchObject({ status: 'queued', title: 'the human’s title', task: 'the human’s brief' });
+
+    // The trail says what happened — rejected, with the version the decision was based on.
+    const rejected = auditLines(c.dataDir).slice(-attempts.length);
+    for (const entry of rejected) {
+      expect(entry).toMatchObject({ origin: 'mcp', outcome: 'rejected', errorCode: 'stale_version', versionToken: leaderRead });
+    }
+
+    // 4. Read again, decide again: the new decision goes through.
+    const freshRead = body(await client.call('task_read', { view: 'task', taskId: runId })).version as string;
+    const renamed = await client.call('organise_work', { action: 'set_title', runId, title: 'the leader’s title', expectedVersion: freshRead });
+    expect(body(renamed)).toMatchObject({ status: 'done', run: { id: runId, title: 'the leader’s title' } });
+    expect(c.store.getRun(runId)?.title).toBe('the leader’s title');
   });
 
   it('F-15: no secret from the host environment enters a journal row', async () => {
