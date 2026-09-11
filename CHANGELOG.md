@@ -1,6 +1,14 @@
 # Unreleased
 
 ## ✨ Features
+- ✨ **pi has a setup card in MCP connection.** Project Settings → MCP connection now shows pi's
+  one-time setup next to Claude Code, Codex and OpenCode. pi ships no MCP support of its own, so the
+  card starts with installing the third-party `pi-mcp-adapter` extension
+  (`pi install npm:pi-mcp-adapter@2.32.1`, the version tested with xezar), then gives the `xezar`
+  entry for the project's `.pi/mcp.json`. The entry keeps pi connected while it is idle; without
+  that, pi would give the project up after ten idle minutes. The card also lists the six files pi
+  reads MCP config from, and warns that the project `.mcp.json` is read by Claude Code too. xezar
+  still starts no leader: you point your own pi at it. (#341)
 - ✨ **One MCP client owns a project at a time.** A second coding agent that connects to a
   project another MCP client already holds is now refused with the project-occupied error
   (`-32080`, `com.qodeca.xezar/project-occupied`), which names nothing about the other client; the
@@ -264,8 +272,8 @@
   support, by design, so it counts through the third-party `pi-mcp-adapter` extension, which pi's
   one-time setup installs; the requirements say so in the text. The connection-file decision (D-04)
   gains pi's one-time setup and a four-client comparison, and the client compatibility report gains
-  a dated pi addendum. A requirements change only: pi has no reaction adapter, setup card or
-  acceptance column yet. (#330)
+  a dated pi addendum. A requirements change only: pi has no reaction adapter or acceptance column
+  yet. (#330)
 - 📝 **A release-level Definition of Done for 0.14.0.** `docs/releases/0.14.0-definition-of-done.md`
   sits beside the MCP feature's own eight clauses and covers the rest of the release: the security,
   engine and gate fixes, open-source readiness, documentation, the kit roles, the UI design review
