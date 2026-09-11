@@ -11,6 +11,7 @@ import {
   KeyboardIcon,
   NotebookPenIcon,
   PaletteIcon,
+  PlugIcon,
 } from 'lucide-react'
 import type { ComponentType, SVGProps } from 'react'
 
@@ -21,6 +22,7 @@ import { AgentConfigSection } from './agent-config-section'
 import { AgentsSection } from './agents-section'
 import { AppearanceSection } from './appearance'
 import { BookmarkletsSection } from './bookmarklets-section'
+import { McpConnectionSection } from './mcp-connection-section'
 import { NotificationsSection } from './notifications-section'
 import { ProjectsSection } from './projects-section'
 import { PromptTemplatesSection } from './prompt-templates-section'
@@ -57,6 +59,7 @@ export type SettingsSectionId =
   | 'prompt-templates'
   | 'keyboard'
   | 'skills'
+  | 'mcp-connection'
 
 /** Which settings area a section belongs to — and therefore which store it writes. */
 export type SettingsScope = 'project' | 'global'
@@ -129,6 +132,14 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     description: 'Reusable snippets for follow-up instructions.',
     icon: NotebookPenIcon,
     component: PromptTemplatesSection,
+    scope: 'project',
+  },
+  {
+    id: 'mcp-connection',
+    title: 'MCP connection',
+    description: 'Which project the MCP leader is bound to, and one-time client setup.',
+    icon: PlugIcon,
+    component: McpConnectionSection,
     scope: 'project',
   },
   // ---- global scope (`/settings/global/…`) — the user and the machine, in mockup order -----

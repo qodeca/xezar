@@ -8,8 +8,8 @@ import { defineTool, errorResult, textResult, type McpToolContext, type McpToolR
 
 /**
  * `local_handoff` (#98): the cockpit's "Open in…" family — a task in a terminal, a task's
- * worktree or one of its image files in a local app, the project folder in a local app, and the
- * list of apps that can do it (I-044, I-114).
+ * worktree in a local app, the project folder in a local app, and the list of apps that can do it
+ * (I-044, I-114). Opening one image file by path is left out: see `Field` below.
  *
  * M-19 is the trap this module exists for. Every one of these routes launches an application on
  * the machine that runs the xezar SERVICE. An MCP client is a separate process, possibly on
@@ -64,14 +64,17 @@ const NOT_CONNECTED = 'local_handoff is not connected to the xezar service in th
 /** The context this tool reads beyond `McpToolContext`: the running service's in-process entry. */
 export type LocalHandoffContext = McpToolContext & { readonly service?: ServiceDispatch };
 
-type Field = 'runId' | 'target' | 'path';
-const FIELDS: readonly Field[] = ['runId', 'target', 'path'];
+// No `path` argument: the registry-wide guard in `execution-control.test.ts` (#94) forbids a path in
+// every tool's input, so the cockpit's single-image handoff (`open-in` with target "default" and a
+// worktree-relative file, I-044) is not offered here. The worktree itself still opens in any app.
+type Field = 'runId' | 'target';
+const FIELDS: readonly Field[] = ['runId', 'target'];
 
 /** Which arguments each action takes. Anything else is refused rather than silently dropped. */
 const ACTION_FIELDS: Record<LocalHandoffAction, { required: readonly Field[]; optional: readonly Field[] }> = {
   list_apps: { required: [], optional: [] },
   open_task_in_terminal: { required: ['runId'], optional: [] },
-  open_task_in_app: { required: ['runId', 'target'], optional: ['path'] },
+  open_task_in_app: { required: ['runId', 'target'], optional: [] },
   open_project_in_app: { required: ['target'], optional: [] },
 };
 
@@ -81,7 +84,7 @@ export const localHandoffInputSchema = z
       .enum(LOCAL_HANDOFF_ACTIONS)
       .describe(
         'list_apps: the apps installed on the xezar host. open_task_in_terminal: resume the task’s agent session in a terminal on the xezar host. ' +
-          'open_task_in_app: open the task’s worktree (or, with target "default" and a path, one image file) in an app on the xezar host. ' +
+          'open_task_in_app: open the task’s worktree in an app on the xezar host. ' +
           'open_project_in_app: open the project folder in an app on the xezar host.',
       ),
     runId: z.string().min(1).max(128).optional().describe("The task's run id, in the project this connection is bound to."),
@@ -91,13 +94,7 @@ export const localHandoffInputSchema = z
       .min(1)
       .max(200)
       .optional()
-      .describe('An app id from list_apps (for example "finder", "terminal", "vscode", "cli:claude"), or "default" with a path.'),
-    path: z
-      .string()
-      .min(1)
-      .max(1_000)
-      .optional()
-      .describe('open_task_in_app with target "default": a worktree-relative image file. It is re-checked against the worktree.'),
+      .describe('An app id from list_apps (for example "finder", "terminal", "vscode", "cli:claude").'),
   })
   .strict()
   .superRefine((args, ctx) => {
@@ -254,8 +251,7 @@ export async function runLocalHandoff(
     return fallbackOrFailed(args.action, answer);
   }
 
-  const json = { target: args.target!, ...(args.path !== undefined ? { path: args.path } : {}) };
-  const answer = await settle(scoped.runs[':id']['open-in'].$post({ param, json }));
+  const answer = await settle(scoped.runs[':id']['open-in'].$post({ param, json: { target: args.target! } }));
   if (answer.status === 200) return opened(args.action, answer);
   return fallbackOrFailed(args.action, answer);
 }

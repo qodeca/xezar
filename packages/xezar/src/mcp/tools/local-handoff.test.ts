@@ -289,7 +289,9 @@ describe('local_handoff arguments and wiring', () => {
     expect(parse({ action: 'open_project_in_app', target: 'finder', humanApproved: true })).toBe(false);
     expect(parse({ action: 'open_task_in_terminal' })).toBe(false);
     expect(parse({ action: 'open_project_in_app', target: 'finder', runId: 'r1' })).toBe(false);
-    expect(parse({ action: 'open_task_in_terminal', runId: 'r1', path: 'a.png' })).toBe(false);
+    expect(parse({ action: 'open_task_in_terminal', runId: 'r1', target: 'finder' })).toBe(false);
+    // No path anywhere (#94's registry-wide guard): not even the single-image handoff.
+    expect(parse({ action: 'open_task_in_app', runId: 'r1', target: 'default', path: 'a.png' })).toBe(false);
     for (const args of Object.values(EVERY_ACTION)) expect(parse(args), args.action).toBe(true);
   });
 

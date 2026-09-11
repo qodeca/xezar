@@ -18,3 +18,5 @@ export * from './automations.ts';
 export * from './mcp-idempotency.ts';
 export * from './mcp-versioning.ts';
 export * from './mcp-journal.ts';
+export * from './mcp-audit.ts';
+export * from './mcp-discovery.ts';
