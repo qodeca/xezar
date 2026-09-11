@@ -163,6 +163,12 @@
   assertion also gained the settle guard its mirror already had. (#200)
 
 ## 📝 Specs & Documentation
+- 📝 **A release-level Definition of Done for 0.14.0.** `docs/releases/0.14.0-definition-of-done.md`
+  sits beside the MCP feature's own eight clauses and covers the rest of the release: the security,
+  engine and gate fixes, open-source readiness, documentation, the kit roles, the UI design review
+  and the release act. Each clause says what evidence settles it and what does not count, and a
+  clause with no evidence is failed. A draft for the owner's decision; nothing in it is assessed
+  yet. (#300)
 - 📝 **A design review is part of done for UI work.** The project kit, the implementation and
   testing roles and the leader prompt now say that work with UI in scope, where such a review makes
   sense, needs a UX/UI design review (`xezar-ux-design`) before it is done, and that the author's
