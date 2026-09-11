@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
+import { once } from 'node:events';
 import {
   chmodSync,
   existsSync,
@@ -12,6 +13,7 @@ import {
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test, { type TestContext } from 'node:test';
+import { fileURLToPath } from 'node:url';
 import {
   bareDirFor,
   ensureBareClone,
@@ -325,6 +327,8 @@ function sandbox(t: TestContext): Sandbox {
 interface GitShim {
   /** Every invocation the fake `git` saw, in order. */
   calls: () => { sub: string; args: string[] }[];
+  /** The NDJSON call log behind `calls()`, for a case that has to read it from another process. */
+  log: string;
   /** Unblock a hanging invocation — it then exits the way a killed git does. */
   release: () => void;
 }
@@ -392,6 +396,7 @@ process.exit(done.status ?? 1);
   process.env.PATH = `${dir}:${process.env.PATH ?? ''}`;
 
   return {
+    log: config.log,
     calls: () =>
       existsSync(config.log)
         ? readFileSync(config.log, 'utf8')
@@ -466,12 +471,91 @@ test('a clone that hangs never blocks the catalog read, and a killed git degrade
   const waited = Date.now() - started;
   assert.ok(waited < 1_000, `the catalog read waited ${waited}ms on a hung git`);
 
-  // The event loop stays alive while git hangs...
+  // The hung clone is real — it has actually started — ...
   await waitFor(() => git.calls().some((c) => c.sub === 'clone'), 'the hanging clone to start');
   // ...and the load degrades to an empty catalog once the hung git is killed.
   git.release();
   assert.deepEqual(await waitForTeamSkills(root), []);
   assert.deepEqual(await refreshTeamSkills(root), []);
+});
+
+/** A one-shot command gets this long to leave after its own work — generous next to a node +
+ *  tsx boot, and far under `shimGit`'s own 20 s hang cap, so a failure here is the hang and
+ *  never the shim giving up. */
+const ONE_SHOT_EXIT_DEADLINE_MS = 10_000;
+/** How long the child waits for the clone to be spawned before giving up and reporting that it
+ *  never started — strictly under the deadline above, so the two can never race. */
+const ONE_SHOT_START_DEADLINE_MS = 5_000;
+const PACKAGE_ROOT = fileURLToPath(new URL('../../', import.meta.url));
+const SKILLS_REMOTE_MODULE = new URL('../../src/skills-remote.ts', import.meta.url).href;
+
+test('a hung network clone never holds a one-shot process open (#249)', async (t) => {
+  const box = sandbox(t);
+  const src = box.skillsRepo('one-shot-skill');
+  const root = box.projectRoot([{ repo: src, ref: 'main' }]);
+  // `shimGit` rewrites this process's PATH and `sandbox` its HOME; the child below inherits
+  // both, so it clones into the sandbox cache through a `clone` that never answers.
+  const git = shimGit(box, { hang: ['clone'], exitCode: 137 });
+
+  // A one-shot command in miniature: kick off the background catalog load the way every CLI
+  // entry point does (`discoverSkills` → `getTeamSkillsCached`) and then fall off the end of
+  // the program. `xezar run` is in exactly this state once it has printed `run done` — and it
+  // sat there for the full 60 s clone timeout until the packaged-CLI e2e SIGTERM'd it.
+  //
+  // The wait in the middle is not padding: it is the CLI's own work. A process that starts the
+  // load and immediately falls off the end never reaches git at all — the chain is pure
+  // promises and node exits out from under it — so the case would pass against the bug. Waiting
+  // until the clone has actually been spawned puts the child in the state `xezar run` is in
+  // when it prints its last line: real work finished, one network git still in flight.
+  const script = join(box.dir('xez-one-shot-'), 'one-shot.mjs');
+  writeFileSync(
+    script,
+    `import { existsSync, readFileSync } from 'node:fs';\n`
+      + `import { getTeamSkillsCached } from ${JSON.stringify(SKILLS_REMOTE_MODULE)};\n`
+      + `getTeamSkillsCached(${JSON.stringify(root)});\n`
+      + `const log = ${JSON.stringify(git.log)};\n`
+      + `const deadline = Date.now() + ${ONE_SHOT_START_DEADLINE_MS};\n`
+      + `const cloning = () => existsSync(log) && readFileSync(log, 'utf8').includes('"clone"');\n`
+      + `while (!cloning() && Date.now() < deadline) {\n`
+      + `  await new Promise((r) => setTimeout(r, 25));\n`
+      + `}\n`
+      + `process.stdout.write(cloning() ? 'clone in flight\\n' : 'clone never started\\n');\n`,
+  );
+
+  const started = Date.now();
+  // `cwd` is the package root so `--import tsx` resolves from this repo's node_modules rather
+  // than from the temp directory the script lives in.
+  const child = spawn(process.execPath, ['--import', 'tsx', script], {
+    cwd: PACKAGE_ROOT,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let output = '';
+  child.stdout.setEncoding('utf8');
+  child.stdout.on('data', (chunk: string) => { output += chunk; });
+  child.stderr.setEncoding('utf8');
+  child.stderr.on('data', (chunk: string) => { output += chunk; });
+  const reaper = setTimeout(() => child.kill('SIGKILL'), ONE_SHOT_EXIT_DEADLINE_MS);
+  const [code, signal] = (await once(child, 'exit')) as [number | null, NodeJS.Signals | null];
+  clearTimeout(reaper);
+  const waited = Date.now() - started;
+  // Before the assertions, so a failing one never leaves the orphaned clone sitting on the
+  // shim's full hang cap. The child's exit is already recorded above.
+  git.release();
+
+  assert.equal(
+    signal,
+    null,
+    `the one-shot process was still running after ${waited}ms and had to be killed — `
+      + `a background team-skills clone is holding the event loop open. Output:\n${output}`,
+  );
+  assert.equal(code, 0, `one-shot process exited ${code} after ${waited}ms. Output:\n${output}`);
+  assert.match(output, /clone in flight/, 'the child should have left with a clone still running');
+  // Without this the case is vacuous: a child that exits because it never reached git would
+  // pass the assertions above while proving nothing about a hung clone.
+  assert.ok(
+    git.calls().some((c) => c.sub === 'clone'),
+    `expected the hung clone to have been attempted. Output:\n${output}`,
+  );
 });
 
 test('a corrupt or truncated cache degrades to empty, and a missing one re-clones', async (t) => {

@@ -53,21 +53,80 @@ const GIT_HARDENING_ENV = {
   GIT_TERMINAL_PROMPT: '0',
 };
 
-function git(args: string[], timeoutMs: number, cwd?: string): Promise<GitResult> {
+/** `net.Socket`/`ChildProcess` under a type that does not advertise `unref` (`stdio` is typed
+ *  as a plain stream). Narrow cast rather than a blanket `any`, and a no-op when it is absent. */
+function unrefHandle(handle: unknown): void {
+  (handle as { unref?: () => void } | null | undefined)?.unref?.();
+}
+
+/**
+ * Every git this module runs.
+ *
+ * `network: true` marks the two REMOTE operations — `ensureBareClone`'s clone and `fetchAll`'s
+ * fetch. They are the only ones that can stall for the full `CLONE_TIMEOUT_MS`, and they are
+ * unref'd so an in-flight one can never hold a process open past that process's own work. That
+ * is this module's stated contract ("Nothing here ever blocks startup", AGENTS.md's "team-skill
+ * loading never blocks on the network") applied to the other end of the lifecycle: the catalog
+ * read already returns immediately, but `getTeamSkillsCached` then leaves a network git running
+ * that a ONE-SHOT command has to outlive. `xezar run` printed `run done` and then sat for 60 s
+ * waiting on a clone whose result it had already declined to use (#249 CI: the packaged-CLI case
+ * was SIGTERM'd at its 60 s cap with a stalled `git`/`git-remote-https` pair left behind).
+ *
+ * Deliberately NOT applied to the local reads (`ls-tree`, `show`, `rev-parse`). Those cannot
+ * stall on a network, and one of them is on an awaited critical path — `materializeSkillDir`
+ * seeds a directory skill into the run's worktree mid-step — where an unref'd child would let
+ * node exit in the middle of a run if nothing else happened to be ref'd at that instant.
+ *
+ * What that wait was load-bearing FOR is the cache WARM, never the catalog read: the load is
+ * floated, so the command that pays for the clone never sees the skills — the next process
+ * does. That warm still happens whenever the clone finishes inside the command's own work,
+ * which is the normal case (a real agent run lasts minutes, a clone seconds), and `serve` is
+ * untouched because its listening socket keeps the loop ref'd for the whole clone. What is
+ * given up is the tail: a clone still running when a one-shot command is done is abandoned and
+ * dies on SIGPIPE against the closed pipe instead of finishing (measured: exit 141). It leaves
+ * no half-built cache behind — `git clone` removes the directory it was creating — so the next
+ * invocation clones cleanly. Paying up to 60 s of dead wait, once per command, for a cache that
+ * command never reads is the worse half of that trade.
+ *
+ * The timeout is armed here instead of through `execFile`'s own `timeout` option because that
+ * option's internal timer is ref'd and unreachable — unref'ing the child alone still holds the
+ * loop for the whole wait. Same guarantee: a git that never answers is SIGKILLed and `git()`
+ * still settles, for as long as this process is alive to care.
+ */
+function git(
+  args: string[],
+  timeoutMs: number,
+  cwd?: string,
+  opts: { network?: boolean } = {},
+): Promise<GitResult> {
   return new Promise((resolve) => {
-    execFile(
+    let guard: ReturnType<typeof setTimeout> | undefined;
+    const child = execFile(
       'git',
       [...GIT_HARDENING_ARGS, ...args],
       {
         cwd,
-        timeout: timeoutMs,
+        // Kept even though the `timeout` option is gone: `killSignal` is also what execFile uses
+        // when `maxBuffer` overflows, and that half must keep behaving exactly as it did.
         killSignal: 'SIGKILL',
         maxBuffer: 16 * 1024 * 1024,
         encoding: 'utf8',
         env: { ...process.env, ...GIT_HARDENING_ENV },
       },
-      (err, stdout, stderr) => resolve({ ok: !err, stdout: stdout ?? '', stderr: stderr ?? '' }),
+      (err, stdout, stderr) => {
+        if (guard) clearTimeout(guard);
+        resolve({ ok: !err, stdout: stdout ?? '', stderr: stderr ?? '' });
+      },
     );
+    // Armed after the spawn, which is safe because execFile never calls back synchronously —
+    // even a missing `git` arrives as an async `error`.
+    guard = setTimeout(() => child.kill('SIGKILL'), timeoutMs);
+    guard.unref?.();
+    if (!opts.network) return;
+    child.unref();
+    // The pipes are separate handles from the process: unref'ing only the child still leaves
+    // three ref'd streams behind, which is the whole leak again.
+    for (const stream of [child.stdin, child.stdout, child.stderr]) unrefHandle(stream);
   });
 }
 
@@ -189,7 +248,9 @@ export async function ensureBareClone(repo: string): Promise<{ bareDir: string; 
   await mkdir(dirname(bareDir), { recursive: true });
   // `--` separates options from the remote/dir operands: even a value that
   // slipped past validation can't pose as a git option.
-  const res = await git(['clone', '--bare', '--', remote, bareDir], CLONE_TIMEOUT_MS);
+  const res = await git(['clone', '--bare', '--', remote, bareDir], CLONE_TIMEOUT_MS, undefined, {
+    network: true,
+  });
   if (!res.ok) throw new Error(`git clone --bare ${remote} failed: ${res.stderr.trim()}`);
   return { bareDir, created: true };
 }
@@ -200,6 +261,7 @@ export async function fetchAll(bareDir: string): Promise<void> {
     ['fetch', 'origin', '--prune', '+refs/heads/*:refs/heads/*'],
     CLONE_TIMEOUT_MS,
     bareDir,
+    { network: true },
   );
   if (!res.ok) throw new Error(`git fetch failed: ${res.stderr.trim() || res.stdout.trim()}`);
 }

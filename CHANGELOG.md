@@ -38,6 +38,16 @@
   variant refuse for the few hundred milliseconds it lasts instead of acting on a task that is
   rebuilding its worktree. Removing a project also answers within a few seconds now even when the
   git it is waiting on is wedged, rather than leaving the request hanging. (#200)
+- 🐛 **`xezar run` finishes when the task finishes, instead of sitting there for another
+  minute.** The headless run printed `run done` and then stayed alive — up to 60 seconds — because
+  the background team-skills cache warm it had kicked off was still waiting on `git clone`/`git
+  fetch` over the network, and a running git child holds the process open. The command already
+  had its answer and had already declined to use that clone's result, so the wait bought nothing
+  and, on a slow network, looked exactly like a hang. A remote git started by the skills cache no
+  longer keeps a process alive past its own work; a clone that is still running when a one-shot
+  command is done is dropped and re-attempted next time, leaving no half-built cache behind. The
+  cockpit (`xezar serve`) is unaffected — it stays up for the whole clone as before — and nothing
+  about the command's exit code changes. (#249)
 - 🐛 **Removing a project while it is still opening now actually removes it.** Opening a project
   crosses several steps — its store, a worktree sweep, crash recovery — and a removal that landed
   inside that window tore down nothing, because teardown only knew about projects that had
