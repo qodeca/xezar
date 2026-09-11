@@ -22,11 +22,13 @@ import type { McpTool } from '../tool.ts';
 import { taskReadsTool } from './task-reads.ts';
 import { executionControlTool } from './execution-control.ts';
 import { discoverProjectTool } from './discovery.ts';
+import { organiseWorkTool } from './work-organisation.ts';
 import { projectConfigTool } from './project-config.ts';
 
 export const tools: readonly McpTool[] = [
   taskReadsTool,
   executionControlTool,
   discoverProjectTool,
+  organiseWorkTool,
   projectConfigTool,
 ];
