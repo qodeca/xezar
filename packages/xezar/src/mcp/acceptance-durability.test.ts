@@ -478,12 +478,10 @@ describe('A-22 — global administration and weakening gates, including by an ap
   });
 
   // FINDING (F-22, A-22), observed 2026-09-11 on this suite's first run: `project_config save_workflow`
-  // with `overwrite: true` REPLACES a human-authored project workflow, so a leader can drop its check
-  // step (`command: npm test`) — a quality gate — with no refusal and no blocker. MCP refuses to SAVE
-  // a check step, but not to DELETE one. D-03 (mcp-settings-classification.md) is silent on it. This
-  // suite changes no production code, so the reproduction stays here, skipped and named, until the
-  // tool refuses (or reports as a blocker) an overwrite that removes a check step. It is NOT a pass.
-  it.skip("FINDING (F-22): overwriting a project workflow to drop its check step (a quality gate) must leave the human's gate in place", async () => {
+  // with `overwrite: true` REPLACED a human-authored project workflow, so a leader could drop its check
+  // step (`command: npm test`) — a quality gate — with no refusal and no blocker. Fixed by #262: the
+  // overwrite is refused as a quality-gate blocker naming the step, and D-03 states the rule.
+  it("FINDING (F-22): overwriting a project workflow to drop its check step (a quality gate) must leave the human's gate in place", async () => {
     const w = await openWorld();
     const { readFileSync, writeFileSync } = await import('node:fs');
     const { join } = await import('node:path');
@@ -495,5 +493,8 @@ describe('A-22 — global administration and weakening gates, including by an ap
       workflow: { name: 'gated', steps: [{ id: 'work', prompt: '{{task}}' }], overwrite: true },
     });
     expect(readFileSync(path, 'utf8'), `the gate file after the leader's overwrite: ${resultText(result)}`).toBe(gated);
+    // Refused and REPORTED as a blocker that names the step it would have removed — never silent.
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toMatchObject({ refused: true, blocker: true, boundary: 'quality-gate', checkSteps: [{ id: 'tests' }] });
   });
 });

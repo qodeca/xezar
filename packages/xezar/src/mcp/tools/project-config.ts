@@ -1,5 +1,6 @@
 import { existsSync, realpathSync } from 'node:fs';
-import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
+import { readdir, readFile } from 'node:fs/promises';
+import { basename, dirname, extname, isAbsolute, join, relative, sep } from 'node:path';
 import {
   automationCheckInputSchema,
   automationEventSchema,
@@ -32,10 +33,13 @@ import {
 } from '@qodeca/xezar-contract';
 import { hc } from 'hono/client';
 import { parse as parseToml } from 'smol-toml';
+import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import { findConfigFile, type ConfigFileDef } from '../../agent-config/catalog.ts';
 import { stripJsonComments } from '../../agent-config/validate.ts';
 import { agentHomePaths } from '../../paths.ts';
+import { slugify } from '../../planner.ts';
+import { projectWorkflowsDir } from '../../workflows/load.ts';
 import type { AppType } from '../../server/app-type.ts';
 import { MCP_ORIGIN, type ServiceDispatch } from '../service-adapter.ts';
 import { staleRejectionIn } from '../stale-write.ts';
@@ -81,6 +85,10 @@ import { defineTool, errorResult, textResult, type McpToolContext, type McpToolR
  *     operating-system processes out of this surface (`execution-control.test.ts` pins it for
  *     the whole registry). The cockpit's Import → Save can store one; through MCP it is refused,
  *     never stripped;
+ *   - and the other half of that rule (F-22, #262): no action REMOVES a check step either. A
+ *     save that would overwrite or shadow an on-disk workflow holding one, and a delete of such a
+ *     workflow, are refused as a quality-gate blocker before anything is dispatched — refusing to
+ *     add a gate while allowing its removal would protect nothing;
  *   - automations match the cockpit FORM, not the wider route contract (D-97, I-097, I-098):
  *     create takes `name`, `prompt` and `enable` plus the form's fixed values, and update edits
  *     `name` and `prompt` and carries everything else through, exactly as the edit form does.
@@ -148,6 +156,7 @@ export type ConfigBoundary =
   | 'host-filesystem'
   | 'host-process'
   | 'project-registry'
+  | 'quality-gate'
   | 'secret';
 
 const BOUNDARY_LABEL: Record<ConfigBoundary, string> = {
@@ -160,6 +169,7 @@ const BOUNDARY_LABEL: Record<ConfigBoundary, string> = {
   'host-filesystem': 'host filesystem',
   'host-process': 'host process',
   'project-registry': 'project registry',
+  'quality-gate': 'quality gate',
   secret: 'secret',
 };
 
@@ -534,6 +544,84 @@ function refused(action: string, boundary: ConfigBoundary, reason: string): Resu
     origin: MCP_ORIGIN,
     refused: true,
     boundary,
+  });
+}
+
+/** The next legitimate action after a quality-gate refusal. It offers no waiver, to anyone (A-22). */
+export const QUALITY_GATE_NEXT_ACTION =
+  'This is a blocker. A check step is a quality gate and cannot be removed or weakened from MCP. Keep the step, ' +
+  'save the workflow under a new name, or report this blocker so a person can change the gate in the cockpit.';
+
+/** One check step of an on-disk workflow — named, never its command. */
+interface GateStep {
+  file: string;
+  id: string;
+  name?: string;
+}
+
+/**
+ * The check steps a workflow save or delete would take away (F-22, #262), read from the FILES on
+ * disk — never from what the caller says is there. A file is at risk when it is the one the save
+ * route writes (`<slug>.yaml`, only when `overwrite` lets the route replace it) or when it carries
+ * the same workflow `name` (a save would shadow it, a delete removes it). The replacement can
+ * carry no check step at all (the MCP step schema is agent-only), so every check step of an
+ * at-risk file is lost — deleting it, emptying its command and turning it into an agent step are
+ * all the same loss here. A target file that cannot be parsed cannot be shown to hold no check
+ * step, so it is reported too: unknown evidence is never a pass.
+ */
+async function checkStepsAtRisk(
+  root: string,
+  name: string,
+  target: { file: string } | null,
+): Promise<{ steps: GateStep[]; unreadable: string[] }> {
+  const dir = projectWorkflowsDir(root);
+  const steps: GateStep[] = [];
+  const unreadable: string[] = [];
+  let entries: string[] = [];
+  try {
+    entries = await readdir(dir);
+  } catch {
+    return { steps, unreadable };
+  }
+  for (const entry of entries.sort()) {
+    const ext = extname(entry).toLowerCase();
+    if (ext !== '.yaml' && ext !== '.yml') continue;
+    const file = projectRelative(root, join(dir, entry)) ?? entry;
+    // Lower-cased: on a case-insensitive disk the route's `gated.yaml` write replaces `Gated.yaml`.
+    const isTarget = target?.file === entry.toLowerCase();
+    let doc: unknown;
+    try {
+      doc = parseYaml(await readFile(join(dir, entry), 'utf8'));
+    } catch {
+      if (isTarget) unreadable.push(file);
+      continue;
+    }
+    const record = doc && typeof doc === 'object' ? (doc as { name?: unknown; steps?: unknown }) : {};
+    if (!isTarget && (typeof record.name !== 'string' || record.name.trim() !== name.trim())) continue;
+    for (const step of Array.isArray(record.steps) ? record.steps : []) {
+      if (!step || typeof step !== 'object' || !('command' in step)) continue;
+      const { id, name: label } = step as { id?: unknown; name?: unknown };
+      steps.push({ file, id: typeof id === 'string' ? id : '(no id)', ...(typeof label === 'string' ? { name: label } : {}) });
+    }
+  }
+  return { steps, unreadable };
+}
+
+function qualityGateRefusal(action: string, risk: { steps: GateStep[]; unreadable: string[] }): Result {
+  const named = risk.steps.map((step) => `"${step.id}"${step.name ? ` (${step.name})` : ''} in ${step.file}`);
+  const reason =
+    risk.steps.length > 0
+      ? `it would remove the check step ${named.join(', ')}. A check step is a quality gate, and MCP neither adds nor removes one.`
+      : `${risk.unreadable.join(', ')} could not be read, so it cannot be shown to hold no check step.`;
+  return errorResult(`Refused (${BOUNDARY_LABEL['quality-gate']}): ${action} — ${reason} ${QUALITY_GATE_NEXT_ACTION} Nothing was changed.`, {
+    action,
+    origin: MCP_ORIGIN,
+    refused: true,
+    blocker: true,
+    boundary: 'quality-gate',
+    checkSteps: risk.steps,
+    ...(risk.unreadable.length > 0 ? { unreadable: risk.unreadable } : {}),
+    nextAction: QUALITY_GATE_NEXT_ACTION,
   });
 }
 
@@ -958,6 +1046,11 @@ async function run(args: ProjectConfigInput & { action: ProjectConfigAction }, s
       return answer.ok ? ok(action, answer.value) : fail(answer);
     }
     case 'save_workflow': {
+      const workflow = args.workflow!;
+      // The file the route writes is `<slug>.yaml`, replaced only under `overwrite` (server.ts).
+      const target = workflow.overwrite ? { file: `${slugify(workflow.name) || 'chain'}.yaml` } : null;
+      const risk = await checkStepsAtRisk(s.root, workflow.name, target);
+      if (risk.steps.length > 0 || risk.unreadable.length > 0) return qualityGateRefusal(action, risk);
       const answer = await settle<{ path: string; name: string }>(
         s.api.p[':projectId'].workflows.$post({ param: scope, json: args.workflow! }),
         [201],
@@ -970,6 +1063,8 @@ async function run(args: ProjectConfigInput & { action: ProjectConfigAction }, s
       if (name === '.' || name === '..' || name.includes('/') || name.includes('\\')) {
         return invalid(action, `not a workflow name: ${JSON.stringify(name)}`);
       }
+      const risk = await checkStepsAtRisk(s.root, name, null);
+      if (risk.steps.length > 0) return qualityGateRefusal(action, risk);
       const answer = await settle<{ ok: true; path: string }>(
         s.api.p[':projectId'].workflows[':name'].$delete({ param: { ...scope, name } }),
         [200],
