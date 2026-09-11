@@ -69,7 +69,8 @@ usage() {
   printf '  (no flag)                 strict isolation check, for a writing workflow\n'
   printf '  --allow-root              also accept the primary checkout, for a read-only workflow\n'
   printf '  --readiness               strict, plus refuse when this task recorded a BLOCKED decision,\n'
-  printf '                            its branch has no commits over the base, or its tree is dirty\n'
+  printf '                            its branch has no commits over the base (unless the task recorded\n'
+  printf '                            a VERIFICATION of an existing revision), or its tree is dirty\n'
   printf '  --merge-recovery          strict, but admit the ONE interrupted merge this run recorded\n'
   printf '                            an intent for before starting it. Admits nothing else, and\n'
   printf '                            never aborts, resets or resolves anything\n'
@@ -364,8 +365,16 @@ if [ "$MODE" = "readiness" ] || [ "$MODE" = "record-gate-evidence" ] || [ "$MODE
   # "Empty" means HEAD is an ancestor of the base — not HEAD == base tip, which a base that moved on
   # after the fork would defeat. Both spellings of the base are tried, and either one containing
   # HEAD refuses. A check that cannot be evaluated refuses too. Plain preflight is untouched: setup
-  # runs it on a fresh, rightly empty branch. Every workflow reaching these modes ends in a pull
-  # request or a release, and neither exists without a commit.
+  # runs it on a fresh, rightly empty branch.
+  #
+  # One kind of run is honestly commitless: a verification of a revision that already exists — QA of
+  # another PR's branch, an acceptance re-run over one final revision. Run c5a99f15 (QA of #311) was
+  # one, and this check refused it. Its git state is byte-identical to b86c6066's (HEAD in the base,
+  # a clean tree), and both used the same workflow as a test-writing run would, so neither git nor
+  # the workflow name can separate them. Only the task knows, so the task must SAY it: a
+  # VERIFICATION record in its evidence directory, naming the commit it verified and where the
+  # findings are. An absent record keeps the refusal — the default is still "an empty branch is not
+  # work". A record that does not name a real commit refuses too. BLOCKED is checked first and wins.
   empty_base=""
   checked_bases=0
   if [ -z "${HEAD_SHA:-}" ]; then
@@ -384,7 +393,24 @@ if [ "$MODE" = "readiness" ] || [ "$MODE" = "record-gate-evidence" ] || [ "$MODE
     if [ "$checked_bases" -eq 0 ]; then
       fail branch.has-own-commits "no base ref resolved, so whether this branch carries any work cannot be evaluated"
     elif [ -n "$empty_base" ]; then
-      fail branch.has-own-commits "branch \"$BRANCH\" has no commits over its base — HEAD ${HEAD_SHA:0:12} is already contained in $empty_base. There is no work here to gate, seal or hand off. If the author step stopped for a decision, it must write the task's BLOCKED file; if no change is the honest outcome, report that and end the run instead of sealing."
+      verification_record="${evidence_dir:+$evidence_dir/VERIFICATION}"
+      if [ -n "$verification_record" ] && [ -f "$verification_record" ]; then
+        verified_sha="$(sed -n 's/^verified:[[:space:]]*\([0-9a-fA-F]\{40\}\)[[:space:]]*$/\1/p' "$verification_record" | head -n 1)"
+        verified_findings="$(sed -n 's/^findings:[[:space:]]*\(.*[^[:space:]]\)[[:space:]]*$/\1/p' "$verification_record" | head -n 1)"
+        if [ -z "$verified_sha" ]; then
+          fail scope.verification-record "branch \"$BRANCH\" has no commits over its base, and its VERIFICATION record ($verification_record) has no \"verified: <full 40-character commit sha>\" line, so it cannot say what this run verified."
+        elif ! git -C "$TASK_CWD" cat-file -e "$verified_sha^{commit}" 2>/dev/null; then
+          fail scope.verification-record "branch \"$BRANCH\" has no commits over its base, and its VERIFICATION record names $verified_sha, which is not a commit in this repository. Fetch the revision you verified, or correct the record."
+        elif [ -z "$verified_findings" ]; then
+          fail scope.verification-record "branch \"$BRANCH\" has no commits over its base, and its VERIFICATION record ($verification_record) has no \"findings: <where the result is posted>\" line."
+        else
+          info "own commits   none — a verification-only run, by its VERIFICATION record"
+          info "verified      $verified_sha"
+          info "findings      $verified_findings"
+        fi
+      else
+        fail branch.has-own-commits "branch \"$BRANCH\" has no commits over its base — HEAD ${HEAD_SHA:0:12} is already contained in $empty_base. There is no work here to gate, seal or hand off. If the author step stopped for a decision, it must write the task's BLOCKED file. If this run only verifies a revision that already exists and was never asked to change source (QA of another branch, an acceptance re-run), record that in ${evidence_dir:-the task evidence directory}/VERIFICATION with a \"verified: <commit sha>\" line and a \"findings: <where the result is posted>\" line. A run that was asked to change source must not write that record."
+      fi
     fi
   fi
 fi

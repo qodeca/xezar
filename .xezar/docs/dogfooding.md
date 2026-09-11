@@ -12,6 +12,14 @@ Installation validation is reported in installation.md. Real-task entries follow
 
 ## Real-task entries
 
+### 2026-09-11 — the empty-branch refusal fired on an honest QA run, repaired in PR #322's handoff step at the owner's request, Claude Code — fixture-tested; the record is not real-task verified yet
+
+- Evidence: run c5a99f15 (`testing-and-verification`, QA re-verification of PR #311 at `e175140`). Readiness gave two refusals: `scope.not-blocked` (it had written `BLOCKED` for an owner decision – correct) and `branch.has-own-commits` (its branch `xez/c5a99f15` was the base commit `4c179f0` – wrong: QA of another branch makes no commit by design). Both refusals came from the kit on `main` (#315 and earlier), not from PR #322.
+- Observed: **git and the workflow cannot tell a QA run from a test-writing run that wrote nothing.** Both use `testing-and-verification`; both reach readiness with HEAD in the base and a clean tree; check steps get no task brief (`lib/common.sh`: the engine exports nothing task-specific to a check step). The #312 entry's scope check ("all end in a draft PR or a release") missed that one workflow has two uses.
+- Change: the task declares it. A `VERIFICATION` file in the primary evidence directory with `verified: <40-hex sha>` (must resolve to a commit) and `findings: <where>` lets the empty-branch check pass in readiness and both evidence modes. Absent: the refusal is unchanged. Malformed: `scope.verification-record`. `BLOCKED` is checked first. The testing skill says when to write it and when never to; the handoff skill says a verification-only run pushes nothing and opens no PR.
+- Regression/control: with the old `worktree-preflight.sh`, the new section was 8 red out of 10 (490 passed, 8 failed overall); "no record is still refused" and "BLOCKED still stops it" passed both ways. With the change: 498 passed, 0 failed.
+- Remaining limit: the record is the agent's word, the same trust `BLOCKED` already relies on; a test-writing run that wrote nothing and then wrote the record would pass. The `verified:` sha must exist, which stops a bare switch but not a false claim. A verification run still pays for a gate run on its own head, which is the base.
+
 ### 2026-09-11 — #317 and #320 (the workflow proceeds when it should have stopped), `bug-fix` step 1, `xezar-bug-investigation`, Claude Code — fixture-tested; neither stop is real-task verified yet
 
 - Evidence: run b86c6066's implement step. The cockpit thread reads as a prose question, but the Claude session transcript shows the turn ended on an `XEZ:ASK` line: the engine strips the marker from the thread and, in a non-final step, never parsed it. The #312 entry below and this task's brief both called it "prose, no `XEZ:ASK`"; the transcript is the better source.

@@ -1672,6 +1672,64 @@ expect_ok "a committed tree passes readiness" readiness_then_gates
   && ok "and the gates start on it" \
   || bad "and the gates start on it" "the stub gates never ran on a clean, committed tree"
 
+# --- 7d. A run that verifies and authors nothing -------------------------------------------------
+#
+# Run c5a99f15 was QA of PR #311 in `testing-and-verification`: it read another branch, ran a real
+# service, posted findings and made no commit, by design. §7b's refusal fired on it. Its git state is
+# the same as b86c6066's, and a test-writing run uses the same workflow, so the separating signal is
+# a record the task writes: VERIFICATION, naming the commit it verified and where the findings are.
+printf '\n-- verification-only run --\n'
+root="$(make_fixture verification-only)"
+wt="$(add_worktree "$root" "$RUN_A")"
+PF="$root/.xezar/checks/worktree-preflight.sh"
+ev="$root/.local/xezar-tasks/$RUN_A"
+mkdir -p "$ev"
+# The revision under QA: another branch's head, never checked out into this task's worktree.
+other_pr="$(git -C "$root" -c user.email=t@t -c user.name=t commit-tree 'HEAD^{tree}' -p HEAD -m "another PR's head")"
+git -C "$root" update-ref refs/heads/other-pr "$other_pr"
+gates_ran="$root/.local/gates-ran"
+readiness_then_gates() { run_in "$wt" "$PF" --readiness && : > "$gates_ran"; }
+
+# The default is unchanged: no record, and an empty branch is still refused — and the refusal
+# names the record, so an honest verification run knows what to write.
+expect_fail "with no record, an empty branch is still refused" \
+  "branch.has-own-commits" run_in "$wt" "$PF" --readiness
+expect_fail "and the refusal says how a verification-only run declares itself" \
+  "VERIFICATION" run_in "$wt" "$PF" --readiness
+
+# The fix: a well-formed record lets the commitless run through all three modes' empty-branch check.
+printf 'QA of PR #311 at its head.\nverified: %s\nfindings: https://example.invalid/pr/311#comment\n' \
+  "$other_pr" > "$ev/VERIFICATION"
+rm -f "$gates_ran"
+expect_ok "a verification-only run with a well-formed record passes readiness" readiness_then_gates
+[ -e "$gates_ran" ] \
+  && ok "and the gates start on it" \
+  || bad "and the gates start on it" "the stub gates never ran for a declared verification run"
+expect_fail "the evidence step reaches its own question, not the empty-branch refusal" \
+  "no gate attempt recorded" run_in "$wt" "$PF" --record-gate-evidence
+
+# A record that cannot say what was verified excuses nothing.
+printf 'verified: %s\n' "$other_pr" > "$ev/VERIFICATION"
+expect_fail "a record with no findings line is refused" \
+  "scope.verification-record" run_in "$wt" "$PF" --readiness
+printf 'verified: %s\nfindings: here\n' "${other_pr:0:12}" > "$ev/VERIFICATION"
+expect_fail "a record with an abbreviated sha is refused" \
+  "scope.verification-record" run_in "$wt" "$PF" --readiness
+printf 'verified: %s\nfindings: here\n' "0123456789abcdef0123456789abcdef01234567" > "$ev/VERIFICATION"
+expect_fail "a record naming a commit this repository does not have is refused" \
+  "is not a commit in this repository" run_in "$wt" "$PF" --readiness
+: > "$ev/VERIFICATION"
+expect_fail "an empty record is refused" \
+  "scope.verification-record" run_in "$wt" "$PF" --readiness
+
+# BLOCKED is checked first and is not softened by a record: the QA run that stops for a decision
+# (c5a99f15 did) still stops.
+printf 'verified: %s\nfindings: here\n' "$other_pr" > "$ev/VERIFICATION"
+printf 'Do the Codex findings block the PR?\n' > "$ev/BLOCKED"
+expect_fail "a BLOCKED decision still stops a verification-only run" \
+  "scope.not-blocked" run_in "$wt" "$PF" --readiness
+rm "$ev/BLOCKED" "$ev/VERIFICATION"
+
 # --- 8. Manifest safety ------------------------------------------------------------------------------
 printf '\n-- manifest --\n'
 root="$(make_fixture manifest)"

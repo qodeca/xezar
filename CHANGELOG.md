@@ -56,6 +56,13 @@
   is already in its base (`branch.has-own-commits`), even after the base moved on. Plain preflight
   and the read-only roles are unchanged. The shared contract of all 18 kit skills now says a
   non-final step that stops for a decision writes `BLOCKED` first. (#312)
+- 🐛 **The project kit no longer refuses an honest QA run for making no commits.** The empty-branch
+  refusal above also fired on a `testing-and-verification` run that only verified another PR – it
+  reads, runs and posts findings, and has nothing to commit. Such a run now writes a `VERIFICATION`
+  record in its evidence directory naming the commit it verified and where its findings are, and
+  readiness and both evidence modes accept it with no commits; handoff then opens no pull request.
+  Without the record the refusal is unchanged, a record that does not name a real commit refuses
+  (`scope.verification-record`), and `BLOCKED` still stops the run first.
 - 🐛 **Settings → MCP API no longer tells a reviewer a guard is optional when it is not.** The page
   read "accepted, not required" for `organise_work`'s `expectedVersion`, while that tool refuses
   ten actions without it; `handoff_git` and `project_config` read the same. The reference route now
