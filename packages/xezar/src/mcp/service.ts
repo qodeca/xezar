@@ -12,7 +12,7 @@ import {
   type HealthResult,
   type IpcResponse,
 } from './ipc.ts';
-import { errorResult, type McpTool, type McpToolContext } from './tool.ts';
+import { errorResult, type McpTool, type McpToolContext, type McpToolResult } from './tool.ts';
 
 /**
  * The service half of the IPC leg (D-01 § 1.2–1.5): the running xezar opens one
@@ -32,7 +32,23 @@ export interface McpServiceOptions {
   readonly tools: readonly McpTool[];
   readonly env?: NodeJS.ProcessEnv;
   readonly platform?: NodeJS.Platform;
+  /**
+   * Extra context every tool call gets — the running app's in-process entry (`service`) in
+   * production. It can never replace `project` or `xezarVersion`: the binding is this socket's.
+   */
+  readonly context?: Readonly<Record<string, unknown>>;
+  /** The MCP door: wraps every tool call whose arguments parsed (see `startMcpService`). */
+  readonly door?: McpDoor;
 }
+
+/**
+ * Runs around one validated tool call. `invoke` is the tool itself; a throw from either reaches
+ * the same handler a tool's own throw does, so nothing secret reaches the response (F-15).
+ */
+export type McpDoor = (
+  call: { readonly tool: McpTool; readonly args: Record<string, unknown>; readonly ctx: McpToolContext },
+  invoke: () => Promise<McpToolResult>,
+) => Promise<McpToolResult>;
 
 export interface McpServiceHandle {
   readonly path: string;
@@ -150,7 +166,7 @@ async function answer(line: string, opts: McpServiceOptions): Promise<IpcRespons
       serviceVersion: opts.version,
     };
   }
-  const ctx: McpToolContext = { project: opts.project, xezarVersion: opts.version };
+  const ctx: McpToolContext = { ...opts.context, project: opts.project, xezarVersion: opts.version };
   switch (request.method) {
     case 'health': {
       const result: HealthResult = {
@@ -165,14 +181,14 @@ async function answer(line: string, opts: McpServiceOptions): Promise<IpcRespons
       if (!params.success) return failure(request.id, 'invalid-params', 'tools/call needs a tool name');
       const tool = opts.tools.find((t) => t.name === params.data.name);
       if (!tool) return failure(request.id, 'unknown-tool', `unknown tool: ${params.data.name}`);
-      return { v: IPC_PROTOCOL_VERSION, id: request.id, ok: true, result: await callTool(tool, params.data.arguments, ctx) };
+      return { v: IPC_PROTOCOL_VERSION, id: request.id, ok: true, result: await callTool(tool, params.data.arguments, ctx, opts.door) };
     }
     default:
       return failure(request.id, 'unknown-method', `unknown method: ${request.method}`);
   }
 }
 
-async function callTool(tool: McpTool, args: unknown, ctx: McpToolContext) {
+async function callTool(tool: McpTool, args: unknown, ctx: McpToolContext, door?: McpDoor): Promise<McpToolResult> {
   const parsed = tool.inputSchema.safeParse(args ?? {});
   // An argument error is a tool result, not a protocol error, so the model can
   // correct itself (MCP 2025-11-25, "Error Handling").
@@ -181,7 +197,8 @@ async function callTool(tool: McpTool, args: unknown, ctx: McpToolContext) {
     return errorResult(`Invalid arguments for ${tool.name}: ${issues.join('; ')}`);
   }
   try {
-    return await tool.call(parsed.data, ctx);
+    const invoke = (): Promise<McpToolResult> => tool.call(parsed.data, ctx);
+    return await (door ? door({ tool, args: parsed.data as Record<string, unknown>, ctx }, invoke) : invoke());
   } catch (err) {
     // The exception text stays in the cockpit's own log: it can quote a command
     // line or a file, and nothing secret may reach a tool response (F-15).
