@@ -230,6 +230,12 @@ const CASES: Case[] = [
     effect: 'cancelAutoResume',
   },
   { name: 'project_config remove_worktree', tool: projectConfigTool, args: (runId) => ({ action: 'remove_worktree', runId }), prepare: withWorktree },
+  {
+    name: 'organise_work pick_variant',
+    tool: organiseWorkTool,
+    args: (runId) => ({ action: 'pick_variant', groupId: `g-${runId}`, runId }),
+    prepare: (id) => void store.updateRun(id, { status: 'done', groupId: `g-${id}`, variant: 'a' }),
+  },
 ];
 
 describe('a leader mutation based on a stale read is refused, and nothing changes (#250, N-03)', () => {
@@ -268,6 +274,31 @@ describe('a leader mutation based on a stale read is refused, and nothing change
     const result = await call(c.tool, { ...c.args(task.id), expectedVersion: await readVersion(task.id) });
     expect(text(result)).not.toContain('stale_version');
     if (c.effect) expect(calls).toEqual([c.effect]);
+  });
+});
+
+describe('a stale variant pick deletes nothing (#271)', () => {
+  it('keeps the other variant, its worktree and its branch when the kept variant moved since the read', async () => {
+    const winner = newRun();
+    const loser = newRun();
+    const groupId = `g-${winner.id}`;
+    store.updateRun(winner.id, { status: 'done', groupId, variant: 'a' });
+    withWorktree(loser.id);
+    store.updateRun(loser.id, { groupId, variant: 'b' });
+    const loserTree = store.getRun(loser.id)!.worktreePath!;
+    const read = await readVersion(winner.id); // the leader reads the variant it will keep…
+    await humanRenames(winner.id); // …a human changes it…
+    const before = onDisk(store.getRun(loser.id)!);
+    calls.length = 0;
+    const result = await call(organiseWorkTool, { action: 'pick_variant', groupId, runId: winner.id, expectedVersion: read });
+
+    expect(result.isError, text(result)).toBeFalsy();
+    expect(JSON.parse(text(result))).toMatchObject({ status: 'conflict', applied: false, error: 'stale_version', resource: { kind: 'run', id: winner.id } });
+    expect(calls).toEqual([]);
+    expect(onDisk(store.getRun(loser.id)!)).toEqual(before);
+    expect(existsSync(join(loserTree, 'keep.txt'))).toBe(true);
+    expect(store.getRun(loser.id)).toMatchObject({ worktreePath: loserTree, branch: `xez/${loser.id.slice(0, 8)}` });
+    expect(store.getRun(loser.id)?.archived).toBeFalsy();
   });
 });
 

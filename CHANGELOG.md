@@ -26,6 +26,16 @@
   and then the first migration reads it again before replacing it, and each read printed the same
   warning. The warning is now remembered per broken state; every read still goes to the file, so a
   repaired or newly broken config is seen immediately. (#281)
+- 🐛 **Three MCP scope and safety holes are closed.** `task_read`'s list view now holds every row
+  to the same ownership rule as a single-task read, so a record whose worktree is another
+  project's no longer appears in the list, its total, its search or any page — it used to carry
+  that project's branch name (#240). `organise_work`'s `pick_variant` — the one action that
+  deletes the other variants' worktrees and branches — now requires `expectedVersion` like every
+  other mutating action, and `POST /groups/:groupId/pick` accepts an optional `expectedVersion`
+  for the kept variant and refuses a stale one with nothing applied; without one the route
+  behaves exactly as before, so the cockpit is unchanged. And `organise_work` now refuses an
+  argument it does not declare instead of dropping it, so a stray `projectId` can no longer look
+  like it scoped a call — including the bulk `archive_finished` — to another project. (#271)
 - 🐛 **A leader can no longer delete a quality gate through MCP.** `project_config save_workflow`
   with `overwrite: true` could replace a human's workflow and drop its `command: npm test` check
   step with no refusal. An overwrite, a same-name save that would shadow a workflow, or a delete

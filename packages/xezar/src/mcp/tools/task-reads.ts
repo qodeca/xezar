@@ -44,9 +44,10 @@ import { defineTool, errorResult, textResult, type McpToolContext, type McpToolR
  * strict, so a `project` key is refused rather than silently ignored. The only non-project path
  * this module requests is `/api/v1/health`, and only for the one Inbox capability boolean. There
  * is no path to the workspace runs index (`GET /api/v1/workspace/runs-index`, which spans every
- * project). A task and every member of a variant group are proved to be the bound project's by
- * #88's `ownRun` / `ownGroup` before anything about them is read, and every cursor is sealed
- * with #88's `sealCursor` to the project and the resource it pages. A refusal names nothing.
+ * project). A task, every row of the task list and every member of a variant group are proved to
+ * be the bound project's by #88's `ownRun` / `ownGroup` before anything about them is read, and
+ * every cursor is sealed with #88's `sealCursor` to the project and the resource it pages. A
+ * refusal names nothing.
  *
  * BOUNDS (N-06, D-09). One result is at most B-01's 40 000 serialized bytes and B-02's 100
  * items; a caller may ask for fewer items, never more, and a history read without a page size
@@ -524,7 +525,11 @@ async function readList(reader: TaskReader, args: Args): Promise<McpToolResult> 
 
   const listed = await reader.runs();
   if (!listed.ok) return refusal(listed.answer, 'This project’s tasks could not be read.');
-  const rows = listed.value.filter((run) => matches(run, filter)).sort(newestFirst);
+  // A row is held to the single read's rule (#240, F-01): a record #88's `ownRun` refuses — its
+  // recorded worktree is not this project's — is simply not in the list, its total or its search.
+  // Filtered before the keyset, so a page is never short because a row was left out.
+  const owned = scopeOver(reader.project.root, listed.value);
+  const rows = listed.value.filter((run) => ownRun(owned, run.id).ok && matches(run, filter)).sort(newestFirst);
   const after = position.after;
   const remaining = after ? rows.filter((run) => newestFirst(after, run) < 0) : rows;
   const summaries = remaining.map((run) => scrub(taskSummarySchema.parse(run)));

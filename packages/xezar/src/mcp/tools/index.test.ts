@@ -20,4 +20,13 @@ describe('MCP tool registry', () => {
       expect(toolListing(tool).inputSchema, tool.name).toMatchObject({ type: 'object' });
     }
   });
+
+  // #271: a key a tool does not declare must be an argument error, never silently stripped — a
+  // stray `projectId` reads as scoping the call while the call acts on the bound project.
+  it('declares every tool input strict, so an unknown argument is refused rather than dropped', () => {
+    for (const tool of tools) {
+      expect(toolListing(tool).inputSchema, tool.name).toMatchObject({ additionalProperties: false });
+      expect(tool.inputSchema.safeParse({ projectId: 'another-project' }).success, tool.name).toBe(false);
+    }
+  });
 });
