@@ -17,6 +17,7 @@ import {
 
 import { PROJECT_A, PROJECT_B, XEZAR_VERSION, createAbWorld, leaked, type AbWorld } from '../helpers/ab-fixture.ts';
 import { ProjectOwnership } from '../../src/workspace/project-owner.ts';
+import { runVersion } from '../../src/mcp/stale-write.ts';
 
 /**
  * #118 — the OWNERSHIP, DELIVERY AND SETUP half of the whole-feature acceptance suite (requirements
@@ -690,6 +691,15 @@ async function openBridge(name: string, root: string, env: NodeJS.ProcessEnv): P
 const toolText = (answer: RpcAnswer): string =>
   answer.error ? `JSON-RPC error ${answer.error.code}: ${answer.error.message}` : ((answer.result?.content ?? []) as Array<{ text?: string }>).map((b) => b.text ?? '').join('\n');
 
+/** The `version` a task read carries: a leader reads a task before it changes it (#250). */
+const versionIn = (answer: RpcAnswer): string | undefined => {
+  try {
+    return JSON.parse(toolText(answer)).version;
+  } catch {
+    return undefined;
+  }
+};
+
 /** D-02 § 4's occupied error, by its authoritative discriminator. */
 const isOccupied = (answer: RpcAnswer | undefined): boolean =>
   answer?.error?.code === MCP_PROJECT_OCCUPIED_CODE && answer.error.data?.reason === MCP_PROJECT_OCCUPIED_REASON;
@@ -1002,7 +1012,7 @@ describe('A-17 — only the competing owner is rejected', () => {
     const owner = await openBridge('a17-owner-bridge', world.a.root, bridgeEnv(world, home));
     const ownerHealth = await owner.rpc.request('tools/call', { name: 'health', arguments: {} });
     const second = await openBridge('a17-second-bridge', world.a.root, bridgeEnv(world, home));
-    const secondWrite = isOccupied(second.init) ? undefined : await second.rpc.request('tools/call', { name: 'organise_work', arguments: { action: 'pin', runId: world.a.ids.done } });
+    const secondWrite = isOccupied(second.init) ? undefined : await second.rpc.request('tools/call', { name: 'organise_work', arguments: { action: 'pin', runId: world.a.ids.done, expectedVersion: runVersion(world.a.store, world.a.ids.done) } });
     // Same owner: many requests at once are not additional clients.
     const burst = await Promise.all(Array.from({ length: 20 }, () => owner.rpc.request('tools/call', { name: 'task_read', arguments: { view: 'list', limit: 1 } })));
     // Another project: B has its own socket and its own owner slot.
@@ -1095,7 +1105,7 @@ async function competeAs(client: ClientName, resolved: ResolvedClient, transcrip
       if (!init.result?.codexHome || realpathSync(init.result.codexHome) !== realpathSync(codexHome)) return { refused: false, text: 'NOT-RUN: codex left the pinned home' };
       app.notify('initialized');
       const thread = await app.request('thread/start', { cwd: world.a.root });
-      const call = await app.request('mcpServer/tool/call', { server: 'xezar', threadId: thread.result?.thread?.id ?? '', tool: 'organise_work', arguments: { action: 'pin', runId: world.a.ids.done } }, 60_000);
+      const call = await app.request('mcpServer/tool/call', { server: 'xezar', threadId: thread.result?.thread?.id ?? '', tool: 'organise_work', arguments: { action: 'pin', runId: world.a.ids.done, expectedVersion: runVersion(world.a.store, world.a.ids.done) } }, 60_000);
       const text = call.error ? `error ${call.error.code} ${call.error.message}` : ((call.result?.content ?? []) as Array<{ text?: string }>).map((b) => b.text ?? '').join('\n');
       world.a.store.setPinned(world.a.ids.done, false);
       return { refused: /occupied|-32080/i.test(text), text: `organise_work pin → ${text.slice(0, 200)}` };
@@ -1127,14 +1137,15 @@ describe('A-18 — liveness, fencing and restart', () => {
     // Silence: no call for longer than one renewal interval (D-02.5: 5 s). No lease is asserted.
     await delay(6_000);
     const intruder = await openBridge('a18-intruder-bridge', world.a.root, bridgeEnv(world, home));
-    const intruderWrite = await intruder.rpc.request('tools/call', { name: 'organise_work', arguments: { action: 'set_title', runId: world.a.ids.done, title: 'A-18 intruder wrote this' } });
+    // Every write below sends the task's CURRENT version (#250), so only ownership or fencing can refuse it.
+    const intruderWrite = await intruder.rpc.request('tools/call', { name: 'organise_work', arguments: { action: 'set_title', runId: world.a.ids.done, title: 'A-18 intruder wrote this', expectedVersion: runVersion(world.a.store, world.a.ids.done) } });
     // Crash: the owner's process dies without closing anything.
     owner.rpc.child.kill('SIGKILL');
     await owner.rpc.exited;
     const successor = await openBridge('a18-successor-bridge', world.a.root, bridgeEnv(world, home));
-    const successorWrite = await successor.rpc.request('tools/call', { name: 'organise_work', arguments: { action: 'set_title', runId: world.a.ids.done, title: 'A-18 successor wrote this' } });
+    const successorWrite = await successor.rpc.request('tools/call', { name: 'organise_work', arguments: { action: 'set_title', runId: world.a.ids.done, title: 'A-18 successor wrote this', expectedVersion: runVersion(world.a.store, world.a.ids.done) } });
     // The stale client is still alive: after a new owner exists, its write must be fenced.
-    const staleWrite = await intruder.rpc.request('tools/call', { name: 'organise_work', arguments: { action: 'set_title', runId: world.a.ids.done, title: 'A-18 stale owner wrote this' } });
+    const staleWrite = await intruder.rpc.request('tools/call', { name: 'organise_work', arguments: { action: 'set_title', runId: world.a.ids.done, title: 'A-18 stale owner wrote this', expectedVersion: runVersion(world.a.store, world.a.ids.done) } });
     const finalTitle = world.a.store.getRun(world.a.ids.done)?.title;
     const terminal = runId
       ? await waitFor('the A-18 task to finish', () => {
@@ -1329,7 +1340,8 @@ describe('A-20 — MCP changes reach the cockpit, human changes reach the leader
       const listed = await leader.rpc.request('tools/list');
       const tools = (listed.result?.tools ?? []) as Array<{ name: string; description?: string; inputSchema?: unknown }>;
       const title = `A-20 leader title ${Date.now()}`;
-      const mutation = await leader.rpc.request('tools/call', { name: 'organise_work', arguments: { action: 'set_title', runId, title } });
+      const leaderRead = await leader.rpc.request('tools/call', { name: 'task_read', arguments: { view: 'task', taskId: runId } });
+      const mutation = await leader.rpc.request('tools/call', { name: 'organise_work', arguments: { action: 'set_title', runId, title, expectedVersion: versionIn(leaderRead) } });
       await waitFor('the cockpit stream to carry the leader title', () => (streamText.includes(title) ? true : undefined), 5_000).catch(() => undefined);
 
       // The leader's own effect that IS significant: it cancels a task. Its row must name its operation.
@@ -1338,7 +1350,14 @@ describe('A-20 — MCP changes reach the cockpit, human changes reach the leader
       await delay(1_500);
       // `execution_control` takes no operation key; the MCP door mints one (`mcp-door.<uuid>`) so the
       // catalog and the echo guard still know the change as this leader's.
-      const leaderCancel = await leader.rpc.request('tools/call', { name: 'execution_control', arguments: { action: 'cancel', runId: victimId } });
+      // A RUNNING task's version moves with its agent's events (#250), so a cancel can meet a newer
+      // version than the one read; the leader does what the refusal says — read again, decide again.
+      const readThenCancel = async () => {
+        const read = await leader.rpc.request('tools/call', { name: 'task_read', arguments: { view: 'task', taskId: victimId } });
+        return leader.rpc.request('tools/call', { name: 'execution_control', arguments: { action: 'cancel', runId: victimId, expectedVersion: versionIn(read) } });
+      };
+      let leaderCancel = await readThenCancel();
+      for (let tries = 0; tries < 20 && toolText(leaderCancel).includes('stale_version'); tries += 1) leaderCancel = await readThenCancel();
       await waitFor('the leader cancel to land', async () => ((await runStatus(serve, victimId)) === 'cancelled' ? true : undefined), 20_000).catch(() => undefined);
       const beforeHuman = readJournal(root)?.length ?? 0;
 
