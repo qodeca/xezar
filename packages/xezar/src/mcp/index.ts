@@ -23,6 +23,7 @@ import { registerProjectCatalog } from './project-catalogs.ts';
 import { LeaderCursors, runStateReader } from './reconnect.ts';
 import type { ServiceDispatch } from './service-adapter.ts';
 import { listenMcpSocket, type McpDoor, type McpServiceHandle } from './service.ts';
+import { staleRejectionIn } from './stale-write.ts';
 import { errorResult, textResult, type McpToolResult } from './tool.ts';
 import { tools } from './tools/index.ts';
 import type { LeaderEventsPort } from './tools/leader-events.ts';
@@ -210,6 +211,8 @@ function composeDoor(input: DoorInput): { door: McpDoor; leaderEvents: LeaderEve
       payload: args,
       ...(operationId === undefined ? {} : { operationId }),
       ...(target ? { resource: target } : {}),
+      // The version the leader's decision was based on (#250); the trail keeps it only in `rev1` shape.
+      ...(typeof args.expectedVersion === 'string' ? { expectedVersion: args.expectedVersion } : {}),
     };
     let result: McpToolResult;
     try {
@@ -222,11 +225,19 @@ function composeDoor(input: DoorInput): { door: McpDoor; leaderEvents: LeaderEve
       throw err;
     }
     // An error result may come from a refusal or from a failure after the effect started; the door
-    // cannot tell which, so it never claims `rejected` (nothing happened) on the tool's behalf.
+    // cannot tell which, so it never claims `rejected` (nothing happened) on the tool's behalf. The
+    // one exception is the stale-version rejection (#250): the ROUTE refused it before any effect
+    // and says so (`applied: false`), so recording it as `ok` would put a write that never happened
+    // into the trail (D-06 § 4.4 rule 6).
     const resource = resourceOf(result);
+    const stale = staleRejectionOf(result);
     audit?.record(
       op,
-      result.isError ? { outcome: 'unverified', errorCode: 'tool_error' } : { outcome: 'ok', ...(resource ? { resource } : {}) },
+      stale
+        ? { outcome: 'rejected', errorCode: 'stale_version', resource: stale.resource }
+        : result.isError
+          ? { outcome: 'unverified', errorCode: 'tool_error' }
+          : { outcome: 'ok', ...(resource ? { resource } : {}) },
     );
     return result;
   };
@@ -312,6 +323,18 @@ function actionId(toolName: string, action: unknown): string {
 function targetOf(args: Record<string, unknown>): AuditResource | undefined {
   const id = typeof args.runId === 'string' ? args.runId : typeof args.taskId === 'string' ? args.taskId : undefined;
   return id === undefined ? undefined : { kind: 'run', id };
+}
+
+/** The stale-version rejection a tool relayed, if that is what its (non-error) answer is. */
+function staleRejectionOf(result: McpToolResult) {
+  if (result.isError) return undefined;
+  const block = result.content[0];
+  if (!block || block.type !== 'text') return undefined;
+  try {
+    return staleRejectionIn(JSON.parse(block.text));
+  } catch {
+    return undefined;
+  }
 }
 
 /** The resource a result names: a tool's `subject`, or a receipt's `resultRef`. */

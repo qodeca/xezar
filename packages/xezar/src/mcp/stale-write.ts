@@ -3,6 +3,7 @@ import {
   MCP_EXECUTION_FAILED_GUIDANCE,
   MCP_STALE_VERSION_GUIDANCE,
   MCP_VERSION_TOKEN_TAG,
+  staleVersionRejectionSchema,
   type ExecutionFailed,
   type McpVersionedResourceRef,
   type StaleVersionRejection,
@@ -258,6 +259,42 @@ export function runVersionSnapshot(store: RunStore, runId: string): VersionedSna
 export function runVersion(store: RunStore, runId: string): string | undefined {
   const snapshot = runVersionSnapshot(store, runId);
   return snapshot ? versionToken(snapshot) : undefined;
+}
+
+/**
+ * The route half of the check (#250): the rejection a run-mutating route answers with, or
+ * `undefined` when its effect may go ahead.
+ *
+ * WHY THE ROUTE, NOT THE TOOL. An MCP tool reaches the services through in-process HTTP dispatch
+ * (N-02, `service-adapter.ts`), which is async, so a tool cannot hold `guardedMutation`'s
+ * synchronous critical section around the store call — only the route handler can. So the route
+ * accepts an OPTIONAL `expectedVersion` and calls this RIGHT BEFORE its effect, with nothing but
+ * synchronous code between the two: the check and the store call then run in one stretch, exactly
+ * as `guardedMutation` would run them (§ 4.5). A handler must never put an `await` between this
+ * call and its effect; each call site says so.
+ *
+ * ABSENT MEANS "NOT ASKED", ON PURPOSE. `undefined` is the cockpit, which has never sent a token and
+ * keeps its behaviour byte-for-byte. The leader can never reach that branch: every MCP tool that
+ * mutates a run REQUIRES `expectedVersion` in its own schema (D-06 § 4.4 rule 4), and the tool
+ * tests pin that each action sends it. Present-but-wrong — empty, foreign, unknown tag, another
+ * run's — is always a rejection, never a pass.
+ *
+ * AN ASYNC EFFECT (a worktree removal, a push, `gh pr create`) cannot sit inside a synchronous
+ * stretch at all. Those routes call this right before the effect STARTS, so a stale decision never
+ * begins; a change that lands while the effect is already running is outside what a version check
+ * can see, and each such effect keeps its own guards (`isActive`, the worktree checks).
+ */
+export function staleRunWrite(store: RunStore, runId: string, expectedVersion: string | undefined): StaleVersionRejection | undefined {
+  if (expectedVersion === undefined) return undefined;
+  const checked = guardedRunMutation(store, runId, expectedVersion, () => undefined);
+  return checked.status === 'conflict' ? checked : undefined;
+}
+
+/** The rejection a route answered with, when the body is one — how a tool tells a stale-version
+ *  409 from every other 409 (`run already started`, `session closed`, …). */
+export function staleRejectionIn(body: unknown): StaleVersionRejection | undefined {
+  const parsed = staleVersionRejectionSchema.safeParse(body);
+  return parsed.success ? parsed.data : undefined;
 }
 
 /**

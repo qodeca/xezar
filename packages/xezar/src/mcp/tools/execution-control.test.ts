@@ -20,6 +20,7 @@ import {
   type ExecutionControlResult,
 } from './execution-control.ts';
 import { tools } from './index.ts';
+import { NO_VERSION, versionForTest } from './version.testkit.ts';
 
 /**
  * Execution control (#94). The end-to-end cases drive the real app `createApp` builds, with real
@@ -101,6 +102,9 @@ async function invoke(
   args: Record<string, unknown>,
   tool: McpTool = executionControlTool,
 ): Promise<{ isError: boolean; value: ExecutionControlResult }> {
+  // Every action changes the task, so a leader reads its version right before acting (#250). The
+  // version rule itself is pinned in `stale-write-tools.test.ts`.
+  if (!('expectedVersion' in args)) args = { ...args, expectedVersion: await versionForTest(ws.app, projectId, args.runId) };
   const parsed = tool.inputSchema.safeParse(args);
   if (!parsed.success) throw new Error(`invalid arguments: ${parsed.error.message}`);
   const ctx = {
@@ -228,20 +232,33 @@ describe('no tool can terminate an arbitrary process', () => {
     // This tool names a task, never a process: its whole argument surface, pinned.
     const schema = toolListing(executionControlTool).inputSchema as { properties: Record<string, unknown> };
     expect(Object.keys(schema.properties).sort()).toEqual(
-      ['action', 'answers', 'finishAs', 'images', 'messageId', 'questionId', 'runId', 'text'].sort(),
+      ['action', 'answers', 'expectedVersion', 'finishAs', 'images', 'messageId', 'questionId', 'runId', 'text'].sort(),
     );
   });
 
   it('starts, signals and spawns nothing itself — every effect is a cockpit route', () => {
     const source = readFileSync(new URL('./execution-control.ts', import.meta.url), 'utf8');
     const imports = [...source.matchAll(/^import\s[^;]*?from\s+'([^']+)';/gms)].map((m) => m[1]).sort();
-    expect(imports).toEqual(['../../server/app-type.ts', '../service-adapter.ts', '../tool.ts', '@qodeca/xezar-contract', 'hono/client', 'zod']);
+    expect(imports).toEqual([
+      '../../server/app-type.ts',
+      '../service-adapter.ts',
+      '../stale-write.ts',
+      '../tool.ts',
+      '@qodeca/xezar-contract',
+      'hono/client',
+      'zod',
+    ]);
     expect(source).not.toMatch(/process\.kill|child_process|node:fs|RunStore|new RunManager|\.cancel\(/);
   });
 
   it('refuses arguments that do not apply to the action instead of dropping them', () => {
-    const parse = (args: Record<string, unknown>) => executionControlTool.inputSchema.safeParse(args).success;
+    // Every call carries a version, so each refusal below is for the reason it names (#250).
+    const parse = (args: Record<string, unknown>) =>
+      executionControlTool.inputSchema.safeParse({ expectedVersion: NO_VERSION, ...args }).success;
     expect(parse({ action: 'cancel', runId: 'r1' })).toBe(true);
+    // …and a call without one is refused at the validation boundary, never run unchecked.
+    expect(executionControlTool.inputSchema.safeParse({ action: 'cancel', runId: 'r1' }).success).toBe(false);
+    expect(parse({ action: 'cancel', runId: 'r1', expectedVersion: '' })).toBe(false);
     expect(parse({ action: 'cancel', runId: 'r1', pid: 4242 })).toBe(false);
     expect(parse({ action: 'cancel', runId: 'r1', text: 'why' })).toBe(false);
     expect(parse({ action: 'finish', runId: 'r1' })).toBe(false);
@@ -312,7 +329,12 @@ describe('A has queued, running, waiting and completed tasks; B runs one too', (
     }
 
     // Cancelling A's running task stops it — and only it.
-    const cancelled = await invoke(ws, 'proj-a', { action: 'cancel', runId: running });
+    // A RUNNING task's version moves with every event its agent records (#250): a refusal applied
+    // nothing, and the leader reads again (the helper re-reads) and decides again.
+    let cancelled = await invoke(ws, 'proj-a', { action: 'cancel', runId: running });
+    for (let tries = 0; cancelled.value.error === 'stale_version' && tries < 50; tries += 1) {
+      cancelled = await invoke(ws, 'proj-a', { action: 'cancel', runId: running });
+    }
     expect(cancelled.value).toMatchObject({ accepted: true, subject: { type: 'run', id: running } });
     await waitFor(() => storeA.getRun(running)?.status === 'cancelled', "A's task to end cancelled");
     // The freed slot goes to A's queued task through the scheduler, as after a cockpit cancel.

@@ -12,6 +12,7 @@ import { WorkspaceSemaphore } from '../../workspace/semaphore.ts';
 import type { ServiceDispatch } from '../service-adapter.ts';
 import { toolListing, type McpToolContext, type McpToolResult } from '../tool.ts';
 import { tools } from './index.ts';
+import { versionForTest } from './version.testkit.ts';
 import { organiseWorkTool } from './work-organisation.ts';
 
 /**
@@ -100,6 +101,19 @@ const cockpit = (app: Workspace['app'], path: string, method = 'GET', body?: unk
 const context = async (ws: Workspace, projectId: string) => ws.contexts.context(projectId);
 const store = async (ws: Workspace, projectId: string) => (await context(ws, projectId)).store;
 
+/** The actions that change one task, and so need its version (#250). */
+const VERSIONED_ACTIONS: ReadonlySet<string> = new Set([
+  'set_title',
+  'edit_brief',
+  'edit_queued_message',
+  'remove_queued_message',
+  'pin',
+  'unpin',
+  'archive',
+  'restore',
+  'delete',
+]);
+
 /** A tools/call exactly as the service answers it: validate against the tool's schema, then call. */
 async function invoke(
   ws: Workspace,
@@ -107,6 +121,11 @@ async function invoke(
   opts: { projectId?: 'proj-a' | 'proj-b'; service?: ServiceDispatch | null } = {},
 ): Promise<McpToolResult> {
   const projectId = opts.projectId ?? 'proj-a';
+  // A leader reads a task right before it changes it (#250). The version rule itself is pinned in
+  // `stale-write-tools.test.ts`; here every call carries the version a fresh read would give.
+  if (VERSIONED_ACTIONS.has(String(args.action)) && !('expectedVersion' in args)) {
+    args = { ...args, expectedVersion: await versionForTest(ws.app, projectId, args.runId) };
+  }
   const parsed = organiseWorkTool.inputSchema.safeParse(args);
   if (!parsed.success) {
     return { content: [{ type: 'text', text: parsed.error.issues.map((i) => i.message).join('; ') }], isError: true };
@@ -311,6 +330,31 @@ describe('list_queue', () => {
     const bCursor = await invoke(ws, { action: 'list_queue', cursor: bPage.next });
     expect(bCursor.isError).toBe(true);
     expect(text(bCursor)).toMatch(/invalid cursor/);
+  }, 40_000);
+
+  it('keeps tasks started in the same millisecond in the order the scheduler starts them, across pages', async () => {
+    const ws = setup(1);
+    const holder = await hold(ws, 'proj-a');
+    const storeA = await store(ws, 'proj-a');
+    await waitFor(() => storeA.getRun(holder)?.status === 'running', 'the holder to take the only slot');
+    const quick = [{ id: 'work', command: OK_COMMAND }];
+    const started: string[] = [];
+    for (let i = 0; i < 6; i++) started.push(...(await start(ws, 'proj-a', { task: `tie ${i}`, steps: quick })));
+    // Two quick starts can share a `createdAt`; pin that for all six. A tie broken by the random
+    // run id would list them in creation order one time in 720.
+    const at = storeA.getRun(started[0]!)!.createdAt;
+    for (const id of started) storeA.getRun(id)!.createdAt = at;
+
+    const whole = body(await invoke(ws, { action: 'list_queue' }));
+    expect(whole.items.map((i: { id: string; position: number }) => [i.position, i.id])).toEqual(started.map((id, n) => [n + 1, id]));
+    const walked: string[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = body(await invoke(ws, { action: 'list_queue', limit: 2, ...(cursor ? { cursor } : {}) }));
+      walked.push(...page.items.map((i: { id: string }) => i.id));
+      cursor = page.next as string | undefined;
+    } while (cursor);
+    expect(walked).toEqual(started);
   }, 40_000);
 
   it('tells an empty queue apart from a failure', async () => {

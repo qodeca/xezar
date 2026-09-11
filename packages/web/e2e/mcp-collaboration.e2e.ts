@@ -240,8 +240,10 @@ describe.skipIf(onWindows)('MCP collaboration — the human’s cockpit and the 
     browser!.waitForFunction(`${SAME_PAGE} && document.querySelector('${ROW}[data-run-id="${taskId}"]') !== null`)
     await waitForStatus(taskId, 'waiting')
 
-    // The leader renames it; the human's row follows, still without a reload.
-    const renamed = await leader!.tool('organise_work', { action: 'set_title', runId: taskId, title: 'Renamed by the leader' })
+    // The leader renames it; the human's row follows, still without a reload. A write carries the
+    // version of the leader's last read (#250), so it reads first, as a real leader must.
+    const before = await leader!.tool('task_read', { view: 'task', taskId })
+    const renamed = await leader!.tool('organise_work', { action: 'set_title', runId: taskId, title: 'Renamed by the leader', expectedVersion: before.version })
     expect(renamed).toMatchObject({ status: 'done' })
     browser!.waitForFunction(
       `${SAME_PAGE} && document.querySelector('${ROW}[data-run-id="${taskId}"]')?.textContent.includes('Renamed by the leader')`,
@@ -284,7 +286,7 @@ describe.skipIf(onWindows)('MCP collaboration — the human’s cockpit and the 
     expect(seqs(history.events as Array<{ seq: number }>)).toEqual(seqs(cockpitHistory.events))
 
     // The leader replies; the human's open thread shows it without a reload.
-    const sent = await leader!.tool('execution_control', { action: 'send_message', runId: taskId, text: 'the leader answers back' })
+    const sent = await leader!.tool('execution_control', { action: 'send_message', runId: taskId, text: 'the leader answers back', expectedVersion: history.version })
     expect(sent).toMatchObject({ accepted: true })
     browser!.waitForFunction(
       `${SAME_PAGE} && [...document.querySelectorAll('[data-slot="user-bubble"]')].some((el) => el.textContent.includes('the leader answers back'))`,
@@ -310,10 +312,11 @@ describe.skipIf(onWindows)('MCP collaboration — the human’s cockpit and the 
     browser!.click(PIN)
     browser!.waitForFunction(`document.querySelector('${PIN}')?.getAttribute('aria-pressed') === 'true'`)
     await until(async () => ((await run(taskId)).pinned === true ? true : undefined), 'the pin to be recorded')
-    expect((await leader!.tool('task_read', { view: 'task', taskId })).task.pinned).toBe(true)
+    const pinned = await leader!.tool('task_read', { view: 'task', taskId })
+    expect(pinned.task.pinned).toBe(true)
 
-    // The leader unpins; the human's header follows without a reload.
-    expect(await leader!.tool('organise_work', { action: 'unpin', runId: taskId })).toMatchObject({ status: 'done' })
+    // The leader unpins, with the version of the read that saw the pin; the human's header follows without a reload.
+    expect(await leader!.tool('organise_work', { action: 'unpin', runId: taskId, expectedVersion: pinned.version })).toMatchObject({ status: 'done' })
     browser!.waitForFunction(`${SAME_PAGE} && document.querySelector('${PIN}')?.getAttribute('aria-pressed') === 'false'`)
     expect((await run(taskId)).pinned).toBeFalsy()
   })

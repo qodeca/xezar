@@ -7,6 +7,7 @@ import {
   githubMergeMethodSchema,
   githubMergeResponseSchema,
   githubPrMergeStateResponseSchema,
+  mcpExpectedVersionSchema,
   repoBranchResponseSchema,
   repoResponseSchema,
   runIdParamSchema,
@@ -16,6 +17,7 @@ import {
 import { hc } from 'hono/client';
 import { z } from 'zod';
 import { collectSecretValues, redactDeep } from '../../core/secret-redaction.ts';
+import { staleRejectionIn } from '../stale-write.ts';
 import { resolveForge } from '../../server/forge/index.ts';
 import { getRepoInfo } from '../../server/git.ts';
 import type { AppType } from '../../server/app-type.ts';
@@ -124,6 +126,11 @@ const inputSchema = z
         'branch: switch to, or create and switch to, a branch of the main checkout (name, from).',
     ),
     taskId: z.string().min(1).max(128).optional().describe('The task to commit, push or publish.'),
+    expectedVersion: mcpExpectedVersionSchema
+      .optional()
+      .describe(
+        'commit / push / create_pr: the `version` task_read returned for the task. If the task changed since, nothing is done.',
+      ),
     message: z.string().trim().min(1).max(5_000).optional().describe('commit: the commit message.'),
     number: z.number().int().positive().optional().describe('merge_state / merge: the pull request number.'),
     expectedHeadSha: z
@@ -141,11 +148,14 @@ const inputSchema = z
 
 type Input = z.output<typeof inputSchema>;
 
+// The three task actions require the task's `expectedVersion` (#250, N-03): a missing one is an
+// argument error, never an effect without the check. `merge` keeps its own compare-and-swap on the
+// pull request's head (`expectedHeadSha`); `branch` changes the main checkout, not a task.
 const REQUIRED: Record<Input['action'], ReadonlyArray<keyof Input>> = {
   repo: [],
-  commit: ['taskId', 'message'],
-  push: ['taskId'],
-  create_pr: ['taskId'],
+  commit: ['taskId', 'expectedVersion', 'message'],
+  push: ['taskId', 'expectedVersion'],
+  create_pr: ['taskId', 'expectedVersion'],
   merge_state: ['number'],
   merge: ['number', 'expectedHeadSha'],
   branch: ['name'],
@@ -153,9 +163,9 @@ const REQUIRED: Record<Input['action'], ReadonlyArray<keyof Input>> = {
 
 const ALLOWED: Record<Input['action'], ReadonlyArray<keyof Input>> = {
   repo: ['action'],
-  commit: ['action', 'taskId', 'message'],
-  push: ['action', 'taskId'],
-  create_pr: ['action', 'taskId'],
+  commit: ['action', 'taskId', 'expectedVersion', 'message'],
+  push: ['action', 'taskId', 'expectedVersion'],
+  create_pr: ['action', 'taskId', 'expectedVersion'],
   merge_state: ['action', 'number'],
   merge: ['action', 'number', 'expectedHeadSha', 'method'],
   branch: ['action', 'name', 'from'],
@@ -186,9 +196,13 @@ const answer = (payload: Record<string, unknown>): McpToolResult =>
 const policyRefusal = (action: Input['action'], error: string, extra: Record<string, unknown> = {}): McpToolResult =>
   answer({ action, status: 'failed', refusedBy: 'policy', error, ...extra });
 
-/** The service refused: its status and its own text, unchanged. */
-const serviceRefusal = (action: Input['action'], res: Answer, extra: Record<string, unknown> = {}): McpToolResult =>
-  answer({ action, status: 'failed', refusedBy: 'service', httpStatus: res.status, error: serviceError(res), ...extra });
+/** The service refused: its status and its own text, unchanged — or, when the task changed after
+ *  the leader read it (#250), D-06 § 4.4's rejection verbatim: nothing was done. */
+const serviceRefusal = (action: Input['action'], res: Answer, extra: Record<string, unknown> = {}): McpToolResult => {
+  const stale = staleRejectionIn(res.body);
+  if (stale) return answer({ action, ...stale, ...extra });
+  return answer({ action, status: 'failed', refusedBy: 'service', httpStatus: res.status, error: serviceError(res), ...extra });
+};
 
 const NO_TASK = 'No such task in this project.';
 const NO_WORKTREE_REASON = 'no worktree — this task ran directly in the repo working tree';
@@ -286,7 +300,7 @@ class Handoff {
     });
   }
 
-  async commit(taskId: string, message: string): Promise<McpToolResult> {
+  async commit(taskId: string, message: string, expectedVersion: string): Promise<McpToolResult> {
     const run = await this.task(taskId);
     if (!run) return answer({ action: 'commit', status: 'failed', refusedBy: 'policy', error: NO_TASK });
     const task = { id: run.id };
@@ -302,14 +316,14 @@ class Handoff {
       return policyRefusal('commit', 'Commit unavailable — no changes to commit', { task });
     }
     const res = await settle(
-      this.api.runs[':id'].git.commit.$post({ param: { ...this.scope, id: run.id }, json: { message } }),
+      this.api.runs[':id'].git.commit.$post({ param: { ...this.scope, id: run.id }, json: { message, expectedVersion } }),
     );
     if (res.status !== 200) return serviceRefusal('commit', res, { task });
     const done = gitCommitResponseSchema.parse(res.body);
     return answer({ action: 'commit', status: 'done', task: { id: run.id, revision: done.sha }, sha: done.sha });
   }
 
-  async push(taskId: string): Promise<McpToolResult> {
+  async push(taskId: string, expectedVersion: string): Promise<McpToolResult> {
     const run = await this.task(taskId);
     if (!run) return answer({ action: 'push', status: 'failed', refusedBy: 'policy', error: NO_TASK });
     const task = { id: run.id };
@@ -324,7 +338,7 @@ class Handoff {
     if (run.status === 'running') {
       return policyRefusal('push', 'Push unavailable — the agent is still working in this worktree', { task });
     }
-    const res = await settle(this.api.runs[':id'].git.push.$post({ param: { ...this.scope, id: run.id } }));
+    const res = await settle(this.api.runs[':id'].git.push.$post({ param: { ...this.scope, id: run.id }, json: { expectedVersion } }));
     if (res.status !== 200) return serviceRefusal('push', res, { task });
     const done = gitPushResponseSchema.parse(res.body);
     return answer({
@@ -337,7 +351,7 @@ class Handoff {
     });
   }
 
-  async createPr(taskId: string): Promise<McpToolResult> {
+  async createPr(taskId: string, expectedVersion: string): Promise<McpToolResult> {
     const run = await this.task(taskId);
     if (!run) return answer({ action: 'create_pr', status: 'failed', refusedBy: 'policy', error: NO_TASK });
     const task = { id: run.id };
@@ -362,7 +376,7 @@ class Handoff {
         task,
       });
     }
-    const res = await settle(this.api.runs[':id'].pr.$post({ param: { ...this.scope, id: run.id } }));
+    const res = await settle(this.api.runs[':id'].pr.$post({ param: { ...this.scope, id: run.id }, json: { expectedVersion } }));
     if (res.status !== 201) {
       const manual = (res.body as { manual?: unknown } | undefined)?.manual;
       return serviceRefusal('create_pr', res, { task, ...(typeof manual === 'string' ? { manual } : {}) });
@@ -513,7 +527,9 @@ export const handoffGitTool = defineTool({
     "Hand a task's work onward through the cockpit's own operations: commit a task's worktree, push its branch, " +
     'open its draft pull request, read a pull request\'s merge readiness, invoke the existing merge, and switch or ' +
     'create branches of the main checkout. Every action runs at once, with the same checks the cockpit applies; ' +
-    "a refusal carries the service's own reason unchanged. A merge needs the headSha you reviewed and is refused " +
+    "a refusal carries the service's own reason unchanged. commit, push and create_pr need the task's expectedVersion " +
+    '(from task_read) and do nothing, answering status "conflict" with error "stale_version", if the task changed since. ' +
+    'A merge needs the headSha you reviewed and is refused ' +
     'if the head moved. Failing, pending or unreadable required checks and missing reviews are blockers that no ' +
     'argument bypasses: repair the cause or report the blocker.',
   inputSchema,
@@ -532,11 +548,11 @@ export const handoffGitTool = defineTool({
       case 'repo':
         return handoff.repo();
       case 'commit':
-        return handoff.commit(args.taskId!, args.message!);
+        return handoff.commit(args.taskId!, args.message!, args.expectedVersion!);
       case 'push':
-        return handoff.push(args.taskId!);
+        return handoff.push(args.taskId!, args.expectedVersion!);
       case 'create_pr':
-        return handoff.createPr(args.taskId!);
+        return handoff.createPr(args.taskId!, args.expectedVersion!);
       case 'merge_state':
         return handoff.readMergeState(args.number!);
       case 'merge':

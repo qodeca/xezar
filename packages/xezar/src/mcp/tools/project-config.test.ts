@@ -26,6 +26,7 @@ import { WorkspaceSemaphore } from '../../workspace/semaphore.ts';
 import type { ServiceDispatch } from '../service-adapter.ts';
 import { toolListing, type McpToolResult } from '../tool.ts';
 import { tools } from './index.ts';
+import { versionForTest } from './version.testkit.ts';
 import {
   PROJECT_CONFIG_ACTIONS,
   REFUSED_ACTIONS,
@@ -258,6 +259,11 @@ async function invoke(
   opts: { project?: 'a' | 'b'; service?: ServiceDispatch | null } = {},
 ): Promise<Called> {
   const which = opts.project ?? 'a';
+  // A leader reads a task right before it removes its worktree (#250); the read goes to the real
+  // app, never through a spy service.
+  if (args.action === 'remove_worktree' && !('expectedVersion' in args)) {
+    args = { ...args, expectedVersion: await versionForTest(ws.app, `proj-${which}`, args.runId) };
+  }
   const ctx: ProjectConfigContext = {
     project: { id: `proj-${which}`, name: `Project ${which.toUpperCase()}`, root: ws.roots[which] },
     xezarVersion: '0.0.0-test',
