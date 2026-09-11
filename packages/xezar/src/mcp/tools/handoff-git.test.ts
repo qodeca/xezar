@@ -1,9 +1,10 @@
 import type { GithubPrMergeState } from '@qodeca/xezar-contract';
 import { execFileSync } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { createConnection } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createWorktree } from '../../git-worktree.ts';
 import { RunStore } from '../../runs/store.ts';
@@ -549,6 +550,45 @@ describe.skipIf(isWindows)('handoff_git — commit, push, draft PR, merge and br
       expect(listing.description).not.toMatch(/approv|waive|exception/i);
       expect(tools.map((t) => t.name).filter((n) => /merge|bypass|waive|override/.test(n))).toEqual([]);
       expect(Object.keys(listing.inputSchema.properties).filter((p) => /override/i.test(p))).toEqual([]);
+    });
+
+    it('leaves no exception route anywhere in the registry, not only in this tool', () => {
+      // A sibling tool landing next to this one is exactly how the hole would reopen, so this walks
+      // every registered tool: every argument name at every depth, and every enumerated value.
+      const names: string[] = [];
+      const values: string[] = [];
+      const walk = (node: unknown): void => {
+        if (Array.isArray(node)) return node.forEach(walk);
+        if (node === null || typeof node !== 'object') return;
+        const schema = node as { properties?: Body; enum?: unknown[]; const?: unknown };
+        if (schema.properties) names.push(...Object.keys(schema.properties));
+        for (const value of [...(schema.enum ?? []), ...(schema.const === undefined ? [] : [schema.const])]) {
+          if (typeof value === 'string') values.push(value);
+        }
+        Object.values(node).forEach(walk);
+      };
+      for (const tool of tools) {
+        names.length = 0;
+        values.length = 0;
+        walk(toolListing(tool).inputSchema);
+        expect({ tool: tool.name, names: names.filter((n) => WAIVER_RE.test(n) || /override|admin/i.test(n)) }).toEqual({ tool: tool.name, names: [] });
+        const exceptionValues = values.filter((v) => /bypass|waive|override|exception|admin|force/i.test(v));
+        expect({ tool: tool.name, values: exceptionValues }).toEqual({ tool: tool.name, values: [] });
+        // Only handoff_git may name a merge at all: the two actions (read, then merge) and the
+        // forge's `merge` method beside squash and rebase.
+        const mergeValues = values.filter((v) => /merge/i.test(v));
+        expect({ tool: tool.name, merge: mergeValues }).toEqual({
+          tool: tool.name,
+          merge: tool === handoffGitTool ? ['merge_state', 'merge', 'merge'] : [],
+        });
+      }
+
+      // And no other tool reaches the forge's merge route, whatever its arguments are called.
+      const dir = fileURLToPath(new URL('.', import.meta.url));
+      const reaching = readdirSync(dir)
+        .filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts') && f !== 'handoff-git.ts')
+        .filter((f) => /\/merge\b|overrideRules/.test(readFileSync(join(dir, f), 'utf8')));
+      expect(reaching).toEqual([]);
     });
 
     it('treats a pending check of unknown requiredness and a missing review as blockers too', async () => {
