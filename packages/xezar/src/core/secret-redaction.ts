@@ -54,22 +54,43 @@ const SECRET_VALUE_NAME_ALLOW: ReadonlySet<string> = new Set([
  */
 const MIN_SECRET_LEN = 12;
 
-/** Well-known credential shapes, independent of the host env. */
+/**
+ * Well-known credential shapes, independent of the host env.
+ *
+ * Case (#272): a shape matched in one case only let the same credential through in another. A
+ * shape is case-insensitive (`i`) unless its prefix, matched in any case, collides with ordinary
+ * text — those stay case-sensitive, and each says why. An AWS key id is upper-case letters and
+ * digits only, so a lower-cased copy loses nothing; its any-case form is a separate, whole-token
+ * pattern, because `asia`/`akia` open ordinary identifiers (`asiaPacificRegionConfig`).
+ */
 const TOKEN_PATTERNS: readonly RegExp[] = [
-  /gh[pousr]_[A-Za-z0-9]{20,}/g, // GitHub PAT / OAuth / server / user / refresh
+  /gh[pousr]_[A-Za-z0-9]{20,}/gi, // GitHub PAT / OAuth / server / user / refresh
+  // Case-sensitive: `GITHUB_PAT_…` in any case is also an env var NAME, which `printenv` prints.
   /github_pat_[A-Za-z0-9_]{20,}/g, // GitHub fine-grained PAT
+  // Case-sensitive: `SK-` in any case is the tail of `TASK-` / `RISK-` / `DISK-` issue keys and
+  // branch names. The key body is already any case, so only an upper-cased prefix escapes.
   /sk-ant-[A-Za-z0-9-_]{20,}/g, // Anthropic
   /sk-[A-Za-z0-9-_]{20,}/g, // OpenAI & compatible
   /AKIA[0-9A-Z]{16}/g, // AWS access key id
   /ASIA[0-9A-Z]{16}/g, // AWS temporary access key id
-  /AIza[0-9A-Za-z_-]{35}/g, // Google API key
-  /ya29\.[0-9A-Za-z_-]+/g, // Google OAuth access token
-  /xox[baprs]-[0-9A-Za-z-]{10,}/g, // Slack
-  /glpat-[0-9A-Za-z_-]{20,}/g, // GitLab PAT
+  /(?<![0-9A-Za-z])A[KS]IA[0-9A-Z]{16}(?![0-9A-Za-z])/gi, // either AWS key id, in any case
+  /AIza[0-9A-Za-z_-]{35}/gi, // Google API key
+  /ya29\.[0-9A-Za-z_-]+/gi, // Google OAuth access token
+  /xox[baprs]-[0-9A-Za-z-]{10,}/gi, // Slack
+  /glpat-[0-9A-Za-z_-]{20,}/gi, // GitLab PAT
 ];
 
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** `encodeURIComponent`, except a lone surrogate (which it throws on) yields nothing to match. */
+function urlEncoded(value: string): string | undefined {
+  try {
+    return encodeURIComponent(value);
+  } catch {
+    return undefined;
+  }
 }
 
 /** Collect the concrete secret values present in `env` (deduped, longest
@@ -84,12 +105,25 @@ export function collectSecretValues(env: NodeJS.ProcessEnv = process.env): strin
   return [...values].sort((a, b) => b.length - a.length);
 }
 
-/** Replace every known secret value / token shape in `text` with `[REDACTED]`. */
+/**
+ * Replace every known secret value / token shape in `text` with `[REDACTED]`.
+ *
+ * A known value matches in any case (#272 — a hex secret printed upper-cased is the same secret)
+ * and in its URL-encoded form (a password inside a connection string). A non-string throws rather
+ * than passing through; every caller either never hands one over or drops what it was writing.
+ */
 export function redactSecrets(text: string, secretValues: readonly string[]): string {
   let out = text;
+  let lowered: string | undefined;
   for (const value of secretValues) {
-    if (!out.includes(value)) continue;
-    out = out.split(value).join(REDACTED);
+    const encoded = urlEncoded(value);
+    for (const form of encoded === undefined || encoded === value ? [value] : [value, encoded]) {
+      // Prefilter against the input: a replacement only removes text, so a form absent from the
+      // input is absent from `out`. The exact check keeps the old match whatever `toLowerCase` does.
+      lowered ??= text.toLowerCase();
+      if (!text.includes(form) && !lowered.includes(form.toLowerCase())) continue;
+      out = out.replace(new RegExp(escapeRegExp(form), 'gi'), REDACTED);
+    }
   }
   for (const re of TOKEN_PATTERNS) {
     out = out.replace(re, REDACTED);
