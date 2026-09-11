@@ -60,7 +60,9 @@ const REFERENCE: Available = {
           },
           expectedVersion: { description: 'The token from your last read.', type: 'string' },
         },
-        required: ['action', 'expectedVersion'],
+        // Flat, like every real action tool: the guard is optional at the TOP LEVEL even though two
+        // actions refuse a call without it. Only the route's derived `guards` can say which.
+        required: ['action'],
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
@@ -90,6 +92,10 @@ const REFERENCE: Available = {
   ],
   refusedActions: [{ tool: 'zz_invented_probe', action: 'refuse_me', boundary: 'project binding', reason: 'it would leave the bound project.' }],
   refusedArguments: [{ tool: 'zz_invented_probe', argument: 'projectId', reason: 'Never accepted: the project is the bound one.' }],
+  guards: [
+    { tool: 'zz_invented_probe', argument: 'expectedVersion', everyCall: false, requiredBy: ['act_02', 'act_05'] },
+    { tool: 'unstated_tool', argument: 'operationId', everyCall: false, requiredBy: [] },
+  ],
   notExposed: [
     { what: 'Resources, prompts and logging', detail: 'Tools only.', forbiddenBy: ['D-05'] },
     { what: 'Secrets', detail: 'No secret in any answer.', forbiddenBy: ['F-15'] },
@@ -139,27 +145,48 @@ describe('MCP API — the tools come from the route, not from the page', () => {
     expect(summaryOf('weird_tool')).toContain('Changes project state')
     expect(summaryOf('weird_tool')).not.toContain('Destructive')
     // Action counts by kind: 16 that act plus the one refused.
-    expect(summaryOf('zz_invented_probe')).toContain('16 actions · 1 refused')
+    expect(summaryOf('zz_invented_probe')).toContain('16 actions, 1 refused')
     expect(summaryOf('health')).toContain('1 action')
+    // #301, A9: effect words are separated by spacing, never by a character that can wrap alone.
+    for (const effect of document.querySelectorAll('[data-slot="mcp-api-effect"]')) expect(effect.textContent).not.toContain('·')
   })
 
-  it('states the summary from the route before anything is expanded', () => {
+  it('names the tools in the summary instead of counting them, and never merges reads with changes (#301, A4)', () => {
     renderView()
     const summary = document.querySelector('[data-slot="mcp-api-summary"]')!.textContent!.replace(/\s+/g, ' ')
     // health 1 + probe 17 + reader 3 + unstated 1 + weird 1 = 23 actions, 1 of them refused.
-    expect(summary).toContain('5 tools, 22 actions that read or change, and 1 action that is always refused.')
-    expect(summary).toContain('3 tools can change project state, 2 of them state they may be destructive. 2 tools are read-only.')
-    expect(summary).toContain('1 tool does not state whether it is read-only')
+    expect(summary).toContain('5 tools, 22 actions, and 1 action that is always refused.')
+    expect(summary).not.toContain('read or change')
+    expect(document.querySelector('[data-slot="mcp-api-summary-changing"]')!.textContent!.replace(/\s+/g, ' ')).toBe(
+      'Can change project state: zz_invented_probe, unstated_tool, weird_tool. Of these, the tools that state they may delete or overwrite: zz_invented_probe, unstated_tool.',
+    )
+    expect(document.querySelector('[data-slot="mcp-api-summary-unstated"]')!.textContent!.replace(/\s+/g, ' ')).toBe(
+      'Not stated whether read-only, so clients assume it may change state: unstated_tool.',
+    )
+    expect(document.querySelector('[data-slot="mcp-api-summary-read-only"]')!.textContent).toBe('Read-only: health, reader.')
+    // Each name opens its tool.
+    const reader = within(document.querySelector('[data-slot="mcp-api-summary-read-only"]') as HTMLElement).getByRole('link', { name: 'reader' })
+    expect(reader.getAttribute('href')).toBe('#tool-reader')
     expect(summary).toContain('2 things never exposed, 1 action and 1 argument always refused')
   })
 
-  it('says what the server exposes and that the page is a reference, not a console', () => {
+  it('says coverage is not shown here and where it is recorded, instead of leaving it out (#301, A8)', () => {
+    renderView()
+    expect(document.querySelector('[data-slot="mcp-api-summary-coverage"]')!.textContent).toContain('Cockpit coverage is not shown on this page')
+    expect(screen.getByRole('link', { name: 'where it is recorded' }).getAttribute('href')).toBe('#mcp-coverage')
+    const coverage = document.getElementById('mcp-coverage')!
+    expect(within(coverage).getByRole('heading', { name: 'Cockpit coverage' })).toBeTruthy()
+    expect(coverage.textContent).toContain('docs/features/mcp-server/mcp-api.md')
+  })
+
+  it('says in one line that the page is a reference, not a console, with no box and no second "not exposed" list (#301, A5)', () => {
     renderView()
     const header = document.querySelector('[data-slot="mcp-api-header"]')!.textContent!.replace(/\s+/g, ' ')
-    expect(header).toContain('It exposes tools only.')
-    expect(header).toContain('resources, prompts and logging, secrets')
     expect(header).toContain('Read-only by design')
-    expect(header).toContain('no tool call is ever sent from it')
+    expect(header).toContain('No tool call is ever sent from this page.')
+    expect(header).not.toContain('It does not expose')
+    expect(document.querySelector('[data-slot="mcp-api-read-only"]')!.getAttribute('class')).not.toMatch(/\bborder\b|\bbg-/)
+    expect(within(document.querySelector('[data-slot="mcp-api-header"]') as HTMLElement).getByText('Why?')).toBeTruthy()
     expect(header).toContain('0.14.0')
     expect(header).toContain('2025-11-25')
   })
@@ -175,10 +202,10 @@ describe('MCP API — an expanded tool', () => {
     renderView()
     const args = [...tool('zz_invented_probe').querySelectorAll('[data-slot="mcp-api-argument"]')]
     const names = args.map((li) => li.querySelector('.font-mono')!.textContent)
-    expect(names).toEqual(['action', 'expectedVersion', 'note', 'mode', 'config'])
+    expect(names).toEqual(['action', 'note', 'mode', 'config', 'expectedVersion'])
     expect(args[0]!.textContent).toContain('Required')
-    expect(args[2]!.textContent).toContain('Optional')
-    const note = args[2]!.querySelector('[data-slot="mcp-api-description"]')!.textContent
+    expect(args[1]!.textContent).toContain('Optional')
+    const note = args[1]!.querySelector('[data-slot="mcp-api-description"]')!.textContent
     expect(note).toBe('note: free text, kept VERBATIM — including  two spaces.')
     expect(args[0]!.textContent).toContain('One of the 17 actions above.')
     expect(args[0]!.querySelectorAll('code')).toHaveLength(0)
@@ -186,7 +213,7 @@ describe('MCP API — an expanded tool', () => {
 
   it('cuts an enum of more than ten values short, with a disclosure that says how many it reveals', () => {
     renderView()
-    const mode = [...tool('zz_invented_probe').querySelectorAll('[data-slot="mcp-api-argument"]')][3]!
+    const mode = [...tool('zz_invented_probe').querySelectorAll('[data-slot="mcp-api-argument"]')][2]!
     expect(mode.querySelectorAll('code')).toHaveLength(10)
     const more = within(mode as HTMLElement).getByRole('button', { name: 'Show all 12 values' })
     expect(more.getAttribute('aria-expanded')).toBe('false')
@@ -207,12 +234,41 @@ describe('MCP API — an expanded tool', () => {
     expect(nested[1]).toContain('whole number')
   })
 
-  it('says whether the tool needs expectedVersion and whether it takes an operationId', () => {
+  it('says which actions need expectedVersion from the route’s derived guards, not from the flat schema (#301, A3)', () => {
     renderView()
     const probe = tool('zz_invented_probe')
-    expect(probe.querySelector('[data-slot="mcp-api-expected-version"]')!.textContent).toBe('required')
+    // The schema lists the guard as optional at its top level; the route knows two actions refuse
+    // a call without it, and the page says exactly that, naming them.
+    expect(probe.querySelector('[data-slot="mcp-api-expected-version"]')!.textContent).toBe('required by 2 of 16 actions: act_02, act_05')
     expect(probe.querySelector('[data-slot="mcp-api-operation-id"]')!.textContent).toBe('not taken')
-    expect(tool('unstated_tool').querySelector('[data-slot="mcp-api-operation-id"]')!.textContent).toBe('accepted, not required')
+    expect(tool('unstated_tool').querySelector('[data-slot="mcp-api-operation-id"]')!.textContent).toBe('optional')
+    expect(document.body.textContent).not.toContain('accepted, not required')
+
+    cleanup()
+    const everyCall = { ...REFERENCE.guards[0]!, everyCall: true, requiredBy: ACTIONS }
+    renderView({ ...REFERENCE, guards: [everyCall] })
+    expect(tool('zz_invented_probe').querySelector('[data-slot="mcp-api-expected-version"]')!.textContent).toBe('required on every call')
+    // A guard the route does not describe is never guessed.
+    expect(tool('unstated_tool').querySelector('[data-slot="mcp-api-operation-id"]')!.textContent).toBe(
+      'optional in the schema – which actions need it is not stated',
+    )
+  })
+
+  it('never tells a reviewer organise_work’s expectedVersion is optional: it refuses ten actions without it (#301, A3)', () => {
+    // The real listing, as committed, with the guard the server derives for it
+    // (`mcp-reference-route.test.ts` pins that derivation to the tool's own schema).
+    const organise = REAL_TOOLS.find((t) => t.name === 'organise_work')!
+    const needed = ['set_title', 'edit_brief', 'edit_queued_message', 'remove_queued_message', 'pin', 'unpin', 'archive', 'restore', 'delete', 'pick_variant']
+    renderView({
+      ...REFERENCE,
+      tools: [organise],
+      refusedActions: [],
+      refusedArguments: [],
+      guards: [{ tool: 'organise_work', argument: 'expectedVersion', everyCall: false, requiredBy: needed }],
+    })
+    const words = tool('organise_work').querySelector('[data-slot="mcp-api-expected-version"]')!.textContent!
+    expect(words).toBe(`required by 10 of 17 actions: ${needed.join(', ')}`)
+    expect(words).not.toMatch(/accepted|not required/)
   })
 
   it('shows every hint as words, with the protocol default where a hint is not stated', () => {
@@ -229,12 +285,40 @@ describe('MCP API — an expanded tool', () => {
     const inputs = [...probe.querySelectorAll('[data-slot="mcp-api-argument"]')].map((li) => li.textContent)
     expect(inputs.some((t) => t?.includes('projectId'))).toBe(false)
     expect(probe.querySelector('[data-slot="mcp-api-refused-argument"]')!.textContent).toContain('Refused – never accepted.')
-    const refuse = [...probe.querySelectorAll('[data-slot="mcp-api-action"]')].find((li) => li.textContent?.startsWith('refuse_me'))
-    expect(refuse!.textContent).toContain('Refused – project binding.')
-    // And the same items are gathered in the refusals section.
-    const gathered = document.querySelector('[data-slot="mcp-api-always-refused"]')!.textContent!
-    expect(gathered).toContain('refuse_me')
-    expect(gathered).toContain('projectId')
+    // #301, A6: inside the tool a refused action shows its name under its boundary; the reason is
+    // written once, in the refusals section.
+    const actions = [...probe.querySelectorAll('[data-slot="mcp-api-action"]')].map((li) => li.textContent)
+    expect(actions).toEqual(ACTIONS)
+    const refusedHere = probe.querySelector('[data-slot="mcp-api-refused-actions"]')!.textContent!
+    expect(refusedHere).toContain('Project binding: refuse_me')
+    expect(refusedHere).not.toContain('it would leave the bound project.')
+    // #301, A7: the refusals section groups by boundary, and joins name and reason with a colon.
+    const gathered = document.querySelector('[data-slot="mcp-api-always-refused"]')!
+    const groups = [...gathered.querySelectorAll('[data-slot="mcp-api-boundary"] h4')].map((h) => h.textContent)
+    expect(groups).toEqual(['Project binding', 'Arguments'])
+    expect(gathered.textContent!.replace(/\s+/g, ' ')).toContain('zz_invented_probe action refuse_me: it would leave the bound project.')
+    expect(gathered.textContent).toContain('projectId')
+  })
+
+  it('prints no effect word it cannot back on an action, and says where the effect is written (#301, A1, A2)', () => {
+    renderView()
+    expect(document.body.textContent).not.toContain('Reads or changes')
+    expect(document.body.textContent).not.toContain('Do this in the cockpit')
+    expect(tool('zz_invented_probe').querySelector('[data-slot="mcp-api-action-effects"]')!.textContent).toBe(
+      'Which of these actions change state is not declared yet. The description above is the source.',
+    )
+    expect(tool('reader').querySelector('[data-slot="mcp-api-action-effects"]')!.textContent).toBe(
+      'The tool states it is read-only, so every action reads.',
+    )
+  })
+
+  it('closes an open tool from its end and returns focus to its row (#301, A10)', () => {
+    renderView()
+    const probe = tool('zz_invented_probe')
+    probe.open = true
+    fireEvent.click(within(probe).getByRole('button', { name: 'Close zz_invented_probe' }))
+    expect(probe.open).toBe(false)
+    expect(document.activeElement).toBe(probe.querySelector('summary'))
   })
 
   it('confines a schema it cannot lay out to its own tool, and opens the raw schema there', () => {
@@ -254,7 +338,7 @@ describe('MCP API — an expanded tool', () => {
 describe('MCP API — the real tool surface', () => {
   it('lays out every real tool from the committed mcp-api.json without falling back to raw JSON', () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
-    renderView({ ...REFERENCE, tools: REAL_TOOLS, refusedActions: [], refusedArguments: [] })
+    renderView({ ...REFERENCE, tools: REAL_TOOLS, refusedActions: [], refusedArguments: [], guards: [] })
     expect(document.querySelectorAll('[data-slot="mcp-api-tool"]')).toHaveLength(REAL_TOOLS.length)
     expect(document.querySelectorAll('[data-slot="mcp-api-unsupported"]')).toHaveLength(0)
     expect(errors).not.toHaveBeenCalled()
@@ -271,7 +355,7 @@ describe('MCP API — finding a tool', () => {
   })
 
   it('says so when a filter matches nothing, and when only health is listed', () => {
-    renderView({ ...REFERENCE, tools: [REFERENCE.tools[0]!], refusedActions: [], refusedArguments: [] })
+    renderView({ ...REFERENCE, tools: [REFERENCE.tools[0]!], refusedActions: [], refusedArguments: [], guards: [] })
     expect(document.querySelector('[data-slot="mcp-api-summary"]')!.textContent).toContain('This server lists no tools besides health.')
     fireEvent.click(screen.getByRole('radio', { name: 'Changes project state' }))
     expect(screen.getByText('No tools match this filter.')).toBeTruthy()

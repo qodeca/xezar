@@ -1265,6 +1265,23 @@ This pass changes documentation only. Each finding names the file and what the d
 MCP connection's own design lives in the MCP requirements (U-M01 … U-M08), not in this document, so C1–C8 are recorded
 here only as findings for assignment.
 
+**Acted on by [#301](https://github.com/qodeca/xezar/issues/301).** A1, A2, A4–A10 and C1–C3, C5, C7 as proposed. Four
+differ from the proposal, on purpose:
+
+- **A3 is derived, not reworded.** The proposed wording ("optional in the schema – which actions need it is not
+  declared") is true, but the running code already knows the answer. The route's new `guards` field is found by
+  validating each action through the tool's own input schema without the guard; the page prints "required by 10 of 17
+  actions: …". `handoff_git` checked its per-action arguments in its handler, invisible to that validation, so the check
+  moved into its schema. The proposed wording stays as the page's fallback for a guard the route does not describe.
+- **C4 keeps a real status where it was said.** The one line sits after the setup, as proposed; a status the server does
+  report (hosted mode, server restarting) is shown in the same place, in a live region that is always mounted so a change
+  is still announced.
+- **C6 is partial.** The shared facts are said once above the cards (readiness), and the readiness box no longer repeats
+  "not read by any client". Each card keeps its own "Automatic" and "Not automatic" lines: D-04 § 3 states them per client
+  under U-M01, and acceptance case A-01 (`mcp-live-sync.e2e.ts`) asserts them per card.
+- **C8** drops the three bullets and keeps the link. The one fact they held that nothing else said – one client owns a
+  project at a time – moved into "Bound project".
+
 #### 20.9 Entries re-checked
 
 | Entry | What the design pass found | Result |

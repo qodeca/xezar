@@ -23,6 +23,20 @@
   one warning and the MCP keeps working. This closes acceptance case A-01. (#262)
 
 ## 🐛 Fixes
+- 🐛 **Settings → MCP API no longer tells a reviewer a guard is optional when it is not.** The page
+  read "accepted, not required" for `organise_work`'s `expectedVersion`, while that tool refuses
+  ten actions without it; `handoff_git` and `project_config` read the same. The reference route now
+  derives, from each tool's own input schema, which actions are refused without `expectedVersion`
+  or `operationId` (a new `guards` field), and the page names them: "required by 10 of 17 actions:
+  set_title, …". `handoff_git`'s per-action argument check moved into its schema so the schema is
+  the one place that both enforces the rule and answers the question; its answers are unchanged.
+  The same pass acts on the rest of the design review (#296): no "Reads or changes" filler on every
+  action, no per-tool "Do this in the cockpit" sentence that was false for `health`, a summary that
+  names tools instead of counting them, refusals grouped by boundary, a stated "coverage is not
+  shown here" instead of silence, and a close control at the end of each open tool. MCP connection
+  shows names as code instead of literal backticks, drops the requirement document's "stated
+  plainly" wording, leaves out the "Operation outcomes" section no route can fill yet, and moves
+  the one-time setup up. (#301)
 - 🐛 **The project kit refuses to judge a task whose workspace packages load from another
   checkout.** A task worktree lives inside the primary checkout, so when its own
   `node_modules/@qodeca/xezar-contract` link is missing, node does not fail — it walks up and loads

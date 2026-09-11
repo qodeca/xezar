@@ -4,6 +4,7 @@ import { useLocation } from 'react-router'
 
 import type {
   McpApiReference,
+  McpGuard,
   McpRefusedAction,
   McpRefusedArgument,
   McpToolAnnotations,
@@ -16,11 +17,13 @@ import { Link } from '@/lib/project-router'
 /**
  * Project settings → MCP API (#284): the browsable, READ-ONLY reference of what the MCP server
  * exposes. It implements spec `docs/features/mcp-api-reference/mcp-api-reference-spec.md` § 12 and
- * Part 6 (§ 18) for everything the running code can state; see the pull request for what waits on
- * a shipped coverage declaration.
+ * Part 6 (§ 18, as amended by the design pass in § 20) for everything the running code can state.
+ * Where the data does not exist yet — per-action effects, cockpit coverage — the page says so in
+ * one sentence instead of printing filler that reads like an answer (§ 18.7).
  *
- * Every tool, action, argument and refusal comes from `GET /api/v1/mcp/reference`, whose `tools`
- * field is exactly what `tools/list` answers. Nothing here names a tool (CV-02).
+ * Every tool, action, argument, guard and refusal comes from `GET /api/v1/mcp/reference`, whose
+ * `tools` field is exactly what `tools/list` answers. Nothing here names a tool (CV-02), and nothing
+ * here writes a claim the route's data could answer instead (#301).
  *
  * THE HARD BOUNDARY: this page has no control that runs, simulates or prepares a tool call — no
  * "Try it", no "Send", no request builder, no copy-as-command, and no disabled stand-in for any of
@@ -32,9 +35,11 @@ import { Link } from '@/lib/project-router'
 type Available = Extract<McpApiReference, { available: true }>
 
 const MCP_CONNECTION_PATH = '/settings/mcp-connection'
+const COVERAGE_DOC = 'docs/features/mcp-server/mcp-api.md'
 const ENUM_PREVIEW = 10
 const DISCRIMINATORS = ['action', 'view', 'read'] as const
 const FOCUS_RING = 'outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50'
+const LINK = `rounded-sm underline underline-offset-2 ${FOCUS_RING}`
 
 export function McpApiSection() {
   const reference = useMcpApiReference()
@@ -73,7 +78,7 @@ export function McpApiSection() {
 
 function McpConnectionLink({ children }: { children: ReactNode }) {
   return (
-    <Link to={MCP_CONNECTION_PATH} className={`rounded-sm font-medium underline underline-offset-2 ${FOCUS_RING}`}>
+    <Link to={MCP_CONNECTION_PATH} className={`font-medium ${LINK}`}>
       {children}
     </Link>
   )
@@ -86,6 +91,7 @@ type Effect = 'read-only' | 'changes'
 
 const isObject = (value: unknown): value is Json => typeof value === 'object' && value !== null && !Array.isArray(value)
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
+const capitalise = (text: string) => text.charAt(0).toUpperCase() + text.slice(1)
 
 /** The discriminator argument (`action`, `view` or `read`) and its values, or null for a tool with none. */
 function discriminatorOf(tool: McpToolListing): { name: string; values: string[] } | null {
@@ -103,7 +109,15 @@ function discriminatorOf(tool: McpToolListing): { name: string; values: string[]
  *  client treats it — as one that may change state (the protocol default, spec § 18.3). */
 const effectOf = (a: McpToolAnnotations | undefined): Effect => (a?.readOnlyHint === true ? 'read-only' : 'changes')
 
-/** The effect as words, spec § 18.3. Always words; colour only reinforces them. */
+/** Items grouped by a key, in first-seen order. */
+function groupBy<T>(items: readonly T[], key: (item: T) => string): [string, T[]][] {
+  const groups = new Map<string, T[]>()
+  for (const item of items) groups.set(key(item), [...(groups.get(key(item)) ?? []), item])
+  return [...groups]
+}
+
+/** The effect as words, spec § 18.3. Always words; colour only reinforces them. The words are
+ *  separated by spacing, not a character, so nothing is left alone at a line end (§ 18.9). */
 function EffectLabel({ annotations }: { annotations: McpToolAnnotations | undefined }) {
   const a = annotations ?? {}
   if (a.readOnlyHint === true) {
@@ -128,14 +142,9 @@ function EffectLabel({ annotations }: { annotations: McpToolAnnotations | undefi
       </span>
     )
   return (
-    <span data-slot="mcp-api-effect" className="flex flex-wrap gap-x-1.5">
+    <span data-slot="mcp-api-effect" className="flex flex-wrap gap-x-3">
       {base}
-      {destructive ? (
-        <>
-          <span aria-hidden="true" className="text-soft-foreground">·</span>
-          {destructive}
-        </>
-      ) : null}
+      {destructive}
     </span>
   )
 }
@@ -151,12 +160,29 @@ function hintWords(a: McpToolAnnotations | undefined, key: keyof McpToolAnnotati
   return `not stated – clients assume ${assumed}`
 }
 
-/** How a tool takes one of the two MCP-only guards: required, accepted, or not at all. */
-function guardWords(tool: McpToolListing, name: string): string {
+/**
+ * How a tool takes one of the two MCP-only guards — read from the route's `guards`, which the server
+ * DERIVES by validating each action through the tool's own schema without the guard (#301). The flat
+ * listing alone cannot answer this: `organise_work` lists `expectedVersion` as optional at its top
+ * level while refusing ten actions without it, and the page once printed "accepted, not required".
+ */
+function GuardWords({ tool, name, guard, performing }: { tool: McpToolListing; name: string; guard: McpGuard | undefined; performing: number }) {
   const properties = isObject(tool.inputSchema.properties) ? tool.inputSchema.properties : {}
-  if (!(name in properties)) return 'not taken'
-  const required = Array.isArray(tool.inputSchema.required) && tool.inputSchema.required.includes(name)
-  return required ? 'required' : 'accepted, not required'
+  if (!(name in properties)) return <>not taken</>
+  if (!guard) return <>optional in the schema – which actions need it is not stated</>
+  if (guard.everyCall) return <>required on every call</>
+  if (guard.requiredBy.length === 0) return <>{discriminatorOf(tool) ? 'optional for every action' : 'optional'}</>
+  return (
+    <>
+      required by {guard.requiredBy.length} of {plural(performing, 'action')}:{' '}
+      {guard.requiredBy.map((action, i) => (
+        <span key={action}>
+          {i ? ', ' : ''}
+          <code className="font-mono break-all text-foreground">{action}</code>
+        </span>
+      ))}
+    </>
+  )
 }
 
 // ---- arguments, spec § 18.4 --------------------------------------------------------------------
@@ -331,7 +357,7 @@ function EnumValues({ values }: { values: string[] }) {
           type="button"
           aria-expanded={all}
           onClick={() => setAll(!all)}
-          className={`rounded-sm text-[12px] font-medium text-foreground underline underline-offset-2 ${FOCUS_RING}`}
+          className={`text-[12px] font-medium text-foreground ${LINK}`}
         >
           {all ? `Show the first ${ENUM_PREVIEW}` : `Show all ${values.length} values`}
         </button>
@@ -364,23 +390,39 @@ function RawSchema({ tool, open = false }: { tool: McpToolListing; open?: boolea
   )
 }
 
+/** A wrapped list of names — the actions, when there is nothing true to print beside each (§ 18.4). */
+function NameList({ names, label, slot }: { names: string[]; label: string; slot: string }) {
+  return (
+    <ul aria-label={label} className="flex flex-wrap gap-x-3 gap-y-1 text-[13px]">
+      {names.map((name) => (
+        <li key={name} data-slot={slot}>
+          <code className="font-mono break-all text-foreground">{name}</code>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 // ---- one tool ----------------------------------------------------------------------------------
 
 function ToolEntry({
   tool,
   refusedActions,
   refusedArguments,
+  guards,
 }: {
   tool: McpToolListing
   refusedActions: McpRefusedAction[]
   refusedArguments: McpRefusedArgument[]
+  guards: McpGuard[]
 }) {
+  const detailsRef = useRef<HTMLDetailsElement>(null)
   const discriminator = discriminatorOf(tool)
-  const refused = new Map(refusedActions.map((r) => [r.action, r]))
-  const total = discriminator ? discriminator.values.length : 1
-  const performing = total - refused.size
+  const refused = new Set(refusedActions.map((r) => r.action))
+  const performing = discriminator ? discriminator.values.filter((v) => !refused.has(v)) : []
+  const performingCount = discriminator ? performing.length : 1
   const a = tool.annotations
-  const actionWord = effectOf(a) === 'read-only' ? 'Reads' : 'Reads or changes'
+  const guardFor = (name: string) => guards.find((g) => g.argument === name)
   const unsupportedFallback = (
     <div data-slot="mcp-api-unsupported" className="flex flex-col gap-2">
       <p className="text-[13px] text-foreground">
@@ -389,9 +431,16 @@ function ToolEntry({
       <RawSchema tool={tool} open />
     </div>
   )
+  // A 5,000 px open tool must not leave a reader scrolling back to find its row (§ 18.4, § 18.9).
+  const close = () => {
+    const details = detailsRef.current
+    if (!details) return
+    details.open = false
+    details.querySelector('summary')?.focus()
+  }
 
   return (
-    <details id={`tool-${tool.name}`} data-slot="mcp-api-tool" className="group rounded-md border border-border bg-card">
+    <details ref={detailsRef} id={`tool-${tool.name}`} data-slot="mcp-api-tool" className="group scroll-mt-4 rounded-md border border-border bg-card">
       <summary className={`cursor-pointer list-none rounded-md p-3 ${FOCUS_RING}`}>
         <h3 className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-sm">
           <span aria-hidden="true" className="text-soft-foreground group-open:rotate-90">›</span>
@@ -401,8 +450,8 @@ function ToolEntry({
         <span className="mt-1 flex flex-col gap-0.5 text-[12px] sm:flex-row sm:flex-wrap sm:gap-x-3">
           <EffectLabel annotations={a} />
           <span data-slot="mcp-api-counts" className="text-muted-foreground">
-            {plural(performing, 'action')}
-            {refused.size ? ` · ${refused.size} refused` : ''}
+            {plural(performingCount, 'action')}
+            {refused.size ? `, ${refused.size} refused` : ''}
           </span>
         </span>
       </summary>
@@ -426,14 +475,19 @@ function ToolEntry({
               <dd className="text-muted-foreground">{hintWords(a, key)}</dd>
             </div>
           ))}
-          <div className="flex gap-1.5">
-            <dt className="font-mono font-medium text-foreground">expectedVersion:</dt>
-            <dd data-slot="mcp-api-expected-version" className="text-muted-foreground">{guardWords(tool, 'expectedVersion')}</dd>
-          </div>
-          <div className="flex gap-1.5">
-            <dt className="font-mono font-medium text-foreground">operationId:</dt>
-            <dd data-slot="mcp-api-operation-id" className="text-muted-foreground">{guardWords(tool, 'operationId')}</dd>
-          </div>
+          {(
+            [
+              ['expectedVersion', 'mcp-api-expected-version'],
+              ['operationId', 'mcp-api-operation-id'],
+            ] as const
+          ).map(([name, slot]) => (
+            <div key={name} className="flex gap-1.5 sm:col-span-2">
+              <dt className="shrink-0 font-mono font-medium text-foreground">{name}:</dt>
+              <dd data-slot={slot} className="min-w-0 text-muted-foreground">
+                <GuardWords tool={tool} name={name} guard={guardFor(name)} performing={performingCount} />
+              </dd>
+            </div>
+          ))}
         </dl>
 
         {discriminator ? (
@@ -441,24 +495,37 @@ function ToolEntry({
             <h4 className="text-[13px] font-semibold text-foreground">
               Actions <span className="font-normal text-muted-foreground">(the <code className="font-mono">{discriminator.name}</code> argument)</span>
             </h4>
-            <ul aria-label={`Actions of ${tool.name}`} className="flex flex-col gap-1 text-[13px]">
-              {discriminator.values.map((value) => {
-                const refusal = refused.get(value)
-                return (
-                  <li key={value} data-slot="mcp-api-action" className="flex min-w-0 flex-wrap gap-x-2">
-                    <code className="font-mono break-all text-foreground">{value}</code>
-                    {refusal ? (
-                      <span className="text-foreground">
-                        <span className="font-medium">Refused – {refusal.boundary}.</span>{' '}
-                        <span className="text-muted-foreground">{refusal.reason}</span>
+            {/* § 18.3: while per-action effects are not declared, no action gets an effect word —
+                one line says so, and names the source that does say it. */}
+            <p data-slot="mcp-api-action-effects" className="text-[12px] leading-relaxed text-muted-foreground">
+              {effectOf(a) === 'read-only'
+                ? 'The tool states it is read-only, so every action reads.'
+                : 'Which of these actions change state is not declared yet. The description above is the source.'}
+            </p>
+            {performing.length ? <NameList names={performing} label={`Actions of ${tool.name}`} slot="mcp-api-action" /> : null}
+            {refusedActions.length ? (
+              <div data-slot="mcp-api-refused-actions" className="flex flex-col gap-1 text-[13px]">
+                <h5 className="font-medium text-foreground">Refused, whatever else is sent</h5>
+                {groupBy(refusedActions, (r) => r.boundary).map(([boundary, items]) => (
+                  <p key={boundary} className="text-muted-foreground">
+                    <span className="text-foreground">{capitalise(boundary)}:</span>{' '}
+                    {items.map((r, i) => (
+                      <span key={r.action}>
+                        {i ? ', ' : ''}
+                        <code className="font-mono break-all text-foreground">{r.action}</code>
                       </span>
-                    ) : (
-                      <span className="text-muted-foreground">{actionWord}</span>
-                    )}
-                  </li>
-                )
-              })}
-            </ul>
+                    ))}
+                  </p>
+                ))}
+                <p className="text-[12px] text-muted-foreground">
+                  Why each is refused:{' '}
+                  <a href="#mcp-refusals" className={LINK}>
+                    What this server will not do
+                  </a>
+                  .
+                </p>
+              </div>
+            ) : null}
           </section>
         ) : null}
 
@@ -469,12 +536,11 @@ function ToolEntry({
           </ToolErrorBoundary>
         </section>
 
-        <p data-slot="mcp-api-cockpit-door" className="text-[12px] leading-relaxed text-muted-foreground">
-          <span className="font-medium text-foreground">Do this in the cockpit:</span> every project action this tool
-          performs has its own control in the cockpit, where it is recorded as done by a person (<code className="font-mono">ui</code>).
-        </p>
-
         <RawSchema tool={tool} />
+
+        <button type="button" onClick={close} className={`self-start text-[12px] font-medium text-foreground ${LINK}`}>
+          Close {tool.name}
+        </button>
       </div>
     </details>
   )
@@ -488,6 +554,22 @@ const FILTERS: { value: Filter; label: string }[] = [
   { value: 'changes', label: 'Changes project state' },
   { value: 'read-only', label: 'Read-only' },
 ]
+
+/** Tool names as links to their rows: a reviewer acts on a name, not on a count (§ 18.2). */
+function ToolNames({ names }: { names: string[] }) {
+  return (
+    <>
+      {names.map((name, i) => (
+        <span key={name}>
+          {i ? ', ' : ''}
+          <a href={`#tool-${name}`} className={`font-mono break-all ${LINK}`}>
+            {name}
+          </a>
+        </span>
+      ))}
+    </>
+  )
+}
 
 export function McpApiReferenceView({ reference }: { reference: Available }) {
   const [filter, setFilter] = useState<Filter>('all')
@@ -519,18 +601,19 @@ export function McpApiReferenceView({ reference }: { reference: Available }) {
   const actionTotals = tools.reduce((sum, t) => sum + (discriminatorOf(t)?.values.length ?? 1), 0)
   const refusedTotal = reference.refusedActions.length
   const changing = tools.filter((t) => effectOf(t.annotations) === 'changes')
-  const destructive = changing.filter((t) => t.annotations?.destructiveHint === true).length
-  const unstated = changing.filter((t) => t.annotations?.readOnlyHint === undefined).length
-  const readOnly = tools.length - changing.length
+  const destructive = changing.filter((t) => t.annotations?.destructiveHint === true).map((t) => t.name)
+  const destructiveUnstated = changing.filter((t) => t.annotations?.destructiveHint === undefined).map((t) => t.name)
+  const unstated = changing.filter((t) => t.annotations?.readOnlyHint === undefined).map((t) => t.name)
+  const readOnly = tools.filter((t) => effectOf(t.annotations) === 'read-only').map((t) => t.name)
   const onlyHealth = tools.every((t) => t.name === 'health')
-  const capabilityNames = Object.keys(reference.capabilities)
+  const byBoundary = groupBy(reference.refusedActions, (r) => r.boundary)
 
   return (
     <div
       data-slot="mcp-api-section"
       className="mx-auto flex w-full max-w-3xl min-w-0 flex-col gap-7 p-4 pb-[calc(90px+env(safe-area-inset-bottom))] md:p-6 md:pb-6"
     >
-      {/* Header (§ 12.2 item 1, § 18.6): what this is, and why nothing here runs a tool. */}
+      {/* Header (§ 12.2 item 1, § 18.6): what this is, and in one line why nothing here runs a tool. */}
       <header data-slot="mcp-api-header" className="flex flex-col gap-2">
         <h2 className="text-sm font-semibold text-foreground">xezar MCP server</h2>
         <p className="text-[13px] text-muted-foreground">
@@ -542,18 +625,13 @@ export function McpApiReferenceView({ reference }: { reference: Available }) {
             </span>
           ))}
         </p>
-        <p data-slot="mcp-api-exposes" className="text-[13px] leading-relaxed text-foreground">
-          It exposes <span className="font-medium">{capabilityNames.join(', ')}</span> only. It does not expose:{' '}
-          {reference.notExposed.map((n) => n.what.toLowerCase()).join(', ')}.
-        </p>
-        <div data-slot="mcp-api-read-only" className="rounded-md border border-border bg-muted p-3 text-[13px] leading-relaxed text-foreground">
+        <div data-slot="mcp-api-read-only" className="text-[13px] leading-relaxed text-foreground">
           <p>
-            <span className="font-semibold">Read-only by design:</span> running a tool from here would make the cockpit
-            a second leader on this project, and a project has exactly one. This page is a reference, not a console –
-            no tool call is ever sent from it.
+            <span className="font-medium">Read-only by design:</span> running a tool from here would make the cockpit a
+            second leader on this project, and a project has exactly one. No tool call is ever sent from this page.
           </p>
-          <details className="mt-2">
-            <summary className={`cursor-pointer rounded-sm font-medium ${FOCUS_RING}`}>Why?</summary>
+          <details className="mt-1">
+            <summary className={`cursor-pointer rounded-sm text-[12px] font-medium ${FOCUS_RING}`}>Why?</summary>
             <ul className="mt-2 flex list-disc flex-col gap-1 pl-5 text-muted-foreground">
               <li>One owner: exactly one MCP client may own a project; a call from here would take over the leader or act beside it as a second owner.</li>
               <li>Session binding: a session is bound to one project and fenced by its owner; the cockpit is not that session.</li>
@@ -566,7 +644,7 @@ export function McpApiReferenceView({ reference }: { reference: Available }) {
         </p>
       </header>
 
-      {/* Summary (§ 18.2): the conclusion first, as five plain statements, before anything is expanded. */}
+      {/* Summary (§ 18.2, amended): names, not counts — a reviewer acts on a name. */}
       <section aria-labelledby="mcp-api-summary-title" className="flex flex-col gap-2">
         <h2 id="mcp-api-summary-title" className="text-sm font-semibold text-foreground">Summary</h2>
         <ul data-slot="mcp-api-summary" className="flex list-disc flex-col gap-1 pl-5 text-[13px] leading-relaxed text-foreground">
@@ -574,20 +652,50 @@ export function McpApiReferenceView({ reference }: { reference: Available }) {
             <li>This server lists no tools besides health.</li>
           ) : (
             <li>
-              {plural(tools.length, 'tool')}, {plural(actionTotals - refusedTotal, 'action')} that read or change, and{' '}
+              {plural(tools.length, 'tool')}, {plural(actionTotals - refusedTotal, 'action')}, and{' '}
               {plural(refusedTotal, 'action')} that {refusedTotal === 1 ? 'is' : 'are'} always refused.
             </li>
           )}
-          <li>
-            {plural(changing.length, 'tool')} can change project state, {destructive} of them state they may be
-            destructive. {plural(readOnly, 'tool')} {readOnly === 1 ? 'is' : 'are'} read-only.
-            {unstated ? ` ${plural(unstated, 'tool')} ${unstated === 1 ? 'does' : 'do'} not state whether it is read-only, so clients assume it may change state.` : ''}
-          </li>
+          {changing.length ? (
+            <li data-slot="mcp-api-summary-changing">
+              Can change project state: <ToolNames names={changing.map((t) => t.name)} />.
+              {destructive.length ? (
+                <>
+                  {' '}Of these, {destructive.length === 1 ? 'the tool that states it' : 'the tools that state they'} may delete or
+                  overwrite: <ToolNames names={destructive} />.
+                </>
+              ) : null}
+              {destructiveUnstated.length ? (
+                <>
+                  {' '}Not stated whether destructive, so clients assume {destructiveUnstated.length === 1 ? 'it may' : 'they may'} delete
+                  or overwrite: <ToolNames names={destructiveUnstated} />.
+                </>
+              ) : null}
+            </li>
+          ) : null}
+          {unstated.length ? (
+            <li data-slot="mcp-api-summary-unstated">
+              Not stated whether read-only, so clients assume {unstated.length === 1 ? 'it' : 'they'} may change state:{' '}
+              <ToolNames names={unstated} />.
+            </li>
+          ) : null}
+          {readOnly.length ? (
+            <li data-slot="mcp-api-summary-read-only">
+              Read-only: <ToolNames names={readOnly} />.
+            </li>
+          ) : null}
           <li>
             What it will not do: {plural(reference.notExposed.length, 'thing')} never exposed,{' '}
             {plural(refusedTotal, 'action')} and {plural(reference.refusedArguments.length, 'argument')} always refused –{' '}
-            <a href="#mcp-refusals" className={`rounded-sm underline underline-offset-2 ${FOCUS_RING}`}>
+            <a href="#mcp-refusals" className={LINK}>
               see the refusals
+            </a>
+            .
+          </li>
+          <li data-slot="mcp-api-summary-coverage">
+            Cockpit coverage is not shown on this page –{' '}
+            <a href="#mcp-coverage" className={LINK}>
+              where it is recorded
             </a>
             .
           </li>
@@ -615,10 +723,10 @@ export function McpApiReferenceView({ reference }: { reference: Available }) {
             ))}
           </fieldset>
           <div className="flex gap-3 text-[12px]">
-            <button type="button" onClick={() => setAllOpen(true)} className={`rounded-sm font-medium underline underline-offset-2 ${FOCUS_RING}`}>
+            <button type="button" onClick={() => setAllOpen(true)} className={`font-medium ${LINK}`}>
               Expand all
             </button>
-            <button type="button" onClick={() => setAllOpen(false)} className={`rounded-sm font-medium underline underline-offset-2 ${FOCUS_RING}`}>
+            <button type="button" onClick={() => setAllOpen(false)} className={`font-medium ${LINK}`}>
               Collapse all
             </button>
           </div>
@@ -634,6 +742,7 @@ export function McpApiReferenceView({ reference }: { reference: Available }) {
                   tool={tool}
                   refusedActions={reference.refusedActions.filter((r) => r.tool === tool.name)}
                   refusedArguments={reference.refusedArguments.filter((r) => r.tool === tool.name)}
+                  guards={reference.guards.filter((g) => g.tool === tool.name)}
                 />
               </li>
             ))}
@@ -643,7 +752,8 @@ export function McpApiReferenceView({ reference }: { reference: Available }) {
         )}
       </section>
 
-      {/* What this server will not do (§ 18.5). */}
+      {/* What this server will not do (§ 18.5): the always-refused items grouped by BOUNDARY, because
+          that is where the fence runs — grouped by tool, 20 of 21 were one group. */}
       <section id="mcp-refusals" aria-labelledby="mcp-api-refusals-title" className="flex scroll-mt-4 flex-col gap-3">
         <h2 id="mcp-api-refusals-title" className="text-sm font-semibold text-foreground">What this server will not do</h2>
         <div className="flex flex-col gap-2">
@@ -659,21 +769,35 @@ export function McpApiReferenceView({ reference }: { reference: Available }) {
         </div>
         <div className="flex flex-col gap-2">
           <h3 className="text-[13px] font-semibold text-foreground">Always refused</h3>
-          {reference.refusedActions.length || reference.refusedArguments.length ? (
-            <ul data-slot="mcp-api-always-refused" className="flex list-disc flex-col gap-1 pl-5 text-[13px] leading-relaxed">
-              {reference.refusedArguments.map((r) => (
-                <li key={`${r.tool}:${r.argument}`} className="text-foreground">
-                  <code className="font-mono break-all">{r.tool}</code> argument <code className="font-mono break-all">{r.argument}</code>{' '}
-                  – <span className="text-muted-foreground">{r.reason}</span>
-                </li>
+          {byBoundary.length || reference.refusedArguments.length ? (
+            <div data-slot="mcp-api-always-refused" className="flex flex-col gap-3">
+              {byBoundary.map(([boundary, items]) => (
+                <div key={boundary} data-slot="mcp-api-boundary" className="flex flex-col gap-1">
+                  <h4 className="text-[13px] font-medium text-foreground">{capitalise(boundary)}</h4>
+                  <ul className="flex list-disc flex-col gap-1 pl-5 text-[13px] leading-relaxed">
+                    {items.map((r) => (
+                      <li key={`${r.tool}:${r.action}`} className="text-foreground">
+                        <code className="font-mono break-all">{r.tool}</code> action <code className="font-mono break-all">{r.action}</code>:{' '}
+                        <span className="text-muted-foreground">{r.reason}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               ))}
-              {reference.refusedActions.map((r) => (
-                <li key={`${r.tool}:${r.action}`} className="text-foreground">
-                  <code className="font-mono break-all">{r.tool}</code> action <code className="font-mono break-all">{r.action}</code>{' '}
-                  – <span className="font-medium">{r.boundary}.</span> <span className="text-muted-foreground">{r.reason}</span>
-                </li>
-              ))}
-            </ul>
+              {reference.refusedArguments.length ? (
+                <div data-slot="mcp-api-boundary" className="flex flex-col gap-1">
+                  <h4 className="text-[13px] font-medium text-foreground">Arguments</h4>
+                  <ul className="flex list-disc flex-col gap-1 pl-5 text-[13px] leading-relaxed">
+                    {reference.refusedArguments.map((r) => (
+                      <li key={`${r.tool}:${r.argument}`} className="text-foreground">
+                        <code className="font-mono break-all">{r.tool}</code> argument <code className="font-mono break-all">{r.argument}</code>:{' '}
+                        <span className="text-muted-foreground">{r.reason}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
           ) : (
             <p className="text-[13px] text-muted-foreground">No action or argument is refused on principle.</p>
           )}
@@ -686,6 +810,17 @@ export function McpApiReferenceView({ reference }: { reference: Available }) {
             tool results; each tool’s description above says how.
           </p>
         </div>
+      </section>
+
+      {/* Coverage (§ 12.2 item 6, § 18.7): not available here yet, and SAID, because a reviewer cannot
+          notice a section that is simply not there. */}
+      <section id="mcp-coverage" aria-labelledby="mcp-api-coverage-title" className="flex scroll-mt-4 flex-col gap-2">
+        <h2 id="mcp-api-coverage-title" className="text-sm font-semibold text-foreground">Cockpit coverage</h2>
+        <p data-slot="mcp-api-coverage" className="text-[13px] leading-relaxed text-muted-foreground">
+          This page does not show which cockpit actions each tool covers yet. The record-by-record mapping is in{' '}
+          <code className="font-mono break-all text-foreground">{COVERAGE_DOC}</code>, under “Traceability”, and{' '}
+          <code className="font-mono">npm test</code> holds it to the registry.
+        </p>
       </section>
     </div>
   )

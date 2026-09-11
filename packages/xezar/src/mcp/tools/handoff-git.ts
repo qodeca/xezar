@@ -146,7 +146,16 @@ const inputSchema = z
     name: z.string().trim().min(1).max(200).optional().describe('branch: the branch to switch to or create.'),
     from: z.string().trim().min(1).max(200).optional().describe('branch: start point when creating.'),
   })
-  .strict();
+  .strict()
+  // The per-action rules live IN the schema, like every other action tool's, so the schema is the one
+  // place that both enforces them and answers "which actions need expectedVersion?" for the MCP API
+  // page (#301). Each missing argument is its own issue, on its own path.
+  .superRefine((args, ctx) => {
+    const missing = REQUIRED[args.action].filter((key) => args[key] === undefined);
+    for (const key of missing) ctx.addIssue({ code: 'custom', path: [key], message: `${args.action} needs ${key}` });
+    const problem = missing.length ? null : argumentProblem(args);
+    if (problem) ctx.addIssue({ code: 'custom', path: [], message: problem });
+  });
 
 type Input = z.output<typeof inputSchema>;
 

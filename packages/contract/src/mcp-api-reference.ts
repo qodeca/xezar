@@ -52,6 +52,25 @@ export const mcpRefusedArgumentSchema = z.object({
 });
 export type McpRefusedArgument = z.infer<typeof mcpRefusedArgumentSchema>;
 
+/**
+ * How a tool takes one of the two MCP-only guards (`expectedVersion`, `operationId`) — #301.
+ *
+ * DERIVED, never declared: the server validates each performing action through the tool's OWN input
+ * schema without the guard and records the actions that validation refuses. A flat listing cannot
+ * say this (the guard is optional at its top level even where every changing action needs it), and
+ * a sentence written next to the listing is how the page once told a reviewer something false.
+ *
+ * `everyCall` is true when no call is accepted without it. `requiredBy` names the actions that need
+ * it; it is empty for a tool with no actions, which only `everyCall` describes.
+ */
+export const mcpGuardSchema = z.object({
+  tool: z.string(),
+  argument: z.string(),
+  everyCall: z.boolean(),
+  requiredBy: z.array(z.string()),
+});
+export type McpGuard = z.infer<typeof mcpGuardSchema>;
+
 /** Something the server deliberately does not expose, and the requirements that forbid it. */
 export const mcpNotExposedSchema = z.object({
   what: z.string(),
@@ -70,6 +89,8 @@ export const mcpApiReferenceAvailableSchema = z.object({
   tools: z.array(mcpToolListingSchema),
   refusedActions: z.array(mcpRefusedActionSchema),
   refusedArguments: z.array(mcpRefusedArgumentSchema),
+  /** One entry per tool and guard the tool's schema lists. */
+  guards: z.array(mcpGuardSchema),
   notExposed: z.array(mcpNotExposedSchema),
 });
 

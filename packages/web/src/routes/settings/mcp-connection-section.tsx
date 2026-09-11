@@ -51,6 +51,19 @@ interface ClientSetup {
   caveat?: string
 }
 
+/** Copy with `backticked` names, rendered as `<code>` instead of literal backticks (#301, C1). */
+function withCode(text: string): ReactNode {
+  return text.split(/`([^`]+)`/).map((part, i) =>
+    i % 2 ? (
+      <code key={i} className="font-mono break-all">
+        {part}
+      </code>
+    ) : (
+      part
+    ),
+  )
+}
+
 /** The per-client setup facts, from D-04 § 3. Kept as data so the three cards cannot drift. */
 const CLIENTS: readonly ClientSetup[] = [
   {
@@ -149,10 +162,9 @@ export function McpConnectionSection() {
       health={health.data}
       projects={projects.data?.projects ?? []}
       connection={connectionStateFor(health.data, health.isError)}
-      // No server route reports MCP operation outcomes to the cockpit yet (see the PR for #114),
-      // so the list is honestly empty: nothing is invented, and no retry control is offered —
-      // retrying an operation is the leader's own call, with the same operation id.
-      operations={[]}
+      // No server route reports MCP operation outcomes to the cockpit yet (see the PR for #114), so
+      // no `operations` are passed and the section is not rendered: a list that no route can fill
+      // reads as unfinished, not as empty (#301, C3). Pass them the day a route reports them.
     />
   )
 }
@@ -175,6 +187,12 @@ export function connectionStateFor(health: HealthResponse, refetchFailed: boolea
  * The assembled MCP connection surface: #111's setup guidance, #112's connection state, #113's
  * operation outcomes and #114's capabilities and limits. Presentational apart from the
  * capability view's own queries, so every state can be rendered and checked as one page.
+ *
+ * Order follows the configuring reader's task (#301, C5): what the connection is bound to and
+ * where it works, then the one-time setup. The connection state follows the setup; when the server
+ * does not report one it is a single line, not a section in second place that says nothing (C4). `operations` absent
+ * means no route reports outcomes, and the section is left out (C3); an empty list is a real
+ * "nothing yet".
  */
 export function McpConnectionSurface({
   health,
@@ -185,7 +203,7 @@ export function McpConnectionSurface({
   health: HealthResponse
   projects: readonly { id: string; name: string; root: string }[]
   connection: McpConnectionState | null
-  operations: readonly McpOperation[]
+  operations?: readonly McpOperation[]
 }) {
   // THIS project, as the URL names it. The BOOT project mounts unscoped, so `useActiveProjectId`
   // falls back to the URL's own `/p/<id>` prefix; `bootProject` covers the sliver of time a
@@ -202,7 +220,7 @@ export function McpConnectionSurface({
       {/* Bound project identity — from the server's registry, never from a file. */}
       <SettingsField
         title="Bound project"
-        hint="The MCP leader connection is bound to exactly one project. This is the project it is bound to, as the server reports it."
+        hint="The MCP leader connection is bound to exactly one project, and one client may own it at a time. The cockpit stays usable alongside it."
       >
         <div data-slot="mcp-project" className="rounded-md border border-border bg-card p-3">
           {project ? (
@@ -212,25 +230,6 @@ export function McpConnectionSurface({
             </>
           ) : (
             <span className="text-[13px] text-soft-foreground">The bound project is not in the registry.</span>
-          )}
-        </div>
-      </SettingsField>
-
-      {/* Connection state (#112) — only what the server reports; a polite live region, so a
-          state change is announced without moving focus (U-M08). */}
-      <SettingsField
-        title="Connection status"
-        hint="What the server reports about the MCP leader connection for this project."
-      >
-        <div data-slot="mcp-connection-status" aria-live="polite" className="min-w-0">
-          {connection ? (
-            <McpConnectionState state={connection} />
-          ) : (
-            <p data-slot="mcp-connection-status-unreported" className="rounded-md border border-border bg-card p-3 text-[13px] leading-relaxed text-foreground">
-              <span className="font-medium">Not reported here yet.</span> The cockpit does not receive the live
-              connection owner from the server yet, so it does not guess whether a client is connected. Your
-              leader client shows its own connection status.
-            </p>
           )}
         </div>
       </SettingsField>
@@ -248,8 +247,8 @@ export function McpConnectionSurface({
                 This xezar is running locally, so the MCP connection is available for this project.
               </p>
               <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">
-                The leader application must run on the same machine. A client on another machine cannot
-                connect, and no part of the MCP surface is exposed to a remote host.
+                A client on another machine cannot connect, and no part of the MCP surface is exposed to a
+                remote host.
               </p>
             </>
           ) : (
@@ -259,98 +258,95 @@ export function McpConnectionSurface({
                 This xezar is not running in local mode, so the MCP connection is not available.
               </p>
               <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">
-                The MCP client and xezar must be on the same machine. Run the cockpit locally to make the
-                connection available for this project.
+                Run the cockpit locally to make the connection available for this project.
               </p>
             </>
           )}
         </div>
       </SettingsField>
 
-      {/* Configuration readiness — server-derived, never from the presence of a file. */}
-      <SettingsField
-        title="Configuration readiness"
-        hint="xezar writes the local connection configuration automatically. Nothing here reads that file — the status is what the server reports."
-      >
-        <div data-slot="mcp-readiness" className="rounded-md border border-border bg-card p-3">
-          <p className="text-[13px] leading-relaxed text-foreground">
-            {local
-              ? 'xezar writes this project\u2019s connection configuration automatically into its `.local/xezar/`, regenerates it if deleted, and keeps it out of Git. The one-time client setup below is the only step left.'
-              : 'Configuration is written automatically, but the connection is unavailable in this mode because the client and xezar must be on the same machine.'}
-          </p>
-          <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">
-            The generated file is not read by any client — each one is configured by hand, once, below.
-          </p>
-        </div>
-      </SettingsField>
-
-      {/* One-time setup, per client — D-04 § 3, automatic vs user action kept separate. */}
-      <SettingsField
-        title="One-time setup"
-        hint="Configure the leader application once, per client. The generated project file is not discovered automatically."
-      >
+      {/* One-time setup, per client — D-04 § 3, automatic vs user action kept separate. What is
+          true of every client is said once, above the cards (C6); readiness comes from the server,
+          never from the presence of a file. */}
+      <SettingsField title="One-time setup" hint="Configure the leader application once, per client.">
         <div className="flex flex-col gap-3">
+          <p data-slot="mcp-readiness" className="text-[13px] leading-relaxed text-foreground">
+            <span className="font-medium">Configuration readiness:</span>{' '}
+            {local
+              ? withCode(
+                  'xezar writes this project’s connection configuration automatically into its `.local/xezar/`, regenerates it if deleted, and keeps it out of Git. No client reads that file, so the step below is the only one left.',
+                )
+              : 'Configuration is written automatically, but the connection is not available in this mode.'}
+          </p>
           {CLIENTS.map((client) => (
             <ClientSetupCard key={client.name} client={client} />
           ))}
         </div>
       </SettingsField>
 
-      {/* Operation outcomes (#113) — rendered from what the server reports, never invented. */}
-      <SettingsField
-        title="Operation outcomes"
-        hint="What happened to the leader's recent operations: accepted, running, completed, failed, not applied or being verified."
-      >
-        <div data-slot="mcp-operations" aria-live="polite" className="min-w-0">
-          {operations.length ? (
-            <ul aria-label="MCP operation outcomes" className="flex flex-col gap-2">
-              {operations.map((operation) => (
-                <li key={operation.operationId}>
-                  <McpOperationFeedback operation={operation} />
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p data-slot="mcp-operations-empty" className="rounded-md border border-border bg-card p-3 text-[13px] leading-relaxed text-foreground">
-              <span className="font-medium">No outcomes to show.</span> The server does not report MCP operation
-              outcomes to the cockpit yet. Each task’s own status and history show what the leader did.
-            </p>
-          )}
-        </div>
-      </SettingsField>
+      {/* Connection state (#112) — only what the server reports, in a polite live region that is
+          always mounted, so a state change is announced without moving focus (U-M08). When the
+          server reports nothing, one line in the reader's voice says who does (C4). */}
+      <div data-slot="mcp-connection-status" aria-live="polite" className="min-w-0">
+        {connection ? (
+          <SettingsField title="Connection status" hint="What the server reports about the MCP leader connection for this project.">
+            <McpConnectionState state={connection} />
+          </SettingsField>
+        ) : (
+          <p data-slot="mcp-connection-status-unreported" className="text-[13px] leading-relaxed text-muted-foreground">
+            This page cannot tell whether a client is connected. Your leader client shows it.
+          </p>
+        )}
+      </div>
 
-      {/* Capabilities and limitations — truthfully, with no invented timeout or disconnect control. */}
-      <SettingsField
-        title="Capabilities and limitations"
-        hint="What the MCP leader connection can do, and the boundaries it stays inside."
-      >
-        <ul data-slot="mcp-limits" className="flex list-disc flex-col gap-1.5 pl-5 text-[13px] leading-relaxed text-muted-foreground">
-          <li>Local only: the client and xezar run on the same machine; remote access is out of scope.</li>
-          <li>One active logical client may own a project at a time; the cockpit stays usable alongside it.</li>
-          <li>Project-level operations are autonomous; global administration and quality gates are not part of the MCP surface.</li>
-        </ul>
-        {/* #284: the read-only reference lives in its own section, one step away. */}
-        <p className="text-[13px] text-foreground">
-          <Link
-            to="/settings/mcp-api"
-            data-slot="mcp-api-link"
-            className="rounded-sm font-medium underline underline-offset-2 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-          >
-            See every tool this server exposes
-          </Link>{' '}
-          <span className="text-muted-foreground">– a read-only reference, in MCP API.</span>
-        </p>
-      </SettingsField>
+      {/* Operation outcomes (#113) — rendered from what the server reports, never invented; left
+          out entirely while no route reports them (C3). */}
+      {operations ? (
+        <SettingsField
+          title="Operation outcomes"
+          hint="What happened to the leader's recent operations: accepted, running, completed, failed, not applied or being verified."
+        >
+          <div data-slot="mcp-operations" aria-live="polite" className="min-w-0">
+            {operations.length ? (
+              <ul aria-label="MCP operation outcomes" className="flex flex-col gap-2">
+                {operations.map((operation) => (
+                  <li key={operation.operationId}>
+                    <McpOperationFeedback operation={operation} />
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p data-slot="mcp-operations-empty" className="rounded-md border border-border bg-card p-3 text-[13px] leading-relaxed text-foreground">
+                <span className="font-medium">No operations yet.</span> The leader has not run an operation in this project.
+              </p>
+            )}
+          </div>
+        </SettingsField>
+      ) : null}
 
-      {/* #114: usable functions, unavailable dependencies, read-only shared limits, quality checks. */}
+      {/* #114: usable functions, unavailable dependencies, read-only shared limits, quality checks.
+          It is the one capability section: the three limitation bullets that sat above it restated
+          it and Local-only scope (C8). */}
       <McpCapabilities />
+
+      {/* #284: the read-only reference lives in its own section, one step away. */}
+      <p className="text-[13px] text-foreground">
+        <Link
+          to="/settings/mcp-api"
+          data-slot="mcp-api-link"
+          className="rounded-sm font-medium underline underline-offset-2 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+        >
+          See every tool this server exposes
+        </Link>{' '}
+        <span className="text-muted-foreground">– a read-only reference, in MCP API.</span>
+      </p>
     </div>
   )
 }
 
-/** One client's setup card: the automatic column, the user action, and the NOT-automatic line
- *  that U-M01 requires stated plainly. No credential is rendered here \u2014 only a command and a
- *  non-secret file location. */
+/** One client's setup card: the automatic column, the user action, and the not-automatic line
+ *  U-M01 requires stated per client (D-04 § 3, A-01). No credential is rendered here — only a
+ *  command and a non-secret file location. */
 function ClientSetupCard({ client }: { client: ClientSetup }) {
   return (
     <div
@@ -361,19 +357,16 @@ function ClientSetupCard({ client }: { client: ClientSetup }) {
       <div className="mt-2 flex flex-col gap-2 text-[13px] leading-relaxed">
         <p data-slot="mcp-client-automatic" className="text-muted-foreground">
           <span className="font-medium text-foreground">Automatic — xezar does this:</span>{' '}
-          {client.automatic}
+          {withCode(client.automatic)}
         </p>
         <div data-slot="mcp-client-user" className="text-foreground">
           <span className="font-medium">One-time — you do this by hand:</span>
           <div className="mt-1">{client.userAction}</div>
         </div>
         <p data-slot="mcp-client-not-automatic" className="rounded-md bg-muted p-2 text-muted-foreground">
-          <span className="font-medium text-foreground">NOT automatic — stated plainly:</span>{' '}
-          {client.notAutomatic}
+          <span className="font-medium text-foreground">Not automatic:</span> {withCode(client.notAutomatic)}
         </p>
-        {client.caveat ? (
-          <p className="text-[12px] text-soft-foreground">{client.caveat}</p>
-        ) : null}
+        {client.caveat ? <p className="text-[12px] text-soft-foreground">{withCode(client.caveat)}</p> : null}
       </div>
     </div>
   )
