@@ -468,12 +468,82 @@ deps_stamp_path() {
 }
 
 # 0 = the installed dependencies match the manifests; 1 = install (or re-install) needed.
+# A stamp is not enough on its own: a tree whose workspace links were lost still carries it,
+# and every import through a lost link resolves from the primary checkout (#286).
 deps_are_fresh() {
   local stamp
   stamp="$(deps_stamp_path)"
   [ -f "$stamp" ] || return 1
   [ -d "$TASK_CWD/node_modules" ] || return 1
-  [ "$(cat "$stamp" 2>/dev/null)" = "$(deps_fingerprint)" ]
+  [ "$(cat "$stamp" 2>/dev/null)" = "$(deps_fingerprint)" ] || return 1
+  deps_resolve_in_task 2>/dev/null
+}
+
+# 0 = every workspace package the task declares resolves to the task's OWN copy.
+#
+# A task worktree lives INSIDE the primary checkout (`.local/xezar/worktrees/<runId>`), and
+# node looks for a package in every ancestor's node_modules, nearest first. So when the task's
+# own `node_modules/<name>` link is missing, the lookup does not fail — it walks on to the
+# primary's node_modules, whose workspace link points at the PRIMARY's source (#286). A test,
+# a typecheck or a build then judges code this branch does not contain, and reports it green.
+# `npm ci` writes every link, so this only fails on a tree npm did not finish, or one something
+# else damaged. It never installs or repairs anything: it names what is wrong and fails.
+deps_resolve_in_task() {
+  node -e '
+    const fs = require("node:fs"), path = require("node:path");
+    const root = fs.realpathSync(process.argv[1]);
+    const real = (p) => { try { return fs.realpathSync(p); } catch { return null; } };
+    let pkg;
+    try {
+      pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+    } catch (e) {
+      if (e.code === "ENOENT") process.exit(0); // no manifest: no workspaces to resolve
+      console.error(`deps: cannot read ${path.join(root, "package.json")} (${e.message}), so which workspace packages this task resolves is unknown`);
+      process.exit(1);
+    }
+    const patterns = Array.isArray(pkg.workspaces) ? pkg.workspaces : (pkg.workspaces?.packages ?? []);
+    const dirs = [];
+    for (const p of patterns) {
+      if (p.endsWith("/*") && !/[*?[{]/.test(p.slice(0, -2))) {
+        const parent = path.join(root, p.slice(0, -2));
+        for (const e of fs.existsSync(parent) ? fs.readdirSync(parent, { withFileTypes: true }) : []) {
+          if (e.isDirectory()) dirs.push(path.join(parent, e.name));
+        }
+      } else if (/[*?[{]/.test(p)) {
+        console.error(`deps: workspace pattern "${p}" is not one this check can expand, so it cannot prove where it resolves`);
+        process.exit(1);
+      } else {
+        dirs.push(path.join(root, p));
+      }
+    }
+    const problems = [];
+    for (const dir of dirs) {
+      let name;
+      try { name = JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf8")).name; } catch { continue; }
+      if (typeof name !== "string" || name === "") continue;
+      const link = path.join(root, "node_modules", ...name.split("/"));
+      const got = real(link), want = real(dir);
+      if (got !== null && got === want) continue;
+      if (got !== null) {
+        problems.push(`  ${name}: ${link} -> ${got}, not this task'"'"'s ${want}`);
+        continue;
+      }
+      let borrowed = null;
+      for (let d = path.dirname(root); ; d = path.dirname(d)) {
+        const candidate = path.join(d, "node_modules", ...name.split("/"));
+        if (real(candidate) !== null) { borrowed = `${candidate} -> ${real(candidate)}`; break; }
+        if (d === path.dirname(d)) break;
+      }
+      problems.push(`  ${name}: no link at ${link}; node resolves it from ${borrowed ?? "nowhere (it will not be found)"}`);
+    }
+    if (problems.length === 0) process.exit(0);
+    console.error("DEPENDENCIES RESOLVE OUTSIDE THIS TASK (#286)");
+    console.error(`These workspace packages would not load from ${root}:`);
+    for (const p of problems) console.error(p);
+    console.error("Anything run here now would judge another checkout'"'"'s source, not this branch.");
+    console.error(`Reinstall in this checkout (npm ci in ${root}) before running any check.`);
+    process.exit(1);
+  ' "$TASK_CWD"
 }
 
 write_deps_stamp() {

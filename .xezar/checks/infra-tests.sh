@@ -1662,6 +1662,49 @@ deps_check write_deps_stamp >/dev/null
 rm -rf "$wt/node_modules"
 expect_fail "removing node_modules invalidates freshness" "" deps_check deps_are_fresh
 
+# --- 9a. Workspace packages resolve to the task's OWN copy (#286) ---------------------------------
+# A task worktree lives INSIDE the primary checkout (`.local/xezar/worktrees/<runId>`), so node's
+# node_modules lookup does not stop at a worktree that lacks a workspace link: it walks on up to
+# the primary's node_modules, whose link points at the PRIMARY's source — whatever branch and
+# uncommitted edits that checkout has. A check run there judges code the branch does not contain.
+# The fixture reproduces exactly that layout: the fixture root plays the primary checkout.
+printf '\n-- workspace links resolve inside the task --\n'
+root="$(make_fixture deps-links)"
+wt="$(add_worktree "$root" "$RUN_A")"
+printf 'lockfileVersion: 9\n' > "$wt/package-lock.json"
+printf '{"name":"fx","workspaces":["packages/a"]}\n' > "$wt/package.json"
+mkdir -p "$wt/packages/a" && printf '{"name":"@fx/a"}\n' > "$wt/packages/a/package.json"
+mkdir -p "$root/packages/a" "$root/node_modules/@fx"
+printf '{"name":"@fx/a"}\n' > "$root/packages/a/package.json"
+ln -s ../../packages/a "$root/node_modules/@fx/a"
+
+# node_modules exists and carries a matching stamp — the old freshness test is satisfied — but the
+# task's own link is missing, so every import of @fx/a from the task lands in the primary's copy.
+deps_check write_deps_stamp >/dev/null
+expect_fail "a stamped tree whose workspace link is missing is not fresh" "" deps_check deps_are_fresh
+expect_fail "a missing workspace link names the checkout it would borrow from" \
+  "$root/node_modules/@fx/a" deps_check deps_resolve_in_task
+
+# A link that exists but points at the primary's copy is the same bug by another route.
+mkdir -p "$wt/node_modules/@fx" && ln -s "$root/packages/a" "$wt/node_modules/@fx/a"
+expect_fail "a workspace link into another checkout is refused" \
+  "not this task's" deps_check deps_resolve_in_task
+expect_fail "and that tree is not fresh either" "" deps_check deps_are_fresh
+
+# Controls: the link npm writes (relative, into the task's own tree) passes both checks.
+rm "$wt/node_modules/@fx/a" && ln -s ../../packages/a "$wt/node_modules/@fx/a"
+expect_ok "the task's own workspace link resolves inside the task" deps_check deps_resolve_in_task
+expect_ok "and the stamped tree is fresh again" deps_check deps_are_fresh
+
+# A repository with no workspaces has nothing to resolve; that is a pass, not an unknown.
+printf '{"name":"fx"}\n' > "$wt/package.json"
+expect_ok "a repository without workspaces has nothing to borrow" deps_check deps_resolve_in_task
+
+# An unreadable root manifest is not "no workspaces": the check cannot know, so it says so.
+printf '{not json\n' > "$wt/package.json"
+expect_fail "an unreadable package.json fails the check instead of passing it" \
+  "cannot read" deps_check deps_resolve_in_task
+
 
 # --- 9b. worktree-setup.sh, driven for real -------------------------------------------------------
 printf '\n-- worktree setup --\n'
@@ -1734,6 +1777,24 @@ expect_fail "setup aborts in the primary checkout without installing" \
 [ -d "$root/.local/xezar-tasks" ] \
   && bad "an aborted setup writes no evidence" "an evidence directory was created" \
   || ok "an aborted setup writes no evidence"
+
+# #286: an install that leaves a workspace package resolving from the primary checkout must fail
+# setup loudly, and must not stamp the tree current. The stub npm installs nothing, which is the
+# worst case: every workspace import from this task would silently read the primary's source.
+root="$(make_fixture setup-links)"
+wt="$(add_worktree "$root" "$RUN_A")"
+SETUP="$root/.xezar/checks/worktree-setup.sh"
+printf 'lockfileVersion: 9\n' > "$wt/package-lock.json"
+printf '{"name":"fx","packageManager":"npm@11.11.0","workspaces":["packages/a"]}\n' > "$wt/package.json"
+mkdir -p "$wt/packages/a" && printf '{"name":"@fx/a"}\n' > "$wt/packages/a/package.json"
+mkdir -p "$root/packages/a" "$root/node_modules/@fx"
+printf '{"name":"@fx/a"}\n' > "$root/packages/a/package.json"
+ln -s ../../packages/a "$root/node_modules/@fx/a"
+expect_fail "setup refuses an install whose workspace package resolves outside the task" \
+  "$root/node_modules/@fx/a" setup_in "$WORK/bin-ok"
+[ -f "$wt/node_modules/.xezar-deps-stamp" ] \
+  && bad "a borrowed workspace package records no freshness stamp" "a stamp was written anyway" \
+  || ok "a borrowed workspace package records no freshness stamp"
 
 # Source-specific tooling/document assertions replaced by xezar-contract.test.mjs.
 # --- 17. Interrupted authorized merge: recovery, and everything it must still refuse ------------

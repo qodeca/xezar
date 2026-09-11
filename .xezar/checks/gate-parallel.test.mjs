@@ -105,6 +105,7 @@ function outerFixture(body) {
  writeFileSync(join(target,'lib/common.sh'),`
  resolve_task_paths() { TASK_CWD="$PWD"; TASK_ID=fixture; TASK_ID_SOURCE=fixture; HEAD_SHA=$(git rev-parse HEAD); IS_WORKTREE=0; BRANCH=main; BASE_BRANCH=main; }
  deps_are_fresh() { return 0; }
+ deps_resolve_in_task() { [ ! -f "$PWD/borrowed" ] || { echo "fixture: workspace packages borrowed" >&2; return 1; }; }
  task_gates_dir() { printf '%s/gates' "$PWD"; }
  task_manifest_path() { printf '%s/no-manifest' "$PWD"; }
  head_tree_sha() { git rev-parse 'HEAD^{tree}'; }
@@ -174,6 +175,33 @@ test('cancellation racing completed finalization reports the retained completed 
  } finally {outer.kill('SIGTERM');}
 });
 
+
+// #286: a task worktree sits inside the primary checkout, so a workspace link the install did not
+// write resolves from the PRIMARY's node_modules and every later gate judges the primary's source.
+const npmLogger = `require('node:fs').appendFileSync(process.cwd()+'/npm-calls',process.argv.slice(2).join(' ')+'\\n');`;
+test('an install leaving workspace packages borrowed from another checkout aborts before any gate', () => {
+ const f=outerFixture(npmLogger);
+ writeFileSync(join(f.dir,'borrowed'),'');
+ const r=spawnSync('bash',[join(f.target,'repo-gates.sh')],{cwd:f.dir,env:f.env,encoding:'utf8',timeout:30000});
+ assert.notEqual(r.status,0,r.stdout+r.stderr);
+ assert.match(r.stderr,/GATES ABORTED: workspace packages resolve outside this task/);
+ const calls=readFileSync(join(f.dir,'npm-calls'),'utf8').trim().split('\n');
+ assert.ok(calls.includes('ci'),calls.join('|'));
+ assert.equal(calls.some(c=>c.startsWith('run')),false,calls.join('|'));
+ assert.equal(existsSync(join(f.dir,'install-stamp')),false);
+ assert.equal(existsSync(join(f.dir,'infra-ran')),false);
+ assert.equal(attemptFiles(join(f.dir,'gates')).some(p=>p.endsWith('/result.json')),false);
+});
+
+test('control: an install whose workspace packages resolve inside the task runs every gate and stamps', () => {
+ const f=outerFixture(npmLogger);
+ const r=spawnSync('bash',[join(f.target,'repo-gates.sh')],{cwd:f.dir,env:f.env,encoding:'utf8',timeout:30000});
+ assert.equal(r.status,0,r.stdout+r.stderr);
+ assert.ok(existsSync(join(f.dir,'install-stamp')));
+ assert.ok(existsSync(join(f.dir,'infra-ran')));
+ const file=attemptFiles(join(f.dir,'gates')).find(p=>p.endsWith('/result.json'));
+ assert.ok(file);assert.equal(JSON.parse(readFileSync(file)).result,'passed');
+});
 
 test('ordinary build failure still runs package and records aggregate failure',()=>{
  const f=fixture();

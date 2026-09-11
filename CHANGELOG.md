@@ -15,6 +15,15 @@
   one warning and the MCP keeps working. This closes acceptance case A-01. (#262)
 
 ## 🐛 Fixes
+- 🐛 **The project kit refuses to judge a task whose workspace packages load from another
+  checkout.** A task worktree lives inside the primary checkout, so when its own
+  `node_modules/@qodeca/xezar-contract` link is missing, node does not fail — it walks up and loads
+  the primary checkout's `packages/contract` source instead, whatever branch and edits that has. A
+  test in a bare task worktree was seen importing the primary's contract and missing the branch's
+  own change. `worktree-setup.sh` and `repo-gates.sh` now check that every workspace package
+  resolves to the task's own copy before they stamp the install or run a gate, and stop with the
+  exact borrowed path when it does not; a `--fast` gate treats such a tree as stale and reinstalls.
+  Commands run by hand before setup are not covered. (#286)
 - 🐛 **Running the test suite inside a xezar task no longer writes into that task's handoff file
   and your follow-up inbox.** A gate inherits the task's `XEZ_HANDOFF_FILE`, `XEZ_TODOS_FILE`,
   `XEZ_TASK_ID` and `XEZ_ENV_PASSTHROUGH`, and a test that drove the dry-run mock agent handed them

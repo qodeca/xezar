@@ -174,6 +174,14 @@ if [ "$FAST" -eq 1 ]; then
 else
   gate_phase serial 1 || exit 1
   if node -e 'process.exit(JSON.parse(require("node:fs").readFileSync(process.argv[1])).status === "passed" ? 0 : 1)' "$GATE_ATTEMPT_DIR/workers/1.json"; then
+    # A passed install whose workspace packages still load from another checkout would have
+    # every later gate judge that checkout's source (#286). No command after this point could
+    # produce evidence for this branch, so the attempt stops here and is left incomplete.
+    # (--fast reaches this line only through deps_are_fresh, which applies the same check.)
+    if ! deps_resolve_in_task; then
+      printf '\nGATES ABORTED: workspace packages resolve outside this task; nothing here could be evidence for it.\n' >&2
+      exit 1
+    fi
     write_deps_stamp || exit 1
   fi
 fi
