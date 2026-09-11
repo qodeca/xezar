@@ -4,7 +4,6 @@ import {
   automationCheckInputSchema,
   automationEventSchema,
   automationLogResultSchema,
-  createAutomationInputSchema,
   runIdParamSchema,
   saveWorkflowInputSchema,
   setAgentConfigInputSchema,
@@ -12,10 +11,12 @@ import {
   uiStateSchema,
   updateAutomationInputSchema,
   updateProjectInputSchema,
+  workflowStepDefSchema,
   type AgentConfigFileContent,
   type AgentConfigListing,
   type AgentProfilesResponse,
   type AutomationCheck,
+  type AutomationDefinition,
   type ConfigResponse,
   type HealthResponse,
   type ProjectListEntry,
@@ -72,7 +73,15 @@ import { defineTool, errorResult, textResult, type McpToolContext, type McpToolR
  *   - an MCP-holding project file is read as STRUCTURE only (§ 4.2, ruling 12): key names and
  *     value kinds, never a value;
  *   - E-NARROW: the registry, the workspace settings, the account listing and the skills-update
- *     state are reduced to the bound project's own facts before anything is returned.
+ *     state are reduced to the bound project's own facts before anything is returned;
+ *   - no action takes a command. A workflow is saved with agent steps only: a check step's
+ *     `command` is a shell command the service runs later, and F-08 / § 3 keep arbitrary
+ *     operating-system processes out of this surface (`execution-control.test.ts` pins it for
+ *     the whole registry). The cockpit's Import → Save can store one; through MCP it is refused,
+ *     never stripped;
+ *   - automations match the cockpit FORM, not the wider route contract (D-97, I-097, I-098):
+ *     create takes `name`, `prompt` and `enable` plus the form's fixed values, and update edits
+ *     `name` and `prompt` and carries everything else through, exactly as the edit form does.
  *
  * WHAT IS NEVER RETURNED: an account identity (email, organisation, plan — F-12, N-01), the
  * launch key or any credential (F-15), another project's row, or an absolute path outside the
@@ -343,6 +352,37 @@ const projectConfigWriteSchema = setConfigInputSchema.omit({ maxParallel: true }
 const projectRegistryWriteSchema = z.strictObject(updateProjectInputSchema.shape);
 const promptTemplatesSchema = uiStateSchema.shape.promptTemplates.unwrap();
 
+// Agent steps only — `command` and the check step's `onFail` are not keys here, and the object is
+// strict, so a check step is refused rather than silently turned into something else.
+const { command: _command, onFail: _onFail, ...agentStepShape } = workflowStepDefSchema.shape;
+const agentStepSchema = z.strictObject(agentStepShape).refine((step) => Boolean(step.prompt ?? step.skill), {
+  message: 'a step needs a prompt or a skill; check steps (shell commands) cannot be saved through MCP',
+});
+const { steps: _steps, ...saveWorkflowShape } = saveWorkflowInputSchema.shape;
+const agentWorkflowSchema = z
+  .strictObject({ ...saveWorkflowShape, steps: z.array(agentStepSchema).min(1).max(8).optional() })
+  .refine((body) => Boolean(body.steps) !== Boolean(body.skills), { message: 'provide either "steps" or "skills", not both' });
+
+/** The cockpit form's fixed values (`automations.tsx` `AutomationEditor`, create). D-97: matched, never widened. */
+const AUTOMATION_FORM_FIXED = {
+  events: ['issue.opened'],
+  intervalSeconds: 300,
+  filters: { lookbackDays: 7, maxRecords: 25 },
+  workflow: 'quick-task',
+} as const;
+const automationCreateFormSchema = z.strictObject({
+  name: z.string().min(1),
+  prompt: z.string().min(1),
+  enable: z.boolean().optional().describe('Enable from a current-time baseline (existing matches will not launch). Default false.'),
+});
+const automationEditFormSchema = z
+  .strictObject({
+    name: z.string().min(1).optional(),
+    prompt: z.string().min(1).optional(),
+    expectedRevision: updateAutomationInputSchema.shape.expectedRevision,
+  })
+  .refine((edit) => edit.name !== undefined || edit.prompt !== undefined, { message: 'change name, prompt or both' });
+
 const automationLogQueryInputSchema = z.strictObject({
   automationId: z.string().min(1).max(128).optional(),
   result: automationLogResultSchema.optional(),
@@ -378,17 +418,21 @@ export const projectConfigInputSchema = z
       .optional()
       .describe('write_agent_config: the version from the read you based the edit on; null when the file does not exist yet.'),
     yaml: z.string().min(1).max(100_000).optional().describe('parse_workflow: workflow YAML to validate and normalise.'),
-    workflow: saveWorkflowInputSchema
+    workflow: agentWorkflowSchema
       .optional()
-      .describe('save_workflow: name plus exactly one of steps or skills. An existing file is refused unless overwrite is true.'),
+      .describe(
+        'save_workflow: name plus exactly one of steps (agent steps: prompt or skill) or skills. Check steps (shell commands) are not accepted. An existing file is refused unless overwrite is true.',
+      ),
     name: z.string().min(1).max(200).optional().describe('delete_workflow / get_skill: the workflow or skill name.'),
     wait: z.boolean().optional().describe('Skill reads: wait for a cold team-skill cache to load first.'),
     refresh: z.boolean().optional().describe('get_capabilities: probe provider status now instead of serving the cached answer.'),
     automationId: z.string().min(1).max(128).optional(),
-    automation: createAutomationInputSchema.optional().describe('create_automation: the definition, exactly as the cockpit form takes it.'),
-    update: updateAutomationInputSchema
+    automation: automationCreateFormSchema
       .optional()
-      .describe('update_automation: the full definition plus expectedRevision from your last read.'),
+      .describe('create_automation: the cockpit form — name, prompt template, enable. Trigger: new issue, every 5 minutes, last 7 days, at most 25 records; task workflow quick-task.'),
+    update: automationEditFormSchema
+      .optional()
+      .describe('update_automation: a new name and/or prompt plus expectedRevision from your last read; everything else is kept.'),
     mode: automationCheckInputSchema.shape.mode.optional().describe('check_automation: preview counts matches; execute launches them.'),
     checkId: z.string().min(1).max(128).optional(),
     receiptId: z.string().min(1).max(128).optional(),
@@ -985,14 +1029,37 @@ async function run(args: ProjectConfigInput & { action: ProjectConfigAction }, s
       return answer.ok ? ok(action, answer.value) : fail(answer);
     }
     case 'create_automation': {
-      const answer = await settle<unknown>(
-        s.api.p[':projectId'].automations.$post({ param: scope, json: args.automation! as never }),
-        [201],
-      );
+      const { name, prompt, enable } = args.automation!;
+      const { workflow, ...trigger } = AUTOMATION_FORM_FIXED;
+      const json = { name, ...trigger, events: [...trigger.events], filters: { ...trigger.filters }, task: { prompt, workflow }, enable: enable ?? false };
+      const answer = await settle<unknown>(s.api.p[':projectId'].automations.$post({ param: scope, json }), [201]);
+      return answer.ok ? ok(action, answer.value) : fail(answer);
+    }
+    case 'update_automation': {
+      const id = args.automationId!;
+      if (!validPathId(id)) return invalid(action, `not an automation id: ${JSON.stringify(id)}`);
+      const param = { ...scope, id };
+      const one = s.api.p[':projectId'].automations[':id'];
+      const current = await settle<{ automation: AutomationDefinition }>(one.$get({ param }), [200]);
+      if (!current.ok) return fail(current);
+      // The edit form's body: name and prompt change, everything else is the stored value. The
+      // revision is the CALLER's, so an edit based on a stale read still answers the route's 409.
+      const a = current.value.automation;
+      const edit = args.update!;
+      const json = {
+        name: edit.name ?? a.name,
+        ...(a.description !== undefined ? { description: a.description } : {}),
+        events: a.events,
+        intervalSeconds: a.intervalSeconds,
+        filters: a.filters,
+        task: { ...a.task, prompt: edit.prompt ?? a.task.prompt },
+        enabled: a.enabled,
+        expectedRevision: edit.expectedRevision,
+      };
+      const answer = await settle<unknown>(one.$put({ param, json: json as never }), [200]);
       return answer.ok ? ok(action, answer.value) : fail(answer);
     }
     case 'get_automation':
-    case 'update_automation':
     case 'delete_automation':
     case 'enable_automation':
     case 'pause_automation':
@@ -1004,15 +1071,13 @@ async function run(args: ProjectConfigInput & { action: ProjectConfigAction }, s
       const answer =
         action === 'get_automation'
           ? await settle<unknown>(one.$get({ param }), [200])
-          : action === 'update_automation'
-            ? await settle<unknown>(one.$put({ param, json: args.update! as never }), [200])
-            : action === 'delete_automation'
-              ? await settle<unknown>(one.$delete({ param }), [204])
-              : action === 'enable_automation'
-                ? await settle<unknown>(one.enable.$post({ param }), [200])
-                : action === 'pause_automation'
-                  ? await settle<unknown>(one.pause.$post({ param }), [200])
-                  : await settle<unknown>(one.check.$post({ param, json: { mode: args.mode! } }), [202]);
+          : action === 'delete_automation'
+            ? await settle<unknown>(one.$delete({ param }), [204])
+            : action === 'enable_automation'
+              ? await settle<unknown>(one.enable.$post({ param }), [200])
+              : action === 'pause_automation'
+                ? await settle<unknown>(one.pause.$post({ param }), [200])
+                : await settle<unknown>(one.check.$post({ param, json: { mode: args.mode! } }), [202]);
       if (!answer.ok) return fail(answer);
       return ok(action, action === 'delete_automation' ? { deleted: true, automationId: id } : answer.value);
     }
