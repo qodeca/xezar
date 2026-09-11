@@ -30,6 +30,16 @@
   turn has stayed live for two minutes, the tasks behind it start. A task waiting out a limit still
   holds its account, other accounts are still untouched, and cancelling a running resume's
   auto-resume now starts the waiting tasks at once. (#285)
+- 🐛 **Picking a variant or reclaiming worktrees in one project can no longer delete another
+  project's worktree.** A copied or hand-edited `.local/xezar` (copying a repository folder is
+  enough) leaves task records whose worktree path names the ORIGINAL project's worktree. Picking a
+  variant deleted the losers' paths, reclaiming deleted every over-limit path, and reading the
+  variant group ran git inside each member's path, all without checking whose path it was. The
+  group read and the pick now refuse a group with such a member (the same `404` an unknown group
+  gets, naming nothing of the other project), and reclaim — through Settings, MCP, boot and every
+  task's end — leaves such records alone and still reclaims this project's own. Both use the
+  existing MCP ownership checks. A caller could never NAME another project's group, task or
+  automation at this project's routes, and still cannot. (#288)
 - 🐛 **Running the test suite inside a xezar task no longer writes into that task's handoff file
   and your follow-up inbox.** A gate inherits the task's `XEZ_HANDOFF_FILE`, `XEZ_TODOS_FILE`,
   `XEZ_TASK_ID` and `XEZ_ENV_PASSTHROUGH`, and a test that drove the dry-run mock agent handed them

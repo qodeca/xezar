@@ -112,6 +112,7 @@ import {
   queuedMessagePatchInputSchema,
   runVersionGuardInputSchema,
 } from '@qodeca/xezar-contract';
+import { ownGroup, ownershipScope } from '../mcp/resource-ownership.ts';
 import { runVersion, staleRunWrite } from '../mcp/stale-write.ts';
 import { toPastedContent, type PastedContent, type RunManager } from '../workflows/run.ts';
 import { removeWorktree, worktreeDiff, worktreeDiffStat, worktreeSizeBytes } from '../git-worktree.ts';
@@ -4417,18 +4418,22 @@ export function createApp(deps: ServerDeps) {
 
   // ---- parallel variants (spec 010) -----------------------------------------
 
-  const groupRuns = (store: RunStore, groupId: string): RunRecord[] =>
-    store
-      .listRuns()
-      .filter((r) => r.groupId === groupId)
-      .sort((a, b) => (a.variant ?? '').localeCompare(b.variant ?? ''));
+  // A group's members, in variant order — but only when EVERY member is this project's (#288).
+  // A member's `worktreePath` is data: a copied or hand-edited `.local/xezar` can name another
+  // project's worktree, and the read runs git inside each member's path while the pick deletes the
+  // losers'. `ownGroup` refuses such a group whole, exactly as it does for MCP (M-07), and the
+  // refusal is the same 404 an unknown group gets, so it names nothing of the other project.
+  const ownedGroupRuns = async (project: ProjectContext, groupId: string): Promise<RunRecord[] | null> => {
+    const owned = await ownGroup(ownershipScope(project), groupId);
+    return owned.ok ? owned.value.runs : null;
+  };
 
   // ---- chained family: variant groups (project-scoped) ----
   const groupsRoutes = new Hono<ProjectApiEnv>()
     .get('/groups/:groupId', async (c) => {
-      const { dataDir, store } = c.get('project');
-      const runs = groupRuns(store, c.req.param('groupId'));
-      if (runs.length === 0) return c.json({ error: 'not found' }, 404);
+      const { dataDir } = c.get('project');
+      const runs = await ownedGroupRuns(c.get('project'), c.req.param('groupId'));
+      if (!runs) return c.json({ error: 'not found' }, 404);
       const detailed = await Promise.all(
         runs.map(async (r): Promise<GroupVariant> => ({
           id: r.id,
@@ -4458,8 +4463,8 @@ export function createApp(deps: ServerDeps) {
     // alive, archived, and their worktrees + branches removed.
     .post('/groups/:groupId/pick', jsonZodValidator(pickVariantInputSchema), async (c) => {
       const { root: repoRoot, dataDir, store, manager } = c.get('project');
-      const runs = groupRuns(store, c.req.param('groupId'));
-      if (runs.length === 0) return c.json({ error: 'not found' }, 404);
+      const runs = await ownedGroupRuns(c.get('project'), c.req.param('groupId'));
+      if (!runs) return c.json({ error: 'not found' }, 404);
       const parsed = { data: c.req.valid('json') };
       const winner = runs.find((r) => r.id === parsed.data.runId);
       if (!winner) return c.json({ error: 'runId is not part of this group' }, 404);
