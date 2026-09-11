@@ -1,5 +1,19 @@
 # Unreleased
 
+## ✨ Features
+- ✨ **A leader can mark its own draft pull request ready through MCP.** `handoff_git` gains a
+  `ready` action (the pull request number plus the head sha the leader reviewed), backed by a new
+  `POST /api/v1/github/prs/:number/ready` route that re-reads the forge and runs `gh pr ready`.
+  Until now `create_pr` opened a draft and nothing could move it forward without a browser or a
+  shell. A moved head is refused, an already-ready or closed pull request is refused in the
+  service's own words, and a failing required check or a changes-requested review is reported as a
+  blocker that no argument bypasses. (#262)
+- ✨ **Xezar now writes the MCP connection file itself.** When the MCP service starts it writes
+  `.local/xezar/mcp-connection.json` (D-04) atomically at mode `0600`, after making sure
+  `.local/.gitignore` exists: the project, this service process and the socket that really
+  listens. It holds no token and no secret. Nothing to author, no setting; a write that fails is
+  one warning and the MCP keeps working. This closes acceptance case A-01. (#262)
+
 ## 🐛 Fixes
 - 🐛 **Three MCP scope and safety holes are closed.** `task_read`'s list view now holds every row
   to the same ownership rule as a single-task read, so a record whose worktree is another
@@ -11,6 +25,12 @@
   behaves exactly as before, so the cockpit is unchanged. And `organise_work` now refuses an
   argument it does not declare instead of dropping it, so a stray `projectId` can no longer look
   like it scoped a call — including the bulk `archive_finished` — to another project. (#271)
+- 🐛 **A leader can no longer delete a quality gate through MCP.** `project_config save_workflow`
+  with `overwrite: true` could replace a human's workflow and drop its `command: npm test` check
+  step with no refusal. An overwrite, a same-name save that would shadow a workflow, or a delete
+  that would remove a check step on disk is now refused as a quality-gate blocker naming the step,
+  and nothing is written. Saving a check step stays refused as before. D-03 now states the rule.
+  (#262)
 - 🐛 **Secret redaction is no longer defeated by a change of case.** The credential shapes were
   matched in one case only, so a lower-cased AWS key id (which loses nothing by being lower-cased)
   or an upper-cased GitHub, Slack, GitLab or Google token passed straight into run transcripts,

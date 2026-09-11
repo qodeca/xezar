@@ -586,8 +586,8 @@
   },
   {
     "name": "handoff_git",
-    "title": "Hand work onward: commit, push, draft PR, merge, branches",
-    "description": "Hand a task's work onward through the cockpit's own operations: commit a task's worktree, push its branch, open its draft pull request, read a pull request's merge readiness, invoke the existing merge, and switch or create branches of the main checkout. Every action runs at once, with the same checks the cockpit applies; a refusal carries the service's own reason unchanged. commit, push and create_pr need the task's expectedVersion (from task_read) and do nothing, answering status \"conflict\" with error \"stale_version\", if the task changed since. A merge needs the headSha you reviewed and is refused if the head moved. Failing, pending or unreadable required checks and missing reviews are blockers that no argument bypasses: repair the cause or report the blocker.",
+    "title": "Hand work onward: commit, push, draft PR, ready, merge, branches",
+    "description": "Hand a task's work onward through the cockpit's own operations: commit a task's worktree, push its branch, open its draft pull request, mark a draft pull request ready for review, read a pull request's merge readiness, invoke the existing merge, and switch or create branches of the main checkout. Every action runs at once, with the same checks the cockpit applies; a refusal carries the service's own reason unchanged. commit, push and create_pr need the task's expectedVersion (from task_read) and do nothing, answering status \"conflict\" with error \"stale_version\", if the task changed since. ready and merge need the headSha you reviewed and are refused if the head moved. Failing, pending or unreadable required checks and missing reviews are merge blockers, and a failing required check or a changes-requested review blocks ready; no argument bypasses a blocker: repair the cause or report the blocker.",
     "inputSchema": {
       "type": "object",
       "properties": {
@@ -599,10 +599,11 @@
             "push",
             "create_pr",
             "merge_state",
+            "ready",
             "merge",
             "branch"
           ],
-          "description": "repo: read the main checkout (branch, branches, base, whether a remote exists, uncommitted count). commit / push / create_pr: act on one task (taskId). merge_state: read one pull request (number) fresh, with its quality blockers. merge: invoke the existing merge (number, expectedHeadSha). branch: switch to, or create and switch to, a branch of the main checkout (name, from)."
+          "description": "repo: read the main checkout (branch, branches, base, whether a remote exists, uncommitted count). commit / push / create_pr: act on one task (taskId). merge_state: read one pull request (number) fresh, with its quality blockers. ready: mark a draft pull request ready for review (number, expectedHeadSha). merge: invoke the existing merge (number, expectedHeadSha). branch: switch to, or create and switch to, a branch of the main checkout (name, from)."
         },
         "taskId": {
           "description": "The task to commit, push or publish.",
@@ -623,13 +624,13 @@
           "maxLength": 5000
         },
         "number": {
-          "description": "merge_state / merge: the pull request number.",
+          "description": "merge_state / ready / merge: the pull request number.",
           "type": "integer",
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991
         },
         "expectedHeadSha": {
-          "description": "merge: the headSha of the state you reviewed. A moved head is refused, never merged.",
+          "description": "ready / merge: the headSha of the state you reviewed. A moved head is refused, never readied or merged.",
           "type": "string",
           "pattern": "^[0-9a-f]{40}$"
         },

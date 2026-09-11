@@ -94,6 +94,7 @@ import {
 import { readRunIndexFromDisk } from '../runs/run-index.ts';
 import { isV2WireEventType } from '../runs/ui-event-sink.ts';
 import {
+  githubPrReadyInputSchema,
   runEventsQuerySchema,
   runHistoryQuerySchema,
   runIdParamSchema,
@@ -5120,6 +5121,33 @@ export function createApp(deps: ServerDeps) {
           // the forge, gets `merged`, and then stops polling it at all.
           forgetRefStatus(repoRoot, parsedNumber.data.number);
           return c.json(result);
+        }
+        return c.json(
+          {
+            error: result.error,
+            ...(result.code ? { code: result.code } : {}),
+            ...(result.current ? { current: result.current } : {}),
+          },
+          result.status,
+        );
+      },
+    )
+
+    // Mark a draft pull request ready for review (#262). No cockpit control yet: the leader's
+    // `handoff_git ready` is the caller. The forge re-reads the pull request and refuses a moved head.
+    .post(
+      '/github/prs/:number/ready',
+      paramZodValidator(mergeNumberParams, { message: 'invalid pull request number' }),
+      jsonZodValidator(githubPrReadyInputSchema, { message: 'invalid ready request' }),
+      async (c) => {
+        const { root: repoRoot } = c.get('project');
+        const { number } = c.req.valid('param');
+        const forge = resolveForge(await getRepoInfo(repoRoot));
+        if (!forge?.markReady) return c.json({ error: 'GitHub ready-for-review is unavailable' }, 409);
+        const result = await forge.markReady(number, c.req.valid('json'));
+        if (result.ready) {
+          forgetRefStatus(repoRoot, number);
+          return c.json({ ready: true as const, number: result.number, url: result.url });
         }
         return c.json(
           {
