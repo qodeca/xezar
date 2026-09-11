@@ -94,7 +94,7 @@ interface Case {
   name: string;
   method: 'POST' | 'PATCH' | 'DELETE';
   path: (id: string) => string;
-  body?: Record<string, unknown>;
+  body?: Record<string, unknown> | ((id: string) => Record<string, unknown>);
   /** The engine call that IS this route's effect, when the effect is an engine call. */
   effect?: string;
   prepare?: (id: string) => void;
@@ -146,7 +146,17 @@ const CASES: Case[] = [
   { name: 'POST /runs/:id/pr', method: 'POST', path: (id) => run(id, '/pr'), prepare: withWorktree },
   { name: 'POST /runs/:id/remove-worktree', method: 'POST', path: (id) => run(id, '/remove-worktree'), prepare: withWorktree },
   { name: 'DELETE /runs/:id', method: 'DELETE', path: (id) => run(id), prepare: withWorktree },
+  // The token is the KEPT variant's (#271): the pick deletes the others' worktrees and branches.
+  {
+    name: 'POST /groups/:groupId/pick',
+    method: 'POST',
+    path: (id) => `/api/v1/groups/g-${id}/pick`,
+    body: (id) => ({ runId: id }),
+    prepare: (id) => void store.updateRun(id, { status: 'done', groupId: `g-${id}`, variant: 'a' }),
+  },
 ];
+
+const bodyOf = (c: Case, id: string): Record<string, unknown> | undefined => (typeof c.body === 'function' ? c.body(id) : c.body);
 
 /** Send the route's request. No body at all when there is nothing to say — the cockpit's bodyless
  *  calls must keep working exactly as they did. */
@@ -194,7 +204,7 @@ describe('every run-mutating route refuses a stale expectedVersion (#250)', () =
 
     const before = onDisk(store.getRun(task.id)!);
     calls.length = 0;
-    const res = await send(c, task.id, { ...c.body, expectedVersion: read }); // …and the leader acts on its old read
+    const res = await send(c, task.id, { ...bodyOf(c, task.id), expectedVersion: read }); // …and the leader acts on its old read
 
     expect(res.status).toBe(409);
     expect(staleVersionRejectionSchema.parse(await res.json())).toEqual({
@@ -215,7 +225,7 @@ describe('every run-mutating route refuses a stale expectedVersion (#250)', () =
     const task = newRun();
     c.prepare?.(task.id);
     await humanRenames(task.id);
-    const res = await send(c, task.id, { ...c.body, expectedVersion: await versionOf(task.id) });
+    const res = await send(c, task.id, { ...bodyOf(c, task.id), expectedVersion: await versionOf(task.id) });
     expect(staleVersionRejectionSchema.safeParse(await res.json().catch(() => undefined)).success).toBe(false);
     if (c.effect) expect(calls).toEqual([c.effect]);
   });
@@ -226,7 +236,7 @@ describe('every run-mutating route refuses a stale expectedVersion (#250)', () =
     const read = await versionOf(task.id);
     await humanRenames(task.id);
     expect(await versionOf(task.id)).not.toBe(read); // the task moved, and nobody asked
-    const res = await send(c, task.id, c.body);
+    const res = await send(c, task.id, bodyOf(c, task.id));
     // Not a rejection. (A git route's own 409 — this directory is no repository — is the effect
     // running and failing, which is exactly "as before".)
     expect(staleVersionRejectionSchema.safeParse(await res.json().catch(() => undefined)).success).toBe(false);
@@ -264,7 +274,7 @@ describe('every run-mutating route refuses a stale expectedVersion (#250)', () =
   it('an unknown task is a 404 with or without a token, never a stale-version 409', async () => {
     for (const c of [CASES[2]!, CASES[3]!]) {
       for (const token of [undefined, 'rev1:run:none:0:000000000000']) {
-        const res = await send(c, 'no-such-task', { ...c.body, ...(token ? { expectedVersion: token } : {}) });
+        const res = await send(c, 'no-such-task', { ...bodyOf(c, 'no-such-task'), ...(token ? { expectedVersion: token } : {}) });
         expect(res.status, `${c.name} ${token ?? 'no token'}`).toBe(404);
       }
     }

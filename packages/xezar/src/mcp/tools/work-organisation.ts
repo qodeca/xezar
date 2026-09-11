@@ -60,7 +60,8 @@ import { defineTool, errorResult, textResult, type McpToolContext, type McpToolR
  * caller ids: the candidate set is the bound project's own store, owned by construction — rule 3 of
  * #88's partial-success policy — and each applies to every candidate and says how many.
  *
- * Stale writes (#250, N-03): every action that changes ONE task requires the `expectedVersion` a
+ * Stale writes (#250, N-03): every action that changes ONE task — and the variant pick, whose
+ * version is the kept variant's (#271) — requires the `expectedVersion` a
  * `task_read` of that task handed out, and sends it to the route, which compares it with the
  * task's current version in the same synchronous stretch as the store call. A task a human changed
  * since is refused with nothing applied (`status: "conflict"`, `error: "stale_version"`). The
@@ -157,7 +158,8 @@ const ACTION_FIELDS: Record<Action, { required: readonly Field[]; optional?: rea
   delete: { required: ['runId', 'expectedVersion'] },
   start_inbox_item: { required: ['todoId'], optional: ['runner', 'model', 'prompt'] },
   remove_inbox_item: { required: ['todoId'] },
-  pick_variant: { required: ['groupId', 'runId'] },
+  // The kept variant's version: the pick deletes every other variant's worktree and branch (#271).
+  pick_variant: { required: ['groupId', 'runId', 'expectedVersion'] },
 };
 
 /** An id that is safe as ONE path segment: the route id rule, minus the dot segments a URL parser
@@ -172,7 +174,7 @@ const inputSchema = z
     expectedVersion: mcpExpectedVersionSchema
       .optional()
       .describe(
-        'Required by every action that changes one task (set_title, edit_brief, edit_queued_message, remove_queued_message, pin, unpin, archive, restore, delete): the `version` task_read gave you for it. Echo it verbatim.',
+        'Required by every action that changes one task (set_title, edit_brief, edit_queued_message, remove_queued_message, pin, unpin, archive, restore, delete) and by pick_variant: the `version` task_read gave you for that task — for pick_variant, the variant you keep. Echo it verbatim.',
       ),
     title: z.string().optional().describe('set_title: the new title.'),
     task: z.string().optional().describe('edit_brief: the replacement brief. Only while the task is queued.'),
@@ -186,6 +188,9 @@ const inputSchema = z
     cursor: z.string().min(1).max(2_048).optional().describe('list_queue: the `next` value of the previous page.'),
     limit: z.number().int().min(1).max(PAGE_ITEMS).optional().describe(`list_queue: at most this many items (default and maximum ${PAGE_ITEMS}).`),
   })
+  // Strict, like every other tool's input: an invented key is an argument error, never dropped. A
+  // stray `projectId` would otherwise read as scoping the call while it acts on the bound project.
+  .strict()
   .superRefine((args, ctx) => {
     const spec = ACTION_FIELDS[args.action];
     for (const field of spec.required) {
@@ -274,9 +279,9 @@ class WorkOrganisation {
     return settle(this.routes.groups[':groupId'].$get({ param: { projectId: this.projectId, groupId } }), [200]);
   }
 
-  pick(groupId: string, runId: string): Promise<McpServiceResult<PickValue>> {
+  pick(groupId: string, runId: string, expectedVersion: string): Promise<McpServiceResult<PickValue>> {
     const param = { projectId: this.projectId, groupId };
-    return settle(this.routes.groups[':groupId'].pick.$post({ param, json: { runId } }), [200]);
+    return settle(this.routes.groups[':groupId'].pick.$post({ param, json: { runId, expectedVersion } }), [200]);
   }
 
   startTodo(id: string, body: { runner?: Args['runner']; model?: string; prompt?: string }): Promise<McpServiceResult<StartTodoValue>> {
@@ -449,7 +454,13 @@ async function archive(ops: WorkOrganisation, run: RunLike, expectedVersion: str
   return result.ok ? done('archive', { run: slimRun(result.value as RunLike) }) : refused('archive', result);
 }
 
-async function pickVariant(ops: WorkOrganisation, scope: OwnershipScope, groupId: string, runId: string): Promise<McpToolResult> {
+async function pickVariant(
+  ops: WorkOrganisation,
+  scope: OwnershipScope,
+  groupId: string,
+  runId: string,
+  expectedVersion: string,
+): Promise<McpToolResult> {
   // M-07: the group is owned as a whole — every member, and its worktree — or not at all.
   const owned = await ownGroupMember(scope, groupId, runId);
   if (!owned.ok) return notOwned('pick_variant', owned);
@@ -459,7 +470,7 @@ async function pickVariant(ops: WorkOrganisation, scope: OwnershipScope, groupId
       active: active.map((r) => ({ id: r.id, variant: r.variant ?? '?', status: r.status })),
     });
   }
-  const picked = await ops.pick(groupId, runId);
+  const picked = await ops.pick(groupId, runId, expectedVersion);
   if (!picked.ok) return refused('pick_variant', picked);
   const after = await ops.getGroup(groupId);
   return done('pick_variant', {
@@ -556,7 +567,7 @@ async function perform(ops: WorkOrganisation, root: string, args: Args): Promise
       return done('mark_all_read', { read: result.value.read, scope: "this project's unread finished tasks" });
     }
     case 'pick_variant':
-      return pickVariant(ops, scope, need(args.groupId), need(args.runId));
+      return pickVariant(ops, scope, need(args.groupId), need(args.runId), need(args.expectedVersion));
     case 'edit_queued_message':
     case 'remove_queued_message': {
       const owned = ownQueuedMessage(scope, args.runId, args.messageId);
@@ -624,7 +635,7 @@ export const organiseWorkTool = defineTool({
     '- delete: remove a task, its transcript, its worktree and its branch. Irreversible. Refused while the task is active.',
     '- start_inbox_item / remove_inbox_item: act on an Inbox item (needs the Inbox to be on).',
     '- pick_variant: keep one variant of a group. Refused until every variant has finished; then every other variant is archived and its worktree and branch are deleted. Irreversible.',
-    'Every action that changes one task needs expectedVersion: the `version` task_read (view task) returned for it. If the task changed since you read it, nothing is applied and the answer is status "conflict" with error "stale_version": read it again and decide again.',
+    'Every action that changes one task needs expectedVersion: the `version` task_read (view task) returned for it — for pick_variant, the variant you keep. If the task changed since you read it, nothing is applied and the answer is status "conflict" with error "stale_version": read it again and decide again.',
     'No confirmation is needed for any action. Tasks have no priority and no dependencies: there is nothing to reorder. A refusal the task state caused comes back with status "conflict" and the reason.',
   ].join('\n'),
   inputSchema,

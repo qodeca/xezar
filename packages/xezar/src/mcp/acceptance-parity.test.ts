@@ -126,7 +126,7 @@ async function mcp(w: AbWorld, tool: string, args: Record<string, unknown> = {})
 
 /** The tool actions that change one task, and so require its version (#250, N-03). */
 const VERSIONED: Record<string, ReadonlySet<string> | 'all'> = {
-  organise_work: new Set(['set_title', 'edit_brief', 'edit_queued_message', 'remove_queued_message', 'pin', 'unpin', 'archive', 'restore', 'delete']),
+  organise_work: new Set(['set_title', 'edit_brief', 'edit_queued_message', 'remove_queued_message', 'pin', 'unpin', 'archive', 'restore', 'delete', 'pick_variant']),
   execution_control: 'all',
   handoff_git: new Set(['commit', 'push', 'create_pr']),
   project_config: new Set(['remove_worktree']),

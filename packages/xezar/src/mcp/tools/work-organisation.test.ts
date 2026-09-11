@@ -112,6 +112,7 @@ const VERSIONED_ACTIONS: ReadonlySet<string> = new Set([
   'archive',
   'restore',
   'delete',
+  'pick_variant',
 ]);
 
 /** A tools/call exactly as the service answers it: validate against the tool's schema, then call. */
@@ -216,9 +217,10 @@ describe('organise_work is registered and asks for no confirmation', () => {
   it('has no confirmation, force or approval parameter anywhere in its schema (F-04, F-22)', () => {
     const listed = JSON.stringify(toolListing(organiseWorkTool).inputSchema);
     expect(listed).not.toMatch(/confirm|force|approv|bypass|override/i);
-    // And none sneaks in as an unknown key either: extra keys do not reach the call.
-    const parsed = organiseWorkTool.inputSchema.parse({ action: 'archive_finished', confirm: false, force: true });
-    expect(parsed).toEqual({ action: 'archive_finished' });
+    // And none sneaks in as an unknown key either: an extra key is refused, not dropped (#271).
+    const parsed = organiseWorkTool.inputSchema.safeParse({ action: 'archive_finished', confirm: false, force: true });
+    expect(parsed.success).toBe(false);
+    expect(parsed.error?.issues.map((i) => i.message).join('; ')).toMatch(/confirm.*force/);
   });
 });
 
@@ -629,6 +631,37 @@ describe('business validation still refuses an invalid transition', () => {
       expect((await invoke(ws, args, { service })).isError, JSON.stringify(args)).toBe(true);
     }
     expect(seen).toEqual([]);
+  });
+});
+
+describe('an argument organise_work does not declare is refused, never dropped (#271)', () => {
+  it('a stray projectId is an argument error, and the sweep it came with changes nothing in either project', async () => {
+    const ws = setup();
+    const storeA = await store(ws, 'proj-a');
+    const storeB = await store(ws, 'proj-b');
+    const aDone = finishedRecord(storeA, 'done', 'a finished');
+    const bDone = finishedRecord(storeB, 'done', 'b finished');
+    storeA.flush();
+    storeB.flush();
+    const index = (root: string) => readFileSync(join(root, '.local/xezar/runs.json'), 'utf8');
+    const before = { a: index(ws.roots.a), b: index(ws.roots.b) };
+
+    for (const args of [
+      { action: 'archive_finished', projectId: 'proj-b' },
+      { action: 'mark_all_read', projectId: 'proj-b' },
+      { action: 'list_queue', projectId: 'proj-b' },
+      { action: 'delete', runId: aDone.id, force: true },
+    ]) {
+      const result = await invoke(ws, args);
+      expect(result.isError, `${JSON.stringify(args)}: ${text(result)}`).toBe(true);
+      expect(text(result)).toMatch(/projectId|force/);
+    }
+    storeA.flush();
+    storeB.flush();
+    expect(index(ws.roots.a)).toBe(before.a);
+    expect(index(ws.roots.b)).toBe(before.b);
+    expect(storeA.getRun(aDone.id)?.archived).toBeFalsy();
+    expect(storeB.getRun(bDone.id)?.archived).toBeFalsy();
   });
 });
 

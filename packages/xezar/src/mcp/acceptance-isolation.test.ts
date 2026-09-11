@@ -163,9 +163,10 @@ describe.skipIf(process.platform === 'win32')('#115 isolation acceptance — A/B
         expect(ids.length, `${tool} answered with nothing to check`).toBeGreaterThan(0);
         for (const id of ids) expect(aIds.has(id), `${tool} answered with a foreign id`).toBe(true);
       }
-      // Every strict tool refused the key outright; the one lenient schema (organise_work) ignored it.
+      // Every tool refused the key outright. organise_work used to drop it silently, so a leader who
+      // believed it scoped a call to B acted on A instead (#271); no tool is lenient now.
       const lenient = seen.response.filter((r) => !r.result.isError).map((r) => r.tool);
-      expect([...new Set(lenient)]).toEqual(['organise_work']);
+      expect([...new Set(lenient)]).toEqual([]);
     });
 
     it('`default`, and every other spelling of a project, is refused as a binding — there is no fallback', async () => {
@@ -427,14 +428,14 @@ describe.skipIf(process.platform === 'win32')('#115 isolation acceptance — A/B
           await w.call('a', 'execution_control', { action: 'edit_queued_message', runId: w.a.ids.queued, messageId: nowhere, text: 'x', expectedVersion: ANY_VERSION }),
         ],
         pickForeignWinner: [
-          await w.call('a', 'organise_work', { action: 'pick_variant', groupId: w.a.ids.group, runId: w.b.ids.variants[0] }),
-          await w.call('a', 'organise_work', { action: 'pick_variant', groupId: w.a.ids.group, runId: nowhere }),
+          await w.call('a', 'organise_work', { action: 'pick_variant', groupId: w.a.ids.group, runId: w.b.ids.variants[0], expectedVersion: ANY_VERSION }),
+          await w.call('a', 'organise_work', { action: 'pick_variant', groupId: w.a.ids.group, runId: nowhere, expectedVersion: ANY_VERSION }),
         ],
         pickForeignGroup: [
-          await w.call('a', 'organise_work', { action: 'pick_variant', groupId: w.b.ids.group, runId: w.b.ids.variants[0] }),
-          await w.call('a', 'organise_work', { action: 'pick_variant', groupId: `g-${nowhere}`, runId: nowhere }),
+          await w.call('a', 'organise_work', { action: 'pick_variant', groupId: w.b.ids.group, runId: w.b.ids.variants[0], expectedVersion: ANY_VERSION }),
+          await w.call('a', 'organise_work', { action: 'pick_variant', groupId: `g-${nowhere}`, runId: nowhere, expectedVersion: ANY_VERSION }),
         ],
-        pickMixed: await w.call('a', 'organise_work', { action: 'pick_variant', groupId: h.mixedGroup, runId: h.legit }),
+        pickMixed: await w.call('a', 'organise_work', { action: 'pick_variant', groupId: h.mixedGroup, runId: h.legit, expectedVersion: ANY_VERSION }),
         readMixed: await w.call('a', 'task_read', { view: 'group', groupId: h.mixedGroup }),
         deleteStray: await w.call('a', 'organise_work', { action: 'delete', runId: h.stray, expectedVersion: ANY_VERSION }),
         readStray: await w.call('a', 'task_read', { view: 'task', taskId: h.stray }),
@@ -785,15 +786,41 @@ describe.skipIf(process.platform === 'win32')('#115 isolation acceptance — A/B
       expect(audit).toEqual([...paths.map(() => ({ check: 'file', code: 'forbidden_path' })), { check: 'worktree', code: 'not_found' }]);
     });
 
-    // KNOWN GAP #240, found by this suite: the single-task view refuses an A record whose worktree
-    // is B's, but the list view does not filter it, so that record's `branch` — B's branch name —
-    // reaches the leader. Skipped, not inverted: the assertion below is the required behaviour and
-    // stays red until task_read's list applies the same ownership check. Unskip it with that fix.
-    it.skip('the task list leaves out an A record that reaches into B', async () => {
+    // #240, found by this suite: the single-task view refused an A record whose worktree is B's,
+    // but the list view did not filter it, so that record's `branch` — B's branch name — reached
+    // the leader. A row is now held to the single read's rule: out of the rows, the total, the
+    // search and every page, with pagination still walking every owned row to its end.
+    it('the task list leaves out an A record that reaches into B, in its rows, total, search and pages', async () => {
       const w = world();
-      const seen = await w.observe(() => w.call('a', 'task_read', { view: 'list', archived: 'include' }));
-      judge(w, seen, ['responses']);
-      expect((payload(seen.response).tasks as Array<{ id: string }>).map((t) => t.id)).not.toContain(w.hostile!.stray);
+      const stray = w.hostile!.stray;
+      const bBranch = w.a.store.getRun(stray)!.branch!;
+      const ids = (result: McpToolResult) => (payload(result).tasks as Array<{ id: string }>).map((t) => t.id);
+      const seen = await w.observe(async () => {
+        const list = await w.call('a', 'task_read', { view: 'list', archived: 'include' });
+        const search = await w.call('a', 'task_read', { view: 'list', archived: 'include', query: bBranch });
+        const pages: McpToolResult[] = [];
+        let cursor: string | undefined;
+        do {
+          pages.push(await w.call('a', 'task_read', { view: 'list', archived: 'include', limit: 1, ...(cursor ? { cursor } : {}) }));
+          cursor = payload(pages.at(-1)!).nextCursor as string | undefined;
+        } while (cursor !== undefined && pages.length < 100);
+        return { list, search, pages };
+      });
+      // The search text is B's branch, typed by the leader itself, so its own request log carries it.
+      // That echo is excused; the answers are held to "nothing of B" below and by the rest of judge.
+      judge(w, seen, ['responses', 'search', 'pagination'], [bBranch]);
+      const owned = w.a.store
+        .listRuns()
+        .map((r) => r.id)
+        .filter((id) => id !== stray);
+      const listed = ids(seen.response.list);
+      expect(listed).not.toContain(stray);
+      expect([...listed].sort()).toEqual([...owned].sort());
+      expect(payload(seen.response.list).total).toBe(owned.length);
+      expect(payload(seen.response.search)).toMatchObject({ total: 0, tasks: [] });
+      // One row a page, never a short page: the walk sees every owned row once, and then ends.
+      expect(seen.response.pages.map((page) => ids(page).length)).toEqual(owned.map(() => 1));
+      expect(seen.response.pages.flatMap(ids)).toEqual(listed);
     });
   });
 

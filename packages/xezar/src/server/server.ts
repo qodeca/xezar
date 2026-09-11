@@ -106,6 +106,7 @@ import {
   gitCommitInputSchema,
   messageInputSchema,
   patchRunInputSchema,
+  pickVariantInputSchema,
   pinRunInputSchema,
   queuedMessagePatchInputSchema,
   runVersionGuardInputSchema,
@@ -656,10 +657,6 @@ const startRunSchema = z
   .refine((b) => Boolean(b.workflow) !== Boolean(b.steps), {
     message: 'provide either "workflow" or "steps", not both',
   });
-
-const pickSchema = z.object({
-  runId: z.string().min(1),
-});
 
 const planSchema = z.object({
   // Same bound as `startRunSchema.task` — this flows into `planChain` (#429).
@@ -4458,7 +4455,7 @@ export function createApp(deps: ServerDeps) {
     // "Pick this one": the winner rests at `review` (spec 009 takes it from
     // there — send back / draft PR / finish); the losers are cancelled if
     // alive, archived, and their worktrees + branches removed.
-    .post('/groups/:groupId/pick', jsonZodValidator(pickSchema), async (c) => {
+    .post('/groups/:groupId/pick', jsonZodValidator(pickVariantInputSchema), async (c) => {
       const { root: repoRoot, dataDir, store, manager } = c.get('project');
       const runs = groupRuns(store, c.req.param('groupId'));
       if (runs.length === 0) return c.json({ error: 'not found' }, 404);
@@ -4474,6 +4471,7 @@ export function createApp(deps: ServerDeps) {
       // (#489): it is enabled (`reviewGateEnabled`, default off) AND the winner is
       // not autonomous. An autonomous / gate-off winner keeps its `done` state with
       // the diff left in the worktree; an empty diff (or no worktree) stays too.
+      let toReview = false;
       if (
         winner.status !== 'review' &&
         winner.worktreePath &&
@@ -4482,10 +4480,13 @@ export function createApp(deps: ServerDeps) {
         reviewGateEnabled(await loadConfig(repoRoot))
       ) {
         const diff = await worktreeDiff(winner.worktreePath, winner.baseBranch ?? 'HEAD');
-        if (diff.trim().length > 0 && !diff.startsWith('(diff failed')) {
-          store.updateRun(winner.id, { status: 'review' });
-        }
+        toReview = diff.trim().length > 0 && !diff.startsWith('(diff failed');
       }
+      // The stale-write guard (#250, #271) on the kept variant, after the reads above and right
+      // before the first effect: the losers' worktrees and branches are deleted below, for good.
+      const stale = staleRunWrite(store, winner.id, parsed.data.expectedVersion);
+      if (stale) return c.json(stale, 409);
+      if (toReview) store.updateRun(winner.id, { status: 'review' });
       const losers = runs.filter((r) => r.id !== winner.id);
       store.appendEvent(winner.id, {
         type: 'lifecycle',
