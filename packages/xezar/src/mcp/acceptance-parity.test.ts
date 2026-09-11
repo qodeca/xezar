@@ -624,7 +624,14 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
       const w = world();
       const [one, two] = await holdBothSlots(w);
       const seen = await w.observe(async () => {
-        const answer = await mcp(w, 'execution_control', { action: 'cancel', runId: one });
+        // A RUNNING task's version moves with every event its agent records (#250), so a cancel can
+        // meet a newer version than the one read. The leader does what the refusal says — read
+        // again and decide again — and each refusal applied nothing.
+        let answer = await mcp(w, 'execution_control', { action: 'cancel', runId: one });
+        for (let tries = 0; answer.error === 'stale_version' && tries < 50; tries += 1) {
+          expect(answer).toMatchObject({ status: 'conflict', applied: false });
+          answer = await mcp(w, 'execution_control', { action: 'cancel', runId: one });
+        }
         await until(() => run(w, one!)?.status === 'cancelled', 'the MCP-cancelled task to stop');
         return answer;
       });

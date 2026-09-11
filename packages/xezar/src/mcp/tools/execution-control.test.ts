@@ -329,7 +329,12 @@ describe('A has queued, running, waiting and completed tasks; B runs one too', (
     }
 
     // Cancelling A's running task stops it — and only it.
-    const cancelled = await invoke(ws, 'proj-a', { action: 'cancel', runId: running });
+    // A RUNNING task's version moves with every event its agent records (#250): a refusal applied
+    // nothing, and the leader reads again (the helper re-reads) and decides again.
+    let cancelled = await invoke(ws, 'proj-a', { action: 'cancel', runId: running });
+    for (let tries = 0; cancelled.value.error === 'stale_version' && tries < 50; tries += 1) {
+      cancelled = await invoke(ws, 'proj-a', { action: 'cancel', runId: running });
+    }
     expect(cancelled.value).toMatchObject({ accepted: true, subject: { type: 'run', id: running } });
     await waitFor(() => storeA.getRun(running)?.status === 'cancelled', "A's task to end cancelled");
     // The freed slot goes to A's queued task through the scheduler, as after a cockpit cancel.
