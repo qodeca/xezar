@@ -204,9 +204,16 @@ describe('no tool can terminate an arbitrary process', () => {
         ...names(node.items),
       ];
     };
+    // The one exception, by exact tool and field: a file read's `path` is relative to the task's
+    // own worktree and confined there by `ownWorktreeFile` (A-04: absolute, `..`, `.git` and
+    // symlinked paths are refused — pinned in results-evidence.test.ts). It names no process.
+    const confinedPaths = new Set(['read_results_evidence.path']);
     expect(tools).toContain(executionControlTool);
     for (const tool of tools) {
-      for (const name of names(toolListing(tool).inputSchema)) expect(forbidden(name), `${tool.name}.${name}`).toBe(false);
+      for (const name of names(toolListing(tool).inputSchema)) {
+        if (confinedPaths.has(`${tool.name}.${name}`)) continue;
+        expect(forbidden(name), `${tool.name}.${name}`).toBe(false);
+      }
     }
     // This tool names a task, never a process: its whole argument surface, pinned.
     const schema = toolListing(executionControlTool).inputSchema as { properties: Record<string, unknown> };
