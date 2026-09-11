@@ -188,7 +188,13 @@ afterEach(async () => {
 
 describe('no tool can terminate an arbitrary process', () => {
   it('no registered tool takes a process id, a signal, a command or a path', () => {
-    const forbidden = /pid|signal|process|command|kill|path|cwd|exec/i;
+    // Matched per WORD of a camelCase / snake_case name, so `groupId` is not read as `pid`.
+    const forbiddenWord = /^(pids?|signals?|process(es)?|commands?|kill|paths?|cwd|exec)$/;
+    const forbidden = (name: string) =>
+      name.split(/(?=[A-Z])|[_-]/).some((word) => forbiddenWord.test(word.toLowerCase()));
+    for (const name of ['pid', 'processId', 'signal', 'filePath', 'cwd', 'exec_args', 'killSwitch', 'command'])
+      expect(forbidden(name), name).toBe(true);
+    for (const name of ['groupId', 'runId', 'rapid', 'messageId']) expect(forbidden(name), name).toBe(false);
     const names = (schema: unknown): string[] => {
       if (!schema || typeof schema !== 'object') return [];
       const node = schema as { properties?: Record<string, unknown>; items?: unknown };
@@ -200,7 +206,7 @@ describe('no tool can terminate an arbitrary process', () => {
     };
     expect(tools).toContain(executionControlTool);
     for (const tool of tools) {
-      for (const name of names(toolListing(tool).inputSchema)) expect(name, `${tool.name}.${name}`).not.toMatch(forbidden);
+      for (const name of names(toolListing(tool).inputSchema)) expect(forbidden(name), `${tool.name}.${name}`).toBe(false);
     }
     // This tool names a task, never a process: its whole argument surface, pinned.
     const schema = toolListing(executionControlTool).inputSchema as { properties: Record<string, unknown> };
