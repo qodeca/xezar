@@ -15,6 +15,17 @@
   one warning and the MCP keeps working. This closes acceptance case A-01. (#262)
 
 ## 🐛 Fixes
+- 🐛 **Running the test suite inside a xezar task no longer writes into that task's handoff file
+  and your follow-up inbox.** A gate inherits the task's `XEZ_HANDOFF_FILE`, `XEZ_TODOS_FILE`,
+  `XEZ_TASK_ID` and `XEZ_ENV_PASSTHROUGH`, and a test that drove the dry-run mock agent handed them
+  on — so every gate run added a "Follow up: verify the mock change" entry to the real inbox and a
+  mock line to the real handoff file (more than half of one live inbox was that one entry). The
+  shared test preload now drops those four variables once, so every test and every child process it
+  starts begins without them. (#281)
+- 🐛 **A corrupt `~/.xezar/config.json` is reported once per boot, not twice.** Boot reads the file
+  and then the first migration reads it again before replacing it, and each read printed the same
+  warning. The warning is now remembered per broken state; every read still goes to the file, so a
+  repaired or newly broken config is seen immediately. (#281)
 - 🐛 **Three MCP scope and safety holes are closed.** `task_read`'s list view now holds every row
   to the same ownership rule as a single-task read, so a record whose worktree is another
   project's no longer appears in the list, its total, its search or any page — it used to carry

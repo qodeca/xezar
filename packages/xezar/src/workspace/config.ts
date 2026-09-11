@@ -446,19 +446,45 @@ export async function loadWorkspaceConfig(path: string = workspaceConfigPath()):
   }
   if (raw !== null && raw.trim() !== '') {
     const parsed = parseWorkspaceConfig(raw);
-    if (parsed) return parsed;
+    if (parsed) {
+      warnedStates.delete(path);
+      return parsed;
+    }
   }
   const restored = await loadWorkspaceConfigBackup(path);
   if (restored) {
     const cause = raw === null ? 'is missing' : 'is empty or corrupt';
-    console.warn(
+    warnOncePerState(
+      path,
+      raw,
       `[xez] workspace config ${path} ${cause} — restored ${restored.projects.length} project(s) from ${workspaceConfigBackupPath(path)}`,
     );
     return restored;
   }
-  if (raw === null) return defaultWorkspaceConfig();
-  console.warn(`[xez] workspace config ${path} is corrupt — using defaults (registry rebuilds)`);
+  if (raw === null) {
+    warnedStates.delete(path);
+    return defaultWorkspaceConfig();
+  }
+  warnOncePerState(path, raw, `[xez] workspace config ${path} is corrupt — using defaults (registry rebuilds)`);
   return defaultWorkspaceConfig();
+}
+
+/**
+ * The last degraded state each config path was warned about, as the warning text plus the exact
+ * bytes read. One boot loads the config several times before anything repairs it — migration 001
+ * reads it and then merge-writes it, which reads it again — so warning on every load printed the
+ * same line twice per boot where one is promised. Only the WARNING is remembered: every load still
+ * reads the file and returns what it holds now, so nothing here can serve a stale config. A good
+ * parse (or a missing file) forgets the path, so a file that is repaired and breaks again warns
+ * again, and so does one whose broken contents change.
+ */
+const warnedStates = new Map<string, string>();
+
+function warnOncePerState(path: string, raw: string | null, message: string): void {
+  const state = `${message}\0${raw ?? ''}`;
+  if (warnedStates.get(path) === state) return;
+  warnedStates.set(path, state);
+  console.warn(message);
 }
 
 /**

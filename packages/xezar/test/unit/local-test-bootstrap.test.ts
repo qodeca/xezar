@@ -43,6 +43,35 @@ test('project-local temporary fixtures cannot discover or mutate their parent Gi
   assert.equal(execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }), before);
 });
 
+// #267: a gate run inside a xezar task inherits that task's wiring, and a child spawned with
+// `{ ...process.env }` — the shape of every package e2e spawn site — handed it to the dry-run mock
+// agent, which wrote into the task's real handoff file and the machine's real inbox. The parent
+// env is set explicitly here so the case never passes by luck on a machine that is not in a task.
+test('a child spawned with the inherited environment never sees the parent task wiring', () => {
+  const taskWiring = {
+    XEZ_HANDOFF_FILE: '/parent-task/handoff.md',
+    XEZ_TODOS_FILE: '/parent-task/todos.json',
+    XEZ_TASK_ID: 'parent-task-id',
+    XEZ_ENV_PASSTHROUGH: 'PARENT_ONLY_VAR',
+  };
+  const seen = JSON.parse(execFileSync(process.execPath, [
+    '--import', bootstrap, '--input-type=module', '-e', `
+      import { execFileSync } from 'node:child_process';
+      const child = execFileSync(process.execPath, ['-e', 'console.log(JSON.stringify(process.env))'], {
+        env: { ...process.env, XEZ_DRY_RUN: '1' },
+        encoding: 'utf8',
+      });
+      console.log(child);
+    `,
+  ], { cwd: root, env: { ...process.env, ...taskWiring, XEZ_HOME: '/kept/home' }, encoding: 'utf8' })) as Record<string, string>;
+  for (const name of Object.keys(taskWiring)) {
+    assert.equal(seen[name], undefined, `${name} must not reach a test's child process`);
+  }
+  // Targeted, not a blanket XEZ_ scrub: the variables a test deliberately passes still arrive.
+  assert.equal(seen.XEZ_HOME, '/kept/home');
+  assert.equal(seen.XEZ_DRY_RUN, '1');
+});
+
 // #19: the workspace registry refuses any project root under `.local/xezar/worktrees/`, so a
 // checkout that IS a task worktree must pin scratch outside that ancestry or every temp repo the
 // tests create is refused and the canonical gate cannot pass inside a xezar task.

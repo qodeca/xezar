@@ -247,7 +247,7 @@ test('A-16: an upgraded cockpit stays usable with MCP state corrupt, deleted, af
     const env: NodeJS.ProcessEnv = { ...process.env, XEZ_DRY_RUN: '1', XEZ_HOME: home, XEZ_NO_BANNER: '1', XEZ_SKILLS_AUTO_UPDATE: '0' };
     delete env.XEZ_REMOTE;
 
-    await t.test('MCP state corrupt, and a corrupt workspace config: the cockpit works and reports the config', async (t) => {
+    await t.test('MCP state corrupt, and a corrupt workspace config: the cockpit works and reports the config', async () => {
       await mkdir(join(dataDir, 'mcp'), { recursive: true });
       for (const file of MCP_STATE) await writeFile(join(dataDir, file), '{"left by": an older, broken xezar\n', 'utf8');
       await writeFile(join(home, 'config.json'), '{ not json', 'utf8');
@@ -259,11 +259,9 @@ test('A-16: an upgraded cockpit stays usable with MCP state corrupt, deleted, af
       await assertWorkingCockpit(cockpit, cliPath, repo, env, 'corrupt MCP state');
       const configWarnings = cockpit.output().split('\n').filter((line) => /workspace config .* corrupt/.test(line));
       assert.ok(configWarnings.length >= 1, `the corrupt workspace config is reported:\n${cockpit.output()}`);
-      // AGENTS.md § Workspace registry: ONE warning. Observed: two — a headless `xezar run` with no MCP
-      // socket prints two as well, so this predates MCP. Kept as a TODO rather than weakened to ≥ 1.
-      await t.test('FINDING: a corrupt workspace config is warned about exactly once', { todo: 'boot prints the corrupt-config warning twice (also without MCP); reported in the #117 PR' }, () => {
-        assert.equal(configWarnings.length, 1, `exactly one warning for the corrupt workspace config:\n${configWarnings.join('\n')}`);
-      });
+      // AGENTS.md § Workspace registry: ONE warning. Boot used to print two — migration 001 loads the
+      // config and then merge-writes it, which loads it again (#267) — and so did a headless `xezar run`.
+      assert.equal(configWarnings.length, 1, `exactly one warning for the corrupt workspace config:\n${configWarnings.join('\n')}`);
       // Compatible data retained: MCP damage is never cleaned up by destroying it.
       for (const file of MCP_STATE) {
         assert.ok(existsSync(join(dataDir, file)) || existsSync(join(dataDir, `${file}.corrupt`)), `${file} is kept (in place or set aside)`);
