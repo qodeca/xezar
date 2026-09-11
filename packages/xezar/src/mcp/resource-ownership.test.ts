@@ -603,8 +603,10 @@ describe('resource ownership (#88)', () => {
 /**
  * The fixture is not inert. Without the guard, the SAME services, called with the SAME hostile
  * records, reach BRAVO: the files route serves BRAVO's secret through a symlinked worktree root,
- * and the reclaim sweep deletes BRAVO's worktree. This is what the cases above prevent, and it
- * keeps them honest — a fixture that could not hurt BRAVO would pass them vacuously.
+ * and removing the worktree a stray record names deletes BRAVO's worktree — which the reclaim
+ * sweep and the variant pick both did before #288 proved the path first. This is what the cases
+ * above prevent, and it keeps them honest — a fixture that could not hurt BRAVO would pass them
+ * vacuously.
  */
 describe('resource ownership (#88) — the same flows without the guard', () => {
   it('reach project B', async () => {
@@ -614,7 +616,7 @@ describe('resource ownership (#88) — the same flows without the guard', () => 
       expect(leaked).toMatchObject({ kind: 'file', content: 'BRAVO-SECRET-CONTENT\n' });
 
       const before = bravoState(f);
-      await reclaimWorktrees(f.rootA, f.storeA, 1);
+      await removeWorktree(f.rootA, f.storeA.getRun(f.alphaStray.id)!.worktreePath!);
       expect(bravoState(f)).not.toBe(before);
       expect(() => lstatSync(join(f.bravoWorktree, 'secret.txt'))).toThrow();
     } finally {
