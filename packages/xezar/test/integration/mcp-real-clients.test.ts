@@ -1327,7 +1327,7 @@ describe('A-20 — MCP changes reach the cockpit, human changes reach the leader
       await delay(500);
       const leader = await openBridge('a20-leader-bridge', root, env);
       const listed = await leader.rpc.request('tools/list');
-      const tools = (listed.result?.tools ?? []) as Array<{ name: string; description?: string }>;
+      const tools = (listed.result?.tools ?? []) as Array<{ name: string; description?: string; inputSchema?: unknown }>;
       const title = `A-20 leader title ${Date.now()}`;
       const mutation = await leader.rpc.request('tools/call', { name: 'organise_work', arguments: { action: 'set_title', runId, title } });
       await waitFor('the cockpit stream to carry the leader title', () => (streamText.includes(title) ? true : undefined), 5_000).catch(() => undefined);
@@ -1357,17 +1357,30 @@ describe('A-20 — MCP changes reach the cockpit, human changes reach the leader
       const humanRows = rows.slice(beforeHuman).filter((r) => r.origin === 'human');
       const leaderRow = rows.find((r) => r.subject.id === victimId && r.kind === 'task.cancelled');
 
-      // Can the leader receive the human rows? Any tool that describes itself as reading events.
-      const readers = tools.filter((tool) => /event|journal|acknowledg|outstanding|inbox of change/i.test(`${tool.name} ${tool.description ?? ''}`) && !['task_read'].includes(tool.name));
+      // Can the leader receive the human rows? Any tool that describes itself as reading events —
+      // `leader_events` (#251) on main today — asked to `read` when its schema offers that action.
+      const readers = tools.filter((tool) => /event|journal|acknowledg|outstanding/i.test(`${tool.name} ${tool.description ?? ''}`) && tool.name !== 'task_read');
+      const readArgs = (tool: (typeof tools)[number]): Record<string, unknown> =>
+        ((tool.inputSchema as { properties?: { action?: { enum?: string[] } } } | undefined)?.properties?.action?.enum ?? []).includes('read') ? { action: 'read' } : {};
       const received: Record<string, string> = {};
-      for (const reader of readers) received[reader.name] = toolText(await leader.rpc.request('tools/call', { name: reader.name, arguments: {} })).slice(0, 400);
-      const humanReachesLeader = humanRows.length > 0 && Object.values(received).some((text) => humanRows.some((row) => text.includes(row.eventId)));
+      for (const reader of readers) received[reader.name] = toolText(await leader.rpc.request('tools/call', { name: reader.name, arguments: readArgs(reader) }));
+      const humanReachesLeader = humanRows.length > 0 && Object.values(received).some((text) => humanRows.every((row) => text.includes(row.eventId)));
       await leader.rpc.close();
 
-      // Reconnect: a fresh session reads the current state, the human's edit included.
+      // Reconnect: a fresh session reads the current state, the human's edit included — and, until
+      // the leader acknowledges, the same outstanding events again (at-least-once, F-21).
       const again = await openBridge('a20-reconnect-bridge', root, env);
       const reread = queuedId ? await again.rpc.request('tools/call', { name: 'task_read', arguments: { view: 'task', taskId: queuedId } }) : undefined;
       const rereadTitle = await again.rpc.request('tools/call', { name: 'task_read', arguments: { view: 'task', taskId: runId } });
+      const events = readers.find((tool) => tool.name === 'leader_events');
+      let replay: { beforeAck: boolean; acked: string; afterAck: boolean } | undefined;
+      if (events) {
+        const first = toolText(await again.rpc.request('tools/call', { name: events.name, arguments: { action: 'read' } }));
+        const cursor = /"nextCursor":"([^"]+)"/.exec(first)?.[1];
+        const acked = cursor ? toolText(await again.rpc.request('tools/call', { name: events.name, arguments: { action: 'ack', cursor } })) : 'no nextCursor to ack';
+        const after = toolText(await again.rpc.request('tools/call', { name: events.name, arguments: { action: 'read' } }));
+        replay = { beforeAck: humanRows.length > 0 && humanRows.every((row) => first.includes(row.eventId)), acked: acked.slice(0, 160), afterAck: humanRows.some((row) => after.includes(row.eventId)) };
+      }
       await again.rpc.close();
       const rereadText = reread ? toolText(reread) : '';
 
@@ -1375,8 +1388,9 @@ describe('A-20 — MCP changes reach the cockpit, human changes reach the leader
         { name: 'an MCP mutation reaches the cockpit’s live stream without reload', required: 'the leader’s new title arrives on GET /api/v1/workspace/events', observed: { tool: toolText(mutation).slice(0, 120), streamCarriedTitle: streamText.includes(title), streamBytes: streamText.length }, ok: !mutation.result?.isError && streamText.includes(title) },
         { name: 'a human queued-prompt edit reaches the journal (E-04)', required: 'a human-origin goal.changed row', observed: { edit: promptEdit?.status ?? 'no queued task to edit', rows: humanRows.map((r) => r.kind) }, ok: humanRows.some((r) => r.kind === 'goal.changed') },
         { name: 'a human configuration write reaches the journal (E-05)', required: 'a human-origin config.changed row after PUT /api/v1/config', observed: { write: configWrite.status, rows: humanRows.map((r) => r.kind) }, ok: humanRows.some((r) => r.kind === 'config.changed') },
-        { name: 'the human changes reach the leader', required: 'a leader tool (or delivery) hands the leader those rows (F-21)', observed: { readerTools: readers.map((r) => r.name), received, toolNames: tools.map((tool) => tool.name) }, ok: humanReachesLeader },
+        { name: 'the human changes reach the leader', required: 'a leader tool (or delivery) hands the leader every one of those rows (F-21)', observed: { readerTools: readers.map((r) => r.name), humanEventIds: humanRows.map((r) => r.eventId), received: Object.fromEntries(Object.entries(received).map(([k, v]) => [k, v.slice(0, 300)])) }, ok: humanReachesLeader },
         { name: 'reconnect reconciles', required: 'a new session reads current state: the human’s prompt edit and the leader’s title', observed: { queued: rereadText.slice(0, 160), titled: toolText(rereadTitle).includes(title) }, ok: rereadText.includes('the human rewrote this queued prompt') && toolText(rereadTitle).includes(title) },
+        { name: 'reconnect re-delivers what was not acknowledged, and nothing after the ack', required: 'a new session’s read returns the human events again; after ack a read no longer does (F-21, N-10)', observed: replay ?? 'no leader_events tool', ok: replay ? replay.beforeAck && !replay.afterAck : false },
         { name: 'the leader’s own significant effect is marked as its echo', required: 'the row it caused is origin `leader` with the operation that caused it, which the echo guard withholds from that leader', observed: { tool: toolText(leaderCancel).slice(0, 120), row: leaderRow ? { origin: leaderRow.origin, causedBy: leaderRow.causedBy } : 'no task.cancelled row' }, ok: leaderRow?.origin === 'leader' && typeof leaderRow.causedBy === 'string' && leaderRow.causedBy.length > 0 },
         { name: 'no recursive leader loop from echoes, logs, tokens or visual changes', required: 'observed end to end: a delivered echo starts no new leader turn', observed: 'not observable: nothing delivers journal rows to a leader (see A-19), so no loop can be observed — only its precondition above', ok: null },
       ];
