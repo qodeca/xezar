@@ -28,6 +28,7 @@ import { handoffGitTool } from './handoff-git.ts';
 import { resultsEvidenceTool } from './results-evidence.ts';
 import { projectConfigTool } from './project-config.ts';
 import { localHandoffTool } from './local-handoff.ts';
+import { leaderEventsTool } from './leader-events.ts';
 
 export const tools: readonly McpTool[] = [
   taskReadsTool,
@@ -39,4 +40,5 @@ export const tools: readonly McpTool[] = [
   resultsEvidenceTool,
   projectConfigTool,
   localHandoffTool,
+  leaderEventsTool,
 ];
