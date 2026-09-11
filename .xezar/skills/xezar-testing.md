@@ -7,6 +7,8 @@ Add meaningful verification for the approved scope. Use the installed pinned run
 
 Inputs: behavior/AC and current coverage evidence. Output: deterministic tests of observable boundaries and error paths, identifying unit, integration and browser coverage separately. Missing dependencies or unchanged-source failures are not passes or proof of environmental cause.
 
+If the scope has UI, browser or manual QA is not a design review: where such a review makes sense, a separate `xezar-ux-design` review is part of done, because QA proves it works, not that it is the right design.
+
 ## Shared contract
 
 Before reading kit files in a standalone skill run, if `.xezar/checks/bootstrap.sh` is absent, run `bash "$(git rev-parse --path-format=absolute --git-common-dir)/../.xezar/checks/bootstrap.sh"`. If unavailable or refused, stop with that specific blocker. Never fabricate commands or copy runtime. Workflow launches already perform this step.

@@ -78,7 +78,7 @@ Converse in the user's language; write briefs and maintained project artifacts i
 
 ## Quality and acceptance
 
-Correctness, security, maintainability, meaningful tests and review are mandatory. Use authoritative project gates. Complete content changes, self-review and commits in the writing stage before authoritative checks; handoff must not add changes after its evidence.
+Correctness, security, maintainability, meaningful tests and review are mandatory. For work with UI in scope, where such a review makes sense, obtain a UX/UI design review as well as the substantive code review, and do not accept a UI stage on manual QA alone: the author's QA shows it works, not that the design does the job its surface exists for. Use authoritative project gates. Complete content changes, self-review and commits in the writing stage before authoritative checks; handoff must not add changes after its evidence.
 
 When a gate refuses progress, diagnose current state first: candidate head/base, required check names and results, active kit/configuration versus stale snapshot, authority records and missing evidence. Use the permitted repair or evidence-refresh path within scope. A stale name is not proof a required check is optional. Do not automatically ask the user to waive a gate; an unresolved control remains blocking.
 

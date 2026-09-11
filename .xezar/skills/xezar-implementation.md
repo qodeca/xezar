@@ -9,6 +9,8 @@ Implement the approved outcome in the correct npm workspace. Follow Zod contract
 
 Inputs: accepted AC, owned files and affected contracts. Output: complete implementation, meaningful failure/control tests and updated maintained docs. Stop on unresolved scope or missing capability; do not add architecture beyond demonstrated need.
 
+If the change has UI in scope, a design review is part of done where such a review makes sense, and `xezar-ux-design` is the role for it: your own manual QA shows it works, not that it is the right design.
+
 ## Shared contract
 
 Before reading kit files in a standalone skill run, if `.xezar/checks/bootstrap.sh` is absent, run `bash "$(git rev-parse --path-format=absolute --git-common-dir)/../.xezar/checks/bootstrap.sh"`. If unavailable or refused, stop with that specific blocker. Never fabricate commands or copy runtime. Workflow launches already perform this step.
