@@ -2,18 +2,41 @@
 // ready-for-review paths make (#262). State lives in the JSON file named by FAKE_GH_STATE, so the
 // test reads what "the forge" holds the same way the service does: through `gh`. Anything else is
 // an error, so an unexpected call cannot pass silently.
+//
+// The service runs some `gh` calls in parallel (merge_state reads the PR, the repo and its branch
+// protection at once), so every call takes a directory lock around its read-modify-write and
+// replaces the file by rename. Without both, two overlapping writes tore the file or lost a call.
 import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, rmdirSync, writeFileSync } from 'node:fs';
 
 const statePath = process.env.FAKE_GH_STATE;
 if (!statePath) {
   process.stderr.write('fake gh: FAKE_GH_STATE is not set\n');
   process.exit(2);
 }
+const lockPath = `${statePath}.lock`;
+const deadline = Date.now() + 10_000;
+for (;;) {
+  try {
+    mkdirSync(lockPath);
+    break;
+  } catch (error) {
+    if (error.code !== 'EEXIST' || Date.now() > deadline) {
+      process.stderr.write(`fake gh: cannot lock ${lockPath}: ${error.message}\n`);
+      process.exit(2);
+    }
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5);
+  }
+}
 const state = JSON.parse(readFileSync(statePath, 'utf8'));
 const args = process.argv.slice(2);
 state.calls.push(args.join(' '));
-const save = () => writeFileSync(statePath, JSON.stringify(state, null, 2));
+const save = () => {
+  const tmp = `${statePath}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify(state, null, 2));
+  renameSync(tmp, statePath);
+  rmdirSync(lockPath);
+};
 const out = (value) => {
   save();
   process.stdout.write(typeof value === 'string' ? value : JSON.stringify(value));

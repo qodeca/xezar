@@ -54,6 +54,7 @@ interface ForgeState {
 }
 let statePath: string;
 const forge = (): ForgeState => JSON.parse(readFileSync(statePath, 'utf8')) as ForgeState;
+// Only called while no `gh` call is in flight, so it needs none of fake-gh's locking.
 const setForge = (patch: Partial<ForgeState>): void => writeFileSync(statePath, JSON.stringify({ ...forge(), ...patch }));
 
 beforeEach(() => {
