@@ -14,6 +14,7 @@ import type { RunStore } from '../runs/store.ts';
 import { loadWorkspaceConfig } from '../workspace/config.ts';
 import { AuditTrail, type AuditChannel } from './audit-trail.ts';
 import { runBridge, type ServiceTarget } from './bridge.ts';
+import { writeMcpConnectionFile } from './connection-file.ts';
 import { EchoGuard } from './echo-guard.ts';
 import { EventCatalog, withEventOrigin, type WorkspaceEventSource } from './event-catalog.ts';
 import { EventJournal } from './event-journal.ts';
@@ -71,14 +72,16 @@ export async function startMcpService(opts: StartMcpServiceOptions): Promise<Mcp
   const project = (await loadWorkspaceConfig()).projects.find((p) => p.id === opts.projectId);
   if (!project) throw new Error(`project ${opts.projectId} is not in the workspace registry`);
   const providerBaseline = await opts.providerBaseline?.().catch(() => undefined);
+  const dataDir = opts.store?.dataDir ?? projectDataDir(project.root);
+  const warn = opts.warn ?? ((message: string) => console.warn(message));
   const parts = composeDoor({
     projectId: project.id,
-    dataDir: opts.store?.dataDir ?? projectDataDir(project.root),
+    dataDir,
     store: opts.store,
     workspaceEvents: opts.workspaceEvents,
     providerBaseline,
     env: opts.env ?? process.env,
-    warn: opts.warn ?? ((message) => console.warn(message)),
+    warn,
   });
   try {
     const socket = await listenMcpSocket({
@@ -93,6 +96,15 @@ export async function startMcpService(opts: StartMcpServiceOptions): Promise<Mcp
       },
       door: parts.door,
     });
+    // D-04: written once the socket it names really listens, so the file never points at nothing.
+    // A failure is one warning and an MCP the client can still reach by the registry (N-07).
+    try {
+      writeMcpConnectionFile({ project: { id: project.id, root: project.root }, dataDir, socket: socket.path });
+    } catch (err) {
+      warn(
+        `[xez] MCP connection file not written (${err instanceof Error ? err.message : String(err)}) — MCP tools keep working without it`,
+      );
+    }
     return {
       path: socket.path,
       close() {

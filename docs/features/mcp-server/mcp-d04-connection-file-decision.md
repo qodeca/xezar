@@ -10,6 +10,21 @@ Tracked by [#81](https://github.com/qodeca/xezar/issues/81), inside phase 2 ([#6
 Baseline read for this record: worktree of `qodeca/xezar` at branch `xez/455024aa`, parent commit
 `9fdcf0e` (`chore(release): v0.13.1`).
 
+**Implementation note, added 2026-09-11 by [#262](https://github.com/qodeca/xezar/issues/262).** The
+writer is `packages/xezar/src/mcp/connection-file.ts`, called by `startMcpService` once the MCP socket
+listens (not on every `ProjectContexts.build()`: the MCP service is where the socket, and therefore
+`endpoint`, exists). Two points differ from the record below, both on purpose:
+
+- **There is no `token` field.** D-04.5 added a token only because the transport was still open. D-01
+  then chose a per-project Unix socket and made *which socket the peer connected to* the binding (D-01
+  § 6), so a token would be a secret that nothing checks. With no secret in the file, F-15 holds by
+  construction.
+- **`endpoint` is `{ "socket": "<path>" }`**, D-01's socket path.
+
+Everything else is as decided: the path, `schemaVersion: 1`, the `project` and `service` labels, the
+atomic temp-file-plus-rename at mode `0600`, `ensureProjectDataIgnored` before the first write, and a
+failed write that is one warning (N-07). `tracked-files.test.ts` guards both file names.
+
 The requirements document draws a three-way split and this record preserves it. **Agreed** outcomes
 are fixed and are not reopened. **Technical proposal** rows are suggestions that still need a
 decision. **Open** rows have no decision at all. Every statement below carries its own label.

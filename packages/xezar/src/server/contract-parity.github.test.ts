@@ -10,6 +10,7 @@ import type {
   githubMergeResponseSchema,
   githubPrChangesDataSchema,
   githubPrMergeStateResponseSchema,
+  githubPrReadyResponseSchema,
   githubRefStatusDataSchema,
 } from '@qodeca/xezar-contract';
 import type {
@@ -63,6 +64,10 @@ describe('src/contract github + repo schemas match the routes exactly', () => {
     (typeof client.api.v1.github.prs)[':number']['merge']['$post'],
     200
   >;
+  type GithubReady200 = InferResponseType<
+    (typeof client.api.v1.github.prs)[':number']['ready']['$post'],
+    200
+  >;
   type GithubPrChanges200 = InferResponseType<
     (typeof client.api.v1.github.prs)[':number']['changes']['$get'],
     200
@@ -108,6 +113,7 @@ describe('src/contract github + repo schemas match the routes exactly', () => {
     Assert<Exact<z.infer<typeof githubRefStatusDataSchema>, GithubRefStatus200>>,
     Assert<Exact<z.infer<typeof githubPrMergeStateResponseSchema>, GithubMergeState200>>,
     Assert<Exact<z.infer<typeof githubMergeResponseSchema>, GithubMerge200>>,
+    Assert<Exact<z.infer<typeof githubPrReadyResponseSchema>, GithubReady200>>,
     Assert<Exact<z.infer<typeof githubPrChangesDataSchema>, GithubPrChanges200>>,
     Assert<Exact<z.infer<typeof repoResponseSchema>, Repo200>>,
     Assert<Exact<z.infer<typeof repoBranchResponseSchema>, RepoBranch200>>,

@@ -73,7 +73,7 @@ The `expectedVersion` and `operationId` columns read:
 | `discover_project` | Discover the bound project | Read which xezar project this session is bound to, its effective capabilities and limits, and which actions are available. | yes | not set | yes | no | — | — |
 | `organise_work` | Organise tasks | Organise this project's tasks the way the xezar cockpit does. | no | yes | no | no | some actions | — |
 | `task_create` | Create or plan a task | Create a task in this project with the New task form's options, defaults and validation, plan one first, start an Inbox entry, or save a planned step list as a workflow. | no | no | no | no | — | required |
-| `handoff_git` | Hand work onward: commit, push, draft PR, merge, branches | Hand a task's work onward through the cockpit's own operations: commit a task's worktree, push its branch, open its draft pull request, read a pull request's merge readiness, invoke the existing merge, and switch or create branches of the main checkout. | not set | yes | not set | yes | some actions | — |
+| `handoff_git` | Hand work onward: commit, push, draft PR, ready, merge, branches | Hand a task's work onward through the cockpit's own operations: commit a task's worktree, push its branch, open its draft pull request, mark a draft pull request ready for review, read a pull request's merge readiness, invoke the existing merge, and switch or create branches of the main checkout. | not set | yes | not set | yes | some actions | — |
 | `read_results_evidence` | Read task results and evidence | Read what a task produced and the project's GitHub state, each answer identified by the revision it describes. | yes | no | yes | yes | — | — |
 | `project_config` | Project configuration | Read and change THIS project's own configuration: its settings (agent, models, system prompt, review gate, base branch, worktree retention, memory limit), its registry entry (concurrency cap and tags), prompt templates, in-repo agent config files, workflows, skills, GitHub automations and worktrees. | no | yes | no | no | some actions | — |
 | `local_handoff` | Open a task or the project in an app on the xezar host | Hand a task or the project off to a desktop app — a terminal resuming the task’s agent session, an editor, the file manager. | no | no | no | no | — | — |
@@ -231,18 +231,18 @@ Unknown arguments are rejected.
 
 ### `handoff_git`
 
-> Hand a task's work onward through the cockpit's own operations: commit a task's worktree, push its branch, open its draft pull request, read a pull request's merge readiness, invoke the existing merge, and switch or create branches of the main checkout. Every action runs at once, with the same checks the cockpit applies; a refusal carries the service's own reason unchanged. commit, push and create_pr need the task's expectedVersion (from task_read) and do nothing, answering status "conflict" with error "stale_version", if the task changed since. A merge needs the headSha you reviewed and is refused if the head moved. Failing, pending or unreadable required checks and missing reviews are blockers that no argument bypasses: repair the cause or report the blocker.
+> Hand a task's work onward through the cockpit's own operations: commit a task's worktree, push its branch, open its draft pull request, mark a draft pull request ready for review, read a pull request's merge readiness, invoke the existing merge, and switch or create branches of the main checkout. Every action runs at once, with the same checks the cockpit applies; a refusal carries the service's own reason unchanged. commit, push and create_pr need the task's expectedVersion (from task_read) and do nothing, answering status "conflict" with error "stale_version", if the task changed since. ready and merge need the headSha you reviewed and are refused if the head moved. Failing, pending or unreadable required checks and missing reviews are merge blockers, and a failing required check or a changes-requested review blocks ready; no argument bypasses a blocker: repair the cause or report the blocker.
 
 Unknown arguments are rejected.
 
 | Argument | Type | Required | Limits | Description (verbatim from the schema) |
 | --- | --- | --- | --- | --- |
-| `action` | `repo` \| `commit` \| `push` \| `create_pr` \| `merge_state` \| `merge` \| `branch` | yes |  | repo: read the main checkout (branch, branches, base, whether a remote exists, uncommitted count). commit / push / create_pr: act on one task (taskId). merge_state: read one pull request (number) fresh, with its quality blockers. merge: invoke the existing merge (number, expectedHeadSha). branch: switch to, or create and switch to, a branch of the main checkout (name, from). |
+| `action` | `repo` \| `commit` \| `push` \| `create_pr` \| `merge_state` \| `ready` \| `merge` \| `branch` | yes |  | repo: read the main checkout (branch, branches, base, whether a remote exists, uncommitted count). commit / push / create_pr: act on one task (taskId). merge_state: read one pull request (number) fresh, with its quality blockers. ready: mark a draft pull request ready for review (number, expectedHeadSha). merge: invoke the existing merge (number, expectedHeadSha). branch: switch to, or create and switch to, a branch of the main checkout (name, from). |
 | `taskId` | string | no | min length 1, max length 128 | The task to commit, push or publish. |
 | `expectedVersion` | string | no | min length 1, max length 512 | commit / push / create_pr: the `version` task_read returned for the task. If the task changed since, nothing is done. |
 | `message` | string | no | min length 1, max length 5000 | commit: the commit message. |
-| `number` | integer | no | max 9007199254740991 | merge_state / merge: the pull request number. |
-| `expectedHeadSha` | string | no | pattern `^[0-9a-f]{40}$` | merge: the headSha of the state you reviewed. A moved head is refused, never merged. |
+| `number` | integer | no | max 9007199254740991 | merge_state / ready / merge: the pull request number. |
+| `expectedHeadSha` | string | no | pattern `^[0-9a-f]{40}$` | ready / merge: the headSha of the state you reviewed. A moved head is refused, never readied or merged. |
 | `method` | `merge` \| `squash` \| `rebase` | no |  | merge: one of the state's methods; defaults to its defaultMethod. |
 | `name` | string | no | min length 1, max length 200 | branch: the branch to switch to or create. |
 | `from` | string | no | min length 1, max length 200 | branch: start point when creating. |
@@ -799,6 +799,7 @@ Roles:
 | `handoff_git:push` | I-056 |  |  |  |
 | `handoff_git:create_pr` | I-051, I-057 |  |  |  |
 | `handoff_git:merge_state` | I-075 |  |  |  |
+| `handoff_git:ready` |  |  |  | marks the draft pull request create_pr opened (I-057) ready for review, the step before the merge (I-076); the cockpit has no such control, so no inventory record names it (#262) |
 | `handoff_git:merge` | I-076 |  |  |  |
 | `handoff_git:branch` | I-063, I-064 |  |  |  |
 | `read_results_evidence:summary` | I-033, I-045, I-049 |  |  |  |

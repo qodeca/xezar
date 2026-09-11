@@ -19,6 +19,8 @@ import type {
   ForgePrMergeStateResult,
   ForgePrStatus,
   ForgePrDiffResult,
+  ForgeReadyInput,
+  ForgeReadyResult,
   ForgeRefKind,
   ForgeSearchData,
   ForgeTimelineEvent,
@@ -2851,6 +2853,52 @@ export function mergePreflightAllowed(current: ForgePrMergeState, overrideRules 
   return current.canMerge || (overrideRules && current.canOverride);
 }
 
+const readyInflight = new Set<string>();
+
+/**
+ * Mark a draft pull request ready for review (`gh pr ready`). The same preflight shape as the
+ * merge: a FRESH read of the forge, the reviewed head as a compare-and-swap, and a refusal in
+ * plain words for a pull request that is not an open draft. What counts as a quality reason not
+ * to ready it is the caller's policy; this only does what the forge would do. Never throws.
+ */
+async function markPullRequestReady(
+  repoRoot: string,
+  repoRef: GithubRepoRef | null,
+  number: number,
+  input: ForgeReadyInput,
+): Promise<ForgeReadyResult> {
+  const key = `${repoRoot}:${number}`;
+  if (readyInflight.has(key)) return { ready: false, status: 409, error: 'This pull request is already being marked ready.', code: 'concurrent' };
+  readyInflight.add(key);
+  try {
+    const fresh = await fetchPrMergeState(repoRoot, repoRef, number, true);
+    if (!fresh.available) return { ready: false, status: 502, error: fresh.reason };
+    const current = fresh.mergeState;
+    if (current.state !== 'open') {
+      return { ready: false, status: 409, error: current.state === 'merged' ? 'This pull request is merged.' : 'This pull request is closed.', code: 'terminal', current };
+    }
+    if (!current.isDraft) {
+      return { ready: false, status: 409, error: 'This pull request is already ready for review.', code: 'already-ready', current };
+    }
+    if (current.headSha !== input.expectedHeadSha) {
+      return { ready: false, status: 409, error: 'The pull request head changed. Review the new commits before marking it ready.', code: 'stale-head', current };
+    }
+    if (process.env.XEZ_DRY_RUN === '1') {
+      evictGithubProjectCaches(repoRoot);
+      return { ready: true, number, url: current.url };
+    }
+    await gh(repoRoot, ['pr', 'ready', String(number)]);
+    evictGithubProjectCaches(repoRoot);
+    return { ready: true, number, url: current.url };
+  } catch (error) {
+    const message = firstLine(error instanceof Error ? error.message : String(error));
+    const status = /403|permission|forbidden/i.test(message) ? 403 : /404|not found/i.test(message) ? 404 : 502;
+    return { ready: false, status, error: status === 403 ? 'GitHub permission denied.' : status === 404 ? 'Pull request or repository not found.' : 'GitHub could not mark the pull request ready.' };
+  } finally {
+    readyInflight.delete(key);
+  }
+}
+
 /** owner/repo parsed out of the origin remote — feeds `viewUrl`. */
 export interface GithubRepoRef {
   owner: string;
@@ -2903,6 +2951,8 @@ export function createGithubDriver(repoRoot: string, repoRef: GithubRepoRef | nu
     prMergeState: (number, opts) => fetchPrMergeState(repoRoot, repoRef, number, opts?.refresh),
 
     mergePR: (number, input) => mergePullRequest(repoRoot, repoRef, number, input),
+
+    markReady: (number, input) => markPullRequestReady(repoRoot, repoRef, number, input),
 
     viewUrl: (kind: ForgeRefKind, ref: string | number): string | null => {
       if (!repoRef) return null;

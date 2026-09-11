@@ -218,6 +218,20 @@ export type ForgeMergeResult =
       current?: ForgePrMergeState;
     };
 
+export interface ForgeReadyInput {
+  expectedHeadSha: string;
+}
+
+export type ForgeReadyResult =
+  | { ready: true; number: number; url: string }
+  | {
+      ready: false;
+      status: 403 | 404 | 409 | 502;
+      error: string;
+      code?: string;
+      current?: ForgePrMergeState;
+    };
+
 export interface ForgePrChange {
   path: string;
   previousPath?: string;
@@ -277,6 +291,8 @@ export interface ForgeDriver {
   prStatus(branch: string): Promise<ForgePrStatus | null>;
   prMergeState?(number: number, opts?: { refresh?: boolean }): Promise<ForgePrMergeStateResult>;
   mergePR?(number: number, input: ForgeMergeInput): Promise<ForgeMergeResult>;
+  /** Mark a draft pull request ready for review, re-validating its head first. Never throws. */
+  markReady?(number: number, input: ForgeReadyInput): Promise<ForgeReadyResult>;
   /** Bounded, read-only file changes for a pull request. */
   prDiff?(number: number, opts?: { refresh?: boolean }): Promise<ForgePrDiffResult>;
   /** Web URL for a ref on the forge, or null when the remote isn't parseable. */
