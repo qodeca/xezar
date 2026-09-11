@@ -80,8 +80,10 @@ const MAINTAINED_SKILLS = new Set([
   "xezar-release-changelog",
   "xezar-release-prep",
   "xezar-release-publish",
+  "xezar-research",
   "xezar-review-response",
   "xezar-testing",
+  "xezar-ux-design",
 ]);
 
 // The only skills that may keep `interactive: true` in frontmatter. It is a composer
