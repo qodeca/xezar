@@ -440,6 +440,51 @@ const FOLLOWUPS_OFF = 'the follow-up inbox is disabled — set XEZ_FOLLOWUPS=1 t
 /** 409 body for every automations route while GitHub automations are off (#801). */
 const AUTOMATIONS_OFF = 'GitHub automations are disabled — set XEZ_AUTOMATIONS=1 to enable them';
 
+/**
+ * How long `DELETE /projects/:id` waits on either of its project-lifecycle promises — a context
+ * still opening, then the removed context's last background writes — before answering anyway
+ * (#200). One bound per wait, applied through `withinTeardownBound`.
+ *
+ * `RunManager.dispose()` deliberately carries NO deadline — an invented one there would only
+ * move an ENOTEMPTY a few hundred milliseconds later, which is the right call for a teardown
+ * helper whose caller is about to delete the directory. An HTTP request is the opposite case:
+ * it must answer. The realistic tail is short (the 409 above already refused the removal if any
+ * run is active, and a retention sweep stops after its current iteration), but that iteration
+ * is `git worktree remove --force` + `rm -rf` + `git worktree prune`, and `git()` in
+ * `git-worktree.ts` passes no `timeout` to `execFile` — so a git blocked on `index.lock` or a
+ * stalled network mount would hang the request with no response and no recovery.
+ *
+ * Deliberately bounded HERE and not by giving `git()` a timeout: the same helper runs
+ * `git worktree add` and `git fetch`, which are legitimately slow on a large repository, so a
+ * blanket timeout would turn a slow clone into a failed run. What the bound gives up is only
+ * the tail of the guarantee: the registry entry is already gone and the context is already out
+ * of the map, so the answer stays true — a sweep that outlives it can still stamp a record, the
+ * pre-#200 behaviour, and only for a project no route can reach.
+ */
+const PROJECT_TEARDOWN_WAIT_MS = 5_000;
+
+/**
+ * Wait for one of `DELETE /projects/:id`'s two project-lifecycle promises — the in-flight build
+ * before the running-tasks guard, the teardown after the removal — and answer anyway once
+ * `PROJECT_TEARDOWN_WAIT_MS` is up.
+ *
+ * One helper for both because the reason is the same one, and because two hand-rolled races in
+ * one handler drift: neither wait may turn a request into something that cannot answer. Both
+ * outcomes are swallowed deliberately — the route's answer does not depend on how either promise
+ * settled, and a build that lost its project rejects by design.
+ */
+async function withinTeardownBound(work: Promise<unknown>): Promise<void> {
+  await Promise.race([
+    work.then(
+      () => undefined,
+      () => undefined,
+    ),
+    new Promise<void>((resolve) => {
+      setTimeout(resolve, PROJECT_TEARDOWN_WAIT_MS).unref?.();
+    }),
+  ]);
+}
+
 // ---- variant-compare response shapes (spec 010) ----------------------------
 // Named and exported so `api-types.test.ts` can drift-guard the cockpit's
 // hand-mirrored copies (`web/app/src/api/types.ts`) against the real thing.
@@ -2398,6 +2443,16 @@ export function createApp(deps: ServerDeps) {
         );
       }
 
+      // A project whose context is still BUILDING is not a project with no runs: its store opens
+      // with `keepLive` and `manager.recover()` re-queues or resumes every live-looking row, so
+      // the guard below — which reads the already-built context only — would count zero for a
+      // project that is at this moment bringing agents back, and remove it out from under them.
+      // Let the build finish, then count. Bounded for the same reason the teardown below is: a
+      // build that outlives the bound leaves the pre-existing answer (nothing built, zero runs)
+      // rather than a project that can never be removed.
+      const opening = contexts.pending(id);
+      if (opening) await withinTeardownBound(opening);
+
       const active = activeRunCount(id);
       if (active > 0) {
         return c.json(
@@ -2421,7 +2476,27 @@ export function createApp(deps: ServerDeps) {
       if (!removed) return c.json({ error: `unknown project: ${id}` }, 404);
       // In-process handles for a project no route can reach any more: store
       // closed (index flushed), manager's timers and usage subscription dropped.
-      contexts.dispose(id);
+      //
+      // AWAITED (#200): the manager's promise is what settles the background writes it could not
+      // stop synchronously — a worktree-retention sweep spawning git and stamping records. Not
+      // awaiting it let the response go out while a sweep was still writing into the removed
+      // project's `.local/xezar`, and a re-add inside that window could see the stale in-memory
+      // index overwrite the fresh one. There is no run to wait for: the 409 above already refused
+      // the removal if this process owns any.
+      //
+      // BOUNDED, because this is a request and not a teardown helper: `dispose()` has no deadline
+      // by design and the git it waits on has no `execFile` timeout, so an unbounded await is a
+      // request that can never answer. `dispose()` removed the context from the map
+      // synchronously, so the floated remainder is invisible to every route; see
+      // `PROJECT_TEARDOWN_WAIT_MS`. The answer is the same however it settles — the removal has
+      // already happened, and this is only the wait for the last writes.
+      //
+      // Covers a context that was still BUILDING when the removal landed, too: `dispose()` ends
+      // the registration first, so that build tears itself down instead of publishing, and the
+      // promise awaited here is the one that settles its store and manager. The answer stays
+      // `{ removed: true }` — the registry entry is gone, which is what the caller asked for, and
+      // the racing build was never a context anyone could reach.
+      await withinTeardownBound(contexts.dispose(id));
       workspaceEvents.emit('project-removed', { id });
       const body: RemoveProjectResponse = { removed: true, id };
       return c.json(body);
@@ -2705,6 +2780,12 @@ export function createApp(deps: ServerDeps) {
    * rejected for the same reason as the `rm` above: `RunStore.open` creates
    * directories, and a stale `running` row left by a crashed process would
    * become a 409 the user could never clear.
+   *
+   * "No context, no agent to strand" holds for a project nobody has touched. It does NOT hold for
+   * a project whose context is being built RIGHT NOW — that build opened its store with
+   * `keepLive` and its `manager.recover()` re-queues or resumes exactly the runs this guard
+   * exists to protect — so the caller waits for an in-flight build (`contexts.pending`) before
+   * asking, and only then is zero an answer about the project rather than about the map.
    */
   const activeRunCount = (projectId: string): number => {
     const ctx = contexts.peek(projectId);

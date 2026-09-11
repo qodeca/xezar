@@ -3,7 +3,7 @@ import { projectDataDir } from './project-data-paths.ts';
 import { projectKitDir } from './project-kit-paths.ts';
 import { parseArgs } from 'node:util';
 import { spawn, execFileSync } from 'node:child_process';
-import { createServer } from 'node:net';
+import type { Server } from 'node:net';
 import { mkdirSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -287,20 +287,8 @@ async function serveCommand(
     console.log(`\n  ⬆ xezar ${latest} is available (running ${version}) — restart with: npx ${pkgName}@latest\n`);
   });
 
-  const port = await pickPort(preferredPort);
   let app: ServiceDispatch | undefined;
-  // SECURITY: xezar executes agents. A non-loopback bind exposes that box to
-  // whatever can reach the interface, and xezar itself has NO auth — it is only
-  // for a deliberate hosted setup where a reverse proxy in front provides TLS +
-  // auth (see `server-install --external-proxy`). Say so, loudly, every start.
-  if (bindHost && !['127.0.0.1', 'localhost', '::1'].includes(bindHost)) {
-    console.log(
-      `\n  ⚠ binding ${bindHost}:${port} — xezar has no built-in auth.\n` +
-        `    Only do this behind a reverse proxy that enforces authentication,\n` +
-        `    and make sure this interface is not reachable from the internet.\n`,
-    );
-  }
-  startServer({
+  const server = startServer({
     repoRoot,
     store,
     manager,
@@ -315,7 +303,27 @@ async function serveCommand(
     onApp: (built) => {
       app = built;
     },
-  }, port);
+  }, preferredPort);
+  // Nothing below may claim a cockpit before the bind really succeeded (#238): the port
+  // comes from the listening server itself, never from an earlier "is it free" probe.
+  let port: number;
+  try {
+    port = await listenOnFreePort(server, preferredPort, bindHost ?? '127.0.0.1');
+  } catch (err) {
+    store.flush();
+    throw err;
+  }
+  // SECURITY: xezar executes agents. A non-loopback bind exposes that box to
+  // whatever can reach the interface, and xezar itself has NO auth — it is only
+  // for a deliberate hosted setup where a reverse proxy in front provides TLS +
+  // auth (see `server-install --external-proxy`). Say so, loudly, every start.
+  if (bindHost && !['127.0.0.1', 'localhost', '::1'].includes(bindHost)) {
+    console.log(
+      `\n  ⚠ binding ${bindHost}:${port} — xezar has no built-in auth.\n` +
+        `    Only do this behind a reverse proxy that enforces authentication,\n` +
+        `    and make sure this interface is not reachable from the internet.\n`,
+    );
+  }
   // The boot project's MCP socket (#86, D-01 § 5.4), composed over the same app and store
   // the cockpit uses (#243). Fire-and-forget: it never delays or fails boot (N-07), and a
   // failure is one warning.
@@ -349,7 +357,8 @@ async function serveCommand(
     const detail = check.available ? (check.version ?? 'ok') : (check.hint ?? 'missing');
     console.log(`  ${mark} ${check.name.padEnd(6)} ${detail}`);
   }
-  if (port !== preferredPort) console.log(`  (port ${preferredPort} was busy — using ${port})`);
+  // `--port 0` asks the OS for any port; getting one is not "busy".
+  if (port !== preferredPort && preferredPort !== 0) console.log(`  (port ${preferredPort} was busy — using ${port})`);
   console.log(`\n  cockpit → ${url}\n`);
   // Silenced by XEZ_NO_BANNER=1 or by dismissing the cockpit's banner (#391).
   await printSkillsBanner(repoRoot);
@@ -401,20 +410,53 @@ async function startMcpSocket(opts: {
   }
 }
 
-/** First free port starting at `start` (the launch.mjs pattern from janitor). */
-async function pickPort(start: number): Promise<number> {
-  for (let port = start; port < start + 50; port++) {
-    if (await canListen(port)) return port;
-  }
-  return start; // let the server fail loudly if 50 ports are somehow busy
-}
+/** How many ports `serve` tries: the requested one and the 49 after it. */
+const PORT_SPAN = 50;
 
-function canListen(port: number): Promise<boolean> {
-  return new Promise((resolvePort) => {
-    const probe = createServer();
-    probe.once('error', () => resolvePort(false));
-    probe.once('listening', () => probe.close(() => resolvePort(true)));
-    probe.listen(port, '127.0.0.1');
+/**
+ * Wait for `server` — whose first `listen(first, host)` is already under way — to really
+ * listen, and resolve the port it bound. A busy port moves the SAME server to the next one
+ * (BACKWARD_COMPATIBILITY.md §1/§3: "auto-picks the next free port"), until PORT_SPAN
+ * candidates are used up; any other bind error, or running out, rejects with one clear line.
+ *
+ * This replaces a probe that proved a port free and then released it, which let anything
+ * take the port before the real bind and left a printed cockpit URL with nobody behind it
+ * (#238). There is no gap now: the port is the one the server holds.
+ *
+ * Re-listening after a failed `listen` is allowed by Node without `close()` — and `close()`
+ * must not be called here: it emits `close`, which `startServer` treats as the end of the
+ * server and uses to stop its schedulers.
+ */
+function listenOnFreePort(server: Server, first: number, host: string): Promise<number> {
+  const last = first + PORT_SPAN - 1;
+  return new Promise((resolvePort, reject) => {
+    let port = first;
+    const fail = (message: string) => {
+      server.off('error', onError);
+      server.off('listening', onListening);
+      reject(new Error(message));
+    };
+    const onError = (err: NodeJS.ErrnoException) => {
+      if (err.code !== 'EADDRINUSE') {
+        fail(`cannot listen on ${host}:${port} (${err.message})`);
+      } else if (port >= last) {
+        fail(`no free port in ${first}–${last} on ${host}; free one or pass --port <port>`);
+      } else {
+        port += 1;
+        try {
+          server.listen(port, host);
+        } catch (listenErr) {
+          fail(`cannot listen on ${host}:${port} (${listenErr instanceof Error ? listenErr.message : String(listenErr)})`);
+        }
+      }
+    };
+    const onListening = () => {
+      server.off('error', onError);
+      const address = server.address();
+      resolvePort(address && typeof address === 'object' ? address.port : port);
+    };
+    server.on('error', onError);
+    server.once('listening', onListening);
   });
 }
 

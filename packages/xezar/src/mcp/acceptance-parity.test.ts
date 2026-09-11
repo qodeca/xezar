@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { PassThrough } from 'node:stream';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
@@ -15,6 +16,10 @@ import {
   type AbWorldOptions,
 } from '../../test/helpers/ab-fixture.ts';
 import type { RunRecord } from '../runs/store.ts';
+import { mergeWriteWorkspaceConfig } from '../workspace/config.ts';
+import { runBridge, type ServiceTarget } from './bridge.ts';
+import { startMcpService } from './index.ts';
+import { LineFramer, encodeFrame } from './ipc.ts';
 import type { ServiceDispatch } from './service-adapter.ts';
 import { toolListing, type McpToolContext, type McpToolResult } from './tool.ts';
 import { handoffGitTool, QUALITY_BLOCKER_NEXT_ACTION } from './tools/handoff-git.ts';
@@ -116,6 +121,43 @@ function ok(result: McpToolResult): Record<string, any> {
 
 async function mcp(w: AbWorld, tool: string, args: Record<string, unknown> = {}): Promise<Record<string, any>> {
   return ok(await w.call('a', tool, args));
+}
+
+/** The real stdio bridge (`runBridge`) in front of a given socket, with a minimal JSON-RPC client. */
+function bridgeLeader(target: ServiceTarget): { request(method: string, params?: unknown): Promise<any>; close(): Promise<void> } {
+  const input = new PassThrough();
+  const output = new PassThrough();
+  const pending = new Map<number, (message: { result?: unknown; error?: { message: string } }) => void>();
+  const framer = new LineFramer(
+    (line) => {
+      const message = JSON.parse(line) as { id: number; result?: unknown; error?: { message: string } };
+      pending.get(message.id)?.(message);
+      pending.delete(message.id);
+    },
+    () => {},
+  );
+  output.on('data', (chunk: Buffer) => framer.push(chunk));
+  const done = runBridge({ input, output, version: 'parity', tools, resolveTarget: async () => target });
+  let next = 1;
+  return {
+    request: (method, params) =>
+      new Promise((resolve, reject) => {
+        const id = next++;
+        pending.set(id, (message) => (message.error ? reject(new Error(message.error.message)) : resolve(message.result)));
+        input.write(encodeFrame({ jsonrpc: '2.0', id, method, ...(params === undefined ? {} : { params }) }));
+      }),
+    close: async () => {
+      input.end();
+      await done;
+    },
+  };
+}
+
+/** One `leader_events` call through a bridge, answered as its structured content. */
+async function leaderEvents(leader: ReturnType<typeof bridgeLeader>, args: Record<string, unknown>): Promise<Record<string, any>> {
+  const result = (await leader.request('tools/call', { name: 'leader_events', arguments: args })) as McpToolResult;
+  expect(result.isError, resultText(result)).toBeFalsy();
+  return result.structuredContent as Record<string, any>;
 }
 
 /** The human's door: a same-origin cockpit request, answered as status and parsed JSON. */
@@ -881,13 +923,75 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
       }
     }, 120_000);
 
-    blocked(
-      'P-22',
-      ['A-08'],
-      ['I-138', 'I-139'],
-      'the leader is told about the human’s changes live, through the project-filtered event stream',
-      'no MCP tool or notification delivers the project event journal to the leader: the tool registry (`tools/index.ts`) has no journal read and the bridge sends no journal notification. The writer side (journal, event catalog, echo guard, audit trail) is composed by PR #247, still open when this suite was written; a leader-facing read is still missing after it',
-    );
+    parity('P-22', ['A-08'], ['I-138', 'I-139'], 'the leader is told about the human’s changes through its own project’s journal: what changed, in order, with the current state, and nothing of B or the workspace', async () => {
+      const w = world();
+      // The MCP service exactly as `serve` composes it over A (#247, #251): its own journal, catalog,
+      // cursors and `leader_events` port, over A's store and the cockpit's own routes. An event journal
+      // keeps ONE live instance per project file (gapless numbering, `EventJournal.open`), so the
+      // fixture's standalone journal hands A's file over first and the composed service owns it, as it
+      // does in production. The socket gets its own short home, beside the fixture's own A socket.
+      w.a.journal.close();
+      // `startMcpService` binds only a REGISTERED project (D-02), and the fixture's contexts list A
+      // without writing the registry — so A is registered here under its own id, as `serve` does at boot.
+      await mergeWriteWorkspaceConfig((config) => {
+        const now = new Date().toISOString();
+        config.projects.push({ id: PROJECT_A, root: w.a.root, name: w.a.name, addedAt: now, lastOpenedAt: now, source: 'local' });
+      });
+      const home = realpathSync(mkdtempSync('/tmp/xzp22-'));
+      const service = await startMcpService({ projectId: PROJECT_A, version: 'parity', service: w.service, store: w.a.store, env: { ...process.env, XEZ_HOME: home } });
+      const leader = bridgeLeader({ kind: 'socket', path: service.path, project: { id: PROJECT_A, name: w.a.name } });
+      try {
+        // Connect: whatever is outstanding is read, then acknowledged — the leader starts current.
+        const first = await leaderEvents(leader, { action: 'read' });
+        expect(first.status).toBe('ok');
+        await leaderEvents(leader, { action: 'ack', cursor: first.nextCursor });
+        expect((await leaderEvents(leader, { action: 'read' })).events).toEqual([]);
+
+        // The leader is away. The human works in the cockpit: a setting, then a task that finishes.
+        const seen = await w.observe(async () => {
+          expect((await ui(w, '/config', 'PUT', { baseBranch: 'develop' })).status).toBe(200);
+          const [id] = await uiStart(w, { task: 'human work', steps: [{ id: 'ok', name: 'Ok', command: OK_COMMAND }] });
+          await until(() => run(w, id!)?.status === 'done', 'the human’s task to finish');
+          return id!;
+        });
+        const humanTask = seen.response;
+        const back = await leaderEvents(leader, { action: 'read' });
+        const rows = back.events as Array<Record<string, any>>;
+        // In journal order, and every row is A's own.
+        expect(rows.map((r) => r.journalSeq)).toEqual([...rows.map((r) => r.journalSeq as number)].sort((x, y) => x - y));
+        expect(rows.every((r) => r.projectId === PROJECT_A)).toBe(true);
+        // The human's setting: one E-05 row, the human's, naming the key and never its value (F-15).
+        const settings = rows.filter((r) => r.category === 'E-05');
+        expect(settings).toHaveLength(1);
+        expect(settings[0]).toMatchObject({ origin: 'human' });
+        expect(JSON.stringify(settings[0])).toContain('baseBranch');
+        expect(JSON.stringify(settings[0])).not.toContain('develop');
+        // The human's task: its outcome, and its CURRENT state beside it — the cockpit's own answer.
+        expect(rows.some((r) => r.subject?.id === humanTask)).toBe(true);
+        const state = (back.state.tasks as Array<{ id: string; status: string | null }>).find((t) => t.id === humanTask);
+        expect(state?.status).toBe((await ui(w, `/runs/${humanTask}`)).body.status);
+        // Project-filtered (I-138): nothing of B, and none of the workspace-only stream names.
+        expect(leaked(JSON.stringify(back), w.b.names)).toEqual([]);
+        expect(JSON.stringify(rows)).not.toMatch(/project-added|project-removed|checkout-progress|automation-change/);
+        assertIsolated(w, seen);
+        // Acknowledged, nothing is read again. B's own setting change after that reaches A's leader
+        // not at all. (B has no composed service in this world, so this shows no cross-project
+        // reporter — B's own feed is `leader-feed.test.ts`'s two-project proof.)
+        await leaderEvents(leader, { action: 'ack', cursor: back.nextCursor });
+        expect((await ui(w, `/api/v1/p/${PROJECT_B}/config`, 'PUT', { baseBranch: 'bravo-only' })).status).toBe(200);
+        expect((await leaderEvents(leader, { action: 'read' })).events).toEqual([]);
+        // I-139 — the pattern, not a new socket or topic: this project tool is the leader's ONLY event
+        // door. Narrower than "no tool matches /event/" on purpose, because `leader_events` must; and
+        // stronger, because it pins the one allowed name and still refuses any workspace feed.
+        const names = ((await leader.request('tools/list')).tools as Array<{ name: string }>).map((t) => t.name);
+        expect(names.filter((n) => /event/i.test(n))).toEqual(['leader_events']);
+        expect(names.filter((n) => /workspace|subscribe|stream/i.test(n))).toEqual([]);
+      } finally {
+        await leader.close();
+        service.close();
+        rmSync(home, { recursive: true, force: true });
+      }
+    });
   });
 
   // =============================================================================================
@@ -1610,6 +1714,26 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
 const REPO_ROOT = new URL('../../../../', import.meta.url);
 const INVENTORY = new URL('docs/features/mcp-server/mcp-ui-action-inventory.md', REPO_ROOT);
 const COVERAGE_MAP = new URL('docs/features/mcp-server/mcp-parity-coverage-map.md', REPO_ROOT);
+/** The browser half of A-08. It runs only under `npm run test:e2e`; here it is only READ, for its case titles. */
+const BROWSER_SPEC = new URL('packages/web/e2e/mcp-collaboration.e2e.ts', REPO_ROOT);
+
+interface BrowserCase {
+  readonly id: string;
+  readonly acceptance: readonly string[];
+  readonly records: readonly string[];
+  readonly title: string;
+}
+
+/** The browser cases, from their titles: `it('B-nn (A-xx, A-yy) [I-nnn I-mmm] what it proves'`. */
+function browserCases(): BrowserCase[] {
+  const source = readFileSync(BROWSER_SPEC, 'utf8');
+  return [...source.matchAll(/\bit\(\s*'(B-\d{2}) \(([^)]*)\) \[([^\]]*)\] ([^']+)'/g)].map((m) => ({
+    id: m[1]!,
+    acceptance: m[2]!.split(', ').filter(Boolean),
+    records: m[3]!.split(' ').filter(Boolean),
+    title: m[4]!,
+  }));
+}
 
 type InventoryStatus = 'covered' | 'global' | 'presentation';
 
@@ -1622,10 +1746,12 @@ function readInventory(): Map<string, InventoryStatus> {
   return rows;
 }
 
-/** The two published tables, generated from the registry — what the map must say verbatim. */
-function expectedTables(inventory: Map<string, InventoryStatus>): { records: string; cases: string } {
+/** The three published tables, generated from the registry and the browser spec — what the map must say verbatim. */
+function expectedTables(inventory: Map<string, InventoryStatus>): { records: string; cases: string; browser: string } {
   const byRecord = new Map<string, string[]>();
   for (const c of CASES) for (const r of c.records) byRecord.set(r, [...(byRecord.get(r) ?? []), c.blocker ? `${c.id} (BLOCKED)` : c.id]);
+  const browser = browserCases();
+  for (const c of browser) for (const r of c.records) byRecord.set(r, [...(byRecord.get(r) ?? []), c.id]);
   const recordRows = [...inventory]
     .filter(([id, status]) => status === 'covered' || byRecord.has(id))
     .map(([id, status]) => `| ${id} | ${status} | ${(byRecord.get(id) ?? []).join(', ')} |`);
@@ -1633,6 +1759,11 @@ function expectedTables(inventory: Map<string, InventoryStatus>): { records: str
   return {
     records: ['| Record | Inventory status | Cases |', '| --- | --- | --- |', ...recordRows].join('\n'),
     cases: ['| Case | Acceptance | Records | What it proves |', '| --- | --- | --- | --- |', ...caseRows].join('\n'),
+    browser: [
+      '| Case | Acceptance | Records | What it proves |',
+      '| --- | --- | --- | --- |',
+      ...browser.map((c) => `| ${c.id} | ${c.acceptance.join(', ')} | ${c.records.join(', ')} | ${c.title} |`),
+    ].join('\n'),
   };
 }
 
@@ -1669,10 +1800,26 @@ describe('A-05 — the coverage matrix against the closed inventory', () => {
     expect(presentation).toEqual([]);
   });
 
+  it('the browser half of A-08 exists, and every one of its cases names A-08 and inventory records', () => {
+    const inventory = readInventory();
+    const source = readFileSync(BROWSER_SPEC, 'utf8');
+    const cases = browserCases();
+    // A title that misses the `B-nn (…) [ … ]` shape would silently drop out of the map; count them loosely too.
+    expect(cases.length, 'browser cases the title pattern parsed').toBe([...source.matchAll(/\bit(?:\.\w+)?\(\s*['"`]B-\d/g)].length);
+    expect(cases.length).toBeGreaterThan(0);
+    expect(new Set(cases.map((c) => c.id)).size).toBe(cases.length);
+    for (const c of cases) {
+      expect(c.acceptance, c.id).toContain('A-08');
+      expect(c.records.length, c.id).toBeGreaterThan(0);
+      for (const r of c.records) expect(inventory.get(r), `${c.id} names ${r}`).toBe('covered');
+    }
+  });
+
   it('the published coverage map says exactly what this suite registers, both ways', () => {
     const doc = readFileSync(COVERAGE_MAP, 'utf8');
     const expected = expectedTables(readInventory());
     expect(publishedBlock(doc, 'records'), `regenerate the records table:\n${expected.records}`).toBe(expected.records);
     expect(publishedBlock(doc, 'cases'), `regenerate the cases table:\n${expected.cases}`).toBe(expected.cases);
+    expect(publishedBlock(doc, 'browser'), `regenerate the browser table:\n${expected.browser}`).toBe(expected.browser);
   });
 });

@@ -1,0 +1,1470 @@
+import assert from 'node:assert/strict';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, closeSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { createServer, type Server } from 'node:http';
+import { createServer as createNetServer } from 'node:net';
+import { dirname, join, resolve } from 'node:path';
+import { after, before, describe, test, type TestContext } from 'node:test';
+import { setTimeout as delay } from 'node:timers/promises';
+
+import {
+  MCP_PROJECT_OCCUPIED_CODE,
+  MCP_PROJECT_OCCUPIED_REASON,
+  MCP_SESSION_EXPIRED_CODE,
+  MCP_SESSION_EXPIRED_REASON,
+} from '@qodeca/xezar-contract';
+
+import { PROJECT_A, PROJECT_B, XEZAR_VERSION, createAbWorld, leaked, type AbWorld } from '../helpers/ab-fixture.ts';
+import { ProjectOwnership } from '../../src/workspace/project-owner.ts';
+
+/**
+ * #118 — the OWNERSHIP, DELIVERY AND SETUP half of the whole-feature acceptance suite (requirements
+ * § 9): A-01, A-17, A-18, A-19, A-20 (leader half) and A-23, with REAL MCP clients. The cockpit half
+ * of A-20 is `packages/web/e2e/mcp-live-sync.e2e.ts`; the per-client results are recorded in
+ * `docs/features/mcp-server/mcp-client-acceptance-record.md`.
+ *
+ * WHY THIS IS NOT IN ANY GATE. It spawns the real Claude Code, Codex and OpenCode CLIs installed on
+ * the machine, a real `xezar serve` and real `xez mcp` bridge processes. `npm test` and
+ * `npm run test:unit` are the fast gate — no server, no browser — so this file lives under
+ * `test/integration/`, which neither of them includes (packages/xezar/vitest.config.ts includes
+ * `src/**`, `test:unit` globs `test/unit/*`). § 9 asks for exactly this: "real MCP clients and agreed
+ * transports need separate integration validation". Run it, after `npm run build`, from
+ * `packages/xezar`:
+ *
+ *   TMPDIR=/tmp node --import ../../scripts/test-local-state.mjs --import tsx --test test/integration/mcp-real-clients.test.ts
+ *
+ * `TMPDIR=/tmp` keeps the fixture repositories outside the checkout, so a client that walks up from
+ * its working directory never finds this repository's own `.mcp.json`, `opencode.json` or
+ * `.codex/config.toml`. It is node:test on the installed, pinned `tsx`; no `npx` fetches anything.
+ *
+ * WHAT A RESULT MEANS. Every case records, per client, a verdict — PASSED, FAILED, BLOCKED or
+ * NOT-RUN — with the checks behind it, the transcripts, the revision (`git rev-parse HEAD` and whether
+ * the tree was dirty) and the fixture configuration, into `.local/qa/mcp-real-clients/<stamp>/`
+ * (`results.json` plus one transcript file per process). A test FAILS when the product lacks a
+ * required behaviour: the suite asserts what § 9 requires, never what the product happens to do.
+ * BLOCKED means the requirement cannot be observed at all in a § 9 fixture (a real model reaction
+ * needs a personal account, which § 9 forbids) or depends on a piece that does not exist; those
+ * tests are reported as `todo` with the missing piece named, which node:test never counts as a pass.
+ * A client that is not installed is NOT-RUN and its test is skipped — also never a pass.
+ *
+ * THE FIXTURE (§ 9 and the compatibility report's rules):
+ *   - The shared A/B world (`test/helpers/ab-fixture.ts`, #115): two real git projects, A's real
+ *     `RunManager`, the real MCP service loop (`listenMcpSocket`) on one Unix socket per project,
+ *     `XEZ_DRY_RUN=1`, stubbed provider auth, no personal account, no secret. The world wires the
+ *     registry tools to the in-process service — its documented non-production hop — so a real client
+ *     reaching A's socket gets real answers. This harness adds the one thing a separate PROCESS needs
+ *     to find those sockets: the workspace registry entry for A and B in the world's `XEZ_HOME`.
+ *   - A real `xezar serve` (the built `dist/index.js`) over a third fixture repository, for the facts
+ *     only the shipped product can answer: whether it writes the connection file, whether its MCP tools
+ *     reach the service, whether its task lifecycle reaches an event journal, and what a restart does.
+ *   - Each client runs with `HOME` and its own config directory pinned to a scratch folder, every
+ *     `ANTHROPIC_*`, `OPENAI_*`, `CODEX_*`, `CLAUDE_*`, `OPENCODE_*` and `XDG_*` variable removed from
+ *     its environment. A client binary that is a wrapper overriding that pin (this machine's `codex`
+ *     on PATH is one — D-01 § 9.3) is refused, and the next real binary on PATH is used instead.
+ *     Isolation is PROVEN, not assumed: Claude's `mcp add` must name a file inside the pinned folder,
+ *     Codex's `initialize` must answer the pinned `codexHome`, or the client is NOT-RUN.
+ *   - Any model turn goes to a SCRIPTED local Anthropic-Messages endpoint in this process — not a
+ *     model, a stand-in with fixed rules ("CALL <tool>" → a tool call, a tool result → an ack). Claude
+ *     Code runs with `--bare` (never reads OAuth or the keychain) and a dummy key string that is not a
+ *     credential. Nothing here spends a real user's task permissions or account.
+ *   - The one-time setup is D-04 § 3's, as the cockpit's MCP connection screen shows it, with one
+ *     substitution recorded in every result: the command is this revision's built bridge
+ *     (`node <repo>/packages/xezar/dist/index.js mcp`) rather than `npx -y @qodeca/xezar mcp`, which
+ *     would fetch the PUBLISHED package, and each entry carries `XEZ_HOME` because the fixture service
+ *     runs under an isolated home (a real user's entry needs neither).
+ *
+ * DECISIONS THIS SUITE TESTS AND DOES NOT MAKE. The occupied and expired errors are D-02 § 4's
+ * (`-32080` / `-32081`, discriminated by `data.reason`); the connection file is D-04.1's
+ * (`<root>/.local/xezar/mcp-connection.json`). No lease duration is asserted anywhere: the idle-owner
+ * case waits past one renewal interval (D-02.5's 5 s) and makes no claim about the 30 s lease.
+ */
+
+// ---- where things are ----------------------------------------------------------------------
+
+const REPO = resolve(import.meta.dirname, '../../../..');
+const DIST_CLI = join(REPO, 'packages/xezar/dist/index.js');
+const STAMP = new Date().toISOString().replace(/[:.]/g, '-');
+const OUT = join(REPO, '.local/qa/mcp-real-clients', STAMP);
+const T0 = Date.now();
+
+type Verdict = 'PASSED' | 'FAILED' | 'BLOCKED' | 'NOT-RUN';
+type ClientName = 'claude-code' | 'codex' | 'opencode';
+const CLIENTS: readonly ClientName[] = ['claude-code', 'codex', 'opencode'];
+
+interface Check {
+  name: string;
+  required: string;
+  observed: unknown;
+  /** `true` met, `false` not met, `null` could not be observed in this fixture. */
+  ok: boolean | null;
+}
+
+interface CaseRecord {
+  case: string;
+  client: string;
+  verdict: Verdict;
+  summary: string;
+  missing?: string;
+  checks: Check[];
+  transcripts: string[];
+  fixture: Record<string, unknown>;
+}
+
+const results: CaseRecord[] = [];
+
+function git(cwd: string, ...args: string[]): string {
+  return execFileSync('git', ['-c', 'user.email=h118@example.invalid', '-c', 'user.name=h118', '-c', 'commit.gpgsign=false', ...args], {
+    cwd,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+}
+
+const REVISION = (() => {
+  const sha = git(REPO, 'rev-parse', 'HEAD').trim();
+  const dirty = git(REPO, 'status', '--porcelain', '--untracked-files=no').trim() !== '';
+  return { sha, dirty };
+})();
+
+function record(entry: Omit<CaseRecord, 'transcripts'> & { transcripts?: string[] }): CaseRecord {
+  const full: CaseRecord = { transcripts: [], ...entry };
+  results.push(full);
+  return full;
+}
+
+/** The verdict a set of checks earns: any unmet requirement fails; an unobservable one blocks. */
+function verdictOf(checks: readonly Check[]): Verdict {
+  if (checks.some((c) => c.ok === false)) return 'FAILED';
+  if (checks.some((c) => c.ok === null)) return 'BLOCKED';
+  return 'PASSED';
+}
+
+/** End a test the way its record says: FAILED fails, BLOCKED is a todo, NOT-RUN a skip. */
+function settle(t: TestContext, entry: CaseRecord): void {
+  const failed = entry.checks.filter((c) => c.ok === false).map((c) => `${c.name}: required ${c.required}; observed ${short(c.observed)}`);
+  if (entry.verdict === 'FAILED') assert.fail(`${entry.case} ${entry.client} FAILED — ${entry.missing ?? entry.summary}\n  ${failed.join('\n  ')}`);
+  if (entry.verdict === 'BLOCKED') {
+    // A todo that THROWS: node:test reports it as ✖ # TODO and counts it neither as a pass nor as a
+    // failure. A todo that returned would print ✔, which reads like a pass.
+    t.todo(`${entry.case} ${entry.client} BLOCKED — ${entry.missing ?? entry.summary}`);
+    throw new Error(`${entry.case} ${entry.client} BLOCKED — ${entry.missing ?? entry.summary}`);
+  }
+  if (entry.verdict === 'NOT-RUN') t.skip(`${entry.case} ${entry.client} NOT-RUN — ${entry.summary}`);
+}
+
+const short = (value: unknown): string => {
+  const text = typeof value === 'string' ? value : JSON.stringify(value);
+  return text === undefined ? String(value) : text.length > 400 ? `${text.slice(0, 400)}…` : text;
+};
+
+// ---- transcripts ---------------------------------------------------------------------------
+
+class Transcript {
+  readonly path: string;
+  constructor(name: string) {
+    mkdirSync(OUT, { recursive: true });
+    this.path = join(OUT, `${name}.log`);
+    writeFileSync(this.path, '');
+  }
+  line(direction: string, text: string): void {
+    appendFileSync(this.path, `${String(Date.now() - T0).padStart(7)} ${direction} ${text.replace(/\n/g, '\\n')}\n`);
+  }
+  /** The file name relative to the results directory, as a record cites it. */
+  get name(): string {
+    return this.path.slice(OUT.length + 1);
+  }
+}
+
+// ---- processes -----------------------------------------------------------------------------
+
+const children = new Set<ChildProcess>();
+
+/** Stop one child we started, by its own handle — never by pattern (#156). */
+async function stop(child: ChildProcess | undefined, signal: NodeJS.Signals = 'SIGTERM'): Promise<void> {
+  if (!child || child.exitCode !== null || child.signalCode !== null) {
+    if (child) children.delete(child);
+    return;
+  }
+  const exited = new Promise<void>((done) => child.once('exit', () => done()));
+  child.kill(signal);
+  const escalate = delay(5_000, undefined, { ref: false }).then(() => {
+    if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+    return exited;
+  });
+  await Promise.race([exited, escalate]);
+  children.delete(child);
+}
+
+interface CliRun {
+  code: number | null;
+  signal: NodeJS.Signals | null;
+  stdout: string;
+  stderr: string;
+  ms: number;
+}
+
+/** Run one CLI to completion (bounded), recording both streams. */
+function runCli(bin: string, args: readonly string[], opts: { cwd: string; env: NodeJS.ProcessEnv; transcript: Transcript; timeoutMs?: number }): Promise<CliRun> {
+  const started = Date.now();
+  opts.transcript.line('$', `${bin} ${args.join(' ')}   (cwd ${opts.cwd})`);
+  return new Promise((done) => {
+    // PWD follows cwd: a Bun-built client (OpenCode) reads $PWD, not the process cwd, to find its project.
+    const child = spawn(bin, [...args], { cwd: opts.cwd, env: { ...opts.env, PWD: opts.cwd }, stdio: ['ignore', 'pipe', 'pipe'] });
+    children.add(child);
+    let stdout = '';
+    let stderr = '';
+    child.stdout!.on('data', (chunk: Buffer) => {
+      stdout += chunk.toString('utf8');
+    });
+    child.stderr!.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString('utf8');
+    });
+    const timer = setTimeout(() => void stop(child, 'SIGKILL'), opts.timeoutMs ?? 90_000);
+    child.on('exit', (code, signal) => {
+      clearTimeout(timer);
+      children.delete(child);
+      for (const line of stdout.split('\n').filter(Boolean)) opts.transcript.line('out', line);
+      for (const line of stderr.split('\n').filter(Boolean)) opts.transcript.line('err', line);
+      opts.transcript.line('exit', `code=${code} signal=${signal} ms=${Date.now() - started}`);
+      done({ code, signal, stdout, stderr, ms: Date.now() - started });
+    });
+  });
+}
+
+interface RpcAnswer {
+  id?: number | string;
+  result?: any;
+  error?: { code: number; message: string; data?: any };
+}
+
+/**
+ * A newline-delimited JSON-RPC peer over a child's stdio: the real `xez mcp` bridge (`jsonrpc:
+ * '2.0'`) or `codex app-server` (the header omitted, as its protocol does). Every line either way is
+ * in the transcript.
+ */
+class LineRpc {
+  readonly child: ChildProcess;
+  readonly transcript: Transcript;
+  readonly unsolicited: any[] = [];
+  private readonly pending = new Map<number, (answer: RpcAnswer) => void>();
+  private nextId = 1;
+  private buffer = '';
+  readonly exited: Promise<{ code: number | null; signal: NodeJS.Signals | null }>;
+
+  constructor(
+    bin: string,
+    args: readonly string[],
+    opts: { cwd: string; env: NodeJS.ProcessEnv; transcript: Transcript; jsonrpc: boolean },
+  ) {
+    this.transcript = opts.transcript;
+    this.jsonrpc = opts.jsonrpc;
+    opts.transcript.line('$', `${bin} ${args.join(' ')}   (cwd ${opts.cwd})`);
+    this.child = spawn(bin, [...args], { cwd: opts.cwd, env: { ...opts.env, PWD: opts.cwd }, stdio: ['pipe', 'pipe', 'pipe'] });
+    children.add(this.child);
+    this.child.stdout!.on('data', (chunk: Buffer) => this.push(chunk.toString('utf8')));
+    this.child.stderr!.on('data', (chunk: Buffer) => {
+      for (const line of chunk.toString('utf8').split('\n').filter(Boolean)) opts.transcript.line('err', line);
+    });
+    this.child.stdin!.on('error', () => {
+      // A peer that died mid-write is reported by `exited`, not by an unhandled error.
+    });
+    this.exited = new Promise((done) =>
+      this.child.on('exit', (code, signal) => {
+        children.delete(this.child);
+        opts.transcript.line('exit', `code=${code} signal=${signal}`);
+        for (const settle of this.pending.values()) settle({ error: { code: -1, message: `process exited (${code ?? signal})` } });
+        this.pending.clear();
+        done({ code, signal });
+      }),
+    );
+  }
+
+  private readonly jsonrpc: boolean;
+
+  private push(text: string): void {
+    this.buffer += text;
+    let index: number;
+    while ((index = this.buffer.indexOf('\n')) >= 0) {
+      const line = this.buffer.slice(0, index).trim();
+      this.buffer = this.buffer.slice(index + 1);
+      if (!line) continue;
+      this.transcript.line('<-', line);
+      let message: any;
+      try {
+        message = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      if (typeof message.id === 'number' && this.pending.has(message.id) && !('method' in message)) {
+        this.pending.get(message.id)!(message as RpcAnswer);
+        this.pending.delete(message.id);
+      } else {
+        this.unsolicited.push(message);
+      }
+    }
+  }
+
+  private send(message: Record<string, unknown>): void {
+    const line = JSON.stringify(this.jsonrpc ? { jsonrpc: '2.0', ...message } : message);
+    this.transcript.line('->', line);
+    this.child.stdin!.write(`${line}\n`);
+  }
+
+  request(method: string, params?: unknown, timeoutMs = 30_000): Promise<RpcAnswer> {
+    const id = this.nextId++;
+    return new Promise((done) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        done({ error: { code: -2, message: `no answer to ${method} within ${timeoutMs} ms` } });
+      }, timeoutMs);
+      this.pending.set(id, (answer) => {
+        clearTimeout(timer);
+        done(answer);
+      });
+      this.send({ id, method, ...(params === undefined ? {} : { params }) });
+    });
+  }
+
+  notify(method: string, params?: unknown): void {
+    this.send({ method, ...(params === undefined ? {} : { params }) });
+  }
+
+  get alive(): boolean {
+    return this.child.exitCode === null && this.child.signalCode === null;
+  }
+
+  async close(): Promise<void> {
+    this.child.stdin!.end();
+    const quit = await Promise.race([this.exited.then(() => true), delay(3_000, false, { ref: false })]);
+    if (!quit) await stop(this.child);
+  }
+}
+
+// ---- environment isolation -----------------------------------------------------------------
+
+const ISOLATED_PREFIXES = /^(ANTHROPIC_|OPENAI_|CODEX_|CLAUDE_|OPENCODE_|XDG_|XEZ_|GITHUB_TOKEN$|GH_TOKEN$)/;
+
+/** A child environment with every agent, vendor and xezar variable removed, then the pins added. */
+function isolatedEnv(home: string, extra: Record<string, string>): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(process.env)) if (!ISOLATED_PREFIXES.test(key)) env[key] = value;
+  return { ...env, HOME: home, ...extra };
+}
+
+interface ResolvedClient {
+  bin: string;
+  version: string;
+  /** Candidates on PATH that were refused, and why. */
+  refused: string[];
+}
+
+/**
+ * The first real binary for a client on PATH that does not override `isolationVar`. A shell
+ * wrapper that assigns that variable would send the client to the user's real configuration.
+ */
+function resolveClient(name: string, isolationVar: string, versionArgs: string[]): ResolvedClient | { absent: string } {
+  let candidates: string[];
+  try {
+    candidates = execFileSync('which', ['-a', name], { encoding: 'utf8' }).split('\n').filter(Boolean);
+  } catch {
+    return { absent: `\`${name}\` is not on PATH` };
+  }
+  const refused: string[] = [];
+  for (const candidate of [...new Set(candidates)]) {
+    const head = Buffer.alloc(8192);
+    const fd = openSync(candidate, 'r');
+    const read = readSync(fd, head, 0, head.length, 0);
+    closeSync(fd);
+    const text = head.subarray(0, read).toString('utf8');
+    if (text.startsWith('#!') && text.includes(`${isolationVar}=`)) {
+      refused.push(`${candidate}: a wrapper script that assigns ${isolationVar}, which would defeat the fixture's isolation`);
+      continue;
+    }
+    let version: string;
+    try {
+      version = execFileSync(candidate, versionArgs, { encoding: 'utf8', timeout: 20_000, env: isolatedEnv(process.env.HOME ?? '/', {}) }).trim().split('\n')[0] ?? '';
+    } catch (err) {
+      refused.push(`${candidate}: \`${versionArgs.join(' ')}\` failed (${err instanceof Error ? err.message.split('\n')[0] : String(err)})`);
+      continue;
+    }
+    return { bin: candidate, version, refused };
+  }
+  return { absent: `no usable \`${name}\` on PATH: ${refused.join('; ')}` };
+}
+
+// ---- the scripted model endpoint -----------------------------------------------------------
+
+interface ModelRequest {
+  n: number;
+  client: string;
+  tools: string[];
+  lastText: string;
+  decision: string;
+  isTitle: boolean;
+}
+
+/**
+ * A scripted stand-in for the Anthropic Messages API, streaming and not — NOT a model. "CALL <name>"
+ * in the pending user text becomes a tool call to the first offered tool whose name contains <name>,
+ * with the fixed arguments below; a tool result becomes an acknowledgement quoting it. Every request
+ * is logged.
+ */
+const TOOL_ARGUMENTS: Record<string, Record<string, unknown>> = {
+  task_read: { view: 'list', archived: 'include' },
+};
+
+class ScriptedEndpoint {
+  readonly requests: ModelRequest[] = [];
+  private server: Server | undefined;
+  port = 0;
+  private readonly transcript = new Transcript('scripted-model-endpoint');
+
+  async start(): Promise<void> {
+    this.server = createServer((req, res) => {
+      let raw = '';
+      req.on('data', (chunk: Buffer) => (raw += chunk.toString('utf8')));
+      req.on('end', () => {
+        try {
+          this.answer(req.url ?? '', raw, String(req.headers['user-agent'] ?? ''), res);
+        } catch (err) {
+          // Never leave a client waiting on a request this stand-in could not script.
+          this.transcript.line('fail', err instanceof Error ? err.message : String(err));
+          if (!res.headersSent) res.writeHead(500, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ type: 'error', error: { type: 'api_error', message: 'scripted endpoint failed' } }));
+        }
+      });
+    });
+    await new Promise<void>((done) => this.server!.listen(0, '127.0.0.1', () => done()));
+    this.port = (this.server!.address() as { port: number }).port;
+  }
+
+  private answer(url: string, raw: string, agent: string, res: import('node:http').ServerResponse): void {
+    if (url.includes('count_tokens')) {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ input_tokens: 1 }));
+      return;
+    }
+    if (!url.includes('/messages')) {
+      res.writeHead(404, { 'content-type': 'application/json' });
+      res.end('{}');
+      return;
+    }
+    let body: any = {};
+    try {
+      body = JSON.parse(raw || '{}');
+    } catch {
+      /* logged below as an empty request */
+    }
+    const textOf = (content: unknown): string =>
+      typeof content === 'string'
+        ? content
+        : Array.isArray(content)
+          ? content.map((b: any) => (b?.type === 'text' ? b.text : b?.type === 'tool_result' ? `TOOL_RESULT: ${textOf(b.content)}` : '')).join('\n')
+          : '';
+    const messages: any[] = Array.isArray(body.messages) ? body.messages : [];
+    let i = messages.length;
+    while (i > 0 && messages[i - 1]?.role !== 'assistant') i -= 1;
+    const pending = messages.slice(i).map((m) => textOf(m.content)).join('\n');
+    const system = Array.isArray(body.system) ? body.system.map((s: any) => s?.text ?? '').join('\n') : String(body.system ?? '');
+    const tools: string[] = (body.tools ?? []).map((t: any) => String(t.name));
+    const isTitle = tools.length === 0 && /title/i.test(system);
+    let tool: { name: string; input: unknown } | undefined;
+    let text: string;
+    const toolResult = pending.indexOf('TOOL_RESULT: ');
+    if (isTitle) text = 'scripted session';
+    else if (toolResult >= 0) text = `SCRIPTED-ACK ${pending.slice(toolResult + 13, toolResult + 13 + 600)}`;
+    else {
+      // A bare word: OpenCode quotes the message it was given, so nothing after the name is parsed.
+      const call = /CALL ([A-Za-z0-9_]+)/.exec(pending);
+      const name = call ? tools.find((t) => t.includes(call[1]!)) : undefined;
+      if (call && name) {
+        tool = { name, input: TOOL_ARGUMENTS[call[1]!] ?? {} };
+        text = '';
+      } else text = call ? `SCRIPTED-NO-TOOL matching ${call[1]} among ${tools.length} tools` : `SCRIPTED-REPLY ${pending.slice(0, 200)}`;
+    }
+    const entry: ModelRequest = {
+      n: this.requests.length + 1,
+      client: /claude/i.test(agent) ? 'claude-code' : /opencode|ai-sdk/i.test(agent) ? 'opencode' : agent.slice(0, 40),
+      tools: tools.filter((t) => /xezar/.test(t)),
+      lastText: pending.slice(0, 1_500),
+      decision: tool ? `tool ${tool.name}` : `text ${text.slice(0, 120)}`,
+      isTitle,
+    };
+    this.requests.push(entry);
+    this.transcript.line('req', JSON.stringify(entry));
+    const id = `msg_scripted_${entry.n}`;
+    const stop = tool ? 'tool_use' : 'end_turn';
+    const usage = { input_tokens: 1, output_tokens: 1 };
+    if (!body.stream) {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          id,
+          type: 'message',
+          role: 'assistant',
+          model: body.model,
+          content: tool ? [{ type: 'tool_use', id: `toolu_scripted_${entry.n}`, name: tool.name, input: tool.input }] : [{ type: 'text', text }],
+          stop_reason: stop,
+          stop_sequence: null,
+          usage,
+        }),
+      );
+      return;
+    }
+    const sse = (event: string, data: unknown): void => void res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
+    sse('message_start', { type: 'message_start', message: { id, type: 'message', role: 'assistant', model: body.model, content: [], stop_reason: null, stop_sequence: null, usage } });
+    if (tool) {
+      sse('content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: `toolu_scripted_${entry.n}`, name: tool.name, input: {} } });
+      sse('content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: JSON.stringify(tool.input) } });
+    } else {
+      sse('content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } });
+      sse('content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text } });
+    }
+    sse('content_block_stop', { type: 'content_block_stop', index: 0 });
+    sse('message_delta', { type: 'message_delta', delta: { stop_reason: stop, stop_sequence: null }, usage: { output_tokens: 1 } });
+    sse('message_stop', { type: 'message_stop' });
+    res.end();
+  }
+
+  /** Tool results the endpoint received since request `from` (1-based count), as text. */
+  toolResultsSince(from: number): string[] {
+    return this.requests
+      .slice(from)
+      .map((r) => r.lastText)
+      .filter((text) => text.includes('TOOL_RESULT: '))
+      .map((text) => text.slice(text.indexOf('TOOL_RESULT: ') + 13));
+  }
+
+  close(): void {
+    this.server?.close();
+  }
+}
+
+// ---- the fixture ---------------------------------------------------------------------------
+
+const freePort = (): Promise<number> =>
+  new Promise((done, fail) => {
+    const probe = createNetServer();
+    probe.once('error', fail);
+    probe.listen(0, '127.0.0.1', () => {
+      const port = (probe.address() as { port: number }).port;
+      probe.close(() => done(port));
+    });
+  });
+
+async function waitFor<T>(what: string, probe: () => T | undefined | Promise<T | undefined>, timeoutMs = 20_000): Promise<T> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const value = await probe();
+    if (value !== undefined && value !== false) return value as T;
+    if (Date.now() > deadline) throw new Error(`timed out after ${timeoutMs} ms waiting for ${what}`);
+    await delay(100);
+  }
+}
+
+/** A committed fixture repository whose `git status` starts clean. */
+function makeRepo(base: string, name: string): string {
+  const root = join(base, name);
+  mkdirSync(root, { recursive: true });
+  writeFileSync(join(root, 'README.md'), `# ${name}\n`, 'utf8');
+  git(root, 'init', '-q', '-b', 'main');
+  git(root, 'add', '-A');
+  git(root, 'commit', '-q', '-m', 'fixture');
+  return realpathSync(root);
+}
+
+/** A real `xezar serve` process over its own repository and home — the shipped product. */
+interface ServeHandle {
+  child: ChildProcess;
+  base: string;
+  projectId: string;
+  socket: string;
+  root: string;
+  home: string;
+  transcript: Transcript;
+}
+
+async function startServe(root: string, home: string, name: string, agentHome: string): Promise<ServeHandle> {
+  const port = await freePort();
+  const transcript = new Transcript(name);
+  const env = isolatedEnv(process.env.HOME ?? '/', {
+    XEZ_DRY_RUN: '1',
+    XEZ_HOME: home,
+    XEZ_SKILLS_AUTO_UPDATE: '0',
+    CLAUDE_CONFIG_DIR: join(agentHome, 'claude'),
+    CODEX_HOME: join(agentHome, 'codex'),
+    OPENCODE_CONFIG_DIR: join(agentHome, 'opencode'),
+  });
+  for (const dir of ['claude', 'codex', 'opencode']) mkdirSync(join(agentHome, dir), { recursive: true });
+  transcript.line('$', `node ${DIST_CLI} --repo ${root} --port ${port} --no-open`);
+  const child = spawn(process.execPath, [DIST_CLI, '--repo', root, '--port', String(port), '--no-open'], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] });
+  children.add(child);
+  for (const stream of [child.stdout!, child.stderr!]) {
+    stream.on('data', (chunk: Buffer) => {
+      for (const line of chunk.toString('utf8').split('\n').filter(Boolean)) transcript.line('log', line);
+    });
+  }
+  const base = `http://127.0.0.1:${port}`;
+  await waitFor(`${name} health`, async () => {
+    try {
+      return (await fetch(`${base}/api/v1/health`)).ok || undefined;
+    } catch {
+      return undefined;
+    }
+  }, 60_000);
+  const projectId = ((await (await fetch(`${base}/api/v1/projects`)).json()) as { bootProject: string }).bootProject;
+  const socket = join(home, 'ipc', `${projectId}.sock`);
+  await waitFor(`${name} MCP socket`, () => (existsSync(socket) ? true : undefined), 15_000).catch(() => undefined);
+  return { child, base, projectId, socket, root, home, transcript };
+}
+
+interface JournalRow {
+  eventId: string;
+  journalSeq: number;
+  category: string;
+  kind: string;
+  origin: string;
+  causedBy: string | null;
+  subject: { type: string; id: string };
+  summary: string;
+}
+
+/** A project's event journal as the running service wrote it (`<dataDir>/mcp/event-journal.ndjson`). */
+function readJournal(root: string): JournalRow[] | undefined {
+  const file = join(root, '.local/xezar/mcp/event-journal.ndjson');
+  if (!existsSync(file)) return undefined;
+  return readFileSync(file, 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line) as JournalRow);
+}
+
+/** A run's status through the cockpit, whichever envelope the route answers with. */
+async function runStatus(serve: ServeHandle, runId: string | undefined): Promise<string | undefined> {
+  if (!runId) return undefined;
+  const run = await cockpit(serve, `/api/v1/runs/${runId}`);
+  return run.json?.status ?? run.json?.run?.status;
+}
+
+/** A same-origin cockpit request to a real serve — the human's door. */
+async function cockpit(serve: ServeHandle, path: string, method = 'GET', body?: unknown): Promise<{ status: number; json: any }> {
+  const res = await fetch(`${serve.base}${path}`, {
+    method,
+    headers: { origin: serve.base, ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+  const text = await res.text();
+  let json: any = text;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    /* kept as text */
+  }
+  return { status: res.status, json };
+}
+
+interface Fixture {
+  world: AbWorld;
+  scratch: string;
+  endpoint: ScriptedEndpoint;
+  clients: Partial<Record<ClientName, ResolvedClient>>;
+  absent: Partial<Record<ClientName, string>>;
+  /** Every result the A-01 legs produced, reused by A-23. */
+  setup: Partial<Record<ClientName, CaseRecord>>;
+  /** Every A-17 second-client observation, reused by A-23. */
+  competing: Partial<Record<ClientName, Check>>;
+  reaction: Partial<Record<ClientName, CaseRecord>>;
+}
+
+let fx: Fixture;
+
+const bridgeEnv = (world: AbWorld, home: string): NodeJS.ProcessEnv => isolatedEnv(home, { XEZ_HOME: world.home, XEZ_DRY_RUN: '1' });
+
+/** A real `xez mcp` bridge process spawned in `root`, the way a client spawns it. */
+async function openBridge(name: string, root: string, env: NodeJS.ProcessEnv): Promise<{ rpc: LineRpc; init: RpcAnswer }> {
+  const rpc = new LineRpc(process.execPath, [DIST_CLI, 'mcp'], { cwd: root, env, transcript: new Transcript(name), jsonrpc: true });
+  const init = await rpc.request('initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: `h118-${name}`, version: '0' } });
+  if (!init.error) rpc.notify('notifications/initialized');
+  return { rpc, init };
+}
+
+const toolText = (answer: RpcAnswer): string =>
+  answer.error ? `JSON-RPC error ${answer.error.code}: ${answer.error.message}` : ((answer.result?.content ?? []) as Array<{ text?: string }>).map((b) => b.text ?? '').join('\n');
+
+/** D-02 § 4's occupied error, by its authoritative discriminator. */
+const isOccupied = (answer: RpcAnswer | undefined): boolean =>
+  answer?.error?.code === MCP_PROJECT_OCCUPIED_CODE && answer.error.data?.reason === MCP_PROJECT_OCCUPIED_REASON;
+const isExpired = (answer: RpcAnswer | undefined): boolean =>
+  answer?.error?.code === MCP_SESSION_EXPIRED_CODE && answer.error.data?.reason === MCP_SESSION_EXPIRED_REASON;
+
+const OWNERSHIP_GAP =
+  'exclusive ownership over a live MCP session is not wired: nothing in the running service calls `ProjectOwnership` (src/workspace/project-owner.ts), and the bridge opens one socket connection per tool call (src/mcp/bridge.ts), so no session exists whose close could be observed — `initialize` is answered by the bridge without ever reaching the service. Leader decision: Phase 6 bridge protocol change, out of release 0.14.0';
+
+before(async () => {
+  assert.ok(existsSync(DIST_CLI), `the built CLI is missing at ${DIST_CLI}: run \`npm run build\` first — this harness drives the built bridge`);
+  mkdirSync(OUT, { recursive: true });
+  const world = await createAbWorld({});
+  // The one thing a separate bridge PROCESS needs to find the world's sockets: A and B in the
+  // registry the bridge reads (`resolveMcpTarget`), inside the world's own XEZ_HOME.
+  writeFileSync(
+    join(world.home, 'config.json'),
+    `${JSON.stringify({
+      projects: [
+        { id: PROJECT_A, root: world.a.root, name: world.a.name, addedAt: '2026-09-11T00:00:00.000Z', lastOpenedAt: '' },
+        { id: PROJECT_B, root: world.b.root, name: world.b.name, addedAt: '2026-09-11T00:00:00.000Z', lastOpenedAt: '' },
+      ],
+    })}\n`,
+    { encoding: 'utf8', mode: 0o600 },
+  );
+  const scratch = realpathSync(mkdtempSync('/tmp/xez118-'));
+  const endpoint = new ScriptedEndpoint();
+  await endpoint.start();
+  const clients: Fixture['clients'] = {};
+  const absent: Fixture['absent'] = {};
+  const found = {
+    'claude-code': resolveClient('claude', 'CLAUDE_CONFIG_DIR', ['--version']),
+    codex: resolveClient('codex', 'CODEX_HOME', ['--version']),
+    opencode: resolveClient('opencode', 'OPENCODE_CONFIG_DIR', ['--version']),
+  } as const;
+  for (const name of CLIENTS) {
+    const hit = found[name];
+    if ('absent' in hit) absent[name] = hit.absent;
+    else clients[name] = hit;
+  }
+  fx = { world, scratch, endpoint, clients, absent, setup: {}, competing: {}, reaction: {} };
+  writeFileSync(
+    join(OUT, 'environment.json'),
+    `${JSON.stringify(
+      {
+        revision: REVISION,
+        node: process.version,
+        platform: `${process.platform} ${process.arch}`,
+        dist: { path: 'packages/xezar/dist/index.js', mtime: statSync(DIST_CLI).mtime.toISOString() },
+        xezarVersionInWorld: XEZAR_VERSION,
+        clients: Object.fromEntries(CLIENTS.map((c) => [c, clients[c] ? { version: clients[c]!.version, refusedCandidates: clients[c]!.refused } : { absent: absent[c] }])),
+        fixture: {
+          world: 'test/helpers/ab-fixture.ts createAbWorld({}) — A and B, XEZ_DRY_RUN=1, stubbed provider auth',
+          model: 'scripted local Anthropic-Messages endpoint in the harness process (not a model)',
+          bridgeCommand: 'node packages/xezar/dist/index.js mcp (instead of `npx -y @qodeca/xezar mcp`)',
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  );
+});
+
+after(async () => {
+  for (const child of [...children]) await stop(child);
+  fx?.endpoint.close();
+  writeFileSync(join(OUT, 'results.json'), `${JSON.stringify({ revision: REVISION, stamp: STAMP, results }, null, 2)}\n`);
+  const table = results.map((r) => `| ${r.case} | ${r.client} | ${r.verdict} | ${r.summary.replace(/\|/g, '\\|')} |`).join('\n');
+  writeFileSync(join(OUT, 'results.md'), `| Case | Client | Verdict | Summary |\n| --- | --- | --- | --- |\n${table}\n`);
+  await fx?.world.dispose();
+  if (fx?.scratch) rmSync(fx.scratch, { recursive: true, force: true });
+  console.log(`\n#118 real-client results: ${join(OUT, 'results.json')}\n`);
+});
+
+// ---- A-01: provisioning and one-time setup -------------------------------------------------
+
+describe('A-01 — connection provisioning and one-time setup, per officially supported client', () => {
+  test('[product] a running xezar writes the connection configuration into the project’s .local/xezar/', async (t) => {
+    const base = mkdtempSync(join(fx.scratch, 'prod-'));
+    const root = makeRepo(base, 'project-prod');
+    const home = join(base, 'home');
+    const serve = await startServe(root, home, 'a01-product-serve', join(base, 'agent-home'));
+    try {
+      const file = join(root, '.local/xezar/mcp-connection.json');
+      const present = existsSync(file);
+      const mode = present ? (statSync(file).mode & 0o777).toString(8) : null;
+      const socketUp = existsSync(serve.socket);
+      const ignored = present ? git(root, 'check-ignore', '.local/xezar/mcp-connection.json').trim() : null;
+      const checks: Check[] = [
+        { name: 'service socket open for the project', required: 'the MCP socket exists (D-01)', observed: socketUp ? serve.socket.slice(home.length) : 'absent', ok: socketUp },
+        { name: 'connection file written', required: 'xezar writes <root>/.local/xezar/mcp-connection.json on project-context build (D-04.1, D-04.3)', observed: present ? `present, mode ${mode}` : 'absent after boot', ok: present },
+      ];
+      if (present) checks.push({ name: 'connection file mode 0600 and ignored by Git', required: 'mode 600, matched by .local/.gitignore (D-04.2, D-04.4)', observed: { mode, ignored }, ok: mode === '600' && ignored === '.local/xezar/mcp-connection.json' });
+      const entry = record({
+        case: 'A-01',
+        client: '(xezar service)',
+        verdict: verdictOf(checks),
+        summary: present ? 'the running service wrote the connection file' : 'a real `xezar serve` opened the MCP socket but wrote no .local/xezar/mcp-connection.json',
+        ...(present ? {} : { missing: 'no production writer of the D-04 connection file: `mcp-connection.json` is named only in tests (ab-fixture.ts plants it), and D-04.3’s creation trigger in ProjectContexts.build is not implemented' }),
+        checks,
+        transcripts: [serve.transcript.name],
+        fixture: { serve: 'node packages/xezar/dist/index.js --repo <fresh repo> --no-open', env: 'XEZ_DRY_RUN=1, isolated XEZ_HOME and agent config dirs' },
+      });
+      settle(t, entry);
+    } finally {
+      await stop(serve.child);
+    }
+  });
+
+  test('[product] the MCP tools of a real `xezar serve` reach the service', async (t) => {
+    const base = mkdtempSync(join(fx.scratch, 'prod-'));
+    const root = makeRepo(base, 'project-tools');
+    const home = join(base, 'home');
+    const serve = await startServe(root, home, 'a01-product-tools-serve', join(base, 'agent-home'));
+    try {
+      const { rpc } = await openBridge('a01-product-bridge', root, isolatedEnv(join(base, 'bridge-home'), { XEZ_HOME: home, XEZ_DRY_RUN: '1' }));
+      const health = await rpc.request('tools/call', { name: 'health', arguments: {} });
+      const list = await rpc.request('tools/call', { name: 'task_read', arguments: { view: 'list' } });
+      await rpc.close();
+      const checks: Check[] = [
+        { name: 'bridge health reaches the service', required: 'health names this project', observed: toolText(health), ok: toolText(health).includes(serve.projectId) },
+        { name: 'a registry tool reaches the service', required: 'task_read list answers with a task list', observed: toolText(list), ok: !list.result?.isError && toolText(list).includes('"tasks"') },
+      ];
+      const entry = record({
+        case: 'A-01',
+        client: '(xezar service tools)',
+        verdict: verdictOf(checks),
+        summary: checks[1]!.ok ? 'registry tools answer through the real service' : 'only the bridge’s own `health` reaches the real service; every registry tool answers that it is not connected',
+        ...(checks[1]!.ok ? {} : { missing: '`listenMcpSocket` builds a tool context with only `project` and `xezarVersion` (src/mcp/service.ts) — no service entry reaches the tools in the shipped product' }),
+        checks,
+        transcripts: [serve.transcript.name, 'a01-product-bridge.log'],
+        fixture: { serve: 'real xezar serve, XEZ_DRY_RUN=1', bridge: 'node packages/xezar/dist/index.js mcp, cwd = project root' },
+      });
+      settle(t, entry);
+    } finally {
+      await stop(serve.child);
+    }
+  });
+
+  for (const client of CLIENTS) {
+    test(`[${client}] one-time setup, then the client reaches A — and only A`, async (t) => {
+      const resolved = fx.clients[client];
+      if (!resolved) {
+        const entry = record({ case: 'A-01', client, verdict: 'NOT-RUN', summary: fx.absent[client] ?? 'client not found', checks: [], fixture: {} });
+        fx.setup[client] = entry;
+        return settle(t, entry);
+      }
+      const entry = await setupLeg(client, resolved);
+      fx.setup[client] = entry;
+      settle(t, entry);
+    });
+  }
+});
+
+/** What every client's entry runs — this revision's bridge, pointed at the fixture's home. */
+const bridgeCommand = (): { command: string; args: string[] } => ({ command: process.execPath, args: [DIST_CLI, 'mcp'] });
+
+async function setupLeg(client: ClientName, resolved: ResolvedClient): Promise<CaseRecord> {
+  const { world, endpoint } = fx;
+  const home = realpathSync(mkdtempSync(join(fx.scratch, `${client}-home-`)));
+  const transcript = new Transcript(`a01-${client}`);
+  const before = git(world.a.root, 'status', '--porcelain', '--untracked-files=all');
+  const checks: Check[] = [];
+  const fixture: Record<string, unknown> = { client: resolved.bin, version: resolved.version, refusedCandidates: resolved.refused, home: '<scratch>' };
+  const cmd = bridgeCommand();
+  const aName = `project ${world.a.name} (${PROJECT_A})`;
+  let reached: string[] = [];
+  let configText = '';
+  let setupFiles: string[] = [];
+
+  if (client === 'claude-code') {
+    const env = isolatedEnv(home, { CLAUDE_CONFIG_DIR: join(home, '.claude') });
+    const add = await runCli(resolved.bin, ['mcp', 'add', '--scope', 'local', 'xezar', '-e', `XEZ_HOME=${world.home}`, '-e', 'XEZ_DRY_RUN=1', '--', cmd.command, ...cmd.args], { cwd: world.a.root, env, transcript });
+    const configFile = /File modified: (\S+)/.exec(add.stdout)?.[1];
+    const isolated = configFile !== undefined && realpathSync(dirname(configFile)).startsWith(home);
+    checks.push({ name: 'one-time step (`claude mcp add --scope local`)', required: 'exit 0, writing a file inside the pinned config folder', observed: { code: add.code, configFile: configFile?.replace(home, '<home>') }, ok: add.code === 0 && isolated });
+    if (!isolated) return notRun(client, 'Claude Code did not write inside the pinned CLAUDE_CONFIG_DIR — refusing to go on with a possibly real configuration', checks, transcript, fixture);
+    configText = readFileSync(configFile!, 'utf8');
+    setupFiles = [configFile!.replace(home, '<home>')];
+    const list = await runCli(resolved.bin, ['mcp', 'list'], { cwd: world.a.root, env, transcript });
+    checks.push({ name: 'handshake (`claude mcp list`)', required: 'xezar ✔ Connected', observed: list.stdout.split('\n').find((l) => l.startsWith('xezar')) ?? list.stdout.slice(0, 300), ok: /^xezar:.*Connected/m.test(list.stdout) });
+    // The handshake never touches the service (D-01 § 5), so reaching A needs a tool call, and a
+    // tool call needs a model turn. `--bare` never reads OAuth or the keychain; in bare mode Claude
+    // Code reads MCP servers only from `--mcp-config`, so the SAME entry is passed there.
+    const mcpConfig = join(home, 'mcp-config.json');
+    writeFileSync(mcpConfig, JSON.stringify({ mcpServers: { xezar: { type: 'stdio', command: cmd.command, args: cmd.args, env: { XEZ_HOME: world.home, XEZ_DRY_RUN: '1' } } } }));
+    const turnEnv = isolatedEnv(home, { CLAUDE_CONFIG_DIR: join(home, '.claude'), ANTHROPIC_BASE_URL: `http://127.0.0.1:${endpoint.port}`, ANTHROPIC_API_KEY: 'dummy-not-a-credential', CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1' });
+    for (const prompt of ['CALL health', 'CALL task_read']) {
+      const from = endpoint.requests.length;
+      const turn = await runCli(
+        resolved.bin,
+        ['-p', '--bare', '--mcp-config', mcpConfig, '--strict-mcp-config', '--allowedTools', 'mcp__xezar__health', 'mcp__xezar__task_read', '--output-format', 'stream-json', '--verbose', prompt],
+        { cwd: world.a.root, env: turnEnv, transcript, timeoutMs: 120_000 },
+      );
+      reached.push(...endpoint.toolResultsSince(from));
+      if (turn.code !== 0) reached.push(`(claude -p exited ${turn.code}: ${turn.stderr.slice(0, 200)})`);
+    }
+    fixture.turn = 'claude -p --bare --mcp-config <same entry> --strict-mcp-config; ANTHROPIC_BASE_URL = scripted endpoint; dummy key';
+  }
+
+  if (client === 'codex') {
+    const codexHome = join(home, '.codex');
+    mkdirSync(codexHome, { recursive: true });
+    // D-04 § 3.2, both parts: the project file, and trusting the project once. The model provider
+    // points at a closed local port: nothing here may reach a real account, and no turn is started.
+    mkdirSync(join(world.a.root, '.codex'), { recursive: true });
+    const projectToml = `[mcp_servers.xezar]\ncommand = ${JSON.stringify(cmd.command)}\nargs = ${JSON.stringify(cmd.args)}\nenv = { XEZ_HOME = ${JSON.stringify(world.home)}, XEZ_DRY_RUN = "1" }\n`;
+    writeFileSync(join(world.a.root, '.codex/config.toml'), projectToml);
+    writeFileSync(
+      join(codexHome, 'config.toml'),
+      `model = "scripted"\nmodel_provider = "fixture"\n\n[model_providers.fixture]\nname = "fixture"\nbase_url = "http://127.0.0.1:9/v1"\nenv_key = "H118_DUMMY_KEY"\nwire_api = "responses"\n\n[projects.${JSON.stringify(world.a.root)}]\ntrust_level = "trusted"\n`,
+    );
+    configText = projectToml;
+    setupFiles = ['<A>/.codex/config.toml', '<home>/.codex/config.toml (trust entry)'];
+    const env = isolatedEnv(home, { CODEX_HOME: codexHome, H118_DUMMY_KEY: 'dummy-not-a-credential' });
+    const app = new LineRpc(resolved.bin, ['app-server'], { cwd: world.a.root, env, transcript, jsonrpc: false });
+    try {
+      const init = await app.request('initialize', { clientInfo: { name: 'h118', title: 'xezar #118 harness', version: '0' } });
+      const codexHomeSeen = init.result?.codexHome as string | undefined;
+      const isolated = codexHomeSeen !== undefined && realpathSync(codexHomeSeen) === realpathSync(codexHome);
+      checks.push({ name: 'app-server isolation', required: 'initialize answers the pinned codexHome', observed: codexHomeSeen?.replace(home, '<home>') ?? init.error, ok: isolated });
+      if (!isolated) return notRun(client, 'Codex did not run inside the pinned CODEX_HOME — refusing to go on with a possibly real configuration', checks, transcript, fixture);
+      app.notify('initialized');
+      const thread = await app.request('thread/start', { cwd: world.a.root });
+      const threadId = thread.result?.thread?.id as string | undefined;
+      const status = await app.request('mcpServerStatus/list', { threadId: threadId ?? null });
+      const names = ((status.result?.data ?? []) as Array<{ name: string }>).map((s) => s.name);
+      checks.push({ name: 'the project entry is loaded (trusted project)', required: 'xezar listed by mcpServerStatus/list', observed: names, ok: names.includes('xezar') });
+      for (const [tool, args] of [
+        ['health', {}],
+        ['task_read', { view: 'list', archived: 'include' }],
+      ] as const) {
+        const call = await app.request('mcpServer/tool/call', { server: 'xezar', threadId: threadId ?? '', tool, arguments: args }, 60_000);
+        reached.push(call.error ? `(error ${call.error.message})` : ((call.result?.content ?? []) as Array<{ text?: string }>).map((b) => b.text ?? '').join('\n'));
+      }
+    } finally {
+      await app.close();
+    }
+    fixture.turn = 'none — codex app-server `mcpServer/tool/call` calls the tool with no model turn (D-01 E3)';
+  }
+
+  if (client === 'opencode') {
+    const cfgDir = join(home, 'opencode-config');
+    mkdirSync(cfgDir, { recursive: true });
+    const entry = { type: 'local', command: [cmd.command, ...cmd.args], environment: { XEZ_HOME: world.home, XEZ_DRY_RUN: '1' }, enabled: true };
+    // D-04 § 3.3's block, plus — for the tool-call leg only — a provider pointed at the scripted endpoint.
+    const projectJson = {
+      $schema: 'https://opencode.ai/config.json',
+      autoupdate: false,
+      share: 'disabled',
+      provider: { scripted: { npm: '@ai-sdk/anthropic', name: 'scripted fixture endpoint', options: { baseURL: `http://127.0.0.1:${endpoint.port}/v1`, apiKey: 'dummy-not-a-credential' }, models: { 'scripted-model': { name: 'scripted-model' } } } },
+      model: 'scripted/scripted-model',
+      small_model: 'scripted/scripted-model',
+      mcp: { xezar: entry },
+    };
+    writeFileSync(join(world.a.root, 'opencode.json'), `${JSON.stringify(projectJson, null, 2)}\n`);
+    configText = JSON.stringify(projectJson);
+    setupFiles = ['<A>/opencode.json'];
+    const env = isolatedEnv(home, { OPENCODE_CONFIG_DIR: cfgDir });
+    const list = await runCli(resolved.bin, ['mcp', 'list'], { cwd: world.a.root, env, transcript, timeoutMs: 120_000 });
+    const plain = list.stdout.replace(/\u001b\[[0-9;]*m/g, '');
+    checks.push({ name: 'handshake (`opencode mcp list`)', required: 'xezar connected', observed: plain.split('\n').filter((l) => /xezar/.test(l)).join(' / ') || plain.slice(0, 300), ok: /xezar\s+connected/i.test(plain) });
+    for (const prompt of ['CALL health', 'CALL task_read']) {
+      const from = endpoint.requests.length;
+      const turn = await runCli(resolved.bin, ['run', '--print-logs', '--model', 'scripted/scripted-model', prompt], { cwd: world.a.root, env, transcript, timeoutMs: 180_000 });
+      reached.push(...endpoint.toolResultsSince(from));
+      if (turn.code !== 0) reached.push(`(opencode run exited ${turn.code}: ${turn.stderr.replace(/\u001b\[[0-9;]*m/g, '').slice(0, 300)})`);
+    }
+    fixture.turn = 'opencode run --model scripted/scripted-model; provider @ai-sdk/anthropic at the scripted endpoint; dummy key';
+  }
+
+  const joined = reached.join('\n');
+  // A client shows the health result either as its text ("… for project alpha project (alpha-proj).")
+  // or as its structured content (`"project":{"id":"alpha-proj",…}`); both name A's id.
+  const health = reached[0] ?? '';
+  checks.push({ name: 'the client reaches A through the bridge (health)', required: `the health result names ${aName}`, observed: reached.slice(0, 1), ok: health.includes(PROJECT_A) && !health.includes(PROJECT_B) && !health.startsWith('(') });
+  const aTaskSeen = joined.includes(world.a.ids.done);
+  checks.push({ name: 'a registry tool answers with A’s data (task_read list)', required: `A’s task ${world.a.ids.done.slice(0, 8)}… in the result`, observed: reached.slice(1).map((r) => r.slice(0, 200)), ok: aTaskSeen });
+  checks.push({ name: 'nothing of B reaches the client', required: 'no B identifier in any tool result', observed: leaked(joined, world.b.names), ok: leaked(joined, world.b.names).length === 0 });
+  const secrets = [...world.secrets, 'mcp-connection'];
+  checks.push({ name: 'no connection data or secret in the client configuration', required: 'the entry names a command only (F-15)', observed: leaked(configText, secrets), ok: leaked(configText, secrets).length === 0 });
+  const afterStatus = git(world.a.root, 'status', '--porcelain', '--untracked-files=all');
+  const added = afterStatus.split('\n').filter((l) => l && !before.split('\n').includes(l));
+  checks.push({ name: 'what the setup added to A’s working tree', required: 'only the documented client file (none for Claude local scope)', observed: added, ok: added.every((l) => /\.codex\/config\.toml|opencode\.json/.test(l)) });
+  const verdict = verdictOf(checks);
+  return record({
+    case: 'A-01',
+    client,
+    verdict,
+    summary:
+      verdict === 'PASSED'
+        ? 'one-time setup as documented; the client reached A through the real bridge and saw nothing of B'
+        : `setup leg ${verdict}: ${checks.filter((c) => c.ok === false).map((c) => c.name).join('; ')}`,
+    checks,
+    transcripts: [transcript.name, 'scripted-model-endpoint.log'],
+    fixture: { ...fixture, setupFiles, bridge: 'node packages/xezar/dist/index.js mcp', world: 'A/B world, A bound' },
+  });
+}
+
+function notRun(client: string, reason: string, checks: Check[], transcript: Transcript, fixture: Record<string, unknown>): CaseRecord {
+  return record({ case: 'A-01', client, verdict: 'NOT-RUN', summary: reason, checks, transcripts: [transcript.name], fixture });
+}
+
+// ---- A-17: a competing owner, same-owner concurrency, another project ----------------------
+
+describe('A-17 — only the competing owner is rejected', () => {
+  test('a second logical client of A is refused with the occupied error; the owner’s own requests and project B work', async (t) => {
+    const { world } = fx;
+    const home = realpathSync(mkdtempSync(join(fx.scratch, 'a17-')));
+    const owner = await openBridge('a17-owner-bridge', world.a.root, bridgeEnv(world, home));
+    const ownerHealth = await owner.rpc.request('tools/call', { name: 'health', arguments: {} });
+    const second = await openBridge('a17-second-bridge', world.a.root, bridgeEnv(world, home));
+    const secondWrite = isOccupied(second.init) ? undefined : await second.rpc.request('tools/call', { name: 'organise_work', arguments: { action: 'pin', runId: world.a.ids.done } });
+    // Same owner: many requests at once are not additional clients.
+    const burst = await Promise.all(Array.from({ length: 20 }, () => owner.rpc.request('tools/call', { name: 'task_read', arguments: { view: 'list', limit: 1 } })));
+    // Another project: B has its own socket and its own owner slot.
+    const other = await openBridge('a17-project-b-bridge', world.b.root, bridgeEnv(world, home));
+    const otherHealth = await other.rpc.request('tools/call', { name: 'health', arguments: {} });
+    // The control: the ownership module, driven directly, does answer D-02's occupied error — so
+    // the detector above recognises a refusal when one exists.
+    const control = new ProjectOwnership({ dataDir: join(home, 'control-data'), projectId: PROJECT_A, autoRenew: false });
+    const first = await control.acquire('control-session-1');
+    const refused = await control.acquire('control-session-2');
+    control.dispose();
+    for (const peer of [owner, second, other]) await peer.rpc.close();
+    world.a.store.setPinned(world.a.ids.done, false);
+
+    const checks: Check[] = [
+      { name: 'the owner reaches A', required: 'health names A', observed: toolText(ownerHealth), ok: toolText(ownerHealth).includes(PROJECT_A) },
+      { name: 'a second logical client is refused', required: `initialize answers ${MCP_PROJECT_OCCUPIED_CODE} with data.reason ${MCP_PROJECT_OCCUPIED_REASON} (D-02 § 4)`, observed: second.init.error ?? { accepted: second.init.result?.serverInfo, thenPinned: secondWrite ? toolText(secondWrite).slice(0, 120) : undefined }, ok: isOccupied(second.init) },
+      { name: 'the owner’s concurrent requests all succeed', required: '20 of 20 answered without an error', observed: `${burst.filter((b) => !b.error && !b.result?.isError).length} of 20`, ok: burst.every((b) => !b.error && !b.result?.isError) },
+      { name: 'another project works', required: 'a client of B reaches B', observed: toolText(otherHealth), ok: toolText(otherHealth).includes(PROJECT_B) },
+      { name: 'control: the ownership module refuses a second session', required: 'acquire → occupied with the D-02 error', observed: { first: first.outcome, second: refused.outcome === 'occupied' ? refused.error : refused.outcome }, ok: first.outcome === 'owner' && refused.outcome === 'occupied' && refused.error.code === MCP_PROJECT_OCCUPIED_CODE },
+    ];
+    const entry = record({
+      case: 'A-17',
+      client: '(real bridge processes)',
+      verdict: verdictOf(checks),
+      summary: isOccupied(second.init) ? 'the second client was refused' : 'a second logical client of A was admitted and could write; same-owner concurrency and project B work',
+      missing: OWNERSHIP_GAP,
+      checks,
+      transcripts: ['a17-owner-bridge.log', 'a17-second-bridge.log', 'a17-project-b-bridge.log'],
+      fixture: { world: 'A/B world', owner: 'xez mcp process in A', second: 'xez mcp process in A', other: 'xez mcp process in B' },
+    });
+    settle(t, entry);
+  });
+
+  for (const client of CLIENTS) {
+    test(`[${client}] as the second logical client while A already has an owner`, async (t) => {
+      const resolved = fx.clients[client];
+      if (!resolved) {
+        const entry = record({ case: 'A-17', client, verdict: 'NOT-RUN', summary: fx.absent[client] ?? 'client not found', checks: [], fixture: {} });
+        return settle(t, entry);
+      }
+      if (!fx.setup[client] || fx.setup[client]!.verdict === 'NOT-RUN') {
+        const entry = record({ case: 'A-17', client, verdict: 'NOT-RUN', summary: 'the A-01 setup for this client did not run, so it cannot compete', checks: [], fixture: {} });
+        return settle(t, entry);
+      }
+      const { world } = fx;
+      const home = realpathSync(mkdtempSync(join(fx.scratch, `a17-${client}-`)));
+      const owner = await openBridge(`a17-owner-for-${client}`, world.a.root, bridgeEnv(world, home));
+      await owner.rpc.request('tools/call', { name: 'health', arguments: {} });
+      const transcript = new Transcript(`a17-${client}`);
+      const observed = await competeAs(client, resolved, transcript);
+      await owner.rpc.close();
+      const check: Check = { name: `${client} connects while A is owned`, required: 'the client reports the occupied-project error and gets no tool access', observed: observed.text, ok: observed.refused };
+      fx.competing[client] = check;
+      const entry = record({
+        case: 'A-17',
+        client,
+        verdict: verdictOf([check]),
+        summary: observed.refused ? 'refused as occupied' : `admitted as a second client while A had a live owner: ${observed.text.slice(0, 160)}`,
+        missing: OWNERSHIP_GAP,
+        checks: [check],
+        transcripts: [transcript.name, `a17-owner-for-${client}.log`],
+        fixture: { owner: 'a live xez mcp process in A', client: `${resolved.bin} (${resolved.version}), the A-01 setup` },
+      });
+      settle(t, entry);
+    });
+  }
+});
+
+/** One real client connecting to A with the A-01 configuration: did it get in? */
+async function competeAs(client: ClientName, resolved: ResolvedClient, transcript: Transcript): Promise<{ refused: boolean; text: string }> {
+  const { world } = fx;
+  const home = realpathSync(mkdtempSync(join(fx.scratch, `compete-${client}-`)));
+  if (client === 'claude-code') {
+    // Its own pinned config, with the same local-scope entry the A-01 leg wrote.
+    const env = isolatedEnv(home, { CLAUDE_CONFIG_DIR: join(home, '.claude') });
+    const cmd = bridgeCommand();
+    await runCli(resolved.bin, ['mcp', 'add', '--scope', 'local', 'xezar', '-e', `XEZ_HOME=${world.home}`, '-e', 'XEZ_DRY_RUN=1', '--', cmd.command, ...cmd.args], { cwd: world.a.root, env, transcript });
+    const list = await runCli(resolved.bin, ['mcp', 'list'], { cwd: world.a.root, env, transcript });
+    const line = list.stdout.split('\n').find((l) => l.startsWith('xezar')) ?? list.stdout.slice(0, 200);
+    return { refused: !/Connected/.test(line) && /occupied|-32080/i.test(list.stdout + list.stderr), text: line };
+  }
+  if (client === 'codex') {
+    const codexHome = join(home, '.codex');
+    mkdirSync(codexHome, { recursive: true });
+    writeFileSync(join(codexHome, 'config.toml'), `model_provider = "fixture"\n\n[model_providers.fixture]\nname = "fixture"\nbase_url = "http://127.0.0.1:9/v1"\nenv_key = "H118_DUMMY_KEY"\nwire_api = "responses"\n\n[projects.${JSON.stringify(world.a.root)}]\ntrust_level = "trusted"\n`);
+    const app = new LineRpc(resolved.bin, ['app-server'], { cwd: world.a.root, env: isolatedEnv(home, { CODEX_HOME: codexHome, H118_DUMMY_KEY: 'dummy-not-a-credential' }), transcript, jsonrpc: false });
+    try {
+      const init = await app.request('initialize', { clientInfo: { name: 'h118', version: '0' } });
+      if (!init.result?.codexHome || realpathSync(init.result.codexHome) !== realpathSync(codexHome)) return { refused: false, text: 'NOT-RUN: codex left the pinned home' };
+      app.notify('initialized');
+      const thread = await app.request('thread/start', { cwd: world.a.root });
+      const call = await app.request('mcpServer/tool/call', { server: 'xezar', threadId: thread.result?.thread?.id ?? '', tool: 'organise_work', arguments: { action: 'pin', runId: world.a.ids.done } }, 60_000);
+      const text = call.error ? `error ${call.error.code} ${call.error.message}` : ((call.result?.content ?? []) as Array<{ text?: string }>).map((b) => b.text ?? '').join('\n');
+      world.a.store.setPinned(world.a.ids.done, false);
+      return { refused: /occupied|-32080/i.test(text), text: `organise_work pin → ${text.slice(0, 200)}` };
+    } finally {
+      await app.close();
+    }
+  }
+  const env = isolatedEnv(home, { OPENCODE_CONFIG_DIR: join(home, 'cfg') });
+  mkdirSync(join(home, 'cfg'), { recursive: true });
+  const list = await runCli(resolved.bin, ['mcp', 'list'], { cwd: world.a.root, env, transcript, timeoutMs: 120_000 });
+  const plain = list.stdout.replace(/\u001b\[[0-9;]*m/g, '');
+  const line = plain.split('\n').filter((l) => /xezar/.test(l)).join(' / ') || plain.slice(0, 200);
+  return { refused: !/connected/i.test(line) && /occupied|-32080/i.test(plain), text: line };
+}
+
+// ---- A-18: idle owner, crash, fencing, restart ---------------------------------------------
+
+describe('A-18 — liveness, fencing and restart', () => {
+  test('model silence keeps ownership, a stale owner is fenced, and a started task survives its owner', async (t) => {
+    const { world } = fx;
+    const home = realpathSync(mkdtempSync(join(fx.scratch, 'a18-')));
+    const owner = await openBridge('a18-owner-bridge', world.a.root, bridgeEnv(world, home));
+    const started = await owner.rpc.request('tools/call', {
+      name: 'task_create',
+      arguments: { operationId: `h118-a18-${Date.now()}`, prompt: 'mock:slow mock:done a long dry-run task for A-18', worktree: false, autonomous: true },
+    });
+    const startedText = toolText(started);
+    const runId = /"(?:runId|id)"\s*:\s*"([0-9a-f-]{36})"/.exec(startedText)?.[1];
+    // Silence: no call for longer than one renewal interval (D-02.5: 5 s). No lease is asserted.
+    await delay(6_000);
+    const intruder = await openBridge('a18-intruder-bridge', world.a.root, bridgeEnv(world, home));
+    const intruderWrite = await intruder.rpc.request('tools/call', { name: 'organise_work', arguments: { action: 'set_title', runId: world.a.ids.done, title: 'A-18 intruder wrote this' } });
+    // Crash: the owner's process dies without closing anything.
+    owner.rpc.child.kill('SIGKILL');
+    await owner.rpc.exited;
+    const successor = await openBridge('a18-successor-bridge', world.a.root, bridgeEnv(world, home));
+    const successorWrite = await successor.rpc.request('tools/call', { name: 'organise_work', arguments: { action: 'set_title', runId: world.a.ids.done, title: 'A-18 successor wrote this' } });
+    // The stale client is still alive: after a new owner exists, its write must be fenced.
+    const staleWrite = await intruder.rpc.request('tools/call', { name: 'organise_work', arguments: { action: 'set_title', runId: world.a.ids.done, title: 'A-18 stale owner wrote this' } });
+    const finalTitle = world.a.store.getRun(world.a.ids.done)?.title;
+    const terminal = runId
+      ? await waitFor('the A-18 task to finish', () => {
+          const status = world.a.store.getRun(runId)?.status;
+          return status && ['done', 'failed', 'cancelled', 'review', 'waiting'].includes(status) ? status : undefined;
+        }, 90_000).catch((err: Error) => `not terminal: ${err.message}`)
+      : 'no run id in the task_create answer';
+    await intruder.rpc.close();
+    await successor.rpc.close();
+
+    const checks: Check[] = [
+      { name: 'a task starts through MCP', required: 'task_create is accepted with a run id', observed: startedText.slice(0, 200), ok: runId !== undefined },
+      { name: 'model silence does not release ownership', required: `after ${6} s of owner silence a new client of A is refused as occupied`, observed: intruder.init.error ?? `admitted; its write answered: ${toolText(intruderWrite).slice(0, 120)}`, ok: isOccupied(intruder.init) },
+      { name: 'confirmed termination releases ownership to exactly one successor', required: 'after the owner is SIGKILLed a new client acquires, and it is the only owner', observed: { successorInit: successor.init.error ?? 'accepted', successorWrite: toolText(successorWrite).slice(0, 80) }, ok: isOccupied(intruder.init) && !successor.init.error },
+      { name: 'the stale owner is fenced', required: `a write from the still-alive previous client answers ${MCP_SESSION_EXPIRED_CODE} / ${MCP_SESSION_EXPIRED_REASON}`, observed: staleWrite.error ?? `accepted: ${toolText(staleWrite).slice(0, 120)} — final title "${finalTitle}"`, ok: isExpired(staleWrite) },
+      { name: 'a started task continues after its owner crashed', required: 'the task reaches its own terminal state', observed: terminal, ok: terminal === 'done' },
+    ];
+    world.a.store.updateRun(world.a.ids.done, { title: 'ALPHA done task common' });
+    const entry = record({
+      case: 'A-18',
+      client: '(real bridge processes)',
+      verdict: verdictOf(checks),
+      summary: 'task survival holds; with no ownership in the product, an idle owner does not keep A, and a stale client’s write is accepted',
+      missing: OWNERSHIP_GAP,
+      checks,
+      transcripts: ['a18-owner-bridge.log', 'a18-intruder-bridge.log', 'a18-successor-bridge.log'],
+      fixture: { world: 'A/B world, A’s real RunManager, XEZ_DRY_RUN=1 (`mock:slow` holds the task about 25 s)' },
+    });
+    settle(t, entry);
+  });
+
+  test('[product] a service restart ends every session and keeps started work', async (t) => {
+    const base = mkdtempSync(join(fx.scratch, 'restart-'));
+    const root = makeRepo(base, 'project-restart');
+    const home = join(base, 'home');
+    const agentHome = join(base, 'agent-home');
+    let serve = await startServe(root, home, 'a18-restart-serve-1', agentHome);
+    const created = await cockpit(serve, '/api/v1/runs', 'POST', { workflow: 'quick-task', task: 'mock:done a task started before the restart', worktree: false, autonomous: true });
+    const runId: string | undefined = created.json?.id ?? created.json?.runs?.[0]?.id;
+    await waitFor('the pre-restart task to finish', async () => {
+      const run = await cockpit(serve, `/api/v1/runs/${runId}`);
+      return run.json?.status === 'done' || run.json?.run?.status === 'done' ? true : undefined;
+    }, 60_000).catch(() => undefined);
+    const bridge = await openBridge('a18-restart-bridge', root, isolatedEnv(join(base, 'bridge-home'), { XEZ_HOME: home, XEZ_DRY_RUN: '1' }));
+    const beforeRestart = await bridge.rpc.request('tools/call', { name: 'health', arguments: {} });
+    await stop(serve.child);
+    const whileDown = await bridge.rpc.request('tools/call', { name: 'health', arguments: {} });
+    serve = await startServe(root, home, 'a18-restart-serve-2', agentHome);
+    try {
+      // The bridge process survived the restart. D-02 § 5: its session ended with the service, so its
+      // next call must be fenced and the client must re-initialize.
+      const afterRestart = await bridge.rpc.request('tools/call', { name: 'health', arguments: {} });
+      const kept = await cockpit(serve, `/api/v1/runs/${runId}`);
+      await bridge.rpc.close();
+      const keptStatus = kept.json?.status ?? kept.json?.run?.status;
+      const checks: Check[] = [
+        { name: 'the bridge reaches the service before the restart', required: 'health names the project', observed: toolText(beforeRestart), ok: toolText(beforeRestart).includes(serve.projectId) },
+        { name: 'service down reads as down, not as a hang', required: 'an ordinary tool result saying xezar is not running (D-01 § 5)', observed: toolText(whileDown), ok: !whileDown.error && /not running|isn.t running|start/i.test(toolText(whileDown)) },
+        { name: 'a pre-restart session is fenced after the restart', required: `the surviving client's next call answers ${MCP_SESSION_EXPIRED_CODE} / ${MCP_SESSION_EXPIRED_REASON} and it must reconnect (D-02 § 5)`, observed: afterRestart.error ?? `accepted: ${toolText(afterRestart).slice(0, 120)}`, ok: isExpired(afterRestart) },
+        { name: 'started work survives the restart', required: 'the task and its result are still there', observed: keptStatus ?? kept.status, ok: keptStatus === 'done' },
+      ];
+      const entry = record({
+        case: 'A-18',
+        client: '(xezar service restart)',
+        verdict: verdictOf(checks),
+        summary: 'work survives a restart and a later call reconnects on its own; no session exists to be fenced',
+        missing: OWNERSHIP_GAP,
+        checks,
+        transcripts: ['a18-restart-serve-1.log', 'a18-restart-serve-2.log', 'a18-restart-bridge.log'],
+        fixture: { serve: 'real xezar serve, stopped with SIGTERM and started again on the same repo and home' },
+      });
+      settle(t, entry);
+    } finally {
+      await stop(serve.child);
+    }
+  });
+});
+
+// ---- A-19: delivery and a real model reaction ----------------------------------------------
+
+describe('A-19 — immediate acceptance, delivery, and a real model reaction', () => {
+  test('[product] a task’s significant events reach the project journal in a real `xezar serve`', async (t) => {
+    const base = mkdtempSync(join(fx.scratch, 'events-'));
+    const root = makeRepo(base, 'project-events');
+    const home = join(base, 'home');
+    const serve = await startServe(root, home, 'a19-product-serve', join(base, 'agent-home'));
+    try {
+      const outcomes: Record<string, unknown> = {};
+      // The leader starts a long task through MCP: acceptance first, the result much later.
+      const bridge = await openBridge('a19-product-bridge', root, isolatedEnv(join(base, 'bridge-home'), { XEZ_HOME: home, XEZ_DRY_RUN: '1' }));
+      const operationId = `h118-a19-${Date.now()}`;
+      const started = Date.now();
+      const viaMcp = await bridge.rpc.request('tools/call', { name: 'task_create', arguments: { operationId, prompt: 'mock:slow mock:done a long task for A-19', worktree: false, autonomous: true } });
+      outcomes.acceptedMs = Date.now() - started;
+      const acceptedText = toolText(viaMcp);
+      outcomes.accepted = acceptedText.slice(0, 240);
+      const mcpRunId = /"(?:runId|id)"\s*:\s*"([0-9a-f-]{36})"/.exec(acceptedText)?.[1];
+      outcomes.statusRightAfter = await runStatus(serve, mcpRunId);
+      // The rest of the lifecycle through the human's door: a cancellation and a question.
+      const slow = await cockpit(serve, '/api/v1/runs', 'POST', { workflow: 'quick-task', task: 'mock:slow to be cancelled', autonomous: true });
+      const waiting = await cockpit(serve, '/api/v1/runs', 'POST', { workflow: 'quick-task', task: 'mock:ask a question for the human' });
+      await delay(2_000);
+      if (slow.json?.id) outcomes.cancel = (await cockpit(serve, `/api/v1/runs/${slow.json.id}/cancel`, 'POST')).status;
+      const terminal = await waitFor('the MCP-started task to finish', async () => ((await runStatus(serve, mcpRunId)) === 'done' ? 'done' : undefined), 90_000).catch(() => 'not done');
+      outcomes.resultStatus = terminal;
+      outcomes.resultMs = Date.now() - started;
+      await waitFor('the question to park its task', async () => ((await runStatus(serve, waiting.json?.id)) === 'waiting' ? true : undefined), 30_000).catch(() => undefined);
+      await bridge.rpc.close();
+      await delay(1_000);
+      const rows = readJournal(root);
+      const categories = [...new Set((rows ?? []).map((r) => r.category))].sort();
+      const mcpTerminal = (rows ?? []).find((r) => r.subject.id === mcpRunId && r.kind === 'task.done');
+      const checks: Check[] = [
+        { name: 'immediate acceptance is distinct from the result', required: 'task_create answers at once with a non-terminal status; `done` arrives later', observed: { acceptedMs: outcomes.acceptedMs, statusRightAfter: outcomes.statusRightAfter, resultMs: outcomes.resultMs, laterStatus: terminal }, ok: mcpRunId !== undefined && outcomes.statusRightAfter !== 'done' && terminal === 'done' },
+        { name: 'the lifecycle reaches the project event journal', required: 'E-01 (done, cancelled) and E-02 (question) rows in <root>/.local/xezar/mcp/event-journal.ndjson', observed: rows ? { rows: rows.length, categories, kinds: rows.map((r) => `${r.kind}/${r.origin}`) } : 'no journal file', ok: categories.includes('E-01') && categories.includes('E-02') },
+        { name: 'the completion of a leader-started task is not hidden as the leader’s own echo', required: 'its task.done row is not origin `leader` (the echo guard would drop it from delivery)', observed: mcpTerminal ? { origin: mcpTerminal.origin, causedBy: mcpTerminal.causedBy } : 'no task.done row for it', ok: mcpTerminal !== undefined && mcpTerminal.origin !== 'leader' },
+      ];
+      const entry = record({
+        case: 'A-19',
+        client: '(xezar service events)',
+        verdict: verdictOf(checks),
+        summary: rows ? `acceptance in ${outcomes.acceptedMs} ms, result ${terminal} later; the journal holds ${rows.length} rows (${categories.join(', ')})` : 'no significant event reaches any journal',
+        ...(checks.every((c) => c.ok) ? {} : { missing: 'significant events do not reach the project journal as required (see the failed checks)' }),
+        checks,
+        transcripts: [serve.transcript.name, 'a19-product-bridge.log'],
+        fixture: { serve: 'real xezar serve, XEZ_DRY_RUN=1; the bundled mock: mock:slow + mock:done (MCP), mock:slow (cancelled), mock:ask (waiting)', outcomes },
+      });
+      settle(t, entry);
+    } finally {
+      await stop(serve.child);
+    }
+  });
+
+  for (const client of CLIENTS) {
+    test(`[${client}] an idle connected client’s model reacts to a delivered event without polling`, (t) => {
+      const setup = fx.setup[client];
+      const checks: Check[] = [
+        { name: 'client connected with the A-01 setup', required: 'A-01 client leg reached A', observed: setup?.verdict ?? 'no A-01 record', ok: setup ? setup.checks.some((c) => c.name.startsWith('the client reaches A') && c.ok === true) : null },
+        { name: 'delivery to the client is observed', required: 'the service constructs this client’s reaction adapter and delivers a journal row to it', observed: 'the journal fills (see the [product] case above) but nothing in the running service constructs an EventController or any client adapter — read from source: `startMcpService` composes journal, catalog, receipts, echo guard and audit, and no adapter', ok: null },
+        { name: 'a REAL model reaction follows, with no status-polling turn', required: 'a real model’s turn acts on the delivered event', observed: 'not observable: § 9 forbids personal accounts, so every model here is the scripted endpoint — a turn it answers is not a real model’s reaction (the adapter records #108–#110 say the same)', ok: null },
+      ];
+      if (!fx.clients[client]) {
+        const entry = record({ case: 'A-19', client, verdict: 'NOT-RUN', summary: fx.absent[client] ?? 'client not found', checks, fixture: {} });
+        fx.reaction[client] = entry;
+        return settle(t, entry);
+      }
+      const entry = record({
+        case: 'A-19',
+        client,
+        verdict: 'BLOCKED',
+        summary: 'no delivery path exists in the product, and no real model may be used in a § 9 fixture',
+        missing: 'push delivery and a real model reaction (F-20): the service constructs no EventController or adapter, and no real model has answered a request — leader decision, out of release 0.14.0. Not passed on documentation.',
+        checks,
+        fixture: { client: fx.clients[client]!.version },
+      });
+      fx.reaction[client] = entry;
+      settle(t, entry);
+    });
+  }
+});
+
+// ---- A-20: the leader half ------------------------------------------------------------------
+
+describe('A-20 — MCP changes reach the cockpit, human changes reach the leader, no echo loop', () => {
+  test('[product] a leader mutation reaches the cockpit’s stream; human changes reach the leader; reconnect reconciles', async (t) => {
+    const base = mkdtempSync(join(fx.scratch, 'live-'));
+    const root = makeRepo(base, 'project-live');
+    const home = join(base, 'home');
+    const serve = await startServe(root, home, 'a20-product-serve', join(base, 'agent-home'));
+    const env = isolatedEnv(join(base, 'bridge-home'), { XEZ_HOME: home, XEZ_DRY_RUN: '1' });
+    const stream = new AbortController();
+    const cancelLater: string[] = [];
+    try {
+      const created = await cockpit(serve, '/api/v1/runs', 'POST', { workflow: 'quick-task', task: 'mock:done a finished task for A-20', autonomous: true });
+      const runId: string | undefined = created.json?.id;
+      await waitFor('the A-20 task to finish', async () => ((await runStatus(serve, runId)) === 'done' ? true : undefined), 60_000);
+      // The cockpit's one live stream (packages/web/src/api/global-events.tsx), opened before the leader acts.
+      let streamText = '';
+      void fetch(`${serve.base}/api/v1/workspace/events`, { signal: stream.signal, headers: { accept: 'text/event-stream' } })
+        .then(async (res) => {
+          const reader = res.body!.getReader();
+          const decoder = new TextDecoder();
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) return;
+            streamText += decoder.decode(value, { stream: true });
+          }
+        })
+        .catch(() => undefined);
+      await delay(500);
+      const leader = await openBridge('a20-leader-bridge', root, env);
+      const listed = await leader.rpc.request('tools/list');
+      const tools = (listed.result?.tools ?? []) as Array<{ name: string; description?: string; inputSchema?: unknown }>;
+      const title = `A-20 leader title ${Date.now()}`;
+      const mutation = await leader.rpc.request('tools/call', { name: 'organise_work', arguments: { action: 'set_title', runId, title } });
+      await waitFor('the cockpit stream to carry the leader title', () => (streamText.includes(title) ? true : undefined), 5_000).catch(() => undefined);
+
+      // The leader's own effect that IS significant: it cancels a task. Its row must name its operation.
+      const victim = await cockpit(serve, '/api/v1/runs', 'POST', { workflow: 'quick-task', task: 'mock:slow cancelled by the leader', autonomous: true });
+      const victimId: string | undefined = victim.json?.id;
+      await delay(1_500);
+      // `execution_control` takes no operation key; the MCP door mints one (`mcp-door.<uuid>`) so the
+      // catalog and the echo guard still know the change as this leader's.
+      const leaderCancel = await leader.rpc.request('tools/call', { name: 'execution_control', arguments: { action: 'cancel', runId: victimId } });
+      await waitFor('the leader cancel to land', async () => ((await runStatus(serve, victimId)) === 'cancelled' ? true : undefined), 20_000).catch(() => undefined);
+      const beforeHuman = readJournal(root)?.length ?? 0;
+
+      // Significant HUMAN changes through the cockpit's own door: a queued prompt edit (E-04) and a
+      // project configuration write (E-05).
+      let queuedId: string | undefined;
+      for (let i = 0; i < 6 && !queuedId; i += 1) {
+        const slow = await cockpit(serve, '/api/v1/runs', 'POST', { workflow: 'quick-task', task: `mock:slow filler ${i}`, autonomous: true });
+        if (slow.json?.id) cancelLater.push(slow.json.id);
+        if (slow.json?.status === 'queued') queuedId = slow.json.id;
+      }
+      const promptEdit = queuedId ? await cockpit(serve, `/api/v1/runs/${queuedId}`, 'PATCH', { task: 'mock:slow the human rewrote this queued prompt' }) : undefined;
+      const configWrite = await cockpit(serve, '/api/v1/config', 'PUT', { systemPrompt: 'A-20 human project instruction' });
+      await delay(1_000);
+      const rows = readJournal(root) ?? [];
+      const humanRows = rows.slice(beforeHuman).filter((r) => r.origin === 'human');
+      const leaderRow = rows.find((r) => r.subject.id === victimId && r.kind === 'task.cancelled');
+
+      // Can the leader receive the human rows? Any tool that describes itself as reading events —
+      // `leader_events` (#251) on main today — asked to `read` when its schema offers that action.
+      const readers = tools.filter((tool) => /event|journal|acknowledg|outstanding/i.test(`${tool.name} ${tool.description ?? ''}`) && tool.name !== 'task_read');
+      const readArgs = (tool: (typeof tools)[number]): Record<string, unknown> =>
+        ((tool.inputSchema as { properties?: { action?: { enum?: string[] } } } | undefined)?.properties?.action?.enum ?? []).includes('read') ? { action: 'read' } : {};
+      const received: Record<string, string> = {};
+      for (const reader of readers) received[reader.name] = toolText(await leader.rpc.request('tools/call', { name: reader.name, arguments: readArgs(reader) }));
+      const humanReachesLeader = humanRows.length > 0 && Object.values(received).some((text) => humanRows.every((row) => text.includes(row.eventId)));
+      await leader.rpc.close();
+
+      // Reconnect: a fresh session reads the current state, the human's edit included — and, until
+      // the leader acknowledges, the same outstanding events again (at-least-once, F-21).
+      const again = await openBridge('a20-reconnect-bridge', root, env);
+      const reread = queuedId ? await again.rpc.request('tools/call', { name: 'task_read', arguments: { view: 'task', taskId: queuedId } }) : undefined;
+      const rereadTitle = await again.rpc.request('tools/call', { name: 'task_read', arguments: { view: 'task', taskId: runId } });
+      const events = readers.find((tool) => tool.name === 'leader_events');
+      let replay: { beforeAck: boolean; acked: string; afterAck: boolean } | undefined;
+      if (events) {
+        const first = toolText(await again.rpc.request('tools/call', { name: events.name, arguments: { action: 'read' } }));
+        const cursor = /"nextCursor":"([^"]+)"/.exec(first)?.[1];
+        const acked = cursor ? toolText(await again.rpc.request('tools/call', { name: events.name, arguments: { action: 'ack', cursor } })) : 'no nextCursor to ack';
+        const after = toolText(await again.rpc.request('tools/call', { name: events.name, arguments: { action: 'read' } }));
+        replay = { beforeAck: humanRows.length > 0 && humanRows.every((row) => first.includes(row.eventId)), acked: acked.slice(0, 160), afterAck: humanRows.some((row) => after.includes(row.eventId)) };
+      }
+      await again.rpc.close();
+      const rereadText = reread ? toolText(reread) : '';
+
+      const checks: Check[] = [
+        { name: 'an MCP mutation reaches the cockpit’s live stream without reload', required: 'the leader’s new title arrives on GET /api/v1/workspace/events', observed: { tool: toolText(mutation).slice(0, 120), streamCarriedTitle: streamText.includes(title), streamBytes: streamText.length }, ok: !mutation.result?.isError && streamText.includes(title) },
+        { name: 'a human queued-prompt edit reaches the journal (E-04)', required: 'a human-origin goal.changed row', observed: { edit: promptEdit?.status ?? 'no queued task to edit', rows: humanRows.map((r) => r.kind) }, ok: humanRows.some((r) => r.kind === 'goal.changed') },
+        { name: 'a human configuration write reaches the journal (E-05)', required: 'a human-origin config.changed row after PUT /api/v1/config', observed: { write: configWrite.status, rows: humanRows.map((r) => r.kind) }, ok: humanRows.some((r) => r.kind === 'config.changed') },
+        { name: 'the human changes reach the leader', required: 'a leader tool (or delivery) hands the leader every one of those rows (F-21)', observed: { readerTools: readers.map((r) => r.name), humanEventIds: humanRows.map((r) => r.eventId), received: Object.fromEntries(Object.entries(received).map(([k, v]) => [k, v.slice(0, 300)])) }, ok: humanReachesLeader },
+        { name: 'reconnect reconciles', required: 'a new session reads current state: the human’s prompt edit and the leader’s title', observed: { queued: rereadText.slice(0, 160), titled: toolText(rereadTitle).includes(title) }, ok: rereadText.includes('the human rewrote this queued prompt') && toolText(rereadTitle).includes(title) },
+        { name: 'reconnect re-delivers what was not acknowledged, and nothing after the ack', required: 'a new session’s read returns the human events again; after ack a read no longer does (F-21, N-10)', observed: replay ?? 'no leader_events tool', ok: replay ? replay.beforeAck && !replay.afterAck : false },
+        { name: 'the leader’s own significant effect is marked as its echo', required: 'the row it caused is origin `leader` with the operation that caused it, which the echo guard withholds from that leader', observed: { tool: toolText(leaderCancel).slice(0, 120), row: leaderRow ? { origin: leaderRow.origin, causedBy: leaderRow.causedBy } : 'no task.cancelled row' }, ok: leaderRow?.origin === 'leader' && typeof leaderRow.causedBy === 'string' && leaderRow.causedBy.length > 0 },
+        { name: 'no recursive leader loop from echoes, logs, tokens or visual changes', required: 'observed end to end: a delivered echo starts no new leader turn', observed: 'not observable: nothing delivers journal rows to a leader (see A-19), so no loop can be observed — only its precondition above', ok: null },
+      ];
+      const entry = record({
+        case: 'A-20',
+        client: '(leader half, real xezar serve)',
+        verdict: verdictOf(checks),
+        summary: checks.filter((c) => c.ok === true).map((c) => c.name).join('; ') || 'nothing passed',
+        missing: [
+          checks[2]!.ok ? undefined : 'the E-05 writer hooks: `EventCatalog.configChanged`/`workflowChanged`/`agentConfigChanged` have no production caller, so a human configuration write never reaches the journal',
+          checks[3]!.ok ? undefined : 'a leader read/acknowledge tool: no MCP tool hands the leader journal rows, and nothing pushes them',
+          'push delivery (out of release 0.14.0), so the loop clause cannot be observed',
+        ]
+          .filter(Boolean)
+          .join('; '),
+        checks,
+        transcripts: [serve.transcript.name, 'a20-leader-bridge.log', 'a20-reconnect-bridge.log'],
+        fixture: { serve: 'real xezar serve, XEZ_DRY_RUN=1', cockpit: 'HTTP same-origin requests and the cockpit’s SSE stream', browserHalf: 'packages/web/e2e/mcp-live-sync.e2e.ts' },
+      });
+      settle(t, entry);
+    } finally {
+      stream.abort();
+      for (const id of cancelLater) await cockpit(serve, `/api/v1/runs/${id}/cancel`, 'POST').catch(() => undefined);
+      await stop(serve.child);
+    }
+  });
+});
+
+// ---- A-23: native client vs another owner; three clients --------------------------------
+
+describe('A-23 — one exclusive owner across clients; Claude Code, Codex and OpenCode each pass setup and reaction', () => {
+  for (const client of CLIENTS) {
+    test(`[${client}] local setup, reaction, and exclusivity against another owner`, (t) => {
+      if (!fx.clients[client]) {
+        const entry = record({ case: 'A-23', client, verdict: 'NOT-RUN', summary: fx.absent[client] ?? 'client not found', checks: [], fixture: {} });
+        return settle(t, entry);
+      }
+      const setup = fx.setup[client];
+      const reaction = fx.reaction[client];
+      const competing = fx.competing[client];
+      const setupOk = setup ? setup.checks.filter((c) => !c.name.startsWith('what the setup added')).every((c) => c.ok === true) : false;
+      const checks: Check[] = [
+        { name: 'local setup (A-01 client leg)', required: 'the one-time setup works and the client reaches A', observed: setup ? `${setup.verdict}: ${setup.summary}` : 'not recorded', ok: setupOk },
+        { name: 'reaction (A-19)', required: 'a real model reaction to a delivered event', observed: reaction ? `${reaction.verdict}: ${reaction.summary}` : 'not recorded', ok: reaction?.verdict === 'PASSED' ? true : reaction?.verdict === 'BLOCKED' ? null : false },
+        { name: 'exclusive owner against another owner of A', required: 'refused as occupied while another client owns A; handover only after that ownership ends', observed: competing?.observed ?? 'not recorded', ok: competing?.ok ?? false },
+        { name: 'no covert second leader', required: 'two leaders never hold A at once', observed: competing && competing.ok === false ? 'two clients held A at once in A-17' : 'see A-17', ok: competing?.ok ?? false },
+      ];
+      const entry = record({
+        case: 'A-23',
+        client,
+        verdict: verdictOf(checks),
+        summary: `setup ${setup?.verdict ?? 'n/a'}; reaction ${reaction?.verdict ?? 'n/a'}; exclusivity ${competing?.ok ? 'held' : 'not enforced'}`,
+        missing: `${OWNERSHIP_GAP}. Reaction: see A-19. The built-in leader half is out of scope (#118: the built-in leader is specified separately) and was NOT RUN; a second native client stood in as "the other owner"`,
+        checks,
+        fixture: { derivedFrom: ['A-01', 'A-17', 'A-19'] },
+      });
+      settle(t, entry);
+    });
+  }
+});
+
+// Guards the evidence itself (F-15): nothing this run wrote may carry a world secret.
+describe('evidence hygiene', () => {
+  test('no secret of the world reached a transcript or the results', () => {
+    const hits: string[] = [];
+    for (const secret of fx.world.secrets) {
+      try {
+        const out = execFileSync('grep', ['-rlF', '--', secret, OUT], { encoding: 'utf8' }).trim();
+        if (out) hits.push(createHash('sha256').update(secret).digest('hex').slice(0, 12));
+      } catch {
+        /* grep exits 1 when nothing matched — the good case */
+      }
+    }
+    assert.deepEqual(hits, [], 'a world secret reached the evidence directory');
+    assert.ok(fx.world.secrets.length > 0, 'populated-input guard: the world must hold at least one secret for this search to mean anything');
+  });
+});
