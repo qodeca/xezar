@@ -66,6 +66,7 @@ import { applyProviderEnablement } from '../core/provider-availability.ts';
 import { RunnerModelCatalog } from '../core/runner-model-catalog.ts';
 import { currentUsage, onUsage } from '../core/process-usage.ts';
 import { projectWorkflowsDir, loadWorkflows } from '../workflows/load.ts';
+import { reportProjectChange } from '../mcp/project-catalogs.ts';
 import {
   QUICK_TASK_WORKFLOW,
   normalizeWorkflowDoc,
@@ -3103,6 +3104,8 @@ export function createApp(deps: ServerDeps) {
         const message = err instanceof Error ? err.message : String(err);
         return c.json({ error: message }, 500);
       }
+      // E-05 (#252): the project leader hears of it. No catalog for this project → no row.
+      reportProjectChange(c.get('project').id, (catalog) => catalog.workflowChanged({ name: parsed.data.name, change: 'saved' }));
       return c.json({ path, name: parsed.data.name }, 201);
     })
 
@@ -3127,6 +3130,7 @@ export function createApp(deps: ServerDeps) {
       } catch (err) {
         return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
       }
+      reportProjectChange(c.get('project').id, (catalog) => catalog.workflowChanged({ name, change: 'deleted' }));
       return c.json({ ok: true, path: target });
     })
 
@@ -5231,6 +5235,8 @@ export function createApp(deps: ServerDeps) {
       } catch {
         // missing or malformed — start fresh
       }
+      // What the file held before, per key — so E-05 names only the keys this write really changed.
+      const before = new Map(Object.entries(raw).map(([key, value]) => [key, JSON.stringify(value)]));
       if (parsed.data.baseBranch !== undefined) {
         if (parsed.data.baseBranch === null) delete raw.baseBranch;
         else raw.baseBranch = parsed.data.baseBranch;
@@ -5307,6 +5313,11 @@ export function createApp(deps: ServerDeps) {
       // it the key would save and do nothing until the next boot, which is the exact defect
       // B2 exists to fix.
       if (parsed.data.memoryLimitMb !== undefined) await deps.semaphore?.refresh();
+      // E-05 (#252): key NAMES only, never values. A write that changed nothing reports nothing.
+      const changed = [...new Set([...before.keys(), ...Object.keys(raw)])].filter(
+        (key) => before.get(key) !== (key in raw ? JSON.stringify(raw[key]) : undefined),
+      );
+      if (changed.length > 0) reportProjectChange(c.get('project').id, (catalog) => catalog.configChanged({ keys: changed }));
       // Pre-R6 answer shape ({baseBranch, defaultRunner}) + additive R6 fields.
       return c.json(await configAnswer(repoRoot, await loadConfig(repoRoot)));
     });
@@ -5414,6 +5425,8 @@ export function createApp(deps: ServerDeps) {
       );
       if (out === null) return c.json({ error: 'unknown config file' }, 404);
       if (!out.ok) return c.json({ error: out.error }, out.status);
+      // E-05 (#252), after the hosted-mode 409 above and never before it: a refused write is no change.
+      reportProjectChange(c.get('project').id, (catalog) => catalog.agentConfigChanged({ id: c.req.param('id') }));
       return c.json(out.read);
     });
 

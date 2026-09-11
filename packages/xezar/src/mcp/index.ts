@@ -19,11 +19,14 @@ import { EventCatalog, withEventOrigin, type WorkspaceEventSource } from './even
 import { EventJournal } from './event-journal.ts';
 import { mcpSocketLocation } from './ipc.ts';
 import { OperationReceiptStore, runByKeyReconciler, type EffectOutcome } from './operation-receipts.ts';
+import { registerProjectCatalog } from './project-catalogs.ts';
+import { LeaderCursors, runStateReader } from './reconnect.ts';
 import type { ServiceDispatch } from './service-adapter.ts';
 import { listenMcpSocket, type McpDoor, type McpServiceHandle } from './service.ts';
 import { staleRejectionIn } from './stale-write.ts';
 import { errorResult, textResult, type McpToolResult } from './tool.ts';
 import { tools } from './tools/index.ts';
+import type { LeaderEventsPort } from './tools/leader-events.ts';
 
 /**
  * The MCP module's public surface (#86, D-01). `packages/xezar/src/index.ts` imports
@@ -84,7 +87,10 @@ export async function startMcpService(opts: StartMcpServiceOptions): Promise<Mcp
       tools,
       ...(opts.env ? { env: opts.env } : {}),
       ...(opts.platform ? { platform: opts.platform } : {}),
-      ...(opts.service ? { context: { service: opts.service } } : {}),
+      context: {
+        ...(opts.service ? { service: opts.service } : {}),
+        ...(parts.leaderEvents ? { leaderEvents: parts.leaderEvents } : {}),
+      },
       door: parts.door,
     });
     return {
@@ -125,8 +131,14 @@ interface DoorInput {
  * - the audit trail (#102), stamped `mcp` because this is the MCP door (D-06 § 10.4 rule 1).
  *
  * Read-only tools pass straight through: a read has no effect to deduplicate, attribute or audit.
+ *
+ * Two more parts face outward rather than wrapping a call:
+ * - the catalog is registered as the project's E-05 reporter (#252), so the cockpit's own config,
+ *   workflow and agent-config write routes can report a human change to it;
+ * - the leader's persisted cursors (#105) and the `leader_events` port over them (#251), handed to
+ *   the tools as context — the leader's pull read of its journal on reconnect.
  */
-function composeDoor(input: DoorInput): { door: McpDoor; close(): void } {
+function composeDoor(input: DoorInput): { door: McpDoor; leaderEvents: LeaderEventsPort | undefined; close(): void } {
   const { projectId, dataDir, store, workspaceEvents, providerBaseline, warn } = input;
   const closers: Array<() => void> = [];
   const attempt = <T>(what: string, open: () => T): T | undefined => {
@@ -138,9 +150,8 @@ function composeDoor(input: DoorInput): { door: McpDoor; close(): void } {
     }
   };
 
-  const journal = attempt('event journal', () =>
-    EventJournal.open({ dataDir, projectId, secretValues: collectSecretValues(input.env), warn }),
-  );
+  const secretValues = collectSecretValues(input.env);
+  const journal = attempt('event journal', () => EventJournal.open({ dataDir, projectId, secretValues, warn }));
   if (journal) closers.push(() => journal.close());
   // Pushed after the journal, so it detaches first: no row can reach a closed journal.
   const catalog =
@@ -155,7 +166,15 @@ function composeDoor(input: DoorInput): { door: McpDoor; close(): void } {
           }),
         )
       : undefined;
-  if (catalog) closers.push(() => catalog.detach());
+  if (catalog) {
+    closers.push(() => catalog.detach());
+    // Pushed after the catalog, so the routes stop reaching it before it detaches.
+    closers.push(registerProjectCatalog(projectId, catalog));
+  }
+  const cursors =
+    journal && store ? attempt('leader cursors', () => LeaderCursors.open({ dataDir, projectId, journal, warn })) : undefined;
+  const leaderEvents: LeaderEventsPort | undefined =
+    journal && store && cursors ? { journal, cursors, readState: runStateReader(store, journal), secretValues } : undefined;
 
   const receipts = attempt('operation receipts', () =>
     OperationReceiptStore.open(dataDir, {
@@ -226,6 +245,7 @@ function composeDoor(input: DoorInput): { door: McpDoor; close(): void } {
   let closed = false;
   return {
     door,
+    leaderEvents,
     close() {
       if (closed) return;
       closed = true;
