@@ -91,7 +91,9 @@ export async function rematerializeReclaimedWorktree(
  * report failure, so a run is stamped only once its directory is confirmed gone
  * — a locked/permission failure leaves the stamp unset so the next pass retries.
  * Idempotent under races: `removeWorktree` is `--force` + `prune` and a repeated
- * stamp is harmless.
+ * stamp is harmless. A caller with a lifecycle passes `shouldStop` and the sweep abandons the
+ * rest of the pass the moment that caller is done with the repository, returning the ids it had
+ * already reclaimed.
  */
 export interface ReclaimOptions {
   /** Timestamp source for the stamp — injectable for deterministic tests. */
@@ -100,6 +102,18 @@ export interface ReclaimOptions {
    *  Injectable so tests can exercise the "removal failed" branch without brittle
    *  filesystem-permission tricks. */
   remove?: (repoRoot: string, worktreePath: string) => Promise<void>;
+  /**
+   * Asked before EVERY iteration: has the caller stopped owning this repository?
+   *
+   * A sweep is a loop of `git worktree remove` spawns with a `store.updateRun` stamp after each
+   * one, so a caller that checks "am I still alive" once before calling this stops the sweep
+   * before its FIRST removal and never again — and a five-worktree pass that straddles a
+   * `RunManager.dispose()` goes on writing into a data root its owner has finished with (#200).
+   *
+   * Absent means "never stop", which is what every one-shot caller (boot, the reclaim route)
+   * wants: they have no lifecycle to lose mid-sweep.
+   */
+  shouldStop?: () => boolean;
 }
 
 export async function reclaimWorktrees(
@@ -110,10 +124,15 @@ export async function reclaimWorktrees(
 ): Promise<string[]> {
   const now = opts.now ?? (() => new Date().toISOString());
   const remove = opts.remove ?? ((root, path) => removeWorktree(root, path)); // branch kept
+  const shouldStop = opts.shouldStop ?? (() => false);
   const runs = store.listRuns();
   const byId = new Map(runs.map((r) => [r.id, r]));
   const reclaimed: string[] = [];
   for (const id of selectReclaimableWorktrees(runs, keep)) {
+    // Per iteration, not once before the loop: each pass costs a git spawn and a record write,
+    // and the caller's ownership can end between any two of them. Returning what was already
+    // reclaimed is honest — those directories really are gone.
+    if (shouldStop()) break;
     const run = byId.get(id);
     if (!run?.worktreePath) continue;
     try {

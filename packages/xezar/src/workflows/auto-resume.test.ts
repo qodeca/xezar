@@ -16,6 +16,18 @@ import type { WorkflowDef } from './types.ts';
 
 const run = promisify(execFile);
 const GIT_ID = ['-c', 'user.name=test', '-c', 'user.email=test@local'];
+/** The statuses a run can stop at. Shared by `settle` and by teardown's straggler check, which
+ *  must ask the same question the cases do. */
+const TERMINAL = new Set(['done', 'review', 'failed', 'cancelled']);
+/**
+ * Teardown now WAITS for run bodies, so vitest's 10 s hook default is no longer the right budget:
+ * `settle` alone gives one run 20 s, and the cases below run to 40, 60 and 90. A hook that times
+ * out is the worst of both worlds — the `rmSync` is skipped, the manager is never disposed, and
+ * the deliberate "temp dir leaked" message never prints, so the fault reads as a timeout in
+ * cleanup rather than as the live run it is. Sized like the file's own longest case, not like its
+ * shortest. (`run-quiesce.test.ts` gives its hook 40 s for exactly this reason.)
+ */
+const TEARDOWN_TIMEOUT_MS = 90_000;
 
 /**
  * Auto-resume after a provider usage limit, end to end through the real engine
@@ -44,9 +56,8 @@ describe('a run stopped by a usage limit resumes itself', () => {
 
   /** Drive one real run to a terminal status. */
   async function settle(runId: string): Promise<void> {
-    const terminal = new Set(['done', 'review', 'failed', 'cancelled']);
     const deadline = Date.now() + 20_000;
-    while (!terminal.has(store.getRun(runId)?.status ?? '')) {
+    while (!TERMINAL.has(store.getRun(runId)?.status ?? '')) {
       if (Date.now() > deadline) throw new Error('run did not finish in time');
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
@@ -66,16 +77,58 @@ describe('a run stopped by a usage limit resumes itself', () => {
     store = RunStore.open(join(repoRoot, '.local/xezar'));
   });
 
-  afterEach(() => {
-    manager?.dispose();
+  /**
+   * Stop the engine, THEN delete its repository — in that order, which is the whole fix (#200).
+   *
+   * This hook used to call `manager?.dispose()` and delete immediately, and all three parts of
+   * that were wrong. `dispose()` is async and was not awaited; it is not a run-stopper by design;
+   * and doing it FIRST is unrecoverable, because it clears `active`/`starting`/`queue` while
+   * `cancel()` looks only in `queue` then `active` — so a run left behind could no longer be
+   * stopped at all. The runs it left behind were the two the last case dequeues in its closing
+   * assertion and never joins: `startedAt` is stamped BEFORE `getRepoInfo`, `createWorktree` and
+   * the run's temp directory, so a poll on `startedAt` returns while the engine is still creating
+   * directories under `repoRoot` — and `git worktree add` racing `rmSync` is the reported
+   * `ENOTEMPTY`.
+   *
+   * `quiesce()` is that order: cancel everything the manager owns (queued runs included — one
+   * case deliberately ends with four of them), wait for every run body to reach a terminal state,
+   * then dispose. It is a wait on the bodies themselves, not a sleep, so it costs nothing when
+   * there is nothing to wait for.
+   */
+  afterEach(async () => {
+    // Ask the ENGINE which runs it still owns, before `quiesce()` empties its registries. Asking
+    // the STORE instead does not work here and the difference is the whole subtlety: several
+    // cases hand-write a status onto a record the engine has long since finished with — one ends
+    // by setting `waiting` explicitly, "done here as the state change" — so "the record is not
+    // terminal" and "something is still writing" are different questions, and only the second one
+    // may block the delete. `isActive` is `active ∪ starting ∪ queue`, which is exactly the
+    // population `quiesce()` is responsible for.
+    const owned = manager
+      ? store.listRuns().filter((record) => manager?.isActive(record.id) === true)
+      : [];
+    await manager?.quiesce();
     manager = undefined;
     for (const [key, value] of Object.entries(savedEnv)) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
     }
     store.flush();
+    // A survivor means `quiesce()` came back while the engine was still going, so the repository
+    // is LEAKED rather than deleted: leaking a temp directory is strictly better than removing
+    // one out from under a live run, and it keeps the cleanup from ever being the thing that
+    // reports the fault. (A run left behind by a manager a CASE constructed and disposed itself
+    // is outside this hook's reach — every case settles those inline before disposing.)
+    const straggler = owned
+      .map((record) => store.getRun(record.id))
+      .find((record) => record && !TERMINAL.has(record.status));
+    if (straggler) {
+      throw new Error(
+        `run ${straggler.id} was still ${straggler.status} at teardown — the case returned ` +
+          `before the engine stopped writing into ${repoRoot} (temp dir deliberately leaked)`,
+      );
+    }
     rmSync(repoRoot, { recursive: true, force: true });
-  });
+  }, TEARDOWN_TIMEOUT_MS);
 
   it('schedules the resume for the provider\'s reset instant plus the grace', async () => {
     manager = new RunManager(store, repoRoot);
@@ -215,6 +268,32 @@ describe('a run stopped by a usage limit resumes itself', () => {
         { timeout: 20_000 },
       )
       .toBe(4);
+    // The mirror of the guard above, and this case's headline rests on it: the poll returns the
+    // instant the FOURTH `startedAt` lands, so a fifth dequeue a millisecond later would never be
+    // observed and "one task never runs at all" would pass against a queue that had already
+    // drained.
+    //
+    // The wait is a POLL on the re-established hold rather than the guard above's bare sleep,
+    // because there is a real signal here and it is load-independent: the two tasks that just
+    // started meet the same limit and schedule their own resumes, and `scheduleAutoResumeIfLimited`
+    // publishes that deadline BEFORE releasing the slot (deliberately — a pump reads the hold off
+    // the records). Two fresh deadlines therefore means the second stampede has run its course and
+    // the account is held again, which no amount of machine load can fake.
+    //
+    // The short settle after it is NOT redundant and cannot be polled away: the last pump of the
+    // stampede is floated after that record write and still has `getRepoInfo` to cross, so the
+    // only remaining way for a fifth task to appear is a pump that has already been fired and has
+    // not finished. Nothing observable marks its end. It is a give-the-bug-a-chance guard, so it
+    // can only ever fail in the safe direction — but the poll is what keeps its budget spent on
+    // that window instead of on waiting out a mock agent turn.
+    await expect
+      .poll(
+        () => runs.filter((r) => store.getRun(r.id)?.autoResumeAt !== undefined).length,
+        { timeout: 20_000 },
+      )
+      .toBe(2);
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    expect(runs.filter((r) => store.getRun(r.id)?.startedAt !== undefined)).toHaveLength(4);
     expect(runs.filter((r) => store.getRun(r.id)?.status === 'queued')).toHaveLength(1);
   }, 60_000);
 
