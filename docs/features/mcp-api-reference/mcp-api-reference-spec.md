@@ -197,10 +197,10 @@ reference fails `npm test`, which is a required CI check, so it cannot merge.** 
 | Artifact | Path | Generated? | Owner |
 | --- | --- | --- | --- |
 | This specification | `docs/features/mcp-api-reference/mcp-api-reference-spec.md` | No | #263 |
-| Machine-readable reference (AR-01) | `docs/features/mcp-server/mcp-api.json` | Yes, checked by DR-01 | #261 (in flight) |
-| Human-readable reference (RF-01) | `docs/features/mcp-server/mcp-api.md` | Prose by hand, tables generated, checked by DR-02 | #261 (in flight) |
+| Machine-readable reference (AR-01) | `docs/features/mcp-server/mcp-api.json` | Yes, checked by DR-01 | #261 (merged in #268) |
+| Human-readable reference (RF-01) | `docs/features/mcp-server/mcp-api.md` | Prose by hand, tables generated, checked by DR-02 | #261 (merged in #268) |
 | Coverage and result declaration (CT-01) | `packages/xezar/src/mcp/api-reference.ts` – **a shipped module, not a `.testkit.ts`** | No – declared data plus one builder function | Implementation issue to be filed |
-| Drift tests | `packages/xezar/src/mcp/mcp-api-doc.test.ts` | – | #261 (in flight) |
+| Drift tests | `packages/xezar/src/mcp/mcp-api-doc.test.ts` | – | #261 (merged in #268) |
 | Response schema (NF-05) | `packages/contract/src/mcp-api-reference.ts`, exported from `packages/contract/src/index.ts` | – | Implementation issue |
 | Read-only route (section 11) | a `mcpReferenceRoutes` family in `packages/xezar/src/server/server.ts`, chained into `v1` | – | Implementation issue |
 | Cockpit page (section 12) | `packages/web/src/routes/settings/mcp-api-section.tsx` plus one entry in `registry.tsx` | – | Implementation issue |
