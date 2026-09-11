@@ -293,6 +293,12 @@ describe('the leader session is started with the role instruction on every invoc
     expect(argv.slice(0, 7)).toEqual(['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--replay-user-messages']);
     expect(argv[argv.indexOf('--permission-mode') + 1]).toBe('dontAsk');
     expect(argv[argv.indexOf('--allowedTools') + 1]).toBe('mcp__xezar');
+    // #309 F-1: approving is not restricting. The built-in set is EMPTY, and the tools that write,
+    // run commands or reach the network are denied on top — deny outranks the user's allow rules.
+    expect(argv[argv.indexOf('--tools') + 1]).toBe('');
+    expect(argv[argv.indexOf('--disallowedTools') + 1]!.split(',')).toEqual(
+      expect.arrayContaining(['Bash', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'WebFetch', 'WebSearch', 'Task']),
+    );
     expect(argv).toContain('--strict-mcp-config');
     expect(JSON.parse(argv[argv.indexOf('--mcp-config') + 1]!)).toEqual({
       mcpServers: { xezar: { type: 'stdio', command: BRIDGE.command, args: ['mcp'] } },

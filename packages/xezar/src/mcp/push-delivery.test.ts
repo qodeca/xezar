@@ -235,6 +235,11 @@ describe('#309 — push delivery in the running service (A-19 delivery, A-20 no-
     expect(argv).toEqual(expect.arrayContaining(['--input-format', 'stream-json', '--replay-user-messages', '--mcp-config']));
     const mcpConfig = JSON.parse(argv[argv.indexOf('--mcp-config') + 1]!) as { mcpServers: { xezar: { command: string; args: string[] } } };
     expect(mcpConfig.mcpServers.xezar).toMatchObject(BRIDGE);
+    // F-1 (QA on #311): the leader xezar starts has NO built-in tool, whatever the user's settings
+    // allow — `--allowedTools` only approves. The running service passes the restriction itself.
+    expect(argv[argv.indexOf('--tools') + 1]).toBe('');
+    expect(argv[argv.indexOf('--disallowedTools') + 1]!.split(',')).toEqual(expect.arrayContaining(['Bash', 'Edit', 'Write']));
+    expect(argv).toContain('--strict-mcp-config');
 
     // The leader's MCP connection opens its session: it owns the project, and a controller follows the journal for it.
     const leader = agent(c.root);
@@ -328,6 +333,21 @@ describe('#309 — push delivery in the running service (A-19 delivery, A-20 no-
     const stopped = await c.human('POST', '/mcp/leader', { action: 'stop' });
     expect(await stopped.json()).toMatchObject({ available: true, leader: null, blocker: { code: 'no-leader-session' } });
   }, 60_000);
+
+  it('says the journal cannot be written, and refuses to start a leader that could never hear an event (O-3)', async () => {
+    const c = await cockpit();
+    const claude = standInClaude();
+    // QA's reproduction: the journal's folder is a file, so no row can ever be recorded.
+    mkdirSync(c.dataDir, { recursive: true });
+    writeFileSync(join(c.dataDir, 'mcp'), 'not a folder\n', 'utf8');
+    await serve(c, claude.bin);
+
+    expect(await c.status()).toMatchObject({ available: true, leader: null, blocker: { code: 'journal-unwritable' } });
+    const refused = await c.human('POST', '/mcp/leader', { action: 'start', client: 'claude-code' });
+    expect(refused.status).toBe(409);
+    expect(((await refused.json()) as { error: string }).error).toMatch(/cannot write this project’s event journal/);
+    expect(claude.argv()).toBeUndefined();
+  });
 
   it('ends delivery with the service, and reports no delivery for a project whose MCP service is not running', async () => {
     const c = await cockpit();

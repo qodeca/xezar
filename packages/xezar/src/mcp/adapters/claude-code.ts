@@ -56,9 +56,11 @@ import type { EventController, EventDispatch, EventRecovery, ReactionAdapter } f
  * issue's evidence). So `start` and `resume` both pass it, always as `--append-system-prompt` —
  * never `--system-prompt`, which REPLACES Claude Code's own prompt and has different semantics. The
  * text comes from the caller (xezar's base role plus the user's per-project customisation). The
- * leader cannot edit it: it rides on argv, not in a file, and the session is started with only the
- * `xezar` MCP tools allowed (`--permission-mode dontAsk`), so it has no file, shell or settings tool
- * to reach one with. Prompt text is not enforcement; the tool restriction is.
+ * leader cannot edit it: it rides on argv, not in a file, and the session has no built-in tool at all
+ * (`--tools ""`), only the `xezar` MCP tools — so no file, shell or settings tool to reach one with.
+ * Prompt text is not enforcement; the tool restriction is. `--allowedTools` alone was NOT that
+ * restriction: it pre-approves and removes nothing, so the user's own allow rules stayed live (#309
+ * F-1). `--tools ""` removes the built-ins; `--disallowedTools` denies the dangerous ones again.
  *
  * NO DUPLICATE REACTION, ON RETRY OR RECONNECT. Delivery is at-least-once (D-05 § 6.6): a
  * controller retry re-sends the same rows, and a new controller session re-sends everything after
@@ -87,11 +89,37 @@ import type { EventController, EventDispatch, EventRecovery, ReactionAdapter } f
 export const CLAUDE_CODE_MCP_SERVER = 'xezar';
 
 /**
- * The only tools the leader session may use: every tool of the `xezar` server. With
- * `--permission-mode dontAsk`, anything not listed is denied rather than prompted, so the leader has
- * no file, shell or settings tool — the enforcement behind "the leader cannot edit its instruction".
+ * The tools the leader session is pre-approved to use: every tool of the `xezar` server, so
+ * `--permission-mode dontAsk` never has to ask for one. This APPROVES; it restricts nothing — the
+ * restriction is `CLAUDE_CODE_LEADER_BUILTIN_TOOLS` and `CLAUDE_CODE_LEADER_DENIED_TOOLS` below.
  */
 export const CLAUDE_CODE_LEADER_TOOLS = [`mcp__${CLAUDE_CODE_MCP_SERVER}`] as const;
+
+/**
+ * The built-in tools a leader session gets: NONE (#309 F-1). `--allowedTools` only PRE-APPROVES the
+ * xezar tools; it removes nothing, so without this the user's own settings allow rules (`Edit`,
+ * `Bash(git *)`, …) stayed live under `dontAsk` and a leader xezar started ran `git` in the checkout
+ * unprompted (QA on #311). `--tools ""` is the CLI's documented way to make the built-in set empty
+ * ("Use \"\" to disable all tools"); MCP tools are not built-in, and `--strict-mcp-config` leaves the
+ * `xezar` server as the only source of them.
+ */
+export const CLAUDE_CODE_LEADER_BUILTIN_TOOLS = '';
+
+/**
+ * A second line under the empty built-in set: deny rules outrank every allow rule, the user's
+ * settings included. Listed by name so a CLI that ever ignored `--tools ""` would still refuse the
+ * tools that write, run commands or reach the network.
+ */
+export const CLAUDE_CODE_LEADER_DENIED_TOOLS = [
+  'Bash',
+  'Edit',
+  'Write',
+  'MultiEdit',
+  'NotebookEdit',
+  'WebFetch',
+  'WebSearch',
+  'Task',
+] as const;
 
 /** How Claude Code names one tool of that server (`mcp__<server>__<tool>`). */
 const XEZAR_TOOL_PREFIX = `mcp__${CLAUDE_CODE_MCP_SERVER}__`;
@@ -207,8 +235,13 @@ export function buildClaudeCodeLeaderArgs(opts: ClaudeCodeLeaderArgsOptions): st
     '--replay-user-messages',
     '--permission-mode',
     'dontAsk',
+    // Removes every built-in tool; the two lines after it only approve and deny (#309 F-1).
+    '--tools',
+    CLAUDE_CODE_LEADER_BUILTIN_TOOLS,
     '--allowedTools',
     CLAUDE_CODE_LEADER_TOOLS.join(','),
+    '--disallowedTools',
+    CLAUDE_CODE_LEADER_DENIED_TOOLS.join(','),
     '--mcp-config',
     JSON.stringify(mcpConfig),
     '--strict-mcp-config',

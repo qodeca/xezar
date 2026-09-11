@@ -380,14 +380,37 @@ export interface CodexLeaderThreadOptions {
   resumeThreadId?: string;
 }
 
+/**
+ * What a leader thread may do, sent on `thread/start` AND `thread/resume` (#309 F-1). Without it the
+ * thread took the user's own `config.toml` defaults — observed `workspaceWrite` + `on-request`, and a
+ * control turn ran `git status` and wrote a file in the checkout with no prompt. Each part has its
+ * own job, measured on codex-cli 0.154.0:
+ * - `features.shell_tool` / `features.unified_exec` false REMOVE command execution: the model's
+ *   tool list lost `exec_command`, and a forced call failed (`tools.exec_command is not a function`).
+ *   `read-only` alone would still run read-only commands.
+ * - `sandbox: read-only` + `approvalPolicy: never` REFUSE every write without asking anyone: the
+ *   patch tool has no off switch, and its attempt answered `patch rejected: writing is blocked by
+ *   read-only sandbox`. Both must always be sent — neither blocks writes alone.
+ * - `web_search: disabled` takes the network search away; a leader reads xezar, not the web.
+ * Codex accepts unknown `config` keys silently, so a renamed feature would fail OPEN: the unit test
+ * pins these exact names, and the evidence is a live run, not the call succeeding.
+ * Not covered: MCP servers the user configured for Codex besides `xezar` stay reachable (Claude
+ * Code's leader runs `--strict-mcp-config`; Codex has no equivalent flag on this path).
+ */
+export const CODEX_LEADER_RESTRICTIONS = {
+  sandbox: 'read-only',
+  approvalPolicy: 'never',
+  config: { features: { shell_tool: false, unified_exec: false }, web_search: 'disabled' },
+} as const;
+
 /** Start (or resume) the leader's thread on `link`, supplying the role instruction either way. */
 export async function openCodexLeaderThread(link: CodexAppServerLink, opts: CodexLeaderThreadOptions): Promise<string> {
   const role = codexRoleInstructionParams(opts.roleInstruction);
   if (opts.resumeThreadId !== undefined) {
-    await link.request('thread/resume', { threadId: opts.resumeThreadId, cwd: opts.cwd, ...role });
+    await link.request('thread/resume', { threadId: opts.resumeThreadId, cwd: opts.cwd, ...role, ...CODEX_LEADER_RESTRICTIONS });
     return opts.resumeThreadId;
   }
-  const result = await link.request('thread/start', { cwd: opts.cwd, ...role });
+  const result = await link.request('thread/start', { cwd: opts.cwd, ...role, ...CODEX_LEADER_RESTRICTIONS });
   const threadId = threadIdOf(result);
   if (threadId === undefined) throw new Error('codex app-server answered thread/start without a thread id');
   return threadId;

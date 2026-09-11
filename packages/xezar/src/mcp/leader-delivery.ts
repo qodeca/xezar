@@ -82,6 +82,14 @@ const NO_LEADER: McpLeaderBlocker = {
   fix: 'Start the leader from xezar (Claude Code or Codex), or attach the OpenCode session you run with `opencode serve`.',
 };
 
+/** #309 O-3: a journal that records nothing has nothing to deliver, so a leader would never hear a thing. */
+const JOURNAL_UNWRITABLE: McpLeaderBlocker = {
+  code: 'journal-unwritable',
+  message:
+    'xezar cannot write this project’s event journal, so no event is recorded and none can be delivered. The cockpit log names the file and the error.',
+  fix: 'Make the project’s .local/xezar/mcp folder writable, then restart xezar.',
+};
+
 export interface LeaderDeliveryOptions {
   readonly projectId: string;
   readonly projectRoot: string;
@@ -203,6 +211,9 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
       this.#stopLeader();
       return { ok: true, status: this.status() };
     }
+    // Starting a leader that can never receive an event would answer 200 with a blocker-free status
+    // for a path that delivers nothing (#309 O-3). Refuse, and say why.
+    if (!this.#opts.journal.writable) return { ok: false, error: JOURNAL_UNWRITABLE.message };
     const current = this.#leaderSession();
     if (current?.state === 'running') {
       return { ok: false, error: `a ${current.client} leader session is already running for this project; stop it first` };
@@ -360,6 +371,8 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
   }
 
   #blocker(): McpLeaderBlocker | null {
+    // Before anything about the leader: with no journal, even a running leader hears nothing.
+    if (!this.#opts.journal.writable) return JOURNAL_UNWRITABLE;
     const leader = this.#leader;
     if (leader === undefined) return NO_LEADER;
     switch (leader.client) {

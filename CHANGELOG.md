@@ -9,7 +9,12 @@
   last Claude Code one, attaches an OpenCode session you run with `opencode serve`, or stops it;
   `GET /api/v1/mcp/leader` says what is delivered and, when nothing can be, why. xezar never starts
   a leader by itself, and refuses to start one while another MCP client owns the project. A leader
-  never receives the echo of its own change. A Claude Code or Codex session you opened yourself
+  never receives the echo of its own change. A leader xezar starts or attaches can use the xezar
+  tools and nothing else, whatever your own agent settings allow: Claude Code runs with no built-in
+  tool (`--tools ""`) and a deny list on top, a Codex leader thread runs read-only with its shell
+  switched off, and each event sent to an OpenCode session allows only `xezar_*` tools — OpenCode
+  keeps that rule on the attached session, so your own messages in it get only the xezar tools too.
+  `start` is refused, and the status says why, when the project's event journal cannot be written. A Claude Code or Codex session you opened yourself
   still cannot be woken: its events wait in the journal and are read with `leader_events`. There is
   no cockpit button yet. (#309)
 - ✨ **One MCP client owns a project at a time.** A second coding agent that connects to a

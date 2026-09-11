@@ -78,12 +78,33 @@ export interface StartMcpServiceOptions {
  * How THIS installation starts `xez mcp` (D-01 § 1.7): the same node, loader flags and CLI entry
  * that are serving now, so a leader xezar starts talks to this very xezar, whatever the version on
  * PATH. Debugger flags are dropped: a second process must not fight for the inspector port.
+ *
+ * A loader named by a bare package name (`--import tsx`, the dev server) is resolved to its file
+ * HERE: Node resolves it from the working directory, and the leader runs in the PROJECT's, where
+ * `tsx` does not exist — observed, the leader then started with no xezar tools at all. The built
+ * CLI has no loader flag, so this only ever changes a dev run.
  */
 function ownBridgeCommand(): { command: string; args: string[] } {
   const entry = process.argv[1];
   if (entry === undefined) return { command: 'xez', args: ['mcp'] };
   const flags = process.execArgv.filter((flag) => !flag.startsWith('--inspect'));
-  return { command: process.execPath, args: [...flags, entry, 'mcp'] };
+  const loaders = new Set(['--import', '--require', '-r', '--loader', '--experimental-loader']);
+  const args = flags.map((flag, i) => {
+    const [name, inline] = flag.includes('=') ? [flag.slice(0, flag.indexOf('=')), flag.slice(flag.indexOf('=') + 1)] : [flag, undefined];
+    if (inline !== undefined) return loaders.has(name) ? `${name}=${resolveLoader(inline)}` : flag;
+    return i > 0 && loaders.has(flags[i - 1]!) ? resolveLoader(flag) : flag;
+  });
+  return { command: process.execPath, args: [...args, entry, 'mcp'] };
+}
+
+/** A bare loader name → the file it resolves to from here; anything else, or a failure, unchanged. */
+function resolveLoader(specifier: string): string {
+  if (/^(\.|\/|[a-z]+:)/i.test(specifier)) return specifier;
+  try {
+    return import.meta.resolve(specifier);
+  } catch {
+    return specifier;
+  }
 }
 
 /**
