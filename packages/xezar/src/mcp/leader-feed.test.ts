@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
-import type { McpJournalRow } from '@qodeca/xezar-contract';
+import { MCP_SESSION_EXPIRED_CODE, MCP_SESSION_EXPIRED_REASON, type McpJournalRow } from '@qodeca/xezar-contract';
 import type { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { projectDataDir } from '../project-data-paths.ts';
@@ -106,11 +106,11 @@ async function serve(c: Cockpit, env?: NodeJS.ProcessEnv) {
 function agent(root: string) {
   const input = new PassThrough();
   const output = new PassThrough();
-  const pending = new Map<number, (result: McpToolResult) => void>();
+  const pending = new Map<number, (message: RpcMessage) => void>();
   const framer = new LineFramer(
     (line) => {
-      const message = JSON.parse(line) as { id: number; result: McpToolResult };
-      pending.get(message.id)?.(message.result);
+      const message = JSON.parse(line) as RpcMessage & { id: number };
+      pending.get(message.id)?.(message);
       pending.delete(message.id);
     },
     () => {},
@@ -122,15 +122,22 @@ function agent(root: string) {
     return done;
   });
   let next = 1;
-  return {
-    call(name: string, args: Record<string, unknown>): Promise<McpToolResult> {
-      const id = next++;
-      return new Promise((resolve) => {
-        pending.set(id, resolve);
-        input.write(encodeFrame({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } }));
-      });
-    },
+  const rpc = (name: string, args: Record<string, unknown>): Promise<RpcMessage> => {
+    const id = next++;
+    return new Promise((resolve) => {
+      pending.set(id, resolve);
+      input.write(encodeFrame({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } }));
+    });
   };
+  return {
+    rpc,
+    call: async (name: string, args: Record<string, unknown>): Promise<McpToolResult> => (await rpc(name, args)).result as McpToolResult,
+  };
+}
+
+interface RpcMessage {
+  result?: McpToolResult;
+  error?: { code: number; message: string; data?: { reason?: string } };
 }
 
 type Leader = ReturnType<typeof agent>;
@@ -223,6 +230,10 @@ describe('#251 — a reconnecting leader reads the events it missed (A-15, A-21)
     handle = await serve(c);
     expect((await c.human('PUT', '/config', { baseBranch: 'main' })).status).toBe(200);
 
+    // D-02 § 5 (#302): the leader's session ended with the service. Its first call after the restart
+    // is answered session-expired and never runs; the bridge reconnects for the next one on its own.
+    const fenced = await leader.rpc('leader_events', { action: 'read' });
+    expect(fenced.error).toMatchObject({ code: MCP_SESSION_EXPIRED_CODE, data: { reason: MCP_SESSION_EXPIRED_REASON } });
     const raw = await leader.call('leader_events', { action: 'read' });
     expect(raw.isError).toBeFalsy();
     expect(raw.content[0]!.text).toMatch(/^GAP: /);

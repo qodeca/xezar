@@ -79,6 +79,9 @@ describe('per-dataDir todos watch (step 2.3)', () => {
     subscribe(dirA, () => second++);
 
     offFirst();
+    // Same FSEvents settle as above: under a loaded full suite a write that lands the instant
+    // watch() returns can be missed entirely, and nothing else ever rewrites the file.
+    await new Promise((resolve) => setTimeout(resolve, 400));
     await fs.writeFile(todosPath(dirA), JSON.stringify([{ id: 't2', summary: 'still watched' }]));
     await waitFor(() => expect(second).toBeGreaterThan(0));
     expect(first).toBe(0);

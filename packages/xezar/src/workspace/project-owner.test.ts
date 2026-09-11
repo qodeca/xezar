@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
-import { ftruncateSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { existsSync, ftruncateSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -187,12 +187,30 @@ describe('ProjectOwnership — one owner per project (#99)', () => {
 
     // A fresh torn claim whose pid is confirmed dead is reaped at once, age regardless.
     owner.release('leader');
+    // A released project keeps no owner directory (#302); the peer planted below brings its own.
+    mkdirSync(dir, { recursive: true });
     const dead = join(dir, '4303-00000000-0000-4000-8000-000000000000.json');
     writeFileSync(dead, '');
     utimesSync(dead, clock.now() / 1000, clock.now() / 1000);
     pids.kill(4303);
     tokenOf(await owner.acquire('leader'));
     expect(claims(dataDir)).toHaveLength(1);
+  });
+
+  it('a released project keeps no owner directory, and a peer’s claim is never removed with it (#302)', async () => {
+    const dataDir = tempDir('xez-owner-');
+    const dir = join(dataDir, OWNER_CLAIM_DIR);
+    const owner = ownership({ dataDir });
+    tokenOf(await owner.acquire('leader'));
+    owner.release('leader');
+    expect(existsSync(dir)).toBe(false);
+
+    // A claim that is not ours keeps the directory: only an EMPTY one is removed.
+    tokenOf(await owner.acquire('leader'));
+    const peer = join(dir, '4401-00000000-0000-4000-8000-000000000000.json');
+    writeFileSync(peer, '{"v":1,"tok');
+    owner.release('leader');
+    expect(existsSync(peer)).toBe(true);
   });
 
   it('claims nothing after dispose: the service is going away', async () => {

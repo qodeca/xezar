@@ -653,22 +653,53 @@ export async function createAbWorld(options: AbWorldOptions = {}): Promise<AbWor
   const leaderLog: string[] = [];
   const leaders = new Set<Leader>();
 
+  /**
+   * One connection per frame. A request that needs an MCP session (`health`, `tools/call`) opens
+   * one first on the same connection, as the bridge does (#302) — so a custom client competes for
+   * the project like any other, and is refused while a leader owns it. Closing the connection
+   * ends that session.
+   */
+  const needsSession = (payload: unknown): boolean =>
+    typeof payload === 'object' &&
+    payload !== null &&
+    (payload as { v?: unknown }).v === IPC_PROTOCOL_VERSION &&
+    ['health', 'tools/call'].includes(String((payload as { method?: unknown }).method));
+
   const frame = (side: Side, payload: unknown): Promise<unknown> =>
     new Promise((resolve, reject) => {
       const socket = createConnection(socketPath(side));
       const line = typeof payload === 'string' ? payload : JSON.stringify(payload);
-      leaderLog.push(`client→${side} ${line}`);
+      const answers: string[] = [];
+      let opening = needsSession(payload);
       const framer = new LineFramer(
         (answer) => {
+          answers.push(answer);
+          if (opening) {
+            opening = false;
+            if ((JSON.parse(answer) as { ok?: unknown }).ok === true) {
+              leaderLog.push(`client→${side} ${line}`);
+              socket.write(`${line}\n`);
+              return;
+            }
+          }
           leaderLog.push(`${side}→client ${answer}`);
+          // Answered only once the connection is fully closed and the service has handled that
+          // close, so the session this frame opened has released the project before the caller
+          // looks at the project's files again.
+          socket.once('close', () => setImmediate(() => resolve(JSON.parse(answer) as unknown)));
           socket.end();
-          resolve(JSON.parse(answer) as unknown);
         },
         () => reject(new Error('oversized frame')),
       );
       socket.on('data', (chunk: Buffer) => framer.push(chunk));
       socket.on('error', reject);
-      socket.on('connect', () => socket.write(`${line}\n`));
+      socket.on('connect', () => {
+        if (opening) socket.write(encodeFrame({ v: IPC_PROTOCOL_VERSION, id: 0, method: 'session/open' }));
+        else {
+          leaderLog.push(`client→${side} ${line}`);
+          socket.write(`${line}\n`);
+        }
+      });
     });
 
   const call = async (side: Side, tool: string, args: Record<string, unknown> = {}): Promise<McpToolResult> => {

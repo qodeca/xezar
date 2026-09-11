@@ -22,7 +22,7 @@ import { readWorktreePath } from '../server/git-changes.ts';
 import { ProjectOwnership } from '../workspace/project-owner.ts';
 import { EventController, type EventDispatch } from './event-controller.ts';
 import { McpJournalCursorError } from './event-journal.ts';
-import type { McpToolResult } from './ipc.ts';
+import { IPC_PROTOCOL_VERSION, type McpToolResult } from './ipc.ts';
 import {
   ownAutomation,
   ownAutomationReceipt,
@@ -263,18 +263,18 @@ describe.skipIf(process.platform === 'win32')('#115 isolation acceptance — A/B
       const aIds = new Set(w.a.store.listRuns().map((r) => r.id));
       const seen = await w.observe(async () => ({
         listWithProject: await w.frame('a', {
-          v: 1,
+          v: IPC_PROTOCOL_VERSION,
           id: 7,
           method: 'tools/call',
           project: PROJECT_B,
           projectId: PROJECT_B,
           params: { name: 'task_read', arguments: { view: 'list', archived: 'include' }, project: PROJECT_B, projectId: PROJECT_B },
         }),
-        healthWithProject: await w.frame('a', { v: 1, id: 8, method: 'health', params: { project: PROJECT_B }, projectId: PROJECT_B }),
-        bind: await w.frame('a', { v: 1, id: 9, method: 'bind', params: { projectId: PROJECT_B } }),
-        select: await w.frame('a', { v: 1, id: 10, method: 'project/select', params: { projectId: 'default' } }),
-        foreignTask: await w.frame('a', { v: 1, id: 11, method: 'tools/call', params: { name: 'task_read', arguments: { view: 'task', taskId: w.b.ids.done } } }),
-        unknownTool: await w.frame('a', { v: 1, id: 12, method: 'tools/call', params: { name: 'workspace_events', arguments: {} } }),
+        healthWithProject: await w.frame('a', { v: IPC_PROTOCOL_VERSION, id: 8, method: 'health', params: { project: PROJECT_B }, projectId: PROJECT_B }),
+        bind: await w.frame('a', { v: IPC_PROTOCOL_VERSION, id: 9, method: 'bind', params: { projectId: PROJECT_B } }),
+        select: await w.frame('a', { v: IPC_PROTOCOL_VERSION, id: 10, method: 'project/select', params: { projectId: 'default' } }),
+        foreignTask: await w.frame('a', { v: IPC_PROTOCOL_VERSION, id: 11, method: 'tools/call', params: { name: 'task_read', arguments: { view: 'task', taskId: w.b.ids.done } } }),
+        unknownTool: await w.frame('a', { v: IPC_PROTOCOL_VERSION, id: 12, method: 'tools/call', params: { name: 'workspace_events', arguments: {} } }),
         badFrame: await w.frame('a', 'not json at all'),
         oldBridge: await w.frame('a', { v: 99, id: 13, method: 'tools/call', params: { name: 'task_read', arguments: { view: 'list' } } }),
       }));
@@ -686,7 +686,10 @@ describe.skipIf(process.platform === 'win32')('#115 isolation acceptance — A/B
 
     it('no tool serves workspace events, and A’s event controller follows A’s journal only', async () => {
       const w = world();
-      const owner = new ProjectOwnership({ dataDir: w.a.dataDir, projectId: PROJECT_A, autoRenew: false });
+      // The controller's own owner slot, apart from A's socket: the leader below holds A's real one
+      // (#302), and two owners of A is exactly what that refuses. What is under test here is which
+      // journal the controller follows; its ownership gate is pinned in event-controller.test.ts.
+      const owner = new ProjectOwnership({ dataDir: join(w.home, 'controller-owner'), projectId: PROJECT_A, autoRenew: false });
       const acquired = await owner.acquire('ab-leader-session');
       expect(acquired.outcome).toBe('owner');
       const delivered: EventDispatch[] = [];
@@ -853,7 +856,7 @@ describe.skipIf(process.platform === 'win32')('#115 isolation acceptance — A/B
           await leader.callTool('task_read', { view: 'list', cursor: 'garbage-cursor' }),
           await w.frame('a', 'not json'),
           await w.frame('a', { v: 99, id: 1, method: 'health' }),
-          await w.frame('a', { v: 1, id: 2, method: 'connection', params: { file: c.path } }),
+          await w.frame('a', { v: IPC_PROTOCOL_VERSION, id: 2, method: 'connection', params: { file: c.path } }),
         ];
         const reads = [];
         for (const view of ['list', 'inbox'] as const) reads.push(await leader.callTool('task_read', { view }));
