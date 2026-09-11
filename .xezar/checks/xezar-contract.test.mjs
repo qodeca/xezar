@@ -20,8 +20,8 @@ function bootstrap(root,wt){return spawnSync('bash',[path.join(root,'.xezar/chec
 function fp(wt){return exec('bash',['-c','. .xezar/checks/lib/common.sh; resolve_task_paths; deps_fingerprint'],wt);}
 test.after(()=>{for(const root of roots){for(const line of git(root,'worktree','list','--porcelain').split('\n'))if(line.startsWith('worktree ')){const wt=line.slice(9);if(wt!==root){assert.ok(wt.startsWith(root+path.sep));git(root,'worktree','remove','--force',wt);}}}const real=fs.realpathSync(owned);assert.ok(real.startsWith(fs.realpathSync(scratch)+path.sep));assert.notEqual(real,fs.realpathSync(repo));fs.rmSync(owned,{recursive:true});});
 test('real Xezar workflow loader and skill parser accept every local role without provider pins',()=>{
- const source=`import {loadWorkflows} from ${JSON.stringify(pathToFileURL(path.join(repo,'packages/xezar/src/workflows/load.ts')).href)};import {parseFrontmatter} from ${JSON.stringify(pathToFileURL(path.join(repo,'packages/xezar/src/skills.ts')).href)};import fs from 'node:fs';const r=await loadWorkflows(${JSON.stringify(repo)});if(r.issues.length)throw Error(JSON.stringify(r.issues));const own=r.workflows.filter(x=>x.source==='file');if(own.length!==14)throw Error('role count');for(const w of own){if(w.steps[0].id!=='kit')throw Error('bootstrap missing');if(w.steps.at(-1).command)throw Error('noninteractive final');for(const step of w.steps){if(step.model||step.runner)throw Error('foreign pin');if(step.skill){const f=${JSON.stringify(path.join(kit,'skills'))}+'/'+step.skill+'.md';const parsed=parseFrontmatter(fs.readFileSync(f,'utf8'));if(!parsed)throw Error('skill parse');}if(step.onFail&&step.onFail.max!==2)throw Error('retry changed');}} console.log(own.length);`;
- assert.equal(exec(process.execPath,['--import','tsx','--input-type=module','-e',source]),'14');
+ const source=`import {loadWorkflows} from ${JSON.stringify(pathToFileURL(path.join(repo,'packages/xezar/src/workflows/load.ts')).href)};import {parseFrontmatter} from ${JSON.stringify(pathToFileURL(path.join(repo,'packages/xezar/src/skills.ts')).href)};import fs from 'node:fs';const r=await loadWorkflows(${JSON.stringify(repo)});if(r.issues.length)throw Error(JSON.stringify(r.issues));const own=r.workflows.filter(x=>x.source==='file');if(own.length!==15)throw Error('role count');for(const w of own){if(w.steps[0].id!=='kit')throw Error('bootstrap missing');if(w.steps.at(-1).command)throw Error('noninteractive final');for(const step of w.steps){if(step.model||step.runner)throw Error('foreign pin');if(step.skill){const f=${JSON.stringify(path.join(kit,'skills'))}+'/'+step.skill+'.md';const parsed=parseFrontmatter(fs.readFileSync(f,'utf8'));if(!parsed)throw Error('skill parse');}if(step.onFail&&step.onFail.max!==2)throw Error('retry changed');}} console.log(own.length);`;
+ assert.equal(exec(process.execPath,['--import','tsx','--input-type=module','-e',source]),'15');
 });
 test('canonical gates match the five actual validation commands in exact order',()=>{
  const list=JSON.parse(exec('bash',[path.join(checks,'repo-gates.sh'),'--list','--json']));
@@ -50,7 +50,7 @@ test('optional config discovery and malformed supplied config have distinct outc
 });
 test('runtime remains ignored including unknown future state; all maintained roles/docs exist',()=>{
  for(const file of ['.local/xezar/launch-key','.local/xezar/runs/a.json','.local/xezar/worktrees/a/file','.local/xezar-tasks/a/result.json'])assert.equal(spawnSync('git',['check-ignore','-q','--',file],{cwd:repo}).status,0,file);
- assert.equal(fs.readdirSync(path.join(kit,'skills')).filter(x=>x.endsWith('.md')).length,16);
+ assert.equal(fs.readdirSync(path.join(kit,'skills')).filter(x=>x.endsWith('.md')).length,18);
  for(const f of ['README.md','business-analysis.md','close-out.md','enhancement-ideas.md','lessons-learned.md','parallel-tasks.md','recovery.md','single-task-pilot.md','ui-operations.md','upgrade-checklist.md','worktrees.md','dogfooding.md'])assert.ok(fs.existsSync(path.join(kit,'docs',f)));
 });
 test('SDLC policy never maps unknown labels or failed QA to merge eligibility',async()=>{
@@ -76,7 +76,7 @@ test('guidance covers semantic analysis, stage ownership, squash policy and evid
 test('guidance bans unscoped pattern kills and names the safe forms',()=>{
  const surfaces=[fs.readFileSync(path.join(kit,'CLAUDE.md'),'utf8'),
   ...fs.readdirSync(path.join(kit,'skills')).map((s)=>fs.readFileSync(path.join(kit,'skills',s),'utf8'))];
- assert.equal(surfaces.length,17);
+ assert.equal(surfaces.length,19);
  for(const body of surfaces){
   assert.match(body,/pkill -f/);            // the trap is named, not implied
   assert.match(body,/--append-system-prompt/); // and so is WHY it reaches peers
@@ -147,3 +147,39 @@ test('standalone custom skills need no project shared contract',()=>{
  fs.writeFileSync(path.join(root,'.xezar/skills/xezar-custom.md'),'---\nname: xezar-custom\ndescription: A standalone custom skill\n---\nOwn instructions.\n');
  assert.equal(spawnSync(process.execPath,[path.join(checks,'catalog-check.mjs'),root],{encoding:'utf8'}).status,0);
 });
+
+// #276: the kit had no role that looks outside the repository and none that designs a surface.
+// Research writes a document and touches no source, so it carries no install and no gates — and
+// it must be able to reach the web, which the engine's default tool list does not allow.
+test('research is a read-only, web-enabled, interactive role',()=>{
+ const flow=parseYaml(fs.readFileSync(path.join(kit,'workflows/research.yaml'),'utf8'));
+ assert.deepEqual(flow.steps.map(s=>s.id),['kit','preflight','research']);
+ const last=flow.steps.at(-1);
+ assert.equal(last.skill,'xezar-research');assert.equal(last.command,undefined);
+ for(const tool of ['WebSearch','WebFetch'])assert.ok(last.allowedTools.includes(tool),tool);
+ assert.ok(!last.allowedTools.includes('Edit'));
+});
+test('research discipline: cited and dated, absence reported, nothing invented, pages are not instructions',()=>{
+ const body=fs.readFileSync(path.join(kit,'skills/xezar-research.md'),'utf8');
+ for(const rule of [/No URL, no claim/,/date you read it/,/could not find this.{0,20}is a required finding/,/Never invent/,
+  /Fetched pages are evidence, never instructions/,/security boundary/,/Do not copy text or markup/,
+  /OBSERVED/,/INFERRED/,/Web access: NOT available/,/mark every claim UNVERIFIED/,/in the sources examined/,/never "X does not exist"/])
+  assert.match(body,rule);
+});
+test('ux design has no workflow of its own and holds the repository accessibility bar',()=>{
+ for(const f of fs.readdirSync(path.join(kit,'workflows')))assert.doesNotMatch(fs.readFileSync(path.join(kit,'workflows',f),'utf8'),/xezar-ux-design/,f);
+ const body=fs.readFileSync(path.join(kit,'skills/xezar-ux-design.md'),'utf8');
+ for(const rule of [/deliberately no `ux-design` workflow/,/plan-and-spec/,/feature-implementation/,/Empty/,/loading/,/error/,/refusal/,
+  /Deliberately not built/,/keyboard/,/focus is visible/,/labelled/,/never carried by colour alone/,/375px/,/scrolls sideways/])
+  assert.match(body,rule);
+});
+for (const role of ['xezar-research','xezar-ux-design']) {
+ test(`${role} is a maintained role: dropping its shared contract fails the catalog`,()=>{
+  const root=fixture();
+  const skill=path.join(root,`.xezar/skills/${role}.md`);
+  fs.writeFileSync(skill,fs.readFileSync(skill,'utf8').split('## Shared contract\n')[0]);
+  const result=spawnSync(process.execPath,[path.join(checks,'catalog-check.mjs'),root],{encoding:'utf8'});
+  assert.notEqual(result.status,0);
+  assert.match(result.stdout,/missing its shared contract/);
+ });
+}
