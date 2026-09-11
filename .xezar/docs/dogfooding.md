@@ -12,6 +12,13 @@ Installation validation is reported in installation.md. Real-task entries follow
 
 ## Real-task entries
 
+### 2026-09-11 — #295 (last of the #307 flakes), `bug-fix` workflow — real-task verified
+
+- Observed: **CPU load alone did not reproduce the flake; modelling the real neighbour did.** The unmodified `mcp/cli.test.ts` passed 41 of 41 under three parallel full `npm test` runs. Adding a loop that did what `package-cli.test.ts` port-fallback does (boot `serve` on a busy port so it walks up one) made it fail 2 of 53. The cause was the test harness trusting a probed-then-released port. macOS hands out ephemeral ports in order, so the next port is exactly where a walking cockpit lands. `xez serve` booted correctly in every captured failure.
+- Observed: the first investigate session ended mid-reproduction after about 15 minutes, with background loops killed, no commit and no report, and readiness then refused the empty branch. Lesson (recommended): before a long background proof run, write the resume notes and the counts so far to the handoff file, so a lost session still leaves the evidence.
+- Regression/control: the new case (a neighbour cockpit on the requested port) was red with the old helper body put back and green with the fix. The three original cases pass both ways; they are guards. After the fix: 120 of 120 under the same load plus the neighbour loop, and 20 of 20 alone.
+- Remaining limit: one macOS machine. The exact `ECONNRESET` text was not captured; the same wrong-server path gave timeouts, a `UND_ERR_SOCKET` and three silent passes against the neighbour. Three sibling harnesses keep the pattern (#325).
+
 ### 2026-09-11 — the empty-branch refusal fired on an honest QA run, repaired in PR #322's handoff step at the owner's request, Claude Code — fixture-tested; the record is not real-task verified yet
 
 - Evidence: run c5a99f15 (`testing-and-verification`, QA re-verification of PR #311 at `e175140`). Readiness gave two refusals: `scope.not-blocked` (it had written `BLOCKED` for an owner decision – correct) and `branch.has-own-commits` (its branch `xez/c5a99f15` was the base commit `4c179f0` – wrong: QA of another branch makes no commit by design). Both refusals came from the kit on `main` (#315 and earlier), not from PR #322.

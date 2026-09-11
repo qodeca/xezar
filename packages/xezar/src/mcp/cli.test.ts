@@ -1,6 +1,5 @@
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { createServer } from 'node:net';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -14,19 +13,24 @@ import { SERVER_CAPABILITIES } from './protocol.ts';
 const TSX = import.meta.resolve('tsx');
 const CLI = fileURLToPath(new URL('../index.ts', import.meta.url));
 const children: ChildProcess[] = [];
+const extraRepos: string[] = [];
 let home: string;
 let repo: string;
 
+function fixtureRepo(): string {
+  const dir = mkdtempSync('/tmp/xzr-');
+  execFileSync('git', ['init', '-q', '-b', 'main', dir]);
+  execFileSync('git', ['-C', dir, '-c', 'user.name=Test', '-c', 'user.email=t@example.test', 'commit', '-q', '--allow-empty', '-m', 'fixture']);
+  return dir;
+}
+
 beforeEach(() => {
   home = mkdtempSync('/tmp/xzc-'); // short: see bridge.test.ts
-  repo = mkdtempSync('/tmp/xzr-');
-  execFileSync('git', ['init', '-q', '-b', 'main', repo]);
-  execFileSync('git', ['-C', repo, '-c', 'user.name=Test', '-c', 'user.email=t@example.test', 'commit', '-q', '--allow-empty', '-m', 'fixture']);
+  repo = fixtureRepo();
 });
 afterEach(() => {
   for (const child of children.splice(0)) child.kill('SIGKILL');
-  rmSync(home, { recursive: true, force: true });
-  rmSync(repo, { recursive: true, force: true });
+  for (const dir of [home, repo, ...extraRepos.splice(0)]) rmSync(dir, { recursive: true, force: true });
 });
 
 function xez(args: string[], cwd: string): ChildProcess {
@@ -39,15 +43,8 @@ function xez(args: string[], cwd: string): ChildProcess {
   return child;
 }
 
-function freePort(): Promise<number> {
-  return new Promise((resolve) => {
-    const probe = createServer();
-    probe.listen(0, '127.0.0.1', () => {
-      const { port } = probe.address() as { port: number };
-      probe.close(() => resolve(port));
-    });
-  });
-}
+/** `serve` prints this only once its bind really succeeded (#238), with the port it holds. */
+const COCKPIT_LINE = /cockpit → http:\/\/localhost:(\d+)/;
 
 async function until<T>(what: string, probe: () => Promise<T | undefined>, ms = 20_000): Promise<T> {
   const deadline = Date.now() + ms;
@@ -59,14 +56,33 @@ async function until<T>(what: string, probe: () => Promise<T | undefined>, ms = 
   }
 }
 
-async function serve(): Promise<{ child: ChildProcess; base: string; stderr: () => string }> {
-  const port = await freePort();
-  const child = xez(['serve', '--no-open', '--port', String(port)], repo);
+/**
+ * `xez serve` in `cwd`, reached on the port it actually bound. This used to probe a free port,
+ * release it and pass it on, and then trust it (#295): under a busy machine another cockpit
+ * walking up from its own busy port took that port first, `serve` correctly moved on, and the
+ * test went on talking to the neighbour — green over the wrong process, or a reset or timeout
+ * when the neighbour went away. Now the OS picks the port inside the bind (`--port 0`, unless a
+ * test asks for one) and the health check proves the cockpit is this project's.
+ */
+async function serve({ port = 0, cwd = repo }: { port?: number; cwd?: string } = {}): Promise<{
+  child: ChildProcess;
+  base: string;
+  stdout: () => string;
+  stderr: () => string;
+}> {
+  const child = xez(['serve', '--no-open', '--port', String(port)], cwd);
+  let out = '';
   let err = '';
+  child.stdout!.on('data', (c) => (out += String(c)));
   child.stderr!.on('data', (c) => (err += String(c)));
-  const base = `http://127.0.0.1:${port}`;
-  await until('the cockpit', async () => ((await fetch(`${base}/api/v1/health`)).ok ? true : undefined));
-  return { child, base, stderr: () => err };
+  const bound = await until('the cockpit to bind', async () => COCKPIT_LINE.exec(out)?.[1]);
+  const base = `http://127.0.0.1:${bound}`;
+  const health = await until('the cockpit', async () => {
+    const res = await fetch(`${base}/api/v1/health`);
+    return res.ok ? ((await res.json()) as { repoRoot?: string }) : undefined;
+  });
+  expect(health.repoRoot, 'the cockpit on the bound port is the one this test started').toBe(realpathSync(cwd));
+  return { child, base, stdout: () => out, stderr: () => err };
 }
 
 /** `xez mcp` in `cwd`, with a JSON-RPC client on its stdio. */
@@ -182,5 +198,17 @@ describe('xez mcp against a real xezar (#86 acceptance)', () => {
     const unknown = await outsider.request('tools/call', { name: 'health' });
     expect(unknown.result).toMatchObject({ isError: true, structuredContent: { status: 'not-registered' } });
     expect(await outsider.exit()).toBe(0);
+  }, 60_000);
+
+  it('reaches the cockpit it started even when another cockpit holds the port it asked for (#295)', async () => {
+    // What the old probe-and-release race left behind, made certain: the port handed to `serve`
+    // already answers as a neighbour's cockpit, so `serve` moves on and says so.
+    const other = fixtureRepo();
+    extraRepos.push(other);
+    const neighbour = await serve({ cwd: other });
+    const taken = Number(new URL(neighbour.base).port);
+    const own = await serve({ port: taken });
+    expect(own.base, 'the harness must not stop at the neighbour').not.toBe(neighbour.base);
+    expect(own.stdout()).toContain(`port ${taken} was busy`);
   }, 60_000);
 });
