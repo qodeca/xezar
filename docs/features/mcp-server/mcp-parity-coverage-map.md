@@ -13,8 +13,8 @@ It makes Definition of Done clause 1 measurable: coverage is judged against that
 ## How to read it
 
 - **Record → cases** lists every record with status `covered` (all 89), plus the `global` records a
-  case exercises as a refusal. A case marked **(BLOCKED)** is named here but is not passing: see
-  [What is blocked](#what-is-blocked).
+  case exercises as a refusal. A case marked **(BLOCKED)** would be named here but not passing; none
+  is today (see [What is blocked](#what-is-blocked)).
 - **Case → records** lists every case in
   [`packages/xezar/src/mcp/acceptance-parity.test.ts`](../../../packages/xezar/src/mcp/acceptance-parity.test.ts)
   with the acceptance criteria (A-05 … A-11) it serves and the records it names. The vitest title of
@@ -51,13 +51,20 @@ verified; that is the separate spike and compatibility record
 
 ## What is blocked
 
-| Case | Records | What is missing |
-| --- | --- | --- |
-| P-22 | I-138, I-139 | The leader is not told about project changes live. No tool in the registry (`packages/xezar/src/mcp/tools/index.ts`) reads the project event journal, and the bridge sends no journal notification — found in the files examined at `e4228be`. PR #247 (open when this suite was written) composes the writer side: the journal, the event catalog, the echo guard and the audit trail, and hands the tools the service entry. It adds no leader-facing read, so this case stays blocked after it too. A blocked case runs as a vitest `todo` and is never counted as passing. |
+Nothing, today. A case that cannot run yet is registered with `blocked(...)`, runs as a vitest
+`todo`, and is never counted as passing; the tables above would mark it **(BLOCKED)**.
 
-What P-19 already shows of I-138's outcome: a change the leader makes travels on the same project
-store bus the cockpit's SSE stream relays, and nothing reaches project B's bus. What is missing is
-the leader's side of the same stream.
+P-22 (I-138, I-139) was the one blocked case until `leader_events` landed (#251, PR #254): no MCP
+tool read the project event journal. It is now a real case, and it runs over a different door than
+the other `P-` cases. The fixture's A socket is test wiring that hands the tools only the service
+entry, so P-22 composes the MCP service exactly as `serve` does (`startMcpService`: journal,
+catalog, leader cursors and the `leader_events` port) over the same A store and cockpit routes, and
+reaches it through the real stdio bridge. An event journal keeps one live instance per project
+file, so the fixture's standalone A journal hands its file over first. The case reads and
+acknowledges, lets the human change a setting and finish a task in the cockpit, then checks that
+the leader reads exactly those rows, in order, with the current state beside them, a key name and
+never its value, and nothing of B or the workspace-only stream. Live push to a connected client
+(F-20) is Phase 6 and is not claimed here.
 
 ## Browser cases (the cockpit half of A-08)
 
@@ -210,8 +217,8 @@ run.
 | I-132 | global | P-29 |
 | I-133 | covered | P-42 |
 | I-136 | covered | P-42 |
-| I-138 | covered | P-22 (BLOCKED) |
-| I-139 | covered | P-22 (BLOCKED) |
+| I-138 | covered | P-22 |
+| I-139 | covered | P-22 |
 | I-140 | covered | P-19 |
 <!-- parity-map:records:end -->
 
@@ -241,7 +248,7 @@ run.
 | P-19 | A-08, A-05 | I-033, I-140 | the leader reads the human’s task, history and handoff as the cockpit does, and the human’s bus carries the leader’s change |
 | P-20 | A-08, A-07 | I-033, I-034, I-038, I-039 | either side takes over the other’s task, and one transcript records both |
 | P-21 | A-08, A-05 | I-001, I-018, I-010, I-110 | the same work through either door leaves the same files: no MCP-only history or configuration |
-| P-22 | A-08 | I-138, I-139 | **BLOCKED** — no MCP tool or notification delivers the project event journal to the leader: the tool registry (`tools/index.ts`) has no journal read and the bridge sends no journal notification. The writer side (journal, event catalog, echo guard, audit trail) is composed by PR #247, still open when this suite was written; a leader-facing read is still missing after it |
+| P-22 | A-08 | I-138, I-139 | the leader is told about the human’s changes through its own project’s journal: what changed, in order, with the current state, and nothing of B or the workspace |
 | P-23 | A-09, A-05 | I-010, I-065, I-103, I-105, I-106, I-107, I-108, I-109 | a project setting written by the leader is the cockpit’s setting, byte for byte, B is untouched, and the system prompt never reaches a log |
 | P-24 | A-09, A-05 | I-104, I-007 | locked models are reported as a reason and refuse a model choice exactly as the cockpit does |
 | P-25 | A-09, A-08, A-05 | I-110 | the prompt-template list is read and replaced whole, and each door sees the other’s list |
