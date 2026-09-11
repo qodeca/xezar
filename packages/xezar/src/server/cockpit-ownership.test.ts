@@ -282,6 +282,12 @@ describe.skipIf(process.platform === 'win32')('run routes and a record that name
 
   it('control: git/commit still commits A’s own worktree', async () => {
     const a = w().a;
+    // The route commits with the repository's own identity. A CI runner has no global one, and
+    // git will not guess one there, so the fixture gives A a repo-level identity (as `initRepo`
+    // in git-changes.test.ts does) instead of borrowing the developer's.
+    for (const [key, value] of [['user.email', 'ab@example.invalid'], ['user.name', 'ab'], ['commit.gpgsign', 'false']] as const) {
+      execFileSync('git', ['config', key, value], { cwd: a.root, stdio: 'ignore' });
+    }
     const res = await answer(await w().cockpit(routes.commit!.path(a.ids.done), 'POST', { message: 'owned?' }));
     expect(res.status).toBe(200);
     expect(JSON.parse(res.body)).toMatchObject({ committed: true });
