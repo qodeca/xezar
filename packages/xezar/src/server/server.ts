@@ -93,6 +93,7 @@ import {
 } from '../runs/event-history.ts';
 import { readRunIndexFromDisk } from '../runs/run-index.ts';
 import { isV2WireEventType } from '../runs/ui-event-sink.ts';
+import type { McpApiReference } from '@qodeca/xezar-contract';
 import {
   githubPrReadyInputSchema,
   runEventsQuerySchema,
@@ -5540,6 +5541,27 @@ export function createApp(deps: ServerDeps) {
       return c.json(out.read);
     });
 
+  // ---- chained family: the MCP API reference (project-scoped, read-only) ----
+  // #284, spec `mcp-api-reference-spec.md` § 11. The tool registry is loaded LAZILY, as
+  // `startMcpSocket` loads the service, so the cockpit's static import graph never includes it
+  // and a broken MCP module answers `{available: false, reason}` instead of breaking the app.
+  // It does NOT need the MCP service: the listing is static code, and this page is most needed
+  // on a machine where MCP did not start (N-07). The list is fixed for the life of the process
+  // (`listChanged: false`), so the answer is built once. A GET with no side effect — and there
+  // is deliberately no route that runs a tool from here (spec § 13).
+  let mcpReference: Promise<McpApiReference> | undefined;
+  const readMcpReference = (): Promise<McpApiReference> =>
+    (mcpReference ??= import('../mcp/api-reference.ts')
+      .then((m) => m.buildMcpApiReference(version))
+      .catch((err: unknown): McpApiReference => {
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(`[xez] MCP API reference unavailable (${message}) — the cockpit works without it`);
+        return { available: false, reason: `The MCP tool list could not be loaded: ${message}` };
+      }));
+  const mcpReferenceRoutes = new Hono<ProjectApiEnv>().get('/mcp/reference', async (c) =>
+    c.json(await readMcpReference()),
+  );
+
   // Repo view branch actions: switch to an existing branch, or create one
   // (from `from` or HEAD) and switch. Predictable git failures — invalid
   // name, unknown `from`, dirty-tree checkout conflict — are 409 + reason.
@@ -5575,7 +5597,8 @@ export function createApp(deps: ServerDeps) {
     .route('/', githubRoutes)
     .route('/', repoRoutes)
     .route('/', configRoutes)
-    .route('/', agentConfigRoutes);
+    .route('/', agentConfigRoutes)
+    .route('/', mcpReferenceRoutes);
 
   // ---- chained family: the cross-project run index (workspace-level) -------
   /**

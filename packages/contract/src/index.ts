@@ -21,3 +21,4 @@ export * from './mcp-journal.ts';
 export * from './mcp-event-catalog.ts';
 export * from './mcp-audit.ts';
 export * from './mcp-discovery.ts';
+export * from './mcp-api-reference.ts';
