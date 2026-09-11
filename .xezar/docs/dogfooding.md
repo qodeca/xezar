@@ -12,6 +12,12 @@ Installation validation is reported in installation.md. Real-task entries follow
 
 ## Real-task entries
 
+### 2026-09-11 — #307 (five false test signals), `bug-fix` workflow — real-task verified
+
+- Observed: **both gate repairs were spent on the task's own scratch tests, not on any fix.** Flake reproduction wants probes that run under the real vitest config, so they sat in the tree as `*-scratch.test.*`. Attempt 0001 failed 47 tests, all scratch; attempt 0002 failed typecheck and 45 tests on one scratch file that an interrupted proof script had copied back in, and that `git add` had staged. The real suite was green both times.
+- Lesson (recommended): a reproduction probe that must live under `packages/*/src` is copied in by the script that runs it and removed by that same script on the next line, never left for a later cleanup. Check `git status --short` for `scratch` before ending an investigate step, and commit the fix before starting a long proof run, so an interrupted run can only leave a dirty tree, never a committed probe.
+- Remaining limit: one macOS machine; the kit has no guard that refuses a `*-scratch.test.*` file, and adding one is a separate decision.
+
 ### 2026-09-09 — issue #18, single agent step (`quick-task`, no kit workflow) — real-task verified
 
 - Observed: `worktree-preflight.sh` (strict and `--readiness`), `worktree-setup.sh` and `repo-gates.sh --fast` ran standalone from a plain agent step. Setup on npm 11 prints "install-scripts not yet covered by allowScripts" warnings (esbuild, fsevents); they do not block.
@@ -337,3 +343,33 @@ Installation validation is reported in installation.md. Real-task entries follow
 - Observed (confirms the #285 entry): the red proof by copying the changed sources aside and checking out the base versions, never `git stash`, worked. It has to wait for any background suite or review agent that reads the same files.
 - Real clients: the #118 harness (`test/integration/mcp-real-clients.test.ts`, built CLI) recorded A-17 PASSED for two bridge processes and as the second client for Claude Code 2.1.268, Codex 0.154.0 and OpenCode 1.18.30, and A-18 PASSED for idle owner, SIGKILL handover, stale-client fencing, task survival and a `xezar serve` restart. The acceptance record itself was left to the acceptance task (DoD clause 2).
 - Remaining limit: one macOS host; the acceptance harness still prints its old "not wired" text as `missing` on every A-17/A-18 record; how each client presents `-32081` to a person in an interactive session was not observed.
+
+### 2026-09-11 — issue #229, `bug-fix` step 1 (Reproduce and diagnose), `xezar-bug-investigation`, Claude Code — real-task verified
+
+- Goal: fix a cancel lost while an agent session spawns. Base `d29a99e`, macOS, Node 24.20. The user's cockpit ran the installed `xezar` 0.13.1.
+- Observed: **the issue's code reading was right for the release the user runs and already fixed on `main`.** `publishSession` and its re-check arrived in #249 (`c889f03`), eight hours after the issue was filed; `git merge-base --is-ancestor c889f03 v0.13.1` says it is not in 0.13.1. The stuck tasks came from the installed release, not from `main`. Checking the running version and the fix's ancestry first turned a "write the fix" brief into a "prove the fix and cover its gaps" task, with no engine change.
+- Observed: an existing regression test is not evidence until it is re-run red. Removing the one re-check line turned the #249 test red (`expected 'hung' to be 'drained'`), so it was a real proof. It covered only one of the two session sites, and only through `quiesce()`. Restoring the 0.13.1 wiring at ONE site at a time is what showed each new case guards its own site.
+- Observed: a synchronous `store.on('event')` listener makes a cancel land at an exact point in the run body. Cancelling on `step-start` hits the spawn window every time; cancelling on the runner's `session.started` hits "one tick after open". Neither depends on machine load.
+- Observed: **the brief's "stash the fix" red-proof step does not apply when the fix is already merged.** The honest equivalent is to revert the fix's lines in place, run, and `git checkout -- <file>`. A clean tree makes that safe, and it avoids the shared stash stack.
+- Observed (sibling, not fixed): a cancel during a check step is honoured, but `close` waits for every process holding the shell's stdout. In a standalone probe, `sleep 4; echo after` closed at 4012 ms against 303 ms for a single command. The children run on after the cancel.
+- Remaining limit: the red proofs are in-process with the bundled mock. No real Claude/Codex/OpenCode/pi session was cancelled mid-spawn; each runner's `interrupt()` was read, not exercised here.
+
+### 2026-09-11 — issue #312, `bug-fix` step 1 (Reproduce and diagnose), `xezar-bug-investigation`, Claude Code — fixture-tested; the guard is not yet real-task verified
+
+- Evidence: run b86c6066 (`feature-implementation`, #309). Its event log shows `readiness` PREFLIGHT OK, then `gate evidence sealed  a0cf85e…` – the manifest's own `baseSha`. Gate attempt `0001` ran on that head. The handoff step caught it by hand 8 minutes later and wrote a `BLOCKED` note; no check did.
+- Observed: **"who marks this step done?" found the cause in one step.** A non-final agent step is not interactive, so a question in prose or `XEZ:ASK` ends it `done`. The shared contract told agents to use `XEZ:ASK` "in an interactive terminal agent step", but said nothing about the other steps.
+- Observed: readiness had one scope check, "is there a `BLOCKED` file". An absent file read as "not blocked", with no populated-input guarantee.
+- Change: readiness and both evidence modes refuse when HEAD is an ancestor of `refs/heads/<base>` or `refs/remotes/origin/<base>` (`branch.has-own-commits`). An ancestor test, not an equality test, so a base that moved on does not hide an empty branch. A check that cannot be evaluated refuses. The shared contract of all 18 skills gains one additive sentence: write `BLOCKED` before stopping for a decision.
+- Scope check: 9 workflows run these modes. All end in a draft PR or a release, and neither exists without a commit. `business-analysis` and `research` run plain preflight only; a fixture case pins that.
+- Regression/control: on the unfixed check the 4 new empty-branch refusals were red and the other 476 cases passed (the plain-preflight, read-only-role and real-commit controls among them – they pass both ways). With the fix, 58 older cases went red: 16 fixtures sealed or verified evidence on a fresh, empty branch. They now start from one real commit (`add_worktree_with_work`); fixtures for plain preflight stay empty. Final run: 480 passed, 0 failed.
+- Observed: on this task's own worktree, local `main` was behind `origin/main`, and the refusal came from `refs/remotes/origin/main`. Checking only the local base ref would have let this empty branch through.
+- Remaining limit: a branch with commits whose net diff is empty (commit, then revert) still passes. The engine still marks a question-only step `done`; the refusal only moves the stop to readiness.
+
+### 2026-09-11 — issue #316, `bug-fix` step 1 (Reproduce and diagnose), `xezar-bug-investigation`, Claude Code — real-task verified
+
+- Goal: close the worktree-ownership gap #293 left on seven cockpit run routes. Base `ff05697`, macOS, Node 24.20.
+- Observed: **a follow-up a PR body calls "recorded" is not recorded until an issue exists.** #293 said so and nothing was filed; the leader found the gap by reading the PR. Filing the issue first (#316) was the brief's first action.
+- Observed: writing all fourteen A/B cases against the unfixed code first answered "is each route really exposed?" in one run: seven refusals red, seven controls green. The `git/push` case only showed harm after the test gave B a bare `origin`; without a remote the push fails anyway and the snapshot stays equal, which would have read as "not exposed".
+- Observed: reusing #293's rule meant exporting ONE function from `runs/retention.ts` and routing reclaim through it too, rather than re-composing `ownRun` + `ownWorktree` in `server.ts`. Two fixtures (`git-changes`, `ref-status-invalidation`) still put worktrees at arbitrary paths and went red, exactly the class #293 fixed in four other files.
+- Observed (problem, #320): the author step ended with its work uncommitted. The `gates` step ran the whole canonical list on the dirty tree and only the seal refused it; run-finalize autosave then committed the files. Fourth occurrence that day. Proposal filed: refuse a dirty tree at readiness, before any gate runs.
+- Remaining limit: no live cockpit was driven against a copied `.local/xezar`; the proof is the in-process A/B fixture.

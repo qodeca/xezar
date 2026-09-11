@@ -51,6 +51,14 @@
   one warning and the MCP keeps working. This closes acceptance case A-01. (#262)
 
 ## 🐛 Fixes
+- 🐛 **The project kit no longer seals gate evidence for a branch with none of the task's work.**
+  An author step that ended on a question in prose – no code and no `BLOCKED` file – was marked
+  done. Readiness then passed, because its only scope check read "no `BLOCKED` file" as "not
+  blocked", and the evidence step sealed the base commit itself. `worktree-preflight.sh
+  --readiness`, `--record-gate-evidence` and `--verify-gate-evidence` now refuse a branch whose HEAD
+  is already in its base (`branch.has-own-commits`), even after the base moved on. Plain preflight
+  and the read-only roles are unchanged. The shared contract of all 18 kit skills now says a
+  non-final step that stops for a decision writes `BLOCKED` first. (#312)
 - 🐛 **Settings → MCP API no longer tells a reviewer a guard is optional when it is not.** The page
   read "accepted, not required" for `organise_work`'s `expectedVersion`, while that tool refuses
   ten actions without it; `handoff_git` and `project_config` read the same. The reference route now
@@ -91,6 +99,14 @@
   task's end — leaves such records alone and still reclaims this project's own. Both use the
   existing MCP ownership checks. A caller could never NAME another project's group, task or
   automation at this project's routes, and still cannot. (#288)
+- 🐛 **Deleting a task, removing its worktree, committing, pushing, opening its draft PR, or
+  viewing its diff or changes can no longer reach another project's worktree.** The same stray
+  records as above also drove these seven task actions: delete and Remove worktree ran `rm -rf` on
+  the other project's worktree, commit, push and draft PR wrote to it, and the diff and changes
+  views ran git inside it. Each now checks the task's worktree with the same rule reclaim uses and
+  refuses a stray record, and the cockpit says why in plain words: the task's worktree is outside
+  this project, xezar will not touch it, and archiving the task moves it out of the list. This
+  project's own tasks work as before. (#316)
 - 🐛 **Running the test suite inside a xezar task no longer writes into that task's handoff file
   and your follow-up inbox.** A gate inherits the task's `XEZ_HANDOFF_FILE`, `XEZ_TODOS_FILE`,
   `XEZ_TASK_ID` and `XEZ_ENV_PASSTHROUGH`, and a test that drove the dry-run mock agent handed them
@@ -172,7 +188,7 @@
   whichever side of that line the click lands on. Same hole, same fix, for a task resumed with
   Continue. It also unwedges teardown: closing a project (or a test's cleanup) waits for the tasks
   it just cancelled, and one undeliverable cancellation was enough to make that wait never end —
-  reproduced as a 90-second timeout on CI. (#199)
+  reproduced as a 90-second timeout on CI. (#199, #229)
 
 - 🐛 **`xezar run` finishes when the task finishes, instead of sitting there for another
   minute.** The headless run printed `run done` and then stayed alive — up to 60 seconds — because
@@ -203,6 +219,22 @@
   flushes and only then removes — and when a run is still live it leaks the temp directory and
   fails saying so, rather than letting the delete report a fault it did not cause. The queue-hold
   assertion also gained the settle guard its mirror already had. (#200)
+- 🐛 **The opencode runner no longer picks its own port — and it finally tells you why a
+  server did not start.** It drew one random port in 40000–60000 with no probe and no retry, so a
+  port that was already taken killed the child and reported `opencode serve exited before it
+  started listening` with no port, no code and no reason. `opencode serve` has handled this itself
+  all along: `--port 0` prefers 4096 and falls back to a free ephemeral port, and the runner
+  already reads the bound URL back from stdout. So the draw is gone rather than replaced. The
+  child's stderr is now folded into both start-failure messages, the way the Codex and Claude
+  runners already did, and the 30-second window rejects with what happened instead of resolving a
+  URL nothing is listening on. (#184)
+- 🐛 **Two cockpit browser specs stopped racing their own data.** `settings-agents.e2e.ts`
+  navigated to `/settings/agents` from `/settings/agents`, where every predicate about the section
+  is equally true of the page being left — so a cold load could assert against the outgoing
+  document and count 0 checked radios. `gotoAgents()` now waits for a marker only the incoming
+  document carries, and the base-branch case waits for the branch list that `GET /api/v1/repo`
+  fills instead of reading an option that may not exist yet. No sleeps, no relaxed assertions.
+  (#183)
 
 ## 📝 Specs & Documentation
 - 📝 **A release-level Definition of Done for 0.14.0.** `docs/releases/0.14.0-definition-of-done.md`
@@ -211,6 +243,13 @@
   and the release act. Each clause says what evidence settles it and what does not count, and a
   clause with no evidence is failed. A draft for the owner's decision; nothing in it is assessed
   yet. (#300)
+- 📝 **Conduct reports have a private address, and the 0.14.0 questions have answers.**
+  `CODE_OF_CONDUCT.md` named a GitHub organisation, which cannot receive a private message; it now
+  names `hi@qodeca.com`, read by Qodeca, and says a report sent there is private. The #184 and #183
+  fixes move out of the `0.13.1` section into this one: their commit is not in the `v0.13.1` tag,
+  so the published 0.13.1 never contained them. The release Definition of Done now records the
+  owner's answer, or the evidence that settled it, for each of its six questions, beside the
+  recommendation it first made. No quality clause changed. (#318)
 - 📝 **A design review is part of done for UI work.** The project kit, the implementation and
   testing roles and the leader prompt now say that work with UI in scope, where such a review makes
   sense, needs a UX/UI design review (`xezar-ux-design`) before it is done, and that the author's
@@ -278,24 +317,6 @@ coverage, and restores a guard against drift in the cockpit's event protocol typ
   restores a missing regression guard rather than changing event shapes. (#190, #192)
 
 ---
-
-## 🐛 Fixes
-- 🐛 **The opencode runner no longer picks its own port — and it finally tells you why a
-  server did not start.** It drew one random port in 40000–60000 with no probe and no retry, so a
-  port that was already taken killed the child and reported `opencode serve exited before it
-  started listening` with no port, no code and no reason. `opencode serve` has handled this itself
-  all along: `--port 0` prefers 4096 and falls back to a free ephemeral port, and the runner
-  already reads the bound URL back from stdout. So the draw is gone rather than replaced. The
-  child's stderr is now folded into both start-failure messages, the way the Codex and Claude
-  runners already did, and the 30-second window rejects with what happened instead of resolving a
-  URL nothing is listening on. (#184)
-- 🐛 **Two cockpit browser specs stopped racing their own data.** `settings-agents.e2e.ts`
-  navigated to `/settings/agents` from `/settings/agents`, where every predicate about the section
-  is equally true of the page being left — so a cold load could assert against the outgoing
-  document and count 0 checked radios. `gotoAgents()` now waits for a marker only the incoming
-  document carries, and the base-branch case waits for the branch list that `GET /api/v1/repo`
-  fills instead of reading an option that may not exist yet. No sleeps, no relaxed assertions.
-  (#183)
 
 # 0.13.0 (2026-09-10)
 

@@ -118,7 +118,7 @@ import { ownGroup, ownershipScope } from '../mcp/resource-ownership.ts';
 import { runVersion, staleRunWrite } from '../mcp/stale-write.ts';
 import { toPastedContent, type PastedContent, type RunManager } from '../workflows/run.ts';
 import { removeWorktree, worktreeDiff, worktreeDiffStat, worktreeSizeBytes } from '../git-worktree.ts';
-import { isReclaimable, reclaimWorktrees } from '../runs/retention.ts';
+import { isReclaimable, ownRunAndWorktree, reclaimWorktrees } from '../runs/retention.ts';
 import { getBranches, getCommit, getDiff, getLog, getRepoInfo, getStatus } from './git.ts';
 import {
   collectChanges,
@@ -3550,6 +3550,20 @@ export function createApp(deps: ServerDeps) {
     }
   };
 
+  // A run whose recorded worktree is this project's own (#316). `worktreePath` is data: a copied or
+  // hand-edited `.local/xezar` can name another project's worktree, and the delete, remove-worktree,
+  // commit, push, PR, diff and changes routes would `rm -rf`, commit, push or run `git add -N .`
+  // there. They look the run up through the same rule the variant pick and reclaim use (#288). An
+  // id this project does not hold is still the plain 404. A record it DOES hold whose worktree is
+  // elsewhere gets `FOREIGN_WORKTREE` instead: the cockpit shows the server's words as they are,
+  // and a bare "not found" on a row the user can see would leave them with no way forward. The
+  // sentence names no path, id or project, so it says nothing of the folder it refuses to touch,
+  // and it is short because a toast is on screen for five seconds (`TOAST_MS` in the cockpit).
+  const ownedRun = (project: ProjectContext, id: string): Promise<RunRecord | null> =>
+    ownRunAndWorktree(ownershipScope(project), id);
+  const FOREIGN_WORKTREE =
+    "This task's worktree is outside this project, so xezar will not touch it from here. Archive the task to hide it from your list.";
+
   // ---- chained family: runs lifecycle + artifacts (project-scoped) ----
   const runsRoutes = new Hono<ProjectApiEnv>()
     .get('/runs', (c) => c.json(c.get('project').store.listRuns().map(withUsage)))
@@ -4183,9 +4197,12 @@ export function createApp(deps: ServerDeps) {
 
     // Task diff (spec 006): what this run changed — its worktree vs its base.
     .get('/runs/:id/diff', async (c) => {
-      const { store } = c.get('project');
-      const run = store.getRun(c.req.param('id'));
-      if (!run) return c.json({ error: 'not found' }, 404);
+      const run = await ownedRun(c.get('project'), c.req.param('id'));
+      if (!run) {
+        return c.get('project').store.getRun(c.req.param('id'))
+          ? c.json({ error: FOREIGN_WORKTREE }, 409)
+          : c.json({ error: 'not found' }, 404);
+      }
       if (!run.worktreePath || !existsSync(run.worktreePath)) {
         return c.text('(no worktree — this task ran directly in the repo working tree)');
       }
@@ -4193,9 +4210,13 @@ export function createApp(deps: ServerDeps) {
     })
 
     .get('/runs/:id/changes', async (c) => {
-      const { root: repoRoot, store } = c.get('project');
-      const run = store.getRun(c.req.param('id'));
-      if (!run) return c.json({ error: 'not found' }, 404);
+      const { root: repoRoot } = c.get('project');
+      const run = await ownedRun(c.get('project'), c.req.param('id'));
+      if (!run) {
+        return c.get('project').store.getRun(c.req.param('id'))
+          ? c.json({ error: FOREIGN_WORKTREE }, 409)
+          : c.json({ error: 'not found' }, 404);
+      }
       const workingDirectory = workingDirectoryOf(run, repoRoot);
       if (!workingDirectory) return c.json({ error: NO_WORKTREE }, 409);
       const result = await collectChanges(workingDirectory, run.baseBranch ?? 'HEAD', {
@@ -4304,8 +4325,8 @@ export function createApp(deps: ServerDeps) {
 
     .post('/runs/:id/git/commit', jsonZodValidator(gitCommitInputSchema), async (c) => {
       const { store } = c.get('project');
-      const run = store.getRun(c.req.param('id'));
-      if (!run) return c.json({ error: 'not found' }, 404);
+      const run = await ownedRun(c.get('project'), c.req.param('id'));
+      if (!run) return store.getRun(c.req.param('id')) ? c.json({ error: FOREIGN_WORKTREE }, 409) : c.json({ error: 'not found' }, 404);
       const worktree = worktreeOf(run);
       if (!worktree) return c.json({ error: NO_WORKTREE }, 409);
       const parsed = { data: c.req.valid('json') };
@@ -4319,8 +4340,8 @@ export function createApp(deps: ServerDeps) {
 
     .post('/runs/:id/git/push', optionalJsonZodValidator(runVersionGuardInputSchema, { absent: ({}) }), async (c) => {
       const { root: repoRoot, store } = c.get('project');
-      const run = store.getRun(c.req.param('id'));
-      if (!run) return c.json({ error: 'not found' }, 404);
+      const run = await ownedRun(c.get('project'), c.req.param('id'));
+      if (!run) return store.getRun(c.req.param('id')) ? c.json({ error: FOREIGN_WORKTREE }, 409) : c.json({ error: 'not found' }, 404);
       const worktree = worktreeOf(run);
       if (!worktree) return c.json({ error: NO_WORKTREE }, 409);
       // The stale-write guard (#250), right before the (async) effect starts.
@@ -4349,8 +4370,8 @@ export function createApp(deps: ServerDeps) {
     .post('/runs/:id/pr', optionalJsonZodValidator(runVersionGuardInputSchema, { absent: ({}) }), async (c) => {
       const { root: repoRoot, dataDir, store, manager } = c.get('project');
       const id = c.req.param('id');
-      const run = store.getRun(id);
-      if (!run) return c.json({ error: 'not found' }, 404);
+      const run = await ownedRun(c.get('project'), id);
+      if (!run) return store.getRun(id) ? c.json({ error: FOREIGN_WORKTREE }, 409) : c.json({ error: 'not found' }, 404);
       if (manager.isActive(id)) return c.json({ error: 'run is still active — wait for the review gate' }, 409);
       if (!run.worktreePath || !existsSync(run.worktreePath) || !run.branch) {
         return c.json(
@@ -4393,8 +4414,8 @@ export function createApp(deps: ServerDeps) {
     .post('/runs/:id/remove-worktree', optionalJsonZodValidator(runVersionGuardInputSchema, { absent: ({}) }), async (c) => {
       const { root: repoRoot, store, manager } = c.get('project');
       const id = c.req.param('id');
-      const run = store.getRun(id);
-      if (!run) return c.json({ error: 'not found' }, 404);
+      const run = await ownedRun(c.get('project'), id);
+      if (!run) return store.getRun(id) ? c.json({ error: FOREIGN_WORKTREE }, 409) : c.json({ error: 'not found' }, 404);
       if (manager.isActive(id)) return c.json({ error: 'run is active — cancel it first' }, 409);
       // The stale-write guard (#250), right before the (async) effect starts.
       const stale = staleRunWrite(store, id, c.req.valid('json').expectedVersion);
@@ -4408,8 +4429,8 @@ export function createApp(deps: ServerDeps) {
       const { root: repoRoot, store, manager } = c.get('project');
       const id = c.req.param('id');
       if (manager.isActive(id)) return c.json({ error: 'run is active — cancel it first' }, 409);
-      const run = store.getRun(id);
-      if (!run) return c.json({ error: 'not found' }, 404);
+      const run = await ownedRun(c.get('project'), id);
+      if (!run) return store.getRun(id) ? c.json({ error: FOREIGN_WORKTREE }, 409) : c.json({ error: 'not found' }, 404);
       // The stale-write guard (#250), right before the (async) effect starts.
       const stale = staleRunWrite(store, id, c.req.valid('json').expectedVersion);
       if (stale) return c.json(stale, 409);

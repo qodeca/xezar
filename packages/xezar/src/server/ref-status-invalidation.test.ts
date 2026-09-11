@@ -1,9 +1,10 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Hono } from 'hono';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { worktreePathFor } from '../git-worktree.ts';
 import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { apiRequest } from './loopback-request.testkit.ts';
@@ -44,7 +45,7 @@ describe('a reference xezar changes itself is forgotten, not waited out', () => 
 
   beforeEach(() => {
     vi.mocked(forgetRefStatus).mockClear();
-    repoRoot = mkdtempSync(join(tmpdir(), 'xez-refinvalidate-'));
+    repoRoot = realpathSync(mkdtempSync(join(tmpdir(), 'xez-refinvalidate-')));
     mkdirSync(join(repoRoot, '.local/xezar'), { recursive: true });
     execFileSync('git', ['init', '-b', 'main'], { cwd: repoRoot });
     execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: repoRoot });
@@ -95,12 +96,14 @@ describe('a reference xezar changes itself is forgotten, not waited out', () => 
   it('forgets the pull request it opened', async () => {
     // A number asked about BEFORE the pull request existed is cached as "this repository has no
     // such number" — exactly what a `XEZ:PR=N` marker declared ahead of the push looks like.
-    const worktree = mkdtempSync(join(tmpdir(), 'xez-refinvalidate-wt-'));
+    // The worktree sits where xezar puts one: the route refuses a record naming anywhere else (#316).
+    const run = store.createRun({ title: 'Ship it', task: 'ship it', workflow: 'quick-task', steps: [] });
+    const worktree = worktreePathFor(repoRoot, run.id);
+    mkdirSync(worktree, { recursive: true });
     execFileSync('git', ['init', '-b', 'xez/abc'], { cwd: worktree });
     execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: worktree });
     execFileSync('git', ['config', 'user.name', 'Test'], { cwd: worktree });
     execFileSync('git', ['commit', '--allow-empty', '-m', 'work'], { cwd: worktree });
-    const run = store.createRun({ title: 'Ship it', task: 'ship it', workflow: 'quick-task', steps: [] });
     store.updateRun(run.id, { status: 'review', worktreePath: worktree, branch: 'xez/abc' });
 
     const created = await apiRequest(app, `/api/v1/runs/${run.id}/pr`, {
