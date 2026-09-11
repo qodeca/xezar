@@ -67,6 +67,7 @@ import { RunnerModelCatalog } from '../core/runner-model-catalog.ts';
 import { currentUsage, onUsage } from '../core/process-usage.ts';
 import { projectWorkflowsDir, loadWorkflows } from '../workflows/load.ts';
 import { reportProjectChange } from '../mcp/project-catalogs.ts';
+import { projectLeader } from '../mcp/project-leaders.ts';
 import {
   QUICK_TASK_WORKFLOW,
   normalizeWorkflowDoc,
@@ -94,6 +95,7 @@ import {
 import { readRunIndexFromDisk } from '../runs/run-index.ts';
 import { isV2WireEventType } from '../runs/ui-event-sink.ts';
 import type { McpApiReference } from '@qodeca/xezar-contract';
+import { mcpLeaderActionInputSchema, type McpLeaderStatus } from '@qodeca/xezar-contract';
 import {
   githubPrReadyInputSchema,
   runEventsQuerySchema,
@@ -5567,6 +5569,32 @@ export function createApp(deps: ServerDeps) {
     c.json(await readMcpReference()),
   );
 
+  // ---- chained family: the MCP leader's push-delivery path (project-scoped) ----
+  // #309. Delivery itself is on by default and needs no route: every MCP session that owns the
+  // project gets an event controller when it opens. What a route is needed for is the one thing
+  // xezar must never do by itself — start a leader session an event can actually wake (Claude
+  // Code, Codex) or point it at one the user runs (OpenCode). It runs no tool, and it refuses to
+  // start a leader while another MCP client owns the project, so the cockpit never becomes a
+  // second leader (spec `mcp-api-reference-spec.md` § 13). Starting a process on this machine is
+  // a local-machine capability: hosted mode refuses it like every other local mutator.
+  const mcpLeaderStatus = (projectId: string): McpLeaderStatus =>
+    projectLeader(projectId)?.status() ?? {
+      available: false,
+      reason: 'The MCP service is not running for this project, so there is no event delivery to report.',
+    };
+  const mcpLeaderRoutes = new Hono<ProjectApiEnv>()
+    .get('/mcp/leader', (c) => c.json(mcpLeaderStatus(c.get('project').id)))
+    .post('/mcp/leader', jsonZodValidator(() => mcpLeaderActionInputSchema), async (c) => {
+      if (!capabilities().localHandoff) {
+        return c.json({ error: 'a leader session is started on the machine that owns the checkout (this cockpit runs in hosted mode)' }, 409);
+      }
+      const port = projectLeader(c.get('project').id);
+      if (!port) return c.json({ error: 'the MCP service is not running for this project' }, 409);
+      const out = await port.act(c.req.valid('json'));
+      if (!out.ok) return c.json({ error: out.error }, 409);
+      return c.json(out.status);
+    });
+
   // Repo view branch actions: switch to an existing branch, or create one
   // (from `from` or HEAD) and switch. Predictable git failures — invalid
   // name, unknown `from`, dirty-tree checkout conflict — are 409 + reason.
@@ -5603,7 +5631,8 @@ export function createApp(deps: ServerDeps) {
     .route('/', repoRoutes)
     .route('/', configRoutes)
     .route('/', agentConfigRoutes)
-    .route('/', mcpReferenceRoutes);
+    .route('/', mcpReferenceRoutes)
+    .route('/', mcpLeaderRoutes);
 
   // ---- chained family: the cross-project run index (workspace-level) -------
   /**

@@ -12,7 +12,7 @@ import { collectSecretValues } from '../core/secret-redaction.ts';
 import { projectDataDir } from '../project-data-paths.ts';
 import type { RunStore } from '../runs/store.ts';
 import { loadWorkspaceConfig } from '../workspace/config.ts';
-import type { ProjectOwnership } from '../workspace/project-owner.ts';
+import { ProjectOwnership } from '../workspace/project-owner.ts';
 import { AuditTrail, type AuditChannel } from './audit-trail.ts';
 import { runBridge, type ServiceTarget } from './bridge.ts';
 import { writeMcpConnectionFile } from './connection-file.ts';
@@ -20,8 +20,10 @@ import { EchoGuard } from './echo-guard.ts';
 import { EventCatalog, withEventOrigin, type WorkspaceEventSource } from './event-catalog.ts';
 import { EventJournal } from './event-journal.ts';
 import { mcpSocketLocation } from './ipc.ts';
+import { LeaderDelivery } from './leader-delivery.ts';
 import { OperationReceiptStore, runByKeyReconciler, type EffectOutcome } from './operation-receipts.ts';
 import { registerProjectCatalog } from './project-catalogs.ts';
+import { registerProjectLeader } from './project-leaders.ts';
 import { LeaderCursors, runStateReader } from './reconnect.ts';
 import type { ServiceDispatch } from './service-adapter.ts';
 import { listenMcpSocket, type McpDoor, type McpServiceHandle } from './service.ts';
@@ -59,6 +61,29 @@ export interface StartMcpServiceOptions {
   readonly env?: NodeJS.ProcessEnv;
   readonly platform?: NodeJS.Platform;
   readonly warn?: (message: string) => void;
+  /**
+   * Test seams for the leader session xezar starts (#309): how it starts `xez mcp`, which `claude`
+   * and `codex` it runs, and the controller's heartbeat. Production uses this process's own CLI
+   * and resolves both binaries exactly as the runners do.
+   */
+  readonly leader?: {
+    readonly bridge?: { readonly command: string; readonly args: readonly string[] };
+    readonly claudeBin?: string;
+    readonly codexBin?: string;
+    readonly heartbeatMs?: number;
+  };
+}
+
+/**
+ * How THIS installation starts `xez mcp` (D-01 § 1.7): the same node, loader flags and CLI entry
+ * that are serving now, so a leader xezar starts talks to this very xezar, whatever the version on
+ * PATH. Debugger flags are dropped: a second process must not fight for the inspector port.
+ */
+function ownBridgeCommand(): { command: string; args: string[] } {
+  const entry = process.argv[1];
+  if (entry === undefined) return { command: 'xez', args: ['mcp'] };
+  const flags = process.execArgv.filter((flag) => !flag.startsWith('--inspect'));
+  return { command: process.execPath, args: [...flags, entry, 'mcp'] };
 }
 
 /**
@@ -85,6 +110,32 @@ export async function startMcpService(opts: StartMcpServiceOptions): Promise<Mcp
     env: opts.env ?? process.env,
     warn,
   });
+  // Built here rather than by the socket, because push delivery reads it too (#309). It writes
+  // nothing until a session opens.
+  const ownership = opts.ownership ?? new ProjectOwnership({ dataDir, projectId: project.id });
+  // Push delivery (#309): every owner session gets an event controller, on by default. It needs the
+  // journal; without one there is nothing to deliver, and that was already one warning above.
+  const delivery = parts.journal
+    ? new LeaderDelivery({
+        projectId: project.id,
+        projectRoot: project.root,
+        journal: parts.journal,
+        ownership,
+        guard: parts.guard,
+        bridge: opts.leader?.bridge ?? ownBridgeCommand(),
+        warn,
+        ...(opts.leader?.claudeBin === undefined ? {} : { claudeBin: opts.leader.claudeBin }),
+        ...(opts.leader?.codexBin === undefined ? {} : { codexBin: opts.leader.codexBin }),
+        ...(opts.leader?.heartbeatMs === undefined ? {} : { heartbeatMs: opts.leader.heartbeatMs }),
+        ...(opts.env ? { env: opts.env } : {}),
+      })
+    : undefined;
+  const unregisterLeader = delivery ? registerProjectLeader(project.id, delivery) : undefined;
+  // Controllers and any leader first, while the journal they read is still open.
+  const closeDelivery = (): void => {
+    unregisterLeader?.();
+    delivery?.close();
+  };
   try {
     const socket = await listenMcpSocket({
       project: { id: project.id, name: projectName(project), root: project.root },
@@ -99,7 +150,8 @@ export async function startMcpService(opts: StartMcpServiceOptions): Promise<Mcp
       door: parts.door,
       // The owner claims live beside the store the cockpit writes (D-02.8).
       dataDir,
-      ...(opts.ownership ? { ownership: opts.ownership } : {}),
+      ownership,
+      ...(delivery ? { sessions: { opened: (key: string) => delivery.sessionOpened(key), closed: (key: string) => delivery.sessionClosed(key) } } : {}),
     });
     // D-04: written once the socket it names really listens, so the file never points at nothing.
     // A failure is one warning and an MCP the client can still reach by the registry (N-07).
@@ -115,10 +167,14 @@ export async function startMcpService(opts: StartMcpServiceOptions): Promise<Mcp
       close() {
         // The socket first: no call may start while its parts are going away.
         socket.close();
+        closeDelivery();
         parts.close();
       },
     };
   } catch (err) {
+    closeDelivery();
+    // The socket never opened, so nothing else will dispose the owner slot it would have enforced.
+    if (!opts.ownership) ownership.dispose();
     parts.close();
     throw err;
   }
@@ -155,7 +211,14 @@ interface DoorInput {
  * - the leader's persisted cursors (#105) and the `leader_events` port over them (#251), handed to
  *   the tools as context — the leader's pull read of its journal on reconnect.
  */
-function composeDoor(input: DoorInput): { door: McpDoor; leaderEvents: LeaderEventsPort | undefined; close(): void } {
+function composeDoor(input: DoorInput): {
+  door: McpDoor;
+  leaderEvents: LeaderEventsPort | undefined;
+  /** For push delivery (#309): the rows it follows, and the guard that knows the leader's own operations. */
+  journal: EventJournal | undefined;
+  guard: EchoGuard | undefined;
+  close(): void;
+} {
   const { projectId, dataDir, store, workspaceEvents, providerBaseline, warn } = input;
   const closers: Array<() => void> = [];
   const attempt = <T>(what: string, open: () => T): T | undefined => {
@@ -263,6 +326,8 @@ function composeDoor(input: DoorInput): { door: McpDoor; leaderEvents: LeaderEve
   return {
     door,
     leaderEvents,
+    journal,
+    guard,
     close() {
       if (closed) return;
       closed = true;
