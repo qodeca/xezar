@@ -1026,6 +1026,182 @@ updated in place above, so no contradiction is left for a reader to find.
 with no console; collapsed-by-default detail; deep links to one item. Those parts of the spec were right before the
 research, and are now right with evidence.
 
+## Part 8 – Design pass
+
+Added by [#296](https://github.com/qodeca/xezar/issues/296). Part 6 was written by a business analyst from a checklist,
+before the kit had a design role and before the page existed. This part is a designer's review of Part 6 and of the two
+surfaces that have since shipped: Settings → MCP API (#284, PR #291) and Settings → MCP connection (#111–#114). It is the
+first real use of the kit's `xezar-ux-design` skill. Amendments it makes above are marked "(design pass, #296)".
+
+### 20. Critique, and what the running page taught
+
+#### 20.1 How this was looked at
+
+- The critique in 20.2 was written before any edit. The amendments came after it, in place.
+- Both pages were viewed in a running cockpit, not read from source: the built CLI at `main` `9977c9c` (0.13.1) with
+  `XEZ_DRY_RUN=1`, booted against a throwaway repository under `/tmp` so that the MCP service really started (a cockpit
+  booted from a task worktree never starts it; `.xezar/docs/dogfooding.md`, #284 entry). Viewed in Chrome through
+  `agent-browser` 0.36.0 at 1280 × 900 and 375 × 812, dark and light, on 2026-09-11.
+- Measurements come from the page's own route (`GET /api/v1/mcp/reference`) and from the rendered page.
+- Checked: opening a tool from the keyboard (Enter on its row), the effect filter's announced count ("Showing 7 of 11
+  tools."), no sideways scroll at 375 px (document 375/375; only the settings pill bar scrolls, by design). **Not
+  checked:** find-in-page opening a collapsed tool (the browser tool has no find-in-page command), colour contrast with a
+  measuring tool, hosted mode, and the "MCP service not running" state.
+- Screenshots are private task evidence and are not committed.
+
+#### 20.2 Critique of Part 6 as written
+
+**What holds up.** One reader is chosen and the other two are told what they lose (18.1). The effect is printed on every
+row, in words, with the protocol's defaults (18.3) – and on the built page this is the best thing there: a reviewer sees
+which **tools** change state without opening anything, which the MCP Inspector cannot do (17.2). Native `<details>`, no
+search box, and no disabled "Try it" (R-13, R-15, R-16) all hold up in use. The schema numbers were measured, not
+assumed (18.4). The states table (18.7) is concrete.
+
+**What is thin.**
+
+- 18.1 describes the reader's attributes, not the questions they arrive with. It never says that "what changed in this
+  pull request?" is the diff's job (R-01), so it never concludes that the page's own jobs are the other two: "can the
+  leader do X?" and "is coverage complete?".
+- 18.2 is five counts. A count of things listed two screens further down answers "how many", not "which", and a
+  reviewer acts on names.
+- Nothing is ranked. Part 6 never says which parts the page is useless without. The page shipped without the per-action
+  effects and without coverage – the two parts that answer the reviewer's questions – and with the header, the summary
+  and the "Why?" box. Part 6 allowed exactly that cut because it treated every section as equal.
+- The worst case is examined for schema shape only, not for size: nobody asked how tall `project_config` gets when open
+  (20.6), or what a 1,638-character description does at the top of a tool.
+- No state exists for "the action's effect is not declared", so the implementation invented one (20.3).
+
+**Stated as a control where it should be a decision.** "Actions before arguments" (18.4, item 1) is written as a rule.
+It is a decision that holds only while the actions carry information. "Do this in the cockpit" (18.6) is a control whose
+data does not exist yet, with no decision about what shows until it does.
+
+**Implementation detail wearing design clothes.** "A per-tool error boundary" (18.7) is how, not what; the design is
+"one tool's failure never blanks another", which 18.7 already says. "Computes them from the route, never from constants"
+(18.2) is CV-02 restated. Both are harmless and stay; they are named so a reader does not mistake them for design.
+
+**What a reviewer still cannot do** – after reading Part 6, or on the built page: answer "which **calls** can delete
+something?"; tell whether any cockpit action is missing from MCP; tell which actions need `expectedVersion`.
+
+**Verdict.** The structure holds up and is kept. This pass changes little: it ranks what matters, makes the summary
+name instead of count, adds states for missing data, groups refusals by boundary, and records the worst case.
+
+#### 20.3 The three things a reviewer keeps, and whether the built page puts them first
+
+| What the reviewer must keep | On the built page | Verdict |
+| --- | --- | --- |
+| 1. Which tools **and which actions** can change or destroy state | Tool level: on every row, in words. Action level: every action of a changing tool reads "Reads or changes" – 78 actions, the same words on each. At 1280 × 900 the tool list starts about 580 px down, so four rows are visible without scrolling. | Tool level: **yes**, better than the prior art. Action level: **no** – the Inspector's failure (17.2) moved one level down. |
+| 2. Where the fence is – what is refused, and by which boundary | At the end of the page: 21 lines, grouped by tool, and 20 of the 21 belong to one tool. | Present, but not grouped by the thing the reviewer asks about. |
+| 3. Whether cockpit coverage is complete (J-2) | Absent. The page does not say it is absent. | **No.** A reviewer cannot notice a section that is not there. |
+
+Above the fold at 1280 × 900 sit the header – identity, a sentence listing what is not exposed, a boxed read-only
+explanation, a setup link – and the summary. The heaviest block there is the read-only box. It answers the author's
+question ("why is there no Try it?"), not the reviewer's.
+
+A concrete case. "Can the leader delete a workflow?" On the built page: open `project_config` (row: "Changes project
+state · Destructive"), scroll a 55-line action list to `delete_workflow`, which reads "Reads or changes". The answer is
+in no part of the page except the tool's own prose. The page has the data to say "Destructive" about the tool and
+nothing about the call.
+
+#### 20.4 Is the summary earning its place at the top?
+
+Partly. Its first line merges the one distinction the page exists to keep apart ("104 actions that read or change").
+Its second counts tools the list names below. Its third is the third statement of "not exposed" above the fold (the
+header sentence, this line, and the refusals section it links to). Coverage, its fifth line in 18.2, is missing without
+a word. **Decision:** keep a summary at the top, and make it name the changing, destructive and unstated tools (18.2,
+amended). Eleven names fit in two lines; a reviewer can act on them.
+
+#### 20.5 The empty states on MCP connection: honest, or broken?
+
+- **Connection status – "Not reported here yet."** Honest, and it reads honest: it explains and points to the leader
+  client. Two faults: it holds the second place on the page to say nothing, and it is written from the system's side
+  ("the cockpit does not receive the live connection owner from the server yet").
+- **Operation outcomes – "No outcomes to show."** Honest words in a dishonest place. The heading promises six outcome
+  kinds; no route feeds the list on any machine today (`operations={[]}`). That is not an empty state – an empty state
+  is "nothing has happened yet". A section that cannot show anything reads as unfinished, and a reader concludes the
+  feature is broken. It should not be on the page until a route feeds it (20.8, C3).
+- The strongest part of either page is #114's "What the leader can do" on MCP connection: each capability says
+  Available or Unavailable in words, with "Why" and "Next", and "Delete a task, its worktree and its branch" says
+  "Destructive and irreversible … with no extra confirmation step". That is the action-level honesty the MCP API page
+  lacks.
+
+#### 20.6 Where it fails in practice (measured)
+
+- **The biggest tool.** Open, `project_config` is 4,113 px tall at 1280 px and 5,549 px at 375 px; its arguments start
+  about 2,100 px into it, after 55 action lines. The only way out is to scroll back to its row.
+- **The longest prose.** Descriptions run 115 to 1,638 characters (`execution_control`) and open each tool verbatim.
+  That order is right on this server: `organise_work`'s 1,517 characters are where "delete: … Irreversible" and "every
+  action that changes one task needs expectedVersion" are written. Until the declaration ships, the prose is the
+  action-level truth.
+- **A guard that reads false.** `organise_work`, `handoff_git` and `project_config` list `expectedVersion` as optional in
+  a flat schema, so the page reads "accepted, not required" – while `organise_work`'s description says every changing
+  action needs it.
+- **375 px.** No sideways scroll. The rows stack well. The "·" between effect words wraps alone at a line end.
+- **Light and dark.** Both use theme tokens and read well; "Destructive" is legible in both (by eye, not measured).
+
+#### 20.7 Cut or rejected in this pass
+
+| Considered | Result |
+| --- | --- |
+| Grouping tools by effect | Still rejected (18.3): the row carries the effect, the filter gives the grouped view, and registry order matches `tools/list`. |
+| A tools × effects matrix ("danger map") as the summary | Rejected: a second form of the rows that can disagree with them, and a sideways scroll at 375 px. Naming the tools gives the same answer in two lines. |
+| An effect badge per action | Rejected: the effect is a word (18.3); a badge on each of 55 lines is noise. |
+| Moving the summary below the tools | Rejected: a summary that names the changing tools is the fastest answer on the page. Its content changes, not its place. |
+| Flipping "actions before arguments" while effects are undeclared | Rejected: the action names (`delete_workflow`, `remove_worktree`) are the best evidence left. They become a compact list instead (18.4). |
+| The boxed read-only callout | **Cut** to one line with its "Why?" (18.2). |
+| The header's "It does not expose: …" sentence | **Cut**: the summary and the refusals section already say it (18.2). |
+| The per-tool "Do this in the cockpit" sentence without data | **Cut** until the coverage rows exist (18.6). |
+| "Operation outcomes" on MCP connection while no route feeds it | **Cut** – a code finding (20.8, C3). |
+
+#### 20.8 Findings in the code – reported, not changed here
+
+This pass changes documentation only. Each finding names the file and what the design pass would change.
+
+| # | File | What is wrong | What to change |
+| --- | --- | --- | --- |
+| A1 | `packages/web/src/routes/settings/mcp-api-section.tsx` (`actionWord`, and the action list) | Every action of a changing tool reads "Reads or changes" – 78 times, true of each and informative about none. | Undeclared: no per-action effect; one line above the list (18.7); performing actions as a compact wrapped list of names. |
+| A2 | same file, the "Do this in the cockpit" paragraph | The same sentence on every tool claims "every project action this tool performs has its own control"; false for `health` (R-05). | Remove until coverage rows exist; then list them (18.6). |
+| A3 | same file, `guardWords` | "accepted, not required" where a flat schema lists a guard as optional. | "optional in the schema – which actions need it is not declared" (18.4, item 8). |
+| A4 | same file, the summary | Counts, not names; reads and changes merged; coverage missing without a word. | CV-08 as amended. |
+| A5 | same file, the header | "It does not expose: …" duplicates the summary and refusals; the read-only explanation is a boxed callout. | Cut the sentence; one line plus "Why?", no box. |
+| A6 | same file, the action list | Not grouped Reads / Changes / Refused, as 18.4 item 1 asked; refusal reasons repeated in the tool and in the refusals section. | Group; in a tool, a refused action shows name and boundary only. |
+| A7 | same file, "Always refused" | Grouped by tool (one group of 20). "{boundary}. {reason}" reads as a sentence starting in lower case ("workspace settings. turning a provider …"). | Group by boundary (18.5); join boundary and reason with a colon. |
+| A8 | same file | No coverage section and no statement that it is missing. | The "coverage not available" state (18.7). |
+| A9 | same file, `EffectLabel` | The "·" separator wraps alone at 375 px. | Separate with spacing, not a character (18.9). |
+| A10 | same file, `ToolEntry` | No way out of a 4,000–5,500 px open tool except scrolling back. | A close control at the end of each open tool that returns focus to its row (18.4, 18.9). |
+| C1 | `packages/web/src/routes/settings/mcp-connection-section.tsx` (`CLIENTS` strings, the readiness paragraph) | Markdown backticks are shown literally: "`` `.local/xezar/` ``", "`` `opencode.json` ``". | Render those as `<code>` elements. |
+| C2 | same file, `ClientSetupCard` | "NOT automatic — stated plainly:" – the requirement document's wording (U-M01) printed on screen. | "Not automatic:". |
+| C3 | same file, "Operation outcomes" (fed `operations={[]}` in `McpConnectionSection`) | A section no route can fill on any machine today. | Do not render it until a route reports outcomes. |
+| C4 | same file, "Connection status" | Second place on the page to say nothing, in the system's voice. | Below the setup, one line: "This page cannot tell whether a client is connected. Your leader client shows it." |
+| C5 | same file, section order | The configuring reader's task – one-time setup – is fifth, about 800 px down at 1280 px. | Setup directly after "Bound project" and "Local-only scope". |
+| C6 | same file, `CLIENTS` and "Configuration readiness" | "Automatic — xezar does this" is identical in three cards and in the readiness box; "not discovered / not read by any client" appears five times; "same machine" four. | Say each once above the cards; the cards keep only what differs per client. |
+| C7 | same file, "Configuration readiness" hint | "Nothing here reads that file — the status is what the server reports." is a code rationale, not something a user needs. | Drop it. |
+| C8 | same file, "Capabilities and limitations", followed by `mcp-capabilities.tsx` | Two capability sections back to back; the three bullets restate what the #114 list says better. | Fold the bullets into the #114 list; keep the link to MCP API. |
+
+MCP connection's own design lives in the MCP requirements (U-M01 … U-M08), not in this document, so C1–C8 are recorded
+here only as findings for assignment.
+
+#### 20.9 Entries re-checked
+
+| Entry | What the design pass found | Result |
+| --- | --- | --- |
+| R-09, R-16 | No disabled control on the built page; the absence reads as a decision. The per-tool pointer has no data yet. | R-09 **confirmed**. R-16 **changed**: the pointer shows only from coverage rows (18.6). |
+| R-12 | The effect words read clearly on every row, in both themes. | **Confirmed.** |
+| R-13 | Keyboard open works. Find-in-page not driven. | **Confirmed** for keyboard; find-in-page still unobserved. |
+| R-14 | Nested fields path-prefixed; no third level seen. | **Confirmed.** |
+| R-15 | Eleven rows need about one and a half screens at 1280 × 900 with the header above them; the filter and names cover the need. | **Confirmed.** |
+| CV-08 | Counts do not let a reviewer act. | **Changed:** names (18.2). |
+| CV-11 | Ungrouped actions make the biggest tool a scroll. | **Extended:** groups, and a compact list while effects are undeclared (18.4). |
+| CV-13, CV-14 | Missing data had no state, so filler appeared. | **Extended:** two new states (18.7). |
+| 18.5 grouping | 20 of 21 refusals are one tool. | **Changed:** by boundary. |
+| Open question 5 | The page shipped (#291) without the parts that answer questions 2 and 3 of 18.1. | A note is added; the recommendation is unchanged. |
+| Open questions 1–4 | Nothing new. | Unchanged. |
+
+#### 20.10 Limits
+
+One reviewer on one machine, in a dry-run cockpit with an empty project. No real reviewer has used the page. Hosted
+mode, the "MCP not running" state and find-in-page were not viewed, and contrast was judged by eye. The screenshots
+behind every observation are private task evidence; the numbers can be re-derived from the route and the page.
+
 ## Open questions for the owner
 
 These are decisions a person should make, not an agent. Each has a recommendation and what each choice costs.
