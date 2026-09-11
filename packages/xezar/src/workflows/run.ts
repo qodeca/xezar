@@ -642,16 +642,81 @@ export class RunManager {
   /** The stalled-queue watchdog (see `rescueStalledQueue`). */
   private readonly queueWatchdog: ReturnType<typeof setInterval>;
 
-  /** The rescue sweeps that have STARTED and not settled yet (#125). `clearInterval` cancels the
-   *  next tick; it cannot cancel the tick already running, and a sweep is async — it awaits
-   *  `reviveWorkflow` before appending NDJSON. dispose() settles these so a torn-down manager is
-   *  provably finished writing before its caller removes the data root under it. */
-  private readonly rescuesInFlight = new Set<Promise<void>>();
+  /**
+   * Every background WRITE this manager started on its own initiative and has not settled yet.
+   * Two producers, one set: the queue-watchdog rescue sweeps (#125) and the terminal-transition
+   * worktree retention sweeps (#200). Neither is cancellable and both cross an await before they
+   * touch disk — a rescue appends NDJSON after `reviveWorkflow`, a retention sweep spawns
+   * `git worktree remove` after `resolveWorktreeRetention` — so `clearInterval` and the
+   * `disposed` flag between them still leave work running.
+   *
+   * dispose() settles this set, which is what makes its promise mean "provably finished writing"
+   * before the caller removes the data root. Retention was the half that was NOT tracked, and
+   * the harm differs by caller — be precise about which, because only one of them deletes
+   * anything. In a TEST teardown a disposed manager could still be spawning git inside a
+   * directory the case was already `rmSync`-ing, which is the reported ENOTEMPTY. In a LIVE
+   * server nothing removes the project directory at all: the sweep instead stamps
+   * `worktreeReclaimedAt` onto a record, scheduling a debounced `runs.json` write from a store
+   * whose lifecycle has ended — so a re-add inside that window can see the stale in-memory index
+   * overwrite the fresh one. Every producer therefore enrols through a wrapper
+   * (`rescueStalledQueue`, `enforceRetention`), so nothing can start a background write teardown
+   * cannot see.
+   *
+   * The live-server half needed the OTHER end fixed too, and the promise is worthless without it:
+   * `ProjectContexts.dispose` used to drop this promise on the floor (`teardown()` was
+   * synchronous), so the guarantee held only for callers that awaited — which was tests. It now
+   * awaits the manager before `store.flush()` + `removeAllListeners()`, and `DELETE /projects/:id`
+   * awaits that in turn.
+   */
+  private readonly writesInFlight = new Set<Promise<void>>();
+
+  /**
+   * The run BODIES — `execute()` / `runContinuation()` — that have started and not settled yet,
+   * plus the turn-end bookkeeping (`recordTurnEnd`) that a body fires and does not await.
+   *
+   * Deliberately NOT `writesInFlight`. dispose() is documented as "the manager makes no further
+   * moves ON ITS OWN" and is explicitly not a run-stopper, so awaiting a live agent session in
+   * its promise would silently change what every existing caller gets. `quiesce()` is the opt-in
+   * that cancels first and then awaits this set; dispose()'s semantics are untouched.
+   */
+  private readonly runsInFlight = new Set<Promise<void>>();
+
+  /**
+   * Cancellations that arrived while a run was still MATERIALIZING — dequeued into `starting`,
+   * or floated by the direct Continue path — and had nowhere to land.
+   *
+   * `cancel()` stops an active run by writing `state.cancelled` and calling `state.interrupt()`,
+   * and neither exists until the body has built its `ActiveRun`. Before this set, `cancel()` for
+   * such a run simply returned false and delivered NOTHING, so the run went on to spawn an agent
+   * turn that no one had asked for and that `quiesce()` then waited out — up to the runner's
+   * 30-minute default (#200). The body consumes the request through `adoptActive`, at the first
+   * instant a cancellation has somewhere to go.
+   *
+   * `dropActive` clears the entry too, because a body can leave without ever reaching
+   * `adoptActive` (the continuation whose isolation is gone), and a stale entry would cancel the
+   * NEXT run to reuse that id — which, for a Continue, is the same id again.
+   */
+  private readonly cancelRequested = new Set<string>();
 
   /** Set by dispose(): this manager makes no further moves. Re-checked at every await boundary a
    *  rescue crosses, because a sweep that was already past its first check when dispose() landed
    *  would otherwise write an event — and re-populate the queue dispose() had just emptied. */
   private disposed = false;
+
+  /**
+   * Set by `quiesce()` for the length of its drain: the scheduler starts nothing new.
+   *
+   * `disposed` cannot cover this window, because `quiesce()` disposes LAST — the whole point is
+   * to stop the runs while `cancel()` can still see them. During the drain the manager is
+   * otherwise fully live, and every settling run pumps the entire workspace on its way out
+   * (`dropActive` → `releaseSlot` → `semaphore.release()`, which awaits `pump()` on every
+   * registered participant, this one included). A pump reconciles auto-resumes from the RECORDS,
+   * and a record whose `autoResumeAt` has already passed arms at zero delay — so the drain could
+   * fire a resume, spawn a fresh agent turn into the very repo root the caller is about to
+   * delete, and then dutifully wait for it. Bounded by `MAX_AUTO_RESUMES`, and the exact opposite
+   * of what the method promises.
+   */
+  private quiescing = false;
 
   /** Set by the watchdog for exactly one sweep: ignore the usage-limit hold and make progress. */
   private forceNextPump = false;
@@ -685,7 +750,15 @@ export class RunManager {
     // Memory guard (#memory-guard): the shared process-tree sampler already ticks ~every 2 s for
     // the runs table; piggyback on it to enforce the per-task memory ceiling.
     this.offUsage = onUsage((snapshot) => void this.enforceMemoryLimit(snapshot));
-    this.queueWatchdog = setInterval(() => void this.rescueStalledQueue(), QUEUE_WATCHDOG_MS);
+    // `.catch()` for the same reason `enforceRetention` carries one: a floated promise that
+    // rejects is a process-level unhandled rejection, and this one CAN reject —
+    // `sweepStalledQueue` → `reviveQueuedRun` → `reviveWorkflow` → `loadWorkflows` reads the
+    // project's YAML, and `rescueStalledQueue` re-raises through its try/finally. The interval
+    // is the only caller that does not await; tests await it and still see the throw.
+    this.queueWatchdog = setInterval(
+      () => void this.rescueStalledQueue().catch(() => undefined),
+      QUEUE_WATCHDOG_MS,
+    );
     this.queueWatchdog.unref?.();
   }
 
@@ -700,12 +773,31 @@ export class RunManager {
    * dispose only guarantees the manager makes no further moves on its own.
    *
    * Every side effect below is SYNCHRONOUS, so a caller that ignores the return value behaves
-   * exactly as it did before #125. The returned promise settles the one thing dispose cannot do
-   * synchronously: a queue-watchdog rescue that had already started. `clearInterval` stops the
-   * next tick, never the running one — the same discipline `AGENTS.md` records for the e2e
+   * exactly as it did before #125. The returned promise settles the things dispose cannot do
+   * synchronously: the background writes already in flight — a queue-watchdog rescue (#125) and
+   * a worktree retention sweep (#200), both tracked in `writesInFlight`. `clearInterval` stops
+   * the next tick, never the running one — the same discipline `AGENTS.md` records for the e2e
    * fixture servers, where `kill()` only delivers the signal and the helper awaits the exit.
    * Await it whenever the data root is about to be removed; a test that deletes its temp
    * directory without awaiting is the ENOENT in #125.
+   *
+   * It does NOT wait for running runs, and that is the point of `quiesce()`: dispose clears
+   * `active`/`starting`/`queue` without stopping anything, so after it returns a leaked run is
+   * invisible to `cancel()` and can no longer be stopped at all. Reach for `quiesce()` whenever
+   * the runs are yours to end; reach for `dispose()` when they are not.
+   *
+   * ## The states a disposed manager leaves behind, and how they end
+   *
+   * - A run that was `active` keeps running to its own terminal status and writes it to the
+   *   record; only the manager's registries forgot it. `cancel()` answers false for it from here
+   *   on, which is the leak `quiesce()` exists to avoid.
+   * - A run that was `queued` — or one `startRun()` accepts AFTER dispose, which still writes a
+   *   `queued` record and still floats a `pump()` — never starts in this process: `pump()` bails
+   *   on `disposed`, so nothing dequeues it. Its only exit is the next process: `recover()`
+   *   re-queues every `queued` record at boot, and `rescueStalledQueue` re-adopts one the engine
+   *   is holding no work item for. That is deliberate — a disposed manager's project has been
+   *   removed from the registry, and starting its work would be the surprise — but it does mean
+   *   the record outlives the process as `queued` rather than `cancelled`.
    *
    * It never rejects: a sweep that fails still belongs to whoever started it (the watchdog floats
    * it exactly as before), and teardown must not become a second place that error surfaces.
@@ -732,7 +824,112 @@ export class RunManager {
     this.pendingContinuations.clear();
     this.memoryPausing.clear();
     this.lastNamerKey.clear();
-    return Promise.allSettled([...this.rescuesInFlight]).then(() => undefined);
+    this.cancelRequested.clear();
+    return Promise.allSettled([...this.writesInFlight]).then(() => undefined);
+  }
+
+  /**
+   * Stop every run this manager owns, then dispose — "the data root is about to disappear".
+   *
+   * dispose() alone cannot deliver that: it is not a run-stopper by design, and because it
+   * clears `active`/`starting`/`queue` first, a run left behind is afterwards invisible to
+   * `cancel()` (which looks only in `queue` then `active`) and can never be stopped. The order
+   * here is the whole fix — cancel, drain, dispose — and it is the order four test files were
+   * already hand-rolling three different ways.
+   *
+   * ## Why the cancel is INSIDE the loop, and why termination needs `quiescing`
+   *
+   * Cancelling once up front is not enough, because the population is not fixed while the drain
+   * runs. `starting` promotes to `active` (the `ActiveRun` a `cancel()` needs did not exist a
+   * moment ago), a queued continuation crosses `rematerializeReclaimedWorktree` before it
+   * registers anywhere at all, and every settling body pumps the whole workspace on its way out.
+   * So each pass re-asks `activeRunIds()` and re-issues `cancel()`; `cancelRequested` carries a
+   * cancellation into the one window where neither registry can hold it.
+   *
+   * Termination then rests on `quiescing`, not on "the queue is empty". The manager has three
+   * self-starting entry points — `pump()`, `fireAutoResume()` and the queue watchdog's
+   * `rescueStalledQueue()` — and all three bail while it is set, so no pass can enrol a run the
+   * previous pass did not cancel. Ask "who fires this?" of any new one: the watchdog is an
+   * unref'd 60 s interval, so it is invisible in a short drain and lands squarely in a long one
+   * (an agent session that will not close is bounded only by the runner's 30-minute default),
+   * where it would re-adopt queued records — NDJSON, `pendingJobs`, a `queue` push — inside the
+   * window this method exists to make quiet.
+   *
+   * What a pass CAN still enrol is bounded bookkeeping: a body fires one `recordTurnEnd` per turn
+   * it finishes, and a cancelled run finishes no further turns (`autoContinueTurn` refuses a
+   * cancelled state). Each iteration therefore awaits a strictly older generation of work than the
+   * last, and the generations are finite.
+   *
+   * An external caller CAN still enrol during the drain — `startRun()` and `continueRun()` are
+   * not gated by `quiescing`, because refusing a user's request is the HTTP layer's decision and
+   * not a teardown helper's. The loop absorbs one: the next pass finds it, cancels it and waits
+   * for it, which is exactly what the "an agent turn enrolled after the drain took its snapshot"
+   * case pins. What is NOT bounded is an unbroken STREAM of them — a caller that keeps starting
+   * work into a project it is tearing down gets what it asked for.
+   *
+   * ## Each pass delivers its cancel ONCE — the bodies are what make that enough
+   *
+   * Re-issuing `cancel()` per pass reaches runs whose REGISTRY membership changed; it does not
+   * reach a run that was already in `active` when the pass ran, because the next re-issue waits
+   * on the same `Promise.allSettled` the stuck body is holding open. So the guarantee has to live
+   * in the body: every point at which a run body can park must consume a cancellation that
+   * arrived while it was elsewhere. Those points are `adoptActive` (the `starting` window),
+   * `acquireRepoRoot` (the lease wait, which races its own abort), the step loop's
+   * `if (state.cancelled) break`, `publishSession` (the gap between the loop's check and a live
+   * `state.interrupt`, which is what #199 hung on), and `state.interrupt()` itself once a session
+   * is up. Adding a new `await` inside a run body means asking which of those covers it.
+   *
+   * ## If a tracked promise never settles
+   *
+   * `quiesce()` has no deadline of its own and stays pending — the caller's timeout is the only
+   * bound. That is deliberate. Cancellation is delivered, an agent step's own wall clock still
+   * applies, and a session that refuses to close is a real writer: returning early would hand the
+   * caller a promise that says "nothing is writing any more" while something is, which is the
+   * exact lie this method exists to remove. An invented deadline would only move the ENOTEMPTY a
+   * few hundred milliseconds later — and, in the #199 hang, would have shipped a teardown that
+   * deleted a repository out from under a live agent CLI instead of failing loudly at 90 s.
+   *
+   * Never rejects, the same contract as dispose(): teardown must not become a second place a run's
+   * error surfaces.
+   */
+  async quiesce(): Promise<void> {
+    this.quiescing = true;
+    try {
+      // Drain to a FIXPOINT, not one snapshot: a settling body enrols its own turn-end
+      // bookkeeping (`recordTurnEnd`, which spawns git in the worktree), and `Promise.allSettled`
+      // freezes the set at the instant it is called, so a single pass would miss precisely the
+      // promises that outlive the body.
+      while (this.runsInFlight.size > 0) {
+        for (const runId of this.activeRunIds()) this.cancel(runId);
+        await Promise.allSettled([...this.runsInFlight]);
+      }
+      // Nothing is running any more, but the queue can still hold records — a run cancelled
+      // before it ever started leaves none, a `startRun()` that raced the drain does. Cancel what
+      // is left so it stops as `cancelled` rather than being silently forgotten by dispose().
+      for (const runId of this.activeRunIds()) this.cancel(runId);
+    } finally {
+      // Synchronously before `dispose()` sets `disposed`, so there is no instant in which the
+      // manager is neither quiescing nor disposed and a pump could slip through.
+      this.quiescing = false;
+    }
+    return this.dispose();
+  }
+
+  /**
+   * Enrol a run body in `runsInFlight` so `quiesce()` can wait for it.
+   *
+   * The body arrives with its own `.catch(…)` already attached — the failure policy stays at the
+   * call site, where it can name the run — and the extra `.catch` here only keeps the tracked
+   * copy from ever rejecting, so a handler that itself throws cannot turn teardown into an
+   * unhandled rejection.
+   */
+  private trackRun(body: Promise<void>): void {
+    const tracked: Promise<void> = body
+      .catch(() => undefined)
+      .finally(() => {
+        this.runsInFlight.delete(tracked);
+      });
+    this.runsInFlight.add(tracked);
   }
 
   /**
@@ -982,6 +1179,17 @@ export class RunManager {
    * root (spec 006 degradation rule), which is always the tighter bound.
    */
   private async pump(): Promise<void> {
+    // A pump floated by something that started before teardown must not run afterwards: it spawns
+    // `git rev-parse` inside `repoRoot` (`getRepoInfo`) and `reconcileAutoResumes` re-arms from
+    // the RECORDS, which would repopulate the very timer map dispose() had just cleared (#200).
+    // Nothing is lost by bailing — dispose empties the queue, so there is nothing left to start.
+    //
+    // `quiescing` is the same bail one phase earlier, and it is what makes `quiesce()` terminate:
+    // during its drain every settling run pumps this manager (`dropActive` → `releaseSlot` →
+    // `semaphore.release()`, which awaits `pump()` on every participant), and a pump that re-armed
+    // a past-due `autoResumeAt` would start a fresh agent turn into a repo root the caller is
+    // about to delete — while `quiesce()` waited for it.
+    if (this.disposed || this.quiescing) return;
     this.reconcileMonitoringWakeTimers();
     this.reconcileAutoResumes();
     // A pump requested while one is in flight can't just be dropped: the
@@ -997,6 +1205,12 @@ export class RunManager {
       do {
         this.pumpAgain = false;
         const repo = await getRepoInfo(this.repoRoot);
+        // Re-read after every await this loop crosses, not just at the top: teardown can land in
+        // any of these gaps, and a pump that was already past the head check would go on to spawn
+        // `git rev-parse` and dequeue work into a data root its owner has finished with — the
+        // same class `reclaimRetiredWorktrees` re-checks for, one severity lower because a pump's
+        // own reads are harmless and only what it STARTS is not.
+        if (this.disposed || this.quiescing) return;
         const maxParallel = this.semaphore.maxParallel();
         // Per-project ceiling (spec 2026-07-22-per-project-concurrency): this
         // project never runs more than its own configured `maxParallel`; absent
@@ -1031,6 +1245,7 @@ export class RunManager {
         // Only pay for the config read when something is actually held: a queued record may name
         // no runner, and then the account it would use is the configured default.
         const defaultRunner = anyHold ? (await loadConfig(this.repoRoot)).defaultRunner : undefined;
+        if (this.disposed || this.quiescing) return;
         while (this.queue.length > 0 && capacity()) {
           // FIFO among the runs that CAN start; a held one keeps its place in the queue rather
           // than being dequeued and re-queued (which would churn its position and its record).
@@ -1054,25 +1269,27 @@ export class RunManager {
           this.starting.add(runId);
           if (continuation) {
             const hydrated = this.hydrateQueuedContinuation(runId, continuation);
-            void this.runContinuation(
-              runId,
-              hydrated.stepId,
-              hydrated.sessionId,
-              hydrated.backend,
-              hydrated.prompt,
-              hydrated.images,
-              hydrated.persistedImages,
-              hydrated.persistedAttachments,
-            ).catch((err: unknown) => {
-              const message = err instanceof Error ? err.message : String(err);
-              this.store.updateRun(runId, {
-                status: 'failed',
-                error: `continue crashed: ${message}`,
-                finishedAt: new Date().toISOString(),
-              });
-              this.starting.delete(runId);
-              this.dropActive(runId);
-            });
+            this.trackRun(
+              this.runContinuation(
+                runId,
+                hydrated.stepId,
+                hydrated.sessionId,
+                hydrated.backend,
+                hydrated.prompt,
+                hydrated.images,
+                hydrated.persistedImages,
+                hydrated.persistedAttachments,
+              ).catch((err: unknown) => {
+                const message = err instanceof Error ? err.message : String(err);
+                this.store.updateRun(runId, {
+                  status: 'failed',
+                  error: `continue crashed: ${message}`,
+                  finishedAt: new Date().toISOString(),
+                });
+                this.starting.delete(runId);
+                this.dropActive(runId);
+              }),
+            );
             continue;
           }
           if (!job) continue;
@@ -1081,21 +1298,23 @@ export class RunManager {
           // in the same synchronous tick as the `pendingJobs.delete` above, so no
           // handler can observe a half-dequeued run.
           const input = this.hydrateQueuedInput(runId, job.input);
-          void this.execute(runId, job.workflow, input).catch((err: unknown) => {
-            const message = err instanceof Error ? err.message : String(err);
-            this.store.updateRun(runId, {
-              status: 'failed',
-              error: `engine crashed: ${message}`,
-              finishedAt: new Date().toISOString(),
-            });
-            const state = this.active.get(runId);
-            if (state) {
-              this.clearIdleTimer(state);
-              this.clearAutosaveTimer(state);
-            }
-            this.starting.delete(runId);
-            this.dropActive(runId);
-          });
+          this.trackRun(
+            this.execute(runId, job.workflow, input).catch((err: unknown) => {
+              const message = err instanceof Error ? err.message : String(err);
+              this.store.updateRun(runId, {
+                status: 'failed',
+                error: `engine crashed: ${message}`,
+                finishedAt: new Date().toISOString(),
+              });
+              const state = this.active.get(runId);
+              if (state) {
+                this.clearIdleTimer(state);
+                this.clearAutosaveTimer(state);
+              }
+              this.starting.delete(runId);
+              this.dropActive(runId);
+            }),
+          );
         }
       } while (this.pumpAgain);
     } finally {
@@ -1289,6 +1508,10 @@ export class RunManager {
     this.memoryPausing.delete(runId);
     this.lastNamerKey.delete(runId);
     this.forceStarted.delete(runId);
+    // A body can leave without ever reaching `adoptActive` — the continuation whose isolation is
+    // gone bails between the two — and an unconsumed request would then cancel the NEXT run to
+    // carry this id, which for a Continue is this same id again.
+    this.cancelRequested.delete(runId);
     // The run's slot is gone from busySlots() as of the deletes above — hand it
     // to the workspace's oldest queued run, in ANY project. Every terminal path
     // funnels through here, so this one call covers them all.
@@ -1307,8 +1530,10 @@ export class RunManager {
     // failed/cancelled) — the one moment the finished-worktree count can grow.
     // Enforce count-based retention (#483) here so a single hook covers every
     // terminal path. Fire-and-forget: retention must never delay or throw into
-    // the lifecycle.
-    void this.enforceRetention();
+    // the lifecycle — but it is REGISTERED (#200), so dispose() can still wait
+    // for the git it spawns instead of leaving it writing into a data root the
+    // caller has already started deleting.
+    this.enforceRetention();
     // The run's temp directory (#785) goes on the same terminal transition, and
     // unconditionally — it is scratch, not an artifact, so unlike a worktree
     // there is no keep-count to respect and nothing left to recover from it. A
@@ -1369,6 +1594,20 @@ export class RunManager {
    */
   private fireAutoResume(runId: string): void {
     this.autoResumeTimers.delete(runId);
+    // A self-starting entry point that `pump()`'s gate cannot cover, and the difference is the
+    // reason both gates exist. dispose() clears the timers so this cannot fire after it, but
+    // `quiesce()` disposes LAST — so any timer armed BEFORE the drain (by an earlier pump, by
+    // `recover()`, or by an ordinary usage-limit schedule whose deadline comes due) fires inside
+    // it, with no pump involved at any point.
+    //
+    // What that would cost is RECORD WRITES, not a spawn: the call below defers for capacity, so
+    // it enqueues rather than starting a turn — but `continueRun` first writes a `continue-N`
+    // step and flips the record from `failed` to `queued`, and this method then stamps
+    // `autoResumeAttempts`. Three writes into a data root the caller is tearing down, and a
+    // user's `failed` run converted to `queued` for the trailing cancel pass to mark `cancelled`
+    // (#200). A resume dropped here is not lost: the deadline lives on the record, and the next
+    // manager's `reconcileAutoResumes` re-arms from it.
+    if (this.disposed || this.quiescing) return;
     const run = this.store.getRun(runId);
     if (!run || run.status !== 'failed' || !run.autoResumeAt) return;
     // Belt and braces against the one gap `reconcileAutoResumes` cannot close: the setting going
@@ -1533,19 +1772,24 @@ export class RunManager {
    *
    * Public so a test can drive the wedge directly instead of waiting out the interval.
    *
-   * The sweep itself is `sweepStalledQueue`; this wrapper only publishes it to `rescuesInFlight`
+   * The sweep itself is `sweepStalledQueue`; this wrapper only publishes it to `writesInFlight`
    * so dispose() can settle it (#125). Every entry point goes through here — the interval and the
    * tests alike — so nothing can start a sweep that teardown cannot see. The schedule, the
    * conditions and the effects are untouched.
    */
   async rescueStalledQueue(now = Date.now()): Promise<void> {
-    if (this.disposed) return;
+    // `quiescing` for the same reason `pump()` carries it, one phase earlier than `disposed`:
+    // this is a self-starting entry point (an unref'd 60 s interval), and a drain that outlasts
+    // one tick would otherwise get a sweep re-adopting queued records into the data root the
+    // caller is tearing down. A skipped sweep costs nothing — re-adoption is idempotent and the
+    // next process does it at boot, which is exactly what this method's own doc promises.
+    if (this.disposed || this.quiescing) return;
     const sweep = this.sweepStalledQueue(now);
-    this.rescuesInFlight.add(sweep);
+    this.writesInFlight.add(sweep);
     try {
       await sweep;
     } finally {
-      this.rescuesInFlight.delete(sweep);
+      this.writesInFlight.delete(sweep);
     }
   }
 
@@ -1655,13 +1899,56 @@ export class RunManager {
     }
   }
 
-  /** Reclaim finished worktrees beyond the keep-limit (#483) — directory only,
-   *  `xez/<id8>` branch kept. Best-effort; a failure never affects run
-   *  lifecycle. `review`/live runs are excluded by the selector. */
-  private async enforceRetention(): Promise<void> {
+  /**
+   * Reclaim finished worktrees beyond the keep-limit (#483) — directory only, `xez/<id8>` branch
+   * kept. Best-effort; a failure never affects run lifecycle. `review`/live runs are excluded by
+   * the selector.
+   *
+   * The sweep itself is `reclaimRetiredWorktrees`; this wrapper only publishes it to
+   * `writesInFlight` so dispose() can settle it, the same shape `rescueStalledQueue` already
+   * uses. Callers still float it — retention must never delay or throw into a terminal
+   * transition — but a floated promise nobody holds is one teardown cannot wait for, and this
+   * one spawns `git worktree remove` and `git worktree prune` inside `repoRoot` (#200).
+   */
+  private enforceRetention(): void {
+    if (this.disposed) return;
+    const sweep = this.reclaimRetiredWorktrees();
+    this.writesInFlight.add(sweep);
+    // `.catch()` BEFORE `.finally()`, the same order `trackRun` uses: `p.finally(fn)` returns a
+    // DERIVED promise that adopts p's rejection, so floating it leaves that copy unhandled. The
+    // sweep cannot reject today (it swallows its own errors), which makes this latent rather than
+    // live — and exactly the kind of latency a later edit turns into a process-level crash.
+    void sweep
+      .catch(() => undefined)
+      .finally(() => {
+        this.writesInFlight.delete(sweep);
+      });
+  }
+
+  /**
+   * The retention sweep proper. `disposed` is re-read after `resolveWorktreeRetention` — the one
+   * await before any git spawn — for the reason the flag exists: a sweep already past its first
+   * check when dispose() landed would otherwise start removing directories under a root its
+   * caller is deleting. `shouldStop` carries the same question INTO the loop, because a sweep
+   * removes one directory per iteration and a single check before the first one stops nothing on
+   * a five-worktree pass that straddles a dispose.
+   *
+   * Bailing there reclaims nothing, and nothing is lost by it: retention is count-based and
+   * re-enforced from scratch by the boot sweep (`index.ts`) and by the Settings → Worktrees
+   * reclaim route, so a skipped pass costs one over-limit directory until the next boot. The
+   * alternative — finishing the pass — spends two git spawns inside a directory whose owner has
+   * just said it is done with it, plus a `worktreeReclaimedAt` stamp through `store.updateRun`
+   * that schedules a debounced `runs.json` write from a store nobody owns any more. That is the
+   * whole of #200, and the same hazard `armRepoHandle` is guarded against in
+   * `server/project-context.ts`.
+   */
+  private async reclaimRetiredWorktrees(): Promise<void> {
     try {
       const keep = await resolveWorktreeRetention(this.repoRoot);
-      await reclaimWorktrees(this.repoRoot, this.store, keep);
+      if (this.disposed) return;
+      await reclaimWorktrees(this.repoRoot, this.store, keep, {
+        shouldStop: () => this.disposed,
+      });
     } catch {
       // retention is best-effort; swallow so terminal transitions never break.
     }
@@ -1737,15 +2024,94 @@ export class RunManager {
       return true;
     }
     const state = this.active.get(runId);
-    if (!state) return false;
+    if (!state) {
+      // Dequeued, but its body has not built an `ActiveRun` yet — there is no `cancelled` flag to
+      // set and no `interrupt` to call. Leave the request where the body will find it
+      // (`adoptActive`) instead of answering false and delivering nothing: that window is short
+      // on the `execute()` path and real on the continuation one, which awaits
+      // `rematerializeReclaimedWorktree` first, and missing it costs a whole uncancellable agent
+      // turn (#200).
+      if (this.starting.has(runId)) {
+        this.cancelRequested.add(runId);
+        return true;
+      }
+      return false;
+    }
     state.cancelled = true;
     this.clearIdleTimer(state);
     state.interrupt();
     return true;
   }
 
+  /**
+   * Publish a run's freshly built `ActiveRun` and adopt any cancellation that arrived while it
+   * was being built. Returns true when the caller must abandon the run.
+   *
+   * One helper for both bodies, because the two `active.set` sites are the two halves of the same
+   * moment and had already drifted once (`state.autonomous`, #141). Ordering inside is
+   * load-bearing: the flag is consumed BEFORE `active.set`, so a `cancel()` landing after this
+   * returns finds a state to write to and takes the ordinary path.
+   */
+  private adoptActive(runId: string, state: ActiveRun): boolean {
+    if (this.cancelRequested.delete(runId)) state.cancelled = true;
+    this.active.set(runId, state);
+    this.starting.delete(runId);
+    return state.cancelled;
+  }
+
+  /**
+   * Publish a freshly started agent session on the run's `ActiveRun`, and deliver any
+   * cancellation that arrived while the session was being BUILT.
+   *
+   * The twin of `adoptActive`, one phase later and for the same reason. `cancel()` stops a live
+   * turn by calling `state.interrupt()`, and between the step loop's own `state.cancelled` check
+   * and this moment that function is still the `() => undefined` placeholder: everything in
+   * between — `configuredModelProvider`, `agentEnvForStep`, a team skill's `materializeSkillDir`
+   * — is `await`ed, and a cancel landing in any of those gaps set the flag and delivered nothing.
+   *
+   * What that cost is a run that never ends, not a turn that runs one step too long (#199/#200).
+   * The session spawns anyway; an interactive step passes `timeoutMs: 0`, so the runner has no
+   * wall clock at all; and the turn-end handler computes `sessionOpen` as
+   * `!state.cancelled && session.open`, so a cancelled run neither parks at `waiting` nor closes
+   * the session on `XEZ:DONE`. The body then sits in `await session.result` for as long as the
+   * agent CLI keeps stdin open — which for the bundled mock is forever. `quiesce()` issues its
+   * cancel once per drain generation and only re-issues it after `Promise.allSettled` resolves,
+   * so a single missed delivery is a permanent hang: measured as the 90 s teardown timeout on a
+   * 2-core CI runner, where the widened gap makes the window easy to land in.
+   *
+   * ONE helper for both construction sites — `runAgentStep` and `runContinuation` — because they
+   * are the same moment written twice and had already drifted (only one of them re-stamped
+   * `currentStepId`). A third session site must come through here too, or it re-opens the hole.
+   */
+  private publishSession(
+    runId: string,
+    state: ActiveRun,
+    stepId: string,
+    session: AgentSession,
+  ): void {
+    state.session = session;
+    state.sessionEverOpened = true;
+    this.flushDeferred(runId);
+    state.currentStepId = stepId;
+    state.interrupt = () => session.interrupt();
+    if (session.pid !== undefined) registerRunProcess(runId, session.pid);
+    // The adopt. Ordering is load-bearing exactly as it is in `adoptActive`: `state.interrupt`
+    // already points at this session, so a `cancel()` arriving one tick later takes the ordinary
+    // path and this call is not a second, racing teardown.
+    if (state.cancelled) session.interrupt();
+  }
+
   isActive(runId: string): boolean {
     return this.active.has(runId) || this.starting.has(runId) || this.queue.includes(runId);
+  }
+
+  /** The id set behind `isActive` — `active ∪ starting ∪ queue`. `quiesce()` needs the whole
+   *  population rather than one membership test, and a second spelling of that union is exactly
+   *  how the two drift apart: `run-quiesce.test.ts` pins the observable half by putting one run
+   *  in `queue` and one in `active`, asserting `isActive` for both before `quiesce()` and for
+   *  neither after. A registry this set forgets would leave a live writer behind. */
+  private activeRunIds(): Set<string> {
+    return new Set<string>([...this.active.keys(), ...this.starting, ...this.queue]);
   }
 
   /**
@@ -2157,7 +2523,14 @@ export class RunManager {
     if (agentModelsLocked(this.repoRoot) && opts.model?.trim()) {
       return { ok: false, error: AGENT_MODELS_LOCKED_ERROR };
     }
-    if (this.active.has(runId)) return { ok: false, error: 'run is still active' };
+    // `isActive`, not `active.has`: this method now writes a `starting` entry of its own (below),
+    // and `rematerializeReclaimedWorktree` can hold it there for a whole `git worktree add`.
+    // Two Continues inside that window both passed an `active`-only guard, both enrolled the
+    // same id, and the second `adoptActive` overwrote the first's `ActiveRun` — discarding a
+    // cancellation already delivered to it and leaving one body driving a session the registry
+    // no longer points at. Two spellings of "is this run live" is the drift `activeRunIds()`
+    // was introduced to end (#200).
+    if (this.isActive(runId)) return { ok: false, error: 'run is still active' };
     const run = this.store.getRun(runId);
     if (!run) return { ok: false, error: 'not found' };
     // `review` is continuable too — that's the "Send back" path (spec 009).
@@ -2264,23 +2637,33 @@ export class RunManager {
       });
       return { ok: true };
     }
-    void this.runContinuation(
-      runId,
-      stepId,
-      resume ? sessionStep.sessionId : undefined,
-      targetRunner,
-      prompt,
-      images,
-    ).catch(
-      (err: unknown) => {
+    // In `starting` for the same reason `pump()` puts its dequeued runs there, and it is not
+    // decoration: `runContinuation` awaits `rematerializeReclaimedWorktree` before it builds its
+    // `ActiveRun`, so without this the run is in NEITHER registry for the width of a git spawn —
+    // invisible to `isActive()`, unreachable by `cancel()`, and therefore a turn `quiesce()`
+    // would start waiting for without ever having been able to stop it (#200).
+    this.starting.add(runId);
+    this.trackRun(
+      this.runContinuation(
+        runId,
+        stepId,
+        resume ? sessionStep.sessionId : undefined,
+        targetRunner,
+        prompt,
+        images,
+      ).catch((err: unknown) => {
         const message = err instanceof Error ? err.message : String(err);
         this.store.updateRun(runId, {
           status: 'failed',
           error: `continue crashed: ${message}`,
           finishedAt: new Date().toISOString(),
         });
+        // Paired with the `starting.add` above, exactly as `pump()`'s handler pairs with its own:
+        // a crash before `adoptActive` would otherwise leave the id in `starting` for good, and
+        // `busySlots()` counts it — one leaked entry permanently narrows the parallel cap.
+        this.starting.delete(runId);
         this.dropActive(runId);
-      },
+      }),
     );
     return { ok: true };
   }
@@ -2366,8 +2749,18 @@ export class RunManager {
       autonomous: record?.autonomous === true,
       autoContinues: 0,
     };
-    this.active.set(runId, state);
-    this.starting.delete(runId);
+    // A cancel that arrived while the worktree was being re-materialized above is honoured here
+    // rather than dropped (#200): stop before the spawn, exactly as a cancel one tick later
+    // would have. `finishedAt` is stamped fresh because nothing else has stamped it — this run
+    // ends without ever having opened a session.
+    if (this.adoptActive(runId, state)) {
+      const finishedAt = new Date().toISOString();
+      this.store.updateStep(runId, stepId, { status: 'cancelled', finishedAt });
+      this.store.updateRun(runId, { status: 'cancelled', finishedAt, currentStepId: undefined });
+      this.store.appendEvent(runId, { type: 'lifecycle', message: 'run cancelled' });
+      this.dropActive(runId);
+      return;
+    }
     if (state.cwd === this.repoRoot) {
       if (repositoryRootLockDisabled()) {
         this.store.appendEvent(runId, {
@@ -2453,7 +2846,10 @@ export class RunManager {
         // coalescers; the v1 turn boundary flushes again (idempotent) so no
         // buffered delta can outlive its turn.
         sink.flushAll();
-        void this.recordTurnEnd(runId, turnText); // titleSummary + diffStat (#389)
+        // Tracked, not floated free (#200): this escapes the run body it is fired from, and it
+        // spawns `git diff --shortstat` inside a worktree under the data root. `quiesce()` waits
+        // for it; dispose() deliberately does not, so no existing caller's timing changes.
+        this.trackRun(this.recordTurnEnd(runId, turnText)); // titleSummary + diffStat (#389)
         const sessionOpen = !state.cancelled && state.session?.open;
         const done = sessionOpen && DONE_MARKER_RE.test(turnText.trimEnd());
         // `XEZ:ASK` → the user is genuinely blocked; wins over `XEZ:MONITORING`
@@ -2639,11 +3035,7 @@ export class RunManager {
       onEvent,
       { onUiEvent: (event) => this.handleRunnerUiEvent(runId, state, sink, event) },
     );
-    state.session = session;
-    state.sessionEverOpened = true;
-    this.flushDeferred(runId);
-    state.interrupt = () => session.interrupt();
-    if (session.pid !== undefined) registerRunProcess(runId, session.pid);
+    this.publishSession(runId, state, stepId, session);
 
     const finishedAt = () => new Date().toISOString();
     /**
@@ -2740,8 +3132,17 @@ export class RunManager {
       autonomous: input.autonomous === true,
       autoContinues: 0,
     };
-    this.active.set(runId, state);
-    this.starting.delete(runId);
+    // Through the same helper as the continuation path, so the two `active.set` sites cannot
+    // drift again (#141). The return is deliberately not branched on, and the reason is narrow:
+    // `pump()` adds this run to `starting` and reaches the line above with no await in between,
+    // so the materializing window is empty HERE and `cancelRequested` can hold nothing for it.
+    //
+    // Do not read that as "a cancellation adopted here is handled anyway". It is not: the first
+    // git spawn on this path is `createWorktree`, well before the step loop that breaks on
+    // `state.cancelled`. `requeueWhileHeld` below is passed `state` so its own `state?.cancelled`
+    // guard is live rather than inert, but that guard only declines to re-queue. If an await
+    // ever appears between `pump()`'s `starting.add` and this line, branch on the return.
+    this.adoptActive(runId, state);
     const emit = (event: { type: string; stepId?: string; [k: string]: unknown }) =>
       this.store.appendEvent(runId, event);
 
@@ -2753,7 +3154,10 @@ export class RunManager {
     // gate cannot be the only one, because dequeue is not the moment of no return. Nothing has
     // happened yet here, so the run goes back to the queue untouched (spec
     // 2026-08-03-auto-resume-after-usage-limit).
-    if (this.requeueWhileHeld(runId, workflow, input, taskBackend)) return;
+    // `state` passed, exactly as the post-lease call site below passes it: without it the
+    // helper's `state?.cancelled` guard is inert, and a run cancelled through `cancelRequested`
+    // would be handed back to the queue as `queued` instead of stopping.
+    if (this.requeueWhileHeld(runId, workflow, input, taskBackend, state)) return;
     // Extra system prompt (R2 2.3): POST override > config default; echoed on
     // the record so the UI/API can show what the run actually used.
     const extraSystemPrompt = resolveExtraSystemPrompt(input.systemPrompt, config.systemPrompt);
@@ -3160,7 +3564,10 @@ export class RunManager {
         // v2 `turn.completed` already flushed the coalescers; the v1 turn
         // boundary flushes again (idempotent) as a backstop.
         sink.flushAll();
-        void this.recordTurnEnd(runId, turnText); // titleSummary + diffStat (#389)
+        // Tracked, not floated free (#200): this escapes the run body it is fired from, and it
+        // spawns `git diff --shortstat` inside a worktree under the data root. `quiesce()` waits
+        // for it; dispose() deliberately does not, so no existing caller's timing changes.
+        this.trackRun(this.recordTurnEnd(runId, turnText)); // titleSummary + diffStat (#389)
         const sessionOpen = !state.cancelled && state.session?.open;
         const done = interactive && sessionOpen && DONE_MARKER_RE.test(turnText.trimEnd());
         // `XEZ:ASK` → the user is blocked; wins over `XEZ:MONITORING`, loses to
@@ -3312,12 +3719,7 @@ export class RunManager {
       state.currentStepId = undefined;
       return err instanceof Error ? err.message : String(err);
     }
-    state.session = session;
-    state.sessionEverOpened = true;
-    this.flushDeferred(runId);
-    state.currentStepId = step.id;
-    state.interrupt = () => session.interrupt();
-    if (session.pid !== undefined) registerRunProcess(runId, session.pid);
+    this.publishSession(runId, state, step.id, session);
 
     try {
       const result = await session.result;
@@ -3490,7 +3892,12 @@ export class RunManager {
         skillDescription = skills.find((s) => s.name === skillName)?.description;
       }
       const result = await generateRunName(this.repoRoot, { task, skillName, skillDescription, ...live });
-      if (!result) return;
+      // A torn-down manager stops writing (#200). The namer is deliberately NOT enrolled in
+      // `writesInFlight`: it is a model call with its own `NAMER_TIMEOUT_MS`, and making
+      // `dispose()` wait up to that long on it would be a far worse trade than losing a title.
+      // This is the cheap half of the same guarantee — the call finishes on its own, and its
+      // RESULT is simply not written into a store whose data root may already be gone.
+      if (!result || this.disposed) return;
       const run = this.store.getRun(runId);
       // Marker-owned state outranks the namer (spec 2026-07-18-task-ref-markers):
       // a declared title blocks the whole apply (this call raced the marker),

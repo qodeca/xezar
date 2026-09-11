@@ -111,7 +111,7 @@ describe('workspace runs index API', () => {
     // `recover()`. This is the guarantee the whole read-only reader exists to provide.
     expect(contexts.peek(other.id)).toBeUndefined();
     expect(contexts.ids()).toEqual([]);
-    contexts.disposeAll();
+    await contexts.disposeAll();
   });
 
   it("resolves each row's runner against ITS OWN project's default, and carries the model verbatim", async () => {
