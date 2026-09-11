@@ -194,6 +194,22 @@
   flushes and only then removes — and when a run is still live it leaks the temp directory and
   fails saying so, rather than letting the delete report a fault it did not cause. The queue-hold
   assertion also gained the settle guard its mirror already had. (#200)
+- 🐛 **The opencode runner no longer picks its own port — and it finally tells you why a
+  server did not start.** It drew one random port in 40000–60000 with no probe and no retry, so a
+  port that was already taken killed the child and reported `opencode serve exited before it
+  started listening` with no port, no code and no reason. `opencode serve` has handled this itself
+  all along: `--port 0` prefers 4096 and falls back to a free ephemeral port, and the runner
+  already reads the bound URL back from stdout. So the draw is gone rather than replaced. The
+  child's stderr is now folded into both start-failure messages, the way the Codex and Claude
+  runners already did, and the 30-second window rejects with what happened instead of resolving a
+  URL nothing is listening on. (#184)
+- 🐛 **Two cockpit browser specs stopped racing their own data.** `settings-agents.e2e.ts`
+  navigated to `/settings/agents` from `/settings/agents`, where every predicate about the section
+  is equally true of the page being left — so a cold load could assert against the outgoing
+  document and count 0 checked radios. `gotoAgents()` now waits for a marker only the incoming
+  document carries, and the base-branch case waits for the branch list that `GET /api/v1/repo`
+  fills instead of reading an option that may not exist yet. No sleeps, no relaxed assertions.
+  (#183)
 
 ## 📝 Specs & Documentation
 - 📝 **A release-level Definition of Done for 0.14.0.** `docs/releases/0.14.0-definition-of-done.md`
@@ -202,6 +218,13 @@
   and the release act. Each clause says what evidence settles it and what does not count, and a
   clause with no evidence is failed. A draft for the owner's decision; nothing in it is assessed
   yet. (#300)
+- 📝 **Conduct reports have a private address, and the 0.14.0 questions have answers.**
+  `CODE_OF_CONDUCT.md` named a GitHub organisation, which cannot receive a private message; it now
+  names `hi@qodeca.com`, read by Qodeca, and says a report sent there is private. The #184 and #183
+  fixes move out of the `0.13.1` section into this one: their commit is not in the `v0.13.1` tag,
+  so the published 0.13.1 never contained them. The release Definition of Done now records the
+  owner's answer, or the evidence that settled it, for each of its six questions, beside the
+  recommendation it first made. No quality clause changed. (#318)
 - 📝 **A design review is part of done for UI work.** The project kit, the implementation and
   testing roles and the leader prompt now say that work with UI in scope, where such a review makes
   sense, needs a UX/UI design review (`xezar-ux-design`) before it is done, and that the author's
@@ -269,24 +292,6 @@ coverage, and restores a guard against drift in the cockpit's event protocol typ
   restores a missing regression guard rather than changing event shapes. (#190, #192)
 
 ---
-
-## 🐛 Fixes
-- 🐛 **The opencode runner no longer picks its own port — and it finally tells you why a
-  server did not start.** It drew one random port in 40000–60000 with no probe and no retry, so a
-  port that was already taken killed the child and reported `opencode serve exited before it
-  started listening` with no port, no code and no reason. `opencode serve` has handled this itself
-  all along: `--port 0` prefers 4096 and falls back to a free ephemeral port, and the runner
-  already reads the bound URL back from stdout. So the draw is gone rather than replaced. The
-  child's stderr is now folded into both start-failure messages, the way the Codex and Claude
-  runners already did, and the 30-second window rejects with what happened instead of resolving a
-  URL nothing is listening on. (#184)
-- 🐛 **Two cockpit browser specs stopped racing their own data.** `settings-agents.e2e.ts`
-  navigated to `/settings/agents` from `/settings/agents`, where every predicate about the section
-  is equally true of the page being left — so a cold load could assert against the outgoing
-  document and count 0 checked radios. `gotoAgents()` now waits for a marker only the incoming
-  document carries, and the base-branch case waits for the branch list that `GET /api/v1/repo`
-  fills instead of reading an option that may not exist yet. No sleeps, no relaxed assertions.
-  (#183)
 
 # 0.13.0 (2026-09-10)
 
