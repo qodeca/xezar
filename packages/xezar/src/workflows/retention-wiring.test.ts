@@ -102,7 +102,8 @@ describe('worktree retention fires on a terminal transition (#483)', () => {
   }, 40_000);
 });
 
-/** Create a real worktree for a stable id, then a store record pointing at it. */
+/** Create a store record titled `id`, then a real worktree named after that record — where xezar
+ *  puts every task's, and the only path the reclaim sweep will delete (#288). */
 async function seedWithId(
   store: RunStore,
   repoRoot: string,
@@ -110,8 +111,8 @@ async function seedWithId(
   status: 'done' | 'review',
   finishedAt: string,
 ): Promise<{ recId: string; path: string }> {
-  const wt = await createWorktree(repoRoot, id, 'main');
   const rec = store.createRun({ title: id, workflow: 'w', task: 't', steps: [] });
+  const wt = await createWorktree(repoRoot, rec.id, 'main');
   store.updateRun(rec.id, { status, finishedAt, worktreePath: wt.path, branch: wt.branch });
   return { recId: rec.id, path: wt.path };
 }
