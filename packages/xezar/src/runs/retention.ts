@@ -7,7 +7,7 @@
 import { existsSync } from 'node:fs';
 import { lstat } from 'node:fs/promises';
 import { createWorktree, removeWorktree } from '../git-worktree.ts';
-import { ownRun, ownWorktree, ownershipScope, type OwnershipProject } from '../mcp/resource-ownership.ts';
+import { ownRun, ownWorktree, ownershipScope, type OwnershipProject, type OwnershipScope } from '../mcp/resource-ownership.ts';
 import type { RunRecord, RunStatus } from './store.ts';
 
 /** The "finished" status set — mirrors `RunStore.archiveFinished`. A run at the
@@ -141,10 +141,24 @@ async function ownedReclaimable(repoRoot: string, runs: readonly RunRecord[]): P
   });
   const owned: RunRecord[] = [];
   for (const run of runs) {
-    if (!isReclaimable(run) || !ownRun(scope, run.id).ok) continue;
-    if ((await ownWorktree(scope, run.id)).ok || (await isAbsent(run.worktreePath!))) owned.push(run);
+    if (isReclaimable(run) && (await ownRunAndWorktree(scope, run.id))) owned.push(run);
   }
   return owned;
+}
+
+/**
+ * A run of this project whose recorded worktree, if it names one, is provably this project's own
+ * (`ownRun` + `ownWorktree`) or already gone — the rule above, per run. The cockpit's run routes
+ * that delete, commit, push or run git in that worktree ask the same question through this one
+ * function (#316), so reclaim and those routes cannot come to disagree about what is ours.
+ * `null` when the run is unknown here or reaches anywhere else.
+ */
+export async function ownRunAndWorktree(scope: OwnershipScope, runId: string): Promise<RunRecord | null> {
+  const run = ownRun(scope, runId);
+  if (!run.ok) return null;
+  const path = run.value.worktreePath;
+  if (path === undefined || (await ownWorktree(scope, runId)).ok || (await isAbsent(path))) return run.value;
+  return null;
 }
 
 /** Nothing at `path`, not even a dangling link. Any other answer is not "absent" (fail closed). */
