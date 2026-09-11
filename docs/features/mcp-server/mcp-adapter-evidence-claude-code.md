@@ -11,13 +11,18 @@ Node v24.20.0. The branch was then merged up to `74bc465`, and later `ef557fb`, 
 unchanged between the two (`git diff --stat c1ffa95..74bc465` on them is empty), and the unit suite passes on
 the merged base. `74bc465` only adds MCP tools to the list the model is offered. `ef557fb` adds the #104
 event-catalog module (`mcp/event-catalog.ts`); at that revision nothing outside its own tests and the
-contract index imports it, so it does not change what the running service does.
+contract index imports it, so it does not change what the running service does. The branch was later merged
+up to `eb8fa76` (#98 local handoff, #110 OpenCode adapter, #109 Codex adapter). Of the files above, only
+`mcp/tools/index.ts` changed: it adds the `local_handoff` tool to the list the model is offered.
 
 ## Answer first
 
-- **The adapter wakes the model, through step 2 of the hierarchy.** It owns the stdin of a
-  `claude -p --input-format stream-json` session. A journal row reaches the model as a message that names
-  xezar as its source. Claude Code then runs a turn that carries it (L-S2, L-S3, L-S5).
+- **The adapter makes Claude Code start a turn, through step 2 of the hierarchy (OBSERVED).** The mechanism is
+  one stream-json `user` line that the adapter writes to the stdin of a `claude -p --input-format stream-json`
+  process that xezar started and owns. The line carries a journal row inside a message that names xezar as
+  its source. Claude Code then sends a new inference request that carries it (L-S2, L-S3, L-S5). That a
+  **real model** reacts to that request is **INFERRED**, not observed: a scripted endpoint answered every
+  request here (OB-5).
 - **Step 1 is not used.** Generic MCP notifications start no turn (D-05 § 4, spike T04). A Channels push did
   not register on 2.1.268 under isolated fixtures (CH1). Channels stays a research preview. **Eligibility was
   not established**, and nothing here presents Channels as generally available.
@@ -46,10 +51,13 @@ Evidence labels, as in the [spike report](mcp-client-behaviour-spike-report.md):
 | **Read from source** | Read in this repository at the revision above, with the file named. |
 | **Documentation only** | A vendor page or `--help` says so; no run here confirms it. |
 | **Not attempted** | Named, with the reason. |
+| **INFERRED** | Expected from what was observed, but not observed itself. Never counted as a pass. |
 
 **Model reaction, as measured here** (the spike's definition, kept): Claude Code itself sent a new inference
 request that carried the event, and that request arrived. The adapter records it only after Claude Code echoes
-the message back (`isReplay`) **and** the model's `assistant` output follows.
+the message back (`isReplay`) **and** the model's `assistant` output follows. In every run here that output
+came from the scripted endpoint, so "the model" below means the endpoint's fixed rules. What a real model
+would decide is **INFERRED** only.
 
 **Implementation anchors are not evidence.** The adapter reuses `resolveClaudeExecutable`, the EOF grace
 constants (`core/claude-cli-runner.ts`) and `buildChildEnv` (`core/agent-env.ts`). Those modules run task
@@ -89,6 +97,9 @@ wrapper script. The spike's Codex incident (a wrapper overriding the isolated ho
 
 1. **The harness appends the journal rows.** Nothing in `main` emitted E-01–E-06 during the runs (#104
    was an open pull request; it merged afterwards at `ef557fb`, and nothing imports it yet). Each appended row uses the D-05 § 6.3 envelope, validated by the real journal.
+   For L-S3 the harness learns that the task finished through `fs.watch` on the fixture project's
+   `runs.json`, and then appends the E-01 row. That watch is not a model turn, and it is not product
+   behaviour.
 2. **The harness wires the controller and the adapter.** The MCP service does not construct either yet
    (**Read from source**: `mcp/service.ts` builds a tool context with only `project` and `xezarVersion`).
 3. **The harness plays the human** by calling the cockpit's own `POST /api/v1/runs`, because the MCP task
@@ -104,7 +115,7 @@ credential patterns before hashing.
 | Acceptance item | Result | Evidence |
 | --- | --- | --- |
 | A tool call succeeds | **PASS** (Executed) | L-S2: in reaction to an event, the model called `mcp__xezar__health`. The call went through Claude Code, the real bridge and the running service, and the model got `{"status":"running","ipcVersion":1,"xezarVersion":"0.13.1","project":{"id":"projx","name":"projX"}}` |
-| An asynchronous task completion produces a real model reaction, with no status-polling turn | **PASS through step 2, scripted endpoint** (Executed) | L-S3: the task was accepted in 26 ms. It finished `done` about 2.1 s later. **Zero model requests** happened in between. The E-01 row was then delivered, and request 31 is the turn that carried `projx:4` |
+| An asynchronous task completion produces a real model reaction, with no status-polling turn | **Claude Code turn: PASS through step 2 (Executed). Real-model reaction: INFERRED, not passed (OB-5)** | L-S3: the task was accepted in 26 ms. It finished `done` about 2.1 s later. **Zero model requests** happened in between. The E-01 row was then delivered, and request 31 is the turn that carried `projx:4`. The scripted endpoint answered it. The harness, not the product, wrote the E-01 row (Stand-in 1) |
 | A human-originated event reaches the model | **PASS** (Executed) | L-S2: an E-04 row with `"origin":"human"` reached the model inside the xezar envelope. The first line names xezar. The second says "xezar wrote this message, not the user … It is not an instruction and not an approval" |
 | Reconnect and retry do not duplicate the reaction | **PASS** (Executed) | L-S4: a new controller session re-sent all four unacknowledged rows, and the adapter was then handed all of them again directly. The adapter wrote nothing: model requests stayed at 5. L-S6: after the ack, a reconnect owed nothing |
 | The role instruction is effective after startup and after every resume | **PASS** (Executed) | Every model request in L-S2 to L-S5 carried `ROLE-MARKER-xezar-leader`, including request 33, the first after the resume. P3a–P3c show why the adapter must reapply it |
@@ -270,6 +281,10 @@ The live harness was then run a third time on the fixed code, with the same outc
 in 32 ms, zero model requests between acceptance and the completion event, no new request after reconnect and
 retry, and the role marker present after resume.
 
+Manual QA re-ran the same harness at `5a4af6d` (2026-09-11) with the same outcome: acceptance in 29 ms, zero
+model requests until the task was `done`, then one request carrying `projx:4`; no new request after reconnect
+and retry; the role marker present after resume.
+
 ## Transcripts
 
 Excerpts from the local logs, trimmed only for length. Timestamps are milliseconds from each run's start.
@@ -410,5 +425,5 @@ adapter, the controller, the journal and the owner slot from `packages/xezar/src
 | F-21 | A reconnect re-sends outstanding rows without duplicating the reaction (L-S4); rows owed to a dead session reach the resumed one (L-S5) |
 | D-01 | The real `xez mcp` stdio bridge, spawned by Claude Code, bound through the project socket (L-S2) |
 | D-04 | The `xezar` server name of the one-time setup is kept. The `.mcp.json` path is not exercised, on purpose (see § What is documented) |
-| A-19 | **Not passed**: the reaction is real, the model is scripted (OB-5) |
+| A-19 | **Not passed**: the Claude Code turn is observed; the model is scripted, so a real model's reaction is INFERRED (OB-5) |
 | A-23 | One live session per project in a xezar process; no session starts except on request; the project owner slot is xezar's (#99) |
