@@ -571,7 +571,9 @@ directory's repository root and a task worktree is never registered.
 - it needs no trust flag (executed in the `scope` run).
 
 What stays true either way, and the card says it: `keep-alive` means pi connects when it starts in the
-project. The alternatives are named, not recommended: pi's user-level file for every project at once,
+project, so any pi started there, including a pi task xezar runs with Worktree OFF, is the project's
+leader client and every other client is refused until that pi exits (run `root`; the card's wording
+since the design review on [#343](https://github.com/qodeca/xezar/pull/343)). The alternatives are named, not recommended: pi's user-level file for every project at once,
 and the project `.mcp.json`, which Claude Code reads too, so an entry there reaches both clients (#330).
 The adapter's `lazy-keep-alive` (connect at first call, never idle-close) would avoid taking the project
 at start, but **no run covers it**, so the setup does not offer it.
