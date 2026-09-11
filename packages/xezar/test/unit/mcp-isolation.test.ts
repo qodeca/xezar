@@ -4,6 +4,7 @@ import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
 
+import { removeWorktree } from '../../src/git-worktree.ts';
 import { AuditTrail } from '../../src/mcp/audit-trail.ts';
 import { EventController, type EventDispatch } from '../../src/mcp/event-controller.ts';
 import { McpJournalCursorError } from '../../src/mcp/event-journal.ts';
@@ -211,10 +212,12 @@ test('A-03 — a group with a member reaching into B is refused whole, and so is
   });
 });
 
-test('A-03 control — without the ownership check the same sweep deletes B’s worktree', { skip }, async () => {
+// Removing the path the stray A record names is what the sweep did before #288 made the enforcer
+// prove each path first; doing it directly keeps this control able to hurt B.
+test('A-03 control — without the ownership check, removing the worktree a stray A record names deletes B’s', { skip }, async () => {
   await inWorld({ hostile: true }, async (world) => {
     const before = world.snapshot('b');
-    await reclaimWorktrees(world.a.root, world.a.store, 1);
+    await removeWorktree(world.a.root, world.a.store.getRun(world.hostile!.stray)!.worktreePath!);
     assert.notEqual(world.snapshot('b'), before);
     assert.equal(existsSync(join(world.b.worktree, 'notes.txt')), false);
   });

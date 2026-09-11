@@ -1,0 +1,157 @@
+import { execFileSync } from 'node:child_process';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { basename, join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+
+import { PROJECT_A, PROJECT_B, createAbWorld, nowhereId, type AbWorld } from '../../test/helpers/ab-fixture.ts';
+import { branchFor, worktreePathFor } from '../git-worktree.ts';
+import { reclaimWorktrees } from '../runs/retention.ts';
+
+/**
+ * The cockpit's own routes and another project's resources (#288).
+ *
+ * Two different questions, and the cases below keep them apart:
+ *
+ *  1. Can a caller NAME project B's group, task or automation at project A's door? No, and nothing
+ *     here changes that: every project route resolves its id in the bound project's own store
+ *     (`resolveProjectScope` hands each route one project's `store` / `automationStore`), so a B id
+ *     at A's door is exactly as unknown as an id that exists nowhere. These are GUARDS: they pass
+ *     with and without the fix, and they pin what must not change.
+ *
+ *  2. Can an A RECORD that already names B's directory — the shape a copied or hand-edited
+ *     `.local/xezar` produces (`hostile` in the A/B fixture) — make A's routes change B? Before the
+ *     fix, yes: the variant pick and the worktree reclaim `rm -rf` whatever path the record names,
+ *     and the group read runs `git add -N .` inside it. Those cases fail without the fix.
+ *
+ * What is NOT a boundary, and why the Files tab is not guarded: the cockpit API is unauthenticated
+ * and multi-project by design, so B's files are served at B's own door to the same caller (the
+ * last control below). A read through A's door crosses nothing that B's door does not already open.
+ */
+
+const A = `/api/v1/p/${PROJECT_A}`;
+const B = `/api/v1/p/${PROJECT_B}`;
+
+async function answer(res: Response): Promise<{ status: number; body: string }> {
+  return { status: res.status, body: await res.text() };
+}
+
+/** B's worktree git index — what `git add -N .` inside B's worktree would rewrite. */
+const bIndex = (w: AbWorld): string => join(w.b.root, '.git', 'worktrees', basename(w.b.worktree), 'index');
+
+/** Nothing that identifies B — its root, its worktree, its file words, its ids or names. */
+function namesNothingOfB(w: AbWorld, body: string): void {
+  for (const secret of [w.b.root, w.b.worktree, w.b.fileContent, w.b.ids.done, w.b.ids.group, ...w.b.names]) {
+    expect(body).not.toContain(secret);
+  }
+}
+
+describe.skipIf(process.platform === 'win32')('cockpit routes and another project’s resources (#288)', { timeout: 120_000 }, () => {
+  let world: AbWorld | undefined;
+  beforeEach(async () => {
+    world = await createAbWorld({ sockets: false, hostile: true, automations: true });
+  }, 60_000);
+  afterEach(async () => {
+    await world?.dispose();
+    world = undefined;
+  }, 60_000);
+  const w = (): AbWorld => world!;
+
+  // ---- guards: pass with and without the fix ---------------------------------------------------
+
+  it('naming B’s group, task or automation at A’s door answers exactly like an id that exists nowhere', async () => {
+    const nowhere = nowhereId();
+    const before = w().snapshot('b');
+    const pairs: Array<[string, string, string, unknown, unknown]> = [
+      ['GET', `${A}/groups/${w().b.ids.group}`, `${A}/groups/g-${nowhere}`, undefined, undefined],
+      ['POST', `${A}/groups/${w().b.ids.group}/pick`, `${A}/groups/g-${nowhere}/pick`, { runId: w().b.ids.variants[0] }, { runId: nowhere }],
+      ['GET', `${A}/runs/${w().b.ids.done}/files?path=notes.txt`, `${A}/runs/${nowhere}/files?path=notes.txt`, undefined, undefined],
+      ['POST', `${A}/automations/${w().b.ids.automation}/check`, `${A}/automations/${nowhere}/check`, { mode: 'preview' }, { mode: 'preview' }],
+    ];
+    for (const [method, foreign, unknown, foreignBody, unknownBody] of pairs) {
+      const b = await answer(await w().cockpit(foreign, method, foreignBody));
+      const n = await answer(await w().cockpit(unknown, method, unknownBody));
+      expect(b.status, foreign).toBe(404);
+      expect(b, foreign).toEqual(n);
+      namesNothingOfB(w(), b.body);
+    }
+    expect(w().snapshot('b')).toBe(before);
+  });
+
+  it('A’s own group, task files and reclaim keep working (the doors are not simply shut)', async () => {
+    const group = await answer(await w().cockpit(`${A}/groups/${w().a.ids.group}`));
+    expect(group.status).toBe(200);
+    expect(JSON.parse(group.body).runs.map((r: { id: string }) => r.id)).toEqual(w().a.ids.variants);
+    const file = await answer(await w().cockpit(`${A}/runs/${w().a.ids.done}/files?path=notes.txt`));
+    expect(file.status).toBe(200);
+    expect(JSON.parse(file.body).content).toContain(w().a.fileContent);
+  });
+
+  it('control: B’s files are served at B’s own door to the same caller — no guard on A’s door can hide them', async () => {
+    const file = await answer(await w().cockpit(`${B}/runs/${w().b.ids.done}/files?path=notes.txt`));
+    expect(file.status).toBe(200);
+    expect(JSON.parse(file.body).content).toContain(w().b.fileContent);
+  });
+
+  // ---- regressions: fail without the fix ----------------------------------------------------------
+
+  it('a group with a member that reaches into B is not A’s group: the read refuses it whole and runs no git in B', async () => {
+    const h = w().hostile!;
+    const nowhere = nowhereId();
+    const before = w().snapshot('b');
+    const indexBefore = readFileSync(bIndex(w()), null);
+    const mixed = await answer(await w().cockpit(`${A}/groups/${h.mixedGroup}`));
+    const unknown = await answer(await w().cockpit(`${A}/groups/g-${nowhere}`));
+    expect(readFileSync(bIndex(w()), null).equals(indexBefore), 'git ran inside B’s worktree and rewrote its index').toBe(true);
+    namesNothingOfB(w(), mixed.body);
+    expect(mixed.status).toBe(404);
+    expect(mixed.body).toBe(unknown.body);
+    expect(w().snapshot('b')).toBe(before);
+  });
+
+  it('picking a variant of that group deletes nothing of B and changes nothing of A', async () => {
+    const h = w().hostile!;
+    const nowhere = nowhereId();
+    const before = w().snapshot('b');
+    const picked = await answer(await w().cockpit(`${A}/groups/${h.mixedGroup}/pick`, 'POST', { runId: h.legit }));
+    const unknown = await answer(await w().cockpit(`${A}/groups/g-${nowhere}/pick`, 'POST', { runId: nowhere }));
+    // B's worktree — which the stray A record names — is still there, byte for byte.
+    expect(existsSync(join(w().b.worktree, 'notes.txt')), 'B’s worktree was deleted').toBe(true);
+    expect(w().snapshot('b')).toBe(before);
+    expect(picked.status).toBe(404);
+    expect(picked.body).toBe(unknown.body);
+    namesNothingOfB(w(), picked.body);
+    // Nothing of A was picked, archived or stripped of its worktree either.
+    expect(w().a.store.getRun(h.stray)?.worktreePath).toBe(w().b.worktree);
+    for (const id of [h.legit, h.stray]) expect(w().a.store.getRun(id)?.archived ?? false).toBe(false);
+  });
+
+  it('reclaim — through the route and through the shared enforcer — never deletes a directory an A record names outside A', async () => {
+    const a = w().a;
+    const h = w().hostile!;
+    // One more finished A task with a real worktree at A's own path, older than everything else,
+    // so a keep-limit of 1 has an A worktree to reclaim: the control that reclaim still works.
+    const old = a.store.createRun({ title: 'ALPHA old task', workflow: 'quick-task', task: 'ALPHA old', steps: [] });
+    const oldPath = worktreePathFor(a.root, old.id);
+    execFileSync('git', ['worktree', 'add', '-q', '-b', branchFor(old.id), oldPath], { cwd: a.root, stdio: 'ignore' });
+    a.store.updateRun(old.id, { status: 'done', finishedAt: '2026-07-01T00:00:00.000Z', worktreePath: oldPath, branch: branchFor(old.id) });
+    writeFileSync(join(a.root, '.xezar', 'config.json'), JSON.stringify({ skillsRepos: [], worktreeRetention: 1 }), 'utf8');
+
+    const before = w().snapshot('b');
+    const res = await answer(await w().cockpit(`${A}/worktrees/reclaim`, 'POST', {}));
+    expect(existsSync(join(w().b.worktree, 'notes.txt')), 'B’s worktree was deleted').toBe(true);
+    expect(res.status).toBe(200);
+    const { reclaimed } = JSON.parse(res.body) as { reclaimed: string[] };
+    expect(reclaimed).toContain(old.id);
+    expect(reclaimed).not.toContain(h.stray);
+    expect(reclaimed).not.toContain(h.linked);
+    expect(existsSync(oldPath)).toBe(false);
+    expect(w().snapshot('b')).toBe(before);
+    expect(a.store.getRun(h.stray)?.worktreeReclaimedAt).toBeUndefined();
+
+    // The automatic sweeps (boot, project open, every task's end) call the same enforcer.
+    const again = await reclaimWorktrees(a.root, a.store, 1);
+    expect(again).not.toContain(h.stray);
+    expect(existsSync(join(w().b.worktree, 'notes.txt'))).toBe(true);
+    expect(w().snapshot('b')).toBe(before);
+  });
+});
