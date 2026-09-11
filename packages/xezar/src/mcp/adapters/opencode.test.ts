@@ -54,6 +54,8 @@ class FakeOpenCode {
   loseNextAnswer = false;
   /** Answer prompt_async like an OpenCode too old to have it: 200 with its web UI. */
   noAsyncRoute = false;
+  /** Emit the submission's whole turn on `/event` BEFORE answering 204 (the frames win the race). */
+  turnBeforeAnswer = false;
   history: { info: { id: string; role: string; parentID?: string }; parts: unknown[] }[] = [];
   #streams = new Set<ServerResponse>();
   #ids = 0;
@@ -131,20 +133,27 @@ class FakeOpenCode {
       // Real OpenCode emits the submission's frames around the time it answers; emit them first.
       this.emit('message.updated', { sessionID: SESSION, info: { id: messageId, sessionID: SESSION, role: 'user' } });
       for (const part of body.parts) this.emit('message.part.updated', { sessionID: SESSION, part: { ...part, sessionID: SESSION, messageID: messageId } });
-      if (this.loseNextAnswer) {
-        this.loseNextAnswer = false;
-        req.socket.destroy();
-      } else {
-        res.writeHead(204).end();
-      }
-      if (this.react) {
+      const turn = (): void => {
+        if (!this.react) return;
         const assistant = `msg_asst_${++this.#ids}`;
         this.history.push({ info: { id: assistant, role: 'assistant', parentID: messageId }, parts: [] });
         this.status = 'busy';
         this.emit('session.status', { sessionID: SESSION, status: { type: 'busy' } });
         this.emit('message.updated', { sessionID: SESSION, info: { id: assistant, sessionID: SESSION, role: 'assistant', parentID: messageId } });
         this.goIdle();
+      };
+      // The whole turn's frames may reach the client before the 204 does.
+      if (this.turnBeforeAnswer) {
+        turn();
+        await new Promise((resolve) => setTimeout(resolve, 50));
       }
+      if (this.loseNextAnswer) {
+        this.loseNextAnswer = false;
+        req.socket.destroy();
+      } else {
+        res.writeHead(204).end();
+      }
+      if (!this.turnBeforeAnswer) turn();
       return;
     }
     json(404, { name: 'NotFoundError', route });
@@ -291,6 +300,15 @@ describe('delivery is not reaction (F-20)', () => {
     await adapter.deliver(dispatchOf(...rows), live());
     await until(() => reactions.length === 1);
     expect(reactions).toEqual([rows[2]!.journalSeq]);
+  });
+
+  it('still reports the reaction when the turn’s frames reach the adapter before the 204 does', async () => {
+    oc.turnBeforeAnswer = true;
+    const { adapter, reactions } = adapterFor();
+    const only = row();
+    await adapter.deliver(dispatchOf(only), live());
+    await until(() => reactions.length === 1);
+    expect(reactions).toEqual([only.journalSeq]);
   });
 
   it('resolves delivery and reports NO reaction when the client accepted the event but no turn started', async () => {
