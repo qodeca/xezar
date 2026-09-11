@@ -2,7 +2,6 @@ import { EventEmitter } from 'node:events';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createInterface } from 'node:readline';
 import { PassThrough } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -40,6 +39,7 @@ class FakeClaude implements ClaudeCodeChild {
   readonly stdin = new PassThrough();
   readonly stdout = new PassThrough();
   readonly stderr = new PassThrough();
+  readonly pid = 4242;
   exitCode: number | null = null;
   signalCode: NodeJS.Signals | null = null;
   /** Every message text the model could see, in the order written. */
@@ -51,15 +51,28 @@ class FakeClaude implements ClaudeCodeChild {
   replay = true;
   /** Make the model's first output a call to this xezar tool, carrying `operationId`. */
   toolCall: { name: string; operationId: string } | undefined;
+  /** The API call fails: Claude Code answers with a synthetic assistant frame, no model ran. */
+  apiError = false;
+  /** Echo the message, then die before any model output. */
+  dieAfterEcho = false;
   readonly #events = new EventEmitter();
   #held: Array<{ type: string; text?: string }> = [];
 
   constructor(readonly argv: string[]) {
-    createInterface({ input: this.stdin }).on('line', (line) => {
-      const content = (JSON.parse(line) as { message: { content: Array<{ type: string; text?: string }> } }).message.content;
-      this.written.push(content.map((b) => b.text ?? '').join('\n'));
-      if (this.hold) this.#held.push(...content);
-      else this.#turn(content);
+    // Plain `data` rather than readline: readline adds its own `error` listener to its input,
+    // which would hide whether the ADAPTER guards stdin errors (the EPIPE test below).
+    let buffered = '';
+    this.stdin.on('data', (chunk: Buffer) => {
+      buffered += chunk.toString('utf8');
+      let newline: number;
+      while ((newline = buffered.indexOf('\n')) >= 0) {
+        const line = buffered.slice(0, newline);
+        buffered = buffered.slice(newline + 1);
+        const content = (JSON.parse(line) as { message: { content: Array<{ type: string; text?: string }> } }).message.content;
+        this.written.push(content.map((b) => b.text ?? '').join('\n'));
+        if (this.hold) this.#held.push(...content);
+        else this.#turn(content);
+      }
     });
     // A system/init frame with account-shaped fields the adapter must never keep.
     this.#emit({ type: 'system', subtype: 'init', session_id: 'x', apiKeySource: 'none', email: 'someone@example.com' });
@@ -72,8 +85,33 @@ class FakeClaude implements ClaudeCodeChild {
     if (content.length > 0) this.#turn(content);
   }
 
+  /** Echo held messages without answering them (the turn has not produced output yet). */
+  echoHeld(): void {
+    this.#emit({ type: 'user', isReplay: true, message: { role: 'user', content: this.#held } });
+  }
+
+  /** A model output frame, as a process might still print after it was replaced. */
+  emitAssistant(): void {
+    this.#emit({ type: 'assistant', message: { content: [{ type: 'text', text: 'late' }] } });
+  }
+
   #turn(content: Array<{ type: string; text?: string }>): void {
     if (this.replay) this.#emit({ type: 'user', isReplay: true, message: { role: 'user', content } });
+    if (this.dieAfterEcho) {
+      setImmediate(() => this.crash(1));
+      return;
+    }
+    if (this.apiError) {
+      // The frames Claude Code 2.1.268 printed after the echo for a failed API call (evidence
+      // record, probe A1): a synthetic assistant frame, then an error result.
+      this.#emit({
+        type: 'assistant',
+        message: { model: '<synthetic>', content: [{ type: 'text', text: 'API Error: 400 scripted bad request' }] },
+        error: 'unknown',
+      });
+      this.#emit({ type: 'result', subtype: 'success', is_error: true, result: 'API Error: 400 scripted bad request' });
+      return;
+    }
     this.turns++;
     if (this.toolCall) {
       const { name, operationId } = this.toolCall;
@@ -88,17 +126,34 @@ class FakeClaude implements ClaudeCodeChild {
   }
 
   crash(code = 1): void {
+    this.exit();
     this.exitCode = code;
+    this.closeStreams();
+  }
+
+  /** `exit` alone: the process is gone but its stdout may still carry frames (Node's documented order). */
+  exit(): void {
+    this.exitCode ??= 1;
     this.#events.emit('exit');
+  }
+
+  closeStreams(): void {
+    this.#events.emit('close');
+  }
+
+  /** A Node `error` event on a process that is still running (a failed kill, say). */
+  fail(message: string): void {
+    this.#events.emit('error', new Error(message));
   }
 
   kill(signal: NodeJS.Signals = 'SIGTERM'): boolean {
     this.signalCode = signal;
     this.#events.emit('exit');
+    this.#events.emit('close');
     return true;
   }
 
-  once(event: 'exit', listener: () => void): this {
+  once(event: 'exit' | 'close', listener: () => void): this {
     this.#events.once(event, listener);
     return this;
   }
@@ -458,6 +513,108 @@ describe('a dead session is a recoverable blocker, never a hidden restart', () =
     await expect(adapter.deliver(dispatch(row(1)), signal)).rejects.toThrow(/No Claude Code leader session is running/);
     expect(adapter.status().blocker).toMatchObject({ code: 'session-not-running', recoverable: true });
     expect(adapter.resume()).toEqual({ outcome: 'refused', reason: 'no-session' });
+  });
+});
+
+describe('review findings: failures that must not crash xezar or fake a reaction', () => {
+  it('a write that meets a dead pipe (EPIPE on stdin) does not throw out of the adapter', () => {
+    const adapter = makeAdapter();
+    adapter.start();
+    const epipe = Object.assign(new Error('write EPIPE'), { code: 'EPIPE' });
+    expect(() => spawned[0]!.stdin.emit('error', epipe)).not.toThrow();
+  });
+
+  it('a failed API call (a synthetic assistant frame) is not a reaction, and its rows go out again with the next event', async () => {
+    const adapter = makeAdapter();
+    adapter.start();
+    const claude = spawned[0]!;
+    claude.apiError = true;
+    await adapter.deliver(dispatch(row(1)), signal);
+    await settle();
+    expect(adapter.status()).toMatchObject({ reactedSeq: 0, consumedSeq: 0 });
+
+    claude.apiError = false;
+    await adapter.deliver(dispatch(row(2)), signal);
+    await settle();
+    expect(claude.written[1]).toContain('"eventId":"alpha:1"');
+    expect(claude.written[1]).toContain('"eventId":"alpha:2"');
+    expect(adapter.status()).toMatchObject({ reactedSeq: 2, consumedSeq: 2 });
+  });
+
+  it('rows the session echoed but never answered before dying are written again after resume', async () => {
+    const adapter = makeAdapter();
+    adapter.start();
+    spawned[0]!.dieAfterEcho = true;
+    await adapter.deliver(dispatch(row(1)), signal);
+    await settle();
+    expect(adapter.status().state).toBe('stopped');
+
+    adapter.resume();
+    await settle();
+    expect(spawned[1]!.written[0]).toContain('"eventId":"alpha:1"');
+    expect(adapter.status().reactedSeq).toBe(1);
+  });
+
+  it('frames printed between exit and close still count, so a late echo is not written twice', async () => {
+    const adapter = makeAdapter();
+    adapter.start();
+    const claude = spawned[0]!;
+    claude.hold = true;
+    await adapter.deliver(dispatch(row(1)), signal);
+    await settle();
+    claude.exit();
+    claude.releaseHeld(); // echo + model output reach stdout after `exit`
+    await settle();
+    claude.closeStreams();
+    adapter.resume();
+    await settle();
+    expect(spawned[1]!.written).toHaveLength(0);
+    expect(adapter.status().reactedSeq).toBe(1);
+  });
+
+  it('a frame from a replaced process never answers rows written to the new one', async () => {
+    const adapter = makeAdapter();
+    adapter.start();
+    const old = spawned[0]!;
+    old.crash();
+    adapter.resume();
+    const current = spawned[1]!;
+    current.hold = true;
+    await adapter.deliver(dispatch(row(1)), signal);
+    await settle();
+    current.echoHeld();
+    await settle();
+    old.emitAssistant();
+    await settle();
+    expect(adapter.status().reactedSeq).toBe(0);
+  });
+
+  it('close() keeps the project slot until the process has really closed', () => {
+    const one = makeAdapter();
+    one.start();
+    one.close();
+    const two = makeAdapter();
+    expect(two.start()).toEqual({ outcome: 'refused', reason: 'occupied' });
+    spawned[0]!.crash(0);
+    expect(two.start().outcome).toBe('started');
+  });
+
+  it('an error event on a still-running process does not end the session', async () => {
+    const adapter = makeAdapter({ warn: () => {} });
+    adapter.start();
+    spawned[0]!.fail('kill EPERM');
+    expect(adapter.status().state).toBe('running');
+    await expect(adapter.heartbeat()).resolves.toBeUndefined();
+  });
+
+  it('a retried recovery-only dispatch writes the gap notice once', async () => {
+    const adapter = makeAdapter();
+    adapter.start();
+    const recovery = { required: 'current-state' as const, oldestSeq: 5, latestSeq: 9, message: '' };
+    await adapter.deliver({ projectId: 'alpha', events: [], recovery }, signal);
+    await adapter.deliver({ projectId: 'alpha', events: [], recovery }, signal);
+    await settle();
+    expect(spawned[0]!.written).toHaveLength(1);
   });
 });
 

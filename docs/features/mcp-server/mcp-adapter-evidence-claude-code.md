@@ -24,6 +24,10 @@ the merged base. The later base only adds MCP tools to the list the model is off
 - **Every acceptance item has a transcript**, with one limit that decides the verdict: the model was a
   **scripted local endpoint**, not a real model. That proves Claude Code started a real turn carrying the
   event. It does not prove what a real model decides. **This is not an A-19 pass** (OB-5).
+- **A failed API call is not counted as a reaction.** Claude Code echoes the message and then prints a
+  made-up `assistant` frame (`"model":"<synthetic>"`) when the API call fails (A1). The adapter treats that
+  frame as "no model answered" and keeps the rows owed. A code review found this case; the first version of
+  the adapter would have over-reported it.
 - **Two gaps in `main` were found and worked around in the harness, not fixed here.** Nothing constructs the
   adapter in the service yet. No production code emits E-01–E-06 journal rows yet (#104 is open). Also, the
   MCP task tools answer `task_create is not connected to the xezar service in this session` (finding F-1).
@@ -118,6 +122,15 @@ Fixture-tested, and each proven red when the behaviour is removed (see § Regres
   frame that has them.
 - Under `XEZ_DRY_RUN=1` the bundled mock claude receives the event. The adapter claims **no** reaction,
   because the mock does not echo the message.
+- A failed API call (the synthetic frame observed in A1) records no reaction, and its rows are written again
+  with the next event. They are not retried on a timer, so a failing account cannot loop turns.
+- Rows the session echoed but never answered before it died are written again after resume.
+- A write that meets a dead pipe (EPIPE on stdin) cannot crash xezar.
+- Frames printed between the process's `exit` and `close` still count; frames from a replaced process are
+  ignored.
+- `close()` keeps the project's one-session slot until the process has really closed, and a Node `error`
+  event on a still-running process does not end the session.
+- A retried recovery-only dispatch writes the gap notice once.
 
 ## The delivery hierarchy, as implemented
 
@@ -191,6 +204,16 @@ demonstrated**, never as unavailable, and never as generally available.
 - **F-4 – The echo arrives right before the model output, not when the message is read** (Executed, P2b).
   With a 4 s scripted delay, the echo of the first message appeared at 4116 ms, just before its `assistant`
   frame. It is therefore a conservative signal: it marks a turn about to produce output, not queue entry.
+- **F-6 – A failed API call ends in a synthetic assistant frame after the echo** (Executed, A1). With a
+  scripted HTTP 400, Claude Code printed the echo, then
+  `{"type":"assistant","message":{"model":"<synthetic>",…"API Error: 400 scripted bad request"},"error":"unknown"}`,
+  then a `result` with `is_error: true`. Counting any assistant frame after the echo as a reaction would
+  therefore report a turn that never ran. The adapter excludes frames with `model: "<synthetic>"`, an `error`
+  field or `isApiErrorMessage`.
+- **F-7 – An HTTP 401 is retried silently** (Executed, A1). With a scripted 401, Claude Code retried with
+  growing waits (requests at 0, 0.6, 1.6, 3.9, 8.3, 17.7, 35.8 and 74.1 s, and on) and printed no echo and no
+  frame meanwhile. So a leader whose credentials stop working shows delivery without reaction, which is the
+  honest state. How long it retries before giving up was not measured.
 - **F-5 – An idle stream-json session makes no model request** (Executed, L-S1). A session with no first
   prompt stayed 15 s with zero model requests. Claude Code sent only one non-model `GET /api/hello` at start.
 
@@ -203,12 +226,15 @@ Each blocker keeps Claude Code in scope. None is solved by model polling.
 | OB-1 | No supported interface wakes a Claude Code session **the user opened themselves** | **Claude Code Channels**, once an eligible account and organisation are allowed and a run shows the model reacting. Until then, the adapter-owned session (this adapter) is the working route | Channels did not register (CH1); eligibility needs an account decision |
 | OB-5 | No real-model reaction evidence (A-19) | The harness in this record, pointed at a real model on the release-candidate revision, under a separate decision about which account may be used | Not attempted: the fixture rules forbid personal accounts |
 | OB-6 | Nothing constructs the adapter in the running service, and nothing emits journal rows | Service wiring that opens the journal, starts the controller for the owning session and hands it this adapter; the #104 emitter | Not in `main` at `c1ffa95`; the harness did both (Stand-ins 1 and 2) |
+| OB-8 | The echo guard learns the session's own `operationId`s from the `assistant` frame that carries the tool call. If Claude Code ever starts the MCP call before printing that frame, a row caused by it could reach `deliver` first and pass the guard | An operation list fed from the xezar side (the service knows which session sent each operation) instead of from stdout | Raised by the code review; not observed and not tested live. The consequence is one extra message the leader deduplicates, not a lost event |
 | OB-7 | The production path runs without `--bare`, on the user's own login | A run on a machine and account allowed for it | Not attempted: same account rule as OB-5 |
 
 ## Regression proof
 
 Every behaviour below was removed from the source in turn, and the suite was run against the broken copy
 (**Executed**, 2026-09-11). The source was restored and compared byte for byte after each run.
+
+First version (23 tests):
 
 | Change to the source | Result |
 | --- | --- |
@@ -219,6 +245,27 @@ Every behaviour below was removed from the source in turn, and the suite was run
 | No echo guard | 1 failed |
 | No carry-over of unconfirmed rows | 1 failed |
 | Source file absent | the suite cannot load: red |
+
+After the review fixes (31 tests):
+
+| Change to the source | Result |
+| --- | --- |
+| Baseline | 31 passed |
+| No `error` listener on stdin (EPIPE) | 1 failed |
+| A synthetic assistant frame counts as a reaction | 1 failed |
+| The session ends on `exit` instead of `close` | 2 failed |
+| Frames from a replaced process are not ignored | 1 failed |
+| `close()` frees the project slot before the process closes | 1 failed |
+| An `error` event on a running process ends the session | 1 failed |
+| A retried recovery notice is written again | 1 failed |
+| Echoed but unanswered rows are dropped when the session dies | 1 failed |
+| No `--append-system-prompt` on resume | 2 failed |
+| No deduplication of already-written rows | 3 failed |
+| No echo guard | 1 failed |
+
+The live harness was then run a third time on the fixed code, with the same outcome in every step: acceptance
+in 32 ms, zero model requests between acceptance and the completion event, no new request after reconnect and
+retry, and the role marker present after resume.
 
 ## Transcripts
 
@@ -327,6 +374,15 @@ debug  [session-notices] advertise=false mode=dontAsk flag=false(disabled) pollC
 "CALL Bash {…}"   -> assistant tool_use Bash; system permission_denied;
                      tool_result "Permission to use Bash has been denied because Claude Code is running in don't ask mode. …"
 no file created
+```
+
+**A1 – a failed API call** (the adapter's stream-json flags, scripted endpoint answering with an error)
+
+```text
+HTTP 400  232  user isReplay ["[xezar event] APIERR {"eventId":"e:1"}"]
+          232  assistant model="<synthetic>" error="unknown" ["API Error: 400 scripted bad request"]
+          233  result is_error=true "API Error: 400 scripted bad request"
+HTTP 401  endpoint requests at 0, 0.6, 1.6, 3.9, 8.3, 17.7, 35.8, 74.1 s …; no frame printed meanwhile
 ```
 
 ## Evidence location and reproduction

@@ -40,7 +40,9 @@ import type { EventController, EventDispatch, EventRecovery, ReactionAdapter } f
  * to the session's stdin — the transport accepted it. The reaction is observed separately and
  * exactly: the session runs with `--replay-user-messages`, so Claude Code echoes each message when
  * it takes it into the conversation (`isReplay`), and the first `assistant` frame after that echo is
- * a model turn that carried the event. Only then does the adapter call `recordReaction`. Messages
+ * a model turn that carried the event — unless it is the SYNTHETIC frame Claude Code prints for a
+ * failed API call (`model: "<synthetic>"`, observed live), which is no reaction at all and leaves the
+ * rows owed. Only a real model frame makes the adapter call `recordReaction`. Messages
  * written while a turn is running are queued by Claude Code and folded into the next turn (observed
  * live), so the echo — not a count of writes — decides which rows a turn carried.
  *
@@ -61,9 +63,10 @@ import type { EventController, EventDispatch, EventRecovery, ReactionAdapter } f
  * NO DUPLICATE REACTION, ON RETRY OR RECONNECT. Delivery is at-least-once (D-05 § 6.6): a
  * controller retry re-sends the same rows, and a new controller session re-sends everything after
  * the last ack. The adapter writes a row into a conversation once: in memory for this process
- * (`writtenSeq`), and on disk per conversation for rows Claude Code confirmed taking (`consumedSeq`,
- * beside the journal). A row written but never confirmed when the session died is carried over and
- * written again when the session is resumed or restarted — owed events are not lost.
+ * (`writtenSeq`), and on disk per conversation for rows a model turn really answered (`consumedSeq`,
+ * beside the journal). A row written but never answered — the session died, or the API call failed —
+ * is owed, and written again with the next event or first thing after a resume or restart. Owed
+ * events are not lost, and they are never retried on a timer.
  *
  * ECHO GUARD (D-05 § 6.3). A `leader` row whose `causedBy` is an operation this session itself sent
  * (the `operationId` of its own `mcp__xezar__*` tool calls) is not written: the leader already knows.
@@ -92,6 +95,9 @@ export const CLAUDE_CODE_LEADER_TOOLS = [`mcp__${CLAUDE_CODE_MCP_SERVER}`] as co
 
 /** How Claude Code names one tool of that server (`mcp__<server>__<tool>`). */
 const XEZAR_TOOL_PREFIX = `mcp__${CLAUDE_CODE_MCP_SERVER}__`;
+
+/** The `model` Claude Code puts on an assistant frame it made up itself to report a failed API call. */
+const SYNTHETIC_MODEL = '<synthetic>';
 
 /** The first line of every event message. The replay echo is matched on the delivery token after it. */
 export const XEZAR_EVENT_HEADER = '[xezar event · source: xezar';
@@ -235,10 +241,13 @@ export interface ClaudeCodeChild {
   readonly stdin: NodeJS.WritableStream;
   readonly stdout: NodeJS.ReadableStream;
   readonly stderr: NodeJS.ReadableStream;
+  /** Undefined only when the process never started (a spawn `error` then means "no session"). */
+  readonly pid?: number | undefined;
   exitCode: number | null;
   signalCode: NodeJS.Signals | null;
   kill(signal?: NodeJS.Signals): boolean;
-  once(event: 'exit', listener: () => void): unknown;
+  /** `exit`: the process is gone. `close`: it is gone AND its stdout is fully read. */
+  once(event: 'exit' | 'close', listener: () => void): unknown;
   on(event: 'error', listener: (err: Error) => void): unknown;
 }
 
@@ -300,8 +309,14 @@ export class ClaudeCodeReactionAdapter implements ReactionAdapter {
   #pending: PendingDelivery[] = [];
   /** Confirmed taken by the conversation, waiting for the model's output that proves the turn. */
   #consumed: PendingDelivery[] = [];
-  /** Rows owed to the conversation when the last session died unconfirmed; written on the next spawn. */
-  #carryOver: McpJournalRow[] = [];
+  /**
+   * Rows written but never answered by a model turn: the session died first, or the turn failed at
+   * the API (auth, usage limit). Written again with the next event, or first thing after a spawn —
+   * never on a timer, so a failing account cannot loop turns.
+   */
+  #owed: McpJournalRow[] = [];
+  /** The gap notice last written, so a retried recovery-only dispatch is not written twice. */
+  #recoveryWritten: EventRecovery | undefined;
   /** `operationId`s this session sent through its own `xezar` tool calls (the echo guard). */
   readonly #ownOperations = new Set<string>();
 
@@ -351,10 +366,11 @@ export class ClaudeCodeReactionAdapter implements ReactionAdapter {
     const child = this.#runningChild();
     if (signal.aborted) throw new Error('delivery aborted');
     const lastSeq = dispatch.events.at(-1)?.journalSeq ?? 0;
-    const rows = dispatch.events.filter((row) => row.journalSeq > this.#writtenSeq && !this.#isEcho(row));
+    const fresh = dispatch.events.filter((row) => row.journalSeq > this.#writtenSeq && !this.#isEcho(row));
     this.#writtenSeq = Math.max(this.#writtenSeq, lastSeq);
-    if (rows.length === 0 && dispatch.recovery === undefined) return;
-    await this.#write(child, rows, dispatch.recovery);
+    const recovery = dispatch.recovery === this.#recoveryWritten ? undefined : dispatch.recovery;
+    if (fresh.length === 0 && recovery === undefined) return;
+    await this.#write(child, [...this.#takeOwed(), ...fresh], recovery);
   }
 
   /** NON-MODEL liveness (N-06): is the session process there? Never writes a byte to it. */
@@ -368,8 +384,12 @@ export class ClaudeCodeReactionAdapter implements ReactionAdapter {
     const child = this.#child;
     const alive = this.#alive;
     this.#state = 'closed';
-    this.#release();
-    if (!child || !alive()) return;
+    // The one-session slot is released when the process has really closed (`#onEnded`), not now:
+    // after stdin closes, claude may still be finishing a turn, and a resume must not join it.
+    if (!child || !alive()) {
+      this.#release();
+      return;
+    }
     try {
       child.stdin.end();
     } catch {
@@ -417,7 +437,9 @@ export class ClaudeCodeReactionAdapter implements ReactionAdapter {
     this.#failure = undefined;
     this.#pending = [];
     this.#consumed = [];
-    this.#ownOperations.clear();
+    this.#recoveryWritten = undefined;
+    // A resumed conversation keeps its own operations: rows they caused may still be owed to it.
+    if (!sameConversation) this.#ownOperations.clear();
     this.#child = child;
     const exited = trackChildExit(child);
     this.#alive = () => !exited();
@@ -426,14 +448,23 @@ export class ClaudeCodeReactionAdapter implements ReactionAdapter {
     this.#holdsSlot = true;
     this.#persist();
 
-    child.on('error', (err) => this.#onExit(child, err.message));
-    child.once('exit', () => this.#onExit(child, undefined));
+    // A write racing the process's death fails with EPIPE on stdin. The write callback already
+    // rejects and the rows stay owed; without a listener the same error would crash xezar itself.
+    child.stdin.on('error', () => {});
+    // A spawn that never started reports only `error`. A running process can also emit `error`
+    // (a failed kill), and that is NOT the end of it: dropping the handle would free the slot while
+    // the process lives on.
+    child.on('error', (err) => {
+      if (child.pid === undefined) this.#onEnded(child, err.message);
+      else this.#warn(`[xez] MCP Claude Code leader for project ${this.projectId}: ${err.message}`);
+    });
+    // `close`, not `exit`: stdout may still hold the last frames when `exit` fires.
+    child.once('close', () => this.#onEnded(child, undefined));
     child.stderr.resume(); // drained, never stored: it can name the account
-    createInterface({ input: child.stdout }).on('line', (line) => this.#onLine(line));
+    createInterface({ input: child.stdout }).on('line', (line) => this.#onLine(child, line));
 
-    // Rows a dead session never confirmed are owed to this one, before anything new.
-    const owed = this.#carryOver.filter((row) => row.journalSeq > this.#writtenSeq);
-    this.#carryOver = [];
+    // Rows no model turn ever answered are owed to this session, before anything new.
+    const owed = this.#takeOwed();
     if (owed.length > 0) {
       this.#writtenSeq = Math.max(this.#writtenSeq, owed.at(-1)!.journalSeq);
       void this.#write(child, owed, undefined).catch(() => {});
@@ -442,13 +473,21 @@ export class ClaudeCodeReactionAdapter implements ReactionAdapter {
     return { outcome: resume ? 'resumed' : 'started', sessionId };
   }
 
-  #onExit(child: ClaudeCodeChild, error: string | undefined): void {
+  /** Owed rows the current conversation has not answered, oldest first, each once. */
+  #takeOwed(): McpJournalRow[] {
+    const owed = new Map<number, McpJournalRow>();
+    for (const row of this.#owed) if (row.journalSeq > this.#consumedSeq) owed.set(row.journalSeq, row);
+    this.#owed = [];
+    return [...owed.values()].sort((a, b) => a.journalSeq - b.journalSeq);
+  }
+
+  #onEnded(child: ClaudeCodeChild, error: string | undefined): void {
     if (this.#child !== child) return;
     this.#child = undefined;
     this.#alive = () => false;
     this.#release();
-    // Written but never confirmed: the next session is owed these rows.
-    this.#carryOver = [...this.#carryOver, ...this.#pending.flatMap((p) => p.rows)].sort((a, b) => a.journalSeq - b.journalSeq);
+    // Written, or taken but never answered: the next session is owed these rows.
+    this.#owe([...this.#pending, ...this.#consumed]);
     this.#pending = [];
     this.#consumed = [];
     if (this.#state === 'closed') return;
@@ -456,6 +495,10 @@ export class ClaudeCodeReactionAdapter implements ReactionAdapter {
     const why = error ?? (child.signalCode ? `signal ${child.signalCode}` : `exit code ${child.exitCode ?? 'unknown'}`);
     this.#failure = `the Claude Code leader session ended (${why})`;
     this.#warn(`[xez] MCP Claude Code leader for project ${this.projectId}: ${this.#failure} — events wait in the journal until it is resumed`);
+  }
+
+  #owe(deliveries: readonly PendingDelivery[]): void {
+    this.#owed.push(...deliveries.flatMap((d) => d.rows));
   }
 
   /** Give up this project's one-session slot — only if this adapter is the one holding it. */
@@ -501,12 +544,16 @@ export class ClaudeCodeReactionAdapter implements ReactionAdapter {
     const line = `${JSON.stringify({ type: 'user', message: { role: 'user', content: [{ type: 'text', text }] } })}\n`;
     // Pending from the moment write() is called: once queued, the bytes go unless the pipe breaks.
     this.#pending.push({ token, rows });
+    if (recovery !== undefined) this.#recoveryWritten = recovery;
     await new Promise<void>((resolve, reject) => {
       child.stdin.write(line, (err) => (err ? reject(err) : resolve()));
     });
   }
 
-  #onLine(line: string): void {
+  #onLine(child: ClaudeCodeChild, line: string): void {
+    // A frame from a process that is no longer the session — say, one that died just before a
+    // resume — must never confirm or answer rows written to the new one.
+    if (child !== this.#child) return;
     let frame: unknown;
     try {
       frame = JSON.parse(line);
@@ -515,7 +562,7 @@ export class ClaudeCodeReactionAdapter implements ReactionAdapter {
     }
     const parsed = frameSchema.safeParse(frame);
     if (!parsed.success) return;
-    const { type, isReplay, message } = parsed.data;
+    const { type, isReplay, isApiErrorMessage, error, message } = parsed.data;
     const blocks = message?.content ?? [];
     if (type === 'user' && isReplay === true) {
       const texts = blocks.map((b) => b.text ?? '').join('\n');
@@ -523,14 +570,16 @@ export class ClaudeCodeReactionAdapter implements ReactionAdapter {
       if (taken.length === 0) return;
       this.#pending = this.#pending.filter((p) => !taken.includes(p));
       this.#consumed.push(...taken);
-      const seq = maxSeq(taken);
-      if (seq > this.#consumedSeq) {
-        this.#consumedSeq = seq;
-        this.#persist();
-      }
       return;
     }
     if (type !== 'assistant') return;
+    // Claude Code reports a failed API call (auth, usage limit, overload) as a SYNTHETIC assistant
+    // frame. No model answered: the rows stay owed, and nothing is recorded as a reaction.
+    if (isApiErrorMessage === true || error !== undefined || message?.model === SYNTHETIC_MODEL) {
+      this.#owe(this.#consumed);
+      this.#consumed = [];
+      return;
+    }
     for (const block of blocks) {
       if (block.type !== 'tool_use' || !block.name?.startsWith(XEZAR_TOOL_PREFIX)) continue;
       const operationId = block.input?.operationId;
@@ -541,6 +590,10 @@ export class ClaudeCodeReactionAdapter implements ReactionAdapter {
     const seq = maxSeq(this.#consumed);
     this.#consumed = [];
     if (seq === 0) return;
+    if (seq > this.#consumedSeq) {
+      this.#consumedSeq = seq;
+      this.#persist();
+    }
     this.#reactedSeq = Math.max(this.#reactedSeq, seq);
     this.#controller?.recordReaction(seq);
   }
@@ -581,8 +634,11 @@ export class ClaudeCodeReactionAdapter implements ReactionAdapter {
 const frameSchema = z.object({
   type: z.string(),
   isReplay: z.boolean().optional(),
+  isApiErrorMessage: z.boolean().optional(),
+  error: z.unknown().optional(),
   message: z
     .object({
+      model: z.string().optional(),
       content: z
         .array(
           z.object({
