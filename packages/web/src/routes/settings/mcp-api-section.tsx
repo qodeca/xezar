@@ -178,7 +178,7 @@ function GuardWords({ tool, name, guard, performing }: { tool: McpToolListing; n
       {guard.requiredBy.map((action, i) => (
         <span key={action}>
           {i ? ', ' : ''}
-          <code className="font-mono break-all text-foreground">{action}</code>
+          <code className="font-mono break-words text-foreground">{action}</code>
         </span>
       ))}
     </>
@@ -396,7 +396,7 @@ function NameList({ names, label, slot }: { names: string[]; label: string; slot
     <ul aria-label={label} className="flex flex-wrap gap-x-3 gap-y-1 text-[13px]">
       {names.map((name) => (
         <li key={name} data-slot={slot}>
-          <code className="font-mono break-all text-foreground">{name}</code>
+          <code className="font-mono break-words text-foreground">{name}</code>
         </li>
       ))}
     </ul>
@@ -512,7 +512,7 @@ function ToolEntry({
                     {items.map((r, i) => (
                       <span key={r.action}>
                         {i ? ', ' : ''}
-                        <code className="font-mono break-all text-foreground">{r.action}</code>
+                        <code className="font-mono break-words text-foreground">{r.action}</code>
                       </span>
                     ))}
                   </p>
@@ -562,7 +562,7 @@ function ToolNames({ names }: { names: string[] }) {
       {names.map((name, i) => (
         <span key={name}>
           {i ? ', ' : ''}
-          <a href={`#tool-${name}`} className={`font-mono break-all ${LINK}`}>
+          <a href={`#tool-${name}`} className={`font-mono break-words ${LINK}`}>
             {name}
           </a>
         </span>
@@ -777,7 +777,7 @@ export function McpApiReferenceView({ reference }: { reference: Available }) {
                   <ul className="flex list-disc flex-col gap-1 pl-5 text-[13px] leading-relaxed">
                     {items.map((r) => (
                       <li key={`${r.tool}:${r.action}`} className="text-foreground">
-                        <code className="font-mono break-all">{r.tool}</code> action <code className="font-mono break-all">{r.action}</code>:{' '}
+                        <code className="font-mono break-words">{r.tool}</code> action <code className="font-mono break-words">{r.action}</code>:{' '}
                         <span className="text-muted-foreground">{r.reason}</span>
                       </li>
                     ))}
@@ -790,7 +790,7 @@ export function McpApiReferenceView({ reference }: { reference: Available }) {
                   <ul className="flex list-disc flex-col gap-1 pl-5 text-[13px] leading-relaxed">
                     {reference.refusedArguments.map((r) => (
                       <li key={`${r.tool}:${r.argument}`} className="text-foreground">
-                        <code className="font-mono break-all">{r.tool}</code> argument <code className="font-mono break-all">{r.argument}</code>:{' '}
+                        <code className="font-mono break-words">{r.tool}</code> argument <code className="font-mono break-words">{r.argument}</code>:{' '}
                         <span className="text-muted-foreground">{r.reason}</span>
                       </li>
                     ))}
@@ -818,7 +818,7 @@ export function McpApiReferenceView({ reference }: { reference: Available }) {
         <h2 id="mcp-api-coverage-title" className="text-sm font-semibold text-foreground">Cockpit coverage</h2>
         <p data-slot="mcp-api-coverage" className="text-[13px] leading-relaxed text-muted-foreground">
           This page does not show which cockpit actions each tool covers yet. The record-by-record mapping is in{' '}
-          <code className="font-mono break-all text-foreground">{COVERAGE_DOC}</code>, under “Traceability”, and{' '}
+          <code className="font-mono break-words text-foreground">{COVERAGE_DOC}</code>, under “Traceability”, and{' '}
           <code className="font-mono">npm test</code> holds it to the registry.
         </p>
       </section>

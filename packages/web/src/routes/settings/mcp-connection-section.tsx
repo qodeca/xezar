@@ -55,7 +55,7 @@ interface ClientSetup {
 function withCode(text: string): ReactNode {
   return text.split(/`([^`]+)`/).map((part, i) =>
     i % 2 ? (
-      <code key={i} className="font-mono break-all">
+      <code key={i} className="font-mono break-words">
         {part}
       </code>
     ) : (
