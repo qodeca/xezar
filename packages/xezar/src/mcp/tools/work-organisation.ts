@@ -399,23 +399,25 @@ function queueItem(run: RunLike, position: number) {
   };
 }
 
-/** Queue order is the scheduler's own: oldest `createdAt` first (`RunManager`'s FIFO). */
-const queueKey = (run: RunLike): string => `${run.createdAt ?? ''} ${run.id}`;
 /** The resource a queue cursor is sealed for (`sealCursor`): valid for this project's queue only. */
 const QUEUE_CURSOR = 'queue';
 
 function listQueue(scope: OwnershipScope, runs: readonly RunLike[], args: Args): McpToolResult {
-  const queue = runs.filter((r) => r.status === 'queued').sort((a, b) => queueKey(a).localeCompare(queueKey(b)));
+  // Queue order is the scheduler's own: oldest `createdAt` first (`RunManager`'s FIFO). Two
+  // starts inside one millisecond share a `createdAt`, and the scheduler then keeps them in
+  // creation order — the order the store's list carries them in. The sort is stable so that tie
+  // survives; breaking it by the random run id listed them in an order nothing starts them in.
+  const ordered = [...runs].sort((a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? ''));
+  const queue = ordered.filter((r) => r.status === 'queued');
   let start = 0;
   if (args.cursor !== undefined) {
     // The cursor names the last task a page returned. It is sealed to this project and this
     // resource, so another project's cursor — or anything else — is one refusal.
     const opened = openCursor(scope, QUEUE_CURSOR, args.cursor);
-    const anchor = opened.ok ? runs.find((r) => r.id === opened.value) : undefined;
-    if (!anchor) return errorResult('list_queue: invalid cursor — request the first page again');
-    const after = queueKey(anchor);
-    start = queue.findIndex((r) => queueKey(r) > after);
-    if (start < 0) start = queue.length;
+    const anchorAt = opened.ok ? ordered.findIndex((r) => r.id === opened.value) : -1;
+    if (anchorAt < 0) return errorResult('list_queue: invalid cursor — request the first page again');
+    // Resume after the anchor's place in the whole list, which holds even once it has started.
+    start = queue.length - ordered.slice(anchorAt + 1).filter((r) => r.status === 'queued').length;
   }
   const limit = args.limit ?? PAGE_ITEMS;
   const page = {

@@ -332,6 +332,31 @@ describe('list_queue', () => {
     expect(text(bCursor)).toMatch(/invalid cursor/);
   }, 40_000);
 
+  it('keeps tasks started in the same millisecond in the order the scheduler starts them, across pages', async () => {
+    const ws = setup(1);
+    const holder = await hold(ws, 'proj-a');
+    const storeA = await store(ws, 'proj-a');
+    await waitFor(() => storeA.getRun(holder)?.status === 'running', 'the holder to take the only slot');
+    const quick = [{ id: 'work', command: OK_COMMAND }];
+    const started: string[] = [];
+    for (let i = 0; i < 6; i++) started.push(...(await start(ws, 'proj-a', { task: `tie ${i}`, steps: quick })));
+    // Two quick starts can share a `createdAt`; pin that for all six. A tie broken by the random
+    // run id would list them in creation order one time in 720.
+    const at = storeA.getRun(started[0]!)!.createdAt;
+    for (const id of started) storeA.getRun(id)!.createdAt = at;
+
+    const whole = body(await invoke(ws, { action: 'list_queue' }));
+    expect(whole.items.map((i: { id: string; position: number }) => [i.position, i.id])).toEqual(started.map((id, n) => [n + 1, id]));
+    const walked: string[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = body(await invoke(ws, { action: 'list_queue', limit: 2, ...(cursor ? { cursor } : {}) }));
+      walked.push(...page.items.map((i: { id: string }) => i.id));
+      cursor = page.next as string | undefined;
+    } while (cursor);
+    expect(walked).toEqual(started);
+  }, 40_000);
+
   it('tells an empty queue apart from a failure', async () => {
     const ws = setup();
     expect(body(await invoke(ws, { action: 'list_queue' }))).toMatchObject({ status: 'done', total: 0, items: [] });
