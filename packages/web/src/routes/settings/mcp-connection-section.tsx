@@ -1,9 +1,13 @@
 import { ServerIcon, ShieldCheckIcon, TriangleAlertIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 
+import type { HealthResponse } from '@qodeca/xezar-api-client'
 import { useHealth, useProjects } from '@/api/queries'
 import { CenteredState } from '@/components/centered-state'
 import { useActiveProjectId } from '@/lib/project-router'
+import { McpOperationFeedback, type McpOperation } from '@/routes/task-thread/mcp-operation-feedback'
+import { McpCapabilities } from './mcp-capabilities'
+import { McpConnectionState } from './mcp-connection-state'
 import { SettingsField } from './settings-field'
 
 /**
@@ -56,7 +60,7 @@ const CLIENTS: readonly ClientSetup[] = [
     userAction: (
       <>
         Run this once, from the project root:
-        <pre className="mt-2 overflow-x-auto rounded-md border border-border bg-muted p-3 font-mono text-[11px] leading-relaxed">
+        <pre className="mt-2 rounded-md border border-border bg-muted p-3 font-mono text-[11px] leading-relaxed break-all whitespace-pre-wrap">
           claude mcp add --scope local xezar -- npx -y @qodeca/xezar mcp
         </pre>
       </>
@@ -72,15 +76,15 @@ const CLIENTS: readonly ClientSetup[] = [
       'Writing the connection configuration inside this project\u2019s `.local/xezar/`; regenerating it if deleted; keeping it out of Git.',
     userAction: (
       <>
-        Create the project <span className="font-mono">.codex/config.toml</span> block, and trust the project once. Two steps, both required:
-        <pre className="mt-2 overflow-x-auto rounded-md border border-border bg-muted p-3 font-mono text-[11px] leading-relaxed">
+        Create the project <span className="font-mono break-all">.codex/config.toml</span> block, and trust the project once. Two steps, both required:
+        <pre className="mt-2 rounded-md border border-border bg-muted p-3 font-mono text-[11px] leading-relaxed break-all whitespace-pre-wrap">
           {`[mcp_servers.xezar]
 command = "npx"
 args = ["-y", "@qodeca/xezar", "mcp"]`}
         </pre>
         <span className="mt-2 block">
           Then either accept Codex’s trust prompt the first time you run it in this folder, or add a{' '}
-          <span className="font-mono">[projects."&lt;absolute path&gt;"] trust_level = "trusted"</span> entry to your user config.
+          <span className="font-mono break-all">[projects."&lt;absolute path&gt;"] trust_level = "trusted"</span> entry to your user config.
         </span>
       </>
     ),
@@ -94,8 +98,8 @@ args = ["-y", "@qodeca/xezar", "mcp"]`}
       'Writing the connection configuration inside this project\u2019s `.local/xezar/`; regenerating it if deleted; keeping it out of Git.',
     userAction: (
       <>
-        Add the <span className="font-mono">mcp.xezar</span> block to the project <span className="font-mono">opencode.json</span>:
-        <pre className="mt-2 overflow-x-auto rounded-md border border-border bg-muted p-3 font-mono text-[11px] leading-relaxed">
+        Add the <span className="font-mono break-all">mcp.xezar</span> block to the project <span className="font-mono break-all">opencode.json</span>:
+        <pre className="mt-2 rounded-md border border-border bg-muted p-3 font-mono text-[11px] leading-relaxed break-all whitespace-pre-wrap">
           {`{
   "$schema": "https://opencode.ai/config.json",
   "mcp": {
@@ -121,12 +125,14 @@ export function McpConnectionSection() {
 
   if (health.isPending || projects.isPending) {
     return (
-      <p data-slot="mcp-connection-loading" className="p-4 text-[13px] text-soft-foreground md:p-6">
+      <p data-slot="mcp-connection-loading" role="status" className="p-4 text-[13px] text-soft-foreground md:p-6">
         Loading MCP connection…
       </p>
     )
   }
-  if (health.isError) {
+  // A failed REFETCH keeps the last answer: that data is last-known, and the state says so
+  // (§13 "Server restarting / unavailable") rather than pretending it is fresh or blanking it.
+  if (health.isError && !health.data) {
     return (
       <CenteredState
         icon={<TriangleAlertIcon />}
@@ -138,15 +144,48 @@ export function McpConnectionSection() {
     )
   }
 
-  return <McpConnectionPanel health={health.data} projects={projects.data?.projects ?? []} />
+  return (
+    <McpConnectionSurface
+      health={health.data}
+      projects={projects.data?.projects ?? []}
+      connection={connectionStateFor(health.data, health.isError)}
+      // No server route reports MCP operation outcomes to the cockpit yet (see the PR for #114),
+      // so the list is honestly empty: nothing is invented, and no retry control is offered —
+      // retrying an operation is the leader's own call, with the same operation id.
+      operations={[]}
+    />
+  )
 }
 
-function McpConnectionPanel({
+/**
+ * The connection state the cockpit can TRUTHFULLY report from server facts, or `null` when it
+ * cannot. The live owner state (`unowned | owned | expired`) is held by the server's MCP side and
+ * no HTTP route exposes it yet, so in local mode this answers `null` and the surface says the
+ * status is not reported here — it never guesses "ready" or "connected" (§8, §13).
+ */
+export function connectionStateFor(health: HealthResponse, refetchFailed: boolean): McpConnectionState | null {
+  if (refetchFailed) return { kind: 'server-restarting' }
+  if (!health.capabilities.localHandoff) {
+    return { kind: 'unsupported', missing: 'local connection: the MCP client and xezar must run on the same machine' }
+  }
+  return null
+}
+
+/**
+ * The assembled MCP connection surface: #111's setup guidance, #112's connection state, #113's
+ * operation outcomes and #114's capabilities and limits. Presentational apart from the
+ * capability view's own queries, so every state can be rendered and checked as one page.
+ */
+export function McpConnectionSurface({
   health,
   projects,
+  connection,
+  operations,
 }: {
-  health: NonNullable<ReturnType<typeof useHealth>['data']>
+  health: HealthResponse
   projects: readonly { id: string; name: string; root: string }[]
+  connection: McpConnectionState | null
+  operations: readonly McpOperation[]
 }) {
   // THIS project, as the URL names it. The BOOT project mounts unscoped, so `useActiveProjectId`
   // falls back to the URL's own `/p/<id>` prefix; `bootProject` covers the sliver of time a
@@ -173,6 +212,25 @@ function McpConnectionPanel({
             </>
           ) : (
             <span className="text-[13px] text-soft-foreground">The bound project is not in the registry.</span>
+          )}
+        </div>
+      </SettingsField>
+
+      {/* Connection state (#112) — only what the server reports; a polite live region, so a
+          state change is announced without moving focus (U-M08). */}
+      <SettingsField
+        title="Connection status"
+        hint="What the server reports about the MCP leader connection for this project."
+      >
+        <div data-slot="mcp-connection-status" aria-live="polite" className="min-w-0">
+          {connection ? (
+            <McpConnectionState state={connection} />
+          ) : (
+            <p data-slot="mcp-connection-status-unreported" className="rounded-md border border-border bg-card p-3 text-[13px] leading-relaxed text-foreground">
+              <span className="font-medium">Not reported here yet.</span> The cockpit does not receive the live
+              connection owner from the server yet, so it does not guess whether a client is connected. Your
+              leader client shows its own connection status.
+            </p>
           )}
         </div>
       </SettingsField>
@@ -238,6 +296,29 @@ function McpConnectionPanel({
         </div>
       </SettingsField>
 
+      {/* Operation outcomes (#113) — rendered from what the server reports, never invented. */}
+      <SettingsField
+        title="Operation outcomes"
+        hint="What happened to the leader's recent operations: accepted, running, completed, failed, not applied or being verified."
+      >
+        <div data-slot="mcp-operations" aria-live="polite" className="min-w-0">
+          {operations.length ? (
+            <ul aria-label="MCP operation outcomes" className="flex flex-col gap-2">
+              {operations.map((operation) => (
+                <li key={operation.operationId}>
+                  <McpOperationFeedback operation={operation} />
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p data-slot="mcp-operations-empty" className="rounded-md border border-border bg-card p-3 text-[13px] leading-relaxed text-foreground">
+              <span className="font-medium">No outcomes to show.</span> The server does not report MCP operation
+              outcomes to the cockpit yet. Each task’s own status and history show what the leader did.
+            </p>
+          )}
+        </div>
+      </SettingsField>
+
       {/* Capabilities and limitations — truthfully, with no invented timeout or disconnect control. */}
       <SettingsField
         title="Capabilities and limitations"
@@ -249,6 +330,9 @@ function McpConnectionPanel({
           <li>Project-level operations are autonomous; global administration and quality gates are not part of the MCP surface.</li>
         </ul>
       </SettingsField>
+
+      {/* #114: usable functions, unavailable dependencies, read-only shared limits, quality checks. */}
+      <McpCapabilities />
     </div>
   )
 }

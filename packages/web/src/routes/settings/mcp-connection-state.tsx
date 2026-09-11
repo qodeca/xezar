@@ -297,7 +297,7 @@ export function McpConnectionState({ state }: { state: McpConnectionState }) {
           tone="neutral"
           title="Capability unavailable"
           copy={`The connection is limited by a missing ${state.missing}.`}
-          recovery="This is the missing client, adapter, dependency or read-only boundary — not a secret and not another project's data. Link to setup guidance for the missing piece."
+          recovery="This is the missing client, adapter, dependency or read-only boundary — not a secret and not another project's data. The setup guidance on this page says what to do about it."
         />
       )
   }
