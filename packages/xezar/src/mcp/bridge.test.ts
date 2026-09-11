@@ -15,18 +15,20 @@ import { defineTool, textResult, type McpTool } from './tool.ts';
 // TMPDIR, which is already past the 104-byte socket limit on macOS (D-01 E5, § 9.5).
 let home: string;
 let env: NodeJS.ProcessEnv;
+let project: { id: string; name: string; root: string };
 const handles: Array<{ close(): void }> = [];
 
 beforeEach(() => {
   home = mkdtempSync('/tmp/xzb-');
   env = { XEZ_HOME: home };
+  // A real folder: the service keeps the project's MCP owner claim in its `.local/xezar` (#302).
+  project = { id: 'alpha', name: 'Alpha', root: join(home, 'alpha') };
+  mkdirSync(project.root);
 });
 afterEach(() => {
   for (const h of handles.splice(0)) h.close();
   rmSync(home, { recursive: true, force: true });
 });
-
-const project = { id: 'alpha', name: 'Alpha', root: '/work/alpha' };
 
 const echoProject = defineTool({
   name: 'echo_project',
@@ -104,7 +106,7 @@ const text = (m: Record<string, unknown>) =>
   ((m.result as { content: Array<{ text: string }> }).content[0]?.text ?? '');
 
 describe('bridge handshake (D-01 § 1.6, N-07)', () => {
-  it('negotiates the revision and advertises tools only, without touching the service', async () => {
+  it('negotiates the revision and advertises tools only; with no service the handshake still succeeds', async () => {
     let resolved = 0;
     const b = bridge({ target: async () => ((resolved += 1), socketTarget('/nonexistent')()) });
     for (const version of ['2025-06-18', '2025-11-25']) {
@@ -115,11 +117,15 @@ describe('bridge handshake (D-01 § 1.6, N-07)', () => {
         serverInfo: { name: 'xezar', version: '1.2.3' },
       });
     }
+    // `initialize` is where a session acquires the project (D-02.6, #302), so it does look for the
+    // service — and a service that is not there leaves the handshake healthy (N-07).
+    expect(resolved).toBe(2);
     b.input.write(encodeFrame({ jsonrpc: '2.0', method: 'notifications/initialized' }));
     expect((await b.request('ping')).result).toEqual({});
     // An empty registry still lists the built-in health tool.
     expect((await b.request('tools/list')).result).toEqual({ tools: [HEALTH_TOOL] });
-    expect(resolved).toBe(0);
+    // Neither `ping` nor `tools/list` touches the service.
+    expect(resolved).toBe(2);
     // The notification got no answer: every message so far is a response to a request.
     expect(b.messages.every((m) => typeof m.id === 'number')).toBe(true);
     b.input.end();
@@ -201,6 +207,33 @@ describe('bridge → service over the project socket', () => {
     const b = bridge({ target: socketTarget(path), timeoutMs: 150 });
     const res = await b.request('tools/call', { name: 'health' });
     expect(res.result).toMatchObject({ isError: true, structuredContent: { status: 'timeout' } });
+  });
+
+  it('never tells the model to blindly retry a call whose connection closed mid-flight', async () => {
+    // A write that passed the fence still finishes in the service, so "call again" could run it twice.
+    const path = join(home, 'drops.sock');
+    const drops: Server = createServer((socket) => {
+      const framer = new LineFramer((line) => {
+        const req = JSON.parse(line) as { v: number; id: number; method: string };
+        if (req.method === 'session/open') socket.write(encodeFrame({ v: req.v, id: req.id, ok: true, result: { owner: true } }));
+        else socket.destroy();
+      }, () => {});
+      socket.on('data', (c: Buffer) => framer.push(c));
+    });
+    await new Promise<void>((r) => drops.listen(path, r));
+    handles.push({ close: () => drops.close() });
+    const b = bridge({ target: socketTarget(path) });
+    await b.request('initialize', { protocolVersion: '2025-06-18' });
+    const res = await b.request('tools/call', { name: 'health' });
+    expect(res.result).toMatchObject({ isError: true, structuredContent: { status: 'unreachable' } });
+    expect(text(res)).toMatch(/whether this call ran is unknown/);
+    expect(text(res)).not.toMatch(/call again to check/i);
+  });
+
+  it('still answers initialize when looking for the service throws', async () => {
+    const b = bridge({ target: () => Promise.reject(new Error('registry exploded')) });
+    const res = await b.request('initialize', { protocolVersion: '2025-06-18' });
+    expect(res.result).toMatchObject({ serverInfo: { name: 'xezar' } });
   });
 
   it('refuses legibly across bridge protocol versions', async () => {

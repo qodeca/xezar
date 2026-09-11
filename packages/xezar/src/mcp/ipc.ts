@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
+import { mcpProjectOccupiedErrorSchema, mcpSessionExpiredErrorSchema } from '@qodeca/xezar-contract';
 import { z } from 'zod';
 import { xezarHomeDir } from '../paths.ts';
 
@@ -18,8 +19,15 @@ import { xezarHomeDir } from '../paths.ts';
  * install), which is what `IPC_PROTOCOL_VERSION` is for.
  */
 
-/** Bumped only when a frame shape changes incompatibly. Carried on every request. */
-export const IPC_PROTOCOL_VERSION = 1;
+/**
+ * Bumped only when a frame shape changes incompatibly. Carried on every request.
+ *
+ * 2 (#302): a connection is a SESSION. The bridge keeps one connection for its whole life, opens
+ * the session on it with `session/open` (which acquires the project's owner slot, D-02), and every
+ * `health` / `tools/call` needs that live session. A version-1 bridge — one connection per call,
+ * no session — would be refused on every call anyway; the version check refuses it legibly first.
+ */
+export const IPC_PROTOCOL_VERSION = 2;
 
 /**
  * Largest frame either leg accepts, in bytes: 32 MiB + 64 KiB. Taken from D-09 B-08
@@ -35,6 +43,15 @@ export const MAX_FRAME_BYTES = 33_619_968;
  * the service operation is not cancelled. There is no retry (D-01 § 5, D-09 B-16).
  */
 export const IPC_REQUEST_TIMEOUT_MS = 55_000;
+
+/**
+ * How long the bridge waits to connect and open its session. Acquisition itself is bounded far
+ * below this (D-02.2: 5 attempts, at most 375 ms of backoff), so only a hung service reaches it.
+ * It is short because `initialize` waits on it, and a client gives up on a server whose handshake
+ * is slow — Codex's documented default startup timeout is 10 s (not re-measured here). On expiry
+ * the handshake still succeeds with no session (N-07) and the next call tries again.
+ */
+export const IPC_SESSION_OPEN_TIMEOUT_MS = 5_000;
 
 // ---- socket path ---------------------------------------------------------------
 
@@ -130,7 +147,20 @@ export const ipcErrorCodeSchema = z.enum([
   'invalid-params',
   'unknown-tool',
   'internal',
+  /** `session/open` while another session owns the project (D-02 § 4, `-32080`). */
+  'project-occupied',
+  /** A call on a connection whose session does not own the project (D-02 § 4, `-32081`). */
+  'session-expired',
 ]);
+
+/**
+ * The JSON-RPC error the bridge hands the client verbatim for the two ownership refusals. The
+ * contract's schemas are `.strict()`, so nothing about the competing owner can ride along (N-01).
+ */
+export const ownershipRpcErrorSchema = z.union([mcpProjectOccupiedErrorSchema, mcpSessionExpiredErrorSchema]);
+
+/** What `session/open` answers: this connection's session now owns the project. */
+export const sessionOpenResultSchema = z.object({ owner: z.literal(true) });
 
 /** Service → bridge. */
 export const ipcResponseSchema = z.discriminatedUnion('ok', [
@@ -142,6 +172,8 @@ export const ipcResponseSchema = z.discriminatedUnion('ok', [
     error: z.object({ code: ipcErrorCodeSchema, message: z.string().max(2000) }),
     /** The service's xezar version, so a mismatch message can name both sides. */
     serviceVersion: z.string().max(64).optional(),
+    /** Only on `project-occupied` / `session-expired`: the D-02 § 4 error the client receives. */
+    rpcError: ownershipRpcErrorSchema.optional(),
   }),
 ]);
 export type IpcResponse = z.infer<typeof ipcResponseSchema>;

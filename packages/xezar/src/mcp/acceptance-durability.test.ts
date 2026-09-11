@@ -6,7 +6,7 @@ import { PassThrough } from 'node:stream';
 import type { Hono } from 'hono';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { MCP_STALE_VERSION_GUIDANCE } from '@qodeca/xezar-contract';
+import { MCP_SESSION_EXPIRED_CODE, MCP_SESSION_EXPIRED_REASON, MCP_STALE_VERSION_GUIDANCE } from '@qodeca/xezar-contract';
 
 import { assertIsolated, createAbWorld, leaked, resultText, snapshotChanges, type AbWorld } from '../../test/helpers/ab-fixture.ts';
 import { projectDataDir } from '../project-data-paths.ts';
@@ -170,11 +170,11 @@ async function serveComposed(c: ComposedCockpit): Promise<{ close(): void }> {
 function leaderClient(root: string) {
   const input = new PassThrough();
   const output = new PassThrough();
-  const pending = new Map<number, (result: McpToolResult) => void>();
+  const pending = new Map<number, (message: RpcMessage) => void>();
   const framer = new LineFramer(
     (line) => {
-      const message = JSON.parse(line) as { id: number; result: McpToolResult };
-      pending.get(message.id)?.(message.result);
+      const message = JSON.parse(line) as RpcMessage & { id: number };
+      pending.get(message.id)?.(message);
       pending.delete(message.id);
     },
     () => {},
@@ -186,15 +186,22 @@ function leaderClient(root: string) {
     return done;
   });
   let next = 1;
-  return {
-    call(name: string, args: Record<string, unknown>): Promise<McpToolResult> {
-      const rid = next++;
-      return new Promise((resolve) => {
-        pending.set(rid, resolve);
-        input.write(encodeFrame({ jsonrpc: '2.0', id: rid, method: 'tools/call', params: { name, arguments: args } }));
-      });
-    },
+  const rpc = (name: string, args: Record<string, unknown>): Promise<RpcMessage> => {
+    const rid = next++;
+    return new Promise((resolve) => {
+      pending.set(rid, resolve);
+      input.write(encodeFrame({ jsonrpc: '2.0', id: rid, method: 'tools/call', params: { name, arguments: args } }));
+    });
   };
+  return {
+    rpc,
+    call: async (name: string, args: Record<string, unknown>): Promise<McpToolResult> => (await rpc(name, args)).result as McpToolResult,
+  };
+}
+
+interface RpcMessage {
+  result?: McpToolResult;
+  error?: { code: number; message: string; data?: { reason?: string } };
 }
 type Leader = ReturnType<typeof leaderClient>;
 
@@ -808,6 +815,11 @@ describe('A-21 — reconnect with a valid or an old cursor (F-21, N-10)', () => 
     rmSync(join(c.dataDir, 'mcp', 'event-journal.ndjson'));
     service = await serveComposed(c);
     expect((await c.human('PUT', '/config', { baseBranch: 'main' })).status).toBe(200);
+
+    // D-02 § 5 (#302): the old session ended with the service, so the first call after the restart is
+    // answered session-expired and never runs; the bridge has reconnected for the next call itself.
+    const fenced = await leader.rpc('leader_events', { action: 'read' });
+    expect(fenced.error).toMatchObject({ code: MCP_SESSION_EXPIRED_CODE, data: { reason: MCP_SESSION_EXPIRED_REASON } });
 
     // An EXPLICIT gap: nothing replayed as if nothing happened, the recovery path named, the state beside it.
     const raw = await leader.call('leader_events', { action: 'read' });

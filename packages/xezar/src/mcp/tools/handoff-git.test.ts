@@ -189,10 +189,17 @@ describe.skipIf(isWindows)('handoff_git — commit, push, draft PR, merge and br
   function callRaw(args: Record<string, unknown>, project: 'leader' | 'plain' = 'leader'): Promise<McpToolResult> {
     return new Promise((resolve, reject) => {
       const socket = createConnection(socketPath[project]);
+      // On a session, as the bridge sends it (#302): `session/open` first, then the call.
       const framer = new LineFramer(
         (line) => {
+          const response = JSON.parse(line) as { id: number; ok: boolean; result?: McpToolResult; error?: { message: string } };
+          if (response.id === 0 && response.ok) {
+            socket.write(
+              encodeFrame({ v: IPC_PROTOCOL_VERSION, id: 1, method: 'tools/call', params: { name: 'handoff_git', arguments: args } }),
+            );
+            return;
+          }
           socket.end();
-          const response = JSON.parse(line) as { ok: boolean; result?: McpToolResult; error?: { message: string } };
           if (response.ok) resolve(response.result!);
           else reject(new Error(response.error?.message));
         },
@@ -200,11 +207,7 @@ describe.skipIf(isWindows)('handoff_git — commit, push, draft PR, merge and br
       );
       socket.on('data', (chunk: Buffer) => framer.push(chunk));
       socket.on('error', reject);
-      socket.on('connect', () =>
-        socket.write(
-          encodeFrame({ v: IPC_PROTOCOL_VERSION, id: 1, method: 'tools/call', params: { name: 'handoff_git', arguments: args } }),
-        ),
-      );
+      socket.on('connect', () => socket.write(encodeFrame({ v: IPC_PROTOCOL_VERSION, id: 0, method: 'session/open' })));
     });
   }
 
