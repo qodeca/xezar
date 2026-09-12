@@ -76,6 +76,31 @@ export default function xezarLeaderExtension(pi: ExtensionApiLike): void {
   let socketPath: string | undefined;
   const clients = new Set<Socket>();
 
+  /**
+   * pi's `on` has no unsubscribe, so these are registered ONCE for the whole life of the extension
+   * and broadcast to whatever sockets are open at the time. Registering them per connection would
+   * add four handlers to the person's pi on every attach and never take them away — a slow leak
+   * inside somebody else's editor, which is not a thing to ship.
+   *
+   * Only these four. The adapter needs the busy boundary and the user message that marks a real
+   * reaction; forwarding more would put session content on a socket for no reason.
+   */
+  for (const type of ['agent_start', 'agent_settled', 'message_start', 'message_end'] as const) {
+    pi.on(type, (event: unknown) => {
+      if (clients.size === 0) return;
+      const message = (event as { message?: AgentMessage } | undefined)?.message;
+      const frame = `${JSON.stringify(message === undefined ? { type } : { type, message })}\n`;
+      for (const client of clients) {
+        if (client.destroyed) continue;
+        try {
+          client.write(frame);
+        } catch {
+          /* A peer that went away is not worth surfacing into someone's coding session. */
+        }
+      }
+    });
+  }
+
   /** Idempotent, and it must stay that way: pi calls it on quit AND on every session replacement. */
   const teardown = (): void => {
     for (const client of clients) client.destroy();
@@ -152,20 +177,8 @@ function serve(socket: Socket, pi: ExtensionApiLike, ctx: ExtensionContextLike, 
     }
   };
 
-  // pi's events, forwarded in the exact shape `adapters/pi.ts` already reads. Only these four: the
-  // adapter needs the busy boundary and the user message that marks a real reaction, and forwarding
-  // more would put session content on a socket for no reason.
-  const forward = (type: string) => (event: unknown) => {
-    const message = (event as { message?: AgentMessage } | undefined)?.message;
-    write(message === undefined ? { type } : { type, message });
-  };
-  const unsubscribes = [
-    subscribe(pi, 'agent_start', forward('agent_start')),
-    subscribe(pi, 'agent_settled', forward('agent_settled')),
-    subscribe(pi, 'message_start', forward('message_start')),
-    subscribe(pi, 'message_end', forward('message_end')),
-  ];
-
+  // pi's events reach this socket through the one set of handlers registered in the factory, which
+  // broadcasts to `clients`. Nothing is subscribed per connection, on purpose — see there.
   let buffer = '';
   socket.on('data', (chunk: string) => {
     buffer += chunk;
@@ -191,7 +204,6 @@ function serve(socket: Socket, pi: ExtensionApiLike, ctx: ExtensionContextLike, 
   });
 
   const done = (): void => {
-    for (const stop of unsubscribes) stop();
     clients.delete(socket);
   };
   socket.on('close', done);
@@ -297,17 +309,6 @@ function textOf(content: unknown): TextContent[] {
     if ((part as { type?: unknown } | null)?.type === 'text' && typeof text === 'string') parts.push({ type: 'text', text });
   }
   return parts;
-}
-
-function subscribe(pi: ExtensionApiLike, event: string, handler: (event: unknown) => void): () => void {
-  // pi's `on` has no unsubscribe. A flag is the honest way to stop acting after a socket closed.
-  let live = true;
-  pi.on(event, (value: unknown) => {
-    if (live) handler(value);
-  });
-  return () => {
-    live = false;
-  };
 }
 
 function safeSessionId(ctx: ExtensionContextLike): string {
