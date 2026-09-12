@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -813,7 +813,13 @@ describe('piReactionTarget — where a project\'s pi events go', () => {
 
     // `src/mcp/adapters` -> the package root, which is what `<xezar>` stands for in the sentence.
     const packageRoot = fileURLToPath(new URL('../../../', import.meta.url));
-    expect(existsSync(join(packageRoot, relative)), `${relative} does not exist under ${packageRoot}`).toBe(true);
+    const entry = statSync(join(packageRoot, relative), { throwIfNoEntry: false });
+    expect(entry, `${relative} does not exist under ${packageRoot}`).toBeDefined();
+
+    // A FILE, not merely an entry. QA on #366 broke this case four ways and all four went red, but
+    // pointing the fix at `scripts` — a real directory — stayed green, and `pi --extension <pkg>/scripts`
+    // is not loadable. An existence check cannot tell a loadable extension from its parent folder.
+    expect(entry!.isFile(), `${relative} is not a file under ${packageRoot}`).toBe(true);
 
     // …and `npm pack` must carry it: `files` decides that, and it is where the `.mjs` spelling would
     // still have passed a bare existence check by pointing at a sibling that is not shipped.

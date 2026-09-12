@@ -318,10 +318,25 @@ export class PiReactionAdapter implements ReactionAdapter {
   }
 
   /**
-   * A steer pi accepted is only handed over if a turn actually took it. pi delivers steering at the
-   * end of the running turn, so "pi is idle now" alone does not mean it parked — the turn may simply
-   * have finished WITH it. `pendingMessageCount` is the unambiguous half: still queued AND nothing
-   * running means only the person can unpark it, which is not delivery.
+   * A steer pi accepted is only handed over if a turn actually took it.
+   *
+   * WHEN a steer reaches the model, measured on this branch against real pi 0.85.1 over the leader
+   * extension's socket, on one clock (`pi-steer-r2/two-steers-result.json`, and the single-steer run
+   * in `mid-turn-result.json`): pi queues it (`queue_update`) and finishes the model call already in
+   * flight; the running turn then ends and the NEXT one opens and carries the text to the model.
+   * Numbers from that run — accepted at +4.0s, model call in flight until +20.0s, `turn_end` +20.018s,
+   * `turn_start` +20.018s, the model request carrying it +20.020s, `agent_settled` +20.023s, with a
+   * further model request in between. So the wait is the REMAINDER OF THE MODEL CALL IN FLIGHT (16s of
+   * a 20s call), not the rest of the run: the agent run went on after the steer reached the model.
+   *
+   * Two earlier spellings of this comment were wrong in opposite directions and both shipped a wrong
+   * sentence to the changelog with them (QA on #358, then QA on #366): "pi delivers steering at the end
+   * of the running turn" reads as "not until the run is over", and "at once" ignores the call in flight.
+   *
+   * What follows for this check: "pi is idle now" alone does not mean it parked — the run may simply
+   * have carried it and ended, which is the common case over this transport. `pendingMessageCount` is
+   * the unambiguous half: still queued AND nothing running means only the person can unpark it, which
+   * is not delivery.
    */
   async #requireSteerLanded(signal: AbortSignal): Promise<void> {
     const state = await this.#command({ type: 'get_state' }, signal);
