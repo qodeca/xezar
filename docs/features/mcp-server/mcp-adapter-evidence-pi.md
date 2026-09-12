@@ -4,11 +4,13 @@ Issue: [#330](https://github.com/qodeca/xezar/issues/330), work package WP1. Par
 [epic #67](https://github.com/qodeca/xezar/issues/67). Covers F-17, F-18, F-20, F-21, D-01, D-02, D-05 and the
 A-01 client leg of the [requirements](mcp-project-leader-requirements.md), for pi only.
 
-**This is the first half of the record.** It covers what can be measured before a pi reaction adapter exists:
-the one-time setup, the A-01 client leg against the real bridge, and the 13 behaviours of the
-[client behaviour spike](mcp-client-behaviour-spike-report.md). The second half – the reaction adapter
-(`adapters/pi.ts`, WP2) and its runtime runs – was written with that adapter after #311 merged and is
-appended below: [pi reaction adapter – runtime evidence (second half)](#pi-reaction-adapter--runtime-evidence-second-half).
+**This is the first of three halves — the arithmetic is wrong and the history is not.** It covers what can be
+measured before a pi reaction adapter exists: the one-time setup, the A-01 client leg against the real bridge,
+and the 13 behaviours of the [client behaviour spike](mcp-client-behaviour-spike-report.md). The second –
+the reaction adapter (`adapters/pi.ts`, WP2) and its runtime runs – was written with that adapter after #311
+merged: [pi reaction adapter – runtime evidence (second half)](#pi-reaction-adapter--runtime-evidence-second-half).
+The third puts both legs on ONE pi process inside the acceptance harness and produces the pi column of the
+acceptance record: [pi in the acceptance harness (third half, WP5)](#pi-in-the-acceptance-harness--runtime-evidence-third-half-wp5).
 
 Run date: **2026-09-11**, 17:33–18:15 UTC. Revision under test: **`5031bf8`** (`main`), built with
 `npm run build` on branch `xez/95c0a6da`. No product file differs from `main`; this branch adds only this
@@ -278,7 +280,8 @@ Written with WP2, on the adapter's own branch, and appended below:
 Two items named here were **not** measured in the second half, and it says so where they belong: a pi
 permission or question prompt (pi's RPC leg here ran with tool approval off, as a headless leader does), and a
 restart on **pi's** side (only the xezar side was restarted, `R-03`). Both belong to WP5's run on a candidate
-revision with `pi-mcp-adapter` loaded.
+revision with `pi-mcp-adapter` loaded. **Both are measured in the third half**, and the first of them FAILED: a
+tool gated behind `approveTools` makes a headless pi wait for ever.
 
 ## Evidence location
 
@@ -545,7 +548,8 @@ own reason, and the events wait in the journal for `leader_events`. Setup is in
 
 **What is still not measured here.** PI-04's second half — "the adapter's pi process still sees every
 Xezar tool" — needs the MCP client leg and this leg on ONE pi process, which is WP5's job. This run
-loaded only xezar's extension, so the model was offered no xezar tool.
+loaded only xezar's extension, so the model was offered no xezar tool. **Done in the third half:** both legs on
+one process, and the reaction turn's own request offered all 11 `xezar_*` tools.
 
 ## What this did not close, as it stood before the extension
 
@@ -689,3 +693,210 @@ harness started was stopped by its own saved handle, never by a command-line pat
 
 To reproduce: `TMPDIR=/tmp node --import tsx adapter-run.ts` (real pi on `PATH`), and
 `bash red-proof.sh` for the red proof.
+
+---
+
+# pi in the acceptance harness – runtime evidence (third half, WP5)
+
+Issue: [#330](https://github.com/qodeca/xezar/issues/330), work package WP5, the last one. It adds pi's leg to
+the `#118` real-client acceptance harness and produces the pi column of
+[`mcp-client-acceptance-record.md`](mcp-client-acceptance-record.md), which is where the verdicts live. This
+section holds what that record does not have room for: how the leg is built, what it measured that the two
+halves above could not, and the three things it found.
+
+Run date: **2026-09-12**, 10:38–10:43 UTC. Revision under test: **`1192065`** (branch `xez/c17af4a9`, `main` at
+[`ae6de7f`](https://github.com/qodeca/xezar/commit/ae6de7f) plus this branch's commits; the only product file
+that differs from `main` is one user-facing string, § The `.mjs` that was never there). Host: macOS 26.6.2
+(Darwin 25.6.0, arm64), Node v24.20.0. pi **0.85.1**, pi-mcp-adapter **2.32.1**. Installed versions, not
+certified minimums.
+
+## Answer first
+
+- **The two halves are now ONE pi process, which is what WP2 could not do.** Both halves above measured one leg
+  each: WP1 ran pi with `pi-mcp-adapter` and no reaction adapter; WP2 ran the adapter against a pi started with
+  `--no-extensions`, so the model was offered no xezar tool and its record said plainly that PI-04's second half
+  was WP5's job. It is done: one `pi --mode rpc`, `pi-mcp-adapter` loaded from its own pinned directory AND
+  `scripts/pi-leader-extension.ts` loaded with `--extension`, in front of a real `xezar serve`.
+- **It is a requirement, not tidiness.** Delivery needs an MCP session that OWNS the project — that is
+  `LeaderDelivery`'s `no-owner-session` blocker — and in this fixture the owner is pi's own adapter connection.
+  So the MCP client leg is the *precondition* of the reaction leg, and a pi with only one of them could not be
+  measured for A-19 at all.
+- **A-19 for pi is executed except for the clause no § 9 fixture may observe.** 0 model requests while pi sat
+  connected, attached and idle; **1** after one `task.done` row reached the journal; that request carried the
+  row's own `eventId`; it was the first of the session; **0** more across a 40 s window and 0 more across a
+  further 45 s window, both longer than the controller's 30 s heartbeat; and it offered all **11** `xezar_*`
+  tools. Counted at the harness's own endpoint log, never read from pi. An independent confirmation of #358's
+  count of 1, on a different fixture and a different revision.
+- **A-20's loop clause, BLOCKED for want of a delivery path, is PASSED for pi.** Quiescence after a real
+  reaction, with the cursors at rest.
+- **A restart on pi's own side: PASSED** — the half WP2 named as WP5's, having restarted only the xezar side.
+- **One row FAILS.** A xezar tool the person gated behind the adapter's `approveTools` makes a headless pi wait
+  for ever. Reported to the owner on #330 rather than settled here.
+- **A real model's decision is still UNVERIFIED**, as for all four clients. OB-5 / PI-4 unchanged.
+
+## How pi's leg differs from the other three, and why each difference is forced
+
+| What pi's leg does | Why it has to |
+| --- | --- |
+| One extra one-time step: `pi install npm:pi-mcp-adapter@2.32.1` | pi is not an MCP client by itself. Its own README says "**No MCP**", and the capability is a third-party extension (#330). No extension, no pi MCP client to measure — and that is reported as NOT RUN with the reason, never as a pass. |
+| The install runs ONCE per run into a throwaway directory, and every scenario copies from there | It needs the network. Doing it per scenario would make a network blip look like a pi defect, and doing it in the developer's `~/.pi` is #330's PI-07 falsifier. |
+| The install is PROVED to have landed in the pin | `settings.json` and `npm/node_modules/pi-mcp-adapter` must both be inside the pinned `PI_CODING_AGENT_DIR`, or the leg is NOT RUN. The same rule Claude Code's and Codex's legs already follow. |
+| **Both** `HOME` and `PI_CODING_AGENT_DIR` are pinned | `PI_CODING_AGENT_DIR` relocates pi's whole per-user directory — settings, installed extensions, `models.json` and its live `apiKey`, the session files (#329, WP4) — and the adapter *additionally* reads `~/.config/mcp/mcp.json`, `~/.agents/mcp.json` and `~/.agents/mcp/mcp.json` from `HOME` (its own `config.ts`). Pinning one and not the other lets the developer's configuration into a verdict. |
+| `PI_` joins the harness's isolated environment prefixes | Same reason, for an inherited value rather than a written one. |
+| The scripted endpoint learns the OpenAI chat-completions wire | pi reaches a provider through `api: "openai-completions"` in its own `models.json`. Same scripting rules and the same request log as the Anthropic branch the other clients use: a stand-in that behaved differently per client would make a per-client verdict a fact about the harness. |
+| Each pi gets its own model id | A-19 turns on "how many requests has THIS pi made", and every pi in the run shares one endpoint. A run-wide count reads the A-01 leg's turns as this session's polling — it did, once, before the ids were separated. |
+| Each pi gets a private `TMPDIR` | Two reasons, § A peer wrote into this pi. |
+| The handshake evidence is a notice, not a command | pi has no `mcp list`. The adapter's own `MCP: 1 servers connected (11 tools)` is what a person sees and what the leg reads. |
+| `lifecycle: "keep-alive"` is on the entry | WP1 measured why: with the adapter's default 10-minute `idleTimeout` it closes an idle bridge, which releases the project. The cockpit's pi card carries the same key, so the leg's setup really is the documented one. |
+
+## What A-19 measured, step by step
+
+The fixture: a fresh git repository, a real `xezar serve` (`dist/index.js`, `XEZ_DRY_RUN=1`, isolated `XEZ_HOME`
+and agent config directories), and one pi with both legs. Then:
+
+1. Wait for xezar's leader extension to write `<root>/.local/xezar/pi-leader.json`. Observed, with the socket
+   inside its own `0700` directory: `…/tworld/xez-pi-<sessionId>/leader.sock`.
+2. Wait for `pi-mcp-adapter` to connect the xezar entry. A **cold** adapter cache connects at start, which is
+   what makes the owner session exist deterministically.
+3. `POST /api/v1/mcp/leader {action: 'attach', client: 'pi'}` → **200**, `leader: {client: 'pi', state: 'attached'}`.
+   `LeaderDelivery.#piTarget()` read the descriptor, dialled the socket through `adapters/pi-link.ts` and built a
+   real `PiReactionAdapter` — not the `pi-not-addressable` blocker.
+4. Wait for `GET /api/v1/mcp/leader` to report `blocker: null`. That is the ready state: a leader attached AND a
+   session owning the project. Read the pi request count here: **0**.
+5. Start one ordinary task through the cockpit's own door — the human's, so nothing about the event is the
+   leader's own — and let it finish. E-01 `task.done`, origin `system` (not `leader`, so the echo guard does not
+   withhold it; the #243 fix).
+6. Watch. One user message arrives in pi's conversation beginning `[xezar event notification]`; `agent_start`;
+   one model request at the endpoint carrying the row's `eventId`; the turn settles.
+7. Read the count again after the turn, and again after 40 s: **1**, then **1**.
+
+`deliveredSeq: 1, reactedSeq: 1, latestSeq: 1, state: idle` — delivery and reaction are separate cursors and both
+advanced, which is D-05 § 6.6's requirement and not a restatement of the same fact twice.
+
+**What is NOT proved by any of it:** what a real model decides. Every turn here reached a scripted endpoint. That
+proves pi started a turn and sent an inference request carrying the event; it says nothing about the decision.
+OB-5 / PI-4 stays open, for all four clients.
+
+## Three findings
+
+### The `.mjs` that was never there
+
+`PI_EXTENSION_FIX` — the ONE instruction a person gets when xezar cannot reach a pi leader — told them to run
+`pi --extension <xezar>/scripts/pi-leader-extension.mjs`. There is no such file. The extension ships as
+`scripts/pi-leader-extension.ts`: that is what `package.json`'s `files` publishes, what `pi-leader-extension.md`
+documents, what `pi-leader-extension.test.ts` imports, and what pi loads (extensions go through jiti, so `.ts` is
+the right name). `.mjs` appeared exactly once in the repository, on the only path where being wrong costs the
+person their remedy.
+
+The existing test asserted the text mentions `leader_events` and nothing about the file. The new one takes the
+path out of the string, checks the file is in the package and that `files` would publish it, and carries a
+populated-input control so an unparsed `fix` cannot make it vacuous. **Named break B13** (restore `.mjs`) turns
+it red; `git status` showed the source `M` before the run was trusted.
+
+Found by asking a question the two halves above did not: *does the shipped tarball carry what the documentation
+tells people to run?* It does — `npm pack --dry-run` lists `scripts/pi-leader-extension.ts` — and the string
+pointing at it did not.
+
+### A peer process wrote into this pi, mid-measurement
+
+Requests 17 and 18 of a case whose whole claim is that request 1 was the only one carried `QA367-IDLE-…` and
+`QA367-CONTROL-PROMPT`. Both came from this harness's own pi (its own model id), and this harness never sent
+them: a peer task's probe had been pointed at this run's leader socket.
+
+Not a shipped defect. The extension's guard is a `0700` directory and it keeps other **accounts** out, which is
+exactly what `pi-leader-extension.md` claims after #358's QA corrected it. But the same page says "It starts
+nothing on its own. A turn happens only when xezar hands over an event, for a project you attached, in a session
+you started", and that reads as though xezar were the only writer. Any process running as you can send `prompt`
+and `steer` down that socket and read the whole conversation with `get_messages` — which on a machine running a
+dozen agents as one user is the case that bites, and it bit here.
+
+Two changes, and the second matters more:
+
+- **Each pi's socket directory moves out of the globbable namespace.** The extension puts it in `os.tmpdir()`, so
+  `TMPDIR=/tmp` puts it at `/tmp/xez-pi-*`. Each pi now gets `<scratch>/t<label>` instead — still short enough
+  for the ~104-byte socket path cap, which is why `/tmp` was there in the first place.
+- **A model request this run did not cause is NAMED, not counted.** Classifying by text is cheap: xezar's own
+  dispatch is recognisable and so is a prompt the harness sent. Anything else is reported as `foreignRequests`
+  with its text. "The leader polled" and "something else wrote into this pi" are different facts and must not read
+  the same — for one run they did, and the run was thrown away.
+
+### FAILED: a gated tool makes a headless pi wait for ever
+
+#330's PI-08 asks for "a user `approveTools` → a named `approval_required` state, not a hang". With
+`approveTools: ['health']` on the xezar entry and a headless pi, measured in two phases because the difference
+between them IS the finding:
+
+| Phase | Observed |
+| --- | --- |
+| Nobody answers | The adapter emits a **named** dialog: `extension_ui_request`, `method: "select"`, `title: "MCP: xezar wants to run health"`, options `Allow once` / `Allow for session` / `Deny`. The frame carries **no `timeout`**. No `agent_settled` in 30 s past it; in an earlier run the process left only when its stdin was closed at 109 s. |
+| The client answers `Deny` | The turn ends **at once** and the model is told `approval_denied` — "The user declined approval to run MCP tool \"health\" on server \"xezar\"." |
+
+pi's own `docs/rpc.md` § Extension UI Requests is explicit: a dialog method "blocks until the client sends back
+an `extension_ui_response`", and auto-resolves only when the request carries a `timeout`. So the cause is read
+from the frame, not inferred — the field is absent, and pi will not resolve it.
+
+**The named state PI-08 asks for exists; nothing in xezar reaches it.** `core/pi-runner.ts`,
+`scripts/pi-leader-extension.ts` and `mcp/adapters/pi.ts` never mention `extension_ui_request`.
+
+Scope, stated rather than guessed: a person at their own pi TUI answers this themselves, so an *interactive*
+leader does not hang. It bites where nobody is watching — a reaction turn while the person is away, which is the
+case A-19 exists for — and, more widely, in **every xezar pi task**, because `core/pi-runner.ts` drives pi over
+RPC and answers no dialog either. That second half is outside #330 and was not measured.
+
+Reported on #330 with three options and a recommendation, because signing PI-08 off as not met is the owner's
+call, not this record's.
+
+## Two stale assumptions in the harness, fixed rather than worked around
+
+Neither is about pi, and both were found only because WP5 runs the whole suite on one revision.
+
+- **A-01's client legs met `-32080`.** Each spawns a bridge xezar does not own — `claude -p` spawns one for its
+  turn, pi's adapter one for its connection — and that bridge exits a moment after the command we awaited
+  returns. Until #302 nothing enforced ownership and this never mattered; now the next leg's handshake was
+  refused and a working Codex read as FAILED. Each leg now waits for the project to be free, bounded, and records
+  how long the release took: D-02 § 4 claims it happens on disconnect, so that is a fact worth keeping rather
+  than a sleep. Honest caveat: Codex passes on the run this record is from, and failed this way in two earlier
+  runs of the same revision, so treat that leg as order-sensitive.
+- **A-20's `leader_events` ack was refused.** #264 made every mutating tool action carry an `operationId`, and
+  `ack` is one. The call did not, so it answered "ack needs operationId" and a required behaviour read as missing.
+
+This is § Changing a mechanism that already works in miniature, twice: both replacements are correct, and an old
+scenario quietly lost a guarantee nobody had written down.
+
+## One wording defect, observed and not fixed here
+
+With a **pi** leader attached and no owner session, `no-owner-session`'s message reads "OpenCode connects its
+xezar MCP server only when it first needs it" and its fix is "Let the attached OpenCode session call a xezar tool
+once". The code and the shape are right, the events are kept and nothing is lost; the words are for the wrong
+product. It is `leader-delivery.ts`'s wording rather than this record's scope, and it is a follow-up.
+
+## Open blockers, after this half
+
+| ID | Blocker | Change |
+| --- | --- | --- |
+| PI-1 | No pi reaction adapter | CLOSED in WP2. Re-confirmed here against a pi that also has the MCP adapter loaded. |
+| PI-2 | A pi session the person opened cannot be reached | CLOSED in WP2 by the shipped extension. Re-confirmed here through `LeaderDelivery` over a real `xezar serve`, and its restart behaviour measured on pi's own side. |
+| PI-3 | The model is not told why it was refused as the second client | **Open, shared with all four.** Measured again here: pi's model was offered 0 xezar tools and no reason; the occupied text reached the operator's notice channel only. |
+| PI-4 (OB-5) | No real-model reaction | **Open, shared with all four.** Everything around it is now executed for pi. |
+| PI-5 | The capability is third-party and moves fast | Open. This half needed `pi-mcp-adapter` 2.32.1; the registry answered 2.33.0 as latest on WP1's run date and 2.33.0 is still **not tested**. |
+| **PI-6 (new)** | A xezar tool gated behind `approveTools` blocks a headless pi for ever | **Open, and it FAILS PI-08.** See above. Owner's call on #330. |
+
+## Evidence location
+
+The definitive run's `environment.json` (both client versions and the adapter version), `results.json`,
+`results.md`, one transcript per process — including every pi RPC frame and the leader extension's socket traffic
+as pi saw it — and the scripted endpoint's full request log are in this task's private folder,
+`.local/xezar-tasks/<runId>/wp5/`, with a `MANIFEST.sha256`. So are the two side probes that settled the Codex
+question (`codex-probe.mjs`, `ab-codex-probe.ts`) and the ownership-release probe (`ab-owner-probe.ts`). None of
+it is committed. It holds no credential: the only key string is the dummy value in the fixture `models.json`, and
+the real `~/.pi` was neither read nor written — both `HOME` and `PI_CODING_AGENT_DIR` were pinned for every pi
+process, and every process the harness started was stopped by its own saved handle, never by a command-line
+pattern.
+
+To reproduce, after `npm run build`, from `packages/xezar`:
+
+```sh
+TMPDIR=/tmp node --import ../../scripts/test-local-state.mjs --import tsx --test test/integration/mcp-real-clients.test.ts
+```
+
+Narrow it to pi with `--test-name-pattern '\[pi\]'`. The leg needs the network once, for `pi install`.
