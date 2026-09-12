@@ -380,6 +380,14 @@
   survives the whole MCP test suite even though the file reads 100 % branch coverage — the plainest
   evidence that a coverage number is a floor, not a proof. No product behaviour changed, and no test
   or source file was touched. (#357)
+- 📝 **The audit trail now says which origins it really records.** `mcp-audit.ndjson` lists four
+  possible origins — `ui`, `mcp`, `automation`, `cli` — and writes exactly one of them: `mcp`. The
+  cockpit, the automation scheduler and `xezar run` record nothing, so the file holds a leader's
+  operations and never a human's beside them. That is the decision for this release, and it is now
+  written down where anyone would look: in the schema itself, in the audit module, in the MCP API
+  reference and as a dated decision in D-06 § 10.6. The four origins are kept, because they are the
+  right eventual set and removing one would break the record format; wiring the other three doors is
+  its own issue (#364) for a later release. No product behaviour changed. (#266)
 
 # 0.13.1 (2026-09-10)
 
