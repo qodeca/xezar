@@ -92,15 +92,53 @@ const NO_LEADER: McpLeaderBlocker = {
 };
 
 /**
+ * Every blocker about an ATTACHED leader is written in that leader's client's own words.
+ *
+ * It used to be written in OpenCode's, for all of them, so a pi user who hit one was told to check
+ * an `opencode serve` they are not running (QA on #358, finding 3) — at the exact moment they needed
+ * the right thing to check. The two clients are reached in completely different ways: OpenCode's
+ * leader is an HTTP server the person runs, pi's is a Unix socket xezar's leader extension opens
+ * from INSIDE the person's own pi, so "check the server" has no shared spelling.
+ *
+ * Only these two can be attached at all (`mcpLeaderAttachInputSchema` in the contract). A Claude Code
+ * or Codex leader has no address to attach, which is `NO_LEADER`'s case above and names all four
+ * clients itself. Typed `Record<McpLeaderSession['client'], …>` on purpose: a third attachable client
+ * is then a compile error here, rather than a message that quietly names the wrong server again.
+ */
+const CLIENT_WORDS: Record<
+  McpLeaderSession['client'],
+  { readonly name: string; readonly lazyMcp: string; readonly check: string; readonly checkShort: string; readonly reattach: string }
+> = {
+  opencode: {
+    name: 'OpenCode',
+    lazyMcp: ' OpenCode connects its xezar MCP server only when it first needs it.',
+    check: 'check that `opencode serve` is running and answering (a paused process still accepts connections)',
+    checkShort: 'check that `opencode serve` is running and answering',
+    reattach: 'attach the session again',
+  },
+  pi: {
+    // Nothing is claimed about WHEN pi opens its MCP connection, because nothing here measured it;
+    // the fix below works whenever it does.
+    name: 'pi',
+    lazyMcp: '',
+    check: 'check that the pi you attached is still running with xezar’s leader extension loaded (a paused process still holds its socket open)',
+    checkShort: 'check that the pi you attached is still running with xezar’s leader extension loaded',
+    reattach: 'attach it again',
+  },
+};
+
+/**
  * #331: a leader is attached, but no MCP session owns the project, so no controller follows the
  * journal and nothing is delivered. The ORDINARY first state: OpenCode connects its MCP servers
  * lazily, so "attach first, MCP session later" is what a first user sees.
  */
-const NO_OWNER_SESSION: McpLeaderBlocker = {
-  code: 'no-owner-session',
-  message:
-    'A leader is attached, but no MCP session owns this project yet, so nothing follows the event journal and nothing is delivered. OpenCode connects its xezar MCP server only when it first needs it. Events are kept in the journal meanwhile.',
-  fix: 'Let the attached OpenCode session call a xezar tool once (for example leader_events), so its MCP connection opens; it then receives every event it has not acknowledged.',
+const noOwnerSession = (client: McpLeaderSession['client']): McpLeaderBlocker => {
+  const words = CLIENT_WORDS[client];
+  return {
+    code: 'no-owner-session',
+    message: `A ${words.name} leader is attached, but no MCP session owns this project yet, so nothing follows the event journal and nothing is delivered.${words.lazyMcp} Events are kept in the journal meanwhile.`,
+    fix: `Let the attached ${words.name} session call a xezar tool once (for example leader_events), so its MCP connection opens; it then receives every event it has not acknowledged.`,
+  };
 };
 
 /**
@@ -111,19 +149,23 @@ const NO_OWNER_SESSION: McpLeaderBlocker = {
  * round five). The fact behind it is recorded against the LEADER, so it survives a session change and
  * is never inherited by a leader that has just been attached.
  */
-const DELIVERY_FAILING: McpLeaderBlocker = {
-  code: 'delivery-failing',
-  message:
-    'Events are waiting, and the last attempt to hand them to the attached leader did not get through. It may be busy in a long turn, or it may have stopped answering — xezar cannot tell those apart, and keeps retrying while this MCP session owns the project. Nothing is lost: the events stay in the journal.',
-  fix: 'If the leader is working, nothing is needed: the events go as soon as it is free. Otherwise check that `opencode serve` is running and answering (a paused process still accepts connections), or attach the session again.',
+const deliveryFailing = (client: McpLeaderSession['client']): McpLeaderBlocker => {
+  const words = CLIENT_WORDS[client];
+  return {
+    code: 'delivery-failing',
+    message: `Events are waiting, and the last attempt to hand them to the attached ${words.name} leader did not get through. It may be busy in a long turn, or it may have stopped answering — xezar cannot tell those apart, and keeps retrying while this MCP session owns the project. Nothing is lost: the events stay in the journal.`,
+    fix: `If the leader is working, nothing is needed: the events go as soon as it is free. Otherwise ${words.check}, or ${words.reattach}.`,
+  };
 };
 
 /** The same fact with nothing waiting: the leader did not answer xezar’s last liveness check. */
-const LEADER_NOT_ANSWERING: McpLeaderBlocker = {
-  code: 'leader-not-answering',
-  message:
-    'The attached leader did not answer xezar’s last liveness check — it may be busy, or gone. Nothing is waiting right now; the next event would be retried until it answers.',
-  fix: 'If the leader is working, nothing is needed. Otherwise check that `opencode serve` is running and answering, or attach the session again.',
+const leaderNotAnswering = (client: McpLeaderSession['client']): McpLeaderBlocker => {
+  const words = CLIENT_WORDS[client];
+  return {
+    code: 'leader-not-answering',
+    message: `The attached ${words.name} leader did not answer xezar’s last liveness check — it may be busy, or gone. Nothing is waiting right now; the next event would be retried until it answers.`,
+    fix: `If the leader is working, nothing is needed. Otherwise ${words.checkShort}, or ${words.reattach}.`,
+  };
 };
 
 /** #309 O-3: a journal that records nothing has nothing to deliver, so a leader would never hear a thing. */
@@ -470,18 +512,19 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     if (leader === undefined) return NO_LEADER;
     // Attached, but nobody owns the project: no controller, so nothing is delivered (#331).
     const controller = this.#liveController();
-    if (controller === undefined) return NO_OWNER_SESSION;
+    if (controller === undefined) return noOwnerSession(leader.client);
     const blocker = leader.adapter.status().blocker;
     if (blocker) {
-      // The adapter's own `fix` when it has one (pi's does); otherwise the OpenCode wording, which
-      // is the only adapter whose blockers name no remedy of their own.
+      // The adapter's own `fix` when it has one (pi's does; `PiReactionAdapter.#block` always sets
+      // one, and `piReactionTarget`'s own blocker carries `PI_EXTENSION_FIX`), otherwise the
+      // OpenCode wording, which is the only adapter whose blockers name no remedy of their own.
       const fix = blocker.fix ?? 'Check that `opencode serve` is running in this project and the session id is right, then attach it again.';
       return { code: blocker.code, message: blocker.message, fix };
     }
     // From FACTS observed against THIS leader, never from the controller's state machine (rounds four
     // and five): a failed attempt with no success since is a blocker in every state, it survives the
     // session being replaced, and a leader just attached has none. `state` is shown, and decides nothing.
-    if (leader.failingSince !== null) return this.#owed(leader) ? DELIVERY_FAILING : LEADER_NOT_ANSWERING;
+    if (leader.failingSince !== null) return this.#owed(leader) ? deliveryFailing(leader.client) : leaderNotAnswering(leader.client);
     return null;
   }
 }

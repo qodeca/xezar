@@ -608,7 +608,19 @@ with no xezar in the loop (`pi-idle-steer/idle-steer.mjs`, result in `result.jso
 | one `steer` into that idle pi | `{"success": true}` — **0 model requests**, **no `agent_start`**, one `queue_update`, `pendingMessageCount` 0 → **1** |
 | the person then types something of their own | 1 model request, and it **carries the steered text** |
 
-So a `steer` into an idle pi is **accepted and parked**, and `success: true` is acceptance, never hand-over.
+So a `steer` into an idle pi **over pi's raw stdio RPC** is **accepted and parked**, and `success: true` is
+acceptance, never hand-over.
+
+> **Which transport this measured, added after the QA on #358 read it as a property of the feature.** The
+> table above is pi's RAW stdio RPC, with no xezar in the loop — and **nothing in xezar speaks it**: the one
+> `PiRpcLink` outside tests is built by `LeaderDelivery.#piTarget()` from `pi-link.ts`, which dials the
+> leader extension's socket. Over that transport the same command behaves differently, measured in one run
+> against real pi 0.85.1 (`idle-steer-result.json`, M1/M2): an idle `steer` **reaches the model at once** —
+> one model request carrying the text, `pendingMessageCount` still `0` — because the extension turns `steer`
+> into `sendUserMessage(text, { deliverAs: 'steer' })`, and `deliverAs` only chooses how a message enters a
+> turn that is already RUNNING. Everything below stays: the guards make the adapter correct over a transport
+> that parks, they cost one `get_state`, and `success` is acceptance and never hand-over on any transport.
+> What does NOT follow is telling a user that push delivery to pi parks between turns — it does not.
 The row is not lost — it reaches the model when a human next acts, which is exactly the outcome A-19 exists
 to prevent. Two consequences, both now fixed:
 

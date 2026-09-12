@@ -62,10 +62,24 @@ import type { EventDispatch, ReactionAdapter } from '../event-controller.ts';
  *  - Never into a running turn as a plain `prompt`. pi refuses it outright, so the adapter sends
  *    `steer` when pi is busy AND falls back to `steer` when a `prompt` is refused anyway. That
  *    fallback covers only ONE direction of a stale `busy`, and an earlier version of this comment
- *    claimed it covered both (QA on #358). The other direction is worse: a `steer` into an IDLE pi
- *    is accepted and PARKED — zero model requests, and the text waits for the person's next turn —
- *    so a believed `busy` is confirmed against pi before steering, and a steer that parked is never
- *    reported as handed over. See `#submit`.
+ *    claimed it covered both (QA on #358). The other direction — believed busy, really idle — is
+ *    TRANSPORT-DEPENDENT, and an earlier version of this comment stated the worse half as though it
+ *    were the only half (QA on #358, finding 2). Both halves, measured in one run against real pi
+ *    0.85.1 (`idle-steer-result.json`, M1/M2):
+ *      · Over the leader extension, WHICH IS THE ONLY TRANSPORT ANYTHING IN PRODUCTION USES — the
+ *        one `PiRpcLink` is built by `LeaderDelivery.#piTarget()` from `pi-link.ts`, which dials the
+ *        extension's socket — an idle `steer` REACHES THE MODEL AT ONCE: `success: true`, one model
+ *        request carrying the text, `pendingMessageCount` still 0. The extension turns `steer` into
+ *        `sendUserMessage(text, { deliverAs: 'steer' })`, and `deliverAs` only chooses how a message
+ *        enters a turn that is already RUNNING; with pi idle it starts one.
+ *      · Over pi's raw stdio RPC, which xezar never speaks (it starts no pi and has no other way in),
+ *        the same command is accepted and PARKED: zero model requests, `pendingMessageCount` 0 -> 1,
+ *        and the text waits for the person's next turn.
+ *    So parking is not a property of this feature, and the confirmation below is not what saves it
+ *    from one. The confirmation stays anyway, and is cheap: it is one `get_state` that makes the
+ *    adapter correct over a transport that parks, and `success` is acceptance and never hand-over on
+ *    any transport. A steer this adapter cannot confirm reached the model is never reported as handed
+ *    over, so the controller hands the row over again. See `#submit`.
  *  - Never two turns for one row. Rows already submitted are skipped: from memory within this
  *    adapter's life, and from pi's own conversation (`get_messages`, the marker this adapter writes
  *    into its text) on the first delivery and after any attempt whose answer was lost — so a
@@ -259,15 +273,20 @@ export class PiReactionAdapter implements ReactionAdapter {
    *
    *  - Believed idle, really busy: pi refuses the plain `prompt` and the fallback steers. SAFE, and
    *    the refusal fallback stays because pi can start a turn of its own between check and write.
-   *  - Believed busy, really idle: a `steer` is ACCEPTED and PARKED. Measured against real pi 0.85.1
-   *    (`pi-idle-steer`): `success: true`, no `agent_start`, ZERO model requests, one `queue_update`,
-   *    `pendingMessageCount` 0 -> 1 — and the text reaches the model only when the PERSON starts a
-   *    turn of their own. `success` is acceptance, never hand-over, and reporting it as delivered is
-   *    exactly the outcome A-19 exists to prevent: the leader does not react until a human pokes it.
+   *  - Believed busy, really idle: what a `steer` does then depends on the transport, and only one
+   *    of the two is ever used in production. Over the leader extension — the only producer of a
+   *    `PiRpcLink` outside tests — an idle `steer` starts a turn and reaches the model at once
+   *    (real pi 0.85.1, M1: one model request carrying the text, `pendingMessageCount` still 0), so
+   *    the wrong belief costs nothing. Over pi's RAW stdio RPC, which nothing in xezar speaks, the
+   *    same command is ACCEPTED and PARKED (M2: `success: true`, ZERO model requests,
+   *    `pendingMessageCount` 0 -> 1) and the text waits for the person's next turn.
    *
-   * So a believed `busy` is CONFIRMED against pi before steering, and a steer is confirmed after the
-   * fact as well, because pi can settle between the two. A parked row is reported as not handed over
-   * (the controller retries it, down the `prompt` rung, after re-reading pi's conversation).
+   * The confirmations below therefore make this adapter correct over a transport that parks rather
+   * than rescue it from one it has. They are kept because they are cheap and because `success` is
+   * acceptance and never hand-over on ANY transport: a believed `busy` is CONFIRMED against pi
+   * before steering, and a steer is confirmed after the fact as well, because pi can settle between
+   * the two. A steer that cannot be confirmed to have reached the model is reported as not handed
+   * over (the controller retries it, down the `prompt` rung, after re-reading pi's conversation).
    */
   async #submit(message: string, signal: AbortSignal): Promise<void> {
     if (this.#busy) this.#busy = await this.#reallyBusy(signal);
@@ -287,8 +306,9 @@ export class PiReactionAdapter implements ReactionAdapter {
    * Is a turn really running? Read from pi rather than from the event stream.
    *
    * An unreadable answer deliberately says NO, which sends the caller down the `prompt` rung: a
-   * prompt into a busy pi is refused and recovers on the spot, while a steer into an idle pi parks
-   * in silence. When the two failure modes are not symmetric, guess towards the recoverable one.
+   * prompt into a busy pi is refused and recovers on the spot, while a steer into an idle pi is
+   * harmless over the extension and parks in silence over raw RPC. When the two failure modes are
+   * not symmetric on some transport, guess towards the one that is recoverable on every transport.
    */
   async #reallyBusy(signal: AbortSignal): Promise<boolean> {
     const state = await this.#command({ type: 'get_state' }, signal);
@@ -413,7 +433,7 @@ const PARKED_MESSAGE =
   'pi accepted the steered event but settled before a turn took it, so it is parked in pi\'s queue rather than in front of the model. xezar has not treated it as delivered and will hand it over again.';
 const BLOCKER_FIX = 'Read events from your leader with the leader_events tool; nothing is lost while push is unavailable.';
 const PI_EXTENSION_FIX =
-  'Start your pi leader with xezar\'s leader extension (`pi --extension <xezar>/scripts/pi-leader-extension.mjs`, or install it once in your pi settings), then attach again. Until then, read events with the leader_events tool — nothing is lost.';
+  'Start your pi leader with xezar\'s leader extension (`pi --extension <xezar>/scripts/pi-leader-extension.ts`, or install it once in your pi settings), then attach again. Until then, read events with the leader_events tool — nothing is lost.';
 
 /**
  * Where a project's leader events go in pi. A live `link`: delivered through it. Absent or closed: a

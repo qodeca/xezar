@@ -1,6 +1,7 @@
-import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import type { McpJournalRow } from '@qodeca/xezar-contract';
@@ -793,6 +794,32 @@ describe('piReactionTarget — where a project\'s pi events go', () => {
     if (target.kind !== 'blocked') throw new Error('unreachable');
     expect(target.blocker.message).toMatch(/stdin and stdout/);
     expect(target.blocker.fix).toMatch(/leader_events/);
+  });
+
+  /**
+   * QA on #358, finding 1. The blocker's `fix` is the string a person reads at the exact moment they
+   * need the extension's path, and it named `pi-leader-extension.mjs` — a file that does not exist,
+   * is not packed, and is not what pi loads. It survived two QA rounds because reading the sentence
+   * is not the same as resolving the path, so this case resolves it: the file the fix names must be
+   * a real file in the package, and it must be inside a directory the package actually ships.
+   */
+  it('names an extension path that really exists in this package, and that the package ships', () => {
+    const target = piReactionTarget({ projectId: 'xez330', roleInstruction: ROLE });
+    if (target.kind !== 'blocked') throw new Error('unreachable');
+
+    const named = /`pi --extension <xezar>\/([^`\s]+)`/.exec(target.blocker.fix);
+    expect(named, `no \`pi --extension <xezar>/…\` path in: ${target.blocker.fix}`).not.toBeNull();
+    const relative = named![1]!;
+
+    // `src/mcp/adapters` -> the package root, which is what `<xezar>` stands for in the sentence.
+    const packageRoot = fileURLToPath(new URL('../../../', import.meta.url));
+    expect(existsSync(join(packageRoot, relative)), `${relative} does not exist under ${packageRoot}`).toBe(true);
+
+    // …and `npm pack` must carry it: `files` decides that, and it is where the `.mjs` spelling would
+    // still have passed a bare existence check by pointing at a sibling that is not shipped.
+    const manifest = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')) as { files?: string[] };
+    const top = relative.split('/')[0]!;
+    expect(manifest.files ?? []).toContain(top);
   });
 
   it('with a closed link: blocked, never an adapter over a dead session', () => {
