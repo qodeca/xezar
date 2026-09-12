@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, closeSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, closeSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import { createServer as createNetServer } from 'node:net';
 import { dirname, join, resolve } from 'node:path';
@@ -90,8 +90,10 @@ const OUT = join(REPO, '.local/qa/mcp-real-clients', STAMP);
 const T0 = Date.now();
 
 type Verdict = 'PASSED' | 'FAILED' | 'BLOCKED' | 'NOT-RUN';
-type ClientName = 'claude-code' | 'codex' | 'opencode';
-const CLIENTS: readonly ClientName[] = ['claude-code', 'codex', 'opencode'];
+type ClientName = 'claude-code' | 'codex' | 'opencode' | 'pi';
+const CLIENTS: readonly ClientName[] = ['claude-code', 'codex', 'opencode', 'pi'];
+/** The three clients whose A-19 leg has no attach path at all; pi's is measured (#330 WP5). */
+const CLIENTS_WITHOUT_ADAPTER: readonly ClientName[] = ['claude-code', 'codex', 'opencode'];
 
 interface Check {
   name: string;
@@ -344,7 +346,11 @@ class LineRpc {
 
 // ---- environment isolation -----------------------------------------------------------------
 
-const ISOLATED_PREFIXES = /^(ANTHROPIC_|OPENAI_|CODEX_|CLAUDE_|OPENCODE_|XDG_|XEZ_|GITHUB_TOKEN$|GH_TOKEN$)/;
+// `PI_` is here for the same reason every other vendor prefix is: `PI_CODING_AGENT_DIR` relocates
+// pi's WHOLE per-user directory — settings, installed extensions, models.json and its `apiKey`, the
+// session files (#329, re-verified against pi 0.85.1) — so an inherited one would point a pi this
+// harness starts at the developer's own pi. `PI_OFFLINE` and `PI_TELEMETRY` are pinned per process.
+const ISOLATED_PREFIXES = /^(ANTHROPIC_|OPENAI_|CODEX_|CLAUDE_|OPENCODE_|PI_|XDG_|XEZ_|GITHUB_TOKEN$|GH_TOKEN$)/;
 
 /** A child environment with every agent, vendor and xezar variable removed, then the pins added. */
 function isolatedEnv(home: string, extra: Record<string, string>): NodeJS.ProcessEnv {
@@ -399,6 +405,8 @@ function resolveClient(name: string, isolationVar: string, versionArgs: string[]
 interface ModelRequest {
   n: number;
   client: string;
+  /** The model id the request named. Unique per pi process, so one endpoint can count one pi (#330 WP5). */
+  model: string;
   tools: string[];
   lastText: string;
   decision: string;
@@ -441,6 +449,10 @@ class ScriptedEndpoint {
   }
 
   private answer(url: string, raw: string, agent: string, res: import('node:http').ServerResponse): void {
+    // pi reaches a provider through `api: "openai-completions"` (its own `models.json` shape), so
+    // this stand-in answers BOTH wires. Same rules, same `requests` log — "count the model's requests
+    // at an endpoint you control" must have exactly one place to count.
+    if (url.includes('/chat/completions')) return this.openaiCompletions(raw, res);
     if (url.includes('count_tokens')) {
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ input_tokens: 1 }));
@@ -487,6 +499,7 @@ class ScriptedEndpoint {
     const entry: ModelRequest = {
       n: this.requests.length + 1,
       client: /claude/i.test(agent) ? 'claude-code' : /opencode|ai-sdk/i.test(agent) ? 'opencode' : agent.slice(0, 40),
+      model: String(body.model ?? ''),
       tools: tools.filter((t) => /xezar/.test(t)),
       lastText: pending.slice(0, 1_500),
       decision: tool ? `tool ${tool.name}` : `text ${text.slice(0, 120)}`,
@@ -526,6 +539,105 @@ class ScriptedEndpoint {
     sse('content_block_stop', { type: 'content_block_stop', index: 0 });
     sse('message_delta', { type: 'message_delta', delta: { stop_reason: stop, stop_sequence: null }, usage: { output_tokens: 1 } });
     sse('message_stop', { type: 'message_stop' });
+    res.end();
+  }
+
+  /**
+   * The OpenAI chat-completions wire, for pi (#330 WP5). The scripting rules are the Anthropic
+   * branch's, and deliberately so: a stand-in that behaved differently per client would make a
+   * per-client verdict a fact about this file. Two differences are pi's, not choices:
+   *   - a tool name is matched with `endsWith('_' + <name>)` too, because pi-mcp-adapter offers the
+   *     bridge's tools as `xezar_<tool>` (its `directTools` mode) alongside pi's own `read`/`bash`;
+   *   - the `system` message is left out of `lastText`, because pi's is ~4 kB of built-in tool
+   *     documentation and would bury the text a check is looking for. Nothing decides on it.
+   */
+  private openaiCompletions(raw: string, res: import('node:http').ServerResponse): void {
+    let body: any = {};
+    try {
+      body = JSON.parse(raw || '{}');
+    } catch {
+      /* logged below as an empty request */
+    }
+    const textOf = (content: unknown): string =>
+      typeof content === 'string'
+        ? content
+        : Array.isArray(content)
+          ? content.map((part: any) => (typeof part?.text === 'string' ? part.text : '')).join('\n')
+          : '';
+    const messages: any[] = Array.isArray(body.messages) ? body.messages : [];
+    let i = messages.length;
+    while (i > 0 && messages[i - 1]?.role !== 'assistant') i -= 1;
+    const pending = messages
+      .slice(i)
+      .filter((m) => m?.role !== 'system')
+      .map((m) => (m?.role === 'tool' ? `TOOL_RESULT: ${textOf(m.content)}` : textOf(m.content)))
+      .join('\n');
+    const tools: string[] = (body.tools ?? []).map((t: any) => String(t?.function?.name ?? t?.name ?? '')).filter(Boolean);
+    let tool: { name: string; input: unknown } | undefined;
+    let text: string;
+    const toolResult = pending.indexOf('TOOL_RESULT: ');
+    if (toolResult >= 0) text = `SCRIPTED-ACK ${pending.slice(toolResult + 13, toolResult + 13 + 600)}`;
+    else {
+      const call = /CALL ([A-Za-z0-9_]+)/.exec(pending);
+      const name = call ? tools.find((t) => t === call[1] || t.endsWith(`_${call[1]!}`)) : undefined;
+      if (call && name) {
+        tool = { name, input: TOOL_ARGUMENTS[call[1]!] ?? {} };
+        text = '';
+      } else text = call ? `SCRIPTED-NO-TOOL matching ${call[1]} among ${tools.length} tools` : `SCRIPTED-REPLY ${pending.slice(0, 200)}`;
+    }
+    const entry: ModelRequest = {
+      n: this.requests.length + 1,
+      client: 'pi',
+      model: String(body.model ?? ''),
+      tools: tools.filter((t) => /xezar/.test(t)),
+      // Wider than the Anthropic branch's 1 500: the pi dispatch text carries the role instruction
+      // and every row, and a check that looked for a row id must not lose it to a slice.
+      lastText: pending.slice(0, 8_000),
+      decision: tool ? `tool ${tool.name}` : `text ${text.slice(0, 120)}`,
+      isTitle: false,
+    };
+    this.requests.push(entry);
+    this.transcript.line('req', JSON.stringify(entry));
+    const id = `chatcmpl_scripted_${entry.n}`;
+    const created = Math.floor(Date.now() / 1_000);
+    const model = body.model ?? 'scripted-model';
+    const finish = tool ? 'tool_calls' : 'stop';
+    const usage = { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 };
+    const callId = `call_scripted_${entry.n}`;
+    if (!body.stream) {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          id,
+          object: 'chat.completion',
+          created,
+          model,
+          choices: [
+            {
+              index: 0,
+              message: tool
+                ? { role: 'assistant', content: null, tool_calls: [{ id: callId, type: 'function', function: { name: tool.name, arguments: JSON.stringify(tool.input) } }] }
+                : { role: 'assistant', content: text },
+              finish_reason: finish,
+            },
+          ],
+          usage,
+        }),
+      );
+      return;
+    }
+    res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
+    const chunk = (choices: unknown[], extra: Record<string, unknown> = {}): void =>
+      void res.write(`data: ${JSON.stringify({ id, object: 'chat.completion.chunk', created, model, choices, ...extra })}\n\n`);
+    chunk([{ index: 0, delta: { role: 'assistant' }, finish_reason: null }]);
+    if (tool) {
+      chunk([{ index: 0, delta: { tool_calls: [{ index: 0, id: callId, type: 'function', function: { name: tool.name, arguments: JSON.stringify(tool.input) } }] }, finish_reason: null }]);
+    } else {
+      chunk([{ index: 0, delta: { content: text }, finish_reason: null }]);
+    }
+    chunk([{ index: 0, delta: {}, finish_reason: finish }]);
+    chunk([], { usage });
+    res.write('data: [DONE]\n\n');
     res.end();
   }
 
@@ -674,6 +786,11 @@ interface Fixture {
   /** Every A-17 second-client observation, reused by A-23. */
   competing: Partial<Record<ClientName, Check>>;
   reaction: Partial<Record<ClientName, CaseRecord>>;
+  /** pi's one-time extension install, or why there is none (#330 WP5). */
+  piInstall?: PiAdapterInstall;
+  piInstallFailure?: string;
+  /** The one real serve + real pi world the A-18, A-19 and A-20 pi cases share. */
+  piWorld?: PiWorld;
 }
 
 let fx: Fixture;
@@ -706,6 +823,336 @@ const isOccupied = (answer: RpcAnswer | undefined): boolean =>
 const isExpired = (answer: RpcAnswer | undefined): boolean =>
   answer?.error?.code === MCP_SESSION_EXPIRED_CODE && answer.error.data?.reason === MCP_SESSION_EXPIRED_REASON;
 
+// ---- pi (#330 WP5) -------------------------------------------------------------------------
+
+/**
+ * pi is the fourth required client and the only one that is not an MCP client by itself: pi 0.85.1's
+ * own README says "**No MCP**", and the capability comes from the third-party `pi-mcp-adapter`
+ * extension (#330). So its leg has one step the other three do not — install that extension — and
+ * two pins instead of one, because pi reads its whole per-user directory from
+ * `PI_CODING_AGENT_DIR` (#329) and the adapter ALSO reads `~/.config/mcp/mcp.json`, `~/.agents/mcp.json`
+ * and `~/.agents/mcp/mcp.json` from `HOME` (the adapter's `config.ts`). Pinning one and not the other
+ * would let the developer's own configuration into a verdict, which #330's PI-07 names as a falsifier.
+ *
+ * The install writes into a throwaway directory ONCE per run and every scenario copies from there.
+ * The developer's `~/.pi` is never read and never written: not by the install, not by a scenario.
+ */
+const PI_ADAPTER_SPEC = 'npm:pi-mcp-adapter@2.32.1';
+const PI_EXTENSION = join(REPO, 'packages/xezar/scripts/pi-leader-extension.ts');
+
+interface PiAdapterInstall {
+  /** A `PI_CODING_AGENT_DIR` holding `npm/` and a `settings.json` that enables the adapter. */
+  readonly agentDir: string;
+  readonly version: string;
+}
+
+/** Install the adapter once, into a throwaway pi directory. Needs the network; says so when it fails. */
+function installPiAdapter(scratch: string, bin: string): PiAdapterInstall | { absent: string } {
+  const home = realpathSync(mkdtempSync(join(scratch, 'pi-install-home-')));
+  const agentDir = join(home, 'agent');
+  mkdirSync(agentDir, { recursive: true });
+  const transcript = new Transcript('a01-pi-install');
+  transcript.line('$', `${bin} install ${PI_ADAPTER_SPEC}   (HOME and PI_CODING_AGENT_DIR pinned)`);
+  try {
+    const out = execFileSync(bin, ['install', PI_ADAPTER_SPEC], {
+      cwd: home,
+      encoding: 'utf8',
+      timeout: 300_000,
+      env: piEnv(home, agentDir),
+    });
+    for (const line of out.split('\n').filter(Boolean)) transcript.line('out', line);
+  } catch (err) {
+    const reason = err instanceof Error ? err.message.split('\n').slice(0, 2).join(' ') : String(err);
+    transcript.line('err', reason);
+    return { absent: `\`pi install ${PI_ADAPTER_SPEC}\` failed (it needs the network): ${reason}` };
+  }
+  // Proof the pin held, not an assumption: the package and the settings that enable it must both be
+  // inside the pinned directory. If they are not, pi wrote somewhere else and the leg is NOT-RUN.
+  const settingsPath = join(agentDir, 'settings.json');
+  if (!existsSync(settingsPath) || !existsSync(join(agentDir, 'npm'))) {
+    return { absent: `pi install wrote no settings.json or npm/ inside the pinned PI_CODING_AGENT_DIR — refusing to go on with a possibly real pi configuration` };
+  }
+  let version = PI_ADAPTER_SPEC;
+  try {
+    version = String(JSON.parse(readFileSync(join(agentDir, 'npm/node_modules/pi-mcp-adapter/package.json'), 'utf8')).version);
+  } catch {
+    /* the spec above stands as the recorded version */
+  }
+  return { agentDir, version };
+}
+
+/** pi's environment: `env -i`-like, with both homes pinned and no network at startup. */
+function piEnv(home: string, agentDir: string): NodeJS.ProcessEnv {
+  return {
+    PATH: process.env.PATH ?? '',
+    HOME: home,
+    PI_CODING_AGENT_DIR: agentDir,
+    PI_OFFLINE: '1',
+    PI_TELEMETRY: '0',
+    TERM: 'dumb',
+    LANG: process.env.LANG ?? 'en_US.UTF-8',
+    // A Unix socket path is capped at ~104 bytes and the leader extension puts its private directory
+    // in `os.tmpdir()`; this repository's own task temporary directory is already 78 of them, so an
+    // inherited `TMPDIR` leaves no room and the extension correctly opens nothing.
+    TMPDIR: '/tmp',
+  };
+}
+
+interface PiClientHome {
+  readonly home: string;
+  readonly agentDir: string;
+  readonly env: NodeJS.ProcessEnv;
+  /** `provider/model` for `--model`, and the bare id the request names — unique per pi, so one
+   *  endpoint can still answer "how many requests has THIS pi made". */
+  readonly modelId: string;
+  readonly modelName: string;
+}
+
+/**
+ * A pi installation of its own: the adapter copied in (never the developer's), a scripted provider,
+ * and the xezar MCP entry D-04 § 3 documents. A COLD adapter cache every time, which is what makes a
+ * refusal observable — with a warm cache the adapter registers its cached tools and connects lazily.
+ */
+function makePiHome(label: string, install: PiAdapterInstall, opts: { xezHome: string; endpointPort: number; keepAlive?: boolean }): PiClientHome {
+  const home = realpathSync(mkdtempSync(join(fx.scratch, `pi-${label}-`)));
+  const agentDir = join(home, 'agent');
+  mkdirSync(agentDir, { recursive: true });
+  cpSync(join(install.agentDir, 'npm'), join(agentDir, 'npm'), { recursive: true });
+  cpSync(join(install.agentDir, 'settings.json'), join(agentDir, 'settings.json'));
+  // A model id of its own per pi, so "how many requests has THIS pi made" is answerable from the one
+  // endpoint's log. A-19 turns on that count being 0 before the event, and every pi in the run shares
+  // the endpoint — a run-wide count would read the A-01 leg's turns as this pi's polling.
+  const model = `scripted-${label}-model`;
+  writeFileSync(
+    join(agentDir, 'models.json'),
+    `${JSON.stringify(
+      {
+        providers: {
+          scripted: {
+            name: 'scripted fixture endpoint',
+            baseUrl: `http://127.0.0.1:${opts.endpointPort}/v1`,
+            apiKey: 'dummy-not-a-credential',
+            api: 'openai-completions',
+            models: [{ id: model, name: model, contextWindow: 128_000, maxTokens: 4_096 }],
+          },
+        },
+      },
+      null,
+      2,
+    )}\n`,
+    { encoding: 'utf8', mode: 0o600 },
+  );
+  const cmd = bridgeCommand();
+  writeFileSync(
+    join(agentDir, 'mcp.json'),
+    `${JSON.stringify(
+      {
+        settings: { directTools: true },
+        mcpServers: {
+          xezar: {
+            command: cmd.command,
+            args: cmd.args,
+            env: { XEZ_HOME: opts.xezHome, XEZ_DRY_RUN: '1' },
+            // WP1 measured why this key is part of the documented setup: with the adapter's default
+            // 10-minute `idleTimeout` it closes an idle bridge, which releases the project, and
+            // another client then takes it.
+            ...(opts.keepAlive === false ? {} : { lifecycle: 'keep-alive' }),
+          },
+        },
+      },
+      null,
+      2,
+    )}\n`,
+    { encoding: 'utf8', mode: 0o600 },
+  );
+  return { home, agentDir, env: piEnv(home, agentDir), modelId: `scripted/${model}`, modelName: model };
+}
+
+/**
+ * A real `pi --mode rpc` peer over its own stdio. pi's framing is not the bridge's: ids are strings,
+ * an answer is `{type:'response', id, success, data}` and everything else is one of pi's events, so
+ * `LineRpc` (numeric ids, `result`/`error`) cannot read it.
+ */
+class PiRpc {
+  readonly child: ChildProcess;
+  readonly events: any[] = [];
+  private readonly pending = new Map<string, (answer: { success: boolean; data?: any; error?: any }) => void>();
+  private readonly transcript: Transcript;
+  private buffer = '';
+  private nextId = 0;
+  readonly exited: Promise<void>;
+
+  constructor(bin: string, args: readonly string[], opts: { cwd: string; env: NodeJS.ProcessEnv; transcript: Transcript }) {
+    this.transcript = opts.transcript;
+    opts.transcript.line('$', `${bin} ${args.join(' ')}   (cwd ${opts.cwd})`);
+    this.child = spawn(bin, [...args], { cwd: opts.cwd, env: { ...opts.env, PWD: opts.cwd }, stdio: ['pipe', 'pipe', 'pipe'] });
+    children.add(this.child);
+    this.child.stdout!.setEncoding('utf8');
+    this.child.stdout!.on('data', (chunk: string) => this.push(chunk));
+    this.child.stderr!.on('data', (chunk: Buffer) => {
+      for (const line of chunk.toString('utf8').split('\n').filter(Boolean)) opts.transcript.line('err', line);
+    });
+    this.child.stdin!.on('error', () => {
+      /* a peer that died mid-write is reported by `exited` */
+    });
+    this.exited = new Promise((done) =>
+      this.child.on('exit', (code, signal) => {
+        children.delete(this.child);
+        opts.transcript.line('exit', `code=${code} signal=${signal}`);
+        for (const settle of this.pending.values()) settle({ success: false, error: { message: `pi exited (${code ?? signal})` } });
+        this.pending.clear();
+        done();
+      }),
+    );
+  }
+
+  private push(text: string): void {
+    this.buffer += text;
+    let nl: number;
+    while ((nl = this.buffer.indexOf('\n')) >= 0) {
+      const line = this.buffer.slice(0, nl).replace(/\r$/, '');
+      this.buffer = this.buffer.slice(nl + 1);
+      if (!line.trim()) continue;
+      let message: any;
+      try {
+        message = JSON.parse(line);
+      } catch {
+        this.transcript.line('raw', line.slice(0, 400));
+        continue;
+      }
+      // `message_update` is one frame per token; logging every one buries the transcript.
+      if (message?.type !== 'message_update') this.transcript.line('<-', line.slice(0, 1_000));
+      const id = typeof message?.id === 'string' ? message.id : undefined;
+      if (message?.type === 'response' && id !== undefined && this.pending.has(id)) {
+        this.pending.get(id)!({ success: message.success === true, data: message.data, error: message.error });
+        this.pending.delete(id);
+        continue;
+      }
+      this.events.push(message);
+    }
+  }
+
+  request(type: string, extra: Record<string, unknown> = {}, timeoutMs = 60_000): Promise<{ success: boolean; data?: any; error?: any }> {
+    const id = `xez118-${++this.nextId}`;
+    return new Promise((done) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        done({ success: false, error: { message: `pi did not answer ${type} within ${timeoutMs} ms` } });
+      }, timeoutMs);
+      this.pending.set(id, (answer) => {
+        clearTimeout(timer);
+        done(answer);
+      });
+      const line = JSON.stringify({ id, type, ...extra });
+      this.transcript.line('->', line.slice(0, 1_000));
+      this.child.stdin!.write(`${line}\n`);
+    });
+  }
+
+  /** Every notice the adapter pushed into pi's UI channel — where a connection refusal shows up. */
+  notices(): string[] {
+    return this.events
+      .filter((e) => e?.type === 'extension_ui_request' && typeof e.message === 'string')
+      .map((e) => String(e.message));
+  }
+
+  async close(): Promise<void> {
+    this.child.stdin!.end();
+    const quit = await Promise.race([this.exited.then(() => true), delay(5_000, false, { ref: false })]);
+    if (!quit) await stop(this.child);
+  }
+}
+
+/**
+ * ONE real `xezar serve` with ONE real pi holding BOTH legs, shared by the A-18, A-19 and A-20 pi
+ * cases. Both legs on one process is #330's PI-04 and it is not tidiness: delivery needs an MCP
+ * session that OWNS the project (`LeaderDelivery`'s `no-owner-session` blocker), and the session that
+ * owns it here is pi's own `pi-mcp-adapter` connection. So the client leg is the precondition of the
+ * reaction leg, and a pi that had only one of them could not be measured for A-19 at all.
+ */
+interface PiWorld {
+  readonly serve: ServeHandle;
+  readonly rpc: PiRpc;
+  readonly root: string;
+  readonly transcript: Transcript;
+  /** The descriptor the extension wrote, as read from disk. */
+  readonly descriptor: unknown;
+  /** `POST /api/v1/mcp/leader {attach, pi}`. */
+  readonly attach: { status: number; json: any };
+  /** The leader status once an owner session exists — `blocker: null` is the ready state. */
+  readonly ready: any;
+  /** Model requests pi had made by the time the world was ready. A-19 needs this to be 0. */
+  readonly requestsWhenReady: number;
+  readonly modelRequests: () => number;
+  /** This pi's requests from index `from`, oldest first. */
+  readonly requestsSince: (from: number) => ModelRequest[];
+  readonly pi: PiClientHome;
+}
+
+async function startPiWorld(): Promise<PiWorld> {
+  const resolved = fx.clients.pi!;
+  const base = mkdtempSync(join(fx.scratch, 'pi-world-'));
+  const root = makeRepo(base, 'project-pi');
+  const home = join(base, 'home');
+  const serve = await startServe(root, home, 'pi-world-serve', join(base, 'agent-home'));
+  const transcript = new Transcript('pi-world-rpc');
+  const pi = makePiHome('world', fx.piInstall!, { xezHome: home, endpointPort: fx.endpoint.port });
+  // The leader extension is xezar's own shipped file, loaded the way its own documentation says.
+  const rpc = new PiRpc(resolved.bin, piArgs(pi, ['--extension', PI_EXTENSION]), { cwd: root, env: pi.env, transcript });
+  const descriptorPath = join(root, '.local/xezar/pi-leader.json');
+  const descriptorRaw = await waitFor('the pi leader extension to announce itself', () => (existsSync(descriptorPath) ? readFileSync(descriptorPath, 'utf8') : undefined), 120_000).catch(() => undefined);
+  const descriptor = descriptorRaw === undefined ? undefined : (JSON.parse(descriptorRaw) as unknown);
+  // pi's own MCP connection is what makes an owner session exist. A cold cache connects at start.
+  await waitFor('pi-mcp-adapter to connect the xezar entry', () => rpc.notices().find((m) => /MCP: .*servers? connected|MCP: Failed to connect/.test(m)), 120_000).catch(() => undefined);
+  const attach = await cockpit(serve, '/api/v1/mcp/leader', 'POST', { action: 'attach', client: 'pi' });
+  const ready = await waitFor(
+    'the leader to have both a session and an owner',
+    async () => {
+      const status = await cockpit(serve, '/api/v1/mcp/leader');
+      return status.json?.blocker === null ? status.json : undefined;
+    },
+    60_000,
+  ).catch(async () => (await cockpit(serve, '/api/v1/mcp/leader')).json);
+  // THIS pi's requests, by its own model id: every pi in the run shares the endpoint, and a run-wide
+  // count would read the A-01 leg's turns as this session's polling.
+  const mine = (): ModelRequest[] => fx.endpoint.requests.filter((r) => r.model === pi.modelName);
+  return { serve, rpc, pi, root, transcript, descriptor, attach, ready, requestsWhenReady: mine().length, modelRequests: () => mine().length, requestsSince: (from: number) => mine().slice(from) };
+}
+
+/** The world, built once and only if a pi case needs it. */
+async function piWorld(): Promise<PiWorld> {
+  fx.piWorld ??= await startPiWorld();
+  return fx.piWorld;
+}
+
+/** Wait until pi has settled every turn it started, so a count is not read mid-turn. */
+async function piQuiet(rpc: PiRpc, ms: number): Promise<void> {
+  const starts = (): number => rpc.events.filter((e) => e?.type === 'agent_start').length;
+  const settles = (): number => rpc.events.filter((e) => e?.type === 'agent_settled').length;
+  const deadline = Date.now() + ms;
+  while (Date.now() < deadline) {
+    if (starts() > 0 && starts() === settles()) return;
+    await delay(250);
+  }
+}
+
+/** pi's arguments: the mode xezar's own pi runner uses, with nothing of the host's session state. */
+function piArgs(pi: PiClientHome, extra: readonly string[] = []): string[] {
+  return [
+    '--mode',
+    'rpc',
+    '--offline',
+    '--no-session',
+    '--no-skills',
+    '--no-prompt-templates',
+    '--no-themes',
+    '--no-context-files',
+    '--model',
+    pi.modelId,
+    ...extra,
+  ];
+}
+
 const OWNERSHIP_GAP =
   'exclusive ownership over a live MCP session is not wired: nothing in the running service calls `ProjectOwnership` (src/workspace/project-owner.ts), and the bridge opens one socket connection per tool call (src/mcp/bridge.ts), so no session exists whose close could be observed — `initialize` is answered by the bridge without ever reaching the service. Leader decision: Phase 6 bridge protocol change, out of release 0.14.0';
 
@@ -734,6 +1181,7 @@ before(async () => {
     'claude-code': resolveClient('claude', 'CLAUDE_CONFIG_DIR', ['--version']),
     codex: resolveClient('codex', 'CODEX_HOME', ['--version']),
     opencode: resolveClient('opencode', 'OPENCODE_CONFIG_DIR', ['--version']),
+    pi: resolveClient('pi', 'PI_CODING_AGENT_DIR', ['--version']),
   } as const;
   for (const name of CLIENTS) {
     const hit = found[name];
@@ -741,6 +1189,17 @@ before(async () => {
     else clients[name] = hit;
   }
   fx = { world, scratch, endpoint, clients, absent, setup: {}, competing: {}, reaction: {} };
+  // pi's one extra one-time step, once for the whole run. A failure is NOT-RUN for pi and changes
+  // nothing for the other three: the extension is where pi's MCP capability lives, so without it
+  // there is no pi MCP client to measure and saying so is the honest answer (#330 PI-08).
+  if (clients.pi) {
+    const installed = installPiAdapter(scratch, clients.pi.bin);
+    if ('absent' in installed) {
+      fx.piInstallFailure = installed.absent;
+      absent.pi = installed.absent;
+      delete clients.pi;
+    } else fx.piInstall = installed;
+  }
   writeFileSync(
     join(OUT, 'environment.json'),
     `${JSON.stringify(
@@ -751,10 +1210,12 @@ before(async () => {
         dist: { path: 'packages/xezar/dist/index.js', mtime: statSync(DIST_CLI).mtime.toISOString() },
         xezarVersionInWorld: XEZAR_VERSION,
         clients: Object.fromEntries(CLIENTS.map((c) => [c, clients[c] ? { version: clients[c]!.version, refusedCandidates: clients[c]!.refused } : { absent: absent[c] }])),
+        piMcpAdapter: fx.piInstall ? { spec: PI_ADAPTER_SPEC, version: fx.piInstall.version } : { absent: fx.piInstallFailure ?? absent.pi },
         fixture: {
           world: 'test/helpers/ab-fixture.ts createAbWorld({}) — A and B, XEZ_DRY_RUN=1, stubbed provider auth',
-          model: 'scripted local Anthropic-Messages endpoint in the harness process (not a model)',
+          model: 'scripted local endpoint in the harness process (not a model): Anthropic Messages for Claude Code and OpenCode, OpenAI chat-completions for pi',
           bridgeCommand: 'node packages/xezar/dist/index.js mcp (instead of `npx -y @qodeca/xezar mcp`)',
+          piLeaderExtension: 'packages/xezar/scripts/pi-leader-extension.ts, loaded with `pi --extension` (the A-19/A-20 pi cases only)',
         },
       },
       null,
@@ -764,6 +1225,9 @@ before(async () => {
 });
 
 after(async () => {
+  // pi first and by its own handle: its stdin is how it is asked to leave, and the extension's
+  // `session_shutdown` is what removes the descriptor and its private 0700 directory.
+  await fx?.piWorld?.rpc.close().catch(() => undefined);
   for (const child of [...children]) await stop(child);
   fx?.endpoint.close();
   writeFileSync(join(OUT, 'results.json'), `${JSON.stringify({ revision: REVISION, stamp: STAMP, results }, null, 2)}\n`);
@@ -971,6 +1435,64 @@ async function setupLeg(client: ClientName, resolved: ResolvedClient): Promise<C
     fixture.turn = 'opencode run --model scripted/scripted-model; provider @ai-sdk/anthropic at the scripted endpoint; dummy key';
   }
 
+  if (client === 'pi') {
+    const install = fx.piInstall!;
+    const pi = makePiHome('a01', install, { xezHome: world.home, endpointPort: endpoint.port });
+    // Proof the pins held BEFORE a turn runs, the same rule Claude Code's and Codex's legs follow:
+    // both files pi reads for this must be inside the pinned directory, and `HOME` must be the
+    // throwaway one. Otherwise the leg is NOT-RUN rather than a verdict on someone's real pi.
+    const inside = realpathSync(pi.agentDir).startsWith(pi.home) && existsSync(join(pi.agentDir, 'mcp.json')) && existsSync(join(pi.agentDir, 'npm/node_modules/pi-mcp-adapter'));
+    checks.push({
+      name: `one-time step (\`pi install ${PI_ADAPTER_SPEC}\` + the mcp.json entry)`,
+      required: 'the extension and the entry are both inside the pinned PI_CODING_AGENT_DIR',
+      observed: { adapter: install.version, agentDir: '<home>/agent', entry: 'mcp.json (directTools, lifecycle keep-alive)' },
+      ok: inside,
+    });
+    if (!inside) return notRun(client, 'pi did not keep its installation inside the pinned PI_CODING_AGENT_DIR — refusing to go on with a possibly real configuration', checks, transcript, fixture);
+    configText = readFileSync(join(pi.agentDir, 'mcp.json'), 'utf8');
+    setupFiles = ['<home>/agent/settings.json (the `packages` list)', '<home>/agent/mcp.json (the xezar entry)'];
+    const rpc = new PiRpc(resolved.bin, piArgs(pi), { cwd: world.a.root, env: pi.env, transcript });
+    try {
+      // The handshake is the adapter's own: it connects at start with a cold cache and says how many
+      // tools it registered. pi has no `mcp list` command, so this notice IS the handshake evidence.
+      const notice = await waitFor(
+        'the pi-mcp-adapter connection notice',
+        () => rpc.notices().find((m) => /MCP: .*servers connected|MCP: Failed to connect/.test(m)),
+        120_000,
+      ).catch(() => undefined);
+      checks.push({
+        name: 'handshake (pi-mcp-adapter connects the entry)',
+        required: '1 server connected, with the bridge’s tools registered',
+        observed: notice ?? rpc.notices().slice(0, 4),
+        ok: notice !== undefined && /1 servers? connected \(\d+ tools?\)/.test(notice),
+      });
+      for (const prompt of ['CALL health', 'CALL task_read']) {
+        const from = endpoint.requests.length;
+        const answer = await rpc.request('prompt', { message: prompt }, 30_000);
+        if (!answer.success) {
+          reached.push(`(pi refused the prompt: ${JSON.stringify(answer.error).slice(0, 160)})`);
+          continue;
+        }
+        // The turn is done when pi says so; a fixed sleep would either be slow or race.
+        const settledBefore = rpc.events.filter((e) => e?.type === 'agent_settled').length;
+        await waitFor('pi to settle its turn', () => (rpc.events.filter((e) => e?.type === 'agent_settled').length > settledBefore ? true : undefined), 120_000).catch(() => undefined);
+        reached.push(...endpoint.toolResultsSince(from));
+      }
+      // PI-04's second half, on the SAME process: the model is really offered every xezar tool.
+      const offered = [...new Set(endpoint.requests.flatMap((r) => (r.model === pi.modelName ? r.tools : [])))].sort();
+      checks.push({
+        name: 'the model is offered the bridge’s tools as first-class tools',
+        required: 'every xezar tool in the model’s tool list (the adapter’s `directTools` mode)',
+        observed: offered,
+        ok: offered.length >= 11 && offered.includes('xezar_health') && offered.includes('xezar_task_read') && offered.includes('xezar_leader_events'),
+      });
+    } finally {
+      await rpc.close();
+    }
+    fixture.turn = 'pi --mode rpc (the mode xezar’s pi runner uses); RPC `prompt`; provider `scripted` at the scripted OpenAI-completions endpoint; dummy key';
+    fixture.piMcpAdapter = install.version;
+  }
+
   const joined = reached.join('\n');
   // A client shows the health result either as its text ("… for project alpha project (alpha-proj).")
   // or as its structured content (`"project":{"id":"alpha-proj",…}`); both name A's id.
@@ -1039,7 +1561,10 @@ describe('A-17 — only the competing owner is rejected', () => {
       client: '(real bridge processes)',
       verdict: verdictOf(checks),
       summary: isOccupied(second.init) ? 'the second client was refused' : 'a second logical client of A was admitted and could write; same-owner concurrency and project B work',
-      missing: OWNERSHIP_GAP,
+      // Only when the check really failed. `OWNERSHIP_GAP` names a source fact ("nothing calls
+      // `ProjectOwnership`"), and printing it beside a refusal that DID happen would publish a false
+      // claim about the revision under test — #302 wired ownership after the first run of this file.
+      ...(isOccupied(second.init) ? {} : { missing: OWNERSHIP_GAP }),
       checks,
       transcripts: ['a17-owner-bridge.log', 'a17-second-bridge.log', 'a17-project-b-bridge.log'],
       fixture: { world: 'A/B world', owner: 'xez mcp process in A', second: 'xez mcp process in A', other: 'xez mcp process in B' },
@@ -1072,7 +1597,7 @@ describe('A-17 — only the competing owner is rejected', () => {
         client,
         verdict: verdictOf([check]),
         summary: observed.refused ? 'refused as occupied' : `admitted as a second client while A had a live owner: ${observed.text.slice(0, 160)}`,
-        missing: OWNERSHIP_GAP,
+        ...(observed.refused ? {} : { missing: OWNERSHIP_GAP }),
         checks: [check],
         transcripts: [transcript.name, `a17-owner-for-${client}.log`],
         fixture: { owner: 'a live xez mcp process in A', client: `${resolved.bin} (${resolved.version}), the A-01 setup` },
@@ -1111,6 +1636,35 @@ async function competeAs(client: ClientName, resolved: ResolvedClient, transcrip
       return { refused: /occupied|-32080/i.test(text), text: `organise_work pin → ${text.slice(0, 200)}` };
     } finally {
       await app.close();
+    }
+  }
+  if (client === 'pi') {
+    // A COLD adapter cache, which is the condition under which a refusal is observable at all: WP1
+    // measured that a warm cache registers the cached tools and answers the first call
+    // `MCP server "xezar" not available`, with the occupied reason reaching nobody.
+    const pi = makePiHome('a17', fx.piInstall!, { xezHome: world.home, endpointPort: fx.endpoint.port });
+    const rpc = new PiRpc(resolved.bin, piArgs(pi), { cwd: world.a.root, env: pi.env, transcript });
+    try {
+      await waitFor('the pi-mcp-adapter connection notice', () => rpc.notices().find((m) => /MCP: /.test(m)), 120_000).catch(() => undefined);
+      const notices = rpc.notices();
+      const occupied = notices.filter((m) => /occupied|-32080/i.test(m));
+      // "Gets no tool access" is the other half of the criterion, and it needs one turn to observe:
+      // with the connection refused the model is offered no xezar tool and the call finds none.
+      const from = fx.endpoint.requests.length;
+      const answer = await rpc.request('prompt', { message: 'CALL health' }, 30_000);
+      if (answer.success) {
+        const settledBefore = rpc.events.filter((e) => e?.type === 'agent_settled').length;
+        await waitFor('pi to settle its turn', () => (rpc.events.filter((e) => e?.type === 'agent_settled').length > settledBefore ? true : undefined), 120_000).catch(() => undefined);
+      }
+      const offered = fx.endpoint.requests.slice(from).flatMap((r) => r.tools);
+      const results = fx.endpoint.toolResultsSince(from).join(' ');
+      const reachedA = results.includes(PROJECT_A);
+      return {
+        refused: occupied.length > 0 && !reachedA,
+        text: `notices ${JSON.stringify(notices.slice(0, 3))}; xezar tools offered to the model: ${offered.length}; reached A: ${reachedA}`,
+      };
+    } finally {
+      await rpc.close();
     }
   }
   const env = isolatedEnv(home, { OPENCODE_CONFIG_DIR: join(home, 'cfg') });
@@ -1169,11 +1723,64 @@ describe('A-18 — liveness, fencing and restart', () => {
       case: 'A-18',
       client: '(real bridge processes)',
       verdict: verdictOf(checks),
-      summary: 'task survival holds; with no ownership in the product, an idle owner does not keep A, and a stale client’s write is accepted',
-      missing: OWNERSHIP_GAP,
+      summary: checks.every((c) => c.ok) ? 'ownership survives silence, a crash hands over to exactly one successor, the stale owner is fenced, and the task survived' : 'task survival holds; the ownership and fencing checks that did not pass are named below',
+      ...(checks.every((c) => c.ok) ? {} : { missing: OWNERSHIP_GAP }),
       checks,
       transcripts: ['a18-owner-bridge.log', 'a18-intruder-bridge.log', 'a18-successor-bridge.log'],
       fixture: { world: 'A/B world, A’s real RunManager, XEZ_DRY_RUN=1 (`mock:slow` holds the task about 25 s)' },
+    });
+    settle(t, entry);
+  });
+
+  test('[pi] a real pi that owns A keeps it through model silence, and a second client is refused', async (t) => {
+    if (!fx.clients.pi) {
+      const entry = record({ case: 'A-18', client: 'pi', verdict: 'NOT-RUN', summary: fx.absent.pi ?? 'pi not found', checks: [], fixture: {} });
+      return settle(t, entry);
+    }
+    const world = await piWorld();
+    // Silence longer than D-02.5's 5 s renewal interval, with pi connected and making no call at all.
+    // No lease duration is asserted, exactly as the bridge-only A-18 case does not assert one.
+    await delay(6_000);
+    const base = mkdtempSync(join(fx.scratch, 'a18-pi-'));
+    const intruder = await openBridge('a18-pi-intruder-bridge', world.root, isolatedEnv(base, { XEZ_HOME: world.serve.home, XEZ_DRY_RUN: '1' }));
+    const write = isOccupied(intruder.init)
+      ? undefined
+      : await intruder.rpc.request('tools/call', { name: 'task_read', arguments: { view: 'list' } });
+    await intruder.rpc.close();
+    const checks: Check[] = [
+      {
+        name: 'pi owns the project through its own MCP connection',
+        required: 'an owner session exists, so the event controller runs (LeaderDelivery `no-owner-session`)',
+        observed: { blocker: world.ready === undefined ? 'status not read' : world.ready.blocker, delivery: world.ready?.delivery ?? null },
+        ok: world.ready?.blocker === null,
+      },
+      {
+        name: 'model silence does not release the project pi owns',
+        required: `after 6 s of pi making no call, another client's initialize answers ${MCP_PROJECT_OCCUPIED_CODE} / ${MCP_PROJECT_OCCUPIED_REASON} (D-02 § 4)`,
+        observed: intruder.init.error ?? `admitted; its read answered: ${write ? toolText(write).slice(0, 120) : 'n/a'}`,
+        ok: isOccupied(intruder.init),
+      },
+      {
+        name: 'pi made no model request to keep the project',
+        required: 'ownership is renewed by the live connection, not by a turn',
+        observed: `${world.modelRequests()} pi model requests since the world was ready (${world.requestsWhenReady} at that point)`,
+        ok: world.modelRequests() === world.requestsWhenReady,
+      },
+    ];
+    const entry = record({
+      case: 'A-18',
+      client: 'pi',
+      verdict: verdictOf(checks),
+      summary: isOccupied(intruder.init) ? 'pi kept A through 6 s of model silence and a second client was refused as occupied' : 'a second client was admitted while pi owned A',
+      // Not re-run here, and said so rather than claimed: WP1 measured on 5031bf8 that with the
+      // adapter's DEFAULT 10-minute `idleTimeout` the adapter closes an idle bridge (between 601 s
+      // and 661 s), which releases the project, and that `lifecycle: "keep-alive"` — set on this
+      // fixture's entry, as the documented setup says — kept it at 700 s. A 700 s wait per condition
+      // does not belong in this harness.
+      missing: isOccupied(intruder.init) ? 'the adapter\'s 10-minute idle close is NOT re-run here (WP1 measured it on 5031bf8); this entry carries `lifecycle: "keep-alive"`, which is why it is not reached' : OWNERSHIP_GAP,
+      checks,
+      transcripts: [world.transcript.name, 'a18-pi-intruder-bridge.log'],
+      fixture: { serve: 'real xezar serve, XEZ_DRY_RUN=1', pi: `${fx.clients.pi.version} + pi-mcp-adapter ${fx.piInstall!.version}, both legs on one process` },
     });
     settle(t, entry);
   });
@@ -1212,8 +1819,8 @@ describe('A-18 — liveness, fencing and restart', () => {
         case: 'A-18',
         client: '(xezar service restart)',
         verdict: verdictOf(checks),
-        summary: 'work survives a restart and a later call reconnects on its own; no session exists to be fenced',
-        missing: OWNERSHIP_GAP,
+        summary: checks.every((c) => c.ok) ? 'work survives a restart and a pre-restart session is fenced' : 'work survives a restart; the fencing checks that did not pass are named below',
+        ...(checks.every((c) => c.ok) ? {} : { missing: OWNERSHIP_GAP }),
         checks,
         transcripts: ['a18-restart-serve-1.log', 'a18-restart-serve-2.log', 'a18-restart-bridge.log'],
         fixture: { serve: 'real xezar serve, stopped with SIGTERM and started again on the same repo and home' },
@@ -1280,12 +1887,86 @@ describe('A-19 — immediate acceptance, delivery, and a real model reaction', (
     }
   });
 
-  for (const client of CLIENTS) {
+  test('[pi] an idle connected pi’s model reacts to a delivered event without polling', async (t) => {
+    if (!fx.clients.pi) {
+      const entry = record({ case: 'A-19', client: 'pi', verdict: 'NOT-RUN', summary: fx.absent.pi ?? 'pi not found', checks: [], fixture: {} });
+      fx.reaction.pi = entry;
+      return settle(t, entry);
+    }
+    const world = await piWorld();
+    const setup = fx.setup.pi;
+    const before = world.modelRequests();
+    // ONE significant event, caused through the human's door so nothing about it is the leader's own:
+    // a task the person starts and that finishes on its own (E-01 `task.done`, origin `system`).
+    const created = await cockpit(world.serve, '/api/v1/runs', 'POST', { workflow: 'quick-task', task: 'mock:done a task whose completion is the event pi must react to', worktree: false, autonomous: true });
+    const runId: string | undefined = created.json?.id;
+    const finished = await waitFor('the A-19 pi task to finish', async () => ((await runStatus(world.serve, runId)) === 'done' ? 'done' : undefined), 90_000).catch(() => 'not done');
+    // The reaction: a model request pi made, with nobody typing anything.
+    const arrived = await waitFor('a pi model request carrying the event', () => (world.modelRequests() > before ? true : undefined), 90_000).catch(() => undefined);
+    await piQuiet(world.rpc, 60_000);
+    // A status-polling turn would show up as a SECOND request, so the count is read after the turn
+    // settled and again after a quiet window longer than the controller's 30 s heartbeat.
+    const afterTurn = world.modelRequests();
+    await delay(40_000);
+    const afterQuiet = world.modelRequests();
+    const caused = world.requestsSince(before);
+    const carrying = caused.find((r) => r.lastText.includes('[xezar event notification]'));
+    const journal = readJournal(world.root) ?? [];
+    const row = journal.find((r) => r.subject.id === runId && r.kind === 'task.done');
+    const status = await cockpit(world.serve, '/api/v1/mcp/leader');
+    const delivery = status.json?.delivery ?? null;
+    const userMessages = world.rpc.events.filter((e) => e?.type === 'message_start' && e.message?.role === 'user');
+    const checks: Check[] = [
+      { name: 'pi connected with the A-01 setup', required: 'the A-01 pi leg reached A', observed: setup?.verdict ?? 'no A-01 record', ok: setup ? setup.checks.some((c) => c.name.startsWith('the client reaches A') && c.ok === true) : false },
+      { name: 'the reaction target is a real adapter, not the blocker', required: '`attach` accepted and `LeaderDelivery` built a PiReactionAdapter over the extension’s socket', observed: { attach: world.attach.status, leader: world.attach.json?.leader ?? world.attach.json?.error, descriptor: world.descriptor }, ok: world.attach.status === 200 && world.attach.json?.leader?.client === 'pi' },
+      { name: 'immediate acceptance is distinct from the result', required: 'the task is accepted at once and reaches `done` later', observed: { run: created.status, finished }, ok: runId !== undefined && finished === 'done' },
+      { name: 'the event reached the journal', required: 'an E-01 task.done row for it', observed: row ? { eventId: row.eventId, kind: row.kind, origin: row.origin } : `no task.done row among ${journal.length}`, ok: row !== undefined },
+      { name: 'nothing had reached pi’s model before the event', required: '0 model requests while pi sat connected and idle', observed: `${before} pi model requests`, ok: before === 0 },
+      { name: 'delivery is observed: the event was handed to pi as a user message', required: 'the adapter submitted the dispatch through the extension and pi took it into its conversation', observed: userMessages.map((m) => String(m.message?.content?.[0]?.text ?? '').slice(0, 80)), ok: userMessages.some((m) => String(m.message?.content?.[0]?.text ?? '').includes('[xezar event notification]')) },
+      { name: 'a model reaction followed, with nobody typing anything', required: 'pi itself sent a new inference request that CARRIED the event', observed: carrying ? { request: carrying.n, carriesTheRow: row ? carrying.lastText.includes(row.eventId) : 'no row to look for', decision: carrying.decision } : `no request carried the notification among ${caused.length}`, ok: arrived === true && carrying !== undefined && row !== undefined && carrying.lastText.includes(row.eventId) },
+      { name: 'no status-polling turn brought it about', required: 'the event turn is the ONLY model request in the session, and the 30 s heartbeat adds none', observed: { before, afterTurn, afterQuietWindow: afterQuiet, requests: caused.map((r) => `#${r.n} ${r.decision}`) }, ok: afterTurn === before + 1 && afterQuiet === afterTurn },
+      { name: 'the model was still offered every xezar tool in that request (PI-04)', required: 'the reaction turn’s tool list holds the bridge’s tools — both legs on one pi process', observed: carrying?.tools ?? [], ok: (carrying?.tools.length ?? 0) >= 11 },
+      { name: 'delivery and reaction are reported separately, and both advanced', required: 'deliveredSeq and reactedSeq both reach the journal’s latest (§ 6.6)', observed: delivery, ok: delivery !== null && delivery.deliveredSeq >= 1 && delivery.reactedSeq >= 1 && delivery.reactedSeq === delivery.latestSeq },
+      {
+        name: 'a REAL model reaction',
+        required: 'a real model’s turn acts on the delivered event',
+        observed: 'not observable: § 9 forbids personal accounts, so the model here is the scripted OpenAI-completions endpoint. pi really started a turn and really sent an inference request carrying the event; what a real model decides is not measured (OB-5 / PI-4, open for all four clients)',
+        ok: null,
+      },
+    ];
+    const measured = checks.filter((c) => c.ok !== null);
+    const entry = record({
+      case: 'A-19',
+      client: 'pi',
+      verdict: verdictOf(checks),
+      summary: `${measured.filter((c) => c.ok).length} of ${measured.length} measured checks met; ${afterTurn - before} model request(s) caused by the event, ${afterQuiet - afterTurn} more in the quiet window`,
+      missing: 'a REAL model reaction (OB-5 / PI-4), which no § 9 fixture may observe for any client. Everything else in this row was executed.',
+      checks,
+      transcripts: [world.serve.transcript.name, world.transcript.name, 'scripted-model-endpoint.log'],
+      fixture: {
+        serve: 'real xezar serve (dist/index.js), XEZ_DRY_RUN=1',
+        pi: `${fx.clients.pi.version} --mode rpc, both legs on ONE process: pi-mcp-adapter ${fx.piInstall!.version} (the MCP client) and scripts/pi-leader-extension.ts (the reaction link)`,
+        link: 'LeaderDelivery → adapters/pi-link.ts → the extension’s 0700 Unix socket → adapters/pi.ts',
+        model: 'scripted OpenAI-completions endpoint in this process; every request counted there, never read from pi',
+      },
+    });
+    fx.reaction.pi = entry;
+    settle(t, entry);
+  });
+
+  for (const client of CLIENTS_WITHOUT_ADAPTER) {
     test(`[${client}] an idle connected client’s model reacts to a delivered event without polling`, (t) => {
       const setup = fx.setup[client];
       const checks: Check[] = [
         { name: 'client connected with the A-01 setup', required: 'A-01 client leg reached A', observed: setup?.verdict ?? 'no A-01 record', ok: setup ? setup.checks.some((c) => c.name.startsWith('the client reaches A') && c.ok === true) : null },
-        { name: 'delivery to the client is observed', required: 'the service constructs this client’s reaction adapter and delivers a journal row to it', observed: 'the journal fills (see the [product] case above) but nothing in the running service constructs an EventController or any client adapter — read from source: `startMcpService` composes journal, catalog, receipts, echo guard and audit, and no adapter', ok: null },
+        // Corrected for this revision, read from source rather than carried over: `startMcpService`
+        // DOES construct a `LeaderDelivery` and an `EventController` now (#311), and a pi leader is
+        // really delivered to (the `[pi]` case above). What is missing for these three is narrower and
+        // has not moved: `LeaderDelivery.#act` builds a target for `opencode` and `pi` only, and
+        // `mcpLeaderActionInput` (packages/contract/src/mcp-leader.ts) accepts no other client — so no
+        // Claude Code or Codex session can be attached, and a terminal session of either has no
+        // address xezar could attach to. Their verdict is unchanged and was not re-measured here.
+        { name: 'delivery to the client is observed', required: 'the service constructs this client’s reaction adapter and delivers a journal row to it', observed: 'no attach path exists for this client — read from source: `LeaderDelivery.#act` builds a target for `opencode` and `pi` only, and the contract\'s `client` enum is `[\'opencode\', \'pi\']`', ok: null },
         { name: 'a REAL model reaction follows, with no status-polling turn', required: 'a real model’s turn acts on the delivered event', observed: 'not observable: § 9 forbids personal accounts, so every model here is the scripted endpoint — a turn it answers is not a real model’s reaction (the adapter records #108–#110 say the same)', ok: null },
       ];
       if (!fx.clients[client]) {
@@ -1297,8 +1978,8 @@ describe('A-19 — immediate acceptance, delivery, and a real model reaction', (
         case: 'A-19',
         client,
         verdict: 'BLOCKED',
-        summary: 'no delivery path exists in the product, and no real model may be used in a § 9 fixture',
-        missing: 'push delivery and a real model reaction (F-20): the service constructs no EventController or adapter, and no real model has answered a request — leader decision, out of release 0.14.0. Not passed on documentation.',
+        summary: 'no attach path exists for this client, and no real model may be used in a § 9 fixture',
+        missing: 'an adapter and an attach path for this client (F-20): `LeaderDelivery.#act` and the contract\'s `client` enum admit `opencode` and `pi` only, and no real model has answered a request — leader decision, out of release 0.14.0. Not passed on documentation.',
         checks,
         fixture: { client: fx.clients[client]!.version },
       });
@@ -1447,6 +2128,58 @@ describe('A-20 — MCP changes reach the cockpit, human changes reach the leader
       await stop(serve.child);
     }
   });
+
+  /**
+   * A-20's last clause, for pi. It is BLOCKED in the record for the other three "because nothing
+   * delivers rows to a leader, so no loop — or its absence — can be observed". For pi something now
+   * does, so the clause itself is measurable: after a REAL reaction, does the reaction's own effects —
+   * its echo rows, its logs, its tokens — start another turn, and another?
+   *
+   * Measured as quiescence, which is what "no recursive loop" means when the delivery path is live:
+   * one event produced one turn, and the turn's own aftermath produced none, across a window longer
+   * than the controller's own heartbeat. The A-19 pi case must have run first — it is the reaction.
+   */
+  test('[pi] a delivered event’s own reaction starts no further leader turn', async (t) => {
+    if (!fx.clients.pi) {
+      const entry = record({ case: 'A-20', client: 'pi', verdict: 'NOT-RUN', summary: fx.absent.pi ?? 'pi not found', checks: [], fixture: {} });
+      return settle(t, entry);
+    }
+    const reaction = fx.reaction.pi;
+    if (!reaction || reaction.verdict === 'NOT-RUN') {
+      const entry = record({ case: 'A-20', client: 'pi', verdict: 'NOT-RUN', summary: 'the A-19 pi reaction did not run, so there is no reaction whose aftermath could loop', checks: [], fixture: {} });
+      return settle(t, entry);
+    }
+    const world = await piWorld();
+    const settledBefore = world.modelRequests();
+    const journalBefore = (readJournal(world.root) ?? []).length;
+    // Longer than the 30 s heartbeat, with the leader attached, the project owned and the journal
+    // holding the row pi already reacted to.
+    await delay(45_000);
+    const after = world.modelRequests();
+    const status = await cockpit(world.serve, '/api/v1/mcp/leader');
+    const delivery = status.json?.delivery ?? null;
+    const journal = readJournal(world.root) ?? [];
+    const leaderRows = journal.filter((r) => r.origin === 'leader');
+    const checks: Check[] = [
+      { name: 'the delivery path is live for this leader', required: 'attached, owned, and no blocker', observed: { leader: status.json?.leader, blocker: status.json?.blocker }, ok: status.json?.leader?.client === 'pi' && status.json?.blocker === null },
+      { name: 'the reaction happened', required: 'A-19 for pi recorded a model request that carried the event', observed: { case: reaction.verdict, reactionCheck: reaction.checks.find((c) => c.name.startsWith('a model reaction followed'))?.ok ?? 'not recorded' }, ok: reaction.checks.some((c) => c.name.startsWith('a model reaction followed') && c.ok === true) },
+      { name: 'no recursive leader loop from echoes, logs, tokens or visual changes', required: 'over a window longer than the 30 s heartbeat, the reaction’s own aftermath starts no further model request', observed: { requestsBefore: settledBefore, requestsAfter: after, windowMs: 45_000, journalRows: `${journalBefore} → ${journal.length}`, leaderOriginRows: leaderRows.map((r) => r.kind) }, ok: after === settledBefore },
+      { name: 'the cursors came to rest', required: 'reactedSeq equals latestSeq and the controller is idle, so nothing is owed and nothing is retried', observed: delivery, ok: delivery !== null && delivery.reactedSeq === delivery.latestSeq && delivery.state === 'idle' },
+    ];
+    const entry = record({
+      case: 'A-20',
+      client: 'pi',
+      verdict: verdictOf(checks),
+      summary: after === settledBefore ? `quiet for 45 s after a real reaction: ${after} model requests in the session's whole life, cursors at rest` : `the session kept asking the model: ${settledBefore} → ${after}`,
+      checks,
+      transcripts: [world.serve.transcript.name, world.transcript.name],
+      fixture: {
+        note: 'the cockpit half of A-20 and the rest of its leader half are not client-specific; this case measures ONLY the clause the record has as BLOCKED for want of a delivery path',
+        browserHalf: 'packages/web/e2e/mcp-live-sync.e2e.ts',
+      },
+    });
+    settle(t, entry);
+  });
 });
 
 // ---- A-23: native client vs another owner; three clients --------------------------------
@@ -1473,7 +2206,13 @@ describe('A-23 — one exclusive owner across clients; Claude Code, Codex and Op
         client,
         verdict: verdictOf(checks),
         summary: `setup ${setup?.verdict ?? 'n/a'}; reaction ${reaction?.verdict ?? 'n/a'}; exclusivity ${competing?.ok ? 'held' : 'not enforced'}`,
-        missing: `${OWNERSHIP_GAP}. Reaction: see A-19. The built-in leader half is out of scope (#118: the built-in leader is specified separately) and was NOT RUN; a second native client stood in as "the other owner"`,
+        missing: [
+          competing?.ok ? undefined : OWNERSHIP_GAP,
+          'Reaction: see A-19',
+          'The built-in leader half is out of scope (#118: the built-in leader is specified separately) and was NOT RUN; a second native client stood in as "the other owner"',
+        ]
+          .filter(Boolean)
+          .join('. '),
         checks,
         fixture: { derivedFrom: ['A-01', 'A-17', 'A-19'] },
       });
