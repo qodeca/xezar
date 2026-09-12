@@ -1,7 +1,10 @@
 import type { McpJournalRow, McpLeaderActionInput, McpLeaderBlocker, McpLeaderSession, McpLeaderStatus } from '@qodeca/xezar-contract';
 
+import { projectDataDir } from '../project-data-paths.ts';
 import type { ProjectOwnership } from '../workspace/project-owner.ts';
 import { OpenCodeReactionAdapter } from './adapters/opencode.ts';
+import { connectPiLeaderLink, type PiLeaderDescriptor, type PiLeaderLink, readPiLeaderDescriptor } from './adapters/pi-link.ts';
+import { type PiReactionAdapter, type PiReactionTarget, piReactionTarget } from './adapters/pi.ts';
 import type { EchoGuard } from './echo-guard.ts';
 import { EventController, type CursorAdvance, type DeliveryReceipt, type EventDispatch, type LeaderRecord, type ReactionAdapter } from './event-controller.ts';
 import type { EventJournal } from './event-journal.ts';
@@ -19,14 +22,24 @@ import type { LeaderActResult, ProjectLeaderPort } from './project-leaders.ts';
  * a dispatcher following the journal for it.
  *
  * WHO IT CAN REACH, AND WHY ONLY THEM. A dispatch must reach a MODEL, and generic MCP notifications
- * start no turn in Claude Code, Codex or OpenCode (D-05 § 4; each adapter's evidence record). xezar
- * NEVER starts an agent process for a leader (owner decision on #311): the person runs their own
- * leader and connects it to xezar over MCP. So an event reaches a model only through a session the
- * person runs AND tells xezar where to find — `attach`, today an OpenCode `serve` session (#110).
- * A Claude Code or Codex session in a terminal has no address to attach to: for it the controller
+ * start no turn in Claude Code, Codex, OpenCode or pi (D-05 § 4; #330 run A for pi; each adapter's
+ * evidence record). xezar NEVER starts an agent process for a leader (owner decision on #311): the
+ * person runs their own leader and connects it to xezar over MCP. So an event reaches a model only
+ * through a session the person runs AND tells xezar where to find — `attach`. Two clients can be
+ * told today:
+ *
+ *  - **OpenCode** names an `opencode serve` session by URL and session id (#110).
+ *  - **pi** names nothing, because it cannot: pi's RPC is stdio-only and spawn-only, so a pi the
+ *    person started has no address. The address therefore comes from INSIDE it — xezar's pi leader
+ *    extension opens a socket and announces it in the project's data directory, and `#piTarget()`
+ *    dials that (#330 WP2, `adapters/pi-link.ts`). With no extension running there is no descriptor
+ *    and the attach is refused with pi's own recoverable reason, which is exactly the behaviour that
+ *    existed before the extension did.
+ *
+ * A Claude Code or Codex session in a terminal still has no address at all: for it the controller
  * keeps the rows in the journal, reports `disconnected`, retries at its heartbeat, and
- * `status().blocker` says so. Nothing is lost: that leader reads its events with the `leader_events`
- * tool (#251), and the next session resumes after the leader's last acknowledgement.
+ * `status().blocker` says so. Nothing is lost either way — such a leader reads its events with the
+ * `leader_events` tool (#251), and the next session resumes after its last acknowledgement.
  *
  * THE ECHO GUARD HOLDS HERE, FOR EVERY CLIENT. The door records each mutation's operation id as the
  * leader's own before it runs (`EchoGuard.issue`, #106), including the ids it mints for tools that
@@ -54,7 +67,11 @@ import type { LeaderActResult, ProjectLeaderPort } from './project-leaders.ts';
  *
  * Leader states: none → attached (`act` attach); attached → none (`act` stop, or the service
  * closing). An attached OpenCode session that goes away is the adapter's own recoverable blocker,
- * reported by `status()`; the controller retries it at the heartbeat.
+ * reported by `status()`; the controller retries it at the heartbeat. A pi leader that goes away
+ * takes its socket with it, which closes the link and reports the same way.
+ *
+ * What xezar OPENS to reach a leader is released on every one of those exits: `#detach` closes the
+ * adapter and then its `dispose` (pi's socket today), and `close()` goes through `#detach`.
  *
  * What reaches a terminal state BECAUSE of this module: its controllers. No process, run, lease,
  * queue slot or worktree — it starts nothing and stops nothing but its own objects.
@@ -70,7 +87,7 @@ export const LEADER_ROLE_INSTRUCTION = [
 const NO_LEADER: McpLeaderBlocker = {
   code: 'no-leader-session',
   message:
-    'No leader session is attached to this project, so events are kept in the journal, not pushed. A Claude Code or Codex session in a terminal has no address xezar can attach to, and MCP notifications start no turn — that leader reads its events with the leader_events tool.',
+    'No leader session is attached to this project, so events are kept in the journal, not pushed. A Claude Code, Codex or pi session in a terminal has no address xezar can attach to, and MCP notifications start no turn — that leader reads its events with the leader_events tool.',
   fix: 'Keep using leader_events from your own leader, or attach the OpenCode session you run with `opencode serve`.',
 };
 
@@ -132,6 +149,17 @@ export interface LeaderDeliveryOptions {
   readonly warn: (message: string) => void;
   /** Test seam. Production uses the controller's 30 s. */
   readonly heartbeatMs?: number;
+  /**
+   * Where this project's state lives, for the pi leader descriptor (`adapters/pi-link.ts`). Absent
+   * it is DERIVED from `projectRoot`, which is what the service already does, so nothing upstream
+   * has to pass it for pi attach to work. A store with a relocated `dataDir` may pass its own.
+   */
+  readonly dataDir?: string;
+  /** Test seams for the pi link, so a case never touches a real socket. Production uses the module. */
+  readonly piLeader?: {
+    read?: (dataDir: string) => ReturnType<typeof readPiLeaderDescriptor>;
+    connect?: (descriptor: PiLeaderDescriptor, opts: { warn?: (message: string) => void }) => PiLeaderLink;
+  };
 }
 
 /**
@@ -141,11 +169,30 @@ export interface LeaderDeliveryOptions {
  * session did before it existed. A new `attach` makes a new record, so nothing carries over.
  */
 interface AttachedLeader {
-  readonly adapter: OpenCodeReactionAdapter;
+  /** Which client it is, for `status().leader`. The adapter below is that client's. */
+  readonly client: McpLeaderSession['client'];
+  readonly adapter: LeaderAdapter;
   /** When the first attempt against this leader failed with none succeeding since; else null. */
   failingSince: number | null;
   /** The newest row settled against it: handed over, or dropped because the leader caused it. */
   settledThrough: number;
+  /**
+   * Release whatever xezar opened to REACH this leader — pi's socket today. Separate from the
+   * adapter's own `close()`, which lets go of the session and deliberately owns no transport.
+   */
+  dispose?: () => void;
+}
+
+/**
+ * What every leader adapter gives this module, whichever client it speaks to. Structural on purpose
+ * — not a union of the adapter classes, which would make `deliver`'s return a union this module
+ * cannot await once — so a fifth client is a new `#act` branch and nothing else here. `fix` is
+ * optional because only pi's blockers carry their own remedy.
+ */
+interface LeaderAdapter extends ReactionAdapter {
+  heartbeat(signal: AbortSignal): Promise<void>;
+  close(): void;
+  status(): { blocker?: { code: string; message: string; fix?: string } };
 }
 
 export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
@@ -290,10 +337,35 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     // Attaching a leader that can never receive an event would answer 200 with a blocker-free status
     // for a path that delivers nothing (#309 O-3). Refuse, and say why.
     if (!this.#opts.journal.writable) return { ok: false, error: JOURNAL_UNWRITABLE.message };
+    if (input.client === 'pi') {
+      // pi's adapter (#330 WP2) is built the same way the OpenCode one is, and from the same kind of
+      // thing: an address the person's own leader offers. pi's RPC is stdio-only, so that address
+      // cannot be pi itself — it is the socket xezar's pi leader extension opens from INSIDE the
+      // person's pi and announces in this project's data directory (`adapters/pi-link.ts`). No
+      // extension running, no descriptor, no link: `piReactionTarget` answers with its own
+      // recoverable reason and the events stay in the journal, exactly as before this existed. The
+      // previous leader is kept either way — a refused attach must not detach one that is working.
+      const { target, dispose } = this.#piTarget();
+      if (target.kind === 'blocked') {
+        dispose?.();
+        return { ok: false, error: target.blocker.message };
+      }
+      this.#detach();
+      this.#leader = {
+        client: 'pi',
+        adapter: target.adapter,
+        failingSince: null,
+        settledThrough: 0,
+        ...(dispose ? { dispose } : {}),
+      };
+      this.#liveController()?.wake();
+      return { ok: true, status: this.status() };
+    }
     // Re-attaching replaces the previous target; xezar owns no process, so nothing else changes.
     this.#detach();
     // A new leader with no history: whatever happened before it was attached was not about it.
     this.#leader = {
+      client: 'opencode',
       adapter: new OpenCodeReactionAdapter({
         target: { baseUrl: input.baseUrl, sessionId: input.sessionId },
         projectRoot: this.#opts.projectRoot,
@@ -311,8 +383,57 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
 
   /** Stop talking to the attached session. The OpenCode process and session are the person's. */
   #detach(): void {
-    this.#leader?.adapter.close();
+    const leaving = this.#leader;
     this.#leader = undefined;
+    leaving?.adapter.close();
+    // The transport last, and never skipped when `close()` throws: a socket xezar opened and then
+    // leaked would keep a pi process's peer alive with nothing reading it.
+    try {
+      leaving?.dispose?.();
+    } catch (err) {
+      this.#opts.warn(`[xez] the pi leader link did not close cleanly (${err instanceof Error ? err.message : String(err)})`);
+    }
+  }
+
+  /**
+   * Build pi's target, and whatever has to be released with it. The ONE place a `PiRpcLink` is
+   * produced in this process — the answer to "who constructs the adapter", which for one round of
+   * review was nobody.
+   *
+   * Every failure is the blocker, never a throw: this is the `attach` path and the person reads the
+   * reason. A descriptor that names a dead socket is the ordinary case (a pi that exited), so it is
+   * reported as its own recoverable reason rather than as an error.
+   */
+  #piTarget(): { target: PiReactionTarget; dispose?: () => void } {
+    const base = {
+      projectId: this.projectId,
+      roleInstruction: LEADER_ROLE_INSTRUCTION,
+      onReaction: (seq: number) => this.#recordReaction(seq),
+      ...this.#ownOperation(),
+    };
+    const dataDir = this.#opts.dataDir ?? projectDataDir(this.#opts.projectRoot);
+    const read = this.#opts.piLeader?.read ?? readPiLeaderDescriptor;
+    const found = read(dataDir);
+    if (!found.ok) return { target: piReactionTarget({ ...base, unreachable: found.reason }) };
+    const connect = this.#opts.piLeader?.connect ?? connectPiLeaderLink;
+    let link: PiLeaderLink;
+    try {
+      link = connect(found.descriptor, { warn: this.#opts.warn });
+    } catch (err) {
+      return {
+        target: piReactionTarget({
+          ...base,
+          unreachable: `its socket could not be reached: ${err instanceof Error ? err.message : String(err)}`,
+        }),
+      };
+    }
+    const target = piReactionTarget({ ...base, link });
+    // A link that was already closed gives a blocked target; do not leak the socket behind it.
+    if (target.kind === 'blocked') {
+      link.close();
+      return { target };
+    }
+    return { target, dispose: () => link.close() };
   }
 
   #ownOperation(): { isOwnOperation?: (operationId: string) => boolean } {
@@ -334,7 +455,7 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
   }
 
   #leaderSession(): McpLeaderSession | null {
-    return this.#leader === undefined ? null : { client: 'opencode', state: 'attached' };
+    return this.#leader === undefined ? null : { client: this.#leader.client, state: 'attached' };
   }
 
   /**
@@ -352,7 +473,10 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     if (controller === undefined) return NO_OWNER_SESSION;
     const blocker = leader.adapter.status().blocker;
     if (blocker) {
-      return { code: blocker.code, message: blocker.message, fix: 'Check that `opencode serve` is running in this project and the session id is right, then attach it again.' };
+      // The adapter's own `fix` when it has one (pi's does); otherwise the OpenCode wording, which
+      // is the only adapter whose blockers name no remedy of their own.
+      const fix = blocker.fix ?? 'Check that `opencode serve` is running in this project and the session id is right, then attach it again.';
+      return { code: blocker.code, message: blocker.message, fix };
     }
     // From FACTS observed against THIS leader, never from the controller's state machine (rounds four
     // and five): a failed attempt with no success since is a blocker in every state, it survives the

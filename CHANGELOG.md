@@ -1,6 +1,28 @@
 # Unreleased
 
 ## ✨ Features
+- ✨ **A pi leader can now be woken by a project event.** xezar has a pi reaction adapter, so a
+  significant event can start a real pi turn that carries it — no polling, no "anything new?" turn.
+  It uses pi's own session interface: it prompts pi when pi is idle, and steers when pi is in the
+  middle of a turn, which never cuts that turn short. The event says in so many words that it comes
+  from xezar and is not an instruction or an approval, and it carries your leader's role every time,
+  because pi does not keep one across a resume. A leader never hears the echo of its own change, an
+  event is never put to the model twice — not after a lost answer and not after xezar restarts — and
+  xezar's liveness check reads pi's session state without waking the model. One honest limit, and
+  the cockpit says it rather than hiding it: an event handed to pi while pi is between turns is
+  parked in pi's queue rather than put to the model, so xezar checks, and never counts a parked event
+  as delivered. (#330)
+- ✨ **And a pi you run in your own terminal can now be reached.** pi speaks its session interface
+  over its own input and output only, and xezar never starts an agent process for you, so until now
+  a pi you started yourself had no address and got no push. xezar now ships a small pi extension:
+  load it, and your pi tells xezar where to reach it, for this project only. Then a project event
+  wakes that pi for real — measured end to end against pi 0.85.1, with nobody typing anything. It is
+  yours to opt into: without the extension nothing changes, asking to attach answers with pi's own
+  reason and tells you how to fix it, and that pi keeps reading its events with `leader_events`. The
+  extension answers xezar and forwards pi's own events; it reads none of your files and opens
+  nothing to the network. Its socket lives in a private folder only your own account can open, so
+  nobody else with a login on the same machine can read your leader's conversation or type into
+  it. (#330)
 - ✨ **Project events can now be pushed to a leader you attach.** The event controller and the
   reaction adapters were built and tested but never connected, so no event ever reached a client.
   Now every MCP session that owns a project gets push delivery the moment it opens — nothing to set

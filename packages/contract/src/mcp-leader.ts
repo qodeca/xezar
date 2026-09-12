@@ -5,33 +5,48 @@ import { z } from 'zod';
  *
  * Push delivery is ON BY DEFAULT: every MCP session that owns a project gets an event controller
  * (#107) the moment it opens. What it cannot do on its own is reach a model — generic MCP
- * notifications start no turn in any of the three clients (D-05 § 4). An event therefore reaches a
- * leader only through a session the person runs and tells xezar where to find: today an OpenCode
- * `serve` session. xezar NEVER starts an agent process for a leader (owner decision on #311): the
- * person runs their own leader, in their own terminal, with their own tool, and it connects to
- * xezar over MCP. A Claude Code or Codex session in a terminal has no address to attach to, so it
- * gets no push; it reads its events with the `leader_events` tool.
+ * notifications start no turn in any of the four clients (D-05 § 4; #330 run A for pi). An event
+ * therefore reaches a leader only through a session the person runs and tells xezar where to find:
+ * an OpenCode `serve` session, or a pi running xezar's leader extension. xezar NEVER starts an agent
+ * process for a leader (owner decision on #311): the person runs their own leader, in their own
+ * terminal, with their own tool, and it connects to xezar over MCP. A Claude Code or Codex session
+ * in a terminal still has no address to attach to, so it gets no push; it reads its events with the
+ * `leader_events` tool, and so does a pi with no extension loaded.
  */
 
 /**
- * What the route does. `attach` names an OpenCode session the person already runs
- * (`opencode serve`); `stop` detaches it — never a task, never the OpenCode process, and never the
- * MCP session's hold on the project. There is no `start` or `resume`: xezar spawns no leader.
+ * What the route does. `attach` names a leader session the person already runs; `stop` detaches it —
+ * never a task, never the client's process, and never the MCP session's hold on the project. There
+ * is no `start` or `resume`: xezar spawns no leader.
+ *
+ * Two clients can be attached, and they carry their address differently. `opencode` names an
+ * `opencode serve` session by URL and session id. `pi` names NOTHING here, on purpose, and that is
+ * not the same as having no address: pi speaks RPC over its own stdin and stdout only (pi 0.85.1,
+ * `docs/rpc.md`), so there is nothing for xezar to dial from outside — the address instead comes
+ * from inside the person's own pi, where xezar's leader extension opens a socket and announces it in
+ * the project's data directory (#330 WP2). The person pastes nothing, so this variant takes nothing.
+ * With no extension running there is no descriptor, and the action answers with pi's own recoverable
+ * reason (`pi-not-addressable`) rather than a schema error.
  */
-export const mcpLeaderActionInputSchema = z.discriminatedUnion('action', [
+const mcpLeaderAttachInputSchema = z.discriminatedUnion('client', [
   z.strictObject({
     action: z.literal('attach'),
     client: z.literal('opencode'),
     baseUrl: z.url({ protocol: /^https?$/ }).max(500),
     sessionId: z.string().trim().min(1).max(200),
   }),
+  z.strictObject({ action: z.literal('attach'), client: z.literal('pi') }),
+]);
+
+export const mcpLeaderActionInputSchema = z.union([
+  mcpLeaderAttachInputSchema,
   z.strictObject({ action: z.literal('stop') }),
 ]);
 export type McpLeaderActionInput = z.infer<typeof mcpLeaderActionInputSchema>;
 
 /** The leader session attached to the project, if any. */
 export const mcpLeaderSessionSchema = z.object({
-  client: z.literal('opencode'),
+  client: z.enum(['opencode', 'pi']),
   state: z.literal('attached'),
 });
 export type McpLeaderSession = z.infer<typeof mcpLeaderSessionSchema>;
