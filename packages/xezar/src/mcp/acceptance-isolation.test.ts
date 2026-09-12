@@ -36,6 +36,7 @@ import {
 } from './resource-ownership.ts';
 import { McpServiceAdapter } from './service-adapter.ts';
 import { McpScopeError, bindMcpSession } from './session-binding.ts';
+import { tools } from './tools/index.ts';
 
 /**
  * #115 — the ISOLATION half of the whole-feature acceptance suite (requirements § 9): A-02, A-03,
@@ -82,6 +83,37 @@ const ANY_VERSION = 'rev1:run:none:0:000000000000';
 /** A leader reads a task right before it changes it: the `version` its task view hands out (#250). */
 const versionFrom = async (read: Promise<McpToolResult>): Promise<string> => (JSON.parse(text(await read)) as { version: string }).version;
 
+/**
+ * The A-02 sweep's call list: one legal call per registered tool, into which the case injects a key
+ * naming B. Hoisted out of the case so the registry guard below can check it covers every tool —
+ * `local_handoff` was missing from it until #119's Definition-of-Done run, which is exactly how a
+ * lenient eleventh tool would arrive unswept.
+ */
+function sweepCalls(w: AbWorld): (key: string, value: string) => Array<[string, Record<string, unknown>]> {
+  return (key, value) => [
+    ['task_read', { view: 'list', archived: 'include', [key]: value }],
+    ['discover_project', { [key]: value }],
+    ['organise_work', { action: 'list_queue', [key]: value }],
+    ['execution_control', { action: 'cancel_auto_resume', runId: w.a.ids.done, [key]: value }],
+    ['handoff_git', { action: 'commit', taskId: w.a.ids.done, message: 'x', [key]: value }],
+    ['task_create', { action: 'start_from_inbox', operationId: OPERATION, todoId: w.a.ids.todo, [key]: value }],
+    ['read_results_evidence', { read: 'summary', runId: w.a.ids.done, [key]: value }],
+    ['project_config', { action: 'list_workflows', [key]: value }],
+    // `list_apps` reads the installed apps and opens nothing, so the sweep can carry the desktop
+    // hand-off without launching anything on the machine running these tests (M-19, P-18).
+    ['local_handoff', { action: 'list_apps', [key]: value }],
+  ];
+}
+
+/**
+ * The one tool the sweep above deliberately leaves out, with the reason. The shared world composes
+ * the tools WITHOUT the event port — `leader_events` is reached through a separately composed
+ * service (P-22 in `acceptance-parity.test.ts`) — so a call here would answer "not connected" and
+ * pass the sweep for the wrong reason. Its own foreign-cursor negative is `leader-feed.test.ts`
+ * ("refuses another project's cursor, and keeps a host secret out of the answer").
+ */
+const SWEEP_EXEMPT: ReadonlySet<string> = new Set(['leader_events']);
+
 function withWorld(options: AbWorldOptions): () => AbWorld {
   let world: AbWorld | undefined;
   beforeEach(async () => {
@@ -127,16 +159,7 @@ describe.skipIf(process.platform === 'win32')('#115 isolation acceptance — A/B
       const w = world();
       const spellings = [PROJECT_B, 'default', w.b.root, basename(w.b.root), `/api/v1/p/${PROJECT_B}`, `../${basename(w.b.root)}`];
       const keys = ['project', 'projectId', 'scope', 'root', 'cwd'];
-      const calls = (key: string, value: string): Array<[string, Record<string, unknown>]> => [
-        ['task_read', { view: 'list', archived: 'include', [key]: value }],
-        ['discover_project', { [key]: value }],
-        ['organise_work', { action: 'list_queue', [key]: value }],
-        ['execution_control', { action: 'cancel_auto_resume', runId: w.a.ids.done, [key]: value }],
-        ['handoff_git', { action: 'commit', taskId: w.a.ids.done, message: 'x', [key]: value }],
-        ['task_create', { action: 'start_from_inbox', operationId: OPERATION, todoId: w.a.ids.todo, [key]: value }],
-        ['read_results_evidence', { read: 'summary', runId: w.a.ids.done, [key]: value }],
-        ['project_config', { action: 'list_workflows', [key]: value }],
-      ];
+      const calls = sweepCalls(w);
       const aIds = new Set([...w.a.store.listRuns().map((r) => r.id), w.a.ids.message]);
       const seen = await w.observe(async () => {
         const leader = await w.leader('a');
@@ -167,6 +190,18 @@ describe.skipIf(process.platform === 'win32')('#115 isolation acceptance — A/B
       // believed it scoped a call to B acted on A instead (#271); no tool is lenient now.
       const lenient = seen.response.filter((r) => !r.result.isError).map((r) => r.tool);
       expect([...new Set(lenient)]).toEqual([]);
+    });
+
+    it('the sweep above covers every registered tool, so a new tool cannot arrive unswept', async () => {
+      const w = world();
+      const swept = new Set(sweepCalls(w)('project', PROJECT_B).map(([tool]) => tool));
+      const registered = tools.map((t) => t.name);
+      // Read the registry, not a copied list: an eleventh tool is a failure here, not a silent gap.
+      expect(registered.filter((name) => !swept.has(name) && !SWEEP_EXEMPT.has(name))).toEqual([]);
+      // And the exemption is not a place to hide a tool that the sweep could carry: every exempted
+      // name must still be a registered tool, so a stale exemption fails too.
+      expect([...SWEEP_EXEMPT].filter((name) => !registered.includes(name))).toEqual([]);
+      exercised.add('responses');
     });
 
     it('`default`, and every other spelling of a project, is refused as a binding — there is no fallback', async () => {
@@ -385,6 +420,49 @@ describe.skipIf(process.platform === 'win32')('#115 isolation acceptance — A/B
         return JSON.stringify({ ...parsed, files, audit: null });
       };
       expect(snapshotChanges(withoutTrail(beforeA), withoutTrail(w.snapshot('a')))).toEqual([]);
+      expect(seen.events.a).toEqual([]);
+    });
+
+    it('the desktop hand-off opens nothing for a valid B id, and reads like an id from nowhere', async () => {
+      const w = world();
+      // The one tool that launches an application on the host. A stray B id here would open B's
+      // worktree on the machine running the service, which is the highest-consequence miss in the
+      // registry — and until #119's Definition-of-Done run it had no cross-project negative at all.
+      const nowhere = nowhereId();
+      const handoffs = (runId: string): Array<Record<string, unknown>> => [
+        { action: 'open_task_in_terminal', runId, operationId: `${OPERATION}-t` },
+        { action: 'open_task_in_app', runId, target: 'finder', operationId: `${OPERATION}-a` },
+      ];
+      const beforeA = w.snapshot('a');
+      const seen = await w.observe(async () => {
+        const out: Array<{ b: McpToolResult; nowhere: McpToolResult }> = [];
+        for (const [i, args] of handoffs(w.b.ids.done).entries()) {
+          out.push({ b: await w.call('a', 'local_handoff', args), nowhere: await w.call('a', 'local_handoff', handoffs(nowhere)[i]!) });
+        }
+        return out;
+      });
+      judge(w, seen, ['responses', 'errors', 'side effects'], [w.b.ids.done]);
+      for (const [i, pair] of seen.response.entries()) {
+        // A refusal for a run that exists in B must read exactly like one for a run that exists
+        // nowhere, or the answer is an existence oracle for another project's tasks.
+        expect(masked(pair.b, w.b.ids.done), `handoff ${i}`).toBe(masked(pair.nowhere, nowhere));
+        // Refused, not opened — and said as a failure rather than a hand-off that "worked".
+        expect(pair.b.isError, `handoff ${i}`).toBe(true);
+        expect(text(pair.b), `handoff ${i}`).toMatch(/refused \(status failed\)[\s\S]*Reason: not found\./);
+      }
+      // The tool really asked — this is the control that keeps "the service refused it" from
+      // reading like "the hand-off was never available here". Every open request it made is bound
+      // to A's own scope, so the B id arrives as a stranger inside A and the service answers about
+      // A, not about B. No spelling of B's project ever appears in a path.
+      const opens = w.dispatched.filter((d) => /open-in/.test(d));
+      expect(opens.length, 'the hand-off never reached the service, so its refusal proves nothing').toBe(handoffs('x').length * 2);
+      expect(opens.filter((d) => !d.includes(`/p/${PROJECT_A}/`)), 'a tool bound to A dispatched an open outside A').toEqual([]);
+      expect(opens.filter((d) => d.includes(PROJECT_B) || d.includes(w.b.root)), 'an open named B').toEqual([]);
+      // A's own state is untouched too. The audit trail is the one exclusion, and for the same
+      // reason the sibling mutation case excludes it: it is the door's record of the calls
+      // themselves, not an effect of them. `judge` above already holds its bytes to N-01.
+      const trailOnly = snapshotChanges(beforeA, w.snapshot('a')).filter((c) => !/mcp-audit\.ndjson|^~ audit$/.test(c));
+      expect(trailOnly).toEqual([]);
       expect(seen.events.a).toEqual([]);
     });
 
