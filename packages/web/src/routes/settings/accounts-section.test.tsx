@@ -48,6 +48,18 @@ const DEFAULTS: AgentProfile[] = [
   }),
 ]
 
+/** pi's discovered account — kept out of `DEFAULTS` so the existing two-provider cases are untouched. */
+const PI_DEFAULT: AgentProfile = profile({
+  id: 'default',
+  provider: 'pi',
+  label: 'Default',
+  configDir: '/home/u/.pi/agent',
+  path: '/home/u/.pi/agent',
+  isDefault: true,
+  status: { provider: 'pi', status: 'disconnected' },
+  files: [],
+})
+
 let requests: Array<{ method: string; url: string; body?: unknown }> = []
 /** Every `…/details` GET — used to prove none happens until the row is expanded. */
 let detailReads: string[] = []
@@ -890,6 +902,23 @@ describe('the add-account dialog', () => {
     // The placeholder follows too, so the example folder is not the wrong agent's. It stays a
     // GENERIC name — this string ships to every xezar user, so it must not carry one person's.
     expect(dirField().placeholder).toBe('~/.codex-second')
+  })
+
+  /**
+   * pi entered this dropdown the moment it became profile-capable (#329), and the placeholder was
+   * a ternary that fell through to `~/.claude-second` for anything that was not codex — so the
+   * first thing a pi account was offered was a Claude folder name.
+   */
+  it('suggests pi\'s OWN folder for a pi account, not Claude\'s', async () => {
+    serve({ editable: true, profileCapableProviders: ['claude', 'codex', 'pi'],
+      defaults: {},
+      selections: {}, profiles: [...DEFAULTS, PI_DEFAULT] })
+    renderAccounts()
+    await openDialog('pi')
+
+    expect(screen.getByLabelText<HTMLSelectElement>('Agent').value).toBe('pi')
+    expect(dirField().placeholder).toBe('~/.pi/agent-second')
+    expect(dirField().placeholder).not.toContain('claude')
   })
 
   it("shows the server's refusal verbatim", async () => {

@@ -556,7 +556,7 @@ Useful environment variables:
 | `XEZ_CODEX_REASONING=concise` | The reasoning summary Codex is asked for on each turn: `auto` (the default, so the reasoning thread is visible), `concise`, `detailed`, or `none` to opt out. An unrecognised value falls back to `auto`. |
 | `XEZ_OPENCODE_BIN=/path/to/opencode` | Override which `opencode` binary is used. |
 | `XEZ_PI_BIN=/path/to/pi` | Override which `pi` binary is used. |
-| `CLAUDE_CONFIG_DIR`, `CODEX_HOME` | The agents' **own** variables, honoured where the vendor documents one. Setting one moves that agent's **default account** — the config folder xezar discovers, credentials included. A *second* login of the same CLI is deliberately not an environment setting, since one process-wide value cannot differ per project: add it under **Settings → Agent accounts** and pick it per project. |
+| `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `PI_CODING_AGENT_DIR` | The agents' **own** variables, honoured where the vendor documents one. Setting one moves that agent's **default account** — the config folder xezar discovers, credentials included. pi's variable moves its whole `~/.pi/agent` (settings, models **and** `auth.json`), which is why pi can carry accounts and OpenCode cannot; re-verified against pi 0.85.1 on 2026-09-12. A *second* login of the same CLI is deliberately not an environment setting, since one process-wide value cannot differ per project: add it under **Settings → Agent accounts** and pick it per project. |
 | `OPENCODE_CONFIG_DIR` | Where xezar looks for OpenCode's config, ahead of `$XDG_CONFIG_HOME/opencode` (default `~/.config/opencode`). Config **only** — OpenCode keeps credentials in `~/.local/share/opencode`, so this moves settings without moving the account, which is why OpenCode cannot carry Agent accounts. |
 | `XEZ_BROWSE_ROOT=~/` | Default root for **Add project → Open local folder…**. The picker cannot navigate above it; a saved workspace value overrides the environment default and must name an existing folder. |
 | `XEZ_PROJECTS_DIR=~/xezar/projects` | Default destination for **Clone from GitHub**. Saved workspace settings override it, and missing directories are created recursively. |
@@ -634,7 +634,8 @@ the backends it found — install any one of the four and you're operational.
 vendor releases that goes stale between xezar versions. For each backend xezar
 reads what *your host* currently offers — Claude Code's `list_models` control
 request, the Codex app-server's `model/list`, `opencode models`, and for pi its
-own `~/.pi/agent/models.json` and `settings.json` — and shows exactly that, in
+own `models.json` and `settings.json` (in `~/.pi/agent`, or wherever
+`PI_CODING_AGENT_DIR` points) — and shows exactly that, in
 that order, so a model your account gained yesterday is selectable today with no
 xezar release, and one your provider retired stops being offered. Discovery is
 read-only, costs no tokens, and is cached briefly in memory. If a CLI is

@@ -15,6 +15,23 @@ import {
 import { toast } from '@/components/ui/toaster'
 
 /**
+ * The folder this dialog SUGGESTS for a second account, per provider.
+ *
+ * An exhaustive `Record<ProviderId, string>` rather than a ternary, and that is the fix rather
+ * than the style: the ternary it replaced named codex and fell through to `~/.claude-second` for
+ * everything else, so picking pi — which this provider dropdown started offering the moment pi
+ * became profile-capable (#329) — hinted a Claude folder name. A fifth provider is now a compile
+ * error instead of another borrowed suggestion. Each name is that agent's OWN default home with a
+ * `-second` suffix; `~/.pi/agent` is a nested path, so pi's reads `~/.pi/agent-second`.
+ */
+const FOLDER_PLACEHOLDER: Record<ProviderId, string> = {
+  claude: '~/.claude-second',
+  codex: '~/.codex-second',
+  opencode: '~/.config/opencode-second',
+  pi: '~/.pi/agent-second',
+}
+
+/**
  * "Add agent account" (spec 2026-07-29-agent-profiles): point a provider at a second config
  * folder, so a work login can sit beside a personal one.
  *
@@ -142,7 +159,7 @@ export function AddAccountDialog({
               aria-label="Config folder"
               data-slot="add-account-dir"
               value={configDir}
-              placeholder={provider === 'codex' ? '~/.codex-second' : '~/.claude-second'}
+              placeholder={FOLDER_PLACEHOLDER[provider]}
               onChange={(event) => {
                 setConfigDir(event.target.value)
                 setSelected(null)

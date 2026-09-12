@@ -77,6 +77,20 @@
   one warning and the MCP keeps working. This closes acceptance case A-01. (#262)
 
 ## 🐛 Fixes
+- 🐛 **pi can carry a second account, and its config folder is finally its own.** xezar said pi had
+  no way to move its home, so "Add account" was never offered for it – and worse, the pi row in
+  Settings → Agent accounts showed Claude Code's folder as pi's, because the lookup behind it fell
+  through to Claude for any agent it did not name. pi does have a home variable
+  (`PI_CODING_AGENT_DIR`), it moves the login as well as the settings, and xezar now honours it:
+  set it and pi's discovered account moves with it, or add a second pi account in Settings and pick
+  it per project the way you already can for Claude Code and Codex. pi's own folder is what every
+  pi row, model list, account probe and "Show details" now reads – and "Show details" on a pi
+  account says which model providers it is signed in to, in pi's own words rather than OpenCode's.
+  Nothing to set up, and nothing changes for anyone who has not set `PI_CODING_AGENT_DIR`; if you
+  already export it, xezar's pi model list now comes from that folder instead of `~/.pi/agent`,
+  which is the correct answer and the point of the fix. OpenCode still cannot carry a second
+  account – its credentials live apart from its config, so a second one would quietly bill the
+  first. (#329)
 - 🐛 **A workflow step that stops for an answer now stops the workflow.** A step before the last
   one runs a single turn, and it used to be marked done whenever its session closed without an
   error – so a step that ended on a question, `XEZ:ASK` or plain prose, was treated as finished
@@ -354,6 +368,22 @@
   contributor does not need. Also added: `CODE_OF_CONDUCT.md` (Contributor Covenant 3.0), bug and
   feature issue forms, a pull-request template, and a CI badge and project-status note in the
   README. (#283)
+- 🐛 **The MCP coverage floor now passes on `main`.** The floor arrived red: `npm run
+  test:coverage:mcp` failed on three thresholds the day it shipped, so every MCP pull request met a
+  gate that was already failing before its author started. Two of the three left when #311 merged.
+  The last one, the MCP API reference page, is now fully covered by tests for the cases its live
+  registry cannot produce — a listed tool that declares nothing, a guard on a tool with no action
+  list, and a refused argument whose description is gone — each shown failing against a named break
+  of the code it covers. The written exemption that stood in for those tests is retired, and
+  `docs/testing/coverage-gaps.md` records the new measurement, why the old exemption's reasoning was
+  wrong, and that the command can now become a CI check. No product behaviour changed. (#352)
+- 📝 **The coverage record no longer claims more than it proved.** `docs/testing/coverage-gaps.md`
+  said every case of the new MCP API reference test carries its own populated-input control; for one
+  of the three it does not, and the control lives in the live-registry test instead. The sentence is
+  corrected, both halves re-measured, and the document now also records a mutation of that file that
+  survives the whole MCP test suite even though the file reads 100 % branch coverage — the plainest
+  evidence that a coverage number is a floor, not a proof. No product behaviour changed, and no test
+  or source file was touched. (#357)
 
 # 0.13.1 (2026-09-10)
 

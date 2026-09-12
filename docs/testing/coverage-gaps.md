@@ -579,8 +579,9 @@ branches. It writes to `.local/coverage/mcp/` and exits non-zero naming each fil
 About 40 seconds on the machine that measured it; it does not run the other ~200 server test files,
 which is the point – coverage a module picks up from an unrelated test was never aimed at it.
 
-What it cannot see is listed in 10.4. It is not in CI and not in `.ai/agentic.config.json`: it
-fails on `main` until the #311-owned files in 10.6 are re-measured.
+What it cannot see is listed in 10.4. It is not in CI and not in `.ai/agentic.config.json`. It was
+red on `main` from the day it shipped until #352; 10.9 is the re-measurement that turned it green,
+and making it a CI step is the sequenced work that record leaves open.
 
 ### 10.2 Measured – before and after this change
 
@@ -772,18 +773,61 @@ file:
 
 ### 10.6 Exemptions and sequencing
 
-**Exemption – `packages/xezar/src/mcp/api-reference.ts`, 77.3 % branches.** The five uncovered
-branches (`api-reference.ts:75,99,106,133,135`) handle registry shapes no current tool has: a
-guarded tool with no `action`/`view`/`read` discriminator, a listing with no `properties`, and a
-refused argument whose description is not a string. `buildMcpApiReference` reads the real registry
-and takes no tool list, so the only way to reach them is to fake the registry – a test of a tool
-that does not exist. What holds the behaviour today: `mcp-reference-route.test.ts:110-160` pins
-every current refusal and every guard against the live registry. **Ends when** a tool without a
-discriminator declares `expectedVersion` or `operationId`, or `REFUSED_ARGUMENTS` names an argument
-with no description: that PR reaches the branch with a real tool and adds the case.
+**Exemption ENDED 2026-09-12 (#352) – `packages/xezar/src/mcp/api-reference.ts`, now 100 % branches.**
+The exemption claimed the five branches (`api-reference.ts:75,99,106,133,135`) could only be reached
+by faking the registry, "a test of a tool that does not exist". That reasoning was wrong on its own
+terms, in a way worth keeping: the contract declares `inputSchema` an **opaque** JSON object
+(`packages/contract/src/mcp-api-reference.ts` – "describing JSON Schema in zod would be a second
+definition that can drift"), so a listing with no `properties` is input the contract already allows,
+not an invented one. And AGENTS.md § Changing a mechanism that already works says a fail-open helper
+needs a populated-input guarantee or it lies – against an empty listing, "we found nothing" and
+"there is nothing" are the same branch and must not read the same. `api-reference.test.ts` swaps the
+registry at the module seam (`./tools/index.ts`, and `toolListing` for the one hand-written listing),
+and every case carries its populated-input control in the same test, or – for `refusedActions` – in
+the live-registry pin it deliberately does not duplicate. Seven named breaks, each shown
+red in #352: `everyCall` hardcoded to `false` and to `true` (`:106`), each `?? {}` dropped (`:75`,
+`:99`, throws), `byName.get(tool)!` (`:133`, throws), and the description test emitting always and
+never (`:135`). The live-registry pin is unchanged: `mcp-reference-route.test.ts:110-160` still owns
+"the page agrees with the wire", and `api-reference.test.ts` deliberately does not duplicate it.
 
-**Exemption – `packages/xezar/src/mcp/adapters/codex.ts`, 75.5 % lines, 73.7 % branches.** Measured
-2026-09-11 against #311's own diff (`gh pr diff 311`, whose base is this branch's `11a6df3`, so the line
+**Corrected 2026-09-12 (#357): that clause said "in the same test" of every case, and for
+`refusedActions` it is not true.** The independent QA of #355 found it, and it re-measures here:
+hardcoding `refusedActions` to `[]` in `api-reference.ts` leaves all three tests in
+`api-reference.test.ts` green (exit 0), because the only `refusedActions` assertion in that file is
+the empty one at `:94`. **There is no hole in the suite** – the same break reddens exactly
+`mcp-reference-route.test.ts` → *carries every refusal-only action and every declared refused
+argument, from the live tools*, which is the populated-input control and is the pin this file was
+written not to duplicate. So the defect was the sentence, not the tests. The `@file` docblock of
+`api-reference.test.ts` (`:20-21`) still carries the same overstatement and is left for the next
+change to that file, which is source this documentation task may not touch.
+
+**100 % branches is not "no break gets through" – mutation X-D (#357).** The same QA wrote four
+mutations beyond #352's seven, and one survives this file at its new 100 % branch coverage: drop
+`performing.length > 0 &&` from `api-reference.ts:109`. `performing` is empty for a tool whose every
+discriminator action is refusal-only, `requiredBy` is then empty too, and `0 === 0` makes `everyCall`
+read `true` – the page printing "required on every call" for a guard no call can reach – where the
+truth is `false`. No live tool is shaped that way today, so nothing goes red: re-measured 2026-09-12,
+the MCP mutation test set (`packages/xezar/vitest.mutation.config.ts`, 45 files, 930 tests) passes
+with the break applied, and so do the three suites that read `everyCall` at all
+(`api-reference.test.ts`, `mcp-reference-route.test.ts`, `mcp-api-doc.test.ts`, three runs each).
+The survivor itself is recorded with the rest in **#338**, not here; what belongs here is why it is
+worth recording. A file can sit at 100 % branches and still ship a real behavioural break, which is
+the whole reason the floor is a floor rather than a target, and the reason the mutation gate exists
+(10.8) – Stryker does not kill such a mutant either, it makes it *visible*, which coverage cannot.
+
+**The lesson, not the number.** "The only way to reach it is to fake the registry" is a claim about
+the seam, and a seam a shipped module already imports through is not a fake. Before writing an
+exemption for a branch no current input reaches, check whether the *contract* for that input is
+wider than today's producers – if it is, the branch has real callers that have not been written yet,
+and the empty-input case is exactly the one to pin.
+
+**Exemption ENDED 2026-09-12 (#352) – `packages/xezar/src/mcp/adapters/codex.ts`, now 96.4 % lines,
+82.7 % branches.** It ended by its own terms: #311 merged as `7bcb258`, and re-measuring on `main`
+puts the file above the floor without a line of new test – the 15 uncovered lines below were the
+ones #311 deleted, and #311's rewritten `adapters/codex.test.ts` reaches most of the rest. The file
+needs no exemption now, so it has none. What is NOT closed: the kept lines listed below are still
+partly untested, and **#338 still owns testing them** – that is sequenced work, not an exemption.
+The record of what the exemption said, measured 2026-09-11 against #311's own diff (`gh pr diff 311`, whose base is this branch's `11a6df3`, so the line
 numbers agree). 27 lines are uncovered, in two groups:
 
 - **15 are deleted by #311** – `openCodexLeaderThread` and `CodexAppServerProcessLink`
@@ -797,8 +841,8 @@ numbers agree). 27 lines are uncovered, in two groups:
 
 What holds the behaviour today: `adapters/codex.test.ts` drives `#observe` for the leader's own
 thread and `deliver` end to end; the real-client harness (10.4, last row) drives Codex itself.
-**Ends when** #311 merges – re-measure on `main` and test the 12 kept lines in `codex.test.ts` (#338) –
-or when #311 is closed unmerged, which ends it at once: then the whole file is tested as it stands.
+**Ended when** #311 merged. Re-measured on `main` in 10.9; testing the kept lines in `codex.test.ts`
+stays with #338.
 
 **Corrected 2026-09-11: `service.ts` and `index.ts` were never "leaving".** An earlier version of this
 section sequenced both after #311 on the claim that #311 rewrites the code their uncovered branches
@@ -812,7 +856,7 @@ floor now. What was left uncovered in `service.ts` and why: the `closed` answer 
 `index.ts`, the unregistered-directory answer (`395`) is held by `cli.test.ts:199` in a child process
 (10.4), and was not duplicated.
 
-After #311 merges: re-run `npm run test:coverage:mcp` on `main` – #311 adds `leader-delivery.ts` and
+Done in #352, recorded in 10.9. After #311 merges: re-run `npm run test:coverage:mcp` on `main` – #311 adds `leader-delivery.ts` and
 `project-leaders.ts`, which have never been measured – close what remains with tests shown red, and
 only then make the command a CI step.
 
@@ -873,3 +917,35 @@ The survivors are listed in **#338**, not here: this section records the method 
 run's own HTML/JSON report (`.local/mutation/mcp/`) is the list. The three survivors that could have
 shipped a secret leak, a world-readable connection file or an unreadable-worktree ownership pass were
 #337, closed in #335.
+
+### 10.9 Re-measured on `main` after #311 – the floor is green (#352)
+
+The floor shipped with #335 and was red from that day: three thresholds failed on `main` at
+`d8c1dc4`. #311 closed the `codex.ts` half by merging (`7bcb258`); #352 closed the last one. A gate
+that is red the day it ships is not a gate, so this is the record that it is not any more.
+
+**Measured 2026-09-12, branch `xez/692d3584` off `7bcb258`, `npm run test:coverage:mcp`, exit 0 –
+45 test files, 931 tests, no `ERROR:` line.** Aggregate 97.03 % lines, 86.06 % branches. The three
+files the errors named:
+
+| File | Lines before (`d8c1dc4`) | Branches before | Lines now | Branches now |
+|---|---|---|---|---|
+| `api-reference.ts` | 100.0 | 77.3 **below** | 100.0 | **100.0** |
+| `adapters/codex.ts` | 75.5 **below** | 73.7 **below** | **96.4** | **82.7** |
+
+Only `api-reference.ts` moved because of a test written here (`api-reference.test.ts`, three cases,
+seven named breaks shown red – see 10.6, which also records the mutation that survives that 100 %
+branch figure). `codex.ts` moved because #311 merged: its 15 uncovered
+lines were the ones #311 deletes, and #311's own `adapters/codex.test.ts` reaches the rest. Nothing
+was added to `codex.ts` in #352, and #338 still owns the kept lines.
+
+Every remaining MCP file is at or above 80/80 as of this measurement. The three nearest the floor
+are `bridge.ts` (92.1 / **80.0**), `index.ts` (87.7 / 80.2) and `tools/results-evidence.ts` (98.5 /
+80.6); `bridge.ts` at exactly 80.0 means one new uncovered branch there turns the gate red again.
+The two files #311 added are measured here for the first time: `leader-delivery.ts` (100.0 / 84.1)
+and `project-leaders.ts` (100.0 / 100.0).
+
+**Sequenced work this record leaves open.** `npm run test:coverage:mcp` may now become a CI step and
+an entry in `.ai/agentic.config.json` – 10.1 says it stays out "until it passes on `main`", and the
+condition is met. That is a separate PR: it needs the CI job written and its ~40 s measured on a
+2-core runner, and it should land before the next MCP PR meets a gate nobody runs for them.

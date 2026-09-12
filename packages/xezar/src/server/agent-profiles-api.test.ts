@@ -89,8 +89,21 @@ describe('agent profiles API', () => {
       expect(body.profiles.every((p) => p.id === 'default')).toBe(true);
     });
 
+    // pi joined the list on 2026-09-12 (#329): `PI_CODING_AGENT_DIR` moves its credentials as
+    // well as its config, which is the bar OpenCode still fails — OpenCode's live in a SQLite DB
+    // behind a separate `OPENCODE_DB`, so a config-dir profile would bill the other account.
     it('names the providers that can carry an account at all — OpenCode cannot', async () => {
-      expect((await list()).profileCapableProviders).toEqual(['claude', 'codex']);
+      expect((await list()).profileCapableProviders).toEqual(['claude', 'codex', 'pi']);
+    });
+
+    // The route-level half of the same fix. `defaultAgentProfile` used to fall through to
+    // `home.claude` for pi, so this row echoed Claude's folder as pi's home.
+    it('gives the pi row pi’s own home, not Claude’s', async () => {
+      const body = await list();
+      const pi = body.profiles.find((p) => p.provider === 'pi');
+      const claude = body.profiles.find((p) => p.provider === 'claude');
+      expect(pi?.path).toMatch(/[/\\]\.pi[/\\]agent$/);
+      expect(pi?.path).not.toBe(claude?.path);
     });
 
     it('reports each account\'s folder state, and does not refuse one that is missing', async () => {
