@@ -321,17 +321,24 @@ export class PiReactionAdapter implements ReactionAdapter {
    * A steer pi accepted is only handed over if a turn actually took it.
    *
    * WHEN a steer reaches the model, measured on this branch against real pi 0.85.1 over the leader
-   * extension's socket, on one clock (`pi-steer-r2/two-steers-result.json`, and the single-steer run
-   * in `mid-turn-result.json`): pi queues it (`queue_update`) and finishes the model call already in
-   * flight; the running turn then ends and the NEXT one opens and carries the text to the model.
-   * Numbers from that run — accepted at +4.0s, model call in flight until +20.0s, `turn_end` +20.018s,
-   * `turn_start` +20.018s, the model request carrying it +20.020s, `agent_settled` +20.023s, with a
-   * further model request in between. So the wait is the REMAINDER OF THE MODEL CALL IN FLIGHT (16s of
-   * a 20s call), not the rest of the run: the agent run went on after the steer reached the model.
+   * extension's socket, on one clock. pi queues it (`queue_update`) and delivers it once THE TURN IN
+   * FLIGHT ends — a turn being one assistant response plus the tool calls it makes — and the next
+   * turn of the same run carries it to the model. Two runs, shaped to take the two halves apart,
+   * because a turn's model call and its tools are different intervals:
+   *   · long MODEL CALL, no tools (`two-steers-result.json`): steer accepted +4.0s, the call ends and
+   *     `turn_end` fires +20.018s, the model request carrying it +20.020s, `agent_settled` +20.023s.
+   *   · instant model call, long TOOL (`tool-turn-result.json`): the model call ended at +0.016s
+   *     returning a `bash` call, `sleep 25` ran, the steer was accepted at +5.0s with that call long
+   *     over — and ZERO model requests happened until the tool finished. `turn_end` +25.037s, the
+   *     model request carrying it +25.040s.
+   * The second run is the one that decides it: the model call the first run credited had already
+   * finished, and the steer still waited 20 more seconds. So the wait is the TURN, TOOLS INCLUDED.
    *
-   * Two earlier spellings of this comment were wrong in opposite directions and both shipped a wrong
-   * sentence to the changelog with them (QA on #358, then QA on #366): "pi delivers steering at the end
-   * of the running turn" reads as "not until the run is over", and "at once" ignores the call in flight.
+   * Three earlier spellings of this comment were wrong, each asserting more than its measurement
+   * could support (QA on #358, then two rounds of QA on #366): "at the end of the running turn" reads
+   * as "not until the run is over"; "at once" ignores the wait entirely; and "the remainder of the
+   * model call in flight" named the wrong interval, because every run behind it had no tools, which
+   * is exactly the condition under which a turn and its model call cannot be told apart.
    *
    * What follows for this check: "pi is idle now" alone does not mean it parked — the run may simply
    * have carried it and ended, which is the common case over this transport. `pendingMessageCount` is

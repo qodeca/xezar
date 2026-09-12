@@ -9,15 +9,15 @@
   because pi does not keep one across a resume. A leader never hears the echo of its own change, an
   event is never put to the model twice — not after a lost answer and not after xezar restarts — and
   xezar's liveness check reads pi's session state without waking the model. One honest limit,
-  measured against pi 0.85.1 over the extension: an event that arrives while your pi is working is
-  queued rather than sent — pi finishes the model call it already has in flight, and the event goes
-  to the model on the step straight after it, without waiting for the rest of the run. In the
-  measurement that wait was the remainder of the call in flight, 16 seconds of a 20-second one, and
-  the run carried on afterwards; xezar will not cut a model call short to deliver an event. It also
-  never takes pi's "accepted" for "the model has it": every handover is checked against pi
-  afterwards, an event xezar cannot confirm reached the model is handed over again rather than
-  counted as delivered, and the cockpit shows what a model turn was really seen to carry rather than
-  only what xezar sent. (#330)
+  measured against pi 0.85.1 over the extension: an event handed over while your pi is working is
+  queued rather than sent, and goes to the model once the turn in flight has finished — including
+  whatever tool that turn is running. Measured twice, because the two halves of a turn take
+  different lengths of time: the event waited 16 seconds behind a 20-second model call, and 20
+  seconds behind a 25-second tool. Each time it reached the model in the next turn of the same run,
+  before that run ended; xezar will not cut a turn short to deliver an event. It also never takes
+  pi's "accepted" for "the model has it": every handover is checked against pi afterwards, and an
+  event xezar cannot confirm reached the model is handed over again rather than counted as
+  delivered. (#330)
 - ✨ **And a pi you run in your own terminal can now be reached.** pi speaks its session interface
   over its own input and output only, and xezar never starts an agent process for you, so until now
   a pi you started yourself had no address and got no push. xezar now ships a small pi extension:
