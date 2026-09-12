@@ -350,6 +350,13 @@
   of the code it covers. The written exemption that stood in for those tests is retired, and
   `docs/testing/coverage-gaps.md` records the new measurement, why the old exemption's reasoning was
   wrong, and that the command can now become a CI check. No product behaviour changed. (#352)
+- 📝 **The coverage record no longer claims more than it proved.** `docs/testing/coverage-gaps.md`
+  said every case of the new MCP API reference test carries its own populated-input control; for one
+  of the three it does not, and the control lives in the live-registry test instead. The sentence is
+  corrected, both halves re-measured, and the document now also records a mutation of that file that
+  survives the whole MCP test suite even though the file reads 100 % branch coverage — the plainest
+  evidence that a coverage number is a floor, not a proof. No product behaviour changed, and no test
+  or source file was touched. (#357)
 
 # 0.13.1 (2026-09-10)
 
