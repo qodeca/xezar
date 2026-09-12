@@ -900,6 +900,9 @@ Coverage is measured separately, and is not part of the validation gate:
 `npm run test:coverage` runs the vitest suites under the v8 provider and writes line and branch
 numbers to `.local/coverage/`. The behaviour-led gap analysis built from it lives in
 [docs/testing/coverage-gaps.md](docs/testing/coverage-gaps.md).
+The MCP server is the one scope held to a floor: `npm run test:coverage:mcp` measures it alone
+and fails any file under 80 % lines or branches – see
+[SDLC.md § The MCP test floor](SDLC.md#the-mcp-test-floor).
 
 The stack is deliberately small: **TypeScript** (strict, ESM), **Hono** + SSE for
 the server, **Zod** at every boundary, **YAML** for workflows, and a **React 19 +

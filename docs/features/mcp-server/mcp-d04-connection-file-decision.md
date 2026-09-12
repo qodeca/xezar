@@ -25,6 +25,13 @@ Everything else is as decided: the path, `schemaVersion: 1`, the `project` and `
 atomic temp-file-plus-rename at mode `0600`, `ensureProjectDataIgnored` before the first write, and a
 failed write that is one warning (N-07). `tracked-files.test.ts` guards both file names.
 
+**pi, added 2026-09-11 by [#330](https://github.com/qodeca/xezar/issues/330) (WP0).** The requirements now
+name pi as a fourth required initial client, through the third-party `pi-mcp-adapter` extension (F-17).
+§ 3.4 adds pi's one-time setup, and § 3.5 compares the four clients. Its evidence is the
+[pi evidence record](mcp-adapter-evidence-pi.md), run on 2026-09-11 against the real bridge, not § 8.
+Everything else in this record, including "all three clients" in D-04.2 and D-04.6, describes the
+2026-09-10 run of Claude Code, Codex and OpenCode, and is unchanged.
+
 The requirements document draws a three-way split and this record preserves it. **Agreed** outcomes
 are fixed and are not reopened. **Technical proposal** rows are suggestions that still need a
 decision. **Open** rows have no decision at all. Every statement below carries its own label.
@@ -452,22 +459,110 @@ the project config was picked up from the working directory immediately (§ 8.4)
 **`opencode mcp add` exists but is interactive** (a TUI prompt; `opencode mcp --help`, executed), so
 the written-file form above is the one to document.
 
-### 3.4 The three side by side
+### 3.4 pi
 
-| | Claude Code 2.1.268 | Codex 0.154.0 | OpenCode 1.18.30 |
-| --- | --- | --- | --- |
-| Recommended target | `$CLAUDE_CONFIG_DIR/.claude.json` (local scope) | `<root>/.codex/config.toml` | `<root>/opencode.json` |
-| In Git? | No — outside the repo entirely | Yes, tracked | Yes, tracked |
-| One-time user actions | **1** (one command) | **2** (write file **and** trust project) | **1** (write file) |
-| Extra approval gate | None at local scope; **yes** at project scope | Trust is the gate, and it is silent when missing | None observed |
-| Contains a secret | No | No | No |
-| Reads `.local/xezar/mcp-connection.json` | **No** | **No** | **No** |
-| Spawn working directory observed | Project root (executed) | **Not attempted** — read-only commands do not spawn | Project root (executed) |
+Added 2026-09-11 by [#330](https://github.com/qodeca/xezar/issues/330). Not part of the 2026-09-10
+run: "executed" below means executed on 2026-09-11 in the [pi evidence record](mcp-adapter-evidence-pi.md),
+against the real `xezar mcp` bridge of a real `xezar serve` at `5031bf8`, not in § 8.
 
-The last row is the whole of U-M01 in one line: **no client discovers the generated file. Three
-different one-time actions, two of which touch a tracked file, one of which needs a second step that
-fails silently if skipped.** Setup copy that says "xezar configures this for you" would be false for
-all three.
+Local versions observed: **pi 0.85.1** (`@earendil-works/pi-coding-agent`) and **pi-mcp-adapter
+2.32.1** (executed). These are installed versions, not certified minimums. The adapter's 2.33.0 was
+published on the run date and was **not tested**.
+
+**pi itself has no MCP client, by design.** pi's own README says "**No MCP.** Build CLI tools with
+READMEs (see Skills), or build an extension that adds MCP support." (`README.md:499` of pi 0.85.1), and
+its `docs/usage.md:309` says pi "intentionally does not include built-in MCP" (documented; both lines
+re-read in the installed package on 2026-09-11). The capability comes from **`pi-mcp-adapter`**, a
+third-party pi extension (MIT, `github.com/nicobailon/pi-mcp-adapter`) that the user installs. The
+requirements count pi through that extension (F-17), on the same footing as the adapter/Channels
+prerequisites U-M02 already names. **A pi without the extension has no xezar tool at all:** with
+`--no-extensions`, the same folder and prompt offered the model 0 xezar tools (executed, negative
+control).
+
+**One-time user action — two parts, and both are required:**
+
+1. Install the extension once, pinned to the verified version:
+
+   ```sh
+   pi install npm:pi-mcp-adapter@2.32.1
+   ```
+
+   It added `"packages": ["npm:pi-mcp-adapter@2.32.1"]` to pi's `settings.json` and the package under
+   pi's agent directory (executed). This step needs the network.
+
+2. Add a `xezar` entry to `mcp.json` in pi's agent directory (`~/.pi/agent`, or the folder
+   `PI_CODING_AGENT_DIR` names):
+
+   ```json
+   {
+     "settings": { "directTools": true },
+     "mcpServers": {
+       "xezar": {
+         "command": "npx",
+         "args": ["-y", "@qodeca/xezar", "mcp"],
+         "lifecycle": "keep-alive"
+       }
+     }
+   }
+   ```
+
+**Executed and observed, with two substitutions.** The evidence runs used this entry with this
+revision's built bridge (`node packages/xezar/dist/index.js mcp`) in place of `npx -y @qodeca/xezar mcp`,
+and a fixture `XEZ_HOME` — the same two as the #118 harness; a real user's entry needs
+neither. pi connected, reported `MCP: 1 servers connected (11 tools)`, offered the model all 11 xezar
+tools, and `health` named the project. Each key is there for a measured reason:
+
+- **`"directTools": true`.** Without it the model sees one `mcp` proxy tool and has to search for the
+  xezar tools first (executed in #330, run A).
+- **`"lifecycle": "keep-alive"`.** With the adapter's defaults (`lazy`, a 10-minute `idleTimeout`), the
+  adapter closed the idle bridge between 601 s and 661 s after the last call, so pi gave up the project
+  and another client took it. With `keep-alive`, pi still held the project at 700 s (executed). A
+  `keep-alive` server connects when pi starts, so pi takes the project at start, not at its first call
+  (read from adapter source).
+- **The pinned version.** The extension is third-party and moves fast; this evidence does not cover
+  a version it did not run (pi evidence record, blocker PI-5).
+
+| | |
+| --- | --- |
+| **Automatic** | Writing `.local/xezar/mcp-connection.json`; regenerating it; keeping it out of Git. |
+| **One-time user action** | Install the extension **and** add the `mcp.json` entry. Two steps. |
+| **NOT automatic — state it plainly (U-M01)** | pi does **not** discover `.local/xezar/mcp-connection.json`. pi alone is **not** an MCP client: the entry does nothing until the extension is installed, and a user who installs bare pi sees no xezar tool. The user-level entry lives outside the repository and added nothing to the project's working tree (executed). |
+
+**Where the entry can live.** The user-level file above binds each project by pi's working directory:
+the same entry bound project B when pi started in B, and A when it started in A, and an unregistered
+repository got `This directory is not a xezar project yet…` and no project's data (executed). The
+extension spawns the bridge in pi's session working directory (read from adapter source,
+`server-manager.ts:799`). `<project root>/.pi/mcp.json` also works for one project, with no trust flag
+(executed). The project `.mcp.json` works for pi as well, but Claude Code reads the same file, so an
+entry there reaches both clients (#330).
+
+**Not attempted:** whether a `keep-alive` entry makes pi take a project's leader slot when pi is
+started in that project for other work, including a pi task that xezar itself runs there. The reaction
+adapter and the setup card (WP2, WP3 of #330) must settle it before setup copy recommends a location.
+
+**Tool approval** is off by default in the extension. A user's `approveTools` setting makes matching
+headless calls fail with `approval_required` (documented, adapter README; not run).
+
+### 3.5 The four side by side
+
+| | Claude Code 2.1.268 | Codex 0.154.0 | OpenCode 1.18.30 | pi 0.85.1 + pi-mcp-adapter 2.32.1 |
+| --- | --- | --- | --- | --- |
+| Recommended target | `$CLAUDE_CONFIG_DIR/.claude.json` (local scope) | `<root>/.codex/config.toml` | `<root>/opencode.json` | `mcp.json` in pi's agent directory (user level; provisional, see § 3.4 "Not attempted") |
+| In Git? | No — outside the repo entirely | Yes, tracked | Yes, tracked | No — outside the repo entirely |
+| One-time user actions | **1** (one command) | **2** (write file **and** trust project) | **1** (write file) | **2** (install the extension **and** write the entry) |
+| Extra approval gate | None at local scope; **yes** at project scope | Trust is the gate, and it is silent when missing | None observed | None observed |
+| MCP client built in | Yes | Yes | Yes | **No** — the third-party extension is a prerequisite |
+| Contains a secret | No | No | No | No |
+| Reads `.local/xezar/mcp-connection.json` | **No** | **No** | **No** | **No** |
+| Spawn working directory observed | Project root (executed) | **Not attempted** — read-only commands do not spawn | Project root (executed) | pi's session working directory (read from adapter source); the per-project binding it gives executed |
+
+The first three columns are the 2026-09-10 run in § 8. The pi column is the 2026-09-11 run in the
+[pi evidence record](mcp-adapter-evidence-pi.md).
+
+The last row is the whole of U-M01 in one line: **no client discovers the generated file. Four
+different one-time actions, two of which touch a tracked file, and two of which need a second step:
+Codex's trust, which fails silently if skipped, and pi's extension, without which pi has no MCP client
+at all.** Setup copy that says "xezar configures this for you" would be false for all four.
 
 ## 4. Corrections, where the source disagrees with the documents
 

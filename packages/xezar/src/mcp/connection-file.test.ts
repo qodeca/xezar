@@ -1,10 +1,10 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { projectDataDir } from '../project-data-paths.ts';
 import { registerProject } from '../workspace/projects.ts';
-import { mcpConnectionDescriptorSchema, mcpConnectionPath } from './connection-file.ts';
+import { mcpConnectionDescriptorSchema, mcpConnectionPath, writeMcpConnectionFile } from './connection-file.ts';
 import { startMcpService } from './index.ts';
 
 /**
@@ -102,6 +102,25 @@ describe('D-04: the running service writes the MCP connection file (A-01, #262)'
     unlinkSync(path);
     await start(p.id, []);
     expect(existsSync(path), 'rebuilt, never required').toBe(true);
+  });
+
+  // Found by the #333 mutation sample: this file read 100 % lines and branches while deleting the
+  // `chmodSync` below the write left every test green. `writeFileSync`'s mode applies only to a file
+  // it CREATES, so a crashed service's leftover `.tmp` would hand its wider mode to the descriptor.
+  it('keeps the descriptor 0600 even when a stale atomic-write sibling was left world-readable', () => {
+    const root = tmp('xzcp-stale-');
+    const dataDir = join(root, '.local', 'xezar');
+    mkdirSync(dataDir, { recursive: true });
+    const path = mcpConnectionPath(dataDir);
+    writeFileSync(`${path}.tmp`, 'left by a service that died mid-write\n');
+    chmodSync(`${path}.tmp`, 0o644);
+    expect((statSync(`${path}.tmp`).mode & 0o777).toString(8)).toBe('644');
+
+    writeMcpConnectionFile({ project: { id: 'stale', root }, dataDir, socket: '/tmp/xz-stale.sock' });
+
+    expect((statSync(path).mode & 0o777).toString(8)).toBe('600');
+    expect(existsSync(`${path}.tmp`)).toBe(false);
+    expect(mcpConnectionDescriptorSchema.strict().parse(JSON.parse(readFileSync(path, 'utf8'))).endpoint.socket).toBe('/tmp/xz-stale.sock');
   });
 
   it('N-07: a file that cannot be written is ONE warning, and the MCP socket still opens', async () => {

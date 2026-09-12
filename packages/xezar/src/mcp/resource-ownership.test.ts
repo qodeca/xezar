@@ -626,3 +626,43 @@ describe('resource ownership (#88) — the same flows without the guard', () => 
     }
   }, 60_000);
 });
+
+/**
+ * Found by the #333 mutation sample: `worktreeDirIsOurs` treats an ABSENT worktree (reclaimed) as
+ * ours and any OTHER `lstat` failure as not ours. Swapping its `=== 'ENOENT'` for `!==` inverted
+ * both – a reclaimed task's group became unreadable and an unreadable path was admitted – and every
+ * test stayed green, because none reached `lstat` with anything but a live directory.
+ */
+describe('resource ownership — an absent worktree passes, an unreadable one fails closed (#333)', () => {
+  const setup = () => {
+    const root = mkdtempSync(join(realpathSync(tmpdir()), 'xez-333-'));
+    const store = RunStore.open(projectDataDir(root));
+    const scope = ownershipScope({ root, store, automationStore: AutomationStore.open(projectDataDir(root)) });
+    const run = store.createRun({ title: 'reclaimed', workflow: 'quick-task', task: 't', steps: [], groupId: 'group-r', variant: 'a' });
+    // The path xezar itself would have created – recorded, but never created or since reclaimed.
+    store.updateRun(run.id, { status: 'done', worktreePath: worktreePathFor(root, run.id) });
+    return { root, store, scope, run };
+  };
+
+  it('admits a group whose worktree was reclaimed: nothing is there to reach', async () => {
+    const { root, store, scope, run } = setup();
+    try {
+      expect(await ownGroup(scope, 'group-r')).toMatchObject({ ok: true, value: { runs: [{ id: run.id }] } });
+    } finally {
+      store.flush();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses a group whose worktree path cannot be inspected (a file where the worktrees folder should be)', async () => {
+    const { root, store, scope } = setup();
+    try {
+      // `lstat(<data>/worktrees/<id>)` now fails with ENOTDIR, not ENOENT: unknown is never ours.
+      writeFileSync(join(projectDataDir(root), 'worktrees'), 'not a directory\n');
+      expect(await ownGroup(scope, 'group-r')).toMatchObject({ ok: false, code: 'not_found' });
+    } finally {
+      store.flush();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
