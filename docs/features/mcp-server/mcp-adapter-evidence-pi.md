@@ -704,9 +704,10 @@ the `#118` real-client acceptance harness and produces the pi column of
 section holds what that record does not have room for: how the leg is built, what it measured that the two
 halves above could not, and the three things it found.
 
-Run date: **2026-09-12**, 10:38–10:43 UTC. Revision under test: **`1192065`** (branch `xez/c17af4a9`, `main` at
-[`ae6de7f`](https://github.com/qodeca/xezar/commit/ae6de7f) plus this branch's commits; the only product file
-that differs from `main` is one user-facing string, § The `.mjs` that was never there). Host: macOS 26.6.2
+Run date: **2026-09-12**, 11:00–11:04 UTC. Revision under test: **`1e1113c`** (branch `xez/c17af4a9`, `main` at
+[`ae6de7f`](https://github.com/qodeca/xezar/commit/ae6de7f) plus this branch's commits, clean tree; the only
+product file that differs from `main` is one user-facing string, § The `.mjs` that was never there). The commits
+that write this section sit on top of that revision and change no product file. Host: macOS 26.6.2
 (Darwin 25.6.0, arm64), Node v24.20.0. pi **0.85.1**, pi-mcp-adapter **2.32.1**. Installed versions, not
 certified minimums.
 
@@ -855,8 +856,15 @@ Neither is about pi, and both were found only because WP5 runs the whole suite o
   returns. Until #302 nothing enforced ownership and this never mattered; now the next leg's handshake was
   refused and a working Codex read as FAILED. Each leg now waits for the project to be free, bounded, and records
   how long the release took: D-02 § 4 claims it happens on disconnect, so that is a fact worth keeping rather
-  than a sleep. Honest caveat: Codex passes on the run this record is from, and failed this way in two earlier
-  runs of the same revision, so treat that leg as order-sensitive.
+  than a sleep. **It was not enough, and the record says so:** the Codex leg still fails in three of four full
+  runs of this revision, on Codex's FIRST connection, with the precondition reporting A free 153 ms earlier.
+  Codex reaches A in five different configurations outside the harness process — against a real `xezar serve`
+  with and without `mcpServerStatus/list`, against the A/B world, and against the A/B world after a probe bridge
+  is opened and closed — and the A/B world's ownership release is immediate at 0, 250, 1 000 and 3 000 ms. So
+  the trigger is inside the harness process and is **not identified**; the Codex verdict is NOT RE-RUN rather
+  than FAILED, and it is a follow-up on the harness, not a finding about Codex. One clue is recorded rather than
+  concluded from: `mcpServerStatus/list` answered `runtimeStatus: "failed"` while listing all 11 tools, so a
+  connection had succeeded and been remembered.
 - **A-20's `leader_events` ack was refused.** #264 made every mutating tool action carry an `operationId`, and
   `ack` is one. The call did not, so it answered "ack needs operationId" and a required behaviour read as missing.
 

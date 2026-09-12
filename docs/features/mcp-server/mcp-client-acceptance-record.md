@@ -17,9 +17,10 @@ connection file, which the MCP service now writes. `mcp-real-clients.test.ts` it
 **Whole-suite re-run, 2026-09-12, [#330](https://github.com/qodeca/xezar/issues/330) WP5 — the run the table
 below is from.** The suite gained its fourth client, **pi**, and #330's PI-07 asks for a pi column *on the same
 revision as the other three*, so every case was run again rather than pi's alone. Revision under test:
-**`1192065`** (branch `xez/c17af4a9`, `main` at `ae6de7f` plus this branch's test and documentation commits;
+**`1e1113c`** (branch `xez/c17af4a9`, `main` at `ae6de7f` plus this branch's test and documentation commits, clean tree;
 the only product file that differs from `main` is a one-word fix to a user-facing string, § Findings worth
-keeping). Host: macOS 26.6.2 (Darwin 25.6.0, arm64), Node v24.20.0. Clients as installed: **Claude Code
+keeping). The commits that write THIS record sit on top of that revision and change no product file, which is
+why it and not `HEAD` is the revision named. Host: macOS 26.6.2 (Darwin 25.6.0, arm64), Node v24.20.0. Clients as installed: **Claude Code
 2.1.268**, **Codex CLI 0.154.0**, **OpenCode 1.18.30**, **pi 0.85.1** with **pi-mcp-adapter 2.32.1**. Installed
 versions, not certified minimums.
 
@@ -34,12 +35,12 @@ overwrites what it once measured cannot be checked.
 
 | Case | Claude Code | Codex | OpenCode | pi | Product-level checks | What is missing |
 | --- | --- | --- | --- | --- | --- | --- |
-| **A-01** setup | client leg **PASSED** | client leg **PASSED** | client leg **PASSED** | client leg **PASSED**; the `approveTools` edge path **FAILED** | connection file: **PASSED** (#262); tools reach the service: **PASSED** | A gated pi tool blocks instead of ending — see A-01 below |
+| **A-01** setup | client leg **PASSED** | client leg **NOT RE-RUN** — its harness leg failed for a fixture reason, and Codex itself reaches A (see A-01) | client leg **PASSED** | client leg **PASSED**; the `approveTools` edge path **FAILED** | connection file: **PASSED** (#262); tools reach the service: **PASSED** | A gated pi tool blocks instead of ending; and a harness defect in the Codex leg |
 | **A-17** competing owner | **PASSED** (FAILED before #302) | **PASSED** (was FAILED) | **PASSED** (was FAILED) | **PASSED** | second bridge refused: **PASSED**; same-owner concurrency and project B: pass | Nothing — **A-17 is PASSED** since #302 |
 | **A-18** liveness, fencing, restart | — | — | — | **PASSED** (pi owning A, and a restart on pi's own side) | **PASSED** (was FAILED): idle owner, crash hand-over, stale fencing and restart fencing all hold | Nothing measured here; the adapter's 10-minute idle close was not re-run (WP1 measured it) |
 | **A-19** delivery and model reaction | **BLOCKED** | **BLOCKED** | **BLOCKED** | **BLOCKED** on the real-model clause alone — delivery, the reaction and the absence of a polling turn are all **executed** | acceptance vs result and journal emission: **PASSED** | For pi: only a real model's decision. For the three: no attach path exists for them at all. |
 | **A-20** live sync | — | — | — | the no-recursive-loop clause: **PASSED** | cockpit half (browser): **PASSED**; leader half: **BLOCKED** on that one clause | For the three, the clause still needs a delivery path; for pi it is observed |
-| **A-23** exclusive owner | **BLOCKED** (was FAILED) | **BLOCKED** (was FAILED) | **BLOCKED** (was FAILED) | **BLOCKED** | — | Only reaction (A-19). Exclusivity now holds for all four; the built-in-leader half is **NOT RUN** (out of scope) |
+| **A-23** exclusive owner | **BLOCKED** (was FAILED) | **BLOCKED** on reaction; its setup row is A-01's, so NOT RE-RUN | **BLOCKED** (was FAILED) | **BLOCKED** | — | Only reaction (A-19). Exclusivity now holds for all four; the built-in-leader half is **NOT RUN** (out of scope) |
 
 **A-01, A-17 and A-18 pass as wholes; A-19, A-20 and A-23 are BLOCKED, and for pi only on the clause no § 9
 fixture may observe.** What changed since 2026-09-11 is ownership (#302) and a delivery path for one client
@@ -103,7 +104,7 @@ with a `MANIFEST.sha256`):
 | `e2e-final.log` | Browser spec on `ed1492e`: **4 of 4 passed**, agent-browser installed, not skipped | `632289356cc6dd1a` |
 | `2026-09-11T06-14-52-113Z` | Regression proof: the `[product]` cases against the pre-#247 service | `fda42ba7d6ccf4a4` (`results.json`) |
 | `e2e-a20-redproof.log` | Regression proof: the browser spec against the pre-#247 service | `c0a5a0a91f68834e` |
-| `2026-09-12T10-38-38-106Z` | **Whole suite on `1192065`** — the verdicts in this record. 28 tests: 18 pass, 9 todo (BLOCKED), 1 fail (pi's `approveTools` edge path) | see `MANIFEST.sha256` in the WP5 evidence folder |
+| `2026-09-12T11-00-24-216Z` | **Whole suite on `1e1113c`, clean tree** — the verdicts in this record. 28 tests: 17 pass, 8 todo (BLOCKED), 3 fail (pi's `approveTools` edge path, and the Codex A-01 leg with the A-23 row that reads it) | see `MANIFEST.sha256` in the WP5 evidence folder |
 
 The WP5 run's own evidence — `environment.json` (both client versions and the adapter version), `results.json`,
 `results.md`, one transcript per process including every pi RPC frame, and the scripted endpoint's full request
@@ -143,12 +144,35 @@ committed and holds no credential: the only key string is the dummy value in the
 | --- | --- | --- | --- | --- |
 | One-time step as documented | `claude mcp add --scope local` → exit 0, file inside the pinned folder | project `.codex/config.toml` + a trust entry | project `opencode.json` `mcp.xezar` block | `pi install npm:pi-mcp-adapter@2.32.1` → the package and `settings.json` inside the pinned `PI_CODING_AGENT_DIR`, plus its `mcp.json` entry (`directTools`, `lifecycle: keep-alive`) |
 | Handshake / entry loaded | `claude mcp list` → `✔ Connected` | `mcpServerStatus/list` lists `xezar` | `opencode mcp list` → `✓ xezar connected` | the adapter's own notice: `MCP: 1 servers connected (11 tools)`, then `MCP: direct tools refreshed (+11, ~0, -0)`. pi has no `mcp list` command, so that notice IS the handshake evidence |
-| The client reaches A (the `health` tool) | tool result names `alpha-proj` | `xezar 0.0.0-ab is running for project alpha project (alpha-proj).` | tool result names `alpha-proj` | `xezar 0.0.0-ab is running for project alpha project (alpha-proj).` |
-| A registry tool answers with A's data (`task_read`) | A's tasks | A's tasks | A's tasks | A's tasks |
+| The client reaches A (the `health` tool) | tool result names `alpha-proj` | **not in this run** — `-32080`, see below. Codex reached A in every standalone probe: `xezar 0.0.0-ab is running for project alpha project (alpha-proj).` | tool result names `alpha-proj` | `xezar 0.0.0-ab is running for project alpha project (alpha-proj).` |
+| A registry tool answers with A's data (`task_read`) | A's tasks | not in this run (same cause) | A's tasks | A's tasks |
 | Nothing of B reaches the client | none | none | none | none |
 | No connection data or secret in the client config | none (command only) | none | none | none (a command and the two fixture variables) |
 | What the step added to A's working tree | nothing (local scope is outside the repo) | `?? .codex/config.toml` | `?? opencode.json` | nothing (the entry lives in the pinned folder, outside the repository) |
 | The model is offered the tools as first-class tools | (measured through its turn) | (n/a — no turn) | (measured through its turn) | all 11: `xezar_health`, `xezar_task_read`, `xezar_execution_control`, `xezar_discover_project`, `xezar_organise_work`, `xezar_task_create`, `xezar_handoff_git`, `xezar_read_results_evidence`, `xezar_project_config`, `xezar_local_handoff`, `xezar_leader_events` |
+
+**The Codex leg is a harness defect on this revision, and its verdict is NOT RE-RUN rather than FAILED.**
+On `1e1113c` the leg's `mcpServer/tool/call` answered `-32080` / `com.qodeca.xezar/project-occupied` — on
+Codex's FIRST connection, with the leg's own free-project precondition having reported A free 153 ms earlier.
+It failed that way in three of four full runs of this revision and passed in one, so it is order-sensitive
+rather than broken.
+
+**It is not a verdict about Codex and not about the product**, and that was established by probe rather than
+argued:
+
+| Probe | Result |
+| --- | --- |
+| Codex app-server against a real `xezar serve`, with `mcpServerStatus/list` | `xezar:starting → xezar:ready`; `health` answered |
+| The same, WITHOUT `mcpServerStatus/list` (in case the status call took the slot) | `starting → ready`; `health` answered |
+| Codex against the A/B world, the fixture the leg uses | `starting → ready`; `health` answered |
+| The same, after a free-project probe bridge is opened and closed first | `starting → ready`; `health` answered |
+| The A/B world's ownership release, re-opening a bridge at 0, 250, 1 000 and 3 000 ms after closing one | accepted every time — the release is not the lag |
+
+So Codex reaches A through the real bridge in every configuration reproducible outside the harness process,
+and the trigger inside it is **not identified**. One clue is recorded rather than concluded from:
+`mcpServerStatus/list` answered `runtimeStatus: "failed"` while listing all 11 tools, which means a connection
+had succeeded and been remembered — so something held the slot when the thread's own server started. A
+follow-up, not a finding about Codex, and the 2026-09-11 Codex verdict stands as the last one measured.
 
 **pi's edge path, and it FAILED: a tool gated behind `approveTools`.** #330's PI-08 asks for "a named
 `approval_required` state, not a hang". With `approveTools: ['health']` on the xezar entry and a headless pi:
@@ -321,7 +345,7 @@ per client. One of those rows needed a correction to the harness rather than to 
 
 | Check | Claude Code | Codex | OpenCode | pi |
 | --- | --- | --- | --- | --- |
-| Local setup (A-01 client leg) | met | met | met | met |
+| Local setup (A-01 client leg) | met | not re-run (A-01's harness defect) | met | met |
 | Reaction (A-19) | BLOCKED | BLOCKED | BLOCKED | BLOCKED on the real-model clause alone |
 | Exclusive owner against another owner of A | **met** (A-17; not met before #302) | **met** | **met** | **met** |
 | No covert second leader | **met** | **met** | **met** | **met** |
@@ -396,8 +420,10 @@ Added by the 2026-09-12 run (#330 WP5):
   moment after the command we awaited returns; since ownership is enforced, the next leg's handshake met `-32080`
   and a working Codex read as FAILED. Each leg now waits for the project to be free, bounded, and records how
   long the release took — D-02 § 4 claims it happens on disconnect, so that is worth measuring rather than
-  sleeping through. Codex passes on this run; it failed this way in two earlier runs of the same revision, so
-  treat that leg as order-sensitive until the release is measured rather than waited for.
+  sleeping through. That was not enough: the Codex leg still fails in three of four runs of this revision, on
+  Codex's FIRST connection, with the precondition reporting A free milliseconds earlier — and Codex reaches A in
+  every configuration reproducible outside the harness process (five probes, § A-01). The trigger is not
+  identified and the leg's verdict is NOT RE-RUN rather than FAILED. A follow-up on the harness.
 
 ## Traceability
 
