@@ -41,9 +41,13 @@
   (`PI_CODING_AGENT_DIR`), it moves the login as well as the settings, and xezar now honours it:
   set it and pi's discovered account moves with it, or add a second pi account in Settings and pick
   it per project the way you already can for Claude Code and Codex. pi's own folder is what every
-  pi row, model list and account probe now reads. Nothing to set up, and nothing changes for anyone
-  who runs one pi login. OpenCode still cannot carry a second account – its credentials live apart
-  from its config, so a second one would quietly bill the first. (#329)
+  pi row, model list, account probe and "Show details" now reads – and "Show details" on a pi
+  account says which model providers it is signed in to, in pi's own words rather than OpenCode's.
+  Nothing to set up, and nothing changes for anyone who has not set `PI_CODING_AGENT_DIR`; if you
+  already export it, xezar's pi model list now comes from that folder instead of `~/.pi/agent`,
+  which is the correct answer and the point of the fix. OpenCode still cannot carry a second
+  account – its credentials live apart from its config, so a second one would quietly bill the
+  first. (#329)
 - 🐛 **A workflow step that stops for an answer now stops the workflow.** A step before the last
   one runs a single turn, and it used to be marked done whenever its session closed without an
   error – so a step that ended on a question, `XEZ:ASK` or plain prose, was treated as finished

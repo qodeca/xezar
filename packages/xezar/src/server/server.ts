@@ -158,6 +158,7 @@ import {
   type AgentAccountStore,
 } from '../workspace/agent-accounts.ts';
 import {
+  accountHomePatch,
   defaultAgentProfile,
   listAgentProfiles,
   profileDirState,
@@ -1847,14 +1848,14 @@ export function createApp(deps: ServerDeps) {
    * `AgentHomePaths` whose slot for this provider is the account's dir. That is what makes a second
    * login's `settings.json` the file you open rather than the default account's, and it keeps the
    * ids opaque and stable so the open route below never takes a path from the client.
+   *
+   * WHICH slot comes from `accountHomePatch`, shared with `defaultAgentProfile`'s read of the same
+   * table. This was a run of conditional spreads that named three providers and silently did
+   * nothing for the fourth, so a pi account would have resolved its files in the default pi home
+   * (#329). It never surfaced only because `CONFIG_FILES` carries no pi entry yet.
    */
   const accountFiles = async (profile: ResolvedAgentProfile) => {
-    const home: AgentHomePaths = {
-      ...agentHomePaths(),
-      ...(profile.provider === 'claude' ? { claude: profile.path } : {}),
-      ...(profile.provider === 'codex' ? { codex: profile.path } : {}),
-      ...(profile.provider === 'opencode' ? { opencodeConfig: profile.path } : {}),
-    };
+    const home: AgentHomePaths = { ...agentHomePaths(), ...accountHomePatch(profile.provider, profile.path) };
     const defs = listConfigFiles().filter(
       (def) => def.scope === 'user' && def.runners.includes(profile.provider),
     );
