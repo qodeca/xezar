@@ -1,7 +1,7 @@
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createConnection, type Socket } from 'node:net';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import extension, { __internals } from '../../../scripts/pi-leader-extension.ts';
 
@@ -29,28 +29,82 @@ const tmp = (prefix: string): string => {
   return dir;
 };
 
+/**
+ * Pin `TMPDIR` for ONE case, and never leak it.
+ *
+ * This is load-bearing and it already cost a CI failure. `--project server` runs every file in one
+ * worker process on a 2-core CI runner, so a `TMPDIR` this file leaves behind is a `TMPDIR` every
+ * later file inherits — and `runs/agent-tmpdir.ts` deliberately FAILS a run whose temp directory
+ * does not work, so a leak surfaced as `acceptance-parity` reporting a task `failed` instead of
+ * `running`, in a suite that has nothing to do with pi. Most cases here need no pin at all: the
+ * socket's real path comes back in the descriptor and can be inspected wherever it is.
+ */
+const pinTmpDir = (dir: string): void => {
+  process.env.TMPDIR = dir;
+};
+
+/**
+ * The self-check for the leak above: whatever `TMPDIR` this file inherited must be exactly what it
+ * leaves behind. `afterAll` runs after every `afterEach`, so a single case that escapes the restore
+ * fails HERE — in this file, by name — instead of somewhere in `acceptance-parity` an hour later.
+ */
+let ambientTmpDir: string | undefined;
+let ambientWasSet = false;
+
+beforeAll(() => {
+  ambientTmpDir = process.env.TMPDIR;
+  ambientWasSet = 'TMPDIR' in process.env;
+});
+
+afterAll(() => {
+  expect('TMPDIR' in process.env).toBe(ambientWasSet);
+  expect(process.env.TMPDIR).toBe(ambientTmpDir);
+});
+
 beforeEach(() => {
   realTmpDir = process.env.TMPDIR;
 });
 
 afterEach(() => {
-  for (const socket of openSockets.splice(0)) socket.destroy();
-  for (const shutdown of shutdowns.splice(0)) shutdown();
-  if (realTmpDir === undefined) delete process.env.TMPDIR;
-  else process.env.TMPDIR = realTmpDir;
-  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  // The restore comes FIRST and cannot be skipped: an exception from a teardown below used to jump
+  // over it and poison every later test file in this worker.
+  try {
+    if (realTmpDir === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = realTmpDir;
+  } finally {
+    for (const socket of openSockets.splice(0)) {
+      try {
+        socket.destroy();
+      } catch { /* a socket already gone is not a cleanup failure */ }
+    }
+    for (const shutdown of shutdowns.splice(0)) {
+      try {
+        shutdown();
+      } catch { /* one extension's teardown must not abandon the rest of the cleanup */ }
+    }
+    for (const dir of dirs.splice(0)) {
+      try {
+        rmSync(dir, { recursive: true, force: true });
+      } catch { /* a leftover temporary directory harms nothing */ }
+    }
+  }
 });
 
 /** Only what the extension actually touches, so a change in pi's surface shows up as a type error. */
+let sessionSeq = 0;
+
 function fakePi(over: { isIdle?: () => boolean; hasPendingMessages?: () => boolean; branch?: unknown[] } = {}) {
   const handlers = new Map<string, ((event: unknown, ctx: unknown) => unknown)[]>();
   const sent: { content: unknown; options?: { deliverAs?: string } }[] = [];
   const project = tmp('xzext-proj-');
   mkdirSync(join(project, '.local', 'xezar'), { recursive: true });
+  // A session id of its own per case, as real pi has (a UUID). Cases here share the host's real
+  // temporary directory, so a fixed id would make them all fight over one socket path.
+  const sessionId = `sess-${process.pid}-${++sessionSeq}`;
   const ctx = {
     cwd: project,
     sessionManager: {
-      getSessionId: () => 'sess-0001',
+      getSessionId: () => sessionId,
       getCwd: () => project,
       getBranch: () => (over.branch ?? []) as never,
     },
@@ -73,6 +127,7 @@ function fakePi(over: { isIdle?: () => boolean; hasPendingMessages?: () => boole
     sent,
     project,
     dataDir: join(project, '.local', 'xezar'),
+    sessionId,
     async start() {
       for (const handler of handlers.get('session_start') ?? []) await handler({ type: 'session_start' }, ctx);
     },
@@ -88,10 +143,18 @@ function fakePi(over: { isIdle?: () => boolean; hasPendingMessages?: () => boole
   };
 }
 
+/**
+ * Boot the real extension under a SHORT pinned `TMPDIR`.
+ *
+ * The pin is not cosmetic. A Unix socket path is capped at ~104 bytes, and this repo's own task
+ * temporary directory (`.local/xezar/tmp/<runId>`) is already 78 of them, so the ambient value here
+ * leaves no room for `<dir>/leader.sock` and the extension correctly opens nothing. Pinning it short
+ * is what lets these cases exercise the socket at all — and `pinTmpDir` plus the `afterEach` restore
+ * are what stop that pin reaching any other file.
+ */
 async function boot(over: Parameters<typeof fakePi>[0] = {}) {
   const harness = fakePi(over);
-  // Pin TMPDIR so the socket lands where this test can inspect its directory.
-  process.env.TMPDIR = tmp('xzext-tmp-');
+  pinTmpDir(tmp('xzt-'));
   extension(harness.pi as never);
   shutdowns.push(() => harness.shutdown());
   await harness.start();
@@ -159,7 +222,8 @@ describe('the socket is kept away from other local accounts', () => {
     expect(stat.isDirectory()).toBe(true);
     // Nothing for group, nothing for other. This is the assertion the old code failed.
     expect(stat.mode & 0o777).toBe(0o700);
-    // And the socket is genuinely inside it, not a sibling in the shared temporary directory.
+    // And it is a directory of its OWN, not the shared temporary directory itself — which is what
+    // the old code returned, and what makes the mode above meaningless.
     expect(realpathSync(parent)).not.toBe(realpathSync(process.env.TMPDIR as string));
     expect(lstatSync(socketPath).isSocket()).toBe(true);
   });
@@ -169,7 +233,7 @@ describe('the socket is kept away from other local accounts', () => {
     const shared = tmp('xzext-shared-');
     const { chmodSync } = await import('node:fs');
     chmodSync(shared, 0o1777);
-    process.env.TMPDIR = shared;
+    pinTmpDir(shared);
     const harness = fakePi();
     extension(harness.pi as never);
     shutdowns.push(() => harness.shutdown());
@@ -184,13 +248,13 @@ describe('the socket is kept away from other local accounts', () => {
 
   it('refuses to adopt a symlink planted at its directory path, and opens nothing', () => {
     const tmpRoot = tmp('xzext-tmp-');
-    process.env.TMPDIR = tmpRoot;
+    pinTmpDir(tmpRoot);
     const elsewhere = tmp('xzext-attacker-');
-    symlinkSync(elsewhere, join(tmpRoot, 'xez-pi-sess-0001'));
+    symlinkSync(elsewhere, join(tmpRoot, 'xez-pi-planted'));
 
     // `rmSync` removes the symlink and `mkdirSync` then makes a real directory, so the attacker's
     // target is never written into. The point is that the path used afterwards is not the symlink.
-    const place = __internals.makePrivateSocketDir('sess-0001');
+    const place = __internals.makePrivateSocketDir('planted');
     expect(place).toBeDefined();
     // A directory of its own, never the shared root, and never the planted link.
     expect(realpathSync(place!.dir)).not.toBe(realpathSync(tmpRoot));
@@ -203,13 +267,13 @@ describe('the socket is kept away from other local accounts', () => {
 
   it('gives up rather than falling back to a shared path when it cannot make the directory', () => {
     const tmpRoot = tmp('xzext-tmp-');
-    process.env.TMPDIR = tmpRoot;
+    pinTmpDir(tmpRoot);
     // A plain FILE where the directory has to go, which `rmSync` clears — so to make this
     // unrecoverable the parent itself is read-only.
     const { chmodSync } = require('node:fs') as typeof import('node:fs');
     chmodSync(tmpRoot, 0o500);
     try {
-      expect(__internals.makePrivateSocketDir('sess-0001')).toBeUndefined();
+      expect(__internals.makePrivateSocketDir('cannot-make')).toBeUndefined();
     } finally {
       chmodSync(tmpRoot, 0o700);
     }
@@ -221,12 +285,13 @@ describe('the socket is kept away from other local accounts', () => {
     const dir = realpathSync(join(socketPath, '..'));
     // The directory it removes must be its OWN, never the shared temporary root — removing that
     // would take every other program's temporary files with it.
-    expect(dir).not.toBe(realpathSync(process.env.TMPDIR as string));
+    const shared = realpathSync(join(dir, '..'));
+    expect(dir).not.toBe(shared);
     expect(existsSync(dir)).toBe(true);
 
     harness.shutdown();
     expect(existsSync(dir)).toBe(false);
-    expect(existsSync(process.env.TMPDIR as string)).toBe(true);
+    expect(existsSync(shared)).toBe(true);
     expect(existsSync(join(harness.dataDir, 'pi-leader.json'))).toBe(false);
   });
 });
@@ -238,12 +303,12 @@ describe('announcing itself to xezar', () => {
     expect(lstatSync(path).mode & 0o777).toBe(0o600);
 
     const descriptor = descriptorOf(harness);
-    expect(descriptor).toMatchObject({ schemaVersion: 1, session: { sessionId: 'sess-0001' } });
+    expect(descriptor).toMatchObject({ schemaVersion: 1, session: { sessionId: harness.sessionId } });
     expect(lstatSync(descriptor.endpoint.socket).isSocket()).toBe(true);
   });
 
   it('does nothing at all outside a xezar project — no socket, no descriptor', async () => {
-    process.env.TMPDIR = tmp('xzext-tmp-');
+    pinTmpDir(tmp('xzt-'));
     const plain = tmp('xzext-notaproject-');
     const harness = fakePi();
     extension(harness.pi as never);
@@ -484,7 +549,7 @@ describe('when it cannot open its socket at all', () => {
     const root = tmp('xzext-long-');
     const deep = join(root, 'a'.repeat(60), 'b'.repeat(60));
     mkdirSync(deep, { recursive: true });
-    process.env.TMPDIR = deep;
+    pinTmpDir(deep);
 
     const harness = fakePi();
     extension(harness.pi as never);

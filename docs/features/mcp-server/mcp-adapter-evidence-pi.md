@@ -443,6 +443,31 @@ E-07 with E-09 is A-19: a significant event reached the leader, a real model rea
 there was no status-polling turn — one model request in the session's whole life, and it was the one
 carrying the event.
 
+### One thing the new tests broke, and how
+
+The first version of `pi-leader-extension.test.ts` pinned `process.env.TMPDIR` in its `boot()` helper
+and restored it at the END of `afterEach`, after the teardowns. CI failed — not in anything to do with
+pi, but in `acceptance-parity.test.ts`, with `expected 'failed' to be 'running'` on a task-cancel
+case. That is not a flake and it was worth chasing:
+
+- `--project server` runs every file in ONE worker process on a 2-core CI runner (the deliberate
+  worker cap in the root `vitest.config.ts` resolves to 1 there), so a `TMPDIR` this file leaves
+  behind is one every later file inherits.
+- `runs/agent-tmpdir.ts` write-probes a run's temporary directory and **fails the run loudly** when it
+  does not work — by design. A leaked `TMPDIR` naming a directory the test had already deleted is
+  exactly that, so an unrelated suite reported a task `failed`.
+
+Two fixes, and a guard so it cannot come back quietly:
+- the restore happens FIRST in `afterEach` and cannot be skipped, and every teardown step is
+  individually guarded, so one throw no longer abandons the rest;
+- an `afterAll` asserts the file leaves `TMPDIR` exactly as it found it — it runs after every
+  `afterEach`, so a single escaping case fails HERE, by name, instead of in another suite later.
+  Named break **B12** (restore last, as it was) turns it red.
+
+The pin itself has to stay: a Unix socket path is capped at ~104 bytes and this repo's own task
+temporary directory is already 78 of them, so the ambient value leaves no room for the socket and the
+extension correctly opens nothing.
+
 ### The socket's permissions — a security defect the first version shipped
 
 A QA on #358 measured what the first version of the extension actually did: it put its socket
@@ -633,6 +658,7 @@ Each new test was proven RED against a named break in the source it guards. Ever
 | B7 | Drop the echo guard | RED |
 | B8 | Detach the working leader before refusing a pi attach | RED |
 | B11 | Put the extension's socket straight into `os.tmpdir()` (what shipped first) | RED — all five cases of "the socket is kept away from other local accounts" |
+| B12 | Restore the test file's pinned `TMPDIR` AFTER its teardowns, so a throw skips it | RED — the `afterAll` self-check names the leaked pin in this file |
 | B9 | Trust `#busy` and steer without confirming it (the bug the QA found) | RED — direction A's row never reached the model (`modelRequests: []`), and the parked-steer test resolved `{handedThrough: 1}` instead of rejecting |
 
 One test is a **guard**, green with and without B9's fix, and labelled as such in the source: direction B
