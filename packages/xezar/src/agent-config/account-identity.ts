@@ -10,7 +10,8 @@ import { claudeStateFilePath } from '../paths.ts';
  * This is the second place vendor knowledge lives about an agent's home, beside
  * `catalog.ts` (which config FILES exist) and `core/agent-profiles.ts` (which env var relocates
  * the home). This one knows where each agent writes its own identity. Facts verified against the
- * files on disk 2026-07-29; re-verify before changing them.
+ * files on disk 2026-07-29, and the pi row against pi 0.85.1 on 2026-09-12 (#329); re-verify
+ * before changing them.
  *
  * ## Two rules that are not negotiable
  *
@@ -134,6 +135,40 @@ async function readCodexIdentity(configDir: string): Promise<AccountIdentity> {
     : { available: false, reason: NOT_SIGNED_IN, fields: [] };
 }
 
+/**
+ * pi keeps its login in `auth.json` INSIDE the agent dir — that is the fact #329 is about, and it
+ * is why pi can carry an account at all. But the file holds no account identity: it is
+ * `Record<providerId, Credential>`, and a `Credential` is `{type: 'api_key', key?, env?}` or
+ * `{type: 'oauth', refresh, access, expires}` — no email, no name, no plan anywhere in it
+ * (pi 0.85.1, `dist/core/auth-storage.d.ts` plus `@earendil-works/pi-ai` `dist/auth/types.d.ts`,
+ * read on 2026-09-12).
+ *
+ * What the file DOES carry is what pi-ai itself labels "non-secret credential metadata for
+ * account/status enumeration": which model providers this account is logged in to, and by which
+ * method. That is the thing that tells two pi accounts apart, so that is what this shows — the
+ * map's KEYS and each entry's `type`, both by name. `key`, `access`, `refresh` and `env` are
+ * never read, and the value is rebuilt from scratch rather than forwarded.
+ *
+ * A fresh pi writes `auth.json` as `{}` before any login (observed, #329), so an empty map is the
+ * ordinary not-signed-in case and not a parse failure.
+ */
+async function readPiIdentity(configDir: string): Promise<AccountIdentity> {
+  const auth = await readJsonCapped(join(configDir, 'auth.json'));
+  if (auth === null) return { available: false, reason: NOT_SIGNED_IN, fields: [] };
+  const logins: string[] = [];
+  for (const [providerId, credential] of Object.entries(auth)) {
+    const name = text(providerId);
+    if (name === undefined || !credential || typeof credential !== 'object') continue;
+    const type = (credential as Record<string, unknown>).type;
+    const method = type === 'oauth' ? 'OAuth' : type === 'api_key' ? 'API key' : undefined;
+    logins.push(method === undefined ? name : `${name} (${method})`);
+  }
+  logins.sort();
+  return logins.length > 0
+    ? { available: true, fields: [{ label: 'Signed in to', value: logins.join(', ') }] }
+    : { available: false, reason: NOT_SIGNED_IN, fields: [] };
+}
+
 /** A JWT's payload claims, or null when it is not a readable three-part token. */
 function decodeJwtClaims(token: string): Record<string, unknown> | null {
   const parts = token.split('.');
@@ -149,19 +184,31 @@ function decodeJwtClaims(token: string): Record<string, unknown> | null {
 /**
  * What this account is logged in as, or an honest reason there is nothing to show.
  *
- * Never throws. OpenCode answers "unsupported": its credentials live in a SQLite DB outside the
- * config dir (see `core/agent-profiles.ts`), so there is nothing in a config folder to read — and
- * guessing from the default login would attribute one account's identity to another.
+ * Never throws. An exhaustive `Record<ProviderId, …>` rather than a chain of `if`s, and that is
+ * the fix rather than the style: the chain this replaced fell through to OpenCode's refusal for
+ * ANY provider it did not name, so a pi account's "Show details" answered with a sentence about
+ * OpenCode — a provider the user had not asked about, and a claim that is false of pi, whose
+ * login really is inside its config folder (#329, 2026-09-12). Each provider now answers in its
+ * own words, and a fifth provider is a compile error instead of a borrowed refusal.
+ *
+ * Only OpenCode is genuinely unreadable: its credentials live outside the config dir (see
+ * `core/agent-profiles.ts`), so there is nothing in a config folder to read — and guessing from
+ * the default login would attribute one account's identity to another.
  */
+const READ_IDENTITY: Record<ProviderId, (configDir: string) => Promise<AccountIdentity>> = {
+  claude: readClaudeIdentity,
+  codex: readCodexIdentity,
+  pi: readPiIdentity,
+  opencode: async () => ({
+    available: false,
+    reason: 'OpenCode keeps its login outside its config folder, so xezar cannot read it.',
+    fields: [],
+  }),
+};
+
 export async function readAccountIdentity(
   provider: ProviderId,
   configDir: string,
 ): Promise<AccountIdentity> {
-  if (provider === 'claude') return readClaudeIdentity(configDir);
-  if (provider === 'codex') return readCodexIdentity(configDir);
-  return {
-    available: false,
-    reason: 'OpenCode keeps its login outside its config folder, so xezar cannot read it.',
-    fields: [],
-  };
+  return READ_IDENTITY[provider](configDir);
 }

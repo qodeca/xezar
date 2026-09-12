@@ -124,20 +124,46 @@ describe('agentHomePaths', () => {
     expect(paths.pi).toBe('/home/u/.pi/agent');
   });
 
-  // pi documents no home variable of its own (checked against pi 0.85.1) — `PI_PACKAGE_DIR` names
-  // the npm package, not the agent home — so `$HOME` is its whole relocation. Resolving it HERE
-  // rather than from `homedir()` at the call site is what keeps model discovery (#152) off a real
-  // home in tests and containers.
-  it('derives pi’s home from HOME, with no vendor variable of its own', () => {
+  // #329. This slot used to ignore every variable, on the strength of one check on 2026-09-10
+  // that concluded pi documents no home variable. pi 0.85.1 lists
+  // `PI_CODING_AGENT_DIR - Config directory (default: ~/.pi/agent)` under "Environment Variables"
+  // and was observed reading and writing there, so the slot honours it — which is also what lets
+  // model discovery (#152) and a pi agent account point at a home that is not the developer's.
+  it('honours PI_CODING_AGENT_DIR for pi', () => {
+    expect(
+      agentHomePaths({ HOME: '/home/u', PI_CODING_AGENT_DIR: '/opt/pi-work' } as NodeJS.ProcessEnv).pi,
+    ).toBe('/opt/pi-work');
+  });
+
+  it('falls back to $HOME/.pi/agent, and ignores a blank PI_CODING_AGENT_DIR', () => {
     expect(agentHomePaths({ HOME: '/tmp/sandbox' } as NodeJS.ProcessEnv).pi).toBe('/tmp/sandbox/.pi/agent');
-    // Nothing pi's binary reads may reach this slot, and no other agent's variable may either.
+    expect(
+      agentHomePaths({ HOME: '/home/u', PI_CODING_AGENT_DIR: '   ' } as NodeJS.ProcessEnv).pi,
+    ).toBe('/home/u/.pi/agent');
+  });
+
+  // Guard, unchanged by #329: only pi's OWN home variable reaches this slot. `PI_PACKAGE_DIR`
+  // names the npm package, `PI_CODING_AGENT_SESSION_DIR` moves session storage without moving
+  // credentials, and no other agent's variable may leak across.
+  it('lets no neighbouring variable reach pi’s slot', () => {
     const unrelated = agentHomePaths({
       HOME: '/home/u',
       PI_PACKAGE_DIR: '/opt/pi-package',
+      PI_CODING_AGENT_SESSION_DIR: '/opt/pi-sessions',
       XDG_CONFIG_HOME: '/xdg',
       CLAUDE_CONFIG_DIR: '/opt/claude',
     } as unknown as NodeJS.ProcessEnv);
     expect(unrelated.pi).toBe('/home/u/.pi/agent');
+  });
+
+  it('leaves the other agents alone when only pi is repointed', () => {
+    const paths = agentHomePaths({
+      HOME: '/home/u',
+      PI_CODING_AGENT_DIR: '/opt/pi-work',
+    } as NodeJS.ProcessEnv);
+    expect(paths.claude).toBe('/home/u/.claude');
+    expect(paths.codex).toBe('/home/u/.codex');
+    expect(paths.opencodeConfig).toBe('/home/u/.config/opencode');
   });
 
   it('honors agent-specific home overrides', () => {
