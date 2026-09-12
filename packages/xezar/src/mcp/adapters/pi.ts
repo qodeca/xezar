@@ -455,6 +455,10 @@ const PARKED_MESSAGE =
   'pi accepted the steered event but settled before a turn took it, so it is parked in pi\'s queue rather than in front of the model. xezar has not treated it as delivered and will hand it over again.';
 const BLOCKER_FIX = 'Read events from your leader with the leader_events tool; nothing is lost while push is unavailable.';
 const PI_EXTENSION_FIX =
+  // The file name is the SHIPPED one and a test pins that it exists in this package: this string is
+  // the only remedy a blocked pi leader is given, and it named `pi-leader-extension.mjs` for one
+  // round of review. Nothing of that name is built, packed or committed — the extension ships as
+  // `scripts/pi-leader-extension.ts`, which is what pi loads (extensions go through jiti).
   'Start your pi leader with xezar\'s leader extension (`pi --extension <xezar>/scripts/pi-leader-extension.ts`, or install it once in your pi settings), then attach again. Until then, read events with the leader_events tool — nothing is lost.';
 
 /**

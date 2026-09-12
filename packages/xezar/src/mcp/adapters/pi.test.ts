@@ -1,7 +1,6 @@
-import { mkdtempSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import type { McpJournalRow } from '@qodeca/xezar-contract';
@@ -797,35 +796,30 @@ describe('piReactionTarget — where a project\'s pi events go', () => {
   });
 
   /**
-   * QA on #358, finding 1. The blocker's `fix` is the string a person reads at the exact moment they
-   * need the extension's path, and it named `pi-leader-extension.mjs` — a file that does not exist,
-   * is not packed, and is not what pi loads. It survived two QA rounds because reading the sentence
-   * is not the same as resolving the path, so this case resolves it: the file the fix names must be
-   * a real file in the package, and it must be inside a directory the package actually ships.
+   * The blocker's `fix` is the ONE instruction a person gets when a pi leader cannot be reached, and
+   * it names a file. For one round of review it named `pi-leader-extension.mjs`, which is not built,
+   * not packed and not in the repository — the extension ships as `scripts/pi-leader-extension.ts`.
+   * The older test asserted only that the text mentions `leader_events`, so nothing caught it.
+   *
+   * So: take the path out of the string and look for it. A file name in user-facing advice is a
+   * promise about this package's contents, and it is cheap to check that the promise holds.
    */
-  it('names an extension path that really exists in this package, and that the package ships', () => {
+  it('the fix names a file this package really ships', () => {
     const target = piReactionTarget({ projectId: 'xez330', roleInstruction: ROLE });
     if (target.kind !== 'blocked') throw new Error('unreachable');
-
-    const named = /`pi --extension <xezar>\/([^`\s]+)`/.exec(target.blocker.fix);
-    expect(named, `no \`pi --extension <xezar>/…\` path in: ${target.blocker.fix}`).not.toBeNull();
-    const relative = named![1]!;
-
-    // `src/mcp/adapters` -> the package root, which is what `<xezar>` stands for in the sentence.
-    const packageRoot = fileURLToPath(new URL('../../../', import.meta.url));
-    const entry = statSync(join(packageRoot, relative), { throwIfNoEntry: false });
-    expect(entry, `${relative} does not exist under ${packageRoot}`).toBeDefined();
-
-    // A FILE, not merely an entry. QA on #366 broke this case four ways and all four went red, but
-    // pointing the fix at `scripts` — a real directory — stayed green, and `pi --extension <pkg>/scripts`
-    // is not loadable. An existence check cannot tell a loadable extension from its parent folder.
-    expect(entry!.isFile(), `${relative} is not a file under ${packageRoot}`).toBe(true);
-
-    // …and `npm pack` must carry it: `files` decides that, and it is where the `.mjs` spelling would
-    // still have passed a bare existence check by pointing at a sibling that is not shipped.
-    const manifest = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')) as { files?: string[] };
-    const top = relative.split('/')[0]!;
-    expect(manifest.files ?? []).toContain(top);
+    const named = /<xezar>\/(\S+?)`/.exec(target.blocker.fix)?.[1];
+    // Populated-input control: an unparsed `fix` would make the assertion below vacuous, because
+    // `existsSync` of nothing is a different branch from `existsSync` of a wrong name.
+    expect(named, `no <xezar>/… path found in: ${target.blocker.fix}`).toBeTruthy();
+    const packageRoot = join(import.meta.dirname, '../../..');
+    expect(existsSync(join(packageRoot, named!)), `${named} is named in the pi blocker's fix but is not in ${packageRoot}`).toBe(true);
+    // A FILE, not merely an entry. QA on #366 raised this against the version of this check that
+    // shipped on the other branch: `existsSync` is true for a DIRECTORY, so pointing the fix at
+    // `scripts` passed while `pi --extension <pkg>/scripts` is not loadable. (#367)
+    expect(statSync(join(packageRoot, named!)).isFile(), `${named} is not a file under ${packageRoot}`).toBe(true);
+    // And it is in the published tarball, not merely on a developer's disk: `files` decides that.
+    const files = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')).files as string[];
+    expect(files.some((entry) => named!.startsWith(`${entry.replace(/\/$/, '')}/`) || entry === named)).toBe(true);
   });
 
   it('with a closed link: blocked, never an adapter over a dead session', () => {
