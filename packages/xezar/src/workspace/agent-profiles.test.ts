@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { agentAccountsPath } from '../paths.ts';
+import { PROVIDER_IDS } from '../core/provider-auth.ts';
 import {
   defaultAgentProfile,
   listAgentProfiles,
@@ -51,9 +52,28 @@ describe('agent profile resolution', () => {
       expect(defaultAgentProfile('opencode', env).path).toBe('/home/u/.config/opencode');
     });
 
+    // #329, and the site that flipping `PROFILE_ENV_VAR.pi` alone would have left broken. The
+    // lookup here was a ternary chain ending in `: home.claude`, and `pi` was the one provider it
+    // never named — so the pi row of `GET /api/v1/workspace/agent-profiles`, which lists over
+    // PROVIDER_IDS, reported `~/.claude` as pi's home. It was wrong before pi could carry
+    // accounts at all; it would have become a wrong-account run once it could.
+    it('resolves pi to its OWN home, never Claude’s', () => {
+      expect(defaultAgentProfile('pi', env).path).toBe('/home/u/.pi/agent');
+      expect(defaultAgentProfile('pi', env).path).not.toBe(defaultAgentProfile('claude', env).path);
+    });
+
     it('follows the vendor env vars, so setting one moves the DEFAULT profile', () => {
       const relocated = { HOME: '/home/u', CLAUDE_CONFIG_DIR: '/opt/claude' } as NodeJS.ProcessEnv;
       expect(defaultAgentProfile('claude', relocated).path).toBe('/opt/claude');
+      const piRelocated = { HOME: '/home/u', PI_CODING_AGENT_DIR: '/opt/pi-work' } as NodeJS.ProcessEnv;
+      expect(defaultAgentProfile('pi', piRelocated).path).toBe('/opt/pi-work');
+    });
+
+    // Every provider must be reachable and distinct. The bug this replaces was invisible because
+    // the fallback answered a real, plausible path; only comparing the whole set catches that.
+    it('gives every provider a distinct home', () => {
+      const paths = PROVIDER_IDS.map((provider) => defaultAgentProfile(provider, env).path);
+      expect(new Set(paths).size).toBe(PROVIDER_IDS.length);
     });
 
     it('is marked default so the UI can refuse to edit or delete it', () => {

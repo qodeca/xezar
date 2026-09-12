@@ -2,6 +2,7 @@ import { readdir, realpath } from 'node:fs/promises';
 import { profileEnv, looksLikeProfileDir } from '../core/agent-profiles.ts';
 import type { ProviderId } from '../core/provider-auth.ts';
 import { agentHomePaths, expandTilde } from '../paths.ts';
+import type { AgentHomePaths } from '../agent-config/catalog.ts';
 import {
   DEFAULT_AGENT_ACCOUNT_ID,
   loadAgentAccounts,
@@ -34,15 +35,30 @@ export interface ResolvedAgentProfile {
 
 /**
  * The implicit account for a provider: whatever `agentHomePaths()` discovers, which already
- * honours the vendors' own `CLAUDE_CONFIG_DIR` / `CODEX_HOME` / `XDG_CONFIG_HOME`. Setting one of
- * those on the xezar process therefore moves the DEFAULT account rather than being ignored.
+ * honours the vendors' own `CLAUDE_CONFIG_DIR` / `CODEX_HOME` / `XDG_CONFIG_HOME` /
+ * `PI_CODING_AGENT_DIR`. Setting one of those on the xezar process therefore moves the DEFAULT
+ * account rather than being ignored.
+ *
+ * The lookup is an exhaustive `Record`, not a ternary chain, and that is the fix rather than the
+ * style: the chain this replaced ended in `: home.claude`, so `pi` — the one provider it never
+ * named — resolved to `~/.claude`. `GET /api/v1/workspace/agent-profiles` lists over
+ * `PROVIDER_IDS`, so the pi row was already reporting Claude's folder as pi's home before pi
+ * could carry accounts at all (#329). A `Record<ProviderId, …>` makes the next provider a
+ * compile error instead of a silent alias.
  */
+const DEFAULT_PROFILE_HOME: Record<ProviderId, (home: AgentHomePaths) => string> = {
+  claude: (home) => home.claude,
+  codex: (home) => home.codex,
+  opencode: (home) => home.opencodeConfig,
+  pi: (home) => home.pi,
+};
+
 export function defaultAgentProfile(
   provider: ProviderId,
   env: NodeJS.ProcessEnv = process.env,
 ): ResolvedAgentProfile {
   const home = agentHomePaths(env);
-  const path = provider === 'codex' ? home.codex : provider === 'opencode' ? home.opencodeConfig : home.claude;
+  const path = DEFAULT_PROFILE_HOME[provider](home);
   return {
     id: DEFAULT_AGENT_ACCOUNT_ID,
     provider,

@@ -216,9 +216,27 @@ an instance booted with different pins is never reused — the same rule
 `environment.singleProject` already follows. Three of those vars are what
 `agentHomePaths()` honours (`packages/xezar/src/paths.ts`, precedence pinned by
 `paths.test.ts`); `XEZ_HOME` is separate and pins only what xezar itself writes.
-`agentHomePaths()` has a fourth slot, pi, which has no vendor variable and therefore cannot
-be pinned at all. A fifth agent home that does have one needs adding to `test-env-up.sh`
-too.
+`agentHomePaths()` has a fourth slot, pi, and it CAN be pinned — pi documents
+`PI_CODING_AGENT_DIR` and reads it, and `agentHomePaths().pi` resolves through it
+(re-verified against pi 0.85.1 on 2026-09-12, #329; this page previously said no such
+variable existed). The boot does not set it yet, so today the suite still starts pi from
+the developer's own `~/.pi/agent`. Pinning it is a deliberate follow-up, not a one-line
+addition, and takes three coordinated changes:
+
+1. `export PI_CODING_AGENT_DIR="$QA_DIR/agent-home/pi"` alongside the other three in
+   `scripts/test-env-up.sh`, plus the matching `mkdir -p` / `chmod 700`.
+2. `AGENT_HOME_FINGERPRINT` gains it, so an instance booted without the pin is not reused
+   by a run that expects it — the same rule the other three already follow.
+3. A decision on seeding. The other three sandboxes are empty on purpose, because empty is
+   what makes "no model default leaks in" true. pi is not symmetric there: it resolves its
+   model list through `packages/xezar/src/core/pi-model-catalog.ts`, reading `models.json`
+   (and `settings.json` for ordering) out of that same home, so an empty pin does not give pi
+   a blank config — a missing `models.json` is the documented "no providers configured" path
+   and returns `[]`, i.e. the picker shows `auto` alone. That is a different starting state
+   than any spec currently assumes. Whether the pinned dir ships a fixture catalog or the
+   specs assert the empty case is the open question, and it needs its own test surface.
+
+A fifth agent home that does have a variable needs adding to `test-env-up.sh` too.
 
 ### Iterating on one spec
 

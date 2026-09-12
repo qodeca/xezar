@@ -33,9 +33,10 @@ export interface AgentHomePaths {
   /** `$XDG_CONFIG_HOME/opencode` or `~/.config/opencode` */
   opencodeConfig: string;
   /**
-   * `~/.pi/agent` — pi's whole per-user directory (`models.json`, `settings.json`, and the
-   * `auth.json` xezar never reads). No vendor variable relocates it (verified against pi 0.85.1,
-   * 2026-09-10), which is why this slot carries no `env.` alternative the way the three above do.
+   * `$PI_CODING_AGENT_DIR` or `~/.pi/agent` — pi's whole per-user directory (`models.json`,
+   * `settings.json`, and the `auth.json` xezar never reads). The variable IS documented and the
+   * binary does read it (re-verified against pi 0.85.1, 2026-09-12, #329); the note that used to
+   * sit here denying it was wrong, and dated 2026-09-10.
    *
    * `CONFIG_FILES` lists no pi entry yet, so nothing in the raw config editor resolves through
    * this slot today; model discovery (#152) does, and it lives here so pi's home is derived in
