@@ -2,6 +2,7 @@ import { readdir, realpath } from 'node:fs/promises';
 import { profileEnv, looksLikeProfileDir } from '../core/agent-profiles.ts';
 import type { ProviderId } from '../core/provider-auth.ts';
 import { agentHomePaths, expandTilde } from '../paths.ts';
+import type { AgentHomePaths } from '../agent-config/catalog.ts';
 import {
   DEFAULT_AGENT_ACCOUNT_ID,
   loadAgentAccounts,
@@ -33,16 +34,54 @@ export interface ResolvedAgentProfile {
 }
 
 /**
- * The implicit account for a provider: whatever `agentHomePaths()` discovers, which already
- * honours the vendors' own `CLAUDE_CONFIG_DIR` / `CODEX_HOME` / `XDG_CONFIG_HOME`. Setting one of
- * those on the xezar process therefore moves the DEFAULT account rather than being ignored.
+ * Which slot of `AgentHomePaths` is a provider's home. **One table, read in both directions**, and
+ * that is the fix rather than the style.
+ *
+ * Two sites used to answer this question separately and both got pi wrong:
+ *
+ * - reading, here: a ternary chain ending in `: home.claude`, so `pi` — the one provider it never
+ *   named — resolved to `~/.claude`. `GET /api/v1/workspace/agent-profiles` lists over
+ *   `PROVIDER_IDS`, so the pi row reported Claude's folder as pi's home before pi could carry
+ *   accounts at all;
+ * - writing, in `server.ts`'s `accountFiles()`: a run of conditional spreads that named claude,
+ *   codex and opencode and silently did nothing for pi, so one pi account would have resolved its
+ *   files inside the DEFAULT pi home.
+ *
+ * Half a fix twice. AGENTS.md § Changing a mechanism says to route both sites through one helper
+ * rather than remember to edit both, so they now read the same table and a fifth provider is a
+ * compile error in one place (#329).
+ *
+ * `opencode` maps to `opencodeConfig`, the one case where the provider id and the slot name
+ * differ — the exact thing a lookup states plainly and a conditional spread hides.
+ *
+ * What the slot RESOLVES to is `agentHomePaths()`'s business, and it already honours the vendors'
+ * own `CLAUDE_CONFIG_DIR` / `CODEX_HOME` / `XDG_CONFIG_HOME` / `PI_CODING_AGENT_DIR`, so setting
+ * one of those on the xezar process moves that provider's DEFAULT account rather than being
+ * ignored.
  */
+export const HOME_SLOT: Record<ProviderId, keyof AgentHomePaths> = {
+  claude: 'claude',
+  codex: 'codex',
+  opencode: 'opencodeConfig',
+  pi: 'pi',
+};
+
+/** That provider's home out of a resolved set — the READ direction of `HOME_SLOT`. */
+export function providerHome(provider: ProviderId, home: AgentHomePaths): string {
+  return home[HOME_SLOT[provider]];
+}
+
+/** One account's folder as an `AgentHomePaths` patch — the WRITE direction of `HOME_SLOT`. */
+export function accountHomePatch(provider: ProviderId, path: string): Partial<AgentHomePaths> {
+  return { [HOME_SLOT[provider]]: path };
+}
+
 export function defaultAgentProfile(
   provider: ProviderId,
   env: NodeJS.ProcessEnv = process.env,
 ): ResolvedAgentProfile {
   const home = agentHomePaths(env);
-  const path = provider === 'codex' ? home.codex : provider === 'opencode' ? home.opencodeConfig : home.claude;
+  const path = providerHome(provider, home);
   return {
     id: DEFAULT_AGENT_ACCOUNT_ID,
     provider,

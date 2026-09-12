@@ -155,6 +155,68 @@ describe('readAccountIdentity', () => {
     });
   });
 
+  describe('pi', () => {
+    const piAccount = (auth: unknown): string => {
+      const dir = join(home, 'pi-klaudiusz');
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'auth.json'), JSON.stringify(auth), 'utf8');
+      return dir;
+    };
+
+    /**
+     * The finding this block exists for: before #329's follow-up, `readAccountIdentity` fell
+     * through to OpenCode's refusal for every provider it did not name, so a pi account's
+     * "Show details" answered with a sentence about OpenCode — a different product, and false of
+     * pi, whose `auth.json` really is inside the config folder.
+     */
+    it('answers in pi\'s own words, never OpenCode\'s', async () => {
+      const identity = await readAccountIdentity('pi', join(home, 'nope'));
+      expect(identity.available).toBe(false);
+      expect(identity.reason).not.toContain('OpenCode');
+      expect(identity.reason).toContain('Not signed in');
+    });
+
+    it('names which model providers this account is signed in to, and how', async () => {
+      const dir = piAccount({
+        openai: { type: 'api_key', key: 'sk-should-not-surface' },
+        anthropic: { type: 'oauth', refresh: 'r', access: 'a', expires: 1 },
+      });
+      expect(await readAccountIdentity('pi', dir)).toEqual({
+        available: true,
+        fields: [{ label: 'Signed in to', value: 'anthropic (OAuth), openai (API key)' }],
+      });
+    });
+
+    it('reads a fresh pi\'s empty auth.json as "not signed in", not as a broken file', async () => {
+      // What pi 0.85.1 actually writes before any login — observed on a real run (#329).
+      const identity = await readAccountIdentity('pi', piAccount({}));
+      expect(identity.available).toBe(false);
+      expect(identity.reason).toContain('Not signed in');
+    });
+
+    it('never surfaces the credentials sitting in the same file', async () => {
+      const dir = piAccount({
+        openai: { type: 'api_key', key: 'sk-should-not-surface', env: { X: 'env-should-not-surface' } },
+        anthropic: {
+          type: 'oauth',
+          refresh: 'refresh-should-not-surface',
+          access: 'access-should-not-surface',
+          expires: 1,
+        },
+      });
+      const rendered = JSON.stringify(await readAccountIdentity('pi', dir));
+      expect(rendered).toContain('anthropic');
+      for (const secret of [
+        'sk-should-not-surface',
+        'env-should-not-surface',
+        'refresh-should-not-surface',
+        'access-should-not-surface',
+      ]) {
+        expect(rendered, secret).not.toContain(secret);
+      }
+    });
+  });
+
   it('says OpenCode cannot be read, because its login is not in the config folder', async () => {
     const identity = await readAccountIdentity('opencode', home);
     expect(identity.available).toBe(false);

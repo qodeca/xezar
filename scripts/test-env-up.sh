@@ -79,9 +79,16 @@ export XEZ_HOME="$QA_DIR/xez-home"
 # then reported the GitHub CLI missing on a machine where it works) and hid the
 # developer's global git config and ignore file.
 #
-# These are the exact vars `agentHomePaths()` honours (src/paths.ts), and
-# `paths.test.ts` pins that precedence; adding a fourth agent home there means
-# adding it here. Project- and local-scope files (`<repo>/.claude/settings.local.json`,
+# These are three of the FOUR vars `agentHomePaths()` honours (src/paths.ts), and
+# `paths.test.ts` pins that precedence. The fourth is pi's `PI_CODING_AGENT_DIR`, and
+# it is deliberately NOT pinned here: pi does read it (verified against pi 0.85.1 on
+# 2026-09-12, #329 — this comment previously said "these are the exact vars", which
+# stopped being true the moment pi's slot learned the variable), but pinning it is a
+# real behaviour change with its own test surface, because an empty pi home discovers
+# NO models rather than default ones. A spec must therefore not assume a blank pi
+# config. What closing that would take is written up in docs/testing/agent-browser.md
+# and tracked as #348. Adding a fifth agent home to paths.ts still means deciding here.
+# Project- and local-scope files (`<repo>/.claude/settings.local.json`,
 # `<repo>/opencode.json`, `<repo>/.codex/config.toml`) resolve from the repo root,
 # not from a home, so no pin reaches them — see AGENTS.md § Validation.
 export CLAUDE_CONFIG_DIR="$QA_DIR/agent-home/claude"
@@ -98,6 +105,10 @@ unset ANTHROPIC_MODEL
 # and the specs keep reading the host — the failure this whole block exists to prevent, wearing a
 # "reused" label. A descriptor written before these pins existed has no such key, so `json_get`
 # answers empty, the comparison fails and the boot goes cold. That is the correct answer.
+# pi is deliberately absent from this fingerprint because it is absent from the pins above —
+# see the block there and docs/testing/agent-browser.md (#348). Pinning pi means adding
+# `PI_CODING_AGENT_DIR` here in the same change, or a pinned and an unpinned instance compare
+# equal and the boot reuses the wrong one.
 AGENT_HOME_FINGERPRINT="$CLAUDE_CONFIG_DIR|$CODEX_HOME|$OPENCODE_CONFIG_DIR"
 
 FORCE=0
