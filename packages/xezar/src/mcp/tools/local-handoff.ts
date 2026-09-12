@@ -1,4 +1,4 @@
-import { runIdParamSchema, openTargetSchema } from '@qodeca/xezar-contract';
+import { operationIdSchema, runIdParamSchema, openTargetSchema } from '@qodeca/xezar-contract';
 import { hc } from 'hono/client';
 import { z } from 'zod';
 import { collectSecretValues, redactDeep } from '../../core/secret-redaction.ts';
@@ -67,15 +67,18 @@ export type LocalHandoffContext = McpToolContext & { readonly service?: ServiceD
 // No `path` argument: the registry-wide guard in `execution-control.test.ts` (#94) forbids a path in
 // every tool's input, so the cockpit's single-image handoff (`open-in` with target "default" and a
 // worktree-relative file, I-044) is not offered here. The worktree itself still opens in any app.
-type Field = 'runId' | 'target';
-const FIELDS: readonly Field[] = ['runId', 'target'];
+type Field = 'runId' | 'target' | 'operationId';
+const FIELDS: readonly Field[] = ['runId', 'target', 'operationId'];
 
-/** Which arguments each action takes. Anything else is refused rather than silently dropped. */
+/** Which arguments each action takes. Anything else is refused rather than silently dropped.
+ *  `operationId` (D-06 § 5.2, #264) is required by the three actions that open something on the
+ *  host: launching an app twice is exactly the repeated effect a lost answer causes. `list_apps`
+ *  reads the installed apps and takes none. */
 const ACTION_FIELDS: Record<LocalHandoffAction, { required: readonly Field[]; optional: readonly Field[] }> = {
   list_apps: { required: [], optional: [] },
-  open_task_in_terminal: { required: ['runId'], optional: [] },
-  open_task_in_app: { required: ['runId', 'target'], optional: [] },
-  open_project_in_app: { required: ['target'], optional: [] },
+  open_task_in_terminal: { required: ['runId', 'operationId'], optional: [] },
+  open_task_in_app: { required: ['runId', 'target', 'operationId'], optional: [] },
+  open_project_in_app: { required: ['target', 'operationId'], optional: [] },
 };
 
 export const localHandoffInputSchema = z
@@ -95,6 +98,11 @@ export const localHandoffInputSchema = z
       .max(200)
       .optional()
       .describe('An app id from list_apps (for example "finder", "terminal", "vscode", "cli:claude").'),
+    operationId: operationIdSchema
+      .optional()
+      .describe(
+        'Client-generated key for this operation (8–128 chars). Required by every open_ action; list_apps reads and takes none. Reuse it only to repeat the same operation: a repeat returns the first answer and opens nothing a second time.',
+      ),
   })
   .strict()
   .superRefine((args, ctx) => {

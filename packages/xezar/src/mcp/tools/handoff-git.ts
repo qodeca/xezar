@@ -9,6 +9,7 @@ import {
   githubPrMergeStateResponseSchema,
   githubPrReadyResponseSchema,
   mcpExpectedVersionSchema,
+  operationIdSchema,
   repoBranchResponseSchema,
   repoResponseSchema,
   runIdParamSchema,
@@ -133,6 +134,11 @@ const inputSchema = z
       .describe(
         'commit / push / create_pr: the `version` task_read returned for the task. If the task changed since, nothing is done.',
       ),
+    operationId: operationIdSchema
+      .optional()
+      .describe(
+        'Client-generated key for this operation (8–128 chars). Required by every action that hands work onward (commit, push, create_pr, ready, merge, branch); the two reads (repo, merge_state) take none. Reuse it only to repeat the same operation: a repeat returns the first answer and never commits, pushes, readies or merges twice.',
+      ),
     message: z.string().trim().min(1).max(5_000).optional().describe('commit: the commit message.'),
     number: z.number().int().positive().optional().describe('merge_state / ready / merge: the pull request number.'),
     expectedHeadSha: z
@@ -162,26 +168,30 @@ type Input = z.output<typeof inputSchema>;
 // The three task actions require the task's `expectedVersion` (#250, N-03): a missing one is an
 // argument error, never an effect without the check. `merge` keeps its own compare-and-swap on the
 // pull request's head (`expectedHeadSha`); `branch` changes the main checkout, not a task.
+//
+// `operationId` (D-06 § 5.2, #264) is required by the six actions that DO something, and by neither
+// of the two reads: a read has no effect to deduplicate, and a receipt over it would answer the next
+// identical read with the receipt instead of the repository state.
 const REQUIRED: Record<Input['action'], ReadonlyArray<keyof Input>> = {
   repo: [],
-  commit: ['taskId', 'expectedVersion', 'message'],
-  push: ['taskId', 'expectedVersion'],
-  create_pr: ['taskId', 'expectedVersion'],
+  commit: ['taskId', 'expectedVersion', 'operationId', 'message'],
+  push: ['taskId', 'expectedVersion', 'operationId'],
+  create_pr: ['taskId', 'expectedVersion', 'operationId'],
   merge_state: ['number'],
-  ready: ['number', 'expectedHeadSha'],
-  merge: ['number', 'expectedHeadSha'],
-  branch: ['name'],
+  ready: ['number', 'expectedHeadSha', 'operationId'],
+  merge: ['number', 'expectedHeadSha', 'operationId'],
+  branch: ['name', 'operationId'],
 };
 
 const ALLOWED: Record<Input['action'], ReadonlyArray<keyof Input>> = {
   repo: ['action'],
-  commit: ['action', 'taskId', 'expectedVersion', 'message'],
-  push: ['action', 'taskId', 'expectedVersion'],
-  create_pr: ['action', 'taskId', 'expectedVersion'],
+  commit: ['action', 'taskId', 'expectedVersion', 'operationId', 'message'],
+  push: ['action', 'taskId', 'expectedVersion', 'operationId'],
+  create_pr: ['action', 'taskId', 'expectedVersion', 'operationId'],
   merge_state: ['action', 'number'],
-  ready: ['action', 'number', 'expectedHeadSha'],
-  merge: ['action', 'number', 'expectedHeadSha', 'method'],
-  branch: ['action', 'name', 'from'],
+  ready: ['action', 'number', 'expectedHeadSha', 'operationId'],
+  merge: ['action', 'number', 'expectedHeadSha', 'operationId', 'method'],
+  branch: ['action', 'name', 'operationId', 'from'],
 };
 
 function argumentProblem(args: Input): string | null {

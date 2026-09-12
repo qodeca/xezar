@@ -1,6 +1,7 @@
 import {
   attachmentInputSchema,
   mcpExpectedVersionSchema,
+  operationIdSchema,
   runIdParamSchema,
   staleVersionRejectionSchema,
   type RunHistoryPage,
@@ -110,6 +111,11 @@ export const executionControlInputSchema = z
     runId: z.string().min(1).max(128).describe("The task's run id, in the project this connection is bound to."),
     expectedVersion: mcpExpectedVersionSchema.describe(
       'The `version` task_read returned for this task. Echo it verbatim; if the task changed since, nothing is applied.',
+    ),
+    // D-06 § 5.2 (#264). Required on every call, because every action of this tool changes the task:
+    // there is no read here to exempt.
+    operationId: operationIdSchema.describe(
+      'Client-generated key for this operation (8–128 chars). Reuse it only to repeat the same operation: a repeat returns the first answer and controls the task once.',
     ),
     text: z
       .string()

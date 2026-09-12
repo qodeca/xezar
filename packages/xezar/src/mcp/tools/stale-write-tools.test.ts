@@ -14,6 +14,7 @@ import type { McpTool, McpToolContext, McpToolResult } from '../tool.ts';
 import { executionControlTool } from './execution-control.ts';
 import { handoffGitTool } from './handoff-git.ts';
 import { projectConfigTool } from './project-config.ts';
+import { withOperationId } from './operation-id.testkit.ts';
 import { taskReadsTool } from './task-reads.ts';
 import { organiseWorkTool } from './work-organisation.ts';
 
@@ -85,7 +86,9 @@ const ctx = (): McpToolContext =>
 
 /** A tools/call as the service answers it: the tool's own schema first, then the tool. */
 async function call(tool: McpTool, args: Record<string, unknown>): Promise<McpToolResult> {
-  const parsed = tool.inputSchema.safeParse(args);
+  // Every changing action also takes an operation key (#264); this file is about the VERSION guard,
+  // so the key is supplied for it and a fresh one each time.
+  const parsed = tool.inputSchema.safeParse(withOperationId(tool, args));
   if (!parsed.success) {
     return { content: [{ type: 'text', text: parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ') }], isError: true };
   }

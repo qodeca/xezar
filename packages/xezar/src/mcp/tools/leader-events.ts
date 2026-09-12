@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { MCP_JOURNAL_PAGE_ROWS, mcpJournalCursorSchema } from '@qodeca/xezar-contract';
+import { MCP_JOURNAL_PAGE_ROWS, mcpJournalCursorSchema, operationIdSchema } from '@qodeca/xezar-contract';
 
 import { redactDeep } from '../../core/secret-redaction.ts';
 import type { EventJournal } from '../event-journal.ts';
@@ -58,6 +58,11 @@ export const leaderEventsInputSchema = z
           'ack: required — the nextCursor of a page, or the resumeCursor of a gap.',
       ),
     limit: z.number().int().min(1).max(MCP_JOURNAL_PAGE_ROWS).optional().describe(`read: events per page, at most ${MCP_JOURNAL_PAGE_ROWS}.`),
+    operationId: operationIdSchema
+      .optional()
+      .describe(
+        'ack: required — a client-generated key for this acknowledgement (8–128 chars). Reuse it only to repeat the same acknowledgement. read: not accepted, because a read is meant to return the same events again until you ack them.',
+      ),
   })
   .strict()
   .superRefine((args, ctx) => {
@@ -66,6 +71,15 @@ export const leaderEventsInputSchema = z
     }
     if (args.action === 'ack' && args.limit !== undefined) {
       ctx.addIssue({ code: 'custom', path: ['limit'], message: 'limit does not apply to ack' });
+    }
+    // D-06 § 5.2 (#264). `ack` writes the leader's position, so it carries an operation id. `read`
+    // must NOT: at-least-once delivery means a repeated read deliberately returns the same rows
+    // again, and a receipt over it would answer the second read with the receipt instead.
+    if (args.action === 'ack' && args.operationId === undefined) {
+      ctx.addIssue({ code: 'custom', path: ['operationId'], message: 'ack needs operationId' });
+    }
+    if (args.action === 'read' && args.operationId !== undefined) {
+      ctx.addIssue({ code: 'custom', path: ['operationId'], message: 'operationId does not apply to read' });
     }
   });
 export type LeaderEventsInput = z.output<typeof leaderEventsInputSchema>;

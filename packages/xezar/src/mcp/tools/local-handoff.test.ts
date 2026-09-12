@@ -12,6 +12,7 @@ import { WorkspaceSemaphore } from '../../workspace/semaphore.ts';
 import type { ServiceDispatch } from '../service-adapter.ts';
 import { defineTool, toolListing, type McpTool, type McpToolContext, type McpToolResult } from '../tool.ts';
 import { tools } from './index.ts';
+import { SAMPLE_OPERATION_ID, withOperationId } from './operation-id.testkit.ts';
 import {
   HOSTED_MODE_REASON,
   LOCAL_HANDOFF_ACTIONS,
@@ -112,18 +113,21 @@ function stubService(localHandoff: boolean, routes: Record<string, { status: num
 const ctx = (service?: ServiceDispatch): McpToolContext =>
   ({ project: { id: PROJECT, name: 'a', root: '/unused' }, xezarVersion: '0.0.0-test', ...(service ? { service } : {}) }) as McpToolContext;
 
+// Every open_ action takes an operation key (#264); one fresh key per call, so two opens in a case
+// are never one operation.
 const call = (args: unknown, service?: ServiceDispatch): Promise<McpToolResult> =>
-  localHandoffTool.call(localHandoffTool.inputSchema.parse(args), ctx(service));
+  localHandoffTool.call(localHandoffTool.inputSchema.parse(withOperationId(localHandoffTool, args as Record<string, unknown>)), ctx(service));
 
 const text = (result: McpToolResult): string => result.content.map((c) => c.text).join('\n');
 const structured = (result: McpToolResult): LocalHandoffResult => localHandoffResultSchema.parse(result.structuredContent);
 
-/** One valid call per action — every handoff the tool offers. */
+/** One valid call per action — every handoff the tool offers. Each open carries its operation key
+ *  (#264); `list_apps` reads and takes none. */
 const EVERY_ACTION: Record<(typeof LOCAL_HANDOFF_ACTIONS)[number], LocalHandoffInput> = {
   list_apps: { action: 'list_apps' },
-  open_task_in_terminal: { action: 'open_task_in_terminal', runId: 'r1' },
-  open_task_in_app: { action: 'open_task_in_app', runId: 'r1', target: 'finder' },
-  open_project_in_app: { action: 'open_project_in_app', target: 'finder' },
+  open_task_in_terminal: { action: 'open_task_in_terminal', runId: 'r1', operationId: SAMPLE_OPERATION_ID },
+  open_task_in_app: { action: 'open_task_in_app', runId: 'r1', target: 'finder', operationId: SAMPLE_OPERATION_ID },
+  open_project_in_app: { action: 'open_project_in_app', target: 'finder', operationId: SAMPLE_OPERATION_ID },
 };
 
 describe('local_handoff without a desktop on the xezar host (capabilities.localHandoff false)', () => {
@@ -288,8 +292,11 @@ describe('local_handoff arguments and wiring', () => {
     expect(parse({ action: 'list_apps', confirm: true })).toBe(false);
     expect(parse({ action: 'open_project_in_app', target: 'finder', humanApproved: true })).toBe(false);
     expect(parse({ action: 'open_task_in_terminal' })).toBe(false);
-    expect(parse({ action: 'open_project_in_app', target: 'finder', runId: 'r1' })).toBe(false);
-    expect(parse({ action: 'open_task_in_terminal', runId: 'r1', target: 'finder' })).toBe(false);
+    expect(parse({ action: 'open_project_in_app', target: 'finder', runId: 'r1', operationId: SAMPLE_OPERATION_ID })).toBe(false);
+    expect(parse({ action: 'open_task_in_terminal', runId: 'r1', target: 'finder', operationId: SAMPLE_OPERATION_ID })).toBe(false);
+    // #264: an open needs its operation key, and the one read refuses one.
+    expect(parse({ action: 'open_project_in_app', target: 'finder' })).toBe(false);
+    expect(parse({ action: 'list_apps', operationId: SAMPLE_OPERATION_ID })).toBe(false);
     // No path anywhere (#94's registry-wide guard): not even the single-image handoff.
     expect(parse({ action: 'open_task_in_app', runId: 'r1', target: 'default', path: 'a.png' })).toBe(false);
     for (const args of Object.values(EVERY_ACTION)) expect(parse(args), args.action).toBe(true);

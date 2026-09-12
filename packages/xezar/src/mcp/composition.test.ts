@@ -214,7 +214,7 @@ describe('the composed MCP service, through the real bridge and socket', () => {
     // A leader reads the task before it acts on it, and acts on the version it read (#250).
     const read = await client.call('task_read', { view: 'task', taskId: queued.id });
     const expectedVersion = (JSON.parse((read.content[0] as { text: string }).text) as { version: string }).version;
-    const cancelled = await client.call('execution_control', { action: 'cancel', runId: queued.id, expectedVersion });
+    const cancelled = await client.call('execution_control', { action: 'cancel', runId: queued.id, expectedVersion, operationId: 'op-compose-0004' });
     expect(cancelled.isError, JSON.stringify(cancelled)).toBeFalsy();
     expect(cancelled.structuredContent, JSON.stringify(cancelled)).toMatchObject({ runStatus: 'cancelled' });
     const row = await until('the cancel row', () =>
@@ -222,7 +222,8 @@ describe('the composed MCP service, through the real bridge and socket', () => {
     );
     // Without the door's origin marker the catalog reads a cancel as a person's (its honest default).
     expect(row).toMatchObject({ category: 'E-01', origin: 'leader' });
-    expect(row.causedBy).toMatch(/^mcp-door\./);
+    // #264: the row names the leader's OWN operation key, the one it can replay the cancel under.
+    expect(row.causedBy).toBe('op-compose-0004');
     expect(auditLines(c.dataDir).map((entry) => entry.action)).toEqual(['taskCreate.start', 'executionControl.cancel']);
     expect(auditLines(c.dataDir)[1]).toMatchObject({ origin: 'mcp', outcome: 'ok', resource: { kind: 'run', id: queued.id } });
   });
@@ -263,10 +264,10 @@ describe('the composed MCP service, through the real bridge and socket', () => {
     };
     const before = bytes();
     const attempts = [
-      await client.call('organise_work', { action: 'set_title', runId, title: 'the leader’s title', expectedVersion: leaderRead }),
-      await client.call('organise_work', { action: 'edit_brief', runId, task: 'the leader’s brief', expectedVersion: leaderRead }),
-      await client.call('execution_control', { action: 'send_message', runId, text: 'and this', expectedVersion: leaderRead }),
-      await client.call('execution_control', { action: 'cancel', runId, expectedVersion: leaderRead }),
+      await client.call('organise_work', { action: 'set_title', runId, title: 'the leader’s title', expectedVersion: leaderRead, operationId: 'op-compose-0014' }),
+      await client.call('organise_work', { action: 'edit_brief', runId, task: 'the leader’s brief', expectedVersion: leaderRead, operationId: 'op-compose-0015' }),
+      await client.call('execution_control', { action: 'send_message', runId, text: 'and this', expectedVersion: leaderRead, operationId: 'op-compose-0016' }),
+      await client.call('execution_control', { action: 'cancel', runId, expectedVersion: leaderRead, operationId: 'op-compose-0017' }),
     ];
     for (const attempt of attempts) {
       expect(attempt.isError, JSON.stringify(attempt)).toBeFalsy();
@@ -291,7 +292,13 @@ describe('the composed MCP service, through the real bridge and socket', () => {
 
     // 4. Read again, decide again: the new decision goes through.
     const freshRead = body(await client.call('task_read', { view: 'task', taskId: runId })).version as string;
-    const renamed = await client.call('organise_work', { action: 'set_title', runId, title: 'the leader’s title', expectedVersion: freshRead });
+    const renamed = await client.call('organise_work', {
+      action: 'set_title',
+      runId,
+      title: 'the leader’s title',
+      expectedVersion: freshRead,
+      operationId: 'op-compose-0018',
+    });
     expect(body(renamed)).toMatchObject({ status: 'done', run: { id: runId, title: 'the leader’s title' } });
     expect(c.store.getRun(runId)?.title).toBe('the leader’s title');
   });
