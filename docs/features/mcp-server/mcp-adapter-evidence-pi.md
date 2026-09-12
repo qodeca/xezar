@@ -443,6 +443,25 @@ E-07 with E-09 is A-19: a significant event reached the leader, a real model rea
 there was no status-polling turn — one model request in the session's whole life, and it was the one
 carrying the event.
 
+### The busy rung, through the extension
+
+`a19-run.mjs` exercises the idle rung. The busy one is the half F-2 was about, so it is measured
+through the extension too rather than only against the double — `pi-extension/busy-run.mjs`, real pi,
+a slow scripted turn the PERSON started. **7 checks, all PASS.**
+
+| # | Check | Result |
+| --- | --- | --- |
+| B-01 | The extension reports pi as BUSY while the person's turn runs | **PASS** (`isStreaming: true`) |
+| B-02 | `deliver` reported the row handed over | **PASS** (`handedThrough: 1`) |
+| B-03 | The person's running turn was **not** cut short, and nothing new hit the model yet | **PASS** (1 → 1) |
+| B-04 | The event was not in front of the model at deliver time — delivery is not reaction | **PASS** |
+| B-05 | The person's own turn completed on its own terms | **PASS** |
+| B-06 | The **next** model request carried the event — it was not parked waiting for a human | **PASS** (request 2 of 2) |
+| B-07 | The reaction was reported once, and only when the model was really asked | **PASS** (`[1]`) |
+
+B-06 is the F-2 bug's absence, end to end over the real transport: the steered row reached the model
+because the turn took it, and nobody typed anything to make that happen.
+
 ### The lifecycle trap, checked rather than reasoned about
 
 pi tears an extension runtime down and rebuilds it on `/new`, `/resume`, `/fork`, `/clone` and
