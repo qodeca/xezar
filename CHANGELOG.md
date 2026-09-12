@@ -341,6 +341,15 @@
   contributor does not need. Also added: `CODE_OF_CONDUCT.md` (Contributor Covenant 3.0), bug and
   feature issue forms, a pull-request template, and a CI badge and project-status note in the
   README. (#283)
+- 🐛 **The MCP coverage floor now passes on `main`.** The floor arrived red: `npm run
+  test:coverage:mcp` failed on three thresholds the day it shipped, so every MCP pull request met a
+  gate that was already failing before its author started. Two of the three left when #311 merged.
+  The last one, the MCP API reference page, is now fully covered by tests for the cases its live
+  registry cannot produce — a listed tool that declares nothing, a guard on a tool with no action
+  list, and a refused argument whose description is gone — each shown failing against a named break
+  of the code it covers. The written exemption that stood in for those tests is retired, and
+  `docs/testing/coverage-gaps.md` records the new measurement, why the old exemption's reasoning was
+  wrong, and that the command can now become a CI check. No product behaviour changed. (#352)
 
 # 0.13.1 (2026-09-10)
 
