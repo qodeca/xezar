@@ -147,7 +147,12 @@ args = ["-y", "@qodeca/xezar", "mcp"]`}
   // `xezar_*` tool, so the dialog never fires) and only a step that named `xezar_health` failing, at
   // 121 s. Do not widen this to "every pi task": that is measured false. `approveTools` is the user's
   // own key in the adapter's `mcp.json` — `settings.approveTools` or the per-server one, which
-  // overrides it (`tool-approval.ts:42-43`, adapter 2.32.1) — and no xezar code reads or sets it.
+  // overrides it (`tool-approval.ts:42-43`, adapter 2.32.1). Scope any absence claim about it to the
+  // files read: `core/pi-runner.ts`, `scripts/pi-leader-extension.ts` and `mcp/adapters/pi.ts` — the
+  // three xezar files on this path — never mention `approveTools` or `extension_ui_request` (read
+  // 2026-09-12 at `df828a0`); `test/integration/mcp-real-clients.test.ts` DOES set the key, on its own
+  // fixture, to produce the block. An unscoped "appears nowhere" rots: this one was true at 301a172
+  // and false an hour later when #368 merged.
   // The two unattended cases end differently and the line says both: a pi xezar runs is killed by the
   // runner's timeout, a leader turn nobody is watching has nothing to end it and waits for ever.
   {

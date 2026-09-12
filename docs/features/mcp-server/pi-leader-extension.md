@@ -115,7 +115,11 @@ Measured by #330 WP5's QA on 2026-09-12, through a real `xezar serve`:
 So it is **not** every pi task: the runner's default `--tools` allowlist offers the model no `xezar_*`
 tool, so the dialog never fires. It bites a call that really reaches a gated xezar tool.
 
-`approveTools` is yours, not xezar's — no xezar code reads or sets it, and the zero-config default
-sets no gate. **Leave xezar's tools ungated.** Making xezar answer the dialog,
+`approveTools` is yours, not xezar's. The three xezar files on this path —
+`packages/xezar/src/core/pi-runner.ts`, `packages/xezar/scripts/pi-leader-extension.ts` and
+`packages/xezar/src/mcp/adapters/pi.ts` — never mention `approveTools` or `extension_ui_request`
+(read 2026-09-12 at `df828a0`), and the zero-config default sets no gate. The one place in this
+repository that sets the key is the acceptance test that measured the block, on its own fixture.
+**Leave xezar's tools ungated.** Making xezar answer the dialog,
 denying by default, is [#369](https://github.com/qodeca/xezar/issues/369), deliberately not in
 0.14.0.
