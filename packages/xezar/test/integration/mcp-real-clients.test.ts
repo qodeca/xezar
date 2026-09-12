@@ -805,6 +805,38 @@ async function openBridge(name: string, root: string, env: NodeJS.ProcessEnv): P
   return { rpc, init };
 }
 
+/**
+ * Wait until nobody owns a project, and say how long that took.
+ *
+ * The A-01 client legs run one after another against the SAME project A, and until #302 that needed
+ * no thought: nothing enforced ownership, so a leg never met the previous leg's leftovers. It does
+ * now. The client legs spawn a bridge xezar does not own — `claude -p` spawns one for its turn, the
+ * adapter spawns one for pi — and that bridge exits a moment AFTER the command we awaited returned,
+ * so the next leg's handshake met `-32080` and failed a client that is perfectly fine. It is the
+ * first thing this file met of § Changing a mechanism that already works: the new mechanism is right
+ * and the old scenario quietly lost an assumption nobody had written down.
+ *
+ * The wait is bounded and its result is a FACT the caller records, never a silent sleep: D-02 § 4
+ * says the project "becomes available when that client disconnects", so how long that takes is
+ * exactly the kind of thing this harness exists to measure. A probe that times out is reported as
+ * still-occupied and the leg fails on it.
+ *
+ * The probe itself takes the slot for an instant, which is why it is released with an AWAITED
+ * `close()` — that resolves on the bridge process's own exit, so by the time this returns the slot is
+ * really free and the only next connection is the caller's.
+ */
+async function waitForProjectFree(label: string, root: string, env: NodeJS.ProcessEnv, timeoutMs = 30_000): Promise<{ freeAfterMs: number; occupied: boolean }> {
+  const started = Date.now();
+  for (let attempt = 1; ; attempt += 1) {
+    const probe = await openBridge(`${label}-free-probe-${attempt}`, root, env);
+    const occupied = isOccupied(probe.init);
+    await probe.rpc.close();
+    if (!occupied) return { freeAfterMs: Date.now() - started, occupied: false };
+    if (Date.now() - started > timeoutMs) return { freeAfterMs: Date.now() - started, occupied: true };
+    await delay(500);
+  }
+}
+
 const toolText = (answer: RpcAnswer): string =>
   answer.error ? `JSON-RPC error ${answer.error.code}: ${answer.error.message}` : ((answer.result?.content ?? []) as Array<{ text?: string }>).map((b) => b.text ?? '').join('\n');
 
@@ -1327,6 +1359,16 @@ async function setupLeg(client: ClientName, resolved: ResolvedClient): Promise<C
   const transcript = new Transcript(`a01-${client}`);
   const before = git(world.a.root, 'status', '--porcelain', '--untracked-files=all');
   const checks: Check[] = [];
+  // The previous leg's bridge outlives the command that spawned it by a moment, and since #302 that
+  // moment is a refusal for whoever connects next. Waiting for A to be free is the precondition of
+  // this leg, and how long the release took is recorded rather than slept through.
+  const free = await waitForProjectFree(`a01-${client}`, world.a.root, bridgeEnv(world, join(home, 'probe')), 30_000);
+  checks.push({
+    name: 'project A is free before this client connects',
+    required: 'the previous client\'s ownership was released, so this leg tests the client and not the queue (D-02 § 4)',
+    observed: free.occupied ? `still occupied after ${free.freeAfterMs} ms` : `free after ${free.freeAfterMs} ms`,
+    ok: !free.occupied,
+  });
   const fixture: Record<string, unknown> = { client: resolved.bin, version: resolved.version, refusedCandidates: resolved.refused, home: '<scratch>' };
   const cmd = bridgeCommand();
   const aName = `project ${world.a.name} (${PROJECT_A})`;
@@ -2088,7 +2130,9 @@ describe('A-20 — MCP changes reach the cockpit, human changes reach the leader
       if (events) {
         const first = toolText(await again.rpc.request('tools/call', { name: events.name, arguments: { action: 'read' } }));
         const cursor = /"nextCursor":"([^"]+)"/.exec(first)?.[1];
-        const acked = cursor ? toolText(await again.rpc.request('tools/call', { name: events.name, arguments: { action: 'ack', cursor } })) : 'no nextCursor to ack';
+        // #264 made every mutating tool action carry an `operationId`, and `ack` is one. Without it
+        // the call is refused with "ack needs operationId", which read as "the ack did not stick".
+        const acked = cursor ? toolText(await again.rpc.request('tools/call', { name: events.name, arguments: { action: 'ack', cursor, operationId: `op-a20-ack-${Date.now()}` } })) : 'no nextCursor to ack';
         const after = toolText(await again.rpc.request('tools/call', { name: events.name, arguments: { action: 'read' } }));
         replay = { beforeAck: humanRows.length > 0 && humanRows.every((row) => first.includes(row.eventId)), acked: acked.slice(0, 160), afterAck: humanRows.some((row) => after.includes(row.eventId)) };
       }
