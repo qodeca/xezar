@@ -27,10 +27,10 @@ function fileOf(over: Partial<AgentConfigFile> & Pick<AgentConfigFile, 'id'>): A
 }
 
 describe('AGENT_DESCRIPTORS', () => {
-  // `pi` has no entry on purpose — no pi-owned config file is cataloged yet, so its pane would
-  // be three empty groups (see the descriptor table's header comment).
+  // `pi` joined on 2026-09-12 with its catalog files (#330 WP4) — the condition the old note
+  // here set. The table is now total over `Runner`.
   it('has one entry per config-owning runner, each with settings/mcp/memory groups in stable order', () => {
-    expect(AGENT_DESCRIPTORS.map((d) => d.id)).toEqual(['claude', 'codex', 'opencode'])
+    expect(AGENT_DESCRIPTORS.map((d) => d.id)).toEqual(['claude', 'codex', 'opencode', 'pi'])
     for (const d of AGENT_DESCRIPTORS) {
       expect(d.groups.map((g) => g.id)).toEqual(['settings', 'mcp', 'memory'])
       expect(d.groups.find((g) => g.id === 'mcp')?.note).toBeTruthy() // every agent says where MCP servers live
@@ -59,7 +59,25 @@ describe('AGENT_DESCRIPTORS', () => {
     expect(claude.groups.find((g) => g.id === 'settings')!.files(mcpJson)).toBe(false)
   })
 
+  /**
+   * pi's own two groups, and the one claim the pane makes that the catalog cannot: pi core reads
+   * no MCP config at all — the files are the `pi-mcp-adapter` extension's. Saying so in the group
+   * note is what stops the editor implying that filling the file in is enough.
+   */
+  it('routes pi’s own files into pi’s groups, and says who actually reads the MCP ones', () => {
+    const pi = descriptorFor('pi')
+    const settings = fileOf({ id: 'pi.user.settings', runners: ['pi'], kind: 'settings' })
+    const mcp = fileOf({ id: 'pi.project.mcp', runners: ['pi'], kind: 'mcp', holdsMcp: true })
+    const memory = fileOf({ id: 'pi.user.memory', runners: ['pi'], kind: 'memory', format: 'markdown' })
+    expect(pi.groups.find((g) => g.id === 'settings')!.files(settings)).toBe(true)
+    expect(pi.groups.find((g) => g.id === 'mcp')!.files(mcp)).toBe(true)
+    expect(pi.groups.find((g) => g.id === 'memory')!.files(memory)).toBe(true)
+    // …and pi's pane does not adopt another agent's file just because the kind matches.
+    expect(pi.groups.find((g) => g.id === 'settings')!.files(fileOf({ id: 'claude.user.settings' }))).toBe(false)
+    expect(pi.groups.find((g) => g.id === 'mcp')!.note).toContain('pi-mcp-adapter')
+  })
+
   it('descriptorFor throws on an unknown agent id', () => {
-    expect(() => descriptorFor('pi' as never)).toThrow(/no agent descriptor/)
+    expect(() => descriptorFor('nope' as never)).toThrow(/no agent descriptor/)
   })
 })

@@ -9,10 +9,9 @@ import type { AgentConfigFile, Runner } from '@qodeca/xezar-api-client'
  * #405: one table entry per agent, extension by design). A new agent is one entry
  * here plus its catalog files — no layout or route work.
  *
- * `pi` (#387) is deliberately absent, not forgotten: nothing in `src/agent-config`'s
- * catalog names a pi-owned config file yet, so a pi entry would render three empty
- * groups. It gets a descriptor together with its catalog files. The tab list only
- * ever offers ids from this table, so `descriptorFor` cannot be reached with `pi`.
+ * `pi` joined the table with its catalog files (#330 WP4) — the condition the
+ * previous note here set. All four agents are present now, so the tab list offers
+ * every `Runner` id and `descriptorFor` is total over the type.
  *
  * Group membership derives from the flat `/api/agent-config` listing: a file
  * belongs to an agent when `runners` INCLUDES it (not `runners[0]` — the shared
@@ -103,6 +102,24 @@ export const AGENT_DESCRIPTORS: AgentDescriptor[] = [
         'Under the "mcp" key in opencode.json — the same file as OpenCode’s settings.',
       ),
       group('opencode', 'memory', 'Memory & instructions'),
+    ],
+  },
+  {
+    id: 'pi',
+    label: 'pi',
+    note: EDITOR_PLUS_COMMIT,
+    groups: [
+      group('pi', 'settings', 'Settings'),
+      // pi core reads no MCP config at all; the files below are read by the third-party
+      // pi-mcp-adapter extension, which Settings → MCP connection (#343) walks you through
+      // installing. Saying so here keeps this pane from implying an editor is enough.
+      group(
+        'pi',
+        'mcp',
+        'MCP',
+        'A dedicated mcp.json, read by the pi-mcp-adapter extension — pi itself reads no MCP config.',
+      ),
+      group('pi', 'memory', 'Memory & instructions'),
     ],
   },
 ]

@@ -11,7 +11,44 @@ import type { RunnerId } from '../core/agent-runner.ts';
  * and what the docs say; an unknown file is not shown rather than guessed at.
  * A raw editor cannot drift on a vendor's *schema*; it can drift on *paths and
  * precedence strings*, so every entry carries a `docsUrl` and this table is the
- * single maintenance surface. Facts verified against primary docs 2026-07-16.
+ * single maintenance surface. Facts verified against primary docs 2026-07-16;
+ * the pi block against the docs shipped with pi 0.85.1 on 2026-09-12 (#330 WP4).
+ *
+ * WHAT MAY GO IN THIS TABLE AT ALL. An entry is a file the API hands to a caller
+ * verbatim and writes back verbatim, so a file that can hold a credential is not
+ * eligible however useful editing it would be (F-15: no secret in a tool
+ * response). Two files in pi's home are excluded for exactly that reason and
+ * must stay excluded:
+ *
+ *   - `auth.json` — pi's stored provider credentials.
+ *   - `models.json` — pi's custom-provider catalogue. `apiKey` is OPTIONAL on a
+ *     provider entry (`apiKey?: string`, `custom-provider.md`) and its value may
+ *     be an `$ENV_VAR` reference or a `!command` rather than a literal, so "this
+ *     file always holds a secret" would be too strong a claim. The exclusion does
+ *     not rest on that claim: on a real 0.85.1 home here, a provider entry carries
+ *     a literal `apiKey` (`providers.<id>.apiKey`, mode `0600`, checked
+ *     2026-09-12), so the file is credential-BEARING in practice, and a catalog
+ *     entry hands a file over WHOLE. #152's model discovery reads the same file
+ *     and deliberately touches only `name`, `models[].id` and `models[].name`
+ *     (`core/pi-model-catalog.ts`); that is the shape a reader of this file needs.
+ *     Wanting a model editor is not a reason to catalog it.
+ *
+ * The same directory holds more than those two, and none of the rest may become
+ * an entry either. On a real 0.85.1 home, checked 2026-09-12: pi's own rotation
+ * copies `models.json.bak-<timestamp>` (mode `0600`, carrying the same literal
+ * `apiKey` as the file they copy) and `settings.json.bak-*` (mode `0644`, no
+ * `apiKey` observed), plus `models-store.json` (mode `0600`). They are
+ * unreachable today for a structural reason worth keeping: every `resolve` below
+ * is a fixed `join` of known segments, so the catalog never globs and never lists
+ * a directory, and a file becomes reachable only by being written into this table
+ * by hand. Rotation copies are the trap that makes this worth stating — excluding
+ * `models.json` by name would not exclude `models.json.bak-20260910-114604`.
+ *
+ * `mcp.json` IS eligible on the same terms as the three MCP files already here:
+ * an MCP server definition can carry a token in `env`/`headers`, and Claude's
+ * `.mcp.json`, Codex's `[mcp_servers]` and OpenCode's `"mcp"` key have always
+ * been in this table with that property. A user typing a secret into a config
+ * file is not the same risk as xezar cataloging a file whose PURPOSE is secrets.
  */
 
 export type ConfigFormat = 'json' | 'jsonc' | 'toml' | 'markdown';
@@ -39,9 +76,12 @@ export interface AgentHomePaths {
    * it (re-verified against pi 0.85.1, 2026-09-12, #329); the note that used to sit here denying
    * it was wrong, and dated 2026-09-10.
    *
-   * `CONFIG_FILES` lists no pi entry yet, so nothing in the raw config editor resolves through
-   * this slot today; model discovery (#152) does, and it lives here so pi's home is derived in
-   * the one place every other agent's is.
+   * `CONFIG_FILES` resolves `pi.user.settings`, `pi.user.mcp` and `pi.user.memory` through this
+   * slot (#330 WP4), which is also what makes a pi ACCOUNT's files resolve inside the account's
+   * folder: `accountFiles` in `server/server.ts` patches this slot via `accountHomePatch`. Model
+   * discovery (#152) reads the same slot. It lives here so pi's home is derived in the one place
+   * every other agent's is. `auth.json` and `models.json` sit in this dir and are deliberately
+   * NOT catalog entries — see the file header.
    */
   pi: string;
 }
@@ -85,6 +125,36 @@ const CODEX_CONFIG_DOCS = 'https://developers.openai.com/codex/config-reference'
 const CODEX_AGENTS_DOCS = 'https://developers.openai.com/codex/guides/agents-md';
 const OPENCODE_CONFIG_DOCS = 'https://opencode.ai/docs/config/';
 const OPENCODE_RULES_DOCS = 'https://opencode.ai/docs/rules/';
+/**
+ * pi ships its docs INSIDE the npm package (`docs/` in `@earendil-works/pi-coding-agent`) AND
+ * serves them at `pi.dev`. An earlier note here said it served no docs site, on the strength of
+ * `https://pi.dev/docs/settings` → 404; that URL shape was simply wrong. What is true, checked
+ * 2026-09-12: `https://pi.dev/docs` → 302 → `/docs/latest`, and `/docs/latest/settings` and
+ * `/docs/latest/usage` both answer 200 and contain the sentences quoted below, verbatim.
+ *
+ * These point at the vendor's own pages rather than at `github.com/.../blob/main/...`, which
+ * tracked a moving branch. `latest` moves too — pi publishes no version-pinned path
+ * (`/docs/0.85.1/settings` → 404, checked) — so the guard against silent drift is the date, not
+ * the URL: every quote below was taken from the docs shipped with pi **0.85.1** on 2026-09-12,
+ * and each was re-read in the npm package AND on the page above.
+ */
+const PI_SETTINGS_DOCS = 'https://pi.dev/docs/latest/settings';
+const PI_USAGE_DOCS = 'https://pi.dev/docs/latest/usage';
+/**
+ * pi core reads NO MCP config: MCP arrives through the third-party `pi-mcp-adapter` extension
+ * (#341/#343 shipped the cockpit's setup card for it), so the adapter's README is the vendor doc
+ * for these two files and pi's own docs never mention `mcp.json`. Verified against
+ * `pi-mcp-adapter@2.32.1` on 2026-09-12.
+ */
+const PI_MCP_DOCS = 'https://github.com/nicobailon/pi-mcp-adapter';
+/**
+ * The adapter's own ordering sentence and list, quoted rather than restated because the two pi MCP
+ * entries have to agree about it and a paraphrase in one of them would be the drift this table
+ * exists to prevent. It is also the sentence WP3's setup card (#343) built its “yours wins” claim
+ * on, so the two surfaces now quote one string.
+ */
+const PI_MCP_PRECEDENCE =
+  '“Precedence is (later entries win): 1. ~/.config/mcp/mcp.json 2. ~/.agents/mcp.json 3. ~/.agents/mcp/mcp.json 4. <Pi agent dir>/mcp.json 5. .mcp.json 6. .pi/mcp.json”.';
 
 /**
  * The table. Order is presentation order: per runner, then user → project →
@@ -291,6 +361,88 @@ export const CONFIG_FILES: ConfigFileDef[] = [
     precedence:
       'Global rules. First match wins across scopes: if a project AGENTS.md exists, this global file is not read at all.',
     docsUrl: OPENCODE_RULES_DOCS,
+  },
+
+  // ---- pi (#330 WP4) ----
+  // Two files pi itself reads (settings, context) and two the `pi-mcp-adapter` extension reads.
+  // Nothing else in `~/.pi/agent` is listed: `auth.json` and `models.json` both hold credentials
+  // (file header), and `models-store.json`, `mcp-cache.json`, `trust.json` and `sessions/` are
+  // pi's own runtime state rather than config a person edits.
+  //
+  // No pi entry carries `modelKey`/`modelPriority`, so `readNativeSettingsFiles('pi', …)` still
+  // finds nothing and `piModelSettingsStrategy` still reports "no native default". That is
+  // deliberate and is NOT an oversight to fix by adding the key: pi's model ids are
+  // `provider/model` composites (`core/pi-model-catalog.ts`, and `pi --model` is handed one),
+  // while its settings split the halves across `defaultProvider` and `defaultModel`, so
+  // `modelKey: 'defaultModel'` alone would report a bare half that `pi --model` does not name.
+  // And `.pi/settings.json` only applies in a folder pi has TRUSTED, a decision recorded in
+  // `~/.pi/agent/trust.json` that xezar does not read, so a project-scope model default would be
+  // a claim xezar cannot check. Wiring pi's native default is its own change: compose the two
+  // halves the way `model-settings/codex.ts` already does, and settle the trust question first.
+  {
+    id: 'pi.user.settings',
+    runners: ['pi'],
+    kind: 'settings',
+    scope: 'user',
+    resolve: (_repo, home) => join(home.pi, 'settings.json'),
+    label: '~/.pi/agent/settings.json',
+    format: 'json',
+    tracked: 'outside-repo',
+    precedence:
+      'Global (all projects). “Pi uses JSON settings files with project settings overriding global settings.” A project’s .pi/settings.json overrides this, but only in a folder pi has trusted; defaultProjectTrust and httpProxy are marked “Global setting only” and cannot be overridden at project scope.',
+    docsUrl: PI_SETTINGS_DOCS,
+  },
+  {
+    id: 'pi.project.settings',
+    runners: ['pi'],
+    kind: 'settings',
+    scope: 'project',
+    resolve: (repo) => join(repo, '.pi', 'settings.json'),
+    label: '.pi/settings.json',
+    format: 'json',
+    tracked: 'tracked',
+    precedence:
+      'Project (current directory), overriding the global file key by key. Read ONLY in a folder pi has trusted, and trust grants more than reading: “Trusting a project allows pi to load .pi/settings.json and .pi resources, install missing project packages, and execute project extensions.” Non-interactive runs (-p, --mode json, --mode rpc) never prompt, but they are not a blanket refusal: “Without an applicable saved trust decision, they use defaultProjectTrust from global settings: ask (default) and never ignore those project resources, while always trusts them.” So this file DOES apply in such a run when a saved decision in ~/.pi/agent/trust.json covers the folder or a parent, when defaultProjectTrust is “always”, or when the run passes --approve/-a (“Pass --approve/-a or --no-approve/-na to override project trust for one run.”). Runs read the committed copy.',
+    docsUrl: PI_SETTINGS_DOCS,
+  },
+  {
+    id: 'pi.user.mcp',
+    runners: ['pi'],
+    kind: 'mcp',
+    scope: 'user',
+    resolve: (_repo, home) => join(home.pi, 'mcp.json'),
+    label: '~/.pi/agent/mcp.json',
+    format: 'json',
+    tracked: 'outside-repo',
+    holdsMcp: true,
+    precedence: `Pi global override — 4th of six sources, so both project files beat it. ${PI_MCP_PRECEDENCE} Read by the pi-mcp-adapter extension, not by pi itself: with the extension not installed pi reads no MCP config at all.`,
+    docsUrl: PI_MCP_DOCS,
+  },
+  {
+    id: 'pi.project.mcp',
+    runners: ['pi'],
+    kind: 'mcp',
+    scope: 'project',
+    resolve: (repo) => join(repo, '.pi', 'mcp.json'),
+    label: '.pi/mcp.json',
+    format: 'json',
+    tracked: 'tracked',
+    holdsMcp: true,
+    precedence: `Pi project override — the HIGHEST of the six sources. ${PI_MCP_PRECEDENCE} Read by the pi-mcp-adapter extension, not by pi itself. Runs read the committed copy.`,
+    docsUrl: PI_MCP_DOCS,
+  },
+  {
+    id: 'pi.user.memory',
+    runners: ['pi'],
+    kind: 'memory',
+    scope: 'user',
+    resolve: (_repo, home) => join(home.pi, 'AGENTS.md'),
+    label: '~/.pi/agent/AGENTS.md',
+    format: 'markdown',
+    tracked: 'outside-repo',
+    precedence:
+      'Global instructions, loaded first and not replaced by a project file. pi’s docs give the sources as a list, so they are quoted as one — “Pi loads AGENTS.md or CLAUDE.md at startup from:” (1) “~/.pi/agent/AGENTS.md for global instructions”, (2) “parent directories, walking up from the current working directory”, (3) “the current directory”. Two qualifiers from the same page: a per-directory override — “If a directory contains AGENTS.override.md, Pi loads it instead of AGENTS.md or CLAUDE.md from that directory. Context files from other directories still layer normally.”, which is why a project’s override does not displace THIS file (an AGENTS.override.md in pi’s own home would) — and an off switch, “Disable loading with --no-context-files or -nc”, which skips every source including this one. xezar catalogs no AGENTS.override.md at any scope. pi therefore also reads this repo’s AGENTS.md and CLAUDE.md; those entries stay listed under the vendors whose precedence rules they carry.',
+    docsUrl: PI_USAGE_DOCS,
   },
 
   // ---- Shared: <repo>/AGENTS.md is read by BOTH Codex and OpenCode ----
