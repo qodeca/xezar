@@ -212,6 +212,10 @@ Implementation tests should use isolated data and `XEZ_DRY_RUN=1`, without perso
 
 The feature is **complete across the entire agreed scope** only when all of the following hold:
 
+**Measured, on one release candidate:** [`mcp-definition-of-done-record.md`](mcp-definition-of-done-record.md)
+runs all eight clauses and A-01–A-23 on `ed579e63` (2026-09-12, [#119](https://github.com/qodeca/xezar/issues/119)).
+Five clauses hold; clauses 2, 3 and 8 do not, and the record names why.
+
 1. Every UI business action has a final matrix record and product-owner-approved classification; every project action has a working MCP equivalent. Coverage is measured against this inventory, not tool or endpoint counts. No unresolved project action may remain in a full-coverage claim.
 2. All criteria (A-01–A-23) pass on **the same release-candidate revision**. Evidence identifies SHA, fixture configuration, client, scenario, and result. `Skipped`, old-revision evidence, and model assertions alone are not passes.
 3. Required outcomes are not deferred as optional mechanisms: stale-write rejection, idempotency, task survival, exclusive ownership, async delivery/model reaction, live UI updates and unchanged quality all pass. Engineering selects lease, versioning, replay and error details and records their tested behavior.
