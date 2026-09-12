@@ -24,7 +24,23 @@ import { z } from 'zod';
  * anything, and no reader may consult an entry in place of a permission check.
  */
 
-/** Where an operation came from — written by the server, never read from the request (§ 10.4). */
+/**
+ * Where an operation came from — written by the server, never read from the request (§ 10.4).
+ *
+ * **`mcp` is the only member emitted today; `ui`, `automation` and `cli` are RESERVED.** Production
+ * opens exactly one channel, `new AuditTrail({ projectId, dataDir }, { warn }).channel('mcp')`
+ * (`packages/xezar/src/mcp/index.ts:254`, the only non-test construction site at `87d9f0d` on
+ * 2026-09-12). The cockpit's HTTP routes, the automation scheduler and headless `xezar run` record
+ * nothing, so `<project>/.local/xezar/mcp-audit.ndjson` holds the leader's operations and no
+ * human's. Reading this enum as "four kinds of entry are written" is the mistake it exists to stop
+ * (#266).
+ *
+ * The enum is deliberately NOT narrowed to the one live member: the four are the intended eventual
+ * set, removing one would be a contract break, and the reserved members carry the shape the other
+ * doors will need (see `ownerGeneration` and `operationKey` below, which are already documented as
+ * absent for non-MCP origins). Wiring those three doors is
+ * [#364](https://github.com/qodeca/xezar/issues/364); D-06 § 10.6 records why it is not 0.14.0 work.
+ */
 export const auditOriginSchema = z.enum(['ui', 'mcp', 'automation', 'cli']);
 export type AuditOrigin = z.infer<typeof auditOriginSchema>;
 
@@ -66,7 +82,7 @@ export const auditEntrySchema = z.object({
   resource: auditResourceSchema.optional(),
   /** SHOULD — the D-06 outcome. */
   outcome: auditOutcomeSchema,
-  /** MUST be server-derived. */
+  /** MUST be server-derived. Only `mcp` is written today — see `auditOriginSchema` above. */
   origin: auditOriginSchema,
   /**
    * SHOULD — the wall-clock ms prefix of the D-02.3 fencing token (`<ms>-<UUIDv4>`) the mutation

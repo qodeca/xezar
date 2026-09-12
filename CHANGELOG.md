@@ -100,6 +100,15 @@
   which is the correct answer and the point of the fix. OpenCode still cannot carry a second
   account – its credentials live apart from its config, so a second one would quietly bill the
   first. (#329)
+- 🐛 **A leader that loses the answer to an MCP call can now ask again safely — for every tool, not
+  just one.** Every MCP tool action that changes something takes a required `operationId`, so
+  sending the same call again returns what the first one did instead of doing it a second time.
+  Until now only `task_create` took one: `organise_work`, `execution_control`, `handoff_git`,
+  `project_config`, `local_handoff` and `leader_events` rejected the key outright, so a dropped
+  answer left a leader with no safe way to find out whether its message was queued, its branch
+  created or its app opened. Read actions of those same tools deliberately take no key and refuse
+  one — a read has nothing to repeat, and `leader_events read` is meant to return the same events
+  again until you acknowledge them. The tool reference lists which actions need the key. (#264)
 - 🐛 **A workflow step that stops for an answer now stops the workflow.** A step before the last
   one runs a single turn, and it used to be marked done whenever its session closed without an
   error – so a step that ended on a question, `XEZ:ASK` or plain prose, was treated as finished
@@ -393,6 +402,14 @@
   survives the whole MCP test suite even though the file reads 100 % branch coverage — the plainest
   evidence that a coverage number is a floor, not a proof. No product behaviour changed, and no test
   or source file was touched. (#357)
+- 📝 **The audit trail now says which origins it really records.** `mcp-audit.ndjson` lists four
+  possible origins — `ui`, `mcp`, `automation`, `cli` — and writes exactly one of them: `mcp`. The
+  cockpit, the automation scheduler and `xezar run` record nothing, so the file holds a leader's
+  operations and never a human's beside them. That is the decision for this release, and it is now
+  written down where anyone would look: in the schema itself, in the audit module, in the MCP API
+  reference and as a dated decision in D-06 § 10.6. The four origins are kept, because they are the
+  right eventual set and removing one would break the record format; wiring the other three doors is
+  its own issue (#364) for a later release. No product behaviour changed. (#266)
 
 # 0.13.1 (2026-09-10)
 

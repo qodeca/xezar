@@ -12,7 +12,8 @@ import { collectSecretValues, redactSecrets } from '../core/secret-redaction.ts'
 import { PROJECT_ID_RE } from '../workspace/config.ts';
 
 /**
- * The audit trail for MCP and cockpit operations (#102) — D-06 § 10, requirement N-04.
+ * The audit trail (#102) — D-06 § 10, requirement N-04. Built for MCP and cockpit operations;
+ * writing MCP operations today, and only those (see THE SHARED PATH below).
  *
  * WHAT. One append-only NDJSON file per project, `<project>/.local/xezar/mcp-audit.ndjson`, one
  * `AuditEntry` (packages/contract/src/mcp-audit.ts) per settled operation: action, time, project,
@@ -20,12 +21,21 @@ import { PROJECT_ID_RE } from '../workspace/config.ts';
  * file reads as an empty trail, and deleting it discards history and nothing else. It lives under
  * `.local/`, which `ensureProjectDataIgnored` already blanket-ignores (D-06 § 13.2).
  *
- * THE SHARED PATH. Both doors stamp the origin through the same `AuditChannel`: the entry point
- * that owns a door (the MCP service adapter, the cockpit's HTTP routes, the automation scheduler,
- * headless `xezar run`) asks `trail.channel(origin)` ONCE and hands operations to it. The origin is
- * therefore derived from which door the call came through — an operation object has no origin and
- * no project field, and a stray `origin` or `projectId` key on one is ignored (D-06 § 10.4 rule 1).
- * That is also the marker #106 reads to tell the leader's own echoes from new events.
+ * THE SHARED PATH, AND THE ONE DOOR THAT USES IT. A door stamps its origin through an
+ * `AuditChannel`: the entry point that owns the door asks `trail.channel(origin)` ONCE and hands
+ * operations to it. The origin is therefore derived from which door the call came through — an
+ * operation object has no origin and no project field, and a stray `origin` or `projectId` key on
+ * one is ignored (D-06 § 10.4 rule 1). That is also the marker #106 reads to tell the leader's own
+ * echoes from new events.
+ *
+ * **Exactly one door does this today, and it is the MCP one:** `mcp/index.ts:254` builds
+ * `.channel('mcp')`, and it is the only non-test construction of this class in `packages/`
+ * (grepped for the type and for `.channel(` at `87d9f0d`, 2026-09-12). The cockpit's HTTP routes,
+ * the automation scheduler and headless `xezar run` are the doors the design expects and they
+ * record NOTHING — so `ui` is written only by tests (`audit-trail.test.ts`, `echo-guard.test.ts`,
+ * `test/helpers/ab-fixture.ts`), and `automation` and `cli` are written nowhere at all. That is decided for 0.14.0, not an oversight (#266, D-06 § 10.6);
+ * wiring the other three is #364. `channel()` takes any `AuditOrigin` because those doors are the
+ * point, but do not read this comment as a description of four live writers.
  *
  * MUST vs SHOULD (D-06 § 10.2, N-04 "should"):
  *   - MUST: the project id comes from the trusted scope, the origin from the door, and no secret,
@@ -149,7 +159,10 @@ export class AuditTrail {
     this.warn = options.warn ?? ((message) => console.warn(message));
   }
 
-  /** The recorder for one door. Call it where the door is, once; the origin is fixed from then on. */
+  /**
+   * The recorder for one door. Call it where the door is, once; the origin is fixed from then on.
+   * One production caller: `mcp/index.ts:254`, with `'mcp'`. Every other origin is test-only (#364).
+   */
   channel(origin: AuditOrigin): AuditChannel {
     return new AuditChannel(this, origin);
   }

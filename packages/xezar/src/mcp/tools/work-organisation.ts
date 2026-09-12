@@ -1,5 +1,5 @@
 import { lstat } from 'node:fs/promises';
-import { mcpExpectedVersionSchema, runIdParamSchema, runnerSchema } from '@qodeca/xezar-contract';
+import { mcpExpectedVersionSchema, operationIdSchema, runIdParamSchema, runnerSchema } from '@qodeca/xezar-contract';
 import { hc, type InferResponseType } from 'hono/client';
 import { z } from 'zod';
 import type { RunRecord } from '../../runs/store.ts';
@@ -111,6 +111,7 @@ type Action = (typeof ACTIONS)[number];
 type Field =
   | 'runId'
   | 'expectedVersion'
+  | 'operationId'
   | 'title'
   | 'task'
   | 'messageId'
@@ -125,6 +126,7 @@ type Field =
 const FIELDS: readonly Field[] = [
   'runId',
   'expectedVersion',
+  'operationId',
   'title',
   'task',
   'messageId',
@@ -140,26 +142,30 @@ const FIELDS: readonly Field[] = [
 
 /** Which arguments each action requires, and which it accepts besides. Anything else is refused.
  *  `expectedVersion` is required by every action that changes one task (#250) — a missing one is a
- *  validation refusal, never a write without the check. */
+ *  validation refusal, never a write without the check.
+ *  `operationId` is required by every action that CHANGES anything (D-06 § 5.2, #264), which here is
+ *  every action but `list_queue`: that one reads, and a read has no effect to deduplicate. Giving a
+ *  read an operation id would file a receipt whose replay answers with the receipt instead of the
+ *  queue, so the read refuses it rather than accepting a key that makes the next call worse. */
 const ACTION_FIELDS: Record<Action, { required: readonly Field[]; optional?: readonly Field[] }> = {
   list_queue: { required: [], optional: ['cursor', 'limit'] },
-  set_title: { required: ['runId', 'expectedVersion', 'title'] },
-  edit_brief: { required: ['runId', 'expectedVersion', 'task'] },
-  edit_queued_message: { required: ['runId', 'expectedVersion', 'messageId', 'text'] },
-  remove_queued_message: { required: ['runId', 'expectedVersion', 'messageId'] },
-  pin: { required: ['runId', 'expectedVersion'] },
-  unpin: { required: ['runId', 'expectedVersion'] },
-  archive: { required: ['runId', 'expectedVersion'] },
-  restore: { required: ['runId', 'expectedVersion'] },
-  archive_finished: { required: [] },
-  mark_read: { required: ['runId'] },
-  mark_unread: { required: ['runId'] },
-  mark_all_read: { required: [] },
-  delete: { required: ['runId', 'expectedVersion'] },
-  start_inbox_item: { required: ['todoId'], optional: ['runner', 'model', 'prompt'] },
-  remove_inbox_item: { required: ['todoId'] },
+  set_title: { required: ['runId', 'expectedVersion', 'operationId', 'title'] },
+  edit_brief: { required: ['runId', 'expectedVersion', 'operationId', 'task'] },
+  edit_queued_message: { required: ['runId', 'expectedVersion', 'operationId', 'messageId', 'text'] },
+  remove_queued_message: { required: ['runId', 'expectedVersion', 'operationId', 'messageId'] },
+  pin: { required: ['runId', 'expectedVersion', 'operationId'] },
+  unpin: { required: ['runId', 'expectedVersion', 'operationId'] },
+  archive: { required: ['runId', 'expectedVersion', 'operationId'] },
+  restore: { required: ['runId', 'expectedVersion', 'operationId'] },
+  archive_finished: { required: ['operationId'] },
+  mark_read: { required: ['runId', 'operationId'] },
+  mark_unread: { required: ['runId', 'operationId'] },
+  mark_all_read: { required: ['operationId'] },
+  delete: { required: ['runId', 'expectedVersion', 'operationId'] },
+  start_inbox_item: { required: ['todoId', 'operationId'], optional: ['runner', 'model', 'prompt'] },
+  remove_inbox_item: { required: ['todoId', 'operationId'] },
   // The kept variant's version: the pick deletes every other variant's worktree and branch (#271).
-  pick_variant: { required: ['groupId', 'runId', 'expectedVersion'] },
+  pick_variant: { required: ['groupId', 'runId', 'expectedVersion', 'operationId'] },
 };
 
 /** An id that is safe as ONE path segment: the route id rule, minus the dot segments a URL parser
@@ -175,6 +181,11 @@ const inputSchema = z
       .optional()
       .describe(
         'Required by every action that changes one task (set_title, edit_brief, edit_queued_message, remove_queued_message, pin, unpin, archive, restore, delete) and by pick_variant: the `version` task_read gave you for that task — for pick_variant, the variant you keep. Echo it verbatim.',
+      ),
+    operationId: operationIdSchema
+      .optional()
+      .describe(
+        'Client-generated key for this operation (8–128 chars). Required by every action except list_queue, which reads and takes none. Reuse it only to repeat the same operation: a repeat returns the first answer and organises nothing twice.',
       ),
     title: z.string().optional().describe('set_title: the new title.'),
     task: z.string().optional().describe('edit_brief: the replacement brief. Only while the task is queued.'),

@@ -259,8 +259,11 @@ function composeDoor(input: DoorInput): {
     const action = actionId(tool.name, args.action);
     const target = targetOf(args);
     // The origin is the door's, never the client's (D-05 § 6.3): every mutation through here is the
-    // leader's. A tool without an `operationId` field still needs one for the catalog and the echo
-    // guard, so the door mints it; it never reaches a receipt, which only a client key may create.
+    // leader's. Since #264 every MUTATING action of every tool carries a client `operationId`
+    // (D-06 § 5.2), so the mint below is what covers the read actions a mutating tool also has
+    // (`organise_work list_queue`, `handoff_git repo`, `leader_events read`, the `project_config`
+    // reads and refusals): they still need an origin for the catalog and the echo guard, and they
+    // deliberately reach no receipt, because only a client key may create one.
     const causedBy = operationId ?? `mcp-door.${randomUUID()}`;
     const marked = (): Promise<McpToolResult> =>
       withEventOrigin({ origin: 'leader', causedBy, ...(target ? { runId: target.id } : {}) }, invoke);

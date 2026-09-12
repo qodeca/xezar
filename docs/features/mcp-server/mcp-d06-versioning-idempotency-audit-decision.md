@@ -49,6 +49,7 @@ Everything this record closes, in one table. Each row links to the section that 
 | 13 | Audit record fields | The 11-field list in § 10.2; free text, payload bodies and diffs are excluded by construction | § 10 |
 | 14 | Audit retention | **Open.** N-04 keeps it open and this record does not close it. § 10.5 gives a technical proposal only | § 10.5 |
 | 15 | New persisted fields | **None.** The run id is predicted from the operation key instead, because `runRecordSchema` has no `.passthrough()` and a downgrade would erase a new key rather than merely ignore it | § 12.1, § 13.3 |
+| 16 | Which origins the trail records | **`mcp` only for 0.14.0.** `ui`, `automation` and `cli` stay in the enum as reserved members that no door writes; [#364](https://github.com/qodeca/xezar/issues/364) owns wiring them. Added 2026-09-12, after the rest of this record | § 10.6 |
 
 ### 1.1 Every number in this record, and what fixed it
 
@@ -813,6 +814,48 @@ holds open, and closing it here would be softening the requirements document in 
 
 Operational packaging bounds more broadly are decision **D-09**, issue
 [#84](https://github.com/qodeca/xezar/issues/84).
+
+### 10.6 Recorded 2026-09-12 — the trail is MCP-only for 0.14.0
+
+*Added after the rest of this record and after phase 4 shipped, so this subsection alone reads
+against `87d9f0d` rather than the `9fdcf0e` baseline named at the top. Every file:line below is from
+that later revision and is labelled where it is used.*
+
+**Decided, and it is a decision about scope, not a new rule.** The trail records the **`mcp` origin
+only** in 0.14.0. `ui`, `automation` and `cli` stay in `auditOriginSchema` as **reserved** members
+that no door writes. Wiring those three doors is
+[#364](https://github.com/qodeca/xezar/issues/364), which carries no release label.
+
+**The observation that forced this.** Reported as [#266](https://github.com/qodeca/xezar/issues/266)
+while writing the [API reference](mcp-api.md) (#261), re-verified at `87d9f0d` on 2026-09-12 by
+grepping the type `AuditTrail` and the method `.channel(` across `packages/`: the only non-test
+construction site is `new AuditTrail({ projectId, dataDir }, { warn }).channel('mcp')`
+(`packages/xezar/src/mcp/index.ts:254`). `ui` occurs only in test fixtures; `automation` and `cli`
+occur nowhere, not even in a test. So `.local/xezar/mcp-audit.ndjson` cannot show a human's change
+beside a leader's, which is the one comparison a mixed-origin trail exists to make.
+
+**Why this record does not close it by wiring.** § 10.1 above is the reason, and it is unchanged:
+N-04 says history *should* identify origin, and this record deliberately did not upgrade that
+"should" to a "must". Wiring three doors would touch many cockpit routes inside a frozen-scope
+release to satisfy a requirement the project consciously chose not to harden. § 10.2 anticipated the
+asymmetry rather than promising the doors — `ownerGeneration` and `operationKey` are written there
+as "absent for non-MCP origins", which is the shape the other doors will need and not a claim that
+they exist.
+
+**What was wrong was therefore the silence, not the scope.** A maintained enum offering four members
+where production opens one channel reads as a promise of four kinds of entry. The correction is that
+every surface now says which member is live: `auditOriginSchema`'s own comment
+(`packages/contract/src/mcp-audit.ts`), the module comment of
+`packages/xezar/src/mcp/audit-trail.ts`, the reference's `origin` table and its Findings 3, and this
+subsection. A reserved member with no ticket is how "reserved" becomes "forgotten", so #364 owns the
+reservation.
+
+**What stays open is unchanged.** § 10.5's retention and identity-model questions are not touched
+here, and three more doors would add lines per day without answering either — #364 carries that
+note.
+
+**Limit of this subsection.** It records scope and it corrects documents. It changes no field, no
+rule, no MUST and no SHOULD in § 10.2 through § 10.5, and it narrows no enum.
 
 ## 11. Scoped absence claims
 

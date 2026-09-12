@@ -25,6 +25,7 @@ import { runVersion } from './stale-write.ts';
 import { toolListing, type McpToolContext, type McpToolResult } from './tool.ts';
 import { handoffGitTool, QUALITY_BLOCKER_NEXT_ACTION } from './tools/handoff-git.ts';
 import { tools } from './tools/index.ts';
+import { withOperationId } from './tools/operation-id.testkit.ts';
 
 /**
  * #116 — the PARITY AND COLLABORATION half of the whole-feature acceptance suite (requirements § 9):
@@ -178,7 +179,11 @@ function bridgeLeader(target: ServiceTarget): { request(method: string, params?:
 
 /** One `leader_events` call through a bridge, answered as its structured content. */
 async function leaderEvents(leader: ReturnType<typeof bridgeLeader>, args: Record<string, unknown>): Promise<Record<string, any>> {
-  const result = (await leader.request('tools/call', { name: 'leader_events', arguments: args })) as McpToolResult;
+  // `ack` writes the leader's position, so it takes a fresh operation key (#264); `read` refuses one.
+  const result = (await leader.request('tools/call', {
+    name: 'leader_events',
+    arguments: withOperationId('leader_events', args),
+  })) as McpToolResult;
   expect(result.isError, resultText(result)).toBeFalsy();
   return result.structuredContent as Record<string, any>;
 }
@@ -288,7 +293,7 @@ function withForge(w: AbWorld, override: (pathname: string) => Response | undefi
   return {
     dispatched,
     call: async (args) => {
-      const parsed = handoffGitTool.inputSchema.safeParse(args);
+      const parsed = handoffGitTool.inputSchema.safeParse(withOperationId(handoffGitTool, args));
       if (!parsed.success) return { content: [{ type: 'text', text: `Invalid arguments for handoff_git: ${parsed.error.message}` }], isError: true };
       return handoffGitTool.call(parsed.data, ctx);
     },

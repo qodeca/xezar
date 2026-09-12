@@ -934,8 +934,19 @@ describe.skipIf(process.platform === 'win32')('#115 isolation acceptance — A/B
       for (const raw of [trail, journalRaw, readFileSync(auditFile(w.b), 'utf8'), readFileSync(w.b.journal.rowsPath, 'utf8')]) {
         expect(leaked(raw, [c.credential, c.token, w.a.root, 'mcp-connection'])).toEqual([]);
       }
-      const operationKeys = trail.split('\n').filter(Boolean).map((line) => (JSON.parse(line) as { operationKey?: string }).operationKey);
-      expect(operationKeys.filter(Boolean)).toEqual([]);
+      // #264: every mutating call carries the leader's own operation key, so the trail records one.
+      // What it records is `<projectId>/<the client's opaque id>` and nothing else — the project half
+      // comes from the trusted binding, and no credential, token or host path is in either half.
+      const operationKeys = trail
+        .split('\n')
+        .filter(Boolean)
+        .map((line) => (JSON.parse(line) as { operationKey?: string }).operationKey)
+        .filter((operationKey): operationKey is string => operationKey !== undefined);
+      expect(operationKeys.length).toBeGreaterThan(0);
+      for (const operationKey of operationKeys) {
+        expect(operationKey.startsWith(`${w.a.id}/`), operationKey).toBe(true);
+        expect(leaked(operationKey, [c.credential, c.token, w.a.root, 'mcp-connection'])).toEqual([]);
+      }
 
       // Git: the file is ignored, nothing stages it, and no history holds a secret.
       const git = (root: string, ...args: string[]) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' });

@@ -31,6 +31,7 @@ import type { ServiceDispatch } from '../../src/mcp/service-adapter.ts';
 import { listenMcpSocket, type McpServiceHandle } from '../../src/mcp/service.ts';
 import { defineTool, type McpTool, type McpToolContext } from '../../src/mcp/tool.ts';
 import { tools as registry } from '../../src/mcp/tools/index.ts';
+import { withOperationId } from '../../src/mcp/tools/operation-id.testkit.ts';
 import { projectDataDir } from '../../src/project-data-paths.ts';
 import { RunStore, type RunRecord } from '../../src/runs/store.ts';
 import { ProjectContexts, type ProjectContext, type ProjectContextSource } from '../../src/server/project-context.ts';
@@ -703,7 +704,10 @@ export async function createAbWorld(options: AbWorldOptions = {}): Promise<AbWor
     });
 
   const call = async (side: Side, tool: string, args: Record<string, unknown> = {}): Promise<McpToolResult> => {
-    const answer = (await frame(side, { v: IPC_PROTOCOL_VERSION, id: 1, method: 'tools/call', params: { name: tool, arguments: args } })) as {
+    // Every mutating action takes an operation key (#264); a fresh one per call, so two calls in a
+    // case are never one operation. A case that IS about a replay passes its own key and keeps it.
+    const withKey = withOperationId(tool, args);
+    const answer = (await frame(side, { v: IPC_PROTOCOL_VERSION, id: 1, method: 'tools/call', params: { name: tool, arguments: withKey } })) as {
       ok: boolean;
       result?: McpToolResult;
       error?: { message: string };
@@ -749,7 +753,7 @@ export async function createAbWorld(options: AbWorldOptions = {}): Promise<AbWor
         });
       },
       async callTool(name, args = {}) {
-        const answer = await handle.request('tools/call', { name, arguments: args });
+        const answer = await handle.request('tools/call', { name, arguments: withOperationId(name, args) });
         if (answer.error) throw new Error(`the bridge refused tools/call: ${answer.error.message}`);
         return answer.result as McpToolResult;
       },

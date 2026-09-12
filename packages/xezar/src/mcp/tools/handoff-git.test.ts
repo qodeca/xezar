@@ -20,6 +20,7 @@ import { listenMcpSocket, type McpServiceHandle } from '../service.ts';
 import { defineTool, toolListing, type McpTool, type McpToolContext } from '../tool.ts';
 import { QUALITY_BLOCKER_NEXT_ACTION, handoffGitTool, qualityBlockers, readyBlockers } from './handoff-git.ts';
 import { tools } from './index.ts';
+import { withOperationId } from './operation-id.testkit.ts';
 
 /**
  * `handoff_git` (#96) driven the way a leader drives it: a `tools/call` frame over the project's own
@@ -192,7 +193,9 @@ describe.skipIf(isWindows)('handoff_git — commit, push, draft PR, merge and br
     if (['commit', 'push', 'create_pr'].includes(String(args.action)) && !('expectedVersion' in args)) {
       args = { ...args, expectedVersion: await versionForTest(app, project, args.taskId) };
     }
-    return callRaw(args, project);
+    // Every action but the two reads takes an operation key (#264); a fresh one per call, so two
+    // calls in a case are never one operation.
+    return callRaw(withOperationId(handoffGitTool, args), project);
   }
 
   function callRaw(args: Record<string, unknown>, project: 'leader' | 'plain' = 'leader'): Promise<McpToolResult> {
