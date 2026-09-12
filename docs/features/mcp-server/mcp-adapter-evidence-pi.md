@@ -486,8 +486,17 @@ to prevent. Two consequences, both now fixed:
 
 The unit double was wrong in exactly this branch, which is why the suite was green over the bug: `FakePi`
 started a turn on a steer into an idle pi. It now parks, reports `pendingMessageCount`, and surfaces the
-queue on the person's own turn. **A test double that is kinder than the real thing does not test, it
+queue whenever a turn starts. **A test double that is kinder than the real thing does not test, it
 reassures** — that lesson is worth more than this fix.
+
+**One honest cost, found by the corrected double rather than reasoned about.** Once the double drained the
+steering queue on a turn start — which is what real pi does — the retry-after-parking test went red and
+showed the event text reaching the model **twice in one request**: the parked copy surfaces alongside the
+re-sent one. That is one turn, one reaction and one `handedThrough`, with the content repeated. It is kept,
+because the alternative is worse in both directions: leaving the row parked loses the autonomy A-19 is
+about, and retracting the parked copy means `clear_queue`, which would also discard the PERSON's own queued
+messages. A model reading the same event block twice is benign; a leader that does not react until a human
+types is not.
 
 ## Tests and red proof
 

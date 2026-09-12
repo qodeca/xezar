@@ -114,12 +114,20 @@ class FakePi implements PiRpcLink {
         return { success: false, error: { message: "Agent is already processing. Specify streamingBehavior ('steer' or 'followUp') to queue the message." } };
       }
       // pi races its events against the answer: `agent_start` and the user message are emitted
-      // before the `response` reaches the caller (observed in the probe).
+      // before the `response` reaches the caller (observed in the probe). Anything already PARKED in
+      // the steering queue surfaces with this turn too — measured in `pi-idle-steer` step 3, where
+      // the person's own prompt produced one model request carrying both their text and the parked
+      // steer. Draining it here keeps the double honest about the retry-after-parking path.
       queueMicrotask(() => {
         this.streaming = true;
         this.emit({ type: 'agent_start' });
         this.emit({ type: 'turn_start' });
         this.#surface(text);
+        const parked = this.queued.splice(0);
+        if (parked.length > 0) {
+          for (const queued of parked) this.#surface(queued);
+          this.emit({ type: 'queue_update', steering: [], followUp: [] });
+        }
       });
       if (this.hold) await this.hold;
       return { success: true };
@@ -480,7 +488,8 @@ describe('never two turns for one row', () => {
 
   it('a steer pi PARKED is not reported as handed over, and the retry gets it in front of the model', async () => {
     const pi = new FakePi();
-    const adapter = adapterOn(pi);
+    const reactions: number[] = [];
+    const adapter = adapterOn(pi, reactions);
     const real = pi.request.bind(pi);
     // pi settles between the confirming `get_state` and the `steer` it authorised — the one window
     // the pre-check cannot close. The steer is accepted and parks, so it is NOT a hand-over.
@@ -500,7 +509,16 @@ describe('never two turns for one row', () => {
     const receipt = await adapter.deliver(dispatch([row(1)]), live());
     await settle();
     expect(receipt).toEqual({ handedThrough: 1 });
-    expect(pi.modelRequests.filter((text) => text.includes('xez330:1'))).toHaveLength(1);
+    expect(reactions).toEqual([1]);
+
+    // The parked copy surfaces with that same turn — real pi drains its steering queue when a turn
+    // starts (`pi-idle-steer` step 3), so the event text reaches the model TWICE in ONE request.
+    // That is the honest cost of rescuing the row rather than leaving it for a human, and it is the
+    // safe direction: one turn, one reaction, one `handedThrough`, content repeated. Retracting the
+    // parked copy would mean `clear_queue`, which would also throw away the PERSON's own queued
+    // messages, so it is not on the table.
+    expect(pi.modelRequests.filter((text) => text.includes('xez330:1'))).toHaveLength(2);
+    expect(pi.queued).toEqual([]);
   });
 
   it('only new rows go into the second submission', async () => {
