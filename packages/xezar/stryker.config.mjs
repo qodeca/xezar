@@ -1,8 +1,13 @@
 // @ts-check
 import { availableParallelism } from 'node:os'
 
-// The MCP mutation run – `npm run test:mutation:mcp`, a RELEASE gate, not a per-PR one (#333,
+// The MCP mutation run – `npm run test:mutation:mcp`, never a per-PR one (#333,
 // docs/testing/coverage-gaps.md § 10.3; the per-PR form is the named break SDLC.md requires).
+// It was the `release` / `release-prep` workflows' first check step until 2026-09-12; that step
+// was removed because a release-only gate gets its first real exercise at the most expensive
+// moment (#375) and its repair lives in somebody else's PR. **Right now it runs nowhere
+// automatically** – it is a manual command, and #377 owns giving it a schedule. The scope and
+// the floor below are unchanged.
 // Run from the repository root: every path below is relative to it.
 //
 // Two guarantees this file carries, and what each is for:

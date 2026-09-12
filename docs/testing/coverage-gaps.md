@@ -727,8 +727,9 @@ have shipped a leak or an ownership pass in 0.14.0 are #337, closed here.
 direct tests took a median 6.9 s end to end, a survivor needed a full MCP scope run of a median 38 s
 to be sure, and the 158 mutants took 68 minutes over three parallel copies. The sample's *inferred*
 "5 000–8 000 mutants" for a real StrykerJS run was **too low**: Stryker generates **12 530** on this
-scope. The real run, its cost and its score are in 10.8 – it is a release gate now, adopted on the
-sample's recommendation, and the per-PR form stays the named break SDLC.md requires.
+scope. The real run, its cost and its score are in 10.8 – it was adopted as a release gate on the
+sample's recommendation, that step was removed on 2026-09-12 and #377 owns its next home, and
+the per-PR form stays the named break SDLC.md requires.
 
 ### 10.4 Held by a suite v8 cannot see
 
@@ -869,14 +870,41 @@ only then make the command a CI step.
 - `tools/task-reads.ts:281-285` – `escapedBytes` prices raw control characters and lone surrogates,
   but its only input is `JSON.stringify` output, where both are already escaped to ASCII.
 
-### 10.8 The release gate: Stryker over the MCP code
+### 10.8 The gate that is between homes: Stryker over the MCP code
 
 `npm run test:mutation:mcp` – StrykerJS 9.6.1 over `packages/xezar/src/mcp/**`, killed by the MCP
-suites alone (`packages/xezar/vitest.mutation.config.ts`, the same files 10.1 measures). It is a
-**release** gate: the `release` and `release-prep` workflows run it as their first check step, before
-anything is authored, and the manual dispatch path in [publishing.md](../publishing.md) says to run
-it by hand. It is in no per-PR gate, in `npm test` or in CI – see the cost below. Config and its
-reasons: `packages/xezar/stryker.config.mjs`.
+suites alone (`packages/xezar/vitest.mutation.config.ts`, the same files 10.1 measures). Config
+and its reasons: `packages/xezar/stryker.config.mjs`.
+
+**Read this first: as of 2026-09-12 it runs NOWHERE automatically.** It is a manual command. It
+used to be a **release** gate – the `release` and `release-prep` workflows ran it as their first
+check step, before anything was authored – and that step was removed. **#377 owns its new home**
+(a schedule against `main`) and is not done yet; until it lands, running this is a person's job
+and it is in no per-PR gate, in `npm test` or in CI either. Checked on the branch that removed
+it: no file under `.github/workflows/` or `.xezar/workflows/` invokes it.
+
+Four things made the release path the wrong position, and none of them is about the gate's
+quality:
+
+- it ran **only** at release, so its first end-to-end exercise arrived when failure cost most.
+  The 0.14.0 attempt died in Stryker's own dry run on a config mismatch (#375) – a lost release
+  run, a fix PR, a review and a relaunch, and **zero** product defects found;
+- it **blocked**. A surviving mutant means a test is weak, which is next week's work, not a
+  reason to withhold code that already passed the full canonical gate and independent QA;
+- **nobody who could act was listening.** The authors of those tests had finished hours earlier,
+  and the release task cannot fix a weak test;
+- **a check step is binary.** "Is this survivor already tracked in #338 / #353, or is it new?" is
+  not a question an exit code can answer.
+
+Nothing about the gate itself changed: same scope, same suites, same `thresholds.break` of 80,
+no file excluded. It was moved, not softened – and the cost of the gap between homes is that
+between now and #377 the score is only measured when somebody types the command.
+
+One constraint #377 has to answer, recorded here because it is measured and easy to miss: a
+GitHub job is hard-killed at **6 hours**, the run below is 3 h 40 min on an 18-core laptop at
+Stryker concurrency 4, and a `ubuntu-latest` runner has 4 cores – so `stryker.config.mjs`'s
+`min(4, availableParallelism() - 1)` resolves to 3 there, on slower cores. A single scheduled job
+would not finish.
 
 **Measured, 2026-09-12, revision `ac726df` on an 18-core macOS laptop shared with other tasks, concurrency 4.**
 
