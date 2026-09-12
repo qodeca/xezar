@@ -2,6 +2,7 @@ import type { McpJournalRow, McpLeaderActionInput, McpLeaderBlocker, McpLeaderSe
 
 import type { ProjectOwnership } from '../workspace/project-owner.ts';
 import { OpenCodeReactionAdapter } from './adapters/opencode.ts';
+import { type PiReactionAdapter, piReactionTarget } from './adapters/pi.ts';
 import type { EchoGuard } from './echo-guard.ts';
 import { EventController, type CursorAdvance, type DeliveryReceipt, type EventDispatch, type LeaderRecord, type ReactionAdapter } from './event-controller.ts';
 import type { EventJournal } from './event-journal.ts';
@@ -19,14 +20,17 @@ import type { LeaderActResult, ProjectLeaderPort } from './project-leaders.ts';
  * a dispatcher following the journal for it.
  *
  * WHO IT CAN REACH, AND WHY ONLY THEM. A dispatch must reach a MODEL, and generic MCP notifications
- * start no turn in Claude Code, Codex or OpenCode (D-05 § 4; each adapter's evidence record). xezar
- * NEVER starts an agent process for a leader (owner decision on #311): the person runs their own
- * leader and connects it to xezar over MCP. So an event reaches a model only through a session the
- * person runs AND tells xezar where to find — `attach`, today an OpenCode `serve` session (#110).
- * A Claude Code or Codex session in a terminal has no address to attach to: for it the controller
- * keeps the rows in the journal, reports `disconnected`, retries at its heartbeat, and
- * `status().blocker` says so. Nothing is lost: that leader reads its events with the `leader_events`
- * tool (#251), and the next session resumes after the leader's last acknowledgement.
+ * start no turn in Claude Code, Codex, OpenCode or pi (D-05 § 4; #330 run A for pi; each adapter's
+ * evidence record). xezar NEVER starts an agent process for a leader (owner decision on #311): the
+ * person runs their own leader and connects it to xezar over MCP. So an event reaches a model only
+ * through a session the person runs AND tells xezar where to find — `attach`, today an OpenCode
+ * `serve` session (#110). A Claude Code, Codex or pi session in a terminal has no address to attach
+ * to: for it the controller keeps the rows in the journal, reports `disconnected`, retries at its
+ * heartbeat, and `status().blocker` says so. pi is the one of the three that can SAY so: `attach`
+ * accepts `client: 'pi'` and answers with `pi-not-addressable` (#330 WP2, `adapters/pi.ts`), because
+ * pi's RPC is stdio-only and nothing can hand this process a link to it. Nothing is lost: such a
+ * leader reads its events with the `leader_events` tool (#251), and the next session resumes after
+ * the leader's last acknowledgement.
  *
  * THE ECHO GUARD HOLDS HERE, FOR EVERY CLIENT. The door records each mutation's operation id as the
  * leader's own before it runs (`EchoGuard.issue`, #106), including the ids it mints for tools that
@@ -70,7 +74,7 @@ export const LEADER_ROLE_INSTRUCTION = [
 const NO_LEADER: McpLeaderBlocker = {
   code: 'no-leader-session',
   message:
-    'No leader session is attached to this project, so events are kept in the journal, not pushed. A Claude Code or Codex session in a terminal has no address xezar can attach to, and MCP notifications start no turn — that leader reads its events with the leader_events tool.',
+    'No leader session is attached to this project, so events are kept in the journal, not pushed. A Claude Code, Codex or pi session in a terminal has no address xezar can attach to, and MCP notifications start no turn — that leader reads its events with the leader_events tool.',
   fix: 'Keep using leader_events from your own leader, or attach the OpenCode session you run with `opencode serve`.',
 };
 
@@ -141,11 +145,25 @@ export interface LeaderDeliveryOptions {
  * session did before it existed. A new `attach` makes a new record, so nothing carries over.
  */
 interface AttachedLeader {
-  readonly adapter: OpenCodeReactionAdapter;
+  /** Which client it is, for `status().leader`. The adapter below is that client's. */
+  readonly client: McpLeaderSession['client'];
+  readonly adapter: LeaderAdapter;
   /** When the first attempt against this leader failed with none succeeding since; else null. */
   failingSince: number | null;
   /** The newest row settled against it: handed over, or dropped because the leader caused it. */
   settledThrough: number;
+}
+
+/**
+ * What every leader adapter gives this module, whichever client it speaks to. Structural on purpose
+ * — not a union of the adapter classes, which would make `deliver`'s return a union this module
+ * cannot await once — so a fifth client is a new `#act` branch and nothing else here. `fix` is
+ * optional because only pi's blockers carry their own remedy.
+ */
+interface LeaderAdapter extends ReactionAdapter {
+  heartbeat(signal: AbortSignal): Promise<void>;
+  close(): void;
+  status(): { blocker?: { code: string; message: string; fix?: string } };
 }
 
 export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
@@ -290,10 +308,29 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     // Attaching a leader that can never receive an event would answer 200 with a blocker-free status
     // for a path that delivers nothing (#309 O-3). Refuse, and say why.
     if (!this.#opts.journal.writable) return { ok: false, error: JOURNAL_UNWRITABLE.message };
+    if (input.client === 'pi') {
+      // pi's adapter (#330 WP2) is built the same way the OpenCode one is — but only from a live RPC
+      // link, and pi's RPC is stdio-only, so nothing can hand this process one while xezar starts no
+      // agent process (#311). `piReactionTarget` is where that fact lives; asking answers with its
+      // own recoverable reason, and the events stay in the journal. The previous leader is kept:
+      // a refused attach must not detach a leader that is working.
+      const target = piReactionTarget({
+        projectId: this.projectId,
+        roleInstruction: LEADER_ROLE_INSTRUCTION,
+        onReaction: (seq) => this.#recordReaction(seq),
+        ...this.#ownOperation(),
+      });
+      if (target.kind === 'blocked') return { ok: false, error: target.blocker.message };
+      this.#detach();
+      this.#leader = { client: 'pi', adapter: target.adapter, failingSince: null, settledThrough: 0 };
+      this.#liveController()?.wake();
+      return { ok: true, status: this.status() };
+    }
     // Re-attaching replaces the previous target; xezar owns no process, so nothing else changes.
     this.#detach();
     // A new leader with no history: whatever happened before it was attached was not about it.
     this.#leader = {
+      client: 'opencode',
       adapter: new OpenCodeReactionAdapter({
         target: { baseUrl: input.baseUrl, sessionId: input.sessionId },
         projectRoot: this.#opts.projectRoot,
@@ -334,7 +371,7 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
   }
 
   #leaderSession(): McpLeaderSession | null {
-    return this.#leader === undefined ? null : { client: 'opencode', state: 'attached' };
+    return this.#leader === undefined ? null : { client: this.#leader.client, state: 'attached' };
   }
 
   /**
@@ -352,7 +389,10 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     if (controller === undefined) return NO_OWNER_SESSION;
     const blocker = leader.adapter.status().blocker;
     if (blocker) {
-      return { code: blocker.code, message: blocker.message, fix: 'Check that `opencode serve` is running in this project and the session id is right, then attach it again.' };
+      // The adapter's own `fix` when it has one (pi's does); otherwise the OpenCode wording, which
+      // is the only adapter whose blockers name no remedy of their own.
+      const fix = blocker.fix ?? 'Check that `opencode serve` is running in this project and the session id is right, then attach it again.';
+      return { code: blocker.code, message: blocker.message, fix };
     }
     // From FACTS observed against THIS leader, never from the controller's state machine (rounds four
     // and five): a failed attempt with no success since is a blocker in every state, it survives the

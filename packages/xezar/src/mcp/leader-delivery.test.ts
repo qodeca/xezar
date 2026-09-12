@@ -83,6 +83,33 @@ describe('a session that does not own the project', () => {
   });
 });
 
+describe('attaching pi (#330 WP2)', () => {
+  it('is refused with pi’s own recoverable reason, not with a schema error or a silent success', async () => {
+    const { delivery: made } = delivery(true);
+    made.sessionOpened('session-1');
+    const attached = await made.act({ action: 'attach', client: 'pi' });
+    expect(attached.ok).toBe(false);
+    expect(attached.ok === false && attached.error).toMatch(/stdin and stdout/);
+    // Nothing was attached, so the status still says there is no leader — never a leader that
+    // cannot be reached being reported as one that can.
+    const status = made.status();
+    expect(status.available && status.leader).toBeNull();
+    expect(status.available && status.blocker).toMatchObject({ code: 'no-leader-session' });
+  });
+
+  it('does not detach an OpenCode leader that is already working', async () => {
+    const { delivery: made } = delivery(true);
+    made.sessionOpened('session-1');
+    const attached = await made.act({ action: 'attach', client: 'opencode', baseUrl: 'http://127.0.0.1:1', sessionId: 'ses_closed0000000000000001' });
+    expect(attached.ok).toBe(true);
+
+    const refused = await made.act({ action: 'attach', client: 'pi' });
+    expect(refused.ok).toBe(false);
+    const status = made.status();
+    expect(status.available && status.leader).toEqual({ client: 'opencode', state: 'attached' });
+  });
+});
+
 describe('an attached leader that does not answer at all', () => {
   it('is reported with the adapter’s own reason, not with a guess of xezar’s', async () => {
     const { delivery: made, journal } = delivery(true);
