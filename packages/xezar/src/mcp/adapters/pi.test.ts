@@ -83,7 +83,18 @@ class FakePi implements PiRpcLink {
     }
     // `hold` stands for a slow or lost SUBMISSION only; the reads answer at once, as pi's do.
     if (type === 'get_state') {
-      return { success: true, data: { isStreaming: this.streaming, messageCount: this.messages.length, sessionId: 'sess-1' } };
+      // `pendingMessageCount` is real pi's own field and the only unambiguous "still parked" signal:
+      // idle with nothing pending means a turn consumed the steer, idle with something pending means
+      // only the person can unpark it.
+      return {
+        success: true,
+        data: {
+          isStreaming: this.streaming,
+          pendingMessageCount: this.queued.length,
+          messageCount: this.messages.length,
+          sessionId: 'sess-1',
+        },
+      };
     }
     if (type === 'get_messages') {
       return { success: true, data: { messages: this.messages.map((m) => ({ ...m })) } };
@@ -114,17 +125,12 @@ class FakePi implements PiRpcLink {
       return { success: true };
     }
     if (type === 'steer') {
-      if (!this.streaming) {
-        // Real pi accepts a steer with nothing running by starting one; the adapter never does this.
-        queueMicrotask(() => {
-          this.streaming = true;
-          this.emit({ type: 'agent_start' });
-          this.emit({ type: 'turn_start' });
-          this.#surface(text);
-        });
-        if (this.hold) await this.hold;
-        return { success: true };
-      }
+      // Real pi 0.85.1 PARKS a steer, whether or not a turn is running — measured directly, with no
+      // xezar in the loop (`pi-idle-steer`): into an IDLE pi it answers `success: true`, emits a
+      // `queue_update` and NOTHING else — no `agent_start`, zero model requests — and the text
+      // reaches the model only when the person starts a turn of their own. The earlier double
+      // started a turn here, which is the one branch where it was kinder than the real thing, and
+      // that is precisely why the suite was green over the parked-row bug (QA on #358, finding 3).
       this.queued.push(text);
       this.emit({ type: 'queue_update', steering: [...this.queued], followUp: [] });
       if (this.hold) await this.hold;
@@ -157,11 +163,17 @@ class FakePi implements PiRpcLink {
     this.emit({ type: 'agent_settled' });
   }
 
-  /** A turn the person started in pi themselves, not one the adapter asked for. */
+  /**
+   * A turn the person started in pi themselves, not one the adapter asked for. Anything parked in
+   * the steering queue surfaces with it — that is how a parked row eventually reaches the model, and
+   * why parking loses the row's AUTONOMY rather than the row (`pi-idle-steer`, step 3).
+   */
   leaderTurn(): void {
     this.streaming = true;
     this.emit({ type: 'agent_start' });
     this.emit({ type: 'turn_start' });
+    for (const text of this.queued.splice(0)) this.#surface(text);
+    this.emit({ type: 'queue_update', steering: [], followUp: [] });
   }
 
   count(type: string): number {
@@ -414,6 +426,83 @@ describe('never two turns for one row', () => {
     expect(pi.modelRequests[0]).toContain('xez330:4');
   });
 
+  /**
+   * The stale-`busy` race, both ways. `#busy` is inferred from pi's event stream, and a link that
+   * drops one frame leaves the adapter believing the wrong thing. Direction B was already safe;
+   * direction A silently parked the row and reported it delivered (QA on #358, finding 2).
+   *
+   * "Parked" is not "lost": the text sits in pi's steering queue and reaches the model when the
+   * PERSON next types something. That is exactly the outcome A-19 exists to prevent, so the adapter
+   * must not treat it as delivery.
+   */
+  it('direction A — believes busy, pi is really idle: the row still reaches the model with no human turn', async () => {
+    const pi = new FakePi();
+    const reactions: number[] = [];
+    const adapter = adapterOn(pi, reactions);
+    // A turn started, and the `agent_settled` that ended it never arrived: pi is idle, the adapter
+    // still believes it is busy. This is the QA's reproduction, and the link's ordinary failure.
+    pi.leaderTurn();
+    await settle();
+    pi.streaming = false;
+
+    const receipt = await adapter.deliver(dispatch([row(1)]), live());
+    await settle();
+
+    // The row is in front of the MODEL, and nothing is waiting on a human to unpark it.
+    expect(pi.modelRequests).toHaveLength(1);
+    expect(pi.modelRequests[0]).toContain('xez330:1');
+    expect(pi.queued).toEqual([]);
+    expect(reactions).toEqual([1]);
+    expect(receipt).toEqual({ handedThrough: 1 });
+    // …because the belief was confirmed against pi rather than trusted, so the idle rung was used.
+    expect(pi.count('get_state')).toBeGreaterThan(0);
+    expect(pi.count('prompt')).toBe(1);
+  });
+
+  // GUARD TEST: green both with and without the direction-A fix, on purpose. It pins the half of the
+  // race that was ALREADY safe (QA on #358, Q4a–Q4d), so that fixing the other half cannot quietly
+  // break it. Do not read its passing as evidence that the fix works — that is direction A's job.
+  it('direction B — believes idle, pi is really busy: the refusal fallback still steers it once', async () => {
+    const pi = new FakePi();
+    const adapter = adapterOn(pi);
+    // pi started a turn and the `agent_start` never arrived: the adapter believes it is idle.
+    pi.streaming = true;
+
+    const receipt = await adapter.deliver(dispatch([row(1)]), live());
+    expect(pi.count('prompt')).toBe(1);
+    expect(pi.count('steer')).toBe(1);
+    expect(receipt).toEqual({ handedThrough: 1 });
+
+    pi.finishTurn();
+    await settle();
+    expect(pi.modelRequests.filter((text) => text.includes('xez330:1'))).toHaveLength(1);
+  });
+
+  it('a steer pi PARKED is not reported as handed over, and the retry gets it in front of the model', async () => {
+    const pi = new FakePi();
+    const adapter = adapterOn(pi);
+    const real = pi.request.bind(pi);
+    // pi settles between the confirming `get_state` and the `steer` it authorised — the one window
+    // the pre-check cannot close. The steer is accepted and parks, so it is NOT a hand-over.
+    pi.leaderTurn();
+    await settle();
+    pi.request = async (command) => {
+      const answer = await real(command);
+      if (command.type === 'get_state' && pi.count('steer') === 0) pi.streaming = false;
+      return answer;
+    };
+
+    await expect(adapter.deliver(dispatch([row(1)]), live())).rejects.toThrow(/parked/);
+    expect(pi.modelRequests).toEqual([]);
+
+    // The controller retries. pi is idle now, so the row goes down the `prompt` rung and lands.
+    pi.request = real;
+    const receipt = await adapter.deliver(dispatch([row(1)]), live());
+    await settle();
+    expect(receipt).toEqual({ handedThrough: 1 });
+    expect(pi.modelRequests.filter((text) => text.includes('xez330:1'))).toHaveLength(1);
+  });
+
   it('only new rows go into the second submission', async () => {
     const pi = new FakePi();
     const adapter = adapterOn(pi);
@@ -623,7 +712,7 @@ describe('lines pi can really send that are not a reaction', () => {
     await expect(other.deliver(dispatch([row(1)]), live())).rejects.toThrow(/pi gave no reason/);
   });
 
-  it('a heartbeat answer without isStreaming leaves the adapter\'s own idea of busy alone', async () => {
+  it('an unreadable state takes the prompt rung, which recovers, rather than the steer rung, which parks', async () => {
     const pi = new FakePi();
     const adapter = adapterOn(pi);
     pi.leaderTurn();
@@ -633,8 +722,14 @@ describe('lines pi can really send that are not a reaction', () => {
     await adapter.heartbeat(live());
 
     await adapter.deliver(dispatch([row(1)]), live());
+    // The heartbeat still leaves `#busy` alone — but a submission no longer TRUSTS it. With the
+    // state unreadable the adapter guesses "idle" and prompts; pi is really busy, refuses, and the
+    // fallback steers. Both rungs are used and the row lands exactly once. The opposite guess would
+    // have steered into a possibly-idle pi and parked the row (QA on #358, finding 2).
+    expect(pi.count('prompt')).toBe(1);
     expect(pi.count('steer')).toBe(1);
-    expect(pi.count('prompt')).toBe(0);
+    pi.finishTurn();
+    expect(pi.modelRequests.filter((text) => text.includes('xez330:1'))).toHaveLength(1);
   });
 
   it('an already-aborted attempt never reaches pi', async () => {

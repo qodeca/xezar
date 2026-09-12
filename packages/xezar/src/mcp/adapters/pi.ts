@@ -32,9 +32,16 @@ import type { EventDispatch, ReactionAdapter } from '../event-controller.ts';
  * `docs/rpc.md` on 0.85.1) — so a pi the person runs in their own terminal has no address xezar can
  * reach, and `piReactionTarget()` answers with the recoverable `pi-not-addressable` blocker for it.
  * That is the same standing as a Claude Code or Codex session in a terminal (`leader-delivery.ts`):
- * the rows stay in the journal and the leader reads them with `leader_events`. Closing it needs a
- * pi-side component that calls into pi (`pi.sendUserMessage`, `docs/extensions.md`) — evidence
- * record blocker PI-2, not built here.
+ * the rows stay in the journal and the leader reads them with `leader_events`.
+ *
+ * SO NOTHING CONSTRUCTS THIS ADAPTER IN PRODUCTION YET, and that is deliberate rather than an
+ * oversight — say it here so no reader has to infer it (QA on #358). `PiRpcLink` has no producer in
+ * the repository: the one production caller of `piReactionTarget` passes no `link`, so the result is
+ * always the blocker. Closing it needs a xezar-shipped pi EXTENSION that connects out and hands this
+ * process a link — `ExtensionAPI.sendUserMessage` is documented "Always triggers a turn", extensions
+ * are unsandboxed, and the already-required `pi-mcp-adapter` opens sockets today, so the route is
+ * open; what is missing is the artifact. Evidence record blocker PI-2 and its § "What would produce
+ * a link". Nothing xezar can send over MCP starts a pi turn, so the extension is the only route.
  *
  * DELIVERY IS NOT REACTION (F-20, D-05 § 6.6). `deliver` resolves once pi ANSWERED the `prompt` or
  * `steer` with `success: true`: the client application has the rows. The reaction is reported
@@ -51,9 +58,12 @@ import type { EventDispatch, ReactionAdapter } from '../event-controller.ts';
  *    message it sends, every time. It is xezar's text, never read from a project file the leader can
  *    edit (§ 12). Prompt text is still not enforcement.
  *  - Never into a running turn as a plain `prompt`. pi refuses it outright, so the adapter sends
- *    `steer` when it knows pi is busy AND falls back to `steer` when a `prompt` is refused anyway —
- *    the fallback is what makes a stale idea of "busy" safe, because pi may start a turn of its own
- *    between the check and the write.
+ *    `steer` when pi is busy AND falls back to `steer` when a `prompt` is refused anyway. That
+ *    fallback covers only ONE direction of a stale `busy`, and an earlier version of this comment
+ *    claimed it covered both (QA on #358). The other direction is worse: a `steer` into an IDLE pi
+ *    is accepted and PARKED — zero model requests, and the text waits for the person's next turn —
+ *    so a believed `busy` is confirmed against pi before steering, and a steer that parked is never
+ *    reported as handed over. See `#submit`.
  *  - Never two turns for one row. Rows already submitted are skipped: from memory within this
  *    adapter's life, and from pi's own conversation (`get_messages`, the marker this adapter writes
  *    into its text) on the first delivery and after any attempt whose answer was lost — so a
@@ -91,7 +101,7 @@ export interface PiRpcLink {
   readonly closed: boolean;
 }
 
-export type PiBlockerCode = 'pi-not-addressable' | 'pi-session-closed' | 'pi-refused';
+export type PiBlockerCode = 'pi-not-addressable' | 'pi-session-closed' | 'pi-refused' | 'pi-steer-parked';
 
 /** Why no event can reach pi right now. Always recoverable: nothing is lost while it holds. */
 export interface PiBlocker {
@@ -242,10 +252,23 @@ export class PiReactionAdapter implements ReactionAdapter {
 
   /**
    * One submission, by the rung that pi accepts right now: `prompt` while idle, `steer` during a
-   * turn. The refusal fallback is the load-bearing half — `#busy` is read from an event stream that
-   * can lag, and pi may start a turn of its own between the check and the write (`rpc-probe`).
+   * turn. `#busy` is inferred from an event stream that can lag or lose a frame, so BOTH directions
+   * of a wrong belief have to be safe. They were not (QA on #358, finding 2):
+   *
+   *  - Believed idle, really busy: pi refuses the plain `prompt` and the fallback steers. SAFE, and
+   *    the refusal fallback stays because pi can start a turn of its own between check and write.
+   *  - Believed busy, really idle: a `steer` is ACCEPTED and PARKED. Measured against real pi 0.85.1
+   *    (`pi-idle-steer`): `success: true`, no `agent_start`, ZERO model requests, one `queue_update`,
+   *    `pendingMessageCount` 0 -> 1 — and the text reaches the model only when the PERSON starts a
+   *    turn of their own. `success` is acceptance, never hand-over, and reporting it as delivered is
+   *    exactly the outcome A-19 exists to prevent: the leader does not react until a human pokes it.
+   *
+   * So a believed `busy` is CONFIRMED against pi before steering, and a steer is confirmed after the
+   * fact as well, because pi can settle between the two. A parked row is reported as not handed over
+   * (the controller retries it, down the `prompt` rung, after re-reading pi's conversation).
    */
   async #submit(message: string, signal: AbortSignal): Promise<void> {
+    if (this.#busy) this.#busy = await this.#reallyBusy(signal);
     if (!this.#busy) {
       const answer = await this.#command({ type: 'prompt', message }, signal);
       if (answer.success === true) return;
@@ -255,6 +278,38 @@ export class PiReactionAdapter implements ReactionAdapter {
     }
     const steered = await this.#command({ type: 'steer', message }, signal);
     if (steered.success !== true) throw this.#block('pi-refused', `pi refused the steered event submission: ${errorText(steered)}`);
+    await this.#requireSteerLanded(signal);
+  }
+
+  /**
+   * Is a turn really running? Read from pi rather than from the event stream.
+   *
+   * An unreadable answer deliberately says NO, which sends the caller down the `prompt` rung: a
+   * prompt into a busy pi is refused and recovers on the spot, while a steer into an idle pi parks
+   * in silence. When the two failure modes are not symmetric, guess towards the recoverable one.
+   */
+  async #reallyBusy(signal: AbortSignal): Promise<boolean> {
+    const state = await this.#command({ type: 'get_state' }, signal);
+    if (state.success !== true) return false;
+    const streaming = state.data?.isStreaming;
+    return typeof streaming === 'boolean' ? streaming : false;
+  }
+
+  /**
+   * A steer pi accepted is only handed over if a turn actually took it. pi delivers steering at the
+   * end of the running turn, so "pi is idle now" alone does not mean it parked — the turn may simply
+   * have finished WITH it. `pendingMessageCount` is the unambiguous half: still queued AND nothing
+   * running means only the person can unpark it, which is not delivery.
+   */
+  async #requireSteerLanded(signal: AbortSignal): Promise<void> {
+    const state = await this.#command({ type: 'get_state' }, signal);
+    if (state.success !== true) return;
+    const streaming = state.data?.isStreaming;
+    const pending = state.data?.pendingMessageCount;
+    if (typeof streaming !== 'boolean' || typeof pending !== 'number') return;
+    if (streaming) return;
+    this.#busy = false;
+    if (pending > 0) throw this.#block('pi-steer-parked', PARKED_MESSAGE);
   }
 
   /**
@@ -352,6 +407,8 @@ let adapterOrdinal = 0;
 
 const MARKER_PREFIX = 'xezar-event:';
 const CLOSED_MESSAGE = 'The pi RPC session xezar was given is closed, so no event can be handed to it.';
+const PARKED_MESSAGE =
+  'pi accepted the steered event but settled before a turn took it, so it is parked in pi\'s queue rather than in front of the model. xezar has not treated it as delivered and will hand it over again.';
 const BLOCKER_FIX = 'Read events from your leader with the leader_events tool; nothing is lost while push is unavailable.';
 
 /**

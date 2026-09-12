@@ -427,16 +427,67 @@ What the product does with that fact, rather than hiding it:
 - Nothing is lost: that leader reads its events with `leader_events` (#251), and the next session resumes
   after its last acknowledgement.
 
-**What would close it** is a pi-side component — a pi extension calling `pi.sendUserMessage(…)`, which
-always triggers a turn (`docs/extensions.md`) — that connects out to xezar and hands this adapter a
-`PiRpcLink`. The adapter is deliberately transport-free so that such a link drops straight in:
-`piReactionTarget({ link })` already answers with a working adapter, which is what `R-03a` exercises. Building
-that component is **not** in WP2's scope (it is a shipped artifact plus setup guidance, and it crosses the
-files WP3 and #264 own). It is a decision for the owner to sequence.
+Said plainly, because an earlier draft of this record did not: **`PiRpcLink` has no producer anywhere in
+the repository.** `piReactionTarget` returns `{kind: 'rpc'}` only when a `link` is passed, its one production
+caller (`leader-delivery.ts`, on `{action:'attach', client:'pi'}`) passes none, and `PiReactionAdapter` is
+therefore never constructed outside tests and the evidence harness. `renderPiDispatch`, `deliver`,
+`heartbeat`, `close`, the steer rung and the never-twice logic are all unreachable in production today. The
+one thing that IS live is the `pi-not-addressable` blocker string.
+
+## What would produce a link
+
+Asked properly after the QA on #358, and the answer is **not** "pi cannot do it". Three routes were checked
+against the binary and the packages installed on this host; only the third works, and nothing blocks it but
+an artifact xezar does not ship.
+
+| Route | Verdict |
+| --- | --- |
+| **Dial pi's RPC**, the way `opencode` is dialled | **NO.** `pi --help` and `docs/rpc.md` on 0.85.1: RPC is stdio-only and spawn-only. No port, no socket, no attach, no `--host`. Both worked examples in `rpc.md` spawn pi as a subprocess. There is nothing to connect to. |
+| **Through the MCP connection xezar already has**, via `pi-mcp-adapter` 2.32.1 | **NO for any protocol message.** The package has exactly two `pi.send*` call sites. `prompts.ts:322` sits inside a slash-command handler — a human types `/mcp__<server>__<prompt>`. `init.ts:195` is reached only from `ui-session.ts`, i.e. an MCP-UI app page. `elicitation/create` ends in a dialog and returns a result (`elicitation-handler.ts`); `sampling/createMessage` calls a model on a side channel that the agent's own conversation never sees (`sampling-handler.ts`); every `notifications/*` refreshes a catalogue or pokes an open UI window. A server can make a slash command APPEAR; it cannot run it. (One narrow exception — a tool carrying `_meta.ui.resourceUri`, whose server-authored page can post a prompt with no gesture — needs a live browser window, dies 60 s after it closes, and is off under `MCP_UI_VIEWER=none`. Not a basis for A-19.) |
+| **A xezar-shipped pi extension** connecting out to xezar | **YES, and this is the route.** `ExtensionAPI.sendUserMessage(content, {deliverAs?})` is documented "**Always triggers a turn**" (`dist/core/extensions/types.d.ts:975-983`, `docs/extensions.md:1439-1467`). Extensions are plain ESM loaded through jiti with **no sandbox** (`loader.js`; `docs/security.md` § No Built-in Sandbox), so `node:net`/`node:http`/`fetch` are all available — and `pi-mcp-adapter` already opens a Unix socket and runs an HTTP server in-process. The extension API also covers what this adapter needs: `ctx.isIdle()`, `ctx.hasPendingMessages()`, `pi.on('agent_start'|'agent_settled'|'message_start'|'message_end', …)` and `ctx.sessionManager` for the conversation. |
+
+So the gap is an **artifact, not a capability**: xezar ships no pi extension and exposes no endpoint for one
+to connect to. Building it is a work package of its own — an extension plus its packaging, a xezar-side
+listener, attach parameters in the contract, and setup guidance on the pi card — which crosses the files WP3
+and #264 own. The adapter is deliberately transport-free so such a link drops straight in:
+`piReactionTarget({ link })` already answers with a working adapter, which is what `R-03a` exercises.
+
+One mapping caveat for whoever builds it: the extension API has **no `queue_update` event** (it is RPC-only);
+`ctx.hasPendingMessages()` is the substitute, and the parked-steer guard below depends on that signal.
+
+## The parked steer: a measured correction to this record
+
+The first version of this record said the refusal fallback "is what makes a stale idea of `busy` safe". That
+was true in one direction only, and the QA on #358 found the other. Re-measured here against real pi 0.85.1
+with no xezar in the loop (`pi-idle-steer/idle-steer.mjs`, result in `result.json`):
+
+| Step | Observed |
+| --- | --- |
+| pi idle before | `isStreaming: false`, `pendingMessageCount: 0`, 0 model requests |
+| one `steer` into that idle pi | `{"success": true}` — **0 model requests**, **no `agent_start`**, one `queue_update`, `pendingMessageCount` 0 → **1** |
+| the person then types something of their own | 1 model request, and it **carries the steered text** |
+
+So a `steer` into an idle pi is **accepted and parked**, and `success: true` is acceptance, never hand-over.
+The row is not lost — it reaches the model when a human next acts, which is exactly the outcome A-19 exists
+to prevent. Two consequences, both now fixed:
+
+- **`#submit` confirms a believed `busy` against pi (`get_state`) before steering**, and an unreadable state
+  deliberately guesses "idle" and prompts: a prompt into a busy pi is refused and recovers on the spot,
+  while a steer into an idle pi parks in silence. When failure modes are asymmetric, guess towards the
+  recoverable one.
+- **A steer that turns out to have parked is not reported as handed over.** pi delivers steering at the end
+  of the running turn, so "idle now" alone is ambiguous — `pendingMessageCount > 0` with nothing running is
+  the unambiguous half. The row then rejects, the controller retries it, and the retry takes the `prompt`
+  rung.
+
+The unit double was wrong in exactly this branch, which is why the suite was green over the bug: `FakePi`
+started a turn on a steer into an idle pi. It now parks, reports `pendingMessageCount`, and surfaces the
+queue on the person's own turn. **A test double that is kinder than the real thing does not test, it
+reassures** — that lesson is worth more than this fix.
 
 ## Tests and red proof
 
-`packages/xezar/src/mcp/adapters/pi.test.ts`: 38 tests. `leader-delivery.test.ts` gains two for the pi attach
+`packages/xezar/src/mcp/adapters/pi.test.ts`: 41 tests. `leader-delivery.test.ts` gains two for the pi attach
 path. Coverage from the MCP suites alone: `pi.ts` **100 % lines, 90.98 % branches**; `leader-delivery.ts`
 **95.83 % lines, 84.05 % branches** — both over the 80 / 80 floor.
 
@@ -453,6 +504,11 @@ Each new test was proven RED against a named break in the source it guards. Ever
 | B6 | Build an adapter with no link | RED |
 | B7 | Drop the echo guard | RED |
 | B8 | Detach the working leader before refusing a pi attach | RED |
+| B9 | Trust `#busy` and steer without confirming it (the bug the QA found) | RED — direction A's row never reached the model (`modelRequests: []`), and the parked-steer test resolved `{handedThrough: 1}` instead of rejecting |
+
+One test is a **guard**, green with and without B9's fix, and labelled as such in the source: direction B
+(believes idle, pi really busy). It pins the half of the race that was already safe, so that repairing the
+other half cannot quietly break it. Its passing is not evidence the fix works — direction A's is.
 
 B5 is not a hypothetical: the adapter really did clear its "uncertain" flag in a `finally`, and the test
 written for a lost answer found it before the first green run.
@@ -461,8 +517,8 @@ written for a lost answer found it before the first green run.
 
 | ID | Blocker | Change |
 | --- | --- | --- |
-| PI-1 | No pi reaction adapter | **CLOSED.** `adapters/pi.ts` exists, is tested, and is constructed by `LeaderDelivery`. |
-| PI-2 | A pi session the person opened in their own terminal cannot be reached | **Open, and now the only thing between pi and A-19.** Re-confirmed against 0.85.1: stdio-only, no attach mode. |
+| PI-1 | No pi reaction adapter | **Half closed, and the wording here was wrong before (QA on #358).** `adapters/pi.ts` exists and is tested, and `LeaderDelivery` is wired to build it — but only from a live `PiRpcLink`, and **nothing in the repository produces one**, so `PiReactionAdapter` is never constructed in production. What runs today is the `pi-not-addressable` blocker. The adapter is not "connected" until PI-2 is closed. |
+| PI-2 | A pi session the person opened in their own terminal cannot be reached | **Open, and the only thing between pi and A-19.** Re-confirmed against 0.85.1 twice (`pi --help`, `docs/rpc.md`): RPC is stdio-only and spawn-only — no port, no socket, no attach. **But it is not a pi limitation.** pi's extension API exposes `sendUserMessage`, documented as "Always triggers a turn"; extensions are unsandboxed and may open sockets; and the already-required `pi-mcp-adapter` does both today. A link is therefore buildable — it needs a xezar-shipped pi extension, which is an artifact this PR does not add. See § "What would produce a link". |
 | PI-3 | The model is not told why it was refused as the second client | Open, shared with the three. Untouched here. |
 | PI-4 (OB-5) | No real-model reaction | Open, shared with all four. Untouched here. |
 | PI-5 | The capability is third-party and moves fast | Open. This half needed no `pi-mcp-adapter`; WP5 does. |
