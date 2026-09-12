@@ -15,6 +15,16 @@ import { CONFIG_FILES } from './catalog.ts';
  * Only Claude's gitignored layer is seeded (the only vendor with a documented
  * untracked personal file). Tracked files keep honest "applies after commit"
  * semantics and are never touched here.
+ *
+ * pi (#330 WP4) is NOT seeded, and that was checked rather than skipped. Its two
+ * project files, `.pi/settings.json` and `.pi/mcp.json`, are `tracked`: pi
+ * documents no untracked personal counterpart, and the adapter's own advice is to
+ * commit `.pi/mcp.json` because it holds no secret. Seeding a TRACKED file would
+ * copy a repo-root edit into the worktree and quietly change what "applies after
+ * commit" means for it — the guarantee this loop is careful not to break for
+ * Codex's and OpenCode's project files either. If pi ever documents a personal
+ * layer, marking it `seeded` in the catalog is the whole change; this function
+ * needs none.
  */
 
 function git(cwd: string, args: string[]): Promise<{ ok: boolean; stdout: string }> {
