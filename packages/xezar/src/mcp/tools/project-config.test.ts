@@ -68,7 +68,7 @@ interface Workspace {
   app: ReturnType<typeof createApp>;
   roots: { a: string; b: string };
   home: string;
-  agentHomes: { claude: string; codex: string; opencode: string };
+  agentHomes: { claude: string; codex: string; opencode: string; pi: string };
   skillsUpdateCalls: string[];
 }
 
@@ -92,6 +92,7 @@ const ENV_KEYS = [
   'CLAUDE_CONFIG_DIR',
   'CODEX_HOME',
   'OPENCODE_CONFIG_DIR',
+  'PI_CODING_AGENT_DIR',
   'XEZ_REMOTE',
   'XEZ_AUTOMATIONS',
   'XEZ_SINGLE_PROJECT',
@@ -106,7 +107,12 @@ function seedAgentHomes(home: string) {
   const claude = join(home, '.claude');
   const codex = join(home, '.codex');
   const opencode = join(home, '.config', 'opencode');
-  for (const dir of [claude, codex, opencode]) mkdirSync(dir, { recursive: true });
+  // pi's whole home, PINNED. Unpinned, `agentHomePaths()` answers the developer's real
+  // `~/.pi/agent` — and the user-scope case below deletes the file it resolved, so an unpinned
+  // run would delete a real `~/.pi/agent/settings.json`. It is also what makes the leak
+  // assertions mean anything: the marker has to be in a file this fixture wrote.
+  const pi = join(home, '.pi', 'agent');
+  for (const dir of [claude, codex, opencode, pi]) mkdirSync(dir, { recursive: true });
   const oauth = {
     oauthAccount: {
       emailAddress: EMAIL_CLAUDE,
@@ -135,7 +141,14 @@ function seedAgentHomes(home: string) {
   writeFileSync(join(codex, 'AGENTS.md'), `${USER_MARKER}\n`, 'utf8');
   writeFileSync(join(opencode, 'opencode.json'), JSON.stringify({ note: USER_MARKER }), 'utf8');
   writeFileSync(join(opencode, 'AGENTS.md'), `${USER_MARKER}\n`, 'utf8');
-  return { claude, codex, opencode };
+  // pi (#330 WP4). `auth.json` and `models.json` are written here ON PURPOSE and are NOT catalog
+  // entries: they are the neighbours the refusal must not reach past.
+  writeFileSync(join(pi, 'settings.json'), JSON.stringify({ theme: USER_MARKER }), 'utf8');
+  writeFileSync(join(pi, 'mcp.json'), JSON.stringify({ mcpServers: { 'home-server': { command: USER_MARKER } } }), 'utf8');
+  writeFileSync(join(pi, 'AGENTS.md'), `${USER_MARKER}\n`, 'utf8');
+  writeFileSync(join(pi, 'auth.json'), JSON.stringify({ anthropic: { apiKey: MCP_SECRET } }), 'utf8');
+  writeFileSync(join(pi, 'models.json'), JSON.stringify({ providers: { local: { apiKey: MCP_SECRET } } }), 'utf8');
+  return { claude, codex, opencode, pi };
 }
 
 async function setup(): Promise<Workspace> {
@@ -147,6 +160,7 @@ async function setup(): Promise<Workspace> {
   process.env.CLAUDE_CONFIG_DIR = agentHomes.claude;
   process.env.CODEX_HOME = agentHomes.codex;
   process.env.OPENCODE_CONFIG_DIR = agentHomes.opencode;
+  process.env.PI_CODING_AGENT_DIR = agentHomes.pi;
   process.env.XEZ_DRY_RUN = '1';
   delete process.env.XEZ_REMOTE;
   delete process.env.XEZ_AUTOMATIONS;
@@ -466,7 +480,7 @@ describe('project_config: refusals', () => {
 describe('project_config: agent config', () => {
   it.each(USER_SCOPE_IDS)('%s (scope user) is refused for read and write, identically whether or not it exists', async (fileId) => {
     const def = CONFIG_FILES.find((f) => f.id === fileId)!;
-    const path = def.resolve(ws.roots.a, { claude: ws.agentHomes.claude, codex: ws.agentHomes.codex, opencodeConfig: ws.agentHomes.opencode, pi: '' });
+    const path = def.resolve(ws.roots.a, { claude: ws.agentHomes.claude, codex: ws.agentHomes.codex, opencodeConfig: ws.agentHomes.opencode, pi: ws.agentHomes.pi });
     const before = readFileSync(path, 'utf8');
     const spy = spyService();
     const readPresent = await invoke({ action: 'read_agent_config', fileId }, { service: spy });
@@ -494,6 +508,36 @@ describe('project_config: agent config', () => {
     expect(listing).not.toHaveProperty('userMcp');
     const json = JSON.stringify(listing);
     for (const secret of [USER_MARKER, ws.home, ws.roots.a, 'home-server']) expect(json).not.toContain(secret);
+  });
+
+  /**
+   * F-15 at the MCP boundary (#330 WP4). pi keeps `auth.json` and `models.json` — both carrying a
+   * key — in the same folder as the settings and MCP files the catalog now names, and this tool
+   * hands file contents to a model. Neither file is a catalog id, so neither is addressable; the
+   * sweep proves the neighbours are not reachable through any id either.
+   */
+  it('no project_config action can reach a pi credential file', async () => {
+    const piIds = CONFIG_FILES.filter((f) => f.runners.includes('pi')).map((f) => f.id);
+    expect(piIds.length).toBeGreaterThan(0); // control: an empty list would pass this vacuously
+
+    // Not addressable: the ids someone would reach for do not exist in the catalog.
+    for (const fileId of ['pi.user.auth', 'pi.user.models']) {
+      expect(CONFIG_FILES.some((f) => f.id === fileId), fileId).toBe(false);
+      const called = await invoke({ action: 'read_agent_config', fileId });
+      expect(called.result.isError, fileId).toBe(true);
+      expect(called.json, fileId).not.toContain(MCP_SECRET);
+    }
+
+    // …and no reachable id serves them either, on the listing or on a read.
+    const listing = await invoke({ action: 'list_agent_config' });
+    expect(listing.json).not.toContain(MCP_SECRET);
+    for (const fileId of piIds) {
+      const read = await invoke({ action: 'read_agent_config', fileId });
+      expect(read.json, fileId).not.toContain(MCP_SECRET);
+    }
+    // The control that this is not "nothing was read": the project-scope pi file IS served, so
+    // the listing really did walk pi's entries.
+    expect(listing.json).toContain('pi.project.mcp');
   });
 
   it('E-409-LOCAL: a write in hosted mode is refused by the route, and nothing is written', async () => {
