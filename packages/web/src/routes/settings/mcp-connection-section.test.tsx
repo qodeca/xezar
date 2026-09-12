@@ -14,7 +14,7 @@ import { SETTINGS_SECTIONS, visibleSettingsSections } from './registry'
  *
  * U-M01 is required: from project settings the user identifies the bound project, learns the
  * client and xezar must be on the same machine, sees configuration readiness, and gets one-time
- * setup guidance for Claude Code, Codex and OpenCode — and the automatically generated project
+ * setup guidance for Claude Code, Codex, OpenCode and pi — and the automatically generated project
  * file is NOT described as automatically discovered by every client (F-14, U-M01).
  *
  * The status the section shows comes from the SERVER (the project registry and `/api/health`'s
@@ -124,19 +124,21 @@ describe('MCP connection section content (issue #111)', () => {
     expect(text).toContain('Local-only scope')
   })
 
-  it('renders one-time setup guidance for each of the three clients', async () => {
+  it('renders one-time setup guidance for each of the four clients', async () => {
     const { container } = renderSection()
     await waitFor(() => expect(container.querySelector('[data-slot="mcp-client-claude-code"]')).toBeTruthy())
 
     expect(container.querySelector('[data-slot="mcp-client-claude-code"]')?.textContent).toContain('Claude Code')
     expect(container.querySelector('[data-slot="mcp-client-codex"]')?.textContent).toContain('Codex')
     expect(container.querySelector('[data-slot="mcp-client-opencode"]')?.textContent).toContain('OpenCode')
+    expect(container.querySelector('[data-slot="mcp-client-pi"] h3')?.textContent).toBe('pi')
 
     // Each card carries the one-time user command / file block, and a plainly-stated NOT-automatic line.
     const text = container.textContent ?? ''
     expect(text).toContain('claude mcp add --scope local')
     expect(text).toContain('mcp_servers.xezar')
     expect(text).toContain('opencode.json')
+    expect(text).toContain('pi install npm:pi-mcp-adapter')
     expect(text).toContain('One-time')
   })
 
@@ -191,7 +193,7 @@ describe('MCP connection section hard boundaries (F-15, U-M02, U-M01)', () => {
     expect(text).not.toContain('automatically detects')
     // …and it must state the negation plainly for each client.
     expect(text).toContain('does not discover')
-    expect(container.querySelectorAll('[data-slot="mcp-client-not-automatic"]')).toHaveLength(3)
+    expect(container.querySelectorAll('[data-slot="mcp-client-not-automatic"]')).toHaveLength(4)
     for (const line of container.querySelectorAll('[data-slot="mcp-client-not-automatic"]')) {
       expect(line.textContent).toMatch(/^Not automatic: .+ does not discover \.local\/xezar\/mcp-connection\.json/)
     }
@@ -248,5 +250,98 @@ describe('MCP connection section copy (#301, the design pass on #296)', () => {
     expect(container.querySelector('[data-slot="mcp-api-link"]')?.getAttribute('href')).toContain('/settings/mcp-api')
     // The one fact the dropped bullets held that no other section said.
     expect(container.textContent).toContain('one client may own it at a time')
+  })
+})
+
+describe('MCP connection section — the pi card (#341, WP3 of #330)', () => {
+  /** The pi card, once the section has rendered; fails loudly if it never appears. */
+  async function piCard(): Promise<Element> {
+    const { container } = renderSection()
+    await waitFor(() => expect(container.querySelector('[data-slot="mcp-client-pi"]')).toBeTruthy())
+    return container.querySelector('[data-slot="mcp-client-pi"]')!
+  }
+
+  it('says pi adds MCP through an extension by design and puts the extension install before the entry', async () => {
+    const card = await piCard()
+    const user = card.querySelector('[data-slot="mcp-client-user"]')!
+    // A choice pi made, not a lack (design review on #343).
+    expect(user.textContent).toContain('pi adds MCP through an extension, by design, so its setup has two steps, both required')
+    expect(user.textContent).toContain('third-party extension (source on GitHub, MIT licence)')
+    const blocks = [...user.querySelectorAll('pre')].map((pre) => pre.textContent?.trim() ?? '')
+    expect(blocks).toHaveLength(2)
+    // The install comes first, pinned to the version the evidence record ran (PI-5).
+    expect(blocks[0]).toBe('pi install npm:pi-mcp-adapter@2.32.1')
+    expect(blocks[1]).toContain('mcpServers')
+    const steps = [...user.querySelectorAll('ol > li')]
+    expect(steps).toHaveLength(2)
+    expect(steps[0]!.textContent).toContain('pi-mcp-adapter')
+    expect(steps[1]!.textContent).toContain('.pi/mcp.json')
+  })
+
+  it('gives an entry that is valid JSON and carries the two keys the evidence measured as needed', async () => {
+    const card = await piCard()
+    const entry = JSON.parse(card.querySelectorAll('[data-slot="mcp-client-user"] pre')[1]!.textContent ?? '') as {
+      settings?: { directTools?: unknown }
+      mcpServers?: Record<string, { command?: unknown; args?: unknown; lifecycle?: unknown }>
+    }
+    expect(entry.settings?.directTools).toBe(true)
+    expect(entry.mcpServers?.xezar).toEqual({ command: 'npx', args: ['-y', '@qodeca/xezar', 'mcp'], lifecycle: 'keep-alive' })
+    // What each key is for, in the user's words: without keep-alive an idle pi gives up the project.
+    const user = card.querySelector('[data-slot="mcp-client-user"]')!.textContent ?? ''
+    expect(user).toContain('without it, pi gives the project up after 10 idle minutes')
+  })
+
+  it('states what keep-alive costs: a pi started here holds the project and other clients are refused (#343 review)', async () => {
+    const card = await piCard()
+    // D-04 § 3.4 run `root`: pi in the project root held the project from start, with no prompt,
+    // and a second client got project-occupied until pi exited. The card must say so, not only the upside.
+    expect(card.querySelector('[data-slot="mcp-client-pi-leader"]')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      'So any pi started in this folder, including a pi task xezar runs here with Worktree off, becomes this project’s leader client, and every other client, Claude Code included, is refused until that pi exits. Start pi in another folder for other work.',
+    )
+    // Whether to commit the file, and what committing it does.
+    const user = card.querySelector('[data-slot="mcp-client-user"]')!.textContent ?? ''
+    expect(user).toContain('The file holds no secret, so it is safe to commit.')
+    expect(user).toContain('A committed entry does the same for everyone who starts pi in this project.')
+  })
+
+  it('links the third-party extension to its source, in a new tab', async () => {
+    const card = await piCard()
+    const link = card.querySelector('[data-slot="mcp-client-pi-adapter-link"]')!
+    expect(link.getAttribute('href')).toBe('https://github.com/nicobailon/pi-mcp-adapter')
+    expect(link.getAttribute('target')).toBe('_blank')
+    expect(link.getAttribute('rel')).toBe('noreferrer')
+    expect(link.textContent).toBe('source on GitHub')
+  })
+
+  it('says a missing extension shows nothing, how to check it is there, and that pi does not discover the generated file', async () => {
+    const card = await piCard()
+    expect(card.querySelector('[data-slot="mcp-client-not-automatic"]')?.textContent).toBe(
+      'Not automatic: pi does not discover .local/xezar/mcp-connection.json. Without the extension, pi does not read the entry above at all: it shows no xezar tool, and no error says why. To check: pi list shows npm:pi-mcp-adapter, and pi says MCP: 1 servers connected when it starts here (a higher number if you have other MCP servers).',
+    )
+  })
+
+  it('leads the config-file caveat with which entry wins, then the .mcp.json shared with Claude Code, then the user-level files', async () => {
+    const card = await piCard()
+    const caveat = card.querySelector('[data-slot="mcp-client-caveat"]')!
+    expect([...caveat.querySelectorAll('code')].map((code) => code.textContent)).toEqual([
+      'xezar',
+      '.pi/mcp.json',
+      '.mcp.json',
+      '~/.config/mcp/mcp.json',
+      '~/.agents/mcp.json',
+      '~/.agents/mcp/mcp.json',
+      '~/.pi/agent/mcp.json',
+    ])
+    expect(caveat.textContent).toMatch(/^If another file also has a xezar entry, yours in \.pi\/mcp\.json wins: it is the last of the six files/)
+    expect(caveat.textContent).toContain('which Claude Code reads too, so an entry there reaches both clients')
+    expect(caveat.textContent).toContain('The other four apply in every folder pi starts in')
+  })
+
+  it('tells the Claude Code reader that pi reads the project .mcp.json too', async () => {
+    const { container } = renderSection()
+    await waitFor(() => expect(container.querySelector('[data-slot="mcp-client-claude-code"]')).toBeTruthy())
+    expect(container.querySelector('[data-slot="mcp-client-claude-code"] [data-slot="mcp-client-caveat"]')?.textContent).toContain(
+      'writes a tracked .mcp.json, which pi reads too,',
+    )
   })
 })

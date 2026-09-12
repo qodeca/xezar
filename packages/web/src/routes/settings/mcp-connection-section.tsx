@@ -14,7 +14,7 @@ import { SettingsField } from './settings-field'
  * Project settings → MCP connection (issue #111, Phase 7 of epic #67): the one place a user
  * learns what the MCP leader connection is bound to, that the client and xezar must be on the
  * same machine, that xezar writes the local connection configuration automatically, and how to
- * do the ONE-TIME per-client setup for Claude Code, Codex and OpenCode.
+ * do the ONE-TIME per-client setup for Claude Code, Codex, OpenCode and pi (pi since #341).
  *
  * The status this screen shows comes from the SERVER — the project registry (`/api/projects`)
  * and `/api/health`'s `localHandoff` capability — never from the presence of a file. The MCP
@@ -68,7 +68,7 @@ function withCode(text: string): ReactNode {
   )
 }
 
-/** The per-client setup facts, from D-04 § 3. Kept as data so the three cards cannot drift. */
+/** The per-client setup facts, from D-04 § 3. Kept as data so the four cards cannot drift. */
 const CLIENTS: readonly ClientSetup[] = [
   {
     name: 'Claude Code',
@@ -85,7 +85,7 @@ const CLIENTS: readonly ClientSetup[] = [
     notAutomatic:
       'Claude Code does not discover `.local/xezar/mcp-connection.json`. Nothing in it is read by Claude Code at any point \u2014 the command above is what tells Claude Code that a xezar MCP server exists.',
     caveat:
-      'Local scope writes outside the repository. The project-scope alternative (`--scope project`) writes a tracked `.mcp.json` and needs a per-user approval step before it connects.',
+      'Local scope writes outside the repository. The project-scope alternative (`--scope project`) writes a tracked `.mcp.json`, which pi reads too, and needs a per-user approval step before it connects.',
   },
   {
     name: 'Codex',
@@ -133,6 +133,76 @@ args = ["-y", "@qodeca/xezar", "mcp"]`}
     notAutomatic:
       'OpenCode does not discover `.local/xezar/mcp-connection.json`. The `opencode.json` block above is what makes the server appear, and it is normally committed \u2014 safe only because it holds no secret.',
     caveat: '`opencode mcp add` is interactive, so the written-file form above is the one to use.',
+  },
+  // pi (#341, WP3 of #330): the one client whose setup starts with an install, because pi adds MCP
+  // through extensions by design. The facts are the pi evidence record's (run against the real
+  // bridge): `directTools` and `keep-alive` are the two keys it measured as needed, 2.32.1 the version
+  // it ran. The entry goes in the PROJECT's `.pi/mcp.json`, not pi's user-level file: the adapter reads
+  // project files from pi's working directory only, while a user-level `keep-alive` entry would
+  // start a bridge wherever pi starts (D-04 § 3.4). The card states keep-alive's cost as well as its
+  // use: D-04 § 3.4 run `root` measured that a pi started in the project root holds the project from
+  // start, and a second client is refused until that pi exits (design review on #343).
+  {
+    name: 'pi',
+    automatic:
+      'Writing the connection configuration inside this project\u2019s `.local/xezar/`; regenerating it if deleted; keeping it out of Git.',
+    userAction: (
+      <>
+        pi adds MCP through an extension, by design, so its setup has two steps, both required:
+        <ol className="mt-2 flex list-decimal flex-col gap-3 pl-5">
+          <li>
+            Install the <code className="font-mono break-words">pi-mcp-adapter</code> extension once. It is a third-party extension (
+            <a
+              href="https://github.com/nicobailon/pi-mcp-adapter"
+              target="_blank"
+              rel="noreferrer"
+              data-slot="mcp-client-pi-adapter-link"
+              className="rounded-sm underline underline-offset-2 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            >
+              source on GitHub
+            </a>
+            , MIT licence). Version 2.32.1 is the one tested with xezar:
+            <pre className="mt-2 rounded-md border border-border bg-muted p-3 font-mono text-[11px] leading-relaxed break-all whitespace-pre-wrap">
+              pi install npm:pi-mcp-adapter@2.32.1
+            </pre>
+          </li>
+          <li>
+            Add the <span className="font-mono break-all">xezar</span> entry to <span className="font-mono break-all">.pi/mcp.json</span> in
+            the project root:
+            <pre className="mt-2 rounded-md border border-border bg-muted p-3 font-mono text-[11px] leading-relaxed break-all whitespace-pre-wrap">
+              {`{
+  "settings": { "directTools": true },
+  "mcpServers": {
+    "xezar": {
+      "command": "npx",
+      "args": ["-y", "@qodeca/xezar", "mcp"],
+      "lifecycle": "keep-alive"
+    }
+  }
+}`}
+            </pre>
+            <span className="mt-2 block">
+              <span className="font-mono break-all">directTools</span> shows the model the xezar tools directly.{' '}
+              <span className="font-mono break-all">keep-alive</span> connects pi as soon as it starts here and keeps the connection
+              while pi is idle; without it, pi gives the project up after 10 idle minutes.
+            </span>
+            <span data-slot="mcp-client-pi-leader" className="mt-2 block">
+              So any pi started in this folder, including a pi task xezar runs here with Worktree off, becomes this project’s leader
+              client, and every other client, Claude Code included, is refused until that pi exits. Start pi in another folder for
+              other work.
+            </span>
+            <span className="mt-2 block">
+              The file holds no secret, so it is safe to commit. A committed entry does the same for everyone who starts pi in this
+              project.
+            </span>
+          </li>
+        </ol>
+      </>
+    ),
+    notAutomatic:
+      'pi does not discover `.local/xezar/mcp-connection.json`. Without the extension, pi does not read the entry above at all: it shows no xezar tool, and no error says why. To check: `pi list` shows `npm:pi-mcp-adapter`, and pi says `MCP: 1 servers connected` when it starts here (a higher number if you have other MCP servers).',
+    caveat:
+      'If another file also has a `xezar` entry, yours in `.pi/mcp.json` wins: it is the last of the six files pi reads MCP config from. One of the others is the project `.mcp.json`, which Claude Code reads too, so an entry there reaches both clients. The other four apply in every folder pi starts in: `~/.config/mcp/mcp.json`, `~/.agents/mcp.json`, `~/.agents/mcp/mcp.json`, `~/.pi/agent/mcp.json`.',
   },
 ]
 
@@ -370,7 +440,11 @@ function ClientSetupCard({ client }: { client: ClientSetup }) {
         <p data-slot="mcp-client-not-automatic" className="rounded-md bg-muted p-2 text-muted-foreground">
           <span className="font-medium text-foreground">Not automatic:</span> {withCode(client.notAutomatic)}
         </p>
-        {client.caveat ? <p className="text-[12px] text-soft-foreground">{withCode(client.caveat)}</p> : null}
+        {client.caveat ? (
+          <p data-slot="mcp-client-caveat" className="text-[12px] text-soft-foreground">
+            {withCode(client.caveat)}
+          </p>
+        ) : null}
       </div>
     </div>
   )
