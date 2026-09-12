@@ -21,7 +21,7 @@ sign-offs has ever been written down.
 | 2 — all of A-01–A-23 pass on the same release-candidate revision | **NOT MET.** A-19 and A-23 are BLOCKED for all four clients; A-20's leader half is BLOCKED. |
 | 3 — stale writes, idempotency, survival, ownership, async delivery **and model reaction**, live UI, unchanged quality | **NOT MET on one of seven items** — the real model reaction. The other six pass. |
 | 4 — D-01–D-09 resolved as needed; the documentation states the actual mechanism | **MET.** |
-| 5 — the settings matrix removes ambiguity; negative tests cover each resource family | **MET** on `59c1b12`; one family (`local_handoff`) was uncovered on `ed579e63` and is covered by this branch's two tests. |
+| 5 — the settings matrix removes ambiguity; negative tests cover each resource family | **MET** on `5834b36` (this record's own commit); one family (`local_handoff`) was uncovered on `ed579e63` and is covered by the two tests that commit adds. |
 | 6 — the complete human/leader flow, with no built-in leader, no global administration and no new release engine hidden in it | **MET.** |
 | 7 — the repository quality gate; reviewable integration tests and evidence | **MET** for every command run here; the canonical gate is this task's own gate stage. |
 | 8 — product approves coverage, the responsible engineer approves the technical evidence; known limitations contradict no obligatory criterion | **NOT MET.** Neither sign-off exists as a written artefact. The limitation half is met (§ PI-08). |
