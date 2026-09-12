@@ -410,7 +410,49 @@ process here is the harness's, not a person's: see below.
 | At-least-once redelivery (§ 6.6) | The controller retries the same rows; the adapter dedups on `<eventId>@<ts>` and on pi's own conversation (`R-03b`). |
 | Echo guard (§ 6.3, F-13) | A `leader` row caused by this leader's own outstanding operation is dropped before the text is rendered; nothing else is (unit tests). |
 
-## What this does not close
+## A-19 for pi: CLOSED, end to end, against real pi
+
+The section below this one is kept as written, because it is the honest record of what was true for
+one round of review: the adapter worked and **nothing constructed it**. That is now fixed, and this
+is the evidence.
+
+`scripts/pi-leader-extension.ts` is a xezar-shipped pi extension. It runs inside the person's own pi,
+opens one Unix socket and announces it in the project's `.local/xezar/pi-leader.json`;
+`src/mcp/adapters/pi-link.ts` reads that descriptor and dials it, and `LeaderDelivery.#piTarget()` —
+the production caller — builds the real `PiReactionAdapter` from the result. Run
+`pi-extension/a19-run.mjs`: **real pi 0.85.1, the real extension, the real adapter, 13 checks, all
+PASS.**
+
+| # | Check | Result |
+| --- | --- | --- |
+| E-01 | The extension wrote `pi-leader.json` into the project's data directory | **PASS** |
+| E-02 | The descriptor names a socket that really exists | **PASS** |
+| E-03 | xezar's own `readPiLeaderDescriptor` accepts it | **PASS** |
+| E-04 | `piReactionTarget` returned `kind: 'rpc'` — a REAL adapter, not the blocker | **PASS** |
+| E-05 | Nothing had reached the model before the event | **PASS** (0 requests) |
+| E-06 | `deliver` reported the row handed over | **PASS** (`handedThrough: 1`) |
+| E-07 | **A real model request happened, with no human typing anything** | **PASS** (0 → 1) |
+| E-08 | That model request CARRIED the event | **PASS** |
+| E-09 | It was the FIRST request pi made — nothing polled it into existence | **PASS** (1 in total) |
+| E-10 | The role instruction rode with it | **PASS** |
+| E-11 | The reaction was observed and reported once | **PASS** (`[1]`) |
+| E-12 | Redelivering the same row asked the model no second time | **PASS** |
+| E-13 | The heartbeat started no turn and reached no model | **PASS** |
+
+E-07 with E-09 is A-19: a significant event reached the leader, a real model reaction occurred, and
+there was no status-polling turn — one model request in the session's whole life, and it was the one
+carrying the event.
+
+**What it cost, honestly.** pi is unchanged and unpatched, but the person must load one more
+extension. Without it the behaviour is exactly what it was before: the attach is refused with pi's
+own reason, and the events wait in the journal for `leader_events`. Setup is in
+`pi-leader-extension.md`; nothing is configured, because the extension discovers the project itself.
+
+**What is still not measured here.** PI-04's second half — "the adapter's pi process still sees every
+Xezar tool" — needs the MCP client leg and this leg on ONE pi process, which is WP5's job. This run
+loaded only xezar's extension, so the model was offered no xezar tool.
+
+## What this did not close, as it stood before the extension
 
 **A-19 is not satisfied for pi by this half, and no reading of the runs above should say it is.**
 
@@ -530,8 +572,8 @@ written for a lost answer found it before the first green run.
 
 | ID | Blocker | Change |
 | --- | --- | --- |
-| PI-1 | No pi reaction adapter | **Half closed, and the wording here was wrong before (QA on #358).** `adapters/pi.ts` exists and is tested, and `LeaderDelivery` is wired to build it — but only from a live `PiRpcLink`, and **nothing in the repository produces one**, so `PiReactionAdapter` is never constructed in production. What runs today is the `pi-not-addressable` blocker. The adapter is not "connected" until PI-2 is closed. |
-| PI-2 | A pi session the person opened in their own terminal cannot be reached | **Open, and the only thing between pi and A-19.** Re-confirmed against 0.85.1 twice (`pi --help`, `docs/rpc.md`): RPC is stdio-only and spawn-only — no port, no socket, no attach. **But it is not a pi limitation.** pi's extension API exposes `sendUserMessage`, documented as "Always triggers a turn"; extensions are unsandboxed and may open sockets; and the already-required `pi-mcp-adapter` does both today. A link is therefore buildable — it needs a xezar-shipped pi extension, which is an artifact this PR does not add. See § "What would produce a link". |
+| PI-1 | No pi reaction adapter | **CLOSED.** `adapters/pi.ts` exists, is tested, and is now really constructed in production: `LeaderDelivery.#piTarget()` reads the leader descriptor, dials the socket through `adapters/pi-link.ts` and builds the adapter from it (`E-04`). The wording here was wrong for one round — it claimed this before any producer existed — and the regression test for that is `leader-delivery.test.ts` § "the link is really produced", red against break B10. |
+| PI-2 | A pi session the person opened in their own terminal cannot be reached | **CLOSED, by a shipped artifact.** pi's RPC really is stdio-only and spawn-only, re-confirmed twice — so the link comes from INSIDE pi instead: `scripts/pi-leader-extension.ts` opens a socket and announces it. Proven end to end against real pi 0.85.1 (`E-01`–`E-13`). It is opt-in: no extension, no descriptor, and the old behaviour is unchanged. |
 | PI-3 | The model is not told why it was refused as the second client | Open, shared with the three. Untouched here. |
 | PI-4 (OB-5) | No real-model reaction | Open, shared with all four. Untouched here. |
 | PI-5 | The capability is third-party and moves fast | Open. This half needed no `pi-mcp-adapter`; WP5 does. |

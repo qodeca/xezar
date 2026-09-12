@@ -1,0 +1,368 @@
+/**
+ * xezar's pi leader extension (#330 WP2).
+ *
+ * WHAT IT IS FOR. xezar's event controller can push a significant event to a leader running in
+ * OpenCode, because `opencode serve` has an address. pi has none: its RPC is stdio-only and
+ * spawn-only — no port, no socket, no attach mode (`pi --help` and `docs/rpc.md` on 0.85.1) — and
+ * xezar never starts an agent process for a leader. So a pi that YOU started in YOUR terminal could
+ * not be reached at all, and its events waited until you typed something. That is what this closes.
+ *
+ * It runs inside your pi, opens one Unix socket, and writes a small descriptor into the project's
+ * own xezar directory saying where that socket is. xezar reads the descriptor when you attach, dials
+ * the socket, and from then on speaks pi's OWN RPC vocabulary down it — `prompt`, `steer`,
+ * `get_state`, `get_messages` — which this file translates into the pi extension API. xezar's side
+ * therefore does not know or care that a socket is involved (`src/mcp/adapters/pi-link.ts`).
+ *
+ * WHAT IT DOES NOT DO, deliberately:
+ *  - It sends nothing to xezar on its own. It answers commands and forwards pi's events. It never
+ *    reads your files, your settings or your credentials, and it opens no network socket — a Unix
+ *    socket is a path on this machine, reachable only by this user.
+ *  - It starts no turn of its own accord. A turn happens only when xezar hands over an event, which
+ *    only happens for a project you attached, in a session you started.
+ *  - It never edits, retries or invents. A command it does not understand is refused by name.
+ *
+ * INSTALL. Either point pi at it once:
+ *     pi --extension /path/to/xezar/scripts/pi-leader-extension.ts
+ * or copy it into `~/.pi/agent/extensions/` (global) or `<project>/.pi/extensions/` (project-local),
+ * which also makes `/reload` work on it. Then, in the cockpit, attach the pi leader.
+ *
+ * WHY THE SOCKET IS OPENED IN `session_start` AND NOT IN THE FACTORY. pi documents it plainly
+ * (`docs/extensions.md` § Long-lived resources and shutdown): a factory may run in an invocation
+ * that never starts a session, so background resources belong to `session_start`, with an IDEMPOTENT
+ * `session_shutdown` to close them. pi tears the runtime down and rebuilds it on `/new`, `/resume`,
+ * `/fork`, `/clone` and `/reload` — not only on quit — so the socket path carries the session id and
+ * the teardown is safe to run twice.
+ */
+
+import { createServer, type Server, type Socket } from 'node:net';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+
+// The extension API types are pi's, resolved from the pi installation that loads this file. They are
+// imported as types only, so this file needs no dependency of its own and no `package.json`.
+type TextContent = { type: 'text'; text: string };
+type AgentMessage = { role?: unknown; content?: unknown };
+type SessionEntry = { type?: unknown; message?: AgentMessage };
+
+interface ReadonlySessionManagerLike {
+  getSessionId(): string;
+  getCwd(): string;
+  getBranch(fromId?: string): SessionEntry[];
+}
+
+interface ExtensionContextLike {
+  cwd: string;
+  sessionManager: ReadonlySessionManagerLike;
+  isIdle(): boolean;
+  hasPendingMessages(): boolean;
+}
+
+interface ExtensionApiLike {
+  on(event: string, handler: (event: unknown, ctx: ExtensionContextLike) => unknown): void;
+  sendUserMessage(content: string | TextContent[], options?: { deliverAs?: 'steer' | 'followUp' }): void;
+}
+
+/** Additive changes keep version 1; an incompatible one bumps it. Must match `pi-link.ts`. */
+const SCHEMA_VERSION = 1;
+const DESCRIPTOR_FILE = 'pi-leader.json';
+const XEZAR_DATA_DIR = join('.local', 'xezar');
+/** A Unix socket path is limited to ~104 bytes on macOS, so it never lives under the repository. */
+const SOCKET_PREFIX = 'xez-pi-';
+
+export default function xezarLeaderExtension(pi: ExtensionApiLike): void {
+  let server: Server | undefined;
+  let descriptorPath: string | undefined;
+  let socketPath: string | undefined;
+  const clients = new Set<Socket>();
+
+  /** Idempotent, and it must stay that way: pi calls it on quit AND on every session replacement. */
+  const teardown = (): void => {
+    for (const client of clients) client.destroy();
+    clients.clear();
+    server?.close();
+    server = undefined;
+    for (const path of [descriptorPath, socketPath]) {
+      if (path === undefined) continue;
+      try {
+        rmSync(path, { force: true });
+      } catch {
+        /* Leaving a stale file behind is not worth failing a shutdown over; xezar detects it. */
+      }
+    }
+    descriptorPath = undefined;
+    socketPath = undefined;
+  };
+
+  pi.on('session_start', async (_event: unknown, ctx: ExtensionContextLike) => {
+    // A replacement session fires `session_shutdown` first, but run teardown anyway: it is cheap,
+    // it is idempotent, and a half-open server here would fail the bind below.
+    teardown();
+
+    const dataDir = findProjectDataDir(ctx.cwd);
+    if (dataDir === undefined) return; // Not a xezar project. Do nothing at all, quietly.
+
+    const sessionId = safeSessionId(ctx);
+    socketPath = join(tmpdir(), `${SOCKET_PREFIX}${sessionId}.sock`);
+    try {
+      rmSync(socketPath, { force: true });
+    } catch {
+      /* A path we cannot clear is a path we cannot bind; the listen below reports it. */
+    }
+
+    const next = createServer((socket) => serve(socket, pi, ctx, clients));
+    next.on('error', () => {
+      // A leader that cannot listen must not take pi down with it. xezar keeps the rows and the
+      // person reads them with `leader_events`, exactly as before this extension existed.
+      teardown();
+    });
+
+    await new Promise<void>((done) => {
+      next.once('listening', () => done());
+      next.once('error', () => done());
+      next.listen(socketPath);
+    });
+    if (!next.listening) {
+      teardown();
+      return;
+    }
+    server = next;
+
+    // Written only once the socket really listens, so the file never names nothing — the same
+    // ordering rule xezar's own connection file follows.
+    descriptorPath = join(dataDir, DESCRIPTOR_FILE);
+    writeDescriptor(descriptorPath, { socket: socketPath, sessionId });
+  });
+
+  pi.on('session_shutdown', () => teardown());
+}
+
+/** One connection, JSONL both ways: xezar's commands in, pi's answers and events out. */
+function serve(socket: Socket, pi: ExtensionApiLike, ctx: ExtensionContextLike, clients: Set<Socket>): void {
+  clients.add(socket);
+  socket.setNoDelay(true);
+  socket.setEncoding('utf8');
+
+  const write = (frame: Record<string, unknown>): void => {
+    if (socket.destroyed) return;
+    try {
+      socket.write(`${JSON.stringify(frame)}\n`);
+    } catch {
+      /* A peer that went away is not an error worth surfacing into someone's coding session. */
+    }
+  };
+
+  // pi's events, forwarded in the exact shape `adapters/pi.ts` already reads. Only these four: the
+  // adapter needs the busy boundary and the user message that marks a real reaction, and forwarding
+  // more would put session content on a socket for no reason.
+  const forward = (type: string) => (event: unknown) => {
+    const message = (event as { message?: AgentMessage } | undefined)?.message;
+    write(message === undefined ? { type } : { type, message });
+  };
+  const unsubscribes = [
+    subscribe(pi, 'agent_start', forward('agent_start')),
+    subscribe(pi, 'agent_settled', forward('agent_settled')),
+    subscribe(pi, 'message_start', forward('message_start')),
+    subscribe(pi, 'message_end', forward('message_end')),
+  ];
+
+  let buffer = '';
+  socket.on('data', (chunk: string) => {
+    buffer += chunk;
+    // A peer that never sends a newline must not grow this without bound.
+    if (buffer.length > 1_000_000) {
+      socket.destroy();
+      return;
+    }
+    let nl: number;
+    // Split on `\n` only and strip a trailing `\r` — pi's own framing rule (`docs/rpc.md`).
+    while ((nl = buffer.indexOf('\n')) >= 0) {
+      const line = buffer.slice(0, nl).replace(/\r$/, '');
+      buffer = buffer.slice(nl + 1);
+      if (!line.trim()) continue;
+      let command: Record<string, unknown>;
+      try {
+        command = JSON.parse(line) as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+      handle(command, pi, ctx, write);
+    }
+  });
+
+  const done = (): void => {
+    for (const stop of unsubscribes) stop();
+    clients.delete(socket);
+  };
+  socket.on('close', done);
+  socket.on('error', done);
+}
+
+/**
+ * One command. The vocabulary is pi's RPC, so xezar's adapter is unchanged by this file existing.
+ *
+ * `success` means ACCEPTED, never "the turn went well" — pi's own rule, and the one xezar's adapter
+ * is written against.
+ */
+function handle(
+  command: Record<string, unknown>,
+  pi: ExtensionApiLike,
+  ctx: ExtensionContextLike,
+  write: (frame: Record<string, unknown>) => void,
+): void {
+  const id = typeof command.id === 'string' ? command.id : undefined;
+  const type = typeof command.type === 'string' ? command.type : '';
+  const reply = (frame: Record<string, unknown>): void => write({ type: 'response', ...(id === undefined ? {} : { id }), command: type, ...frame });
+  const text = typeof command.message === 'string' ? command.message : '';
+
+  try {
+    if (type === 'get_state') {
+      reply({
+        success: true,
+        data: {
+          isStreaming: !ctx.isIdle(),
+          // The extension API answers "are any queued" as a boolean, not a count (pi has no
+          // `pendingMessageCount` for extensions). A truthful lower bound: xezar only ever asks
+          // whether it is above zero, and this never claims a number it does not know.
+          pendingMessageCount: ctx.hasPendingMessages() ? 1 : 0,
+          sessionId: safeSessionId(ctx),
+        },
+      });
+      return;
+    }
+    if (type === 'get_messages') {
+      reply({ success: true, data: { messages: conversation(ctx) } });
+      return;
+    }
+    if (type === 'prompt') {
+      // Real pi refuses a plain `prompt` during a turn and says so in this exact wording; xezar's
+      // adapter matches on it and falls back to `steer`. Answering the same way keeps the two
+      // transports interchangeable. `sendUserMessage` cannot report this itself — while streaming
+      // it fails into pi's extension-error channel rather than throwing here — so it is checked.
+      if (!ctx.isIdle()) {
+        reply({
+          success: false,
+          error: { message: "Agent is already processing. Specify streamingBehavior ('steer' or 'followUp') to queue the message." },
+        });
+        return;
+      }
+      pi.sendUserMessage(text);
+      reply({ success: true });
+      return;
+    }
+    if (type === 'steer') {
+      pi.sendUserMessage(text, { deliverAs: 'steer' });
+      reply({ success: true });
+      return;
+    }
+    reply({ success: false, error: { message: `the xezar leader extension does not implement ${type || '(no type)'}` } });
+  } catch (err) {
+    reply({ success: false, error: { message: err instanceof Error ? err.message : String(err) } });
+  }
+}
+
+/**
+ * The conversation as it stands, oldest first, in `get_messages` shape.
+ *
+ * `getBranch()` and not `getEntries()`: entries are the raw append-only file, so after a `/fork` it
+ * still carries messages from branches the person walked away from. Not `buildContextEntries()`
+ * either: that drops pre-compaction messages, and xezar reads this to find out what it has ALREADY
+ * told pi — a dropped marker would make it hand the same event over twice.
+ */
+function conversation(ctx: ExtensionContextLike): { role: string; content: TextContent[] }[] {
+  let entries: SessionEntry[];
+  try {
+    entries = ctx.sessionManager.getBranch();
+  } catch {
+    return [];
+  }
+  const out: { role: string; content: TextContent[] }[] = [];
+  for (const entry of entries) {
+    if (entry?.type !== 'message') continue;
+    const message = entry.message;
+    const role = typeof message?.role === 'string' ? message.role : undefined;
+    if (role === undefined) continue;
+    out.push({ role, content: textOf(message?.content) });
+  }
+  return out;
+}
+
+/** `UserMessage.content` is `string | (TextContent | ImageContent)[]`. Both are real; handle both. */
+function textOf(content: unknown): TextContent[] {
+  if (typeof content === 'string') return [{ type: 'text', text: content }];
+  if (!Array.isArray(content)) return [];
+  const parts: TextContent[] = [];
+  for (const part of content) {
+    const text = (part as { type?: unknown; text?: unknown } | null)?.text;
+    if ((part as { type?: unknown } | null)?.type === 'text' && typeof text === 'string') parts.push({ type: 'text', text });
+  }
+  return parts;
+}
+
+function subscribe(pi: ExtensionApiLike, event: string, handler: (event: unknown) => void): () => void {
+  // pi's `on` has no unsubscribe. A flag is the honest way to stop acting after a socket closed.
+  let live = true;
+  pi.on(event, (value: unknown) => {
+    if (live) handler(value);
+  });
+  return () => {
+    live = false;
+  };
+}
+
+function safeSessionId(ctx: ExtensionContextLike): string {
+  let id: string;
+  try {
+    id = ctx.sessionManager.getSessionId();
+  } catch {
+    return `pid-${process.pid}`;
+  }
+  // Never let a session id become a path of its own.
+  const clean = id.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40);
+  return clean.length > 0 ? clean : `pid-${process.pid}`;
+}
+
+/**
+ * Walk up from pi's working directory for a xezar project's `.local/xezar`. Discovery, not
+ * configuration: the person tells this extension nothing, and a directory that is not a xezar
+ * project simply gets no leader socket.
+ */
+function findProjectDataDir(cwd: string): string | undefined {
+  let dir = resolve(cwd);
+  for (let depth = 0; depth < 40; depth += 1) {
+    const candidate = join(dir, XEZAR_DATA_DIR);
+    if (existsSync(candidate)) return candidate;
+    const parent = dirname(dir);
+    if (parent === dir) return undefined;
+    dir = parent;
+  }
+  return undefined;
+}
+
+/** Atomic (tmp + rename) at 0600, like every other descriptor xezar writes. */
+function writeDescriptor(path: string, input: { socket: string; sessionId: string }): void {
+  const descriptor = {
+    schemaVersion: SCHEMA_VERSION,
+    session: { pid: process.pid, startedAt: new Date().toISOString(), sessionId: input.sessionId },
+    endpoint: { socket: input.socket },
+  };
+  const tmp = `${path}.tmp-${process.pid}`;
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(tmp, `${JSON.stringify(descriptor, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
+    renameSync(tmp, path);
+  } catch {
+    try {
+      rmSync(tmp, { force: true });
+    } catch {
+      /* Nothing further to do: without a descriptor xezar simply reports no pi leader. */
+    }
+  }
+}
+
+/** Exported for xezar's own tests; pi only ever uses the default export. */
+export const __internals = { conversation, textOf, handle, findProjectDataDir, writeDescriptor, readDescriptor };
+
+function readDescriptor(path: string): unknown {
+  return JSON.parse(readFileSync(path, 'utf8'));
+}

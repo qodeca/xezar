@@ -410,24 +410,30 @@ const CLOSED_MESSAGE = 'The pi RPC session xezar was given is closed, so no even
 const PARKED_MESSAGE =
   'pi accepted the steered event but settled before a turn took it, so it is parked in pi\'s queue rather than in front of the model. xezar has not treated it as delivered and will hand it over again.';
 const BLOCKER_FIX = 'Read events from your leader with the leader_events tool; nothing is lost while push is unavailable.';
+const PI_EXTENSION_FIX =
+  'Start your pi leader with xezar\'s leader extension (`pi --extension <xezar>/scripts/pi-leader-extension.mjs`, or install it once in your pi settings), then attach again. Until then, read events with the leader_events tool — nothing is lost.';
 
 /**
- * Where a project's leader events go in pi. A live `link`: delivered through it. Absent or closed —
- * the ordinary case, because pi's RPC is stdio-only and xezar starts no agent process (#311) — a
- * recoverable blocker the cockpit can show. The rows stay in the journal either way.
+ * Where a project's leader events go in pi. A live `link`: delivered through it. Absent or closed: a
+ * recoverable blocker the cockpit can show, naming WHY there is no link, because since `pi-link.ts`
+ * exists that is an answerable question — the leader extension is not running, or the pi that wrote
+ * the descriptor is gone — rather than the flat "pi has no address" it used to be. The rows stay in
+ * the journal either way, and the leader reads them with `leader_events`.
  */
-export function piReactionTarget(opts: Omit<PiReactionAdapterOptions, 'link'> & { link?: PiRpcLink }): PiReactionTarget {
+export function piReactionTarget(
+  opts: Omit<PiReactionAdapterOptions, 'link'> & { link?: PiRpcLink; unreachable?: string },
+): PiReactionTarget {
   if (opts.link !== undefined && !opts.link.closed) {
     return { kind: 'rpc', adapter: new PiReactionAdapter({ ...opts, link: opts.link }) };
   }
+  const because = opts.unreachable === undefined ? '' : ` (${opts.unreachable})`;
   return {
     kind: 'blocked',
     blocker: {
       code: 'pi-not-addressable',
       recoverable: true,
-      message:
-        'xezar cannot wake a pi session you run yourself: pi speaks RPC over its own stdin and stdout only — it has no port, socket or attach mode — and xezar never starts an agent process for you. Events stay in the project journal and nothing is lost.',
-      fix: BLOCKER_FIX,
+      message: `xezar has no live link to a pi leader for this project${because}. pi speaks RPC over its own stdin and stdout only — it has no port, socket or attach mode — so a pi you run yourself can be reached only from inside it, by the xezar leader extension. Events stay in the project journal and nothing is lost.`,
+      fix: PI_EXTENSION_FIX,
     },
   };
 }
