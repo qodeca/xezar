@@ -15,8 +15,10 @@
  *
  * WHAT IT DOES NOT DO, deliberately:
  *  - It sends nothing to xezar on its own. It answers commands and forwards pi's events. It never
- *    reads your files, your settings or your credentials, and it opens no network socket — a Unix
- *    socket is a path on this machine, reachable only by this user.
+ *    reads your files, your settings or your credentials, and it opens no network socket. The
+ *    Unix socket lives inside a directory this extension creates with mode 0700, which is what
+ *    keeps other accounts on the machine out — see `makePrivateSocketDir` for why the DIRECTORY
+ *    and not the socket file is the guard.
  *  - It starts no turn of its own accord. A turn happens only when xezar hands over an event, which
  *    only happens for a project you attached, in a session you started.
  *  - It never edits, retries or invents. A command it does not understand is refused by name.
@@ -35,7 +37,7 @@
  */
 
 import { createServer, type Server, type Socket } from 'node:net';
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -69,11 +71,54 @@ const DESCRIPTOR_FILE = 'pi-leader.json';
 const XEZAR_DATA_DIR = join('.local', 'xezar');
 /** A Unix socket path is limited to ~104 bytes on macOS, so it never lives under the repository. */
 const SOCKET_PREFIX = 'xez-pi-';
+const SOCKET_FILE = 'leader.sock';
+
+/**
+ * A private `0700` directory to put the socket in, or `undefined` if we cannot have one.
+ *
+ * THE DIRECTORY IS THE GUARD, AND IT HAS TO BE. An earlier version of this file put the socket
+ * straight into `os.tmpdir()` and claimed in a comment that only this user could reach it. That was
+ * false, and a QA on #358 measured it: with no `TMPDIR` set, Linux's `os.tmpdir()` is `/tmp`, mode
+ * `1777`, and the socket landed there as `0755`. Any other local account could then read the whole
+ * leader conversation with `get_messages` and write `prompt`/`steer` into a pi that has bash and
+ * edit tools. macOS hid it, because it gives each user a `0700` `/var/folders/…/T` — so the bug was
+ * invisible on the machine this was written on and live on the ordinary Linux box.
+ *
+ * A mode on the socket FILE is not the fix: Linux enforces permissions on a Unix socket, macOS and
+ * the BSDs do not, so only the containing directory is portable. `/tmp` being sticky (`1777`) is
+ * what makes creating our own directory there safe — another user cannot remove or rename it.
+ *
+ * Three things are therefore deliberate:
+ *  - the directory is created NON-recursively, so an existing path is an error we handle rather
+ *    than something we silently adopt;
+ *  - anything already at the path is removed first, so a leftover from a crashed pi (or a planted
+ *    symlink) cannot be inherited;
+ *  - the result is VERIFIED with `lstat` before it is used — the mode is checked, and a symlink is
+ *    refused, because `mkdir -p` over a symlink-to-directory succeeds and `chmod` would follow it.
+ */
+function makePrivateSocketDir(sessionId: string): { dir: string; socket: string } | undefined {
+  const dir = join(tmpdir(), `${SOCKET_PREFIX}${sessionId}`);
+  try {
+    rmSync(dir, { recursive: true, force: true });
+    mkdirSync(dir, { mode: 0o700 });
+    // mkdir's mode is masked by the process umask, so ask for it again explicitly.
+    chmodSync(dir, 0o700);
+    const stat = lstatSync(dir);
+    if (!stat.isDirectory()) return undefined;
+    if ((stat.mode & 0o077) !== 0) return undefined;
+    return { dir, socket: join(dir, SOCKET_FILE) };
+  } catch {
+    // No private directory, no socket. Failing closed here costs push delivery and nothing else:
+    // the events stay in xezar's journal and the leader still reads them with `leader_events`.
+    return undefined;
+  }
+}
 
 export default function xezarLeaderExtension(pi: ExtensionApiLike): void {
   let server: Server | undefined;
   let descriptorPath: string | undefined;
   let socketPath: string | undefined;
+  let socketDir: string | undefined;
   const clients = new Set<Socket>();
 
   /**
@@ -107,16 +152,24 @@ export default function xezarLeaderExtension(pi: ExtensionApiLike): void {
     clients.clear();
     server?.close();
     server = undefined;
-    for (const path of [descriptorPath, socketPath]) {
-      if (path === undefined) continue;
+    if (descriptorPath !== undefined) {
       try {
-        rmSync(path, { force: true });
+        rmSync(descriptorPath, { force: true });
       } catch {
         /* Leaving a stale file behind is not worth failing a shutdown over; xezar detects it. */
       }
     }
+    // The whole private directory, not just the socket inside it.
+    if (socketDir !== undefined) {
+      try {
+        rmSync(socketDir, { recursive: true, force: true });
+      } catch {
+        /* Same: a leftover empty 0700 directory harms nothing. */
+      }
+    }
     descriptorPath = undefined;
     socketPath = undefined;
+    socketDir = undefined;
   };
 
   pi.on('session_start', async (_event: unknown, ctx: ExtensionContextLike) => {
@@ -128,12 +181,10 @@ export default function xezarLeaderExtension(pi: ExtensionApiLike): void {
     if (dataDir === undefined) return; // Not a xezar project. Do nothing at all, quietly.
 
     const sessionId = safeSessionId(ctx);
-    socketPath = join(tmpdir(), `${SOCKET_PREFIX}${sessionId}.sock`);
-    try {
-      rmSync(socketPath, { force: true });
-    } catch {
-      /* A path we cannot clear is a path we cannot bind; the listen below reports it. */
-    }
+    const place = makePrivateSocketDir(sessionId);
+    if (place === undefined) return; // Could not get a private directory: open nothing at all.
+    socketDir = place.dir;
+    socketPath = place.socket;
 
     const next = createServer((socket) => serve(socket, pi, ctx, clients));
     next.on('error', () => {
@@ -362,7 +413,7 @@ function writeDescriptor(path: string, input: { socket: string; sessionId: strin
 }
 
 /** Exported for xezar's own tests; pi only ever uses the default export. */
-export const __internals = { conversation, textOf, handle, findProjectDataDir, writeDescriptor, readDescriptor };
+export const __internals = { conversation, textOf, handle, findProjectDataDir, writeDescriptor, readDescriptor, makePrivateSocketDir, safeSessionId, serve };
 
 function readDescriptor(path: string): unknown {
   return JSON.parse(readFileSync(path, 'utf8'));

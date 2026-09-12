@@ -37,13 +37,13 @@ paste no address and set no environment variable.
 
 1. On `session_start` it looks up from pi's working directory for a `.local/xezar` directory. If
    there is none, it does nothing at all — this is not a xezar project.
-2. It opens one Unix socket in your temporary directory, named after pi's session id.
+2. It creates a `0700` directory in your temporary directory, named after pi's session id, and opens one Unix socket inside it.
 3. Once that socket really listens, it writes `<project>/.local/xezar/pi-leader.json` (mode `0600`)
    naming it. xezar reads that file when you attach, and dials the socket.
 4. Down the socket it speaks pi's own RPC vocabulary — `prompt`, `steer`, `get_state`,
    `get_messages` — which it translates into pi's extension API. xezar's adapter is therefore
    unchanged by the socket existing, and a different transport could replace it.
-5. On `session_shutdown` it closes the socket and removes both files. That teardown is idempotent,
+5. On `session_shutdown` it closes the socket and removes the descriptor and the whole private directory. That teardown is idempotent,
    because pi tears the runtime down and rebuilds it on `/new`, `/resume`, `/fork`, `/clone` and
    `/reload` — not only on quit.
 
@@ -51,8 +51,12 @@ paste no address and set no environment variable.
 
 - **It starts nothing on its own.** It answers commands and forwards pi's events. A turn happens
   only when xezar hands over an event, for a project you attached, in a session you started.
-- **It opens nothing to the network.** A Unix socket is a path on your own machine, reachable only
-  by your own user.
+- **It opens nothing to the network.** A Unix socket is a path on your own machine, never a port.
+- **Other accounts on the same machine cannot reach it.** The socket lives inside a directory the
+  extension creates with mode `0700`. The **directory** is the guard, not the socket file: Linux
+  enforces permissions on a Unix socket but macOS and the BSDs do not, so only the directory is
+  portable. An earlier draft of this file put the socket straight into the temporary directory and
+  said it was private — on Linux with no `TMPDIR` that is `/tmp`, mode `1777`, and it was not.
 - **It reads none of your files, settings or credentials.** The only thing it reads from your
   session is the conversation, and only to find out which events xezar has already told this pi
   about — that is what stops the same event being put to the model twice.

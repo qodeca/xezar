@@ -40,6 +40,13 @@ import type { PiRpcLink, PiRpcMessage, PiRpcResponse } from './pi.ts';
  * (`<repo>/.local/xezar`, gitignored, written by this service). A socket path is taken from it and
  * dialled; nothing else in the file reaches a decision. That is the same trust the MCP connection
  * file already has, in the same directory, and it is why the path is never accepted from a request.
+ *
+ * Keeping other local accounts OFF that socket is the extension's job, not this file's, and an
+ * earlier version of this comment claimed it wrongly: it said the socket "lives in a directory only
+ * this user can enter", which on Linux with no `TMPDIR` was `/tmp` at mode `1777` and was false (QA
+ * on #358). The extension now creates its own `0700` directory and puts the socket inside — the
+ * DIRECTORY is the portable guard, because Linux enforces permissions on a Unix socket and macOS and
+ * the BSDs do not. See `scripts/pi-leader-extension.ts` § `makePrivateSocketDir`.
  */
 
 /** Additive changes keep version 1 (N-08); an incompatible one bumps it. */

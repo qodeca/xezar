@@ -443,6 +443,40 @@ E-07 with E-09 is A-19: a significant event reached the leader, a real model rea
 there was no status-polling turn — one model request in the session's whole life, and it was the one
 carrying the event.
 
+### The socket's permissions — a security defect the first version shipped
+
+A QA on #358 measured what the first version of the extension actually did: it put its socket
+straight into `os.tmpdir()`. With no `TMPDIR` set, that is `/tmp` on Linux at mode `1777`, and the
+socket landed there as `0755` — so **any other local account could read the whole leader conversation
+with `get_messages` and write `prompt`/`steer` into a pi holding bash and edit tools.** Two shipped
+sentences claimed the opposite, and both were wrong. macOS hid it: it gives each user a `0700`
+`/var/folders/…/T`, so the defect was invisible on the machine the code was written on and live on
+the ordinary box.
+
+The fix is a private `0700` directory the extension creates for itself, with the socket inside. The
+**directory** is the guard and has to be: Linux enforces permissions on a Unix socket, macOS and the
+BSDs do not, so a mode on the socket file is not portable. `/tmp` being sticky is what makes creating
+our own directory there safe.
+
+Proved the way the QA found it — `pi-perms/perm-run.mjs`, real pi, **TMPDIR unset** and again
+**pinned to `/tmp`**. **12 checks, all PASS**, 6 per condition:
+
+| # | Check | Both conditions |
+| --- | --- | --- |
+| 01 | The extension announced itself | **PASS** |
+| 02 | The socket's directory is `0700` — no group, no other | **PASS** (`mode 700`) |
+| 03 | The socket is not a direct child of the shared temporary directory | **PASS** |
+| 04 | It really is a socket | **PASS** |
+| 05 | The shared parent was left exactly as it was | **PASS** (`/tmp`, still `1777`) |
+| 06 | The private directory is gone after pi exits, and the shared parent is not | **PASS** |
+
+Row 05 is the point: the parent is the world-writable `1777` directory in both runs, and the socket's
+own directory inside it is `0700`. Under the old code that directory *was* the `1777` one.
+
+The unit group `"the socket is kept away from other local accounts"` pins all of this, and **all five
+of its cases go RED against named break B11** (return `{dir: tmpdir(), socket: tmpdir()/…​.sock}`,
+which is exactly what shipped first).
+
 ### The busy rung, through the extension
 
 `a19-run.mjs` exercises the idle rung. The busy one is the half F-2 was about, so it is measured
@@ -578,7 +612,10 @@ types is not.
 
 ## Tests and red proof
 
-`packages/xezar/src/mcp/adapters/pi.test.ts`: 41 tests. `leader-delivery.test.ts` gains two for the pi attach
+`packages/xezar/src/mcp/adapters/pi.test.ts`: 41 tests. `adapters/pi-link.test.ts`: 15, over a real Unix
+socket. `adapters/pi-leader-extension.test.ts`: 29, driving the SHIPPED extension itself — it had none
+for one round of review, and the root `test:coverage:mcp` include now names it so the MCP floor really
+applies rather than being claimed (95.97 % statements, 82.85 % branches, 100 % lines). `leader-delivery.test.ts` gains two for the pi attach
 path. Coverage from the MCP suites alone: `pi.ts` **100 % lines, 90.98 % branches**; `leader-delivery.ts`
 **95.83 % lines, 84.05 % branches** — both over the 80 / 80 floor.
 
@@ -595,6 +632,7 @@ Each new test was proven RED against a named break in the source it guards. Ever
 | B6 | Build an adapter with no link | RED |
 | B7 | Drop the echo guard | RED |
 | B8 | Detach the working leader before refusing a pi attach | RED |
+| B11 | Put the extension's socket straight into `os.tmpdir()` (what shipped first) | RED — all five cases of "the socket is kept away from other local accounts" |
 | B9 | Trust `#busy` and steer without confirming it (the bug the QA found) | RED — direction A's row never reached the model (`modelRequests: []`), and the parked-steer test resolved `{handedThrough: 1}` instead of rejecting |
 
 One test is a **guard**, green with and without B9's fix, and labelled as such in the source: direction B

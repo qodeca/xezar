@@ -20,7 +20,9 @@
   yours to opt into: without the extension nothing changes, asking to attach answers with pi's own
   reason and tells you how to fix it, and that pi keeps reading its events with `leader_events`. The
   extension answers xezar and forwards pi's own events; it reads none of your files and opens
-  nothing to the network. (#330)
+  nothing to the network. Its socket lives in a private folder only your own account can open, so
+  nobody else with a login on the same machine can read your leader's conversation or type into
+  it. (#330)
 - ✨ **Project events can now be pushed to a leader you attach.** The event controller and the
   reaction adapters were built and tested but never connected, so no event ever reached a client.
   Now every MCP session that owns a project gets push delivery the moment it opens — nothing to set

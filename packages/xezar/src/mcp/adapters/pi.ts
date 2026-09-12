@@ -26,22 +26,24 @@ import type { EventDispatch, ReactionAdapter } from '../event-controller.ts';
  *     and carried by the following model request. The running turn was not cut short.
  *  3. Terminal text input — REFUSED. Tier 2 works, and nothing here simulates a keystroke.
  *
- * WHOSE PI PROCESS. Only one whose RPC stdio the CALLER already owns, handed in as `PiRpcLink`. This
+ * WHOSE PI PROCESS. Only one whose RPC the CALLER already owns, handed in as `PiRpcLink`. This
  * adapter never spawns pi, because xezar starts no agent process for a leader (owner decision on
- * #311). pi's RPC is stdio-only — it has no port, no socket and no attach mode (`pi --help`,
- * `docs/rpc.md` on 0.85.1) — so a pi the person runs in their own terminal has no address xezar can
- * reach, and `piReactionTarget()` answers with the recoverable `pi-not-addressable` blocker for it.
- * That is the same standing as a Claude Code or Codex session in a terminal (`leader-delivery.ts`):
- * the rows stay in the journal and the leader reads them with `leader_events`.
+ * #311), and it never opens a transport of its own.
  *
- * SO NOTHING CONSTRUCTS THIS ADAPTER IN PRODUCTION YET, and that is deliberate rather than an
- * oversight — say it here so no reader has to infer it (QA on #358). `PiRpcLink` has no producer in
- * the repository: the one production caller of `piReactionTarget` passes no `link`, so the result is
- * always the blocker. Closing it needs a xezar-shipped pi EXTENSION that connects out and hands this
- * process a link — `ExtensionAPI.sendUserMessage` is documented "Always triggers a turn", extensions
- * are unsandboxed, and the already-required `pi-mcp-adapter` opens sockets today, so the route is
- * open; what is missing is the artifact. Evidence record blocker PI-2 and its § "What would produce
- * a link". Nothing xezar can send over MCP starts a pi turn, so the extension is the only route.
+ * WHO CONSTRUCTS IT, AND FROM WHAT. `LeaderDelivery.#piTarget()`, on
+ * `{action:'attach', client:'pi'}`. It gets the link from `adapters/pi-link.ts`, which reads the
+ * descriptor xezar's pi leader extension writes into the project's data directory and dials the
+ * socket named there. pi's own RPC is stdio-only and spawn-only — no port, no socket, no attach
+ * (`pi --help`, `docs/rpc.md` on 0.85.1) — so the address cannot come from outside pi; it comes from
+ * INSIDE it, where `ExtensionAPI.sendUserMessage` ("Always triggers a turn") can be reached. Nothing
+ * xezar can send over MCP starts a pi turn, so that extension is the only route, and it is the one
+ * taken (`scripts/pi-leader-extension.ts`, evidence record § "A-19 for pi: CLOSED").
+ *
+ * WITH NO EXTENSION RUNNING there is no descriptor and no link, and `piReactionTarget()` answers with
+ * the recoverable `pi-not-addressable` blocker naming why — the same standing a Claude Code or Codex
+ * session in a terminal has (`leader-delivery.ts`): the rows stay in the journal and the leader reads
+ * them with `leader_events`. Push delivery to pi is opt-in, and absent is the pre-extension behaviour
+ * unchanged.
  *
  * DELIVERY IS NOT REACTION (F-20, D-05 § 6.6). `deliver` resolves once pi ANSWERED the `prompt` or
  * `steer` with `success: true`: the client application has the rows. The reaction is reported
