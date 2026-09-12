@@ -142,6 +142,19 @@ args = ["-y", "@qodeca/xezar", "mcp"]`}
   // start a bridge wherever pi starts (D-04 § 3.4). The card states keep-alive's cost as well as its
   // use: D-04 § 3.4 run `root` measured that a pi started in the project root holds the project from
   // start, and a second client is refused until that pi exits (design review on #343).
+  // The `approveTools` line is #369's measured blast radius, and it is deliberately narrow: #330 WP5's
+  // QA measured an ordinary pi task UNAFFECTED (the runner's default `--tools` allowlist offers no
+  // `xezar_*` tool, so the dialog never fires) and only a step that named `xezar_health` failing, at
+  // 121 s. Do not widen this to "every pi task": that is measured false. `approveTools` is the user's
+  // own key in the adapter's `mcp.json` — `settings.approveTools` or the per-server one, which
+  // overrides it (`tool-approval.ts:42-43`, adapter 2.32.1). Scope any absence claim about it to the
+  // files read: `core/pi-runner.ts`, `scripts/pi-leader-extension.ts` and `mcp/adapters/pi.ts` — the
+  // three xezar files on this path — never mention `approveTools` or `extension_ui_request` (read
+  // 2026-09-12 at `df828a0`); `test/integration/mcp-real-clients.test.ts` DOES set the key, on its own
+  // fixture, to produce the block. An unscoped "appears nowhere" rots: this one was true at 301a172
+  // and false an hour later when #368 merged.
+  // The two unattended cases end differently and the line says both: a pi xezar runs is killed by the
+  // runner's timeout, a leader turn nobody is watching has nothing to end it and waits for ever.
   {
     name: 'pi',
     automatic:
@@ -190,6 +203,26 @@ args = ["-y", "@qodeca/xezar", "mcp"]`}
               So any pi started in this folder, including a pi task xezar runs here with Worktree off, becomes this project’s leader
               client, and every other client, Claude Code included, is refused until that pi exits. Start pi in another folder for
               other work.
+            </span>
+            <span data-slot="mcp-client-pi-approve-tools" className="mt-2 block">
+              Leave xezar’s tools out of the extension’s <span className="font-mono break-all">approveTools</span> setting, in this file
+              or on the <span className="font-mono break-all">xezar</span> entry. A gated tool asks for approval in pi’s own window and
+              nothing in xezar answers, so a pi xezar runs waits there until it is killed — measured at two minutes, on a step that named{' '}
+              <span className="font-mono break-all">xezar_health</span> — and a leader turn nobody is watching waits for ever, because
+              nothing ends that one at all. A pi that is never offered a xezar tool is unaffected. Making
+              xezar answer that question is{' '}
+              {/* The link text is "issue 369", not "#369": the design guardian's no-raw-hex-colors rule
+                  reads a three-digit "#369" as a colour, and the rule is right to. */}
+              <a
+                href="https://github.com/qodeca/xezar/issues/369"
+                target="_blank"
+                rel="noreferrer"
+                data-slot="mcp-client-pi-approve-tools-issue"
+                className="rounded-sm underline underline-offset-2 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              >
+                issue 369
+              </a>
+              , which is not in this release.
             </span>
             <span className="mt-2 block">
               The file holds no secret, so it is safe to commit. A committed entry does the same for everyone who starts pi in this
