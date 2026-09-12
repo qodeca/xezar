@@ -324,6 +324,133 @@ describe('attaching pi with no leader extension running (#330 WP2)', () => {
   });
 });
 
+/**
+ * QA on #358, finding 3. Every blocker about an ATTACHED leader used to be written in OpenCode's
+ * words, whichever client was really attached, so a pi user who hit one was told to check an
+ * `opencode serve` they are not running — the one moment the sentence has a job to do.
+ *
+ * These cases read the three of them through the real `act` -> `status()` path with a pi leader
+ * attached. Their OpenCode halves are in `push-delivery.test.ts`, against the real service and the
+ * fake OpenCode server, because that is where those two states are reachable end to end; each of
+ * those three cases now also asserts it did NOT regress into pi's words or a generic message.
+ *
+ * Claude Code and Codex are not here because they cannot be attached at all
+ * (`mcpLeaderAttachInputSchema`): their case is `no-leader-session`, pinned below.
+ */
+describe('a blocker about an attached leader is written in THAT client’s words (QA on #358)', () => {
+  /** A link at the `pi-link.ts` seam whose requests can be made to fail, so a leader can stop answering. */
+  function failableLink() {
+    let failing = false;
+    let closed = false;
+    return {
+      fail: (yes: boolean) => {
+        failing = yes;
+      },
+      link: {
+        get closed() {
+          return closed;
+        },
+        subscribe: () => () => {},
+        async request(command: Record<string, unknown>) {
+          if (failing) throw new Error('the pi leader socket went away');
+          if (command.type === 'get_state') return { success: true, data: { isStreaming: false, pendingMessageCount: 0 } };
+          if (command.type === 'get_messages') return { success: true, data: { messages: [] } };
+          return { success: true };
+        },
+        close() {
+          closed = true;
+        },
+      },
+    };
+  }
+
+  function withPi() {
+    const fake = failableLink();
+    const dataDir = tmp();
+    const journal = EventJournal.open({ dataDir, projectId: PROJECT, secretValues: [], warn: () => {} });
+    journals.push(journal);
+    const made = new LeaderDelivery({
+      projectId: PROJECT,
+      projectRoot: dataDir,
+      journal,
+      ownership: { projectId: PROJECT, sessionToken: () => 'token', state: () => 'owned' },
+      guard: undefined,
+      warn: () => {},
+      heartbeatMs: 200,
+      piLeader: {
+        read: () => ({
+          ok: true as const,
+          descriptor: { schemaVersion: 1 as const, session: { pid: 1, startedAt: 'now' }, endpoint: { socket: '/tmp/x.sock' } },
+        }),
+        connect: () => fake.link as never,
+      },
+    });
+    deliveries.push(made);
+    return { delivery: made, journal, fake };
+  }
+
+  const blockerOf = (made: LeaderDelivery) => {
+    const status = made.status();
+    if (!status.available) throw new Error('unreachable');
+    return status.blocker;
+  };
+
+  it('no-owner-session names pi, and never the OpenCode server a pi user is not running', async () => {
+    const { delivery: made } = withPi();
+    // No `sessionOpened`: a leader is attached and no MCP session owns the project — #331's state.
+    expect((await made.act({ action: 'attach', client: 'pi' })).ok).toBe(true);
+
+    const blocker = blockerOf(made);
+    expect(blocker).toMatchObject({ code: 'no-owner-session' });
+    expect(`${blocker?.message} ${blocker?.fix}`).toContain('pi');
+    expect(`${blocker?.message} ${blocker?.fix}`).not.toMatch(/OpenCode|opencode/);
+  });
+
+  it('delivery-failing tells a pi user to check pi’s own extension, not `opencode serve`', async () => {
+    const { delivery: made, journal, fake } = withPi();
+    made.sessionOpened('session-1');
+    expect((await made.act({ action: 'attach', client: 'pi' })).ok).toBe(true);
+
+    fake.fail(true);
+    row(journal); // something IS waiting, which is what separates this from leader-not-answering
+    await until('the failure to be observed', () => blockerOf(made)?.code === 'delivery-failing');
+
+    const blocker = blockerOf(made);
+    expect(blocker?.message).toContain('pi leader');
+    expect(blocker?.fix).toMatch(/leader extension/);
+    expect(`${blocker?.message} ${blocker?.fix}`).not.toMatch(/opencode serve/);
+  });
+
+  it('leader-not-answering does the same with nothing waiting', async () => {
+    const { delivery: made, fake } = withPi();
+    made.sessionOpened('session-1');
+    expect((await made.act({ action: 'attach', client: 'pi' })).ok).toBe(true);
+
+    fake.fail(true);
+    await until('the liveness failure to be observed', () => blockerOf(made)?.code === 'leader-not-answering');
+
+    const blocker = blockerOf(made);
+    expect(blocker?.message).toContain('pi leader');
+    expect(blocker?.fix).toMatch(/leader extension/);
+    expect(`${blocker?.message} ${blocker?.fix}`).not.toMatch(/opencode serve/);
+  });
+
+  /**
+   * GUARD TEST: green before this change and after it, on purpose. With NOTHING attached there is no
+   * client to name, and this sentence is the one that has to speak to all four — the two that can be
+   * attached and the two that can only ever read with `leader_events`. Making the other three
+   * client-specific must not narrow it.
+   */
+  it('with no leader attached, the message still speaks to all four clients', () => {
+    const { delivery: made } = delivery(true);
+    made.sessionOpened('session-1');
+    const blocker = blockerOf(made);
+    expect(blocker).toMatchObject({ code: 'no-leader-session' });
+    for (const client of ['Claude Code', 'Codex', 'pi']) expect(blocker?.message).toContain(client);
+    expect(blocker?.fix).toMatch(/opencode serve/);
+  });
+});
+
 describe('an attached leader that does not answer at all', () => {
   it('is reported with the adapter’s own reason, not with a guess of xezar’s', async () => {
     const { delivery: made, journal } = delivery(true);

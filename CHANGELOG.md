@@ -8,10 +8,16 @@
   from xezar and is not an instruction or an approval, and it carries your leader's role every time,
   because pi does not keep one across a resume. A leader never hears the echo of its own change, an
   event is never put to the model twice — not after a lost answer and not after xezar restarts — and
-  xezar's liveness check reads pi's session state without waking the model. One honest limit, and
-  the cockpit says it rather than hiding it: an event handed to pi while pi is between turns is
-  parked in pi's queue rather than put to the model, so xezar checks, and never counts a parked event
-  as delivered. (#330)
+  xezar's liveness check reads pi's session state without waking the model. One honest limit,
+  measured against pi 0.85.1 over the extension: an event handed over while your pi is working is
+  queued rather than sent, and goes to the model once the turn in flight has finished — including
+  whatever tool that turn is running. Measured twice, because the two halves of a turn take
+  different lengths of time: the event waited 16 seconds behind a 20-second model call, and 20
+  seconds behind a 25-second tool. Each time it reached the model in the next turn of the same run,
+  before that run ended; xezar will not cut a turn short to deliver an event. It also never takes
+  pi's "accepted" for "the model has it": every handover is checked against pi afterwards, and an
+  event xezar cannot confirm reached the model is handed over again rather than counted as
+  delivered. (#330)
 - ✨ **And a pi you run in your own terminal can now be reached.** pi speaks its session interface
   over its own input and output only, and xezar never starts an agent process for you, so until now
   a pi you started yourself had no address and got no push. xezar now ships a small pi extension:
@@ -86,6 +92,22 @@
   one warning and the MCP keeps working. This closes acceptance case A-01. (#262)
 
 ## 🐛 Fixes
+- 🐛 **If xezar cannot reach your pi leader, the fix it gives you now names a file that exists.** The
+  one instruction on that path told you to load `scripts/pi-leader-extension.mjs`. Nothing of that
+  name is built, packed or shipped — the extension is `scripts/pi-leader-extension.ts` — so anyone
+  following the advice got "file not found" and no second hint. Also measured, and written down
+  rather than left to be discovered: a xezar tool you put behind pi's tool-approval setting stops a
+  pi nobody is watching from finishing its turn at all, because the approval question waits for an
+  answer and xezar never gives one. Nothing is lost while that holds and your events stay in the
+  journal, but do not gate xezar's tools on a leader you leave alone. (#330)
+- 🐛 **pi now has a column in the real-client acceptance record, measured on one revision with the
+  other three** — and two of those three clients' rows improved while nobody was looking. Exclusive
+  project ownership shipped hours after the record was last written, so the record still said a
+  second client could quietly take over a project it cannot. It cannot, for any of the four clients,
+  and the record now says so with the evidence beside it. For pi the whole delivery path is measured
+  end to end on one pi process: nothing reaches the model while pi sits idle, one real model request
+  follows a project event and carries it, none follow it, and that same request still sees every
+  xezar tool. No product behaviour changed by the measurement itself. (#330)
 - 🐛 **pi can carry a second account, and its config folder is finally its own.** xezar said pi had
   no way to move its home, so "Add account" was never offered for it – and worse, the pi row in
   Settings → Agent accounts showed Claude Code's folder as pi's, because the lookup behind it fell

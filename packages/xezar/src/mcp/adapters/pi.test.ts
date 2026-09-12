@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -793,6 +793,33 @@ describe('piReactionTarget — where a project\'s pi events go', () => {
     if (target.kind !== 'blocked') throw new Error('unreachable');
     expect(target.blocker.message).toMatch(/stdin and stdout/);
     expect(target.blocker.fix).toMatch(/leader_events/);
+  });
+
+  /**
+   * The blocker's `fix` is the ONE instruction a person gets when a pi leader cannot be reached, and
+   * it names a file. For one round of review it named `pi-leader-extension.mjs`, which is not built,
+   * not packed and not in the repository — the extension ships as `scripts/pi-leader-extension.ts`.
+   * The older test asserted only that the text mentions `leader_events`, so nothing caught it.
+   *
+   * So: take the path out of the string and look for it. A file name in user-facing advice is a
+   * promise about this package's contents, and it is cheap to check that the promise holds.
+   */
+  it('the fix names a file this package really ships', () => {
+    const target = piReactionTarget({ projectId: 'xez330', roleInstruction: ROLE });
+    if (target.kind !== 'blocked') throw new Error('unreachable');
+    const named = /<xezar>\/(\S+?)`/.exec(target.blocker.fix)?.[1];
+    // Populated-input control: an unparsed `fix` would make the assertion below vacuous, because
+    // `existsSync` of nothing is a different branch from `existsSync` of a wrong name.
+    expect(named, `no <xezar>/… path found in: ${target.blocker.fix}`).toBeTruthy();
+    const packageRoot = join(import.meta.dirname, '../../..');
+    expect(existsSync(join(packageRoot, named!)), `${named} is named in the pi blocker's fix but is not in ${packageRoot}`).toBe(true);
+    // A FILE, not merely an entry. QA on #366 raised this against the version of this check that
+    // shipped on the other branch: `existsSync` is true for a DIRECTORY, so pointing the fix at
+    // `scripts` passed while `pi --extension <pkg>/scripts` is not loadable. (#367)
+    expect(statSync(join(packageRoot, named!)).isFile(), `${named} is not a file under ${packageRoot}`).toBe(true);
+    // And it is in the published tarball, not merely on a developer's disk: `files` decides that.
+    const files = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')).files as string[];
+    expect(files.some((entry) => named!.startsWith(`${entry.replace(/\/$/, '')}/`) || entry === named)).toBe(true);
   });
 
   it('with a closed link: blocked, never an adapter over a dead session', () => {

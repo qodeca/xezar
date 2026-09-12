@@ -392,6 +392,9 @@ describe('#309 — push delivery in the running service (A-19 delivery, A-20 no-
     expect(before).toMatchObject({ available: true, leader: { client: 'opencode', state: 'attached' }, delivery: null });
     expect(before.available && before.blocker).toMatchObject({ code: 'no-owner-session' });
     expect(before.available && before.blocker?.message).toMatch(/no MCP session owns this project/);
+    // The OpenCode half of QA on #358 finding 3: making this blocker name the ATTACHED client must
+    // not stop it naming OpenCode when OpenCode is the attached client, nor make it generic.
+    expect(`${before.available && before.blocker?.message} ${before.available && before.blocker?.fix}`).toMatch(/OpenCode/);
 
     // The leader's MCP connection opens: now a controller follows the journal, and nothing is wrong.
     const leader = agent(c.root);
@@ -549,6 +552,10 @@ describe('#309 — push delivery in the running service (A-19 delivery, A-20 no-
       return st.available && st.delivery?.state === 'disconnected' ? st : undefined;
     });
     expect(failing.available && failing.blocker).toMatchObject({ code: 'delivery-failing' });
+    // Still OpenCode's words for an OpenCode leader (QA on #358, finding 3): pi's half is in
+    // `leader-delivery.test.ts`, and neither may end up reading like the other.
+    expect(failing.available && failing.blocker?.message).toMatch(/OpenCode leader/);
+    expect(failing.available && failing.blocker?.fix).toMatch(/opencode serve/);
 
     // It recovers on its own at the next heartbeat, and the blocker goes with it.
     oc.control.failPrompts = false;
@@ -692,6 +699,8 @@ describe('#309 — push delivery in the running service (A-19 delivery, A-20 no-
       return st.available && st.blocker !== null ? st : undefined;
     });
     expect(stated.available && stated.blocker).toMatchObject({ code: 'leader-not-answering' });
+    expect(stated.available && stated.blocker?.message).toMatch(/OpenCode leader/);
+    expect(stated.available && stated.blocker?.fix).toMatch(/opencode serve/);
     expect(stated.available && stated.delivery?.latestSeq).toBe(0);
 
     // It answers again: the next probe clears it.
