@@ -341,6 +341,16 @@
   gains pi's one-time setup and a four-client comparison, and the client compatibility report gains
   a dated pi addendum. A requirements change only: pi has no reaction adapter or acceptance column
   yet. (#330)
+- 📝 **A named limitation of this release: do not gate xezar's tools with pi's `approveTools`.** The
+  `pi-mcp-adapter` extension can be told to ask before a tool runs. If you point that at xezar's
+  tools, the question goes to a dialog only a person at their own pi window can answer, and nothing
+  in xezar answers it — so a pi that xezar runs sits there until it is killed. Measured: a step whose
+  own tool list named `xezar_health` failed after two minutes, while an ordinary pi task with the
+  same gate on was unaffected and finished in 2.8 seconds, because the tools xezar gives a task by
+  default include no xezar tool at all and the question is never asked. You set this yourself and
+  nothing is on by default, so leave xezar's tools ungated and nothing changes for you. The pi setup
+  card, the pi extension guide and the client compatibility report all say so now. Making xezar
+  answer that dialog, with a refusal, is #369 and is deliberately not in this release. (#369)
 - 📝 **A release-level Definition of Done for 0.14.0.** `docs/releases/0.14.0-definition-of-done.md`
   sits beside the MCP feature's own eight clauses and covers the rest of the release: the security,
   engine and gate fixes, open-source readiness, documentation, the kit roles, the UI design review

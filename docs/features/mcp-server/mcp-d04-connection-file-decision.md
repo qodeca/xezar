@@ -578,8 +578,19 @@ and the project `.mcp.json`, which Claude Code reads too, so an entry there reac
 The adapter's `lazy-keep-alive` (connect at first call, never idle-close) would avoid taking the project
 at start, but **no run covers it**, so the setup does not offer it.
 
-**Tool approval** is off by default in the extension. A user's `approveTools` setting makes matching
-headless calls fail with `approval_required` (documented, adapter README; not run).
+**Tool approval** is off by default in the extension, and the setup does not turn it on. A user's own
+`approveTools` — `settings.approveTools` in the adapter's `mcp.json`, or the per-server key that
+overrides it — gates a matching tool at call time.
+
+**Corrected 2026-09-12 by a run.** This paragraph used to say that a gated call "makes matching headless
+calls fail with `approval_required` (documented, adapter README; not run)". The README does say that, and
+it is wrong for xezar's case: the fail-closed branch is reached only when the extension has no UI
+(`tool-approval.ts:170-172`, adapter 2.32.1), and pi hands its extensions a `ui` in every mode, so the
+call takes the branch below it and opens a dialog (`state.ui.select`) that carries no `timeout`. Nothing
+in xezar answers it. #330 WP5's QA measured a step naming `xezar_health` failing at 121 s with
+`pi CLI timed out after 2m and was killed`, while an ordinary pi task — offered no `xezar_*` tool by the
+runner's default allowlist — was unaffected at 2.8 s. The setup guidance is therefore to leave xezar's
+tools ungated; answering the dialog is [#369](https://github.com/qodeca/xezar/issues/369).
 
 ### 3.5 The four side by side
 

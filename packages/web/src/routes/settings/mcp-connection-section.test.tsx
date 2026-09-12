@@ -304,6 +304,34 @@ describe('MCP connection section — the pi card (#341, WP3 of #330)', () => {
     expect(user).toContain('A committed entry does the same for everyone who starts pi in this project.')
   })
 
+  it('tells the reader to leave xezar’s tools out of approveTools, and what happens if they do not (#369)', async () => {
+    const card = await piCard()
+    const line = card.querySelector('[data-slot="mcp-client-pi-approve-tools"]')
+    expect(line).toBeTruthy()
+    const text = line!.textContent!.replace(/\s+/g, ' ').trim()
+    // The workaround comes FIRST: a reader who stops after one sentence still knows what to do.
+    expect(text).toMatch(/^Leave xezar’s tools out of the extension’s approveTools setting/)
+    // The consequence, in the measured terms of #330 WP5's QA — killed at two minutes, not "hangs
+    // for ever", which is what a reader would wrongly take from the mechanism alone.
+    expect(text).toContain('nothing in xezar answers')
+    expect(text).toContain('waits there until it is killed')
+    expect(text).toContain('measured at two minutes')
+    expect(text).toContain('xezar_health')
+    // The limit that keeps this sentence true. The same QA measured an ordinary pi task finishing in
+    // 2.8 s with the gate on, because the runner's default tool allowlist offers no xezar tool. A card
+    // that dropped this would overstate the limit — the mistake this release already shipped.
+    expect(text).toContain('A pi that is never offered a xezar tool is unaffected')
+    // Never claim the fix is in: 369 is deliberately not in this release.
+    expect(text).toContain('which is not in this release')
+    const issue = card.querySelector('[data-slot="mcp-client-pi-approve-tools-issue"]')!
+    // The link text says "issue 369", never a bare hash: the design guardian's no-raw-hex-colors
+    // rule reads a three-digit "#369" as a colour, and that rule is not to be weakened for copy.
+    expect(issue.textContent).toBe('issue 369')
+    expect(issue.getAttribute('href')).toBe('https://github.com/qodeca/xezar/issues/369')
+    expect(issue.getAttribute('target')).toBe('_blank')
+    expect(issue.getAttribute('rel')).toBe('noreferrer')
+  })
+
   it('links the third-party extension to its source, in a new tab', async () => {
     const card = await piCard()
     const link = card.querySelector('[data-slot="mcp-client-pi-adapter-link"]')!
