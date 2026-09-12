@@ -1102,6 +1102,22 @@ class PiRpc {
     });
   }
 
+  /**
+   * One frame with no answer expected. pi's extension-UI sub-protocol is not the command protocol:
+   * an `extension_ui_response` correlates to the REQUEST's id, which pi chose, so it cannot go through
+   * `request()`.
+   */
+  send(frame: Record<string, unknown>): void {
+    const line = JSON.stringify(frame);
+    this.transcript.line('->', line.slice(0, 1_000));
+    this.child.stdin!.write(`${line}\n`);
+  }
+
+  /** pi's dialog requests, in order. In RPC mode these BLOCK pi until the client answers them. */
+  uiRequests(): any[] {
+    return this.events.filter((e) => e?.type === 'extension_ui_request' && typeof e.method === 'string');
+  }
+
   /** Every notice the adapter pushed into pi's UI channel — where a connection refusal shows up. */
   notices(): string[] {
     return this.events
@@ -1396,11 +1412,17 @@ describe('A-01 — connection provisioning and one-time setup, per officially su
 
 /**
  * #330's PI-08 edge path: "a user `approveTools` → a named `approval_required` state, not a hang".
- * It is pi's only setup key that can stop a tool from running while leaving it visible, and a headless
- * leader has nobody to approve it — so the thing to prove is that the turn ENDS and says why.
+ * `approveTools` is pi-mcp-adapter's own key, the only one that keeps a tool visible while stopping it
+ * from running, and a leader reacting to an event has nobody at the keyboard. So the question is not
+ * "is the reason named" — it is "does the turn END".
  *
- * Its own pi, its own project state, and a bound: a hang is the failure this case exists to catch, so
- * a turn that never settles inside the bound is recorded as exactly that.
+ * Two phases, because the difference between them is the whole finding:
+ *   1. Nobody answers. This is the leader-while-away case.
+ *   2. The client answers `Deny`, through pi's extension-UI sub-protocol.
+ *
+ * pi's own `docs/rpc.md` § Extension UI Requests says a dialog method "blocks until the client sends
+ * back an `extension_ui_response`", and auto-resolves only when the request carries a `timeout`. So
+ * whether phase 1 ends is decided by whether that field is there, and that is read from the frame.
  */
 describe('A-01 — edge paths that must name their reason (#330 PI-08)', () => {
   test('[pi] a tool the person gated behind approval fails closed with a named reason, not a hang', async (t) => {
@@ -1418,32 +1440,73 @@ describe('A-01 — edge paths that must name their reason (#330 PI-08)', () => {
     writeFileSync(entryFile, `${JSON.stringify(config, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
     const free = await waitForProjectFree('a01-pi-approve', world.a.root, bridgeEnv(world, join(pi.home, 'probe')), 30_000);
     const rpc = new PiRpc(fx.clients.pi.bin, piArgs(pi), { cwd: world.a.root, env: pi.env, transcript });
-    let settledInTime = false;
-    let toolOutcome: unknown = 'no tool execution was reported';
+    const settles = (): number => rpc.events.filter((e) => e?.type === 'agent_settled').length;
+    let dialog: any;
+    let endedUnanswered = false;
+    let endedAfterDeny = false;
+    let denied: unknown = 'the dialog never arrived, so nothing was answered';
     try {
       await waitForNotice(rpc, 120_000);
       const answer = await rpc.request('prompt', { message: 'CALL health' }, 30_000);
       if (answer.success) {
-        settledInTime = await waitFor('pi to settle the gated turn', () => (rpc.events.some((e) => e?.type === 'agent_settled') ? true : undefined), 90_000)
+        // Phase 1. The gate must produce a NAMED request; whether the turn can end without an answer
+        // is decided by the `timeout` field, so wait past a generous one and then read the frame.
+        dialog = await waitFor('pi to ask for approval', () => rpc.uiRequests().find((r) => /approv|wants to run/i.test(`${r.title ?? ''} ${r.method}`)), 90_000).catch(() => undefined);
+        endedUnanswered = await waitFor('the unanswered turn to end', () => (settles() > 0 ? true : undefined), 30_000)
           .then(() => true)
           .catch(() => false);
+        // Phase 2. Answer it the way pi documents, and see the turn close.
+        if (dialog && !endedUnanswered) {
+          rpc.send({ type: 'extension_ui_response', id: dialog.id, value: 'Deny' });
+          endedAfterDeny = await waitFor('the answered turn to end', () => (settles() > 0 ? true : undefined), 60_000)
+            .then(() => true)
+            .catch(() => false);
+          const ended = rpc.events.find((e) => e?.type === 'tool_execution_end');
+          denied = ended ? { isError: ended.isError, text: JSON.stringify(ended.result).slice(0, 300) } : 'the turn ended with no tool_execution_end';
+        }
       }
-      const ended = rpc.events.find((e) => e?.type === 'tool_execution_end');
-      if (ended) toolOutcome = { isError: ended.isError, text: JSON.stringify(ended.result).slice(0, 400) };
     } finally {
       await rpc.close();
     }
-    const text = JSON.stringify(toolOutcome);
     const checks: Check[] = [
       { name: 'project A is free before this client connects', required: "the previous client's ownership was released", observed: free.occupied ? `still occupied after ${free.freeAfterMs} ms` : `free after ${free.freeAfterMs} ms`, ok: !free.occupied },
-      { name: 'the gated call does not hang', required: 'the turn reaches `agent_settled` inside the bound', observed: settledInTime ? 'settled' : 'did not settle inside 90 s', ok: settledInTime },
-      { name: 'the refusal names approval as the reason', required: 'the model is told the call needs approval, not a generic failure', observed: toolOutcome, ok: /approv/i.test(text) },
+      {
+        name: 'the gate names what it is asking for',
+        required: 'a dialog naming the server and the tool, not a generic failure',
+        observed: dialog ? { method: dialog.method, title: String(dialog.title ?? '').slice(0, 120), options: dialog.options } : 'no approval dialog was emitted',
+        ok: dialog !== undefined && /xezar/.test(String(dialog.title ?? '')) && /health/.test(String(dialog.title ?? '')),
+      },
+      {
+        name: 'the gated call does not hang when nobody can answer',
+        required: 'the turn ends on its own — a leader reacting to an event has nobody at the keyboard (PI-08: "not a hang")',
+        observed: {
+          turnEnded: endedUnanswered,
+          // pi auto-resolves a dialog ONLY when the request carries `timeout` (docs/rpc.md § Extension
+          // UI Requests). Read from the frame, so the cause is in the record and not inferred.
+          dialogTimeout: dialog === undefined ? 'no dialog' : (dialog.timeout ?? 'absent — pi will not auto-resolve'),
+        },
+        ok: endedUnanswered,
+      },
+      {
+        name: 'answering it closes the turn, and the refusal is reported',
+        required: '`extension_ui_response` with `Deny` ends the turn and the model is told the call was refused',
+        observed: { endedAfterDeny, result: denied },
+        ok: endedAfterDeny && /den|refus|not allow|reject/i.test(JSON.stringify(denied)),
+      },
     ];
     const entry = record({
       case: 'A-01',
       client: 'pi (approveTools)',
       verdict: verdictOf(checks),
-      summary: checks.every((c) => c.ok) ? 'a gated tool call ended and named approval as the reason' : `the gated call: ${text.slice(0, 200)}`,
+      summary: endedUnanswered
+        ? 'a gated tool call ended on its own and named approval as the reason'
+        : 'a gated tool call BLOCKS: pi emits a named approval dialog with no `timeout` and waits for an answer that a headless leader has nobody to give',
+      ...(endedUnanswered
+        ? {}
+        : {
+            missing:
+              "an answerer for pi's extension-UI dialogs, or setup guidance that says not to gate xezar's tools. pi's `docs/rpc.md` says a dialog blocks until the client sends `extension_ui_response`, and auto-resolves only with a `timeout` this one does not carry. Nothing in xezar answers one: `core/pi-runner.ts`, `scripts/pi-leader-extension.ts` and `mcp/adapters/pi.ts` never mention `extension_ui_request`. Answering `Deny` here did end the turn, so the block is an unanswered dialog and not a lost call.",
+          }),
       checks,
       transcripts: [transcript.name],
       fixture: { pi: `${fx.clients.pi.version} + pi-mcp-adapter ${fx.piInstall!.version}`, setting: "the xezar entry's `approveTools: ['health']`, headless RPC session (nobody to approve)" },
