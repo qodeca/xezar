@@ -34,6 +34,11 @@ import { McpJournalCursorError, type EventJournal } from './event-journal.ts';
  *   So a burst of N rows appended in one tick reaches the adapter as `ceil(N / 100)` dispatches,
  *   each row intact and in `journalSeq` order, and rows that arrive while a dispatch is in flight
  *   go out together in the next one.
+ * WHOSE FACTS ARE WHOSE. This controller serves one SESSION, and its cursors belong to the project's
+ * journal. Whether the leader is reachable is a fact about the LEADER, so it is not kept here: the
+ * adapter records it (`LeaderDelivery`), and it therefore survives a session change and is never
+ * inherited by a leader that has just been attached (QA on #311, round five, both directions).
+ *
  * - **Delivery is not reaction (F-20).** `deliver` hands rows to the client application and is
  *   non-model. Whether a model turn then starts is the adapter's own, client-specific decision, and
  *   it reports that separately through `recordReaction`. The three D-05 § 6.6 cursors are kept
@@ -155,18 +160,6 @@ export interface DeliveryReceipt {
   readonly handedThrough: number | null;
 }
 
-/**
- * Delivery FACTS, recorded where attempts really succeed or fail — not inferred from the state
- * machine (QA on #311, round four: a status derived from states it did not enumerate read "nothing
- * wrong" through every `dispatching`/`recovering` round of a hung leader).
- */
-export interface EventControllerHealth {
-  /** A row is owed and not yet settled (handed over, or deliberately not sent as the leader's own). */
-  owed: boolean;
-  /** When the most recent attempt — a delivery or a liveness probe — failed, with none succeeding since; else null. */
-  failingSince: number | null;
-}
-
 export type EventControllerState = 'inert' | 'idle' | 'dispatching' | 'recovering' | 'disconnected' | 'ended';
 
 export interface EventControllerStatus {
@@ -266,10 +259,6 @@ export class EventController {
    * STARTS, not something that happened, so no status field ever reports it (#332, QA on #311).
    */
   #floor = 0;
-  /** The newest row SETTLED this session: handed over, or deliberately not sent (the leader's own echo). */
-  #handled = 0;
-  /** A fact, not a state: when the last attempt failed with no success since (see `health()`). */
-  #failingSince: number | null = null;
   /** The newest row this session has handed to `deliver`, delivered or still in flight. */
   #handedOut = 0;
   #recovery: EventRecovery | undefined;
@@ -338,18 +327,6 @@ export class EventController {
       ackedSeq: this.#ackedNow(),
       reactedSeq: this.#reacted,
       latestSeq: this.#journal.latestSeq,
-    };
-  }
-
-  /**
-   * Facts about delivery right now, independent of which state the controller happens to be in. A
-   * reader decides from these, never from `state`: a hung transport spends most of its failing time
-   * in `dispatching` and `recovering`, not `disconnected`.
-   */
-  health(): EventControllerHealth {
-    return {
-      owed: this.#active() && this.#journal.latestSeq > Math.max(this.#handled, this.#floor),
-      failingSince: this.#failingSince,
     };
   }
 
@@ -480,7 +457,6 @@ export class EventController {
         this.#position = next.nextCursor;
         this.#recovery = undefined;
         if (next.lastSeq !== undefined) {
-          this.#handled = Math.max(this.#handled, next.lastSeq);
           // Only rows REALLY handed over count as delivered; a receipt says which (the leader's own
           // echoes are settled but never delivered). A redelivery never lowers the count.
           const handed = delivered.receipt === undefined ? next.lastSeq : delivered.receipt.handedThrough;
@@ -530,7 +506,7 @@ export class EventController {
 
   /**
    * One bounded recovery round over the SAME rows. No attempt can start a turn on its own. Every
-   * attempt's outcome is recorded as a fact (`#failingSince`) the moment it is known.
+   * attempt's outcome is a fact about the LEADER, and the adapter records it (`LeaderDelivery`).
    */
   async #deliverBounded(dispatch: EventDispatch): Promise<{ receipt: DeliveryReceipt | undefined } | false> {
     const adapter = this.#adapter!;
@@ -538,7 +514,6 @@ export class EventController {
       if (!this.#active()) return false;
       this.#state = attempt === 0 ? 'dispatching' : 'recovering';
       const outcome = await this.#attempt((signal) => adapter.deliver(dispatch, signal));
-      this.#recordOutcome(outcome.ok);
       if (outcome.ok) return { receipt: outcome.value === undefined ? undefined : outcome.value };
       if (attempt < EVENT_DELIVERY_ATTEMPTS - 1) {
         await this.#sleep(this.#random() * Math.min(EVENT_DELIVERY_BACKOFF_CAP_MS, BACKOFF_BASE_MS * 2 ** attempt));
@@ -584,7 +559,6 @@ export class EventController {
     if (probe === undefined || this.#state !== 'idle' || this.#busy) return;
     this.#busy = true;
     const alive = (await this.#attempt((signal) => probe.call(this.#adapter, signal))).ok;
-    this.#recordOutcome(alive);
     if (this.#active() && !alive) this.#state = 'disconnected';
     this.#release();
   }
@@ -629,7 +603,6 @@ export class EventController {
       if (this.#position === undefined) this.#floor = Math.min(Math.max(this.#floor, 0), firstRetained - 1);
       this.#recovery = this.#gap();
     }
-    this.#handled = this.#floor;
     this.#persist();
   }
 
@@ -642,12 +615,6 @@ export class EventController {
     } catch {
       return { seq: 0, sameEpoch: true }; // an unreadable record owes everything retained: at-least-once, never a skipped row
     }
-  }
-
-  /** The fact behind `health().failingSince`: set at the first failure, cleared by the next success. */
-  #recordOutcome(ok: boolean): void {
-    if (ok) this.#failingSince = null;
-    else this.#failingSince ??= Date.now();
   }
 
   /** The explicit acknowledgement as its owner records it now; 0 when there is none. */

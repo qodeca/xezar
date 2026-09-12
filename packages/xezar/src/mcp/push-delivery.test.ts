@@ -30,10 +30,11 @@ import { tools } from './tools/index.ts';
  * xezar starts no agent process (owner decision on #311): the person runs their own leader and
  * connects it over MCP, and the only leader an event can be PUSHED to is one they attach — today an
  * OpenCode `serve` session. The one stand-in here is that server: a fake `opencode serve` that
- * answers the routes the OpenCode adapter calls and records every `prompt_async`. It never answers
- * as a model, so nothing here is a model REACTION (A-19's second half) — only delivery: rows that
- * left the journal and reached the leader's session. The leader's MCP tool calls go through the
- * in-process bridge, the connection that owns the project, as OpenCode's own `xezar` MCP server would.
+ * answers the routes the OpenCode adapter calls and records every `prompt_async`. It starts a turn
+ * only where a case asks it to (`control.react`), and a scripted turn is not a real model's reaction,
+ * so A-19's second half stays unproven here; everything else is delivery: rows that left the journal
+ * and reached the leader's session. The leader's MCP tool calls go through the in-process bridge, the
+ * connection that owns the project, as OpenCode's own `xezar` MCP server would.
  *
  * Before #309 nothing in the service constructed an `EventController` or any adapter, so every
  * assertion on a delivered row below fails there — and the route answers 404.
@@ -95,7 +96,7 @@ async function fakeOpenCode(directory: string) {
    * `failPrompts`: answer every submission with a 500 — delivery failing for no nameable reason.
    * `hangPrompts`: accept every submission and never answer — a paused or hung `opencode serve`.
    */
-  const control = { failPrompts: false, hangPrompts: false };
+  const control = { failPrompts: false, hangPrompts: false, hangSession: false, react: false };
   const streams = new Set<ServerResponse>();
   const history: unknown[] = [];
   const server: Server = createServer((req: IncomingMessage, res: ServerResponse) => {
@@ -114,7 +115,8 @@ async function fakeOpenCode(directory: string) {
         res.on('close', () => streams.delete(res));
         return;
       }
-      if (route === `GET /session/${SESSION}`) return json(200, { id: SESSION, directory });
+      // `hangSession` hangs the liveness read only: the leader stops answering with nothing waiting.
+      if (route === `GET /session/${SESSION}`) return control.hangSession ? undefined : json(200, { id: SESSION, directory });
       if (route === 'GET /session/status') return json(200, {});
       if (route === 'GET /permission' || route === 'GET /question') return json(200, []);
       if (route === `GET /session/${SESSION}/message`) return json(200, history);
@@ -123,8 +125,22 @@ async function fakeOpenCode(directory: string) {
         if (control.hangPrompts) return; // accepted, never answered: the client's own timeout ends it
         const body = JSON.parse(raw) as Submission;
         submissions.push(body);
-        history.push({ info: { id: `msg_${submissions.length}`, role: 'user' }, parts: body.parts });
+        const messageId = 'msg_' + submissions.length;
+        history.push({ info: { id: messageId, role: 'user' }, parts: body.parts });
+        const emit = (type: string, properties: Record<string, unknown>): void => {
+          for (const stream of streams) stream.write(`data: ${JSON.stringify({ type, properties })}\n\n`);
+        };
+        // The submission's own frames, as OpenCode emits them: this is how the adapter learns which
+        // message to watch for a turn.
+        emit('message.updated', { sessionID: SESSION, info: { id: messageId, sessionID: SESSION, role: 'user' } });
+        for (const part of body.parts) emit('message.part.updated', { sessionID: SESSION, part: { ...part, sessionID: SESSION, messageID: messageId } });
         res.writeHead(204).end();
+        // `react`: OpenCode starts a turn answering the submission — the reaction the adapter watches for.
+        if (control.react) {
+          const assistant = 'asst_' + submissions.length;
+          history.push({ info: { id: assistant, role: 'assistant', parentID: messageId }, parts: [] });
+          emit('message.updated', { sessionID: SESSION, info: { id: assistant, sessionID: SESSION, role: 'assistant', parentID: messageId } });
+        }
         return;
       }
       json(404, { name: 'NotFoundError', route });
@@ -596,6 +612,110 @@ describe('#309 — push delivery in the running service (A-19 delivery, A-20 no-
     await until('the human row to be pushed', () => (oc.delivered().includes(human.eventId) ? true : undefined));
     await until('the count to follow', async () => ((await c.status()) as { delivery: { deliveredSeq: number } }).delivery.deliveredSeq === human.journalSeq || undefined);
     expect(oc.delivered()).toEqual([human.eventId]);
+  }, 60_000);
+
+  it('QA on #311, round five: a leader just attached inherits no failure from what the session did before it', async () => {
+    const c = await cockpit();
+    const oc = await fakeOpenCode(c.root);
+    await serve(c);
+    // A session runs for several heartbeats with nothing attached: every probe fails with "no leader".
+    const leader = agent(c.root);
+    okResult(await leader.call('leader_events', { action: 'read' }));
+    await until('the controller', async () => ((await c.status()) as { delivery: { state: string } | null }).delivery?.state !== undefined || undefined);
+    await new Promise((r) => setTimeout(r, 1_600));
+    expect(await c.status()).toMatchObject({ leader: null, blocker: { code: 'no-leader-session' } });
+
+    // Attaching a healthy leader: nothing has ever failed against IT, so nothing is reported about it.
+    expect((await attach(c, oc.baseUrl)).status).toBe(200);
+    const samples: Array<string | null> = [];
+    const end = Date.now() + 1_500;
+    while (Date.now() < end) {
+      const st = await c.status();
+      if (st.available) samples.push(st.blocker?.code ?? null);
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    expect(samples.filter((code) => code !== null), 'a fresh leader was blamed for the session’s earlier probes').toEqual([]);
+  }, 60_000);
+
+  it('QA on #311, round five: a failure observed against a leader survives its MCP session being replaced', async () => {
+    const c = await cockpit();
+    const oc = await fakeOpenCode(c.root);
+    await serve(c);
+    const first = agent(c.root);
+    okResult(await first.call('leader_events', { action: 'read' }));
+    expect((await attach(c, oc.baseUrl)).status).toBe(200);
+
+    // The leader stops answering while a row waits.
+    oc.control.hangPrompts = true;
+    expect((await c.human('PUT', '/config', { baseBranch: 'develop' })).status).toBe(200);
+    await until('the failure to be observed', async () => ((await c.status()) as { blocker: { code: string } | null }).blocker?.code === 'delivery-failing' || undefined);
+
+    // The session is replaced; the leader is the same, and still hung.
+    await first.end();
+    await until('the old controller to end', async () => ((await c.status()) as { delivery: unknown }).delivery === null || undefined);
+    const second = agent(c.root);
+    okResult(await second.call('leader_events', { action: 'read' }));
+    await until('the new controller', async () => ((await c.status()) as { delivery: unknown }).delivery !== null || undefined);
+    const samples: Array<string | null> = [];
+    const end = Date.now() + 1_200;
+    while (Date.now() < end) {
+      const st = await c.status();
+      if (st.available) samples.push(st.blocker?.code ?? null);
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    expect(samples.filter((code) => code !== 'delivery-failing'), 'a still-hung leader read as healthy after a session change').toEqual([]);
+
+    // And it clears when the leader answers again.
+    oc.control.hangPrompts = false;
+    const ok = await until('delivery to recover', async () => {
+      const st = await c.status();
+      return st.available && st.blocker === null && st.delivery?.deliveredSeq === st.delivery?.latestSeq ? st : undefined;
+    });
+    expect(ok.available && ok.delivery?.deliveredSeq).toBe(1);
+  }, 60_000);
+
+  it('QA on #311, round five: a leader that stops answering with nothing waiting reads leader-not-answering', async () => {
+    const c = await cockpit();
+    const oc = await fakeOpenCode(c.root);
+    await serve(c);
+    const leader = agent(c.root);
+    okResult(await leader.call('leader_events', { action: 'read' }));
+    expect((await attach(c, oc.baseUrl)).status).toBe(200);
+    expect(await c.status()).toMatchObject({ blocker: null });
+
+    // Nothing is waiting; the leader stops answering the liveness read the heartbeat makes.
+    oc.control.hangSession = true;
+    const stated = await until('the liveness failure to be reported', async () => {
+      const st = await c.status();
+      return st.available && st.blocker !== null ? st : undefined;
+    });
+    expect(stated.available && stated.blocker).toMatchObject({ code: 'leader-not-answering' });
+    expect(stated.available && stated.delivery?.latestSeq).toBe(0);
+
+    // It answers again: the next probe clears it.
+    oc.control.hangSession = false;
+    await until('the blocker to clear', async () => (((await c.status()) as { blocker: unknown }).blocker === null ? true : undefined));
+  }, 60_000);
+
+  it('records a reaction only when the leader’s session really starts a turn carrying the row (F-20)', async () => {
+    const c = await cockpit();
+    const oc = await fakeOpenCode(c.root);
+    await serve(c);
+    const leader = agent(c.root);
+    okResult(await leader.call('leader_events', { action: 'read' }));
+    expect((await attach(c, oc.baseUrl)).status).toBe(200);
+
+    // This OpenCode answers the submission with a turn of its own — the reaction the adapter watches
+    // for. It is scripted, so it proves the wiring, not what a real model decides.
+    oc.control.react = true;
+    expect((await c.human('PUT', '/config', { baseBranch: 'develop' })).status).toBe(200);
+    const r = journalRows(c.dataDir).find((row) => row.kind === 'config.changed')!;
+    const reacted = await until('the reaction to be recorded', async () => {
+      const st = await c.status();
+      return st.available && st.delivery?.reactedSeq === r.journalSeq ? st : undefined;
+    });
+    expect(reacted.available && reacted.delivery).toMatchObject({ deliveredSeq: r.journalSeq, reactedSeq: r.journalSeq, ackedSeq: 0 });
+    expect(reacted.available && reacted.blocker).toBeNull();
   }, 60_000);
 
   it('starts no agent process: `start` and `resume` do not exist, for any client (owner decision on #311)', async () => {

@@ -87,24 +87,26 @@ const NO_OWNER_SESSION: McpLeaderBlocker = {
 };
 
 /**
- * An attempt to hand events to the attached leader has failed, nothing has succeeded since, and
- * events are waiting — a refused request, a dropped connection, a server that accepts and never
- * answers. Reported from the controller's recorded FACTS (`health()`), in whatever state it is in:
- * a hung leader keeps it in `dispatching`/`recovering` for most of a round, and a status derived from
- * `disconnected` alone read "nothing wrong" through all of it (QA on #311, round four).
+ * Events are waiting and the last attempt to hand them to THIS leader did not get through — a
+ * refused request, a dropped connection, a server that accepts and never answers, or a leader busy
+ * in a long turn. xezar cannot tell those apart (the adapter waits for the session to be free, and a
+ * long turn looks exactly like silence), so the text names both and diagnoses neither (QA on #311,
+ * round five). The fact behind it is recorded against the LEADER, so it survives a session change and
+ * is never inherited by a leader that has just been attached.
  */
 const DELIVERY_FAILING: McpLeaderBlocker = {
   code: 'delivery-failing',
   message:
-    'Events are waiting, and the last attempt to hand them to the attached leader failed; xezar keeps retrying while this MCP session owns the project. Nothing is lost: the events stay in the journal.',
-  fix: 'Check that `opencode serve` is running and answering (a paused or hung process accepts connections but never answers), or attach the session again.',
+    'Events are waiting, and the last attempt to hand them to the attached leader did not get through. It may be busy in a long turn, or it may have stopped answering — xezar cannot tell those apart, and keeps retrying while this MCP session owns the project. Nothing is lost: the events stay in the journal.',
+  fix: 'If the leader is working, nothing is needed: the events go as soon as it is free. Otherwise check that `opencode serve` is running and answering (a paused process still accepts connections), or attach the session again.',
 };
 
-/** The same fact with nothing waiting: the attached leader failed its liveness check. */
+/** The same fact with nothing waiting: the leader did not answer xezar’s last liveness check. */
 const LEADER_NOT_ANSWERING: McpLeaderBlocker = {
   code: 'leader-not-answering',
-  message: 'The attached leader did not answer xezar’s last liveness check. Nothing is waiting right now, but the next event would not reach it.',
-  fix: 'Check that `opencode serve` is running and answering, or attach the session again.',
+  message:
+    'The attached leader did not answer xezar’s last liveness check — it may be busy, or gone. Nothing is waiting right now; the next event would be retried until it answers.',
+  fix: 'If the leader is working, nothing is needed. Otherwise check that `opencode serve` is running and answering, or attach the session again.',
 };
 
 /** #309 O-3: a journal that records nothing has nothing to deliver, so a leader would never hear a thing. */
@@ -132,13 +134,27 @@ export interface LeaderDeliveryOptions {
   readonly heartbeatMs?: number;
 }
 
+/**
+ * One attached leader, with the FACTS observed against IT (QA on #311, round five). They live here,
+ * with the leader, not on the owner session's controller: a failure seen against this leader survives
+ * the session being replaced, and a leader just attached inherits no history from whatever the
+ * session did before it existed. A new `attach` makes a new record, so nothing carries over.
+ */
+interface AttachedLeader {
+  readonly adapter: OpenCodeReactionAdapter;
+  /** When the first attempt against this leader failed with none succeeding since; else null. */
+  failingSince: number | null;
+  /** The newest row settled against it: handed over, or dropped because the leader caused it. */
+  settledThrough: number;
+}
+
 export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
   readonly projectId: string;
   readonly #opts: LeaderDeliveryOptions;
   /** Keyed by the transport's session key. At most one is live: the project has one owner. */
   readonly #controllers = new Map<string, EventController>();
-  /** The attached OpenCode session's adapter, if any. xezar never started it and never stops it. */
-  #leader: OpenCodeReactionAdapter | undefined;
+  /** The attached OpenCode session and the facts observed against it. xezar never started it. */
+  #leader: AttachedLeader | undefined;
   /** One `act` at a time: two concurrent attaches must not leave two adapters behind. */
   #acting: Promise<unknown> = Promise.resolve();
   #closed = false;
@@ -185,17 +201,55 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     const leader = this.#leader;
     if (leader === undefined) throw new Error(NO_LEADER.message);
     const events = dispatch.events.filter((row) => !this.#isEcho(row));
+    const last = dispatch.events.at(-1)?.journalSeq;
     // Only the leader's own echoes: nothing to tell it, so nothing is handed over — and the receipt
-    // says so, so deliveredSeq never counts a row the leader was not sent (QA on #311).
-    if (events.length === 0 && dispatch.recovery === undefined) return { handedThrough: null };
-    await leader.deliver({ ...dispatch, events }, signal);
+    // says so, so deliveredSeq never counts a row the leader was not sent (QA on #311). It is still
+    // settled, so nothing is waiting for it.
+    if (events.length === 0 && dispatch.recovery === undefined) {
+      if (last !== undefined) leader.settledThrough = Math.max(leader.settledThrough, last);
+      return { handedThrough: null };
+    }
+    await this.#observed(leader, signal, () => leader.adapter.deliver({ ...dispatch, events }, signal));
+    if (last !== undefined) leader.settledThrough = Math.max(leader.settledThrough, last);
     return { handedThrough: events.at(-1)?.journalSeq ?? null };
   }
 
   async heartbeat(signal: AbortSignal): Promise<void> {
     const leader = this.#leader;
     if (leader === undefined) throw new Error(NO_LEADER.message);
-    await leader.heartbeat(signal);
+    await this.#observed(leader, signal, () => leader.adapter.heartbeat(signal));
+  }
+
+  /**
+   * Run one attempt against `leader` and record how it went, AGAINST THAT LEADER: the first failure
+   * with none succeeding since, cleared by the next success. An attempt the caller abandons (its
+   * signal aborts — a server that accepts and never answers) counts as a failure, and a late success
+   * after that abort does not clear it.
+   */
+  async #observed<T>(leader: AttachedLeader, signal: AbortSignal, call: () => Promise<T>): Promise<T> {
+    let abandoned = signal.aborted;
+    const onAbort = (): void => {
+      abandoned = true;
+      leader.failingSince ??= Date.now();
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+    try {
+      const value = await call();
+      if (!abandoned) leader.failingSince = null;
+      return value;
+    } catch (err) {
+      leader.failingSince ??= Date.now();
+      throw err;
+    } finally {
+      signal.removeEventListener('abort', onAbort);
+    }
+  }
+
+  /** Is a row waiting for the attached leader? Its own settled position, and what the leader acknowledged. */
+  #owed(leader: AttachedLeader): boolean {
+    const owedAfter = this.#opts.leaderRecord?.owedAfter();
+    const acknowledged = owedAfter?.sameEpoch === true ? owedAfter.seq : 0;
+    return this.#opts.journal.latestSeq > Math.max(leader.settledThrough, acknowledged);
   }
 
   // ---- the cockpit's side: `ProjectLeaderPort` -----------------------------------------------
@@ -238,13 +292,18 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     if (!this.#opts.journal.writable) return { ok: false, error: JOURNAL_UNWRITABLE.message };
     // Re-attaching replaces the previous target; xezar owns no process, so nothing else changes.
     this.#detach();
-    this.#leader = new OpenCodeReactionAdapter({
-      target: { baseUrl: input.baseUrl, sessionId: input.sessionId },
-      projectRoot: this.#opts.projectRoot,
-      roleInstruction: LEADER_ROLE_INSTRUCTION,
-      onReaction: (seq) => this.#recordReaction(seq),
-      ...this.#ownOperation(),
-    });
+    // A new leader with no history: whatever happened before it was attached was not about it.
+    this.#leader = {
+      adapter: new OpenCodeReactionAdapter({
+        target: { baseUrl: input.baseUrl, sessionId: input.sessionId },
+        projectRoot: this.#opts.projectRoot,
+        roleInstruction: LEADER_ROLE_INSTRUCTION,
+        onReaction: (seq) => this.#recordReaction(seq),
+        ...this.#ownOperation(),
+      }),
+      failingSince: null,
+      settledThrough: 0,
+    };
     // Deliver now, not at the next heartbeat.
     this.#liveController()?.wake();
     return { ok: true, status: this.status() };
@@ -252,7 +311,7 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
 
   /** Stop talking to the attached session. The OpenCode process and session are the person's. */
   #detach(): void {
-    this.#leader?.close();
+    this.#leader?.adapter.close();
     this.#leader = undefined;
   }
 
@@ -291,15 +350,14 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     // Attached, but nobody owns the project: no controller, so nothing is delivered (#331).
     const controller = this.#liveController();
     if (controller === undefined) return NO_OWNER_SESSION;
-    const blocker = leader.status().blocker;
+    const blocker = leader.adapter.status().blocker;
     if (blocker) {
       return { code: blocker.code, message: blocker.message, fix: 'Check that `opencode serve` is running in this project and the session id is right, then attach it again.' };
     }
-    // From FACTS the controller recorded, never from its state machine (QA on #311, round four): a
-    // failed attempt with no success since is a blocker in `dispatching`, `recovering` and
-    // `disconnected` alike. `state` is shown, and decides nothing.
-    const health = controller.health();
-    if (health.failingSince !== null) return health.owed ? DELIVERY_FAILING : LEADER_NOT_ANSWERING;
+    // From FACTS observed against THIS leader, never from the controller's state machine (rounds four
+    // and five): a failed attempt with no success since is a blocker in every state, it survives the
+    // session being replaced, and a leader just attached has none. `state` is shown, and decides nothing.
+    if (leader.failingSince !== null) return this.#owed(leader) ? DELIVERY_FAILING : LEADER_NOT_ANSWERING;
     return null;
   }
 }
