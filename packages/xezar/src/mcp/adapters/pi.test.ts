@@ -464,7 +464,7 @@ describe('what the model is told (§ 12, F-15)', () => {
     await settle();
     pi.finishTurn();
 
-    await adapter.deliver(dispatch([row(1)], { recovery: { message: 'rows were dropped', oldestSeq: 4, latestSeq: 9 } }), live());
+    await adapter.deliver(dispatch([row(1)], { recovery: { required: 'current-state', message: 'rows were dropped', oldestSeq: 4, latestSeq: 9 } }), live());
     await settle();
     expect(pi.modelRequests).toHaveLength(2);
     expect(pi.modelRequests[1]).toContain('rows were dropped');
@@ -647,21 +647,21 @@ describe('lines pi can really send that are not a reaction', () => {
   });
 
   it('renders a versioned subject, and a gap with no retained rows at all', () => {
-    const versioned = row(1, { subject: { type: 'run', id: 'run-1', version: 7 } });
+    const versioned = row(1, { subject: { type: 'run', id: 'run-1', version: 'v7' } });
     const text = renderPiDispatch(
-      dispatch([versioned], { recovery: { message: 'the journal was recreated', oldestSeq: null, latestSeq: 4 } }),
+      dispatch([versioned], { recovery: { required: 'current-state', message: 'the journal was recreated', oldestSeq: null, latestSeq: 4 } }),
       [versioned],
       ROLE,
       'xezar-event:xez330:tag:1',
     );
-    expect(text).toContain('run run-1 @7');
+    expect(text).toContain('run run-1 @v7');
     expect(text).toContain('oldest retained none');
   });
 
   it('a recovery-only submission carries an empty row list, and the next dispatch is not confused by it', async () => {
     const pi = new FakePi();
     const adapter = adapterOn(pi);
-    await adapter.deliver(dispatch([], { recovery: { message: 'rows were dropped', oldestSeq: 2, latestSeq: 8 } }), live());
+    await adapter.deliver(dispatch([], { recovery: { required: 'current-state', message: 'rows were dropped', oldestSeq: 2, latestSeq: 8 } }), live());
     await settle();
     expect(pi.modelRequests[0]).toContain('rows=');
     expect(pi.modelRequests[0]).toContain('rows were dropped');
