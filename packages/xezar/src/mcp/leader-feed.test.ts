@@ -17,6 +17,7 @@ import { runBridge } from './bridge.ts';
 import { resolveMcpTarget, startMcpService } from './index.ts';
 import { LineFramer, encodeFrame, type McpToolResult } from './ipc.ts';
 import { tools } from './tools/index.ts';
+import { withOperationId } from './tools/operation-id.testkit.ts';
 
 /**
  * #251 and #252, against the REAL composed service: the real `runBridge` over the real project
@@ -126,7 +127,7 @@ function agent(root: string) {
     const id = next++;
     return new Promise((resolve) => {
       pending.set(id, resolve);
-      input.write(encodeFrame({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } }));
+      input.write(encodeFrame({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: withOperationId(name, args) } }));
     });
   };
   return {
@@ -322,9 +323,13 @@ describe('#252 — a human change to config, a workflow or agent config reaches 
     await serve(c);
     const leader = agent(c.root);
 
-    const set = await leader.call('project_config', { action: 'set_config', config: { baseBranch: 'develop' } });
+    const set = await leader.call('project_config', { action: 'set_config', operationId: 'op-e05-config-1', config: { baseBranch: 'develop' } });
     expect(set.isError, JSON.stringify(set)).toBeFalsy();
-    const saved = await leader.call('project_config', { action: 'save_workflow', workflow: { name: 'from-leader', steps: STEPS } });
+    const saved = await leader.call('project_config', {
+      action: 'save_workflow',
+      operationId: 'op-e05-workflow-1',
+      workflow: { name: 'from-leader', steps: STEPS },
+    });
     expect(saved.isError, JSON.stringify(saved)).toBeFalsy();
 
     const rows = e05(c.dataDir);
@@ -332,7 +337,9 @@ describe('#252 — a human change to config, a workflow or agent config reaches 
       ['config.changed', 'leader'],
       ['workflow.saved', 'leader'],
     ]);
-    for (const row of rows) expect(row.causedBy).toMatch(/^mcp-door\./);
+    // #264: the change now names the leader's OWN operation key, not a key the door minted for it,
+    // so the row and the receipt the leader can replay point at the same operation.
+    expect(rows.map((row) => row.causedBy)).toEqual(['op-e05-config-1', 'op-e05-workflow-1']);
   });
 
   it('writes no row and never fails the write for a project with no catalog', async () => {

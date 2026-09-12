@@ -196,9 +196,9 @@ describe('A-20 — the open cockpit follows MCP changes without a reload', () =>
     const title = `Renamed by the leader ${Date.now()}`
     const leader = await Leader.open()
     try {
-      // A write carries the version of the leader's own read (#250).
+      // A write carries the version of the leader's own read (#250) and its own operation key (#264).
       const read = JSON.parse(await leader.call('task_read', { view: 'task', taskId: runId }))
-      await leader.call('organise_work', { action: 'set_title', runId, title, expectedVersion: read.version })
+      await leader.call('organise_work', { action: 'set_title', runId, title, expectedVersion: read.version, operationId: 'op-live-sync-rename' })
     } finally {
       await leader.close()
     }
@@ -218,9 +218,15 @@ describe('A-20 — the open cockpit follows MCP changes without a reload', () =>
     const title = `Renamed across a reconnect ${Date.now()}`
     const leader = await Leader.open()
     try {
-      // A write carries the version of the leader's own read (#250).
+      // A write carries the version of the leader's own read (#250) and its own operation key (#264).
       const read = JSON.parse(await leader.call('task_read', { view: 'task', taskId: runId }))
-      await leader.call('organise_work', { action: 'set_title', runId, title, expectedVersion: read.version })
+      await leader.call('organise_work', {
+        action: 'set_title',
+        runId,
+        title,
+        expectedVersion: read.version,
+        operationId: 'op-live-sync-reconnect-rename',
+      })
     } finally {
       await leader.close()
     }

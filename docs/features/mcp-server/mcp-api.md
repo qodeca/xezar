@@ -69,15 +69,15 @@ The `expectedVersion` and `operationId` columns read:
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `health` | xezar health | Report whether the xezar cockpit is running for the project this session was started in, and which project that is. | yes | not set | yes | no | — | — |
 | `task_read` | Read tasks | Read this project’s tasks. | yes | no | yes | no | — | — |
-| `execution_control` | Control a task and talk to its session | Control one of this project's own tasks, as the cockpit's buttons and composer do. | no | yes | no | no | required | — |
+| `execution_control` | Control a task and talk to its session | Control one of this project's own tasks, as the cockpit's buttons and composer do. | no | yes | no | no | required | required |
 | `discover_project` | Discover the bound project | Read which xezar project this session is bound to, its effective capabilities and limits, and which actions are available. | yes | not set | yes | no | — | — |
-| `organise_work` | Organise tasks | Organise this project's tasks the way the xezar cockpit does. | no | yes | no | no | some actions | — |
+| `organise_work` | Organise tasks | Organise this project's tasks the way the xezar cockpit does. | no | yes | no | no | some actions | some actions |
 | `task_create` | Create or plan a task | Create a task in this project with the New task form's options, defaults and validation, plan one first, start an Inbox entry, or save a planned step list as a workflow. | no | no | no | no | — | required |
-| `handoff_git` | Hand work onward: commit, push, draft PR, ready, merge, branches | Hand a task's work onward through the cockpit's own operations: commit a task's worktree, push its branch, open its draft pull request, mark a draft pull request ready for review, read a pull request's merge readiness, invoke the existing merge, and switch or create branches of the main checkout. | not set | yes | not set | yes | some actions | — |
+| `handoff_git` | Hand work onward: commit, push, draft PR, ready, merge, branches | Hand a task's work onward through the cockpit's own operations: commit a task's worktree, push its branch, open its draft pull request, mark a draft pull request ready for review, read a pull request's merge readiness, invoke the existing merge, and switch or create branches of the main checkout. | not set | yes | not set | yes | some actions | some actions |
 | `read_results_evidence` | Read task results and evidence | Read what a task produced and the project's GitHub state, each answer identified by the revision it describes. | yes | no | yes | yes | — | — |
-| `project_config` | Project configuration | Read and change THIS project's own configuration: its settings (agent, models, system prompt, review gate, base branch, worktree retention, memory limit), its registry entry (concurrency cap and tags), prompt templates, in-repo agent config files, workflows, skills, GitHub automations and worktrees. | no | yes | no | no | some actions | — |
-| `local_handoff` | Open a task or the project in an app on the xezar host | Hand a task or the project off to a desktop app — a terminal resuming the task’s agent session, an editor, the file manager. | no | no | no | no | — | — |
-| `leader_events` | Read and acknowledge project events | Read this project's significant events (task outcomes, questions, quality gates, human changes, executor availability) since you last acknowledged them, and acknowledge them. | no | no | yes | no | — | — |
+| `project_config` | Project configuration | Read and change THIS project's own configuration: its settings (agent, models, system prompt, review gate, base branch, worktree retention, memory limit), its registry entry (concurrency cap and tags), prompt templates, in-repo agent config files, workflows, skills, GitHub automations and worktrees. | no | yes | no | no | some actions | some actions |
+| `local_handoff` | Open a task or the project in an app on the xezar host | Hand a task or the project off to a desktop app — a terminal resuming the task’s agent session, an editor, the file manager. | no | no | no | no | — | some actions |
+| `leader_events` | Read and acknowledge project events | Read this project's significant events (task outcomes, questions, quality gates, human changes, executor availability) since you last acknowledged them, and acknowledge them. | no | no | yes | no | — | some actions |
 <!-- mcp-api:tools:end -->
 
 ## Arguments
@@ -137,6 +137,7 @@ Unknown arguments are rejected.
 | `action` | `cancel` \| `finish` \| `continue` \| `send_message` \| `answer_question` \| `edit_queued_message` \| `remove_queued_message` \| `cancel_auto_resume` | yes |  | What to do with the task. |
 | `runId` | string | yes | min length 1, max length 128 | The task's run id, in the project this connection is bound to. |
 | `expectedVersion` | string | yes | min length 1, max length 512 | The `version` task_read returned for this task. Echo it verbatim; if the task changed since, nothing is applied. |
+| `operationId` | string | yes | min length 8, max length 128, pattern `^[A-Za-z0-9_.:-]+$` | Client-generated key for this operation (8–128 chars). Reuse it only to repeat the same operation: a repeat returns the first answer and controls the task once. |
 | `text` | string | no | max length 100000 | Message, continuation prompt, review feedback, free-form answer, or the new text of a queued message. |
 | `images` | array of object | no | max items 4 | Attachments (base64) for send_message, continue or edit_queued_message — the same four the composer allows. |
 | `images[].mediaType` | string | yes |  |  |
@@ -174,6 +175,7 @@ Unknown arguments are rejected.
 | `action` | `list_queue` \| `set_title` \| `edit_brief` \| `edit_queued_message` \| `remove_queued_message` \| `pin` \| `unpin` \| `archive` \| `restore` \| `archive_finished` \| `mark_read` \| `mark_unread` \| `mark_all_read` \| `delete` \| `start_inbox_item` \| `remove_inbox_item` \| `pick_variant` | yes |  | What to do. See the tool description for each action. |
 | `runId` | string | no | min length 1, max length 128, pattern `^[A-Za-z0-9._-]+$` | The task id. For pick_variant: the variant to keep. |
 | `expectedVersion` | string | no | min length 1, max length 512 | Required by every action that changes one task (set_title, edit_brief, edit_queued_message, remove_queued_message, pin, unpin, archive, restore, delete) and by pick_variant: the `version` task_read gave you for that task — for pick_variant, the variant you keep. Echo it verbatim. |
+| `operationId` | string | no | min length 8, max length 128, pattern `^[A-Za-z0-9_.:-]+$` | Client-generated key for this operation (8–128 chars). Required by every action except list_queue, which reads and takes none. Reuse it only to repeat the same operation: a repeat returns the first answer and organises nothing twice. |
 | `title` | string | no |  | set_title: the new title. |
 | `task` | string | no |  | edit_brief: the replacement brief. Only while the task is queued. |
 | `messageId` | string | no | min length 1, max length 128, pattern `^[A-Za-z0-9._-]+$` | edit_queued_message / remove_queued_message: the queued message id (list_queue shows them). |
@@ -240,6 +242,7 @@ Unknown arguments are rejected.
 | `action` | `repo` \| `commit` \| `push` \| `create_pr` \| `merge_state` \| `ready` \| `merge` \| `branch` | yes |  | repo: read the main checkout (branch, branches, base, whether a remote exists, uncommitted count). commit / push / create_pr: act on one task (taskId). merge_state: read one pull request (number) fresh, with its quality blockers. ready: mark a draft pull request ready for review (number, expectedHeadSha). merge: invoke the existing merge (number, expectedHeadSha). branch: switch to, or create and switch to, a branch of the main checkout (name, from). |
 | `taskId` | string | no | min length 1, max length 128 | The task to commit, push or publish. |
 | `expectedVersion` | string | no | min length 1, max length 512 | commit / push / create_pr: the `version` task_read returned for the task. If the task changed since, nothing is done. |
+| `operationId` | string | no | min length 8, max length 128, pattern `^[A-Za-z0-9_.:-]+$` | Client-generated key for this operation (8–128 chars). Required by every action that hands work onward (commit, push, create_pr, ready, merge, branch); the two reads (repo, merge_state) take none. Reuse it only to repeat the same operation: a repeat returns the first answer and never commits, pushes, readies or merges twice. |
 | `message` | string | no | min length 1, max length 5000 | commit: the commit message. |
 | `number` | integer | no | max 9007199254740991 | merge_state / ready / merge: the pull request number. |
 | `expectedHeadSha` | string | no | pattern `^[0-9a-f]{40}$` | ready / merge: the headSha of the state you reviewed. A moved head is refused, never readied or merged. |
@@ -348,6 +351,7 @@ Unknown arguments are rejected.
 | `logQuery.limit` | integer | no | min 1, max 100 |  |
 | `runId` | string | no | min length 1, max length 128 | remove_worktree: the task's run id. |
 | `expectedVersion` | string | no | min length 1, max length 512 | remove_worktree: the `version` task_read returned for the task. If the task changed since, nothing is removed. |
+| `operationId` | string | no | min length 8, max length 128, pattern `^[A-Za-z0-9_.:-]+$` | Client-generated key for this operation (8–128 chars). Required by every action that changes something and refused by every action that only reads. Reuse it only to repeat the same operation: a repeat returns the first answer and changes nothing twice. |
 
 ### `local_handoff`
 
@@ -360,6 +364,7 @@ Unknown arguments are rejected.
 | `action` | `list_apps` \| `open_task_in_terminal` \| `open_task_in_app` \| `open_project_in_app` | yes |  | list_apps: the apps installed on the xezar host. open_task_in_terminal: resume the task’s agent session in a terminal on the xezar host. open_task_in_app: open the task’s worktree in an app on the xezar host. open_project_in_app: open the project folder in an app on the xezar host. |
 | `runId` | string | no | min length 1, max length 128 | The task's run id, in the project this connection is bound to. |
 | `target` | string | no | min length 1, max length 200 | An app id from list_apps (for example "finder", "terminal", "vscode", "cli:claude"). |
+| `operationId` | string | no | min length 8, max length 128, pattern `^[A-Za-z0-9_.:-]+$` | Client-generated key for this operation (8–128 chars). Required by every open_ action; list_apps reads and takes none. Reuse it only to repeat the same operation: a repeat returns the first answer and opens nothing a second time. |
 
 ### `leader_events`
 
@@ -376,6 +381,7 @@ Unknown arguments are rejected.
 | `action` | `read` \| `ack` | yes |  | read: the events outstanding since your last acknowledged position, then the current state of the tasks they name. ack: record that you have taken every event up to cursor into account. |
 | `cursor` | string | no | min length 1, max length 2048 | read: replay after this cursor instead of your acknowledged position (optional; it never moves the acknowledgement). ack: required — the nextCursor of a page, or the resumeCursor of a gap. |
 | `limit` | integer | no | min 1, max 100 | read: events per page, at most 100. |
+| `operationId` | string | no | min length 8, max length 128, pattern `^[A-Za-z0-9_.:-]+$` | ack: required — a client-generated key for this acknowledgement (8–128 chars). Reuse it only to repeat the same acknowledgement. read: not accepted, because a read is meant to return the same events again until you ack them. |
 <!-- mcp-api:arguments:end -->
 
 ## Results
@@ -536,8 +542,16 @@ It is not `isError`. The leader reads the task again and decides again.
 ### Operation ids, receipts and idempotency
 
 This rule comes from [D-06 §§ 5–9](mcp-d06-versioning-idempotency-audit-decision.md#5-durable-operation-identity-n-10).
-**Only `task_create` accepts an `operationId`**, and only a call that carries one creates a
-receipt (`packages/xezar/src/mcp/index.ts:220`). The stored key is `<projectId>/<operationId>`.
+**Every mutating tool action takes a required `operationId`**, and only a call that carries one
+creates a receipt (`packages/xezar/src/mcp/index.ts`). The stored key is `<projectId>/<operationId>`.
+
+The exceptions are read actions, and they are exceptions to nothing: an action that only reads
+changes nothing, so there is no effect to deduplicate. Such an action **refuses** an `operationId`
+rather than accepting one, because a receipt filed over a read would answer the next identical read
+with the receipt instead of with the data. `leader_events read` is the sharp case — returning the
+same rows again until they are acknowledged IS its contract. The tool table above says which actions
+need the key; `packages/xezar/src/mcp/tools/operation-id.test.ts` holds every action in the registry
+to that rule and lists the reads by name, each with its reason.
 
 When the same id is sent again, the answer is the receipt's, not the original body:
 
@@ -549,8 +563,7 @@ When the same id is sent again, the answer is the receipt's, not the original bo
 - **The journal cannot be written.** `{ error: 'operation_receipt_unavailable' }`.
 
 Retention is at least 84 hours and the newest 50 000 receipts per project
-([D-09 B-21](mcp-d09-limits-retention-packaging-decision.md)). D-06 § 5.2 decided that *every*
-mutating tool takes an `operationId`; see [Findings](#findings-this-reference-surfaced).
+([D-09 B-21](mcp-d09-limits-retention-packaging-decision.md)).
 
 ### The audit record
 
@@ -888,11 +901,13 @@ These were observed on 2026-09-11 at revision `ef4b768`, while writing this page
 changes a tool. Each finding is reported for a separate decision.
 
 1. **Only one mutating tool takes an operation id.** [D-06 § 5.2](mcp-d06-versioning-idempotency-audit-decision.md#52-decision--the-operation-id-and-the-stored-key)
-   decided that *every* mutating MCP tool takes a required `operationId`. Only `task_create` accepts
-   one. A retried `organise_work`, `execution_control`, `handoff_git`, `project_config`,
-   `local_handoff` or `leader_events` call after a lost answer therefore has no receipt to replay.
-   The stale-write guard covers part of that risk, for the actions that need `expectedVersion`.
-   Filed as [#264](https://github.com/qodeca/xezar/issues/264).
+   decided that *every* mutating MCP tool takes a required `operationId`. Only `task_create` accepted
+   one, so a retried `organise_work`, `execution_control`, `handoff_git`, `project_config`,
+   `local_handoff` or `leader_events` call after a lost answer had no receipt to replay. Filed as
+   [#264](https://github.com/qodeca/xezar/issues/264) and **fixed there**: every mutating action of
+   all seven tools now takes a required key, and every read action of those tools refuses one, for
+   the reason given under [Operation ids, receipts and
+   idempotency](#operation-ids-receipts-and-idempotency).
 2. **`organise_work` silently drops unknown arguments.** Its input schema is the only one that does
    not set `additionalProperties: false`. The argument table shows this. A misspelled argument, or
    an `operationId`, is stripped rather than refused. Filed as

@@ -26,6 +26,7 @@ import { resolveMcpTarget, startMcpService, type StartMcpServiceOptions } from '
 import { IPC_PROTOCOL_VERSION, LineFramer, encodeFrame, type McpToolResult } from './ipc.ts';
 import { runVersion } from './stale-write.ts';
 import { tools } from './tools/index.ts';
+import { withOperationId } from './tools/operation-id.testkit.ts';
 
 /**
  * #302 — exclusive ownership over a LIVE MCP session (A-17, A-18, the exclusivity half of A-23).
@@ -154,7 +155,8 @@ function agent(root: string) {
   };
   return {
     initialize: () => request('initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'owner-test', version: '0' } }),
-    call: (name: string, args: Record<string, unknown> = {}) => request('tools/call', { name, arguments: args }),
+    // Every mutating action takes a fresh operation key (#264); a case about a replay passes its own.
+    call: (name: string, args: Record<string, unknown> = {}) => request('tools/call', { name, arguments: withOperationId(name, args) }),
     /** The client application exits: its stdin closes. */
     end,
   };

@@ -1,4 +1,4 @@
-import { createRunInputBaseSchema, type CreateRunInput, type RunRecord, type Runner } from '@qodeca/xezar-contract';
+import { createRunInputBaseSchema, operationIdSchema, type CreateRunInput, type RunRecord, type Runner } from '@qodeca/xezar-contract';
 import { hc } from 'hono/client';
 import { z } from 'zod';
 import { modelConflictsWithRunner } from '../../core/model-presets.ts';
@@ -40,9 +40,6 @@ import { defineTool, errorResult, textResult, type McpToolContext, type McpToolR
 const ACTIONS = ['start', 'plan', 'start_from_inbox', 'save_plan'] as const;
 type Action = (typeof ACTIONS)[number];
 
-/** D-06 § 5.2: an opaque client-generated key on every mutating tool. */
-const OPERATION_ID_RE = /^[A-Za-z0-9_.:-]+$/;
-
 /** The composer's field shapes are the CONTRACT's: the same zod definition, so the same bound and
  *  the same message the route answers with. */
 const run = createRunInputBaseSchema.shape;
@@ -54,12 +51,11 @@ export const taskCreateInputSchema = z.strictObject({
     .describe(
       '`start` (default) creates a task like the New task form. `plan` asks the planner for steps. `start_from_inbox` starts an Inbox entry. `save_plan` saves a step list as a project workflow.',
     ),
-  operationId: z
-    .string()
-    .min(8)
-    .max(128)
-    .regex(OPERATION_ID_RE, 'must match ^[A-Za-z0-9_.:-]+$')
-    .describe('Client-generated key for this operation (8–128 chars). Reuse it only to repeat the same operation.'),
+  // D-06 § 5.2: the one zod definition of an operation id lives in the contract; every mutating
+  // tool takes it, and every one of them describes it in its own terms.
+  operationId: operationIdSchema.describe(
+    'Client-generated key for this operation (8–128 chars). Reuse it only to repeat the same operation.',
+  ),
   prompt: z
     .string()
     .optional()

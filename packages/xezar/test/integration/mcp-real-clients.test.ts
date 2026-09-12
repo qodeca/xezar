@@ -1012,7 +1012,7 @@ describe('A-17 — only the competing owner is rejected', () => {
     const owner = await openBridge('a17-owner-bridge', world.a.root, bridgeEnv(world, home));
     const ownerHealth = await owner.rpc.request('tools/call', { name: 'health', arguments: {} });
     const second = await openBridge('a17-second-bridge', world.a.root, bridgeEnv(world, home));
-    const secondWrite = isOccupied(second.init) ? undefined : await second.rpc.request('tools/call', { name: 'organise_work', arguments: { action: 'pin', runId: world.a.ids.done, expectedVersion: runVersion(world.a.store, world.a.ids.done) } });
+    const secondWrite = isOccupied(second.init) ? undefined : await second.rpc.request('tools/call', { name: 'organise_work', arguments: { action: 'pin', runId: world.a.ids.done, expectedVersion: runVersion(world.a.store, world.a.ids.done), operationId: 'op-a17-second-pin' } });
     // Same owner: many requests at once are not additional clients.
     const burst = await Promise.all(Array.from({ length: 20 }, () => owner.rpc.request('tools/call', { name: 'task_read', arguments: { view: 'list', limit: 1 } })));
     // Another project: B has its own socket and its own owner slot.
@@ -1105,7 +1105,7 @@ async function competeAs(client: ClientName, resolved: ResolvedClient, transcrip
       if (!init.result?.codexHome || realpathSync(init.result.codexHome) !== realpathSync(codexHome)) return { refused: false, text: 'NOT-RUN: codex left the pinned home' };
       app.notify('initialized');
       const thread = await app.request('thread/start', { cwd: world.a.root });
-      const call = await app.request('mcpServer/tool/call', { server: 'xezar', threadId: thread.result?.thread?.id ?? '', tool: 'organise_work', arguments: { action: 'pin', runId: world.a.ids.done, expectedVersion: runVersion(world.a.store, world.a.ids.done) } }, 60_000);
+      const call = await app.request('mcpServer/tool/call', { server: 'xezar', threadId: thread.result?.thread?.id ?? '', tool: 'organise_work', arguments: { action: 'pin', runId: world.a.ids.done, expectedVersion: runVersion(world.a.store, world.a.ids.done), operationId: 'op-h118-pin' } }, 60_000);
       const text = call.error ? `error ${call.error.code} ${call.error.message}` : ((call.result?.content ?? []) as Array<{ text?: string }>).map((b) => b.text ?? '').join('\n');
       world.a.store.setPinned(world.a.ids.done, false);
       return { refused: /occupied|-32080/i.test(text), text: `organise_work pin → ${text.slice(0, 200)}` };
@@ -1137,15 +1137,16 @@ describe('A-18 — liveness, fencing and restart', () => {
     // Silence: no call for longer than one renewal interval (D-02.5: 5 s). No lease is asserted.
     await delay(6_000);
     const intruder = await openBridge('a18-intruder-bridge', world.a.root, bridgeEnv(world, home));
-    // Every write below sends the task's CURRENT version (#250), so only ownership or fencing can refuse it.
-    const intruderWrite = await intruder.rpc.request('tools/call', { name: 'organise_work', arguments: { action: 'set_title', runId: world.a.ids.done, title: 'A-18 intruder wrote this', expectedVersion: runVersion(world.a.store, world.a.ids.done) } });
+    // Every write below sends the task's CURRENT version (#250) and its own operation key (#264), so
+    // only ownership or fencing can refuse it.
+    const intruderWrite = await intruder.rpc.request('tools/call', { name: 'organise_work', arguments: { action: 'set_title', runId: world.a.ids.done, title: 'A-18 intruder wrote this', expectedVersion: runVersion(world.a.store, world.a.ids.done), operationId: 'op-a18-intruder' } });
     // Crash: the owner's process dies without closing anything.
     owner.rpc.child.kill('SIGKILL');
     await owner.rpc.exited;
     const successor = await openBridge('a18-successor-bridge', world.a.root, bridgeEnv(world, home));
-    const successorWrite = await successor.rpc.request('tools/call', { name: 'organise_work', arguments: { action: 'set_title', runId: world.a.ids.done, title: 'A-18 successor wrote this', expectedVersion: runVersion(world.a.store, world.a.ids.done) } });
+    const successorWrite = await successor.rpc.request('tools/call', { name: 'organise_work', arguments: { action: 'set_title', runId: world.a.ids.done, title: 'A-18 successor wrote this', expectedVersion: runVersion(world.a.store, world.a.ids.done), operationId: 'op-a18-successor' } });
     // The stale client is still alive: after a new owner exists, its write must be fenced.
-    const staleWrite = await intruder.rpc.request('tools/call', { name: 'organise_work', arguments: { action: 'set_title', runId: world.a.ids.done, title: 'A-18 stale owner wrote this', expectedVersion: runVersion(world.a.store, world.a.ids.done) } });
+    const staleWrite = await intruder.rpc.request('tools/call', { name: 'organise_work', arguments: { action: 'set_title', runId: world.a.ids.done, title: 'A-18 stale owner wrote this', expectedVersion: runVersion(world.a.store, world.a.ids.done), operationId: 'op-a18-stale' } });
     const finalTitle = world.a.store.getRun(world.a.ids.done)?.title;
     const terminal = runId
       ? await waitFor('the A-18 task to finish', () => {
@@ -1341,20 +1342,30 @@ describe('A-20 — MCP changes reach the cockpit, human changes reach the leader
       const tools = (listed.result?.tools ?? []) as Array<{ name: string; description?: string; inputSchema?: unknown }>;
       const title = `A-20 leader title ${Date.now()}`;
       const leaderRead = await leader.rpc.request('tools/call', { name: 'task_read', arguments: { view: 'task', taskId: runId } });
-      const mutation = await leader.rpc.request('tools/call', { name: 'organise_work', arguments: { action: 'set_title', runId, title, expectedVersion: versionIn(leaderRead) } });
+      const mutation = await leader.rpc.request('tools/call', {
+        name: 'organise_work',
+        arguments: { action: 'set_title', runId, title, expectedVersion: versionIn(leaderRead), operationId: 'op-a20-rename' },
+      });
       await waitFor('the cockpit stream to carry the leader title', () => (streamText.includes(title) ? true : undefined), 5_000).catch(() => undefined);
 
       // The leader's own effect that IS significant: it cancels a task. Its row must name its operation.
       const victim = await cockpit(serve, '/api/v1/runs', 'POST', { workflow: 'quick-task', task: 'mock:slow cancelled by the leader', autonomous: true });
       const victimId: string | undefined = victim.json?.id;
       await delay(1_500);
-      // `execution_control` takes no operation key; the MCP door mints one (`mcp-door.<uuid>`) so the
-      // catalog and the echo guard still know the change as this leader's.
+      // `execution_control` carries the leader's own operation key (#264), and the journal row names
+      // it, so the catalog and the echo guard know the change as this leader's.
       // A RUNNING task's version moves with its agent's events (#250), so a cancel can meet a newer
       // version than the one read; the leader does what the refusal says — read again, decide again.
+      // Each of those is a NEW decision, so each carries a new key: reusing one would replay the
+      // stored refusal instead of trying the fresh version (D-06 § 5.2, § 6).
+      let cancelAttempt = 0;
       const readThenCancel = async () => {
         const read = await leader.rpc.request('tools/call', { name: 'task_read', arguments: { view: 'task', taskId: victimId } });
-        return leader.rpc.request('tools/call', { name: 'execution_control', arguments: { action: 'cancel', runId: victimId, expectedVersion: versionIn(read) } });
+        cancelAttempt += 1;
+        return leader.rpc.request('tools/call', {
+          name: 'execution_control',
+          arguments: { action: 'cancel', runId: victimId, expectedVersion: versionIn(read), operationId: `op-a20-cancel-${cancelAttempt}` },
+        });
       };
       let leaderCancel = await readThenCancel();
       for (let tries = 0; tries < 20 && toolText(leaderCancel).includes('stale_version'); tries += 1) leaderCancel = await readThenCancel();
