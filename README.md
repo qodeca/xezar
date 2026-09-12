@@ -805,7 +805,7 @@ the workspace ceiling for runs in that repo.
 ### Editing the agents' own config (Settings → Agent config)
 
 xezar picks *which* agent runs; **Settings → Agent config** lets you edit *how* it
-behaves — the raw config files Claude, Codex and OpenCode read for settings,
+behaves — the raw config files Claude, Codex, OpenCode and pi read for settings,
 MCP, and memory. In the multi-project cockpit the section is project-scoped:
 repo-relative files resolve from the selected project's root, while user-scope
 files continue to resolve from the agent's home.
@@ -814,6 +814,13 @@ Each file keeps its native format and vendor-documented precedence. Tracked
 files reach task worktrees after commit; Claude's gitignored personal layer is
 seeded into each run's worktree. Editing is a local-machine capability, so a
 hosted cockpit (`XEZ_REMOTE=1`) is read-only and never serves home-file contents.
+
+Only files whose whole contents are safe to hand back are listed. pi keeps its
+credentials (`auth.json`) and its custom-provider catalogue with the API keys in
+it (`models.json`) in the same folder as its settings, and neither is editable
+here or anywhere else in the cockpit. pi's MCP files are listed because the
+`pi-mcp-adapter` extension reads them — pi itself reads no MCP config, which is
+what **Settings → MCP connection** walks you through installing.
 
 ---
 

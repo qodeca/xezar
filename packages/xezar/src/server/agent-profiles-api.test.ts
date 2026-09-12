@@ -608,6 +608,53 @@ describe('agent profiles API', () => {
       expect(row.files.find((f) => f.label === 'CLAUDE.md')?.exists).toBe(false);
     });
 
+    /**
+     * The first real exercise of #329's `accountFiles` fix. Before it, `accountHomePatch` named
+     * three providers and silently did nothing for pi, so a pi account listed the DEFAULT pi
+     * home's files. The fix was untestable until #330 WP4 gave pi catalog entries — `accountFiles`
+     * filters `scope === 'user'`, and with no pi entry the list was empty either way.
+     */
+    it('resolves a pi ACCOUNT’s files in that account’s folder, not the default pi home', async () => {
+      const dir = join(home, 'pi-second');
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'settings.json'), '{}', 'utf8');
+      const { status, body } = await send('POST', '/api/v1/workspace/agent-profiles', {
+        provider: 'pi',
+        label: 'Second pi',
+        configDir: dir,
+      });
+      expect(status).toBe(201);
+
+      const row = (await list()).profiles.find((p) => p.id === body.profile.id)!;
+      // Populated, so "no leak into the default home" is not "no files at all".
+      expect(row.files.map((f) => f.label).sort()).toEqual(['AGENTS.md', 'mcp.json', 'settings.json']);
+      for (const file of row.files) expect(file.path.startsWith(dir), file.id).toBe(true);
+      expect(row.files.find((f) => f.label === 'settings.json')?.exists).toBe(true);
+
+      // …and the file it would have read instead is a DIFFERENT path — the actual regression.
+      const defaultPi = (await list()).profiles.find((p) => p.provider === 'pi' && p.isDefault)!;
+      expect(row.files.every((f) => !f.path.startsWith(defaultPi.path))).toBe(true);
+
+      // Neither does it borrow another provider's slot: no Claude/Codex file rides along.
+      expect(row.files.every((f) => f.id.startsWith('pi.'))).toBe(true);
+    });
+
+    it('never lists a pi credential file as one of an account’s files (F-15)', async () => {
+      // `auth.json` and `models.json` sit beside the catalogued files; this route echoes absolute
+      // paths, and a catalogued credential file would become openable through /open as well.
+      const dir = join(home, 'pi-third');
+      mkdirSync(dir, { recursive: true });
+      const { body } = await send('POST', '/api/v1/workspace/agent-profiles', {
+        provider: 'pi',
+        configDir: dir,
+      });
+      const row = (await list()).profiles.find((p) => p.id === body.profile.id)!;
+      expect(row.files.length).toBeGreaterThan(0);
+      for (const name of ['auth.json', 'models.json', 'models-store.json']) {
+        expect(row.files.map((f) => f.label), name).not.toContain(name);
+      }
+    });
+
     it('answers the identity on demand, and only the named fields', async () => {
       const account = await create('work', signedIn('claude-klaudiusz'));
       const res = await apiRequest(makeApp(), `/api/v1/workspace/agent-profiles/${account.id}/details`);
