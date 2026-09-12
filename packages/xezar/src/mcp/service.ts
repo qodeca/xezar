@@ -65,8 +65,20 @@ export interface McpServiceOptions {
   readonly door?: McpDoor;
   /** Where the owner claims live (D-02.8). Defaults to the project's own `.local/xezar`. */
   readonly dataDir?: string;
-  /** Test seam: the owner slot to enforce. Production builds one per socket. */
+  /** The owner slot to enforce. Absent: one is built per socket. */
   readonly ownership?: ProjectOwnership;
+  /** Told when a session becomes the owner and when its connection closes — push delivery (#309). */
+  readonly sessions?: McpSessionObserver;
+}
+
+/**
+ * The two session edges push delivery (#309) follows: `opened` once `session/open` made the session
+ * the project's owner, `closed` when its connection closes (before the claim is released). Neither
+ * may fail a session: a throw is one warning and the session carries on (N-07).
+ */
+export interface McpSessionObserver {
+  opened(sessionKey: string): void;
+  closed(sessionKey: string): void;
 }
 
 /**
@@ -177,7 +189,11 @@ function serveConnection(socket: Socket, opts: McpServiceOptions, ownership: Pro
   // Confirmed termination (D-02.4 signal 1): the connection is the session, so its close frees the
   // project at once. `release` touches the owner claim and nothing else — calls still running go
   // on running, and no run is touched (N-05).
-  socket.once('close', () => ownership.release(sessionKey));
+  socket.once('close', () => {
+    // The session's event controller ends with its connection, before the claim goes (#309).
+    observe(opts, 'closed', sessionKey);
+    ownership.release(sessionKey);
+  });
   const send = (response: IpcResponse): void => {
     if (!socket.destroyed) socket.write(encodeFrame(response));
   };
@@ -208,8 +224,12 @@ async function answer(line: string, opts: McpServiceOptions, ownership: ProjectO
   }
   const ctx: McpToolContext = { ...opts.context, project: opts.project, xezarVersion: opts.version };
   switch (request.method) {
-    case 'session/open':
-      return openSession(request.id, ownership, sessionKey, opts.project.id);
+    case 'session/open': {
+      const opened = await openSession(request.id, ownership, sessionKey, opts.project.id);
+      // Push delivery starts for the owner at once — on by default, no flag (#309).
+      if (opened.ok) observe(opts, 'opened', sessionKey);
+      return opened;
+    }
     case 'health': {
       if (ownership.sessionToken(sessionKey) === undefined) return expired(request.id, opts.project.id);
       const result: HealthResult = {
@@ -233,6 +253,14 @@ async function answer(line: string, opts: McpServiceOptions, ownership: ProjectO
     }
     default:
       return failure(request.id, 'unknown-method', `unknown method: ${request.method}`);
+  }
+}
+
+function observe(opts: McpServiceOptions, edge: keyof McpSessionObserver, sessionKey: string): void {
+  try {
+    opts.sessions?.[edge](sessionKey);
+  } catch (err) {
+    console.warn(`[xez] MCP event delivery hook failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 

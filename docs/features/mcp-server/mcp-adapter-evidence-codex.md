@@ -1,5 +1,7 @@
 # Codex reaction adapter – runtime evidence
 
+> **2026-09-11 — the spawn path this record describes was removed** before release 0.14.0 (owner decision on #311: xezar does not start agent processes). The Codex app-server process link and thread start needed a process xezar started, so it is gone from the product; this record stays as the evidence of what was measured. A leader in this client gets no push and reads its events with `leader_events`. See #323 and #324.
+
 Issue: [#109](https://github.com/qodeca/xezar/issues/109), Phase 6 ([#73](https://github.com/qodeca/xezar/issues/73)) of
 [epic #67](https://github.com/qodeca/xezar/issues/67). Covers F-17, F-20, F-21, D-01, D-04, A-19 and A-23 of the
 [requirements](mcp-project-leader-requirements.md), for Codex only. The code is

@@ -233,7 +233,7 @@ describe('A-01 / A-17 / A-23 — the MCP connection screen', () => {
   it('separates the one-time user step from what xezar does, per client, and never claims autodiscovery', () => {
     browser.goto(`${baseUrl}/p/${projectId}/settings/mcp-connection`)
     browser.waitForFunction(`document.querySelector('[data-slot="mcp-connection-section"]') !== null`)
-    const cards = browser.evaluate(`JSON.stringify(['claude-code', 'codex', 'opencode'].map((name) => {
+    const cards = browser.evaluate(`JSON.stringify(['claude-code', 'codex', 'opencode', 'pi'].map((name) => {
       const card = document.querySelector('[data-slot="mcp-client-' + name + '"]')
       return {
         name,

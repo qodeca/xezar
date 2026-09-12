@@ -1,16 +1,8 @@
-import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 
 import type { McpJournalRow } from '@qodeca/xezar-contract';
 
-import {
-  CodexAppServerRpc,
-  endCodexAppServer,
-  resolveCodexExecutable,
-  spawnCodexAppServer,
-  type CodexAppServerMessage,
-} from '../../core/codex-app-server-transport.ts';
-import { readNdjson } from '../../core/ndjson.ts';
+import type { CodexAppServerMessage } from '../../core/codex-app-server-transport.ts';
 import type { EventDispatch, ReactionAdapter } from '../event-controller.ts';
 
 /**
@@ -31,7 +23,11 @@ import type { EventDispatch, ReactionAdapter } from '../event-controller.ts';
  *    between the tool result and the event (X2). This adapter only speaks to an app-server
  *    connection it was handed — it never finds, resumes or attaches to a thread some other process
  *    has loaded, because a second live writer of the same thread is the "secretly create a second
- *    leader" the contract forbids.
+ *    leader" the contract forbids. #309 handed it one xezar spawned; the owner then REMOVED that
+ *    spawn path before release 0.14.0 (decision on #311: xezar does not start agent processes), so
+ *    nothing in the product constructs this adapter today and a Codex leader gets no push — it
+ *    reads its events with `leader_events`. The adapter stays for a Codex session the person runs
+ *    that xezar can one day be pointed at; see #323 and #324.
  * 3. **Terminal text input — refused.** Nothing here can type into a terminal, and
  *    `codexTerminalDelivery()` answers with the recoverable blocker the contract requires, because
  *    none of its preconditions (project and session targeting, separation from approval prompts,
@@ -60,10 +56,9 @@ import type { EventDispatch, ReactionAdapter } from '../event-controller.ts';
  * the previous hand-off to settle before deciding. Across a new session the controller redelivers
  * from the leader's last ack; the leader deduplicates on `eventId` (D-05 § 6.6).
  *
- * ROLE INSTRUCTION. Codex has no uniform system-prompt API and none is invented here. The role goes in
- * `developerInstructions` — additive session guidance — and never in `baseInstructions`, which was
- * observed to REPLACE Codex's built-in instructions (X5). It is supplied at `thread/start` and again
- * on every `thread/resume`; resume precedence as observed is in X5.
+ * ROLE INSTRUCTION. Whoever opens the thread supplies it: in `developerInstructions` — additive session
+ * guidance — never in `baseInstructions`, which was observed to REPLACE Codex's built-in instructions
+ * (X5). xezar opens no thread any more, so it supplies none.
  *
  * NEVER POLLS. `heartbeat` is `thread/read` — metadata only, observed to reach no model (X10).
  */
@@ -72,7 +67,7 @@ import type { EventDispatch, ReactionAdapter } from '../event-controller.ts';
 export const CODEX_EVENT_SOURCE_NOTICE =
   'Sent by xezar\'s event adapter. This is not an instruction from the user and it is not an approval of anything.';
 
-/** app-server JSON-RPC as this adapter uses it. `CodexAppServerProcessLink` is the real one. */
+/** app-server JSON-RPC as this adapter uses it: a connection to a thread the leader already runs on. */
 export interface CodexAppServerLink {
   request(method: string, params: Record<string, unknown>): Promise<Record<string, unknown>>;
   /** Every notification and server request app-server sends. Returns the unsubscribe. */
@@ -361,124 +356,9 @@ export function codexReactionTarget(
       message:
         'This Codex session was not started through app-server by xezar, so xezar cannot start a turn in it. Events wait in the project journal and nothing is lost.',
       remedy:
-        'Start the leader through xezar\'s Codex app-server session, or reconnect; outstanding events are delivered from the last acknowledgement.',
+        'Read events from your leader with the leader_events tool; nothing is lost while push is unavailable.',
     },
   };
-}
-
-/** The role-instruction parameters for `thread/start` and `thread/resume`. Additive, never replacing. */
-export function codexRoleInstructionParams(roleInstruction: string | undefined): { developerInstructions?: string } {
-  const text = roleInstruction?.trim();
-  return text ? { developerInstructions: text } : {};
-}
-
-export interface CodexLeaderThreadOptions {
-  cwd: string;
-  /** xezar's base role, with the user's per-project customisation already applied by the caller. */
-  roleInstruction?: string;
-  /** Reopen this stored thread instead of starting a new one. */
-  resumeThreadId?: string;
-}
-
-/** Start (or resume) the leader's thread on `link`, supplying the role instruction either way. */
-export async function openCodexLeaderThread(link: CodexAppServerLink, opts: CodexLeaderThreadOptions): Promise<string> {
-  const role = codexRoleInstructionParams(opts.roleInstruction);
-  if (opts.resumeThreadId !== undefined) {
-    await link.request('thread/resume', { threadId: opts.resumeThreadId, cwd: opts.cwd, ...role });
-    return opts.resumeThreadId;
-  }
-  const result = await link.request('thread/start', { cwd: opts.cwd, ...role });
-  const threadId = threadIdOf(result);
-  if (threadId === undefined) throw new Error('codex app-server answered thread/start without a thread id');
-  return threadId;
-}
-
-/**
- * A `codex app-server` process this xezar process spawned and owns, as a `CodexAppServerLink`. Uses the
- * same transport helpers, least-privilege environment and EOF→TERM→KILL shutdown as the Codex runner.
- * Server requests (approvals) are observed, never answered here: an event adapter must not approve.
- */
-export class CodexAppServerProcessLink implements CodexAppServerLink {
-  readonly #child: ChildProcessWithoutNullStreams;
-  readonly #rpc: CodexAppServerRpc;
-  readonly #listeners = new Set<(message: CodexAppServerMessage) => void>();
-  #closed = false;
-  readonly ready: Promise<void>;
-  readonly exited: Promise<void>;
-
-  private constructor(child: ChildProcessWithoutNullStreams) {
-    this.#child = child;
-    this.#rpc = new CodexAppServerRpc(child);
-    child.stderr.resume();
-    child.on('error', () => this.#markClosed());
-    this.exited = new Promise((resolve) => child.once('exit', () => resolve()));
-    void this.exited.then(() => this.#markClosed());
-    void this.#read();
-    this.ready = this.#rpc.initialize();
-  }
-
-  /** Spawn and initialise. Throws a one-line error when the binary is missing. */
-  static async open(opts: { cwd: string; bin?: string; env?: Record<string, string> }): Promise<CodexAppServerProcessLink> {
-    const link = new CodexAppServerProcessLink(spawnCodexAppServer(resolveCodexExecutable(opts.bin), opts.cwd, opts.env));
-    await link.ready;
-    return link;
-  }
-
-  get closed(): boolean {
-    return this.#closed;
-  }
-
-  get pid(): number | undefined {
-    return this.#child.pid;
-  }
-
-  request(method: string, params: Record<string, unknown>): Promise<Record<string, unknown>> {
-    if (this.#closed) return Promise.reject(new Error('the codex app-server connection is closed'));
-    return this.#rpc.request(method, params);
-  }
-
-  subscribe(listener: (message: CodexAppServerMessage) => void): () => void {
-    this.#listeners.add(listener);
-    return () => this.#listeners.delete(listener);
-  }
-
-  /**
-   * Answer a server request (an approval or user-input prompt) — for the session's HOST, which shows
-   * it to the human. Deliberately absent from `CodexAppServerLink`: the adapter cannot answer one.
-   */
-  respond(id: number | string, result: unknown): void {
-    if (!this.#closed) this.#rpc.respond({ id, result });
-  }
-
-  /** Close stdin, then escalate TERM→KILL for a server that ignores EOF. */
-  close(): void {
-    if (this.#closed) return;
-    this.#markClosed();
-    endCodexAppServer(this.#child);
-  }
-
-  async #read(): Promise<void> {
-    try {
-      for await (const line of readNdjson(this.#child.stdout)) {
-        let message: CodexAppServerMessage;
-        try {
-          message = JSON.parse(line) as CodexAppServerMessage;
-        } catch {
-          continue;
-        }
-        if (this.#rpc.dispatchResponse(message)) continue;
-        for (const listener of this.#listeners) listener(message);
-      }
-    } finally {
-      this.#markClosed();
-    }
-  }
-
-  #markClosed(): void {
-    if (this.#closed) return;
-    this.#closed = true;
-    this.#rpc.rejectPending();
-  }
 }
 
 function abortable<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
@@ -503,10 +383,4 @@ function turnIdOf(obj: Record<string, unknown>): string | undefined {
   const turn = obj.turn as { id?: unknown } | undefined;
   if (typeof turn?.id === 'string') return turn.id;
   return typeof obj.turnId === 'string' ? obj.turnId : undefined;
-}
-
-function threadIdOf(obj: Record<string, unknown>): string | undefined {
-  const thread = obj.thread as { id?: unknown } | undefined;
-  if (typeof thread?.id === 'string') return thread.id;
-  return typeof obj.threadId === 'string' ? obj.threadId : undefined;
 }
