@@ -50,6 +50,8 @@ version on the run date; 2.33.0 was **not tested**.
   extension, `settings.json`, `models.json`, `mcp-cache.json` and the session files. The real `~/.pi` was not
   changed (see [Isolation](#isolation-and-pi_coding_agent_dir)). This confirms #329: pi **does** read
   `PI_CODING_AGENT_DIR`, and what `agent-profiles.ts`, `paths.ts` and `AGENTS.md` say about pi today is wrong.
+  **Superseded 2026-09-12 by [#349](https://github.com/qodeca/xezar/pull/349):** the observation stands, the
+  "say about pi today is wrong" half no longer does — those files were corrected. Read it as of the run date.
 - **A real model reaction is still UNVERIFIED.** Every turn here reached a scripted local endpoint. That proves
   pi starts a real turn. It does not prove what a real model decides. The spike's OB-5 stays open for pi too.
 
@@ -260,6 +262,8 @@ Each blocker keeps pi in scope. None is solved by polling.
 - **`PI_CODING_AGENT_DIR`.** Confirmed read by pi 0.85.1 and by the adapter (#329). `packages/xezar/src/paths.ts`,
   `agent-profiles.ts`, `catalog.ts`, `AGENTS.md` and `docs/testing/agent-browser.md` still say pi has no such variable.
   #329 fixes them; this record does not.
+  **Superseded 2026-09-12 by [#349](https://github.com/qodeca/xezar/pull/349):** all five files named here now
+  state the variable correctly, so the "still say" sentence describes the run date and not the repository today.
 
 ## What the second half adds
 

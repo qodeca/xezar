@@ -204,9 +204,15 @@ Four limits are deliberate, and a spec must not assume past them:
 - **Credential discovery is NOT isolated.** Keychain and `XDG_DATA_HOME` are untouched, so the
   cockpit still reports "credentials found". That is the safe direction — it means no credential
   can be written into the tree — but the boot is not a blank host.
-- **pi's home is NOT isolated.** pi documents no vendor variable and its binary reads none
-  (`packages/xezar/src/paths.ts`), so `agentHomePaths().pi` is always `$HOME/.pi/agent` and no pin
-  reaches it. A spec must not assume pi starts from a blank config.
+- **pi's home is NOT isolated — but that is now a gap in the boot, not a limit of pi.** pi
+  documents `PI_CODING_AGENT_DIR` and reads it, and `agentHomePaths().pi` honours it
+  (`packages/xezar/src/paths.ts`, re-verified against pi 0.85.1 on 2026-09-12, #329 — the earlier
+  claim that no such variable exists was wrong). `scripts/test-env-up.sh` does not set it, so the
+  boot still starts pi from the developer's own `~/.pi/agent` and a spec must not assume a blank
+  pi config. Closing that is its own change with its own test surface: pin the variable in
+  `test-env-up.sh` next to the other three, add it to `environment.agentHome` in the reuse
+  fingerprint so a differently-pinned instance is not reused, and settle whether the pinned dir is
+  seeded (pi resolves models through `core/pi-model-catalog.ts`, and an empty home discovers none).
 - **OpenCode is pinned through `OPENCODE_CONFIG_DIR`, never `XDG_CONFIG_HOME`.** The XDG variable
   is machine-wide: pinning it deauthenticated `gh` inside the boot and hid the developer's global
   git config. If a future boot-path tool stores tokens under `$XDG_CONFIG_HOME` (`gcloud`, `op`,

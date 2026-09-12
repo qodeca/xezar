@@ -3,11 +3,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { agentAccountsPath } from '../paths.ts';
+import { PROVIDER_IDS } from '../core/provider-auth.ts';
 import {
+  accountHomePatch,
   defaultAgentProfile,
   listAgentProfiles,
   profileDirState,
   profilesForProvider,
+  providerHome,
   resolveProfileEnvForRoot,
   sameProfileDir,
   selectProfile,
@@ -51,13 +54,70 @@ describe('agent profile resolution', () => {
       expect(defaultAgentProfile('opencode', env).path).toBe('/home/u/.config/opencode');
     });
 
+    // #329, and the site that flipping `PROFILE_ENV_VAR.pi` alone would have left broken. The
+    // lookup here was a ternary chain ending in `: home.claude`, and `pi` was the one provider it
+    // never named — so the pi row of `GET /api/v1/workspace/agent-profiles`, which lists over
+    // PROVIDER_IDS, reported `~/.claude` as pi's home. It was wrong before pi could carry
+    // accounts at all; it would have become a wrong-account run once it could.
+    it('resolves pi to its OWN home, never Claude’s', () => {
+      expect(defaultAgentProfile('pi', env).path).toBe('/home/u/.pi/agent');
+      expect(defaultAgentProfile('pi', env).path).not.toBe(defaultAgentProfile('claude', env).path);
+    });
+
     it('follows the vendor env vars, so setting one moves the DEFAULT profile', () => {
       const relocated = { HOME: '/home/u', CLAUDE_CONFIG_DIR: '/opt/claude' } as NodeJS.ProcessEnv;
       expect(defaultAgentProfile('claude', relocated).path).toBe('/opt/claude');
+      const piRelocated = { HOME: '/home/u', PI_CODING_AGENT_DIR: '/opt/pi-work' } as NodeJS.ProcessEnv;
+      expect(defaultAgentProfile('pi', piRelocated).path).toBe('/opt/pi-work');
+    });
+
+    // Every provider must be reachable and distinct. The bug this replaces was invisible because
+    // the fallback answered a real, plausible path; only comparing the whole set catches that.
+    it('gives every provider a distinct home', () => {
+      const paths = PROVIDER_IDS.map((provider) => defaultAgentProfile(provider, env).path);
+      expect(new Set(paths).size).toBe(PROVIDER_IDS.length);
     });
 
     it('is marked default so the UI can refuse to edit or delete it', () => {
       expect(defaultAgentProfile('claude', env)).toMatchObject({ id: 'default', isDefault: true });
+    });
+  });
+
+  /**
+   * The WRITE direction of the same table, used by `server.ts`'s `accountFiles()` to resolve one
+   * account's config files inside that account's folder.
+   *
+   * It had its own copy of this knowledge — conditional spreads naming claude, codex and opencode
+   * — so pi's slot was never repointed and a pi account would have read the DEFAULT pi home's
+   * files. Latent only because `CONFIG_FILES` has no pi entry yet (#330 WP4 adds one). Both
+   * directions now read one `HOME_SLOT`, so they cannot disagree again (#329).
+   */
+  describe('HOME_SLOT — one table, both directions', () => {
+    const home = {
+      claude: '/h/.claude',
+      codex: '/h/.codex',
+      opencodeConfig: '/h/.config/opencode',
+      pi: '/h/.pi/agent',
+    };
+
+    it('repoints every provider’s own slot, pi included', () => {
+      expect(accountHomePatch('pi', '/accounts/pi-second')).toEqual({ pi: '/accounts/pi-second' });
+      expect(accountHomePatch('claude', '/accounts/c')).toEqual({ claude: '/accounts/c' });
+      expect(accountHomePatch('codex', '/accounts/x')).toEqual({ codex: '/accounts/x' });
+      // The one case where the provider id and the slot name differ.
+      expect(accountHomePatch('opencode', '/accounts/o')).toEqual({ opencodeConfig: '/accounts/o' });
+    });
+
+    it('repoints exactly one slot and leaves the other three alone', () => {
+      const patched = { ...home, ...accountHomePatch('pi', '/accounts/pi-second') };
+      expect(patched).toEqual({ ...home, pi: '/accounts/pi-second' });
+    });
+
+    it('reads back what it writes, for every provider', () => {
+      for (const provider of PROVIDER_IDS) {
+        const patched = { ...home, ...accountHomePatch(provider, '/accounts/one') };
+        expect(providerHome(provider, patched), provider).toBe('/accounts/one');
+      }
     });
   });
 

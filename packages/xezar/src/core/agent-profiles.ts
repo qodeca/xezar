@@ -17,7 +17,8 @@ import type { ProviderId } from './provider-auth.ts';
  * Pure by construction: no filesystem, no `process.env`, nothing to stub. Resolution against the
  * workspace config lives in `src/workspace/agent-profiles.ts`.
  *
- * Facts verified against the shipped CLIs on 2026-07-29.
+ * Facts verified against the shipped CLIs on 2026-07-29; pi re-verified against 0.85.1 on
+ * 2026-09-12 (#329), which is when its entry stopped being `null`.
  */
 
 /**
@@ -33,15 +34,25 @@ import type { ProviderId } from './provider-auth.ts';
  *   would say "Work" and the run would not be — so OpenCode is unsupported until it documents a
  *   single home variable. `XDG_CONFIG_HOME` is rejected regardless: it is machine-wide and would
  *   relocate every other XDG-aware tool the agent's own Bash calls touch.
- * - **pi** → nothing documented. pi ships no per-user home variable of its own, so — exactly like
- *   OpenCode — a second account cannot be carried without silently billing the wrong one. `null`
- *   until pi documents a single home variable that moves credentials as well as config.
+ * - **pi** → `PI_CODING_AGENT_DIR`. Documented; `auth.json` lives inside it, so identity moves too.
+ *   This entry read `null` until 2026-09-12 on the strength of a single check made on 2026-09-10,
+ *   and that was wrong (#329). The bar OpenCode fails is credentials, so it is the observation
+ *   that matters: with the variable pointed at an empty dir, pi 0.85.1 wrote `auth.json` there
+ *   and reported "No API key found" while a populated `~/.pi/agent/auth.json` sat on disk. It
+ *   READS from there too — a corrupt `settings.json` in the pinned dir produced
+ *   `Warning: Invalid settings file <pinned>/settings.json`. Config and credentials both move,
+ *   so a pi profile bills the account it names.
+ *
+ *   One caveat, and it is not a blocker: `PI_CODING_AGENT_SESSION_DIR` overrides session storage
+ *   on its own, and `PI_` is in `BACKEND_ALLOW_PREFIXES`, so a host that sets it pulls `sessions/`
+ *   out of the profile dir. Credentials still follow the profile, which is the billing boundary
+ *   this table exists to protect; a shared session store is untidy, not a wrong-account run.
  */
 export const PROFILE_ENV_VAR: Record<ProviderId, string | null> = {
   claude: 'CLAUDE_CONFIG_DIR',
   codex: 'CODEX_HOME',
   opencode: null,
-  pi: null,
+  pi: 'PI_CODING_AGENT_DIR',
 };
 
 /** Providers that can carry more than one account — what the UI offers "Add account" for. */
@@ -92,7 +103,10 @@ const PROFILE_DIR_MARKERS: Record<ProviderId, readonly string[]> = {
   claude: ['.claude.json', 'settings.json', 'projects', 'sessions'],
   codex: ['auth.json', 'config.toml'],
   opencode: [],
-  // pi cannot carry profiles (`PROFILE_ENV_VAR.pi === null`), so nothing ever probes a pi
-  // profile dir; the entry exists to keep this table exhaustive over `ProviderId`.
-  pi: [],
+  // Observed against pi 0.85.1 on 2026-09-12: a single `PI_CODING_AGENT_DIR=<empty dir> pi` run
+  // drops `auth.json`, `models-store.json` and `sessions/`; a long-lived home also carries
+  // `settings.json` and `models.json`. This list must move with `PROFILE_ENV_VAR.pi` — leaving it
+  // `[]` while pi became profile-capable would warn "doesn't look like a pi folder" on every real
+  // pi profile, because `looksLikeProfileDir` reads THIS table and not the variable.
+  pi: ['auth.json', 'settings.json', 'models.json', 'models-store.json', 'sessions'],
 };
