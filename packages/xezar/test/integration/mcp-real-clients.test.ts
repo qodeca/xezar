@@ -890,7 +890,7 @@ function installPiAdapter(scratch: string, bin: string): PiAdapterInstall | { ab
       cwd: home,
       encoding: 'utf8',
       timeout: 300_000,
-      env: piEnv(home, agentDir),
+      env: piEnv(home, agentDir, join(home, 'tmp')),
     });
     for (const line of out.split('\n').filter(Boolean)) transcript.line('out', line);
   } catch (err) {
@@ -913,8 +913,27 @@ function installPiAdapter(scratch: string, bin: string): PiAdapterInstall | { ab
   return { agentDir, version };
 }
 
-/** pi's environment: `env -i`-like, with both homes pinned and no network at startup. */
-function piEnv(home: string, agentDir: string): NodeJS.ProcessEnv {
+/**
+ * pi's environment: `env -i`-like, with both homes pinned and no network at startup.
+ *
+ * `TMPDIR` is pinned, and to a PRIVATE directory rather than `/tmp`, for two reasons that pull the
+ * same way:
+ *
+ *  - **Length.** A Unix socket path is capped at ~104 bytes and the leader extension puts its private
+ *    directory in `os.tmpdir()`. This repository's own task temporary directory is already 78 of them,
+ *    so an inherited `TMPDIR` leaves no room and the extension correctly opens nothing.
+ *  - **Who else can write into this pi.** The extension's socket lives in a `0700` directory, which
+ *    keeps OTHER accounts out and — deliberately — says nothing about this one. On a machine running
+ *    several agents as one user, a peer that knows the path can send `prompt` and `steer` down it, and
+ *    that is not a theory: a peer agent's probe was pointed at this harness's live pi mid-run and its
+ *    two prompts landed as model requests 17 and 18 of a case whose whole claim is that request 1 was
+ *    the only one. The socket directory is named `xez-pi-*` inside `os.tmpdir()`, so `/tmp` puts it
+ *    where anything globbing `/tmp/xez-pi-*` finds it. A per-pi directory under this run's own scratch
+ *    does not, and it is still short enough for the cap.
+ */
+function piEnv(home: string, agentDir: string, tmp?: string): NodeJS.ProcessEnv {
+  const dir = tmp ?? '/tmp';
+  mkdirSync(dir, { recursive: true });
   return {
     PATH: process.env.PATH ?? '',
     HOME: home,
@@ -923,10 +942,7 @@ function piEnv(home: string, agentDir: string): NodeJS.ProcessEnv {
     PI_TELEMETRY: '0',
     TERM: 'dumb',
     LANG: process.env.LANG ?? 'en_US.UTF-8',
-    // A Unix socket path is capped at ~104 bytes and the leader extension puts its private directory
-    // in `os.tmpdir()`; this repository's own task temporary directory is already 78 of them, so an
-    // inherited `TMPDIR` leaves no room and the extension correctly opens nothing.
-    TMPDIR: '/tmp',
+    TMPDIR: dir,
   };
 }
 
@@ -938,6 +954,8 @@ interface PiClientHome {
    *  endpoint can still answer "how many requests has THIS pi made". */
   readonly modelId: string;
   readonly modelName: string;
+  /** The private `TMPDIR` this pi's leader socket directory is created in. */
+  readonly tmp: string;
 }
 
 /**
@@ -997,7 +1015,10 @@ function makePiHome(label: string, install: PiAdapterInstall, opts: { xezHome: s
     )}\n`,
     { encoding: 'utf8', mode: 0o600 },
   );
-  return { home, agentDir, env: piEnv(home, agentDir), modelId: `scripted/${model}`, modelName: model };
+  // Short on purpose: `<scratch>/t<label>` keeps the socket path under the ~104-byte cap while staying
+  // out of the `/tmp/xez-pi-*` namespace a peer process can glob.
+  const tmp = join(fx.scratch, `t${label}`);
+  return { home, agentDir, env: piEnv(home, agentDir, tmp), modelId: `scripted/${model}`, modelName: model, tmp };
 }
 
 /**
@@ -1155,6 +1176,29 @@ async function startPiWorld(): Promise<PiWorld> {
 async function piWorld(): Promise<PiWorld> {
   fx.piWorld ??= await startPiWorld();
   return fx.piWorld;
+}
+
+/**
+ * Which of a pi's model requests this run actually caused.
+ *
+ * A-19 and A-20 both turn on a COUNT, and a count is only evidence if an unexpected one can be told
+ * apart from a status poll. It can: xezar's own dispatch is recognisable, and so is a prompt this
+ * harness sent. Anything else came from somewhere else — a peer process writing into the leader
+ * socket, which happened once here and read as "the heartbeat polled" until the texts were looked at.
+ * So classify, and let the check report the foreign text rather than a number that does not add up.
+ */
+const HARNESS_PROMPTS = ['CALL health', 'CALL task_read'];
+function classifyPiRequests(requests: readonly ModelRequest[]): { mine: ModelRequest[]; foreign: ModelRequest[] } {
+  const mine: ModelRequest[] = [];
+  const foreign: ModelRequest[] = [];
+  for (const request of requests) {
+    const ours =
+      request.lastText.includes('[xezar event notification]') ||
+      request.lastText.includes('TOOL_RESULT: ') ||
+      HARNESS_PROMPTS.some((prompt) => request.lastText.includes(prompt));
+    (ours ? mine : foreign).push(request);
+  }
+  return { mine, foreign };
 }
 
 /** Wait until pi has settled every turn it started, so a count is not read mid-turn. */
@@ -1349,6 +1393,68 @@ describe('A-01 — connection provisioning and one-time setup, per officially su
     });
   }
 });
+
+/**
+ * #330's PI-08 edge path: "a user `approveTools` → a named `approval_required` state, not a hang".
+ * It is pi's only setup key that can stop a tool from running while leaving it visible, and a headless
+ * leader has nobody to approve it — so the thing to prove is that the turn ENDS and says why.
+ *
+ * Its own pi, its own project state, and a bound: a hang is the failure this case exists to catch, so
+ * a turn that never settles inside the bound is recorded as exactly that.
+ */
+describe('A-01 — edge paths that must name their reason (#330 PI-08)', () => {
+  test('[pi] a tool the person gated behind approval fails closed with a named reason, not a hang', async (t) => {
+    if (!fx.clients.pi) {
+      const entry = record({ case: 'A-01', client: 'pi (approveTools)', verdict: 'NOT-RUN', summary: fx.absent.pi ?? 'pi not found', checks: [], fixture: {} });
+      return settle(t, entry);
+    }
+    const { world, endpoint } = fx;
+    const transcript = new Transcript('a01-pi-approvetools');
+    const pi = makePiHome('approve', fx.piInstall!, { xezHome: world.home, endpointPort: endpoint.port });
+    // The one difference from the A-01 leg: the person gated `health` behind approval.
+    const entryFile = join(pi.agentDir, 'mcp.json');
+    const config = JSON.parse(readFileSync(entryFile, 'utf8')) as { mcpServers: { xezar: Record<string, unknown> } };
+    config.mcpServers.xezar.approveTools = ['health'];
+    writeFileSync(entryFile, `${JSON.stringify(config, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
+    const free = await waitForProjectFree('a01-pi-approve', world.a.root, bridgeEnv(world, join(pi.home, 'probe')), 30_000);
+    const rpc = new PiRpc(fx.clients.pi.bin, piArgs(pi), { cwd: world.a.root, env: pi.env, transcript });
+    let settledInTime = false;
+    let toolOutcome: unknown = 'no tool execution was reported';
+    try {
+      await waitForNotice(rpc, 120_000);
+      const answer = await rpc.request('prompt', { message: 'CALL health' }, 30_000);
+      if (answer.success) {
+        settledInTime = await waitFor('pi to settle the gated turn', () => (rpc.events.some((e) => e?.type === 'agent_settled') ? true : undefined), 90_000)
+          .then(() => true)
+          .catch(() => false);
+      }
+      const ended = rpc.events.find((e) => e?.type === 'tool_execution_end');
+      if (ended) toolOutcome = { isError: ended.isError, text: JSON.stringify(ended.result).slice(0, 400) };
+    } finally {
+      await rpc.close();
+    }
+    const text = JSON.stringify(toolOutcome);
+    const checks: Check[] = [
+      { name: 'project A is free before this client connects', required: "the previous client's ownership was released", observed: free.occupied ? `still occupied after ${free.freeAfterMs} ms` : `free after ${free.freeAfterMs} ms`, ok: !free.occupied },
+      { name: 'the gated call does not hang', required: 'the turn reaches `agent_settled` inside the bound', observed: settledInTime ? 'settled' : 'did not settle inside 90 s', ok: settledInTime },
+      { name: 'the refusal names approval as the reason', required: 'the model is told the call needs approval, not a generic failure', observed: toolOutcome, ok: /approv/i.test(text) },
+    ];
+    const entry = record({
+      case: 'A-01',
+      client: 'pi (approveTools)',
+      verdict: verdictOf(checks),
+      summary: checks.every((c) => c.ok) ? 'a gated tool call ended and named approval as the reason' : `the gated call: ${text.slice(0, 200)}`,
+      checks,
+      transcripts: [transcript.name],
+      fixture: { pi: `${fx.clients.pi.version} + pi-mcp-adapter ${fx.piInstall!.version}`, setting: "the xezar entry's `approveTools: ['health']`, headless RPC session (nobody to approve)" },
+    });
+    settle(t, entry);
+  });
+});
+
+/** The adapter's own startup notice: how a pi says its MCP entry connected, or did not. */
+const waitForNotice = (rpc: PiRpc, timeoutMs: number): Promise<string | undefined> =>
+  waitFor('the pi-mcp-adapter connection notice', () => rpc.notices().find((m) => /MCP: /.test(m)), timeoutMs).catch(() => undefined);
 
 /** What every client's entry runs — this revision's bridge, pointed at the fixture's home. */
 const bridgeCommand = (): { command: string; args: string[] } => ({ command: process.execPath, args: [DIST_CLI, 'mcp'] });
@@ -1952,6 +2058,7 @@ describe('A-19 — immediate acceptance, delivery, and a real model reaction', (
     await delay(40_000);
     const afterQuiet = world.modelRequests();
     const caused = world.requestsSince(before);
+    const { foreign } = classifyPiRequests(caused);
     const carrying = caused.find((r) => r.lastText.includes('[xezar event notification]'));
     const journal = readJournal(world.root) ?? [];
     const row = journal.find((r) => r.subject.id === runId && r.kind === 'task.done');
@@ -1966,7 +2073,20 @@ describe('A-19 — immediate acceptance, delivery, and a real model reaction', (
       { name: 'nothing had reached pi’s model before the event', required: '0 model requests while pi sat connected and idle', observed: `${before} pi model requests`, ok: before === 0 },
       { name: 'delivery is observed: the event was handed to pi as a user message', required: 'the adapter submitted the dispatch through the extension and pi took it into its conversation', observed: userMessages.map((m) => String(m.message?.content?.[0]?.text ?? '').slice(0, 80)), ok: userMessages.some((m) => String(m.message?.content?.[0]?.text ?? '').includes('[xezar event notification]')) },
       { name: 'a model reaction followed, with nobody typing anything', required: 'pi itself sent a new inference request that CARRIED the event', observed: carrying ? { request: carrying.n, carriesTheRow: row ? carrying.lastText.includes(row.eventId) : 'no row to look for', decision: carrying.decision } : `no request carried the notification among ${caused.length}`, ok: arrived === true && carrying !== undefined && row !== undefined && carrying.lastText.includes(row.eventId) },
-      { name: 'no status-polling turn brought it about', required: 'the event turn is the ONLY model request in the session, and the 30 s heartbeat adds none', observed: { before, afterTurn, afterQuietWindow: afterQuiet, requests: caused.map((r) => `#${r.n} ${r.decision}`) }, ok: afterTurn === before + 1 && afterQuiet === afterTurn },
+      {
+        name: 'no status-polling turn brought it about',
+        required: 'the event turn is the ONLY model request in the session, and the 30 s heartbeat adds none',
+        observed: {
+          before,
+          afterTurn,
+          afterQuietWindow: afterQuiet,
+          requests: caused.map((r) => `#${r.n} ${r.decision}`),
+          // Named rather than counted: a request this run did not cause is a contaminated fixture, not
+          // a polling leader, and the two must never read the same.
+          ...(foreign.length === 0 ? {} : { foreignRequests: foreign.map((r) => `#${r.n} ${r.lastText.slice(0, 80)}`) }),
+        },
+        ok: afterTurn === before + 1 && afterQuiet === afterTurn,
+      },
       { name: 'the model was still offered every xezar tool in that request (PI-04)', required: 'the reaction turn’s tool list holds the bridge’s tools — both legs on one pi process', observed: carrying?.tools ?? [], ok: (carrying?.tools.length ?? 0) >= 11 },
       { name: 'delivery and reaction are reported separately, and both advanced', required: 'deliveredSeq and reactedSeq both reach the journal’s latest (§ 6.6)', observed: delivery, ok: delivery !== null && delivery.deliveredSeq >= 1 && delivery.reactedSeq >= 1 && delivery.reactedSeq === delivery.latestSeq },
       {
@@ -2200,6 +2320,7 @@ describe('A-20 — MCP changes reach the cockpit, human changes reach the leader
     // holding the row pi already reacted to.
     await delay(45_000);
     const after = world.modelRequests();
+    const { foreign } = classifyPiRequests(world.requestsSince(settledBefore));
     const status = await cockpit(world.serve, '/api/v1/mcp/leader');
     const delivery = status.json?.delivery ?? null;
     const journal = readJournal(world.root) ?? [];
@@ -2207,7 +2328,19 @@ describe('A-20 — MCP changes reach the cockpit, human changes reach the leader
     const checks: Check[] = [
       { name: 'the delivery path is live for this leader', required: 'attached, owned, and no blocker', observed: { leader: status.json?.leader, blocker: status.json?.blocker }, ok: status.json?.leader?.client === 'pi' && status.json?.blocker === null },
       { name: 'the reaction happened', required: 'A-19 for pi recorded a model request that carried the event', observed: { case: reaction.verdict, reactionCheck: reaction.checks.find((c) => c.name.startsWith('a model reaction followed'))?.ok ?? 'not recorded' }, ok: reaction.checks.some((c) => c.name.startsWith('a model reaction followed') && c.ok === true) },
-      { name: 'no recursive leader loop from echoes, logs, tokens or visual changes', required: 'over a window longer than the 30 s heartbeat, the reaction’s own aftermath starts no further model request', observed: { requestsBefore: settledBefore, requestsAfter: after, windowMs: 45_000, journalRows: `${journalBefore} → ${journal.length}`, leaderOriginRows: leaderRows.map((r) => r.kind) }, ok: after === settledBefore },
+      {
+        name: 'no recursive leader loop from echoes, logs, tokens or visual changes',
+        required: 'over a window longer than the 30 s heartbeat, the reaction’s own aftermath starts no further model request',
+        observed: {
+          requestsBefore: settledBefore,
+          requestsAfter: after,
+          windowMs: 45_000,
+          journalRows: `${journalBefore} → ${journal.length}`,
+          leaderOriginRows: leaderRows.map((r) => r.kind),
+          ...(foreign.length === 0 ? {} : { foreignRequests: foreign.map((r) => `#${r.n} ${r.lastText.slice(0, 80)}`) }),
+        },
+        ok: after === settledBefore,
+      },
       { name: 'the cursors came to rest', required: 'reactedSeq equals latestSeq and the controller is idle, so nothing is owed and nothing is retried', observed: delivery, ok: delivery !== null && delivery.reactedSeq === delivery.latestSeq && delivery.state === 'idle' },
     ];
     const entry = record({
@@ -2263,6 +2396,66 @@ describe('A-23 — one exclusive owner across clients; Claude Code, Codex and Op
       settle(t, entry);
     });
   }
+});
+
+/**
+ * A restart on PI's side — the half WP2 named as WP5's job, because only the xezar side was restarted
+ * there. It has to come last in the file: it ends the pi every case above shares.
+ *
+ * What must hold is the recoverable shape, not survival: the person's pi is theirs to close, and when
+ * they do, xezar must say so in a way they can act on and keep the rows. So: the extension removes its
+ * descriptor and its private directory, the leader status reports the adapter's own recoverable
+ * blocker rather than pretending, and a fresh pi announces itself again and can be attached again.
+ */
+describe('A-18 — a restart on pi’s own side (#330 WP5)', () => {
+  test('[pi] when the person’s pi exits, the link is dropped, said plainly, and a new pi can be attached', async (t) => {
+    if (!fx.clients.pi) {
+      const entry = record({ case: 'A-18', client: 'pi (pi-side restart)', verdict: 'NOT-RUN', summary: fx.absent.pi ?? 'pi not found', checks: [], fixture: {} });
+      return settle(t, entry);
+    }
+    const world = await piWorld();
+    const descriptorPath = join(world.root, '.local/xezar/pi-leader.json');
+    const socketPath = (world.descriptor as { endpoint?: { socket?: string } } | undefined)?.endpoint?.socket;
+    const socketDir = socketPath === undefined ? undefined : dirname(socketPath);
+    // The person closes their pi. Its own handle, never a pattern (#156).
+    await world.rpc.close();
+    await delay(2_000);
+    const gone = !existsSync(descriptorPath);
+    const socketGone = socketPath === undefined ? undefined : !existsSync(socketPath);
+    const dirGone = socketDir === undefined ? undefined : !existsSync(socketDir);
+    const afterExit = await cockpit(world.serve, '/api/v1/mcp/leader');
+    // A second pi, the way the person would start one again.
+    const pi2 = makePiHome('world2', fx.piInstall!, { xezHome: world.serve.home, endpointPort: fx.endpoint.port });
+    const transcript2 = new Transcript('pi-world-rpc-2');
+    const rpc2 = new PiRpc(fx.clients.pi.bin, piArgs(pi2, ['--extension', PI_EXTENSION]), { cwd: world.root, env: pi2.env, transcript: transcript2 });
+    let reattach: { status: number; json: any } = { status: 0, json: 'not attempted' };
+    let announced = false;
+    try {
+      announced = await waitFor('the new pi to announce itself', () => (existsSync(descriptorPath) ? true : undefined), 120_000).catch(() => false);
+      await waitForNotice(rpc2, 120_000);
+      reattach = await cockpit(world.serve, '/api/v1/mcp/leader', 'POST', { action: 'attach', client: 'pi' });
+    } finally {
+      await rpc2.close();
+    }
+    const checks: Check[] = [
+      { name: 'the extension removed its descriptor when pi exited', required: 'no stale pi-leader.json naming a dead socket', observed: gone ? 'removed' : 'still present after pi exited', ok: gone },
+      { name: 'the socket and its private directory went with it', required: 'nothing of the leader transport is left behind in the temporary directory', observed: { socketGone, dirGone, dir: socketDir }, ok: socketGone === true && dirGone === true },
+      { name: 'xezar says the link is gone, recoverably', required: "a blocker naming pi's own reason and a fix, never a silent attached leader", observed: { leader: afterExit.json?.leader, blocker: afterExit.json?.blocker }, ok: typeof afterExit.json?.blocker?.code === 'string' && typeof afterExit.json?.blocker?.fix === 'string' && afterExit.json.blocker.fix.length > 0 },
+      { name: 'nothing was lost: the rows are still there', required: 'the journal still holds what pi had reacted to', observed: `${(readJournal(world.root) ?? []).length} journal rows`, ok: (readJournal(world.root) ?? []).length > 0 },
+      { name: 'a new pi announces itself in the same project', required: 'the descriptor is written again, with no human configuration step', observed: announced ? 'pi-leader.json written again' : 'no descriptor from the second pi', ok: announced },
+      { name: 'and it can be attached again', required: '`attach` answers 200 with a pi leader', observed: { status: reattach.status, leader: reattach.json?.leader ?? reattach.json?.error }, ok: reattach.status === 200 && reattach.json?.leader?.client === 'pi' },
+    ];
+    const entry = record({
+      case: 'A-18',
+      client: 'pi (pi-side restart)',
+      verdict: verdictOf(checks),
+      summary: checks.every((c) => c.ok) ? "the person's pi exited, the link was dropped and named, and a fresh pi attached again with nothing configured" : 'a pi-side restart did not recover cleanly; see the checks',
+      checks,
+      transcripts: [world.transcript.name, 'pi-world-rpc-2.log', world.serve.transcript.name],
+      fixture: { note: 'WP2 restarted only the xezar side (R-03); this is the pi side, which it named as WP5’s' },
+    });
+    settle(t, entry);
+  });
 });
 
 // Guards the evidence itself (F-15): nothing this run wrote may carry a world secret.
