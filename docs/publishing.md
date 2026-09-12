@@ -71,11 +71,13 @@ session as well — it fails only when it has *neither* an OIDC endpoint nor a t
 
 ## Cutting a release
 
-1. Land everything you want in the release on `main`, with a green CI run, and run the MCP
-   mutation gate on that revision: `npm run test:mutation:mcp` must pass (#333). The Release job
-   below does not run it – a full run takes too long for a CI job, see
-   [coverage-gaps.md § 10.8](testing/coverage-gaps.md#108-the-release-gate-stryker-over-the-mcp-code) –
-   so on this manual path it is yours to run; the Xezar task below runs it for you.
+1. Land everything you want in the release on `main`, with a green CI run. **The MCP mutation
+   gate is no longer part of this path** (#377): it runs weekly against `main` in its own
+   scheduled workflow, `.github/workflows/mutation.yml`, and a release does not wait on it. Look
+   at the last scheduled run if you want the current score before you cut; a survivor there is a
+   weak test to fix in its own PR, not a reason to hold a release that passed the full canonical
+   gate and QA. Why it moved, and how the sharded run still enforces the same 80 % floor:
+   [coverage-gaps.md § 10.8](testing/coverage-gaps.md#108-the-scheduled-gate-stryker-over-the-mcp-code).
 2. Go to **Actions → Release → Run workflow**, pick the branch (`main`, or a `release/*`
    maintenance branch) and the bump:
 
@@ -105,9 +107,7 @@ The steps above can run as **one Xezar task** in this repository's kit. In the c
 bump: patch          # or minor / major; add `dry-run: true` to stop before the dispatch
 ```
 
-The task first runs the MCP mutation gate (`npm run test:mutation:mcp`, #333) and stops there if
-the MCP code's mutation score is under its floor. Then it writes the `# <version> (<date>)`
-changelog section from the PRs merged into `main`
+The task writes the `# <version> (<date>)` changelog section from the PRs merged into `main`
 since the last `v*` tag (no hand-written brief; every stray `# Unreleased` section is folded in),
 runs the canonical gates, merges the changelog PR, dispatches this Release workflow once for that
 bump, verifies npm / the tag / the GitHub Release, and approves and merges the bot's

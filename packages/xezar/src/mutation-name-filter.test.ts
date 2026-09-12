@@ -4,9 +4,11 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import mutationConfig from '../vitest.mutation.config.ts';
 
-// The MCP mutation gate (`npm run test:mutation:mcp`, #333) is a RELEASE gate: CI never runs it and
-// no PR runs it, so its first real exercise is the most expensive moment there is. #375 is what that
-// costs — `vitest.mutation.config.ts` left ONE guard out by its exact full name, #358 added a second
+// The MCP mutation gate (`npm run test:mutation:mcp`, #333) runs on a WEEKLY SCHEDULE against `main`
+// (#377, `.github/workflows/mutation.yml`); no pull request runs it, so a config that has drifted
+// from the code it filters is not found by the change that caused it. It was worse before #377,
+// when the gate ran only at release and its first real exercise was the most expensive moment there
+// is: #375 is what that cost — `vitest.mutation.config.ts` left ONE guard out by its exact full name, #358 added a second
 // guard of the same class under a different describe name, and the release died at the dry run
 // before a single mutant ran.
 //

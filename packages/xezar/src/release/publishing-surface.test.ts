@@ -24,8 +24,12 @@ const workflows = () =>
     .map((name) => ({ name, body: readFileSync(join(workflowDir, name), 'utf8') }));
 
 describe('publishing surface', () => {
-  it('ships exactly two workflows: CI and the manual release', () => {
-    expect(workflows().map((w) => w.name).sort()).toEqual(['ci.yml', 'release.yml']);
+  it('ships exactly three workflows: CI, the scheduled mutation gate and the manual release', () => {
+    // `mutation.yml` arrived with #377 and is the FIRST cron in this repository since the
+    // inherited nightly was deleted — the very shape of the job the guard above exists for. It is
+    // inventoried here rather than exempted, and the cases below hold it to the same rules as
+    // `ci.yml`: no npm token, no `id-token`, no publish command.
+    expect(workflows().map((w) => w.name).sort()).toEqual(['ci.yml', 'mutation.yml', 'release.yml']);
   });
 
   it('stores no npm token anywhere — publishing is OIDC trusted publishing', () => {
@@ -42,14 +46,18 @@ describe('publishing surface', () => {
     expect(withIdToken.map((w) => w.name)).toEqual(['release.yml']);
   });
 
-  it('keeps every publish command out of ordinary CI', () => {
-    const ci = workflows().find((w) => w.name === 'ci.yml');
-    expect(ci).toBeDefined();
-    // `npm pack --dry-run` is fine and wanted; an actual publish is not.
-    expect(ci!.body).not.toMatch(/npm\s+publish/);
-    expect(ci!.body).not.toMatch(/release-snapshot/);
-    expect(ci!.body).not.toMatch(/dist-tag/);
-    expect(ci!.body).not.toMatch(/publish-snapshot/);
+  it('keeps every publish command out of every workflow but the release', () => {
+    // Was `ci.yml` only. Widened with #377: the scheduled mutation gate is the shape the deleted
+    // nightly had, so "which file is it in" must not be what decides whether a publish is caught.
+    const others = workflows().filter((w) => w.name !== 'release.yml');
+    expect(others.map((w) => w.name).sort()).toEqual(['ci.yml', 'mutation.yml']);
+    for (const w of others) {
+      // `npm pack --dry-run` is fine and wanted; an actual publish is not.
+      expect(w.body, `${w.name} must not publish`).not.toMatch(/npm\s+publish/);
+      expect(w.body, `${w.name} must not publish`).not.toMatch(/release-snapshot/);
+      expect(w.body, `${w.name} must not publish`).not.toMatch(/dist-tag/);
+      expect(w.body, `${w.name} must not publish`).not.toMatch(/publish-snapshot/);
+    }
   });
 
   it('lets the release fire only from an explicit manual dispatch', () => {
@@ -114,7 +122,9 @@ describe('publishing surface', () => {
         encoding: 'utf8',
       }),
     ) as Array<{ files: Array<{ path: string }> }>;
-    const runFiles = ['stryker.config.mjs', 'vitest.mutation.config.ts'];
+    // `stryker.shard.config.mjs` joined the list with #377, when the gate moved out of the
+    // release path onto a sharded weekly schedule. Same rule, one more file.
+    const runFiles = ['stryker.config.mjs', 'stryker.shard.config.mjs', 'vitest.mutation.config.ts'];
     const shipped = packed[0]!.files.map((f) => f.path).filter((p) => runFiles.includes(p) || p.startsWith('.stryker-tmp/'));
     expect(shipped, 'the mutation run must not reach the tarball').toEqual([]);
   }, 60_000);

@@ -444,6 +444,16 @@
   right eventual set and removing one would break the record format; wiring the other three doors is
   its own issue (#364) for a later release. No product behaviour changed. (#266)
 
+## 🚀 CI/CD & Infrastructure
+- 🚀 **A release no longer waits on the MCP mutation gate.** That check took nearly four hours,
+  ran only at release time, and a failure in it means a weak test — work for next week, not a
+  reason to hold code that already passed the full test gate and independent QA. It now runs by
+  itself once a week against `main`, where the result reaches somebody who can act on it: the
+  scheduled check goes red, the score lands in the run summary, and one reused issue is opened
+  and closed with it. Nothing about the check was made easier — same code, same tests, same 80 %
+  floor. It is split across six parallel jobs only because one job cannot finish inside GitHub's
+  six-hour limit, and the floor is applied once to the combined score. (#377)
+
 # 0.13.1 (2026-09-10)
 
 ## Highlights

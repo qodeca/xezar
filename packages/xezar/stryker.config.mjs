@@ -1,8 +1,15 @@
 // @ts-check
 import { availableParallelism } from 'node:os'
 
-// The MCP mutation run – `npm run test:mutation:mcp`, a RELEASE gate, not a per-PR one (#333,
+// The MCP mutation run – `npm run test:mutation:mcp`, a SCHEDULED gate, not a per-PR one (#333,
 // docs/testing/coverage-gaps.md § 10.3; the per-PR form is the named break SDLC.md requires).
+// It was a release gate until #377 moved it to `.github/workflows/mutation.yml`, weekly against
+// `main`, where a survivor reaches somebody who can act on it instead of holding a finished
+// release. That workflow does not run THIS file directly: a run of this size does not fit a
+// GitHub job, so it splits the scope (`scripts/mutation-shards.mjs`), runs each slice through
+// `stryker.shard.config.mjs`, and applies the `thresholds.break` below once to the summed
+// whole-scope score (`scripts/mutation-aggregate.mjs`). This file stays the one definition of
+// the scope and the floor, and is still what a person runs by hand.
 // Run from the repository root: every path below is relative to it.
 //
 // Two guarantees this file carries, and what each is for:
