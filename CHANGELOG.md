@@ -1,6 +1,19 @@
 # Unreleased
 
 ## ✨ Features
+- ✨ **A pi leader can now be woken by a project event.** xezar has a pi reaction adapter, so a
+  significant event can start a real pi turn that carries it — no polling, no "anything new?" turn.
+  It uses pi's own session interface: it prompts pi when pi is idle, and steers when pi is in the
+  middle of a turn, which never cuts that turn short. The event says in so many words that it comes
+  from xezar and is not an instruction or an approval, and it carries your leader's role every time,
+  because pi does not keep one across a resume. A leader never hears the echo of its own change, an
+  event is never put to the model twice — not after a lost answer and not after xezar restarts — and
+  xezar's liveness check reads pi's session state without waking the model. One honest limit, and
+  the cockpit says it rather than hiding it: pi speaks this interface over its own input and output
+  only, and xezar never starts an agent process for you, so a pi you run in your own terminal has no
+  address xezar can reach. Asking to attach one now answers with pi's own reason instead of a schema
+  error, and never detaches a leader that is working. That pi still reads its events with
+  `leader_events`, and nothing is lost. (#330)
 - ✨ **Project events can now be pushed to a leader you attach.** The event controller and the
   reaction adapters were built and tested but never connected, so no event ever reached a client.
   Now every MCP session that owns a project gets push delivery the moment it opens — nothing to set

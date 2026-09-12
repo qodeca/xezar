@@ -7,8 +7,8 @@ A-01 client leg of the [requirements](mcp-project-leader-requirements.md), for p
 **This is the first half of the record.** It covers what can be measured before a pi reaction adapter exists:
 the one-time setup, the A-01 client leg against the real bridge, and the 13 behaviours of the
 [client behaviour spike](mcp-client-behaviour-spike-report.md). The second half – the reaction adapter
-(`adapters/pi.ts`, WP2) and its runtime runs – is written with that adapter, after #311 merges. See
-[What the second half adds](#what-the-second-half-adds).
+(`adapters/pi.ts`, WP2) and its runtime runs – was written with that adapter after #311 merged and is
+appended below: [pi reaction adapter – runtime evidence (second half)](#pi-reaction-adapter--runtime-evidence-second-half).
 
 Run date: **2026-09-11**, 17:33–18:15 UTC. Revision under test: **`5031bf8`** (`main`), built with
 `npm run build` on branch `xez/95c0a6da`. No product file differs from `main`; this branch adds only this
@@ -263,13 +263,18 @@ Each blocker keeps pi in scope. None is solved by polling.
 
 ## What the second half adds
 
-Written with WP2, on the adapter's own branch:
+Written with WP2, on the adapter's own branch, and appended below:
 
-- the runtime runs of `adapters/pi.ts` (a journal row through the event controller to a pi turn, idle and busy, a
-  permission or question prompt, a restart on each side, blockers), in the shape of the other three records;
+- the runtime runs of `adapters/pi.ts` (a journal row through the event controller to a real pi turn, idle and
+  busy, a restart on the xezar side, blockers), in the shape of the other three records;
 - its unit tests and their red proof;
 - the adapter's delivery rules, derived from the findings above;
 - the D-05 negotiation row, checked through the adapter.
+
+Two items named here were **not** measured in the second half, and it says so where they belong: a pi
+permission or question prompt (pi's RPC leg here ran with tool approval off, as a headless leader does), and a
+restart on **pi's** side (only the xezar side was restarted, `R-03`). Both belong to WP5's run on a candidate
+revision with `pi-mcp-adapter` loaded.
 
 ## Evidence location
 
@@ -294,3 +299,182 @@ To reproduce: build (`npm run build`), install the adapter into a throwaway `PI_
 each scenario with `TMPDIR=/tmp node scenarios.mjs <name>`: `a01`, `wire`, `scope`, `second`, `crash`,
 `idle-default`, `idle-keepalive`, `idletimeout-default`, `idletimeout-keepalive`, `fencing`, `async`, `human`,
 `stale`, `lost`, `persist`.
+
+---
+
+# pi reaction adapter – runtime evidence (second half)
+
+Issue: [#330](https://github.com/qodeca/xezar/issues/330), work package WP2. Covers F-20, A-19 and the § 12
+delivery hierarchy for `packages/xezar/src/mcp/adapters/pi.ts`, the adapter WP1 named as blocker PI-1.
+
+Run date: **2026-09-12**, 06:05–06:14 UTC. Revision under test: branch `xez/b074e16c`, based on
+[`7bcb258`](https://github.com/qodeca/xezar/commit/7bcb258) (`main`, #311, the commit that first constructs the
+event controller and the reaction adapters in the running service). Host: macOS 26.6.2 (Darwin 25.6.0, arm64),
+Node v24.20.0. pi: **0.85.1** (`@earendil-works/pi-coding-agent`). These are installed versions, not certified
+minimums.
+
+## Answer first
+
+- **The adapter is built, tested and connected, and a real pi turn carries a real journal row (EXECUTED).**
+  A row appended to a real `EventJournal` went through the real `EventController`, through
+  `PiReactionAdapter`, into a real `pi --mode rpc`, and pi's **first** model request carried it. No poll, no
+  notification, no status turn: the request that carried the event was the only request pi made (`R-01`).
+- **Both rungs of tier 2 are executed.** With pi idle, RPC `prompt` started the turn (`R-01`). With pi inside
+  the person's own turn, the adapter steered, the running turn finished on its own terms, and the following
+  model request carried the event (`R-02`). Real pi refuses a plain `prompt` during a turn, so the fallback is
+  not optional — the adapter sends `steer` when it knows pi is busy AND falls back to `steer` on the refusal.
+- **Delivery is not reaction, and it is measured that way.** `deliver` resolved with `handedThrough: 2` while
+  the model had still seen nothing; `reactedSeq` moved only when pi put the text in front of the model
+  (`R-02b`, `R-02e`, `R-01f`).
+- **A restart does not ask the model twice.** A fresh adapter over the same pi session read pi's own
+  conversation (`get_messages`), found its marker, and submitted nothing: zero extra model requests (`R-03`).
+- **The production caller is `LeaderDelivery`, and today it answers with a blocker.** `POST /api/v1/mcp/leader`
+  accepts `{action: 'attach', client: 'pi'}` and answers `409` with pi's own recoverable reason,
+  `pi-not-addressable` (`R-04`). **This half does NOT close A-19 for pi**, and says so plainly below: pi's RPC
+  is stdio-only, so no address exists for a pi the person runs in their own terminal. See
+  [What this does not close](#what-this-does-not-close).
+- **A real model reaction is still UNVERIFIED**, as it is for all four clients. Every turn here reached a
+  scripted local endpoint. That proves pi really started a turn and really sent an inference request carrying
+  the event. It does not prove what a real model decides. OB-5 / PI-4 stays open.
+
+## What the adapter does, and why each rule exists
+
+Derived from WP1's four findings, each re-checked here against the real binary.
+
+| Rule in `adapters/pi.ts` | Why | Checked |
+| --- | --- | --- |
+| `prompt` when pi is idle | It starts a turn at once | `R-01b` |
+| `steer` when pi is busy, and `steer` again when a `prompt` is refused | Real pi answers a plain `prompt` during a turn with `success: false`, "Agent is already processing. Specify streamingBehavior ('steer' or 'followUp') to queue the message." The fallback is what makes a stale idea of "busy" safe: pi can start a turn of its own between the check and the write | `rpc-probe`, `R-02a`, unit `a prompt refused because pi started a turn…` |
+| The role instruction rides in **every** submission | pi keeps no system prompt in its session file, so `--append-system-prompt` is gone after a resume (WP1, prompt persistence: FAIL). The adapter starts no pi and cannot pass that flag, so it carries xezar's own role text in the message | `R-01e` |
+| The busy flag is also corrected by the heartbeat | `agent_settled` is one line on a stream; a dropped line would otherwise make the adapter steer for ever. `get_state.isStreaming` is pi's own answer | unit `the heartbeat corrects a stale idea of "busy"` |
+| Reaction is read from the **user message**, never from the `response` | Measured: pi emits `message_start`/`message_end` with the submitted text as a `user` message immediately before the model request that carries it — for an idle `prompt` and for a steered message alike — and never while the text is still in the steering queue | `rpc-probe`, `R-01f`, `R-02b` |
+| Rows are remembered, and pi's conversation is re-read after a lost answer | The controller retries the same rows (at-least-once). A retry whose earlier attempt did reach pi must not start a second turn | `R-03b`, unit `an attempt pi ACTED on whose answer was lost…` |
+| `heartbeat` is `get_state` | Metadata only: it starts no turn and reaches no model | `R-05` |
+| It never spawns pi | xezar starts no agent process for a leader (owner decision on #311). The adapter imports neither `node:child_process` nor `node:fs`, reads no environment variable, and never names `PI_CODING_AGENT_DIR` | unit `AGENTS.md — no environment, no file writes, no process` |
+
+## Runtime runs of the adapter (executed)
+
+Scenario `adapter-run`. Real `pi --mode rpc` (`--offline --no-extensions --no-skills --no-prompt-templates
+--no-themes --no-context-files --no-session --model scripted/scripted-model --append-system-prompt
+XEZAR-ROLE-MARKER`), a pinned throwaway `HOME` **and** `PI_CODING_AGENT_DIR`, and a scripted
+OpenAI-completions endpoint on `127.0.0.1` that logs every request it is sent. A "model request" is read from
+the endpoint's log, never from pi.
+
+| ID | Check | Result |
+| --- | --- | --- |
+| R-01a | The real `EventController` starts over the pi adapter | **PASS** (`started`) |
+| R-01b | A row appended to a real journal reaches real pi, and pi's model request carries it | **PASS** (request 1) |
+| R-01c | That request is the FIRST pi made — no status poll brought it about | **PASS** (1 request in total) |
+| R-01d | The text names xezar as the source and says it is not an instruction or an approval | **PASS** |
+| R-01e | The role instruction rode with the submission | **PASS** |
+| R-01f | `reactedSeq` advanced from the observed turn, and `deliveredSeq` with it | **PASS** (`deliveredSeq: 1, reactedSeq: 1, latestSeq: 1`) |
+| R-02a | A busy pi is steered and accepts it (`queue_update` carries the text); `handedThrough: 2` | **PASS** |
+| R-02b | Delivery is not reaction: nothing had reached the model when `deliver` resolved | **PASS** |
+| R-02c | After the running turn finished, the next model request carried the event | **PASS** |
+| R-02d | The person's own turn was not cut short: its answer came back first | **PASS** |
+| R-02e | The reaction was reported once, and only when the model was really asked | **PASS** (`[2]`) |
+| R-03a | `piReactionTarget` over a live link answers with an adapter | **PASS** |
+| R-03b | A fresh adapter over the same pi session read pi's conversation and submitted nothing again | **PASS** (0 extra model requests) |
+| R-04 | With no link: the recoverable `pi-not-addressable` blocker, naming stdio and `leader_events` | **PASS** |
+| R-05 | The heartbeat (`get_state`) started no turn and reached no model | **PASS** |
+
+**Tally: 15 PASS, 0 FAIL.** Verdict `PASSED` in `adapter-run-result.json`.
+
+**What the probe measured first.** Before a line of the adapter was written, the real RPC stream was read
+(`rpc-probe`): an idle `prompt` → `response success:true`, `agent_start`, `turn_start`, a `user`
+`message_start`/`message_end` carrying the text, the assistant reply, `turn_end`, `agent_end`,
+`agent_settled`; a plain `prompt` during that turn → `success: false` with the busy refusal, and it never
+reached the model; `steer` during that turn → `queue_update` with the text, then delivery at the next
+`turn_start`. Three model requests, carrying markers 1, 2 and 4 — never marker 3, the refused prompt. The
+unit tests' `FakePi` reproduces that stream and nothing else.
+
+**The limit of this scenario.** pi ran with `--no-extensions`, so `pi-mcp-adapter` was not loaded and the
+model was offered no xezar tool. That is deliberate: the adapter's own leg is "does an event start a real pi
+turn carrying it", and WP1 already proved the MCP client leg (all 11 tools offered, called, answered) against
+the real bridge. The two legs on ONE pi process, on one candidate revision, is **WP5's** job, and PI-04's
+"the adapter's pi process still sees every Xezar tool" is therefore **not** measured here. Note also that the
+process here is the harness's, not a person's: see below.
+
+## The D-05 negotiation row, through the adapter
+
+| Row | For the pi adapter |
+| --- | --- |
+| Tier 1, native MCP notification | **Not adopted.** The bridge advertises tools only (`SERVER_CAPABILITIES`, `protocol.ts`) and sends no notification; against a stub that did, none started a pi turn (#330 run A). The adapter sends none and depends on none. |
+| Tier 2, programmatic session interface | **Adopted.** `prompt` / `steer` over pi's RPC (`R-01`, `R-02`). |
+| Tier 3, terminal text input | **Refused.** Tier 2 works, and nothing in the module can type: it imports no `node:child_process` and simulates no keystroke (unit test). |
+| Delivery vs reaction (§ 6.6) | Separate cursors, measured separately (`R-02b`, `R-02e`). |
+| At-least-once redelivery (§ 6.6) | The controller retries the same rows; the adapter dedups on `<eventId>@<ts>` and on pi's own conversation (`R-03b`). |
+| Echo guard (§ 6.3, F-13) | A `leader` row caused by this leader's own outstanding operation is dropped before the text is rendered; nothing else is (unit tests). |
+
+## What this does not close
+
+**A-19 is not satisfied for pi by this half, and no reading of the runs above should say it is.**
+
+The runs prove the adapter works. They do not prove a person's pi leader can be reached, because the pi
+process in `R-01`–`R-03` is one the harness started and whose stdin it owns. pi's RPC is **stdio-only**: pi
+0.85.1 has no port, no socket and no attach mode (`pi --help`, `docs/rpc.md`), so there is no address for a pi
+the person runs in their own terminal — and xezar starts no agent process for a leader (owner decision on
+#311). This is the same standing Claude Code and Codex have on `main` today, for the same reason, and it is
+WP1's blocker **PI-2** unchanged.
+
+What the product does with that fact, rather than hiding it:
+
+- `POST /api/v1/mcp/leader` accepts `{action: 'attach', client: 'pi'}` and answers `409` with
+  `pi-not-addressable`: *"xezar cannot wake a pi session you run yourself: pi speaks RPC over its own stdin
+  and stdout only … Events stay in the project journal and nothing is lost."* A refused pi attach never
+  detaches a leader that is working.
+- `GET /api/v1/mcp/leader`'s `no-leader-session` blocker now names pi alongside Claude Code and Codex.
+- Nothing is lost: that leader reads its events with `leader_events` (#251), and the next session resumes
+  after its last acknowledgement.
+
+**What would close it** is a pi-side component — a pi extension calling `pi.sendUserMessage(…)`, which
+always triggers a turn (`docs/extensions.md`) — that connects out to xezar and hands this adapter a
+`PiRpcLink`. The adapter is deliberately transport-free so that such a link drops straight in:
+`piReactionTarget({ link })` already answers with a working adapter, which is what `R-03a` exercises. Building
+that component is **not** in WP2's scope (it is a shipped artifact plus setup guidance, and it crosses the
+files WP3 and #264 own). It is a decision for the owner to sequence.
+
+## Tests and red proof
+
+`packages/xezar/src/mcp/adapters/pi.test.ts`: 38 tests. `leader-delivery.test.ts` gains two for the pi attach
+path. Coverage from the MCP suites alone: `pi.ts` **100 % lines, 90.98 % branches**; `leader-delivery.ts`
+**95.83 % lines, 84.05 % branches** — both over the 80 / 80 floor.
+
+Each new test was proven RED against a named break in the source it guards. Every run checked
+`git status --porcelain` for an `M` on the edited file BEFORE trusting the result, then restored it.
+
+| Break | What was broken | Result |
+| --- | --- | --- |
+| B1 | Always `prompt`, never fall back to `steer` | RED |
+| B2 | Report the reaction from pi's `response` instead of the observed turn | RED |
+| B3 | Forget every submitted row | RED |
+| B4 | Never read pi's own conversation | RED |
+| B5 | Treat an attempt that threw as certain | RED |
+| B6 | Build an adapter with no link | RED |
+| B7 | Drop the echo guard | RED |
+| B8 | Detach the working leader before refusing a pi attach | RED |
+
+B5 is not a hypothetical: the adapter really did clear its "uncertain" flag in a `finally`, and the test
+written for a lost answer found it before the first green run.
+
+## Open blockers, after this half
+
+| ID | Blocker | Change |
+| --- | --- | --- |
+| PI-1 | No pi reaction adapter | **CLOSED.** `adapters/pi.ts` exists, is tested, and is constructed by `LeaderDelivery`. |
+| PI-2 | A pi session the person opened in their own terminal cannot be reached | **Open, and now the only thing between pi and A-19.** Re-confirmed against 0.85.1: stdio-only, no attach mode. |
+| PI-3 | The model is not told why it was refused as the second client | Open, shared with the three. Untouched here. |
+| PI-4 (OB-5) | No real-model reaction | Open, shared with all four. Untouched here. |
+| PI-5 | The capability is third-party and moves fast | Open. This half needed no `pi-mcp-adapter`; WP5 does. |
+
+## Evidence location
+
+The probe (`probe.mjs`), the scripted endpoint (`scripted-model.mjs`), the adapter run (`adapter-run.ts`), the
+red proof (`red-proof.sh`), their logs and `adapter-run-result.json` are in this task's private evidence
+folder, `.local/xezar-tasks/<runId>/pi-adapter/`. It is never committed. It holds no credentials: the only key
+string is the dummy value in the fixture `models.json`. The real `~/.pi` was never read or written — both
+`HOME` and `PI_CODING_AGENT_DIR` were pinned to throwaway folders for every pi process, and every process the
+harness started was stopped by its own saved handle, never by a command-line pattern.
+
+To reproduce: `TMPDIR=/tmp node --import tsx adapter-run.ts` (real pi on `PATH`), and
+`bash red-proof.sh` for the red proof.
