@@ -1,6 +1,67 @@
-# Unreleased
+# 0.14.0 (2026-09-12)
+
+## Highlights
+The headline is the **MCP project leader**: a coding agent can now drive a xezar project from the
+outside. `xez mcp` is a new subcommand — a stdio bridge to the cockpit you are already running —
+and through it an agent can read tasks and evidence, create and organise work, control execution,
+hand work onward through git and GitHub, and change project settings, with one owner per project,
+version-checked writes, retry-safe operations and an audit trail. It works with Claude Code, Codex,
+OpenCode and pi, and a project event can start a real turn in any of them. The cockpit gains two new
+Settings sections for it: **MCP connection** and a browsable, read-only **MCP API** reference. The
+rest of the release is a long run of safety fixes around worktrees, secrets, cancellation and the
+project kit, plus the repository's first security policy, contribution path and code of conduct.
 
 ## ✨ Features
+- ✨ **A coding agent can now lead a xezar project over MCP.** `xez mcp` is a new subcommand: the
+  stdio MCP endpoint an agent spawns. It starts no server and opens no port — it talks to the
+  cockpit you are already running over a private per-project socket in your own home folder, so
+  there is no token, no port and no configuration to author. The session is bound to one project by
+  that socket, and a call that names a different project still answers the bound one. Through it a
+  leader does the work you do in the cockpit: discover the project, its capabilities, its limits and
+  the reason any action is unavailable; read tasks, history, the Inbox and variant groups; create a
+  task with full composer-form parity; organise work (queue, title, brief, pin, archive, delete,
+  variants); control execution and send a message into a running session; read a task's result and
+  evidence identified by revision; hand work onward with commit, push, draft PR, merge and branch;
+  read and change project configuration behind the settings boundary; and ask for the
+  local-machine handoff, which is reported honestly and keeps the goal and the Definition of Done
+  with you rather than with the model. Every operation goes through one shared service adapter and
+  one ownership check, so a nested id or a bulk list cannot reach another project's resource.
+  (#86, #87, #88, #89, #90, #91, #92, #93, #94, #95, #96, #97, #98, #213, #214, #215, #217, #222,
+  #223, #224, #225, #226, #227, #228, #230, #231, #243, #247)
+- ✨ **A leader's write cannot silently overwrite yours.** Every MCP read of a task returns a
+  version token, and every mutating MCP tool action requires it back as `expectedVersion`. When the
+  stored state moved on in between, the call is refused with `stale_version`, nothing is written,
+  and the refusal is audited. The same guard reached fifteen single-task HTTP routes as an
+  **optional** field, so the cockpit behaves exactly as before, and `GET /api/v1/runs/:id/version`
+  reads the token on its own. One measured limit: a running task's version moves with every agent
+  event, so cancelling a busy task through MCP may need a re-read and a retry. (#100, #216, #250,
+  #258)
+- ✨ **Every MCP operation is recorded.** `mcp-audit.ndjson` holds one row per call: what was
+  asked for, the resource it touched, its operation key, and an origin the server derived rather
+  than one the caller claimed. It carries no secrets — the host's own secret values are scrubbed
+  before a row is written — and no account identity. (#102, #220)
+- ✨ **The project keeps an event journal, and a leader reads what it missed.** Every significant
+  thing that happens to a project — the E-01 to E-06 catalog — is written to a per-project journal
+  with its origin, the versions it changed and a replay cursor, including the config, workflow and
+  agent-config edits a human makes in the cockpit. A new `leader_events` tool reads the rows after
+  the leader's acknowledged cursor together with the current state of the tasks they name, and
+  acknowledges them; the acknowledgement only ever moves forward, an unacknowledged row is offered
+  again, and rows the journal has dropped are reported as an explicit gap rather than replayed
+  partially. Another project's cursor is refused, and the host's own secret values are scrubbed on
+  the way out. (#103, #104, #105, #221, #232, #233, #251, #252, #254)
+- ✨ **A leader's changes reach your open cockpit, and it never hears its own echo.** A change made
+  through MCP updates every open cockpit view live, over the connection that is already there, and
+  the leader that made it is not told about it again. A non-model event controller owns the logical
+  project session, so the bookkeeping happens without spending a model turn. (#106, #107, #234,
+  #235)
+- ✨ **A project event can start a real turn in Claude Code, Codex or OpenCode.** Each has a
+  reaction adapter, measured against the real client rather than a mock: Claude Code through a
+  scripted endpoint, Codex over its app-server, and OpenCode over `opencode serve`. (#108, #109,
+  #110, #239, #241, #244)
+- ✨ **MCP connection is a section in project Settings.** It shows the whole connection state — what
+  is connected, what it can and cannot do, and the limits that apply — reports the outcome of an
+  operation and keeps itself in sync while you watch, and carries the one-time setup for each
+  client. (#111, #112, #113, #114, #236, #245, #246, #255)
 - ✨ **A pi leader can now be woken by a project event.** xezar has a pi reaction adapter, so a
   significant event can start a real pi turn that carries it — no polling, no "anything new?" turn.
   It uses pi's own session interface: it prompts pi when pi is idle, and steers when pi is in the
@@ -17,7 +78,7 @@
   before that run ended; xezar will not cut a turn short to deliver an event. It also never takes
   pi's "accepted" for "the model has it": every handover is checked against pi afterwards, and an
   event xezar cannot confirm reached the model is handed over again rather than counted as
-  delivered. (#330)
+  delivered. (#330, #358)
 - ✨ **And a pi you run in your own terminal can now be reached.** pi speaks its session interface
   over its own input and output only, and xezar never starts an agent process for you, so until now
   a pi you started yourself had no address and got no push. xezar now ships a small pi extension:
@@ -47,7 +108,7 @@
   and `leader_events` report only what really happened — nothing delivered, acknowledged or
   reacted to is ever claimed for a row that was not, and a leader that stops answering (even one
   that still accepts connections) is reported as soon as an attempt fails, whatever the delivery is
-  doing. There is no cockpit button yet. (#309)
+  doing. There is no cockpit button yet. (#309, #311)
 - ✨ **pi has a setup card in MCP connection.** Project Settings → MCP connection now shows pi's
   one-time setup next to Claude Code, Codex and OpenCode. pi adds MCP through an extension, by
   design, so the card starts with installing the third-party `pi-mcp-adapter` extension
@@ -58,7 +119,7 @@
   Claude Code included, are refused until that pi exits. It says how to check the extension is
   there (`pi list`), that the file is safe to commit, that the `.pi/mcp.json` entry wins over the
   other five files pi reads MCP config from, and that the project `.mcp.json` is read by Claude
-  Code too. xezar still starts no leader: you point your own pi at it. (#341)
+  Code too. xezar still starts no leader: you point your own pi at it. (#341, #343)
 - ✨ **One MCP client owns a project at a time.** A second coding agent that connects to a
   project another MCP client already holds is now refused with the project-occupied error
   (`-32080`, `com.qodeca.xezar/project-occupied`), which names nothing about the other client; the
@@ -69,7 +130,8 @@
   bridge reconnects on its own. Nothing here stops, cancels or pauses a running task, and there is
   still no disconnect or take-over button. Under the hood `xez mcp` now keeps one connection to
   xezar for its whole life instead of one per tool call, so run the bridge and the cockpit from
-  the same xezar version: an older bridge is told so in plain words. Nothing to set up. (#302)
+  the same xezar version: an older bridge is told so in plain words. Nothing to set up.
+  (#99, #218, #302, #305)
 - ✨ **Browse the MCP API in the cockpit.** Project Settings has a new **MCP API** section, next to
   MCP connection: every tool the MCP server exposes, one collapsed row each with its effect in
   words (read-only, changes project state, destructive), and on expand its actions, its arguments
@@ -77,14 +139,14 @@
   and what it refuses. It reads one new route, `GET /api/v1/mcp/reference`, whose tool list is
   exactly what the server's `tools/list` answers, and it works even when the MCP service is not
   running. It is read-only by design: there is no "Try it", because running a tool from the cockpit
-  would make it a second leader on the project. Nothing to set up. (#284)
+  would make it a second leader on the project. Nothing to set up. (#284, #291)
 - ✨ **A leader can mark its own draft pull request ready through MCP.** `handoff_git` gains a
   `ready` action (the pull request number plus the head sha the leader reviewed), backed by a new
   `POST /api/v1/github/prs/:number/ready` route that re-reads the forge and runs `gh pr ready`.
   Until now `create_pr` opened a draft and nothing could move it forward without a browser or a
   shell. A moved head is refused, an already-ready or closed pull request is refused in the
   service's own words, and a failing required check or a changes-requested review is reported as a
-  blocker that no argument bypasses. (#262)
+  blocker that no argument bypasses. (#262, #275)
 - ✨ **Xezar now writes the MCP connection file itself.** When the MCP service starts it writes
   `.local/xezar/mcp-connection.json` (D-04) atomically at mode `0600`, after making sure
   `.local/.gitignore` exists: the project, this service process and the socket that really
@@ -99,7 +161,7 @@
   rather than left to be discovered: a xezar tool you put behind pi's tool-approval setting stops a
   pi nobody is watching from finishing its turn at all, because the approval question waits for an
   answer and xezar never gives one. Nothing is lost while that holds and your events stay in the
-  journal, but do not gate xezar's tools on a leader you leave alone. (#330)
+  journal, but do not gate xezar's tools on a leader you leave alone. (#330, #367, #368)
 - 🐛 **pi now has a column in the real-client acceptance record, measured on one revision with the
   other three** — and two of those three clients' rows improved while nobody was looking. Exclusive
   project ownership shipped hours after the record was last written, so the record still said a
@@ -121,7 +183,7 @@
   already export it, xezar's pi model list now comes from that folder instead of `~/.pi/agent`,
   which is the correct answer and the point of the fix. OpenCode still cannot carry a second
   account – its credentials live apart from its config, so a second one would quietly bill the
-  first. (#329)
+  first. (#329, #349, #361)
 - 🐛 **A leader that loses the answer to an MCP call can now ask again safely — for every tool, not
   just one.** Every MCP tool action that changes something takes a required `operationId`, so
   sending the same call again returns what the first one did instead of doing it a second time.
@@ -130,7 +192,8 @@
   answer left a leader with no safe way to find out whether its message was queued, its branch
   created or its app opened. Read actions of those same tools deliberately take no key and refuse
   one — a read has nothing to repeat, and `leader_events read` is meant to return the same events
-  again until you acknowledge them. The tool reference lists which actions need the key. (#264)
+  again until you acknowledge them. The tool reference lists which actions need the key.
+  (#101, #219, #264, #359)
 - 🐛 **A workflow step that stops for an answer now stops the workflow.** A step before the last
   one runs a single turn, and it used to be marked done whenever its session closed without an
   error – so a step that ended on a question, `XEZ:ASK` or plain prose, was treated as finished
@@ -139,12 +202,12 @@
   told to end with. Otherwise it fails and says why; Continue reopens that step's conversation so
   you can answer. The last step is unchanged: it still waits for your reply. A custom workflow
   whose earlier agent steps finish without `XEZ:DONE` now stops there – see
-  BACKWARD_COMPATIBILITY.md §8. (#317)
+  BACKWARD_COMPATIBILITY.md §8. (#317, #322)
 - 🐛 **The project kit refuses uncommitted work before the gates, not after them.**
   `worktree-preflight.sh --readiness`, the step right before the gates, now refuses a task tree with
   uncommitted changes or new files (`gitstate.committed`) and says to commit, then re-run readiness
   and the gates. The evidence step already refused such a tree, but only after a complete gate run
-  had been paid for. Plain preflight and the read-only roles are unchanged. (#320)
+  had been paid for. Plain preflight and the read-only roles are unchanged. (#320, #322)
 - 🐛 **The project kit no longer seals gate evidence for a branch with none of the task's work.**
   An author step that ended on a question in prose – no code and no `BLOCKED` file – was marked
   done. Readiness then passed, because its only scope check read "no `BLOCKED` file" as "not
@@ -152,14 +215,14 @@
   --readiness`, `--record-gate-evidence` and `--verify-gate-evidence` now refuse a branch whose HEAD
   is already in its base (`branch.has-own-commits`), even after the base moved on. Plain preflight
   and the read-only roles are unchanged. The shared contract of all 18 kit skills now says a
-  non-final step that stops for a decision writes `BLOCKED` first. (#312)
+  non-final step that stops for a decision writes `BLOCKED` first. (#312, #315)
 - 🐛 **The project kit no longer refuses an honest QA run for making no commits.** The empty-branch
   refusal above also fired on a `testing-and-verification` run that only verified another PR – it
   reads, runs and posts findings, and has nothing to commit. Such a run now writes a `VERIFICATION`
   record in its evidence directory naming the commit it verified and where its findings are, and
   readiness and both evidence modes accept it with no commits; handoff then opens no pull request.
   Without the record the refusal is unchanged, a record that does not name a real commit refuses
-  (`scope.verification-record`), and `BLOCKED` still stops the run first.
+  (`scope.verification-record`), and `BLOCKED` still stops the run first. (#312, #315)
 - 🐛 **Settings → MCP API no longer tells a reviewer a guard is optional when it is not.** The page
   read "accepted, not required" for `organise_work`'s `expectedVersion`, while that tool refuses
   ten actions without it; `handoff_git` and `project_config` read the same. The reference route now
@@ -173,7 +236,7 @@
   shown here" instead of silence, and a close control at the end of each open tool. MCP connection
   shows names as code instead of literal backticks, drops the requirement document's "stated
   plainly" wording, leaves out the "Operation outcomes" section no route can fill yet, and moves
-  the one-time setup up. (#301)
+  the one-time setup up. (#296, #299, #301, #304)
 - 🐛 **The project kit refuses to judge a task whose workspace packages load from another
   checkout.** A task worktree lives inside the primary checkout, so when its own
   `node_modules/@qodeca/xezar-contract` link is missing, node does not fail — it walks up and loads
@@ -182,14 +245,14 @@
   own change. `worktree-setup.sh` and `repo-gates.sh` now check that every workspace package
   resolves to the task's own copy before they stamp the install or run a gate, and stop with the
   exact borrowed path when it does not; a `--fast` gate treats such a tree as stale and reinstalls.
-  Commands run by hand before setup are not covered. (#286)
+  Commands run by hand before setup are not covered. (#286, #294)
 - 🐛 **One resumed task no longer freezes its account's whole queue.** After a provider usage
   limit, a task that resumed itself held every other task on the same agent account in the queue
   until its first resumed turn completed — hours, for a long turn — even with most slots free. The
   hold now lasts only while the resume is testing whether the limit has lifted: once the resumed
   turn has stayed live for two minutes, the tasks behind it start. A task waiting out a limit still
   holds its account, other accounts are still untouched, and cancelling a running resume's
-  auto-resume now starts the waiting tasks at once. (#285)
+  auto-resume now starts the waiting tasks at once. (#285, #292)
 - 🐛 **Picking a variant or reclaiming worktrees in one project can no longer delete another
   project's worktree.** A copied or hand-edited `.local/xezar` (copying a repository folder is
   enough) leaves task records whose worktree path names the ORIGINAL project's worktree. Picking a
@@ -199,7 +262,7 @@
   gets, naming nothing of the other project), and reclaim — through Settings, MCP, boot and every
   task's end — leaves such records alone and still reclaims this project's own. Both use the
   existing MCP ownership checks. A caller could never NAME another project's group, task or
-  automation at this project's routes, and still cannot. (#288)
+  automation at this project's routes, and still cannot. (#288, #293)
 - 🐛 **Deleting a task, removing its worktree, committing, pushing, opening its draft PR, or
   viewing its diff or changes can no longer reach another project's worktree.** The same stray
   records as above also drove these seven task actions: delete and Remove worktree ran `rm -rf` on
@@ -207,14 +270,14 @@
   views ran git inside it. Each now checks the task's worktree with the same rule reclaim uses and
   refuses a stray record, and the cockpit says why in plain words: the task's worktree is outside
   this project, xezar will not touch it, and archiving the task moves it out of the list. This
-  project's own tasks work as before. (#316)
+  project's own tasks work as before. (#316, #321)
 - 🐛 **Running the test suite inside a xezar task no longer writes into that task's handoff file
   and your follow-up inbox.** A gate inherits the task's `XEZ_HANDOFF_FILE`, `XEZ_TODOS_FILE`,
   `XEZ_TASK_ID` and `XEZ_ENV_PASSTHROUGH`, and a test that drove the dry-run mock agent handed them
   on — so every gate run added a "Follow up: verify the mock change" entry to the real inbox and a
   mock line to the real handoff file (more than half of one live inbox was that one entry). The
   shared test preload now drops those four variables once, so every test and every child process it
-  starts begins without them. (#281)
+  starts begins without them. (#281, #282)
 - 🐛 **A corrupt `~/.xezar/config.json` is reported once per boot, not twice.** Boot reads the file
   and then the first migration reads it again before replacing it, and each read printed the same
   warning. The warning is now remembered per broken state; every read still goes to the file, so a
@@ -228,7 +291,8 @@
   for the kept variant and refuses a stale one with nothing applied; without one the route
   behaves exactly as before, so the cockpit is unchanged. And `organise_work` now refuses an
   argument it does not declare instead of dropping it, so a stray `projectId` can no longer look
-  like it scoped a call — including the bulk `archive_finished` — to another project. (#271)
+  like it scoped a call — including the bulk `archive_finished` — to another project.
+  (#271, #278)
 - 🐛 **A leader can no longer delete a quality gate through MCP.** `project_config save_workflow`
   with `overwrite: true` could replace a human's workflow and drop its `command: npm test` check
   step with no refusal. An overwrite, a same-name save that would shadow a workflow, or a delete
@@ -241,7 +305,7 @@
   the MCP audit trail, the event journal, automation logs and MCP tool responses. The shapes now
   match in any case, except the two whose prefix in another case is ordinary text (`sk-`, which
   ends `TASK-` branch names, and `github_pat_`, which is also an env var name). The host's own
-  secret values now match in any case and in their URL-encoded form. (#272)
+  secret values now match in any case and in their URL-encoded form. (#272, #277)
 - 🐛 **A laptop that changes networks no longer locks the cockpit out of its own data.** A
   writer claim records the hostname that wrote it, and a dead PID was reclaimable only when that
   hostname still matched — so renaming a machine (`.local` to `.lan` on a different network is
@@ -258,7 +322,8 @@
   while `xez serve` is running no longer refuses itself, and a host that cannot name itself falls
   back to the process id alone. Claims already on disk
   keep their old meaning, which means one stale claim may still block once after upgrading; the
-  refusal now names the file, both hostnames and the PID so clearing it is one obvious step. (#199)
+  refusal now names the file, both hostnames and the PID so clearing it is one obvious step.
+  (#199, #249)
 - 🐛 **A shut-down `RunManager` can no longer be writing into a data root its owner has
   finished with.** `enforceRetention` was fired as an untracked promise, so `dispose()` could
   resolve while a worktree-retention sweep was still spawning `git worktree remove` inside the
@@ -278,7 +343,7 @@
   where it used to report `false` and do nothing, and Create PR, Remove worktree, Delete and Pick
   variant refuse for the few hundred milliseconds it lasts instead of acting on a task that is
   rebuilding its worktree. Removing a project also answers within a few seconds now even when the
-  git it is waiting on is wedged, rather than leaving the request hanging. (#200)
+  git it is waiting on is wedged, rather than leaving the request hanging. (#200, #249)
 - 🐛 **Cancel now stops a task that is in the middle of starting its agent, instead of leaving
   it running for good.** For the fraction of a second between a step beginning and its agent
   session actually being up, `Cancel` marked the task cancelled and then reached a session that
@@ -289,7 +354,7 @@
   whichever side of that line the click lands on. Same hole, same fix, for a task resumed with
   Continue. It also unwedges teardown: closing a project (or a test's cleanup) waits for the tasks
   it just cancelled, and one undeliverable cancellation was enough to make that wait never end —
-  reproduced as a 90-second timeout on CI. (#199, #229)
+  reproduced as a 90-second timeout on CI. (#199, #229, #249, #310)
 
 - 🐛 **`xezar run` finishes when the task finishes, instead of sitting there for another
   minute.** The headless run printed `run done` and then stayed alive — up to 60 seconds — because
@@ -328,16 +393,49 @@
   already reads the bound URL back from stdout. So the draw is gone rather than replaced. The
   child's stderr is now folded into both start-failure messages, the way the Codex and Claude
   runners already did, and the 30-second window rejects with what happened instead of resolving a
-  URL nothing is listening on. (#184)
+  URL nothing is listening on. (#184, #198)
 - 🐛 **Two cockpit browser specs stopped racing their own data.** `settings-agents.e2e.ts`
   navigated to `/settings/agents` from `/settings/agents`, where every predicate about the section
   is equally true of the page being left — so a cold load could assert against the outgoing
   document and count 0 checked radios. `gotoAgents()` now waits for a marker only the incoming
   document carries, and the base-branch case waits for the branch list that `GET /api/v1/repo`
   fills instead of reading an option that may not exist yet. No sleeps, no relaxed assertions.
-  (#183)
+  (#183, #198)
+- 🐛 **`xezar serve` prints the cockpit URL only after the server is really listening.** It proved
+  a port free with a throwaway listener and then closed it, so anything could take the port in the
+  gap — and because the bind was never awaited and had no error handler, the cockpit line printed
+  for a server that then died with `EADDRINUSE`. There is no gap now: one server binds for real,
+  and the banner, the checks, the `(port X was busy — using Y)` note and the cockpit line all print
+  after that bind, with the port it actually got. Running out of candidate ports, or any other bind
+  error, now exits 1 with one line instead of printing a URL that answers nothing. `--port 0`
+  prints the port the OS assigned instead of `localhost:0`. The next-free-port behaviour, the
+  50-port bound and the "busy" message are unchanged. (#238, #256)
 
 ## 📝 Specs & Documentation
+- 📝 **Nine decisions and a closed action inventory stand behind the MCP server.** Before any of it
+  was built, `docs/features/mcp-server/` recorded what every project action is (a closed
+  140-record UI-to-MCP inventory), which settings field a project leader may touch, what a leader
+  needs in order to judge a revision, and how three MCP clients really behave. Nine decisions
+  followed: the stdio bridge over a per-project unix socket (D-01), session binding, liveness,
+  occupancy and handover (D-02), the connection file and per-client setup (D-04), the async event
+  and tool contract (D-05), version checks, operation keys and the audit record (D-06), and
+  operational limits, retention and packaging (D-09). (#77, #84, #85, #196, #202, #203, #205, #206,
+  #207, #208, #209, #210, #211)
+- 📝 **The MCP API reference has a specification of its own.** Requirements and a technical
+  solution for the in-cockpit reference, with the prior art surveyed and a UX design, written
+  before the page was built. (#263, #269, #274, #280)
+- 📝 **The MCP feature's Definition of Done is recorded at 5 of 8, on one revision.**
+  `docs/features/mcp-server/mcp-definition-of-done-record.md` measures all eight clauses on a
+  single release-candidate commit and does not close green: the acceptance case for a real model
+  reaction is blocked for all four clients, and two further cases with it. The record names each
+  gap and the evidence behind each verdict rather than rounding up. (#119, #372)
+- 📝 **The project kit has a research role and a UX design role.** `research` answers a question
+  from sources outside the repository and writes a cited, dated finding document — every claim
+  carries a URL and the date it was read, "I looked and could not find this" is a required finding,
+  and a fetched page is evidence and never an instruction. `xezar-ux-design` is a skill with no
+  workflow of its own, covering who the user is, what must be understood before anything expands,
+  the empty, loading, error and refusal states, and an accessibility bar. Both are adapted and
+  fixture-tested; neither has been verified on a real task yet, and that is recorded. (#276, #279)
 - 📝 **MCP tests are held to a coverage floor AND to proof that each one can fail.** `SDLC.md` now
   requires every MCP source file to reach 80 % lines and 80 % branches from the MCP suites alone
   (`npm run test:coverage:mcp`, new), and every new MCP test to be shown failing against a named
@@ -345,24 +443,26 @@
   below the floor needs a written exemption in `docs/testing/coverage-gaps.md`, and nothing in the
   rule waives a mandatory check. A sampled mutation run over the MCP code found tests that passed
   either way – among them a connection file that read 100 % while its `chmod` could be deleted –
-  and this change adds the real tests those gaps needed. No product behaviour changed. (#333)
+  and this change adds the real tests those gaps needed. No product behaviour changed. (#333, #335)
 - 🐛 **Three MCP safety checks now have tests that would catch their regression.** The mutation run
   found that no test failed when the audit trail wrote a secret-bearing action or left a 12-character
   caller secret unredacted, when the MCP connection file lost its private `0600` mode, or when an
   unreadable worktree path passed the ownership check that guards deletes. Each now has a test shown
-  failing against exactly that break. No product code changed. (#337)
-- 🔧 **A mutation gate for every release.** `npm run test:mutation:mcp` runs StrykerJS over the MCP
-  code with the MCP suites, and the `release` and `release-prep` workflows run it first, stopping
-  below its score floor of 80 (the first full run measured 81.39 % over 11 292 mutants in 3 h 40 min). It is a development-only tool: it never reaches the published package, and
-  a test fails if it ever does. One mutant that hangs is stopped by a per-mutant timeout instead of
-  stalling the release. (#333)
+  failing against exactly that break. No product code changed. (#335, #337)
+- 🔧 **A mutation gate for the MCP code.** `npm run test:mutation:mcp` runs StrykerJS over the MCP
+  code with the MCP suites, against a score floor of 80 (the first full run measured 81.39 % over
+  11 292 mutants in 3 h 40 min). It was added as the first step of the `release` and `release-prep`
+  workflows and taken back out again before this release shipped — see the CI/CD entry below — so
+  what ships is a command somebody runs by hand. It is a development-only tool: it never reaches
+  the published package, and a test fails if it ever does. One mutant that hangs is stopped by a
+  per-mutant timeout instead of stalling the run. (#333, #335, #377, #378)
 - 📝 **pi is a fourth required MCP leader client, through an extension.** The MCP requirements now
   name Claude Code, Codex, OpenCode and pi as the required initial clients. pi itself ships no MCP
   support, by design, so it counts through the third-party `pi-mcp-adapter` extension, which pi's
   one-time setup installs; the requirements say so in the text. The connection-file decision (D-04)
   gains pi's one-time setup and a four-client comparison, and the client compatibility report gains
   a dated pi addendum. A requirements change only: pi has no reaction adapter or acceptance column
-  yet. (#330)
+  yet. (#330, #334, #339)
 - 📝 **A named limitation of this release: do not gate xezar's tools with pi's `approveTools`.** The
   `pi-mcp-adapter` extension can be told to ask before a tool runs. If you point that at xezar's
   tools, the question goes to a dialog only a person at their own pi window can answer, and nothing
@@ -373,30 +473,31 @@
   default include no xezar tool at all and the question is never asked. You set this yourself and
   nothing is on by default, so leave xezar's tools ungated and nothing changes for you. The pi setup
   card, the pi extension guide and the client compatibility report all say so now. Making xezar
-  answer that dialog, with a refusal, is #369 and is deliberately not in this release. (#369)
+  answer that dialog, with a refusal, is #369 and is deliberately not in this release.
+  (#369, #370, #371)
 - 📝 **A release-level Definition of Done for 0.14.0.** `docs/releases/0.14.0-definition-of-done.md`
   sits beside the MCP feature's own eight clauses and covers the rest of the release: the security,
   engine and gate fixes, open-source readiness, documentation, the kit roles, the UI design review
   and the release act. Each clause says what evidence settles it and what does not count, and a
   clause with no evidence is failed. A draft for the owner's decision; nothing in it is assessed
-  yet. (#300)
+  yet. (#300, #303)
 - 📝 **Conduct reports have a private address, and the 0.14.0 questions have answers.**
   `CODE_OF_CONDUCT.md` named a GitHub organisation, which cannot receive a private message; it now
   names `hi@qodeca.com`, read by Qodeca, and says a report sent there is private. The #184 and #183
   fixes move out of the `0.13.1` section into this one: their commit is not in the `v0.13.1` tag,
   so the published 0.13.1 never contained them. The release Definition of Done now records the
   owner's answer, or the evidence that settled it, for each of its six questions, beside the
-  recommendation it first made. No quality clause changed. (#318)
+  recommendation it first made. No quality clause changed. (#318, #319)
 - 📝 **A design review is part of done for UI work.** The project kit, the implementation and
   testing roles and the leader prompt now say that work with UI in scope, where such a review makes
   sense, needs a UX/UI design review (`xezar-ux-design`) before it is done, and that the author's
-  manual QA is not one: it shows the surface works, not that it is the right design. (#297)
+  manual QA is not one: it shows the surface works, not that it is the right design. (#297, #298)
 - 📝 **The npm package page shows its screenshots and working links again.** npm publishes a copy
   of the root README, and its relative `docs/…` and `LICENSE` links pointed at files the package
   does not contain — 13 broken links on the 0.13.1 page, all six screenshots among them, and 23 in
   the next release. The build now rewrites every relative link and image in that copy to an
   absolute GitHub URL; the root README keeps its relative links, and a test fails if a relative
-  link survives the copy. (#287)
+  link survives the copy. (#287, #290)
 - 📝 **A map of `docs/`.** `docs/README.md` says what each directory holds and who it is for, and
   `docs/features/README.md` says up front that those files are the internal engineering and
   decision record, not a user guide. Four MCP records no longer claim the shipped feature is
@@ -409,7 +510,7 @@
   exactly what `tools/list` answers, for diffing and JSON Schema viewers. A new traceability table
   maps every `covered` inventory record to the tool action that serves it, checked both ways. The
   tables and the JSON are regenerated from the real tool registry, so a tool change that is not
-  reflected in the reference fails `npm test`. (#261)
+  reflected in the reference fails `npm test`. (#261, #268)
 - 📝 **The repository now has a security policy, a contribution path and issue templates.**
   `SECURITY.md` says in its first sentence that xezar runs AI agents with shell access on your
   machine, then draws the line between "working as designed" and "a vulnerability", naming the
@@ -418,7 +519,7 @@
   request and says plainly that the `om-*` skills in `SDLC.md` are internal automation an outside
   contributor does not need. Also added: `CODE_OF_CONDUCT.md` (Contributor Covenant 3.0), bug and
   feature issue forms, a pull-request template, and a CI badge and project-status note in the
-  README. (#283)
+  README. (#283, #289)
 - 🐛 **The MCP coverage floor now passes on `main`.** The floor arrived red: `npm run
   test:coverage:mcp` failed on three thresholds the day it shipped, so every MCP pull request met a
   gate that was already failing before its author started. Two of the three left when #311 merged.
@@ -427,14 +528,14 @@
   list, and a refused argument whose description is gone — each shown failing against a named break
   of the code it covers. The written exemption that stood in for those tests is retired, and
   `docs/testing/coverage-gaps.md` records the new measurement, why the old exemption's reasoning was
-  wrong, and that the command can now become a CI check. No product behaviour changed. (#352)
+  wrong, and that the command can now become a CI check. No product behaviour changed. (#352, #355)
 - 📝 **The coverage record no longer claims more than it proved.** `docs/testing/coverage-gaps.md`
   said every case of the new MCP API reference test carries its own populated-input control; for one
   of the three it does not, and the control lives in the live-registry test instead. The sentence is
   corrected, both halves re-measured, and the document now also records a mutation of that file that
   survives the whole MCP test suite even though the file reads 100 % branch coverage — the plainest
   evidence that a coverage number is a floor, not a proof. No product behaviour changed, and no test
-  or source file was touched. (#357)
+  or source file was touched. (#357, #360)
 - 📝 **The audit trail now says which origins it really records.** `mcp-audit.ndjson` lists four
   possible origins — `ui`, `mcp`, `automation`, `cli` — and writes exactly one of them: `mcp`. The
   cockpit, the automation scheduler and `xezar run` record nothing, so the file holds a leader's
@@ -442,9 +543,24 @@
   written down where anyone would look: in the schema itself, in the audit module, in the MCP API
   reference and as a dated decision in D-06 § 10.6. The four origins are kept, because they are the
   right eventual set and removing one would break the record format; wiring the other three doors is
-  its own issue (#364) for a later release. No product behaviour changed. (#266)
+  its own issue (#364) for a later release. No product behaviour changed. (#266, #365)
 
 ## 🚀 CI/CD & Infrastructure
+- 🚀 **The MCP feature has an acceptance suite, A-01 to A-23.** A shared A/B acceptance world backs
+  an isolation suite, a parity and collaboration suite, a correctness and durability suite, and a
+  real-client suite that drives the actual bridge — with the browser half of the live-sync case run
+  in a real Chrome. The cases run through the composed MCP service rather than against mocks, so a
+  gap in the feature shows up as a failing case rather than as an untested claim. (#116, #117,
+  #118, #242, #248, #253, #257, #259, #273)
+- 🚀 **Four false test signals are gone.** `npm test` went red from a plain shell on changes that
+  could not have caused it, because the scratch `TMPDIR` was exported unresolved and macOS
+  resolves `/var` to `/private/var` — invisible from inside a xezar task, which exports a
+  symlink-free one. `cli.test.ts` probed a port and reached a neighbouring cockpit, which made it
+  pass for the wrong reason. Five more suites asserted things that were true either way. And the
+  mutation run's warm-up died on a guard test that reads an adapter's source as text and asserts it
+  never says `process.` — Stryker's own instrumentation header does; the guard now excludes those
+  tests by class rather than by one file name. (#194, #201, #204, #212, #237, #260, #295, #307,
+  #314, #328, #376)
 - 🚀 **A release no longer waits on the MCP mutation gate.** That check took nearly four hours,
   ran only at release time, and a failure in it means a weak test — work for next week, not a
   reason to hold code that already passed the full test gate and independent QA. Its first real
@@ -452,7 +568,9 @@
   on a configuration mismatch and found no product defects at all. The check is not weakened —
   same code, same tests, same 80 % floor — but for now it is a command somebody runs by hand
   rather than something a release waits on. Giving it a schedule so a weak test still reaches
-  somebody who can fix it is #377, and until that lands nothing runs it automatically. (#377)
+  somebody who can fix it is #377, and until that lands nothing runs it automatically. (#377, #378)
+
+---
 
 # 0.13.1 (2026-09-10)
 
