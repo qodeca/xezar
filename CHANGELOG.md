@@ -8,10 +8,16 @@
   from xezar and is not an instruction or an approval, and it carries your leader's role every time,
   because pi does not keep one across a resume. A leader never hears the echo of its own change, an
   event is never put to the model twice — not after a lost answer and not after xezar restarts — and
-  xezar's liveness check reads pi's session state without waking the model. One honest limit, and
-  the cockpit says it rather than hiding it: an event handed to pi while pi is between turns is
-  parked in pi's queue rather than put to the model, so xezar checks, and never counts a parked event
-  as delivered. (#330)
+  xezar's liveness check reads pi's session state without waking the model. One honest limit,
+  measured against pi 0.85.1 over the extension: an event handed over while your pi is working is
+  queued rather than sent, and goes to the model once the turn in flight has finished — including
+  whatever tool that turn is running. Measured twice, because the two halves of a turn take
+  different lengths of time: the event waited 16 seconds behind a 20-second model call, and 20
+  seconds behind a 25-second tool. Each time it reached the model in the next turn of the same run,
+  before that run ended; xezar will not cut a turn short to deliver an event. It also never takes
+  pi's "accepted" for "the model has it": every handover is checked against pi afterwards, and an
+  event xezar cannot confirm reached the model is handed over again rather than counted as
+  delivered. (#330)
 - ✨ **And a pi you run in your own terminal can now be reached.** pi speaks its session interface
   over its own input and output only, and xezar never starts an agent process for you, so until now
   a pi you started yourself had no address and got no push. xezar now ships a small pi extension:

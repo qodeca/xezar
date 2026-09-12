@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -813,6 +813,10 @@ describe('piReactionTarget — where a project\'s pi events go', () => {
     expect(named, `no <xezar>/… path found in: ${target.blocker.fix}`).toBeTruthy();
     const packageRoot = join(import.meta.dirname, '../../..');
     expect(existsSync(join(packageRoot, named!)), `${named} is named in the pi blocker's fix but is not in ${packageRoot}`).toBe(true);
+    // A FILE, not merely an entry. QA on #366 raised this against the version of this check that
+    // shipped on the other branch: `existsSync` is true for a DIRECTORY, so pointing the fix at
+    // `scripts` passed while `pi --extension <pkg>/scripts` is not loadable. (#367)
+    expect(statSync(join(packageRoot, named!)).isFile(), `${named} is not a file under ${packageRoot}`).toBe(true);
     // And it is in the published tarball, not merely on a developer's disk: `files` decides that.
     const files = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')).files as string[];
     expect(files.some((entry) => named!.startsWith(`${entry.replace(/\/$/, '')}/`) || entry === named)).toBe(true);
