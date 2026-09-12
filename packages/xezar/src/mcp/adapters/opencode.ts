@@ -137,6 +137,24 @@ interface XezarMarker {
   toSeq: number | null;
 }
 
+/**
+ * The tools a submission's turn may use: only the `xezar` MCP server's (#309 F-1). Without it the
+ * turn ran with whatever the user's OpenCode config allows — `bash` and `edit` included — so an event
+ * could make the model run a command in the checkout that nobody typed. Measured on OpenCode 1.18.30
+ * against a scripted model: with this map the model is offered `xezar_*` only, and a forced `bash`
+ * call is refused ("Model tried to call unavailable tool 'bash'"). KEY ORDER MATTERS: the last
+ * matching rule wins, so `"*"` must come first — reversed, nothing is offered at all. A wildcard,
+ * not a list of names, so a built-in tool added later is refused too.
+ *
+ * On the record, because it is not per-message: OpenCode stores the map on the SESSION (as its
+ * `permission` rules) and keeps it for later messages, a server restart included, and no route
+ * examined removes it. The session attached as the leader therefore stays xezar-tools-only, the
+ * user's own messages in it included; other sessions are untouched. `true` also pre-approves the
+ * xezar tools where the user's config said `ask` — the same stance as the Claude Code leader's
+ * `--allowedTools mcp__xezar`. Never send `"*": true`: it would override every `ask` the user set.
+ */
+export const OPENCODE_LEADER_TOOLS: Readonly<Record<string, boolean>> = Object.freeze({ '*': false, 'xezar_*': true });
+
 /** Frames kept for a waiter that registers after its frame arrived. */
 const FRAME_BUFFER = 256;
 
@@ -205,6 +223,8 @@ export class OpenCodeReactionAdapter implements ReactionAdapter {
     const body = {
       ...(this.#opts.agent === undefined ? {} : { agent: this.#opts.agent }),
       system: this.#opts.roleInstruction,
+      // Only the xezar tools, on every submission (#309 F-1); `"*"` first — see OPENCODE_LEADER_TOOLS.
+      tools: OPENCODE_LEADER_TOOLS,
       parts: [{ type: 'text', text: renderDispatch(dispatch, rows), metadata: { xezar: marker } }],
     };
     // Both set BEFORE the request. OpenCode may emit the submission's frames before its `204`

@@ -22,6 +22,7 @@ import type {
 } from '@qodeca/xezar-contract';
 import type { runsIndexResponseSchema } from '@qodeca/xezar-contract';
 import type { mcpApiReferenceSchema } from '@qodeca/xezar-contract';
+import type { mcpLeaderActionInputSchema, mcpLeaderStatusSchema } from '@qodeca/xezar-contract';
 import type {
   configResponseSchema,
   openProjectInResponseSchema,
@@ -165,9 +166,16 @@ describe('src/contract projects/workspace schemas match the routes exactly', () 
 
   // #284: the reference's `inputSchema` is an opaque JSON object, the one catchall in its shape.
   type McpReference200 = InferResponseType<typeof client.api.v1.mcp.reference.$get, 200>;
+  // #309: the leader's push-delivery status, and the action body the route validates.
+  type McpLeader200 = InferResponseType<typeof client.api.v1.mcp.leader.$get, 200>;
+  type McpLeaderPost200 = InferResponseType<typeof client.api.v1.mcp.leader.$post, 200>;
+  type McpLeaderPostBody = Parameters<typeof client.api.v1.mcp.leader.$post>[0]['json'];
 
   type _Checks = [
     Assert<ExactOpen<z.infer<typeof mcpApiReferenceSchema>, McpReference200>>,
+    Assert<Exact<z.infer<typeof mcpLeaderStatusSchema>, McpLeader200>>,
+    Assert<Exact<z.infer<typeof mcpLeaderStatusSchema>, McpLeaderPost200>>,
+    Assert<Exact<z.input<typeof mcpLeaderActionInputSchema>, McpLeaderPostBody>>,
     // the registry
     Assert<Exact<z.infer<typeof projectsResponseSchema>, Projects200>>,
     // the cross-project task index behind ⌘K

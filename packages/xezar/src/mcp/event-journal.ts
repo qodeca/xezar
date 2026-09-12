@@ -115,6 +115,7 @@ export class EventJournal {
   #evictedOnDisk = 0;
   #fileBytes = 0;
   #writeWarned = false;
+  #writable = true;
   #closed = false;
   readonly #listeners = new Set<(row: McpJournalRow) => void>();
   readonly #now: () => number;
@@ -155,6 +156,15 @@ export class EventJournal {
 
   get oldestSeq(): number | null {
     return this.#rows[0]?.journalSeq ?? null;
+  }
+
+  /**
+   * False while the journal cannot record a row: it could not be created, or its last append failed.
+   * An unwritable journal journals nothing, so nothing can be delivered from it either (#309 O-3).
+   * The next append that succeeds makes it true again.
+   */
+  get writable(): boolean {
+    return this.#writable;
   }
 
   /** The cursor at the current head — D-05 § 6.8's "journal position at acceptance". */
@@ -205,10 +215,12 @@ export class EventJournal {
     } catch (err) {
       // A partial write must not survive as a torn line in the middle of the file.
       try { truncateSync(this.rowsPath, this.#fileBytes); } catch { /* the load path drops a torn tail */ }
+      this.#writable = false;
       this.#warnWrite(err);
       return undefined;
     }
     this.#fileBytes += Buffer.byteLength(line, 'utf8') + 1;
+    this.#writable = true;
     this.#latestSeq = journalSeq;
     const frozen = freezeRow(row);
     this.#rows.push(frozen);
@@ -410,6 +422,7 @@ export class EventJournal {
       );
       renameSync(tmp, this.indexPath);
     } catch (err) {
+      this.#writable = false;
       this.#warnWrite(err);
     }
   }

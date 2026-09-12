@@ -1,6 +1,25 @@
 # Unreleased
 
 ## ✨ Features
+- ✨ **Project events can now be pushed to a leader you attach.** The event controller and the
+  reaction adapters were built and tested but never connected, so no event ever reached a client.
+  Now every MCP session that owns a project gets push delivery the moment it opens — nothing to set
+  up. An event can only wake a session xezar can address, so a new route,
+  `POST /api/v1/mcp/leader`, attaches the OpenCode session you run with `opencode serve` (or
+  detaches it), and `GET /api/v1/mcp/leader` says what is delivered and, when nothing can be, why.
+  xezar never starts an agent process for you. A Claude Code or Codex session in your terminal has
+  no address to attach to, so it gets no push: it reads its events with `leader_events`, as before.
+  A leader never receives the echo of its own change, and each event sent to OpenCode allows only
+  the `xezar_*` tools — OpenCode keeps that rule on the attached session, so your own messages in it
+  get only the xezar tools too. Attaching is refused, and the status says why, when the project's
+  event journal cannot be written. An attached leader whose MCP connection has not opened yet is
+  reported as such, instead of as nothing wrong (#331), and what the leader acknowledged with
+  `leader_events` is never pushed to it again, not even into a fresh session (#332). Events that
+  arrive before the leader's first MCP session are pushed when it opens, and the delivery status
+  and `leader_events` report only what really happened — nothing delivered, acknowledged or
+  reacted to is ever claimed for a row that was not, and a leader that stops answering (even one
+  that still accepts connections) is reported as soon as an attempt fails, whatever the delivery is
+  doing. There is no cockpit button yet. (#309)
 - ✨ **pi has a setup card in MCP connection.** Project Settings → MCP connection now shows pi's
   one-time setup next to Claude Code, Codex and OpenCode. pi adds MCP through an extension, by
   design, so the card starts with installing the third-party `pi-mcp-adapter` extension

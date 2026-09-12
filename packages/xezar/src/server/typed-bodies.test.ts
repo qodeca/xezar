@@ -71,6 +71,7 @@ describe('every mutating route carries a typed body into AppType', () => {
     Assert<HasTypedBody<'/api/v1/workspace/ui-state', '$put'>>,
     Assert<HasTypedBody<'/api/v1/workspace/skills-update/check', '$post'>>,
     Assert<HasTypedBody<'/api/v1/workspace/skills-update/apply', '$post'>>,
+    Assert<HasTypedBody<'/api/v1/mcp/leader', '$post'>>,
   ];
 
   type WorkspaceUiStatePutBody = Schema['/api/v1/workspace/ui-state']['$put']['input']['json'];
