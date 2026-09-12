@@ -25,30 +25,18 @@ steps:
   - id: setup
     name: Prepare the worktree
     command: ".xezar/checks/worktree-setup.sh"
-  # THE MCP MUTATION GATE IS NOT HERE ANY MORE (#377). It used to run first, as a check step,
-  # before anything was authored. It now runs on a SCHEDULE against `main` —
-  # `.github/workflows/mutation.yml`, weekly — and the reasoning that moved it is the reasoning
-  # that put it here in the first place, turned around:
+  # THE MCP MUTATION GATE IS NOT HERE ANY MORE. It used to be the first check step, before
+  # anything was authored, and it is gone because a nearly four-hour measurement whose only
+  # repair — a stronger test — lives in somebody else's pull request must not stand between a
+  # finished, approved release and publication. Its first end-to-end exercise arrived at release
+  # time, which is when failure costs most: the 0.14.0 attempt died in Stryker's own dry run on a
+  # config mismatch (#375) and found zero product defects.
   #
-  #   - It tests the code being released, which the changelog step does not touch. True, and it
-  #     is exactly why it does not need to be in the release path: the revision it measures is
-  #     already on `main` and already measured there.
-  #   - A failure "is fixed by tests in their own PR, never by retrying the changelog". Also
-  #     true — and a gate whose only repair lives outside the task holding it is a gate in the
-  #     wrong place. The authors who could act finished hours earlier.
-  #   - A full run is hours of CPU, so it was never a per-PR check. That made release time its
-  #     FIRST end-to-end exercise, which is when failure costs most: the 0.14.0 attempt died in
-  #     Stryker's dry run on a config mismatch (#375) — a lost release run, a fix PR, a review
-  #     and a relaunch, and zero product defects found.
-  #   - A surviving mutant means a test is weak. That is next week's work, not a reason to hold
-  #     code that already passed the full canonical gate and independent QA on every PR. And a
-  #     check step is binary: "is this survivor already tracked in #338 / #353, or is it new?"
-  #     is not a question an exit code can answer.
-  #
-  # The gate itself is unchanged — same scope, same `thresholds.break` of 80
-  # (packages/xezar/stryker.config.mjs), see docs/testing/coverage-gaps.md § 10.8. What protects
-  # it between scheduled runs is the cheap per-PR test #375 added,
-  # packages/xezar/src/mutation-name-filter.test.ts.
+  # **#377 owns its new home, and until #377 lands the gate runs NOWHERE automatically** — it is
+  # `npm run test:mutation:mcp`, a manual command, and no workflow in this repository invokes it
+  # (checked in .github/workflows/ and .xezar/workflows/ on this branch). The gate itself is
+  # unchanged: same scope, same `thresholds.break` of 80 (packages/xezar/stryker.config.mjs). See
+  # docs/testing/coverage-gaps.md § 10.8.
   - id: changelog
     name: Write the changelog entry from merged PRs
     prompt: "{{task}}"

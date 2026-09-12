@@ -72,12 +72,15 @@ session as well — it fails only when it has *neither* an OIDC endpoint nor a t
 ## Cutting a release
 
 1. Land everything you want in the release on `main`, with a green CI run. **The MCP mutation
-   gate is no longer part of this path** (#377): it runs weekly against `main` in its own
-   scheduled workflow, `.github/workflows/mutation.yml`, and a release does not wait on it. Look
-   at the last scheduled run if you want the current score before you cut; a survivor there is a
-   weak test to fix in its own PR, not a reason to hold a release that passed the full canonical
-   gate and QA. Why it moved, and how the sharded run still enforces the same 80 % floor:
-   [coverage-gaps.md § 10.8](testing/coverage-gaps.md#108-the-scheduled-gate-stryker-over-the-mcp-code).
+   gate is no longer part of this path, and a release does not wait on it.** It ran as the
+   `release` / `release-prep` workflows' first check step until 2026-09-12; that step is gone,
+   because a nearly four-hour measurement whose only repair is a stronger test in somebody else's
+   PR must not hold a finished release. **It currently runs nowhere automatically** —
+   `npm run test:mutation:mcp` is a manual command, and **#377 owns giving it a schedule**. Run
+   it by hand if you want the current score before you cut; a survivor is a weak test to fix in
+   its own PR, not a reason to hold a release that passed the full canonical gate and QA. Why it
+   moved, and the unchanged 80 % floor:
+   [coverage-gaps.md § 10.8](testing/coverage-gaps.md#108-the-gate-that-is-between-homes-stryker-over-the-mcp-code).
 2. Go to **Actions → Release → Run workflow**, pick the branch (`main`, or a `release/*`
    maintenance branch) and the bump:
 

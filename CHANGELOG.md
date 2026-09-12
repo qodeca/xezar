@@ -447,12 +447,12 @@
 ## 🚀 CI/CD & Infrastructure
 - 🚀 **A release no longer waits on the MCP mutation gate.** That check took nearly four hours,
   ran only at release time, and a failure in it means a weak test — work for next week, not a
-  reason to hold code that already passed the full test gate and independent QA. It now runs by
-  itself once a week against `main`, where the result reaches somebody who can act on it: the
-  scheduled check goes red, the score lands in the run summary, and one reused issue is opened
-  and closed with it. Nothing about the check was made easier — same code, same tests, same 80 %
-  floor. It is split across six parallel jobs only because one job cannot finish inside GitHub's
-  six-hour limit, and the floor is applied once to the combined score. (#377)
+  reason to hold code that already passed the full test gate and independent QA. Its first real
+  exercise arrived at the worst possible moment: the 0.14.0 attempt died in the tool's own warm-up
+  on a configuration mismatch and found no product defects at all. The check is not weakened —
+  same code, same tests, same 80 % floor — but for now it is a command somebody runs by hand
+  rather than something a release waits on. Giving it a schedule so a weak test still reaches
+  somebody who can fix it is #377, and until that lands nothing runs it automatically. (#377)
 
 # 0.13.1 (2026-09-10)
 
