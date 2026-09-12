@@ -443,6 +443,23 @@ E-07 with E-09 is A-19: a significant event reached the leader, a real model rea
 there was no status-polling turn — one model request in the session's whole life, and it was the one
 carrying the event.
 
+### The lifecycle trap, checked rather than reasoned about
+
+pi tears an extension runtime down and rebuilds it on `/new`, `/resume`, `/fork`, `/clone` and
+`/reload` — not only on quit (`docs/extensions.md` § lifecycle). A socket bound once in the factory,
+or a teardown that is not idempotent, fails on the rebuild. Run `pi-extension/lifecycle-run.mjs`
+against real pi:
+
+| # | Check | Result |
+| --- | --- | --- |
+| E-14 | The socket answers after startup | **PASS** |
+| E-15 | It answers again after a `new_session` — a full `session_shutdown` → `session_start` cycle | **PASS** |
+| E-16 | The descriptor is removed when pi exits, so no stale file is left naming a dead socket | **PASS** |
+
+Observed while doing it: in RPC mode `new_session` kept the same session id, so the socket path did
+not change. The teardown still ran, and the rebuild still bound — which is the property under test,
+and the reason the teardown is written to be safe to run twice.
+
 **What it cost, honestly.** pi is unchanged and unpatched, but the person must load one more
 extension. Without it the behaviour is exactly what it was before: the attach is refused with pi's
 own reason, and the events wait in the journal for `leader_events`. Setup is in
