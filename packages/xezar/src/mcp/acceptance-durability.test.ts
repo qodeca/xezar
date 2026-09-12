@@ -31,6 +31,7 @@ import { guardedRunMutation, runVersion } from './stale-write.ts';
 import type { McpToolContext } from './tool.ts';
 import { QUALITY_BLOCKER_NEXT_ACTION, handoffGitTool } from './tools/handoff-git.ts';
 import { tools } from './tools/index.ts';
+import { withOperationId } from './tools/operation-id.testkit.ts';
 
 /**
  * #117 — the correctness and durability suite, whole-feature half: A-13, A-14, A-15, A-16, A-21 and
@@ -190,7 +191,7 @@ function leaderClient(root: string) {
     const rid = next++;
     return new Promise((resolve) => {
       pending.set(rid, resolve);
-      input.write(encodeFrame({ jsonrpc: '2.0', id: rid, method: 'tools/call', params: { name, arguments: args } }));
+      input.write(encodeFrame({ jsonrpc: '2.0', id: rid, method: 'tools/call', params: { name, arguments: withOperationId(name, args) } }));
     });
   };
   return {
@@ -935,7 +936,7 @@ describe('A-22 — global administration and weakening gates, including by an ap
     };
     const ctx = { project: { id: PROJECT_A, name: 'alpha project', root: w.a.root }, xezarVersion: '0.0.0-ab', service: forge } as McpToolContext;
     const call = async (args: Record<string, unknown>): Promise<McpToolResult> => {
-      const parsed = handoffGitTool.inputSchema.safeParse(args);
+      const parsed = handoffGitTool.inputSchema.safeParse(withOperationId(handoffGitTool, args));
       if (!parsed.success) return { content: [{ type: 'text', text: parsed.error.message }], isError: true };
       return handoffGitTool.call(parsed.data, ctx);
     };

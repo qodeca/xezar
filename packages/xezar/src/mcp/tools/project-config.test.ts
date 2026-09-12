@@ -26,6 +26,7 @@ import { WorkspaceSemaphore } from '../../workspace/semaphore.ts';
 import type { ServiceDispatch } from '../service-adapter.ts';
 import { toolListing, type McpToolResult } from '../tool.ts';
 import { tools } from './index.ts';
+import { withOperationId } from './operation-id.testkit.ts';
 import { versionForTest } from './version.testkit.ts';
 import {
   PROJECT_CONFIG_ACTIONS,
@@ -284,7 +285,9 @@ async function invoke(
     xezarVersion: '0.0.0-test',
     ...(opts.service === null ? {} : { service: opts.service ?? ws.app }),
   };
-  const parsed = projectConfigTool.inputSchema.safeParse(args);
+  // Every action that changes something takes an operation key (#264); one fresh key per call, so
+  // two calls in a case are never one operation.
+  const parsed = projectConfigTool.inputSchema.safeParse(withOperationId(projectConfigTool, args));
   const result: McpToolResult = parsed.success
     ? await projectConfigTool.call(parsed.data, ctx)
     : { content: [{ type: 'text', text: `Invalid arguments: ${parsed.error.message}` }], isError: true };

@@ -139,6 +139,13 @@
           "maxLength": 512,
           "description": "The `version` task_read returned for this task. Echo it verbatim; if the task changed since, nothing is applied."
         },
+        "operationId": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "description": "Client-generated key for this operation (8–128 chars). Reuse it only to repeat the same operation: a repeat returns the first answer and controls the task once."
+        },
         "text": {
           "description": "Message, continuation prompt, review feedback, free-form answer, or the new text of a queued message.",
           "type": "string",
@@ -216,7 +223,8 @@
       "required": [
         "action",
         "runId",
-        "expectedVersion"
+        "expectedVersion",
+        "operationId"
       ],
       "additionalProperties": false
     },
@@ -284,6 +292,13 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 512
+        },
+        "operationId": {
+          "description": "Client-generated key for this operation (8–128 chars). Required by every action except list_queue, which reads and takes none. Reuse it only to repeat the same operation: a repeat returns the first answer and organises nothing twice.",
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_.:-]+$"
         },
         "title": {
           "description": "set_title: the new title.",
@@ -616,6 +631,13 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 512
+        },
+        "operationId": {
+          "description": "Client-generated key for this operation (8–128 chars). Required by every action that hands work onward (commit, push, create_pr, ready, merge, branch); the two reads (repo, merge_state) take none. Reuse it only to repeat the same operation: a repeat returns the first answer and never commits, pushes, readies or merges twice.",
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_.:-]+$"
         },
         "message": {
           "description": "commit: the commit message.",
@@ -1362,6 +1384,13 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 512
+        },
+        "operationId": {
+          "description": "Client-generated key for this operation (8–128 chars). Required by every action that changes something and refused by every action that only reads. Reuse it only to repeat the same operation: a repeat returns the first answer and changes nothing twice.",
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_.:-]+$"
         }
       },
       "required": [
@@ -1404,6 +1433,13 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 200
+        },
+        "operationId": {
+          "description": "Client-generated key for this operation (8–128 chars). Required by every open_ action; list_apps reads and takes none. Reuse it only to repeat the same operation: a repeat returns the first answer and opens nothing a second time.",
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_.:-]+$"
         }
       },
       "required": [
@@ -1444,6 +1480,13 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 100
+        },
+        "operationId": {
+          "description": "ack: required — a client-generated key for this acknowledgement (8–128 chars). Reuse it only to repeat the same acknowledgement. read: not accepted, because a read is meant to return the same events again until you ack them.",
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_.:-]+$"
         }
       },
       "required": [

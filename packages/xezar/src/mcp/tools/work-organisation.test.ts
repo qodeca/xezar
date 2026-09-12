@@ -12,6 +12,7 @@ import { WorkspaceSemaphore } from '../../workspace/semaphore.ts';
 import type { ServiceDispatch } from '../service-adapter.ts';
 import { toolListing, type McpToolContext, type McpToolResult } from '../tool.ts';
 import { tools } from './index.ts';
+import { withOperationId } from './operation-id.testkit.ts';
 import { versionForTest } from './version.testkit.ts';
 import { organiseWorkTool } from './work-organisation.ts';
 
@@ -127,7 +128,9 @@ async function invoke(
   if (VERSIONED_ACTIONS.has(String(args.action)) && !('expectedVersion' in args)) {
     args = { ...args, expectedVersion: await versionForTest(ws.app, projectId, args.runId) };
   }
-  const parsed = organiseWorkTool.inputSchema.safeParse(args);
+  // Every action but `list_queue` takes an operation key (#264); one fresh key per call, so no two
+  // calls in a case are accidentally one operation.
+  const parsed = organiseWorkTool.inputSchema.safeParse(withOperationId(organiseWorkTool, args));
   if (!parsed.success) {
     return { content: [{ type: 'text', text: parsed.error.issues.map((i) => i.message).join('; ') }], isError: true };
   }

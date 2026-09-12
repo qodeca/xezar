@@ -6,6 +6,7 @@ import {
   automationEventSchema,
   automationLogResultSchema,
   mcpExpectedVersionSchema,
+  operationIdSchema,
   runIdParamSchema,
   saveWorkflowInputSchema,
   setAgentConfigInputSchema,
@@ -288,7 +289,8 @@ type Field =
   | 'receiptId'
   | 'logQuery'
   | 'runId'
-  | 'expectedVersion';
+  | 'expectedVersion'
+  | 'operationId';
 
 const FIELDS: readonly Field[] = [
   'config',
@@ -311,48 +313,63 @@ const FIELDS: readonly Field[] = [
   'logQuery',
   'runId',
   'expectedVersion',
+  'operationId',
 ];
 
 const none = { required: [], optional: [] } as const;
-/** Which arguments each action takes. Anything else is refused rather than silently dropped. */
+/**
+ * Which arguments each action takes. Anything else is refused rather than silently dropped.
+ *
+ * `operationId` (D-06 § 5.2, #264) is required by every action that CHANGES something and refused by
+ * every action that only reads: a read has no effect to deduplicate, and a receipt over one would
+ * answer the next identical read with the receipt instead of the settings, the skill or the log.
+ * Two entries are worth their own sentence:
+ *   - `refresh_skills` applies the pending skill updates, so it is a change, not a read;
+ *   - `check_automation` takes one for BOTH modes. `execute` launches tasks, and `preview` is only a
+ *     count — but a mode is not a second identity, and one rule per action is what keeps the
+ *     published guard table honest. A leader that wants a fresh preview sends a fresh key, which is
+ *     exactly D-06's "deliberately new identical work uses a new identity".
+ * The refusal-only actions (`REFUSED_ACTIONS`) dispatch nothing and are checked by neither branch:
+ * the refinement returns before it reaches this table.
+ */
 const ACTION_FIELDS: Record<ProjectConfigAction, { required: readonly Field[]; optional: readonly Field[] }> = {
   get_config: none,
-  set_config: { required: ['config'], optional: [] },
+  set_config: { required: ['config', 'operationId'], optional: [] },
   get_project: none,
-  set_project: { required: ['project'], optional: [] },
+  set_project: { required: ['project', 'operationId'], optional: [] },
   get_prompt_templates: none,
-  set_prompt_templates: { required: ['promptTemplates'], optional: [] },
+  set_prompt_templates: { required: ['promptTemplates', 'operationId'], optional: [] },
   get_limits: none,
   get_capabilities: { required: [], optional: ['refresh'] },
   get_account: none,
   list_agent_config: none,
   read_agent_config: { required: ['fileId'], optional: [] },
   // `version` is required but may be `null` ("I expect no file yet"), so presence is checked.
-  write_agent_config: { required: ['fileId', 'content', 'version'], optional: [] },
+  write_agent_config: { required: ['fileId', 'content', 'version', 'operationId'], optional: [] },
   list_workflows: none,
   parse_workflow: { required: ['yaml'], optional: [] },
-  save_workflow: { required: ['workflow'], optional: [] },
-  delete_workflow: { required: ['name'], optional: [] },
+  save_workflow: { required: ['workflow', 'operationId'], optional: [] },
+  delete_workflow: { required: ['name', 'operationId'], optional: [] },
   list_skills: { required: [], optional: ['wait'] },
   get_skill: { required: ['name'], optional: ['wait'] },
   list_importable_skills: { required: [], optional: ['wait'] },
-  refresh_skills: none,
+  refresh_skills: { required: ['operationId'], optional: [] },
   check_skill_updates: none,
   list_automations: none,
   get_automation: { required: ['automationId'], optional: [] },
-  create_automation: { required: ['automation'], optional: [] },
-  update_automation: { required: ['automationId', 'update'], optional: [] },
-  delete_automation: { required: ['automationId'], optional: [] },
-  enable_automation: { required: ['automationId'], optional: [] },
-  pause_automation: { required: ['automationId'], optional: [] },
-  check_automation: { required: ['automationId', 'mode'], optional: [] },
+  create_automation: { required: ['automation', 'operationId'], optional: [] },
+  update_automation: { required: ['automationId', 'update', 'operationId'], optional: [] },
+  delete_automation: { required: ['automationId', 'operationId'], optional: [] },
+  enable_automation: { required: ['automationId', 'operationId'], optional: [] },
+  pause_automation: { required: ['automationId', 'operationId'], optional: [] },
+  check_automation: { required: ['automationId', 'mode', 'operationId'], optional: [] },
   get_automation_check: { required: ['checkId'], optional: [] },
   get_automation_log: { required: [], optional: ['logQuery'] },
-  retry_automation_receipt: { required: ['receiptId'], optional: [] },
+  retry_automation_receipt: { required: ['receiptId', 'operationId'], optional: [] },
   list_worktrees: none,
-  reclaim_worktrees: none,
+  reclaim_worktrees: { required: ['operationId'], optional: [] },
   // Removing a task's worktree changes that task, so it needs its version (#250, N-03).
-  remove_worktree: { required: ['runId', 'expectedVersion'], optional: [] },
+  remove_worktree: { required: ['runId', 'expectedVersion', 'operationId'], optional: [] },
 };
 
 const isRefused = (action: string): action is RefusedAction => Object.hasOwn(REFUSED_ACTIONS, action);
@@ -456,6 +473,11 @@ export const projectConfigInputSchema = z
     expectedVersion: mcpExpectedVersionSchema
       .optional()
       .describe('remove_worktree: the `version` task_read returned for the task. If the task changed since, nothing is removed.'),
+    operationId: operationIdSchema
+      .optional()
+      .describe(
+        'Client-generated key for this operation (8–128 chars). Required by every action that changes something and refused by every action that only reads. Reuse it only to repeat the same operation: a repeat returns the first answer and changes nothing twice.',
+      ),
   })
   .strict()
   .superRefine((args, ctx) => {

@@ -20,6 +20,7 @@ import { PRESENTATION_EVENT_KINDS } from './echo-guard.ts';
 import { resolveMcpTarget, startMcpService } from './index.ts';
 import { LineFramer, encodeFrame, type McpToolResult } from './ipc.ts';
 import { tools } from './tools/index.ts';
+import { withOperationId } from './tools/operation-id.testkit.ts';
 
 /**
  * #309 — push delivery against the REAL composed service: `startMcpService` exactly as `xezar
@@ -246,7 +247,7 @@ function agent(root: string) {
     const id = next++;
     return new Promise((resolve) => {
       pending.set(id, (message) => resolve(message.result as McpToolResult));
-      input.write(encodeFrame({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } }));
+      input.write(encodeFrame({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: withOperationId(name, args) } }));
     });
   };
   return { call, end };
@@ -295,7 +296,7 @@ describe('#309 — push delivery in the running service (A-19 delivery, A-20 no-
     expect(await attached.json()).toMatchObject({ available: true, leader: { client: 'opencode', state: 'attached' }, blocker: null });
 
     // 1. The leader changes the configuration itself: its echo reaches the journal as origin `leader`.
-    okResult(await leader.call('project_config', { action: 'set_config', config: { baseBranch: 'develop' } }));
+    okResult(await leader.call('project_config', { action: 'set_config', operationId: 'op-push-config-1', config: { baseBranch: 'develop' } }));
     // 2. A person changes it back in the cockpit.
     expect((await c.human('PUT', '/config', { baseBranch: 'main' })).status).toBe(200);
     // 3. The leader starts a task under its own operation key; the task finishes on its own.
@@ -307,7 +308,8 @@ describe('#309 — push delivery in the running service (A-19 delivery, A-20 no-
     const echo = journal.find((row) => row.kind === 'config.changed' && row.origin === 'leader');
     const human = journal.find((row) => row.kind === 'config.changed' && row.origin === 'human');
     const done = journal.find((row) => row.kind === 'task.done' && row.subject.id === runId);
-    expect(echo?.causedBy).toMatch(/^mcp-door\./);
+    // #264: the leader's own operation key, not one the door minted for a keyless call.
+    expect(echo?.causedBy).toBe('op-push-config-1');
     expect(human).toBeDefined();
     expect(done?.origin).toBe('system');
 

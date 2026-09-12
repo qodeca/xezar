@@ -243,7 +243,14 @@ describe.skipIf(onWindows)('MCP collaboration — the human’s cockpit and the 
     // The leader renames it; the human's row follows, still without a reload. A write carries the
     // version of the leader's last read (#250), so it reads first, as a real leader must.
     const before = await leader!.tool('task_read', { view: 'task', taskId })
-    const renamed = await leader!.tool('organise_work', { action: 'set_title', runId: taskId, title: 'Renamed by the leader', expectedVersion: before.version })
+    const renamed = await leader!.tool('organise_work', {
+      action: 'set_title',
+      runId: taskId,
+      title: 'Renamed by the leader',
+      expectedVersion: before.version,
+      // #264: a write also carries the leader's own operation key, so a lost answer can be replayed.
+      operationId: 'op-collab-rename',
+    })
     expect(renamed).toMatchObject({ status: 'done' })
     browser!.waitForFunction(
       `${SAME_PAGE} && document.querySelector('${ROW}[data-run-id="${taskId}"]')?.textContent.includes('Renamed by the leader')`,
@@ -286,7 +293,13 @@ describe.skipIf(onWindows)('MCP collaboration — the human’s cockpit and the 
     expect(seqs(history.events as Array<{ seq: number }>)).toEqual(seqs(cockpitHistory.events))
 
     // The leader replies; the human's open thread shows it without a reload.
-    const sent = await leader!.tool('execution_control', { action: 'send_message', runId: taskId, text: 'the leader answers back', expectedVersion: history.version })
+    const sent = await leader!.tool('execution_control', {
+      action: 'send_message',
+      runId: taskId,
+      text: 'the leader answers back',
+      expectedVersion: history.version,
+      operationId: 'op-collab-reply',
+    })
     expect(sent).toMatchObject({ accepted: true })
     browser!.waitForFunction(
       `${SAME_PAGE} && [...document.querySelectorAll('[data-slot="user-bubble"]')].some((el) => el.textContent.includes('the leader answers back'))`,
@@ -316,7 +329,9 @@ describe.skipIf(onWindows)('MCP collaboration — the human’s cockpit and the 
     expect(pinned.task.pinned).toBe(true)
 
     // The leader unpins, with the version of the read that saw the pin; the human's header follows without a reload.
-    expect(await leader!.tool('organise_work', { action: 'unpin', runId: taskId, expectedVersion: pinned.version })).toMatchObject({ status: 'done' })
+    expect(
+      await leader!.tool('organise_work', { action: 'unpin', runId: taskId, expectedVersion: pinned.version, operationId: 'op-collab-unpin' }),
+    ).toMatchObject({ status: 'done' })
     browser!.waitForFunction(`${SAME_PAGE} && document.querySelector('${PIN}')?.getAttribute('aria-pressed') === 'false'`)
     expect((await run(taskId)).pinned).toBeFalsy()
   })

@@ -11,6 +11,7 @@ import type { RunManager } from '../../workflows/run.ts';
 import { WorkspaceSemaphore } from '../../workspace/semaphore.ts';
 import type { ServiceDispatch } from '../service-adapter.ts';
 import { toolListing, type McpTool } from '../tool.ts';
+import { SAMPLE_OPERATION_ID, withOperationId } from './operation-id.testkit.ts';
 import {
   IDLE_TEARDOWN_RETRY_DELAYS_MS,
   createExecutionControlTool,
@@ -105,7 +106,9 @@ async function invoke(
   // Every action changes the task, so a leader reads its version right before acting (#250). The
   // version rule itself is pinned in `stale-write-tools.test.ts`.
   if (!('expectedVersion' in args)) args = { ...args, expectedVersion: await versionForTest(ws.app, projectId, args.runId) };
-  const parsed = tool.inputSchema.safeParse(args);
+  // Every action controls the task, so every one of them takes an operation key (#264); one fresh
+  // key per call, so no two calls in a case become one operation by accident.
+  const parsed = tool.inputSchema.safeParse(withOperationId(tool, args));
   if (!parsed.success) throw new Error(`invalid arguments: ${parsed.error.message}`);
   const ctx = {
     project: { id: projectId, name: projectId, root: ws.roots?.[projectId as ProjectId] ?? '/nowhere' },
@@ -232,7 +235,7 @@ describe('no tool can terminate an arbitrary process', () => {
     // This tool names a task, never a process: its whole argument surface, pinned.
     const schema = toolListing(executionControlTool).inputSchema as { properties: Record<string, unknown> };
     expect(Object.keys(schema.properties).sort()).toEqual(
-      ['action', 'answers', 'expectedVersion', 'finishAs', 'images', 'messageId', 'questionId', 'runId', 'text'].sort(),
+      ['action', 'answers', 'expectedVersion', 'finishAs', 'images', 'messageId', 'operationId', 'questionId', 'runId', 'text'].sort(),
     );
   });
 
@@ -252,12 +255,15 @@ describe('no tool can terminate an arbitrary process', () => {
   });
 
   it('refuses arguments that do not apply to the action instead of dropping them', () => {
-    // Every call carries a version, so each refusal below is for the reason it names (#250).
+    // Every call carries a version and an operation key, so each refusal below is for the reason it
+    // names (#250, #264).
     const parse = (args: Record<string, unknown>) =>
-      executionControlTool.inputSchema.safeParse({ expectedVersion: NO_VERSION, ...args }).success;
+      executionControlTool.inputSchema.safeParse({ expectedVersion: NO_VERSION, operationId: SAMPLE_OPERATION_ID, ...args }).success;
     expect(parse({ action: 'cancel', runId: 'r1' })).toBe(true);
-    // …and a call without one is refused at the validation boundary, never run unchecked.
-    expect(executionControlTool.inputSchema.safeParse({ action: 'cancel', runId: 'r1' }).success).toBe(false);
+    // …and a call without either is refused at the validation boundary, never run unchecked.
+    expect(executionControlTool.inputSchema.safeParse({ action: 'cancel', runId: 'r1', operationId: SAMPLE_OPERATION_ID }).success).toBe(false);
+    expect(executionControlTool.inputSchema.safeParse({ action: 'cancel', runId: 'r1', expectedVersion: NO_VERSION }).success).toBe(false);
+    expect(parse({ action: 'cancel', runId: 'r1', operationId: 'short' })).toBe(false);
     expect(parse({ action: 'cancel', runId: 'r1', expectedVersion: '' })).toBe(false);
     expect(parse({ action: 'cancel', runId: 'r1', pid: 4242 })).toBe(false);
     expect(parse({ action: 'cancel', runId: 'r1', text: 'why' })).toBe(false);

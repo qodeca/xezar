@@ -783,11 +783,37 @@ not an invented one. And AGENTS.md § Changing a mechanism that already works sa
 needs a populated-input guarantee or it lies – against an empty listing, "we found nothing" and
 "there is nothing" are the same branch and must not read the same. `api-reference.test.ts` swaps the
 registry at the module seam (`./tools/index.ts`, and `toolListing` for the one hand-written listing),
-and every case carries its populated-input control in the same test. Seven named breaks, each shown
+and every case carries its populated-input control in the same test, or – for `refusedActions` – in
+the live-registry pin it deliberately does not duplicate. Seven named breaks, each shown
 red in #352: `everyCall` hardcoded to `false` and to `true` (`:106`), each `?? {}` dropped (`:75`,
 `:99`, throws), `byName.get(tool)!` (`:133`, throws), and the description test emitting always and
 never (`:135`). The live-registry pin is unchanged: `mcp-reference-route.test.ts:110-160` still owns
 "the page agrees with the wire", and `api-reference.test.ts` deliberately does not duplicate it.
+
+**Corrected 2026-09-12 (#357): that clause said "in the same test" of every case, and for
+`refusedActions` it is not true.** The independent QA of #355 found it, and it re-measures here:
+hardcoding `refusedActions` to `[]` in `api-reference.ts` leaves all three tests in
+`api-reference.test.ts` green (exit 0), because the only `refusedActions` assertion in that file is
+the empty one at `:94`. **There is no hole in the suite** – the same break reddens exactly
+`mcp-reference-route.test.ts` → *carries every refusal-only action and every declared refused
+argument, from the live tools*, which is the populated-input control and is the pin this file was
+written not to duplicate. So the defect was the sentence, not the tests. The `@file` docblock of
+`api-reference.test.ts` (`:20-21`) still carries the same overstatement and is left for the next
+change to that file, which is source this documentation task may not touch.
+
+**100 % branches is not "no break gets through" – mutation X-D (#357).** The same QA wrote four
+mutations beyond #352's seven, and one survives this file at its new 100 % branch coverage: drop
+`performing.length > 0 &&` from `api-reference.ts:109`. `performing` is empty for a tool whose every
+discriminator action is refusal-only, `requiredBy` is then empty too, and `0 === 0` makes `everyCall`
+read `true` – the page printing "required on every call" for a guard no call can reach – where the
+truth is `false`. No live tool is shaped that way today, so nothing goes red: re-measured 2026-09-12,
+the MCP mutation test set (`packages/xezar/vitest.mutation.config.ts`, 45 files, 930 tests) passes
+with the break applied, and so do the three suites that read `everyCall` at all
+(`api-reference.test.ts`, `mcp-reference-route.test.ts`, `mcp-api-doc.test.ts`, three runs each).
+The survivor itself is recorded with the rest in **#338**, not here; what belongs here is why it is
+worth recording. A file can sit at 100 % branches and still ship a real behavioural break, which is
+the whole reason the floor is a floor rather than a target, and the reason the mutation gate exists
+(10.8) – Stryker does not kill such a mutant either, it makes it *visible*, which coverage cannot.
 
 **The lesson, not the number.** "The only way to reach it is to fake the registry" is a claim about
 the seam, and a seam a shipped module already imports through is not a fake. Before writing an
@@ -908,7 +934,8 @@ files the errors named:
 | `adapters/codex.ts` | 75.5 **below** | 73.7 **below** | **96.4** | **82.7** |
 
 Only `api-reference.ts` moved because of a test written here (`api-reference.test.ts`, three cases,
-seven named breaks shown red – see 10.6). `codex.ts` moved because #311 merged: its 15 uncovered
+seven named breaks shown red – see 10.6, which also records the mutation that survives that 100 %
+branch figure). `codex.ts` moved because #311 merged: its 15 uncovered
 lines were the ones #311 deletes, and #311's own `adapters/codex.test.ts` reaches the rest. Nothing
 was added to `codex.ts` in #352, and #338 still owns the kept lines.
 

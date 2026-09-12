@@ -19,6 +19,7 @@ import { LineFramer, encodeFrame, type McpToolResult } from './ipc.ts';
 import { runVersion } from './stale-write.ts';
 import { QUALITY_BLOCKER_NEXT_ACTION } from './tools/handoff-git.ts';
 import { tools } from './tools/index.ts';
+import { withOperationId } from './tools/operation-id.testkit.ts';
 
 /**
  * #262 — a leader marks its own draft pull request ready, through the REAL composed service: the
@@ -157,7 +158,15 @@ function leader(root: string) {
     const id = next++;
     return new Promise((resolve) => {
       pending.set(id, resolve);
-      input.write(encodeFrame({ jsonrpc: '2.0', id, method: 'tools/call', params: { name: 'handoff_git', arguments: args } }));
+      input.write(
+        encodeFrame({
+          jsonrpc: '2.0',
+          id,
+          method: 'tools/call',
+          // Every action but the two reads takes a fresh operation key (#264).
+          params: { name: 'handoff_git', arguments: withOperationId('handoff_git', args) },
+        }),
+      );
     });
   };
   /** A business answer: compact JSON in the text block. */

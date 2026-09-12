@@ -78,6 +78,15 @@
   which is the correct answer and the point of the fix. OpenCode still cannot carry a second
   account – its credentials live apart from its config, so a second one would quietly bill the
   first. (#329)
+- 🐛 **A leader that loses the answer to an MCP call can now ask again safely — for every tool, not
+  just one.** Every MCP tool action that changes something takes a required `operationId`, so
+  sending the same call again returns what the first one did instead of doing it a second time.
+  Until now only `task_create` took one: `organise_work`, `execution_control`, `handoff_git`,
+  `project_config`, `local_handoff` and `leader_events` rejected the key outright, so a dropped
+  answer left a leader with no safe way to find out whether its message was queued, its branch
+  created or its app opened. Read actions of those same tools deliberately take no key and refuse
+  one — a read has nothing to repeat, and `leader_events read` is meant to return the same events
+  again until you acknowledge them. The tool reference lists which actions need the key. (#264)
 - 🐛 **A workflow step that stops for an answer now stops the workflow.** A step before the last
   one runs a single turn, and it used to be marked done whenever its session closed without an
   error – so a step that ended on a question, `XEZ:ASK` or plain prose, was treated as finished
@@ -364,6 +373,13 @@
   of the code it covers. The written exemption that stood in for those tests is retired, and
   `docs/testing/coverage-gaps.md` records the new measurement, why the old exemption's reasoning was
   wrong, and that the command can now become a CI check. No product behaviour changed. (#352)
+- 📝 **The coverage record no longer claims more than it proved.** `docs/testing/coverage-gaps.md`
+  said every case of the new MCP API reference test carries its own populated-input control; for one
+  of the three it does not, and the control lives in the live-registry test instead. The sentence is
+  corrected, both halves re-measured, and the document now also records a mutation of that file that
+  survives the whole MCP test suite even though the file reads 100 % branch coverage — the plainest
+  evidence that a coverage number is a floor, not a proof. No product behaviour changed, and no test
+  or source file was touched. (#357)
 
 # 0.13.1 (2026-09-10)
 
