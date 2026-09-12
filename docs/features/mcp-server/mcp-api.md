@@ -545,13 +545,24 @@ This rule comes from [D-06 §§ 5–9](mcp-d06-versioning-idempotency-audit-deci
 **Every mutating tool action takes a required `operationId`**, and only a call that carries one
 creates a receipt (`packages/xezar/src/mcp/index.ts`). The stored key is `<projectId>/<operationId>`.
 
-The exceptions are read actions, and they are exceptions to nothing: an action that only reads
-changes nothing, so there is no effect to deduplicate. Such an action **refuses** an `operationId`
-rather than accepting one, because a receipt filed over a read would answer the next identical read
-with the receipt instead of with the data. `leader_events read` is the sharp case — returning the
-same rows again until they are acknowledged IS its contract. The tool table above says which actions
-need the key; `packages/xezar/src/mcp/tools/operation-id.test.ts` holds every action in the registry
-to that rule and lists the reads by name, each with its reason.
+The exceptions are read actions. Such an action **refuses** an `operationId` rather than accepting
+one, because a receipt filed over a read would answer the next identical read with the receipt
+instead of with the data. `leader_events read` is the sharp case — returning the same rows again
+until they are acknowledged IS its contract.
+
+The test for an exemption is **"a repeat cannot produce a different or a doubled outcome"**, which is
+narrower than "it writes nothing", and two of the reads do write. `leader_events read` persists
+`deliveredSeq` to `<dataDir>/mcp/leader-cursors.json`, and `project_config get_capabilities` with
+`refresh: true` spawns the vendor probes and replaces the process-wide provider-status cache. Both
+stay exempt on the narrower test: the first write is monotonic bookkeeping that no user-visible
+answer reads back (every consumer of the position reads the **acked** seq, never `deliveredSeq`), and
+the second refreshes a cache of an external fact, so a repeat re-reads the world rather than doing
+anything twice — serving it a receipt would hand back the stale snapshot `refresh` exists to avoid.
+Do not read this list as "these actions are inert".
+
+The tool table above says which actions need the key;
+`packages/xezar/src/mcp/tools/operation-id.test.ts` holds every action in the registry to that rule
+and lists the reads by name, each with its reason.
 
 When the same id is sent again, the answer is the receipt's, not the original body:
 

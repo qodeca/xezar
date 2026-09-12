@@ -35,7 +35,8 @@ function actionsOf(tool: McpTool): (string | undefined)[] {
 const isMutatingTool = (tool: McpTool): boolean => tool.annotations?.readOnlyHint !== true;
 
 /**
- * Actions of a MUTATING tool that take no operation id, each with why it changes nothing. Two kinds:
+ * Actions of a MUTATING tool that take no operation id, each with why replaying it needs no receipt.
+ * Two kinds:
  *
  *  - a READ that happens to live on a tool whose other actions write. It refuses a key rather than
  *    accepting one, because a receipt filed over a read would answer the next identical read with
@@ -43,18 +44,26 @@ const isMutatingTool = (tool: McpTool): boolean => tool.annotations?.readOnlyHin
  *    the same rows again until they are acked IS the contract;
  *  - a REFUSAL-ONLY action (`project_config`'s `REFUSED_ACTIONS`), which names a boundary and
  *    dispatches nothing at all.
+ *
+ * "Needs no receipt" is NOT the same claim as "writes nothing", and two entries below are exempt
+ * while genuinely writing. The test that matters for N-10 is narrower: could a leader that LOST the
+ * answer, and repeated the call, end up with a different or a doubled outcome? Where the write is
+ * monotonic bookkeeping no user-visible answer reads back, the repeat is a no-op and a receipt would
+ * only get in the way. Say what the action really does; do not flatten it to "reads".
  */
 const NO_OPERATION_ID: Readonly<Record<string, string>> = {
   'organise_work:list_queue': 'reads the queue; it starts, edits and deletes nothing',
   'handoff_git:repo': 'reads the main checkout',
   'handoff_git:merge_state': 'reads one pull request and its blockers',
   'local_handoff:list_apps': 'reads which apps the host has; it opens none of them',
-  'leader_events:read': 'at-least-once delivery: a repeated read is MEANT to return the same rows again, until an ack moves the position',
+  'leader_events:read':
+    'at-least-once delivery: a repeated read is MEANT to return the same rows again, until an ack moves the position. It does write — `markDelivered` persists `deliveredSeq` to `<dataDir>/mcp/leader-cursors.json` (`leader-events.ts` → `reconnect.ts`) — but that write is monotonic non-model bookkeeping a repeat cannot move further, and every consumer of the position (`owedAfter`, the `GET /api/v1/mcp/leader` blocker) reads the ACKED seq and never `deliveredSeq`. A receipt over the read would answer the replay with the receipt instead of the rows, which is exactly the break at-least-once delivery exists to prevent',
   'project_config:get_config': 'reads the project settings',
   'project_config:get_project': 'reads the registry entry',
   'project_config:get_prompt_templates': 'reads the follow-up prompt templates',
   'project_config:get_limits': 'reads the effective limits',
-  'project_config:get_capabilities': 'reads capabilities and provider status; `refresh` re-probes the providers and stores nothing',
+  'project_config:get_capabilities':
+    'reads capabilities and provider status. `refresh: true` is not free — `startFreshProbe` (`core/provider-auth.ts`) spawns the vendor CLI probes and replaces `completed`, the process-wide provider-status cache every other reader consults — but it refreshes a CACHE of an external fact, so a repeat re-reads the world rather than doing anything a second time. A receipt is the wrong tool here twice over: it would serve the replay a stale snapshot, which is the one thing `refresh` exists to avoid',
   'project_config:get_account': 'reads the effective account selection',
   'project_config:list_agent_config': 'lists the agent config files',
   'project_config:read_agent_config': 'reads one agent config file',
