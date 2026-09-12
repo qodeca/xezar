@@ -317,6 +317,10 @@ describe('MCP connection section — the pi card (#341, WP3 of #330)', () => {
     expect(text).toContain('waits there until it is killed')
     expect(text).toContain('measured at two minutes')
     expect(text).toContain('xezar_health')
+    // The OTHER unattended case, and it ends differently. This is the leader setup card, so a reader
+    // who runs no pi tasks must not read the killed-at-two-minutes case as the only one: a leader
+    // turn has nothing to end its wait at all. Naming only the task understated it (QA on #371).
+    expect(text).toContain('a leader turn nobody is watching waits for ever')
     // The limit that keeps this sentence true. The same QA measured an ordinary pi task finishing in
     // 2.8 s with the gate on, because the runner's default tool allowlist offers no xezar tool. A card
     // that dropped this would overstate the limit — the mistake this release already shipped.

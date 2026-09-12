@@ -147,7 +147,9 @@ args = ["-y", "@qodeca/xezar", "mcp"]`}
   // `xezar_*` tool, so the dialog never fires) and only a step that named `xezar_health` failing, at
   // 121 s. Do not widen this to "every pi task": that is measured false. `approveTools` is the user's
   // own key in the adapter's `mcp.json` — `settings.approveTools` or the per-server one, which
-  // overrides it (`tool-approval.ts:42-43`, adapter 2.32.1) — and it appears nowhere in xezar's source.
+  // overrides it (`tool-approval.ts:42-43`, adapter 2.32.1) — and no xezar code reads or sets it.
+  // The two unattended cases end differently and the line says both: a pi xezar runs is killed by the
+  // runner's timeout, a leader turn nobody is watching has nothing to end it and waits for ever.
   {
     name: 'pi',
     automatic:
@@ -201,7 +203,8 @@ args = ["-y", "@qodeca/xezar", "mcp"]`}
               Leave xezar’s tools out of the extension’s <span className="font-mono break-all">approveTools</span> setting, in this file
               or on the <span className="font-mono break-all">xezar</span> entry. A gated tool asks for approval in pi’s own window and
               nothing in xezar answers, so a pi xezar runs waits there until it is killed — measured at two minutes, on a step that named{' '}
-              <span className="font-mono break-all">xezar_health</span>. A pi that is never offered a xezar tool is unaffected. Making
+              <span className="font-mono break-all">xezar_health</span> — and a leader turn nobody is watching waits for ever, because
+              nothing ends that one at all. A pi that is never offered a xezar tool is unaffected. Making
               xezar answer that question is{' '}
               {/* The link text is "issue 369", not "#369": the design guardian's no-raw-hex-colors rule
                   reads a three-digit "#369" as a colour, and the rule is right to. */}

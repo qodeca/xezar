@@ -98,9 +98,11 @@ or on the `xezar` server entry, which overrides it. It makes a matching tool ask
 **Do not put xezar's tools in it.** The gated call opens the extension's approval dialog
 (`extension_ui_request`, `method: "select"`, *Allow once / Allow for session / Deny*). That frame
 carries no `timeout`, so pi's `docs/rpc.md` says it blocks until something answers — and nothing in
-xezar does. You at your own pi window answer it yourself and nothing hangs; a pi that xezar runs, or
-a leader reacting to an event while nobody is watching, has no one to answer, and waits until it is
-killed.
+xezar does. You at your own pi window answer it yourself and nothing hangs. The two unattended cases
+end differently: a pi that xezar runs waits until the runner's own timeout kills it, measured at two
+minutes below; a leader reacting to an event while nobody is watching has nothing to end its wait at
+all, and waits for ever (one earlier run stopped only because its stdin closed, at 109 s —
+[#369](https://github.com/qodeca/xezar/issues/369)).
 
 Measured by #330 WP5's QA on 2026-09-12, through a real `xezar serve`:
 
@@ -113,7 +115,7 @@ Measured by #330 WP5's QA on 2026-09-12, through a real `xezar serve`:
 So it is **not** every pi task: the runner's default `--tools` allowlist offers the model no `xezar_*`
 tool, so the dialog never fires. It bites a call that really reaches a gated xezar tool.
 
-`approveTools` is yours, not xezar's — the word appears nowhere in xezar's source, and the
-zero-config default sets no gate. **Leave xezar's tools ungated.** Making xezar answer the dialog,
+`approveTools` is yours, not xezar's — no xezar code reads or sets it, and the zero-config default
+sets no gate. **Leave xezar's tools ungated.** Making xezar answer the dialog,
 denying by default, is [#369](https://github.com/qodeca/xezar/issues/369), deliberately not in
 0.14.0.

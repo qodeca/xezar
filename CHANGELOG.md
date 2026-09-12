@@ -344,7 +344,8 @@
 - 📝 **A named limitation of this release: do not gate xezar's tools with pi's `approveTools`.** The
   `pi-mcp-adapter` extension can be told to ask before a tool runs. If you point that at xezar's
   tools, the question goes to a dialog only a person at their own pi window can answer, and nothing
-  in xezar answers it — so a pi that xezar runs sits there until it is killed. Measured: a step whose
+  in xezar answers it — so a pi that xezar runs sits there until it is killed, and a leader turn
+  nobody is watching waits for ever, because nothing ends that one at all. Measured: a step whose
   own tool list named `xezar_health` failed after two minutes, while an ordinary pi task with the
   same gate on was unaffected and finished in 2.8 seconds, because the tools xezar gives a task by
   default include no xezar tool at all and the question is never asked. You set this yourself and
