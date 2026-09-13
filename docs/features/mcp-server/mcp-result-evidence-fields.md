@@ -133,7 +133,7 @@ existing correct callers are `worktreeShortstat` (`packages/xezar/src/git-worktr
 `collectChanges` (`packages/xezar/src/server/git-changes.ts:288-295`, fed by `server.ts:4114-4120`).
 
 `AGENTS.md` records why: anchoring a review or QA run at the whole-branch base produced five-figure diffs
-(open-mercato/cezar#591, #751), and anchoring at `HEAD` instead reported `+0 −0` for work that was really
+(pre-rename issues 591 and 751), and anchoring at `HEAD` instead reported `+0 −0` for work that was really
 committed. **`worktreeDiff` and `worktreeDiffStat` keep the whole-branch anchor deliberately**
 (`packages/xezar/src/git-worktree.ts:449-465` and `:481-489` each carry a comment saying why — a protected
 text surface, and a variant comparison that would be meaningless narrowed). This record proposes no change to

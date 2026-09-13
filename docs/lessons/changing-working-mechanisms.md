@@ -4,19 +4,19 @@ The worked examples behind the seven rules in [AGENTS.md](../../AGENTS.md) § Ch
 mechanism that already works. The rules live there because a session needs them; the
 narratives live here because a session only needs them when a rule is disputed.
 
-Every incident below predates the rename and resolves in the predecessor repository:
-`gh issue view <n> -R open-mercato/cezar`.
+Every incident below predates the rename; its number is a pre-rename issue number, kept as a
+label.
 
 ## Why this class of change is the riskiest
 
 Replacing working behavior fails in a characteristic way: the new mechanism is correct,
 the tests are green, the spec is thorough — and the DEFAULT path quietly lost a guarantee
-nobody wrote down. open-mercato/cezar#810 and open-mercato/cezar#811 both shipped a
+nobody wrote down. Pre-rename issues 810 and 811 both shipped a
 well-specified improvement that left the zero-config user worse off than before.
 
 ## Name what the old mechanism was load-bearing FOR
 
-`IDLE_TIMEOUT_MS` read as session hygiene, and open-mercato/cezar#661 removed it from the
+`IDLE_TIMEOUT_MS` read as session hygiene, and pre-rename issue 661 removed it from the
 monitoring branch for a good reason: it was closing live sessions mid-CI and recording
 them as `done`.
 
@@ -44,7 +44,7 @@ renders.
 
 ## Find every construction site of a shared in-memory object
 
-`ActiveRun` is built in `execute` AND in `runContinuation`. open-mercato/cezar#811
+`ActiveRun` is built in `execute` AND in `runContinuation`. Pre-rename issue 811
 populated `state.skills` in the first only, so registry `/skill` expansion worked on new
 tasks and silently failed on every Continue and every restart recovery.
 
@@ -67,5 +67,5 @@ functional are separate reviews.
 
 `git log -S` and `git merge-base --is-ancestor <commit> <tag>` settle "was this in the
 release the user is on", and a user's "it worked in 0.9.1" is a testable claim, not an
-opinion. open-mercato/cezar#810 was confirmed in one command before a line of code was
+opinion. Pre-rename issue 810 was confirmed in one command before a line of code was
 read.
