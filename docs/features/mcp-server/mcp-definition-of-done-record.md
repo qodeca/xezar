@@ -113,31 +113,39 @@ an MCP case; the two MCP specs are **7 of 7 passed**.
 because of a harness defect, **passed here**, so all four clients now carry a real A-01 row and the
 A-23 row that reads it is BLOCKED rather than partly unmeasured.
 
-### Addendum 2026-09-13 — #374 gives Claude Code a channel attach path
+### Addendum 2026-09-13 — #374 Claude Code Channels, corrected after #404 review
 
-The `ed579e63` rows above are kept as history. #374 (part of #73) shipped `ClaudeCodeChannelAdapter`
-and the `client: 'claude-code'` attach path, which changes two of the BLOCKED rows above. The
-[wake decision record](mcp-wake-claude-code-decision.md) § 5.7 defines the acceptance criteria
-AC-1 … AC-9; they map onto A-19 and A-23 as follows, and the A-19 **real-model** clause stays
-BLOCKED for Claude Code exactly as it is for pi.
+The historical rows above remain unchanged. The production composition now has separate
+transport checks and real interactive **Claude Code 2.1.270** PTY checks, with an isolated
+`CLAUDE_CONFIG_DIR`, the shipped bridge registered as `xezar`, real `xezar serve`, and a scripted
+Anthropic Messages endpoint. No personal account or real model is used. The decision record §5.7
+requires this scripted-client evidence; it does not require an account for approval/draft testing.
 
-| AC | Row it maps to | State after #374 |
+| AC | Row it maps to | Observed evidence after review fixes |
 | --- | --- | --- |
-| AC-1 | **A-19** F3 claude-code (delivery half) | **Executed.** The real shipped bridge presenting as `claude-code` advertises `experimental["claude/channel"]`, attaches over the channel, and a journal event is pushed to it as a `notifications/claude/channel` frame carrying the `eventId`, `source_app: "xezar"`. `mcp-real-clients.test.ts` — the `[claude-code]` A-19 case. The real-model **reaction** turn stays BLOCKED (§ 9 forbids accounts) |
-| AC-2 | A-19 negative control | The pull-only default: without the flag nothing is pushed, and the leader reads events with `leader_events`. Unit-covered (`push-delivery.test.ts`, `leader-delivery.test.ts`); the without-flag/`claude-code-push-unconfirmed` blocker is proven in `adapters/claude-code.test.ts` |
-| AC-3 | A-19 / F-20 separation | Approval-dialog / draft interaction is a real-account behaviour: BLOCKED, same as the real-model clause |
-| AC-4 | A-19 / N-10 | Reconnect re-sends unacknowledged rows with the same `eventId`s; the echo guard drops the leader's own rows. Unit-covered (`leader-delivery.test.ts`, `push-delivery.test.ts`) |
-| AC-5 | **A-23** claude-code | Setup (`claude mcp add --scope local`) PASSED already; exclusivity holds; the reaction half is A-19's, BLOCKED on the real model |
-| AC-6 | contract / BC | `mcpLeaderAttachInputSchema` accepts `{action:'attach', client:'claude-code'}`; the status enum carries `'claude-code'`; the `leader/push` frame and `session/open` fields are additive, and an older bridge gets `claude-code-bridge-too-old`. Contract-parity, typed-bodies, route inventory and BACKWARD_COMPATIBILITY § 2 pass |
-| AC-7 | #73 never-impersonate | `initialize` for `claude-code` declares `claude/channel`, never `claude/channel/permission`; other clients byte-identical; every `meta` key matches the identifier rule; `reactedSeq` stays 0. Unit-covered (`protocol.test.ts`, `adapters/claude-code.test.ts`) |
-| AC-8 | prove-red | Each new test was shown red against a named break before it was kept |
-| AC-9 | O-1 docs | The flag is documented in all four places — README, the cockpit MCP connection section, the wake decision record and the changelog |
+| AC-1 | A-19 F3 claude-code | **PASSED, scripted endpoint.** With `--dangerously-load-development-channels server:xezar`, one config journal event produced exactly one request containing `<channel source="xezar"` and its eventId. Quiet windows before and after were each over 30 seconds with no additional requests. Suggestions after later human input are logged separately. The existing eight bridge checks remain. |
+| AC-2 | A-19 negative control | **PASSED.** Without the flag: zero requests after the event, `claude-code-push-unconfirmed` after a heartbeat, and the same event returned by the real client's `leader_events` call. The bridge can write a frame without the client accepting it; a write is not a model reaction. |
+| AC-3 | A-19 / F-20 separation | **PASSED.** A channel event while the Bash approval dialog was open produced no request and did not approve the tool. An event during a typed draft did not submit it; subsequent human Enter submitted the preserved draft. These are real-client behaviours with a scripted endpoint, not blocked account tests. |
+| AC-4 | A-19 / N-10 | **Unit/composition tested.** Compatible reconnects retain eventIds; acknowledgements and echo suppression remain covered. An incompatible rebound owner receives no frame and advances no delivery cursor. Continuing events and partial acknowledgements do not reset the oldest outstanding delivery's age. |
+| AC-5 | A-23 claude-code | **Scripted-client setup and wake PASSED.** The PTY case uses local-scope registration as `xezar` and the same attach route as the cockpit button. Existing A-01/A-17 ownership/exclusivity checks passed. |
+| AC-6 | Contract / BC | **Tested.** Additive attach/status shapes and handshake metadata retained. The actual old handshake with neither metadata field gets the update-bridge remedy. Contract parity and route coverage remain required. |
+| AC-7 | Never impersonate approval | **Tested.** No permission-relay capability, non-Claude initialize answer byte-identical to the main constant, identifier metadata keys, and no fabricated `reactedSeq`. |
+| AC-8 | Prove red | **Executed.** Per-file logs name the source mutation, quote its failed assertion and record restoration. The real-client mutation removes the production bridge's channel capability and fails waiting for the channel model request. |
+| AC-9 | O-1 docs | **Tested.** README, connection section, changelog and adapter evidence carry the flag, allowlist rationale, per-launch confirmation, feature-flag service/organisation conditions and all three blocker messages with `fix:` remedies. |
 
-So the A-19 row "no attach path exists for these clients" now applies to **codex and opencode only**;
-Claude Code has an attach path and its delivery half is executed. The A-19 and A-23 Claude Code rows
-stay **BLOCKED** on the real-model reaction alone — the same single clause that keeps pi BLOCKED —
-until a separate decision names an account that may be used. Clause 2 of the DoD is therefore still
-NOT MET for the same reason it was: no real model has reacted in a § 9 fixture.
+Reproduce the PTY cases after building, from `packages/xezar`:
+
+```sh
+TMPDIR=/tmp node --import ../../scripts/test-local-state.mjs --import tsx --test --test-name-pattern 'development channels' test/integration/mcp-real-clients.test.ts
+```
+
+The A-19/A-23 Claude Code **real-model clause remains BLOCKED** until a separate decision names
+an account that may be used. This is the only blocked Claude Channels acceptance clause; a scripted
+endpoint is not a real model. It does not certify the whole MCP feature: the complete real-client
+suite still fails the existing pi `approveTools` case (#369), and independent design/QA and current
+CI remain required before merge. The full-suite result on this repair was 30 tests: 20 passed,
+1 failed (pi approval), 9 TODO; the two new Claude PTY cases passed. This records the failure,
+not an exemption from it.
 
 ## Clause by clause
 

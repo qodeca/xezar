@@ -1,7 +1,12 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ServerIcon, ShieldCheckIcon, TriangleAlertIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 import type { HealthResponse } from '@qodeca/xezar-api-client'
+import { attachClaudeCodeLeader, getMcpLeader } from '@/api/client'
+import { Button } from '@/components/ui/button'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { toast } from '@/components/ui/toaster'
 import { useHealth, useProjects } from '@/api/queries'
 import { CenteredState } from '@/components/centered-state'
 import { Link, useActiveProjectId } from '@/lib/project-router'
@@ -75,7 +80,26 @@ function withCode(text: string): ReactNode {
   )
 }
 
-/** The per-client setup facts, from D-04 § 3. Kept as data so the four cards cannot drift. */
+/** Decision §5.6 recovery guidance, also available before a leader has attached. */
+const CLAUDE_RECOVERY = [
+  {
+    code: 'claude-code-not-owner',
+    message: 'The MCP session that owns this project is not a Claude Code session, so there is no Claude Code leader to push events to. Events are kept in the journal.',
+    fix: 'Start Claude Code in this project with --dangerously-load-development-channels server:xezar, let it call a xezar tool once, then attach it again.',
+  },
+  {
+    code: 'claude-code-bridge-too-old',
+    message: 'This Claude Code session is connected through an older xezar MCP bridge that cannot push events. Events are kept in the journal.',
+    fix: 'Restart Claude Code so it starts the current xezar bridge (npx -y @qodeca/xezar mcp), then attach it again.',
+  },
+  {
+    code: 'claude-code-push-unconfirmed',
+    message: 'xezar pushed events to the attached Claude Code session, and they are not acknowledged yet. Claude Code does not confirm delivery, so xezar cannot tell a leader that is still working from one that never received them. Nothing is lost: the events stay in the journal.',
+    fix: 'If the leader is working, nothing is needed. Otherwise check that Claude Code was started with --dangerously-load-development-channels server:xezar and that its startup notice says channels from server:xezar inject into the session. Channels need a claude.ai or Console API-key login, do not work on Bedrock, Vertex or Foundry, must be enabled by a Team or Enterprise admin, and are off while CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC is set. Until then, read events with leader_events.',
+  }
+]
+
+/** The per-client setup facts, from D-04 §3. */
 const CLIENTS: readonly ClientSetup[] = [
   {
     name: 'Claude Code',
@@ -105,14 +129,27 @@ const CLIENTS: readonly ClientSetup[] = [
           claude --dangerously-load-development-channels server:xezar
         </pre>
         <span className="mt-2 block">
-          Claude Code shows a warning each time. Choose &ldquo;I am using this for local development&rdquo; if you accept it. The flag is how
-          Claude Code lets a server that is not on Anthropic&rsquo;s approved list push messages into your session. Channels are a Claude
-          Code research preview: they need a claude.ai or Anthropic Console API-key login, they do not work on Amazon Bedrock, Google
-          Vertex or Microsoft Foundry, a Team or Enterprise admin must turn them on, and they are off while{' '}
-          <span className="font-mono break-all">CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC</span> is set. Then attach the leader here.
-          Without the flag nothing changes: your leader reads its events with the <span className="font-mono break-all">leader_events</span>{' '}
-          tool.
+          Claude Code shows a warning each time. On the confirmation screen, choose “I am using this for local development” if you accept it.
+          The flag lets xezar push messages into your session because custom servers are not on the channel allowlist.
+          Channels are a research preview: the feature-flag service must be reachable and enable them. They need a claude.ai or Anthropic Console API-key login,
+          do not work on Bedrock, Vertex or Foundry, a Team or Enterprise admin must turn them on, and they are off while{' '}
+          <span className="font-mono break-all">CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC</span> is set.
+          Then use “Attach Claude Code leader” below. Without the flag nothing changes: your leader reads its events with{' '}
+          <span className="font-mono break-all">leader_events</span>.
         </span>
+        <Collapsible className="mt-2">
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" className="h-auto min-h-11 whitespace-normal md:min-h-9">Claude Code recovery guidance</Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            {CLAUDE_RECOVERY.map((blocker) => (
+              <div key={blocker.code} className="mt-2 break-words">
+                <p>{blocker.code}: {blocker.message}</p>
+                <p>fix: {blocker.fix}</p>
+              </div>
+            ))}
+          </CollapsibleContent>
+        </Collapsible>
       </>
     ),
   },
@@ -271,6 +308,7 @@ args = ["-y", "@qodeca/xezar", "mcp"]`}
 export function McpConnectionSection() {
   const health = useHealth()
   const projects = useProjects()
+  const activeProjectId = useActiveProjectId()
 
   if (health.isPending || projects.isPending) {
     return (
@@ -293,11 +331,15 @@ export function McpConnectionSection() {
     )
   }
 
+  const leaderProjectId = activeProjectId ?? health.data.bootProject
   return (
     <McpConnectionSurface
       health={health.data}
       projects={projects.data?.projects ?? []}
       connection={connectionStateFor(health.data, health.isError)}
+      leaderControl={health.data.capabilities.localHandoff && leaderProjectId
+        ? <ClaudeLeaderControl projectId={leaderProjectId} />
+        : undefined}
       // No server route reports MCP operation outcomes to the cockpit yet (see the PR for #114), so
       // no `operations` are passed and the section is not rendered: a list that no route can fill
       // reads as unfinished, not as empty (#301, C3). Pass them the day a route reports them.
@@ -335,11 +377,13 @@ export function McpConnectionSurface({
   projects,
   connection,
   operations,
+  leaderControl,
 }: {
   health: HealthResponse
   projects: readonly { id: string; name: string; root: string }[]
   connection: McpConnectionState | null
   operations?: readonly McpOperation[]
+  leaderControl?: ReactNode
 }) {
   // THIS project, as the URL names it. The BOOT project mounts unscoped, so `useActiveProjectId`
   // falls back to the URL's own `/p/<id>` prefix; `bootProject` covers the sliver of time a
@@ -419,6 +463,8 @@ export function McpConnectionSurface({
           ))}
         </div>
       </SettingsField>
+
+      {leaderControl}
 
       {/* Connection state (#112) — only what the server reports, in a polite live region that is
           always mounted, so a state change is announced without moving focus (U-M08). When the
@@ -516,4 +562,34 @@ function ClientSetupCard({ client }: { client: ClientSetup }) {
       </div>
     </div>
   )
+}
+
+function ClaudeLeaderControl({ projectId }: { projectId: string }) {
+  const client = useQueryClient()
+  const key = [projectId, 'mcp-leader']
+  const status = useQuery({ queryKey: key, queryFn: ({ signal }) => getMcpLeader({ signal }) })
+  const attach = useMutation({ mutationFn: attachClaudeCodeLeader,
+    onSuccess: (value) => client.setQueryData(key, value),
+    onError: (error) => toast(error.message, { tone: 'danger' }),
+  })
+  const data = status.data
+  return <SettingsField title="Event delivery" hint="Attach the Claude Code session that owns this project to receive events.">
+    <div className="flex min-w-0 flex-col gap-3">
+      <div role="status" aria-live="polite" className="break-words text-[13px] text-foreground">
+        {status.isPending ? <p>Loading leader status…</p> : null}
+        {status.isError ? <p>Could not load leader status: {status.error.message}</p> : null}
+        {data?.available ? <>
+          <p>Current leader: {data.leader?.client ?? 'none'}</p>
+          {data.blocker ? <><p>{data.blocker.message}</p><p>fix: {data.blocker.fix}</p></> : null}
+        </> : data ? <p>{data.reason}</p> : null}
+      </div>
+      {attach.isError ? <p role="alert" className="break-words text-[13px] text-danger">{attach.error.message}</p> : null}
+      <div className="flex flex-wrap gap-2">
+        <Button variant="outline" className="h-auto min-h-11 whitespace-normal md:min-h-9" disabled={attach.isPending || !data?.available} onClick={() => attach.mutate()}>
+          {attach.isPending ? 'Attaching…' : 'Attach Claude Code leader'}
+        </Button>
+        <Button variant="ghost" className="h-auto min-h-11 whitespace-normal md:min-h-9" disabled={status.isFetching} onClick={() => void status.refetch()}>Refresh status</Button>
+      </div>
+    </div>
+  </SettingsField>
 }

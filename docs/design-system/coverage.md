@@ -257,3 +257,5 @@ Each entry maps a utility name to a theme token. Listed in foundations.md §1.7;
 | Keyboard, focus and announcements | behaviour.md | `specimens/components.html` | Documented with known gap (G-06) |
 | UX writing | writing.md | – | Documented with known gap (G-15, G-16) |
 | Number formatting | writing.md | – | Documented with known gap (G-18) |
+
+MCP connection event delivery uses SettingsField, Collapsible recovery guidance and Button (outline attach, ghost refresh), server-reported status and inline refusal with fix. Loading, unavailable, attached and error states share token colors and wrap at 375px; no new primitive.

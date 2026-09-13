@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createConnection, createServer, type Server } from 'node:net';
 import { join } from 'node:path';
-import { PassThrough } from 'node:stream';
+import { PassThrough, Writable } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { HEALTH_TOOL, runBridge, type ServiceTarget } from './bridge.ts';
@@ -408,6 +408,14 @@ describe('Claude Code channel handshake (#374)', () => {
     await b.done;
   });
 
+  it('keeps the complete non-Claude initialize answer byte-identical to the main constant', async () => {
+    const baseInstructions = 'xezar controls coding-agent tasks for the one project this session was started in. Call `health` to check that the xezar cockpit is running for it.';
+    const b = bridge({ target: socketTarget('/nonexistent') });
+    const init = await b.request('initialize', { protocolVersion: '2025-11-25', clientInfo: { name: 'codex' } });
+    expect(JSON.stringify(init.result)).toBe(JSON.stringify({ protocolVersion: '2025-11-25', capabilities: SERVER_CAPABILITIES, serverInfo: { name: 'xezar', title: 'xezar', version: '1.2.3' }, instructions: baseInstructions }));
+    b.input.end(); await b.done;
+  });
+
   it('never advertises the channel to another client, keeping its handshake as it was', async () => {
     // RED against: advertising the channel to every client.
     const b = bridge({ target: socketTarget('/nonexistent') });
@@ -467,6 +475,34 @@ describe('the leader/push service→bridge frame (#374)', () => {
       },
     };
   }
+
+  it.each(['failure', 'backpressure', 'closed'] as const)('confirms channel stdout completion: %s', async (mode) => {
+    const svc = await rawServer();
+    const input = new PassThrough();
+    let complete: ((error?: Error | null) => void) | undefined;
+    let initialized = false;
+    const output = new Writable({ highWaterMark: 1, write(chunk, _encoding, callback) {
+      const frame = JSON.parse(String(chunk)) as { method?: string };
+      if (frame.method === 'notifications/claude/channel') complete = callback;
+      else { initialized = true; callback(); }
+    } });
+    const done = runBridge({ input, output, version: 'test', tools: [], resolveTarget: socketTarget(svc.path) });
+    try {
+      input.write(encodeFrame({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-11-25', clientInfo: { name: 'claude-code' } } }));
+      await expect.poll(() => initialized).toBe(true);
+      if (mode === 'closed') output.end();
+      svc.push({ v: 2, id: 88, method: 'leader/push', params: { content: 'event' } });
+      if (mode !== 'closed') {
+        await expect.poll(() => complete !== undefined).toBe(true);
+        expect(svc.replies).toEqual([]);
+        complete?.(mode === 'failure' ? new Error('simulated async EPIPE') : undefined);
+      }
+      await expect.poll(() => svc.replies.length).toBe(1);
+      expect(svc.replies[0]).toMatchObject(mode === 'backpressure'
+        ? { ok: true, result: { pushed: true } }
+        : { ok: false, error: { code: 'push-failed' } });
+    } finally { input.end(); await done; svc.close(); }
+  });
 
   it('turns an inbound leader/push into a notifications/claude/channel message and confirms it', async () => {
     // RED against: the bridge not writing the channel notification, or not replying pushed:true.

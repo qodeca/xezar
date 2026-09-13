@@ -86,9 +86,8 @@ export class ClaudeCodeChannelAdapter implements ReactionAdapter {
   readonly projectId: string;
   readonly #opts: ClaudeCodeChannelAdapterOptions;
   readonly #now: () => number;
-  /** The newest row a confirmed push carried, and when it was confirmed — for the unconfirmed blocker. */
-  #lastPushSeq = 0;
-  #lastPushAt = 0;
+  /** First confirmed write per outstanding row; reconnects must not reset its age. */
+  #outstanding: { seq: number; at: number }[] = [];
   #closed = false;
 
   constructor(opts: ClaudeCodeChannelAdapterOptions) {
@@ -113,8 +112,14 @@ export class ClaudeCodeChannelAdapter implements ReactionAdapter {
     await this.#opts.push(content, channelMeta(dispatch, rows), signal);
     const lastSeq = rows.at(-1)?.journalSeq ?? null;
     if (lastSeq !== null) {
-      this.#lastPushSeq = Math.max(this.#lastPushSeq, lastSeq);
-      this.#lastPushAt = this.#now();
+      this.#pruneAcknowledged();
+      const known = new Set(this.#outstanding.map((row) => row.seq));
+      const at = this.#now();
+      for (const row of rows) {
+        if (row.journalSeq > this.#opts.acknowledged() && !known.has(row.journalSeq)) {
+          this.#outstanding.push({ seq: row.journalSeq, at });
+        }
+      }
     }
     return { handedThrough: lastSeq };
   }
@@ -129,6 +134,11 @@ export class ClaudeCodeChannelAdapter implements ReactionAdapter {
     this.#closed = true;
   }
 
+  #pruneAcknowledged(): void {
+    const acked = this.#opts.acknowledged();
+    this.#outstanding = this.#outstanding.filter((row) => row.seq > acked);
+  }
+
   /**
    * The one blocker this adapter reports: rows pushed and confirmed, but not yet acknowledged for
    * longer than a heartbeat. Delivery failures are the delivery seam's `deliveryFailing` /
@@ -137,9 +147,9 @@ export class ClaudeCodeChannelAdapter implements ReactionAdapter {
    */
   status(): { blocker?: ClaudeCodeChannelBlocker } {
     if (this.#closed) return {};
-    const unconfirmed = this.#lastPushSeq > this.#opts.acknowledged();
-    const aged = this.#now() - this.#lastPushAt >= this.#opts.heartbeatMs;
-    if (unconfirmed && aged) {
+    this.#pruneAcknowledged();
+    const oldest = this.#outstanding[0];
+    if (oldest && this.#now() - oldest.at >= this.#opts.heartbeatMs) {
       return { blocker: { code: 'claude-code-push-unconfirmed', message: CLAUDE_CODE_PUSH_UNCONFIRMED_MESSAGE, fix: CLAUDE_CODE_PUSH_UNCONFIRMED_FIX } };
     }
     return {};

@@ -453,7 +453,7 @@ describe('a blocker about an attached leader is written in THAT client’s words
 
 describe('attaching Claude Code: the channel push travels down the owner session (#374)', () => {
   interface FakeTransport {
-    push: (content: string, meta: Record<string, string>) => Promise<void>;
+    push: (content: string, meta?: Record<string, string>) => Promise<void>;
     clientName?: string;
     leaderPush?: boolean;
   }
@@ -463,7 +463,7 @@ describe('attaching Claude Code: the channel push travels down the owner session
     const transport: FakeTransport = {
       push: async (content, meta) => {
         if (rejectWith !== undefined) throw new Error(rejectWith);
-        pushed.push({ content, meta });
+        pushed.push({ content, meta: meta ?? {} });
       },
       clientName: 'claude-code',
       leaderPush: true,
@@ -476,6 +476,32 @@ describe('attaching Claude Code: the channel push travels down the owner session
     if (!status.available) throw new Error('unreachable');
     return status.blocker;
   };
+
+  it('diagnoses the genuine pre-PR handshake with neither metadata field', async () => {
+    const { delivery: made } = delivery(true);
+    made.sessionOpened('old', { push: async () => {} });
+    const result = await made.act({ action: 'attach', client: 'claude-code' });
+    expect(result).toMatchObject({ ok: false, error: expect.stringContaining('older xezar MCP bridge') });
+  });
+
+  it.each([false, true])('blocks an incompatible rebound owner (attach before owner: %s)', async (beforeOwner) => {
+    const { delivery: made, journal } = delivery(true);
+    if (!beforeOwner) made.sessionOpened('claude', channelTransport().transport);
+    expect((await made.act({ action: 'attach', client: 'claude-code' })).ok).toBe(true);
+    if (!beforeOwner) made.sessionClosed('claude');
+    const foreign = channelTransport({ clientName: 'codex' });
+    made.sessionOpened('codex', foreign.transport);
+    expect(blockerOf(made)?.code).toBe('claude-code-not-owner');
+    row(journal);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(foreign.pushed).toHaveLength(0);
+    expect(made.status()).toMatchObject({ delivery: { deliveredSeq: 0 } });
+    made.sessionClosed('codex');
+    const compatible = channelTransport();
+    made.sessionOpened('claude-again', compatible.transport);
+    await until('compatible reconnect delivery', () => compatible.pushed.length > 0);
+    expect(compatible.pushed[0]?.content).toContain('alpha:1');
+  });
 
   it('builds the channel adapter and pushes a real row down the owner transport', async () => {
     // RED against: the claude-code #act branch not attaching, or not pushing through the transport.

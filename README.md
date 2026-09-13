@@ -865,10 +865,23 @@ login: they need a claude.ai or Anthropic Console API-key login, they do not wor
 Amazon Bedrock, Google Vertex or Microsoft Foundry, a Team or Enterprise admin must
 turn them on, and they are off while `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` is
 set. When any of those is not met the event is **never lost** — it stays in the
-journal and the cockpit shows a recoverable reason (`claude-code-push-unconfirmed`,
-`claude-code-not-owner` or `claude-code-bridge-too-old`) naming what to change. Until
-then the leader reads its events with `leader_events`, exactly as every other client
-does.
+journal and the cockpit shows a recoverable reason with a remedy. Use **Attach Claude Code leader**
+in **Settings → MCP connection**, then **Refresh status** to check delivery.
+
+Launch with `claude --dangerously-load-development-channels server:xezar` to let xezar wake this leader. The flag lets a custom server push messages into your session because custom servers are not on the channel allowlist. Claude Code shows a confirmation screen on every launch: choose “I am using this for local development” if you accept it. The feature-flag service must be reachable and enable Channels. A Team or Enterprise admin must enable Channels. Channels need a claude.ai or Anthropic Console API-key login, do not work on Bedrock, Vertex or Foundry, and are off while CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC is set.
+
+**`claude-code-not-owner`** — The MCP session that owns this project is not a Claude Code session, so there is no Claude Code leader to push events to. Events are kept in the journal.
+
+fix: Start Claude Code in this project with --dangerously-load-development-channels server:xezar, let it call a xezar tool once, then attach it again.
+
+**`claude-code-bridge-too-old`** — This Claude Code session is connected through an older xezar MCP bridge that cannot push events. Events are kept in the journal.
+
+fix: Restart Claude Code so it starts the current xezar bridge (npx -y @qodeca/xezar mcp), then attach it again.
+
+**`claude-code-push-unconfirmed`** — xezar pushed events to the attached Claude Code session, and they are not acknowledged yet. Claude Code does not confirm delivery, so xezar cannot tell a leader that is still working from one that never received them. Nothing is lost: the events stay in the journal.
+
+fix: If the leader is working, nothing is needed. Otherwise check that Claude Code was started with --dangerously-load-development-channels server:xezar and that its startup notice says channels from server:xezar inject into the session. Channels need a claude.ai or Console API-key login, do not work on Bedrock, Vertex or Foundry, must be enabled by a Team or Enterprise admin, and are off while CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC is set. Until then, read events with leader_events.
+
 
 ---
 

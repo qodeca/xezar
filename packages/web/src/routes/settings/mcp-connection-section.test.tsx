@@ -1,5 +1,5 @@
 import { QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -414,3 +414,53 @@ describe('MCP connection section — the Claude Code wake copy (#374, O-1 / AC-9
     }
   })
 })
+
+
+describe('Claude Code attach journey (#404)', () => {
+  it('posts attach and displays the leader with the server blocker and remedy', async () => {
+    const view = renderSection();
+    const status = { available: true, leader: null, delivery: null, blocker: null };
+    const attached = { ...status, leader: { client: 'claude-code', state: 'attached' }, blocker: {
+      code: 'claude-code-push-unconfirmed', message: 'Events remain unacknowledged.', fix: 'Check the startup notice.' } };
+    fetchMock.mockImplementation(async (input, init) => {
+      const path = String(input);
+      if (!['/health', '/projects', '/mcp/leader'].some((suffix) => path.endsWith(suffix))) return new Response('{}', { status: 404 });
+      const body = path.endsWith('/health') ? HEALTH : path.endsWith('/projects') ? REGISTRY : init?.method === 'POST' ? attached : status;
+      return new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } });
+    });
+    const button = await view.findByRole('button', { name: 'Attach Claude Code leader' });
+    await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(button);
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url, init]) => String(url).endsWith('/mcp/leader') && init?.method === 'POST' && init.body === JSON.stringify({ action: 'attach', client: 'claude-code' }))).toBe(true));
+    await view.findByText('Current leader: claude-code');
+    await view.findByText('Events remain unacknowledged.');
+    await view.findByText('fix: Check the startup notice.');
+  });
+});
+
+
+it.each([
+  ['claude-code-not-owner', 'The MCP session that owns this project is not a Claude Code session.', 'Start Claude Code in this project.'],
+  ['claude-code-bridge-too-old', 'This Claude Code session is connected through an older xezar MCP bridge.', 'Restart Claude Code so it starts the current xezar bridge.'],
+])('preserves the current leader and displays the attach refusal: %s', async (_code, message, fix) => {
+  const view = renderSection();
+  fetchMock.mockImplementation(async (input, init) => {
+    const path = String(input);
+    if (path.endsWith('/health')) return new Response(JSON.stringify(HEALTH));
+    if (path.endsWith('/projects')) return new Response(JSON.stringify(REGISTRY));
+    if (!path.endsWith('/mcp/leader')) return new Response('{}', { status: 404 });
+    if (init?.method === 'POST') return new Response(JSON.stringify({ error: `${message} fix: ${fix}` }), { status: 409 });
+    return new Response(JSON.stringify({ available: true, leader: { client: 'pi', state: 'attached' }, delivery: null, blocker: null }));
+  });
+  const button = await view.findByRole('button', { name: 'Attach Claude Code leader' });
+  await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(button);
+  expect((await view.findByText(`${message} fix: ${fix}`)).getAttribute('role')).toBe('alert');
+  expect(view.getByText('Current leader: pi')).toBeDefined();
+});
+
+it('offers no attach control in hosted mode', async () => {
+  const view = renderSection({ health: { ...HEALTH, capabilities: { ...HEALTH.capabilities, localHandoff: false } } });
+  await view.findByText('This xezar is not running in local mode, so the MCP connection is not available.');
+  expect(view.queryByRole('button', { name: 'Attach Claude Code leader' })).toBeNull();
+});

@@ -325,6 +325,10 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     // #374: this session's transport is now the one a Claude Code channel push travels down.
     this.#ownerTransport = transport;
     this.#ownerSessionKey = sessionKey;
+    if (this.#leader?.client === 'claude-code' && transport) {
+      const blocker = this.#channelEligibility(transport);
+      if (blocker) this.#opts.warn(`[xez] ${blocker.code}: ${blocker.message} fix: ${blocker.fix}`);
+    }
     const started = EventController.start({
       journal: this.#opts.journal,
       ownership: this.#opts.ownership,
@@ -477,8 +481,8 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
       // anyway and let `noOwnerSession` report it, exactly as OpenCode and pi do.
       const transport = this.#ownerTransport;
       if (transport !== undefined) {
-        if (transport.clientName !== 'claude-code') return { ok: false, error: CLAUDE_CODE_NOT_OWNER.message };
-        if (transport.leaderPush !== true) return { ok: false, error: CLAUDE_CODE_BRIDGE_TOO_OLD.message };
+        const blocker = this.#channelEligibility(transport);
+        if (blocker) return { ok: false, error: `${blocker.message} fix: ${blocker.fix}` };
       }
       this.#detach();
       this.#leader = {
@@ -585,7 +589,17 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     if (transport === undefined) {
       return Promise.reject(new Error('no Claude Code MCP session owns this project, so there is nothing to push a channel event to'));
     }
+    const blocker = this.#channelEligibility(transport);
+    if (blocker) return Promise.reject(new Error(`${blocker.message} fix: ${blocker.fix}`));
     return abortable(transport.push(content, meta), signal);
+  }
+
+  #channelEligibility(transport: McpSessionTransport): McpLeaderBlocker | null {
+    // Pre-Channels bridges announce neither field. Unknown identity needs the update remedy.
+    if (transport.clientName === undefined) return CLAUDE_CODE_BRIDGE_TOO_OLD;
+    if (transport.clientName !== 'claude-code') return CLAUDE_CODE_NOT_OWNER;
+    if (transport.leaderPush !== true) return CLAUDE_CODE_BRIDGE_TOO_OLD;
+    return null;
   }
 
   #ownOperation(): { isOwnOperation?: (operationId: string) => boolean } {
@@ -623,6 +637,10 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     // Attached, but nobody owns the project: no controller, so nothing is delivered (#331).
     const controller = this.#liveController();
     if (controller === undefined) return noOwnerSession(leader.client);
+    if (leader.client === 'claude-code' && this.#ownerTransport) {
+      const eligibility = this.#channelEligibility(this.#ownerTransport);
+      if (eligibility) return eligibility;
+    }
     const blocker = leader.adapter.status().blocker;
     if (blocker) {
       // The adapter's own `fix` when it has one (pi's does; `PiReactionAdapter.#block` always sets

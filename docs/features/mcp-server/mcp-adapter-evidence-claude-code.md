@@ -1,5 +1,28 @@
 # Claude Code reaction adapter – runtime evidence
 
+**Production revalidation, 2026-09-13 (#404 review response):** Claude Code 2.1.270 under a real PTY,
+with an isolated configuration, local-scope `xezar` registration and the shipped service/bridge,
+passed the scripted-endpoint quiet-window, no-flag, approval and draft cases. The connection page
+now attaches through `POST /api/v1/mcp/leader` and renders status plus recovery remedies. Delivery
+still means a completed stdout write; `reactedSeq` remains zero. The real-model/account clause stays
+BLOCKED. See the corrected [DoD addendum](mcp-definition-of-done-record.md#addendum-2026-09-13--374-claude-code-channels-corrected-after-404-review).
+
+
+
+Launch with `claude --dangerously-load-development-channels server:xezar` to let xezar wake this leader. The flag lets a custom server push messages into your session because custom servers are not on the channel allowlist. Claude Code shows a confirmation screen on every launch: choose “I am using this for local development” if you accept it. The feature-flag service must be reachable and enable Channels. A Team or Enterprise admin must enable Channels. Channels need a claude.ai or Anthropic Console API-key login, do not work on Bedrock, Vertex or Foundry, and are off while CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC is set.
+
+**`claude-code-not-owner`** — The MCP session that owns this project is not a Claude Code session, so there is no Claude Code leader to push events to. Events are kept in the journal.
+
+fix: Start Claude Code in this project with --dangerously-load-development-channels server:xezar, let it call a xezar tool once, then attach it again.
+
+**`claude-code-bridge-too-old`** — This Claude Code session is connected through an older xezar MCP bridge that cannot push events. Events are kept in the journal.
+
+fix: Restart Claude Code so it starts the current xezar bridge (npx -y @qodeca/xezar mcp), then attach it again.
+
+**`claude-code-push-unconfirmed`** — xezar pushed events to the attached Claude Code session, and they are not acknowledged yet. Claude Code does not confirm delivery, so xezar cannot tell a leader that is still working from one that never received them. Nothing is lost: the events stay in the journal.
+
+fix: If the leader is working, nothing is needed. Otherwise check that Claude Code was started with --dangerously-load-development-channels server:xezar and that its startup notice says channels from server:xezar inject into the session. Channels need a claude.ai or Console API-key login, do not work on Bedrock, Vertex or Foundry, must be enabled by a Team or Enterprise admin, and are off while CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC is set. Until then, read events with leader_events.
+
 > **2026-09-13 — the verdict is corrected: Claude Code IS woken now, over Channels (#374).** The 2026-09-11 note below said a Claude Code leader gets no push and reads its events with `leader_events`. That was the state after the stream-json spawn path was removed (#311). It is no longer the verdict. On 2026-09-13 a fresh measurement (the [wake decision record](mcp-wake-claude-code-decision.md), run M1 on Claude Code 2.1.270) showed a real interactive session react to a channel event, and #374 shipped `ClaudeCodeChannelAdapter`: xezar pushes a project event as a `notifications/claude/channel` message down the owner session's own bridge, and a Claude Code leader the person started with `--dangerously-load-development-channels server:xezar` reacts. This is rung 1 of the hierarchy (Channels), not the removed rung 2 (stream-json). Everything below the next note is kept as the 2026-09-11 history that led here, including CH1; where CH1 said Channels "did not register", read the wake decision record § 3.5, which reconciles CH1 (2.1.268, `--bare`, feature flag off) with the 2026-09-13 runs. `reactedSeq` stays 0 for a Claude Code leader by design — delivery is the bridge write, and xezar observes no reaction — so a real-model reaction remains BLOCKED for the same reason it is for pi. See #374, #73 and #311.
 
 > **2026-09-11 — the spawn path this record describes was removed** before release 0.14.0 (owner decision on #311: xezar does not start agent processes). The Claude Code adapter's stream-json session needed a process xezar started, so it is gone from the product; this record stays as the evidence of what was measured. A leader in this client gets no push and reads its events with `leader_events`. See #323 and #324. **Superseded by the 2026-09-13 note above: a Claude Code leader IS now woken over Channels (#374).**

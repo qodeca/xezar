@@ -220,3 +220,25 @@ describe('the corrected delivery verdict (#374)', () => {
     expect(code).not.toMatch(/child_process|spawn\(|process\.env|node:|--input-format/);
   });
 });
+
+
+describe('oldest unacknowledged delivery (#404 finding 5)', () => {
+  it('ages continuing events, partial acknowledgements and catch-up independently', async () => {
+    const h = harness();
+    h.setNow(0);
+    await h.adapter.deliver(dispatch([row(1)]), signal());
+    h.setNow(29_000);
+    await h.adapter.deliver(dispatch([row(2), row(3)]), signal());
+    h.setNow(31_000);
+    expect(h.adapter.status().blocker?.code).toBe('claude-code-push-unconfirmed');
+    h.setAcked(1);
+    expect(h.adapter.status()).toEqual({});
+    h.setNow(60_000);
+    h.setAcked(2);
+    expect(h.adapter.status().blocker?.code).toBe('claude-code-push-unconfirmed');
+    h.setAcked(3);
+    expect(h.adapter.status()).toEqual({});
+    await h.adapter.deliver(dispatch([row(4)]), signal());
+    expect(h.adapter.status()).toEqual({});
+  });
+});
