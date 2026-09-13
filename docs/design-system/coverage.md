@@ -257,3 +257,5 @@ Each entry maps a utility name to a theme token. Listed in foundations.md §1.7;
 | Keyboard, focus and announcements | behaviour.md | `specimens/components.html` | Documented with known gap (G-06) |
 | UX writing | writing.md | – | Documented with known gap (G-15, G-16) |
 | Number formatting | writing.md | – | Documented with known gap (G-18) |
+
+MCP connection Claude recovery guidance uses Collapsible and a ghost Button, with wrapping text and token colours. Attachment and live status await the shared Attach leader control in #403; this section adds no client-specific attach action.

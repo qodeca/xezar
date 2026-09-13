@@ -841,6 +841,48 @@ here or anywhere else in the cockpit. pi's MCP files are listed because the
 `pi-mcp-adapter` extension reads them — pi itself reads no MCP config, which is
 what **Settings → MCP connection** walks you through installing.
 
+### Waking a Claude Code leader (opt-in)
+
+A project leader you run reads its events with the `leader_events` MCP tool, so
+by default nothing is pushed to it: you pull. A **Claude Code** leader can also be
+**woken** when something happens in the project, over Claude Code Channels. This is
+opt-in and off by default — the zero-config default stays pull-only, and xezar
+gains no setting and no environment variable for it. The only switch is a flag you
+add when you start Claude Code:
+
+```bash
+claude --dangerously-load-development-channels server:xezar
+```
+
+That flag is how Claude Code lets a server that is not on Anthropic's approved list
+push messages into your session. **Claude Code shows a warning every time you launch
+with it** — choose "I am using this for local development" if you accept it. Then
+use **Attach leader** under **Settings → MCP connection → Connection status**, the same
+control that attaches Codex, OpenCode and pi. Until it is attached, the leader reads events with `leader_events`.
+
+Channels are a Claude Code research preview, so the wake only works on a first-party
+login: they need a claude.ai or Anthropic Console API-key login, they do not work on
+Amazon Bedrock, Google Vertex or Microsoft Foundry, a Team or Enterprise admin must
+turn them on, and they are off while `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` is
+set. When any of those is not met the event is **never lost** — it stays in the
+journal and the cockpit shows a recoverable reason with a remedy. Use **Attach leader** under **Settings → MCP connection → Connection status**.
+Until it is attached, read events with `leader_events`.
+
+Launch with `claude --dangerously-load-development-channels server:xezar` to let xezar wake this leader. The flag lets a custom server push messages into your session because custom servers are not on the channel allowlist. Claude Code shows a confirmation screen on every launch: choose “I am using this for local development” if you accept it. The feature-flag service must be reachable and enable Channels. A Team or Enterprise admin must enable Channels. Channels need a claude.ai or Anthropic Console API-key login, do not work on Bedrock, Vertex or Foundry, and are off while CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC is set.
+
+**`claude-code-not-owner`** — The MCP session that owns this project is not a Claude Code session, so there is no Claude Code leader to push events to. Events are kept in the journal.
+
+fix: Start Claude Code in this project with --dangerously-load-development-channels server:xezar, let it call a xezar tool once, then attach it again.
+
+**`claude-code-bridge-too-old`** — This Claude Code session is connected through an older xezar MCP bridge that cannot push events. Events are kept in the journal.
+
+fix: Restart Claude Code so it starts the current xezar bridge (npx -y @qodeca/xezar mcp), then attach it again.
+
+**`claude-code-push-unconfirmed`** — xezar pushed events to the attached Claude Code session, and they are not acknowledged yet. Claude Code does not confirm delivery, so xezar cannot tell a leader that is still working from one that never received them. Nothing is lost: the events stay in the journal.
+
+fix: If the leader is working, nothing is needed. Otherwise check that Claude Code was started with --dangerously-load-development-channels server:xezar and that its startup notice says channels from server:xezar inject into the session. Channels need a claude.ai or Console API-key login, do not work on Bedrock, Vertex or Foundry, must be enabled by a Team or Enterprise admin, and are off while CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC is set. Until then, read events with leader_events.
+
+
 ---
 
 ## Local development
