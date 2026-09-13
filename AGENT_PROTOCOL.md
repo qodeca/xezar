@@ -293,7 +293,20 @@ chips; the user's pick (or a free-form reply) rides the normal reply seam
 message lands (no `ask.resolved` event). Codex additionally bridges its native
 `item/tool/requestUserInput` server request onto the same event and routes the
 next answer back as the documented JSON-RPC response. Malformed or unsupported
-native requests receive an error response rather than hanging the turn. A
+native requests receive an error response rather than hanging the turn. pi does
+the same for its extension-UI dialogs (#369, `packages/xezar/src/core/pi-dialog.ts`):
+an `extension_ui_request` with `method: select` or `confirm` BLOCKS pi until the
+client writes the correlated `extension_ui_response`, and it carries no `timeout`
+(pi-mcp-adapter's `approveTools` gate is one), so the runner raises it as
+`ask.requested` carrying pi's own options and answers it from the next
+`sendMessage`; a reply naming none of the options cancels the dialog rather than
+guessing. When `SessionOptions.autonomous` is set the runner refuses at once
+(`Deny` when the dialog offers it, `confirmed: false` for a confirm, else
+`cancelled`) and records the refusal as a note — never a silent approval, never
+an unbounded wait. Dialogs the card cannot carry (`input`, `editor`, a `select`
+outside 2–4 options) are cancelled on arrival, a dialog still pending at `end()`
+or `interrupt()` is cancelled first, fire-and-forget methods get no response, and
+`notify` becomes a transcript note. A
 malformed marker degrades to plain text — the prose fallback is never made
 worse.
 
@@ -457,7 +470,11 @@ To be first-class:
    escalates SIGTERM→SIGKILL gated on `trackChildExit`, and each records that the runner
    sent the signal so the exit settles on the normal path, and report a `128 + signal` exit the
    runner did NOT cause through `foreignSignalExitMessage`. See § the termination rules above;
-   `claude-cli-runner.ts` is the reference.
+   `claude-cli-runner.ts` is the reference. A backend's NATIVE question — a request that blocks
+   the turn until the client answers — must never wait unbounded: bridge it onto `ask.requested`
+   and answer it from the next `sendMessage`, refuse it explicitly when
+   `SessionOptions.autonomous` is set, and cancel it at `end()`/`interrupt()` (codex's
+   `requestUserInput`, pi's extension dialogs — #369).
 2. **Factory** — add the id to `RunnerId` / `RUNNER_IDS` (`agent-runner.ts`) and
    a `case` in `createRunner` (`runner-factory.ts`). Add `UiBackend` in
    `ui-events.ts` **and its mirror** `packages/api-client/src/protocol/ui-events.ts`

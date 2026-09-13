@@ -196,6 +196,11 @@ export interface SessionOptions {
    *  ALONGSIDE the v1 `AgentEvent`s (additive — v1 keeps flowing unchanged).
    *  RunManager consumption lands in R2 step 2.1. */
   onUiEvent?: (event: UiEvent) => void;
+  /** The run is autonomous (#autonomous): nobody is watching, so a backend's NATIVE
+   *  question (a pi extension dialog, #369) must be refused at once and recorded, never
+   *  raised as an ask card that waits for an answer nobody will give. Off = the question
+   *  reaches the cockpit as `ask.requested` and the next `sendMessage` answers it. */
+  autonomous?: boolean;
 }
 
 /**

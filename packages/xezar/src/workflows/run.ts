@@ -3126,7 +3126,10 @@ export class RunManager {
         timeoutMs: 0,
       },
       onEvent,
-      { onUiEvent: (event) => this.handleRunnerUiEvent(runId, state, sink, event) },
+      {
+        onUiEvent: (event) => this.handleRunnerUiEvent(runId, state, sink, event),
+        autonomous: state.autonomous === true,
+      },
     );
     this.publishSession(runId, state, stepId, session);
 
@@ -3810,6 +3813,9 @@ export class RunManager {
         {
           autoEndAfterFirstTurn: !interactive,
           onUiEvent: (event) => this.handleRunnerUiEvent(runId, state, sink, event),
+          // A backend's native question (a pi extension dialog, #369) is refused at once in
+          // an autonomous run — the same "never park at `waiting`" rule the turn-end nudge keeps.
+          autonomous: state.autonomous === true,
         },
       );
     } catch (err) {

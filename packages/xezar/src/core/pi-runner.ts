@@ -14,6 +14,7 @@ import type {
 import { foreignSignalExitMessage, isSignalTerminationExit, trackChildExit } from './agent-runner.js';
 import { buildChildEnv } from './agent-env.js';
 import { readNdjson } from './ndjson.js';
+import { answerPiDialog, cancelPiDialog, denyPiDialog, readPiDialog, type PiDialog } from './pi-dialog.js';
 import { createPiUiState, mapPiRpcMessage, piTurnStarted } from './pi-ui-mapper.js';
 import { V1TextCoalescer } from './v1-text-coalescer.js';
 import type { StopReason } from './ui-events.js';
@@ -95,6 +96,11 @@ export class PiRunner implements AgentRunner {
     // turn boundary is drawn (`piTurnStarted`), steering included.
     let turnTextMark = 0;
     let turnToolMark = 0;
+    // The extension dialog pi is blocked on, if any (#369). pi's dialog methods have no
+    // timeout of their own: an `extension_ui_request` that nobody answers holds the turn
+    // open for ever (pi-mcp-adapter's `approveTools` gate is one). While one is pending the
+    // next `sendMessage` is its answer, on pi's own sub-protocol, not a new prompt.
+    let pendingDialog: PiDialog | null = null;
     let sessionId = spec.sessionId;
     let tokensUsed = 0;
     let spawnError: Error | null = null;
@@ -120,11 +126,78 @@ export class PiRunner implements AgentRunner {
         return false;
       }
     };
+    /** Resolve the pending dialog with one response frame; `false` when there is none. */
+    const settleDialog = (respond: (dialog: PiDialog) => { response: Record<string, unknown>; note: string }): boolean => {
+      const dialog = pendingDialog;
+      if (!dialog) return false;
+      pendingDialog = null;
+      const { response, note } = respond(dialog);
+      write(response);
+      onEvent?.({ type: 'note', message: note });
+      return true;
+    };
+    const handleDialogFrame = (value: unknown): void => {
+      const frame = readPiDialog(value);
+      if (frame.kind === 'ignore') return;
+      if (frame.kind === 'notice') {
+        // Fire-and-forget: pi expects no response. One transcript line, because this is
+        // where pi-mcp-adapter reports "MCP: xezar connected" — or that it was refused.
+        onEvent?.({ type: 'note', message: `pi: ${frame.message}` });
+        return;
+      }
+      if (frame.kind === 'unsupported') {
+        // pi is blocked on it and the ask card cannot carry it (`input`/`editor`, or a
+        // `select` outside the card's 2–4 option window): dismiss it now, never leave it.
+        write(cancelPiDialog(frame.id));
+        onEvent?.({
+          type: 'note',
+          message: `pi: dismissed a "${frame.method}" extension dialog xezar cannot show ("${truncate(frame.title, 120)}")`,
+        });
+        return;
+      }
+      const { dialog } = frame;
+      if (opts.autonomous) {
+        // Autonomous: nobody is watching, so an explicit refusal at once — the safe default
+        // (#369) — recorded in the transcript instead of a silent hang or a silent approval.
+        const { response, answer } = denyPiDialog(dialog);
+        write(response);
+        onEvent?.({
+          type: 'note',
+          message: `pi: refused an extension dialog — autonomous run, nobody can approve it (answered "${answer}" to "${truncate(dialog.title, 120)}")`,
+        });
+        return;
+      }
+      // A second dialog before the first was answered: the older one can no longer be
+      // answered through the card, so dismiss it rather than leave TWO blocking frames.
+      settleDialog((previous) => ({
+        response: cancelPiDialog(previous.id),
+        note: `pi: dismissed an extension dialog superseded by a newer one ("${truncate(previous.title, 120)}")`,
+      }));
+      pendingDialog = dialog;
+      opts.onUiEvent?.({ type: 'ask.requested', requestId: `pi-${dialog.id}`, questions: [dialog.question] });
+    };
     const sendMessage = (content: ContentBlock[]): boolean => {
       const { message, images } = toPiPrompt(content);
       if (autoEndTimer) {
         clearTimeout(autoEndTimer);
         autoEndTimer = undefined;
+      }
+      if (!open) return false;
+      // The reply to a pending dialog rides pi's extension-UI sub-protocol, correlated by
+      // the id pi chose; the turn it belongs to is still in flight, so no new turn starts.
+      if (
+        settleDialog((dialog) => {
+          const { response, matched } = answerPiDialog(dialog, message);
+          return {
+            response,
+            note:
+              matched === null
+                ? `pi: the reply named none of the dialog's options (${dialog.options.join(' / ')}) — dialog dismissed`
+                : `pi: answered "${matched}" to "${truncate(dialog.title, 120)}"`,
+          };
+        })
+      ) {
+        return true;
       }
       if (
         !write({
@@ -153,6 +226,12 @@ export class PiRunner implements AgentRunner {
     };
     const end = (): void => {
       if (!open) return;
+      // A dialog still open at close is dismissed first, so pi's turn ends on its own
+      // protocol instead of on the EOF the grace period would otherwise have to enforce.
+      settleDialog((dialog) => ({
+        response: cancelPiDialog(dialog.id),
+        note: `pi: dismissed an unanswered extension dialog at session close ("${truncate(dialog.title, 120)}")`,
+      }));
       open = false;
       child.stdin.end();
       killTimer = setTimeout(() => !hasExited() && signalChild('SIGTERM'), KILL_GRACE_MS);
@@ -165,7 +244,13 @@ export class PiRunner implements AgentRunner {
      * RPC write needs the guard — signalling a live child never does.
      */
     const interrupt = (): void => {
-      if (open) write({ type: 'abort' });
+      if (open) {
+        settleDialog((dialog) => ({
+          response: cancelPiDialog(dialog.id),
+          note: `pi: dismissed an unanswered extension dialog on interrupt ("${truncate(dialog.title, 120)}")`,
+        }));
+        write({ type: 'abort' });
+      }
       open = false;
       if (!hasExited()) signalChild('SIGTERM');
     };
@@ -214,6 +299,7 @@ export class PiRunner implements AgentRunner {
             continue;
           }
           emitUi(value);
+          handleDialogFrame(value);
           if (!isRecord(value)) continue;
 
           if (value.type === 'response' && value.command === 'get_state' && value.success === true && isRecord(value.data)) {
@@ -262,6 +348,8 @@ export class PiRunner implements AgentRunner {
             }
           } else if (value.type === 'agent_settled') {
             settled = true;
+            // A dialog cannot outlive its turn; whatever pi resolved it as, the card is stale.
+            pendingDialog = null;
             // Surface prose from a message that never reached `message_end` (an
             // interrupted turn) before the turn boundary — the same flush codex
             // and opencode do on turn completion.
