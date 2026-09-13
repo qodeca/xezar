@@ -2,6 +2,8 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { mcpLeaderStatusSchema, mcpLeaderTopicSchema } from '@qodeca/xezar-contract';
+
 import { CodexAttachError } from './adapters/codex-link.ts';
 import { EventJournal } from './event-journal.ts';
 import { LeaderDelivery } from './leader-delivery.ts';
@@ -453,6 +455,138 @@ describe('a blocker about an attached leader is written in THAT client’s words
   });
 });
 
+describe('attaching Claude Code: the channel push travels down the owner session (#374)', () => {
+  interface FakeTransport {
+    push: (content: string, meta?: Record<string, string>) => Promise<void>;
+    clientName?: string;
+    leaderPush?: boolean;
+  }
+  function channelTransport(over: Partial<FakeTransport> = {}) {
+    const pushed: { content: string; meta: Record<string, string> }[] = [];
+    let rejectWith: string | undefined;
+    const transport: FakeTransport = {
+      push: async (content, meta) => {
+        if (rejectWith !== undefined) throw new Error(rejectWith);
+        pushed.push({ content, meta: meta ?? {} });
+      },
+      clientName: 'claude-code',
+      leaderPush: true,
+      ...over,
+    };
+    return { pushed, transport, fail: (why: string | undefined) => (rejectWith = why) };
+  }
+  const blockerOf = (made: LeaderDelivery) => {
+    const status = made.status();
+    if (!status.available) throw new Error('unreachable');
+    return status.blocker;
+  };
+
+  it('diagnoses the genuine pre-PR handshake with neither metadata field', async () => {
+    const { delivery: made } = delivery(true);
+    made.sessionOpened('old', { push: async () => {} });
+    const result = await made.act({ action: 'attach', client: 'claude-code' });
+    expect(result).toMatchObject({ ok: false, error: expect.stringContaining('older xezar MCP bridge') });
+  });
+
+  it.each([false, true])('blocks an incompatible rebound owner (attach before owner: %s)', async (beforeOwner) => {
+    const { delivery: made, journal } = delivery(true);
+    if (!beforeOwner) made.sessionOpened('claude', channelTransport().transport);
+    expect((await made.act({ action: 'attach', client: 'claude-code' })).ok).toBe(true);
+    if (!beforeOwner) made.sessionClosed('claude');
+    const foreign = channelTransport({ clientName: 'codex' });
+    made.sessionOpened('codex', foreign.transport);
+    expect(blockerOf(made)?.code).toBe('claude-code-not-owner');
+    row(journal);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(foreign.pushed).toHaveLength(0);
+    expect(made.status()).toMatchObject({ delivery: { deliveredSeq: 0 } });
+    made.sessionClosed('codex');
+    const compatible = channelTransport();
+    made.sessionOpened('claude-again', compatible.transport);
+    await until('compatible reconnect delivery', () => compatible.pushed.length > 0);
+    expect(compatible.pushed[0]?.content).toContain('alpha:1');
+  });
+
+  it('builds the channel adapter and pushes a real row down the owner transport', async () => {
+    // RED against: the claude-code #act branch not attaching, or not pushing through the transport.
+    const { delivery: made, journal } = delivery(true);
+    const t = channelTransport();
+    made.sessionOpened('session-1', t.transport as never);
+    expect((await made.act({ action: 'attach', client: 'claude-code' })).ok).toBe(true);
+    expect(made.status()).toMatchObject({ leader: { client: 'claude-code', state: 'attached' } });
+
+    row(journal);
+    await until('the channel push', () => t.pushed.length > 0);
+    expect(t.pushed[0]!.content).toContain('alpha:1');
+    expect(t.pushed[0]!.meta).toMatchObject({ source_app: 'xezar', project_id: 'alpha', last_seq: '1' });
+    // Reaction is never observed for Claude Code, so reactedSeq stays 0 even after delivery.
+    const status = made.status();
+    expect(status.available && status.delivery).toMatchObject({ deliveredSeq: 1, reactedSeq: 0 });
+  });
+
+  it('refuses attach when the owner session is not a Claude Code session, keeping the previous leader', async () => {
+    // RED against: attaching a Claude Code leader over a session that would never register the channel.
+    const { delivery: made } = delivery(true);
+    made.sessionOpened('session-1', { push: async () => {}, clientName: 'opencode', leaderPush: true } as never);
+    const res = await made.act({ action: 'attach', client: 'claude-code' });
+    expect(res.ok).toBe(false);
+    expect(res.ok === false && res.error).toContain('not a Claude Code session');
+    expect(made.status()).toMatchObject({ leader: null });
+  });
+
+  it('refuses attach when the owner bridge is too old to push', async () => {
+    // RED against: pushing into a bridge that predates leader/push and would choke on the frame.
+    const { delivery: made } = delivery(true);
+    made.sessionOpened('session-1', { push: async () => {}, clientName: 'claude-code' } as never); // no leaderPush announce
+    const res = await made.act({ action: 'attach', client: 'claude-code' });
+    expect(res.ok).toBe(false);
+    expect(res.ok === false && res.error).toContain('older xezar MCP bridge');
+  });
+
+  it('attaches with no owner session yet and reports no-owner-session, in Claude Code’s words', async () => {
+    // RED against: refusing an attach just because the MCP session has not opened yet.
+    const { delivery: made } = delivery(true);
+    expect((await made.act({ action: 'attach', client: 'claude-code' })).ok).toBe(true);
+    const blocker = blockerOf(made);
+    expect(blocker?.code).toBe('no-owner-session');
+    expect(blocker?.message).toContain('Claude Code');
+  });
+
+  it('reports the failure in Claude Code’s own words when a push does not get through', async () => {
+    // RED against: telling a Claude Code user to check `opencode serve`.
+    const { delivery: made, journal } = delivery(true);
+    const t = channelTransport();
+    made.sessionOpened('session-1', t.transport as never);
+    expect((await made.act({ action: 'attach', client: 'claude-code' })).ok).toBe(true);
+    t.fail('the bridge did not confirm');
+    row(journal);
+    await until('the failure to be observed', () => blockerOf(made)?.code === 'delivery-failing');
+    const blocker = blockerOf(made);
+    expect(blocker?.fix).toMatch(/--dangerously-load-development-channels server:xezar/);
+    expect(`${blocker?.message} ${blocker?.fix}`).not.toMatch(/opencode serve/);
+  });
+
+  it('reports claude-code-push-unconfirmed once a pushed row sits unacknowledged past a heartbeat', async () => {
+    // RED against: the adapter's status() not raising push-unconfirmed on deliveredSeq > ackedSeq.
+    const { delivery: made, journal } = delivery(true); // heartbeatMs 200
+    made.sessionOpened('session-1', channelTransport().transport as never);
+    expect((await made.act({ action: 'attach', client: 'claude-code' })).ok).toBe(true);
+    row(journal);
+    await until('the unconfirmed blocker', () => blockerOf(made)?.code === 'claude-code-push-unconfirmed');
+    expect(blockerOf(made)?.fix).toMatch(/leader_events/);
+  });
+
+  it('lets the transport go when its session closes, so nothing is pushed after (#374)', async () => {
+    // RED against: keeping a dead owner transport and pushing into a closed connection.
+    const { delivery: made } = delivery(true);
+    made.sessionOpened('session-1', channelTransport().transport as never);
+    expect((await made.act({ action: 'attach', client: 'claude-code' })).ok).toBe(true);
+    made.sessionClosed('session-1');
+    // The controller ended with its session, so nothing is delivered: the blocker says no owner.
+    expect(blockerOf(made)?.code).toBe('no-owner-session');
+  });
+});
+
 describe('an attached leader that does not answer at all', () => {
   it('is reported with the adapter’s own reason, not with a guess of xezar’s', async () => {
     const { delivery: made, journal } = delivery(true);
@@ -793,21 +927,58 @@ describe('attaching Codex (#374)', () => {
 });
 
 /**
+ * #403 (Codex through the shared app-server) and #404 (Claude Code over Channels) each widened the
+ * leader status on their own branch. Merged, both clients must live in the ONE payload the shared
+ * cockpit control and the `mcp-leader` topic read: the owner identity each client announces its own
+ * way, the attached leader each becomes, and the contract that carries both.
+ */
+describe('Codex and Claude Code coexist in the leader status payload (#403 merged with #404)', () => {
+  it('identifies a Claude Code owner by its bridge’s client name and a Codex owner by its thread, and attaches each as itself', async () => {
+    // RED against: `#owner()` knowing only the Codex announcement (a Claude Code owner reads `null`),
+    // or the contract's owner enum missing `claude-code` (the status fails to parse).
+    const { delivery: made } = delivery(true);
+    made.sessionOpened('claude', { push: async () => {}, clientName: 'claude-code', leaderPush: true });
+    expect(mcpLeaderStatusSchema.parse(made.status())).toMatchObject({ owner: { client: 'claude-code' }, leader: null });
+    await expect(made.act({ action: 'attach', client: 'claude-code' })).resolves.toMatchObject({ ok: true });
+    const claude = mcpLeaderStatusSchema.parse(made.status());
+    expect(claude).toMatchObject({ owner: { client: 'claude-code' }, leader: { client: 'claude-code', state: 'attached' } });
+    // A Codex attach against a Claude Code owner is refused for Codex's own reason (no thread announced),
+    // and the Claude Code leader is kept: the two paths do not trample each other.
+    await expect(made.act({ action: 'attach', client: 'codex' })).resolves.toMatchObject({ ok: false, error: expect.stringContaining('call one once') });
+    expect(made.status()).toMatchObject({ leader: { client: 'claude-code' } });
+
+    // The Claude Code session goes; a Codex session takes the project and announces its thread.
+    made.sessionClosed('claude');
+    made.sessionOpened('codex', { push: async () => {}, clientName: 'codex-cli', leaderPush: false });
+    expect(mcpLeaderStatusSchema.parse(made.status())).toMatchObject({ owner: { client: null } });
+    made.codexAnnounced('codex', { threadId: 'thread-codex' });
+    expect(mcpLeaderStatusSchema.parse(made.status())).toMatchObject({ owner: { client: 'codex' } });
+    // A Claude Code attach against a Codex owner is refused in Claude Code's words, keeping the leader.
+    await expect(made.act({ action: 'attach', client: 'claude-code' })).resolves.toMatchObject({ ok: false, error: expect.stringContaining('not a Claude Code session') });
+
+    // Both statuses ride one `mcp-leader` topic frame, project by project.
+    const frame = mcpLeaderTopicSchema.parse({ projects: { alpha: claude, beta: { ...made.status(), leader: { client: 'codex', state: 'attached' } } } });
+    expect(Object.values(frame.projects).map((status) => (status.available ? status.leader?.client : null))).toEqual(['claude-code', 'codex']);
+  });
+});
+
+/**
  * Round-4 review, major 2: the no-leader blocker is where a Codex user lands before attaching, and it
  * used to say a Codex session "has no address xezar can attach to" and offer only an OpenCode
  * remedy. It must tell the pull-only clients from the attachable ones and give Codex's own path.
  */
 describe('no leader attached: the blocker says who reads, who can be attached, and how', () => {
-  it('tells pull-only clients from attachable ones, and gives the Codex start, discovery and retry remedy', () => {
+  it('tells pull-only clients from attachable ones, and gives the Claude Code and Codex start, discovery and retry remedies', () => {
     const { delivery: made } = delivery(true);
     const status = made.status();
     const blocker = status.available ? status.blocker : null;
     expect(blocker?.code).toBe('no-leader-session');
     expect(blocker?.message).not.toContain('has no address');
     // Pull-only: they read their events.
-    expect(blocker?.message).toContain('A Claude Code session, or a pi without xezar’s leader extension, reads its events with the leader_events tool.');
-    // Attachable: Codex through its shared app-server, and OpenCode.
-    expect(blocker?.message).toContain('A Codex session running on Codex’s shared local app-server');
+    expect(blocker?.message).toContain('A pi without xezar’s leader extension reads its events with the leader_events tool');
+    // Attachable: Claude Code over its channel, Codex through its shared app-server, and OpenCode.
+    expect(blocker?.message).toContain('A Claude Code session started with --dangerously-load-development-channels server:xezar');
+    expect(blocker?.message).toContain('a Codex session running on Codex’s shared local app-server');
     expect(blocker?.message).toContain('`opencode serve`');
     expect(blocker?.message).toContain('can be attached');
     // Codex: start, discovery, retry.
@@ -815,6 +986,8 @@ describe('no leader attached: the blocker says who reads, who can be attached, a
     expect(blocker?.fix).toContain('call a xezar tool once');
     expect(blocker?.fix).toContain('retry');
     expect(blocker?.fix).toContain('opencode serve');
+    // Claude Code: the flag, the tool call, the attach.
+    expect(blocker?.fix).toContain('--dangerously-load-development-channels server:xezar');
   });
 });
 
