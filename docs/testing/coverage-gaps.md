@@ -938,8 +938,9 @@ After `npm run build:server`, run from `packages/xezar`:
 TMPDIR=/tmp node --import ../../scripts/test-local-state.mjs --import tsx --test test/integration/mcp-real-model.test.ts
 ```
 
-Export `XEZ_REAL_MODEL_BASE_URL` and `XEZ_REAL_MODEL_ID` to opt in (see `.env.example`).
-For an authenticated local endpoint, export `XEZ_REAL_MODEL_API_KEY` from the authorized
+This is the owner’s manual command, exactly like `mcp-real-clients.test.ts`. All three
+`XEZ_REAL_MODEL_*` variables must come from the operator’s environment (see `.env.example`).
+Export `XEZ_REAL_MODEL_API_KEY` from the authorized
 provider-key variable in your shell, e.g. `export XEZ_REAL_MODEL_API_KEY="$LOCAL_MODEL_API_KEY"`.
 `pi-runner.ts` passes its child environment to pi; pi resolves authentication from its selected
 provider configuration under `PI_CODING_AGENT_DIR` (`profileEnv` in `core/agent-profiles.ts`).
@@ -953,8 +954,10 @@ then drives the real pi leader extension and shared A/B MCP service. The determi
 controls cover an exact ack, absent ack, wrong nonce/cursor, pre-delivery and late ack. The
 scripted integration control proves that a model request and “I reacted” text cannot pass.
 The live model has 120 seconds to call `leader_events` ack with the delivered nonce and cursor.
-A missing URL/model is node:test SKIPPED / NOT-RUN; a timed-out or incorrect ack is FAILED.
-API key is optional for endpoints that allow anonymous access. No fast gate starts pi or the
+A missing URL, model or key, or HTTP 401/403 from the bounded `/models` probe, is node:test
+SKIPPED / NOT-RUN. Only a reached model that times out or sends an incorrect ack is a FAILED
+model verdict. The evidence scan separately fails on any leaked key, and recorded Authorization
+headers are redacted. No fast gate starts pi or the
 endpoint; browser coverage is separate and not applicable to this test-only change.
 Results, exact argv, revision/dirty state, model requests, delivery and ack ledger are saved
 under `.local/qa/mcp-real-model/<stamp>/`; task handoff preserves a copy in primary evidence.

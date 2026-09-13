@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { createConnection, type Socket } from 'node:net';
 import { join, resolve } from 'node:path';
@@ -16,8 +16,9 @@ import { leaderEventsTool, type LeaderEventsPort } from '../../src/mcp/tools/lea
  * this directory. After npm run build:server, run from packages/xezar:
  * TMPDIR=/tmp node --import ../../scripts/test-local-state.mjs --import tsx --test test/integration/mcp-real-model.test.ts
  *
- * Set XEZ_REAL_MODEL_BASE_URL and XEZ_REAL_MODEL_ID; absent => skip / NOT-RUN. Set optional
- * XEZ_REAL_MODEL_API_KEY for authenticated local endpoints. No personal account/config is read.
+ * Owner's manual command, like mcp-real-clients.test.ts: all three XEZ_REAL_MODEL_* variables
+ * come only from the operator's environment. Missing any variable or a 401/403 auth probe
+ * means node:test skip / NOT-RUN, never a model failure. Supply XEZ_REAL_MODEL_API_KEY. No personal account/config is read.
  * pi-runner delegates auth to pi's provider configuration (PI_CODING_AGENT_DIR/models.json);
  * it does not manufacture a key. In the shell already holding the provider's key, use
  * export XEZ_REAL_MODEL_API_KEY="$LOCAL_MODEL_API_KEY" (replace that variable with your authorized
@@ -87,6 +88,63 @@ test('the real MCP service records a valid leader_events ack and advances its cu
   }
 });
 
+function recordedHeaders(headers: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(Object.entries(headers).map(([name, value]) => [name, name.toLowerCase() === 'authorization' ? '[REDACTED]' : value]));
+}
+
+function assertEvidenceClean(directory: string, key: string): void {
+  assert.ok(key.length > 0, 'evidence scan needs a populated key');
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) assertEvidenceClean(path, key);
+    else assert.ok(!readFileSync(path).includes(Buffer.from(key)), `endpoint key leaked into evidence file ${entry.name}`);
+  }
+}
+
+async function probeAuth(baseUrl: string, key: string): Promise<number> {
+  const response = await fetch(`${baseUrl.replace(/\/$/, '')}/models`, {
+    headers: { Authorization: `Bearer ${key}` }, redirect: 'error', signal: AbortSignal.timeout(10_000),
+  });
+  await response.body?.cancel();
+  return response.status;
+}
+
+const authRejected = (status: number): boolean => status === 401 || status === 403;
+
+test('auth probe distinguishes rejection from model evidence and redacts Authorization', async () => {
+  const key = 'fixture-key-' + randomBytes(12).toString('hex');
+  let status = 401;
+  const server = createServer((req, res) => {
+    assert.equal(req.headers.authorization, `Bearer ${key}`);
+    res.writeHead(status).end();
+  });
+  await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+  try {
+    for (const code of [401, 403, 200, 500]) {
+      status = code;
+      const actual = await probeAuth(`http://127.0.0.1:${(server.address() as { port: number }).port}/v1`, key);
+      assert.equal(actual, code);
+      assert.equal(authRejected(actual), code === 401 || code === 403);
+    }
+    assert.deepEqual(recordedHeaders({ Authorization: `Bearer ${key}`, authorization: key, accept: 'application/json' }), { Authorization: '[REDACTED]', authorization: '[REDACTED]', accept: 'application/json' });
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((done) => server.close(() => done()));
+  }
+});
+
+test('evidence hygiene fails on a planted key, including nested files', () => {
+  const directory = mkdtempSync(join(ROOT, '.local/key-control-'));
+  const key = 'fixture-key-' + randomBytes(12).toString('hex');
+  try {
+    mkdirSync(join(directory, 'nested'));
+    writeFileSync(join(directory, 'nested', 'requests.json'), JSON.stringify(recordedHeaders({ Authorization: `Bearer ${key}` })));
+    assertEvidenceClean(directory, key);
+    writeFileSync(join(directory, 'nested', 'leak.txt'), key);
+    assert.throws(() => assertEvidenceClean(directory, key), /endpoint key leaked/);
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
 async function until(check: () => boolean, ms: number, reason: string): Promise<void> {
   const end = Date.now() + ms;
   while (!check()) {
@@ -121,9 +179,10 @@ test('[pi] a real model acknowledges the delivered nonce and cursor', { timeout:
     sourceHashes: Object.fromEntries(['packages/xezar/test/integration/mcp-real-model.test.ts', 'packages/xezar/test/helpers/ab-fixture.ts', 'packages/xezar/scripts/pi-leader-extension.ts'].map((path) => [path, createHash('sha256').update(readFileSync(join(ROOT, path))).digest('hex')])),
     windowMs: WINDOW_MS, verdict: 'NOT-RUN',
   };
-  if (!baseUrl || !modelId) {
-    record.summary = 'XEZ_REAL_MODEL_BASE_URL and XEZ_REAL_MODEL_ID are required; API key is optional';
+  if (!baseUrl || !modelId || !key) {
+    record.summary = 'Operator must supply XEZ_REAL_MODEL_BASE_URL, XEZ_REAL_MODEL_ID and XEZ_REAL_MODEL_API_KEY; leg skipped';
     save('results.json', record);
+    if (key) assertEvidenceClean(out, key);
     t.skip(String(record.summary));
     return;
   }
@@ -131,6 +190,29 @@ test('[pi] a real model acknowledges the delivered nonce and cursor', { timeout:
   assert.ok(['127.0.0.1', '[::1]', 'localhost'].includes(target.hostname), 'only a local endpoint is authorized');
   assert.equal(target.username + target.password + target.search + target.hash, '', 'credentials belong only in the API-key environment variable');
   record.baseUrl = baseUrl;
+  let probeStatus: number;
+  try { probeStatus = await probeAuth(baseUrl, key); } catch (error) {
+    record.verdict = 'BLOCKED';
+    record.summary = 'Endpoint auth probe unavailable; no model verdict established';
+    save('results.json', record);
+    assertEvidenceClean(out, key);
+    throw error;
+  }
+  record.authProbe = { status: probeStatus, headers: recordedHeaders({ Authorization: `Bearer ${key}` }) };
+  if (authRejected(probeStatus)) {
+    record.summary = `endpoint answered HTTP ${probeStatus}: authentication rejected; leg skipped`;
+    save('results.json', record);
+    assertEvidenceClean(out, key);
+    t.skip(String(record.summary));
+    return;
+  }
+  if (probeStatus !== 200) {
+    record.verdict = 'BLOCKED';
+    record.summary = `Auth probe answered HTTP ${probeStatus}; no model verdict established`;
+    save('results.json', record);
+    assertEvidenceClean(out, key);
+    assert.fail(String(record.summary));
+  }
   const scratch = realpathSync(mkdtempSync('/tmp/x373-'));
   const children: ChildProcess[] = [];
   const sockets: Socket[] = [];
@@ -138,7 +220,9 @@ test('[pi] a real model acknowledges the delivered nonce and cursor', { timeout:
   let port: LeaderEventsPort | undefined;
   let world: Awaited<ReturnType<typeof createAbWorld>> | undefined;
   let mode: 'scripted' | 'real' = 'scripted';
-  const requests: { mode: string; at: number; body: unknown }[] = [];
+  let modelReached = false;
+  let rejectedStatus: number | undefined;
+  const requests: { mode: string; at: number; body: unknown; headers: Record<string, string> }[] = [];
   const proxy = createServer(async (req, res) => {
     try {
       let raw = '';
@@ -147,7 +231,7 @@ test('[pi] a real model acknowledges the delivered nonce and cursor', { timeout:
         if (raw.length > 2_000_000) throw new Error('request exceeds fixture limit');
       }
       const body = JSON.parse(raw);
-      requests.push({ mode, at: Date.now(), body });
+      requests.push({ mode, at: Date.now(), body, headers: recordedHeaders({ Authorization: mode === 'real' ? `Bearer ${key}` : 'fixture-no-secret' }) });
       if (mode === 'scripted') {
         // A text assertion is deliberately insufficient: one delivered event, one request, no ack.
         res.writeHead(200, { 'content-type': 'text/event-stream' });
@@ -158,6 +242,8 @@ test('[pi] a real model acknowledges the delivered nonce and cursor', { timeout:
           method: 'POST', headers: { 'content-type': 'application/json', ...(key ? { authorization: `Bearer ${key}` } : {}) },
           body: raw, signal: AbortSignal.timeout(WINDOW_MS), redirect: 'error',
         });
+        if (authRejected(response.status)) rejectedStatus = response.status;
+        else if (response.ok) modelReached = true;
         res.writeHead(response.status, { 'content-type': response.headers.get('content-type') ?? 'application/json' });
         if (response.body) for await (const chunk of response.body) res.write(chunk);
         res.end();
@@ -244,7 +330,13 @@ test('[pi] a real model acknowledges the delivered nonce and cursor', { timeout:
         // Fixture reset between independent clients; this is NOT a model/tool acknowledgement.
         port.cursors.ack(structured.nextCursor);
       } else {
-        await until(() => judge(ledger, before, nonce, structured.nextCursor, deliveredAt) !== 'waiting', WINDOW_MS, 'FAILED: no exact nonce/cursor ack within 120 seconds');
+        await until(() => rejectedStatus !== undefined || judge(ledger, before, nonce, structured.nextCursor, deliveredAt) !== 'waiting', WINDOW_MS, 'FAILED: no exact nonce/cursor ack within 120 seconds');
+        if (rejectedStatus !== undefined) {
+          record.verdict = 'NOT-RUN';
+          record.summary = `endpoint answered HTTP ${rejectedStatus}: authentication rejected after probe; leg skipped`;
+          t.skip(String(record.summary));
+          return;
+        }
         assert.equal(judge(ledger, before, nonce, structured.nextCursor, deliveredAt), 'PASSED', 'wrong nonce or cursor ack');
         await until(() => /agent_settled/.test(transcript), 30_000, 'real turn did not settle after ack');
         assert.equal(judge(ledger, before, nonce, structured.nextCursor, deliveredAt), 'PASSED', 'a later incorrect ack invalidates reaction');
@@ -257,7 +349,7 @@ test('[pi] a real model acknowledges the delivered nonce and cursor', { timeout:
       await until(() => !existsSync(descriptor), 5000, 'pi did not remove its descriptor');
     }
   } catch (error) {
-    record.verdict = 'FAILED';
+    record.verdict = modelReached ? 'FAILED' : 'BLOCKED';
     record.summary = redact(String(error));
     throw error;
   } finally {
@@ -271,7 +363,14 @@ test('[pi] a real model acknowledges the delivered nonce and cursor', { timeout:
     save('requests.json', requests);
     save('ack-ledger.json', ledger);
     save('results.json', record);
-    rmSync(scratch, { recursive: true, force: true });
+    try {
+      assertEvidenceClean(out, key);
+    } catch (error) {
+      record.verdict = 'FAILED';
+      record.summary = 'Evidence hygiene failed: endpoint key found in an evidence file';
+      save('results.json', record);
+      throw error;
+    } finally { rmSync(scratch, { recursive: true, force: true }); }
     t.diagnostic(`evidence: ${out}; verdict: ${record.verdict}`);
   }
 });
