@@ -46,6 +46,7 @@ files by hand:
 | `.ai/xezar/workflows/`, `skills/`, `checks/`, `docs/`, guidance | `.xezar/` |
 | `.ai/xezar/runs.json`, `runs/`, `todos.json`, `ui-state.json`, `launch-key`, `automation*` | `.local/xezar/` |
 | `.ai/xezar/worktrees/<runId>` | `.local/xezar/worktrees/<runId>` |
+| `.ai/agentic.config.json`, `.ai/trackers/<tracker>.md` (pipeline files) | `.xezar/pipeline/config.json`, `.xezar/pipeline/trackers/<tracker>.md` |
 
 Registered task worktrees must move through `git worktree move` so their Git
 metadata stays valid. Anything else in the old directory is local scratch or a

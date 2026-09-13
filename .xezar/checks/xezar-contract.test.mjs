@@ -51,7 +51,7 @@ test('optional config discovery and malformed supplied config have distinct outc
 test('runtime remains ignored including unknown future state; all maintained roles/docs exist',()=>{
  for(const file of ['.local/xezar/launch-key','.local/xezar/runs/a.json','.local/xezar/worktrees/a/file','.local/xezar-tasks/a/result.json'])assert.equal(spawnSync('git',['check-ignore','-q','--',file],{cwd:repo}).status,0,file);
  assert.equal(fs.readdirSync(path.join(kit,'skills')).filter(x=>x.endsWith('.md')).length,18);
- for(const f of ['README.md','business-analysis.md','close-out.md','enhancement-ideas.md','lessons-learned.md','parallel-tasks.md','recovery.md','single-task-pilot.md','ui-operations.md','upgrade-checklist.md','worktrees.md','dogfooding.md'])assert.ok(fs.existsSync(path.join(kit,'docs',f)));
+ for(const f of ['README.md','business-analysis.md','close-out.md','enhancement-ideas.md','parallel-tasks.md','recovery.md','ui-operations.md','worktrees.md','dogfooding.md'])assert.ok(fs.existsSync(path.join(kit,'docs',f)));
 });
 test('SDLC policy never maps unknown labels, failed QA or a missing design approval to merge eligibility',async()=>{
  const {projectPolicy}=await import('./lib/project-policy.mjs');

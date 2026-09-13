@@ -2,7 +2,7 @@
 
 ## 💥 Breaking
 - 💥 **The default team skills source is now `qodeca/xezar-skills`, and the skills are named
-  `xez-*`.** The previous default repository is no longer loaded, and the automatic updater no
+  `xez-*`.** (#394) The previous default repository is no longer loaded, and the automatic updater no
   longer recognises it: an `npx skills` install from the old source is reported as "Installed
   skills come from another source; xezar does not update them" and is never touched. Existing
   installs are not migrated – run `npx skills remove <om-* names> -p` (or `-g`), then
@@ -15,14 +15,14 @@
   and `--help` name the new repository.
 
 ## 📝 Specs & Documentation
-- 📝 **`SDLC.md`, `CODE_REVIEW.md` and `CONTRIBUTING.md` name the kit roles.** The process documents
+- 📝 **`SDLC.md`, `CODE_REVIEW.md` and `CONTRIBUTING.md` name the kit roles.** (#396) The process documents
   name the `.xezar/workflows/*` workflows and `xezar-*` roles that run this repository's pipeline
   instead of the previous team skill names, and the optional `xez-*` collection only where a
   document describes it. Links to the pre-rename issue tracker were replaced with plain
   `pre-rename issue n` text across the maintained documents.
 
 ## 🚀 CI/CD & Infrastructure
-- 🚀 **The pipeline files moved to `.xezar/pipeline/`.** `.ai/agentic.config.json` is now
+- 🚀 **The pipeline files moved to `.xezar/pipeline/`.** (#396) `.ai/agentic.config.json` is now
   `.xezar/pipeline/config.json` and `.ai/trackers/github.md` is `.xezar/pipeline/trackers/github.md`;
   the `.ai/` directory is gone from the repository, and `pipeline` joined the fingerprinted kit set
   (`tree_fingerprint` in `.xezar/checks/lib/common.sh`).

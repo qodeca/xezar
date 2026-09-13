@@ -9,7 +9,7 @@
 # run `38ecfe9c`, 2026-09; the run id and its branch are unchanged historical records):
 # `git push -u origin HEAD` ran with the CWD in the PRIMARY checkout, on `main`.
 # It did no damage only because `main` was already in sync; a `main` carrying one
-# local commit would have been pushed. See `.xezar/docs/lessons-learned.md`.
+# local commit would have been pushed.
 #
 # What it does. Exactly two verbs, `commit` and `push`, and nothing else. It is deliberately
 # NOT a git wrapper: an escape hatch that forwarded arbitrary subcommands would re-open the

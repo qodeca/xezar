@@ -20,60 +20,15 @@ absolute sense.
 
 ### Risk 1 – ~~the cockpit has 35 browser tests and CI runs none of them~~ — **CLOSED (#60)**
 
-*Was:* `packages/web/e2e/` held 35 `*.e2e.ts` specs covering the composer, the task thread, the
-diff and files tabs, GitHub, settings, automations and the review gate, and `npm run test:e2e`
-appeared nowhere in `.github/workflows/ci.yml`. Worse, adding the step naively would have been
-green while testing nothing: `scripts/e2e.sh` prints `TEST_E2E_STATUS=skipped` and **exits 0** when
-the agent-browser provider cannot be provisioned, which is the likely path on a fresh
-`ubuntu-latest` runner with no browser cached.
-
-*Now:* #128 added a separate `ui-e2e` job to `ci.yml` — its own runner, its own browser cache and a
-30-minute ceiling, running beside `verify` so CI's added wall clock is the slower of the two rather
-than the sum. The step asserts on the marker instead of the exit code: it passes only on a literal
-`TEST_E2E_STATUS=passed` line, and **both** `skipped` and `failed` fail the job, each with an
-annotation naming which. The app and build logs upload as an artifact, so a spec failure stays
-distinguishable from an environment failure after the runner is gone.
-
-Kept here rather than deleted so the failure shape stays findable: **a suite whose skip path exits
-0 must be gated on its own success marker, never on its exit code.**
+Closed by #128: a separate `ui-e2e` CI job gated on the literal `TEST_E2E_STATUS=passed` marker. The lesson kept: **a suite whose skip path exits 0 must be gated on its own success marker, never on its exit code.**
 
 ### Risk 2 – ~~`packages/contract` is not a vitest project~~ — **CLOSED (#120)**
 
-*Was:* `vitest.config.ts` listed three projects and `packages/contract` was absent, so a test
-written there would silently never run — the most invisible failure shape in the repository, because
-a contributor adds `packages/contract/src/runs.test.ts`, sees no failure, and believes the surface is
-pinned.
-
-*Now:* the root config lists **four** projects including `./packages/contract/vitest.config.ts`, and
-the package carries `src/events.test.ts` and `src/runs.test.ts`. The config also gained the
-counter-comment that keeps it closed: "A package missing from this list is a package whose
-`*.test.ts` files never run, however right they look (#61 — `contract` was in exactly that state)."
-
-Kept here rather than deleted so the failure shape stays findable: **a new workspace package needs a
-line in the root `projects` list, or its tests are decoration.**
+Closed: the root `vitest.config.ts` lists four projects, and the config carries the counter-comment. The lesson kept: **a new workspace package needs a line in the root `projects` list, or its tests are decoration.**
 
 ### Risk 3 – ~~the CLI's first-run and boot paths have no test at any level~~ — **CLOSED (#43, #62)**
 
-*Was measured, and is still true as a measurement:* `packages/xezar/src/index.ts` is **absent from
-the coverage report entirely** – no vitest test loads it. The node:test suites reach it only by
-spawning the binary, which the coverage report cannot see. That much has not changed.
-
-*What changed:* the two commands the risk was really about now have tests.
-`test/e2e/package-cli.test.ts:433-495` boots the default `serve` command against the installed
-tarball and asserts the three behaviours this section named — port fallback when the requested one
-is taken, orphan-worktree prune, and `.local/.gitignore` upkeep (#43). `project-kit-cli.test.ts`
-spawns `init` and covers both the scaffold and the never-overwrite half (#62). Alongside them,
-`test/unit/cli-version.test.ts` covers `--version` and `--help`, and `package-cli.test.ts` spawns
-`run`, `projects`, `server-install`, `server-uninstall` and `server-deploy`.
-
-Still no test found in the suites examined for the **unknown-command exit path**.
-
-Kept here rather than deleted because the measurement lesson survives the fix: a file at 0 % that
-CI exercises through a subprocess looks identical, in this report, to a file nothing tests at all.
-
-`BACKWARD_COMPATIBILITY.md:9-19` names all of these as protected surfaces, including the default
-port, the default workflow, and `run`'s exit-code semantics. `init` is what a new user types first,
-and `serve` is what every other user types every day.
+Closed by #43 (`serve` in `test/e2e/package-cli.test.ts`) and #62 (`init` in `project-kit-cli.test.ts`); the unknown-command exit path still has no test. The lesson kept: `index.ts` stays at 0 % in the coverage report because only subprocess tests reach it, so **a file at 0 % that CI exercises through a subprocess looks identical to a file nothing tests.**
 
 ---
 
@@ -439,13 +394,13 @@ Two warnings that outlived the audit, because they are what this table is *for*:
 | ~~R9~~ | ~~Automations cockpit route, enabled path only in a gated e2e~~ — **closed in part** | fixed by #48 at the unit level: create-paused, preview, enable, pause and log now run on every `npm test`, deliberately ungated. What survives is the BROWSER-level flow — `automations.e2e.ts:55-58` self-skips without `XEZ_AUTOMATIONS=1`, and that variable appears in neither `scripts/e2e.sh` nor `ci.yml` | `automations.test.tsx:227-421`; `automations.test.tsx:20-24` states the choice | #48 |
 | ~~R10~~ | ~~Commits tab route has no cockpit unit test~~ — **closed** | fixed by #49: eleven cases mount the route itself — list, deep link to `/commits/:sha`, the 409 no-worktree reason, empty state, loading — so the 100 % is measured against assertions | `task-commits.test.tsx:142-296`; `routes.test.tsx:206-207` | #49 |
 | ~~R11~~ | ~~`app.tsx` and `main.tsx` never loaded by a unit test~~ — **closed in part** | fixed by #50 for the shell: provider stack, routed outlet, one workspace event stream, one health subscription, error boundary with retry. `main.tsx` itself is still absent from the report, so its own logic — the `meta[name="xez-api-base"]` over `VITE_XEZ_API_BASE` precedence and the missing-`#root` throw (`main.tsx:19-27`) — has no test found in the suites examined | `app.test.tsx:175,193,209,241,254,270` | #50 |
-| ~~R12~~ | ~~`POST /skills/refresh` and the skills catalog GETs~~ — **closed** | fixed by #51, including the CSRF guard and the unreachable-repo degradation | `skills-api.test.ts:151,178` (GETs), `:195,220,277` (refresh) | #51 |
+| ~~R12~~ | ~~`POST /skills/refresh` and the skills catalog GETs~~ — **closed** | fixed by #51 | `skills-api.test.ts:151,178` (GETs), `:195,220,277` (refresh) | #51 |
 | ~~R13~~ | ~~`POST /plan` success path~~ — **closed** | fixed by #52: the 200 body is parsed by the contract schema at RUNTIME, not only type-checked | `plan-api.test.ts:80,93,114,123` | #52 |
 | ~~R14~~ | ~~`GET /launch-key` has no behavioural assertion~~ — **closed** | fixed by #53: the served key equals the one persisted in that project's `.local/xezar/launch-key`, is repeated rather than regenerated, is generated when absent, differs per project, and stays behind the Host/Origin guard | `launch-key-api.test.ts:112-190` | #53 |
 | ~~R15~~ | ~~`createRunner` dispatch only asserted for `pi`~~ — **closed** | fixed by #54: one case per `RUNNER_IDS` entry, with no id served by the default arm | `core/runner-factory.test.ts:52,60,85` (each id), `:98,104,123,154` (unknown id, legacy `claude-cli`) | #54 |
 | ~~R16~~ | ~~OpenCode runner teardown bypasses its golden mock server~~ — **closed** | the suite now drives the real `mock-opencode-serve.mjs`, removing the asymmetry with codex | `opencode-server-runner.test.ts` | #55 |
 | ~~R17~~ | ~~`server-install` steps/ui/platforms at 50-63 % branches, `server-deploy` untested~~ — **closed** | `server-deploy` now has help-text, real-invocation and unknown-platform coverage, and the install steps/ui gained tests with it | `test/e2e/package-cli.test.ts:271,284,291` | #56 |
-| ~~R18~~ | ~~`skills-remote.ts` at 41.8 % branches~~ — **closed** | fixed by #57 for the scheduler (`shouldPassiveFetch`, including the exactly-TTL boundary) and by this branch for the git half, which now runs against a real local bare clone | `skills-remote.test.ts:6-27`; `test/unit/skills-remote.test.ts:447,473`; `skills-remote-git.test.ts` | #57 |
+| ~~R18~~ | ~~`skills-remote.ts` at 41.8 % branches~~ — **closed** | fixed by #57 (scheduler) and the git half now runs against a real local bare clone | `skills-remote.test.ts:6-27`; `test/unit/skills-remote.test.ts:447,473`; `skills-remote-git.test.ts` | #57 |
 | ~~R19~~ | ~~`planner.ts` at 20 % branches, `update-check.ts` absent from coverage~~ — **closed** | fixed by #58: seven `planChain` degradation cases and a full `update-check` suite. The planner's 57.6 % branches is still the lowest number in the file table above, so the row is worth re-reading before anyone edits that module | `test/unit/planner.test.ts:165-215`; `update-check.test.ts:50-195` | #58 |
 | ~~R20~~ | ~~Autonomous nudge delivery has no direct test~~ — **closed** | fixed by #59, and at BOTH `ActiveRun` construction sites — the asymmetry `AGENTS.md` warns about is exactly what the test covers | `run-autonomous-nudge.test.ts:180` (via `execute`), `:246` (via `runContinuation`), plus four guards at `:213,230,290,312` | #59 |
 
@@ -515,13 +470,7 @@ These were uncovered by the audit and are deliberately **not** child issues.
 
 ## 8. Labels created for this work
 
-Three labels were created because no existing label fitted: `epic` (a tracking issue with
-sub-issues), `testing` (test-coverage work) and `priority-high`, which `SDLC.md:47-52` defines but
-the repository did not have. Child issues also carry the existing `enhancement` label.
-
-The epic is #42. Its twenty children are attached as native GitHub sub-issues through
-`POST /repos/qodeca/xezar/issues/42/sub_issues`, so `gh issue view 42` shows them with a live
-progress indicator. No fallback was needed.
+The `epic`, `testing` and `priority-high` labels were created for this work; the epic is #42 with its children attached as native GitHub sub-issues.
 
 ## 9. Method and limits
 

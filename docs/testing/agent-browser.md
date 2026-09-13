@@ -238,6 +238,18 @@ addition, and takes three coordinated changes:
 
 A fifth agent home that does have a variable needs adding to `test-env-up.sh` too.
 
+**Team skills are the other thing the boot does not isolate.** The shared instance and every
+fixture server boot with the default `skillsRepos`, so they clone `qodeca/xezar-skills` into
+`~/.cache/xez/skills/` in the background and the 37 `xez-*` skills appear in the catalog whenever
+the clone has finished – which depends on network timing, not on the spec. Two rules follow:
+
+- `fixtureServeEnv` sets `XEZ_SKILLS_AUTO_UPDATE=0` (`packages/web/e2e/agent-browser.ts`), so a
+  boot inside the six-hour update window never installs the collection into the fixture repo.
+- A spec that asserts on the skill list (the picker, the composer autocomplete, a search ranking)
+  writes `.xezar/config.json` with `{ "skillsRepos": [] }` into its fixture repo, as
+  `skill-search-ranking.e2e.ts` does. The picker's subsequence matcher lets a long team-skill
+  description satisfy almost any query, so "no team skills" is the only deterministic state.
+
 ### Iterating on one spec
 
 The `npm run test:e2e` wrapper takes no file filter, so iterating on ONE spec means booting
