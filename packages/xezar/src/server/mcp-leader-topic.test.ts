@@ -126,6 +126,23 @@ describe('the mcp-leader topic publisher', () => {
     }
   });
 
+  // A cockpit may have read the short-lived "running" answer over HTTP in between: the frame corrects it.
+  it('a service that starts and stops between two re-derives is still published, as the unavailable answer', async () => {
+    const registry = fakeRegistry();
+    const published: unknown[] = [];
+    const stop = mcpLeaderTopic({ ...registry.deps, recheckMs: 60_000 }).start((data) => published.push(data));
+    try {
+      registry.statuses.set('delta', idle());
+      registry.announce('delta');
+      registry.statuses.delete('delta');
+      registry.announce('delta');
+      await flush();
+      expect(published).toEqual([{ projects: { delta: { available: false, reason: 'not running' } } }]);
+    } finally {
+      stop();
+    }
+  });
+
   // A change nothing announced — an app-server daemon that went away between two hand-offs is read
   // only when the adapter next looks — still reaches the cockpit, through the re-derive backstop.
   it('re-derives on the backstop interval, and publishes only what changed', () => {

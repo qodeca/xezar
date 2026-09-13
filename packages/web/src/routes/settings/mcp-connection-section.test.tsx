@@ -678,12 +678,16 @@ describe('MCP connection section — the leader control after self-review (round
 
 /** A `WebSocket` stand-in for the cockpit's one topic socket (`api/ws.ts`); jsdom has none. */
 class FakeTopicSocket {
+  /** Made during the current case (reset per case). */
   static instances: FakeTopicSocket[] = []
+  /** Every one ever made: the app's one socket is shared and outlives a case by its idle grace. */
+  static all: FakeTopicSocket[] = []
   readyState = 0
   sent: string[] = []
   private handlers = new Map<string, Set<(event: unknown) => void>>()
   constructor(_url: string) {
     FakeTopicSocket.instances.push(this)
+    FakeTopicSocket.all.push(this)
   }
   addEventListener(name: string, handler: (event: unknown) => void): void {
     const set = this.handlers.get(name) ?? new Set()
@@ -764,8 +768,11 @@ describe('MCP connection section — the leader status, live (round 5 on #403)',
     // Another project's status and a malformed frame change nothing here.
     act(() => socket.message({ type: 'event', topic: 'mcp-leader', data: { projects: { other: leaderStatus({ leader: { client: 'pi', state: 'attached' }, blocker: null }) } } }))
     act(() => socket.message({ type: 'event', topic: 'mcp-leader', data: { projects: { xezar: { available: 'yes' } } } }))
-    await act(async () => {})
+    // Let the cache's batched notify and the re-render land before reading: a check made earlier
+    // passes whatever the frame did.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)))
     expect(view.state()).toBe('owner')
+    expect(view.container.querySelector('[data-slot="mcp-leader-owner"]')?.textContent).toBe('Codex')
 
     // The daemon went away while the page stayed open: the pushed status replaces "Codex connected".
     const attached = { owner: { client: 'codex' as const }, leader: { client: 'codex' as const, state: 'attached' as const }, delivery: { state: 'idle' as const, deliveredSeq: 1, ackedSeq: 0, reactedSeq: 1, latestSeq: 1 } }
@@ -781,13 +788,19 @@ describe('MCP connection section — the leader status, live (round 5 on #403)',
     expect(socket.frames()).toContainEqual({ type: 'unsubscribe', topic: 'mcp-leader' })
   })
 
-  it('remote mode opens no WebSocket: the status is read over HTTP only', async () => {
+  it('remote mode opens no WebSocket and sends no subscribe: the status is read over HTTP only', async () => {
     vi.stubGlobal('WebSocket', FakeTopicSocket)
+    // Counted across EVERY socket: the shared one can still be open from the case before.
+    const subscribes = () =>
+      FakeTopicSocket.all.flatMap((ws) => ws.frames()).filter((frame) => (frame as { type?: string; topic?: string }).type === 'subscribe' && (frame as { topic?: string }).topic === 'mcp-leader').length
+    const before = subscribes()
     const remote = { ...HEALTH, capabilities: { ...HEALTH.capabilities, localHandoff: false } }
     const view = mount(() => ok(leaderStatus()), remote, 'control')
     await waitFor(() => expect(view.state()).toBe('no-owner'))
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)))
     expect(view.reads.count).toBe(1)
     expect(FakeTopicSocket.instances).toHaveLength(0)
+    expect(subscribes()).toBe(before)
   })
 
   it('re-reads the status when the window regains focus, even right after the first read', async () => {
