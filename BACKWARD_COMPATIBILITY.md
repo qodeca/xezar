@@ -110,7 +110,8 @@ Listings retain their shape: refused entries have `writable: false`, a
 values describe no accessible config, not whether a link exists on disk. Personal
 layer seeding skips refused sources and destinations, preserving best-effort boot.
 
-This intentionally narrows access to prevent a catalogued name exposing an
+This change must ship in the next minor release, with the README migration note.
+It intentionally narrows access to prevent a catalogued name exposing an
 uncatalogued credential file. Replace individual file links with regular config
 files to edit them. A symlink relocating the entire configured home remains
 supported: that canonical directory is the boundary. Internal directory links

@@ -1,9 +1,9 @@
 import { execFile } from 'node:child_process';
-import { constants } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { chmod, mkdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { agentHomePaths } from '../paths.ts';
-import { checkedConfigPath, readConfigBuffer } from './path-access.ts';
+import { checkedConfigPath, ConfigPathRefusal, readConfigBuffer } from './path-access.ts';
 import { CONFIG_FILES } from './catalog.ts';
 
 /**
@@ -84,17 +84,26 @@ export async function seedAgentConfigLocalLayer(
     if (!ignored.ok) continue;
 
     const dest = join(worktreeCwd, rel);
+    let tmp: string | undefined;
     try {
       const source = await checkedConfigPath(src, repoRoot);
       const target = await checkedConfigPath(dest, worktreeCwd);
       const content = await readConfigBuffer(source);
+      const mode = (await stat(source)).mode & 0o777;
       await mkdir(dirname(target), { recursive: true });
-      await checkedConfigPath(dest, worktreeCwd);
-      await writeFile(target, content, { flag: constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | constants.O_NOFOLLOW });
+      tmp = `${target}.xez-tmp-${process.pid}-${randomUUID()}`;
+      // Preserve copyFile's source permissions and exact bytes. Publish only after
+      // the private temporary file is complete, never through a destination link.
+      await writeFile(tmp, content, { flag: 'wx', mode });
+      await chmod(tmp, mode);
+      if (await checkedConfigPath(dest, worktreeCwd) !== target) throw new ConfigPathRefusal('outside-root');
+      await rename(tmp, target);
       await ensureExcluded(absCommonGitDir, rel);
       seeded.push(rel);
     } catch {
       // best-effort: a seed failure must not fail the run
+    } finally {
+      if (tmp) await unlink(tmp).catch(() => {});
     }
   }
   return seeded;

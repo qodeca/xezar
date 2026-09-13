@@ -2,9 +2,9 @@
 
 ## 🐛 Bug Fixes
 - 🐛 Fix agent-config API tests reading inherited agent homes; isolate all four agent config directories and HOME per test (#362).
-- 🐛 Refuse catalogued file symlinks and directory links escaping an agent home or repository, including reads, writes, listing hashes and worktree seeding. Refused API reads/writes return 409 with the existing error body (#363).
 
 ## 💥 Breaking
+- 💥 **Agent config no longer follows individual file symlinks (#363); ship in the next minor release.** Reads and writes return 409 with the existing error body; listings expose no hash and seeding skips the link. Directory links below an agent home or repository may not escape that root. Replace file links with regular config files; relocating an entire configured home remains supported.
 - 💥 **The default team skills source is now `qodeca/xezar-skills`, and the skills are named
   `xez-*`.** (#394) The previous default repository is no longer loaded, and the automatic updater no
   longer recognises it: an `npx skills` install from the old source is reported as "Installed
