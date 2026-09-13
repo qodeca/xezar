@@ -35,10 +35,11 @@ outside. `xez mcp` is a new subcommand — a stdio bridge to the cockpit you are
 and through it an agent can read tasks and evidence, create and organise work, control execution,
 hand work onward through git and GitHub, and change project settings, with one owner per project,
 version-checked writes, retry-safe operations and an audit trail. It works with Claude Code, Codex,
-OpenCode and pi, and a project event can start a real turn in any of them. The cockpit gains two new
-Settings sections for it: **MCP connection** and a browsable, read-only **MCP API** reference. The
-rest of the release is a long run of safety fixes around worktrees, secrets, cancellation and the
-project kit, plus the repository's first security policy, contribution path and code of conduct.
+OpenCode and pi for reading and driving a project; starting a real model turn from a project event
+is wired for pi and OpenCode only (see #73). The cockpit gains two new Settings sections for it:
+**MCP connection** and a browsable, read-only **MCP API** reference. The rest of the release is a
+long run of safety fixes around worktrees, secrets, cancellation and the project kit, plus the
+repository's first security policy, contribution path and code of conduct.
 
 ## ✨ Features
 - ✨ **A coding agent can now lead a xezar project over MCP.** `xez mcp` is a new subcommand: the
@@ -83,14 +84,19 @@ project kit, plus the repository's first security policy, contribution path and 
   the leader that made it is not told about it again. A non-model event controller owns the logical
   project session, so the bookkeeping happens without spending a model turn. (#106, #107, #234,
   #235)
-- ✨ **A project event can start a real turn in Claude Code, Codex or OpenCode.** Each has a
-  reaction adapter, measured against the real client rather than a mock: Claude Code through a
-  scripted endpoint, Codex over its app-server, and OpenCode over `opencode serve`. (#108, #109,
-  #110, #239, #241, #244)
-- ✨ **MCP connection is a section in project Settings.** It shows the whole connection state — what
-  is connected, what it can and cannot do, and the limits that apply — reports the outcome of an
-  operation and keeps itself in sync while you watch, and carries the one-time setup for each
-  client. (#111, #112, #113, #114, #236, #245, #246, #255)
+- ✨ **A project event can start a real turn in pi and OpenCode.** Each has a reaction adapter
+  measured against the real client rather than a mock: pi through the leader extension's socket,
+  OpenCode over `opencode serve`. Claude Code and Codex have their adapter groundwork in
+  `src/mcp/adapters/` but no attach path reaches them — `LeaderDelivery.#act` admits `pi` and
+  `opencode` only, and the acceptance case is recorded BLOCKED for every client
+  (`mcp-definition-of-done-record.md`). Finishing them is #73 / #374. (#108, #109, #110, #239,
+  #241, #244)
+- ✨ **MCP connection is a section in project Settings.** It shows the project the connection is
+  bound to, that it works on this machine only, what a leader can and cannot do and the limits that
+  apply, and the one-time setup for each client. It does not show whether a client is connected or
+  how a leader's operations turned out: no route reports either yet, so the page says who does
+  instead of guessing, and the empty outcomes list is left out (see the MCP API fix below).
+  (#111, #112, #113, #114, #236, #245, #246, #255)
 - ✨ **A pi leader can now be woken by a project event.** xezar has a pi reaction adapter, so a
   significant event can start a real pi turn that carries it — no polling, no "anything new?" turn.
   It uses pi's own session interface: it prompts pi when pi is idle, and steers when pi is in the
@@ -490,8 +496,8 @@ project kit, plus the repository's first security policy, contribution path and 
   support, by design, so it counts through the third-party `pi-mcp-adapter` extension, which pi's
   one-time setup installs; the requirements say so in the text. The connection-file decision (D-04)
   gains pi's one-time setup and a four-client comparison, and the client compatibility report gains
-  a dated pi addendum. A requirements change only: pi has no reaction adapter or acceptance column
-  yet. (#330, #334, #339)
+  a dated pi addendum. A requirements change only: pi's reaction adapter and acceptance column came
+  later in this release, in the pi entries above. (#330, #334, #339)
 - 📝 **A named limitation of this release: do not gate xezar's tools with pi's `approveTools`.** The
   `pi-mcp-adapter` extension can be told to ask before a tool runs. If you point that at xezar's
   tools, the question goes to a dialog only a person at their own pi window can answer, and nothing

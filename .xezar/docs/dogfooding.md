@@ -12,6 +12,14 @@ Installation validation is reported in installation.md. Real-task entries follow
 
 ## Real-task entries
 
+### 2026-09-13 — #383 (0.14.0 changelog claimed reaction turns no code path reaches), `docs-maintenance` step `docs`, `xezar-docs-maintenance`, Claude Code — real-task verified
+
+- Evidence: run 8f6a3918, base `85a8e95`, commits on `xez/8f6a3918`; the PR body with every file:line and the per-bullet verdict table is in the primary evidence directory under `docs/pr-body.md`.
+- Observed: **the issue's line numbers were already stale when the task started.** #383 cites `CHANGELOG.md:8-9` and `:57-60`; a `# Unreleased` section added since moved them to `:37-38` and `:86-89`. Lesson (recommended): locate a cited changelog claim by its text and its `# <version>` heading, never by the line number in the issue.
+- Observed: **"re-read the section for the same shape of claim" found two more, both in bullets that looked finished.** The MCP connection bullet said the page shows the connection state and operation outcomes; the component passes no outcomes and says in its own copy that it cannot tell whether a client is connected. A requirements bullet said pi had no reaction adapter, which the same release then shipped. Lesson (recommended): for a capability sentence, read the component or branch that would render or perform it, and also the release's own later bullets — a changelog derived per PR can contradict itself across entries.
+- Observed: **the acceptance record the fix cites is itself partly wrong.** A-19's row lists `opencode` under "no attach path exists" while `LeaderDelivery.#act` builds an OpenCode adapter. The verdict (BLOCKED) holds; the reason does not. Left unchanged as out of scope and reported in the PR. Lesson (real-task verified): a record cited as the source of truth still gets its reason checked against the code, not just its verdict.
+- Remaining limit: bullets without a reaction/wiring claim were not re-verified line by line; the verdict table says which.
+
 ### 2026-09-12 — take the MCP mutation gate out of the release path (#377 owns its new home), `feature-implementation` step `implement`, `xezar-implementation`, Claude Code — real-task verified
 
 - Evidence: run 71389a7d, base `65f779d`, PR #378. Both Stryker logs and the red-proof harness (hashed) in the primary evidence directory under `implement/`; the deferred scheduled-workflow draft under `implement/deferred-to-377/`.
