@@ -36,9 +36,10 @@ and through it an agent can read tasks and evidence, create and organise work, c
 hand work onward through git and GitHub, and change project settings, with one owner per project,
 version-checked writes, retry-safe operations and an audit trail. It works with Claude Code, Codex,
 OpenCode and pi for reading and driving a project; starting a real model turn from a project event
-is wired for pi and OpenCode only (see #73). The cockpit gains two new Settings sections for it: **MCP connection** and a browsable, read-only **MCP API** reference. The
-rest of the release is a long run of safety fixes around worktrees, secrets, cancellation and the
-project kit, plus the repository's first security policy, contribution path and code of conduct.
+is wired for pi and OpenCode only (see #73). The cockpit gains two new Settings sections for it:
+**MCP connection** and a browsable, read-only **MCP API** reference. The rest of the release is a
+long run of safety fixes around worktrees, secrets, cancellation and the project kit, plus the
+repository's first security policy, contribution path and code of conduct.
 
 ## ✨ Features
 - ✨ **A coding agent can now lead a xezar project over MCP.** `xez mcp` is a new subcommand: the
