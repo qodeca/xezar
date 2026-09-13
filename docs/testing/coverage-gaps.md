@@ -698,9 +698,11 @@ duplicate vitest test to move a percentage.
 | `xez mcp` as a real subprocess: handshake, absent bridge, service down, a neighbour on the port, and a directory xezar never served answering `not-registered` (the branch at `index.ts:395`) | server unit, but the bridge runs in a CHILD process v8 does not follow | `src/mcp/cli.test.ts:120,153,165,199,203` | yes |
 | A-20 the open cockpit follows MCP changes; A-01/A-17/A-23 the MCP connection screen | browser | `packages/web/e2e/mcp-live-sync.e2e.ts:194,232`, `mcp-collaboration.e2e.ts` | yes (`ui-e2e`) |
 | A-01, A-17, A-18, A-19, A-20, A-23 with REAL Claude Code, Codex and OpenCode clients | node:test integration harness | `test/integration/mcp-real-clients.test.ts` | **no** – run by hand; results in `docs/features/mcp-server/mcp-client-acceptance-record.md` |
+| A-19 / A-23 pi real-model reaction (#373) | node:test integration harness | `test/integration/mcp-real-model.test.ts` | **no** – opt-in local model; exact nonce + cursor MCP ack, scripted request-only control; missing target is NOT-RUN |
 
-The last row is the one to read twice: the real-client harness is outside every gate by design (it
-needs the real CLIs), so what it proves is only as current as its last recorded run.
+The last two rows are outside every gate by design: they need installed CLIs and the real-model
+leg needs an explicitly supplied local endpoint. Their evidence is only as current as the last
+recorded run.
 
 ### 10.5 Held by behaviour, not by a percentage
 
@@ -927,3 +929,32 @@ and `project-leaders.ts` (100.0 / 100.0).
 an entry in `.xezar/pipeline/config.json` – 10.1 says it stays out "until it passes on `main`", and the
 condition is met. That is a separate PR: it needs the CI job written and its ~40 s measured on a
 2-core runner, and it should land before the next MCP PR meets a gate nobody runs for them.
+
+### Manual pi real-model reaction (#373)
+
+After `npm run build:server`, run from `packages/xezar`:
+
+```sh
+TMPDIR=/tmp node --import ../../scripts/test-local-state.mjs --import tsx --test test/integration/mcp-real-model.test.ts
+```
+
+Export `XEZ_REAL_MODEL_BASE_URL` and `XEZ_REAL_MODEL_ID` to opt in (see `.env.example`).
+For an authenticated local endpoint, export `XEZ_REAL_MODEL_API_KEY` from the authorized
+provider-key variable in your shell, e.g. `export XEZ_REAL_MODEL_API_KEY="$LOCAL_MODEL_API_KEY"`.
+`pi-runner.ts` passes its child environment to pi; pi resolves authentication from its selected
+provider configuration under `PI_CODING_AGENT_DIR` (`profileEnv` in `core/agent-profiles.ts`).
+The runner does not supply a universal default key. This harness reads no personal provider
+configuration: obtain the same endpoint key through its authorized environment source.
+The proxy keeps that key in memory and forwards it as a bearer header; isolated pi uses a dummy
+fixture credential. Never paste a key into a command argument, tracked file, or evidence.
+
+The harness installs pinned `pi-mcp-adapter@2.32.1` into a disposable HOME (network required),
+then drives the real pi leader extension and shared A/B MCP service. The deterministic judge
+controls cover an exact ack, absent ack, wrong nonce/cursor, pre-delivery and late ack. The
+scripted integration control proves that a model request and “I reacted” text cannot pass.
+The live model has 120 seconds to call `leader_events` ack with the delivered nonce and cursor.
+A missing URL/model is node:test SKIPPED / NOT-RUN; a timed-out or incorrect ack is FAILED.
+API key is optional for endpoints that allow anonymous access. No fast gate starts pi or the
+endpoint; browser coverage is separate and not applicable to this test-only change.
+Results, exact argv, revision/dirty state, model requests, delivery and ack ledger are saved
+under `.local/qa/mcp-real-model/<stamp>/`; task handoff preserves a copy in primary evidence.
