@@ -124,6 +124,7 @@ export type HealthResult = z.infer<typeof healthResultSchema>;
 export const toolCallParamsSchema = z.object({
   name: z.string().min(1).max(128),
   arguments: z.record(z.string(), z.unknown()).optional(),
+  _meta: z.record(z.string(), z.unknown()).optional(),
 });
 
 /**

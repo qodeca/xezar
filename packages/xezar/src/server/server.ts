@@ -67,7 +67,8 @@ import { RunnerModelCatalog } from '../core/runner-model-catalog.ts';
 import { currentUsage, onUsage } from '../core/process-usage.ts';
 import { projectWorkflowsDir, loadWorkflows } from '../workflows/load.ts';
 import { reportProjectChange } from '../mcp/project-catalogs.ts';
-import { projectLeader } from '../mcp/project-leaders.ts';
+import { projectLeader, projectLeaderIds, watchProjectLeaders } from '../mcp/project-leaders.ts';
+import { mcpLeaderTopic } from './mcp-leader-topic.ts';
 import {
   QUICK_TASK_WORKFLOW,
   normalizeWorkflowDoc,
@@ -5616,6 +5617,10 @@ export function createApp(deps: ServerDeps) {
       if (!out.ok) return c.json({ error: out.error }, 409);
       return c.json(out.status);
     });
+  // Its push twin (#374, round 5 on #403): the `mcp-leader` topic serves the answer above, from the
+  // same `mcpLeaderStatus`, while a cockpit holds it, and publishes only when it changed — see
+  // `mcp-leader-topic.ts`. Default trust: legible to the cockpit's own connection only.
+  deps.socketHub?.registerTopic('mcp-leader', mcpLeaderTopic({ ids: projectLeaderIds, status: mcpLeaderStatus, watch: watchProjectLeaders }));
 
   // Repo view branch actions: switch to an existing branch, or create one
   // (from `from` or HEAD) and switch. Predictable git failures — invalid
