@@ -16,7 +16,7 @@ const script = join(repoRoot, 'scripts', 'release.mjs');
 // The orchestrator imports packages/xezar/dist/release/stable.js, so this suite runs after
 // `npm run build`.
 
-/** A miniature of the real workspace: the three release manifests, in their real directories,
+/** A miniature of the real workspace: the four release manifests, in their real directories,
  *  with the same intra-release dependency edges the pipeline has to re-pin. */
 async function makeFixture(version = '0.1.5'): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'xezar-release-'));
@@ -56,6 +56,24 @@ async function makeFixture(version = '0.1.5'): Promise<string> {
     )}\n`,
   );
   await writeFile(join(root, 'packages', 'xezar', 'index.js'), 'export {};\n');
+
+  await mkdir(join(root, 'packages', 'web'), { recursive: true });
+  await writeFile(
+    join(root, 'packages', 'web', 'package.json'),
+    `${JSON.stringify(
+      {
+        name: '@scope/fake-web',
+        version,
+        private: true,
+        files: ['index.js'],
+        dependencies: { '@scope/fake-client': `^${version}` },
+        devDependencies: { '@scope/fake-root': `^${version}` },
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  await writeFile(join(root, 'packages', 'web', 'index.js'), 'export {};\n');
   // See runScript: empty npm configs, so no ambient login can authorise these runs.
   await writeFile(join(root, 'empty-user.npmrc'), '');
   await writeFile(join(root, 'empty-global.npmrc'), '');
@@ -118,11 +136,15 @@ test('a patch bump stamps every manifest, keeps the caret ranges, and emits the 
     const contractPkg = await readPkg(root, 'packages', 'contract');
     const clientPkg = await readPkg(root, 'packages', 'api-client');
     const xezarPkg = await readPkg(root, 'packages', 'xezar');
+    const webPkg = await readPkg(root, 'packages', 'web');
     assert.equal(contractPkg.version, '0.1.6');
     assert.equal(clientPkg.version, '0.1.6');
     assert.equal(xezarPkg.version, '0.1.6');
+    assert.equal(webPkg.version, '0.1.6');
     // Caret, not an exact pin — the stable-release contract.
     assert.deepEqual(xezarPkg.devDependencies, { '@scope/fake-client': '^0.1.6' });
+    assert.deepEqual(webPkg.dependencies, { '@scope/fake-client': '^0.1.6' });
+    assert.deepEqual(webPkg.devDependencies, { '@scope/fake-root': '^0.1.6' });
 
     // The workspace root publishes nothing and must be left exactly as it was.
     const rootPkg = await readPkg(root);
