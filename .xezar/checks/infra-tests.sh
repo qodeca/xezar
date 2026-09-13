@@ -1760,9 +1760,9 @@ printf 'QA of another PR at its head.\nverified: %s\nfindings: https://example.i
 expect_fail "a detached HEAD with a well-formed VERIFICATION record still fails readiness" \
   "branch.owned-by-run" run_in "$wt" "$PF" --readiness
 
-# THE FIX (not yet applied — this is the red half of the regression test): a verdict-only role
-# never runs `--readiness` in the first place. `code-review.yaml` and `design-review.yaml` already
-# take this shape; `qa.yaml` and its `xezar-qa` skill do not exist yet, so this is currently red.
+# THE FIX: a verdict-only role never runs `--readiness` in the first place. `code-review.yaml` and
+# `design-review.yaml` already take this shape; `qa.yaml` and its `xezar-qa` skill give independent
+# QA the same one.
 if [ -f "$REPO_ROOT/.xezar/workflows/qa.yaml" ]; then
   ok "a read-only qa workflow exists (.xezar/workflows/qa.yaml)"
   qa_body="$(cat "$REPO_ROOT/.xezar/workflows/qa.yaml")"
@@ -1779,11 +1779,11 @@ if [ -f "$REPO_ROOT/.xezar/workflows/qa.yaml" ]; then
     bad "qa.yaml's preflight step tolerates the primary checkout, like code-review/design-review" "not found"
   fi
 else
-  bad "a read-only qa workflow exists (.xezar/workflows/qa.yaml)" "not found — #356's fix is not yet applied"
+  bad "a read-only qa workflow exists (.xezar/workflows/qa.yaml)" "not found"
 fi
 [ -f "$REPO_ROOT/.xezar/skills/xezar-qa.md" ] \
   && ok "the xezar-qa skill exists" \
-  || bad "the xezar-qa skill exists" "not found — #356's fix is not yet applied"
+  || bad "the xezar-qa skill exists" "not found"
 
 # --- 7f. A fix delivered to the PR's own branch, not this task's (#402) --------------------------
 #
@@ -1795,15 +1795,18 @@ fi
 # right — `xezar-review-response` must not adopt or rename a task branch — and the workflow's
 # readiness step is checking the wrong branch for what this role delivers.
 #
-# THE FIX (not yet applied): the skill declares the branch it delivered to and what changed, in a
-# `DELIVERED` record in the task's own evidence directory (same directory §7d's VERIFICATION already
-# uses) — `branch: <name>`, `head: <sha now at that branch's tip>`, `base: <sha it was at before this
-# run>` — and readiness accepts an empty task branch when that record names a real ref whose current
-# tip is `head` and `head` carries new commits over `base`. This is the same shape #322 already
+# THE FIX: the skill declares the branch it delivered to and what changed, in a `DELIVERED` record
+# in the task's own evidence directory (same directory §7d's VERIFICATION already uses) —
+# `branch: <name>`, `head: <sha now at that branch's tip>`, `base: <sha it was at before this run>`
+# — and readiness accepts an empty task branch when that record names a real ref whose current tip
+# is `head` and `head` carries new commits over `base`. This is the same shape #322 already
 # established for VERIFICATION, extended to "delivered elsewhere" instead of "verified elsewhere",
 # so it is the smaller of the two options the issue considered — the other being to check the PR
 # branch out into the task's own worktree, which reopens `branch.owned-by-run` (see #356 above) for
-# every one of these runs instead of adding one more escape hatch next to an existing one.
+# every one of these runs instead of adding one more escape hatch next to an existing one. The
+# `gates` step that follows readiness still runs against this task's own (unchanged) tree — a no-op
+# confirmation, not a re-gate of the pushed content; that scope is a documented, leader-approved
+# tradeoff (see the PR), not something this check can express.
 printf '\n-- fix delivered to the PR'"'"'s own branch, not this task'"'"'s (#402) --\n'
 root="$(make_fixture delivered-elsewhere)"
 wt="$(add_worktree "$root" "$RUN_A")"
@@ -1816,12 +1819,46 @@ base_sha="$(git -C "$root" rev-parse HEAD)"
 git -C "$root" branch -q xez/939d7d68 "$base_sha"
 delivered_head="$(git -C "$root" -c user.email=t@t -c user.name=t commit-tree 'HEAD^{tree}' -p "$base_sha" -m "the fix, pushed to the PR's branch")"
 git -C "$root" update-ref refs/heads/xez/939d7d68 "$delivered_head"
-printf 'branch: xez/939d7d68\nhead: %s\nbase: %s\n' "$delivered_head" "$base_sha" > "$ev/DELIVERED"
 
-# The bug: today's readiness knows nothing about DELIVERED, so a genuinely completed, verifiable
-# fix on the PR's own branch is refused exactly like an author who forgot to do any work at all.
-expect_fail "with no recognized record, a fix delivered to another branch is still refused" \
+# The default is unchanged: no record, and an empty branch is still refused exactly like an author
+# who forgot to do any work at all — this is a guard that passes both ways, not the bug.
+expect_fail "with no record, a fix delivered to another branch is still refused" \
   "branch.has-own-commits" run_in "$wt" "$PF" --readiness
+
+# The fix: a well-formed record lets the commitless task branch through, because the actual work is
+# verifiably on the named branch instead.
+printf 'branch: xez/939d7d68\nhead: %s\nbase: %s\n' "$delivered_head" "$base_sha" > "$ev/DELIVERED"
+expect_ok "a well-formed DELIVERED record passes readiness" run_in "$wt" "$PF" --readiness
+
+# A record naming a branch that does not actually carry the claimed head excuses nothing — this is
+# what stops a fabricated pair of shas from being accepted as proof.
+printf 'branch: xez/no-such-branch\nhead: %s\nbase: %s\n' "$delivered_head" "$base_sha" > "$ev/DELIVERED"
+expect_fail "a record naming a branch that does not carry the claimed head is refused" \
+  "scope.delivery-record" run_in "$wt" "$PF" --readiness
+
+# A record whose head and base are the same commit claims no new work.
+printf 'branch: xez/939d7d68\nhead: %s\nbase: %s\n' "$base_sha" "$base_sha" > "$ev/DELIVERED"
+expect_fail "a record whose head equals its base is refused" \
+  "scope.delivery-record" run_in "$wt" "$PF" --readiness
+
+# A record whose head does not descend from its base is not a fix delivered over the reviewed head.
+unrelated_head="$(git -C "$root" -c user.email=t@t -c user.name=t commit-tree 'HEAD^{tree}' -m "an unrelated commit, not a descendant of base_sha")"
+printf 'branch: xez/939d7d68\nhead: %s\nbase: %s\n' "$delivered_head" "$unrelated_head" > "$ev/DELIVERED"
+expect_fail "a record whose head does not descend from its base is refused" \
+  "scope.delivery-record" run_in "$wt" "$PF" --readiness
+
+# A record missing any of the three required lines excuses nothing.
+printf 'head: %s\nbase: %s\n' "$delivered_head" "$base_sha" > "$ev/DELIVERED"
+expect_fail "a record with no branch line is refused" \
+  "scope.delivery-record" run_in "$wt" "$PF" --readiness
+printf 'branch: xez/939d7d68\nbase: %s\n' "$base_sha" > "$ev/DELIVERED"
+expect_fail "a record with no head line is refused" \
+  "scope.delivery-record" run_in "$wt" "$PF" --readiness
+printf 'branch: xez/939d7d68\nhead: %s\n' "$delivered_head" > "$ev/DELIVERED"
+expect_fail "a record with no base line is refused" \
+  "scope.delivery-record" run_in "$wt" "$PF" --readiness
+
+rm -f "$ev/DELIVERED"
 
 # --- 8. Manifest safety ------------------------------------------------------------------------------
 printf '\n-- manifest --\n'

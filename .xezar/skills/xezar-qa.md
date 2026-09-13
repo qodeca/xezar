@@ -1,15 +1,21 @@
 ---
-name: xezar-review-response
-description: Resolve review findings
+name: xezar-qa
+description: Independent, read-only QA of a PR or a reviewed head
 ---
 
-# Resolve review findings
+# Independent, read-only QA of a PR or a reviewed head
 
-Use the original owning task/PR when available. For each finding fix and verify, dispute with evidence, or record a scoped deferral that does not waive a blocker/AC. Recheck fresh head/base and risks introduced by fixes. Do not rename/adopt a task branch or create a duplicate PR. Missing ownership requires explicit recorded migration within existing authority.
+Exercise the change this task names — check the PR's head out (or use the head you were given) and run it, not just read the diff. Verify the fix actually fixes what it claims to, and check for regressions in adjacent behavior a diff-only read would miss. Never edit the PR's branch, adopt it, or create a duplicate PR: a finding that needs a code change goes back to the author, disputed with evidence or accepted as a scoped, recorded deferral — never fixed here.
 
-Inputs: immutable findings and original candidate/ownership. Output: finding-by-finding fixed, disputed or deferred evidence with new head/base and revalidation scope. Late changes return through author/gates; never silently dismiss an unmet AC.
+Inputs: the PR or head to QA, and what it claims to fix. Output: a single `## QA` PR comment — reviewed sha, verdict (PASS / FAIL), what was exercised and how, and each finding with a disposition — plus the SDLC QA-gate labels this verdict authorizes. Post the comment before anything else in this task risks not finishing; a QA verdict that exists only in this transcript did not happen (see `.xezar/docs/recovery.md` for why a review's delivery must not depend on reaching this task's own `handoff`, which this role does not even have).
 
-The fix belongs on the PR's own branch, never on this task's own `xez/<id>` (#402): pushing it there, correctly, leaves this task's own branch empty, which the standard `branch.has-own-commits` readiness check refuses by default. Before readiness runs, record the delivery in this task's own evidence directory (`task_evidence_dir`, see Shared contract below) as `DELIVERED`, three lines: `branch: <the PR branch you pushed to>`, `head: <the full 40-character sha now at its tip>`, `base: <the full 40-character sha it was at before this run>`. Readiness accepts an empty task branch when that record names a real ref whose current tip really is `head`, and `head` really carries new commits over `base` — a record naming an unrelated pair of shas is refused exactly like no record at all. The `gates` step that follows still runs against this task's own (unchanged) tree; that is a no-op confirmation, not a re-gate of the pushed content, and the handoff comment/PR body says so explicitly rather than implying the pushed head was gated here.
+## What a QA pass posts
+
+Per `SDLC.md` § The QA gate, evidence is a PR comment whose first line is the heading `## QA`, carrying: the reviewed commit sha; what was exercised and how (the flow, the command, the `XEZ_DRY_RUN=1` session — whichever applies); the verdict, PASS or FAIL; and each finding with exactly one disposition — *confirmed fixed*, *filed as #n*, or *accepted, because …*. A PASS with open low-severity findings still says which are outstanding rather than staying silent.
+
+## Labels this verdict may set
+
+On PASS: apply `qa-approved` and remove `needs-qa`. On FAIL: remove `merge-queue`, post what failed as findings, and remove `qa-approved` if it was applied in error — a failed QA run is a hard block regardless of every other signal (`SDLC.md` § The QA gate). Never apply `qa`, `qa-failed`, `blocked` or `do-not-merge`: this repository does not define those labels; `.xezar/checks/lib/project-policy.mjs` refuses them as a fail-safe for a fork that does, not a vocabulary this role should reach for. This role is independent QA, not the self-QA exception (`qa-self-verified` is for the PR's own author signing off, never for this role).
 
 ## Shared contract
 

@@ -375,6 +375,16 @@ if [ "$MODE" = "readiness" ] || [ "$MODE" = "record-gate-evidence" ] || [ "$MODE
   # VERIFICATION record in its evidence directory, naming the commit it verified and where the
   # findings are. An absent record keeps the refusal — the default is still "an empty branch is not
   # work". A record that does not name a real commit refuses too. BLOCKED is checked first and wins.
+  #
+  # A second, related kind is honestly commitless for the opposite reason: a fix that correctly
+  # landed on a DIFFERENT branch (#402). `address-review-findings` runs a fresh worktree on a fresh
+  # task branch, but `xezar-review-response` pushes the fix to the PR's own branch on purpose — it
+  # must not rename or adopt a task branch. Run `ba255b58` did exactly this (commit `b38e835` on
+  # `xez/939d7d68`) and still failed here, because this predicate only knew about VERIFICATION. A
+  # DELIVERED record, same directory, same shape, one field swapped ("head/base" for "delivered",
+  # instead of "verified"): the branch it landed on, the commit now at its tip, and the commit that
+  # branch was at before this run. Accepted only when that branch really carries that head, and that
+  # head really descends from that base — a record naming an unrelated pair of shas proves nothing.
   empty_base=""
   checked_bases=0
   if [ -z "${HEAD_SHA:-}" ]; then
@@ -394,6 +404,7 @@ if [ "$MODE" = "readiness" ] || [ "$MODE" = "record-gate-evidence" ] || [ "$MODE
       fail branch.has-own-commits "no base ref resolved, so whether this branch carries any work cannot be evaluated"
     elif [ -n "$empty_base" ]; then
       verification_record="${evidence_dir:+$evidence_dir/VERIFICATION}"
+      delivery_record="${evidence_dir:+$evidence_dir/DELIVERED}"
       if [ -n "$verification_record" ] && [ -f "$verification_record" ]; then
         verified_sha="$(sed -n 's/^verified:[[:space:]]*\([0-9a-fA-F]\{40\}\)[[:space:]]*$/\1/p' "$verification_record" | head -n 1)"
         verified_findings="$(sed -n 's/^findings:[[:space:]]*\(.*[^[:space:]]\)[[:space:]]*$/\1/p' "$verification_record" | head -n 1)"
@@ -408,8 +419,39 @@ if [ "$MODE" = "readiness" ] || [ "$MODE" = "record-gate-evidence" ] || [ "$MODE
           info "verified      $verified_sha"
           info "findings      $verified_findings"
         fi
+      elif [ -n "$delivery_record" ] && [ -f "$delivery_record" ]; then
+        delivered_branch="$(sed -n 's/^branch:[[:space:]]*\(.*[^[:space:]]\)[[:space:]]*$/\1/p' "$delivery_record" | head -n 1)"
+        delivered_head="$(sed -n 's/^head:[[:space:]]*\([0-9a-fA-F]\{40\}\)[[:space:]]*$/\1/p' "$delivery_record" | head -n 1)"
+        delivered_base="$(sed -n 's/^base:[[:space:]]*\([0-9a-fA-F]\{40\}\)[[:space:]]*$/\1/p' "$delivery_record" | head -n 1)"
+        if [ -z "$delivered_branch" ]; then
+          fail scope.delivery-record "branch \"$BRANCH\" has no commits over its base, and its DELIVERED record ($delivery_record) has no \"branch: <name>\" line naming the branch the fix was pushed to."
+        elif [ -z "$delivered_head" ]; then
+          fail scope.delivery-record "branch \"$BRANCH\" has no commits over its base, and its DELIVERED record ($delivery_record) has no \"head: <full 40-character commit sha>\" line."
+        elif [ -z "$delivered_base" ]; then
+          fail scope.delivery-record "branch \"$BRANCH\" has no commits over its base, and its DELIVERED record ($delivery_record) has no \"base: <full 40-character commit sha>\" line."
+        elif ! git -C "$TASK_CWD" cat-file -e "$delivered_head^{commit}" 2>/dev/null; then
+          fail scope.delivery-record "branch \"$BRANCH\" has no commits over its base, and its DELIVERED record names head $delivered_head, which is not a commit in this repository. Fetch the revision you pushed, or correct the record."
+        elif ! git -C "$TASK_CWD" cat-file -e "$delivered_base^{commit}" 2>/dev/null; then
+          fail scope.delivery-record "branch \"$BRANCH\" has no commits over its base, and its DELIVERED record names base $delivered_base, which is not a commit in this repository."
+        else
+          delivered_ref=""
+          for ref_form in "refs/heads/$delivered_branch" "refs/remotes/origin/$delivered_branch"; do
+            git -C "$TASK_CWD" rev-parse --verify --quiet "$ref_form" >/dev/null 2>&1 || continue
+            [ "$(git -C "$TASK_CWD" rev-parse "$ref_form")" = "$delivered_head" ] && delivered_ref="$ref_form" && break
+          done
+          if [ -z "$delivered_ref" ]; then
+            fail scope.delivery-record "branch \"$BRANCH\" has no commits over its base, and its DELIVERED record names branch \"$delivered_branch\", but neither refs/heads/$delivered_branch nor refs/remotes/origin/$delivered_branch currently points at its recorded head $delivered_head. Fetch the branch, or correct the record."
+          elif [ "$delivered_head" = "$delivered_base" ]; then
+            fail scope.delivery-record "branch \"$BRANCH\" has no commits over its base, and its DELIVERED record's head and base are the same commit ($delivered_head) — no new commits were delivered."
+          elif ! git -C "$TASK_CWD" merge-base --is-ancestor "$delivered_base" "$delivered_head" 2>/dev/null; then
+            fail scope.delivery-record "branch \"$BRANCH\" has no commits over its base, and its DELIVERED record's head $delivered_head is not a descendant of its recorded base $delivered_base — that is not a fix delivered over the reviewed head."
+          else
+            info "own commits   none — delivered to $delivered_ref instead, by its DELIVERED record"
+            info "delivered     $delivered_head (over $delivered_base)"
+          fi
+        fi
       else
-        fail branch.has-own-commits "branch \"$BRANCH\" has no commits over its base — HEAD ${HEAD_SHA:0:12} is already contained in $empty_base. There is no work here to gate, seal or hand off. If the author step stopped for a decision, it must write the task's BLOCKED file. If this run only verifies a revision that already exists and was never asked to change source (QA of another branch, an acceptance re-run), record that in ${evidence_dir:-the task evidence directory}/VERIFICATION with a \"verified: <commit sha>\" line and a \"findings: <where the result is posted>\" line. A run that was asked to change source must not write that record."
+        fail branch.has-own-commits "branch \"$BRANCH\" has no commits over its base — HEAD ${HEAD_SHA:0:12} is already contained in $empty_base. There is no work here to gate, seal or hand off. If the author step stopped for a decision, it must write the task's BLOCKED file. If this run only verifies a revision that already exists and was never asked to change source (QA of another branch, an acceptance re-run), record that in ${evidence_dir:-the task evidence directory}/VERIFICATION with a \"verified: <commit sha>\" line and a \"findings: <where the result is posted>\" line. If this run's fix correctly landed on a different branch than this one (address-review-findings pushing to the PR's own branch), record that in ${evidence_dir:-the task evidence directory}/DELIVERED with a \"branch: <name>\" line, a \"head: <commit sha now at that branch's tip>\" line and a \"base: <commit sha it was at before this run>\" line. A run that was asked to change source on its own branch must not write either record."
       fi
     fi
   fi

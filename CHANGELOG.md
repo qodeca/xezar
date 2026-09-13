@@ -21,6 +21,15 @@
   document describes it. Links to the pre-rename issue tracker were replaced with plain
   `pre-rename issue n` text across the maintained documents.
 
+## 🐛 Bug Fixes
+- 🐛 **Two project-kit readiness checks no longer fail correctly-completed work.** (#356, #402)
+  Independent QA of another PR always ended `failed` — reviewing a PR's head detaches HEAD, and the
+  kit's `branch.owned-by-run` check refused that before the PR's `VERIFICATION` record was ever
+  read. A new read-only `qa` kit workflow (shaped like `code-review`) never runs that check at all.
+  Separately, `address-review-findings` ended `failed` after correctly pushing its fix to the PR's
+  own branch, because readiness only recognised commits on the run's own branch; it now recognises a
+  `DELIVERED` record naming the branch, the pushed commit and the commit it was fixing.
+
 ## 🚀 CI/CD & Infrastructure
 - 🚀 Add an opt-in pi real-model MCP harness that judges a delivered event by its exact nonce/cursor acknowledgement, with a scripted request-only negative control. (#373)
 - 🚀 **The pipeline files moved to `.xezar/pipeline/`.** (#396) `.ai/agentic.config.json` is now
