@@ -58,7 +58,7 @@ token has no utility and is read with `var(--name)`.
 | `--pending` | `#fbbf24` | same | Waiting, scheduled, in progress. Fill only: dots and spinners. Never text. | `bg-pending` |
 | `--pending-strong` | `#fbbf24` | `#b45309` | The ink version of pending. Amber-700 on light so it stays readable. | `text-pending-strong` |
 | `--info` | `#93c5fd` | `#1d4ed8` | Waiting on a person (a PR that needs review). Ink only. The only blue in the cockpit. | `text-info`, `border-info` |
-| `--conflict` | `#fb923c` | `#c2410c` | A pull request that will not merge. Ink only. Blocked, not broken. | `text-conflict`, `border-conflict` |
+| `--conflict` | `#fb923c` | `#c2410c` | A pull request that will not merge, and the cockpit's warning colour (there is no `--warning`). Ink, and a faint wash (`bg-conflict/5`, `bg-conflict/10`) behind a warning callout. Blocked, not broken. | `text-conflict`, `border-conflict`, `bg-conflict/5` |
 
 ### 1.4 Diff tints
 

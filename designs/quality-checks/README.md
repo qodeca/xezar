@@ -416,3 +416,7 @@ On the first day the badge will show about 15, from old tasks. Archive them to c
 - Spec: `docs/features/mcp-server/mcp-project-leader-requirements.md` – F-22 (line 73), A-22 (206), U-M06 (290), UX-M05 (322)
 - Tokens: `packages/web/src/styles/index.css`
 - Rules: `AGENTS.md` (HTTP API, Changing a mechanism that already works), `BACKWARD_COMPATIBILITY.md` §1 and §2
+
+## 18. Design review
+
+Pending – no review yet. The `design-review` workflow posts a `## Design review` comment on the PR; link it here with each finding's disposition.

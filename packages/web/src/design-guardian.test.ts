@@ -39,12 +39,86 @@ interface Rule {
   applies: (file: SourceFile) => boolean
   /** Files where the token is legitimate (the token definition site, primitives). */
   allowed?: (rel: string) => boolean
+  /** When set, a pattern match is a violation only if this returns true (a lookup the regex
+   *  grammar cannot express, such as "the captured name is not a declared token"). */
+  violates?: (match: RegExpMatchArray) => boolean
 }
 
 /** Shipped UI code and stylesheets — where the design tokens are the only color vocabulary. */
 const styleSources = (f: SourceFile) => !f.isTest && !f.isE2e
 /** Everything that executes in or against the app, tests and e2e drivers included. */
 const codeSources = (f: SourceFile) => f.ext !== '.css'
+/** Shipped React sources only — the files that spell Tailwind class strings. */
+const classSources = (f: SourceFile) => styleSources(f) && f.ext !== '.css'
+
+const INDEX_CSS = 'src/styles/index.css'
+
+/**
+ * The colour names Tailwind knows in this app: every `--color-<name>` declared in the
+ * `@theme inline` block of index.css. Read at load, so a token added there is known here in the
+ * same commit and a class naming anything else (`text-warning`, `bg-red-500`) is a class Tailwind
+ * emits nothing for — the element silently inherits its parent's colour (known-gaps G-24, now
+ * closed). Parsing mirrors design-system-drift.test.ts: strip comments, take the top-level block
+ * whose selector is `@theme inline`, collect its custom properties.
+ */
+function knownColorNames(): Set<string> {
+  const css = readFileSync(path.join(APP_ROOT, INDEX_CSS), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+  const names = new Set<string>()
+  let depth = 0
+  let selectorStart = 0
+  let bodyStart = 0
+  for (let i = 0; i < css.length; i += 1) {
+    const c = css[i]
+    if (c === '{') {
+      if (depth === 0) bodyStart = i + 1
+      depth += 1
+    } else if (c === '}') {
+      depth -= 1
+      if (depth === 0) {
+        const raw = css.slice(selectorStart, bodyStart - 1)
+        const selector = raw.slice(raw.lastIndexOf(';') + 1).replace(/\s+/g, ' ').trim()
+        if (selector === '@theme inline') {
+          for (const m of css.slice(bodyStart, i).matchAll(/--color-([\w-]+)\s*:/g)) names.add(m[1]!)
+        }
+        selectorStart = i + 1
+      }
+    }
+  }
+  return names
+}
+
+const KNOWN_COLORS = knownColorNames()
+
+/**
+ * Names the colour-prefixed utilities carry that are NOT colours — sizes, alignment, shape,
+ * keywords Tailwind resolves without a palette entry. Explicit and derived from what the scan
+ * finds, so a typo in a new one surfaces as a violation rather than vanishing into a wildcard.
+ * Colours never go here: an unknown colour is fixed at the site or declared in index.css.
+ */
+const NON_COLOR = new Set([
+  // text-* sizes, alignment and wrapping
+  'xs', 'sm', 'base', 'lg', 'xl',
+  'left', 'center', 'right', 'justify', 'start', 'end',
+  'balance', 'pretty', 'wrap', 'nowrap', 'clip', 'ellipsis',
+  // keywords every colour utility accepts
+  'transparent', 'current', 'inherit',
+  // border-*/divide-*/outline-* sides (bare), widths (after a side is stripped) and styles
+  't', 'b', 'l', 'r', 'x', 'y', 's', 'e', '0', '2',
+  'dashed', 'dotted', 'solid', 'none', 'hidden', 'collapse',
+  // ring-* / outline-* geometry
+  'inset', 'offset-2', 'offset-background',
+  // bg-* gradient direction
+  'gradient-to-b',
+  // shadow-* elevations: Tailwind's `md`, and `--shadow-modal`, a shadow token in `@theme static`
+  'md', 'modal',
+])
+
+/**
+ * Names owned by another rule in this file: `black`/`white` are what `no-raw-black-white`
+ * polices, with its own primitive-scrim exemptions. Listing them here keeps that rule the single
+ * owner of the exemption rather than duplicating the allowlist.
+ */
+const OWNED_ELSEWHERE = new Set(['black', 'white'])
 
 const RULES: Rule[] = [
   {
@@ -54,7 +128,36 @@ const RULES: Rule[] = [
     // (`&#8203;`) and longer hashes, and comment stripping removes issue refs like `#402`.
     pattern: /(?<![&\w])#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3,4})(?![\w-])/g,
     applies: styleSources,
-    allowed: (rel) => rel === 'src/styles/index.css',
+    allowed: (rel) => rel === INDEX_CSS,
+  },
+  // The next two rules follow Vercel's design-guideline principle: anything a machine can check
+  // becomes lint, so a review never has to catch it by eye.
+  {
+    name: 'no-color-functions',
+    why: 'colour values are declared once in src/styles/index.css; a component spelling rgb()/hsl()/oklch()/color-mix() invents a colour the token sheet cannot theme',
+    pattern: /\b(?:rgba?|hsla?|oklch|oklab|color-mix)\(/g,
+    applies: styleSources,
+    // github-filter.ts blends a GitHub LABEL colour (data from the API, not a design token) toward
+    // `--foreground` so the chip text reads in both themes — the only site where the colour is
+    // runtime input rather than a design decision.
+    allowed: (rel) => rel === INDEX_CSS || rel === 'src/routes/github/github-filter.ts',
+  },
+  {
+    name: 'unknown-color-token',
+    why: 'a colour utility must name a --color-* token from the @theme inline block of src/styles/index.css — Tailwind emits nothing for an undeclared name and the element silently inherits its parent colour',
+    // A colour-carrying utility prefix, then the name (lazy, so an optional `/opacity` suffix
+    // and the class-string boundary end it). Arbitrary values (`text-[11px]`) and numeric
+    // sizes (`text-2xl`, `ring-2`) start with `[` or a digit and never match.
+    // The lookbehind keeps hyphenated identifiers out (`scroll-to-latest`, `slide-in-from-top-2`,
+    // `var(--accent-lime)`); the lookahead ends at a class-string boundary and never at `:`, so a
+    // CSS property spelled in a string (`border-color: `) is not a class.
+    pattern: /(?<![\w-])(?:text|bg|border|ring|fill|stroke|from|via|to|outline|divide|placeholder|caret|accent|decoration|shadow)-([a-z][a-z0-9-]*?)(?:\/\d+)?(?=[\s"'`}\])]|$)/g,
+    applies: classSources,
+    violates: (match) => {
+      // `border-l-2`, `border-t-transparent`: the side is geometry, the rest is what to check.
+      const name = match[1]!.replace(/^(?:[tblrxyse])-(?=.)/, '')
+      return !KNOWN_COLORS.has(name) && !NON_COLOR.has(name) && !OWNED_ELSEWHERE.has(name)
+    },
   },
   {
     name: 'no-amber-text',
@@ -229,6 +332,10 @@ describe('design guardian', () => {
     expect(rels.has('src/styles/index.css')).toBe(true)
     expect(rels.has('e2e/smoke.e2e.ts')).toBe(true)
     expect(sources.length).toBeGreaterThan(40)
+    // The token parse read the real `@theme inline` block, not an empty set that would flag
+    // every colour class (loud, but for the wrong reason).
+    expect(KNOWN_COLORS.has('foreground')).toBe(true)
+    expect(KNOWN_COLORS.has('conflict')).toBe(true)
   })
 
   for (const rule of RULES) {
@@ -239,6 +346,7 @@ describe('design guardian', () => {
         if (rule.allowed?.(file.rel)) continue
         file.lines.forEach((line, index) => {
           for (const match of line.matchAll(rule.pattern)) {
+            if (rule.violates && !rule.violates(match)) continue
             violations.push(`packages/web/${file.rel}:${index + 1}  ${match[0].trim()}`)
           }
         })
