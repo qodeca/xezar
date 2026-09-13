@@ -129,7 +129,8 @@ describe('the agent-config API', () => {
     expect(JSON.parse(body).userMcp).toMatchObject({ readable: false, servers: [] });
   });
 
-  it('refuses a project directory symlink escaping the repository (#363)', async () => {
+  it.each(['local', 'hosted'])('refuses a project directory symlink escaping the repository in %s mode (#363)', async (mode) => {
+    if (mode === 'hosted') process.env.XEZ_REMOTE = '1';
     const outside = mkdtempSync(join(tmpdir(), 'xez-outside-'));
     try {
       writeFileSync(join(outside, 'settings.json'), '{"key":"FAKE-PARENT-CREDENTIAL"}');

@@ -1,9 +1,9 @@
 import { execFile } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
-import { chmod, mkdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { mkdir, open, readFile, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { agentHomePaths } from '../paths.ts';
-import { checkedConfigPath, ConfigPathRefusal, readConfigBuffer } from './path-access.ts';
+import { checkedConfigPath, readConfigBuffer } from './path-access.ts';
 import { CONFIG_FILES } from './catalog.ts';
 
 /**
@@ -84,26 +84,27 @@ export async function seedAgentConfigLocalLayer(
     if (!ignored.ok) continue;
 
     const dest = join(worktreeCwd, rel);
-    let tmp: string | undefined;
+    let targetFile: Awaited<ReturnType<typeof open>> | undefined;
     try {
       const source = await checkedConfigPath(src, repoRoot);
       const target = await checkedConfigPath(dest, worktreeCwd);
       const content = await readConfigBuffer(source);
       const mode = (await stat(source)).mode & 0o777;
       await mkdir(dirname(target), { recursive: true });
-      tmp = `${target}.xez-tmp-${process.pid}-${randomUUID()}`;
-      // Preserve copyFile's source permissions and exact bytes. Publish only after
-      // the private temporary file is complete, never through a destination link.
-      await writeFile(tmp, content, { flag: 'wx', mode });
-      await chmod(tmp, mode);
-      if (await checkedConfigPath(dest, worktreeCwd) !== target) throw new ConfigPathRefusal('outside-root');
-      await rename(tmp, target);
+      // Open without truncation, refuse a swapped leaf link, and set the source
+      // permissions before writing. This preserves copyFile's bytes/mode without
+      // leaving a new temporary-file footprint in a reclaimed worktree.
+      await checkedConfigPath(dest, worktreeCwd);
+      targetFile = await open(target, constants.O_WRONLY | constants.O_CREAT | constants.O_NOFOLLOW, mode);
+      await targetFile.chmod(mode);
+      await targetFile.truncate(0);
+      await targetFile.writeFile(content);
       await ensureExcluded(absCommonGitDir, rel);
       seeded.push(rel);
     } catch {
       // best-effort: a seed failure must not fail the run
     } finally {
-      if (tmp) await unlink(tmp).catch(() => {});
+      await targetFile?.close().catch(() => {});
     }
   }
   return seeded;
