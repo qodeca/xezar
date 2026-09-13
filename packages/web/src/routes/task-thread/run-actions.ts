@@ -1,4 +1,4 @@
-import type { RunRecord, RunStatus, Runner } from '@qodeca/xezar-api-client'
+import type { RunRecord, RunStatus } from '@qodeca/xezar-api-client'
 import { cliTargetRunner } from '@/components/open-in-menu'
 import { canBeUnread, isUnread } from '@/lib/read-state'
 import { resumeCommand as getResumeCommand } from '@/lib/runner-label'

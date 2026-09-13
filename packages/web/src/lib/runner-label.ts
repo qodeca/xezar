@@ -1,6 +1,4 @@
-import type { Runner } from '@qodeca/xezar-api-client'
-
-const SAFE_SESSION_ID = /^[A-Za-z0-9._][A-Za-z0-9._-]{0,199}$/
+import { resumeCommand as sharedResumeCommand, type Runner } from '@qodeca/xezar-api-client'
 
 /**
  * The product name behind each backend id — ONE definition for the whole cockpit.
@@ -93,20 +91,8 @@ export function taskRunner(
 }
 
 /** The CLI command to resume a specific session interactively — exact text the paste target needs.
- *  Typed per backend so a new runner is a compile error rather than a silent fallback.
- *  Treats undefined runner as Claude for backward compatibility with records that predate the
- *  choice. Fails closed: no hint beats a hint that runs the wrong CLI. */
+ *  The Node-free contract helper owns both validation and the exhaustive backend mapping, so the
+ *  cockpit and service cannot drift. Undefined preserves legacy records; unsafe ids fail closed. */
 export function resumeCommand(runner: Runner | undefined, sessionId: string): string | undefined {
-  if (!SAFE_SESSION_ID.test(sessionId)) return undefined
-  const resolvedRunner = runner ?? 'claude'
-  switch (resolvedRunner) {
-    case 'codex':
-      return `codex resume ${sessionId}`
-    case 'opencode':
-      return `opencode --session ${sessionId}`
-    case 'pi':
-      return `pi --session ${sessionId}`
-    case 'claude':
-      return `claude --resume ${sessionId}`
-  }
+  return sharedResumeCommand(runner, sessionId) ?? undefined
 }
