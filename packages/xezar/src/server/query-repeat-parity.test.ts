@@ -2,6 +2,7 @@ import { mkdtempSync, mkdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { ProviderAuthService } from '../core/provider-auth.ts'
 import { RunStore } from '../runs/store.ts'
 import type { RunManager } from '../workflows/run.ts'
 import { createApp } from './server.ts'
@@ -27,6 +28,13 @@ describe('a repeated query key stays 200 (c.req.query took the first value)', ()
     app = createApp({
       repoRoot, store: RunStore.open(join(repoRoot, '.local/xezar')),
       manager: {} as RunManager, version: '0.0.0-test',
+      // Query normalization needs neither installed CLIs nor personal auth state (#362).
+      // Keep the real service and HTTP middleware; only its command boundary is a fixture.
+      providerAuth: new ProviderAuthService({
+        runCommand: async () => ({
+          stdout: '', stderr: 'fixture: provider not installed', exitCode: 1, errorCode: 'ENOENT',
+        }),
+      }),
     })
   })
   afterEach(() => rmSync(repoRoot, { recursive: true, force: true }))
