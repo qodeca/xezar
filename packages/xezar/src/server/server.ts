@@ -5541,7 +5541,7 @@ export function createApp(deps: ServerDeps) {
       }
       const read = await readConfigFile(id, c.get('project').root);
       if (read === null) return c.json({ error: 'unknown config file' }, 404);
-      if ('error' in read) return c.json({ error: read.error }, 500);
+      if ('error' in read) return c.json({ error: read.error }, read.status ?? 500);
       return c.json(read);
     })
 

@@ -1,5 +1,8 @@
 # Unreleased
 
+## 🐛 Bug Fixes
+- 🐛 Fix agent-config API tests reading inherited agent homes; isolate all four agent config directories and HOME per test (#362).
+
 ## ✨ Features
 
 - ✨ **Codex leaders can opt into project-event delivery through their existing local app-server.** (#374, part of #73)
@@ -10,6 +13,10 @@
   - A thread status the app-server sends in a shape xezar does not recognise now holds events, and keeps an open approval's wait, until a status it can read arrives. It used to read as "idle" and could start a turn through an open approval. This includes a status whose `activeFlags` list holds an entry xezar does not recognise, such as an object or an unknown word: at attach it is refused as `codex-thread-state-unknown`, and while attached it keeps the wait.
 - ✨ **Settings → MCP connection can attach a leader.** (#374) Connection status shows who owns the project, whether a leader is attached and, when events are waiting, the server's own reason with a `Fix:` line. Attach leader takes its client from that status: a Codex session that runs on Codex's shared app-server in the Codex home xezar uses, is loaded, and has called a xezar tool attaches without typing anything, OpenCode takes the address and session id of its `opencode serve`, pi works when it runs xezar's leader extension, and Claude Code is explained as reading its events with `leader_events`. A refused Codex attach names which cause it was – no tool call yet, no shared app-server, another Codex home, a session that is not loaded, or a session state xezar does not recognise – with its own fix. The Codex setup card moves its attach guidance out of the small footnote into the card body. Fixture-tested in the cockpit's unit suite; the real-client Codex leg attaches through the same route the button calls. `GET /api/v1/mcp/leader` gains an additive `owner` field.
   - The status is live while the page is open. The server pushes each change – a leader attached or stopped, an owner session that opened, announced itself or went away, a delivery that worked or failed, an app-server or thread that was lost – over the cockpit's existing WebSocket as a new `mcp-leader` topic, only while the page is on screen and only when something changed. It is also re-read when the window regains focus and after the event stream reconnects. A remote cockpit opens no WebSocket and keeps the HTTP read. Refresh is in every state, including when the first read fails and when the MCP service is not running, and Attach leader is a 44 px touch target on a phone.
+
+## 🐛 Fixes
+- 🐛 Stamp the private cockpit workspace and its internal dependency ranges during releases, so minor and major bump PRs keep npm workspaces linked. (#382)
+- 🐛 **MCP integration harnesses now use the port actually bound by xezar.** (#325)
 
 ## 💥 Breaking
 - 💥 **A Codex run xezar starts no longer loads your own Codex MCP servers, plugins or apps.**
@@ -27,6 +34,7 @@
   keep your home config from adding keys to it. A Codex CLI that cannot answer `config/read`
   now fails the run with a message instead of starting it. No setting and no environment
   variable. Migration: README § "Codex runs and MCP servers".
+- 💥 **Agent config no longer follows individual file symlinks (#363); ship in the next minor release.** Reads and writes return 409 with the existing error body; listings expose no hash and seeding skips the link. Directory links below an agent home or repository may not escape that root. Replace file links with regular config files; relocating an entire configured home remains supported.
 - 💥 **The default team skills source is now `qodeca/xezar-skills`, and the skills are named
   `xez-*`.** (#394) The previous default repository is no longer loaded, and the automatic updater no
   longer recognises it: an `npx skills` install from the old source is reported as "Installed
@@ -40,7 +48,14 @@
   the old collection (ungated) but not automatic updates. The cockpit, the `xezar serve` banner
   and `--help` name the new repository.
 
+## 🐛 Fixes
+- 🐛 **The `bug-fix` workflow now names and instructs its only writing step as the complete
+  repair stage.** (#408) Agents are told to reproduce, add the red test, apply the fix, run
+  focused tests and commit before finishing, instead of deferring the repair to a nonexistent
+  later step and then failing readiness with an empty branch.
+
 ## 📝 Specs & Documentation
+- 📝 **MCP real-model leg for A-19 passed post-release on pi.** (#373) The manual measurement uses the bare model id and verifies nonce/cursor acknowledgement. The logged revision is `7aa4a0258cd99852ff0a6878dff1c96257f49024`, stamp `2026-09-13T17-43-42.875Z`, model `deepseek-v4-flash-vision`, and the ack arrived +15.8 s after delivery in a 120 s window.
 - 📝 **`SDLC.md`, `CODE_REVIEW.md` and `CONTRIBUTING.md` name the kit roles.** (#396) The process documents
   name the `.xezar/workflows/*` workflows and `xezar-*` roles that run this repository's pipeline
   instead of the previous team skill names, and the optional `xez-*` collection only where a

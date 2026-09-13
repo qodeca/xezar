@@ -870,6 +870,13 @@ files reach task worktrees after commit; Claude's gitignored personal layer is
 seeded into each run's worktree. Editing is a local-machine capability, so a
 hosted cockpit (`XEZ_REMOTE=1`) is read-only and never serves home-file contents.
 
+**Next minor release: individual config-file symlinks are no longer supported.**
+Reads and writes refuse them with HTTP 409, and the listing marks them read-only.
+Replace a file link with a regular config file to edit it. Directory links below
+an agent home or repository must stay within that root; relocating the entire
+configured home to a dotfiles directory still works. This prevents a catalogued
+filename from exposing an uncatalogued credential file (#363).
+
 Only files whose whole contents are safe to hand back are listed. pi keeps its
 credentials (`auth.json`) and its custom-provider catalogue with the API keys in
 it (`models.json`) in the same folder as its settings, and neither is editable
