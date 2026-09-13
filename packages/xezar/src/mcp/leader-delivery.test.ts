@@ -935,8 +935,48 @@ describe('attaching Codex (#374)', () => {
 describe('Codex and Claude Code coexist in the leader status payload (#403 merged with #404)', () => {
   it('identifies a Claude Code owner by its bridge’s client name and a Codex owner by its thread, and attaches each as itself', async () => {
     // RED against: `#owner()` knowing only the Codex announcement (a Claude Code owner reads `null`),
-    // or the contract's owner enum missing `claude-code` (the status fails to parse).
-    const { delivery: made } = delivery(true);
+    // or the contract's owner enum missing `claude-code` (the status fails to parse), or the Codex
+    // attach not replacing the retained Claude Code leader (the last status still names `claude-code`).
+    const dataDir = tmp();
+    const journal = EventJournal.open({ dataDir, projectId: PROJECT, secretValues: [], warn: () => {} });
+    journals.push(journal);
+    const dialed: string[] = [];
+    const made = new LeaderDelivery({
+      projectId: PROJECT,
+      projectRoot: dataDir,
+      journal,
+      ownership: { projectId: PROJECT, sessionToken: () => 'token', state: () => 'owned' },
+      guard: undefined,
+      warn: () => {},
+      heartbeatMs: 60_000,
+      codexLeader: {
+        home: () => dataDir,
+        // A real dial's shape: one loaded, idle thread — the announced one — behind a link xezar closes.
+        connect: async (announcement) => {
+          dialed.push(announcement.threadId);
+          let closed = false;
+          return {
+            threadId: announcement.threadId,
+            state: { waiting: false },
+            link: {
+              get closed() {
+                return closed;
+              },
+              subscribe: () => () => {},
+              async request(method: string): Promise<Record<string, unknown>> {
+                if (method === 'thread/loaded/list') return { data: [announcement.threadId] };
+                if (method === 'thread/resume') return { thread: { id: announcement.threadId, status: { type: 'idle' } } };
+                return {};
+              },
+              close: () => {
+                closed = true;
+              },
+            },
+          };
+        },
+      },
+    });
+    deliveries.push(made);
     made.sessionOpened('claude', { push: async () => {}, clientName: 'claude-code', leaderPush: true });
     expect(mcpLeaderStatusSchema.parse(made.status())).toMatchObject({ owner: { client: 'claude-code' }, leader: null });
     await expect(made.act({ action: 'attach', client: 'claude-code' })).resolves.toMatchObject({ ok: true });
@@ -952,12 +992,21 @@ describe('Codex and Claude Code coexist in the leader status payload (#403 merge
     made.sessionOpened('codex', { push: async () => {}, clientName: 'codex-cli', leaderPush: false });
     expect(mcpLeaderStatusSchema.parse(made.status())).toMatchObject({ owner: { client: null } });
     made.codexAnnounced('codex', { threadId: 'thread-codex' });
-    expect(mcpLeaderStatusSchema.parse(made.status())).toMatchObject({ owner: { client: 'codex' } });
+    // The Claude Code attachment is RETAINED (a compatible Claude reconnect must keep it), so the
+    // status now says the owner is Codex, the leader Claude Code, and why nothing is delivered.
+    expect(mcpLeaderStatusSchema.parse(made.status())).toMatchObject({ owner: { client: 'codex' }, leader: { client: 'claude-code' }, blocker: { code: 'claude-code-not-owner' } });
     // A Claude Code attach against a Codex owner is refused in Claude Code's words, keeping the leader.
     await expect(made.act({ action: 'attach', client: 'claude-code' })).resolves.toMatchObject({ ok: false, error: expect.stringContaining('not a Claude Code session') });
+    expect(made.status()).toMatchObject({ leader: { client: 'claude-code' } });
+    // The way out (#404 merge review, major 1): attaching the Codex owner REPLACES the stale
+    // attachment through the ordinary action — dialled from the announced thread, nothing fabricated.
+    await expect(made.act({ action: 'attach', client: 'codex' })).resolves.toMatchObject({ ok: true, status: { leader: { client: 'codex', state: 'attached' } } });
+    expect(dialed).toEqual(['thread-codex']);
+    const codex = mcpLeaderStatusSchema.parse(made.status());
+    expect(codex).toMatchObject({ owner: { client: 'codex' }, leader: { client: 'codex', state: 'attached' }, blocker: null });
 
-    // Both statuses ride one `mcp-leader` topic frame, project by project.
-    const frame = mcpLeaderTopicSchema.parse({ projects: { alpha: claude, beta: { ...made.status(), leader: { client: 'codex', state: 'attached' } } } });
+    // Both statuses ride one `mcp-leader` topic frame, project by project — each one as the class answered it.
+    const frame = mcpLeaderTopicSchema.parse({ projects: { alpha: claude, beta: codex } });
     expect(Object.values(frame.projects).map((status) => (status.available ? status.leader?.client : null))).toEqual(['claude-code', 'codex']);
   });
 });

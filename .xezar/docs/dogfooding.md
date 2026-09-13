@@ -12,6 +12,14 @@ Installation validation is reported in installation.md. Real-task entries follow
 
 ## Real-task entries
 
+### 2026-09-14 — PR #404 merge-review round (the retained attachment after an owner change), `address-review-findings` step `address`, `xezar-review-response`, Claude Code — real-task verified
+
+- Evidence: run fbb70b02, own branch `xez/fbb70b02` on `main` = `569ab63`, merge of the PR head `c919de9` (no conflicts), then one fix commit pushed to the PR branch `xez/bf8ac01c`. `address/red-control.log`, `green-control.log`, `red-coexist.log`, `green-coexist.log`, `typecheck.log` and `coverage-mcp.log` in the primary evidence directory.
+- Observed: **a status the test wrote by hand agreed with the control; the status the class answers did not.** The previous round's coexistence test reached the real state (owner Codex, leader Claude Code, blocker `claude-code-not-owner`) and then spread a fabricated Codex leader over it for the topic frame, so no test ever asked what the control does with the real state. The reviewer's probe did, and the control hid the selector and re-posted the refused client. Lesson (recommended): when a UI derives its action from a server status, at least one test must drive the UI against the class that produces that status, and the test must not hand-write the field the UI keys on. The regression here mounts the section over `LeaderDelivery` with a two-line `GET → status()` / `POST → act()` shim.
+- Observed: **`npm run typecheck:web` alone reports three stale errors after a contract change** (the api-client's inlined contract predates the merge until the server is built); the root `npm run typecheck` runs `build:server` first and is green. Lesson (real-task verified): after merging a branch that changed `packages/contract`, run the root typecheck, not the web one.
+- Observed: the cross-package test reach (`packages/web` importing `packages/xezar/src/mcp/*.ts`) typechecks under the web tsconfig and runs under jsdom without changes; it is recorded as test-only and deliberate in the test's header.
+- Remaining limit: the design review of the changed control (selector shown in the blocked-with-stale-leader state, one new sentence) is a separate role and is still pending on this head; `needs-design` stays. Not re-run here: the real-client harness on the new head.
+
 ### 2026-09-13 — PR #404 merged with #403 (Claude Code Channels wake joined with the Codex app-server attach), `address-review-findings` step `address`, `xezar-review-response`, Claude Code — real-task verified
 
 - Evidence: run e15fd875, own branch `xez/e15fd875` on `main` = `cc39b8e`, merge commit `3a227b8` (parents `cc39b8e`, `38032d4`), pushed to the PR branch `xez/bf8ac01c`. Gate log, MCP coverage summary and the conflict table in the primary evidence directory under `address/` and `gates/`.

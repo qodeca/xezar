@@ -17,7 +17,10 @@ import { withCode } from './mcp-copy'
  * recoverable blocker with its `Fix:`. Its one action, Attach leader, POSTs the SAME route with the
  * client derived from that status: the attached leader's client when there is one, the owner's when
  * the owning session identified itself (Codex through its announced thread, Claude Code through its
- * bridge's client name — #404), and otherwise the client the person picks.
+ * bridge's client name — #404), and otherwise the client the person picks. One exception (#404
+ * merge review): a leader the server retained across an owner change — another client owns the
+ * project now, so re-attaching it is refused — brings the picker back, defaulting to the owner, and
+ * Attach leader is then the person's explicit replacement of that stale attachment.
  *
  * Generic on purpose, so every client's leg reuses it rather than adding a control of its own: a
  * client is one row in `LEADER_CLIENTS`, and the contract union makes the body type-check. Typed
@@ -164,7 +167,9 @@ export function McpLeaderPanel({
   staleError?: string | null
 }) {
   const state = leaderViewState(status)
-  const [picked, setPicked] = useState<LeaderClient>('codex')
+  // `null` until the person picks: the selector's default then follows the status (the owner's
+  // client when a stale attachment must be replaced), instead of a pick frozen at first render.
+  const [picked, setPicked] = useState<LeaderClient | null>(null)
   const [baseUrl, setBaseUrl] = useState('')
   const [sessionId, setSessionId] = useState('')
   const ids = useId()
@@ -180,12 +185,22 @@ export function McpLeaderPanel({
     )
   }
 
-  // The client to attach, derived from the status: the attached leader's own (to attach it again),
-  // the owner's when the owning session identified itself, and only otherwise the person's pick.
-  const derived: LeaderClient | null = status.leader?.client ?? status.owner?.client ?? null
-  const client = derived ?? picked
-  const copy = LEADER_CLIENTS[client]
   const blocker = status.blocker
+  const ownerClient: LeaderClient | null = status.owner?.client ?? null
+  const leaderClient: LeaderClient | null = status.leader?.client ?? null
+  // An attachment the server RETAINED across an owner change (#404 merge review, major 1): the
+  // leader is another client than the one that owns the project now — the server says so as a
+  // `*-not-owner` blocker, or the two identified clients simply differ — so attaching it again is
+  // refused again. The selector then comes back, defaulting to the owner, and Attach leader is the
+  // explicit replacement: the person chooses it, and the server's opt-in and ownership checks still
+  // decide whether the chosen client can be attached at all.
+  const stale = leaderClient !== null && ((blocker !== null && blocker.code.endsWith('-not-owner')) || (ownerClient !== null && ownerClient !== leaderClient))
+  // The client to attach, derived from the status: the attached leader's own (to attach it again)
+  // unless it is stale, the owner's when the owning session identified itself, and otherwise the
+  // person's pick — which, when there is something to replace, defaults to the owner.
+  const derived: LeaderClient | null = stale ? null : (leaderClient ?? ownerClient)
+  const client = derived ?? picked ?? ownerClient ?? 'codex'
+  const copy = LEADER_CLIENTS[client]
   // The server answers a refused attach with the refusal's own message and fix; when the status shows
   // that same blocker it is not said twice. Any other refusal is shown, whatever the status blocker is.
   const refusal = error !== null && !(blocker !== null && error === `${blocker.message} ${blocker.fix}`) ? error : null
@@ -244,7 +259,7 @@ export function McpLeaderPanel({
               className="inline-flex w-fit flex-wrap gap-0.5 rounded-md border border-border bg-card p-0.5"
             >
               {CHOICES.map((choice) => {
-                const checked = choice === picked
+                const checked = choice === client
                 return (
                   <button
                     key={choice}
@@ -263,6 +278,12 @@ export function McpLeaderPanel({
                 )
               })}
             </div>
+          ) : null}
+
+          {stale && leaderClient !== null ? (
+            <p data-slot="mcp-leader-replace" className="text-[13px] leading-relaxed text-muted-foreground">
+              Attaching a client here replaces the attached {LEADER_CLIENTS[leaderClient].name}. Events stay in the journal until the new leader is attached.
+            </p>
           ) : null}
 
           <p data-slot="mcp-leader-note" className="text-[13px] leading-relaxed text-muted-foreground">
