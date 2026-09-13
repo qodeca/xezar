@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>xezar design system – foundations</title>
+<link rel="stylesheet" href="../cockpit.css">
+<script src="specimen.js"></script>
+<style>
+  /* Specimen-only helpers. Nothing here is a cockpit class. */
+  .type-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .type-row:last-child { border-bottom: 0; }
+  .type-row .k { width: 150px; flex-shrink: 0; font-family: var(--mono); font-size: 11px; color: var(--soft-foreground); }
+  .space-row { display: flex; align-items: center; gap: 12px; padding: 4px 0; font-family: var(--mono); font-size: 11.5px; color: var(--muted-foreground); }
+  .space-row .k { width: 90px; flex-shrink: 0; }
+  .space-row .bar { height: 10px; background: var(--violet); border-radius: 2px; }
+  .box-row { display: flex; flex-wrap: wrap; gap: 16px; }
+  .box { display: grid; place-items: center; width: 120px; max-width: 100%; height: 72px; border: 1px solid var(--border); background: var(--card); font-family: var(--mono); font-size: 11px; color: var(--muted-foreground); text-align: center; }
+  .icon-row { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
+  .icon-row span { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 11px; color: var(--muted-foreground); }
+  .layout-bar { height: 28px; display: grid; place-items: center; border: 1px dashed var(--violet); border-radius: var(--radius-sm); font-family: var(--mono); font-size: 11px; color: var(--muted-foreground); }
+</style>
+</head>
+<body>
+<script src="icons.js"></script>
+<nav class="doc-bar" aria-label="Specimens">
+  <span class="brand">xezar design system</span>
+  <a href="index.html">Start</a>
+  <a href="foundations.html" aria-current="page">Foundations</a>
+  <a href="components.html">Components</a>
+  <a href="patterns.html">Patterns</a>
+  <span class="spacer"></span>
+  <label>Accent <select name="accent" data-appearance="accent" aria-label="Accent"><option value="lime">Lime</option><option value="violet">Violet</option></select></label>
+  <label>Density <select name="density" data-appearance="density" aria-label="Density"><option value="comfortable">Comfortable</option><option value="compact">Compact</option><option value="ultra">Ultra</option></select></label>
+  <label>Width <select name="width" data-appearance="width" aria-label="Reading width"><option value="normal">Normal</option><option value="wide">Wide</option></select></label>
+  <button type="button" class="theme-toggle" data-theme-toggle>Toggle theme</button>
+</nav>
+
+<main class="doc">
+  <h1>Foundations</h1>
+  <p class="lead">Every token from <code>packages/web/src/styles/index.css</code>, live. The value under each swatch is the computed value in the current theme, so toggle the theme and watch the 26 light overrides change. The rules are in <a class="link" href="../foundations.md">foundations.md</a>.</p>
+
+  <h2>1. Colour tokens</h2>
+  <p>Grouped as in foundations.md §1. Swatches are painted with <code>var(--token)</code>; aliases resolve to what they point at.</p>
+
+  <div class="frame-label">1.1 Neutral surfaces and ink</div>
+  <div class="swatches" data-swatches="--background --foreground --card --card-2 --sidebar --muted --muted-foreground --soft-foreground --border --input --contrast --contrast-foreground"></div>
+
+  <div class="frame-label">1.2 Accent and brand</div>
+  <div class="swatches" data-swatches="--accent-lime --primary --primary-foreground --violet --violet-foreground --ring --grad"></div>
+
+  <div class="frame-label">1.3 Status</div>
+  <div class="swatches" data-swatches="--success --pending --pending-strong --danger --danger-foreground --info --conflict"></div>
+
+  <div class="frame-label">1.4 Diff tints</div>
+  <div class="swatches" data-swatches="--diff-add-bg --diff-add-strong --diff-del-bg --diff-del-strong"></div>
+
+  <div class="frame-label">1.5 Syntax highlighting</div>
+  <div class="swatches" data-swatches="--syn-key --syn-str --syn-fn --syn-com --syn-num --syn-punc --syn-var"></div>
+
+  <div class="frame-label">1.6 shadcn aliases</div>
+  <div class="swatches" data-swatches="--popover --popover-foreground --card-foreground --accent --accent-foreground --secondary --secondary-foreground --destructive --destructive-foreground"></div>
+
+  <div class="frame-label">1.7 Fonts and reading width (non-colour tokens)</div>
+  <div class="swatches" data-swatches="--sans --mono --measure" data-plain></div>
+
+  <h2>2. Colour roles</h2>
+  <p>What each colour means. Words carry meaning first; colour reinforces.</p>
+  <div class="table-scroll">
+  <table class="decision-table">
+    <thead><tr><th>Role</th><th>Token</th><th>Sample</th></tr></thead>
+    <tbody>
+      <tr><td>Page, card, raised card, sidebar</td><td><code>--background</code>, <code>--card</code>, <code>--card-2</code>, <code>--sidebar</code></td><td><span class="pill">card on background</span></td></tr>
+      <tr><td>Primary text, secondary text, faint text</td><td><code>--foreground</code>, <code>--muted-foreground</code>, <code>--soft-foreground</code></td><td><span style="color:var(--foreground)">Primary</span> · <span style="color:var(--muted-foreground)">Secondary</span> · <span style="color:var(--soft-foreground)">Faint</span></td></tr>
+      <tr><td>The one primary action</td><td><code>--primary</code> (lime, or violet under the accent)</td><td><button class="btn lime" type="button">New task</button></td></tr>
+      <tr><td>Strong secondary action</td><td><code>--contrast</code></td><td><button class="btn contrast" type="button">Save</button></td></tr>
+      <tr><td>Unread, attention, badges, tags</td><td><code>--violet</code></td><td><span class="nav-badge" style="margin-left:0">3</span> <span class="chip tag">tag</span></td></tr>
+      <tr><td>Done, added</td><td><code>--success</code></td><td><span class="dot success"></span> Done · <span class="plus diff-stat">+12</span></td></tr>
+      <tr><td>Running, waiting</td><td><code>--pending</code> for dots, <code>--pending-strong</code> for text</td><td><span class="dot pending pulse"></span> Running · <span style="color:var(--pending-strong)">Waiting for you</span></td></tr>
+      <tr><td>Failed, removed, destructive</td><td><code>--danger</code></td><td><span class="dot danger"></span> Failed · <span class="minus diff-stat">−4</span></td></tr>
+      <tr><td>Informational</td><td><code>--info</code></td><td><span class="ref-chip info">info</span></td></tr>
+      <tr><td>Conflict</td><td><code>--conflict</code></td><td><span class="ref-chip conflict">conflict</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2>3. Typography</h2>
+  <p>Body is 14 px Inter Variable on <code>--sans</code>; code and numbers use <code>--mono</code> (JetBrains Mono Variable). The Tailwind steps the cockpit uses, plus the arbitrary sizes it reaches for.</p>
+  <div class="frame pad">
+    <div class="type-row"><span class="k">text-2xl · 24px</span><span style="font-size:24px;font-weight:600">Tasks</span></div>
+    <div class="type-row"><span class="k">text-xl · 20px</span><span style="font-size:20px;font-weight:600">Settings</span></div>
+    <div class="type-row"><span class="k">text-lg · 18px</span><span style="font-size:18px;font-weight:600">Fix the flaky test in store.test.ts</span></div>
+    <div class="type-row"><span class="k">text-base · 16px</span><span style="font-size:16px">Body on phones (inputs never zoom).</span></div>
+    <div class="type-row"><span class="k">text-sm · 14px</span><span style="font-size:14px">The default body size on desktop.</span></div>
+    <div class="type-row"><span class="k">text-[13px]</span><span style="font-size:13px">Hints under a setting, table cells, secondary rows.</span></div>
+    <div class="type-row"><span class="k">text-xs · 12px</span><span style="font-size:12px">Metadata, pills, chip labels.</span></div>
+    <div class="type-row"><span class="k">text-[11px]</span><span style="font-size:11px">Field errors and hints, eyebrows, version chips.</span></div>
+    <div class="type-row"><span class="k">text-[10px]</span><span style="font-size:10px">Diff status badges.</span></div>
+    <div class="type-row"><span class="k">font-mono</span><span class="mono">xez/1a2b3c4d · +59 −12 · 4.2k tokens · 0:42</span></div>
+    <div class="type-row"><span class="k">weights</span><span style="font-weight:400">Regular 400</span><span style="font-weight:500">Medium 500</span><span style="font-weight:600">Semibold 600</span></div>
+    <div class="type-row"><span class="k">.eyebrow</span><span class="eyebrow">Section label</span></div>
+    <div class="type-row"><span class="k">tabular-nums</span><span class="mono" style="font-variant-numeric:tabular-nums">1,024 · 2,048 · 4,096</span></div>
+  </div>
+
+  <h2>4. Spacing and density</h2>
+  <p>Tailwind's <code>--spacing</code> unit is 0.25 rem by default. Compact sets it to 0.21875 rem and ultra to 0.1875 rem, so every <code>p-*</code>, <code>gap-*</code> and <code>h-*</code> utility shrinks together. Switch density in the bar.</p>
+  <div class="frame pad">
+    <div class="space-row"><span class="k">1 · 4px</span><span class="bar" style="width:calc(var(--spacing, 0.25rem) * 1)"></span></div>
+    <div class="space-row"><span class="k">2 · 8px</span><span class="bar" style="width:calc(var(--spacing, 0.25rem) * 2)"></span></div>
+    <div class="space-row"><span class="k">3 · 12px</span><span class="bar" style="width:calc(var(--spacing, 0.25rem) * 3)"></span></div>
+    <div class="space-row"><span class="k">4 · 16px</span><span class="bar" style="width:calc(var(--spacing, 0.25rem) * 4)"></span></div>
+    <div class="space-row"><span class="k">6 · 24px</span><span class="bar" style="width:calc(var(--spacing, 0.25rem) * 6)"></span></div>
+    <div class="space-row"><span class="k">8 · 32px</span><span class="bar" style="width:calc(var(--spacing, 0.25rem) * 8)"></span></div>
+    <div class="space-row"><span class="k">12 · 48px</span><span class="bar" style="width:calc(var(--spacing, 0.25rem) * 12)"></span></div>
+    <div class="space-row"><span class="k">16 · 64px</span><span class="bar" style="width:calc(var(--spacing, 0.25rem) * 16)"></span></div>
+    <div class="space-row"><span class="k">h-9 button</span><span class="density-demo"><svg class="icon sm" aria-hidden="true"><use href="#i-plus"/></svg> New task</span><span id="density-readout"></span></div>
+  </div>
+
+  <h2>5. Radius</h2>
+  <p>Four steps from <code>@theme static</code>; <code>rounded-md</code> maps to <code>--radius</code>.</p>
+  <div class="box-row">
+    <div class="box" style="border-radius:var(--radius-sm)">--radius-sm<br>8px · rounded-sm</div>
+    <div class="box" style="border-radius:var(--radius)">--radius<br>10px · rounded-md</div>
+    <div class="box" style="border-radius:var(--radius-lg)">--radius-lg<br>12px · rounded-lg</div>
+    <div class="box" style="border-radius:var(--radius-xl)">--radius-xl<br>16px · rounded-xl</div>
+    <div class="box" style="border-radius:999px;width:72px">999px<br>pill</div>
+  </div>
+
+  <h2>6. Shadow</h2>
+  <p>Four levels. Only <code>--shadow-modal</code> changes in light.</p>
+  <div class="box-row" style="padding:12px">
+    <div class="box" style="box-shadow:var(--shadow-xs);border-radius:var(--radius)">--shadow-xs<br>cards, inputs</div>
+    <div class="box" style="box-shadow:var(--shadow-sm);border-radius:var(--radius)">--shadow-sm</div>
+    <div class="box" style="box-shadow:var(--shadow-md);border-radius:var(--radius)">--shadow-md<br>menus, popovers</div>
+    <div class="box" style="box-shadow:var(--shadow-modal);border-radius:var(--radius-lg)">--shadow-modal<br>dialogs, toasts</div>
+  </div>
+
+  <h2>7. Motion</h2>
+  <p>Short and functional. Every animation below stops under <code>prefers-reduced-motion: reduce</code>.</p>
+  <div class="frame row pad">
+    <span class="spinner" role="img" aria-label="Loading"></span><span style="font-size:12px;color:var(--muted-foreground)">.spinner 0.8s</span>
+    <span class="dot pending pulse"></span><span style="font-size:12px;color:var(--muted-foreground)">.dot.pulse 2s</span>
+    <span class="skeleton" style="width:120px"></span><span style="font-size:12px;color:var(--muted-foreground)">.skeleton 2s</span>
+    <span class="shimmer" style="font-size:13px;font-weight:500">Thinking…</span><span style="font-size:12px;color:var(--muted-foreground)">.shimmer 1.8s</span>
+    <svg class="icon spin" aria-hidden="true"><use href="#i-loader"/></svg><span style="font-size:12px;color:var(--muted-foreground)">.spin 1s</span>
+  </div>
+  <div class="note"><strong>Reduced motion.</strong> The cockpit guards some animations with <code>motion-reduce:</code> and leaves others running (known gap G-08). The specimen stylesheet stops all of them; that is the rule new work follows.</div>
+
+  <h2>8. Iconography</h2>
+  <p>Lucide, stroke 2, on <code>currentColor</code>. House size is 14 px (<code>size-3.5</code>); 16 px in headers and empty states; 12 px in dense rows; 10 px inside chips.</p>
+  <div class="frame pad icon-row">
+    <span><svg class="icon" aria-hidden="true"><use href="#i-tasks"/></svg> 16 · size-4</span>
+    <span><svg class="icon sm" aria-hidden="true"><use href="#i-tasks"/></svg> 14 · size-3.5</span>
+    <span><svg class="icon xs" aria-hidden="true"><use href="#i-tasks"/></svg> 12 · size-3</span>
+    <span><svg class="icon xxs" aria-hidden="true"><use href="#i-tasks"/></svg> 10 · size-2.5</span>
+  </div>
+  <div class="frame pad icon-row" style="margin-top:10px">
+    <svg class="icon" aria-hidden="true"><use href="#i-tasks"/></svg><svg class="icon" aria-hidden="true"><use href="#i-inbox"/></svg><svg class="icon" aria-hidden="true"><use href="#i-checks"/></svg><svg class="icon" aria-hidden="true"><use href="#i-workflow"/></svg><svg class="icon" aria-hidden="true"><use href="#i-terminal"/></svg><svg class="icon" aria-hidden="true"><use href="#i-github"/></svg><svg class="icon" aria-hidden="true"><use href="#i-git"/></svg><svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg><svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg><svg class="icon" aria-hidden="true"><use href="#i-sparkles"/></svg><svg class="icon" aria-hidden="true"><use href="#i-message"/></svg><svg class="icon" aria-hidden="true"><use href="#i-alert"/></svg><svg class="icon" aria-hidden="true"><use href="#i-info"/></svg><svg class="icon" aria-hidden="true"><use href="#i-circle-check"/></svg><svg class="icon" aria-hidden="true"><use href="#i-circle-x"/></svg><svg class="icon" aria-hidden="true"><use href="#i-circle"/></svg><svg class="icon" aria-hidden="true"><use href="#i-rerun"/></svg><svg class="icon" aria-hidden="true"><use href="#i-archive"/></svg><svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg><svg class="icon" aria-hidden="true"><use href="#i-menu"/></svg><svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg><svg class="icon" aria-hidden="true"><use href="#i-chevron-down"/></svg><svg class="icon" aria-hidden="true"><use href="#i-sun"/></svg><svg class="icon" aria-hidden="true"><use href="#i-moon"/></svg><svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg><svg class="icon" aria-hidden="true"><use href="#i-pin"/></svg><svg class="icon" aria-hidden="true"><use href="#i-mic"/></svg><svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg><svg class="icon" aria-hidden="true"><use href="#i-external"/></svg><svg class="icon" aria-hidden="true"><use href="#i-paperclip"/></svg><svg class="icon" aria-hidden="true"><use href="#i-image"/></svg><svg class="icon" aria-hidden="true"><use href="#i-zap"/></svg><svg class="icon" aria-hidden="true"><use href="#i-play"/></svg><svg class="icon" aria-hidden="true"><use href="#i-pencil"/></svg>
+  </div>
+
+  <h2>9. Layout and reading width</h2>
+  <p>Content columns are <code>max-w-3xl</code> (768 px). Long text is capped at <code>--measure</code>: 820 px, or 1180 px under the wide preference. Switch width in the bar.</p>
+  <div class="frame pad col">
+    <div class="column layout-bar">.column · max-width 768px</div>
+    <div class="measure layout-bar">.measure · max-width var(--measure) = <span id="measure-readout"></span></div>
+  </div>
+
+  <h2>10. Breakpoints</h2>
+  <div class="table-scroll">
+  <table class="decision-table">
+    <thead><tr><th>Prefix</th><th>Min width</th><th>What flips</th></tr></thead>
+    <tbody>
+      <tr><td><code>sm:</code></td><td>640px</td><td>Dialog and alert-dialog footers go from stacked to a row.</td></tr>
+      <tr><td><code>md:</code></td><td>768px</td><td>The sidebar becomes a fixed column; the mobile bar and drawer disappear; task tables replace task cards; inputs drop from 16 px to 14 px text.</td></tr>
+      <tr><td><code>lg:</code>, <code>xl:</code></td><td>1024px, 1280px</td><td>Optional columns in the global task table appear.</td></tr>
+      <tr><td><code>max-md:</code></td><td>below 768px</td><td>Phone-only spacing and safe-area padding.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2>11. Hover, safe areas and the keyboard</h2>
+  <ul>
+    <li><code>no-hover:</code> is a custom variant for <code>@media (hover: none)</code>. A control that only appears on hover MUST also be visible under <code>no-hover:</code>, or a phone can never reach it.</li>
+    <li>The shell pads with <code>env(safe-area-inset-*)</code> on phones. Heights use <code>dvh</code>, never <code>100vh</code>, so the on-screen keyboard does not hide the composer.</li>
+    <li>Focus is <code>:focus-visible</code> only: a 3 px ring in <code>--ring</code> at 50 %. Press Tab on this page to see it on the bar controls.</li>
+  </ul>
+</main>
+
+<script>
+  // Fill the swatches from the computed custom properties, and refresh on theme/appearance change.
+  (function () {
+    var root = document.documentElement
+    var plainTokens = { '--sans': true, '--mono': true, '--measure': true }
+    function build() {
+      document.querySelectorAll('[data-swatches]').forEach(function (grid) {
+        grid.innerHTML = ''
+        grid.dataset.swatches.split(/\s+/).forEach(function (name) {
+          var card = document.createElement('div')
+          card.className = 'swatch'
+          var chip = document.createElement('div')
+          chip.className = 'paint'
+          if (name === '--grad') chip.style.background = 'var(--grad)'
+          else if (plainTokens[name]) { chip.style.fontFamily = name === '--mono' ? 'var(--mono)' : 'var(--sans)'; chip.style.display = 'grid'; chip.style.placeItems = 'center'; chip.style.fontSize = '13px'; chip.textContent = name === '--measure' ? 'reading width' : 'Aa Bb 0123' }
+          else chip.style.background = 'var(' + name + ')'
+          var n = document.createElement('div'); n.className = 'name'; n.textContent = name
+          var v = document.createElement('div'); v.className = 'val'
+          card.append(chip, n, v)
+          grid.appendChild(card)
+        })
+      })
+    }
+    function fill() {
+      var cs = getComputedStyle(root)
+      document.querySelectorAll('.swatch').forEach(function (card) {
+        var name = card.querySelector('.name').textContent
+        card.querySelector('.val').textContent = cs.getPropertyValue(name).trim() || '(unset)'
+      })
+      var m = document.getElementById('measure-readout'); if (m) m.textContent = cs.getPropertyValue('--measure').trim()
+      var d = document.getElementById('density-readout'); if (d) d.textContent = '--spacing ' + (cs.getPropertyValue('--spacing').trim() || '0.25rem (default)')
+    }
+    function run() { build(); fill() }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run); else run()
+    new MutationObserver(fill).observe(root, { attributes: true, attributeFilter: ['class', 'data-accent', 'data-density', 'data-width'] })
+  })()
+</script>
+</body>
+</html>

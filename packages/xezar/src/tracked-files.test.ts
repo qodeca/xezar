@@ -69,6 +69,9 @@ describe('tracked files', () => {
       /^\.ai\/qa\/(xez|cez)-home\//,
       /^\.ai\/qa\/agent-home\//,
       /^\.ai\/tmp\//,
+      // `.claude/` is Claude Code's per-machine state (locks, worktrees, checkpoints,
+      // settings.local.json). Only the committed design-system skill may live in git.
+      /^\.claude\/(?!skills\/design-system\/)/,
     ];
     const leaked = trackedFiles().filter((file) =>
       stateDirs.some((dir) => dir.test(file)) || ((file.startsWith('.xezar/') || file.startsWith('.ai/xezar/')) && ignored(file)),

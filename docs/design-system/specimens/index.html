@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>xezar design system – specimens</title>
+<link rel="stylesheet" href="../cockpit.css">
+<script src="specimen.js"></script>
+</head>
+<body>
+<script src="icons.js"></script>
+<nav class="doc-bar" aria-label="Specimens">
+  <span class="brand">xezar design system</span>
+  <a href="index.html" aria-current="page">Start</a>
+  <a href="foundations.html">Foundations</a>
+  <a href="components.html">Components</a>
+  <a href="patterns.html">Patterns</a>
+  <span class="spacer"></span>
+  <label>Accent <select name="accent" data-appearance="accent" aria-label="Accent"><option value="lime">Lime</option><option value="violet">Violet</option></select></label>
+  <label>Density <select name="density" data-appearance="density" aria-label="Density"><option value="comfortable">Comfortable</option><option value="compact">Compact</option><option value="ultra">Ultra</option></select></label>
+  <label>Width <select name="width" data-appearance="width" aria-label="Reading width"><option value="normal">Normal</option><option value="wide">Wide</option></select></label>
+  <button type="button" class="theme-toggle" data-theme-toggle>Toggle theme</button>
+</nav>
+
+<main class="doc">
+  <h1>Specimens</h1>
+  <p class="lead">Static pages that show what the cockpit looks like. They open from disk, need no build, no server and no network, and never import the app's code. Every colour comes from <code>../cockpit.css</code>, the same token sheet the drift test compares with <code>packages/web/src/styles/index.css</code>.</p>
+
+  <div class="note"><strong>How to read a specimen.</strong> The bar at the top mirrors the cockpit's appearance preferences: theme (dark is the default, <code>.light</code> flips it), accent, density and reading width. Each frame below a label shows one token, component or pattern, with every state the code has. The written rules live in the Markdown next to this folder – start at <a class="link" href="../README.md">README.md</a>.</p></div>
+
+  <h2>Pages</h2>
+  <div class="grid-2">
+    <a class="settings-card" href="foundations.html">
+      <span class="tile"><svg class="icon" aria-hidden="true"><use href="#i-sparkles"/></svg></span>
+      <span><b>Foundations</b><br><span style="color:var(--muted-foreground);font-size:13px">Every token in both themes, colour roles, type, spacing and density, radius, shadow, motion, icons, layout, breakpoints.</span></span>
+    </a>
+    <a class="settings-card" href="components.html">
+      <span class="tile"><svg class="icon" aria-hidden="true"><use href="#i-checks"/></svg></span>
+      <span><b>Components</b><br><span style="color:var(--muted-foreground);font-size:13px">The 21 shadcn primitives and the shared components, each with its variants and states.</span></span>
+    </a>
+    <a class="settings-card" href="patterns.html">
+      <span class="tile"><svg class="icon" aria-hidden="true"><use href="#i-workflow"/></svg></span>
+      <span><b>Patterns</b><br><span style="color:var(--muted-foreground);font-size:13px">The shell, sidebar, page headers, lists and tables, status, empty/loading/error, dialogs and toasts, settings, the mobile drawer, live updates.</span></span>
+    </a>
+    <a class="settings-card" href="mobile.html">
+      <span class="tile"><svg class="icon" aria-hidden="true"><use href="#i-menu"/></svg></span>
+      <span><b>Mobile shell</b><br><span style="color:var(--muted-foreground);font-size:13px">The phone layout on its own, as the patterns page frames it in a 390 px phone; the rule is no sideways scroll at 375 px.</span></span>
+    </a>
+  </div>
+
+  <h2>What the bar controls</h2>
+  <div class="table-scroll">
+  <table class="decision-table">
+    <thead><tr><th>Control</th><th>Cockpit equivalent</th><th>What changes</th></tr></thead>
+    <tbody>
+      <tr><td>Toggle theme</td><td><code>.light</code> on <code>&lt;html&gt;</code>, stored as <code>xez-theme</code></td><td>The 26 tokens that <code>.light</code> overrides. Everything else stays.</td></tr>
+      <tr><td>Accent</td><td><code>data-accent="violet"</code></td><td><code>--primary</code>, <code>--primary-foreground</code>, <code>--ring</code>.</td></tr>
+      <tr><td>Density</td><td><code>data-density="compact"</code> or <code>"ultra"</code></td><td><code>--spacing</code>, the unit behind every Tailwind size utility. The specimen shows it on the density demo in Foundations.</td></tr>
+      <tr><td>Width</td><td><code>data-width="wide"</code></td><td><code>--measure</code>, the reading width of long text. See the layout frame in Foundations.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2>Rules the specimens follow</h2>
+  <ul>
+    <li>No raw colour outside the token sheet. A specimen that needs a colour names a token.</li>
+    <li>No sideways scroll at 375 px. Wide tables sit inside <code>.table-scroll</code>.</li>
+    <li>Motion respects <code>prefers-reduced-motion</code>: spinners, pulses, skeletons and shimmer stop.</li>
+    <li>Icons come from the inline Lucide sprite in <code>icons.js</code> at the cockpit's sizes: 16, 14, 12 and 10 px.</li>
+    <li>Fonts load from <code>packages/web/src/assets/fonts/</code> by relative path. Move this folder and the fonts fall back to the system stack.</li>
+  </ul>
+</main>
+</body>
+</html>

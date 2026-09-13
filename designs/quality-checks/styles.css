@@ -1,0 +1,373 @@
+/* Quality checks – static design mockup.
+ *
+ * Feature-specific rules only. Tokens (both themes), the base layer, the specimen chrome, the app
+ * shell and every base component class come from the shared design-system stylesheet, linked
+ * BEFORE this file in every page: ../../docs/design-system/cockpit.css. Never redeclare a token or
+ * a base class here; add a feature rule instead. This file is a design reference, not shipped code.
+ *
+ * Classes below that depart from the cockpit's look are listed in
+ * docs/design-system/known-gaps.md § Mockup fidelity.
+ */
+
+/* ---------- sidebar: the Checks badge ---------- */
+
+/* NEW: the Checks badge is red – the cockpit's "a check failed" colour. White on #ef4444 is 3.8:1,
+ * higher than the shipped Inbox badge (white on #8f86e8, 3.1:1) and still below AA for small text –
+ * the same compromise the Inbox badge already makes. The number is also announced in words
+ * (sr-only), so colour is never the only carrier. The design review owns this call. */
+.nav-badge.danger {
+  background: var(--danger);
+  color: var(--danger-foreground);
+}
+
+/* ---------- Checks page ---------- */
+
+.rule-strip {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--muted-foreground);
+}
+
+.rule-strip svg {
+  margin-top: 2px;
+  color: var(--soft-foreground);
+}
+
+.rule-strip strong {
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.group-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 22px 0 8px;
+}
+
+.group-head:first-of-type {
+  margin-top: 0;
+}
+
+.group-head h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.group-head .count {
+  font-size: 12px;
+  color: var(--soft-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.group-head p {
+  margin: 0 0 0 auto;
+  font-size: 12px;
+  color: var(--soft-foreground);
+}
+
+.check-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.check-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  box-shadow: var(--shadow-xs);
+}
+
+.check-card .top {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.check-card .status-icon {
+  margin-top: 1px;
+  color: var(--danger);
+}
+
+.check-card .status-icon.running {
+  color: var(--violet);
+}
+
+.check-card .status-icon.ok {
+  color: var(--success);
+}
+
+.check-card .body {
+  min-width: 0;
+  flex: 1;
+}
+
+.check-card .name {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.check-card .cmd {
+  margin: 4px 0 0;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+  overflow-wrap: anywhere;
+}
+
+.check-card .cmd .exit {
+  color: var(--danger);
+}
+
+.check-card .task-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-top: 8px;
+  font-size: 12.5px;
+  color: var(--soft-foreground);
+}
+
+.check-card .task-line a.task {
+  min-width: 0;
+  max-width: 100%;
+  color: var(--foreground);
+  font-weight: 500;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.check-card .task-line a.task:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.check-card .actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.check-card .hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 0 26px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--card-2);
+  border: 1px solid var(--border);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+
+.check-card .hint strong {
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.check-card .foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-left: 26px;
+}
+
+.check-card.is-running {
+  border-color: color-mix(in srgb, var(--violet) 45%, var(--border));
+}
+
+.check-card.is-passed {
+  border-color: color-mix(in srgb, var(--success) 45%, var(--border));
+}
+
+.check-card.is-blocked .name,
+.check-card.is-blocked .cmd {
+  color: var(--muted-foreground);
+}
+
+/* Mockup-specific empty state, card skeleton and toast. The cockpit uses CenteredState, the Skeleton
+ * primitive and the contrast toast instead (known-gaps.md § Mockup fidelity). */
+.qc-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 56px 20px;
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.qc-empty .big {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  background: var(--muted);
+  color: var(--success);
+}
+
+.qc-empty h2 {
+  margin: 4px 0 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.qc-empty p {
+  margin: 0;
+  max-width: 420px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted-foreground);
+}
+
+.qc-skeleton {
+  height: 96px;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(90deg, var(--card) 30%, var(--card-2) 50%, var(--card) 70%);
+  background-size: 200% 100%;
+  animation: sheen 1.4s linear infinite;
+  border: 1px solid var(--border);
+}
+
+@keyframes sheen {
+  to { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qc-skeleton {
+    animation: none;
+  }
+}
+
+.qc-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--border));
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.qc-alert svg {
+  margin-top: 2px;
+  color: var(--danger);
+}
+
+.qc-toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: var(--shadow-modal);
+  font-size: 13px;
+}
+
+.qc-toast svg {
+  color: var(--success);
+}
+
+/* ---------- task page: the failed-check banner ---------- */
+
+.banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 10px 14px;
+  margin: 14px 24px 0;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--border));
+  border-radius: var(--radius-lg);
+  background: var(--card);
+}
+
+.banner .msg {
+  display: flex;
+  gap: 10px;
+  flex: 1 1 320px;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.banner .msg svg {
+  margin-top: 2px;
+  color: var(--danger);
+}
+
+.banner .msg strong {
+  display: block;
+  font-weight: 600;
+}
+
+.banner .msg span {
+  color: var(--muted-foreground);
+}
+
+.banner .actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* ---------- responsive (feature parts only; the shell is handled by cockpit.css) ---------- */
+
+@media (max-width: 860px) {
+  .check-card .top {
+    flex-wrap: wrap;
+  }
+
+  .check-card .actions {
+    width: 100%;
+    margin-left: 26px;
+  }
+
+  .check-card .actions .btn {
+    height: 40px;
+  }
+
+  .group-head {
+    flex-wrap: wrap;
+  }
+
+  .group-head p {
+    margin-left: 0;
+    width: 100%;
+  }
+}

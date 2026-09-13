@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>xezar design system – mobile shell</title>
+<link rel="stylesheet" href="../cockpit.css">
+<script src="specimen.js"></script>
+<style>
+  /* Specimen-only: force the phone layout even in a wide window. */
+  .shell { grid-template-columns: minmax(0, 1fr); min-height: 100dvh; }
+  .shell > .sidebar { display: none; }
+  .mobile-bar { display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 14px; border-bottom: 1px solid var(--border); }
+  .mobile-bar .title { font-weight: 600; font-size: 15px; }
+  .mobile-bar .nav-badge { margin-left: 0; }
+  .page-head { display: none; }
+  .page-body { padding: 12px; padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+  .drawer { position: fixed; inset: 0; display: flex; background: rgba(0, 0, 0, 0.5); }
+  .drawer[hidden] { display: none; }
+  .drawer .sheet { min-height: 100dvh; }
+  .composer-dock { position: sticky; bottom: 0; padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); background: var(--background); border-top: 1px solid var(--border); }
+</style>
+</head>
+<body>
+<script src="icons.js"></script>
+<nav class="doc-bar" aria-label="Specimens">
+  <span class="brand">xezar design system</span>
+  <a href="index.html">Start</a>
+  <a href="patterns.html">Patterns</a>
+  <span class="spacer"></span>
+  <button type="button" class="theme-toggle" data-theme-toggle>Toggle theme</button>
+  <button type="button" class="theme-toggle" id="drawer-toggle" aria-pressed="true">Toggle drawer</button>
+</nav>
+
+<div class="shell">
+  <div class="main">
+    <div class="mobile-bar"><button class="btn icon ghost" type="button" aria-label="Menu" id="menu-btn"><svg class="icon" aria-hidden="true"><use href="#i-menu"/></svg></button><span class="title">Tasks</span><span class="nav-badge">2</span><span style="margin-left:auto"><button class="btn icon ghost" type="button" aria-label="Search"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg></button></span></div>
+    <div class="page-body">
+      <div class="group-heading"><span class="dot pending pulse"></span> Running · 1</div>
+      <div class="task-card" style="margin-bottom:12px"><b style="font-size:13.5px">Fix the flaky test in store.test.ts</b><div class="meta"><span>Claude Code</span><span>claude-opus-5</span><span class="plus">+59</span><span class="minus">−12</span><span>4:12</span></div></div>
+      <div class="group-heading"><span class="dot violet"></span> Waiting for you · 1</div>
+      <div class="task-card" style="margin-bottom:12px"><b style="font-size:13.5px">Add the runner label helper</b><div class="meta"><span>Codex</span><span>gpt-5.3-codex</span><span class="plus">+18</span><span class="minus">−4</span><span>review</span></div></div>
+      <div class="group-heading"><span class="dot success"></span> Finished · 2</div>
+      <div class="task-card" style="margin-bottom:12px"><b style="font-size:13.5px;color:var(--muted-foreground)">Document the WebSocket bus</b><div class="meta"><span>pi</span><span class="plus">+140</span><span class="minus">−2</span><span>1:03:12</span></div></div>
+      <div class="task-card"><b style="font-size:13.5px;color:var(--muted-foreground)">Migrate the legacy state file</b><div class="meta"><span>OpenCode</span><span style="color:var(--danger)">failed</span><span>0:09</span></div></div>
+    </div>
+    <div class="composer-dock">
+      <div class="composer">
+        <textarea name="task" aria-label="Task" placeholder="Describe the task…" style="font-size:16px"></textarea>
+        <div class="foot"><span class="chip"><svg class="icon xxs" aria-hidden="true"><use href="#i-workflow"/></svg> quick-task</span><span class="spacer"></span><button class="send" type="button" aria-label="Send"><svg class="icon sm" aria-hidden="true"><use href="#i-arrow-up"/></svg></button></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="drawer" id="drawer">
+  <aside class="sheet" aria-label="Navigation">
+    <div class="sidebar-head"><span class="logo">x</span><span class="name">xezar</span><button class="btn icon ghost" type="button" aria-label="Close" id="close-btn" style="margin-left:auto"><svg class="icon sm" aria-hidden="true"><use href="#i-x"/></svg></button></div>
+    <div class="new-task-row"><button class="btn-new-task" type="button"><svg class="icon sm" aria-hidden="true"><use href="#i-plus"/></svg> New task</button></div>
+    <nav class="nav" aria-label="Primary">
+      <a href="#" aria-current="page"><svg class="icon sm" aria-hidden="true"><use href="#i-tasks"/></svg> Tasks <span class="nav-badge">2</span></a>
+      <a href="#"><svg class="icon sm" aria-hidden="true"><use href="#i-inbox"/></svg> Inbox <span class="nav-badge">5</span></a>
+      <a href="#"><svg class="icon sm" aria-hidden="true"><use href="#i-checks"/></svg> Checks</a>
+      <a href="#"><svg class="icon sm" aria-hidden="true"><use href="#i-workflow"/></svg> Workflows</a>
+      <a href="#"><svg class="icon sm" aria-hidden="true"><use href="#i-sparkles"/></svg> Skills <span class="nav-marker" title="Update available"></span></a>
+      <a href="#"><svg class="icon sm" aria-hidden="true"><use href="#i-github"/></svg> GitHub</a>
+      <a href="#"><svg class="icon sm" aria-hidden="true"><use href="#i-settings"/></svg> Settings</a>
+    </nav>
+    <div class="sidebar-foot"><span class="dot success"></span> Local · <span class="version-chip">v0.14.0</span></div>
+  </aside>
+  <div style="flex:1" id="drawer-scrim"></div>
+</div>
+
+<script>
+  (function () {
+    var drawer = document.getElementById('drawer')
+    var toggle = document.getElementById('drawer-toggle')
+    function set(open) { drawer.hidden = !open; toggle.setAttribute('aria-pressed', String(open)) }
+    toggle.addEventListener('click', function () { set(drawer.hidden) })
+    document.getElementById('menu-btn').addEventListener('click', function () { set(true) })
+    document.getElementById('close-btn').addEventListener('click', function () { set(false) })
+    document.getElementById('drawer-scrim').addEventListener('click', function () { set(false) })
+    set(true)
+  })()
+</script>
+</body>
+</html>

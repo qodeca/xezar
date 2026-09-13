@@ -7,6 +7,8 @@ description: UX design for a user-facing surface
 
 Design how a person actually uses a surface: the flow, what they see first, and every state. Write it as design, with reasons, not as a list of controls. Use this skill inside `plan-and-spec` (a UX design section in the spec) or `feature-implementation` (before changing a cockpit view): read this file when the task touches a user-facing surface. There is deliberately no `ux-design` workflow. UX rarely stands alone, and a separate run would hand its output to a later task that must re-read it anyway — ceremony, not value. Launch the skill on its own only for a design-only question; its output is a section or a document, never code.
 
+Before anything else, read the design system: start at `docs/design-system/README.md`, then the pages it routes you to for a design (`foundations.md`, `components.md`, `patterns.md`, `writing.md`, `new-designs.md`) and `known-gaps.md`. Name the token, component and pattern you reuse by the name the design system gives it, and put every departure from it in the design's open decisions. A mockup in `designs/<feature>/` links `docs/design-system/cockpit.css` and keeps only feature-specific rules in its own stylesheet.
+
 Answer each of these in prose:
 
 1. **Reader and job.** Who uses this surface, and what are they actually doing when they arrive — the task, not a persona. What did they just do, and what do they do next?

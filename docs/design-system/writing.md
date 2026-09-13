@@ -1,0 +1,163 @@
+# UX writing
+
+The conventions below were derived from the cockpit's real copy in `packages/web/src/routes/**` and
+`packages/web/src/components/**` on 2026-09-13. Every example is a quotation from the code, with its
+source. Where usage is split, the rule is the majority form and the minority is in
+[known-gaps.md](known-gaps.md).
+
+## 1. Case and punctuation
+
+| Rule | Evidence |
+| --- | --- |
+| Sentence case everywhere: headings, labels, buttons, menu items, tabs. Proper nouns keep their case (`GitHub`, `MCP`, `CPU`). | 58 of 60 headings; 130 of 130 button labels. "Global settings", "Agent accounts", "Defaults for new projects" (`settings/registry.tsx`, `accounts-section.tsx`). Exception: the column label "Tool Name" (`lib/task-columns.ts:62`). |
+| `xezar` is always lower case, even at the start of a sentence. | 212 occurrences, 0 of "Xezar". "xezar MCP server" (`mcp-api-section.tsx`). The app calls itself "the cockpit" in prose. |
+| No trailing period on headings, labels, buttons, tooltips, empty-state titles. Descriptions, hints, subtitles and bodies are full sentences with a period. | 20 of 20 empty titles without a period; 18 of 18 subtitles with one. |
+| The ellipsis is one character, `…`, never `...`. | 134 to 1. "Loading task…", "Search tasks…". |
+| Clauses are joined with a spaced em dash ` — `. | 334 lines. "Disconnected — reconnecting", "Copy failed — drag the button instead." (`bookmarklets-section.tsx`). Note: the repository's docs use en dashes; the UI uses em dashes. Follow the surface you are writing for. |
+| User-supplied names are wrapped in curly quotes `“ ”`; apostrophes are curly `’`. | `Remove “{label}”?` (`accounts-section.tsx`), `No tasks match “{needle}”.` (`tasks-overview.tsx`), "This xezar doesn’t serve a project by that id." |
+| No Oxford comma. | 25 to 2. "Theme, accent and density." (`settings/registry.tsx`), "Claude Code, Codex, OpenCode or pi" (`mcp-capabilities.tsx`). |
+| Contractions are avoided; write `cannot`, `does not`, `will not`. | 21 lines to 7. "This browser does not support notifications" (`notifications-section.tsx`). |
+
+## 2. Voice
+
+- Second person to the operator: "Notify when an agent needs you", "Finished tasks you archive land here.",
+  "System follows your OS preference." (`notifications-section.tsx`, `tasks-overview.tsx`, `appearance.tsx`).
+- Third person for capability text an MCP leader reads about itself: "A person can run the cockpit
+  locally on this machine.", "A person can install Claude Code, Codex, OpenCode or pi." (`mcp-capabilities.tsx`).
+- Plain, concrete, present tense. Say what happens, then why or what next.
+
+## 3. Headings and page titles
+
+One to six words, a noun phrase: "Tasks", "All tasks", "Inbox", "Skills", "Workflows", "Git", "GitHub",
+"Settings", "Global settings", "Manage skills", "Open pull requests". Settings section titles are nouns:
+"Agents", "Agent config", "Worktrees", "Bookmarklets", "Prompt templates", "MCP connection", "MCP API",
+"Appearance", "Notifications", "Resources", "Projects".
+
+The one question heading is the `/new` hero: "What should the agent work on?"
+
+## 4. Buttons and menu items
+
+- Verb first, one to three words: "Run", "Start", "Save", "Commit", "Push", "Create PR", "View PR",
+  "Open in terminal", "Add account", "Add template", "Reclaim now", "Resolve conflicts".
+- Noun phrases only for "create or open a thing": "New task", "Draft PR", "Notes", "Terminal", "All commits".
+- Pending state replaces the label with the present participle and `…`: "Starting…", "Saving…",
+  "Adding…", "Sending…", "Planning…", "Committing…", "Cloning…", "Updating…".
+- Toggles state the next state: "Hide details" / "Show details", "Hide folders" / "Browse…".
+- Dismiss buttons name the kept outcome: "Keep it", "Keep comparing", "Keep the file",
+  "Keep the existing chain" (7 sites) over a plain "Cancel" (3 sites, in non-destructive dialogs).
+- Destructive verbs are explicit: "Delete", "Remove from list", "Cancel the run", "Discard".
+- No "OK", no visible "Close" (the close button's `sr-only` text is "Close").
+- Retry: "Retry" (5 sites) over "Try again" (3 sites).
+
+## 5. Empty states
+
+Title: a fragment naming the absence. Subtitle: one or two sentences that name the next action or explain
+when the thing will appear.
+
+| Title | Subtitle | Source |
+| --- | --- | --- |
+| "No tasks yet" | "Describe a task to get started." | `tasks-overview.tsx` |
+| "Nothing archived yet" | "Finished tasks you archive land here." | `tasks-overview.tsx` |
+| "No matching tasks" | "No tasks match “fix”." | `tasks-overview.tsx` |
+| "Inbox empty" | "Agents drop follow-up suggestions here when they finish a task." | `inbox.tsx` |
+| "No commits yet" | "This task hasn't committed anything on its branch. Autosave commits and any the agent makes appear here." | `task-commits.tsx` |
+| "Working tree clean" | "No uncommitted changes in the main working tree. Edits show up here as they happen." | `repo-changes.tsx` |
+| "Page not found" | "Nothing lives at this address. The link may be mistyped, or it points at something that is gone." | `not-found.tsx` |
+| "The follow-up inbox is off" | "Agents are not asked to leave follow-ups. Set XEZ_FOLLOWUPS=1 and restart xezar to turn the inbox on." | `inbox.tsx` |
+
+Inside a list or picker: "Nothing matches." (5 sites), "Nothing to filter by", "No skills yet — drop
+Markdown files into .xezar/skills/, …".
+
+## 6. Loading
+
+"Loading {thing}…" with a "Fetching …" subtitle on a page; "{Verb}ing…" inline.
+"Loading task…" / "Fetching the run and its session transcript." (`thread-loading.tsx`);
+"Checking agent providers…"; "Checking GitHub…"; "Working…" (shimmered); "Starting the clone…".
+
+## 7. Errors and refusals
+
+- The cockpit writes the title; the server's message is shown verbatim as the body or the toast. This is
+  the repo-wide error doctrine ("400/409/500 alike: the server's own words, verbatim",
+  `agents-section.tsx:109`).
+- Load-error titles: "Could not load X" (14 sites: "Could not load skills", "Could not load the inbox",
+  "Could not load this task"). The settings pages say "X did not load" (9 sites); new copy uses
+  "Could not load X" (G-15).
+- Disabled-action reasons: "{Thing} unavailable — {why}": "Commit unavailable — no changes to commit",
+  "Push unavailable — no remote configured" (`lib/git-actions.ts`).
+- Refusals name the consequence and who can act, never the phrase "not available in hosted mode":
+  "Agent accounts are managed from the machine that owns the checkout — this cockpit runs in hosted mode."
+  (`accounts-section.tsx`); "This xezar is not running in local mode, so actions on the host machine are
+  refused." + "A person can run the cockpit locally on this machine." (`mcp-capabilities.tsx`).
+- Inline validation states the rule: "Enter a whole number from 1 to 60 minutes.",
+  "{n} characters — the limit is {max}."
+- Attachment rejections: "{name} is too large (max 5 MB)", "{name} skipped — max 4 attachments per message".
+
+## 8. Confirmations
+
+Title is a question naming the object; body states what happens; irreversible actions add
+"There is no undo."; the confirm repeats the verb; the cancel names the kept outcome.
+
+| Title | Body (excerpt) | Cancel | Confirm | Source |
+| --- | --- | --- | --- | --- |
+| "Delete this task?" | "This removes the run, its transcript, its worktree and its branch. There is no undo." | "Keep it" | "Delete" | `run-header.tsx` |
+| "Cancel this task?" | "The agent is stopped and the run completes as cancelled. The worktree stays." | "Keep it" | "Cancel the run" | `run-header.tsx` |
+| "Remove {name} from the workspace?" | "This only unregisters the project — nothing on disk is deleted. …" | "Keep it" | "Remove from list" | `remove-project.tsx` |
+| "Open this link?" | – | "Cancel" | "Open link" | `link-safety-dialog.tsx` |
+
+Form dialogs use a plain phrase, no question mark: "Commit changes", "Add agent account",
+"Open local folder", "Clone from GitHub", "Save as chain".
+
+## 9. Status words
+
+- Run status (`lib/attention.ts`) is lower case because the dot carries the emphasis: "needs you",
+  "needs review", "running", "monitoring", "queued", "done", "failed", "scheduled", "cancelled".
+- Every other status label is sentence case: bucket headings "Pinned", "Needs you", "Working", "Recent",
+  "Archived"; reference labels "Draft", "Waiting for review", "Changes requested", "Checks running",
+  "Checks failing", "Ready to merge", "Merged", "Closed", "Merge conflicts" with lower-case hints
+  ("CI is red on the latest commit"); connection states "Ready to connect", "Connected",
+  "Disconnected — reconnecting".
+- Product names come from `lib/runner-label.ts`: "Claude Code", "Codex", "OpenCode", "pi" (lower case).
+  Multi-backend runs read "Claude Code +1".
+
+## 10. Settings copy
+
+- Label: a sentence-case noun phrase, no colon: "Theme", "Reading width", "Max parallel tasks",
+  "Auto-resume after a usage limit", "Notify when an agent needs you".
+- Hint: full sentences ending in a period, second person, sentinels spelled out: "Compact tightens
+  spacing across the cockpit — text stays the same size.", "How many tasks run at once across every
+  project. The rest wait in the queue.", "0 = unlimited", "Leave empty for no limit."
+- Placeholder: either an example value ("~/xezar/projects", "sonnet", "owner/repo or
+  https://github.com/owner/repo") or an instruction ending in `…` ("Search tasks…",
+  "Describe a task for the agent — / for skills…"). Sentence case; six lower-case "search …" placeholders
+  are the minority (G-15).
+- "Filter" for narrowing a local list ("Filter skills…", "Filter labels…"); "Search" for a search box
+  ("Search tasks…", "Search every project…").
+
+## 11. Tooltips and accessible names
+
+- `title` on a labelled control adds information; it never repeats the label: "Unread — not opened since
+  it finished", "Drag to resize the sidebar — double-click to reset", "Attach an image, PDF, TXT or MD
+  file (or paste a screenshot)".
+- An icon-only control gets an imperative `aria-label`: "Copy the command", "Refresh from GitHub",
+  "Insert a prompt template", "Open menu", "Close menu", "Pin task" / "Unpin task".
+- Shortcut hints: `⌘K` / `Ctrl+K`, `⌘↵` / `Ctrl+↵`, joined with `+`, no spaces, inside an `aria-hidden`
+  `<kbd>`; never the word "Enter".
+
+## 12. Numbers, times and units
+
+- Ages: one unit, floored, no space, no "ago": `12s`, `4m`, `3h`, `2d` (`lib/format.ts`). Callers add
+  " ago" when there is room ("synced 4m ago").
+- Tokens: `812`, `96.2k`, `1.4M`, truncated not rounded, lower-case `k`, upper-case `M`.
+- Memory: `1.2 GB`, `612 MB`, `48 kB` with a space (`lib/tasks-table.ts`). Cost: `$0.31` under $10, `$12`
+  above; nothing when not measured. CPU: `42%`.
+- Missing values print `—`. Diff counts use the minus sign U+2212: `+128 −14`.
+- Dates go through `Intl` with the reader's locale (`{ month: 'short', day: 'numeric' }` plus time).
+- Durations in the composer read `m:ss`.
+
+## 13. Toasts and notifications
+
+- One short line. Success: "Worktree path copied", "Team skills refreshed.", "Account added — use
+  Connect to sign in", "{project} removed from the workspace — its files are untouched".
+- Errors: the server message, `tone: 'danger'`. Hand-written only when there is no server:
+  "Could not copy the command".
+- Browser notification body: "Task needs you", "Task needs review", "Task failed"; title is the run title.
