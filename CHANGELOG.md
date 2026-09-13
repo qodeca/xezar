@@ -29,6 +29,12 @@
   the old collection (ungated) but not automatic updates. The cockpit, the `xezar serve` banner
   and `--help` name the new repository.
 
+## 🐛 Fixes
+- 🐛 **The `bug-fix` workflow now names and instructs its only writing step as the complete
+  repair stage.** (#408) Agents are told to reproduce, add the red test, apply the fix, run
+  focused tests and commit before finishing, instead of deferring the repair to a nonexistent
+  later step and then failing readiness with an empty branch.
+
 ## 📝 Specs & Documentation
 - 📝 **MCP real-model leg for A-19 passed post-release on pi.** (#373) The manual measurement uses the bare model id and verifies nonce/cursor acknowledgement. The logged revision is `7aa4a0258cd99852ff0a6878dff1c96257f49024`, stamp `2026-09-13T17-43-42.875Z`, model `deepseek-v4-flash-vision`, and the ack arrived +15.8 s after delivery in a 120 s window.
 - 📝 **`SDLC.md`, `CODE_REVIEW.md` and `CONTRIBUTING.md` name the kit roles.** (#396) The process documents
