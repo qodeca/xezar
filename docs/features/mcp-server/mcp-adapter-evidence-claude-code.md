@@ -2,8 +2,8 @@
 
 **Production revalidation, 2026-09-13 (#404 review response):** Claude Code 2.1.270 under a real PTY,
 with an isolated configuration, local-scope `xezar` registration and the shipped service/bridge,
-passed the scripted-endpoint quiet-window, no-flag, approval and draft cases. The connection page
-now attaches through `POST /api/v1/mcp/leader` and renders status plus recovery remedies. Delivery
+passed the scripted-endpoint quiet-window, no-flag, approval and draft cases. The attach route is `POST /api/v1/mcp/leader`. The connection page documents recovery remedies;
+its shared Attach leader action and live status depend on #403, per owner steering. Delivery
 still means a completed stdout write; `reactedSeq` remains zero. The real-model/account clause stays
 BLOCKED. See the corrected [DoD addendum](mcp-definition-of-done-record.md#addendum-2026-09-13--374-claude-code-channels-corrected-after-404-review).
 

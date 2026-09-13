@@ -857,16 +857,16 @@ claude --dangerously-load-development-channels server:xezar
 That flag is how Claude Code lets a server that is not on Anthropic's approved list
 push messages into your session. **Claude Code shows a warning every time you launch
 with it** — choose "I am using this for local development" if you accept it. Then
-attach the leader on **Settings → MCP connection**, and a project event becomes a
-message in the running session.
+use the shared **Attach leader** action in **Settings → MCP connection** when available.
+Until that action is available, the leader can read events with `leader_events`.
 
 Channels are a Claude Code research preview, so the wake only works on a first-party
 login: they need a claude.ai or Anthropic Console API-key login, they do not work on
 Amazon Bedrock, Google Vertex or Microsoft Foundry, a Team or Enterprise admin must
 turn them on, and they are off while `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` is
 set. When any of those is not met the event is **never lost** — it stays in the
-journal and the cockpit shows a recoverable reason with a remedy. Use **Attach Claude Code leader**
-in **Settings → MCP connection**, then **Refresh status** to check delivery.
+journal and the cockpit shows a recoverable reason with a remedy. Use the shared **Attach leader** action in **Settings → MCP connection** when available.
+Until then, read events with `leader_events`.
 
 Launch with `claude --dangerously-load-development-channels server:xezar` to let xezar wake this leader. The flag lets a custom server push messages into your session because custom servers are not on the channel allowlist. Claude Code shows a confirmation screen on every launch: choose “I am using this for local development” if you accept it. The feature-flag service must be reachable and enable Channels. A Team or Enterprise admin must enable Channels. Channels need a claude.ai or Anthropic Console API-key login, do not work on Bedrock, Vertex or Foundry, and are off while CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC is set.
 

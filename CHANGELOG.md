@@ -10,7 +10,8 @@
   `claude --dangerously-load-development-channels server:xezar`. That flag is how Claude Code lets a
   server that is not on Anthropic's approved list push messages into your session, and **Claude Code
   shows a warning on every launch** with it — choose "I am using this for local development" if you
-  accept it. Then attach the leader on **Settings → MCP connection**. Channels are a Claude Code
+  accept it. Use the shared **Attach leader** action in **Settings → MCP connection** when available;
+  until then, read events with `leader_events`. Channels are a Claude Code
   research preview: they need a claude.ai or Anthropic Console API-key login, they do not work on
   Amazon Bedrock, Google Vertex or Microsoft Foundry, a Team or Enterprise admin must turn them on,
   and they are off while `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` is set. When a condition is not

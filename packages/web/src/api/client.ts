@@ -1993,14 +1993,3 @@ export async function removeRunWorktree(id: string): Promise<RemoveWorktreeRespo
     runPath(id, '/remove-worktree'),
   )
 }
-
-/** Attach to the existing owner; the server enforces local mode and client eligibility. */
-export async function attachClaudeCodeLeader() {
-  return unwrap(await xez.api.v1.p[':projectId'].mcp.leader.$post({
-    param: { projectId: queryScope() }, json: { action: 'attach', client: 'claude-code' },
-  }), '/mcp/leader')
-}
-
-export async function getMcpLeader(opts?: ReadOptions) {
-  return unwrap(await xez.api.v1.p[':projectId'].mcp.leader.$get({ param: { projectId: queryScope() } }, init(opts)), '/mcp/leader')
-}

@@ -228,6 +228,8 @@ describe('oldest unacknowledged delivery (#404 finding 5)', () => {
     h.setNow(0);
     await h.adapter.deliver(dispatch([row(1)]), signal());
     h.setNow(29_000);
+    // Replayed rows keep their first-write age; subsequent events must not postpone them.
+    await h.adapter.deliver(dispatch([row(1)]), signal());
     await h.adapter.deliver(dispatch([row(2), row(3)]), signal());
     h.setNow(31_000);
     expect(h.adapter.status().blocker?.code).toBe('claude-code-push-unconfirmed');

@@ -258,4 +258,4 @@ Each entry maps a utility name to a theme token. Listed in foundations.md §1.7;
 | UX writing | writing.md | – | Documented with known gap (G-15, G-16) |
 | Number formatting | writing.md | – | Documented with known gap (G-18) |
 
-MCP connection event delivery uses SettingsField, Collapsible recovery guidance and Button (outline attach, ghost refresh), server-reported status and inline refusal with fix. Loading, unavailable, attached and error states share token colors and wrap at 375px; no new primitive.
+MCP connection Claude recovery guidance uses Collapsible and a ghost Button, with wrapping text and token colours. Attachment and live status await the shared Attach leader control in #403; this section adds no client-specific attach action.
