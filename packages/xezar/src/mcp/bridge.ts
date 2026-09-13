@@ -79,6 +79,8 @@ export interface BridgeOptions {
   /** Re-resolved whenever a session is opened, so registering or starting the project later just works. */
   resolveTarget(): Promise<ServiceTarget>;
   readonly requestTimeoutMs?: number;
+  /** The client process's environment. Only CODEX_HOME is forwarded as bounded attachment metadata. */
+  readonly env?: NodeJS.ProcessEnv;
 }
 
 /** Built into the bridge rather than the registry: it is how a client learns the service is down. */
@@ -195,7 +197,9 @@ export function runBridge(opts: BridgeOptions): Promise<void> {
 
   async function callTool(call: { name: string; arguments?: Record<string, unknown> }, signal: AbortSignal): Promise<Answer> {
     const health = call.name === HEALTH_TOOL.name;
-    const outcome = await session.call(health ? 'health' : 'tools/call', health ? undefined : call, signal);
+    const codex = codexMetadata((call as { _meta?: Record<string, unknown> })._meta, opts.env);
+    const request = health ? undefined : { ...call, ...(codex === undefined ? {} : { _meta: { codex } }) };
+    const outcome = await session.call(health ? 'health' : 'tools/call', request, signal);
     if (outcome.kind !== 'response') return outcome.kind === 'error' ? { error: outcome.error } : { result: outcome.result };
     const response = outcome.response;
     if (!response.ok) return { result: refused(response, opts.version) };
@@ -228,6 +232,15 @@ export function runBridge(opts: BridgeOptions): Promise<void> {
     // The client went away mid-write: there is nobody left to answer.
     opts.output.on('error', finish);
   });
+}
+
+/** Codex app-server stamps its MCP tool calls with the upstream thread id; never accept a path from it. */
+function codexMetadata(meta: Record<string, unknown> | undefined, env: NodeJS.ProcessEnv | undefined): { codexHome: string; threadId: string } | undefined {
+  const threadId = meta?.threadId;
+  const codexHome = env?.CODEX_HOME;
+  return typeof threadId === 'string' && threadId.length > 0 && threadId.length <= 200 && typeof codexHome === 'string' && codexHome.length > 0 && codexHome.length <= 1024
+    ? { codexHome, threadId }
+    : undefined;
 }
 
 // ---- the session -----------------------------------------------------------------------------

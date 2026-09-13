@@ -3,6 +3,8 @@ import type { McpJournalRow, McpLeaderActionInput, McpLeaderBlocker, McpLeaderSe
 import { projectDataDir } from '../project-data-paths.ts';
 import type { ProjectOwnership } from '../workspace/project-owner.ts';
 import { OpenCodeReactionAdapter } from './adapters/opencode.ts';
+import { connectCodexLeader, type CodexLeaderAnnouncement, type ConnectedCodexLeader } from './adapters/codex-link.ts';
+import { type CodexReactionTarget, codexReactionTarget } from './adapters/codex.ts';
 import { connectPiLeaderLink, type PiLeaderDescriptor, type PiLeaderLink, readPiLeaderDescriptor } from './adapters/pi-link.ts';
 import { type PiReactionAdapter, type PiReactionTarget, piReactionTarget } from './adapters/pi.ts';
 import type { EchoGuard } from './echo-guard.ts';
@@ -125,6 +127,13 @@ const CLIENT_WORDS: Record<
     checkShort: 'check that the pi you attached is still running with xezar’s leader extension loaded',
     reattach: 'attach it again',
   },
+  codex: {
+    name: 'Codex',
+    lazyMcp: '',
+    check: 'check that this Codex session is still available on Codex’s local app-server',
+    checkShort: 'check that this Codex session is still available on Codex’s local app-server',
+    reattach: 'retry connecting when this session is available',
+  },
 };
 
 /**
@@ -202,6 +211,7 @@ export interface LeaderDeliveryOptions {
     read?: (dataDir: string) => ReturnType<typeof readPiLeaderDescriptor>;
     connect?: (descriptor: PiLeaderDescriptor, opts: { warn?: (message: string) => void }) => PiLeaderLink;
   };
+  readonly codexLeader?: { connect?: (announcement: CodexLeaderAnnouncement, projectRoot: string) => Promise<ConnectedCodexLeader> };
 }
 
 /**
@@ -246,6 +256,7 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
   #leader: AttachedLeader | undefined;
   /** One `act` at a time: two concurrent attaches must not leave two adapters behind. */
   #acting: Promise<unknown> = Promise.resolve();
+  readonly #codexAnnouncements = new Map<string, CodexLeaderAnnouncement>();
   #closed = false;
 
   constructor(opts: LeaderDeliveryOptions) {
@@ -280,8 +291,14 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
 
   /** The session's connection closed (D-02.4): its controller ends. The journal keeps every row. */
   sessionClosed(sessionKey: string): void {
+    this.#codexAnnouncements.delete(sessionKey);
     this.#controllers.get(sessionKey)?.close();
     this.#controllers.delete(sessionKey);
+  }
+
+  /** Metadata arrives from the owner bridge, never from the HTTP attach request. */
+  codexAnnounced(sessionKey: string, announcement: CodexLeaderAnnouncement): void {
+    if (this.#opts.ownership.sessionToken(sessionKey) !== undefined) this.#codexAnnouncements.set(sessionKey, announcement);
   }
 
   // ---- the controller's side: `ReactionAdapter` ----------------------------------------------
@@ -403,6 +420,14 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
       this.#liveController()?.wake();
       return { ok: true, status: this.status() };
     }
+    if (input.client === 'codex') {
+      const found = await this.#codexTarget();
+      if (found.target.kind === 'blocked') return { ok: false, error: found.target.blocker.message };
+      this.#detach();
+      this.#leader = { client: 'codex', adapter: found.target.adapter, failingSince: null, settledThrough: 0, ...(found.dispose ? { dispose: found.dispose } : {}) };
+      this.#liveController()?.wake();
+      return { ok: true, status: this.status() };
+    }
     // Re-attaching replaces the previous target; xezar owns no process, so nothing else changes.
     this.#detach();
     // A new leader with no history: whatever happened before it was attached was not about it.
@@ -476,6 +501,21 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
       return { target };
     }
     return { target, dispose: () => link.close() };
+  }
+
+  async #codexTarget(): Promise<{ target: CodexReactionTarget; dispose?: () => void }> {
+    const base = { projectId: this.projectId, onReaction: (seq: number) => this.#recordReaction(seq), ...this.#ownOperation() };
+    const sessionKey = this.#controllers.keys().next().value as string | undefined;
+    const announcement = sessionKey === undefined ? undefined : this.#codexAnnouncements.get(sessionKey);
+    if (announcement === undefined) return { target: codexReactionTarget(base) };
+    try {
+      const connected = await (this.#opts.codexLeader?.connect ?? connectCodexLeader)(announcement, this.#opts.projectRoot);
+      const target = codexReactionTarget({ ...base, link: connected.link, threadId: connected.threadId });
+      if (target.kind === 'blocked') { connected.link.close(); return { target }; }
+      return { target, dispose: () => connected.link.close() };
+    } catch {
+      return { target: codexReactionTarget(base) };
+    }
   }
 
   #ownOperation(): { isOwnOperation?: (operationId: string) => boolean } {

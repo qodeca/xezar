@@ -163,6 +163,15 @@ export class CodexReactionAdapter implements ReactionAdapter {
     this.#settlePrompts();
   }
 
+  /** `LeaderDelivery` owns only this observer; the shared app-server link is released separately. */
+  close(): void {
+    this.dispose();
+  }
+
+  status(): { blocker?: undefined } {
+    return {};
+  }
+
   async deliver(dispatch: EventDispatch, signal: AbortSignal): Promise<void> {
     if (dispatch.projectId !== this.projectId) {
       throw new Error(`codex adapter for project ${this.projectId} refused a dispatch for another project`);
@@ -354,9 +363,9 @@ export function codexReactionTarget(
       code: 'codex-session-not-targetable',
       recoverable: true,
       message:
-        'This Codex session was not started through app-server by xezar, so xezar cannot start a turn in it. Events wait in the project journal and nothing is lost.',
+        'xezar cannot reach this running Codex session for project-event delivery. Your events are saved. Use leader_events in Codex to read them; retry connecting when this session is available on Codex’s local app-server.',
       remedy:
-        'Read events from your leader with the leader_events tool; nothing is lost while push is unavailable.',
+        'Use leader_events in Codex to read saved events, then retry connecting when this session is available on Codex’s local app-server.',
     },
   };
 }

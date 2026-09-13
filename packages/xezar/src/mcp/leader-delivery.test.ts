@@ -469,3 +469,43 @@ describe('an attached leader that does not answer at all', () => {
     expect(status.available && status.delivery).toMatchObject({ deliveredSeq: 0, ackedSeq: 0, reactedSeq: 0, latestSeq: 1 });
   });
 });
+
+describe('attaching Codex: the owner announcement is really consumed (#374)', () => {
+  it('constructs the Codex adapter only from the owning session announcement, then wakes it', async () => {
+    const dataDir = tmp();
+    const journal = EventJournal.open({ dataDir, projectId: PROJECT, secretValues: [], warn: () => {} });
+    journals.push(journal);
+    const sent: Array<{ method: string; params: Record<string, unknown> }> = [];
+    let closed = false;
+    const made = new LeaderDelivery({
+      projectId: PROJECT, projectRoot: dataDir, journal,
+      ownership: { projectId: PROJECT, sessionToken: () => 'token', state: () => 'owned' }, guard: undefined, warn: () => {}, heartbeatMs: 20,
+      codexLeader: { connect: async (announcement) => ({
+        threadId: announcement.threadId,
+        link: {
+          get closed() { return closed; },
+          subscribe: () => () => {},
+          request: async (method, params) => { sent.push({ method, params }); return {}; },
+          close: () => { closed = true; },
+        },
+      }) },
+    });
+    deliveries.push(made);
+    made.sessionOpened('owner');
+    made.codexAnnounced('owner', { codexHome: '/private/codex', threadId: 'thread-owner' });
+    await expect(made.act({ action: 'attach', client: 'codex' })).resolves.toMatchObject({ ok: true });
+    row(journal);
+    await until('the journal row to reach Codex', () => sent.some((request) => request.method === 'turn/start'));
+    expect(sent.find((request) => request.method === 'turn/start')?.params).toMatchObject({ threadId: 'thread-owner' });
+    await made.act({ action: 'stop' });
+    expect(closed).toBe(true);
+  });
+
+  it('refuses a Codex attach without owner-bound metadata', async () => {
+    const { delivery: made } = delivery(true);
+    made.sessionOpened('owner');
+    await expect(made.act({ action: 'attach', client: 'codex' })).resolves.toMatchObject({ ok: false });
+    const status = made.status();
+    expect(status.available && status.leader).toBeNull();
+  });
+});

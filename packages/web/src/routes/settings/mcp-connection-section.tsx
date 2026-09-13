@@ -107,7 +107,8 @@ args = ["-y", "@qodeca/xezar", "mcp"]`}
     ),
     notAutomatic:
       'Codex does not discover `.local/xezar/mcp-connection.json`. It also does not read a project `.codex/config.toml` at all until that project is trusted \u2014 so a user who writes the file but skips the trust step sees a silent nothing, with no error naming the cause.',
-    caveat: 'Do not use `codex mcp add` \u2014 it has no scope flag and writes a machine-scope entry that would apply in every project.',
+    caveat:
+      'Do not use `codex mcp add` \u2014 it has no scope flag and writes a machine-scope entry that would apply in every project. Attaching Codex for project-event delivery is optional: xezar discovers the running session and never asks for a socket path or port. When connected: “Codex connected. Project events can start a turn in your current session.” When unavailable: “xezar cannot reach this running Codex session for project-event delivery. Your events are saved. Use leader_events in Codex to read them; retry connecting when this session is available on Codex’s local app-server.”',
   },
   {
     name: 'OpenCode',

@@ -1,5 +1,9 @@
 # Unreleased
 
+## ✨ Features
+
+- ✨ **Codex leaders can opt into project-event delivery through their existing local app-server.** xezar validates the owner bridge's session announcement, attaches without spawning Codex, and keeps events in the journal when the running session is unavailable. (#374, #73)
+
 ## 💥 Breaking
 - 💥 **The default team skills source is now `qodeca/xezar-skills`, and the skills are named
   `xez-*`.** (#394) The previous default repository is no longer loaded, and the automatic updater no

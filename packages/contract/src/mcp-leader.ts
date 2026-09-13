@@ -36,6 +36,7 @@ const mcpLeaderAttachInputSchema = z.discriminatedUnion('client', [
     sessionId: z.string().trim().min(1).max(200),
   }),
   z.strictObject({ action: z.literal('attach'), client: z.literal('pi') }),
+  z.strictObject({ action: z.literal('attach'), client: z.literal('codex') }),
 ]);
 
 export const mcpLeaderActionInputSchema = z.union([
@@ -46,7 +47,7 @@ export type McpLeaderActionInput = z.infer<typeof mcpLeaderActionInputSchema>;
 
 /** The leader session attached to the project, if any. */
 export const mcpLeaderSessionSchema = z.object({
-  client: z.enum(['opencode', 'pi']),
+  client: z.enum(['opencode', 'pi', 'codex']),
   state: z.literal('attached'),
 });
 export type McpLeaderSession = z.infer<typeof mcpLeaderSessionSchema>;
