@@ -568,6 +568,13 @@ Installation validation is reported in installation.md. Real-task entries follow
 - Observed: the first runner-level regression fixture was itself wrong (`padEnd` does not shorten a string, so the "61-character" choice was 64); the red log showed the fixture's own assertion failing, not the bug. Re-run the red proof after fixing a fixture, and keep both logs.
 - Remaining limit: the shortened card label was not rendered in a browser; the ask card truncates nothing itself, so a 60-character label with a trailing ellipsis is what it will show.
 
+### 2026-09-13 — PR #411 round 2 (issue #369), `address-review-findings` step 1 (Address findings), `xezar-review-response`, Claude Code — real-task verified
+
+- Kit: `address-review-findings.yaml` and `xezar-review-response` as installed at task start; skill version not declared. Brief named the one Major finding and the exact regression cases.
+- Observed: **the round-1 fix folded case away before matching, and the round-1 tests never asked about case.** The label → value map was index-keyed, as round 1 required, but `answerPiDialog` lowercased both sides and took the first hit, so pi choices that differ only by case (`Allow` / `allow`, which `readPiDialog` and the ask schema accept as distinct labels) routed a click on the second to the first. Fix: exact label by index first, exact value second, case-folded match last and only when it identifies one choice; an ambiguous fold cancels. Regression proof: 2 new cases (helper + wire) RED on the reviewed head's `pi-dialog.ts`, 40 of 40 GREEN with the fix (`address/round2-*.log` in the task evidence directory).
+- Observed: the PR branch already sat on current `main`, so the reclaimed-owner migration of round 1 was a fast-forward this time: no merge commit, `worktree-git.sh commit` accepted the fix directly, and the one extra named-ref push reaches `xez/c56f5f00`.
+- Lesson (recommended): a "normalise then match" step is a second mapping on top of the index-keyed one, and needs its own collision test. Write the case-twin case next to the truncation-twin case the moment matching does any folding.
+
 ### 2026-09-13 — PR #403 (issue #374), `address-review-findings` step 1 (Address findings), `xezar-review-response`, Claude Code — real-task verified
 
 - Evidence: the task evidence directory holds the live probes against a throwaway `codex app-server --listen unix://` (codex-cli 0.154.0, `CODEX_HOME` under `/tmp`, deleted afterwards), `prove-red-round3.log` (18 named breaks, each RED, then GREEN after restore) and the real-listener runs of `mcp-real-clients.test.ts`.

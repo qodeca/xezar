@@ -35,8 +35,8 @@
   question card carrying pi's own choices (Allow once / Allow for session / Deny), and the answer goes
   back to pi on its own sub-protocol, correlated by the dialog's id; a reply that names none of them
   dismisses the dialog rather than guessing. A choice longer than the card's 60-character label is
-  shown shortened and still answered with pi's full value, and a choice with a comma in it is one
-  choice. A dialog the card cannot show (`input`, `editor`, or two choices that would read as one
+  shown shortened and still answered with pi's full value, a choice with a comma in it is one
+  choice, and two choices that differ only by case are answered as the one clicked. A dialog the card cannot show (`input`, `editor`, or two choices that would read as one
   label) is dismissed at once, and a dialog still open at session close or interrupt is dismissed before the
   process is. pi-mcp-adapter's `notify` notices (`MCP: 1 servers connected`) now appear as transcript
   notes. A pi that is never offered a xezar tool is unchanged, and a leader in your own pi window was

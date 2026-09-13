@@ -95,6 +95,35 @@ describe('pi extension dialogs (#369)', () => {
     expect(readPiDialog({ ...APPROVAL, options: ['Allow', 'Allow', 'Deny'] }).kind).toBe('unsupported');
   });
 
+  // #411 review round 2, finding 1: pi's `options: string[]` may hold choices that differ
+  // only by case, and the card shows them as distinct labels. The click must reach the
+  // choice it named, never its case-twin; a free-form reply that could mean either is
+  // refused rather than guessed.
+  it('routes a case-distinct choice to the label clicked, and cancels a reply that fits two of them', () => {
+    const frame = readPiDialog({ ...APPROVAL, options: ['Allow', 'allow', 'Deny'] });
+    if (frame.kind !== 'dialog') throw new Error('expected a dialog');
+    expect(frame.dialog.question.options.map((o) => o.label)).toEqual(['Allow', 'allow', 'Deny']);
+    // The exact label wins by index: the second card option is pi's second choice.
+    expect(answerPiDialog(frame.dialog, 'Approval: allow')).toEqual({
+      matched: 'allow',
+      response: { type: 'extension_ui_response', id: 'a3c1e8f0-1', value: 'allow' },
+    });
+    expect(answerPiDialog(frame.dialog, 'Approval: Allow')).toEqual({
+      matched: 'Allow',
+      response: { type: 'extension_ui_response', id: 'a3c1e8f0-1', value: 'Allow' },
+    });
+    // A free-form reply that folds onto two choices names neither: cancel, do not pick the first.
+    expect(answerPiDialog(frame.dialog, 'ALLOW')).toEqual({
+      matched: null,
+      response: { type: 'extension_ui_response', id: 'a3c1e8f0-1', cancelled: true },
+    });
+    // A free-form reply that folds onto exactly one choice still answers with it.
+    expect(answerPiDialog(frame.dialog, 'deny')).toEqual({
+      matched: 'Deny',
+      response: { type: 'extension_ui_response', id: 'a3c1e8f0-1', value: 'Deny' },
+    });
+  });
+
   it('dismisses the dialog rather than guessing when the reply names no option', () => {
     const frame = readPiDialog(APPROVAL);
     if (frame.kind !== 'dialog') throw new Error('expected a dialog');

@@ -121,17 +121,19 @@ function askQuestion(title: string, message: string | undefined, labels: readonl
 /**
  * The response for a user's reply. The cockpit's ask card sends `<header>: <label>`
  * (`ask-card.tsx`); the label is mapped back to pi's choice by index, so a label the card
- * had to shorten still answers with the full value. A free-form reply is matched as a
- * whole, against the label or the value. The question is single-select, so the reply is
- * one label and is never split on a comma — `Allow, once` is one choice. A reply that
- * names none of pi's options CANCELS the dialog rather than guessing: pi then hands the
- * extension `undefined`, which pi-mcp-adapter treats as a refusal (`tool-approval.ts`,
- * 2.32.1).
+ * had to shorten still answers with the full value. The exact label is matched first,
+ * case-sensitively: pi's `options` may hold choices that differ only by case (`Allow`,
+ * `allow`), and the card shows those as distinct labels, so a click must reach the choice
+ * it named and never its case-twin. A free-form reply is matched as a whole, against the
+ * label or the value, case-insensitively — but only when that identifies ONE choice; a
+ * reply that folds onto two is ambiguous and is treated as naming none. The question is
+ * single-select, so the reply is one label and is never split on a comma — `Allow, once`
+ * is one choice. A reply that names none of pi's options CANCELS the dialog rather than
+ * guessing: pi then hands the extension `undefined`, which pi-mcp-adapter treats as a
+ * refusal (`tool-approval.ts`, 2.32.1).
  */
 export function answerPiDialog(dialog: PiDialog, text: string): { response: PiDialogResponse; matched: string | null } {
-  const reply = replyText(dialog.question.header, text).toLowerCase();
-  const byLabel = dialog.labels.findIndex((label) => label.toLowerCase() === reply);
-  const index = byLabel >= 0 ? byLabel : dialog.options.findIndex((option) => option.trim().toLowerCase() === reply);
+  const index = choiceIndex(dialog, replyText(dialog.question.header, text));
   const matched = index >= 0 ? (dialog.options[index] ?? null) : null;
   if (matched === null) return { response: cancelPiDialog(dialog.id), matched };
   if (dialog.method === 'confirm') {
@@ -157,6 +159,27 @@ export function denyPiDialog(dialog: PiDialog): { response: PiDialogResponse; an
 
 export function cancelPiDialog(id: string): PiDialogResponse {
   return { type: 'extension_ui_response', id, cancelled: true };
+}
+
+/**
+ * The index of the choice a reply names, or -1. Exact label first (the card sends the
+ * label it showed, index-keyed), then exact value; then the case-folded reply, accepted
+ * only when it identifies exactly one choice across labels and values.
+ */
+function choiceIndex(dialog: PiDialog, reply: string): number {
+  const byLabel = dialog.labels.indexOf(reply);
+  if (byLabel >= 0) return byLabel;
+  const byValue = dialog.options.findIndex((option) => option.trim() === reply);
+  if (byValue >= 0) return byValue;
+  const folded = reply.toLowerCase();
+  const candidates = new Set<number>();
+  dialog.labels.forEach((label, i) => {
+    if (label.toLowerCase() === folded) candidates.add(i);
+  });
+  dialog.options.forEach((option, i) => {
+    if (option.trim().toLowerCase() === folded) candidates.add(i);
+  });
+  return candidates.size === 1 ? [...candidates][0]! : -1;
 }
 
 /** The reply's label: the text after `<header>:` on the card's line, else the whole text. */

@@ -618,6 +618,33 @@ describe('pi extension dialogs reach the cockpit and are answered on the wire (#
     await session.result;
   });
 
+  it('sends pi the case-distinct choice the card named, not its case-twin (#411 review round 2)', async () => {
+    const fake = scriptedPi();
+    spawnHook.override = () => fake.child;
+    const uiEvents: UiEvent[] = [];
+    const session = new PiRunner({ bin: 'pi', timeoutMs: 20_000 }).startSession(
+      { userPrompt: 'CALL health', cwd: process.cwd() },
+      undefined,
+      { onUiEvent: (event) => uiEvents.push(event) },
+    );
+    fake.write(
+      JSON.stringify({ type: 'extension_ui_request', id: 'dlg-4', method: 'select', title: 'MCP: xezar wants to run health', options: ['Allow', 'allow', 'Deny'] }),
+    );
+    await tick();
+    const ask = uiEvents.find((event) => event.type === 'ask.requested');
+    if (!ask || ask.type !== 'ask.requested') throw new Error('expected an ask card');
+    expect(ask.questions[0]?.options.map((option) => option.label)).toEqual(['Allow', 'allow', 'Deny']);
+
+    // Clicking the second card option must reach pi's second choice.
+    expect(session.sendMessage([{ type: 'text', text: 'Approval: allow' }])).toBe(true);
+    expect(fake.written().filter((frame) => frame.type === 'extension_ui_response')).toEqual([
+      { type: 'extension_ui_response', id: 'dlg-4', value: 'allow' },
+    ]);
+    fake.write(JSON.stringify({ type: 'agent_settled' }));
+    fake.finish(0);
+    await session.result;
+  });
+
   it('refuses at once in an autonomous session, and records the refusal', async () => {
     const fake = scriptedPi();
     spawnHook.override = () => fake.child;
