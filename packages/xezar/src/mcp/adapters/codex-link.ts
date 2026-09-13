@@ -1,53 +1,101 @@
 import { lstatSync, realpathSync, statSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join } from 'node:path';
 import WebSocket from 'ws';
 
 import type { CodexAppServerMessage } from '../../core/codex-app-server-transport.ts';
-import type { CodexAppServerLink } from './codex.ts';
+import { agentHomePaths } from '../../paths.ts';
+import { type CodexAppServerLink, codexLoadedIds, CodexRequestRefused, type CodexThreadState, codexThreadState } from './codex.ts';
 
 /** The only control socket layout measured for a shared Codex app-server. */
 export const CODEX_CONTROL_SOCKET = join('app-server-control', 'app-server-control.sock');
 const TIMEOUT_MS = 10_000;
 const MAX_FRAME_BYTES = 1_000_000;
+/** `thread/list` is paged; a project with more sessions than this reads as "not found", never as a guess. */
+const MAX_LIST_PAGES = 20;
 
+/**
+ * What the owning Codex bridge announces: the upstream thread its tool calls came from, and nothing
+ * else. Codex 0.154.0 stamps every `tools/call` with `_meta.threadId`, but spawns its MCP servers with
+ * a filtered environment (observed: `HOME, PATH, TERM, TMPDIR, __CF_USER_TEXT_ENCODING` — no
+ * `CODEX_HOME`), so the bridge cannot know which Codex home it runs under and does not claim one.
+ */
 export interface CodexLeaderAnnouncement {
-  readonly codexHome: string;
   readonly threadId: string;
 }
 
 export interface ConnectedCodexLeader {
   readonly link: CodexAppServerLink & { close(): void };
   readonly threadId: string;
+  /** What `thread/resume` said about the thread at attach, seeded into the reaction adapter. */
+  readonly state: CodexThreadState;
+}
+
+/**
+ * THE DISCOVERY RULE (#374). The candidate is fixed by the SERVICE, never by the bridge or the
+ * cockpit: the Codex home of the `xezar serve` process — its `CODEX_HOME` when set, otherwise
+ * `~/.codex`, which is Codex's own default — and inside it the one measured control socket,
+ * `app-server-control/app-server-control.sock`. That candidate is trusted only after, in order:
+ *
+ *  1. the socket is a Unix socket owned by this user, under a parent directory private to this user;
+ *  2. the server listening on it answers `initialize` with that same home (`codexHome`), canonicalised
+ *     — so a symlinked or foreign home fails closed;
+ *  3. the announced thread is the ONE thread that cwd-filtered `thread/list` (the canonical project
+ *     root) and `thread/loaded/list` both name. cwd alone is not enough — two sessions can share a
+ *     project — and a saved thread that is not loaded is never resumed into this server.
+ *
+ * A person who runs Codex under a custom home that `xezar serve` does not share gets the recoverable
+ * "cannot reach" blocker; their events stay in the journal and `leader_events` reads them.
+ */
+export function codexControlHome(env: NodeJS.ProcessEnv = process.env): string {
+  return agentHomePaths(env).codex;
 }
 
 /**
  * Connect to an already-running shared app-server. This starts no process and accepts no socket
- * path from the cockpit: the bridge-provided CODEX_HOME fixes the sole candidate.
+ * path from anyone: `codexHome` comes from the service's own environment (`codexControlHome`).
+ * Every error it throws is free of paths, so a caller may log it as it is.
  */
-export async function connectCodexLeader(announcement: CodexLeaderAnnouncement, projectRoot: string): Promise<ConnectedCodexLeader> {
-  const home = realpathSync(announcement.codexHome);
-  const expectedProject = realpathSync(projectRoot);
+export async function connectCodexLeader(announcement: CodexLeaderAnnouncement, projectRoot: string, codexHome: string): Promise<ConnectedCodexLeader> {
+  const home = local('the Codex home cannot be read', () => realpathSync(codexHome));
+  const expectedProject = local('the project folder cannot be read', () => realpathSync(projectRoot));
   const socketPath = join(home, CODEX_CONTROL_SOCKET);
   validateControlSocket(socketPath);
   const link = await CodexWsLink.connect(socketPath);
   try {
     const initialized = await link.request('initialize', { clientInfo: { name: 'xezar', version: 'local' } });
-    if (typeof initialized.codexHome !== 'string' || realpathSync(initialized.codexHome) !== home) throw new Error('the Codex app-server did not confirm its announced CODEX_HOME');
-    const listed = await link.request('thread/list', { cwd: expectedProject, modelProviders: [] });
-    const loaded = await link.request('thread/loaded/list', {});
-    const candidates = threads(listed).filter((thread) => thread.id === announcement.threadId && thread.cwd === expectedProject);
+    const answered = typeof initialized.codexHome === 'string' ? local('the Codex app-server named a home that cannot be read', () => realpathSync(initialized.codexHome as string)) : undefined;
+    if (answered !== home) throw new Error('the Codex app-server did not confirm the Codex home xezar looked in');
+    const candidates = await listProjectThreads(link, expectedProject, announcement.threadId);
     // codex-cli 0.154.0's ThreadLoadedListResponse.data is string[], unlike thread/list.
     // Keeping this separate is important: treating loaded ids as thread records silently makes
     // every valid attachment look unloaded.
-    const loadedIds = new Set(loadedIdsFrom(loaded));
+    const loadedIds = new Set(codexLoadedIds(await link.request('thread/loaded/list', {})));
     if (candidates.length !== 1 || !loadedIds.has(announcement.threadId)) throw new Error('the announced Codex thread is absent, stale, ambiguous, or not loaded for this project');
     const resumed = await link.request('thread/resume', { threadId: announcement.threadId, excludeTurns: true });
     if (threadIdFrom(resumed) !== announcement.threadId) throw new Error('the Codex app-server resumed a different thread');
-    return { link, threadId: announcement.threadId };
+    const state = await codexThreadState(link, announcement.threadId, resumed);
+    // Attaching must not hold the thread: a subscribed xezar link keeps a thread loaded after its TUI
+    // exits (measured), so the adapter subscribes again only for each hand-off (`CodexReactionAdapter`).
+    await link.request('thread/unsubscribe', { threadId: announcement.threadId });
+    return { link, threadId: announcement.threadId, state };
   } catch (error) {
     link.close();
     throw error;
   }
+}
+
+/** Every page of cwd-filtered `thread/list` until the announced thread shows up (bounded). */
+async function listProjectThreads(link: CodexWsLink, cwd: string, threadId: string): Promise<Array<{ id: string; cwd?: string }>> {
+  const matches: Array<{ id: string; cwd?: string }> = [];
+  let cursor: string | undefined;
+  for (let page = 0; page < MAX_LIST_PAGES; page += 1) {
+    const listed = await link.request('thread/list', { cwd, modelProviders: [], ...(cursor === undefined ? {} : { cursor }) });
+    const found = threads(listed).filter((thread) => thread.id === threadId && thread.cwd === cwd);
+    matches.push(...found);
+    cursor = typeof listed.nextCursor === 'string' && listed.nextCursor.length > 0 ? listed.nextCursor : undefined;
+    if (found.length > 0 || cursor === undefined) break;
+  }
+  return matches;
 }
 
 function threads(value: Record<string, unknown>): Array<{ id: string; cwd?: string }> {
@@ -61,21 +109,30 @@ function threads(value: Record<string, unknown>): Array<{ id: string; cwd?: stri
   });
 }
 
-function loadedIdsFrom(value: Record<string, unknown>): string[] {
-  const data = Array.isArray(value.data) ? value.data : [];
-  return data.filter((id): id is string => typeof id === 'string');
-}
-
 function threadIdFrom(value: Record<string, unknown>): string | undefined {
   if (typeof value.threadId === 'string') return value.threadId;
   const thread = value.thread as Record<string, unknown> | undefined;
   return typeof thread?.id === 'string' ? thread.id : undefined;
 }
 
+/** Run a filesystem step and replace an errno failure with `what (CODE)`: the reason, never the path. */
+function local<T>(what: string, step: () => T): T {
+  try {
+    return step();
+  } catch (err) {
+    throw new Error(`${what} (${errnoCode(err)})`);
+  }
+}
+
+function errnoCode(err: unknown): string {
+  const code = (err as { code?: unknown } | null)?.code;
+  return typeof code === 'string' ? code : 'error';
+}
+
 /** Local socket, current user, and a private parent: no world-writable rendezvous point. */
 export function validateControlSocket(socketPath: string): void {
-  const socket = lstatSync(socketPath);
-  const parent = statSync(dirname(socketPath));
+  const socket = local('no shared Codex app-server control socket was found in the Codex home', () => lstatSync(socketPath));
+  const parent = local('the Codex control socket folder cannot be read', () => statSync(dirname(socketPath)));
   if (!socket.isSocket()) throw new Error('the Codex control endpoint is not a Unix socket');
   if (socket.uid !== process.getuid?.()) throw new Error('the Codex control socket belongs to another user');
   if (parent.uid !== process.getuid?.() || (parent.mode & 0o077) !== 0) throw new Error('the Codex control socket parent is not private to this user');
@@ -100,10 +157,16 @@ class CodexWsLink implements CodexAppServerLink {
     return new Promise((resolve, reject) => {
       // ws+unix is ws's documented Unix-socket Upgrade transport; `socketPath` alone is ignored
       // for ordinary ws:// URLs and would silently dial localhost instead.
-      const socket = new WebSocket(`ws+unix://${socketPath}:/`, { maxPayload: MAX_FRAME_BYTES, handshakeTimeout: TIMEOUT_MS });
+      //
+      // `perMessageDeflate: false` is load-bearing. ws offers `Sec-WebSocket-Extensions:
+      // permessage-deflate` by default, and codex-cli 0.154.0's app-server hangs up on an Upgrade
+      // that carries it (measured: default → "socket hang up", disabled → open). The measured run H
+      // framing sent no extension header at all.
+      const socket = new WebSocket(`ws+unix://${socketPath}:/`, { maxPayload: MAX_FRAME_BYTES, handshakeTimeout: TIMEOUT_MS, perMessageDeflate: false });
       const timer = setTimeout(() => { socket.terminate(); reject(new Error('timed out connecting to the Codex app-server')); }, TIMEOUT_MS);
       socket.once('open', () => { clearTimeout(timer); resolve(new CodexWsLink(socket)); });
-      socket.once('error', (error) => { clearTimeout(timer); reject(error); });
+      // ws's own errors name the socket path (`connect ENOENT <path>`); only the reason travels.
+      socket.once('error', (error) => { clearTimeout(timer); reject(new Error(`the Codex app-server did not accept xezar’s connection (${errnoCode(error) === 'error' ? error.message : errnoCode(error)})`)); });
     });
   }
 
@@ -127,7 +190,8 @@ class CodexWsLink implements CodexAppServerLink {
     try { message = JSON.parse(raw.toString()) as Record<string, unknown>; } catch { return this.#shutdown(new Error('the Codex app-server sent invalid JSON')); }
     if (typeof message.id === 'number' && this.#pending.has(message.id)) {
       const pending = this.#pending.get(message.id)!; this.#pending.delete(message.id); clearTimeout(pending.timer);
-      if (message.error !== undefined) pending.reject(new Error(typeof (message.error as Record<string, unknown>).message === 'string' ? (message.error as Record<string, unknown>).message as string : 'Codex app-server refused the request'));
+      // An error ANSWER is a refusal: app-server received the request and turned it away.
+      if (message.error !== undefined) pending.reject(new CodexRequestRefused(typeof (message.error as Record<string, unknown>).message === 'string' ? (message.error as Record<string, unknown>).message as string : 'Codex app-server refused the request'));
       else pending.resolve((message.result ?? {}) as Record<string, unknown>);
       return;
     }

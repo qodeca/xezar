@@ -21,13 +21,11 @@ import type { EventDispatch, ReactionAdapter } from '../event-controller.ts';
  *    guarded by `expectedTurnId`. Executed: an event appended to the real journal went through the
  *    real controller and this adapter and the model's next request carried it, with no model request
  *    between the tool result and the event (X2). This adapter only speaks to an app-server
- *    connection it was handed — it never finds, resumes or attaches to a thread some other process
- *    has loaded, because a second live writer of the same thread is the "secretly create a second
- *    leader" the contract forbids. #309 handed it one xezar spawned; the owner then REMOVED that
- *    spawn path before release 0.14.0 (decision on #311: xezar does not start agent processes), so
- *    nothing in the product constructs this adapter today and a Codex leader gets no push — it
- *    reads its events with `leader_events`. The adapter stays for a Codex session the person runs
- *    that xezar can one day be pointed at; see #323 and #324.
+ *    connection it was handed. xezar starts no Codex process (decision on #311); since #374 the
+ *    connection is `adapters/codex-link.ts`'s link to the person's OWN shared app-server, bound to the
+ *    one thread the owning bridge announced and verified loaded there — never a thread it resumed
+ *    from disk, which would be the "secretly create a second leader" the contract forbids. It holds
+ *    that thread's subscription only while a hand-off is in flight (see `#held`).
  * 3. **Terminal text input — refused.** Nothing here can type into a terminal, and
  *    `codexTerminalDelivery()` answers with the recoverable blocker the contract requires, because
  *    none of its preconditions (project and session targeting, separation from approval prompts,
@@ -75,6 +73,64 @@ export interface CodexAppServerLink {
   readonly closed: boolean;
 }
 
+/**
+ * app-server ANSWERED the request with an error, so nothing was accepted. Every other failure — a
+ * timeout, a dropped link — leaves acceptance unknown, and is remembered as a `CodexUnresolvedHandOff`.
+ */
+export class CodexRequestRefused extends Error {}
+
+/** What `thread/resume` said about the leader's thread when xezar attached (decision record § 4). */
+export interface CodexThreadState {
+  /** An approval or user-input prompt was already open, so the first event must wait for it. */
+  readonly waiting: boolean;
+  /** The turn running at attach, when app-server reported one. */
+  readonly activeTurnId?: string;
+}
+
+/** A hand-off whose request left and whose answer never came: it may or may not have been accepted. */
+export interface CodexUnresolvedHandOff {
+  readonly clientId: string;
+  readonly seq: number;
+}
+
+/** codex-cli 0.154.0's `ThreadStatus`: `notLoaded` | `idle` | `systemError` | `active` with `activeFlags`. */
+export function codexThreadStatus(status: unknown): { readonly loaded: boolean; readonly waiting: boolean } {
+  const value = (typeof status === 'object' && status !== null ? status : {}) as { type?: unknown; activeFlags?: unknown };
+  const flags: unknown[] = Array.isArray(value.activeFlags) ? value.activeFlags : [];
+  return {
+    loaded: value.type !== 'notLoaded',
+    waiting: value.type === 'active' && flags.some((flag) => flag === 'waitingOnApproval' || flag === 'waitingOnUserInput'),
+  };
+}
+
+/** How many recent turns a reconciliation reads for an unresolved hand-off's client message id. */
+const RECONCILE_TURNS = 5;
+
+const NOT_LOADED = 'the announced Codex thread is absent, stale, ambiguous, or not loaded for this project';
+
+/** codex-cli 0.154.0's `ThreadLoadedListResponse.data` is `string[]` — thread ids, not thread records. */
+export function codexLoadedIds(value: Record<string, unknown>): string[] {
+  const data = Array.isArray(value.data) ? value.data : [];
+  return data.filter((id): id is string => typeof id === 'string');
+}
+
+/**
+ * The thread's busy and prompt state from a `thread/resume` answer (decision record § 4). An `active`
+ * thread's running turn is not in an `excludeTurns` answer, so it is read from the newest
+ * `thread/turns/list` entry. A missing status is refused rather than read as idle — observation that
+ * starts after an approval opened must not read as "no approval" — and so is `notLoaded`.
+ */
+export async function codexThreadState(link: CodexAppServerLink, threadId: string, resumed: Record<string, unknown>): Promise<CodexThreadState> {
+  const raw = (resumed.thread as { status?: unknown } | undefined)?.status;
+  if (typeof raw !== 'object' || raw === null || typeof (raw as { type?: unknown }).type !== 'string') throw new Error('the Codex app-server did not report the thread’s state');
+  const status = codexThreadStatus(raw);
+  if (!status.loaded) throw new Error(NOT_LOADED);
+  if ((raw as { type: string }).type !== 'active') return { waiting: status.waiting };
+  const page = await link.request('thread/turns/list', { threadId, limit: 1 });
+  const newest = (Array.isArray(page.data) ? page.data[0] : undefined) as { id?: unknown; status?: unknown } | undefined;
+  return typeof newest?.id === 'string' && newest.status === 'inProgress' ? { waiting: status.waiting, activeTurnId: newest.id } : { waiting: status.waiting };
+}
+
 /** A recoverable blocker: why events are not being delivered, and what would unblock them. */
 export interface CodexReactionBlocker {
   readonly code: 'codex-session-not-targetable' | 'codex-terminal-delivery-refused';
@@ -103,6 +159,10 @@ export interface CodexReactionAdapterOptions {
    * Absent: no row is ever dropped.
    */
   isOwnOperation?: (operationId: string) => boolean;
+  /** The thread's state at attach, from `thread/resume`. Absent: nothing was open and no turn ran. */
+  state?: CodexThreadState;
+  /** A previous link's hand-off with unknown acceptance, reconciled before anything is resent. */
+  unresolved?: CodexUnresolvedHandOff;
 }
 
 /** A hand-off app-server accepted, still waiting to be seen reaching the model. */
@@ -137,6 +197,29 @@ export class CodexReactionAdapter implements ReactionAdapter {
   #inFlight: Promise<void> = Promise.resolve();
   #awaiting: AwaitingReaction[] = [];
   #sequence = 0;
+  /**
+   * app-server's own `activeFlags` say a prompt is open. Seeded from `thread/resume` at attach, because
+   * a prompt that opened BEFORE this adapter subscribed sent its server request to another client, and
+   * observation starting after it must not read as "no approval" (decision record § 4).
+   */
+  #statusWaiting: boolean;
+  /** Why the leader's thread can no longer be reached on this link (unloaded or closed), if it cannot. */
+  #gone: string | undefined;
+  /** A hand-off whose acceptance is unknown. The next delivery reconciles it before sending anything. */
+  #unresolved: CodexUnresolvedHandOff | undefined;
+  /**
+   * Whether this link holds the thread's subscription (`thread/resume` subscribes). Held ONLY while a
+   * hand-off of ours is in flight or awaiting its reaction. Measured on codex-cli 0.154.0: a thread
+   * whose TUI exited was unloaded about a minute later when nothing else was subscribed, and stayed
+   * loaded indefinitely while a second link was — so a link that kept holding would keep starting
+   * model turns in a session nobody watches. Released, app-server unloads the thread, and the next
+   * delivery or heartbeat finds it gone and refuses (never resurrecting it).
+   */
+  #held = false;
+  /** Deliveries currently between their first request and their last. */
+  #busy = 0;
+  /** Hand-off requests still waiting on their answer, including one whose delivery was abandoned. */
+  #handing = 0;
 
   constructor(opts: CodexReactionAdapterOptions) {
     this.projectId = opts.projectId;
@@ -144,6 +227,9 @@ export class CodexReactionAdapter implements ReactionAdapter {
     this.#link = opts.link;
     this.#onReaction = opts.onReaction;
     this.#isOwnOperation = opts.isOwnOperation;
+    this.#statusWaiting = opts.state?.waiting ?? false;
+    this.#activeTurnId = opts.state?.activeTurnId;
+    this.#unresolved = opts.unresolved;
     this.#unsubscribe = opts.link.subscribe((message) => this.#observe(message));
   }
 
@@ -154,13 +240,20 @@ export class CodexReactionAdapter implements ReactionAdapter {
 
   /** True while app-server waits on an approval or user-input prompt for the leader's thread. */
   get promptOpen(): boolean {
-    return this.#openPrompts.size > 0;
+    return this.#openPrompts.size > 0 || this.#statusWaiting;
   }
 
-  /** Stop listening. The link itself belongs to whoever opened it. */
+  /** A hand-off whose acceptance is still unknown, for a re-attach to the same thread to reconcile. */
+  get unresolved(): CodexUnresolvedHandOff | undefined {
+    return this.#unresolved;
+  }
+
+  /** Stop listening, and let go of the thread if this adapter holds it. The link belongs to whoever opened it. */
   dispose(): void {
     this.#unsubscribe();
     this.#settlePrompts();
+    this.#awaiting = [];
+    this.#release();
   }
 
   /** `LeaderDelivery` owns only this observer; the shared app-server link is released separately. */
@@ -168,8 +261,14 @@ export class CodexReactionAdapter implements ReactionAdapter {
     this.dispose();
   }
 
-  status(): { blocker?: undefined } {
-    return {};
+  /**
+   * Codex's own recoverable reason once this link cannot deliver — the daemon went away (the link
+   * closed) or the leader's thread was unloaded or closed (its TUI exited) — in the connection
+   * screen's words, so the cockpit names the Codex remedy instead of the generic "not answering".
+   */
+  status(): { blocker?: { code: string; message: string; fix: string } } {
+    if (this.#gone === undefined && !this.#link.closed) return {};
+    return { blocker: { code: UNREACHABLE.code, message: UNREACHABLE.message, fix: UNREACHABLE.remedy } };
   }
 
   async deliver(dispatch: EventDispatch, signal: AbortSignal): Promise<void> {
@@ -178,36 +277,125 @@ export class CodexReactionAdapter implements ReactionAdapter {
     }
     // A retry decides only once the attempt before it settled, so it can see what that one handed over.
     await abortable(this.#inFlight, signal);
-    if (this.#link.closed) throw new Error('the codex app-server connection is closed');
+    this.#assertReachable();
+    this.#busy += 1;
+    try {
+      await this.#reconcile(signal);
 
-    const fresh = dispatch.events.filter((row) => row.journalSeq > this.#handedThrough);
-    const newest = fresh.at(-1)?.journalSeq;
-    const shown = fresh.filter((row) => !this.#isEcho(row));
-    // A gap is told once: a retried dispatch carries the same recovery, and it was already handed over.
-    const gap = dispatch.recovery;
-    const gapKey = gap === undefined ? undefined : `${gap.oldestSeq}:${gap.latestSeq}`;
-    const tellGap = gapKey !== undefined && gapKey !== this.#gapHanded;
-    if (shown.length === 0 && !tellGap) {
-      // Nothing the leader has not been handed already, or only its own echoes: no turn to start.
-      if (newest !== undefined) this.#handedThrough = newest;
-      return;
+      const fresh = dispatch.events.filter((row) => row.journalSeq > this.#handedThrough);
+      const newest = fresh.at(-1)?.journalSeq;
+      const shown = fresh.filter((row) => !this.#isEcho(row));
+      // A gap is told once: a retried dispatch carries the same recovery, and it was already handed over.
+      const gap = dispatch.recovery;
+      const gapKey = gap === undefined ? undefined : `${gap.oldestSeq}:${gap.latestSeq}`;
+      const tellGap = gapKey !== undefined && gapKey !== this.#gapHanded;
+      if (shown.length === 0 && !tellGap) {
+        // Nothing the leader has not been handed already, or only its own echoes: no turn to start.
+        if (newest !== undefined) this.#handedThrough = newest;
+        return;
+      }
+      await this.#acquire(signal);
+      // Separation from approval prompts: never hand an event to a thread that is waiting on one.
+      await this.#promptsClear(signal);
+      this.#assertReachable();
+
+      const { recovery: _told, ...rest } = dispatch;
+      const text = renderCodexEventMessage(tellGap && gap !== undefined ? { ...rest, events: shown, recovery: gap } : { ...rest, events: shown });
+      const handOff = this.#handOff(text, newest).then(() => {
+        if (tellGap) this.#gapHanded = gapKey;
+      });
+      this.#handing += 1;
+      this.#inFlight = handOff.catch(() => undefined).finally(() => {
+        this.#handing -= 1;
+        this.#releaseIfIdle();
+      });
+      await abortable(handOff, signal);
+    } finally {
+      this.#busy -= 1;
+      this.#releaseIfIdle();
     }
-    // Separation from approval prompts: never hand an event to a thread that is waiting on one.
-    await this.#promptsClear(signal);
-
-    const { recovery: _told, ...rest } = dispatch;
-    const text = renderCodexEventMessage(tellGap && gap !== undefined ? { ...rest, events: shown, recovery: gap } : { ...rest, events: shown });
-    const handOff = this.#handOff(text, newest).then(() => {
-      if (tellGap) this.#gapHanded = gapKey;
-    });
-    this.#inFlight = handOff.catch(() => undefined);
-    await abortable(handOff, signal);
   }
 
-  /** Non-model liveness (N-06): a metadata read of the leader's thread. Reaches no model (X10). */
+  /**
+   * Non-model liveness (N-06): is the leader's thread still loaded? A listing of loaded thread ids,
+   * which reaches no model. Its TUI exiting is seen here: with nothing subscribed, app-server unloads
+   * the thread, and from then on this answers the recoverable blocker instead of pushing into it.
+   */
   async heartbeat(signal: AbortSignal): Promise<void> {
+    this.#assertReachable();
+    if (this.#held && this.#busy === 0) await this.#settleAwaiting(signal);
+    const loaded = await abortable(this.#link.request('thread/loaded/list', {}), signal);
+    if (!codexLoadedIds(loaded).includes(this.threadId)) this.#gone = NOT_LOADED;
+    this.#assertReachable();
+  }
+
+  /**
+   * Take the leader's thread for ONE hand-off. It must still be loaded — an unloaded thread is never
+   * resurrected — and `thread/resume` (which subscribes this link) reports its state afresh, so an
+   * approval that opened while xezar was not listening is seen before anything is sent.
+   */
+  async #acquire(signal: AbortSignal): Promise<void> {
+    if (this.#held) return;
+    const loaded = await abortable(this.#link.request('thread/loaded/list', {}), signal);
+    if (!codexLoadedIds(loaded).includes(this.threadId)) {
+      this.#gone = NOT_LOADED;
+      throw new Error(NOT_LOADED);
+    }
+    const resumed = await abortable(this.#link.request('thread/resume', { threadId: this.threadId, excludeTurns: true }), signal);
+    this.#held = true;
+    const state = await abortable(codexThreadState(this.#link, this.threadId, resumed), signal);
+    this.#statusWaiting = state.waiting;
+    this.#activeTurnId = state.activeTurnId;
+  }
+
+  /** Let go of the subscription once nothing of ours is in flight or awaiting its reaction. */
+  #releaseIfIdle(): void {
+    if (this.#busy === 0 && this.#handing === 0 && this.#awaiting.length === 0) this.#release();
+  }
+
+  #release(): void {
+    if (!this.#held) return;
+    this.#held = false;
+    if (!this.#link.closed) this.#link.request('thread/unsubscribe', { threadId: this.threadId }).catch(() => undefined);
+  }
+
+  /**
+   * A reaction that never showed while subscribed (a steer whose turn ended first, a provider that
+   * failed) must not keep the thread held. One heartbeat later its history is read once for the
+   * awaited client ids — found ones count as reacted — and the subscription is let go either way.
+   */
+  async #settleAwaiting(signal: AbortSignal): Promise<void> {
+    if (this.#awaiting.length > 0) {
+      const page = await abortable(this.#link.request('thread/turns/list', { threadId: this.threadId, limit: RECONCILE_TURNS, itemsView: 'full' }), signal);
+      const seen = clientIdsIn(page);
+      const reached = this.#awaiting.filter((entry) => seen.has(entry.clientId)).at(-1);
+      if (reached !== undefined) this.#reacted(reached.seq);
+      this.#awaiting = [];
+    }
+    this.#release();
+  }
+
+  #assertReachable(): void {
     if (this.#link.closed) throw new Error('the codex app-server connection is closed');
-    await abortable(this.#link.request('thread/read', { threadId: this.threadId }), signal);
+    if (this.#gone !== undefined) throw new Error(this.#gone);
+  }
+
+  /**
+   * A hand-off whose answer never came may still have reached the model, and a `clientUserMessageId`
+   * is correlation, not proven idempotency (decision record § 4). So before anything is sent again,
+   * the thread's recent turns are read for that id — a history read, which reaches no model. Found:
+   * it WAS accepted, so it counts as handed over and reacted to, and nothing is resent. Absent: it was
+   * not, and the rows go again. A read that fails keeps the doubt and fails this attempt, so an
+   * uncertain state is deferred, never guessed.
+   */
+  async #reconcile(signal: AbortSignal): Promise<void> {
+    const pending = this.#unresolved;
+    if (pending === undefined) return;
+    const page = await abortable(this.#link.request('thread/turns/list', { threadId: this.threadId, limit: RECONCILE_TURNS, itemsView: 'full' }), signal);
+    this.#unresolved = undefined;
+    if (!clientIdsIn(page).has(pending.clientId)) return;
+    this.#handedThrough = Math.max(this.#handedThrough, pending.seq);
+    this.#reacted(pending.seq);
   }
 
   async #handOff(text: string, newest: number | undefined): Promise<void> {
@@ -220,7 +408,9 @@ export class CodexReactionAdapter implements ReactionAdapter {
         await this.#link.request('turn/steer', { threadId: this.threadId, input, expectedTurnId: active, clientUserMessageId: clientId });
         this.#handed(newest, clientId);
         return;
-      } catch {
+      } catch (err) {
+        // Only a refusal is known to have been turned away; anything else may have reached the turn.
+        if (!(err instanceof CodexRequestRefused)) throw this.#unknownAcceptance(err, clientId, newest);
         // `expectedTurnId` is a precondition and app-server refuses a mismatch (X3). The turn ended
         // between our read and the request, so the documented way in is now a new turn.
         if (this.#activeTurnId === active) this.#activeTurnId = undefined;
@@ -228,8 +418,18 @@ export class CodexReactionAdapter implements ReactionAdapter {
     }
     // On a thread whose turn is still running, codex-cli 0.154.0 folds this into that turn as a steer
     // and answers with the running turn's id (X3); the reaction match below covers both cases.
-    await this.#link.request('turn/start', { threadId: this.threadId, input, clientUserMessageId: clientId });
+    try {
+      await this.#link.request('turn/start', { threadId: this.threadId, input, clientUserMessageId: clientId });
+    } catch (err) {
+      throw err instanceof CodexRequestRefused ? err : this.#unknownAcceptance(err, clientId, newest);
+    }
     this.#handed(newest, clientId);
+  }
+
+  /** Remember a hand-off that may have been accepted, so the retry reconciles instead of resending blind. */
+  #unknownAcceptance(err: unknown, clientId: string, newest: number | undefined): unknown {
+    if (newest !== undefined) this.#unresolved = { clientId, seq: newest };
+    return err;
   }
 
   #handed(newest: number | undefined, clientId: string): void {
@@ -244,6 +444,7 @@ export class CodexReactionAdapter implements ReactionAdapter {
   #reacted(seq: number): void {
     this.#awaiting = this.#awaiting.filter((entry) => entry.seq > seq);
     this.#onReaction?.(seq);
+    this.#releaseIfIdle();
   }
 
   #isEcho(row: McpJournalRow): boolean {
@@ -282,7 +483,22 @@ export class CodexReactionAdapter implements ReactionAdapter {
       }
       case 'serverRequest/resolved': {
         this.#openPrompts.delete(String(params.requestId));
-        if (this.#openPrompts.size === 0) this.#settlePrompts();
+        if (!this.promptOpen) this.#settlePrompts();
+        return;
+      }
+      case 'thread/status/changed': {
+        const status = codexThreadStatus(params.status);
+        this.#statusWaiting = status.waiting;
+        if (!status.loaded) this.#gone = 'the leader’s Codex thread is no longer loaded on its app-server';
+        if (!this.promptOpen || this.#gone !== undefined) this.#settlePrompts();
+        return;
+      }
+      case 'thread/closed': {
+        // The leader's TUI left and app-server let the thread go. Never resumed again from here: an
+        // unloaded thread is not resurrected to deliver pending events (decision record § 4).
+        this.#gone = 'the leader’s Codex thread was closed on its app-server';
+        this.#held = false;
+        this.#settlePrompts();
         return;
       }
       default:
@@ -291,7 +507,7 @@ export class CodexReactionAdapter implements ReactionAdapter {
   }
 
   #promptsClear(signal: AbortSignal): Promise<void> {
-    if (this.#openPrompts.size === 0) return Promise.resolve();
+    if (!this.promptOpen) return Promise.resolve();
     return abortable(new Promise<void>((resolve) => this.#promptsSettled.add(resolve)), signal);
   }
 
@@ -357,17 +573,30 @@ export function codexReactionTarget(
   if (opts.link !== undefined && opts.threadId !== undefined && !opts.link.closed) {
     return { kind: 'app-server', adapter: new CodexReactionAdapter({ ...opts, link: opts.link, threadId: opts.threadId }) };
   }
-  return {
-    kind: 'blocked',
-    blocker: {
-      code: 'codex-session-not-targetable',
-      recoverable: true,
-      message:
-        'xezar cannot reach this running Codex session for project-event delivery. Your events are saved. Use leader_events in Codex to read them; retry connecting when this session is available on Codex’s local app-server.',
-      remedy:
-        'Use leader_events in Codex to read saved events, then retry connecting when this session is available on Codex’s local app-server.',
-    },
-  };
+  return { kind: 'blocked', blocker: UNREACHABLE };
+}
+
+/** One text for "not reachable", before attach and after: the decision record's approved copy. */
+const UNREACHABLE: CodexReactionBlocker = {
+  code: 'codex-session-not-targetable',
+  recoverable: true,
+  message:
+    'xezar cannot reach this running Codex session for project-event delivery. Your events are saved. Use leader_events in Codex to read them; retry connecting when this session is available on Codex’s local app-server.',
+  remedy:
+    'Use leader_events in Codex to read saved events, then retry connecting when this session is available on Codex’s local app-server.',
+};
+
+/** Every client message id app-server recorded in a `thread/turns/list` page's `userMessage` items. */
+function clientIdsIn(page: Record<string, unknown>): Set<string> {
+  const ids = new Set<string>();
+  for (const turn of Array.isArray(page.data) ? page.data : []) {
+    const items = (turn as { items?: unknown } | null)?.items;
+    for (const item of Array.isArray(items) ? items : []) {
+      const value = item as { type?: unknown; clientId?: unknown } | null;
+      if (value?.type === 'userMessage' && typeof value.clientId === 'string') ids.add(value.clientId);
+    }
+  }
+  return ids;
 }
 
 function abortable<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {

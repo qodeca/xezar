@@ -3,8 +3,8 @@ import type { McpJournalRow, McpLeaderActionInput, McpLeaderBlocker, McpLeaderSe
 import { projectDataDir } from '../project-data-paths.ts';
 import type { ProjectOwnership } from '../workspace/project-owner.ts';
 import { OpenCodeReactionAdapter } from './adapters/opencode.ts';
-import { connectCodexLeader, type CodexLeaderAnnouncement, type ConnectedCodexLeader } from './adapters/codex-link.ts';
-import { type CodexReactionTarget, codexReactionTarget } from './adapters/codex.ts';
+import { codexControlHome, connectCodexLeader, type CodexLeaderAnnouncement, type ConnectedCodexLeader } from './adapters/codex-link.ts';
+import { type CodexReactionAdapter, type CodexReactionTarget, codexReactionTarget } from './adapters/codex.ts';
 import { connectPiLeaderLink, type PiLeaderDescriptor, type PiLeaderLink, readPiLeaderDescriptor } from './adapters/pi-link.ts';
 import { type PiReactionAdapter, type PiReactionTarget, piReactionTarget } from './adapters/pi.ts';
 import type { EchoGuard } from './echo-guard.ts';
@@ -211,7 +211,14 @@ export interface LeaderDeliveryOptions {
     read?: (dataDir: string) => ReturnType<typeof readPiLeaderDescriptor>;
     connect?: (descriptor: PiLeaderDescriptor, opts: { warn?: (message: string) => void }) => PiLeaderLink;
   };
-  readonly codexLeader?: { connect?: (announcement: CodexLeaderAnnouncement, projectRoot: string) => Promise<ConnectedCodexLeader> };
+  /**
+   * The Codex attach path. `home` is where the service looks for the shared app-server — its own
+   * `CODEX_HOME`, else `~/.codex` (`codexControlHome`); `connect` is the test seam for the dial.
+   */
+  readonly codexLeader?: {
+    connect?: (announcement: CodexLeaderAnnouncement, projectRoot: string, codexHome: string) => Promise<ConnectedCodexLeader>;
+    home?: () => string;
+  };
   /** Local socket delivery is forbidden when the server is hosted. */
   readonly localHandoff?: () => boolean;
 }
@@ -235,6 +242,8 @@ interface AttachedLeader {
    * adapter's own `close()`, which lets go of the session and deliberately owns no transport.
    */
   dispose?: () => void;
+  /** Codex only: the adapter itself, so a re-attach to the same thread inherits an unresolved hand-off. */
+  readonly codex?: CodexReactionAdapter;
 }
 
 /**
@@ -426,7 +435,7 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
       const found = await this.#codexTarget();
       if (found.target.kind === 'blocked') return { ok: false, error: found.target.blocker.message };
       this.#detach();
-      this.#leader = { client: 'codex', adapter: found.target.adapter, failingSince: null, settledThrough: 0, ...(found.dispose ? { dispose: found.dispose } : {}) };
+      this.#leader = { client: 'codex', adapter: found.target.adapter, codex: found.target.adapter, failingSince: null, settledThrough: 0, ...(found.dispose ? { dispose: found.dispose } : {}) };
       this.#liveController()?.wake();
       return { ok: true, status: this.status() };
     }
@@ -511,14 +520,27 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     const sessionKey = this.#controllers.keys().next().value as string | undefined;
     const announcement = sessionKey === undefined ? undefined : this.#codexAnnouncements.get(sessionKey);
     if (announcement === undefined) return { target: codexReactionTarget(base) };
+    // The discovery rule lives beside `connectCodexLeader`: the SERVICE's Codex home, confirmed by the
+    // app-server's own `initialize.codexHome`, never a path from the bridge or the cockpit.
+    const home = (this.#opts.codexLeader?.home ?? codexControlHome)();
+    let connected: ConnectedCodexLeader;
     try {
-      const connected = await (this.#opts.codexLeader?.connect ?? connectCodexLeader)(announcement, this.#opts.projectRoot);
-      const target = codexReactionTarget({ ...base, link: connected.link, threadId: connected.threadId });
-      if (target.kind === 'blocked') { connected.link.close(); return { target }; }
-      return { target, dispose: () => connected.link.close() };
-    } catch {
+      connected = await (this.#opts.codexLeader?.connect ?? connectCodexLeader)(announcement, this.#opts.projectRoot, home);
+    } catch (err) {
+      // The person reads the approved "cannot reach" copy; the log keeps WHY, so a hang-up, a missing
+      // socket and an unloaded thread are told apart. Never the path: connect's errors carry none,
+      // and the home is scrubbed in case a future one does.
+      const reason = (err instanceof Error ? err.message : String(err)).split(home).join('<codex home>');
+      this.#opts.warn(`[xez] Codex leader not attached for project ${this.projectId}: ${reason}`);
       return { target: codexReactionTarget(base) };
     }
+    // A re-attach to the SAME thread inherits a hand-off whose acceptance is still unknown, so the new
+    // link reconciles it before resending (decision record § 4) instead of resending blind.
+    const previous = this.#leader?.codex;
+    const unresolved = previous?.threadId === connected.threadId ? previous.unresolved : undefined;
+    const target = codexReactionTarget({ ...base, link: connected.link, threadId: connected.threadId, state: connected.state, ...(unresolved ? { unresolved } : {}) });
+    if (target.kind === 'blocked') { connected.link.close(); return { target }; }
+    return { target, dispose: () => connected.link.close() };
   }
 
   #ownOperation(): { isOwnOperation?: (operationId: string) => boolean } {

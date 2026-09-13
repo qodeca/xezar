@@ -13,6 +13,7 @@ import { projectDataDir } from '../project-data-paths.ts';
 import type { RunStore } from '../runs/store.ts';
 import { loadWorkspaceConfig } from '../workspace/config.ts';
 import { ProjectOwnership } from '../workspace/project-owner.ts';
+import { codexControlHome } from './adapters/codex-link.ts';
 import { AuditTrail, type AuditChannel } from './audit-trail.ts';
 import { runBridge, type ServiceTarget } from './bridge.ts';
 import { writeMcpConnectionFile } from './connection-file.ts';
@@ -107,6 +108,8 @@ export async function startMcpService(opts: StartMcpServiceOptions): Promise<Mcp
         warn,
         ...(opts.leader?.heartbeatMs === undefined ? {} : { heartbeatMs: opts.leader.heartbeatMs }),
         ...(opts.localHandoff === undefined ? {} : { localHandoff: opts.localHandoff }),
+        // Where a Codex leader's shared app-server is looked for: THIS process's Codex home.
+        codexLeader: { home: () => codexControlHome(opts.env ?? process.env) },
       })
     : undefined;
   const unregisterLeader = delivery ? registerProjectLeader(project.id, delivery) : undefined;

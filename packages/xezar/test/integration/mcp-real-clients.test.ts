@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, closeSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, closeSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import { createServer as createNetServer } from 'node:net';
 import { dirname, join, resolve } from 'node:path';
 import { after, before, describe, test, type TestContext } from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
+import WebSocket from 'ws';
 
 import {
   MCP_PROJECT_OCCUPIED_CODE,
@@ -92,8 +93,8 @@ const T0 = Date.now();
 type Verdict = 'PASSED' | 'FAILED' | 'BLOCKED' | 'NOT-RUN';
 type ClientName = 'claude-code' | 'codex' | 'opencode' | 'pi';
 const CLIENTS: readonly ClientName[] = ['claude-code', 'codex', 'opencode', 'pi'];
-/** The three clients whose A-19 leg has no attach path at all; pi's is measured (#330 WP5). */
-const CLIENTS_WITHOUT_ADAPTER: readonly ClientName[] = ['claude-code', 'codex', 'opencode'];
+/** The clients whose A-19 leg this file does not measure; pi's (#330 WP5) and Codex's (#374) are. */
+const CLIENTS_WITHOUT_ADAPTER: readonly ClientName[] = ['claude-code', 'opencode'];
 
 interface Check {
   name: string;
@@ -344,6 +345,119 @@ class LineRpc {
   }
 }
 
+/**
+ * The person's own view of their shared Codex app-server (#374): JSON-RPC over the control socket's
+ * WebSocket Upgrade, never offering `permessage-deflate` (codex-cli 0.154.0 hangs up on it). The
+ * harness uses it only for what the PERSON's side does — find their thread, have Codex call a xezar
+ * tool for it — never to deliver an event; that is the product's job.
+ */
+class WsRpc {
+  readonly unsolicited: any[] = [];
+  private readonly pending = new Map<number, (answer: RpcAnswer) => void>();
+  private nextId = 1;
+
+  private constructor(
+    private readonly socket: WebSocket,
+    private readonly transcript: Transcript,
+  ) {
+    socket.on('message', (raw) => {
+      const text = raw.toString();
+      transcript.line('<-', text.slice(0, 2_000));
+      let message: any;
+      try {
+        message = JSON.parse(text);
+      } catch {
+        return;
+      }
+      if (typeof message.id === 'number' && this.pending.has(message.id) && !('method' in message)) {
+        this.pending.get(message.id)!(message as RpcAnswer);
+        this.pending.delete(message.id);
+      } else this.unsolicited.push(message);
+    });
+    socket.on('close', () => {
+      transcript.line('exit', 'socket closed');
+      for (const settleOne of this.pending.values()) settleOne({ error: { code: -1, message: 'the app-server closed the socket' } });
+      this.pending.clear();
+    });
+  }
+
+  static open(socketPath: string, transcript: Transcript): Promise<WsRpc> {
+    transcript.line('$', `ws+unix ${socketPath}`);
+    return new Promise((resolveOpen, reject) => {
+      const socket = new WebSocket(`ws+unix://${socketPath}:/`, { perMessageDeflate: false });
+      socket.once('open', () => resolveOpen(new WsRpc(socket, transcript)));
+      socket.once('error', reject);
+    });
+  }
+
+  request(method: string, params: unknown, timeoutMs = 30_000): Promise<RpcAnswer> {
+    const id = this.nextId++;
+    return new Promise((done) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        done({ error: { code: -2, message: `no answer to ${method} within ${timeoutMs} ms` } });
+      }, timeoutMs);
+      this.pending.set(id, (answer) => {
+        clearTimeout(timer);
+        done(answer);
+      });
+      const line = JSON.stringify({ id, method, params });
+      this.transcript.line('->', line);
+      if (this.socket.readyState === WebSocket.OPEN) this.socket.send(line);
+      else this.pending.get(id)!({ error: { code: -1, message: 'the app-server socket is not open' } });
+    });
+  }
+
+  close(): void {
+    this.socket.close();
+  }
+}
+
+/**
+ * A private PTY for the Codex TUI (#374). node has no PTY of its own, and `/usr/bin/script` refuses a
+ * piped stdin ("tcgetattr/ioctl: Operation not supported on socket", observed on PR 403), so a few
+ * lines of python fork the TUI on a 45×150 PTY, relay it to their own stdio and forward SIGTERM to the
+ * TUI alone — the TUI is stopped by that handle, never by a pattern (#156). Nothing reaches a user's
+ * terminal, and nothing is typed into this one except answers to the TUI's own capability queries.
+ */
+const PTY_HOST = `import os, sys, pty, fcntl, termios, struct, select, signal
+pid, fd = pty.fork()
+if pid == 0:
+    os.execvpe(sys.argv[1], sys.argv[1:], os.environ)
+fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack('HHHH', 45, 150, 0, 0))
+def forward(*_):
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+signal.signal(signal.SIGTERM, forward)
+inputs = [fd, 0]
+while True:
+    try:
+        ready, _, _ = select.select(inputs, [], [], 0.2)
+    except InterruptedError:
+        continue
+    if fd in ready:
+        try:
+            data = os.read(fd, 65536)
+        except OSError:
+            break
+        if not data:
+            break
+        os.write(1, data)
+    if 0 in ready:
+        data = os.read(0, 65536)
+        if data:
+            os.write(fd, data)
+        else:
+            inputs = [fd]
+_, status = os.waitpid(pid, 0)
+sys.exit(os.waitstatus_to_exitcode(status) & 0xFF)
+`;
+
+/** The model id this suite's Codex leg names, so the shared endpoint can count Codex's requests alone. */
+const CODEX_MODEL = 'scripted-codex';
+
 // ---- environment isolation -----------------------------------------------------------------
 
 // `PI_` is here for the same reason every other vendor prefix is: `PI_CODING_AGENT_DIR` relocates
@@ -453,6 +567,7 @@ class ScriptedEndpoint {
     // this stand-in answers BOTH wires. Same rules, same `requests` log — "count the model's requests
     // at an endpoint you control" must have exactly one place to count.
     if (url.includes('/chat/completions')) return this.openaiCompletions(raw, res);
+    if (url.includes('/responses')) return this.responses(raw, res);
     if (url.includes('count_tokens')) {
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ input_tokens: 1 }));
@@ -638,6 +753,56 @@ class ScriptedEndpoint {
     chunk([{ index: 0, delta: {}, finish_reason: finish }]);
     chunk([], { usage });
     res.write('data: [DONE]\n\n');
+    res.end();
+  }
+
+  /**
+   * The OpenAI Responses wire, for Codex (#374) — the stream codex-cli 0.154.0 accepted in the Codex
+   * wake decision's run H (`docs/features/mcp-server/mcp-wake-codex-decision.md`). Codex needs no
+   * tool call in this suite, only text: `XEZAR_WAKE_CONFIRMED` for a request whose newest user message
+   * is a xezar event, a fixed title for Codex's own title request, `FIXTURE_READY` otherwise.
+   * `lastText` holds EVERY user message of the request, newest last, so a check can tell which thread's
+   * history an event request carried.
+   */
+  private responses(raw: string, res: import('node:http').ServerResponse): void {
+    let body: any = {};
+    try {
+      body = JSON.parse(raw || '{}');
+    } catch {
+      /* logged below as an empty request */
+    }
+    const items: any[] = Array.isArray(body.input) ? body.input : [];
+    const userTexts = items
+      .filter((item) => item?.role === 'user')
+      .map((item) => (Array.isArray(item.content) ? item.content.map((part: any) => (typeof part?.text === 'string' ? part.text : '')).join('\n') : String(item.content ?? '')));
+    const isTitle = JSON.stringify(items).includes('Generate a concise, single-line task title');
+    const newest = userTexts.at(-1) ?? '';
+    const text = isTitle ? 'Fixture title' : newest.includes('[xezar event') ? 'XEZAR_WAKE_CONFIRMED' : 'FIXTURE_READY';
+    const tools: string[] = (body.tools ?? []).map((tool: any) => String(tool?.name ?? '')).filter(Boolean);
+    const entry: ModelRequest = {
+      n: this.requests.length + 1,
+      client: 'codex',
+      model: String(body.model ?? ''),
+      tools: tools.filter((name) => /xezar/.test(name)),
+      lastText: userTexts.join('\n---\n').slice(-8_000),
+      decision: `text ${text}`,
+      isTitle,
+    };
+    this.requests.push(entry);
+    this.transcript.line('req', JSON.stringify(entry));
+    const item = { type: 'message', id: `msg_scripted_${entry.n}`, role: 'assistant', status: 'completed', content: [{ type: 'output_text', text, annotations: [] }] };
+    const response = { id: `resp_scripted_${entry.n}`, object: 'response', status: 'completed', model: body.model ?? 'scripted', output: [item], usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 } };
+    const frames = [
+      { type: 'response.created', response: { ...response, status: 'in_progress', output: [] } },
+      { type: 'response.output_item.added', output_index: 0, item: { ...item, status: 'in_progress', content: [] } },
+      { type: 'response.content_part.added', item_id: item.id, output_index: 0, content_index: 0, part: { type: 'output_text', text: '', annotations: [] } },
+      { type: 'response.output_text.delta', item_id: item.id, output_index: 0, content_index: 0, delta: text },
+      { type: 'response.output_text.done', item_id: item.id, output_index: 0, content_index: 0, text },
+      { type: 'response.output_item.done', output_index: 0, item },
+      { type: 'response.completed', response },
+    ];
+    res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
+    for (const frame of frames) res.write(`event: ${frame.type}\ndata: ${JSON.stringify(frame)}\n\n`);
     res.end();
   }
 
@@ -2179,15 +2344,277 @@ describe('A-19 — immediate acceptance, delivery, and a real model reaction', (
     settle(t, entry);
   });
 
+  /**
+   * #374 — the Codex leg, real end to end, in the decision record's run H shape: a real `xezar serve`
+   * (whose MCP service composes `LeaderDelivery` and its discovery rule), a real `codex app-server
+   * --listen unix://` standing in for the person's own shared server, a plain Codex TUI on a private
+   * PTY that joins it, the real `xez mcp` bridge CODEX spawns for that TUI's thread, and the scripted
+   * Responses endpoint counting every request. The attach itself is the cockpit's `POST
+   * /api/v1/mcp/leader {action:'attach', client:'codex'}` — no path, no port, no thread id.
+   *
+   * After the reaction and its 30-second quiet window, the same world takes row 1's and row 4's
+   * refusals through the product: another session in the project, the TUI exiting, a saved but
+   * unloaded thread, the daemon exiting (no socket), and a control socket whose server names another
+   * home. Every wait is bounded and every child is stopped by its own handle (#156).
+   *
+   * The CODEX_HOME is short on purpose: a Unix socket path must fit SUN_LEN (104 bytes on macOS), and
+   * Codex canonicalises the home, so the header's `TMPDIR=/tmp` is what keeps it inside the limit.
+   */
+  test('[codex] a connected Codex TUI’s model reacts to a delivered event without polling (#374)', async (t) => {
+    const resolved = fx.clients.codex;
+    if (!resolved) {
+      const entry = record({ case: 'A-19', client: 'codex', verdict: 'NOT-RUN', summary: fx.absent.codex ?? 'codex not found', checks: [], fixture: {} });
+      fx.reaction.codex = entry;
+      return settle(t, entry);
+    }
+    let python: string | undefined;
+    try {
+      python = execFileSync('which', ['python3'], { encoding: 'utf8' }).trim() || undefined;
+    } catch {
+      python = undefined;
+    }
+    if (python === undefined) {
+      const entry = record({
+        case: 'A-19',
+        client: 'codex',
+        verdict: 'BLOCKED',
+        summary: 'the Codex TUI needs a terminal and this harness has no PTY host',
+        missing: 'python3 on PATH: node has no PTY, and `/usr/bin/script` refuses a piped stdin, so the TUI cannot be started here',
+        checks: [],
+        fixture: {},
+      });
+      fx.reaction.codex = entry;
+      return settle(t, entry);
+    }
+
+    const base = mkdtempSync(join(fx.scratch, 'cx-'));
+    const root = makeRepo(base, 'p');
+    const xezHome = join(base, 'x');
+    const agentHome = join(base, 'a');
+    // `startServe` pins the serve process's CODEX_HOME here; the discovery rule looks in exactly it.
+    const codexHome = join(agentHome, 'codex');
+    const socket = join(codexHome, 'app-server-control', 'app-server-control.sock');
+    const transcript = new Transcript('a19-codex-world');
+    const serve = await startServe(root, xezHome, 'a19-codex-serve', agentHome);
+    const personHome = join(base, 'h');
+    mkdirSync(personHome, { recursive: true });
+    const env = isolatedEnv(personHome, { CODEX_HOME: codexHome, TERM: 'xterm-256color', TMPDIR: '/tmp' });
+    const cmd = bridgeCommand();
+    mkdirSync(join(root, '.codex'), { recursive: true });
+    writeFileSync(join(root, '.codex/config.toml'), `[mcp_servers.xezar]\ncommand = ${JSON.stringify(cmd.command)}\nargs = ${JSON.stringify(cmd.args)}\nenv = { XEZ_HOME = ${JSON.stringify(xezHome)}, XEZ_DRY_RUN = "1" }\n`);
+    const codexConfig = `model = "${CODEX_MODEL}"\nmodel_provider = "fixture"\napproval_policy = "never"\nsandbox_mode = "read-only"\ncheck_for_update_on_startup = false\n\n[model_providers.fixture]\nname = "fixture"\nbase_url = "http://127.0.0.1:${fx.endpoint.port}/v1"\nwire_api = "responses"\nrequires_openai_auth = false\nsupports_websockets = false\n\n[projects.${JSON.stringify(root)}]\ntrust_level = "trusted"\n`;
+    writeFileSync(join(codexHome, 'config.toml'), codexConfig);
+    writeFileSync(join(base, 'pty-host.py'), PTY_HOST);
+    const mine = (): ModelRequest[] => fx.endpoint.requests.filter((request) => request.model === CODEX_MODEL);
+    const serveLog = (): string => readFileSync(serve.transcript.path, 'utf8');
+    const leader = async (): Promise<any> => (await cockpit(serve, '/api/v1/mcp/leader')).json;
+    const attach = (): Promise<{ status: number; json: any }> => cockpit(serve, '/api/v1/mcp/leader', 'POST', { action: 'attach', client: 'codex' });
+    const startAppServer = (home: string, name: string): ChildProcess => {
+      transcript.line('$', `${resolved.bin} app-server --listen unix://   (CODEX_HOME ${home.replace(base, '<base>')}, ${name})`);
+      const child = spawn(resolved.bin, ['app-server', '--listen', 'unix://'], { cwd: root, env: { ...env, CODEX_HOME: home }, stdio: ['ignore', 'pipe', 'pipe'] });
+      children.add(child);
+      for (const stream of [child.stdout!, child.stderr!]) stream.on('data', (chunk: Buffer) => {
+        for (const line of chunk.toString('utf8').split('\n').filter(Boolean)) transcript.line(name, line.slice(0, 400));
+      });
+      child.on('exit', (code, signal) => transcript.line('exit', `${name} code=${code} signal=${signal}`));
+      return child;
+    };
+    const checks: Check[] = [];
+    const facts: Record<string, unknown> = { socketPathBytes: Buffer.byteLength(socket) };
+    let appServer: ChildProcess | undefined = startAppServer(codexHome, 'app-server');
+    let imposter: ChildProcess | undefined;
+    let tui: ChildProcess | undefined;
+    let observer: WsRpc | undefined;
+    let puller: { rpc: LineRpc } | undefined;
+    let screen = '';
+    try {
+      const listening = await waitFor('the shared app-server’s control socket', () => (existsSync(socket) ? true : undefined), 30_000).catch(() => false);
+      checks.push({ name: 'a real shared Codex app-server listens on its control socket', required: '`codex app-server --listen unix://` under the pinned CODEX_HOME, within SUN_LEN', observed: { listening, ...facts }, ok: listening === true });
+      if (!listening) throw new Error('no control socket');
+
+      // The person's plain Codex TUI, which joins the shared server, and its first turn.
+      transcript.line('$', `python3 <pty-host> ${resolved.bin} --no-alt-screen -C <root> "Reply FIXTURE_READY. Do not use tools."`);
+      tui = spawn(python, [join(base, 'pty-host.py'), resolved.bin, '--no-alt-screen', '-C', root, 'Reply FIXTURE_READY. Do not use tools.'], { cwd: root, env, stdio: ['pipe', 'pipe', 'pipe'] });
+      children.add(tui);
+      const terminal = tui;
+      terminal.stdout!.on('data', (chunk: Buffer) => {
+        const text = chunk.toString('latin1');
+        screen += text;
+        appendFileSync(join(OUT, 'a19-codex-tui.pty.raw'), chunk);
+        // Capability queries only: cursor position, then device attributes. Nothing else is typed.
+        if (text.includes('\x1b[6n')) terminal.stdin!.write('\x1b[1;1R');
+        if (text.includes('\x1b[c')) terminal.stdin!.write('\x1b[?1;2c');
+      });
+      terminal.stderr!.on('data', (chunk: Buffer) => transcript.line('tui-err', chunk.toString('utf8').slice(0, 400)));
+      terminal.on('exit', (code, signal) => transcript.line('exit', `tui code=${code} signal=${signal}`));
+      await waitFor('the Codex TUI’s first model request', () => (mine().some((request) => !request.isTitle) ? true : undefined), 120_000);
+
+      observer = await WsRpc.open(socket, transcript);
+      const init = await observer.request('initialize', { clientInfo: { name: 'h118-codex-person', version: '0' } });
+      const homeSeen = init.result?.codexHome as string | undefined;
+      const isolated = homeSeen !== undefined && realpathSync(homeSeen) === realpathSync(codexHome);
+      checks.push({ name: 'app-server isolation', required: 'initialize answers the pinned codexHome', observed: homeSeen?.replace(base, '<base>') ?? init.error, ok: isolated });
+      if (!isolated) throw new Error('Codex left the pinned CODEX_HOME');
+      const listed = await observer.request('thread/list', { cwd: root, modelProviders: [] });
+      const threads = (listed.result?.data ?? []) as Array<{ id: string }>;
+      const threadId = threads[0]?.id;
+      const loadedIds = async (): Promise<string[]> => ((await observer!.request('thread/loaded/list', {})).result?.data ?? []) as string[];
+      checks.push({ name: 'the TUI’s own thread is live on the shared server', required: 'exactly one thread for the project, and it is loaded', observed: { threads: threads.length, loaded: threadId !== undefined && (await loadedIds()).includes(threadId) }, ok: threads.length === 1 && threadId !== undefined && (await loadedIds()).includes(threadId) });
+      if (threadId === undefined) throw new Error('no TUI thread');
+      // Run H's fixture condition: a named thread takes no title request with the event. The title
+      // requests that happen anyway are counted, separately, below.
+      await observer.request('thread/name/set', { threadId, name: 'Xezar wake fixture' });
+
+      // Codex itself calls a xezar tool for that thread — the path a model's tool call takes — so the
+      // bridge CODEX spawned (real `runMcpCommand`) carries `_meta.threadId` to the service.
+      const call = await observer.request('mcpServer/tool/call', { server: 'xezar', threadId, tool: 'task_read', arguments: { view: 'list', archived: 'include' } }, 120_000);
+      checks.push({ name: 'Codex’s own bridge reached the service for that thread', required: 'mcpServer/tool/call answered by the `xez mcp` bridge Codex spawned', observed: call.error ?? (call.result?.isError ? 'tool error' : 'answered'), ok: call.error === undefined && call.result?.isError !== true });
+      // A second session in the same project: cwd alone must not decide which thread is the leader.
+      const other = await observer.request('thread/start', { cwd: root });
+      const otherId = other.result?.thread?.id as string | undefined;
+
+      const attached = await attach();
+      const ready = await waitFor('the Codex leader to be attached with an owner session', async () => ((await leader())?.blocker === null ? leader() : undefined), 60_000).catch(() => leader());
+      checks.push({ name: 'the cockpit attach discovers the session with no path, port or thread id', required: '`POST /mcp/leader {action:"attach", client:"codex"}` answers 200 with a codex leader, then no blocker', observed: { status: attached.status, leader: attached.json?.leader ?? attached.json?.error, blocker: ready?.blocker ?? null }, ok: attached.status === 200 && attached.json?.leader?.client === 'codex' && ready?.blocker === null });
+
+      await delay(5_000);
+      const before = mine().length;
+      // ONE significant event, caused through the human's door so nothing about it is the leader's own.
+      const created = await cockpit(serve, '/api/v1/runs', 'POST', { workflow: 'quick-task', task: 'mock:done a task whose completion is the event Codex must react to', worktree: false, autonomous: true });
+      const runId: string | undefined = created.json?.id;
+      const finished = await waitFor('the A-19 Codex task to finish', async () => ((await runStatus(serve, runId)) === 'done' ? 'done' : undefined), 90_000).catch(() => 'not done');
+      const arrived = await waitFor('a Codex model request carrying the event', () => (mine().slice(before).some((request) => !request.isTitle && request.lastText.includes('[xezar event')) ? true : undefined), 90_000).catch(() => false);
+      await delay(3_000);
+      const afterTurn = mine().length;
+      await delay(30_000);
+      const afterQuiet = mine().length;
+      const caused = mine().slice(before);
+      const eventTurns = caused.filter((request) => !request.isTitle);
+      const titles = caused.filter((request) => request.isTitle);
+      const carrying = eventTurns.find((request) => request.lastText.includes('[xezar event'));
+      const journal = readJournal(root) ?? [];
+      const row = journal.find((entry) => entry.subject.id === runId && entry.kind === 'task.done');
+      const afterEvent = await leader();
+      checks.push({ name: 'immediate acceptance is distinct from the result', required: 'the task is accepted at once and reaches `done` later', observed: { run: created.status, finished }, ok: runId !== undefined && finished === 'done' });
+      checks.push({ name: 'the event reached the journal', required: 'an E-01 task.done row for it', observed: row ? { eventId: row.eventId, origin: row.origin } : `no task.done row among ${journal.length}`, ok: row !== undefined });
+      checks.push({ name: 'delivery reached the model through the existing TUI’s thread', required: 'a Codex request that carries the row, in the ANNOUNCED thread’s history (its first prompt), not the other session’s', observed: carrying ? { request: carrying.n, carriesTheRow: row ? carrying.lastText.includes(row.eventId) : 'no row', announcedThreadHistory: carrying.lastText.includes('Reply FIXTURE_READY') } : `no request carried the event among ${caused.length}`, ok: arrived === true && carrying !== undefined && row !== undefined && carrying.lastText.includes(row.eventId) && carrying.lastText.includes('Reply FIXTURE_READY') });
+      checks.push({
+        name: 'one event request, and no status-polling turn in a 30-second quiet window',
+        required: 'exactly one non-title model request caused by the event, and none more for at least 30 s (title requests counted separately)',
+        observed: { before, afterTurn, afterQuietWindow: afterQuiet, eventRequests: eventTurns.map((request) => `#${request.n} ${request.decision}`), titleRequests: titles.length },
+        ok: eventTurns.length === 1 && afterQuiet === afterTurn,
+      });
+      checks.push({ name: 'the TUI shows the reaction', required: 'the model’s answer is visible in the person’s own TUI', observed: screen.includes('XEZAR_WAKE_CONFIRMED') ? 'XEZAR_WAKE_CONFIRMED on screen' : 'not on screen', ok: screen.includes('XEZAR_WAKE_CONFIRMED') });
+      checks.push({ name: 'delivery and reaction are reported separately, and both advanced', required: 'deliveredSeq and reactedSeq both reach the event’s row (§ 6.6)', observed: afterEvent?.delivery ?? null, ok: row !== undefined && afterEvent?.delivery?.deliveredSeq >= row.journalSeq && afterEvent?.delivery?.reactedSeq >= row.journalSeq });
+
+      // Exclusivity: the other session in the same project reaches for xezar; the attachment stays.
+      const second = otherId === undefined ? { error: { code: -1, message: 'no second thread' } } : await observer.request('mcpServer/tool/call', { server: 'xezar', threadId: otherId, tool: 'task_read', arguments: { view: 'list', archived: 'include' } }, 120_000);
+      const kept = await leader();
+      checks.push({ name: 'another session of the project does not take the attachment', required: 'the second session’s xezar call leaves the Codex leader attached and unblocked', observed: { secondSession: second.error?.message ?? (toolText(second).slice(0, 160) || 'answered'), leader: kept?.leader, blocker: kept?.blocker?.code ?? null }, ok: kept?.leader?.client === 'codex' && kept?.blocker === null });
+
+      // The TUI exits. The person's view lets go of the other session it started; xezar holds nothing.
+      if (otherId !== undefined) await observer.request('thread/unsubscribe', { threadId: otherId });
+      const exitAt = Date.now();
+      await stop(tui);
+      const unloadedAfterMs = await waitFor('app-server to unload the exited TUI’s thread', async () => (!(await loadedIds()).includes(threadId) ? Date.now() - exitAt : undefined), 240_000).catch(() => undefined);
+      checks.push({ name: 'xezar does not keep an exited TUI’s thread alive', required: 'with the TUI gone, app-server unloads the thread (xezar holds its subscription only during a hand-off)', observed: unloadedAfterMs === undefined ? 'still loaded after 240 s' : `unloaded ${Math.round(unloadedAfterMs / 1000)} s after the TUI exited`, ok: unloadedAfterMs !== undefined });
+      const named = await waitFor('the Codex blocker', async () => {
+        const status = await leader();
+        return status?.blocker?.code === 'codex-session-not-targetable' ? status : undefined;
+      }, 90_000).catch(() => leader());
+      checks.push({ name: 'the cockpit names Codex’s recoverable remedy', required: 'blocker `codex-session-not-targetable` with a leader_events fix, not a silent attached leader', observed: named?.blocker ?? null, ok: named?.blocker?.code === 'codex-session-not-targetable' && String(named?.blocker?.fix ?? '').includes('leader_events') });
+
+      // A later event is kept, is NOT pushed into the headless thread, and the pull path reads it.
+      await waitFor('the other session to unload too', async () => (otherId === undefined || !(await loadedIds()).includes(otherId) ? true : undefined), 240_000).catch(() => undefined);
+      const beforeLater = mine().length;
+      const later = await cockpit(serve, '/api/v1/runs', 'POST', { workflow: 'quick-task', task: 'mock:done an event after the TUI left', worktree: false, autonomous: true });
+      await waitFor('the later task to finish', async () => ((await runStatus(serve, later.json?.id)) === 'done' ? true : undefined), 90_000).catch(() => undefined);
+      await delay(10_000);
+      const laterRow = (readJournal(root) ?? []).find((entry) => entry.subject.id === later.json?.id && entry.kind === 'task.done');
+      puller = await openBridge('a19-codex-pull', root, isolatedEnv(join(base, 'bridge-home'), { XEZ_HOME: xezHome, XEZ_DRY_RUN: '1' }));
+      const pulled = await puller.rpc.request('tools/call', { name: 'leader_events', arguments: {} }, 60_000);
+      checks.push({ name: 'after the TUI left, events are kept and pulled, never pushed into the headless thread', required: 'no new Codex model request; the row is in the journal; leader_events returns it', observed: { newCodexRequests: mine().length - beforeLater, row: laterRow?.eventId ?? 'no row', pulled: laterRow ? toolText(pulled).includes(laterRow.eventId) : toolText(pulled).slice(0, 160) }, ok: mine().length === beforeLater && laterRow !== undefined && toolText(pulled).includes(laterRow.eventId) });
+
+      // Row 1, through the product: a saved but unloaded thread is refused. The bridge announces it
+      // exactly as Codex's tool calls do (`_meta.threadId`), and the service's own attach refuses.
+      const logBefore = serveLog().length;
+      await puller.rpc.request('tools/call', { name: 'task_read', arguments: { view: 'list', archived: 'include' }, _meta: { threadId } }, 60_000);
+      const unloaded = await attach();
+      const unloadedLog = serveLog().slice(logBefore);
+      checks.push({ name: 'a saved but unloaded thread is refused, never resumed into the server', required: 'attach answers 409 with the recoverable text; the log names the reason, not a path', observed: { status: unloaded.status, error: unloaded.json?.error?.slice?.(0, 80), log: /Codex leader not attached[^\n]*not loaded/.test(unloadedLog) }, ok: unloaded.status === 409 && /Codex leader not attached[^\n]*not loaded/.test(unloadedLog) && !unloadedLog.includes(codexHome) && !(await loadedIds()).includes(threadId) });
+
+      // Row 4, daemon exit: the socket goes with the server, and attach says so without the path.
+      observer.close();
+      observer = undefined;
+      await stop(appServer);
+      appServer = undefined;
+      const socketGone = !existsSync(socket);
+      const logBeforeMissing = serveLog().length;
+      const missing = await attach();
+      const missingLog = serveLog().slice(logBeforeMissing);
+      checks.push({ name: 'a missing daemon (no socket) is refused recoverably', required: 'attach answers 409; the log names a missing control socket and no path', observed: { socketGone, status: missing.status, log: /no shared Codex app-server control socket was found/.test(missingLog) }, ok: socketGone && missing.status === 409 && /no shared Codex app-server control socket was found/.test(missingLog) && !missingLog.includes(codexHome) });
+
+      // Row 1, wrong home: a real server of ANOTHER home answers on this home's socket path.
+      const otherHome = join(base, 'o');
+      mkdirSync(otherHome, { recursive: true, mode: 0o700 });
+      writeFileSync(join(otherHome, 'config.toml'), codexConfig);
+      imposter = startAppServer(otherHome, 'imposter-app-server');
+      const otherSocket = join(otherHome, 'app-server-control', 'app-server-control.sock');
+      await waitFor('the other home’s control socket', () => (existsSync(otherSocket) ? true : undefined), 30_000).catch(() => undefined);
+      rmSync(join(codexHome, 'app-server-control'), { recursive: true, force: true });
+      symlinkSync(join(otherHome, 'app-server-control'), join(codexHome, 'app-server-control'));
+      const logBeforeWrong = serveLog().length;
+      const wrong = await attach();
+      const wrongLog = serveLog().slice(logBeforeWrong);
+      checks.push({ name: 'a server that names another Codex home is refused', required: 'attach answers 409; the log says the app-server did not confirm the home', observed: { status: wrong.status, log: /did not confirm the Codex home/.test(wrongLog) }, ok: wrong.status === 409 && /did not confirm the Codex home/.test(wrongLog) });
+    } catch (err) {
+      checks.push({ name: 'the Codex world ran to the end', required: 'every step above completed', observed: err instanceof Error ? err.message : String(err), ok: false });
+    } finally {
+      observer?.close();
+      await puller?.rpc.close().catch(() => undefined);
+      await stop(tui);
+      await stop(appServer);
+      await stop(imposter);
+      await stop(serve.child);
+    }
+    checks.push({
+      name: 'a REAL model reaction',
+      required: 'a real model’s turn acts on the delivered event',
+      observed: 'not observable: § 9 forbids personal accounts, so the model here is the scripted Responses endpoint. Codex really started a turn in the TUI’s thread and really sent a request carrying the event; what a real model decides is not measured (OB-5, open for every client)',
+      ok: null,
+    });
+    const measured = checks.filter((check) => check.ok !== null);
+    const entry = record({
+      case: 'A-19',
+      client: 'codex',
+      verdict: verdictOf(checks),
+      summary: `${measured.filter((check) => check.ok).length} of ${measured.length} measured checks met`,
+      missing: 'a REAL model reaction (OB-5), which no § 9 fixture may observe for any client. Everything else in this row was executed.',
+      checks,
+      transcripts: [serve.transcript.name, transcript.name, 'a19-codex-tui.pty.raw', 'scripted-model-endpoint.log'],
+      fixture: {
+        serve: 'real xezar serve (dist/index.js), XEZ_DRY_RUN=1, CODEX_HOME pinned to the short fixture home',
+        codex: `${resolved.version}: \`app-server --listen unix://\` under that CODEX_HOME, and a plain TUI (\`--no-alt-screen -C <root>\`) on a python3 PTY host`,
+        bridge: 'the `xez mcp` bridge Codex spawned from `<root>/.codex/config.toml` (real runMcpCommand); a second `xez mcp` for the pull and unloaded-thread steps',
+        link: 'LeaderDelivery → adapters/codex-link.ts (ws+unix, perMessageDeflate:false) → adapters/codex.ts',
+        model: `scripted Responses endpoint in this process, model \`${CODEX_MODEL}\`; every request counted there`,
+        condition: 'the TUI’s thread is named before the event (run H), so the event turn takes no title request',
+      },
+    });
+    fx.reaction.codex = entry;
+    settle(t, entry);
+  });
+
   for (const client of CLIENTS_WITHOUT_ADAPTER) {
     test(`[${client}] an idle connected client’s model reacts to a delivered event without polling`, (t) => {
       const setup = fx.setup[client];
       const checks: Check[] = [
         { name: 'client connected with the A-01 setup', required: 'A-01 client leg reached A', observed: setup?.verdict ?? 'no A-01 record', ok: setup ? setup.checks.some((c) => c.name.startsWith('the client reaches A') && c.ok === true) : null },
-        // Codex now has an attach path, but this real-client suite has no shared app-server control
-        // socket fixture yet. Keep the acceptance row explicitly BLOCKED rather than claiming that
-        // the mocked adapter test is a real Codex reaction measurement.
-        { name: 'delivery to the client is observed', required: 'the real service/bridge discovers the existing Codex app-server and delivers a journal row', observed: client === 'codex' ? 'BLOCKED: this harness does not provision a shared Codex app-server Unix control socket for the owning TUI' : 'no attach path exists for Claude Code in a terminal session', ok: null },
+        // Read from source rather than carried over: `LeaderDelivery.#act` builds a target for
+        // `opencode`, `pi` and `codex`, and pi and Codex have their own measured legs above. OpenCode
+        // is reached through an `opencode serve` session the person runs, which this fixture does not
+        // start; a Claude Code session in a terminal has no address xezar could attach to.
+        { name: 'delivery to the client is observed', required: 'the service constructs this client’s reaction adapter and delivers a journal row to it', observed: client === 'opencode' ? 'not measured by this suite: this fixture starts no `opencode serve` session to attach' : 'no attach path exists for Claude Code in a terminal session', ok: null },
         { name: 'a REAL model reaction follows, with no status-polling turn', required: 'a real model’s turn acts on the delivered event', observed: 'not observable: § 9 forbids personal accounts, so every model here is the scripted endpoint — a turn it answers is not a real model’s reaction (the adapter records #108–#110 say the same)', ok: null },
       ];
       if (!fx.clients[client]) {
@@ -2199,8 +2626,8 @@ describe('A-19 — immediate acceptance, delivery, and a real model reaction', (
         case: 'A-19',
         client,
         verdict: 'BLOCKED',
-        summary: client === 'codex' ? 'real Codex app-server reaction is BLOCKED: the harness has no shared Unix control socket fixture' : 'no attach path exists for this client, and no real model may be used in a § 9 fixture',
-        missing: client === 'codex' ? 'Run H against a real existing Codex app-server control socket, with the scripted endpoint and 30-second quiet-window count; this fixture cannot provision that socket safely.' : 'an adapter and an attach path for this client, and no real model has answered a request. Not passed on documentation.',
+        summary: client === 'opencode' ? 'OpenCode delivery is not measured by this suite, and no real model may be used in a § 9 fixture' : 'no attach path exists for this client, and no real model may be used in a § 9 fixture',
+        missing: client === 'opencode' ? 'an `opencode serve` leg in this suite, and no real model has answered a request. Not passed on documentation.' : 'an adapter and an attach path for this client, and no real model has answered a request. Not passed on documentation.',
         checks,
         fixture: { client: fx.clients[client]!.version },
       });

@@ -79,7 +79,7 @@ export interface McpServiceOptions {
 export interface McpSessionObserver {
   opened(sessionKey: string): void;
   closed(sessionKey: string): void;
-  codexAnnounced?(sessionKey: string, announcement: { codexHome: string; threadId: string }): void;
+  codexAnnounced?(sessionKey: string, announcement: { threadId: string }): void;
 }
 
 /**
@@ -259,14 +259,13 @@ async function answer(line: string, opts: McpServiceOptions, ownership: ProjectO
   }
 }
 
-function codexAnnouncement(meta: Record<string, unknown> | undefined): { codexHome: string; threadId: string } | undefined {
+/** The owning bridge's Codex thread id, and only that: where the app-server listens is the service's to find. */
+function codexAnnouncement(meta: Record<string, unknown> | undefined): { threadId: string } | undefined {
   if (meta === undefined) return undefined;
   const codex = meta.codex;
   if (typeof codex !== 'object' || codex === null) return undefined;
-  const value = codex as Record<string, unknown>;
-  return typeof value.codexHome === 'string' && value.codexHome.length <= 1024 && typeof value.threadId === 'string' && value.threadId.length <= 200
-    ? { codexHome: value.codexHome, threadId: value.threadId }
-    : undefined;
+  const threadId = (codex as Record<string, unknown>).threadId;
+  return typeof threadId === 'string' && threadId.length > 0 && threadId.length <= 200 ? { threadId } : undefined;
 }
 
 function observe(opts: McpServiceOptions, edge: 'opened' | 'closed', sessionKey: string): void {
