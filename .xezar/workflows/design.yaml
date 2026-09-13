@@ -1,0 +1,38 @@
+# A design run produces a mockup in designs/<feature>/ – static HTML on
+# docs/design-system/cockpit.css plus a README.md handoff – commits it and drafts a PR.
+# It writes no application code. The gates still run because `npm test` carries the
+# design-system drift test and the designs handoff lint, and a mockup that breaks either
+# is not ready for review.
+name: design
+description: "Design a user-facing surface – mockup in designs/<feature>/ on the design system, README handoff, every state – then gates and a draft PR into main. No application code."
+steps:
+  - id: kit
+    name: Snapshot the local project kit
+    command: 'bash "$(git rev-parse --path-format=absolute --git-common-dir)/../.xezar/checks/bootstrap.sh"'
+  - id: preflight
+    name: Verify worktree isolation
+    command: ".xezar/checks/worktree-preflight.sh"
+  - id: setup
+    name: Prepare the worktree
+    command: ".xezar/checks/worktree-setup.sh"
+  - id: design
+    name: Design the surface
+    prompt: "{{task}}"
+    skill: xezar-ux-design
+    timeout: 2h
+  - id: readiness
+    name: Confirm the task is not blocked
+    command: ".xezar/checks/worktree-preflight.sh --readiness"
+  - id: gates
+    name: Quality gates
+    command: ".xezar/checks/repo-gates.sh --fast"
+    onFail:
+      retry: design
+      max: 2
+  - id: evidence
+    name: Seal the gate evidence
+    command: ".xezar/checks/worktree-preflight.sh --record-gate-evidence"
+  - id: handoff
+    name: Draft PR into main
+    prompt: "Hand off the design of: {{task}}"
+    skill: xezar-handoff-draft-pr

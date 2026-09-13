@@ -20,8 +20,8 @@ function bootstrap(root,wt){return spawnSync('bash',[path.join(root,'.xezar/chec
 function fp(wt){return exec('bash',['-c','. .xezar/checks/lib/common.sh; resolve_task_paths; deps_fingerprint'],wt);}
 test.after(()=>{for(const root of roots){for(const line of git(root,'worktree','list','--porcelain').split('\n'))if(line.startsWith('worktree ')){const wt=line.slice(9);if(wt!==root){assert.ok(wt.startsWith(root+path.sep));git(root,'worktree','remove','--force',wt);}}}const real=fs.realpathSync(owned);assert.ok(real.startsWith(fs.realpathSync(scratch)+path.sep));assert.notEqual(real,fs.realpathSync(repo));fs.rmSync(owned,{recursive:true});});
 test('real Xezar workflow loader and skill parser accept every local role without provider pins',()=>{
- const source=`import {loadWorkflows} from ${JSON.stringify(pathToFileURL(path.join(repo,'packages/xezar/src/workflows/load.ts')).href)};import {parseFrontmatter} from ${JSON.stringify(pathToFileURL(path.join(repo,'packages/xezar/src/skills.ts')).href)};import fs from 'node:fs';const r=await loadWorkflows(${JSON.stringify(repo)});if(r.issues.length)throw Error(JSON.stringify(r.issues));const own=r.workflows.filter(x=>x.source==='file');if(own.length!==15)throw Error('role count');for(const w of own){if(w.steps[0].id!=='kit')throw Error('bootstrap missing');if(w.steps.at(-1).command)throw Error('noninteractive final');for(const step of w.steps){if(step.model||step.runner)throw Error('foreign pin');if(step.skill){const f=${JSON.stringify(path.join(kit,'skills'))}+'/'+step.skill+'.md';const parsed=parseFrontmatter(fs.readFileSync(f,'utf8'));if(!parsed)throw Error('skill parse');}if(step.onFail&&step.onFail.max!==2)throw Error('retry changed');}} console.log(own.length);`;
- assert.equal(exec(process.execPath,['--import','tsx','--input-type=module','-e',source]),'15');
+ const source=`import {loadWorkflows} from ${JSON.stringify(pathToFileURL(path.join(repo,'packages/xezar/src/workflows/load.ts')).href)};import {parseFrontmatter} from ${JSON.stringify(pathToFileURL(path.join(repo,'packages/xezar/src/skills.ts')).href)};import fs from 'node:fs';const r=await loadWorkflows(${JSON.stringify(repo)});if(r.issues.length)throw Error(JSON.stringify(r.issues));const own=r.workflows.filter(x=>x.source==='file');if(own.length!==17)throw Error('role count');for(const w of own){if(w.steps[0].id!=='kit')throw Error('bootstrap missing');if(w.steps.at(-1).command)throw Error('noninteractive final');for(const step of w.steps){if(step.model||step.runner)throw Error('foreign pin');if(step.skill){const f=${JSON.stringify(path.join(kit,'skills'))}+'/'+step.skill+'.md';const parsed=parseFrontmatter(fs.readFileSync(f,'utf8'));if(!parsed)throw Error('skill parse');}if(step.onFail&&step.onFail.max!==2)throw Error('retry changed');}} console.log(own.length);`;
+ assert.equal(exec(process.execPath,['--import','tsx','--input-type=module','-e',source]),'17');
 });
 test('canonical gates match the five actual validation commands in exact order',()=>{
  const list=JSON.parse(exec('bash',[path.join(checks,'repo-gates.sh'),'--list','--json']));
@@ -166,12 +166,34 @@ test('research discipline: cited and dated, absence reported, nothing invented, 
   /OBSERVED/,/INFERRED/,/Web access: NOT available/,/mark every claim UNVERIFIED/,/in the sources examined/,/never "X does not exist"/])
   assert.match(body,rule);
 });
-test('ux design has no workflow of its own and holds the repository accessibility bar',()=>{
- for(const f of fs.readdirSync(path.join(kit,'workflows')))assert.doesNotMatch(fs.readFileSync(path.join(kit,'workflows',f),'utf8'),/xezar-ux-design/,f);
+// The skill used to declare "deliberately no workflow" and was then used as a review role in six
+// documents with no way to run it. Two workflows now run it: `design` writes a mockup and drafts
+// a PR; `design-review` is read-only and posts its verdict on the PR. No other workflow names it.
+test('design workflows name xezar-ux-design and the skill holds the repository accessibility bar',()=>{
+ for(const f of fs.readdirSync(path.join(kit,'workflows'))){const text=fs.readFileSync(path.join(kit,'workflows',f),'utf8');
+  if(f==='design.yaml'||f==='design-review.yaml')assert.match(text,/skill: xezar-ux-design/,f);else assert.doesNotMatch(text,/xezar-ux-design/,f);}
  const body=fs.readFileSync(path.join(kit,'skills/xezar-ux-design.md'),'utf8');
- for(const rule of [/deliberately no `ux-design` workflow/,/plan-and-spec/,/feature-implementation/,/Empty/,/loading/,/error/,/refusal/,
-  /Deliberately not built/,/keyboard/,/focus is visible/,/labelled/,/never carried by colour alone/,/375px/,/scrolls sideways/])
+ for(const rule of [/plan-and-spec/,/feature-implementation/,/Empty/,/loading/,/error/,/refusal/,
+  /Deliberately not built/,/keyboard/,/focus is visible/,/labelled/,/never carried by colour alone/,/375px/,/scrolls sideways/,
+  /## Review mode/,/PASS WITH FOLLOW-UPS/,/What gets cut/,/Worst case, measured/])
   assert.match(body,rule);
+});
+test('design-review is a read-only role',()=>{
+ const flow=parseYaml(fs.readFileSync(path.join(kit,'workflows/design-review.yaml'),'utf8'));
+ assert.deepEqual(flow.steps.map(s=>s.id),['kit','preflight','review']);
+ assert.match(flow.steps[1].command,/--allow-root/);
+ const last=flow.steps.at(-1);
+ assert.equal(last.skill,'xezar-ux-design');assert.equal(last.command,undefined);assert.equal(last.timeout,undefined);
+ assert.deepEqual(last.allowedTools,['Read','Grep','Glob','Bash']);
+ for(const step of flow.steps)assert.equal(step.interactive,undefined,step.id);
+});
+test('design is a writing role',()=>{
+ const flow=parseYaml(fs.readFileSync(path.join(kit,'workflows/design.yaml'),'utf8'));
+ assert.deepEqual(flow.steps.map(s=>s.id),['kit','preflight','setup','design','readiness','gates','evidence','handoff']);
+ const design=flow.steps[3];
+ assert.equal(design.skill,'xezar-ux-design');assert.equal(design.timeout,'2h');
+ assert.deepEqual(flow.steps[5].onFail,{retry:'design',max:2});
+ assert.equal(flow.steps.at(-1).skill,'xezar-handoff-draft-pr');
 });
 for (const role of ['xezar-research','xezar-ux-design']) {
  test(`${role} is a maintained role: dropping its shared contract fails the catalog`,()=>{
