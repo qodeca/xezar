@@ -19,6 +19,21 @@
 - 🐛 **MCP integration harnesses now use the port actually bound by xezar.** (#325)
 
 ## 💥 Breaking
+- 💥 **A Codex run xezar starts no longer loads your own Codex MCP servers, plugins or apps.**
+  (#324, #323) Every Codex task run used to load each MCP server and plugin in
+  `$CODEX_HOME/config.toml` – a browser, the Messages plugin, ChatGPT connectors – and
+  `approvalPolicy: never` let the agent call them with no prompt. The runner now asks the Codex
+  app-server which servers it would load (`config/read`) and starts the thread with only the
+  servers that the project's own trusted `.codex/config.toml` alone declares. Servers from your
+  home config, plugins, apps and xezar's own leader bridge are switched off for that thread, and
+  the run transcript names what was switched off. The bridge is known by its launch line
+  (`npx @qodeca/xezar mcp`, `xezar mcp`, `env … xezar mcp`, `sh -c "…"`,
+  `node …/@qodeca/xezar/dist/index.js mcp`) and by the name `xezar`, which is now reserved: a
+  project server called that is switched off too, so rename it. Your config files are not
+  changed. To use a server in Codex runs, declare it in the project's `.codex/config.toml` and
+  keep your home config from adding keys to it. A Codex CLI that cannot answer `config/read`
+  now fails the run with a message instead of starting it. No setting and no environment
+  variable. Migration: README § "Codex runs and MCP servers".
 - 💥 **Agent config no longer follows individual file symlinks (#363); ship in the next minor release.** Reads and writes return 409 with the existing error body; listings expose no hash and seeding skips the link. Directory links below an agent home or repository may not escape that root. Replace file links with regular config files; relocating an entire configured home remains supported.
 - 💥 **The default team skills source is now `qodeca/xezar-skills`, and the skills are named
   `xez-*`.** (#394) The previous default repository is no longer loaded, and the automatic updater no

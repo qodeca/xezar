@@ -208,3 +208,54 @@ describe('a signal xezar did not send (codex app-server)', () => {
     expect(error?.type === 'error' && error.message).toContain('#156');
   }, 15_000);
 });
+
+/**
+ * #324 / #323 — a Codex run xezar starts must not reach the person's own MCP servers, plugins
+ * or apps, nor xezar's leader bridge. Under MOCK_CODEX_AMBIENT the mock reports one server per
+ * case through `config/read` and refuses a thread whose `config` does not switch the right ones
+ * off, so each of these fails against a runner that starts the thread without asking.
+ */
+describe("a Codex run does not reach the person's own MCP servers (#324)", () => {
+  const mockBin = fileURLToPath(
+    new URL('./__fixtures__/codex/mock-codex-app-server.mjs', import.meta.url),
+  );
+
+  it('starts the thread with only the project server, and says what it switched off', async () => {
+    const runner = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 });
+    const events: AgentEvent[] = [];
+    const session = runner.startSession(
+      { userPrompt: 'check the working tree', cwd: process.cwd(), env: { MOCK_CODEX_AMBIENT: '1' } },
+      (event) => events.push(event),
+      { autoEndAfterFirstTurn: true },
+    );
+
+    await expect(session.result).resolves.toMatchObject({ sessionId: 'th_mock_1' });
+    const notes = events.flatMap((event) => (event.type === 'note' ? [event.message] : []));
+    expect(notes.some((note) => note.includes('off: __proto__, ambient, envleader, mixed, nodeleader, xezar'))).toBe(true);
+    expect(notes.join('\n')).not.toContain('projsrv');
+  }, 15_000);
+
+  it('keeps the same isolation when a stored thread is resumed', async () => {
+    const runner = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 });
+    const session = runner.startSession(
+      { userPrompt: 'continue', cwd: process.cwd(), resume: true, sessionId: 'th_mock_1', env: { MOCK_CODEX_AMBIENT: '1' } },
+      undefined,
+      { autoEndAfterFirstTurn: true },
+    );
+
+    await expect(session.result).resolves.toMatchObject({ sessionId: 'th_mock_1' });
+  }, 15_000);
+
+  it('fails closed when the app-server cannot say which servers it would load', async () => {
+    const runner = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 0 });
+    const events: AgentEvent[] = [];
+    const session = runner.startSession(
+      { userPrompt: 'check the working tree', cwd: process.cwd(), env: { MOCK_CODEX_CONFIG_READ_ERROR: '1' } },
+      (event) => events.push(event),
+      { autoEndAfterFirstTurn: true },
+    );
+
+    await expect(session.result).rejects.toThrow(/could not list the MCP servers.*Method not found: config\/read/);
+    expect(events.some((event) => event.type === 'tool-call')).toBe(false);
+  }, 15_000);
+});

@@ -296,7 +296,7 @@ export const CONFIG_FILES: ConfigFileDef[] = [
     modelProviderKey: 'model_provider',
     modelPriority: 1,
     precedence:
-      'User-level defaults. A trusted project’s .codex/config.toml overrides these; some keys (provider, auth, telemetry) cannot be overridden at project scope. MCP servers live here under [mcp_servers.<id>].',
+      'User-level defaults. A trusted project’s .codex/config.toml overrides these; some keys (provider, auth, telemetry) cannot be overridden at project scope. MCP servers live here under [mcp_servers.<id>]; runs xezar starts do not load them, or plugins — declare a server in the project’s .codex/config.toml to use it in a run.',
     docsUrl: CODEX_CONFIG_DOCS,
   },
   {

@@ -32,6 +32,7 @@ import {
   type CodexAppServerMessage,
   waitForCodexAppServerExit,
 } from './codex-app-server-transport.ts';
+import { codexIsolationNote, codexRunIsolation, type CodexRunIsolation } from './codex-run-isolation.ts';
 import {
   codexSessionStarted,
   createCodexUiState,
@@ -349,6 +350,7 @@ class CodexSession implements AgentSession {
 
   private async bootstrap(): Promise<void> {
     await this.rpc.initialize();
+    const isolation = await this.readIsolation();
 
     const overrides = {
       model: this.spec.model,
@@ -358,6 +360,9 @@ class CodexSession implements AgentSession {
       // XEZ_CODEX_NETWORK=0 remains the backwards-compatible explicit sandbox opt-out.
       sandbox: process.env.XEZ_CODEX_NETWORK === '0' ? 'workspace-write' : 'danger-full-access',
       approvalPolicy: 'never',
+      // Only the project's own MCP servers; no home-config server, plugin, app or leader bridge
+      // (#324, #323). Resume carries it too: a stored thread reloads its servers on reopen.
+      config: isolation.config,
     };
     if (this.spec.resume && this.spec.sessionId) {
       await this.rpc.request('thread/resume', { threadId: this.spec.sessionId, ...clean(overrides) });
@@ -373,12 +378,32 @@ class CodexSession implements AgentSession {
       const threadId = this.threadId;
       this.emitUi((state) => codexSessionStarted(threadId, state));
     }
+    const note = codexIsolationNote(isolation);
+    if (note) this.emit({ type: 'note', message: note });
 
     // Seed the first turn. The system prompt (skill body + handoff contract)
     // has no dedicated app-server field, so it rides along as a leading block
     // of the opening message.
     const first = prependSystemPrompt(this.spec.systemPrompt, this.spec.userPrompt);
     await this.startOrSteerTurn(first);
+  }
+
+  /**
+   * Ask THIS app-server which MCP servers it would load for the run's cwd — the only answer that
+   * reflects the home it really uses — and derive the thread's isolation from it. A Codex that
+   * cannot answer fails the run closed: starting the thread anyway would hand the model every
+   * server the person configured for their own use (#324).
+   */
+  private async readIsolation(): Promise<CodexRunIsolation> {
+    try {
+      return codexRunIsolation(await this.rpc.request('config/read', { cwd: this.spec.cwd, includeLayers: false }));
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      throw new Error(
+        `codex app-server could not list the MCP servers it would load (${reason}). xezar does not start a ` +
+          `Codex run that could reach servers from your own Codex config; update the Codex CLI (npm i -g @openai/codex).`,
+      );
+    }
   }
 
   private async startOrSteerTurn(text: string): Promise<void> {
