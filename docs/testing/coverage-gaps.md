@@ -89,6 +89,7 @@ and `serve` is what every other user types every day.
 | Packaged CLI e2e | `npm run test:package` | node:test | yes | 4 files, `packages/xezar/test/e2e/` |
 | Browser e2e | `npm run test:e2e` | vitest + agent-browser + real Chrome | yes – its own `ui-e2e` job (#128) | 35 files, `packages/web/e2e/` |
 | Manual QA | `needs-qa` label | human | n/a | `SDLC.md:67-75` |
+| Design review | `needs-design` label + `## Design review` comment | design reviewer (human or `design-review` workflow) | n/a | `SDLC.md` § The design gate |
 
 One structural note that changes how the tables below read: the six `contract-parity*.test.ts`
 files and `typed-bodies.test.ts` are **compile-time checks**, not runtime tests. Each contains a

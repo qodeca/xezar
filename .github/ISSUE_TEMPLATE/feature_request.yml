@@ -23,6 +23,17 @@ body:
       description: Workarounds or other tools you considered.
     validations:
       required: false
+  - type: dropdown
+    id: cockpit
+    attributes:
+      label: Does this change what the cockpit shows?
+      description: Yes means the maintainer applies `needs-design` at triage and the work starts with a mockup in `designs/<feature>/`.
+      options:
+        - "Yes"
+        - "No"
+        - "Not sure"
+    validations:
+      required: false
   - type: markdown
     attributes:
       value: |
