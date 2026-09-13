@@ -39,7 +39,10 @@
   read. A new read-only `qa` kit workflow (shaped like `code-review`) never runs that check at all.
   Separately, `address-review-findings` ended `failed` after correctly pushing its fix to the PR's
   own branch, because readiness only recognised commits on the run's own branch; it now recognises a
-  `DELIVERED` record naming the branch, the pushed commit and the commit it was fixing.
+  `DELIVERED` record naming the branch, the pushed commit and the commit it was fixing — verified
+  LIVE against `git ls-remote origin`, never a local or remote-tracking ref, since either of those
+  is writable by the same agent the check exists to hold accountable and proves no push at all
+  (#416 review).
 
 ## 🚀 CI/CD & Infrastructure
 - 🚀 Add an opt-in pi real-model MCP harness that judges a delivered event by its exact nonce/cursor acknowledgement, with a scripted request-only negative control. (#373)

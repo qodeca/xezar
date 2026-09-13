@@ -1795,11 +1795,11 @@ fi
 # right — `xezar-review-response` must not adopt or rename a task branch — and the workflow's
 # readiness step is checking the wrong branch for what this role delivers.
 #
-# THE FIX: the skill declares the branch it delivered to and what changed, in a `DELIVERED` record
-# in the task's own evidence directory (same directory §7d's VERIFICATION already uses) —
+# THE FIX (#402): the skill declares the branch it delivered to and what changed, in a `DELIVERED`
+# record in the task's own evidence directory (same directory §7d's VERIFICATION already uses) —
 # `branch: <name>`, `head: <sha now at that branch's tip>`, `base: <sha it was at before this run>`
-# — and readiness accepts an empty task branch when that record names a real ref whose current tip
-# is `head` and `head` carries new commits over `base`. This is the same shape #322 already
+# — and readiness accepts an empty task branch when that record names a branch really carrying
+# `head`, and `head` really carries new commits over `base`. This is the same shape #322 already
 # established for VERIFICATION, extended to "delivered elsewhere" instead of "verified elsewhere",
 # so it is the smaller of the two options the issue considered — the other being to check the PR
 # branch out into the task's own worktree, which reopens `branch.owned-by-run` (see #356 above) for
@@ -1807,12 +1807,33 @@ fi
 # `gates` step that follows readiness still runs against this task's own (unchanged) tree — a no-op
 # confirmation, not a re-gate of the pushed content; that scope is a documented, leader-approved
 # tradeoff (see the PR), not something this check can express.
-printf '\n-- fix delivered to the PR'"'"'s own branch, not this task'"'"'s (#402) --\n'
+#
+# THE HOLE (#416 review). The first cut of "really carrying `head`" checked
+# `refs/heads/$delivered_branch` and `refs/remotes/origin/$delivered_branch` — both refs the same
+# agent this check exists to hold accountable can write with plain `git update-ref`, no push
+# required. `git commit-tree` fabricates a commit and `update-ref` points a LOCAL branch (or even a
+# remote-TRACKING ref, which nothing but this repository's own `git fetch` ever moves) at it, and
+# the old check accepted either as proof — an empty writing task could manufacture `DELIVERED` and
+# sail through `branch.has-own-commits` without a single byte ever reaching the real remote. THE
+# FIX FOR THE HOLE: drop both local ref forms and query the remote LIVE — `git ls-remote origin
+# refs/heads/<branch>` — comparing ITS answer, not anything already sitting in this repository,
+# against the recorded head.
+printf '\n-- fix delivered to the PR'"'"'s own branch, not this task'"'"'s (#402, #416) --\n'
 root="$(make_fixture delivered-elsewhere)"
 wt="$(add_worktree "$root" "$RUN_A")"
 PF="$root/.xezar/checks/worktree-preflight.sh"
 ev="$root/.local/xezar-tasks/$RUN_A"
 mkdir -p "$ev"
+
+# A real bare `origin`, the same idiom §5b's guarded-git-writes fixture uses above — the whole
+# point of this section is that a LOCAL ref must no longer be enough, so the fixture needs
+# somewhere real to push to, and to withhold a push from.
+git init -q --bare "$WORK/delivered-elsewhere-origin.git"
+git -C "$root" remote add origin "$WORK/delivered-elsewhere-origin.git"
+git -C "$root" push -q -u origin main
+ORIGIN_BARE="$WORK/delivered-elsewhere-origin.git"
+origin_ref_at() { git -C "$ORIGIN_BARE" rev-parse --verify --quiet "refs/heads/$1" 2>/dev/null; }
+
 base_sha="$(git -C "$root" rev-parse HEAD)"
 # The PR branch this run was asked to fix, at the head it reviewed — then the fix, pushed onto it,
 # never checked out into this task's own worktree (which stays on its own, still-empty branch).
@@ -1825,15 +1846,44 @@ git -C "$root" update-ref refs/heads/xez/939d7d68 "$delivered_head"
 expect_fail "with no record, a fix delivered to another branch is still refused" \
   "branch.has-own-commits" run_in "$wt" "$PF" --readiness
 
-# The fix: a well-formed record lets the commitless task branch through, because the actual work is
-# verifiably on the named branch instead.
+# THE ORIGINAL FINDING, reproduced against the fixed check to prove it is really closed: a LOCAL
+# branch pointed at the fabricated commit, and a well-formed record naming it — but nothing was
+# ever pushed anywhere. This is exactly what the immutable head's positive fixture used to accept.
 printf 'branch: xez/939d7d68\nhead: %s\nbase: %s\n' "$delivered_head" "$base_sha" > "$ev/DELIVERED"
-expect_ok "a well-formed DELIVERED record passes readiness" run_in "$wt" "$PF" --readiness
+[ -z "$(origin_ref_at xez/939d7d68)" ] \
+  && ok "setup: the fabricated branch was never pushed to origin" \
+  || bad "setup: the fabricated branch was never pushed to origin" "origin already has it"
+expect_fail "a DELIVERED record naming a real LOCAL ref that was never pushed is refused" \
+  "scope.delivery-record" run_in "$wt" "$PF" --readiness
 
-# A record naming a branch that does not actually carry the claimed head excuses nothing — this is
-# what stops a fabricated pair of shas from being accepted as proof.
+# The fix, actually pushed: the same record now passes, because origin's LIVE tip matches.
+git -C "$root" push -q origin refs/heads/xez/939d7d68:refs/heads/xez/939d7d68
+[ "$(origin_ref_at xez/939d7d68)" = "$delivered_head" ] \
+  && ok "setup: the fix reached origin for real" \
+  || bad "setup: the fix reached origin for real" "origin has $(origin_ref_at xez/939d7d68)"
+expect_ok "a well-formed DELIVERED record, actually pushed, passes readiness" run_in "$wt" "$PF" --readiness
+
+# THE NEGATIVE FIXTURE THE REVIEW ASKED FOR: the local ref still matches the recorded head — nothing
+# below undoes that — but origin's branch has since moved on WITHOUT the recorded head, as a later
+# force-push would leave it. A record must not be trusted just because this repository's OWN copy
+# of the branch still agrees with it.
+superseding_head="$(git -C "$root" -c user.email=t@t -c user.name=t commit-tree 'HEAD^{tree}' -p "$delivered_head" -m "a later, real push origin actually carries now")"
+git -C "$root" push -q origin "$superseding_head:refs/heads/xez/939d7d68"
+[ "$(git -C "$root" rev-parse refs/heads/xez/939d7d68)" = "$delivered_head" ] \
+  && ok "setup: this repository's own local ref still names the old, recorded head" \
+  || bad "setup: this repository's own local ref still names the old, recorded head" "moved to $(git -C "$root" rev-parse refs/heads/xez/939d7d68)"
+[ "$(origin_ref_at xez/939d7d68)" = "$superseding_head" ] \
+  && ok "setup: origin's real tip has moved past the recorded head" \
+  || bad "setup: origin's real tip has moved past the recorded head" "origin has $(origin_ref_at xez/939d7d68)"
+expect_fail "a record whose local ref matches but whose LIVE origin tip does not is refused" \
+  "scope.delivery-record" run_in "$wt" "$PF" --readiness
+# Return origin to the state the rest of this section assumes.
+git -C "$root" push -q -f origin "$delivered_head:refs/heads/xez/939d7d68"
+
+# A record naming a branch the remote never carried excuses nothing — this is what stops a
+# fabricated pair of shas from being accepted as proof.
 printf 'branch: xez/no-such-branch\nhead: %s\nbase: %s\n' "$delivered_head" "$base_sha" > "$ev/DELIVERED"
-expect_fail "a record naming a branch that does not carry the claimed head is refused" \
+expect_fail "a record naming a branch the remote never carried is refused" \
   "scope.delivery-record" run_in "$wt" "$PF" --readiness
 
 # A record whose head and base are the same commit claims no new work.

@@ -434,20 +434,24 @@ if [ "$MODE" = "readiness" ] || [ "$MODE" = "record-gate-evidence" ] || [ "$MODE
         elif ! git -C "$TASK_CWD" cat-file -e "$delivered_base^{commit}" 2>/dev/null; then
           fail scope.delivery-record "branch \"$BRANCH\" has no commits over its base, and its DELIVERED record names base $delivered_base, which is not a commit in this repository."
         else
-          delivered_ref=""
-          for ref_form in "refs/heads/$delivered_branch" "refs/remotes/origin/$delivered_branch"; do
-            git -C "$TASK_CWD" rev-parse --verify --quiet "$ref_form" >/dev/null 2>&1 || continue
-            [ "$(git -C "$TASK_CWD" rev-parse "$ref_form")" = "$delivered_head" ] && delivered_ref="$ref_form" && break
-          done
-          if [ -z "$delivered_ref" ]; then
-            fail scope.delivery-record "branch \"$BRANCH\" has no commits over its base, and its DELIVERED record names branch \"$delivered_branch\", but neither refs/heads/$delivered_branch nor refs/remotes/origin/$delivered_branch currently points at its recorded head $delivered_head. Fetch the branch, or correct the record."
+          # `refs/heads/$delivered_branch` and `refs/remotes/origin/$delivered_branch` are both
+          # writable by the very agent this check exists to hold accountable: `git commit-tree`
+          # plus `git update-ref` manufactures either one without a single byte reaching the
+          # network (#416 review). Only a LIVE query against the remote proves a push happened, so
+          # the local and remote-tracking refs are no longer consulted at all — a stale or absent
+          # remote branch now refuses exactly like a missing record would.
+          remote_tip="$(git -C "$TASK_CWD" ls-remote origin "refs/heads/$delivered_branch" 2>/dev/null | awk '{print $1}' | head -n 1)"
+          if [ -z "$remote_tip" ]; then
+            fail scope.delivery-record "branch \"$BRANCH\" has no commits over its base, and its DELIVERED record names branch \"$delivered_branch\", but a live \"git ls-remote origin refs/heads/$delivered_branch\" returned nothing — the branch does not exist on the remote, or the remote could not be reached. A local branch or remote-tracking ref is never accepted as proof of a push; push the branch, then correct or re-check the record."
+          elif [ "$remote_tip" != "$delivered_head" ]; then
+            fail scope.delivery-record "branch \"$BRANCH\" has no commits over its base, and its DELIVERED record names head $delivered_head on branch \"$delivered_branch\", but origin's LIVE tip for refs/heads/$delivered_branch is $remote_tip right now. The recorded head was never actually pushed there, or has since been superseded — fetch is not proof either, since a fetch only updates a ref this agent already controls."
           elif [ "$delivered_head" = "$delivered_base" ]; then
             fail scope.delivery-record "branch \"$BRANCH\" has no commits over its base, and its DELIVERED record's head and base are the same commit ($delivered_head) — no new commits were delivered."
           elif ! git -C "$TASK_CWD" merge-base --is-ancestor "$delivered_base" "$delivered_head" 2>/dev/null; then
             fail scope.delivery-record "branch \"$BRANCH\" has no commits over its base, and its DELIVERED record's head $delivered_head is not a descendant of its recorded base $delivered_base — that is not a fix delivered over the reviewed head."
           else
-            info "own commits   none — delivered to $delivered_ref instead, by its DELIVERED record"
-            info "delivered     $delivered_head (over $delivered_base)"
+            info "own commits   none — delivered to origin/$delivered_branch instead, by its DELIVERED record"
+            info "delivered     $delivered_head (over $delivered_base), verified live against origin"
           fi
         fi
       else
