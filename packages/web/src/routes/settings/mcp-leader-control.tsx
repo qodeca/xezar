@@ -66,6 +66,8 @@ const LEADER_CLIENTS: Record<LeaderClient, LeaderClientCopy> = {
     name: RUNNER_LABEL.claude,
     attach: 'pull-only',
     note: 'Claude Code reads its events with `leader_events`. There is nothing to attach: xezar cannot start a turn in a Claude Code session.',
+    // Never shown today: the contract has no attached Claude Code leader. It is the sentence to use
+    // once one can be attached (PR #404), so the row is complete when that union grows.
     connected: 'Claude Code connected. Project events can start a turn in your current session.',
   },
 }
@@ -112,6 +114,7 @@ export function McpLeaderControl() {
       onAttach={(input) => action.mutate(input)}
       refreshing={leader.isFetching}
       onRefresh={() => void leader.refetch()}
+      staleError={leader.isError ? leader.error.message : null}
     />
   )
 }
@@ -124,6 +127,7 @@ export function McpLeaderPanel({
   onAttach,
   refreshing,
   onRefresh,
+  staleError = null,
 }: {
   status: McpLeaderStatus
   attaching: boolean
@@ -132,6 +136,8 @@ export function McpLeaderPanel({
   onAttach: (input: McpLeaderActionInput) => void
   refreshing: boolean
   onRefresh: () => void
+  /** Set when the last re-read failed: `status` is then the last one read, and says so. */
+  staleError?: string | null
 }) {
   const state = leaderViewState(status)
   const [picked, setPicked] = useState<LeaderClient>('codex')
@@ -153,8 +159,9 @@ export function McpLeaderPanel({
   const client = derived ?? picked
   const copy = LEADER_CLIENTS[client]
   const blocker = status.blocker
-  // A refusal the status already explains is not said twice; the generic no-leader text explains none.
-  const refusal = error !== null && (blocker === null || blocker.code === 'no-leader-session') ? error : null
+  // The server answers a refused attach with the refusal's own message and fix; when the status shows
+  // that same blocker it is not said twice. Any other refusal is shown, whatever the status blocker is.
+  const refusal = error !== null && !(blocker !== null && error === `${blocker.message} ${blocker.fix}`) ? error : null
   const canSubmit = copy.attach === 'direct' || (copy.attach === 'opencode' && baseUrl.trim() !== '' && sessionId.trim() !== '')
 
   const attach = (): void => {
@@ -179,18 +186,27 @@ export function McpLeaderPanel({
         </dd>
       </dl>
 
-      <p data-slot="mcp-leader-summary" className="text-[13px] leading-relaxed text-foreground">
-        {withCode(summary(status), CODE_WORDS)}
-      </p>
+      {/* Only the status words are announced; the controls below stay outside the live region. */}
+      <div data-slot="mcp-leader-live" aria-live="polite" className="flex flex-col gap-3">
+        <p data-slot="mcp-leader-summary" className="text-[13px] leading-relaxed text-foreground">
+          {withCode(summary(status), CODE_WORDS)}
+        </p>
 
-      {blocker ? (
-        <div data-slot="mcp-leader-blocker" data-code={blocker.code} className="rounded-md bg-muted p-2 text-[13px] leading-relaxed text-muted-foreground">
-          <p className="text-foreground">{withCode(blocker.message, CODE_WORDS)}</p>
-          <p className="mt-1">
-            <span className="font-medium text-foreground">Fix:</span> {withCode(blocker.fix, CODE_WORDS)}
+        {blocker ? (
+          <div data-slot="mcp-leader-blocker" data-code={blocker.code} className="rounded-md bg-muted p-2 text-[13px] leading-relaxed text-muted-foreground">
+            <p className="text-foreground">{withCode(blocker.message, CODE_WORDS)}</p>
+            <p className="mt-1">
+              <span className="font-medium text-foreground">Fix:</span> {withCode(blocker.fix, CODE_WORDS)}
+            </p>
+          </div>
+        ) : null}
+
+        {staleError !== null ? (
+          <p data-slot="mcp-leader-stale" className="rounded-md bg-muted p-2 text-[13px] leading-relaxed text-foreground">
+            <span className="font-medium">Could not refresh — showing the last status.</span> {staleError}
           </p>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
 
       {state === 'delivering' ? null : (
         <div data-slot="mcp-leader-attach" className="flex flex-col gap-2">
@@ -240,24 +256,24 @@ export function McpLeaderPanel({
             </div>
           ) : null}
 
-          <div className="flex flex-wrap items-center gap-2">
-            {copy.attach === 'pull-only' ? null : (
-              <Button size="sm" data-slot="mcp-leader-attach-button" disabled={attaching || !canSubmit} onClick={attach}>
-                {attaching ? 'Attaching…' : 'Attach leader'}
-              </Button>
-            )}
-            <Button size="sm" variant="outline" data-slot="mcp-leader-refresh" disabled={refreshing} onClick={onRefresh}>
-              {refreshing ? 'Refreshing…' : 'Refresh'}
+          {copy.attach === 'pull-only' ? null : (
+            <Button size="sm" className="w-fit" data-slot="mcp-leader-attach-button" disabled={attaching || !canSubmit} onClick={attach}>
+              {attaching ? 'Attaching…' : 'Attach leader'}
             </Button>
-          </div>
-
-          {refusal ? (
-            <p data-slot="mcp-leader-refusal" role="alert" className="rounded-md bg-muted p-2 text-[13px] leading-relaxed text-foreground">
-              {withCode(refusal, CODE_WORDS)}
-            </p>
-          ) : null}
+          )}
         </div>
       )}
+
+      {refusal ? (
+        <p data-slot="mcp-leader-refusal" role="alert" className="rounded-md bg-muted p-2 text-[13px] leading-relaxed text-foreground">
+          {withCode(refusal, CODE_WORDS)}
+        </p>
+      ) : null}
+
+      {/* In every state: there is no live topic for this status yet, so a stale "connected" must be re-readable. */}
+      <Button size="sm" variant="outline" className="w-fit" data-slot="mcp-leader-refresh" disabled={refreshing} onClick={onRefresh}>
+        {refreshing ? 'Refreshing…' : 'Refresh'}
+      </Button>
     </div>
   )
 }
@@ -274,5 +290,5 @@ function summary(status: Extract<McpLeaderStatus, { available: true }>): string 
   if (status.owner.client === 'codex') {
     return 'Your Codex session owns this project. Nothing is attached yet, so events are kept for `leader_events` and start no turn.'
   }
-  return 'A client owns this project and reads its events with `leader_events`. Nothing is attached, so events start no turn in it.'
+  return 'A client owns this project, but xezar has not identified which one. Nothing is attached, so events start no turn in it; a leader can read them with `leader_events`.'
 }

@@ -382,6 +382,9 @@ export class CodexReactionAdapter implements ReactionAdapter {
   #release(): void {
     if (!this.#held) return;
     this.#held = false;
+    // Unsubscribed, this link hears no further status, so an unknown one would be reported for ever.
+    // Forgetting it is safe: the next hand-off reads the thread afresh (`#acquire`) before sending.
+    this.#statusUnknown = false;
     if (!this.#link.closed) this.#link.request('thread/unsubscribe', { threadId: this.threadId }).catch(() => undefined);
   }
 
@@ -632,8 +635,10 @@ const UNREACHABLE: CodexReactionBlocker = {
  *   an unsafe one, or one that refused or dropped xezar's connection.
  * - `home`: an app-server answered, but for a different Codex home than the one `xezar serve` uses.
  * - `thread`: the announced session is not loaded (its TUI exited, it is only saved) or is ambiguous.
+ * - `state`: the app-server reported the session's state in a shape this version does not recognise,
+ *   so nothing was attached rather than guess whether a prompt is open.
  */
-export type CodexUnreachableReason = 'not-announced' | 'app-server' | 'home' | 'thread';
+export type CodexUnreachableReason = 'not-announced' | 'app-server' | 'home' | 'thread' | 'state';
 
 const UNTIL_THEN = ' Until then, use leader_events in Codex to read saved events.';
 
@@ -648,11 +653,15 @@ const CODEX_REASONS: Record<CodexUnreachableReason, { readonly code: string; rea
   },
   home: {
     code: 'codex-home-mismatch',
-    fix: `The Codex app-server xezar found runs under a different Codex home than the one xezar uses. Start \`xezar serve\` and Codex with the same CODEX_HOME, or with none set for either, then attach again.${UNTIL_THEN}`,
+    fix: `The Codex home xezar looks in cannot be read, or the app-server there runs under a different home, so this is not the Codex your session uses. Start \`xezar serve\` and Codex with the same CODEX_HOME, or with none set for either, then attach again.${UNTIL_THEN}`,
   },
   thread: {
     code: 'codex-thread-not-loaded',
     fix: `This Codex session is not loaded on the app-server: its TUI exited, it is only saved, or another session in this folder makes it ambiguous. Open the session in your Codex TUI again, let it call a xezar tool once, then attach again.${UNTIL_THEN}`,
+  },
+  state: {
+    code: 'codex-thread-state-unknown',
+    fix: `The app-server reported this session’s state in a form xezar does not recognise (codex-cli 0.154.0 is the version xezar was measured against), so it did not attach rather than risk interrupting an approval. Attach again once the session is idle; if it keeps happening, your codex-cli may be newer than xezar supports.${UNTIL_THEN}`,
   },
 };
 

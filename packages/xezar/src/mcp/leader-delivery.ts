@@ -283,7 +283,7 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
    * successful attach, a stop or a different owner clears it; an announcement clears the refusal it
    * answers ("has not called a tool yet").
    */
-  #refusal: { readonly sessionKey: string | undefined; readonly reason: CodexUnreachableReason; readonly blocker: McpLeaderBlocker } | undefined;
+  #refusal: { readonly sessionKey: string; readonly reason: CodexUnreachableReason; readonly blocker: McpLeaderBlocker } | undefined;
   #closed = false;
 
   constructor(opts: LeaderDeliveryOptions) {
@@ -455,9 +455,15 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     if (input.client === 'codex') {
       const found = await this.#codexTarget();
       if (found.target.kind === 'blocked') {
-        // The answer keeps the decision record's verbatim copy; the STATUS names which refusal it was.
-        if (found.reason !== undefined) this.#refusal = { sessionKey: this.#liveKey(), reason: found.reason, blocker: codexBlocker(found.reason) };
-        return { ok: false, error: found.target.blocker.message };
+        if (found.reason === undefined) return { ok: false, error: found.target.blocker.message };
+        // The answer is the decision record's verbatim copy followed by THIS refusal's fix, so a
+        // re-attach refused while an attached leader shows another blocker still says why. The status
+        // names it too while nothing is attached — for the owner session it was refused for, and only
+        // when there is one: a refusal made with no owner would match "no owner" for ever.
+        const blocker = codexBlocker(found.reason);
+        const key = this.#liveKey();
+        if (key !== undefined) this.#refusal = { sessionKey: key, reason: found.reason, blocker };
+        return { ok: false, error: `${blocker.message} ${blocker.fix}` };
       }
       this.#detach();
       this.#refusal = undefined;
@@ -549,7 +555,9 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
   async #codexTarget(): Promise<{ target: CodexReactionTarget; dispose?: () => void; reason?: CodexUnreachableReason }> {
     const base = { projectId: this.projectId, onReaction: (seq: number) => this.#recordReaction(seq), ...this.#ownOperation() };
     if (this.#opts.localHandoff?.() === false) return { target: codexReactionTarget(base) };
-    const sessionKey = this.#controllers.keys().next().value as string | undefined;
+    // The LIVE owner's announcement — the same session `owner` and a refusal are read against, never
+    // a controller that already ended.
+    const sessionKey = this.#liveKey();
     const announcement = sessionKey === undefined ? undefined : this.#codexAnnouncements.get(sessionKey);
     if (announcement === undefined) return { target: codexReactionTarget(base), reason: 'not-announced' };
     // The discovery rule lives beside `connectCodexLeader`: the SERVICE's Codex home, confirmed by the

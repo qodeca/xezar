@@ -688,6 +688,9 @@ describe('attaching Codex (#374)', () => {
       ['home', 'codex-home-mismatch', 'same CODEX_HOME'],
       ['thread', 'codex-thread-not-loaded', 'Open the session in your Codex TUI again'],
       ['app-server', 'codex-app-server-unreachable', 'codex app-server --listen unix://'],
+      // Self-review finding 5: a state the app-server reports in a shape xezar does not know is its
+      // own refusal, not "not loaded, open it again", which would loop on a newer codex-cli.
+      ['state', 'codex-thread-state-unknown', 'codex-cli 0.154.0'],
     ] as const) {
       refuse = new CodexAttachError(reason, `refused: ${reason}`);
       await expect(made.act({ action: 'attach', client: 'codex' })).resolves.toMatchObject({ ok: false, error: expect.stringContaining('cannot reach') });
@@ -699,6 +702,41 @@ describe('attaching Codex (#374)', () => {
     await made.act({ action: 'attach', client: 'codex' });
     const attached = made.status();
     expect(attached.available && attached.blocker).toBeNull();
+  });
+
+  // Self-review finding 2: with a leader attached but blocked, the status shows the ADAPTER's blocker,
+  // so a refused re-attach must say its own reason in its answer, or the person following one fix
+  // meets a different cause and sees nothing new.
+  it('a refused re-attach while an attached leader is blocked answers with its own reason and fix', async () => {
+    const thread = codexThread();
+    let refuse: CodexAttachError | undefined;
+    const { delivery: made } = codexDelivery({
+      connect: async () => {
+        if (refuse) throw refuse;
+        return { threadId: 'thread-owner', link: thread.link, state: { waiting: false } };
+      },
+    });
+    await made.act({ action: 'attach', client: 'codex' });
+    thread.state.loaded = false;
+    await until('the heartbeat to find the thread unloaded', () => {
+      const status = made.status();
+      return status.available && status.blocker?.code === 'codex-thread-not-loaded';
+    });
+    refuse = new CodexAttachError('home', 'the Codex app-server did not confirm the Codex home xezar looked in');
+    const answer = await made.act({ action: 'attach', client: 'codex' });
+    expect(answer).toMatchObject({ ok: false, error: expect.stringMatching(/^xezar cannot reach this running Codex session/) });
+    expect(answer.ok === false && answer.error).toContain('same CODEX_HOME');
+  });
+
+  // Self-review finding 3: a refusal recorded while NOBODY owned the project matched "nobody owns it"
+  // every time again, so a stale "has not called a tool yet" came back for the service's life.
+  it('does not remember a refusal made while no session owns the project', async () => {
+    const { delivery: made } = delivery(true);
+    await made.act({ action: 'attach', client: 'codex' });
+    expect(made.status()).toMatchObject({ owner: null, blocker: { code: 'no-leader-session' } });
+    made.sessionOpened('owner');
+    made.sessionClosed('owner');
+    expect(made.status()).toMatchObject({ owner: null, blocker: { code: 'no-leader-session' } });
   });
 
   it('the REAL connector’s refusals carry their reason: a missing socket gets the app-server fix, an unreadable home the home fix', async () => {

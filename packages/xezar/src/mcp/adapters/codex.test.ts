@@ -656,6 +656,25 @@ describe('state at attach, and the thread between hand-offs (decision record § 
     expect(adapter.status()).toEqual({});
   });
 
+  // Self-review finding 4: once xezar lets the thread go it hears no more statuses, so an unknown one
+  // must not keep saying "events are held" for ever; the next hand-off reads the thread afresh anyway.
+  it('an unknown status seen while holding the thread is forgotten when the thread is released', async () => {
+    const server = new FakeAppServer();
+    server.flags = ['waitingOnApproval'];
+    const adapter = adapterOn(server);
+    const abort = new AbortController();
+    const delivering = adapter.deliver(dispatch([row(1)]), abort.signal).catch(() => undefined);
+    await settle();
+    server.emit({ method: 'thread/status/changed', params: { threadId: 'thread-1', status: { type: 'bogus' } } });
+    expect(adapter.status().blocker?.code).toBe('codex-thread-state-unknown');
+    abort.abort();
+    await delivering;
+    await settle();
+    expect(server.subscribed).toBe(false);
+    expect(adapter.status()).toEqual({});
+    expect(server.turnRequests()).toEqual([]);
+  });
+
   it('holds the thread only for a hand-off: subscribed to deliver, released once the event reacted', async () => {
     const server = new FakeAppServer();
     const adapter = adapterOn(server);

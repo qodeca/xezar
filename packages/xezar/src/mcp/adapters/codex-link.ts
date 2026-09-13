@@ -90,7 +90,9 @@ export async function connectCodexLeader(announcement: CodexLeaderAnnouncement, 
     const resumed = await link.request('thread/resume', { threadId: announcement.threadId, excludeTurns: true });
     if (threadIdFrom(resumed) !== announcement.threadId) throw new CodexAttachError('thread', 'the Codex app-server resumed a different thread');
     const state = await codexThreadState(link, announcement.threadId, resumed).catch((error: unknown) => {
-      throw new CodexAttachError('thread', error instanceof Error ? error.message : String(error));
+      const message = error instanceof Error ? error.message : String(error);
+      // "Not loaded" is the session's; a state xezar cannot read is the protocol's, with its own fix.
+      throw new CodexAttachError(message.includes('not loaded') ? 'thread' : 'state', message);
     });
     // Attaching must not hold the thread: a subscribed xezar link keeps a thread loaded after its TUI
     // exits (measured), so the adapter subscribes again only for each hand-off (`CodexReactionAdapter`).

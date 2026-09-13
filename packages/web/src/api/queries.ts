@@ -1104,14 +1104,16 @@ export function useMcpApiReference() {
 
 /**
  * The project's leader connection (`GET /api/v1/mcp/leader`, #374): who owns the project, which
- * leader is attached, and the recoverable blocker when events are waiting. Read on mount, on focus
- * and after every action. There is no live topic for it yet, so the control offers Refresh; a topic
- * is the right shape when one is added (patterns.md § 10), never a `refetchInterval`.
+ * leader is attached, and the recoverable blocker when events are waiting. Read on mount, when the
+ * window regains focus (turned on here: the app default is off) and after every action. There is no
+ * live topic for it yet, so the control offers Refresh in every state; a topic is the right shape
+ * when one is added (patterns.md § 10), never a `refetchInterval`.
  */
 export function useMcpLeader() {
   return useQuery({
     queryKey: queryKeys.mcpLeader,
     queryFn: ({ signal }) => getMcpLeader({ signal }),
+    refetchOnWindowFocus: true,
   })
 }
 

@@ -410,7 +410,9 @@ export function McpConnectionSurface({
           the server reports the leader connection (`GET /api/v1/mcp/leader`), and the one leader
           control shows it and attaches (#374, NB-2); the state cards cover hosted mode and a server
           that stopped answering. */}
-      <div data-slot="mcp-connection-status" aria-live="polite" className="min-w-0">
+      {/* The leader control is interactive, so it carries its OWN polite region around the status words
+          only; a live region around its buttons would announce every label change. */}
+      <div data-slot="mcp-connection-status" aria-live={connection ? 'polite' : undefined} className="min-w-0">
         <SettingsField title="Connection status" hint="What the server reports about the MCP leader connection for this project.">
           {connection ? <McpConnectionState state={connection} /> : <McpLeaderControl />}
         </SettingsField>
