@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>xezar design system – patterns</title>
+<link rel="stylesheet" href="../cockpit.css">
+<script src="specimen.js"></script>
+<style>
+  /* Specimen-only helpers. */
+  .src { font-family: var(--mono); font-size: 11px; color: var(--soft-foreground); margin: -2px 0 8px; }
+  .stack { display: flex; flex-direction: column; gap: 10px; }
+  .head-actions { margin-left: auto; display: flex; gap: 6px; }
+  .status-sample { display: inline-flex; align-items: center; gap: 8px; }
+</style>
+</head>
+<body>
+<script src="icons.js"></script>
+<nav class="doc-bar" aria-label="Specimens">
+  <span class="brand">xezar design system</span>
+  <a href="index.html">Start</a>
+  <a href="foundations.html">Foundations</a>
+  <a href="components.html">Components</a>
+  <a href="patterns.html" aria-current="page">Patterns</a>
+  <span class="spacer"></span>
+  <label>Accent <select name="accent" data-appearance="accent" aria-label="Accent"><option value="lime">Lime</option><option value="violet">Violet</option></select></label>
+  <label>Density <select name="density" data-appearance="density" aria-label="Density"><option value="comfortable">Comfortable</option><option value="compact">Compact</option><option value="ultra">Ultra</option></select></label>
+  <label>Width <select name="width" data-appearance="width" aria-label="Reading width"><option value="normal">Normal</option><option value="wide">Wide</option></select></label>
+  <button type="button" class="theme-toggle" data-theme-toggle>Toggle theme</button>
+</nav>
+
+<main class="doc">
+  <h1>Patterns</h1>
+  <p class="lead">How the cockpit composes its components into screens. The rules and the source paths are in <a class="link" href="../patterns.md">patterns.md</a>. Narrow the window below 860 px (or open <a class="link" href="mobile.html">mobile.html</a>) to see the phone layout.</p>
+
+  <h2>1. App shell and 2. Sidebar</h2>
+  <div class="src">app-shell.tsx · nav-items.ts · project-groups.tsx · task-quick-list.tsx · 264 px sidebar on <code>--sidebar</code>, one page column on <code>--background</code></div>
+  <div class="frame">
+    <div class="shell short" style="min-height:560px">
+      <aside class="sidebar">
+        <div class="sidebar-head"><span class="logo">x</span><span class="name">xezar</span><span class="where">main</span></div>
+        <div class="new-task-row"><button class="btn-new-task" type="button"><svg class="icon sm"><use href="#i-plus"/></svg> New task <kbd>N</kbd></button><button class="btn-icon" type="button" aria-label="Search"><svg class="icon sm"><use href="#i-search"/></svg></button></div>
+        <nav class="nav" aria-label="Primary">
+          <a href="#" aria-current="page"><svg class="icon sm"><use href="#i-tasks"/></svg> Tasks <span class="nav-badge">2</span></a>
+          <a href="#"><svg class="icon sm"><use href="#i-inbox"/></svg> Inbox <span class="nav-badge">5</span></a>
+          <a href="#"><svg class="icon sm"><use href="#i-checks"/></svg> Checks</a>
+          <a href="#"><svg class="icon sm"><use href="#i-workflow"/></svg> Workflows</a>
+          <a href="#"><svg class="icon sm"><use href="#i-sparkles"/></svg> Skills <span class="nav-marker" title="Update available"></span></a>
+          <a href="#"><svg class="icon sm"><use href="#i-github"/></svg> GitHub</a>
+          <a href="#"><svg class="icon sm"><use href="#i-settings"/></svg> Settings</a>
+        </nav>
+        <div class="list-tabs" role="tablist"><span class="on" role="tab" aria-selected="true">Active</span><span role="tab" aria-selected="false">Recent</span></div>
+        <div class="quick-head">RUNNING</div>
+        <ul class="quick">
+          <li class="on"><span class="dot pending pulse"></span><span class="t">Fix the flaky test in store.test.ts</span><span class="meta">4:12</span></li>
+          <li class="unread"><span class="dot violet"></span><span class="t">Add the runner label helper</span><span class="meta">review</span></li>
+          <li class="read"><span class="dot success"></span><span class="t">Document the WebSocket bus</span><span class="meta">done</span></li>
+        </ul>
+        <div class="sidebar-foot"><span class="dot success"></span> Local · <span class="version-chip">v0.14.0</span></div>
+      </aside>
+      <div class="main">
+        <div class="mobile-bar"><button class="btn icon ghost" type="button" aria-label="Menu"><svg class="icon"><use href="#i-menu"/></svg></button><span class="title">Tasks</span><span class="nav-badge">2</span></div>
+        <div class="page-head"><h1>Tasks</h1><p>3 running · 1 waiting for you</p><span class="head-actions"><button class="btn" type="button"><svg class="icon sm"><use href="#i-archive"/></svg> Archive done</button><button class="btn contrast" type="button"><svg class="icon sm"><use href="#i-plus"/></svg> New task</button></span></div>
+        <div class="page-body">
+          <div class="group-heading"><span class="dot pending pulse"></span> Running · 1</div>
+          <div class="task-card" style="margin-bottom:14px"><b style="font-size:13.5px">Fix the flaky test in store.test.ts</b><div class="meta"><span>Claude Code</span><span>claude-opus-5</span><span class="plus">+59</span><span class="minus">−12</span><span>4:12</span></div></div>
+          <div class="group-heading"><span class="dot violet"></span> Waiting for you · 1</div>
+          <div class="task-card"><b style="font-size:13.5px">Add the runner label helper</b><div class="meta"><span>Codex</span><span>gpt-5.3-codex</span><span class="plus">+18</span><span class="minus">−4</span><span>review</span></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h2>3. Page headers</h2>
+  <div class="src">56 px row, title left, one primary action right · five shapes in code, this is the rule (G-01)</div>
+  <div class="frame stack" style="gap:0">
+    <div class="page-head"><h1>Workflows</h1></div>
+    <div class="page-head"><h1>Tasks</h1><p>24 tasks</p><span class="head-actions"><button class="btn contrast" type="button"><svg class="icon sm"><use href="#i-plus"/></svg> New task</button></span></div>
+    <div class="page-head" style="border-bottom:0"><h1>Settings</h1><p>Agents</p></div>
+    <div class="tab-links" style="padding:0 20px"><a class="tab-link" href="#" aria-current="page">Agents</a><a class="tab-link" href="#">Agent config</a><a class="tab-link" href="#">Appearance</a><a class="tab-link" href="#">Resources</a></div>
+  </div>
+
+  <h2>4. Lists, cards and tables</h2>
+  <div class="src">tasks-overview.tsx driven by lib/task-columns.ts (13 columns) · cards under 768 px · the global table is separate (G-17)</div>
+  <div class="frame">
+    <div class="table-scroll">
+      <table class="tasks-table">
+        <thead><tr><th>Status</th><th>Task</th><th>Tool</th><th>Model</th><th>Changes</th><th>Tokens</th><th>Time</th></tr></thead>
+        <tbody>
+          <tr class="unread"><td><span class="status-sample"><span class="dot pending pulse"></span> Running</span></td><td class="title">Fix the flaky test in store.test.ts<span class="sub">xez/1a2b3c4d · quick-task</span></td><td>Claude Code</td><td class="num">claude-opus-5</td><td class="diff-stat"><span class="plus">+59</span> <span class="minus">−12</span></td><td class="num">18.6k</td><td class="num">4:12</td></tr>
+          <tr class="unread"><td><span class="status-sample"><span class="dot violet"></span> Review</span></td><td class="title">Add the runner label helper<span class="sub">xez/9f8e7d6c · feature-implementation</span></td><td>Codex</td><td class="num">gpt-5.3-codex</td><td class="diff-stat"><span class="plus">+18</span> <span class="minus">−4</span></td><td class="num">7.1k</td><td class="num">12:40</td></tr>
+          <tr class="read"><td><span class="status-sample"><span class="dot success"></span> Done</span></td><td class="title">Document the WebSocket bus<span class="sub">xez/5c4b3a29 · docs</span></td><td>pi</td><td class="num">—</td><td class="diff-stat"><span class="plus">+140</span> <span class="minus">−2</span></td><td class="num">31.0k</td><td class="num">1:03:12</td></tr>
+          <tr class="read"><td><span class="status-sample"><span class="dot danger"></span> Failed</span></td><td class="title">Migrate the legacy state file<span class="sub">xez/0a1b2c3d · bugfix</span></td><td>OpenCode</td><td class="num">—</td><td class="diff-stat">—</td><td class="num">0.4k</td><td class="num">0:09</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="note"><strong>Unread vs read.</strong> An unread row keeps <code>--foreground</code>; a read row drops the title to <code>--muted-foreground</code>. Numbers are mono and tabular so columns line up.</div>
+
+  <h2>5. Status</h2>
+  <div class="src">lib/attention.ts is the one source: status → bucket, tone, pulse, label · words first, dot second</div>
+  <div class="table-scroll">
+  <table class="decision-table">
+    <thead><tr><th>Run status</th><th>Shown as</th><th>Bucket</th></tr></thead>
+    <tbody>
+      <tr><td><code>queued</code></td><td><span class="status-sample"><span class="dot"></span> Queued</span></td><td>Running</td></tr>
+      <tr><td><code>running</code></td><td><span class="status-sample"><span class="dot pending pulse"></span> Running</span></td><td>Running</td></tr>
+      <tr><td><code>waiting</code>, a question</td><td><span class="status-sample"><span class="dot violet"></span> Waiting for you</span></td><td>Needs you</td></tr>
+      <tr><td><code>review</code></td><td><span class="status-sample"><span class="dot violet"></span> Review</span></td><td>Needs you</td></tr>
+      <tr><td><code>done</code></td><td><span class="status-sample"><span class="dot success"></span> Done</span></td><td>Finished</td></tr>
+      <tr><td><code>failed</code>, <code>cancelled</code></td><td><span class="status-sample"><span class="dot danger"></span> Failed</span></td><td>Finished</td></tr>
+      <tr><td>usage limit</td><td><span class="status-sample"><span class="dot pending"></span> <span style="color:var(--pending-strong)">Paused · resumes at 14:00</span></span></td><td>Running</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2>6. Empty, loading and error states</h2>
+  <div class="src">one template: CenteredState · every state has its own words · shown in full on the <a class="link" href="components.html">components page</a></div>
+  <div class="grid-2">
+    <div class="frame"><div class="centered-state"><div class="tile"><svg class="icon"><use href="#i-search"/></svg></div><h2>No tasks match</h2><p>Clear the filters to see all 24 tasks.</p><div class="actions"><button class="btn md" type="button">Clear filters</button></div></div></div>
+    <div class="frame"><div class="loading-line">Loading…</div><div class="stack" style="padding:0 16px 16px"><div class="skeleton" style="width:70%"></div><div class="skeleton" style="width:45%"></div><div class="skeleton" style="width:60%"></div></div></div>
+  </div>
+
+  <h2>7. Dialogs, sheets, command palette, toasts and notifications</h2>
+  <div class="src">Dialog for forms · AlertDialog for destructive confirms (never <code>window.confirm</code>) · Sheet for the phone drawer · ⌘K palette · toast bottom centre for 5 s · browser notifications only when the tab is hidden</div>
+  <div class="frame">
+    <div class="scrim" style="border-radius:0;display:flex;flex-direction:column;align-items:center;gap:24px">
+      <div class="cmdk">
+        <div class="search"><svg class="icon sm"><use href="#i-search"/></svg><span>Search tasks, projects and commands…</span><kbd class="kbd" style="margin-left:auto">Esc</kbd></div>
+        <div class="group"><div class="heading">Go to</div><div class="item selected"><svg class="icon sm"><use href="#i-tasks"/></svg> Tasks</div><div class="item"><svg class="icon sm"><use href="#i-settings"/></svg> Settings</div></div>
+      </div>
+      <div class="toast">Task archived</div>
+    </div>
+  </div>
+
+  <h2>8. Settings and forms</h2>
+  <div class="src">settings/*.tsx · left nav on desktop, pills on phones · SettingsField chassis copied three times (G-13) · native select (G-11) · save-on-change in most panes (G-22)</div>
+  <div class="frame">
+    <div class="shell short" style="grid-template-columns:208px minmax(0,1fr)">
+      <nav class="settings-nav" aria-label="Settings">
+        <a href="#" aria-current="page"><svg class="icon sm"><use href="#i-sparkles"/></svg> Agents</a>
+        <a href="#"><svg class="icon sm"><use href="#i-folder"/></svg> Agent config</a>
+        <a href="#"><svg class="icon sm"><use href="#i-sun"/></svg> Appearance</a>
+        <a href="#"><svg class="icon sm"><use href="#i-zap"/></svg> Resources</a>
+      </nav>
+      <div class="main">
+        <div class="settings-pills"><a href="#" aria-current="page">Agents</a><a href="#">Agent config</a><a href="#">Appearance</a><a href="#">Resources</a></div>
+        <div class="page-body">
+          <div class="column">
+            <div class="settings-field" style="border-top:0">
+              <h2>Default agent</h2>
+              <p>Used for a new task unless the composer picks another one.</p>
+              <select class="native-select" name="default-agent" aria-label="Default agent" style="max-width:260px"><option>Claude Code</option><option>Codex</option><option>OpenCode</option><option>pi</option></select>
+            </div>
+            <div class="settings-field">
+              <h2>Review gate</h2>
+              <p>Park a finished run at review before it can be pushed. Autonomous runs always skip it.</p>
+              <div class="settings-row"><span class="grow"><span>Require review</span><br><span style="color:var(--muted-foreground);font-size:12.5px">Overrides <code>XEZ_REVIEW_GATE</code>.</span></span><button class="switch" type="button" role="switch" aria-checked="false" aria-label="Require review"></button></div>
+            </div>
+            <div class="settings-field">
+              <h2>Max parallel</h2>
+              <p>How many runs may execute at once across all projects.</p>
+              <input class="input" name="max-parallel" value="12" aria-invalid="true" aria-describedby="mp-e" style="max-width:120px"><p class="field-error" id="mp-e">Enter a whole number from 1 to 8.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h2>9. The mobile drawer</h2>
+  <div class="src">below 768 px the sidebar becomes a Sheet opened from the mobile bar · safe-area padding · dvh heights</div>
+  <div class="frame pad" style="display:flex;justify-content:center">
+    <div class="phone"><iframe src="mobile.html" title="Mobile shell specimen" loading="lazy"></iframe></div>
+  </div>
+
+  <h2>10. Live updates</h2>
+  <div class="src">one EventSource on <code>/api/v1/workspace/events</code> patches the query cache · one WebSocket on <code>/api/v1/ws</code> carries the <code>health</code> topic, subscribed once at the root in local mode</div>
+  <div class="frame pad stack">
+    <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;font-size:13px">
+      <span class="pill"><span class="dot success"></span> Connected</span>
+      <span class="pill"><span class="dot pending pulse"></span> Reconnecting…</span>
+      <span class="pill"><span class="dot danger"></span> Offline · retrying in 5 s</span>
+    </div>
+    <div class="banner-row alert" style="border-radius:var(--radius)"><svg class="icon sm"><use href="#i-alert"/></svg> Lost the connection to xezar. Changes appear again when it is back. <a href="#">Retry now</a></div>
+    <div class="note" style="margin:0"><strong>Announce, do not shout.</strong> A count that changes is read out by a polite live region. New rows appear in place; the page never reloads.</div>
+  </div>
+</main>
+</body>
+</html>

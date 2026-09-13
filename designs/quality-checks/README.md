@@ -81,7 +81,8 @@ Code facts behind the problem:
 | `states.html` | Badge states, all card states, empty, loading and error |
 | `task.html` | Task list chip, task page banner and steps, leader tool changes |
 | `settings.html` | MCP connection section before and after |
-| `styles.css` | Mockup styles. Tokens are copied from `packages/web/src/styles/index.css`. **Do not import this file into the app.** |
+| `../../docs/design-system/cockpit.css` | The shared design-system stylesheet every page links first: tokens for both themes (verbatim from `packages/web/src/styles/index.css`, drift-tested) and the base component classes. |
+| `styles.css` | Feature-specific rules only (check cards, the rule strip, the failed-check banner, the red Checks badge, the mockup empty/skeleton/toast). No tokens, no base classes. **Do not import this file into the app.** |
 | `theme.js` | Mockup-only light/dark switch |
 
 The mockup uses sample data based on real tasks. The command output on `task.html` is example text.

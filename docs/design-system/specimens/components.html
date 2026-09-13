@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>xezar design system – components</title>
+<link rel="stylesheet" href="../cockpit.css">
+<script src="specimen.js"></script>
+<style>
+  /* Specimen-only helpers. */
+  .states { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+  .state { display: inline-flex; flex-direction: column; gap: 4px; }
+  .state small { font-family: var(--mono); font-size: 10.5px; color: var(--soft-foreground); }
+  .src { font-family: var(--mono); font-size: 11px; color: var(--soft-foreground); margin: -2px 0 8px; }
+  .stack { display: flex; flex-direction: column; gap: 8px; }
+  .float-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 16px; }
+  .field { display: flex; flex-direction: column; gap: 6px; width: 260px; max-width: 100%; }
+</style>
+</head>
+<body>
+<script src="icons.js"></script>
+<nav class="doc-bar" aria-label="Specimens">
+  <span class="brand">xezar design system</span>
+  <a href="index.html">Start</a>
+  <a href="foundations.html">Foundations</a>
+  <a href="components.html" aria-current="page">Components</a>
+  <a href="patterns.html">Patterns</a>
+  <span class="spacer"></span>
+  <label>Accent <select name="accent" data-appearance="accent" aria-label="Accent"><option value="lime">Lime</option><option value="violet">Violet</option></select></label>
+  <label>Density <select name="density" data-appearance="density" aria-label="Density"><option value="comfortable">Comfortable</option><option value="compact">Compact</option><option value="ultra">Ultra</option></select></label>
+  <label>Width <select name="width" data-appearance="width" aria-label="Reading width"><option value="normal">Normal</option><option value="wide">Wide</option></select></label>
+  <button type="button" class="theme-toggle" data-theme-toggle>Toggle theme</button>
+</nav>
+
+<main class="doc">
+  <h1>Components</h1>
+  <p class="lead">The shadcn primitives in <code>packages/web/src/components/ui/</code> and the shared components in <code>packages/web/src/components/</code>, with their variants and states. Each entry names its source; the props, do/don't and accessibility notes are in <a class="link" href="../components.md">components.md</a>. Press Tab anywhere to see the focus ring.</p>
+
+  <h2>1. Primitives</h2>
+
+  <h3>Button</h3>
+  <div class="src">ui/button.tsx · variants primary · contrast · outline · ghost · danger-ghost · sizes default · sm · icon · icon-sm</div>
+  <div class="frame pad states">
+    <span class="state"><button class="btn lime md" type="button">New task</button><small>primary</small></span>
+    <span class="state"><button class="btn contrast md" type="button">Save</button><small>contrast</small></span>
+    <span class="state"><button class="btn md" type="button">Cancel</button><small>outline</small></span>
+    <span class="state"><button class="btn ghost md" type="button">Details</button><small>ghost</small></span>
+    <span class="state"><button class="btn danger-ghost md" type="button"><svg class="icon sm"><use href="#i-trash"/></svg> Delete</button><small>danger-ghost</small></span>
+    <span class="state"><button class="btn danger md" type="button">Delete task</button><small>danger (confirm dialogs, G-10)</small></span>
+  </div>
+  <div class="frame pad states" style="margin-top:10px">
+    <span class="state"><button class="btn lime" type="button">Run</button><small>size sm (h-8)</small></span>
+    <span class="state"><button class="btn" type="button"><svg class="icon sm"><use href="#i-rerun"/></svg> Retry</button><small>sm with icon</small></span>
+    <span class="state"><button class="btn icon md" type="button" aria-label="Settings"><svg class="icon"><use href="#i-settings"/></svg></button><small>icon</small></span>
+    <span class="state"><button class="btn icon" type="button" aria-label="Copy"><svg class="icon sm"><use href="#i-copy"/></svg></button><small>icon-sm</small></span>
+    <span class="state"><button class="btn contrast md" type="button" disabled>Save</button><small>disabled</small></span>
+    <span class="state"><button class="btn contrast md" type="button" aria-disabled="true"><span class="spinner"></span> Saving…</button><small>busy</small></span>
+  </div>
+
+  <h3>Badge</h3>
+  <div class="src">ui/badge.tsx · default · secondary · destructive · outline · ghost · link</div>
+  <div class="frame pad states">
+    <span class="state"><span class="badge">default</span><small>default</small></span>
+    <span class="state"><span class="badge secondary">secondary</span><small>secondary</small></span>
+    <span class="state"><span class="badge destructive">destructive</span><small>destructive</small></span>
+    <span class="state"><span class="badge outline">outline</span><small>outline</small></span>
+    <span class="state"><span class="badge ghost">ghost</span><small>ghost</small></span>
+    <span class="state"><span class="badge link">link</span><small>link</small></span>
+  </div>
+
+  <h3>Card</h3>
+  <div class="src">ui/card.tsx has no importers (G-02, G-20). The cockpit's card is the ad-hoc string <code>rounded-lg border border-border bg-card</code>.</div>
+  <div class="frame pad float-row">
+    <div class="card pad" style="width:280px;max-width:100%"><b style="font-size:14px">Card</b><p style="margin:6px 0 0;font-size:13px;color:var(--muted-foreground)">Border, <code>--card</code> background, <code>--radius-lg</code>, <code>--shadow-xs</code>.</p></div>
+  </div>
+
+  <h3>Collapsible</h3>
+  <div class="src">ui/collapsible.tsx · Radix, no styling of its own</div>
+  <div class="frame pad">
+    <details open>
+      <summary style="cursor:pointer;font-size:13px;font-weight:500;display:flex;align-items:center;gap:6px"><svg class="icon sm"><use href="#i-chevron-down"/></svg> Advanced options</summary>
+      <p style="margin:8px 0 0 20px;font-size:13px;color:var(--muted-foreground)">Content shown when open. The trigger toggles <code>aria-expanded</code>.</p>
+    </details>
+  </div>
+
+  <h3>Command</h3>
+  <div class="src">ui/command.tsx · cmdk · used by the command palette (⌘K)</div>
+  <div class="frame pad">
+    <div class="cmdk">
+      <div class="search"><svg class="icon sm"><use href="#i-search"/></svg><input class="input" style="border:0;box-shadow:none;background:transparent;padding:0;height:auto" name="search" placeholder="Search tasks, projects and commands…" aria-label="Search"></div>
+      <div class="group">
+        <div class="heading">Tasks</div>
+        <div class="item selected"><span class="dot pending pulse"></span> Fix the flaky test in store.test.ts <span class="ref" style="margin-left:auto">xez/1a2b3c4d</span></div>
+        <div class="item"><span class="dot success"></span> Add the runner label helper</div>
+      </div>
+      <div class="menu-sep"></div>
+      <div class="group">
+        <div class="heading">Commands</div>
+        <div class="item"><svg class="icon sm"><use href="#i-plus"/></svg> New task <span class="kbd" style="margin-left:auto">N</span></div>
+        <div class="item"><svg class="icon sm"><use href="#i-settings"/></svg> Settings</div>
+      </div>
+      <div class="empty">No results.</div>
+    </div>
+  </div>
+
+  <h3>Dialog and AlertDialog</h3>
+  <div class="src">ui/dialog.tsx · ui/alert-dialog.tsx · scrim at 50 % black, <code>--shadow-modal</code>, footer stacks under 640 px</div>
+  <div class="frame">
+    <div class="scrim float-row" style="border-radius:0">
+      <div class="dialog" role="dialog" aria-labelledby="d1">
+        <h2 class="title" id="d1">Add project</h2>
+        <p class="desc">Pick a folder that is a git repository. xezar registers it and opens it in the sidebar.</p>
+        <div class="field"><label class="label" for="d1p">Path</label><input class="input" id="d1p" name="path" value="~/Projects/xezar"></div>
+        <div class="footer"><button class="btn md" type="button">Cancel</button><button class="btn contrast md" type="button">Add project</button></div>
+      </div>
+      <div class="dialog alert" role="alertdialog" aria-labelledby="d2">
+        <h2 class="title" id="d2">Delete this task?</h2>
+        <p class="desc">This removes the run and its worktree. This cannot be undone.</p>
+        <div class="footer"><button class="btn md" type="button">Cancel</button><button class="btn danger md" type="button">Delete</button></div>
+      </div>
+    </div>
+  </div>
+
+  <h3>Sheet</h3>
+  <div class="src">ui/sheet.tsx · side "left" only in the cockpit: the phone drawer holds the sidebar</div>
+  <div class="frame">
+    <div class="scrim" style="border-radius:0;padding:0;display:flex">
+      <aside class="sheet" aria-label="Navigation">
+        <div class="sidebar-head"><span class="logo">x</span><span class="name">xezar</span><button class="btn icon ghost" type="button" aria-label="Close" style="margin-left:auto"><svg class="icon sm"><use href="#i-x"/></svg></button></div>
+        <nav class="nav">
+          <a href="#" aria-current="page"><svg class="icon sm"><use href="#i-tasks"/></svg> Tasks <span class="nav-badge">2</span></a>
+          <a href="#"><svg class="icon sm"><use href="#i-inbox"/></svg> Inbox</a>
+          <a href="#"><svg class="icon sm"><use href="#i-workflow"/></svg> Workflows</a>
+        </nav>
+      </aside>
+      <div style="flex:1"></div>
+    </div>
+  </div>
+
+  <h3>DropdownMenu</h3>
+  <div class="src">ui/dropdown-menu.tsx · <code>--popover</code>, <code>--shadow-md</code>, destructive item in <code>--danger</code></div>
+  <div class="frame pad float-row">
+    <div class="menu" role="menu">
+      <div class="menu-label">Open in</div>
+      <div class="menu-item" role="menuitem"><svg class="icon sm"><use href="#i-terminal"/></svg> Terminal <span class="shortcut">⌘T</span></div>
+      <div class="menu-item focus" role="menuitem"><svg class="icon sm"><use href="#i-external"/></svg> Editor <span class="shortcut">⌘E</span></div>
+      <div class="menu-item" role="menuitem" aria-disabled="true"><svg class="icon sm"><use href="#i-github"/></svg> GitHub</div>
+      <div class="menu-sep"></div>
+      <div class="menu-item destructive" role="menuitem"><svg class="icon sm"><use href="#i-trash"/></svg> Delete</div>
+    </div>
+    <span class="state"><small>focused item · disabled item · destructive item</small></span>
+  </div>
+
+  <h3>Popover</h3>
+  <div class="src">ui/popover.tsx · 288 px wide · <code>PopoverTitle</code> renders a div (G-07)</div>
+  <div class="frame pad float-row">
+    <div class="popover"><div class="title">Retention</div><p class="desc" style="margin:4px 0 10px">Keep the worktree after the run finishes.</p><button class="switch sm" type="button" role="switch" aria-checked="true" aria-label="Keep worktree"></button></div>
+  </div>
+
+  <h3>Tooltip</h3>
+  <div class="src">ui/tooltip.tsx · <code>--contrast</code> on <code>--contrast-foreground</code>, 12 px, balanced wrapping</div>
+  <div class="frame pad states">
+    <span class="tooltip" role="tooltip">Copy branch name</span>
+    <span class="tooltip" role="tooltip">Runs the task in the repository working tree instead of a worktree.</span>
+  </div>
+
+  <h3>Input, Textarea, Label, Select</h3>
+  <div class="src">ui/input.tsx · ui/textarea.tsx · ui/label.tsx · ui/select.tsx (no importers, G-11; settings use a native <code>&lt;select&gt;</code>)</div>
+  <div class="frame pad float-row">
+    <div class="field"><label class="label" for="i1">Task title</label><input class="input" id="i1" placeholder="What should the agent do?"><p class="field-hint">Shown in the sidebar and the task list.</p></div>
+    <div class="field"><label class="label" for="i2">Max parallel</label><input class="input" id="i2" value="12" aria-invalid="true" aria-describedby="i2e"><p class="field-error" id="i2e">Enter a whole number from 1 to 8.</p></div>
+    <div class="field"><label class="label" for="i3">Base branch</label><input class="input" id="i3" value="main" disabled><p class="field-hint">Disabled: read from the repository.</p></div>
+    <div class="field"><label class="label" for="i4">Notes</label><textarea class="textarea" id="i4" rows="3" placeholder="Optional context for the agent"></textarea></div>
+    <div class="field"><label class="label" for="i5">Default agent</label><select class="native-select" id="i5"><option>Claude Code</option><option>Codex</option><option>OpenCode</option><option>pi</option></select></div>
+  </div>
+
+  <h3>Switch</h3>
+  <div class="src">ui/switch.tsx · default and sm · checked uses <code>--primary</code></div>
+  <div class="frame pad states">
+    <span class="state"><button class="switch" type="button" role="switch" aria-checked="false" aria-label="Off"></button><small>off</small></span>
+    <span class="state"><button class="switch" type="button" role="switch" aria-checked="true" aria-label="On"></button><small>on</small></span>
+    <span class="state"><button class="switch sm" type="button" role="switch" aria-checked="true" aria-label="Small on"></button><small>sm</small></span>
+    <span class="state"><button class="switch" type="button" role="switch" aria-checked="false" aria-label="Disabled" disabled></button><small>disabled</small></span>
+  </div>
+
+  <h3>Tabs</h3>
+  <div class="src">ui/tabs.tsx · default (filled list) and line variant</div>
+  <div class="frame pad stack">
+    <div class="tabs" role="tablist"><button type="button" role="tab" aria-selected="true">Steps</button><button type="button" role="tab" aria-selected="false">Changes</button><button type="button" role="tab" aria-selected="false">Git</button></div>
+    <div class="tabs line" role="tablist"><button type="button" role="tab" aria-selected="true">Overview</button><button type="button" role="tab" aria-selected="false">Files</button><button type="button" role="tab" aria-selected="false">History</button></div>
+  </div>
+
+  <h3>Separator, ScrollArea, Skeleton</h3>
+  <div class="src">ui/separator.tsx and ui/scroll-area.tsx have no importers (G-20) · ui/skeleton.tsx animates without a reduced-motion guard (G-08)</div>
+  <div class="frame pad stack">
+    <div class="separator"></div>
+    <div class="skeleton" style="width:60%"></div>
+    <div class="skeleton" style="width:40%"></div>
+    <div class="skeleton" style="width:80%;height:32px"></div>
+  </div>
+
+  <h3>Toaster</h3>
+  <div class="src">ui/toaster.tsx · hand-rolled · <code>toast(message, { tone })</code> · 5 s · bottom centre · one line, no trailing period (G-16)</div>
+  <div class="frame pad states">
+    <span class="state"><div class="toast">Branch name copied</div><small>default</small></span>
+    <span class="state"><div class="toast danger">Could not create the worktree</div><small>danger</small></span>
+  </div>
+
+  <h2>2. Shared components</h2>
+
+  <h3>StatusDot</h3>
+  <div class="src">status-dot.tsx · 7 px · tones success · pending · danger · violet · neutral · pulse while running</div>
+  <div class="frame pad states">
+    <span class="state"><span class="dot success"></span><small>success</small></span>
+    <span class="state"><span class="dot pending"></span><small>pending</small></span>
+    <span class="state"><span class="dot pending pulse"></span><small>pending + pulse</small></span>
+    <span class="state"><span class="dot danger"></span><small>danger</small></span>
+    <span class="state"><span class="dot violet"></span><small>violet</small></span>
+    <span class="state"><span class="dot"></span><small>neutral</small></span>
+  </div>
+
+  <h3>Pill, PickerPill, RunnerPill, EnginePills</h3>
+  <div class="src">pill.tsx · picker-pill.tsx (class copied, G-03) · engine-pills.tsx · colour lives in the dot, never in the chip</div>
+  <div class="frame pad states">
+    <span class="pill"><span class="dot success"></span> Done</span>
+    <span class="pill"><span class="dot pending pulse"></span> Running</span>
+    <span class="pill"><span class="dot danger"></span> Failed</span>
+    <span class="pill"><span class="dot violet"></span> Review</span>
+    <span class="chip"><svg class="icon xxs"><use href="#i-sparkles"/></svg> Claude Code <svg class="icon xxs"><use href="#i-chevron-down"/></svg></span>
+    <span class="chip"><svg class="icon xxs"><use href="#i-workflow"/></svg> quick-task <svg class="icon xxs"><use href="#i-chevron-down"/></svg></span>
+    <span class="chip">Claude Code · Codex</span>
+  </div>
+
+  <h3>FacetFilter, ToggleChip, SegmentedControl</h3>
+  <div class="src">facet-filter.tsx · chips with counts · active in violet · segmented uses <code>aria-pressed</code></div>
+  <div class="frame pad states">
+    <button class="chip filter active" type="button" aria-pressed="true">All <span class="count">24</span></button>
+    <button class="chip filter" type="button" aria-pressed="false">Running <span class="count">3</span></button>
+    <button class="chip filter" type="button" aria-pressed="false">Failed <span class="count">1</span></button>
+    <button class="chip filter" type="button" disabled>Archived <span class="count">0</span></button>
+    <div class="segmented"><button type="button" aria-pressed="true">List</button><button type="button" aria-pressed="false">Board</button></div>
+    <div class="radio-segment" role="radiogroup" aria-label="Theme"><button type="button" role="radio" aria-checked="false">Light</button><button type="button" role="radio" aria-checked="true">Dark</button><button type="button" role="radio" aria-checked="false">System</button></div>
+  </div>
+
+  <h3>TabLink</h3>
+  <div class="src">tab-link.tsx · route tabs under a page header · <code>aria-current="page"</code></div>
+  <div class="frame pad">
+    <div class="tab-links"><a class="tab-link" href="#" aria-current="page">Steps</a><a class="tab-link" href="#">Changes <span class="diff-stat"><span class="plus">+59</span> <span class="minus">−12</span></span></a><a class="tab-link" href="#">Git</a><a class="tab-link" href="#">Output</a></div>
+  </div>
+
+  <h3>CenteredState</h3>
+  <div class="src">centered-state.tsx · the one template for empty, loading, error and refusal · tones default · primary · danger · four hand-rolled copies remain (G-05)</div>
+  <div class="grid-2">
+    <div class="frame"><div class="centered-state"><div class="tile"><svg class="icon"><use href="#i-inbox"/></svg></div><h2>No tasks yet</h2><p>Type what you want done and pick a workflow. The task runs in its own worktree.</p><div class="actions"><button class="btn contrast md" type="button">New task</button></div></div></div>
+    <div class="frame"><div class="centered-state primary"><div class="tile"><span class="spinner"></span></div><h2>Loading tasks…</h2><p>Reading <code>.local/xezar/runs.json</code>.</p></div></div>
+    <div class="frame"><div class="centered-state danger"><div class="tile"><svg class="icon"><use href="#i-alert"/></svg></div><h2>Could not load this task</h2><p>The server answered 404. The run may have been deleted.</p><div class="actions"><button class="btn md" type="button">Back to tasks</button><button class="btn contrast md" type="button">Retry</button></div></div></div>
+    <div class="frame"><div class="centered-state"><div class="tile"><svg class="icon"><use href="#i-lock"/></svg></div><h2>Not available in hosted mode</h2><p>Editing agent config files only works on the machine that runs xezar.</p></div></div>
+  </div>
+
+  <h3>Loading line, shimmer and skeleton rows</h3>
+  <div class="src">the three loading idioms: a quiet line for lists, shimmer text for a live agent turn, skeletons for a card grid</div>
+  <div class="frame stack" style="padding:0 0 12px">
+    <div class="loading-line">Loading…</div>
+    <div style="padding:0 16px"><span class="shimmer" style="font-size:13px;font-weight:500">Claude Code is thinking…</span></div>
+    <div style="padding:0 16px" class="stack"><div class="skeleton" style="width:70%"></div><div class="skeleton" style="width:45%"></div></div>
+  </div>
+
+  <h3>DiffStatLabel, DirectionalUsage, TaskAgent cells</h3>
+  <div class="src">diff-stat.tsx · directional-usage.tsx · task-agent.tsx · mono, tabular numbers, two byte formatters (G-18)</div>
+  <div class="frame pad states">
+    <span class="diff-stat"><span class="plus">+59</span> <span class="minus">−12</span></span>
+    <span class="mono" style="font-size:12px;color:var(--muted-foreground)">↑ 4.2k ↓ 18.6k</span>
+    <span class="mono" style="font-size:12px">Claude Code <span style="color:var(--soft-foreground)">· claude-opus-5</span></span>
+    <span class="mono" style="font-size:12px">Mixed <span style="color:var(--soft-foreground)">· 2 backends</span></span>
+  </div>
+
+  <h3>EditableTitle</h3>
+  <div class="src">editable-title.tsx · click to edit · Enter saves · Escape cancels</div>
+  <div class="frame pad states">
+    <span class="state"><span style="font-size:18px;font-weight:600;display:inline-flex;align-items:center;gap:8px">Fix the flaky test <svg class="icon sm" style="color:var(--soft-foreground)"><use href="#i-pencil"/></svg></span><small>idle</small></span>
+    <span class="state"><input class="input" name="title" value="Fix the flaky test" style="font-size:18px;font-weight:600;height:36px;width:300px;max-width:100%"><small>editing</small></span>
+  </div>
+
+  <h3>ReferenceChip and ReferenceStatus</h3>
+  <div class="src">reference-chip.tsx · reference-status.tsx · tones violet · success · danger · info · pending · conflict · reference-conflict-action.tsx offers the fix</div>
+  <div class="frame pad states">
+    <span class="ref-chip violet">#312</span>
+    <span class="ref-chip success">merged</span>
+    <span class="ref-chip danger">closed</span>
+    <span class="ref-chip info">draft</span>
+    <span class="ref-chip pending">open</span>
+    <span class="ref-chip conflict">conflict</span>
+    <button class="btn" type="button"><svg class="icon sm"><use href="#i-git"/></svg> Rebase on main</button>
+  </div>
+
+  <h3>PinToggle, source tags, eyebrows, kbd, version chip</h3>
+  <div class="src">pin-toggle.tsx · skill-detail.tsx · app-shell.tsx</div>
+  <div class="frame pad states">
+    <button class="btn icon ghost" type="button" aria-pressed="true" aria-label="Unpin"><svg class="icon sm"><use href="#i-pin"/></svg></button>
+    <span class="source-tag">global</span>
+    <span class="source-tag project">project</span>
+    <span class="eyebrow">Recent</span>
+    <kbd class="kbd">⌘K</kbd>
+    <span class="version-chip">v0.14.0</span>
+    <span class="nav-badge" style="margin-left:0">3</span>
+    <span class="nav-marker" style="margin-left:0"></span>
+    <span class="ref">xez/1a2b3c4d</span>
+  </div>
+
+  <h3>Composer</h3>
+  <div class="src">composer/composer.tsx · attachments, text and dictation helpers · the only <code>--radius-xl</code> surface · hover-only remove overlay lacks <code>no-hover:</code> (G-21)</div>
+  <div class="frame pad">
+    <div class="composer">
+      <textarea name="task" aria-label="Task" placeholder="Describe the task… (Enter to send, Shift+Enter for a new line)"></textarea>
+      <div class="foot">
+        <span class="chip"><svg class="icon xxs"><use href="#i-workflow"/></svg> quick-task <svg class="icon xxs"><use href="#i-chevron-down"/></svg></span>
+        <span class="chip"><svg class="icon xxs"><use href="#i-sparkles"/></svg> Claude Code <svg class="icon xxs"><use href="#i-chevron-down"/></svg></span>
+        <span class="chip"><svg class="icon xxs"><use href="#i-git"/></svg> Worktree</span>
+        <span class="spacer"></span>
+        <button class="btn icon ghost" type="button" aria-label="Attach"><svg class="icon sm"><use href="#i-paperclip"/></svg></button>
+        <button class="btn icon ghost" type="button" aria-label="Dictate"><svg class="icon sm"><use href="#i-mic"/></svg></button>
+        <button class="send" type="button" aria-label="Send"><svg class="icon sm"><use href="#i-arrow-up"/></svg></button>
+      </div>
+      <div class="dictation-bar"><span class="dot danger pulse"></span> Listening… <span style="margin-left:auto"><button class="btn" type="button">Stop</button></span></div>
+    </div>
+    <div class="composer disabled" style="margin-top:10px"><textarea name="task" aria-label="Task" disabled placeholder="Read-only in hosted mode"></textarea><div class="foot"><span class="chip">quick-task</span><span class="spacer"></span><button class="send" type="button" aria-label="Send" disabled><svg class="icon sm"><use href="#i-arrow-up"/></svg></button></div></div>
+  </div>
+
+  <h3>Diff and RunDiff</h3>
+  <div class="src">diff/diff.tsx · diff/diff-view.tsx · run-diff.tsx · two renderers (G-09) · word-level marks · added lines on <code>--diff-add-bg</code>, removed on <code>--diff-del-bg</code></div>
+  <div class="frame">
+    <div class="diff" style="border:0;border-radius:0">
+      <header><svg class="icon sm"><use href="#i-git"/></svg> packages/web/src/lib/runner-label.ts <span class="status-badge">modified</span><span class="diff-stat" style="margin-left:auto"><span class="plus">+2</span> <span class="minus">−1</span></span></header>
+      <div class="hunk">@@ -1,4 +1,5 @@</div>
+      <div class="line"><span class="gutter">1</span><span class="marker"> </span>export const RUNNER_LABEL = {</div>
+      <div class="line del"><span class="gutter">2</span><span class="marker">−</span>  claude: <mark>'Claude'</mark>,</div>
+      <div class="line add"><span class="gutter">2</span><span class="marker">+</span>  claude: <mark>'Claude Code'</mark>,</div>
+      <div class="line add"><span class="gutter">3</span><span class="marker">+</span>  codex: 'Codex',</div>
+      <div class="line"><span class="gutter">4</span><span class="marker"> </span>}</div>
+      <div class="gap">12 unchanged lines</div>
+    </div>
+  </div>
+
+  <h3>Task rail and output</h3>
+  <div class="src">the step rail and command output on the task page · states done · active · pending · failed · agent</div>
+  <div class="grid-2">
+    <div class="frame pad">
+      <ul class="rail">
+        <li><span class="ico done"><svg class="icon xs"><use href="#i-circle-check"/></svg></span><span class="lbl"><b>preflight</b><small>check · 0:04</small></span></li>
+        <li><span class="ico done"><svg class="icon xs"><use href="#i-circle-check"/></svg></span><span class="lbl"><b>setup</b><small>check · 0:41</small></span></li>
+        <li><span class="ico active"><span class="dot pending pulse"></span></span><span class="lbl"><b>author</b><small>Claude Code · running 4:12</small></span></li>
+        <li class="pending"><span class="ico pending"><svg class="icon xs"><use href="#i-circle"/></svg></span><span class="lbl"><b>gates</b><small>check</small></span></li>
+        <li class="failed"><span class="ico failed"><svg class="icon xs"><use href="#i-circle-x"/></svg></span><span class="lbl"><b>handoff</b><small>failed · exit 1</small></span></li>
+      </ul>
+      <div class="rail-progress"><span style="display:block;height:100%;width:45%;background:var(--pending)"></span></div>
+    </div>
+    <div class="output">
+      <header><svg class="icon sm"><use href="#i-terminal"/></svg><code>npm test</code><span class="exit">exit 1</span></header>
+      <pre><span class="syn-com">// vitest run</span>
+<span class="syn-key">FAIL</span> packages/xezar/src/runs/store.test.ts
+  <span class="syn-fn">expected</span> <span class="syn-num">3</span> <span class="syn-punc">to be</span> <span class="syn-num">2</span>
+<span class="syn-var">Tests</span>  <span class="syn-str">1 failed</span> | 412 passed</pre>
+    </div>
+  </div>
+
+  <h3>ProviderBanner and RunNotifications</h3>
+  <div class="src">provider-banner.tsx · provider-banner-container.tsx · run-notifications.tsx (browser notifications, no markup)</div>
+  <div class="frame stack" style="gap:0">
+    <div class="banner-row"><svg class="icon sm"><use href="#i-info"/></svg> Codex is not installed. <a href="#">Install it</a> to use it as a backend.</div>
+    <div class="banner-row alert"><svg class="icon sm"><use href="#i-alert"/></svg> Claude Code hit its usage limit. Runs resume automatically at 14:00.</div>
+  </div>
+
+  <h3>Skills: SkillDetail, SkillEmptyHint, SkillsImportPanel</h3>
+  <div class="src">skill-detail.tsx · skill-empty-hint.tsx · skills-import-panel.tsx</div>
+  <div class="frame pad float-row">
+    <a class="settings-card" href="#" style="width:320px;max-width:100%"><span class="tile"><svg class="icon"><use href="#i-sparkles"/></svg></span><span><b style="font-size:14px">xezar-ux-design</b> <span class="source-tag project">project</span><br><span style="font-size:13px;color:var(--muted-foreground)">UX design for a user-facing surface</span></span></a>
+    <div class="note" style="margin:0;max-width:320px"><strong>No skills yet.</strong> Add a Markdown file to <code>.xezar/skills/</code> and it appears here.</div>
+  </div>
+
+  <h3>Code, syntax colours and the ghost-code backdrop</h3>
+  <div class="src">code-editor.tsx · ghost-code-backdrop.tsx · icons.tsx · the seven <code>--syn-*</code> tokens</div>
+  <div class="output">
+    <pre><span class="syn-key">import</span> <span class="syn-punc">{</span> <span class="syn-var">z</span> <span class="syn-punc">}</span> <span class="syn-key">from</span> <span class="syn-str">'zod'</span>
+<span class="syn-com">// every response shape is a schema</span>
+<span class="syn-key">export const</span> <span class="syn-var">health</span> <span class="syn-punc">=</span> <span class="syn-var">z</span><span class="syn-punc">.</span><span class="syn-fn">object</span><span class="syn-punc">({</span> <span class="syn-var">ok</span><span class="syn-punc">:</span> <span class="syn-var">z</span><span class="syn-punc">.</span><span class="syn-fn">literal</span><span class="syn-punc">(</span><span class="syn-num">true</span><span class="syn-punc">) })</span></pre>
+  </div>
+
+  <h3>Not shown here</h3>
+  <ul>
+    <li><b>AppShell, AppShellContainer, NavItems, ProjectGroups, TaskQuickList, ListView</b> – the whole shell is on the <a class="link" href="patterns.html">patterns page</a>.</li>
+    <li><b>CommandPalette, ToolsMenu, OpenInMenu, PromptTemplateMenu, DefaultAgentPicker</b> – compositions of Command, DropdownMenu and Popover above.</li>
+    <li><b>AddProjectDialog, CloneProjectDialog, FolderBrowser</b> – the Dialog above with an Input and a folder list.</li>
+    <li><b>ThemeProvider, ThemeToggle, AppearanceProvider, LastLocationController, RouteErrorBoundary</b> – behaviour, not markup; the doc bar is the specimen's theme toggle. RouteErrorBoundary renders the danger CenteredState.</li>
+    <li><b>ZoomableImage, image-preview</b> – a picture that opens full-size in a Dialog.</li>
+  </ul>
+</main>
+</body>
+</html>

@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>States – quality checks design</title>
+<link rel="stylesheet" href="../../docs/design-system/cockpit.css">
 <link rel="stylesheet" href="styles.css">
 <script src="theme.js"></script>
 </head>
@@ -114,7 +115,7 @@
             </div>
           </div>
           <div class="actions">
-            <button class="btn primary" type="button"><svg class="icon xs"><use href="#i-rerun"/></svg>Re-run check</button>
+            <button class="btn contrast" type="button"><svg class="icon xs"><use href="#i-rerun"/></svg>Re-run check</button>
             <a class="btn" href="task.html">Open task</a>
             <button class="btn ghost" type="button" aria-label="Archive task"><svg class="icon sm"><use href="#i-archive"/></svg></button>
           </div>
@@ -139,7 +140,7 @@
             </div>
           </div>
           <div class="actions">
-            <button class="btn primary" type="button" disabled><span class="spinner"></span>Re-running…</button>
+            <button class="btn contrast" type="button" disabled><span class="spinner"></span>Re-running…</button>
             <a class="btn" href="task.html">Watch output</a>
           </div>
         </div>
@@ -164,7 +165,7 @@
             </div>
           </div>
           <div class="actions">
-            <button class="btn primary" type="button"><svg class="icon xs"><use href="#i-rerun"/></svg>Re-run check</button>
+            <button class="btn contrast" type="button"><svg class="icon xs"><use href="#i-rerun"/></svg>Re-run check</button>
             <a class="btn" href="task.html">Open task</a>
             <button class="btn ghost" type="button" aria-label="Archive task"><svg class="icon sm"><use href="#i-archive"/></svg></button>
           </div>
@@ -192,7 +193,7 @@
       </li>
     </ul>
     <div style="height:14px"></div>
-    <div class="toast" role="status"><svg class="icon sm"><use href="#i-circle-check"/></svg><span><strong>Quality gates passed.</strong> The task continues with its next step.</span><a class="link" href="task.html">Open task</a></div>
+    <div class="qc-toast" role="status"><svg class="icon sm"><use href="#i-circle-check"/></svg><span><strong>Quality gates passed.</strong> The task continues with its next step.</span><a class="link" href="task.html">Open task</a></div>
   </div>
   <p class="note"><strong>Passing is the only way a card clears on its own.</strong> The card turns green for about 2 seconds, then leaves, and the badge drops by one. The toast stays for 6 seconds, so a person who looked away still sees what happened.</p>
 
@@ -212,7 +213,7 @@
             </div>
           </div>
           <div class="actions">
-            <button class="btn primary" type="button" aria-disabled="true" aria-describedby="busy-why"><svg class="icon xs"><use href="#i-rerun"/></svg>Re-run check</button>
+            <button class="btn contrast" type="button" aria-disabled="true" aria-describedby="busy-why"><svg class="icon xs"><use href="#i-rerun"/></svg>Re-run check</button>
             <a class="btn" href="task.html">Open task</a>
           </div>
         </div>
@@ -238,7 +239,7 @@
             </div>
           </div>
           <div class="actions">
-            <button class="btn primary" type="button"><svg class="icon xs"><use href="#i-archive"/></svg>Archive task</button>
+            <button class="btn contrast" type="button"><svg class="icon xs"><use href="#i-archive"/></svg>Archive task</button>
             <a class="btn" href="task.html">Open task</a>
           </div>
         </div>
@@ -255,7 +256,7 @@
     <div>
       <div class="frame-label">Empty – nothing failing</div>
       <div class="frame pad">
-        <div class="empty">
+        <div class="qc-empty">
           <span class="big"><svg class="icon"><use href="#i-circle-check"/></svg></span>
           <h2>No failing checks</h2>
           <p>Every check in this project's tasks has passed, or its task was archived. New failures show here, and in the menu, the moment they happen.</p>
@@ -268,9 +269,9 @@
       <div class="frame pad">
         <p class="sr-only" role="status">Loading this project's checks…</p>
         <div class="check-list">
-          <div class="skeleton"></div>
-          <div class="skeleton"></div>
-          <div class="skeleton" style="opacity:.6"></div>
+          <div class="qc-skeleton"></div>
+          <div class="qc-skeleton"></div>
+          <div class="qc-skeleton" style="opacity:.6"></div>
         </div>
       </div>
       <p class="note"><strong>The badge shows nothing while loading.</strong> A guessed or stale number would break the "always true" promise.</p>
