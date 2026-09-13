@@ -12,6 +12,14 @@ Installation validation is reported in installation.md. Real-task entries follow
 
 ## Real-task entries
 
+### 2026-09-13 — #408 (the only `bug-fix` writing step sounded diagnosis-only), `bug-fix` step `investigate`, `xezar-bug-investigation`, three Codex models — real-task verified; repaired and fixture-tested
+
+- Evidence: runs `77cea0eb`, `ebc394e5` and `af59e430`, all on base `7aa4a02` with the same kit digest `086c1d7d6c55562800a88c982782030f2a4d260fed809c75dd986bd1cf00eeba`; the delivered and snapshotted `xezar-bug-investigation` skill bytes matched at SHA-256 `90a2869b8113063cc2de8a895918dc53eed64b5e0d35f36d6faa6288ce0ad566`.
+- Observed: **the step name overruled a broader skill title for three different Codex models.** Each run did real diagnosis work, then described implementation as belonging to a later stage: “minimal repair (for next step)” (`77cea0eb`), “the writing step should retain” the regression (`ebc394e5`), and “implement” in the resume notes (`af59e430`). All emitted `XEZ:DONE` with no commit; readiness then correctly refused each with `branch.has-own-commits` (and also found one uncommitted documentation edit in `ebc394e5`).
+- Change: keep the stable `id: investigate` and its retry target, but name the step `Reproduce, diagnose and fix`. The skill's opening paragraph now says it is the workflow's only writing step and explicitly owns the red test, repair, focused tests and `worktree-git.sh commit` before `XEZ:DONE`; it names diagnosis-only completion as a readiness failure.
+- Regression/control: the focused contract test was red against the old workflow name (`actual: Reproduce and diagnose`, `expected: Reproduce, diagnose and fix`) and also pins the skill's six operative phrases. The existing catalog and phase-contract fixtures are passing controls: they keep accepting the stable `investigate` id and retry wiring and would pass both before and after this wording repair.
+- Remaining limit: this is fixture-tested after the repair, not yet re-verified by a subsequent real `bug-fix` run. The next such run is the trigger to confirm the agent implements and commits in `investigate` without relying on its task brief to correct the workflow.
+
 ### 2026-09-13 — #383 (0.14.0 changelog claimed reaction turns no code path reaches), `docs-maintenance` step `docs`, `xezar-docs-maintenance`, Claude Code — real-task verified
 
 - Evidence: run 8f6a3918, base `85a8e95`, commits on `xez/8f6a3918`; the PR body with every file:line and the per-bullet verdict table is in the primary evidence directory under `docs/pr-body.md`.
@@ -548,4 +556,3 @@ Installation validation is reported in installation.md. Real-task entries follow
 - Observed: it did. The agent read the design system in the prescribed order, took screenshots of every page in both themes at 375 × 812 and 1440 × 900 with agent-browser, measured contrast and touch targets, and returned FAIL with 7 blocking and 12 non-blocking findings, each with `file:line` and the rule broken (`designs/quality-checks/README.md` §18). Five findings the author's own README and the specimens could not have caught by reading alone (B-4 contrast at 12 px in light, B-5 40 px targets, NB-9 the table's column order against `TASK_COLUMNS`).
 - Observed (problem): the run ended in `waiting`. The agent ended its turn after the verdict without `XEZ:DONE`, the review step is the last (interactive) step, and a headless `xezar run` has no channel for a follow-up, so the process held the project lease until it was stopped by PID. Fix in the same change: the review mode now ends with `XEZ:DONE` right after the verdict. Regression proof: none yet – the next `design-review` run must end `done` on its own.
 - Remaining limit: the PR-comment output path (`gh pr comment`) and the `design` authoring workflow are still unexercised. The verdict's dispositions are the design author's job; none is recorded yet.
-
