@@ -29,14 +29,21 @@ Client: `claude --version` → `2.1.270 (Claude Code)`; `~/.local/bin/claude` is
   off (C2); the provider must be Anthropic's own API, not Bedrock, Vertex or Foundry (read from the binary and
   the documentation, not executed); and on claude.ai Team and Enterprise an admin must set `channelsEnabled`
   (documentation and binary, not executed).
-- **This reverses the recorded verdict.** `packages/xezar/src/mcp/adapters/claude-code.ts` and
+- **This softens, not reverses, the recorded verdict.** `packages/xezar/src/mcp/adapters/claude-code.ts` and
   [the adapter evidence record](mcp-adapter-evidence-claude-code.md) say Channels "did not register under
-  isolated fixtures on 2.1.268". That fixture set `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`. C2 reproduces
-  the exact skip on 2.1.270 for that reason alone (§ 3.5). So the earlier failure was the fixture switching off
-  the feature flag, not account eligibility. Those two files are corrected by the implementation task, not here.
-- **One decision belongs to the project owner before the cockpit recommends this** (§ 4, O-1): the only route
-  for xezar is a flag named `--dangerously-…`, whose own warning says *"Do not use this option to run channels
-  you have downloaded off the internet"* – and xezar is installed from npm.
+  isolated fixtures on 2.1.268" (that run is CH1). That fixture set `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`.
+  C2 shows, on 2.1.270, that this one variable is **sufficient** to make Channels skip, with Claude Code's own
+  reason `channels feature is not currently available`. C2 does **not** isolate the cause of CH1: CH1 ran a
+  different version (2.1.268), non-interactive print mode with `--bare`, and that variable, while M1/C2 ran
+  2.1.270 in an interactive pty (§ 3.5 lists every difference). So C2 reproduces a sufficient skip condition
+  consistent with CH1, and CH1's own recorded fixture already carried that condition; nothing here isolates it
+  as the sole cause, and this record claims nothing for 2.1.268. Those two source files are corrected by the
+  implementation task, not here.
+- **The one owner decision is now made** (§ 4, O-1, decided 2026-09-13 by the project owner): the only route for
+  xezar is a flag named `--dangerously-…`, whose own warning says *"Do not use this option to run channels you
+  have downloaded off the internet"* – and xezar is installed from npm. The owner accepts option A (build it,
+  opt-in) **on condition** that the flag is documented comprehensively as a Claude-Code-leader requirement in the
+  README, the cockpit's MCP connection section, this record and the changelog (§ 5.7, AC-9).
 - **Limits that still hold** (§ 3.6): the model was scripted, so the A-19 real-model clause stays blocked
   exactly as it is for pi; the flag is a remote rollout value observed on 2026-09-13 for 10 fresh isolated
   identities, not a guarantee for every account; the real `xez mcp` bridge was not the server under test.
@@ -238,13 +245,41 @@ instructions or approval") – on the client's side.
 
 ### 3.5 Reconciling with the 2.1.268 run (CH1)
 
-CH1 ([adapter evidence](mcp-adapter-evidence-claude-code.md) § Channels eligibility, as observed) ran with
-`--bare` and `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` and saw no model request. On 2.1.270, C2 differs from
-M1 **only** in that variable and gives Claude Code's own reason, `channels feature is not currently available`:
-with the feature-flag service off, `tengu_harbor` keeps its default `false`. CH1's debug line
-`[session-notices] … flag=false(disabled)` belongs to a different subsystem (session notices; Read from binary).
-So CH1 is explained by its fixture, not by eligibility. CH1 was **not** re-run on 2.1.268 (Not attempted), and
-this record claims nothing for that version.
+CH1 is the earlier run in the [adapter evidence record](mcp-adapter-evidence-claude-code.md) (§ Channels
+eligibility, as observed) that saw no model request. It is honest to state exactly what C2 proves against it and
+what it does not.
+
+**What C2 proves.** On 2.1.270, C2 differs from M1 **only** in `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` and
+gives Claude Code's own reason, `channels feature is not currently available`: with the feature-flag service off,
+`tengu_harbor` keeps its default `false`. So that one variable is **sufficient** to produce the 2.1.270 skip.
+
+**What C2 does not prove.** C2 does **not** isolate the cause of CH1, because CH1 and M1/C2 differ on more than
+one axis. Every material difference:
+
+| Axis | CH1 (Executed 2026-09-11) | M1 / C2 (Executed 2026-09-13) |
+| --- | --- | --- |
+| Claude Code version | 2.1.268 | 2.1.270 |
+| Mode | non-interactive print (`-p --input-format stream-json --output-format stream-json --permission-mode dontAsk`) | interactive, under a real pty |
+| `--bare` | present (the fixture wrapper `claude-bare` adds it; CH1's recorded argv contains `--bare`) | absent (M1); absent (C2) |
+| `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` | `1` | unset (M1); `1` (C2) |
+
+C2 changes only the last axis from M1 and reproduces a skip. CH1 changes all four axes from M1 at once. So C2
+**reproduces a sufficient skip condition that is consistent with CH1** — CH1's own recorded fixture carried that
+same variable — but it does not establish that the variable was the *sole* reason CH1 saw no turn, because the
+version, the print mode and `--bare` were never varied one at a time on 2.1.268. CH1's debug line
+`[session-notices] … flag=false(disabled)` belongs to a different subsystem (session notices; Read from binary),
+so it is not by itself the channel gate's verdict.
+
+**A contradiction in the old record, noted here and not edited there.** The adapter evidence record describes
+CH1's fixture two ways that cannot both be true. Its § Environment and fixtures says CH1 ran "behind a two-line
+fixture wrapper that adds `--bare`"; its § Channels eligibility, as observed says the session "was started …
+**without** `--bare`". CH1's recorded argv (`ch1.json`, `ch1.out` in that task's evidence folder) contains
+`--bare`, so the § Environment description is the correct one and the "without `--bare`" phrasing is the error.
+This is flagged here for the reader; per the review, the old record is corrected by the implementation task
+(§ 5.7), not by this document.
+
+CH1 was **not** re-run on 2.1.268 (Not attempted). An isolated 2.1.268 control — one axis varied at a time —
+would be needed to attribute CH1 to any single cause, and this record claims nothing for that version.
 
 ### 3.6 What this measurement does not show
 
@@ -265,17 +300,23 @@ started. A Claude Code leader can be woken by a xezar event when the person laun
 channel flag, on a first-party login where Channels is available. Everyone else keeps today's behaviour: the
 events stay in the journal, and the leader reads them with `leader_events`.
 
-**Open – O-1, for the project owner.** The route depends on a flag named `--dangerously-load-development-channels`,
-whose own warning says not to use it for channels "downloaded off the internet", and Claude Code shows that warning
-at every launch. The two realistic options:
+**Decided – O-1, by the project owner, 2026-09-13.** The question was whether xezar may recommend
+`--dangerously-load-development-channels server:xezar` as the way a Claude Code leader loads the xezar channel,
+given that the flag is named `--dangerously-…`, its own warning says not to use it for channels "downloaded off
+the internet", and Claude Code shows that warning at every launch. The two realistic options were:
 
 | Option | Time | Risk | User impact |
 | --- | --- | --- | --- |
 | **A. Build it now, opt-in, honest wording** | One feature task (§ 5.7) | Anthropic may rename the flag or change the contract (docs say it may change); users are asked to accept a warning about a package they installed from npm | Claude Code leaders who opt in are woken; nobody else changes |
 | **B. Wait for an allowlisted route** – package xezar's channel as a plugin and seek a place on Anthropic's curated list (four official plugins today), or ask Team/Enterprise admins to add it to `allowedChannelPlugins` | Unknown; outside xezar's control | Low for users; Claude Code stays pull-only | No push for Claude Code until then |
 
-**Recommendation: A**, with the cockpit text in § 5.5 that names the warning plainly, and B pursued separately.
-Nothing is pushed unless the person adds the flag, so the zero-config default stays the safe default.
+**The project owner accepts option A**, on one condition: the flag is documented comprehensively as a requirement
+for using Claude Code as a leader, in **all four** of these places — the README, the cockpit's MCP connection
+section (§ 5.5), this record, and the changelog. Each must state what the flag does, why it is needed, that
+Claude Code shows a confirmation screen on every launch, the feature-flag-service and Team/Enterprise conditions,
+and the recoverable blocker text (§ 5.6) for the cases where the conditions are not met. That documentation is an
+explicit acceptance criterion of the implementation task (§ 5.7, AC-9). Nothing is pushed unless the person adds
+the flag, so the zero-config default stays the safe default. Option B may still be pursued separately.
 
 **No-go blocker, for every case where the conditions are not met** (§ 5.6): the event stays in the journal and is
 never lost, and the message names what the person can change.
@@ -391,7 +432,8 @@ longer than one heartbeat.
 ### 5.7 The implementation task: scope and acceptance criteria
 
 **Scope:** § 5.1–5.6, the corrected verdict in `adapters/claude-code.ts` and in
-[the adapter evidence record](mcp-adapter-evidence-claude-code.md) (dated, keeping CH1 as history), and one
+[the adapter evidence record](mcp-adapter-evidence-claude-code.md) (dated, keeping CH1 as history, and fixing that
+record's `--bare` contradiction noted in § 3.5), the comprehensive documentation required by O-1 (§ 4), and one
 real-client acceptance case in `packages/xezar/test/integration/mcp-real-clients.test.ts`. The connection-screen
 text is UI in scope, so the task carries `needs-design` (SDLC.md § The design gate).
 
@@ -405,6 +447,7 @@ text is UI in scope, so the task carries `needs-design` (SDLC.md § The design g
 | AC-6 | contract, BC | `mcpLeaderActionInputSchema` accepts `{action:'attach', client:'claude-code'}` and the status enum carries `'claude-code'`; `contract-parity*.test.ts`, `typed-bodies.test.ts` and the route inventory pass; the `leader/push` frame and the `session/open` fields are additive and an older bridge gets `claude-code-bridge-too-old` |
 | AC-7 | #73 "never impersonate approval" | Unit tests: `initialize` for `claude-code` declares `claude/channel` and never `claude/channel/permission`; other clients' capabilities are byte-identical to today; every `meta` key matches `^[a-zA-Z_][a-zA-Z0-9_]*$`; `reactedSeq` stays 0 for Claude Code |
 | AC-8 | AGENTS.md prove-red rule | Each new test is shown failing against a named break (`git stash push -- <source files>`) before it is kept |
+| AC-9 | **O-1** (§ 4), docs requirement | The `--dangerously-load-development-channels server:xezar` requirement is documented comprehensively in **all four** places — the README, the cockpit's MCP connection section (§ 5.5), this record, and the changelog — each stating what the flag does, why it is needed, that Claude Code shows a confirmation screen on every launch, the feature-flag-service and Team/Enterprise conditions, and the recoverable blocker text (§ 5.6). This is a condition of the owner's O-1 acceptance, not optional |
 
 The A-19 **real-model** clause stays BLOCKED for Claude Code, as it is for pi, until a separate decision names
 an account that may be used.
