@@ -1,5 +1,7 @@
 # Unreleased
 
+- 🐛 **MCP integration harnesses now use the port actually bound by xezar.** (#325)
+
 ## 💥 Breaking
 - 💥 **The default team skills source is now `qodeca/xezar-skills`, and the skills are named
   `xez-*`.** (#394) The previous default repository is no longer loaded, and the automatic updater no
