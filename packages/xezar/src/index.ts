@@ -41,6 +41,7 @@ import { runMigrations } from './workspace/migrations.ts';
 import { registerProject, shouldRegisterProject } from './workspace/projects.ts';
 import { runProjectsCommand } from './workspace/projects-cli.ts';
 import { WorkspaceSemaphore } from './workspace/semaphore.ts';
+import { resolveCapabilities } from './server/capabilities.ts';
 
 const HELP = `xezar — local cockpit for AI agent tasks in your repo
 
@@ -342,6 +343,7 @@ async function serveCommand(
         if (providerAuthChecksDisabled()) return applyProviderEnablement(discovered, []).providers;
         return applyProviderEnablement(discovered, (await loadWorkspaceConfig()).disabledProviders).providers;
       },
+      localHandoff: () => resolveCapabilities(process.env, bindHost).localHandoff,
     }).then((handle) => {
       // A shutdown that won the race still releases what the late start composed.
       if (stopping) handle?.close();
@@ -392,6 +394,7 @@ async function startMcpSocket(opts: {
   store: RunStore;
   workspaceEvents: WorkspaceEventBus;
   providerBaseline: () => Promise<readonly ProviderStatus[]>;
+  localHandoff: () => boolean;
 }): Promise<{ close(): void } | undefined> {
   try {
     const { startMcpService } = await import('./mcp/index.ts');
@@ -401,6 +404,7 @@ async function startMcpSocket(opts: {
       store: opts.store,
       workspaceEvents: opts.workspaceEvents,
       providerBaseline: opts.providerBaseline,
+      localHandoff: opts.localHandoff,
       ...(opts.service ? { service: opts.service } : {}),
     });
   } catch (err) {

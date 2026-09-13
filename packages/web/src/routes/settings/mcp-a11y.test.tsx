@@ -248,11 +248,14 @@ describe('MCP surface — status is conveyed in words and announced politely (U-
     expect(container.querySelector('[data-slot="mcp-quality"]')?.getAttribute('aria-live')).toBe('polite')
   })
 
-  it('says plainly when the server does not report the connection owner, instead of guessing', async () => {
+  it('shows the leader control the server reports, instead of guessing a connection state', async () => {
     const { container } = renderSurface(null, [])
     await settled(container)
     const text = container.textContent ?? ''
-    expect(container.querySelector('[data-slot="mcp-connection-status-unreported"]')).toBeTruthy()
+    // In local mode the Connection status area is the leader control (NB-2 on #403): it reads
+    // `GET /api/v1/mcp/leader` and shows what that answers, or that it could not load it.
+    expect(container.querySelector('[data-slot="mcp-connection-status-unreported"]')).toBeNull()
+    expect(container.querySelector('[data-slot="mcp-connection-status"] [data-slot^="mcp-leader"]')).toBeTruthy()
     expect(container.querySelector('[data-slot="mcp-operations-empty"]')).toBeTruthy()
     expect(text).not.toContain('Ready to connect')
     expect(text).not.toContain('Connected')
