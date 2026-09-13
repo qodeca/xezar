@@ -19,8 +19,9 @@ import type { TopicPublisher } from './ws.ts';
  * the route calls, so the two never disagree: every project whose MCP service is running, plus any
  * project whose service stopped while the topic was held (as the route's `available: false` answer),
  * so a page that is open sees its service go. It names clients, cursors and the server's own blocker
- * words; no filesystem path, home or session id (an OpenCode blocker can repeat the address the person
- * typed). The topic keeps the hub's default trust: only the cockpit's own connection may read it.
+ * words, exactly what the GET answers: no filesystem path or home, but an OpenCode blocker may repeat
+ * the address and session id the person typed, and a pi blocker pi's own error text. That is why the
+ * topic keeps the hub's default trust: only the cockpit's own connection may read it.
  */
 
 /** The backstop cadence — the same 5 s the `health` topic re-reads on. */
@@ -48,18 +49,28 @@ export function mcpLeaderTopic(deps: McpLeaderTopicDeps): TopicPublisher {
     snapshot: async () => payload(deps.ids()),
     start(publish) {
       const held = new Set(deps.ids());
-      let last = JSON.stringify(payload(held));
+      // A derivation that throws is skipped, never thrown: these run in a microtask and on an interval,
+      // where a throw would be uncaught and end the server. The next announcement or tick tries again,
+      // and an empty `last` makes the first derivation that works publish.
+      const derive = (): { next: McpLeaderTopic; body: string } | undefined => {
+        try {
+          for (const id of deps.ids()) held.add(id);
+          const next = payload(held);
+          return { next, body: JSON.stringify(next) };
+        } catch {
+          return undefined;
+        }
+      };
+      let last = derive()?.body ?? '';
       let running = true;
       let queued = false;
       const recheck = (): void => {
         queued = false;
         if (!running) return;
-        for (const id of deps.ids()) held.add(id);
-        const next = payload(held);
-        const body = JSON.stringify(next);
-        if (body === last) return;
-        last = body;
-        publish(next);
+        const derived = derive();
+        if (derived === undefined || derived.body === last) return;
+        last = derived.body;
+        publish(derived.next);
       };
       // Announcements come from inside the delivery path, often several for one change (an attach
       // announces the refusal it replaced and the wake it caused): coalesce them into one re-derive,

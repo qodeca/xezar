@@ -766,7 +766,8 @@ describe('MCP connection section — the leader status, live (round 5 on #403)',
     const readsBefore = view.reads.count
 
     // Another project's status and a malformed frame change nothing here.
-    act(() => socket.message({ type: 'event', topic: 'mcp-leader', data: { projects: { other: leaderStatus({ leader: { client: 'pi', state: 'attached' }, blocker: null }) } } }))
+    // (The server lists every running project in every frame, so this one is listed, unchanged.)
+    act(() => socket.message({ type: 'event', topic: 'mcp-leader', data: { projects: { other: leaderStatus({ leader: { client: 'pi', state: 'attached' }, blocker: null }), xezar: leaderStatus({ owner: { client: 'codex' } }) } } }))
     act(() => socket.message({ type: 'event', topic: 'mcp-leader', data: { projects: { xezar: { available: 'yes' } } } }))
     // Let the cache's batched notify and the re-render land before reading: a check made earlier
     // passes whatever the frame did.
@@ -786,6 +787,68 @@ describe('MCP connection section — the leader status, live (round 5 on #403)',
 
     view.unmount()
     expect(socket.frames()).toContainEqual({ type: 'unsubscribe', topic: 'mcp-leader' })
+  })
+
+  /** Local mode with the socket open and subscribed; `leader` answers each GET in turn. */
+  async function live(leader: () => Response | Promise<Response>) {
+    vi.stubGlobal('WebSocket', FakeTopicSocket)
+    const view = mount(leader as () => Response)
+    await waitFor(() => expect(view.state()).toBeTruthy())
+    const socket = FakeTopicSocket.instances.at(-1) ?? FakeTopicSocket.all.at(-1)
+    if (!socket) throw new Error('the leader control never opened the topic socket')
+    if (socket.readyState !== 1) act(() => socket.open())
+    const push = (projects: Record<string, unknown>) => act(() => socket.message({ type: 'event', topic: 'mcp-leader', data: { projects } }))
+    return { ...view, socket, push }
+  }
+  const settleRender = () => act(() => new Promise((resolve) => setTimeout(resolve, 50)))
+  const DELIVERING_FIELDS: Partial<Extract<McpLeaderStatus, { available: true }>> = {
+    owner: { client: 'codex' },
+    leader: { client: 'codex', state: 'attached' },
+    delivery: { state: 'idle', deliveredSeq: 1, ackedSeq: 0, reactedSeq: 1, latestSeq: 1 },
+    blocker: null,
+  }
+  const DELIVERING = leaderStatus(DELIVERING_FIELDS)
+
+  // Review minor 2: a read that left before a change and answers after its frame must not win.
+  it('a pushed status is not overwritten by an older read that answers after it', async () => {
+    let reads = 0
+    let answerLate: (response: Response) => void = () => {}
+    const view = await live(() => {
+      reads += 1
+      if (reads === 1) return ok(DELIVERING)
+      return new Promise<Response>((resolve) => {
+        answerLate = resolve
+      })
+    })
+    await waitFor(() => expect(view.state()).toBe('delivering'))
+    // A focus re-read leaves while Codex is still connected…
+    act(() => focusManager.setFocused(false))
+    act(() => focusManager.setFocused(true))
+    await waitFor(() => expect(reads).toBe(2))
+    // …the daemon goes, and its frame arrives first…
+    view.push({ xezar: leaderStatus({ ...DELIVERING_FIELDS, blocker: { code: 'codex-app-server-unreachable', message: 'xezar cannot reach this running Codex session.', fix: 'Run the app-server again.' } }) })
+    await waitFor(() => expect(view.state()).toBe('blocked'))
+    // …then the old answer lands. The page keeps the newer truth.
+    answerLate(ok(DELIVERING))
+    await settleRender()
+    expect(view.state()).toBe('blocked')
+  })
+
+  // Review minor 4: every running project is in every frame, so one missing while the page shows it
+  // running means its service stopped (a socket-only reconnect's snapshot lists running ones only).
+  it('a frame that no longer lists this project re-reads it when the page still shows it running, and not otherwise', async () => {
+    let answer: McpLeaderStatus = leaderStatus({ owner: { client: 'codex' } })
+    const view = await live(() => ok(answer))
+    await waitFor(() => expect(view.state()).toBe('owner'))
+    const readsBefore = view.reads.count
+    answer = { available: false, reason: 'The MCP service is not running for this project, so there is no event delivery to report.' }
+    view.push({ other: leaderStatus() })
+    await waitFor(() => expect(view.state()).toBe('unavailable'))
+    expect(view.reads.count).toBe(readsBefore + 1)
+    // Already shown as not running: another frame without it asks nothing.
+    view.push({ other: leaderStatus({ owner: { client: null } }) })
+    await settleRender()
+    expect(view.reads.count).toBe(readsBefore + 1)
   })
 
   it('remote mode opens no WebSocket and sends no subscribe: the status is read over HTTP only', async () => {

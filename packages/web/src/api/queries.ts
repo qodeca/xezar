@@ -2,7 +2,7 @@ import { useMutation, useQueries, useQuery, useQueryClient, type QueryClient } f
 import { useCallback, useEffect, useMemo } from 'react'
 
 import { mergeProviderStatusResponse } from '@/lib/provider-status'
-import type { McpLeaderActionInput } from '@qodeca/xezar-api-client'
+import type { McpLeaderActionInput, McpLeaderStatus } from '@qodeca/xezar-api-client'
 
 import {
   ApiError,
@@ -1124,10 +1124,13 @@ export function useMcpLeader() {
  * The `mcp-leader` topic, held by the view that shows the leader status for as long as it is on
  * screen (#374, round 5 on #403) — a VIEW-level signal, unlike `health`: nothing else reads it, so its
  * demand is that view's lifetime. Each frame carries every running project's status; this project's
- * entry is validated and written into `useMcpLeader`'s cache in place, and a frame without it changes
- * nothing. Remote mode opens no WebSocket (see `useHealthSubscription` for why): the HTTP read, focus
- * and the stream's reconcile keep it current there. After a socket reconnect the server answers the
- * re-sent subscribe with a fresh snapshot.
+ * entry is validated and written into `useMcpLeader`'s cache in place, after cancelling a read still in
+ * flight — that read left before the change, and answering after the frame it would put the old status
+ * back (round 5 self-review). A frame that does not list this project while the page shows it running
+ * means its service stopped (every running project is in every frame; a socket-only reconnect's
+ * snapshot lists running ones only), so it is re-read rather than read as "no news". Remote mode opens
+ * no WebSocket (see `useHealthSubscription` for why): the HTTP read, focus and the stream's reconcile
+ * keep it current there.
  */
 export function useMcpLeaderSubscription(projectId: string | null, local: boolean): void {
   const queryClient = useQueryClient()
@@ -1136,8 +1139,13 @@ export function useMcpLeaderSubscription(projectId: string | null, local: boolea
     const key = queryKeys.mcpLeader
     return subscribeTopic('mcp-leader', (data) => {
       const frame = mcpLeaderTopicSchema.safeParse(data)
-      const status = frame.success ? frame.data.projects[projectId] : undefined
-      if (status !== undefined) queryClient.setQueryData(key, status)
+      if (!frame.success) return
+      const status = frame.data.projects[projectId]
+      if (status === undefined) {
+        if (queryClient.getQueryData<McpLeaderStatus>(key)?.available === true) void queryClient.invalidateQueries({ queryKey: key })
+        return
+      }
+      void queryClient.cancelQueries({ queryKey: key }).then(() => queryClient.setQueryData(key, status))
     })
   }, [queryClient, projectId, local])
 }

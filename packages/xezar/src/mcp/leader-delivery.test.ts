@@ -864,7 +864,7 @@ describe('announcing status changes to the cockpit topic (round 5 on #403)', () 
     expect(changes).toBe(6);
   });
 
-  it('announces a delivery attempt against the attached leader, so its cursors and blocker reach the topic', async () => {
+  it('announces each attempt against the attached leader (a delivery or a liveness check), so its cursors and blocker reach the topic', async () => {
     let changes = 0;
     const { made, journal } = counted(() => {
       changes += 1;

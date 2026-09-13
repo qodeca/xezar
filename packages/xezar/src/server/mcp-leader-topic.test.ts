@@ -36,8 +36,10 @@ function fakeRegistry() {
   const statuses = new Map<string, McpLeaderStatus>();
   const listeners = new Set<(projectId: string) => void>();
   let watches = 0;
+  const reads = { count: 0 };
   return {
     statuses,
+    reads,
     get watching() {
       return listeners.size;
     },
@@ -49,7 +51,10 @@ function fakeRegistry() {
     },
     deps: {
       ids: () => [...statuses.keys()],
-      status: (projectId: string): McpLeaderStatus => statuses.get(projectId) ?? { available: false, reason: 'not running' },
+      status: (projectId: string): McpLeaderStatus => {
+        reads.count += 1;
+        return statuses.get(projectId) ?? { available: false, reason: 'not running' };
+      },
       watch: (listener: (projectId: string) => void) => {
         watches += 1;
         listeners.add(listener);
@@ -86,11 +91,14 @@ describe('the mcp-leader topic publisher', () => {
 
       const attached = idle({ owner: { client: 'codex' }, leader: { client: 'codex', state: 'attached' } });
       registry.statuses.set('alpha', attached);
-      // A burst of announcements for one change is one frame, not three.
+      // A burst of announcements for one change is ONE re-derive (review nit 5: the JSON compare alone
+      // would also yield one frame, so the reads are what prove the coalescing), and one frame.
+      const readsBefore = registry.reads.count;
       registry.announce('alpha');
       registry.announce('alpha');
       registry.announce('alpha');
       await flush();
+      expect(registry.reads.count - readsBefore).toBe(1);
       expect(published).toEqual([{ projects: { alpha: attached } }]);
     } finally {
       stop();
@@ -160,6 +168,35 @@ describe('the mcp-leader topic publisher', () => {
       expect(published).toEqual([{ projects: { alpha: lost } }]);
       vi.advanceTimersByTime(20_000);
       expect(published).toHaveLength(1);
+    } finally {
+      stop();
+    }
+  });
+
+  // Review nit 6: a re-derive runs in a microtask or on the interval, where a throw would be uncaught
+  // and end the server. A status that throws is skipped; the next re-derive publishes what it can read.
+  it('a status that throws is never uncaught: that re-derive is skipped, and the next one publishes', async () => {
+    vi.useFakeTimers();
+    const registry = fakeRegistry();
+    registry.statuses.set('alpha', idle());
+    let broken = true;
+    const deps = {
+      ...registry.deps,
+      status: (projectId: string): McpLeaderStatus => {
+        if (broken) throw new Error('a status that cannot be read');
+        return registry.deps.status(projectId);
+      },
+      recheckMs: 5_000,
+    };
+    const published: unknown[] = [];
+    const stop = mcpLeaderTopic(deps).start((data) => published.push(data));
+    try {
+      registry.announce('alpha');
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(published).toEqual([]);
+      broken = false;
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(published).toEqual([{ projects: { alpha: idle() } }]);
     } finally {
       stop();
     }
