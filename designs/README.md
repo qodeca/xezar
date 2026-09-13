@@ -35,4 +35,4 @@ The row below and the design README's own Status line must agree; the PR that ch
 
 | Design | Status |
 |---|---|
-| [quality-checks](quality-checks/README.md) | Draft – waiting for owner decisions (see Open decisions) and a `design-review` run |
+| [quality-checks](quality-checks/README.md) | In review – first `design-review` verdict FAIL (README §18); waiting for owner decisions and the fixes |

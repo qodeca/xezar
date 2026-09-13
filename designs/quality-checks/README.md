@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Draft – waiting for owner decisions (see [Open decisions](#14-open-decisions)) and a `design-review` run |
+| **Status** | In review – the first `design-review` run returned FAIL (see [§18](#18-design-review)); waiting for owner decisions (see [Open decisions](#14-open-decisions)) and the fixes |
 | **Date** | 2026-09-13 |
 | **Mockup** | Open [`index.html`](index.html) in a browser. No build or server needed. |
 | **Replaces** | The "Quality checks" section on Project settings → MCP connection (issue #114, PR #255) |
@@ -419,4 +419,171 @@ On the first day the badge will show about 15, from old tasks. Archive them to c
 
 ## 18. Design review
 
-Pending – no review yet. The `design-review` workflow posts a `## Design review` comment on the PR; link it here with each finding's disposition (fixed, filed as `design-debt`, or accepted with a reason). The badge colour question is tracked as `docs/design-system/decisions.md` D-01.
+Reviewed 2026-09-13 by the `design-review` workflow (`xezar-ux-design` review mode, headless run `4e239b6e`, Claude Code) on commit `d9c457c`. **Verdict: FAIL** – 7 blocking findings (B-1 to B-7) and 12 non-blocking (NB-1 to NB-12). Dispositions are open: before this design moves to Approved, the author marks each finding *fixed*, *filed as `design-debt`* or *accepted, because …*, and a second review confirms. The badge colour question (NB-12) is `docs/design-system/decisions.md` D-01 and stays with the owner. The verdict follows verbatim.
+
+- **Reviewed commit:** `d9c457c803f62b41f1a26b47f6d2aa78a243be21` (`designs/quality-checks/` as on `main`; no PR)
+- **Reviewer role:** `design-review` workflow, `xezar-ux-design` review mode (agent, read-only)
+- **Pages:** `index.html`, `checks.html`, `states.html`, `task.html`, `settings.html`, all opened from disk.
+- **Themes checked:** dark and light (`.light`).
+- **Widths checked:** 375 × 812 and 1440 × 900.
+- **Browser:** agent-browser 0.36.0, Chrome for Testing. Screenshots are in the task tmp dir, not committed.
+- **Measured:**
+  - No page scrolls sideways at either width in either theme. The scroll width equals the viewport on every page.
+  - Some content scrolls inside its own box at 375 px: the tables on `index.html` and `task.html`, and the `<pre>` output block.
+  - The `:focus-visible` ring shows as a 3 px outline at 50 % `--ring`.
+  - Accent and density were not checked. §5 of `new-designs.md` allows setting them in devtools, and that was not done.
+- **Read in order:** `known-gaps.md` → `patterns.md` → `components.md` → `behaviour.md`, then `writing.md`, `new-designs.md` and `decisions.md`.
+
+#### Verdict: FAIL
+
+The core idea is right and well argued. A task must not look "done" while a check never passed, and there is no dismiss or waive action. The evidence, the non-goals and the leader wording are strong.
+
+Seven things block approval:
+- One action has a hidden side effect (B-1).
+- Two required states are missing or contradict repository doctrine (B-2, B-3).
+- Small text fails contrast (B-4).
+- Touch targets are too small on phones (B-5).
+- One acceptance criterion is based on a wrong reading of the code (B-6).
+- The re-run state machine is not defined (B-7).
+
+#### Blocking
+
+**B-1 – "Re-run check" does not say that a pass restarts the workflow.**
+- **Where:** `README.md:298` (on exit 0, "continue the task's remaining pending steps"), `README.md:247`, `checks.html:148`, `states.html:189–198`.
+- **Rule broken:** point 4, "the distinction that matters most" (read-only against changes-state).
+- **Problem:** the button reads like a safe, one-command action. When the check passes, the task runs its remaining steps, and those can include agent steps. In the mockup's own example these are "Seal the gate evidence" and then "Handoff". Agent steps cost tokens and can push. The person learns this only from the toast, after it has happened.
+- **Fix:** before the press, state what happens after a pass. Either put it on the card ("If it passes, the task continues: 2 steps left"), or make the label say it. Add this case to the acceptance criteria.
+
+**B-2 – The hosted-mode refusal state is missing.**
+- **Where:** `README.md:216–223` (page states), `README.md:300–304` (refusals), `states.html` §3.
+- **Rule broken:** `new-designs.md` §4 requires default, empty, loading, error, **refusal (hosted mode 409)** and phone.
+- **Problem:** the README never says whether Re-run (and Archive from a card) is allowed when `capabilities.localHandoff` is false.
+- **Fix:** decide it and say why. If it is refused, show the state. Per `patterns.md` §6, use a neutral tone, the server's sentence and who can act, and hide the action when there is no honest reason to disable it.
+
+**B-3 – The error copy goes against the repository's error rule.**
+- **Where:** `README.md:223` ("Raw server errors are never shown"), `states.html:306`, `states.html:287`, `README.md:259`.
+- **Rule broken:** `writing.md` §7 and `patterns.md` §6. The cockpit writes the title, and the server's message is shown word for word as the body or toast.
+- **Problem:** the load-error body is a guess written into the mockup ("The connection to xezar was lost"). It is false for a 500 or a 404.
+- **Fix:** use a cockpit-written title plus the server message. If a friendlier sentence is wanted for a known refusal code, record that as an open decision.
+
+**B-4 – Small text that carries meaning fails contrast in both themes.**
+- **Where:** `styles.css:68` (group count), `styles.css:75` (the group's one-line instruction), `styles.css:149` (card task line: "Failed 14 h ago · 3 of 3 tries").
+- **Rule broken:** `known-gaps.md` G-23 says "do not add more small text in `--soft-foreground` on light", and point 7 (accessibility) of the skill.
+- **Measured:**
+  - Light: 2.52:1 at 12 px and 12.5 px.
+  - Dark, task line: 4.24:1 at 12.5 px.
+  - `.cmd .exit` in `--danger`: 3.76:1 at 11.5 px in light.
+- **Why it blocks:** the group line is the instruction for the group ("Fix the cause in the task, then re-run the check.").
+- **Fix:** use `--muted-foreground` for all three, and for the exit code in light.
+
+**B-5 – Phone touch targets are 40 px; the rule is 44 px.**
+- **Where:** `README.md:162`, `README.md:357`, `README.md:365`, `styles.css:361–363`, `index.html:90`.
+- **Measured at 375 px:** Re-run 125 × 40, Open task 87 × 40, Archive 40 × 40.
+- **Rule broken:** `new-designs.md` §6 and `patterns.md` §9 (`h-11` / `size-11`). There is no open decision for this.
+- **Fix:** 44 px, in both the spec and the mockup.
+
+**B-6 – "It sits in Needs you" does not match the code, and it contradicts itself.**
+- **Where:** `README.md:171`, `README.md:373` (acceptance criterion 4), `task.html:90`.
+- **Problem:**
+  - The README says the task "goes with failed tasks in 'Needs you' (the `error` bucket in `lib/attention.ts`)".
+  - The sidebar and `/tasks` buckets come from `bucketOf` in `packages/web/src/lib/task-groups.ts:91–101`, not from `attention.ts`. It puts only `waiting` and `review` under "Needs you". A `failed` task goes to "Recent".
+  - So "with failed tasks" and "in Needs you" cannot both be true.
+  - Moving it into "Needs you" changes a status-keyed rule that other surfaces and counts (`listCounts`) depend on.
+- **Fix:** pick one bucket, name `bucketOf` as the file to change, and correct acceptance criterion 4.
+
+**B-7 – What the task's status is during a re-run is not defined, so states b and e overlap.**
+- **Where:** `README.md:208–211`, `states.html:139`, `states.html:189`, `states.html:211`.
+- **Problem:**
+  - State e ("Task busy") applies when the task is `running`.
+  - If a re-run makes the task `running`, then every re-running card (state b) is also state e.
+  - If it does not, the card shows statuses that `deriveAttention` cannot produce: "re-running check", and "running · Seal the gate evidence" in state d.
+- **Rule broken:** rule 7 in the design system README ("Status comes from `lib/attention.ts` … Nowhere else maps a run status to a colour or a word").
+- **Fix:**
+  - State the run's status while its check re-runs.
+  - Say which states b–e follow from that status.
+  - Either add the new labels to `attention.ts` (and to `README.md` §10.5), or show the card-local progress without a status `Pill`.
+
+#### Non-blocking
+
+**NB-1 – The layout breakpoint is 860 px, not the cockpit's 768 px.**
+- **Where:** `README.md:364–366`, `README.md:80`, `README.md:382` (acceptance criterion 11 says 390 px; the bar is 375 px). The 860 px comes from the shared `docs/design-system/cockpit.css:2339`.
+- **Rule broken:** `behaviour.md` §3, which makes `md:` (768 px) the one layout switch.
+- **Fix:** the handoff should say `md:` (768 px) and 375 px.
+- **Design-system follow-up** (not this design's fault): `cockpit.css` uses 860 px, makes `.mobile-bar .btn-icon` 34 px where the cockpit uses `size-11`, and colours `.page-head p` with `--soft-foreground` where `patterns.md` §3 says `text-muted-foreground`. None of these are in `known-gaps.md` § Mockup fidelity.
+
+**NB-2 – The live region covers the whole list.**
+- **Where:** `checks.html:126`, `README.md:140`, `README.md:352`.
+- **Problem:** every card change is read out, including the "running for 1 min 12 s" timer in state b (`states.html:136`).
+- **Fix:** announce the count change and the pass or fail result in one polite `sr-only` status line (`behaviour.md` §2).
+
+**NB-3 – Focus after a card change is not specified.**
+- **Where:** `README.md:210–214`, `states.html:143`.
+- **Problem:** focus is lost in three cases:
+  - Pressing Re-run sets `disabled` on the focused button.
+  - A passed card leaves after about 2 s.
+  - Archive removes the card.
+- **Fix:** say where focus goes, for example to the next card's name or to the group heading. State e already reasons this way with `aria-disabled`.
+
+**NB-4 – Archive from a card is missing states, and its label is inconsistent.**
+- **Missing:** the pending state, the failure toast, the success feedback, and whether it can be undone.
+- **Label is written three ways:** "Archive task <title>" (`README.md:161`), "Archive task 378" (`checks.html:150`), "Archive task" (`states.html:120`).
+- **Fix:** follow `README.md:161` everywhere. Use the title, because the number is not unique (`checks.html` shows two #378 rows).
+
+**NB-5 – The page-state components and their copy do not follow the patterns.**
+- **Components** (`states.html:259–306`):
+  - Empty and load error should name `CenteredState heading="h2"` (`tone="danger"` for the error). Today they use `.qc-empty` and `.qc-alert`.
+  - The retry button should read "Retry", not "Try again" (G-15).
+- **Title periods:** "Could not load the checks." and "The check did not start." (`README.md:258`, `README.md:260`) should have no trailing period (`writing.md` §1).
+- **Loading:** the words are `sr-only` only (`states.html:270`). `patterns.md` §6 needs visible "Loading checks…". In light theme the sheen skeleton is almost invisible (screenshot `states-light-1440`).
+
+**NB-6 – Every card has a filled `contrast` button.**
+- **Where:** `checks.html:148` and the other cards. A page with the current 15 cards has 15 filled buttons.
+- **Rule:** `components.md` Button reserves `contrast` for the sidebar CTA and dialog confirms, and `primary` for the one start action on a surface.
+- **Fix:** use `outline` for the actions repeated on each card, or give the reason in §14.
+
+**NB-7 – The toast does not match the Toaster component.**
+- **Where:** `states.html:196`, `README.md:210`, `README.md:255`.
+- **Problem:** it has an icon, a bold lead, an action link and a 6 s lifetime. `Toaster` is `contrast`, has no icon and no action, and lasts 5 s (`TOAST_MS`).
+- **Fix:** either conform, or list the toast as a new capability in §14.
+
+**NB-8 – New components are not called out as proposals.**
+- **Where:** `README.md:84–85` and `README.md:384–390`.
+- **What is new:** the check card, rule strip, card hint, task-page banner and settings row.
+- **Rule:** `new-designs.md` §2 says a component the cockpit lacks must be listed in the README as a proposal. §3 and §8 say the handoff names the reused component for each state.
+- **Also:** the task-page banner should say why it is not `ProviderBanner`'s `alert` tone.
+
+**NB-9 – The task-list mockup does not follow the real table.**
+- **Table columns** (`task.html:63`): they are Task, Status, Tool, Model, Changes, Updated. `TASK_COLUMNS` starts Status, Task, Workflow, Tool Name, Model, Branch, ±, … (rule 9).
+- **Phone card missing:** the phone card with the long "done · check failed" pill is not shown. At 375 px the "after" pill sits off-screen inside the table's scroll box.
+- **Quick-list dot:** its only words are a `title` (`checks.html:87`, `checks.html:90`, `README.md:170`). Per the `StatusDot` rule it needs `role="img"` and an `aria-label` from the attention label.
+
+**NB-10 – The phone view adds a pattern and does not say what gets cut.**
+- **Where:** `checks.html:105`, `styles.css:152–161`, `README.md:360–366`.
+- **Mobile bar badge:** the badge in the mobile top bar is a new pattern (the shell's bar shows no badge today). It is `aria-hidden` with no words.
+- **Truncation:** task titles are cut to one line with no way to read them (see the #197 card at 375 px).
+- **Fix:** answer point 8 of the skill. Say what is cut first and what is never cut: check name, pill words and the primary action.
+
+**NB-11 – UI copy breaks several writing rules.**
+- **Dashes:** UI copy should use a spaced em dash ` — ` (`writing.md` §1; the en dash is the G-15 minority). Today it uses ` – `: `README.md:227`, `README.md:236`, `README.md:266`, `checks.html:120`, `task.html:157`.
+- **Quotes and apostrophes:** check names should be in curly `“ ”`, and apostrophes should be curly `’` (`README.md:262`, `README.md:266`, "task's").
+- **Ages:** should be `14h ago` and `2d ago` (`writing.md` §12). Today they read "14 h ago" and "1 day ago" (`checks.html:144`), and "running for 1 min 12 s".
+
+**NB-12 – D-01 (badge colour) is still open, so this review cannot close D3.**
+- **Where:** `README.md:390`, `docs/design-system/decisions.md` D-01.
+- **Recommendation:** red.
+  - "Broken" is a different meaning from violet "someone wants you".
+  - Contrast is not worse: measured 3.76:1 for red against 3.11:1 for the shipped violet.
+  - The count is announced in words.
+- **Condition:** delivery PR 1 (kit clean-up) must merge first. Otherwise the badge opens at about 15 and stays red, and people learn to ignore it.
+- **If red is chosen:** record D-01 as decided. Add the exception to `new-designs.md` §3 and `patterns.md` §2.
+
+#### What passed
+
+- **Rule 1 (tokens only):** no raw colour outside comments in `styles.css`.
+- **Backend names:** they come from `runner-label.ts` ("Claude Code", "Codex").
+- **Semantic HTML:** real `<button>`s and `<a>`s, `aria-current` on the active items, and `aria-label` on the icon-only controls.
+- **Colour is never alone:** every red dot has words, and every card has an icon.
+- **State e:** the reason for the disabled button is visible text, linked with `aria-describedby`.
+- **Reduced motion:** pulse, spinner and skeleton stop under `prefers-reduced-motion`.
+- **Widths:** no page scrolls sideways at 375 px in either theme.
+- **Scope:** the non-goals (no dismiss or waive, no output on the card, no cross-project total) are clear and justified by real data (178 tasks, 15 cards).
