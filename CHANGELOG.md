@@ -1,6 +1,17 @@
 # Unreleased
 
 ## 💥 Breaking
+- 💥 **A Codex run xezar starts no longer loads your own Codex MCP servers, plugins or apps.**
+  (#324, #323) Every Codex task run used to load each MCP server and plugin in
+  `$CODEX_HOME/config.toml` – a browser, the Messages plugin, ChatGPT connectors – and
+  `approvalPolicy: never` let the agent call them with no prompt. The runner now asks the Codex
+  app-server which servers it would load (`config/read`) and starts the thread with only the
+  servers the project's own trusted `.codex/config.toml` declares. Servers from your home config,
+  plugins, apps and xezar's own leader bridge are switched off for that thread, and the run
+  transcript names what was switched off. Your config files are not changed. To use a server in
+  Codex runs, declare it in the project's `.codex/config.toml`. A Codex CLI that cannot answer
+  `config/read` now fails the run with a message instead of starting it. No setting and no
+  environment variable.
 - 💥 **The default team skills source is now `qodeca/xezar-skills`, and the skills are named
   `xez-*`.** (#394) The previous default repository is no longer loaded, and the automatic updater no
   longer recognises it: an `npx skills` install from the old source is reported as "Installed

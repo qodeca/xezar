@@ -388,6 +388,30 @@ written before 0.10.1 keep the names that were true when they were written.
 
 ---
 
+## Codex runs load only the project's MCP servers (#324) — deliberate, 2026-09-13
+
+A Codex run xezar starts used to load every MCP server, plugin and app the account's own
+`$CODEX_HOME/config.toml` names, and `approvalPolicy: never` does not gate an MCP tool call — so a
+task agent could drive the person's browser or Messages app with no prompt. That is the F-1 class
+of hole #311 closed for shell access, and #324 closes it for Codex tools. Changing what a default
+run can reach is breaking under section 1's rule, so it is recorded here rather than silently:
+
+- **Broken**: the default tool set of a Codex task run. Before `thread/start` / `thread/resume` the
+  runner calls `config/read` for the run's cwd and passes a per-thread `config` override
+  (`packages/xezar/src/core/codex-run-isolation.ts`) that switches off every MCP server not
+  declared solely by the project's `.codex/` layer, xezar's own bridge even when the project
+  declares it (a task run is not the project's leader, #323), and the `plugins` and `apps`
+  features. A Codex CLI that cannot answer `config/read` now fails the run closed with a message
+  naming the reason, where it used to start.
+- **Not broken**: a server the project's trusted `.codex/config.toml` declares still loads; no
+  config file is read or written by xezar (the override lives only on the thread); Claude Code,
+  OpenCode and pi runs are unchanged; the v1/v2 event streams gain no type — the run transcript
+  gets one ordinary `note` naming the switched-off servers, and only when there were some.
+- **No opt-out knob**: the project's `.codex/config.toml` is the opt-in path, reviewed with the
+  code, so no stored key or `XEZ_*` variable was added (§ Zero config: prefer no knob).
+  `codex-app-server-runner.test.ts` (under `MOCK_CODEX_AMBIENT` / `MOCK_CODEX_CONFIG_READ_ERROR`)
+  pins the default; it fails against a runner that starts the thread without asking.
+
 ## When in doubt
 
 If a change might break any surface above, say so in the PR description, label the PR `risk-high`, and route it through the review + QA gates in `SDLC.md`. A silent break found in review is a blocker per `CODE_REVIEW.md`.
