@@ -64,10 +64,15 @@ beforeAll(async () => {
   // listing) is the inverse of the desired MATCH order for the query "review": the exact-name
   // `review` must jump to the top past `auto-review-pr`. An unranked list would leave it last.
   mkdirSync(join(dataRoot, '.ai/skills'), { recursive: true })
+  // Team skills off for this fixture: the picker's subsequence fallback would otherwise let a
+  // team skill (e.g. `xez-setup-agent-pipeline`) satisfy the rare tokens below, and which team
+  // skills have loaded by the time a spec runs depends on clone timing.
+  mkdirSync(join(dataRoot, '.xezar'), { recursive: true })
+  writeFileSync(join(dataRoot, '.xezar/config.json'), '{ "skillsRepos": [] }\n', 'utf8')
   writeFileSync(
     join(dataRoot, '.ai/skills/auto-review-pr.md'),
     // The two rare tokens let the multi-keyword spec assert a UNIQUE match that the machine's
-    // global om-* skills (also listed in the picker) cannot accidentally satisfy.
+    // global skills (also listed in the picker) cannot accidentally satisfy.
     '---\ndescription: Open and merge a pull request zebratoken quokkatoken\n---\n\nReview and merge.\n',
     'utf8',
   )
