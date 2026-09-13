@@ -83,8 +83,7 @@ Options:
 
 Zero config: uses your logged-in \`claude\` CLI (and \`gh\` for GitHub bits).
 Skills live in .ai/skills/, .xezar/skills/ and your team skills repo
-(default open-mercato/skills — a separate, maintained skills repository,
-not a leftover of the rename from Cezar; override via .xezar/config.json);
+(default qodeca/xezar-skills; override via .xezar/config.json);
 workflows in .xezar/workflows/.`;
 
 async function main(): Promise<void> {

@@ -116,7 +116,7 @@ export function composeGithubTask(
 
 /**
  * Skills → a workflow chain (spec 008): one `{{task}}` step per skill, ids deduped the way
- * the legacy builder deduped them (`om-fix`, `om-fix-2`, …), capped at `MAX_CHAIN_STEPS`.
+ * the legacy builder deduped them (`xez-fix`, `xez-fix-2`, …), capped at `MAX_CHAIN_STEPS`.
  */
 export function skillChainSteps(names: readonly string[]): WorkflowStepDef[] {
   const steps: WorkflowStepDef[] = []

@@ -487,7 +487,7 @@ describe('POST /api/v1/projects/checkout', () => {
     const seen: { event: string; data: unknown }[] = [];
     bus.on((event, data) => seen.push({ event, data }));
 
-    const { status, body } = await post({ url: 'open-mercato/nope' }, { cloneRunner, workspaceEvents: bus });
+    const { status, body } = await post({ url: 'qodeca/nope' }, { cloneRunner, workspaceEvents: bus });
     expect(status).toBe(500);
     // Verbatim: gh's own words are the only ones that can tell the user WHY.
     expect(body.error).toContain('Repository not found');

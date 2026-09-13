@@ -2877,7 +2877,7 @@ export class RunManager {
     if (record) seedHandoffFile(this.dataDir, record); // idempotent — normally already there
     // Registry snapshot for `/skill` expansion. `execute` loads this for the workflow's own
     // sessions; a continuation builds its OWN ActiveRun, and without this the resumed session
-    // expanded against an empty registry and leaked `/om-...` verbatim to the backend, which
+    // expanded against an empty registry and leaked `/xez-...` verbatim to the backend, which
     // answered "Unknown skill" (#811). Best-effort — discovery must never break Continue.
     state.skills = await discoverSkills(this.repoRoot).catch(() => [] as Skill[]);
 
@@ -3588,7 +3588,7 @@ export class RunManager {
     let userPrompt = applyTemplate(step.prompt ?? '{{task}}', input.task);
     // A fresh run's OPENING prompt is delivered straight to `startSession`, never through
     // `deliverMessage`, so — like the continuation seam above (#811) — it needs the same
-    // delivery-only `/skill` rewrite. Without it a task STARTED with `/om-...` as its first
+    // delivery-only `/skill` rewrite. Without it a task STARTED with `/xez-...` as its first
     // message leaks the raw slash to the backend, which answers "Unknown command" even though
     // Xezar lists the skill (#278). `state.skills` was populated by `discoverSkills` earlier in
     // `execute`. Expand before the chain/check/attachment prefixes so the leading slash still
@@ -4404,7 +4404,7 @@ function applyTemplate(template: string, task: string): string {
  * Immediate title shown while a run is queued. The namer's `titleSummary`
  * replaces it once the model answers; this is the honest, permanent fallback
  * when no model is available (#432, spec 2026-07-17-task-auto-naming). When
- * the task references a PR/issue, the number leads: `469: /om-auto-review-pr`.
+ * the task references a PR/issue, the number leads: `469: /xez-auto-review-pr`.
  */
 export function makeRunTitle(task: string, workflow: WorkflowDef): string {
   const firstLine = task.trim().split('\n')[0] ?? '';
@@ -4413,7 +4413,7 @@ export function makeRunTitle(task: string, workflow: WorkflowDef): string {
     ? `/${skill}${firstLine ? ` ${firstLine}` : ''}`
     : firstLine;
   const refNumber = titleRefNumber(refineTaskRefs(extractTaskRefs(task), skill));
-  // `469` or `/om-auto-review-pr 469` reads as `469: /om-auto-review-pr` — the
+  // `469` or `/xez-auto-review-pr 469` reads as `469: /xez-auto-review-pr` — the
   // number leads so it survives the tasks table's narrow truncation.
   const skillArg = skill && contextual.startsWith(`/${skill}`) ? contextual.slice(skill.length + 1).trim() : null;
   const body = refNumber !== undefined && skill && (skillArg === '' || /^#?\d+$/.test(skillArg ?? ''))

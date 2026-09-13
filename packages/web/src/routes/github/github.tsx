@@ -256,7 +256,7 @@ export function GithubRoute({
   }, [workflow, selectedSkills])
   // A workflow that no longer exists must not reach the server — the same legacy rule
   // `validSkills` applies to skills (hand-to-agent.tsx). Remembering the pick (#408) gave this
-  // state a lifetime beyond the `.ai/workflows/` file that justified it: rename the workflow and
+  // state a lifetime beyond the `.xezar/workflows/` file that justified it: rename the workflow and
   // every reload restores a name the server 404s on, with no obvious way to clear it. Cockpits
   // for different repos also share one `localhost:<port>` origin (`pickPort`, src/index.ts) and
   // therefore this localStorage key, so the name can arrive from a repo where it does exist.

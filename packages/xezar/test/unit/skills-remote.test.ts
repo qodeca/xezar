@@ -45,7 +45,7 @@ test('safeRemoteFor rejects the git remote-helper RCE surface', () => {
 });
 
 test('safeRemoteFor accepts the documented safe source shapes', () => {
-  assert.equal(safeRemoteFor('open-mercato/skills'), 'https://github.com/open-mercato/skills.git');
+  assert.equal(safeRemoteFor('qodeca/xezar-skills'), 'https://github.com/qodeca/xezar-skills.git');
   assert.equal(safeRemoteFor('https://github.com/o/n.git'), 'https://github.com/o/n.git');
   assert.equal(safeRemoteFor('http://internal.example/n.git'), 'http://internal.example/n.git');
   assert.equal(safeRemoteFor('ssh://git@host/o/n.git'), 'ssh://git@host/o/n.git');

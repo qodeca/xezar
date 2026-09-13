@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { AgentBrowser, bootProjectId, readTestEnv } from './agent-browser'
 
 /**
- * Automatic Open Mercato skill updates against the real XEZ_DRY_RUN cockpit.
+ * Automatic xezar-skills updates against the real XEZ_DRY_RUN cockpit.
  *
  * Reachability: dry-run deliberately reports a deterministic `current` state with no tracked
  * installation, so this spec covers the inherited preference, its persisted override, the
@@ -48,7 +48,7 @@ afterAll(() => {
   browser?.close()
 })
 
-describe('automatic Open Mercato skills updates', () => {
+describe('automatic xezar-skills updates', () => {
   it('shows the inherited global preference and persists an explicit override', async () => {
     browser.goto(`${baseUrl}/settings/global/skills`)
     browser.waitForFunction(`document.querySelector('[data-slot="skills-settings-section"]') !== null`)
@@ -56,7 +56,7 @@ describe('automatic Open Mercato skills updates', () => {
     expect(browser.isVisible('[data-slot="skills-auto-update"]')).toBe(true)
     expect(browser.text('[data-slot="skills-settings-section"]')).toContain('On (default)')
     expect(browser.text('[data-slot="skills-installation-status"]')).toContain(
-      'No tracked Open Mercato installation found.',
+      'No tracked xezar-skills installation found.',
     )
     browser.screenshot(`${artifactsDir}/settings-skills-auto-update.png`)
 
@@ -104,9 +104,9 @@ describe('automatic Open Mercato skills updates', () => {
     browser.goto(`${baseUrl}/p/${projectId}/skills?skill=__import`)
     browser.waitForFunction(`document.querySelector('[data-slot="skills-update-card"]') !== null`)
     expect(browser.text('[data-slot="skills-update-card"]')).toContain(
-      'Installed Open Mercato skills are up to date.',
+      'Installed xezar-skills are up to date.',
     )
-    expect(browser.text('[data-slot="skills-upgrade-notes"]')).toContain('/om-apply-upgrade-notes')
+    expect(browser.text('[data-slot="skills-upgrade-notes"]')).toContain('/xez-apply-upgrade-notes')
     browser.screenshot(`${artifactsDir}/skills-update-success.png`)
   })
 

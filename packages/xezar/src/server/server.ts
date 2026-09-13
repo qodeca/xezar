@@ -280,7 +280,7 @@ export interface ServerDeps {
    *  reaches `openInTerminal`. Injected for the same reason as the two above: a test that reaches
    *  this for real opens a window on the developer's machine (#820). */
   openApp?: typeof openInApp;
-  /** Process-wide Open Mercato skills update detector. Injected in tests and
+  /** Process-wide team skills update detector. Injected in tests and
    * shared by every workspace route/project; createApp owns the default. */
   skillsUpdate?: SkillsUpdateService;
   /** WebSocket subscription hub (`/api/v1/ws`, src/server/ws.ts). `createApp`
@@ -3093,7 +3093,7 @@ export function createApp(deps: ServerDeps) {
     })
 
     // The opt-in catalog for the "Import skills" panel: every skill a default
-    // (vendor) repo offers — `open-mercato/skills` — regardless of import state,
+    // (vendor) repo offers — `qodeca/xezar-skills` — regardless of import state,
     // so the panel can present them all with a per-skill toggle. Empty once a repo
     // configures its own `skillsRepos` (nothing is gated then). `wait=1` lets the
     // panel wait out a cold team-skill cache, same as `GET /skills` (spec 005).

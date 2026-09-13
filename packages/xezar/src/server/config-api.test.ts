@@ -90,7 +90,7 @@ describe('the config API', () => {
       // are `.default()`ed by the schema, hence materialized rather than tri-state.
       plannerModel: 'sonnet',
       namerModel: 'haiku',
-      skillsRepos: [{ repo: 'open-mercato/skills', ref: 'main' }],
+      skillsRepos: [{ repo: 'qodeca/xezar-skills', ref: 'main' }],
     });
   });
 
@@ -219,7 +219,7 @@ describe('the config API', () => {
 
     await put({ skillsRepos: null });
     expect(rawFile().skillsRepos).toBeUndefined();
-    expect((await getBody()).skillsRepos).toEqual([{ repo: 'open-mercato/skills', ref: 'main' }]);
+    expect((await getBody()).skillsRepos).toEqual([{ repo: 'qodeca/xezar-skills', ref: 'main' }]);
   });
 
   it('PUT merges into the raw file — user keys survive, defaults never materialize', async () => {

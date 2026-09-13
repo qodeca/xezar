@@ -742,19 +742,19 @@ describe('the agents form', () => {
       serve({
         config: {
           skillsRepos: [
-            { repo: 'open-mercato/skills', ref: 'main' },
+            { repo: 'qodeca/xezar-skills', ref: 'main' },
             { repo: 'acme/kit', ref: 'trunk' },
           ],
         },
       })
       renderAt('/settings/agents')
       await waitFor(() => expect(repos()).not.toBeNull())
-      expect(repos()!.value).toBe('open-mercato/skills\nacme/kit@trunk')
+      expect(repos()!.value).toBe('qodeca/xezar-skills\nacme/kit@trunk')
       expect(saveRepos()!.disabled).toBe(true)
     })
 
     it('parses a per-source ref and sends the array', async () => {
-      serve({ config: { skillsRepos: [{ repo: 'open-mercato/skills', ref: 'main' }] } })
+      serve({ config: { skillsRepos: [{ repo: 'qodeca/xezar-skills', ref: 'main' }] } })
       renderAt('/settings/agents')
       await waitFor(() => expect(repos()).not.toBeNull())
       fireEvent.change(repos()!, { target: { value: 'acme/kit@trunk\nme/skills' } })
@@ -770,7 +770,7 @@ describe('the agents form', () => {
     })
 
     it('an emptied field sends [] — a real "no team skills", not a clear', async () => {
-      serve({ config: { skillsRepos: [{ repo: 'open-mercato/skills', ref: 'main' }] } })
+      serve({ config: { skillsRepos: [{ repo: 'qodeca/xezar-skills', ref: 'main' }] } })
       renderAt('/settings/agents')
       await waitFor(() => expect(repos()).not.toBeNull())
       fireEvent.change(repos()!, { target: { value: '' } })

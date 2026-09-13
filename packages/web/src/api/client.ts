@@ -1899,7 +1899,7 @@ export async function removeAgentProfile(id: string): Promise<RemoveAgentProfile
   )
 }
 
-/** Cached Open Mercato update state for one registered project. The GET is immediate; the
+/** Cached team skills update state for one registered project. The GET is immediate; the
  * server may start a stale detection-only refresh after taking its snapshot. */
 export async function getSkillsUpdate(
   projectId: string,

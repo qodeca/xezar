@@ -72,7 +72,7 @@ const GLOBAL_SKILL_DIRS: Array<{ dir: string; source: Skill['source'] }> = [
  * prompt). Team skills come from the in-process cache; the first call starts
  * a background load so nothing here ever waits on the network.
  *
- * Opt-out gate: skills from a *default* (vendor) skills repo — `open-mercato/skills`
+ * Opt-out gate: skills from a *default* (vendor) skills repo — `qodeca/xezar-skills`
  * for the zero-config majority, see `gatedSkillsRepos` — appear unless the user has
  * curated them away. `importedSkills` in the GLOBAL `~/.xezar/ui-state.json` (not the
  * per-repo file — the selection describes the person and must not depend on the launch
@@ -125,6 +125,22 @@ export function readImportedSkills(uiState: Record<string, unknown>): string[] |
 }
 
 /**
+ * The default team skills repo moved to `qodeca/xezar-skills` (`xez-*` names) on 2026-09-13;
+ * its predecessor named the same skills `om-*`. `importedSkills` is keyed by NAME, so a
+ * curated list written before the move would silently empty the default catalog after it. Map
+ * the old prefix onto the new one when the list is READ — both spellings are admitted, and the
+ * stored list is never rewritten (ui-state stays the user's).
+ */
+const RETIRED_SKILL_PREFIX = 'om-';
+const SKILL_PREFIX = 'xez-';
+
+function renamedSkillNames(name: string): string[] {
+  return name.startsWith(RETIRED_SKILL_PREFIX)
+    ? [name, `${SKILL_PREFIX}${name.slice(RETIRED_SKILL_PREFIX.length)}`]
+    : [name];
+}
+
+/**
  * The opt-out gate: keep every team skill whose repo is NOT gated (a repo with its own
  * configured `skillsRepos` — auto-loads everything). For skills from a gated default
  * (vendor) repo, `importedSkills === undefined` keeps them ALL (not curated — the
@@ -139,7 +155,7 @@ export function filterImportedTeamSkills(
 ): Skill[] {
   // Not curated → the full default catalog still appears (no upgrade break).
   if (importedSkills === undefined) return [...teamSkills];
-  const imported = new Set(importedSkills);
+  const imported = new Set(importedSkills.flatMap(renamedSkillNames));
   return teamSkills.filter(
     (skill) => !skill.team || !gatedRepos.has(skill.team.repo) || imported.has(skill.name),
   );

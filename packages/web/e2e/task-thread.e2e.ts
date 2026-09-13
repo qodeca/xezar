@@ -194,7 +194,7 @@ describe('task thread', () => {
     expect(footer.text).toContain('Session closed')
     // The fixture record carries the agent-opened PR (`pullRequestUrl`) — since R3 Step 2.2
     // the closed footer keeps that link reachable after the review gate is gone.
-    expect(footer.prHref).toBe('https://github.com/open-mercato/demo/pull/123')
+    expect(footer.prHref).toBe('https://github.com/qodeca/demo/pull/123')
   })
 
   it('renders the transcript tool calls as cards — and the TodoWrite cards not at all (#382)', () => {

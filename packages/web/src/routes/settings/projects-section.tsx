@@ -112,7 +112,7 @@ function ProjectsPane({
       data-slot="projects-section"
       // `max-w-4xl`, not the `max-w-2xl` the other settings panes use: this is the one section
       // whose content is a six-column TABLE rather than a stack of form fields, and 2xl left the
-      // Tags cell narrow enough to break `open-mercato` across two lines. The fields above keep
+      // Tags cell narrow enough to break `design-system` across two lines. The fields above keep
       // their own `max-w-sm`, so widening the column costs them nothing.
       className="mx-auto flex w-full max-w-4xl flex-col gap-7 p-4 pb-[calc(90px+env(safe-area-inset-bottom))] md:p-6 md:pb-6"
     >
@@ -476,7 +476,7 @@ export function ProjectTagsEditor({
         <span
           key={tag}
           data-slot="project-tag"
-          // `whitespace-nowrap`: a hyphenated tag (`open-mercato`) was wrapping mid-word into a
+          // `whitespace-nowrap`: a hyphenated tag (`design-system`) was wrapping mid-word into a
           // two-line chip, which read as two tags.
           className="inline-flex max-w-full items-center gap-1 rounded-full bg-violet/15 py-px pr-1 pl-2 text-[11px] font-medium whitespace-nowrap text-violet"
         >

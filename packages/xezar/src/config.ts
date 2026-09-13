@@ -20,7 +20,7 @@ const skillsRepoSchema = z.object({
 export type SkillsRepoSource = z.infer<typeof skillsRepoSchema>;
 
 export const DEFAULT_SKILLS_REPOS: SkillsRepoSource[] = [
-  { repo: 'open-mercato/skills', ref: 'main' },
+  { repo: 'qodeca/xezar-skills', ref: 'main' },
 ];
 
 /** Last-resort retention when neither the repo nor the workspace says anything. */
@@ -191,7 +191,7 @@ async function ownWorktreeRetention(repoRoot: string): Promise<number | undefine
 }
 
 /**
- * The default skills repos that are *opt-in per skill* (the "import OM skills"
+ * The default skills repos that are *opt-in per skill* (the "import team skills"
  * flow): the set of repo identifiers a user must explicitly import from before
  * their skills join the catalog. This is exactly `DEFAULT_SKILLS_REPOS` when the
  * repo has NOT configured its own `skillsRepos` — the zero-config majority — and

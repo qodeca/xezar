@@ -421,7 +421,7 @@ function AgentsForm({
           rows={3}
           value={skillsRepos}
           disabled={save.isPending}
-          placeholder="open-mercato/skills"
+          placeholder="qodeca/xezar-skills"
           onChange={(event) => setSkillsRepos(event.target.value)}
           className="block w-full max-w-md rounded-md border border-input bg-card px-3 py-1.5 font-mono text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
         />

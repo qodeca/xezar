@@ -293,7 +293,7 @@ describe('the Manage skills panel (opt-out OM skills)', () => {
     const card = document.querySelector('[data-slot="skills-update-card"]')!
     expect(card.textContent).toContain('Project installation · 1 tracked')
     expect(card.textContent).not.toContain('/home/')
-    expect(document.querySelector('[data-slot="skills-upgrade-notes"]')?.textContent).toContain('/om-apply-upgrade-notes')
+    expect(document.querySelector('[data-slot="skills-upgrade-notes"]')?.textContent).toContain('/xez-apply-upgrade-notes')
     expect(document.body.textContent).toContain('checkboxes choose what xezar shows')
   })
 
@@ -356,7 +356,7 @@ describe('the Manage skills panel (opt-out OM skills)', () => {
       ).toMatchObject({
         steps: [
           {
-            skill: 'om-apply-upgrade-notes',
+            skill: 'xez-apply-upgrade-notes',
             prompt: '{{task}}',
           },
         ],

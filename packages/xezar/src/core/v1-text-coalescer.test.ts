@@ -9,10 +9,10 @@ const collect = () => {
 describe('V1TextCoalescer', () => {
   it('buffers deltas and emits ONE text on complete — never one per delta', () => {
     const { texts, coalescer } = collect();
-    for (const delta of ['github', '.com', '/open', '-merc', 'ato']) coalescer.append('m1', delta);
+    for (const delta of ['github', '.com', '/qod', 'ec', 'a']) coalescer.append('m1', delta);
     expect(texts).toEqual([]);
     coalescer.complete('m1');
-    expect(texts).toEqual(['github.com/open-mercato']);
+    expect(texts).toEqual(['github.com/qodeca']);
   });
 
   it('prefers the completion snapshot over accumulated deltas', () => {

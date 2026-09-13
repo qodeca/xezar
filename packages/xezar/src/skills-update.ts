@@ -54,14 +54,14 @@ type LockRead = { kind: 'ok'; names: string[] } | { kind: 'missing' } | { kind: 
 type LockEntry = { source?: unknown; sourceUrl?: unknown };
 
 /** Accept only GitHub's canonical host and the documented owner/repo shorthand. */
-export function isOpenMercatoSkillsSource(value: unknown): boolean {
+export function isXezarSkillsSource(value: unknown): boolean {
   if (typeof value !== 'string') return false;
   const source = value.trim().replace(/\/$/, '');
-  if (/^open-mercato\/skills(?:\.git)?$/i.test(source)) return true;
+  if (/^qodeca\/xezar-skills(?:\.git)?$/i.test(source)) return true;
   try {
     const url = new URL(source);
     return url.protocol === 'https:' && url.hostname.toLowerCase() === 'github.com'
-      && /^\/open-mercato\/skills(?:\.git)?$/i.test(url.pathname);
+      && /^\/qodeca\/xezar-skills(?:\.git)?$/i.test(url.pathname);
   } catch {
     return false;
   }
@@ -83,7 +83,7 @@ async function readLock(path: string): Promise<LockRead> {
   const names = Object.entries(root.skills as Record<string, unknown>).flatMap(([name, raw]) => {
     if (!name || !raw || typeof raw !== 'object' || Array.isArray(raw)) return [];
     const entry = raw as LockEntry;
-    return isOpenMercatoSkillsSource(entry.source) || isOpenMercatoSkillsSource(entry.sourceUrl) ? [name] : [];
+    return isXezarSkillsSource(entry.source) || isXezarSkillsSource(entry.sourceUrl) ? [name] : [];
   });
   return { kind: 'ok', names: [...new Set(names)].sort() };
 }
@@ -299,7 +299,7 @@ export class SkillsUpdateService {
     const lock = await readLock(path);
     if (lock.kind === 'missing') return { ...blankScope(scope), status: 'current', checkedAt, reason: 'installation is not tracked' };
     if (lock.kind === 'invalid') return { ...blankScope(scope), status: 'unavailable', checkedAt, reason: 'installation metadata is unsupported' };
-    if (lock.names.length === 0) return { ...blankScope(scope), status: 'current', checkedAt, reason: 'Open Mercato installation is not tracked' };
+    if (lock.names.length === 0) return { ...blankScope(scope), status: 'current', checkedAt, reason: 'Installed skills come from another source; xezar does not update them' };
     try {
       const args = ['--yes', 'skills', 'check', ...lock.names, ...(scope === 'project' ? ['-p'] : ['-g'])];
       const result = await this.runCommand(npx, args, cwd, this.timeoutMs);

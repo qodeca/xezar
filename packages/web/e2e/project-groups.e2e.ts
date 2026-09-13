@@ -73,7 +73,7 @@ function expectedNavHrefs(projectId: string): string[] {
 function makeRepo(name: string): string {
   const root = join(seedDir, name)
   execFileSync('git', ['init', '-q', '-b', 'main', root], { stdio: 'ignore' })
-  execFileSync('git', ['-C', root, 'remote', 'add', 'origin', `https://github.com/open-mercato/${name}.git`], {
+  execFileSync('git', ['-C', root, 'remote', 'add', 'origin', `https://github.com/qodeca/${name}.git`], {
     stdio: 'ignore',
   })
   // One commit, so HEAD is born: `getRepoInfo` resolves the whole entry through

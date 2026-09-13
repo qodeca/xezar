@@ -60,14 +60,14 @@ afterAll(() => {
 
 describe('safeRemoteFor', () => {
   it('rewrites the GitHub shorthand to its canonical https remote', () => {
-    expect(safeRemoteFor('open-mercato/skills')).toBe('https://github.com/open-mercato/skills.git');
+    expect(safeRemoteFor('qodeca/xezar-skills')).toBe('https://github.com/qodeca/xezar-skills.git');
     expect(safeRemoteFor('  qodeca/xezar  ')).toBe('https://github.com/qodeca/xezar.git');
   });
 
   it.each([
-    'https://github.com/open-mercato/skills.git',
+    'https://github.com/qodeca/xezar-skills.git',
     'http://internal.example/skills.git',
-    'ssh://git@github.com/open-mercato/skills.git',
+    'ssh://git@github.com/qodeca/xezar-skills.git',
     'git://example.com/skills.git',
     'file:///srv/skills.git',
   ])('passes an allowlisted URL scheme through untouched: %s', (value) => {
@@ -75,8 +75,8 @@ describe('safeRemoteFor', () => {
   });
 
   it('passes the scp-like spelling through', () => {
-    expect(safeRemoteFor('git@github.com:open-mercato/skills.git')).toBe(
-      'git@github.com:open-mercato/skills.git'
+    expect(safeRemoteFor('git@github.com:qodeca/xezar-skills.git')).toBe(
+      'git@github.com:qodeca/xezar-skills.git'
     );
   });
 
