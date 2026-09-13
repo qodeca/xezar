@@ -99,6 +99,26 @@ What is protected now: **the shape of each route under `/api/v1`**, the three-wa
 
 Breaking: removing/renaming a route; making a previously optional body field required; removing a response field; changing an SSE event name (`run`, `run-event`, `run-deleted`, `todos`, `usage`, `ping` — or, on the workspace stream, `project-added`, `project-removed`, `checkout-progress`, `provider-status`) or the `seq` dedup contract; breaking the three-way alias parity (an unscoped `/api/v1/*` answer diverging in status, content type or body from its `/api/v1/p/<boot>`/`/api/v1/p/default` spellings); changing the scoped 404/409 project-resolution contract or the meaning of the `default` alias; stamping or widening the boot-project `/api/v1/events` stream; narrowing `/api/v1/health` CORS or its fields; changing `/new` query parameters (breaks saved bookmarklets); **dropping the legacy-flat → `/p/<boot>` page redirect** — or letting it lose the query/hash, which is the same break one step quieter; changing the meaning of the `default` page alias; moving a settings section without leaving its old URL redirecting to the new one. Required path: additive first; if removal is unavoidable, keep the old route/field answering for one minor release and note it in the CHANGELOG. `/new` deserves extra caution — it lives in users' browsers (saved bookmarklets), not in this repo.
 
+### Agent-config symlink refusal — deliberate, 2026-09-13 (#363)
+
+`GET/PUT /api/v1/agent-config/:id` (including project aliases) now returns 409
+with the existing `{ error: string }` body for a catalogued file symlink, including
+a dangling link, or a directory link below the configured agent home/repository
+that escapes that root. Previously reads served the target and writes followed it.
+Listings retain their shape: refused entries have `writable: false`, a
+`readOnlyReason`, `version: null`, `exists: false` and `size: 0`; those last two
+values describe no accessible config, not whether a link exists on disk. Personal
+layer seeding skips refused sources and destinations, preserving best-effort boot.
+
+This intentionally narrows access to prevent a catalogued name exposing an
+uncatalogued credential file. Replace individual file links with regular config
+files to edit them. A symlink relocating the entire configured home remains
+supported: that canonical directory is the boundary. Internal directory links
+that stay within the boundary remain supported. Ordinary absent files, byte-exact
+round trips, stale-write refusal and hosted-mode restrictions are unchanged.
+Secrets explicitly stored inside ordinary config files (including MCP env/headers
+or pi's `httpProxy` URL) remain raw content; this is not a content-redaction API.
+
 ## 3. Project state files (`.local/xezar/`) (`packages/xezar/src/runs/store.ts` and friends)
 
 Written by one version, read by the next, and hand-editable by design:

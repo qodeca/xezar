@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readFile, realpath, rename, stat, writeFile } from 'node:fs/promises';
+import { mkdir, rename, stat, writeFile, unlink } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { agentHomePaths } from '../paths.ts';
-import { findConfigFile, type ConfigFileDef } from './catalog.ts';
+import { configFileRoot, findConfigFile, type ConfigFileDef } from './catalog.ts';
+import { checkedConfigPath, ConfigPathRefusal, readConfigBytes } from './path-access.ts';
 import { validateConfig } from './validate.ts';
 
 /**
@@ -10,8 +11,8 @@ import { validateConfig } from './validate.ts';
  * (never by a client-supplied path, so traversal is impossible by
  * construction). Every function degrades — a missing file is "absent", an
  * unreadable one is an honest error — and none throw. Writes validate first,
- * refuse a stale overwrite via a content hash, write atomically through
- * symlinks, and never touch a byte the user did not type.
+ * refuse a stale overwrite via a content hash, refuse unsafe symlinks and write
+ * atomically, and never touch a byte the user did not type.
  */
 
 /** sha256 of the exact file bytes. mtime is coarse and lies across filesystems. */
@@ -41,14 +42,16 @@ export async function readConfigFile(
   id: string,
   repoRoot: string,
   env: NodeJS.ProcessEnv = process.env,
-): Promise<ReadResult | { error: string } | null> {
+): Promise<ReadResult | { error: string; status?: 409 } | null> {
   const def = findConfigFile(id);
   if (!def) return null;
   const path = resolvePath(def, repoRoot, env);
   try {
-    const content = await readFile(path, 'utf8');
+    const target = await checkedConfigPath(path, configFileRoot(def, repoRoot, agentHomePaths(env)));
+    const content = await readConfigBytes(target);
     return { id, path, exists: true, content, version: hashBytes(content) };
   } catch (err) {
+    if (err instanceof ConfigPathRefusal) return { error: err.message, status: err.status };
     const e = err as NodeJS.ErrnoException;
     if (e.code === 'ENOENT') return { id, path, exists: false, content: '', version: null };
     return { error: e.message };
@@ -58,8 +61,8 @@ export async function readConfigFile(
 /**
  * Write a config file by id. Validates the content against the file's format,
  * refuses when `version` does not match what is on disk (stale / lost-update),
- * creates the parent dir on demand, and writes atomically through any symlink
- * rather than replacing the link. `version: null` means "I expect no file to
+ * creates the parent dir on demand, and refuses unsafe symlinks before reading
+ * the stale-write token or writing any bytes. `version: null` means "I expect no file to
  * exist yet" — the create path.
  */
 export async function writeConfigFile(
@@ -77,11 +80,15 @@ export async function writeConfigFile(
 
   const path = resolvePath(def, repoRoot, env);
 
+  const root = configFileRoot(def, repoRoot, agentHomePaths(env));
+  let target: string;
   // Stale-write guard: the version the caller read must still match disk.
   let current: string | null = null;
   try {
-    current = await readFile(path, 'utf8');
+    target = await checkedConfigPath(path, root);
+    current = await readConfigBytes(target);
   } catch (err) {
+    if (err instanceof ConfigPathRefusal) return { ok: false, status: err.status, error: err.message };
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
       return { ok: false, status: 500, error: (err as Error).message };
     }
@@ -110,25 +117,23 @@ export async function writeConfigFile(
     };
   }
 
+  let tmp: string | undefined;
   try {
-    // Resolve the real target so an atomic rename writes THROUGH a symlink
-    // (e.g. ~/.claude → a dotfiles repo) instead of replacing the link itself.
-    let target = path;
-    try {
-      target = await realpath(path);
-    } catch {
-      // file/link absent — target stays as the resolved path (the create case)
-    }
+    target = await checkedConfigPath(path, root);
     await mkdir(dirname(target), { recursive: true });
-    // Unique per write (not just per process) so two concurrent saves of the same
-    // file can't rename the same tmp path over each other and tear the bytes.
-    const tmp = `${target}.xez-tmp-${process.pid}-${randomUUID()}`;
-    await writeFile(tmp, content, 'utf8');
+    // Re-check after parent creation and before rename. Never resolve a leaf symlink's target.
+    target = await checkedConfigPath(path, root);
+    tmp = `${target}.xez-tmp-${process.pid}-${randomUUID()}`;
+    await writeFile(tmp, content, { encoding: 'utf8', flag: 'wx' });
+    if (await checkedConfigPath(path, root) !== target) throw new ConfigPathRefusal('outside-root');
     await rename(tmp, target);
-    const written = await readFile(target, 'utf8');
+    const written = await readConfigBytes(target);
     return { ok: true, read: { id, path, exists: true, content: written, version: hashBytes(written) } };
   } catch (err) {
+    if (err instanceof ConfigPathRefusal) return { ok: false, status: err.status, error: err.message };
     return { ok: false, status: 500, error: (err as Error).message };
+  } finally {
+    if (tmp) await unlink(tmp).catch(() => {});
   }
 }
 

@@ -1,5 +1,9 @@
 # Unreleased
 
+## 🐛 Bug Fixes
+- 🐛 Fix agent-config API tests reading inherited agent homes; isolate all four agent config directories and HOME per test (#362).
+- 🐛 Refuse catalogued file symlinks and directory links escaping an agent home or repository, including reads, writes, listing hashes and worktree seeding. Refused API reads/writes return 409 with the existing error body (#363).
+
 ## 💥 Breaking
 - 💥 **The default team skills source is now `qodeca/xezar-skills`, and the skills are named
   `xez-*`.** (#394) The previous default repository is no longer loaded, and the automatic updater no
