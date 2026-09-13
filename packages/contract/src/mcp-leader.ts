@@ -9,9 +9,11 @@ import { z } from 'zod';
  * therefore reaches a leader only through a session the person runs and tells xezar where to find:
  * an OpenCode `serve` session, or a pi running xezar's leader extension. xezar NEVER starts an agent
  * process for a leader (owner decision on #311): the person runs their own leader, in their own
- * terminal, with their own tool, and it connects to xezar over MCP. A Claude Code or Codex session
- * in a terminal still has no address to attach to, so it gets no push; it reads its events with the
- * `leader_events` tool, and so does a pi with no extension loaded.
+ * terminal, with their own tool, and it connects to xezar over MCP. Claude Code can be pushed to
+ * (#374) through Claude Code Channels, which the person opts into per launch with
+ * `--dangerously-load-development-channels server:xezar`; a Codex session in a terminal still has no
+ * address to attach to, so it gets no push and reads its events with the `leader_events` tool, and
+ * so does a pi with no extension loaded.
  */
 
 /**
@@ -19,14 +21,18 @@ import { z } from 'zod';
  * never a task, never the client's process, and never the MCP session's hold on the project. There
  * is no `start` or `resume`: xezar spawns no leader.
  *
- * Two clients can be attached, and they carry their address differently. `opencode` names an
+ * Three clients can be attached, and they carry their address differently. `opencode` names an
  * `opencode serve` session by URL and session id. `pi` names NOTHING here, on purpose, and that is
  * not the same as having no address: pi speaks RPC over its own stdin and stdout only (pi 0.85.1,
  * `docs/rpc.md`), so there is nothing for xezar to dial from outside — the address instead comes
  * from inside the person's own pi, where xezar's leader extension opens a socket and announces it in
  * the project's data directory (#330 WP2). The person pastes nothing, so this variant takes nothing.
  * With no extension running there is no descriptor, and the action answers with pi's own recoverable
- * reason (`pi-not-addressable`) rather than a schema error.
+ * reason (`pi-not-addressable`) rather than a schema error. `claude-code` (#374) also takes no
+ * address: the target is the owner MCP session itself, and xezar wakes it by writing a
+ * `notifications/claude/channel` message down that session's own bridge stdout. It answers a
+ * recoverable reason (`claude-code-not-owner`, `claude-code-bridge-too-old`) when the owner session
+ * is not a channel-capable Claude Code bridge.
  */
 const mcpLeaderAttachInputSchema = z.discriminatedUnion('client', [
   z.strictObject({
@@ -36,6 +42,14 @@ const mcpLeaderAttachInputSchema = z.discriminatedUnion('client', [
     sessionId: z.string().trim().min(1).max(200),
   }),
   z.strictObject({ action: z.literal('attach'), client: z.literal('pi') }),
+  // Claude Code (#374, epic #73). It carries NO address on purpose, like pi: the target is the
+  // owner MCP session itself — the `xez mcp` bridge the person's Claude Code spawned — and xezar
+  // reaches it by writing a `notifications/claude/channel` message down that bridge's own stdout,
+  // which Claude Code Channels turns into a model turn. The person opts in per launch with
+  // `claude --dangerously-load-development-channels server:xezar`; with no such owner session the
+  // action answers a recoverable reason rather than a schema error. Adding a required field here is
+  // breaking.
+  z.strictObject({ action: z.literal('attach'), client: z.literal('claude-code') }),
 ]);
 
 export const mcpLeaderActionInputSchema = z.union([
@@ -46,7 +60,7 @@ export type McpLeaderActionInput = z.infer<typeof mcpLeaderActionInputSchema>;
 
 /** The leader session attached to the project, if any. */
 export const mcpLeaderSessionSchema = z.object({
-  client: z.enum(['opencode', 'pi']),
+  client: z.enum(['opencode', 'pi', 'claude-code']),
   state: z.literal('attached'),
 });
 export type McpLeaderSession = z.infer<typeof mcpLeaderSessionSchema>;

@@ -6,11 +6,14 @@ import { projectDataDir } from '../project-data-paths.ts';
 import { ProjectOwnership, sessionExpiredError } from '../workspace/project-owner.ts';
 import {
   IPC_PROTOCOL_VERSION,
+  LEADER_PUSH_TIMEOUT_MS,
   LineFramer,
   encodeFrame,
   ipcRequestSchema,
+  ipcResponseSchema,
   mcpSocketDir,
   mcpSocketLocation,
+  sessionOpenParamsSchema,
   toolCallParamsSchema,
   type HealthResult,
   type IpcResponse,
@@ -75,10 +78,26 @@ export interface McpServiceOptions {
  * The two session edges push delivery (#309) follows: `opened` once `session/open` made the session
  * the project's owner, `closed` when its connection closes (before the claim is released). Neither
  * may fail a session: a throw is one warning and the session carries on (N-07).
+ *
+ * `opened` also hands over the session's TRANSPORT (#374): a way to push a `leader/push` down this
+ * exact connection, plus what the bridge announced about itself — its client's name and whether it
+ * understands `leader/push`. It is optional so a caller that predates channels ignores it. An older
+ * BRIDGE announces neither field, which is how the delivery seam tells a channel-capable Claude Code
+ * bridge from one too old to deliver.
  */
 export interface McpSessionObserver {
-  opened(sessionKey: string): void;
+  opened(sessionKey: string, transport?: McpSessionTransport): void;
   closed(sessionKey: string): void;
+}
+
+/** How the delivery seam reaches ONE owner session's bridge, and what that bridge said about itself (#374). */
+export interface McpSessionTransport {
+  /** Send a channel event down this connection and resolve when the bridge confirms the write. */
+  readonly push: (content: string, meta?: Record<string, string>) => Promise<void>;
+  /** The client's own name from `initialize` (`claude-code` for a Claude Code bridge), when announced. */
+  clientName?: string;
+  /** True when the bridge announced it understands `leader/push`; absent for a bridge too old to deliver. */
+  leaderPush?: boolean;
 }
 
 /**
@@ -186,33 +205,94 @@ function serveConnection(socket: Socket, opts: McpServiceOptions, ownership: Pro
   socket.on('error', () => {
     // A bridge that vanished mid-answer is not the cockpit's problem.
   });
+  const send = (response: IpcResponse): void => {
+    if (!socket.destroyed) socket.write(encodeFrame(response));
+  };
+  // #374: the service→bridge push, correlated by a service-minted id. It is the reverse of every
+  // other IPC frame — the service is the requester here — so it keeps its OWN pending map, separate
+  // from the request/response the bridge drives. `send` writes the frame; the bridge answers with a
+  // `leader/push` RESPONSE routed back here by `handleFrame`.
+  const pushPending = new Map<number, (response: IpcResponse) => void>();
+  let nextPushId = 1;
+  const push = (content: string, meta?: Record<string, string>): Promise<void> =>
+    new Promise<void>((resolve, reject) => {
+      if (socket.destroyed) {
+        reject(new Error('the Claude Code bridge connection is closed'));
+        return;
+      }
+      const id = nextPushId++;
+      const timer = setTimeout(() => {
+        if (pushPending.delete(id)) reject(new Error('the Claude Code bridge did not confirm the channel write in time'));
+      }, LEADER_PUSH_TIMEOUT_MS);
+      timer.unref?.();
+      pushPending.set(id, (response) => {
+        clearTimeout(timer);
+        if (response.ok) resolve();
+        else reject(new Error(response.error.message));
+      });
+      socket.write(encodeFrame({ v: IPC_PROTOCOL_VERSION, id, method: 'leader/push', params: meta === undefined ? { content } : { content, meta } }));
+    });
+  const transport: McpSessionTransport = { push };
   // Confirmed termination (D-02.4 signal 1): the connection is the session, so its close frees the
   // project at once. `release` touches the owner claim and nothing else — calls still running go
   // on running, and no run is touched (N-05).
   socket.once('close', () => {
+    // Any push still waiting on this connection cannot be confirmed now: reject it, so the adapter
+    // reports the leader unreachable rather than hanging until the backstop timer.
+    for (const settle of [...pushPending.values()]) settle(failure(null, 'internal', 'the Claude Code bridge connection closed before it confirmed the channel write'));
+    pushPending.clear();
     // The session's event controller ends with its connection, before the claim goes (#309).
     observe(opts, 'closed', sessionKey);
     ownership.release(sessionKey);
   });
-  const send = (response: IpcResponse): void => {
-    if (!socket.destroyed) socket.write(encodeFrame(response));
-  };
   const framer = new LineFramer(
     (line) => {
-      void answer(line, opts, ownership, sessionKey).then(send);
+      void handleFrame(line, opts, ownership, sessionKey, transport, pushPending).then((response) => {
+        if (response !== undefined) send(response);
+      });
     },
     () => send(failure(null, 'bad-frame', 'frame too large')),
   );
   socket.on('data', (chunk: Buffer) => framer.push(chunk));
 }
 
-async function answer(line: string, opts: McpServiceOptions, ownership: ProjectOwnership, sessionKey: string): Promise<IpcResponse> {
+/**
+ * One inbound frame. A `leader/push` RESPONSE from the bridge (`ok` present, no `method`, an id this
+ * connection is waiting on) settles that push and is answered with nothing; everything else is a
+ * bridge→service REQUEST and goes to `answer`. Splitting them here keeps `answer` a pure
+ * request→response function and keeps the two id-spaces from ever colliding.
+ */
+async function handleFrame(
+  line: string,
+  opts: McpServiceOptions,
+  ownership: ProjectOwnership,
+  sessionKey: string,
+  transport: McpSessionTransport,
+  pushPending: Map<number, (response: IpcResponse) => void>,
+): Promise<IpcResponse | undefined> {
   let json: unknown;
   try {
     json = JSON.parse(line);
   } catch {
     return failure(null, 'bad-frame', 'frame is not JSON');
   }
+  const asResponse = ipcResponseSchema.safeParse(json);
+  if (asResponse.success && typeof asResponse.data.id === 'number' && pushPending.has(asResponse.data.id)) {
+    const settle = pushPending.get(asResponse.data.id)!;
+    pushPending.delete(asResponse.data.id);
+    settle(asResponse.data);
+    return undefined;
+  }
+  return answer(json, opts, ownership, sessionKey, transport);
+}
+
+async function answer(
+  json: unknown,
+  opts: McpServiceOptions,
+  ownership: ProjectOwnership,
+  sessionKey: string,
+  transport: McpSessionTransport,
+): Promise<IpcResponse> {
   const parsed = ipcRequestSchema.safeParse(json);
   if (!parsed.success) return failure(null, 'bad-frame', 'frame is not a request');
   const request = parsed.data;
@@ -226,8 +306,17 @@ async function answer(line: string, opts: McpServiceOptions, ownership: ProjectO
   switch (request.method) {
     case 'session/open': {
       const opened = await openSession(request.id, ownership, sessionKey, opts.project.id);
-      // Push delivery starts for the owner at once — on by default, no flag (#309).
-      if (opened.ok) observe(opts, 'opened', sessionKey);
+      // Push delivery starts for the owner at once — on by default, no flag (#309). #374: carry what
+      // the bridge announced (its client name and that it understands `leader/push`) so the delivery
+      // seam can tell a channel-capable Claude Code bridge from one too old to deliver.
+      if (opened.ok) {
+        const announced = sessionOpenParamsSchema.safeParse(request.params);
+        if (announced.success) {
+          if (announced.data.clientName !== undefined) transport.clientName = announced.data.clientName;
+          if (announced.data.leaderPush !== undefined) transport.leaderPush = announced.data.leaderPush;
+        }
+        observe(opts, 'opened', sessionKey, transport);
+      }
       return opened;
     }
     case 'health': {
@@ -256,9 +345,10 @@ async function answer(line: string, opts: McpServiceOptions, ownership: ProjectO
   }
 }
 
-function observe(opts: McpServiceOptions, edge: keyof McpSessionObserver, sessionKey: string): void {
+function observe(opts: McpServiceOptions, edge: keyof McpSessionObserver, sessionKey: string, transport?: McpSessionTransport): void {
   try {
-    opts.sessions?.[edge](sessionKey);
+    if (edge === 'opened') opts.sessions?.opened(sessionKey, transport);
+    else opts.sessions?.closed(sessionKey);
   } catch (err) {
     console.warn(`[xez] MCP event delivery hook failed: ${err instanceof Error ? err.message : String(err)}`);
   }

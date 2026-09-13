@@ -53,6 +53,15 @@ export const IPC_REQUEST_TIMEOUT_MS = 55_000;
  */
 export const IPC_SESSION_OPEN_TIMEOUT_MS = 5_000;
 
+/**
+ * How long the service waits for the bridge to confirm a `leader/push` write (#374). A backstop
+ * only: the write reaches the client's stdout in a millisecond, and the event controller already
+ * abandons a delivery attempt after one heartbeat. It exists so a bridge that never replies cannot
+ * leave a pending push wedged, and it is one heartbeat so it never fires before the controller's own
+ * abort does.
+ */
+export const LEADER_PUSH_TIMEOUT_MS = 30_000;
+
 // ---- socket path ---------------------------------------------------------------
 
 /**
@@ -151,6 +160,8 @@ export const ipcErrorCodeSchema = z.enum([
   'project-occupied',
   /** A call on a connection whose session does not own the project (D-02 § 4, `-32081`). */
   'session-expired',
+  /** A `leader/push` the bridge could not write to its client's stdout (#374). */
+  'push-failed',
 ]);
 
 /**
@@ -161,6 +172,35 @@ export const ownershipRpcErrorSchema = z.union([mcpProjectOccupiedErrorSchema, m
 
 /** What `session/open` answers: this connection's session now owns the project. */
 export const sessionOpenResultSchema = z.object({ owner: z.literal(true) });
+
+/**
+ * `session/open` params (#374). Both fields are ADDITIVE within IPC version 2, so an older bridge
+ * that sends `session/open` with no params keeps working: `leaderPush` reads as absent (the service
+ * then knows this bridge cannot deliver a channel push and answers `claude-code-bridge-too-old`
+ * rather than pushing into a bridge that would choke on the frame), and `clientName` reads as
+ * unknown. A newer bridge announces that it understands the `leader/push` frame and which client it
+ * is serving, so the service can decide whether a Claude Code channel push is possible.
+ */
+export const sessionOpenParamsSchema = z.object({
+  leaderPush: z.boolean().optional(),
+  clientName: z.string().max(200).optional(),
+});
+
+/**
+ * `leader/push` (#374): the ONE service→bridge frame, the reverse of every other IPC request. The
+ * service sends it on the owner session's connection; the bridge writes the `content`/`meta` out as
+ * a `notifications/claude/channel` message to the Claude Code client it fronts, then replies. `meta`
+ * keys must match Claude Code's `^[a-zA-Z_][a-zA-Z0-9_]*$` rule (the record § 2.1); the adapter only
+ * ever produces conforming keys, and a unit test pins that.
+ */
+export const leaderPushParamsSchema = z.object({
+  content: z.string().min(1),
+  meta: z.record(z.string(), z.string()).optional(),
+});
+export type LeaderPushParams = z.infer<typeof leaderPushParamsSchema>;
+
+/** What the bridge answers a `leader/push`: the notification was written to the client's stdout. */
+export const leaderPushResultSchema = z.object({ pushed: z.literal(true) });
 
 /** Service → bridge. */
 export const ipcResponseSchema = z.discriminatedUnion('ok', [

@@ -2,13 +2,23 @@ import type { McpJournalRow, McpLeaderActionInput, McpLeaderBlocker, McpLeaderSe
 
 import { projectDataDir } from '../project-data-paths.ts';
 import type { ProjectOwnership } from '../workspace/project-owner.ts';
+import { ClaudeCodeChannelAdapter } from './adapters/claude-code.ts';
 import { OpenCodeReactionAdapter } from './adapters/opencode.ts';
 import { connectPiLeaderLink, type PiLeaderDescriptor, type PiLeaderLink, readPiLeaderDescriptor } from './adapters/pi-link.ts';
 import { type PiReactionAdapter, type PiReactionTarget, piReactionTarget } from './adapters/pi.ts';
 import type { EchoGuard } from './echo-guard.ts';
-import { EventController, type CursorAdvance, type DeliveryReceipt, type EventDispatch, type LeaderRecord, type ReactionAdapter } from './event-controller.ts';
+import {
+  EVENT_CONTROLLER_HEARTBEAT_MS,
+  EventController,
+  type CursorAdvance,
+  type DeliveryReceipt,
+  type EventDispatch,
+  type LeaderRecord,
+  type ReactionAdapter,
+} from './event-controller.ts';
 import type { EventJournal } from './event-journal.ts';
 import type { LeaderActResult, ProjectLeaderPort } from './project-leaders.ts';
+import type { McpSessionTransport } from './service.ts';
 
 /**
  * Push delivery, connected (#309, Phase 6 of #73). Until this module, `EventController` (#107) and
@@ -35,11 +45,17 @@ import type { LeaderActResult, ProjectLeaderPort } from './project-leaders.ts';
  *    dials that (#330 WP2, `adapters/pi-link.ts`). With no extension running there is no descriptor
  *    and the attach is refused with pi's own recoverable reason, which is exactly the behaviour that
  *    existed before the extension did.
+ *  - **Claude Code** (#374) names nothing either: the target is the owner MCP session itself. xezar
+ *    reaches it by writing a channel push down that session's own bridge (`leader/push`), which the
+ *    bridge turns into a `notifications/claude/channel` message Claude Code Channels reacts to. The
+ *    person opts in per launch with `--dangerously-load-development-channels server:xezar`; attach is
+ *    refused (`claude-code-not-owner`, `claude-code-bridge-too-old`) when the owner session is not a
+ *    channel-capable Claude Code bridge.
  *
- * A Claude Code or Codex session in a terminal still has no address at all: for it the controller
- * keeps the rows in the journal, reports `disconnected`, retries at its heartbeat, and
- * `status().blocker` says so. Nothing is lost either way — such a leader reads its events with the
- * `leader_events` tool (#251), and the next session resumes after its last acknowledgement.
+ * A Codex session in a terminal still has no address at all: for it the controller keeps the rows in
+ * the journal, reports `disconnected`, retries at its heartbeat, and `status().blocker` says so.
+ * Nothing is lost either way — such a leader reads its events with the `leader_events` tool (#251),
+ * and the next session resumes after its last acknowledgement.
  *
  * THE ECHO GUARD HOLDS HERE, FOR EVERY CLIENT. The door records each mutation's operation id as the
  * leader's own before it runs (`EchoGuard.issue`, #106), including the ids it mints for tools that
@@ -87,8 +103,31 @@ export const LEADER_ROLE_INSTRUCTION = [
 const NO_LEADER: McpLeaderBlocker = {
   code: 'no-leader-session',
   message:
-    'No leader session is attached to this project, so events are kept in the journal, not pushed. A Claude Code, Codex or pi session in a terminal has no address xezar can attach to, and MCP notifications start no turn — that leader reads its events with the leader_events tool.',
-  fix: 'Keep using leader_events from your own leader, or attach the OpenCode session you run with `opencode serve`.',
+    'No leader session is attached to this project, so events are kept in the journal, not pushed. A Codex session in a terminal has no address xezar can attach to, and generic MCP notifications start no turn — it reads its events with the leader_events tool. A Claude Code, OpenCode or pi session can be attached and woken.',
+  fix: 'Keep using leader_events from your own leader, attach the OpenCode session you run with `opencode serve`, attach a pi running xezar’s leader extension, or start Claude Code with --dangerously-load-development-channels server:xezar and attach it.',
+};
+
+/**
+ * Attach refused because the MCP session that owns the project is not a Claude Code session, so
+ * there is no Claude Code leader to push a channel event to (decision record § 5.6). Verbatim.
+ */
+const CLAUDE_CODE_NOT_OWNER: McpLeaderBlocker = {
+  code: 'claude-code-not-owner',
+  message:
+    'The MCP session that owns this project is not a Claude Code session, so there is no Claude Code leader to push events to. Events are kept in the journal.',
+  fix: 'Start Claude Code in this project with --dangerously-load-development-channels server:xezar, let it call a xezar tool once, then attach it again.',
+};
+
+/**
+ * Attach refused because the owner session's bridge predates `leader/push`, so it cannot deliver a
+ * channel event — pushing into it would choke a bridge that treats the frame as garbage. Verbatim
+ * (decision record § 5.6).
+ */
+const CLAUDE_CODE_BRIDGE_TOO_OLD: McpLeaderBlocker = {
+  code: 'claude-code-bridge-too-old',
+  message:
+    'This Claude Code session is connected through an older xezar MCP bridge that cannot push events. Events are kept in the journal.',
+  fix: 'Restart Claude Code so it starts the current xezar bridge (npx -y @qodeca/xezar mcp), then attach it again.',
 };
 
 /**
@@ -100,10 +139,11 @@ const NO_LEADER: McpLeaderBlocker = {
  * leader is an HTTP server the person runs, pi's is a Unix socket xezar's leader extension opens
  * from INSIDE the person's own pi, so "check the server" has no shared spelling.
  *
- * Only these two can be attached at all (`mcpLeaderAttachInputSchema` in the contract). A Claude Code
- * or Codex leader has no address to attach, which is `NO_LEADER`'s case above and names all four
- * clients itself. Typed `Record<McpLeaderSession['client'], …>` on purpose: a third attachable client
- * is then a compile error here, rather than a message that quietly names the wrong server again.
+ * Three can be attached now (`mcpLeaderAttachInputSchema` in the contract): OpenCode, pi and — since
+ * #374 — Claude Code, over its channel. Only a Codex leader has no address to attach, which is
+ * `NO_LEADER`'s case above. Typed `Record<McpLeaderSession['client'], …>` on purpose: a fourth
+ * attachable client is then a compile error here, rather than a message that quietly names the wrong
+ * client again.
  */
 const CLIENT_WORDS: Record<
   McpLeaderSession['client'],
@@ -123,6 +163,15 @@ const CLIENT_WORDS: Record<
     lazyMcp: '',
     check: 'check that the pi you attached is still running with xezar’s leader extension loaded (a paused process still holds its socket open)',
     checkShort: 'check that the pi you attached is still running with xezar’s leader extension loaded',
+    reattach: 'attach it again',
+  },
+  'claude-code': {
+    // Reached through the owner session's own bridge, so "check the leader" is "check Claude Code is
+    // still running with the channel loaded" — there is no separate server the person runs.
+    name: 'Claude Code',
+    lazyMcp: '',
+    check: 'check that Claude Code is still running, and was started with `--dangerously-load-development-channels server:xezar`',
+    checkShort: 'check that Claude Code is still running with the xezar channel loaded',
     reattach: 'attach it again',
   },
 };
@@ -242,6 +291,14 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
   readonly #opts: LeaderDeliveryOptions;
   /** Keyed by the transport's session key. At most one is live: the project has one owner. */
   readonly #controllers = new Map<string, EventController>();
+  /**
+   * The owner session's transport, when one is open (#374). It is how a Claude Code channel push
+   * reaches the bridge, and it carries what that bridge announced — its client name and whether it
+   * understands `leader/push`. Keyed alongside the session key so a stale close cannot clear a newer
+   * owner's transport.
+   */
+  #ownerTransport: McpSessionTransport | undefined;
+  #ownerSessionKey: string | undefined;
   /** The attached OpenCode session and the facts observed against it. xezar never started it. */
   #leader: AttachedLeader | undefined;
   /** One `act` at a time: two concurrent attaches must not leave two adapters behind. */
@@ -256,7 +313,7 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
   // ---- the transport's side: one controller per owner session ------------------------------
 
   /** `session/open` made `sessionKey` the owner. Never throws into the transport (N-07). */
-  sessionOpened(sessionKey: string): void {
+  sessionOpened(sessionKey: string, transport?: McpSessionTransport): void {
     if (this.#closed || this.#controllers.has(sessionKey)) return;
     // Only one session owns the project, so any other controller serves a session that lost it —
     // one whose lease lapsed while its connection stayed open. End it now rather than at its next
@@ -265,6 +322,9 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
       controller.close();
       this.#controllers.delete(key);
     }
+    // #374: this session's transport is now the one a Claude Code channel push travels down.
+    this.#ownerTransport = transport;
+    this.#ownerSessionKey = sessionKey;
     const started = EventController.start({
       journal: this.#opts.journal,
       ownership: this.#opts.ownership,
@@ -282,6 +342,12 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
   sessionClosed(sessionKey: string): void {
     this.#controllers.get(sessionKey)?.close();
     this.#controllers.delete(sessionKey);
+    // #374: only clear the transport if THIS session owned it — a stale close must not drop a newer
+    // owner's channel connection.
+    if (this.#ownerSessionKey === sessionKey) {
+      this.#ownerTransport = undefined;
+      this.#ownerSessionKey = undefined;
+    }
   }
 
   // ---- the controller's side: `ReactionAdapter` ----------------------------------------------
@@ -403,6 +469,36 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
       this.#liveController()?.wake();
       return { ok: true, status: this.status() };
     }
+    if (input.client === 'claude-code') {
+      // #374: the target is the owner MCP session itself, reached by writing a channel push down its
+      // own bridge. Validate the owner NOW, at attach (record § 5.4): a session that is not Claude
+      // Code, or one whose bridge is too old to push, is refused with its own recoverable reason —
+      // and a refused attach keeps the previous leader, like pi's. With no owner session yet, attach
+      // anyway and let `noOwnerSession` report it, exactly as OpenCode and pi do.
+      const transport = this.#ownerTransport;
+      if (transport !== undefined) {
+        if (transport.clientName !== 'claude-code') return { ok: false, error: CLAUDE_CODE_NOT_OWNER.message };
+        if (transport.leaderPush !== true) return { ok: false, error: CLAUDE_CODE_BRIDGE_TOO_OLD.message };
+      }
+      this.#detach();
+      this.#leader = {
+        client: 'claude-code',
+        adapter: new ClaudeCodeChannelAdapter({
+          projectId: this.projectId,
+          roleInstruction: LEADER_ROLE_INSTRUCTION,
+          push: (content, meta, signal) => this.#pushChannel(content, meta, signal),
+          alive: () => this.#ownerTransport !== undefined,
+          // reactedSeq stays 0 for Claude Code (no observable reaction), so the only cursor the
+          // push-unconfirmed blocker compares against is the leader's own acknowledgement.
+          acknowledged: () => this.#opts.leaderRecord?.acknowledged() ?? 0,
+          heartbeatMs: this.#opts.heartbeatMs ?? EVENT_CONTROLLER_HEARTBEAT_MS,
+        }),
+        failingSince: null,
+        settledThrough: 0,
+      };
+      this.#liveController()?.wake();
+      return { ok: true, status: this.status() };
+    }
     // Re-attaching replaces the previous target; xezar owns no process, so nothing else changes.
     this.#detach();
     // A new leader with no history: whatever happened before it was attached was not about it.
@@ -478,6 +574,20 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     return { target, dispose: () => link.close() };
   }
 
+  /**
+   * Push a channel message down the CURRENT owner session's bridge (#374), honouring the attempt's
+   * abort so a controller that gave up does not wait on a late confirmation. No owner session means
+   * nothing to push to: the reject is a delivery failure the controller retries, and `noOwnerSession`
+   * / the blocker rules explain it.
+   */
+  #pushChannel(content: string, meta: Record<string, string>, signal: AbortSignal): Promise<void> {
+    const transport = this.#ownerTransport;
+    if (transport === undefined) {
+      return Promise.reject(new Error('no Claude Code MCP session owns this project, so there is nothing to push a channel event to'));
+    }
+    return abortable(transport.push(content, meta), signal);
+  }
+
   #ownOperation(): { isOwnOperation?: (operationId: string) => boolean } {
     const guard = this.#opts.guard;
     return guard === undefined ? {} : { isOwnOperation: (operationId) => guard.isOwn(operationId) };
@@ -527,4 +637,23 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     if (leader.failingSince !== null) return this.#owed(leader) ? deliveryFailing(leader.client) : leaderNotAnswering(leader.client);
     return null;
   }
+}
+
+/** Reject as soon as `signal` aborts, without waiting for `work`; a late settle then goes nowhere. */
+function abortable<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(new Error('aborted'));
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = (): void => reject(new Error('aborted'));
+    signal.addEventListener('abort', onAbort, { once: true });
+    work.then(
+      (value) => {
+        signal.removeEventListener('abort', onAbort);
+        resolve(value);
+      },
+      (err: unknown) => {
+        signal.removeEventListener('abort', onAbort);
+        reject(err instanceof Error ? err : new Error(String(err)));
+      },
+    );
+  });
 }
