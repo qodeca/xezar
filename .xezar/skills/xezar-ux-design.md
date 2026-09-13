@@ -40,7 +40,7 @@ Check, in this order:
 
 Verdict vocabulary: PASS, PASS WITH FOLLOW-UPS, FAIL. Findings are numbered B-n (blocking) and NB-n (non-blocking); each names `file:line` or page + state and the rule it breaks. Judgement goes on points 1–9; what a test already catches (the guardian, the drift test, the designs lint) is not a finding.
 
-Output: exactly one PR comment whose first line is `## Design review`, posted with `gh pr comment`, carrying the reviewed commit SHA, the reviewer role, the themes and widths checked, the verdict and every finding. When there is no PR, the same text is the run's final message and the requester places it. Never edit the tree; the author links the comment from the README's `## Design review` section. Move labels (`design-approved`, `needs-design`) only when the assignment says so.
+Output: exactly one PR comment whose first line is `## Design review`, posted with `gh pr comment`, carrying the reviewed commit SHA, the reviewer role, the themes and widths checked, the verdict and every finding. When there is no PR, the same text is the run's final message and the requester places it. Never edit the tree; the author links the comment from the README's `## Design review` section. Move labels (`design-approved`, `needs-design`) only when the assignment says so. End the turn with `XEZ:DONE` right after the verdict: a review has nothing to wait for, and a headless run has no channel to answer a question (the first real run stayed in `waiting` for this reason).
 
 ## Shared contract
 
