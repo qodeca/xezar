@@ -589,8 +589,15 @@ it is wrong for xezar's case: the fail-closed branch is reached only when the ex
 call takes the branch below it and opens a dialog (`state.ui.select`) that carries no `timeout`. Nothing
 in xezar answers it. #330 WP5's QA measured a step naming `xezar_health` failing at 121 s with
 `pi CLI timed out after 2m and was killed`, while an ordinary pi task — offered no `xezar_*` tool by the
-runner's default allowlist — was unaffected at 2.8 s. The setup guidance is therefore to leave xezar's
-tools ungated; answering the dialog is [#369](https://github.com/qodeca/xezar/issues/369).
+runner's default allowlist — was unaffected at 2.8 s. The setup guidance was therefore to leave xezar's
+tools ungated.
+
+**Corrected again 2026-09-13 by [#369](https://github.com/qodeca/xezar/issues/369).** xezar's pi runner
+now answers the dialog: an autonomous run refuses at once with `Deny` and records it, an interactive run
+raises it as a question card carrying pi's own three choices and routes the answer back by the dialog's
+id. The A-01 `approveTools` leg drives a real pi through the runner in both modes and passes. What the
+runner does not reach is unchanged: a headless pi some other program drives over `--mode rpc` is that
+program's to answer, and the leader extension, which runs inside pi, answers no dialog.
 
 ### 3.5 The four side by side
 

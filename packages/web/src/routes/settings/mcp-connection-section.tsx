@@ -156,19 +156,15 @@ args = ["-y", "@qodeca/xezar", "mcp"]`}
   // start a bridge wherever pi starts (D-04 § 3.4). The card states keep-alive's cost as well as its
   // use: D-04 § 3.4 run `root` measured that a pi started in the project root holds the project from
   // start, and a second client is refused until that pi exits (design review on #343).
-  // The `approveTools` line is #369's measured blast radius, and it is deliberately narrow: #330 WP5's
-  // QA measured an ordinary pi task UNAFFECTED (the runner's default `--tools` allowlist offers no
-  // `xezar_*` tool, so the dialog never fires) and only a step that named `xezar_health` failing, at
-  // 121 s. Do not widen this to "every pi task": that is measured false. `approveTools` is the user's
-  // own key in the adapter's `mcp.json` — `settings.approveTools` or the per-server one, which
-  // overrides it (`tool-approval.ts:42-43`, adapter 2.32.1). Scope any absence claim about it to the
-  // files read: `core/pi-runner.ts`, `scripts/pi-leader-extension.ts` and `mcp/adapters/pi.ts` — the
-  // three xezar files on this path — never mention `approveTools` or `extension_ui_request` (read
-  // 2026-09-12 at `df828a0`); `test/integration/mcp-real-clients.test.ts` DOES set the key, on its own
-  // fixture, to produce the block. An unscoped "appears nowhere" rots: this one was true at 301a172
-  // and false an hour later when #368 merged.
-  // The two unattended cases end differently and the line says both: a pi xezar runs is killed by the
-  // runner's timeout, a leader turn nobody is watching has nothing to end it and waits for ever.
+  // The `approveTools` line names WHO answers the dialog, per place pi runs, since #369: the person in
+  // their own pi window; xezar's pi runner in a pi task (`core/pi-dialog.ts` — a question card with
+  // pi's own three choices when interactive, an explicit `Deny` recorded in the transcript when
+  // autonomous); and nobody for a headless pi some other program drives, because the dialog carries no
+  // `timeout`. Two limits keep the line true and must not be widened: an ordinary pi task never sees
+  // the dialog (the runner's default `--tools` allowlist offers no `xezar_*` tool — #330 WP5's QA
+  // measured it unaffected at 2.8 s), and the leader extension itself answers nothing, it runs inside
+  // pi. `approveTools` is the user's own key in the adapter's `mcp.json` — `settings.approveTools` or
+  // the per-server one, which overrides it (`tool-approval.ts:42-43`, adapter 2.32.1).
   {
     name: 'pi',
     automatic:
@@ -219,12 +215,12 @@ args = ["-y", "@qodeca/xezar", "mcp"]`}
               other work.
             </span>
             <span data-slot="mcp-client-pi-approve-tools" className="mt-2 block">
-              Leave xezar’s tools out of the extension’s <span className="font-mono break-all">approveTools</span> setting, in this file
-              or on the <span className="font-mono break-all">xezar</span> entry. A gated tool asks for approval in pi’s own window and
-              nothing in xezar answers, so a pi xezar runs waits there until it is killed — measured at two minutes, on a step that named{' '}
-              <span className="font-mono break-all">xezar_health</span> — and a leader turn nobody is watching waits for ever, because
-              nothing ends that one at all. A pi that is never offered a xezar tool is unaffected. Making
-              xezar answer that question is{' '}
+              A xezar tool you put in the extension’s <span className="font-mono break-all">approveTools</span> setting, in this file
+              or on the <span className="font-mono break-all">xezar</span> entry, asks for approval before it runs. In your own pi window
+              you answer it yourself. In a pi task xezar runs, the question shows in the task as a card with pi’s own choices, Allow
+              once, Allow for session and Deny, and your answer goes back to pi; an autonomous task answers Deny at once and says so in
+              its transcript. A pi that is never offered a xezar tool is unaffected. pi waits for that answer with no time limit, so a
+              headless pi that another program drives is that program’s to answer (
               {/* The link text is "issue 369", not "#369": the design guardian's no-raw-hex-colors rule
                   reads a three-digit "#369" as a colour, and the rule is right to. */}
               <a
@@ -236,7 +232,7 @@ args = ["-y", "@qodeca/xezar", "mcp"]`}
               >
                 issue 369
               </a>
-              , which is not in this release.
+              ).
             </span>
             <span className="mt-2 block">
               The file holds no secret, so it is safe to commit. A committed entry does the same for everyone who starts pi in this
