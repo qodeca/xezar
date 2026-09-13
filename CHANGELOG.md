@@ -12,6 +12,17 @@
   - The status is live while the page is open. The server pushes each change – a leader attached or stopped, an owner session that opened, announced itself or went away, a delivery that worked or failed, an app-server or thread that was lost – over the cockpit's existing WebSocket as a new `mcp-leader` topic, only while the page is on screen and only when something changed. It is also re-read when the window regains focus and after the event stream reconnects. A remote cockpit opens no WebSocket and keeps the HTTP read. Refresh is in every state, including when the first read fails and when the MCP service is not running, and Attach leader is a 44 px touch target on a phone.
 
 ## 💥 Breaking
+- 💥 **A Codex run xezar starts no longer loads your own Codex MCP servers, plugins or apps.**
+  (#324, #323) Every Codex task run used to load each MCP server and plugin in
+  `$CODEX_HOME/config.toml` – a browser, the Messages plugin, ChatGPT connectors – and
+  `approvalPolicy: never` let the agent call them with no prompt. The runner now asks the Codex
+  app-server which servers it would load (`config/read`) and starts the thread with only the
+  servers the project's own trusted `.codex/config.toml` declares. Servers from your home config,
+  plugins, apps and xezar's own leader bridge are switched off for that thread, and the run
+  transcript names what was switched off. Your config files are not changed. To use a server in
+  Codex runs, declare it in the project's `.codex/config.toml`. A Codex CLI that cannot answer
+  `config/read` now fails the run with a message instead of starting it. No setting and no
+  environment variable.
 - 💥 **The default team skills source is now `qodeca/xezar-skills`, and the skills are named
   `xez-*`.** (#394) The previous default repository is no longer loaded, and the automatic updater no
   longer recognises it: an `npx skills` install from the old source is reported as "Installed

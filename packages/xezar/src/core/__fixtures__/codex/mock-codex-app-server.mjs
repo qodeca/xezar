@@ -10,10 +10,57 @@
 // and handles SIGTERM itself, exiting 143 rather than dying from the signal.
 // `MOCK_CODEX_FOREIGN_SIGNAL_EXIT=1` is the #156 mirror image: a clean turn
 // followed by an unsolicited 143, as if a peer process had signalled it.
+//
+// `MOCK_CODEX_AMBIENT=1` is the #324 shape: `config/read` reports an MCP server
+// from the person's own home config, one from the project's `.codex/`, xezar's
+// bridge registered in the project, and a project server the home config
+// tweaks — and thread/start|resume refuse a `config` that does not switch off
+// everything but the project's own server, plugins and apps included.
+// `MOCK_CODEX_CONFIG_READ_ERROR=1` answers `config/read` with an error, the
+// shape of a Codex CLI that cannot say which servers it would load.
 import { createInterface } from 'node:readline';
 
 const emit = (obj) => process.stdout.write(`${JSON.stringify(obj)}\n`);
 const rl = createInterface({ input: process.stdin });
+
+const ambient = process.env.MOCK_CODEX_AMBIENT === '1';
+
+function configReadResult() {
+  if (!ambient) return { config: { mcp_servers: {} }, origins: {} };
+  const user = { name: { type: 'user', file: '/home/u/.codex/config.toml', profile: null }, version: 'sha256:u' };
+  const project = { name: { type: 'project', dotCodexFolder: '/repo/.codex' }, version: 'sha256:p' };
+  return {
+    config: {
+      mcp_servers: {
+        ambient: { command: 'npx', args: ['-y', 'chrome-devtools-mcp@latest'] },
+        projsrv: { command: 'node', args: ['tools/mcp.mjs'] },
+        xezar: { command: 'npx', args: ['-y', '@qodeca/xezar', 'mcp'] },
+        mixed: { command: 'node', args: ['tools/other.mjs'], env: { TOOL_HOME: '/home/u/tool' } },
+      },
+    },
+    origins: {
+      'mcp_servers.ambient.command': user,
+      'mcp_servers.ambient.args.0': user,
+      'mcp_servers.projsrv.command': project,
+      'mcp_servers.projsrv.args.0': project,
+      'mcp_servers.xezar.command': project,
+      'mcp_servers.mixed.command': project,
+      'mcp_servers.mixed.env.TOOL_HOME': user,
+    },
+  };
+}
+
+/** What is wrong with a thread's `config` override under MOCK_CODEX_AMBIENT, or null. */
+function isolationProblem(config) {
+  if (!ambient) return null;
+  const servers = config?.mcp_servers ?? {};
+  for (const name of ['ambient', 'xezar', 'mixed']) {
+    if (servers[name]?.enabled !== false) return `MCP server ${name} was not switched off`;
+  }
+  if (servers.projsrv?.enabled === false) return 'the project server projsrv was switched off';
+  if (config?.features?.plugins !== false || config?.features?.apps !== false) return 'plugins and apps were not switched off';
+  return null;
+}
 
 const ignoreEof = process.env.MOCK_CODEX_IGNORE_EOF === '1';
 if (ignoreEof) {
@@ -37,7 +84,16 @@ rl.on('line', (line) => {
       : { method: 'turn/failed', params: { turn: { id: 'turn_mock_1', status: 'failed' }, error: { message: 'bad answer' } } });
   } else if (msg.method === 'initialize') {
     emit({ id: msg.id, result: { userAgent: 'mock-codex/0.0.0' } });
+  } else if (msg.method === 'config/read') {
+    emit(process.env.MOCK_CODEX_CONFIG_READ_ERROR === '1'
+      ? { id: msg.id, error: { code: -32601, message: 'Method not found: config/read' } }
+      : { id: msg.id, result: configReadResult() });
   } else if (msg.method === 'thread/start' || msg.method === 'thread/resume') {
+    const problem = isolationProblem(msg.params?.config);
+    if (problem) {
+      emit({ id: msg.id, error: { code: -32602, message: problem } });
+      return;
+    }
     const expectedSandbox = process.env.XEZ_CODEX_NETWORK === '0' ? 'workspace-write' : 'danger-full-access';
     if (msg.params?.sandbox !== expectedSandbox || msg.params?.approvalPolicy !== 'never') {
       emit({ id: msg.id, error: { code: -32602, message: `expected ${expectedSandbox} auto permissions` } });
