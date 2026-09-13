@@ -2,7 +2,11 @@
 
 ## ✨ Features
 
-- ✨ **Codex leaders can opt into project-event delivery through their existing local app-server.** xezar validates the owner bridge's session announcement, attaches without spawning Codex, and keeps events in the journal when the running session is unavailable. (#374, #73)
+- ✨ **Codex leaders can opt into project-event delivery through their existing local app-server.** (#374, part of #73)
+  - Wired: the Codex session's own `xezar mcp` bridge announces only its thread id (Codex passes the MCP server no `CODEX_HOME`). `xezar serve` looks for the control socket in its own Codex home – `CODEX_HOME` when the serve process has one, else `~/.codex` – and trusts it only after the app-server's `initialize` answer names that same home. It attaches only when exactly one thread is both saved for this project folder and loaded, and it is the announced one. It never starts Codex, a daemon or a thread, and it holds the thread's subscription only while it hands an event over, so an exited TUI's thread unloads normally. An approval or question already open at attach, or opened later, is never spoken over. A hand-off whose acceptance was lost is checked against the thread's own turns before anything is sent again, also after a re-attach. After the TUI or the app-server goes, events stay in the journal for `leader_events`, and the cockpit names a recoverable blocker.
+  - Measured once with the real bridge, service and a real `codex app-server --listen unix://` (codex-cli 0.154.0, macOS, scripted model endpoint): one event-caused model request and none more in a 30-second quiet window, shown in the person's own TUI; the wrong-home, missing-socket and unloaded-thread refusals; TUI exit and app-server exit.
+  - Fixture-tested only: open prompts at attach, lost acceptance and replay, request counting.
+  - Not verified (BLOCKED): a real model's decision to react; Linux and Windows; other codex-cli versions; a Codex session whose home differs from the one `xezar serve` looks in – it is refused and falls back to `leader_events`.
 
 ## 💥 Breaking
 - 💥 **The default team skills source is now `qodeca/xezar-skills`, and the skills are named

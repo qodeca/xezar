@@ -2518,11 +2518,15 @@ describe('A-19 — immediate acceptance, delivery, and a real model reaction', (
       await stop(tui);
       const unloadedAfterMs = await waitFor('app-server to unload the exited TUI’s thread', async () => (!(await loadedIds()).includes(threadId) ? Date.now() - exitAt : undefined), 240_000).catch(() => undefined);
       checks.push({ name: 'xezar does not keep an exited TUI’s thread alive', required: 'with the TUI gone, app-server unloads the thread (xezar holds its subscription only during a hand-off)', observed: unloadedAfterMs === undefined ? 'still loaded after 240 s' : `unloaded ${Math.round(unloadedAfterMs / 1000)} s after the TUI exited`, ok: unloadedAfterMs !== undefined });
-      const named = await waitFor('the Codex blocker', async () => {
+      // The TUI's own MCP bridge exits with it, so the owner session goes first: measured, the cockpit
+      // reports `no-owner-session` here, and `codex-session-not-targetable` only while an owner
+      // session outlives its thread (fixture-tested in codex.test.ts). Either is recoverable.
+      const RECOVERABLE = ['no-owner-session', 'codex-session-not-targetable'];
+      const named = await waitFor('a recoverable blocker', async () => {
         const status = await leader();
-        return status?.blocker?.code === 'codex-session-not-targetable' ? status : undefined;
+        return RECOVERABLE.includes(status?.blocker?.code) ? status : undefined;
       }, 90_000).catch(() => leader());
-      checks.push({ name: 'the cockpit names Codex’s recoverable remedy', required: 'blocker `codex-session-not-targetable` with a leader_events fix, not a silent attached leader', observed: named?.blocker ?? null, ok: named?.blocker?.code === 'codex-session-not-targetable' && String(named?.blocker?.fix ?? '').includes('leader_events') });
+      checks.push({ name: 'the cockpit names a recoverable remedy', required: `blocker ${RECOVERABLE.map((code) => `\`${code}\``).join(' or ')} with a leader_events fix, not a silent attached leader`, observed: named?.blocker ?? null, ok: RECOVERABLE.includes(named?.blocker?.code) && String(named?.blocker?.fix ?? '').includes('leader_events') });
 
       // A later event is kept, is NOT pushed into the headless thread, and the pull path reads it.
       await waitFor('the other session to unload too', async () => (otherId === undefined || !(await loadedIds()).includes(otherId) ? true : undefined), 240_000).catch(() => undefined);
@@ -2532,7 +2536,7 @@ describe('A-19 — immediate acceptance, delivery, and a real model reaction', (
       await delay(10_000);
       const laterRow = (readJournal(root) ?? []).find((entry) => entry.subject.id === later.json?.id && entry.kind === 'task.done');
       puller = await openBridge('a19-codex-pull', root, isolatedEnv(join(base, 'bridge-home'), { XEZ_HOME: xezHome, XEZ_DRY_RUN: '1' }));
-      const pulled = await puller.rpc.request('tools/call', { name: 'leader_events', arguments: {} }, 60_000);
+      const pulled = await puller.rpc.request('tools/call', { name: 'leader_events', arguments: { action: 'read' } }, 60_000);
       checks.push({ name: 'after the TUI left, events are kept and pulled, never pushed into the headless thread', required: 'no new Codex model request; the row is in the journal; leader_events returns it', observed: { newCodexRequests: mine().length - beforeLater, row: laterRow?.eventId ?? 'no row', pulled: laterRow ? toolText(pulled).includes(laterRow.eventId) : toolText(pulled).slice(0, 160) }, ok: mine().length === beforeLater && laterRow !== undefined && toolText(pulled).includes(laterRow.eventId) });
 
       // Row 1, through the product: a saved but unloaded thread is refused. The bridge announces it
