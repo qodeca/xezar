@@ -78,6 +78,13 @@ body:
         - "I do not know"
     validations:
       required: true
+  - type: checkboxes
+    id: visual
+    attributes:
+      label: Visual discrepancy
+      description: Tick this when the cockpit looks different from what `docs/design-system/` documents. A maintainer labels it `design-debt` at triage.
+      options:
+        - label: Visual discrepancy – it looks different from `docs/design-system/`
   - type: textarea
     id: extra
     attributes:
