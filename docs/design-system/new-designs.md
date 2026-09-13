@@ -67,8 +67,12 @@ count a badge shows in colour, and `role="status"` on anything that announces.
 ## 8. Handoff
 
 The README names, for each new surface, the components it reuses and the files a developer will touch,
-and it lists every place the design departs from this design system as an open decision. Then the
-design gets a UX/UI review (`xezar-ux-design`) before it is "done".
+and it lists every place the design departs from this design system as an open decision. It ends with
+a `## Design review` section that reads "Pending" until the review lands. Then the `design-review`
+workflow (or a human design reviewer) reviews it and posts a `## Design review` comment on the PR; the
+README's own `## Design review` section links that comment with every finding's disposition, and
+`designs/README.md` moves the row to Approved (SDLC.md § The design gate). The lifecycle of a design
+folder, from Draft to Archived, is in `designs/README.md` § Lifecycle.
 
 ## 9. Specimens are the reference
 

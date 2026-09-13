@@ -9,7 +9,8 @@ description: >-
   do I use", "add a screen to the cockpit", "change this component in
   packages/web", "new mockup in designs/", "UX review of this page", "does this
   match the cockpit look", "dark and light theme", "shadcn primitive",
-  "Tailwind token", "design review before merge", "cockpit styling". Not for
+  "Tailwind token", "design review before merge", "cockpit styling",
+  "needs-design", "design gate", "design review evidence". Not for
   general colour or component talk outside this repository, and not for making
   the change or writing the review itself.
 allowed-tools: Read, Glob, Grep, AskUserQuestion
@@ -58,7 +59,7 @@ Filenames are repo-relative under `docs/design-system/`.
 | --- | --- | --- |
 | New mockup in `designs/<feature>/` | `new-designs.md` → `patterns.md` → `components.md` → `writing.md` | Link `../../docs/design-system/cockpit.css` first and keep only feature rules in the local `styles.css`; open `specimens/index.html` beside the page. |
 | New or changed UI in `packages/web` | `components.md` (reuse before building) → `patterns.md` → `foundations.md` → `behaviour.md` → `writing.md` | Run the drift test and update `coverage.md` and `cockpit.css` in the same commit. |
-| Review of a design or a UI change | `known-gaps.md` (so a gap is not repeated) → `patterns.md` → `components.md` → `behaviour.md` | Check the rules below, then the states and the copy; a departure needs a reason in the PR or in the design's open decisions. |
+| Review of a design or a UI change | `known-gaps.md` (so a gap is not repeated) → `patterns.md` → `components.md` → `behaviour.md` | Check the rules below, then the states and the copy; a departure needs a reason in the PR or in the design's open decisions. The checklist and the verdict words live in `.xezar/skills/xezar-ux-design.md` § Review mode; post the verdict as a `## Design review` PR comment. |
 | Theme, accent, density or width | `theming.md` → `foundations.md` | Keep `packages/web/index.html` pre-paint and `lib/theme.ts` + `lib/appearance.ts` in step. |
 
 ## The rules
@@ -78,6 +79,7 @@ Filenames are repo-relative under `docs/design-system/`.
 13. An inconsistency is recorded in `known-gaps.md`, never fixed silently. Owner `known-gaps.md`.
 14. A UI change updates `coverage.md` and `cockpit.css` in the same commit. Owner `design-system-drift.test.ts`.
 15. A mockup links `../../docs/design-system/cockpit.css` and keeps only feature rules locally. Owner `new-designs.md`.
+16. A UI-in-scope PR carries `needs-design` and merges only with `design-approved`. Owner `SDLC.md § The design gate`.
 
 ## Verify
 
@@ -110,4 +112,4 @@ A user may override a prose-owned rule (7–15) for one task only with a written
 
 ## Terminal state
 
-After returning the route and the rules, hand back to the caller. Deeper design work is `.xezar/skills/xezar-ux-design.md`; this skill does not launch it.
+After returning the route and the rules, hand back to the caller. Deeper design work is `.xezar/skills/xezar-ux-design.md`, run by the kit workflows `design` (mockup plus draft PR) and `design-review` (read-only verdict); this skill launches neither.

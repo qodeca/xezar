@@ -17,8 +17,22 @@ Every design folder contains:
 
 Mockups follow the design system in [`docs/design-system/`](../docs/design-system/README.md) – read it first. Every page links the shared stylesheet `docs/design-system/cockpit.css` by relative path (`../../docs/design-system/cockpit.css`), which carries the cockpit's tokens for both themes and the base component classes; the design's own `styles.css` holds only feature-specific rules and never redeclares a token or a base class. The rules are in [`docs/design-system/new-designs.md`](../docs/design-system/new-designs.md). Mockups are references, not shipped code: never import their CSS into the app.
 
-A design is not "done" until it has had a UX/UI design review (`xezar-ux-design`).
+## Lifecycle
+
+A design folder moves through five statuses: **Draft → In review → Approved → Implemented (PR #n) → Archived**. The labels and the review evidence are defined in `SDLC.md` § The design gate; the kit workflows are `design` (writes the mockup and opens the draft PR) and `design-review` (posts the verdict).
+
+| Status | Set when | By whom |
+| --- | --- | --- |
+| **Draft** | The folder exists and its README has open decisions or no review yet. | The `design` workflow, or the author. |
+| **In review** | The `design-review` run or a human reviewer posts the `## Design review` comment on the PR. | Whoever posts the comment. |
+| **Approved** | The README's own `## Design review` section links that comment and every finding has a disposition: fixed, filed as a `design-debt` issue, or accepted with a reason. No finding may be left blank. | The PR that fills the section. |
+| **Implemented (PR #n)** | The PR that ships the surface is merged; the row names it. Post-merge housekeeping, not a gate. | The implementing PR, or the next PR that touches this file. |
+| **Archived** | A Draft or In review design untouched for 90 days. The row stays and the folder stays; the README's Status line says Archived and why. | Release prep, or whoever notices. |
+
+Two reversals: an Approved design with no implementing PR within two releases reverts to Draft, because the cockpit moved on and the review no longer describes it; an Archived design that is picked up again re-enters at Draft.
+
+The row below and the design README's own Status line must agree; the PR that changes one changes both. Every design README ends with a `## Design review` section that reads "Pending" until the review lands (`docs/design-system/new-designs.md` §8).
 
 | Design | Status |
 |---|---|
-| [quality-checks](quality-checks/README.md) | Draft – waiting for owner decisions and design review |
+| [quality-checks](quality-checks/README.md) | Draft – waiting for owner decisions (see Open decisions) and a `design-review` run |
