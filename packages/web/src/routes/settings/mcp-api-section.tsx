@@ -134,7 +134,7 @@ function EffectLabel({ annotations }: { annotations: McpToolAnnotations | undefi
   // An omitted destructive hint on a tool that may change state is read as destructive (S7).
   const destructive =
     a.destructiveHint === false ? null : (
-      <span className="font-medium text-warning">
+      <span className="font-medium text-conflict">
         {a.destructiveHint === true ? 'Destructive' : 'Destructive: not stated'}{' '}
         <span className="font-normal text-muted-foreground">
           {a.destructiveHint === true ? '– may delete or overwrite' : '– clients assume it may delete or overwrite'}

@@ -361,7 +361,7 @@ export function McpConnectionSurface({
           ) : (
             <>
               <p className="flex items-center gap-2 text-[13px] text-foreground">
-                <ServerIcon aria-hidden="true" className="size-4 shrink-0 text-warning" />
+                <ServerIcon aria-hidden="true" className="size-4 shrink-0 text-conflict" />
                 This xezar is not running in local mode, so the MCP connection is not available.
               </p>
               <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">

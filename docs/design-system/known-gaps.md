@@ -163,12 +163,6 @@ Counts are non-test files or occurrences in `packages/web/src`.
 - **Rule**: keep the tokens; do not add more small text in `--soft-foreground` on light, and keep the badge count announced in words.
 - **Fix**: darken light `--soft-foreground` to about `#767676` (4.5:1) and revisit the danger pair; then re-check every specimen swatch.
 
-### G-24 `*-warning` classes with no token behind them
-
-- **Differs**: `text-warning`, `bg-warning` and `border-warning` are used 11 times (`routes/github/github.tsx`, `routes/settings/mcp-api-section.tsx`, `routes/settings/mcp-capabilities.tsx`, `routes/settings/mcp-connection-section.tsx`, `routes/settings/resources-section.tsx`, `routes/task-thread/mcp-operation-feedback.tsx`), but `styles/index.css` defines no `--warning` token and no `--color-warning` mapping, so Tailwind emits nothing and the elements inherit their parent's colour.
-- **Rule**: `--conflict` is the warning colour (`text-conflict`, `bg-conflict`).
-- **Fix**: replace the 11 sites with the conflict utilities, or add `--warning: var(--conflict)` and its `--color-warning` mapping in `index.css`.
-
 ## Comment vs code
 
 | Comment says | Code does | Where |
