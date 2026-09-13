@@ -63,6 +63,7 @@ export interface StartMcpServiceOptions {
   readonly warn?: (message: string) => void;
   /** Test seam: the event controller's heartbeat (#309). Production uses its 30 s. */
   readonly leader?: { readonly heartbeatMs?: number };
+  readonly localHandoff?: () => boolean;
 }
 
 /**
@@ -105,6 +106,7 @@ export async function startMcpService(opts: StartMcpServiceOptions): Promise<Mcp
         ...(parts.cursors ? { leaderRecord: parts.cursors } : {}),
         warn,
         ...(opts.leader?.heartbeatMs === undefined ? {} : { heartbeatMs: opts.leader.heartbeatMs }),
+        ...(opts.localHandoff === undefined ? {} : { localHandoff: opts.localHandoff }),
       })
     : undefined;
   const unregisterLeader = delivery ? registerProjectLeader(project.id, delivery) : undefined;

@@ -22,9 +22,17 @@ describe('the shared Codex app-server link', () => {
     wss.on('connection', (client) => client.on('message', (raw) => {
       const request = JSON.parse(raw.toString()) as { id: number; method: string };
       if (request.method === 'thread/read') client.send(JSON.stringify({ method: 'turn/started', params: { threadId: 'thread-1' } }));
+      if (request.method === 'thread/error') {
+        client.send(JSON.stringify({ jsonrpc: '2.0', id: request.id, error: { message: 'request refused' } }));
+        return;
+      }
+      if (request.method === 'thread/empty') {
+        client.send(JSON.stringify({ jsonrpc: '2.0', id: request.id, result: null }));
+        return;
+      }
       const result = request.method === 'initialize' ? { codexHome: home }
         : request.method === 'thread/list' ? { data: [{ id: 'thread-1', cwd: realpathSync(home) }] }
-        : request.method === 'thread/loaded/list' ? { data: [{ id: 'thread-1' }] }
+        : request.method === 'thread/loaded/list' ? { data: ['thread-1'] }
         : request.method === 'thread/resume' ? { thread: { id: 'thread-1' } } : {};
       client.send(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }));
     }));
@@ -36,8 +44,33 @@ describe('the shared Codex app-server link', () => {
       connected.link.subscribe((notice) => notices.push(notice));
       await connected.link.request('thread/read', { threadId: 'thread-1' });
       expect(notices).toHaveLength(1);
+      await expect(connected.link.request('thread/error', {})).rejects.toThrow('request refused');
+      await expect(connected.link.request('thread/empty', {})).resolves.toEqual({});
       connected.link.close();
       await expect(connected.link.request('thread/read', { threadId: 'thread-1' })).rejects.toThrow('connection is closed');
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it('rejects the obsolete object-shaped loaded-thread response instead of accepting a false positive', async () => {
+    const home = realpathSync(mkdtempSync('/tmp/xzcl-old-shape-'));
+    dirs.push(home);
+    const control = join(home, 'app-server-control');
+    mkdirSync(control, { mode: 0o700 });
+    const socket = join(home, CODEX_CONTROL_SOCKET);
+    const server = createServer();
+    const wss = new WebSocketServer({ server });
+    wss.on('connection', (client) => client.on('message', (raw) => {
+      const request = JSON.parse(raw.toString()) as { id: number; method: string };
+      const result = request.method === 'initialize' ? { codexHome: home }
+        : request.method === 'thread/list' ? { data: [{ id: 'thread-1', cwd: home }] }
+        : request.method === 'thread/loaded/list' ? { data: [{ id: 'thread-1' }] } : {};
+      client.send(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }));
+    }));
+    await new Promise<void>((resolve) => server.listen(socket, resolve));
+    try {
+      await expect(connectCodexLeader({ codexHome: home, threadId: 'thread-1' }, home)).rejects.toThrow('not loaded');
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
@@ -101,7 +134,7 @@ describe('the shared Codex app-server link', () => {
       const request = JSON.parse(raw.toString()) as { id: number; method: string };
       const result = request.method === 'initialize' ? { codexHome: wrongHome ? join(home, '..') : home }
         : request.method === 'thread/list' ? { data: [{ thread: { id: 'thread-1', cwd: realpathSync(home) } }] }
-        : request.method === 'thread/loaded/list' ? { data: [{ thread: { id: 'thread-1' } }] }
+        : request.method === 'thread/loaded/list' ? { data: ['thread-1'] }
         : { threadId: 'wrong-thread' };
       client.send(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }));
     }));

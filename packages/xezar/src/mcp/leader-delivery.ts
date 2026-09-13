@@ -212,6 +212,8 @@ export interface LeaderDeliveryOptions {
     connect?: (descriptor: PiLeaderDescriptor, opts: { warn?: (message: string) => void }) => PiLeaderLink;
   };
   readonly codexLeader?: { connect?: (announcement: CodexLeaderAnnouncement, projectRoot: string) => Promise<ConnectedCodexLeader> };
+  /** Local socket delivery is forbidden when the server is hosted. */
+  readonly localHandoff?: () => boolean;
 }
 
 /**
@@ -505,6 +507,7 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
 
   async #codexTarget(): Promise<{ target: CodexReactionTarget; dispose?: () => void }> {
     const base = { projectId: this.projectId, onReaction: (seq: number) => this.#recordReaction(seq), ...this.#ownOperation() };
+    if (this.#opts.localHandoff?.() === false) return { target: codexReactionTarget(base) };
     const sessionKey = this.#controllers.keys().next().value as string | undefined;
     const announcement = sessionKey === undefined ? undefined : this.#codexAnnouncements.get(sessionKey);
     if (announcement === undefined) return { target: codexReactionTarget(base) };

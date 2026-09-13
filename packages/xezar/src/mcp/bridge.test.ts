@@ -48,14 +48,14 @@ const boom = defineTool({
   },
 });
 
-async function service(tools: readonly McpTool[] = []): Promise<McpServiceHandle> {
-  const handle = await listenMcpSocket({ project, version: '1.2.3', tools, env });
+async function service(tools: readonly McpTool[] = [], sessions?: { codexAnnounced?: (key: string, value: { codexHome: string; threadId: string }) => void }): Promise<McpServiceHandle> {
+  const handle = await listenMcpSocket({ project, version: '1.2.3', tools, env, ...(sessions ? { sessions: { opened: () => {}, closed: () => {}, ...sessions } } : {}) });
   handles.push(handle);
   return handle;
 }
 
 /** An in-process bridge with a tiny JSON-RPC client in front of it. */
-function bridge(opts: { tools?: readonly McpTool[]; target: () => Promise<ServiceTarget>; timeoutMs?: number }) {
+function bridge(opts: { tools?: readonly McpTool[]; target: () => Promise<ServiceTarget>; timeoutMs?: number; env?: NodeJS.ProcessEnv }) {
   const input = new PassThrough();
   const output = new PassThrough();
   const messages: Array<Record<string, unknown>> = [];
@@ -74,6 +74,7 @@ function bridge(opts: { tools?: readonly McpTool[]; target: () => Promise<Servic
     version: '1.2.3',
     tools: opts.tools ?? [],
     resolveTarget: opts.target,
+    ...(opts.env ? { env: opts.env } : {}),
     ...(opts.timeoutMs ? { requestTimeoutMs: opts.timeoutMs } : {}),
   });
   const waitFor = (match: (m: Record<string, unknown>) => boolean) =>
@@ -155,6 +156,15 @@ describe('bridge handshake (D-01 § 1.6, N-07)', () => {
 });
 
 describe('bridge → service over the project socket', () => {
+  it('forwards only bounded Codex metadata and the service observes the real announcement', async () => {
+    const announcements: unknown[] = [];
+    const svc = await service([echoProject], { codexAnnounced: (_key, value) => announcements.push(value) });
+    const b = bridge({ tools: [echoProject], target: socketTarget(svc.path), env: { CODEX_HOME: '/tmp/codex-home' } });
+    await b.request('tools/call', { name: 'echo_project', arguments: { text: 'ok' }, _meta: { threadId: 'thread-1' } });
+    await b.request('tools/call', { name: 'echo_project', arguments: { text: 'ok' }, _meta: { threadId: '' } });
+    await b.request('tools/call', { name: 'echo_project', arguments: { text: 'ok' } });
+    expect(announcements).toEqual([{ codexHome: '/tmp/codex-home', threadId: 'thread-1' }]);
+  });
   it('reports health, binding the project from the socket and never from arguments', async () => {
     const svc = await service();
     const b = bridge({ target: socketTarget(svc.path) });

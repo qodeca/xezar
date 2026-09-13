@@ -508,4 +508,23 @@ describe('attaching Codex: the owner announcement is really consumed (#374)', ()
     const status = made.status();
     expect(status.available && status.leader).toBeNull();
   });
+
+  it('refuses hosted-mode Codex attach before invoking the socket connector', async () => {
+    const { delivery: made } = delivery(true);
+    let dialed = false;
+    const dataDir = tmp();
+    const journal = EventJournal.open({ dataDir, projectId: PROJECT, secretValues: [], warn: () => {} });
+    journals.push(journal);
+    const hosted = new LeaderDelivery({
+      projectId: PROJECT, projectRoot: dataDir, journal,
+      ownership: { projectId: PROJECT, sessionToken: () => 'token', state: () => 'owned' }, guard: undefined, warn: () => {}, localHandoff: () => false,
+      codexLeader: { connect: async () => { dialed = true; throw new Error('must not dial'); } },
+    });
+    deliveries.push(hosted);
+    hosted.sessionOpened('owner');
+    hosted.codexAnnounced('owner', { codexHome: '/private/codex', threadId: 'thread-owner' });
+    await expect(hosted.act({ action: 'attach', client: 'codex' })).resolves.toMatchObject({ ok: false, error: expect.stringContaining('cannot reach') });
+    expect(dialed).toBe(false);
+    made.close();
+  });
 });

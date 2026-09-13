@@ -36,7 +36,10 @@ export async function connectCodexLeader(announcement: CodexLeaderAnnouncement, 
     const listed = await link.request('thread/list', { cwd: expectedProject, modelProviders: [] });
     const loaded = await link.request('thread/loaded/list', {});
     const candidates = threads(listed).filter((thread) => thread.id === announcement.threadId && thread.cwd === expectedProject);
-    const loadedIds = new Set(threads(loaded).map((thread) => thread.id));
+    // codex-cli 0.154.0's ThreadLoadedListResponse.data is string[], unlike thread/list.
+    // Keeping this separate is important: treating loaded ids as thread records silently makes
+    // every valid attachment look unloaded.
+    const loadedIds = new Set(loadedIdsFrom(loaded));
     if (candidates.length !== 1 || !loadedIds.has(announcement.threadId)) throw new Error('the announced Codex thread is absent, stale, ambiguous, or not loaded for this project');
     const resumed = await link.request('thread/resume', { threadId: announcement.threadId, excludeTurns: true });
     if (threadIdFrom(resumed) !== announcement.threadId) throw new Error('the Codex app-server resumed a different thread');
@@ -56,6 +59,11 @@ function threads(value: Record<string, unknown>): Array<{ id: string; cwd?: stri
     const cwd = typeof item.cwd === 'string' ? item.cwd : typeof (item.thread as Record<string, unknown> | undefined)?.cwd === 'string' ? (item.thread as Record<string, unknown>).cwd as string : undefined;
     return id === undefined ? [] : [{ id, ...(cwd === undefined ? {} : { cwd }) }];
   });
+}
+
+function loadedIdsFrom(value: Record<string, unknown>): string[] {
+  const data = Array.isArray(value.data) ? value.data : [];
+  return data.filter((id): id is string => typeof id === 'string');
 }
 
 function threadIdFrom(value: Record<string, unknown>): string | undefined {

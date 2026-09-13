@@ -2184,14 +2184,10 @@ describe('A-19 — immediate acceptance, delivery, and a real model reaction', (
       const setup = fx.setup[client];
       const checks: Check[] = [
         { name: 'client connected with the A-01 setup', required: 'A-01 client leg reached A', observed: setup?.verdict ?? 'no A-01 record', ok: setup ? setup.checks.some((c) => c.name.startsWith('the client reaches A') && c.ok === true) : null },
-        // Corrected for this revision, read from source rather than carried over: `startMcpService`
-        // DOES construct a `LeaderDelivery` and an `EventController` now (#311), and a pi leader is
-        // really delivered to (the `[pi]` case above). What is missing for these three is narrower and
-        // has not moved: `LeaderDelivery.#act` builds a target for `opencode` and `pi` only, and
-        // `mcpLeaderActionInput` (packages/contract/src/mcp-leader.ts) accepts no other client — so no
-        // Claude Code or Codex session can be attached, and a terminal session of either has no
-        // address xezar could attach to. Their verdict is unchanged and was not re-measured here.
-        { name: 'delivery to the client is observed', required: 'the service constructs this client’s reaction adapter and delivers a journal row to it', observed: 'no attach path exists for this client — read from source: `LeaderDelivery.#act` builds a target for `opencode` and `pi` only, and the contract\'s `client` enum is `[\'opencode\', \'pi\']`', ok: null },
+        // Codex now has an attach path, but this real-client suite has no shared app-server control
+        // socket fixture yet. Keep the acceptance row explicitly BLOCKED rather than claiming that
+        // the mocked adapter test is a real Codex reaction measurement.
+        { name: 'delivery to the client is observed', required: 'the real service/bridge discovers the existing Codex app-server and delivers a journal row', observed: client === 'codex' ? 'BLOCKED: this harness does not provision a shared Codex app-server Unix control socket for the owning TUI' : 'no attach path exists for Claude Code in a terminal session', ok: null },
         { name: 'a REAL model reaction follows, with no status-polling turn', required: 'a real model’s turn acts on the delivered event', observed: 'not observable: § 9 forbids personal accounts, so every model here is the scripted endpoint — a turn it answers is not a real model’s reaction (the adapter records #108–#110 say the same)', ok: null },
       ];
       if (!fx.clients[client]) {
@@ -2203,8 +2199,8 @@ describe('A-19 — immediate acceptance, delivery, and a real model reaction', (
         case: 'A-19',
         client,
         verdict: 'BLOCKED',
-        summary: 'no attach path exists for this client, and no real model may be used in a § 9 fixture',
-        missing: 'an adapter and an attach path for this client (F-20): `LeaderDelivery.#act` and the contract\'s `client` enum admit `opencode` and `pi` only, and no real model has answered a request — leader decision, out of release 0.14.0. Not passed on documentation.',
+        summary: client === 'codex' ? 'real Codex app-server reaction is BLOCKED: the harness has no shared Unix control socket fixture' : 'no attach path exists for this client, and no real model may be used in a § 9 fixture',
+        missing: client === 'codex' ? 'Run H against a real existing Codex app-server control socket, with the scripted endpoint and 30-second quiet-window count; this fixture cannot provision that socket safely.' : 'an adapter and an attach path for this client, and no real model has answered a request. Not passed on documentation.',
         checks,
         fixture: { client: fx.clients[client]!.version },
       });
