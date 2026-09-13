@@ -364,10 +364,15 @@ gh label create needs-qa          --color fbca04 --description "Needs manual QA 
 gh label create skip-qa           --color c2e0c6 --description "Docs/CI/low-risk change; the QA gate does not apply"
 gh label create qa-approved       --color 0e8a16 --description "QA passed"
 gh label create qa-self-verified  --color c5def5 --description "QA signed off by the implementer under the self-QA exception"
+gh label create needs-design      --color fbca04 --description "UI in scope: needs a design review before merge (SDLC.md § The design gate)"
+gh label create skip-design       --color c2e0c6 --description "UI-in-scope diff with unchanged rendered output; the design gate does not apply"
+gh label create design-approved   --color 0e8a16 --description "Design review passed; evidence in the '## Design review' PR comment"
+gh label create design-self-verified --color c5def5 --description "Design signed off by the author under the self-verification exception"
 gh label create in-progress       --color ededed --description "Claimed and being worked on"
 gh label create priority-high     --color d93f0b --description "Urgent: security hardening or release-blocking regression"
 gh label create risk-high         --color b60205 --description "High blast radius"
 gh label create epic              --color 5319e7 --description "Tracking issue with sub-issues"
+gh label create design-debt       --color e99695 --description "Issue: fixes a docs/design-system/known-gaps.md entry or a deferred design-review finding"
 ```
 
 This list is the whole taxonomy `SDLC.md` § Label state machine describes; the two documents change together. It deliberately omits the labels GitHub creates in every new repository (`duplicate`, `good first issue`, `help wanted`, `invalid`, `question`, `wontfix`) and the per-release `release-<version>` labels, which a maintainer creates as each release opens. Never add a name here that `SDLC.md` does not use.
