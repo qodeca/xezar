@@ -5,7 +5,7 @@ description: UX design for a user-facing surface
 
 # UX design
 
-Design how a person actually uses a surface: the flow, what they see first, and every state. Write it as design, with reasons, not as a list of controls. Use this skill inside `plan-and-spec` (a UX design section in the spec) or `feature-implementation` (before changing a cockpit view): read this file when the task touches a user-facing surface. There is deliberately no `ux-design` workflow. UX rarely stands alone, and a separate run would hand its output to a later task that must re-read it anyway — ceremony, not value. Launch the skill on its own only for a design-only question; its output is a section or a document, never code.
+Design how a person actually uses a surface: the flow, what they see first, and every state. Write it as design, with reasons, not as a list of controls. Two workflows run this skill: `design` (authoring, the questions below, output committed to `designs/<feature>/`) and `design-review` (the review mode at the end of this file). It is also read inside `plan-and-spec` (a UX design section in the spec) and `feature-implementation` (before changing a cockpit view) when a task touches a user-facing surface. Whichever way it is reached, its output is a mockup, a section or a verdict, never application code.
 
 Before anything else, read the design system: start at `docs/design-system/README.md`, then the pages it routes you to for a design (`foundations.md`, `components.md`, `patterns.md`, `writing.md`, `new-designs.md`) and `known-gaps.md`. Name the token, component and pattern you reuse by the name the design system gives it, and put every departure from it in the design's open decisions. A mockup in `designs/<feature>/` links `docs/design-system/cockpit.css` and keeps only feature-specific rules in its own stylesheet.
 
@@ -18,10 +18,29 @@ Answer each of these in prose:
 5. **States.** Empty (first use, and filtered to nothing), loading, error (what failed and what to do next), refusal (not allowed here — say why and where it is allowed, for example the hosted-mode 409), and stale or partial data. Each state gets its own words, not only a spinner.
 6. **Deliberately not built.** What is out of scope and why, including what a user might expect and will not find.
 7. **The accessibility bar this repository already holds.** It is not optional: every action works from the keyboard; focus is visible (the existing `:focus-visible` ring); every control is labelled; meaning is never carried by colour alone; changed counts are announced politely; light and dark both work through theme tokens; and at 375px width nothing scrolls sideways (content wraps, tables reflow), checked in a real browser per `docs/testing/agent-browser.md`.
+8. **What gets cut.** When the surface must shrink (a phone, a narrow pane, a long list), say what disappears first and what never does.
+9. **Worst case, measured.** The longest list, the longest string, the slowest state and the 375px width, each with a number from the real data or a stated assumption.
 
 Reuse the cockpit's existing patterns before inventing new ones, and name the component you reuse. Prior art from other products is `xezar-research` work: cite it with URL and read date, or mark it unverified. A design is verified by browser/manual QA per SDLC; an unavailable browser is not a pass.
 
-Inputs: the surface, its users' job and the accepted AC. Output: a UX design section covering the seven points above, with criteria a tester can check. Do not turn a design request into an implementation.
+Inputs: the surface, its users' job and the accepted AC. Output: a UX design section covering the nine points above, with criteria a tester can check. Do not turn a design request into an implementation. In the `design` workflow the output is `designs/<feature>/`: `index.html` and one page per screen linking `../../docs/design-system/cockpit.css`, a local `styles.css` with feature rules only, and `README.md` with the headings `designs/README.md` lists plus a `## Design review` section reading "Pending". It is committed; the handoff PR carries `needs-design`.
+
+## Review mode
+
+The `design-review` workflow runs this skill read-only. Inputs: a `designs/<feature>/` path or a PR number. For a PR, read `gh pr view` and `gh pr diff`, boot the cockpit per `docs/testing/agent-browser.md` and look at both themes at 375px and at desktop width; an unavailable browser is not a pass and is reported as such. Read in the order the design system's README gives its review route: `docs/design-system/known-gaps.md` → `patterns.md` → `components.md` → `behaviour.md`.
+
+Check, in this order:
+
+- the ten rules in `docs/design-system/README.md`;
+- the states of `new-designs.md` §4 – default, empty, loading, error, refusal, phone;
+- appearance per `new-designs.md` §5 – theme, accent, density, width;
+- the accessibility bar of point 7 above;
+- copy per `writing.md`;
+- every departure from the design system has a reason in the design's open decisions or in the PR.
+
+Verdict vocabulary: PASS, PASS WITH FOLLOW-UPS, FAIL. Findings are numbered B-n (blocking) and NB-n (non-blocking); each names `file:line` or page + state and the rule it breaks. Judgement goes on points 1–9; what a test already catches (the guardian, the drift test, the designs lint) is not a finding.
+
+Output: exactly one PR comment whose first line is `## Design review`, posted with `gh pr comment`, carrying the reviewed commit SHA, the reviewer role, the themes and widths checked, the verdict and every finding. When there is no PR, the same text is the run's final message and the requester places it. Never edit the tree; the author links the comment from the README's `## Design review` section. Move labels (`design-approved`, `needs-design`) only when the assignment says so.
 
 ## Shared contract
 

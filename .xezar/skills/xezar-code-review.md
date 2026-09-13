@@ -7,7 +7,7 @@ description: Read-only semantic/code review
 
 Initialize evidence with worktree-setup.sh --readonly-init. Review an immutable completed head/diff and current base; do not inspect a peer live tree as final evidence or install into its checkout. If execution is needed use your prepared isolated checkout. Report prioritized concrete findings with file:line and short safe fragment, evidence, impact and correction. Apply CODE_REVIEW and the BA checklist where relevant. No votes, quota or minimum rounds: stop on remaining risk and state unread boundary; partial work cannot be PASS. Authors fix/dispute with evidence; leader adjudicates.
 
-Inputs: immutable candidate head/base, accepted scope and existing validation evidence. Output: consequence-ranked findings with exact locations and reviewed/unread boundaries. Never edit/adopt the candidate, including same-account peer PRs; return repairs to its author. Tool lists are not a universal sandbox.
+Inputs: immutable candidate head/base, accepted scope and existing validation evidence. Output: consequence-ranked findings with exact locations and reviewed/unread boundaries. Never edit/adopt the candidate, including same-account peer PRs; return repairs to its author. Tool lists are not a universal sandbox. For a diff touching `packages/web` UI, check design-system compliance against `docs/design-system/README.md` and cite the PR's `## Design review` comment; a missing comment is a finding, not a substitute review.
 
 ## Shared contract
 

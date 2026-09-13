@@ -7,7 +7,7 @@ description: Technical planning
 
 Translate accepted need into a bounded technical plan referencing exact reviewed content/AC and source contracts. The leader still owns campaign planning. Include API contract, default-path regressions, lifecycle exits, affected construction/caller sites, meaningful tests and dependencies. Do not invent missing historic spec paths; use current code and maintained docs/features. Stage all intended document changes before gates.
 
-Inputs: problem, stable AC and material uncertainties. Output: right-sized design under docs/features, with boundaries, risks and verification plan; resolve existing consumers before moving an established spec. No implementation or publication outside the brief.
+Inputs: problem, stable AC and material uncertainties. Output: right-sized design under docs/features, with boundaries, risks and verification plan; resolve existing consumers before moving an established spec. No implementation or publication outside the brief. A spec for a user-facing surface includes a UX design section written to `xezar-ux-design`'s authoring questions.
 
 ## Shared contract
 
