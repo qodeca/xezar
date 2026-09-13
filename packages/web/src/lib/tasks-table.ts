@@ -142,7 +142,7 @@ export function taskPrUrl(run: TaskReferenceInput): string | undefined {
  * follow-up PR of its own — which is why this is a list and `taskPrUrl` is merely its head.
  *
  * The one suppression is #526: a run whose declared subject is an ISSUE (XEZ:ISSUE) and that
- * declared no PR must not adopt an incidental transcript PR as "its" PR — an `om-prepare-issue`
+ * declared no PR must not adopt an incidental transcript PR as "its" PR — an `xez-prepare-issue`
  * run linking a stray PR that merely appeared in its output is a false, misleading association.
  * It lives HERE, once, so the singular and plural accessors cannot drift apart on it.
  */
@@ -162,7 +162,7 @@ function prUrls(run: TaskReferenceInput): string[] {
  * a discovered URL or nothing. */
 export function taskIssueUrl(run: TaskReferenceInput, repoBase?: string): string | undefined {
   if (run.referencedIssueUrl) return run.referencedIssueUrl
-  // #526: an issue-subject run (om-prepare-issue) knows its issue number from the XEZ:ISSUE
+  // #526: an issue-subject run (xez-prepare-issue) knows its issue number from the XEZ:ISSUE
   // marker even when no full `…/issues/N` link was ever scanned into referencedIssueUrl.
   // Synthesize the link from the PROJECT's repo only — never from `referenced*Candidates` or
   // `referenced*Url`, which are transcript scrapings that routinely name other repositories:

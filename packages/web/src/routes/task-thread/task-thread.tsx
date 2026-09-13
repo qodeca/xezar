@@ -367,7 +367,7 @@ export function ThreadView({
                 PR ↗
               </a>
             ) : null}
-            {/* #526: an issue-subject run (om-prepare-issue) links the issue it created — it
+            {/* #526: an issue-subject run (xez-prepare-issue) links the issue it created — it
                 declares no PR, so without this the created issue was unreachable from the UI. */}
             {isHttpUrl(issueUrl) ? (
               <a

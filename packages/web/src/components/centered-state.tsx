@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils'
 export type CenteredStateTone = 'neutral' | 'primary' | 'danger'
 
 /** The tile carries a border + a solid-enough fill so it reads on the twinkle backdrop
- *  (a muted fill with a muted icon all but disappears there) — mercato's exact grammar. */
+ *  (a muted fill with a muted icon all but disappears there) — the original mockup's exact grammar. */
 const tileTone: Record<CenteredStateTone, string> = {
   primary: 'border-primary/25 bg-primary/15 text-primary',
   neutral: 'border-border bg-card text-foreground shadow-xs',

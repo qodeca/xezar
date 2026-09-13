@@ -24,6 +24,16 @@ It was also the only liveness bound on `XEZ:MONITORING`, and the only reason a p
 monitor eventually stopped holding a `maxParallel` slot. Neither dependency was named in
 the spec, so neither was replaced, and `monitoring` became a state with no exit.
 
+A name-keyed stored list survives a repo rename and silently empties the default catalog.
+The Manage-skills panel stores a curated `importedSkills` list of skill NAMES in
+`~/.xezar/ui-state.json`, and the catalog gate keeps a default-repo skill only when its name
+is in that list. Flipping the default team skills repository from one that names its skills
+`om-*` to one that names them `xez-*` left every curated install with zero team skills and
+no error – the old list was load-bearing for "which of the default skills show", not for
+"which repository they come from". The fix maps `om-<x>` to `xez-<x>` when the list is READ
+(never written back), and the regression test is the one that failed first: a stored
+`['om-fix']` against a catalog offering `xez-fix` must keep `xez-fix`.
+
 ## Enumerate the transitions out of every state
 
 A parked run has exactly three wake sources: a user message (`deliverMessage`), the

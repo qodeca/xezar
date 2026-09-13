@@ -40,7 +40,7 @@ import {
   writeStoredSidebarWidth,
 } from '@/lib/sidebar-width'
 import { cn } from '@/lib/utils'
-// The Open Mercato brand mark. A `public/` asset, not a bundled import: the service serves the
+// The xezar brand mark. A `public/` asset, not a bundled import: the service serves the
 // same file at this exact path (`GET /xezar.svg` — the favicon index.html points at), so
 // a second, hashed URL for the same picture would be one cache entry too many. Vite serves
 // `public/` at the root in dev and copies it into the build, so the path holds in both.
@@ -824,7 +824,7 @@ function VersionChip({ version, latestVersion }: { version: string; latestVersio
   )
 }
 
-/** The Open Mercato brand mark. The SVG carries its own gradient and rounded corners, so it is
+/** The xezar brand mark. The SVG carries its own gradient and rounded corners, so it is
  *  the tile — no wrapper background. */
 function BrandTile() {
   return (

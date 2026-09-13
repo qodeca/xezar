@@ -917,7 +917,7 @@ describe('RunStore — agent-declared marker refs (spec 2026-07-18-task-ref-mark
     expect(store.getRun(run.id)?.markerRefs).toBeUndefined();
   });
 
-  // Verbatim from the run that reported it: a task opened on open-mercato#4326 pushed a
+  // Verbatim from the run that reported it: a task opened on qodeca/demo#4326 pushed a
   // fix as its own #5366 and re-declared with the new number, as the marker contract asks. Both
   // PRs are true, and the record has a field for each — but feeding the re-declaration to the
   // referenced tier cleared #4326 (no candidate ends in /5366), so the cockpit painted one chip.
@@ -926,18 +926,18 @@ describe('RunStore — agent-declared marker refs (spec 2026-07-18-task-ref-mark
     store.applyMarkerRefs(run.id, { pr: 4326 });
     store.appendEvent(run.id, {
       type: 'result',
-      result: 'Reviewing https://github.com/open-mercato/open-mercato/pull/4326.',
+      result: 'Reviewing https://github.com/qodeca/demo/pull/4326.',
     });
     store.appendEvent(run.id, {
       type: 'result',
-      result: 'Ran gh pr create … → https://github.com/open-mercato/open-mercato/pull/5366',
+      result: 'Ran gh pr create … → https://github.com/qodeca/demo/pull/5366',
     });
     store.applyMarkerRefs(run.id, { pr: 5366 });
 
     const loaded = store.getRun(run.id);
-    expect(loaded?.pullRequestUrl).toBe('https://github.com/open-mercato/open-mercato/pull/5366');
+    expect(loaded?.pullRequestUrl).toBe('https://github.com/qodeca/demo/pull/5366');
     expect(loaded?.referencedPullRequestUrl).toBe(
-      'https://github.com/open-mercato/open-mercato/pull/4326',
+      'https://github.com/qodeca/demo/pull/4326',
     );
     // The about-number too: it is what paints a numeric-only chip, and the created PR already
     // has a field of its own.
@@ -949,16 +949,16 @@ describe('RunStore — agent-declared marker refs (spec 2026-07-18-task-ref-mark
     const { store, run } = freshRun('Address GitHub pull request #4326');
     store.appendEvent(run.id, {
       type: 'result',
-      result: 'Reviewing https://github.com/open-mercato/open-mercato/pull/4326.',
+      result: 'Reviewing https://github.com/qodeca/demo/pull/4326.',
     });
     store.applyMarkerRefs(run.id, { pr: 5366 });
     expect(store.getRun(run.id)?.referencedPullRequestUrl).toBeUndefined(); // nothing created yet
     store.appendEvent(run.id, {
       type: 'result',
-      result: 'Ran gh pr create … → https://github.com/open-mercato/open-mercato/pull/5366',
+      result: 'Ran gh pr create … → https://github.com/qodeca/demo/pull/5366',
     });
     expect(store.getRun(run.id)?.referencedPullRequestUrl).toBe(
-      'https://github.com/open-mercato/open-mercato/pull/4326',
+      'https://github.com/qodeca/demo/pull/4326',
     );
   });
 
@@ -977,15 +977,15 @@ describe('RunStore — agent-declared marker refs (spec 2026-07-18-task-ref-mark
     // about-PR still sitting in the working set, and the chip it should have painted gone.
     const { store, run } = freshRun('Address GitHub pull request #4326');
     store.updateRun(run.id, {
-      pullRequestUrl: 'https://github.com/open-mercato/open-mercato/pull/5366',
+      pullRequestUrl: 'https://github.com/qodeca/demo/pull/5366',
       referencedPullRequestUrl: undefined,
-      referencedPrCandidates: ['https://github.com/open-mercato/open-mercato/pull/4326'],
+      referencedPrCandidates: ['https://github.com/qodeca/demo/pull/4326'],
       markerRefs: { pr: 5366 },
       prNumber: 5366,
     });
     store.flush();
     expect(RunStore.open(dataDir).getRun(run.id)?.referencedPullRequestUrl).toBe(
-      'https://github.com/open-mercato/open-mercato/pull/4326',
+      'https://github.com/qodeca/demo/pull/4326',
     );
   });
 
@@ -1222,25 +1222,25 @@ describe("RunStore — a task never adopts another repository's ref (#945)", () 
 
   it('keeps a foreign PR the task prompt itself names — the #819 cross-repo case', () => {
     const { store, run } = scopedRun(
-      'om-auto-fix-pr https://github.com/open-mercato/open-mercato/pull/1977',
+      'om-auto-fix-pr https://github.com/qodeca/demo/pull/1977',
     );
     store.appendEvent(run.id, {
       type: 'result',
-      result: 'Working on https://github.com/open-mercato/open-mercato/pull/1977 now.',
+      result: 'Working on https://github.com/qodeca/demo/pull/1977 now.',
     });
     expect(store.getRun(run.id)?.referencedPullRequestUrl).toBe(
-      'https://github.com/open-mercato/open-mercato/pull/1977',
+      'https://github.com/qodeca/demo/pull/1977',
     );
   });
 
   it('corroboration accepts the bare owner/repo, not only a pasted URL', () => {
-    const { store, run } = scopedRun('port the fix over to open-mercato/open-mercato');
+    const { store, run } = scopedRun('port the fix over to qodeca/demo');
     store.appendEvent(run.id, {
       type: 'result',
-      result: 'See https://github.com/open-mercato/open-mercato/pull/1977.',
+      result: 'See https://github.com/qodeca/demo/pull/1977.',
     });
     expect(store.getRun(run.id)?.referencedPullRequestUrl).toBe(
-      'https://github.com/open-mercato/open-mercato/pull/1977',
+      'https://github.com/qodeca/demo/pull/1977',
     );
   });
 
@@ -1337,11 +1337,11 @@ describe("RunStore — a task never adopts another repository's ref (#945)", () 
 
     it('keeps a stored foreign URL the prompt corroborates', () => {
       const { after } = reopenArmed({
-        task: 'om-auto-fix-pr https://github.com/open-mercato/open-mercato/pull/1977',
-        referencedPullRequestUrl: 'https://github.com/open-mercato/open-mercato/pull/1977',
+        task: 'om-auto-fix-pr https://github.com/qodeca/demo/pull/1977',
+        referencedPullRequestUrl: 'https://github.com/qodeca/demo/pull/1977',
       });
       expect(after?.referencedPullRequestUrl).toBe(
-        'https://github.com/open-mercato/open-mercato/pull/1977',
+        'https://github.com/qodeca/demo/pull/1977',
       );
     });
 

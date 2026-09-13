@@ -365,7 +365,7 @@ function refUrlRepo(url: string): string | undefined {
  * `owner/repo`, which a pasted URL does inherently. That is the trust boundary this module already
  * uses elsewhere — the prompt and the agent's own turn text are trusted, scraped tool output is
  * not — and it is what keeps the legitimate cross-repo case working (#819:
- * `om-auto-fix-pr https://github.com/open-mercato/open-mercato/pull/1977` started from xezar).
+ * `xez-auto-fix-pr https://github.com/qodeca/demo/pull/1977` started from xezar).
  *
  * Unknown handle → today's behavior exactly (`AGENTS.md` zero config: degrade, never fail). An
  * unparseable URL is left alone for the same reason — the guard only ever removes an association

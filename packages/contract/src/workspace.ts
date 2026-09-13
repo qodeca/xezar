@@ -204,7 +204,7 @@ export const uiStateSchema = z.looseObject({
       }),
     )
     .optional(),
-  /** The open-mercato/skills promo banner (#391), dismissed for good. Legacy — the banner is
+  /** The team skills promo banner (#391), dismissed for good. Legacy — the banner is
    *  gone, replaced by `WorkspaceUiState.importedSkills`; retained so old files round-trip. */
   dismissedSkillsBanner: z.boolean().optional(),
 });

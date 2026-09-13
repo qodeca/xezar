@@ -1,7 +1,7 @@
 import { readUiState } from './ui-state.ts';
 
 /**
- * Promotes `open-mercato/skills` (#391) — xezar's built-in default skills source
+ * Promotes `qodeca/xezar-skills` (#391) — xezar's built-in default skills source
  * (`DEFAULT_SKILLS_REPOS` in `src/config.ts`) that today only surfaces in `--help`. Split out of
  * `src/index.ts` so it is testable without importing `index.ts` (which runs `main()` on import).
  * It once had a cockpit twin to stay in step with; #603 replaced that with the opt-in
@@ -19,10 +19,10 @@ import { readUiState } from './ui-state.ts';
  */
 export const SKILLS_BANNER_LINES: readonly string[] = [
   '  🤖 Make the most of parallel coding with our AI skills',
-  '  open-mercato/skills: reusable, technology-agnostic agent skills for PR',
+  '  qodeca/xezar-skills: reusable, technology-agnostic agent skills for PR',
   '  creation, code review, CI stabilisation, spec writing & more.',
   '  xezar already loads them for you — Skills → Refresh in the cockpit gets the latest.',
-  "  To use them outside xezar:  npx skills add open-mercato/skills --skill '*'",
+  "  To use them outside xezar:  npx skills add qodeca/xezar-skills --skill '*'",
 ];
 
 /** Both off switches in one place. Never throws. */

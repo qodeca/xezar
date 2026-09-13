@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 
 /**
  * Design guardian — a static scan enforcing the spec's design-system rules over the cockpit
- * sources (ported from mercato's guardian). It runs inside `npm test`, so a violation fails
+ * sources (ported from the original cockpit's guardian). It runs inside `npm test`, so a violation fails
  * the validation gate with the exact file, line, and offending token.
  *
  * Scope:

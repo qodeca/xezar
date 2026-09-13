@@ -59,7 +59,7 @@ function serve(
         skills: [],
         checkedAt: null,
         updatedAt: null,
-        reason: 'Open Mercato installation is not tracked',
+        reason: 'installation is not tracked',
       },
       {
         scope: 'global',
@@ -68,7 +68,7 @@ function serve(
         skills: [],
         checkedAt: null,
         updatedAt: null,
-        reason: 'Open Mercato installation is not tracked',
+        reason: 'installation is not tracked',
       },
     ],
     ...updateOverrides,
@@ -127,20 +127,36 @@ describe('Global settings → Skills', () => {
     serve()
     renderSkills()
     const toggle = await screen.findByRole('switch', {
-      name: 'Update Open Mercato skills automatically',
+      name: 'Update xezar-skills automatically',
     })
     expect(toggle.getAttribute('aria-checked')).toBe('true')
     expect(screen.getByText('On (default)')).toBeTruthy()
     expect(screen.getByText(/XEZ_SKILLS_AUTO_UPDATE supplies/)).toBeTruthy()
-    expect(await screen.findByText('No tracked Open Mercato installation found.')).toBeTruthy()
+    expect(await screen.findByText('No tracked xezar-skills installation found.')).toBeTruthy()
     expect((screen.getByRole('button', { name: 'Use default' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('surfaces the reason a current scope was left alone (skills from another source)', async () => {
+    const reason = 'Installed skills come from another source; xezar does not update them'
+    serve(
+      {},
+      {
+        scopes: [
+          { scope: 'project', status: 'current', available: false, skills: [], checkedAt: null, updatedAt: null, reason },
+          { scope: 'global', status: 'current', available: false, skills: [], checkedAt: null, updatedAt: null, reason: 'installation is not tracked' },
+        ],
+      },
+    )
+    renderSkills()
+    expect(await screen.findByText(reason)).toBeTruthy()
+    expect(screen.queryByText('No tracked xezar-skills installation found.')).toBeNull()
   })
 
   it('writes an explicit boolean, then can clear it back to the inherited default', async () => {
     serve()
     renderSkills()
     const toggle = await screen.findByRole('switch', {
-      name: 'Update Open Mercato skills automatically',
+      name: 'Update xezar-skills automatically',
     })
     fireEvent.click(toggle)
     await waitFor(() => expect(puts().at(-1)?.body).toEqual({ skillsAutoUpdate: false }))

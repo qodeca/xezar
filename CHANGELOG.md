@@ -1,3 +1,19 @@
+# Unreleased
+
+## 💥 Breaking
+- 💥 **The default team skills source is now `qodeca/xezar-skills`, and the skills are named
+  `xez-*`.** The previous default repository is no longer loaded, and the automatic updater no
+  longer recognises it: an `npx skills` install from the old source is reported as "Installed
+  skills come from another source; xezar does not update them" and is never touched. Existing
+  installs are not migrated – run `npx skills remove <om-* names> -p` (or `-g`), then
+  `npx skills add qodeca/xezar-skills --skill '*'`; `~/.cache/xez/skills/open-mercato__skills`
+  and `.claude/skills/om-*` are orphaned afterwards and safe to delete. A curated Manage-skills
+  selection that still names `om-*` skills keeps working: each `om-<name>` is read as
+  `xez-<name>`, and the stored list is never rewritten. An explicit
+  `"skillsRepos": [{ "repo": "open-mercato/skills" }]` in `.xezar/config.json` restores loading of
+  the old collection (ungated) but not automatic updates. The cockpit, the `xezar serve` banner
+  and `--help` name the new repository.
+
 # 0.14.0 (2026-09-12)
 
 ## Highlights

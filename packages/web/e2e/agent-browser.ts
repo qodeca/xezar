@@ -68,9 +68,9 @@ export function fixtureServeEnv(
     // two together, and a XEZ_DRY_RUN without XEZ_HOME beside it is exactly the mistake it
     // exists to catch.
     XEZ_DRY_RUN: '1', XEZ_HOME: resolve(dataRoot, '.xez-home'),
-    // A fixture repo must hold exactly the skills the fixture wrote. Open Mercato skill updates
+    // A fixture repo must hold exactly the skills the fixture wrote. xezar-skills updates
     // are default-on (AGENTS.md § Zero config), so a boot inside the six-hour window installs the
-    // whole `om-*` collection INTO the fixture and every "these are the project skills"
+    // whole `xez-*` collection INTO the fixture and every "these are the project skills"
     // assertion starts depending on the machine's cache and network. The shared test env
     // (`skills-update.e2e.ts` attaches to it) is where that behaviour is exercised on purpose;
     // `extra` can still turn it back on for a spec that wants it.

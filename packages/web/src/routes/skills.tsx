@@ -171,11 +171,11 @@ function SkillsCatalog() {
                 <DownloadIcon aria-hidden="true" className="size-3.5 shrink-0 text-primary" />
                 <span className="min-w-0 truncate text-[13px] font-medium">Manage skills</span>
                 <span className="ml-auto shrink-0 rounded-full border border-border px-2 py-px font-mono text-[10.5px] text-soft-foreground">
-                  open-mercato
+                  xezar-skills
                 </span>
               </span>
               <span className="pl-[22px] text-xs text-soft-foreground">
-                Choose which open-mercato skills appear in your catalog.
+                Choose which xezar-skills appear in your catalog.
               </span>
             </Link>
           ) : null}

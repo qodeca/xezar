@@ -9,6 +9,9 @@ import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { toast } from '@/components/ui/toaster'
 
+/** The updater's reason for a missing lock file (`skills-update.ts`, `checkScope`). */
+const NOT_TRACKED = 'installation is not tracked'
+
 export function SkillsSection() {
   const config = useWorkspaceConfig()
   const projects = useProjects()
@@ -54,13 +57,21 @@ function SkillsForm({
   const inherited = config.skillsAutoUpdate === null
   const status = (() => {
     if (updateError) return 'Installation status is unavailable right now.'
-    if (!update) return 'Checking tracked Open Mercato installations…'
+    if (!update) return 'Checking tracked xezar-skills installations…'
     if (update.status === 'unavailable')
       return update.scopes.find((scope) => scope.reason)?.reason ?? 'Automatic skill updates are unavailable.'
+    // A `current` scope with a reason is one the updater deliberately left alone. The server's
+    // "installation is not tracked" is what the quiet line below already says; any other reason
+    // (skills installed from another source) is the one the user needs to read.
+    const explained =
+      update.status === 'current'
+        ? update.scopes.map((scope) => scope.reason).find((reason) => reason && reason !== NOT_TRACKED)
+        : undefined
+    if (explained) return explained
     if (update.scopes.every((scope) => scope.skills.length === 0))
-      return 'No tracked Open Mercato installation found.'
+      return 'No tracked xezar-skills installation found.'
     const count = new Set(update.scopes.flatMap((scope) => scope.skills)).size
-    return `${count} tracked Open Mercato skill${count === 1 ? '' : 's'} found.`
+    return `${count} tracked xezar-skills skill${count === 1 ? '' : 's'} found.`
   })()
 
   return (
@@ -72,10 +83,10 @@ function SkillsForm({
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-sm font-semibold text-foreground">
-              <label htmlFor="skills-auto-update">Update Open Mercato skills automatically</label>
+              <label htmlFor="skills-auto-update">Update xezar-skills automatically</label>
             </h2>
             <p className="text-[13px] text-muted-foreground">
-              Checks installed Open Mercato skills in the background and applies available updates. Other
+              Checks installed xezar-skills in the background and applies available updates. Other
               skills and untracked folders are never changed.
             </p>
           </div>

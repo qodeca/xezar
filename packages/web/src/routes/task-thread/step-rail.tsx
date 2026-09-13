@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils'
 
 /**
  * The WORKFLOW step rail (spec §"Task thread" — steps ≠ plan: these are the run's own
- * `RunRecord.steps`, not the agent's todo checklist). Mercato startup-checklist style
+ * `RunRecord.steps`, not the agent's todo checklist). Startup-checklist style
  * (mockup `.step-rail`): one row per step — emerald check / amber spinner / faint circle /
  * danger X — over a thin amber progress bar. Check-step OUTPUT renders in the thread as
  * command cards (`thread-state.ts` `check-output`); this rail is only the state summary.
@@ -33,7 +33,7 @@ export function railVisual(status: StepStatus): RailVisual {
   }
 }
 
-/** Mercato's bar formula, `(done + 0.5·running) / total`, generalized over the real status
+/** The mockup's bar formula, `(done + 0.5·running) / total`, generalized over the real status
  *  set: any TERMINAL step counts 1 (the bar measures progress through the workflow, not
  *  success), any ACTIVE one ½, pending 0. */
 export function railProgress(steps: ReadonlyArray<Pick<StepState, 'status'>>): number {

@@ -112,7 +112,7 @@ export function bumpSkillUsage(
 
 /**
  * Does `query` fuzzy-match `candidate`? Case-insensitive subsequence — `omfx` finds
- * `om-fix-issue` — the same permissiveness cmdk gives the palette, minus its score-reordering:
+ * `xez-fix-issue` — the same permissiveness cmdk gives the palette, minus its score-reordering:
  * the composer autocomplete filters WITHOUT re-sorting, so the project-first order above
  * survives any query (a deliberate difference from the palette, where cmdk may interleave).
  */
@@ -141,9 +141,9 @@ export function skillUsedBy(workflows: readonly WorkflowDef[], name: string): st
   return out
 }
 
-/** Characters that begin a new "word" inside a skill value ("skill om-auto-review-pr /path"):
+/** Characters that begin a new "word" inside a skill value ("skill xez-auto-review-pr /path"):
  *  whitespace and the separators used in names and paths. Lets us tell a whole-word or
- *  word-start hit ("review" in "om-auto-**review**-pr") from an incidental buried substring. */
+ *  word-start hit ("review" in "xez-auto-**review**-pr") from an incidental buried substring. */
 const WORD_BOUNDARY = /[\s\-/_.]/
 
 /** How well a single lowercased `word` matches inside a lowercased `haystack`.
@@ -168,8 +168,8 @@ function wordScore(haystack: string, word: string): number {
 /**
  * Multi-word filter for cmdk `<Command filter={…}>`: splits the typed query on whitespace
  * and requires every word to appear as a case-insensitive substring in the combined
- * value + keywords text.  "auto review" finds "om-auto-review-pr", "verify ui" finds
- * "om-auto-verify-ui".  Returns a 0–1 score (0 = no match) so cmdk hides non-matches and
+ * value + keywords text.  "auto review" finds "xez-auto-review-pr", "verify ui" finds
+ * "xez-auto-verify-ui".  Returns a 0–1 score (0 = no match) so cmdk hides non-matches and
  * ranks the rest.
  *
  * The score is the average per-word match *quality* (#484): a whole-word / word-start hit
@@ -194,7 +194,7 @@ export function multiWordFilter(value: string, search: string, keywords?: string
  * How well a whole `query` matches a single `text` (a skill name or its description).
  * 0 = no match; higher = better: exact > prefix > word-boundary hit > buried substring >
  * subsequence. The subsequence fallback keeps `fuzzyMatch`'s permissiveness ("omfx" still
- * finds "om-fix-issue"), just ranked below the literal hits so the best match wins.
+ * finds "xez-fix-issue"), just ranked below the literal hits so the best match wins.
  */
 export function matchScore(text: string, query: string): number {
   if (query === '') return 1
@@ -223,7 +223,7 @@ const NAME_MATCH_BONUS = 10
 
 /** How well a name/description pair matches a typed query. The query is split on whitespace
  *  and EVERY word must appear in the name or the description (the multi-keyword rule from #411:
- *  "fix project" finds `om-fix` "project fixer"); a query that misses any word scores 0. Each
+ *  "fix project" finds `xez-fix` "project fixer"); a query that misses any word scores 0. Each
  *  word contributes its `matchScore` quality (exact > prefix > word-boundary > substring >
  *  subsequence), and a word that lands in the NAME is boosted over one that only lands in the
  *  description — so the total ranks (almost-)exact name matches to the top (#484). Empty query
@@ -294,7 +294,7 @@ export function searchWorkflows(workflows: readonly WorkflowDef[], query: string
  *  via `orderSkillsByUsage`), then filtered and **ranked by match quality** (#484 — an
  *  (almost-)exact match must sort to the top, the same rule the pickers now follow; supersedes
  *  the old #380 "filter without re-sorting"). Matches on the name and, as a fallback, the
- *  description ("review" should find `om-code-review` even when the name says less than the
+ *  description ("review" should find `xez-code-review` even when the name says less than the
  *  description does). Ties keep the usage-then-locality order, so an empty query and
  *  equally-good matches still render most-used skills first, then project before global/team.
  *  Without `usage` this is exactly the pre-#519 project-first behavior. */

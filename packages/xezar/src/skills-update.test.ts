@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { isOpenMercatoSkillsSource, SkillsUpdateConflictError, SkillsUpdateCoordinator, SkillsUpdateService } from './skills-update.ts';
+import { isXezarSkillsSource, SkillsUpdateConflictError, SkillsUpdateCoordinator, SkillsUpdateService } from './skills-update.ts';
 
 const oldDryRun = process.env.XEZ_DRY_RUN;
 afterEach(() => { if (oldDryRun === undefined) delete process.env.XEZ_DRY_RUN; else process.env.XEZ_DRY_RUN = oldDryRun; });
@@ -19,9 +19,18 @@ async function fixture(project: unknown, global?: unknown) {
 describe('SkillsUpdateService', () => {
   beforeEach(() => { process.env.XEZ_DRY_RUN = '0'; });
 
-  it('matches only canonical Open Mercato GitHub sources', () => {
-    expect(['open-mercato/skills', 'https://github.com/open-mercato/skills', 'https://github.com/open-mercato/skills.git'].every(isOpenMercatoSkillsSource)).toBe(true);
-    expect(['evil/open-mercato/skills', 'https://github.com.evil.test/open-mercato/skills', 'git@github.com:open-mercato/skills.git'].some(isOpenMercatoSkillsSource)).toBe(false);
+  it('matches only canonical qodeca/xezar-skills GitHub sources', () => {
+    expect(['qodeca/xezar-skills', 'https://github.com/qodeca/xezar-skills', 'https://github.com/qodeca/xezar-skills.git'].every(isXezarSkillsSource)).toBe(true);
+    expect(['evil/qodeca/xezar-skills', 'https://github.com.evil.test/qodeca/xezar-skills', 'git@github.com:qodeca/xezar-skills.git'].some(isXezarSkillsSource)).toBe(false);
+  });
+
+  it('no longer recognises the retired open-mercato/skills source', async () => {
+    const { home, repo } = await fixture({ skills: { om: { source: 'open-mercato/skills' } } });
+    const run = vi.fn();
+    const state = await new SkillsUpdateService({ homeDir: home, run, resolveNpx: async () => '/npx' }).check(repo);
+    expect(run).not.toHaveBeenCalled();
+    expect(state.scopes[0]?.status).toBe('current');
+    expect(state.scopes[0]?.reason).toBe('Installed skills come from another source; xezar does not update them');
   });
 
   it('fails closed for malformed and unknown locks without executing', async () => {
@@ -33,7 +42,7 @@ describe('SkillsUpdateService', () => {
   });
 
   it('groups mixed provenance, sorts and deduplicates fixed arguments', async () => {
-    const lock = { version: 3, skills: { zed: { source: 'open-mercato/skills' }, other: { source: 'acme/skills' }, alpha: { sourceUrl: 'https://github.com/open-mercato/skills' } } };
+    const lock = { version: 3, skills: { zed: { source: 'qodeca/xezar-skills' }, other: { source: 'acme/skills' }, alpha: { sourceUrl: 'https://github.com/qodeca/xezar-skills' } } };
     const { home, repo } = await fixture(lock, lock); const calls: string[][] = [];
     const service = new SkillsUpdateService({ homeDir: home, resolveNpx: async () => '/safe/npx', run: async (file, args) => { expect(file).toBe('/safe/npx'); calls.push([...args]); return { stdout: 'alpha update available', stderr: '' }; } });
     const state = await service.check(repo);
@@ -42,14 +51,14 @@ describe('SkillsUpdateService', () => {
   });
 
   it('normalizes offline failures and never leaks command output', async () => {
-    const { home, repo } = await fixture({ skills: { om: { source: 'open-mercato/skills' } } });
+    const { home, repo } = await fixture({ skills: { om: { source: 'qodeca/xezar-skills' } } });
     const run = vi.fn(async () => { throw new Error('fetch failed token=super-secret'); });
     const state = await new SkillsUpdateService({ homeDir: home, run, resolveNpx: async () => 'npx' }).check(repo);
     expect(state.scopes[0]?.reason).toBe('update check is offline'); expect(JSON.stringify(state)).not.toContain('super-secret');
   });
 
   it('degrades when npx is absent without executing', async () => {
-    const { home, repo } = await fixture({ skills: { om: { source: 'open-mercato/skills' } } });
+    const { home, repo } = await fixture({ skills: { om: { source: 'qodeca/xezar-skills' } } });
     const run = vi.fn();
     const state = await new SkillsUpdateService({ homeDir: home, run, resolveNpx: async () => null }).check(repo);
     expect(run).not.toHaveBeenCalled();
@@ -58,7 +67,7 @@ describe('SkillsUpdateService', () => {
   });
 
   it('normalizes timeouts', async () => {
-    const { home, repo } = await fixture({ skills: { om: { source: 'open-mercato/skills' } } });
+    const { home, repo } = await fixture({ skills: { om: { source: 'qodeca/xezar-skills' } } });
     const run = vi.fn(async () => { throw Object.assign(new Error('secret'), { killed: true }); });
     const state = await new SkillsUpdateService({ homeDir: home, run, resolveNpx: async () => 'npx', timeoutMs: 5 }).check(repo);
     expect(state.scopes[0]?.reason).toBe('update check timed out');
@@ -73,7 +82,7 @@ describe('SkillsUpdateService', () => {
   });
 
   it('deduplicates concurrent checks and honors the TTL', async () => {
-    const { home, repo } = await fixture({ skills: { om: { source: 'open-mercato/skills' } } });
+    const { home, repo } = await fixture({ skills: { om: { source: 'qodeca/xezar-skills' } } });
     let release!: () => void; const gate = new Promise<void>((resolve) => { release = resolve; });
     const run = vi.fn(async () => { await gate; return { stdout: '', stderr: '' }; });
     const service = new SkillsUpdateService({ homeDir: home, run, resolveNpx: async () => 'npx' });
@@ -82,7 +91,7 @@ describe('SkillsUpdateService', () => {
   });
 
   it('checks the machine-global installation once across project roots within the TTL', async () => {
-    const lock = { skills: { om: { source: 'open-mercato/skills' } } };
+    const lock = { skills: { om: { source: 'qodeca/xezar-skills' } } };
     const { home, repo } = await fixture(lock, lock);
     const other = join(home, 'other'); await mkdir(other); await writeFile(join(other, 'skills-lock.json'), JSON.stringify(lock));
     const run = vi.fn(async (_file: string, _args: readonly string[]) => ({ stdout: '', stderr: '' }));
@@ -93,7 +102,7 @@ describe('SkillsUpdateService', () => {
   });
 
   it('uses an exclusive cache lock across service instances', async () => {
-    const { home, repo } = await fixture({ skills: { om: { source: 'open-mercato/skills' } } });
+    const { home, repo } = await fixture({ skills: { om: { source: 'qodeca/xezar-skills' } } });
     let release!: () => void; const gate = new Promise<void>((resolve) => { release = resolve; });
     const first = new SkillsUpdateService({ homeDir: home, resolveNpx: async () => 'npx', run: async () => { await gate; return { stdout: '', stderr: '' }; } });
     const secondRun = vi.fn(async () => ({ stdout: '', stderr: '' }));
@@ -110,7 +119,7 @@ describe('SkillsUpdateService', () => {
   });
 
   it('recovers a dead cache lock and removes its own lock afterward', async () => {
-    const { home, repo } = await fixture({ skills: { om: { source: 'open-mercato/skills' } } });
+    const { home, repo } = await fixture({ skills: { om: { source: 'qodeca/xezar-skills' } } });
     const lockPath = join(home, '.cache', 'xez', 'skills-update.lock');
     await mkdir(join(home, '.cache', 'xez'), { recursive: true });
     await writeFile(lockPath, `99999999\n${Date.now()}\n`);
@@ -121,7 +130,7 @@ describe('SkillsUpdateService', () => {
   });
 
   it('updates only sorted lock-authorized names with exact fixed arguments, then rechecks and invalidates', async () => {
-    const lock = { skills: { zed: { source: 'open-mercato/skills' }, alpha: { sourceUrl: 'https://github.com/open-mercato/skills' }, manual: { source: 'other/repo' } } };
+    const lock = { skills: { zed: { source: 'qodeca/xezar-skills' }, alpha: { sourceUrl: 'https://github.com/qodeca/xezar-skills' }, manual: { source: 'other/repo' } } };
     const { home, repo } = await fixture(lock, lock);
     const calls: string[][] = [];
     const invalidateCatalog = vi.fn(async () => undefined);
@@ -148,7 +157,7 @@ describe('SkillsUpdateService', () => {
   });
 
   it('preserves per-scope partial update outcomes', async () => {
-    const lock = { skills: { alpha: { source: 'open-mercato/skills' } } };
+    const lock = { skills: { alpha: { source: 'qodeca/xezar-skills' } } };
     const { home, repo } = await fixture(lock, lock);
     const run = vi.fn(async (_file: string, args: readonly string[]) => {
       if (args[2] === 'update' && args.includes('-g')) throw new Error('failed secret');
@@ -164,7 +173,7 @@ describe('SkillsUpdateService', () => {
   });
 
   it('deduplicates concurrent update calls and dry-run never executes', async () => {
-    const lock = { skills: { alpha: { source: 'open-mercato/skills' } } };
+    const lock = { skills: { alpha: { source: 'qodeca/xezar-skills' } } };
     const { home, repo } = await fixture(lock);
     let release!: () => void;
     const gate = new Promise<void>((resolve) => { release = resolve; });
@@ -186,7 +195,7 @@ describe('SkillsUpdateService', () => {
   });
 
   it('lets guarded callers distinguish in-process contention', async () => {
-    const { home, repo } = await fixture({ skills: { alpha: { source: 'open-mercato/skills' } } });
+    const { home, repo } = await fixture({ skills: { alpha: { source: 'qodeca/xezar-skills' } } });
     let release!: () => void; const gate = new Promise<void>((resolve) => { release = resolve; });
     const service = new SkillsUpdateService({ homeDir: home, resolveNpx: async () => 'npx', run: async () => { await gate; return { stdout: '', stderr: '' }; } });
     const active = service.check(repo, true);
@@ -195,7 +204,7 @@ describe('SkillsUpdateService', () => {
   });
 
   it('rejects guarded mutation when another service owns the live cache lock', async () => {
-    const { home, repo } = await fixture({ skills: { alpha: { source: 'open-mercato/skills' } } });
+    const { home, repo } = await fixture({ skills: { alpha: { source: 'qodeca/xezar-skills' } } });
     let release!: () => void; const gate = new Promise<void>((resolve) => { release = resolve; });
     const owner = new SkillsUpdateService({ homeDir: home, resolveNpx: async () => 'npx', run: async () => { await gate; return { stdout: '', stderr: '' }; } });
     const contender = new SkillsUpdateService({ homeDir: home, resolveNpx: async () => 'npx', run: vi.fn() });

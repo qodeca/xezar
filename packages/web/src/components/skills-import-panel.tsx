@@ -21,7 +21,7 @@ import { useNavigate } from '@/lib/project-router'
 import { cn } from '@/lib/utils'
 import { startedRunPath } from '@/routes/new-task-form'
 
-const SKILLS_REPO_URL = 'https://github.com/open-mercato/skills'
+const SKILLS_REPO_URL = 'https://github.com/qodeca/xezar-skills'
 
 /** The user's EXPLICIT selection, or `undefined` when the key is absent (not curated) — mirrors
  *  the server's tri-state `readImportedSkills`. A non-array (hand-edited file) degrades to
@@ -41,7 +41,7 @@ function effectiveImported(uiState: WorkspaceUiState | undefined, allNames: read
 
 /**
  * The "Manage skills" panel (replaces the old promo banner, #391 follow-up): the default
- * `open-mercato/skills` catalog is no longer forced on the user, but it is not taken away either —
+ * `qodeca/xezar-skills` catalog is no longer forced on the user, but it is not taken away either —
  * every skill is enabled by default (opt-out) and the user unchecks the ones they don't want. The
  * selection lives in the GLOBAL `~/.xezar/ui-state.json` (`importedSkills`, via the workspace
  * ui-state) so it follows the person across projects rather than depending on the launch directory;
@@ -170,7 +170,7 @@ export function ImportSkillsPanel({ projectId }: { projectId: string }) {
           rel="noreferrer"
           className="underline underline-offset-2 hover:text-foreground"
         >
-          open-mercato/skills
+          qodeca/xezar-skills
         </a>{' '}
         — PR creation, code review, CI stabilisation, spec writing and more. They&apos;re all in your
         catalog and the composer picker by default; uncheck any you don&apos;t want.
@@ -272,12 +272,12 @@ function SkillsUpdateCard({
   const startUpgradeNotes = useMutation({
     mutationFn: () =>
       createRun({
-        task: 'Apply the upgrade notes after updating the installed Open Mercato skills.',
+        task: 'Apply the upgrade notes after updating the installed xezar-skills.',
         steps: [
           {
             id: 'apply-upgrade-notes',
             name: 'Apply upgrade notes',
-            skill: 'om-apply-upgrade-notes',
+            skill: 'xez-apply-upgrade-notes',
             prompt: '{{task}}',
           },
         ],
@@ -297,7 +297,7 @@ function SkillsUpdateCard({
       queryClient.setQueryData(workspaceQueryKeys.skillsUpdate(projectId), result)
       if (request.action === 'apply' && result.updatedAt && result.updatedAt !== request.previousUpdatedAt) {
         void queryClient.invalidateQueries({ queryKey: queryKeys.skills })
-        toast(result.status === 'error' ? 'Some skill updates failed.' : 'Open Mercato skills updated.')
+        toast(result.status === 'error' ? 'Some skill updates failed.' : 'xezar-skills updated.')
         setShowUpgradeNotesPrompt(true)
       }
   }
@@ -327,11 +327,11 @@ function SkillsUpdateCard({
   const failed = state?.scopes.filter((scope) => scope.status === 'error' || scope.status === 'unavailable') ?? []
   const succeeded = state?.scopes.filter((scope) => scope.updatedAt && !failed.includes(scope)) ?? []
 
-  let message = 'Checking installed Open Mercato skills…'
+  let message = 'Checking installed xezar-skills…'
   if (loadError) message = 'Update status is unavailable right now.'
-  else if (state?.status === 'available') message = 'An update is available for your installed Open Mercato skills.'
-  else if (state?.status === 'updating') message = 'Updating installed Open Mercato skills…'
-  else if (state?.status === 'current') message = 'Installed Open Mercato skills are up to date.'
+  else if (state?.status === 'available') message = 'An update is available for your installed xezar-skills.'
+  else if (state?.status === 'updating') message = 'Updating installed xezar-skills…'
+  else if (state?.status === 'current') message = 'Installed xezar-skills are up to date.'
   else if (state?.status === 'unavailable') message = state.scopes.find((scope) => scope.reason)?.reason ?? 'Automatic updates are unavailable.'
   else if (state?.status === 'error') message = 'The update did not finish for every installation.'
 
@@ -361,7 +361,7 @@ function SkillsUpdateCard({
         ) : null}
       </div>
       {(state?.status === 'unavailable' || loadError) ? <div className="mt-2 text-xs text-soft-foreground">Manual examples: <code>npx skills update -p</code> · <code>npx skills update -g</code>. These broad commands may update other tracked sources.</div> : null}
-      {state?.needsUpgradeNotes ? <div data-slot="skills-upgrade-notes" className="mt-3 flex gap-2 rounded-md border border-primary/30 bg-background p-2.5 text-xs text-foreground"><CheckCircle2Icon aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-primary" /><span>Skill files were updated. Run <code>/om-apply-upgrade-notes</code> in each configured repository to apply descriptor migrations while preserving local edits.</span></div> : null}
+      {state?.needsUpgradeNotes ? <div data-slot="skills-upgrade-notes" className="mt-3 flex gap-2 rounded-md border border-primary/30 bg-background p-2.5 text-xs text-foreground"><CheckCircle2Icon aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-primary" /><span>Skill files were updated. Run <code>/xez-apply-upgrade-notes</code> in each configured repository to apply descriptor migrations while preserving local edits.</span></div> : null}
       </section>
       <Dialog
         open={showUpgradeNotesPrompt}
@@ -372,7 +372,7 @@ function SkillsUpdateCard({
             <DialogTitle>Apply the upgrade notes now?</DialogTitle>
             <DialogDescription>
               The skill files were updated successfully. Start a new session with{' '}
-              <code>/om-apply-upgrade-notes</code> to sync repository descriptors while preserving local edits?
+              <code>/xez-apply-upgrade-notes</code> to sync repository descriptors while preserving local edits?
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

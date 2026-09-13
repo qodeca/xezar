@@ -110,7 +110,7 @@
       "kind": "message",
       "id": "item_2",
       "role": "assistant",
-      "text": "Done with the first pass — opened a draft PR: https://github.com/open-mercato/demo/pull/123."
+      "text": "Done with the first pass — opened a draft PR: https://github.com/qodeca/demo/pull/123."
     }
   },
   {
@@ -119,7 +119,7 @@
       "kind": "message",
       "id": "item_2",
       "role": "assistant",
-      "text": "Done with the first pass — opened a draft PR: https://github.com/open-mercato/demo/pull/123."
+      "text": "Done with the first pass — opened a draft PR: https://github.com/qodeca/demo/pull/123."
     }
   },
   {

@@ -16,7 +16,8 @@ import {
  * they are testable without a network clone — the gated repo set is otherwise a vendor default.
  */
 
-const OM = 'open-mercato/skills';
+const OM = 'qodeca/xezar-skills';
+const XEZ = 'qodeca/xezar-skills';
 const tempDirs: string[] = [];
 
 afterEach(async () => {
@@ -93,6 +94,15 @@ describe('filterImportedTeamSkills', () => {
   it('never gates a local skill (no team field), even when curated to nothing', () => {
     const skills = [localSkill('house-rules'), teamSkill('pr-create', OM)];
     expect(filterImportedTeamSkills(skills, gated, []).map((s) => s.name)).toEqual(['house-rules']);
+  });
+
+  it('maps a stored om-* importedSkills list onto the xez-* names', () => {
+    // A curated list written before the default repo moved to `qodeca/xezar-skills` names the
+    // old `om-*` skills; the renamed catalog must still show the matching `xez-*` skills.
+    const skills = [teamSkill('xez-fix', XEZ), teamSkill('xez-code-review', XEZ)];
+    expect(filterImportedTeamSkills(skills, new Set([XEZ]), ['om-fix']).map((s) => s.name)).toEqual([
+      'xez-fix',
+    ]);
   });
 
   it('gates nothing when the gated set is empty (repo configured its own skillsRepos)', () => {

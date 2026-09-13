@@ -560,7 +560,7 @@ Useful environment variables:
 | `OPENCODE_CONFIG_DIR` | Where xezar looks for OpenCode's config, ahead of `$XDG_CONFIG_HOME/opencode` (default `~/.config/opencode`). Config **only** — OpenCode keeps credentials in `~/.local/share/opencode`, so this moves settings without moving the account, which is why OpenCode cannot carry Agent accounts. |
 | `XEZ_BROWSE_ROOT=~/` | Default root for **Add project → Open local folder…**. The picker cannot navigate above it; a saved workspace value overrides the environment default and must name an existing folder. |
 | `XEZ_PROJECTS_DIR=~/xezar/projects` | Default destination for **Clone from GitHub**. Saved workspace settings override it, and missing directories are created recursively. |
-| `XEZ_SKILLS_AUTO_UPDATE=0` | Disable automatic checks and updates for upstream-CLI-tracked Open Mercato skill installations. On by default; a saved global Skills setting overrides this environment default. Checks are delayed, bounded, cached, and non-blocking. |
+| `XEZ_SKILLS_AUTO_UPDATE=0` | Disable automatic checks and updates for `npx skills`-tracked `qodeca/xezar-skills` installations. On by default; a saved global Skills setting overrides this environment default. Checks are delayed, bounded, cached, and non-blocking. |
 | `XEZ_AUTONOMOUS_DEFAULT=0` | Seed the New Task Autonomous default (`0` or `1`). Without a seed, skills default on and workflows off; a saved global Resources setting overrides it. |
 | `XEZ_WORKTREE_DEFAULT=1` | Seed the New Task Worktree default (`0` or `1`). Without a seed, eligible runs default on; a saved global Resources setting overrides it. |
 | `XEZ_DISABLE_REPO_LOCK=1` | **Dangerous escape hatch:** allow any run executing in the repository root — an explicit `worktree=false` run, non-Git degradation, or a continuation whose worktree cannot be restored — to proceed without Xezar’s repository-root lease. Agents can overwrite each other’s files or Git state; isolated worktree runs are unaffected. Off by default; only the exact value `1` enables it. |
@@ -574,9 +574,9 @@ Useful environment variables:
 | `XEZ_AGENT_TMPDIR=0` | Stop giving each task its own temp directory and hand agents the host `TMPDIR` again (pre-#785 behavior). On by default: every run gets `TMPDIR`/`TEMP`/`TMP` pointing at `.local/xezar/tmp/<task-id>`, created and write-probed before the agent spawns and reaped when the run ends, so concurrent tasks stop sharing one directory and a task refuses to start rather than run against a temp directory that silently swallows its shell output (see Troubleshooting below). Only an exact `0` disables it, and it disables the whole thing — the pre-spawn check included, so this stays an escape hatch you can actually take. |
 | `XEZ_REDACT_SECRETS=0` | Disable scrubbing of credential values/token shapes from the on-disk state (the NDJSON transcript and the free-text fields of `runs.json`). On by default; leave it on. Best-effort defense-in-depth, not a guarantee: it catches known token shapes and the values of your own secret-named env vars, so a credential in neither category can still get through. |
 | `XEZ_TITLE_UPDATES=0` | Turn off the live task-title refresh (namer re-runs on each turn end). The Settings → Agents toggle overrides this default. |
-| `XEZ_AUTONAME=0` | Disable ALL LLM task naming (creation + live) — titles stay heuristic (`437: /om-auto-review-pr`). Under `XEZ_DRY_RUN=1` naming is already off unless forced with `XEZ_AUTONAME=1`. |
+| `XEZ_AUTONAME=0` | Disable ALL LLM task naming (creation + live) — titles stay heuristic (`437: /xez-auto-review-pr`). Under `XEZ_DRY_RUN=1` naming is already off unless forced with `XEZ_AUTONAME=1`. |
 | `XEZ_REVIEW_GATE=1` | Turn ON the optional diff-first review gate (#489): a successful, non-autonomous run with changes parks at `review` (Accept / Send back / Draft PR) instead of finishing. Off by default — changed runs settle to `done` with the diff left in the worktree. Only `1` enables. The Settings → Agents toggle overrides this; autonomous runs always skip it. |
-| `XEZ_NO_BANNER=1` | Skip the `open-mercato/skills` banner on `xezar serve` startup. That is the default team skills repository — a separate, maintained repository, not a leftover of the rename from Cezar. (The cockpit no longer shows a banner — its skills now live on the Skills page's Manage panel — so this env var is the terminal banner's only switch.) |
+| `XEZ_NO_BANNER=1` | Skip the `qodeca/xezar-skills` banner on `xezar serve` startup. (The cockpit no longer shows a banner — its skills now live on the Skills page's Manage panel — so this env var is the terminal banner's only switch.) |
 | `VITE_XEZ_API_BASE=http://localhost:4321` | **Build time only**, and only when the cockpit bundle is deployed apart from the service it talks to. Empty (the default) means "the origin that served this page", which is right for both normal cases: the CLI serves the bundle itself, and `npm run dev` proxies `/api` to the local service. A deployment that must be configured without a rebuild can put `<meta name="xez-api-base" content="…">` in the served HTML instead, which wins over this. |
 
 ### Troubleshooting: the agent's shell returns nothing
@@ -756,8 +756,7 @@ never blocks startup):
 
 ```jsonc
 {
-  "skillsRepos": [{ "repo": "open-mercato/skills", "ref": "main" }], // team skills; [] disables
-  // open-mercato/skills is a separate, maintained skills repository, not a leftover of the Cezar rename.
+  "skillsRepos": [{ "repo": "qodeca/xezar-skills", "ref": "main" }], // team skills; [] disables
   // Team-skill repos are code-trusted: a skill body becomes an agent system prompt.
   // Only owner/name, https/ssh URLs, or local paths (`/abs`, `./rel`, `~/dir`,
   // `C:\dir`) are accepted — no ext::/fd:: transport helpers. Write a relative
@@ -771,6 +770,26 @@ never blocks startup):
   "baseBranch": "develop"    // branch worktrees fork from + PRs target (also settable in the Git tab)
 }
 ```
+
+### Migrating from the previous team skills repository
+
+Until 0.14.0 the default team skills repository was `open-mercato/skills` and its skills were
+named `om-*`. The default is now `qodeca/xezar-skills`, the same collection under `xez-*` names.
+xezar does not migrate an existing install, and the updater no longer recognises the old
+source, so a repository that installed the old set with `npx skills` moves by hand:
+
+```sh
+npx skills remove om-fix om-code-review … -p   # every om-* name in skills-lock.json; -g for a global install
+npx skills add qodeca/xezar-skills --skill '*'
+rm -rf ~/.cache/xez/skills/open-mercato__skills .claude/skills/om-*   # optional: orphaned clone cache and materialised copies
+```
+
+The last line is deliberate housekeeping – nothing reads those paths any more, and deleting them
+is always safe. A curated Manage-skills selection that still names `om-*` skills keeps working:
+xezar reads each `om-<name>` as `xez-<name>` and never rewrites the stored list. To keep loading
+the old repository instead, set `"skillsRepos": [{ "repo": "open-mercato/skills" }]` in
+`.xezar/config.json`: its skills load and are all enabled (a repo that names its own
+`skillsRepos` gates nothing), but they are no longer updated automatically.
 
 Put the same `"modelsLocked": true` key in `~/.xezar/config.json` to apply it
 to every registered project. When the key is absent or `false` in both config
