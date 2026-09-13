@@ -8,6 +8,8 @@ import { Link, useActiveProjectId } from '@/lib/project-router'
 import { McpOperationFeedback, type McpOperation } from '@/routes/task-thread/mcp-operation-feedback'
 import { McpCapabilities } from './mcp-capabilities'
 import { McpConnectionState } from './mcp-connection-state'
+import { withCode } from './mcp-copy'
+import { McpLeaderControl } from './mcp-leader-control'
 import { SettingsField } from './settings-field'
 
 /**
@@ -49,23 +51,14 @@ interface ClientSetup {
   notAutomatic: string
   /** An optional caveat D-04 records for this client. */
   caveat?: string
-}
-
-/**
- * Copy with `backticked` names, rendered as `<code>` instead of literal backticks (#301, C1).
- * The backtick is spelled `\x60`: the design guardian does not lex regex literals, and a literal
- * backtick there opens a template string that hides every later comment from its stripper.
- */
-function withCode(text: string): ReactNode {
-  return text.split(/\x60([^\x60]+)\x60/).map((part, i) =>
-    i % 2 ? (
-      <code key={i} className="font-mono break-words">
-        {part}
-      </code>
-    ) : (
-      part
-    ),
-  )
+  /**
+   * How to let xezar WAKE this leader — start turns in it on project events — for a client that
+   * supports it (Codex through its shared app-server, #374). A card-body block, not the caveat
+   * footnote: it is guidance a person acts on, and the footnote's small soft text is below AA on
+   * light (design review NB-4, known gap G-23). Absent for a client with no push path: nothing is
+   * claimed. The attach itself is the one control under Connection status.
+   */
+  wake?: ReactNode
 }
 
 /** The per-client setup facts, from D-04 § 3. Kept as data so the four cards cannot drift. */
@@ -108,7 +101,27 @@ args = ["-y", "@qodeca/xezar", "mcp"]`}
     notAutomatic:
       'Codex does not discover `.local/xezar/mcp-connection.json`. It also does not read a project `.codex/config.toml` at all until that project is trusted \u2014 so a user who writes the file but skips the trust step sees a silent nothing, with no error naming the cause.',
     caveat:
-      'Do not use `codex mcp add` \u2014 it has no scope flag and writes a machine-scope entry that would apply in every project. Attaching Codex for project-event delivery is optional: xezar discovers the running session and never asks for a socket path or port. When connected: “Codex connected. Project events can start a turn in your current session.” When unavailable: “xezar cannot reach this running Codex session for project-event delivery. Your events are saved. Use leader_events in Codex to read them; retry connecting when this session is available on Codex’s local app-server.”',
+      'Do not use `codex mcp add` — it has no scope flag and writes a machine-scope entry that would apply in every project.',
+    // #374: the attach path, in the card body (NB-4). What connected, unavailable and each refusal
+    // look like is no longer described here: the Connection status control shows the live one (NB-2),
+    // with the server's own blocker and fix (NB-1). `app-server` and `leader_events` are code (NB-3).
+    wake: (
+      <>
+        <span className="block">
+          {withCode(
+            'Attaching Codex is optional. It lets project events start a turn in the Codex session you already run, when that session runs on Codex’s shared local `app-server` under the same Codex home as xezar (`CODEX_HOME`, or `~/.codex` when it is not set):',
+          )}
+        </span>
+        <pre className="mt-2 rounded-md border border-border bg-muted p-3 font-mono text-[11px] leading-relaxed break-all whitespace-pre-wrap">
+          codex app-server --listen unix://
+        </pre>
+        <span className="mt-2 block">
+          {withCode(
+            'Then open your session in the Codex TUI in this project, let it call a xezar tool once (for example `leader_events`), and choose Attach leader under Connection status below. xezar finds the session itself and never asks for a socket path or port. If attaching is refused, Connection status names why and what to change. Without attaching nothing changes: Codex reads its events with `leader_events`.',
+          )}
+        </span>
+      </>
+    ),
   },
   {
     name: 'OpenCode',
@@ -278,10 +291,10 @@ export function McpConnectionSection() {
 }
 
 /**
- * The connection state the cockpit can TRUTHFULLY report from server facts, or `null` when it
- * cannot. The live owner state (`unowned | owned | expired`) is held by the server's MCP side and
- * no HTTP route exposes it yet, so in local mode this answers `null` and the surface says the
- * status is not reported here — it never guesses "ready" or "connected" (§8, §13).
+ * The state card the cockpit shows INSTEAD of the leader control, or `null` when the control
+ * reports it. Hosted mode cannot attach anything local, and a failed refetch makes everything
+ * last-known; in local mode the leader control reads `GET /api/v1/mcp/leader` itself, so this
+ * answers `null` — it never guesses "ready" or "connected" (§8, §13).
  */
 export function connectionStateFor(health: HealthResponse, refetchFailed: boolean): McpConnectionState | null {
   if (refetchFailed) return { kind: 'server-restarting' }
@@ -393,18 +406,14 @@ export function McpConnectionSurface({
       </SettingsField>
 
       {/* Connection state (#112) — only what the server reports, in a polite live region that is
-          always mounted, so a state change is announced without moving focus (U-M08). When the
-          server reports nothing, one line in the reader's voice says who does (C4). */}
+          always mounted, so a state change is announced without moving focus (U-M08). In local mode
+          the server reports the leader connection (`GET /api/v1/mcp/leader`), and the one leader
+          control shows it and attaches (#374, NB-2); the state cards cover hosted mode and a server
+          that stopped answering. */}
       <div data-slot="mcp-connection-status" aria-live="polite" className="min-w-0">
-        {connection ? (
-          <SettingsField title="Connection status" hint="What the server reports about the MCP leader connection for this project.">
-            <McpConnectionState state={connection} />
-          </SettingsField>
-        ) : (
-          <p data-slot="mcp-connection-status-unreported" className="text-[13px] leading-relaxed text-muted-foreground">
-            This page cannot tell whether a client is connected. Your leader client shows it.
-          </p>
-        )}
+        <SettingsField title="Connection status" hint="What the server reports about the MCP leader connection for this project.">
+          {connection ? <McpConnectionState state={connection} /> : <McpLeaderControl />}
+        </SettingsField>
       </div>
 
       {/* Operation outcomes (#113) — rendered from what the server reports, never invented; left
@@ -474,6 +483,12 @@ function ClientSetupCard({ client }: { client: ClientSetup }) {
         <p data-slot="mcp-client-not-automatic" className="rounded-md bg-muted p-2 text-muted-foreground">
           <span className="font-medium text-foreground">Not automatic:</span> {withCode(client.notAutomatic)}
         </p>
+        {client.wake ? (
+          <div data-slot="mcp-client-wake" className="text-foreground">
+            <span className="font-medium">Optional — let xezar wake this leader:</span>
+            <div className="mt-1">{client.wake}</div>
+          </div>
+        ) : null}
         {client.caveat ? (
           <p data-slot="mcp-client-caveat" className="text-[12px] text-soft-foreground">
             {withCode(client.caveat)}

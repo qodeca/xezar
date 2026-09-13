@@ -1,11 +1,11 @@
 import { QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ProjectScopeProvider } from '@/api/project-scope-context'
 import { createQueryClient } from '@/api/query-client'
-import type { HealthResponse, ProjectsResponse } from '@qodeca/xezar-api-client'
+import type { HealthResponse, McpLeaderBlocker, McpLeaderStatus, ProjectsResponse } from '@qodeca/xezar-api-client'
 import { McpConnectionSection } from './mcp-connection-section'
 import { SETTINGS_SECTIONS, visibleSettingsSections } from './registry'
 
@@ -57,6 +57,19 @@ const REGISTRY: ProjectsResponse = {
   projectsDir: '~/xezar/projects',
 }
 
+/** The server's no-leader blocker, abridged: what it says and the Codex remedy it gives. */
+const NO_LEADER: McpLeaderBlocker = {
+  code: 'no-leader-session',
+  message:
+    'No leader session is attached to this project, so events are kept in the journal, not pushed. A Claude Code session, or a pi without xezar’s leader extension, reads its events with the leader_events tool.',
+  fix: 'Keep using leader_events from your own leader, or attach one. For Codex: run it on Codex’s shared local app-server (`codex app-server --listen unix://`), let the session call a xezar tool once, then attach it.',
+}
+
+/** A `GET /api/v1/mcp/leader` answer; nothing attached and no owner unless the case says so. */
+function leaderStatus(over: Partial<Extract<McpLeaderStatus, { available: true }>> = {}): McpLeaderStatus {
+  return { available: true, owner: null, leader: null, delivery: null, blocker: NO_LEADER, ...over }
+}
+
 function serve(routes: Record<string, unknown>): void {
   fetchMock.mockImplementation(async (input) => {
     const path = String(input)
@@ -71,7 +84,7 @@ function serve(routes: Record<string, unknown>): void {
 function renderSection(overrides: { health?: HealthResponse; registry?: ProjectsResponse } = {}) {
   const health = overrides.health ?? HEALTH
   const registry = overrides.registry ?? REGISTRY
-  serve({ '/api/v1/health': health, '/api/v1/projects': registry })
+  serve({ '/api/v1/health': health, '/api/v1/projects': registry, '/api/v1/mcp/leader': leaderStatus() })
   return render(
     <QueryClientProvider client={createQueryClient()}>
       <MemoryRouter initialEntries={['/p/xezar/settings/mcp-connection']}>
@@ -220,9 +233,10 @@ describe('MCP connection section copy (#301, the design pass on #296)', () => {
     expect(text).not.toContain('stated plainly')
     expect(text).not.toContain('NOT automatic')
     expect(text).not.toContain('Nothing here reads that file')
-    expect(container.querySelector('[data-slot="mcp-connection-status-unreported"]')?.textContent).toBe(
-      'This page cannot tell whether a client is connected. Your leader client shows it.',
-    )
+    // The one-line "cannot tell" fallback is gone: the server reports the leader connection now, and
+    // the Connection status area shows it (design review NB-2 on #403).
+    expect(container.querySelector('[data-slot="mcp-connection-status-unreported"]')).toBeNull()
+    expect(text).not.toContain('This page cannot tell whether a client is connected')
   })
 
   it('leaves out a section no route can fill, instead of showing it empty (C3)', async () => {
@@ -375,5 +389,211 @@ describe('MCP connection section — the pi card (#341, WP3 of #330)', () => {
     expect(container.querySelector('[data-slot="mcp-client-claude-code"] [data-slot="mcp-client-caveat"]')?.textContent).toContain(
       'writes a tracked .mcp.json, which pi reads too,',
     )
+  })
+})
+
+/**
+ * Round 4 on #403: the QA FAIL ("a person cannot attach from the cockpit") and design review NB-1…NB-4.
+ * The Connection status area is ONE generic leader control driven by `GET /api/v1/mcp/leader`, and its
+ * Attach leader action POSTs the same route with the client derived from that status. Every state it
+ * can be in is reached here through the real section, with only `fetch` stubbed.
+ */
+describe('MCP connection section — the leader control (#374, round 4 on #403)', () => {
+  const DELIVERY = { state: 'idle', deliveredSeq: 1, ackedSeq: 0, reactedSeq: 1, latestSeq: 1 } as const
+
+  /** Serve the section with `status` for GET and `answer` for POST; every POST body is recorded. */
+  function renderLeader(status: McpLeaderStatus, answer?: (body: unknown) => { status: number; body: unknown; then?: McpLeaderStatus }) {
+    let current = status
+    const posted: unknown[] = []
+    const leaderReads = { count: 0 }
+    fetchMock.mockImplementation(async (input, init) => {
+      const path = String(input)
+      const json = (value: unknown, code = 200) => new Response(JSON.stringify(value), { status: code, headers: { 'content-type': 'application/json' } })
+      if (path === '/api/v1/health') return json(HEALTH)
+      if (path === '/api/v1/projects') return json(REGISTRY)
+      if (path === '/api/v1/mcp/leader' && (init?.method ?? 'GET') === 'POST') {
+        const body = JSON.parse(String(init?.body))
+        posted.push(body)
+        const out = answer?.(body) ?? { status: 200, body: current }
+        if (out.then) current = out.then
+        return json(out.body, out.status)
+      }
+      if (path === '/api/v1/mcp/leader') {
+        leaderReads.count += 1
+        return json(current)
+      }
+      return json({ error: 'not found' }, 404)
+    })
+    const view = render(
+      <QueryClientProvider client={createQueryClient()}>
+        <MemoryRouter initialEntries={['/p/xezar/settings/mcp-connection']}>
+          <ProjectScopeProvider projectId={null}>
+            <McpConnectionSection />
+          </ProjectScopeProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+    const control = async (): Promise<Element> => {
+      await waitFor(() => expect(view.container.querySelector('[data-slot="mcp-leader"]')).toBeTruthy())
+      return view.container.querySelector('[data-slot="mcp-leader"]')!
+    }
+    return { ...view, posted, leaderReads, control }
+  }
+
+  const codes = (el: Element) => [...el.querySelectorAll('code')].map((code) => code.textContent)
+  const attachButton = (el: Element) => el.querySelector<HTMLButtonElement>('[data-slot="mcp-leader-attach-button"]')
+
+  it('no owner and no leader: says so, shows the server’s no-leader blocker and fix, and offers the client picker', async () => {
+    const control = await renderLeader(leaderStatus()).control()
+    expect(control.getAttribute('data-state')).toBe('no-owner')
+    expect(control.querySelector('[data-slot="mcp-leader-owner"]')?.textContent).toBe('None')
+    expect(control.querySelector('[data-slot="mcp-leader-attached"]')?.textContent).toBe('None attached')
+    expect(control.querySelector('[data-slot="mcp-leader-summary"]')?.textContent).toContain('No leader client is connected to this project.')
+    const blocker = control.querySelector('[data-slot="mcp-leader-blocker"]')!
+    expect(blocker.getAttribute('data-code')).toBe('no-leader-session')
+    expect(blocker.textContent).toContain('Fix: Keep using leader_events')
+    // NB-3: leader_events and app-server render as code, even where the server's copy is plain text.
+    expect(codes(blocker)).toEqual(expect.arrayContaining(['leader_events', 'app-server', 'codex app-server --listen unix://']))
+    const radios = [...control.querySelectorAll('[role="radiogroup"] [role="radio"]')].map((radio) => radio.textContent)
+    expect(radios).toEqual(['Codex', 'OpenCode', 'pi', 'Claude Code'])
+    expect(attachButton(control)?.textContent).toBe('Attach leader')
+  })
+
+  it('attached pull-only: an unidentified owner reads with leader_events, and picking Claude Code explains there is nothing to attach', async () => {
+    const control = await renderLeader(leaderStatus({ owner: { client: null }, delivery: DELIVERY })).control()
+    expect(control.getAttribute('data-state')).toBe('owner')
+    expect(control.querySelector('[data-slot="mcp-leader-owner"]')?.textContent).toBe('Not identified')
+    expect(control.querySelector('[data-slot="mcp-leader-summary"]')?.textContent).toBe(
+      'A client owns this project and reads its events with leader_events. Nothing is attached, so events start no turn in it.',
+    )
+    fireEvent.click(control.querySelector('[role="radio"][data-value="claude-code"]')!)
+    expect(control.querySelector('[role="radio"][data-value="claude-code"]')?.getAttribute('aria-checked')).toBe('true')
+    expect(control.querySelector('[data-slot="mcp-leader-note"]')?.textContent).toContain('There is nothing to attach')
+    expect(attachButton(control)).toBeNull()
+    // pi: the button stays, and the note says what it takes.
+    fireEvent.click(control.querySelector('[role="radio"][data-value="pi"]')!)
+    expect(control.querySelector('[data-slot="mcp-leader-note"]')?.textContent).toContain('Works when this pi runs xezar’s leader extension')
+    expect(attachButton(control)).toBeTruthy()
+  })
+
+  it('a Codex owner: Attach leader posts {action: "attach", client: "codex"} with no address, and the answer shows Codex connected', async () => {
+    const attached = leaderStatus({ owner: { client: 'codex' }, leader: { client: 'codex', state: 'attached' }, delivery: DELIVERY, blocker: null })
+    const view = renderLeader(leaderStatus({ owner: { client: 'codex' }, delivery: DELIVERY }), () => ({ status: 200, body: attached, then: attached }))
+    const control = await view.control()
+    expect(control.querySelector('[data-slot="mcp-leader-owner"]')?.textContent).toBe('Codex')
+    // Derived from the status: no picker, no address fields.
+    expect(control.querySelector('[role="radiogroup"]')).toBeNull()
+    expect(control.querySelector('input')).toBeNull()
+    fireEvent.click(attachButton(control)!)
+    await waitFor(() => expect(view.container.querySelector('[data-slot="mcp-leader"]')?.getAttribute('data-state')).toBe('delivering'))
+    expect(view.posted).toEqual([{ action: 'attach', client: 'codex' }])
+    const after = view.container.querySelector('[data-slot="mcp-leader"]')!
+    expect(after.querySelector('[data-slot="mcp-leader-summary"]')?.textContent).toBe('Codex connected. Project events can start a turn in your current session.')
+    expect(after.querySelector('[data-slot="mcp-leader-attached"]')?.textContent).toBe('Codex, attached')
+  })
+
+  it('attached and delivering: the connected sentence, no blocker, and nothing to click but the status itself', async () => {
+    const control = await renderLeader(leaderStatus({ owner: { client: 'codex' }, leader: { client: 'codex', state: 'attached' }, delivery: DELIVERY, blocker: null })).control()
+    expect(control.getAttribute('data-state')).toBe('delivering')
+    expect(control.querySelector('[data-slot="mcp-leader-blocker"]')).toBeNull()
+    expect(attachButton(control)).toBeNull()
+    expect(control.querySelector('[data-slot="mcp-leader-attach"]')).toBeNull()
+  })
+
+  // NB-1: each recoverable refusal is named with its own fix, from the status — not one generic sentence.
+  const CANNOT_REACH =
+    'xezar cannot reach this running Codex session for project-event delivery. Your events are saved. Use leader_events in Codex to read them; retry connecting when this session is available on Codex’s local app-server.'
+  const BLOCKERS: Array<[string, McpLeaderStatus, string]> = [
+    ['codex-session-not-targetable', leaderStatus({ owner: { client: 'codex' }, delivery: DELIVERY, blocker: { code: 'codex-session-not-targetable', message: CANNOT_REACH, fix: 'Your Codex session has not called a xezar tool yet, so xezar does not know which session it is. Let it call one once (for example leader_events), then attach it again.' } }), 'has not called a xezar tool yet'],
+    ['codex-app-server-unreachable', leaderStatus({ owner: { client: 'codex' }, delivery: DELIVERY, blocker: { code: 'codex-app-server-unreachable', message: CANNOT_REACH, fix: 'No shared Codex app-server answered in the Codex home xezar uses. Run Codex’s shared local app-server there (`codex app-server --listen unix://`), open your session in the Codex TUI, then attach again.' } }), 'No shared Codex app-server answered'],
+    ['codex-home-mismatch', leaderStatus({ owner: { client: 'codex' }, delivery: DELIVERY, blocker: { code: 'codex-home-mismatch', message: CANNOT_REACH, fix: 'The Codex app-server xezar found runs under a different Codex home than the one xezar uses. Start `xezar serve` and Codex with the same CODEX_HOME, then attach again.' } }), 'same CODEX_HOME'],
+    ['codex-thread-not-loaded', leaderStatus({ owner: { client: 'codex' }, leader: { client: 'codex', state: 'attached' }, delivery: DELIVERY, blocker: { code: 'codex-thread-not-loaded', message: CANNOT_REACH, fix: 'This Codex session is not loaded on the app-server. Open the session in your Codex TUI again, let it call a xezar tool once, then attach again.' } }), 'Open the session in your Codex TUI again'],
+    ['codex-thread-state-unknown', leaderStatus({ owner: { client: 'codex' }, leader: { client: 'codex', state: 'attached' }, delivery: DELIVERY, blocker: { code: 'codex-thread-state-unknown', message: 'xezar could not read the state of this Codex session, so it holds events rather than risk interrupting an approval or a question.', fix: 'Nothing is needed once Codex reports the session’s state again. Meanwhile, use leader_events in Codex.' } }), 'reports the session’s state again'],
+    ['no-owner-session', leaderStatus({ leader: { client: 'codex', state: 'attached' }, blocker: { code: 'no-owner-session', message: 'A Codex leader is attached, but no MCP session owns this project yet, so nothing follows the event journal and nothing is delivered.', fix: 'Let the attached Codex session call a xezar tool once (for example leader_events), so its MCP connection opens.' } }), 'call a xezar tool once'],
+  ]
+  for (const [code, status, fix] of BLOCKERS) {
+    it(`names the ${code} blocker from the status with its own Fix, and offers the attach again`, async () => {
+      const control = await renderLeader(status).control()
+      const blocker = control.querySelector('[data-slot="mcp-leader-blocker"]')!
+      expect(blocker.getAttribute('data-code')).toBe(code)
+      expect(blocker.querySelectorAll('p')[1]?.textContent).toMatch(/^Fix: /)
+      expect(blocker.textContent).toContain(fix)
+      expect(codes(blocker)).toContain('leader_events')
+      if (status.available && status.leader) {
+        expect(control.getAttribute('data-state')).toBe('blocked')
+        expect(control.querySelector('[data-slot="mcp-leader-summary"]')?.textContent).toBe('Codex is attached, but events are waiting.')
+      }
+      expect(attachButton(control)).toBeTruthy()
+    })
+  }
+
+  it('a refusal the status explains is not said twice; one it does not explain is shown in the server’s words', async () => {
+    const refusedByHome = leaderStatus({ owner: { client: 'codex' }, delivery: DELIVERY, blocker: BLOCKERS[2]![1].available ? (BLOCKERS[2]![1] as { blocker: McpLeaderBlocker }).blocker : NO_LEADER })
+    const codex = renderLeader(leaderStatus({ owner: { client: 'codex' }, delivery: DELIVERY }), () => ({ status: 409, body: { error: CANNOT_REACH }, then: refusedByHome }))
+    fireEvent.click(attachButton(await codex.control())!)
+    await waitFor(() => expect(codex.container.querySelector('[data-slot="mcp-leader-blocker"]')?.getAttribute('data-code')).toBe('codex-home-mismatch'))
+    expect(codex.container.querySelector('[data-slot="mcp-leader-refusal"]')).toBeNull()
+    cleanup()
+
+    const piRefusal = 'xezar has no live link to a pi leader for this project. Events stay in the project journal and nothing is lost.'
+    const pi = renderLeader(leaderStatus(), () => ({ status: 409, body: { error: piRefusal } }))
+    const control = await pi.control()
+    fireEvent.click(control.querySelector('[role="radio"][data-value="pi"]')!)
+    fireEvent.click(attachButton(control)!)
+    await waitFor(() => expect(pi.container.querySelector('[data-slot="mcp-leader-refusal"]')?.textContent).toBe(piRefusal))
+    expect(pi.container.querySelector('[data-slot="mcp-leader-refusal"]')?.getAttribute('role')).toBe('alert')
+    expect(pi.posted).toEqual([{ action: 'attach', client: 'pi' }])
+  })
+
+  it('OpenCode keeps its address fields: Attach waits for both, then posts them trimmed', async () => {
+    const view = renderLeader(leaderStatus())
+    const control = await view.control()
+    fireEvent.click(control.querySelector('[role="radio"][data-value="opencode"]')!)
+    expect(attachButton(control)?.disabled).toBe(true)
+    fireEvent.change(view.getByLabelText('Server address'), { target: { value: ' http://127.0.0.1:4096 ' } })
+    expect(attachButton(control)?.disabled).toBe(true)
+    fireEvent.change(view.getByLabelText('Session id'), { target: { value: 'ses_1 ' } })
+    expect(attachButton(control)?.disabled).toBe(false)
+    fireEvent.click(attachButton(control)!)
+    await waitFor(() => expect(view.posted).toHaveLength(1))
+    expect(view.posted[0]).toEqual({ action: 'attach', client: 'opencode', baseUrl: 'http://127.0.0.1:4096', sessionId: 'ses_1' })
+  })
+
+  it('Refresh re-reads the status, so a session that just called a tool shows up without a reload', async () => {
+    const view = renderLeader(leaderStatus({ owner: { client: null }, delivery: DELIVERY }))
+    const control = await view.control()
+    const before = view.leaderReads.count
+    fireEvent.click(control.querySelector('[data-slot="mcp-leader-refresh"]')!)
+    await waitFor(() => expect(view.leaderReads.count).toBeGreaterThan(before))
+  })
+
+  it('the MCP service not running: shows the server’s reason and no action', async () => {
+    const control = await renderLeader({ available: false, reason: 'The MCP service is not running for this project, so there is no event delivery to report.' }).control()
+    expect(control.getAttribute('data-state')).toBe('unavailable')
+    expect(control.textContent).toBe('The MCP service is not running for this project, so there is no event delivery to report.')
+    expect(attachButton(control)).toBeNull()
+  })
+
+  it('hosted mode shows the state card and no leader control: nothing local can be attached from there', async () => {
+    const { container } = renderSection({ health: { ...HEALTH, capabilities: { ...HEALTH.capabilities, localHandoff: false } } })
+    await waitFor(() => expect(container.querySelector('[data-slot="mcp-connection-state"]')).toBeTruthy())
+    expect(container.querySelector('[data-slot="mcp-leader"]')).toBeNull()
+    expect(container.querySelector('[data-slot="mcp-leader-attach-button"]')).toBeNull()
+  })
+
+  it('puts the Codex attach guidance in a card-body block, not the footnote (NB-4), with app-server and leader_events as code (NB-3)', async () => {
+    const { container } = renderSection()
+    await waitFor(() => expect(container.querySelector('[data-slot="mcp-client-codex"]')).toBeTruthy())
+    const card = container.querySelector('[data-slot="mcp-client-codex"]')!
+    const wake = card.querySelector('[data-slot="mcp-client-wake"]')!
+    expect(wake).toBeTruthy()
+    expect(wake.className).not.toContain('text-soft-foreground')
+    expect(wake.querySelector('pre')?.textContent?.trim()).toBe('codex app-server --listen unix://')
+    expect(wake.textContent).toContain('choose Attach leader under Connection status below')
+    expect(wake.textContent).toContain('never asks for a socket path or port')
+    expect(codes(wake)).toEqual(expect.arrayContaining(['app-server', 'CODEX_HOME', 'leader_events']))
+    // The footnote keeps only its own caveat: no attach, status or blocker copy in 12 px soft text.
+    const caveat = card.querySelector('[data-slot="mcp-client-caveat"]')!
+    expect(caveat.textContent).toBe('Do not use codex mcp add — it has no scope flag and writes a machine-scope entry that would apply in every project.')
   })
 })

@@ -2,6 +2,7 @@ import { useMutation, useQueries, useQuery, useQueryClient, type QueryClient } f
 import { useCallback, useEffect, useMemo } from 'react'
 
 import { mergeProviderStatusResponse } from '@/lib/provider-status'
+import type { McpLeaderActionInput } from '@qodeca/xezar-api-client'
 
 import {
   ApiError,
@@ -58,6 +59,8 @@ import {
   applySkillsUpdate,
   getWorktrees,
   getMcpApiReference,
+  getMcpLeader,
+  actOnMcpLeader,
   editQueuedMessage,
   markRunSeen,
   markRunUnseen,
@@ -191,6 +194,10 @@ export const queryKeys = {
   /** The read-only MCP API reference (`GET /api/v1/mcp/reference`, #284). */
   get mcpApiReference() {
     return [queryScope(), 'mcp-api-reference'] as const
+  },
+  /** The leader connection behind Settings → MCP connection (`GET /api/v1/mcp/leader`, #374). */
+  get mcpLeader() {
+    return [queryScope(), 'mcp-leader'] as const
   },
   github: (params: { limit?: number } = {}) => [queryScope(), 'github', params.limit ?? null] as const,
   /** Lazy PR checks glyphs (`GET /api/github/checks`, #664), keyed by the sorted PR numbers so the
@@ -1092,6 +1099,35 @@ export function useMcpApiReference() {
     queryFn: ({ signal }) => getMcpApiReference({ signal }),
     staleTime: Infinity,
     refetchOnWindowFocus: false,
+  })
+}
+
+/**
+ * The project's leader connection (`GET /api/v1/mcp/leader`, #374): who owns the project, which
+ * leader is attached, and the recoverable blocker when events are waiting. Read on mount, on focus
+ * and after every action. There is no live topic for it yet, so the control offers Refresh; a topic
+ * is the right shape when one is added (patterns.md § 10), never a `refetchInterval`.
+ */
+export function useMcpLeader() {
+  return useQuery({
+    queryKey: queryKeys.mcpLeader,
+    queryFn: ({ signal }) => getMcpLeader({ signal }),
+  })
+}
+
+/**
+ * Attach the project's leader. A success answers the new status, written straight into the cache; a
+ * refusal (409) re-reads it, because the status names WHICH refusal it was and what to change. No
+ * retry: a refusal's answer does not change by asking again.
+ */
+export function useMcpLeaderAction() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: McpLeaderActionInput) => actOnMcpLeader(input),
+    onSuccess: (status) => queryClient.setQueryData(queryKeys.mcpLeader, status),
+    onError: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.mcpLeader })
+    },
   })
 }
 

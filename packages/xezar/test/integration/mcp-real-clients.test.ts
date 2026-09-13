@@ -2407,8 +2407,11 @@ describe('A-19 — immediate acceptance, delivery, and a real model reaction', (
     writeFileSync(join(base, 'pty-host.py'), PTY_HOST);
     const mine = (): ModelRequest[] => fx.endpoint.requests.filter((request) => request.model === CODEX_MODEL);
     const serveLog = (): string => readFileSync(serve.transcript.path, 'utf8');
-    const leader = async (): Promise<any> => (await cockpit(serve, '/api/v1/mcp/leader')).json;
-    const attach = (): Promise<{ status: number; json: any }> => cockpit(serve, '/api/v1/mcp/leader', 'POST', { action: 'attach', client: 'codex' });
+    // The route the cockpit's leader control calls from Settings → MCP connection: project-scoped,
+    // because the settings page lives under `/p/<project>/` (#403 round 4, the QA FAIL).
+    const leaderRoute = `/api/v1/p/${serve.projectId}/mcp/leader`;
+    const leader = async (): Promise<any> => (await cockpit(serve, leaderRoute)).json;
+    const attach = (client = 'codex'): Promise<{ status: number; json: any }> => cockpit(serve, leaderRoute, 'POST', { action: 'attach', client });
     const startAppServer = (home: string, name: string): ChildProcess => {
       transcript.line('$', `${resolved.bin} app-server --listen unix://   (CODEX_HOME ${home.replace(base, '<base>')}, ${name})`);
       const child = spawn(resolved.bin, ['app-server', '--listen', 'unix://'], { cwd: root, env: { ...env, CODEX_HOME: home }, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -2473,9 +2476,13 @@ describe('A-19 — immediate acceptance, delivery, and a real model reaction', (
       const other = await observer.request('thread/start', { cwd: root });
       const otherId = other.result?.thread?.id as string | undefined;
 
-      const attached = await attach();
+      // The person's journey: Settings → MCP connection reads this status, and its Attach leader derives
+      // the client from `owner.client` — Codex, once the session's tool call announced its thread.
+      const offered = await waitFor('the owner to be identified as Codex', async () => ((await leader())?.owner?.client === 'codex' ? leader() : undefined), 30_000).catch(() => leader());
+      checks.push({ name: 'the cockpit’s leader control offers Attach for this Codex session', required: '`GET /api/v1/p/<project>/mcp/leader` names the owner `codex` with nothing attached, so Attach leader posts `{action:"attach", client:"codex"}`', observed: { owner: offered?.owner ?? null, leader: offered?.leader ?? null }, ok: offered?.owner?.client === 'codex' && offered?.leader === null });
+      const attached = await attach(offered?.owner?.client ?? 'codex');
       const ready = await waitFor('the Codex leader to be attached with an owner session', async () => ((await leader())?.blocker === null ? leader() : undefined), 60_000).catch(() => leader());
-      checks.push({ name: 'the cockpit attach discovers the session with no path, port or thread id', required: '`POST /mcp/leader {action:"attach", client:"codex"}` answers 200 with a codex leader, then no blocker', observed: { status: attached.status, leader: attached.json?.leader ?? attached.json?.error, blocker: ready?.blocker ?? null }, ok: attached.status === 200 && attached.json?.leader?.client === 'codex' && ready?.blocker === null });
+      checks.push({ name: 'the cockpit attach discovers the session with no path, port or thread id', required: 'the same route’s `POST {action:"attach", client:"codex"}` answers 200 with a codex leader, then no blocker', observed: { status: attached.status, leader: attached.json?.leader ?? attached.json?.error, blocker: ready?.blocker ?? null }, ok: attached.status === 200 && attached.json?.leader?.client === 'codex' && ready?.blocker === null });
 
       await delay(5_000);
       const before = mine().length;
@@ -2519,9 +2526,10 @@ describe('A-19 — immediate acceptance, delivery, and a real model reaction', (
       const unloadedAfterMs = await waitFor('app-server to unload the exited TUI’s thread', async () => (!(await loadedIds()).includes(threadId) ? Date.now() - exitAt : undefined), 240_000).catch(() => undefined);
       checks.push({ name: 'xezar does not keep an exited TUI’s thread alive', required: 'with the TUI gone, app-server unloads the thread (xezar holds its subscription only during a hand-off)', observed: unloadedAfterMs === undefined ? 'still loaded after 240 s' : `unloaded ${Math.round(unloadedAfterMs / 1000)} s after the TUI exited`, ok: unloadedAfterMs !== undefined });
       // The TUI's own MCP bridge exits with it, so the owner session goes first: measured, the cockpit
-      // reports `no-owner-session` here, and `codex-session-not-targetable` only while an owner
-      // session outlives its thread (fixture-tested in codex.test.ts). Either is recoverable.
-      const RECOVERABLE = ['no-owner-session', 'codex-session-not-targetable'];
+      // reports `no-owner-session` here, and Codex's own named blocker — `codex-thread-not-loaded`, or
+      // `codex-app-server-unreachable` if the link went — only while an owner session outlives its
+      // thread (fixture-tested in codex.test.ts). Each is recoverable.
+      const RECOVERABLE = ['no-owner-session', 'codex-thread-not-loaded', 'codex-app-server-unreachable'];
       const named = await waitFor('a recoverable blocker', async () => {
         const status = await leader();
         return RECOVERABLE.includes(status?.blocker?.code) ? status : undefined;
