@@ -53,14 +53,24 @@ test('runtime remains ignored including unknown future state; all maintained rol
  assert.equal(fs.readdirSync(path.join(kit,'skills')).filter(x=>x.endsWith('.md')).length,18);
  for(const f of ['README.md','business-analysis.md','close-out.md','enhancement-ideas.md','lessons-learned.md','parallel-tasks.md','recovery.md','single-task-pilot.md','ui-operations.md','upgrade-checklist.md','worktrees.md','dogfooding.md'])assert.ok(fs.existsSync(path.join(kit,'docs',f)));
 });
-test('SDLC policy never maps unknown labels or failed QA to merge eligibility',async()=>{
+test('SDLC policy never maps unknown labels, failed QA or a missing design approval to merge eligibility',async()=>{
  const {projectPolicy}=await import('./lib/project-policy.mjs');
+ const L=(...names)=>({labels:names.map(name=>({name}))});
  assert.ok(projectPolicy({}).unavailable);assert.ok(projectPolicy({labels:[{}]}).unavailable);
- for(const label of ['blocked','do-not-merge','qa','qa-failed'])assert.ok(projectPolicy({labels:[{name:label}]}).refused);
- assert.ok(projectPolicy({labels:[{name:'needs-qa'}]}).refused);
- assert.ok(projectPolicy({labels:[{name:'needs-qa'},{name:'skip-qa'}]}).refused);
- assert.equal(projectPolicy({labels:[{name:'needs-qa'},{name:'qa-approved'}]}).passed,true);
- assert.equal(projectPolicy({labels:[]}).passed,true);
+ for(const label of ['blocked','do-not-merge','qa','qa-failed','design','design-failed'])assert.ok(projectPolicy(L(label)).refused,label);
+ assert.ok(projectPolicy(L('needs-qa')).refused);
+ assert.ok(projectPolicy(L('needs-qa','skip-qa')).refused);
+ assert.equal(projectPolicy(L('needs-qa','qa-approved')).passed,true);
+ // The design gate mirrors the QA gate and neither label satisfies the other (SDLC.md § The design gate).
+ assert.ok(projectPolicy(L('needs-design')).refused,'needs-design alone');
+ assert.ok(projectPolicy(L('needs-design','skip-design')).refused,'needs-design with skip-design');
+ assert.equal(projectPolicy(L('needs-design','design-approved')).passed,true);
+ assert.ok(projectPolicy(L('needs-qa','qa-approved','needs-design')).refused,'QA approval does not satisfy the design gate');
+ assert.ok(projectPolicy(L('needs-design','design-approved','needs-qa')).refused,'design approval does not satisfy the QA gate');
+ assert.equal(projectPolicy(L('needs-qa','qa-approved','needs-design','design-approved')).passed,true);
+ assert.equal(projectPolicy(L('skip-design')).passed,true);
+ assert.equal(projectPolicy(L('needs-design','design-approved','design-self-verified')).passed,true);
+ assert.equal(projectPolicy(L()).passed,true);
  const source=fs.readFileSync(path.join(checks,'integration-preflight.sh'),'utf8');assert.match(source,/lib\/project-policy\.mjs/);assert.match(source,/PROJECT_CHECKS=\("Typecheck, unit tests, build, and package" "Cockpit browser e2e" "Xezar infrastructure fixtures"\)/);assert.match(source,/SKIP_ALLOWED=\(\)/);
 });
 test('guidance covers semantic analysis, stage ownership, squash policy and evidence tiers',()=>{

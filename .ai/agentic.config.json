@@ -32,6 +32,10 @@
       "skip-qa",
       "qa-approved",
       "qa-self-verified",
+      "needs-design",
+      "skip-design",
+      "design-approved",
+      "design-self-verified",
       "in-progress"
     ],
     "priority": [
@@ -46,6 +50,7 @@
     "runs": ".local/runs",
     "analysis": ".local/analysis",
     "specs": "docs/features",
+    "designs": "designs",
     "scripts": "scripts",
     "qa": ".local/qa"
   },
