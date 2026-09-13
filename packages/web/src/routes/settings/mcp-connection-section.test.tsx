@@ -377,3 +377,40 @@ describe('MCP connection section — the pi card (#341, WP3 of #330)', () => {
     )
   })
 })
+
+describe('MCP connection section — the Claude Code wake copy (#374, O-1 / AC-9)', () => {
+  async function claudeCard() {
+    const { container } = renderSection()
+    await waitFor(() => expect(container.querySelector('[data-slot="mcp-client-claude-code"]')).toBeTruthy())
+    return container.querySelector('[data-slot="mcp-client-claude-code"]')!
+  }
+
+  it('documents the channel flag comprehensively: what it does, the confirmation screen, the login and admin conditions, and the pull-only default', async () => {
+    // RED against: the Claude Code card carrying no wake block (the `wake` field missing or unrendered),
+    // so a required O-1 documentation place is empty.
+    const wake = (await claudeCard()).querySelector('[data-slot="mcp-client-wake"]')!
+    expect(wake, 'the Claude Code card has a wake block').toBeTruthy()
+    const text = wake.textContent ?? ''
+    expect(wake.querySelector('pre')?.textContent).toContain('claude --dangerously-load-development-channels server:xezar')
+    // What it does and why it is needed.
+    expect(text).toContain('push messages into your session')
+    // The confirmation screen shown every launch.
+    expect(text).toContain('Claude Code shows a warning each time')
+    // The feature-flag-service / Team-Enterprise conditions.
+    expect(text).toContain('a Team or Enterprise admin must turn them on')
+    expect(text).toContain('claude.ai or Anthropic Console API-key login')
+    expect(text).toContain('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC')
+    // The pull-only default holds without the flag.
+    expect(text).toContain('Without the flag nothing changes')
+    expect(text).toContain('leader_events')
+  })
+
+  it('gives only Claude Code a wake block: no other client claims a push path (zero config default stays pull-only)', async () => {
+    // RED against: the wake block leaking onto a client with no channel path.
+    const { container } = renderSection()
+    await waitFor(() => expect(container.querySelector('[data-slot="mcp-client-claude-code"]')).toBeTruthy())
+    for (const slot of ['mcp-client-codex', 'mcp-client-opencode', 'mcp-client-pi']) {
+      expect(container.querySelector(`[data-slot="${slot}"] [data-slot="mcp-client-wake"]`), `${slot} has no wake block`).toBeNull()
+    }
+  })
+})

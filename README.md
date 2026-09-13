@@ -841,6 +841,35 @@ here or anywhere else in the cockpit. pi's MCP files are listed because the
 `pi-mcp-adapter` extension reads them — pi itself reads no MCP config, which is
 what **Settings → MCP connection** walks you through installing.
 
+### Waking a Claude Code leader (opt-in)
+
+A project leader you run reads its events with the `leader_events` MCP tool, so
+by default nothing is pushed to it: you pull. A **Claude Code** leader can also be
+**woken** when something happens in the project, over Claude Code Channels. This is
+opt-in and off by default — the zero-config default stays pull-only, and xezar
+gains no setting and no environment variable for it. The only switch is a flag you
+add when you start Claude Code:
+
+```bash
+claude --dangerously-load-development-channels server:xezar
+```
+
+That flag is how Claude Code lets a server that is not on Anthropic's approved list
+push messages into your session. **Claude Code shows a warning every time you launch
+with it** — choose "I am using this for local development" if you accept it. Then
+attach the leader on **Settings → MCP connection**, and a project event becomes a
+message in the running session.
+
+Channels are a Claude Code research preview, so the wake only works on a first-party
+login: they need a claude.ai or Anthropic Console API-key login, they do not work on
+Amazon Bedrock, Google Vertex or Microsoft Foundry, a Team or Enterprise admin must
+turn them on, and they are off while `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` is
+set. When any of those is not met the event is **never lost** — it stays in the
+journal and the cockpit shows a recoverable reason (`claude-code-push-unconfirmed`,
+`claude-code-not-owner` or `claude-code-bridge-too-old`) naming what to change. Until
+then the leader reads its events with `leader_events`, exactly as every other client
+does.
+
 ---
 
 ## Local development

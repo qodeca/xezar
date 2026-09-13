@@ -49,6 +49,13 @@ interface ClientSetup {
   notAutomatic: string
   /** An optional caveat D-04 records for this client. */
   caveat?: string
+  /**
+   * How to let xezar WAKE this leader, for a client that supports it (Claude Code only, #374). The
+   * copy is verbatim from the wake decision record § 5.5 — it is an O-1 acceptance condition, so it
+   * is documented here as one of the four required places (AC-9). Absent for a client with no push
+   * path: the default stays pull-only, and nothing is claimed.
+   */
+  wake?: ReactNode
 }
 
 /**
@@ -86,6 +93,28 @@ const CLIENTS: readonly ClientSetup[] = [
       'Claude Code does not discover `.local/xezar/mcp-connection.json`. Nothing in it is read by Claude Code at any point \u2014 the command above is what tells Claude Code that a xezar MCP server exists.',
     caveat:
       'Local scope writes outside the repository. The project-scope alternative (`--scope project`) writes a tracked `.mcp.json`, which pi reads too, and needs a per-user approval step before it connects.',
+    // #374, verbatim from the wake decision record \u00a7 5.5 (O-1 / AC-9). Opt-in, per launch; the
+    // default pushes nothing. `server:xezar` matches the name the `claude mcp add` command above
+    // registered.
+    wake: (
+      <>
+        <span className="block">
+          To let xezar wake this leader when something happens, start Claude Code from the project root with:
+        </span>
+        <pre className="mt-2 rounded-md border border-border bg-muted p-3 font-mono text-[11px] leading-relaxed break-all whitespace-pre-wrap">
+          claude --dangerously-load-development-channels server:xezar
+        </pre>
+        <span className="mt-2 block">
+          Claude Code shows a warning each time. Choose &ldquo;I am using this for local development&rdquo; if you accept it. The flag is how
+          Claude Code lets a server that is not on Anthropic&rsquo;s approved list push messages into your session. Channels are a Claude
+          Code research preview: they need a claude.ai or Anthropic Console API-key login, they do not work on Amazon Bedrock, Google
+          Vertex or Microsoft Foundry, a Team or Enterprise admin must turn them on, and they are off while{' '}
+          <span className="font-mono break-all">CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC</span> is set. Then attach the leader here.
+          Without the flag nothing changes: your leader reads its events with the <span className="font-mono break-all">leader_events</span>{' '}
+          tool.
+        </span>
+      </>
+    ),
   },
   {
     name: 'Codex',
@@ -473,6 +502,12 @@ function ClientSetupCard({ client }: { client: ClientSetup }) {
         <p data-slot="mcp-client-not-automatic" className="rounded-md bg-muted p-2 text-muted-foreground">
           <span className="font-medium text-foreground">Not automatic:</span> {withCode(client.notAutomatic)}
         </p>
+        {client.wake ? (
+          <div data-slot="mcp-client-wake" className="text-foreground">
+            <span className="font-medium">Optional — let xezar wake this leader:</span>
+            <div className="mt-1">{client.wake}</div>
+          </div>
+        ) : null}
         {client.caveat ? (
           <p data-slot="mcp-client-caveat" className="text-[12px] text-soft-foreground">
             {withCode(client.caveat)}

@@ -1,6 +1,8 @@
 # Claude Code reaction adapter – runtime evidence
 
-> **2026-09-11 — the spawn path this record describes was removed** before release 0.14.0 (owner decision on #311: xezar does not start agent processes). The Claude Code adapter's stream-json session needed a process xezar started, so it is gone from the product; this record stays as the evidence of what was measured. A leader in this client gets no push and reads its events with `leader_events`. See #323 and #324.
+> **2026-09-13 — the verdict is corrected: Claude Code IS woken now, over Channels (#374).** The 2026-09-11 note below said a Claude Code leader gets no push and reads its events with `leader_events`. That was the state after the stream-json spawn path was removed (#311). It is no longer the verdict. On 2026-09-13 a fresh measurement (the [wake decision record](mcp-wake-claude-code-decision.md), run M1 on Claude Code 2.1.270) showed a real interactive session react to a channel event, and #374 shipped `ClaudeCodeChannelAdapter`: xezar pushes a project event as a `notifications/claude/channel` message down the owner session's own bridge, and a Claude Code leader the person started with `--dangerously-load-development-channels server:xezar` reacts. This is rung 1 of the hierarchy (Channels), not the removed rung 2 (stream-json). Everything below the next note is kept as the 2026-09-11 history that led here, including CH1; where CH1 said Channels "did not register", read the wake decision record § 3.5, which reconciles CH1 (2.1.268, `--bare`, feature flag off) with the 2026-09-13 runs. `reactedSeq` stays 0 for a Claude Code leader by design — delivery is the bridge write, and xezar observes no reaction — so a real-model reaction remains BLOCKED for the same reason it is for pi. See #374, #73 and #311.
+
+> **2026-09-11 — the spawn path this record describes was removed** before release 0.14.0 (owner decision on #311: xezar does not start agent processes). The Claude Code adapter's stream-json session needed a process xezar started, so it is gone from the product; this record stays as the evidence of what was measured. A leader in this client gets no push and reads its events with `leader_events`. See #323 and #324. **Superseded by the 2026-09-13 note above: a Claude Code leader IS now woken over Channels (#374).**
 
 Issue: [#108](https://github.com/qodeca/xezar/issues/108). Phase 6 ([#73](https://github.com/qodeca/xezar/issues/73))
 of [epic #67](https://github.com/qodeca/xezar/issues/67). Covers F-17, F-20, F-21, D-01, D-04, A-19 and A-23 of
@@ -184,7 +186,7 @@ controller retries every 30 s (B-17). The retry is non-model: `deliver` rejects 
 **Executed (CH1)** on Claude Code 2.1.268. A throwaway stdio server declared
 `capabilities.experimental["claude/channel"]` with `instructions` naming xezar as the source. It sent one
 `notifications/claude/channel` event 3 s after `initialized`. The session was started with
-`--dangerously-load-development-channels server:probe`, without `--bare`, with a debug file, and with the
+`--dangerously-load-development-channels server:probe`, **with `--bare`** (corrected 2026-09-13: CH1's recorded argv in `ch1.json` contains `--bare`, and § Environment and fixtures above says so — the earlier "without `--bare`" phrasing here was the error, per the [wake decision record](mcp-wake-claude-code-decision.md) § 3.5), with a debug file, and with the
 isolated home and the dummy key.
 
 - The server connected (`"status":"connected"`), and the notification left the server at 3005 ms.

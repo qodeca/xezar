@@ -1,5 +1,25 @@
 # Unreleased
 
+## ✨ Features
+- ✨ **A Claude Code leader can be woken by a project event, over Claude Code Channels.** (#374, part
+  of #73) Until now a project leader you run pulled its events with the `leader_events` MCP tool and
+  nothing was pushed to it. A **Claude Code** leader can now be **woken**: xezar turns a project event
+  into a `notifications/claude/channel` message in the running session. It is **opt-in and off by
+  default** — the zero-config default stays pull-only, and xezar gains no setting and no environment
+  variable. The only switch is a flag you add when you launch Claude Code from the project root:
+  `claude --dangerously-load-development-channels server:xezar`. That flag is how Claude Code lets a
+  server that is not on Anthropic's approved list push messages into your session, and **Claude Code
+  shows a warning on every launch** with it — choose "I am using this for local development" if you
+  accept it. Then attach the leader on **Settings → MCP connection**. Channels are a Claude Code
+  research preview: they need a claude.ai or Anthropic Console API-key login, they do not work on
+  Amazon Bedrock, Google Vertex or Microsoft Foundry, a Team or Enterprise admin must turn them on,
+  and they are off while `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` is set. When a condition is not
+  met the event is never lost — it stays in the journal and the cockpit shows a recoverable reason
+  (`claude-code-push-unconfirmed`, `claude-code-not-owner` or `claude-code-bridge-too-old`) naming
+  what to change. xezar never declares Claude Code's permission-relay capability and never answers an
+  approval on your behalf. Starting a real model turn from a project event is now wired for Claude
+  Code, pi and OpenCode.
+
 ## 💥 Breaking
 - 💥 **The default team skills source is now `qodeca/xezar-skills`, and the skills are named
   `xez-*`.** (#394) The previous default repository is no longer loaded, and the automatic updater no

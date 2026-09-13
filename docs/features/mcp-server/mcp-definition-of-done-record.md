@@ -113,6 +113,32 @@ an MCP case; the two MCP specs are **7 of 7 passed**.
 because of a harness defect, **passed here**, so all four clients now carry a real A-01 row and the
 A-23 row that reads it is BLOCKED rather than partly unmeasured.
 
+### Addendum 2026-09-13 — #374 gives Claude Code a channel attach path
+
+The `ed579e63` rows above are kept as history. #374 (part of #73) shipped `ClaudeCodeChannelAdapter`
+and the `client: 'claude-code'` attach path, which changes two of the BLOCKED rows above. The
+[wake decision record](mcp-wake-claude-code-decision.md) § 5.7 defines the acceptance criteria
+AC-1 … AC-9; they map onto A-19 and A-23 as follows, and the A-19 **real-model** clause stays
+BLOCKED for Claude Code exactly as it is for pi.
+
+| AC | Row it maps to | State after #374 |
+| --- | --- | --- |
+| AC-1 | **A-19** F3 claude-code (delivery half) | **Executed.** The real shipped bridge presenting as `claude-code` advertises `experimental["claude/channel"]`, attaches over the channel, and a journal event is pushed to it as a `notifications/claude/channel` frame carrying the `eventId`, `source_app: "xezar"`. `mcp-real-clients.test.ts` — the `[claude-code]` A-19 case. The real-model **reaction** turn stays BLOCKED (§ 9 forbids accounts) |
+| AC-2 | A-19 negative control | The pull-only default: without the flag nothing is pushed, and the leader reads events with `leader_events`. Unit-covered (`push-delivery.test.ts`, `leader-delivery.test.ts`); the without-flag/`claude-code-push-unconfirmed` blocker is proven in `adapters/claude-code.test.ts` |
+| AC-3 | A-19 / F-20 separation | Approval-dialog / draft interaction is a real-account behaviour: BLOCKED, same as the real-model clause |
+| AC-4 | A-19 / N-10 | Reconnect re-sends unacknowledged rows with the same `eventId`s; the echo guard drops the leader's own rows. Unit-covered (`leader-delivery.test.ts`, `push-delivery.test.ts`) |
+| AC-5 | **A-23** claude-code | Setup (`claude mcp add --scope local`) PASSED already; exclusivity holds; the reaction half is A-19's, BLOCKED on the real model |
+| AC-6 | contract / BC | `mcpLeaderAttachInputSchema` accepts `{action:'attach', client:'claude-code'}`; the status enum carries `'claude-code'`; the `leader/push` frame and `session/open` fields are additive, and an older bridge gets `claude-code-bridge-too-old`. Contract-parity, typed-bodies, route inventory and BACKWARD_COMPATIBILITY § 2 pass |
+| AC-7 | #73 never-impersonate | `initialize` for `claude-code` declares `claude/channel`, never `claude/channel/permission`; other clients byte-identical; every `meta` key matches the identifier rule; `reactedSeq` stays 0. Unit-covered (`protocol.test.ts`, `adapters/claude-code.test.ts`) |
+| AC-8 | prove-red | Each new test was shown red against a named break before it was kept |
+| AC-9 | O-1 docs | The flag is documented in all four places — README, the cockpit MCP connection section, the wake decision record and the changelog |
+
+So the A-19 row "no attach path exists for these clients" now applies to **codex and opencode only**;
+Claude Code has an attach path and its delivery half is executed. The A-19 and A-23 Claude Code rows
+stay **BLOCKED** on the real-model reaction alone — the same single clause that keeps pi BLOCKED —
+until a separate decision names an account that may be used. Clause 2 of the DoD is therefore still
+NOT MET for the same reason it was: no real model has reacted in a § 9 fixture.
+
 ## Clause by clause
 
 ### Clause 1 — coverage against the closed inventory: MET on coverage
