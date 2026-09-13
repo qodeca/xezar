@@ -13,6 +13,7 @@
 
 ## 🐛 Fixes
 - 🐛 Stamp the private cockpit workspace and its internal dependency ranges during releases, so minor and major bump PRs keep npm workspaces linked. (#382)
+- 🐛 **MCP integration harnesses now use the port actually bound by xezar.** (#325)
 
 ## 💥 Breaking
 - 💥 **The default team skills source is now `qodeca/xezar-skills`, and the skills are named
