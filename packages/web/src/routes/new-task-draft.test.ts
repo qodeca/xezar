@@ -78,7 +78,7 @@ describe('the new-task draft store', () => {
   it('round-trips a draft and hands out copies, not the stored object', () => {
     writeDraft({
       text: 'fix it',
-      source: { source: 'skill', ref: 'om-fix' },
+      source: { source: 'skill', ref: 'xez-fix' },
       runner: 'codex',
       agentProfile: null,
       model: 'gpt-5-codex',
@@ -99,7 +99,7 @@ describe('the new-task draft store', () => {
   it('clearStartedDraft spends the text AND the source, keeping the way-of-working pills', () => {
     writeDraft({
       text: 'shipped',
-      source: { source: 'skill', ref: 'om-fix' },
+      source: { source: 'skill', ref: 'xez-fix' },
       runner: null,
       agentProfile: null,
       model: 'opus',
@@ -129,7 +129,7 @@ describe('the new-task draft store', () => {
   it('survives a page reload — a cold read re-hydrates from localStorage', () => {
     writeDraft({
       text: 'do not lose me',
-      source: { source: 'skill', ref: 'om-fix' },
+      source: { source: 'skill', ref: 'xez-fix' },
       runner: 'claude',
       agentProfile: null,
       model: 'sonnet',

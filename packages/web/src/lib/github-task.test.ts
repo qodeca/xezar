@@ -49,25 +49,25 @@ describe('githubTaskPrompt', () => {
   })
 
   it('skill names append as a hint sentence', () => {
-    expect(githubTaskPrompt(item(), ['om-fix', 'om-review'])).toContain(
-      'Use these skills where relevant: om-fix, om-review.',
+    expect(githubTaskPrompt(item(), ['xez-fix', 'xez-review'])).toContain(
+      'Use these skills where relevant: xez-fix, xez-review.',
     )
   })
 })
 
 describe('skillChainSteps', () => {
   it('one {{task}} step per skill, in selection order', () => {
-    expect(skillChainSteps(['om-fix', 'om-review'])).toEqual([
-      { id: 'om-fix', name: 'om-fix', skill: 'om-fix', prompt: '{{task}}' },
-      { id: 'om-review', name: 'om-review', skill: 'om-review', prompt: '{{task}}' },
+    expect(skillChainSteps(['xez-fix', 'xez-review'])).toEqual([
+      { id: 'xez-fix', name: 'xez-fix', skill: 'xez-fix', prompt: '{{task}}' },
+      { id: 'xez-review', name: 'xez-review', skill: 'xez-review', prompt: '{{task}}' },
     ])
   })
 
-  it('dedupes repeated ids the legacy way: om-fix, om-fix-2, om-fix-3', () => {
-    expect(skillChainSteps(['om-fix', 'om-fix', 'om-fix']).map((step) => step.id)).toEqual([
-      'om-fix',
-      'om-fix-2',
-      'om-fix-3',
+  it('dedupes repeated ids the legacy way: xez-fix, xez-fix-2, xez-fix-3', () => {
+    expect(skillChainSteps(['xez-fix', 'xez-fix', 'xez-fix']).map((step) => step.id)).toEqual([
+      'xez-fix',
+      'xez-fix-2',
+      'xez-fix-3',
     ])
   })
 
@@ -79,16 +79,16 @@ describe('skillChainSteps', () => {
 
 describe('githubRunBody', () => {
   it('workflow selected → that workflow, skills as a prompt hint', () => {
-    const body = githubRunBody(item(), 'ship-it', ['om-fix'])
+    const body = githubRunBody(item(), 'ship-it', ['xez-fix'])
     expect(body.workflow).toBe('ship-it')
     expect(body.steps).toBeUndefined()
-    expect(body.task).toContain('Use these skills where relevant: om-fix.')
+    expect(body.task).toContain('Use these skills where relevant: xez-fix.')
   })
 
   it('skills only → the skills ARE the chain, and the prompt carries no hint sentence', () => {
-    const body = githubRunBody(item(), null, ['om-fix', 'om-review'])
+    const body = githubRunBody(item(), null, ['xez-fix', 'xez-review'])
     expect(body.workflow).toBeUndefined()
-    expect(body.steps?.map((step) => step.skill)).toEqual(['om-fix', 'om-review'])
+    expect(body.steps?.map((step) => step.skill)).toEqual(['xez-fix', 'xez-review'])
     expect(body.task).not.toContain('Use these skills')
   })
 
@@ -106,16 +106,16 @@ describe('githubRunBody', () => {
   })
 
   it('routing is untouched, and the skills hint still rides along on the workflow branch', () => {
-    const wf = githubRunBody(item(), 'ship-it', ['om-fix'], '  Investigate only.  ')
+    const wf = githubRunBody(item(), 'ship-it', ['xez-fix'], '  Investigate only.  ')
     expect(wf.workflow).toBe('ship-it')
     expect(wf.steps).toBeUndefined()
     expect(wf.task).toContain('Investigate only.')
     expect(wf.task).toContain('#142')
-    expect(wf.task).toContain('Use these skills where relevant: om-fix.')
+    expect(wf.task).toContain('Use these skills where relevant: xez-fix.')
 
     // The skills-ARE-the-chain branch keeps carrying no hint sentence.
-    const chain = githubRunBody(item(), null, ['om-fix'], 'Investigate only.')
-    expect(chain.steps?.map((step) => step.skill)).toEqual(['om-fix'])
+    const chain = githubRunBody(item(), null, ['xez-fix'], 'Investigate only.')
+    expect(chain.steps?.map((step) => step.skill)).toEqual(['xez-fix'])
     expect(chain.task).not.toContain('Use these skills')
   })
 
@@ -277,11 +277,11 @@ describe('githubRunBody backend (#401)', () => {
   })
 
   it('rides the skills-as-chain route without disturbing the steps', () => {
-    const body = githubRunBody(item(), null, ['om-fix', 'om-review'], undefined, {
+    const body = githubRunBody(item(), null, ['xez-fix', 'xez-review'], undefined, {
       runner: 'opencode',
       model: 'anthropic/claude-sonnet-5',
     })
-    expect(body.steps?.map((step) => step.skill)).toEqual(['om-fix', 'om-review'])
+    expect(body.steps?.map((step) => step.skill)).toEqual(['xez-fix', 'xez-review'])
     expect(body).toMatchObject({ runner: 'opencode', model: 'anthropic/claude-sonnet-5' })
   })
 

@@ -18,8 +18,8 @@ afterEach(() => {
 // ---- fixtures ----------------------------------------------------------------------------------
 
 const SKILLS: Skill[] = [
-  { name: 'om-fix', description: 'Fix the thing', body: '', path: '.ai/skills/om-fix.md', source: 'ai' },
-  { name: 'om-review', description: 'Review it', body: '', path: '~/.xez/skills/om-review.md', source: 'global' },
+  { name: 'xez-fix', description: 'Fix the thing', body: '', path: '.ai/skills/xez-fix.md', source: 'ai' },
+  { name: 'xez-review', description: 'Review it', body: '', path: '~/.xez/skills/xez-review.md', source: 'global' },
 ]
 
 const QUICK: WorkflowDef = {
@@ -36,8 +36,8 @@ const SHIP: WorkflowDef = {
   source: 'file',
   path: '.xezar/workflows/ship-it.yaml',
   steps: [
-    { id: 'om-fix', name: 'om-fix', skill: 'om-fix', prompt: '{{task}}' },
-    { id: 'om-review', name: 'om-review', skill: 'om-review', prompt: '{{task}}' },
+    { id: 'xez-fix', name: 'xez-fix', skill: 'xez-fix', prompt: '{{task}}' },
+    { id: 'xez-review', name: 'xez-review', skill: 'xez-review', prompt: '{{task}}' },
   ],
 }
 
@@ -48,8 +48,8 @@ const FULL: WorkflowDef = {
   path: '.xezar/workflows/crowded.yaml',
   steps: Array.from({ length: 8 }, (_, i) => ({
     id: `s${i + 1}`,
-    name: 'om-fix',
-    skill: 'om-fix',
+    name: 'xez-fix',
+    skill: 'xez-fix',
     prompt: '{{task}}',
   })),
 }
@@ -119,14 +119,14 @@ describe('canvas seeding', () => {
     stubFetch()
     renderAt('/workflows')
 
-    await waitFor(() => expect(stepIds()).toEqual(['om-fix', 'om-review']))
+    await waitFor(() => expect(stepIds()).toEqual(['xez-fix', 'xez-review']))
     expect(nameInput().value).toBe('ship-it')
     // Its chip reads active; the compact YAML preview reflects the pure stack.
     expect(
       document.querySelector('[data-slot="wb-load-chip"][data-name="ship-it"]')?.getAttribute('aria-pressed'),
     ).toBe('true')
     expect(yamlText()).toContain('skills:')
-    expect(yamlText()).toContain('- om-fix')
+    expect(yamlText()).toContain('- xez-fix')
     expect(screen.getByText('2 skills')).toBeTruthy()
   })
 
@@ -156,10 +156,10 @@ describe('palette add / remove / the 8-step limit', () => {
     renderAt('/workflows')
     await waitFor(() => expect(stepCards()).toHaveLength(2))
 
-    fireEvent.click(addButton('om-fix'))
-    expect(stepIds()).toEqual(['om-fix', 'om-review', 'om-fix-2'])
+    fireEvent.click(addButton('xez-fix'))
+    expect(stepIds()).toEqual(['xez-fix', 'xez-review', 'xez-fix-2'])
     expect(screen.getByText('3 skills')).toBeTruthy()
-    expect(yamlText().match(/- om-fix/g)).toHaveLength(2)
+    expect(yamlText().match(/- xez-fix/g)).toHaveLength(2)
   })
 
   it('remove drops exactly that card', async () => {
@@ -167,8 +167,8 @@ describe('palette add / remove / the 8-step limit', () => {
     renderAt('/workflows')
     await waitFor(() => expect(stepCards()).toHaveLength(2))
 
-    fireEvent.click(screen.getByLabelText('Remove step 1: om-fix'))
-    expect(stepIds()).toEqual(['om-review'])
+    fireEvent.click(screen.getByLabelText('Remove step 1: xez-fix'))
+    expect(stepIds()).toEqual(['xez-review'])
     expect(screen.getByText('1 skill')).toBeTruthy()
   })
 
@@ -177,7 +177,7 @@ describe('palette add / remove / the 8-step limit', () => {
     renderAt('/workflows')
     await waitFor(() => expect(stepCards()).toHaveLength(8))
 
-    fireEvent.click(addButton('om-review'))
+    fireEvent.click(addButton('xez-review'))
     expect(stepCards()).toHaveLength(8)
     await screen.findByText('A workflow holds at most 8 steps.')
   })
@@ -204,7 +204,7 @@ describe('YAML import', () => {
         () =>
           jsonResponse({
             name: 'imported-flow',
-            steps: [{ id: 'om-review', name: 'om-review', skill: 'om-review', prompt: '{{task}}' }],
+            steps: [{ id: 'xez-review', name: 'xez-review', skill: 'xez-review', prompt: '{{task}}' }],
           }),
       ],
     })
@@ -213,15 +213,15 @@ describe('YAML import', () => {
 
     fireEvent.click(document.querySelector('[data-slot="wb-import"]')!)
     fireEvent.change(screen.getByLabelText('Workflow YAML to import'), {
-      target: { value: 'name: imported-flow\nskills:\n  - om-review\n' },
+      target: { value: 'name: imported-flow\nskills:\n  - xez-review\n' },
     })
     fireEvent.click(document.querySelector('[data-slot="wb-import-run"]')!)
 
-    await waitFor(() => expect(stepIds()).toEqual(['om-review']))
+    await waitFor(() => expect(stepIds()).toEqual(['xez-review']))
     expect(nameInput().value).toBe('imported-flow')
     // The server owns YAML parsing — the paste went to /parse verbatim.
     expect(sent.find((r) => r.path === '/api/v1/workflows/parse')?.body).toEqual({
-      yaml: 'name: imported-flow\nskills:\n  - om-review',
+      yaml: 'name: imported-flow\nskills:\n  - xez-review',
     })
     await screen.findByText('Imported "imported-flow" — review, then Save.')
   })
@@ -244,7 +244,7 @@ describe('YAML import', () => {
         'a workflow lists either "steps" or "skills", not both',
       ),
     )
-    expect(stepIds()).toEqual(['om-fix', 'om-review'])
+    expect(stepIds()).toEqual(['xez-fix', 'xez-review'])
   })
 })
 
@@ -325,7 +325,7 @@ describe('save', () => {
     expect(sent.find((r) => r.method === 'POST' && r.path === '/api/v1/workflows')?.body).toEqual({
       name: 'ship-it',
       description: 'Fix then review.',
-      skills: ['om-fix', 'om-review'],
+      skills: ['xez-fix', 'xez-review'],
     })
   })
 
@@ -567,7 +567,7 @@ describe('the panels and the palette filter', () => {
     fireEvent.change(screen.getByLabelText('Filter skills'), { target: { value: 'review' } })
 
     await waitFor(() => expect(document.querySelectorAll('[data-slot="wb-skill"]').length).toBe(1))
-    expect(document.querySelector('[data-slot="wb-skill"]')?.getAttribute('data-skill')).toBe('om-review')
-    expect(stepIds()).toEqual(['om-fix', 'om-review'])
+    expect(document.querySelector('[data-slot="wb-skill"]')?.getAttribute('data-skill')).toBe('xez-review')
+    expect(stepIds()).toEqual(['xez-fix', 'xez-review'])
   })
 })

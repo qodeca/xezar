@@ -19,7 +19,7 @@ let requests: Array<{ method: string; url: string; body?: unknown }> = []
 /** Two skills, deliberately global-first, so the project-first grouping rule (#377) is visible. */
 const SKILLS = [
   { name: 'g-review', description: 'Global review', body: '', path: '/g/g-review', source: 'global' },
-  { name: 'om-fix', description: 'Fix an issue', body: '', path: '/p/om-fix', source: 'ai' },
+  { name: 'xez-fix', description: 'Fix an issue', body: '', path: '/p/xez-fix', source: 'ai' },
 ]
 
 function serve(uiState: Record<string, unknown> = {}, skills: unknown[] = SKILLS) {
@@ -238,13 +238,13 @@ describe('assigning a template to a skill', () => {
     )
     const options = [...document.querySelectorAll<HTMLElement>('[data-slot="prompt-template-skill-option"]')]
     // Served global-first; rendered project-first.
-    expect(options.map((o) => o.dataset.skill)).toEqual(['om-fix', 'g-review'])
+    expect(options.map((o) => o.dataset.skill)).toEqual(['xez-fix', 'g-review'])
     expect(options[0]?.querySelector('.font-semibold')).not.toBeNull()
     expect(options[1]?.querySelector('.font-semibold')).toBeNull()
   })
 
   it('lists most-used skills first, across localities (#519)', async () => {
-    // g-review is global but USED — it now leads the unused project skill om-fix.
+    // g-review is global but USED — it now leads the unused project skill xez-fix.
     serve({ skillUsage: { 'g-review': 3 } })
     renderSection()
     await waitFor(() => expect(rows()).toHaveLength(DEFAULT_PROMPT_TEMPLATES.length))
@@ -254,7 +254,7 @@ describe('assigning a template to a skill', () => {
       expect(document.querySelectorAll('[data-slot="prompt-template-skill-option"]')).toHaveLength(2),
     )
     const options = [...document.querySelectorAll<HTMLElement>('[data-slot="prompt-template-skill-option"]')]
-    expect(options.map((o) => o.dataset.skill)).toEqual(['g-review', 'om-fix'])
+    expect(options.map((o) => o.dataset.skill)).toEqual(['g-review', 'xez-fix'])
   })
 
   it('a query filters the Most used tier too — not just the rest of the catalog (#668)', async () => {
@@ -274,7 +274,7 @@ describe('assigning a template to a skill', () => {
     await waitFor(() =>
       expect(document.querySelectorAll('[data-slot="prompt-template-skill-option"]')).toHaveLength(1),
     )
-    expect(option('om-fix')).not.toBeNull()
+    expect(option('xez-fix')).not.toBeNull()
     // The frequently-used g-review must be gone even though it sits in the Most used tier.
     expect(option('g-review')).toBeNull()
   })
@@ -284,21 +284,21 @@ describe('assigning a template to a skill', () => {
     renderSection()
     await waitFor(() => expect(rows()).toHaveLength(DEFAULT_PROMPT_TEMPLATES.length))
 
-    await assign(rows()[0]!, 'om-fix')
+    await assign(rows()[0]!, 'xez-fix')
     await waitFor(() =>
-      expect(rows()[0]!.querySelector('[data-slot="prompt-template-skill-chip"][data-skill="om-fix"]')).not.toBeNull(),
+      expect(rows()[0]!.querySelector('[data-slot="prompt-template-skill-chip"][data-skill="xez-fix"]')).not.toBeNull(),
     )
 
     fireEvent.click(saveButton())
     await waitFor(() => expect(putBody()).toBeDefined())
-    expect(putBody()?.promptTemplates?.[0]).toMatchObject({ id: 'add-tests', skills: ['om-fix'] })
+    expect(putBody()?.promptTemplates?.[0]).toMatchObject({ id: 'add-tests', skills: ['xez-fix'] })
     // Only the edited row gains an assignment.
     expect(putBody()?.promptTemplates?.[1]).not.toHaveProperty('skills')
   })
 
   it('the chip unassigns, and doing so leaves NO empty skills key behind', async () => {
     serve({
-      promptTemplates: [{ id: 'a', label: 'A', text: 'Do A.', skills: ['om-fix'] }],
+      promptTemplates: [{ id: 'a', label: 'A', text: 'Do A.', skills: ['xez-fix'] }],
     })
     renderSection()
     await waitFor(() => expect(rows()).toHaveLength(1))
@@ -319,10 +319,10 @@ describe('assigning a template to a skill', () => {
     await waitFor(() => expect(rows()).toHaveLength(1))
     expect(saveButton().disabled).toBe(true)
 
-    await assign(rows()[0]!, 'om-fix')
+    await assign(rows()[0]!, 'xez-fix')
     await waitFor(() => expect(saveButton().disabled).toBe(false))
 
-    await assign(rows()[0]!, 'om-fix')
+    await assign(rows()[0]!, 'xez-fix')
     // Back to `{id,label,text}` with no phantom `skills: []` making it look dirty forever.
     await waitFor(() => expect(saveButton().disabled).toBe(true))
   })
@@ -332,12 +332,12 @@ describe('assigning a template to a skill', () => {
     renderSection()
     await waitFor(() => expect(rows()).toHaveLength(1))
 
-    await assign(rows()[0]!, 'om-fix')
+    await assign(rows()[0]!, 'xez-fix')
     await assign(rows()[0]!, 'g-review')
 
     fireEvent.click(saveButton())
     await waitFor(() => expect(putBody()).toBeDefined())
-    expect(putBody()?.promptTemplates?.[0]).toMatchObject({ skills: ['om-fix', 'g-review'] })
+    expect(putBody()?.promptTemplates?.[0]).toMatchObject({ skills: ['xez-fix', 'g-review'] })
   })
 
   it('says so, rather than rendering nothing, when there are no skills to assign', async () => {

@@ -114,8 +114,8 @@ const TABLE: Array<{ name: string; input?: unknown; expected: ToolDisplay }> = [
   },
   {
     name: 'Skill',
-    input: { skill: 'om-auto-fix-issue', args: '529' },
-    expected: { toolKind: 'task', title: 'Skill: om-auto-fix-issue', subtitle: '529' },
+    input: { skill: 'xez-auto-fix-issue', args: '529' },
+    expected: { toolKind: 'task', title: 'Skill: xez-auto-fix-issue', subtitle: '529' },
   },
   { name: 'Skill', input: {}, expected: { toolKind: 'task', title: 'Skill', subtitle: undefined } },
 

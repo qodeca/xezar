@@ -46,7 +46,7 @@ describe('PUT /api/v1/ui-state — promptTemplates', () => {
   afterEach(() => rmSync(repoRoot, { recursive: true, force: true }));
 
   it('accepts a template with assigned skills and round-trips them', async () => {
-    const templates = [template({ skills: ['om-fix', 'om-review'] })];
+    const templates = [template({ skills: ['xez-fix', 'xez-review'] })];
     expect((await put({ promptTemplates: templates })).status).toBe(200);
 
     const read = await apiRequest(app, '/api/v1/ui-state');
@@ -81,12 +81,12 @@ describe('PUT /api/v1/ui-state — promptTemplates', () => {
 
   it('the merge stays shallow, so an unrelated pref is not clobbered by a templates PUT', async () => {
     expect((await put({ notifications: { enabled: true } })).status).toBe(200);
-    expect((await put({ promptTemplates: [template({ skills: ['om-fix'] })] })).status).toBe(200);
+    expect((await put({ promptTemplates: [template({ skills: ['xez-fix'] })] })).status).toBe(200);
 
     const read = await apiRequest(app, '/api/v1/ui-state');
     expect(await read.json()).toMatchObject({
       notifications: { enabled: true },
-      promptTemplates: [template({ skills: ['om-fix'] })],
+      promptTemplates: [template({ skills: ['xez-fix'] })],
     });
   });
 });

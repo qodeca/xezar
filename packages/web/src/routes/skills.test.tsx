@@ -32,8 +32,8 @@ const SKILLS: Skill[] = [
     path: '/home/u/.agents/skills/zebra-global/SKILL.md',
     description: 'A global skill',
   }),
-  skill({ name: 'om-fix', source: 'ai', description: 'Fix an issue end to end' }),
-  skill({ name: 'om-review', source: 'xezar', path: '.xezar/skills/om-review.md' }),
+  skill({ name: 'xez-fix', source: 'ai', description: 'Fix an issue end to end' }),
+  skill({ name: 'xez-review', source: 'xezar', path: '.xezar/skills/xez-review.md' }),
 ]
 
 const WORKFLOWS: WorkflowsResponse = {
@@ -41,7 +41,7 @@ const WORKFLOWS: WorkflowsResponse = {
     {
       name: 'fix-and-verify',
       source: 'file',
-      steps: [{ id: 'fix', name: 'Fix', skill: 'om-fix' }],
+      steps: [{ id: 'fix', name: 'Fix', skill: 'xez-fix' }],
     },
   ],
   issues: [],
@@ -133,7 +133,7 @@ function renderAt(entry: string) {
 const UPDATE_CURRENT: SkillsUpdateState = {
   status: 'current', available: false, autoUpdateEnabled: true, inherited: true,
   checkedAt: '2026-07-22T12:00:00.000Z', updatedAt: null, needsUpgradeNotes: false,
-  scopes: [{ scope: 'project', status: 'current', available: false, skills: ['om-fix'], checkedAt: '2026-07-22T12:00:00.000Z', updatedAt: null }],
+  scopes: [{ scope: 'project', status: 'current', available: false, skills: ['xez-fix'], checkedAt: '2026-07-22T12:00:00.000Z', updatedAt: null }],
 }
 
 const rowNames = () =>
@@ -152,7 +152,7 @@ describe('the catalog list', () => {
     serve()
     renderAt('/skills')
 
-    await waitFor(() => expect(rowNames()).toEqual(['om-fix', 'om-review', 'zebra-global']))
+    await waitFor(() => expect(rowNames()).toEqual(['xez-fix', 'xez-review', 'zebra-global']))
     const rows = [...document.querySelectorAll('[data-slot="skill-row"]')]
     expect(rows[0]?.getAttribute('data-project')).toBe('true')
     expect(rows[1]?.getAttribute('data-project')).toBe('true')
@@ -168,11 +168,11 @@ describe('the catalog list', () => {
 
     await waitFor(() => expect(detail()).not.toBeNull())
     const pane = detail()!
-    expect(pane.querySelector('h2')?.textContent).toBe('om-fix')
-    expect(pane.querySelector('[data-slot="skill-path"]')?.textContent).toContain('.ai/skills/om-fix.md')
-    // `# om-fix` became a real heading — the body renders as markdown, not a <pre> dump.
+    expect(pane.querySelector('h2')?.textContent).toBe('xez-fix')
+    expect(pane.querySelector('[data-slot="skill-path"]')?.textContent).toContain('.ai/skills/xez-fix.md')
+    // `# xez-fix` became a real heading — the body renders as markdown, not a <pre> dump.
     await waitFor(() =>
-      expect(pane.querySelector('[data-slot="skill-body"] h1')?.textContent).toBe('om-fix'),
+      expect(pane.querySelector('[data-slot="skill-body"] h1')?.textContent).toBe('xez-fix'),
     )
     expect(pane.querySelector('[data-slot="skill-used-by"]')?.textContent).toContain('fix-and-verify › Fix')
   })
@@ -182,11 +182,11 @@ describe('the catalog list', () => {
     renderAt('/skills')
     await waitFor(() => expect(rowNames()).toHaveLength(3))
 
-    fireEvent.click(document.querySelector('[data-slot="skill-row"][data-skill="om-review"]')!)
-    await waitFor(() => expect(detail()?.querySelector('h2')?.textContent).toBe('om-review'))
+    fireEvent.click(document.querySelector('[data-slot="skill-row"][data-skill="xez-review"]')!)
+    await waitFor(() => expect(detail()?.querySelector('h2')?.textContent).toBe('xez-review'))
     expect(
       document
-        .querySelector('[data-slot="skill-row"][data-skill="om-review"]')
+        .querySelector('[data-slot="skill-row"][data-skill="xez-review"]')
         ?.getAttribute('aria-current'),
     ).toBe('page')
     // An unreferenced skill says so instead of showing an empty section.
@@ -203,7 +203,7 @@ describe('the catalog list', () => {
     fireEvent.change(document.querySelector('[data-slot="skills-filter"]')!, {
       target: { value: 'review' },
     })
-    expect(rowNames()).toEqual(['om-review'])
+    expect(rowNames()).toEqual(['xez-review'])
     expect(document.querySelector('[data-slot="bookmarklets-row"]')).not.toBeNull()
   })
 
@@ -226,7 +226,7 @@ describe('the catalog list', () => {
 describe('refresh (#384: selection and scroll survive)', () => {
   it('POSTs /api/v1/skills/refresh, keeps the selected skill, the row container and its scroll', async () => {
     serve({ refreshed: [...SKILLS, skill({ name: 'team-new', source: 'team' })] })
-    renderAt('/skills?skill=om-review')
+    renderAt('/skills?skill=xez-review')
     await waitFor(() => expect(rowNames()).toHaveLength(3))
 
     const rowsBefore = document.querySelector('[data-slot="skill-rows"]')!
@@ -237,7 +237,7 @@ describe('refresh (#384: selection and scroll survive)', () => {
       expect(requests.some((r) => r.method === 'POST' && r.url === '/api/v1/skills/refresh')).toBe(true),
     )
     // The refreshed catalog rendered (the new team skill is in the list)…
-    await waitFor(() => expect(rowNames()).toEqual(['om-fix', 'om-review', 'team-new', 'zebra-global']))
+    await waitFor(() => expect(rowNames()).toEqual(['xez-fix', 'xez-review', 'team-new', 'zebra-global']))
 
     // …but the pane was updated IN PLACE: same scroll container, same scroll offset, same
     // selection — the legacy innerHTML rebuild lost all three.
@@ -246,23 +246,23 @@ describe('refresh (#384: selection and scroll survive)', () => {
     expect(rowsAfter.scrollTop).toBe(120)
     expect(
       document
-        .querySelector('[data-slot="skill-row"][data-skill="om-review"]')
+        .querySelector('[data-slot="skill-row"][data-skill="xez-review"]')
         ?.getAttribute('aria-current'),
     ).toBe('page')
-    expect(detail()?.querySelector('h2')?.textContent).toBe('om-review')
+    expect(detail()?.querySelector('h2')?.textContent).toBe('xez-review')
   })
 
   it('a refresh that drops the selected skill falls back to the first skill, never crashes', async () => {
-    serve({ refreshed: SKILLS.filter((s) => s.name !== 'om-review') })
-    renderAt('/skills?skill=om-review')
-    await waitFor(() => expect(detail()?.querySelector('h2')?.textContent).toBe('om-review'))
+    serve({ refreshed: SKILLS.filter((s) => s.name !== 'xez-review') })
+    renderAt('/skills?skill=xez-review')
+    await waitFor(() => expect(detail()?.querySelector('h2')?.textContent).toBe('xez-review'))
 
     fireEvent.click(document.querySelector('[data-slot="skills-refresh"]')!)
-    await waitFor(() => expect(detail()?.querySelector('h2')?.textContent).toBe('om-fix'))
+    await waitFor(() => expect(detail()?.querySelector('h2')?.textContent).toBe('xez-fix'))
   })
 })
 
-describe('the Manage skills panel (opt-out OM skills)', () => {
+describe('the Manage skills panel (opt-out team skills)', () => {
   const IMPORTABLE = [
     { name: 'pr-create', description: 'Open a PR from the current branch' },
     { name: 'code-review', description: 'Review the diff for bugs' },
@@ -620,7 +620,7 @@ describe('the bookmarklet panel (spec 011)', () => {
     })
     const links = [...document.querySelectorAll('[data-slot="bm-list"] [data-slot="bm-link"]')]
     expect(links).toHaveLength(3) // one per skill, project-first like the catalog
-    expect(links[0]?.textContent).toContain('/om-fix')
+    expect(links[0]?.textContent).toContain('/xez-fix')
     for (const link of links) {
       expect(link.getAttribute('href')?.startsWith('javascript:')).toBe(true)
       expect(decodeURIComponent(link.getAttribute('href') ?? '')).toContain('auto=0&key=sekret')

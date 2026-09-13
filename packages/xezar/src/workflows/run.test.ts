@@ -797,8 +797,8 @@ describe('a chain of 2 selected skills runs BOTH steps, in order (#410)', () => 
       name: '(planned)',
       source: 'built-in',
       steps: [
-        { id: 'om-auto-review-pr', name: 'om-auto-review-pr', skill: 'om-auto-review-pr', prompt: '{{task}}' },
-        { id: 'om-auto-verify-pr-ui', name: 'om-auto-verify-pr-ui', skill: 'om-auto-verify-pr-ui', prompt: '{{task}}' },
+        { id: 'xez-auto-review-pr', name: 'xez-auto-review-pr', skill: 'xez-auto-review-pr', prompt: '{{task}}' },
+        { id: 'xez-auto-verify-pr-ui', name: 'xez-auto-verify-pr-ui', skill: 'xez-auto-verify-pr-ui', prompt: '{{task}}' },
       ],
     };
     // `mock:done` makes the mock's turn end with XEZ:DONE — needed so the
@@ -822,8 +822,8 @@ describe('a chain of 2 selected skills runs BOTH steps, in order (#410)', () => 
     // second step's session had done nothing; the assertion below on
     // `notes.md` is what actually distinguishes a real run from a no-op one.
     expect(finished?.steps.map((s) => ({ id: s.id, status: s.status }))).toEqual([
-      { id: 'om-auto-review-pr', status: 'done' },
-      { id: 'om-auto-verify-pr-ui', status: 'done' },
+      { id: 'xez-auto-review-pr', status: 'done' },
+      { id: 'xez-auto-verify-pr-ui', status: 'done' },
     ]);
 
     // The mock leaves a `notes.md` trace on its first turn, once per spawned
@@ -2099,7 +2099,7 @@ describe('native Codex requestUserInput parks and resumes the run (#565)', () =>
  * `expandRegistrySlashSkill` (#676) reads `state.skills`, which only `execute` ever
  * populated. `runContinuation` builds its OWN `ActiveRun`, so a Reply into a finished
  * run — and every restart recovery, which routes through `continueRun` — expanded
- * against an empty registry and handed the raw `/om-...` to the backend, which answered
+ * against an empty registry and handed the raw `/xez-...` to the backend, which answered
  * "Unknown skill". Two seams have to hold: the continuation's opening prompt (the
  * session's `userPrompt`, which never passes through `deliverMessage`) and the
  * follow-ups delivered into that same session.
@@ -2223,7 +2223,7 @@ describe('registry /skill expansion survives a continuation (#811)', () => {
 /**
  * #278 — registry `/skill` expansion on a FRESH run's OPENING prompt.
  *
- * A task STARTED with `/om-...` as its first message is delivered straight to
+ * A task STARTED with `/xez-...` as its first message is delivered straight to
  * `startSession` inside `execute`, never through `deliverMessage`, and #811 only
  * patched the continuation seam. So the opening prompt leaked the raw slash to the
  * backend, which answered "Unknown command" even though Xezar lists the skill.

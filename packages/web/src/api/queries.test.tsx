@@ -486,12 +486,12 @@ describe('useSkills', () => {
     resolveReady(
       json([
         { name: 'local', source: 'ai', body: '', path: '/repo/local.md' },
-        { name: 'om-fix', source: 'team', body: '', path: 'skills/om-fix/SKILL.md' },
+        { name: 'xez-fix', source: 'team', body: '', path: 'skills/xez-fix/SKILL.md' },
       ]),
     )
 
     await waitFor(() =>
-      expect(result.current.data?.map((skill) => skill.name)).toEqual(['local', 'om-fix']),
+      expect(result.current.data?.map((skill) => skill.name)).toEqual(['local', 'xez-fix']),
     )
     expect(fetchMock.mock.calls.map(([path]) => path)).toEqual(['/api/v1/skills', '/api/v1/skills?wait=1'])
   })

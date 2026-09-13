@@ -185,8 +185,8 @@ describe('insertTemplate', () => {
 
 // ---- skill assignment + auto-apply (#413 follow-up) ---------------------------------------------
 
-const ADD_TESTS: PromptTemplate = { id: 'a', label: 'A', text: 'Add tests.', skills: ['om-fix'] }
-const BE_TERSE: PromptTemplate = { id: 'b', label: 'B', text: 'Be terse.', skills: ['om-fix', 'om-review'] }
+const ADD_TESTS: PromptTemplate = { id: 'a', label: 'A', text: 'Add tests.', skills: ['xez-fix'] }
+const BE_TERSE: PromptTemplate = { id: 'b', label: 'B', text: 'Be terse.', skills: ['xez-fix', 'xez-review'] }
 const MANUAL: PromptTemplate = { id: 'c', label: 'C', text: 'Manual only.' }
 const LIST = [ADD_TESTS, BE_TERSE, MANUAL]
 
@@ -213,8 +213,8 @@ describe('normalizePromptTemplates — assigned skills', () => {
 
   it('trims and dedupes assigned names', () => {
     expect(
-      normalizePromptTemplates([{ id: 'a', label: 'A', text: 'T.', skills: ['  om-fix ', 'om-fix', ''] }]),
-    ).toEqual([{ id: 'a', label: 'A', text: 'T.', skills: ['om-fix'] }])
+      normalizePromptTemplates([{ id: 'a', label: 'A', text: 'T.', skills: ['  xez-fix ', 'xez-fix', ''] }]),
+    ).toEqual([{ id: 'a', label: 'A', text: 'T.', skills: ['xez-fix'] }])
   })
 })
 
@@ -224,27 +224,27 @@ describe('templatesForSkills', () => {
   })
 
   it('picks the templates assigned to the selected skill, unassigned ones never self-apply', () => {
-    expect(templatesForSkills(LIST, ['om-review'])).toEqual([BE_TERSE])
-    expect(templatesForSkills(LIST, ['om-fix'])).toEqual([ADD_TESTS, BE_TERSE])
+    expect(templatesForSkills(LIST, ['xez-review'])).toEqual([BE_TERSE])
+    expect(templatesForSkills(LIST, ['xez-fix'])).toEqual([ADD_TESTS, BE_TERSE])
   })
 
   it('a skill with nothing assigned to it matches nothing', () => {
-    expect(templatesForSkills(LIST, ['om-unrelated'])).toEqual([])
+    expect(templatesForSkills(LIST, ['xez-unrelated'])).toEqual([])
   })
 
   it('a multi-skill selection stacks in LIST order, not selection order — and never twice', () => {
-    expect(templatesForSkills(LIST, ['om-review', 'om-fix'])).toEqual([ADD_TESTS, BE_TERSE])
+    expect(templatesForSkills(LIST, ['xez-review', 'xez-fix'])).toEqual([ADD_TESTS, BE_TERSE])
   })
 })
 
 describe('autoApplyText', () => {
   it('joins the assigned templates with the same blank line insertTemplate uses', () => {
-    expect(autoApplyText(LIST, ['om-fix'])).toBe('Add tests.\n\nBe terse.')
+    expect(autoApplyText(LIST, ['xez-fix'])).toBe('Add tests.\n\nBe terse.')
   })
 
   it('nothing assigned is the empty string — "auto-apply contributes nothing"', () => {
     expect(autoApplyText(LIST, [])).toBe('')
-    expect(autoApplyText(LIST, ['om-unrelated'])).toBe('')
+    expect(autoApplyText(LIST, ['xez-unrelated'])).toBe('')
   })
 })
 

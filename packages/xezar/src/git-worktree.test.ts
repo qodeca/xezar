@@ -356,7 +356,7 @@ describe('worktreeShortstat (real git)', () => {
       });
 
       it('counts the committed work on a branch the agent opened during the run', async () => {
-        // The `+0 −0` case: every om-* skill commits on its own `feat/…` branch, so
+        // The `+0 −0` case: every xez-* skill commits on its own `feat/…` branch, so
         // the uncommitted-only anchor reported nothing for the run's real output.
         const r = await repoWithOlderForeignBranch();
         await run('git', ['checkout', '-q', 'main'], { cwd: r });

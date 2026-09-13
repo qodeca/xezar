@@ -591,7 +591,7 @@ describe('legacy flat URLs redirect to the boot project', () => {
   it('preserves a query byte-for-byte across the redirect', () => {
     // /skills keeps its `?skill=` selection in the URL, so the address bar itself proves the
     // redirect carried the query untouched (the /new composer consumes-then-clears its own).
-    const search = '?skill=om-code-review&x=a%2Fb&auto=1'
+    const search = '?skill=xez-code-review&x=a%2Fb&auto=1'
     renderAt(`/skills${search}`)
     expect(currentPathname()).toBe(`/p/${BOOT}/skills`)
     expect(currentSearch()).toBe(search)
@@ -601,15 +601,15 @@ describe('legacy flat URLs redirect to the boot project', () => {
   it('preserves the hash too — /settings/skills through both hops', () => {
     // `/settings/skills` moved to `/skills`, so a legacy flat link redirects twice. Query
     // survival was already asserted; the hash is the half that was silently dropped.
-    renderAt('/settings/skills?skill=om-code-review#usage')
+    renderAt('/settings/skills?skill=xez-code-review#usage')
     expect(currentPathname()).toBe(`/p/${BOOT}/skills`)
-    expect(currentSearch()).toBe('?skill=om-code-review')
+    expect(currentSearch()).toBe('?skill=xez-code-review')
     expect(currentHash()).toBe('#usage')
     expect(routeName()).toBe('skills')
   })
 
   it('delivers the full bookmarklet grammar into the composer (spec 011 contract)', () => {
-    renderAt('/new?skill=om-code-review&ref=https%3A%2F%2Fgithub.com%2Fo%2Fr%2Fpull%2F1&auto=1&key=s3cret')
+    renderAt('/new?skill=xez-code-review&ref=https%3A%2F%2Fgithub.com%2Fo%2Fr%2Fpull%2F1&auto=1&key=s3cret')
     expect(currentPathname()).toBe(`/p/${BOOT}/new`)
     expect(routeName()).toBe('new')
     // auto=1 + key armed the unattended start — only possible if every param survived.
@@ -646,9 +646,9 @@ describe('the /p/default alias', () => {
   })
 
   it('keeps the query while normalizing', () => {
-    renderAt('/p/default/skills?skill=om-code-review')
+    renderAt('/p/default/skills?skill=xez-code-review')
     expect(currentPathname()).toBe(`/p/${BOOT}/skills`)
-    expect(currentSearch()).toBe('?skill=om-code-review')
+    expect(currentSearch()).toBe('?skill=xez-code-review')
   })
 
   it('normalizes the bare /p/default to the boot project home', () => {
@@ -744,7 +744,7 @@ describe('/new query params', () => {
     screen.getByLabelText('Describe a task for the agent') as HTMLTextAreaElement
 
   it('prefills the composer from a non-auto deep link', () => {
-    renderAt('/new?skill=om-code-review&ref=https%3A%2F%2Fgithub.com%2Fo%2Fr%2Fpull%2F1')
+    renderAt('/new?skill=xez-code-review&ref=https%3A%2F%2Fgithub.com%2Fo%2Fr%2Fpull%2F1')
     expect(routeName()).toBe('new')
     expect(textarea().value).toBe('https://github.com/o/r/pull/1')
   })
@@ -752,7 +752,7 @@ describe('/new query params', () => {
   it('an armed auto=1 link shows the starting surface, never the composer mid-flight', () => {
     // fetch never answers here, so the key check is honestly in flight: no composer to type
     // into, no run POSTed, and the key nowhere in the DOM.
-    renderAt('/new?skill=om-code-review&ref=https%3A%2F%2Fgithub.com%2Fo%2Fr%2Fpull%2F1&auto=1&key=s3cret')
+    renderAt('/new?skill=xez-code-review&ref=https%3A%2F%2Fgithub.com%2Fo%2Fr%2Fpull%2F1&auto=1&key=s3cret')
     expect(routeName()).toBe('new')
     expect(document.querySelector('[data-slot="auto-starting"]')).not.toBeNull()
     expect(screen.queryByLabelText('Describe a task for the agent')).toBeNull()

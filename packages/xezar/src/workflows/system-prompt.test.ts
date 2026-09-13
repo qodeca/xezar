@@ -62,18 +62,18 @@ describe('skill-aware task naming (#432)', () => {
   const skillWorkflow: WorkflowDef = {
     name: '(planned)',
     source: 'built-in',
-    steps: [{ id: 'task', name: 'om-auto-review-pr', skill: 'om-auto-review-pr', prompt: '{{task}}' }],
+    steps: [{ id: 'task', name: 'xez-auto-review-pr', skill: 'xez-auto-review-pr', prompt: '{{task}}' }],
   };
 
   it('leads with the number for argument-only tasks (task auto-naming spec)', () => {
-    expect(makeRunTitle('432', skillWorkflow)).toBe('432: /om-auto-review-pr');
+    expect(makeRunTitle('432', skillWorkflow)).toBe('432: /xez-auto-review-pr');
   });
 
   it('rewrites a user-supplied skill command with a numeric argument to number-first', () => {
-    expect(makeRunTitle('/om-auto-review-pr 432', skillWorkflow)).toBe('432: /om-auto-review-pr');
+    expect(makeRunTitle('/xez-auto-review-pr 432', skillWorkflow)).toBe('432: /xez-auto-review-pr');
     // A non-numeric argument keeps the full command, number still leads.
-    expect(makeRunTitle('/om-auto-review-pr 432 and check CI', skillWorkflow)).toBe(
-      '432: /om-auto-review-pr 432 and check CI',
+    expect(makeRunTitle('/xez-auto-review-pr 432 and check CI', skillWorkflow)).toBe(
+      '432: /xez-auto-review-pr 432 and check CI',
     );
   });
 
@@ -139,10 +139,10 @@ describe('systemPrompt end-to-end (dry run)', () => {
     await run('git', ['add', '-A'], { cwd: repoRoot });
     await run('git', [...GIT_ID, 'commit', '-q', '-m', 'base'], { cwd: repoRoot });
     mkdirSync(join(repoRoot, '.local/xezar'), { recursive: true });
-    mkdirSync(join(repoRoot, '.ai/skills/om-auto-review-pr'), { recursive: true });
+    mkdirSync(join(repoRoot, '.ai/skills/xez-auto-review-pr'), { recursive: true });
     writeFileSync(
-      join(repoRoot, '.ai/skills/om-auto-review-pr/SKILL.md'),
-      `---\nname: om-auto-review-pr\ndescription: ${SKILL_DESCRIPTION}\n---\n${SKILL_BODY}\n`,
+      join(repoRoot, '.ai/skills/xez-auto-review-pr/SKILL.md'),
+      `---\nname: xez-auto-review-pr\ndescription: ${SKILL_DESCRIPTION}\n---\n${SKILL_BODY}\n`,
       'utf8',
     );
     mkdirSync(join(repoRoot, '.xezar'), { recursive: true });
@@ -183,7 +183,7 @@ describe('systemPrompt end-to-end (dry run)', () => {
     name: '(planned)',
     source: 'built-in',
     steps: [
-      { id: 'review', name: 'om-auto-review-pr', skill: 'om-auto-review-pr', prompt: '{{task}}' },
+      { id: 'review', name: 'xez-auto-review-pr', skill: 'xez-auto-review-pr', prompt: '{{task}}' },
       { id: 'verify', command: 'true' },
     ],
   };
@@ -228,7 +228,7 @@ describe('systemPrompt end-to-end (dry run)', () => {
   it('live refresh: the namer applies turn context through the mock (direct drive)', async () => {
     const record = manager.startRun(skillWorkflow, { task: '437' });
     type NamerSeam = { autoNameRun(id: string, skill: string | undefined, task: string, live?: object): Promise<void> };
-    await (manager as unknown as NamerSeam).autoNameRun(record.id, 'om-auto-review-pr', '437', {
+    await (manager as unknown as NamerSeam).autoNameRun(record.id, 'xez-auto-review-pr', '437', {
       turnText: 'fixed the watchdog race',
       diffStat: '2 files, +10 -3',
     });
@@ -298,7 +298,7 @@ describe('systemPrompt end-to-end (dry run)', () => {
     // A namer answer landing later (mock: "implementing cr fixes" + pr 437)
     // must not displace the agent's own declaration.
     type NamerSeam = { autoNameRun(id: string, skill: string | undefined, task: string, live?: object): Promise<void> };
-    await (manager as unknown as NamerSeam).autoNameRun(record.id, 'om-auto-review-pr', '437', {
+    await (manager as unknown as NamerSeam).autoNameRun(record.id, 'xez-auto-review-pr', '437', {
       turnText: 'fixed the watchdog race',
       diffStat: '2 files, +10 -3',
     });
@@ -362,7 +362,7 @@ describe('systemPrompt end-to-end (dry run)', () => {
     const id = await runToEnd({ task: '432' }, skillWorkflow);
     const record = store.getRun(id);
 
-    expect(record?.title).toBe('432: /om-auto-review-pr');
+    expect(record?.title).toBe('432: /xez-auto-review-pr');
     // Step-0 extraction persisted the reference (skill-hint → PR).
     expect(record?.prNumber).toBe(432);
     // The fire-and-forget namer replaces the heuristic with the mock's short
@@ -377,13 +377,13 @@ describe('systemPrompt end-to-end (dry run)', () => {
     expect(named?.titleOrigin).toBe('auto');
 
     const skillPrompt = skillSystemPrompt({
-      name: 'om-auto-review-pr',
+      name: 'xez-auto-review-pr',
       description: SKILL_DESCRIPTION,
       body: SKILL_BODY,
       // The runner passes the full discovered skill, so the prompt carries the
       // absolute path of the installed copy (read from the MAIN repo even in a
       // worktree). Mirror that here so the expected prompt matches.
-      path: join(repoRoot, '.ai/skills/om-auto-review-pr/SKILL.md'),
+      path: join(repoRoot, '.ai/skills/xez-auto-review-pr/SKILL.md'),
       source: 'ai',
     });
     expect(capturedSystemPrompt()).toBe(

@@ -75,7 +75,7 @@ describe('SkillsUpdateService', () => {
 
   it('degrades when npx is absent and does not inspect manual skill folders', async () => {
     const { home, repo } = await fixture(undefined);
-    await mkdir(join(repo, '.agents', 'skills', 'om-manual'), { recursive: true });
+    await mkdir(join(repo, '.agents', 'skills', 'xez-manual'), { recursive: true });
     const run = vi.fn();
     const state = await new SkillsUpdateService({ homeDir: home, run, resolveNpx: async () => null }).check(repo);
     expect(state.status).toBe('unavailable'); expect(state.scopes[0]?.reason).toBe('npx is unavailable'); expect(run).not.toHaveBeenCalled();

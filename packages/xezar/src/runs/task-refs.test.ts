@@ -109,17 +109,17 @@ describe('titleRefNumber', () => {
 
 describe('refineTaskRefs', () => {
   it('classifies a bare number by the skill it was handed to', () => {
-    expect(refineTaskRefs({ ambiguousNumber: 469 }, 'om-auto-review-pr')).toEqual({ prNumber: 469 });
-    expect(refineTaskRefs({ ambiguousNumber: 469 }, 'om-auto-continue-pr-loop')).toEqual({ prNumber: 469 });
-    expect(refineTaskRefs({ ambiguousNumber: 438 }, 'om-auto-fix-issue')).toEqual({ issueNumber: 438 });
+    expect(refineTaskRefs({ ambiguousNumber: 469 }, 'xez-auto-review-pr')).toEqual({ prNumber: 469 });
+    expect(refineTaskRefs({ ambiguousNumber: 469 }, 'xez-auto-continue-pr-loop')).toEqual({ prNumber: 469 });
+    expect(refineTaskRefs({ ambiguousNumber: 438 }, 'xez-auto-fix-issue')).toEqual({ issueNumber: 438 });
   });
 
   it('never overrides explicit refs and passes through without a hint', () => {
-    expect(refineTaskRefs({ prNumber: 1, ambiguousNumber: 9 }, 'om-auto-fix-issue')).toEqual({
+    expect(refineTaskRefs({ prNumber: 1, ambiguousNumber: 9 }, 'xez-auto-fix-issue')).toEqual({
       prNumber: 1,
       issueNumber: 9,
     });
     expect(refineTaskRefs({ ambiguousNumber: 9 }, undefined)).toEqual({ ambiguousNumber: 9 });
-    expect(refineTaskRefs({ ambiguousNumber: 9 }, 'om-spec-writing')).toEqual({ ambiguousNumber: 9 });
+    expect(refineTaskRefs({ ambiguousNumber: 9 }, 'xez-spec-writing')).toEqual({ ambiguousNumber: 9 });
   });
 });

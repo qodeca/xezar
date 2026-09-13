@@ -52,31 +52,31 @@ describe('the ui-state API — skillUsage (#408)', () => {
   });
 
   it('PUT skillUsage persists and round-trips through GET', async () => {
-    const res = await put({ skillUsage: { 'om-fix': 1, 'om-review': 3 } });
+    const res = await put({ skillUsage: { 'xez-fix': 1, 'xez-review': 3 } });
     expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({ skillUsage: { 'om-fix': 1, 'om-review': 3 } });
-    expect(rawFile().skillUsage).toEqual({ 'om-fix': 1, 'om-review': 3 });
+    expect(await res.json()).toMatchObject({ skillUsage: { 'xez-fix': 1, 'xez-review': 3 } });
+    expect(rawFile().skillUsage).toEqual({ 'xez-fix': 1, 'xez-review': 3 });
   });
 
   it('a later PUT replaces the whole map (shallow merge) — clients must send the FULL map', async () => {
-    await put({ skillUsage: { 'om-fix': 1, 'om-review': 3 } });
-    // Sending only the bumped entry would silently drop om-review — the client-side
+    await put({ skillUsage: { 'xez-fix': 1, 'xez-review': 3 } });
+    // Sending only the bumped entry would silently drop xez-review — the client-side
     // `bumpSkillUsage` always spreads the previous map, exactly to avoid this.
-    await put({ skillUsage: { 'om-fix': 2 } });
-    expect(rawFile().skillUsage).toEqual({ 'om-fix': 2 });
+    await put({ skillUsage: { 'xez-fix': 2 } });
+    expect(rawFile().skillUsage).toEqual({ 'xez-fix': 2 });
   });
 
   it('a skillUsage PUT never disturbs unrelated existing keys (additive, #3 BACKWARD_COMPATIBILITY)', async () => {
-    await put({ lastTask: { source: 'skill', ref: 'om-fix' }, lastAutonomous: true });
-    await put({ skillUsage: { 'om-fix': 1 } });
+    await put({ lastTask: { source: 'skill', ref: 'xez-fix' }, lastAutonomous: true });
+    await put({ skillUsage: { 'xez-fix': 1 } });
     const raw = rawFile();
-    expect(raw.lastTask).toEqual({ source: 'skill', ref: 'om-fix' });
+    expect(raw.lastTask).toEqual({ source: 'skill', ref: 'xez-fix' });
     expect(raw.lastAutonomous).toBe(true);
-    expect(raw.skillUsage).toEqual({ 'om-fix': 1 });
+    expect(raw.skillUsage).toEqual({ 'xez-fix': 1 });
   });
 
   it('rejects a malformed skillUsage value instead of writing garbage', async () => {
-    const res = await put({ skillUsage: { 'om-fix': 'a lot' } });
+    const res = await put({ skillUsage: { 'xez-fix': 'a lot' } });
     expect(res.status).toBe(400);
     expect((await res.json()) as { error: string }).toHaveProperty('error');
   });
@@ -95,13 +95,13 @@ describe('the ui-state API — skillUsage (#408)', () => {
     });
 
     it('null REPLACES a stored source — an omitted key would have kept it', async () => {
-      await put({ lastTask: { source: 'skill', ref: 'om-fix' } });
+      await put({ lastTask: { source: 'skill', ref: 'xez-fix' } });
       await put({ lastTask: null });
       expect(rawFile().lastTask).toBeNull();
       // The omitted-key case, for contrast: the shallow merge keeps what is already there.
-      await put({ lastTask: { source: 'skill', ref: 'om-fix' } });
+      await put({ lastTask: { source: 'skill', ref: 'xez-fix' } });
       await put({ lastAutonomous: true });
-      expect(rawFile().lastTask).toEqual({ source: 'skill', ref: 'om-fix' });
+      expect(rawFile().lastTask).toEqual({ source: 'skill', ref: 'xez-fix' });
     });
 
     it('still refuses a malformed source', async () => {
@@ -136,9 +136,9 @@ describe('the ui-state API — skillUsage (#408)', () => {
     });
 
     it('a count at the cap is accepted; one over it is refused', async () => {
-      expect((await put({ skillUsage: { 'om-fix': 1_000_000 } })).status).toBe(200);
-      expect((await put({ skillUsage: { 'om-fix': 1_000_001 } })).status).toBe(400);
-      expect(rawFile().skillUsage).toEqual({ 'om-fix': 1_000_000 });
+      expect((await put({ skillUsage: { 'xez-fix': 1_000_000 } })).status).toBe(200);
+      expect((await put({ skillUsage: { 'xez-fix': 1_000_001 } })).status).toBe(400);
+      expect(rawFile().skillUsage).toEqual({ 'xez-fix': 1_000_000 });
     });
 
     it('200 entries are accepted; 201 are refused', async () => {
