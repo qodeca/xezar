@@ -102,6 +102,8 @@ import type {
   WorkspaceConfigResponse,
   WorkspaceUiState,
   SkillsUpdateState,
+  McpLeaderActionInput,
+  McpLeaderStatus,
 } from '@qodeca/xezar-api-client'
 import { parseProviderStatusResponse } from '@/lib/provider-status'
 import {
@@ -1968,6 +1970,25 @@ export async function getMcpApiReference(opts?: ReadOptions): Promise<McpApiRefe
   return unwrap(
     await xez.api.v1.p[':projectId'].mcp.reference.$get({ param: { projectId: queryScope() } }, init(opts)),
     '/mcp/reference',
+  )
+}
+
+/** Push delivery to this project's leader (`GET /api/v1/mcp/leader`, #309, #374): who owns the
+ *  project, which leader is attached, and why events are waiting. `200 {available: false}` when the
+ *  project's MCP service is not running. */
+export async function getMcpLeader(opts?: ReadOptions): Promise<McpLeaderStatus> {
+  return unwrap(
+    await xez.api.v1.p[':projectId'].mcp.leader.$get({ param: { projectId: queryScope() } }, init(opts)),
+    '/mcp/leader',
+  )
+}
+
+/** Attach this project's leader, or stop (`POST /api/v1/mcp/leader`). Answers the new status; a
+ *  refusal is a 409 carrying the server's own words, which `ApiError` keeps verbatim. */
+export async function actOnMcpLeader(input: McpLeaderActionInput): Promise<McpLeaderStatus> {
+  return unwrap(
+    await xez.api.v1.p[':projectId'].mcp.leader.$post({ param: { projectId: queryScope() }, json: input }),
+    '/mcp/leader',
   )
 }
 

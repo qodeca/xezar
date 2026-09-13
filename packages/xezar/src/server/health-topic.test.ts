@@ -141,9 +141,10 @@ describe('health topic + cache (live-server path)', () => {
     return ((await res.json()) as { defaultRunner?: string }).defaultRunner;
   };
 
-  it('registers exactly one `health` topic', () => {
+  it('registers exactly one `health` topic, beside the `mcp-leader` one', () => {
     const { topics } = build();
-    expect([...topics.keys()]).toEqual(['health']);
+    // `mcp-leader` (#374, round 5 on #403) has its own suite, `mcp-leader-topic.test.ts`.
+    expect([...topics.keys()].sort()).toEqual(['health', 'mcp-leader']);
   });
 
   it('pre-warms the cache at boot so the first GET is already warm', async () => {

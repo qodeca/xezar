@@ -58,10 +58,11 @@ const repoRoot = process.env.XEZ_RELEASE_ROOT
 const dirs = {
   contract: path.join(repoRoot, 'packages/contract'),
   apiClient: path.join(repoRoot, 'packages/api-client'),
+  web: path.join(repoRoot, 'packages/web'),
   xezar: path.join(repoRoot, 'packages/xezar'),
 };
 /** Stamp and publish order — a dependency before anything that depends on it. */
-const RELEASE_ORDER = ['contract', 'apiClient', 'xezar'];
+const RELEASE_ORDER = ['contract', 'apiClient', 'web', 'xezar'];
 
 const readManifest = (dir) => JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8'));
 const writeManifest = (dir, pkg) =>
@@ -84,6 +85,7 @@ if (!isReleaseBump(bump)) {
 const manifests = {
   contract: readManifest(dirs.contract),
   apiClient: readManifest(dirs.apiClient),
+  web: readManifest(dirs.web),
   xezar: readManifest(dirs.xezar),
 };
 

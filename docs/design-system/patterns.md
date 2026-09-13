@@ -151,8 +151,8 @@ Source: `components/app-shell.tsx`.
 Source: `api/global-events.tsx`, `api/ws.ts`, `api/queries.ts` (`useHealthSubscription`), `lib/use-now.ts`.
 
 - One `EventSource` on `/api/v1/workspace/events` for the app's life. Events `run`, `run-deleted`, `todos`, `usage`, `ping`, plus workspace events. A `run` event patches the runs list in place; the detail cache is merged only if already present; a `run-deleted` removes caches so a mounted page refetches into the 404.
-- Reconcile (invalidate runs, index, todos, health, worktrees, provider status) on every reconnect, on `visibilitychange` to visible and on bfcache `pageshow`. A closed stream reopens after 3 s.
-- One WebSocket on `/api/v1/ws`, opened on the first `subscribeTopic` and closed when no topic is held. Exactly one topic today: `health`, subscribed once at the root and only when `capabilities.localHandoff` is true. Remote mode opens no WebSocket.
+- Reconcile (invalidate runs, index, todos, health, worktrees, provider status, the MCP leader status) on every reconnect, on `visibilitychange` to visible and on bfcache `pageshow`. A closed stream reopens after 3 s.
+- One WebSocket on `/api/v1/ws`, opened on the first `subscribeTopic` and closed when no topic is held. Two topics today, both only when `capabilities.localHandoff` is true: `health`, session-global, subscribed once at the root; and `mcp-leader`, view-level, subscribed by Settings → MCP connection's leader control while it is on screen (`useMcpLeaderSubscription`). Remote mode opens no WebSocket.
 - What "live" looks like: `StatusDot pulse`, `.shimmer` on the running tool verb and "Working…", a `LoaderCircleIcon` tail on a running thread, live CPU/Mem cells tinted `bg-violet/5`, animated diff totals. There is no connection-status chip.
 - Backstops: the cross-project index polls every 15 s; ages tick with `useNow(30_000)`.
 
