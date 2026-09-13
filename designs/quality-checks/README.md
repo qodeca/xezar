@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Draft – waiting for owner decisions (see [Open decisions](#open-decisions)) and a UX/UI design review (`xezar-ux-design`) |
+| **Status** | Draft – waiting for owner decisions (see [Open decisions](#14-open-decisions)) and a `design-review` run |
 | **Date** | 2026-09-13 |
 | **Mockup** | Open [`index.html`](index.html) in a browser. No build or server needed. |
 | **Replaces** | The "Quality checks" section on Project settings → MCP connection (issue #114, PR #255) |
@@ -416,3 +416,7 @@ On the first day the badge will show about 15, from old tasks. Archive them to c
 - Spec: `docs/features/mcp-server/mcp-project-leader-requirements.md` – F-22 (line 73), A-22 (206), U-M06 (290), UX-M05 (322)
 - Tokens: `packages/web/src/styles/index.css`
 - Rules: `AGENTS.md` (HTTP API, Changing a mechanism that already works), `BACKWARD_COMPATIBILITY.md` §1 and §2
+
+## 18. Design review
+
+Pending – no review yet. The `design-review` workflow posts a `## Design review` comment on the PR; link it here with each finding's disposition (fixed, filed as `design-debt`, or accepted with a reason). The badge colour question is tracked as `docs/design-system/decisions.md` D-01.
