@@ -2,6 +2,7 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { CodexAttachError } from './adapters/codex-link.ts';
 import { EventJournal } from './event-journal.ts';
 import { LeaderDelivery } from './leader-delivery.ts';
 
@@ -618,7 +619,7 @@ describe('attaching Codex (#374)', () => {
     await until('the first link to take the turn and drop', () => first.state.closed);
     await until('the Codex blocker to be named', () => {
       const status = made.status();
-      return status.available && status.blocker?.code === 'codex-session-not-targetable';
+      return status.available && status.blocker?.code === 'codex-app-server-unreachable';
     });
     await made.act({ action: 'attach', client: 'codex' });
     await until('the new link to reconcile', () => second.sent.some((request) => request.method === 'thread/turns/list'));
@@ -640,7 +641,7 @@ describe('attaching Codex (#374)', () => {
     row(journal);
     await settled(300);
     const status = made.status();
-    expect(status.available && status.blocker).toMatchObject({ code: 'codex-session-not-targetable', fix: expect.stringContaining('leader_events') });
+    expect(status.available && status.blocker).toMatchObject({ code: 'codex-app-server-unreachable', fix: expect.stringContaining('leader_events') });
     expect(status.available && status.delivery).toMatchObject({ deliveredSeq: 0, latestSeq: 2 });
     expect(journal.latestSeq).toBe(2);
   });
@@ -652,7 +653,7 @@ describe('attaching Codex (#374)', () => {
     thread.state.loaded = false;
     await until('the heartbeat to find the thread unloaded', () => {
       const status = made.status();
-      return status.available && status.blocker?.code === 'codex-session-not-targetable';
+      return status.available && status.blocker?.code === 'codex-thread-not-loaded';
     });
     row(journal);
     await settled(300);
@@ -670,6 +671,61 @@ describe('attaching Codex (#374)', () => {
     expect(warnings.join('\n')).not.toContain(home);
     const status = made.status();
     expect(status.available && status.leader).toBeNull();
+  });
+
+  // Design review NB-1 and the QA FAIL on #403: a refused attach is named in the STATUS, with its own
+  // fix, so the cockpit's Attach leader control can say which refusal it was and what to change.
+  it('names each refused Codex attach in the status with its own fix, until an attach succeeds', async () => {
+    const thread = codexThread();
+    let refuse: CodexAttachError | undefined;
+    const { delivery: made } = codexDelivery({
+      connect: async () => {
+        if (refuse) throw refuse;
+        return { threadId: 'thread-owner', link: thread.link, state: { waiting: false } };
+      },
+    });
+    for (const [reason, code, fix] of [
+      ['home', 'codex-home-mismatch', 'same CODEX_HOME'],
+      ['thread', 'codex-thread-not-loaded', 'Open the session in your Codex TUI again'],
+      ['app-server', 'codex-app-server-unreachable', 'codex app-server --listen unix://'],
+    ] as const) {
+      refuse = new CodexAttachError(reason, `refused: ${reason}`);
+      await expect(made.act({ action: 'attach', client: 'codex' })).resolves.toMatchObject({ ok: false, error: expect.stringContaining('cannot reach') });
+      const status = made.status();
+      expect(status.available && status.blocker, reason).toMatchObject({ code, message: expect.stringContaining('cannot reach'), fix: expect.stringContaining(fix) });
+      expect(status.available && status.blocker?.fix).toContain('leader_events');
+    }
+    refuse = undefined;
+    await made.act({ action: 'attach', client: 'codex' });
+    const attached = made.status();
+    expect(attached.available && attached.blocker).toBeNull();
+  });
+
+  it('the REAL connector’s refusals carry their reason: a missing socket gets the app-server fix, an unreadable home the home fix', async () => {
+    const home = realpathSync(mkdtempSync('/tmp/xzld-codex-'));
+    dirs.push(home);
+    const withHome = codexDelivery({ home }).delivery;
+    await withHome.act({ action: 'attach', client: 'codex' });
+    const missingSocket = withHome.status();
+    expect(missingSocket.available && missingSocket.blocker).toMatchObject({ code: 'codex-app-server-unreachable' });
+    const noHome = codexDelivery({ home: join(home, 'not-there') }).delivery;
+    await noHome.act({ action: 'attach', client: 'codex' });
+    const missingHome = noHome.status();
+    expect(missingHome.available && missingHome.blocker).toMatchObject({ code: 'codex-home-mismatch' });
+  });
+
+  it('reports the owner as identified Codex only once its session announced a thread, and a new owner inherits neither that nor a refusal', async () => {
+    const { delivery: made } = delivery(true);
+    expect(made.status()).toMatchObject({ owner: null });
+    made.sessionOpened('owner');
+    expect(made.status()).toMatchObject({ owner: { client: null } });
+    await made.act({ action: 'attach', client: 'codex' });
+    expect(made.status()).toMatchObject({ blocker: { code: 'codex-session-not-targetable', fix: expect.stringContaining('call one once') } });
+    // The tool call that announces the thread answers the not-announced refusal.
+    made.codexAnnounced('owner', { threadId: 'thread-owner' });
+    expect(made.status()).toMatchObject({ owner: { client: 'codex' }, blocker: { code: 'no-leader-session' } });
+    made.sessionClosed('owner');
+    expect(made.status()).toMatchObject({ owner: null, blocker: { code: 'no-leader-session' } });
   });
 
   it('refuses a Codex attach without owner-bound metadata', async () => {
@@ -695,5 +751,31 @@ describe('attaching Codex (#374)', () => {
     hosted.codexAnnounced('owner', { threadId: 'thread-owner' });
     await expect(hosted.act({ action: 'attach', client: 'codex' })).resolves.toMatchObject({ ok: false, error: expect.stringContaining('cannot reach') });
     expect(dialed).toBe(false);
+  });
+});
+
+/**
+ * Round-4 review, major 2: the no-leader blocker is where a Codex user lands before attaching, and it
+ * used to say a Codex session "has no address xezar can attach to" and offer only an OpenCode
+ * remedy. It must tell the pull-only clients from the attachable ones and give Codex's own path.
+ */
+describe('no leader attached: the blocker says who reads, who can be attached, and how', () => {
+  it('tells pull-only clients from attachable ones, and gives the Codex start, discovery and retry remedy', () => {
+    const { delivery: made } = delivery(true);
+    const status = made.status();
+    const blocker = status.available ? status.blocker : null;
+    expect(blocker?.code).toBe('no-leader-session');
+    expect(blocker?.message).not.toContain('has no address');
+    // Pull-only: they read their events.
+    expect(blocker?.message).toContain('A Claude Code session, or a pi without xezar’s leader extension, reads its events with the leader_events tool.');
+    // Attachable: Codex through its shared app-server, and OpenCode.
+    expect(blocker?.message).toContain('A Codex session running on Codex’s shared local app-server');
+    expect(blocker?.message).toContain('`opencode serve`');
+    expect(blocker?.message).toContain('can be attached');
+    // Codex: start, discovery, retry.
+    expect(blocker?.fix).toContain('codex app-server --listen unix://');
+    expect(blocker?.fix).toContain('call a xezar tool once');
+    expect(blocker?.fix).toContain('retry');
+    expect(blocker?.fix).toContain('opencode serve');
   });
 });

@@ -1,10 +1,10 @@
-import type { McpJournalRow, McpLeaderActionInput, McpLeaderBlocker, McpLeaderSession, McpLeaderStatus } from '@qodeca/xezar-contract';
+import type { McpJournalRow, McpLeaderActionInput, McpLeaderBlocker, McpLeaderOwner, McpLeaderSession, McpLeaderStatus } from '@qodeca/xezar-contract';
 
 import { projectDataDir } from '../project-data-paths.ts';
 import type { ProjectOwnership } from '../workspace/project-owner.ts';
 import { OpenCodeReactionAdapter } from './adapters/opencode.ts';
-import { codexControlHome, connectCodexLeader, type CodexLeaderAnnouncement, type ConnectedCodexLeader } from './adapters/codex-link.ts';
-import { type CodexReactionAdapter, type CodexReactionTarget, codexReactionTarget } from './adapters/codex.ts';
+import { CodexAttachError, codexControlHome, connectCodexLeader, type CodexLeaderAnnouncement, type ConnectedCodexLeader } from './adapters/codex-link.ts';
+import { codexBlocker, type CodexReactionAdapter, type CodexReactionTarget, codexReactionTarget, type CodexUnreachableReason } from './adapters/codex.ts';
 import { connectPiLeaderLink, type PiLeaderDescriptor, type PiLeaderLink, readPiLeaderDescriptor } from './adapters/pi-link.ts';
 import { type PiReactionAdapter, type PiReactionTarget, piReactionTarget } from './adapters/pi.ts';
 import type { EchoGuard } from './echo-guard.ts';
@@ -27,7 +27,7 @@ import type { LeaderActResult, ProjectLeaderPort } from './project-leaders.ts';
  * start no turn in Claude Code, Codex, OpenCode or pi (D-05 § 4; #330 run A for pi; each adapter's
  * evidence record). xezar NEVER starts an agent process for a leader (owner decision on #311): the
  * person runs their own leader and connects it to xezar over MCP. So an event reaches a model only
- * through a session the person runs AND tells xezar where to find — `attach`. Two clients can be
+ * through a session the person runs AND tells xezar where to find — `attach`. Three clients can be
  * told today:
  *
  *  - **OpenCode** names an `opencode serve` session by URL and session id (#110).
@@ -37,8 +37,12 @@ import type { LeaderActResult, ProjectLeaderPort } from './project-leaders.ts';
  *    dials that (#330 WP2, `adapters/pi-link.ts`). With no extension running there is no descriptor
  *    and the attach is refused with pi's own recoverable reason, which is exactly the behaviour that
  *    existed before the extension did.
+ *  - **Codex** (#374) names nothing either: the owning Codex session announces its thread id on its
+ *    tool calls, and xezar finds the shared app-server in its OWN Codex home (`adapters/codex-link.ts`,
+ *    the discovery rule). A refusal is remembered against the owner session with WHICH refusal it
+ *    was, so the status names the cause and its fix (design review NB-1).
  *
- * A Claude Code or Codex session in a terminal still has no address at all: for it the controller
+ * A Claude Code session in a terminal still has no address at all: for it the controller
  * keeps the rows in the journal, reports `disconnected`, retries at its heartbeat, and
  * `status().blocker` says so. Nothing is lost either way — such a leader reads its events with the
  * `leader_events` tool (#251), and the next session resumes after its last acknowledgement.
@@ -86,11 +90,16 @@ export const LEADER_ROLE_INSTRUCTION = [
   'You do not edit files yourself; tasks do the work in their own worktrees.',
 ].join('\n');
 
+/**
+ * Nothing attached. The first thing a person reads before attaching, so it says which clients only
+ * READ their events and which can be ATTACHED, and gives Codex's own path — start, discovery, retry
+ * (round-4 review, major 2; it used to tell a Codex user their session had no address).
+ */
 const NO_LEADER: McpLeaderBlocker = {
   code: 'no-leader-session',
   message:
-    'No leader session is attached to this project, so events are kept in the journal, not pushed. A Claude Code, Codex or pi session in a terminal has no address xezar can attach to, and MCP notifications start no turn — that leader reads its events with the leader_events tool.',
-  fix: 'Keep using leader_events from your own leader, or attach the OpenCode session you run with `opencode serve`.',
+    'No leader session is attached to this project, so events are kept in the journal, not pushed. MCP notifications start no turn on their own. A Claude Code session, or a pi without xezar’s leader extension, reads its events with the leader_events tool. A Codex session running on Codex’s shared local app-server, an OpenCode session you run with `opencode serve`, or a pi running xezar’s leader extension can be attached, so events start a turn in it.',
+  fix: 'Keep using leader_events from your own leader, or attach one. For Codex: run it on Codex’s shared local app-server (`codex app-server --listen unix://`, in the Codex home xezar uses), let the session call a xezar tool once (for example leader_events) so xezar can find it, then attach it; if that is refused, fix what the refusal names and retry. For OpenCode, attach the session you run with `opencode serve`.',
 };
 
 /**
@@ -102,9 +111,9 @@ const NO_LEADER: McpLeaderBlocker = {
  * leader is an HTTP server the person runs, pi's is a Unix socket xezar's leader extension opens
  * from INSIDE the person's own pi, so "check the server" has no shared spelling.
  *
- * Only these two can be attached at all (`mcpLeaderAttachInputSchema` in the contract). A Claude Code
- * or Codex leader has no address to attach, which is `NO_LEADER`'s case above and names all four
- * clients itself. Typed `Record<McpLeaderSession['client'], …>` on purpose: a third attachable client
+ * Three can be attached (`mcpLeaderAttachInputSchema` in the contract): OpenCode, pi and Codex. A
+ * Claude Code leader has no address to attach, which is `NO_LEADER`'s case above and names every
+ * client itself. Typed `Record<McpLeaderSession['client'], …>` on purpose: another attachable client
  * is then a compile error here, rather than a message that quietly names the wrong server again.
  */
 const CLIENT_WORDS: Record<
@@ -268,6 +277,13 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
   /** One `act` at a time: two concurrent attaches must not leave two adapters behind. */
   #acting: Promise<unknown> = Promise.resolve();
   readonly #codexAnnouncements = new Map<string, CodexLeaderAnnouncement>();
+  /**
+   * The last refused Codex attach, and the owner session it was refused for. The status names it,
+   * with its own fix, while nothing is attached and that session still owns the project (NB-1). A
+   * successful attach, a stop or a different owner clears it; an announcement clears the refusal it
+   * answers ("has not called a tool yet").
+   */
+  #refusal: { readonly sessionKey: string | undefined; readonly reason: CodexUnreachableReason; readonly blocker: McpLeaderBlocker } | undefined;
   #closed = false;
 
   constructor(opts: LeaderDeliveryOptions) {
@@ -309,7 +325,9 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
 
   /** Metadata arrives from the owner bridge, never from the HTTP attach request. */
   codexAnnounced(sessionKey: string, announcement: CodexLeaderAnnouncement): void {
-    if (this.#opts.ownership.sessionToken(sessionKey) !== undefined) this.#codexAnnouncements.set(sessionKey, announcement);
+    if (this.#opts.ownership.sessionToken(sessionKey) === undefined) return;
+    this.#codexAnnouncements.set(sessionKey, announcement);
+    if (this.#refusal?.reason === 'not-announced' && this.#refusal.sessionKey === sessionKey) this.#refusal = undefined;
   }
 
   // ---- the controller's side: `ReactionAdapter` ----------------------------------------------
@@ -375,6 +393,7 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     const controller = this.#liveController();
     return {
       available: true,
+      owner: this.#owner(),
       leader: this.#leaderSession(),
       delivery: controller ? controller.status() : null,
       blocker: this.#blocker(),
@@ -402,6 +421,7 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     if (this.#closed) return { ok: false, error: 'the MCP service for this project is stopping' };
     if (input.action === 'stop') {
       this.#detach();
+      this.#refusal = undefined;
       return { ok: true, status: this.status() };
     }
     // Attaching a leader that can never receive an event would answer 200 with a blocker-free status
@@ -421,6 +441,7 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
         return { ok: false, error: target.blocker.message };
       }
       this.#detach();
+      this.#refusal = undefined;
       this.#leader = {
         client: 'pi',
         adapter: target.adapter,
@@ -433,14 +454,20 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     }
     if (input.client === 'codex') {
       const found = await this.#codexTarget();
-      if (found.target.kind === 'blocked') return { ok: false, error: found.target.blocker.message };
+      if (found.target.kind === 'blocked') {
+        // The answer keeps the decision record's verbatim copy; the STATUS names which refusal it was.
+        if (found.reason !== undefined) this.#refusal = { sessionKey: this.#liveKey(), reason: found.reason, blocker: codexBlocker(found.reason) };
+        return { ok: false, error: found.target.blocker.message };
+      }
       this.#detach();
+      this.#refusal = undefined;
       this.#leader = { client: 'codex', adapter: found.target.adapter, codex: found.target.adapter, failingSince: null, settledThrough: 0, ...(found.dispose ? { dispose: found.dispose } : {}) };
       this.#liveController()?.wake();
       return { ok: true, status: this.status() };
     }
     // Re-attaching replaces the previous target; xezar owns no process, so nothing else changes.
     this.#detach();
+    this.#refusal = undefined;
     // A new leader with no history: whatever happened before it was attached was not about it.
     this.#leader = {
       client: 'opencode',
@@ -514,12 +541,17 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     return { target, dispose: () => link.close() };
   }
 
-  async #codexTarget(): Promise<{ target: CodexReactionTarget; dispose?: () => void }> {
+  /**
+   * Build Codex's target. A refusal carries WHICH one it was (`reason`, NB-1): no announcement yet, or
+   * the connector's own typed reason; anything else it throws is the app-server misbehaving. Hosted
+   * mode carries none — its route refuses before this runs, and there is nothing local to fix.
+   */
+  async #codexTarget(): Promise<{ target: CodexReactionTarget; dispose?: () => void; reason?: CodexUnreachableReason }> {
     const base = { projectId: this.projectId, onReaction: (seq: number) => this.#recordReaction(seq), ...this.#ownOperation() };
     if (this.#opts.localHandoff?.() === false) return { target: codexReactionTarget(base) };
     const sessionKey = this.#controllers.keys().next().value as string | undefined;
     const announcement = sessionKey === undefined ? undefined : this.#codexAnnouncements.get(sessionKey);
-    if (announcement === undefined) return { target: codexReactionTarget(base) };
+    if (announcement === undefined) return { target: codexReactionTarget(base), reason: 'not-announced' };
     // The discovery rule lives beside `connectCodexLeader`: the SERVICE's Codex home, confirmed by the
     // app-server's own `initialize.codexHome`, never a path from the bridge or the cockpit.
     const home = (this.#opts.codexLeader?.home ?? codexControlHome)();
@@ -532,7 +564,7 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
       // and the home is scrubbed in case a future one does.
       const reason = (err instanceof Error ? err.message : String(err)).split(home).join('<codex home>');
       this.#opts.warn(`[xez] Codex leader not attached for project ${this.projectId}: ${reason}`);
-      return { target: codexReactionTarget(base) };
+      return { target: codexReactionTarget(base), reason: err instanceof CodexAttachError ? err.reason : 'app-server' };
     }
     // A re-attach to the SAME thread inherits a hand-off whose acceptance is still unknown, so the new
     // link reconciles it before resending (decision record § 4) instead of resending blind.
@@ -557,6 +589,23 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     return undefined;
   }
 
+  /** The session key of the live owner controller, when a session owns the project. */
+  #liveKey(): string | undefined {
+    for (const [key, controller] of this.#controllers) if (controller.state !== 'ended') return key;
+    return undefined;
+  }
+
+  /**
+   * Who owns the project, as far as xezar has IDENTIFIED it. Only a Codex session identifies itself
+   * (its tool calls carry the thread id); every other owner reads `client: null`, never a guess. A
+   * client identified another way is one more branch here and one more enum member in the contract.
+   */
+  #owner(): McpLeaderOwner | null {
+    const key = this.#liveKey();
+    if (key === undefined) return null;
+    return { client: this.#codexAnnouncements.has(key) ? 'codex' : null };
+  }
+
   #recordReaction(seq: number): CursorAdvance {
     return this.#liveController()?.recordReaction(seq) ?? { status: 'inactive', seq: 0 };
   }
@@ -574,7 +623,8 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     // Before anything about the leader: with no journal, even an attached leader hears nothing.
     if (!this.#opts.journal.writable) return JOURNAL_UNWRITABLE;
     const leader = this.#leader;
-    if (leader === undefined) return NO_LEADER;
+    // Nothing attached: a refused attach for THIS owner says which refusal it was and its fix (NB-1).
+    if (leader === undefined) return this.#refusal !== undefined && this.#refusal.sessionKey === this.#liveKey() ? this.#refusal.blocker : NO_LEADER;
     // Attached, but nobody owns the project: no controller, so nothing is delivered (#331).
     const controller = this.#liveController();
     if (controller === undefined) return noOwnerSession(leader.client);

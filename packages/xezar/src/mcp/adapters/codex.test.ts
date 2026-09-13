@@ -621,6 +621,41 @@ describe('state at attach, and the thread between hand-offs (decision record § 
     expect(server.turnRequests()).toEqual(['turn/start']);
   });
 
+  // Round-4 review, major 1: a status xezar cannot read is not "no approval". Every payload below
+  // used to read as `{ loaded: true, waiting: false }`, clear the seeded wait and start a turn
+  // straight through the open approval.
+  it('a malformed or unknown thread/status/changed never releases a held approval: no turn starts', async () => {
+    const malformed: unknown[] = [undefined, null, 'idle', {}, { type: 'bogus' }, { type: 'active' }, { type: 'active', activeFlags: 'waitingOnApproval' }];
+    for (const status of malformed) {
+      const server = new FakeAppServer();
+      server.flags = ['waitingOnApproval'];
+      const adapter = new CodexReactionAdapter({ link: server, threadId: 'thread-1', projectId: 'xez109', state: { waiting: true } });
+      const delivering = adapter.deliver(dispatch([row(1)]), live());
+      await settle();
+      server.emit({ method: 'thread/status/changed', params: { threadId: 'thread-1', status } });
+      await settle();
+      expect(server.turnRequests(), JSON.stringify(status) ?? 'undefined').toEqual([]);
+      expect(adapter.promptOpen).toBe(true);
+      // A status it CAN read still ends the wait, so the uncertainty is recoverable, not a dead end.
+      server.flags = [];
+      server.emit({ method: 'thread/status/changed', params: { threadId: 'thread-1', status: { type: 'idle' } } });
+      await delivering;
+      expect(server.turnRequests()).toEqual(['turn/start']);
+    }
+  });
+
+  it('an unknown status with nothing open defers delivery and names a recoverable blocker until a fresh read', async () => {
+    const server = new FakeAppServer();
+    const adapter = adapterOn(server);
+    server.emit({ method: 'thread/status/changed', params: { threadId: 'thread-1', status: { type: 'somethingNew' } } });
+    expect(adapter.promptOpen).toBe(true);
+    expect(adapter.status().blocker).toMatchObject({ code: 'codex-thread-state-unknown', fix: expect.stringContaining('leader_events') });
+    // The next hand-off takes the thread with a fresh `thread/resume`; a state it can read clears the doubt.
+    await adapter.deliver(dispatch([row(1)]), live());
+    expect(server.turnRequests()).toEqual(['turn/start']);
+    expect(adapter.status()).toEqual({});
+  });
+
   it('holds the thread only for a hand-off: subscribed to deliver, released once the event reacted', async () => {
     const server = new FakeAppServer();
     const adapter = adapterOn(server);
@@ -724,7 +759,8 @@ describe('state at attach, and the thread between hand-offs (decision record § 
     expect(server.subscribed).toBe(false); // nothing of xezar's keeps the thread loaded
     server.loaded = false; // so app-server lets it go, as it did a minute after a real TUI exited
     await expect(adapter.heartbeat(live())).rejects.toThrow('not loaded');
-    expect(adapter.status().blocker).toMatchObject({ code: 'codex-session-not-targetable', fix: expect.stringContaining('leader_events') });
+    // NB-1: the unloaded thread is named as such, with its own fix, not the generic "not targetable".
+    expect(adapter.status().blocker).toMatchObject({ code: 'codex-thread-not-loaded', message: expect.stringContaining('cannot reach'), fix: expect.stringContaining('leader_events') });
     const seen = server.requests.length;
     await expect(adapter.deliver(dispatch([row(1), row(2)]), live())).rejects.toThrow('not loaded');
     expect(server.requests.slice(seen)).toEqual([]); // sticky: no resume of an unloaded thread, no turn
@@ -744,7 +780,7 @@ describe('state at attach, and the thread between hand-offs (decision record § 
       server.emit(gone);
       await expect(delivering).rejects.toThrow(/closed|no longer loaded/);
       expect(server.turnRequests()).toEqual([]);
-      expect(adapter.status().blocker?.code).toBe('codex-session-not-targetable');
+      expect(adapter.status().blocker?.code).toBe('codex-thread-not-loaded');
     }
   });
 
@@ -755,7 +791,8 @@ describe('state at attach, and the thread between hand-offs (decision record § 
     server.closed = true;
     await expect(adapter.deliver(dispatch([row(1)]), live())).rejects.toThrow('closed');
     await expect(adapter.heartbeat(live())).rejects.toThrow('closed');
-    expect(adapter.status().blocker).toMatchObject({ code: 'codex-session-not-targetable' });
+    // NB-1: a closed link is the app-server going away, and its fix says to run it again.
+    expect(adapter.status().blocker).toMatchObject({ code: 'codex-app-server-unreachable', fix: expect.stringContaining('codex app-server --listen unix://') });
     expect(server.requests).toEqual([]);
   });
 
@@ -780,7 +817,18 @@ describe('reading the thread state (codex-cli 0.154.0 `ThreadStatus`)', () => {
     await expect(codexThreadState(server, 'thread-1', { thread: { status: { type: 'active', activeFlags: ['waitingOnUserInput'] } } })).resolves.toEqual({ waiting: true, activeTurnId: 'turn-1' });
     server.activeTurn = undefined;
     await expect(codexThreadState(server, 'thread-1', { thread: { status: { type: 'active', activeFlags: [] } } })).resolves.toEqual({ waiting: false });
-    expect(codexThreadStatus(null)).toEqual({ loaded: true, waiting: false });
-    expect(codexThreadStatus({ type: 'active' })).toEqual({ loaded: true, waiting: false });
+    // Round-4 review, major 1: only the four recognised shapes are read; anything else is `undefined`,
+    // never a guessed "loaded and idle".
+    expect(codexThreadStatus({ type: 'idle' })).toEqual({ loaded: true, waiting: false });
+    expect(codexThreadStatus({ type: 'systemError' })).toEqual({ loaded: true, waiting: false });
+    expect(codexThreadStatus({ type: 'notLoaded' })).toEqual({ loaded: false, waiting: false });
+    expect(codexThreadStatus({ type: 'active', activeFlags: ['waitingOnApproval'] })).toEqual({ loaded: true, waiting: true });
+    for (const unknown of [null, undefined, 'idle', {}, { type: 'bogus' }, { type: 'active' }, { type: 'active', activeFlags: 'x' }]) expect(codexThreadStatus(unknown)).toBeUndefined();
+  });
+
+  it('refuses a thread state it does not recognise at attach, rather than reading it as idle', async () => {
+    const server = new FakeAppServer();
+    await expect(codexThreadState(server, 'thread-1', { thread: { status: { type: 'somethingNew' } } })).rejects.toThrow('did not report');
+    await expect(codexThreadState(server, 'thread-1', { thread: { status: { type: 'active' } } })).rejects.toThrow('did not report');
   });
 });

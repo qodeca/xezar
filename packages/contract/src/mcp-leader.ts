@@ -9,9 +9,10 @@ import { z } from 'zod';
  * therefore reaches a leader only through a session the person runs and tells xezar where to find:
  * an OpenCode `serve` session, or a pi running xezar's leader extension. xezar NEVER starts an agent
  * process for a leader (owner decision on #311): the person runs their own leader, in their own
- * terminal, with their own tool, and it connects to xezar over MCP. A Claude Code or Codex session
- * in a terminal still has no address to attach to, so it gets no push; it reads its events with the
- * `leader_events` tool, and so does a pi with no extension loaded.
+ * terminal, with their own tool, and it connects to xezar over MCP. A Codex session running on Codex's
+ * shared local app-server can be attached too (#374): xezar finds that already-running session and
+ * starts events as turns in it. A Claude Code session reads its events with the `leader_events` tool
+ * — it has no address to attach to — and so does a pi with no xezar leader extension loaded.
  */
 
 /**
@@ -19,14 +20,17 @@ import { z } from 'zod';
  * never a task, never the client's process, and never the MCP session's hold on the project. There
  * is no `start` or `resume`: xezar spawns no leader.
  *
- * Two clients can be attached, and they carry their address differently. `opencode` names an
+ * Three clients can be attached, and they carry their address differently. `opencode` names an
  * `opencode serve` session by URL and session id. `pi` names NOTHING here, on purpose, and that is
  * not the same as having no address: pi speaks RPC over its own stdin and stdout only (pi 0.85.1,
  * `docs/rpc.md`), so there is nothing for xezar to dial from outside — the address instead comes
  * from inside the person's own pi, where xezar's leader extension opens a socket and announces it in
  * the project's data directory (#330 WP2). The person pastes nothing, so this variant takes nothing.
  * With no extension running there is no descriptor, and the action answers with pi's own recoverable
- * reason (`pi-not-addressable`) rather than a schema error.
+ * reason (`pi-not-addressable`) rather than a schema error. `codex` (#374) names nothing either: the
+ * owning Codex session announces its own thread id on its tool calls, and xezar finds the shared
+ * app-server in its own Codex home. It never takes a socket path, port, home or thread id from here;
+ * a refusal answers Codex's recoverable reason and keeps a leader that is already working.
  */
 const mcpLeaderAttachInputSchema = z.discriminatedUnion('client', [
   z.strictObject({
@@ -80,10 +84,25 @@ export const mcpLeaderBlockerSchema = z.object({
 });
 export type McpLeaderBlocker = z.infer<typeof mcpLeaderBlockerSchema>;
 
+/**
+ * The MCP session that owns the project, when one does (#374, round 4). `client` is which client it
+ * is, when xezar has IDENTIFIED it, and `null` otherwise — xezar does not guess a client from a name
+ * or a process. A Codex session identifies itself through the thread id Codex stamps on its tool
+ * calls, so it reads `codex` once it has called a xezar tool; that announcement is also what a Codex
+ * attach needs. The cockpit's Attach leader action is derived from this. A client identified another
+ * way is a new enum member, which is additive.
+ */
+export const mcpLeaderOwnerSchema = z.object({
+  client: z.enum(['codex']).nullable(),
+});
+export type McpLeaderOwner = z.infer<typeof mcpLeaderOwnerSchema>;
+
 export const mcpLeaderStatusSchema = z.discriminatedUnion('available', [
   z.object({ available: z.literal(false), reason: z.string() }),
   z.object({
     available: z.literal(true),
+    /** `null` when no MCP session owns the project (then `delivery` is `null` too). */
+    owner: mcpLeaderOwnerSchema.nullable(),
     leader: mcpLeaderSessionSchema.nullable(),
     delivery: mcpLeaderDeliverySchema.nullable(),
     blocker: mcpLeaderBlockerSchema.nullable(),

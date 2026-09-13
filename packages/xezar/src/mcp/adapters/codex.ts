@@ -93,14 +93,30 @@ export interface CodexUnresolvedHandOff {
   readonly seq: number;
 }
 
-/** codex-cli 0.154.0's `ThreadStatus`: `notLoaded` | `idle` | `systemError` | `active` with `activeFlags`. */
-export function codexThreadStatus(status: unknown): { readonly loaded: boolean; readonly waiting: boolean } {
-  const value = (typeof status === 'object' && status !== null ? status : {}) as { type?: unknown; activeFlags?: unknown };
-  const flags: unknown[] = Array.isArray(value.activeFlags) ? value.activeFlags : [];
-  return {
-    loaded: value.type !== 'notLoaded',
-    waiting: value.type === 'active' && flags.some((flag) => flag === 'waitingOnApproval' || flag === 'waitingOnUserInput'),
-  };
+/**
+ * codex-cli 0.154.0's `ThreadStatus`: `notLoaded` | `idle` | `systemError` | `active` with an
+ * `activeFlags` array. Anything else — a missing or malformed payload, a type this version does not
+ * name, an `active` without its flags — is `undefined`, never a guessed "loaded and idle": reading
+ * uncertainty as "no approval" would start a turn straight through an open prompt (round-4 review,
+ * major 1; decision record § 4, "refuse or defer uncertain state").
+ */
+export function codexThreadStatus(status: unknown): { readonly loaded: boolean; readonly waiting: boolean } | undefined {
+  if (typeof status !== 'object' || status === null) return undefined;
+  const value = status as { type?: unknown; activeFlags?: unknown };
+  switch (value.type) {
+    case 'notLoaded':
+      return { loaded: false, waiting: false };
+    case 'idle':
+    case 'systemError':
+      return { loaded: true, waiting: false };
+    case 'active': {
+      if (!Array.isArray(value.activeFlags)) return undefined;
+      const flags: unknown[] = value.activeFlags;
+      return { loaded: true, waiting: flags.some((flag) => flag === 'waitingOnApproval' || flag === 'waitingOnUserInput') };
+    }
+    default:
+      return undefined;
+  }
 }
 
 /** How many recent turns a reconciliation reads for an unresolved hand-off's client message id. */
@@ -122,8 +138,9 @@ export function codexLoadedIds(value: Record<string, unknown>): string[] {
  */
 export async function codexThreadState(link: CodexAppServerLink, threadId: string, resumed: Record<string, unknown>): Promise<CodexThreadState> {
   const raw = (resumed.thread as { status?: unknown } | undefined)?.status;
-  if (typeof raw !== 'object' || raw === null || typeof (raw as { type?: unknown }).type !== 'string') throw new Error('the Codex app-server did not report the thread’s state');
   const status = codexThreadStatus(raw);
+  // Missing and unrecognised alike: an unknown state is refused, never read as idle.
+  if (status === undefined) throw new Error('the Codex app-server did not report the thread’s state in a form xezar recognises');
   if (!status.loaded) throw new Error(NOT_LOADED);
   if ((raw as { type: string }).type !== 'active') return { waiting: status.waiting };
   const page = await link.request('thread/turns/list', { threadId, limit: 1 });
@@ -203,6 +220,12 @@ export class CodexReactionAdapter implements ReactionAdapter {
    * observation starting after it must not read as "no approval" (decision record § 4).
    */
   #statusWaiting: boolean;
+  /**
+   * app-server sent a `thread/status/changed` this adapter cannot read. Until it sends one it can, or
+   * the next hand-off reads the thread afresh (`#acquire`), that counts as a prompt being open: an
+   * uncertain state is deferred, never guessed (round-4 review, major 1).
+   */
+  #statusUnknown = false;
   /** Why the leader's thread can no longer be reached on this link (unloaded or closed), if it cannot. */
   #gone: string | undefined;
   /** A hand-off whose acceptance is unknown. The next delivery reconciles it before sending anything. */
@@ -240,7 +263,7 @@ export class CodexReactionAdapter implements ReactionAdapter {
 
   /** True while app-server waits on an approval or user-input prompt for the leader's thread. */
   get promptOpen(): boolean {
-    return this.#openPrompts.size > 0 || this.#statusWaiting;
+    return this.#openPrompts.size > 0 || this.#statusWaiting || this.#statusUnknown;
   }
 
   /** A hand-off whose acceptance is still unknown, for a re-attach to the same thread to reconcile. */
@@ -267,8 +290,10 @@ export class CodexReactionAdapter implements ReactionAdapter {
    * screen's words, so the cockpit names the Codex remedy instead of the generic "not answering".
    */
   status(): { blocker?: { code: string; message: string; fix: string } } {
-    if (this.#gone === undefined && !this.#link.closed) return {};
-    return { blocker: { code: UNREACHABLE.code, message: UNREACHABLE.message, fix: UNREACHABLE.remedy } };
+    if (this.#link.closed) return { blocker: codexBlocker('app-server') };
+    if (this.#gone !== undefined) return { blocker: codexBlocker('thread') };
+    if (this.#statusUnknown) return { blocker: STATE_UNKNOWN };
+    return {};
   }
 
   async deliver(dispatch: EventDispatch, signal: AbortSignal): Promise<void> {
@@ -345,6 +370,7 @@ export class CodexReactionAdapter implements ReactionAdapter {
     this.#held = true;
     const state = await abortable(codexThreadState(this.#link, this.threadId, resumed), signal);
     this.#statusWaiting = state.waiting;
+    this.#statusUnknown = false;
     this.#activeTurnId = state.activeTurnId;
   }
 
@@ -488,6 +514,14 @@ export class CodexReactionAdapter implements ReactionAdapter {
       }
       case 'thread/status/changed': {
         const status = codexThreadStatus(params.status);
+        // A status it cannot read keeps whatever wait was open and holds new hand-offs too. Nothing is
+        // settled here: releasing a seeded approval on a malformed payload is the fail-open the
+        // round-4 review found.
+        if (status === undefined) {
+          this.#statusUnknown = true;
+          return;
+        }
+        this.#statusUnknown = false;
         this.#statusWaiting = status.waiting;
         if (!status.loaded) this.#gone = 'the leader’s Codex thread is no longer loaded on its app-server';
         if (!this.promptOpen || this.#gone !== undefined) this.#settlePrompts();
@@ -584,6 +618,56 @@ const UNREACHABLE: CodexReactionBlocker = {
     'xezar cannot reach this running Codex session for project-event delivery. Your events are saved. Use leader_events in Codex to read them; retry connecting when this session is available on Codex’s local app-server.',
   remedy:
     'Use leader_events in Codex to read saved events, then retry connecting when this session is available on Codex’s local app-server.',
+};
+
+/**
+ * WHICH refusal it was, as far as xezar can tell (design review NB-1 on #403). The message stays the
+ * decision record's verbatim "cannot reach" copy for all of them; the `fix` names the cause and the
+ * one thing to change, because "retry when it is available" does not tell a person that their
+ * app-server is not running, that Codex runs under another home, or that the session is not loaded.
+ *
+ * - `not-announced`: no tool call from the owning Codex session yet, so xezar does not know which
+ *   session it is (Codex stamps the thread id on its tool calls, and on nothing else).
+ * - `app-server`: no usable shared app-server in the Codex home xezar looks in — no control socket,
+ *   an unsafe one, or one that refused or dropped xezar's connection.
+ * - `home`: an app-server answered, but for a different Codex home than the one `xezar serve` uses.
+ * - `thread`: the announced session is not loaded (its TUI exited, it is only saved) or is ambiguous.
+ */
+export type CodexUnreachableReason = 'not-announced' | 'app-server' | 'home' | 'thread';
+
+const UNTIL_THEN = ' Until then, use leader_events in Codex to read saved events.';
+
+const CODEX_REASONS: Record<CodexUnreachableReason, { readonly code: string; readonly fix: string }> = {
+  'not-announced': {
+    code: 'codex-session-not-targetable',
+    fix: `Your Codex session has not called a xezar tool yet, so xezar does not know which session it is. Let it call one once (for example leader_events), then attach it again.${UNTIL_THEN}`,
+  },
+  'app-server': {
+    code: 'codex-app-server-unreachable',
+    fix: `No shared Codex app-server answered in the Codex home xezar uses. Run Codex’s shared local app-server there (\`codex app-server --listen unix://\`), open your session in the Codex TUI, then attach again.${UNTIL_THEN}`,
+  },
+  home: {
+    code: 'codex-home-mismatch',
+    fix: `The Codex app-server xezar found runs under a different Codex home than the one xezar uses. Start \`xezar serve\` and Codex with the same CODEX_HOME, or with none set for either, then attach again.${UNTIL_THEN}`,
+  },
+  thread: {
+    code: 'codex-thread-not-loaded',
+    fix: `This Codex session is not loaded on the app-server: its TUI exited, it is only saved, or another session in this folder makes it ambiguous. Open the session in your Codex TUI again, let it call a xezar tool once, then attach again.${UNTIL_THEN}`,
+  },
+};
+
+/** The status blocker for one reason: the verbatim "cannot reach" message and that reason's own fix. */
+export function codexBlocker(reason: CodexUnreachableReason): { code: string; message: string; fix: string } {
+  const { code, fix } = CODEX_REASONS[reason];
+  return { code, message: UNREACHABLE.message, fix };
+}
+
+/** app-server reported a thread state xezar cannot read, so events wait (round-4 review, major 1). */
+const STATE_UNKNOWN = {
+  code: 'codex-thread-state-unknown',
+  message:
+    'xezar could not read the state of this Codex session, so it holds events rather than risk interrupting an approval or a question. Your events are saved. Use leader_events in Codex to read them.',
+  fix: 'Nothing is needed once Codex reports the session’s state again: the events go then. Meanwhile, use leader_events in Codex to read saved events.',
 };
 
 /** Every client message id app-server recorded in a `thread/turns/list` page's `userMessage` items. */
