@@ -29,6 +29,7 @@
   and `--help` name the new repository.
 
 ## 📝 Specs & Documentation
+- 📝 **MCP real-model leg for A-19 passed post-release on pi.** (#373) The manual measurement uses the bare model id and verifies nonce/cursor acknowledgement. The logged revision is `7aa4a0258cd99852ff0a6878dff1c96257f49024`, stamp `2026-09-13T17-43-42.875Z`, model `deepseek-v4-flash-vision`, and the ack arrived +15.8 s after delivery in a 120 s window.
 - 📝 **`SDLC.md`, `CODE_REVIEW.md` and `CONTRIBUTING.md` name the kit roles.** (#396) The process documents
   name the `.xezar/workflows/*` workflows and `xezar-*` roles that run this repository's pipeline
   instead of the previous team skill names, and the optional `xez-*` collection only where a
