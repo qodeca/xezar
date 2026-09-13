@@ -38,7 +38,8 @@ The one question heading is the `/new` hero: "What should the agent work on?"
 ## 4. Buttons and menu items
 
 - Verb first, one to three words: "Run", "Start", "Save", "Commit", "Push", "Create PR", "View PR",
-  "Open in terminal", "Add account", "Add template", "Reclaim now", "Resolve conflicts".
+  "Open in terminal", "Add account", "Add template", "Reclaim now", "Resolve conflicts", "Attach leader",
+  "Refresh" (`mcp-leader-control.tsx`, pending "Attaching…" and "Refreshing…").
 - Noun phrases only for "create or open a thing": "New task", "Draft PR", "Notes", "Terminal", "All commits".
 - Pending state replaces the label with the present participle and `…`: "Starting…", "Saving…",
   "Adding…", "Sending…", "Planning…", "Committing…", "Cloning…", "Updating…".
@@ -91,6 +92,10 @@ Markdown files into .xezar/skills/, …".
 - Inline validation states the rule: "Enter a whole number from 1 to 60 minutes.",
   "{n} characters — the limit is {max}."
 - Attachment rejections: "{name} is too large (max 5 MB)", "{name} skipped — max 4 attachments per message".
+- A server blocker with a remedy: its message verbatim, then a second line led by a medium-weight
+  "Fix:" and the server's fix, in a `bg-muted` card-body block; a refusal the status does not already
+  explain is shown once in the server's words as a `role="alert"` line. Names the server writes as plain
+  text (`leader_events`, `app-server`) still render as code. (`routes/settings/mcp-leader-control.tsx`)
 
 ## 8. Confirmations
 

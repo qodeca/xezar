@@ -2,6 +2,7 @@ import { useMutation, useQueries, useQuery, useQueryClient, type QueryClient } f
 import { useCallback, useEffect, useMemo } from 'react'
 
 import { mergeProviderStatusResponse } from '@/lib/provider-status'
+import type { McpLeaderActionInput, McpLeaderStatus } from '@qodeca/xezar-api-client'
 
 import {
   ApiError,
@@ -58,6 +59,8 @@ import {
   applySkillsUpdate,
   getWorktrees,
   getMcpApiReference,
+  getMcpLeader,
+  actOnMcpLeader,
   editQueuedMessage,
   markRunSeen,
   markRunUnseen,
@@ -77,7 +80,7 @@ import {
   putAgentConfigFile,
   retryProviderAuth,
 } from './client'
-import { queryScope, REFERENCE_STATUS_MAX, runnerDiscoversModels } from '@qodeca/xezar-api-client'
+import { mcpLeaderTopicSchema, queryScope, REFERENCE_STATUS_MAX, runnerDiscoversModels } from '@qodeca/xezar-api-client'
 import { useProjectScope } from './project-scope-context'
 import { isReferenceStatus } from '@/lib/reference-status'
 import { githubRepoBase } from '@/lib/tasks-table'
@@ -191,6 +194,10 @@ export const queryKeys = {
   /** The read-only MCP API reference (`GET /api/v1/mcp/reference`, #284). */
   get mcpApiReference() {
     return [queryScope(), 'mcp-api-reference'] as const
+  },
+  /** The leader connection behind Settings → MCP connection (`GET /api/v1/mcp/leader`, #374). */
+  get mcpLeader() {
+    return [queryScope(), 'mcp-leader'] as const
   },
   github: (params: { limit?: number } = {}) => [queryScope(), 'github', params.limit ?? null] as const,
   /** Lazy PR checks glyphs (`GET /api/github/checks`, #664), keyed by the sorted PR numbers so the
@@ -1092,6 +1099,70 @@ export function useMcpApiReference() {
     queryFn: ({ signal }) => getMcpApiReference({ signal }),
     staleTime: Infinity,
     refetchOnWindowFocus: false,
+  })
+}
+
+/**
+ * The project's leader connection (`GET /api/v1/mcp/leader`, #374): who owns the project, which
+ * leader is attached, and the recoverable blocker when events are waiting. The HTTP read is the
+ * authoritative one: on mount, after every action, on the stream's reconcile (global-events.tsx) and
+ * when the window regains focus. `staleTime: 0` is what makes that last one real — under the app's
+ * five-minute default a refocus soon after a read did nothing (round 5 on #403, review major 2). In
+ * local mode `useMcpLeaderSubscription` also patches this cache from the `mcp-leader` topic; never a
+ * `refetchInterval` (patterns.md § 10).
+ */
+export function useMcpLeader() {
+  return useQuery({
+    queryKey: queryKeys.mcpLeader,
+    queryFn: ({ signal }) => getMcpLeader({ signal }),
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+  })
+}
+
+/**
+ * The `mcp-leader` topic, held by the view that shows the leader status for as long as it is on
+ * screen (#374, round 5 on #403) — a VIEW-level signal, unlike `health`: nothing else reads it, so its
+ * demand is that view's lifetime. Each frame carries every running project's status; this project's
+ * entry is validated and written into `useMcpLeader`'s cache in place, after cancelling a read still in
+ * flight — that read left before the change, and answering after the frame it would put the old status
+ * back (round 5 self-review). A frame that does not list this project while the page shows it running
+ * means its service stopped (every running project is in every frame; a socket-only reconnect's
+ * snapshot lists running ones only), so it is re-read rather than read as "no news". Remote mode opens
+ * no WebSocket (see `useHealthSubscription` for why): the HTTP read, focus and the stream's reconcile
+ * keep it current there.
+ */
+export function useMcpLeaderSubscription(projectId: string | null, local: boolean): void {
+  const queryClient = useQueryClient()
+  useEffect(() => {
+    if (!local || projectId === null) return undefined
+    const key = queryKeys.mcpLeader
+    return subscribeTopic('mcp-leader', (data) => {
+      const frame = mcpLeaderTopicSchema.safeParse(data)
+      if (!frame.success) return
+      const status = frame.data.projects[projectId]
+      if (status === undefined) {
+        if (queryClient.getQueryData<McpLeaderStatus>(key)?.available === true) void queryClient.invalidateQueries({ queryKey: key })
+        return
+      }
+      void queryClient.cancelQueries({ queryKey: key }).then(() => queryClient.setQueryData(key, status))
+    })
+  }, [queryClient, projectId, local])
+}
+
+/**
+ * Attach the project's leader. A success answers the new status, written straight into the cache; a
+ * refusal (409) re-reads it, because the status names WHICH refusal it was and what to change. No
+ * retry: a refusal's answer does not change by asking again.
+ */
+export function useMcpLeaderAction() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: McpLeaderActionInput) => actOnMcpLeader(input),
+    onSuccess: (status) => queryClient.setQueryData(queryKeys.mcpLeader, status),
+    onError: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.mcpLeader })
+    },
   })
 }
 
