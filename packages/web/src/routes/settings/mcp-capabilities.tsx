@@ -267,7 +267,7 @@ export function failingQualityChecks(runs: readonly Pick<ApiRun, 'id' | 'title' 
 function CapabilityIcon({ status }: { status: McpCapability['status'] }) {
   if (status === 'available') return <CircleCheckIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-success" />
   if (status === 'read-only') return <LockIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-soft-foreground" />
-  return <CircleXIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-warning" />
+  return <CircleXIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-conflict" />
 }
 
 /** The status in WORDS, beside the icon: colour is never the only carrier (U-M08). */

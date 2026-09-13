@@ -99,7 +99,7 @@ function StatusIcon({ status }: { status: McpOperationStatus }) {
     case 'conflict':
       return <CircleXIcon aria-hidden="true" className="size-4 shrink-0 text-danger" />
     case 'unverified':
-      return <TriangleAlertIcon aria-hidden="true" className="size-4 shrink-0 text-warning" />
+      return <TriangleAlertIcon aria-hidden="true" className="size-4 shrink-0 text-conflict" />
     default:
       return <CircleIcon aria-hidden="true" className="size-4 shrink-0 text-soft-foreground" />
   }

@@ -403,7 +403,7 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
             Enter a whole number of minutes from {IDLE_TIMEOUT_MIN} to {IDLE_TIMEOUT_MAX}.
           </p>
         ) : idleMode === 'never' ? (
-          <p data-slot="resources-idle-never-warning" className="text-[11px] text-warning">
+          <p data-slot="resources-idle-never-warning" className="text-[11px] text-conflict">
             Nothing will reclaim these sessions. A waiting task holds no parallel-task slot, so
             your queue keeps moving, but its agent process stays alive and keeps using memory
             until you send it a message or cancel it. Default: 15 minutes.
