@@ -109,3 +109,15 @@ export const mcpLeaderStatusSchema = z.discriminatedUnion('available', [
   }),
 ]);
 export type McpLeaderStatus = z.infer<typeof mcpLeaderStatusSchema>;
+
+/**
+ * A frame's `data` on the `mcp-leader` WebSocket topic (`/api/v1/ws`, #374 round 5): the answer
+ * `GET /api/v1/mcp/leader` gives for each project, keyed by registry project id — every project whose
+ * MCP service is running, and one that stopped while the topic was held (as `available: false`). It
+ * mirrors that route's shape, so it inherits that route's contract. The cockpit validates each frame
+ * with this schema and ignores one that does not parse.
+ */
+export const mcpLeaderTopicSchema = z.object({
+  projects: z.record(z.string(), mcpLeaderStatusSchema),
+});
+export type McpLeaderTopic = z.infer<typeof mcpLeaderTopicSchema>;

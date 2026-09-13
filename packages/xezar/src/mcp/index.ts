@@ -24,7 +24,7 @@ import { mcpSocketLocation } from './ipc.ts';
 import { LeaderDelivery } from './leader-delivery.ts';
 import { OperationReceiptStore, runByKeyReconciler, type EffectOutcome } from './operation-receipts.ts';
 import { registerProjectCatalog } from './project-catalogs.ts';
-import { registerProjectLeader } from './project-leaders.ts';
+import { projectLeaderChanged, registerProjectLeader } from './project-leaders.ts';
 import { LeaderCursors, runStateReader } from './reconnect.ts';
 import type { ServiceDispatch } from './service-adapter.ts';
 import { listenMcpSocket, type McpDoor, type McpServiceHandle } from './service.ts';
@@ -110,6 +110,8 @@ export async function startMcpService(opts: StartMcpServiceOptions): Promise<Mcp
         ...(opts.localHandoff === undefined ? {} : { localHandoff: opts.localHandoff }),
         // Where a Codex leader's shared app-server is looked for: THIS process's Codex home.
         codexLeader: { home: () => codexControlHome(opts.env ?? process.env) },
+        // The cockpit's `mcp-leader` topic re-derives this project's status when it may have changed.
+        onStatusChange: () => projectLeaderChanged(project.id),
       })
     : undefined;
   const unregisterLeader = delivery ? registerProjectLeader(project.id, delivery) : undefined;

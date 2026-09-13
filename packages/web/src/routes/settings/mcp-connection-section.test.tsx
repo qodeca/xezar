@@ -1,5 +1,5 @@
-import { QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
+import { focusManager, QueryClientProvider } from '@tanstack/react-query'
+import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -7,6 +7,7 @@ import { ProjectScopeProvider } from '@/api/project-scope-context'
 import { createQueryClient } from '@/api/query-client'
 import type { HealthResponse, McpLeaderBlocker, McpLeaderStatus, ProjectsResponse } from '@qodeca/xezar-api-client'
 import { McpConnectionSection } from './mcp-connection-section'
+import { McpLeaderControl } from './mcp-leader-control'
 import { SETTINGS_SECTIONS, visibleSettingsSections } from './registry'
 
 /**
@@ -570,11 +571,15 @@ describe('MCP connection section — the leader control (#374, round 4 on #403)'
     await waitFor(() => expect(view.leaderReads.count).toBeGreaterThan(before))
   })
 
-  it('the MCP service not running: shows the server’s reason and no action', async () => {
-    const control = await renderLeader({ available: false, reason: 'The MCP service is not running for this project, so there is no event delivery to report.' }).control()
+  it('the MCP service not running: shows the server’s reason, no attach, and Refresh (NB-5)', async () => {
+    const view = renderLeader({ available: false, reason: 'The MCP service is not running for this project, so there is no event delivery to report.' })
+    const control = await view.control()
     expect(control.getAttribute('data-state')).toBe('unavailable')
-    expect(control.textContent).toBe('The MCP service is not running for this project, so there is no event delivery to report.')
+    expect(control.querySelector('[data-slot="mcp-leader-reason"]')?.textContent).toBe('The MCP service is not running for this project, so there is no event delivery to report.')
     expect(attachButton(control)).toBeNull()
+    const before = view.leaderReads.count
+    fireEvent.click(control.querySelector('[data-slot="mcp-leader-refresh"]')!)
+    await waitFor(() => expect(view.leaderReads.count).toBeGreaterThan(before))
   })
 
   it('hosted mode shows the state card and no leader control: nothing local can be attached from there', async () => {
@@ -668,5 +673,148 @@ describe('MCP connection section — the leader control after self-review (round
     await waitFor(() => expect(view.container.querySelector('[data-slot="mcp-leader-stale"]')?.textContent).toContain('Could not refresh'), { timeout: 4000 })
     expect(view.container.querySelector('[data-slot="mcp-leader-stale"]')?.textContent).toContain('the server stopped answering')
     expect(view.container.querySelector('[data-slot="mcp-leader-summary"]')).toBeTruthy()
+  })
+})
+
+/** A `WebSocket` stand-in for the cockpit's one topic socket (`api/ws.ts`); jsdom has none. */
+class FakeTopicSocket {
+  static instances: FakeTopicSocket[] = []
+  readyState = 0
+  sent: string[] = []
+  private handlers = new Map<string, Set<(event: unknown) => void>>()
+  constructor(_url: string) {
+    FakeTopicSocket.instances.push(this)
+  }
+  addEventListener(name: string, handler: (event: unknown) => void): void {
+    const set = this.handlers.get(name) ?? new Set()
+    set.add(handler)
+    this.handlers.set(name, set)
+  }
+  send(data: string): void {
+    this.sent.push(data)
+  }
+  close(): void {
+    this.readyState = 3
+    this.fire('close', {})
+  }
+  open(): void {
+    this.readyState = 1
+    this.fire('open', {})
+  }
+  message(frame: unknown): void {
+    this.fire('message', { data: JSON.stringify(frame) })
+  }
+  frames(): unknown[] {
+    return this.sent.map((raw) => JSON.parse(raw))
+  }
+  private fire(name: string, event: unknown): void {
+    for (const handler of this.handlers.get(name) ?? []) handler(event)
+  }
+}
+
+/**
+ * Round 5 on #403 (review major 2, design NB-5 and NB-6): the leader status is live. In local mode
+ * the control holds the `mcp-leader` topic while it is on screen and patches the cached status from
+ * each frame; remote mode opens no socket and keeps the HTTP read. A focus regain re-reads it, and
+ * every state — the first read failing included — has Refresh.
+ */
+describe('MCP connection section — the leader status, live (round 5 on #403)', () => {
+  const ok = (value: unknown, code = 200) => new Response(JSON.stringify(value), { status: code, headers: { 'content-type': 'application/json' } })
+
+  function mount(leader: () => Response, health: HealthResponse = HEALTH, only?: 'control') {
+    const reads = { count: 0 }
+    fetchMock.mockImplementation(async (input) => {
+      const path = String(input)
+      if (path === '/api/v1/health') return ok(health)
+      if (path === '/api/v1/projects') return ok(REGISTRY)
+      if (path === '/api/v1/mcp/leader') {
+        reads.count += 1
+        return leader()
+      }
+      return ok({ error: 'not found' }, 404)
+    })
+    const view = render(
+      <QueryClientProvider client={createQueryClient()}>
+        <MemoryRouter initialEntries={['/p/xezar/settings/mcp-connection']}>
+          <ProjectScopeProvider projectId={null}>{only === 'control' ? <McpLeaderControl /> : <McpConnectionSection />}</ProjectScopeProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+    const state = () => view.container.querySelector('[data-slot="mcp-leader"]')?.getAttribute('data-state')
+    return { ...view, reads, state }
+  }
+
+  beforeEach(() => {
+    FakeTopicSocket.instances = []
+  })
+  afterEach(() => {
+    focusManager.setFocused(undefined)
+  })
+
+  it('holds the mcp-leader topic while on screen, patches this project’s status from a frame, and lets go on unmount', async () => {
+    vi.stubGlobal('WebSocket', FakeTopicSocket)
+    const view = mount(() => ok(leaderStatus({ owner: { client: 'codex' } })))
+    await waitFor(() => expect(view.state()).toBe('owner'))
+    const socket = FakeTopicSocket.instances.find((ws) => ws.readyState === 0) ?? FakeTopicSocket.instances.at(-1)
+    if (!socket) throw new Error('the leader control never opened the topic socket')
+    act(() => socket.open())
+    expect(socket.frames()).toContainEqual({ type: 'subscribe', topic: 'mcp-leader' })
+    const readsBefore = view.reads.count
+
+    // Another project's status and a malformed frame change nothing here.
+    act(() => socket.message({ type: 'event', topic: 'mcp-leader', data: { projects: { other: leaderStatus({ leader: { client: 'pi', state: 'attached' }, blocker: null }) } } }))
+    act(() => socket.message({ type: 'event', topic: 'mcp-leader', data: { projects: { xezar: { available: 'yes' } } } }))
+    await act(async () => {})
+    expect(view.state()).toBe('owner')
+
+    // The daemon went away while the page stayed open: the pushed status replaces "Codex connected".
+    const attached = { owner: { client: 'codex' as const }, leader: { client: 'codex' as const, state: 'attached' as const }, delivery: { state: 'idle' as const, deliveredSeq: 1, ackedSeq: 0, reactedSeq: 1, latestSeq: 1 } }
+    act(() => socket.message({ type: 'event', topic: 'mcp-leader', data: { projects: { xezar: leaderStatus({ ...attached, blocker: null }) } } }))
+    await waitFor(() => expect(view.state()).toBe('delivering'))
+    act(() => socket.message({ type: 'event', topic: 'mcp-leader', data: { projects: { xezar: leaderStatus({ ...attached, blocker: { code: 'codex-app-server-unreachable', message: 'xezar cannot reach this running Codex session.', fix: 'Run the app-server again.' } }) } } }))
+    await waitFor(() => expect(view.state()).toBe('blocked'))
+    expect(view.container.querySelector('[data-slot="mcp-leader-blocker"]')?.getAttribute('data-code')).toBe('codex-app-server-unreachable')
+    // Pushed, not read: no GET was needed for either change.
+    expect(view.reads.count).toBe(readsBefore)
+
+    view.unmount()
+    expect(socket.frames()).toContainEqual({ type: 'unsubscribe', topic: 'mcp-leader' })
+  })
+
+  it('remote mode opens no WebSocket: the status is read over HTTP only', async () => {
+    vi.stubGlobal('WebSocket', FakeTopicSocket)
+    const remote = { ...HEALTH, capabilities: { ...HEALTH.capabilities, localHandoff: false } }
+    const view = mount(() => ok(leaderStatus()), remote, 'control')
+    await waitFor(() => expect(view.state()).toBe('no-owner'))
+    expect(view.reads.count).toBe(1)
+    expect(FakeTopicSocket.instances).toHaveLength(0)
+  })
+
+  it('re-reads the status when the window regains focus, even right after the first read', async () => {
+    const view = mount(() => ok(leaderStatus()))
+    await waitFor(() => expect(view.state()).toBe('no-owner'))
+    expect(view.reads.count).toBe(1)
+    act(() => focusManager.setFocused(false))
+    act(() => focusManager.setFocused(true))
+    await waitFor(() => expect(view.reads.count).toBe(2))
+  })
+
+  it('the first read failing still offers Refresh, and a Refresh that succeeds shows the status (NB-5)', async () => {
+    let fail = true
+    const view = mount(() => (fail ? ok({ error: 'the server stopped answering' }, 500) : ok(leaderStatus())))
+    await waitFor(() => expect(view.container.querySelector('[data-slot="mcp-leader-error"]')).toBeTruthy(), { timeout: 4000 })
+    expect(view.container.querySelector('[data-slot="mcp-leader-error"]')?.textContent).toContain('the server stopped answering')
+    fail = false
+    fireEvent.click(view.container.querySelector('[data-slot="mcp-leader-error"] [data-slot="mcp-leader-refresh"]')!)
+    await waitFor(() => expect(view.state()).toBe('no-owner'))
+  })
+
+  it('the primary Attach leader action is a 44 px touch target that relaxes at md; Refresh stays small (NB-6)', async () => {
+    const view = mount(() => ok(leaderStatus({ owner: { client: 'codex' } })))
+    await waitFor(() => expect(view.state()).toBe('owner'))
+    const attach = view.container.querySelector('[data-slot="mcp-leader-attach-button"]')!
+    expect(attach.className.split(' ')).toEqual(expect.arrayContaining(['h-11', 'md:h-9']))
+    expect(attach.className.split(' ')).not.toContain('h-[30px]')
+    expect(view.container.querySelector('[data-slot="mcp-leader-refresh"]')!.className.split(' ')).toContain('h-[30px]')
   })
 })

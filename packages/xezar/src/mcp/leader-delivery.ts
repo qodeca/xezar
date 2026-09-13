@@ -230,6 +230,11 @@ export interface LeaderDeliveryOptions {
   };
   /** Local socket delivery is forbidden when the server is hosted. */
   readonly localHandoff?: () => boolean;
+  /**
+   * `status()` may answer differently now (#374, round 5 on #403): the cockpit's `mcp-leader` topic
+   * re-derives it. Called after the change, never throws into the caller.
+   */
+  readonly onStatusChange?: () => void;
 }
 
 /**
@@ -314,6 +319,7 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     });
     if (started.outcome === 'started') this.#controllers.set(sessionKey, started.controller);
     else if (started.outcome === 'refused') this.#opts.warn(`[xez] MCP event delivery not started for project ${this.projectId}: ${started.error.message}`);
+    this.#changed();
   }
 
   /** The session's connection closed (D-02.4): its controller ends. The journal keeps every row. */
@@ -321,6 +327,7 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     this.#codexAnnouncements.delete(sessionKey);
     this.#controllers.get(sessionKey)?.close();
     this.#controllers.delete(sessionKey);
+    this.#changed();
   }
 
   /** Metadata arrives from the owner bridge, never from the HTTP attach request. */
@@ -328,6 +335,7 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     if (this.#opts.ownership.sessionToken(sessionKey) === undefined) return;
     this.#codexAnnouncements.set(sessionKey, announcement);
     if (this.#refusal?.reason === 'not-announced' && this.#refusal.sessionKey === sessionKey) this.#refusal = undefined;
+    this.#changed();
   }
 
   // ---- the controller's side: `ReactionAdapter` ----------------------------------------------
@@ -377,6 +385,8 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
       throw err;
     } finally {
       signal.removeEventListener('abort', onAbort);
+      // The cursors, the adapter's blocker and `failingSince` may all have moved.
+      this.#changed();
     }
   }
 
@@ -401,7 +411,8 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
   }
 
   act(input: McpLeaderActionInput): Promise<LeaderActResult> {
-    const next = this.#acting.then(() => this.#act(input));
+    // Every outcome can change the status: an attach, a stop, and a refusal the status then names.
+    const next = this.#acting.then(() => this.#act(input)).finally(() => this.#changed());
     this.#acting = next.catch(() => undefined);
     return next;
   }
@@ -413,6 +424,7 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     for (const controller of this.#controllers.values()) controller.close();
     this.#controllers.clear();
     this.#detach();
+    this.#changed();
   }
 
   // ---- internals ----------------------------------------------------------------------------
@@ -615,7 +627,18 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
   }
 
   #recordReaction(seq: number): CursorAdvance {
-    return this.#liveController()?.recordReaction(seq) ?? { status: 'inactive', seq: 0 };
+    const advance = this.#liveController()?.recordReaction(seq) ?? { status: 'inactive', seq: 0 };
+    this.#changed();
+    return advance;
+  }
+
+  /** Tell the cockpit topic the status may have changed. Its failure is never the delivery path's. */
+  #changed(): void {
+    try {
+      this.#opts.onStatusChange?.();
+    } catch (err) {
+      this.#opts.warn(`[xez] the leader status listener failed for project ${this.projectId} (${err instanceof Error ? err.message : String(err)})`);
+    }
   }
 
   #leaderSession(): McpLeaderSession | null {

@@ -1,10 +1,11 @@
 import { useId, useState } from 'react'
 
 import type { McpLeaderActionInput, McpLeaderStatus } from '@qodeca/xezar-api-client'
-import { useMcpLeader, useMcpLeaderAction } from '@/api/queries'
+import { useHealth, useMcpLeader, useMcpLeaderAction, useMcpLeaderSubscription } from '@/api/queries'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { useActiveProjectId } from '@/lib/project-router'
 import { RUNNER_LABEL } from '@/lib/runner-label'
 import { cn } from '@/lib/utils'
 import { withCode } from './mcp-copy'
@@ -87,10 +88,19 @@ export function leaderViewState(status: McpLeaderStatus): McpLeaderViewState {
   return status.owner ? 'owner' : 'no-owner'
 }
 
-/** The control as the section mounts it: the query, the action, and the loading and error lines. */
+/**
+ * The control as the section mounts it: the query, the live topic, the action, and the loading and
+ * error lines. The status is live while the control is on screen (round 5 on #403): in local mode it
+ * holds the `mcp-leader` topic and the server pushes each change; in remote mode it has the HTTP read,
+ * focus and the stream's reconcile. The project is the section's own: the URL's, else the boot one.
+ */
 export function McpLeaderControl() {
+  const health = useHealth()
+  const projectId = useActiveProjectId() ?? health.data?.bootProject ?? null
+  useMcpLeaderSubscription(projectId, health.data?.capabilities?.localHandoff === true)
   const leader = useMcpLeader()
   const action = useMcpLeaderAction()
+  const refresh = { refreshing: leader.isFetching, onRefresh: () => void leader.refetch() }
 
   if (leader.isPending) {
     return (
@@ -101,9 +111,12 @@ export function McpLeaderControl() {
   }
   if (leader.isError && !leader.data) {
     return (
-      <p data-slot="mcp-leader-error" className="rounded-md border border-border bg-card p-3 text-[13px] leading-relaxed text-foreground">
-        <span className="font-medium">Could not load the leader connection.</span> {leader.error.message}
-      </p>
+      <div data-slot="mcp-leader-error" className="flex flex-col gap-3 rounded-md border border-border bg-card p-3">
+        <p className="text-[13px] leading-relaxed text-foreground">
+          <span className="font-medium">Could not load the leader connection.</span> {leader.error.message}
+        </p>
+        <RefreshButton {...refresh} />
+      </div>
     )
   }
   return (
@@ -112,10 +125,21 @@ export function McpLeaderControl() {
       attaching={action.isPending}
       error={action.error?.message ?? null}
       onAttach={(input) => action.mutate(input)}
-      refreshing={leader.isFetching}
-      onRefresh={() => void leader.refetch()}
+      {...refresh}
       staleError={leader.isError ? leader.error.message : null}
     />
+  )
+}
+
+/**
+ * Refresh, in every state (NB-5 on #403): the first read failing, the MCP service not running, and
+ * each state of the panel. The topic keeps a local status live; this re-reads it on demand anywhere.
+ */
+function RefreshButton({ refreshing, onRefresh }: { refreshing: boolean; onRefresh: () => void }) {
+  return (
+    <Button size="sm" variant="outline" className="w-fit" data-slot="mcp-leader-refresh" disabled={refreshing} onClick={onRefresh}>
+      {refreshing ? 'Refreshing…' : 'Refresh'}
+    </Button>
   )
 }
 
@@ -147,8 +171,11 @@ export function McpLeaderPanel({
 
   if (!status.available) {
     return (
-      <div data-slot="mcp-leader" data-state={state} className="rounded-md border border-border bg-card p-3">
-        <p className="text-[13px] leading-relaxed text-foreground">{status.reason}</p>
+      <div data-slot="mcp-leader" data-state={state} className="flex flex-col gap-3 rounded-md border border-border bg-card p-3">
+        <p data-slot="mcp-leader-reason" className="text-[13px] leading-relaxed text-foreground">
+          {status.reason}
+        </p>
+        <RefreshButton refreshing={refreshing} onRefresh={onRefresh} />
       </div>
     )
   }
@@ -256,8 +283,9 @@ export function McpLeaderPanel({
             </div>
           ) : null}
 
+          {/* The surface's primary action: a 44 px touch target on a phone that relaxes to the default 36 px at md (foundations.md § 12; NB-6 on #403). */}
           {copy.attach === 'pull-only' ? null : (
-            <Button size="sm" className="w-fit" data-slot="mcp-leader-attach-button" disabled={attaching || !canSubmit} onClick={attach}>
+            <Button className="h-11 w-fit md:h-9" data-slot="mcp-leader-attach-button" disabled={attaching || !canSubmit} onClick={attach}>
               {attaching ? 'Attaching…' : 'Attach leader'}
             </Button>
           )}
@@ -270,10 +298,7 @@ export function McpLeaderPanel({
         </p>
       ) : null}
 
-      {/* In every state: there is no live topic for this status yet, so a stale "connected" must be re-readable. */}
-      <Button size="sm" variant="outline" className="w-fit" data-slot="mcp-leader-refresh" disabled={refreshing} onClick={onRefresh}>
-        {refreshing ? 'Refreshing…' : 'Refresh'}
-      </Button>
+      <RefreshButton refreshing={refreshing} onRefresh={onRefresh} />
     </div>
   )
 }

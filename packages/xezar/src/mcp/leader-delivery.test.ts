@@ -817,3 +817,77 @@ describe('no leader attached: the blocker says who reads, who can be attached, a
     expect(blocker?.fix).toContain('opencode serve');
   });
 });
+
+/**
+ * Round 5 on #403, review major 2: the cockpit's `mcp-leader` topic re-derives the status when the
+ * delivery path says it may have changed. Every place this class changes what `status()` answers —
+ * an owner opening or closing, an announcement, an attach, a stop, a refusal, a delivery attempt, a
+ * reaction, the service closing — announces it. A listener that throws never reaches the transport.
+ */
+describe('announcing status changes to the cockpit topic (round 5 on #403)', () => {
+  function counted(onStatusChange: () => void) {
+    const dataDir = tmp();
+    const journal = EventJournal.open({ dataDir, projectId: PROJECT, secretValues: [], warn: () => {} });
+    journals.push(journal);
+    const made = new LeaderDelivery({
+      projectId: PROJECT,
+      projectRoot: dataDir,
+      journal,
+      ownership: { projectId: PROJECT, sessionToken: () => 'token', state: () => 'owned' },
+      guard: undefined,
+      warn: () => {},
+      heartbeatMs: 200,
+      codexLeader: { connect: async () => Promise.reject(new CodexAttachError('thread', 'not loaded')), home: () => dataDir },
+      onStatusChange,
+    });
+    deliveries.push(made);
+    return { made, journal };
+  }
+
+  it('announces an owner opening and closing, an announcement, a refusal, a stop and the service closing', async () => {
+    let changes = 0;
+    const { made } = counted(() => {
+      changes += 1;
+    });
+    made.sessionOpened('owner');
+    expect(changes).toBe(1);
+    made.codexAnnounced('owner', { threadId: 'thread-owner' });
+    expect(changes).toBe(2);
+    const refused = await made.act({ action: 'attach', client: 'codex' });
+    expect(refused.ok).toBe(false);
+    expect(changes).toBe(3);
+    await made.act({ action: 'stop' });
+    expect(changes).toBe(4);
+    made.sessionClosed('owner');
+    expect(changes).toBe(5);
+    made.close();
+    expect(changes).toBe(6);
+  });
+
+  it('announces a delivery attempt against the attached leader, so its cursors and blocker reach the topic', async () => {
+    let changes = 0;
+    const { made, journal } = counted(() => {
+      changes += 1;
+    });
+    made.sessionOpened('owner');
+    // An OpenCode address nothing listens on: the attempt fails, which is itself a status change.
+    await made.act({ action: 'attach', client: 'opencode', baseUrl: 'http://127.0.0.1:9', sessionId: 'ses_1' });
+    const afterAttach = changes;
+    row(journal);
+    await until('the failed attempt to be announced', () => changes > afterAttach);
+    await until('the blocker it caused', () => {
+      const status = made.status();
+      return status.available && status.blocker !== null;
+    });
+  });
+
+  it('a listener that throws never reaches the transport, the controller or the person', async () => {
+    const { made } = counted(() => {
+      throw new Error('a broken listener');
+    });
+    expect(() => made.sessionOpened('owner')).not.toThrow();
+    await expect(made.act({ action: 'stop' })).resolves.toMatchObject({ ok: true });
+    expect(() => made.sessionClosed('owner')).not.toThrow();
+    expect(() => made.close()).not.toThrow();
+  });
+});

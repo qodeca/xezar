@@ -80,7 +80,7 @@ import {
   putAgentConfigFile,
   retryProviderAuth,
 } from './client'
-import { queryScope, REFERENCE_STATUS_MAX, runnerDiscoversModels } from '@qodeca/xezar-api-client'
+import { mcpLeaderTopicSchema, queryScope, REFERENCE_STATUS_MAX, runnerDiscoversModels } from '@qodeca/xezar-api-client'
 import { useProjectScope } from './project-scope-context'
 import { isReferenceStatus } from '@/lib/reference-status'
 import { githubRepoBase } from '@/lib/tasks-table'
@@ -1104,17 +1104,42 @@ export function useMcpApiReference() {
 
 /**
  * The project's leader connection (`GET /api/v1/mcp/leader`, #374): who owns the project, which
- * leader is attached, and the recoverable blocker when events are waiting. Read on mount, when the
- * window regains focus (turned on here: the app default is off) and after every action. There is no
- * live topic for it yet, so the control offers Refresh in every state; a topic is the right shape
- * when one is added (patterns.md § 10), never a `refetchInterval`.
+ * leader is attached, and the recoverable blocker when events are waiting. The HTTP read is the
+ * authoritative one: on mount, after every action, on the stream's reconcile (global-events.tsx) and
+ * when the window regains focus. `staleTime: 0` is what makes that last one real — under the app's
+ * five-minute default a refocus soon after a read did nothing (round 5 on #403, review major 2). In
+ * local mode `useMcpLeaderSubscription` also patches this cache from the `mcp-leader` topic; never a
+ * `refetchInterval` (patterns.md § 10).
  */
 export function useMcpLeader() {
   return useQuery({
     queryKey: queryKeys.mcpLeader,
     queryFn: ({ signal }) => getMcpLeader({ signal }),
+    staleTime: 0,
     refetchOnWindowFocus: true,
   })
+}
+
+/**
+ * The `mcp-leader` topic, held by the view that shows the leader status for as long as it is on
+ * screen (#374, round 5 on #403) — a VIEW-level signal, unlike `health`: nothing else reads it, so its
+ * demand is that view's lifetime. Each frame carries every running project's status; this project's
+ * entry is validated and written into `useMcpLeader`'s cache in place, and a frame without it changes
+ * nothing. Remote mode opens no WebSocket (see `useHealthSubscription` for why): the HTTP read, focus
+ * and the stream's reconcile keep it current there. After a socket reconnect the server answers the
+ * re-sent subscribe with a fresh snapshot.
+ */
+export function useMcpLeaderSubscription(projectId: string | null, local: boolean): void {
+  const queryClient = useQueryClient()
+  useEffect(() => {
+    if (!local || projectId === null) return undefined
+    const key = queryKeys.mcpLeader
+    return subscribeTopic('mcp-leader', (data) => {
+      const frame = mcpLeaderTopicSchema.safeParse(data)
+      const status = frame.success ? frame.data.projects[projectId] : undefined
+      if (status !== undefined) queryClient.setQueryData(key, status)
+    })
+  }, [queryClient, projectId, local])
 }
 
 /**
