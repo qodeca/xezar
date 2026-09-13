@@ -92,8 +92,12 @@ const T0 = Date.now();
 type Verdict = 'PASSED' | 'FAILED' | 'BLOCKED' | 'NOT-RUN';
 type ClientName = 'claude-code' | 'codex' | 'opencode' | 'pi';
 const CLIENTS: readonly ClientName[] = ['claude-code', 'codex', 'opencode', 'pi'];
-/** The three clients whose A-19 leg has no attach path at all; pi's is measured (#330 WP5). */
-const CLIENTS_WITHOUT_ADAPTER: readonly ClientName[] = ['claude-code', 'codex', 'opencode'];
+/**
+ * The clients whose A-19 leg has no attach path at all. pi's is measured (#330 WP5) and Claude
+ * Code's is measured over its channel (#374), so only a terminal Codex or OpenCode session — which
+ * has no address xezar can attach to — is left here.
+ */
+const CLIENTS_WITHOUT_ADAPTER: readonly ClientName[] = ['codex', 'opencode'];
 
 interface Check {
   name: string;
@@ -797,10 +801,15 @@ let fx: Fixture;
 
 const bridgeEnv = (world: AbWorld, home: string): NodeJS.ProcessEnv => isolatedEnv(home, { XEZ_HOME: world.home, XEZ_DRY_RUN: '1' });
 
-/** A real `xez mcp` bridge process spawned in `root`, the way a client spawns it. */
-async function openBridge(name: string, root: string, env: NodeJS.ProcessEnv): Promise<{ rpc: LineRpc; init: RpcAnswer }> {
+/**
+ * A real `xez mcp` bridge process spawned in `root`, the way a client spawns it. `clientName` is the
+ * `initialize` `clientInfo.name`; leave it default for an ordinary client, or pass `'claude-code'`
+ * to make the real bridge advertise the channel capability and announce a channel-capable session,
+ * exactly as Claude Code 2.1.270 does (#374).
+ */
+async function openBridge(name: string, root: string, env: NodeJS.ProcessEnv, clientName = `h118-${name}`): Promise<{ rpc: LineRpc; init: RpcAnswer }> {
   const rpc = new LineRpc(process.execPath, [DIST_CLI, 'mcp'], { cwd: root, env, transcript: new Transcript(name), jsonrpc: true });
-  const init = await rpc.request('initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: `h118-${name}`, version: '0' } });
+  const init = await rpc.request('initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: clientName, version: '0' } });
   if (!init.error) rpc.notify('notifications/initialized');
   return { rpc, init };
 }
@@ -2177,6 +2186,75 @@ describe('A-19 — immediate acceptance, delivery, and a real model reaction', (
     });
     fx.reaction.pi = entry;
     settle(t, entry);
+  });
+
+  test('[claude-code] the real bridge advertises the channel and delivers a journal row as a channel push (#374, AC-1/AC-2)', async (t) => {
+    // The channel delivery half is observed with the REAL shipped bridge presenting as Claude Code
+    // (the same `node dist/index.js mcp` the connection screen configures, with `clientInfo.name:
+    // "claude-code"` as Claude Code 2.1.270 sends). A real Claude Code PROCESS turning the pushed
+    // channel into a model turn needs a personal account, which § 9 forbids — that clause is BLOCKED,
+    // exactly as every other client's real-model clause is.
+    const base = mkdtempSync(join(fx.scratch, 'channel-'));
+    const root = makeRepo(base, 'project-channel');
+    const home = join(base, 'home');
+    const serve = await startServe(root, home, 'a19-claude-channel-serve', join(base, 'agent-home'));
+    try {
+      // The Claude Code leader opens its MCP session, which makes it the channel-capable owner.
+      const bridge = await openBridge('a19-claude-channel-bridge', root, isolatedEnv(join(base, 'bridge-home'), { XEZ_HOME: home, XEZ_DRY_RUN: '1' }), 'claude-code');
+      const caps = (bridge.init.result?.capabilities ?? {}) as { experimental?: Record<string, unknown> };
+      const experimental = caps.experimental ?? {};
+      const instructions = String(bridge.init.result?.instructions ?? '');
+
+      // The person attaches it as a Claude Code leader — no address; the owner session IS the target.
+      const attach = await cockpit(serve, '/api/v1/mcp/leader', 'POST', { action: 'attach', client: 'claude-code' });
+
+      // ONE significant event, through the human's door so nothing about it is the leader's own: a
+      // task the person starts and that finishes on its own (E-01 `task.done`, origin `system`).
+      const created = await cockpit(serve, '/api/v1/runs', 'POST', { workflow: 'quick-task', task: 'mock:done a task whose completion is the event to push to Claude Code', worktree: false, autonomous: true });
+      const runId: string | undefined = created.json?.id;
+      const finished = await waitFor('the A-19 Claude Code task to finish', async () => ((await runStatus(serve, runId)) === 'done' ? 'done' : undefined), 90_000).catch(() => 'not done');
+      const channelFrame = (): { content: string; meta?: Record<string, string> } | undefined =>
+        bridge.rpc.unsolicited.find((m) => m?.method === 'notifications/claude/channel')?.params;
+      const journal = readJournal(root) ?? [];
+      const row = journal.find((r) => r.subject.id === runId && r.kind === 'task.done');
+      // Delivery: the row reached the leader as a channel message on the real bridge's own stdout.
+      const frame = await waitFor('the channel push to reach the Claude Code bridge', () => (row && channelFrame()?.content.includes(row.eventId) ? channelFrame() : undefined), 60_000).catch(() => undefined);
+      const status = await cockpit(serve, '/api/v1/mcp/leader');
+      const delivery = status.json?.delivery ?? null;
+      await bridge.rpc.close();
+
+      const checks: Check[] = [
+        { name: 'the bridge advertises the channel capability to a Claude Code client (AC-1)', required: 'capabilities.experimental["claude/channel"] is present', observed: caps, ok: 'claude/channel' in experimental },
+        { name: 'the bridge never declares claude/channel/permission (AC-7)', required: 'no permission-relay capability, for any client', observed: Object.keys(experimental), ok: !('claude/channel/permission' in experimental) },
+        { name: 'the handshake names what a channel event is', required: 'the instructions carry the `<channel source="xezar" …>` sentence', observed: instructions.slice(0, 400), ok: instructions.includes('<channel source="xezar"') },
+        { name: 'the leader attaches over its channel', required: '`attach` accepted and the leader is Claude Code', observed: { attach: attach.status, leader: attach.json?.leader ?? attach.json?.error }, ok: attach.status === 200 && attach.json?.leader?.client === 'claude-code' },
+        { name: 'immediate acceptance is distinct from the result', required: 'the task is accepted at once and reaches `done` later', observed: { run: created.status, finished }, ok: runId !== undefined && finished === 'done' },
+        { name: 'the event reached the journal', required: 'an E-01 task.done row for it', observed: row ? { eventId: row.eventId, kind: row.kind, origin: row.origin } : `no task.done row among ${journal.length}`, ok: row !== undefined },
+        { name: 'delivery is observed: the row was pushed as a channel message (AC-2)', required: 'a `notifications/claude/channel` on the bridge carries the row and names xezar as the source', observed: frame ? { source_app: frame.meta?.source_app, project_id: frame.meta?.project_id, carriesRow: row ? frame.content.includes(row.eventId) : false } : 'no channel frame carried the row', ok: frame !== undefined && frame.meta?.source_app === 'xezar' && !!row && frame.content.includes(row.eventId) },
+        { name: 'delivery advanced and reaction stayed 0 (§ 6.6, F-20)', required: 'deliveredSeq reaches the journal’s latest; reactedSeq is 0 (Claude Code has no observable reaction)', observed: delivery, ok: delivery !== null && delivery.deliveredSeq >= 1 && delivery.reactedSeq === 0 },
+        { name: 'a REAL Claude Code model reaction', required: 'a real Claude Code process turns the pushed channel into a model turn', observed: 'not observable: § 9 forbids personal accounts and a channel turn needs one. The push left xezar and became a `notifications/claude/channel` on the real bridge; what Claude Code decides is not measured (OB-5, open for all clients)', ok: null },
+      ];
+      const measured = checks.filter((c) => c.ok !== null);
+      const entry = record({
+        case: 'A-19',
+        client: 'claude-code',
+        verdict: verdictOf(checks),
+        summary: `${measured.filter((c) => c.ok).length} of ${measured.length} measured checks met; the row was pushed to the Claude Code bridge as a channel message, reactedSeq ${delivery?.reactedSeq}`,
+        missing: 'a REAL Claude Code model reaction (OB-5), which no § 9 fixture may observe. The channel delivery half was executed against the real shipped bridge.',
+        checks,
+        transcripts: [serve.transcript.name, 'a19-claude-channel-bridge.log'],
+        fixture: {
+          serve: 'real xezar serve (dist/index.js), XEZ_DRY_RUN=1',
+          bridge: 'real node packages/xezar/dist/index.js mcp, initialize clientInfo.name="claude-code"',
+          claudeBinary: fx.clients['claude-code']?.version ?? fx.absent['claude-code'] ?? 'not resolved',
+          model: 'none: the channel push is observed as a bridge frame, not driven through a model',
+        },
+      });
+      fx.reaction['claude-code'] = entry;
+      settle(t, entry);
+    } finally {
+      await stop(serve.child);
+    }
   });
 
   for (const client of CLIENTS_WITHOUT_ADAPTER) {
