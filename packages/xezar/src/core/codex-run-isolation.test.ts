@@ -78,17 +78,80 @@ describe('codexRunIsolation (#324)', () => {
     expect(() => codexRunIsolation(undefined)).toThrow('without a config');
     expect(() => codexRunIsolation({ config: null })).toThrow('without a config');
   });
+
+  it('puts a home server named __proto__ on the wire, not only in the note (#415 review)', () => {
+    // JSON.parse makes `__proto__` an own key, exactly as the app-server's answer arrives.
+    const answer: unknown = JSON.parse(
+      JSON.stringify({ config: { mcp_servers: { placeholder: { command: 'node', args: ['proto.mjs'] } } } }).replace(
+        '"placeholder"',
+        '"__proto__"',
+      ),
+    );
+    const isolation = codexRunIsolation({
+      ...(answer as object),
+      origins: { 'mcp_servers.__proto__.command': user, 'mcp_servers.__proto__.args.0': user },
+    });
+    expect(isolation.disabledServers).toEqual(['__proto__']);
+
+    // What `thread/start` actually sends is the JSON text, so check the round trip.
+    const wire = JSON.parse(JSON.stringify(isolation.config)) as { mcp_servers: Record<string, unknown> };
+    expect(Object.hasOwn(wire.mcp_servers, '__proto__')).toBe(true);
+    expect(Object.getOwnPropertyDescriptor(wire.mcp_servers, '__proto__')?.value).toEqual({ enabled: false });
+  });
+
+  it('reads the answer codex-cli 0.154.0 gave for a trusted project (recorded live)', () => {
+    // Recorded from a real `config/read` (throwaway CODEX_HOME, trusted project). Defaults Codex
+    // fills in (`enabled`, `environment_id`, `tool_timeout_sec`, an empty `args`) carry NO origin,
+    // so a project server must not be switched off for lacking one.
+    const answer = {
+      config: {
+        mcp_servers: {
+          projsrv: { command: 'node', args: ['a.mjs', 'b'], env: { K: 'v' }, environment_id: 'local', enabled: true, tool_timeout_sec: null },
+          mixed: { command: 'node', args: [], env: { A: 'home' }, environment_id: 'local', enabled: true, tool_timeout_sec: null },
+          leader: { command: '/usr/bin/env', args: ['xezar', 'mcp'], environment_id: 'local', enabled: true, tool_timeout_sec: null },
+          ambient: { command: 'node', args: ['home.mjs'], environment_id: 'local', enabled: true, tool_timeout_sec: null },
+        },
+      },
+      origins: {
+        'mcp_servers.projsrv.command': project,
+        'mcp_servers.projsrv.args.0': project,
+        'mcp_servers.projsrv.args.1': project,
+        'mcp_servers.projsrv.env.K': project,
+        'mcp_servers.mixed.command': project,
+        'mcp_servers.mixed.env.A': user,
+        'mcp_servers.leader.command': project,
+        'mcp_servers.leader.args.0': project,
+        'mcp_servers.leader.args.1': project,
+        'mcp_servers.ambient.command': user,
+        'mcp_servers.ambient.args.0': user,
+      },
+    };
+    expect(codexRunIsolation(answer).disabledServers).toEqual(['ambient', 'leader', 'mixed']);
+  });
 });
 
 describe('isXezarBridge', () => {
   it.each([
-    ['xezar', {}],
-    ['XEZAR', { command: 'node' }],
     ['leader', { command: 'npx', args: ['-y', '@qodeca/xezar', 'mcp'] }],
     ['leader', { command: 'npx', args: ['-y', '@qodeca/xezar@0.14.0', 'mcp'] }],
     ['leader', { command: '/usr/local/bin/xezar', args: ['mcp'] }],
     ['leader', { command: 'xez', args: ['mcp'] }],
     ['leader', { command: 'C:\\npm\\xezar.cmd', args: ['mcp'] }],
+    // The two launch lines the #415 review found slipping through.
+    ['leader', { command: '/usr/bin/env', args: ['xezar', 'mcp'] }],
+    ['leader', { command: 'node', args: ['/opt/node_modules/@qodeca/xezar/dist/index.js', 'mcp'] }],
+    // Other wrappers around the same bridge.
+    ['leader', { command: 'env', args: ['XEZ_HOME=/tmp/x', 'xez', 'mcp'] }],
+    ['leader', { command: 'sh', args: ['-c', 'exec npx -y @qodeca/xezar mcp'] }],
+    ['leader', { command: 'bash', args: ['-lc', '"xezar" mcp'] }],
+    ['leader', { command: 'npx', args: ['--package=@qodeca/xezar', 'xezar', 'mcp'] }],
+    ['leader', { command: 'npm', args: ['exec', '@qodeca/xezar@latest', '--', 'mcp'] }],
+    ['leader', { command: 'C:\\Program Files\\nodejs\\node.exe', args: ['C:\\Users\\u\\AppData\\Roaming\\npm\\node_modules\\@qodeca\\xezar\\dist\\index.js', 'mcp'] }],
+    // A checkout: the entry point the package `bin` points at, built or from source.
+    ['leader', { command: 'node', args: ['/src/xezar/packages/xezar/dist/index.js', 'mcp'] }],
+    ['leader', { command: 'npx', args: ['tsx', 'packages/xezar/src/index.ts', 'mcp'] }],
+    // The entry point with no `mcp` is not a working MCP server either; off, at no cost.
+    ['leader', { command: 'node', args: ['/opt/node_modules/@qodeca/xezar/dist/index.js'] }],
   ])('recognises %s %j', (name, server) => {
     expect(isXezarBridge(name, server)).toBe(true);
   });
@@ -98,8 +161,16 @@ describe('isXezarBridge', () => {
     ['other', { command: 'npx', args: ['-y', '@qodeca/xezar-skills'] }],
     ['other', { command: 'xezar', args: ['serve'] }],
     ['xezar-docs', { url: 'http://127.0.0.1:1/mcp' }],
+    ['docs', { command: 'node', args: ['tools/xezar-docs-server.mjs', 'mcp'] }],
+    ['docs', { command: 'node', args: ['tools/docs.mjs', '--root', '/src/xezar'] }],
+    ['docs', { command: 'node', args: ['/src/xezar/tools/docs.mjs'] }],
   ])('does not flag %s %j', (name, server) => {
     expect(isXezarBridge(name, server)).toBe(false);
+  });
+
+  it('reserves the name xezar, whatever the server runs (the rename remedy is in the README)', () => {
+    expect(isXezarBridge('xezar', {})).toBe(true);
+    expect(isXezarBridge('XEZAR', { command: 'node', args: ['tools/docs-server.mjs'] })).toBe(true);
   });
 });
 

@@ -404,10 +404,25 @@ run can reach is breaking under section 1's rule, so it is recorded here rather 
   declares it (a task run is not the project's leader, #323), and the `plugins` and `apps`
   features. A Codex CLI that cannot answer `config/read` now fails the run closed with a message
   naming the reason, where it used to start.
-- **Not broken**: a server the project's trusted `.codex/config.toml` declares still loads; no
+- **Not broken**: a server that only the project's trusted `.codex/config.toml` declares still
+  loads (a key the home config adds to it makes it the person's, and it is switched off); no
   config file is read or written by xezar (the override lives only on the thread); Claude Code,
   OpenCode and pi runs are unchanged; the v1/v2 event streams gain no type — the run transcript
   gets one ordinary `note` naming the switched-off servers, and only when there were some.
+- **The bridge rule** (`isXezarBridge`): a server is xezar's bridge when it is named `xezar` (a
+  reserved name: an unrelated project server called that is switched off too, and renaming it is
+  the remedy), or when a word of its launch line — command and arguments split on whitespace,
+  quotes, shell punctuation and `=` — is the package `@qodeca/xezar[@version]`, a path inside an
+  installed copy, the CLI entry point `…/xezar/dist/index.js` or `…/xezar/src/index.ts`, or a
+  `xezar` / `xez` executable on a line that also names `mcp`. A wrapper script whose launch line
+  never mentions xezar is not seen; registering the bridge as `xezar` covers it.
+- **What provenance rests on**: a server counts as the project's when every origin Codex reports
+  for it is a `project` layer. xezar cannot require an origin for every key, because codex-cli
+  0.154.0 fills defaults (`enabled`, `environment_id`, `tool_timeout_sec`, an empty `args`) with no
+  origin; it relies on Codex reporting an origin for every key a config file set, as 0.154.0 does.
+- **Migration**: README § "Codex runs and MCP servers" — declare the server in the project's own
+  `.codex/config.toml`, keep the home config from adding keys to it, do not name it `xezar`, and
+  update a Codex CLI that cannot answer `config/read`. Released as part of a **minor** version.
 - **No opt-out knob**: the project's `.codex/config.toml` is the opt-in path, reviewed with the
   code, so no stored key or `XEZ_*` variable was added (§ Zero config: prefer no knob).
   `codex-app-server-runner.test.ts` (under `MOCK_CODEX_AMBIENT` / `MOCK_CODEX_CONFIG_READ_ERROR`)

@@ -231,7 +231,7 @@ describe("a Codex run does not reach the person's own MCP servers (#324)", () =>
 
     await expect(session.result).resolves.toMatchObject({ sessionId: 'th_mock_1' });
     const notes = events.flatMap((event) => (event.type === 'note' ? [event.message] : []));
-    expect(notes.some((note) => note.includes('off: ambient, mixed, xezar'))).toBe(true);
+    expect(notes.some((note) => note.includes('off: __proto__, ambient, envleader, mixed, nodeleader, xezar'))).toBe(true);
     expect(notes.join('\n')).not.toContain('projsrv');
   }, 15_000);
 
