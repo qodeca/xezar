@@ -1730,6 +1730,99 @@ expect_fail "a BLOCKED decision still stops a verification-only run" \
   "scope.not-blocked" run_in "$wt" "$PF" --readiness
 rm "$ev/BLOCKED" "$ev/VERIFICATION"
 
+# --- 7e. A detached-HEAD verdict run is still refused today (#356) ------------------------------
+#
+# THE INCIDENT. Independent QA of someone else's PR must check that PR's head out, which detaches
+# HEAD (`git rev-parse --abbrev-ref HEAD` reports `HEAD`, never `xez/<id8>`). Runs `894b7af1`,
+# `c5a99f15`, `e6dad6e7` (#311), `a1a55ee0` (#355) and `ab19b74f` (#365) all did their job correctly
+# — posted a verdict, applied labels, wrote a well-formed §7d VERIFICATION record — and still ended
+# `failed`, because `branch.owned-by-run` (line ~189) runs BEFORE the VERIFICATION path is ever
+# consulted. #312 -> #315 -> #322 fixed "no commits over base" one step at a time; "detached HEAD"
+# was never one of them, and independent QA is the one role that always detaches.
+#
+# This assertion pins that CURRENT behaviour and is expected to stay true after the fix: the chosen
+# fix (see #356 close-out) is not to relax `branch.owned-by-run` for every readiness-driven
+# workflow — that predicate is correct for any role that commits, and relaxing the one guard every
+# task in the repository depends on is the highest-blast-radius option. The fix is instead a new
+# read-only `qa` workflow (shaped like `code-review`/`design-review`: no setup, no readiness, no
+# gates, no handoff) that a verdict-only run uses so `--readiness` is never invoked on it at all.
+# The assertion right after this one is the real regression test for that fix.
+printf '\n-- detached HEAD verdict run, still refused by readiness (#356) --\n'
+root="$(make_fixture detached-verdict)"
+wt="$(add_worktree "$root" "$RUN_A")"
+PF="$root/.xezar/checks/worktree-preflight.sh"
+ev="$root/.local/xezar-tasks/$RUN_A"
+mkdir -p "$ev"
+other_head="$(git -C "$root" -c user.email=t@t -c user.name=t commit-tree 'HEAD^{tree}' -p HEAD -m "another PR's head, under QA")"
+git -C "$wt" checkout -q --detach "$other_head"
+printf 'QA of another PR at its head.\nverified: %s\nfindings: https://example.invalid/pr/999#comment\n' \
+  "$other_head" > "$ev/VERIFICATION"
+expect_fail "a detached HEAD with a well-formed VERIFICATION record still fails readiness" \
+  "branch.owned-by-run" run_in "$wt" "$PF" --readiness
+
+# THE FIX (not yet applied — this is the red half of the regression test): a verdict-only role
+# never runs `--readiness` in the first place. `code-review.yaml` and `design-review.yaml` already
+# take this shape; `qa.yaml` and its `xezar-qa` skill do not exist yet, so this is currently red.
+if [ -f "$REPO_ROOT/.xezar/workflows/qa.yaml" ]; then
+  ok "a read-only qa workflow exists (.xezar/workflows/qa.yaml)"
+  qa_body="$(cat "$REPO_ROOT/.xezar/workflows/qa.yaml")"
+  for missing_step in readiness setup gates handoff; do
+    if printf '%s' "$qa_body" | grep -q "id: $missing_step"; then
+      bad "qa.yaml has no $missing_step step" "found one — a verdict-only role must never reach --readiness"
+    else
+      ok "qa.yaml has no $missing_step step"
+    fi
+  done
+  if printf '%s' "$qa_body" | grep -q -- '--allow-root'; then
+    ok "qa.yaml's preflight step tolerates the primary checkout, like code-review/design-review"
+  else
+    bad "qa.yaml's preflight step tolerates the primary checkout, like code-review/design-review" "not found"
+  fi
+else
+  bad "a read-only qa workflow exists (.xezar/workflows/qa.yaml)" "not found — #356's fix is not yet applied"
+fi
+[ -f "$REPO_ROOT/.xezar/skills/xezar-qa.md" ] \
+  && ok "the xezar-qa skill exists" \
+  || bad "the xezar-qa skill exists" "not found — #356's fix is not yet applied"
+
+# --- 7f. A fix delivered to the PR's own branch, not this task's (#402) --------------------------
+#
+# THE INCIDENT. Run `ba255b58` (`address-review-findings`) fixed PR #401 exactly as briefed: it
+# pushed commit `b38e835` to the PR's OWN branch `xez/939d7d68`, posted the comment, restored the
+# `review` label — then `readiness` failed it on `branch.has-own-commits`, because the task's own
+# branch `xez/ba255b58` (a fresh worktree on a fresh branch, per this workflow's spine) never
+# received a commit: the fix, correctly, went to the branch it was asked to fix. Both halves are
+# right — `xezar-review-response` must not adopt or rename a task branch — and the workflow's
+# readiness step is checking the wrong branch for what this role delivers.
+#
+# THE FIX (not yet applied): the skill declares the branch it delivered to and what changed, in a
+# `DELIVERED` record in the task's own evidence directory (same directory §7d's VERIFICATION already
+# uses) — `branch: <name>`, `head: <sha now at that branch's tip>`, `base: <sha it was at before this
+# run>` — and readiness accepts an empty task branch when that record names a real ref whose current
+# tip is `head` and `head` carries new commits over `base`. This is the same shape #322 already
+# established for VERIFICATION, extended to "delivered elsewhere" instead of "verified elsewhere",
+# so it is the smaller of the two options the issue considered — the other being to check the PR
+# branch out into the task's own worktree, which reopens `branch.owned-by-run` (see #356 above) for
+# every one of these runs instead of adding one more escape hatch next to an existing one.
+printf '\n-- fix delivered to the PR'"'"'s own branch, not this task'"'"'s (#402) --\n'
+root="$(make_fixture delivered-elsewhere)"
+wt="$(add_worktree "$root" "$RUN_A")"
+PF="$root/.xezar/checks/worktree-preflight.sh"
+ev="$root/.local/xezar-tasks/$RUN_A"
+mkdir -p "$ev"
+base_sha="$(git -C "$root" rev-parse HEAD)"
+# The PR branch this run was asked to fix, at the head it reviewed — then the fix, pushed onto it,
+# never checked out into this task's own worktree (which stays on its own, still-empty branch).
+git -C "$root" branch -q xez/939d7d68 "$base_sha"
+delivered_head="$(git -C "$root" -c user.email=t@t -c user.name=t commit-tree 'HEAD^{tree}' -p "$base_sha" -m "the fix, pushed to the PR's branch")"
+git -C "$root" update-ref refs/heads/xez/939d7d68 "$delivered_head"
+printf 'branch: xez/939d7d68\nhead: %s\nbase: %s\n' "$delivered_head" "$base_sha" > "$ev/DELIVERED"
+
+# The bug: today's readiness knows nothing about DELIVERED, so a genuinely completed, verifiable
+# fix on the PR's own branch is refused exactly like an author who forgot to do any work at all.
+expect_fail "with no recognized record, a fix delivered to another branch is still refused" \
+  "branch.has-own-commits" run_in "$wt" "$PF" --readiness
+
 # --- 8. Manifest safety ------------------------------------------------------------------------------
 printf '\n-- manifest --\n'
 root="$(make_fixture manifest)"
