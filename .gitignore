@@ -46,7 +46,12 @@ skills-lock.json
 # stateDirs check in packages/xezar/src/tracked-files.test.ts as well as by this rule.
 .ai/qa/agent-home/
 
-# .claude/skills/ is tracked: the design-system skill lives there (docs/design-system/README.md).
+# Claude Code keeps per-machine state under .claude/ (locks, worktrees, checkpoints, settings.local.json).
+# Only the committed design-system skill is tracked (docs/design-system/README.md); everything else stays local.
+.claude/*
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/design-system/
 
 # mock-agent output from dry-run e2e (scripts/mock-claude.mjs appends here)
 /notes.md

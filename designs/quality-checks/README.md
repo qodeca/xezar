@@ -72,7 +72,7 @@ Code facts behind the problem:
 - Showing check output on the Checks page. The task page already shows it.
 - Fixing the kit workflows that fail readiness by design. That is a separate kit change (see [Delivery plan](#10-delivery-plan)).
 
-## 5. Files in this folder
+## 5. Files
 
 | File | Content |
 |---|---|

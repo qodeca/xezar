@@ -45,14 +45,14 @@
     <span class="state"><button class="btn contrast md" type="button">Save</button><small>contrast</small></span>
     <span class="state"><button class="btn md" type="button">Cancel</button><small>outline</small></span>
     <span class="state"><button class="btn ghost md" type="button">Details</button><small>ghost</small></span>
-    <span class="state"><button class="btn danger-ghost md" type="button"><svg class="icon sm"><use href="#i-trash"/></svg> Delete</button><small>danger-ghost</small></span>
+    <span class="state"><button class="btn danger-ghost md" type="button"><svg class="icon sm" aria-hidden="true"><use href="#i-trash"/></svg> Delete</button><small>danger-ghost</small></span>
     <span class="state"><button class="btn danger md" type="button">Delete task</button><small>danger (confirm dialogs, G-10)</small></span>
   </div>
   <div class="frame pad states" style="margin-top:10px">
-    <span class="state"><button class="btn lime" type="button">Run</button><small>size sm (h-8)</small></span>
-    <span class="state"><button class="btn" type="button"><svg class="icon sm"><use href="#i-rerun"/></svg> Retry</button><small>sm with icon</small></span>
-    <span class="state"><button class="btn icon md" type="button" aria-label="Settings"><svg class="icon"><use href="#i-settings"/></svg></button><small>icon</small></span>
-    <span class="state"><button class="btn icon" type="button" aria-label="Copy"><svg class="icon sm"><use href="#i-copy"/></svg></button><small>icon-sm</small></span>
+    <span class="state"><button class="btn lime" type="button">Run</button><small>size sm (30px)</small></span>
+    <span class="state"><button class="btn" type="button"><svg class="icon sm" aria-hidden="true"><use href="#i-rerun"/></svg> Retry</button><small>sm with icon</small></span>
+    <span class="state"><button class="btn icon md" type="button" aria-label="Settings"><svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg></button><small>icon</small></span>
+    <span class="state"><button class="btn icon" type="button" aria-label="Copy"><svg class="icon sm" aria-hidden="true"><use href="#i-copy"/></svg></button><small>icon-sm</small></span>
     <span class="state"><button class="btn contrast md" type="button" disabled>Save</button><small>disabled</small></span>
     <span class="state"><button class="btn contrast md" type="button" aria-disabled="true"><span class="spinner"></span> Saving…</button><small>busy</small></span>
   </div>
@@ -78,7 +78,7 @@
   <div class="src">ui/collapsible.tsx · Radix, no styling of its own</div>
   <div class="frame pad">
     <details open>
-      <summary style="cursor:pointer;font-size:13px;font-weight:500;display:flex;align-items:center;gap:6px"><svg class="icon sm"><use href="#i-chevron-down"/></svg> Advanced options</summary>
+      <summary style="cursor:pointer;font-size:13px;font-weight:500;display:flex;align-items:center;gap:6px"><svg class="icon sm" aria-hidden="true"><use href="#i-chevron-down"/></svg> Advanced options</summary>
       <p style="margin:8px 0 0 20px;font-size:13px;color:var(--muted-foreground)">Content shown when open. The trigger toggles <code>aria-expanded</code>.</p>
     </details>
   </div>
@@ -87,17 +87,17 @@
   <div class="src">ui/command.tsx · cmdk · used by the command palette (⌘K)</div>
   <div class="frame pad">
     <div class="cmdk">
-      <div class="search"><svg class="icon sm"><use href="#i-search"/></svg><input class="input" style="border:0;box-shadow:none;background:transparent;padding:0;height:auto" name="search" placeholder="Search tasks, projects and commands…" aria-label="Search"></div>
-      <div class="group">
+      <div class="search"><svg class="icon sm" aria-hidden="true"><use href="#i-search"/></svg><input class="input" style="border:0;box-shadow:none;background:transparent;padding:0;height:auto" name="search" placeholder="Search tasks, projects and commands…" aria-label="Search"></div>
+      <div class="group" role="listbox">
         <div class="heading">Tasks</div>
-        <div class="item selected"><span class="dot pending pulse"></span> Fix the flaky test in store.test.ts <span class="ref" style="margin-left:auto">xez/1a2b3c4d</span></div>
-        <div class="item"><span class="dot success"></span> Add the runner label helper</div>
+        <div class="item selected" role="option" aria-selected="true"><span class="dot pending pulse"></span> Fix the flaky test in store.test.ts <span class="ref" style="margin-left:auto">xez/1a2b3c4d</span></div>
+        <div class="item" role="option" aria-selected="false"><span class="dot success"></span> Add the runner label helper</div>
       </div>
       <div class="menu-sep"></div>
-      <div class="group">
+      <div class="group" role="listbox">
         <div class="heading">Commands</div>
-        <div class="item"><svg class="icon sm"><use href="#i-plus"/></svg> New task <span class="kbd" style="margin-left:auto">N</span></div>
-        <div class="item"><svg class="icon sm"><use href="#i-settings"/></svg> Settings</div>
+        <div class="item" role="option" aria-selected="false"><svg class="icon sm" aria-hidden="true"><use href="#i-plus"/></svg> New task <span class="kbd" style="margin-left:auto">N</span></div>
+        <div class="item" role="option" aria-selected="false"><svg class="icon sm" aria-hidden="true"><use href="#i-settings"/></svg> Settings</div>
       </div>
       <div class="empty">No results.</div>
     </div>
@@ -113,9 +113,9 @@
         <div class="field"><label class="label" for="d1p">Path</label><input class="input" id="d1p" name="path" value="~/Projects/xezar"></div>
         <div class="footer"><button class="btn md" type="button">Cancel</button><button class="btn contrast md" type="button">Add project</button></div>
       </div>
-      <div class="dialog alert" role="alertdialog" aria-labelledby="d2">
+      <div class="dialog alert" role="alertdialog" aria-labelledby="d2" aria-describedby="d2d">
         <h2 class="title" id="d2">Delete this task?</h2>
-        <p class="desc">This removes the run and its worktree. This cannot be undone.</p>
+        <p class="desc" id="d2d">This removes the run and its worktree. This cannot be undone.</p>
         <div class="footer"><button class="btn md" type="button">Cancel</button><button class="btn danger md" type="button">Delete</button></div>
       </div>
     </div>
@@ -126,11 +126,11 @@
   <div class="frame">
     <div class="scrim" style="border-radius:0;padding:0;display:flex">
       <aside class="sheet" aria-label="Navigation">
-        <div class="sidebar-head"><span class="logo">x</span><span class="name">xezar</span><button class="btn icon ghost" type="button" aria-label="Close" style="margin-left:auto"><svg class="icon sm"><use href="#i-x"/></svg></button></div>
+        <div class="sidebar-head"><span class="logo">x</span><span class="name">xezar</span><button class="btn icon ghost" type="button" aria-label="Close" style="margin-left:auto"><svg class="icon sm" aria-hidden="true"><use href="#i-x"/></svg></button></div>
         <nav class="nav">
-          <a href="#" aria-current="page"><svg class="icon sm"><use href="#i-tasks"/></svg> Tasks <span class="nav-badge">2</span></a>
-          <a href="#"><svg class="icon sm"><use href="#i-inbox"/></svg> Inbox</a>
-          <a href="#"><svg class="icon sm"><use href="#i-workflow"/></svg> Workflows</a>
+          <a href="#" aria-current="page"><svg class="icon sm" aria-hidden="true"><use href="#i-tasks"/></svg> Tasks <span class="nav-badge">2</span></a>
+          <a href="#"><svg class="icon sm" aria-hidden="true"><use href="#i-inbox"/></svg> Inbox</a>
+          <a href="#"><svg class="icon sm" aria-hidden="true"><use href="#i-workflow"/></svg> Workflows</a>
         </nav>
       </aside>
       <div style="flex:1"></div>
@@ -142,11 +142,11 @@
   <div class="frame pad float-row">
     <div class="menu" role="menu">
       <div class="menu-label">Open in</div>
-      <div class="menu-item" role="menuitem"><svg class="icon sm"><use href="#i-terminal"/></svg> Terminal <span class="shortcut">⌘T</span></div>
-      <div class="menu-item focus" role="menuitem"><svg class="icon sm"><use href="#i-external"/></svg> Editor <span class="shortcut">⌘E</span></div>
-      <div class="menu-item" role="menuitem" aria-disabled="true"><svg class="icon sm"><use href="#i-github"/></svg> GitHub</div>
+      <div class="menu-item" role="menuitem"><svg class="icon sm" aria-hidden="true"><use href="#i-terminal"/></svg> Terminal <span class="shortcut">⌘T</span></div>
+      <div class="menu-item focus" role="menuitem"><svg class="icon sm" aria-hidden="true"><use href="#i-external"/></svg> Editor <span class="shortcut">⌘E</span></div>
+      <div class="menu-item" role="menuitem" aria-disabled="true"><svg class="icon sm" aria-hidden="true"><use href="#i-github"/></svg> GitHub</div>
       <div class="menu-sep"></div>
-      <div class="menu-item destructive" role="menuitem"><svg class="icon sm"><use href="#i-trash"/></svg> Delete</div>
+      <div class="menu-item destructive" role="menuitem"><svg class="icon sm" aria-hidden="true"><use href="#i-trash"/></svg> Delete</div>
     </div>
     <span class="state"><small>focused item · disabled item · destructive item</small></span>
   </div>
@@ -200,10 +200,10 @@
   </div>
 
   <h3>Toaster</h3>
-  <div class="src">ui/toaster.tsx · hand-rolled · <code>toast(message, { tone })</code> · 5 s · bottom centre · one line, no trailing period (G-16)</div>
+  <div class="src">ui/toaster.tsx · hand-rolled · <code>toast(message, { tone })</code> · 5 s · top right, clear of the mobile header · one line, no trailing period (G-16)</div>
   <div class="frame pad states">
-    <span class="state"><div class="toast">Branch name copied</div><small>default</small></span>
-    <span class="state"><div class="toast danger">Could not create the worktree</div><small>danger</small></span>
+    <div class="state"><div class="toast" role="status">Branch name copied</div><small>default</small></div>
+    <div class="state"><div class="toast danger" role="status">Could not create the worktree</div><small>danger</small></div>
   </div>
 
   <h2>2. Shared components</h2>
@@ -226,8 +226,8 @@
     <span class="pill"><span class="dot pending pulse"></span> Running</span>
     <span class="pill"><span class="dot danger"></span> Failed</span>
     <span class="pill"><span class="dot violet"></span> Review</span>
-    <span class="chip"><svg class="icon xxs"><use href="#i-sparkles"/></svg> Claude Code <svg class="icon xxs"><use href="#i-chevron-down"/></svg></span>
-    <span class="chip"><svg class="icon xxs"><use href="#i-workflow"/></svg> quick-task <svg class="icon xxs"><use href="#i-chevron-down"/></svg></span>
+    <span class="chip"><svg class="icon xxs" aria-hidden="true"><use href="#i-sparkles"/></svg> Claude Code <svg class="icon xxs" aria-hidden="true"><use href="#i-chevron-down"/></svg></span>
+    <span class="chip"><svg class="icon xxs" aria-hidden="true"><use href="#i-workflow"/></svg> quick-task <svg class="icon xxs" aria-hidden="true"><use href="#i-chevron-down"/></svg></span>
     <span class="chip">Claude Code · Codex</span>
   </div>
 
@@ -251,10 +251,10 @@
   <h3>CenteredState</h3>
   <div class="src">centered-state.tsx · the one template for empty, loading, error and refusal · tones default · primary · danger · four hand-rolled copies remain (G-05)</div>
   <div class="grid-2">
-    <div class="frame"><div class="centered-state"><div class="tile"><svg class="icon"><use href="#i-inbox"/></svg></div><h2>No tasks yet</h2><p>Type what you want done and pick a workflow. The task runs in its own worktree.</p><div class="actions"><button class="btn contrast md" type="button">New task</button></div></div></div>
+    <div class="frame"><div class="centered-state"><div class="tile"><svg class="icon" aria-hidden="true"><use href="#i-inbox"/></svg></div><h2>No tasks yet</h2><p>Type what you want done and pick a workflow. The task runs in its own worktree.</p><div class="actions"><button class="btn contrast md" type="button">New task</button></div></div></div>
     <div class="frame"><div class="centered-state primary"><div class="tile"><span class="spinner"></span></div><h2>Loading tasks…</h2><p>Reading <code>.local/xezar/runs.json</code>.</p></div></div>
-    <div class="frame"><div class="centered-state danger"><div class="tile"><svg class="icon"><use href="#i-alert"/></svg></div><h2>Could not load this task</h2><p>The server answered 404. The run may have been deleted.</p><div class="actions"><button class="btn md" type="button">Back to tasks</button><button class="btn contrast md" type="button">Retry</button></div></div></div>
-    <div class="frame"><div class="centered-state"><div class="tile"><svg class="icon"><use href="#i-lock"/></svg></div><h2>Not available in hosted mode</h2><p>Editing agent config files only works on the machine that runs xezar.</p></div></div>
+    <div class="frame"><div class="centered-state danger"><div class="tile"><svg class="icon" aria-hidden="true"><use href="#i-alert"/></svg></div><h2>Could not load this task</h2><p>The server answered 404. The run may have been deleted.</p><div class="actions"><button class="btn md" type="button">Back to tasks</button><button class="btn contrast md" type="button">Retry</button></div></div></div>
+    <div class="frame"><div class="centered-state"><div class="tile"><svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg></div><h2>Not available in hosted mode</h2><p>Editing agent config files only works on the machine that runs xezar.</p></div></div>
   </div>
 
   <h3>Loading line, shimmer and skeleton rows</h3>
@@ -277,8 +277,8 @@
   <h3>EditableTitle</h3>
   <div class="src">editable-title.tsx · click to edit · Enter saves · Escape cancels</div>
   <div class="frame pad states">
-    <span class="state"><span style="font-size:18px;font-weight:600;display:inline-flex;align-items:center;gap:8px">Fix the flaky test <svg class="icon sm" style="color:var(--soft-foreground)"><use href="#i-pencil"/></svg></span><small>idle</small></span>
-    <span class="state"><input class="input" name="title" value="Fix the flaky test" style="font-size:18px;font-weight:600;height:36px;width:300px;max-width:100%"><small>editing</small></span>
+    <span class="state"><span style="font-size:18px;font-weight:600;display:inline-flex;align-items:center;gap:8px">Fix the flaky test <svg class="icon sm" style="color:var(--soft-foreground)" aria-hidden="true"><use href="#i-pencil"/></svg></span><small>idle</small></span>
+    <span class="state"><input class="input" name="title" aria-label="Task title" value="Fix the flaky test" style="font-size:18px;font-weight:600;height:36px;width:300px;max-width:100%"><small>editing</small></span>
   </div>
 
   <h3>ReferenceChip and ReferenceStatus</h3>
@@ -290,13 +290,13 @@
     <span class="ref-chip info">draft</span>
     <span class="ref-chip pending">open</span>
     <span class="ref-chip conflict">conflict</span>
-    <button class="btn" type="button"><svg class="icon sm"><use href="#i-git"/></svg> Rebase on main</button>
+    <button class="btn" type="button"><svg class="icon sm" aria-hidden="true"><use href="#i-git"/></svg> Rebase on main</button>
   </div>
 
   <h3>PinToggle, source tags, eyebrows, kbd, version chip</h3>
   <div class="src">pin-toggle.tsx · skill-detail.tsx · app-shell.tsx</div>
   <div class="frame pad states">
-    <button class="btn icon ghost" type="button" aria-pressed="true" aria-label="Unpin"><svg class="icon sm"><use href="#i-pin"/></svg></button>
+    <button class="btn icon ghost" type="button" aria-pressed="true" aria-label="Unpin"><svg class="icon sm" aria-hidden="true"><use href="#i-pin"/></svg></button>
     <span class="source-tag">global</span>
     <span class="source-tag project">project</span>
     <span class="eyebrow">Recent</span>
@@ -313,24 +313,24 @@
     <div class="composer">
       <textarea name="task" aria-label="Task" placeholder="Describe the task… (Enter to send, Shift+Enter for a new line)"></textarea>
       <div class="foot">
-        <span class="chip"><svg class="icon xxs"><use href="#i-workflow"/></svg> quick-task <svg class="icon xxs"><use href="#i-chevron-down"/></svg></span>
-        <span class="chip"><svg class="icon xxs"><use href="#i-sparkles"/></svg> Claude Code <svg class="icon xxs"><use href="#i-chevron-down"/></svg></span>
-        <span class="chip"><svg class="icon xxs"><use href="#i-git"/></svg> Worktree</span>
+        <span class="chip"><svg class="icon xxs" aria-hidden="true"><use href="#i-workflow"/></svg> quick-task <svg class="icon xxs" aria-hidden="true"><use href="#i-chevron-down"/></svg></span>
+        <span class="chip"><svg class="icon xxs" aria-hidden="true"><use href="#i-sparkles"/></svg> Claude Code <svg class="icon xxs" aria-hidden="true"><use href="#i-chevron-down"/></svg></span>
+        <span class="chip"><svg class="icon xxs" aria-hidden="true"><use href="#i-git"/></svg> Worktree</span>
         <span class="spacer"></span>
-        <button class="btn icon ghost" type="button" aria-label="Attach"><svg class="icon sm"><use href="#i-paperclip"/></svg></button>
-        <button class="btn icon ghost" type="button" aria-label="Dictate"><svg class="icon sm"><use href="#i-mic"/></svg></button>
-        <button class="send" type="button" aria-label="Send"><svg class="icon sm"><use href="#i-arrow-up"/></svg></button>
+        <button class="btn icon ghost" type="button" aria-label="Attach"><svg class="icon sm" aria-hidden="true"><use href="#i-paperclip"/></svg></button>
+        <button class="btn icon ghost" type="button" aria-label="Dictate"><svg class="icon sm" aria-hidden="true"><use href="#i-mic"/></svg></button>
+        <button class="send" type="button" aria-label="Send"><svg class="icon sm" aria-hidden="true"><use href="#i-arrow-up"/></svg></button>
       </div>
       <div class="dictation-bar"><span class="dot danger pulse"></span> Listening… <span style="margin-left:auto"><button class="btn" type="button">Stop</button></span></div>
     </div>
-    <div class="composer disabled" style="margin-top:10px"><textarea name="task" aria-label="Task" disabled placeholder="Read-only in hosted mode"></textarea><div class="foot"><span class="chip">quick-task</span><span class="spacer"></span><button class="send" type="button" aria-label="Send" disabled><svg class="icon sm"><use href="#i-arrow-up"/></svg></button></div></div>
+    <div class="composer disabled" style="margin-top:10px"><textarea name="task" aria-label="Task" disabled placeholder="Read-only in hosted mode"></textarea><div class="foot"><span class="chip">quick-task</span><span class="spacer"></span><button class="send" type="button" aria-label="Send" disabled><svg class="icon sm" aria-hidden="true"><use href="#i-arrow-up"/></svg></button></div></div>
   </div>
 
   <h3>Diff and RunDiff</h3>
   <div class="src">diff/diff.tsx · diff/diff-view.tsx · run-diff.tsx · two renderers (G-09) · word-level marks · added lines on <code>--diff-add-bg</code>, removed on <code>--diff-del-bg</code></div>
   <div class="frame">
     <div class="diff" style="border:0;border-radius:0">
-      <header><svg class="icon sm"><use href="#i-git"/></svg> packages/web/src/lib/runner-label.ts <span class="status-badge">modified</span><span class="diff-stat" style="margin-left:auto"><span class="plus">+2</span> <span class="minus">−1</span></span></header>
+      <header><svg class="icon sm" aria-hidden="true"><use href="#i-git"/></svg><span class="path">packages/web/src/lib/runner-label.ts</span><span class="status-badge">modified</span><span class="diff-stat" style="margin-left:auto"><span class="plus">+2</span> <span class="minus">−1</span></span></header>
       <div class="hunk">@@ -1,4 +1,5 @@</div>
       <div class="line"><span class="gutter">1</span><span class="marker"> </span>export const RUNNER_LABEL = {</div>
       <div class="line del"><span class="gutter">2</span><span class="marker">−</span>  claude: <mark>'Claude'</mark>,</div>
@@ -346,16 +346,16 @@
   <div class="grid-2">
     <div class="frame pad">
       <ul class="rail">
-        <li><span class="ico done"><svg class="icon xs"><use href="#i-circle-check"/></svg></span><span class="lbl"><b>preflight</b><small>check · 0:04</small></span></li>
-        <li><span class="ico done"><svg class="icon xs"><use href="#i-circle-check"/></svg></span><span class="lbl"><b>setup</b><small>check · 0:41</small></span></li>
+        <li><span class="ico done"><svg class="icon xs" aria-hidden="true"><use href="#i-circle-check"/></svg></span><span class="lbl"><b>preflight</b><small>check · 0:04</small></span></li>
+        <li><span class="ico done"><svg class="icon xs" aria-hidden="true"><use href="#i-circle-check"/></svg></span><span class="lbl"><b>setup</b><small>check · 0:41</small></span></li>
         <li><span class="ico active"><span class="dot pending pulse"></span></span><span class="lbl"><b>author</b><small>Claude Code · running 4:12</small></span></li>
-        <li class="pending"><span class="ico pending"><svg class="icon xs"><use href="#i-circle"/></svg></span><span class="lbl"><b>gates</b><small>check</small></span></li>
-        <li class="failed"><span class="ico failed"><svg class="icon xs"><use href="#i-circle-x"/></svg></span><span class="lbl"><b>handoff</b><small>failed · exit 1</small></span></li>
+        <li class="pending"><span class="ico pending"><svg class="icon xs" aria-hidden="true"><use href="#i-circle"/></svg></span><span class="lbl"><b>gates</b><small>check</small></span></li>
+        <li class="failed"><span class="ico failed"><svg class="icon xs" aria-hidden="true"><use href="#i-circle-x"/></svg></span><span class="lbl"><b>handoff</b><small>failed · exit 1</small></span></li>
       </ul>
       <div class="rail-progress"><span style="display:block;height:100%;width:45%;background:var(--pending)"></span></div>
     </div>
     <div class="output">
-      <header><svg class="icon sm"><use href="#i-terminal"/></svg><code>npm test</code><span class="exit">exit 1</span></header>
+      <header><svg class="icon sm" aria-hidden="true"><use href="#i-terminal"/></svg><code>npm test</code><span class="exit">exit 1</span></header>
       <pre><span class="syn-com">// vitest run</span>
 <span class="syn-key">FAIL</span> packages/xezar/src/runs/store.test.ts
   <span class="syn-fn">expected</span> <span class="syn-num">3</span> <span class="syn-punc">to be</span> <span class="syn-num">2</span>
@@ -366,14 +366,14 @@
   <h3>ProviderBanner and RunNotifications</h3>
   <div class="src">provider-banner.tsx · provider-banner-container.tsx · run-notifications.tsx (browser notifications, no markup)</div>
   <div class="frame stack" style="gap:0">
-    <div class="banner-row"><svg class="icon sm"><use href="#i-info"/></svg> Codex is not installed. <a href="#">Install it</a> to use it as a backend.</div>
-    <div class="banner-row alert"><svg class="icon sm"><use href="#i-alert"/></svg> Claude Code hit its usage limit. Runs resume automatically at 14:00.</div>
+    <div class="banner-row"><svg class="icon sm" aria-hidden="true"><use href="#i-info"/></svg> Codex is not installed. <a href="#">Install it</a> to use it as a backend.</div>
+    <div class="banner-row alert"><svg class="icon sm" aria-hidden="true"><use href="#i-alert"/></svg> Claude Code hit its usage limit. Runs resume automatically at 14:00.</div>
   </div>
 
   <h3>Skills: SkillDetail, SkillEmptyHint, SkillsImportPanel</h3>
   <div class="src">skill-detail.tsx · skill-empty-hint.tsx · skills-import-panel.tsx</div>
   <div class="frame pad float-row">
-    <a class="settings-card" href="#" style="width:320px;max-width:100%"><span class="tile"><svg class="icon"><use href="#i-sparkles"/></svg></span><span><b style="font-size:14px">xezar-ux-design</b> <span class="source-tag project">project</span><br><span style="font-size:13px;color:var(--muted-foreground)">UX design for a user-facing surface</span></span></a>
+    <a class="settings-card" href="#" style="width:320px;max-width:100%"><span class="tile"><svg class="icon" aria-hidden="true"><use href="#i-sparkles"/></svg></span><span><b style="font-size:14px">xezar-ux-design</b> <span class="source-tag project">project</span><br><span style="font-size:13px;color:var(--muted-foreground)">UX design for a user-facing surface</span></span></a>
     <div class="note" style="margin:0;max-width:320px"><strong>No skills yet.</strong> Add a Markdown file to <code>.xezar/skills/</code> and it appears here.</div>
   </div>
 

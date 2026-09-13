@@ -46,7 +46,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Purpose**: stock shadcn card (`Card`, `CardHeader`, `CardTitle`, `CardDescription`, `CardAction`, `CardContent`, `CardFooter`).
 - **Source**: `packages/web/src/components/ui/card.tsx`. Root class `flex flex-col gap-6 rounded-lg border bg-card py-6 text-card-foreground shadow-xs`.
 - **States**: none.
-- **Rules**: the cockpit does not use this primitive. The card spelling in use is the ad-hoc `rounded-lg border border-border bg-card` (25 sites) with `shadow-xs` where it is a raised container. That ad-hoc string is the rule for new work (known gap G-02). DO NOT introduce a third spelling (`rounded-xl border bg-card p-4` exists once, in `automations.tsx`).
+- **Rules**: the cockpit does not use this primitive. The card spelling in use is the ad-hoc `rounded-lg border border-border bg-card` (22 sites in 15 files) with `shadow-xs` where it is a raised container. That ad-hoc string is the rule for new work (known gap G-02). DO NOT introduce a third spelling (`rounded-xl border bg-card p-4` exists twice, in `routes/automations/automations.tsx`).
 - **Where used**: 0 files.
 
 ### Collapsible
@@ -150,7 +150,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 
 - **Purpose**: stock shadcn select.
 - **Source**: `packages/web/src/components/ui/select.tsx`. `SelectTrigger size` `sm | default` (`h-8` / `h-9`); `SelectContent position` defaults to `item-aligned`.
-- **Rules**: unused. Settings pages render a raw `<select>` with the shared class `block w-full rounded-md border border-input bg-card px-3 py-1.5 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50` (5 sites, G-11). That raw select is the rule for new settings work until the gap is closed.
+- **Rules**: unused. Settings pages render a raw `<select>` with a raw class of the shape `block w-full rounded-md border border-input bg-card px-3 py-1.5 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50` – that exact string at two sites (`routes/settings/agents-section.tsx:237`, `routes/repo-git/repo-branches.tsx:162`), width and focus variants at eight more (G-11). That raw select is the rule for new settings work until the gap is closed.
 - **Where used**: 0 files.
 
 ### Switch

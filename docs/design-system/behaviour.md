@@ -61,7 +61,7 @@ is `role="alert"`. A toast is `role="status"`.
 - `useIsDesktop()` asks the same `(min-width: 768px)` as `md:`; jsdom counts as desktop.
 - One container query: the sidebar is `@container/sidebar` and the quick-list diff pair shows at
   `@min-[23rem]/sidebar:inline`.
-- Nothing scrolls sideways at 375px: tables become cards, the settings nav becomes a pill row, the global
+- Nothing scrolls sideways at 375 px: tables become cards, the settings nav becomes a pill row, the global
   table hides columns, diffs wrap. The document itself is `overflow: hidden`.
 - Safe areas: shell left/right, sidebar top/bottom, composer row bottom, page bodies
   `pb-[calc(90px+env(safe-area-inset-bottom))]`, the FAB, the toaster, the plan-review footer.
@@ -74,9 +74,9 @@ is `role="alert"`. A toast is `role="status"`.
 
 - `transition-colors` (60) is the default hover transition. `transition-transform` (16) rotates chevrons.
   `transition-opacity` (6) reveals row actions.
-- `animate-spin` (18): eleven are `motion-safe:animate-spin`; the step rail adds `motion-reduce:animate-none`;
-  six are unguarded (G-08).
-- `animate-pulse` (10): guarded in the docks, step rail, composer and twinkles; unguarded in `StatusDot`,
+- `animate-spin` (18): twelve are `motion-safe:animate-spin`; the step rail adds `motion-reduce:animate-none`;
+  five are unguarded (G-08).
+- `animate-pulse` (9): guarded in the docks, step rail, composer and twinkles; unguarded in `StatusDot`,
   `Skeleton` and two `/new` sites (G-08).
 - `animate-in` / `animate-out` from `tw-animate-css` on Radix `data-[state]` and on toasts (toasts are
   `motion-safe:`).

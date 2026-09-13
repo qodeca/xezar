@@ -268,7 +268,7 @@
   }
 }
 
-.alert {
+.qc-alert {
   display: flex;
   align-items: flex-start;
   gap: 10px;
@@ -280,7 +280,7 @@
   line-height: 1.5;
 }
 
-.alert svg {
+.qc-alert svg {
   margin-top: 2px;
   color: var(--danger);
 }

@@ -252,6 +252,7 @@ Each entry maps a utility name to a theme token. Listed in foundations.md §1.7;
 | Breakpoints | foundations.md §10, behaviour.md | – | Documented |
 | `no-hover:` | foundations.md §11 | – | Documented with known gap (G-21) |
 | Safe areas and the keyboard | foundations.md §12 | – | Documented |
+| Base layer (`border-color`, `html`/`body` height and overflow, placeholder, scrollbars) | foundations.md §13 | – | Documented |
 | Theming (theme, accent, density, width, pre-paint) | theming.md | every specimen's doc bar | Documented |
 | Keyboard, focus and announcements | behaviour.md | `specimens/components.html` | Documented with known gap (G-06) |
 | UX writing | writing.md | – | Documented with known gap (G-15, G-16) |

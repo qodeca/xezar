@@ -65,10 +65,10 @@ Filenames are repo-relative under `docs/design-system/`.
 
 1. Tokens only – no raw hex, rgb or named colour outside `packages/web/src/styles/index.css`. Owner `design-guardian.test.ts`.
 2. No `dark:` variants – dark is the default, `.light` overrides. Owner `design-guardian.test.ts`.
-3. Amber text is `text-pending-strong`, never `text-pending`. Owner `design-guardian.test.ts`.
+3. Amber text is `text-pending-strong`, never `text-pending` or `text-amber-*`. Owner `design-guardian.test.ts`.
 4. No `bg-white`/`text-white`/`bg-black`/`text-black` outside `src/components/ui/` and `zoomable-image.tsx`. Owner `design-guardian.test.ts`.
-5. Heights use `dvh`, never `h-screen` or `100vh`. Owner `design-guardian.test.ts`.
-6. No `window.confirm`, `alert` or `prompt` – destructive confirms are an AlertDialog. Owner `design-guardian.test.ts`.
+5. Heights use `dvh`, never `h-screen`, `min-h-screen`, `max-h-screen` or `100vh`. Owner `design-guardian.test.ts`.
+6. No `window.confirm`, `alert` or `prompt` – destructive confirms are an AlertDialog (`lib/bookmarklet.ts` is the one exemption). Owner `design-guardian.test.ts`.
 7. Status → bucket, tone, pulse, label comes from `lib/attention.ts`. Owner `patterns.md §5`.
 8. Backend names come from `lib/runner-label.ts`. Owner `components.md`.
 9. The per-project task table is `lib/task-columns.ts`. Owner `patterns.md §4`.
@@ -83,7 +83,7 @@ Filenames are repo-relative under `docs/design-system/`.
 
 For `packages/web`: `npm test -- packages/web/src/design-system-drift.test.ts`. It fails on an undocumented `index.css` token, a component without a `coverage.md` row, or a `cockpit.css` value that differs from `index.css`. The full gate list is in AGENTS.md § Validation.
 
-For a mockup: open `docs/design-system/specimens/index.html` beside the page, in both themes and at 400 px.
+For a mockup: open `docs/design-system/specimens/index.html` beside the page, in both themes and at 375 px.
 
 Self-check: remove one row from `docs/design-system/coverage.md`, run the drift test and see it fail; restore the row and see it pass.
 
@@ -91,7 +91,7 @@ Self-check: remove one row from `docs/design-system/coverage.md`, run the drift 
 
 When this file and `docs/design-system/` disagree, the docs win – fix this file. The drift test guards tokens and components, not prose.
 
-A user may override a rule for one task only with a written reason; the override goes into the PR description or the design's open decisions, and the rule itself is changed only in `docs/design-system/`.
+A user may override a prose-owned rule (7–15) for one task only with a written reason; the override goes into the PR description or the design's open decisions, and the rule itself is changed only in `docs/design-system/`. A rule owned by a test (1–6, 14) is never waived in prose – an exception changes the test in its own commit, with the reason.
 
 ## Examples
 

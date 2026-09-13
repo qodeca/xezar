@@ -529,6 +529,10 @@ svg.icon.xxs {
   background: var(--background);
 }
 
+.shell.settings {
+  grid-template-columns: 208px minmax(0, 1fr);
+}
+
 .shell.short {
   min-height: 0;
 }
@@ -678,8 +682,13 @@ svg.icon.xxs {
   background: var(--background);
 }
 
-.list-tabs span {
+.list-tabs span,
+.list-tabs button {
   flex: 1;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
   padding: 5px 0;
   border-radius: 7px;
   text-align: center;
@@ -687,7 +696,8 @@ svg.icon.xxs {
   color: var(--muted-foreground);
 }
 
-.list-tabs span.on {
+.list-tabs span.on,
+.list-tabs button.on {
   background: var(--card-2);
   color: var(--foreground);
   font-weight: 500;
@@ -868,11 +878,11 @@ svg.icon.xxs {
 .dot.pending { background: var(--pending); }
 
 .dot.pulse {
-  animation: pulse 1.6s ease-in-out infinite;
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; /* Tailwind animate-pulse */
 }
 
 @keyframes pulse {
-  50% { opacity: 0.35; }
+  50% { opacity: 0.5; }
 }
 
 /* Pill — the colour lives in the dot, never in the fill */
@@ -906,6 +916,7 @@ svg.icon.xxs {
   white-space: nowrap;
   cursor: pointer;
   text-decoration: none;
+  transition: background-color 0.15s, border-color 0.15s, opacity 0.15s, filter 0.15s;
 }
 
 .btn:hover {
@@ -985,7 +996,8 @@ svg.icon.xxs {
 
 .btn[disabled],
 .btn[aria-disabled='true'] {
-  opacity: 0.55;
+  opacity: 0.5;
+  pointer-events: none;
   cursor: not-allowed;
 }
 
@@ -1046,7 +1058,8 @@ svg.icon.xxs {
 .badge.destructive { background: var(--destructive); color: var(--destructive-foreground); }
 .badge.outline { background: transparent; border-color: var(--border); color: var(--foreground); }
 .badge.ghost { background: transparent; color: var(--muted-foreground); }
-.badge.link { background: transparent; color: var(--primary); text-decoration: underline; text-underline-offset: 4px; }
+.badge.link { background: transparent; color: var(--primary); text-decoration: none; text-underline-offset: 4px; } /* .link alone underlines; the badge variant only on hover */
+.badge.link:hover { text-decoration: underline; }
 
 /* Input and Textarea */
 .input,
@@ -1062,8 +1075,17 @@ svg.icon.xxs {
   background: var(--card);
   color: var(--foreground);
   font: inherit;
+  font-size: 16px; /* text-base below md: keeps iOS from zooming on focus */
   box-shadow: var(--shadow-xs);
   outline: none;
+}
+
+@media (min-width: 768px) {
+  .input,
+  .textarea,
+  .native-select {
+    font-size: 14px; /* md:text-sm */
+  }
 }
 
 .textarea {
@@ -1418,7 +1440,7 @@ svg.icon.xxs {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
-  line-height: 1.2;
+  line-height: 1; /* leading-none */
 }
 
 .dialog .desc {
@@ -1764,6 +1786,13 @@ svg.icon.xxs {
   font-size: 12.5px;
 }
 
+.diff header .path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .diff .status-badge {
   padding: 1px 6px;
   border-radius: var(--radius-sm);
@@ -1852,6 +1881,7 @@ svg.icon.xxs {
 
 @media (prefers-reduced-motion: reduce) {
   .shimmer {
+    animation: none;
     background: none;
     color: var(--muted-foreground);
   }
@@ -2307,7 +2337,8 @@ svg.icon.xxs {
 /* ---------- responsive ---------- */
 
 @media (max-width: 860px) {
-  .shell {
+  .shell,
+  .shell.settings {
     grid-template-columns: minmax(0, 1fr);
   }
 

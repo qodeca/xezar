@@ -155,6 +155,18 @@ Counts are non-test files or occurrences in `packages/web/src`.
 - **Rule**: on-change for selects and switches; explicit Save for text and numbers (this is what the pane does).
 - **Fix**: none needed beyond the rule; document per control.
 
+### G-23 Small text below AA contrast in three token pairs
+
+- **Differs**: `--soft-foreground` is `#a3a3a3` in `.light` (`styles/index.css:198`) – 2.5:1 on `--background`, 2.4:1 on `--muted` – and it colours 10–12.5 px text (eyebrows, hints, chip counts, table headers). `--danger-foreground` (`#ffffff`) on `--danger` (`#ef4444`) is 3.8:1 for the danger button and the danger toast. `--violet-foreground` on `--violet` is 3.1:1 for the nav badge (accepted in `styles/index.css` beside the token). AA needs 4.5:1 for text this size.
+- **Rule**: keep the tokens; do not add more small text in `--soft-foreground` on light, and keep the badge count announced in words.
+- **Fix**: darken light `--soft-foreground` to about `#767676` (4.5:1) and revisit the danger pair; then re-check every specimen swatch.
+
+### G-24 `*-warning` classes with no token behind them
+
+- **Differs**: `text-warning`, `bg-warning` and `border-warning` are used 11 times (`routes/github/github.tsx`, `routes/settings/mcp-api-section.tsx`, `routes/settings/mcp-capabilities.tsx`, `routes/settings/mcp-connection-section.tsx`, `routes/settings/resources-section.tsx`, `routes/task-thread/mcp-operation-feedback.tsx`), but `styles/index.css` defines no `--warning` token and no `--color-warning` mapping, so Tailwind emits nothing and the elements inherit their parent's colour.
+- **Rule**: `--conflict` is the warning colour (`text-conflict`, `bg-conflict`).
+- **Fix**: replace the 11 sites with the conflict utilities, or add `--warning: var(--conflict)` and its `--color-warning` mapping in `index.css`.
+
 ## Comment vs code
 
 | Comment says | Code does | Where |
@@ -183,6 +195,9 @@ for new work.
 | `.qc-skeleton` | sheen sweep | `animate-pulse rounded-md bg-accent` | `components/ui/skeleton.tsx` |
 | `.qc-toast` | card surface with a success icon | `bg-contrast text-contrast-foreground`, no icon | `components/ui/toaster.tsx` |
 | `--diff-add` / `--diff-del` (removed) | mockup-only aliases | `text-success` / `text-danger` | `components/diff-stat.tsx` |
+| `.qc-alert` | card with a danger-tinted border and icon | `banner-row` with the `alert` tone | `components/provider-banner.tsx` |
+| `.btn.contrast:hover` (new) | the mockup had no hover, so a contrast button turned `--muted` on hover | `filter: brightness(0.96)` | `components/ui/button.tsx` |
+| `.tasks-table tbody tr:hover` (new) | the mockup had no row hover | `hover:bg-muted` | `routes/tasks-overview.tsx` |
 
 Proposed fix: when the quality-checks design gets its review, restyle those classes to the cockpit
 values and drop the `qc-` prefixed ones in favour of the shared `.centered-state`, `.skeleton` and

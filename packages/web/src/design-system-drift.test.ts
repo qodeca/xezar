@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -7,13 +8,18 @@ import { describe, expect, it } from 'vitest'
 /**
  * Design-system drift — keeps `docs/design-system/` honest against the cockpit sources.
  *
- * Three checks, each a static scan (no network, no DOM):
+ * Four checks, each a static scan (no network, no DOM):
+ *  0. Every top-level block in `src/styles/index.css` that declares a custom property is one
+ *     the test knows (a theme block, an appearance block, `@theme static` or `@theme inline`),
+ *     so a token added in a new block cannot slip past checks 1 and 3.
  *  1. Every CSS custom property declared in `src/styles/index.css` (the theme blocks, the
- *     appearance blocks, `@theme static` and the `@theme inline` mapping) is named in the
- *     design-system documents as `` `--name` ``.
+ *     appearance blocks, `@theme static` and the `@theme inline` mapping) is named in
+ *     `foundations.md` or `theming.md` as `` `--name` `` (the two files that own tokens; a
+ *     mention in known-gaps.md alone is not documentation).
  *  2. Every primitive (`src/components/ui/*.tsx`) and every shared component (a non-test `.ts`
  *     or `.tsx` file directly in `src/components/` or in `src/components/composer/` or
- *     `src/components/diff/`) has a row in `docs/design-system/coverage.md` naming its path.
+ *     `src/components/diff/`) has a row in `docs/design-system/coverage.md` naming its path,
+ *     and every component path coverage.md names is a file that exists (no stale rows).
  *  3. The shared specimen stylesheet `docs/design-system/cockpit.css` carries every token of
  *     every theme block with an identical value, and declares no token index.css does not.
  *     The `@theme inline` mapping (`--color-*`, `--font-*`, `--radius-md`) is Tailwind wiring and
@@ -51,8 +57,11 @@ function stripCssComments(css: string): string {
   return css.replace(/\/\*[\s\S]*?\*\//g, '')
 }
 
+/** The text before a block may carry statement-level rules (`@import …;`); only the last
+ *  `;`-separated segment is the selector. */
 function normalizeSelector(selector: string): string {
-  return selector.replace(/\s+/g, ' ').replace(/"/g, "'").trim()
+  const last = selector.slice(selector.lastIndexOf(';') + 1)
+  return last.replace(/\s+/g, ' ').replace(/"/g, "'").trim()
 }
 
 /** Top-level blocks only. `@media`/`@layer` wrappers are skipped (their inner blocks are depth 2). */
@@ -80,7 +89,8 @@ function topLevelBlocks(css: string): Block[] {
 
 function customProps(body: string): Map<string, string> {
   const props = new Map<string, string>()
-  for (const match of body.matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)) {
+  // A declaration may be the last in its block and carry no `;`.
+  for (const match of body.matchAll(/(--[\w-]+)\s*:\s*([^;}]+)(?=[;}])/g)) {
     const name = match[1]!
     if (name.includes('*')) continue
     props.set(name, match[2]!.replace(/\s+/g, ' ').trim())
@@ -117,11 +127,11 @@ function indexTokensFor(selector: string): Map<string, string> {
   return out
 }
 
-function designSystemDocs(): string {
-  return readdirSync(DS_ROOT)
-    .filter((name) => name.endsWith('.md'))
-    .map((name) => readFileSync(path.join(DS_ROOT, name), 'utf8'))
-    .join('\n')
+/** The documents that own token entries. */
+const TOKEN_DOCS = ['foundations.md', 'theming.md']
+
+function tokenDocs(): string {
+  return TOKEN_DOCS.map((name) => readFileSync(path.join(DS_ROOT, name), 'utf8')).join('\n')
 }
 
 function isSourceFile(name: string): boolean {
@@ -160,14 +170,22 @@ describe('design-system drift', () => {
     expect(root.size).toBeGreaterThan(40)
   })
 
-  it('every custom property in index.css has an entry in docs/design-system', () => {
-    const docs = designSystemDocs()
+  it('every index.css block that declares a custom property is one the test knows', () => {
+    const known = [...THEME_SELECTORS, ...FOLDED_INTO_ROOT, ...MAPPING_SELECTORS]
+    const unknown = topLevelBlocks(stripCssComments(indexCss))
+      .filter((block) => customProps(block.body).size > 0 && !known.includes(block.selector))
+      .map((block) => block.selector)
+    expect(unknown, 'add the selector to THEME_SELECTORS, FOLDED_INTO_ROOT or MAPPING_SELECTORS').toEqual([])
+  })
+
+  it('every custom property in index.css has an entry in foundations.md or theming.md', () => {
+    const docs = tokenDocs()
     const names = new Set<string>()
     for (const block of [...indexThemeBlocks.values(), ...indexMappingBlocks.values()]) {
       for (const name of block.keys()) names.add(name)
     }
     const missing = [...names].filter((name) => !docs.includes(`\`${name}\``))
-    expect(missing, 'tokens declared in index.css but not documented as `--name`').toEqual([])
+    expect(missing, 'tokens declared in index.css but not documented as `--name` in foundations.md or theming.md').toEqual([])
   })
 
   it('every primitive and shared component has a row in coverage.md', () => {
@@ -177,6 +195,11 @@ describe('design-system drift', () => {
     expect(shared.length).toBeGreaterThan(40)
     const missing = [...primitives, ...shared].filter((file) => !coverage.includes(`\`${file}\``))
     expect(missing, 'component files without a coverage row').toEqual([])
+    const inventory = new Set([...primitives, ...shared])
+    const stale = [...coverage.matchAll(/`(packages\/web\/src\/components\/[^`]+\.tsx?)`/g)]
+      .map((match) => match[1]!)
+      .filter((file) => !inventory.has(file))
+    expect(stale, 'coverage.md rows naming a component file that does not exist').toEqual([])
   })
 
   it('cockpit.css carries every index.css token with an identical value', () => {

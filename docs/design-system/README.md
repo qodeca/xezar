@@ -19,10 +19,10 @@ Each holds today and `packages/web/src/design-guardian.test.ts` or the drift tes
 
 1. **Tokens only.** No raw hex, rgb or named colour outside `packages/web/src/styles/index.css`. Use the Tailwind utility a token maps to (`bg-card`, `text-muted-foreground`, `border-border`).
 2. **No `dark:` variants.** Dark is the default; `.light` overrides 26 tokens. A component that needs a theme-specific value gets a token, not a variant.
-3. **Amber text is `text-pending-strong`**, never `text-pending`. The soft amber is for dots and backgrounds only; it fails contrast as text in light.
+3. **Amber text is `text-pending-strong`**, never `text-pending` or `text-amber-*`. The soft amber is for dots and backgrounds only; it fails contrast as text in light.
 4. **No `bg-white`, `text-white`, `bg-black`, `text-black`** outside `src/components/ui/` and `zoomable-image.tsx`. Use `--contrast` and `--contrast-foreground`.
-5. **Heights use `dvh`, never `h-screen` or `100vh`.** The phone keyboard must not hide the composer.
-6. **No `window.confirm`, `alert` or `prompt`.** Destructive confirms are an AlertDialog with the danger button.
+5. **Heights use `dvh`, never `h-screen`, `min-h-screen`, `max-h-screen` or `100vh`.** The phone keyboard must not hide the composer.
+6. **No `window.confirm`, `alert` or `prompt`.** Destructive confirms are an AlertDialog with the danger button. The one exemption is `lib/bookmarklet.ts`, which emits a `javascript:` program.
 7. **Status comes from `lib/attention.ts`.** `deriveAttention(status)` gives the bucket, tone, pulse and label. Nowhere else maps a run status to a colour or a word.
 8. **Backend names come from `lib/runner-label.ts`.** `claude` is "Claude Code", `codex` is "Codex", `opencode` is "OpenCode", `pi` is "pi". A fifth backend is a compile error there, on purpose.
 9. **The per-project task table is `lib/task-columns.ts`.** Header, colgroup and rows read `TASK_COLUMNS`; a column is added there, never as a loose `<td>`.

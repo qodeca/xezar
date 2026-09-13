@@ -31,20 +31,20 @@
   <h2>Pages</h2>
   <div class="grid-2">
     <a class="settings-card" href="foundations.html">
-      <span class="tile"><svg class="icon"><use href="#i-sparkles"/></svg></span>
+      <span class="tile"><svg class="icon" aria-hidden="true"><use href="#i-sparkles"/></svg></span>
       <span><b>Foundations</b><br><span style="color:var(--muted-foreground);font-size:13px">Every token in both themes, colour roles, type, spacing and density, radius, shadow, motion, icons, layout, breakpoints.</span></span>
     </a>
     <a class="settings-card" href="components.html">
-      <span class="tile"><svg class="icon"><use href="#i-checks"/></svg></span>
+      <span class="tile"><svg class="icon" aria-hidden="true"><use href="#i-checks"/></svg></span>
       <span><b>Components</b><br><span style="color:var(--muted-foreground);font-size:13px">The 21 shadcn primitives and the shared components, each with its variants and states.</span></span>
     </a>
     <a class="settings-card" href="patterns.html">
-      <span class="tile"><svg class="icon"><use href="#i-workflow"/></svg></span>
+      <span class="tile"><svg class="icon" aria-hidden="true"><use href="#i-workflow"/></svg></span>
       <span><b>Patterns</b><br><span style="color:var(--muted-foreground);font-size:13px">The shell, sidebar, page headers, lists and tables, status, empty/loading/error, dialogs and toasts, settings, the mobile drawer, live updates.</span></span>
     </a>
     <a class="settings-card" href="mobile.html">
-      <span class="tile"><svg class="icon"><use href="#i-menu"/></svg></span>
-      <span><b>Mobile shell</b><br><span style="color:var(--muted-foreground);font-size:13px">The phone layout on its own, as the patterns page frames it at 390 px.</span></span>
+      <span class="tile"><svg class="icon" aria-hidden="true"><use href="#i-menu"/></svg></span>
+      <span><b>Mobile shell</b><br><span style="color:var(--muted-foreground);font-size:13px">The phone layout on its own, as the patterns page frames it in a 390 px phone; the rule is no sideways scroll at 375 px.</span></span>
     </a>
   </div>
 
@@ -64,7 +64,7 @@
   <h2>Rules the specimens follow</h2>
   <ul>
     <li>No raw colour outside the token sheet. A specimen that needs a colour names a token.</li>
-    <li>No sideways scroll at 400 px. Wide tables sit inside <code>.table-scroll</code>.</li>
+    <li>No sideways scroll at 375 px. Wide tables sit inside <code>.table-scroll</code>.</li>
     <li>Motion respects <code>prefers-reduced-motion</code>: spinners, pulses, skeletons and shimmer stop.</li>
     <li>Icons come from the inline Lucide sprite in <code>icons.js</code> at the cockpit's sizes: 16, 14, 12 and 10 px.</li>
     <li>Fonts load from <code>packages/web/src/assets/fonts/</code> by relative path. Move this folder and the fonts fall back to the system stack.</li>

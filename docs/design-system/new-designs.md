@@ -44,7 +44,7 @@ is a new component: put it in the local sheet and call it out in the README as a
 ## 4. Show every state
 
 A mockup is not done until it shows: default, empty, loading, error, refusal (hosted mode 409), and
-the phone layout (390px). The `states.html` page in `designs/quality-checks/` is the model.
+the phone layout (375 px; the specimen phone frame is 390 px wide). The `states.html` page in `designs/quality-checks/` is the model.
 
 ## 5. Behave under every appearance
 
@@ -54,7 +54,7 @@ all four; a mockup only needs the light/dark toggle, the rest can be set in devt
 
 ## 6. Mobile
 
-- No horizontal scroll at 390px. Tables get `.table-scroll` or reflow to cards.
+- No horizontal scroll at 375 px. Tables get `.table-scroll` or reflow to cards.
 - 44px touch targets on phone.
 - The desktop page header hides below `md`; a mobile top bar names the page.
 

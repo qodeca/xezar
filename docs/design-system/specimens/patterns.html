@@ -39,17 +39,17 @@
     <div class="shell short" style="min-height:560px">
       <aside class="sidebar">
         <div class="sidebar-head"><span class="logo">x</span><span class="name">xezar</span><span class="where">main</span></div>
-        <div class="new-task-row"><button class="btn-new-task" type="button"><svg class="icon sm"><use href="#i-plus"/></svg> New task <kbd>N</kbd></button><button class="btn-icon" type="button" aria-label="Search"><svg class="icon sm"><use href="#i-search"/></svg></button></div>
+        <div class="new-task-row"><button class="btn-new-task" type="button"><svg class="icon sm" aria-hidden="true"><use href="#i-plus"/></svg> New task <kbd>N</kbd></button><button class="btn-icon" type="button" aria-label="Search"><svg class="icon sm" aria-hidden="true"><use href="#i-search"/></svg></button></div>
         <nav class="nav" aria-label="Primary">
-          <a href="#" aria-current="page"><svg class="icon sm"><use href="#i-tasks"/></svg> Tasks <span class="nav-badge">2</span></a>
-          <a href="#"><svg class="icon sm"><use href="#i-inbox"/></svg> Inbox <span class="nav-badge">5</span></a>
-          <a href="#"><svg class="icon sm"><use href="#i-checks"/></svg> Checks</a>
-          <a href="#"><svg class="icon sm"><use href="#i-workflow"/></svg> Workflows</a>
-          <a href="#"><svg class="icon sm"><use href="#i-sparkles"/></svg> Skills <span class="nav-marker" title="Update available"></span></a>
-          <a href="#"><svg class="icon sm"><use href="#i-github"/></svg> GitHub</a>
-          <a href="#"><svg class="icon sm"><use href="#i-settings"/></svg> Settings</a>
+          <a href="#" aria-current="page"><svg class="icon sm" aria-hidden="true"><use href="#i-tasks"/></svg> Tasks <span class="nav-badge">2</span></a>
+          <a href="#"><svg class="icon sm" aria-hidden="true"><use href="#i-inbox"/></svg> Inbox <span class="nav-badge">5</span></a>
+          <a href="#"><svg class="icon sm" aria-hidden="true"><use href="#i-checks"/></svg> Checks</a>
+          <a href="#"><svg class="icon sm" aria-hidden="true"><use href="#i-workflow"/></svg> Workflows</a>
+          <a href="#"><svg class="icon sm" aria-hidden="true"><use href="#i-sparkles"/></svg> Skills <span class="nav-marker" title="Update available"></span></a>
+          <a href="#"><svg class="icon sm" aria-hidden="true"><use href="#i-github"/></svg> GitHub</a>
+          <a href="#"><svg class="icon sm" aria-hidden="true"><use href="#i-settings"/></svg> Settings</a>
         </nav>
-        <div class="list-tabs" role="tablist"><span class="on" role="tab" aria-selected="true">Active</span><span role="tab" aria-selected="false">Recent</span></div>
+        <div class="list-tabs" role="tablist"><button type="button" class="on" role="tab" aria-selected="true">Active</button><button type="button" role="tab" aria-selected="false">Recent</button></div>
         <div class="quick-head">RUNNING</div>
         <ul class="quick">
           <li class="on"><span class="dot pending pulse"></span><span class="t">Fix the flaky test in store.test.ts</span><span class="meta">4:12</span></li>
@@ -59,8 +59,8 @@
         <div class="sidebar-foot"><span class="dot success"></span> Local · <span class="version-chip">v0.14.0</span></div>
       </aside>
       <div class="main">
-        <div class="mobile-bar"><button class="btn icon ghost" type="button" aria-label="Menu"><svg class="icon"><use href="#i-menu"/></svg></button><span class="title">Tasks</span><span class="nav-badge">2</span></div>
-        <div class="page-head"><h1>Tasks</h1><p>3 running · 1 waiting for you</p><span class="head-actions"><button class="btn" type="button"><svg class="icon sm"><use href="#i-archive"/></svg> Archive done</button><button class="btn contrast" type="button"><svg class="icon sm"><use href="#i-plus"/></svg> New task</button></span></div>
+        <div class="mobile-bar"><button class="btn icon ghost" type="button" aria-label="Menu"><svg class="icon" aria-hidden="true"><use href="#i-menu"/></svg></button><span class="title">Tasks</span><span class="nav-badge">2</span></div>
+        <div class="page-head"><h1>Tasks</h1><p>3 running · 1 waiting for you</p><span class="head-actions"><button class="btn" type="button"><svg class="icon sm" aria-hidden="true"><use href="#i-archive"/></svg> Archive done</button><button class="btn contrast" type="button"><svg class="icon sm" aria-hidden="true"><use href="#i-plus"/></svg> New task</button></span></div>
         <div class="page-body">
           <div class="group-heading"><span class="dot pending pulse"></span> Running · 1</div>
           <div class="task-card" style="margin-bottom:14px"><b style="font-size:13.5px">Fix the flaky test in store.test.ts</b><div class="meta"><span>Claude Code</span><span>claude-opus-5</span><span class="plus">+59</span><span class="minus">−12</span><span>4:12</span></div></div>
@@ -75,7 +75,7 @@
   <div class="src">56 px row, title left, one primary action right · five shapes in code, this is the rule (G-01)</div>
   <div class="frame stack" style="gap:0">
     <div class="page-head"><h1>Workflows</h1></div>
-    <div class="page-head"><h1>Tasks</h1><p>24 tasks</p><span class="head-actions"><button class="btn contrast" type="button"><svg class="icon sm"><use href="#i-plus"/></svg> New task</button></span></div>
+    <div class="page-head"><h1>Tasks</h1><p>24 tasks</p><span class="head-actions"><button class="btn contrast" type="button"><svg class="icon sm" aria-hidden="true"><use href="#i-plus"/></svg> New task</button></span></div>
     <div class="page-head" style="border-bottom:0"><h1>Settings</h1><p>Agents</p></div>
     <div class="tab-links" style="padding:0 20px"><a class="tab-link" href="#" aria-current="page">Agents</a><a class="tab-link" href="#">Agent config</a><a class="tab-link" href="#">Appearance</a><a class="tab-link" href="#">Resources</a></div>
   </div>
@@ -117,31 +117,31 @@
   <h2>6. Empty, loading and error states</h2>
   <div class="src">one template: CenteredState · every state has its own words · shown in full on the <a class="link" href="components.html">components page</a></div>
   <div class="grid-2">
-    <div class="frame"><div class="centered-state"><div class="tile"><svg class="icon"><use href="#i-search"/></svg></div><h2>No tasks match</h2><p>Clear the filters to see all 24 tasks.</p><div class="actions"><button class="btn md" type="button">Clear filters</button></div></div></div>
+    <div class="frame"><div class="centered-state"><div class="tile"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg></div><h2>No tasks match</h2><p>Clear the filters to see all 24 tasks.</p><div class="actions"><button class="btn md" type="button">Clear filters</button></div></div></div>
     <div class="frame"><div class="loading-line">Loading…</div><div class="stack" style="padding:0 16px 16px"><div class="skeleton" style="width:70%"></div><div class="skeleton" style="width:45%"></div><div class="skeleton" style="width:60%"></div></div></div>
   </div>
 
   <h2>7. Dialogs, sheets, command palette, toasts and notifications</h2>
-  <div class="src">Dialog for forms · AlertDialog for destructive confirms (never <code>window.confirm</code>) · Sheet for the phone drawer · ⌘K palette · toast bottom centre for 5 s · browser notifications only when the tab is hidden</div>
+  <div class="src">Dialog for forms · AlertDialog for destructive confirms (never <code>window.confirm</code>) · Sheet for the phone drawer · ⌘K palette · toast top right for 5 s · browser notifications only when the tab is hidden</div>
   <div class="frame">
     <div class="scrim" style="border-radius:0;display:flex;flex-direction:column;align-items:center;gap:24px">
       <div class="cmdk">
-        <div class="search"><svg class="icon sm"><use href="#i-search"/></svg><span>Search tasks, projects and commands…</span><kbd class="kbd" style="margin-left:auto">Esc</kbd></div>
-        <div class="group"><div class="heading">Go to</div><div class="item selected"><svg class="icon sm"><use href="#i-tasks"/></svg> Tasks</div><div class="item"><svg class="icon sm"><use href="#i-settings"/></svg> Settings</div></div>
+        <div class="search"><svg class="icon sm" aria-hidden="true"><use href="#i-search"/></svg><span>Search tasks, projects and commands…</span><kbd class="kbd" style="margin-left:auto">Esc</kbd></div>
+        <div class="group" role="listbox"><div class="heading">Go to</div><div class="item selected" role="option" aria-selected="true"><svg class="icon sm" aria-hidden="true"><use href="#i-tasks"/></svg> Tasks</div><div class="item" role="option" aria-selected="false"><svg class="icon sm" aria-hidden="true"><use href="#i-settings"/></svg> Settings</div></div>
       </div>
-      <div class="toast">Task archived</div>
+      <div class="toast" role="status">Task archived</div>
     </div>
   </div>
 
   <h2>8. Settings and forms</h2>
   <div class="src">settings/*.tsx · left nav on desktop, pills on phones · SettingsField chassis copied three times (G-13) · native select (G-11) · save-on-change in most panes (G-22)</div>
   <div class="frame">
-    <div class="shell short" style="grid-template-columns:208px minmax(0,1fr)">
+    <div class="shell short settings">
       <nav class="settings-nav" aria-label="Settings">
-        <a href="#" aria-current="page"><svg class="icon sm"><use href="#i-sparkles"/></svg> Agents</a>
-        <a href="#"><svg class="icon sm"><use href="#i-folder"/></svg> Agent config</a>
-        <a href="#"><svg class="icon sm"><use href="#i-sun"/></svg> Appearance</a>
-        <a href="#"><svg class="icon sm"><use href="#i-zap"/></svg> Resources</a>
+        <a href="#" aria-current="page"><svg class="icon sm" aria-hidden="true"><use href="#i-sparkles"/></svg> Agents</a>
+        <a href="#"><svg class="icon sm" aria-hidden="true"><use href="#i-folder"/></svg> Agent config</a>
+        <a href="#"><svg class="icon sm" aria-hidden="true"><use href="#i-sun"/></svg> Appearance</a>
+        <a href="#"><svg class="icon sm" aria-hidden="true"><use href="#i-zap"/></svg> Resources</a>
       </nav>
       <div class="main">
         <div class="settings-pills"><a href="#" aria-current="page">Agents</a><a href="#">Agent config</a><a href="#">Appearance</a><a href="#">Resources</a></div>
@@ -160,7 +160,7 @@
             <div class="settings-field">
               <h2>Max parallel</h2>
               <p>How many runs may execute at once across all projects.</p>
-              <input class="input" name="max-parallel" value="12" aria-invalid="true" aria-describedby="mp-e" style="max-width:120px"><p class="field-error" id="mp-e">Enter a whole number from 1 to 8.</p>
+              <input class="input" name="max-parallel" aria-label="Max parallel" value="12" aria-invalid="true" aria-describedby="mp-e" style="max-width:120px"><p class="field-error" id="mp-e">Enter a whole number from 1 to 8.</p>
             </div>
           </div>
         </div>
@@ -182,7 +182,7 @@
       <span class="pill"><span class="dot pending pulse"></span> Reconnecting…</span>
       <span class="pill"><span class="dot danger"></span> Offline · retrying in 5 s</span>
     </div>
-    <div class="banner-row alert" style="border-radius:var(--radius)"><svg class="icon sm"><use href="#i-alert"/></svg> Lost the connection to xezar. Changes appear again when it is back. <a href="#">Retry now</a></div>
+    <div class="banner-row alert" style="border-radius:var(--radius)"><svg class="icon sm" aria-hidden="true"><use href="#i-alert"/></svg> Lost the connection to xezar. Changes appear again when it is back. <a href="#">Retry now</a></div>
     <div class="note" style="margin:0"><strong>Announce, do not shout.</strong> A count that changes is read out by a polite live region. New rows appear in place; the page never reloads.</div>
   </div>
 </main>
