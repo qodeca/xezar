@@ -12,6 +12,14 @@ Installation validation is reported in installation.md. Real-task entries follow
 
 ## Real-task entries
 
+### 2026-09-13 — #324 / #323 (a xezar-started Codex run reached the person's own MCP servers), `bug-fix` step `investigate`, `xezar-bug-investigation`, Claude Code — real-task verified
+
+- Evidence: run e21ba4ca, base `7aa4a02`, fix commit `8046ce4`. Live probe logs (codex-cli 0.154.0, throwaway `CODEX_HOME`, scripted Responses endpoint, fake stdio MCP servers) and the red-without-fix output are in the primary evidence directory.
+- Observed: **the previous attempt (run 90c82d67) ended its only writing step with a diagnosis and no commit, so readiness failed and the run was lost.** This brief said so in capitals, and this run committed before anything else optional. Lesson (real-task verified): when a workflow has one writing step, the brief must say that step owns the commit; a diagnosis-shaped skill will otherwise stop at the diagnosis.
+- Observed: that attempt's root cause was this machine's `codex` wrapper pinning its own `CODEX_HOME`. It was real but not the product cause: through the npm binary and a throwaway home, xezar's runner still offered the model the home-config server, a plugin's server, the project's server and the project-registered xezar bridge. Lesson: reproduce through the product's own spawn path with the environment isolated before naming a cause; a wrapper finding explains one machine.
+- Observed: `-c mcp_servers={}` is a no-op in Codex — layers deep-merge, so an empty table removes nothing. Per-server `enabled = false`, with names from the app-server's own `config/read`, works, and a nested object in the thread's `config` is accepted.
+- Remaining limit: one macOS machine, one Codex version; the `apps` feature is switched off but was not observed with a real ChatGPT connector. Claude Code, OpenCode and pi task runs still load the person's MCP servers (follow-up).
+
 ### 2026-09-13 — #383 (0.14.0 changelog claimed reaction turns no code path reaches), `docs-maintenance` step `docs`, `xezar-docs-maintenance`, Claude Code — real-task verified
 
 - Evidence: run 8f6a3918, base `85a8e95`, commits on `xez/8f6a3918`; the PR body with every file:line and the per-bullet verdict table is in the primary evidence directory under `docs/pr-body.md`.
