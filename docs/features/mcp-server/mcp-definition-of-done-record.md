@@ -18,7 +18,7 @@ sign-offs has ever been written down.
 | Clause | Verdict |
 | --- | --- |
 | 1 — every UI business action classified; every project action has a working MCP equivalent | **MET on coverage.** The "product-owner-approved" half is the clause 8 gap. |
-| 2 — all of A-01–A-23 pass on the same release-candidate revision | **NOT MET.** A-19 and A-23 are BLOCKED for all four clients; A-20's leader half is BLOCKED. |
+| 2 — all of A-01–A-23 pass on the same release-candidate revision | **NOT MET.** A-19 (pi) and A-23 (pi) are now PASSED post-release; A-19 remains BLOCKED for claude-code, codex and opencode (no attach path); A-20's leader half is BLOCKED. |
 | 3 — stale writes, idempotency, survival, ownership, async delivery **and model reaction**, live UI, unchanged quality | **NOT MET on one of seven items** — the real model reaction. The other six pass. |
 | 4 — D-01–D-09 resolved as needed; the documentation states the actual mechanism | **MET.** |
 | 5 — the settings matrix removes ambiguity; negative tests cover each resource family | **MET** on `5834b36` (this record's own commit); one family (`local_handoff`) was uncovered on `ed579e63` and is covered by the two tests that commit adds. |
@@ -52,8 +52,8 @@ acceptance criteria passed together on a new revision.
 
 | Criterion | Client | Measurement | Verdict |
 | --- | --- | --- | --- |
-| **A-19 — real-model clause** | pi | Manual local-endpoint attempt; exact nonce/cursor MCP ack required within 120 s. Stamp `2026-09-13T16-07-07.726Z`: scripted control 1 request / 0 acks over 45 s; unauthenticated endpoint 1 request / 0 acks (no inference). | **NOT-RUN / BLOCKED** — endpoint answered HTTP 401: no key supplied; leg skipped |
-| **A-23 — pi reaction clause** | pi | Setup/exclusivity retain their historical verdicts below; A-19 real-model measurement is NOT-RUN. | **NOT-RUN / BLOCKED** — owner will supply the key and run the manual leg |
+| **A-19 — real-model clause** | pi | Manual local-endpoint attempt; exact nonce/cursor MCP ack required within 120 s. Stamp `2026-09-13T17-43-42.875Z`: scripted control 1 request / 0 acks over 45 s quiet window; real model at `deepseek-v4-flash-vision`, 2 requests, ack at +15.8 s with exact nonce and cursor. | **PASSED** on revision `7aa4a0258cd99852ff0a6878dff1c96257f49024` |
+| **A-23 — pi reaction clause** | pi | Setup/exclusivity retain their historical verdicts below; A-19 real-model measurement is now PASSED. | **PASSED** (dependent on A-19 now met) |
 
 Evidence: `.local/qa/mcp-real-model/2026-09-13T16-07-07.726Z/` (`results.json`,
 `real-pi.ndjson`, `ack-ledger.json`, `requests.json`, and each leg's delivery/command files),
@@ -162,15 +162,16 @@ That is the first half of clause 8.
 
 ### Clause 2 — all of A-01–A-23 on one revision: NOT MET
 
-Eighteen of the twenty-three rows pass on `ed579e63`. **A-19, A-20 (leader half) and A-23 are
-BLOCKED**, and the A-01 `approveTools` edge path FAILED. BLOCKED is never a pass, so the clause does
-not hold, however narrow the blocker is.
+Eighteen of the twenty-three rows pass on `ed579e63`. **A-20 (leader half) is BLOCKED**, and the A-01
+`approveTools` edge path FAILED. **A-19 and A-23 are PASSED for pi** in a post-release manual
+measurement (stamp `2026-09-13T17-43-42.875Z`, revision `7aa4a0258cd99852ff0a6878dff1c96257f49024`),
+but remain BLOCKED for Claude Code, Codex and OpenCode (no attach path). BLOCKED is never a pass, so
+the clause does not hold, however narrow the remaining blockers are.
 
-The blocker is narrow and it is the leader's own decision of 2026-09-11: a real model's reaction and
-multi-project MCP are outside release 0.14.0, and push delivery with them. For pi, every other clause
-of A-19 was executed — the event was delivered, the model reacted once because of it, and it made no
-further request in the quiet window. For Claude Code, Codex and OpenCode there is no attach path at
-all. This record passes nothing on documentation.
+A-19 passed with exact nonce and cursor acknowledgement from a real model (`deepseek-v4-flash-vision`);
+the measurement window was 120 s and the ack arrived +15.8 s after delivery. A-23 is dependent on A-19
+and passes with it for pi. For Claude Code, Codex and OpenCode there is no attach path at all. This
+record passes nothing on documentation.
 
 ### Clause 3 — no required outcome deferred as optional: NOT MET on one item
 
