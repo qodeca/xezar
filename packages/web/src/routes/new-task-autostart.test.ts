@@ -21,10 +21,10 @@ describe('bookmarkletRunBody', () => {
   const cases: Array<[name: string, input: NewTaskParams, body: CreateRunInput]> = [
     [
       'skill + ref → the one-step inline chain',
-      params({ skill: 'om-fix', ref: 'https://github.com/o/r/pull/1' }),
+      params({ skill: 'xez-fix', ref: 'https://github.com/o/r/pull/1' }),
       {
         task: 'https://github.com/o/r/pull/1',
-        steps: [{ id: 'task', name: 'om-fix', skill: 'om-fix', prompt: '{{task}}' }],
+        steps: [{ id: 'task', name: 'xez-fix', skill: 'xez-fix', prompt: '{{task}}' }],
         model: undefined,
         runner: undefined,
         variants: undefined,
@@ -93,5 +93,5 @@ describe('deepLinkToast', () => {
 })
 
 it('unknownSkillPrefillText is byte-for-byte the legacy embedding', () => {
-  expect(unknownSkillPrefillText('om-fix', 'https://x')).toBe('Use the "om-fix" skill on: https://x')
+  expect(unknownSkillPrefillText('xez-fix', 'https://x')).toBe('Use the "xez-fix" skill on: https://x')
 })

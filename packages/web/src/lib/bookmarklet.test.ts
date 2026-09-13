@@ -7,7 +7,7 @@ const program = (url: string) => decodeURIComponent(url.replace(/^javascript:/, 
 
 describe('bookmarkletUrl (spec 011, protected /new deep-link contract)', () => {
   it('is a javascript: URL wrapping one URI-encoded expression', () => {
-    const url = bookmarkletUrl('om-fix', true, 'sekret')
+    const url = bookmarkletUrl('xez-fix', true, 'sekret')
     expect(url.startsWith('javascript:')).toBe(true)
     // The raw URL carries no whitespace or double quotes — it must survive a bookmarks bar.
     expect(url).not.toMatch(/[\s"]/)
@@ -20,14 +20,14 @@ describe('bookmarkletUrl (spec 011, protected /new deep-link contract)', () => {
   })
 
   it('a per-skill launcher bakes skill=, the auto flag and the launch key into /new', () => {
-    const code = program(bookmarkletUrl('om-fix', true, 'sekret'))
-    expect(code).toContain(`q='skill=om-fix&auto=1&key=sekret&ref='`)
+    const code = program(bookmarkletUrl('xez-fix', true, 'sekret'))
+    expect(code).toContain(`q='skill=xez-fix&auto=1&key=sekret&ref='`)
     expect(code).toContain(`/new?'+q`)
   })
 
   it('opens the baked cockpit origin directly — no CSP-blocked localhost fetch', () => {
     // GitHub's CSP blocks fetch/XHR to localhost, so the launcher must NAVIGATE, not probe.
-    const code = program(bookmarkletUrl('om-fix', true, 'sekret', 'http://localhost:4327'))
+    const code = program(bookmarkletUrl('xez-fix', true, 'sekret', 'http://localhost:4327'))
     expect(code).toContain(`open('http://localhost:4327/new?'+q,'_blank')`)
     expect(code).not.toContain('/api/v1/health')
     expect(code).not.toContain('fetch(')
@@ -40,7 +40,7 @@ describe('bookmarkletUrl (spec 011, protected /new deep-link contract)', () => {
   })
 
   it('the page URL rides along as ref= at click time', () => {
-    const code = program(bookmarkletUrl('om-fix', false, 'k'))
+    const code = program(bookmarkletUrl('xez-fix', false, 'k'))
     expect(code).toContain(`ref='+encodeURIComponent(location.href)`)
   })
 
@@ -53,19 +53,19 @@ describe('bookmarkletUrl (spec 011, protected /new deep-link contract)', () => {
   })
 
   it('names the project in the path when one is given (multi-project spec, step 3.6)', () => {
-    const code = program(bookmarkletUrl('om-fix', true, 'acme-key', 'http://localhost:4321', 'acme'))
+    const code = program(bookmarkletUrl('xez-fix', true, 'acme-key', 'http://localhost:4321', 'acme'))
     expect(code).toContain(`open('http://localhost:4321/p/acme/new?'+q,'_blank')`)
     // Only the PATH gained a prefix — the protected query grammar is character-for-character
     // what it was, and the key is the one that project's cockpit scope will accept.
-    expect(code).toContain(`q='skill=om-fix&auto=1&key=acme-key&ref='`)
+    expect(code).toContain(`q='skill=xez-fix&auto=1&key=acme-key&ref='`)
   })
 
   it('omits the prefix without a project — byte-identical to the legacy launcher', () => {
     // The single-project spelling must survive verbatim: it is what every already-saved
     // bookmarklet contains, and the cockpit redirects it onto the boot project.
-    const scoped = bookmarkletUrl('om-fix', true, 'sekret', 'http://localhost:4327')
-    expect(scoped).toBe(bookmarkletUrl('om-fix', true, 'sekret', 'http://localhost:4327', null))
-    expect(scoped).toBe(bookmarkletUrl('om-fix', true, 'sekret', 'http://localhost:4327', ''))
+    const scoped = bookmarkletUrl('xez-fix', true, 'sekret', 'http://localhost:4327')
+    expect(scoped).toBe(bookmarkletUrl('xez-fix', true, 'sekret', 'http://localhost:4327', null))
+    expect(scoped).toBe(bookmarkletUrl('xez-fix', true, 'sekret', 'http://localhost:4327', ''))
     expect(program(scoped)).toContain(`open('http://localhost:4327/new?'+q,'_blank')`)
   })
 

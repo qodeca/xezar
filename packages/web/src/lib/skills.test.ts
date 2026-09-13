@@ -111,18 +111,18 @@ describe('partitionSkillsForDisplay / orderSkillsByUsage (#519: most-used → pr
 
 describe('bumpSkillUsage (#408: the ui-state skillUsage reducer)', () => {
   it('starts a fresh count at 1 from an undefined map', () => {
-    expect(bumpSkillUsage(undefined, 'om-fix')).toEqual({ 'om-fix': 1 })
+    expect(bumpSkillUsage(undefined, 'xez-fix')).toEqual({ 'xez-fix': 1 })
   })
 
   it('increments an existing count without touching other entries', () => {
-    expect(bumpSkillUsage({ 'om-fix': 2, 'om-review': 7 }, 'om-fix')).toEqual({
-      'om-fix': 3,
-      'om-review': 7,
+    expect(bumpSkillUsage({ 'xez-fix': 2, 'xez-review': 7 }, 'xez-fix')).toEqual({
+      'xez-fix': 3,
+      'xez-review': 7,
     })
   })
 
   it('adds a new entry alongside existing ones', () => {
-    expect(bumpSkillUsage({ 'om-fix': 1 }, 'om-review')).toEqual({ 'om-fix': 1, 'om-review': 1 })
+    expect(bumpSkillUsage({ 'xez-fix': 1 }, 'xez-review')).toEqual({ 'xez-fix': 1, 'xez-review': 1 })
   })
 
   it('a skill named after an Object.prototype member starts at 1, not string garbage', () => {
@@ -135,12 +135,12 @@ describe('bumpSkillUsage (#408: the ui-state skillUsage reducer)', () => {
 
 describe('fuzzyMatch', () => {
   const table: Array<{ candidate: string; query: string; hit: boolean }> = [
-    { candidate: 'om-fix-issue', query: '', hit: true },
-    { candidate: 'om-fix-issue', query: 'fix', hit: true },
-    { candidate: 'om-fix-issue', query: 'omfx', hit: true }, // subsequence
-    { candidate: 'om-fix-issue', query: 'OMFX', hit: true }, // case-insensitive
-    { candidate: 'om-fix-issue', query: 'xz', hit: false },
-    { candidate: 'om-fix-issue', query: 'issuefix', hit: false }, // order matters
+    { candidate: 'xez-fix-issue', query: '', hit: true },
+    { candidate: 'xez-fix-issue', query: 'fix', hit: true },
+    { candidate: 'xez-fix-issue', query: 'xzfx', hit: true }, // subsequence
+    { candidate: 'xez-fix-issue', query: 'XZFX', hit: true }, // case-insensitive
+    { candidate: 'xez-fix-issue', query: 'qz', hit: false },
+    { candidate: 'xez-fix-issue', query: 'issuefix', hit: false }, // order matters
     { candidate: 'src/server/server.ts', query: 'srvts', hit: true },
   ]
   for (const { candidate, query, hit } of table) {
@@ -183,22 +183,22 @@ describe('filterSkills (#380: filter without re-sorting — project-first surviv
 
 describe('multiWordFilter (#411: multi-keyword search for cmdk)', () => {
   it('empty search matches everything (score 1)', () => {
-    expect(multiWordFilter('skill om-auto-review-pr', '')).toBe(1)
-    expect(multiWordFilter('skill om-auto-review-pr', '   ')).toBe(1)
+    expect(multiWordFilter('skill xez-auto-review-pr', '')).toBe(1)
+    expect(multiWordFilter('skill xez-auto-review-pr', '   ')).toBe(1)
   })
 
-  it('"auto review" matches "om-auto-review-pr" in the value', () => {
-    expect(multiWordFilter('skill om-auto-review-pr /path', 'auto review')).toBeGreaterThan(0)
+  it('"auto review" matches "xez-auto-review-pr" in the value', () => {
+    expect(multiWordFilter('skill xez-auto-review-pr /path', 'auto review')).toBeGreaterThan(0)
   })
 
   it('"verify ui" matches via keywords (name parts)', () => {
     expect(
-      multiWordFilter('skill om-auto-verify-pr-ui', 'verify ui', ['om', 'auto', 'verify', 'pr', 'ui']),
+      multiWordFilter('skill xez-auto-verify-pr-ui', 'verify ui', ['om', 'auto', 'verify', 'pr', 'ui']),
     ).toBeGreaterThan(0)
   })
 
   it('every word must match — partial hits return 0', () => {
-    expect(multiWordFilter('skill om-fix /path', 'fix deploy')).toBe(0)
+    expect(multiWordFilter('skill xez-fix /path', 'fix deploy')).toBe(0)
   })
 
   it('matching is case-insensitive', () => {
@@ -209,13 +209,13 @@ describe('multiWordFilter (#411: multi-keyword search for cmdk)', () => {
 describe('matchScore (#484: exact > prefix > word-boundary > substring > subsequence)', () => {
   it('ranks a stronger match higher', () => {
     expect(matchScore('review', 'review')).toBeGreaterThan(matchScore('review-prs', 'review')) // exact > prefix
-    expect(matchScore('review-prs', 'review')).toBeGreaterThan(matchScore('om-code-review', 'review')) // prefix > boundary
-    expect(matchScore('om-code-review', 'review')).toBeGreaterThan(matchScore('previewer', 'review')) // boundary > buried
-    expect(matchScore('previewer', 'review')).toBeGreaterThan(matchScore('om-fix-issue', 'omfx')) // buried > subsequence
+    expect(matchScore('review-prs', 'review')).toBeGreaterThan(matchScore('xez-code-review', 'review')) // prefix > boundary
+    expect(matchScore('xez-code-review', 'review')).toBeGreaterThan(matchScore('previewer', 'review')) // boundary > buried
+    expect(matchScore('previewer', 'review')).toBeGreaterThan(matchScore('xez-fix-issue', 'xzfx')) // buried > subsequence
   })
 
   it('0 when the query cannot even be found as a subsequence', () => {
-    expect(matchScore('om-fix-issue', 'zzz')).toBe(0)
+    expect(matchScore('xez-fix-issue', 'zzz')).toBe(0)
   })
 
   it('empty query is a neutral match', () => {
@@ -227,7 +227,7 @@ describe('#484: an (almost-)exact match sorts to the top', () => {
   it('multiWordFilter scores a whole-word hit above a buried substring, undiluted by value length', () => {
     // The bug: the old coverage ratio divided by the whole "skill <name> <path>" length, so a
     // near-exact match on a skill with a long path scored ~0.5 — same as a weak partial.
-    const wholeWord = multiWordFilter('skill om-fix /very/long/path/to/skills/om-fix.md', 'fix', ['om', 'fix'])
+    const wholeWord = multiWordFilter('skill xez-fix /very/long/path/to/skills/xez-fix.md', 'fix', ['om', 'fix'])
     const buried = multiWordFilter('skill affix-tool /p', 'fix', ['affix', 'tool'])
     expect(wholeWord).toBeGreaterThan(buried)
     expect(buried).toBeGreaterThan(0) // still a match, just ranked lower
@@ -235,18 +235,18 @@ describe('#484: an (almost-)exact match sorts to the top', () => {
 
   it('filterSkills ranks an exact name match above a merely-partial one, reordering input', () => {
     const skills = [
-      skill({ name: 'om-code-review', source: 'ai' }), // 'review' is a whole word, mid-name
+      skill({ name: 'xez-code-review', source: 'ai' }), // 'review' is a whole word, mid-name
       skill({ name: 'review', source: 'ai' }), // exact match, but later in input order
     ]
-    expect(filterSkills(skills, 'review').map((s) => s.name)).toEqual(['review', 'om-code-review'])
+    expect(filterSkills(skills, 'review').map((s) => s.name)).toEqual(['review', 'xez-code-review'])
   })
 
   it('filterSkills ranks a prefix match above a word-boundary match', () => {
     const skills = [
-      skill({ name: 'om-auto-deploy', source: 'ai' }), // boundary hit
+      skill({ name: 'xez-auto-deploy', source: 'ai' }), // boundary hit
       skill({ name: 'deploy-app', source: 'ai' }), // prefix hit
     ]
-    expect(filterSkills(skills, 'deploy').map((s) => s.name)).toEqual(['deploy-app', 'om-auto-deploy'])
+    expect(filterSkills(skills, 'deploy').map((s) => s.name)).toEqual(['deploy-app', 'xez-auto-deploy'])
   })
 
   it('filterSkills keeps project-first order when matches are equally good', () => {
@@ -261,21 +261,21 @@ describe('#484: an (almost-)exact match sorts to the top', () => {
 
 describe('searchSkills / searchWorkflows (#484: the pickers rank in JS, not via cmdk)', () => {
   const skills = [
-    skill({ name: 'om-auto-fix-issue', source: 'ai', description: 'Fix an issue; runs om-fix internally' }),
-    skill({ name: 'om-fix', source: 'ai', description: 'Apply the minimal fix' }),
-    skill({ name: 'om-open-pr', source: 'global', description: 'Open a PR' }),
+    skill({ name: 'xez-auto-fix-issue', source: 'ai', description: 'Fix an issue; runs xez-fix internally' }),
+    skill({ name: 'xez-fix', source: 'ai', description: 'Apply the minimal fix' }),
+    skill({ name: 'xez-open-pr', source: 'global', description: 'Open a PR' }),
   ]
 
   it('ranks the (almost-)exact name match first, even when it comes later in the input', () => {
-    // The picker bug: "om-fix" typed, but "om-auto-fix-issue" (only a description hit) sat on top.
-    expect(searchSkills(skills, 'om-fix').map((s) => s.name)).toEqual(['om-fix', 'om-auto-fix-issue'])
+    // The picker bug: "xez-fix" typed, but "xez-auto-fix-issue" (only a description hit) sat on top.
+    expect(searchSkills(skills, 'xez-fix').map((s) => s.name)).toEqual(['xez-fix', 'xez-auto-fix-issue'])
   })
 
   it('keeps the caller-supplied order for an empty query (project-first / recency survives)', () => {
     expect(searchSkills(skills, '').map((s) => s.name)).toEqual([
-      'om-auto-fix-issue',
-      'om-fix',
-      'om-open-pr',
+      'xez-auto-fix-issue',
+      'xez-fix',
+      'xez-open-pr',
     ])
   })
 
@@ -284,12 +284,12 @@ describe('searchSkills / searchWorkflows (#484: the pickers rank in JS, not via 
   })
 
   it('a name match outranks a description-only match', () => {
-    // "issue": om-auto-fix-issue matches on the name (whole word), om-open-pr only via description.
+    // "issue": xez-auto-fix-issue matches on the name (whole word), xez-open-pr only via description.
     const s2 = [
-      skill({ name: 'om-open-pr', source: 'ai', description: 'Open a PR for an issue' }),
-      skill({ name: 'om-auto-fix-issue', source: 'ai' }),
+      skill({ name: 'xez-open-pr', source: 'ai', description: 'Open a PR for an issue' }),
+      skill({ name: 'xez-auto-fix-issue', source: 'ai' }),
     ]
-    expect(searchSkills(s2, 'issue').map((s) => s.name)).toEqual(['om-auto-fix-issue', 'om-open-pr'])
+    expect(searchSkills(s2, 'issue').map((s) => s.name)).toEqual(['xez-auto-fix-issue', 'xez-open-pr'])
   })
 
   it('searchWorkflows ranks workflows by match quality too', () => {
@@ -312,11 +312,11 @@ describe('queryScore (#484)', () => {
 
 describe('skillKeywords', () => {
   it('splits hyphenated names into parts', () => {
-    expect(skillKeywords('om-auto-review-pr')).toEqual(['om', 'auto', 'review', 'pr'])
+    expect(skillKeywords('xez-auto-review-pr')).toEqual(['xez', 'auto', 'review', 'pr'])
   })
 
   it('includes the description when provided', () => {
-    expect(skillKeywords('om-fix', 'Fix an issue')).toEqual(['om', 'fix', 'Fix an issue'])
+    expect(skillKeywords('xez-fix', 'Fix an issue')).toEqual(['xez', 'fix', 'Fix an issue'])
   })
 
   it('works with a single-word name', () => {
@@ -330,22 +330,22 @@ describe('skillUsedBy (the detail pane’s "Used by" breadcrumbs)', () => {
       name: 'fix-and-verify',
       source: 'file',
       steps: [
-        { id: 'fix', name: 'Fix', skill: 'om-fix' },
-        { id: 'verify', skill: 'om-fix' }, // unnamed step → the id stands in
+        { id: 'fix', name: 'Fix', skill: 'xez-fix' },
+        { id: 'verify', skill: 'xez-fix' }, // unnamed step → the id stands in
         { id: 'check', command: 'npm test' },
       ],
     },
-    { name: 'ship-it', source: 'file', steps: [{ id: 'review', name: 'Review', skill: 'om-review' }] },
+    { name: 'ship-it', source: 'file', steps: [{ id: 'review', name: 'Review', skill: 'xez-review' }] },
     { name: 'quick-task', source: 'built-in', steps: [] },
   ]
 
   it('lists every referencing step as "workflow › step", ids standing in for names', () => {
-    expect(skillUsedBy(workflows, 'om-fix')).toEqual(['fix-and-verify › Fix', 'fix-and-verify › verify'])
-    expect(skillUsedBy(workflows, 'om-review')).toEqual(['ship-it › Review'])
+    expect(skillUsedBy(workflows, 'xez-fix')).toEqual(['fix-and-verify › Fix', 'fix-and-verify › verify'])
+    expect(skillUsedBy(workflows, 'xez-review')).toEqual(['ship-it › Review'])
   })
 
   it('an unreferenced skill answers an empty list', () => {
-    expect(skillUsedBy(workflows, 'om-unused')).toEqual([])
+    expect(skillUsedBy(workflows, 'xez-unused')).toEqual([])
   })
 })
 
@@ -379,12 +379,12 @@ describe('#519: usage folds into query ranking and the / autocomplete order', ()
 
   it('the usage bonus is bounded — heavy usage never outranks a clearly better name match', () => {
     const s2 = [
-      skill({ name: 'om-fix', source: 'ai' }),
-      skill({ name: 'om-auto-fix-issue', source: 'ai', description: 'runs om-fix internally' }),
+      skill({ name: 'xez-fix', source: 'ai' }),
+      skill({ name: 'xez-auto-fix-issue', source: 'ai', description: 'runs xez-fix internally' }),
     ]
-    expect(searchSkills(s2, 'om-fix', { 'om-auto-fix-issue': 999 }).map((s) => s.name)).toEqual([
-      'om-fix',
-      'om-auto-fix-issue',
+    expect(searchSkills(s2, 'xez-fix', { 'xez-auto-fix-issue': 999 }).map((s) => s.name)).toEqual([
+      'xez-fix',
+      'xez-auto-fix-issue',
     ])
   })
 })

@@ -104,10 +104,10 @@ describe('workflowLabel', () => {
   it('replaces the (planned)/(inbox) placeholders with the first agent step', () => {
     const steps = [
       { id: 's1', name: 'lint', kind: 'check' as const, status: 'done' as const, iterations: 1, tokensUsed: 0 },
-      { id: 's2', name: 'om-fix', kind: 'agent' as const, status: 'done' as const, iterations: 1, tokensUsed: 0 },
+      { id: 's2', name: 'xez-fix', kind: 'agent' as const, status: 'done' as const, iterations: 1, tokensUsed: 0 },
     ]
-    expect(workflowLabel(run({ workflow: '(planned)', steps }))).toBe('om-fix')
-    expect(workflowLabel(run({ workflow: '(inbox)', steps }))).toBe('om-fix')
+    expect(workflowLabel(run({ workflow: '(planned)', steps }))).toBe('xez-fix')
+    expect(workflowLabel(run({ workflow: '(inbox)', steps }))).toBe('xez-fix')
   })
 
   it('keeps the placeholder when no agent step names itself', () => {
@@ -123,7 +123,7 @@ describe('filterRuns', () => {
       id: 'c',
       title: 'Inbox follow-up',
       workflow: '(inbox)',
-      steps: [{ id: 's', name: 'om-fix', kind: 'agent', status: 'done', iterations: 1, tokensUsed: 0 }],
+      steps: [{ id: 's', name: 'xez-fix', kind: 'agent', status: 'done', iterations: 1, tokensUsed: 0 }],
     }),
   ]
   const ids = (query: string) => filterRuns(runs, query).map((r) => r.id)
@@ -165,7 +165,7 @@ describe('filterRuns', () => {
   it('matches the workflow — including the label the column actually prints', () => {
     expect(ids('plan-then')).toEqual(['b'])
     // '(inbox)' renders as its agent step's name, so that name must be searchable.
-    expect(ids('om-fix')).toEqual(['c'])
+    expect(ids('xez-fix')).toEqual(['c'])
   })
 
   it('answers nothing for a query nothing matches', () => {
@@ -215,7 +215,7 @@ describe('taskPrUrl', () => {
   })
 
   it('does not adopt an incidental PR for an issue-subject run that declared no PR (#526)', () => {
-    // om-prepare-issue for #524: XEZ:ISSUE declared, no XEZ:PR — #454 was only incidental
+    // xez-prepare-issue for #524: XEZ:ISSUE declared, no XEZ:PR — #454 was only incidental
     // transcript text and must never surface as "the run's PR".
     const r = run({
       markerRefs: { issue: 524 },
@@ -384,7 +384,7 @@ describe('taskIssueUrl', () => {
   })
 
   it('synthesizes the issue link from the XEZ:ISSUE marker + the project repo (#526)', () => {
-    // The om-prepare-issue #524 record: issue known via the marker, but no `…/issues/524`
+    // The xez-prepare-issue #524 record: issue known via the marker, but no `…/issues/524`
     // link was ever scanned. The cockpit's own repo makes the created issue reachable.
     const r = run({
       markerRefs: { issue: 524 },

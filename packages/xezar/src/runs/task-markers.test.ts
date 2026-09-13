@@ -46,7 +46,7 @@ describe('parseTaskMarkers', () => {
 describe('parseTaskMarkers — report-tier reference lines', () => {
   it('reads the human-friendly PR/Issue report lines', () => {
     const report = [
-      'om-auto-create-pr: add dark mode',
+      'xez-auto-create-pr: add dark mode',
       'Issue: #433 (link: https://github.com/qodeca/xezar/issues/433)',
       'PR: #442 (link: https://github.com/qodeca/xezar/pull/442)',
       'Status: complete',

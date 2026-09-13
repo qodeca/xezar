@@ -263,14 +263,14 @@ describe('model option resolution', () => {
 })
 
 describe('resolveSource (the draft pick, validated — no cold default)', () => {
-  const skills = [skill('om-fix'), skill('deploy', 'global')]
+  const skills = [skill('xez-fix'), skill('deploy', 'global')]
   const workflows = [workflow('quick-task'), workflow('fix-and-verify')]
 
   it('keeps a pick the catalog still has', () => {
     expect(resolveSource({ source: 'workflow', ref: 'fix-and-verify' }, skills, workflows))
       .toEqual({ source: 'workflow', ref: 'fix-and-verify' })
-    expect(resolveSource({ source: 'skill', ref: 'om-fix' }, skills, workflows))
-      .toEqual({ source: 'skill', ref: 'om-fix' })
+    expect(resolveSource({ source: 'skill', ref: 'xez-fix' }, skills, workflows))
+      .toEqual({ source: 'skill', ref: 'xez-fix' })
   })
 
   it('resolves to NOTHING when there is no pick, or the pick is gone', () => {
@@ -281,13 +281,13 @@ describe('resolveSource (the draft pick, validated — no cold default)', () => 
     expect(resolveSource({ source: 'skill', ref: 'gone' }, skills, workflows)).toBeNull()
     expect(resolveSource({ source: 'workflow', ref: 'gone' }, skills, workflows)).toBeNull()
     // An empty catalog is the same answer, with no quick-task/first-skill fallback left.
-    expect(resolveSource({ source: 'skill', ref: 'om-fix' }, [], [])).toBeNull()
+    expect(resolveSource({ source: 'skill', ref: 'xez-fix' }, [], [])).toBeNull()
   })
 
   it('sourceExists checks the matching catalog only', () => {
     // A workflow name does not validate a skill ref, and vice versa.
     expect(sourceExists({ source: 'skill', ref: 'quick-task' }, skills, workflows)).toBe(false)
-    expect(sourceExists({ source: 'workflow', ref: 'om-fix' }, skills, workflows)).toBe(false)
+    expect(sourceExists({ source: 'workflow', ref: 'xez-fix' }, skills, workflows)).toBe(false)
   })
 })
 
@@ -332,7 +332,7 @@ describe('buildCreateRunBody — the exact POST /api/v1/runs payloads legacy sen
   it('skill source → the one-step inline chain (spec 008: same shape as inbox/bookmarklet)', () => {
     const body = buildCreateRunBody({
       task: 'fix the flake',
-      source: { source: 'skill', ref: 'om-fix' },
+      source: { source: 'skill', ref: 'xez-fix' },
       model: 'sonnet',
       runner: 'claude',
       defaultRunner: 'codex',
@@ -341,7 +341,7 @@ describe('buildCreateRunBody — the exact POST /api/v1/runs payloads legacy sen
     })
     expect(JSON.parse(JSON.stringify(body))).toEqual({
       task: 'fix the flake',
-      steps: [{ id: 'task', name: 'om-fix', skill: 'om-fix', prompt: '{{task}}' }],
+      steps: [{ id: 'task', name: 'xez-fix', skill: 'xez-fix', prompt: '{{task}}' }],
       model: 'sonnet',
       runner: 'claude',
     })
@@ -391,19 +391,19 @@ describe('buildCreateRunBody — the exact POST /api/v1/runs payloads legacy sen
 
   it('worktree=false is sent only for a single run; on/variants keep it implicit', () => {
     const off = buildCreateRunBody({
-      task: 't', source: { source: 'skill', ref: 'om-review' }, model: '',
+      task: 't', source: { source: 'skill', ref: 'xez-review' }, model: '',
       runner: 'claude', defaultRunner: 'claude', variants: 1, images: [], worktree: false,
     })
     expect(off.worktree).toBe(false)
     // Default (on) never sends the flag.
     const on = buildCreateRunBody({
-      task: 't', source: { source: 'skill', ref: 'om-review' }, model: '',
+      task: 't', source: { source: 'skill', ref: 'xez-review' }, model: '',
       runner: 'claude', defaultRunner: 'claude', variants: 1, images: [], worktree: true,
     })
     expect(on.worktree).toBeUndefined()
     // Variants always isolate — worktree=false is ignored.
     const variant = buildCreateRunBody({
-      task: 't', source: { source: 'skill', ref: 'om-review' }, model: '',
+      task: 't', source: { source: 'skill', ref: 'xez-review' }, model: '',
       runner: 'claude', defaultRunner: 'claude', variants: 2, images: [], worktree: false,
     })
     expect(variant.worktree).toBeUndefined()
@@ -411,7 +411,7 @@ describe('buildCreateRunBody — the exact POST /api/v1/runs payloads legacy sen
 
   it('generateFollowups=false is sent only when follow-up generation is disabled', () => {
     const base = {
-      task: 't', source: { source: 'skill' as const, ref: 'om-review' }, model: '',
+      task: 't', source: { source: 'skill' as const, ref: 'xez-review' }, model: '',
       runner: 'claude' as const, defaultRunner: 'claude' as const, variants: 1, images: [],
     }
     expect(buildCreateRunBody({ ...base, generateFollowups: false }).generateFollowups).toBe(false)
@@ -472,7 +472,7 @@ describe('buildAutomationTask', () => {
   it('uses the New task serializer while dropping one-shot transport fields', () => {
     expect(buildAutomationTask({
       task: 'Review {{github.url}}',
-      source: { source: 'skill', ref: 'om-code-review' },
+      source: { source: 'skill', ref: 'xez-code-review' },
       model: 'opus',
       runner: 'claude',
       defaultRunner: 'claude',
@@ -482,7 +482,7 @@ describe('buildAutomationTask', () => {
       todoId: 'ignored',
     })).toEqual({
       prompt: 'Review {{github.url}}',
-      steps: [{ id: 'task', name: 'om-code-review', skill: 'om-code-review', prompt: '{{task}}' }],
+      steps: [{ id: 'task', name: 'xez-code-review', skill: 'xez-code-review', prompt: '{{task}}' }],
       model: 'opus',
       variants: 2,
       autonomous: true,

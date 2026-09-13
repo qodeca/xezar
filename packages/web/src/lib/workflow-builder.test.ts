@@ -60,20 +60,20 @@ describe('skillStack', () => {
 
 describe('skillStep / insertStep (palette → canvas add)', () => {
   it('a palette drop becomes the canonical agent step', () => {
-    expect(skillStep('om-fix', [])).toEqual({
-      id: 'om-fix',
-      name: 'om-fix',
-      skill: 'om-fix',
+    expect(skillStep('xez-fix', [])).toEqual({
+      id: 'xez-fix',
+      name: 'xez-fix',
+      skill: 'xez-fix',
       prompt: '{{task}}',
     })
   })
 
-  it('adding the same skill twice keeps ids unique (om-fix, om-fix-2, om-fix-3)', () => {
+  it('adding the same skill twice keeps ids unique (xez-fix, xez-fix-2, xez-fix-3)', () => {
     let steps: WorkflowStepDef[] = []
-    for (let i = 0; i < 3; i++) steps = insertStep(steps, skillStep('om-fix', steps), steps.length)
-    expect(steps.map((s) => s.id)).toEqual(['om-fix', 'om-fix-2', 'om-fix-3'])
+    for (let i = 0; i < 3; i++) steps = insertStep(steps, skillStep('xez-fix', steps), steps.length)
+    expect(steps.map((s) => s.id)).toEqual(['xez-fix', 'xez-fix-2', 'xez-fix-3'])
     // Still a pure stack — the shorthand repeats the skill.
-    expect(skillStack(steps)).toEqual(['om-fix', 'om-fix', 'om-fix'])
+    expect(skillStack(steps)).toEqual(['xez-fix', 'xez-fix', 'xez-fix'])
   })
 
   it('inserts at the drop index and clamps out-of-range indexes', () => {
@@ -130,7 +130,7 @@ describe('workflowYaml', () => {
 
   it('a richer flow round-trips in the full steps form, checks and loops intact', () => {
     const steps: WorkflowStepDef[] = [
-      { id: 'fix', name: 'Fix it', skill: 'om-fix', prompt: '{{task}}\nBe careful.', model: 'opus' },
+      { id: 'fix', name: 'Fix it', skill: 'xez-fix', prompt: '{{task}}\nBe careful.', model: 'opus' },
       CHECK,
     ]
     const text = workflowYaml('fix-and-test', '', steps)
@@ -140,7 +140,7 @@ describe('workflowYaml', () => {
         {
           id: 'fix',
           name: 'Fix it',
-          skill: 'om-fix',
+          skill: 'xez-fix',
           // A YAML block scalar keeps its final newline — same as the legacy serializer.
           prompt: '{{task}}\nBe careful.\n',
           model: 'opus',
@@ -154,7 +154,7 @@ describe('workflowYaml', () => {
     const text = workflowYaml('true', '', [stackStep('2fast', 'no')])
     // `true`, `no` and `2fast` would parse as boolean/number-ish — they must come back strings.
     expect(parse(text)).toEqual({ name: 'true', skills: ['2fast'] })
-    const plain = workflowYaml('my-flow', '', [stackStep('om-fix')])
+    const plain = workflowYaml('my-flow', '', [stackStep('xez-fix')])
     expect(plain).toContain('name: my-flow')
     expect(plain).not.toContain('"my-flow"')
   })

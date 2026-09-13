@@ -10,7 +10,7 @@ describe('detectTrigger — when does typing open the menu (#380)', () => {
     expected: ReturnType<typeof detectTrigger>
   }> = [
     { name: 'a lone / at the start opens with an empty query', text: '/', caret: 1, expected: { trigger: '/', start: 0, query: '' } },
-    { name: 'typing after the / becomes the query', text: '/om-f', caret: 5, expected: { trigger: '/', start: 0, query: 'om-f' } },
+    { name: 'typing after the / becomes the query', text: '/xez-f', caret: 6, expected: { trigger: '/', start: 0, query: 'xez-f' } },
     { name: '/ after a space is a word boundary', text: 'use /rev', caret: 8, expected: { trigger: '/', start: 4, query: 'rev' } },
     { name: '/ after a newline is a word boundary', text: 'line\n/x', caret: 7, expected: { trigger: '/', start: 5, query: 'x' } },
     { name: '@ works the same', text: 'see @src', caret: 8, expected: { trigger: '@', start: 4, query: 'src' } },
@@ -32,8 +32,8 @@ describe('detectTrigger — when does typing open the menu (#380)', () => {
 
 describe('applyCompletion — inserts at the token, not at the end', () => {
   it('replaces the open token with the completion + one space', () => {
-    const result = applyCompletion('use /rev', { trigger: '/', start: 4, query: 'rev' }, 8, 'om-review')
-    expect(result).toEqual({ text: 'use /om-review ', caret: 15 })
+    const result = applyCompletion('use /rev', { trigger: '/', start: 4, query: 'rev' }, 8, 'xez-review')
+    expect(result).toEqual({ text: 'use /xez-review ', caret: 16 })
   })
 
   it('keeps everything after the caret (mid-draft completion)', () => {

@@ -105,7 +105,7 @@ describe('the inbox against the live dry-run server', () => {
         ts: new Date().toISOString(),
         summary: 'Open a follow-up PR for the flaky retry test',
         action: 'follow-up',
-        suggestedSkill: 'om-fix',
+        suggestedSkill: 'xez-fix',
         taskId: 'e2e-no-such-run',
       },
       { id: 'e2e-inbox-2', summary: 'Rerun the failed checks' },
@@ -123,7 +123,7 @@ describe('the inbox against the live dry-run server', () => {
     ).toBe(2)
     // The meta row is honest about a source task the server no longer has.
     expect(browser.text(`${CARD}[data-id="e2e-inbox-1"]`)).toContain('source task deleted')
-    expect(browser.text(`${CARD}[data-id="e2e-inbox-1"]`)).toContain('skill: om-fix')
+    expect(browser.text(`${CARD}[data-id="e2e-inbox-1"]`)).toContain('skill: xez-fix')
     // The primary action follows actionability (spec 007): e2e-inbox-1 carries a skill, so it
     // is runnable and keeps Run + Dismiss; e2e-inbox-2 has nothing to execute, so it is a note
     // and offers Acknowledge alone.

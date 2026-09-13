@@ -32,7 +32,7 @@ const HEALTH: HealthResponse = {
 }
 
 const SKILLS: Skill[] = [
-  { name: 'om-fix', body: '', path: '.ai/skills/om-fix.md', source: 'ai' },
+  { name: 'xez-fix', body: '', path: '.ai/skills/xez-fix.md', source: 'ai' },
 ]
 
 function serve(routes: Record<string, unknown>): void {
@@ -91,7 +91,7 @@ describe('BookmarkletPanel repo-name labels (#422)', () => {
     renderPanel()
 
     await waitFor(() => expect(label('xezar (xezar): this PR/issue')).toBeTruthy())
-    expect(label('/om-fix (xezar)')).toBeTruthy()
+    expect(label('/xez-fix (xezar)')).toBeTruthy()
   })
 
   it('falls back to the plain, repo-less label while health is unknown', () => {
@@ -100,8 +100,8 @@ describe('BookmarkletPanel repo-name labels (#422)', () => {
     renderPanel()
 
     expect(label('xezar: this PR/issue')).toBeTruthy()
-    expect(label('/om-fix')).toBeTruthy()
-    expect(label('/om-fix (xezar)')).toBeFalsy()
+    expect(label('/xez-fix')).toBeTruthy()
+    expect(label('/xez-fix (xezar)')).toBeFalsy()
   })
 
   it('falls back to the plain label outside a git repository', async () => {
@@ -109,7 +109,7 @@ describe('BookmarkletPanel repo-name labels (#422)', () => {
     renderPanel()
 
     await waitFor(() => expect(label('xezar: this PR/issue')).toBeTruthy())
-    expect(label('/om-fix')).toBeTruthy()
+    expect(label('/xez-fix')).toBeTruthy()
   })
 })
 
@@ -159,7 +159,7 @@ describe('BookmarkletPanel project scoping (multi-project spec, step 3.6)', () =
     // The name stamp comes from the registry entry for THIS project, not from `/api/v1/health`
     // (workspace-level: it always describes the boot repo).
     expect(label('xezar (acme-repo): this PR/issue')).toBeTruthy()
-    expect(label('/om-fix (acme-repo)')).toBeTruthy()
+    expect(label('/xez-fix (acme-repo)')).toBeTruthy()
   })
 
   it('names the boot project too — it is unscoped, but the URL still says which project', async () => {

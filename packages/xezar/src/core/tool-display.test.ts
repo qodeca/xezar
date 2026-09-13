@@ -157,13 +157,13 @@ describe('toolDisplay', () => {
       // ---- skill (claude's Skill invocation — #529) ----
       {
         name: 'Skill',
-        input: { skill: 'om-auto-fix-issue', args: '529' },
-        expected: { toolKind: 'task', title: 'Skill: om-auto-fix-issue', subtitle: '529' },
+        input: { skill: 'xez-auto-fix-issue', args: '529' },
+        expected: { toolKind: 'task', title: 'Skill: xez-auto-fix-issue', subtitle: '529' },
       },
       {
         name: 'skill',
-        input: { skill: 'om-code-review' },
-        expected: { toolKind: 'task', title: 'Skill: om-code-review', subtitle: undefined },
+        input: { skill: 'xez-code-review' },
+        expected: { toolKind: 'task', title: 'Skill: xez-code-review', subtitle: undefined },
       },
       {
         name: 'Skill',

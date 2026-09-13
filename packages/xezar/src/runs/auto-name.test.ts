@@ -15,11 +15,11 @@ describe('buildNamerPrompt', () => {
   it('carries the marker, skill identity, clipped task, and advisory refs', () => {
     const prompt = buildNamerPrompt({
       task: 'review pr 437 with autofix',
-      skillName: 'om-auto-review-pr',
+      skillName: 'xez-auto-review-pr',
       skillDescription: 'Review a PR by number.',
     });
     expect(prompt.startsWith('[xez-namer]')).toBe(true);
-    expect(prompt).toContain('Selected skill: /om-auto-review-pr');
+    expect(prompt).toContain('Selected skill: /xez-auto-review-pr');
     expect(prompt).toContain('review pr 437 with autofix');
     expect(prompt).toContain('pr 437');
   });
@@ -86,7 +86,7 @@ describe('postValidateTitle', () => {
 });
 
 describe('composeNameResult', () => {
-  const ctx = { task: '437', skillName: 'om-auto-review-pr' };
+  const ctx = { task: '437', skillName: 'xez-auto-review-pr' };
 
   it('parses a fenced JSON answer and applies the whole pipeline', () => {
     const raw = '```json\n{"title": "Implementing CR fixes", "pr": 437}\n```';
@@ -129,7 +129,7 @@ describe('generateRunName (dry run)', () => {
       const root = mkdtempSync(join(tmpdir(), 'xez-namer-'));
       try {
         const { generateRunName } = await import('./auto-name.ts');
-        const result = await generateRunName(root, { task: '437', skillName: 'om-auto-review-pr' });
+        const result = await generateRunName(root, { task: '437', skillName: 'xez-auto-review-pr' });
         expect(result).toEqual({ titleSummary: '437: implementing cr fixes', prNumber: 437 });
       } finally {
         rmSync(root, { recursive: true, force: true });

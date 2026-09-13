@@ -35,7 +35,7 @@ const TEMPLATES: PromptTemplate[] = [
     id: 'update-docs',
     label: 'Update the docs',
     text: 'Update the documentation for this change.',
-    skills: ['om-docs', 'om-review'],
+    skills: ['xez-docs', 'xez-review'],
   },
 ]
 
@@ -139,7 +139,7 @@ describe('PromptTemplateMenu', () => {
         '[data-slot="prompt-template-assigned"]'
       )!
       expect(badge.textContent).toContain('2')
-      expect(badge.getAttribute('title')).toBe('Applied automatically with: om-docs, om-review')
+      expect(badge.getAttribute('title')).toBe('Applied automatically with: xez-docs, xez-review')
     })
 
     it('is absent on a manual-only template', async () => {
@@ -197,7 +197,7 @@ describe('PromptTemplateMenu', () => {
       await openMenu()
 
       fireEvent.change(screen.getByPlaceholderText('search templates…'), {
-        target: { value: 'om-review' },
+        target: { value: 'xez-review' },
       })
 
       await waitFor(() =>

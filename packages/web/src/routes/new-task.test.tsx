@@ -117,7 +117,7 @@ const PROVIDERS_NONE: ProviderStatusResponse = {
 }
 
 const SKILLS: Skill[] = [
-  { name: 'om-fix', description: 'Fix an issue end to end', body: '', path: '/p/om-fix.md', source: 'ai' },
+  { name: 'xez-fix', description: 'Fix an issue end to end', body: '', path: '/p/xez-fix.md', source: 'ai' },
   { name: 'deploy', description: 'Deploy from anywhere', body: '', path: '/g/deploy.md', source: 'global' },
 ]
 
@@ -188,7 +188,7 @@ const PLAN = {
   steps: [
     { id: 'implement', name: 'Implement', prompt: '{{task}}' },
     { id: 'verify', name: 'Verify', command: 'npm test' },
-    { id: 'review', name: 'Review', skill: 'om-fix', prompt: 'Review the changes for {{task}}' },
+    { id: 'review', name: 'Review', skill: 'xez-fix', prompt: 'Review the changes for {{task}}' },
   ],
   rationale: 'Implement, verify with tests, then review.',
   fallback: false,
@@ -590,11 +590,11 @@ describe('picker data flows', () => {
     // The report this fixes: a skill picked once sat in the pill for every task afterwards,
     // and the composer offered no way to take it out. `lastTask` is still recorded — it just
     // no longer decides what the next task runs.
-    serve({ uiState: { lastTask: { source: 'skill', ref: 'om-fix' } } })
+    serve({ uiState: { lastTask: { source: 'skill', ref: 'xez-fix' } } })
     renderNewTask()
     await pillReady()
     expect(sourcePill().getAttribute('data-source-kind')).toBe('none')
-    expect(sourcePill().textContent).not.toContain('om-fix')
+    expect(sourcePill().textContent).not.toContain('xez-fix')
   })
 
   it('preselects the draft pick, and drops it when the catalog no longer has it', async () => {
@@ -625,26 +625,26 @@ describe('picker data flows', () => {
       'none', 'skill', 'workflow', 'skill',
     ])
     expect(options.map((o) => o.getAttribute('data-source-ref'))).toEqual([
-      null, 'om-fix', 'fix-and-verify', 'deploy',
+      null, 'xez-fix', 'fix-and-verify', 'deploy',
     ])
     expect(options[0]!.textContent).toContain('No skill')
     const headings = [...document.querySelectorAll('[cmdk-group-heading]')].map((h) => h.textContent)
     expect(headings).toEqual(['Project skills', 'Workflows', 'Global'])
   })
 
-  it('multi-keyword search: "fix issue" matches om-fix via hyphen-split keywords (#411)', async () => {
+  it('multi-keyword search: "fix issue" matches xez-fix via hyphen-split keywords (#411)', async () => {
     serve()
     renderNewTask()
     await pillReady()
     fireEvent.click(sourcePill())
     const input = await screen.findByPlaceholderText('search skills & workflows…')
 
-    // "fix issue" should match "om-fix" because both "fix" and "issue" appear in the
+    // "fix issue" should match "xez-fix" because both "fix" and "issue" appear in the
     // combined value+keywords text (name splits: "om","fix" + description "Fix an issue end to end").
     fireEvent.change(input, { target: { value: 'fix issue' } })
     await waitFor(() => {
       const visible = [...document.querySelectorAll('[data-slot="source-option"]')]
-      expect(visible.some((o) => o.getAttribute('data-source-ref') === 'om-fix')).toBe(true)
+      expect(visible.some((o) => o.getAttribute('data-source-ref') === 'xez-fix')).toBe(true)
     })
   })
 
@@ -657,7 +657,7 @@ describe('picker data flows', () => {
 
     fireEvent.change(input, { target: { value: 'deploy fix' } })
     await waitFor(() => {
-      // "deploy" does not have "fix" in its name/description, and "om-fix" does not have "deploy"
+      // "deploy" does not have "fix" in its name/description, and "xez-fix" does not have "deploy"
       const visible = [...document.querySelectorAll('[data-slot="source-option"]')]
       expect(visible).toHaveLength(0)
     })
@@ -680,12 +680,12 @@ describe('clearing the picked skill or workflow', () => {
     )
 
   it('the ✕ clears in one click, without opening the menu', async () => {
-    draftSource({ source: 'skill', ref: 'om-fix' })
+    draftSource({ source: 'skill', ref: 'xez-fix' })
     serve()
     renderNewTask()
-    await pillReady('om-fix')
+    await pillReady('xez-fix')
 
-    expect(clearButton()?.getAttribute('aria-label')).toBe('Clear the skill om-fix')
+    expect(clearButton()?.getAttribute('aria-label')).toBe('Clear the skill xez-fix')
     fireEvent.click(clearButton()!)
 
     await waitFor(() => expect(sourcePill().getAttribute('data-source-kind')).toBe('none'))
@@ -715,23 +715,23 @@ describe('clearing the picked skill or workflow', () => {
   })
 
   it('leaves the pill alone on ⌘/Ctrl+Backspace — that is a text gesture, not a picker one', async () => {
-    draftSource({ source: 'skill', ref: 'om-fix' })
+    draftSource({ source: 'skill', ref: 'xez-fix' })
     serve()
     renderNewTask()
-    await pillReady('om-fix')
+    await pillReady('xez-fix')
 
     fireEvent.keyDown(sourcePill(), { key: 'Backspace', metaKey: true })
     expect(sourcePill().getAttribute('data-source-kind')).toBe('skill')
   })
 
   it('picking the SELECTED row again clears it — for a skill and for a workflow', async () => {
-    draftSource({ source: 'skill', ref: 'om-fix' })
+    draftSource({ source: 'skill', ref: 'xez-fix' })
     serve()
     renderNewTask()
-    await pillReady('om-fix')
+    await pillReady('xez-fix')
 
     await openMenu()
-    fireEvent.click(option('skill', 'om-fix')!)
+    fireEvent.click(option('skill', 'xez-fix')!)
     await waitFor(() => expect(sourcePill().getAttribute('data-source-kind')).toBe('none'))
 
     await openMenu()
@@ -743,10 +743,10 @@ describe('clearing the picked skill or workflow', () => {
   })
 
   it('the "No skill" row clears the picker, and answers to a search for quick-task', async () => {
-    draftSource({ source: 'skill', ref: 'om-fix' })
+    draftSource({ source: 'skill', ref: 'xez-fix' })
     serve()
     renderNewTask()
-    await pillReady('om-fix')
+    await pillReady('xez-fix')
 
     await openMenu()
     const input = screen.getByPlaceholderText('search skills & workflows…')
@@ -762,10 +762,10 @@ describe('clearing the picked skill or workflow', () => {
   })
 
   it('a cleared pill stays cleared for the NEXT task, and the started one is not remembered', async () => {
-    draftSource({ source: 'skill', ref: 'om-fix' })
+    draftSource({ source: 'skill', ref: 'xez-fix' })
     serve({ createRun: { id: 'run-2' } })
     renderNewTask()
-    await pillReady('om-fix')
+    await pillReady('xez-fix')
     fireEvent.change(textarea(), { target: { value: 'Fix it with the skill' } })
     await startTask()
     await waitFor(() => expect(location()).toBe('/tasks/run-2'))
@@ -928,29 +928,29 @@ describe('provider authentication gate', () => {
 
 describe('submit', () => {
   it('a SKILL source posts the one-step inline chain and persists lastTask, then navigates', async () => {
-    draftSource({ source: 'skill', ref: 'om-fix' })
+    draftSource({ source: 'skill', ref: 'xez-fix' })
     serve({ createRun: { id: 'run-9' } })
     renderNewTask()
-    await pillReady('om-fix')
+    await pillReady('xez-fix')
     fireEvent.change(textarea(), { target: { value: 'Fix the flaky worktree test' } })
     await startTask()
 
     expect(postedBody()).toEqual({
       task: 'Fix the flaky worktree test',
-      steps: [{ id: 'task', name: 'om-fix', skill: 'om-fix', prompt: '{{task}}' }],
+      steps: [{ id: 'task', name: 'xez-fix', skill: 'xez-fix', prompt: '{{task}}' }],
       // Skills default to autonomous (#autonomous).
       autonomous: true,
     })
     await waitFor(() => expect(location()).toBe('/tasks/run-9'))
     await waitFor(() =>
       expect(requests.find((r) => r.method === 'PUT' && r.url === '/api/v1/ui-state')?.body).toEqual({
-        lastTask: { source: 'skill', ref: 'om-fix' },
+        lastTask: { source: 'skill', ref: 'xez-fix' },
         // The run also lands at the head of the recency list (picker sort)...
-        recentSources: [{ source: 'skill', ref: 'om-fix' }],
+        recentSources: [{ source: 'skill', ref: 'xez-fix' }],
         lastGenerateFollowups: true,
         // ...and bumps its usage count for the #408 frequency sort (a workflow source would
         // NOT carry a skillUsage key at all — see the WORKFLOW test below).
-        skillUsage: { 'om-fix': 1 },
+        skillUsage: { 'xez-fix': 1 },
       }),
     )
   })
@@ -962,12 +962,12 @@ describe('submit', () => {
     // 404, not a 5xx: the query client never retries a 4xx (query-client.ts), so the query
     // lands in its errored state immediately and the test stays deterministic.
     writeDraft({
-      text: '', source: { source: 'skill', ref: 'om-fix' }, runner: null, agentProfile: null, model: null,
+      text: '', source: { source: 'skill', ref: 'xez-fix' }, runner: null, agentProfile: null, model: null,
       variants: 1, planFirst: false, worktree: null, autonomous: null, generateFollowups: null,
     })
     serve({ createRun: { id: 'run-9' }, uiStateStatus: 404 })
     renderNewTask()
-    await pillReady('om-fix')
+    await pillReady('xez-fix')
     fireEvent.change(textarea(), { target: { value: 'Fix the flaky worktree test' } })
     await startTask()
 
@@ -1020,10 +1020,10 @@ describe('submit', () => {
         expected: { workflow: 'quick-task' },
       },
       {
-        label: 'om-fix',
-        source: { source: 'skill', ref: 'om-fix' },
+        label: 'xez-fix',
+        source: { source: 'skill', ref: 'xez-fix' },
         overrides: {},
-        expected: { steps: [{ id: 'task', name: 'om-fix', skill: 'om-fix', prompt: '{{task}}' }] },
+        expected: { steps: [{ id: 'task', name: 'xez-fix', skill: 'xez-fix', prompt: '{{task}}' }] },
       },
       {
         label: 'one-step',
@@ -1208,10 +1208,10 @@ describe('submit', () => {
   it('applies an interactive skill hint to untouched controls while keeping both overridable', async () => {
     // The composer opens on no source, so an interactive skill only drives the recommendation
     // once it is the selected one — here from the draft.
-    draftSource({ source: 'skill', ref: 'om-fix' })
+    draftSource({ source: 'skill', ref: 'xez-fix' })
     serve({ skills: [{ ...SKILLS[0]!, interactive: true }, SKILLS[1]!] })
     renderNewTask()
-    await pillReady('om-fix')
+    await pillReady('xez-fix')
 
     const autonomous = document.querySelector(
       '[data-slot="autonomous-toggle"]',
@@ -1729,7 +1729,7 @@ describe('the plan flow', () => {
     expect(screen.getByText('Implement, verify with tests, then review.')).toBeTruthy()
     expect(stepIds()).toEqual(['implement', 'verify', 'review'])
     expect(document.querySelector('[data-slot="plan-badge-check"]')).not.toBeNull()
-    expect(document.querySelector('[data-slot="plan-badge-skill"]')?.textContent).toBe('om-fix')
+    expect(document.querySelector('[data-slot="plan-badge-skill"]')?.textContent).toBe('xez-fix')
     expect(screen.getByText('npm test')).toBeTruthy()
   })
 
@@ -1814,7 +1814,7 @@ describe('the plan flow', () => {
     expect(postedBody()).toEqual({
       task: 'Tighten the flaky suite',
       steps: [
-        { id: 'review', name: 'Review', skill: 'om-fix', prompt: 'Review the changes for {{task}}' },
+        { id: 'review', name: 'Review', skill: 'xez-fix', prompt: 'Review the changes for {{task}}' },
         { id: 'implement', name: 'Implement', prompt: '{{task}}' },
       ],
     })
@@ -1979,7 +1979,7 @@ describe('save as chain', () => {
 
 describe('prompt templates on the new-task composer', () => {
   const ASSIGNED = [
-    { id: 'assigned', label: 'Fix rules', text: 'Follow the fix rules.', skills: ['om-fix'] },
+    { id: 'assigned', label: 'Fix rules', text: 'Follow the fix rules.', skills: ['xez-fix'] },
     { id: 'manual', label: 'Manual', text: 'Never auto.' },
   ]
 
@@ -2023,7 +2023,7 @@ describe('prompt templates on the new-task composer', () => {
     renderNewTask()
     await pillReady()
 
-    await pickSource('om-fix')
+    await pickSource('xez-fix')
     await waitFor(() => expect(textarea().value).toBe('Follow the fix rules.'))
   })
 
@@ -2032,7 +2032,7 @@ describe('prompt templates on the new-task composer', () => {
     renderNewTask()
     await pillReady()
 
-    await pickSource('om-fix')
+    await pickSource('xez-fix')
     await waitFor(() => expect(textarea().value).toBe('Follow the fix rules.'))
 
     await pickSource('deploy')
@@ -2045,9 +2045,9 @@ describe('prompt templates on the new-task composer', () => {
     await pillReady()
 
     fireEvent.change(textarea(), { target: { value: 'my own words' } })
-    await pickSource('om-fix')
+    await pickSource('xez-fix')
 
-    await waitFor(() => expect(sourcePill().textContent).toContain('om-fix'))
+    await waitFor(() => expect(sourcePill().textContent).toContain('xez-fix'))
     expect(textarea().value).toBe('my own words')
   })
 
@@ -2066,14 +2066,14 @@ describe('prompt templates on the new-task composer', () => {
     renderNewTask()
     await pillReady()
 
-    await pickSource('om-fix')
+    await pickSource('xez-fix')
     await waitFor(() => expect(textarea().value).toBe('Follow the fix rules.'))
 
     await startTask()
     // The auto-applied text is the real task text on the wire, not just something on screen.
     expect(postedBody()).toMatchObject({
       task: 'Follow the fix rules.',
-      steps: [{ id: 'task', name: 'om-fix', skill: 'om-fix', prompt: '{{task}}' }],
+      steps: [{ id: 'task', name: 'xez-fix', skill: 'xez-fix', prompt: '{{task}}' }],
     })
   })
 })
@@ -2308,8 +2308,8 @@ describe('the skill/workflow picker keeps the brief and honours the highlight (#
     writeStraightIntoTheBox(LONG_BRIEF)
     await waitFor(() => expect(startButton().disabled).toBe(false))
 
-    await pickSource('om-fix')
-    await waitFor(() => expect(sourcePill().textContent).toContain('om-fix'))
+    await pickSource('xez-fix')
+    await waitFor(() => expect(sourcePill().textContent).toContain('xez-fix'))
     expect(textarea().value).toBe(LONG_BRIEF)
     expect(startButton().disabled).toBe(false)
     // A skill may still bring its own defaults — here the source-dependent Autonomous default —
@@ -2319,12 +2319,12 @@ describe('the skill/workflow picker keeps the brief and honours the highlight (#
   })
 
   it('Enter commits the highlighted option after the filter changed under a moved highlight (#15)', async () => {
-    // The issue's list: several `om-auto-*` skills, one skill and one WORKFLOW answering to
+    // The issue's list: several `xez-auto-*` skills, one skill and one WORKFLOW answering to
     // "docs", the workflow last.
     serve({
       skills: [
-        { name: 'om-auto-continue-pr-loop', description: 'Continue a PR', body: '', path: '/p/om-auto-continue-pr-loop.md', source: 'ai' },
-        { name: 'om-auto-create-pr', description: 'Create a PR', body: '', path: '/p/om-auto-create-pr.md', source: 'ai' },
+        { name: 'xez-auto-continue-pr-loop', description: 'Continue a PR', body: '', path: '/p/xez-auto-continue-pr-loop.md', source: 'ai' },
+        { name: 'xez-auto-create-pr', description: 'Create a PR', body: '', path: '/p/xez-auto-create-pr.md', source: 'ai' },
         { name: 'xezar-docs-maintenance', description: 'Maintain owned documentation', body: '', path: '/p/xezar-docs-maintenance.md', source: 'ai' },
       ],
       workflows: {
@@ -2348,8 +2348,8 @@ describe('the skill/workflow picker keeps the brief and honours the highlight (#
       document.querySelector<HTMLElement>('[data-slot="source-option"][aria-selected="true"]')
 
     // 1. filter, 2. move the highlight (ArrowUp at the top does not wrap), 3. replace the filter
-    fireEvent.change(input, { target: { value: 'om-auto' } })
-    await waitFor(() => expect(visible()).toEqual(['skill:om-auto-continue-pr-loop', 'skill:om-auto-create-pr']))
+    fireEvent.change(input, { target: { value: 'xez-auto' } })
+    await waitFor(() => expect(visible()).toEqual(['skill:xez-auto-continue-pr-loop', 'skill:xez-auto-create-pr']))
     fireEvent.keyDown(input, { key: 'ArrowUp' })
     fireEvent.change(input, { target: { value: 'docs' } })
     await waitFor(() => expect(visible()).toEqual(['skill:xezar-docs-maintenance', 'workflow:docs-maintenance']))

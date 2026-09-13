@@ -3,15 +3,15 @@ import type { ContentBlock } from '../core/agent-runner.ts';
 import { expandRegistrySlashSkill, expandRegistrySlashSkillText, skillSystemPrompt } from './run.ts';
 
 describe('skillSystemPrompt — installed-path hint for worktree agents', () => {
-  const base = { name: 'om-code-review', description: 'Review a diff.', body: 'Do the review.' };
+  const base = { name: 'xez-code-review', description: 'Review a diff.', body: 'Do the review.' };
 
   it('points an on-disk skill at its absolute installed directory', () => {
     const out = skillSystemPrompt({
       ...base,
       source: 'agents',
-      path: '/home/u/Projects/app/.agents/skills/om-code-review/SKILL.md',
+      path: '/home/u/Projects/app/.agents/skills/xez-code-review/SKILL.md',
     });
-    expect(out).toContain('Skill files are installed on disk at: /home/u/Projects/app/.agents/skills/om-code-review');
+    expect(out).toContain('Skill files are installed on disk at: /home/u/Projects/app/.agents/skills/xez-code-review');
     expect(out).toContain('references/*.md');
     // Body still present and last.
     expect(out.trimEnd().endsWith('Do the review.')).toBe(true);
@@ -30,30 +30,30 @@ describe('skillSystemPrompt — installed-path hint for worktree agents', () => 
 
 describe('expandRegistrySlashSkill — live chat delivery', () => {
   const skill = {
-    name: 'om-code-review',
+    name: 'xez-code-review',
     description: 'Review a diff.',
     body: 'Do the review.',
-    path: '/home/u/.agents/skills/om-code-review/SKILL.md',
+    path: '/home/u/.agents/skills/xez-code-review/SKILL.md',
     source: 'global' as const,
   };
 
   it('replaces a matching leading slash skill with the canonical selected-skill prompt', () => {
-    const content: ContentBlock[] = [{ type: 'text', text: '/om-code-review PR 42' }];
+    const content: ContentBlock[] = [{ type: 'text', text: '/xez-code-review PR 42' }];
 
     const expanded = expandRegistrySlashSkill(content, [skill]);
 
     expect(expanded).not.toBe(content);
     expect(expanded[0]).toEqual({
       type: 'text',
-      text: expect.stringContaining('Selected skill: /om-code-review'),
+      text: expect.stringContaining('Selected skill: /xez-code-review'),
     });
     expect((expanded[0] as Extract<ContentBlock, { type: 'text' }>).text).toContain(
       'Skill instructions:\nDo the review.\n\nUser request:\nPR 42',
     );
-    expect(content[0]).toEqual({ type: 'text', text: '/om-code-review PR 42' });
+    expect(content[0]).toEqual({ type: 'text', text: '/xez-code-review PR 42' });
   });
 
-  it.each(['/unknown PR 42', ' /om-code-review PR 42', '/om-code-reviewer PR 42'])(
+  it.each(['/unknown PR 42', ' /xez-code-review PR 42', '/xez-code-reviewer PR 42'])(
     'leaves non-matching text unchanged: %s',
     (text) => {
       const content: ContentBlock[] = [{ type: 'text', text }];
@@ -66,7 +66,7 @@ describe('expandRegistrySlashSkill — live chat delivery', () => {
       type: 'image',
       source: { type: 'base64', media_type: 'image/png', data: 'AAA' },
     };
-    const expanded = expandRegistrySlashSkill([image, { type: 'text', text: '/om-code-review' }], [skill]);
+    const expanded = expandRegistrySlashSkill([image, { type: 'text', text: '/xez-code-review' }], [skill]);
 
     expect(expanded[0]).toBe(image);
     expect((expanded[1] as Extract<ContentBlock, { type: 'text' }>).text).toContain('Do the review.');
@@ -80,20 +80,20 @@ describe('expandRegistrySlashSkill — live chat delivery', () => {
    */
   describe('expandRegistrySlashSkillText — the continuation seam (#811)', () => {
     it('expands the same way the content-block form does', () => {
-      const text = '/om-code-review PR 42';
+      const text = '/xez-code-review PR 42';
       const viaText = expandRegistrySlashSkillText(text, [skill]);
       const viaBlocks = expandRegistrySlashSkill([{ type: 'text', text }], [skill]);
 
-      expect(viaText).toContain('Selected skill: /om-code-review');
+      expect(viaText).toContain('Selected skill: /xez-code-review');
       expect(viaText).toContain('Skill instructions:\nDo the review.\n\nUser request:\nPR 42');
       expect((viaBlocks[0] as Extract<ContentBlock, { type: 'text' }>).text).toBe(viaText);
     });
 
     it('expands a bare skill name with no trailing request', () => {
-      expect(expandRegistrySlashSkillText('/om-code-review', [skill])).toBe(skillSystemPrompt(skill));
+      expect(expandRegistrySlashSkillText('/xez-code-review', [skill])).toBe(skillSystemPrompt(skill));
     });
 
-    it.each(['/unknown PR 42', ' /om-code-review PR 42', '/om-code-reviewer PR 42', 'Continue.'])(
+    it.each(['/unknown PR 42', ' /xez-code-review PR 42', '/xez-code-reviewer PR 42', 'Continue.'])(
       'returns non-matching text unchanged so a backend keeps its own slash commands: %s',
       (text) => {
         expect(expandRegistrySlashSkillText(text, [skill])).toBe(text);
@@ -101,7 +101,7 @@ describe('expandRegistrySlashSkill — live chat delivery', () => {
     );
 
     it('returns the text unchanged against an empty registry (the #811 failure mode)', () => {
-      expect(expandRegistrySlashSkillText('/om-code-review PR 42', [])).toBe('/om-code-review PR 42');
+      expect(expandRegistrySlashSkillText('/xez-code-review PR 42', [])).toBe('/xez-code-review PR 42');
     });
   });
 });

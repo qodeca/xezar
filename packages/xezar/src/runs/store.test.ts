@@ -737,7 +737,7 @@ describe('RunStore — referenced-PR discovery (#407, spec 2026-07-16-pr-autodis
   });
 
   it('disambiguates several referenced PRs by the number named in the task prompt', () => {
-    const { store, run } = freshRun('om-auto-review-pr 4170');
+    const { store, run } = freshRun('xez-auto-review-pr 4170');
     store.appendEvent(run.id, {
       type: 'result',
       result:
@@ -762,7 +762,7 @@ describe('RunStore — referenced-PR discovery (#407, spec 2026-07-16-pr-autodis
   });
 
   it('does not treat a substring of a longer number as a prompt match', () => {
-    const { store, run } = freshRun('om-auto-review-pr 4170');
+    const { store, run } = freshRun('xez-auto-review-pr 4170');
     store.appendEvent(run.id, {
       type: 'result',
       result:
@@ -1137,7 +1137,7 @@ describe('RunStore — referenced-issue discovery (spec 2026-07-21-report-ref-di
   });
 
   it('disambiguates several issue links by the number named in the task prompt', () => {
-    const { store, run } = freshRun('om-auto-fix-issue 433');
+    const { store, run } = freshRun('xez-auto-fix-issue 433');
     store.appendEvent(run.id, {
       type: 'result',
       result:
@@ -1222,7 +1222,7 @@ describe("RunStore — a task never adopts another repository's ref (#945)", () 
 
   it('keeps a foreign PR the task prompt itself names — the #819 cross-repo case', () => {
     const { store, run } = scopedRun(
-      'om-auto-fix-pr https://github.com/qodeca/demo/pull/1977',
+      'xez-auto-fix-pr https://github.com/qodeca/demo/pull/1977',
     );
     store.appendEvent(run.id, {
       type: 'result',
@@ -1337,7 +1337,7 @@ describe("RunStore — a task never adopts another repository's ref (#945)", () 
 
     it('keeps a stored foreign URL the prompt corroborates', () => {
       const { after } = reopenArmed({
-        task: 'om-auto-fix-pr https://github.com/qodeca/demo/pull/1977',
+        task: 'xez-auto-fix-pr https://github.com/qodeca/demo/pull/1977',
         referencedPullRequestUrl: 'https://github.com/qodeca/demo/pull/1977',
       });
       expect(after?.referencedPullRequestUrl).toBe(

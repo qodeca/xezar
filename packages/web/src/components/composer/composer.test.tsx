@@ -35,8 +35,8 @@ afterEach(() => {
 
 const SKILLS: Skill[] = [
   { name: 'global-deploy', description: 'Deploy from anywhere', body: '', path: '/g/global-deploy.md', source: 'global' },
-  { name: 'om-fix', description: 'Fix an issue', body: '', path: '/p/om-fix.md', source: 'ai' },
-  { name: 'om-review', body: '', path: '/p/om-review.md', source: 'xezar' },
+  { name: 'xez-fix', description: 'Fix an issue', body: '', path: '/p/xez-fix.md', source: 'ai' },
+  { name: 'xez-review', body: '', path: '/p/xez-review.md', source: 'xezar' },
 ]
 
 /** The composer fetches `/api/v1/skills` (only once `/` has been typed) and `/api/v1/ui-state`
@@ -288,18 +288,18 @@ describe('/ skills autocomplete (#380)', () => {
     expect(fetchMock.mock.calls.filter(([u]) => String(u).includes('/api/v1/skills'))).toHaveLength(0)
 
     type(textarea, 'please /')
-    const items = await screen.findAllByText(/om-fix|om-review|global-deploy/)
+    const items = await screen.findAllByText(/xez-fix|xez-review|global-deploy/)
     expect(items.length).toBeGreaterThanOrEqual(3)
     const rendered = [...document.querySelectorAll('[data-slot="composer-menu-item"]')]
     expect(rendered.map((el) => el.getAttribute('data-emphasized'))).toEqual(['true', 'true', null])
-    expect(rendered[0]!.textContent).toContain('om-fix')
+    expect(rendered[0]!.textContent).toContain('xez-fix')
     expect(rendered[2]!.textContent).toContain('global-deploy')
   })
 
   it('the menu is clamped to the popper available height (mobile keyboard, #mobile-kb)', async () => {
     const { textarea } = renderComposer()
     type(textarea, '/')
-    await screen.findByText('om-fix')
+    await screen.findByText('xez-fix')
     const menu = document.querySelector('[data-slot="composer-menu"]')!
     // The clamp keeps the list inside the visual viewport once PopoverContent's
     // keyboard-aware collisionPadding has shrunk the popper's available space.
@@ -322,11 +322,11 @@ describe('/ skills autocomplete (#380)', () => {
 
   it('Enter inserts the selection at the caret and closes the menu', async () => {
     const { onSubmit, textarea } = renderComposer()
-    type(textarea, 'run /omf')
-    await screen.findByText('om-fix')
+    type(textarea, 'run /xezf')
+    await screen.findByText('xez-fix')
     fireEvent.keyDown(textarea, { key: 'Enter' })
-    expect(textarea.value).toBe('run /om-fix ')
-    expect(textarea.selectionStart).toBe('run /om-fix '.length)
+    expect(textarea.value).toBe('run /xez-fix ')
+    expect(textarea.selectionStart).toBe('run /xez-fix '.length)
     expect(document.querySelector('[data-slot="composer-menu"]')).toBeNull()
     // The Enter was a pick, not a send.
     expect(onSubmit).not.toHaveBeenCalled()
@@ -334,43 +334,43 @@ describe('/ skills autocomplete (#380)', () => {
 
   it('arrow keys move the selection; Enter takes the highlighted one', async () => {
     const { textarea } = renderComposer()
-    type(textarea, '/om')
-    await screen.findByText('om-fix')
+    type(textarea, '/xe')
+    await screen.findByText('xez-fix')
     fireEvent.keyDown(textarea, { key: 'ArrowDown' })
     fireEvent.keyDown(textarea, { key: 'Enter' })
-    expect(textarea.value).toBe('/om-review ')
+    expect(textarea.value).toBe('/xez-review ')
   })
 
   it('clicking an item inserts it too', async () => {
     const { textarea } = renderComposer()
-    type(textarea, '/om')
-    const item = await screen.findByText('om-review')
+    type(textarea, '/xe')
+    const item = await screen.findByText('xez-review')
     fireEvent.click(item.closest('[data-slot="composer-menu-item"]') as HTMLElement)
-    expect(textarea.value).toBe('/om-review ')
+    expect(textarea.value).toBe('/xez-review ')
   })
 
   it('Escape closes the menu and keeps the text; Enter then sends the raw text', async () => {
     const { onSubmit, textarea } = renderComposer()
-    type(textarea, '/om')
-    await screen.findByText('om-fix')
+    type(textarea, '/xe')
+    await screen.findByText('xez-fix')
     fireEvent.keyDown(textarea, { key: 'Escape' })
     await waitFor(() => expect(document.querySelector('[data-slot="composer-menu"]')).toBeNull())
-    expect(textarea.value).toBe('/om')
+    expect(textarea.value).toBe('/xe')
     fireEvent.keyDown(textarea, { key: 'Enter' })
-    expect(onSubmit).toHaveBeenCalledWith('/om', [])
+    expect(onSubmit).toHaveBeenCalledWith('/xe', [])
   })
 
   it('a completed token (trailing space) closes the menu', async () => {
     const { textarea } = renderComposer()
-    type(textarea, '/om')
-    await screen.findByText('om-fix')
-    type(textarea, '/om-fix done')
+    type(textarea, '/xe')
+    await screen.findByText('xez-fix')
+    type(textarea, '/xez-fix done')
     await waitFor(() => expect(document.querySelector('[data-slot="composer-menu"]')).toBeNull())
   })
 
   it('autocompleteSkills={false} keeps / as plain text', () => {
     const { textarea } = renderComposer({ autocompleteSkills: false })
-    type(textarea, '/om')
+    type(textarea, '/xe')
     expect(document.querySelector('[data-slot="composer-menu"]')).toBeNull()
   })
 })
@@ -382,34 +382,34 @@ describe('/ autocomplete usage order and pick bump (#519)', () => {
     )
 
   it('orders the list most-used first, across localities', async () => {
-    const { textarea } = renderComposer({}, { skillUsage: { 'global-deploy': 4, 'om-review': 1 } })
+    const { textarea } = renderComposer({}, { skillUsage: { 'global-deploy': 4, 'xez-review': 1 } })
     type(textarea, '/')
-    await screen.findByText('om-fix')
+    await screen.findByText('xez-fix')
     // Once ui-state resolves, the used skills lead regardless of locality; unused project
     // skills follow, per the #519 tier order.
-    await waitFor(() => expect(menuNames()).toEqual(['global-deploy', 'om-review', 'om-fix']))
+    await waitFor(() => expect(menuNames()).toEqual(['global-deploy', 'xez-review', 'xez-fix']))
   })
 
   it('picking a skill bumps its skillUsage count (the whole map, shallow-merge safe)', async () => {
     const { textarea, uiStatePuts } = renderComposer({}, { skillUsage: { 'global-deploy': 4 } })
     type(textarea, '/')
-    await screen.findByText('om-fix')
+    await screen.findByText('xez-fix')
     // The visible reorder proves the ui-state query resolved — the bump guard is now open.
     await waitFor(() => expect(menuNames()[0]).toBe('global-deploy'))
-    type(textarea, '/omf')
-    await waitFor(() => expect(menuNames()).toEqual(['om-fix']))
+    type(textarea, '/xezf')
+    await waitFor(() => expect(menuNames()).toEqual(['xez-fix']))
     fireEvent.keyDown(textarea, { key: 'Enter' })
     await waitFor(() => expect(uiStatePuts).toHaveLength(1))
     // The WHOLE updated map, never one entry — the PUT merge is shallow (#408).
-    expect(uiStatePuts[0]).toEqual({ skillUsage: { 'global-deploy': 4, 'om-fix': 1 } })
+    expect(uiStatePuts[0]).toEqual({ skillUsage: { 'global-deploy': 4, 'xez-fix': 1 } })
   })
 
   it('ui-state unavailable → the pick still completes but never PUTs a wiped map', async () => {
     const { textarea, uiStatePuts } = renderComposer({}, null)
-    type(textarea, 'run /omf')
-    await screen.findByText('om-fix')
+    type(textarea, 'run /xezf')
+    await screen.findByText('xez-fix')
     fireEvent.keyDown(textarea, { key: 'Enter' })
-    expect(textarea.value).toBe('run /om-fix ')
+    expect(textarea.value).toBe('run /xez-fix ')
     expect(uiStatePuts).toHaveLength(0)
   })
 

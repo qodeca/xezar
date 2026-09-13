@@ -115,7 +115,7 @@ const PROVIDERS: ProviderStatusResponse = {
 
 /** Each project ships its OWN skills — the pill's whole promise. */
 const BOOT_SKILLS: Skill[] = [
-  { name: 'om-fix', description: 'Fix an issue end to end', body: '', path: '/p/om-fix.md', source: 'ai' },
+  { name: 'xez-fix', description: 'Fix an issue end to end', body: '', path: '/p/xez-fix.md', source: 'ai' },
 ]
 const OTHER_SKILLS: Skill[] = [
   { name: 'ship-storefront', description: 'Deploy the storefront', body: '', path: '/p/ship.md', source: 'ai' },
@@ -290,7 +290,7 @@ describe('switching project', () => {
     fireEvent.click(sourcePill())
     await screen.findByPlaceholderText('search skills & workflows…')
     // A leading `null` is the "No skill" row; the built-in `quick-task` has no row of its own.
-    expect(sourceRefs()).toEqual([null, 'om-fix'])
+    expect(sourceRefs()).toEqual([null, 'xez-fix'])
     fireEvent.keyDown(document.body, { key: 'Escape' })
     // Radix hands focus back to the closed picker's trigger one macrotask AFTER it closes. Open
     // the project picker before that and the hand-back lands inside its lifetime and closes it —

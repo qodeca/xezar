@@ -20,14 +20,14 @@ describe('the follow-up "remembered last selection" store (#408 item 3)', () => 
   })
 
   it('round-trips a workflow + skills pick', () => {
-    writeFollowupSelection({ workflow: 'ship-it', skills: ['om-fix', 'om-review'] })
-    expect(readFollowupSelection()).toEqual({ workflow: 'ship-it', skills: ['om-fix', 'om-review'] })
+    writeFollowupSelection({ workflow: 'ship-it', skills: ['xez-fix', 'xez-review'] })
+    expect(readFollowupSelection()).toEqual({ workflow: 'ship-it', skills: ['xez-fix', 'xez-review'] })
   })
 
   it('survives a cold read (page reload) via localStorage, not just an in-memory cache', () => {
-    writeFollowupSelection({ workflow: null, skills: ['om-fix'] })
+    writeFollowupSelection({ workflow: null, skills: ['xez-fix'] })
     const raw = localStorage.getItem('xez-followup-selection') as string
-    expect(JSON.parse(raw)).toEqual({ workflow: null, skills: ['om-fix'] })
+    expect(JSON.parse(raw)).toEqual({ workflow: null, skills: ['xez-fix'] })
   })
 
   it('normalizes a malformed/older stored value instead of throwing', () => {

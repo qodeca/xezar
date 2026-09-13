@@ -414,10 +414,10 @@ describe('runTitle — the one name every surface shows', () => {
     {
       label: 'legacy concatenated narration falls back without rewriting persisted state',
       over: {
-        title: '469: /om-auto-review-pr',
+        title: '469: /xez-auto-review-pr',
         titleSummary: 'Loading the pipeline config and tracker descriptor, then claim PR #469.Config loaded',
       },
-      expected: '469: /om-auto-review-pr',
+      expected: '469: /xez-auto-review-pr',
     },
     {
       label: 'user-owned titles preserve punctuation byte-for-byte',

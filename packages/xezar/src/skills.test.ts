@@ -16,7 +16,7 @@ import {
  * they are testable without a network clone — the gated repo set is otherwise a vendor default.
  */
 
-const OM = 'qodeca/xezar-skills';
+const TEAM_REPO = 'qodeca/xezar-skills';
 const XEZ = 'qodeca/xezar-skills';
 const tempDirs: string[] = [];
 
@@ -64,10 +64,10 @@ describe('readImportedSkills', () => {
 });
 
 describe('filterImportedTeamSkills', () => {
-  const gated = new Set([OM]);
+  const gated = new Set([TEAM_REPO]);
 
   it('keeps every gated-repo skill when not curated (undefined) — opt-out default, no upgrade break', () => {
-    const skills = [teamSkill('pr-create', OM), teamSkill('code-review', OM)];
+    const skills = [teamSkill('pr-create', TEAM_REPO), teamSkill('code-review', TEAM_REPO)];
     expect(filterImportedTeamSkills(skills, gated, undefined).map((s) => s.name)).toEqual([
       'pr-create',
       'code-review',
@@ -75,12 +75,12 @@ describe('filterImportedTeamSkills', () => {
   });
 
   it('drops a gated-repo skill once curated away (explicit empty array)', () => {
-    const skills = [teamSkill('pr-create', OM), teamSkill('code-review', OM)];
+    const skills = [teamSkill('pr-create', TEAM_REPO), teamSkill('code-review', TEAM_REPO)];
     expect(filterImportedTeamSkills(skills, gated, []).map((s) => s.name)).toEqual([]);
   });
 
   it('keeps only the named skills from a gated repo when curated', () => {
-    const skills = [teamSkill('pr-create', OM), teamSkill('code-review', OM)];
+    const skills = [teamSkill('pr-create', TEAM_REPO), teamSkill('code-review', TEAM_REPO)];
     expect(filterImportedTeamSkills(skills, gated, ['code-review']).map((s) => s.name)).toEqual([
       'code-review',
     ]);
@@ -92,21 +92,21 @@ describe('filterImportedTeamSkills', () => {
   });
 
   it('never gates a local skill (no team field), even when curated to nothing', () => {
-    const skills = [localSkill('house-rules'), teamSkill('pr-create', OM)];
+    const skills = [localSkill('house-rules'), teamSkill('pr-create', TEAM_REPO)];
     expect(filterImportedTeamSkills(skills, gated, []).map((s) => s.name)).toEqual(['house-rules']);
   });
 
-  it('maps a stored om-* importedSkills list onto the xez-* names', () => {
+  it('maps a stored xez-* importedSkills list onto the xez-* names', () => {
     // A curated list written before the default repo moved to `qodeca/xezar-skills` names the
-    // old `om-*` skills; the renamed catalog must still show the matching `xez-*` skills.
+    // old `xez-*` skills; the renamed catalog must still show the matching `xez-*` skills.
     const skills = [teamSkill('xez-fix', XEZ), teamSkill('xez-code-review', XEZ)];
-    expect(filterImportedTeamSkills(skills, new Set([XEZ]), ['om-fix']).map((s) => s.name)).toEqual([
+    expect(filterImportedTeamSkills(skills, new Set([XEZ]), ['xez-fix']).map((s) => s.name)).toEqual([
       'xez-fix',
     ]);
   });
 
   it('gates nothing when the gated set is empty (repo configured its own skillsRepos)', () => {
-    const skills = [teamSkill('pr-create', OM)];
+    const skills = [teamSkill('pr-create', TEAM_REPO)];
     expect(filterImportedTeamSkills(skills, new Set(), []).map((s) => s.name)).toEqual(['pr-create']);
   });
 });
@@ -137,30 +137,30 @@ describe('discoverSkills local entrypoints', () => {
     const repoRoot = await mkdtemp(join(tmpdir(), 'xezar-skills-'));
     tempDirs.push(repoRoot);
     const skillsDir = join(repoRoot, '.xezar/skills');
-    await mkdir(join(skillsDir, 'om-example/references'), { recursive: true });
+    await mkdir(join(skillsDir, 'xez-example/references'), { recursive: true });
     await mkdir(join(skillsDir, 'legacy/nested'), { recursive: true });
     await writeFile(join(skillsDir, 'flat.md'), '# Flat skill');
     await writeFile(join(skillsDir, 'legacy/nested/legacy.md'), '# Legacy skill');
-    await writeFile(join(skillsDir, 'om-example/SKILL.md'), '# Example skill');
-    await writeFile(join(skillsDir, 'om-example/references/agentic-setup.md'), '# Supporting doc');
+    await writeFile(join(skillsDir, 'xez-example/SKILL.md'), '# Example skill');
+    await writeFile(join(skillsDir, 'xez-example/references/agentic-setup.md'), '# Supporting doc');
 
     const skills = (await discoverSkills(repoRoot)).filter((skill) => skill.source === 'xezar');
 
-    expect(skills.map((skill) => skill.name)).toEqual(['flat', 'legacy', 'om-example']);
+    expect(skills.map((skill) => skill.name)).toEqual(['flat', 'legacy', 'xez-example']);
     expect(skills.some((skill) => skill.name === 'agentic-setup')).toBe(false);
   });
 
   it('follows npx-skills directory mirrors and deduplicates them by skill name', async () => {
     const repoRoot = await mkdtemp(join(tmpdir(), 'xezar-skills-'));
     tempDirs.push(repoRoot);
-    const canonicalDir = join(repoRoot, '.agents/skills/om-example');
+    const canonicalDir = join(repoRoot, '.agents/skills/xez-example');
     const mirrorRoot = join(repoRoot, '.claude/skills');
     await mkdir(canonicalDir, { recursive: true });
     await mkdir(mirrorRoot, { recursive: true });
     await writeFile(join(canonicalDir, 'SKILL.md'), '# Example skill');
-    await symlink('../../.agents/skills/om-example', join(mirrorRoot, 'om-example'), 'dir');
+    await symlink('../../.agents/skills/xez-example', join(mirrorRoot, 'xez-example'), 'dir');
 
-    const skills = (await discoverSkills(repoRoot)).filter((skill) => skill.name === 'om-example');
+    const skills = (await discoverSkills(repoRoot)).filter((skill) => skill.name === 'xez-example');
 
     expect(skills).toHaveLength(1);
     expect(skills[0]?.source).toBe('agents');

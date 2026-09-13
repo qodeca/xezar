@@ -596,7 +596,7 @@ describe('legacy cockpit retirement (R7)', () => {
     // so a full document load of /new gets the shell like every other route. Without a valid
     // key nothing starts — this link only prefills (the full auto-start matrix runs against
     // the dry-run server in new-task.e2e.ts).
-    browser.goto(baseUrl + '/new?skill=om-code-review&ref=hello&auto=1')
+    browser.goto(baseUrl + '/new?skill=xez-code-review&ref=hello&auto=1')
 
     expect(browser.evaluate('document.getElementById("root") !== null')).toBe(true)
     expect(browser.evaluate('document.getElementById("brand") === null')).toBe(true)

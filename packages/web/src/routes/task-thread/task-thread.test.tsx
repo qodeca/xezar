@@ -677,7 +677,7 @@ describe('ThreadView', () => {
   })
 
   /**
-   * #526 at the surface the user actually reported: run `6ab44452` (`om-prepare-issue`) created
+   * #526 at the surface the user actually reported: run `6ab44452` (`xez-prepare-issue`) created
    * issue #524, declared `XEZ:ISSUE` and no `XEZ:PR`, and had one incidental PR (#454) scraped
    * out of its duplicate-search output. The footer linked #454 and never linked #524. Asserting
    * on the rendered anchors — not just the helpers — is what makes deleting or miswiring the

@@ -42,7 +42,7 @@ const plan: PendingPlan = {
 
 const THREE_STEPS: WorkflowStepDef[] = [
   { id: 'plan', name: 'Plan it', prompt: 'plan {{task}}' },
-  { id: 'build', name: 'Build it', skill: 'om-implement', prompt: 'do it' },
+  { id: 'build', name: 'Build it', skill: 'xez-implement', prompt: 'do it' },
   { id: 'verify', name: 'Verify it', command: 'npm test' },
 ]
 
@@ -190,7 +190,7 @@ describe('PlanReview step cards', () => {
     expect(steps()[0]!.textContent).toContain('01')
     expect(steps()[2]!.textContent).toContain('03')
     expect(steps()[1]!.querySelector('[data-slot="plan-badge-skill"]')?.textContent).toBe(
-      'om-implement'
+      'xez-implement'
     )
     expect(steps()[2]!.querySelector('[data-slot="plan-badge-check"]')?.textContent).toBe('check')
     // A plain prompt step wears neither badge.

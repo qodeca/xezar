@@ -25,7 +25,7 @@ const TODO_FULL: TodoItem = {
   summary: 'Open a follow-up PR for the flaky retry test',
   action: 'follow-up',
   prUrl: 'https://github.com/acme/demo/pull/7',
-  suggestedSkill: 'om-fix',
+  suggestedSkill: 'xez-fix',
 }
 
 /** Its source task is NOT in `/api/v1/runs` — the legacy "source task deleted" case. */
@@ -238,7 +238,7 @@ describe('the inbox card list', () => {
     const card = cards()[0]!
     expect(card.querySelector('[data-slot="todo-summary"]')?.textContent).toBe(TODO_FULL.summary)
     expect(card.querySelector('[data-slot="todo-meta"]')?.textContent).toContain('follow-up')
-    expect(card.querySelector('[data-slot="todo-skill"]')?.textContent).toBe('skill: om-fix')
+    expect(card.querySelector('[data-slot="todo-skill"]')?.textContent).toBe('skill: xez-fix')
     const pr = card.querySelector<HTMLAnchorElement>('[data-slot="todo-pr"]')
     expect(pr?.getAttribute('href')).toBe(TODO_FULL.prUrl)
     expect(pr?.getAttribute('rel')).toContain('noopener')

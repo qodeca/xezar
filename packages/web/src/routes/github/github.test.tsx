@@ -139,7 +139,7 @@ const WORKFLOWS: WorkflowsResponse = {
 // Server order is global-first ON PURPOSE: the dropdown must reorder project-first (#377).
 const SKILLS: Skill[] = [
   { name: 'g-review', description: 'global review', body: '', path: '/g/g-review.md', source: 'global' },
-  { name: 'om-fix', description: 'project fixer', body: '', path: '/p/om-fix.md', source: 'ai' },
+  { name: 'xez-fix', description: 'project fixer', body: '', path: '/p/xez-fix.md', source: 'ai' },
   { name: 'team-x', description: 'team skill', body: '', path: '/t/team-x.md', source: 'team' },
 ]
 
@@ -1653,7 +1653,7 @@ describe('the hand-to-agent pickers (#385)', () => {
 
     // Server order was global-first; the menu reorders project skills first, emphasized.
     const options = [...document.querySelectorAll<HTMLElement>('[data-slot="gh-skill-option"]')]
-    expect(options.map((option) => option.dataset.skill)).toEqual(['om-fix', 'team-x', 'g-review'])
+    expect(options.map((option) => option.dataset.skill)).toEqual(['xez-fix', 'team-x', 'g-review'])
     expect(options[0]?.querySelector('.font-semibold')).not.toBeNull()
     expect(options[1]?.querySelector('.font-semibold')).not.toBeNull()
     expect(options[2]?.querySelector('.font-semibold')).toBeNull()
@@ -1666,7 +1666,7 @@ describe('the hand-to-agent pickers (#385)', () => {
         [...document.querySelectorAll<HTMLElement>('[data-slot="gh-skill-chip"]')].map(
           (chip) => chip.dataset.skill,
         ),
-      ).toEqual(['om-fix', 'g-review']),
+      ).toEqual(['xez-fix', 'g-review']),
     )
     expect(document.querySelector('[data-slot="gh-skills-trigger"]')?.textContent).toContain('· 2')
 
@@ -1678,7 +1678,7 @@ describe('the hand-to-agent pickers (#385)', () => {
     expect(document.querySelectorAll('[data-slot="gh-skill-chip"]')).toHaveLength(2)
 
     // A chip's × deselects without the dropdown.
-    fireEvent.click(document.querySelector('[data-slot="gh-skill-chip"][data-skill="om-fix"]')!)
+    fireEvent.click(document.querySelector('[data-slot="gh-skill-chip"][data-skill="xez-fix"]')!)
     await waitFor(() =>
       expect(document.querySelectorAll('[data-slot="gh-skill-chip"]')).toHaveLength(1),
     )
@@ -1694,23 +1694,23 @@ describe('the hand-to-agent pickers (#385)', () => {
     )
 
     fireEvent.click(
-      document.querySelector('[data-slot="gh-skill-option"][data-skill="om-fix"] [data-slot="gh-skill-view"]')!,
+      document.querySelector('[data-slot="gh-skill-option"][data-skill="xez-fix"] [data-slot="gh-skill-view"]')!,
     )
     // The Settings catalog's detail component, as a dialog — name, source tag, path.
     await waitFor(() =>
       expect(document.querySelector('[data-slot="skill-preview"] [data-slot="skill-detail"]')).not.toBeNull(),
     )
     const preview = document.querySelector('[data-slot="skill-preview"]')!
-    expect(preview.textContent).toContain('om-fix')
+    expect(preview.textContent).toContain('xez-fix')
     expect(preview.textContent).toContain('project fixer')
-    expect(preview.querySelector('[data-slot="skill-path"]')?.textContent).toContain('/p/om-fix.md')
+    expect(preview.querySelector('[data-slot="skill-path"]')?.textContent).toContain('/p/xez-fix.md')
     // Viewing is read-only: nothing got selected (no chip, no count on the trigger).
     expect(document.querySelectorAll('[data-slot="gh-skill-chip"]')).toHaveLength(0)
     expect(document.querySelector('[data-slot="gh-skills-trigger"]')?.textContent).not.toContain('·')
     // The escape hatch into the browsable Skills catalog.
     expect(
       preview.querySelector('[data-slot="skill-preview-manage"]')?.getAttribute('href'),
-    ).toBe('/skills?skill=om-fix')
+    ).toBe('/skills?skill=xez-fix')
   })
 
   it('multi-keyword search: "fix project" narrows the skills list to matches (#411)', async () => {
@@ -1722,12 +1722,12 @@ describe('the hand-to-agent pickers (#385)', () => {
       expect(document.querySelectorAll('[data-slot="gh-skill-option"]')).toHaveLength(3),
     )
 
-    // "fix project" should match om-fix (name splits "om","fix" + description "project fixer")
+    // "fix project" should match xez-fix (name splits "om","fix" + description "project fixer")
     fireEvent.change(screen.getByPlaceholderText('search skills…'), { target: { value: 'fix project' } })
     await waitFor(() => {
       const visible = [...document.querySelectorAll('[data-slot="gh-skill-option"]')]
       expect(visible).toHaveLength(1)
-      expect(visible[0]?.getAttribute('data-skill')).toBe('om-fix')
+      expect(visible[0]?.getAttribute('data-skill')).toBe('xez-fix')
     })
   })
 })
@@ -1788,7 +1788,7 @@ describe('the hand-to-agent run (legacy three-way body)', () => {
     await waitFor(() => expect(document.querySelector('[data-workflow="ship-it"]')).not.toBeNull())
     fireEvent.click(document.querySelector('[data-workflow="ship-it"]')!)
 
-    await selectSkill('om-fix')
+    await selectSkill('xez-fix')
 
     fireEvent.click(screen.getByRole('button', { name: /Run agent on this issue/ }))
 
@@ -1797,14 +1797,14 @@ describe('the hand-to-agent run (legacy three-way body)', () => {
     )
     const posted = sent.find((request) => request.method === 'POST' && request.path === '/api/v1/runs')
     expect(posted?.body).toMatchObject({ workflow: 'ship-it' })
-    expect((posted?.body as { task: string }).task).toContain('Use these skills where relevant: om-fix.')
+    expect((posted?.body as { task: string }).task).toContain('Use these skills where relevant: xez-fix.')
   })
 
   it('skills without a workflow become the steps chain (spec 008)', async () => {
     const sent = stubFetch()
     await openDetail()
 
-    await selectSkill('om-fix')
+    await selectSkill('xez-fix')
     fireEvent.click(document.querySelector('[data-slot="gh-skill-option"][data-skill="g-review"]')!)
 
     fireEvent.click(screen.getByRole('button', { name: /Run agent on this issue/ }))
@@ -1816,7 +1816,7 @@ describe('the hand-to-agent run (legacy three-way body)', () => {
       ?.body as { workflow?: string; steps?: Array<{ id: string; skill: string; prompt: string }> }
     expect(body.workflow).toBeUndefined()
     expect(body.steps).toEqual([
-      { id: 'om-fix', name: 'om-fix', skill: 'om-fix', prompt: '{{task}}' },
+      { id: 'xez-fix', name: 'xez-fix', skill: 'xez-fix', prompt: '{{task}}' },
       { id: 'g-review', name: 'g-review', skill: 'g-review', prompt: '{{task}}' },
     ])
   })
@@ -1850,8 +1850,8 @@ describe('the skills dropdown frequency sort (#408 item 1, re-tiered by #519)', 
     )
     const options = [...document.querySelectorAll<HTMLElement>('[data-slot="gh-skill-option"]')]
     // Most used leads (#519): team-x (9 picks) then g-review (1 pick), BOTH above the unused
-    // project skill om-fix — usage now outranks locality instead of only reordering within it.
-    expect(options.map((option) => option.dataset.skill)).toEqual(['team-x', 'g-review', 'om-fix'])
+    // project skill xez-fix — usage now outranks locality instead of only reordering within it.
+    expect(options.map((option) => option.dataset.skill)).toEqual(['team-x', 'g-review', 'xez-fix'])
   })
 
   it('no usage stats at all falls back to the plain project-first order (#2)', async () => {
@@ -1863,16 +1863,16 @@ describe('the skills dropdown frequency sort (#408 item 1, re-tiered by #519)', 
       expect(document.querySelectorAll('[data-slot="gh-skill-option"]')).toHaveLength(3),
     )
     const options = [...document.querySelectorAll<HTMLElement>('[data-slot="gh-skill-option"]')]
-    expect(options.map((option) => option.dataset.skill)).toEqual(['om-fix', 'team-x', 'g-review'])
+    expect(options.map((option) => option.dataset.skill)).toEqual(['xez-fix', 'team-x', 'g-review'])
   })
 
   it('a successful hand-off run bumps skillUsage for every selected skill', async () => {
     const sent = stubFetch({
-      'GET /api/v1/ui-state': () => jsonResponse({ skillUsage: { 'om-fix': 2 } }),
+      'GET /api/v1/ui-state': () => jsonResponse({ skillUsage: { 'xez-fix': 2 } }),
     })
     await openDetail()
 
-    await selectSkill('om-fix')
+    await selectSkill('xez-fix')
     fireEvent.click(document.querySelector('[data-slot="gh-skill-option"][data-skill="g-review"]')!)
 
     fireEvent.click(screen.getByRole('button', { name: /Run agent on this issue/ }))
@@ -1883,7 +1883,7 @@ describe('the skills dropdown frequency sort (#408 item 1, re-tiered by #519)', 
       ),
     )
     const put = sent.find((request) => request.method === 'PUT' && request.path === '/api/v1/ui-state')
-    expect(put?.body).toMatchObject({ skillUsage: { 'om-fix': 3, 'g-review': 1 } })
+    expect(put?.body).toMatchObject({ skillUsage: { 'xez-fix': 3, 'g-review': 1 } })
   })
 
   it('a run started while ui-state is unavailable skips the bump rather than wiping the map', async () => {
@@ -1897,7 +1897,7 @@ describe('the skills dropdown frequency sort (#408 item 1, re-tiered by #519)', 
     })
     await openDetail()
 
-    await selectSkill('om-fix')
+    await selectSkill('xez-fix')
 
     fireEvent.click(screen.getByRole('button', { name: /Run agent on this issue/ }))
     // The run itself still goes through — persistence is fire-and-forget.
@@ -1936,7 +1936,7 @@ describe('the remembered last selection (#408 item 3)', () => {
     await waitFor(() => expect(document.querySelector('[data-workflow="ship-it"]')).not.toBeNull())
     fireEvent.click(document.querySelector('[data-workflow="ship-it"]')!)
 
-    await selectSkill('om-fix')
+    await selectSkill('xez-fix')
     await waitFor(() =>
       expect(document.querySelectorAll('[data-slot="gh-skill-chip"]')).toHaveLength(1),
     )
@@ -1956,7 +1956,7 @@ describe('the remembered last selection (#408 item 3)', () => {
       [...document.querySelectorAll<HTMLElement>('[data-slot="gh-skill-chip"]')].map(
         (chip) => chip.dataset.skill,
       ),
-    ).toEqual(['om-fix'])
+    ).toEqual(['xez-fix'])
   })
 })
 
@@ -2010,14 +2010,14 @@ describe('a remembered pick the catalog no longer has (#408)', () => {
   })
 
   it('a deleted skill is dropped from the chips, the counter AND the POST — never shown but unsent', async () => {
-    writeFollowupSelection({ workflow: null, skills: ['om-fix', 'deleted-skill'] })
+    writeFollowupSelection({ workflow: null, skills: ['xez-fix', 'deleted-skill'] })
     const sent = stubFetch()
     await openDetail()
 
     await waitFor(() => expect(document.querySelectorAll('[data-slot="gh-skill-chip"]')).toHaveLength(1))
     expect(
       [...document.querySelectorAll<HTMLElement>('[data-slot="gh-skill-chip"]')].map((chip) => chip.dataset.skill),
-    ).toEqual(['om-fix'])
+    ).toEqual(['xez-fix'])
     // The counter must agree with the chips and the POST — not report the phantom.
     expect(document.querySelector('[data-slot="gh-skills-trigger"]')?.textContent).toContain('· 1')
 
@@ -2028,7 +2028,7 @@ describe('a remembered pick the catalog no longer has (#408)', () => {
     const body = sent.find((request) => request.method === 'POST' && request.path === '/api/v1/runs')?.body as {
       steps?: Array<{ skill: string }>
     }
-    expect(body.steps?.map((step) => step.skill)).toEqual(['om-fix'])
+    expect(body.steps?.map((step) => step.skill)).toEqual(['xez-fix'])
   })
 })
 
@@ -2380,7 +2380,7 @@ describe('templates assigned to a skill auto-apply when a skill is picked', () =
     'GET /api/v1/ui-state': () =>
       jsonResponse({
         promptTemplates: [
-          { id: 'assigned', label: 'Fix rules', text: 'Follow the fix rules.', skills: ['om-fix'] },
+          { id: 'assigned', label: 'Fix rules', text: 'Follow the fix rules.', skills: ['xez-fix'] },
           { id: 'manual', label: 'Manual', text: 'Never auto.' },
         ],
       }),
@@ -2401,7 +2401,7 @@ describe('templates assigned to a skill auto-apply when a skill is picked', () =
     stubFetch(ASSIGNED)
     await openDetail()
 
-    await pickSkill('om-fix')
+    await pickSkill('xez-fix')
     // Stacked BELOW the pre-filled reference (#524) — auto-apply adds to the item context, it
     // never replaces it, the same rule the composed task text follows.
     await waitFor(() =>
@@ -2416,7 +2416,7 @@ describe('templates assigned to a skill auto-apply when a skill is picked', () =
     stubFetch(ASSIGNED)
     await openDetail()
 
-    await pickSkill('om-fix')
+    await pickSkill('xez-fix')
     await waitFor(() =>
       expect(screen.getByLabelText('Custom prompt')).toHaveProperty(
         'value',
@@ -2424,7 +2424,7 @@ describe('templates assigned to a skill auto-apply when a skill is picked', () =
       ),
     )
 
-    await pickSkill('om-fix')
+    await pickSkill('xez-fix')
     // Back to the pre-fill, NOT to empty: deselecting a skill must not strip the item context.
     await waitFor(() => expect(screen.getByLabelText('Custom prompt')).toHaveProperty('value', BASE))
   })
@@ -2434,11 +2434,11 @@ describe('templates assigned to a skill auto-apply when a skill is picked', () =
     await openDetail()
 
     fireEvent.change(screen.getByLabelText('Custom prompt'), { target: { value: 'my own words' } })
-    await pickSkill('om-fix')
+    await pickSkill('xez-fix')
 
     // Give the effect every chance to misbehave before asserting it did not.
     await waitFor(() =>
-      expect(document.querySelector('[data-slot="gh-skill-chip"][data-skill="om-fix"]')).not.toBeNull(),
+      expect(document.querySelector('[data-slot="gh-skill-chip"][data-skill="xez-fix"]')).not.toBeNull(),
     )
     expect(screen.getByLabelText('Custom prompt')).toHaveProperty('value', 'my own words')
   })
