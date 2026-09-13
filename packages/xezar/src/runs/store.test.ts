@@ -1,10 +1,22 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RunStore } from './store.ts';
 
 import type { RunRecord } from './store.ts';
+
+// RunStore intentionally debounces index writes. Most cases in this file exercise
+// in-memory behaviour and remove their fixture directory before that production
+// timer fires; under a loaded full-suite run, those orphaned timers could then log
+// failed writes while Vitest was closing the worker RPC. Keep the debounce pending
+// inside each case and discard it at the test boundary. Persistence cases call
+// `flush()` explicitly, so their observable write contract remains exercised.
+beforeEach(() => vi.useFakeTimers());
+afterEach(() => {
+  vi.clearAllTimers();
+  vi.useRealTimers();
+});
 
 /** A minimal pre-#389 record, exactly as an old runs.json holds it — no
  *  titleSummary, no diffStat. Loading it must keep working (additive proof). */
