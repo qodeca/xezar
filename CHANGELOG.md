@@ -32,6 +32,7 @@
   `pre-rename issue n` text across the maintained documents.
 
 ## 🚀 CI/CD & Infrastructure
+- 🚀 Add an opt-in pi real-model MCP harness that judges a delivered event by its exact nonce/cursor acknowledgement, with a scripted request-only negative control. (#373)
 - 🚀 **The pipeline files moved to `.xezar/pipeline/`.** (#396) `.ai/agentic.config.json` is now
   `.xezar/pipeline/config.json` and `.ai/trackers/github.md` is `.xezar/pipeline/trackers/github.md`;
   the `.ai/` directory is gone from the repository, and `pipeline` joined the fingerprinted kit set

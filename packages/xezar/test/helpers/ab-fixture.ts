@@ -115,6 +115,8 @@ export const XEZAR_VERSION = '0.0.0-ab';
 export type Side = 'a' | 'b';
 
 export interface AbWorldOptions {
+  /** Integration-only context wiring/observation, before the real registry tool runs. */
+  toolContext?: (name: string, args: unknown, ctx: McpToolContext) => McpToolContext;
   /** Open one real MCP socket per project and serve the registry tools on it. Default true. */
   sockets?: boolean;
   /** Seed A with the records a copied or hand-edited `.local/xezar` produces. Default false. */
@@ -572,7 +574,8 @@ export async function createAbWorld(options: AbWorldOptions = {}): Promise<AbWor
     defineTool({
       ...tool,
       call: async (args, ctx) => {
-        const result = await tool.call(args, { ...ctx, service: recordingService.entry } as McpToolContext);
+        const wiredContext = { ...ctx, service: recordingService.entry } as McpToolContext;
+        const result = await tool.call(args, options.toolContext?.(tool.name, args, wiredContext) ?? wiredContext);
         // The door's audit record (D-06 § 10): who, what, how it settled — a digest, never the args.
         sideOf(ctx.project)
           ?.audit.channel('mcp')

@@ -44,6 +44,32 @@ during the run showed exactly one modified file, `acceptance-isolation.test.ts` 
 an A-row verdict. They matter to clause 5 only, and clause 5 is recorded against the branch head that
 carries them. Nothing else on this page rests on a revision other than `ed579e63`.
 
+## Post-release pi real-model measurement (#373)
+
+This addendum updates only pi's real-model clause; the release measurements and the other
+clients' rows below remain historical evidence on `ed579e63`. It does not claim that all
+acceptance criteria passed together on a new revision.
+
+| Criterion | Client | Measurement | Verdict |
+| --- | --- | --- | --- |
+| **A-19 — real-model clause** | pi | Manual local-endpoint attempt; exact nonce/cursor MCP ack required within 120 s. Stamp `2026-09-13T16-07-07.726Z`: scripted control 1 request / 0 acks over 45 s; unauthenticated endpoint 1 request / 0 acks (no inference). | **NOT-RUN / BLOCKED** — endpoint answered HTTP 401: no key supplied; leg skipped |
+| **A-23 — pi reaction clause** | pi | Setup/exclusivity retain their historical verdicts below; A-19 real-model measurement is NOT-RUN. | **NOT-RUN / BLOCKED** — owner will supply the key and run the manual leg |
+
+Evidence: `.local/qa/mcp-real-model/2026-09-13T16-07-07.726Z/` (`results.json`,
+`real-pi.ndjson`, `ack-ledger.json`, `requests.json`, and each leg's delivery/command files),
+preserved in primary task `543d6d0b-9dd7-4a12-b61f-6517919d8cd1/testing/mcp-real-model/`.
+Measured on base `dc4784ab566b90b7aef7b5a35786af3223e414a9` with a dirty test-only tree;
+`results.json` records source hashes and the exact invocation. The subsequent service-hook
+positive control is a fixture test, not a new live-model measurement.
+
+The unauthenticated endpoint request is not a measurement of the model. The owner corrected
+its initial FAILED classification to NOT-RUN; `results.json` preserves that correction and its
+original classification. The transcript records `401 Unauthorized`;
+authentication must be supplied through `XEZ_REAL_MODEL_API_KEY` before inference can be
+measured. No personal pi configuration or credentials were read. A request count alone and a
+model's “I reacted” text remain insufficient to pass. This does not change Clause 2's NOT MET
+verdict or convert any claude-code, codex or opencode result.
+
 ## How to read it
 
 | Label | Meaning |
