@@ -303,8 +303,13 @@ client writes the correlated `extension_ui_response`, and it carries no `timeout
 guessing. When `SessionOptions.autonomous` is set the runner refuses at once
 (`Deny` when the dialog offers it, `confirmed: false` for a confirm, else
 `cancelled`) and records the refusal as a note — never a silent approval, never
-an unbounded wait. Dialogs the card cannot carry (`input`, `editor`, a `select`
-outside 2–4 options) are cancelled on arrival, a dialog still pending at `end()`
+an unbounded wait. pi puts no length limit on a choice and the card caps a label
+at 60 characters, so the card label and the wire value are kept as an
+index-aligned pair: a long choice is shown shortened with an ellipsis and the
+click still sends pi the full value, and the single-select reply is never split
+on a comma (`Allow, once` is one choice). Dialogs the card cannot carry
+(`input`, `editor`, a `select` outside 2–4 options, or one whose choices would
+render as the same label) are cancelled on arrival, a dialog still pending at `end()`
 or `interrupt()` is cancelled first, fire-and-forget methods get no response, and
 `notify` becomes a transcript note. A
 malformed marker degrades to plain text — the prose fallback is never made

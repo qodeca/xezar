@@ -576,6 +576,48 @@ describe('pi extension dialogs reach the cockpit and are answered on the wire (#
     expect(events.some((event) => event.type === 'note' && /answered "Deny"/.test(event.message))).toBe(true);
   });
 
+  it('sends pi the exact choice behind the card label — a comma inside it and a label shortened to fit both survive (#411 review)', async () => {
+    const fake = scriptedPi();
+    spawnHook.override = () => fake.child;
+    const uiEvents: UiEvent[] = [];
+    const session = new PiRunner({ bin: 'pi', timeoutMs: 20_000 }).startSession(
+      { userPrompt: 'CALL health', cwd: process.cwd() },
+      undefined,
+      { onUiEvent: (event) => uiEvents.push(event) },
+    );
+    const long = 'Allow for the whole session and never ask again'.padEnd(61, '.');
+    expect(long).toHaveLength(61);
+    fake.write(
+      JSON.stringify({ type: 'extension_ui_request', id: 'dlg-2', method: 'select', title: 'MCP: xezar wants to run health', options: ['Allow, once', long, 'Deny'] }),
+    );
+    await tick();
+    const ask = uiEvents.find((event) => event.type === 'ask.requested');
+    if (!ask || ask.type !== 'ask.requested') throw new Error('expected an ask card');
+    const labels = ask.questions[0]?.options.map((option) => option.label) ?? [];
+    expect(labels[0]).toBe('Allow, once');
+    expect(labels[1]).toHaveLength(60);
+
+    // The card's reply seam sends the label it showed; pi must get the value it offered.
+    expect(session.sendMessage([{ type: 'text', text: `Approval: ${labels[1]}` }])).toBe(true);
+    expect(fake.written().filter((frame) => frame.type === 'extension_ui_response')).toEqual([
+      { type: 'extension_ui_response', id: 'dlg-2', value: long },
+    ]);
+
+    fake.write(
+      JSON.stringify({ type: 'extension_ui_request', id: 'dlg-3', method: 'select', title: 'MCP: xezar wants to run health', options: ['Allow, once', long, 'Deny'] }),
+    );
+    await tick();
+    expect(session.sendMessage([{ type: 'text', text: 'Approval: Allow, once' }])).toBe(true);
+    expect(fake.written().filter((frame) => frame.type === 'extension_ui_response').at(-1)).toEqual({
+      type: 'extension_ui_response',
+      id: 'dlg-3',
+      value: 'Allow, once',
+    });
+    fake.write(JSON.stringify({ type: 'agent_settled' }));
+    fake.finish(0);
+    await session.result;
+  });
+
   it('refuses at once in an autonomous session, and records the refusal', async () => {
     const fake = scriptedPi();
     spawnHook.override = () => fake.child;

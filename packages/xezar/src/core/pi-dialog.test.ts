@@ -38,6 +38,63 @@ describe('pi extension dialogs (#369)', () => {
     });
   });
 
+  // #411 review, finding 1: pi's RPC contract puts no length or content limit on `options`,
+  // while the ask card caps a label at 60 characters and the card's reply seam joins labels
+  // with ", ". The card label and the wire value are therefore two different strings, and
+  // the mapping between them must be lossless: a click on the label pi's choice was shown
+  // as must send pi that exact choice, never a cancel.
+  it('answers a choice whose text holds a comma with pi’s exact value — the reply is single-select and is never comma-split', () => {
+    const frame = readPiDialog({ ...APPROVAL, options: ['Allow, once', 'Allow, for session', 'Deny'] });
+    if (frame.kind !== 'dialog') throw new Error('expected a dialog');
+    expect(frame.dialog.question.options.map((o) => o.label)).toEqual(['Allow, once', 'Allow, for session', 'Deny']);
+    expect(answerPiDialog(frame.dialog, 'Approval: Allow, once')).toEqual({
+      matched: 'Allow, once',
+      response: { type: 'extension_ui_response', id: 'a3c1e8f0-1', value: 'Allow, once' },
+    });
+    expect(answerPiDialog(frame.dialog, 'Approval: Allow, for session').response).toEqual({
+      type: 'extension_ui_response',
+      id: 'a3c1e8f0-1',
+      value: 'Allow, for session',
+    });
+  });
+
+  it('keeps a 60-character choice verbatim, and shortens a 61-character one on the card but sends pi the full value', () => {
+    const sixty = `Allow the tool to run once, and never ask about it again t`.padEnd(60, 'x');
+    const sixtyOne = `Allow the tool to run for the whole session, without asking`.padEnd(61, 'y');
+    expect(sixty).toHaveLength(60);
+    expect(sixtyOne).toHaveLength(61);
+    const frame = readPiDialog({ ...APPROVAL, options: [sixty, sixtyOne, 'Deny'] });
+    if (frame.kind !== 'dialog') throw new Error('expected a dialog');
+    const labels = frame.dialog.question.options.map((o) => o.label);
+    // The boundary: exactly 60 is what the card can carry, so it is shown untouched.
+    expect(labels[0]).toBe(sixty);
+    // One over: the card label is shortened to fit, and says so.
+    expect(labels[1]).toHaveLength(60);
+    expect(labels[1]?.endsWith('…')).toBe(true);
+    expect(sixtyOne.startsWith(labels[1]!.slice(0, -1))).toBe(true);
+    // Clicking either label sends pi the choice it offered, not the label.
+    expect(answerPiDialog(frame.dialog, `Approval: ${labels[0]}`).response).toEqual({
+      type: 'extension_ui_response',
+      id: 'a3c1e8f0-1',
+      value: sixty,
+    });
+    expect(answerPiDialog(frame.dialog, `Approval: ${labels[1]}`)).toEqual({
+      matched: sixtyOne,
+      response: { type: 'extension_ui_response', id: 'a3c1e8f0-1', value: sixtyOne },
+    });
+    // A free-form reply may still name the full value.
+    expect(answerPiDialog(frame.dialog, sixtyOne).matched).toBe(sixtyOne);
+  });
+
+  it('cancels a select whose choices cannot be told apart on the card, instead of showing a card that cannot answer', () => {
+    // Two 61-character choices that differ only after the card's cut would render as one label.
+    const stem = 'Allow this tool to run once, and never ask about it again x'.padEnd(59, 'x');
+    const frame = readPiDialog({ ...APPROVAL, options: [`${stem}AA`, `${stem}BB`, 'Deny'] });
+    expect(frame).toEqual({ kind: 'unsupported', id: 'a3c1e8f0-1', method: 'select', title: APPROVAL.title });
+    // The same for two choices pi sent twice: the card could not say which one was clicked.
+    expect(readPiDialog({ ...APPROVAL, options: ['Allow', 'Allow', 'Deny'] }).kind).toBe('unsupported');
+  });
+
   it('dismisses the dialog rather than guessing when the reply names no option', () => {
     const frame = readPiDialog(APPROVAL);
     if (frame.kind !== 'dialog') throw new Error('expected a dialog');
