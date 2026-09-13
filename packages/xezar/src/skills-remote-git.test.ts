@@ -146,8 +146,17 @@ describe('isSafeRef', () => {
 
 // ---- the real-git fixture -----------------------------------------------------------------
 
-/** A fixed identity, so every fixture commit works on a bare CI machine. */
-const GIT_ID = ['-c', 'user.email=t@test', '-c', 'user.name=t'];
+/**
+ * A fixed identity, so every fixture commit works on a bare CI machine.
+ *
+ * `maintenance.auto=false` + `gc.auto=0` keep `git commit` from scheduling a detached
+ * background `git maintenance run --auto` on the fixture source repo. That process creates
+ * and then removes `objects/maintenance.lock`, which races `git clone --bare`'s per-file
+ * copy of the source `objects/` directory: if the lock vanishes between the iterator's
+ * stat and the copy, the clone dies with `failed to copy file to '.../objects/maintenance.lock'`
+ * (#326). The fixture's commits are the only thing that can arm it.
+ */
+const GIT_ID = ['-c', 'user.email=t@test', '-c', 'user.name=t', '-c', 'maintenance.auto=false', '-c', 'gc.auto=0'];
 
 function git(cwd: string, ...args: string[]): string {
   return execFileSync('git', [...GIT_ID, ...args], { cwd, encoding: 'utf8', stdio: 'pipe' });

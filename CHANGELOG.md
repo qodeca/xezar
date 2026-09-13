@@ -22,6 +22,14 @@
   `pre-rename issue n` text across the maintained documents.
 
 ## 🚀 CI/CD & Infrastructure
+- 🐛 **Two flaky tests no longer race a live child process during their own teardown.** (#326, #346)
+  `skills-remote-git.test.ts`'s fixture commits armed git's detached auto-maintenance, whose
+  `objects/maintenance.lock` vanished between `git clone --bare`'s stat and copy of the source
+  `objects/` directory — the fixture now commits with `-c maintenance.auto=false -c gc.auto=0`.
+  `mcp-upgrade.test.ts` (A-16) created a `mock:done` task and never waited for it, so the mock agent
+  CLI it spawned as a child of the cockpit kept appending `notes.md` to the project root after the
+  cockpit was SIGKILLed, colliding with the teardown `rm`; the test now waits for the run to reach a
+  terminal state before the cockpit is stopped. No product behaviour changed.
 - 🚀 Add an opt-in pi real-model MCP harness that judges a delivered event by its exact nonce/cursor acknowledgement, with a scripted request-only negative control. (#373)
 - 🚀 **The pipeline files moved to `.xezar/pipeline/`.** (#396) `.ai/agentic.config.json` is now
   `.xezar/pipeline/config.json` and `.ai/trackers/github.md` is `.xezar/pipeline/trackers/github.md`;
