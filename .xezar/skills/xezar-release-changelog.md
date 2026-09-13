@@ -61,7 +61,7 @@ Label to group, in this order of precedence, and exactly the headings CHANGELOG.
 | label `enhancement` | `## ✨ Features` |
 | label `refactor` | `## 🔧 Changed` |
 | label `documentation` | `## 📝 Specs & Documentation` |
-| label `testing`, or no category label and the diff only touches `.github/`, `scripts/`, `.xezar/`, `.ai/`, CI config or test files | `## 🚀 CI/CD & Infrastructure` |
+| label `testing`, or no category label and the diff only touches `.github/`, `scripts/`, `.xezar/`, CI config or test files | `## 🚀 CI/CD & Infrastructure` |
 | none of the above | choose from the conventional-commit type (`fix:` → Fixes, `feat:` → Features, `docs:` → Docs, `refactor:` → Changed, `ci:`/`chore:`/`test:` → CI/CD) and say in the report that the PR carried no category label |
 
 The table is classification precedence (a `bug` PR that is also breaking goes under Breaking). Emit only the groups that have bullets, in the file's house order: `## Highlights`, `## 💥 Breaking`, `## 🔒 Security`, `## ✨ Features`, `## 🐛 Fixes`, `## 🔧 Changed`, `## 📝 Specs & Documentation`, `## 🚀 CI/CD & Infrastructure` — the order the 0.11.1 and 0.10.x sections use. Highlights is three to five lines of prose naming what a user gets from this release, written from the bullets — no marketing, no claims the PRs do not support.

@@ -14,6 +14,19 @@
   the old collection (ungated) but not automatic updates. The cockpit, the `xezar serve` banner
   and `--help` name the new repository.
 
+## 📝 Specs & Documentation
+- 📝 **`SDLC.md`, `CODE_REVIEW.md` and `CONTRIBUTING.md` name the kit roles.** The process documents
+  name the `.xezar/workflows/*` workflows and `xezar-*` roles that run this repository's pipeline
+  instead of the previous team skill names, and the optional `xez-*` collection only where a
+  document describes it. Links to the pre-rename issue tracker were replaced with plain
+  `pre-rename issue n` text across the maintained documents.
+
+## 🚀 CI/CD & Infrastructure
+- 🚀 **The pipeline files moved to `.xezar/pipeline/`.** `.ai/agentic.config.json` is now
+  `.xezar/pipeline/config.json` and `.ai/trackers/github.md` is `.xezar/pipeline/trackers/github.md`;
+  the `.ai/` directory is gone from the repository, and `pipeline` joined the fingerprinted kit set
+  (`tree_fingerprint` in `.xezar/checks/lib/common.sh`).
+
 # 0.14.0 (2026-09-12)
 
 ## Highlights
@@ -518,7 +531,7 @@ project kit, plus the repository's first security policy, contribution path and 
   `docs/features/README.md` says up front that those files are the internal engineering and
   decision record, not a user guide. Four MCP records no longer claim the shipped feature is
   unimplemented, the README documents `XEZ_CODEX_REASONING`, and the README and `--help` say that
-  the default `open-mercato/skills` repository is not a leftover of the Cezar rename. (#287)
+  the default team skills repository is not a leftover of the Cezar rename. (#287)
 - 📝 **The MCP server has a reviewable API reference.** `docs/features/mcp-server/mcp-api.md`
   lists every tool, its arguments (the schema's own descriptions), the results each tool really
   returns — including where the tools' status words disagree — the two meanings of `origin`, and
@@ -532,7 +545,7 @@ project kit, plus the repository's first security policy, contribution path and 
   machine, then draws the line between "working as designed" and "a vulnerability", naming the
   guard in the code behind each claim. It sends reports to GitHub's private reporting and gives a
   fallback that discloses nothing. `CONTRIBUTING.md` is the short human path to a merged pull
-  request and says plainly that the `om-*` skills in `SDLC.md` are internal automation an outside
+  request and says plainly that the team skill pack named in `SDLC.md` is internal automation an outside
   contributor does not need. Also added: `CODE_OF_CONDUCT.md` (Contributor Covenant 3.0), bug and
   feature issue forms, a pull-request template, and a CI badge and project-status note in the
   README. (#283, #289)
@@ -821,9 +834,9 @@ addition is `--version` / `-v` on the CLI.
   keyword (`Closes #N`, `Fixes #N`, `Resolves #N`) still binds the task; a passing `#N` mention
   anywhere else in the text no longer does, so a brief that says "another task (issue #6) is
   editing it" stays unbound instead of attaching itself to issue 6. (#25)
-- 🐛 **The om-* skill pack finds its pipeline config and tracker descriptor again.** 0.11.0 moved
+- 🐛 **The team skill pack finds its pipeline config and tracker descriptor again.** 0.11.0 moved
   `.ai/agentic.config.json` into `.xezar/` and dropped `.ai/trackers/github.md`, but the pack's
-  skills hard-code those `.ai/` paths, so every om-* skill failed to find them. Both files are
+  skills hard-code those `.ai/` paths, so every skill in the pack failed to find them. Both files are
   back where the pack reads them, with the `tracker` key restored; everything Xezar-owned stays
   in `.xezar/`. (#24)
 - 🐛 **The canonical test gate now passes inside a xezar task worktree.** The shared test
@@ -894,10 +907,11 @@ nightly channel) is gone. Releases are manual, owner-triggered and go straight t
 [docs/publishing.md](docs/publishing.md).
 
 > **About the entries below.** Everything under this line was written while the product was
-> called Cezar, published first as `@pat-lewczuk/cezar` and then as `@open-mercato/cezar` with
-> the unscoped `cezar-cli` alias. Those names are left exactly as they were written. A changelog
-> records what actually shipped, and renaming it retroactively would make it describe releases
-> that never existed. The old packages remain on npm, unchanged.
+> called Cezar, published first as `@pat-lewczuk/cezar` and then as the pre-rename scoped package
+> with the unscoped `cezar-cli` alias. The entries keep the wording that was true when they were
+> written, because a changelog records what actually shipped; the one exception is that the
+> pre-rename organisation's name and its issue links were removed on 2026-09-13. The old packages
+> remain on npm, unchanged.
 
 ---
 

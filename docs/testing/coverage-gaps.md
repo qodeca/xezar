@@ -552,8 +552,8 @@ progress indicator. No fallback was needed.
   2026-09-09, `git log` held 39 commits, all dated 2026-09-07 to 2026-09-09, beginning with `1f729a7 chore: import cezar upstream
   baseline`. `git log --grep=fix -i` returns 13 commits; `--grep=regress -i` returns none. The
   incident numbers cited throughout `AGENTS.md` (#810, #811, #661, #591, #751, #694, #426, #430,
-  #472) do not resolve against `qodeca/xezar`; they resolve against the predecessor repository
-  `open-mercato/cezar`. The incidents are real and closed there – they were used as prose evidence
+  #472) do not resolve against `qodeca/xezar`; they are pre-rename issue numbers from the predecessor
+  repository. The incidents are real and closed there – they were used as prose evidence
   for the ranking, not as commits in this repository.
 - The thirteen `fix` commits that do exist cluster into three themes: test-gate and worktree
   isolation (3), release and CI mechanics (3), and cockpit behaviour (3). Two of those three themes
@@ -580,7 +580,7 @@ branches. It writes to `.local/coverage/mcp/` and exits non-zero naming each fil
 About 40 seconds on the machine that measured it; it does not run the other ~200 server test files,
 which is the point – coverage a module picks up from an unrelated test was never aimed at it.
 
-What it cannot see is listed in 10.4. It is not in CI and not in `.ai/agentic.config.json`. It was
+What it cannot see is listed in 10.4. It is not in CI and not in `.xezar/pipeline/config.json`. It was
 red on `main` from the day it shipped until #352; 10.9 is the re-measurement that turned it green,
 and making it a CI step is the sequenced work that record leaves open.
 
@@ -975,6 +975,6 @@ The two files #311 added are measured here for the first time: `leader-delivery.
 and `project-leaders.ts` (100.0 / 100.0).
 
 **Sequenced work this record leaves open.** `npm run test:coverage:mcp` may now become a CI step and
-an entry in `.ai/agentic.config.json` – 10.1 says it stays out "until it passes on `main`", and the
+an entry in `.xezar/pipeline/config.json` – 10.1 says it stays out "until it passes on `main`", and the
 condition is met. That is a separate PR: it needs the CI job written and its ~40 s measured on a
 2-core runner, and it should land before the next MCP PR meets a gate nobody runs for them.

@@ -32,9 +32,9 @@ Commit messages and pull-request titles follow [Conventional Commits](https://ww
 
 A good pull-request body says what changed, why, how you verified it, and whether it is risky. The template asks for exactly that. Put `Closes #<n>` in the body when it fixes an issue. For a user-visible change you may add a line under `# Unreleased` in [CHANGELOG.md](CHANGELOG.md); a maintainer will write it otherwise.
 
-## You do not need the `om-*` skills
+## You do not need the kit workflows
 
-[SDLC.md](SDLC.md) names `om-*` agent skills (`om-fix`, `om-code-review`, `om-approve-merge-pr`, …) as the actor at each stage. They are this project's internal automation. They are not in this repository, and an outside contributor does not need them. The human path through the same stages is:
+[SDLC.md](SDLC.md) names the kit workflows in `.xezar/workflows/` and their `xezar-*` roles (`bug-fix`, `code-review`, `integration`, …) as the actor at each stage. They are this project's internal automation, run through xezar itself, and an outside contributor does not need them. The human path through the same stages is:
 
 | SDLC stage | What you do |
 |---|---|

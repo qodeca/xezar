@@ -570,7 +570,7 @@ tree_fingerprint() {
     cd "$TASK_CWD" || return 1
     printf 'head=%s\n' "$(git rev-parse HEAD 2>/dev/null || printf 'no-head')"
     printf -- '--kit--\n'
-    for kit_part in checks skills workflows docs; do
+    for kit_part in checks skills workflows docs pipeline; do
       if [ -d ".xezar/$kit_part" ]; then
         find ".xezar/$kit_part" -type f -print | LC_ALL=C sort |
           while IFS= read -r kit_file; do shasum -a 256 "$kit_file"; done

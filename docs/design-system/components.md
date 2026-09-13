@@ -501,7 +501,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 
 ### SkillDetail, SkillEmptyHint, SkillsImportPanel
 
-- **Purpose**: the one skill detail rendering (`SkillDetailBody`, `SkillPreviewDialog`, `SkillSourceTag`); the shared "no skills yet" copy; the Open Mercato skills panel with its update card.
+- **Purpose**: the one skill detail rendering (`SkillDetailBody`, `SkillPreviewDialog`, `SkillSourceTag`); the shared "no skills yet" copy; the team skills panel with its update card.
 - **Source**: `packages/web/src/components/skill-detail.tsx`, `packages/web/src/components/skill-empty-hint.tsx`, `packages/web/src/components/skills-import-panel.tsx`.
 - **Look**: source tag `rounded-full border border-border px-2 py-px font-mono text-[10.5px]`; eyebrows `text-[11px] font-semibold tracking-[.04em] uppercase text-soft-foreground`; preview dialog `max-h-[80dvh] overflow-y-auto sm:max-w-2xl`; checkbox rows `rounded-md border border-border px-2.5 py-2 hover:bg-muted`, checked `bg-muted`.
 - **Accessibility**: the update card is `aria-live="polite"`; `aria-label="Filter skills"`.

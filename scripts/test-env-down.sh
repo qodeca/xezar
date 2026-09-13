@@ -1,6 +1,6 @@
 #!/bin/sh
-# om-prepare-test-env: generated entrypoint (contract v2)
-# regenerate with: om-prepare-test-env --regenerate
+# xez-prepare-test-env: generated entrypoint (contract v2)
+# regenerate with: xez-prepare-test-env --regenerate
 # history:
 #   2026-07-14 generated — mirrors test-env-up.sh; no services to remove, so this
 #             only stops the app PID this repo started and marks the descriptor stopped.

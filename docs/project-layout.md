@@ -1,8 +1,9 @@
 # Project layout
 
 The maintained project kit lives in **`.xezar/`** at the repository root, beside
-`.ai/`, `.github/` and `.local/` (and `.claude/`, where a checkout has one). Configuration (`config.json`), workflows,
-skills, checks, documentation and guidance belong here and can be committed.
+`.github/` and `.local/` (and `.claude/`, where a checkout has one). Configuration (`config.json`), workflows,
+skills, checks, documentation, guidance and the pipeline files (`pipeline/config.json`, `pipeline/trackers/`)
+belong here and can be committed.
 Local execution data belongs in **`.local/xezar/`**. The separate per-user
 `~/.xezar/` workspace registry, preferences and accounts do not move.
 

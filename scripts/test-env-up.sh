@@ -1,6 +1,6 @@
 #!/bin/sh
-# om-prepare-test-env: generated entrypoint (contract v2)
-# regenerate with: om-prepare-test-env --regenerate
+# xez-prepare-test-env: generated entrypoint (contract v2)
+# regenerate with: xez-prepare-test-env --regenerate
 # history:
 #   2026-07-14 generated (cold ~40s, warm ~2s) — xezar has no backing services, so
 #             the service-provisioning step of the contract is deliberately absent.

@@ -25,7 +25,7 @@ test('real Xezar workflow loader and skill parser accept every local role withou
 });
 test('canonical gates match the five actual validation commands in exact order',()=>{
  const list=JSON.parse(exec('bash',[path.join(checks,'repo-gates.sh'),'--list','--json']));
- const agreed=JSON.parse(fs.readFileSync(path.join(repo,'.ai/agentic.config.json'))).validation.commands;
+ const agreed=JSON.parse(fs.readFileSync(path.join(repo,'.xezar/pipeline/config.json'))).validation.commands;
  assert.deepEqual(list.gates.map(g=>g.command).filter(c=>agreed.includes(c)),agreed);
  assert.equal(list.gates.at(-1).command,'.xezar/checks/repository-checks.sh');
  assert.equal(list.gates[0].command,'npm ci');
