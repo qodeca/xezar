@@ -240,6 +240,9 @@ describe('the shared Codex app-server link (#374)', () => {
     expect(busy.state).toEqual({ waiting: true, activeTurnId: 'turn-9' });
     status = undefined;
     await expect(connectCodexLeader({ threadId: 'thread-1' }, home, home)).rejects.toThrow('did not report the thread’s state');
+    // Round-5 review, major 1: a flag entry xezar cannot read refuses at attach like a missing state.
+    status = { type: 'active', activeFlags: [{ type: 'waitingOnApproval' }] };
+    await expect(connectCodexLeader({ threadId: 'thread-1' }, home, home)).rejects.toThrow('did not report the thread’s state');
   });
 
   it('a missing daemon, a missing home and a hang-up are refused with reasons that name no path', async () => {

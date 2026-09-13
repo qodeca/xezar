@@ -95,10 +95,12 @@ export interface CodexUnresolvedHandOff {
 
 /**
  * codex-cli 0.154.0's `ThreadStatus`: `notLoaded` | `idle` | `systemError` | `active` with an
- * `activeFlags` array. Anything else — a missing or malformed payload, a type this version does not
- * name, an `active` without its flags — is `undefined`, never a guessed "loaded and idle": reading
- * uncertainty as "no approval" would start a turn straight through an open prompt (round-4 review,
- * major 1; decision record § 4, "refuse or defer uncertain state").
+ * `activeFlags` array whose every entry is a `ThreadActiveFlag` (`waitingOnApproval` |
+ * `waitingOnUserInput`). Anything else — a missing or malformed payload, a type this version does not
+ * name, an `active` without its flags, a flag entry it does not name — is `undefined`, never a guessed
+ * "loaded and idle": reading uncertainty as "no approval" would start a turn straight through an open
+ * prompt (round-4 review major 1, round-5 review major 1; decision record § 4, "refuse or defer
+ * uncertain state").
  */
 export function codexThreadStatus(status: unknown): { readonly loaded: boolean; readonly waiting: boolean } | undefined {
   if (typeof status !== 'object' || status === null) return undefined;
@@ -112,7 +114,9 @@ export function codexThreadStatus(status: unknown): { readonly loaded: boolean; 
     case 'active': {
       if (!Array.isArray(value.activeFlags)) return undefined;
       const flags: unknown[] = value.activeFlags;
-      return { loaded: true, waiting: flags.some((flag) => flag === 'waitingOnApproval' || flag === 'waitingOnUserInput') };
+      // One unreadable entry makes the whole status unreadable: it may be the prompt xezar would miss.
+      if (!flags.every((flag) => flag === 'waitingOnApproval' || flag === 'waitingOnUserInput')) return undefined;
+      return { loaded: true, waiting: flags.length > 0 };
     }
     default:
       return undefined;

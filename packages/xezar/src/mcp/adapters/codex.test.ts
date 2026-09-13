@@ -625,7 +625,21 @@ describe('state at attach, and the thread between hand-offs (decision record § 
   // used to read as `{ loaded: true, waiting: false }`, clear the seeded wait and start a turn
   // straight through the open approval.
   it('a malformed or unknown thread/status/changed never releases a held approval: no turn starts', async () => {
-    const malformed: unknown[] = [undefined, null, 'idle', {}, { type: 'bogus' }, { type: 'active' }, { type: 'active', activeFlags: 'waitingOnApproval' }];
+    const malformed: unknown[] = [
+      undefined,
+      null,
+      'idle',
+      {},
+      { type: 'bogus' },
+      { type: 'active' },
+      { type: 'active', activeFlags: 'waitingOnApproval' },
+      // Round-5 review, major 1: the container was checked, its entries were not. An entry xezar
+      // cannot read is the same uncertainty as a status type it cannot read.
+      { type: 'active', activeFlags: [{ type: 'waitingOnApproval' }] },
+      { type: 'active', activeFlags: ['bogus'] },
+      { type: 'active', activeFlags: [null] },
+      { type: 'active', activeFlags: ['waitingOnApproval', 'bogus'] },
+    ];
     for (const status of malformed) {
       const server = new FakeAppServer();
       server.flags = ['waitingOnApproval'];
@@ -842,12 +856,21 @@ describe('reading the thread state (codex-cli 0.154.0 `ThreadStatus`)', () => {
     expect(codexThreadStatus({ type: 'systemError' })).toEqual({ loaded: true, waiting: false });
     expect(codexThreadStatus({ type: 'notLoaded' })).toEqual({ loaded: false, waiting: false });
     expect(codexThreadStatus({ type: 'active', activeFlags: ['waitingOnApproval'] })).toEqual({ loaded: true, waiting: true });
+    expect(codexThreadStatus({ type: 'active', activeFlags: ['waitingOnUserInput', 'waitingOnApproval'] })).toEqual({ loaded: true, waiting: true });
     for (const unknown of [null, undefined, 'idle', {}, { type: 'bogus' }, { type: 'active' }, { type: 'active', activeFlags: 'x' }]) expect(codexThreadStatus(unknown)).toBeUndefined();
+    // Round-5 review, major 1: every ENTRY is read against the protocol's two flags, not just the array.
+    for (const flags of [[{ type: 'waitingOnApproval' }], ['bogus'], [null], [undefined], [7], ['waitingOnApproval', 'bogus'], ['WaitingOnApproval']]) {
+      expect(codexThreadStatus({ type: 'active', activeFlags: flags }), JSON.stringify(flags)).toBeUndefined();
+    }
   });
 
   it('refuses a thread state it does not recognise at attach, rather than reading it as idle', async () => {
     const server = new FakeAppServer();
     await expect(codexThreadState(server, 'thread-1', { thread: { status: { type: 'somethingNew' } } })).rejects.toThrow('did not report');
     await expect(codexThreadState(server, 'thread-1', { thread: { status: { type: 'active' } } })).rejects.toThrow('did not report');
+    // Round-5 review, major 1: an unreadable flag ENTRY refuses at attach exactly like an unreadable type.
+    for (const flags of [[{ type: 'waitingOnApproval' }], ['bogus'], [null]]) {
+      await expect(codexThreadState(server, 'thread-1', { thread: { status: { type: 'active', activeFlags: flags } } }), JSON.stringify(flags)).rejects.toThrow('did not report');
+    }
   });
 });
