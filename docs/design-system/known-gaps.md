@@ -3,7 +3,9 @@
 Every place where the cockpit does the same thing more than one way, or where a comment and the code
 disagree, found while inventorying `packages/web/src` on 2026-09-13. Nothing here was fixed in code. For
 each gap: what differs, where, which form is the rule for new work and why, and the proposed fix. The rule
-is the most common form, or the newest when usage is split.
+is the most common form, or the newest when usage is split. This file is the design backlog, not a
+to-do list: an entry becomes a `design-debt` issue on the triggers [CONTRIBUTING.md](CONTRIBUTING.md) §6
+names, and a fix arrives as its own change with the entry deleted.
 
 Counts are non-test files or occurrences in `packages/web/src`.
 
