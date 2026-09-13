@@ -587,3 +587,7 @@ Seven things block approval:
 - **Reduced motion:** pulse, spinner and skeleton stop under `prefers-reduced-motion`.
 - **Widths:** no page scrolls sideways at 375 px in either theme.
 - **Scope:** the non-goals (no dismiss or waive, no output on the card, no cross-project total) are clear and justified by real data (178 tasks, 15 cards).
+
+#### Follow-up from the #395 review (2026-09-13)
+
+A second `design-review` run on the one-line rename in `states.html` (PR #395, commit `3a9ef0c`) returned PASS WITH FOLLOW-UPS. NB-1 (both example groups named the same) was fixed in `3aa434c`. NB-2 is inherited and joins this list: the "Several projects in the sidebar" frame draws project group headers as upper-case eyebrows (`.quick-head`), while the cockpit renders `project.name` in its own case (`packages/web/src/components/project-groups.tsx`, `patterns.md` §2, `writing.md` "xezar is always lower case"). Disposition: fix in the rework, or record the simplification as an open decision.
