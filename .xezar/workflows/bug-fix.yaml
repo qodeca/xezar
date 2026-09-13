@@ -11,7 +11,7 @@ steps:
     name: Prepare the worktree
     command: ".xezar/checks/worktree-setup.sh"
   - id: investigate
-    name: Reproduce and diagnose
+    name: Reproduce, diagnose and fix
     prompt: "{{task}}"
     skill: xezar-bug-investigation
     timeout: 2h

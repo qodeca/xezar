@@ -48,8 +48,8 @@ const boom = defineTool({
   },
 });
 
-async function service(tools: readonly McpTool[] = []): Promise<McpServiceHandle> {
-  const handle = await listenMcpSocket({ project, version: '1.2.3', tools, env });
+async function service(tools: readonly McpTool[] = [], sessions?: { codexAnnounced?: (key: string, value: { threadId: string }) => void }): Promise<McpServiceHandle> {
+  const handle = await listenMcpSocket({ project, version: '1.2.3', tools, env, ...(sessions ? { sessions: { opened: () => {}, closed: () => {}, ...sessions } } : {}) });
   handles.push(handle);
   return handle;
 }
@@ -155,6 +155,19 @@ describe('bridge handshake (D-01 § 1.6, N-07)', () => {
 });
 
 describe('bridge → service over the project socket', () => {
+  it('announces the Codex thread from `_meta.threadId` alone — configured exactly as `runMcpCommand` configures it', async () => {
+    // Codex 0.154.0 spawns its MCP servers with a filtered environment (no CODEX_HOME), and
+    // `runMcpCommand` passes the bridge nothing else: the thread id IS the whole announcement, so the
+    // bridge here gets no environment at all, as in production (#374 round 3, blocker 2).
+    const announcements: unknown[] = [];
+    const svc = await service([echoProject], { codexAnnounced: (_key, value) => announcements.push(value) });
+    const b = bridge({ tools: [echoProject], target: socketTarget(svc.path) });
+    await b.request('tools/call', { name: 'echo_project', arguments: { text: 'ok' }, _meta: { threadId: 'thread-1', progressToken: 1 } });
+    await b.request('tools/call', { name: 'echo_project', arguments: { text: 'ok' }, _meta: { threadId: '' } });
+    await b.request('tools/call', { name: 'echo_project', arguments: { text: 'ok' }, _meta: { threadId: 'x'.repeat(201) } });
+    await b.request('tools/call', { name: 'echo_project', arguments: { text: 'ok' } });
+    expect(announcements).toEqual([{ threadId: 'thread-1' }]);
+  });
   it('reports health, binding the project from the socket and never from arguments', async () => {
     const svc = await service();
     const b = bridge({ target: socketTarget(svc.path) });

@@ -360,10 +360,9 @@ describe('N-07: composition can never break ordinary startup', () => {
     const repo = tmp('xzr-');
     // Registry and cockpit work under this home; only the MCP socket path is too long for it.
     const home = join(tmp('xzc-'), 'h'.repeat(120));
-    const port = await freePort();
     const TSX = import.meta.resolve('tsx');
     const CLI = fileURLToPath(new URL('../index.ts', import.meta.url));
-    const child: ChildProcess = spawn(process.execPath, ['--import', TSX, CLI, 'serve', '--no-open', '--port', String(port)], {
+    const child: ChildProcess = spawn(process.execPath, ['--import', TSX, CLI, 'serve', '--no-open', '--port', '0'], {
       cwd: repo,
       env: { ...process.env, XEZ_HOME: home, XEZ_DRY_RUN: '1', XEZ_SKILLS_AUTO_UPDATE: '0', XEZ_NO_BANNER: '1' },
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -373,29 +372,52 @@ describe('N-07: composition can never break ordinary startup', () => {
       if (pid !== undefined) process.kill(pid, 'SIGKILL');
     });
     let stderr = '';
+    let stdout = '';
+    child.stdout!.on('data', (chunk) => (stdout += String(chunk)));
     child.stderr!.on('data', (chunk) => (stderr += String(chunk)));
 
+    const boundPort = await untilAsync('the cockpit URL', async () => /cockpit → http:\/\/localhost:(\d+)/.exec(stdout)?.[1]);
+    const base = `http://127.0.0.1:${boundPort}`;
     const health = await untilAsync('the cockpit', async () => {
-      const res = await fetch(`http://127.0.0.1:${port}/api/v1/health`).catch(() => undefined);
+      const res = await fetch(`${base}/api/v1/health`).catch(() => undefined);
       return res?.ok ? res : undefined;
     });
     expect(health.status).toBe(200);
     await untilAsync('the MCP warning', async () => (stderr.includes('MCP bridge unavailable') ? true : undefined));
     expect(stderr).toMatch(/too long for a local socket/);
     // Still serving after the failure was reported.
-    expect((await fetch(`http://127.0.0.1:${port}/api/v1/health`)).status).toBe(200);
+    expect((await fetch(`${base}/api/v1/health`)).status).toBe(200);
+  }, 60_000);
+
+  it('uses the bound port when a neighbour owns the requested port', async () => {
+    const neighbour = createServer((socket) => {
+      socket.end('HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{"repoRoot":"neighbour-cockpit"}');
+    });
+    neighbour.listen(0, '127.0.0.1');
+    await new Promise<void>((resolve) => neighbour.once('listening', resolve));
+    const requested = (neighbour.address() as { port: number }).port;
+    const home = join(tmp('xzc-'), 'h'.repeat(120));
+    const repo = tmp('xzr-');
+    const TSX = import.meta.resolve('tsx');
+    const CLI = fileURLToPath(new URL('../index.ts', import.meta.url));
+    const child = spawn(process.execPath, ['--import', TSX, CLI, 'serve', '--no-open', '--port', String(requested)], {
+      cwd: repo,
+      env: { ...process.env, XEZ_HOME: home, XEZ_DRY_RUN: '1', XEZ_SKILLS_AUTO_UPDATE: '0', XEZ_NO_BANNER: '1' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    const pid = child.pid;
+    closers.push(() => {
+      if (pid !== undefined) process.kill(pid, 'SIGKILL');
+      neighbour.close();
+    });
+    let stdout = '';
+    child.stdout!.on('data', (chunk) => (stdout += String(chunk)));
+    const port = await untilAsync('the cockpit URL after the requested port was taken', async () => /cockpit → http:\/\/localhost:(\d+)/.exec(stdout)?.[1]);
+    expect(Number(port)).not.toBe(requested);
+    const health = (await (await fetch(`http://127.0.0.1:${port}/api/v1/health`)).json()) as { repoRoot?: string };
+    expect(health.repoRoot).toBe(realpathSync(repo));
   }, 60_000);
 });
-
-function freePort(): Promise<number> {
-  return new Promise((resolve) => {
-    const probe = createServer();
-    probe.listen(0, '127.0.0.1', () => {
-      const { port } = probe.address() as { port: number };
-      probe.close(() => resolve(port));
-    });
-  });
-}
 
 async function untilAsync<T>(what: string, probe: () => Promise<T | undefined>, ms = 40_000): Promise<T> {
   const deadline = Date.now() + ms;

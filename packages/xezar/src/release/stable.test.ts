@@ -39,6 +39,13 @@ describe('stampStableManifests', () => {
   const set = (): ReleaseManifests => ({
     contract: { name: '@scope/contract', version: '0.1.5' },
     apiClient: { name: '@scope/client', version: '0.1.5' },
+    web: {
+      name: '@scope/web',
+      version: '0.1.5',
+      private: true,
+      dependencies: { '@scope/client': '^0.1.5' },
+      devDependencies: { '@scope/impl': '^0.1.5' },
+    },
     xezar: {
       name: '@scope/impl',
       version: '0.1.5',
@@ -52,10 +59,13 @@ describe('stampStableManifests', () => {
 
     expect(stamped.contract.version).toBe('0.1.6');
     expect(stamped.apiClient.version).toBe('0.1.6');
+    expect(stamped.web.version).toBe('0.1.6');
     expect(stamped.xezar.version).toBe('0.1.6');
     expect(stamped.xezar.files).toEqual(['dist']); // passthrough untouched
     // Caret, not an exact pin: a stable service follows compatible releases of its siblings.
     expect(stamped.xezar.devDependencies).toEqual({ '@scope/client': '^0.1.6' });
+    expect(stamped.web.dependencies).toEqual({ '@scope/client': '^0.1.6' });
+    expect(stamped.web.devDependencies).toEqual({ '@scope/impl': '^0.1.6' });
   });
 
   it('re-pins the api-client wherever it is declared, so the dev→runtime move is transparent', () => {
@@ -94,13 +104,14 @@ describe('stampStableManifests', () => {
     expect(stamped.xezar.bugs).toEqual({ url: 'https://example.test/issues' });
   });
 
-  it('stamps exactly three manifests — the retired unscoped alias is not one of them', () => {
+  it('stamps the four workspace manifests — the retired unscoped alias is not one of them', () => {
     // The release used to carry a second, unscoped distribution package. Only `@qodeca/xezar`
-    // reaches the registry now, and a stray fourth member would resurrect the split identity
-    // this rename removed.
+    // reaches the registry now; the other three are private workspace packages whose ranges
+    // must stay linked. A stray fifth member would resurrect the split identity this rename removed.
     expect(Object.keys(stampStableManifests(set(), '0.1.6'))).toEqual([
       'contract',
       'apiClient',
+      'web',
       'xezar',
     ]);
   });
