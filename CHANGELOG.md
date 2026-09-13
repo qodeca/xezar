@@ -39,6 +39,12 @@
   the `.ai/` directory is gone from the repository, and `pipeline` joined the fingerprinted kit set
   (`tree_fingerprint` in `.xezar/checks/lib/common.sh`).
 
+## 🐛 Bug Fixes
+- 🐛 **The cockpit's take-over hint now shows the correct CLI for each backend.** The pi runner
+  was silently falling through to `claude --resume` instead of showing `pi --session`. Both copies
+  of the hint (cockpit and server) now draw from the single source of truth in `runner-label.ts`.
+  (#354)
+
 # 0.14.0 (2026-09-12)
 
 ## Highlights

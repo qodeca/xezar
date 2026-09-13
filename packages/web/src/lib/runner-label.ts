@@ -1,5 +1,7 @@
 import type { Runner } from '@qodeca/xezar-api-client'
 
+const SAFE_SESSION_ID = /^[A-Za-z0-9._][A-Za-z0-9._-]{0,199}$/
+
 /**
  * The product name behind each backend id — ONE definition for the whole cockpit.
  *
@@ -88,4 +90,23 @@ export function taskRunner(
   // 'claude' is the last resort only while the project's config is in flight — the same fallback
   // the run header uses, and the same default `config.defaultRunner` itself carries.
   return { runner: projectDefault ?? 'claude', inherited: true }
+}
+
+/** The CLI command to resume a specific session interactively — exact text the paste target needs.
+ *  Typed per backend so a new runner is a compile error rather than a silent fallback.
+ *  Treats undefined runner as Claude for backward compatibility with records that predate the
+ *  choice. Fails closed: no hint beats a hint that runs the wrong CLI. */
+export function resumeCommand(runner: Runner | undefined, sessionId: string): string | undefined {
+  if (!SAFE_SESSION_ID.test(sessionId)) return undefined
+  const resolvedRunner = runner ?? 'claude'
+  switch (resolvedRunner) {
+    case 'codex':
+      return `codex resume ${sessionId}`
+    case 'opencode':
+      return `opencode --session ${sessionId}`
+    case 'pi':
+      return `pi --session ${sessionId}`
+    case 'claude':
+      return `claude --resume ${sessionId}`
+  }
 }
