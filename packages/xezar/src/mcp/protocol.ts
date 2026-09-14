@@ -30,6 +30,37 @@ export function negotiateProtocolVersion(requested: unknown): string {
  */
 export const SERVER_CAPABILITIES = { tools: { listChanged: false } } as const;
 
+/**
+ * The one protocol revision Claude Code 2.1.270 refuses to deliver a channel over: a connection
+ * that negotiated the "modern" revision gets no unsolicited notification path (the wake decision
+ * record § 2.3 step 2). `SUPPORTED_PROTOCOL_VERSIONS` must never offer it while xezar advertises the
+ * channel capability, or a Claude Code leader would be attachable and silently unreachable.
+ * `protocol.test.ts` pins that this string is not among the versions xezar negotiates.
+ */
+export const CHANNEL_INCOMPATIBLE_PROTOCOL_VERSION = '2026-07-28';
+
+/**
+ * Claude Code Channels (#374, epic #73). Declaring `experimental["claude/channel"] = {}` in the
+ * `initialize` result registers xezar as a channel source, so a `notifications/claude/channel`
+ * message xezar sends becomes a model turn in a Claude Code session the person started with
+ * `--dangerously-load-development-channels server:xezar` (the wake decision record § 2.1). It is
+ * added ONLY for a `claude-code` client — every other client keeps the exact capabilities it has
+ * today — through `serverCapabilitiesFor`.
+ *
+ * `claude/channel/permission` is DELIBERATELY NOT declared here or anywhere: declaring it would
+ * route Claude Code's own tool-approval prompts to xezar and let a message answer them, and xezar
+ * must never approve anything (the record § 5.1; #73 "never impersonate approval"). A unit test
+ * pins its absence.
+ */
+export const CLAUDE_CHANNEL_CAPABILITY = { experimental: { 'claude/channel': {} } } as const;
+
+/** Which client this bridge is serving, learned from `initialize`'s `clientInfo.name`. */
+export function serverCapabilitiesFor(
+  clientName: string | undefined,
+): typeof SERVER_CAPABILITIES | (typeof SERVER_CAPABILITIES & typeof CLAUDE_CHANNEL_CAPABILITY) {
+  return clientName === 'claude-code' ? { ...SERVER_CAPABILITIES, ...CLAUDE_CHANNEL_CAPABILITY } : SERVER_CAPABILITIES;
+}
+
 export const JSONRPC_ERRORS = {
   parseError: -32700,
   invalidRequest: -32600,
@@ -52,4 +83,11 @@ export const incomingMessageSchema = z.object({
 
 export const initializeParamsSchema = z.object({
   protocolVersion: z.string().max(64),
+  /**
+   * The client's own name (`{name, title?, version?}` in MCP). Read only to decide whether to
+   * advertise the Claude Code channel capability; Claude Code 2.1.270 sends `name: "claude-code"`
+   * (the wake decision record § 5.1). Loose and optional: an older or unusual client that omits it
+   * simply gets the base capabilities.
+   */
+  clientInfo: z.object({ name: z.string().max(200) }).loose().optional(),
 });

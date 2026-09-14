@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createConnection, createServer, type Server } from 'node:net';
 import { join } from 'node:path';
-import { PassThrough } from 'node:stream';
+import { PassThrough, Writable } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { HEALTH_TOOL, runBridge, type ServiceTarget } from './bridge.ts';
@@ -136,6 +136,10 @@ describe('bridge handshake (D-01 § 1.6, N-07)', () => {
     const b = bridge({ target: socketTarget('/nonexistent') });
     b.input.write('not json\n');
     expect((await b.waitFor((m) => m.id === null)).error).toMatchObject({ code: -32700 });
+    // Valid JSON that the message schema rejects (a non-string method) is an invalid request, not a
+    // crash: it answers -32600 and the bridge keeps serving. Covers the schema-reject branch.
+    b.input.write(`${JSON.stringify({ jsonrpc: '2.0', id: 5, method: 123 })}\n`);
+    expect((await b.waitFor((m) => (m.error as { code?: number } | undefined)?.code === -32600)).error).toMatchObject({ code: -32600 });
     expect((await b.request('resources/list')).error).toMatchObject({ code: -32601 });
     expect((await b.request('initialize', {})).error).toMatchObject({ code: -32602 });
     expect((await b.request('tools/call', { name: 'nope' })).error).toMatchObject({ code: -32602 });
@@ -403,5 +407,163 @@ describe('service socket lifecycle (N-07)', () => {
     svc.close();
     writeFileSync(svc.path, 'not mine');
     await expect(listenMcpSocket({ project, version: '1', tools: [], env })).rejects.toThrow(/is not a socket/);
+  });
+});
+
+describe('Claude Code channel handshake (#374)', () => {
+  it('advertises claude/channel to a claude-code client, and tells it what a channel event is', async () => {
+    // RED against: not reading clientInfo.name, or not advertising the channel to Claude Code.
+    const b = bridge({ target: socketTarget('/nonexistent') });
+    const init = await b.request('initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'claude-code', version: '2.1.270' } });
+    expect(init.result).toMatchObject({ capabilities: { tools: { listChanged: false }, experimental: { 'claude/channel': {} } } });
+    expect(String((init.result as { instructions?: string }).instructions)).toContain('<channel source="xezar"');
+    b.input.end();
+    await b.done;
+  });
+
+  it('keeps the complete non-Claude initialize answer byte-identical to the main constant', async () => {
+    const baseInstructions = 'xezar controls coding-agent tasks for the one project this session was started in. Call `health` to check that the xezar cockpit is running for it.';
+    const b = bridge({ target: socketTarget('/nonexistent') });
+    const init = await b.request('initialize', { protocolVersion: '2025-11-25', clientInfo: { name: 'codex' } });
+    expect(JSON.stringify(init.result)).toBe(JSON.stringify({ protocolVersion: '2025-11-25', capabilities: SERVER_CAPABILITIES, serverInfo: { name: 'xezar', title: 'xezar', version: '1.2.3' }, instructions: baseInstructions }));
+    b.input.end(); await b.done;
+  });
+
+  it('never advertises the channel to another client, keeping its handshake as it was', async () => {
+    // RED against: advertising the channel to every client.
+    const b = bridge({ target: socketTarget('/nonexistent') });
+    const init = await b.request('initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'codex', version: '1' } });
+    expect(init.result).toMatchObject({ capabilities: SERVER_CAPABILITIES });
+    expect('experimental' in (init.result as { capabilities: Record<string, unknown> }).capabilities).toBe(false);
+    b.input.end();
+    await b.done;
+  });
+});
+
+describe('the leader/push service→bridge frame (#374)', () => {
+  /**
+   * A raw unix-socket server standing in for the service, so a test can send an arbitrary
+   * `leader/push` frame down the bridge's own connection and read what it announced in `session/open`.
+   */
+  async function rawServer(): Promise<{
+    path: string;
+    opened: Promise<Record<string, unknown>>;
+    push: (frame: Record<string, unknown>) => void;
+    replies: Record<string, unknown>[];
+    close: () => void;
+  }> {
+    const dir = mkdtempSync('/tmp/xzbp-');
+    const path = join(dir, 's.sock');
+    let peer: import('node:net').Socket | undefined;
+    const replies: Record<string, unknown>[] = [];
+    let resolveOpened: (params: Record<string, unknown>) => void;
+    const opened = new Promise<Record<string, unknown>>((r) => (resolveOpened = r));
+    const server = createServer((socket) => {
+      peer = socket;
+      const framer = new LineFramer(
+        (line) => {
+          const msg = JSON.parse(line) as { id: number; method?: string; params?: Record<string, unknown>; ok?: boolean };
+          if (msg.method === 'session/open') {
+            resolveOpened(msg.params ?? {});
+            socket.write(encodeFrame({ v: 2, id: msg.id, ok: true, result: { owner: true } }));
+          } else if (msg.ok !== undefined) {
+            replies.push(msg);
+          }
+        },
+        () => {},
+      );
+      socket.on('data', (c: Buffer) => framer.push(c));
+    });
+    await new Promise<void>((r) => server.listen(path, r));
+    handles.push({ close: () => server.close() });
+    return {
+      path,
+      opened,
+      push: (frame) => peer?.write(encodeFrame(frame)),
+      replies,
+      close: () => {
+        peer?.destroy();
+        server.close();
+        rmSync(dir, { recursive: true, force: true });
+      },
+    };
+  }
+
+  it.each(['failure', 'backpressure', 'closed'] as const)('confirms channel stdout completion: %s', async (mode) => {
+    const svc = await rawServer();
+    const input = new PassThrough();
+    let complete: ((error?: Error | null) => void) | undefined;
+    let initialized = false;
+    const output = new Writable({ highWaterMark: 1, write(chunk, _encoding, callback) {
+      const frame = JSON.parse(String(chunk)) as { method?: string };
+      if (frame.method === 'notifications/claude/channel') complete = callback;
+      else { initialized = true; callback(); }
+    } });
+    const done = runBridge({ input, output, version: 'test', tools: [], resolveTarget: socketTarget(svc.path) });
+    try {
+      input.write(encodeFrame({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-11-25', clientInfo: { name: 'claude-code' } } }));
+      await expect.poll(() => initialized).toBe(true);
+      if (mode === 'closed') output.end();
+      svc.push({ v: 2, id: 88, method: 'leader/push', params: { content: 'event' } });
+      if (mode !== 'closed') {
+        await expect.poll(() => complete !== undefined).toBe(true);
+        expect(svc.replies).toEqual([]);
+        complete?.(mode === 'failure' ? new Error('simulated async EPIPE') : undefined);
+      }
+      await expect.poll(() => svc.replies.length).toBe(1);
+      expect(svc.replies[0]).toMatchObject(mode === 'backpressure'
+        ? { ok: true, result: { pushed: true } }
+        : { ok: false, error: { code: 'push-failed' } });
+    } finally { input.end(); await done; svc.close(); }
+  });
+
+  it('turns an inbound leader/push into a notifications/claude/channel message and confirms it', async () => {
+    // RED against: the bridge not writing the channel notification, or not replying pushed:true.
+    const svc = await rawServer();
+    const b = bridge({ target: socketTarget(svc.path) });
+    await b.request('initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'claude-code', version: '2.1.270' } });
+    // The bridge opened the session and announced it understands leader/push and which client it is.
+    expect(await svc.opened).toEqual({ leaderPush: true, clientName: 'claude-code' });
+
+    svc.push({ v: 2, id: 4242, method: 'leader/push', params: { content: 'XEZAR-EVENT', meta: { source_app: 'xezar', last_seq: '7' } } });
+    const note = await b.waitFor((m) => m.method === 'notifications/claude/channel');
+    expect(note.params).toEqual({ content: 'XEZAR-EVENT', meta: { source_app: 'xezar', last_seq: '7' } });
+    // …and the bridge confirmed the write back to the service.
+    await new Promise((r) => setTimeout(r, 30));
+    expect(svc.replies).toContainEqual({ v: 2, id: 4242, ok: true, result: { pushed: true } });
+    b.input.end();
+    await b.done;
+    svc.close();
+  });
+
+  it('refuses a leader/push with no content, and never writes a channel message for it', async () => {
+    // RED against: the bridge writing a malformed channel notification instead of refusing.
+    const svc = await rawServer();
+    const b = bridge({ target: socketTarget(svc.path) });
+    await b.request('initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'claude-code', version: '2.1.270' } });
+    await svc.opened;
+    svc.push({ v: 2, id: 5, method: 'leader/push', params: { meta: {} } });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(svc.replies).toContainEqual({ v: 2, id: 5, ok: false, error: { code: 'invalid-params', message: 'leader/push needs content' } });
+    expect(b.messages.some((m) => m.method === 'notifications/claude/channel')).toBe(false);
+    b.input.end();
+    await b.done;
+    svc.close();
+  });
+
+  it('refuses a service→bridge request whose method it does not know, and writes no channel message', async () => {
+    // RED against: the bridge failing every call in flight (parsing the request as a bad response) or
+    // crashing on an unknown inbound method, instead of answering it as unknown-method.
+    const svc = await rawServer();
+    const b = bridge({ target: socketTarget(svc.path) });
+    await b.request('initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'claude-code', version: '2.1.270' } });
+    await svc.opened;
+    svc.push({ v: 2, id: 7, method: 'leader/unheard-of', params: {} });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(svc.replies).toContainEqual({ v: 2, id: 7, ok: false, error: { code: 'unknown-method', message: 'unknown method: leader/unheard-of' } });
+    expect(b.messages.some((m) => m.method === 'notifications/claude/channel')).toBe(false);
+    b.input.end();
+    await b.done;
+    svc.close();
   });
 });

@@ -11,8 +11,42 @@
   - Fixture-tested only: open prompts at attach, lost acceptance and replay, request counting.
   - Not verified (BLOCKED): a real model's decision to react; Linux and Windows; other codex-cli versions; a Codex session whose home differs from the one `xezar serve` looks in – it is refused and falls back to `leader_events`.
   - A thread status the app-server sends in a shape xezar does not recognise now holds events, and keeps an open approval's wait, until a status it can read arrives. It used to read as "idle" and could start a turn through an open approval. This includes a status whose `activeFlags` list holds an entry xezar does not recognise, such as an object or an unknown word: at attach it is refused as `codex-thread-state-unknown`, and while attached it keeps the wait.
-- ✨ **Settings → MCP connection can attach a leader.** (#374) Connection status shows who owns the project, whether a leader is attached and, when events are waiting, the server's own reason with a `Fix:` line. Attach leader takes its client from that status: a Codex session that runs on Codex's shared app-server in the Codex home xezar uses, is loaded, and has called a xezar tool attaches without typing anything, OpenCode takes the address and session id of its `opencode serve`, pi works when it runs xezar's leader extension, and Claude Code is explained as reading its events with `leader_events`. A refused Codex attach names which cause it was – no tool call yet, no shared app-server, another Codex home, a session that is not loaded, or a session state xezar does not recognise – with its own fix. The Codex setup card moves its attach guidance out of the small footnote into the card body. Fixture-tested in the cockpit's unit suite; the real-client Codex leg attaches through the same route the button calls. `GET /api/v1/mcp/leader` gains an additive `owner` field.
+- ✨ **Settings → MCP connection can attach a leader.** (#374) Connection status shows who owns the project, whether a leader is attached and, when events are waiting, the server's own reason with a `Fix:` line. Attach leader takes its client from that status: a Codex session that runs on Codex's shared app-server in the Codex home xezar uses, is loaded, and has called a xezar tool attaches without typing anything, OpenCode takes the address and session id of its `opencode serve`, pi works when it runs xezar's leader extension, and Claude Code attaches once it was started with `--dangerously-load-development-channels server:xezar` (below). A refused Codex attach names which cause it was – no tool call yet, no shared app-server, another Codex home, a session that is not loaded, or a session state xezar does not recognise – with its own fix. The Codex setup card moves its attach guidance out of the small footnote into the card body. When the project's owner changes under an attached leader – a Claude Code leader whose session closed, then a Codex session that took the project – the server keeps the attachment and names `claude-code-not-owner`; the control then shows its client selector again, defaulting to the new owner, and Attach leader replaces the stale attachment with the client you choose. Fixture-tested in the cockpit's unit suite; the real-client Codex leg attaches through the same route the button calls. `GET /api/v1/mcp/leader` gains an additive `owner` field.
   - The status is live while the page is open. The server pushes each change – a leader attached or stopped, an owner session that opened, announced itself or went away, a delivery that worked or failed, an app-server or thread that was lost – over the cockpit's existing WebSocket as a new `mcp-leader` topic, only while the page is on screen and only when something changed. It is also re-read when the window regains focus and after the event stream reconnects. A remote cockpit opens no WebSocket and keeps the HTTP read. Refresh is in every state, including when the first read fails and when the MCP service is not running, and Attach leader is a 44 px touch target on a phone.
+- ✨ **A Claude Code leader can be woken by a project event, over Claude Code Channels.** (#374, part
+  of #73) Until now a project leader you run pulled its events with the `leader_events` MCP tool and
+  nothing was pushed to it. A **Claude Code** leader can now be **woken**: xezar turns a project event
+  into a `notifications/claude/channel` message in the running session. It is **opt-in and off by
+  default** — the zero-config default stays pull-only, and xezar gains no setting and no environment
+  variable. The only switch is a flag you add when you launch Claude Code from the project root:
+  `claude --dangerously-load-development-channels server:xezar`. That flag is how Claude Code lets a
+  server that is not on Anthropic's approved list push messages into your session, and **Claude Code
+  shows a warning on every launch** with it — choose "I am using this for local development" if you
+  accept it. Then use **Attach leader** in **Settings → MCP connection** → Connection status, the
+  same control that attaches Codex, OpenCode and pi. Channels are a Claude Code
+  research preview: they need a claude.ai or Anthropic Console API-key login, they do not work on
+  Amazon Bedrock, Google Vertex or Microsoft Foundry, a Team or Enterprise admin must turn them on,
+  and they are off while `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` is set. When a condition is not
+  met the event is never lost — it stays in the journal and the cockpit shows a recoverable reason
+  (`claude-code-push-unconfirmed`, `claude-code-not-owner` or `claude-code-bridge-too-old`) naming
+  what to change. xezar never declares Claude Code's permission-relay capability and never answers an
+  approval on your behalf. Starting a real model turn from a project event is now wired for Claude
+  Code, pi and OpenCode.
+
+Launch with `claude --dangerously-load-development-channels server:xezar` to let xezar wake this leader. The flag lets a custom server push messages into your session because custom servers are not on the channel allowlist. Claude Code shows a confirmation screen on every launch: choose “I am using this for local development” if you accept it. The feature-flag service must be reachable and enable Channels. A Team or Enterprise admin must enable Channels. Channels need a claude.ai or Anthropic Console API-key login, do not work on Bedrock, Vertex or Foundry, and are off while CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC is set.
+
+**`claude-code-not-owner`** — The MCP session that owns this project is not a Claude Code session, so there is no Claude Code leader to push events to. Events are kept in the journal.
+
+fix: Start Claude Code in this project with --dangerously-load-development-channels server:xezar, let it call a xezar tool once, then attach it again.
+
+**`claude-code-bridge-too-old`** — This Claude Code session is connected through an older xezar MCP bridge that cannot push events. Events are kept in the journal.
+
+fix: Restart Claude Code so it starts the current xezar bridge (npx -y @qodeca/xezar mcp), then attach it again.
+
+**`claude-code-push-unconfirmed`** — xezar pushed events to the attached Claude Code session, and they are not acknowledged yet. Claude Code does not confirm delivery, so xezar cannot tell a leader that is still working from one that never received them. Nothing is lost: the events stay in the journal.
+
+fix: If the leader is working, nothing is needed. Otherwise check that Claude Code was started with --dangerously-load-development-channels server:xezar and that its startup notice says channels from server:xezar inject into the session. Channels need a claude.ai or Console API-key login, do not work on Bedrock, Vertex or Foundry, must be enabled by a Team or Enterprise admin, and are off while CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC is set. Until then, read events with leader_events.
+
 
 ## 🐛 Fixes
 - 🐛 Stamp the private cockpit workspace and its internal dependency ranges during releases, so minor and major bump PRs keep npm workspaces linked. (#382)
