@@ -164,6 +164,29 @@ const MCP_STATE = [
   'mcp-connection.json',
 ];
 
+/** Terminal statuses a run can reach; anything else means the agent is still writing. */
+const TERMINAL_RUN_STATUSES = new Set(['review', 'done', 'failed', 'cancelled']);
+
+/**
+ * The `mock:done` task is created asynchronously: the run manager queues it and spawns the mock
+ * agent CLI (cwd = the repo) to run it. That agent is a CHILD of the cockpit, so when the test
+ * later SIGKILLs the cockpit in teardown the mock survives and keeps writing — on its first turn
+ * it appends `notes.md` to the repo root and writes the run handoff (mock-claude.mjs). If that
+ * lands while `rm(root)` is walking the tree, the removal dies with ENOTEMPTY on the project
+ * folder (#346). Waiting for the run to reach a terminal status guarantees the mock has finished
+ * writing before the cockpit is ever stopped, so teardown sees a quiescent tree.
+ */
+async function waitRunTerminal(cockpit: Cockpit, runId: string, timeoutMs = 30_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const runs = (await (await request(cockpit.port, '/api/v1/runs')).json()) as Array<{ id: string; status: string }>;
+    const run = runs.find((candidate) => candidate.id === runId);
+    if (run && TERMINAL_RUN_STATUSES.has(run.status)) return;
+    await sleep(100);
+  }
+  assert.fail(`the run ${runId} never reached a terminal state within ${timeoutMs}ms`);
+}
+
 async function assertWorkingCockpit(cockpit: Cockpit, cliPath: string, repo: string, env: NodeJS.ProcessEnv, label: string): Promise<void> {
   const origin = `http://127.0.0.1:${cockpit.port}`;
   const health = await request(cockpit.port, '/api/v1/health');
@@ -182,6 +205,10 @@ async function assertWorkingCockpit(cockpit: Cockpit, cliPath: string, repo: str
     body: JSON.stringify({ task: `mock:done ${label}`, workflow: 'quick-task', worktree: false }),
   });
   assert.ok(created.status >= 200 && created.status < 300, `${label}: a new task is accepted (${created.status} ${await created.clone().text()})`);
+  // The task runs asynchronously in the cockpit; wait for it to settle so its mock agent has
+  // finished writing before the cockpit is stopped (see waitRunTerminal — #346).
+  const createdRun = (await created.json()) as { id: string };
+  await waitRunTerminal(cockpit, createdRun.id);
 
   // No expanded authority: the request-origin guard still refuses a cross-origin write.
   const foreign = await request(cockpit.port, '/api/v1/runs', {
