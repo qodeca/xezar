@@ -79,6 +79,7 @@ export interface McpServiceOptions {
 export interface McpSessionObserver {
   opened(sessionKey: string): void;
   closed(sessionKey: string): void;
+  codexAnnounced?(sessionKey: string, announcement: { threadId: string }): void;
 }
 
 /**
@@ -245,6 +246,8 @@ async function answer(line: string, opts: McpServiceOptions, ownership: ProjectO
       if (token === undefined) return expired(request.id, opts.project.id);
       const params = toolCallParamsSchema.safeParse(request.params);
       if (!params.success) return failure(request.id, 'invalid-params', 'tools/call needs a tool name');
+      const announcement = codexAnnouncement(params.data._meta);
+      if (announcement) opts.sessions?.codexAnnounced?.(sessionKey, announcement);
       const tool = opts.tools.find((t) => t.name === params.data.name);
       if (!tool) return failure(request.id, 'unknown-tool', `unknown tool: ${params.data.name}`);
       const outcome = await callTool(tool, params.data.arguments, ctx, opts.door, () => ownership.checkMutation(token).ok);
@@ -256,7 +259,16 @@ async function answer(line: string, opts: McpServiceOptions, ownership: ProjectO
   }
 }
 
-function observe(opts: McpServiceOptions, edge: keyof McpSessionObserver, sessionKey: string): void {
+/** The owning bridge's Codex thread id, and only that: where the app-server listens is the service's to find. */
+function codexAnnouncement(meta: Record<string, unknown> | undefined): { threadId: string } | undefined {
+  if (meta === undefined) return undefined;
+  const codex = meta.codex;
+  if (typeof codex !== 'object' || codex === null) return undefined;
+  const threadId = (codex as Record<string, unknown>).threadId;
+  return typeof threadId === 'string' && threadId.length > 0 && threadId.length <= 200 ? { threadId } : undefined;
+}
+
+function observe(opts: McpServiceOptions, edge: 'opened' | 'closed', sessionKey: string): void {
   try {
     opts.sessions?.[edge](sessionKey);
   } catch (err) {

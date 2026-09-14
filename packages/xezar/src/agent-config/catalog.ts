@@ -49,6 +49,14 @@ import type { RunnerId } from '../core/agent-runner.ts';
  * `.mcp.json`, Codex's `[mcp_servers]` and OpenCode's `"mcp"` key have always
  * been in this table with that property. A user typing a secret into a config
  * file is not the same risk as xezar cataloging a file whose PURPOSE is secrets.
+ * pi's settings `httpProxy` can likewise contain a user:pass URL; these raw bytes
+ * remain the user's responsibility, just like MCP env/headers.
+ *
+ * Path policy (#363): an entry authorizes the file itself, never a file symlink
+ * (including dangling links). Directory links below its agent home or repository
+ * may stay inside that root, but must not escape it. The configured root itself
+ * is canonicalized: relocating an entire home to a dotfiles directory still works.
+ * Apply this policy before reads, listing hashes, writes and personal-layer seeding.
  */
 
 export type ConfigFormat = 'json' | 'jsonc' | 'toml' | 'markdown';
@@ -93,6 +101,8 @@ export interface ConfigFileDef {
   runners: RunnerId[];
   kind: ConfigKind;
   scope: ConfigScope;
+  /** User-scope containment root; vendor paths remain owned by this catalog. */
+  home?: keyof AgentHomePaths;
   /** Absolute path, resolved per request so `$CODEX_HOME`/`$XDG_CONFIG_HOME` are honoured. */
   resolve: (repoRoot: string, home: AgentHomePaths) => string;
   /** What the user sees, e.g. `~/.claude/settings.json`, `.claude/settings.local.json`. */
@@ -167,6 +177,7 @@ export const CONFIG_FILES: ConfigFileDef[] = [
     runners: ['claude'],
     kind: 'settings',
     scope: 'user',
+    home: 'claude',
     resolve: (_repo, home) => join(home.claude, 'settings.json'),
     label: '~/.claude/settings.json',
     format: 'json',
@@ -233,6 +244,7 @@ export const CONFIG_FILES: ConfigFileDef[] = [
     runners: ['claude'],
     kind: 'memory',
     scope: 'user',
+    home: 'claude',
     resolve: (_repo, home) => join(home.claude, 'CLAUDE.md'),
     label: '~/.claude/CLAUDE.md',
     format: 'markdown',
@@ -274,6 +286,7 @@ export const CONFIG_FILES: ConfigFileDef[] = [
     runners: ['codex'],
     kind: 'settings',
     scope: 'user',
+    home: 'codex',
     resolve: (_repo, home) => join(home.codex, 'config.toml'),
     label: '~/.codex/config.toml',
     format: 'toml',
@@ -283,7 +296,7 @@ export const CONFIG_FILES: ConfigFileDef[] = [
     modelProviderKey: 'model_provider',
     modelPriority: 1,
     precedence:
-      'User-level defaults. A trusted project’s .codex/config.toml overrides these; some keys (provider, auth, telemetry) cannot be overridden at project scope. MCP servers live here under [mcp_servers.<id>].',
+      'User-level defaults. A trusted project’s .codex/config.toml overrides these; some keys (provider, auth, telemetry) cannot be overridden at project scope. MCP servers live here under [mcp_servers.<id>]; runs xezar starts do not load them, or plugins — declare a server in the project’s .codex/config.toml to use it in a run.',
     docsUrl: CODEX_CONFIG_DOCS,
   },
   {
@@ -307,6 +320,7 @@ export const CONFIG_FILES: ConfigFileDef[] = [
     runners: ['codex'],
     kind: 'memory',
     scope: 'user',
+    home: 'codex',
     resolve: (_repo, home) => join(home.codex, 'AGENTS.md'),
     label: '~/.codex/AGENTS.md',
     format: 'markdown',
@@ -322,6 +336,7 @@ export const CONFIG_FILES: ConfigFileDef[] = [
     runners: ['opencode'],
     kind: 'settings',
     scope: 'user',
+    home: 'opencodeConfig',
     resolve: (_repo, home) => join(home.opencodeConfig, 'opencode.json'),
     label: '~/.config/opencode/opencode.json',
     format: 'jsonc',
@@ -354,6 +369,7 @@ export const CONFIG_FILES: ConfigFileDef[] = [
     runners: ['opencode'],
     kind: 'memory',
     scope: 'user',
+    home: 'opencodeConfig',
     resolve: (_repo, home) => join(home.opencodeConfig, 'AGENTS.md'),
     label: '~/.config/opencode/AGENTS.md',
     format: 'markdown',
@@ -384,6 +400,7 @@ export const CONFIG_FILES: ConfigFileDef[] = [
     runners: ['pi'],
     kind: 'settings',
     scope: 'user',
+    home: 'pi',
     resolve: (_repo, home) => join(home.pi, 'settings.json'),
     label: '~/.pi/agent/settings.json',
     format: 'json',
@@ -410,6 +427,7 @@ export const CONFIG_FILES: ConfigFileDef[] = [
     runners: ['pi'],
     kind: 'mcp',
     scope: 'user',
+    home: 'pi',
     resolve: (_repo, home) => join(home.pi, 'mcp.json'),
     label: '~/.pi/agent/mcp.json',
     format: 'json',
@@ -436,6 +454,7 @@ export const CONFIG_FILES: ConfigFileDef[] = [
     runners: ['pi'],
     kind: 'memory',
     scope: 'user',
+    home: 'pi',
     resolve: (_repo, home) => join(home.pi, 'AGENTS.md'),
     label: '~/.pi/agent/AGENTS.md',
     format: 'markdown',
@@ -469,4 +488,11 @@ export function listConfigFiles(): ConfigFileDef[] {
 /** Look up one entry by its stable id, or undefined when the id is unknown. */
 export function findConfigFile(id: string): ConfigFileDef | undefined {
   return CONFIG_FILES.find((f) => f.id === id);
+}
+
+/** The trusted directory for this catalog entry, before canonicalization. */
+export function configFileRoot(def: ConfigFileDef, repoRoot: string, home: AgentHomePaths): string {
+  if (def.scope !== 'user') return repoRoot;
+  if (!def.home) throw new Error(`Missing home boundary for ${def.id}`);
+  return home[def.home];
 }

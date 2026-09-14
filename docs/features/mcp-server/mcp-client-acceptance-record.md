@@ -105,6 +105,8 @@ with a `MANIFEST.sha256`):
 | `2026-09-11T06-14-52-113Z` | Regression proof: the `[product]` cases against the pre-#247 service | `fda42ba7d6ccf4a4` (`results.json`) |
 | `e2e-a20-redproof.log` | Regression proof: the browser spec against the pre-#247 service | `c0a5a0a91f68834e` |
 | `2026-09-12T11-00-24-216Z` | **Whole suite on `1e1113c`, clean tree** — the verdicts in this record. 28 tests: 17 pass, 8 todo (BLOCKED), 3 fail (pi's `approveTools` edge path, and the Codex A-01 leg with the A-23 row that reads it) | see `MANIFEST.sha256` in the WP5 evidence folder |
+| `2026-09-13T19-13-55-964Z` | #369 red proof: the `approveTools` leg alone on `7aa4a02`, clean tree — **FAILED**, the raw RPC turn never settled (`dialogTimeout: absent`) | in that task's `.local/xezar-tasks/<runId>/investigate/` with a `MANIFEST.sha256` |
+| `2026-09-13T19-24-04-186Z` | #369 fix: the same leg rewritten to drive a REAL pi 0.85.1 + pi-mcp-adapter 2.32.1 through xezar's own `PiRunner`, on the fix branch — **PASSED**, both modes (autonomous refused at once; interactive ask card answered `Deny`), 5 of 5 checks | `2895dcc3a8632524` (`results.json`), same folder |
 
 The WP5 run's own evidence — `environment.json` (both client versions and the adapter version), `results.json`,
 `results.md`, one transcript per process including every pi RPC frame, and the scripted endpoint's full request
@@ -189,6 +191,16 @@ So the named state PI-08 asks for exists, and nothing reaches it: **no part of x
 not hang; it bites where nobody is watching, which is the case A-19 exists for. **Reported to the owner on #330
 with three options rather than settled here.** Its second half — whether a xezar pi TASK blocks the same way,
 since `core/pi-runner.ts` answers no dialog either — is wider than #330 and was not measured.
+
+**Re-run 2026-09-13, after [#369](https://github.com/qodeca/xezar/issues/369): PASSED.** The leg now drives a
+real pi through xezar's own `PiRunner` instead of a harness RPC client, in both modes a xezar run has. Autonomous:
+no ask card, the runner answered `Deny` at once and recorded it, the model was told "The user declined approval
+to run MCP tool \"health\" on server \"xezar\"" and the turn ended. Interactive: `ask.requested` with header
+`Approval`, the question naming `xezar` and `health`, options `Allow once` / `Allow for session` / `Deny`; the
+reply `Approval: Deny` went back as the correlated `extension_ui_response` and the turn ended with the same
+refusal. The same leg was first run unchanged on `7aa4a02` as the red proof (`turnEnded: false`,
+`dialogTimeout: absent`). The leader extension itself still answers no dialog — it runs inside pi and is not
+pi's RPC client — so a headless pi that some other program drives is that program's to answer.
 
 Product-level:
 

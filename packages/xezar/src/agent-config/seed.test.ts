@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -34,16 +34,40 @@ function makeWorktree(): string {
 describe('seedAgentConfigLocalLayer', () => {
   it('copies a gitignored personal file into the worktree and excludes it', async () => {
     mkdirSync(join(repo, '.claude'), { recursive: true });
-    writeFileSync(join(repo, '.claude', 'settings.local.json'), '{"env":{"X":"1"}}');
+    writeFileSync(join(repo, '.claude', 'settings.local.json'), '{"env":{"X":"1"}}', { mode: 0o600 });
     const wt = makeWorktree();
     try {
       const seeded = await seedAgentConfigLocalLayer(repo, wt, env);
       expect(seeded).toContain('.claude/settings.local.json');
       expect(readFileSync(join(wt, '.claude', 'settings.local.json'), 'utf8')).toBe('{"env":{"X":"1"}}');
+      expect(statSync(join(wt, '.claude', 'settings.local.json')).mode & 0o777).toBe(0o600);
       // info/exclude is on the common dir (shared) — the seeded file is ignored in the worktree
       expect(
         execFileSync('git', ['check-ignore', '.claude/settings.local.json'], { cwd: wt, encoding: 'utf8' }).trim(),
       ).toBe('.claude/settings.local.json');
+    } finally {
+      git(repo, 'worktree', 'remove', '--force', wt);
+    }
+  });
+
+  it.each(['source', 'destination'])('never seeds through a %s file symlink (#363)', async (side) => {
+    mkdirSync(join(repo, '.claude'), { recursive: true });
+    const wt = makeWorktree();
+    const credential = join(repo, 'sentinel-credential');
+    const bytes = '{"key":"FAKE-SEED-CREDENTIAL"}';
+    writeFileSync(credential, bytes);
+    const source = join(repo, '.claude', 'settings.local.json');
+    const dest = join(wt, '.claude', 'settings.local.json');
+    try {
+      if (side === 'source') symlinkSync(credential, source);
+      else {
+        writeFileSync(source, '{}');
+        mkdirSync(join(wt, '.claude'), { recursive: true });
+        symlinkSync(credential, dest);
+      }
+      expect(await seedAgentConfigLocalLayer(repo, wt, env)).toEqual([]);
+      expect(readFileSync(credential, 'utf8')).toBe(bytes);
+      if (side === 'source') expect(existsSync(dest)).toBe(false);
     } finally {
       git(repo, 'worktree', 'remove', '--force', wt);
     }

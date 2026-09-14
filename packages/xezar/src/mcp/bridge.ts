@@ -195,7 +195,9 @@ export function runBridge(opts: BridgeOptions): Promise<void> {
 
   async function callTool(call: { name: string; arguments?: Record<string, unknown> }, signal: AbortSignal): Promise<Answer> {
     const health = call.name === HEALTH_TOOL.name;
-    const outcome = await session.call(health ? 'health' : 'tools/call', health ? undefined : call, signal);
+    const codex = codexMetadata((call as { _meta?: Record<string, unknown> })._meta);
+    const request = health ? undefined : { ...call, ...(codex === undefined ? {} : { _meta: { codex } }) };
+    const outcome = await session.call(health ? 'health' : 'tools/call', request, signal);
     if (outcome.kind !== 'response') return outcome.kind === 'error' ? { error: outcome.error } : { result: outcome.result };
     const response = outcome.response;
     if (!response.ok) return { result: refused(response, opts.version) };
@@ -228,6 +230,17 @@ export function runBridge(opts: BridgeOptions): Promise<void> {
     // The client went away mid-write: there is nobody left to answer.
     opts.output.on('error', finish);
   });
+}
+
+/**
+ * Codex app-server stamps its MCP tool calls with the upstream thread id (`_meta.threadId`, observed
+ * on codex-cli 0.154.0). That id is ALL the bridge forwards: Codex spawns MCP servers with a filtered
+ * environment that carries no `CODEX_HOME`, so where the app-server listens is the service's to find
+ * (`adapters/codex-link.ts`, the discovery rule), never something this process claims.
+ */
+function codexMetadata(meta: Record<string, unknown> | undefined): { threadId: string } | undefined {
+  const threadId = meta?.threadId;
+  return typeof threadId === 'string' && threadId.length > 0 && threadId.length <= 200 ? { threadId } : undefined;
 }
 
 // ---- the session -----------------------------------------------------------------------------

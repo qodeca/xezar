@@ -13,6 +13,7 @@ import { projectDataDir } from '../project-data-paths.ts';
 import type { RunStore } from '../runs/store.ts';
 import { loadWorkspaceConfig } from '../workspace/config.ts';
 import { ProjectOwnership } from '../workspace/project-owner.ts';
+import { codexControlHome } from './adapters/codex-link.ts';
 import { AuditTrail, type AuditChannel } from './audit-trail.ts';
 import { runBridge, type ServiceTarget } from './bridge.ts';
 import { writeMcpConnectionFile } from './connection-file.ts';
@@ -23,7 +24,7 @@ import { mcpSocketLocation } from './ipc.ts';
 import { LeaderDelivery } from './leader-delivery.ts';
 import { OperationReceiptStore, runByKeyReconciler, type EffectOutcome } from './operation-receipts.ts';
 import { registerProjectCatalog } from './project-catalogs.ts';
-import { registerProjectLeader } from './project-leaders.ts';
+import { projectLeaderChanged, registerProjectLeader } from './project-leaders.ts';
 import { LeaderCursors, runStateReader } from './reconnect.ts';
 import type { ServiceDispatch } from './service-adapter.ts';
 import { listenMcpSocket, type McpDoor, type McpServiceHandle } from './service.ts';
@@ -63,6 +64,7 @@ export interface StartMcpServiceOptions {
   readonly warn?: (message: string) => void;
   /** Test seam: the event controller's heartbeat (#309). Production uses its 30 s. */
   readonly leader?: { readonly heartbeatMs?: number };
+  readonly localHandoff?: () => boolean;
 }
 
 /**
@@ -105,6 +107,11 @@ export async function startMcpService(opts: StartMcpServiceOptions): Promise<Mcp
         ...(parts.cursors ? { leaderRecord: parts.cursors } : {}),
         warn,
         ...(opts.leader?.heartbeatMs === undefined ? {} : { heartbeatMs: opts.leader.heartbeatMs }),
+        ...(opts.localHandoff === undefined ? {} : { localHandoff: opts.localHandoff }),
+        // Where a Codex leader's shared app-server is looked for: THIS process's Codex home.
+        codexLeader: { home: () => codexControlHome(opts.env ?? process.env) },
+        // The cockpit's `mcp-leader` topic re-derives this project's status when it may have changed.
+        onStatusChange: () => projectLeaderChanged(project.id),
       })
     : undefined;
   const unregisterLeader = delivery ? registerProjectLeader(project.id, delivery) : undefined;
@@ -128,7 +135,7 @@ export async function startMcpService(opts: StartMcpServiceOptions): Promise<Mcp
       // The owner claims live beside the store the cockpit writes (D-02.8).
       dataDir,
       ownership,
-      ...(delivery ? { sessions: { opened: (key: string) => delivery.sessionOpened(key), closed: (key: string) => delivery.sessionClosed(key) } } : {}),
+      ...(delivery ? { sessions: { opened: (key: string) => delivery.sessionOpened(key), closed: (key: string) => delivery.sessionClosed(key), codexAnnounced: (key, announcement) => delivery.codexAnnounced(key, announcement) } } : {}),
     });
     // D-04: written once the socket it names really listens, so the file never points at nothing.
     // A failure is one warning and an MCP the client can still reach by the registry (N-07).

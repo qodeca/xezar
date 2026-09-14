@@ -12,8 +12,11 @@ import { EventJournal } from '../event-journal.ts';
 import {
   CODEX_EVENT_SOURCE_NOTICE,
   CodexReactionAdapter,
+  CodexRequestRefused,
   codexReactionTarget,
   codexTerminalDelivery,
+  codexThreadState,
+  codexThreadStatus,
   renderCodexEventMessage,
   type CodexAppServerLink,
 } from './codex.ts';
@@ -41,11 +44,25 @@ class FakeAppServer implements CodexAppServerLink {
   /** Steered inputs waiting for the running turn's next model request. */
   pendingSteer: { text: string; clientId: string | undefined }[] = [];
   turns = 0;
-  /** Hold every answer until released — a slow or lost response. */
+  /** Hold every turn answer until released — a slow or lost response. */
   hold: Promise<void> | undefined;
   failNext: string | undefined;
+  /** The request is processed (the turn really starts) but its answer is lost and the link drops. */
+  loseAnswerOf: string | undefined;
+  /** Is the thread loaded on this app-server (its TUI still there, or anything subscribed)? */
+  loaded = true;
+  /** `activeFlags` app-server reports for the thread: a prompt open in ANOTHER client. */
+  flags: string[] = [];
+  /** Whether this link holds the thread's subscription (`thread/resume` subscribes). */
+  subscribed = false;
+  /** Runs before each request is answered: a way to change the thread under the adapter's feet. */
+  onRequest: ((method: string) => void) | undefined;
 
-  constructor(readonly threadId = 'thread-1') {}
+  /**
+   * `history` is the thread's recorded client message ids — app-server's, not a link's — so two
+   * links to the same thread (a re-attach) share it, as they share the real thread.
+   */
+  constructor(readonly threadId = 'thread-1', readonly history: string[] = []) {}
 
   subscribe(listener: (message: CodexAppServerMessage) => void): () => void {
     this.listeners.add(listener);
@@ -58,13 +75,25 @@ class FakeAppServer implements CodexAppServerLink {
 
   async request(method: string, params: Record<string, unknown>): Promise<Record<string, unknown>> {
     this.requests.push({ method, params });
+    this.onRequest?.(method);
     if (this.failNext === method) {
       this.failNext = undefined;
       throw new Error('transport dropped');
     }
     const answer = this.#answer(method, params);
-    if (this.hold) await this.hold;
+    if (this.loseAnswerOf === method) {
+      this.loseAnswerOf = undefined;
+      await settle();
+      this.closed = true;
+      throw new Error('the Codex app-server closed xezar’s link');
+    }
+    if (this.hold && method.startsWith('turn/')) await this.hold;
     return answer();
+  }
+
+  #status(): Record<string, unknown> {
+    if (!this.loaded) return { type: 'notLoaded' };
+    return this.activeTurn !== undefined || this.flags.length > 0 ? { type: 'active', activeFlags: this.flags } : { type: 'idle' };
   }
 
   #answer(method: string, params: Record<string, unknown>): () => Record<string, unknown> {
@@ -72,15 +101,30 @@ class FakeAppServer implements CodexAppServerLink {
     const text = input?.map((part) => part.text).join('\n') ?? '';
     const clientId = params.clientUserMessageId as string | undefined;
     if (method === 'thread/start') return () => ({ thread: { id: this.threadId } });
-    if (method === 'thread/resume' || method === 'thread/read') return () => ({ thread: { id: this.threadId } });
+    if (method === 'thread/loaded/list') return () => ({ data: this.loaded ? ['other-thread', this.threadId] : ['other-thread'] });
+    if (method === 'thread/resume') {
+      if (!this.loaded) throw new CodexRequestRefused(`thread not found: ${this.threadId}`);
+      this.subscribed = true;
+      return () => ({ thread: { id: this.threadId, status: this.#status(), turns: [] } });
+    }
+    if (method === 'thread/unsubscribe') {
+      this.subscribed = false;
+      return () => ({ status: 'unsubscribed' });
+    }
+    if (method === 'thread/read') return () => ({ thread: { id: this.threadId, status: this.#status() } });
+    if (method === 'thread/turns/list') {
+      const items = this.history.map((id) => ({ type: 'userMessage', clientId: id, content: [] }));
+      return () => ({ data: [{ id: this.activeTurn ?? `turn-${this.turns}`, status: this.activeTurn === undefined ? 'completed' : 'inProgress', items }] });
+    }
     if (method === 'turn/steer') {
-      if (this.activeTurn === undefined) throw new Error('no active turn to steer');
-      if (params.expectedTurnId !== this.activeTurn) throw new Error(`expected active turn id \`${String(params.expectedTurnId)}\` but found \`${this.activeTurn}\``);
+      if (this.activeTurn === undefined) throw new CodexRequestRefused('no active turn to steer');
+      if (params.expectedTurnId !== this.activeTurn) throw new CodexRequestRefused(`expected active turn id \`${String(params.expectedTurnId)}\` but found \`${this.activeTurn}\``);
       this.pendingSteer.push({ text, clientId });
       const turnId = this.activeTurn;
       return () => ({ turnId });
     }
     if (method === 'turn/start') {
+      if (!this.loaded) throw new CodexRequestRefused(`thread not found: ${this.threadId}`);
       if (this.activeTurn !== undefined) {
         this.pendingSteer.push({ text, clientId });
         const turnId = this.activeTurn;
@@ -99,8 +143,14 @@ class FakeAppServer implements CodexAppServerLink {
   }
 
   #surface(text: string, clientId: string | undefined): void {
+    if (clientId !== undefined) this.history.push(clientId);
     this.emit({ method: 'item/started', params: { threadId: this.threadId, item: { type: 'userMessage', clientId: clientId ?? null, content: [{ type: 'text', text }] } } });
     this.modelInputs.push(text);
+  }
+
+  /** The requests that could start or steer model work — the ones a count of model cost is about. */
+  turnRequests(): string[] {
+    return this.requests.map((request) => request.method).filter((method) => method.startsWith('turn/'));
   }
 
   /** The running turn samples the model again (steered input surfaces), then completes. */
@@ -166,7 +216,7 @@ describe('an event reaches the model through app-server, never through a native 
     await settle();
 
     expect(server.sent('turn/start')).toBe(1);
-    expect(server.requests[0]?.params).toMatchObject({ threadId: 'thread-1' });
+    expect(server.requests.find((request) => request.method === 'turn/start')?.params).toMatchObject({ threadId: 'thread-1' });
     expect(server.modelInputs).toHaveLength(1);
     expect(server.modelInputs[0]).toContain('xez109:1');
     expect(server.modelInputs[0]).toContain('xez109:2');
@@ -220,22 +270,25 @@ describe('an active turn (X3)', () => {
     const server = new FakeAppServer();
     const adapter = adapterOn(server);
     server.leaderTurn();
-    // The turn ends, but the adapter has not seen turn/completed yet — the steer precondition fails.
-    server.activeTurn = undefined;
+    // The turn ends after the state was read but before the steer lands — its precondition fails.
+    server.onRequest = (method) => {
+      if (method === 'turn/steer') server.activeTurn = undefined;
+    };
     await adapter.deliver(dispatch([row(1)]), live());
     await settle();
-    expect(server.requests.map((request) => request.method)).toEqual(['turn/steer', 'turn/start']);
+    expect(server.turnRequests()).toEqual(['turn/steer', 'turn/start']);
     expect(server.modelInputs).toHaveLength(1);
   });
 
-  it('a turn/start that app-server folds into a turn this adapter never saw start waits for that turn\'s next model request', async () => {
+  it('a turn running before the adapter existed is read at the hand-off, so the event is steered into it and reacts at its next model request', async () => {
     const server = new FakeAppServer();
-    server.leaderTurn(); // running before the adapter existed — after a resume, say
+    const turnId = server.leaderTurn(); // running before the adapter existed — after a resume, say
     const reactions: number[] = [];
     const adapter = adapterOn(server, reactions);
     await adapter.deliver(dispatch([row(3)]), live());
     await settle();
-    expect(server.requests.map((request) => request.method)).toEqual(['turn/start']);
+    expect(server.turnRequests()).toEqual(['turn/steer']);
+    expect(server.requests.find((request) => request.method === 'turn/steer')?.params).toMatchObject({ expectedTurnId: turnId });
     expect(server.turns).toBe(1);
     expect(reactions).toEqual([]);
     server.finishTurn();
@@ -331,7 +384,7 @@ describe('separation and targeting', () => {
 
     const delivering = adapter.deliver(dispatch([row(1)]), live());
     await settle();
-    expect(server.requests).toHaveLength(0);
+    expect(server.turnRequests()).toEqual([]);
 
     server.emit({ method: 'serverRequest/resolved', params: { threadId: 'thread-1', requestId: 41 } });
     await delivering;
@@ -344,9 +397,12 @@ describe('separation and targeting', () => {
     server.emit({ id: 'p1', method: 'item/tool/requestUserInput', params: { threadId: 'thread-1' } });
     const signal = new AbortController();
     const delivering = adapter.deliver(dispatch([row(1)]), signal.signal);
+    await settle();
     signal.abort();
     await expect(delivering).rejects.toThrow('aborted');
-    expect(server.requests).toHaveLength(0);
+    expect(server.turnRequests()).toEqual([]);
+    // Abandoned, it lets go of the thread it had subscribed to for the hand-off.
+    expect(server.subscribed).toBe(false);
   });
 
   it('never answers a server request itself', () => {
@@ -363,7 +419,7 @@ describe('separation and targeting', () => {
     server.emit({ id: 5, method: 'item/commandExecution/requestApproval', params: { threadId: 'other' } });
     expect(adapter.promptOpen).toBe(false);
     await adapter.deliver(dispatch([row(1)]), live());
-    expect(server.requests[0]?.method).toBe('turn/start');
+    expect(server.turnRequests()).toEqual(['turn/start']);
   });
 
   it('refuses a dispatch for another project', async () => {
@@ -411,12 +467,13 @@ describe('the echo guard (D-05 § 6.3)', () => {
 });
 
 describe('heartbeat (N-06)', () => {
-  it('is a metadata read of the leader\'s thread and starts no turn', async () => {
+  it('is a listing of loaded threads, which starts no turn and subscribes to nothing', async () => {
     const server = new FakeAppServer();
     const adapter = adapterOn(server);
     await adapter.heartbeat(live());
-    expect(server.requests).toEqual([{ method: 'thread/read', params: { threadId: 'thread-1' } }]);
+    expect(server.requests).toEqual([{ method: 'thread/loaded/list', params: {} }]);
     expect(server.modelInputs).toHaveLength(0);
+    expect(server.subscribed).toBe(false);
   });
 });
 
@@ -484,7 +541,7 @@ describe('with the real journal and controller (#103, #107)', () => {
     // Heartbeats afterwards never reach the model.
     await vi.advanceTimersByTimeAsync(3 * 30_000);
     expect(server.modelInputs).toHaveLength(1);
-    expect(server.sent('thread/read')).toBeGreaterThanOrEqual(1);
+    expect(server.sent('thread/loaded/list')).toBeGreaterThanOrEqual(2);
   });
 
   it('a dropped transport is retried with the same rows and still produces exactly one turn', async () => {
@@ -522,5 +579,298 @@ describe('with the real journal and controller (#103, #107)', () => {
     expect(second.modelInputs[0]).toContain('xez109:3');
     expect(second.modelInputs[0]).not.toContain('xez109:1 ');
     expect(resumed.status()).toMatchObject({ deliveredSeq: 3, reactedSeq: 3, ackedSeq: 1 });
+  });
+});
+
+/**
+ * #374 — the attach boundary and what follows it, against the same fake: a prompt that was already
+ * open when xezar attached, a subscription held only for a hand-off, a lost acceptance reconciled
+ * through a NEW link, and the leader's TUI or daemon going away while attached. Model requests are
+ * counted as `modelInputs` (an input surfacing is Codex sampling the model with it).
+ */
+describe('state at attach, and the thread between hand-offs (decision record § 4, #374)', () => {
+  it('a prompt already open at attach holds the first event until app-server says it cleared', async () => {
+    for (const flag of ['waitingOnApproval', 'waitingOnUserInput']) {
+      const server = new FakeAppServer();
+      server.flags = [flag];
+      const adapter = new CodexReactionAdapter({ link: server, threadId: 'thread-1', projectId: 'xez109', state: { waiting: true } });
+      expect(adapter.promptOpen).toBe(true);
+      const delivering = adapter.deliver(dispatch([row(1)]), live());
+      await settle();
+      expect(server.turnRequests()).toEqual([]);
+      server.flags = [];
+      server.emit({ method: 'thread/status/changed', params: { threadId: 'thread-1', status: { type: 'idle' } } });
+      await delivering;
+      expect(server.turnRequests()).toEqual(['turn/start']);
+      expect(server.modelInputs).toHaveLength(1);
+    }
+  });
+
+  it('an approval that opened while xezar held no subscription is read afresh by the next hand-off', async () => {
+    const server = new FakeAppServer();
+    const adapter = adapterOn(server); // nothing was open at attach
+    server.flags = ['waitingOnApproval']; // opened later; its server request went to the TUI, not to xezar
+    expect(adapter.promptOpen).toBe(false);
+    const delivering = adapter.deliver(dispatch([row(1)]), live());
+    await settle();
+    expect(adapter.promptOpen).toBe(true);
+    expect(server.turnRequests()).toEqual([]);
+    server.flags = [];
+    server.emit({ method: 'thread/status/changed', params: { threadId: 'thread-1', status: { type: 'active', activeFlags: [] } } });
+    await delivering;
+    expect(server.turnRequests()).toEqual(['turn/start']);
+  });
+
+  // Round-4 review, major 1: a status xezar cannot read is not "no approval". Every payload below
+  // used to read as `{ loaded: true, waiting: false }`, clear the seeded wait and start a turn
+  // straight through the open approval.
+  it('a malformed or unknown thread/status/changed never releases a held approval: no turn starts', async () => {
+    const malformed: unknown[] = [
+      undefined,
+      null,
+      'idle',
+      {},
+      { type: 'bogus' },
+      { type: 'active' },
+      { type: 'active', activeFlags: 'waitingOnApproval' },
+      // Round-5 review, major 1: the container was checked, its entries were not. An entry xezar
+      // cannot read is the same uncertainty as a status type it cannot read.
+      { type: 'active', activeFlags: [{ type: 'waitingOnApproval' }] },
+      { type: 'active', activeFlags: ['bogus'] },
+      { type: 'active', activeFlags: [null] },
+      { type: 'active', activeFlags: ['waitingOnApproval', 'bogus'] },
+    ];
+    for (const status of malformed) {
+      const server = new FakeAppServer();
+      server.flags = ['waitingOnApproval'];
+      const adapter = new CodexReactionAdapter({ link: server, threadId: 'thread-1', projectId: 'xez109', state: { waiting: true } });
+      const delivering = adapter.deliver(dispatch([row(1)]), live());
+      await settle();
+      server.emit({ method: 'thread/status/changed', params: { threadId: 'thread-1', status } });
+      await settle();
+      expect(server.turnRequests(), JSON.stringify(status) ?? 'undefined').toEqual([]);
+      expect(adapter.promptOpen).toBe(true);
+      // A status it CAN read still ends the wait, so the uncertainty is recoverable, not a dead end.
+      server.flags = [];
+      server.emit({ method: 'thread/status/changed', params: { threadId: 'thread-1', status: { type: 'idle' } } });
+      await delivering;
+      expect(server.turnRequests()).toEqual(['turn/start']);
+    }
+  });
+
+  it('an unknown status with nothing open defers delivery and names a recoverable blocker until a fresh read', async () => {
+    const server = new FakeAppServer();
+    const adapter = adapterOn(server);
+    server.emit({ method: 'thread/status/changed', params: { threadId: 'thread-1', status: { type: 'somethingNew' } } });
+    expect(adapter.promptOpen).toBe(true);
+    expect(adapter.status().blocker).toMatchObject({ code: 'codex-thread-state-unknown', fix: expect.stringContaining('leader_events') });
+    // The next hand-off takes the thread with a fresh `thread/resume`; a state it can read clears the doubt.
+    await adapter.deliver(dispatch([row(1)]), live());
+    expect(server.turnRequests()).toEqual(['turn/start']);
+    expect(adapter.status()).toEqual({});
+  });
+
+  // Self-review finding 4: once xezar lets the thread go it hears no more statuses, so an unknown one
+  // must not keep saying "events are held" for ever; the next hand-off reads the thread afresh anyway.
+  it('an unknown status seen while holding the thread is forgotten when the thread is released', async () => {
+    const server = new FakeAppServer();
+    server.flags = ['waitingOnApproval'];
+    const adapter = adapterOn(server);
+    const abort = new AbortController();
+    const delivering = adapter.deliver(dispatch([row(1)]), abort.signal).catch(() => undefined);
+    await settle();
+    server.emit({ method: 'thread/status/changed', params: { threadId: 'thread-1', status: { type: 'bogus' } } });
+    expect(adapter.status().blocker?.code).toBe('codex-thread-state-unknown');
+    abort.abort();
+    await delivering;
+    await settle();
+    expect(server.subscribed).toBe(false);
+    expect(adapter.status()).toEqual({});
+    expect(server.turnRequests()).toEqual([]);
+  });
+
+  it('holds the thread only for a hand-off: subscribed to deliver, released once the event reacted', async () => {
+    const server = new FakeAppServer();
+    const adapter = adapterOn(server);
+    await adapter.deliver(dispatch([row(1)]), live());
+    await settle();
+    expect(server.requests.map((request) => request.method)).toEqual(['thread/loaded/list', 'thread/resume', 'turn/start', 'thread/unsubscribe']);
+    expect(server.subscribed).toBe(false);
+    // Only its own echoes: no hand-off, so the thread is not even taken.
+    const echoes = new CodexReactionAdapter({ link: server, threadId: 'thread-1', projectId: 'xez109', isOwnOperation: () => true });
+    await echoes.deliver(dispatch([row(2, { origin: 'leader', causedBy: 'op-own-00001' })]), live());
+    expect(server.sent('thread/resume')).toBe(1);
+  });
+
+  it('a reaction that never shows does not keep the thread held: the next heartbeat reads history once and lets go', async () => {
+    for (const recorded of [false, true]) {
+      const server = new FakeAppServer();
+      const reactions: number[] = [];
+      const adapter = adapterOn(server, reactions);
+      server.leaderTurn(); // running: the event is steered, and its item waits for the next model request
+      await adapter.deliver(dispatch([row(1)]), live());
+      expect(server.subscribed).toBe(true);
+      const steered = server.pendingSteer.splice(0);
+      server.activeTurn = undefined; // the turn ended, and the notification was never seen
+      if (recorded) server.history.push(steered[0]!.clientId!);
+      await adapter.heartbeat(live());
+      expect(server.sent('thread/turns/list')).toBe(2); // the state read at the hand-off, then this one
+      expect(server.subscribed).toBe(false);
+      expect(reactions).toEqual(recorded ? [1] : []);
+    }
+  });
+
+  it('counts model requests: one event is one turn, and heartbeats after it cost none', async () => {
+    const server = new FakeAppServer();
+    const adapter = adapterOn(server);
+    await adapter.deliver(dispatch([row(1), row(2), row(3)]), live());
+    await settle();
+    server.finishTurn();
+    for (let i = 0; i < 5; i++) await adapter.heartbeat(live());
+    expect(server.modelInputs).toHaveLength(1);
+    expect(server.turnRequests()).toEqual(['turn/start']);
+    expect(server.sent('thread/loaded/list')).toBe(6);
+  });
+
+  it('a lost acceptance is reconciled through the NEW link: it reached the model once and is never sent twice', async () => {
+    const history: string[] = [];
+    const first = new FakeAppServer('thread-1', history);
+    first.loseAnswerOf = 'turn/start';
+    const reactions: number[] = [];
+    const before = adapterOn(first, reactions);
+    await expect(before.deliver(dispatch([row(1)]), live())).rejects.toThrow('closed');
+    expect(first.modelInputs).toHaveLength(1); // it DID reach the model; only the answer was lost
+    expect(before.unresolved).toMatchObject({ seq: 1 });
+
+    const second = new FakeAppServer('thread-1', history); // a re-attach: a new link to the same thread
+    const after = new CodexReactionAdapter({ link: second, threadId: 'thread-1', projectId: 'xez109', onReaction: (seq) => reactions.push(seq), unresolved: before.unresolved! });
+    await after.deliver(dispatch([row(1)]), live());
+    expect(second.turnRequests()).toEqual([]);
+    expect(second.sent('thread/turns/list')).toBe(1);
+    expect(after.handedThrough).toBe(1);
+    expect(after.unresolved).toBeUndefined();
+    expect(reactions).toContain(1);
+    // What comes next goes through the new link as usual, without the reconciled row.
+    await after.deliver(dispatch([row(1), row(2)]), live());
+    await settle();
+    expect(second.modelInputs).toHaveLength(1);
+    expect(second.modelInputs[0]).toContain('xez109:2');
+    expect(second.modelInputs[0]).not.toContain('xez109:1 ');
+  });
+
+  it('a request lost BEFORE app-server took it is sent again through the new link, once', async () => {
+    const history: string[] = [];
+    const first = new FakeAppServer('thread-1', history);
+    first.failNext = 'turn/start';
+    const before = adapterOn(first);
+    await expect(before.deliver(dispatch([row(1)]), live())).rejects.toThrow('transport dropped');
+    first.closed = true;
+    const second = new FakeAppServer('thread-1', history);
+    const after = new CodexReactionAdapter({ link: second, threadId: 'thread-1', projectId: 'xez109', unresolved: before.unresolved! });
+    await after.deliver(dispatch([row(1)]), live());
+    await settle();
+    expect(first.modelInputs.length + second.modelInputs.length).toBe(1);
+    expect(second.turnRequests()).toEqual(['turn/start']);
+  });
+
+  it('a refused hand-off is known not accepted: no reconciliation read follows it', async () => {
+    const server = new FakeAppServer();
+    const adapter = adapterOn(server);
+    server.onRequest = (method) => {
+      if (method === 'turn/start') server.loaded = false;
+    };
+    await expect(adapter.deliver(dispatch([row(1)]), live())).rejects.toBeInstanceOf(CodexRequestRefused);
+    expect(adapter.unresolved).toBeUndefined();
+    expect(server.sent('thread/turns/list')).toBe(0);
+  });
+
+  it('the TUI exits: app-server unloads the thread, the heartbeat names Codex’s remedy, and nothing is resumed or started into it', async () => {
+    const server = new FakeAppServer();
+    const adapter = adapterOn(server);
+    await adapter.deliver(dispatch([row(1)]), live());
+    await settle();
+    expect(server.subscribed).toBe(false); // nothing of xezar's keeps the thread loaded
+    server.loaded = false; // so app-server lets it go, as it did a minute after a real TUI exited
+    await expect(adapter.heartbeat(live())).rejects.toThrow('not loaded');
+    // NB-1: the unloaded thread is named as such, with its own fix, not the generic "not targetable".
+    expect(adapter.status().blocker).toMatchObject({ code: 'codex-thread-not-loaded', message: expect.stringContaining('cannot reach'), fix: expect.stringContaining('leader_events') });
+    const seen = server.requests.length;
+    await expect(adapter.deliver(dispatch([row(1), row(2)]), live())).rejects.toThrow('not loaded');
+    expect(server.requests.slice(seen)).toEqual([]); // sticky: no resume of an unloaded thread, no turn
+    expect(server.modelInputs).toHaveLength(1);
+  });
+
+  it('a thread unloaded or closed while a hand-off waits on its prompt ends the wait without sending', async () => {
+    for (const gone of [
+      { method: 'thread/closed', params: { threadId: 'thread-1' } },
+      { method: 'thread/status/changed', params: { threadId: 'thread-1', status: { type: 'notLoaded' } } },
+    ]) {
+      const server = new FakeAppServer();
+      const adapter = adapterOn(server);
+      server.flags = ['waitingOnApproval'];
+      const delivering = adapter.deliver(dispatch([row(1)]), live());
+      await settle();
+      server.emit(gone);
+      await expect(delivering).rejects.toThrow(/closed|no longer loaded/);
+      expect(server.turnRequests()).toEqual([]);
+      expect(adapter.status().blocker?.code).toBe('codex-thread-not-loaded');
+    }
+  });
+
+  it('the daemon exits: the link closes, delivery and heartbeat fail recoverably, and the blocker is Codex’s own', async () => {
+    const server = new FakeAppServer();
+    const adapter = adapterOn(server);
+    expect(adapter.status()).toEqual({});
+    server.closed = true;
+    await expect(adapter.deliver(dispatch([row(1)]), live())).rejects.toThrow('closed');
+    await expect(adapter.heartbeat(live())).rejects.toThrow('closed');
+    // NB-1: a closed link is the app-server going away, and its fix says to run it again.
+    expect(adapter.status().blocker).toMatchObject({ code: 'codex-app-server-unreachable', fix: expect.stringContaining('codex app-server --listen unix://') });
+    expect(server.requests).toEqual([]);
+  });
+
+  it('closing the adapter lets go of a thread it still holds', async () => {
+    const server = new FakeAppServer();
+    const adapter = adapterOn(server);
+    server.leaderTurn();
+    await adapter.deliver(dispatch([row(1)]), live());
+    expect(server.subscribed).toBe(true);
+    adapter.close();
+    expect(server.subscribed).toBe(false);
+  });
+});
+
+describe('reading the thread state (codex-cli 0.154.0 `ThreadStatus`)', () => {
+  it('refuses a missing or notLoaded status, and reads the running turn of an active thread', async () => {
+    const server = new FakeAppServer();
+    await expect(codexThreadState(server, 'thread-1', {})).rejects.toThrow('did not report');
+    await expect(codexThreadState(server, 'thread-1', { thread: { status: { type: 'notLoaded' } } })).rejects.toThrow('not loaded');
+    await expect(codexThreadState(server, 'thread-1', { thread: { status: { type: 'idle' } } })).resolves.toEqual({ waiting: false });
+    server.leaderTurn();
+    await expect(codexThreadState(server, 'thread-1', { thread: { status: { type: 'active', activeFlags: ['waitingOnUserInput'] } } })).resolves.toEqual({ waiting: true, activeTurnId: 'turn-1' });
+    server.activeTurn = undefined;
+    await expect(codexThreadState(server, 'thread-1', { thread: { status: { type: 'active', activeFlags: [] } } })).resolves.toEqual({ waiting: false });
+    // Round-4 review, major 1: only the four recognised shapes are read; anything else is `undefined`,
+    // never a guessed "loaded and idle".
+    expect(codexThreadStatus({ type: 'idle' })).toEqual({ loaded: true, waiting: false });
+    expect(codexThreadStatus({ type: 'systemError' })).toEqual({ loaded: true, waiting: false });
+    expect(codexThreadStatus({ type: 'notLoaded' })).toEqual({ loaded: false, waiting: false });
+    expect(codexThreadStatus({ type: 'active', activeFlags: ['waitingOnApproval'] })).toEqual({ loaded: true, waiting: true });
+    expect(codexThreadStatus({ type: 'active', activeFlags: ['waitingOnUserInput', 'waitingOnApproval'] })).toEqual({ loaded: true, waiting: true });
+    for (const unknown of [null, undefined, 'idle', {}, { type: 'bogus' }, { type: 'active' }, { type: 'active', activeFlags: 'x' }]) expect(codexThreadStatus(unknown)).toBeUndefined();
+    // Round-5 review, major 1: every ENTRY is read against the protocol's two flags, not just the array.
+    for (const flags of [[{ type: 'waitingOnApproval' }], ['bogus'], [null], [undefined], [7], ['waitingOnApproval', 'bogus'], ['WaitingOnApproval']]) {
+      expect(codexThreadStatus({ type: 'active', activeFlags: flags }), JSON.stringify(flags)).toBeUndefined();
+    }
+  });
+
+  it('refuses a thread state it does not recognise at attach, rather than reading it as idle', async () => {
+    const server = new FakeAppServer();
+    await expect(codexThreadState(server, 'thread-1', { thread: { status: { type: 'somethingNew' } } })).rejects.toThrow('did not report');
+    await expect(codexThreadState(server, 'thread-1', { thread: { status: { type: 'active' } } })).rejects.toThrow('did not report');
+    // Round-5 review, major 1: an unreadable flag ENTRY refuses at attach exactly like an unreadable type.
+    for (const flags of [[{ type: 'waitingOnApproval' }], ['bogus'], [null]]) {
+      await expect(codexThreadState(server, 'thread-1', { thread: { status: { type: 'active', activeFlags: flags } } }), JSON.stringify(flags)).rejects.toThrow('did not report');
+    }
   });
 });

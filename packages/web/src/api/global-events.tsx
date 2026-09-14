@@ -145,7 +145,9 @@ function createRunsIndexRefresher(queryClient: QueryClient): {
  *   instead (#369). Invalidating it here too costs nothing extra and keeps this list a complete
  *   "everything the stream can leave stale" note;
  * - worktrees: run terminal transitions and reclaim operations change the resources panel;
- * - provider status: runtime authentication failures patch this workspace-wide cache live.
+ * - provider status: runtime authentication failures patch this workspace-wide cache live;
+ * - the MCP leader status (Settings → MCP connection): its `mcp-leader` topic can have missed a
+ *   change while the tab was away, and remote mode has no topic at all (#374, round 5 on #403).
  *
  * `invalidateQueries` and not `refetchQueries`: it refetches what is actually rendered and marks
  * the rest stale for whenever it next mounts. A background tab with fifty cached runs should not
@@ -161,6 +163,7 @@ function reconcile(queryClient: QueryClient): void {
   // The worktree panel's list/total (#483) — a run finishing or a reclaim changes it.
   void queryClient.invalidateQueries({ queryKey: queryKeys.worktrees })
   void queryClient.invalidateQueries({ queryKey: workspaceQueryKeys.providerStatus })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.mcpLeader })
 }
 
 /**

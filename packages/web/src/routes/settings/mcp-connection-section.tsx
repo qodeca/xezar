@@ -8,6 +8,8 @@ import { Link, useActiveProjectId } from '@/lib/project-router'
 import { McpOperationFeedback, type McpOperation } from '@/routes/task-thread/mcp-operation-feedback'
 import { McpCapabilities } from './mcp-capabilities'
 import { McpConnectionState } from './mcp-connection-state'
+import { withCode } from './mcp-copy'
+import { McpLeaderControl } from './mcp-leader-control'
 import { SettingsField } from './settings-field'
 
 /**
@@ -49,23 +51,14 @@ interface ClientSetup {
   notAutomatic: string
   /** An optional caveat D-04 records for this client. */
   caveat?: string
-}
-
-/**
- * Copy with `backticked` names, rendered as `<code>` instead of literal backticks (#301, C1).
- * The backtick is spelled `\x60`: the design guardian does not lex regex literals, and a literal
- * backtick there opens a template string that hides every later comment from its stripper.
- */
-function withCode(text: string): ReactNode {
-  return text.split(/\x60([^\x60]+)\x60/).map((part, i) =>
-    i % 2 ? (
-      <code key={i} className="font-mono break-words">
-        {part}
-      </code>
-    ) : (
-      part
-    ),
-  )
+  /**
+   * How to let xezar WAKE this leader — start turns in it on project events — for a client that
+   * supports it (Codex through its shared app-server, #374). A card-body block, not the caveat
+   * footnote: it is guidance a person acts on, and the footnote's small soft text is below AA on
+   * light (design review NB-4, known gap G-23). Absent for a client with no push path: nothing is
+   * claimed. The attach itself is the one control under Connection status.
+   */
+  wake?: ReactNode
 }
 
 /** The per-client setup facts, from D-04 § 3. Kept as data so the four cards cannot drift. */
@@ -107,7 +100,28 @@ args = ["-y", "@qodeca/xezar", "mcp"]`}
     ),
     notAutomatic:
       'Codex does not discover `.local/xezar/mcp-connection.json`. It also does not read a project `.codex/config.toml` at all until that project is trusted \u2014 so a user who writes the file but skips the trust step sees a silent nothing, with no error naming the cause.',
-    caveat: 'Do not use `codex mcp add` \u2014 it has no scope flag and writes a machine-scope entry that would apply in every project.',
+    caveat:
+      'Do not use `codex mcp add` — it has no scope flag and writes a machine-scope entry that would apply in every project.',
+    // #374: the attach path, in the card body (NB-4). What connected, unavailable and each refusal
+    // look like is no longer described here: the Connection status control shows the live one (NB-2),
+    // with the server's own blocker and fix (NB-1). `app-server` and `leader_events` are code (NB-3).
+    wake: (
+      <>
+        <span className="block">
+          {withCode(
+            'Attaching Codex is optional. It lets project events start a turn in the Codex session you already run, when that session runs on Codex’s shared local `app-server` under the same Codex home as xezar (`CODEX_HOME`, or `~/.codex` when it is not set):',
+          )}
+        </span>
+        <pre className="mt-2 rounded-md border border-border bg-muted p-3 font-mono text-[11px] leading-relaxed break-all whitespace-pre-wrap">
+          codex app-server --listen unix://
+        </pre>
+        <span className="mt-2 block">
+          {withCode(
+            'Then open your session in the Codex TUI in this project, let it call a xezar tool once (for example `leader_events`), and choose Attach leader under Connection status below. xezar finds the session itself and never asks for a socket path or port. If attaching is refused, Connection status names why and what to change. Without attaching nothing changes: Codex reads its events with `leader_events`.',
+          )}
+        </span>
+      </>
+    ),
   },
   {
     name: 'OpenCode',
@@ -142,19 +156,15 @@ args = ["-y", "@qodeca/xezar", "mcp"]`}
   // start a bridge wherever pi starts (D-04 § 3.4). The card states keep-alive's cost as well as its
   // use: D-04 § 3.4 run `root` measured that a pi started in the project root holds the project from
   // start, and a second client is refused until that pi exits (design review on #343).
-  // The `approveTools` line is #369's measured blast radius, and it is deliberately narrow: #330 WP5's
-  // QA measured an ordinary pi task UNAFFECTED (the runner's default `--tools` allowlist offers no
-  // `xezar_*` tool, so the dialog never fires) and only a step that named `xezar_health` failing, at
-  // 121 s. Do not widen this to "every pi task": that is measured false. `approveTools` is the user's
-  // own key in the adapter's `mcp.json` — `settings.approveTools` or the per-server one, which
-  // overrides it (`tool-approval.ts:42-43`, adapter 2.32.1). Scope any absence claim about it to the
-  // files read: `core/pi-runner.ts`, `scripts/pi-leader-extension.ts` and `mcp/adapters/pi.ts` — the
-  // three xezar files on this path — never mention `approveTools` or `extension_ui_request` (read
-  // 2026-09-12 at `df828a0`); `test/integration/mcp-real-clients.test.ts` DOES set the key, on its own
-  // fixture, to produce the block. An unscoped "appears nowhere" rots: this one was true at 301a172
-  // and false an hour later when #368 merged.
-  // The two unattended cases end differently and the line says both: a pi xezar runs is killed by the
-  // runner's timeout, a leader turn nobody is watching has nothing to end it and waits for ever.
+  // The `approveTools` line names WHO answers the dialog, per place pi runs, since #369: the person in
+  // their own pi window; xezar's pi runner in a pi task (`core/pi-dialog.ts` — a question card with
+  // pi's own three choices when interactive, an explicit `Deny` recorded in the transcript when
+  // autonomous); and nobody for a headless pi some other program drives, because the dialog carries no
+  // `timeout`. Two limits keep the line true and must not be widened: an ordinary pi task never sees
+  // the dialog (the runner's default `--tools` allowlist offers no `xezar_*` tool — #330 WP5's QA
+  // measured it unaffected at 2.8 s), and the leader extension itself answers nothing, it runs inside
+  // pi. `approveTools` is the user's own key in the adapter's `mcp.json` — `settings.approveTools` or
+  // the per-server one, which overrides it (`tool-approval.ts:42-43`, adapter 2.32.1).
   {
     name: 'pi',
     automatic:
@@ -205,12 +215,12 @@ args = ["-y", "@qodeca/xezar", "mcp"]`}
               other work.
             </span>
             <span data-slot="mcp-client-pi-approve-tools" className="mt-2 block">
-              Leave xezar’s tools out of the extension’s <span className="font-mono break-all">approveTools</span> setting, in this file
-              or on the <span className="font-mono break-all">xezar</span> entry. A gated tool asks for approval in pi’s own window and
-              nothing in xezar answers, so a pi xezar runs waits there until it is killed — measured at two minutes, on a step that named{' '}
-              <span className="font-mono break-all">xezar_health</span> — and a leader turn nobody is watching waits for ever, because
-              nothing ends that one at all. A pi that is never offered a xezar tool is unaffected. Making
-              xezar answer that question is{' '}
+              A xezar tool you put in the extension’s <span className="font-mono break-all">approveTools</span> setting, in this file
+              or on the <span className="font-mono break-all">xezar</span> entry, asks for approval before it runs. In your own pi window
+              you answer it yourself. In a pi task xezar runs, the question shows in the task as a card with pi’s own choices, Allow
+              once, Allow for session and Deny, and your answer goes back to pi; an autonomous task answers Deny at once and says so in
+              its transcript. A pi that is never offered a xezar tool is unaffected. pi waits for that answer with no time limit, so a
+              headless pi that another program drives is that program’s to answer (
               {/* The link text is "issue 369", not "#369": the design guardian's no-raw-hex-colors rule
                   reads a three-digit "#369" as a colour, and the rule is right to. */}
               <a
@@ -222,7 +232,7 @@ args = ["-y", "@qodeca/xezar", "mcp"]`}
               >
                 issue 369
               </a>
-              , which is not in this release.
+              ).
             </span>
             <span className="mt-2 block">
               The file holds no secret, so it is safe to commit. A committed entry does the same for everyone who starts pi in this
@@ -277,10 +287,10 @@ export function McpConnectionSection() {
 }
 
 /**
- * The connection state the cockpit can TRUTHFULLY report from server facts, or `null` when it
- * cannot. The live owner state (`unowned | owned | expired`) is held by the server's MCP side and
- * no HTTP route exposes it yet, so in local mode this answers `null` and the surface says the
- * status is not reported here — it never guesses "ready" or "connected" (§8, §13).
+ * The state card the cockpit shows INSTEAD of the leader control, or `null` when the control
+ * reports it. Hosted mode cannot attach anything local, and a failed refetch makes everything
+ * last-known; in local mode the leader control reads `GET /api/v1/mcp/leader` itself, so this
+ * answers `null` — it never guesses "ready" or "connected" (§8, §13).
  */
 export function connectionStateFor(health: HealthResponse, refetchFailed: boolean): McpConnectionState | null {
   if (refetchFailed) return { kind: 'server-restarting' }
@@ -392,18 +402,16 @@ export function McpConnectionSurface({
       </SettingsField>
 
       {/* Connection state (#112) — only what the server reports, in a polite live region that is
-          always mounted, so a state change is announced without moving focus (U-M08). When the
-          server reports nothing, one line in the reader's voice says who does (C4). */}
-      <div data-slot="mcp-connection-status" aria-live="polite" className="min-w-0">
-        {connection ? (
-          <SettingsField title="Connection status" hint="What the server reports about the MCP leader connection for this project.">
-            <McpConnectionState state={connection} />
-          </SettingsField>
-        ) : (
-          <p data-slot="mcp-connection-status-unreported" className="text-[13px] leading-relaxed text-muted-foreground">
-            This page cannot tell whether a client is connected. Your leader client shows it.
-          </p>
-        )}
+          always mounted, so a state change is announced without moving focus (U-M08). In local mode
+          the server reports the leader connection (`GET /api/v1/mcp/leader`), and the one leader
+          control shows it and attaches (#374, NB-2); the state cards cover hosted mode and a server
+          that stopped answering. */}
+      {/* The leader control is interactive, so it carries its OWN polite region around the status words
+          only; a live region around its buttons would announce every label change. */}
+      <div data-slot="mcp-connection-status" aria-live={connection ? 'polite' : undefined} className="min-w-0">
+        <SettingsField title="Connection status" hint="What the server reports about the MCP leader connection for this project.">
+          {connection ? <McpConnectionState state={connection} /> : <McpLeaderControl />}
+        </SettingsField>
       </div>
 
       {/* Operation outcomes (#113) — rendered from what the server reports, never invented; left
@@ -473,6 +481,12 @@ function ClientSetupCard({ client }: { client: ClientSetup }) {
         <p data-slot="mcp-client-not-automatic" className="rounded-md bg-muted p-2 text-muted-foreground">
           <span className="font-medium text-foreground">Not automatic:</span> {withCode(client.notAutomatic)}
         </p>
+        {client.wake ? (
+          <div data-slot="mcp-client-wake" className="text-foreground">
+            <span className="font-medium">Optional — let xezar wake this leader:</span>
+            <div className="mt-1">{client.wake}</div>
+          </div>
+        ) : null}
         {client.caveat ? (
           <p data-slot="mcp-client-caveat" className="text-[12px] text-soft-foreground">
             {withCode(client.caveat)}

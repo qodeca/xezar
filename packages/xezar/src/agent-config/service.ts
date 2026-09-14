@@ -1,7 +1,8 @@
-import { readFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
 import { agentHomePaths, claudeStateFilePath } from '../paths.ts';
-import { CONFIG_FILES, type ConfigFileDef } from './catalog.ts';
+import { configFileRoot, CONFIG_FILES, type ConfigFileDef } from './catalog.ts';
 import { hashBytes, statConfigPath } from './files.ts';
+import { checkedConfigPath, readConfigBytes } from './path-access.ts';
 
 /**
  * Assembles the `GET /api/agent-config` payload: every catalog file's current
@@ -54,7 +55,7 @@ const CLAUDE_JSON_CAP = 2 * 1024 * 1024;
 async function versionOf(path: string, exists: boolean): Promise<string | null> {
   if (!exists) return null;
   try {
-    return hashBytes(await readFile(path, 'utf8'));
+    return hashBytes(await readConfigBytes(path));
   } catch {
     return null;
   }
@@ -68,7 +69,8 @@ export async function readUserMcpServers(env: NodeJS.ProcessEnv): Promise<UserMc
   try {
     const { size } = await statConfigPath(path);
     if (size > CLAUDE_JSON_CAP) return { path, servers: [], readable: false };
-    const raw = await readFile(path, 'utf8');
+    const target = await checkedConfigPath(path, dirname(path));
+    const raw = await readConfigBytes(target);
     const parsed = JSON.parse(raw) as { mcpServers?: Record<string, unknown> };
     const servers = parsed.mcpServers && typeof parsed.mcpServers === 'object' ? Object.keys(parsed.mcpServers) : [];
     return { path, servers, readable: true };
@@ -88,7 +90,14 @@ export async function listAgentConfig(
   const files = await Promise.all(
     CONFIG_FILES.map(async (def): Promise<ConfigFileListing> => {
       const path = def.resolve(repoRoot, home);
-      const { exists, size } = await statConfigPath(path);
+      let target: string | undefined;
+      let refusal: string | undefined;
+      try {
+        target = await checkedConfigPath(path, configFileRoot(def, repoRoot, home));
+      } catch (err) {
+        refusal = (err as Error).message;
+      }
+      const { exists, size } = target ? await statConfigPath(target) : { exists: false, size: 0 };
       return {
         id: def.id,
         runners: def.runners,
@@ -105,9 +114,9 @@ export async function listAgentConfig(
         docsUrl: def.docsUrl,
         exists,
         size,
-        version: await versionOf(path, exists),
-        writable: editable,
-        readOnlyReason: editable ? undefined : HOSTED_REASON,
+        version: target ? await versionOf(target, exists) : null,
+        writable: editable && !refusal,
+        readOnlyReason: !editable ? HOSTED_REASON : refusal,
       };
     }),
   );
