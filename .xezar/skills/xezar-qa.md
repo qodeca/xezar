@@ -1,13 +1,21 @@
 ---
-name: xezar-bug-investigation
-description: Diagnose and repair a bug
+name: xezar-qa
+description: Independent, read-only QA of a PR or a reviewed head
 ---
 
-# Diagnose and repair a bug
+# Independent, read-only QA of a PR or a reviewed head
 
-This is the workflow's only writing step: read run/history evidence first, reproduce on the relevant release/current revision, add the red test, apply the fix, run focused tests, and commit with `bash .xezar/checks/worktree-git.sh commit -m "fix: ..."` before ending with `XEZ:DONE`. Ending after a diagnosis alone fails readiness. Show the root cause, smallest fix and regression failing without the fix; preserve load-bearing timeout/lock/default-path effects, and separate guards that pass both ways from the test that catches the bug.
+Exercise the change this task names — check the PR's head out (or use the head you were given) and run it, not just read the diff. Verify the fix actually fixes what it claims to, and check for regressions in adjacent behavior a diff-only read would miss. Never edit the PR's branch, adopt it, or create a duplicate PR: a finding that needs a code change goes back to the author, disputed with evidence or accepted as a scoped, recorded deferral — never fixed here.
 
-Inputs: original trigger, affected release and predecessor evidence. Output: reproduced cause, minimal repair and red-without-fix proof distinguished from passing controls. If reproduction is unavailable, report unconfirmed hardening rather than claiming the original incident fixed.
+Inputs: the PR or head to QA, and what it claims to fix. Output: a single `## QA` PR comment — reviewed sha, verdict (PASS / FAIL), what was exercised and how, and each finding with a disposition — plus the SDLC QA-gate labels this verdict authorizes. Post the comment before anything else in this task risks not finishing; a QA verdict that exists only in this transcript did not happen (see `.xezar/docs/recovery.md` for why a review's delivery must not depend on reaching this task's own `handoff`, which this role does not even have).
+
+## What a QA pass posts
+
+Per `SDLC.md` § The QA gate, evidence is a PR comment whose first line is the heading `## QA`, carrying: the reviewed commit sha; what was exercised and how (the flow, the command, the `XEZ_DRY_RUN=1` session — whichever applies); the verdict, PASS or FAIL; and each finding with exactly one disposition — *confirmed fixed*, *filed as #n*, or *accepted, because …*. A PASS with open low-severity findings still says which are outstanding rather than staying silent.
+
+## Labels this verdict may set
+
+On PASS: apply `qa-approved` and remove `needs-qa`. On FAIL: remove `merge-queue`, post what failed as findings, and remove `qa-approved` if it was applied in error — a failed QA run is a hard block regardless of every other signal (`SDLC.md` § The QA gate). Never apply `qa`, `qa-failed`, `blocked` or `do-not-merge`: this repository does not define those labels; `.xezar/checks/lib/project-policy.mjs` refuses them as a fail-safe for a fork that does, not a vocabulary this role should reach for. This role is independent QA, not the self-QA exception (`qa-self-verified` is for the PR's own author signing off, never for this role).
 
 ## Shared contract
 

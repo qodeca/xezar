@@ -630,6 +630,42 @@ xezar is not married to one vendor. Every agent step runs through a single
 On startup xezar probes which CLIs are installed and the cockpit only offers
 the backends it found — install any one of the four and you're operational.
 
+### Codex runs and MCP servers
+
+> 💥 **Changed in the next minor release** (#324, #323). A Codex run xezar starts
+> no longer loads the MCP servers, plugins or apps from your own Codex config.
+
+A Codex task run used to load every MCP server and plugin in
+`$CODEX_HOME/config.toml` (your browser, the Messages plugin, ChatGPT
+connectors), and `approvalPolicy: never` let the agent call them with no prompt.
+Now, before each thread starts or resumes, xezar asks the Codex app-server which
+servers it would load (`config/read`) and switches off, for that thread only:
+
+- every server that **your own** config contributes – a server set in
+  `~/.codex/config.toml`, or a project server your home config adds a key to
+  (an `env` entry, for example);
+- **xezar's own leader bridge**, even when the project declares it: a task run
+  is not your leader. xezar knows the bridge by its launch line
+  (`npx -y @qodeca/xezar mcp`, `xezar mcp`, `xez mcp`, `env … xezar mcp`,
+  `sh -c "…"`, or `node …/@qodeca/xezar/dist/index.js mcp`) and by the name
+  `xezar`, which is **reserved**;
+- Codex **plugins** and **apps**.
+
+Your config files are not changed, and the run transcript names the servers it
+switched off. To give Codex runs a server:
+
+1. Declare it in the project's own `.codex/config.toml`, and trust the project in
+   Codex. Only servers **that file alone** declares are loaded.
+2. Keep your home config from adding keys to it. A key from `~/.codex/config.toml`
+   makes the server yours, and it is switched off.
+3. Do not call it `xezar`. A project server with that name is treated as the
+   bridge and switched off; rename it.
+
+A Codex CLI that cannot answer `config/read` now **fails the run** with a
+message, where it used to start. Update Codex (`npm i -g @openai/codex`).
+There is no setting and no environment variable for this. Claude Code, OpenCode
+and pi runs are unchanged. The details are in `BACKWARD_COMPATIBILITY.md`.
+
 **Models come from your own machine.** The model picker does not ship a list of
 vendor releases that goes stale between xezar versions. For each backend xezar
 reads what *your host* currently offers — Claude Code's `list_models` control
@@ -833,6 +869,13 @@ Each file keeps its native format and vendor-documented precedence. Tracked
 files reach task worktrees after commit; Claude's gitignored personal layer is
 seeded into each run's worktree. Editing is a local-machine capability, so a
 hosted cockpit (`XEZ_REMOTE=1`) is read-only and never serves home-file contents.
+
+**Next minor release: individual config-file symlinks are no longer supported.**
+Reads and writes refuse them with HTTP 409, and the listing marks them read-only.
+Replace a file link with a regular config file to edit it. Directory links below
+an agent home or repository must stay within that root; relocating the entire
+configured home to a dotfiles directory still works. This prevents a catalogued
+filename from exposing an uncatalogued credential file (#363).
 
 Only files whose whole contents are safe to hand back are listed. pi keeps its
 credentials (`auth.json`) and its custom-provider catalogue with the API keys in

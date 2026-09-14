@@ -66,7 +66,10 @@ export const agentConfigListingSchema = z.object({
 });
 export type AgentConfigListing = z.infer<typeof agentConfigListingSchema>;
 
-/** `GET /agent-config/:id` and the `PUT` echo — one file's bytes plus its stale-write token. */
+/**
+ * `GET /agent-config/:id` and the `PUT` echo — one file's bytes plus its stale-write token.
+ * Unsafe symlinks are refused with 409 and the shared `{ error: string }` error shape (#363).
+ */
 export const agentConfigFileContentSchema = z.object({
   id: z.string(),
   path: z.string(),

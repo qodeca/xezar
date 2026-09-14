@@ -59,6 +59,8 @@ export interface ReleaseManifests {
   contract: ManifestLike;
   /** The contract package a consumer installs to talk to a xezar service. */
   apiClient: ManifestLike;
+  /** The bundled cockpit is private but depends on the client and service, so it moves in lockstep. */
+  web: ManifestLike;
   /** The published service + CLI — the only member of the set that reaches the registry. */
   xezar: ManifestLike;
 }
@@ -96,12 +98,17 @@ export function stampManifestSet(
   version: string,
   pin: PinStyle,
 ): ReleaseManifests {
-  const { contract, apiClient, xezar } = manifests;
+  const { contract, apiClient, web, xezar } = manifests;
   const range = pin(version);
 
   return {
     contract: { ...contract, version },
     apiClient: pinDependency({ ...apiClient, version }, contract.name, range),
+    web: pinDependency(
+      pinDependency({ ...web, version }, apiClient.name, range),
+      xezar.name,
+      range,
+    ),
     xezar: pinDependency(
       pinDependency({ ...xezar, version }, apiClient.name, range),
       contract.name,
