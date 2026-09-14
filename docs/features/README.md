@@ -9,5 +9,6 @@
 | [builtin-project-leader/](builtin-project-leader/builtin-project-leader-requirements.md) | The built-in project leader: requirements, the UI leader pilot and the process source audit. |
 | [inbox-default-enabled/](inbox-default-enabled/inbox-default-enabled-requirements.md) | Business requirements for turning the follow-up Inbox on by default. |
 | [tasks-view/](tasks-view/tasks-view-requirements.md) | Requirements for the Tasks view. |
+| [decisions/](decisions/decisions-requirements.md) | The owner-only decision gate ("Decisions"): requirements, the grill-me interview record and the five-reviewer verdict on the first design draft. |
 
 The map of all of `docs/` is [docs/README.md](../README.md).

@@ -36,3 +36,4 @@ The row below and the design README's own Status line must agree; the PR that ch
 | Design | Status |
 |---|---|
 | [quality-checks](quality-checks/README.md) | In review – first `design-review` verdict FAIL (README §18); waiting for owner decisions and the fixes |
+| [decisions](decisions/README.md) | Draft – the owner-only decision gate ("Decisions" menu item, case cards, MCP blocking, scope check); waiting for the first `design-review` |

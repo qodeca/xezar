@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>States – decisions design</title>
+<link rel="stylesheet" href="../../docs/design-system/cockpit.css">
+<link rel="stylesheet" href="styles.css">
+<script src="theme.js"></script>
+</head>
+<body>
+<!-- Icon sprite (lucide outlines, the cockpit's icon set). -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-hand" viewBox="0 0 24 24"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></symbol>
+  <symbol id="i-tasks" viewBox="0 0 24 24"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></symbol>
+  <symbol id="i-inbox" viewBox="0 0 24 24"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></symbol>
+  <symbol id="i-circle-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></symbol>
+</svg>
+
+<nav class="doc-bar" aria-label="Design pages">
+  <span class="brand">Decisions design</span>
+  <a href="index.html">Overview</a>
+  <a href="decisions.html">Decisions page</a>
+  <a href="states.html" aria-current="page">States</a>
+  <a href="task.html">Task and leader</a>
+  <span class="spacer"></span>
+  <button class="theme-toggle" type="button" data-theme-toggle>Light / dark</button>
+</nav>
+
+<div class="doc">
+  <h1>States</h1>
+  <p class="lead">Every state the menu badge, a case card and the whole page can be in. Each state says what happened and what to do next. No state lets an agent, an automation or the leader close a case on its own.</p>
+
+  <!-- ===================================================== BADGE -->
+  <h2>1. Menu badge</h2>
+  <p>The number is the count of open cases in this project. It is read from the run snapshots the workspace stream already carries (each case lives on its run record), so it changes the moment a case opens or is decided. There is no separate query for it.</p>
+
+  <div class="grid-2">
+    <div>
+      <div class="frame-label">Nothing open – no badge</div>
+      <div class="frame" style="background:var(--sidebar)">
+        <nav class="nav" aria-label="Example">
+          <a href="#"><svg class="icon"><use href="#i-tasks"/></svg>Tasks<span class="nav-badge">2</span></a>
+          <a href="decisions.html"><svg class="icon"><use href="#i-hand"/></svg>Decisions</a>
+          <a href="#"><svg class="icon"><use href="#i-inbox"/></svg>Inbox</a>
+        </nav>
+      </div>
+      <p class="note"><strong>Zero hides the badge.</strong> Silence means nothing is waiting on you. The item itself is always there, so a first-time user learns where decisions will appear.</p>
+    </div>
+
+    <div>
+      <div class="frame-label">One, many, and the cap</div>
+      <div class="frame" style="background:var(--sidebar)">
+        <nav class="nav" aria-label="Example">
+          <a href="decisions.html"><svg class="icon"><use href="#i-hand"/></svg>Decisions<span class="nav-badge" aria-hidden="true">1</span><span class="sr-only">, 1 decision waiting</span></a>
+          <a href="decisions.html"><svg class="icon"><use href="#i-hand"/></svg>Decisions<span class="nav-badge" aria-hidden="true">7</span><span class="sr-only">, 7 decisions waiting</span></a>
+          <a href="decisions.html" aria-current="page"><svg class="icon"><use href="#i-hand"/></svg>Decisions<span class="nav-badge" aria-hidden="true">99+</span><span class="sr-only">, more than 99 decisions waiting</span></a>
+        </nav>
+      </div>
+      <p class="note"><strong>Violet, like Inbox and Tasks.</strong> Violet in the menu already means “a person is wanted”, and that is exactly what a case is. Screen readers hear “Decisions, 7 decisions waiting”.</p>
+    </div>
+
+    <div>
+      <div class="frame-label">Several projects in the sidebar</div>
+      <div class="frame" style="background:var(--sidebar)">
+        <div class="quick-head" style="padding-top:10px">XEZAR · ACTIVE PROJECT</div>
+        <nav class="nav" aria-label="Example">
+          <a href="#"><svg class="icon"><use href="#i-tasks"/></svg>Tasks</a>
+          <a href="decisions.html"><svg class="icon"><use href="#i-hand"/></svg>Decisions<span class="nav-badge" aria-hidden="true">3</span><span class="sr-only">, 3 decisions waiting</span></a>
+        </nav>
+        <div class="quick-head">DOCS-SITE · COLLAPSED <span class="nav-badge" aria-hidden="true" style="margin-left:6px">1</span><span class="sr-only">, 1 decision waiting</span></div>
+        <div style="height:10px"></div>
+      </div>
+      <p class="note"><strong>Per project, plus a count on a collapsed group.</strong> A collapsed project that has an open case shows the number on its header, the same way it shows “tasks need you” today. One workspace-level read, subscribed once at the root, feeds every count. A decision you cannot see is a task that waits for ever.</p>
+    </div>
+  </div>
+
+  <!-- ===================================================== CARD STATES -->
+  <h2>2. Case card</h2>
+  <p>One card per case. The first line says the state, the category, who raised it, how long it has waited and which task is stopped. The question is the biggest text. The plain-words text is always visible. The technical reason and the evidence are one click below.</p>
+
+  <div class="frame-label">a · Open (default)</div>
+  <div class="frame pad">
+    <ul class="case-list">
+      <li class="case-card">
+        <div class="head">
+          <span class="pill"><span class="dot pending pulse"></span>needs your decision</span>
+          <span class="case-cat">Breaking change</span>
+          <span>raised by the agent</span>
+          <span class="age">18m</span>
+          <a class="task" href="task.html"><svg class="icon sm"><use href="#i-file"/></svg>#412 retiring the claude-cli backend id<svg class="icon sm"><use href="#i-arrow"/></svg></a>
+          <span class="refs"><a class="gh-link" href="https://github.com/qodeca/xezar/issues/412" target="_blank" rel="noopener">issue #412<svg class="icon sm" aria-hidden="true"><use href="#i-external"/></svg><span class="sr-only">, opens GitHub in a new tab</span></a><a class="gh-link" href="https://github.com/qodeca/xezar/pull/425" target="_blank" rel="noopener">PR #425<svg class="icon sm" aria-hidden="true"><use href="#i-external"/></svg><span class="sr-only">, opens GitHub in a new tab</span></a></span>
+        </div>
+        <h3 class="question">Stop reading old run records that say <code>claude-cli</code>?</h3>
+        <div class="plain">
+          <span class="eyebrow">In plain words</span>
+          <p>The agent is tidying the list of tool names. One old name, <code>claude-cli</code>, is still accepted so that very old task records keep opening. The agent would like to stop accepting it. If it does, records from before version 0.9 stop loading. You decide whether to keep them loading or to plan the removal for a later major version.</p>
+        </div>
+        <details>
+          <summary><svg class="icon sm" aria-hidden="true"><use href="#i-chevron"/></svg>Technical details</summary>
+          <div class="evidence"><p class="why"><strong>Why this is yours:</strong> run files written before 0.9 would stop loading. BACKWARD_COMPATIBILITY.md § 1 calls that a break.</p><h4>The agent’s reasons</h4><p>The id has been an alias for 14 releases. Keeping it costs one line in the schema and one test. Dropping it lets the runner map be a strict record.</p></div>
+        </details>
+        <div class="case-options" role="group" aria-label="Stop reading old run records that say claude-cli?">
+          <button class="case-option" type="button" aria-pressed="false"><span class="label">Keep reading it <span class="rec">Recommended by the agent</span></span><span class="desc">Old records keep loading. The alias stays documented.</span></button>
+          <button class="case-option" type="button" aria-pressed="false"><span class="label">Drop it in the next major</span><span class="desc">Nothing changes now. A note goes into BACKWARD_COMPATIBILITY.md.</span></button>
+        </div>
+        <div class="reply">
+          <label class="sr-only" for="s-a">Comment</label>
+          <textarea class="textarea" id="s-a" placeholder="Add a comment for the agent — optional…"></textarea>
+          <div class="send-row">
+            <span class="hint">Pick an option, write a comment, or both. You can take it back until the task acts on it.</span>
+            <span class="actions"><button class="btn ghost" type="button">Not a decision</button><button class="btn ghost" type="button">Leader decides</button><button class="btn lime md" type="button" aria-disabled="true">Send decision</button></span>
+          </div>
+        </div>
+      </li>
+    </ul>
+  </div>
+  <p class="note"><strong>Send is disabled until there is something to send.</strong> An option alone, a comment alone, or both. A comment alone means “none of these – read my words”, which is how the thread’s ask card already treats a free-text reply. The hint is the visible reason Send is disabled, and it says whether the answer can be taken back. Two more answers sit beside Send: <strong>“Not a decision”</strong> closes the case, the task continues as if it had never opened, and the false alarm is counted. <strong>“Leader decides”</strong> hands this one case to the leader (state i below). Both are yours alone; the leader cannot give either.</p>
+
+  <div class="frame-label">b · Option picked, comment typed, about to send</div>
+  <div class="frame pad">
+    <ul class="case-list">
+      <li class="case-card">
+        <div class="head">
+          <span class="pill"><span class="dot pending pulse"></span>needs your decision</span>
+          <span class="case-cat">Scope</span>
+          <span>raised by xezar · brief check</span>
+          <span class="age">2h</span>
+          <a class="task" href="task.html"><svg class="icon sm"><use href="#i-file"/></svg>#403 codex wake path · stopped before start<svg class="icon sm"><use href="#i-arrow"/></svg></a>
+          <span class="refs"><a class="gh-link" href="https://github.com/qodeca/xezar/issues/374" target="_blank" rel="noopener">issue #374<svg class="icon sm" aria-hidden="true"><use href="#i-external"/></svg><span class="sr-only">, opens GitHub in a new tab</span></a></span>
+        </div>
+        <h3 class="question">Add an “Attach leader” control to Settings → MCP connection?</h3>
+        <div class="plain">
+          <span class="eyebrow">In plain words</span>
+          <p>Agents built a way for xezar to wake up the leader inside Codex and Claude Code. A reviewer said a person has no way to try it by hand, and the leader wrote a new task to add a button for that in Settings. The issue you approved asks for the wake-up path, not for a button. The task has not started. You decide whether the button gets built, is dropped, or waits for its own issue.</p>
+        </div>
+        <details>
+          <summary><svg class="icon sm" aria-hidden="true"><use href="#i-chevron"/></svg>Technical details</summary>
+          <div class="evidence"><p class="why"><strong>Why this is yours:</strong> the leader’s brief adds a cockpit control that the linked issue does not name.</p></div>
+        </details>
+        <div class="case-options" role="group" aria-label="Add an “Attach leader” control to Settings → MCP connection?">
+          <button class="case-option" type="button" aria-pressed="false"><span class="label">Build it <span class="rec">Recommended by the leader</span></span><span class="desc">The task starts as written. A note is added to #374 so the issue names the control.</span></button>
+          <button class="case-option" type="button" aria-pressed="false"><span class="label">Drop it</span><span class="desc">The task starts without the control. The wake path itself stays in #403.</span></button>
+          <button class="case-option" type="button" aria-pressed="true"><span class="label">Move it to a new issue</span><span class="desc">The task starts without the control. A new issue carries the idea, with a design first.</span></button>
+        </div>
+        <div class="reply">
+          <label class="sr-only" for="s-b">Comment</label>
+          <textarea class="textarea" id="s-b">Keep the wake path. The control needs its own issue with a design first.</textarea>
+          <div class="send-row">
+            <span class="hint">Sends <strong>“Move it to a new issue”</strong> and your comment to the task. You can take it back until the task acts on it.</span>
+            <span class="actions"><button class="btn ghost" type="button">Not a decision</button><button class="btn ghost" type="button">Leader decides</button><button class="btn lime md" type="button">Send decision</button></span>
+          </div>
+        </div>
+      </li>
+    </ul>
+  </div>
+  <p class="note"><strong>The hint says exactly what will be sent.</strong> The picked option gets the ask card’s tinted border. Sending replaces the label with “Sending…” and makes the card inert. When the card leaves the Open list, focus moves to the next open card, or to the page heading when it was the last.</p>
+
+  <div class="frame-label">c · Decided by you</div>
+  <div class="frame pad">
+    <ul class="case-list">
+      <li class="case-card is-decided">
+        <div class="line">
+          <span>Decided —</span><span class="what">Move it to a new issue</span><span>· by you · 14:32</span>
+          <a class="task" href="task.html">#403 codex wake path</a>
+          <span class="refs"><a class="gh-link" href="https://github.com/qodeca/xezar/issues/374" target="_blank" rel="noopener">issue #374<svg class="icon sm" aria-hidden="true"><use href="#i-external"/></svg><span class="sr-only">, opens GitHub in a new tab</span></a></span>
+        </div>
+        <blockquote class="quote">Keep the wake path. The control needs its own issue with a design first.</blockquote>
+        <div class="foot"><span>The task went back to the queue and resumed with its context at 14:35.</span><button class="btn ghost" type="button">Reopen</button></div>
+      </li>
+    </ul>
+  </div>
+  <p class="note"><strong>One line, then your words.</strong> The card leaves the Open segment and appears under Decided with the same shape. The foot says how the task came back: “resumed with its context” (the agent’s session continued) or “re-ran the step with a fresh agent” (the session could not be resumed). Reopen puts the case back in Open and stops the task again; the agent is told at its next turn boundary.</p>
+
+  <div class="frame-label">d · Decided through the leader</div>
+  <div class="frame pad">
+    <ul class="case-list">
+      <li class="case-card is-decided">
+        <div class="line">
+          <span>Decided —</span><span class="what">Publish</span><span>· passed on by the leader · 09:05</span>
+          <a class="task" href="task.html">releasing 0.15.0</a>
+        </div>
+        <blockquote class="quote">Owner said: “go ahead with the release, npm and the GitHub Release, and merge the bump PR.”</blockquote>
+        <div class="foot"><span>The leader recorded these words as yours. If they are not, reopen the case.</span><button class="btn ghost" type="button">Reopen</button></div>
+      </li>
+    </ul>
+  </div>
+  <p class="note"><strong>The leader’s relay is visible, quoted and reversible.</strong> Most of your decisions will reach xezar this way, because you talk to the leader, not to xezar. xezar cannot check that the words are yours, so it shows them and makes reopening one click.</p>
+
+  <div class="frame-label">e · Reopened</div>
+  <div class="frame pad">
+    <ul class="case-list">
+      <li class="case-card">
+        <div class="head">
+          <span class="pill"><span class="dot pending pulse"></span>needs your decision</span>
+          <span class="case-cat">Outside action</span>
+          <span>raised by the leader · reopened by you</span>
+          <span class="age">1m</span>
+          <a class="task" href="task.html"><svg class="icon sm"><use href="#i-file"/></svg>releasing 0.15.0<svg class="icon sm"><use href="#i-arrow"/></svg></a>
+        </div>
+        <h3 class="question">Publish 0.15.0 to npm now?</h3>
+        <div class="plain">
+          <span class="eyebrow">In plain words</span>
+          <p>The release task has prepared version 0.15.0. The next step sends the package to npm and cannot be taken back. You had said “Publish” through the leader, then took it back before anything was sent. You decide again.</p>
+        </div>
+        <details>
+          <summary><svg class="icon sm" aria-hidden="true"><use href="#i-chevron"/></svg>Technical details</summary>
+          <div class="evidence"><p class="why"><strong>Why this is yours:</strong> publishing leaves this machine and cannot be undone.</p><h4>The earlier decision</h4><p>09:05 — “Publish”, passed on by the leader: “go ahead with the release…”. Withdrawn by you at 09:06. The task had not acted on it.</p></div>
+        </details>
+        <div class="case-options" role="group" aria-label="Publish 0.15.0 to npm now?">
+          <button class="case-option" type="button" aria-pressed="false"><span class="label">Publish</span><span class="desc">The leader dispatches the Release workflow now.</span></button>
+          <button class="case-option" type="button" aria-pressed="false"><span class="label">Wait</span><span class="desc">Nothing is published. The task stays stopped and asks again when you say so.</span></button>
+        </div>
+        <div class="reply">
+          <label class="sr-only" for="s-e">Comment</label>
+          <textarea class="textarea" id="s-e" placeholder="Add a comment for the leader — optional…"></textarea>
+          <div class="send-row">
+            <span class="hint">Pick an option, write a comment, or both. <strong>“Publish” cannot be taken back once the task acts.</strong></span>
+            <span class="actions"><button class="btn ghost" type="button">Not a decision</button><button class="btn ghost" type="button">Leader decides</button><button class="btn lime md" type="button" aria-disabled="true">Send decision</button></span>
+          </div>
+        </div>
+      </li>
+    </ul>
+  </div>
+  <p class="note"><strong>Reopen works only while nothing has acted.</strong> The engine sets “acted on” at the first outward effect after the decision – the next agent turn on the run, or a push, PR, ready or merge on its branch – never from a tool argument. After that the Reopen button is gone and the foot reads “Acted on at 09:07 — cannot be reopened.” While an agent turn is in flight, Reopen is refused with that reason and the button shows it.</p>
+
+  <div class="frame-label">f · Closed without a decision</div>
+  <div class="frame pad">
+    <ul class="case-list">
+      <li class="case-card is-decided is-void">
+        <div class="line">
+          <span class="what">No longer needed</span><span>· the task was cancelled · 03:12</span>
+          <a class="task" href="task.html">#369 pi approveTools guidance</a>
+        </div>
+        <div class="foot"><span>Nobody decided this. The question is kept for the record.</span></div>
+      </li>
+    </ul>
+  </div>
+  <p class="note"><strong>A cancelled or deleted task closes its case.</strong> The card moves to Decided with the words “No longer needed”, never with a decision that nobody made.</p>
+
+  <div class="frame-label">g · Not a decision</div>
+  <div class="frame pad">
+    <ul class="case-list">
+      <li class="case-card is-decided is-void">
+        <div class="line">
+          <span class="what">Not a decision</span><span>· by you · 08:41</span>
+          <a class="task" href="task.html">#418 flaky teardown tests</a>
+        </div>
+        <blockquote class="quote">Renaming a test helper is not a breaking change. Carry on.</blockquote>
+        <div class="foot"><span>The task continued as if the case had not opened. Counted as a false alarm.</span></div>
+      </li>
+    </ul>
+  </div>
+  <p class="note"><strong>The false alarms are counted, not hidden.</strong> This is how the owner watches whether the checks and the agents over-ask. Only the cockpit can give this answer; the leader cannot.</p>
+
+  <div class="frame-label">h · Someone else answered first</div>
+  <div class="frame pad">
+    <div class="banner-row alert" role="alert">
+      <svg class="icon sm"><use href="#i-info"/></svg>
+      <span><strong>This case was decided a moment ago.</strong> The leader recorded “Build it” at 14:31, while you were writing. Your answer was not sent; your comment is kept in the box. Read the decision under Decided and reopen it if it is wrong.</span>
+    </div>
+  </div>
+  <p class="note"><strong>Two answers never race silently.</strong> The second one is refused with the first one shown – the same stale-write rule every task change already follows, guarded by the case’s own version token. The typed comment stays in the box so nothing is lost.</p>
+
+  <div class="frame-label">i · With the leader (you pressed “Leader decides”)</div>
+  <div class="frame pad">
+    <ul class="case-list">
+      <li class="case-card is-decided is-delegated">
+        <div class="line">
+          <span class="what"><span class="dot violet pulse"></span>With the leader</span><span>· since 14:32 · Scope</span>
+          <a class="task" href="task.html">#403 codex wake path</a>
+        </div>
+        <blockquote class="quote">You wrote: “Pick whichever keeps #403 small. I do not need the button.”</blockquote>
+        <div class="foot"><span>The leader answers over the MCP with a reason. The task stays stopped and its slot stays free until then. Not counted in your badge.</span><button class="btn ghost" type="button">Take it back</button></div>
+      </li>
+    </ul>
+  </div>
+  <p class="note"><strong>Handed over, not closed.</strong> The case leaves your badge and the “needs you” bucket – the task’s pill reads “with the leader” – and joins the leader’s morning count. It stays under Open on this page so you can see it. <strong>Take it back</strong> returns it to you at any moment before the leader answers; you may also answer it yourself while it is with the leader. With no leader connected the button is disabled and the words “No leader is connected” sit beside it.</p>
+
+  <div class="frame-label">j · Decided by the leader after you handed it over</div>
+  <div class="frame pad">
+    <ul class="case-list">
+      <li class="case-card is-decided">
+        <div class="line">
+          <span>Decided —</span><span class="what">Drop it</span><span>· by the leader · delegated by you at 14:32 · 14:40</span>
+          <a class="task" href="task.html">#403 codex wake path</a>
+        </div>
+        <blockquote class="quote">Leader’s reason: “The owner does not need the button; #403 stays the wake path only. A note on #374 records the idea.”</blockquote>
+        <div class="foot"><span>The task went back to the queue and resumed with its context at 14:41.</span><button class="btn ghost" type="button">Reopen</button></div>
+      </li>
+    </ul>
+  </div>
+  <p class="note"><strong>The leader’s own answer looks different from a relayed one.</strong> “by the leader · delegated by you” with the leader’s reason, never “Owner said”. A leader call with owner words on a delegated case is refused, so the two can never be confused in the record. Reopen works until the task acts, as always.</p>
+
+  <!-- ===================================================== PAGE STATES -->
+  <h2>3. Whole page</h2>
+
+  <div class="grid-2">
+    <div>
+      <div class="frame-label">Empty – nothing waiting</div>
+      <div class="frame pad">
+        <div class="centered-state">
+          <div class="tile"><svg class="icon"><use href="#i-hand"/></svg></div>
+          <h2>No decisions waiting</h2>
+          <p>When an agent, the leader or xezar meets a choice that is yours, it appears here and in the menu.</p>
+        </div>
+        <div class="rule-strip">
+          <svg class="icon sm"><use href="#i-hand"/></svg>
+          <span><strong>Only you can answer these.</strong> Agents and the leader bring you the choices they may not make: new scope, what “done” means, breaking changes, and publishing or releasing. The task stops and frees its slot until you decide. The leader cannot decide for you.</span>
+        </div>
+      </div>
+      <p class="note"><strong>The rule strip lives here only.</strong> A page with cases starts with the first card; the rule is not repeated on every visit.</p>
+    </div>
+
+    <div>
+      <div class="frame-label">Decided segment, empty</div>
+      <div class="frame pad">
+        <div class="centered-state">
+          <div class="tile"><svg class="icon"><use href="#i-circle-check"/></svg></div>
+          <h2>Nothing decided yet</h2>
+          <p>Decisions you make, and the ones the leader passes on for you, are kept here with the words that were used.</p>
+        </div>
+      </div>
+      <p class="note"><strong>Decided grows.</strong> The segment shows the newest 20 and a “Show older” button at the end; the task’s own Decisions tab is the place to read one task’s history.</p>
+    </div>
+
+    <div>
+      <div class="frame-label">Loading</div>
+      <div class="frame pad">
+        <p class="sr-only" role="status">Loading this project’s decisions…</p>
+        <div class="case-list">
+          <div class="skeleton case-skeleton"></div>
+          <div class="skeleton case-skeleton" style="opacity:.6"></div>
+        </div>
+      </div>
+      <p class="note"><strong>The badge shows nothing while loading.</strong> A guessed number would break the “always true” promise.</p>
+    </div>
+
+    <div>
+      <div class="frame-label">Could not load</div>
+      <div class="frame pad">
+        <div class="centered-state danger">
+          <div class="tile"><svg class="icon"><use href="#i-alert"/></svg></div>
+          <h2>Could not load the decisions</h2>
+          <p>fetch failed: ECONNREFUSED 127.0.0.1:7788</p>
+          <div class="actions"><button class="btn" type="button">Retry</button></div>
+        </div>
+      </div>
+      <p class="note"><strong>The server’s own words, then Retry.</strong> The cockpit’s error state, no invented sentence. The badge hides on error, too – it never shows “0” when the real number is unknown.</p>
+    </div>
+
+    <div>
+      <div class="frame-label">Hosted mode</div>
+      <div class="frame pad">
+        <div class="banner-row">
+          <svg class="icon sm"><use href="#i-info"/></svg>
+          <span>Deciding works in a hosted cockpit. A decision changes a task record, not the host machine.</span>
+        </div>
+      </div>
+      <p class="note"><strong>Stated, not designed.</strong> The design system asks every page to say what hosted mode refuses. This page refuses nothing, so it shows no refusal state; the row above is the note, not a UI element.</p>
+    </div>
+
+    <div>
+      <div class="frame-label">The stopped task, in the task list</div>
+      <div class="frame" style="background:var(--sidebar)">
+        <div class="quick-head" style="padding-top:10px">NEEDS YOU</div>
+        <ul class="quick">
+          <li title="needs your decision"><span class="dot pending pulse"></span><span class="ref">#403</span><span class="t">codex wake path</span></li>
+        </ul>
+        <div class="quick-head">WORKING</div>
+        <ul class="quick">
+          <li><span class="dot violet pulse"></span><span class="ref">#421</span><span class="t">refusing git in the primary checkout</span></li>
+        </ul>
+      </div>
+      <p class="note"><strong>A new run state, <code>decision</code>.</strong> Its row in <code>lib/attention.ts</code>: bucket “needs you”, tone pending, pulse, label “needs your decision”. The task holds no slot – the working task below took it – has no open session and no timer. It goes back to the queue the moment you decide.</p>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

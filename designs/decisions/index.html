@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Decisions design – overview</title>
+<link rel="stylesheet" href="../../docs/design-system/cockpit.css">
+<link rel="stylesheet" href="styles.css">
+<script src="theme.js"></script>
+</head>
+<body>
+
+<nav class="doc-bar" aria-label="Design pages">
+  <span class="brand">Decisions design</span>
+  <a href="index.html" aria-current="page">Overview</a>
+  <a href="decisions.html">Decisions page</a>
+  <a href="states.html">States</a>
+  <a href="task.html">Task and leader</a>
+  <span class="spacer"></span>
+  <button class="theme-toggle" type="button" data-theme-toggle>Light / dark</button>
+</nav>
+
+<div class="doc">
+  <h1>Decisions – UI design</h1>
+  <p class="lead">Some choices are the owner’s: new scope, what “done” means, a breaking change, publishing or releasing. Today nothing stops an agent or the leader from making them, and nothing shows the owner that one was made. This design gives those choices one place, stops the task and frees its slot until the owner answers, and keeps the leader’s hands off the answer.</p>
+
+  <p style="font-size:12px;color:var(--muted-foreground)">Status: revision 2, after the five-reviewer verdict and the owner interview of 2026-09-14. Static mockup, not shipped code. Colours and type come from <code>docs/design-system/cockpit.css</code>. Sample cases are taken from the 2026-09-13 leader campaign (<code>docs/features/mcp-server/leader-dogfooding-2026-09-13.md</code> § 14.2). Requirements: <a class="link" href="../../docs/features/decisions/decisions-requirements.md">docs/features/decisions/decisions-requirements.md</a>. Developer handoff and copy deck: <a class="link" href="README.md">README.md</a>.</p>
+
+  <h2>Pages</h2>
+  <div class="table-scroll">
+    <table class="decision-table">
+      <thead><tr><th>Page</th><th>What it shows</th></tr></thead>
+      <tbody>
+        <tr><td><a class="link" href="decisions.html">Decisions page</a></td><td>The new menu item with its violet count, and the page in the app shell with three open cases – one from each raiser: xezar’s brief check, a task agent, the leader. Resize the window below 860 px for the phone layout.</td></tr>
+        <tr><td><a class="link" href="states.html">States</a></td><td>Badge states, every case card state (open, about to send, decided by you, decided through the leader, reopened, closed without a decision, not a decision, someone else answered first, with the leader, decided by the leader after a hand-over) and the empty, loading, error and hosted-mode pages.</td></tr>
+        <tr><td><a class="link" href="task.html">Task and leader</a></td><td>The task page with the stopped banner, the card in the thread, the scope-check line and the disabled composer; the task’s Decisions tab; and what the leader sees over the MCP.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Design decisions</h2>
+  <div class="table-scroll">
+    <table class="decision-table">
+      <thead><tr><th>Decision</th><th>Choice</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td>Name</td><td><b>Decisions</b></td><td>One word, like every other menu item. Says what you do there. The owner picked it over “Human in the loop” on 2026-09-14.</td></tr>
+        <tr><td>Menu place</td><td>Tasks, <b>Decisions</b>, Inbox, Git…</td><td>Second, because it holds the things that stop work. Inbox holds ideas that stop nothing.</td></tr>
+        <tr><td>Always on</td><td>No gate, no setting</td><td>A gate the leader may not clear cannot be a feature the owner may not have turned on. The Inbox is off by default; this is not the Inbox.</td></tr>
+        <tr><td>Badge colour</td><td>Violet</td><td>Violet in the menu already means “a person is wanted”. This is that, exactly. Screen readers hear “Decisions, 3 decisions waiting”.</td></tr>
+        <tr><td>Icon</td><td>Raised hand (lucide <code>hand</code>)</td><td>“Stop, a person decides”. Tasks has the list-with-ticks, Inbox the tray.</td></tr>
+        <tr><td>Card shape</td><td>The thread’s ask card, plus a header line, a plain-words block, collapsed technical details and a comment box</td><td>People already know the ask card. <code>XEZ:ASK</code> already copies Claude Code’s AskUserQuestion one to one, and the owner asked for that model.</td></tr>
+        <tr><td>Category chip</td><td>A word on the muted surface, not the accent</td><td>Three accent chips beside a primary Send would invert “lime is the one call to action”; under the violet accent the accent chip fails contrast at 10 px. The word carries the category.</td></tr>
+        <tr><td>Send</td><td>The primary (lime) button, as on the ask card</td><td>One call to action per card; “Not a decision” is a ghost beside it.</td></tr>
+        <tr><td>“Recommended”</td><td>A word in the option label, muted, naming who recommends</td><td>Colour is never the only signal. “Recommended by the agent” says whose opinion it is.</td></tr>
+        <tr><td>Two descriptions</td><td>Plain words always visible, body size; technical details collapsed</td><td>The owner reads a case without having read the thread: what was being done, what happened, what they decide. The plain text is required; xezar writes one when the raiser did not. Owner’s requirement, 2026-09-14.</td></tr>
+        <tr><td>GitHub links</td><td>The task’s issue and PR on the header line, opening GitHub in a new tab</td><td>The widest context is one click away: the issue says what was asked, the PR shows what was done. Read from the run’s refs; hidden when the task has none. Owner’s requirement, 2026-09-14 evening.</td></tr>
+        <tr><td>Evidence</td><td>Inside “Technical details”, collapsed</td><td>The question and the plain words must be read first. A diff stat or an issue quote is there when you want to check.</td></tr>
+        <tr><td>Four answers</td><td>An option, a comment, “Not a decision”, or “Leader decides”</td><td>“Not a decision” closes the case, lets the task carry on and counts the false alarm. “Leader decides” hands one case to the leader: it leaves the owner’s badge, the task stays stopped, the leader answers with a required reason, the owner can take it back. Both counted, so the owner can watch whether the gate over-asks or wears away. Owner’s addition, 2026-09-14 evening.</td></tr>
+        <tr><td>Taking it back</td><td>The send hint says whether the answer can be taken back</td><td>Reopen works until the task acts on the decision; “Publish” says it cannot be taken back once the task acts.</td></tr>
+        <tr><td>On the task page</td><td>A Decisions tab beside Session, Changes and Files, plus the card in the thread</td><td>The thread scrolls; the tab is the task’s decision history, one list, open first then “Decided · n”. Owner’s requirement, 2026-09-14.</td></tr>
+        <tr><td>Who can answer</td><td>You, in the cockpit; or the leader, quoting your words</td><td>You talk to the leader, not to xezar, so most answers will arrive through it. xezar shows the relayed words and makes Reopen one click. The owner chose this over MCP elicitation for now.</td></tr>
+        <tr><td>Task status</td><td>A new run state, <code>decision</code></td><td>A stopped task holds no slot, no session, no timer, and goes back to the queue on the answer. <code>waiting</code> could not do that: its idle timer, restart recovery, the autonomous nudge and auto-resume all leave it. Owner’s call in the interview (D-12).</td></tr>
+        <tr><td>Coming back</td><td>Resume with the agent’s context; fresh agent for the same step when that fails</td><td>The owner asked for the context the agent had before it asked. The decided card says which path ran.</td></tr>
+        <tr><td>Who opens a case</td><td>A task agent (<code>XEZ:DECIDE</code>), the leader, or xezar’s own brief check when a leader creates or edits a task</td><td>The brief check is the net that catches the motivating case: the leader’s brief named a control the issue did not. The diff check after the work is report-only in version 1.</td></tr>
+        <tr><td>Categories</td><td>Scope · Done means · Breaking change · Outside action (publish or release only)</td><td>Fixed in version 1. Spend stays with the leader. Owner narrowed “outside action” in the interview.</td></tr>
+        <tr><td>Composer</td><td>Disabled while a case is open on that task</td><td>Today any message resolves an agent’s question. Here that would let the task slip past the gate.</td></tr>
+        <tr><td>The Inbox</td><td>Stays separate, unchanged</td><td>Two jobs, two places: optional ideas that stop nothing, and decisions that stop work. Owner’s choice, 2026-09-14.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Phone preview</h2>
+  <p>The same Decisions page at 390 px. The menu collapses to a bar that keeps the count; option buttons, the details summary and Send grow to 44 px touch targets.</p>
+  <div class="phone"><iframe src="decisions.html" title="Decisions page at phone width"></iframe></div>
+
+  <h2>Accessibility checklist for the build</h2>
+  <ul>
+    <li>Badge: the number is hidden from screen readers and replaced with words: “Decisions, 3 decisions waiting”. The mobile bar’s count carries the same words.</li>
+    <li>Nothing is colour alone: the amber dot has “needs your decision” beside it, the category is a word, “Recommended” is a word.</li>
+    <li>One <code>sr-only</code> <code>role="status"</code> line per surface announces a case that opens or is decided. The cards are not a live region; the banner is not a live region.</li>
+    <li>Option buttons carry <code>aria-pressed</code>; the group is <code>role="group"</code> labelled by the question. Technical details is a native <code>&lt;details&gt;</code>, so it opens from the keyboard without script.</li>
+    <li>A disabled Send has its reason as visible text beside it, in the muted colour, never only in a tooltip.</li>
+    <li>After Send, focus moves to the next open card or to the page heading; the typed comment is kept when a race refuses the answer.</li>
+    <li>Motion (pulse, skeleton) stops under “reduce motion”.</li>
+    <li>Every action works from the keyboard and shows the <code>:focus-visible</code> ring; the comment box has a visually hidden label.</li>
+  </ul>
+</div>
+
+</body>
+</html>
