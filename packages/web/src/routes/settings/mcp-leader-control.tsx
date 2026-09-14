@@ -15,14 +15,17 @@ import { withCode } from './mcp-copy'
  * cannot attach from the cockpit" and design review NB-2). It reads `GET /api/v1/mcp/leader` and says
  * who owns the project, whether a leader is attached, and — when events are waiting — the server's
  * recoverable blocker with its `Fix:`. Its one action, Attach leader, POSTs the SAME route with the
- * client derived from that status: the attached leader's client when there is one, Codex when the
- * owning session identified itself as Codex, and otherwise the client the person picks.
+ * client derived from that status: the attached leader's client when there is one, the owner's when
+ * the owning session identified itself (Codex through its announced thread, Claude Code through its
+ * bridge's client name — #404), and otherwise the client the person picks. One exception (#404
+ * merge review): a leader the server retained across an owner change — another client owns the
+ * project now, so re-attaching it is refused — brings the picker back, defaulting to the owner, and
+ * Attach leader is then the person's explicit replacement of that stale attachment.
  *
  * Generic on purpose, so every client's leg reuses it rather than adding a control of its own: a
- * client is one row in `LEADER_CLIENTS`. `pull-only` means there is nothing to attach and the note
- * says so in place of the button; a client that becomes attachable changes its row, and the contract
- * union makes the body type-check. Typed `Record<LeaderClient, …>`, so a new attachable client in
- * the contract is a compile error here until it has its words.
+ * client is one row in `LEADER_CLIENTS`, and the contract union makes the body type-check. Typed
+ * `Record<LeaderClient, …>`, so a new attachable client in the contract is a compile error here
+ * until it has its words.
  *
  * Hard boundaries kept from the section (U-M02, U-M03): no path, port, token or session identifier
  * of another client is shown; there is no "disconnect other client" or takeover; attaching is the
@@ -30,15 +33,15 @@ import { withCode } from './mcp-copy'
  */
 
 type AttachClient = Extract<McpLeaderActionInput, { action: 'attach' }>['client']
-/** Every client a person can ask about here: the attachable ones, and Claude Code, pull-only here. */
-type LeaderClient = AttachClient | 'claude-code'
+/** Every client a person can ask about here: since #404 all four can be attached. */
+type LeaderClient = AttachClient
 
 interface LeaderClientCopy {
   /** The product name, from `lib/runner-label.ts`. */
   readonly name: string
-  /** `direct` posts `{action, client}`; `opencode` adds its session's address; `pull-only` has nothing to attach. */
-  readonly attach: 'direct' | 'opencode' | 'pull-only'
-  /** What attaching this client takes, or why there is nothing to attach. `backticked` names render as code. */
+  /** `direct` posts `{action, client}`; `opencode` adds its session's address. */
+  readonly attach: 'direct' | 'opencode'
+  /** What attaching this client takes. `backticked` names render as code. */
   readonly note: string
   /** The attached-and-delivering sentence. Codex's is the decision record's § 5 copy, verbatim. */
   readonly connected: string
@@ -65,10 +68,10 @@ const LEADER_CLIENTS: Record<LeaderClient, LeaderClientCopy> = {
   },
   'claude-code': {
     name: RUNNER_LABEL.claude,
-    attach: 'pull-only',
-    note: 'Claude Code reads its events with `leader_events`. There is nothing to attach: xezar cannot start a turn in a Claude Code session.',
-    // Never shown today: the contract has no attached Claude Code leader. It is the sentence to use
-    // once one can be attached (PR #404), so the row is complete when that union grows.
+    attach: 'direct',
+    // #404: the owner session itself is the target, woken over Claude Code Channels. The flag is the
+    // person's per-launch opt-in; without it Claude Code keeps reading with `leader_events`.
+    note: 'Works when this Claude Code was started with `--dangerously-load-development-channels server:xezar` and has called a xezar tool once. Without the flag, Claude Code reads its events with `leader_events`.',
     connected: 'Claude Code connected. Project events can start a turn in your current session.',
   },
 }
@@ -164,7 +167,9 @@ export function McpLeaderPanel({
   staleError?: string | null
 }) {
   const state = leaderViewState(status)
-  const [picked, setPicked] = useState<LeaderClient>('codex')
+  // `null` until the person picks: the selector's default then follows the status (the owner's
+  // client when a stale attachment must be replaced), instead of a pick frozen at first render.
+  const [picked, setPicked] = useState<LeaderClient | null>(null)
   const [baseUrl, setBaseUrl] = useState('')
   const [sessionId, setSessionId] = useState('')
   const ids = useId()
@@ -180,19 +185,28 @@ export function McpLeaderPanel({
     )
   }
 
-  // The client to attach, derived from the status: the attached leader's own (to attach it again),
-  // Codex when the owning session identified itself, and only otherwise the person's pick.
-  const derived: LeaderClient | null = status.leader?.client ?? (status.owner?.client === 'codex' ? 'codex' : null)
-  const client = derived ?? picked
-  const copy = LEADER_CLIENTS[client]
   const blocker = status.blocker
+  const ownerClient: LeaderClient | null = status.owner?.client ?? null
+  const leaderClient: LeaderClient | null = status.leader?.client ?? null
+  // An attachment the server RETAINED across an owner change (#404 merge review, major 1): the
+  // leader is another client than the one that owns the project now — the server says so as a
+  // `*-not-owner` blocker, or the two identified clients simply differ — so attaching it again is
+  // refused again. The selector then comes back, defaulting to the owner, and Attach leader is the
+  // explicit replacement: the person chooses it, and the server's opt-in and ownership checks still
+  // decide whether the chosen client can be attached at all.
+  const stale = leaderClient !== null && ((blocker !== null && blocker.code.endsWith('-not-owner')) || (ownerClient !== null && ownerClient !== leaderClient))
+  // The client to attach, derived from the status: the attached leader's own (to attach it again)
+  // unless it is stale, the owner's when the owning session identified itself, and otherwise the
+  // person's pick — which, when there is something to replace, defaults to the owner.
+  const derived: LeaderClient | null = stale ? null : (leaderClient ?? ownerClient)
+  const client = derived ?? picked ?? ownerClient ?? 'codex'
+  const copy = LEADER_CLIENTS[client]
   // The server answers a refused attach with the refusal's own message and fix; when the status shows
   // that same blocker it is not said twice. Any other refusal is shown, whatever the status blocker is.
   const refusal = error !== null && !(blocker !== null && error === `${blocker.message} ${blocker.fix}`) ? error : null
   const canSubmit = copy.attach === 'direct' || (copy.attach === 'opencode' && baseUrl.trim() !== '' && sessionId.trim() !== '')
 
   const attach = (): void => {
-    if (copy.attach === 'pull-only') return
     onAttach(
       client === 'opencode'
         ? { action: 'attach', client, baseUrl: baseUrl.trim(), sessionId: sessionId.trim() }
@@ -245,7 +259,7 @@ export function McpLeaderPanel({
               className="inline-flex w-fit flex-wrap gap-0.5 rounded-md border border-border bg-card p-0.5"
             >
               {CHOICES.map((choice) => {
-                const checked = choice === picked
+                const checked = choice === client
                 return (
                   <button
                     key={choice}
@@ -266,6 +280,12 @@ export function McpLeaderPanel({
             </div>
           ) : null}
 
+          {stale && leaderClient !== null ? (
+            <p data-slot="mcp-leader-replace" className="text-[13px] leading-relaxed text-muted-foreground">
+              Attaching a client here replaces the attached {LEADER_CLIENTS[leaderClient].name}. Events stay in the journal until the new leader is attached.
+            </p>
+          ) : null}
+
           <p data-slot="mcp-leader-note" className="text-[13px] leading-relaxed text-muted-foreground">
             {withCode(copy.note, CODE_WORDS)}
           </p>
@@ -284,11 +304,9 @@ export function McpLeaderPanel({
           ) : null}
 
           {/* The surface's primary action: a 44 px touch target on a phone that relaxes to the default 36 px at md (foundations.md § 12; NB-6 on #403). */}
-          {copy.attach === 'pull-only' ? null : (
-            <Button className="h-11 w-fit md:h-9" data-slot="mcp-leader-attach-button" disabled={attaching || !canSubmit} onClick={attach}>
-              {attaching ? 'Attaching…' : 'Attach leader'}
-            </Button>
-          )}
+          <Button className="h-11 w-fit md:h-9" data-slot="mcp-leader-attach-button" disabled={attaching || !canSubmit} onClick={attach}>
+            {attaching ? 'Attaching…' : 'Attach leader'}
+          </Button>
         </div>
       )}
 
@@ -310,10 +328,13 @@ function summary(status: Extract<McpLeaderStatus, { available: true }>): string 
     return status.blocker ? `${words.name} is attached, but events are waiting.` : words.connected
   }
   if (status.owner === null) {
-    return 'No leader client is connected to this project. Start your leader client here: it can read its events with `leader_events`, and a Codex, OpenCode or pi session can be attached below.'
+    return 'No leader client is connected to this project. Start your leader client here: it can read its events with `leader_events`, and a Claude Code, Codex, OpenCode or pi session can be attached below.'
   }
   if (status.owner.client === 'codex') {
     return 'Your Codex session owns this project. Nothing is attached yet, so events are kept for `leader_events` and start no turn.'
+  }
+  if (status.owner.client === 'claude-code') {
+    return 'Your Claude Code session owns this project. Nothing is attached yet, so events are kept for `leader_events` and start no turn.'
   }
   return 'A client owns this project, but xezar has not identified which one. Nothing is attached, so events start no turn in it; a leader can read them with `leader_events`.'
 }

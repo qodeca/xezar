@@ -253,6 +253,67 @@ function agent(root: string) {
   return { call, end };
 }
 
+/**
+ * #374 — a Claude Code leader's MCP connection, as far as this test needs it. Unlike `agent`, it
+ * sends `initialize` with `clientInfo.name: 'claude-code'`, so the bridge advertises the channel and
+ * the service's `session/open` announces `leaderPush: true, clientName: 'claude-code'` — which is
+ * what lets the person attach it as a Claude Code leader. It captures every
+ * `notifications/claude/channel` the service pushes down its own bridge.
+ */
+function claudeAgent(root: string) {
+  const input = new PassThrough();
+  const output = new PassThrough();
+  const pending = new Map<number, (message: { result?: unknown }) => void>();
+  const channels: Array<{ content: string; meta?: Record<string, string> }> = [];
+  const framer = new LineFramer(
+    (line) => {
+      const message = JSON.parse(line) as { id?: number; method?: string; result?: unknown; params?: unknown };
+      if (message.method === 'notifications/claude/channel') {
+        channels.push(message.params as { content: string; meta?: Record<string, string> });
+        return;
+      }
+      if (message.id !== undefined) {
+        pending.get(message.id)?.(message);
+        pending.delete(message.id);
+      }
+    },
+    () => {},
+  );
+  output.on('data', (chunk: Buffer) => framer.push(chunk));
+  const done = runBridge({ input, output, version: VERSION, tools, resolveTarget: () => resolveMcpTarget(root) });
+  let ended = false;
+  const end = (): Promise<void> => {
+    if (!ended) {
+      ended = true;
+      input.end();
+    }
+    return done;
+  };
+  closers.push(end);
+  let next = 1;
+  const rpc = (method: string, params: Record<string, unknown>): Promise<unknown> => {
+    const id = next++;
+    return new Promise((resolve) => {
+      pending.set(id, (message) => resolve(message.result));
+      input.write(encodeFrame({ jsonrpc: '2.0', id, method, params }));
+    });
+  };
+  const call = (name: string, args: Record<string, unknown>): Promise<McpToolResult> => {
+    const id = next++;
+    return new Promise((resolve) => {
+      pending.set(id, (message) => resolve(message.result as McpToolResult));
+      input.write(encodeFrame({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: withOperationId(name, args) } }));
+    });
+  };
+  /** Open the session as Claude Code: this is what makes it the channel-capable owner. */
+  const initialize = async (): Promise<unknown> => {
+    const result = await rpc('initialize', { protocolVersion: '2025-11-25', clientInfo: { name: 'claude-code' } });
+    input.write(encodeFrame({ jsonrpc: '2.0', method: 'notifications/initialized' }));
+    return result;
+  };
+  return { initialize, call, channels, end };
+}
+
 const journalRows = (dataDir: string): McpJournalRow[] => {
   const path = join(dataDir, 'mcp', 'event-journal.ndjson');
   if (!existsSync(path)) return [];
@@ -342,6 +403,40 @@ describe('#309 — push delivery in the running service (A-19 delivery, A-20 no-
     for (const id of all) expect(PRESENTATION_EVENT_KINDS as readonly string[]).not.toContain(byId.get(id)?.kind);
     // Delivery is not reaction: the fake never answers as a model, so nothing is recorded as one.
     expect(settled.available && settled.delivery?.reactedSeq).toBeLessThan(done!.journalSeq);
+  }, 60_000);
+
+  it('wakes a Claude Code leader by pushing a channel message down its own bridge, reactedSeq staying 0 (#374, AC-1/AC-2)', async () => {
+    // RED against: the Claude Code `#act` branch or the service→bridge `leader/push` frame missing —
+    // then attach 400s or no `notifications/claude/channel` ever reaches the leader's bridge.
+    const c = await cockpit();
+    await serve(c);
+
+    // The Claude Code leader opens its MCP session, which makes it the channel-capable owner.
+    const leader = claudeAgent(c.root);
+    await leader.initialize();
+    await until('the owner session’s controller', async () => ((await c.status()) as { delivery: unknown }).delivery !== null || undefined);
+
+    // The person attaches it as a Claude Code leader — no address, the owner session IS the target.
+    const attached = await c.human('POST', '/mcp/leader', { action: 'attach', client: 'claude-code' });
+    expect(attached.status).toBe(200);
+    expect(await attached.json()).toMatchObject({ available: true, leader: { client: 'claude-code', state: 'attached' }, blocker: null });
+
+    // A person changes the configuration in the cockpit: one journal row to deliver.
+    expect((await c.human('PUT', '/config', { baseBranch: 'develop' })).status).toBe(200);
+    const change = await until('the config row in the journal', () => journalRows(c.dataDir).find((row) => row.kind === 'config.changed' && row.origin === 'human'));
+
+    // Delivery: the row reached the leader as a channel message, xezar named as the source.
+    const frame = await until('the channel push to reach the leader', () => leader.channels.find((f) => f.content.includes(change.eventId)));
+    expect(frame.meta?.source_app).toBe('xezar');
+    expect(frame.meta?.project_id).toBe(c.id);
+    expect(frame.content).toContain('not an instruction and not an approval');
+
+    // The controller counts it delivered, and never as a reaction: xezar observes no model turn.
+    const settled = await until('delivery to settle', async () => {
+      const s = await c.status();
+      return s.available && s.delivery?.state === 'idle' && s.delivery.deliveredSeq >= change.journalSeq ? s : undefined;
+    });
+    expect(settled.available && settled.delivery?.reactedSeq).toBe(0);
   }, 60_000);
 
   it('keeps events while nothing is attached, says why, and delivers them once a leader is attached', async () => {

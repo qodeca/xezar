@@ -456,7 +456,7 @@ describe('MCP connection section — the leader control (#374, round 4 on #403)'
     expect(attachButton(control)?.textContent).toBe('Attach leader')
   })
 
-  it('attached pull-only: an unidentified owner reads with leader_events, and picking Claude Code explains there is nothing to attach', async () => {
+  it('an unidentified owner reads with leader_events; picking Claude Code (#404) or pi keeps the button and says what each takes', async () => {
     const control = await renderLeader(leaderStatus({ owner: { client: null }, delivery: DELIVERY })).control()
     expect(control.getAttribute('data-state')).toBe('owner')
     expect(control.querySelector('[data-slot="mcp-leader-owner"]')?.textContent).toBe('Not identified')
@@ -464,14 +464,35 @@ describe('MCP connection section — the leader control (#374, round 4 on #403)'
     expect(control.querySelector('[data-slot="mcp-leader-summary"]')?.textContent).toBe(
       'A client owns this project, but xezar has not identified which one. Nothing is attached, so events start no turn in it; a leader can read them with leader_events.',
     )
+    // Claude Code attaches over its channel since #404: the note names the per-launch flag, and the button stays.
     fireEvent.click(control.querySelector('[role="radio"][data-value="claude-code"]')!)
     expect(control.querySelector('[role="radio"][data-value="claude-code"]')?.getAttribute('aria-checked')).toBe('true')
-    expect(control.querySelector('[data-slot="mcp-leader-note"]')?.textContent).toContain('There is nothing to attach')
-    expect(attachButton(control)).toBeNull()
+    expect(control.querySelector('[data-slot="mcp-leader-note"]')?.textContent).toContain('--dangerously-load-development-channels server:xezar')
+    expect(control.querySelector('[data-slot="mcp-leader-note"]')?.textContent).not.toContain('There is nothing to attach')
+    expect(attachButton(control)).toBeTruthy()
     // pi: the button stays, and the note says what it takes.
     fireEvent.click(control.querySelector('[role="radio"][data-value="pi"]')!)
     expect(control.querySelector('[data-slot="mcp-leader-note"]')?.textContent).toContain('Works when this pi runs xezar’s leader extension')
     expect(attachButton(control)).toBeTruthy()
+  })
+
+  it('a Claude Code owner (#404): Attach leader posts {action: "attach", client: "claude-code"} through the same control, and the answer shows Claude Code connected', async () => {
+    // RED against: the control deriving only a Codex owner (`owner.client === 'codex'`), so a Claude
+    // Code owner falls back to the picker's default and the body posted names Codex.
+    const attached = leaderStatus({ owner: { client: 'claude-code' }, leader: { client: 'claude-code', state: 'attached' }, delivery: DELIVERY, blocker: null })
+    const view = renderLeader(leaderStatus({ owner: { client: 'claude-code' }, delivery: DELIVERY }), () => ({ status: 200, body: attached, then: attached }))
+    const control = await view.control()
+    expect(control.querySelector('[data-slot="mcp-leader-owner"]')?.textContent).toBe('Claude Code')
+    expect(control.querySelector('[data-slot="mcp-leader-summary"]')?.textContent).toContain('Your Claude Code session owns this project.')
+    // Derived from the status: no picker, no address fields — the one control, one client selector.
+    expect(control.querySelector('[role="radiogroup"]')).toBeNull()
+    expect(control.querySelector('input')).toBeNull()
+    fireEvent.click(attachButton(control)!)
+    await waitFor(() => expect(view.container.querySelector('[data-slot="mcp-leader"]')?.getAttribute('data-state')).toBe('delivering'))
+    expect(view.posted).toEqual([{ action: 'attach', client: 'claude-code' }])
+    const after = view.container.querySelector('[data-slot="mcp-leader"]')!
+    expect(after.querySelector('[data-slot="mcp-leader-summary"]')?.textContent).toBe('Claude Code connected. Project events can start a turn in your current session.')
+    expect(after.querySelector('[data-slot="mcp-leader-attached"]')?.textContent).toBe('Claude Code, attached')
   })
 
   it('a Codex owner: Attach leader posts {action: "attach", client: "codex"} with no address, and the answer shows Codex connected', async () => {
@@ -890,3 +911,58 @@ describe('MCP connection section — the leader status, live (round 5 on #403)',
     expect(view.container.querySelector('[data-slot="mcp-leader-refresh"]')!.className.split(' ')).toContain('h-[30px]')
   })
 })
+describe('MCP connection section — the Claude Code wake copy (#374, O-1 / AC-9)', () => {
+  async function claudeCard() {
+    const { container } = renderSection()
+    await waitFor(() => expect(container.querySelector('[data-slot="mcp-client-claude-code"]')).toBeTruthy())
+    return container.querySelector('[data-slot="mcp-client-claude-code"]')!
+  }
+
+  it('documents the channel flag comprehensively: what it does, the confirmation screen, the login and admin conditions, and the pull-only default', async () => {
+    // RED against: the Claude Code card carrying no wake block (the `wake` field missing or unrendered),
+    // so a required O-1 documentation place is empty.
+    const wake = (await claudeCard()).querySelector('[data-slot="mcp-client-wake"]')!
+    expect(wake, 'the Claude Code card has a wake block').toBeTruthy()
+    const text = wake.textContent ?? ''
+    expect(wake.querySelector('pre')?.textContent).toContain('claude --dangerously-load-development-channels server:xezar')
+    // What it does and why it is needed.
+    expect(text).toContain('push messages into your session')
+    // The confirmation screen shown every launch.
+    expect(text).toContain('Claude Code shows a warning each time')
+    // The feature-flag-service / Team-Enterprise conditions.
+    expect(text).toContain('a Team or Enterprise admin must turn them on')
+    expect(text).toContain('claude.ai or Anthropic Console API-key login')
+    expect(text).toContain('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC')
+    // The pull-only default holds without the flag.
+    expect(text).toContain('Without the flag nothing changes')
+    expect(text).toContain('leader_events')
+  })
+
+  it('gives Claude Code and Codex a wake block, and no other client: nothing claims a push path it lacks (zero config default stays pull-only)', async () => {
+    // RED against: the wake block leaking onto a client with no push path, or Codex's (#403) lost in the merge with #404.
+    const { container } = renderSection()
+    await waitFor(() => expect(container.querySelector('[data-slot="mcp-client-claude-code"]')).toBeTruthy())
+    for (const slot of ['mcp-client-claude-code', 'mcp-client-codex']) {
+      expect(container.querySelector(`[data-slot="${slot}"] [data-slot="mcp-client-wake"]`), `${slot} has a wake block`).toBeTruthy()
+    }
+    for (const slot of ['mcp-client-opencode', 'mcp-client-pi']) {
+      expect(container.querySelector(`[data-slot="${slot}"] [data-slot="mcp-client-wake"]`), `${slot} has no wake block`).toBeNull()
+    }
+  })
+})
+
+
+it('offers Claude recovery copy, and points at the shared Attach leader control under Connection status', async () => {
+  const view = renderSection();
+  const disclosure = await view.findByRole('button', { name: 'Claude Code recovery guidance' });
+  fireEvent.click(disclosure);
+  for (const code of ['claude-code-not-owner', 'claude-code-bridge-too-old', 'claude-code-push-unconfirmed']) {
+    expect(view.getByText((text) => text.startsWith(`${code}:`))).toBeDefined();
+  }
+  expect(view.getByText((text) => text.startsWith('fix: Restart Claude Code so it starts the current xezar bridge'))).toBeDefined();
+  expect(view.getByText((text) => text.startsWith('fix: Start Claude Code in this project'))).toBeDefined();
+  expect(view.getByText((text) => text.startsWith('fix: If the leader is working, nothing is needed.'))).toBeDefined();
+  // No Claude-specific control: the shared one under Connection status attaches every client (#403 + #404).
+  expect(view.queryByRole('button', { name: 'Attach Claude Code leader' })).toBeNull();
+  expect(view.getByText((text) => text.includes('then use “Attach leader” under Connection status'))).toBeDefined();
+});

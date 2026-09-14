@@ -135,7 +135,18 @@ export async function startMcpService(opts: StartMcpServiceOptions): Promise<Mcp
       // The owner claims live beside the store the cockpit writes (D-02.8).
       dataDir,
       ownership,
-      ...(delivery ? { sessions: { opened: (key: string) => delivery.sessionOpened(key), closed: (key: string) => delivery.sessionClosed(key), codexAnnounced: (key, announcement) => delivery.codexAnnounced(key, announcement) } } : {}),
+      ...(delivery
+        ? {
+            sessions: {
+              // #374: the transport lets the delivery seam push a channel event down this owner
+              // session's own bridge connection; the Codex announcement is the thread id its tool
+              // calls carry.
+              opened: (key, transport) => delivery.sessionOpened(key, transport),
+              closed: (key) => delivery.sessionClosed(key),
+              codexAnnounced: (key, announcement) => delivery.codexAnnounced(key, announcement),
+            },
+          }
+        : {}),
     });
     // D-04: written once the socket it names really listens, so the file never points at nothing.
     // A failure is one warning and an MCP the client can still reach by the registry (N-07).

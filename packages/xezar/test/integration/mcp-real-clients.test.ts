@@ -95,8 +95,12 @@ const T0 = Date.now();
 type Verdict = 'PASSED' | 'FAILED' | 'BLOCKED' | 'NOT-RUN';
 type ClientName = 'claude-code' | 'codex' | 'opencode' | 'pi';
 const CLIENTS: readonly ClientName[] = ['claude-code', 'codex', 'opencode', 'pi'];
-/** The clients whose A-19 leg this file does not measure; pi's (#330 WP5) and Codex's (#374) are. */
-const CLIENTS_WITHOUT_ADAPTER: readonly ClientName[] = ['claude-code', 'opencode'];
+/**
+ * The clients whose A-19 leg this file does not measure. pi's is measured (#330 WP5), Codex's over
+ * its shared app-server and Claude Code's over its channel (both #374), so only a terminal OpenCode
+ * session is left here.
+ */
+const CLIENTS_WITHOUT_ADAPTER: readonly ClientName[] = ['opencode'];
 
 interface Check {
   name: string;
@@ -956,10 +960,15 @@ let fx: Fixture;
 
 const bridgeEnv = (world: AbWorld, home: string): NodeJS.ProcessEnv => isolatedEnv(home, { XEZ_HOME: world.home, XEZ_DRY_RUN: '1' });
 
-/** A real `xez mcp` bridge process spawned in `root`, the way a client spawns it. */
-async function openBridge(name: string, root: string, env: NodeJS.ProcessEnv): Promise<{ rpc: LineRpc; init: RpcAnswer }> {
+/**
+ * A real `xez mcp` bridge process spawned in `root`, the way a client spawns it. `clientName` is the
+ * `initialize` `clientInfo.name`; leave it default for an ordinary client, or pass `'claude-code'`
+ * to make the real bridge advertise the channel capability and announce a channel-capable session,
+ * exactly as Claude Code 2.1.270 does (#374).
+ */
+async function openBridge(name: string, root: string, env: NodeJS.ProcessEnv, clientName = `h118-${name}`): Promise<{ rpc: LineRpc; init: RpcAnswer }> {
   const rpc = new LineRpc(process.execPath, [DIST_CLI, 'mcp'], { cwd: root, env, transcript: new Transcript(name), jsonrpc: true });
-  const init = await rpc.request('initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: `h118-${name}`, version: '0' } });
+  const init = await rpc.request('initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: clientName, version: '0' } });
   if (!init.error) rpc.notify('notifications/initialized');
   return { rpc, init };
 }
@@ -2671,6 +2680,75 @@ describe('A-19 — immediate acceptance, delivery, and a real model reaction', (
     settle(t, entry);
   });
 
+  test('[claude-code] the real bridge advertises the channel and delivers a journal row as a channel push (#374, bridge transport)', async (t) => {
+    // The channel delivery half is observed with the REAL shipped bridge presenting as Claude Code
+    // (the same `node dist/index.js mcp` the connection screen configures, with `clientInfo.name:
+    // "claude-code"` as Claude Code 2.1.270 sends). The production PTY cases below separately drive
+    // real interactive Claude with a scripted model endpoint. Only the real-model/account clause
+    // remains BLOCKED; these eight checks are transport evidence, not AC-1/AC-2 certification.
+    const base = mkdtempSync(join(fx.scratch, 'channel-'));
+    const root = makeRepo(base, 'project-channel');
+    const home = join(base, 'home');
+    const serve = await startServe(root, home, 'a19-claude-channel-serve', join(base, 'agent-home'));
+    try {
+      // The Claude Code leader opens its MCP session, which makes it the channel-capable owner.
+      const bridge = await openBridge('a19-claude-channel-bridge', root, isolatedEnv(join(base, 'bridge-home'), { XEZ_HOME: home, XEZ_DRY_RUN: '1' }), 'claude-code');
+      const caps = (bridge.init.result?.capabilities ?? {}) as { experimental?: Record<string, unknown> };
+      const experimental = caps.experimental ?? {};
+      const instructions = String(bridge.init.result?.instructions ?? '');
+
+      // The person attaches it as a Claude Code leader — no address; the owner session IS the target.
+      const attach = await cockpit(serve, '/api/v1/mcp/leader', 'POST', { action: 'attach', client: 'claude-code' });
+
+      // ONE significant event, through the human's door so nothing about it is the leader's own: a
+      // task the person starts and that finishes on its own (E-01 `task.done`, origin `system`).
+      const created = await cockpit(serve, '/api/v1/runs', 'POST', { workflow: 'quick-task', task: 'mock:done a task whose completion is the event to push to Claude Code', worktree: false, autonomous: true });
+      const runId: string | undefined = created.json?.id;
+      const finished = await waitFor('the A-19 Claude Code task to finish', async () => ((await runStatus(serve, runId)) === 'done' ? 'done' : undefined), 90_000).catch(() => 'not done');
+      const channelFrame = (): { content: string; meta?: Record<string, string> } | undefined =>
+        bridge.rpc.unsolicited.find((m) => m?.method === 'notifications/claude/channel')?.params;
+      const journal = readJournal(root) ?? [];
+      const row = journal.find((r) => r.subject.id === runId && r.kind === 'task.done');
+      // Delivery: the row reached the leader as a channel message on the real bridge's own stdout.
+      const frame = await waitFor('the channel push to reach the Claude Code bridge', () => (row && channelFrame()?.content.includes(row.eventId) ? channelFrame() : undefined), 60_000).catch(() => undefined);
+      const status = await cockpit(serve, '/api/v1/mcp/leader');
+      const delivery = status.json?.delivery ?? null;
+      await bridge.rpc.close();
+
+      const checks: Check[] = [
+        { name: 'the bridge advertises the channel capability to a Claude Code client (AC-1)', required: 'capabilities.experimental["claude/channel"] is present', observed: caps, ok: 'claude/channel' in experimental },
+        { name: 'the bridge never declares claude/channel/permission (AC-7)', required: 'no permission-relay capability, for any client', observed: Object.keys(experimental), ok: !('claude/channel/permission' in experimental) },
+        { name: 'the handshake names what a channel event is', required: 'the instructions carry the `<channel source="xezar" …>` sentence', observed: instructions.slice(0, 400), ok: instructions.includes('<channel source="xezar"') },
+        { name: 'the leader attaches over its channel', required: '`attach` accepted and the leader is Claude Code', observed: { attach: attach.status, leader: attach.json?.leader ?? attach.json?.error }, ok: attach.status === 200 && attach.json?.leader?.client === 'claude-code' },
+        { name: 'immediate acceptance is distinct from the result', required: 'the task is accepted at once and reaches `done` later', observed: { run: created.status, finished }, ok: runId !== undefined && finished === 'done' },
+        { name: 'the event reached the journal', required: 'an E-01 task.done row for it', observed: row ? { eventId: row.eventId, kind: row.kind, origin: row.origin } : `no task.done row among ${journal.length}`, ok: row !== undefined },
+        { name: 'delivery is observed: the row was pushed as a channel message (AC-2)', required: 'a `notifications/claude/channel` on the bridge carries the row and names xezar as the source', observed: frame ? { source_app: frame.meta?.source_app, project_id: frame.meta?.project_id, carriesRow: row ? frame.content.includes(row.eventId) : false } : 'no channel frame carried the row', ok: frame !== undefined && frame.meta?.source_app === 'xezar' && !!row && frame.content.includes(row.eventId) },
+        { name: 'delivery advanced and reaction stayed 0 (§ 6.6, F-20)', required: 'deliveredSeq reaches the journal’s latest; reactedSeq is 0 (Claude Code has no observable reaction)', observed: delivery, ok: delivery !== null && delivery.deliveredSeq >= 1 && delivery.reactedSeq === 0 },
+        { name: 'a REAL Claude Code model reaction', required: 'a real Claude Code process turns the pushed channel into a model turn', observed: 'not observable: § 9 forbids personal accounts and a channel turn needs one. The push left xezar and became a `notifications/claude/channel` on the real bridge; what Claude Code decides is not measured (OB-5, open for all clients)', ok: null },
+      ];
+      const measured = checks.filter((c) => c.ok !== null);
+      const entry = record({
+        case: 'A-19',
+        client: 'claude-code',
+        verdict: verdictOf(checks),
+        summary: `${measured.filter((c) => c.ok).length} of ${measured.length} measured checks met; the row was pushed to the Claude Code bridge as a channel message, reactedSeq ${delivery?.reactedSeq}`,
+        missing: 'a REAL Claude Code model reaction (OB-5), which no § 9 fixture may observe. The channel delivery half was executed against the real shipped bridge.',
+        checks,
+        transcripts: [serve.transcript.name, 'a19-claude-channel-bridge.log'],
+        fixture: {
+          serve: 'real xezar serve (dist/index.js), XEZ_DRY_RUN=1',
+          bridge: 'real node packages/xezar/dist/index.js mcp, initialize clientInfo.name="claude-code"',
+          claudeBinary: fx.clients['claude-code']?.version ?? fx.absent['claude-code'] ?? 'not resolved',
+          model: 'none: the channel push is observed as a bridge frame, not driven through a model',
+        },
+      });
+      fx.reaction['claude-code'] = entry;
+      settle(t, entry);
+    } finally {
+      await stop(serve.child);
+    }
+  });
+
   for (const client of CLIENTS_WITHOUT_ADAPTER) {
     test(`[${client}] an idle connected client’s model reacts to a delivered event without polling`, (t) => {
       const setup = fx.setup[client];
@@ -3011,6 +3089,129 @@ describe('A-18 — a restart on pi’s own side (#330 WP5)', () => {
 });
 
 // Guards the evidence itself (F-15): nothing this run wrote may carry a world secret.
+// #404: production composition, real interactive client; only the model endpoint is scripted.
+describe('Claude Channels production PTY acceptance (AC-1/AC-2/AC-3)', () => {
+  for (const flag of [true, false]) test(`real Claude with development channels ${flag ? 'enabled' : 'absent'}`, { timeout: 240_000 }, async () => {
+    const claude = fx.clients['claude-code'];
+    assert.ok(claude, fx.absent['claude-code']);
+    const base = mkdtempSync(join(fx.scratch, 'channels-'));
+    const root = makeRepo(base, 'project');
+    const home = join(base, 'xez-home');
+    const clientHome = join(base, 'client-home');
+    const config = join(clientHome, '.claude');
+    mkdirSync(config, { recursive: true });
+    const log = new Transcript(`channels-pty-${flag}`);
+    log.line('version', claude.version);
+    const key = 'sk-ant-api03-dummy-not-a-credential-374-spike-000000';
+    writeFileSync(join(config, '.claude.json'), JSON.stringify({
+      hasCompletedOnboarding: true, lastOnboardingVersion: claude.version.split(' ')[0], theme: 'dark', numStartups: 5,
+      projects: { [realpathSync(root)]: { hasTrustDialogAccepted: true, hasCompletedProjectOnboarding: true, allowedTools: [] } },
+      customApiKeyResponses: { approved: [key.slice(-20)], rejected: [] },
+    }));
+    const requests: { at: number; pending: string; suggestion: boolean }[] = [];
+    const endpoint = createServer((req, res) => {
+      void (async () => {
+        let raw = ''; for await (const chunk of req) raw += chunk;
+        if (!req.url?.includes('/v1/messages') || req.url.includes('count_tokens')) {
+          res.writeHead(200, { 'content-type': 'application/json' }).end('{"input_tokens":1}'); return;
+        }
+        const body = JSON.parse(raw);
+        const textOf = (value: any): string => typeof value === 'string' ? value : Array.isArray(value)
+          ? value.map((part) => part.type === 'text' ? part.text : part.type === 'tool_result' ? 'TOOL_RESULT: ' + textOf(part.content) : '').join('\n') : '';
+        const messages = body.messages ?? [];
+        let i = messages.length; while (i > 0 && messages[i - 1]?.role !== 'assistant') i--;
+        const pending = messages.slice(i).map((m: any) => textOf(m.content)).join('\n');
+        const suggestion = pending.includes('Claude asks to continue') || pending.includes('[SUGGESTION MODE:');
+        requests.push({ at: Date.now(), pending, suggestion }); log.line('model-request', JSON.stringify(requests.at(-1)));
+        const tool = body.tools?.some((t: { name: string }) => t.name === 'Bash') && pending.includes('CALL-BASH') && !pending.includes('TOOL_RESULT')
+          ? { name: 'Bash', input: { command: 'touch channel-approval-marker', description: 'Create acceptance marker' } }
+          : body.tools?.some((t: { name: string }) => t.name === 'mcp__xezar__leader_events') && pending.includes('READ-EVENTS') && !pending.includes('TOOL_RESULT')
+          ? { name: 'mcp__xezar__leader_events', input: { action: 'read' } } : undefined;
+        const id = `msg_fixture_${requests.length}`;
+        const content = tool ? { type: 'tool_use', id: `toolu_${requests.length}`, ...tool } : { type: 'text', text: 'SCRIPTED-REPLY' };
+        const message = { id, type: 'message', role: 'assistant', model: body.model, content: [content], stop_reason: tool ? 'tool_use' : 'end_turn', stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 } };
+        if (!body.stream) { res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(message)); return; }
+        res.writeHead(200, { 'content-type': 'text/event-stream' });
+        const emit = (name: string, value: unknown) => res.write(`event: ${name}\ndata: ${JSON.stringify(value)}\n\n`);
+        emit('message_start', { type: 'message_start', message: { ...message, content: [], stop_reason: null } });
+        emit('content_block_start', { type: 'content_block_start', index: 0, content_block: tool ? { ...content, input: {} } : { type: 'text', text: '' } });
+        emit('content_block_delta', { type: 'content_block_delta', index: 0, delta: tool ? { type: 'input_json_delta', partial_json: JSON.stringify(tool.input) } : { type: 'text_delta', text: 'SCRIPTED-REPLY' } });
+        emit('content_block_stop', { type: 'content_block_stop', index: 0 });
+        emit('message_delta', { type: 'message_delta', delta: { stop_reason: message.stop_reason, stop_sequence: null }, usage: { output_tokens: 1 } });
+        emit('message_stop', { type: 'message_stop' }); res.end();
+      })().catch((error) => { log.line('endpoint-error', String(error)); res.destroy(); });
+    });
+    await new Promise<void>((resolve) => endpoint.listen(0, '127.0.0.1', resolve));
+    const address = endpoint.address(); assert.ok(address && typeof address !== 'string');
+    const serve = await startServe(root, home, `channels-serve-${flag}`, join(base, 'agents'));
+    const env = isolatedEnv(clientHome, { CLAUDE_CONFIG_DIR: config, XEZ_HOME: home, XEZ_DRY_RUN: '1',
+      ANTHROPIC_API_KEY: key, ANTHROPIC_BASE_URL: `http://127.0.0.1:${address.port}`, TERM: 'xterm-256color', TMPDIR: '/tmp' });
+    delete env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC;
+    execFileSync(claude.bin, ['mcp', 'add', '--scope', 'local', 'xezar', '--', process.execPath, DIST_CLI, 'mcp'], { cwd: root, env });
+    const args = ['--allowedTools', 'mcp__xezar__leader_events', '--debug-file', join(base, 'claude-debug.log')];
+    if (flag) args.push('--dangerously-load-development-channels', 'server:xezar');
+    const child = spawn('python3', [join(REPO, 'packages/xezar/test/helpers/claude-channel-pty.py'), claude.bin, ...args], { cwd: root, env, stdio: ['pipe', 'pipe', 'pipe'] });
+    children.add(child);
+    let screen = ''; let confirmed = false;
+    const input = (text: string) => { log.line('human-input', JSON.stringify(text)); child.stdin!.write(text); };
+    for (const stream of [child.stdout!, child.stderr!]) stream.on('data', (chunk: Buffer) => {
+      const text = chunk.toString(); log.line('pty', text);
+      screen += text.replace(/\x1b\][^\x07\x1b]*(\x07|\x1b\\)/g, '').replace(/\x1b\[[0-9;?<>=]*[ -\/]*[@-~]/g, '');
+      if (flag && !confirmed && /I\s*am\s*using\s*this\s*for\s*local\s*development/.test(screen)) {
+        confirmed = true; setTimeout(() => input('\r'), 500);
+      }
+    });
+    const turns = () => requests.filter((r) => !r.suggestion);
+    let revision = 0;
+    const event = async () => {
+      const previous = readJournal(root)?.at(-1)?.journalSeq ?? 0;
+      assert.equal((await cockpit(serve, '/api/v1/config', 'PUT', { baseBranch: `fixture-${++revision}` })).status, 200);
+      return waitFor('one config journal event', () => readJournal(root)?.find((r) => r.journalSeq > previous && r.kind === 'config.changed'), 10_000);
+    };
+    try {
+      await waitFor('real Claude MCP ownership', async () => (await cockpit(serve, '/api/v1/mcp/leader')).json?.delivery ? true : undefined, 45_000);
+      assert.equal((await cockpit(serve, '/api/v1/mcp/leader', 'POST', { action: 'attach', client: 'claude-code' })).status, 200);
+      const quietBefore = Date.now();
+      await delay(30_100); assert.equal(turns().length, 0, 'quiet before: no model requests');
+      log.line('quiet-before', JSON.stringify({ ms: Date.now() - quietBefore, totalRequests: requests.length }));
+      const row = await event();
+      if (flag) {
+        await waitFor('production channel model request', () => turns().find((r) => r.pending.includes(row.eventId)), 15_000);
+        assert.match(turns()[0]!.pending, /<channel source="xezar"/);
+        assert.equal(turns().length, 1, 'exactly one turn for one event');
+        const quietAfter = Date.now();
+        await delay(30_100); assert.equal(turns().length, 1, 'quiet after: no additional model requests');
+        log.line('AC-1', JSON.stringify({ quietAfterMs: Date.now() - quietAfter, totalRequests: requests.length, eventId: row.eventId }));
+        // Typed draft remains unsent while a new event wakes the client. Human Enter proves it survived.
+        input('UNSENT-DRAFT-404');
+        const draftEvent = await event();
+        await waitFor('channel with an unsent draft', () => turns().find((r) => r.pending.includes(draftEvent.eventId)), 15_000);
+        assert.ok(!turns().at(-1)!.pending.includes('UNSENT-DRAFT-404'), 'draft was not submitted');
+        const draftScreen = screen.length;
+        input('\r');
+        await waitFor('human submits preserved draft', () => turns().find((r) => r.pending.startsWith('UNSENT-DRAFT-404')), 10_000);
+        await waitFor('draft response rendered', () => screen.slice(draftScreen).includes('SCRIPTED-REPLY') ? true : undefined, 10_000);
+        // A pending Bash approval remains a human choice; channel delivery must not answer it.
+        input('CALL-BASH\r');
+        await waitFor('Bash approval dialog', () => /Do\s*you\s*want\s*to\s*proceed/.test(screen) ? true : undefined, 15_000);
+        const before = turns().length; await event(); await delay(3_000);
+        assert.equal(turns().length, before, 'approval dialog gates model requests');
+        assert.equal(existsSync(join(root, 'channel-approval-marker')), false, 'event did not approve Bash');
+        input('\x1b');
+      } else {
+        await delay(31_000); assert.equal(turns().length, 0, 'no flag: no model request');
+        assert.equal((await cockpit(serve, '/api/v1/mcp/leader')).json?.blocker?.code, 'claude-code-push-unconfirmed');
+        input('READ-EVENTS\r');
+        await waitFor('retained event through leader_events', () => turns().find((r) => r.pending.includes('TOOL_RESULT:') && r.pending.includes(row.eventId)), 15_000);
+      }
+      log.line('PASS', JSON.stringify({ flag, version: claude.version, requests: turns().length, suggestions: requests.filter((r) => r.suggestion) }));
+    } finally {
+      await stop(child); await stop(serve.child);
+      endpoint.closeAllConnections(); await new Promise<void>((resolve) => endpoint.close(() => resolve()));
+    }
+  });
+});
+
 describe('evidence hygiene', () => {
   test('no secret of the world reached a transcript or the results', () => {
     const hits: string[] = [];

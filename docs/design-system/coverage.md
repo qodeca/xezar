@@ -257,3 +257,5 @@ Each entry maps a utility name to a theme token. Listed in foundations.md §1.7;
 | Keyboard, focus and announcements | behaviour.md | `specimens/components.html` | Documented with known gap (G-06) |
 | UX writing | writing.md | – | Documented with known gap (G-15, G-16) |
 | Number formatting | writing.md | – | Documented with known gap (G-18) |
+
+MCP connection Claude recovery guidance uses Collapsible and a ghost Button, with wrapping text and token colours. Attachment and live status go through the one shared leader control (`mcp-leader-control.tsx`, #403 merged with #404): Claude Code is one row of its client table (`attach: 'direct'`), the status is live over the `mcp-leader` WebSocket topic while the section is on screen, and no client-specific attach action exists. When the server retains an attachment whose client no longer owns the project (a `*-not-owner` blocker), the control shows its client selector again, defaulting to the owner, with one sentence saying that attaching replaces the retained leader.

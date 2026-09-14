@@ -2,6 +2,8 @@ import { ServerIcon, ShieldCheckIcon, TriangleAlertIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 import type { HealthResponse } from '@qodeca/xezar-api-client'
+import { Button } from '@/components/ui/button'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { useHealth, useProjects } from '@/api/queries'
 import { CenteredState } from '@/components/centered-state'
 import { Link, useActiveProjectId } from '@/lib/project-router'
@@ -53,15 +55,37 @@ interface ClientSetup {
   caveat?: string
   /**
    * How to let xezar WAKE this leader — start turns in it on project events — for a client that
-   * supports it (Codex through its shared app-server, #374). A card-body block, not the caveat
-   * footnote: it is guidance a person acts on, and the footnote's small soft text is below AA on
-   * light (design review NB-4, known gap G-23). Absent for a client with no push path: nothing is
-   * claimed. The attach itself is the one control under Connection status.
+   * supports it (#374: Codex through its shared app-server, Claude Code through Channels). A
+   * card-body block, not the caveat footnote: it is guidance a person acts on, and the footnote's
+   * small soft text is below AA on light (design review NB-4, known gap G-23). Claude Code's copy is
+   * verbatim from the wake decision record § 5.5 — an O-1 acceptance condition, so it is one of the
+   * four required documentation places (AC-9). Absent for a client with no push path: the default
+   * stays pull-only, and nothing is claimed. The attach itself is the one control under Connection
+   * status.
    */
   wake?: ReactNode
 }
 
-/** The per-client setup facts, from D-04 § 3. Kept as data so the four cards cannot drift. */
+/** Decision §5.6 recovery guidance, also available before a leader has attached. */
+const CLAUDE_RECOVERY = [
+  {
+    code: 'claude-code-not-owner',
+    message: 'The MCP session that owns this project is not a Claude Code session, so there is no Claude Code leader to push events to. Events are kept in the journal.',
+    fix: 'Start Claude Code in this project with --dangerously-load-development-channels server:xezar, let it call a xezar tool once, then attach it again.',
+  },
+  {
+    code: 'claude-code-bridge-too-old',
+    message: 'This Claude Code session is connected through an older xezar MCP bridge that cannot push events. Events are kept in the journal.',
+    fix: 'Restart Claude Code so it starts the current xezar bridge (npx -y @qodeca/xezar mcp), then attach it again.',
+  },
+  {
+    code: 'claude-code-push-unconfirmed',
+    message: 'xezar pushed events to the attached Claude Code session, and they are not acknowledged yet. Claude Code does not confirm delivery, so xezar cannot tell a leader that is still working from one that never received them. Nothing is lost: the events stay in the journal.',
+    fix: 'If the leader is working, nothing is needed. Otherwise check that Claude Code was started with --dangerously-load-development-channels server:xezar and that its startup notice says channels from server:xezar inject into the session. Channels need a claude.ai or Console API-key login, do not work on Bedrock, Vertex or Foundry, must be enabled by a Team or Enterprise admin, and are off while CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC is set. Until then, read events with leader_events.',
+  }
+]
+
+/** The per-client setup facts, from D-04 §3. */
 const CLIENTS: readonly ClientSetup[] = [
   {
     name: 'Claude Code',
@@ -79,6 +103,41 @@ const CLIENTS: readonly ClientSetup[] = [
       'Claude Code does not discover `.local/xezar/mcp-connection.json`. Nothing in it is read by Claude Code at any point \u2014 the command above is what tells Claude Code that a xezar MCP server exists.',
     caveat:
       'Local scope writes outside the repository. The project-scope alternative (`--scope project`) writes a tracked `.mcp.json`, which pi reads too, and needs a per-user approval step before it connects.',
+    // #374, verbatim from the wake decision record \u00a7 5.5 (O-1 / AC-9). Opt-in, per launch; the
+    // default pushes nothing. `server:xezar` matches the name the `claude mcp add` command above
+    // registered.
+    wake: (
+      <>
+        <span className="block">
+          To let xezar wake this leader when something happens, start Claude Code from the project root with:
+        </span>
+        <pre className="mt-2 rounded-md border border-border bg-muted p-3 font-mono text-[11px] leading-relaxed break-all whitespace-pre-wrap">
+          claude --dangerously-load-development-channels server:xezar
+        </pre>
+        <span className="mt-2 block">
+          Claude Code shows a warning each time. On the confirmation screen, choose “I am using this for local development” if you accept it.
+          The flag lets xezar push messages into your session because custom servers are not on the channel allowlist.
+          Channels are a research preview: the feature-flag service must be reachable and enable them. They need a claude.ai or Anthropic Console API-key login,
+          do not work on Bedrock, Vertex or Foundry, a Team or Enterprise admin must turn them on, and they are off while{' '}
+          <span className="font-mono break-all">CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC</span> is set.
+          After starting Claude Code, let it call a xezar tool once, then use “Attach leader” under Connection status. Without the flag nothing changes: your leader reads its events with{' '}
+          <span className="font-mono break-all">leader_events</span>.
+        </span>
+        <Collapsible className="mt-2">
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" className="h-auto min-h-11 whitespace-normal md:min-h-9">Claude Code recovery guidance</Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            {CLAUDE_RECOVERY.map((blocker) => (
+              <div key={blocker.code} className="mt-2 break-words">
+                <p>{blocker.code}: {blocker.message}</p>
+                <p>fix: {blocker.fix}</p>
+              </div>
+            ))}
+          </CollapsibleContent>
+        </Collapsible>
+      </>
+    ),
   },
   {
     name: 'Codex',
