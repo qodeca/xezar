@@ -1,8 +1,10 @@
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, symlinkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import type { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { agentHomePaths } from '../paths.ts';
+import { hashBytes } from '../agent-config/files.ts';
 import { listConfigFiles } from '../agent-config/catalog.ts';
 import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
@@ -21,10 +23,19 @@ describe('the agent-config API', () => {
   let store: RunStore;
   let app: Hono;
   const prevRemote = process.env.XEZ_REMOTE;
+  const homePins = ['HOME', 'CLAUDE_CONFIG_DIR', 'CODEX_HOME', 'OPENCODE_CONFIG_DIR', 'PI_CODING_AGENT_DIR'] as const;
+  const savedHomes = new Map<string, string | undefined>();
 
   beforeEach(() => {
     delete process.env.XEZ_REMOTE;
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-agentcfg-'));
+    // Pin before createApp or any request. Inherited CLI homes may contain real keys (#362).
+    // Restore after the suite's work, just as vitest.setup.ts restores its XEZ_HOME pin.
+    for (const key of homePins) {
+      savedHomes.set(key, process.env[key]);
+      process.env[key] = join(repoRoot, 'agent-home', key);
+      mkdirSync(process.env[key]!, { recursive: true });
+    }
     mkdirSync(join(repoRoot, '.local/xezar'), { recursive: true });
     store = RunStore.open(join(repoRoot, '.local/xezar'));
     app = createApp({
@@ -36,6 +47,11 @@ describe('the agent-config API', () => {
   });
   afterEach(() => {
     store.flush();
+    for (const key of homePins) {
+      const value = savedHomes.get(key);
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
     rmSync(repoRoot, { recursive: true, force: true });
     if (prevRemote === undefined) delete process.env.XEZ_REMOTE;
     else process.env.XEZ_REMOTE = prevRemote;
@@ -59,6 +75,73 @@ describe('the agent-config API', () => {
     expect(body.editable).toBe(true);
     expect(body.files.length).toBeGreaterThan(10);
     expect(body.userMcp).not.toBeNull();
+  });
+
+  it.each(listConfigFiles().filter((def) => def.scope === 'user').map((def) => def.id))(
+    'isolates %s from inherited agent homes (#362)', async (id) => {
+      const res = await apiRequest(app, `/api/v1/agent-config/${id}`);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ exists: false, content: '', version: null });
+    },
+  );
+
+  it.each(listConfigFiles().flatMap((def) =>
+    (['read', 'write', 'list'] as const).map((operation) => [def.id, operation, def] as const),
+  ))('refuses a credential symlink at %s on %s (#363)', async (id, operation, def) => {
+    const target = join(repoRoot, 'sentinel-credential');
+    const canary = '{"key":"FAKE-SYMLINK-CREDENTIAL"}';
+    writeFileSync(target, canary);
+    const path = def.resolve(repoRoot, agentHomePaths());
+    mkdirSync(dirname(path), { recursive: true });
+    symlinkSync(target, path);
+    try {
+      if (operation === 'read') {
+        const res = await apiRequest(app, `/api/v1/agent-config/${id}`);
+        const body = await res.text();
+        expect(body).not.toContain('FAKE-SYMLINK-CREDENTIAL');
+        expect(res.status).toBe(409);
+        expect(JSON.parse(body)).toEqual({ error: expect.stringContaining('symlink') });
+      } else if (operation === 'write') {
+        const res = await put(id, { content: def.format === 'toml' ? 'x = 1' : '{}', version: hashBytes(canary) });
+        expect(res.status).toBe(409);
+        expect(await res.json()).toEqual({ error: expect.stringContaining('symlink') });
+      } else {
+        const listing = await (await apiRequest(app, '/api/v1/agent-config')).json() as {
+          files: { id: string; writable: boolean; version: string | null; readOnlyReason?: string }[];
+        };
+        expect(listing.files.find((file) => file.id === id)).toMatchObject({
+          writable: false, version: null, readOnlyReason: expect.stringContaining('symlink'),
+        });
+      }
+      expect(readFileSync(target, 'utf8')).toBe(canary);
+    } finally {
+      rmSync(path, { force: true });
+    }
+  });
+
+  it('withholds Claude MCP names when its state file is a symlink', async () => {
+    const credential = join(repoRoot, 'sentinel-state');
+    writeFileSync(credential, '{"mcpServers":{"FAKE-STATE-CREDENTIAL":{}}}');
+    symlinkSync(credential, join(process.env.CLAUDE_CONFIG_DIR!, '.claude.json'));
+    const res = await apiRequest(app, '/api/v1/agent-config');
+    const body = await res.text();
+    expect(body).not.toContain('FAKE-STATE-CREDENTIAL');
+    expect(JSON.parse(body).userMcp).toMatchObject({ readable: false, servers: [] });
+  });
+
+  it.each(['local', 'hosted'])('refuses a project directory symlink escaping the repository in %s mode (#363)', async (mode) => {
+    if (mode === 'hosted') process.env.XEZ_REMOTE = '1';
+    const outside = mkdtempSync(join(tmpdir(), 'xez-outside-'));
+    try {
+      writeFileSync(join(outside, 'settings.json'), '{"key":"FAKE-PARENT-CREDENTIAL"}');
+      symlinkSync(outside, join(repoRoot, '.claude'));
+      const res = await apiRequest(app, '/api/v1/agent-config/claude.project.settings');
+      expect(await res.text()).not.toContain('FAKE-PARENT-CREDENTIAL');
+      expect(res.status).toBe(409);
+      expect((await put('claude.project.settings', { content: '{}', version: null })).status).toBe(409);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
   });
 
   it('GET :id → 404 for an unknown id', async () => {

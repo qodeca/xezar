@@ -126,6 +126,17 @@ test('shared contracts reject a single skill dropping a guarantee', () => {
  assert.match(result.stdout,/shared contract/i);
 });
 
+// #408: bug-fix has one writing step. Calling it diagnosis-only caused three Codex
+// runs to defer the repair to a nonexistent next step and fail readiness with no commit.
+test('bug-fix names and instructs its only writing step as the complete repair stage',()=>{
+ const flow=parseYaml(fs.readFileSync(path.join(kit,'workflows/bug-fix.yaml'),'utf8'));
+ const investigate=flow.steps.find(step=>step.id==='investigate');
+ assert.equal(investigate?.name,'Reproduce, diagnose and fix');
+ const body=fs.readFileSync(path.join(kit,'skills/xezar-bug-investigation.md'),'utf8');
+ for(const rule of [/only writing step/,/add the red test/,/apply the fix/,/run focused tests/,
+  /worktree-git\.sh commit/,/diagnosis alone fails readiness/])assert.match(body,rule);
+});
+
 
 test('infrastructure CI is unconditional and agrees with the required integration check',()=>{
  const ci=parseYaml(fs.readFileSync(path.join(repo,'.github/workflows/ci.yml'),'utf8'));

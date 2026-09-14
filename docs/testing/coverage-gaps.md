@@ -191,6 +191,7 @@ HTTP API.
 | pi wall-clock deadline escalates SIGTERM→SIGKILL | server unit | `pi-runner.test.ts` — four cases, including the `timeoutMs: 0` guard that must pass both ways | C |
 | A `128 + signal` exit the runner did NOT cause names its signal | server unit | `claude-cli-runner.test.ts` and `pi-runner.test.ts` (#156) — the other half of `terminatedByXezar`, contract in AGENT_PROTOCOL.md | C |
 | pi records an output-cap stop and an empty turn | server unit | `core/pi-empty-turn.test.ts`, plus the `pi/empty-turn-output-cap` golden fixture replayed by `pi-ui-mapper.test.ts` (#164) | C |
+| pi extension dialogs (`approveTools`) are answered, never left blocking | server unit + integration | `core/pi-dialog.test.ts` (pure frame → ask card / response), `pi-runner.test.ts` "#369" block (ask card raised, answer routed by dialog id, autonomous `Deny`, unsupported dialog cancelled, cancel at close; the `notify` guard passes both ways), and the A-01 `approveTools` leg of `test/integration/mcp-real-clients.test.ts`, which drives a REAL pi + pi-mcp-adapter through `PiRunner` in both modes — not in any gate (#369) | C |
 
 ### 3.6 Directory sweep – nothing silently absent
 

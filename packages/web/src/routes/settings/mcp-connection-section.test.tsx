@@ -319,29 +319,25 @@ describe('MCP connection section — the pi card (#341, WP3 of #330)', () => {
     expect(user).toContain('A committed entry does the same for everyone who starts pi in this project.')
   })
 
-  it('tells the reader to leave xezar’s tools out of approveTools, and what happens if they do not (#369)', async () => {
+  it('tells the reader what a xezar tool in approveTools does now that xezar answers the dialog (#369)', async () => {
     const card = await piCard()
     const line = card.querySelector('[data-slot="mcp-client-pi-approve-tools"]')
     expect(line).toBeTruthy()
     const text = line!.textContent!.replace(/\s+/g, ' ').trim()
-    // The workaround comes FIRST: a reader who stops after one sentence still knows what to do.
-    expect(text).toMatch(/^Leave xezar’s tools out of the extension’s approveTools setting/)
-    // The consequence, in the measured terms of #330 WP5's QA — killed at two minutes, not "hangs
-    // for ever", which is what a reader would wrongly take from the mechanism alone.
-    expect(text).toContain('nothing in xezar answers')
-    expect(text).toContain('waits there until it is killed')
-    expect(text).toContain('measured at two minutes')
-    expect(text).toContain('xezar_health')
-    // The OTHER unattended case, and it ends differently. This is the leader setup card, so a reader
-    // who runs no pi tasks must not read the killed-at-two-minutes case as the only one: a leader
-    // turn has nothing to end its wait at all. Naming only the task understated it (QA on #371).
-    expect(text).toContain('a leader turn nobody is watching waits for ever')
-    // The limit that keeps this sentence true. The same QA measured an ordinary pi task finishing in
-    // 2.8 s with the gate on, because the runner's default tool allowlist offers no xezar tool. A card
-    // that dropped this would overstate the limit — the mistake this release already shipped.
+    // What the setting does, then the three places the question is answered from.
+    expect(text).toMatch(/^A xezar tool you put in the extension’s approveTools setting/)
+    expect(text).toContain('In your own pi window you answer it yourself')
+    // A xezar pi task: the dialog is a card with pi's OWN choices (#369), never a hang or a silent approval.
+    expect(text).toContain('the question shows in the task as a card with pi’s own choices, Allow once, Allow for session and Deny')
+    expect(text).toContain('an autonomous task answers Deny at once and says so in its transcript')
+    // The limit that keeps this true: the runner's default tool allowlist offers no xezar tool, so an
+    // ordinary pi task never sees the question at all (#330 WP5's QA measured 2.8 s with the gate on).
     expect(text).toContain('A pi that is never offered a xezar tool is unaffected')
-    // Never claim the fix is in: 369 is deliberately not in this release.
-    expect(text).toContain('which is not in this release')
+    // The case #369 does NOT fix, said plainly: pi's dialog has no timeout, and a headless pi driven by
+    // some other RPC client is answered by that client or not at all.
+    expect(text).toContain('pi waits for that answer with no time limit')
+    expect(text).toContain('a headless pi that another program drives is that program’s to answer')
+    expect(text).not.toContain('not in this release')
     const issue = card.querySelector('[data-slot="mcp-client-pi-approve-tools-issue"]')!
     // The link text says "issue 369", never a bare hash: the design guardian's no-raw-hex-colors
     // rule reads a three-digit "#369" as a colour, and that rule is not to be weakened for copy.
