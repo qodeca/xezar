@@ -1,0 +1,665 @@
+/* Decisions – static design mockup (revision 2, after the 2026-09-14 reviews and interview).
+ *
+ * Feature-specific rules only. Tokens (both themes), the base layer, the specimen chrome, the app
+ * shell and every base component class come from the shared design-system stylesheet, linked
+ * BEFORE this file in every page: ../../docs/design-system/cockpit.css. Never redeclare a token or
+ * a base class here; add a feature rule instead. This file is a design reference, not shipped code.
+ *
+ * Every class below is either a new surface this design proposes (the case card and its parts, the
+ * task banner, the scope-check line) or a feature extension of a shared class (`.case-skeleton`
+ * on `.skeleton`, `.task-tabs` on `.tab-links`). README.md § 10 lists each with its Tailwind
+ * spelling and every departure from the design system.
+ */
+
+/* ---------- Decisions page ---------- */
+
+/* Shown in the EMPTY state only (F-26). On a page with cases the first card is the first thing. */
+.rule-strip {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: 560px;
+  margin: 0 auto 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  text-align: left;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+
+.rule-strip svg {
+  margin-top: 2px;
+  flex-shrink: 0;
+  color: var(--soft-foreground);
+}
+
+.rule-strip strong {
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+/* Open / Decided are URL-backed segments: the cockpit's TabLink, not a tablist. */
+.task-tabs {
+  margin: 12px 24px 0;
+}
+
+.tab-link .count {
+  margin-left: 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--soft-foreground);
+}
+
+.tab-link .diff {
+  margin-left: 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--soft-foreground);
+}
+
+.page-tabs {
+  margin-bottom: 14px;
+}
+
+.case-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.case-list + .group-heading {
+  margin-top: 18px;
+}
+
+/* ---------- the case card (new component: DecisionCard) ----------
+ * Same family as the thread's ask card (routes/task-thread/ask-card.tsx:82): alpha tint over the
+ * page, stacked full-width option buttons. New: the header line, the plain-words block, the
+ * collapsed technical details, the comment box and the send row. */
+
+.case-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--primary) 25%, transparent);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--primary) 4%, transparent);
+}
+
+.case-card .head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+.case-card .head .age {
+  color: var(--soft-foreground);
+}
+
+.case-card .head .task {
+  flex-basis: 100%;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--foreground);
+  font-weight: 500;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.case-card .head .task:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* GitHub links: the task's issue and PR, from the run record's refs (`runs/task-refs`). Each is
+ * hidden when the task has none. They open GitHub in a new tab, so they carry the external icon
+ * and an sr-only note. Third line of the head, under the task link. */
+.case-card .refs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  flex-basis: 100%;
+  min-width: 0;
+}
+
+.case-card .gh-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--muted-foreground);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.case-card .gh-link:hover {
+  color: var(--foreground);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.case-card .gh-link .icon {
+  width: 12px;
+  height: 12px;
+  color: var(--soft-foreground);
+}
+
+/* Category chip: a word on the muted surface. Not the accent – three accent fills beside a
+ * primary Send would invert "lime is the one call to action", and under the violet accent the
+ * accent chip fails contrast at 10px. Words carry the category; the chip only groups the eye. */
+.case-cat {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: var(--radius);
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.025em;
+  text-transform: uppercase;
+}
+
+.case-card .question {
+  margin: 2px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+/* The plain-words explanation: always visible, written for a person who did not read the thread.
+ * It is the text the owner reads, so it is body size – never smaller than the options. */
+.case-card .plain {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.case-card .plain p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--foreground);
+  overflow-wrap: anywhere;
+}
+
+.case-card .plain .by {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+/* Technical details: a native <details>, closed by default, one step deeper on the elevation
+ * scale than the card (page → card → hint inside the card). */
+.case-card details {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card-2);
+}
+
+.case-card summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  list-style: none;
+}
+
+.case-card summary::-webkit-details-marker {
+  display: none;
+}
+
+.case-card summary .icon {
+  transition: transform 0.15s;
+}
+
+.case-card details[open] summary .icon {
+  transform: rotate(90deg);
+}
+
+.case-card .evidence {
+  padding: 2px 10px 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+
+.case-card .why {
+  margin: 0 0 6px;
+}
+
+.case-card .why strong {
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.case-card .evidence h4 {
+  margin: 10px 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.case-card .evidence p {
+  margin: 0 0 6px;
+}
+
+.case-card .evidence pre {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--muted);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.case-card .evidence blockquote {
+  margin: 0 0 6px;
+  padding: 0 0 0 10px;
+  border-left: 2px solid var(--border);
+  font-style: normal;
+  overflow-wrap: anywhere;
+}
+
+/* Options: the ask card's stacked buttons (ask-card.tsx:192-196), verbatim look. */
+.case-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.case-option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  min-width: 0;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--foreground);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.case-option:hover {
+  border-color: color-mix(in srgb, var(--primary) 50%, transparent);
+  background: color-mix(in srgb, var(--primary) 6%, transparent);
+}
+
+.case-option[aria-pressed='true'] {
+  border-color: color-mix(in srgb, var(--primary) 60%, transparent);
+  background: color-mix(in srgb, var(--primary) 6%, transparent);
+}
+
+.case-option:focus-visible {
+  outline-offset: 0;
+}
+
+.case-option[disabled] {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.case-option .label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+/* "Recommended by …" is a word in the label, in the muted colour – never a colour on its own. */
+.case-option .rec {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+
+.case-option .desc {
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted-foreground);
+  overflow-wrap: anywhere;
+}
+
+/* Comment box and send row */
+.case-card .reply {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.case-card .send-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.case-card .send-row .hint {
+  flex: 1 1 240px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted-foreground);
+}
+
+.case-card .send-row .hint strong {
+  color: var(--foreground);
+  font-weight: 500;
+}
+
+.case-card .send-row .actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+/* ---------- decided card (collapsed) ---------- */
+
+.case-card.is-decided {
+  gap: 8px;
+  padding: 10px 14px;
+  border-color: var(--border);
+  background: var(--card);
+}
+
+.case-card.is-decided .line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+
+.case-card.is-decided .line .what {
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.case-card.is-decided .line .task {
+  flex-basis: 100%;
+  color: var(--muted-foreground);
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.case-card.is-decided .quote {
+  margin: 0;
+  padding: 6px 10px;
+  border-left: 2px solid var(--border);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--foreground);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.case-card.is-decided .foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted-foreground);
+}
+
+.case-card.is-decided .foot .btn {
+  margin-left: auto;
+}
+
+/* Closed without a decision, or "not a decision". Muted, no button. */
+.case-card.is-void .line .what {
+  color: var(--muted-foreground);
+  font-weight: 500;
+}
+
+/* Handed to the leader ("Leader decides"). Collapsed like a decided card, the violet dot the
+ * sidebar already uses for "the leader's agents are working", and a Take it back action. */
+.case-card.is-delegated {
+  border-color: color-mix(in srgb, var(--violet) 30%, transparent);
+  background: color-mix(in srgb, var(--violet) 4%, transparent);
+}
+
+.case-card.is-delegated .line .what {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* The disabled reason beside a ghost action: words, never only a tooltip. */
+.case-card .send-row .actions .reason {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+/* ---------- loading: the shared Skeleton primitive, sized to a card ---------- */
+
+.skeleton.case-skeleton {
+  height: 168px;
+  border-radius: var(--radius-lg);
+}
+
+/* ---------- task page ---------- */
+
+/* The task column: the same reading measure the cockpit's task view uses (foundations § 9). */
+.task-column {
+  width: 100%;
+  max-width: var(--measure);
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/* The waiting banner: the review banner's shape (review-panel.tsx:42 – rounded-md,
+ * border-{tone}/30, bg-{tone}/10, px-3.5 py-2.5, one 13px line) with the primary tone. */
+.banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-top: 14px;
+  padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.banner .msg {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex: 1 1 320px;
+  min-width: 0;
+}
+
+.banner .msg svg {
+  margin-top: 2px;
+  flex-shrink: 0;
+  color: var(--foreground);
+}
+
+.banner .msg strong {
+  font-weight: 600;
+}
+
+.banner .msg span {
+  color: var(--muted-foreground);
+}
+
+.banner .actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.thread {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 0 24px;
+}
+
+.thread .turn {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.thread .turn .who {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.thread .turn p {
+  margin: 0 0 6px;
+}
+
+.thread .composer-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  text-align: center;
+}
+
+/* The scope-check line (report-only in version 1): one row in the step rail's spelling, with the
+ * three-valued result in words. */
+.scope-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+
+.scope-line strong {
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.scope-line .result {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.scope-line .link {
+  margin-left: auto;
+}
+
+/* ---------- leader side (task.html § what the leader gets) ---------- */
+
+.leader-block {
+  display: grid;
+  gap: 10px;
+}
+
+.leader-block pre {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- responsive (feature parts only; the shell is handled by cockpit.css) ----------
+ * The cockpit's phone breakpoint is md = 768px; the shared mockup sheet collapses the shell at
+ * 860px, so the feature rules follow the sheet. */
+
+@media (max-width: 860px) {
+  .case-option,
+  .case-card summary {
+    min-height: 44px;
+  }
+
+  .case-card .send-row .actions {
+    flex-wrap: wrap;
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .case-card .send-row .actions .btn {
+    flex: 1 1 40%;
+    height: 44px;
+  }
+
+  /* Send takes its own full row; the two ghosts share the row above it. */
+  .case-card .send-row .actions .btn.lime {
+    flex-basis: 100%;
+  }
+
+  .case-card.is-decided .foot .btn,
+  .centered-state .actions .btn {
+    height: 44px;
+  }
+
+  .task-column {
+    padding: 0 12px;
+  }
+
+  .task-tabs {
+    margin: 12px 12px 0;
+  }
+
+  .thread {
+    padding: 14px 0 18px;
+  }
+}

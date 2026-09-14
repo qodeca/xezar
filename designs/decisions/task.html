@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Task and leader – decisions design</title>
+<link rel="stylesheet" href="../../docs/design-system/cockpit.css">
+<link rel="stylesheet" href="styles.css">
+<script src="theme.js"></script>
+</head>
+<body>
+<!-- Icon sprite (lucide outlines, the cockpit's icon set). -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-hand" viewBox="0 0 24 24"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></symbol>
+  <symbol id="i-tasks" viewBox="0 0 24 24"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></symbol>
+  <symbol id="i-inbox" viewBox="0 0 24 24"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
+  <symbol id="i-git" viewBox="0 0 24 24"><line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></symbol>
+  <symbol id="i-github" viewBox="0 0 24 24"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.4 5.4 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></symbol>
+  <symbol id="i-sparkles" viewBox="0 0 24 24"><path d="M12 3l1.9 5.6L19.5 10l-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.4z"/></symbol>
+  <symbol id="i-workflow" viewBox="0 0 24 24"><rect width="8" height="8" x="3" y="3" rx="2"/><path d="M7 11v4a2 2 0 0 0 2 2h4"/><rect width="8" height="8" x="13" y="13" rx="2"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="18" y2="18"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></symbol>
+  <symbol id="i-circle-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></symbol>
+</svg>
+
+<nav class="doc-bar" aria-label="Design pages">
+  <span class="brand">Decisions design</span>
+  <a href="index.html">Overview</a>
+  <a href="decisions.html">Decisions page</a>
+  <a href="states.html">States</a>
+  <a href="task.html" aria-current="page">Task and leader</a>
+  <span class="spacer"></span>
+  <button class="theme-toggle" type="button" data-theme-toggle>Light / dark</button>
+</nav>
+
+<div class="doc">
+  <h1>Task and leader</h1>
+  <p class="lead">A case is born in a task. The task page shows the same card in the thread, says the task is stopped and its slot is free, and points at the Decisions page. The leader sees the case as an event and a refusal, never as something it can answer. The sample is #356, where the agent itself raised the case with <code>XEZ:DECIDE</code> in the middle of a step.</p>
+</div>
+
+<div class="shell short">
+
+  <!-- ===================== SIDEBAR ===================== -->
+  <aside class="sidebar">
+    <div class="sidebar-head">
+      <span class="logo" aria-hidden="true">X</span>
+      <span class="name">xezar</span>
+      <span class="where">xezar / main</span>
+    </div>
+    <div class="new-task-row">
+      <button class="btn-new-task" type="button"><svg class="icon sm"><use href="#i-plus"/></svg>New task <kbd>C</kbd></button>
+      <button class="btn-icon" type="button" aria-label="Open project"><svg class="icon sm"><use href="#i-folder"/></svg></button>
+    </div>
+    <nav class="nav" aria-label="Main">
+      <a href="task.html" aria-current="page"><svg class="icon"><use href="#i-tasks"/></svg>Tasks</a>
+      <a href="decisions.html"><svg class="icon"><use href="#i-hand"/></svg>Decisions<span class="nav-badge" aria-hidden="true">3</span><span class="sr-only">, 3 decisions waiting</span></a>
+      <a href="#"><svg class="icon"><use href="#i-inbox"/></svg>Inbox<span class="nav-badge">12</span></a>
+      <a href="#"><svg class="icon"><use href="#i-git"/></svg>Git</a>
+      <a href="#"><svg class="icon"><use href="#i-github"/></svg>GitHub</a>
+      <a href="#"><svg class="icon"><use href="#i-sparkles"/></svg>Skills</a>
+      <a href="#"><svg class="icon"><use href="#i-workflow"/></svg>Workflows</a>
+      <a href="#"><svg class="icon"><use href="#i-settings"/></svg>Settings</a>
+    </nav>
+    <div class="list-tabs"><span class="on">Active 9</span><span>Archived 117</span></div>
+    <div class="quick-head">NEEDS YOU</div>
+    <ul class="quick">
+      <li title="needs your decision"><span class="dot pending pulse"></span><span class="ref">#403</span><span class="t">codex wake path</span></li>
+      <!-- The new `decision` state: same bucket as `waiting`, its own label. -->
+      <li class="on" title="needs your decision" aria-current="page"><span class="dot pending pulse"></span><span class="ref">#356</span><span class="t">fixing the pi approveTools wait</span></li>
+    </ul>
+    <div class="quick-head">WORKING</div>
+    <ul class="quick">
+      <li><span class="dot violet pulse"></span><span class="ref">#421</span><span class="t">refusing git in the primary checkout</span></li>
+    </ul>
+    <div class="sidebar-foot">
+      <svg class="icon sm"><use href="#i-search"/></svg> Search…
+      <span class="version-chip" style="margin-left:auto">v0.15.0</span>
+    </div>
+  </aside>
+
+  <!-- ===================== MAIN: the task page ===================== -->
+  <main class="main">
+    <div class="mobile-bar">
+      <button class="btn-icon" type="button" aria-label="Open menu"><svg class="icon"><use href="#i-menu"/></svg></button>
+      <span class="title">#356 fixing the pi approveTools wait</span>
+    </div>
+
+    <header class="page-head">
+      <h1>#356 fixing the pi approveTools wait</h1>
+      <p><span class="pill"><span class="dot pending pulse"></span>needs your decision</span> &nbsp;fix · Claude Code · opus · <span class="mono">xez/9a41d2c0</span></p>
+    </header>
+
+    <!-- NEW: a Decisions tab beside Session / Changes / Files. The count is this task's open cases. -->
+    <div class="tab-links task-tabs">
+      <a class="tab-link" href="task.html" aria-current="page">Session</a>
+      <a class="tab-link" href="#">Changes<span class="diff">+41 −9</span></a>
+      <a class="tab-link" href="#">Files</a>
+      <a class="tab-link" href="#task-decisions">Decisions<span class="nav-badge" aria-hidden="true" style="margin-left:6px">1</span><span class="sr-only">, 1 open</span></a>
+    </div>
+
+    <div class="task-column">
+      <!-- NEW: the stopped banner. The review banner's shape, primary tone. Not a live region:
+           one sr-only status line on the page announces the case (see the thread). -->
+      <div class="banner">
+        <div class="msg">
+          <svg class="icon"><use href="#i-hand"/></svg>
+          <div><strong>Stopped – waiting for your decision.</strong> <span>The slot is free and the agent’s session is closed. The task goes back to the queue the moment you decide, here or on the Decisions page, and picks up where it stopped.</span></div>
+        </div>
+        <div class="actions"><a class="btn" href="decisions.html">Open Decisions</a></div>
+      </div>
+
+      <div class="thread">
+        <p class="sr-only" role="status">Stopped for a decision: drop the OpenCode row from the definition of done for #356?</p>
+
+        <div class="turn">
+          <span class="who">Claude Code · step 3 of 6 · author</span>
+          <p>The fix is in <code>pi-runner.ts</code>: the approveTools wait now times out and reports. Three of the four definition-of-done rows pass. The OpenCode row cannot be verified here – OpenCode stalled in 5 of 5 runs today.</p>
+          <p><code>XEZ:DECIDE {"category":"done-means","question":"Drop the OpenCode row from the definition of done for #356?", …}</code></p>
+        </div>
+
+        <!-- the same DecisionCard as on the Decisions page; no task link, since this IS the task -->
+        <div class="case-card">
+          <div class="head">
+            <span class="pill"><span class="dot pending pulse"></span>needs your decision</span>
+            <span class="case-cat">Done means</span>
+            <span>raised by the agent</span>
+            <span class="age">41m</span>
+            <span class="refs"><a class="gh-link" href="https://github.com/qodeca/xezar/issues/356" target="_blank" rel="noopener">issue #356<svg class="icon sm" aria-hidden="true"><use href="#i-external"/></svg><span class="sr-only">, opens GitHub in a new tab</span></a><a class="gh-link" href="https://github.com/qodeca/xezar/pull/424" target="_blank" rel="noopener">PR #424<svg class="icon sm" aria-hidden="true"><use href="#i-external"/></svg><span class="sr-only">, opens GitHub in a new tab</span></a></span>
+          </div>
+          <h3 class="question">Drop the OpenCode row from the definition of done for #356?</h3>
+          <div class="plain">
+            <span class="eyebrow">In plain words</span>
+            <p>The agent is finishing the fix for the pi wait bug. The list of things that must pass before the task is done names four tools. Three pass. The fourth, OpenCode, freezes every time today, so the agent cannot test it on this machine. You decide whether the task can finish now with that one test marked as not run, or must wait until OpenCode works again.</p>
+          </div>
+          <details>
+            <summary><svg class="icon sm" aria-hidden="true"><use href="#i-chevron"/></svg>Technical details</summary>
+            <div class="evidence">
+              <p class="why"><strong>Why this is yours:</strong> the agent wants to remove a requirement from the definition of done. What counts as done is not the leader’s to change.</p>
+              <h4>The agent’s reasons</h4>
+              <p>OpenCode stalled in 5 of 5 runs today (<code>opencode-server-runner.ts</code>, 300 s). The other three rows pass. The row can be marked “not run” with the reason, or the task can stay open until OpenCode works again.</p>
+              <pre>packages/xezar/src/core/pi-runner.ts            +38 −7
+packages/xezar/src/core/pi-runner.test.ts       +3  −2</pre>
+            </div>
+          </details>
+          <div class="case-options" role="group" aria-label="Drop the OpenCode row from the definition of done for #356?">
+            <button class="case-option" type="button" aria-pressed="false"><span class="label">Mark it “not run” and finish <span class="rec">Recommended by the agent</span></span><span class="desc">The row stays in the record with the reason. The task ends done.</span></button>
+            <button class="case-option" type="button" aria-pressed="false"><span class="label">Keep the task open</span><span class="desc">The task waits until OpenCode can be tested. Nothing is merged yet.</span></button>
+          </div>
+          <div class="reply">
+            <label class="sr-only" for="t-comment">Comment</label>
+            <textarea class="textarea" id="t-comment" placeholder="Add a comment for the agent — optional…"></textarea>
+            <div class="send-row">
+              <span class="hint">Pick an option, write a comment, or both. You can take it back until the task acts on it.</span>
+              <span class="actions"><button class="btn ghost" type="button">Not a decision</button><button class="btn ghost" type="button">Leader decides</button><button class="btn lime md" type="button" aria-disabled="true">Send decision</button></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- NEW: the report-only scope check, one line in the step rail's spelling. -->
+        <div class="scope-line">
+          <strong>Scope check</strong>
+          <span class="result">ran</span>
+          <span>· no user-facing surface outside the brief · 11:02</span>
+          <a class="link" href="#">details</a>
+        </div>
+
+        <!-- CHANGED: the composer is disabled while a case is open. -->
+        <div class="composer disabled">
+          <textarea disabled placeholder="Decide above first — the agent cannot read a message until you do."></textarea>
+          <div class="foot"><span class="spacer"></span><button class="send" type="button" disabled aria-label="Send"><svg class="icon sm"><use href="#i-arrow"/></svg></button></div>
+        </div>
+        <p class="composer-hint">A plain message would let the task continue past the decision. Use the card.</p>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="doc">
+  <h3>The scope-check line</h3>
+  <p>The diff check is report-only in version 1. Its result is three-valued and always shown, never a silent boolean:</p>
+  <div class="grid-2">
+    <div><div class="scope-line"><strong>Scope check</strong><span class="result">ran</span><span>· no user-facing surface outside the brief · 11:02</span></div></div>
+    <div><div class="scope-line"><strong>Scope check</strong><span class="result">ran</span><span>· 1 surface outside the brief: a Settings control · 11:02</span><a class="link" href="#">details</a></div></div>
+    <div><div class="scope-line"><strong>Scope check</strong><span class="result">unknown</span><span>· the model did not answer in 60 s · 11:03</span></div></div>
+    <div><div class="scope-line"><strong>Scope check</strong><span class="result">skipped</span><span>· no writing step in this workflow</span></div></div>
+  </div>
+  <p class="note"><strong>Worst case:</strong> one model turn, bounded at 60 s with two attempts, so the line settles within two minutes of the last writing step. “unknown” is written to the run and reported to the leader as <code>scope.reported</code>; it opens no case in version 1.</p>
+</div>
+
+<div class="doc" id="task-decisions">
+  <h2>The task’s Decisions tab</h2>
+  <p>Every case this task ever raised: one list, open first, then a “Decided · n” group, newest first. The same cards as on the Decisions page. This is where you read a task’s history of decisions after the fact – the thread scrolls, this list does not.</p>
+</div>
+
+<div class="shell short">
+  <aside class="sidebar" aria-hidden="true">
+    <div class="sidebar-head"><span class="logo">X</span><span class="name">xezar</span><span class="where">xezar / main</span></div>
+    <nav class="nav" aria-label="Main">
+      <a href="task.html" aria-current="page"><svg class="icon"><use href="#i-tasks"/></svg>Tasks</a>
+      <a href="decisions.html"><svg class="icon"><use href="#i-hand"/></svg>Decisions<span class="nav-badge">3</span></a>
+      <a href="#"><svg class="icon"><use href="#i-inbox"/></svg>Inbox<span class="nav-badge">12</span></a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="mobile-bar">
+      <button class="btn-icon" type="button" aria-label="Open menu"><svg class="icon"><use href="#i-menu"/></svg></button>
+      <span class="title">#356 fixing the pi approveTools wait</span>
+    </div>
+    <header class="page-head">
+      <h1>#356 fixing the pi approveTools wait</h1>
+      <p><span class="pill"><span class="dot pending pulse"></span>needs your decision</span> &nbsp;fix · Claude Code · opus · <span class="mono">xez/9a41d2c0</span></p>
+    </header>
+    <div class="tab-links task-tabs">
+      <a class="tab-link" href="task.html">Session</a>
+      <a class="tab-link" href="#">Changes<span class="diff">+41 −9</span></a>
+      <a class="tab-link" href="#">Files</a>
+      <a class="tab-link" href="#task-decisions" aria-current="page">Decisions<span class="nav-badge" aria-hidden="true" style="margin-left:6px">1</span><span class="sr-only">, 1 open</span></a>
+    </div>
+
+    <div class="task-column">
+      <div class="thread">
+        <ul class="case-list">
+          <li class="case-card">
+            <div class="head">
+              <span class="pill"><span class="dot pending pulse"></span>needs your decision</span>
+              <span class="case-cat">Done means</span>
+              <span>raised by the agent</span>
+              <span class="age">41m</span>
+              <span class="refs"><a class="gh-link" href="https://github.com/qodeca/xezar/issues/356" target="_blank" rel="noopener">issue #356<svg class="icon sm" aria-hidden="true"><use href="#i-external"/></svg><span class="sr-only">, opens GitHub in a new tab</span></a><a class="gh-link" href="https://github.com/qodeca/xezar/pull/424" target="_blank" rel="noopener">PR #424<svg class="icon sm" aria-hidden="true"><use href="#i-external"/></svg><span class="sr-only">, opens GitHub in a new tab</span></a></span>
+            </div>
+            <h3 class="question">Drop the OpenCode row from the definition of done for #356?</h3>
+            <div class="plain">
+              <span class="eyebrow">In plain words</span>
+              <p>The agent is finishing the fix for the pi wait bug. The list of things that must pass before the task is done names four tools. Three pass. The fourth, OpenCode, freezes every time today, so the agent cannot test it on this machine. You decide whether the task can finish now with that one test marked as not run, or must wait until OpenCode works again.</p>
+            </div>
+            <details><summary><svg class="icon sm" aria-hidden="true"><use href="#i-chevron"/></svg>Technical details</summary><div class="evidence"><p class="why"><strong>Why this is yours:</strong> the agent wants to remove a requirement from the definition of done.</p></div></details>
+            <div class="case-options" role="group" aria-label="Drop the OpenCode row from the definition of done for #356?">
+              <button class="case-option" type="button" aria-pressed="false"><span class="label">Mark it “not run” and finish <span class="rec">Recommended by the agent</span></span><span class="desc">The row stays in the record with the reason. The task ends done.</span></button>
+              <button class="case-option" type="button" aria-pressed="false"><span class="label">Keep the task open</span><span class="desc">The task waits until OpenCode can be tested. Nothing is merged yet.</span></button>
+            </div>
+            <div class="reply">
+              <label class="sr-only" for="td-comment">Comment</label>
+              <textarea class="textarea" id="td-comment" placeholder="Add a comment for the agent — optional…"></textarea>
+              <div class="send-row">
+                <span class="hint">Pick an option, write a comment, or both. You can take it back until the task acts on it.</span>
+                <span class="actions"><button class="btn ghost" type="button">Not a decision</button><button class="btn ghost" type="button">Leader decides</button><button class="btn lime md" type="button" aria-disabled="true">Send decision</button></span>
+              </div>
+            </div>
+          </li>
+        </ul>
+
+        <div class="group-heading">Decided · 2</div>
+        <ul class="case-list">
+          <li class="case-card is-decided">
+            <div class="line"><span>Decided —</span><span class="what">Time out and report, do not retry</span><span>· passed on by the leader · yesterday 19:00</span></div>
+            <blockquote class="quote">Owner said: “a wait that never ends is the bug; time it out and say so, no retry loop.”</blockquote>
+            <div class="foot"><span>Acted on at 19:12 — cannot be reopened. Resumed with its context.</span></div>
+          </li>
+          <li class="case-card is-decided is-void">
+            <div class="line"><span class="what">Not a decision</span><span>· by you · yesterday 16:47</span></div>
+            <blockquote class="quote">Renaming the helper is not a breaking change. Carry on.</blockquote>
+            <div class="foot"><span>The task continued as if the case had not opened. Counted as a false alarm.</span></div>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="doc">
+  <h2>What the leader gets</h2>
+  <p>The leader is an agent on the MCP. It sees the case, cannot answer it, and is told what to do instead: take the question to you, then record your words. No fifth tool: cases are read through <code>task_read</code> and changed through two <code>execution_control</code> actions. Shapes follow the existing journal rows, refusals, <code>operationId</code> and version tokens.</p>
+
+  <div class="leader-block">
+    <div class="frame-label">1 · The event, in <code>leader_events</code></div>
+<pre>{ "seq": 412, "kind": "decision.requested", "origin": "system",
+  "taskId": "9a41d2c0-…", "caseId": "dc-3f9a", "category": "done-means",
+  "raisedBy": "task-agent",
+  "question": "Drop the OpenCode row from the definition of done for #356?",
+  "plain": "The agent is finishing the fix for the pi wait bug. … You decide whether the task can finish now …",
+  "why": "removes a requirement from the definition of done",
+  "options": [{ "label": "Mark it “not run” and finish", "recommended": true }, { "label": "Keep the task open" }],
+  "refused": ["continue", "finish", "send_message", "create_pr", "ready", "merge"],
+  "version": "rev1:decision:dc-3f9a:412:9c1e…" }</pre>
+
+    <div class="frame-label">2 · What a refused tool says</div>
+<pre>execution_control { action: "continue", runId: "9a41d2c0-…", operationId: "op-…" } → refused
+  reason: "decision.pending"
+  caseId: "dc-3f9a"
+  question: "Drop the OpenCode row from the definition of done for #356?"
+  message: "This task is stopped for a human decision. Take the question to the owner and
+  record the answer with execution_control record_decision, quoting the owner’s words.
+  Nothing else moves this task."</pre>
+
+    <div class="frame-label">3 · Recording the owner’s answer</div>
+<pre>execution_control { action: "record_decision", runId: "9a41d2c0-…", caseId: "dc-3f9a",
+  choice: "Mark it “not run” and finish",
+  ownerWords: "Mark OpenCode as not run with the reason and finish. We dropped OpenCode yesterday.",
+  expectedVersion: "rev1:decision:dc-3f9a:412:9c1e…", operationId: "op-…" }
+→ { "recorded": true, "channel": "mcp", "reopenable": true, "queued": true }</pre>
+
+    <div class="frame-label">4 · What the leader may open itself</div>
+<pre>execution_control { action: "open_decision", runId: "c07d…", operationId: "op-…",
+  category: "outside-action",
+  question: "Publish 0.15.0 to npm now?",
+  plain: "The release task has prepared 0.15.0. The next step sends it to npm and cannot be taken back. You decide whether it happens now or waits.",
+  why: "leaves this machine and cannot be undone",
+  options: [{ label: "Publish", description: "…" }, { label: "Wait", description: "…" }] }
+→ the case appears in the cockpit; the task stops and frees its slot.
+  A call without `plain` is refused. A retried operationId returns the first receipt.</pre>
+
+    <div class="frame-label">5 · Reading and the morning count</div>
+<pre>task_read { view: "decisions", runId: "9a41d2c0-…" }   → this task’s cases, open first, paged
+leader_events (first page after a reconnect)           → { …, "openDecisions": 3, "delegatedDecisions": 1 }
+scope.reported (journal, report-only net)              → { "status": "ran", "surfaces": ["Settings control"] }</pre>
+
+    <div class="frame-label">6 · When the owner presses “Leader decides”</div>
+<pre>{ "seq": 418, "kind": "decision.delegated", "origin": "human",
+  "taskId": "6f8c1c1e-…", "caseId": "dc-3f9a",
+  "guidance": "Pick whichever keeps #403 small. I do not need the button.",
+  "options": ["Build it", "Drop it", "Move it to a new issue"],
+  "version": "rev1:decision:dc-3f9a:418:71ab…" }
+
+execution_control { action: "record_decision", runId: "6f8c1c1e-…", caseId: "dc-3f9a",
+  choice: "Drop it",
+  reason: "The owner does not need the button; #403 stays the wake path only. A note on #374 records the idea.",
+  expectedVersion: "rev1:decision:dc-3f9a:418:71ab…", operationId: "op-…" }
+→ { "recorded": true, "by": "leader", "reopenable": true, "queued": true }
+
+  On a delegated case `ownerWords` is refused and `reason` is required.
+  `decision.taken-back` arrives if the owner takes the case back first; the next record_decision is refused.
+  The leader cannot delegate a case to itself: only the cockpit can.</pre>
+  </div>
+
+  <h2>What changes on the task page</h2>
+  <ul>
+    <li><strong>A new run state, <code>decision</code>.</strong> The task holds no slot, has no open session and arms no timer. <code>lib/attention.ts</code> gets its row: bucket “needs you”, tone pending, pulse, label “needs your decision”. The pill and the dot follow it.</li>
+    <li><strong>A banner above the thread</strong> says the task is stopped and its slot is free, and links to Decisions. The review banner’s shape with the primary tone, because this is a question and not a review.</li>
+    <li><strong>The card is the same component</strong> as on the Decisions page. Deciding in either place decides in both.</li>
+    <li><strong>On a decision the task goes back to the queue</strong> and, when it gets a slot, resumes the agent with the context it had – or re-runs the step with a fresh agent when the session cannot be resumed. The decided card says which.</li>
+    <li><strong>A Decisions tab</strong> joins Session, Changes and Files, with the count of this task’s open cases. One list: open cases, then “Decided · n”.</li>
+    <li><strong>“Leader decides”</strong> on the card hands the case to the leader: the pill changes to “with the leader”, the task stays stopped, the composer stays disabled, and the banner reads “Stopped – the leader is deciding. Take it back on the card if you change your mind.”</li>
+    <li><strong>The scope-check line</strong> shows the report-only diff check with its three-valued result.</li>
+    <li><strong>The composer is disabled</strong> while a case is open, with the reason as its placeholder. Today a plain message resolves an agent’s question; here that would let the task slip past the gate.</li>
+  </ul>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Decisions page – decisions design</title>
+<link rel="stylesheet" href="../../docs/design-system/cockpit.css">
+<link rel="stylesheet" href="styles.css">
+<script src="theme.js"></script>
+</head>
+<body>
+<!-- Icon sprite (lucide outlines, the cockpit's icon set). Inline on every page because an external
+     sprite does not load over file:// in Chrome. The four pages carry the same symbols. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-hand" viewBox="0 0 24 24"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></symbol>
+  <symbol id="i-tasks" viewBox="0 0 24 24"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></symbol>
+  <symbol id="i-inbox" viewBox="0 0 24 24"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
+  <symbol id="i-git" viewBox="0 0 24 24"><line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></symbol>
+  <symbol id="i-github" viewBox="0 0 24 24"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.4 5.4 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></symbol>
+  <symbol id="i-sparkles" viewBox="0 0 24 24"><path d="M12 3l1.9 5.6L19.5 10l-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.4z"/></symbol>
+  <symbol id="i-workflow" viewBox="0 0 24 24"><rect width="8" height="8" x="3" y="3" rx="2"/><path d="M7 11v4a2 2 0 0 0 2 2h4"/><rect width="8" height="8" x="13" y="13" rx="2"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="18" y2="18"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></symbol>
+</svg>
+
+<nav class="doc-bar" aria-label="Design pages">
+  <span class="brand">Decisions design</span>
+  <a href="index.html">Overview</a>
+  <a href="decisions.html" aria-current="page">Decisions page</a>
+  <a href="states.html">States</a>
+  <a href="task.html">Task and leader</a>
+  <span class="spacer"></span>
+  <button class="theme-toggle" type="button" data-theme-toggle>Light / dark</button>
+</nav>
+
+<div class="shell">
+
+  <!-- ===================== SIDEBAR ===================== -->
+  <aside class="sidebar">
+    <div class="sidebar-head">
+      <span class="logo" aria-hidden="true">X</span>
+      <span class="name">xezar</span>
+      <span class="where">xezar / main</span>
+    </div>
+    <div class="new-task-row">
+      <button class="btn-new-task" type="button"><svg class="icon sm"><use href="#i-plus"/></svg>New task <kbd>C</kbd></button>
+      <button class="btn-icon" type="button" aria-label="Open project"><svg class="icon sm"><use href="#i-folder"/></svg></button>
+    </div>
+
+    <nav class="nav" aria-label="Main">
+      <a href="task.html"><svg class="icon"><use href="#i-tasks"/></svg>Tasks</a>
+      <!-- NEW ITEM: second, right after Tasks. Always shown; no gate. -->
+      <a href="decisions.html" aria-current="page">
+        <svg class="icon"><use href="#i-hand"/></svg>Decisions
+        <span class="nav-badge" aria-hidden="true">3</span>
+        <span class="sr-only">, 3 decisions waiting</span>
+      </a>
+      <a href="#"><svg class="icon"><use href="#i-inbox"/></svg>Inbox<span class="nav-badge">12</span></a>
+      <a href="#"><svg class="icon"><use href="#i-git"/></svg>Git</a>
+      <a href="#"><svg class="icon"><use href="#i-github"/></svg>GitHub</a>
+      <a href="#"><svg class="icon"><use href="#i-sparkles"/></svg>Skills</a>
+      <a href="#"><svg class="icon"><use href="#i-workflow"/></svg>Workflows</a>
+      <a href="#"><svg class="icon"><use href="#i-settings"/></svg>Settings</a>
+    </nav>
+
+    <div class="list-tabs"><span class="on">Active 9</span><span>Archived 117</span></div>
+    <div class="quick-head">NEEDS YOU</div>
+    <ul class="quick">
+      <!-- The stopped tasks. Their slots are free: the two WORKING tasks below took them. -->
+      <li title="needs your decision"><span class="dot pending pulse"></span><span class="ref">#403</span><span class="t">codex wake path</span></li>
+      <li title="needs your decision"><span class="dot pending pulse"></span><span class="ref">#356</span><span class="t">fixing the pi approveTools wait</span></li>
+      <li title="needs your decision"><span class="dot pending pulse"></span><span class="t">releasing 0.15.0</span></li>
+    </ul>
+    <div class="quick-head">WORKING</div>
+    <ul class="quick">
+      <li><span class="dot violet pulse"></span><span class="ref">#421</span><span class="t">refusing git in the primary checkout</span></li>
+      <li><span class="dot violet pulse"></span><span class="ref">#399</span><span class="t">fixing the tasks badge count</span></li>
+    </ul>
+
+    <div class="sidebar-foot">
+      <svg class="icon sm"><use href="#i-search"/></svg> Search…
+      <span class="version-chip" style="margin-left:auto">v0.15.0</span>
+    </div>
+  </aside>
+
+  <!-- ===================== MAIN ===================== -->
+  <main class="main">
+    <div class="mobile-bar">
+      <button class="btn-icon" type="button" aria-label="Open menu"><svg class="icon"><use href="#i-menu"/></svg></button>
+      <span class="title">Decisions</span>
+      <span class="nav-badge" aria-hidden="true">3</span>
+      <span class="sr-only">, 3 decisions waiting</span>
+    </div>
+
+    <header class="page-head">
+      <h1>Decisions</h1>
+      <p>3 decisions are waiting for you</p>
+    </header>
+
+    <div class="page-body">
+      <div class="column">
+
+        <!-- Open / Decided: URL-backed, so TabLink (?tab=open is the default). -->
+        <div class="tab-links page-tabs">
+          <a class="tab-link" href="decisions.html" aria-current="page">Open<span class="count">3</span></a>
+          <a class="tab-link" href="states.html#decided">Decided<span class="count">14</span></a>
+        </div>
+
+        <!-- One announcer for the list. The cards themselves are not a live region. -->
+        <p class="sr-only" role="status"></p>
+
+        <ul class="case-list">
+
+          <!-- ============ CASE 1: raised by xezar's BRIEF check, before the task ran ============ -->
+          <li class="case-card">
+            <div class="head">
+              <span class="pill"><span class="dot pending pulse"></span>needs your decision</span>
+              <span class="case-cat">Scope</span>
+              <span>raised by xezar · brief check</span>
+              <span class="age">2h</span>
+              <a class="task" href="task.html"><svg class="icon sm"><use href="#i-file"/></svg>#403 codex wake path · stopped before start<svg class="icon sm"><use href="#i-arrow"/></svg></a>
+              <span class="refs"><a class="gh-link" href="https://github.com/qodeca/xezar/issues/374" target="_blank" rel="noopener">issue #374<svg class="icon sm" aria-hidden="true"><use href="#i-external"/></svg><span class="sr-only">, opens GitHub in a new tab</span></a></span>
+            </div>
+            <h3 class="question">Add an “Attach leader” control to Settings → MCP connection?</h3>
+
+            <div class="plain">
+              <span class="eyebrow">In plain words</span>
+              <p>Agents built a way for xezar to wake up the leader inside Codex and Claude Code. A reviewer said a person has no way to try it by hand, and the leader wrote a new task to add a button for that in Settings. The issue you approved asks for the wake-up path, not for a button. The task has not started. You decide whether the button gets built, is dropped, or waits for its own issue.</p>
+            </div>
+
+            <details>
+              <summary><svg class="icon sm" aria-hidden="true"><use href="#i-chevron"/></svg>Technical details</summary>
+              <div class="evidence">
+                <p class="why"><strong>Why this is yours:</strong> the leader’s brief adds a cockpit control that the linked issue does not name.</p>
+                <h4>The brief (leader, 16:58)</h4>
+                <blockquote>Address the QA fail on #403: add ONE generic attach control in Settings → MCP connection so a person can use the Codex and Claude Code wake paths by hand. Reuse it in #404.</blockquote>
+                <h4>The issue (#374)</h4>
+                <blockquote>For each MCP client, a path xezar can call into the running leader session, and a measured reaction.</blockquote>
+                <h4>How it got here</h4>
+                <p>Review round 4 said a person had no way to use the new path. The leader turned that finding into scope. Nobody asked you.</p>
+              </div>
+            </details>
+
+            <div class="case-options" role="group" aria-label="Add an “Attach leader” control to Settings → MCP connection?">
+              <button class="case-option" type="button" aria-pressed="false">
+                <span class="label">Build it <span class="rec">Recommended by the leader</span></span>
+                <span class="desc">The task starts as written. A note is added to #374 so the issue names the control.</span>
+              </button>
+              <button class="case-option" type="button" aria-pressed="false">
+                <span class="label">Drop it</span>
+                <span class="desc">The task starts without the control. The wake path itself stays in #403.</span>
+              </button>
+              <button class="case-option" type="button" aria-pressed="false">
+                <span class="label">Move it to a new issue</span>
+                <span class="desc">The task starts without the control. A new issue carries the idea, with a design first.</span>
+              </button>
+            </div>
+
+            <div class="reply">
+              <label class="sr-only" for="c1-comment">Comment</label>
+              <textarea class="textarea" id="c1-comment" placeholder="Add a comment for the agent — optional…"></textarea>
+              <div class="send-row">
+                <span class="hint">Pick an option, write a comment, or both. You can take it back until the task acts on it.</span>
+                <span class="actions">
+                  <button class="btn ghost" type="button">Not a decision</button><button class="btn ghost" type="button">Leader decides</button>
+                  <button class="btn lime md" type="button" aria-disabled="true">Send decision</button>
+                </span>
+              </div>
+            </div>
+          </li>
+
+          <!-- ============ CASE 2: raised by a task agent (XEZ:DECIDE), mid-step ============ -->
+          <li class="case-card">
+            <div class="head">
+              <span class="pill"><span class="dot pending pulse"></span>needs your decision</span>
+              <span class="case-cat">Done means</span>
+              <span>raised by the agent</span>
+              <span class="age">41m</span>
+              <a class="task" href="task.html"><svg class="icon sm"><use href="#i-file"/></svg>#356 fixing the pi approveTools wait<svg class="icon sm"><use href="#i-arrow"/></svg></a>
+              <span class="refs"><a class="gh-link" href="https://github.com/qodeca/xezar/issues/356" target="_blank" rel="noopener">issue #356<svg class="icon sm" aria-hidden="true"><use href="#i-external"/></svg><span class="sr-only">, opens GitHub in a new tab</span></a><a class="gh-link" href="https://github.com/qodeca/xezar/pull/424" target="_blank" rel="noopener">PR #424<svg class="icon sm" aria-hidden="true"><use href="#i-external"/></svg><span class="sr-only">, opens GitHub in a new tab</span></a></span>
+            </div>
+            <h3 class="question">Drop the OpenCode row from the definition of done for #356?</h3>
+
+            <div class="plain">
+              <span class="eyebrow">In plain words</span>
+              <p>The agent is finishing the fix for the pi wait bug. The list of things that must pass before the task is done names four tools. Three pass. The fourth, OpenCode, freezes every time today, so the agent cannot test it on this machine. You decide whether the task can finish now with that one test marked as not run, or must wait until OpenCode works again.</p>
+            </div>
+
+            <details>
+              <summary><svg class="icon sm" aria-hidden="true"><use href="#i-chevron"/></svg>Technical details</summary>
+              <div class="evidence">
+                <p class="why"><strong>Why this is yours:</strong> the agent wants to remove a requirement from the definition of done. What counts as done is not the leader’s to change.</p>
+                <h4>The agent’s reasons</h4>
+                <p>OpenCode stalled in 5 of 5 runs today, so the row cannot be verified on this machine. The other three rows pass. The agent can mark the row “not run” with the reason, or keep the task open until OpenCode works again.</p>
+              </div>
+            </details>
+
+            <div class="case-options" role="group" aria-label="Drop the OpenCode row from the definition of done for #356?">
+              <button class="case-option" type="button" aria-pressed="false">
+                <span class="label">Mark it “not run” and finish <span class="rec">Recommended by the agent</span></span>
+                <span class="desc">The row stays in the record with the reason. The task ends done.</span>
+              </button>
+              <button class="case-option" type="button" aria-pressed="false">
+                <span class="label">Keep the task open</span>
+                <span class="desc">The task waits until OpenCode can be tested. Nothing is merged yet.</span>
+              </button>
+            </div>
+
+            <div class="reply">
+              <label class="sr-only" for="c2-comment">Comment</label>
+              <textarea class="textarea" id="c2-comment" placeholder="Add a comment for the agent — optional…"></textarea>
+              <div class="send-row">
+                <span class="hint">Pick an option, write a comment, or both. You can take it back until the task acts on it.</span>
+                <span class="actions">
+                  <button class="btn ghost" type="button">Not a decision</button><button class="btn ghost" type="button">Leader decides</button>
+                  <button class="btn lime md" type="button" aria-disabled="true">Send decision</button>
+                </span>
+              </div>
+            </div>
+          </li>
+
+          <!-- ============ CASE 3: raised by the leader (publish) ============ -->
+          <li class="case-card">
+            <div class="head">
+              <span class="pill"><span class="dot pending pulse"></span>needs your decision</span>
+              <span class="case-cat">Outside action</span>
+              <span>raised by the leader</span>
+              <span class="age">6m</span>
+              <a class="task" href="task.html"><svg class="icon sm"><use href="#i-file"/></svg>releasing 0.15.0<svg class="icon sm"><use href="#i-arrow"/></svg></a>
+              <span class="refs"><a class="gh-link" href="https://github.com/qodeca/xezar/pull/422" target="_blank" rel="noopener">PR #422 · merged<svg class="icon sm" aria-hidden="true"><use href="#i-external"/></svg><span class="sr-only">, opens GitHub in a new tab</span></a></span>
+            </div>
+            <h3 class="question">Publish 0.15.0 to npm now?</h3>
+
+            <div class="plain">
+              <span class="eyebrow">In plain words</span>
+              <p>The release task has prepared version 0.15.0. Everything is merged and the checks are green. The next step sends the package to npm and creates the GitHub release. That step is public and cannot be taken back. You decide whether it happens now or waits.</p>
+            </div>
+
+            <details>
+              <summary><svg class="icon sm" aria-hidden="true"><use href="#i-chevron"/></svg>Technical details</summary>
+              <div class="evidence">
+                <p class="why"><strong>Why this is yours:</strong> publishing leaves this machine and cannot be undone.</p>
+                <h4>Release</h4>
+                <p>Tag <code>v0.15.0</code> at <code>f52130d</code>. 24 PRs since <code>v0.14.0</code>. CI green on <code>main</code>. Changelog section written and merged in #422.</p>
+                <h4>What happens</h4>
+                <p>The Release workflow is dispatched once. npm gets <code>@qodeca/xezar@0.15.0</code>. A GitHub Release is created. The bot’s bump PR is merged.</p>
+              </div>
+            </details>
+
+            <div class="case-options" role="group" aria-label="Publish 0.15.0 to npm now?">
+              <button class="case-option" type="button" aria-pressed="false">
+                <span class="label">Publish</span>
+                <span class="desc">The leader dispatches the Release workflow now.</span>
+              </button>
+              <button class="case-option" type="button" aria-pressed="false">
+                <span class="label">Wait</span>
+                <span class="desc">Nothing is published. The task stays stopped and asks again when you say so.</span>
+              </button>
+            </div>
+
+            <div class="reply">
+              <label class="sr-only" for="c3-comment">Comment</label>
+              <textarea class="textarea" id="c3-comment" placeholder="Add a comment for the leader — optional…"></textarea>
+              <div class="send-row">
+                <span class="hint">Pick an option, write a comment, or both. <strong>“Publish” cannot be taken back once the task acts.</strong></span>
+                <span class="actions">
+                  <button class="btn ghost" type="button">Not a decision</button><button class="btn ghost" type="button">Leader decides</button>
+                  <button class="btn lime md" type="button" aria-disabled="true">Send decision</button>
+                </span>
+              </div>
+            </div>
+          </li>
+
+        </ul>
+      </div>
+    </div>
+  </main>
+</div>
+
+</body>
+</html>

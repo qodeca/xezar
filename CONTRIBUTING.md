@@ -49,6 +49,7 @@ You never apply labels yourself.
 ## Deeper reading
 
 - [AGENTS.md](AGENTS.md) – how the code is organised and the rules each area keeps.
-- [SDLC.md](SDLC.md) – the full delivery process, labels and the QA gate.
+- [SDLC.md](SDLC.md) – the full delivery process, labels and the two merge gates: QA and design.
 - [CODE_REVIEW.md](CODE_REVIEW.md) – what reviewers check.
 - [BACKWARD_COMPATIBILITY.md](BACKWARD_COMPATIBILITY.md) – the public surfaces a change must not break silently.
+- [docs/design-system/](docs/design-system/README.md) – the cockpit's tokens, components and patterns; read it before you design or change any UI.
