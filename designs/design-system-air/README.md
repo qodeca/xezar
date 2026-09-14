@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Draft, revision 2 (2026-09-14 evening) – the four-reviewer verdict ([`review-2026-09-14.md`](review-2026-09-14.md)) and the owner's decisions D-1..D-10 applied. One decision still open ([§13](#13-open-decisions)). Nothing in `docs/design-system/` or `packages/web` changes until the mockup page for PR 2 is approved (D-4). |
+| **Status** | Draft, revision 3 (2026-09-14 late evening) – the four-reviewer verdict ([`review-2026-09-14.md`](review-2026-09-14.md)) and the owner's decisions D-1..D-10 applied. No decision is open ([§13](#13-open-decisions)). Filed as [qodeca/xezar#424](https://github.com/qodeca/xezar/issues/424) (`enhancement`, `epic`, `risk-high`), an umbrella with steps 0 (full-page mockup) → 1 → 2 → 3a → 3b → 4. Nothing in `docs/design-system/` or `packages/web` changes until the step-0 mockup has its `design-review` verdict; that verdict gates step 1 onward (D-4). |
 | **Date** | 2026-09-14 |
 | **Mockup** | Open [`index.html`](index.html) in a browser: seven surfaces, today beside proposed, same markup twice, with a density select (including the proposed Roomy) and the light/dark toggle. No build needed. |
 | **Replaces** | Nothing. This design changes the system's spacing rules, not a feature surface. |
@@ -13,14 +13,14 @@
 
 The cockpit is tight everywhere, and the design system has no word for "looser". Its one spacing lever – the density setting – can only make things tighter than shipped (`comfortable` → `compact` → `ultra`). The shipped look is the top of the range, and it packs blocks together: 10 px between thread rows, 8 px inside a settings field, 16 px inside a card, 10 px between cards, 20 px page gutters.
 
-This design adds air in four moves, each its own PR:
+This design adds air in four moves, delivered as five PRs after a mockup step (issue #424: steps 0 → 1 → 2 → 3a → 3b → 4):
 
 1. **A rhythm scale.** Six semantic spacing tokens – `--spacing-row` 8, `-stack` 12, `-list` 16, `-inset` 20, `-group` 24, `-section` 32 – that name the space *between* things, built on Tailwind's `--spacing` so the density lever reaches them. Today every gap is a bare number (`gap-2.5`, `pb-2.5`, `p-4`) chosen per file.
 2. **Looser defaults for the rhythm; controls keep their size.** Between blocks: thread rows 10 → 8 inside a turn and 24 at a speaker change; settings fields 8 → 12 inside and 28 → 32 between; card padding 16 → 20; cards 10 → 16 apart; page gutters 20 → 32; the page body starts 32 px under the header. Buttons, inputs, chips, nav rows and table rows keep their heights at the default density.
-3. **Every hand-set pixel back on the scale.** 90 arbitrary-pixel spacing spellings (50 distinct, 29 files) sit outside the density lever today. They move to scale units or rhythm tokens, and a guardian rule that fails the build stops new ones.
+3. **Every hand-set pixel back on the scale.** 88 hand-set pixel occurrences (47 distinct spellings, 32 files) match the guardian rule's own pattern (§ 9.3) and sit outside the density lever today. They move to scale units or rhythm tokens, and a guardian rule that fails `npm test` – the validation gate – stops new ones.
 4. **A "Roomy" density**, 5 px per unit (+25 %, the mirror of "Compact for real"), so the lever runs both ways. The shipped default stays Comfortable, which after move 2 is already roomier than today. Every density scales the whole page as one piece (D-3, D-7): the layout always looks the same, only larger or smaller.
 
-Size: four PRs plus a full-page mockup before PR 2 (D-4). About three days of work plus two review rounds. One contract change (the density enum), one BC note, no run-record change, no `XEZ_*` variable.
+Size: a mockup step (step 0, D-4) plus five PRs – 1, 2, 3a, 3b, 4 – under issue #424. About three days of work plus two review rounds. One contract change (the density enum moves into the contract and the server imports it), one BC note, no run-record change, no `XEZ_*` variable.
 
 ### What "air" means here
 
@@ -68,7 +68,7 @@ Pattern: inside a control the system is consistent and fine. Between blocks it i
 
 `foundations.md:186-187`: "Any px value you write by hand (`h-[34px]`, `px-[7px]`) is outside the density lever; prefer scale units."
 
-The fact-check counted, in non-test `.ts/.tsx` under `packages/web/src`, with a left boundary and the prefixes `h|w|min-h|max-h|p|px|py|pt|pb|pl|pr|m|mx|my|mt|mb|ml|mr|gap|space-x|space-y|top|left|right|bottom|inset`: **90 occurrences, 50 distinct spellings, 29 files**. Top files: `routes/global-tasks.tsx` 14, `task-thread/thread-items.tsx` 8, `components/project-groups.tsx` 7, `components/app-shell.tsx` 7, `routes/new-task.tsx` 5, `components/task-quick-list.tsx` 5. Most frequent: `h-[30px]` ×7, `w-[336px]` ×6, `pl-[22px]` ×6, `p-[3px]` ×6, `gap-[7px]` ×5, `px-[5px]` ×4, `md:h-[34px]` ×3, `md:min-h-[54px]` ×3, `h-[26px]` ×3.
+Counted in non-test `.ts/.tsx` under `packages/web/src` with the guardian rule's own pattern (§ 9.3 – left boundary, prefixes `p*|m*|gap*|space-*|h|min-h|size`, `px|rem|em`): **88 occurrences, 47 distinct spellings, 32 files**. Top files: `components/app-shell.tsx` 10, `components/project-groups.tsx` 7, `routes/task-thread/plan-dock.tsx` 6, `routes/task-thread/agents-dock.tsx` 6, `components/task-quick-list.tsx` 6, `routes/tasks-overview.tsx` 5, `routes/task-thread/thread-items.tsx` 5. Most frequent: `size-[15px]` ×12, `pl-[22px]` ×6, `p-[3px]` ×6, `gap-[7px]` ×5, `px-[5px]` ×4, `h-[3px]` ×3, `md:h-[34px]` ×3, `h-[26px]` ×3. The earlier 90 / 50 / 29 came from a wider pattern that also matched `w-`, `max-h-` and `top/left/right/bottom/inset-` and omitted `size-`.
 
 The ones that decide a control's size:
 
@@ -80,7 +80,7 @@ The ones that decide a control's size:
 | `h-[30px]`, `size-[30px]` button | `components/ui/button.tsx:24`; asserted verbatim in `button.test.tsx:38-41` |
 | `px-[15px]` user bubble | `thread-items.tsx:121` |
 | `min-h-[28px]` tool row, `h-[34px]` group trigger | `thread-items.tsx:547, 615` |
-| `h-[26px]` chip, `h-[22px]` reference chip | `components.md:271, 360` |
+| `h-[26px]` picker pill, `h-[22px]` reference chip | `picker-pill.tsx:22`, `prompt-template-menu.tsx:67`, `prompt-templates-section.tsx:345`; `reference-chip.tsx:148`; `components.md:271, 360` |
 | `p-[3px]` segmented, `py-[3px]` pill, `py-[7px]` quick-list row | `components.md:288, 263`; `task-quick-list.tsx:248` |
 
 Each is a place the density lever cannot reach. At `ultra` the page tightens around them and they stay put, which is why `ultra` looks uneven rather than uniformly tight – the mockup's density select shows it on the "today" column.
@@ -91,7 +91,7 @@ Assistant text `text-[15px] leading-[1.65]`, user bubble `13.5px leading-[1.55]`
 
 ### 2.5 Not recorded as a gap
 
-`known-gaps.md` holds 23 entries (G-01..G-23); none is about spacing, density, gutters or rhythm. G-24 was used once and deleted (`design-guardian.test.ts:62` still cites it), so the next free id is **G-25**. Without an entry a reviewer has no rule to point at.
+`known-gaps.md` holds 23 entries (G-01..G-23); none is about spacing, density, gutters or rhythm. G-24 was used once and deleted (`design-guardian.test.ts:60` still cites it), so the next free id is **G-25**. Without an entry a reviewer has no rule to point at.
 
 ## 3. Users and jobs
 
@@ -144,7 +144,7 @@ The mockup is one page of pairs. Each pair is the same markup twice; the tag lin
 | 6 Task table | rows 44 · cells 10 · header 38 (hand-set) | rows 44 · cells 12 · header 40 (`h-10`) | the one surface that does not grow |
 | 7 Rhythm scale | – | six bars: 8 / 12 / 16 / 20 / 24 / 32 | the tokens |
 
-Still missing from the page, to be added on the full-page mockup for PR 2 (D-4): a 375 px frame, the composer dock, a field with an inline error, a dialog, a diff view.
+Still missing from the page, to be added on the step-0 full-page mockup (D-4), whose verdict gates step 1 onward: a 375 px frame, the composer dock, a field with an inline error, a dialog, a diff view.
 
 ## 7. States
 
@@ -164,14 +164,14 @@ Compact and ultra give half-pixel values for some steps; that is already true of
 | Where | Text |
 |---|---|
 | Settings → Appearance, density options | Roomy · Comfortable · Compact · Compact for real |
-| Settings → Appearance, density hint | Roomy and Compact change spacing across the cockpit – text stays the same size. |
+| Settings → Appearance, density hint | Roomy adds space between things and the Compact options take it away — text stays the same size. |
 | `foundations.md` § 4.1 title | Rhythm |
 | `foundations.md` § 4.1 rule | Between blocks, a rhythm token. Inside a control, the numeric scale. Never a hand-typed pixel. |
 | `known-gaps.md` G-25 title | No rhythm scale; between-block spacing is chosen per file |
 | Design-system skill rule 17 | Between blocks, a rhythm token; no arbitrary spacing values. Owner `design-guardian.test.ts`. |
-| Release note (0.16) | Spacing between blocks is looser at every density; a new Roomy density is available. Compact and Compact for real scale the new spacing, so they are a little looser than before. |
+| Release note (0.16) | Spacing between blocks is looser at every density, and a new Roomy density is available. No density reproduces the old look: Compact and Compact for real scale the new spacing, so they are looser than they were. |
 
-Rules applied: sentence case, en dashes, no contractions.
+Rules applied: sentence case, no contractions; en dashes in this document and a spaced em dash in the shipped UI strings – the docs use en dashes, the UI uses em dashes (`docs/design-system/writing.md` § 1).
 
 ## 9. Developer notes
 
@@ -198,7 +198,7 @@ Two more pieces belong to PR 1:
 
 - `lib/utils.ts:10-17` – `cn()` is `extendTailwindMerge` extended only for `shadow-modal`; `twMerge('p-4 p-inset')` keeps both. Extend `theme.spacing` with the six names and add a `cn()` test.
 - `cockpit.css :root` – mirror `--spacing: 0.25rem` and the six tokens with byte-identical value strings (drift check 3), and `foundations.md` gains a `` `--spacing-<name>` `` line per token (drift check 1, `design-system-drift.test.ts:181-189`). `specimens/foundations.html` § 4 gets a "Rhythm" row of six bars.
-- One pilot surface (D-9, if confirmed): `settings-field.tsx:21` `gap-2` → `gap-stack`, and the eight section lists `gap-7` → `gap-section`.
+- The pilot surface (D-9, closed – PR 1 ships it): `settings-field.tsx:21` `gap-2` → `gap-stack`, and the eight section lists `gap-7` → `gap-section`.
 
 ### 9.2 New defaults, surface by surface (PR 2 – the cockpit)
 
@@ -251,25 +251,26 @@ Effect on a page: a settings page with five fields grows ~40 px; a thread of 30 
 | `h-[30px]`, `size-[30px]` button | `h-8`, `size-8` | 32 px – the one visible control-size change; `md` stays `h-9`; `button.test.tsx:38-41` updates with it |
 | `px-[15px]` bubble | `px-4` | 16 px |
 | `min-h-[28px]` tool row, `h-[34px]` group trigger | `min-h-8`, `h-9` | 32 / 36 px |
-| `h-[26px]` chip, `h-[22px]` reference chip | `h-7`, `h-6` | 28 / 24 px at the default; 21 / 18 at ultra – under WCAG 2.2 SC 2.5.8 (24 px) at the tight densities, as the same chips already are today; recorded in `known-gaps.md`, not fixed here |
+| `h-[26px]` picker pill, `h-[22px]` reference chip | `h-7 min-h-[24px]`, `h-6 min-h-[24px]` | 28 / 24 px at the default; without a floor they fall to 21 / 18 px at Compact for real, under WCAG 2.2 SC 2.5.8's 24 px. The absolute `min-h-[24px]` holds them at 24 at every density; these two floors are the only allowlist rows PR 3b leaves behind |
 | `p-[3px]`, `py-[3px]`, `py-[7px]` | `p-1`, `py-1`, `py-2` | 4 / 4 / 8 px |
 | `md:min-h-[54px]` composer | `md:min-h-14` | 56 px |
 | `pl-[22px]`, `gap-[7px]`, `px-[5px]`, `gap-[9px]`, `ml-[14px]`, `mt-[5px]`, `pl-[15px]`, `pl-[26px]`, `px-[7px]` | nearest scale step | listed one by one in PR 3b's allowlist diff |
-| `w-[336px]`, `w-[264px]`, `max-h-[…]`, `h-[3px]`, `h-[9px]` | out of scope | widths and hairlines are layout facts; the rule does not cover `w`, `max-*`, hairlines |
+| `w-[336px]`, `w-[264px]`, `max-h-[…]` | out of scope | widths and max-heights are layout facts; the rule does not cover `w` or `max-*` |
+| `size-[15px]` ×12, `size-[17px]` ×2 icon glyphs; `h-[3px]` ×3, `md:h-[3px]`, `h-[9px]` hairlines | PR 3b converts (`size-4`; `h-0.5` / `h-1` / `h-2`) or narrows the pattern to drop `size` and heights under 4 px – the implementer's call, recorded in the PR | 19 of the 88 matches are glyph sizes and hairlines, not spacing; AC 5's "exactly two rows" holds either way |
 | `pb-[calc(90px+env(safe-area-inset-bottom))]` | one shared class `pb-dock` | a layout fact, not a density concern |
 | `rounded-[18px]`, `rounded-[6px]` | unchanged | radius is a non-goal (§ 4) |
 
-Guardian rule (new, `design-guardian.test.ts`, modelled on `unknown-color-token` at `:145-161`, which keys on `rel + match`):
+Guardian rule (new, `design-guardian.test.ts`, modelled on `unknown-color-token` (`:145-161`), the one rule with a `violates` hook – but that hook sees only the match, not the file):
 
 - name `no-arbitrary-spacing`; pattern `(?<![\w-])(?:[a-z]+:)*(?:p|px|py|pt|pb|pl|pr|m|mx|my|mt|mb|ml|mr|gap|gap-x|gap-y|space-x|space-y|h|min-h|size)-\[\d+(?:\.\d+)?(?:px|rem|em)\]` – a left boundary so `max-w-[336px]` is not read as `w-[336px]`; `px|rem|em`; heights and `size` in, widths and `max-*` out.
-- allowlist keyed on `file:spelling`, seeded in PR 3a with today's 90 occurrences, each row carrying a reason or "convert in 3b"; a fixture self-test proves `h-[34px]`, `size-[30px]` and `md:min-h-[54px]` each fail against an empty allowlist (the `git stash` red-then-green method AGENTS.md requires).
-- It **fails** the suite (D-5). Owned by a test, never waived in prose.
+- allowlist keyed on `file:spelling`, seeded in PR 3a with today's 88 occurrences, each row carrying a reason or "convert in 3b". The `Rule` hooks cannot express that today – `allowed(rel)` sees only the file and `violates(match)` only the match (`design-guardian.test.ts:35-45`) – so PR 3a widens the hook to `violates(match, file)` as part of the rule. A fixture self-test proves `h-[34px]`, `size-[30px]` and `md:min-h-[54px]` each fail against an empty allowlist (the `git stash` red-then-green method AGENTS.md requires).
+- It **fails `npm test`** – the validation gate, not the build (D-5). Owned by a test, never waived in prose.
 
 ### 9.4 The Roomy option (PR 4 – appearance)
 
 - `Density = 'roomy' | 'comfortable' | 'compact' | 'ultra'` (`lib/appearance.ts:26`), default unchanged; `normalizeDensity` (`:48-50`) learns the value.
 - `:root[data-density='roomy'] { --spacing: 0.3125rem; }` = 5 px per unit (+25 %, the mirror of ultra's −25 %; every rhythm value stays an integer). One block in `index.css` beside `:253-261`, mirrored in `cockpit.css` beside `:182-187`, and the selector added to `THEME_SELECTORS` in `design-system-drift.test.ts:40-47` – otherwise check 0 fails the suite.
-- **The contract.** `density` is a closed enum in `packages/contract/src/workspace.ts:144`, duplicated in `packages/xezar/src/server/server.ts:727`, and `PUT /api/v1/workspace/ui-state` validates through it (`server.ts:3002`). Without the enum change Roomy 400s on save. PR 4 adds the value to the contract, deletes the `server.ts` duplicate (AGENTS.md § The HTTP API), and runs `contract-parity*` and `typed-bodies`.
+- **The contract.** `density` is a closed enum in `packages/contract/src/workspace.ts:144` and duplicated in `packages/xezar/src/server/server.ts:727`. The duplicate is live: it validates the per-repo `PUT /api/v1/ui-state` (`server.ts:3138`), while `PUT /api/v1/workspace/ui-state` (`server.ts:3002`) validates through the contract schema, and contract parity asserts both unions match. Without the value in both, Roomy 400s on save. PR 4 exports the density schema from the contract, imports it in the server and deletes only the duplicated const (AGENTS.md § The HTTP API), then runs `contract-parity*` and `typed-bodies`.
 - **Pre-paint.** `packages/web/index.html:36-38` stamps `data-density` only for `compact`/`ultra`; Roomy would paint Comfortable and jump. Add the value there.
 - **Old versions.** The read path returns the stored string untouched (`workspace/ui-state.ts:25-37`); an older cockpit falls back through `normalizeDensity`, an older server rejects the PUT with 400 and the cockpit toasts and refetches (`appearance-provider.tsx:73-75`). Server and cockpit ship together, so this only matters for mixed versions. BACKWARD_COMPATIBILITY.md gets one line under the UI-state surface.
 - Settings → Appearance gains "Roomy" ahead of "Comfortable" (`appearance.tsx:36-40`); hint copy per § 8.
@@ -283,16 +284,16 @@ Guardian rule (new, `design-guardian.test.ts`, modelled on `unknown-color-token`
 | `docs/design-system/patterns.md` § 3, § 4, § 5 | page-body, table and card spellings |
 | `docs/design-system/cockpit.css` | `--spacing`, the six tokens, the `roomy` block, every mirrored class whose padding/gap changed, the `.density-demo` |
 | `docs/design-system/specimens/foundations.html` § 4 | the Rhythm bars; the appearance bar gains Roomy |
-| `docs/design-system/known-gaps.md` | **G-25** recorded in PR 1; **deleted** in PR 2 with a `design-debt` issue linked (the file's own rule, `:6-8`); a row for the chip targets at tight densities |
+| `docs/design-system/known-gaps.md` | **G-25** recorded in PR 1; **deleted** in PR 2 with a `design-debt` issue linked (the file's own rule, `:6-8`); no chip-target row is needed – PR 3b floors both chips at `min-h-[24px]` |
 | `docs/design-system/new-designs.md` § 2, § 5 | "use the rhythm tokens for gaps between blocks in a mockup"; Roomy in the appearance checklist |
 | `docs/design-system/theming.md` | Roomy in the density paragraph |
 | `.claude/skills/design-system/SKILL.md` | rule 17 (§ 8) |
 | `.xezar/skills/xezar-ux-design.md:36` | the review checklist names the four densities |
-| `packages/web/src/design-guardian.test.ts` | the `no-arbitrary-spacing` rule, allowlist, fixture self-test |
+| `packages/web/src/design-guardian.test.ts` | the `no-arbitrary-spacing` rule, the widened `violates(match, file)` hook, the allowlist, the fixture self-test |
 | `packages/web/src/design-system-drift.test.ts` | `THEME_SELECTORS` gains `roomy` |
 | `packages/web/src/lib/utils.ts` (+ test) | `tailwind-merge` `theme.spacing` extension |
 | `packages/web/index.html` | pre-paint density stamp |
-| `packages/contract/src/workspace.ts`, `packages/xezar/src/server/server.ts` | the enum; delete the duplicate |
+| `packages/contract/src/workspace.ts`, `packages/xezar/src/server/server.ts` | the enum; export the density schema from the contract, import it in the server, delete only the duplicated const |
 | `packages/web/src/components/ui/button.test.tsx` | the `h-8` / `size-8` assertions |
 | `packages/web/e2e/rhythm.e2e.ts` (new) | AC 3 |
 | `BACKWARD_COMPATIBILITY.md` | the appearance value |
@@ -302,28 +303,28 @@ Guardian rule (new, `design-guardian.test.ts`, modelled on `unknown-color-token`
 
 | Step | Content | Gate | Measure |
 |---|---|---|---|
-| Mockup | A full-page before/after mockup in this folder (D-4): Tasks, a thread, Settings → Agents, Inbox, at 1280 and 375 px, both themes; plus the five missing frames from § 6 | `design-review` verdict | the verdict |
-| PR 1 | `--spacing` + six tokens in `index.css` and `cockpit.css`, `tailwind-merge`, foundations § 4.1, specimens, G-25, and (D-9) the settings pilot | `needs-design` if the pilot ships, else `skip-design` with the reason; drift test | the specimen bars at 8/12/16/20/24/32 from disk (AC 2) |
+| Step 0 – mockup | A full-page before/after mockup in this folder (D-4): Tasks, a thread, Settings → Agents, Inbox, at 1280 and 375 px, both themes; plus the five missing frames from § 6 | the `design-review` verdict – it gates step 1 onward | the verdict |
+| PR 1 | `--spacing` + six tokens in `index.css` and `cockpit.css`, `tailwind-merge`, foundations § 4.1, specimens, G-25, and the Settings field-list pilot (D-9) | `needs-design` + `needs-qa` – the pilot ships; drift test | the specimen bars at 8/12/16/20/24/32 from disk (AC 2) |
 | PR 2 | § 9.2 across `packages/web/src`; G-25 deleted | `needs-design` + `needs-qa`; before/after screenshots at 1280 and 375, both themes, comfortable and ultra; `npm run test:e2e` | measured page heights (AC 4); `rhythm.e2e.ts` (AC 3) |
-| PR 3a | the guardian rule, allowlist seeded with the 90, fixture self-test | `skip-design` (no rendered change) | allowlist length pinned |
-| PR 3b | § 9.3 conversions; `button.test.tsx`; the known-gaps chip row | `needs-design` + `needs-qa`; `npm run test:e2e` (the suite asserts real geometry: `task-thread.e2e.ts:452`, `quick-list.e2e.ts:271-276, 650-668`, `diff-scroll.e2e.ts:38, 254-287`) | allowlist ≤ 2 with reasons |
-| PR 4 | Roomy: enum, `normalizeDensity`, pre-paint, `THEME_SELECTORS`, Settings option, BC note, release note | `needs-design`; contract parity | AC 8 |
+| PR 3a | the guardian rule, the widened `Rule` hook, the allowlist seeded with the 88 occurrences, the fixture self-test | `skip-design` (no rendered change) | allowlist pinned at 88 rows |
+| PR 3b | § 9.3 conversions; `button.test.tsx`; the known-gaps chip row | `needs-design` + `needs-qa`; `npm run test:e2e` (the suite asserts real geometry: `task-thread.e2e.ts:452`, `quick-list.e2e.ts:271-276, 650-668`, `diff-scroll.e2e.ts:38, 254-287`) | allowlist exactly 2 – the `min-h-[24px]` floors on the picker pill and the reference chip – each with a written reason |
+| PR 4 | Roomy: the density schema exported from the contract and imported by the server (duplicate deleted), `normalizeDensity`, pre-paint, `THEME_SELECTORS`, Settings option, BC note, release note | `needs-design`; contract parity | AC 8 |
 
-Order: mockup → 1 → 2 → 3a → 3b → 4. 3b after 2 so PR 2's screenshots compare rhythm alone.
+Order (issue #424): step 0 → 1 → 2 → 3a → 3b → 4; the step-0 verdict gates step 1 onward. 3b after 2 so PR 2's screenshots compare rhythm alone.
 
 ## 10. Accessibility
 
 - Nothing changes for screen readers: the same elements, the same order, the same names.
 - Touch targets stay `h-11` (44 px) on phone at Comfortable and grow at Roomy (55 px). At Compact and Compact for real they shrink as they do today (38.5 / 33 px) – the density lever is proportional by decision D-3; the cockpit's own foundations § 12 only promises 44 px at the default (*inferred*: `foundations.md:301` says `h-11` on phone, shrink at `md:`).
-- Two chips (`h-7`, `h-6`) fall under WCAG 2.2 SC 2.5.8's 24 px at the tight densities; today's hand-set 26 / 22 px chips already do. Recorded in `known-gaps.md`.
+- The two small interactive chips – the `h-[26px]` picker pill and the `h-[22px]` reference chip – are floored at an absolute `min-h-[24px]` in PR 3b, so they meet WCAG 2.2 SC 2.5.8's 24 px at every density; today's hand-set 26 / 22 px chips do not. The floors are the two allowlist rows the rule keeps.
 - Type sizes and line heights are untouched, so the G-23 contrast gap is neither better nor worse. Focus rings, motion, colour: untouched.
 
 ## 11. Responsive
 
-- Phone gutters stay `p-4` (16 px); `section` applies at `md:` (768 px) and up.
+- Phone gutters grow from 12 to 16 px (`p-3` → `p-4`); `section` (32 px) applies at `md:` (768 px) and up.
 - Nothing scrolls sideways at 375 px: the rhythm adds vertical space only; the table keeps `.table-scroll`; `a11y-sweep.e2e.ts` (390 / 1440) and `ios-sweep.e2e.ts` stay green.
 - Roomy on a phone: rows 55 px – opt-in.
-- The mockup's pairs stack to one column under 900 px; each frame keeps its own gutter. A 375 px frame joins the full-page mockup (D-4).
+- The mockup's pairs stack to one column under 900 px; each frame keeps its own gutter. A 375 px frame joins the step-0 full-page mockup (D-4).
 
 ## 12. Acceptance criteria
 
@@ -331,30 +332,27 @@ Order: mockup → 1 → 2 → 3a → 3b → 4. 3b after 2 so PR 2's screenshots 
 2. `specimens/foundations.html` opened **from disk** shows the six rhythm bars at 8 / 12 / 16 / 20 / 24 / 32 px.
 3. `packages/web/e2e/rhythm.e2e.ts` asserts through `getComputedStyle` at the default density: a thread row inside a turn 8, a speaker-change row 24, card padding 20, card-list gap 16, settings field gap 12, settings list gap 32, desktop page padding 32, page body top 32 – and 75 % of each at `data-density='ultra'`, 125 % at `roomy`.
 4. PR 2 reports measured `document.scrollHeight` for Tasks, a 30-row thread, Settings → Agents and Inbox at 1280×900, before and after.
-5. `no-arbitrary-spacing` exists with an allowlist of exactly N rows (N pinned in PR 3a); fixture lines `h-[34px]`, `size-[30px]` and `md:min-h-[54px]` each fail it against an empty allowlist, proved red-then-green; after PR 3b the allowlist is ≤ 2, each row with a written reason.
-6. Touch targets ≥ 44 px on phone at Roomy and Comfortable, and no smaller than today at Compact and Compact for real.
+5. `no-arbitrary-spacing` exists with an allowlist seeded at 88 rows in PR 3a; fixture lines `h-[34px]`, `size-[30px]` and `md:min-h-[54px]` each fail it against an empty allowlist, proved red-then-green; after PR 3b the allowlist holds exactly two rows – the `min-h-[24px]` floors on `picker-pill.tsx` and `reference-chip.tsx` – each with a written reason.
+6. Touch targets ≥ 44 px on phone at Roomy and Comfortable, no smaller than today at Compact and Compact for real, and no interactive target under 24 px at any density – the two chips carry `min-h-[24px]`.
 7. Nothing scrolls sideways at 375 and 390 px; both themes pass the design-system review checklist.
-8. Roomy round-trips: the contract enum accepts it; `normalizeDensity('roomy') === 'roomy'`; `index.html` stamps it before first paint on a cold load; an older cockpit falls back to Comfortable; BACKWARD_COMPATIBILITY.md carries the line.
+8. Roomy round-trips: the contract enum accepts it and the server imports that schema with no second copy left in `server.ts`, `contract-parity*` and `typed-bodies` green; `normalizeDensity('roomy') === 'roomy'`; `index.html` stamps it before first paint on a cold load; an older cockpit falls back to Comfortable; BACKWARD_COMPATIBILITY.md carries the line.
 9. G-25 is recorded in PR 1 and deleted in PR 2 with a `design-debt` issue linked; every UI-in-scope PR carries `needs-design` with a `## Design review` comment, or `skip-design` with the reason in the body.
 
 ## 13. Open decisions
 
-Decided on 2026-09-14 (owner): **D-1** change the default · **D-2** table rows stay 44 · **D-3** compact/ultra scale the new rhythm ("the layout should always look the same") · **D-4** a full-page mockup before PR 2 · **D-5** the pixel rule fails the build · **D-6** settings stay flat, 28 → 32 · **D-7** one lever · **D-8** no flag · **D-10** two thread gaps · the scale 8/12/16/20/24/32 · Roomy stays and is 5 px per unit.
-
-| # | Question | Options | Recommendation | Owner |
-|---|---|---|---|---|
-| D-9 | PR 1: ship the tokens with one pilot surface (the settings fields), or tokens alone? | pilot / alone | **Pilot** – the tokens then have a user and the review sees something real; `needs-design` on PR 1 | pending |
+Decided on 2026-09-14 (owner): **D-1** change the default · **D-2** table rows stay 44 · **D-3** compact/ultra scale the new rhythm ("the layout should always look the same") · **D-4** a full-page mockup as step 0, whose verdict gates step 1 onward · **D-5** the pixel rule fails `npm test`, the validation gate · **D-6** settings stay flat, 28 → 32 · **D-7** one lever · **D-8** no flag · **D-9** PR 1 ships the tokens, the docs and the Settings field lists as its pilot, labelled `needs-design` + `needs-qa` · **D-10** two thread gaps · the scale 8/12/16/20/24/32 · Roomy stays and is 5 px per unit. The "option in the configuration" the owner asked for is that Roomy density; the looser rhythm ships as the default, with no flag (D-8). **No decision remains open.**
 
 ## 14. Risks
 
 | Risk | Effect | Answer |
 |---|---|---|
 | More scroll | thread and settings pages grow 5–15 % | that is the point; tables do not grow; the density lever still offers tighter |
-| Users on Compact / Compact for real see their pages loosen | 75 % of the new rhythm at ultra is still looser than today's default | said in the release note (§ 8); D-3 |
-| Roomy fails to save | the enum in the contract and the server duplicate | PR 4 changes both; contract parity proves it |
+| Users on Compact / Compact for real see their pages loosen | 75 % of the new rhythm at ultra is still looser than today's default | the release note says plainly that no density reproduces the old look (§ 8); D-3 |
+| Roomy fails to save | the enum in the contract and the server duplicate | PR 4 exports the schema from the contract and imports it in the server, deleting only the duplicated const; contract parity proves the two unions match |
 | The browser suite asserts real geometry | `task-thread.e2e.ts:452` (44 px bar), `quick-list.e2e.ts` (7 px dot, 264 px layout), `diff-scroll.e2e.ts` (card heights) | run `npm run test:e2e` in PR 2 and 3b; screenshots are artifacts, not goldens – nothing to rebase |
 | `cn()` merges stop resolving for the new utilities | `p-4 p-inset` both kept | `tailwind-merge` extension in PR 1, with a test |
-| The mockup sheet drifts from the cockpit | `cockpit.css` mirrors ~40 classes by hand | the drift test covers tokens, not class paddings; PR 2 updates both in one commit; leftovers go in the known-gaps mockup-fidelity table |
+| Small interactive chips drop under 24 px | the `h-[26px]` picker pill and the `h-[22px]` reference chip on the scale give 21 / 18 px at Compact for real | PR 3b floors both at an absolute `min-h-[24px]`; those two floors are the only allowlist rows left |
+| The mockup sheet drifts from the cockpit | `cockpit.css` mirrors about 106 spacing-bearing classes by hand | the drift test covers tokens, not class paddings; PR 2 updates both in one commit; leftovers go in the known-gaps mockup-fidelity table |
 | Sibling mockups go stale | `designs/quality-checks`, `designs/decisions` draw today's rhythm; the lifecycle clock reverts an unimplemented Approved design after two releases | a `design-debt` issue in PR 2 |
 | The kit's review checklist names density values | `xezar-ux-design.md:36`, `new-designs.md:51-54` | updated in PR 4 |
 | `calc()` tokens cost | none in kind – every Tailwind spacing utility is already `calc(var(--spacing) * n)` | accepted |
@@ -363,6 +361,7 @@ Decided on 2026-09-14 (owner): **D-1** change the default · **D-2** table rows 
 ## 15. References
 
 - [`review-2026-09-14.md`](review-2026-09-14.md) – the four reviews and every disposition
+- [qodeca/xezar#424](https://github.com/qodeca/xezar/issues/424) – the umbrella issue (`enhancement`, `epic`, `risk-high`): step 0 (full-page mockup) → 1 → 2 → 3a → 3b → 4
 - `docs/design-system/foundations.md` § 3, § 4, § 5, § 9, § 12; `theming.md`; `components.md`; `patterns.md`; `new-designs.md`; `known-gaps.md`
 - `packages/web/src/styles/index.css` (`--spacing` `:248-261`, `@theme static` `:280-293`, thread markdown `:498-538`)
 - `packages/web/src/lib/appearance.ts`, `lib/utils.ts`, `routes/settings/appearance.tsx`, `packages/web/index.html:36-38`
@@ -374,4 +373,4 @@ Decided on 2026-09-14 (owner): **D-1** change the default · **D-2** table rows 
 
 ## 16. Design review
 
-Four reviews on 2026-09-14 (UX, UI, fact-check, plan): all PASS WITH CHANGES. Five blocking findings and eighteen should-fix items, consolidated with dispositions in [`review-2026-09-14.md`](review-2026-09-14.md); this revision applies every one the owner decided (D-1..D-10). The `design-review` kit verdict on the full-page mockup (D-4) is pending.
+Four reviews on 2026-09-14 (UX, UI, fact-check, plan): all PASS WITH CHANGES. Five blocking findings and eighteen should-fix items, consolidated with dispositions in [`review-2026-09-14.md`](review-2026-09-14.md); Every decision the owner took (D-1..D-10) is applied and none is open. The `design-review` kit verdict on the step-0 full-page mockup (D-4) is pending; it gates step 1 onward.

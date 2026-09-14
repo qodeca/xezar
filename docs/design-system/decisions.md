@@ -2,7 +2,7 @@
 
 A decision record is a choice made in a design review between options the design system allows, with the reason and what follows from it. It differs from a gap ([known-gaps.md](known-gaps.md)) in that nothing in the code is inconsistent: a gap closes by a code change, a decision closes only by a later decision that supersedes it. How the two relate is in [CONTRIBUTING.md](CONTRIBUTING.md) §5; a review that makes a decision records it here as the next `D-nn` and links it from its `## Design review` comment (README § Maintenance, item 7).
 
-Format per entry: `### D-nn <title>`, then Date, Status, Context, Decision, Consequences, Source.
+Format per entry: `### D-nn <title>`, then Date, Status, Context, Decision, Consequences, Source. A design folder's own open decisions are numbered separately in `designs/<feature>/README.md` § Open decisions; only records in this file carry the `D-nn` form, and a design decision that binds the system is recorded here and cited from the design's row.
 
 ### D-01 Colour of the nav badge for failed checks
 

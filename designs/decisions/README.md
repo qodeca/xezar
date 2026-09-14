@@ -2,11 +2,11 @@
 
 | | |
 |---|---|
-| **Status** | Revision 2 (2026-09-14) – the five-reviewer verdict and the owner interview applied; waiting for the `design-review` verdict (see [§18](#18-design-review)) and the owner's answers to [Open decisions](#14-open-decisions) |
+| **Status** | Draft, revision 2 (2026-09-14) – the five-reviewer verdict and the owner interview applied; waiting for the first `design-review` verdict (see [§18](#18-design-review)); the open decisions are OD-1..OD-8 in the requirements, none of which changes the mockup |
 | **Date** | 2026-09-14 |
 | **Mockup** | Open [`index.html`](index.html) in a browser. No build or server needed. |
 | **Replaces** | Nothing. Today no surface exists for this. |
-| **Requirements** | [`docs/features/decisions/decisions-requirements.md`](../../docs/features/decisions/decisions-requirements.md) – F-1..F-30, the state machine, A-1..A-18, OD-1..OD-8. This README is the UI handoff; the requirements document is the contract. Where they disagree, the requirements win. |
+| **Requirements** | [`docs/features/decisions/decisions-requirements.md`](../../docs/features/decisions/decisions-requirements.md) – F-1..F-31, the state machine, A-1..A-19, OD-1..OD-8. This README is the UI handoff; the requirements document is the contract. Where they disagree, the requirements win. |
 | **Comes from** | `docs/features/mcp-server/leader-dogfooding-2026-09-13.md` § 14.2 (the "Attach leader" finding); the interview record [`decisions-grill-record-2026-09-14.md`](../../docs/features/decisions/decisions-grill-record-2026-09-14.md); the review record [`decisions-design-review-2026-09-14.md`](../../docs/features/decisions/decisions-design-review-2026-09-14.md) |
 
 ## 1. Summary
@@ -50,7 +50,7 @@ The evidence is in the requirements document § 1 and in the interview record. I
 
 **Non-goals** (requirements § 3)
 
-- Proving the leader's relayed words are really the owner's. xezar shows them and makes reopening one click. MCP elicitation is later (OD-6 in the requirements).
+- Proving the leader's relayed words are really the owner's. xezar shows them and makes reopening one click. MCP elicitation is later (§ 3 of the requirements, D-16).
 - Stopping a hostile agent. This gate stops drift by accident, which is what happened.
 - Replacing the Inbox, the review gate or the kit's labels.
 - A cap on open cases, or per-project categories. The four categories are fixed in version 1.
@@ -334,7 +334,7 @@ The behaviour criteria are A-1..A-18 in the requirements document § 9. The desi
 3. The decided card shows who answered, the words, how the task resumed, and Reopen only while the task has not acted.
 4. The task page shows the stopped banner, the same card, the scope-check line with its three-valued result, the disabled composer, and a Decisions tab whose count matches the Decisions page for that task.
 5. The badge shows nothing at 0, while loading and on error; `99+` above 99; the mobile bar carries the words.
-6. Keyboard-only: a case can be read, an option pressed, a comment typed and sent, "Not a decision" given, and a decided case reopened; focus never falls to `<body>` after Send.
+6. Keyboard-only: a case can be read, an option pressed, a comment typed and sent, "Not a decision" given, "Leader decides" given and taken back, and a decided case reopened; focus never falls to `<body>` after Send.
 7. Both themes and 375 px pass the design system's review checklist; the drift test, the guardian and the handoff lint are green.
 
 ## 14. Open decisions
@@ -359,7 +359,7 @@ The ten-step plan is in the requirements document § 13. The cockpit step carrie
 ## 17. References
 
 - `docs/features/decisions/decisions-requirements.md` – the contract
-- `docs/features/decisions/decisions-grill-record-2026-09-14.md` – the interview and the 19 decisions
+- `docs/features/decisions/decisions-grill-record-2026-09-14.md` – the interview and the 20 decisions
 - `docs/features/decisions/decisions-design-review-2026-09-14.md` – R-1..R-27, U-1..U-20, G-1..G-22
 - `docs/features/mcp-server/leader-dogfooding-2026-09-13.md` § 14.2 – the finding
 - `packages/xezar/src/core/ask.ts` – `XEZ:ASK`, the shape `XEZ:DECIDE` reuses

@@ -7,6 +7,9 @@ is the most common form, or the newest when usage is split. This file is the des
 to-do list: an entry becomes a `design-debt` issue on the triggers [CONTRIBUTING.md](CONTRIBUTING.md) §6
 names, and a fix arrives as its own change with the entry deleted.
 
+Ids are never reused: a deleted entry retires its number, so a new entry takes the next number after the
+highest ever used. G-01..G-23 are live, G-24 is retired, and the next free id is G-25.
+
 Counts are non-test files or occurrences in `packages/web/src`.
 
 ## Layout and composition

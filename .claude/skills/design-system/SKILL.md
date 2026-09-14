@@ -87,28 +87,11 @@ For `packages/web`: `npm test -- packages/web/src/design-system-drift.test.ts`. 
 
 For a mockup: open `docs/design-system/specimens/index.html` beside the page, in both themes and at 375 px.
 
-Self-check: remove one row from `docs/design-system/coverage.md`, run the drift test and see it fail; restore the row and see it pass.
-
 ## Precedence
 
 When this file and `docs/design-system/` disagree, the docs win – fix this file. The drift test guards tokens and components, not prose.
 
 A user may override a prose-owned rule (7–15) for one task only with a written reason; the override goes into the PR description or the design's open decisions, and the rule itself is changed only in `docs/design-system/`. A rule owned by a test (1–6, 14) is never waived in prose – an exception changes the test in its own commit, with the reason.
-
-## Examples
-
-- **User:** "Add a Checks page to the cockpit sidebar" → **Skill:** UI change route – read `components.md` first; rule 9 (the per-project task table goes through `lib/task-columns.ts`) and rule 14 (`coverage.md` and `cockpit.css` in the same commit).
-- **User:** "Make a mockup for the inbox redesign in designs/inbox/" → **Skill:** mockup route – read `new-designs.md` first; rule 15 (link `../../docs/design-system/cockpit.css`, keep only feature rules in the local stylesheet).
-- **User:** "Review this PR that changes the task page header" → **Skill:** review route – read `known-gaps.md` first (G-01, page headers), then `patterns.md §3`; rule 10 (words carry the meaning before colour does).
-
-## Anti-patterns
-
-- Copying token values into this file instead of pointing at `foundations.md`.
-- Inventing a variant `components.md` does not name.
-- Fixing an inconsistency silently instead of recording it in `known-gaps.md`.
-- Changing UI without the `coverage.md` and `cockpit.css` update.
-- Adding a `dark:` variant.
-- Calling another skill from here.
 
 ## Terminal state
 

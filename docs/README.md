@@ -32,3 +32,5 @@ the shipped MCP tools. Its tables are generated from the code and `npm test` che
   [SDLC.md](../SDLC.md), [CODE_REVIEW.md](../CODE_REVIEW.md),
   [BACKWARD_COMPATIBILITY.md](../BACKWARD_COMPATIBILITY.md) and [CHANGELOG.md](../CHANGELOG.md).
 - [.xezar/docs/](../.xezar/docs/README.md): the operating guides for developing xezar with xezar.
+- [designs/](../designs/README.md): UI designs, one folder per feature – static mockups on the shared
+  design-system stylesheet plus a handoff README. Its § Lifecycle carries the status of every design.

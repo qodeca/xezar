@@ -1,6 +1,6 @@
 # Decisions – requirements interview record (grill-me), 2026-09-14
 
-Status: **closed – the read-back was confirmed by the owner.** The 19 decisions below are locked input to [decisions-requirements.md](decisions-requirements.md). The design draft under review was `designs/decisions/` at its 2026-09-14 state; the five-reviewer verdict on that draft is in [decisions-design-review-2026-09-14.md](decisions-design-review-2026-09-14.md).
+Status: **closed – the read-back was confirmed by the owner.** The 20 decisions below are locked input to [decisions-requirements.md](decisions-requirements.md) – decisions 1 to 19 from the interview, and decision 20 added the same evening while the revised mockup was reviewed (cited below as *D-n*). The design draft under review was `designs/decisions/` at its 2026-09-14 state; the five-reviewer verdict on that draft is in [decisions-design-review-2026-09-14.md](decisions-design-review-2026-09-14.md).
 
 Method: the `erfana:grill-me` interview skill – one question at a time, a 16-dimension coverage map, a decisions ledger, a read-back. Interviewer: the leader session (Claude Code). Interviewee: the owner.
 
@@ -64,7 +64,6 @@ Each row: the decision as locked, the question that produced it, and the alterna
 | 17 | The task state, the record fields and the agent word **all ship together**. | Build all three hard-to-undo parts now, or the state first and the agent word later? (re-asked in simpler words) | State first, agent word later. |
 | 18 | Success after a month: leader tasks run overnight alone; the morning list holds cases, not repair work; **resumes succeed above 95 %**; **a case is answered in under two minutes** on average; the campaign replay shows the button would have stopped. | What tells you after one month that this worked? | Zero unwanted surfaces shipped; "I trust it enough to stop reading diffs". |
 | 19 | Before the first unattended night, all four must hold: the leader cannot move a stopped task; a stopped task frees its slot; a restart keeps cases and stopped tasks; the morning tells me how many cases wait. | Walk backwards from the first successful night: what must be true the evening before? | – (all four offered were taken) |
-
 | 20 | *(added after the interview, 2026-09-14 19:50, while reviewing the revised mockup)* A fourth answer, **"Leader decides"**: the owner hands one case to the leader. The case leaves the owner's badge, the task stays stopped, the leader answers with a required **reason**, the owner can take it back at any time. Only the cockpit can delegate. | Owner: "I would add third option: 'Leader decides'"; interviewer asked whether the handed-over case stays in the badge (re-asked in simpler words) and whether the leader must give a reason. | Keep counting it in the badge; option alone, no reason. |
 
 ## Tensions the interviewer recorded
