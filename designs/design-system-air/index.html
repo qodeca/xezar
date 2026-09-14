@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Air – examples, today beside proposed</title>
+<link rel="stylesheet" href="../../docs/design-system/cockpit.css">
+<link rel="stylesheet" href="styles.css">
+<script src="theme.js"></script>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-tasks" viewBox="0 0 24 24"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></symbol>
+  <symbol id="i-hand" viewBox="0 0 24 24"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></symbol>
+  <symbol id="i-inbox" viewBox="0 0 24 24"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
+  <symbol id="i-git" viewBox="0 0 24 24"><line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
+</svg>
+
+<nav class="doc-bar" aria-label="Proposal pages">
+  <span class="brand">Air proposal</span>
+  <a href="index.html" aria-current="page">Examples</a>
+  <a href="README.md">Proposal (README)</a>
+  <span class="spacer"></span>
+  <label>Density
+    <select data-density-select>
+      <option value="roomy">Roomy (proposed)</option>
+      <option value="comfortable">Comfortable (default)</option>
+      <option value="compact">Compact</option>
+      <option value="ultra">Compact for real</option>
+    </select>
+  </label>
+  <button class="theme-toggle" type="button" data-theme-toggle>Light / dark</button>
+</nav>
+
+<div class="doc">
+  <h1>Air – today beside proposed</h1>
+  <p class="lead">Each pair is the same markup twice. <strong>Today</strong> uses the cockpit’s shipped values, read from the files on 2026-09-14 (file and line in the sheet). <strong>Proposed</strong> uses the rhythm tokens from README § 9.1 (revision 2: row 8 · stack 12 · list 16 · inset 20 · group 24 · section 32). Controls keep their size; only the space between things changes. The grey line on each frame’s tag gives the numbers at the default density. The density select on the bar scales both columns the way the cockpit would – note that today’s hand-set pixels (nav rows, tool rows, table header, buttons) do not move with it, which is why “Compact for real” looks uneven today.</p>
+
+  <!-- ================================================== 1 -->
+  <h2>1. Settings fields</h2>
+  <p>Title → control → hint is 8 px apart today; fields sit 28 px apart in a flat list – the cockpit has no group level (<code>settings-field.tsx:20-27</code>, <code>appearance.tsx:120</code>). Proposed (D-6): 12 inside a field, 32 between fields, still flat.</p>
+  <div class="pair">
+    <div class="ex today">
+      <div class="tag">Today <span class="px">gap 8 · fields 28 · gutter 20</span></div>
+      <div class="ex-settings"><div class="ex-group">
+          <div class="ex-field"><span class="label">Parallel tasks</span><input class="input" value="3"><p class="field-hint">Across every project on this machine.</p></div>
+          <div class="ex-field"><span class="label">Idle timeout</span><input class="input" value="15 min"><p class="field-hint">An agent that says nothing for this long is closed.</p></div>
+          <div class="ex-field"><span class="label">Memory limit per task</span><input class="input" value="4096 MiB"><p class="field-hint">Derived from this machine; set to change.</p></div>
+          <div class="ex-field"><span class="label">Monitoring sessions</span><input class="input" value="2"><p class="field-hint">Tasks that may stay open to watch a PR.</p></div>
+      </div></div>
+    </div>
+    <div class="ex air">
+      <div class="tag">Proposed <span class="px">stack 12 · fields section 32 · gutter section 32</span></div>
+      <div class="ex-settings"><div class="ex-group">
+          <div class="ex-field"><span class="label">Parallel tasks</span><input class="input" value="3"><p class="field-hint">Across every project on this machine.</p></div>
+          <div class="ex-field"><span class="label">Idle timeout</span><input class="input" value="15 min"><p class="field-hint">An agent that says nothing for this long is closed.</p></div>
+          <div class="ex-field"><span class="label">Memory limit per task</span><input class="input" value="4096 MiB"><p class="field-hint">Derived from this machine; set to change.</p></div>
+          <div class="ex-field"><span class="label">Monitoring sessions</span><input class="input" value="2"><p class="field-hint">Tasks that may stay open to watch a PR.</p></div>
+      </div></div>
+    </div>
+  </div>
+  <p class="note"><strong>Sources:</strong> <code>settings-field.tsx:21</code> <code>gap-2</code>; <code>appearance.tsx:120</code> and seven more sections <code>gap-7</code>; <code>settings-shell.tsx:222</code> <code>md:p-5</code>.</p>
+
+  <!-- ================================================== 2 -->
+  <h2>2. A list of cards (Inbox, Settings hub, phone task cards)</h2>
+  <p>Cards are 10 px apart with 16 px inside today. Proposed: 16 apart (list), 20 inside (inset). The button height is the one visible control-size change: 30 → 32 px, because 30 is a hand-set pixel outside the lever.</p>
+  <div class="pair">
+    <div class="ex today">
+      <div class="tag">Today <span class="px">cards 10 apart · 16 inside · btn 30</span></div>
+      <div class="ex-cards">
+        <div class="ex-card"><span class="title">Add a “Retry” to the failed-gate banner</span><p>The agent noticed the banner names the failure but offers no way back in. One click would save a trip to the task page.</p><span class="meta"><span>#399</span><span>agent · 2h</span></span><div class="actions"><button class="btn" type="button">Make a task</button><button class="btn ghost" type="button">Dismiss</button></div></div>
+        <div class="ex-card"><span class="title">Document the pi approveTools wait</span><p>Three runs hit the same silence. A line in the runner docs would stop the next person from re-finding it.</p><span class="meta"><span>#356</span><span>agent · 5h</span></span><div class="actions"><button class="btn" type="button">Make a task</button><button class="btn ghost" type="button">Dismiss</button></div></div>
+        <div class="ex-card"><span class="title">Prune the orphan skill cache</span><p>~/.cache/xez holds two repos nobody references since the migration.</p><span class="meta"><span>leader · yesterday</span></span><div class="actions"><button class="btn" type="button">Make a task</button><button class="btn ghost" type="button">Dismiss</button></div></div>
+      </div>
+    </div>
+    <div class="ex air">
+      <div class="tag">Proposed <span class="px">list 16 apart · inset 20 inside · btn 32</span></div>
+      <div class="ex-cards">
+        <div class="ex-card"><span class="title">Add a “Retry” to the failed-gate banner</span><p>The agent noticed the banner names the failure but offers no way back in. One click would save a trip to the task page.</p><span class="meta"><span>#399</span><span>agent · 2h</span></span><div class="actions"><button class="btn" type="button">Make a task</button><button class="btn ghost" type="button">Dismiss</button></div></div>
+        <div class="ex-card"><span class="title">Document the pi approveTools wait</span><p>Three runs hit the same silence. A line in the runner docs would stop the next person from re-finding it.</p><span class="meta"><span>#356</span><span>agent · 5h</span></span><div class="actions"><button class="btn" type="button">Make a task</button><button class="btn ghost" type="button">Dismiss</button></div></div>
+        <div class="ex-card"><span class="title">Prune the orphan skill cache</span><p>~/.cache/xez holds two repos nobody references since the migration.</p><span class="meta"><span>leader · yesterday</span></span><div class="actions"><button class="btn" type="button">Make a task</button><button class="btn ghost" type="button">Dismiss</button></div></div>
+      </div>
+    </div>
+  </div>
+  <p class="note"><strong>Sources:</strong> <code>inbox.tsx:128</code> <code>gap-2.5</code>, <code>:227</code> <code>p-4</code>; <code>known-gaps.md:185</code> button <code>h-[30px]</code>.</p>
+
+  <!-- ================================================== 3 -->
+  <h2>3. The thread</h2>
+  <p>Every row is 10 px apart today – a speaker change looks like a tool step – and tool rows are 28 px tall (hand-set). Proposed (D-10): 8 px between rows of the same speaker, 24 px when the speaker changes, tool rows 32 on the scale. Type and line height do not change.</p>
+  <div class="pair">
+    <div class="ex today">
+      <div class="tag">Today <span class="px">every row 10 apart · tool row 28 · gutter 20</span></div>
+      <div class="ex-thread">
+        <div class="ex-turn user"><div class="bubble">Fix the approveTools wait in the pi runner. Three of four DoD rows must pass; tell me if the fourth cannot.</div></div>
+        <div class="ex-turn assistant speaker"><p>Reading the runner and the two failing traces first. The wait has no upper bound; pi never sends the approval event when the tool list is empty.</p></div>
+        <div class="ex-turn"><div class="ex-tool"><span class="k">Read</span> packages/xezar/src/core/pi-runner.ts</div><div class="ex-tool"><span class="k">Grep</span> approveTools · 4 hits</div><div class="ex-tool"><span class="k">Edit</span> pi-runner.ts <span class="plus">+38</span> <span class="minus">−7</span></div></div>
+        <div class="ex-turn assistant"><p>The fix is in. The wait now times out at 30 s and reports. Three rows pass; the OpenCode row cannot be verified here – OpenCode stalled in 5 of 5 runs today.</p></div>
+        <div class="ex-turn user speaker"><div class="bubble">Mark it not run and finish.</div></div>
+      </div>
+    </div>
+    <div class="ex air">
+      <div class="tag">Proposed <span class="px">row 8 in a turn · group 24 at a speaker change · tool row 32 · gutter 32</span></div>
+      <div class="ex-thread">
+        <div class="ex-turn user"><div class="bubble">Fix the approveTools wait in the pi runner. Three of four DoD rows must pass; tell me if the fourth cannot.</div></div>
+        <div class="ex-turn assistant speaker"><p>Reading the runner and the two failing traces first. The wait has no upper bound; pi never sends the approval event when the tool list is empty.</p></div>
+        <div class="ex-turn"><div class="ex-tool"><span class="k">Read</span> packages/xezar/src/core/pi-runner.ts</div><div class="ex-tool"><span class="k">Grep</span> approveTools · 4 hits</div><div class="ex-tool"><span class="k">Edit</span> pi-runner.ts <span class="plus">+38</span> <span class="minus">−7</span></div></div>
+        <div class="ex-turn assistant"><p>The fix is in. The wait now times out at 30 s and reports. Three rows pass; the OpenCode row cannot be verified here – OpenCode stalled in 5 of 5 runs today.</p></div>
+        <div class="ex-turn user speaker"><div class="bubble">Mark it not run and finish.</div></div>
+      </div>
+    </div>
+  </div>
+  <p class="note"><strong>Sources:</strong> <code>thread-scroller.tsx:492</code> <code>pb-2.5</code>; <code>thread-items.tsx:547</code> <code>min-h-[28px] py-0.5</code>; <code>task-thread.tsx:307</code> <code>md:px-6 md:py-5</code>.</p>
+
+  <!-- ================================================== 4 -->
+  <h2>4. Page header, page body, task head</h2>
+  <p>The body starts 20 px under the header today; the task head is 18 / 24 / 14. Proposed: 32 under the header, task head 32 / 32 / 16 – gutters are the section step on both axes.</p>
+  <div class="pair">
+    <div class="ex today">
+      <div class="tag">Today <span class="px">header h-14 · body starts at 20 · task head 18/24/14</span></div>
+      <div class="ex-page">
+        <div class="head">Inbox <span class="pill">12 new</span></div>
+        <div class="body">
+          <div class="ex-card"><span class="title">First card</span><p>Sits 20 px under the header line.</p></div>
+        </div>
+        <div class="task-head"><span class="pill"><span class="dot pending pulse"></span>needs your decision</span><h1>#356 fixing the pi approveTools wait</h1><span class="mono" style="font-size:12px;color:var(--muted-foreground)">fix · Claude Code · opus · xez/9a41d2c0</span></div>
+      </div>
+    </div>
+    <div class="ex air">
+      <div class="tag">Proposed <span class="px">header h-14 · body starts at 32 · task head 32/32/16</span></div>
+      <div class="ex-page">
+        <div class="head">Inbox <span class="pill">12 new</span></div>
+        <div class="body">
+          <div class="ex-card"><span class="title">First card</span><p>Sits 32 px under the header line.</p></div>
+        </div>
+        <div class="task-head"><span class="pill"><span class="dot pending pulse"></span>needs your decision</span><h1>#356 fixing the pi approveTools wait</h1><span class="mono" style="font-size:12px;color:var(--muted-foreground)">fix · Claude Code · opus · xez/9a41d2c0</span></div>
+      </div>
+    </div>
+  </div>
+  <p class="note"><strong>Sources:</strong> <code>patterns.md:43, 51</code> header <code>h-14</code>, body <code>md:p-5</code>; <code>cockpit.css:2043-2061</code> <code>.task-head</code>.</p>
+
+  <!-- ================================================== 5 -->
+  <h2>5. Sidebar</h2>
+  <p>Nav rows are 34 px hand-set today and the three groups are 6 px apart. Proposed: 36 px rows on the scale and 12 px between groups. Quick-list rows stay 32.</p>
+  <div class="pair">
+    <div class="ex today">
+      <div class="tag">Today <span class="px">rows 34 (hand-set) · groups 6 apart</span></div>
+      <div class="ex-side">
+        <nav class="nav" aria-label="Example"><a href="#" aria-current="page"><svg class="icon"><use href="#i-tasks"/></svg>Tasks</a><a href="#"><svg class="icon"><use href="#i-hand"/></svg>Decisions<span class="nav-badge">3</span></a><a href="#"><svg class="icon"><use href="#i-inbox"/></svg>Inbox<span class="nav-badge">12</span></a><a href="#"><svg class="icon"><use href="#i-git"/></svg>Git</a><a href="#"><svg class="icon"><use href="#i-settings"/></svg>Settings</a></nav>
+        <div><div class="quick-head">NEEDS YOU</div><ul class="quick"><li><span class="dot pending pulse"></span><span class="ref">#403</span><span class="t">codex wake path</span></li><li><span class="dot pending pulse"></span><span class="ref">#356</span><span class="t">fixing the pi approveTools wait</span></li></ul></div>
+        <div><div class="quick-head">WORKING</div><ul class="quick"><li><span class="dot violet pulse"></span><span class="ref">#421</span><span class="t">refusing git in the primary checkout</span></li></ul></div>
+      </div>
+    </div>
+    <div class="ex air">
+      <div class="tag">Proposed <span class="px">rows 36 (h-9) · groups stack 12 apart</span></div>
+      <div class="ex-side">
+        <nav class="nav" aria-label="Example"><a href="#" aria-current="page"><svg class="icon"><use href="#i-tasks"/></svg>Tasks</a><a href="#"><svg class="icon"><use href="#i-hand"/></svg>Decisions<span class="nav-badge">3</span></a><a href="#"><svg class="icon"><use href="#i-inbox"/></svg>Inbox<span class="nav-badge">12</span></a><a href="#"><svg class="icon"><use href="#i-git"/></svg>Git</a><a href="#"><svg class="icon"><use href="#i-settings"/></svg>Settings</a></nav>
+        <div><div class="quick-head">NEEDS YOU</div><ul class="quick"><li><span class="dot pending pulse"></span><span class="ref">#403</span><span class="t">codex wake path</span></li><li><span class="dot pending pulse"></span><span class="ref">#356</span><span class="t">fixing the pi approveTools wait</span></li></ul></div>
+        <div><div class="quick-head">WORKING</div><ul class="quick"><li><span class="dot violet pulse"></span><span class="ref">#421</span><span class="t">refusing git in the primary checkout</span></li></ul></div>
+      </div>
+    </div>
+  </div>
+  <p class="note"><strong>Sources:</strong> <code>app-shell.tsx:572</code> <code>md:h-[34px]</code>, <code>:555</code> <code>px-2.5 py-1.5</code>.</p>
+
+  <!-- ================================================== 6 -->
+  <h2>6. The task table</h2>
+  <p>Rows stay 44 px – the table is where density is a feature. Cell padding grows 10 → 12 so columns do not touch; the header goes from a hand-set 38 to 40 on the scale.</p>
+  <div class="pair">
+    <div class="ex today">
+      <div class="tag">Today <span class="px">rows 44 · cells 10 · header 38 (hand-set)</span></div>
+      <div class="ex-table table-scroll"><table class="tasks-table"><thead><tr><th>Task</th><th>Status</th><th>Tool</th><th>Age</th></tr></thead><tbody>
+        <tr><td class="title">#403 codex wake path</td><td><span class="pill"><span class="dot pending"></span>decision</span></td><td>Claude Code</td><td class="num">2h</td></tr>
+        <tr><td class="title">#421 refusing git in the primary checkout</td><td><span class="pill"><span class="dot violet"></span>working</span></td><td>Claude Code</td><td class="num">9m</td></tr>
+        <tr><td class="title">#399 fixing the tasks badge count</td><td><span class="pill"><span class="dot violet"></span>working</span></td><td>pi</td><td class="num">31m</td></tr>
+      </tbody></table></div>
+    </div>
+    <div class="ex air">
+      <div class="tag">Proposed <span class="px">rows 44 · cells 12 · header 40 (h-10)</span></div>
+      <div class="ex-table table-scroll"><table class="tasks-table"><thead><tr><th>Task</th><th>Status</th><th>Tool</th><th>Age</th></tr></thead><tbody>
+        <tr><td class="title">#403 codex wake path</td><td><span class="pill"><span class="dot pending"></span>decision</span></td><td>Claude Code</td><td class="num">2h</td></tr>
+        <tr><td class="title">#421 refusing git in the primary checkout</td><td><span class="pill"><span class="dot violet"></span>working</span></td><td>Claude Code</td><td class="num">9m</td></tr>
+        <tr><td class="title">#399 fixing the tasks badge count</td><td><span class="pill"><span class="dot violet"></span>working</span></td><td>pi</td><td class="num">31m</td></tr>
+      </tbody></table></div>
+    </div>
+  </div>
+  <p class="note"><strong>Sources:</strong> <code>tasks-overview.tsx:419</code> <code>h-[38px] px-2.5</code>, <code>:514</code> <code>h-11 px-2.5</code>.</p>
+
+  <!-- ================================================== 7 -->
+  <h2>7. The rhythm scale</h2>
+  <p>Six named distances – 8 / 12 / 16 / 20 / 24 / 32, the scale Carbon, Radix and Atlassian share – all multiples of the one spacing unit, so the density select scales them. A file uses a token between blocks and the numeric scale inside a control – never a hand-typed pixel.</p>
+  <div class="ex air" style="max-width:560px">
+    <div class="tag">Proposed tokens <span class="px">× 4px per unit at the default density</span></div>
+    <div class="bars">
+      <div class="bar"><span>row</span><i style="width:var(--row)"></i><span class="v">2 · 8px</span></div>
+      <div class="bar"><span>stack</span><i style="width:var(--stack)"></i><span class="v">3 · 12px</span></div>
+      <div class="bar"><span>list</span><i style="width:var(--list)"></i><span class="v">4 · 16px</span></div>
+      <div class="bar"><span>inset</span><i style="width:var(--inset)"></i><span class="v">5 · 20px</span></div>
+      <div class="bar"><span>group</span><i style="width:var(--group)"></i><span class="v">6 · 24px</span></div>
+      <div class="bar"><span>section</span><i style="width:var(--section)"></i><span class="v">8 · 32px</span></div>
+    </div>
+  </div>
+
+  <h2>What to look for</h2>
+  <ul>
+    <li>In every pair the text is the same size. Only the air changed.</li>
+    <li>Switch the bar to <strong>Compact for real</strong>: today’s column tightens unevenly (nav rows, tool rows, the table header and the buttons stay put); the proposed column tightens as one piece.</li>
+    <li>Switch to <strong>Roomy</strong>: the proposed fourth density, 5 px per unit (+25 %, the mirror of Compact for real). Opt-in; the default stays Comfortable. Every density scales the whole page as one piece.</li>
+    <li>The table does not grow. If you want it to, that is decision D-2 in the README.</li>
+  </ul>
+</div>
+
+</body>
+</html>

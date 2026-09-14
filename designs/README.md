@@ -37,3 +37,4 @@ The row below and the design README's own Status line must agree; the PR that ch
 |---|---|
 | [quality-checks](quality-checks/README.md) | In review – first `design-review` verdict FAIL (README §18); waiting for owner decisions and the fixes |
 | [decisions](decisions/README.md) | Draft – the owner-only decision gate ("Decisions" menu item, case cards, MCP blocking, scope check); waiting for the first `design-review` |
+| [design-system-air](design-system-air/README.md) | Draft – a design-system enhancement: rhythm tokens, looser between-block defaults, no hand-set pixels, a Roomy density; seven today-beside-proposed examples; five owner decisions open |
