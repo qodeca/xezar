@@ -3,7 +3,6 @@ import { execFile as execFileCallback, spawn, type ChildProcess } from 'node:chi
 import { once } from 'node:events';
 import { existsSync, lstatSync, readdirSync, realpathSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import test from 'node:test';
@@ -34,17 +33,6 @@ const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 
 const OLDER_RUN = '0b6f4c1e-7a51-4d2a-9f41-3c1b0d7e8a90';
 
-async function freePort(): Promise<number> {
-  const server = createServer();
-  server.listen(0, '127.0.0.1');
-  await once(server, 'listening');
-  const address = server.address();
-  server.close();
-  await once(server, 'close');
-  assert.ok(address && typeof address === 'object');
-  return address.port;
-}
-
 interface Cockpit {
   child: ChildProcess;
   port: number;
@@ -52,8 +40,8 @@ interface Cockpit {
   stop(signal?: NodeJS.Signals): Promise<void>;
 }
 
-function spawnCockpit(cliPath: string, repo: string, env: NodeJS.ProcessEnv, port: number): Cockpit {
-  const child = spawn(process.execPath, [cliPath, '--port', String(port), '--no-open', '--repo', repo], {
+function spawnCockpit(cliPath: string, repo: string, env: NodeJS.ProcessEnv): Cockpit {
+  const child = spawn(process.execPath, [cliPath, '--port', '0', '--no-open', '--repo', repo], {
     cwd: repo,
     env,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -63,7 +51,7 @@ function spawnCockpit(cliPath: string, repo: string, env: NodeJS.ProcessEnv, por
   child.stderr!.on('data', (chunk: Buffer) => (out += chunk.toString()));
   return {
     child,
-    port,
+    port: 0,
     output: () => out,
     async stop(signal: NodeJS.Signals = 'SIGTERM') {
       if (child.exitCode !== null || child.signalCode !== null) return;
@@ -80,10 +68,13 @@ async function request(port: number, path: string, init: RequestInit = {}): Prom
 
 async function waitHealthy(cockpit: Cockpit, timeoutMs = 60_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
+  const url = /cockpit → http:\/\/localhost:(\d+)/;
   while (Date.now() < deadline) {
     if (cockpit.child.exitCode !== null) {
       assert.fail(`the cockpit exited (${cockpit.child.exitCode}) before it was healthy:\n${cockpit.output()}`);
     }
+    const bound = url.exec(cockpit.output())?.[1];
+    if (bound) cockpit.port = Number(bound);
     try {
       if ((await request(cockpit.port, '/api/v1/health')).ok) return;
     } catch {
@@ -252,7 +243,7 @@ test('A-16: an upgraded cockpit stays usable with MCP state corrupt, deleted, af
       for (const file of MCP_STATE) await writeFile(join(dataDir, file), '{"left by": an older, broken xezar\n', 'utf8');
       await writeFile(join(home, 'config.json'), '{ not json', 'utf8');
 
-      const cockpit = spawnCockpit(cliPath, repo, env, await freePort());
+      const cockpit = spawnCockpit(cliPath, repo, env);
       cockpits.push(cockpit);
       try {
       await waitHealthy(cockpit);
@@ -285,7 +276,7 @@ test('A-16: an upgraded cockpit stays usable with MCP state corrupt, deleted, af
         'utf8',
       );
 
-      const cockpit = spawnCockpit(cliPath, repo, env, await freePort());
+      const cockpit = spawnCockpit(cliPath, repo, env);
       cockpits.push(cockpit);
       await waitHealthy(cockpit);
       await assertWorkingCockpit(cockpit, cliPath, repo, env, 'deleted MCP state after a hard restart');
@@ -299,7 +290,7 @@ test('A-16: an upgraded cockpit stays usable with MCP state corrupt, deleted, af
       assert.equal(lstatSync(join(ipc, sockets[0]!)).mode & 0o777, 0o600, 'the socket is private to the user');
 
       // No two project owners: a second cockpit for the same project refuses, the first carries on.
-      const second = spawnCockpit(cliPath, repo, env, await freePort());
+      const second = spawnCockpit(cliPath, repo, env);
       cockpits.push(second);
       const [code] = (await Promise.race([once(second.child, 'exit'), sleep(60_000).then(() => ['still running'])])) as [unknown];
       assert.notEqual(code, 0, `the second cockpit must not start as a second owner:\n${second.output()}`);

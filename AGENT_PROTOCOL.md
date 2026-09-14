@@ -150,6 +150,12 @@ Notable fields (full doc-comments in the source):
   sandbox: Codex uses `danger-full-access` with `approvalPolicy: never`, and
   OpenCode auto-approves every permission. Configurable restrictive modes are
   specified by `2026-07-17-permission-modes` (#475).
+- **Codex MCP isolation (#324):** before `thread/start` / `thread/resume` the
+  Codex runner calls `config/read` for the run's cwd and passes a `config`
+  override that switches off every MCP server not declared solely by the
+  project's `.codex/` layer, xezar's own bridge, and the `plugins` / `apps`
+  features (`codex-run-isolation.ts`). An app-server that cannot answer fails
+  the run closed. The other runners do not isolate MCP servers yet.
 - `sessionId?` / `resume?` — stable session id for interactive takeover and for
   `--resume` ("Continue" after a run ends).
 

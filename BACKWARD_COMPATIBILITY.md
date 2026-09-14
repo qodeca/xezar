@@ -100,6 +100,27 @@ What is protected now: **the shape of each route under `/api/v1`**, the three-wa
 
 Breaking: removing/renaming a route; making a previously optional body field required; removing a response field; changing an SSE event name (`run`, `run-event`, `run-deleted`, `todos`, `usage`, `ping` — or, on the workspace stream, `project-added`, `project-removed`, `checkout-progress`, `provider-status`) or the `seq` dedup contract; breaking the three-way alias parity (an unscoped `/api/v1/*` answer diverging in status, content type or body from its `/api/v1/p/<boot>`/`/api/v1/p/default` spellings); changing the scoped 404/409 project-resolution contract or the meaning of the `default` alias; stamping or widening the boot-project `/api/v1/events` stream; narrowing `/api/v1/health` CORS or its fields; changing `/new` query parameters (breaks saved bookmarklets); **dropping the legacy-flat → `/p/<boot>` page redirect** — or letting it lose the query/hash, which is the same break one step quieter; changing the meaning of the `default` page alias; moving a settings section without leaving its old URL redirecting to the new one. Required path: additive first; if removal is unavoidable, keep the old route/field answering for one minor release and note it in the CHANGELOG. `/new` deserves extra caution — it lives in users' browsers (saved bookmarklets), not in this repo.
 
+### Agent-config symlink refusal — deliberate, 2026-09-13 (#363)
+
+`GET/PUT /api/v1/agent-config/:id` (including project aliases) now returns 409
+with the existing `{ error: string }` body for a catalogued file symlink, including
+a dangling link, or a directory link below the configured agent home/repository
+that escapes that root. Previously reads served the target and writes followed it.
+Listings retain their shape: refused entries have `writable: false`, a
+`readOnlyReason`, `version: null`, `exists: false` and `size: 0`; those last two
+values describe no accessible config, not whether a link exists on disk. Personal
+layer seeding skips refused sources and destinations, preserving best-effort boot.
+
+This change must ship in the next minor release, with the README migration note.
+It intentionally narrows access to prevent a catalogued name exposing an
+uncatalogued credential file. Replace individual file links with regular config
+files to edit them. A symlink relocating the entire configured home remains
+supported: that canonical directory is the boundary. Internal directory links
+that stay within the boundary remain supported. Ordinary absent files, byte-exact
+round trips, stale-write refusal and hosted-mode restrictions are unchanged.
+Secrets explicitly stored inside ordinary config files (including MCP env/headers
+or pi's `httpProxy` URL) remain raw content; this is not a content-redaction API.
+
 ## 3. Project state files (`.local/xezar/`) (`packages/xezar/src/runs/store.ts` and friends)
 
 Written by one version, read by the next, and hand-editable by design:
@@ -388,6 +409,45 @@ unmodified. Git history and every commit message keep the old name. `CHANGELOG.m
 written before 0.10.1 keep the names that were true when they were written.
 
 ---
+
+## Codex runs load only the project's MCP servers (#324) — deliberate, 2026-09-13
+
+A Codex run xezar starts used to load every MCP server, plugin and app the account's own
+`$CODEX_HOME/config.toml` names, and `approvalPolicy: never` does not gate an MCP tool call — so a
+task agent could drive the person's browser or Messages app with no prompt. That is the F-1 class
+of hole #311 closed for shell access, and #324 closes it for Codex tools. Changing what a default
+run can reach is breaking under section 1's rule, so it is recorded here rather than silently:
+
+- **Broken**: the default tool set of a Codex task run. Before `thread/start` / `thread/resume` the
+  runner calls `config/read` for the run's cwd and passes a per-thread `config` override
+  (`packages/xezar/src/core/codex-run-isolation.ts`) that switches off every MCP server not
+  declared solely by the project's `.codex/` layer, xezar's own bridge even when the project
+  declares it (a task run is not the project's leader, #323), and the `plugins` and `apps`
+  features. A Codex CLI that cannot answer `config/read` now fails the run closed with a message
+  naming the reason, where it used to start.
+- **Not broken**: a server that only the project's trusted `.codex/config.toml` declares still
+  loads (a key the home config adds to it makes it the person's, and it is switched off); no
+  config file is read or written by xezar (the override lives only on the thread); Claude Code,
+  OpenCode and pi runs are unchanged; the v1/v2 event streams gain no type — the run transcript
+  gets one ordinary `note` naming the switched-off servers, and only when there were some.
+- **The bridge rule** (`isXezarBridge`): a server is xezar's bridge when it is named `xezar` (a
+  reserved name: an unrelated project server called that is switched off too, and renaming it is
+  the remedy), or when a word of its launch line — command and arguments split on whitespace,
+  quotes, shell punctuation and `=` — is the package `@qodeca/xezar[@version]`, a path inside an
+  installed copy, the CLI entry point `…/xezar/dist/index.js` or `…/xezar/src/index.ts`, or a
+  `xezar` / `xez` executable on a line that also names `mcp`. A wrapper script whose launch line
+  never mentions xezar is not seen; registering the bridge as `xezar` covers it.
+- **What provenance rests on**: a server counts as the project's when every origin Codex reports
+  for it is a `project` layer. xezar cannot require an origin for every key, because codex-cli
+  0.154.0 fills defaults (`enabled`, `environment_id`, `tool_timeout_sec`, an empty `args`) with no
+  origin; it relies on Codex reporting an origin for every key a config file set, as 0.154.0 does.
+- **Migration**: README § "Codex runs and MCP servers" — declare the server in the project's own
+  `.codex/config.toml`, keep the home config from adding keys to it, do not name it `xezar`, and
+  update a Codex CLI that cannot answer `config/read`. Released as part of a **minor** version.
+- **No opt-out knob**: the project's `.codex/config.toml` is the opt-in path, reviewed with the
+  code, so no stored key or `XEZ_*` variable was added (§ Zero config: prefer no knob).
+  `codex-app-server-runner.test.ts` (under `MOCK_CODEX_AMBIENT` / `MOCK_CODEX_CONFIG_READ_ERROR`)
+  pins the default; it fails against a runner that starts the thread without asking.
 
 ## When in doubt
 

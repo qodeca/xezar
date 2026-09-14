@@ -3,7 +3,6 @@ import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, closeSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
-import { createServer as createNetServer } from 'node:net';
 import { dirname, join, resolve } from 'node:path';
 import { after, before, describe, test, type TestContext } from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -825,16 +824,6 @@ class ScriptedEndpoint {
 
 // ---- the fixture ---------------------------------------------------------------------------
 
-const freePort = (): Promise<number> =>
-  new Promise((done, fail) => {
-    const probe = createNetServer();
-    probe.once('error', fail);
-    probe.listen(0, '127.0.0.1', () => {
-      const port = (probe.address() as { port: number }).port;
-      probe.close(() => done(port));
-    });
-  });
-
 async function waitFor<T>(what: string, probe: () => T | undefined | Promise<T | undefined>, timeoutMs = 20_000): Promise<T> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
@@ -868,7 +857,6 @@ interface ServeHandle {
 }
 
 async function startServe(root: string, home: string, name: string, agentHome: string): Promise<ServeHandle> {
-  const port = await freePort();
   const transcript = new Transcript(name);
   const env = isolatedEnv(process.env.HOME ?? '/', {
     XEZ_DRY_RUN: '1',
@@ -879,15 +867,18 @@ async function startServe(root: string, home: string, name: string, agentHome: s
     OPENCODE_CONFIG_DIR: join(agentHome, 'opencode'),
   });
   for (const dir of ['claude', 'codex', 'opencode']) mkdirSync(join(agentHome, dir), { recursive: true });
-  transcript.line('$', `node ${DIST_CLI} --repo ${root} --port ${port} --no-open`);
-  const child = spawn(process.execPath, [DIST_CLI, '--repo', root, '--port', String(port), '--no-open'], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] });
+  transcript.line('$', `node ${DIST_CLI} --repo ${root} --port 0 --no-open`);
+  const child = spawn(process.execPath, [DIST_CLI, '--repo', root, '--port', '0', '--no-open'], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] });
   children.add(child);
   for (const stream of [child.stdout!, child.stderr!]) {
     stream.on('data', (chunk: Buffer) => {
       for (const line of chunk.toString('utf8').split('\n').filter(Boolean)) transcript.line('log', line);
     });
   }
-  const base = `http://127.0.0.1:${port}`;
+  const base = await waitFor(`${name} bound port`, () => {
+    const match = /cockpit → http:\/\/localhost:(\d+)/.exec(readFileSync(transcript.path, 'utf8'));
+    return match?.[1] ? `http://127.0.0.1:${match[1]}` : undefined;
+  }, 60_000);
   await waitFor(`${name} health`, async () => {
     try {
       return (await fetch(`${base}/api/v1/health`)).ok || undefined;

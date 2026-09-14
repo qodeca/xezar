@@ -5,7 +5,7 @@ description: Diagnose and repair a bug
 
 # Diagnose and repair a bug
 
-Read run/history evidence first. Reproduce on the relevant release/current revision; show root cause, smallest fix and regression failing without the fix. Preserve load-bearing timeout/lock/default-path effects. Separate guards that pass both ways from the test that catches the bug.
+This is the workflow's only writing step: read run/history evidence first, reproduce on the relevant release/current revision, add the red test, apply the fix, run focused tests, and commit with `bash .xezar/checks/worktree-git.sh commit -m "fix: ..."` before ending with `XEZ:DONE`. Ending after a diagnosis alone fails readiness. Show the root cause, smallest fix and regression failing without the fix; preserve load-bearing timeout/lock/default-path effects, and separate guards that pass both ways from the test that catches the bug.
 
 Inputs: original trigger, affected release and predecessor evidence. Output: reproduced cause, minimal repair and red-without-fix proof distinguished from passing controls. If reproduction is unavailable, report unconfirmed hardening rather than claiming the original incident fixed.
 
