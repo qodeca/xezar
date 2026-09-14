@@ -90,36 +90,30 @@ window. That is why the route is an extension.
 - Nothing is ever lost while any of this is failing: the events stay in the project journal, and
   `leader_events` still reads them.
 
-## One thing to leave alone: `approveTools`
+## `approveTools`: who answers the dialog
 
 `pi-mcp-adapter` has an `approveTools` setting — a key in its own `mcp.json`, either under `settings`
-or on the `xezar` server entry, which overrides it. It makes a matching tool ask before it runs.
+or on the `xezar` server entry, which overrides it. It makes a matching tool ask before it runs: the
+gated call opens the extension's approval dialog (`extension_ui_request`, `method: "select"`, *Allow
+once / Allow for session / Deny*). That frame carries no `timeout`, so pi's `docs/rpc.md` says it
+blocks until the client on pi's RPC wire answers it. Who that client is decides what happens:
 
-**Do not put xezar's tools in it.** The gated call opens the extension's approval dialog
-(`extension_ui_request`, `method: "select"`, *Allow once / Allow for session / Deny*). That frame
-carries no `timeout`, so pi's `docs/rpc.md` says it blocks until something answers — and nothing in
-xezar does. You at your own pi window answer it yourself and nothing hangs. The two unattended cases
-end differently: a pi that xezar runs waits until the runner's own timeout kills it, measured at two
-minutes below; a leader reacting to an event while nobody is watching has nothing to end its wait at
-all, and waits for ever (one earlier run stopped only because its stdin closed, at 109 s —
-[#369](https://github.com/qodeca/xezar/issues/369)).
-
-Measured by #330 WP5's QA on 2026-09-12, through a real `xezar serve`:
-
-| Case | Outcome |
+| Where pi runs | Who answers |
 | --- | --- |
-| an ordinary pi task, on the runner's default tool list (no xezar tools offered), gate on | **done in 2.8 s — unaffected** |
-| a step whose own `allowedTools` names `xezar_health`, gate on | **failed at 121 s** — `pi CLI timed out after 2m and was killed` |
-| the same step, gate off | done in 3.0 s |
+| your own pi window | you, in the dialog pi shows |
+| a pi task xezar runs, interactive | the question shows in the task as a card with pi's own three choices; your answer goes back to pi on its own sub-protocol ([#369](https://github.com/qodeca/xezar/issues/369)) |
+| a pi task xezar runs, autonomous | xezar's pi runner answers *Deny* at once and records it in the transcript; the model is told the call was declined and the turn ends |
+| a headless pi that some other program drives over `--mode rpc` | that program — or nobody, and pi waits for ever |
 
-So it is **not** every pi task: the runner's default `--tools` allowlist offers the model no `xezar_*`
-tool, so the dialog never fires. It bites a call that really reaches a gated xezar tool.
+Before #369 xezar's pi runner was the last row: a step that reached a gated xezar tool died on the
+runner's timeout (measured at 121 s by #330 WP5's QA on 2026-09-12), and a leader turn nobody was
+watching waited for ever (one run stopped only because its stdin closed, at 109 s). The runner now
+answers the dialog; `packages/xezar/src/core/pi-dialog.ts` is the bridge, and the A-01 `approveTools`
+leg of `packages/xezar/test/integration/mcp-real-clients.test.ts` drives a real pi through it in both
+modes.
 
-`approveTools` is yours, not xezar's. The three xezar files on this path —
-`packages/xezar/src/core/pi-runner.ts`, `packages/xezar/scripts/pi-leader-extension.ts` and
-`packages/xezar/src/mcp/adapters/pi.ts` — never mention `approveTools` or `extension_ui_request`
-(read 2026-09-12 at `df828a0`), and the zero-config default sets no gate. The one place in this
-repository that sets the key is the acceptance test that measured the block, on its own fixture.
-**Leave xezar's tools ungated.** Making xezar answer the dialog,
-denying by default, is [#369](https://github.com/qodeca/xezar/issues/369), deliberately not in
-0.14.0.
+The limit that was true before is still true: the runner's default `--tools` allowlist offers the model
+no `xezar_*` tool, so an ordinary pi task never sees the dialog at all (2.8 s with the gate on, in the
+same QA). The dialog fires only for a call that really reaches a gated xezar tool. The leader extension
+itself (`packages/xezar/scripts/pi-leader-extension.ts`) still answers no dialog — it runs inside pi
+and is not pi's RPC client — so the last row is not xezar's to fix.

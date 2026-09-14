@@ -49,6 +49,21 @@
   and `--help` name the new repository.
 
 ## 🐛 Fixes
+- 🐛 **A xezar tool gated behind pi-mcp-adapter's `approveTools` no longer stalls a pi run.** (#369) pi's
+  approval dialog (`extension_ui_request`, `method: "select"`, no `timeout`) blocks pi until a client
+  answers it, and xezar's pi runner never did: a step that reached a gated tool died on the runner's
+  timeout, and a leader turn nobody was watching waited for ever. The runner now answers it. In an
+  autonomous run it refuses at once with `Deny` and records the refusal in the transcript, so the model
+  sees `approval_denied` and the turn ends. In an interactive run the dialog reaches the cockpit as a
+  question card carrying pi's own choices (Allow once / Allow for session / Deny), and the answer goes
+  back to pi on its own sub-protocol, correlated by the dialog's id; a reply that names none of them
+  dismisses the dialog rather than guessing. A choice longer than the card's 60-character label is
+  shown shortened and still answered with pi's full value, a choice with a comma in it is one
+  choice, and two choices that differ only by case are answered as the one clicked. A dialog the card cannot show (`input`, `editor`, or two choices that would read as one
+  label) is dismissed at once, and a dialog still open at session close or interrupt is dismissed before the
+  process is. pi-mcp-adapter's `notify` notices (`MCP: 1 servers connected`) now appear as transcript
+  notes. A pi that is never offered a xezar tool is unchanged, and a leader in your own pi window was
+  never affected; a headless pi that some other RPC client drives remains that client's to answer.
 - 🐛 **The `bug-fix` workflow now names and instructs its only writing step as the complete
   repair stage.** (#408) Agents are told to reproduce, add the red test, apply the fix, run
   focused tests and commit before finishing, instead of deferring the repair to a nonexistent

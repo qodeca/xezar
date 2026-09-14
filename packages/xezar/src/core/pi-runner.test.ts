@@ -478,6 +478,249 @@ describe('pi v1 text coalescing (claude parity, #151)', () => {
  * Node flips `killed` the moment a signal is DELIVERED, so a CLI that handles SIGTERM keeps
  * running with the flag already true, and an escalation gated on it never fires (#844).
  */
+/**
+ * #369: a pi extension dialog (`extension_ui_request` with a dialog method) BLOCKS pi until
+ * the client answers it on pi's own sub-protocol, and pi-mcp-adapter's `approveTools` gate
+ * emits one with no `timeout`. The runner used to ignore the frame, so a gated tool held the
+ * turn open for ever. The wire-faithful frame below is the one the A-01 harness recorded.
+ */
+describe('pi extension dialogs reach the cockpit and are answered on the wire (#369)', () => {
+  const APPROVAL_DIALOG = JSON.stringify({
+    type: 'extension_ui_request',
+    id: 'dlg-1',
+    method: 'select',
+    title: 'MCP: xezar wants to run health\n\nArguments:\n{}',
+    options: ['Allow once', 'Allow for session', 'Deny'],
+  });
+
+  afterEach(() => {
+    spawnHook.override = null;
+  });
+
+  /** A fake pi whose stdin is captured, so what the runner wrote back is assertable. */
+  function scriptedPi(): {
+    child: ChildProcessWithoutNullStreams;
+    write: (line: string) => void;
+    finish: (code: number) => void;
+    /** Every frame the runner wrote to pi, parsed. */
+    written: () => Array<Record<string, unknown>>;
+  } {
+    const stdin = new PassThrough();
+    const stdout = new PassThrough();
+    const stderr = new PassThrough();
+    let captured = '';
+    stdin.on('data', (chunk: Buffer | string) => {
+      captured += chunk.toString();
+    });
+    const emitter = new EventEmitter();
+    const child = Object.assign(emitter, {
+      stdin,
+      stdout,
+      stderr,
+      pid: 4242,
+      exitCode: null as number | null,
+      signalCode: null as NodeJS.Signals | null,
+      killed: false,
+      kill: () => {
+        Object.assign(child, { killed: true });
+        return true;
+      },
+    }) as unknown as ChildProcessWithoutNullStreams;
+    return {
+      child,
+      write: (line: string) => stdout.write(`${line}\n`),
+      finish: (code: number) => {
+        Object.assign(child, { exitCode: code });
+        stdout.end();
+        emitter.emit('close', code, null);
+      },
+      written: () => captured.split('\n').filter(Boolean).map((line) => JSON.parse(line) as Record<string, unknown>),
+    };
+  }
+
+  const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+  it('raises the dialog as an ask card and routes the answer back as extension_ui_response', async () => {
+    const fake = scriptedPi();
+    spawnHook.override = () => fake.child;
+    const events: AgentEvent[] = [];
+    const uiEvents: UiEvent[] = [];
+    const session = new PiRunner({ bin: 'pi', timeoutMs: 20_000 }).startSession(
+      { userPrompt: 'CALL health', cwd: process.cwd() },
+      (event) => events.push(event),
+      { onUiEvent: (event) => uiEvents.push(event) },
+    );
+    fake.write(APPROVAL_DIALOG);
+    await tick();
+
+    const ask = uiEvents.find((event) => event.type === 'ask.requested');
+    expect(ask).toBeDefined();
+    if (!ask || ask.type !== 'ask.requested') return;
+    expect(ask.requestId).toBe('pi-dlg-1');
+    expect(ask.questions[0]?.options.map((option) => option.label)).toEqual(['Allow once', 'Allow for session', 'Deny']);
+    // Nothing was written back yet: the dialog waits for the user, not for a guess.
+    expect(fake.written().filter((frame) => frame.type === 'extension_ui_response')).toEqual([]);
+
+    // The cockpit's reply seam delivers `<header>: <label>` (ask-card.tsx).
+    expect(session.sendMessage([{ type: 'text', text: 'Approval: Deny' }])).toBe(true);
+    const frames = fake.written();
+    expect(frames.filter((frame) => frame.type === 'extension_ui_response')).toEqual([
+      { type: 'extension_ui_response', id: 'dlg-1', value: 'Deny' },
+    ]);
+    // …and it did NOT become a second prompt: the turn pi is blocked on is still the first.
+    expect(frames.filter((frame) => frame.type === 'prompt')).toHaveLength(1);
+
+    fake.write(JSON.stringify({ type: 'agent_settled' }));
+    fake.finish(0);
+    await session.result;
+    expect(events.some((event) => event.type === 'note' && /answered "Deny"/.test(event.message))).toBe(true);
+  });
+
+  it('sends pi the exact choice behind the card label — a comma inside it and a label shortened to fit both survive (#411 review)', async () => {
+    const fake = scriptedPi();
+    spawnHook.override = () => fake.child;
+    const uiEvents: UiEvent[] = [];
+    const session = new PiRunner({ bin: 'pi', timeoutMs: 20_000 }).startSession(
+      { userPrompt: 'CALL health', cwd: process.cwd() },
+      undefined,
+      { onUiEvent: (event) => uiEvents.push(event) },
+    );
+    const long = 'Allow for the whole session and never ask again'.padEnd(61, '.');
+    expect(long).toHaveLength(61);
+    fake.write(
+      JSON.stringify({ type: 'extension_ui_request', id: 'dlg-2', method: 'select', title: 'MCP: xezar wants to run health', options: ['Allow, once', long, 'Deny'] }),
+    );
+    await tick();
+    const ask = uiEvents.find((event) => event.type === 'ask.requested');
+    if (!ask || ask.type !== 'ask.requested') throw new Error('expected an ask card');
+    const labels = ask.questions[0]?.options.map((option) => option.label) ?? [];
+    expect(labels[0]).toBe('Allow, once');
+    expect(labels[1]).toHaveLength(60);
+
+    // The card's reply seam sends the label it showed; pi must get the value it offered.
+    expect(session.sendMessage([{ type: 'text', text: `Approval: ${labels[1]}` }])).toBe(true);
+    expect(fake.written().filter((frame) => frame.type === 'extension_ui_response')).toEqual([
+      { type: 'extension_ui_response', id: 'dlg-2', value: long },
+    ]);
+
+    fake.write(
+      JSON.stringify({ type: 'extension_ui_request', id: 'dlg-3', method: 'select', title: 'MCP: xezar wants to run health', options: ['Allow, once', long, 'Deny'] }),
+    );
+    await tick();
+    expect(session.sendMessage([{ type: 'text', text: 'Approval: Allow, once' }])).toBe(true);
+    expect(fake.written().filter((frame) => frame.type === 'extension_ui_response').at(-1)).toEqual({
+      type: 'extension_ui_response',
+      id: 'dlg-3',
+      value: 'Allow, once',
+    });
+    fake.write(JSON.stringify({ type: 'agent_settled' }));
+    fake.finish(0);
+    await session.result;
+  });
+
+  it('sends pi the case-distinct choice the card named, not its case-twin (#411 review round 2)', async () => {
+    const fake = scriptedPi();
+    spawnHook.override = () => fake.child;
+    const uiEvents: UiEvent[] = [];
+    const session = new PiRunner({ bin: 'pi', timeoutMs: 20_000 }).startSession(
+      { userPrompt: 'CALL health', cwd: process.cwd() },
+      undefined,
+      { onUiEvent: (event) => uiEvents.push(event) },
+    );
+    fake.write(
+      JSON.stringify({ type: 'extension_ui_request', id: 'dlg-4', method: 'select', title: 'MCP: xezar wants to run health', options: ['Allow', 'allow', 'Deny'] }),
+    );
+    await tick();
+    const ask = uiEvents.find((event) => event.type === 'ask.requested');
+    if (!ask || ask.type !== 'ask.requested') throw new Error('expected an ask card');
+    expect(ask.questions[0]?.options.map((option) => option.label)).toEqual(['Allow', 'allow', 'Deny']);
+
+    // Clicking the second card option must reach pi's second choice.
+    expect(session.sendMessage([{ type: 'text', text: 'Approval: allow' }])).toBe(true);
+    expect(fake.written().filter((frame) => frame.type === 'extension_ui_response')).toEqual([
+      { type: 'extension_ui_response', id: 'dlg-4', value: 'allow' },
+    ]);
+    fake.write(JSON.stringify({ type: 'agent_settled' }));
+    fake.finish(0);
+    await session.result;
+  });
+
+  it('refuses at once in an autonomous session, and records the refusal', async () => {
+    const fake = scriptedPi();
+    spawnHook.override = () => fake.child;
+    const events: AgentEvent[] = [];
+    const uiEvents: UiEvent[] = [];
+    const session = new PiRunner({ bin: 'pi', timeoutMs: 20_000 }).startSession(
+      { userPrompt: 'CALL health', cwd: process.cwd() },
+      (event) => events.push(event),
+      { onUiEvent: (event) => uiEvents.push(event), autonomous: true },
+    );
+    fake.write(APPROVAL_DIALOG);
+    await tick();
+
+    expect(fake.written().filter((frame) => frame.type === 'extension_ui_response')).toEqual([
+      { type: 'extension_ui_response', id: 'dlg-1', value: 'Deny' },
+    ]);
+    // No card: an autonomous run never parks `waiting` on a question nobody will answer.
+    expect(uiEvents.some((event) => event.type === 'ask.requested')).toBe(false);
+    expect(events.some((event) => event.type === 'note' && /autonomous run.*answered "Deny"/.test(event.message))).toBe(true);
+
+    fake.write(JSON.stringify({ type: 'agent_settled' }));
+    fake.finish(0);
+    await session.result;
+  });
+
+  it('dismisses a dialog the card cannot show instead of leaving pi blocked on it', async () => {
+    const fake = scriptedPi();
+    spawnHook.override = () => fake.child;
+    const events: AgentEvent[] = [];
+    const session = new PiRunner({ bin: 'pi', timeoutMs: 20_000 }).startSession(
+      { userPrompt: 'do it', cwd: process.cwd() },
+      (event) => events.push(event),
+    );
+    fake.write(JSON.stringify({ type: 'extension_ui_request', id: 'in-1', method: 'input', title: 'Enter a value' }));
+    await tick();
+    expect(fake.written().filter((frame) => frame.type === 'extension_ui_response')).toEqual([
+      { type: 'extension_ui_response', id: 'in-1', cancelled: true },
+    ]);
+    expect(events.some((event) => event.type === 'note' && /dismissed a "input"/.test(event.message))).toBe(true);
+    fake.finish(0);
+    await session.result;
+  });
+
+  it('dismisses a pending dialog at session close, so pi ends its turn on its own protocol', async () => {
+    const fake = scriptedPi();
+    spawnHook.override = () => fake.child;
+    const session = new PiRunner({ bin: 'pi', timeoutMs: 20_000 }).startSession({ userPrompt: 'do it', cwd: process.cwd() });
+    fake.write(APPROVAL_DIALOG);
+    await tick();
+    session.end();
+    expect(fake.written().filter((frame) => frame.type === 'extension_ui_response')).toEqual([
+      { type: 'extension_ui_response', id: 'dlg-1', cancelled: true },
+    ]);
+    fake.finish(0);
+    await session.result;
+  });
+
+  it('GUARD: a fire-and-forget notify gets no response — pi expects none (passes with and without the fix)', async () => {
+    const fake = scriptedPi();
+    spawnHook.override = () => fake.child;
+    const uiEvents: UiEvent[] = [];
+    const session = new PiRunner({ bin: 'pi', timeoutMs: 20_000 }).startSession(
+      { userPrompt: 'do it', cwd: process.cwd() },
+      undefined,
+      { onUiEvent: (event) => uiEvents.push(event) },
+    );
+    fake.write(JSON.stringify({ type: 'extension_ui_request', id: 'n-1', method: 'notify', message: 'MCP: xezar connected', notifyType: 'info' }));
+    fake.write(JSON.stringify({ type: 'extension_ui_request', id: 's-1', method: 'setStatus', statusKey: 'mcp', statusText: 'ok' }));
+    await tick();
+    expect(fake.written().filter((frame) => frame.type === 'extension_ui_response')).toEqual([]);
+    expect(uiEvents.some((event) => event.type === 'ask.requested')).toBe(false);
+    fake.finish(0);
+    await session.result;
+  });
+});
+
 describe('pi wall-clock timeout escalates SIGTERM -> SIGKILL (D)', () => {
   function signallableChild(): {
     child: ChildProcessWithoutNullStreams;

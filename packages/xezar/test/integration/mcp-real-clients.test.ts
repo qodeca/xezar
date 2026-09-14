@@ -16,6 +16,9 @@ import {
 } from '@qodeca/xezar-contract';
 
 import { PROJECT_A, PROJECT_B, XEZAR_VERSION, createAbWorld, leaked, type AbWorld } from '../helpers/ab-fixture.ts';
+import type { AgentEvent } from '../../src/core/agent-runner.ts';
+import { PiRunner } from '../../src/core/pi-runner.ts';
+import type { UiEvent } from '../../src/core/ui-events.ts';
 import { ProjectOwnership } from '../../src/workspace/project-owner.ts';
 import { runVersion } from '../../src/mcp/stale-write.ts';
 
@@ -1269,11 +1272,6 @@ class PiRpc {
     this.child.stdin!.write(`${line}\n`);
   }
 
-  /** pi's dialog requests, in order. In RPC mode these BLOCK pi until the client answers them. */
-  uiRequests(): any[] {
-    return this.events.filter((e) => e?.type === 'extension_ui_request' && typeof e.method === 'string');
-  }
-
   /** Every notice the adapter pushed into pi's UI channel — where a connection refusal shows up. */
   notices(): string[] {
     return this.events
@@ -1569,16 +1567,19 @@ describe('A-01 — connection provisioning and one-time setup, per officially su
 /**
  * #330's PI-08 edge path: "a user `approveTools` → a named `approval_required` state, not a hang".
  * `approveTools` is pi-mcp-adapter's own key, the only one that keeps a tool visible while stopping it
- * from running, and a leader reacting to an event has nobody at the keyboard. So the question is not
- * "is the reason named" — it is "does the turn END".
+ * from running. The gate is a pi extension dialog (`extension_ui_request`, `method: "select"`) with
+ * no `timeout`, and pi's own `docs/rpc.md` § Extension UI Requests says such a dialog "blocks until
+ * the client sends back an `extension_ui_response`" — so the question is not "is the reason named",
+ * it is "does the turn END". Before #369 nothing in xezar answered one: measured here on `7aa4a02`,
+ * the raw RPC session never settled, and only a hand-written `Deny` ended it (`approval_denied`).
  *
- * Two phases, because the difference between them is the whole finding:
- *   1. Nobody answers. This is the leader-while-away case.
- *   2. The client answers `Deny`, through pi's extension-UI sub-protocol.
+ * Since #369 the client on that wire is xezar's own pi runner, so this leg drives a REAL pi through
+ * `PiRunner` — the product, not a harness stand-in — in the two modes a xezar run has:
+ *   1. Autonomous: nobody is watching, so the runner must refuse at once and record it.
+ *   2. Interactive: the dialog must reach the cockpit as an ask card carrying pi's own options, and
+ *      the card's answer must go back as the correlated `extension_ui_response`.
  *
- * pi's own `docs/rpc.md` § Extension UI Requests says a dialog method "blocks until the client sends
- * back an `extension_ui_response`", and auto-resolves only when the request carries a `timeout`. So
- * whether phase 1 ends is decided by whether that field is there, and that is read from the frame.
+ * Red without the fix: phase 1 never settles within its bound and phase 2 emits no ask card.
  */
 describe('A-01 — edge paths that must name their reason (#330 PI-08)', () => {
   test('[pi] a tool the person gated behind approval fails closed with a named reason, not a hang', async (t) => {
@@ -1588,88 +1589,150 @@ describe('A-01 — edge paths that must name their reason (#330 PI-08)', () => {
     }
     const { world, endpoint } = fx;
     const transcript = new Transcript('a01-pi-approvetools');
-    const pi = makePiHome('approve', fx.piInstall!, { xezHome: world.home, endpointPort: endpoint.port });
-    // The one difference from the A-01 leg: the person gated `health` behind approval.
-    const entryFile = join(pi.agentDir, 'mcp.json');
-    const config = JSON.parse(readFileSync(entryFile, 'utf8')) as { mcpServers: { xezar: Record<string, unknown> } };
-    config.mcpServers.xezar.approveTools = ['health'];
-    writeFileSync(entryFile, `${JSON.stringify(config, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
-    const free = await waitForProjectFree('a01-pi-approve', world.a.root, bridgeEnv(world, join(pi.home, 'probe')), 30_000);
-    const rpc = new PiRpc(fx.clients.pi.bin, piArgs(pi), { cwd: world.a.root, env: pi.env, transcript });
-    const settles = (): number => rpc.events.filter((e) => e?.type === 'agent_settled').length;
-    let dialog: any;
-    let endedUnanswered = false;
-    let endedAfterDeny = false;
-    let denied: unknown = 'the dialog never arrived, so nothing was answered';
-    try {
-      await waitForNotice(rpc, 120_000);
-      const answer = await rpc.request('prompt', { message: 'CALL health' }, 30_000);
-      if (answer.success) {
-        // Phase 1. The gate must produce a NAMED request; whether the turn can end without an answer
-        // is decided by the `timeout` field, so wait past a generous one and then read the frame.
-        dialog = await waitFor('pi to ask for approval', () => rpc.uiRequests().find((r) => /approv|wants to run/i.test(`${r.title ?? ''} ${r.method}`)), 90_000).catch(() => undefined);
-        endedUnanswered = await waitFor('the unanswered turn to end', () => (settles() > 0 ? true : undefined), 30_000)
-          .then(() => true)
-          .catch(() => false);
-        // Phase 2. Answer it the way pi documents, and see the turn close.
-        if (dialog && !endedUnanswered) {
-          rpc.send({ type: 'extension_ui_response', id: dialog.id, value: 'Deny' });
-          endedAfterDeny = await waitFor('the answered turn to end', () => (settles() > 0 ? true : undefined), 60_000)
-            .then(() => true)
-            .catch(() => false);
-          const ended = rpc.events.find((e) => e?.type === 'tool_execution_end');
-          denied = ended ? { isError: ended.isError, text: JSON.stringify(ended.result).slice(0, 300) } : 'the turn ended with no tool_execution_end';
-        }
-      }
-    } finally {
-      await rpc.close();
-    }
-    const checks: Check[] = [
-      { name: 'project A is free before this client connects', required: "the previous client's ownership was released", observed: free.occupied ? `still occupied after ${free.freeAfterMs} ms` : `free after ${free.freeAfterMs} ms`, ok: !free.occupied },
-      {
-        name: 'the gate names what it is asking for',
-        required: 'a dialog naming the server and the tool, not a generic failure',
-        observed: dialog ? { method: dialog.method, title: String(dialog.title ?? '').slice(0, 120), options: dialog.options } : 'no approval dialog was emitted',
-        ok: dialog !== undefined && /xezar/.test(String(dialog.title ?? '')) && /health/.test(String(dialog.title ?? '')),
-      },
-      {
-        name: 'the gated call does not hang when nobody can answer',
-        required: 'the turn ends on its own — a leader reacting to an event has nobody at the keyboard (PI-08: "not a hang")',
-        observed: {
-          turnEnded: endedUnanswered,
-          // pi auto-resolves a dialog ONLY when the request carries `timeout` (docs/rpc.md § Extension
-          // UI Requests). Read from the frame, so the cause is in the record and not inferred.
-          dialogTimeout: dialog === undefined ? 'no dialog' : (dialog.timeout ?? 'absent — pi will not auto-resolve'),
-        },
-        ok: endedUnanswered,
-      },
-      {
-        name: 'answering it closes the turn, and the refusal is reported',
-        required: '`extension_ui_response` with `Deny` ends the turn and the model is told the call was refused',
-        observed: { endedAfterDeny, result: denied },
-        ok: endedAfterDeny && /den|refus|not allow|reject/i.test(JSON.stringify(denied)),
-      },
-    ];
+    const bin = fx.clients.pi.bin;
+    const checks: Check[] = [];
+
+    // Phase 1 — autonomous. A cold pi home of its own, gated exactly as the person would gate it.
+    const auto = gatedPiHome('approve-auto');
+    const freeAuto = await waitForProjectFree('a01-pi-approve-auto', world.a.root, bridgeEnv(world, join(auto.home, 'probe')), 30_000);
+    checks.push({ name: 'project A is free before the autonomous pi connects', required: "the previous client's ownership was released", observed: freeAuto.occupied ? `still occupied after ${freeAuto.freeAfterMs} ms` : `free after ${freeAuto.freeAfterMs} ms`, ok: !freeAuto.occupied });
+    const autonomous = await drivePiRunner({ bin, pi: auto, cwd: world.a.root, transcript, autonomous: true });
+    checks.push({
+      name: 'an autonomous run refuses the gate at once, and the turn ends',
+      required: 'no question is raised (nobody is watching), an explicit refusal is recorded, and pi settles within 30 s (PI-08: "not a hang")',
+      observed: { turnEnded: autonomous.turnEnded, askCards: autonomous.asks.length, refusal: autonomous.refusalNote ?? 'no refusal recorded', result: autonomous.toolResult },
+      ok: autonomous.turnEnded && autonomous.asks.length === 0 && autonomous.refusalNote !== undefined && /declin|den|refus|not allow|reject/i.test(JSON.stringify(autonomous.toolResult)),
+    });
+
+    // Phase 2 — interactive. Another cold home; the first pi's bridge must have let A go first.
+    const inter = gatedPiHome('approve-ask');
+    const freeInter = await waitForProjectFree('a01-pi-approve-ask', world.a.root, bridgeEnv(world, join(inter.home, 'probe')), 30_000);
+    checks.push({ name: 'project A is free before the interactive pi connects', required: "the autonomous pi's ownership was released", observed: freeInter.occupied ? `still occupied after ${freeInter.freeAfterMs} ms` : `free after ${freeInter.freeAfterMs} ms`, ok: !freeInter.occupied });
+    const interactive = await drivePiRunner({ bin, pi: inter, cwd: world.a.root, transcript, autonomous: false, reply: 'Approval: Deny' });
+    const ask = interactive.asks[0];
+    const question = ask?.questions[0];
+    checks.push({
+      name: 'the gate reaches the cockpit as a question naming the server and the tool, with pi’s own options',
+      required: "an `ask.requested` whose question names `xezar` and `health` and whose options are the adapter's Allow once / Allow for session / Deny",
+      observed: question ? { requestId: ask!.requestId, header: question.header, question: question.question.slice(0, 120), options: question.options.map((o) => o.label) } : 'no ask card was emitted',
+      ok: question !== undefined && /xezar/.test(question.question) && /health/.test(question.question) && question.options.map((o) => o.label).join('|') === 'Allow once|Allow for session|Deny',
+    });
+    checks.push({
+      name: 'answering the card closes the turn, and the refusal is reported',
+      required: 'the reply goes back as the correlated `extension_ui_response`, the turn ends, and the model is told the call was refused',
+      observed: { turnEnded: interactive.turnEnded, answered: interactive.answerNote ?? 'no answer recorded', result: interactive.toolResult },
+      ok: interactive.turnEnded && interactive.answerNote !== undefined && /declin|den|refus|not allow|reject/i.test(JSON.stringify(interactive.toolResult)),
+    });
+
+    const passed = checks.every((c) => c.ok === true);
     const entry = record({
       case: 'A-01',
       client: 'pi (approveTools)',
       verdict: verdictOf(checks),
-      summary: endedUnanswered
-        ? 'a gated tool call ended on its own and named approval as the reason'
-        : 'a gated tool call BLOCKS: pi emits a named approval dialog with no `timeout` and waits for an answer that a headless leader has nobody to give',
-      ...(endedUnanswered
+      summary: passed
+        ? 'a gated tool call ends with a named refusal in both modes: refused at once when autonomous, answered from the cockpit card when interactive'
+        : 'a gated tool call still BLOCKS or is not surfaced: pi emits a named approval dialog with no `timeout`, and xezar’s pi runner must answer it',
+      ...(passed
         ? {}
         : {
             missing:
-              "an answerer for pi's extension-UI dialogs, or setup guidance that says not to gate xezar's tools. pi's `docs/rpc.md` says a dialog blocks until the client sends `extension_ui_response`, and auto-resolves only with a `timeout` this one does not carry. Nothing in xezar answers one: `core/pi-runner.ts`, `scripts/pi-leader-extension.ts` and `mcp/adapters/pi.ts` never mention `extension_ui_request`. Answering `Deny` here did end the turn, so the block is an unanswered dialog and not a lost call.",
+              "an answerer for pi's extension-UI dialogs in `core/pi-runner.ts` (#369): pi's `docs/rpc.md` says a dialog blocks until the client sends `extension_ui_response`, and auto-resolves only with a `timeout` this one does not carry. Autonomous runs must refuse explicitly; interactive runs must raise `ask.requested` and route the reply back by the dialog's id.",
           }),
       checks,
       transcripts: [transcript.name],
-      fixture: { pi: `${fx.clients.pi.version} + pi-mcp-adapter ${fx.piInstall!.version}`, setting: "the xezar entry's `approveTools: ['health']`, headless RPC session (nobody to approve)" },
+      fixture: { pi: `${fx.clients.pi.version} + pi-mcp-adapter ${fx.piInstall!.version}, driven by xezar's own PiRunner`, setting: "the xezar entry's `approveTools: ['health']`; one cold pi home per phase" },
     });
     settle(t, entry);
   });
 });
+
+/** A pi home like the A-01 leg's, with the one difference: the person gated `health` behind approval. */
+function gatedPiHome(label: string): PiClientHome {
+  const pi = makePiHome(label, fx.piInstall!, { xezHome: fx.world.home, endpointPort: fx.endpoint.port });
+  const entryFile = join(pi.agentDir, 'mcp.json');
+  const config = JSON.parse(readFileSync(entryFile, 'utf8')) as { mcpServers: { xezar: Record<string, unknown> } };
+  config.mcpServers.xezar.approveTools = ['health'];
+  writeFileSync(entryFile, `${JSON.stringify(config, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
+  return pi;
+}
+
+interface PiRunnerDrive {
+  /** The gated turn ended (`turn-end`) within its bound. */
+  turnEnded: boolean;
+  asks: Array<Extract<UiEvent, { type: 'ask.requested' }>>;
+  /** The runner's own note for an autonomous refusal, if it wrote one. */
+  refusalNote?: string;
+  /** The runner's own note for a routed answer, if it wrote one. */
+  answerNote?: string;
+  /** The gated tool's result as the model saw it. */
+  toolResult: unknown;
+}
+
+/**
+ * One real pi under xezar's own `PiRunner`, over an interactive session (no auto-end) so a second
+ * turn can be sent. The opening turn is a plain greeting: the adapter connects on a cold cache while
+ * that turn runs, and its connection notice — surfaced by the runner as a `pi: MCP: …` note — is
+ * what says the gated tool is now offered. `CALL health` goes as the second turn; the scripted
+ * endpoint turns it into a call of the one offered tool whose name ends in `_health`.
+ */
+async function drivePiRunner(opts: { bin: string; pi: PiClientHome; cwd: string; transcript: Transcript; autonomous: boolean; reply?: string }): Promise<PiRunnerDrive> {
+  const { transcript } = opts;
+  const events: AgentEvent[] = [];
+  const asks: PiRunnerDrive['asks'] = [];
+  const env = Object.fromEntries(Object.entries(opts.pi.env).filter((pair): pair is [string, string] => typeof pair[1] === 'string'));
+  transcript.line('$', `PiRunner(${opts.bin}) --mode rpc --model ${opts.pi.modelId}   (cwd ${opts.cwd}, autonomous ${opts.autonomous})`);
+  const runner = new PiRunner({ bin: opts.bin, timeoutMs: 0 });
+  const session = runner.startSession(
+    { userPrompt: 'hello', cwd: opts.cwd, env, model: opts.pi.modelId },
+    (event) => {
+      events.push(event);
+      transcript.line('v1', JSON.stringify(event).slice(0, 1_000));
+    },
+    {
+      autonomous: opts.autonomous,
+      onUiEvent: (event) => {
+        transcript.line('v2', JSON.stringify(event).slice(0, 1_000));
+        if (event.type === 'ask.requested') asks.push(event);
+      },
+    },
+  );
+  const turnEnds = (): number => events.filter((e) => e.type === 'turn-end').length;
+  const notes = (): string[] => events.flatMap((e) => (e.type === 'note' ? [e.message] : []));
+  let turnEnded = false;
+  try {
+    await waitFor('the pi-mcp-adapter connection notice', () => notes().find((m) => /MCP: /.test(m)), 120_000).catch(() => undefined);
+    await waitFor('the opening turn to end', () => (turnEnds() >= 1 ? true : undefined), 60_000).catch(() => undefined);
+    session.sendMessage([{ type: 'text', text: 'CALL health' }]);
+    if (opts.autonomous) {
+      turnEnded = await waitFor('the autonomous gated turn to end', () => (turnEnds() >= 2 ? true : undefined), 30_000)
+        .then(() => true)
+        .catch(() => false);
+    } else {
+      const ask = await waitFor('the approval ask card', () => asks[0], 90_000).catch(() => undefined);
+      if (ask && opts.reply !== undefined) {
+        session.sendMessage([{ type: 'text', text: opts.reply }]);
+        turnEnded = await waitFor('the answered turn to end', () => (turnEnds() >= 2 ? true : undefined), 60_000)
+          .then(() => true)
+          .catch(() => false);
+      }
+    }
+  } finally {
+    session.end();
+    const quit = await Promise.race([session.result.then(() => true, () => true), delay(15_000, false, { ref: false })]);
+    if (!quit) {
+      session.interrupt();
+      await session.result.catch(() => undefined);
+    }
+  }
+  const result = events.find((e): e is Extract<AgentEvent, { type: 'tool-result' }> => e.type === 'tool-result');
+  return {
+    turnEnded,
+    asks,
+    refusalNote: notes().find((m) => /refused an extension dialog/.test(m)),
+    answerNote: notes().find((m) => /^pi: answered /.test(m)),
+    toolResult: result ? { isError: result.isError, text: String(result.result).slice(0, 300) } : 'the turn ended with no tool-result',
+  };
+}
 
 /** The adapter's own startup notice: how a pi says its MCP entry connected, or did not. */
 const waitForNotice = (rpc: PiRpc, timeoutMs: number): Promise<string | undefined> =>
