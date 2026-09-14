@@ -110,6 +110,7 @@ fix: If the leader is working, nothing is needed. Otherwise check that Claude Co
   instead of the previous team skill names, and the optional `xez-*` collection only where a
   document describes it. Links to the pre-rename issue tracker were replaced with plain
   `pre-rename issue n` text across the maintained documents.
+- 📝 Leader dogfooding record of the 2026-09-13 MCP campaign: findings, trust ledger per model, gate cost, close-out and numbers (`docs/features/mcp-server/leader-dogfooding-2026-09-13.md`).
 
 ## 🐛 Bug Fixes
 - 🐛 **Two project-kit readiness checks no longer fail correctly-completed work.** (#356, #402)
