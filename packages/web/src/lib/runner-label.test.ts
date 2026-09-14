@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { modelLabel, RUNNER_LABEL, runnerLabel, stepBackendCount, taskRunner } from './runner-label'
+import { modelLabel, resumeCommand, RUNNER_LABEL, runnerLabel, stepBackendCount, taskRunner } from './runner-label'
 
 describe('RUNNER_LABEL', () => {
   it('names every backend the contract knows, and nothing else', () => {
@@ -82,5 +82,24 @@ describe('modelLabel', () => {
     // '' is the composer's own auto sentinel and the contract permits it, so it must not render
     // as a blank cell on one surface and `auto` on the other.
     expect(modelLabel('')).toEqual({ text: 'auto', auto: true })
+  })
+})
+
+describe('resumeCommand', () => {
+  it('returns the correct CLI command for every backend', () => {
+    expect(resumeCommand('claude', 'abc123')).toBe('claude --resume abc123')
+    expect(resumeCommand('codex', 'abc123')).toBe('codex resume abc123')
+    expect(resumeCommand('opencode', 'abc123')).toBe('opencode --session abc123')
+    expect(resumeCommand('pi', 'abc123')).toBe('pi --session abc123')
+  })
+
+  it('treats undefined runner as claude for backward compatibility', () => {
+    expect(resumeCommand(undefined, 'abc123')).toBe('claude --resume abc123')
+  })
+
+  it('returns undefined for invalid session ids', () => {
+    expect(resumeCommand('claude', '')).toBeUndefined()
+    expect(resumeCommand('pi', 'foo bar')).toBeUndefined()
+    expect(resumeCommand('claude', 'abc\x00123')).toBeUndefined()
   })
 })

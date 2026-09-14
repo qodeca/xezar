@@ -1,4 +1,4 @@
-import type { Runner } from '@qodeca/xezar-api-client'
+import { resumeCommand as sharedResumeCommand, type Runner } from '@qodeca/xezar-api-client'
 
 /**
  * The product name behind each backend id — ONE definition for the whole cockpit.
@@ -88,4 +88,11 @@ export function taskRunner(
   // 'claude' is the last resort only while the project's config is in flight — the same fallback
   // the run header uses, and the same default `config.defaultRunner` itself carries.
   return { runner: projectDefault ?? 'claude', inherited: true }
+}
+
+/** The CLI command to resume a specific session interactively — exact text the paste target needs.
+ *  The Node-free contract helper owns both validation and the exhaustive backend mapping, so the
+ *  cockpit and service cannot drift. Undefined preserves legacy records; unsafe ids fail closed. */
+export function resumeCommand(runner: Runner | undefined, sessionId: string): string | undefined {
+  return sharedResumeCommand(runner, sessionId) ?? undefined
 }

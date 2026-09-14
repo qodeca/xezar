@@ -1,6 +1,7 @@
-import type { RunRecord, RunStatus, Runner } from '@qodeca/xezar-api-client'
+import type { RunRecord, RunStatus } from '@qodeca/xezar-api-client'
 import { cliTargetRunner } from '@/components/open-in-menu'
 import { canBeUnread, isUnread } from '@/lib/read-state'
+import { resumeCommand as getResumeCommand } from '@/lib/runner-label'
 
 export { cliTargetRunner }
 
@@ -24,32 +25,15 @@ export function lastSessionId(run: RunRecord): string | undefined {
   return [...run.steps].reverse().find((step) => step.sessionId)?.sessionId
 }
 
-/**
- * The session id shapes the backends mint — the mirror of the server's `SAFE_SESSION_ID`
- * (server.ts, #431). Kept in lockstep by hand: the cockpit bundles separately from the
- * server, so it cannot import it. Widen both or neither.
- */
-const SAFE_SESSION_ID = /^[A-Za-z0-9._][A-Za-z0-9._-]{0,199}$/
-
-/** The per-backend take-over command — mirrors the server's `resumeCommand` (server.ts), and
- *  like it treats records without a runner as Claude (they predate the choice).
+/** The per-backend take-over command — re-exported from runner-label.ts as the single source
+ *  of truth. Treats records without a runner as Claude (they predate the choice).
  *
  *  Undefined for an id the server would refuse (#431): this string is offered to the user as a
  *  one-click copy for pasting into a terminal, so it is a shell splice of an agent-recorded id
  *  exactly like the server's take-over command. Validate rather than quote, for the same reason
  *  the server does — the paste target may be bash OR cmd.exe, and no charset here is special to
  *  either. Fails closed: no hint beats a hint that runs `rm -rf ~` on paste. */
-export function resumeCommand(runner: Runner | undefined, sessionId: string): string | undefined {
-  if (!SAFE_SESSION_ID.test(sessionId)) return undefined
-  switch (runner) {
-    case 'codex':
-      return `codex resume ${sessionId}`
-    case 'opencode':
-      return `opencode --session ${sessionId}`
-    default:
-      return `claude --resume ${sessionId}`
-  }
-}
+export const resumeCommand = getResumeCommand
 
 /** The copyable "take over interactively" line under the header — only once the engine has
  *  let go of the session (same gate as the Terminal button). Prefixes the `cd` when the run

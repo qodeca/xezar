@@ -30,6 +30,8 @@ import { jsonZodValidator, optionalJsonZodValidator, paramZodValidator, queryZod
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod';
 import {
+  isSafeSessionId,
+  resumeCommand,
   setWorkspaceUiStateInputSchema,
   type GroupResponse,
   type GroupVariant,
@@ -37,6 +39,7 @@ import {
   type RunIndexEntry,
   type RunsIndexResponse,
 } from '@qodeca/xezar-contract';
+export { isSafeSessionId, resumeCommand };
 // A contract VALUE, like `workspaceUiStateSchema` in workspace/migrations.ts — the request
 // schema this route validates with is the same one the client compiles against.
 import {
@@ -6146,48 +6149,4 @@ function resolveWebDir(): string {
   const here = dirname(fileURLToPath(import.meta.url));
   // here = <pkg>/dist/server (built) or <pkg>/src/server (tsx dev).
   return join(here, '..', '..', 'web');
-}
-
-/**
- * The session id shape every backend actually mints: UUIDs (claude/codex) and
- * the CLIs' own slug-ish ids. No character here is special to bash, AppleScript
- * OR cmd.exe, and a leading `-` is refused so the id can never be read as an
- * option by the CLI it is passed to (same dash-guard as `isSafeGitRef`, #431).
- * Bounded, like every other input that reaches a spawned process.
- */
-const SAFE_SESSION_ID = /^[A-Za-z0-9._][A-Za-z0-9._-]{0,199}$/;
-
-/** True for session ids safe to splice into the take-over command (see above). */
-export function isSafeSessionId(sessionId: string): boolean {
-  return SAFE_SESSION_ID.test(sessionId);
-}
-
-/**
- * The CLI command that reopens a run's session for interactive take-over, per
- * backend. Legacy/undefined records default to Claude. Returns null when the id
- * is not a shape we recognise — callers degrade (no take-over) rather than
- * splice it into a shell.
- *
- * Validate, don't quote (#431): the session id is the only variable spliced
- * into the command string, and `openInTerminal` runs that string through bash
- * on darwin/linux but through `cmd /K` on win32. cmd.exe does not treat `'` as
- * a quote character, so POSIX-quoting the id handed Windows users a literal
- * `claude --resume '9f8e…'` and Claude answered "no conversation found".
- * Constraining the charset to one with no metacharacter in ANY of those shells
- * needs no quoting at all and fails closed on an unexpected id — a stronger
- * guarantee than escaping, and platform-independent. Ids are UUID/CLI-minted
- * today; this keeps a future source safe.
- */
-export function resumeCommand(runner: string | undefined, sessionId: string): string | null {
-  if (!isSafeSessionId(sessionId)) return null;
-  switch (runner) {
-    case 'codex':
-      return `codex resume ${sessionId}`;
-    case 'opencode':
-      return `opencode --session ${sessionId}`;
-    case 'pi':
-      return `pi --session ${sessionId}`;
-    default:
-      return `claude --resume ${sessionId}`;
-  }
 }
