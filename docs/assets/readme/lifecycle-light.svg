@@ -5,14 +5,14 @@
 <rect x="0" y="0" width="1200" height="360" rx="0" fill="#ffffff" stroke="#ffffff"/>
 <text x="40" y="46" font-size="30" font-weight="600" fill="#171717">A task’s life</text>
 <rect x="40" y="82" width="196" height="62" rx="12" fill="#ffffff" stroke="#ebebeb"/>
-<circle cx="62" cy="113" r="5" fill="#5c5c5c"/>
+<circle cx="62" cy="113" r="5" fill="#a3a3a3"/>
 <text x="80" y="122" font-size="28" font-weight="600" fill="#171717">Queued</text>
 <rect x="292" y="82" width="196" height="62" rx="12" fill="#ffffff" stroke="#ebebeb"/>
 <circle cx="314" cy="113" r="5" fill="#8f86e8"/>
 <text x="332" y="122" font-size="28" font-weight="600" fill="#171717">Running</text>
 <rect x="544" y="82" width="196" height="62" rx="12" fill="#ffffff" stroke="#ebebeb"/>
 <circle cx="566" cy="113" r="5" fill="#8f86e8"/>
-<text x="584" y="122" font-size="28" font-weight="600" fill="#171717">(Review)</text>
+<text x="584" y="122" font-size="28" font-weight="600" fill="#171717">Review</text>
 <rect x="796" y="82" width="196" height="62" rx="12" fill="#ffffff" stroke="#ebebeb"/>
 <circle cx="818" cy="113" r="5" fill="#10b981"/>
 <text x="836" y="122" font-size="28" font-weight="600" fill="#171717">Done</text>
@@ -27,8 +27,9 @@
 <text x="546" y="176" font-size="22" font-weight="400" fill="#5c5c5c">Optional · off by default</text>
 <path d="M354 144V217H210" fill="none" stroke="#5c5c5c" stroke-width="2" marker-start="url(#back)" marker-end="url(#arrow)"/>
 <rect x="40" y="188" width="170" height="54" rx="12" fill="#ffffff" stroke="#ebebeb"/>
-<text x="62" y="224" font-size="26" font-weight="400" fill="#171717">Waiting</text>
-<path d="M432 144V217H486" fill="none" stroke="#5c5c5c" stroke-width="2"/>
+<circle cx="62" cy="217" r="5" fill="#fbbf24"/>
+<text x="80" y="224" font-size="26" font-weight="400" fill="#171717">Waiting</text>
+<path d="M432 144V217H486" marker-end="url(#arrow)" fill="none" stroke="#5c5c5c" stroke-width="2"/>
 <rect x="486" y="190" width="166" height="54" rx="12" fill="#ffffff" stroke="#ebebeb"/>
 <circle cx="509" cy="217" r="5" fill="#ef4444"/>
 <text x="526" y="226" font-size="26" font-weight="400" fill="#171717">Failed</text>

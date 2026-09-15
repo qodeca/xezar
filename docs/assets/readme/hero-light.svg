@@ -1,9 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="400" viewBox="0 0 1280 400" role="img" aria-labelledby="title desc" style="font-family: ui-sans-serif, system-ui, sans-serif">
-<title id="title">xezar — parallel coding agents</title>
+<title id="title">xezar – parallel coding agents</title>
 <desc id="desc">A stylised cockpit with sidebar, parallel task table, and live thread. Illustrative content, not a screenshot.</desc>
 <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1L9 5L1 9" fill="none" stroke="#5c5c5c" stroke-width="1.5"/></marker><marker id="back" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1L9 5L1 9" fill="none" stroke="#5c5c5c" stroke-width="1.5"/></marker></defs>
 <rect x="0" y="0" width="1280" height="400" rx="0" fill="#ffffff" stroke="#ffffff"/>
-<g transform="translate(40 28) scale(.30)"><path d="M0 24C0 10.7452 10.7452 0 24 0H152C165.255 0 176 10.7452 176 24V152C176 165.255 165.255 176 152 176H24C10.7452 176 0 165.255 0 152V24Z" fill="#a8f372"/><g stroke="#0d0d0d" stroke-width="21" stroke-linecap="round"><path d="M55 51L121 125"/><path d="M121 51L55 125"/></g></g>
+<g transform="translate(40 28) scale(.30)"><path d="M0 24C0 10.7452 10.7452 0 24 0H152C165.255 0 176 10.7452 176 24V152C176 165.255 165.255 176 152 176H24C10.7452 176 0 165.255 0 152V24Z" fill="url(#xezar_mark)"/>
+  <g stroke="#14121F" stroke-width="21" stroke-linecap="round">
+    <path d="M55 51L121 125"/>
+    <path d="M121 51L55 125"/>
+  </g>
+  <defs>
+    <linearGradient id="xezar_mark" x1="176" y1="-40" x2="20" y2="190" gradientUnits="userSpaceOnUse">
+      <stop offset="0.08" stop-color="#8B5CF6"/>
+      <stop offset="0.55" stop-color="#38BDF8"/>
+      <stop offset="1" stop-color="#5EEAD4"/>
+    </linearGradient>
+  </defs></g>
 <text x="110" y="68" font-size="38" font-weight="650" fill="#171717">xezar</text>
 <text x="40" y="126" font-size="38" font-weight="600" fill="#171717">Run parallel coding agents from one local cockpit</text>
 <rect x="40" y="158" width="1200" height="218" rx="12" fill="#ffffff" stroke="#ebebeb"/>
@@ -22,7 +33,7 @@
 <circle cx="266" cy="284" r="5" fill="#8f86e8"/>
 <text x="284" y="292" font-size="24" font-weight="400" fill="#171717">Check the changes</text>
 <text x="609" y="292" font-size="22" font-weight="400" fill="#5c5c5c">Running</text>
-<circle cx="266" cy="332" r="5" fill="#5c5c5c"/>
+<circle cx="266" cy="332" r="5" fill="#a3a3a3"/>
 <text x="284" y="340" font-size="24" font-weight="400" fill="#171717">Write the guide</text>
 <text x="609" y="340" font-size="22" font-weight="400" fill="#5c5c5c">Queued</text>
 <rect x="770" y="216" width="442" height="58" rx="12" fill="#f7f7f7" stroke="#ebebeb"/>

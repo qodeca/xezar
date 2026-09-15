@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="640" viewBox="0 0 1200 640" role="img" aria-labelledby="title desc" style="font-family: ui-sans-serif, system-ui, sans-serif">
 <title id="title">How xezar works</title>
-<desc id="desc">The browser sends tasks to the local service and receives events. The service drives agent CLIs, which edit git worktrees. Branches and pull requests reach GitHub via gh. A Claude Code leader attaches to the service over MCP and receives pushed events.</desc>
+<desc id="desc">The browser sends tasks to the local service and receives events. The service drives agent CLIs, which edit git worktrees and push branches. The service accesses GitHub issues and PRs via gh. A project leader (MCP) can use Claude Code, Codex, OpenCode or pi to exchange tools and events with the service.</desc>
 <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1L9 5L1 9" fill="none" stroke="#5c5c5c" stroke-width="1.5"/></marker><marker id="back" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1L9 5L1 9" fill="none" stroke="#5c5c5c" stroke-width="1.5"/></marker></defs>
 <rect x="0" y="0" width="1200" height="640" rx="0" fill="#ffffff" stroke="#ffffff"/>
 <text x="40" y="58" font-size="34" font-weight="600" fill="#171717">One local cockpit. Your tools around it.</text>
@@ -12,7 +12,7 @@
 <text x="470" y="156" font-size="28" font-weight="600" fill="#171717">xezar service</text>
 <text x="470" y="194" font-size="22" font-weight="400" fill="#5c5c5c">Local · 127.0.0.1</text>
 <text x="470" y="224" font-size="22" font-weight="400" fill="#5c5c5c">.local/xezar/</text>
-<rect x="868" y="118" width="292" height="142" rx="12" fill="#ffffff" stroke="#ebebeb"/>
+<rect x="868" y="118" width="312" height="142" rx="12" fill="#ffffff" stroke="#ebebeb"/>
 <text x="890" y="156" font-size="28" font-weight="600" fill="#171717">Agent CLIs</text>
 <text x="890" y="194" font-size="22" font-weight="400" fill="#5c5c5c">Claude Code · Codex · pi</text>
 <text x="890" y="224" font-size="22" font-weight="400" fill="#5c5c5c">OpenCode experimental</text>
@@ -22,24 +22,26 @@
 <path d="M760 183H868" fill="none" stroke="#5c5c5c" stroke-width="2" marker-start="url(#back)" marker-end="url(#arrow)"/>
 <text x="775" y="151" font-size="24" font-weight="400" fill="#5c5c5c">Task</text>
 <text x="768" y="223" font-size="24" font-weight="400" fill="#5c5c5c">Events</text>
-<rect x="40" y="426" width="360" height="142" rx="12" fill="#ffffff" stroke="#ebebeb"/>
-<text x="62" y="464" font-size="28" font-weight="600" fill="#171717">MCP leader</text>
-<text x="62" y="502" font-size="22" font-weight="400" fill="#5c5c5c">Claude Code session</text>
+<rect x="40" y="426" width="450" height="142" rx="12" fill="#ffffff" stroke="#ebebeb"/>
+<text x="62" y="464" font-size="28" font-weight="600" fill="#171717">Project leader (MCP)</text>
+<text x="62" y="502" font-size="22" font-weight="400" fill="#5c5c5c">Claude Code, Codex, OpenCode or pi</text>
 <text x="62" y="532" font-size="22" font-weight="400" fill="#5c5c5c">Attached over MCP</text>
-<rect x="490" y="426" width="290" height="142" rx="12" fill="#ffffff" stroke="#ebebeb"/>
-<text x="512" y="464" font-size="28" font-weight="600" fill="#171717">GitHub</text>
-<text x="512" y="502" font-size="22" font-weight="400" fill="#5c5c5c">Issues · PRs · CI</text>
-<text x="512" y="532" font-size="22" font-weight="400" fill="#5c5c5c">via gh</text>
+<rect x="550" y="426" width="250" height="142" rx="12" fill="#ffffff" stroke="#ebebeb"/>
+<text x="572" y="464" font-size="28" font-weight="600" fill="#171717">GitHub</text>
+<text x="572" y="502" font-size="22" font-weight="400" fill="#5c5c5c">Issues · PRs · CI</text>
+<text x="572" y="532" font-size="22" font-weight="400" fill="#5c5c5c">via gh</text>
 <rect x="870" y="426" width="290" height="142" rx="12" fill="#ffffff" stroke="#ebebeb"/>
 <text x="892" y="464" font-size="28" font-weight="600" fill="#171717">Git worktrees</text>
 <text x="892" y="502" font-size="22" font-weight="400" fill="#5c5c5c">Isolated task branches</text>
 <text x="892" y="532" font-size="22" font-weight="400" fill="#5c5c5c">xez/&lt;id8&gt;</text>
 <path d="M200 426V333H604V260" fill="none" stroke="#5c5c5c" stroke-width="2" marker-start="url(#back)" marker-end="url(#arrow)"/>
-<text x="214" y="317" font-size="24" font-weight="400" fill="#5c5c5c">Task / events pushed</text>
+<text x="214" y="317" font-size="24" font-weight="400" fill="#5c5c5c">Tools · events</text>
 <path d="M1014 260V426" fill="none" stroke="#5c5c5c" stroke-width="2" marker-start="url(#back)" marker-end="url(#arrow)"/>
 <text x="1030" y="333" font-size="24" font-weight="400" fill="#5c5c5c">Edits</text>
 <text x="1030" y="367" font-size="24" font-weight="400" fill="#5c5c5c">Diff</text>
-<path d="M780 496H870" fill="none" stroke="#5c5c5c" stroke-width="2" marker-start="url(#back)" marker-end="url(#arrow)"/>
-<text x="808" y="474" font-size="24" font-weight="400" fill="#5c5c5c">PR</text>
+<path d="M800 496H870" fill="none" stroke="#5c5c5c" stroke-width="2" marker-start="url(#back)" marker-end="url(#arrow)"/>
+<text x="803" y="474" font-size="24" font-weight="400" fill="#5c5c5c">Push</text>
+<path d="M680 260V426" fill="none" stroke="#5c5c5c" stroke-width="2" marker-start="url(#back)" marker-end="url(#arrow)"/>
+<text x="696" y="374" font-size="24" fill="#5c5c5c">via gh</text>
 <text x="40" y="616" font-size="24" font-weight="400" fill="#5c5c5c">Local orchestration · Agent providers and GitHub use their own connections</text>
 </svg>
