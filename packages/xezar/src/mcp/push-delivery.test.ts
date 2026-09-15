@@ -305,13 +305,21 @@ function claudeAgent(root: string) {
       input.write(encodeFrame({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: withOperationId(name, args) } }));
     });
   };
+  /** The whole JSON-RPC answer, for a call that may be refused with an error rather than a result. */
+  const callMessage = (name: string, args: Record<string, unknown>): Promise<{ result?: McpToolResult; error?: { code: number } }> => {
+    const id = next++;
+    return new Promise((resolve) => {
+      pending.set(id, (message) => resolve(message as { result?: McpToolResult; error?: { code: number } }));
+      input.write(encodeFrame({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: withOperationId(name, args) } }));
+    });
+  };
   /** Open the session as Claude Code: this is what makes it the channel-capable owner. */
   const initialize = async (): Promise<unknown> => {
     const result = await rpc('initialize', { protocolVersion: '2025-11-25', clientInfo: { name: 'claude-code' } });
     input.write(encodeFrame({ jsonrpc: '2.0', method: 'notifications/initialized' }));
     return result;
   };
-  return { initialize, call, channels, end };
+  return { initialize, call, callMessage, channels, end };
 }
 
 const journalRows = (dataDir: string): McpJournalRow[] => {
@@ -333,6 +341,12 @@ async function until<T>(what: string, probe: () => T | undefined | Promise<T | u
 const okResult = (result: McpToolResult): McpToolResult => {
   expect(result.isError, JSON.stringify(result)).toBeFalsy();
   return result;
+};
+
+const auditActions = (dataDir: string): string[] => {
+  const path = join(dataDir, 'mcp-audit.ndjson');
+  if (!existsSync(path)) return [];
+  return readFileSync(path, 'utf8').split('\n').filter(Boolean).map((line) => (JSON.parse(line) as { action: string }).action);
 };
 
 const attach = (c: Cockpit, baseUrl: string) => c.human('POST', '/mcp/leader', { action: 'attach', client: 'opencode', baseUrl, sessionId: SESSION });
@@ -866,6 +880,97 @@ describe('#309 — push delivery in the running service (A-19 delivery, A-20 no-
     expect(((await refused.json()) as { error: string }).error).toMatch(/cannot write this project’s event journal/);
     expect(oc.submissions).toHaveLength(0);
   });
+
+  it('#450 T-21: a Claude Code leader attaches itself over MCP, and acks a pushed event with the cursor it names — no read, no HTTP', async () => {
+    // RED against: dropping `next_cursor` from `channelMeta` — the leader has no cursor to ack with.
+    const c = await cockpit();
+    await serve(c);
+    const leader = claudeAgent(c.root);
+    await leader.initialize();
+    await until('the owner session’s controller', async () => ((await c.status()) as { delivery: unknown }).delivery !== null || undefined);
+
+    // AC-1: the leader attaches ITSELF. No `/api/v1/mcp/leader` request anywhere in this case.
+    const attached = okResult(await leader.call('leader_events', { action: 'attach' }));
+    expect(attached.structuredContent).toMatchObject({ ok: true, outcome: 'attached', status: { leader: { client: 'claude-code', state: 'attached' }, canPush: true, self: { client: 'claude-code', isOwner: true, attached: true } } });
+    expect(await c.status()).toMatchObject({ leader: { client: 'claude-code', state: 'attached' } });
+
+    // One row to push: a person changes a setting in the cockpit.
+    expect((await c.human('PUT', '/config', { baseBranch: 'develop' })).status).toBe(200);
+    const change = await until('the config row', () => journalRows(c.dataDir).find((row) => row.kind === 'config.changed' && row.origin === 'human'));
+    const frame = await until('the channel push', () => leader.channels.find((f) => f.content.includes(change.eventId)));
+    // AC-2: the pushed message names its cursor, in `meta` and in the text.
+    const cursor = frame.meta?.next_cursor;
+    expect(cursor).toMatch(/.+/);
+    expect(frame.content).toContain(`cursor ${cursor}`);
+
+    // Ack straight from the pushed cursor.
+    const acked = okResult(await leader.call('leader_events', { action: 'ack', cursor }));
+    expect(acked.structuredContent).toMatchObject({ status: 'acked', ackedSeq: Number(frame.meta?.last_seq) });
+    const status = okResult(await leader.call('leader_events', { action: 'status' }));
+    expect(status.structuredContent).toMatchObject({ delivery: { ackedSeq: Number(frame.meta?.last_seq) }, self: { attached: true } });
+    const actions = auditActions(c.dataDir);
+    expect(actions).toContain('leaderEvents.attach');
+    expect(actions).toContain('leaderEvents.ack');
+    expect(actions).not.toContain('leaderEvents.read');
+  }, 60_000);
+
+  it('#450 T-22: in hosted mode the MCP door refuses attach and stop, and status says xezar cannot push', async () => {
+    // RED against: skipping the hosted check in `attachSession`.
+    const c = await cockpit();
+    const handle = await startMcpService({ projectId: c.id, version: VERSION, service: c.app, store: c.store, warn: () => {}, leader: { heartbeatMs: 500 }, localHandoff: () => false });
+    closers.push(() => handle.close());
+    const leader = claudeAgent(c.root);
+    await leader.initialize();
+    for (const action of ['attach', 'stop']) {
+      const refused = await leader.call('leader_events', { action });
+      expect(refused.isError).toBe(true);
+      expect(refused.structuredContent).toMatchObject({ ok: false, code: 'hosted-mode' });
+    }
+    const status = okResult(await leader.call('leader_events', { action: 'status' }));
+    expect(status.structuredContent).toMatchObject({ canPush: false, pushUnavailable: { code: 'hosted-mode' }, leader: null });
+  }, 60_000);
+
+  it('#450 T-18: an attachment ends with the xezar process; the leader hears once, attaches again, and a reused key only replays', async () => {
+    // RED against: persisting and restoring the attachment across a restart (then status would still
+    // say attached, and the guidance "attach again" would be wrong).
+    const c = await cockpit();
+    const first = await serve(c);
+    const leader = claudeAgent(c.root);
+    await leader.initialize();
+    await until('the owner session’s controller', async () => ((await c.status()) as { delivery: unknown }).delivery !== null || undefined);
+    const reused = 'op-restart-attach-0001';
+    okResult(await leader.call('leader_events', { action: 'attach', operationId: reused }));
+    expect(okResult(await leader.call('leader_events', { action: 'status' })).structuredContent).toMatchObject({ leader: { client: 'claude-code' }, self: { attached: true } });
+
+    // The cockpit restarts.
+    first.close();
+    // AC-13: the idle leader is told once, by its own bridge.
+    const notice = await until('the bridge notice', () => leader.channels.find((f) => f.meta?.notice === 'service-disconnected'));
+    expect(notice.content).toContain('call leader_events with action status, and attach again if it says this session is not attached');
+    await serve(c);
+
+    // The first call reaches the new service under the old session: session-expired, and a new session opens.
+    const expired = await leader.callMessage('leader_events', { action: 'status' });
+    expect(expired.error?.code).toBe(-32081);
+    const after = okResult(await leader.call('leader_events', { action: 'status' }));
+    // Observed: the attachment did not survive.
+    expect(after.structuredContent).toMatchObject({ leader: null, self: { attached: false }, blocker: { code: 'no-leader-session' } });
+    expect(leader.channels.filter((f) => f.meta?.notice === 'service-disconnected')).toHaveLength(1);
+
+    // Nothing is pushed to it while nothing is attached.
+    expect((await c.human('PUT', '/config', { baseBranch: 'develop' })).status).toBe(200);
+    const change = await until('the config row', () => journalRows(c.dataDir).find((row) => row.kind === 'config.changed' && row.origin === 'human'));
+    await new Promise((r) => setTimeout(r, 1_200));
+    expect(leader.channels.some((f) => f.content.includes(change.eventId))).toBe(false);
+
+    // The documented hazard: the pre-restart key replays its receipt and attaches nothing.
+    await leader.call('leader_events', { action: 'attach', operationId: reused });
+    expect(okResult(await leader.call('leader_events', { action: 'status' })).structuredContent).toMatchObject({ leader: null, self: { attached: false } });
+
+    // A new key attaches, and the waiting row is pushed.
+    okResult(await leader.call('leader_events', { action: 'attach' }));
+    await until('the waiting row to be pushed', () => leader.channels.find((f) => f.content.includes(change.eventId)));
+  }, 60_000);
 
   it('ends delivery with the service, and reports no delivery for a project whose MCP service is not running', async () => {
     const c = await cockpit();
