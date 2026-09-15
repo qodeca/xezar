@@ -79,13 +79,14 @@ describe('health topic + cache (live-server path)', () => {
     writeFileSync(join(repoRoot, '.xezar/config.json'), JSON.stringify({ defaultRunner: runner }));
   };
 
-  const build = () => {
+  const build = (channel?: ServerDeps['channel']) => {
     const { hub, topics } = stubHub();
     const deps: ServerDeps = {
       repoRoot,
       store,
       manager: {} as RunManager,
       version: '0.0.0-test',
+      ...(channel ? { channel } : {}),
       socketHub: hub,
     };
     return { app: createApp(deps), topics };
@@ -259,6 +260,24 @@ describe('health topic + cache (live-server path)', () => {
     const viaSocket = await health.snapshot();
     const response = await apiRequest(app, '/api/v1/health');
     expect(await response.json()).toEqual(viaSocket);
+  }, TEST_BUDGET_MS);
+
+  it('carries the install channel on the topic and on GET, release when the boot passes none (#442)', async () => {
+    setRunner('claude');
+    const { app, topics } = build('dev');
+    currentApp = app;
+    await settle();
+
+    const health = topics.get('health');
+    if (!health) throw new Error('no health topic registered');
+    expect((await health.snapshot()) as { channel?: string }).toMatchObject({ channel: 'dev' });
+    const response = await apiRequest(app, '/api/v1/health');
+    expect(((await response.json()) as { channel?: string }).channel).toBe('dev');
+
+    const plain = createApp({ repoRoot, store, manager: {} as RunManager, version: '0.0.0-test' });
+    currentApp = plain;
+    const fallback = await apiRequest(plain, '/api/v1/health');
+    expect(((await fallback.json()) as { channel?: string }).channel).toBe('release');
   }, TEST_BUDGET_MS);
 
   it('shares one compute between concurrent reads (in-flight dedupe)', async () => {

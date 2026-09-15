@@ -26,6 +26,7 @@ import type { McpConnectionState } from './mcp-connection-state'
 
 const HEALTH: HealthResponse = {
   version: '0.14.0',
+  channel: 'release',
   projects: [{ id: 'boot', name: 'boot' }],
   bootProject: 'boot',
   repoRoot: '/home/me/Projects/a-rather-long-directory-name/that-keeps-going/boot',
