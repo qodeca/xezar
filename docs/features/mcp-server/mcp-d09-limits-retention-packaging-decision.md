@@ -1,10 +1,14 @@
 # D-09 – operational limits, retention and packaging
 
+> **Status update — 2026-09-15:** Implemented; B-row bounds live in `packages/xezar/src/mcp` and
+> `packages/contract/src/mcp-*.ts`. The dated spike is superseded for implementation status, with unresolved
+> measurements recorded below.
+
 Spike record for [#84](https://github.com/qodeca/xezar/issues/84) (Phase 2, [#69](https://github.com/qodeca/xezar/issues/69); epic [#67](https://github.com/qodeca/xezar/issues/67)). Decision date **2026-09-10**, against `main` at `057ea48`.
 
-This is a **spike**. It records a decision and its evidence and ships no production surface. Nothing here is implemented. No prototype code is committed; the throwaway measurement script stayed in the task's temporary directory.
+This is a **spike**. It records a decision and its evidence and ships no production surface. Implemented; see the status update above. No prototype code is committed; the throwaway measurement script stayed in the task's temporary directory.
 
-It closes row **D-09** of [§ 10 Open decisions](mcp-project-leader-requirements.md#10-open-decisions) and serves **N-06**, **N-07** and **F-17**. Its job is to be **the one place the MCP feature's numbers are written down**. An implementing issue that needs a bound cites a `B-` row below. It does not pick its own.
+It closes row **D-09** of [§ 10 Open decisions](mcp-project-leader-requirements.md#10-decisions) and serves **N-06**, **N-07** and **F-17**. Its job is to be **the one place the MCP feature's numbers are written down**. An implementing issue that needs a bound cites a `B-` row below. It does not pick its own.
 
 ## How to read the labels
 
@@ -184,14 +188,14 @@ Hosted mode changes nothing here: the socket stays local to the host, and MCP ap
 - Codex configuration reference ([learn.chatgpt.com/docs/config-file/config-reference](https://learn.chatgpt.com/docs/config-file/config-reference)): `startup_timeout_sec` default 10 s; `tool_timeout_sec` default 60 s; `tools.<tool>.output_token_limit` exists with no default stated.
 - OpenCode MCP servers ([opencode.ai/docs/mcp-servers](https://opencode.ai/docs/mcp-servers/)): `timeout` 5 000 ms for fetching tools; no tool-output limit documented.
 
-**Peer records**, read from their task branches on 2026-09-10 and not re-run here. They were not yet merged, so they are cited by filename and issue rather than linked:
+**Peer records**, read from their task branches on 2026-09-10 and not re-run here. They have since merged; the links retain the original evidence:
 
 | Record | Issue | Values adopted |
 | --- | --- | --- |
-| `mcp-d01-transport-decision.md` | [#79](https://github.com/qodeca/xezar/issues/79) | B-12 timings, B-16, B-34, `xez mcp` |
-| `mcp-d02-session-binding-decision.md` | [#80](https://github.com/qodeca/xezar/issues/80) | B-13, B-14, B-15, the 900 ms self-block tolerance in B-08 |
-| `mcp-d05-async-event-contract-decision.md` | [#82](https://github.com/qodeca/xezar/issues/82) | B-01 page size, B-02, B-11, B-17, B-18, B-19, B-20 |
-| `mcp-d06-versioning-idempotency-audit-decision.md` | [#83](https://github.com/qodeca/xezar/issues/83) | B-21, B-22, the B-23 proposal |
+| [mcp-d01-transport-decision.md](mcp-d01-transport-decision.md) | [#79](https://github.com/qodeca/xezar/issues/79) | B-12 timings, B-16, B-34, `xez mcp` |
+| [mcp-d02-session-binding-decision.md](mcp-d02-session-binding-decision.md) | [#80](https://github.com/qodeca/xezar/issues/80) | B-13, B-14, B-15, the 900 ms self-block tolerance in B-08 |
+| [mcp-d05-async-event-contract-decision.md](mcp-d05-async-event-contract-decision.md) | [#82](https://github.com/qodeca/xezar/issues/82) | B-01 page size, B-02, B-11, B-17, B-18, B-19, B-20 |
+| [mcp-d06-versioning-idempotency-audit-decision.md](mcp-d06-versioning-idempotency-audit-decision.md) | [#83](https://github.com/qodeca/xezar/issues/83) | B-21, B-22, the B-23 proposal |
 
 No conflict was found between them. D-05's 30 s `ping` and D-02's 30 s lease are different layers: the ping checks the client, the lease bounds a silent owner, and neither triggers the other.
 
@@ -206,9 +210,9 @@ No conflict was found between them. D-05's 30 s `ping` and D-02's 30 s lease are
 | ID | What | Why it is not fixed | Who closes it |
 | --- | --- | --- | --- |
 | U-1 | How many tokens 40 000 bytes of a real MCP result are in each client; Codex's default output truncation; any OpenCode output limit | No tokenizer is installed here, and measuring through a live model would spend a real account's turns, which the phase forbids. Codex and OpenCode document no default | [#85](https://github.com/qodeca/xezar/issues/85) with a real transcript; [#91](https://github.com/qodeca/xezar/issues/91) lowers B-01 in this table if a client warns or truncates |
-| U-2 | Audit retention count | No real activity rate exists (E5) | [#102](https://github.com/qodeca/xezar/issues/102) |
-| U-3 | Real `xez mcp` startup time | The bridge does not exist yet | [#86](https://github.com/qodeca/xezar/issues/86), against B-12 |
-| U-4 | Windows named-pipe path and permissions; Linux `sun_path` | Not measured on either platform | [#86](https://github.com/qodeca/xezar/issues/86) |
+| U-2 | Audit retention count | No retention count is implemented (`audit-trail.ts`); E5 is the dated measurement | Unowned since #102 closed |
+| U-3 | Real `xez mcp` startup time | The bridge is built; this record has no later startup measurement | Unowned since #86 closed; measure against B-12 |
+| U-4 | Windows named-pipe path and permissions; Linux `sun_path` | Linux limit is 107 bytes in `ipc.ts`; Windows is unsupported and the bridge reports unavailable | #86 closed; Windows support remains unbuilt |
 | U-5 | Claude Code `MCP_TIMEOUT` default | Not stated in the documentation | [#85](https://github.com/qodeca/xezar/issues/85) |
 | U-6 | Load: concurrent calls and event volume | Nothing was measured at volume (also D-01's open item 8) | [#86](https://github.com/qodeca/xezar/issues/86)–[#89](https://github.com/qodeca/xezar/issues/89); a cap is added here only with a measurement |
 
