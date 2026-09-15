@@ -9,8 +9,8 @@ explicitly leaves the MCP clauses to this page.
 
 ## Answer first
 
-**Seven of the eight clauses hold as of 2026-09-15. One does not: clause 2.** The gate still does not
-close green.
+**Eight of the eight clauses hold as of 2026-09-15 — seven on evidence, one (clause 2) by the project
+owner's acceptance.** Clause 2 is not met on one revision, and this record does not say it is.
 
 - **Clause 3 now holds for every client in scope.** A real model reacted to a delivered xezar event
   for **pi** (2026-09-13, `7aa4a02`), **Claude Code** and **Codex** (both 2026-09-15, `a6d53b4`) —
@@ -20,10 +20,12 @@ close green.
   open as [#340](https://github.com/qodeca/xezar/issues/340)).
 - **Clause 8 holds.** Both sign-offs are written down, on
   [#119](https://github.com/qodeca/xezar/issues/119#issuecomment-5646331208) (2026-09-12).
-- **Clause 2 does not hold.** A-01–A-23 have never all passed on **one** revision: the whole suite ran
-  on `ed579e63`, pi's real-model leg on `7aa4a02`, the Claude Code and Codex legs on `a6d53b4`, and the
-  rows that were BLOCKED or FAILED on `ed579e63` (A-20's leader half, pi's `approveTools` edge, fixed
-  by #411) have not been re-run on a common revision since.
+- **Clause 2 is MET BY OWNER ACCEPTANCE (2026-09-15).** The project owner accepted the real-model
+  evidence on three revisions — pi on `7aa4a02`, Claude Code and Codex on `a6d53b4` — as sufficient,
+  with no pi re-run, and OpenCode out of scope (#340). A-01–A-23 have still never all passed on
+  **one** revision: the whole suite ran on `ed579e63`, and the rows that were BLOCKED or FAILED there
+  (A-20's leader half, pi's `approveTools` edge, fixed by #411) have not been re-run on a common
+  revision since.
 
 The verdicts below from 2026-09-12 are kept as they were measured; where a later measurement changed
 one, the table says which and when.
@@ -31,7 +33,7 @@ one, the table says which and when.
 | Clause | Verdict |
 | --- | --- |
 | 1 — every UI business action classified; every project action has a working MCP equivalent | **MET.** Coverage measured below; the product owner's approval is the clause 8 sign-off on #119. |
-| 2 — all of A-01–A-23 pass on the same release-candidate revision | **NOT MET.** A-19 and A-23 now PASSED for pi (`7aa4a02`), claude-code and codex (`a6d53b4`); opencode is out of scope for the real-model clause (owner, 2026-09-13, #340). Not one revision: A-20's leader half and pi's `approveTools` edge were BLOCKED/FAILED on `ed579e63` and not re-run on a common revision. |
+| 2 — all of A-01–A-23 pass on the same release-candidate revision | **MET BY OWNER ACCEPTANCE (2026-09-15)**, not on one revision. The owner accepted the real-model evidence on three revisions — pi on `7aa4a02`, Claude Code and Codex on `a6d53b4` — with OpenCode out of scope (#340). A-20's leader half and pi's `approveTools` edge were BLOCKED/FAILED on `ed579e63` and not re-run on a common revision. |
 | 3 — stale writes, idempotency, survival, ownership, async delivery **and model reaction**, live UI, unchanged quality | **MET for the in-scope clients** (2026-09-15). The real model reaction was observed for pi, claude-code and codex; OpenCode is out of scope by the owner's decision of 2026-09-13 (#340). Was NOT MET on `ed579e63`. |
 | 4 — D-01–D-09 resolved as needed; the documentation states the actual mechanism | **MET.** |
 | 5 — the settings matrix removes ambiguity; negative tests cover each resource family | **MET** on `5834b36` (this record's own commit); one family (`local_handoff`) was uncovered on `ed579e63` and is covered by the two tests that commit adds. |
@@ -79,8 +81,8 @@ its initial FAILED classification to NOT-RUN; `results.json` preserves that corr
 original classification. The transcript records `401 Unauthorized`;
 authentication must be supplied through `XEZ_REAL_MODEL_API_KEY` before inference can be
 measured. No personal pi configuration or credentials were read. A request count alone and a
-model's “I reacted” text remain insufficient to pass. This does not change Clause 2's NOT MET
-verdict or convert any claude-code, codex or opencode result. (The Claude Code and Codex results were
+model's “I reacted” text remain insufficient to pass. This did not change Clause 2's NOT MET
+verdict at the time (since met by owner acceptance, 2026-09-15) or convert any claude-code, codex or opencode result. (The Claude Code and Codex results were
 measured separately on 2026-09-15 — § Real-model reaction.)
 
 ## How to read it
@@ -256,16 +258,20 @@ XEZ_REAL_MODEL_CLIENTS=claude-code,codex TMPDIR=/tmp node --import ../../scripts
 Evidence (private, never committed, no credential): `.local/xezar-tasks/a9a867a4-e1d4-4bba-83e0-f6a183671331/real-model-2026-09-15/`,
 `MANIFEST.sha256` SHA-256 `7f86d3bff8fd3420f15a738874fd2a927194af8e5ddec63eb087470fbedb8f9e`.
 
-### Clause 2 — all of A-01–A-23 on one revision: NOT MET
+### Clause 2 — all of A-01–A-23 on one revision: MET BY OWNER ACCEPTANCE (2026-09-15)
+
+**Owner decision, 2026-09-15:** the real-model evidence on three revisions — pi on `7aa4a02`, Claude Code
+and Codex on `a6d53b4` — is accepted as sufficient, with no pi re-run; OpenCode is out of scope (#340).
+The measured facts below are unchanged: the rows do not all pass on one revision.
 
 Eighteen of the twenty-three rows pass on `ed579e63`. **A-20 (leader half) is BLOCKED**, and the A-01
 `approveTools` edge path FAILED. **A-19 and A-23 are now PASSED for pi** in a post-release manual
 measurement (stamp `2026-09-13T17-43-42.875Z`, revision `7aa4a0258cd99852ff0a6878dff1c96257f49024`),
 and **for Claude Code and Codex on 2026-09-15** (revision `a6d53b4`); OpenCode is out of scope for the
-real-model clause by the owner's decision of 2026-09-13 (#340). The clause still does not hold: these
-passes sit on three revisions (`ed579e63`, `7aa4a02`, `a6d53b4`), and A-20's leader half and pi's
-`approveTools` edge (fixed by #411) have not been re-run on a common one. Closing it takes one
-whole-suite run plus the real-model legs on a single revision.
+real-model clause by the owner's decision of 2026-09-13 (#340). On evidence alone the clause would not
+hold: these passes sit on three revisions (`ed579e63`, `7aa4a02`, `a6d53b4`), and A-20's leader half and
+pi's `approveTools` edge (fixed by #411) have not been re-run on a common one. It is met by the owner's
+acceptance above, not by one run.
 
 A-19 passed with exact nonce and cursor acknowledgement from a real model (`deepseek-v4-flash-vision`);
 the measurement window was 120 s and the ack arrived +15.8 s after delivery. A-23 is dependent on A-19
