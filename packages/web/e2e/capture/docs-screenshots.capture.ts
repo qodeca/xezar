@@ -495,8 +495,8 @@ describe(`${SCREENSHOT_DIR}/README.md`, () => {
     )
     const readme = `# xezar 0.15.0 cockpit screenshots
 
-Captured from a dry-run cockpit (\`XEZ_DRY_RUN=1\`, agent CLIs mocked — no login, no network) with
-fixture data: a demo project with tasks in every status, a second project for All tasks, three
+Captured from a dry-run cockpit (\`XEZ_DRY_RUN=1\` with a sandboxed \`XEZ_HOME\`, agent CLIs mocked
+— no login, no network) with fixture data: a demo project with tasks in every status, a second project for All tasks, three
 Inbox follow-ups, one automation and a second Claude login. The data, the viewport and the theme
 are fixed, so a re-run produces the same pictures (at most a few anti-aliased pixels apart).
 
