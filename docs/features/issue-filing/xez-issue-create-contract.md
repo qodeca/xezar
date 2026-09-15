@@ -14,8 +14,11 @@ Record authority before publication:
 - `interactive-create`: show exact destination/title/body/labels and assumptions;
   wait for Create or Revise, with cancellation available through free text.
 - `authorized-autonomous-create`: an explicit bounded filing brief approves
-  faithful creation of that one issue. Autonomy flags and continuation nudges
-  grant nothing; changed scope or destination requires renewed authority.
+  faithful creation of that one issue. An autonomous flag, silence, a generic
+  continuation nudge, or selecting this skill grants nothing. Launching it
+  through a slash command, a `task_create` skill source, or a future New-issue
+  button is not a filing grant.
+  Changed scope or destination requires renewed authority.
 
 Existing approval persists for the exact operation. Changed interactive draft
 content invalidates its approval. Filing proposes work; it grants no authority
@@ -34,7 +37,7 @@ Ask only required gaps: requested outcome, destination/template, required facts,
 conflicting scope, and what makes a candidate regression distinct. Bug intake
 uses known reproduction, expected/actual behavior, and required environment.
 Optional unknowns remain unknown; never invent skipped facts.
-Use `XEZ:ASK` with at most two options per question plus free text. Interactive
+Use `XEZ:ASK` with exactly two options per question plus free text. Interactive
 final approval offers Create or Revise after displaying the exact artifact.
 An unanswered required question blocks publication; advancing a workflow does
 not answer it. A future local wrapper must preserve a durable BLOCKED record
