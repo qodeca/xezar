@@ -870,12 +870,54 @@ there, on slower cores. A single scheduled job would not finish. So the workflow
   twice, outside its slice or never, and a score below the floor all make the run red;
 - **tells somebody.** On `main` it keeps ONE tracking issue in step (label `mutation-nightly`,
   `npm run test:mutation:mcp:issue`): a red night files it, comments on it, or reopens it; the
-  next green night comments and closes it. A planner that fails takes the same path.
+  next green night comments and closes it. A planner that fails takes the same path;
+- **sorts the survivors** (`npm run test:mutation:mcp:survivors`, `packages/xezar/mutation/survivors.mjs`)
+  into three groups, the owner's rule of 2026-09-15: **known** if the starting list below has them,
+  keeping a #338 or #353 tag; **already seen** if the previous complete run on `main` had them;
+  **new** otherwise. A survivor is a `Survived` or a `NoCoverage` mutant – an untested new function
+  produces the second kind, so leaving it out would hide the regression the list exists to show. It
+  is matched by file, mutator and the text it mutates, never by line, so an edit above it does not
+  make it new. The grouping never changes the verdict: the floor alone decides red or green;
+- **notes new survivors early.** When new survivors appear and the score still clears the floor,
+  the run stays green and the tracking issue gets one comment listing them – on a closed issue a
+  comment, not a reopen. A grouping that could not run reaches the issue the same way, as
+  "unknown", rather than reading as "nothing new". Every body carries a hidden
+  `<!-- xezar:mutation-nightly run=<id> -->` line, so re-running the report job of one run changes
+  the issue's state if it must and never posts a second comment.
 
-Two limits. Telling a NEW survivor from one already tracked in #338 / #353 is not done yet – the
-issue carries the per-file table, and the split is #377's second pull request. And GitHub switches
-a schedule off after 60 days without repository activity in a public repository, silently; a
-disabled schedule files no issue.
+**"Previous" is the previous COMPLETE main run.** A run where every shard reported uploads its list
+as the `mutation-survivors` artifact (kept 90 days); the next run downloads the newest one from
+another `main` run. A run with a missing shard uploads nothing, so a survivor of that shard is not
+called new the night after. When no list is found – the first run after this change, or a gap
+longer than 90 days – the report says "already seen" could not be checked, and lists every survivor
+outside the starting list as new.
+
+**The starting list** is [`docs/testing/mcp-mutation-survivors.json`](mcp-mutation-survivors.json):
+every survivor of run [34999068325](https://github.com/qodeca/xezar/actions/runs/34999068325), the
+first complete six-of-six nightly on `main`, at `fe33541` – 1 549 survived and 622 without coverage.
+Its #338 and #353 tags were placed by hand: #338's lines are on `11a6df3` and were carried to
+`fe33541` through `git diff`, and a line whose text had changed there (`adapters/claude-code.ts:567`,
+`adapters/codex.ts:473`) carries no tag; #353's are the attach, `#owed` and abort lines of
+`leader-delivery.ts`. Where an issue names the mutator, only that mutator is tagged. **To refresh
+it** – after a batch of survivors is fixed, or to adopt a later run as the new start – download a
+complete main run's shard reports and rebuild the file; tags carry over by identity:
+
+```sh
+gh run download <run-id> --repo qodeca/xezar --pattern 'mutation-report-*' --dir .local/mutation/shards
+npm run --silent test:mutation:mcp:survivors -- baseline --reports .local/mutation/shards \
+  --run <run-id> --revision <sha> --date <yyyy-mm-dd> [--tag <issue>=<file>:<line>[:<Mutator>]]
+```
+
+Commit the result in its own pull request, so the diff shows which survivors left and arrived.
+
+**Forcing the red path.** Dispatch the workflow with `force_red: true`
+(`gh workflow run mutation.yml --ref main -f force_red=true`): no shard runs, the report job writes
+a "forced" summary, files, comments on or reopens the tracking issue and fails, all in minutes. The
+next real green night closes the issue again. It proves the path a real failure takes; it measures
+nothing.
+
+One limit. GitHub switches a schedule off after 60 days without repository activity in a public
+repository, silently; a disabled schedule files no issue.
 
 **Measured, 2026-09-12, revision `ac726df` on an 18-core macOS laptop shared with other tasks, concurrency 4.**
 
@@ -912,8 +954,9 @@ survivors in #338 are what raises it.
    as survived here, because this run does not execute those suites. Check 10.4 before writing a
    vitest test for a survivor.
 
-The survivors are listed in **#338**, not here: this section records the method and its cost, and the
-run's own HTML/JSON report (`.local/mutation/mcp/`) is the list. The three survivors that could have
+The survivors are tracked in **#338** and #353 and listed in the starting list above, not in this
+prose: this section records the method and its cost, and each night's own HTML/JSON report
+(`.local/mutation/mcp/`, uploaded as `mutation-report-<shard>`) is the current list. The three survivors that could have
 shipped a secret leak, a world-readable connection file or an unreadable-worktree ownership pass were
 #337, closed in #335.
 

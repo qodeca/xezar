@@ -28,6 +28,16 @@ name: MCP mutation gate
 # (`packages/xezar/mutation/tracking-issue.mjs`). A planner failure takes the same path, so a gate
 # that could not even start is not a silent one.
 #
+# NEW, ALREADY SEEN, KNOWN (#377, PR 2). The report also sorts the survivors
+# (`packages/xezar/mutation/survivors.mjs`): KNOWN if the committed starting list
+# `docs/testing/mcp-mutation-survivors.json` has them (with their #338 / #353 tag), ALREADY SEEN if
+# the previous complete `main` run had them, NEW otherwise. A green night with new survivors stays
+# green, and the tracking issue gets one comment listing them. One run posts at most one comment.
+#
+# FORCING THE RED PATH. Dispatch with `force_red: true` and no shard runs: the report job writes a
+# "forced" summary, takes the red path to the tracking issue and fails. It is how the red path is
+# proven on demand, in minutes, without waiting for a real failure.
+#
 # KNOWN LIMIT. GitHub switches a schedule off after 60 days without repository activity in a public
 # repository. That disables this file silently; the tracking issue cannot report a run that never
 # happens.
@@ -37,6 +47,11 @@ on:
     # 02:17 UTC every night. Off the hour, where GitHub's scheduler is busiest and drops runs.
     - cron: '17 2 * * *'
   workflow_dispatch:
+    inputs:
+      force_red:
+        description: Skip the shards and take the red path (tracking issue, failed run) to prove it works
+        type: boolean
+        default: false
 
 # Read-only by default. Only the `report` job asks for more.
 permissions:
@@ -77,6 +92,9 @@ jobs:
   mutants:
     name: Mutants ${{ matrix.shard }}
     needs: plan
+    # A forced red run measures nothing, so it spends no runner-hours on shards. `inputs` is empty
+    # on a scheduled run, so the schedule always measures.
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.force_red) }}
     runs-on: ubuntu-latest
     # Five hours, under GitHub's 6-hour hard kill. A ceiling, not a target: a sixth of the scope is
     # estimated at well under half of this, so a shard that reaches it is a regression worth
@@ -161,13 +179,17 @@ jobs:
         id: aggregate
         env:
           PLAN_RESULT: ${{ needs.plan.result }}
+          FORCE_RED: ${{ github.event_name == 'workflow_dispatch' && inputs.force_red }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -u
           mkdir -p .local/mutation
           rm -f .local/mutation/summary.md
           verdict=red
-          if [ "$PLAN_RESULT" != "success" ]; then
+          if [ "$FORCE_RED" = "true" ]; then
+            printf '## MCP mutation gate — FAILED (forced)\n\nDispatched with `force_red: true`: no shard ran, and this run is red on purpose, to prove the red path reaches this issue. It says nothing about the mutation score.\n\n[The run](%s)\n' \
+              "$RUN_URL" > .local/mutation/summary.md
+          elif [ "$PLAN_RESULT" != "success" ]; then
             printf '## MCP mutation gate — FAILED\n\nThe `plan` job ended `%s`, so no shard ran and nothing was measured.\n\n[The run](%s)\n' \
               "$PLAN_RESULT" "$RUN_URL" > .local/mutation/summary.md
           elif npm run --silent test:mutation:mcp:report -- --reports .local/mutation/shards --out .local/mutation/summary.md; then
@@ -180,6 +202,45 @@ jobs:
           cat .local/mutation/summary.md >> "$GITHUB_STEP_SUMMARY"
           echo "verdict=$verdict" >> "$GITHUB_OUTPUT"
 
+      # Reads only. Absent on the first run after the starting list, and whenever the newest list
+      # has expired: the grouping then says it could not compare, rather than calling nothing seen.
+      - name: Find the previous main run's survivor list
+        if: ${{ needs.plan.result == 'success' && !(github.event_name == 'workflow_dispatch' && inputs.force_red) }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: npm run --silent test:mutation:mcp:survivors -- previous --out .local/mutation/previous
+
+      # Never changes the verdict: the floor alone decides red or green. A grouping that fails is
+      # written into the summary and reaches the tracking issue as `new=unknown`.
+      - name: Group the survivors into new, already seen and known
+        id: survivors
+        if: ${{ needs.plan.result == 'success' && !(github.event_name == 'workflow_dispatch' && inputs.force_red) }}
+        run: |
+          set -u
+          if ! npm run --silent test:mutation:mcp:survivors -- group --reports .local/mutation/shards \
+              --previous .local/mutation/previous/survivors.json --out-md .local/mutation/summary.md \
+              --out-json .local/mutation/survivors.json --outputs "$GITHUB_OUTPUT" > .local/mutation/survivors.md; then
+            printf '\n### Survivors: new, already seen, known\n\nThe grouping failed, so new survivors could not be told apart. See the step log.\n' | tee -a .local/mutation/summary.md > .local/mutation/survivors.md
+            echo "new=unknown" >> "$GITHUB_OUTPUT"
+            echo "complete=false" >> "$GITHUB_OUTPUT"
+          fi
+          cat .local/mutation/survivors.md >> "$GITHUB_STEP_SUMMARY"
+
+      # Only a run where every shard reported uploads its list, so "the previous run" is always a
+      # complete one and a missing shard's survivors are not forgotten the night after.
+      - name: Upload this run's survivor list
+        if: ${{ steps.survivors.outputs.complete == 'true' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mutation-survivors
+          path: .local/mutation/survivors.json
+          include-hidden-files: true
+          # A re-run of this job uploads under the same name; without this the upload fails the job.
+          overwrite: true
+          if-no-files-found: error
+          retention-days: 90
+
       # `main` only: a dispatch on a feature branch measures that branch, and must not comment on,
       # reopen or close the issue that tracks `main`. The script refuses other refs as well.
       - name: File, update or close the tracking issue
@@ -187,7 +248,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERDICT: ${{ steps.aggregate.outputs.verdict }}
-        run: npm run --silent test:mutation:mcp:issue -- --verdict "$VERDICT" --summary .local/mutation/summary.md
+          NEW_SURVIVORS: ${{ steps.survivors.outputs.new }}
+        run: npm run --silent test:mutation:mcp:issue -- --verdict "$VERDICT" --summary .local/mutation/summary.md --run-id "$GITHUB_RUN_ID" --new-survivors "$NEW_SURVIVORS"
 
       # The last word on the job's own status, so a red night is a RED scheduled check and not just
       # an issue somebody may or may not see. Anything but an explicit green fails.
