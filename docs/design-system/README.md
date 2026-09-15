@@ -8,6 +8,7 @@ Two readers: a coding agent that must find the right rule fast, and a person who
 
 | You are… | Read, in order | Then |
 | --- | --- | --- |
+| Composing a task table, thread/composer, settings page, overlay or state display | [recipes.md](recipes.md) → [patterns.md](patterns.md) → [components.md](components.md) | Follow the recipe’s source links, copy rules, density and phone checks; use [verification.md](verification.md) to record evidence. |
 | Making a new mockup in `designs/<feature>/` | [new-designs.md](new-designs.md) → [patterns.md](patterns.md) → [components.md](components.md) → [writing.md](writing.md) | Link `cockpit.css`, keep only feature rules in the local `styles.css`, open [specimens/](specimens/index.html) beside your page and compare. |
 | Adding or changing UI in `packages/web` | [components.md](components.md) (reuse before you build) → [patterns.md](patterns.md) → [foundations.md](foundations.md) → [behaviour.md](behaviour.md) → [writing.md](writing.md) | Run `npm test -- packages/web/src/design-system-drift.test.ts`. A new token, primitive or shared component needs its entry and a row in [coverage.md](coverage.md) in the same commit. |
 | Reviewing a design or a UI change | [known-gaps.md](known-gaps.md) (so you do not repeat one) → [patterns.md](patterns.md) → [components.md](components.md) → [behaviour.md](behaviour.md) | Check the ten rules below, then the states and the copy. A departure from a documented pattern needs a reason in the PR or the design's open decisions. Post the verdict as a `## Design review` PR comment (SDLC.md § The design gate); the `design-review` workflow does this. |
@@ -37,6 +38,7 @@ Each holds today and `packages/web/src/design-guardian.test.ts` or the drift tes
 | [foundations.md](foundations.md) | Every token with its dark and light value, meaning and Tailwind utility; colour roles; type; spacing and the density lever; radius; shadow; motion and reduced motion; icons; layout and reading width; breakpoints; `no-hover:`; safe areas. |
 | [theming.md](theming.md) | Theme, accent, density and width: where each is stored, how the pre-paint script applies it before React, and how a design must behave under each. |
 | [components.md](components.md) | Every `src/components/ui` primitive and every shared component: purpose, source, variants and props, states, do and don't, accessibility, where used. |
+| [recipes.md](recipes.md) | Source-linked compositions for task tables/pins, threads/composers, settings, overlays and states, with copy, density, phone checks and historical-design limits. |
 | [patterns.md](patterns.md) | Shell, sidebar and badges, page headers, lists/cards/tables, status, empty/loading/error, dialogs/sheets/palette/toasts/notifications, settings and forms, the mobile drawer, live updates. |
 | [behaviour.md](behaviour.md) | Keyboard and focus, announcements, responsive breakpoints with counts, motion, theming behaviour. |
 | [writing.md](writing.md) | UX writing conventions with the real copy quoted and its source. |
