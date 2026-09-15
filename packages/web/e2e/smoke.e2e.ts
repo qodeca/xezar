@@ -226,6 +226,55 @@ describe('cockpit app shell', () => {
     browser.screenshot(`${artifactsDir}/shell-repo-chip.png`)
   })
 
+  it('reports this checkout as a development build and badges the brand tile without moving it (#442)', async () => {
+    // The e2e server boots `packages/xezar/dist/index.js` from this checkout, whose package root
+    // carries `src/index.ts` — so the REAL boot path must say `dev`. A server built without
+    // passing the detected channel to `startServer` answers `release` and fails here, which is the
+    // construction-site guard the unit tests (which build apps by hand) cannot provide.
+    const health = (await fetch(`${baseUrl}/api/v1/health`).then((r) => r.json())) as { channel?: string }
+    expect(health.channel).toBe('dev')
+
+    browser.goto(baseUrl + scoped('/'))
+    browser.waitForFunction(`document.querySelector('[data-slot="sidebar"] [data-slot="dev-badge"]') !== null`)
+    expect(browser.isVisible('[data-slot="sidebar"] [data-slot="dev-badge"]')).toBe(true)
+
+    // Geometry only a layout engine can answer: the tile keeps its 26px box, the badge is not
+    // clipped by the sidebar, and unwrapping the tile back to the bare release markup leaves the
+    // brand row exactly as tall as it was.
+    const box = browser.evaluate(`(() => {
+      const sidebar = document.querySelector('[data-slot="sidebar"]')
+      const tile = sidebar.querySelector('[data-slot="brand-tile"]')
+      const badge = sidebar.querySelector('[data-slot="dev-badge"]')
+      const row = tile.closest('[data-slot="sidebar-content"] > div')
+      const t = tile.getBoundingClientRect()
+      const b = badge.getBoundingClientRect()
+      const s = sidebar.getBoundingClientRect()
+      const withBadge = row.getBoundingClientRect().height
+      const wrapper = tile.parentElement
+      const clone = row.cloneNode(true)
+      row.after(clone)
+      const cloneTile = clone.querySelector('[data-slot="brand-tile"]')
+      cloneTile.parentElement.replaceWith(cloneTile)
+      const bare = clone.getBoundingClientRect().height
+      clone.remove()
+      return {
+        tile: [Math.round(t.width), Math.round(t.height)],
+        inside: b.top >= s.top && b.right <= s.right && b.width > 0,
+        overlaps: b.left < t.right && b.bottom > t.top,
+        wrapped: wrapper !== row,
+        withBadge,
+        bare,
+      }
+    })()`) as { tile: number[]; inside: boolean; overlaps: boolean; wrapped: boolean; withBadge: number; bare: number }
+
+    expect(box.tile).toEqual([26, 26])
+    expect(box.inside).toBe(true)
+    expect(box.overlaps).toBe(true)
+    expect(box.wrapped).toBe(true)
+    expect(box.withBadge).toBe(box.bare)
+    browser.screenshot(`${artifactsDir}/shell-dev-badge.png`)
+  })
+
   it('marks exactly one nav item active, following the route', () => {
     const activeLabel = () =>
       browser.evaluate(

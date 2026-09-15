@@ -116,6 +116,7 @@ export function AppShellContainer({ children }: { children: ReactNode }) {
         repo={repoChipOf(health.data)}
         version={health.data?.version ?? null}
         latestVersion={health.data?.latestVersion ?? null}
+        channel={health.data?.channel ?? null}
         // `?? null` rather than `?? 0`: no badge while the inbox is unknown, and no badge when it
         // is known to be empty — AppShell renders neither for a falsy count.
         inboxCount={todos.data?.length ?? null}

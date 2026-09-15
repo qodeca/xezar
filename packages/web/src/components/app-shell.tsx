@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import * as React from 'react'
 import type { ReactNode } from 'react'
+import type { HealthResponse } from '@qodeca/xezar-api-client'
 import { Link as RouterLink, matchPath, useLocation } from 'react-router'
 
 import { AddProjectDialog } from '@/components/add-project-dialog'
@@ -75,6 +76,9 @@ export type AppShellProps = {
   /** The npm registry's newer version, when the server's update check found one (#368). The
    *  chip grows a pulsing pending dot + tooltip; absent or equal to `version`, it stays plain. */
   latestVersion?: string | null
+  /** Where the server came from (#442). `dev` puts the red "D" badge on the brand tile;
+   *  `release`, null or absent (an older server) renders the plain tile and no placeholder. */
+  channel?: HealthResponse['channel'] | null
   /** Step 3.3's grouped task quick-list. */
   taskQuickList?: ReactNode
   /** Step 4.2's Tools dropdown trigger. */
@@ -152,6 +156,7 @@ export function AppShell({
   skillsUpdateAvailable = false,
   version = null,
   latestVersion = null,
+  channel = null,
   taskQuickList,
   toolsMenu,
   forgeAvailable = true,
@@ -224,6 +229,7 @@ export function AppShell({
     skillsUpdateAvailable,
     version,
     latestVersion,
+    channel,
     taskQuickList,
     toolsMenu,
     projectGroups,
@@ -281,6 +287,7 @@ type NavProps = {
   skillsUpdateAvailable: boolean
   version: string | null
   latestVersion: string | null
+  channel: HealthResponse['channel'] | null
   taskQuickList?: ReactNode
   toolsMenu?: ReactNode
   projectGroups?: ReactNode
@@ -464,6 +471,7 @@ function SidebarContent({
   skillsUpdateAvailable,
   version,
   latestVersion,
+  channel,
   taskQuickList,
   toolsMenu,
   projectGroups,
@@ -488,7 +496,7 @@ function SidebarContent({
       className="@container/sidebar flex min-h-0 flex-1 flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
     >
       <div className="flex items-center gap-[9px] px-3.5 pt-3.5 pb-2.5">
-        <BrandTile />
+        <BrandTile channel={channel} />
         <span className="text-[15px] font-semibold">xezar</span>
         {/* With project groups mounted the boot repo/branch is one group header among many —
             a chip repeating it up here would just be the first group's header said twice. */}
@@ -825,9 +833,15 @@ function VersionChip({ version, latestVersion }: { version: string; latestVersio
 }
 
 /** The xezar brand mark. The SVG carries its own gradient and rounded corners, so it is
- *  the tile — no wrapper background. */
-function BrandTile() {
-  return (
+ *  the tile — no wrapper background.
+ *
+ *  On a development build (#442, decisions.md D-08) a red "D" badge sits on the tile's top-right
+ *  corner, so a from-source cockpit cannot be mistaken for the released one. The badge is
+ *  absolutely positioned over the tile's own box, so the tile stays 26px and the brand row keeps
+ *  its height. Any other channel returns the bare `<img>` exactly as before — no wrapper, no
+ *  placeholder. The image stays decorative (`alt=""`); the badge carries the words. */
+function BrandTile({ channel }: { channel: HealthResponse['channel'] | null }) {
+  const tile = (
     <img
       src={brandLogoUrl}
       alt=""
@@ -835,6 +849,20 @@ function BrandTile() {
       data-slot="brand-tile"
       className="size-[26px] shrink-0 rounded-sm"
     />
+  )
+  if (channel !== 'dev') return tile
+  return (
+    <span className="relative flex shrink-0">
+      {tile}
+      <span
+        data-slot="dev-badge"
+        title="Development build"
+        className="absolute -top-1 -right-1 grid size-3.5 place-items-center rounded-full bg-danger text-[9px] leading-none font-semibold text-primary-foreground ring-2 ring-sidebar"
+      >
+        <span aria-hidden="true">D</span>
+        <span className="sr-only">Development build</span>
+      </span>
+    </span>
   )
 }
 
