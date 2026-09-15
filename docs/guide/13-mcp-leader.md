@@ -30,7 +30,7 @@ For event delivery, start the leader with:
 claude --dangerously-load-development-channels server:xezar
 ```
 
-Accept the development-channel warning only if you intend to allow xezar to inject events into that session. Let the session call a xezar tool once, then choose **Attach leader** in Connection status. The setup card includes **Claude Code recovery guidance** for channel availability and unacknowledged delivery. Without the channel flag, use `leader_events`.
+Accept the development-channel warning only if you intend to allow xezar to inject events into that session. Have the session attach through `leader_events` as shown below, then check `status` for channel availability and delivery blockers. Without the channel flag, use `leader_events` action `read`.
 
 ### Codex
 
@@ -50,7 +50,7 @@ For push delivery, run Codex's shared local app-server under the same Codex home
 codex app-server --listen unix://
 ```
 
-Open your Codex TUI session in the project, let it call a xezar tool once, then choose **Attach leader**. xezar discovers the session; the control does not ask you for a socket path or port. If refused, follow the reported blocker and **Fix:** guidance.
+Open your Codex TUI session in the project and have it attach through `leader_events` as shown below. xezar discovers the calling session; no client name, socket path or port is an attachment argument. If refused, follow the reported blocker and recovery guidance.
 
 ### OpenCode
 
@@ -69,7 +69,7 @@ Add this local server entry to project `opencode.json`:
 }
 ```
 
-For push delivery, use the session you already run through `opencode serve`. In Connection status choose OpenCode when the client picker is shown, enter **Server address** (`baseUrl`) and **Session id** (`sessionId`) for that session, then choose **Attach leader**. xezar starts turns in that session; attaching does not launch a replacement agent for you.
+For push delivery, use the session you already run through `opencode serve`. A person opens **Settings → MCP connection** in the cockpit. In Connection status they choose OpenCode when the client picker is shown, enter **Server address** (`baseUrl`) and **Session id** (`sessionId`) for that session, then choose **Attach leader**. xezar starts turns in that session; attaching does not launch a replacement agent for you.
 
 ### pi
 
@@ -102,17 +102,35 @@ For push delivery, also load xezar's [pi leader extension](../../packages/xezar/
 pi --extension /path/to/xezar/scripts/pi-leader-extension.ts
 ```
 
-Alternatively, place the extension in project `.pi/extensions/` or global `~/.pi/agent/extensions/`. Then choose **Attach leader** for pi. The MCP adapter exposes tools; the leader extension supplies the event-delivery path. Without the extension, read events with `leader_events`.
+Alternatively, place the extension in project `.pi/extensions/` or global `~/.pi/agent/extensions/`. Have the pi session attach through `leader_events` as shown below. The MCP adapter exposes tools; the leader extension supplies the event-delivery path. Without the extension, read events with `leader_events`.
 
 If you put xezar tools behind the adapter's `approveTools`, answer approval prompts in your pi window. The leader extension does not answer them. A headless pi driven by another program can wait indefinitely if that program never answers.
 
-## To inspect Settings → MCP connection and attach
+## To attach through `leader_events`
 
-Open this section for the project the leader should own. It shows **Bound project**, **Local-only scope**, the four **One-time setup** cards and **Connection status**. The status names **Owning client**, **Leader**, any blocker and its **Fix:**. **Refresh** rereads status; a failed refresh is explicitly last-known status.
+Claude Code, Codex and pi leaders attach their own calling session through MCP. Call `leader_events` once per session with a new client-generated `operationId`; xezar derives the client from the session, so do not pass a client name:
 
-Use **Attach leader** after the client has connected. The control derives the client from ownership/attachment when known; otherwise it offers a client picker. OpenCode additionally needs the server address and session ID. Attachment is the current setup exception to the MCP-only operating rule: the person uses this cockpit control. `leader_events` itself has only `read` and `ack` actions.
+```json
+{ "action": "attach", "operationId": "leader-attach-example-0001" }
+```
 
-![MCP connection settings and leader status](../screenshots/0.15.0/settings-mcp-connection-dark-1280.png)
+Then verify attachment and push capability:
+
+```json
+{ "action": "status" }
+```
+
+`status` reports whether this session is attached and can receive pushes, its delivery cursors and any delivery blockers. If it says the session is not attached, attach again with a new `operationId`. Reuse an operation ID only to repeat the same call after a lost answer; replaying an old attach receipt does not establish a new attachment.
+
+To detach this session, call:
+
+```json
+{ "action": "stop", "operationId": "leader-stop-example-0001" }
+```
+
+Use a new operation ID for each new attach or stop call. `status` takes no operation ID; none of these three actions takes a cursor or limit. OpenCode is the exception: a person attaches its leader in the cockpit's **Settings → MCP connection → Attach leader**, using the existing session details described above.
+
+![MCP connection settings for person-driven OpenCode attachment](../screenshots/0.15.0/settings-mcp-connection-dark-1280.png)
 
 ## To choose among the eleven tools
 
@@ -130,7 +148,7 @@ The [tool registry](../../packages/xezar/src/mcp/tools/index.ts) has ten service
 | `read_results_evidence` | Read task results, changes and evidence. |
 | `project_config` | Read or change supported project configuration. |
 | `local_handoff` | Open supported task/project destinations on the xezar host. |
-| `leader_events` | Read significant project events and acknowledge those handled. |
+| `leader_events` | Attach or stop this session, check attachment status, read significant project events and acknowledge those handled. |
 
 Read `discover_project` before assuming an action is available. Inspect each mutation's result; requesting a task or operation is not proof that downstream work succeeded.
 
