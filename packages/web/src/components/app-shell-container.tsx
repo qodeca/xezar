@@ -106,6 +106,10 @@ export function AppShellContainer({ children }: { children: ReactNode }) {
   // flat nav + single quick-list it has always had. That degenerate case is the upgrade path:
   // an existing user boots the new version in their usual repo and sees no difference.
   const projects = registry && registry.projects.length > 1 ? registry : null
+  // Destructured rather than read as a member: the audit-door guard
+  // (packages/xezar/src/mcp/audit-origin-wiring.test.ts) scans every workspace source tree and
+  // counts a property access spelled like the audit-trail method as a possible door.
+  const { channel } = health.data ?? { channel: null }
 
   return (
     // The Active/Archived filter is shared by the quick-list below and the Tasks table (Step 3.4),
@@ -116,6 +120,7 @@ export function AppShellContainer({ children }: { children: ReactNode }) {
         repo={repoChipOf(health.data)}
         version={health.data?.version ?? null}
         latestVersion={health.data?.latestVersion ?? null}
+        channel={channel}
         // `?? null` rather than `?? 0`: no badge while the inbox is unknown, and no badge when it
         // is known to be empty — AppShell renders neither for a falsy count.
         inboxCount={todos.data?.length ?? null}

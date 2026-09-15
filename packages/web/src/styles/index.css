@@ -119,6 +119,9 @@
   /* status */
   --danger: #ef4444;
   --danger-foreground: #ffffff;
+  /* Near-black ink on --danger where white fails AA (the development-build "D", D-08). Not
+   * --primary-foreground: that one follows the active accent and turns white under violet. */
+  --danger-ink: #0d0d0d;
   --success: #10b981; /* emerald-500 */
   --pending: #fbbf24; /* amber-400 — dots/spinners only, never text */
   /* Waiting on a PERSON — a reference that needs a reviewer, as opposed to one that is done
@@ -342,6 +345,7 @@
 
   --color-danger: var(--danger);
   --color-danger-foreground: var(--danger-foreground);
+  --color-danger-ink: var(--danger-ink);
   --color-success: var(--success);
   --color-pending: var(--pending);
   --color-pending-strong: var(--pending-strong);

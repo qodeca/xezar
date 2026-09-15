@@ -17,6 +17,7 @@ function fullHealth(overrides: Partial<HealthResponse> = {}): HealthResponse {
   return {
     version: '9.9.9',
     latestVersion: '10.0.0',
+    channel: 'release',
     repoRoot: '/work/boot-somewhere-else',
     repo: { root: BOUND.root, branch: 'main', remote: 'https://github.com/alpha/alpha-app.git' },
     checks: [

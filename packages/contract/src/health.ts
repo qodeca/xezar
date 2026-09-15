@@ -77,6 +77,11 @@ export type Capabilities = z.infer<typeof capabilitiesSchema>;
 export const healthResponseSchema = z.object({
   version: z.string(),
   latestVersion: z.string().optional(),
+  /** Where the running server came from (#442): `dev` for a source checkout (its package root
+   * carries `src/index.ts`), `release` for an installed tarball. Top-level on purpose, not under
+   * `capabilities`: it describes the build, not what the server may do. The cockpit's brand tile
+   * shows a "D" badge for `dev`; an older server that omits it reads as no badge. */
+  channel: z.enum(['release', 'dev']),
   repoRoot: z.string(),
   repo: repoInfoSchema.nullable(),
   checks: z.array(backendCheckSchema),
