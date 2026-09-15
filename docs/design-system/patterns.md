@@ -24,7 +24,7 @@ Source: `components/app-shell.tsx`, `components/nav-items.ts`, `components/proje
 `components/task-quick-list.tsx`.
 
 - Order: brand row (`xezar` + repo chip) → `New task` (`contrast` button with a `kbd` C) and `Add project` → nav (`NAV_ITEMS`) → task quick list → footer (`Search…` ⌘K hint; Tools menu · version chip · Global settings · theme toggle).
-- Nav item: icon `size-4`, label `text-[13.5px] font-medium`, row `h-11 md:h-[34px] rounded-md px-2.5`; active `bg-muted font-semibold text-foreground` and `aria-current="page"`.
+- Nav item: icon `size-4`, label `text-[13.5px] font-medium`, row `h-11 md:h-9 rounded-md px-2.5`; active `bg-muted font-semibold text-foreground` and `aria-current="page"`.
 - Badges: a violet count (`rounded-full bg-violet px-1.5 py-px text-[10.5px] font-semibold text-violet-foreground`) means "a person is wanted" (Inbox count, unread finished tasks). A `size-1.5` violet dot with `sr-only` text marks a Skills update. No badge while the count is unknown; none at zero.
 - Multi-project: from the second registered project the flat nav becomes collapsible project groups, each with its own nav and quick list; only the expanded group fetches.
 - Quick list buckets, in order: `Pinned`, `Needs you`, `Working`, `Recent` (`Archived` in the other view); rows show dot · title · reference chip · age · pin.
@@ -57,7 +57,7 @@ Source: `routes/tasks-overview.tsx`, `routes/global-tasks.tsx`, `lib/task-column
 `lib/task-groups.ts`, `lib/read-state.ts`.
 
 - The desktop task table is driven by `TASK_COLUMNS` (`lib/task-columns.ts`): `Status, Task, Workflow, Tool Name, Model, Branch, ±, Ref, IN / OUT, Cost, CPU, Mem, Started`. Header, `colgroup` and every row consume that list. A new column is three coordinated additions there.
-- Wrapper `hidden overflow-x-auto rounded-lg border border-border bg-card shadow-xs md:block`; header cell `h-[38px] px-3 text-[11px] font-semibold tracking-[0.05em] uppercase text-soft-foreground`; body cell `h-11 px-3 whitespace-nowrap`; last row loses its bottom border; row `cursor-pointer hover:bg-muted` with clicks on `a, button, input` passing through. Foldable columns collapse to `42px` with an `aria-pressed` toggle in the header.
+- Wrapper `hidden overflow-x-auto rounded-lg border border-border bg-card shadow-xs md:block`; header cell `h-10 px-3 text-[11px] font-semibold tracking-[0.05em] uppercase text-soft-foreground`; body cell `h-11 px-3 whitespace-nowrap`; last row loses its bottom border; row `cursor-pointer hover:bg-muted` with clicks on `a, button, input` passing through. Foldable columns collapse to `42px` with an `aria-pressed` toggle in the header.
 - Below `md` the same rows render as cards, `gap-list` apart: `rounded-lg border border-border bg-card p-inset shadow-xs`, a mono meta line (`workflow · tool · model · branch · diff · tokens · cost`) and an always-visible pin.
 - Unread finished rows are `font-semibold text-foreground` with a trailing violet dot (`aria-label="unread"`, `title="Unread — not opened since it finished"`); read-done rows are `font-medium text-muted-foreground`.
 - Cards elsewhere: `rounded-lg border border-border bg-card` (+ `shadow-xs` when raised, `p-inset` inside, `gap-list` between cards) is the spelling. The footer strip under a table sits `mt-list` below it. The `Card` primitive is unused (G-02).
@@ -144,7 +144,7 @@ Source: `components/app-shell.tsx`.
 - Below `md` the sidebar is a `Sheet side="left"` at `w-[264px] bg-sidebar p-0`, opened by a real `SheetTrigger` in the top bar (`aria-label="Open menu"`, `size-11`) and closed by `aria-label="Close menu"`.
 - It closes on route change and the moment `(min-width: 768px)` matches.
 - The top bar titles itself from `activeNavItem(pathname)`.
-- Touch targets are 44px (`h-11`, `size-11`); desktop rows relax to `h-[34px]`.
+- Touch targets are 44px (`h-11`, `size-11`); desktop rows relax to `md:h-9`.
 
 ## 10. Live updates
 

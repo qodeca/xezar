@@ -52,7 +52,7 @@ is `role="alert"`. A toast is `role="status"`.
 | Prefix | Count | What it does |
 | --- | --- | --- |
 | `sm:` | 53 | dialog widths, footer direction, plan-review full-screen below `sm` |
-| `md:` | 193 | the one layout switch: sidebar vs drawer, desktop header vs mobile top bar, table vs cards, 16px vs 14px inputs, `h-11` vs `h-[34px]` rows, tree pane shown, diff forced to unified + wrap below |
+| `md:` | 193 | the one layout switch: sidebar vs drawer, desktop header vs mobile top bar, table vs cards, 16px vs 14px inputs, `h-11` vs `md:h-9` rows, tree pane shown, diff forced to unified + wrap below |
 | `lg:` | 11 | wider diff tree pane, one global-table column |
 | `xl:` | 12 | global-table column degradation, the ghost-code backdrop (`max-xl:hidden`) |
 | `max-md:` | 8 | phone-only borders and margins |

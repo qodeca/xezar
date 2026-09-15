@@ -80,5 +80,5 @@ The next five records carry the decisions of the "air" design (`designs/design-s
 | **Status** | Accepted, applied in step 3b of #424 |
 | **Context** | Step 3b moves the sidebar nav rows from `md:h-[34px]` onto the scale at `md:h-9` (36 px). The New-task button is 36 px today; left alone it would match the rows and only its fill would set it apart. |
 | **Decision** | The New-task button is `h-10` (40 px), one step taller than the nav rows (Air D-12, option A). |
-| **Consequences** | One more recorded control-size change (+4 px). The phone drawer button stays under the 44 px touch target; that is older than this design and is tracked separately (review finding NB-4). |
+| **Consequences** | One more recorded control-size change (+4 px). The Add project icon button beside it follows to `md:size-10`, so the two stay one height on desktop (40 / 50 / 35 / 30 px at Comfortable / Roomy / Compact / Compact for real; step 3b design review B-1). The phone drawer button stays under the 44 px touch target; that is older than this design and is tracked separately (review finding NB-4). |
 | **Source** | The step-0 `## Design review` on PR #429 (open point 7 → Air D-12). |

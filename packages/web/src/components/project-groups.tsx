@@ -218,7 +218,7 @@ function ProjectGroup({
         <div
           data-slot="project-group-header"
           title={`${project.root} is gone — remove it in Global settings → Projects`}
-          className="flex h-11 w-full items-center gap-[7px] rounded-lg px-2 text-[13px] font-semibold opacity-55 md:h-[34px]"
+          className="flex h-11 w-full items-center gap-[7px] rounded-lg px-2 text-[13px] font-semibold opacity-55 md:h-9"
         >
           <span className="w-3 shrink-0" aria-hidden="true" />
           <span className="truncate">{project.name}</span>
@@ -255,9 +255,9 @@ function ProjectGroup({
         aria-controls={bodyId}
         data-slot="project-group-header"
         className={cn(
-          // 44px touch target in the drawer, the mockup's 34px row on desktop — the same
+          // 44px touch target in the drawer, the 36px scale row on desktop — the same
           // relaxation the flat nav makes.
-          'flex h-11 w-full items-center gap-[7px] rounded-lg px-2 text-left text-[13px] font-semibold transition-colors hover:bg-muted md:h-[34px]',
+          'flex h-11 w-full items-center gap-[7px] rounded-lg px-2 text-left text-[13px] font-semibold transition-colors hover:bg-muted md:h-9',
           active && 'bg-muted',
         )}
       >
@@ -297,7 +297,7 @@ function ProjectGroup({
           // row's `bg-muted` and the two fuse into one block — the project name then reads as
           // just another menu item. The rail is offset to sit under the chevron, so the whole
           // body hangs off the same vertical the disclosure control is on.
-          className="mt-1 ml-[14px] border-l border-border pl-2"
+          className="mt-1 ml-3.5 border-l border-border pl-2"
         >
           <nav aria-label={`${project.name} navigation`}>
             {/* Forge-gated per PROJECT (#698): the entry's own remote decides whether THIS

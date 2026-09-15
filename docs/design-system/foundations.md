@@ -186,6 +186,8 @@ Density changes only that token:
 
 Type sizes do not change with density. Any px value you write by hand (`h-[34px]`, `px-[7px]`) is
 outside the density lever; prefer scale units (`h-9`, `px-2`) unless the design fixes a pixel on purpose.
+The one pixel the design fixes on purpose is a floor: `min-h-[24px]` on the composer picker pill (`chipClass`)
+and the reference chip holds each at WCAG 2.2 SC 2.5.8's 24 px when the density lever would shrink it below.
 
 Common rhythm: `gap-1.5`/`gap-2` inside controls, `gap-2.5` in nav rows, `px-2.5` chips, `px-3.5` buttons,
 `p-6` dialogs, `p-4` page gutters on phone and `md:p-section` on desktop, `py-12` centered states. Between blocks, §4.1.
@@ -236,8 +238,10 @@ Where the cockpit uses them (step 2 of #424):
 
 The Settings panes that are not a list of fields say so in their own spelling: Agent config is one editor
 pane (`gap-list` between its tab bar and its files), the Agent accounts refusal is one block (`gap-4`), and
-Bookmarklets has no list container. Hand-typed pixels still in the tree (the nav-row, tool-row and
-table-header heights, the quick-list rows, the brand gap and the group indent) move onto the scale in step 3b.
+Bookmarklets has no list container. Step 3b of #424 put six hand-typed pixels on the scale: nav rows and
+project-group headers `md:h-9`, table header `h-10`, tool row `min-h-8 py-1`, quick-list rows `py-2`, brand row
+`gap-row` and group body `ml-3.5`. The `no-arbitrary-spacing` allowlist in `design-guardian-spacing-allowlist.json`
+lists the ones still to convert.
 A seventh step is a design decision (`decisions.md` D-02), not a new token in one file.
 
 ## 5. Radius
@@ -331,7 +335,7 @@ Tailwind defaults. Counts are prefix occurrences in `packages/web/src/**/*.{ts,t
 | Prefix | Width | Role |
 | --- | --- | --- |
 | `sm:` | 640px | dialog max-widths, footer row direction |
-| `md:` | 768px | THE desktop line: the sidebar appears (`md:flex`), the mobile top bar and drawer disappear (`md:hidden`), nav rows shrink from `h-11` to `h-[34px]`, text drops from 16px to 14px. `useIsDesktop()` in `lib/use-desktop.ts` asks the same `(min-width: 768px)`. |
+| `md:` | 768px | THE desktop line: the sidebar appears (`md:flex`), the mobile top bar and drawer disappear (`md:hidden`), nav rows shrink from `h-11` to `h-9`, text drops from 16px to 14px. `useIsDesktop()` in `lib/use-desktop.ts` asks the same `(min-width: 768px)`. |
 | `lg:` / `xl:` | 1024px / 1280px | command palette width, the ghost-code backdrop (`max-xl:hidden`) |
 | `@min-[23rem]/sidebar` | container query | the quick-list diff pair appears only when the sidebar is wide enough |
 

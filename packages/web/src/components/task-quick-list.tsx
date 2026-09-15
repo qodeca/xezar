@@ -245,7 +245,7 @@ function Row({
           data-group-id={row.groupId}
           aria-expanded={expanded}
           onClick={() => onToggle(row.groupId)}
-          className="flex min-w-0 flex-1 items-center gap-2 px-2.5 py-[7px] text-left"
+          className="flex min-w-0 flex-1 items-center gap-2 px-2.5 py-2 text-left"
         >
           <ChevronDownIcon
             className={cn('size-3 shrink-0 text-soft-foreground transition-transform', !expanded && '-rotate-90')}
@@ -422,7 +422,7 @@ function RunRow({
         // visible text drop — so hover always gives back everything the column could not show.
         title={title}
         aria-current={isActive ? 'page' : undefined}
-        className="flex min-w-0 flex-1 items-center gap-2 py-[7px] pr-2.5"
+        className="flex min-w-0 flex-1 items-center gap-2 py-2 pr-2.5"
       >
         {variant ? (
           <span className="inline-flex size-[15px] shrink-0 items-center justify-center rounded-full bg-violet/15 font-mono text-[9.5px] font-semibold text-violet">
