@@ -25,6 +25,117 @@ Thank you for helping. This page is the whole path from an idea to a merged chan
    `XEZ_DRY_RUN=1` replaces the agent CLIs with a mock, so you can exercise the cockpit without any agent login.
 5. Open a pull request against `main`.
 
+## Local development
+
+End-to-end, from a fresh clone to a global `xezar` command you can run in **any**
+repo on your machine — no npm publish required.
+
+**1. Prerequisites** — Node 20+ and `git` (plus at least one logged-in agent CLI,
+as in the README's [Quick start](README.md#quick-start)).
+
+**2. Clone & install**
+
+```bash
+git clone https://github.com/qodeca/xezar.git
+cd xezar
+npm install
+```
+
+**3. Build** — compiles the server (`tsc → packages/xezar/dist/`), folds the
+contract into `dist/contract/` so the published tarball resolves it, and builds
+the cockpit (`vite build → packages/xezar/web/dist/`), then runs the pack gate:
+
+```bash
+npm run build
+```
+
+**4. Install as a global command** — build + put `xezar` / `xez` on
+your PATH pointing at *this checkout*:
+
+```bash
+npm run install-as-command            # live link (default) — see the change loop below
+#   or: npm run install-as-command:global   # self-contained snapshot copy
+```
+
+Now `cd` into any other repo and run it:
+
+```bash
+cd ~/some-other-project
+xezar            # cockpit for that repo, straight off your checkout
+xez --help       # same binary under its short name
+```
+
+**5. The change loop**
+
+- **Link mode** (default): edit source → `npm run build` → the global command
+  reflects it immediately. No relink needed. (It is a live symlink into this
+  checkout — don't move or delete the checkout while it's linked.)
+- **Snapshot mode** (`:global`): re-run `npm run install-as-command:global` to
+  refresh the installed copy. It survives moving/deleting the checkout.
+
+**6. Uninstall**
+
+```bash
+npm run uninstall-as-command    # removes xezar / xez (either flavor)
+```
+
+**7. Troubleshooting**
+
+- **`xezar: command not found`** after install → your npm global bin dir isn't on
+  PATH. The script prints the exact dir; add it to your shell profile
+  (`export PATH="$(npm prefix -g)/bin:$PATH"`).
+- **`EACCES` / permission denied** → your global prefix is root-owned. Point npm
+  at a user-writable one and retry — **never** sudo:
+  `npm config set prefix ~/.npm-global`.
+- **Already installed the published `@qodeca/xezar` globally?** The
+  link/snapshot install replaces it; `uninstall-as-command` removes ours, and
+  `npm i -g @qodeca/xezar` brings the published one back.
+
+### In-checkout scripts
+
+```bash
+npm run dev          # server (API :4321) + Vite dev server, opens the cockpit in the browser
+npm run dev:server   # tsx packages/xezar/src/index.ts — the API server alone
+npm run dev:web      # Vite dev server alone (proxies /api to :4321)
+npm run build        # tsc → packages/xezar/dist/, vite build → packages/xezar/web/dist/, then the pack gate
+npm run typecheck    # contract + api-client + server + web (tsc --noEmit)
+npm test             # vitest — server + cockpit unit suites
+npm run test:unit    # node:test — fast core-module tests
+npm run test:package # pack/install and exercise the built CLI
+npm run test:e2e     # real-browser cockpit suite (agent-browser)
+```
+
+The full canonical gate list, its order and the rules behind it are in
+[AGENTS.md § Validation](AGENTS.md#validation).
+
+Coverage is measured separately, and is not part of the validation gate:
+`npm run test:coverage` runs the vitest suites under the v8 provider and writes line and branch
+numbers to `.local/coverage/`. The behaviour-led gap analysis built from it lives in
+[docs/testing/coverage-gaps.md](docs/testing/coverage-gaps.md).
+The MCP server is the one scope held to a floor: `npm run test:coverage:mcp` measures it alone
+and fails any file under 80 % lines or branches – see
+[SDLC.md § The MCP test floor](SDLC.md#the-mcp-test-floor).
+
+### Stack and layout
+
+The stack is deliberately small: **TypeScript** (strict, ESM), **Hono** + SSE for
+the server, **Zod** at every boundary, **YAML** for workflows, and a **React 19 +
+Vite + Tailwind v4 + shadcn/ui** cockpit shipped pre-built in `packages/xezar/web/dist/` — the
+published package carries the built app, so `npx` users never run a bundler.
+Every module is meant to be read in one sitting.
+
+Agent backends share one seam: a backend is one class implementing the `AgentRunner` interface
+(`packages/xezar/src/core/agent-runner.ts`) that turns a prompt into a stream of normalized events.
+`pi` was added exactly that way; other CLIs can slot into the same seam.
+[AGENT_PROTOCOL.md](AGENT_PROTOCOL.md) is the contract a new runner must satisfy.
+
+The README is the npm page too: `packages/xezar/scripts/sync-readme.mjs` copies it into the package
+on every build and makes its relative links, images and `srcset` candidates absolute.
+
+What lives where under `docs/`, and who each part is for, is mapped in
+[docs/README.md](docs/README.md). `docs/features/` is the internal engineering and decision
+record, not a user guide.
+
 ## Commits and pull requests
 
 Commit messages and pull-request titles follow [Conventional Commits](https://www.conventionalcommits.org/):
