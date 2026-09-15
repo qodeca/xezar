@@ -171,8 +171,20 @@ export const ipcErrorCodeSchema = z.enum([
  */
 export const ownershipRpcErrorSchema = z.union([mcpProjectOccupiedErrorSchema, mcpSessionExpiredErrorSchema]);
 
-/** What `session/open` answers: this connection's session now owns the project. */
-export const sessionOpenResultSchema = z.object({ owner: z.literal(true) });
+/**
+ * What `session/open` answers: this connection's session now owns the project.
+ *
+ * #450, additive within version 2: `canPush` says whether xezar can push events to this session's
+ * client, and `pushUnavailable` why not. An older service sends neither, and a newer bridge reads
+ * that as `canPush: false`. `code` is a plain string HERE, not the contract enum: a code a newer
+ * service adds must never make an older bridge refuse its own session as an unexpected shape.
+ */
+export const sessionOpenResultSchema = z.object({
+  owner: z.literal(true),
+  canPush: z.boolean().optional(),
+  pushUnavailable: z.object({ code: z.string().max(64), message: z.string().max(2000) }).optional(),
+});
+export type SessionOpenResult = z.infer<typeof sessionOpenResultSchema>;
 
 /**
  * `session/open` params (#374). Both fields are ADDITIVE within IPC version 2, so an older bridge
@@ -185,6 +197,12 @@ export const sessionOpenResultSchema = z.object({ owner: z.literal(true) });
 export const sessionOpenParamsSchema = z.object({
   leaderPush: z.boolean().optional(),
   clientName: z.string().max(200).optional(),
+  /**
+   * #450: sent on every open after the first handshake — whether that handshake registered
+   * `claude/channel`. Claude Code fixes capabilities at `initialize`, so a session whose handshake did
+   * not register it can never be woken over the channel, and the service names that.
+   */
+  channelAdvertised: z.boolean().optional(),
 });
 
 /**
