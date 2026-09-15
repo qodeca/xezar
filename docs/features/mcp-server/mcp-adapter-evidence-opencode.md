@@ -1,5 +1,10 @@
 # OpenCode reaction adapter – runtime evidence
 
+> **Status update — 2026-09-15:** Historical 2026-09-11 evidence, **superseded** for wiring: `LeaderDelivery`
+> constructs the adapter and starts its event controller since #311 (OC-2 closed). OC-3 real-model reaction is
+> out of scope by owner decision 2026-09-13; see the [wake decision](mcp-wake-opencode-decision.md) and [DoD
+> record](mcp-definition-of-done-record.md). #340 remains open.
+
 Issue: [#110](https://github.com/qodeca/xezar/issues/110). Phase 6 ([#73](https://github.com/qodeca/xezar/issues/73)) of
 [epic #67](https://github.com/qodeca/xezar/issues/67). Covers F-17, F-20, F-21, D-01, D-04, A-19 and A-23 of the
 [requirements](mcp-project-leader-requirements.md), for OpenCode only.
@@ -237,7 +242,7 @@ The only lines that contain "xezar" are the plugin's own load lines, and only be
 contains it.
 
 This is structural, not a missed configuration. A plugin runs inside OpenCode. To follow xezar it would
-need a xezar feed it can reach. The D-01 socket answers `health` and `tools/call` only (read from source,
+need a xezar feed it can reach. The D-01 socket answers `session/open`, `health` and `tools/call` as of 2026-09-15 (read from source,
 `packages/xezar/src/mcp/service.ts`, the `switch (request.method)`), and no other xezar surface in the files
 examined exposes the project journal to another process. A plugin bridge was therefore not built.
 **The extension that would make it possible:** a journal subscription on the per-project socket, with the
@@ -256,7 +261,7 @@ a session on `opencode serve`.
 
 ## Tests and red proof
 
-`opencode.test.ts` has 31 cases. It runs offline against a fake `opencode serve` whose shapes come from
+`opencode.test.ts` had 31 cases at this run (32 as of 2026-09-15). It runs offline against a fake `opencode serve` whose shapes come from
 OpenCode 1.18.30's own `/doc` and from the findings above. It needs no OpenCode binary, model or login,
 so it runs the same way with `XEZ_DRY_RUN=1` as without it. One case runs the real journal, owner slot
 and controller.
@@ -282,8 +287,8 @@ Each blocker keeps OpenCode in scope, and none is solved by polling.
 | ID | Blocker | What would close it | Status |
 | --- | --- | --- | --- |
 | OC-1 (the spike's OB-3) | Nothing in xezar knows **which** OpenCode server and session the leader runs in. The adapter needs `{ baseUrl, sessionId }` and refuses to guess, so it holds on the `no-target` blocker. A TUI started with `opencode attach <url>` against an `opencode serve` is reachable the same way as R-01. Whether a plain `opencode` TUI exposes such a server is **UNVERIFIED**. | A trusted source for the target: the user enters it in the project's MCP connection settings, or OpenCode passes its server URL and session id to the MCP server it spawns. It must never come from the model. | Open |
-| OC-2 | Nothing in the running service starts `EventController` with a reaction adapter. A search of `packages/xezar/src` (non-test files) found no caller of `EventController.start` and none of `OpenCodeReactionAdapter`. The chain is proven in the driver only. | Wire the controller and this adapter into the MCP service on the connection's lease (#73). That is outside this issue's files. | Open |
-| OC-3 (the spike's OB-5) | No real-model reaction. | A run with a real model account on the release-candidate revision, after an account decision. | Open |
+| OC-2 | Nothing in the running service starts `EventController` with a reaction adapter. A search of `packages/xezar/src` (non-test files) found no caller of `EventController.start` and none of `OpenCodeReactionAdapter`. The chain is proven in the driver only. | Wire the controller and this adapter into the MCP service on the connection's lease (#73). That is outside this issue's files. | Closed by #311 (`7bcb258`); historically open |
+| OC-3 (the spike's OB-5) | No real-model reaction. | A run with a real model account on the release-candidate revision, after an account decision. | Real-model reaction out of scope (owner, 2026-09-13); #340 remains open |
 | OC-4 (the spike's OB-4) | No recovery after the xezar **bridge** process crashes: OpenCode drops the tools (spike T09). | Watch the bridge's health and reconnect through OpenCode's `POST /mcp/:name/connect` route, which exists in 1.18.30's `/doc`. Its behaviour is **UNVERIFIED**. | Open |
 
 ## Corrections and observations against earlier documents

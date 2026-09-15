@@ -1,8 +1,12 @@
 # D-02 — session binding, liveness, occupancy and handover
 
+> **Status update — 2026-09-15:** Implemented by #99 in `packages/xezar/src/workspace/project-owner.ts` and
+> tested in `project-owner.test.ts` and `mcp/session-ownership.test.ts`. Pre-implementation observations below
+> are superseded; their anchors remain at `9fdcf0e`.
+
 Spike record for [#80](https://github.com/qodeca/xezar/issues/80) (Phase 2, [#69](https://github.com/qodeca/xezar/issues/69); epic [#67](https://github.com/qodeca/xezar/issues/67)). Decision date **2026-09-10**, against `main` at `9fdcf0e`.
 
-This is a **spike**: it produces a decision and its evidence, and it ships no production surface. Nothing here is implemented. [#99](https://github.com/qodeca/xezar/issues/99) implements what this record chooses, in Phase 4.
+This is a **spike**: it produces a decision and its evidence, and it ships no production surface. Implemented by [#99](https://github.com/qodeca/xezar/issues/99) in `packages/xezar/src/workspace/project-owner.ts`.
 
 It closes row **D-02** of [§10 Open decisions](mcp-project-leader-requirements.md) and serves **F-18**, **F-19**, **N-05**, **A-16**, **A-17**, **A-18** and **A-23**. The transport itself belongs to D-02's neighbour D-01 ([#79](https://github.com/qodeca/xezar/issues/79)); the connection file's name and format belong to D-04 ([#81](https://github.com/qodeca/xezar/issues/81)); operational limits and retention belong to D-09 ([#84](https://github.com/qodeca/xezar/issues/84)). Where this record has to name a path or a transport to be concrete, it says so and defers the spelling to those records.
 
@@ -176,7 +180,7 @@ Three reasons, all checkable:
 - **N-07 requires that deleting recoverable state degrades to a working xezar.** A per-project claim directory can be deleted at any moment and the next acquisition rebuilds it. The minted token (D-02.3) is what makes that deletion safe rather than a fencing hole.
 - **It keeps a per-project concern out of the per-user registry.** `~/.xezar/config.json` is the workspace config and project registry, written through `mergeWriteWorkspaceConfig`, whose whole convergence argument is that writers merge additively (`packages/xezar/src/workspace/config.ts:495`). Putting a mutual-exclusion record in it would be the X1 failure by construction.
 
-**Open — the exact directory and file names.** The connection file's name, format and creation trigger are D-04's ([#81](https://github.com/qodeca/xezar/issues/81)), and this record does not pre-empt them. What it fixes is the shape: per project, under `dataDir`, `0600`, one file per claim, a name unique per claim so a reaper can never unlink a replacement owner's claim — the property `packages/xezar/src/runs/project-writer.ts:15-19` documents and relies on.
+**Resolved:** `<dataDir>/mcp-owner-claims/<pid>-<uuid>.json`, mode `0600` (`workspace/project-owner.ts`). The following rationale is the original decision. The connection file's name, format and creation trigger are D-04's ([#81](https://github.com/qodeca/xezar/issues/81)), and this record does not pre-empt them. What it fixes is the shape: per project, under `dataDir`, `0600`, one file per claim, a name unique per claim so a reaper can never unlink a replacement owner's claim — the property `packages/xezar/src/runs/project-writer.ts:15-19` documents and relies on.
 
 ## 3. What was deliberately not built
 

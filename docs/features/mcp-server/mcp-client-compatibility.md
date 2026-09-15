@@ -1,5 +1,12 @@
 # Local MCP client compatibility and event-driven leader integration
 
+> **Status update — 2026-09-15:** Historical research, **superseded** for current status by the wake
+> decisions, [client acceptance](mcp-client-acceptance-record.md) and [DoD
+> record](mcp-definition-of-done-record.md). The original material gaps are dated 2026-09-08. pi now has a
+> [reaction extension](pi-leader-extension.md) and passed real-model reaction on 2026-09-13 (#373); Claude
+> Code and Codex passed by owner acceptance on 2026-09-15. OpenCode real-model reaction is out of scope by the
+> owner’s 2026-09-13 decision.
+
 Research date: **2026-09-08**. Scope: Claude Code, Codex, OpenCode, and local-only Xezar MCP. This is documentation/source-of-interface verification, **not a runtime integration test**. No model turns, MCP servers, client configurations, or credentials were exercised. No dependencies were installed. The separate reference-process audit was completed statically on 2026-09-09; see the [source register](../builtin-project-leader/standard-process-source-audit.md). That update adds no client runtime evidence.
 
 Related requirements: [MCP](mcp-project-leader-requirements.md) and [built-in leader](../builtin-project-leader/builtin-project-leader-requirements.md). The gaps this report names are carried as issues under [epic #67](https://github.com/qodeca/xezar/issues/67). All three clients remain required for the initial release; the gaps below are implementation obligations, not waived scope.

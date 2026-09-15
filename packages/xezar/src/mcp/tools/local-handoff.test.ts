@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { RunStore } from '../../runs/store.ts';
 import { ProjectContexts, type ProjectContextSource } from '../../server/project-context.ts';
@@ -22,6 +22,14 @@ import {
   type LocalHandoffInput,
   type LocalHandoffResult,
 } from './local-handoff.ts';
+
+// Health also probes installed CLIs (with 10-second timeouts). Those host-dependent
+// checks are unrelated to handoff authorization; keep the real health route and
+// capability calculation while making its environment discovery deterministic.
+vi.mock('../../core/backend-detect.ts', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../core/backend-detect.ts')>(),
+  detectEnvironment: async () => [{ name: 'git', available: true, version: 'test' }],
+}));
 
 /**
  * `local_handoff` (#98). The service side is the REAL app `createApp` builds, dispatched

@@ -1,11 +1,11 @@
-# MCP server for a single-project leader — requirements draft
+# MCP server for a single-project leader — requirements
 
 Status: **requirements contract; the feature is implemented** (`xezar mcp` and the tools inside `xezar serve`). Date: 2026-09-08; status updated 2026-09-11.
 Audience: product owner and engineering team.
 API reference: [MCP API reference](mcp-api.md) — every tool, its arguments and results, and which tool action serves each inventory record.
 Updated agreement: local-only MVP, one active logical client per project, full autonomous project actions, mandatory events/conflict rejection/idempotency, and non-waivable quality. Technical research: [client compatibility and recommendation](mcp-client-compatibility.md).
 
-Baseline: Xezar revision `6cd4aaa3605e8bcddf7bafd8f05ac96881ee35cc` and the current repository instructions. This is neither an approved protocol design nor a catalog of existing MCP tools.
+Baseline: Xezar revision `6cd4aaa3605e8bcddf7bafd8f05ac96881ee35cc` and the current repository instructions. Protocol decisions live in the D-records; the tool catalog is [mcp-api.md](mcp-api.md).
 
 Tracked by [epic #67](https://github.com/qodeca/xezar/issues/67), which breaks this document into eight phases of implementation issues. That epic is the backlog; this document stays the contract.
 
@@ -33,7 +33,7 @@ One leader manages one project. This MCP specification does not implement a lead
 | Xezar | Enforces scope and rules, performs business operations, stores state, and exposes it through both interfaces. |
 | Leader application / MCP client | Maintains the user-configured connection; it is not the authority that grants project access. |
 
-The role split and separate tasks for successive stages are a reference scenario inspired by a project using the name Cezar. This document does not transfer that project's private content, models, branches, limits, or process rules to all Xezar users. Status-only monitoring during execution is an example project policy, not an MCP prohibition on reading history or changes. The separate built-in leader specification explicitly adopts the complete generalized operating model and standard kit. Its current `.ai/xezar/` baseline was statically audited after the readiness signal on 2026-09-09; see the [source register](../builtin-project-leader/standard-process-source-audit.md). This does not certify implementation or any MCP client, and no automatic source monitoring is enabled.
+The role split and separate tasks for successive stages are a reference scenario inspired by a project using the name Cezar. This document does not transfer that project's private content, models, branches, limits, or process rules to all Xezar users. Status-only monitoring during execution is an example project policy, not an MCP prohibition on reading history or changes. The separate built-in leader specification explicitly adopts the complete generalized operating model and standard kit. Its `.ai/xezar/` baseline (now `.xezar/`) was statically audited after the readiness signal on 2026-09-09; see the [source register](../builtin-project-leader/standard-process-source-audit.md). This does not certify implementation or any MCP client, and no automatic source monitoring is enabled.
 
 ## 3. Scope and exclusions
 
@@ -62,10 +62,10 @@ Excluded: managing multiple projects, their registry, other projects' tasks, glo
 | F-11 | The leader MUST hand work onward through existing UI operations: feedback, continuation, variants, next-stage tasks, commit/push/draft PR, and existing merge/publication. These are autonomous project capabilities; no new release engine is introduced. Optional runtime review status remains distinct from mandatory quality and business acceptance. |
 | F-12 | The leader MUST read/change project settings. Shared settings are read-only and reveal only needed effective capabilities/limits, without secrets, account identities, or other-project data. Global accounts, limits, and home files cannot be administered. The boundary is agreed; field mapping remains engineering work. |
 | F-13 | MCP effects MUST automatically update open UI without manual reload. UI reconciles current state on reconnect; significant human changes are emitted to the leader. One authoritative state and causal origins prevent echo loops. |
-| F-14 | Xezar MUST automatically write local connection configuration inside the bound project's `.local/xezar/`. The user configures the leader application once to use it. Not all applications automatically discover that file. Its name, format, and creation trigger remain open. |
+| F-14 | Xezar MUST automatically write local connection configuration inside the bound project's `.local/xezar/`. The user configures the leader application once to use it. Not all applications automatically discover that file. Decided in [D-04](mcp-d04-connection-file-decision.md): `.local/xezar/mcp-connection.json`, written by the service after its MCP socket listens. |
 | F-15 | Connection data must not require pasting into chat. Any credentials remain local and outside Git; they must not enter history, tool responses, or event logs. |
 | F-16 | The server MUST reject global, foreign-project, expired-owner and otherwise invalid operations even when a client knows identifiers or tool names. Catalog filtering and prompt text do not replace enforcement. |
-| F-17 | Version one MUST run locally with client and Xezar on the same machine. Claude Code, Codex, OpenCode and pi are required initial clients; pi is supported through the `pi-mcp-adapter` extension, which its one-time setup installs. Validated adapters may be necessary for proactive reaction. Remote access is out of scope. |
+| F-17 | Version one MUST run locally with client and Xezar on the same machine. Claude Code, Codex, OpenCode and pi are required initial clients; pi is supported through the `pi-mcp-adapter` extension, which its one-time setup installs. Validated adapters may be necessary for proactive reaction. Remote access is out of scope. Owner decision 2026-09-13: OpenCode is out of scope for real-model reaction; see the [DoD record](mcp-definition-of-done-record.md) and #340. |
 | F-18 | Exactly one active logical MCP client/session may own a project. UI stays concurrent; different projects may have different clients. Reject a second client with a protocol/transport-compliant project-occupied error. Multiple requests/streams of the same logical owner are not additional clients. No manual disconnect UI is added. |
 | F-19 | Detect confirmed process/channel closure and use background liveness checks without model turns to release occupancy after confirmed termination or expiry. Model silence and one HTTP/SSE ending are not session death. After expiry the old client must reconnect; no two owners can mutate. Lease/fencing/timeouts remain design details. |
 | F-20 | Long operations MUST be asynchronous: return acceptance and an operation/task ID, then automatically deliver significant events and enable client/model reaction without continuous model polling. Delivery to an application and starting a model turn are separately verified outcomes. |
@@ -165,8 +165,8 @@ A human finishes or changes a task after the leader reads it. The leader's stale
 - The [HTTP server](../../../packages/xezar/src/server/server.ts) exposes `/api/v1` and project routes `/api/v1/p/:projectId`. Route scope is not proof of MCP authorization. The server derives project identity from a trusted connection binding; it must not forward an arbitrary `projectId` to a global API client.
 - [ProjectContext](../../../packages/xezar/src/server/project-context.ts) joins the repository, RunStore, RunManager, and AutomationStore. **Proposal:** an MCP adapter invokes shared service operations with a narrowed context and resource checks. A loopback HTTP alternative needs equivalent project/owner enforcement; a proxy to every route is insufficient.
 - [RunManager](../../../packages/xezar/src/workflows/run.ts), [RunStore](../../../packages/xezar/src/runs/store.ts), and [WorkspaceSemaphore](../../../packages/xezar/src/workspace/semaphore.ts) retain ownership of task lifecycle, state, and limits. MCP adds neither a second queue nor its own agent-process controller. Cover new tasks, Continue, and restart recovery.
-- [Zod contracts](../../../packages/contract/src/index.ts) and [validators](../../../packages/xezar/src/server/validators.ts) anchor shared shapes and rules. Placement of MCP-specific schemas remains open. Any new HTTP API preserves the contracts, middleware, versioning, and chained route registration required by AGENTS.md.
-- [Global UI events](../../../packages/web/src/api/global-events.tsx), [task SSE](../../../packages/web/src/api/run-events.ts), and [WebSocket](../../../packages/xezar/src/server/ws.ts) update the cockpit. MCP should use the same state source after project filtering. An unfiltered workspace stream is prohibited. MCP client notification transport remains open.
+- [Zod contracts](../../../packages/contract/src/index.ts) and [validators](../../../packages/xezar/src/server/validators.ts) anchor shared shapes and rules. MCP-specific schemas live in `packages/contract/src/mcp-*.ts`. Any new HTTP API preserves the contracts, middleware, versioning, and chained route registration required by AGENTS.md.
+- [Global UI events](../../../packages/web/src/api/global-events.tsx), [task SSE](../../../packages/web/src/api/run-events.ts), and [WebSocket](../../../packages/xezar/src/server/ws.ts) update the cockpit. MCP should use the same state source after project filtering. An unfiltered workspace stream is prohibited. MCP event transport is recorded in [D-05](mcp-d05-async-event-contract-decision.md) and the client wake decisions.
 - The [UI settings registry](../../../packages/web/src/routes/settings/registry.tsx) separates project/global sections, but a section URL does not determine all effects. `agent-config` includes home files; accounts, resource limits, model locks, and skill updates can affect more than one project.
 - **Agreed shared-setting boundary:** expose only safe effective limits/capabilities needed for this project. Allow project settings writes, never global account/limit/home-file administration. Field-by-field classification is engineering work. Any project override must be actually local in effect; do not expand global authority to implement it.
 - [Paths](../../../packages/xezar/src/paths.ts) and [CLI startup](../../../packages/xezar/src/index.ts) are integration points for the connection file and Git ignore maintenance. State must be recoverable and written without exposing secrets. File presence or location alone is not a security boundary.
@@ -204,17 +204,18 @@ Shared fixture: projects A and B, separate tasks, groups, messages, workflows, f
 | A-20 / O | UI open and leader event feed connected | Mutate through MCP, then make significant human changes in UI | UI updates without reload; human changes reach leader. Reconnect reconciles. No recursive leader loop from operation echoes, logs, tokens or visual changes. | F-13, F-20–21 |
 | A-21 / O | Events pending while client offline | Reconnect with valid/old cursor and duplicates/out-of-order events | Outstanding significant events plus current state delivered; gaps explicit and recoverable. No duplicate decision/effect. Retention is documented from design, not assumed. | F-21; N-10 |
 | A-22 / O | Global settings and mandatory quality controls exist | Attempt global admin or weakening gates/acceptance, including via an approval request | Only safe effective reads allowed; no secrets/foreign identities. Weakening is prohibited, not an approval option. Solution repaired or blocker reported. | F-12, F-22 |
-| A-23 / O | Native client or built-in leader owns P | Attempt to start the other; test four clients on local-only setup | Same exclusive owner rule applies; handover requires old ownership to end, no covert second leader. Claude Code, Codex, OpenCode and pi each pass local setup and reaction tests. | F-17–21 |
+| A-23 / O | Native client or built-in leader owns P | Attempt to start the other; test four clients on local-only setup | Same exclusive owner rule applies; handover requires old ownership to end, no covert second leader. Claude Code, Codex, OpenCode and pi each pass local setup and reaction tests. Owner decision 2026-09-13 excludes OpenCode from real-model reaction; see the [DoD record](mcp-definition-of-done-record.md) and #340. | F-17–21 |
 
-Implementation tests should use isolated data and `XEZ_DRY_RUN=1`, without personal accounts or secrets. Real MCP clients and agreed transports need separate integration validation. This documentation change does not run those tests or claim these criteria have passed.
+Implementation tests should use isolated data and `XEZ_DRY_RUN=1`, without personal accounts or secrets. Real MCP clients and agreed transports need separate integration validation. Results are in the [DoD record](mcp-definition-of-done-record.md) and [acceptance record](mcp-client-acceptance-record.md).
 
 ### Whole-feature Definition of Done
 
 The feature is **complete across the entire agreed scope** only when all of the following hold:
 
-**Measured, on one release candidate:** [`mcp-definition-of-done-record.md`](mcp-definition-of-done-record.md)
-runs all eight clauses and A-01–A-23 on `ed579e63` (2026-09-12, [#119](https://github.com/qodeca/xezar/issues/119)).
-Five clauses hold; clauses 2, 3 and 8 do not, and the record names why.
+**Current acceptance (2026-09-15):** the [DoD record](mcp-definition-of-done-record.md) records
+**eight of eight** clauses holding: seven on evidence, clause 2 by owner acceptance across
+revisions. A same-revision cross-client run was not done. The clauses below retain their agreed wording;
+the record names the exception and evidence.
 
 1. Every UI business action has a final matrix record and product-owner-approved classification; every project action has a working MCP equivalent. Coverage is measured against this inventory, not tool or endpoint counts. No unresolved project action may remain in a full-coverage claim.
 2. All criteria (A-01–A-23) pass on **the same release-candidate revision**. Evidence identifies SHA, fixture configuration, client, scenario, and result. `Skipped`, old-revision evidence, and model assertions alone are not passes.
@@ -225,19 +226,19 @@ Five clauses hold; clauses 2, 3 and 8 do not, and the record names why.
 7. Implementation meets the repository quality gate in [AGENTS.md](../../../AGENTS.md) and [SDLC.md](../../../SDLC.md); MCP integration tests and UI/MCP evidence are reviewable. This applies to future implementation, not builds for this documentation change.
 8. Product approves leader-action coverage and the responsible engineer approves technical evidence. Known limitations contradict no obligatory criterion.
 
-## 10. Open decisions
+## 10. Decisions
 
-| ID | Decision | Constraint / proposal |
+| ID | Decision | Constraint and resolution |
 | --- | --- | --- |
-| D-01 | Local transport, protocol negotiation, bridge and adapters | Local-only and all four initial clients are agreed. See compatibility report: stdio bridge plus client reaction adapters recommended; IPC/runtime tests remain design work. |
-| D-02 | Session binding, liveness, occupancy and handover | One logical owner/project, automatic release on confirmed death/expiry, no manual disconnect UI. Choose lease/fencing/timeout and restart behavior; old expired owner must reinitialize. |
-| D-03 | Shared/project field mapping | Product boundary settled: project writes, safe effective capability/limit reads only from global state. No global account/home-file/limit administration. Audit fields and implement enforcement. |
-| D-04 | Connection file and adapters | File remains local in project .local/xezar; select format/name and one-time client setup, including real event-to-model integration. No universal autodiscovery. |
-| D-05 | Async event and tool contract | Agreed significant-event catalog and no model polling; choose event IDs/order/replay/acknowledgements, negotiated features and adapters. |
-| D-06 | Version checks, durable operation keys, audit | Stale writes must be rejected and idempotency is mandatory. Specify exact keys, collision, restart, external-side-effect uncertainty and retention; not open product guarantees. |
-| D-07 | Existing merge/publication mapping | Settled: existing project UI actions autonomous, including delete/merge; no duplicated confirmation click. Preserve validation/quality and add no new release feature. |
-| D-08 | Goal decisions and local application handoff | Goal/DoD boundary decisions remain; per-operation confirmation is not required. Missing desktop capability is explicit. Built-in/native handover respects the single owner. |
-| D-09 | Operational limits and packaging | Choose measured bounds/retention and protected local exposure. No remote MVP or fixed approved timeout; heartbeat/replay run without model turns. |
+| D-01 | Local transport, protocol negotiation, bridge and adapters | Local-only and all four initial clients are agreed. See compatibility report: stdio bridge plus client reaction adapters recommended; the record contains the transport decision and evidence. Resolved by [D-01](mcp-d01-transport-decision.md). |
+| D-02 | Session binding, liveness, occupancy and handover | One logical owner/project, automatic release on confirmed death/expiry, no manual disconnect UI. Choose lease/fencing/timeout and restart behavior; old expired owner must reinitialize. Resolved by [D-02](mcp-d02-session-binding-decision.md). |
+| D-03 | Shared/project field mapping | Product boundary settled: project writes, safe effective capability/limit reads only from global state. No global account/home-file/limit administration. Audit fields and implement enforcement. Resolved by [settings classification](mcp-settings-classification.md). |
+| D-04 | Connection file and adapters | File remains local in project .local/xezar; select format/name and one-time client setup, including real event-to-model integration. No universal autodiscovery. Resolved by [D-04](mcp-d04-connection-file-decision.md). |
+| D-05 | Async event and tool contract | Agreed significant-event catalog and no model polling; choose event IDs/order/replay/acknowledgements, negotiated features and adapters. Resolved by [D-05](mcp-d05-async-event-contract-decision.md). |
+| D-06 | Version checks, durable operation keys, audit | Stale writes must be rejected and idempotency is mandatory. Specify exact keys, collision, restart, external-side-effect uncertainty and retention; not open product guarantees. Resolved by [D-06](mcp-d06-versioning-idempotency-audit-decision.md), with implementation gap #472. |
+| D-07 | Existing merge/publication mapping | Settled: existing project UI actions autonomous, including delete/merge; no duplicated confirmation click. Preserve validation/quality and add no new release feature. Resolved by this section (I-076). |
+| D-08 | Goal decisions and local application handoff | Goal/DoD boundary decisions remain; per-operation confirmation is not required. Missing desktop capability is explicit. Built-in/native handover respects the single owner. Resolved by this section (`local-handoff.ts`). |
+| D-09 | Operational limits and packaging | Choose measured bounds/retention and protected local exposure. No remote MVP or fixed approved timeout; heartbeat/replay run without model turns. Resolved by [D-09](mcp-d09-limits-retention-packaging-decision.md). |
 
 ## 11. Ready-for-implementation gate
 
@@ -252,9 +253,9 @@ This document is the standalone product contract for the MCP workstream. The lin
 
 **Ready for planning:** yes. The scope, all four required clients, local-only operation, exclusive logical ownership, full project autonomy, immutable quality boundary, events, stale-write rejection and operation-key idempotency are specified. Engineering may choose transport/IPC, schemas, storage, version/lease values and packaging without asking the product owner about each routine detail, provided the required outcomes remain unchanged.
 
-**Ready for bounded implementation:** shared service adapters, project/owner validation, durable operation identity, state-version checks, event catalog/journal, and local setup/error UI can be designed and implemented against fixtures. Do not expose a partially protected real integration as complete. The existing UI inventory still requires field/action-level closure. No Daxko audit is needed for this MCP workstream.
+**Ready for bounded implementation:** shared service adapters, project/owner validation, durable operation identity, state-version checks, event catalog/journal, and local setup/error UI can be designed and implemented against fixtures. Do not expose a partially protected real integration as complete. Field/action mapping is closed in [mcp-ui-action-inventory.md](mcp-ui-action-inventory.md). No Daxko audit is needed for this MCP workstream.
 
-**Not yet ready to claim the entire feature implementable/certified without additional evidence:** generic native-client notifications are not proven to wake Codex/OpenCode models, and do not wake pi (observed with pi 0.85.1 and pi-mcp-adapter 2.32.1); Claude Channels has preview/eligibility constraints. A client-adapter spike must prove the selected integration in all four tools. All clients remain required; a supported native session that cannot be targeted needs an adapter/client extension, not removal from scope or model polling.
+**Pre-implementation assessment (2026-09-08), superseded by the [DoD record](mcp-definition-of-done-record.md):** generic native-client notifications are not proven to wake Codex/OpenCode models, and do not wake pi (observed with pi 0.85.1 and pi-mcp-adapter 2.32.1); Claude Channels has preview/eligibility constraints. A client-adapter spike must prove the selected integration in all four tools. All clients remain required; a supported native session that cannot be targeted needs an adapter/client extension, not removal from scope or model polling.
 
 Minimum interface contract to refine in design:
 
@@ -274,9 +275,9 @@ This section completes the MCP design brief without adding a second leader UI, o
 
 ### Existing UI evidence and information architecture
 
-The [settings registry](../../../packages/web/src/routes/settings/registry.tsx) and [settings shell](../../../packages/web/src/routes/settings/settings-shell.tsx) separate project and global settings and support desktop navigation/mobile drill-in. The [app shell](../../../packages/web/src/components/app-shell.tsx) supplies project navigation and a mobile drawer; the [global events provider](../../../packages/web/src/api/global-events.tsx) is the current shared-state update anchor. These are code observations, not evidence that an MCP settings screen already exists.
+The [settings registry](../../../packages/web/src/routes/settings/registry.tsx) and [settings shell](../../../packages/web/src/routes/settings/settings-shell.tsx) separate project and global settings and support desktop navigation/mobile drill-in. The [app shell](../../../packages/web/src/components/app-shell.tsx) supplies project navigation and a mobile drawer; the [global events provider](../../../packages/web/src/api/global-events.tsx) is the current shared-state update anchor. Settings → MCP connection has since shipped (`mcp-connection-section.tsx`, `SETTINGS_SECTIONS`).
 
-**Proposed placement:** one project Settings entry named “MCP connection”, available from the active project and linked from leader setup when ownership is relevant. Its information hierarchy is: project identity and local-only scope → connection/client status → client-specific setup → capabilities and limitations → actionable errors. Keep transport/debug detail collapsed. Do not expose global administration as part of project MCP setup. Final route/title and breakpoint behavior are designer choices within the current shell.
+**Shipped placement:** one project Settings entry named “MCP connection”, available from the active project and linked from leader setup when ownership is relevant. Its information hierarchy is: project identity and local-only scope → connection/client status → client-specific setup → capabilities and limitations → actionable errors. Keep transport/debug detail collapsed. Do not expose global administration as part of project MCP setup. The shipped section is registered by `SETTINGS_SECTIONS` as `mcp-connection`.
 
 ### Entry points and user journeys
 
