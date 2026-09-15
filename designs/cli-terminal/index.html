@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CLI terminal design – overview</title>
+<link rel="stylesheet" href="../../docs/design-system/cockpit.css">
+<link rel="stylesheet" href="styles.css">
+<script src="theme.js"></script>
+</head>
+<body>
+
+<nav class="doc-bar" aria-label="Design pages">
+  <span class="brand">CLI terminal design</span>
+  <a href="index.html" aria-current="page">Overview</a>
+  <a href="switcher.html">Other projects</a>
+  <span class="spacer"></span>
+  <button class="theme-toggle" type="button" data-theme-toggle>Light / dark</button>
+</nav>
+
+<main class="doc">
+  <h1>CLI terminal – live activity and one cockpit per project</h1>
+  <p class="lead">What <code>xez</code> prints in a terminal: a short banner, one line per thing that happened, and a small live table of active tasks. Each project runs in its own xezar on a port it keeps. Words carry every state; colour only reinforces them.</p>
+  <p>Status: Draft, waiting for the first design review. Issue #467. The exact terminal output is in the text files below – this page only shows how the colours read in a light and a dark theme. Developer handoff: <a class="link" href="README.md">README.md</a>.</p>
+
+  <h2>Files</h2>
+  <div class="table-scroll">
+    <table class="decision-table">
+      <thead><tr><th scope="col">File</th><th scope="col">What it shows</th></tr></thead>
+      <tbody>
+        <tr><td><a class="link" href="tty.txt">tty.txt</a></td><td>A terminal at 80 columns: first start, a second project, live activity with the table, more than 10 tasks, the stop summary.</td></tr>
+        <tr><td><a class="link" href="tty-narrow.txt">tty-narrow.txt</a></td><td>A terminal at 40 columns, and a resize from 80 to 40.</td></tr>
+        <tr><td><a class="link" href="non-tty.txt">non-tty.txt</a></td><td>Output to a file, a pipe or CI: plain banner and one logfmt line per event.</td></tr>
+        <tr><td><a class="link" href="quiet.txt">quiet.txt</a></td><td><code>--quiet</code>, <code>run --quiet</code> and the four log levels.</td></tr>
+        <tr><td><a class="link" href="error-cases.txt">error-cases.txt</a></td><td>Every refusal and failure: ports, a second instance, MCP, tasks, HTTP, skills, exposure, untrusted text, bursts.</td></tr>
+        <tr><td><a class="link" href="multi-instance.md">multi-instance.md</a></td><td>One cockpit per project: stored keys, port choice, MCP lookup, the project switcher, collisions and the compatibility entries.</td></tr>
+        <tr><td><a class="link" href="open-questions.md">open-questions.md</a></td><td>Twelve questions for the review, each with a recommendation.</td></tr>
+        <tr><td><a class="link" href="switcher.html">switcher.html</a></td><td>The cockpit’s “Other projects” list in every state.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Colour key</h2>
+  <p>Only the terminal’s 16 standard colours are used, so the person’s own terminal theme picks the shade. Here each one is shown with the cockpit token it mirrors. Switch the theme with the button in the bar.</p>
+  <div class="table-scroll">
+    <table class="decision-table">
+      <thead><tr><th scope="col">Terminal colour</th><th scope="col">Used for</th><th scope="col">Token it mirrors</th><th scope="col">Word without colour</th></tr></thead>
+      <tbody>
+        <tr><td>red</td><td><code>error</code>, <code>failed</code></td><td><code>--danger</code></td><td>error, failed</td></tr>
+        <tr><td>yellow</td><td><code>warn</code>, <code>needs you</code></td><td><code>--pending-strong</code></td><td>warn, needs you</td></tr>
+        <tr><td>magenta</td><td><code>needs review</code></td><td><code>--violet</code></td><td>needs review</td></tr>
+        <tr><td>cyan</td><td><code>running</code>, <code>monitoring</code>, URLs</td><td><code>--info</code></td><td>running, monitoring</td></tr>
+        <tr><td>green</td><td><code>done</code>, <code>passed</code>, <code>ready</code></td><td><code>--success</code></td><td>done, passed, ready</td></tr>
+        <tr><td>dim</td><td>time, <code>info</code>, headers, <code>queued</code>, rules</td><td><code>--muted-foreground</code></td><td>context only</td></tr>
+        <tr><td>bold</td><td>project name</td><td>–</td><td>the name</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Sample – tty.txt scene 3, coloured</h2>
+  <div class="frame-label">With colour</div>
+  <div class="frame">
+<pre class="term" tabindex="0" role="region" aria-label="Terminal sample with colour">  <span class="a-dim">10:07:02</span>  <span class="a-dim">info </span>  b98de765  started — implement · Codex
+  <span class="a-dim">10:09:45</span>  <span class="a-dim">info </span>  a12bc345  check typecheck <span class="a-green">passed</span> — 41s
+  <span class="a-dim">10:12:08</span>  <span class="a-red a-bold">error</span>  a12bc345  check unit-tests <span class="a-red">failed</span> — exit 1 · 2m 23s
+  <span class="a-dim">10:14:30</span>  <span class="a-yellow">warn </span>  b98de765  <span class="a-yellow">needs you</span> — “Pin vitest to 3.2.4 or allow 3.2.x?”
+                             <span class="a-cyan">http://localhost:4322/p/beta/tasks/b98de765</span>
+  <span class="a-dim">10:15:02</span>  <span class="a-dim">info </span>  mcp       leader attached — Claude Code
+  <span class="a-dim">10:19:04</span>  <span class="a-red a-bold">error</span>  b98de765  <span class="a-red">failed</span> — Codex stopped · exit code not reported
+                             <span class="a-cyan">http://localhost:4322/p/beta/tasks/b98de765</span>
+  <span class="a-dim">10:20:30</span>  <span class="a-dim">info </span>  c4410f2e  <span class="a-green">done</span> — 2m 09s · 18.4k tokens · $0.31
+  <span class="a-dim">10:21:12</span>  <span class="a-dim">info </span>  a12bc345  <span class="a-magenta">needs review</span> — 14m 59s · 96.2k tokens
+  <span class="a-dim">─ active tasks ──────────────────────────────────────────────────────────────</span>
+  <span class="a-dim">Task      State         Step        Agent           Time  Title</span>
+  a12bc345  <span class="a-magenta">needs review</span>  —           Claude Code    15:34  Fix login redirect…
+  d0e2f6a1  <span class="a-cyan">monitoring</span>    watch-ci    Claude Code     3:12  Watch CI for PR 482
+  e5b7c3d9  <span class="a-cyan">running</span>       implement   Claude Code     1:47  Add rate limit to /…
+  f81a2b40  <span class="a-dim">queued</span>        —           pi              0:11  Tidy CHANGELOG head…
+  4 active — <span class="a-magenta">1 needs review</span> · <span class="a-cyan">2 running</span> · 1 queued — <span class="a-red">2 failed since start</span></pre>
+  </div>
+
+  <div class="frame-label">The same with NO_COLOR=1</div>
+  <div class="frame">
+<pre class="term no-color" tabindex="0" role="region" aria-label="Terminal sample without colour">  <span>10:12:08</span>  <span>error</span>  a12bc345  check unit-tests <span>failed</span> — exit 1 · 2m 23s
+  <span>10:14:30</span>  <span>warn </span>  b98de765  <span>needs you</span> — “Pin vitest to 3.2.4 or allow 3.2.x?”
+                             http://localhost:4322/p/beta/tasks/b98de765
+  <span>10:21:12</span>  <span>info </span>  a12bc345  <span>needs review</span> — 14m 59s · 96.2k tokens
+  4 active — 1 needs review · 2 running · 1 queued — 2 failed since start</pre>
+  </div>
+  <p class="note"><strong>Check:</strong> every state above is still named by a word in the colourless sample. The sample scrolls sideways inside its frame on a phone because a terminal line is 80 columns; the page itself does not.</p>
+</main>
+</body>
+</html>

@@ -1,0 +1,311 @@
+# error-cases.txt – what xezar prints when something goes wrong
+#
+# Lines that start with `#` are notes. xezar never prints them.
+# TTY form at 80 columns. The plain (non-TTY) form of each case follows it,
+# marked `plain:`. A refused start prints `error` and `fix` lines on stderr and
+# exits 1. The `fix` label mirrors the cockpit’s “Fix:” line
+# (docs/design-system/writing.md § 7).
+#
+#        1         2         3         4         5         6         7         8
+#2345678901234567890123456789012345678901234567890123456789012345678901234567890
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# A. Ports
+# ═════════════════════════════════════════════════════════════════════════════
+
+# A1 – the remembered port is taken by another program. xezar moves on and
+# remembers the new port. It checks whether the program on the old port is a
+# xezar cockpit (GET /api/v1/health, 300 ms) only to name it.
+
+$ xez
+[stdout]
+  cockpit   http://localhost:4323
+            4322 is used by another program — beta uses 4323 from now on
+
+plain: 2026-09-15T08:06:12.104Z level=info project=beta event=xezar.ready url=http://localhost:4323 port=4323 start=4322 reason=busy
+
+# A2 – the remembered port is taken by the xezar cockpit of another project.
+
+[stdout]
+  cockpit   http://localhost:4323
+            4322 is used by the xezar cockpit for gamma — beta uses 4323 from
+            now on
+
+plain: … event=xezar.ready url=http://localhost:4323 port=4323 start=4322 reason=busy busy_by=gamma
+
+# A3 – an explicit --port is busy. Unchanged behaviour: xezar moves on. The
+# port asked for is named, and the new port is remembered as last seen.
+
+$ xez --port 5000
+[stdout]
+  cockpit   http://localhost:5001
+            5000 was busy — using 5001
+
+# A4 – the port set for this project (`xez projects port beta 4400`) is busy.
+# xezar moves on for this start but keeps 4400 as the project’s port.
+
+[stdout]
+  cockpit   http://localhost:4401
+            4400 is set for beta but was busy — using 4401 this time
+
+# A5 – two projects set the same port. The second one to start moves on.
+
+[stdout]
+  cockpit   http://localhost:4401
+            4400 is also set for alpha, which is running — using 4401 this
+            time
+
+# A6 – no free port in the whole range. Nothing was claimed; no task started.
+
+$ xez
+[stderr]
+  error  No free port in 4321–4370 on 127.0.0.1.
+  fix    Stop a program that uses one of these ports, or pass --port <port>.
+$ echo $?
+1
+
+plain: 2026-09-15T08:06:12.104Z level=error project=beta event=listen.failed host=127.0.0.1 from=4321 to=4370 reason=exhausted message="No free port in 4321–4370 on 127.0.0.1." fix="Stop a program that uses one of these ports, or pass --port <port>."
+
+# A7 – the range would pass 65535.
+
+$ xez --port 65500
+[stderr]
+  error  No free port in 65500–65535 on 127.0.0.1.
+  fix    Stop a program that uses one of these ports, or pass --port <port>.
+
+# A8 – the bind fails for another reason. No retry on another port.
+
+$ xez --port 80
+[stderr]
+  error  Cannot listen on 127.0.0.1:80 — permission denied (EACCES).
+  fix    Pick a port above 1023, or pass --port 0 for any free port.
+
+$ xez --bind-host 10.9.9.9
+[stderr]
+  error  Cannot listen on 10.9.9.9:4321 — address not available
+         (EADDRNOTAVAIL).
+  fix    Use an address this machine has, or leave --bind-host out.
+
+# A9 – a bad value. Checked before any port, lock or project data is touched.
+
+$ xez --port 43a1
+[stderr]
+  error  --port must be a whole number from 0 to 65535 — got “43a1”.
+$ echo $?
+1
+
+$ XEZ_PORT=99999 xez
+[stderr]
+  error  XEZ_PORT must be a whole number from 0 to 65535 — got “99999”.
+
+$ xez --output fancy
+[stderr]
+  error  --output must be one of auto, rich, lines, plain — got “fancy”.
+
+$ XEZ_LOG_LEVEL=verbose xez
+[stderr]
+  error  XEZ_LOG_LEVEL must be one of debug, info, warn, error — got
+         “verbose”.
+
+# A10 – a bad STORED value only warns. The key is ignored for this start and
+# left on disk as it is.
+
+[stderr]
+  10:06:12  warn   registry  ~/.xezar/config.json: projects[beta].cli.port is
+                             “abc” — ignored, fix or remove it
+
+# A11 – the port could not be remembered. The cockpit works anyway.
+
+[stderr]
+  10:06:12  warn   registry  Could not remember port 4322 for beta —
+                             ~/.xezar is read-only. Next start begins at 4321.
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# B. Instances
+# ═════════════════════════════════════════════════════════════════════════════
+
+# B1 – a second `xez` for a project that already runs, address known and
+# checked (health answers with this project id). Nothing was claimed, no port
+# was opened, the running cockpit is untouched.
+
+$ xez
+[stderr]
+  error  xezar is already running for beta.
+         Its cockpit: http://localhost:4322 (process 48101)
+  fix    Use that cockpit, or stop it first with Ctrl-C in its terminal.
+$ echo $?
+1
+
+plain: … level=error project=beta event=start.refused reason=already-running url=http://localhost:4322 pid=48101
+
+# B2 – same, but the address cannot be checked (no remembered port, or the
+# remembered port does not answer as this project). No guessed URL. A claim
+# whose process has ended is cleared by xezar itself and never reaches here.
+
+[stderr]
+  error  xezar is already running for beta (process 48101).
+         Its cockpit address is not known.
+  fix    Find the terminal that runs it, or stop process 48101 first.
+
+# B2b – the claim file cannot be read or belongs to no live process xezar
+# can check. The existing detail is kept, with the file named.
+
+[stderr]
+  error  beta’s data is locked by a claim xezar cannot verify:
+         ~/Projects/beta/.local/xezar/writer-claims/48101-….json
+  fix    If no xezar runs for beta, delete that file and start again.
+
+# B3 – the project data is claimed from another machine (a shared folder).
+
+[stderr]
+  error  beta’s data is in use by xezar on another machine (build-02).
+  fix    Stop xezar there first. Two machines cannot write one project.
+
+# B4 – opt-in workspace mode (`--instance workspace`) while beta already runs
+# in its own instance. The workspace cockpit starts; beta stays with its
+# owner and is shown as a link (multi-instance.md § 6).
+
+[stderr]
+  10:06:12  info   xezar     beta runs in its own cockpit —
+                             http://localhost:4322
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# C. MCP
+# ═════════════════════════════════════════════════════════════════════════════
+
+# C1 – Windows. The cockpit starts; `xez mcp` cannot reach it.
+
+[stderr]
+  10:06:12  warn   mcp       unavailable — the xezar MCP bridge is not
+                             supported on Windows yet. The cockpit works
+                             without it.
+
+# C2 – the home path is too long for a local socket.
+
+[stderr]
+  10:06:12  warn   mcp       unavailable — the xezar home path is too long for
+                             a local socket (limit 104 bytes). Point XEZ_HOME
+                             at a shorter folder.
+
+# C3 – a live socket for this project already exists (a stale process that
+# lost its project lock but kept the socket).
+
+[stderr]
+  10:06:12  warn   mcp       unavailable — another xezar is already serving
+                             this project over MCP. The cockpit works without
+                             it.
+
+# C4 – the MCP module failed to load.
+
+[stderr]
+  10:06:12  warn   mcp       unavailable — “Cannot find module …/mcp/index.js”.
+                             The cockpit works without it.
+
+# C5 – `xez mcp` passed --port. It still finds the cockpit by project.
+# stdout is JSON-RPC only; this line goes to stderr, which the MCP client logs.
+
+$ xez mcp --port 4322
+[stderr]
+xezar mcp finds the cockpit by project, not by port — --port is ignored
+
+# C6 – `xez mcp` in a project whose cockpit is not running. Not a terminal
+# line: the tool result carries the existing message (packages/xezar/src/mcp/
+# bridge.ts), unchanged:
+#   xezar is not running for project beta. Start the cockpit in the project's
+#   directory with `xez` (or `npx @qodeca/xezar`), then call this tool again.
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# D. Tasks, checks and agents
+# ═════════════════════════════════════════════════════════════════════════════
+
+  10:12:08  error  a12bc345  check unit-tests failed — exit 1 · 2m 23s
+  10:12:40  error  a12bc345  check repo-gates failed — timed out after 30m
+  10:19:04  error  b98de765  failed — Codex stopped · exit code not reported
+  10:19:30  error  c4410f2e  failed — Claude Code exited with code 137
+  10:19:31  error  0c9d8e7f  failed — pi stopped by signal SIGTERM, not sent
+                             by xezar
+  10:20:02  error  11aa22bb  failed — step implement did not end with
+                             XEZ:DONE
+  10:20:40  warn   33cc44dd  paused — Claude Code usage limit · resumes at
+                             14:30
+  10:21:10  warn   55ee66ff  paused — memory above 4.1 GB · resumes when
+                             another task ends
+  10:22:00  error  77aa88bb  failed — worktree could not be created
+                             “fatal: a branch named 'xez/77aa88bb' already
+                             exists”
+
+# Every failed line is followed by the task URL on a continuation line
+# (tty.txt scene 3). It is left out here to keep the list short.
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# E. HTTP
+# ═════════════════════════════════════════════════════════════════════════════
+
+  10:16:11  warn   http      409 POST /api/v1/p/:projectId/runs/:id/finish
+                             “no open session”
+  10:16:30  warn   http      403 POST /api/v1/p/:projectId/runs — cross-origin
+                             request refused
+  10:21:40  error  http      500 GET /api/v1/p/:projectId/runs/:id/diff
+                             “internal error”
+
+# The same refusal again and again is folded: the first is printed, repeats
+# within 10 seconds are counted, and one line reports the count.
+
+  10:16:11  warn   http      409 POST /api/v1/p/:projectId/runs/:id/finish
+                             “no open session”
+  10:16:21  warn   http      409 POST /api/v1/p/:projectId/runs/:id/finish
+                             repeated 14 times in 10s
+
+plain: … level=warn project=beta event=http.repeated method=POST route=/api/v1/p/:projectId/runs/:id/finish status=409 count=14 window_ms=10000
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# F. Skills, agents, updates
+# ═════════════════════════════════════════════════════════════════════════════
+
+  10:17:55  warn   skills    update failed — network unreachable · next try
+                             16:17
+  10:17:56  info   skills    updated by another xezar — 3 skills changed
+  10:19:03  warn   provider  Codex needs sign-in — open Settings → Agents
+  10:25:12  info   provider  Codex signed in
+
+# No agent at all at boot. The cockpit still starts.
+
+[stdout]
+  agents    none found — install Claude Code, Codex, OpenCode or pi
+  tools     git 2.47.0 · gh missing
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# G. Exposure, output and bursts
+# ═════════════════════════════════════════════════════════════════════════════
+
+# G1 – non-loopback bind. Printed in every mode, --quiet included.
+
+[stderr]
+  warn   Listening on 0.0.0.0:4321 — xezar has no built-in login.
+         Put it behind a reverse proxy that checks who connects, and keep
+         this address off the internet.
+
+# G2 – untrusted text is cleaned before it is printed. A task title that
+# holds an escape sequence, a hyperlink and a line break:
+#   "Fix \x1b[2J\x1b]8;;https://evil\x07login\n10:00:00  info  fake line"
+# is printed as one line, escapes removed, the break turned into a space:
+
+  10:18:20  info   c4410f2e  queued — “Fix login 10:00:00 info fake line”
+
+# G3 – a burst. More than 20 info lines in one second: the rest of that
+# second is folded into one line. Warnings and errors are never folded.
+# Plain output folds the same way, at 200 info lines a second.
+
+  10:30:01  info   xezar     312 more info lines in the last second were
+                             folded — see the cockpit
+
+# G4 – stderr is closed (the terminal went away, `| head` ended). xezar stops
+# drawing, releases its timers and keeps running. Tasks are not cancelled.
+# Nothing can be printed, so nothing is.

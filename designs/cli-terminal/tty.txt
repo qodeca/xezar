@@ -1,0 +1,155 @@
+# tty.txt – `xez` in an interactive terminal, 80 columns, rich output
+#
+# How to read this file
+#   Lines that start with `#` are notes for the reviewer. xezar never prints them.
+#   `[stdout]` and `[stderr]` above a block name the stream it goes to.
+#   Colour is described in README.md § 9.2. Every word below
+#   is printed in NO_COLOR too; colour only reinforces it.
+#   The ruler shows the 80-column limit. No printed line may pass it.
+#
+#        1         2         3         4         5         6         7         8
+#2345678901234567890123456789012345678901234567890123456789012345678901234567890
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Scene 1 – first start for project “alpha”. Nothing remembered yet. 4321 is
+# free. No task is active.
+# ─────────────────────────────────────────────────────────────────────────────
+
+$ xez
+[stdout]
+
+  xezar 0.16.0 · alpha · branch main
+  ~/Projects/alpha
+
+  cockpit   http://localhost:4321
+  agents    Claude Code 2.1.3 · Codex 0.52.0 · pi 0.9.1 · OpenCode missing
+  tools     git 2.47.0 · gh 2.63.0
+
+[stderr]
+  10:04:01  info   mcp       ready — run xez mcp in this repo
+  ─ active tasks ──────────────────────────────────────────────────────────────
+  No active tasks — start one at http://localhost:4321/p/alpha/new
+
+# The last two lines are the live region. It is redrawn in place. Every line
+# above it is ordinary scrollback and is never redrawn.
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Scene 2 – second project “beta” starts in another terminal, while alpha is
+# stopped. Beta remembers no port, so xezar starts at 4321, skips it because
+# alpha remembers it, and binds 4322. The second cockpit line says so once;
+# on the next start beta remembers 4322 and the line is not printed.
+# Two tasks were still running when beta last stopped.
+# ─────────────────────────────────────────────────────────────────────────────
+
+$ cd ~/Projects/beta && xez
+[stdout]
+
+  xezar 0.16.0 · beta · branch feature/login
+  ~/Projects/beta
+
+  cockpit   http://localhost:4322
+            4321 is kept for alpha — beta uses 4322 from now on
+  agents    Claude Code 2.1.3 · Codex 0.52.0 · pi 0.9.1 · OpenCode missing
+  tools     git 2.47.0 · gh 2.63.0
+
+[stderr]
+  10:06:12  info   xezar     cleaned 1 orphaned worktree: 7f3a09c1
+  10:06:12  info   xezar     recovered 2 tasks from the previous session
+  10:06:13  info   mcp       ready — run xez mcp in this repo
+  10:06:13  info   update    xezar 0.16.1 is available — restart with
+                             npx @qodeca/xezar@latest
+  ─ active tasks ──────────────────────────────────────────────────────────────
+  Task      State         Step        Agent           Time  Title
+  a12bc345  running       implement   Claude Code     0:02  Fix login redirect…
+  b98de765  queued        —           Codex           0:02  Bump vitest to 3.2
+  2 active — 1 running · 1 queued
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Scene 3 – live activity in beta. Time passes top to bottom. The live region
+# is shown once, as it looks at 10:21:40. Lines above it scroll away.
+# ─────────────────────────────────────────────────────────────────────────────
+
+[stderr]
+  10:07:02  info   b98de765  started — implement · Codex
+  10:09:45  info   a12bc345  check typecheck passed — 41s
+  10:12:08  error  a12bc345  check unit-tests failed — exit 1 · 2m 23s
+  10:12:09  info   a12bc345  step 3/4 repair started · Claude Code
+  10:14:30  warn   b98de765  needs you — “Pin vitest to 3.2.4 or allow 3.2.x?”
+                             http://localhost:4322/p/beta/tasks/b98de765
+  10:15:02  info   mcp       leader attached — Claude Code
+  10:15:40  info   b98de765  answered — running again
+  10:16:11  warn   http      409 POST /api/v1/p/:projectId/runs/:id/finish
+                             “no open session”
+  10:17:55  info   skills    qodeca/xezar-skills updated — 3 skills changed
+  10:18:20  info   c4410f2e  queued — “Update the README table of env vars”
+  10:18:21  info   c4410f2e  started — implement · pi
+  10:19:03  warn   provider  Codex needs sign-in — open Settings → Agents
+  10:19:04  error  b98de765  failed — Codex stopped · exit code not reported
+                             http://localhost:4322/p/beta/tasks/b98de765
+  10:20:30  info   c4410f2e  done — 2m 09s · 18.4k tokens · $0.31
+  10:21:12  info   a12bc345  needs review — 14m 59s · 96.2k tokens
+  10:21:40  error  http      500 GET /api/v1/p/:projectId/runs/:id/diff
+                             “internal error”
+  ─ active tasks ──────────────────────────────────────────────────────────────
+  Task      State         Step        Agent           Time  Title
+  a12bc345  needs review  —           Claude Code    15:34  Fix login redirect…
+  d0e2f6a1  monitoring    watch-ci    Claude Code     3:12  Watch CI for PR 482
+  e5b7c3d9  running       implement   Claude Code     1:47  Add rate limit to /…
+  f81a2b40  queued        —           pi              0:11  Tidy CHANGELOG head…
+  4 active — 1 needs review · 2 running · 1 queued — 2 failed since start
+
+# Notes on scene 3
+# - A continuation line (the URL, the wrapped HTTP reason) is indented to the
+#   message column. It is part of the same entry and is never a new event.
+# - The Time column is right-aligned m:ss, h:mm:ss after an hour.
+# - “monitoring” is its own state word in the table. The summary line counts
+#   it under running, like the cockpit’s Working bucket.
+# - An HTTP entry shows the method, the route template (never the real path or
+#   query) and the status, and on the next line the server’s own message in
+#   quotes, cleaned and cut to one line (writing.md § 7: the server’s words,
+#   verbatim). Request bodies and headers are never shown.
+# - Token and cost parts disappear under XEZ_HIDE_TOKEN_USAGE=1 and
+#   XEZ_HIDE_COST=1, exactly as in the cockpit.
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Scene 4 – more than 10 active tasks. The table shows 10 rows, needs-you and
+# needs-review first, then running, then queued; oldest first inside each.
+# ─────────────────────────────────────────────────────────────────────────────
+
+[stderr]
+  ─ active tasks ──────────────────────────────────────────────────────────────
+  Task      State         Step        Agent           Time  Title
+  b98de765  needs you     implement   Codex           9:02  Bump vitest to 3.2
+  a12bc345  needs review  —           Claude Code    15:34  Fix login redirect…
+  d0e2f6a1  monitoring    watch-ci    Claude Code    12:40  Watch CI for PR 482
+  e5b7c3d9  running       implement   Claude Code     8:13  Add rate limit to /…
+  0c9d8e7f  running       gates       Claude Code     6:55  Split server.ts rou…
+  11aa22bb  running       implement   Codex           4:02  Rename lastOpenedAt…
+  33cc44dd  running       plan        pi           1:02:18  Draft the 0.16.0 no…
+  55ee66ff  queued        —           Claude Code     1:10  Add the port column…
+  77aa88bb  queued        —           Codex           0:48  Fix flaky ws reconn…
+  99cc00dd  queued        —           pi              0:05  Update AGENTS.md ta…
+  +3 more queued — see http://localhost:4322/p/beta/tasks
+  13 active — 1 needs you · 1 needs review · 5 running · 6 queued
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Scene 5 – Ctrl-C. The live region is erased, the summary is printed as
+# ordinary lines and the cursor is restored.
+# ─────────────────────────────────────────────────────────────────────────────
+
+^C
+[stderr]
+  10:31:40  info   xezar     stopping — 2 tasks are still running
+
+  Session summary — 25m 28s
+    3 done · 1 needs review · 2 failed · 0 cancelled
+    2 tasks were still running. xezar picks them up on the next start.
+  xezar stopped for beta.
+
+# A second Ctrl-C while stopping exits at once and prints nothing more.
+# The summary counts what this session observed. “done” is never a verdict on
+# the work, and “needs review” is not counted as done.

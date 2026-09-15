@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CLI terminal design – other projects</title>
+<link rel="stylesheet" href="../../docs/design-system/cockpit.css">
+<link rel="stylesheet" href="styles.css">
+<script src="theme.js"></script>
+</head>
+<body>
+
+<nav class="doc-bar" aria-label="Design pages">
+  <span class="brand">CLI terminal design</span>
+  <a href="index.html">Overview</a>
+  <a href="switcher.html" aria-current="page">Other projects</a>
+  <span class="spacer"></span>
+  <button class="theme-toggle" type="button" data-theme-toggle>Light / dark</button>
+</nav>
+
+<main class="doc">
+  <h1>Other projects</h1>
+  <p class="lead">With one cockpit per project, the sidebar and the command palette list the other registered projects as links to their own cockpit. Nothing opens in place. Specification: <a class="link" href="multi-instance.md">multi-instance.md</a> § 6.</p>
+  <p>Sample: the cockpit for <b>beta</b> on port 4322. alpha runs on 4321, gamma is stopped, delta runs but its address is not known, and old-site’s folder is gone. Narrow the window to 375 px for the phone drawer: rows grow to 44 px and the actions wrap under the name.</p>
+
+  <h2>1. Default</h2>
+  <div class="grid-2">
+    <div>
+      <div class="frame-label">Sidebar, below this project’s menu</div>
+      <div class="frame other-frame">
+        <nav aria-label="Other projects">
+          <div class="quick-head" id="other-head">Other projects</div>
+          <div class="other-projects" role="list" aria-labelledby="other-head">
+            <div role="listitem">
+              <a class="other-row" href="#alpha" title="Opens alpha’s own cockpit on port 4321">
+                <span class="name">alpha</span>
+                <span class="state"><span class="dot success" aria-hidden="true"></span>running</span>
+                <span class="port" aria-label="port 4321">:4321</span>
+              </a>
+            </div>
+            <div role="listitem">
+              <div class="other-row">
+                <span class="name">delta</span>
+                <span class="state"><span class="dot pending" aria-hidden="true"></span>running — address not known</span>
+                <span class="hint">Find the terminal that runs it.</span>
+              </div>
+            </div>
+            <div role="listitem">
+              <div class="other-row">
+                <span class="name">gamma</span>
+                <span class="state"><span class="dot" aria-hidden="true"></span>not running</span>
+                <span class="actions">
+                  <button class="btn" type="button">Start in terminal</button>
+                  <button class="btn ghost" type="button" aria-label="Copy the command to start gamma" title="xez --repo ~/Projects/gamma">Copy command</button>
+                </span>
+              </div>
+            </div>
+            <div role="listitem">
+              <div class="other-row">
+                <span class="name">old-site</span>
+                <span class="state"><span class="dot danger" aria-hidden="true"></span>folder missing</span>
+                <span class="actions">
+                  <button class="btn danger-ghost" type="button">Remove from list</button>
+                </span>
+              </div>
+            </div>
+          </div>
+        </nav>
+      </div>
+    </div>
+    <div>
+      <div class="frame-label">What each row says, and why</div>
+      <div class="table-scroll">
+        <table class="decision-table">
+          <thead><tr><th scope="col">State</th><th scope="col">Words</th><th scope="col">Action</th></tr></thead>
+          <tbody>
+            <tr><td>Running</td><td>running · its port</td><td>The whole row is a link to <code>http://localhost:4321/p/alpha/</code>. Same tab; a modifier-click opens a new tab.</td></tr>
+            <tr><td>Address not known</td><td>running — address not known</td><td>None. A guessed URL would be wrong more often than right.</td></tr>
+            <tr><td>Not running</td><td>not running</td><td>“Start in terminal” opens a terminal running <code>xez --repo &lt;root&gt;</code>. “Copy command” copies it. (Q-2)</td></tr>
+            <tr><td>Folder missing</td><td>folder missing</td><td>The existing “Remove from list” confirm.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="note"><strong>Words first.</strong> The dot repeats the state word; it is <code>aria-hidden</code> because the word is already read. Dot colours follow the cockpit: success for running, pending for “address not known”, soft for stopped, danger for a missing folder.</p>
+    </div>
+  </div>
+
+  <h2>2. States of the list</h2>
+  <div class="grid-2">
+    <div>
+      <div class="frame-label">Checking – first open, before the server answers</div>
+      <div class="frame other-frame">
+        <div class="quick-head">Other projects</div>
+        <div class="other-projects" role="status">
+          <div class="other-row"><span class="name">alpha</span><span class="state">checking…</span></div>
+          <div class="other-row"><span class="name">delta</span><span class="state">checking…</span></div>
+          <div class="other-row"><span class="name">gamma</span><span class="state">checking…</span></div>
+        </div>
+      </div>
+      <p class="note">Names come from the registry at once; states fill in within 300 ms per project. Nothing is clickable until its state is known.</p>
+    </div>
+    <div>
+      <div class="frame-label">Check failed</div>
+      <div class="frame other-frame">
+        <div class="quick-head">Other projects</div>
+        <div class="other-projects">
+          <div class="other-row" role="alert">
+            <span class="hint">Could not check the other projects — “registry unreadable”.</span>
+            <span class="actions"><button class="btn" type="button">Retry</button></span>
+          </div>
+          <div class="other-row"><span class="name">alpha</span></div>
+          <div class="other-row"><span class="name">gamma</span></div>
+        </div>
+      </div>
+      <p class="note">The server’s words, verbatim (writing.md § 7). Names stay listed without a state and without links.</p>
+    </div>
+    <div>
+      <div class="frame-label">No other projects</div>
+      <div class="frame other-frame">
+        <p class="hint" style="padding: var(--spacing-inset); margin: 0; font-size: 12px; color: var(--muted-foreground)">The group is not shown. With one registered project the sidebar is the flat menu it has always been.</p>
+      </div>
+    </div>
+    <div>
+      <div class="frame-label">Hosted mode (refusal)</div>
+      <div class="frame other-frame">
+        <div class="quick-head">Other projects</div>
+        <div class="other-projects">
+          <div class="other-row">
+            <span class="name">alpha</span>
+            <span class="state"><span class="dot" aria-hidden="true"></span>not running here</span>
+            <span class="hint">Projects are started from the machine that owns the checkout — this cockpit runs in hosted mode.</span>
+          </div>
+        </div>
+      </div>
+      <p class="note">No port is probed and no terminal is offered. The copy follows the hosted-refusal rule: name the consequence and who can act.</p>
+    </div>
+    <div>
+      <div class="frame-label">XEZ_SINGLE_PROJECT=1</div>
+      <div class="frame other-frame">
+        <p style="padding: var(--spacing-inset); margin: 0; font-size: 12px; color: var(--muted-foreground)">The group is not shown and add-project controls are hidden, exactly as today.</p>
+      </div>
+    </div>
+    <div>
+      <div class="frame-label">Global Tasks page, below this project’s tasks</div>
+      <div class="frame" style="padding: var(--spacing-inset)">
+        <p style="margin: 0 0 calc(var(--spacing) * 2); font-size: 13.5px; color: var(--muted-foreground)">Other projects run in their own cockpits.</p>
+        <p style="margin: 0; font-size: 13.5px"><a class="link" href="#alpha">alpha</a> · <a class="link" href="#delta">delta</a> · <a class="link" href="#gamma">gamma</a></p>
+      </div>
+      <p class="note">Q-7 option A. Each link goes to that project’s row state: a running project opens its cockpit; a stopped one scrolls the sidebar group into view.</p>
+    </div>
+  </div>
+
+  <h2>3. Command palette</h2>
+  <div class="frame" style="max-width: 560px">
+    <div class="quick-head">Projects</div>
+    <div class="other-projects">
+      <a class="other-row" href="#alpha"><span class="name">alpha</span><span class="state">running</span><span class="port">:4321</span></a>
+      <div class="other-row"><span class="name">gamma</span><span class="state">not running</span><span class="actions"><button class="btn" type="button">Start in terminal</button></span></div>
+    </div>
+  </div>
+  <p class="note">The palette’s Projects group uses the same rows. Enter on a running project follows its link; Enter on a stopped one activates “Start in terminal”.</p>
+</main>
+</body>
+</html>

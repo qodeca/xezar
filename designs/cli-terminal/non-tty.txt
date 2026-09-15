@@ -1,0 +1,92 @@
+# non-tty.txt – `xez` with stdout and stderr redirected, in CI, or TERM=dumb
+#
+# Lines that start with `#` are notes. xezar never prints them.
+# Plain output is append-only: no colour, no cursor movement, no live region,
+# no box-drawing characters, no wrapping. One event is exactly one line.
+# Lines may be longer than 80 columns; they are read by tools and by `less`.
+#
+# Command used for this capture:
+#   xez --no-open > cockpit.out 2> activity.log
+
+# ─────────────────────────────────────────────────────────────────────────────
+# cockpit.out (stdout) – the boot banner, plain. Same words as the TTY banner.
+# ─────────────────────────────────────────────────────────────────────────────
+
+  xezar 0.16.0 · beta · branch feature/login
+  ~/Projects/beta
+
+  cockpit   http://localhost:4323
+            4322 was busy — beta uses 4323 from now on
+  agents    Claude Code 2.1.3 · Codex 0.52.0 · pi 0.9.1 · OpenCode missing
+  tools     git 2.47.0 · gh 2.63.0
+
+# ─────────────────────────────────────────────────────────────────────────────
+# activity.log (stderr) – logfmt: `key=value`, values with a space, `"` or `=`
+# are double-quoted, `"` and `\` inside are escaped with `\`. Times are UTC
+# ISO-8601 with milliseconds. `project` is on every line, so logs from several
+# instances can be merged and still read.
+# ─────────────────────────────────────────────────────────────────────────────
+
+2026-09-15T08:06:12.104Z level=info project=beta event=xezar.ready url=http://localhost:4323 port=4323 start=4322 reason=busy
+2026-09-15T08:06:12.106Z level=info project=beta event=worktree.cleaned count=1 runs=7f3a09c1
+2026-09-15T08:06:12.110Z level=info project=beta event=task.recovered count=2
+2026-09-15T08:06:12.131Z level=info project=beta event=mcp.ready
+2026-09-15T08:06:13.402Z level=info project=beta event=update.available latest=0.16.1 running=0.16.0
+2026-09-15T08:07:02.918Z level=info project=beta event=task.started run=b98de765 step=implement agent=codex title="Bump vitest to 3.2"
+2026-09-15T08:09:45.330Z level=info project=beta event=gate.passed run=a12bc345 step=typecheck duration_ms=41022
+2026-09-15T08:12:08.771Z level=error project=beta event=gate.failed run=a12bc345 step=unit-tests exit=1 duration_ms=143118
+2026-09-15T08:12:09.002Z level=info project=beta event=step.started run=a12bc345 step=repair index=3 total=4 agent=claude
+2026-09-15T08:14:30.515Z level=warn project=beta event=question.asked run=b98de765 question="Pin vitest to 3.2.4 or allow 3.2.x?" url=http://localhost:4323/p/beta/tasks/b98de765
+2026-09-15T08:15:02.040Z level=info project=beta event=leader.attached client=claude-code
+2026-09-15T08:15:40.227Z level=info project=beta event=question.answered run=b98de765
+2026-09-15T08:16:11.650Z level=warn project=beta event=http.refused method=POST route=/api/v1/p/:projectId/runs/:id/finish status=409 message="no open session"
+2026-09-15T08:17:55.008Z level=info project=beta event=skills.updated source=qodeca/xezar-skills changed=3
+2026-09-15T08:19:03.880Z level=warn project=beta event=executor.unavailable agent=codex reason="needs sign-in"
+2026-09-15T08:19:04.112Z level=error project=beta event=task.failed run=b98de765 step=implement agent=codex exit=unknown reason="Codex stopped" url=http://localhost:4323/p/beta/tasks/b98de765
+2026-09-15T08:20:30.441Z level=info project=beta event=task.done run=c4410f2e duration_ms=129004 tokens=18412 cost_usd=0.31
+2026-09-15T08:21:12.093Z level=info project=beta event=result.ready run=a12bc345 duration_ms=899310 tokens=96233
+2026-09-15T08:21:40.777Z level=error project=beta event=http.error method=GET route=/api/v1/p/:projectId/runs/:id/diff status=500 message="internal error"
+2026-09-15T08:31:40.002Z level=info project=beta event=xezar.stopping running=2
+2026-09-15T08:31:40.019Z level=info project=beta event=session.summary duration_ms=1528000 done=3 review=1 failed=2 cancelled=0 still_running=2
+2026-09-15T08:31:40.020Z level=info project=beta event=xezar.stopped
+
+# Event names reuse the MCP event catalog where the meaning is the same
+# (`task.done`, `task.failed`, `task.cancelled`, `result.ready`,
+# `question.asked`, `question.answered`, `gate.passed`, `gate.failed`,
+# `executor.available`, `executor.unavailable`; packages/xezar/src/mcp/
+# event-catalog.ts). Names the catalog does not have are new and listed in
+# README.md § 10.2.
+#
+# `tokens` and `cost_usd` are left out under XEZ_HIDE_TOKEN_USAGE=1 and
+# XEZ_HIDE_COST=1. `exit=unknown` is written when the agent reported no code;
+# xezar never writes `exit=0` it did not observe.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Rich output asked for, but stderr is not a terminal
+#   xez --output rich 2> activity.log
+# One line, once, first in the file. Then plain lines as above.
+# `--output lines` is honoured anywhere: it writes the human lines of tty.txt,
+# without the live region, to a file too.
+# ─────────────────────────────────────────────────────────────────────────────
+
+2026-09-15T08:06:12.101Z level=warn project=beta event=output.fallback asked=rich using=plain reason="stderr is not a terminal"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CI detected (CI is set) with both streams on one pipe
+#   xez --no-open 2>&1 | tee boot.log
+# Banner first (stdout is flushed before the first activity line), then the
+# plain lines. Plain output never carries colour, not even with
+# --color always: that flag colours only rich and lines output.
+# CI never animates.
+# ─────────────────────────────────────────────────────────────────────────────
+
+  xezar 0.16.0 · beta · branch feature/login
+  ~/Projects/beta
+
+  cockpit   http://localhost:4323
+  agents    Claude Code mock (XEZ_DRY_RUN=1) · Codex missing · pi missing
+            OpenCode missing
+  tools     git 2.47.0 · gh missing
+
+2026-09-15T08:06:12.131Z level=info project=beta event=mcp.ready
+2026-09-15T08:06:12.132Z level=warn project=beta event=tool.missing tool=gh reason="GitHub features are off — install gh or set GITHUB_TOKEN"
