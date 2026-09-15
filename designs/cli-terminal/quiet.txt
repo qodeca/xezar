@@ -34,7 +34,7 @@ $ xez --quiet
 # moved, the second cockpit line is printed even in quiet:
 #
 #   cockpit   http://localhost:4323
-#             4322 was busy — beta uses 4323 from now on
+#             4322 is used by another program — beta uses 4323 from now on
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Scene 2 – xez run --quiet "…"  (headless run, no cockpit)
@@ -95,13 +95,14 @@ $ echo $?
 # Event                              Level   Live table   Summary
 # task queued, started, step started info    row          —
 # check passed                       info    —            —
-# check failed                       error   —            counted
+# check failed                       error   —            — (only the task’s own outcome counts)
 # needs you (question asked)         warn    row          —
 # needs review                       info    row          counted
 # done                               info    row removed  counted
 # failed                             error   row removed  counted
 # cancelled                          info    row removed  counted
-# paused for a usage limit           warn    row          —
+# paused for a usage limit           warn    scheduled    —
+# needs permission                   warn    row          —
 # agent stopped (exit, signal)       error   —            —
 # HTTP 5xx                           error   —            —
 # HTTP 400 401 403 409 413 422       warn    —            —

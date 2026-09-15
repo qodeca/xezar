@@ -26,7 +26,7 @@ $ xez
   tools     git 2.47.0 · gh 2.63.0
 
 [stderr]
-  10:04:01  info   mcp       ready — run xez mcp in this repo
+  10:04:01  info   mcp       ready — run xez mcp in this project folder
   ─ active tasks ──────────────────────────────────────────────────────────────
   No active tasks — start one at http://localhost:4321/p/alpha/new
 
@@ -56,7 +56,7 @@ $ cd ~/Projects/beta && xez
 [stderr]
   10:06:12  info   xezar     cleaned 1 orphaned worktree: 7f3a09c1
   10:06:12  info   xezar     recovered 2 tasks from the previous session
-  10:06:13  info   mcp       ready — run xez mcp in this repo
+  10:06:13  info   mcp       ready — run xez mcp in this project folder
   10:06:13  info   update    xezar 0.16.1 is available — restart with
                              npx @qodeca/xezar@latest
   ─ active tasks ──────────────────────────────────────────────────────────────
@@ -98,7 +98,7 @@ $ cd ~/Projects/beta && xez
   d0e2f6a1  monitoring    watch-ci    Claude Code     3:12  Watch CI for PR 482
   e5b7c3d9  running       implement   Claude Code     1:47  Add rate limit to /…
   f81a2b40  queued        —           pi              0:11  Tidy CHANGELOG head…
-  4 active — 1 needs review · 2 running · 1 queued — 2 failed since start
+  4 active — 1 needs review · 2 running · 1 queued — 1 failed since start
 
 # Notes on scene 3
 # - A continuation line (the URL, the wrapped HTTP reason) is indented to the
@@ -106,6 +106,9 @@ $ cd ~/Projects/beta && xez
 # - The Time column is right-aligned m:ss, h:mm:ss after an hour.
 # - “monitoring” is its own state word in the table. The summary line counts
 #   it under running, like the cockpit’s Working bucket.
+# - “1 failed since start” counts tasks that ended failed (b98de765). The
+#   failed check at 10:12:08 is not counted: its task went on to a repair
+#   step. See README.md § 6.3, “What failed counts”.
 # - An HTTP entry shows the method, the route template (never the real path or
 #   query) and the status, and on the next line the server’s own message in
 #   quotes, cleaned and cut to one line (writing.md § 7: the server’s words,
@@ -146,10 +149,11 @@ $ cd ~/Projects/beta && xez
   10:31:40  info   xezar     stopping — 2 tasks are still running
 
   Session summary — 25m 28s
-    3 done · 1 needs review · 2 failed · 0 cancelled
+    3 done · 1 needs review · 1 failed · 0 cancelled
     2 tasks were still running. xezar picks them up on the next start.
   xezar stopped for beta.
 
 # A second Ctrl-C while stopping exits at once and prints nothing more.
-# The summary counts what this session observed. “done” is never a verdict on
+# The summary counts task outcomes this session observed; a failed check is
+# not a failed task. “done” is never a verdict on
 # the work, and “needs review” is not counted as done.

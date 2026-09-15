@@ -28,6 +28,11 @@ The old model (one cockpit opens every project) stays as an opt-in so that a per
 
 **Recommendation: A.** C goes against § Zero config (“no process to manage”).
 
+**UI ↔ MCP parity.** Both new cockpit capabilities need an answer for a project leader, who works only through the MCP tools:
+
+- **The `instance?` state** (which other projects run, and where): **yes, parity.** `discover_project` (or the projects list the MCP already returns) carries the same additive `instance?` field from `packages/contract`, so a leader can see that project B runs in its own cockpit and at which URL. Its MCP socket is found by project root, so a leader in repo B already reaches B directly (README § 2).
+- **“Start in terminal”**: **no MCP action.** It opens a visible terminal window on the person’s own desktop – a local-machine handoff, like `open-in-cli`, that only makes sense for a person sitting at that machine. A leader that starts a process through the MCP would get option C (a hidden process) by another door. The leader’s equivalent is the command itself: the `instance?` answer for a stopped project includes the start command (`xez --repo <root>`) so the leader can tell the person what to run. This is recorded as a named exception, not a gap.
+
 ## Q-3 Resource limits across instances
 
 `resources.maxParallel` and the memory ceiling are enforced inside one process. Three instances can each run their full allowance.
@@ -58,10 +63,12 @@ Design-system rule 7: status words come from `packages/web/src/lib/attention.ts`
 
 | Option | Cost | Benefit |
 |---|---|---|
-| A. Move the run-status → word map to `packages/contract` (Node-free), and have both `attention.ts` and the terminal renderer read it | One move; `attention.ts` keeps tone and pulse | One source of the words, as rule 7 intends |
+| A. Move the run-status → word map to `packages/contract` (Node-free), and have both `attention.ts` and the terminal renderer read it. Each entry carries the word, the cockpit tone and a terminal colour role (`red`, `yellow`, `magenta`, `cyan`, `green`, `default`) | One move; `attention.ts` keeps tone and pulse | One source of the words and of both colour roles, as rule 7 intends |
 | B. Copy the words into the server with a parity test | Two copies | No change to the web package |
 
 **Recommendation: A.** `design-system/README.md` rule 7 and `components.md` get a sentence naming the new home.
+
+The terminal colour role differs from the cockpit tone on purpose for three states: `running` and `monitoring` are `cyan` and `needs permission` is `yellow`, where `attention.ts` gives all three `violet`. The cockpit separates them from `needs review` with a pulse; a terminal has no motion (README § 11), so a second cue must be a colour. The reason is recorded in README § 14, and the shared map keeps the two roles side by side so neither surface drifts from it silently.
 
 ## Q-7 The global Tasks page in project mode
 

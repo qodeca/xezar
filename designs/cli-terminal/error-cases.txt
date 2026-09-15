@@ -53,8 +53,7 @@ $ xez --port 5000
 
 [stdout]
   cockpit   http://localhost:4401
-            4400 is also set for alpha, which is running — using 4401 this
-            time
+            4400 is also set for alpha, which is running — using 4401 this time
 
 # A6 – no free port in the whole range. Nothing was claimed; no task started.
 

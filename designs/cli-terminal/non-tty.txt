@@ -16,7 +16,7 @@
   ~/Projects/beta
 
   cockpit   http://localhost:4323
-            4322 was busy — beta uses 4323 from now on
+            4322 is used by another program — beta uses 4323 from now on
   agents    Claude Code 2.1.3 · Codex 0.52.0 · pi 0.9.1 · OpenCode missing
   tools     git 2.47.0 · gh 2.63.0
 
@@ -40,14 +40,14 @@
 2026-09-15T08:15:02.040Z level=info project=beta event=leader.attached client=claude-code
 2026-09-15T08:15:40.227Z level=info project=beta event=question.answered run=b98de765
 2026-09-15T08:16:11.650Z level=warn project=beta event=http.refused method=POST route=/api/v1/p/:projectId/runs/:id/finish status=409 message="no open session"
-2026-09-15T08:17:55.008Z level=info project=beta event=skills.updated source=qodeca/xezar-skills changed=3
+2026-09-15T08:17:55.008Z level=info project=beta event=skills.updated source=<source> changed=3
 2026-09-15T08:19:03.880Z level=warn project=beta event=executor.unavailable agent=codex reason="needs sign-in"
 2026-09-15T08:19:04.112Z level=error project=beta event=task.failed run=b98de765 step=implement agent=codex exit=unknown reason="Codex stopped" url=http://localhost:4323/p/beta/tasks/b98de765
 2026-09-15T08:20:30.441Z level=info project=beta event=task.done run=c4410f2e duration_ms=129004 tokens=18412 cost_usd=0.31
 2026-09-15T08:21:12.093Z level=info project=beta event=result.ready run=a12bc345 duration_ms=899310 tokens=96233
 2026-09-15T08:21:40.777Z level=error project=beta event=http.error method=GET route=/api/v1/p/:projectId/runs/:id/diff status=500 message="internal error"
 2026-09-15T08:31:40.002Z level=info project=beta event=xezar.stopping running=2
-2026-09-15T08:31:40.019Z level=info project=beta event=session.summary duration_ms=1528000 done=3 review=1 failed=2 cancelled=0 still_running=2
+2026-09-15T08:31:40.019Z level=info project=beta event=session.summary duration_ms=1528000 done=3 review=1 failed=1 cancelled=0 still_running=2
 2026-09-15T08:31:40.020Z level=info project=beta event=xezar.stopped
 
 # Event names reuse the MCP event catalog where the meaning is the same

@@ -1,6 +1,6 @@
 # CLI terminal – live activity, settings and one cockpit per project
 
-Status: **Draft** – waiting for the first `design-review`. Issue #467, PR 1 of the CLI plan. Base `main` at `bb271fc`.
+Status: **Draft** – round 1 findings (B-1 … B-3, NB-1 … NB-8) addressed, waiting for the second `design-review`. Issue #467, PR 1 of the CLI plan. Base `main` at `bb271fc`.
 
 This folder designs a surface that is not a web page: what `xez` prints in a terminal. It also designs the one cockpit change that follows from running one xezar per project (the project switcher). No code changes here.
 
@@ -38,7 +38,7 @@ Measured on this repository’s own `.local/xezar/` on 2026-09-15 (read-only): 4
 
 **First read, before anything scrolls.** Which project this terminal is (project name first on the banner, and in the stop line), the cockpit URL, and – at the bottom of the screen at all times – how many tasks are active and whether one needs them.
 
-**Scanning many.** Activity is time-ordered, one entry per event, with a fixed-width subject column (task id or source: `http`, `mcp`, `skills`, `provider`, `update`, `registry`, `xezar`) so the eye runs down one column. The live table orders tasks by who is waiting: needs you, needs review, running (monitoring included), queued; oldest first within each. There is no search or filter in the terminal: the table holds at most 10 rows and the cockpit is one click away.
+**Scanning many.** Activity is time-ordered, one entry per event, with a fixed-width subject column (task id or source: `http`, `mcp`, `skills`, `provider`, `update`, `registry`, `xezar`) so the eye runs down one column. The live table orders tasks by who is waiting: needs permission, needs you, needs review, running (monitoring included), scheduled, queued; oldest first within each. There is no search or filter in the terminal: the table holds at most 10 rows and the cockpit is one click away.
 
 **The distinction that must never be missed.** *Something is waiting for you or failed* against *everything is fine*. It is carried by words first – the level word (`warn`, `error`) on every line, the state word in the table (`needs you`, `failed`), and the count in the summary line (“1 needs you”) – and by colour second. A second distinction is kept just as strictly: `needs review` is not `done`, and `done` is never a verdict on the work.
 
@@ -123,7 +123,11 @@ The banner is written once and never redrawn. Nothing else is written to stdout 
 
 A rule line `─ active tasks ─…`, a header row, up to 10 task rows, an optional overflow line and a summary line. Columns at 80: Task 8 · State 12 · Step 10 · Agent 11 · Time 7 (right-aligned `m:ss`, `h:mm:ss`) · Title (the rest: 20 at 80 columns). Cut cells end in `…`. Empty: `No active tasks — start one at <url>/p/<project>/new`.
 
-Summary: `<n> active — <n> needs you · <n> needs review · <n> running · <n> queued — <n> failed since start`, leaving out every zero part except `<n> active`.
+Summary: `<n> active — <n> needs permission · <n> needs you · <n> needs review · <n> running · <n> scheduled · <n> queued — <n> failed since start`, leaving out every zero part except `<n> active`.
+
+Narrow (< 60 columns), the same grammar as one line, with `since start` left out: `<n> active — <parts> — <n> failed`. Parts that do not fit are left out from the right and replaced by `…`; `<n> active` and the needs-permission and needs-you counts are never left out.
+
+**What “failed” counts.** Every failed count – the summary line, the session summary and `failed=` in plain output – counts **task outcomes only**: a task whose record ended `failed`. A failed check step is not counted; it is an `error` activity line, and the task it belongs to either goes on (a repair step) or ends with its own `failed` line. A task a usage limit stopped (`scheduled`, § 9.2) is not counted as failed either, because it resumes on its own.
 
 ### 6.4 Session summary – stderr, on stop
 
@@ -149,7 +153,7 @@ The still-running sentence is left out at zero.
 | Default | Banner, activity lines, live table | `tty.txt` 2–3 |
 | Empty (first use) | `No active tasks — start one at …/new` | `tty.txt` 1 |
 | Empty (narrow) | `No active tasks` | `tty-narrow.txt` 4 |
-| Loading | The banner prints only after the port is bound, so there is no “starting” state to show. MCP becomes ready later and announces itself with its own line; it is never shown as ready before it listens. | `tty.txt` 1 |
+| Loading | Banner lines 1 and 2 (version, project, branch, path) print first, before the agent and tool version checks and before the bind, so the terminal is never blank while those run. The `cockpit`, `agents` and `tools` lines follow once the port is bound and the checks answer; there is no “starting” word or spinner. MCP becomes ready later and announces itself with its own line; it is never shown as ready before it listens. The time from line 1 to the `cockpit` line is not measured yet: PR 3 measures it on this repository and records it here. | `tty.txt` 1 |
 | Error – refused start | `error` + `fix` lines, exit 1, nothing claimed | `error-cases.txt` A6–A9, B1–B3 |
 | Error – while running | `error` activity line with the task URL | `tty.txt` 3, `error-cases.txt` D, E |
 | Refusal | HTTP 409 from a hosted-mode or local-machine guard is a `warn` line with the server’s own message; the cockpit’s refusal copy is unchanged | `error-cases.txt` E |
@@ -204,7 +208,7 @@ Stored over environment follows the `followups` / `agentEnvPassthrough` pattern.
 
 ## 9. Copy deck
 
-Rules from `docs/design-system/writing.md`, applied to the terminal: sentence case; `xezar` lower case; ` — ` (em dash, the cockpit’s UI form) between clauses; `·` between facts; `…` never `...`; curly quotes around text a person or agent wrote; no Oxford comma; no contractions; status words lower case and identical to the cockpit’s (`needs you`, `needs review`, `running`, `monitoring`, `queued`, `done`, `failed`, `cancelled`); ages and durations from `lib/format.ts` rules (`41s`, `2m 23s`, table `m:ss`); tokens `18.4k`; cost `$0.31`; missing values `—`. “Task” in human copy, `run` only as a plain-output key.
+Rules from `docs/design-system/writing.md`, applied to the terminal: sentence case; `xezar` lower case; ` — ` (em dash, the cockpit’s UI form) between clauses; `·` between facts; `…` never `...`; curly quotes around text a person or agent wrote; no Oxford comma; no contractions; status words lower case and identical to the cockpit’s `lib/attention.ts` labels (`needs permission`, `needs you`, `needs review`, `running`, `monitoring`, `scheduled`, `queued`, `done`, `failed`, `cancelled`); ages follow `lib/format.ts` `shortAge` (one unit, floored: `writing.md` § 12); durations use a **new** terminal formatter, `formatDuration` in `packages/xezar/src/terminal/format.ts` (PR 3), with two units and no rounding up (`41s`, `2m 23s`, `1h 02m`) and table `m:ss` / `h:mm:ss` – no cockpit helper makes this form today; tokens `18.4k`; cost `$0.31`; missing values `—`. “Task” in human copy, `run` only as a plain-output key.
 
 ### 9.1 Strings
 
@@ -213,11 +217,12 @@ Rules from `docs/design-system/writing.md`, applied to the terminal: sentence ca
 | Banner line 1 | `xezar 0.16.0 · beta · branch feature/login` |
 | Port note, skipped | `4321 is kept for alpha — beta uses 4322 from now on` |
 | Port note, busy, unknown program | `4322 is used by another program — beta uses 4323 from now on` |
+| Port note, `cli.port` also set for a running project | `4400 is also set for alpha, which is running — using 4401 this time` |
 | Port note, busy, other cockpit | `4322 is used by the xezar cockpit for gamma — beta uses 4323 from now on` |
 | Port note, `--port` busy | `5000 was busy — using 5001` |
 | Port note, `cli.port` busy | `4400 is set for beta but was busy — using 4401 this time` |
 | No agent | `none found — install Claude Code, Codex, OpenCode or pi` |
-| MCP ready | `ready — run xez mcp in this repo` |
+| MCP ready | `ready — run xez mcp in this project folder` |
 | MCP unavailable | `unavailable — <reason>. The cockpit works without it.` |
 | Task queued | `queued — “<title>”` |
 | Task started | `started — <step> · <agent>` |
@@ -229,15 +234,18 @@ Rules from `docs/design-system/writing.md`, applied to the terminal: sentence ca
 | Review | `needs review — <duration> · <tokens> tokens` |
 | Done | `done — <duration> · <tokens> tokens · <cost>` |
 | Failed, agent | `failed — <agent> stopped · exit code not reported` / `failed — <agent> exited with code <n>` / `failed — <agent> stopped by signal <SIG>, not sent by xezar` |
-| Paused | `paused — <agent> usage limit · resumes at <HH:MM>` |
+| Paused | `paused — <agent> usage limit · resumes at <HH:MM>` (table state `scheduled`) |
+| Needs permission | `needs permission — <tool> · <agent>` + continuation task URL |
 | Cancelled | `cancelled — <duration>` |
 | HTTP | `<status> <METHOD> <route template>` + continuation `“<server message>”` |
 | HTTP folded | `repeated <n> times in 10s` |
 | Leader | `leader attached — <client product name>` / `leader detached` |
-| Skills | `qodeca/xezar-skills updated — <n> skills changed` / `update failed — <reason> · next try <HH:MM>` |
+| Skills | `<source> updated — <n> skills changed` / `update failed — <reason> · next try <HH:MM>` |
 | Provider | `<agent> needs sign-in — open Settings → Agents` / `<agent> signed in` |
 | Update | `xezar <v> is available — restart with` + `npx @qodeca/xezar@latest` |
 | Empty table | `No active tasks — start one at <url>/p/<project>/new` |
+| Live summary, wide | `4 active — 1 needs review · 2 running · 1 queued — 1 failed since start` |
+| Live summary, narrow | `2 active — 2 running — 1 failed` |
 | Overflow | `+<n> more queued — see <url>/p/<project>/tasks` |
 | Folded burst | `<n> more info lines in the last second were folded — see the cockpit` |
 | Stopping | `stopping — <n> tasks are still running` |
@@ -255,14 +263,15 @@ Only the terminal’s 16 standard colours, so the person’s own light or dark t
 | Element | ANSI | Cockpit role it mirrors | Word that carries the meaning without colour |
 |---|---|---|---|
 | `error` level, `failed` state, “failed” counts | red | `--danger` | `error`, `failed` |
-| `warn` level, `needs you` state | yellow | `--pending-strong` | `warn`, `needs you` |
+| `warn` level, `needs permission`, `needs you` and `scheduled` states | yellow | `--pending-strong` | `warn`, `needs permission`, `needs you`, `scheduled` |
 | `needs review` state | magenta | `--violet` | `needs review` |
 | `running`, `monitoring` states, URLs | cyan | `--info` | `running`, `monitoring` |
 | `done`, `passed`, `ready` | green | `--success` | `done`, `passed`, `ready` |
-| Time, `info` and `debug` levels, column headers, rule line, `queued`, `—` | dim | `--muted-foreground` | – (context only) |
+| `info` and `debug` levels, `queued` and `cancelled` states | default foreground (no colour, not dim) | `--foreground` | `info`, `debug`, `queued`, `cancelled` |
+| Time, column headers, rule line, the `—` placeholder | dim | `--muted-foreground` | – (context only) |
 | Project name on banner and stop line | bold | – | the name itself |
 
-Dim is only ever used for context a person can do without. A state or level word is never dim.
+**The one contrast rule.** Dim is used for exactly four things: the time, the column headers, the rule line and the `—` placeholder. Nothing else is ever dim. Every level word and every state word – including `info`, `debug` and `queued` – prints at full contrast, in its colour or in the default foreground. A tester checks it by grepping the coloured capture for the dim code (`ESC[2m`) and finding it only before those four.
 
 ## 10. Developer notes
 
@@ -279,7 +288,7 @@ As the analysis § 6(d) proposes: subscribe to the boot `RunStore` before recove
 | Runs recovered | info | `xezar · recovered <n> tasks from the previous session` | `task.recovered` | rows appear |
 | Task queued | info | `<id8> · queued — “<title>”` | `task.queued` (new) | row |
 | Task started / step started | info | `started — …` / `step i/n …` | `task.started` (new) / `step.started` (new) | row updates |
-| Check step settled | info / error | `check <step> passed — …` / `failed — exit <n> …` | `gate.passed` / `gate.failed` | – |
+| Check step settled | info / error | `check <step> passed — …` / `failed — exit <n> …` | `gate.passed` / `gate.failed` | – (never counted as failed, § 6.3) |
 | Question asked | warn | `needs you — “<question>”` + URL | `question.asked` | state `needs you` |
 | Question answered | info | `answered — running again` | `question.answered` | state `running` |
 | Review | info | `needs review — …` | `result.ready` | state `needs review` |
@@ -287,7 +296,9 @@ As the analysis § 6(d) proposes: subscribe to the boot `RunStore` before recove
 | Failed | error | `failed — <cause>` + URL | `task.failed` | row removed, counted |
 | Cancelled | info | `cancelled — <duration>` | `task.cancelled` | row removed, counted |
 | Monitoring | info | `monitoring — <step>` | `task.monitoring` (new) | state `monitoring` |
-| Usage-limit or memory pause | warn | `paused — …` | `task.paused` (new) | row stays |
+| Usage-limit pause | warn | `paused — …` | `task.paused` (new) | state `scheduled` (as `attention.ts`); not counted as failed |
+| Memory pause | warn | `paused — …` | `task.paused` (new) | row stays, state unchanged |
+| Permission asked | warn | `needs permission — <tool> · <agent>` + URL | `permission.asked` (new) | state `needs permission` |
 | Agent session error | error | part of `failed — …`; exit code or signal only when observed, else “exit code not reported” | `exit=<n>` / `signal=<SIG>` / `exit=unknown` | – |
 | HTTP 5xx | error | `http · <status> <METHOD> <route>` + message | `http.error` (new) | – |
 | HTTP 400 401 403 409 413 422 | warn | same | `http.refused` (new) | – |
@@ -361,7 +372,7 @@ Unit: sanitizer (every row of § 10.5), logfmt quoting, width cutting with wide 
 
 - **Words carry meaning.** Every line has a level word; every table row has a state word; the summary counts in words. `NO_COLOR=1` and `--color never` lose nothing but colour.
 - **No motion.** No spinner, no blinking, no progress bar. The only repeated redraw is the Time column, at most once a second.
-- **Screen readers.** A redrawn region is read badly by terminal screen readers. `--output lines` (or `XEZ_OUTPUT=lines` stored as `cli.output`) gives append-only lines with no live region, and `TERM=dumb` turns it off automatically. PR 3 adds a sentence for screen-reader users to the README’s install section.
+- **Screen readers.** A redrawn region is read badly by terminal screen readers. `--output lines` (or `XEZ_OUTPUT=lines` stored as `cli.output`) gives append-only lines with no live region, and `TERM=dumb` turns it off automatically. A person must be able to find this without the README: PR 3 puts it in two places a person meets first. (1) `xez --help` lists `--output` with the line `lines   one line per event, no live table (use with a screen reader)`. (2) The PR 3 guide (#448) has one sentence next to the install steps: “Using a screen reader? Start xezar with `xez --output lines`, or set `XEZ_OUTPUT=lines`.” The README’s install section carries the same sentence.
 - **Contrast.** 16 standard colours only, so a person’s high-contrast terminal theme applies. Dim is used only for context, never for a level or state word.
 - **Keyboard.** Ctrl-C stops xezar; a second Ctrl-C exits at once. Nothing else needs a key.
 - **Cockpit switcher.** Real links and buttons, a label on every control, the `:focus-visible` ring, `sr-only` text for a state that a dot shows, `role="status"` on the checking line, no sideways scroll at 375 px (`switcher.html`).
@@ -426,6 +437,8 @@ Questions for the review are in `open-questions.md` (Q-1 … Q-12). Departures f
 | Departure | Reason |
 |---|---|
 | A terminal surface has no tokens; colours map to token roles instead (§ 9.2) | ANSI colours are chosen by the person’s terminal theme; hex values would override it |
+| `running` and `monitoring` are cyan (`--info` role), not `violet` as in `lib/attention.ts:120,123` | The cockpit tells `running` from `needs review` (both `violet`) by the pulse and the bucket. A terminal has no pulse and no motion (§ 11), so with magenta for both the only difference would be the word. Cyan keeps a second cue. Q-6 carries the terminal colour role in the shared status map |
+| `needs permission` is yellow, not `violet` as in `lib/attention.ts` | Same reason: it waits for a person, like `needs you`, and must not look like `running` or `needs review` without a pulse |
 | Level words (`info`, `warn`, `error`) are new status vocabulary | The cockpit has no log levels; they are lower case like its status words |
 | The `fix` label in refusals | Mirrors the cockpit’s “Fix:” line in `mcp-leader-control.tsx` |
 | Output mode `plain` added beside the analysis’s `auto/lines/rich` | Separates human lines (usable in a file) from machine lines |
@@ -466,4 +479,4 @@ Questions for the review are in `open-questions.md` (Q-1 … Q-12). Departures f
 
 ## 18. Design review
 
-Pending.
+Round 1 (`ec2b935`, FAIL): B-1 one dim rule (§ 9.2); B-2 terminal colour departure for `running`/`monitoring` (§ 14, Q-6); B-3 failed counts are task outcomes only (§ 6.3). Non-blocking NB-1 … NB-8 addressed in §§ 6.3, 7, 9, 9.1, 9.2, 10.2, 11, 14, `open-questions.md` Q-2 and `switcher.html`. Round 2 pending.

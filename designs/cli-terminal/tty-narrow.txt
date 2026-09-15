@@ -55,10 +55,13 @@ $ xez
   10:19:04 error b98de765
     failed — Codex stopped · exit code
     not reported
-  3 active · 1 needs you · 1 failed
+  2 active — 2 running — 1 failed
 
-# The last line is the live region: one line, redrawn in place, cut with …
-# when the counts do not fit. It never wraps, so a redraw never leaves debris.
+# The last line is the live region: one line, redrawn in place. Same grammar
+# as the 80-column summary without “since start” (README.md § 6.3). b98de765
+# asked a question, was answered, then failed, so it is no longer active and
+# no longer needs you: 2 tasks are active and 1 failed. Parts that do not fit
+# are left out from the right with …; the needs-you count never is. It never wraps, so a redraw never leaves debris.
 # The URL is the one exception to “at most 3 lines”: a URL is never cut.
 
 # ───────────────────────────────────────
@@ -70,7 +73,7 @@ $ xez
 # On resize xezar waits 100 ms for the size to settle, erases its own live
 # region (only those lines, never scrollback), and draws the one-line summary:
 
-  4 active · 1 needs review · 2 running…
+  4 active — 1 needs review · 2 running…
 
 # Lines already printed at 80 columns are not reflowed. The terminal owns
 # scrollback. Resizing back above 60 columns draws the table again.
@@ -92,7 +95,7 @@ $ xez
 
   Session summary — 25m 28s
     3 done · 1 needs review
-    2 failed · 0 cancelled
+    1 failed · 0 cancelled
     2 tasks were still running.
     xezar picks them up on the next
     start.
