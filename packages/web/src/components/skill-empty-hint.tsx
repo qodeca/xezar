@@ -42,10 +42,12 @@ function ProjectDirList() {
 export function SkillEmptyHint() {
   return (
     <>
-      No skills yet. Drop Markdown files into <ProjectDirList /> (agent mirrors like{' '}
-      <Path>.claude/skills/</Path> work too) — optional frontmatter: <Path>name</Path>,{' '}
-      <Path>description</Path>. Global (<Path>~/.agents/skills</Path>) and team-repo skills
-      appear here too — try Refresh.
+      No skills yet. A skill is a Markdown file of instructions an agent follows — for example{' '}
+      <Path>campaign-brief.md</Path>: who the audience is, what the brief must contain, and how to
+      check its claims against the client&rsquo;s material. Drop Markdown files into{' '}
+      <ProjectDirList /> (agent mirrors like <Path>.claude/skills/</Path> work too) — optional
+      frontmatter: <Path>name</Path>, <Path>description</Path>. Global (
+      <Path>~/.agents/skills</Path>) and team-repo skills appear here too — try Refresh.
     </>
   )
 }

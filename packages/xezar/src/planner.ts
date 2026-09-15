@@ -17,13 +17,18 @@ import { workflowStepSchema, type WorkflowStepDef } from './workflows/types.ts';
 
 const PLANNER_TIMEOUT_MS = 60_000;
 
-const PLANNER_SYSTEM_PROMPT =
-  'You are a planning assistant for an AI coding agent cockpit. Respond with ONLY a JSON object: ' +
+/** Exported for the release instruction guard (#466). The role is domain-neutral: the task may be
+ *  software, a campaign, a paper — the plan follows the task and the checks this project really has. */
+export const PLANNER_SYSTEM_PROMPT =
+  'You are a planning assistant that turns a task into a short chain of agent steps; the task may be any kind of project work (software, marketing, research, writing and more). Respond with ONLY a JSON object: ' +
   '{"title":string,"steps":[{"skill"?:string,"name":string,"prompt"?:string,"command"?:string}],"rationale":string}. ' +
   'Rules: pick skills ONLY from the provided catalog; a step has either "prompt" (an agent step) or ' +
-  '"command" (a shell verification check); include the {{task}} placeholder in agent prompts where ' +
+  '"command" (a shell verification check); a "command" must be one of the verification commands listed ' +
+  'for this project — never invent one; when none are listed, verify with an agent step that inspects the ' +
+  'deliverable against the criteria and sources the task supplied and reports anything it could not verify; ' +
+  "include the {{task}} placeholder in agent prompts where " +
   "the user's task text belongs; 1-5 steps; prefer fewer; \"title\" is a short kebab-case name for " +
-  'the whole workflow (2-4 words, e.g. "fix-and-review").';
+  'the whole workflow (2-4 words, e.g. "draft-and-review").';
 
 const plannerResponseSchema = z.object({
   /** A short workflow name the builder pre-fills. Optional so older / partial answers still parse. */
@@ -103,13 +108,13 @@ export async function planChain(repoRoot: string, task: string): Promise<PlanRes
 }
 
 /** The `[xez-planner]` marker lets the XEZ_DRY_RUN mock recognize a planning call. */
-function buildPlannerPrompt(task: string, skills: Skill[], verifyCommands: string[]): string {
+export function buildPlannerPrompt(task: string, skills: Skill[], verifyCommands: string[]): string {
   const catalog = skills.length
     ? skills.map((s) => `- ${s.name} — ${s.description ?? ''}`).join('\n')
     : '(no skills available)';
   const verify = verifyCommands.length
     ? verifyCommands.map((c) => `- ${c}`).join('\n')
-    : '(none detected)';
+    : '(none detected — do not add a command step; verify with an agent step and report what could not be verified)';
   return [
     '[xez-planner] Plan a chain of steps for this task.',
     '',
@@ -119,7 +124,7 @@ function buildPlannerPrompt(task: string, skills: Skill[], verifyCommands: strin
     'Skill catalog (name — description):',
     catalog,
     '',
-    'Verification commands detected in this repo:',
+    'Verification commands detected in this project:',
     verify,
   ].join('\n');
 }

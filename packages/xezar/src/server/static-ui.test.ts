@@ -78,10 +78,11 @@ describe('resolveGetRequest', () => {
 });
 
 describe('BUILD_HINT_HTML', () => {
-  it('is a self-contained page naming both build commands', () => {
-    // The spec's degradation matrix: "run `npm run dev:web` or `npm run build:web`".
-    expect(BUILD_HINT_HTML).toContain('npm run build:web');
-    expect(BUILD_HINT_HTML).toContain('npm run dev:web');
+  it('is a self-contained page that tells a user how to repair the installed product', () => {
+    // #466: this page ships in every installation, so it names reinstalling the package and
+    // never a build command of xezar's own repository.
+    expect(BUILD_HINT_HTML).toContain('npm install -g @qodeca/xezar@latest');
+    expect(BUILD_HINT_HTML).not.toMatch(/build:web|dev:web/);
     expect(BUILD_HINT_HTML).toContain('<!doctype html>');
     // Built into the server: no external asset may be needed to render it.
     expect(BUILD_HINT_HTML).not.toContain('src=');
