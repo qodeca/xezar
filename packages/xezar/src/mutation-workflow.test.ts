@@ -14,7 +14,7 @@ const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 const WORKFLOW = join(REPO_ROOT, '.github/workflows/mutation.yml');
 const MUTATION_DIR = join(REPO_ROOT, 'packages/xezar/mutation');
 
-type Step = { name?: string; id?: string; if?: string; uses?: string; run?: string; with?: Record<string, unknown>; env?: Record<string, string> };
+type Step = { name?: string; id?: string; if?: string; uses?: string; run?: string; with?: Record<string, unknown>; env?: Record<string, string>; 'continue-on-error'?: boolean };
 type Job = {
   needs?: string | string[];
   name?: string;
@@ -162,7 +162,7 @@ describe('new survivors and the forced red path (#377, PR 2)', () => {
     expect(group.if).toContain(`!(${FORCED})`);
     // A failed grouping still reaches the issue, as `unknown`, not as zero.
     expect(group.run).toContain('echo "new=unknown"');
-    const previous = step('report', /previous main run/i) as Step & { 'continue-on-error'?: boolean };
+    const previous = step('report', /previous main run/i);
     expect(previous['continue-on-error']).toBe(true);
     const upload = step('report', /upload this run/i);
     expect(upload.if).toBe("${{ steps.survivors.outputs.complete == 'true' }}");
@@ -179,6 +179,26 @@ describe('new survivors and the forced red path (#377, PR 2)', () => {
     expect(at(/sum the shards/i)).toBeLessThan(at(/group the survivors/i));
     expect(at(/group the survivors/i)).toBeLessThan(at(/tracking issue/i));
     expect(at(/tracking issue/i)).toBe(names.length - 2);
+  });
+
+  it('lets no step after the aggregate skip the tracking-issue step by failing', () => {
+    // A bare `if:` gets an implicit `success()`. Before the survivor steps, nothing between the
+    // aggregate and the issue step could fail, so a red night always reached the issue; a failed
+    // grouping or a failed upload must not take that away.
+    const issue = step('report', /tracking issue/i);
+    const all = steps('report');
+    const from = all.findIndex((s) => /sum the shards/i.test(s.name ?? ''));
+    const to = all.indexOf(issue);
+    const between = all.slice(from + 1, to);
+    expect(between.map((s) => s.name)).toEqual([
+      "Find the previous main run's survivor list",
+      'Group the survivors into new, already seen and known',
+      "Upload this run's survivor list",
+    ]);
+    const dependsOnSuccess = !/\b(always|cancelled|failure)\(\)/.test(issue.if ?? '');
+    if (dependsOnSuccess) {
+      expect(between.filter((s) => s['continue-on-error'] !== true).map((s) => s.name)).toEqual([]);
+    }
   });
 });
 

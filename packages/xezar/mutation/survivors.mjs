@@ -20,6 +20,12 @@
  * way twice in one file — its position among those twins. Moving code keeps the key; changing the
  * mutated text itself makes a new one, which is right: it is a different mutant.
  *
+ * The twin position is the price of ignoring lines, and it blurs twins. If one twin is killed and a
+ * new survivor with the same text appears in the same file the same night, the keys do not change,
+ * so the new one reads as known or already seen. If a twin is only added above the others, the count
+ * is right but the NEW row carries the last twin's line, not the added one's. For twins, trust the
+ * count and the file, not the line.
+ *
  * WHICH STATUSES. `Survived` and `NoCoverage`, the two halves of Stryker's "undetected". A new
  * function nobody tests produces no-coverage mutants, not survivors, and leaving those out would
  * hide exactly the regression this list exists to show.
@@ -338,7 +344,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     writeFileSync(resolve(repoRoot, outPath), formatSurvivorList({ schema: 1, source, tracked, survivors: carryTags(survivors, old, extra) }))
     process.stdout.write(`${survivors.length} survivors written to ${outPath}\n`)
   } else {
-    process.stderr.write('usage: survivors.mjs group|previous|baseline [options] — see the header of this file\n')
+    process.stderr.write('usage: survivors.mjs group|previous|baseline [options] — see the header of this file; baseline takes [--tag <issue>=<file>:<line>[:<mutator>]] [--issue <n>=<title>]\n')
     process.exit(2)
   }
 }

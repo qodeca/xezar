@@ -186,6 +186,7 @@ jobs:
           mkdir -p .local/mutation
           rm -f .local/mutation/summary.md
           verdict=red
+          # shellcheck disable=SC2016 # the backticks in single quotes are Markdown, not expansions
           if [ "$FORCE_RED" = "true" ]; then
             printf '## MCP mutation gate — FAILED (forced)\n\nDispatched with `force_red: true`: no shard ran, and this run is red on purpose, to prove the red path reaches this issue. It says nothing about the mutation score.\n\n[The run](%s)\n' \
               "$RUN_URL" > .local/mutation/summary.md
@@ -212,10 +213,13 @@ jobs:
         run: npm run --silent test:mutation:mcp:survivors -- previous --out .local/mutation/previous
 
       # Never changes the verdict: the floor alone decides red or green. A grouping that fails is
-      # written into the summary and reaches the tracking issue as `new=unknown`.
+      # written into the summary and reaches the tracking issue as `new=unknown`. Allowed to fail,
+      # like every step between the aggregate and the issue step: the issue step's `if` carries an
+      # implicit `success()`, and a failure here must not stop a red night from filing the issue.
       - name: Group the survivors into new, already seen and known
         id: survivors
         if: ${{ needs.plan.result == 'success' && !(github.event_name == 'workflow_dispatch' && inputs.force_red) }}
+        continue-on-error: true
         run: |
           set -u
           if ! npm run --silent test:mutation:mcp:survivors -- group --reports .local/mutation/shards \
@@ -229,8 +233,11 @@ jobs:
 
       # Only a run where every shard reported uploads its list, so "the previous run" is always a
       # complete one and a missing shard's survivors are not forgotten the night after.
+      # Allowed to fail: a lost list only means the next night compares with an older one, or says
+      # it could not compare. Failing here would skip the tracking-issue step below.
       - name: Upload this run's survivor list
         if: ${{ steps.survivors.outputs.complete == 'true' }}
+        continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: mutation-survivors

@@ -877,13 +877,17 @@ there, on slower cores. A single scheduled job would not finish. So the workflow
   **new** otherwise. A survivor is a `Survived` or a `NoCoverage` mutant – an untested new function
   produces the second kind, so leaving it out would hide the regression the list exists to show. It
   is matched by file, mutator and the text it mutates, never by line, so an edit above it does not
-  make it new. The grouping never changes the verdict: the floor alone decides red or green;
+  make it new. Twins – the same text mutated the same way twice in one file – are told apart only by
+  their order, so a twin killed on the night a same-text survivor appears hides the new one, and a
+  new twin's row shows the last twin's line: for twins, trust the count, not the line. The grouping
+  never changes the verdict: the floor alone decides red or green;
 - **notes new survivors early.** When new survivors appear and the score still clears the floor,
   the run stays green and the tracking issue gets one comment listing them – on a closed issue a
   comment, not a reopen. A grouping that could not run reaches the issue the same way, as
   "unknown", rather than reading as "nothing new". Every body carries a hidden
   `<!-- xezar:mutation-nightly run=<id> -->` line, so re-running the report job of one run changes
-  the issue's state if it must and never posts a second comment.
+  the issue's state if it must and never posts a second comment. The survivor steps may fail
+  without skipping the issue step: the grouping and the upload are `continue-on-error`.
 
 **"Previous" is the previous COMPLETE main run.** A run where every shard reported uploads its list
 as the `mutation-survivors` artifact (kept 90 days); the next run downloads the newest one from
@@ -897,16 +901,22 @@ every survivor of run [34999068325](https://github.com/qodeca/xezar/actions/runs
 first complete six-of-six nightly on `main`, at `fe33541` – 1 549 survived and 622 without coverage.
 Its #338 and #353 tags were placed by hand: #338's lines are on `11a6df3` and were carried to
 `fe33541` through `git diff`, and a line whose text had changed there (`adapters/claude-code.ts:567`,
-`adapters/codex.ts:473`) carries no tag; #353's are the attach, `#owed` and abort lines of
-`leader-delivery.ts`. Where an issue names the mutator, only that mutator is tagged. **To refresh
+`adapters/codex.ts:473`) carries no tag; #353's are the attach (`leader-delivery.ts:446`) and abort
+(`:553`) lines. #353's third mutant, `#owed` collapsed to `latestSeq > 0` (`:468`), is hand-written, and
+Stryker left no survivor on that line at `fe33541`, so nothing there is tagged; the untagged survivors at
+`:466` and `:467` mutate the acknowledged-position read, not the comparison #353 names. Where an issue
+names the mutator, only that mutator is tagged. **To refresh
 it** – after a batch of survivors is fixed, or to adopt a later run as the new start – download a
 complete main run's shard reports and rebuild the file; tags carry over by identity:
 
 ```sh
 gh run download <run-id> --repo qodeca/xezar --pattern 'mutation-report-*' --dir .local/mutation/shards
 npm run --silent test:mutation:mcp:survivors -- baseline --reports .local/mutation/shards \
-  --run <run-id> --revision <sha> --date <yyyy-mm-dd> [--tag <issue>=<file>:<line>[:<Mutator>]]
+  --run <run-id> --revision <sha> --date <yyyy-mm-dd> [--tag <issue>=<file>:<line>[:<Mutator>]] \
+  [--issue <n>=<title>]
 ```
+
+`--issue` names an issue in the file's `tracked` map, so a new tag number has a title next to it.
 
 Commit the result in its own pull request, so the diff shows which survivors left and arrived.
 
