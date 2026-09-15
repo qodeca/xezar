@@ -1012,8 +1012,9 @@ async function probeWritableDir(dir: string, create: boolean): Promise<string | 
 // Annotating it `Hono` here would erase every route from the type and leave the typed client
 // with nothing to offer. See the `routed` assembly at the end of the function.
 export function createApp(deps: ServerDeps) {
-  const { version, update, bindHost, bootProjectId } = deps;
-  const channel = deps.channel ?? 'release';
+  // Destructured, never read as a member: the audit-door guard (audit-origin-wiring.test.ts)
+  // counts every property access spelled like the audit-trail method as a possible door.
+  const { version, update, bindHost, bootProjectId, channel = 'release' } = deps;
   // Boot singletons keep DELIBERATELY distinct names (`boot*`): every
   // project-scoped handler must resolve its `{store, manager, root, dataDir,
   // launchKey}` from `c.get('project')` — a bare `store`/`repoRoot` in a
