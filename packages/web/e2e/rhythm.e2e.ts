@@ -146,7 +146,7 @@ type Controls = Record<
   number
 >
 
-/** The converted controls at Comfortable, and the floor the two chips never go under. */
+/** The converted controls at Comfortable, and the floor the floored chips never go under. */
 const CONTROLS: Controls = {
   navRow: 36,
   newTask: 40,
@@ -159,7 +159,17 @@ const CONTROLS: Controls = {
   quickListReferenceChip: 24,
 }
 const CHIP_FLOOR_PX = 24
-const FLOORED: ReadonlySet<keyof Controls> = new Set(['pickerPill', 'tableReferenceChip', 'quickListReferenceChip'])
+const FLOORED: ReadonlySet<keyof Controls> = new Set(['pickerPill', 'tableReferenceChip'])
+/**
+ * Held at one height at every density. The quick-list chip's caller passes `h-auto`, so its
+ * `h-6` never reaches the box and only the 24 px floor sizes it: 24 at Roomy as well, not 30.
+ */
+const FIXED: ReadonlySet<keyof Controls> = new Set(['quickListReferenceChip'])
+
+function expectedControl(name: keyof Controls, value: number, scale: number): number {
+  if (FIXED.has(name)) return value
+  return FLOORED.has(name) ? Math.max(value * scale, CHIP_FLOOR_PX) : value * scale
+}
 
 /** Heights through the rendered box, spacing through computed style – each on its own screen. */
 function measureControls(): Controls {
@@ -198,10 +208,7 @@ function measureControls(): Controls {
 
 function expectControls(actual: Controls, scale: number): void {
   const off = (Object.entries(CONTROLS) as [keyof Controls, number][])
-    .map(([name, value]): [keyof Controls, number] => [
-      name,
-      FLOORED.has(name) ? Math.max(value * scale, CHIP_FLOOR_PX) : value * scale,
-    ])
+    .map(([name, value]): [keyof Controls, number] => [name, expectedControl(name, value, scale)])
     .filter(([name, expected]) => !(Math.abs(actual[name] - expected) <= TOLERANCE_PX))
     .map(([name, expected]) => `${name}: ${actual[name]}px, expected ${expected}px`)
   expect(off).toEqual([])
@@ -281,6 +288,15 @@ describe('the rhythm tokens on the rendered cockpit', () => {
 describe('the pixels step 3b put back on the scale', () => {
   it('ships the converted controls at Comfortable', () => {
     expectControls(measureControls(), 1)
+  })
+
+  it('grows them to 125 % at Roomy, except the quick-list chip, which stays 24 px', () => {
+    chooseDensity('roomy')
+    try {
+      expectControls(measureControls(), 1.25)
+    } finally {
+      chooseDensity('comfortable')
+    }
   })
 
   it('shrinks them to 75 % at Compact for real, and holds the chips at 24 px', () => {
