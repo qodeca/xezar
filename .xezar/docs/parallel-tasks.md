@@ -6,6 +6,8 @@ Independent tasks continue while dependent work awaits an answer. Waiting/runnin
 
 Store shared campaign context once at a stable primary project artifact; give each executor a short specialty delta, AC, boundaries and dependencies. Root conversation is not inherited. Inspect snapshots for reviews and revalidate head/base before accepting. Choose fan-out only when useful; no prescribed budget, reviewer count or round quota. Record observed resource contention before claiming parallel speedup. There is now one concrete instance to reason from rather than an abstraction: concurrent gate runs starved each other through vitest's per-run worker fan-out, not through anything a worktree isolates — see `enhancement-ideas.md`. Host CPU is the shared resource that bites first, and its symptom is unrelated suites timing out, which reads as flakiness rather than as contention.
 
+Keep that shared context across sessions and compaction using [SDLC.md – Campaign notes](../../SDLC.md#campaign-notes), and keep naming the run id in each task checkpoint.
+
 ## Canonical gate scheduling
 
 Dependency installation runs alone. Then three lanes run concurrently: typecheck → build → package tests, the Vitest suite, and the node:test suite. Join all lanes before actual repository catalog, changelog and contract checks. Ordinary command failures do not skip later commands; every outcome is collected and any failure prevents a passing verdict. The five application commands and their evidence order are unchanged. Isolated infrastructure fixtures run unconditionally in the required CI job and locally for changes to kit checks or workflows.
