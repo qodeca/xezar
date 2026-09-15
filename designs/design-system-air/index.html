@@ -3,211 +3,148 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Air – examples, today beside proposed</title>
+<title>Air – Start</title>
 <link rel="stylesheet" href="../../docs/design-system/cockpit.css">
 <link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="chrome.css">
 <script src="theme.js"></script>
 </head>
 <body>
-<svg width="0" height="0" style="position:absolute" aria-hidden="true">
-  <symbol id="i-tasks" viewBox="0 0 24 24"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></symbol>
-  <symbol id="i-hand" viewBox="0 0 24 24"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></symbol>
-  <symbol id="i-inbox" viewBox="0 0 24 24"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
-  <symbol id="i-git" viewBox="0 0 24 24"><line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></symbol>
-  <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
-</svg>
+<script src="bar.js" data-controls="theme density"></script>
 
-<nav class="doc-bar" aria-label="Proposal pages">
-  <span class="brand">Air proposal</span>
-  <a href="index.html" aria-current="page">Examples</a>
-  <a href="README.md">Proposal (README)</a>
-  <span class="spacer"></span>
-  <label>Density
-    <select data-density-select>
-      <option value="roomy">Roomy (proposed)</option>
-      <option value="comfortable">Comfortable (default)</option>
-      <option value="compact">Compact</option>
-      <option value="ultra">Compact for real</option>
-    </select>
-  </label>
-  <button class="theme-toggle" type="button" data-theme-toggle>Light / dark</button>
-</nav>
+<main class="doc">
+  <h1>Air – how to review the step-0 mockup</h1>
+  <p class="lead">Step 0 of <a href="https://github.com/qodeca/xezar/issues/424">qodeca/xezar#424</a>. Each screen is the cockpit drawn twice at 1:1: <strong>Today</strong>, as shipped, with every value read from <code>packages/web/src</code>, and <strong>Proposed</strong>, the end state after PR 4 of the <a href="README.md">README</a> – rhythm tokens, looser gaps between blocks, no hand-set pixels and a Roomy density. Controls keep their size; only the space between things moves. Every task, path and message on these pages is invented.</p>
+  <p class="note"><strong>Status:</strong> draft, waiting for its <code>design-review</code> verdict, which gates step 1 onward. The owner’s decisions D-1..D-10 are closed; open points 6 and 7 are for the verdict to decide (README § 13).</p>
 
-<div class="doc">
-  <h1>Air – today beside proposed</h1>
-  <p class="lead">Each pair is the same markup twice. <strong>Today</strong> uses the cockpit’s shipped values, read from the files on 2026-09-14 (file and line in the sheet). <strong>Proposed</strong> uses the rhythm tokens from README § 9.1 (revision 2: row 8 · stack 12 · list 16 · inset 20 · group 24 · section 32). Controls keep their size; only the space between things changes. The grey line on each frame’s tag gives the numbers at the default density. The density select on the bar scales both columns the way the cockpit would – note that today’s hand-set pixels (nav rows, tool rows, table header, buttons) do not move with it, which is why “Compact for real” looks uneven today.</p>
+  <h2>How to review</h2>
+  <ol>
+    <li><strong>Use a 1280 × 900 window.</strong> A screen page draws the cockpit at the window’s own width, 1:1, with its real breakpoints. Its values assume 1280 or 375 px; at any other width the bar says so.</li>
+    <li><strong>Flip in place.</strong> On a screen page, Show on the bar switches between Today and Proposed with no reload, so the scroll position holds and a 2–4 px change shows as movement. Focus a Show option and ←/→ flips back and forth; the line beside it says which view is showing.</li>
+    <li><strong>See both at once.</strong> “Compare at 1280” on each screen page opens <a href="compare.html">the compare page</a>: that page twice at 1:1, Today above and Proposed below, at the same anchor.</li>
+    <li><strong>Check the numbers.</strong> Each screen page ends with “Values on this screen”: where, today with its source file:line, and proposed as token = px at Comfortable.</li>
+    <li><strong>Look at 375 px</strong> on the pages listed under “Where 375 px is true”.</li>
+    <li><strong>Set the axes once.</strong> Theme, Accent, Density and Width on the bar reach every page and every frame, and this browser remembers them and the Show choice. Links carry them, so a click keeps the view you chose; a link that names a key keeps its own.</li>
+  </ol>
+  <p>Scripts are required, as for the other mockups in <code>designs/</code>. Opened from disk, the address bar may not follow a change; the bar says so.</p>
 
-  <!-- ================================================== 1 -->
-  <h2>1. Settings fields</h2>
-  <p>Title → control → hint is 8 px apart today; fields sit 28 px apart in a flat list – the cockpit has no group level (<code>settings-field.tsx:20-27</code>, <code>appearance.tsx:120</code>). Proposed (D-6): 12 inside a field, 32 between fields, still flat.</p>
-  <div class="pair">
-    <div class="ex today">
-      <div class="tag">Today <span class="px">gap 8 · fields 28 · gutter 20</span></div>
-      <div class="ex-settings"><div class="ex-group">
-          <div class="ex-field"><span class="label">Parallel tasks</span><input class="input" value="3"><p class="field-hint">Across every project on this machine.</p></div>
-          <div class="ex-field"><span class="label">Idle timeout</span><input class="input" value="15 min"><p class="field-hint">An agent that says nothing for this long is closed.</p></div>
-          <div class="ex-field"><span class="label">Memory limit per task</span><input class="input" value="4096 MiB"><p class="field-hint">Derived from this machine; set to change.</p></div>
-          <div class="ex-field"><span class="label">Monitoring sessions</span><input class="input" value="2"><p class="field-hint">Tasks that may stay open to watch a PR.</p></div>
-      </div></div>
-    </div>
-    <div class="ex air">
-      <div class="tag">Proposed <span class="px">stack 12 · fields section 32 · gutter section 32</span></div>
-      <div class="ex-settings"><div class="ex-group">
-          <div class="ex-field"><span class="label">Parallel tasks</span><input class="input" value="3"><p class="field-hint">Across every project on this machine.</p></div>
-          <div class="ex-field"><span class="label">Idle timeout</span><input class="input" value="15 min"><p class="field-hint">An agent that says nothing for this long is closed.</p></div>
-          <div class="ex-field"><span class="label">Memory limit per task</span><input class="input" value="4096 MiB"><p class="field-hint">Derived from this machine; set to change.</p></div>
-          <div class="ex-field"><span class="label">Monitoring sessions</span><input class="input" value="2"><p class="field-hint">Tasks that may stay open to watch a PR.</p></div>
-      </div></div>
-    </div>
-  </div>
-  <p class="note"><strong>Sources:</strong> <code>settings-field.tsx:21</code> <code>gap-2</code>; <code>appearance.tsx:120</code> and seven more sections <code>gap-7</code>; <code>settings-shell.tsx:222</code> <code>md:p-5</code>.</p>
-
-  <!-- ================================================== 2 -->
-  <h2>2. A list of cards (Inbox, Settings hub, phone task cards)</h2>
-  <p>Cards are 10 px apart with 16 px inside today. Proposed: 16 apart (list), 20 inside (inset). The button height is the one visible control-size change: 30 → 32 px, because 30 is a hand-set pixel outside the lever.</p>
-  <div class="pair">
-    <div class="ex today">
-      <div class="tag">Today <span class="px">cards 10 apart · 16 inside · btn 30</span></div>
-      <div class="ex-cards">
-        <div class="ex-card"><span class="title">Add a “Retry” to the failed-gate banner</span><p>The agent noticed the banner names the failure but offers no way back in. One click would save a trip to the task page.</p><span class="meta"><span>#399</span><span>agent · 2h</span></span><div class="actions"><button class="btn" type="button">Make a task</button><button class="btn ghost" type="button">Dismiss</button></div></div>
-        <div class="ex-card"><span class="title">Document the pi approveTools wait</span><p>Three runs hit the same silence. A line in the runner docs would stop the next person from re-finding it.</p><span class="meta"><span>#356</span><span>agent · 5h</span></span><div class="actions"><button class="btn" type="button">Make a task</button><button class="btn ghost" type="button">Dismiss</button></div></div>
-        <div class="ex-card"><span class="title">Prune the orphan skill cache</span><p>~/.cache/xez holds two repos nobody references since the migration.</p><span class="meta"><span>leader · yesterday</span></span><div class="actions"><button class="btn" type="button">Make a task</button><button class="btn ghost" type="button">Dismiss</button></div></div>
-      </div>
-    </div>
-    <div class="ex air">
-      <div class="tag">Proposed <span class="px">list 16 apart · inset 20 inside · btn 32</span></div>
-      <div class="ex-cards">
-        <div class="ex-card"><span class="title">Add a “Retry” to the failed-gate banner</span><p>The agent noticed the banner names the failure but offers no way back in. One click would save a trip to the task page.</p><span class="meta"><span>#399</span><span>agent · 2h</span></span><div class="actions"><button class="btn" type="button">Make a task</button><button class="btn ghost" type="button">Dismiss</button></div></div>
-        <div class="ex-card"><span class="title">Document the pi approveTools wait</span><p>Three runs hit the same silence. A line in the runner docs would stop the next person from re-finding it.</p><span class="meta"><span>#356</span><span>agent · 5h</span></span><div class="actions"><button class="btn" type="button">Make a task</button><button class="btn ghost" type="button">Dismiss</button></div></div>
-        <div class="ex-card"><span class="title">Prune the orphan skill cache</span><p>~/.cache/xez holds two repos nobody references since the migration.</p><span class="meta"><span>leader · yesterday</span></span><div class="actions"><button class="btn" type="button">Make a task</button><button class="btn ghost" type="button">Dismiss</button></div></div>
-      </div>
-    </div>
-  </div>
-  <p class="note"><strong>Sources:</strong> <code>inbox.tsx:128</code> <code>gap-2.5</code>, <code>:227</code> <code>p-4</code>; <code>known-gaps.md:185</code> button <code>h-[30px]</code>.</p>
-
-  <!-- ================================================== 3 -->
-  <h2>3. The thread</h2>
-  <p>Every row is 10 px apart today – a speaker change looks like a tool step – and tool rows are 28 px tall (hand-set). Proposed (D-10): 8 px between rows of the same speaker, 24 px when the speaker changes, tool rows 32 on the scale. Type and line height do not change.</p>
-  <div class="pair">
-    <div class="ex today">
-      <div class="tag">Today <span class="px">every row 10 apart · tool row 28 · gutter 20</span></div>
-      <div class="ex-thread">
-        <div class="ex-turn user"><div class="bubble">Fix the approveTools wait in the pi runner. Three of four DoD rows must pass; tell me if the fourth cannot.</div></div>
-        <div class="ex-turn assistant speaker"><p>Reading the runner and the two failing traces first. The wait has no upper bound; pi never sends the approval event when the tool list is empty.</p></div>
-        <div class="ex-turn"><div class="ex-tool"><span class="k">Read</span> packages/xezar/src/core/pi-runner.ts</div><div class="ex-tool"><span class="k">Grep</span> approveTools · 4 hits</div><div class="ex-tool"><span class="k">Edit</span> pi-runner.ts <span class="plus">+38</span> <span class="minus">−7</span></div></div>
-        <div class="ex-turn assistant"><p>The fix is in. The wait now times out at 30 s and reports. Three rows pass; the OpenCode row cannot be verified here – OpenCode stalled in 5 of 5 runs today.</p></div>
-        <div class="ex-turn user speaker"><div class="bubble">Mark it not run and finish.</div></div>
-      </div>
-    </div>
-    <div class="ex air">
-      <div class="tag">Proposed <span class="px">row 8 in a turn · group 24 at a speaker change · tool row 32 · gutter 32</span></div>
-      <div class="ex-thread">
-        <div class="ex-turn user"><div class="bubble">Fix the approveTools wait in the pi runner. Three of four DoD rows must pass; tell me if the fourth cannot.</div></div>
-        <div class="ex-turn assistant speaker"><p>Reading the runner and the two failing traces first. The wait has no upper bound; pi never sends the approval event when the tool list is empty.</p></div>
-        <div class="ex-turn"><div class="ex-tool"><span class="k">Read</span> packages/xezar/src/core/pi-runner.ts</div><div class="ex-tool"><span class="k">Grep</span> approveTools · 4 hits</div><div class="ex-tool"><span class="k">Edit</span> pi-runner.ts <span class="plus">+38</span> <span class="minus">−7</span></div></div>
-        <div class="ex-turn assistant"><p>The fix is in. The wait now times out at 30 s and reports. Three rows pass; the OpenCode row cannot be verified here – OpenCode stalled in 5 of 5 runs today.</p></div>
-        <div class="ex-turn user speaker"><div class="bubble">Mark it not run and finish.</div></div>
-      </div>
-    </div>
-  </div>
-  <p class="note"><strong>Sources:</strong> <code>thread-scroller.tsx:492</code> <code>pb-2.5</code>; <code>thread-items.tsx:547</code> <code>min-h-[28px] py-0.5</code>; <code>task-thread.tsx:307</code> <code>md:px-6 md:py-5</code>.</p>
-
-  <!-- ================================================== 4 -->
-  <h2>4. Page header, page body, task head</h2>
-  <p>The body starts 20 px under the header today; the task head is 18 / 24 / 14. Proposed: 32 under the header, task head 32 / 32 / 16 – gutters are the section step on both axes.</p>
-  <div class="pair">
-    <div class="ex today">
-      <div class="tag">Today <span class="px">header h-14 · body starts at 20 · task head 18/24/14</span></div>
-      <div class="ex-page">
-        <div class="head">Inbox <span class="pill">12 new</span></div>
-        <div class="body">
-          <div class="ex-card"><span class="title">First card</span><p>Sits 20 px under the header line.</p></div>
-        </div>
-        <div class="task-head"><span class="pill"><span class="dot pending pulse"></span>needs your decision</span><h1>#356 fixing the pi approveTools wait</h1><span class="mono" style="font-size:12px;color:var(--muted-foreground)">fix · Claude Code · opus · xez/9a41d2c0</span></div>
-      </div>
-    </div>
-    <div class="ex air">
-      <div class="tag">Proposed <span class="px">header h-14 · body starts at 32 · task head 32/32/16</span></div>
-      <div class="ex-page">
-        <div class="head">Inbox <span class="pill">12 new</span></div>
-        <div class="body">
-          <div class="ex-card"><span class="title">First card</span><p>Sits 32 px under the header line.</p></div>
-        </div>
-        <div class="task-head"><span class="pill"><span class="dot pending pulse"></span>needs your decision</span><h1>#356 fixing the pi approveTools wait</h1><span class="mono" style="font-size:12px;color:var(--muted-foreground)">fix · Claude Code · opus · xez/9a41d2c0</span></div>
-      </div>
-    </div>
-  </div>
-  <p class="note"><strong>Sources:</strong> <code>patterns.md:43, 51</code> header <code>h-14</code>, body <code>md:p-5</code>; <code>cockpit.css:2043-2061</code> <code>.task-head</code>.</p>
-
-  <!-- ================================================== 5 -->
-  <h2>5. Sidebar</h2>
-  <p>Nav rows are 34 px hand-set today and the three groups are 6 px apart. Proposed: 36 px rows on the scale and 12 px between groups. Quick-list rows stay 32.</p>
-  <div class="pair">
-    <div class="ex today">
-      <div class="tag">Today <span class="px">rows 34 (hand-set) · groups 6 apart</span></div>
-      <div class="ex-side">
-        <nav class="nav" aria-label="Example"><a href="#" aria-current="page"><svg class="icon"><use href="#i-tasks"/></svg>Tasks</a><a href="#"><svg class="icon"><use href="#i-hand"/></svg>Decisions<span class="nav-badge">3</span></a><a href="#"><svg class="icon"><use href="#i-inbox"/></svg>Inbox<span class="nav-badge">12</span></a><a href="#"><svg class="icon"><use href="#i-git"/></svg>Git</a><a href="#"><svg class="icon"><use href="#i-settings"/></svg>Settings</a></nav>
-        <div><div class="quick-head">NEEDS YOU</div><ul class="quick"><li><span class="dot pending pulse"></span><span class="ref">#403</span><span class="t">codex wake path</span></li><li><span class="dot pending pulse"></span><span class="ref">#356</span><span class="t">fixing the pi approveTools wait</span></li></ul></div>
-        <div><div class="quick-head">WORKING</div><ul class="quick"><li><span class="dot violet pulse"></span><span class="ref">#421</span><span class="t">refusing git in the primary checkout</span></li></ul></div>
-      </div>
-    </div>
-    <div class="ex air">
-      <div class="tag">Proposed <span class="px">rows 36 (h-9) · groups stack 12 apart</span></div>
-      <div class="ex-side">
-        <nav class="nav" aria-label="Example"><a href="#" aria-current="page"><svg class="icon"><use href="#i-tasks"/></svg>Tasks</a><a href="#"><svg class="icon"><use href="#i-hand"/></svg>Decisions<span class="nav-badge">3</span></a><a href="#"><svg class="icon"><use href="#i-inbox"/></svg>Inbox<span class="nav-badge">12</span></a><a href="#"><svg class="icon"><use href="#i-git"/></svg>Git</a><a href="#"><svg class="icon"><use href="#i-settings"/></svg>Settings</a></nav>
-        <div><div class="quick-head">NEEDS YOU</div><ul class="quick"><li><span class="dot pending pulse"></span><span class="ref">#403</span><span class="t">codex wake path</span></li><li><span class="dot pending pulse"></span><span class="ref">#356</span><span class="t">fixing the pi approveTools wait</span></li></ul></div>
-        <div><div class="quick-head">WORKING</div><ul class="quick"><li><span class="dot violet pulse"></span><span class="ref">#421</span><span class="t">refusing git in the primary checkout</span></li></ul></div>
-      </div>
-    </div>
-  </div>
-  <p class="note"><strong>Sources:</strong> <code>app-shell.tsx:572</code> <code>md:h-[34px]</code>, <code>:555</code> <code>px-2.5 py-1.5</code>.</p>
-
-  <!-- ================================================== 6 -->
-  <h2>6. The task table</h2>
-  <p>Rows stay 44 px – the table is where density is a feature. Cell padding grows 10 → 12 so columns do not touch; the header goes from a hand-set 38 to 40 on the scale.</p>
-  <div class="pair">
-    <div class="ex today">
-      <div class="tag">Today <span class="px">rows 44 · cells 10 · header 38 (hand-set)</span></div>
-      <div class="ex-table table-scroll"><table class="tasks-table"><thead><tr><th>Task</th><th>Status</th><th>Tool</th><th>Age</th></tr></thead><tbody>
-        <tr><td class="title">#403 codex wake path</td><td><span class="pill"><span class="dot pending"></span>decision</span></td><td>Claude Code</td><td class="num">2h</td></tr>
-        <tr><td class="title">#421 refusing git in the primary checkout</td><td><span class="pill"><span class="dot violet"></span>working</span></td><td>Claude Code</td><td class="num">9m</td></tr>
-        <tr><td class="title">#399 fixing the tasks badge count</td><td><span class="pill"><span class="dot violet"></span>working</span></td><td>pi</td><td class="num">31m</td></tr>
-      </tbody></table></div>
-    </div>
-    <div class="ex air">
-      <div class="tag">Proposed <span class="px">rows 44 · cells 12 · header 40 (h-10)</span></div>
-      <div class="ex-table table-scroll"><table class="tasks-table"><thead><tr><th>Task</th><th>Status</th><th>Tool</th><th>Age</th></tr></thead><tbody>
-        <tr><td class="title">#403 codex wake path</td><td><span class="pill"><span class="dot pending"></span>decision</span></td><td>Claude Code</td><td class="num">2h</td></tr>
-        <tr><td class="title">#421 refusing git in the primary checkout</td><td><span class="pill"><span class="dot violet"></span>working</span></td><td>Claude Code</td><td class="num">9m</td></tr>
-        <tr><td class="title">#399 fixing the tasks badge count</td><td><span class="pill"><span class="dot violet"></span>working</span></td><td>pi</td><td class="num">31m</td></tr>
-      </tbody></table></div>
-    </div>
-  </div>
-  <p class="note"><strong>Sources:</strong> <code>tasks-overview.tsx:419</code> <code>h-[38px] px-2.5</code>, <code>:514</code> <code>h-11 px-2.5</code>.</p>
-
-  <!-- ================================================== 7 -->
-  <h2>7. The rhythm scale</h2>
-  <p>Six named distances – 8 / 12 / 16 / 20 / 24 / 32, the scale Carbon, Radix and Atlassian share – all multiples of the one spacing unit, so the density select scales them. A file uses a token between blocks and the numeric scale inside a control – never a hand-typed pixel.</p>
-  <div class="ex air" style="max-width:560px">
-    <div class="tag">Proposed tokens <span class="px">× 4px per unit at the default density</span></div>
-    <div class="bars">
-      <div class="bar"><span>row</span><i style="width:var(--row)"></i><span class="v">2 · 8px</span></div>
-      <div class="bar"><span>stack</span><i style="width:var(--stack)"></i><span class="v">3 · 12px</span></div>
-      <div class="bar"><span>list</span><i style="width:var(--list)"></i><span class="v">4 · 16px</span></div>
-      <div class="bar"><span>inset</span><i style="width:var(--inset)"></i><span class="v">5 · 20px</span></div>
-      <div class="bar"><span>group</span><i style="width:var(--group)"></i><span class="v">6 · 24px</span></div>
-      <div class="bar"><span>section</span><i style="width:var(--section)"></i><span class="v">8 · 32px</span></div>
-    </div>
+  <h2>Pages</h2>
+  <div class="table-scroll">
+    <table class="decision-table">
+      <thead><tr><th scope="col">Page</th><th scope="col">What it shows</th><th scope="col">Its own URL keys</th></tr></thead>
+      <tbody>
+        <tr><td>Start</td><td>This page: how to review, the pages, the review checks, the open points and the questions for the verdict.</td><td>–</td></tr>
+        <tr><td><a href="tasks.html">Tasks</a></td><td>The sidebar, New task and Add project, the 13-column table with 14 rows and the footer strip. At 375 px: the mobile bar, the task cards, the New-task FAB and, with <code>drawer=open</code>, the phone drawer. Open points 6 and 7 switch here.</td><td><code>v</code>, <code>table</code>, <code>cta</code>, <code>drawer</code></td></tr>
+        <tr><td><a href="thread.html">Thread</a></td><td>A task page: the run header, about 20 thread rows over five speaker changes, a tool group with a nested group, the ask card, the review panel and the composer dock. Also the delete dialog and the loading state.</td><td><code>v</code>, <code>state</code></td></tr>
+        <tr><td><a href="changes.html">Changes</a></td><td>The Changes tab under the same run header: toolbar, file tree and diff.</td><td><code>v</code></td></tr>
+        <tr><td><a href="settings.html">Settings</a></td><td>Settings → Agents (project scope, all nine blocks), → Appearance and → Agent accounts (global scope), inside the app shell. Also the Agents over-limit error and the Agent accounts refusal.</td><td><code>v</code>, <code>section</code>, <code>state</code></td></tr>
+        <tr><td><a href="inbox.html">Inbox</a></td><td>Five follow-up cards. Also the empty and page-error states.</td><td><code>v</code>, <code>state</code></td></tr>
+        <tr><td><a href="compare.html">Compare</a></td><td>One screen page twice at 1:1: Today above, Proposed below, at the same anchor. A link row picks the screen, the thread anchor and the state.</td><td><code>page</code>, <code>section</code>, <code>state</code>, <code>at</code></td></tr>
+        <tr><td><a href="phone.html">375 px</a></td><td>Eight screens in 375 × 780 frames, Today beside Proposed, each with up to three changed values.</td><td>–</td></tr>
+        <tr><td><a href="states.html">States</a></td><td>The six-state map, then the five non-default states as 375 px pairs, each linked at 1280 in either view and in the compare page.</td><td>–</td></tr>
+        <tr><td><a href="appearance.html">Appearance axes</a></td><td>The proposed view at four densities (the thread at 1:1, the Settings list at 375 px), in dark and light with both accents, and at both reading widths.</td><td>–</td></tr>
+      </tbody>
+    </table>
   </div>
 
-  <h2>What to look for</h2>
+  <h2>URL keys</h2>
+  <p>Every view is a URL, so a finding can cite the exact one. An unknown value is ignored and the default applies. A value in the address applies to that load; a change on the bar is remembered for the kept keys.</p>
+  <div class="table-scroll">
+    <table class="decision-table">
+      <thead><tr><th scope="col">Key</th><th scope="col">Values</th><th scope="col">Default</th><th scope="col">Pages</th><th scope="col">Kept</th></tr></thead>
+      <tbody>
+        <tr><td><code>theme</code></td><td>dark, light</td><td>dark</td><td>all</td><td>yes</td></tr>
+        <tr><td><code>accent</code></td><td>lime, violet</td><td>lime</td><td>all</td><td>yes</td></tr>
+        <tr><td><code>density</code></td><td>roomy, comfortable, compact, ultra (Compact for real)</td><td>comfortable</td><td>all</td><td>yes</td></tr>
+        <tr><td><code>width</code></td><td>narrow, wide</td><td>narrow</td><td>all</td><td>yes</td></tr>
+        <tr><td><code>v</code></td><td>today, air (Proposed)</td><td>air</td><td>the five screen pages</td><td>yes</td></tr>
+        <tr><td><code>table</code>, <code>cta</code></td><td>a, b – open points 6 and 7</td><td>a</td><td>Tasks</td><td>no</td></tr>
+        <tr><td><code>drawer</code></td><td>open</td><td>closed</td><td>Tasks, at 860 px and below</td><td>no</td></tr>
+        <tr><td><code>state</code></td><td>Thread: loading, dialog · Inbox: empty, error · Settings: error</td><td>none</td><td>Thread, Inbox, Settings</td><td>no</td></tr>
+        <tr><td><code>section</code></td><td>agents, appearance, accounts</td><td>agents</td><td>Settings</td><td>no</td></tr>
+        <tr><td><code>page</code>, <code>at</code></td><td>page: tasks, thread, changes, settings, inbox · at (thread only): speaker-2, ask-card, dock</td><td>tasks</td><td>Compare, with <code>section</code> and <code>state</code> as above</td><td>no</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Where 375 px is true</h2>
+  <div class="table-scroll">
+    <table class="decision-table">
+      <thead><tr><th scope="col">Page</th><th scope="col">What you see at 375 px</th><th scope="col">Window</th></tr></thead>
+      <tbody>
+        <tr><td><a href="phone.html">375 px</a></td><td>Eight screens, Today beside Proposed, each in a 375 × 780 viewport – the drawer and the dialog included</td><td>no resizing: any window from about 425 px</td></tr>
+        <tr><td><a href="states.html">States</a></td><td>The five non-default states as 375 px pairs</td><td>no resizing: any window from about 425 px</td></tr>
+        <tr><td><a href="appearance.html">Appearance axes</a></td><td>Settings → Appearance at the four densities, and the thread in both themes with both accents</td><td>no resizing: any window from about 425 px</td></tr>
+        <tr><td>Any screen page</td><td>The page itself, the true 375 view; on Tasks, <a href="tasks.html?drawer=open">the drawer</a> opens from Open menu</td><td>a 375 px window, for example the browser’s device mode</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>On the three aid pages the pairs stack in a window under about 820 px. In a window narrower than about 425 px their frames shrink with it and are no longer 375 px wide – open the screen page itself instead.</p>
+
+  <h2>Review check → page and URL</h2>
+  <p>The <code>design-review</code> checklist (<code>.xezar/skills/xezar-ux-design.md</code>, review mode), in its own order, plus the two comparisons the step-0 scope asks for.</p>
+  <div class="table-scroll">
+    <table class="decision-table">
+      <thead><tr><th scope="col">Check</th><th scope="col">Where and what to look for</th><th scope="col">Open</th></tr></thead>
+      <tbody>
+        <tr><td>The ten rules</td><td><code>docs/design-system/README.md</code>. Every screen page in both views and both themes; each values table gives the source of every today value and the token of every proposed one. Look for cockpit tokens only, no raw colour (rules 1–4); status as a word, not colour alone (7, 10); product names in the Tool Name column (8); the 13 columns in <code>TASK_COLUMNS</code> order (9). Rule 10 continues in the accessibility row.</td><td><a href="tasks.html#values">tasks.html#values</a> · <a href="thread.html#values">thread.html#values</a> · <a href="changes.html#values">changes.html#values</a> · <a href="settings.html?section=agents#values">settings.html?section=agents#values</a> · <a href="inbox.html#values">inbox.html#values</a></td></tr>
+        <tr><td>Six states</td><td><code>new-designs.md</code> § 4, each once on its natural surface. <a href="states.html">States</a> has the map, a 375 px pair of each non-default state and links to each at 1280.</td><td>default: any screen page · <a href="inbox.html?state=empty">inbox.html?state=empty</a> · <a href="thread.html?state=loading">thread.html?state=loading</a> · <a href="settings.html?section=agents&amp;state=error">settings.html?section=agents&amp;state=error</a> · <a href="inbox.html?state=error">inbox.html?state=error</a> · <a href="settings.html?section=accounts">settings.html?section=accounts</a> · phone: <a href="phone.html">phone.html</a></td></tr>
+        <tr><td>Four appearance axes</td><td><code>new-designs.md</code> § 5 – theme, accent, density, width. <a href="appearance.html">Appearance axes</a> shows each on the proposed view; the bar sets any combination on any page.</td><td><a href="appearance.html">appearance.html</a> · <a href="thread.html?theme=light&amp;accent=violet">thread.html?theme=light&amp;accent=violet</a> · <a href="settings.html?section=appearance&amp;density=ultra">settings.html?section=appearance&amp;density=ultra</a> · <a href="thread.html?width=wide">thread.html?width=wide</a> (in a window of 1444 px or more)</td></tr>
+        <tr><td>Accessibility</td><td>Point 7 of the skill. Tab through the sidebar, the page and the bar: every control should have a label and show the focus ring, and meaning should be in words. At 375 px nothing should scroll sideways; on Tasks the drawer should open and close from the keyboard; the density options should stay reachable at every density.</td><td><a href="tasks.html">tasks.html</a> · <a href="tasks.html?drawer=open">tasks.html?drawer=open</a> (375 px window) · <a href="phone.html">phone.html</a> · <a href="appearance.html">appearance.html</a> (the Settings list)</td></tr>
+        <tr><td>Copy</td><td><code>writing.md</code>. Shipped strings are verbatim, with the product’s spaced em dash; the new density options and hint follow README § 8.</td><td><a href="settings.html?section=appearance">density options and hint</a> · <a href="settings.html?section=accounts">refusal</a> · <a href="inbox.html?state=empty">empty</a> · <a href="inbox.html?state=error">page error</a> · <a href="thread.html?state=loading">loading</a> · <a href="thread.html?state=dialog">delete dialog</a> · <a href="settings.html?section=agents&amp;state=error">over-limit line</a></td></tr>
+        <tr><td>Departures</td><td>Every place the mockup departs from <code>cockpit.css</code> or the design system is listed with its reason in README § 5: the local exceptions and the mockup-only departures. They are not open decisions; the two open decisions are in § 13.</td><td><a href="README.md#5-files">README § 5</a> · <a href="README.md#13-open-decisions">README § 13</a></td></tr>
+        <tr><td>Today beside proposed</td><td>Every screen in both views: the flip at 1280, both at once on the compare page, side by side at 375 px.</td><td><a href="compare.html?page=tasks">compare.html?page=tasks</a> · <a href="compare.html?page=thread&amp;at=speaker-2">compare.html?page=thread&amp;at=speaker-2</a> · <a href="compare.html?page=settings&amp;section=appearance">compare.html?page=settings&amp;section=appearance</a> · <a href="phone.html">phone.html</a></td></tr>
+        <tr><td>Unchanged surfaces</td><td>The dialog, the diff and the centered states: flip, and nothing inside them should move – only the page around them.</td><td><a href="thread.html?state=dialog">thread.html?state=dialog</a> · <a href="changes.html">changes.html</a> · <a href="inbox.html?state=empty">inbox.html?state=empty</a></td></tr>
+        <tr><td>Open points 6 and 7</td><td>The four links in the next section, and the table widths measured at 1280 × 900.</td><td><a href="tasks.html?v=air#op6">tasks.html#op6</a></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Open points 6 and 7</h2>
+  <p>Two values README § 9.2 and § 9.3 leave open. Both switch live on Tasks, in the proposed view; the today view has no options. The verdict’s choices become D-11 and D-12 in README § 13.</p>
   <ul>
-    <li>In every pair the text is the same size. Only the air changed.</li>
-    <li>Switch the bar to <strong>Compact for real</strong>: today’s column tightens unevenly (nav rows, tool rows, the table header and the buttons stay put); the proposed column tightens as one piece.</li>
-    <li>Switch to <strong>Roomy</strong>: the proposed fourth density, 5 px per unit (+25 %, the mirror of Compact for real). Opt-in; the default stays Comfortable. Every density scales the whole page as one piece.</li>
-    <li>The table does not grow. If you want it to, that is decision D-2 in the README.</li>
+    <li><strong>6 – task-table wrapper:</strong> <a href="tasks.html?table=a&amp;v=air">A – keeps the section gutter, 32 px</a> · <a href="tasks.html?table=b&amp;v=air">B – exempt, today’s 20 px</a></li>
+    <li><strong>7 – New-task button:</strong> <a href="tasks.html?cta=a&amp;v=air">A – 40 px</a> · <a href="tasks.html?cta=b&amp;v=air">B – 36 px</a>. At 375 px the button sits in the drawer: see the “Tasks – menu open” pair on <a href="phone.html">375 px</a>.</li>
   </ul>
-</div>
 
+  <h2>Questions for the verdict</h2>
+  <ol>
+    <li><strong>Open point 6.</strong> At 1280 the proposed table is 1389 px wide (1349 today). A shows 950 px and hides 439; B shows 974 and hides 415. Both cut IN / OUT and hide Cost, CPU, Mem and Started. Is B’s extra 24 px worth a second gutter rule? Under B the footer strip keeps the 32 px gutter while the table moves to 20, so the two sit 12 px out of line.</li>
+    <li><strong>What “exempt” means.</strong> B draws today’s 20 px gutter, an assumption; README § 9.2 says only “exempt the wrapper”, which could also mean no gutter at all. Which one?</li>
+    <li><strong>Open point 7.</strong> Should New task be 40 px (A) or 36 px (B) beside the 36 px nav rows? At phone width the drawer rows are 44 px, so the button is shorter than its rows under both options.</li>
+    <li><strong>Add project.</strong> It stays 36 px beside a 40 px New task under option A (not in § 9.2 – unchanged). Should it follow the CTA, as its source comment says (<code>app-shell.tsx:734</code>)?</li>
+    <li><strong>Page header x.</strong> Tasks, Inbox and Settings keep the header’s <code>px-5</code> = 20 while the body gutter moves to 32, so the title sits 12 px out of line with the content. Align it?</li>
+    <li><strong>Settings section containers.</strong> <code>p-4 md:p-6</code> (<code>agents-section.tsx:163</code>, <code>appearance.tsx:120</code>, <code>accounts-section.tsx:147</code>) is not assigned by § 9.2, so both views draw it unchanged: 24 at 1280, 16 at 375. The refusal block’s <code>gap-4</code> is in the same position. Give them a rhythm token?</li>
+    <li><strong>Inside an Inbox card.</strong> The card’s inner <code>gap-2.5</code> = 10 (<code>inbox.tsx:227</code>) stays while its padding grows 16 → 20. At 375 the proposed card narrows the summary text from 140 to 124 px, and the list grows from 1,298 to 1,477 px (722 → 804 at 1280). Keep the inner gap?</li>
+    <li><strong>Nearest-step picks.</strong> Two hand-set values fall between scale steps and are drawn at the larger one: the project-row gap 7 → 8 and the Inbox status-dot offset 5 → 6 (PR 3b decides). Accept them?</li>
+    <li><strong>The density row wraps at 375.</strong> Four options, about 390 px, do not fit the 343 px column, so the proposed row wraps inside its border – a new PR 4 requirement (README § 9.4). Accept it?</li>
+  </ol>
+  <p class="note"><strong>Drawn as shipped, not questions:</strong> <code>--soft-foreground</code> text is about 2.5:1 in light (known gap G-23, #344); the user bubble rounds one corner only, because <code>rounded-2xl</code> emits no rule (<code>index.css:281</code>).</p>
+
+  <h2>Not drawn</h2>
+  <ul>
+    <li><strong>The one-project sidebar.</strong> Every screen page draws the sidebar the app shows once two or more projects are registered (<code>app-shell-container.tsx:108</code>). The flat nav rows (34 → 36) and the Active / Archived tabs (3 → 4) render only with one project; their numbers are at the foot of <a href="tasks.html?v=air#values">Tasks</a>.</li>
+    <li><strong>Surfaces outside step 0:</strong> the global tasks page, the banner row, the plan and agents docks and the settings hub cards.</li>
+    <li><strong>The drawer outside Tasks.</strong> On the other screen pages Open menu is the source’s inert button.</li>
+    <li><strong>Mark unread, Pin and Archive</strong> in the run header: with all eight review actions the tab row overflows, 820 → 1,074 px (<code>run-header.tsx:267-300</code>).</li>
+    <li><strong>Phone group headings on Tasks:</strong> the per-project page has none (<code>tasks-overview.tsx:269</code>); only the global tasks page does.</li>
+  </ul>
+
+  <h2>The rhythm scale</h2>
+  <p>Six named distances between blocks, all multiples of one spacing unit, so the density select on the bar scales them. The labels give Comfortable; Roomy is × 1.25, Compact × 0.875 and Compact for real × 0.75.</p>
+  <div class="grid-2">
+    <div class="frame ex air">
+      <div class="bars">
+        <div class="bar" data-w="row"><span>row</span><i aria-hidden="true"></i><span class="v">2 · 8px</span></div>
+        <div class="bar" data-w="stack"><span>stack</span><i aria-hidden="true"></i><span class="v">3 · 12px</span></div>
+        <div class="bar" data-w="list"><span>list</span><i aria-hidden="true"></i><span class="v">4 · 16px</span></div>
+        <div class="bar" data-w="inset"><span>inset</span><i aria-hidden="true"></i><span class="v">5 · 20px</span></div>
+        <div class="bar" data-w="group"><span>group</span><i aria-hidden="true"></i><span class="v">6 · 24px</span></div>
+        <div class="bar" data-w="section"><span>section</span><i aria-hidden="true"></i><span class="v">8 · 32px</span></div>
+      </div>
+    </div>
+    <p class="note">Between blocks a file uses a rhythm token; inside a control, the numeric scale; never a hand-typed pixel (README § 9.1). The Proposed view of every screen page is built from these six and the unit.</p>
+  </div>
+</main>
 </body>
 </html>
