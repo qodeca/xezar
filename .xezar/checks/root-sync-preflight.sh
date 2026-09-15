@@ -108,8 +108,9 @@ if [ "$IS_WORKTREE" = "1" ]; then
   fail launch.worktree "this run is executing in a LINKED WORKTREE ($TASK_CWD). A worktree run holds no root lease and cannot acquire one by changing its working directory or by using \`git -C <root>\`. Root synchronization is a separate Worktree OFF assignment; relaunch it as one."
 fi
 
-# 2. The resume fallback. When Xezar cannot re-materialize a reclaimed worktree it silently
-#    continues the run in the repository root (`src/workflows/run.ts:2236-2239`). Such a run is
+# 2. The legacy resume fallback (`src/workflows/run.ts`, resume cwd selection). Current
+#    recorded isolated runs fail closed if restoration fails; older records without isolation
+#    identity can still select the repository root. Such a legacy run can be
 #    standing at the root WITHOUT being the root assignment, and it is the one path that produces a
 #    root-looking run that never acquired anything. A run id whose worktree directory still exists
 #    while we are executing at the root is that shape.
@@ -118,7 +119,7 @@ fi
 # When `XEZ_TASK_ID` was missing or malformed the whole block was skipped SILENTLY, and the script
 # could still print OK — folding an unasked question into a pass. An unobserved precondition is not
 # a satisfied one. The identity is now required: the runtime supplies it to every agent step
-# (`run.ts:759-761`), so this asks for nothing new; it only refuses to pretend when it is absent.
+# (`src/workflows/run.ts`, `RunManager.agentEnv`), so this asks for nothing new; it only refuses to pretend when it is absent.
 if [ "$IS_WORKTREE" = "0" ]; then
   if [ -z "${XEZ_TASK_ID:-}" ]; then
     fail identity.unbound "XEZ_TASK_ID is not set, so the launch-versus-fallback question could not be asked at all. That check is INCOMPLETE, not passed. A root assignment runs as an agent step and is given its run id; if it is missing, stop and report rather than proceeding on an unobserved precondition."
