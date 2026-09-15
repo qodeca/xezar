@@ -16,7 +16,7 @@ Practical rules:
 - A missing dependency, an absent peer, a read-only home: degrade to a smaller working cockpit, never fail the boot.
 - Prefer a proxy-free, daemon-free mechanism when one exists — and when it doesn't, keep the mechanism invisible: no process to manage, no port to remember, no file to edit.
 - Never trade a working default for a knob.
-- Adding, renaming, or removing a `XEZ_*` env var — or changing what its default does, or giving it a STORED config key that supersedes it at runtime — MUST update `.env.example` in the same commit (and, when the var is user-facing, the env table in the user guide's `docs/guide/11-configuration-reference.md`, plus the README's short table if it is one of the few listed there). That last case is the one people miss: `XEZ_FOLLOWUPS` and `XEZ_ENV_PASSTHROUGH` are now boot-time defaults behind a stored workspace key, so the var still exists and no longer decides. `.env.example` is the env contract's single documentation surface; an undocumented env var is a bug.
+- Adding, renaming, or removing a `XEZ_*` env var — or changing what its default does, or giving it a STORED config key that supersedes it at runtime — MUST update `.env.example` in the same commit (and the README env table when the var is user-facing). That last case is the one people miss: `XEZ_FOLLOWUPS` and `XEZ_ENV_PASSTHROUGH` are now boot-time defaults behind a stored workspace key, so the var still exists and no longer decides. `.env.example` is the env contract's single documentation surface; an undocumented env var is a bug.
 
 ## Changing a mechanism that already works
 
