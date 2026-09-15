@@ -597,8 +597,13 @@ test('[claude-code] a real model acknowledges a Channels-delivered event with th
       appendFileSync(join(out, 'claude.pty.log'), scrub(chunk.toString('utf8')));
       screen += plainScreen(chunk.toString('utf8'));
       // The launch's own one-time screens, answered as the person would; nothing else is typed.
-      for (const [name, pattern] of [['trust', /trust\s*this\s*folder|Do\s*you\s*trust/i], ['channels', /I\s*am\s*using\s*this\s*for\s*local\s*development/]] as const) {
-        if (!answered.has(name) && pattern.test(screen.slice(-4000))) { answered.add(name); screen = ''; setTimeout(() => child?.stdin?.write('\r'), 700); appendFileSync(join(out, 'human-input.log'), `${Date.now()} ${name}: Enter\n`); }
+      // The trust screen's cursor starts on "No, exit", so the person moves down to "Yes" first.
+      for (const [name, pattern, keys] of [['trust', /Yes,?\s*I\s*trust\s*this\s*folder/i, '\x1b[B'], ['channels', /I\s*am\s*using\s*this\s*for\s*local\s*development/, '']] as const) {
+        if (!answered.has(name) && pattern.test(screen.slice(-4000))) {
+          answered.add(name); screen = '';
+          setTimeout(() => { if (keys) child?.stdin?.write(keys); setTimeout(() => child?.stdin?.write('\r'), 400); }, 700);
+          appendFileSync(join(out, 'human-input.log'), `${Date.now()} ${name}: ${keys ? 'Down, ' : ''}Enter\n`);
+        }
       }
     });
     await waitFor('Claude Code to own the project over MCP', async () => ((await cockpitCall(serve!, '/api/v1/mcp/leader')).json?.delivery ? true : undefined), 120_000);
