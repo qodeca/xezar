@@ -325,6 +325,108 @@ function loadSources(): SourceFile[] {
 
 const sources = loadSources()
 
+/**
+ * Runs one rule over a set of files and returns every violation as `packages/web/<rel>:<line>  <token>`.
+ * Pure, so the real per-rule test and the fixture tests below run the SAME code path — a self-test
+ * that re-implemented this loop would only test a copy of it.
+ */
+function scan(rule: Rule, files: readonly SourceFile[]): string[] {
+  const violations: string[] = []
+  for (const file of files) {
+    if (!rule.applies(file)) continue
+    if (rule.allowed?.(file.rel)) continue
+    file.lines.forEach((line, index) => {
+      for (const match of line.matchAll(rule.pattern)) {
+        if (rule.violates && !rule.violates(match)) continue
+        violations.push(`packages/web/${file.rel}:${index + 1}  ${match[0].trim()}`)
+      }
+    })
+  }
+  return violations
+}
+
+/** A one-file fixture classified the way `loadSources` classifies a real file. */
+function fixture(rel: string, ...lines: string[]): SourceFile {
+  const ext = path.extname(rel)
+  return {
+    rel,
+    ext,
+    isTest: /\.test\.(?:ts|tsx)$/.test(rel),
+    isE2e: rel.startsWith('e2e/'),
+    lines: stripComments(lines.join('\n'), ext !== '.css').split('\n'),
+  }
+}
+
+function ruleNamed(name: string): Rule {
+  const rule = RULES.find((r) => r.name === name)
+  if (!rule) throw new Error(`no guardian rule named ${name}`)
+  return rule
+}
+
+/**
+ * Fixture verdicts for every rule: one spelling each rule must flag and one it must not, plus the
+ * file exemptions. These are GUARD tests that pass both before and after a change to `scan()` or
+ * `Rule` — on the real tree every rule reports nothing, so "the tree is still clean" alone could not
+ * notice a rule that quietly stopped reporting.
+ */
+const VERDICTS: { rule: string; flag: SourceFile[]; pass: SourceFile[] }[] = [
+  {
+    rule: 'no-raw-hex-colors',
+    flag: [fixture('src/x.tsx', 'const c = "#fff"')],
+    pass: [fixture('src/x.tsx', 'const zwsp = "&#8203;"'), fixture(INDEX_CSS, '--x: #fff;')],
+  },
+  {
+    rule: 'no-color-functions',
+    flag: [fixture('src/x.tsx', 'const c = "rgb(0 0 0)"')],
+    pass: [fixture('src/routes/github/github-filter.ts', 'const c = `rgb(${r} ${g} ${b})`')],
+  },
+  {
+    rule: 'unknown-color-token',
+    flag: [fixture('src/x.tsx', '<p className="text-warning" />')],
+    pass: [fixture('src/x.tsx', '<p className="text-foreground border-l-2 text-[11px] bg-black/50" />')],
+  },
+  {
+    rule: 'no-amber-text',
+    flag: [fixture('src/x.tsx', '<p className="text-pending" />'), fixture('src/x.tsx', '<p className="text-amber-400" />')],
+    pass: [fixture('src/x.tsx', '<p className="text-pending-strong" />')],
+  },
+  {
+    rule: 'no-raw-black-white',
+    flag: [fixture('src/routes/x.tsx', '<div className="bg-black/50" />')],
+    pass: [
+      fixture('src/components/ui/x.tsx', '<div className="bg-black/50" />'),
+      fixture('src/components/zoomable-image.tsx', '<div className="bg-black/50" />'),
+    ],
+  },
+  {
+    rule: 'no-native-dialogs',
+    flag: [
+      fixture('src/x.tsx', 'if (confirm("sure?")) go()'),
+      fixture('src/x.tsx', 'window.alert("hi")'),
+      fixture('src/x.test.ts', 'confirm("sure?")'),
+    ],
+    pass: [fixture('src/x.tsx', 'foo.confirm("sure?")'), fixture('src/lib/bookmarklet.ts', 'alert("hi")')],
+  },
+  {
+    rule: 'no-dark-variant',
+    flag: [fixture('src/x.tsx', '<div className="dark:bg-card" />')],
+    pass: [fixture('src/x.tsx', 'const theme = { dark: value }')],
+  },
+  {
+    rule: 'fixture-serve-must-pin-xez-home',
+    flag: [fixture('e2e/x.e2e.ts', 'const env = { XEZ_DRY_RUN: "1" }')],
+    pass: [
+      fixture('e2e/x.e2e.ts', 'const env = { XEZ_DRY_RUN: "1", XEZ_HOME: home }'),
+      fixture('src/x.tsx', 'const env = { XEZ_DRY_RUN: "1" }'),
+    ],
+  },
+  {
+    rule: 'no-100vh',
+    flag: [fixture('src/x.tsx', '<div className="h-screen" />'), fixture('src/x.css', '.x { height: 100vh; }')],
+    pass: [fixture('src/x.tsx', '<div className="h-dvh" />')],
+  },
+]
+
 describe('design guardian', () => {
   it('actually scans the codebase (guards against a broken walker)', () => {
     const rels = new Set(sources.map((f) => f.rel))
@@ -340,18 +442,20 @@ describe('design guardian', () => {
 
   for (const rule of RULES) {
     it(`${rule.name}: ${rule.why}`, () => {
-      const violations: string[] = []
-      for (const file of sources) {
-        if (!rule.applies(file)) continue
-        if (rule.allowed?.(file.rel)) continue
-        file.lines.forEach((line, index) => {
-          for (const match of line.matchAll(rule.pattern)) {
-            if (rule.violates && !rule.violates(match)) continue
-            violations.push(`packages/web/${file.rel}:${index + 1}  ${match[0].trim()}`)
-          }
-        })
-      }
-      expect(violations, `${rule.name} — ${rule.why}`).toEqual([])
+      expect(scan(rule, sources), `${rule.name} — ${rule.why}`).toEqual([])
     })
   }
+
+  describe('rule verdicts on fixtures (guard: pass before and after a scan() change)', () => {
+    it('covers every rule', () => {
+      expect(new Set(VERDICTS.map((v) => v.rule))).toEqual(new Set(RULES.map((r) => r.name)))
+    })
+    for (const verdict of VERDICTS) {
+      it(`${verdict.rule} flags its fixtures and passes the legal spellings`, () => {
+        const rule = ruleNamed(verdict.rule)
+        for (const file of verdict.flag) expect(scan(rule, [file]), `${file.rel}: ${file.lines.join(' / ')}`).toHaveLength(1)
+        for (const file of verdict.pass) expect(scan(rule, [file]), `${file.rel}: ${file.lines.join(' / ')}`).toEqual([])
+      })
+    }
+  })
 })
