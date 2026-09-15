@@ -326,6 +326,24 @@ describe('the composed MCP service, through the real bridge and socket', () => {
     expect(raw).not.toContain(secret);
   });
 
+  it('#450 T-29: the composition hands leader_events the delivery path, and the hosted boundary reaches it', async () => {
+    // RED against: dropping the `leaderControl` context spread — status would answer "not connected".
+    const c = await cockpit();
+    const local = await startMcpService({ projectId: c.id, version: VERSION, service: c.app, store: c.store, warn: () => {} });
+    closers.push(() => local.close());
+    const leader = agent(c.root);
+    const status = await leader.call('leader_events', { action: 'status' });
+    expect(status.isError, status.content[0]?.text).toBeFalsy();
+    expect(status.structuredContent).toMatchObject({ available: true, canPush: false, pushUnavailable: { code: 'client-unknown' }, self: { isOwner: true } });
+    local.close();
+
+    const hosted = await startMcpService({ projectId: c.id, version: VERSION, service: c.app, store: c.store, warn: () => {}, localHandoff: () => false });
+    closers.push(() => hosted.close());
+    const remote = agent(c.root);
+    const refused = await remote.call('leader_events', { action: 'status' });
+    expect(refused.structuredContent).toMatchObject({ available: true, canPush: false, pushUnavailable: { code: 'hosted-mode' } });
+  });
+
   it('a key reused for different work is refused without running the tool again', async () => {
     const c = await cockpit();
     const handle = await startMcpService({ projectId: c.id, version: VERSION, service: c.app, store: c.store });

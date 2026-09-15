@@ -26,7 +26,7 @@ import {
   type OwnershipScope,
 } from '../resource-ownership.ts';
 import type { ServiceDispatch } from '../service-adapter.ts';
-import { defineTool, errorResult, textResult, type McpToolContext, type McpToolResult } from '../tool.ts';
+import { NOT_CONNECTED_NEXT, defineTool, errorResult, textResult, type McpToolContext, type McpToolResult } from '../tool.ts';
 
 /**
  * `task_read` — the project leader's READ side of tasks (#91, epic #67): list and filter the
@@ -439,7 +439,7 @@ export const taskReadsTool = defineTool({
     const service = (ctx as TaskReadContext).service;
     if (!service) {
       return errorResult(
-        'task_read is not connected in this xezar yet: the running service did not hand MCP its task reads; nothing was read. Report this blocker to the person; a leader does not switch to the cockpit.',
+        `task_read is not connected in this xezar yet: the running service did not hand MCP its task reads; nothing was read. ${NOT_CONNECTED_NEXT}`,
       );
     }
     const argIssue = checkArgs(args);

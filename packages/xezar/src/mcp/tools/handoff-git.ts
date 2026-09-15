@@ -25,7 +25,7 @@ import { getRepoInfo } from '../../server/git.ts';
 import type { AppType } from '../../server/app-type.ts';
 import { ownRun, ownershipScope } from '../resource-ownership.ts';
 import type { ServiceDispatch } from '../service-adapter.ts';
-import { defineTool, errorResult, textResult, type McpToolContext, type McpToolResult } from '../tool.ts';
+import { NOT_CONNECTED_NEXT, defineTool, errorResult, textResult, type McpToolContext, type McpToolResult } from '../tool.ts';
 
 /**
  * `handoff_git` (#96) — how the leader hands work onward: commit, push, open the draft PR,
@@ -634,7 +634,7 @@ export const handoffGitTool = defineTool({
     const service = (ctx as HandoffContext).service;
     if (!service) {
       return errorResult(
-        'handoff_git is not connected in this xezar yet: the running service did not hand MCP its git operations; nothing was changed. Report this blocker to the person; a leader does not switch to the cockpit.',
+        `handoff_git is not connected in this xezar yet: the running service did not hand MCP its git operations; nothing was changed. ${NOT_CONNECTED_NEXT}`,
       );
     }
     const problem = argumentProblem(args);

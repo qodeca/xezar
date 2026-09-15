@@ -182,3 +182,103 @@ describe('startMcpService, for a project the registry does not know (#333)', () 
     expect(existsSync(join(home, 'ipc'))).toBe(false);
   });
 });
+
+/**
+ * #450 — `session/open` answers whether xezar can push to this session's client, carries what the
+ * bridge registered onto the transport, and every tool call runs with ITS connection's session key.
+ */
+describe('session/open push capability and the session key in the tool context (#450)', () => {
+  async function twoConnections(opts: { sessions?: Parameters<typeof listenMcpSocket>[0]['sessions']; tools?: readonly McpTool[] }) {
+    const handle = await listenMcpSocket({ project, version: '1.2.3', tools: opts.tools ?? [write, read], env, ...(opts.sessions ? { sessions: opts.sessions } : {}) });
+    closers.push(() => handle.close());
+    const open = async () => {
+      const socket: Socket = createConnection(handle.path);
+      closers.push(() => socket.destroy());
+      await new Promise<void>((resolve) => socket.once('connect', () => resolve()));
+      const waiting = new Map<number, (r: IpcResponse) => void>();
+      const framer = new LineFramer((line) => {
+        const response = JSON.parse(line) as IpcResponse;
+        if (typeof response.id === 'number') waiting.get(response.id)?.(response);
+      }, () => undefined);
+      socket.on('data', (chunk: Buffer) => framer.push(chunk));
+      return {
+        request: (id: number, method: string, params?: unknown) =>
+          new Promise<IpcResponse>((resolve) => {
+            waiting.set(id, resolve);
+            socket.write(encodeFrame({ v: IPC_PROTOCOL_VERSION, id, method, ...(params === undefined ? {} : { params }) }));
+          }),
+        close: () => socket.destroy(),
+      };
+    };
+    return { open };
+  }
+
+  it('T-11: answers canPush from the observer, copies channelAdvertised onto the transport, and with no observer answers delivery-unavailable', async () => {
+    // RED against: omitting the spread (no canPush in the answer), or skipping the channelAdvertised copy.
+    const transports: Array<Record<string, unknown>> = [];
+    const withObserver = await twoConnections({
+      sessions: {
+        opened: () => {},
+        closed: () => {},
+        pushCapability: (_key, transport) => {
+          transports.push({ ...transport });
+          return transport.clientName === 'claude-code' ? { canPush: true } : { canPush: false, pushUnavailable: { code: 'client-unknown', message: 'unknown.' } };
+        },
+      },
+    });
+    const claude = await withObserver.open();
+    expect(await claude.request(1, 'session/open', { leaderPush: true, clientName: 'claude-code', channelAdvertised: false })).toEqual({
+      v: IPC_PROTOCOL_VERSION, id: 1, ok: true, result: { owner: true, canPush: true },
+    });
+    expect(transports[0]).toMatchObject({ clientName: 'claude-code', leaderPush: true, channelAdvertised: false });
+    claude.close();
+    await new Promise((r) => setTimeout(r, 50));
+    const other = await withObserver.open();
+    expect(await other.request(2, 'session/open', { clientName: 'codex' })).toMatchObject({ ok: true, result: { owner: true, canPush: false, pushUnavailable: { code: 'client-unknown' } } });
+  });
+
+  it('T-11: with no observer there is no journal, so no delivery: canPush false, delivery-unavailable', async () => {
+    const plain = await connect();
+    expect(await plain.request(3, 'session/open')).toMatchObject({
+      ok: true,
+      result: { owner: true, canPush: false, pushUnavailable: { code: 'delivery-unavailable', message: expect.stringContaining('no event delivery') } },
+    });
+  });
+
+  it('T-11: an observer that throws never fails the open; it answers delivery-unavailable', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const svc = await twoConnections({ sessions: { opened: () => {}, closed: () => {}, pushCapability: () => { throw new Error('boom'); } } });
+    const c = await svc.open();
+    expect(await c.request(1, 'session/open')).toMatchObject({ ok: true, result: { owner: true, canPush: false, pushUnavailable: { code: 'delivery-unavailable' } } });
+  });
+
+  it('T-12: each tool call runs with its own connection’s session key, minted by the service', async () => {
+    // RED against: passing a constant key (two connections would share one).
+    const opened: string[] = [];
+    const seen: Array<string | undefined> = [];
+    const whoAmI = defineTool({
+      name: 'who_am_i',
+      description: 'Records the session key it ran with; answers nothing about it.',
+      inputSchema: z.object({}),
+      annotations: { readOnlyHint: true },
+      async call(_args, ctx) {
+        seen.push(ctx.sessionKey);
+        return textResult('ok');
+      },
+    });
+    const svc = await twoConnections({ tools: [whoAmI], sessions: { opened: (key) => opened.push(key), closed: () => {} } });
+    const first = await svc.open();
+    await first.request(1, 'session/open');
+    const answer = await first.request(2, 'tools/call', { name: 'who_am_i', arguments: {} });
+    first.close();
+    await new Promise((r) => setTimeout(r, 50));
+    const second = await svc.open();
+    await second.request(3, 'session/open', { sessionKey: 'chosen-by-client' });
+    await second.request(4, 'tools/call', { name: 'who_am_i', arguments: { sessionKey: 'chosen-by-client' } });
+    expect(opened).toHaveLength(2);
+    expect(seen).toEqual(opened);
+    expect(new Set(seen).size).toBe(2);
+    expect(seen).not.toContain('chosen-by-client');
+    expect(JSON.stringify(answer)).not.toContain(opened[0]!);
+  });
+});

@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { collectSecretValues, redactDeep } from '../../core/secret-redaction.ts';
 import type { AppType } from '../../server/app-type.ts';
 import { MCP_ORIGIN, type ServiceDispatch } from '../service-adapter.ts';
-import { defineTool, errorResult, textResult, type McpToolContext, type McpToolResult } from '../tool.ts';
+import { NOT_CONNECTED_NEXT, defineTool, errorResult, textResult, type McpToolContext, type McpToolResult } from '../tool.ts';
 
 /**
  * `local_handoff` (#98): the cockpit's "Open in…" family — a task in a terminal, a task's
@@ -59,7 +59,7 @@ const UNAVAILABLE_NEXT_ACTION =
 export const DECISION_BOUNDARY =
   'No per-operation confirmation is needed: opening an app is a project operation inside the approved goal. Goal and definition-of-done decisions stay with the human and are not offered here, and no parameter can waive a quality gate or an acceptance criterion.';
 
-const NOT_CONNECTED = 'local_handoff is not connected to the xezar service in this process yet; nothing was opened.';
+const NOT_CONNECTED = `local_handoff is not connected to the xezar service in this process yet; nothing was opened. ${NOT_CONNECTED_NEXT}`;
 
 /** The context this tool reads beyond `McpToolContext`: the running service's in-process entry. */
 export type LocalHandoffContext = McpToolContext & { readonly service?: ServiceDispatch };

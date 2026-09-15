@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { McpPushCapability } from '@qodeca/xezar-contract';
 import { chmod, lstat, mkdir, unlink } from 'node:fs/promises';
 import { createConnection, createServer, type Socket } from 'node:net';
 import { assertXezarHomeWriteIsSandboxed } from '../paths.ts';
@@ -89,7 +90,18 @@ export interface McpSessionObserver {
   opened(sessionKey: string, transport?: McpSessionTransport): void;
   closed(sessionKey: string): void;
   codexAnnounced?(sessionKey: string, announcement: { threadId: string }): void;
+  /** #450: whether xezar can push to this session's client, answered in `session/open`. */
+  pushCapability?(sessionKey: string, transport: McpSessionTransport): McpPushCapability;
 }
+
+/** No observer, or one that cannot say: no journal, so no delivery (#450). */
+const DELIVERY_UNAVAILABLE: McpPushCapability = {
+  canPush: false,
+  pushUnavailable: {
+    code: 'delivery-unavailable',
+    message: 'xezar has no event delivery for this project (its event journal did not open or cannot be written), so no leader can be attached.',
+  },
+};
 
 /** How the delivery seam reaches ONE owner session's bridge, and what that bridge said about itself (#374). */
 export interface McpSessionTransport {
@@ -99,6 +111,8 @@ export interface McpSessionTransport {
   clientName?: string;
   /** True when the bridge announced it understands `leader/push`; absent for a bridge too old to deliver. */
   leaderPush?: boolean;
+  /** #450: whether this bridge's handshake registered `claude/channel`; absent on its first open. */
+  channelAdvertised?: boolean;
 }
 
 /**
@@ -303,7 +317,8 @@ async function answer(
       serviceVersion: opts.version,
     };
   }
-  const ctx: McpToolContext = { ...opts.context, project: opts.project, xezarVersion: opts.version };
+  // #450: the session key rides the context so a tool can act for THIS connection's session only.
+  const ctx: McpToolContext = { ...opts.context, project: opts.project, xezarVersion: opts.version, sessionKey };
   switch (request.method) {
     case 'session/open': {
       const opened = await openSession(request.id, ownership, sessionKey, opts.project.id);
@@ -315,8 +330,12 @@ async function answer(
         if (announced.success) {
           if (announced.data.clientName !== undefined) transport.clientName = announced.data.clientName;
           if (announced.data.leaderPush !== undefined) transport.leaderPush = announced.data.leaderPush;
+          if (announced.data.channelAdvertised !== undefined) transport.channelAdvertised = announced.data.channelAdvertised;
         }
         observe(opts, 'opened', sessionKey, transport);
+        // #450: tell the bridge whether xezar can push to this client, so it registers the Claude Code
+        // channel only when a push could ever arrive. Additive: an older bridge strips both fields.
+        return { ...opened, result: { owner: true, ...pushCapabilityOf(opts, sessionKey, transport) } };
       }
       return opened;
     }
@@ -363,6 +382,16 @@ function observe(opts: McpServiceOptions, edge: 'opened' | 'closed', sessionKey:
     else opts.sessions?.closed(sessionKey);
   } catch (err) {
     console.warn(`[xez] MCP event delivery hook failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/** The observer's answer, or "no delivery" when there is none or it throws (N-07: never fails the open). */
+function pushCapabilityOf(opts: McpServiceOptions, sessionKey: string, transport: McpSessionTransport): McpPushCapability {
+  try {
+    return opts.sessions?.pushCapability?.(sessionKey, transport) ?? DELIVERY_UNAVAILABLE;
+  } catch (err) {
+    console.warn(`[xez] MCP push capability check failed: ${err instanceof Error ? err.message : String(err)}`);
+    return DELIVERY_UNAVAILABLE;
   }
 }
 

@@ -577,7 +577,7 @@ export function renderCodexEventMessage(dispatch: EventDispatch): string {
   lines.push(
     last === undefined
       ? 'Read the current state with xezar\'s tools before deciding anything.'
-      : `Read the current state with xezar's tools before deciding anything. These events run through journalSeq ${last}; acknowledge them once you have taken them into account.`,
+      : `Read the current state with xezar's tools before deciding anything. These events run through journalSeq ${last}; acknowledge them once you have taken them into account. Acknowledge them with leader_events action ack and cursor ${dispatch.nextCursor}.`,
   );
   return lines.join('\n');
 }

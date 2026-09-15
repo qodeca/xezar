@@ -83,7 +83,7 @@ The `expectedVersion` and `operationId` columns read:
 | `read_results_evidence` | Read task results and evidence | Read what a task produced and the project's GitHub state, each answer identified by the revision it describes. | yes | no | yes | yes | — | — |
 | `project_config` | Project configuration | Read and change THIS project's own configuration: its settings (agent, models, system prompt, review gate, base branch, worktree retention, memory limit), its registry entry (concurrency cap and tags), prompt templates, in-repo agent config files, workflows, skills, GitHub automations and worktrees. | no | yes | no | no | some actions | some actions |
 | `local_handoff` | Open a task or the project in an app on the xezar host | Hand a task or the project off to a desktop app — a terminal resuming the task’s agent session, an editor, the file manager. | no | no | no | no | — | some actions |
-| `leader_events` | Read and acknowledge project events | Read this project's significant events (task outcomes, questions, quality gates, human changes, executor availability) since you last acknowledged them, and acknowledge them. | no | no | yes | no | — | some actions |
+| `leader_events` | Attach, read and acknowledge project events | Attach this session as the project's leader so xezar pushes its significant events to it (task outcomes, questions, quality gates, human changes, executor availability), and read and acknowledge those events. | no | no | yes | no | — | some actions |
 <!-- mcp-api:tools:end -->
 
 ## Arguments
@@ -94,7 +94,7 @@ of truth. Nested object and array-item properties appear as dotted paths.
 <!-- mcp-api:arguments:start -->
 ### `health`
 
-> Report whether the xezar cockpit is running for the project this session was started in, and which project that is. It does not say whether this session is attached as leader; the session instructions say how to attach.
+> Report whether the xezar cockpit is running for the project this session was started in, and which project that is. To see whether this session is attached as leader and can receive pushed events, call leader_events with action status.
 
 Takes no arguments. Unknown arguments are rejected.
 
@@ -156,7 +156,7 @@ Unknown arguments are rejected.
 
 ### `discover_project`
 
-> Read which xezar project this session is bound to, its effective capabilities and limits, and which actions are available. Every action that is unavailable or read-only says why. Call it at the start of a session and again after a person changes settings. It takes no arguments: the project comes from the connection, never from a parameter. A project leader works through these tools only, never the cockpit UI and never the HTTP API, apart from the one call that attaches it (see leader_events); whether this session is attached is not part of this answer.
+> Read which xezar project this session is bound to, its effective capabilities and limits, and which actions are available. Every action that is unavailable or read-only says why. Call it at the start of a session and again after a person changes settings. It takes no arguments: the project comes from the connection, never from a parameter. A project leader works through these tools only, never the cockpit UI and never the HTTP API. Whether this session is attached as leader is not part of this answer: call leader_events with action status.
 
 Takes no arguments. Unknown arguments are rejected.
 
@@ -374,10 +374,11 @@ Unknown arguments are rejected.
 
 ### `leader_events`
 
-> Read this project's significant events (task outcomes, questions, quality gates, human changes, executor availability) since you last acknowledged them, and acknowledge them.
-> An attached leader is sent these events instead: xezar pushes them (a `<channel source="xezar">` message to Claude Code, a started turn in Codex, OpenCode or pi). This tool is the fallback for a leader that is not attached, and the way to catch up after a gap. Attach with Settings → MCP connection → Attach leader, or `POST /api/v1/p/<projectId>/mcp/leader {"action":"attach","client":"claude-code"}` against the cockpit (`http://127.0.0.1:4321` by default), where `<projectId>` is `project.id` from `discover_project`; the client is your own (`claude-code`, `codex` or `pi`; OpenCode also needs `baseUrl` and `sessionId`). No MCP action attaches a leader yet.
-> Call read when you connect or reconnect. It returns the outstanding events in order, each with a stable eventId and a standing (current, superseded or unjudged), then the current state of the tasks they name — the state is the authority, an event is history.
-> When hasMore is true, read again at once; otherwise do not poll — call read again on your next connection, or when a pushed event names a gap.
+> Attach this session as the project's leader so xezar pushes its significant events to it (task outcomes, questions, quality gates, human changes, executor availability), and read and acknowledge those events.
+> attach: make this session the leader xezar pushes events to – a `<channel source="xezar">` message in Claude Code, a started turn in Codex or pi. The client is this session’s own; you never name it. Call it once per session with a new operationId, and again when status says you are not attached. stop: detach this session. status: whether this session is attached and can receive pushes, the delivery cursors, and what blocks delivery. An OpenCode leader is attached by a person in Settings → MCP connection.
+> Each pushed message names the cursor of its last event. Once you have taken the events into account, ack that cursor. No read is needed.
+> read is the fallback: call it when you connect or reconnect, when you are not attached, or when a pushed message names a gap. It returns the outstanding events in order, each with a stable eventId and a standing (current, superseded or unjudged), then the current state of the tasks they name — the state is the authority, an event is history.
+> When hasMore is true, read again at once; otherwise do not poll.
 > After you have taken a page into account, ack its nextCursor. Until you do, read returns the same events again, so drop any eventId you already handled. Acknowledging an older cursor changes nothing.
 > status "gap" means events after your position are no longer retained: nothing is replayed, the current state is included, and you continue by acking resumeCursor.
 
@@ -385,10 +386,10 @@ Unknown arguments are rejected.
 
 | Argument | Type | Required | Limits | Description (verbatim from the schema) |
 | --- | --- | --- | --- | --- |
-| `action` | `read` \| `ack` | yes |  | read: the events outstanding since your last acknowledged position, then the current state of the tasks they name. ack: record that you have taken every event up to cursor into account. |
-| `cursor` | string | no | min length 1, max length 2048 | read: replay after this cursor instead of your acknowledged position (optional; it never moves the acknowledgement). ack: required — the nextCursor of a page, or the resumeCursor of a gap. |
+| `action` | `read` \| `ack` \| `attach` \| `stop` \| `status` | yes |  | read: the events outstanding since your last acknowledged position, then the current state of the tasks they name. ack: record that you have taken every event up to cursor into account. attach: make this session the project’s leader, so events are pushed to it. stop: detach this session. status: this session’s attachment, push capability and delivery state. |
+| `cursor` | string | no | min length 1, max length 2048 | read: replay after this cursor instead of your acknowledged position (optional; it never moves the acknowledgement). ack: required — the cursor a pushed message names, the nextCursor of a page, or the resumeCursor of a gap. Not accepted by attach, stop or status. |
 | `limit` | integer | no | min 1, max 100 | read: events per page, at most 100. |
-| `operationId` | string | no | min length 8, max length 128, pattern `^[A-Za-z0-9_.:-]+$` | ack: required — a client-generated key for this acknowledgement (8–128 chars). Reuse it only to repeat the same acknowledgement. read: not accepted, because a read is meant to return the same events again until you ack them. |
+| `operationId` | string | no | min length 8, max length 128, pattern `^[A-Za-z0-9_.:-]+$` | ack, attach and stop: required — a client-generated key for this call (8–128 chars). Use a new one for every call; reuse it only to repeat the same call after a lost answer. read and status: not accepted, because they change nothing you would want replayed. |
 <!-- mcp-api:arguments:end -->
 
 ## Results
@@ -427,7 +428,7 @@ declare no output schema, so the table below is hand-maintained.
 | `read_results_evidence` | JSON envelope | never | `evidence`: `available` · `unavailable` · `stale`. `freshness`: `current` · `stale`. **`status` is a number, the HTTP status** | missing arguments, not connected, bad cursor, not found, 400, 5xx. `evidence: 'unavailable'` is not an error |
 | `project_config` | success: pretty JSON `{ action, origin: 'mcp', result }`. Failure: **prose** | success: the same object. Failure: `{ action, origin, status: <number>, error }`. Refusal: `{ action, origin, refused: true, boundary }` | no status word on success. `status` is a number on failure. `boundary` names the refusal (see [Project scoping](#project-scoping-and-what-is-refused)) | every refusal and failure, **except** a stale write |
 | `local_handoff` | **prose lines** | the full JSON result | `status`: `done` · `failed` · `conflict`. `outcome`: `opened` · `listed` · `unavailable` · `fallback` · `refused`. `affects`: `xezar-host` · `nothing` | only `outcome: 'refused'` with `status: 'failed'` |
-| `leader_events` | **prose headline** plus compact JSON | the same JSON | `read`: `status` `ok` · `gap`. `ack`: `status` `acked` · `no-op`. Each event has `standing`: `current` · `superseded` · `unjudged` | a bad or foreign cursor (`error`: `invalid_cursor` · `cursor_project_mismatch`), not connected |
+| `leader_events` | **prose headline** plus compact JSON | the same JSON | `read`: `status` `ok` · `gap`. `ack`: `status` `acked` · `no-op`. Each event has `standing`: `current` · `superseded` · `unjudged`. `attach` / `stop`: `ok` with `outcome` `attached` · `already-attached` · `stopped` · `already-stopped`. `status`: `available`, `owner`, `leader`, `delivery`, `blocker`, `canPush`, `pushUnavailable` and `self` (`client`, `isOwner`, `attached`) | a bad or foreign cursor (`error`: `invalid_cursor` · `cursor_project_mismatch`), an `attach` or `stop` refusal (`ok: false`, `code`: `delivery-unavailable` · `hosted-mode` · `not-owner` · `client-unknown` · `client-needs-address` · `leader-attached-elsewhere` · `leader-not-this-session` · `attach-refused`, with `message`, `fix` and, for `attach-refused`, the client's own `blocker`), not connected |
 
 ### Where the tools disagree
 
@@ -620,21 +621,31 @@ rows of the bound project's own journal. An **attached** leader receives them as
 is the normal path (#439). `leader_events` reads the same rows and is the fallback for a leader that
 is not attached, and the catch-up after a gap. The unfiltered workspace stream is never forwarded.
 
-A project leader works through these MCP tools only, never the cockpit UI and never the HTTP API.
-The one exception is attaching: no MCP action attaches a leader yet, so a person uses **Settings →
-MCP connection → Attach leader**, or the leader makes one call,
-`POST /api/v1/p/<projectId>/mcp/leader {"action":"attach","client":"claude-code"}` against the cockpit
-(`http://127.0.0.1:4321` by default), where `<projectId>` is `project.id` from `discover_project`. The
-client is the leader's own (`claude-code`, `codex` or `pi`; OpenCode also needs `baseUrl` and `sessionId`). GitHub
-facts – labels, review verdicts, merge state – are not carried by the MCP; a leader reads them with
-`gh`.
+A project leader works through these MCP tools only, never the cockpit UI and never the HTTP API,
+and that includes attaching (#450). GitHub facts – labels, review verdicts, merge state – are not
+carried by the MCP; a leader reads them with `gh`.
 
+- **Attaching.** `attach` makes the calling session the project's leader; call it once per session,
+  with a new `operationId`. The client is the session's own – xezar derives it from what the session
+  showed (its bridge's client name, or the Codex thread its calls carry) and never takes it from an
+  argument. Claude Code, Codex and pi attach themselves; an OpenCode leader is attached by a person in
+  **Settings → MCP connection**, because xezar takes no `opencode serve` address from an MCP session.
+  Hosted mode refuses `attach` and `stop`, and a leader never replaces or detaches a leader of another
+  client. `status` says whether this session is attached and can receive pushes, and why not.
+- **Pushed cursor.** Each pushed message names the cursor of its last event (`next_cursor` on a
+  Claude Code channel message). Ack that cursor once the events are taken into account; no read is
+  needed.
+- **Restart.** An attachment lives as long as the xezar process. After a restart the leader calls
+  `status` and attaches again; events wait in the journal meanwhile. A Claude Code leader whose channel
+  is registered gets one notice from its bridge when xezar stops.
 - **Reading.** `read` returns the outstanding rows in order, each with a stable `eventId`, followed by
   the current state of the tasks they name. The state is the authority; an event is history.
 - **Acknowledging.** `ack` records a position. Until then, `read` repeats the same rows.
 - **Gaps.** `status: 'gap'` means rows after the position are no longer retained. Nothing is
   replayed, and the leader continues from `resumeCursor`.
 - **No polling.** Attach once; read on connect, after a gap, and when `hasMore` is true.
+- **Reused keys.** `attach` and `stop` carry an `operationId`, so a reused key replays its receipt –
+  also after a restart that ended the attachment. Use a new key for every attach.
 
 The journal keeps 10 000 rows per project, and never evicts a row younger than 14 days
 ([D-09 B-19](mcp-d09-limits-retention-packaging-decision.md)).
@@ -782,6 +793,8 @@ business outcome as the cockpit is the separate [parity coverage map](mcp-parity
 | I-111 | Read and write agent config files of catalog `scope:'project'` and `scope:'local'`. | `project_config:list_agent_config`, `project_config:read_agent_config`, `project_config:write_agent_config` |
 | I-113 | Decided 2026-09-10 (D-113) — ASYMMETRIC. | `project_config:list_agent_config`, `project_config:read_agent_config`, `project_config:write_agent_config` |
 | I-114 | Same rule as I-044: report the missing desktop capability explicitly; never promise a launch on the client's machine (M-19) | `discover_project`, `local_handoff:list_apps`, `local_handoff:open_project_in_app` |
+| I-141 | Read who owns the project, whether a leader is attached, the delivery cursors and what blocks delivery; for a leader, whether its own sessi… | `leader_events:status` |
+| I-142 | Attach the project leader so events are pushed to it. | `leader_events:attach` |
 | I-128 | Decided 2026-09-10 (D-128). | `project_config:get_project`, `project_config:set_project`, `project_config:get_limits` |
 | I-129 | Decided 2026-09-10 (D-129). | `project_config:get_project`, `project_config:set_project` |
 | I-133 | The capability set itself is the requirement, not the nav. | `discover_project`, `project_config:get_capabilities` |
@@ -926,6 +939,9 @@ Roles:
 | `local_handoff:open_project_in_app` | I-114 |  |  |  |
 | `leader_events:read` | I-138, I-139, I-140 |  |  |  |
 | `leader_events:ack` | I-140 |  |  |  |
+| `leader_events:attach` | I-142 |  |  |  |
+| `leader_events:stop` |  |  |  | detaches the calling session’s own leader; the cockpit has no stop control, only POST /api/v1/mcp/leader {action:"stop"}, so no inventory record names it (#450) |
+| `leader_events:status` | I-141 |  |  |  |
 <!-- mcp-api:actions:end -->
 
 ## Findings this reference surfaced

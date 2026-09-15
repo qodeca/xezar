@@ -245,7 +245,7 @@ describe('#261 — the MCP API reference against the registry and the inventory'
 
   it('every covered inventory record is served by a tool action that exists, or is a named gap', () => {
     const inventory = readInventory();
-    expect(inventory.size).toBe(140);
+    expect(inventory.size).toBe(142);
     const actions = new Set(registryActions());
     const served = new Set<string>();
     for (const [action, cover] of Object.entries(TOOL_ACTION_COVERAGE)) {
@@ -253,7 +253,7 @@ describe('#261 — the MCP API reference against the registry and the inventory'
       for (const r of cover.serves ?? []) served.add(r);
     }
     const covered = [...inventory].filter(([, rec]) => rec.status === 'covered').map(([id]) => id);
-    expect(covered).toHaveLength(89);
+    expect(covered).toHaveLength(91);
     expect(covered.filter((id) => !served.has(id) && !(id in COVERAGE_GAPS)), 'covered records no action serves').toEqual([]);
     // A gap is only for a covered record nothing serves: never a second label on a served one.
     for (const id of Object.keys(COVERAGE_GAPS)) {
@@ -310,5 +310,15 @@ it('documents every Channels eligibility condition and recovery remedy on all re
       'claude-code-not-owner', 'claude-code-bridge-too-old', 'claude-code-push-unconfirmed',
       'Events are kept in the journal.', 'Restart Claude Code so it starts the current xezar bridge',
       'Until then, read events with leader_events.', 'fix:']) expect(source, path).toContain(phrase);
+  }
+});
+
+it('documents the claude-code-channel-not-advertised recovery on the maintained doc surfaces (#450)', () => {
+  // The cockpit's own remedy list (`mcp-connection-section.tsx`) is not among them yet: adding the row
+  // there is a UI copy change, left to its own design-gated follow-up. The server's live blocker still
+  // reaches the cockpit through the connection status.
+  for (const path of ['README.md', 'CHANGELOG.md', 'docs/features/mcp-server/mcp-adapter-evidence-claude-code.md']) {
+    const source = readFileSync(new URL(path, REPO_ROOT), 'utf8');
+    for (const phrase of ['claude-code-channel-not-advertised', 'Reconnect the xezar MCP server in Claude Code']) expect(source, path).toContain(phrase);
   }
 });
