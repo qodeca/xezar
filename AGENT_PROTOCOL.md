@@ -43,7 +43,9 @@ in `packages/xezar` (config, run store, workflow steps, request bodies), the
 server-install "at least one agent CLI" gate, and the CLI-handoff registry.
 Some lists still repeat the literals: `runnerSchema` in `packages/contract/src/health.ts`,
 `UiBackend` in `ui-events.ts` and its api-client mirror, and `BackendCheck.name`
-in `backend-detect.ts`. A new runner updates each; the contract cannot import the server.
+in `backend-detect.ts`, among others. Find the remaining copies with
+`rg "'claude', 'codex', 'opencode', 'pi'" packages` and update them for a new runner;
+the contract cannot import the server.
 Inside `packages/xezar`, use `RUNNER_IDS` / `isRunnerId()` where possible — re-listing
 ids is how a runner silently goes missing from one seam (pre-rename PR 387 review).
 
@@ -114,7 +116,7 @@ escalate to `SIGKILL` after `KILL_GRACE_MS`, gated on `trackChildExit` exactly a
 Leaving it at a single `interrupt()` is what made a step's `timeout:` enforceable on some
 backends and merely a suggestion on another — the defect was invisible because the
 escalation branch existed in the source and simply never ran. `pi-runner.ts` is the
-reference implementation (its `timeoutKillTimer` is cleared only after `waitForExit`); a new runner should mirror it rather than invent a variant.
+reference implementation (for the deadline path; its `timeoutKillTimer` is cleared only after `waitForExit`); a new runner should mirror it rather than invent a variant.
 
 Two constraints on that path are load-bearing and neither is inferable from the code
 around them:
@@ -377,7 +379,7 @@ runs all four.
 | reasoning item | `thinking` blocks | `reasoning` items (+ `textDelta`) | `reasoning` parts |
 | tool item | `tool_use`→running, `tool_result`→completed/failed, `permission_denials`→`declined` | `commandExecution`→execute (+`exitCode`, `outputDelta`), `fileChange`→edit (`diffs`), `mcpToolCall`→other, `webSearch`→fetch, collaboration spawn→task | tool parts (state `pending/running/completed/error→failed`, `patch` parts→`diffs`) |
 | `item.delta` `output` (live terminal) | *(none — card fills on completion; per-capability degradation)* | `item/commandExecution/outputDelta` | running-state metadata |
-| `plan.updated` | `TodoWrite` input | `turn/plan/updated` notification (plan-mode `plan` items also fold in) | `todowrite` tool |
+| `plan.updated` | `TodoWrite` input | `turn/plan/updated` notification (plan-mode `plan` items fold in only until `turn/plan/updated` has spoken in the current turn) | `todowrite` tool |
 | subagent nesting (`parentItemId`) | `parent_tool_use_id` | collaboration receiver thread id (review mode remains childless) | child-session parts under a `subtask` |
 | `usage.updated` | `result.usage` + `total_cost_usd` | `thread/tokenUsage/updated` (no USD) | `message.updated` tokens/cost + `step-finish` |
 
@@ -488,7 +490,9 @@ To be first-class:
    escalates SIGTERM→SIGKILL gated on `trackChildExit`, and each records that the runner
    sent the signal so the exit settles on the normal path, and report a `128 + signal` exit the
    runner did NOT cause through `foreignSignalExitMessage`. See § the termination rules above;
-   `pi-runner.ts` is the reference. A backend's NATIVE question — a request that blocks
+   `pi-runner.ts` is the reference for the deadline path; `claude-cli-runner.ts` for the
+   `end()` SIGTERM→SIGKILL watchdog (but not its timer cleanup). No runner covers all three yet.
+   A backend's NATIVE question — a request that blocks
    the turn until the client answers — must never wait unbounded: bridge it onto `ask.requested`
    and answer it from the next `sendMessage`, refuse it explicitly when
    `SessionOptions.autonomous` is set, and cancel it at `end()`/`interrupt()` (codex's
