@@ -16,7 +16,20 @@ export type { McpToolResult } from './ipc.ts';
 export interface McpToolContext {
   readonly project: { readonly id: string; readonly name: string; readonly root: string };
   readonly xezarVersion: string;
+  /**
+   * The calling connection's session key (#450), minted by the service per connection and never read
+   * from a frame, so a tool can act for THIS session only (`leader_events` attach, stop, status). It
+   * never appears in a result (N-01). Absent in a composition that has no connection (a unit test).
+   */
+  readonly sessionKey?: string;
 }
+
+/**
+ * The shared tail of every "not connected" answer (#439, #450): where a leader looks next, through the
+ * tools, and that it reports the blocker rather than switching to the cockpit.
+ */
+export const NOT_CONNECTED_NEXT =
+  'Call `health` to see whether xezar is running for this project, and leader_events with action status for your event delivery. Report this blocker to the person; a leader does not switch to the cockpit.';
 
 /**
  * One MCP tool. `inputSchema` is the only definition of its arguments: the JSON

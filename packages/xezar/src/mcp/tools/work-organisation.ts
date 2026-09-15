@@ -19,7 +19,7 @@ import {
 } from '../resource-ownership.ts';
 import { MCP_ORIGIN, McpServiceAdapter, type McpServiceResult, type ServiceDispatch } from '../service-adapter.ts';
 import { staleRejectionIn } from '../stale-write.ts';
-import { defineTool, errorResult, textResult, type McpToolContext, type McpToolResult } from '../tool.ts';
+import { NOT_CONNECTED_NEXT, defineTool, errorResult, textResult, type McpToolContext, type McpToolResult } from '../tool.ts';
 
 /**
  * The work-organisation tool (#93, F-07): inspect the queue, edit a queued brief and its queued
@@ -654,7 +654,9 @@ export const organiseWorkTool = defineTool({
   async call(args, ctx) {
     const { service } = ctx as ServiceBoundContext;
     if (!service) {
-      return errorResult('organise_work is not connected to this xezar service yet, so it changed nothing. Use the cockpit for now.');
+      return errorResult(
+        `organise_work is not connected to this xezar service yet, so it changed nothing. ${NOT_CONNECTED_NEXT}`,
+      );
     }
     return perform(new WorkOrganisation(ctx.project.id, service), ctx.project.root, args);
   },

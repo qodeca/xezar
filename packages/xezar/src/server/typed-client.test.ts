@@ -92,6 +92,9 @@ describe('createXezarClient<AppType>', () => {
       // exactly how a broken contract would look while still passing.
       expectTypeOf(health).not.toBeAny();
       expect(health).toHaveProperty('version');
+      // #442: the channel is part of the inferred shape, not a stringly extra.
+      expectTypeOf(health.channel).toEqualTypeOf<'release' | 'dev'>();
+      expect(health).toHaveProperty('channel');
     },
     30_000,
   );

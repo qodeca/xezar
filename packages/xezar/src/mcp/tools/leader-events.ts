@@ -1,5 +1,11 @@
 import { z } from 'zod';
-import { MCP_JOURNAL_PAGE_ROWS, mcpJournalCursorSchema, operationIdSchema } from '@qodeca/xezar-contract';
+import {
+  MCP_JOURNAL_PAGE_ROWS,
+  mcpJournalCursorSchema,
+  operationIdSchema,
+  type McpLeaderDoorResult,
+  type McpLeaderSelfStatus,
+} from '@qodeca/xezar-contract';
 
 import { redactDeep } from '../../core/secret-redaction.ts';
 import type { EventJournal } from '../event-journal.ts';
@@ -23,9 +29,18 @@ import { defineTool, errorResult, textResult, type McpToolContext, type McpToolR
  * At-least-once, no repeated effect (N-10): a read before the ack returns the same rows again, each
  * with its stable `eventId`, which is how the leader drops a duplicate.
  *
- * What this is NOT: push. One read when the leader connects, and a next page only because an answer
- * said `hasMore` — no timer, no status poll, no subscription (N-06). Live delivery to a connected
- * client (F-20, `LeaderFeed`) and a model reaction to an event (A-19) are Phase 6.
+ * What this tool itself is NOT: push. One read when the leader connects, and a next page only
+ * because an answer said `hasMore` — no timer, no status poll, no subscription (N-06). Push lives in
+ * `LeaderDelivery` (#374/#404) and is the normal path for an ATTACHED leader; `read` is the fallback
+ * for a leader that is not attached, and the catch-up after a gap (#439).
+ *
+ * #450 — the door to push, for the CALLING session only: `attach`, `stop` and `status` call the same
+ * `LeaderDelivery` the cockpit's Attach leader and `POST /api/v1/mcp/leader` call. The client is the
+ * session's own, derived from what the session showed (`leaderClientOf`), never an argument — the
+ * schema stays `.strict()`, so a `client` key is refused. A leader never replaces or detaches a leader
+ * of another client, and hosted mode refuses attach and stop. Attach and stop carry an `operationId`,
+ * so a reused key replays its receipt — even across a restart that ended the attachment, which is
+ * why every attach takes a new one.
  *
  * F-15: rows are scrubbed with this host's secret list on the way out (the journal already scrubs a
  * summary; a subject id is prose a writer chose too). Cursors are never touched: they are the
@@ -41,28 +56,33 @@ export interface LeaderEventsPort {
   readonly secretValues: readonly string[];
 }
 
-type LeaderEventsContext = McpToolContext & { readonly leaderEvents?: LeaderEventsPort };
+/** #450: the delivery path, for one session — `LeaderDelivery` in production, composed by `startMcpService`. */
+export interface LeaderControlPort {
+  sessionStatus(sessionKey: string): McpLeaderSelfStatus;
+  attachSession(sessionKey: string): Promise<McpLeaderDoorResult>;
+  stopSession(sessionKey: string): Promise<McpLeaderDoorResult>;
+}
+
+type LeaderEventsContext = McpToolContext & { readonly leaderEvents?: LeaderEventsPort; readonly leaderControl?: LeaderControlPort };
+
+const ACTION_TEXT =
+  'read: the events outstanding since your last acknowledged position, then the current state of the tasks they name. ' +
+  'ack: record that you have taken every event up to cursor into account. ' +
+  'attach: make this session the project’s leader, so events are pushed to it. stop: detach this session. ' +
+  'status: this session’s attachment, push capability and delivery state.';
+const CURSOR_TEXT =
+  'read: replay after this cursor instead of your acknowledged position (optional; it never moves the acknowledgement). ' +
+  'ack: required — the cursor a pushed message names, the nextCursor of a page, or the resumeCursor of a gap. Not accepted by attach, stop or status.';
+const OPERATION_ID_TEXT =
+  'ack, attach and stop: required — a client-generated key for this call (8–128 chars). Use a new one for every call; reuse it only to repeat the same call after a lost answer. ' +
+  'read and status: not accepted, because they change nothing you would want replayed.';
 
 export const leaderEventsInputSchema = z
   .object({
-    action: z
-      .enum(['read', 'ack'])
-      .describe(
-        'read: the events outstanding since your last acknowledged position, then the current state of the tasks they name. ' +
-          'ack: record that you have taken every event up to cursor into account.',
-      ),
-    cursor: mcpJournalCursorSchema
-      .optional()
-      .describe(
-        'read: replay after this cursor instead of your acknowledged position (optional; it never moves the acknowledgement). ' +
-          'ack: required — the nextCursor of a page, or the resumeCursor of a gap.',
-      ),
+    action: z.enum(['read', 'ack', 'attach', 'stop', 'status']).describe(ACTION_TEXT),
+    cursor: mcpJournalCursorSchema.optional().describe(CURSOR_TEXT),
     limit: z.number().int().min(1).max(MCP_JOURNAL_PAGE_ROWS).optional().describe(`read: events per page, at most ${MCP_JOURNAL_PAGE_ROWS}.`),
-    operationId: operationIdSchema
-      .optional()
-      .describe(
-        'ack: required — a client-generated key for this acknowledgement (8–128 chars). Reuse it only to repeat the same acknowledgement. read: not accepted, because a read is meant to return the same events again until you ack them.',
-      ),
+    operationId: operationIdSchema.optional().describe(OPERATION_ID_TEXT),
   })
   .strict()
   .superRefine((args, ctx) => {
@@ -81,25 +101,48 @@ export const leaderEventsInputSchema = z
     if (args.action === 'read' && args.operationId !== undefined) {
       ctx.addIssue({ code: 'custom', path: ['operationId'], message: 'operationId does not apply to read' });
     }
+    // #450. Attach and stop change who events are pushed to, so they carry an operation id; status
+    // changes nothing. None of the three reads a cursor or a page size.
+    const door = args.action === 'attach' || args.action === 'stop';
+    if (door && args.operationId === undefined) {
+      ctx.addIssue({ code: 'custom', path: ['operationId'], message: `${args.action} needs operationId` });
+    }
+    if (args.action === 'status' && args.operationId !== undefined) {
+      ctx.addIssue({ code: 'custom', path: ['operationId'], message: 'operationId does not apply to status' });
+    }
+    if ((door || args.action === 'status') && args.cursor !== undefined) {
+      ctx.addIssue({ code: 'custom', path: ['cursor'], message: `cursor does not apply to ${args.action}` });
+    }
+    if ((door || args.action === 'status') && args.limit !== undefined) {
+      ctx.addIssue({ code: 'custom', path: ['limit'], message: `limit does not apply to ${args.action}` });
+    }
   });
 export type LeaderEventsInput = z.output<typeof leaderEventsInputSchema>;
 
 const NOT_CONNECTED =
-  "leader_events is not connected to this project's event journal; nothing was read or acknowledged.";
+  "leader_events is not connected to this project's event journal; nothing was read, acknowledged, attached or detached. Call `health` to see whether xezar is running for this project. Report this to the person; do not fall back to the cockpit.";
 
 export const leaderEventsTool = defineTool({
   name: 'leader_events',
-  title: 'Read and acknowledge project events',
+  title: 'Attach, read and acknowledge project events',
   description: [
-    "Read this project's significant events (task outcomes, questions, quality gates, human changes, executor availability) since you last acknowledged them, and acknowledge them.",
-    'Call read when you connect or reconnect. It returns the outstanding events in order, each with a stable eventId and a standing (current, superseded or unjudged), then the current state of the tasks they name — the state is the authority, an event is history.',
-    'When hasMore is true, read again at once; otherwise do not poll — call read again on your next connection.',
+    "Attach this session as the project's leader so xezar pushes its significant events to it (task outcomes, questions, quality gates, human changes, executor availability), and read and acknowledge those events.",
+    'attach: make this session the leader xezar pushes events to – a `<channel source="xezar">` message in Claude Code, a started turn in Codex or pi. The client is this session’s own; you never name it. Call it once per session with a new operationId, and again when status says you are not attached. stop: detach this session. status: whether this session is attached and can receive pushes, the delivery cursors, and what blocks delivery. An OpenCode leader is attached by a person in Settings → MCP connection.',
+    'Each pushed message names the cursor of its last event. Once you have taken the events into account, ack that cursor. No read is needed.',
+    'read is the fallback: call it when you connect or reconnect, when you are not attached, or when a pushed message names a gap. It returns the outstanding events in order, each with a stable eventId and a standing (current, superseded or unjudged), then the current state of the tasks they name — the state is the authority, an event is history.',
+    'When hasMore is true, read again at once; otherwise do not poll.',
     'After you have taken a page into account, ack its nextCursor. Until you do, read returns the same events again, so drop any eventId you already handled. Acknowledging an older cursor changes nothing.',
     'status "gap" means events after your position are no longer retained: nothing is replayed, the current state is included, and you continue by acking resumeCursor.',
   ].join('\n'),
   inputSchema: leaderEventsInputSchema,
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   async call(args, ctx) {
+    const { leaderControl, sessionKey } = ctx as LeaderEventsContext;
+    if (args.action === 'attach' || args.action === 'stop' || args.action === 'status') {
+      if (!leaderControl || sessionKey === undefined) return errorResult(NOT_CONNECTED);
+      if (args.action === 'status') return statusResult(leaderControl.sessionStatus(sessionKey));
+      return doorResult(await (args.action === 'attach' ? leaderControl.attachSession(sessionKey) : leaderControl.stopSession(sessionKey)));
+    }
     const port = (ctx as LeaderEventsContext).leaderEvents;
     if (!port) return errorResult(NOT_CONNECTED);
     try {
@@ -114,6 +157,46 @@ export const leaderEventsTool = defineTool({
     }
   },
 });
+
+const CLIENT_NAMES = { 'claude-code': 'Claude Code', codex: 'Codex', opencode: 'OpenCode', pi: 'pi' } as const;
+
+function statusResult(status: McpLeaderSelfStatus): McpToolResult {
+  return textResult(`${statusHeadline(status)}\n${JSON.stringify(status)}`, status);
+}
+
+/** The authoritative first line of a status (D-05). */
+function statusHeadline(status: McpLeaderSelfStatus): string {
+  if (!status.available) return `xezar cannot answer for this project's event delivery: ${status.reason}.`;
+  const { leader, self, blocker } = status;
+  if (leader !== null && self.attached) {
+    const blocked = blocker === null ? '' : ` Blocked: ${blocker.message} Fix: ${blocker.fix}`;
+    return `This session is attached as the project leader (${CLIENT_NAMES[leader.client]}); events are pushed to it.${blocked}`;
+  }
+  if (leader !== null) {
+    const name = CLIENT_NAMES[leader.client];
+    return `${/^[AEIOU]/.test(name) ? 'An' : 'A'} ${name} leader is attached to this project, not this session; events are pushed to it, not to you.`;
+  }
+  if (status.pushUnavailable !== null) return `xezar cannot push events to this session: ${status.pushUnavailable.message} Read events with leader_events.`;
+  return 'This session is not attached, so events are not pushed to it. Call leader_events with action attach; until then, read events with leader_events.';
+}
+
+function doorResult(result: McpLeaderDoorResult): McpToolResult {
+  if (!result.ok) {
+    const verb = result.action === 'attach' ? 'attached' : 'detached';
+    return errorResult(`Nothing was ${verb}: ${result.message} ${result.fix}\n${JSON.stringify(result)}`, result);
+  }
+  const status = result.status;
+  const name = status.available && status.leader !== null ? CLIENT_NAMES[status.leader.client] : undefined;
+  const headline =
+    result.outcome === 'attached'
+      ? `Attached this session as the project leader (${name}). Events are pushed to it from now on; ack each pushed message with the cursor it names.`
+      : result.outcome === 'already-attached'
+        ? `This session is already attached as the project leader (${name}); nothing changed.`
+        : result.outcome === 'stopped'
+          ? 'Detached this session. Events are kept in the journal and no longer pushed; read them with leader_events.'
+          : 'No leader is attached; nothing changed.';
+  return textResult(`${headline}\n${JSON.stringify(result)}`, result);
+}
 
 function read(port: LeaderEventsPort, args: LeaderEventsInput): McpToolResult {
   const answer = reconnect({

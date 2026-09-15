@@ -132,6 +132,12 @@ export interface EventDispatch {
   readonly events: readonly McpJournalRow[];
   /** Present when a gap was detected: read current state before acting on `events`. */
   readonly recovery?: EventRecovery;
+  /**
+   * #450: the journal's own cursor after the page this dispatch was cut from — what the leader acks
+   * with `leader_events` once it has taken the events into account, with no read first. For a gap it
+   * acks through the gap. It covers rows the leader caused itself too, and acking past them is right.
+   */
+  readonly nextCursor: string;
 }
 
 /**
@@ -497,6 +503,7 @@ export class EventController {
       const dispatch: EventDispatch = {
         projectId: this.projectId,
         events,
+        nextCursor: page.nextCursor,
         ...(this.#recovery === undefined ? {} : { recovery: this.#recovery }),
       };
       const lastSeq = events.at(-1)?.journalSeq;

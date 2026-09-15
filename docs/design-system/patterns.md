@@ -23,7 +23,7 @@ when lazy. It never adds a provider above the shell.
 Source: `components/app-shell.tsx`, `components/nav-items.ts`, `components/project-groups.tsx`,
 `components/task-quick-list.tsx`.
 
-- Order: brand row (`xezar` + repo chip) → `New task` (`contrast` button with a `kbd` C) and `Add project` → nav (`NAV_ITEMS`) → task quick list → footer (`Search…` ⌘K hint; Tools menu · version chip · Global settings · theme toggle).
+- Order: brand row (`xezar` + repo chip; on a development build the tile carries the red "D" badge, decisions.md D-08) → `New task` (`contrast` button with a `kbd` C) and `Add project` → nav (`NAV_ITEMS`) → task quick list → footer (`Search…` ⌘K hint; Tools menu · version chip · Global settings · theme toggle).
 - Nav item: icon `size-4`, label `text-[13.5px] font-medium`, row `h-11 md:h-9 rounded-md px-2.5`; active `bg-muted font-semibold text-foreground` and `aria-current="page"`.
 - Badges: a violet count (`rounded-full bg-violet px-1.5 py-px text-[10.5px] font-semibold text-violet-foreground`) means "a person is wanted" (Inbox count, unread finished tasks). A `size-1.5` violet dot with `sr-only` text marks a Skills update. No badge while the count is unknown; none at zero.
 - Multi-project: from the second registered project the flat nav becomes collapsible project groups, each with its own nav and quick list; only the expanded group fetches.

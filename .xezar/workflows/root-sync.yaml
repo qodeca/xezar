@@ -1,4 +1,5 @@
-# LAUNCH THIS WITH WORKTREE **OFF**. That is a composer setting, not a key in this file: Xezar's
+# LAUNCH THIS WITH WORKTREE **OFF**. That is a composer setting (a leader passes `worktree: false` to
+# the MCP `task_create`), not a key in this file: Xezar's
 # workflow schema has no worktree field, and inventing one here would be silently stripped and
 # would read as a guarantee nothing enforces. The enforcement is at run time —
 # `root-sync-preflight.sh` refuses a linked worktree, a resume that fell back to the root, and

@@ -15,25 +15,30 @@ import {
  * (AC-7, AC-8).
  */
 
-describe('serverCapabilitiesFor (#374)', () => {
-  it('adds the claude/channel capability only for a claude-code client', () => {
-    // RED against: advertising the channel to every client (which changes their handshake).
-    const forClaude = serverCapabilitiesFor('claude-code') as Record<string, unknown>;
+describe('serverCapabilitiesFor (#374, #450)', () => {
+  it('adds the claude/channel capability only for a claude-code client whose bridge decided a push can arrive', () => {
+    // RED against: advertising the channel to every client (which changes their handshake), or (#450,
+    // T-13) ignoring the `channel` argument, which registers a channel no push can ever use.
+    const forClaude = serverCapabilitiesFor('claude-code', true) as Record<string, unknown>;
     expect(forClaude).toMatchObject({ tools: { listChanged: false }, experimental: { 'claude/channel': {} } });
+    expect(serverCapabilitiesFor('claude-code', false)).toEqual(SERVER_CAPABILITIES);
+    expect('experimental' in serverCapabilitiesFor('claude-code', false)).toBe(false);
   });
 
-  it('leaves every other client’s capabilities byte-identical to today (AC-7)', () => {
+  it('leaves every other client’s capabilities byte-identical to today, whatever the channel argument (AC-7)', () => {
     // RED against: leaking `experimental` into a non-claude handshake.
     for (const name of [undefined, 'codex', 'opencode', 'pi', 'some-future-client']) {
-      expect(serverCapabilitiesFor(name)).toEqual(SERVER_CAPABILITIES);
-      expect('experimental' in serverCapabilitiesFor(name)).toBe(false);
+      for (const channel of [true, false]) {
+        expect(serverCapabilitiesFor(name, channel)).toEqual(SERVER_CAPABILITIES);
+        expect('experimental' in serverCapabilitiesFor(name, channel)).toBe(false);
+      }
     }
   });
 
   it('never declares claude/channel/permission, for any client (#73: never impersonate approval)', () => {
     // RED against: declaring the permission-relay capability, which would route approvals to xezar.
     for (const name of [undefined, 'claude-code', 'codex']) {
-      const experimental = (serverCapabilitiesFor(name) as { experimental?: Record<string, unknown> }).experimental ?? {};
+      const experimental = (serverCapabilitiesFor(name, true) as { experimental?: Record<string, unknown> }).experimental ?? {};
       expect('claude/channel/permission' in experimental).toBe(false);
     }
   });

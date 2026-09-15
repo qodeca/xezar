@@ -35,6 +35,7 @@ import {
   unavailableProviderMessage,
 } from './server/provider-action-gate.ts';
 import { checkForUpdate } from './update-check.ts';
+import { detectInstallChannel } from './install-channel.ts';
 import { printSkillsBanner } from './skills-banner.ts';
 import { loadWorkspaceConfig } from './workspace/config.ts';
 import { runMigrations } from './workspace/migrations.ts';
@@ -246,6 +247,7 @@ async function serveCommand(
     workspaceEvents.emit('provider-status', status);
   });
   const version = readOwnVersion();
+  const channel = detectInstallChannel(import.meta.url);
 
   const checks = await detectEnvironment();
   const repo = await getRepoInfo(repoRoot);
@@ -294,6 +296,7 @@ async function serveCommand(
     store,
     manager,
     version,
+    channel,
     update,
     bootProjectId,
     semaphore,

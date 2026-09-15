@@ -949,6 +949,26 @@ an entry in `.xezar/pipeline/config.json` – 10.1 says it stays out "until it p
 condition is met. That is a separate PR: it needs the CI job written and its ~40 s measured on a
 2-core runner, and it should land before the next MCP PR meets a gate nobody runs for them.
 
+### 10.10 Re-measured for the MCP leader door (#450)
+
+**Measured 2026-09-15, branch `xez/4c4428fa` off `646bf37`, `npm run test:coverage:mcp -- --testTimeout=30000`,
+exit 0 – 56 test files, 1325 tests, no `ERROR:` line.** Aggregate 97.39 % lines, 86.82 % branches
+(97.33 / 86.28 on `646bf37`, same command). The 30 s test timeout is needed on a loaded host: the
+baseline run failed once on a `task-create` case at the 5 s default and passed with it. Every file
+the change touches, before → after (lines / branches):
+
+| File | Before | After |
+|---|---|---|
+| `bridge.ts` | 93.7 / 81.9 | 94.2 / 84.4 |
+| `index.ts` | 86.5 / 80.0 | 86.6 / 80.3 |
+| `service.ts` | 93.0 / 84.6 | 93.3 / 85.6 |
+| `leader-delivery.ts` | 99.1 / 86.3 | 99.3 / 91.1 |
+| `tools/leader-events.ts` | 95.3 / 93.2 | 97.5 / 97.1 |
+| `event-controller.ts`, `protocol.ts`, `ipc.ts`, `tool.ts`, the four adapters, `discovery.ts` and the seven tools whose not-connected text changed | unchanged | unchanged |
+
+`index.ts` (80.3 branches) is now the file nearest the floor. Each new #450 test was also shown red
+against a named break of the source it guards (47 breaks, every one red; the list is in the PR body).
+
 ### Manual pi real-model reaction (#373)
 
 After `npm run build:server`, run from `packages/xezar`:

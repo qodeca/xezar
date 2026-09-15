@@ -41,6 +41,12 @@ describe('findPackGaps', () => {
     expect(findPackGaps(legacy)).toHaveLength(2);
   });
 
+  it('rejects a tarball that ships src/index.ts — the development-build marker (#442)', () => {
+    const gaps = findPackGaps([...goodPack, 'src/index.ts']);
+    expect(gaps).toHaveLength(1);
+    expect(gaps[0]).toContain('src/index.ts');
+  });
+
   it('does not accept nested lookalikes for the shell (exact path match)', () => {
     const gaps = findPackGaps(['web/dist/nested/index.html', 'web/dist/assets/a.js']);
     expect(gaps).toHaveLength(1);

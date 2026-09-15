@@ -168,6 +168,8 @@ export function channelMeta(dispatch: EventDispatch, rows: readonly McpJournalRo
   if (first !== undefined) meta.first_seq = String(first);
   if (last !== undefined) meta.last_seq = String(last);
   if (dispatch.recovery !== undefined) meta.recovery = '1';
+  // #450: the cursor the leader acks with, so a pushed event needs no read.
+  meta.next_cursor = dispatch.nextCursor;
   return meta;
 }
 
@@ -196,7 +198,9 @@ export function renderChannelContent(dispatch: EventDispatch, rows: readonly Mcp
       `Gap: ${dispatch.recovery.message} (oldest retained ${dispatch.recovery.oldestSeq ?? 'none'}, latest ${dispatch.recovery.latestSeq}).`,
     );
   }
-  lines.push('Read the current state with the xezar tools before acting, and acknowledge the events you have taken into account with leader_events.');
+  lines.push(
+    `Read the current state with the xezar tools before acting. Once you have taken these events into account, acknowledge them: call leader_events with action ack, cursor ${dispatch.nextCursor} and a new operationId. You do not need to read them first.`,
+  );
   return lines.join('\n');
 }
 

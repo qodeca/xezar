@@ -416,13 +416,22 @@ describe('Claude Code channel handshake (#374)', () => {
     const b = bridge({ target: socketTarget('/nonexistent') });
     const init = await b.request('initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'claude-code', version: '2.1.270' } });
     expect(init.result).toMatchObject({ capabilities: { tools: { listChanged: false }, experimental: { 'claude/channel': {} } } });
-    expect(String((init.result as { instructions?: string }).instructions)).toContain('<channel source="xezar"');
+    const instructions = String((init.result as { instructions?: string }).instructions);
+    expect(instructions).toContain('<channel source="xezar"');
+    // #439: pushes are promised only once the session is attached; the pull is the fallback.
+    expect(instructions).toContain('Once this session is attached, events from xezar are pushed to it as `<channel source="xezar" …>` messages');
+    expect(instructions).toContain('While nothing is attached, read them with the `leader_events` tool');
+    // #450: the leader attaches itself over MCP and acks the cursor a pushed message names; no HTTP call.
+    expect(instructions).toContain('Attach this session with `leader_events` action `attach`');
+    expect(instructions).toContain('acknowledge it with `leader_events` action `ack` and the cursor the message names; no read is needed');
+    expect(instructions).not.toMatch(/POST \/api\/v1|mcp\/leader|127\.0\.0\.1/);
+    expect(instructions).not.toContain('Events from xezar arrive as');
     b.input.end();
     await b.done;
   });
 
   it('keeps the complete non-Claude initialize answer byte-identical to the main constant', async () => {
-    const baseInstructions = 'xezar controls coding-agent tasks for the one project this session was started in. Call `health` to check that the xezar cockpit is running for it.';
+    const baseInstructions = 'xezar controls coding-agent tasks for the one project this session was started in. Call `health` to check that the xezar cockpit is running for it. A project leader works through these tools only, never the cockpit UI and never the HTTP API. This session receives no pushed events until it is attached. Attach this session with `leader_events` action `attach` so events are pushed to it, and check it with action `status`. Until it is attached, read events with the `leader_events` tool.';
     const b = bridge({ target: socketTarget('/nonexistent') });
     const init = await b.request('initialize', { protocolVersion: '2025-11-25', clientInfo: { name: 'codex' } });
     expect(JSON.stringify(init.result)).toBe(JSON.stringify({ protocolVersion: '2025-11-25', capabilities: SERVER_CAPABILITIES, serverInfo: { name: 'xezar', title: 'xezar', version: '1.2.3' }, instructions: baseInstructions }));
@@ -565,5 +574,155 @@ describe('the leader/push service→bridge frame (#374)', () => {
     b.input.end();
     await b.done;
     svc.close();
+  });
+});
+
+/**
+ * #450 — the bridge registers the Claude Code channel from what the service ANSWERED at `session/open`
+ * (§ 2.3 table), tells the service on every later open what it registered, and writes one notice when
+ * the service closes an owner session whose channel is registered. A stand-in service scripts the
+ * `session/open` answer and can drop the connection or fence the session.
+ */
+describe('push capability at the handshake (#450)', () => {
+  async function pushService(grant: (open: number) => Record<string, unknown>) {
+    const path = join(home, `push-${Math.random().toString(36).slice(2, 8)}.sock`);
+    const opens: Record<string, unknown>[] = [];
+    const peers: import('node:net').Socket[] = [];
+    const control = { expire: false };
+    const server: Server = createServer((socket) => {
+      peers.push(socket);
+      const framer = new LineFramer((line) => {
+        const req = JSON.parse(line) as { v: number; id: number; method?: string; params?: Record<string, unknown> };
+        if (req.method === 'session/open') {
+          opens.push(req.params ?? {});
+          socket.write(encodeFrame({ v: req.v, id: req.id, ok: true, result: grant(opens.length) }));
+        } else if (req.method === 'health' && control.expire) {
+          control.expire = false;
+          socket.write(encodeFrame({ v: req.v, id: req.id, ok: false, error: { code: 'session-expired', message: 'fenced' } }));
+          setTimeout(() => socket.destroy(), 20);
+        } else if (req.method === 'health') {
+          socket.write(encodeFrame({ v: req.v, id: req.id, ok: true, result: { ipcVersion: 2, xezarVersion: '1.2.3', project: { id: project.id, name: project.name } } }));
+        }
+      }, () => {});
+      socket.on('data', (c: Buffer) => framer.push(c));
+    });
+    await new Promise<void>((r) => server.listen(path, r));
+    handles.push({ close: () => server.close() });
+    return { path, opens, control, dropOwner: () => peers.at(-1)?.destroy() };
+  }
+  const claudeInit = { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'claude-code', version: '2.1.270' } };
+  const notices = (b: ReturnType<typeof bridge>) => b.messages.filter((m) => m.method === 'notifications/claude/channel');
+  const settle = () => new Promise((r) => setTimeout(r, 60));
+
+  it('T-14: a service that can push gets the channel registered and the channel instructions', async () => {
+    // RED against: always passing `channel: false` — the channel is never registered.
+    const svc = await pushService(() => ({ owner: true, canPush: true }));
+    const b = bridge({ target: socketTarget(svc.path) });
+    const init = await b.request('initialize', claudeInit);
+    expect(init.result).toMatchObject({ capabilities: { experimental: { 'claude/channel': {} } } });
+    expect(String((init.result as { instructions: string }).instructions)).toContain('Once this session is attached, events from xezar are pushed to it');
+    b.input.end(); await b.done;
+  });
+
+  it('T-15: a service that answers it cannot push gets no channel, and instructions naming its reason', async () => {
+    // RED against: advertising on the client name alone (the code before #450).
+    const svc = await pushService(() => ({ owner: true, canPush: false, pushUnavailable: { code: 'hosted-mode', message: 'This xezar runs in hosted mode.' } }));
+    const b = bridge({ target: socketTarget(svc.path) });
+    const init = await b.request('initialize', claudeInit);
+    expect('experimental' in (init.result as { capabilities: Record<string, unknown> }).capabilities).toBe(false);
+    const instructions = String((init.result as { instructions: string }).instructions);
+    expect(instructions).toContain('xezar cannot push events to this session: This xezar runs in hosted mode.');
+    expect(instructions).not.toContain('<channel source="xezar"');
+    b.input.end(); await b.done;
+  });
+
+  it('T-16 (#439): a service that answers without canPush is older, so no channel and the older-service reason', async () => {
+    // RED against: reading an absent `canPush` as true.
+    const svc = await pushService(() => ({ owner: true }));
+    const b = bridge({ target: socketTarget(svc.path) });
+    const init = await b.request('initialize', claudeInit);
+    expect('experimental' in (init.result as { capabilities: Record<string, unknown> }).capabilities).toBe(false);
+    expect(String((init.result as { instructions: string }).instructions)).toContain(
+      'xezar cannot push events to this session: The running xezar is older than this bridge and cannot push events to it.',
+    );
+    b.input.end(); await b.done;
+  });
+
+  it('T-17 (default-path pin, green before #450): a service that is not running keeps today’s channel and instructions', async () => {
+    // RED against: gating the channel on `canPush === true` alone, which would silently remove the
+    // "Claude Code started before the cockpit" path.
+    const b = bridge({ target: socketTarget(join(home, 'not-running.sock')) });
+    const init = await b.request('initialize', claudeInit);
+    expect(init.result).toMatchObject({ capabilities: { experimental: { 'claude/channel': {} } } });
+    expect(String((init.result as { instructions: string }).instructions)).toContain('Once this session is attached, events from xezar are pushed to it');
+    b.input.end(); await b.done;
+  });
+
+  it('T-20: the first session/open omits channelAdvertised, and every later one says what the handshake registered', async () => {
+    // RED against: sending it on the first open, or sending a value the handshake did not register.
+    for (const canPush of [true, false]) {
+      const svc = await pushService(() => ({ owner: true, canPush }));
+      const b = bridge({ target: socketTarget(svc.path) });
+      await b.request('initialize', claudeInit);
+      expect(svc.opens[0]).toEqual({ leaderPush: true, clientName: 'claude-code' });
+      svc.dropOwner();
+      await settle();
+      await b.request('tools/call', { name: 'health' }); // answered session-expired; a new session opens
+      await expect.poll(() => svc.opens.length).toBe(2);
+      expect(svc.opens[1]).toEqual({ leaderPush: true, clientName: 'claude-code', channelAdvertised: canPush });
+      b.input.end(); await b.done;
+    }
+  });
+
+  it('T-19: the service closing a registered owner session writes exactly one notice, re-armed by the next session', async () => {
+    // RED against: dropping the one-shot flag (a second notice for one loss) or never re-arming it.
+    const svc = await pushService(() => ({ owner: true, canPush: true }));
+    const b = bridge({ target: socketTarget(svc.path) });
+    await b.request('initialize', claudeInit);
+    svc.dropOwner();
+    await expect.poll(() => notices(b).length).toBe(1);
+    expect(notices(b)[0]!.params).toMatchObject({
+      meta: { source_app: 'xezar', project_id: project.id, notice: 'service-disconnected' },
+      content: expect.stringContaining('call leader_events with action status, and attach again if it says this session is not attached'),
+    });
+    // The session is lost: a call reopens it (answered session-expired), and nothing more is written.
+    await b.request('tools/call', { name: 'health' });
+    await settle();
+    expect(notices(b)).toHaveLength(1);
+    // The next session lost is a new loss: one more notice.
+    await expect.poll(() => svc.opens.length).toBe(2);
+    svc.dropOwner();
+    await expect.poll(() => notices(b).length).toBe(2);
+    b.input.end(); await b.done;
+  });
+
+  it('T-19: no notice when the channel was not registered, when the client closed, or when the session was fenced', async () => {
+    // RED against: removing the `channelAdvertised` check (a notice to a client with no channel).
+    const noChannel = await pushService(() => ({ owner: true, canPush: false, pushUnavailable: { code: 'client-unknown', message: 'unknown.' } }));
+    const b1 = bridge({ target: socketTarget(noChannel.path) });
+    await b1.request('initialize', claudeInit);
+    noChannel.dropOwner();
+    await settle();
+    expect(notices(b1)).toHaveLength(0);
+    b1.input.end(); await b1.done;
+
+    // Fenced: the service answers session-expired and then closes; the bridge already dropped the session.
+    const fenced = await pushService(() => ({ owner: true, canPush: true }));
+    const b2 = bridge({ target: socketTarget(fenced.path) });
+    await b2.request('initialize', claudeInit);
+    fenced.control.expire = true;
+    await b2.request('tools/call', { name: 'health' });
+    await settle();
+    expect(notices(b2)).toHaveLength(0);
+    b2.input.end(); await b2.done;
+
+    // The client closed first: closing the connection is the bridge's own act, not the service stopping.
+    const closing = await pushService(() => ({ owner: true, canPush: true }));
+    const b3 = bridge({ target: socketTarget(closing.path) });
+    await b3.request('initialize', claudeInit);
+    b3.input.end(); await b3.done;
+    closing.dropOwner();
+    await settle();
+    expect(notices(b3)).toHaveLength(0);
   });
 });
