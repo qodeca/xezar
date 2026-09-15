@@ -141,7 +141,7 @@ export function QuickListBuckets({
     <>
       {buckets.map((bucket) => (
         <div key={bucket.label} data-slot="quick-list-bucket" data-bucket={bucket.label}>
-          <h2 className="px-3 pt-2.5 pb-1 text-[11px] font-semibold tracking-[0.04em] text-soft-foreground uppercase">
+          <h2 className="px-3 pt-stack pb-1 text-[11px] font-semibold tracking-[0.04em] text-soft-foreground uppercase">
             {bucket.label}
           </h2>
           {bucket.rows.map((row) => (

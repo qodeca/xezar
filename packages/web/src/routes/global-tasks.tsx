@@ -376,7 +376,7 @@ export function GlobalTasksRoute() {
 
   return (
     <div data-route="global-tasks" className="flex min-h-full flex-col">
-      <header className="sticky top-0 z-10 hidden h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-5 md:flex">
+      <header className="sticky top-0 z-10 hidden h-14 shrink-0 items-center gap-3 border-b border-border bg-background md:flex md:px-section">
         <h1 className="text-base font-semibold">All tasks</h1>
         <div className="inline-flex gap-0.5 rounded-md bg-muted p-[3px]">
           <ViewTab view="active" current={view} onSelect={setView}>
@@ -393,7 +393,7 @@ export function GlobalTasksRoute() {
         {search}
       </header>
 
-      <div className="flex flex-1 flex-col gap-3 p-3 pb-[calc(90px+env(safe-area-inset-bottom))] md:p-5 md:pb-5">
+      <div className="flex flex-1 flex-col gap-3 p-4 pb-[calc(90px+env(safe-area-inset-bottom))] md:p-section md:pb-section">
         {/* Below `md` the header above is hidden, so the search box rides here instead. */}
         <div className="md:hidden">{search}</div>
 
@@ -728,7 +728,7 @@ function Th({ children, className }: { children: React.ReactNode; className?: st
     <th
       scope="col"
       className={cn(
-        'h-[38px] border-b border-border px-2.5 text-left text-[11px] font-semibold tracking-[0.05em] whitespace-nowrap text-soft-foreground uppercase first:pl-4 last:pr-4',
+        'h-[38px] border-b border-border px-3 text-left text-[11px] font-semibold tracking-[0.05em] whitespace-nowrap text-soft-foreground uppercase first:pl-4 last:pr-4',
         className,
       )}
     >
@@ -737,7 +737,7 @@ function Th({ children, className }: { children: React.ReactNode; className?: st
   )
 }
 
-const TD_BASE = 'h-11 border-b border-border px-2.5 whitespace-nowrap first:pl-4 last:pr-4'
+const TD_BASE = 'h-11 border-b border-border px-3 whitespace-nowrap first:pl-4 last:pr-4'
 
 /**
  * One cross-project run.

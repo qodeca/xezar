@@ -144,7 +144,7 @@ function AccountsPane({ data }: { data: AgentProfilesResponse }) {
     return (
       <div
         data-slot="accounts-section"
-        className="mx-auto flex w-full max-w-2xl flex-col gap-4 p-4 md:p-6"
+        className="mx-auto flex w-full max-w-2xl flex-col gap-4 p-list md:p-group"
       >
         <h2 className="text-sm font-semibold text-foreground">Agent accounts</h2>
         <p data-slot="accounts-hosted" className="text-[13px] text-soft-foreground">
@@ -158,7 +158,7 @@ function AccountsPane({ data }: { data: AgentProfilesResponse }) {
   return (
     <div
       data-slot="accounts-section"
-      className="mx-auto flex w-full max-w-2xl flex-col gap-5 p-4 pb-[calc(90px+env(safe-area-inset-bottom))] md:p-6 md:pb-6"
+      className="mx-auto flex w-full max-w-2xl flex-col gap-section p-list pb-[calc(90px+env(safe-area-inset-bottom))] md:p-group md:pb-group"
     >
       <div>
         <h2 className="text-sm font-semibold text-foreground">Agent accounts</h2>

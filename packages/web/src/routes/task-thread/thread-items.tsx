@@ -597,7 +597,7 @@ export function ToolCard({
             <ToolOutput text={item.output} streaming={busy} />
           ) : null}
           {nested.length > 0 ? (
-            <div data-slot="tool-nested" className="flex flex-col gap-2 border-l-2 border-border py-2.5 pr-3 pl-3 ml-4 my-2">
+            <div data-slot="tool-nested" className="flex flex-col gap-2 border-l-2 border-border py-2.5 pr-3 pl-3 ml-4 my-stack">
               {renderNested?.(nested, cacheKey ?? item.id)}
             </div>
           ) : null}

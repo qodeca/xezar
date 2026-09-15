@@ -37,7 +37,13 @@ import {
 export interface ThreadRow {
   key: string
   node: ReactNode
+  /** The last row before the other speaker takes over: it opens a group gap (24 px at the
+   *  default density) instead of the in-turn row gap, so a thread reads as turns (#424). */
+  speakerEnd?: boolean
 }
+
+/** A row's bottom spacing: `pb-row` inside a turn, `pb-group` at a speaker change. */
+const rowSpacing = (row: ThreadRow): string => (row.speakerEnd ? 'pb-group' : 'pb-row')
 
 export interface ThreadScrollControls {
   /** Callback ref for the rows container; finds the shell scroller from it. */
@@ -407,7 +413,8 @@ export function ThreadRows({
           key={row.key}
           data-slot="thread-row"
           data-row-key={row.key}
-          className="flex w-full flex-col pb-2.5 [contain-intrinsic-block-size:auto_3rem] [content-visibility:auto]"
+          data-speaker-end={row.speakerEnd ? 'true' : undefined}
+          className={`flex w-full flex-col ${rowSpacing(row)} [contain-intrinsic-block-size:auto_3rem] [content-visibility:auto]`}
         >
           {row.node}
         </div>
@@ -489,7 +496,13 @@ function VirtualRows({
         {...(measurements !== undefined ? { cache: measurements } : {})}
       >
         {rows.map((row) => (
-          <div key={row.key} data-slot="thread-row" data-row-key={row.key} className="flex w-full flex-col pb-2.5">
+          <div
+            key={row.key}
+            data-slot="thread-row"
+            data-row-key={row.key}
+            data-speaker-end={row.speakerEnd ? 'true' : undefined}
+            className={`flex w-full flex-col ${rowSpacing(row)}`}
+          >
             {row.node}
           </div>
         ))}

@@ -186,6 +186,10 @@
   --ring: var(--violet);
 }
 
+:root[data-density='roomy'] {
+  --spacing: 0.3125rem;
+}
+
 :root[data-density='compact'] {
   --spacing: 0.21875rem;
 }
@@ -816,7 +820,7 @@ svg.icon.xxs {
   align-items: center;
   gap: 12px;
   height: 56px;
-  padding: 0 20px;
+  padding: 0 var(--spacing-section);
   border-bottom: 1px solid var(--border);
 }
 
@@ -834,7 +838,7 @@ svg.icon.xxs {
 
 .page-body {
   flex: 1;
-  padding: 20px;
+  padding: var(--spacing-section);
 }
 
 .column {
@@ -858,8 +862,8 @@ svg.icon.xxs {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 36px;
-  padding: 0 16px;
+  min-height: calc(var(--spacing) * 10);
+  padding: 0 var(--spacing-section);
   border-bottom: 1px solid var(--border);
   background: color-mix(in srgb, var(--muted) 50%, transparent);
   font-size: 14px;
@@ -1582,7 +1586,7 @@ svg.icon.xxs {
 }
 
 .card.pad {
-  padding: 16px;
+  padding: var(--spacing-inset);
 }
 
 /* Toast (components/ui/toaster.tsx) */
@@ -2025,7 +2029,7 @@ svg.icon.xxs {
 }
 
 .task-card {
-  padding: 12px 14px;
+  padding: var(--spacing-inset);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--card);
@@ -2057,7 +2061,7 @@ svg.icon.xxs {
 }
 
 .task-head {
-  padding: 18px 24px 14px;
+  padding: var(--spacing-group) var(--spacing-section) 14px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -2230,7 +2234,7 @@ svg.icon.xxs {
   flex-direction: column;
   gap: 4px;
   width: 208px;
-  padding: 12px;
+  padding: var(--spacing-stack);
   border-right: 1px solid var(--border);
 }
 
@@ -2328,7 +2332,7 @@ svg.icon.xxs {
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 16px;
+  padding: var(--spacing-inset);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--card);
@@ -2385,7 +2389,7 @@ svg.icon.xxs {
   }
 
   .page-body {
-    padding: 12px;
+    padding: calc(var(--spacing) * 4);
   }
 
   .task-body {

@@ -1003,7 +1003,7 @@ function GithubMergeBox({ number }: { number: number }) {
   }
   if (!state) {
     return (
-      <section data-slot="gh-merge-unavailable" className="mt-6 rounded-lg border border-border bg-card p-4 text-sm">
+      <section data-slot="gh-merge-unavailable" className="mt-6 rounded-lg border border-border bg-card p-inset text-sm">
         <p className="font-medium">Merge status unavailable</p>
         <p className="mt-1 text-xs text-soft-foreground">
           {mergeState.data?.available === false ? mergeState.data.reason : 'GitHub could not load merge requirements.'}
@@ -1030,7 +1030,7 @@ function GithubMergeBox({ number }: { number: number }) {
   const mergeEnabled = Boolean(selectedMethod && (state.canMerge || (state.canOverride && overrideRules)))
 
   return (
-    <section data-slot="gh-merge-box" aria-live="polite" className="mt-6 rounded-lg border border-border bg-card p-4">
+    <section data-slot="gh-merge-box" aria-live="polite" className="mt-6 rounded-lg border border-border bg-card p-inset">
       <div className="flex items-start gap-3">
         {state.canMerge ? (
           <CheckIcon aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-success" />

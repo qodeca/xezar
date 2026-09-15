@@ -46,7 +46,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Purpose**: stock shadcn card (`Card`, `CardHeader`, `CardTitle`, `CardDescription`, `CardAction`, `CardContent`, `CardFooter`).
 - **Source**: `packages/web/src/components/ui/card.tsx`. Root class `flex flex-col gap-6 rounded-lg border bg-card py-6 text-card-foreground shadow-xs`.
 - **States**: none.
-- **Rules**: the cockpit does not use this primitive. The card spelling in use is the ad-hoc `rounded-lg border border-border bg-card` (22 sites in 15 files) with `shadow-xs` where it is a raised container. That ad-hoc string is the rule for new work (known gap G-02). DO NOT introduce a third spelling (`rounded-xl border bg-card p-4` exists twice, in `routes/automations/automations.tsx`).
+- **Rules**: the cockpit does not use this primitive. The card spelling in use is the ad-hoc `rounded-lg border border-border bg-card` (22 sites in 15 files) with `shadow-xs` where it is a raised container. That ad-hoc string, with `p-inset` inside and `gap-list` between cards, is the rule for new work (known gap G-02). DO NOT introduce a third spelling (`rounded-xl border bg-card p-4` exists twice, in `routes/automations/automations.tsx`).
 - **Where used**: 0 files.
 
 ### Collapsible
@@ -209,7 +209,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Source**: `packages/web/src/components/app-shell.tsx`. Exports `AppShell`, `useSidebarNavigate`, `routeOwnsScrollArrival`, types `RepoChip`, `AppShellProps`.
 - **Props that matter**: `repo`, `inboxCount`, `unreadCount`, `skillsUpdateAvailable`, `version`, `latestVersion`, `taskQuickList`, `toolsMenu`, `forgeAvailable`, `inboxAvailable`, `automationsAvailable`, `singleProject`, `banner`, `projectGroups` (replaces the flat nav).
 - **Layout**: root `flex h-dvh overflow-hidden … pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]`; main column `grid grid-rows-[auto_auto_1fr_auto]` (mobile top bar · banner · scroller · composer); `<main data-slot="main" class="row-start-3 min-h-0 overflow-y-auto overscroll-contain">` is the only scroller. Desktop sidebar `hidden md:flex … border-r border-border bg-sidebar`, width from state (264–420px) with an ARIA `separator` resize handle. Mobile drawer is a `Sheet side="left"` at `w-[264px] bg-sidebar`.
-- **Nav row**: `flex h-11 w-full items-center gap-2.5 rounded-md px-2.5 text-[13.5px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:h-[34px]`; active adds `bg-muted font-semibold text-foreground` and `aria-current="page"`.
+- **Nav row**: `flex h-11 w-full items-center gap-2.5 rounded-md px-2.5 text-[13.5px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:h-[34px]`; active adds `bg-muted font-semibold text-foreground` and `aria-current="page"`. The `md:h-[34px]` height moves to `md:h-9` in step 3b of #424.
 - **Badges**: `ml-auto rounded-full bg-violet px-1.5 py-px text-[10.5px] font-semibold text-violet-foreground` (Inbox count, unread count); the Skills update marker is a `size-1.5` violet dot plus `sr-only` text.
 - **States**: drawer open/closed (closes on route change and when `(min-width: 768px)` matches), active route, absent data renders nothing (no repo chip, no badge at 0 or null).
 - **Rules**: DO add a nav item in `nav-items.ts`, never in the shell. DO keep the shell presentational; data lives in `AppShellContainer`. DO NOT add a second page scroller.
@@ -309,6 +309,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 
 - **Purpose**: the sidebar task list: Active/Archived tabs, then Pinned / Needs you / Working / Recent buckets.
 - **Source**: `packages/web/src/components/task-quick-list.tsx`. Exports `TaskQuickList`, `QuickListBuckets`, `TaskQuickListContainer`.
+- **Look**: bucket heading `px-3 pt-stack pb-1 text-[11px] font-semibold tracking-[0.04em] uppercase`, so sidebar groups sit `stack` apart.
 - **States**: nothing until runs load (no skeleton, no false empty); empty `No tasks yet — describe one.` / `Nothing archived yet.`; active row `bg-muted` + `aria-current="page"`; unread row `font-semibold` with a trailing violet dot `aria-label="unread"`; read-done `font-medium text-muted-foreground`; group tile `aria-expanded`.
 - **Rules**: the width-priority rule: the title is the only element allowed to grow; everything else must be droppable. The pin is hover-revealed with `group-hover`, `group-focus-within`, `no-hover:` and `data-[pinned=true]` reveals, zero-width when hidden. Dot, chip and pin are siblings of the link, never children.
 - **Where used**: 2 files.
@@ -495,7 +496,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 
 - **Purpose**: the shell's banner row for provider authentication failures and "no usable provider".
 - **Source**: `packages/web/src/components/provider-banner.tsx`, `packages/web/src/components/provider-banner-container.tsx`.
-- **Look**: alert `flex min-h-9 items-center gap-2 border-b border-border bg-destructive/10 px-4 text-sm text-foreground` with `role="alert"` and a danger dot; status `bg-muted/50 text-muted-foreground` with `role="status"` and a pending dot.
+- **Look**: alert `flex min-h-10 items-center gap-2 border-b border-border bg-destructive/10 px-section text-sm text-foreground` with `role="alert"` and a danger dot; status `bg-muted/50 text-muted-foreground` with `role="status"` and a pending dot.
 - **Copy**: `Provider authentication failed during a task: {labels}.`, `Open agent settings`, `No agent provider is enabled.`, `No connected provider could be verified.`, `No agent provider credentials were found.`, `Configure providers`.
 - **Where used**: 1 file each.
 

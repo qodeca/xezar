@@ -236,7 +236,7 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
   return (
     <div
       data-slot="resources-section"
-      className="mx-auto flex w-full max-w-2xl flex-col gap-section p-4 pb-[calc(90px+env(safe-area-inset-bottom))] md:p-6 md:pb-6"
+      className="mx-auto flex w-full max-w-2xl flex-col gap-section p-list pb-[calc(90px+env(safe-area-inset-bottom))] md:p-group md:pb-group"
     >
       <SettingsField
         title="Max parallel tasks"

@@ -44,7 +44,7 @@ export function AutomationsRoute({ mode = 'list' }: { mode?: 'list' | 'new' | 'e
   // server — and a submit inside that window POSTs straight into a 409.
   if (!healthKnown) {
     return (
-      <div data-route="automations" className="flex min-h-full flex-col p-3 md:p-5">
+      <div data-route="automations" className="flex min-h-full flex-col p-4 md:p-section">
         <PageState text="Loading automations…" />
       </div>
     )
@@ -53,7 +53,7 @@ export function AutomationsRoute({ mode = 'list' }: { mode?: 'list' | 'new' | 'e
   // Before every mode branch, so all four `/automations*` routes degrade the same way.
   if (automationsOff) {
     return (
-      <div data-route="automations" className="flex min-h-full flex-col p-3 md:p-5">
+      <div data-route="automations" className="flex min-h-full flex-col p-4 md:p-section">
         <CenteredState
           icon={<ZapIcon />}
           tone="neutral"

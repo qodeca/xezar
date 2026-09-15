@@ -150,4 +150,23 @@ describe('the ui-state API — skillUsage (#408)', () => {
       expect(Object.keys(rawFile().skillUsage as object)).toHaveLength(200);
     });
   });
+
+  // #424 step 4. This route validates `appearance` with the schema it IMPORTS from the contract;
+  // the contract-parity test stays green when a server copy lags the contract, so this runtime
+  // round-trip is the guard that the per-repo PUT accepts every density the cockpit can send.
+  describe('appearance.density', () => {
+    it('accepts roomy and round-trips it through GET', async () => {
+      const res = await put({ appearance: { density: 'roomy' } });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ appearance: { density: 'roomy' } });
+      expect(rawFile().appearance).toEqual({ density: 'roomy' });
+      expect(await (await get()).json()).toMatchObject({ appearance: { density: 'roomy' } });
+    });
+
+    it('refuses an unknown density and writes nothing', async () => {
+      const res = await put({ appearance: { density: 'spacious' } });
+      expect(res.status).toBe(400);
+      expect(() => readFileSync(uiStatePath(), 'utf8')).toThrow();
+    });
+  });
 });

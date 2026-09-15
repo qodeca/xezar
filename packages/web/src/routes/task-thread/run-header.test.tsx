@@ -827,7 +827,7 @@ describe('meta line, tabs, pill and resume hint', () => {
     expect(classes).toContain('md:sticky')
     expect(classes).toContain('md:top-0')
     expect(classes).toContain('px-3')
-    expect(classes).toContain('md:px-6')
+    expect(classes).toContain('md:px-section')
   })
 
   // The plan mirror hides on phones so the title row keeps its space for the status pill and

@@ -77,7 +77,7 @@ function SkillsForm({
   return (
     <div
       data-slot="skills-settings-section"
-      className="mx-auto flex w-full max-w-2xl flex-col gap-4 p-4 pb-[calc(90px+env(safe-area-inset-bottom))] md:p-6 md:pb-6"
+      className="mx-auto flex w-full max-w-2xl flex-col gap-4 p-list pb-[calc(90px+env(safe-area-inset-bottom))] md:p-group md:pb-group"
     >
       <section className="flex flex-col gap-3">
         <div className="flex items-start justify-between gap-4">
