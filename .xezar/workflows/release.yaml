@@ -32,10 +32,9 @@ steps:
   # time, which is when failure costs most: the 0.14.0 attempt died in Stryker's own dry run on a
   # config mismatch (#375) and found zero product defects.
   #
-  # **#377 owns its new home, and until #377 lands the gate runs NOWHERE automatically** — it is
-  # `npm run test:mutation:mcp`, a manual command, and no workflow in this repository invokes it
-  # (checked in .github/workflows/ and .xezar/workflows/ on this branch). The gate itself is
-  # unchanged: same scope, same `thresholds.break` of 80 (packages/xezar/stryker.config.mjs). See
+  # **Its home is now the nightly `.github/workflows/mutation.yml` (#377)**, against `main`, and a
+  # release does not wait on it. Do not add it back here. The gate itself is unchanged: same scope,
+  # same `thresholds.break` of 80 (packages/xezar/stryker.config.mjs). See
   # docs/testing/coverage-gaps.md § 10.8.
   - id: changelog
     name: Write the changelog entry from merged PRs

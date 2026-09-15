@@ -138,6 +138,19 @@ fix: If the leader is working, nothing is needed. Otherwise check that Claude Co
   `.xezar/pipeline/config.json` and `.ai/trackers/github.md` is `.xezar/pipeline/trackers/github.md`;
   the `.ai/` directory is gone from the repository, and `pipeline` joined the fingerprinted kit set
   (`tree_fingerprint` in `.xezar/checks/lib/common.sh`).
+- 🚀 **The MCP mutation gate runs nightly on GitHub Actions.** (part of #377) A new
+  `.github/workflows/mutation.yml` runs `npm run test:mutation:mcp`'s scope against `main` every
+  night and on manual dispatch – never on a pull request and never in the release path. The scope
+  is split across six parallel jobs so no job meets GitHub's 6-hour limit; each job runs with no
+  floor of its own, and one aggregate step applies the unchanged 80 % `thresholds.break` from
+  `packages/xezar/stryker.config.mjs` to the summed counts. It fails closed on a missing or broken
+  shard report, a shard or run that tested nothing, and a file reported twice, outside its shard or
+  never. On `main` a red night files, comments on or reopens one `mutation-nightly` issue, and the
+  next green night closes it. The scripts live in `packages/xezar/mutation/`, outside the npm
+  tarball. `publishing-surface.test.ts` now forbids publish power by role – only `release.yml` may
+  hold `id-token` or a publish command – instead of pinning the list of workflow files. Not yet
+  live-verified: the first dispatched run on `main` happens after merge. Telling new survivors from
+  known ones is the second half of #377.
 
 ## 🐛 Bug Fixes
 - 🐛 **The cockpit's take-over hint now shows the correct CLI for each backend.** The pi runner

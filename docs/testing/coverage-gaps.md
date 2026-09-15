@@ -679,8 +679,8 @@ direct tests took a median 6.9 s end to end, a survivor needed a full MCP scope 
 to be sure, and the 158 mutants took 68 minutes over three parallel copies. The sample's *inferred*
 "5 000–8 000 mutants" for a real StrykerJS run was **too low**: Stryker generates **12 530** on this
 scope. The real run, its cost and its score are in 10.8 – it was adopted as a release gate on the
-sample's recommendation, that step was removed on 2026-09-12 and #377 owns its next home, and
-the per-PR form stays the named break SDLC.md requires.
+sample's recommendation, that step was removed on 2026-09-12, it has run nightly on GitHub Actions
+since #377, and the per-PR form stays the named break SDLC.md requires.
 
 ### 10.4 Held by a suite v8 cannot see
 
@@ -823,18 +823,17 @@ only then make the command a CI step.
 - `tools/task-reads.ts:281-285` – `escapedBytes` prices raw control characters and lone surrogates,
   but its only input is `JSON.stringify` output, where both are already escaped to ASCII.
 
-### 10.8 The gate that is between homes: Stryker over the MCP code
+### 10.8 The nightly gate: Stryker over the MCP code
 
 `npm run test:mutation:mcp` – StrykerJS 9.6.1 over `packages/xezar/src/mcp/**`, killed by the MCP
 suites alone (`packages/xezar/vitest.mutation.config.ts`, the same files 10.1 measures). Config
 and its reasons: `packages/xezar/stryker.config.mjs`.
 
-**Read this first: as of 2026-09-12 it runs NOWHERE automatically.** It is a manual command. It
-used to be a **release** gate – the `release` and `release-prep` workflows ran it as their first
-check step, before anything was authored – and that step was removed. **#377 owns its new home**
-(a schedule against `main`) and is not done yet; until it lands, running this is a person's job
-and it is in no per-PR gate, in `npm test` or in CI either. Checked on the branch that removed
-it: no file under `.github/workflows/` or `.xezar/workflows/` invokes it.
+**Read this first: it runs nightly against `main` on GitHub Actions** (`.github/workflows/mutation.yml`,
+#377), and on a manual dispatch – never on a pull request, never in `npm test` and never in the
+release path. From 2026-09-12 until #377 it ran nowhere automatically. Before that it was a
+**release** gate – the `release` and `release-prep` workflows ran it as their first check step,
+before anything was authored – and that step was removed (#378).
 
 Four things made the release path the wrong position, and none of them is about the gate's
 quality:
@@ -850,14 +849,32 @@ quality:
   not a question an exit code can answer.
 
 Nothing about the gate itself changed: same scope, same suites, same `thresholds.break` of 80,
-no file excluded. It was moved, not softened – and the cost of the gap between homes is that
-between now and #377 the score is only measured when somebody types the command.
+no file excluded. It was moved, not softened.
 
-One constraint #377 has to answer, recorded here because it is measured and easy to miss: a
-GitHub job is hard-killed at **6 hours**, the run below is 3 h 40 min on an 18-core laptop at
-Stryker concurrency 4, and a `ubuntu-latest` runner has 4 cores – so `stryker.config.mjs`'s
-`min(4, availableParallelism() - 1)` resolves to 3 there, on slower cores. A single scheduled job
-would not finish.
+**How the nightly run works, and why it is six jobs.** A GitHub job is hard-killed at **6 hours**,
+the run below is 3 h 40 min on an 18-core laptop at Stryker concurrency 4, and a `ubuntu-latest`
+runner has 4 cores – so `stryker.config.mjs`'s `min(4, availableParallelism() - 1)` resolves to 3
+there, on slower cores. A single scheduled job would not finish. So the workflow:
+
+- **plans** six disjoint slices of the scope (`npm run test:mutation:mcp:plan`,
+  `packages/xezar/mutation/shards.mjs`), reading the `mutate` globs out of `stryker.config.mjs`
+  so there is no second list of what the gate covers;
+- **runs** Stryker over each slice in its own job (`npm run test:mutation:mcp:shard`), with a
+  config that differs from the gate's in one key: `thresholds.break: null`. A slice's score is
+  not the gate's score (point 1 below), so no slice has a floor of its own;
+- **sums** the status counts of every slice and applies the floor ONCE, to the whole scope
+  (`npm run test:mutation:mcp:report`, `packages/xezar/mutation/aggregate.mjs`), reading `break`
+  out of `stryker.config.mjs`. It fails closed: a missing or unparsable report, a slice or a run
+  that tested no mutant (Stryker scores that `NaN`, and `NaN < 80` is false), a file reported
+  twice, outside its slice or never, and a score below the floor all make the run red;
+- **tells somebody.** On `main` it keeps ONE tracking issue in step (label `mutation-nightly`,
+  `npm run test:mutation:mcp:issue`): a red night files it, comments on it, or reopens it; the
+  next green night comments and closes it. A planner that fails takes the same path.
+
+Two limits. Telling a NEW survivor from one already tracked in #338 / #353 is not done yet – the
+issue carries the per-file table, and the split is #377's second pull request. And GitHub switches
+a schedule off after 60 days without repository activity in a public repository, silently; a
+disabled schedule files no issue.
 
 **Measured, 2026-09-12, revision `ac726df` on an 18-core macOS laptop shared with other tasks, concurrency 4.**
 

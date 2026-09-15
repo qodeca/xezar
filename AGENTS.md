@@ -158,9 +158,11 @@ every MCP source file to 80 % lines and 80 % branches, and a PR on the MCP scope
 each new test failing against a named break. Neither half passes alone – see
 [SDLC.md § The MCP test floor](SDLC.md#the-mcp-test-floor). Its slower counterpart is
 `npm run test:mutation:mcp`: StrykerJS over the same code and the same suites, never run by
-`npm test` or by CI because a full run takes hours. **It runs nowhere automatically and is a manual
-command**; #377 owns giving it a schedule. Same scope, same 80 % floor
-([coverage-gaps.md § 10.8](docs/testing/coverage-gaps.md#108-the-gate-that-is-between-homes-stryker-over-the-mcp-code)).
+`npm test` or by per-PR CI because a full run takes hours. **It runs nightly against `main`** in
+`.github/workflows/mutation.yml` (#377), split across six jobs whose counts are summed before the
+one floor is applied, and a red night files or updates a `mutation-nightly` issue. Same scope,
+same 80 % floor
+([coverage-gaps.md § 10.8](docs/testing/coverage-gaps.md#108-the-nightly-gate-stryker-over-the-mcp-code)).
 
 **Run vitest through npm, never `npx vitest`.** It is a devDependency of this repo, so `npm test`
 uses the installed, version-pinned binary; `npx` will happily reach past it and fetch a different
