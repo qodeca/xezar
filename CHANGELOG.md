@@ -1,6 +1,7 @@
 # Unreleased
 
 ## 🐛 Bug Fixes
+- 🐛 fix(test): the Claude Code adapter's source guard (no process, no environment – #311) now ignores the helper functions Stryker injects into the file it reads, so the nightly mutation run's dry run no longer fails on Stryker's own `process.env` read; a real `child_process` or `process.env` in the adapter still fails it (#436, #377).
 - 🐛 Fix agent-config API tests reading inherited agent homes; isolate all four agent config directories and HOME per test (#362).
 
 ## ✨ Features

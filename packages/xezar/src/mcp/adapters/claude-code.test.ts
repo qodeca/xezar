@@ -216,10 +216,91 @@ describe('the corrected delivery verdict (#374)', () => {
   it('starts no process and reads no environment: no spawn, no node import (owner decision on #311)', () => {
     // RED against: the adapter reaching for child_process, an env var, or a stream-json argv builder.
     const source = readFileSync(join(import.meta.dirname, 'claude-code.ts'), 'utf8');
-    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
-    expect(code).not.toMatch(/child_process|spawn\(|process\.env|node:|--input-format/);
+    expect(guardedCode(source)).not.toMatch(FORBIDDEN_IN_ADAPTER);
+  });
+
+  it('the source guard ignores Stryker instrumentation but still sees a real regression (#436)', () => {
+    // RED against: matching the raw text, which fails every nightly mutation dry run on Stryker's
+    // own `g.process.env` read; and against stripping more than Stryker's helper functions.
+    const adapter = "import type { McpJournalRow } from '@qodeca/xezar-contract';\nexport const x = stryMutAct_9fa48('0') ? '' : 'claude-channels';\n";
+    expect(guardedCode(STRYKER_HEADER + adapter)).not.toMatch(FORBIDDEN_IN_ADAPTER);
+    expect(guardedCode(STRYKER_HEADER + "import { spawn } from 'node:child_process';\n" + adapter)).toMatch(FORBIDDEN_IN_ADAPTER);
+    expect(guardedCode(STRYKER_HEADER + adapter + 'export const env = globalThis.process.env;\n')).toMatch(FORBIDDEN_IN_ADAPTER);
   });
 });
+
+const FORBIDDEN_IN_ADAPTER = /child_process|spawn\(|process\.env|node:|--input-format/;
+
+/**
+ * The adapter's code as the source guard reads it: comments removed, and — because the nightly
+ * mutation run (#377) hands the test Stryker's instrumented copy — Stryker's injected helper
+ * functions removed too. Their mutant-selection helper reads `g.process.env`, which is Stryker's,
+ * not the adapter's (#436). Only whole `function stry<Kind>_<hash>(…) { … }` declarations go; the
+ * `stryMutAct_…`/`stryCov_…` calls stay, since they wrap the adapter's own expressions.
+ */
+function guardedCode(source: string): string {
+  let code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  const helper = /function stry(?:NS|Cov|MutAct)_\w+\s*\([^)]*\)\s*\{/;
+  for (let m = helper.exec(code); m; m = helper.exec(code)) {
+    let depth = 0;
+    let end = m.index + m[0].length - 1;
+    for (; end < code.length; end++) {
+      if (code[end] === '{') depth++;
+      else if (code[end] === '}' && --depth === 0) break;
+    }
+    code = code.slice(0, m.index) + code.slice(end + 1);
+  }
+  return code;
+}
+
+/** Stryker 9's instrumentation header, as its instrumenter printed it for `claude-code.ts` (#436). */
+const STRYKER_HEADER = `function stryNS_9fa48() {
+  var g = typeof globalThis === 'object' && globalThis && globalThis.Math === Math && globalThis || new Function("return this")();
+  var ns = g.__stryker__ || (g.__stryker__ = {});
+  if (ns.activeMutant === undefined && g.process && g.process.env && g.process.env.__STRYKER_ACTIVE_MUTANT__) {
+    ns.activeMutant = g.process.env.__STRYKER_ACTIVE_MUTANT__;
+  }
+  function retrieveNS() {
+    return ns;
+  }
+  stryNS_9fa48 = retrieveNS;
+  return retrieveNS();
+}
+stryNS_9fa48();
+function stryCov_9fa48() {
+  var ns = stryNS_9fa48();
+  var cov = ns.mutantCoverage || (ns.mutantCoverage = {
+    static: {},
+    perTest: {}
+  });
+  function cover() {
+    var c = cov.static;
+    if (ns.currentTestId) {
+      c = cov.perTest[ns.currentTestId] = cov.perTest[ns.currentTestId] || {};
+    }
+    var a = arguments;
+    for (var i = 0; i < a.length; i++) {
+      c[a[i]] = (c[a[i]] || 0) + 1;
+    }
+  }
+  stryCov_9fa48 = cover;
+  cover.apply(null, arguments);
+}
+function stryMutAct_9fa48(id) {
+  var ns = stryNS_9fa48();
+  function isActive(id) {
+    if (ns.activeMutant === id) {
+      if (ns.hitCount !== void 0 && ++ns.hitCount > ns.hitLimit) {
+        throw new Error('Stryker: Hit count limit reached (' + ns.hitCount + ')');
+      }
+      return true;
+    }
+    return false;
+  }
+  stryMutAct_9fa48 = isActive;
+  return isActive(id);
+}
+`;
 
 
 describe('oldest unacknowledged delivery (#404 finding 5)', () => {
