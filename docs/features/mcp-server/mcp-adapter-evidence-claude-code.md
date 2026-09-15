@@ -4,7 +4,7 @@
 
 **Production revalidation, 2026-09-13 (#404 review response):** Claude Code 2.1.270 under a real PTY,
 with an isolated configuration, local-scope `xezar` registration and the shipped service/bridge,
-passed the scripted-endpoint quiet-window, no-flag, approval and draft cases. The attach route is `POST /api/v1/mcp/leader`. The connection page documents recovery remedies;
+passed the scripted-endpoint quiet-window, no-flag, approval and draft cases. The attach route is `POST /api/v1/mcp/leader`; since #450 (2026-09-15) a leader attaches its own session with the MCP action `leader_events` `attach` instead, over the same delivery path. The connection page documents recovery remedies;
 its shared Attach leader action and live status depend on #403, per owner steering. Delivery
 still means a completed stdout write; `reactedSeq` remains zero. The real-model/account clause stays
 BLOCKED. See the corrected [DoD addendum](mcp-definition-of-done-record.md#addendum-2026-09-13--374-claude-code-channels-corrected-after-404-review).
@@ -20,6 +20,10 @@ fix: Start Claude Code in this project with --dangerously-load-development-chann
 **`claude-code-bridge-too-old`** — This Claude Code session is connected through an older xezar MCP bridge that cannot push events. Events are kept in the journal.
 
 fix: Restart Claude Code so it starts the current xezar bridge (npx -y @qodeca/xezar mcp), then attach it again.
+
+**`claude-code-channel-not-advertised`** — This Claude Code session connected while xezar could not push to it, so its xezar MCP server did not register the channel and a pushed event would never reach the model. Events are kept in the journal.
+
+fix: Reconnect the xezar MCP server in Claude Code (/mcp, then reconnect xezar) or restart Claude Code while the cockpit runs, then attach it again (from Claude Code: leader_events with action attach). Until then, read events with leader_events.
 
 **`claude-code-push-unconfirmed`** — xezar pushed events to the attached Claude Code session, and they are not acknowledged yet. Claude Code does not confirm delivery, so xezar cannot tell a leader that is still working from one that never received them. Nothing is lost: the events stay in the journal.
 
