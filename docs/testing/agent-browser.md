@@ -278,3 +278,24 @@ verification.
   signal: a server still flushing its NDJSON races `rmSync` and throws `ENOTEMPTY` in a
   suite whose every test passed. The helpers await the exit and retry the removal, and
   still report a directory that genuinely cannot be deleted.
+
+### The docs capture harness
+
+`packages/web/e2e/capture/` drives the same provider to produce the README and user-guide
+screenshots and the tour GIF in `docs/screenshots/<version>/`. It is **not** a test suite and runs
+in no gate: its files end in `.capture.ts`, which the browser suite's `**/*.e2e.ts` include never
+collects, and `packages/web/src/e2e-capture-include.test.ts` fails if that stops being true.
+
+```bash
+npm run build
+npm run capture:screenshots -w @qodeca/xezar-web              # every still, the GIF, the README
+npm run capture:screenshots -w @qodeca/xezar-web -- -t inbox  # one state
+```
+
+It boots its own dry-run server over a throwaway workspace (with the Inbox, Automations and the
+review gate switched on, and a sandboxed `HOME`), seeds it through the API, and writes straight
+into the docs folder. The list of states is `packages/web/e2e/capture/manifest.ts`;
+`packages/web/src/docs-screenshots.test.ts` holds every listed file to its size budget. No image
+tool is required: PNG decoding, palette re-encoding and GIF assembly are `node:zlib` code in
+`image-codec.ts`. What it normalises before each capture, and why, is in the generated
+`docs/screenshots/<version>/README.md`.
