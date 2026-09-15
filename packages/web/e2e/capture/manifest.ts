@@ -29,13 +29,13 @@ const dark1280 = [['dark', 1280]] as const
 
 export const SHOT_STATES: readonly ShotState[] = [
   { name: 'tasks-list', shows: 'Tasks overview with running, queued, review, done and failed tasks and a variant group', variants: all4 },
-  { name: 'task-thread', shows: 'A task thread: tool calls with results, an agent screenshot and a question waiting for an answer', variants: all4 },
+  { name: 'task-thread', shows: 'A running task thread: earlier tool calls opened, command output, the screenshot the agent took, and a test run in progress', variants: all4 },
   { name: 'task-changes', shows: 'The Changes tab of a task with a multi-file diff', variants: both1280 },
-  { name: 'compare-variants', shows: 'Two variants of one task side by side', variants: both1280 },
+  { name: 'compare-variants', shows: 'Two variants of one task that took different approaches, side by side', variants: both1280 },
   { name: 'new-task', shows: 'The new-task composer: Worktree on and Autonomous visible; at 1280 the workflow picker is open too', variants: [['dark', 1280], ['light', 1280], ['dark', 375]] },
   { name: 'review-gate', shows: 'A task parked at review with the review panel and the Draft PR action', variants: dark1280 },
   { name: 'all-tasks', shows: 'All tasks across two projects, grouped', variants: both1280 },
-  { name: 'repo-git', shows: 'The repository Git view: status and commits', variants: dark1280 },
+  { name: 'repo-git', shows: 'The repository Git view: the branch, its GitHub remote and the commit history', variants: dark1280 },
   { name: 'github-issues', shows: 'GitHub issues with the hand-to-agent controls', variants: both1280 },
   { name: 'automations', shows: 'Automations: a scheduled GitHub watch that starts a task for new issues', variants: dark1280 },
   { name: 'inbox', shows: 'The follow-up Inbox with three entries', variants: both1280 },
@@ -45,7 +45,7 @@ export const SHOT_STATES: readonly ShotState[] = [
   { name: 'settings-agents', shows: 'Project Settings → Agents', variants: dark1280 },
   { name: 'settings-accounts', shows: 'Global Settings → Agent accounts', variants: dark1280 },
   { name: 'settings-resources', shows: 'Global Settings → Resources: parallel tasks, monitoring sessions and limits', variants: dark1280 },
-  { name: 'settings-mcp-connection', shows: 'Project Settings → MCP connection', variants: dark1280 },
+  { name: 'settings-mcp-connection', shows: 'Project Settings → MCP connection with the leader status', variants: dark1280 },
   { name: 'command-palette', shows: 'The ⌘K command palette open', variants: dark1280 },
 ]
 
@@ -59,6 +59,9 @@ export const SHOT_MAX_BYTES = 300 * 1024
 export const TOUR_MAX_BYTES = 5 * 1024 * 1024
 
 export const TOUR_FILE = 'tour.gif'
+
+/** The tour's play time, in milliseconds (design review B-4: "≤ 20 s"). */
+export const TOUR_MAX_MS = 20_000
 
 export function shotFileName(name: string, theme: Theme, width: Width): string {
   return `${name}-${theme}-${width}.png`

@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
@@ -12,6 +12,7 @@ import {
   SHOT_STATES,
   TOUR_FILE,
   TOUR_MAX_BYTES,
+  TOUR_MAX_MS,
   shotFileName,
   type Theme,
   type Width,
@@ -34,7 +35,39 @@ const repoRoot = resolve(import.meta.dirname, '../../../..')
 const outDir = resolve(repoRoot, SCREENSHOT_DIR)
 const sessionId = `capture-docs-${process.pid}`
 
-const HEIGHT: Record<Width, number> = { 1280: 900, 375: 812 }
+// Plan § 3.2: desktop stills at 1280 × 800, the same height as the tour.
+const HEIGHT: Record<Width, number> = { 1280: 800, 375: 812 }
+
+/**
+ * How each seeded task reads wherever a value would otherwise differ on every run: its own branch
+ * suffix and its own age. One fixed value PER TASK, so a list of tasks never reads as clones.
+ */
+/**
+ * Folded for every capture. With every column open the table is wider than a 1280 viewport with
+ * the sidebar, so IN / OUT would be cut off at the right edge; these four are what a README
+ * reader needs least.
+ */
+const FOLDED_COLUMNS = { model: false, cost: false, cpu: false, memory: false }
+
+const LOOKS: Record<string, { id8: string; age: string }> = {
+  docs: { id8: '0d2f7a61', age: '3h' },
+  docsFailed: { id8: '19c4e8b2', age: '3h' },
+  failed: { id8: 'c41e2a90', age: '2h' },
+  doneA: { id8: '7b09d13f', age: '1h' },
+  doneB: { id8: 'e5a3c7d8', age: '52m' },
+  variantA: { id8: '3f8b1c42', age: '41m' },
+  variantB: { id8: 'a90d6e15', age: '41m' },
+  review: { id8: '5c27f9b0', age: '28m' },
+  ask: { id8: '8e61b4a3', age: '17m' },
+  running: { id8: 'd4f0a2c9', age: '9m' },
+  runningB: { id8: '62be8f17', age: '6m' },
+  queuedA: { id8: 'b7c3d5e2', age: '2m' },
+  queuedB: { id8: '4a1e9f86', age: '1m' },
+  tour: { id8: '2d9c6b7e', age: '12s' },
+}
+
+const looks = () =>
+  Object.fromEntries(Object.entries(runs).flatMap(([role, id]) => (LOOKS[role] ? [[id, LOOKS[role]]] : [])))
 
 let cockpit: Cockpit
 let browser: AgentBrowser
@@ -66,78 +99,72 @@ async function settleDone(id: string, project = DEMO_PROJECT): Promise<void> {
 }
 
 async function seed(): Promise<void> {
+  // The tasks list shows every backend: each task names its own runner, and the scripted agents
+  // in `agents/` play each one its own turn (`agents/scenarios.mjs`).
   // Finished work first, oldest first, so the list reads like a real afternoon.
-  runs.failed = await createRun({ task: 'Upgrade the payment SDK to v5 mock:auth-error', workflow: 'quick-task' })
+  runs.failed = await createRun({ task: 'Upgrade the payment SDK to v5', workflow: 'quick-task', runner: 'claude' })
   await waitForStatus(cockpit, runPath(runs.failed), ['failed'])
-  await api(cockpit, 'PATCH', runPath(runs.failed), { title: 'Upgrade the payment SDK to v5' })
 
-  runs.doneA = await createRun({ task: 'Add a dark-mode toggle to the site header', workflow: 'quick-task' })
+  runs.doneA = await createRun({ task: 'Add a dark-mode toggle to the site header', workflow: 'quick-task', runner: 'codex' })
   await settleDone(runs.doneA)
-  runs.doneB = await createRun({ task: 'Fix the rounding error in the cart total', workflow: 'quick-task' })
+  runs.doneB = await createRun({ task: 'Fix the rounding error in the cart total', workflow: 'quick-task', runner: 'pi' })
   await settleDone(runs.doneB)
 
-  // Two variants of one task, both parked at review: the compare view.
-  const variants = await api<{ runs: Array<{ id: string; groupId: string }> }>(
+  // Two variants of one task that went two different ways, both parked at review: the compare view.
+  const variants = await api<{ runs: Array<{ id: string; groupId: string; variant?: string }> }>(
     cockpit,
     'POST',
     `/p/${DEMO_PROJECT}/runs`,
-    { task: 'Speed up the product search query', workflow: 'quick-task', variants: 2 },
+    { task: 'Speed up the product search query', workflow: 'quick-task', variants: 2, runner: 'claude' },
   )
   groupId = variants.runs[0]?.groupId ?? ''
-  for (const variant of variants.runs) await waitForStatus(cockpit, runPath(variant.id), ['waiting'])
-  for (const variant of variants.runs) {
-    await api(cockpit, 'POST', `${runPath(variant.id)}/finish`)
-    await waitForStatus(cockpit, runPath(variant.id), ['review'])
+  const [variantA, variantB] = [...variants.runs].sort((x, y) => String(x.variant).localeCompare(String(y.variant)))
+  runs.variantA = variantA!.id
+  runs.variantB = variantB!.id
+  const directions: Array<[string, string, number]> = [
+    [runs.variantA, 'Add a trigram index on products.name.', 1],
+    [runs.variantB, 'Cache the search results in memory instead.', 3],
+  ]
+  for (const [id] of directions) await waitForStatus(cockpit, runPath(id), ['waiting'])
+  for (const [id, text, files] of directions) {
+    await api(cockpit, 'POST', `${runPath(id)}/messages`, { text })
+    await waitForChange(id, files)
+    await api(cockpit, 'POST', `${runPath(id)}/finish`)
+    await waitForStatus(cockpit, runPath(id), ['review'])
   }
 
   // The review-gate task: a real multi-file change in its worktree, parked at review.
-  runs.review = await createRun({ task: 'Fix the login redirect that drops the session cookie', workflow: 'quick-task' })
+  runs.review = await createRun({ task: 'Fix the login redirect that drops the session cookie', workflow: 'quick-task', runner: 'claude' })
   const reviewRun = await waitForStatus(cockpit, runPath(runs.review), ['waiting'])
   editWorktree(String(reviewRun.worktreePath ?? reviewRun.worktree))
   // The stored change size is measured at the end of a turn, so the edit only reaches the task
-  // list and the thread header after one more turn — without it they read `+1 -0` or `+13 -2`
-  // depending on a race with finish.
+  // list and the thread header after one more turn.
   await api(cockpit, 'POST', `${runPath(runs.review)}/messages`, { text: 'Also cover the redirect with a regression test.' })
-  const deadline = Date.now() + 60_000
-  for (;;) {
-    const run = await api(cockpit, 'GET', runPath(runs.review))
-    if (run.status === 'waiting' && (run.diffStat as { files?: number } | undefined)?.files === 3) break
-    if (Date.now() > deadline) throw new Error('xezar capture: the review task never measured its three-file change')
-    await new Promise((r) => setTimeout(r, 400))
-  }
+  await waitForChange(runs.review, 3)
   await api(cockpit, 'POST', `${runPath(runs.review)}/finish`)
   await waitForStatus(cockpit, runPath(runs.review), ['review'])
 
-  // A task that asked a question: tool calls, a screenshot and XEZ:ASK chips.
-  runs.ask = await createRun({ task: 'Standardise date handling across checkout', workflow: 'explore-then-ask' })
+  // A task that explored and then asked a question: "needs you" in the list.
+  runs.ask = await createRun({ task: 'Pick a date library for the checkout', workflow: 'explore-then-ask', runner: 'claude' })
   await waitForStatus(cockpit, runPath(runs.ask), ['waiting'])
 
   // The second project for All tasks: its own runs (seeded before the long runs fill the workspace-wide slots), then unregistered again so every other
   // capture shows the single-project shell most people run.
   await api(cockpit, 'POST', '/projects', { root: cockpit.docsRoot })
-  runs.docs = await createRun({ task: 'Document the new pricing API', workflow: 'quick-task' }, DOCS_PROJECT)
+  runs.docs = await createRun({ task: 'Document the new pricing API', workflow: 'quick-task', runner: 'pi' }, DOCS_PROJECT)
   await settleDone(runs.docs, DOCS_PROJECT)
   // Terminal only: a project with a live task cannot be unregistered.
-  runs.docsFailed = await createRun({ task: 'Fix broken links in the getting-started guide mock:auth-error', workflow: 'quick-task' }, DOCS_PROJECT)
+  runs.docsFailed = await createRun({ task: 'Fix broken links in the getting-started guide', workflow: 'quick-task', runner: 'codex' }, DOCS_PROJECT)
   await waitForStatus(cockpit, runPath(runs.docsFailed, DOCS_PROJECT), ['failed'])
-  await api(cockpit, 'PATCH', runPath(runs.docsFailed, DOCS_PROJECT), { title: 'Fix broken links in the getting-started guide' })
   await api(cockpit, 'DELETE', `/projects/${DOCS_PROJECT}`)
 
-  // Two tasks genuinely running (a long check step) fill both slots; two more queue behind them.
-  runs.runningA = await createRun({ task: 'Migrate the cart to the new pricing API', workflow: 'build-and-verify' })
-  runs.runningB = await createRun({ task: 'Add rate limiting to the public API', workflow: 'build-and-verify' })
-  for (const id of [runs.runningA, runs.runningB]) {
-    const deadline = Date.now() + 60_000
-    for (;;) {
-      const run = await api(cockpit, 'GET', runPath(id))
-      const steps = (run.steps ?? []) as Array<{ id?: string; status?: string }>
-      if (run.status === 'running' && steps.some((s) => s.id === 'verify' && s.status === 'running')) break
-      if (Date.now() > deadline) throw new Error(`xezar capture: ${id} never reached its verify step`)
-      await new Promise((r) => setTimeout(r, 400))
-    }
-  }
-  runs.queuedA = await createRun({ task: 'Write the release notes for 1.5.0', workflow: 'quick-task' })
-  runs.queuedB = await createRun({ task: 'Refresh the README screenshots', workflow: 'quick-task' })
+  // Two tasks genuinely running (their agents hold the turn open) fill both slots; two more queue
+  // behind them. The first one is the thread the task-thread shots show.
+  runs.running = await createRun({ task: 'Standardise date handling across checkout', workflow: 'quick-task', runner: 'claude' })
+  runs.runningB = await createRun({ task: 'Add rate limiting to the public API', workflow: 'quick-task', runner: 'codex' })
+  for (const id of [runs.running, runs.runningB]) await waitForStatus(cockpit, runPath(id), ['running'])
+  runs.queuedA = await createRun({ task: 'Write the release notes for 1.5.0', workflow: 'quick-task', runner: 'pi' })
+  runs.queuedB = await createRun({ task: 'Refresh the README screenshots', workflow: 'quick-task', runner: 'claude' })
   await waitForStatus(cockpit, runPath(runs.queuedB), ['queued'])
 
   // Inbox: three follow-ups a team would actually leave, tied to real seeded tasks.
@@ -170,6 +197,56 @@ async function seed(): Promise<void> {
   const accountDir = join(cockpit.home, '.claude-work')
   mkdirSync(accountDir, { recursive: true })
   await api(cockpit, 'POST', '/workspace/agent-profiles', { provider: 'claude', label: 'Work', configDir: accountDir })
+
+  await api(cockpit, 'PUT', '/workspace/ui-state', { taskTable: { expandedColumns: FOLDED_COLUMNS } })
+}
+
+/**
+ * Wait until a live run is waiting again with its change measured. The stored change size is
+ * written at the end of a turn, so a file count is the signal that the turn which made the
+ * change has finished — a bare status poll can read the "waiting" from before the turn started.
+ */
+async function waitForChange(id: string, files: number): Promise<void> {
+  const deadline = Date.now() + 60_000
+  for (;;) {
+    const run = await api(cockpit, 'GET', runPath(id))
+    if (run.status === 'waiting' && (run.diffStat as { files?: number } | undefined)?.files === files) return
+    if (Date.now() > deadline) throw new Error(`xezar capture: ${id} never measured its ${files}-file change`)
+    await new Promise((r) => setTimeout(r, 400))
+  }
+}
+
+/** A still of the page the running task screenshots: a checkout summary with both dates fixed. */
+function renderCheckoutAsset(): void {
+  const html = join(cockpit.dataRoot, 'assets', 'checkout.html')
+  writeFileSync(
+    html,
+    `<!doctype html><html><head><meta charset="utf-8"><style>
+      body { margin: 0; font: 15px/1.5 -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; background: #f6f4ef; color: #1d1c1a; }
+      header { display: flex; align-items: center; justify-content: space-between; padding: 9px 20px; background: #1d1c1a; color: #f6f4ef; }
+      header b { font-size: 17px; letter-spacing: .02em; } header span { opacity: .7; font-size: 13px; }
+      main { display: grid; grid-template-columns: 1fr 200px; gap: 16px; padding: 14px 20px; }
+      h1 { margin: 0 0 8px; font-size: 16px; } .card { background: #fff; border-radius: 8px; padding: 6px 12px; box-shadow: 0 1px 2px rgba(0,0,0,.06); font-size: 12.5px; }
+      .row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #eee; } .row:last-child { border: 0; }
+      .muted { color: #6f6b64; } .ok { color: #2f7d4f; font-weight: 600; } button { width: 100%; margin-top: 8px; padding: 7px; border: 0; border-radius: 6px; background: #2f7d4f; color: #fff; font-size: 13px; font-weight: 600; }
+    </style></head><body>
+      <header><b>demo-shop</b><span>Checkout · step 3 of 3</span></header>
+      <main>
+        <section><h1>Order summary</h1><div class="card">
+          <div class="row"><span>Ceramic table lamp × 2</span><span>€118.00</span></div>
+          <div class="row"><span class="muted">Order date</span><span class="ok">15 Sep 2026</span></div>
+          <div class="row"><span class="muted">Estimated delivery</span><span class="ok">18 Sep 2026</span></div>
+          <div class="row"><span class="muted">Card</span><span>•••• 4242 · expires 09/28</span></div>
+        </div></section>
+        <aside class="card"><div class="row"><span>Subtotal</span><span>€118.00</span></div><div class="row"><span>Shipping</span><span>€4.90</span></div><div class="row"><b>Total</b><b>€122.90</b></div><button>Place order</button></aside>
+      </main></body></html>`,
+    'utf8',
+  )
+  browser.setViewport(600, 228)
+  browser.goto(`file://${html}`)
+  wait(`document.readyState === 'complete'`)
+  const shot = browser.screenshot(join(cockpit.dataRoot, 'assets', 'checkout-raw.png'), { viewport: true })
+  writeFileSync(join(cockpit.dataRoot, 'assets', 'checkout.png'), readFileSync(shot))
 }
 
 // ---- capture --------------------------------------------------------------------------------
@@ -196,7 +273,7 @@ async function settle(ms = 400): Promise<void> {
 async function shoot(file: string): Promise<void> {
   browser.evaluate(freezeJs)
   await settle()
-  browser.evaluate(normalizeJs(cockpit.dataRoot, cockpit.home))
+  browser.evaluate(normalizeJs(cockpit.dataRoot, cockpit.home, looks()))
   const raw = browser.screenshot(join(frameDir, file), { viewport: true })
   const png = readFileSync(raw)
   const bytes: Uint8Array = png.length > SHOT_MAX_BYTES ? encodePngPalette(decodePng(png)) : png
@@ -232,12 +309,31 @@ const PREPARE: Record<string, Prepare> = {
     wait(exists('[data-slot="compare-strip"]'))
     wait(exists('[data-slot="queue-note"]'))
   },
-  'task-thread': (theme) => {
-    open(demo(`/tasks/${runs.ask}`), theme)
-    wait(exists('[data-slot="ask-card"][data-resolved="false"]'))
-    wait(`[...document.querySelectorAll('img[data-slot="thread-image"]')].every((img) => img.naturalWidth > 0)`)
-    // The thread stays pinned to the latest item, which is the question. Scrolling it away would
-    // raise the "Jump to latest" pill over the very content the shot is for.
+  'task-thread': async (theme, width) => {
+    // A RUNNING task: its earlier tool calls folded into a streak (opened here), a command with
+    // its output, the screenshot the agent took, and the end-to-end run still in progress.
+    open(demo(`/tasks/${runs.running}`), theme)
+    wait(exists('[data-slot="tool-streak"]'))
+    wait(`[...document.querySelectorAll('img[data-slot="thread-image"]')].some((img) => img.naturalWidth > 0)`)
+    browser.evaluate(`document.querySelector('[data-slot="tool-streak"] button').click()`)
+    wait(exists('[data-slot="tool-streak"][data-state="open"]'))
+    // One command opened on its output: the test run the agent just made.
+    browser.evaluate(`[...document.querySelectorAll('button')].find((b) => b.textContent.includes('npm test -- checkout')).click()`)
+    wait(`document.body.textContent.includes('Tests  10 passed (10)')`)
+    await settle(300)
+    // Scroll the opened streak to the top of the thread, so the tool calls and their results fill
+    // the shot and the screenshot follows below them.
+    browser.evaluate(`(() => {
+      const node = document.querySelector('[data-slot="tool-streak"]')
+      let scroller = node.parentElement
+      while (scroller && !(scroller.scrollHeight > scroller.clientHeight && getComputedStyle(scroller).overflowY !== 'visible')) {
+        scroller = scroller.parentElement
+      }
+      const header = document.querySelector('[data-slot="run-header"]')?.getBoundingClientRect().bottom ?? 0
+      scroller.scrollTop += node.getBoundingClientRect().top - header - ${width === 375 ? 12 : 16}
+      return true
+    })()`)
+    await settle(300)
   },
   'task-changes': (theme) => {
     open(demo(`/tasks/${runs.review}/changes`), theme)
@@ -276,12 +372,12 @@ const PREPARE: Record<string, Prepare> = {
     wait(`document.querySelectorAll('section[data-slot="task-group"]').length >= 2`)
   },
   'repo-git': (theme) => {
-    // Uncommitted work in the primary checkout, as a developer mid-change would have it.
-    rmSync(join(cockpit.demoRoot, 'notes.md'), { force: true })
+    // Uncommitted work in the primary checkout, as a developer mid-change would have it: the
+    // header carries the status, the Commits tab the history.
     editPrimaryCheckout(cockpit.demoRoot)
-    open(demo('/git'), theme)
+    open(demo('/git/commits'), theme)
     wait(exists('[data-slot="repo-header"]'))
-    wait(exists('[data-slot="repo-changes"]'))
+    wait(`document.body.textContent.includes('feat(shop): header, product search and checkout dates')`)
   },
   'github-issues': (theme) => {
     open(demo('/github'), theme)
@@ -290,6 +386,9 @@ const PREPARE: Record<string, Prepare> = {
     wait(exists('[data-slot="gh-row"][data-number]'))
     browser.evaluate(`document.querySelector('[data-slot="gh-row"][data-number]').click()`)
     wait(exists('[data-slot="gh-hand"]'))
+    // The hand-to-agent block, with its start action, fully on screen.
+    browser.evaluate(`document.querySelector('[data-slot="gh-hand"]').scrollIntoView({ block: 'end' })`)
+    wait(`document.querySelector('[data-slot="gh-hand"]').getBoundingClientRect().bottom <= innerHeight`)
   },
   automations: (theme) => {
     // The list, not the log: under XEZ_DRY_RUN no check can reach GitHub, so a log page would
@@ -334,6 +433,9 @@ const PREPARE: Record<string, Prepare> = {
   'settings-mcp-connection': (theme) => {
     open(demo('/settings/mcp-connection'), theme)
     wait(exists('[data-slot="mcp-connection-section"] [data-slot="mcp-leader"]'))
+    // The leader status and its Attach control, not only the setup prose above them.
+    browser.evaluate(`document.querySelector('[data-slot="mcp-leader"]').scrollIntoView({ block: 'center' })`)
+    wait(`document.querySelector('[data-slot="mcp-leader"]').getBoundingClientRect().bottom <= innerHeight`)
   },
   'command-palette': (theme) => {
     open(demo('/'), theme)
@@ -353,8 +455,9 @@ beforeAll(async () => {
   cockpit = await bootCockpit()
   frameDir = join(cockpit.dataRoot, 'frames')
   mkdirSync(frameDir, { recursive: true })
-  await seed()
   browser = AgentBrowser.open(sessionId)
+  renderCheckoutAsset()
+  await seed()
   browser.setViewport(1280, HEIGHT[1280])
   browser.goto(`${cockpit.baseUrl}${demo('/')}`)
 }, 300_000)
@@ -406,7 +509,7 @@ describe(`${SCREENSHOT_DIR}/${TOUR_FILE}`, () => {
     let index = 0
     const grab = () => {
       browser.evaluate(freezeJs)
-      browser.evaluate(normalizeJs(cockpit.dataRoot, cockpit.home))
+      browser.evaluate(normalizeJs(cockpit.dataRoot, cockpit.home, looks()))
       const path = browser.screenshot(join(frameDir, `tour-${String(index).padStart(3, '0')}.png`), { viewport: true })
       index += 1
       return decodePng(readFileSync(path))
@@ -420,21 +523,18 @@ describe(`${SCREENSHOT_DIR}/${TOUR_FILE}`, () => {
     wait(exists('[data-slot="queue-note"]'))
     await frame(2500)
 
-    // Free both slots so the tour task starts at once, and drop the cancelled tasks so the
-    // closing frame shows the tour task beside finished work rather than four cancellations.
-    for (const id of [runs.queuedA, runs.queuedB, runs.runningA, runs.runningB]) {
-      if (!id) continue
-      await api(cockpit, 'POST', `${runPath(id)}/cancel`).catch(() => undefined)
-      await waitForStatus(cockpit, runPath(id), ['cancelled', 'failed', 'done'])
-      await api(cockpit, 'DELETE', runPath(id))
-    }
+    // The tour starts from the stills' state and keeps it: nothing is cancelled or deleted. A
+    // wider workspace cap lets the two queued tasks start too, so the tour task starts at once
+    // and the closing list still shows work running beside the finished tour task.
+    await api(cockpit, 'PUT', '/workspace/config', { resources: { maxParallel: 5 } })
+    for (const id of [runs.queuedA, runs.queuedB]) await waitForStatus(cockpit, runPath(id!), ['running'])
 
     open(demo('/new'), 'dark')
     wait(`document.querySelector('[data-slot="model-pill"]') !== null && !document.querySelector('[data-slot="model-pill"]').disabled`)
     const prompt = 'Add a "Remember me" option to the login form'
     for (const cut of [8, 18, 30, prompt.length]) {
       browser.fill('[data-slot="composer"] textarea', prompt.slice(0, cut))
-      await frame(cut === prompt.length ? 1800 : 300)
+      await frame(cut === prompt.length ? 1500 : 300)
     }
     browser.click('[aria-label="Start task"]')
     wait(`location.pathname.startsWith('${demo('/tasks/')}')`)
@@ -442,22 +542,21 @@ describe(`${SCREENSHOT_DIR}/${TOUR_FILE}`, () => {
     runs.tour = tourId
     wait(exists('[data-slot="run-header"]'))
 
-    // The mock turn takes about two seconds: sample it while it streams, keep each distinct
-    // picture once, and give the distinct ones a fixed 2.4 s between them so the GIF's timing
-    // does not depend on how fast this machine took the samples.
+    // The scripted turn streams for about a second: sample it, keep each distinct picture once,
+    // and share a fixed 2.4 s between them so the GIF's timing does not depend on this machine.
     const streamed: RgbaImage[] = []
     for (let i = 0; i < 12; i += 1) {
       const sample = grab()
       const last = streamed.at(-1)
       if (!last || !Buffer.from(last.data).equals(Buffer.from(sample.data))) streamed.push(sample)
       if ((await api(cockpit, 'GET', runPath(tourId))).status === 'waiting') break
-      await settle(250)
+      await settle(200)
     }
     for (const image of streamed) frames.push({ image, delayMs: Math.round(2400 / streamed.length) })
     await waitForStatus(cockpit, runPath(tourId), ['waiting'])
     wait(exists('[data-slot="composer"] textarea'))
     await settle(600)
-    await frame(3500)
+    await frame(2000)
 
     await api(cockpit, 'POST', `${runPath(tourId)}/finish`)
     await waitForStatus(cockpit, runPath(tourId), ['review'])
@@ -466,18 +565,21 @@ describe(`${SCREENSHOT_DIR}/${TOUR_FILE}`, () => {
     await settle(800)
     scrollAboveComposer('[data-slot="review-draft-pr"]')
     await settle(300)
-    await frame(3500)
+    await frame(2000)
 
     browser.click('[data-slot="review-draft-pr"]')
     wait(exists('a[data-slot="pr-link"]'))
     // Opening the PR accepts the change, which plays a short celebration over the thread.
     wait(`document.querySelector('[data-slot="accept-celebration"]') === null`)
     await settle(400)
-    await frame(3000)
+    await frame(2000)
 
     open(demo('/'), 'dark')
     wait(exists(`[data-slot="task-table-row"] [data-slot="pr-chip"]`))
-    await frame(4000)
+    await frame(2500)
+
+    const totalMs = frames.reduce((sum, f) => sum + f.delayMs, 0)
+    expect(totalMs, `${TOUR_FILE} runs ${totalMs} ms`).toBeLessThanOrEqual(TOUR_MAX_MS)
 
     const gif = encodeGif(frames)
     expect(gif.length, `${TOUR_FILE} is over its ${TOUR_MAX_BYTES} byte budget`).toBeLessThanOrEqual(TOUR_MAX_BYTES)
@@ -495,10 +597,11 @@ describe(`${SCREENSHOT_DIR}/README.md`, () => {
     )
     const readme = `# xezar 0.15.0 cockpit screenshots
 
-Captured from a dry-run cockpit (\`XEZ_DRY_RUN=1\` with a sandboxed \`XEZ_HOME\`, agent CLIs mocked
-— no login, no network) with fixture data: a demo project with tasks in every status, a second project for All tasks, three
-Inbox follow-ups, one automation and a second Claude login. The data, the viewport and the theme
-are fixed, so a re-run produces the same pictures (at most a few anti-aliased pixels apart).
+Captured from a dry-run cockpit (\`XEZ_DRY_RUN=1\` with a sandboxed \`XEZ_HOME\`, no login, no network)
+with fixture data: a demo project with tasks in every status on Claude Code, Codex and pi, a second
+project for All tasks, three Inbox follow-ups, one automation and a second Claude login. The data,
+the viewport and the theme are fixed, so a re-run produces the same pictures (at most a few
+anti-aliased pixels apart).
 
 Generated by \`packages/web/e2e/capture/docs-screenshots.capture.ts\` — this file too. Do not edit
 it by hand; change \`packages/web/e2e/capture/manifest.ts\` and re-run the command.
@@ -516,17 +619,29 @@ npm run capture:screenshots -w @qodeca/xezar-web -- -t tasks-list
 The command boots the shared browser environment (\`scripts/test-env-up.sh\`, which provisions
 agent-browser) and then its own fixture server. It is not part of \`npm run test:e2e\` or any gate.
 
-What a re-run can still change, and why:
+## What is scripted, and what is rewritten
 
-- Values that differ on every run are rewritten to one fixed spelling right before each capture:
-  ages and durations, clock times, ISO timestamps, run ids and \`xez/<id8>\` branch suffixes, and
-  the temporary workspace path (shown as \`~/code\`, its sandboxed home as \`~\`). Layout is untouched.
+- **The agents are scripted.** The capture server runs the harness's own stand-ins for Claude Code,
+  Codex and pi (\`packages/web/e2e/capture/agents/\`), not the bundled test mocks. Each seeded task
+  plays its own turn through that backend's real protocol: its own tool calls and results, real
+  edits in its worktree, its own token counts and references. The cockpit renders them as it would
+  render a real agent; the screenshot in the running thread is a page the harness renders.
+- **Values that differ on every run are rewritten** to fixed values right before each capture:
+  ages, clock times and ISO timestamps (kept in order), run ids and \`xez/<id8>\` branch suffixes
+  (one fixed value per task), and the temporary workspace path (shown as \`~/code\`, its sandboxed
+  home as \`~\`). Layout is untouched.
+- **The dry-run forge's stand-ins are rewritten** to the fixture repository's own GitHub remote:
+  \`mock/repo\` reads \`acme/demo-shop\`, the author \`mock\` reads as a person, the fake draft
+  PR URL reads as a PR on that repository, and a mocked agent's \`mock (…)\` version reads as a
+  version number.
 - Animations are stopped, and the floating toasts, backdrops and the thread's "Jump to latest"
   pill are hidden, so no capture lands on a random frame.
+- The Tasks table folds Model, Cost, CPU and Mem; with every column open it is wider than 1280 px
+  beside the sidebar and IN / OUT is cut off.
 - The version chip shows the version of the build that ran the capture.
-- A still larger than 300 KB would be re-encoded as an 8-bit palette PNG; none needed it at the
-  time of writing. The tour's streaming frames are sampled live, so their count can vary; their
-  total time is fixed.
+- A still larger than 300 KB would be re-encoded as an 8-bit palette PNG. The tour's streaming
+  frames are sampled live, so their count can vary; their total time is fixed, and the tour runs
+  at most 20 seconds.
 
 ## Files
 

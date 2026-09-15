@@ -7,6 +7,7 @@ import {
   SHOT_MAX_BYTES,
   TOUR_FILE,
   TOUR_MAX_BYTES,
+  TOUR_MAX_MS,
   allShotFiles,
 } from '../e2e/capture/manifest'
 
@@ -36,6 +37,30 @@ function head(path: string, bytes: number): string {
   return buffer.toString('hex')
 }
 
+/** Every frame's delay in a GIF, in milliseconds, read from its Graphic Control Extensions. */
+function gifFrameDelays(bytes: Buffer): number[] {
+  const skipSubBlocks = (at: number): number => {
+    while (bytes[at] !== 0) at += bytes[at]! + 1
+    return at + 1
+  }
+  const tableSize = (packed: number) => (packed & 0x80 ? 3 * 2 ** ((packed & 0x07) + 1) : 0)
+  const delays: number[] = []
+  let at = 13 + tableSize(bytes[10]!)
+  while (at < bytes.length) {
+    const block = bytes[at]
+    if (block === 0x3b) return delays
+    if (block === 0x21) {
+      if (bytes[at + 1] === 0xf9) delays.push(bytes.readUInt16LE(at + 4) * 10)
+      at = skipSubBlocks(at + 2)
+    } else if (block === 0x2c) {
+      at = skipSubBlocks(at + 10 + tableSize(bytes[at + 9]!) + 1)
+    } else {
+      throw new Error(`unexpected GIF block 0x${block?.toString(16)} at byte ${at}`)
+    }
+  }
+  throw new Error('the GIF has no trailer')
+}
+
 describe(`the ${SCREENSHOT_DIR} screenshots`, () => {
   const files = allShotFiles()
 
@@ -55,6 +80,12 @@ describe(`the ${SCREENSHOT_DIR} screenshots`, () => {
     expect(existsSync(path), `${SCREENSHOT_DIR}/${TOUR_FILE} is missing`).toBe(true)
     expect(head(path, 6)).toBe(GIF_MAGIC)
     expect(statSync(path).size).toBeLessThanOrEqual(TOUR_MAX_BYTES)
+  })
+
+  it(`${TOUR_FILE} plays for at most ${TOUR_MAX_MS / 1000} seconds`, () => {
+    const delays = gifFrameDelays(readFileSync(resolve(dir, TOUR_FILE)))
+    expect(delays.length).toBeGreaterThan(1)
+    expect(delays.reduce((sum, delay) => sum + delay, 0)).toBeLessThanOrEqual(TOUR_MAX_MS)
   })
 
   it('holds no PNG the manifest does not name, so a stale capture cannot linger unnoticed', () => {

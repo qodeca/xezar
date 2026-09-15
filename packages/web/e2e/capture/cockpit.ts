@@ -1,8 +1,8 @@
 import { spawn, type ChildProcess } from 'node:child_process'
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 
 import { fixtureServeEnv, xezarCli } from '../agent-browser'
 import { createFixtureRepo } from './fixture-repo'
@@ -62,6 +62,19 @@ export async function bootCockpit(): Promise<Cockpit> {
   mkdirSync(xezHome, { recursive: true })
   writeFileSync(join(xezHome, 'config.json'), `${JSON.stringify({ resources: { maxParallel: 2 } }, null, 2)}\n`)
 
+  // The scripted agents in `agents/` stand in for the bundled dry-run mocks (see
+  // `agents/scenarios.mjs`). The runners spawn their binary directly, so each gets a tiny
+  // executable wrapper that also tells it where the harness keeps its screenshot assets.
+  mkdirSync(join(dataRoot, 'assets'), { recursive: true })
+  const agentBin = (name: string) => {
+    const bin = join(dataRoot, 'bin', name)
+    mkdirSync(join(dataRoot, 'bin'), { recursive: true })
+    const script = resolve(import.meta.dirname, 'agents', `${name}.mjs`)
+    writeFileSync(bin, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(script)} --capture-root ${JSON.stringify(dataRoot)} "$@"\n`)
+    chmodSync(bin, 0o755)
+    return bin
+  }
+
   const port = await freePort()
   const baseUrl = `http://localhost:${port}`
   const env = fixtureServeEnv(dataRoot, {
@@ -74,6 +87,9 @@ export async function bootCockpit(): Promise<Cockpit> {
     XEZ_AUTOMATIONS: '1',
     XEZ_REVIEW_GATE: '1',
     XEZ_NO_BANNER: '1',
+    XEZ_CLAUDE_BIN: agentBin('claude'),
+    XEZ_CODEX_BIN: agentBin('codex'),
+    XEZ_PI_BIN: agentBin('pi'),
   })
   delete env.ANTHROPIC_MODEL
   // Run from inside a xezar task, the harness inherits that task's own handoff and follow-up

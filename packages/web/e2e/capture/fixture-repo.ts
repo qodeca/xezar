@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path'
 /**
  * The small, believable project the captures show: a TypeScript web shop with a login bug, a few
  * project skills and one multi-step workflow. Everything the screenshots render comes from here
- * or from the dry-run mock, never from the developer's machine, so a re-run shows the same data.
+ * or from the scripted agents in `agents/`, never from the developer's machine, so a re-run shows the same data.
  *
  * Commits carry a FIXED author and date, so the Git view renders the same history every time.
  */
@@ -123,33 +123,48 @@ steps:
     prompt: "Review the change for {{task}}"
 `
 
-/**
- * A slow check step. The dry-run mock answers an agent turn in about a second, so a task that
- * must still read "running" when the tasks list is captured needs a step that genuinely runs:
- * one short agent turn that ends done, then a check command that sleeps.
- */
-export const LONG_WORKFLOW_YAML = `name: build-and-verify
-description: Implement the change, then run the full verification suite.
-steps:
-  - id: implement
-    name: Implement
-    prompt: "{{task}} mock:done"
-  - id: verify
-    name: Verify
-    command: sleep 1200
-`
-
-/**
- * The mock answers `mock:ask` with an XEZ:ASK question. Appending the marker in the workflow's
- * step prompt keeps it out of the task text the thread and the task list show, and the instruction
- * before it pushes it past the 120 characters the mock echoes back.
- */
+/** A one-step workflow that explores first and asks before it changes anything. */
 export const ASK_WORKFLOW_YAML = `name: explore-then-ask
 description: Explore the code first, then ask before changing anything.
 steps:
   - id: explore
     name: Explore and ask
-    prompt: "{{task}}\\n\\nRead the checkout module and every date helper first. List each place that formats or parses a date, then ask before you change anything.\\n\\nmock:ask"
+    prompt: "{{task}}\\n\\nRead the relevant code first, then ask before you change anything."
+`
+
+const HEADER_TS = `import { logo, nav } from './parts'
+
+export function renderHeader(): string {
+  return \`<header class="site-header">\${logo()}\${nav()}</header>\`
+}
+`
+
+const PRODUCTS_TS = `import type { Db } from '../db'
+
+export async function searchProducts(db: Db, term: string) {
+  return db.query(
+    \`SELECT id, name, price
+       FROM products
+      WHERE name ILIKE '%' || $1 || '%'
+      ORDER BY name
+      LIMIT 50\`,
+    [term],
+  )
+}
+`
+
+const DATES_TS = `export function deliveryDate(date: Date): string {
+  return date.toLocaleDateString()
+}
+
+export function orderDate(date: Date): string {
+  return \`\${date.getMonth() + 1}/\${date.getDate()}/\${date.getFullYear()}\`
+}
+
+export function parseCardExpiry(value: string): Date {
+  const [month, year] = value.split('/')
+  return new Date(Number(\`20\${year}\`), Number(month) - 1, 1)
+}
 `
 
 /** Create the fixture repository at `root` with one committed history. */
@@ -170,12 +185,16 @@ export function createFixtureRepo(root: string, name: string): void {
   write(root, 'src/cart/total.ts', CART_TS)
   git(root, 'add', '.')
   git(root, 'commit', '-qm', 'feat(cart): cart total')
+  write(root, 'src/ui/header.ts', HEADER_TS)
+  write(root, 'src/search/products.ts', PRODUCTS_TS)
+  write(root, 'src/checkout/dates.ts', DATES_TS)
+  git(root, 'add', '.')
+  git(root, 'commit', '-qm', 'feat(shop): header, product search and checkout dates')
   // Project skills and workflows are committed too, the way a team would keep them. A pinned
   // empty `skillsRepos` keeps the team collection out, so the skill list is exactly these three
   // (docs/testing/agent-browser.md § Team skills).
   for (const [file, body] of Object.entries(SKILLS)) write(root, `.xezar/skills/${file}`, body)
   write(root, '.xezar/workflows/ship-a-fix.yaml', WORKFLOW_YAML)
-  write(root, '.xezar/workflows/build-and-verify.yaml', LONG_WORKFLOW_YAML)
   write(root, '.xezar/workflows/explore-then-ask.yaml', ASK_WORKFLOW_YAML)
   write(root, '.xezar/config.json', `${JSON.stringify({ skillsRepos: [] }, null, 2)}\n`)
   git(root, 'add', '.')

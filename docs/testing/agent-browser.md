@@ -294,7 +294,10 @@ npm run capture:screenshots -w @qodeca/xezar-web -- -t inbox  # one state
 
 It boots its own dry-run server over a throwaway workspace (with the Inbox, Automations and the
 review gate switched on, and a sandboxed `HOME`), seeds it through the API, and writes straight
-into the docs folder. The list of states is `packages/web/e2e/capture/manifest.ts`;
+into the docs folder. The server does not run the bundled test mocks: `XEZ_CLAUDE_BIN`,
+`XEZ_CODEX_BIN` and `XEZ_PI_BIN` point at the harness's own scripted agents in `capture/agents/`,
+which play each seeded task its own turn through that backend's protocol (`agents/scenarios.mjs`),
+so the pictures carry no mock text and no cloned rows. A new seeded task needs a scenario there. The list of states is `packages/web/e2e/capture/manifest.ts`;
 `packages/web/src/docs-screenshots.test.ts` holds every listed file to its size budget. No image
 tool is required: PNG decoding, palette re-encoding and GIF assembly are `node:zlib` code in
 `image-codec.ts`. What it normalises before each capture, and why, is in the generated
