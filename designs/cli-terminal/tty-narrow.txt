@@ -1,0 +1,102 @@
+# tty-narrow.txt – `xez` in an interactive terminal 40 columns wide
+#
+# Lines that start with `#` are notes. xezar never prints them.
+# Below 60 columns there is no table. Entries become two-part blocks, and the
+# live region is one summary line. The ruler shows the 40-column limit.
+#
+#        1         2         3         4
+#234567890123456789012345678901234567890
+
+# ───────────────────────────────────────
+# Scene 1 – boot for project “beta”
+# ───────────────────────────────────────
+
+$ xez
+[stdout]
+
+  xezar 0.16.0 · beta
+  branch feature/login
+  ~/Projects/beta
+
+  cockpit
+    http://localhost:4322
+  agents
+    Claude Code 2.1.3
+    Codex 0.52.0
+    pi 0.9.1
+    OpenCode missing
+  tools
+    git 2.47.0 · gh 2.63.0
+
+# A path longer than 38 columns is cut in the middle with `…`, keeping the
+# last folder: `~/Projects/clients/…/beta`. A URL is never cut. If it is
+# longer than the width it wraps, and most terminals still link it.
+
+# ───────────────────────────────────────
+# Scene 2 – activity. Line 1: time, level,
+# subject. Then the message, indented 4,
+# at most 3 lines, the last one cut with …
+# ───────────────────────────────────────
+
+[stderr]
+  10:07:02 info  b98de765
+    started — implement · Codex
+  10:12:08 error a12bc345
+    check unit-tests failed — exit 1
+    · 2m 23s
+  10:14:30 warn  b98de765
+    needs you — “Pin vitest to 3.2.4 or
+    allow 3.2.x?”
+    http://localhost:4322/p/beta/tasks/
+    b98de765
+  10:16:11 warn  http
+    409 POST /api/v1/p/:projectId/runs/
+    :id/finish — “no open session”
+  10:19:04 error b98de765
+    failed — Codex stopped · exit code
+    not reported
+  2 active — 2 running — 1 failed
+
+# The last line is the live region: one line, redrawn in place. Same grammar
+# as the 80-column summary without “since start” (README.md § 6.3). b98de765
+# asked a question, was answered, then failed, so it is no longer active and
+# no longer needs you: 2 tasks are active and 1 failed. Parts that do not fit
+# are left out from the right with …; the needs-you count never is. It never wraps, so a redraw never leaves debris.
+# The URL is the one exception to “at most 3 lines”: a URL is never cut.
+
+# ───────────────────────────────────────
+# Scene 3 – resize from 80 to 40 columns
+# while the table is on screen
+# ───────────────────────────────────────
+
+# At 80 columns the last 7 lines were the table (see tty.txt scene 3).
+# On resize xezar waits 100 ms for the size to settle, erases its own live
+# region (only those lines, never scrollback), and draws the one-line summary:
+
+  4 active — 1 needs review · 2 running…
+
+# Lines already printed at 80 columns are not reflowed. The terminal owns
+# scrollback. Resizing back above 60 columns draws the table again.
+
+# ───────────────────────────────────────
+# Scene 4 – no active tasks
+# ───────────────────────────────────────
+
+  No active tasks
+
+# ───────────────────────────────────────
+# Scene 5 – Ctrl-C
+# ───────────────────────────────────────
+
+^C
+[stderr]
+  10:31:40 info  xezar
+    stopping — 2 tasks are still running
+
+  Session summary — 25m 28s
+    3 done · 1 needs review
+    1 failed · 0 cancelled
+    2 tasks were still running.
+    xezar picks them up on the next
+    start.
+  xezar stopped for beta.
