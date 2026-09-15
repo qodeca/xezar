@@ -41,6 +41,7 @@ const THEME_SELECTORS = [
   ':root',
   '.light',
   ":root[data-accent='violet']",
+  ":root[data-density='roomy']",
   ":root[data-density='compact']",
   ":root[data-density='ultra']",
   ":root[data-width='wide']",

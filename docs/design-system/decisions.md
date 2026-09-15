@@ -47,7 +47,7 @@ The next five records carry the decisions of the "air" design (`designs/design-s
 | **Status** | Accepted – in force from step 1 of #424 |
 | **Context** | A second knob for "air" was possible, and the tighter densities could have pinned today's gaps. The owner's rule: "the layout should always look the same" (Air D-3), with one lever (Air D-7). |
 | **Decision** | `data-density` changes only `--spacing`. The rhythm tokens are built on it, so every density scales the rhythm and the control sizes as one piece. Compact and Compact for real scale the new rhythm; no density reproduces the old look. Hand-set pixels are outside the lever and go (D-06). |
-| **Consequences** | The tokens are `calc(var(--spacing) * n)`, never fixed px. Half-pixel values at compact and ultra are accepted (`foundations.md` §4.1). The release note of the step that loosens the default says plainly that no density reproduces the old look. A proposed Roomy density (5 px per unit) uses the same lever; it ships with step 4 of #424. |
+| **Consequences** | The tokens are `calc(var(--spacing) * n)`, never fixed px. Half-pixel values at compact and ultra are accepted (`foundations.md` §4.1). The release note of the step that loosens the default says plainly that no density reproduces the old look. The Roomy density (5 px per unit) uses the same lever; it shipped with step 4 of #424. |
 | **Source** | `designs/design-system-air/README.md` § 7 and § 13 (Air D-3, Air D-7); the step-0 design review, which measured ×1.25 / ×0.75 on the thread and the settings list. |
 
 ### D-05 The looser rhythm ships as the default, with no flag

@@ -30,6 +30,7 @@ import { jsonZodValidator, optionalJsonZodValidator, paramZodValidator, queryZod
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod';
 import {
+  appearanceSchema,
   isSafeSessionId,
   resumeCommand,
   setWorkspaceUiStateInputSchema,
@@ -708,26 +709,8 @@ const SKILL_USAGE_MAX_ENTRIES = 200;
 // BOTH ui-state routes (per-repo and workspace) via `parseUiStateBody`.
 const UI_STATE_MAX_KEYS = 200;
 
-/** Settings → Appearance (redesign R6): accent + density + reading width. ONE
- *  schema for both ui-state files — per-repo (the legacy home, kept so an older
- *  xezar in the same repo still honours it) and workspace
- *  (`~/.xezar/ui-state.json`, its post-migration home — multi-project spec,
- *  Data Model).
- *
- *  Every key is `.optional()` so an older ui-state.json parses unchanged, but
- *  each one must be listed HERE: the enclosing `workspaceUiStateSchema` is
- *  `.passthrough()` at the top level only, so an unlisted key inside
- *  `appearance` is stripped by zod and then wiped from the file by the shallow
- *  merge-on-write. The cockpit adopts the PUT response as authoritative, so a
- *  stripped key does not merely fail to persist — it visibly reverts the
- *  control the user just touched. Adding an appearance preference means adding
- *  it here in the same change. */
-const appearanceSchema = z.object({
-  accent: z.enum(['lime', 'violet']).optional(),
-  density: z.enum(['comfortable', 'compact', 'ultra']).optional(),
-  width: z.enum(['narrow', 'wide']).optional(),
-});
-
+// Settings → Appearance (`appearanceSchema`) is the contract's one definition, imported above —
+// read its doc comment before adding a preference: an unlisted key is stripped and then wiped.
 const uiStateSchema = z
   .object({
     // `null` clears the recorded choice — the composer's "no skill, no workflow" state,

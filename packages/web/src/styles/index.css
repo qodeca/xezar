@@ -245,6 +245,13 @@
   --ring: var(--violet);
 }
 
+/* Roomy density: the loose end of the same one-token lever — 5px/unit (+25% on comfortable), so
+ * paddings, gaps and control heights open up while the type scale stays untouched. Same
+ * `:root[…]` (unlayered) placement as compact and ultra below. */
+:root[data-density='roomy'] {
+  --spacing: 0.3125rem;
+}
+
 /* Compact density: Tailwind v4's whole numeric spacing scale keys off ONE token (`--spacing`,
  * default 0.25rem — every `p-4`/`gap-2`/`h-14` is `calc(var(--spacing) * n)`), so shrinking it
  * to 3.5px/unit tightens paddings, gaps and control heights ~12% across the cockpit while the

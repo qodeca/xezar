@@ -24,7 +24,7 @@
     if (accent === 'violet') root.dataset.accent = 'violet'
     else delete root.dataset.accent
     var density = read('ds-density')
-    if (density === 'compact' || density === 'ultra') root.dataset.density = density
+    if (density === 'roomy' || density === 'compact' || density === 'ultra') root.dataset.density = density
     else delete root.dataset.density
     if (read('ds-width') === 'wide') root.dataset.width = 'wide'
     else delete root.dataset.width

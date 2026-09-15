@@ -71,7 +71,7 @@ Source: `packages/web/src/styles/index.css`. Every token below has both theme va
 | Token | Declared in | Documented in | Status |
 | --- | --- | --- | --- |
 | `--primary`, `--primary-foreground`, `--ring` | `:root[data-accent='violet']` | theming.md §Accent, foundations.md §1.2 | Documented |
-| `--spacing` | `:root[data-density='compact']`, `:root[data-density='ultra']` (default `0.25rem` in `@theme static`) | foundations.md §4, theming.md | Documented |
+| `--spacing` | `:root[data-density='roomy']`, `:root[data-density='compact']`, `:root[data-density='ultra']` (default `0.25rem` in `@theme static`) | foundations.md §4, theming.md | Documented |
 | `--measure` | `:root[data-width='wide']` (also `:root`) | foundations.md §9, theming.md | Documented |
 
 ### 1.3 Static scales (`@theme static`)

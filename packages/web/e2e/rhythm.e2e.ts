@@ -11,17 +11,18 @@ import record from './fixtures/thread-run.record.json'
 /**
  * The shipped rhythm (#424 step 2, design `designs/design-system-air/` § 9.2 and AC 3), read
  * off the rendered cockpit through computed style – not off class names – at the default
- * density and again at Compact for real, where every value must be 75 %.
+ * density, at Roomy (#424 step 4), where every value must be 125 %, and at Compact for real,
+ * where every value must be 75 %.
  *
  * Boots its own server (the thread fixture, same doctrine as task-thread.e2e.ts) so the
  * density this spec saves lands in the fixture's pinned `XEZ_HOME`, never in the shared
- * environment another spec reads. The Roomy leg (125 %) arrives with step 4.
+ * environment another spec reads.
  */
 
 const sessionId = `e2e-rhythm-${process.pid}`
 const RUN_ID: string = record.id
 
-/** Compact and Compact for real can give half pixels; allow for rounding. */
+/** Roomy and Compact for real can give fractional pixels; allow for rounding. */
 const TOLERANCE_PX = 0.5
 
 function freePort(): Promise<number> {
@@ -127,7 +128,7 @@ function expectRhythm(actual: Rhythm, scale: number): void {
   expect(off).toEqual([])
 }
 
-function chooseDensity(value: 'comfortable' | 'ultra'): void {
+function chooseDensity(value: 'comfortable' | 'roomy' | 'ultra'): void {
   browser.goto(`${baseUrl}/settings/global/appearance`)
   browser.waitForFunction(`document.querySelector('[data-slot="appearance-density"]') !== null`)
   browser.click(`[data-slot="appearance-density"] [data-value="${value}"]`)
@@ -170,6 +171,15 @@ afterAll(async () => {
 describe('the rhythm tokens on the rendered cockpit', () => {
   it('ships the default rhythm at Comfortable', () => {
     expectRhythm(measure(), 1)
+  })
+
+  it('scales every value to 125 % at Roomy (10/30/25/20/15/40/40/40)', () => {
+    chooseDensity('roomy')
+    try {
+      expectRhythm(measure(), 1.25)
+    } finally {
+      chooseDensity('comfortable')
+    }
   })
 
   it('scales every value to 75 % at Compact for real', () => {

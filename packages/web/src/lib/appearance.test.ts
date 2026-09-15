@@ -30,6 +30,8 @@ describe('normalize', () => {
       expect(normalizeDensity(raw)).toBe('comfortable')
       expect(normalizeWidth(raw)).toBe('narrow')
     }
+    expect(normalizeDensity('roomy')).toBe('roomy')
+    expect(normalizeDensity('comfortable')).toBe('comfortable')
     expect(normalizeDensity('compact')).toBe('compact')
     expect(normalizeDensity('ultra')).toBe('ultra')
     expect(normalizeWidth('wide')).toBe('wide')

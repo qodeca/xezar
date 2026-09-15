@@ -138,10 +138,23 @@ export type SetWorkspaceConfigInput = z.infer<typeof setWorkspaceConfigInputSche
 
 // ---- GUI prefs — the two open bags ----------------------------------------------------------
 
-/** Settings → Appearance: accent + density + reading width. ONE shape for both ui-state files. */
-const appearanceSchema = z.object({
+/** Settings → Appearance: accent + density + reading width. ONE shape for both ui-state files —
+ *  per-repo (the legacy home, kept so an older xezar in the same repo still honours it) and
+ *  workspace (`~/.xezar/ui-state.json`, its post-migration home). The server imports this schema
+ *  for the per-repo route; never declare a second copy there (#424 step 4).
+ *
+ *  Every key is `.optional()` so an older ui-state.json parses unchanged, but each one must be
+ *  listed HERE: the enclosing ui-state schemas are open at the top level only, so an unlisted key
+ *  inside `appearance` is stripped by zod and then wiped from the file by the shallow
+ *  merge-on-write. The cockpit adopts the PUT response as authoritative, so a stripped key does
+ *  not merely fail to persist — it visibly reverts the control the user just touched. Adding an
+ *  appearance preference means adding it here in the same change.
+ *
+ *  `density`: `roomy` is 5px per spacing unit, `comfortable` the 4px default, `compact` 3.5px,
+ *  `ultra` ("Compact for real") 3px — the `:root[data-density]` blocks in the cockpit's index.css. */
+export const appearanceSchema = z.object({
   accent: z.enum(['lime', 'violet']).optional(),
-  density: z.enum(['comfortable', 'compact', 'ultra']).optional(),
+  density: z.enum(['roomy', 'comfortable', 'compact', 'ultra']).optional(),
   width: z.enum(['narrow', 'wide']).optional(),
 });
 

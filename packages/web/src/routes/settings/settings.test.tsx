@@ -28,7 +28,10 @@ let requests: Array<{ method: string; url: string; body?: unknown }> = []
 /** Both ui-state stores plus the project config answer; everything else the routes fetch stays
  *  honestly pending. Both stores are served on purpose — a section writing to the wrong one
  *  would otherwise hang instead of failing loudly. */
-function serve(uiState: Record<string, unknown> = {}) {
+function serve(
+  uiState: Record<string, unknown> = {},
+  { rejectWorkspacePut = false, holdWorkspacePut }: { rejectWorkspacePut?: boolean; holdWorkspacePut?: Promise<void> } = {},
+) {
   requests = []
   const json = (payload: unknown) =>
     new Response(JSON.stringify(payload), { status: 200, headers: { 'content-type': 'application/json' } })
@@ -41,6 +44,12 @@ function serve(uiState: Record<string, unknown> = {}) {
       const body = init?.body ? (JSON.parse(String(init.body)) as unknown) : undefined
       requests.push({ method, url, body })
       if (url === '/api/v1/workspace/ui-state' && method === 'GET') return json(uiState)
+      if (url === '/api/v1/workspace/ui-state' && method === 'PUT' && holdWorkspacePut) await holdWorkspacePut
+      if (url === '/api/v1/workspace/ui-state' && method === 'PUT' && rejectWorkspacePut)
+        return new Response(JSON.stringify({ error: 'invalid appearance.density' }), {
+          status: 400,
+          headers: { 'content-type': 'application/json' },
+        })
       if (url === '/api/v1/workspace/ui-state' && method === 'PUT')
         return json({ ...uiState, ...(body as Record<string, unknown>) })
       if (url === '/api/v1/ui-state' && method === 'GET') return json(projectUiState)
@@ -317,6 +326,93 @@ describe('the appearance section (global scope)', () => {
         appearance: { accent: 'lime', density: 'comfortable', width: 'narrow' },
       })
     })
+  })
+
+  it('Roomy is offered first, stamps the root, mirrors, and PUTs the full object (#424 step 4)', async () => {
+    serve({ appearance: { accent: 'violet' } })
+    renderAt('/settings/global/appearance')
+    await waitFor(() => {
+      expect(screen.getByRole('radio', { name: 'Violet' }).getAttribute('aria-checked')).toBe('true')
+    })
+
+    const density = document.querySelector('[data-slot="appearance-density"]')!
+    expect([...density.querySelectorAll('[role="radio"]')].map((r) => r.textContent)).toEqual([
+      'Roomy',
+      'Comfortable',
+      'Compact',
+      'Compact for real',
+    ])
+    expect(
+      screen.getByText('Roomy adds space between things and the Compact options take it away — text stays the same size.'),
+    ).not.toBeNull()
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Roomy' }))
+    expect(document.documentElement.dataset.density).toBe('roomy')
+    expect(localStorage.getItem('xez-density')).toBe('roomy')
+    await waitFor(() => {
+      expect(requests.find((r) => r.method === 'PUT' && r.url === '/api/v1/workspace/ui-state')?.body).toEqual({
+        appearance: { accent: 'violet', density: 'roomy', width: 'narrow' },
+      })
+    })
+    expect(screen.getByRole('radio', { name: 'Roomy' }).getAttribute('aria-checked')).toBe('true')
+  })
+
+  // An older server refuses `roomy` with a 400. The server's GET answer has not changed, so a
+  // refetch hands back a structurally shared, identical `data` reference and the provider's
+  // "server wins" effect never re-runs: the control, the root attribute and the pre-paint mirror
+  // must revert because the save handler restores them, not because a refetch happens to.
+  it('a refused save reverts the control, the root attribute and the mirror', async () => {
+    serve({ appearance: { density: 'compact' } }, { rejectWorkspacePut: true })
+    renderAt('/settings/global/appearance')
+    await waitFor(() => {
+      expect(screen.getByRole('radio', { name: 'Compact' }).getAttribute('aria-checked')).toBe('true')
+    })
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Roomy' }))
+    await waitFor(() => {
+      expect(requests.some((r) => r.method === 'PUT' && r.url === '/api/v1/workspace/ui-state')).toBe(true)
+    })
+    await waitFor(() => {
+      expect(screen.getByRole('radio', { name: 'Compact' }).getAttribute('aria-checked')).toBe('true')
+    })
+    expect(screen.getByRole('radio', { name: 'Roomy' }).getAttribute('aria-checked')).toBe('false')
+    expect(document.documentElement.dataset.density).toBe('compact')
+    expect(localStorage.getItem('xez-density')).toBe('compact')
+  })
+
+  it('two queued refused saves end on the server value, not on the first unsaved click', async () => {
+    // Roomy then Violet, both in flight before either answers, both refused. The second save's
+    // click-time value is the unsaved Roomy, so reverting to it would keep painting a density the
+    // server never stored — the only correct end state is the server's own appearance.
+    let release!: () => void
+    serve(
+      { appearance: { density: 'compact' } },
+      { rejectWorkspacePut: true, holdWorkspacePut: new Promise<void>((done) => (release = done)) },
+    )
+    renderAt('/settings/global/appearance')
+    await waitFor(() => {
+      expect(screen.getByRole('radio', { name: 'Compact' }).getAttribute('aria-checked')).toBe('true')
+    })
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Roomy' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Violet' }))
+    await waitFor(() => {
+      expect(requests.filter((r) => r.method === 'PUT' && r.url === '/api/v1/workspace/ui-state')).toHaveLength(2)
+    })
+    release()
+
+    await waitFor(() => {
+      expect(screen.getByRole('radio', { name: 'Compact' }).getAttribute('aria-checked')).toBe('true')
+    })
+    await waitFor(() => {
+      expect(screen.getByRole('radio', { name: 'Lime' }).getAttribute('aria-checked')).toBe('true')
+    })
+    expect(screen.getByRole('radio', { name: 'Roomy' }).getAttribute('aria-checked')).toBe('false')
+    expect(screen.getByRole('radio', { name: 'Violet' }).getAttribute('aria-checked')).toBe('false')
+    expect(document.documentElement.dataset.density).toBe('compact')
+    expect(document.documentElement.hasAttribute('data-accent')).toBe(false)
+    expect(localStorage.getItem('xez-density')).toBe('compact')
+    expect(localStorage.getItem('xez-accent')).toBe('lime')
   })
 
   it('reading width round-trip: Wide stamps the root and PUTs the full object; back to Narrow clears it', async () => {
