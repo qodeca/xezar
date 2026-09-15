@@ -332,7 +332,7 @@ function WorkflowsBuilder({ routeName }: { routeName: string | undefined }) {
   return (
     <div data-route="workflows" className="flex min-h-full flex-col">
       {/* Desktop header — below `md` the shell's top bar already says "Workflows". */}
-      <header className="sticky top-0 z-10 hidden h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-5 md:flex">
+      <header className="sticky top-0 z-10 hidden h-14 shrink-0 items-center gap-3 border-b border-border bg-background md:flex md:px-section">
         <h1 className="text-base font-semibold">Workflows</h1>
         <p className="text-[13px] text-muted-foreground">
           Portable skill chains — the agent applies them top to bottom.
@@ -350,7 +350,7 @@ function WorkflowsBuilder({ routeName }: { routeName: string | undefined }) {
           setOverId(null)
         }}
       >
-        <div className="flex flex-1 flex-col gap-6 p-3 pb-[calc(90px+env(safe-area-inset-bottom))] md:flex-row md:p-5 md:pb-5">
+        <div className="flex flex-1 flex-col gap-6 p-4 pb-[calc(90px+env(safe-area-inset-bottom))] md:flex-row md:p-section md:pb-section">
           {/* ---- canvas ---------------------------------------------------------------- */}
           <section data-slot="wb-main" className="mx-auto w-full min-w-0 max-w-3xl flex-1">
             <div className="flex flex-wrap items-center gap-2">

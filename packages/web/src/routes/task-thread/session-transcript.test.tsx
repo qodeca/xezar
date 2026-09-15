@@ -97,6 +97,42 @@ describe('transcript adapters and row building', () => {
     ])
   })
 
+  it('marks the last row before the other speaker takes over, and only that row', () => {
+    const state: ThreadState = {
+      turns: [
+        {
+          id: 'turn-1',
+          items: [
+            { kind: 'message', id: 'a1', role: 'assistant', text: 'Looking' },
+            { kind: 'note', id: 'n1', text: 'step started', tone: 'dim' },
+            { kind: 'message', id: 'u1', role: 'user', text: 'Steer' },
+            { kind: 'message', id: 'a2', role: 'assistant', text: 'Done' },
+          ],
+        },
+        { id: 'turn-2', userMessage: { text: 'Follow up' }, items: [{ kind: 'message', id: 'a3', role: 'assistant', text: 'Ok' }] },
+      ],
+    }
+    const rows = buildTranscriptRows(
+      mainTranscriptSections(
+        run({ queuedMessages: [{ id: 'm1', text: 'Queued', createdAt: '2026-07-31T00:00:01.000Z' }] }),
+        state,
+      ),
+      'r1',
+    )
+    expect(rows.map((row) => [row.key, row.speakerEnd])).toEqual([
+      // Two user messages in a row are one speaker: no group gap between them.
+      ['task', false],
+      ['queued:m1', true],
+      ['turn-1:a1', false],
+      ['turn-1:n1', true],
+      ['turn-1:u1', true],
+      ['turn-1:a2', true],
+      ['turn-2:user', true],
+      // The last row has no next speaker.
+      ['turn-2:a3', false],
+    ])
+  })
+
   it('groups the same normalized entries for an agent section', () => {
     const entries = [tool('read-1'), tool('read-2')]
     const rows = buildTranscriptRows(agentTranscriptSections('agent-1', entries), 'r1')

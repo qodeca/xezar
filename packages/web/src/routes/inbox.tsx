@@ -81,7 +81,7 @@ export function InboxRoute() {
   return (
     <div data-route="inbox" className="flex min-h-full flex-col">
       {/* Desktop header — below `md` the shell's top bar already says "Inbox". */}
-      <header className="sticky top-0 z-10 hidden h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-5 md:flex">
+      <header className="sticky top-0 z-10 hidden h-14 shrink-0 items-center gap-3 border-b border-border bg-background md:flex md:px-section">
         <h1 className="text-base font-semibold">Inbox</h1>
         <p className="text-[13px] text-soft-foreground">
           {inboxOff
@@ -90,7 +90,7 @@ export function InboxRoute() {
         </p>
       </header>
 
-      <div className="flex flex-1 flex-col p-3 pb-[calc(90px+env(safe-area-inset-bottom))] md:p-5 md:pb-5">
+      <div className="flex flex-1 flex-col p-4 pb-[calc(90px+env(safe-area-inset-bottom))] md:p-section md:pb-section">
         {inboxOff ? (
           <CenteredState
             icon={<InboxIcon />}
@@ -125,7 +125,7 @@ export function InboxRoute() {
             />
           )
         ) : (
-          <ul data-slot="todo-list" className="mx-auto flex w-full max-w-3xl flex-col gap-2.5">
+          <ul data-slot="todo-list" className="mx-auto flex w-full max-w-3xl flex-col gap-list">
             {todos.map((todo) => (
               <TodoCard
                 key={todo.id}
@@ -224,9 +224,9 @@ function TodoCard({
     <li
       data-slot="todo-card"
       data-id={todo.id}
-      className="flex flex-col gap-2.5 rounded-lg border border-border bg-card p-4 shadow-xs"
+      className="flex flex-col gap-2.5 rounded-lg border border-border bg-card p-inset shadow-xs"
     >
-      <div className="flex items-start gap-3">
+      <div className="flex items-start gap-stack">
         <StatusDot
           tone={CARD_ATTENTION.tone}
           pulse={CARD_ATTENTION.pulse}
@@ -239,7 +239,7 @@ function TodoCard({
           </p>
           <div
             data-slot="todo-meta"
-            className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-soft-foreground"
+            className="mt-row flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-soft-foreground"
           >
             {todo.ts ? <span>{shortAge(todo.ts)} ago</span> : null}
             {todo.action ? <span>{todo.action}</span> : null}

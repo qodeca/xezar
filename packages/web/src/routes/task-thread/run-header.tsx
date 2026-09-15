@@ -157,7 +157,7 @@ export function RunHeader({
   return (
     <header
       data-slot="run-header"
-      className="relative z-20 border-b border-border bg-background/95 px-3 pt-2 backdrop-blur md:sticky md:top-0 md:px-6 md:pt-3"
+      className="relative z-20 border-b border-border bg-background/95 px-3 pt-2 backdrop-blur md:sticky md:top-0 md:px-section md:pt-group"
     >
       <div className="mx-auto w-full max-w-[var(--measure)]">
         <div className="flex min-w-0 items-center gap-2">
@@ -219,7 +219,7 @@ export function RunHeader({
             metadata — it belongs with the pill above, not behind a tap with the diff stats. */}
         <MonitoringSchedule run={run} />
 
-        <div data-slot="run-tabs" className="mt-1.5 flex items-end gap-1 md:mt-2.5">
+        <div data-slot="run-tabs" className="mt-stack flex items-end gap-1">
           <TabLink to={`/tasks/${run.id}`} active={tab === 'session'}>
             Session
           </TabLink>

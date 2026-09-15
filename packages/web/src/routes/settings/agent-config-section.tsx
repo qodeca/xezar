@@ -74,7 +74,7 @@ function AgentConfigView({ listing, installed }: { listing: AgentConfigListing; 
   }
 
   return (
-    <div data-slot="agent-config" className="flex flex-col gap-4 p-4 md:p-6">
+    <div data-slot="agent-config" className="flex flex-col gap-list p-list md:p-group">
       {!listing.editable && (
         <div
           data-slot="agent-config-readonly"
