@@ -1,0 +1,312 @@
+/* Air proposal – review chrome: the bar bar.js renders, the Show and open-point radios, figures,
+ * frames, the compare layout and the values table. None of it is part of a drawn screen. Every
+ * selector starts at .air-*, .framed, .only-*, .phone-375 or .bars / .bar (B-5).
+ *
+ * B-4 exception: this sheet declares one custom property, --air-head-h, because the clearance rule
+ * that reads it runs on every page and this is the only sheet every page loads. It is declared here
+ * and nowhere else (B-16); styles.css keeps its pair, --air-bar-h.
+ */
+
+/* ---------- the bar (.doc-bar, cockpit.css:323): sticky above 860, static at 860 and below ---------- */
+.air-bar {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.air-bar nav,
+.air-view {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  margin: 0;
+}
+
+/* The nav links are one line box tall – 15 px measured – so the shared 6 px row gap left two
+ * wrapped rows 21 px apart centre to centre, under the 24 px spacing floor for undersized targets
+ * (WCAG 2.5.8). 10 px makes it 25. Only the nav wraps below ~430 px; the form's own rows are 26 px
+ * controls 6 px apart, and a 24 px circle on a nav link still clears the first form row. */
+.air-bar nav { row-gap: 10px; }
+
+.air-bar a[aria-current='page'] { font-weight: 600; }
+
+.air-view fieldset {
+  position: relative; /* keeps each .sr-only radio inside the bar, so focusing one never scrolls */
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.air-view legend {
+  float: left; /* a floated legend joins the flex row */
+  margin-right: 4px;
+  padding: 0;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+.air-view fieldset label {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--muted-foreground);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* The checked option carries weight and fill, not colour alone. */
+.air-view input:checked + label {
+  font-weight: 600;
+  background: var(--muted);
+  color: var(--foreground);
+}
+
+/* The review chrome keeps its own focus indicator, at full opacity. The cockpit's ring/50
+ * (cockpit.css:233-234) measures ≈2.4:1 dark and ≈1.7:1 light against the bar under the violet
+ * accent (WCAG 1.4.11), and the bar is where the hub asks a reviewer to walk the keyboard path.
+ * The radios draw theirs on the label, because the input itself is .sr-only. */
+.air-bar a:focus-visible,
+.air-bar select:focus-visible,
+.air-view input:focus-visible + label {
+  outline: 3px solid var(--foreground);
+  outline-offset: 1px;
+}
+
+.air-view fieldset:disabled label { opacity: 0.5; cursor: not-allowed; }
+
+/* A disabled group's checked option is not a choice this view offers: left filled and bold, "A –
+ * 40 px" read as selected in the today view, beside a New-task button drawing today's 36 (D-12). */
+.air-view fieldset:disabled input:checked + label {
+  background: var(--card);
+  color: var(--muted-foreground);
+  font-weight: inherit;
+}
+
+.air-view .air-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+.air-view a {
+  color: var(--foreground);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.air-status,
+.air-note,
+.air-op-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+.air-status {
+  min-width: 16ch; /* fits "Showing proposed", so a flip never re-wraps the bar */
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.air-note { flex-basis: 100%; }
+.air-status:empty, .air-note:empty { display: none; }
+
+/* ---------- focus and anchors clear the sticky chrome (M11, WCAG 2.4.11) ---------- */
+/* A scroll margin on the page's content, not a root scroll-padding: the padding also counted the
+ * sticky bar, sidebar and page head, so tabbing into them threw a scrolled page back to the top.
+ * Sticky chrome keeps no margin. */
+:root :not(.air-bar, .air-bar *, .air-side, .air-side *, .page-head, .page-head *) { scroll-margin-top: var(--air-bar-h); }
+
+/* The page's own head sticks UNDER the bar, so content in .main has to clear both. bar.js measures
+ * it (--air-head-measured); the fallback holds where it never wrote one, which is a page with no
+ * head and any frame, where the bar is hidden and the script returns early. */
+:root { --air-head-h: var(--air-head-measured, 0px); }
+
+/* No width guard: the head is sticky at 860 and below too, which is where counting the bar alone
+ * parked focus under it. The head itself, the mobile bar and the sidebar keep the bar-only margin
+ * above – they are the chrome being cleared, not content sliding under it. */
+.air-screen .main :not(.page-head, .page-head *, .air-run-head, .air-run-head *, .mobile-bar, .mobile-bar *) {
+  scroll-margin-top: calc(var(--air-bar-h) + var(--air-head-h));
+}
+
+/* ---------- view switches ---------- */
+:root[data-view='today'] .only-air,
+:root:not([data-view='today']) .only-today {
+  display: none;
+}
+
+@media (min-width: 861px) {
+  :root .air-phone-only { display: none; }
+  .air-compare { overflow: hidden; }
+}
+
+/* ---------- figures and frames ---------- */
+.air-figure,
+.air-pair > figure {
+  min-width: 0;
+  margin: 0;
+}
+
+/* The view word comes first; --muted-foreground, not .frame-label's --soft-foreground (2.5:1 in light). */
+.air-caption {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted-foreground);
+}
+
+/* A 375 × 780 viewport inside .phone's 1 px border (border-box, cockpit.css:196-199, :465). */
+.phone-375 {
+  width: 377px;
+  height: 782px;
+}
+
+.air-pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 377px), 1fr));
+  gap: 20px;
+  align-items: start;
+}
+
+/* Full doc width at 1:1 (1132 px inside .doc). No iframe border; the ring is drawn outside it. */
+.air-wide-frame {
+  display: block;
+  width: 100%;
+  height: 520px;
+  border: 0;
+  border-radius: var(--radius-lg);
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+/* The only scaled frames: a 1600 × 900 window at 70.75 % in a borderless 1132 × 637 box. */
+.air-scaled {
+  width: 1132px;
+  max-width: 100%;
+  height: 637px;
+  overflow: hidden;
+}
+
+.air-scaled iframe {
+  display: block;
+  width: 1600px;
+  height: 900px;
+  border: 0;
+  transform: scale(0.7075);
+  transform-origin: 0 0;
+}
+
+.air-scaled-link { display: none; }
+
+/* The real threshold: .doc is 1180 wide at most, less its 24 px sides, so the box gets its full
+ * 1132 px only from a 1180 px window. Below that overflow: hidden cuts the right of the window. */
+@media (max-width: 1179px) {
+  .air-scaled { display: none; }
+  .air-scaled-link { display: inline; }
+}
+
+/* ---------- compare.html: body.air-compare – the bar, the link row, then <main> with two 1:1 frames ---------- */
+.air-compare {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.air-compare > main,
+.air-compare > main > figure {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-height: 0;
+  margin: 0;
+}
+
+.air-compare > main > figure > .air-caption {
+  margin: 0;
+  padding: 6px 24px;
+  border-top: 1px solid var(--border);
+}
+
+.air-compare > main > figure > iframe {
+  display: block;
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+}
+
+/* ---------- at 860 and below ---------- */
+@media (max-width: 860px) {
+  .air-bar {
+    position: static;
+    padding: 10px 16px;
+  }
+
+  /* The drawer is a fixed sheet (z 50) over a full-screen scrim (z 49, shell.css), and a static bar
+   * has no z-index to lift it: it sat behind both as ~20 invisible tab stops, and a click meant for
+   * it closed the drawer instead (WCAG 2.4.11). Hidden, not lifted – the controls leave the tab
+   * order with the pixels, and the drawer screenshot stays the product's own instead of carrying
+   * review chrome across the sheet. The scrim and the drawer's Close menu link back out. */
+  :root[data-drawer='open'] .air-bar { display: none; }
+
+  :root .air-desktop-only { display: none; }
+  .air-compare { height: auto; }
+  .air-compare > .doc-bar { position: static; } /* the link row scrolls away with the bar */
+  .air-compare > main > figure > iframe { min-height: 400px; }
+}
+
+/* ---------- the values table, the sprite ---------- */
+.framed .air-values { display: none; }
+.air-values-status { font-weight: 600; }
+
+.air-sprite {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+/* ---------- rhythm bars (hub): .bar with data-w="row|stack|list|inset|group|section" ---------- */
+.bars {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+}
+
+.bar {
+  display: grid;
+  grid-template-columns: 90px 1fr 60px;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+.bar i {
+  display: block;
+  height: 14px;
+  border-radius: 4px;
+  background: var(--primary);
+  opacity: 0.85;
+}
+
+.bar .v { font-family: var(--mono); text-align: right; }
+.bar[data-w='row'] i { width: var(--row); }
+.bar[data-w='stack'] i { width: var(--stack); }
+.bar[data-w='list'] i { width: var(--list); }
+.bar[data-w='inset'] i { width: var(--inset); }
+.bar[data-w='group'] i { width: var(--group); }
+.bar[data-w='section'] i { width: var(--section); }

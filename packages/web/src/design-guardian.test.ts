@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
+import spacingAllowlistJson from './design-guardian-spacing-allowlist.json'
+
 /**
  * Design guardian — a static scan enforcing the spec's design-system rules over the cockpit
  * sources (ported from the original cockpit's guardian). It runs inside `npm test`, so a violation fails
@@ -42,6 +44,15 @@ interface Rule {
   /** When set, a pattern match is a violation only if this returns true (a lookup the regex
    *  grammar cannot express, such as "the captured name is not a declared token"). */
   violates?: (match: RegExpMatchArray) => boolean
+  /** When set, each `<rel>|<token>` key may occur exactly `count` times, never more (growth) and
+   *  never fewer (a stale row). A key not in the map may occur zero times. */
+  allowOccurrences?: ReadonlyMap<string, AllowedOccurrence>
+}
+
+interface AllowedOccurrence {
+  count: number
+  /** Why the spelling stays for now – "convert in 3b: …" counts as one. */
+  reason: string
 }
 
 /** Shipped UI code and stylesheets — where the design tokens are the only color vocabulary. */
@@ -119,6 +130,17 @@ const NON_COLOR = new Set([
  * owner of the exemption rather than duplicating the allowlist.
  */
 const OWNED_ELSEWHERE = new Set(['black', 'white'])
+
+/**
+ * The hand-typed spacing pixels that predate `no-arbitrary-spacing` (#424 step 3a), keyed
+ * `<rel>|<token>` without line numbers so an unrelated edit does not churn them. The list only
+ * shrinks: a conversion deletes or lowers its row, and a new hand-typed pixel goes on the scale
+ * instead of into this file. The ceiling is the row count, lowered by every PR that deletes a row.
+ */
+const SPACING_ALLOWLIST: ReadonlyMap<string, AllowedOccurrence> = new Map(
+  Object.entries(spacingAllowlistJson as Record<string, AllowedOccurrence>),
+)
+const SPACING_ALLOWLIST_CEILING = 70
 
 const RULES: Rule[] = [
   {
@@ -211,6 +233,18 @@ const RULES: Rule[] = [
     why: 'viewport height is 100dvh/h-dvh — 100vh ignores mobile browser chrome (iOS rule)',
     pattern: /\b(?:(?:h|min-h|max-h)-screen|100vh)\b/g,
     applies: styleSources,
+  },
+  {
+    name: 'no-arbitrary-spacing',
+    why: 'spacing and control sizes come from the spacing scale or a rhythm token, so they move with the density lever; a hand-typed pixel (`gap-[7px]`, `h-[34px]`) stays put at every density – convert it rather than adding an allowlist row',
+    // Padding, margin, gap, space and the control heights (`h`, `min-h`, `size`) with an arbitrary
+    // length. The left boundary keeps `max-h-[…]` from reading as `h-[…]`; `-?` catches a negative
+    // margin. Widths, `max-*`, positioning, type and radius are layout facts and stay out, as do
+    // `calc()`/`var()` values (a digit must follow `[`).
+    pattern:
+      /(?<![\w-])(?:[a-z]+:)*-?(?:p|px|py|pt|pb|pl|pr|ps|pe|m|mx|my|mt|mb|ml|mr|ms|me|gap|gap-x|gap-y|space-x|space-y|h|min-h|size)-\[\d+(?:\.\d+)?(?:px|rem|em)\]/g,
+    applies: classSources,
+    allowOccurrences: SPACING_ALLOWLIST,
   },
 ]
 
@@ -325,6 +359,156 @@ function loadSources(): SourceFile[] {
 
 const sources = loadSources()
 
+/**
+ * Runs one rule over a set of files and returns every violation as `packages/web/<rel>:<line>  <token>`.
+ * Pure, so the real per-rule test and the fixture tests below run the SAME code path — a self-test
+ * that re-implemented this loop would only test a copy of it.
+ */
+function scan(rule: Rule, files: readonly SourceFile[]): string[] {
+  const violations: string[] = []
+  const found = new Map<string, string[]>()
+  for (const file of files) {
+    if (!rule.applies(file)) continue
+    if (rule.allowed?.(file.rel)) continue
+    file.lines.forEach((line, index) => {
+      for (const match of line.matchAll(rule.pattern)) {
+        if (rule.violates && !rule.violates(match)) continue
+        const violation = `packages/web/${file.rel}:${index + 1}  ${match[0].trim()}`
+        if (!rule.allowOccurrences) {
+          violations.push(violation)
+          continue
+        }
+        const key = `${file.rel}|${match[0].trim()}`
+        found.set(key, [...(found.get(key) ?? []), violation])
+      }
+    })
+  }
+  if (rule.allowOccurrences) {
+    for (const [key, sites] of found) {
+      const allowed = rule.allowOccurrences.get(key)?.count ?? 0
+      if (sites.length <= allowed) continue
+      const note = allowed === 0 ? '' : `  (allowlist row allows ${allowed}, found ${sites.length})`
+      violations.push(...sites.map((site) => site + note))
+    }
+    for (const [key, { count }] of rule.allowOccurrences) {
+      const seen = found.get(key)?.length ?? 0
+      if (seen < count) {
+        violations.push(`stale allowlist row ${key}: allows ${count}, found ${seen} – lower or delete it`)
+      }
+    }
+  }
+  return violations
+}
+
+/** A one-file fixture classified the way `loadSources` classifies a real file. */
+function fixture(rel: string, ...lines: string[]): SourceFile {
+  const ext = path.extname(rel)
+  return {
+    rel,
+    ext,
+    isTest: /\.test\.(?:ts|tsx)$/.test(rel),
+    isE2e: rel.startsWith('e2e/'),
+    lines: stripComments(lines.join('\n'), ext !== '.css').split('\n'),
+  }
+}
+
+function ruleNamed(name: string): Rule {
+  const rule = RULES.find((r) => r.name === name)
+  if (!rule) throw new Error(`no guardian rule named ${name}`)
+  return rule
+}
+
+/**
+ * Fixture verdicts for every rule: one spelling each rule must flag and one it must not, plus the
+ * file exemptions. These are GUARD tests that pass both before and after a change to `scan()` or
+ * `Rule` — on the real tree every rule reports nothing, so "the tree is still clean" alone could not
+ * notice a rule that quietly stopped reporting.
+ */
+const VERDICTS: { rule: string; flag: SourceFile[]; pass: SourceFile[] }[] = [
+  {
+    rule: 'no-raw-hex-colors',
+    flag: [fixture('src/x.tsx', 'const c = "#fff"')],
+    pass: [fixture('src/x.tsx', 'const zwsp = "&#8203;"'), fixture(INDEX_CSS, '--x: #fff;')],
+  },
+  {
+    rule: 'no-color-functions',
+    flag: [fixture('src/x.tsx', 'const c = "rgb(0 0 0)"')],
+    pass: [fixture('src/routes/github/github-filter.ts', 'const c = `rgb(${r} ${g} ${b})`')],
+  },
+  {
+    rule: 'unknown-color-token',
+    flag: [fixture('src/x.tsx', '<p className="text-warning" />')],
+    pass: [fixture('src/x.tsx', '<p className="text-foreground border-l-2 text-[11px] bg-black/50" />')],
+  },
+  {
+    rule: 'no-amber-text',
+    flag: [
+      fixture('src/x.tsx', '<p className="text-pending" />'),
+      fixture('src/x.tsx', '<p className="text-amber-400" />'),
+    ],
+    pass: [fixture('src/x.tsx', '<p className="text-pending-strong" />')],
+  },
+  {
+    rule: 'no-raw-black-white',
+    flag: [fixture('src/routes/x.tsx', '<div className="bg-black/50" />')],
+    pass: [
+      fixture('src/components/ui/x.tsx', '<div className="bg-black/50" />'),
+      fixture('src/components/zoomable-image.tsx', '<div className="bg-black/50" />'),
+    ],
+  },
+  {
+    rule: 'no-native-dialogs',
+    flag: [
+      fixture('src/x.tsx', 'if (confirm("sure?")) go()'),
+      fixture('src/x.tsx', 'window.alert("hi")'),
+      fixture('src/x.test.ts', 'confirm("sure?")'),
+    ],
+    pass: [fixture('src/x.tsx', 'foo.confirm("sure?")'), fixture('src/lib/bookmarklet.ts', 'alert("hi")')],
+  },
+  {
+    rule: 'no-dark-variant',
+    flag: [fixture('src/x.tsx', '<div className="dark:bg-card" />')],
+    pass: [fixture('src/x.tsx', 'const theme = { dark: value }')],
+  },
+  {
+    rule: 'fixture-serve-must-pin-xez-home',
+    flag: [fixture('e2e/x.e2e.ts', 'const env = { XEZ_DRY_RUN: "1" }')],
+    pass: [
+      fixture('e2e/x.e2e.ts', 'const env = { XEZ_DRY_RUN: "1", XEZ_HOME: home }'),
+      fixture('src/x.tsx', 'const env = { XEZ_DRY_RUN: "1" }'),
+    ],
+  },
+  {
+    rule: 'no-100vh',
+    flag: [
+      fixture('src/x.tsx', '<div className="h-screen" />'),
+      fixture('src/x.css', '.x { height: 100vh; }'),
+    ],
+    pass: [fixture('src/x.tsx', '<div className="h-dvh" />')],
+  },
+  {
+    rule: 'no-arbitrary-spacing',
+    flag: [
+      fixture('src/x.tsx', '<div className="h-[34px]" />'),
+      fixture('src/x.tsx', '<div className="size-[30px]" />'),
+      fixture('src/x.tsx', '<div className="md:min-h-[54px]" />'),
+      fixture('src/x.tsx', '<div className="-mt-[3px]" />'),
+      fixture('src/x.tsx', '<div className="ps-[1.5rem]" />'),
+    ],
+    pass: [
+      fixture('src/x.tsx', '<div className="h-9 gap-section max-h-[220px] w-[336px] -top-[11px]" />'),
+      fixture('src/x.tsx', '<div className="pb-[calc(90px+env(safe-area-inset-bottom))] text-[11px]" />'),
+      fixture('src/x.test.tsx', '<div className="h-[34px]" />'),
+      fixture('src/x.css', '.x { @apply h-[34px]; }'),
+    ],
+  },
+]
+
+/** The spacing rule with its allowlist swapped out, so fixtures do not depend on the real seed. */
+function spacingRule(allow: Record<string, AllowedOccurrence>): Rule {
+  return { ...ruleNamed('no-arbitrary-spacing'), allowOccurrences: new Map(Object.entries(allow)) }
+}
+
 describe('design guardian', () => {
   it('actually scans the codebase (guards against a broken walker)', () => {
     const rels = new Set(sources.map((f) => f.rel))
@@ -340,18 +524,99 @@ describe('design guardian', () => {
 
   for (const rule of RULES) {
     it(`${rule.name}: ${rule.why}`, () => {
-      const violations: string[] = []
-      for (const file of sources) {
-        if (!rule.applies(file)) continue
-        if (rule.allowed?.(file.rel)) continue
-        file.lines.forEach((line, index) => {
-          for (const match of line.matchAll(rule.pattern)) {
-            if (rule.violates && !rule.violates(match)) continue
-            violations.push(`packages/web/${file.rel}:${index + 1}  ${match[0].trim()}`)
-          }
-        })
-      }
-      expect(violations, `${rule.name} — ${rule.why}`).toEqual([])
+      expect(scan(rule, sources), `${rule.name} — ${rule.why}`).toEqual([])
     })
   }
+
+  describe('rule verdicts on fixtures (guard: pass before and after a scan() change)', () => {
+    it('covers every rule', () => {
+      expect(new Set(VERDICTS.map((v) => v.rule))).toEqual(new Set(RULES.map((r) => r.name)))
+    })
+    for (const verdict of VERDICTS) {
+      it(`${verdict.rule} flags its fixtures and passes the legal spellings`, () => {
+        // A rule carrying an allowlist is judged against an EMPTY one here, so its fixtures say
+        // what the pattern catches rather than what the seed happens to allow.
+        const named = ruleNamed(verdict.rule)
+        const rule = named.allowOccurrences ? { ...named, allowOccurrences: new Map() } : named
+        const label = (file: SourceFile) => `${file.rel}: ${file.lines.join(' / ')}`
+        for (const file of verdict.flag) expect(scan(rule, [file]), label(file)).toHaveLength(1)
+        for (const file of verdict.pass) expect(scan(rule, [file]), label(file)).toEqual([])
+      })
+    }
+  })
+
+  describe('no-arbitrary-spacing allowlist', () => {
+    const three = fixture(
+      'src/x.tsx',
+      '<div className="h-[34px]" />',
+      '<div className="size-[30px] md:min-h-[54px]" />',
+    )
+
+    it('flags the three fixture spellings against an empty allowlist', () => {
+      expect(scan(spacingRule({}), [three])).toEqual([
+        'packages/web/src/x.tsx:1  h-[34px]',
+        'packages/web/src/x.tsx:2  size-[30px]',
+        'packages/web/src/x.tsx:2  md:min-h-[54px]',
+      ])
+    })
+
+    it('passes a spelling its row allows, exactly as often as the row allows', () => {
+      const allow = { count: 1, reason: 'fixture' }
+      const rule = spacingRule({
+        'src/x.tsx|h-[34px]': allow,
+        'src/x.tsx|size-[30px]': allow,
+        'src/x.tsx|md:min-h-[54px]': allow,
+      })
+      expect(scan(rule, [three])).toEqual([])
+    })
+
+    it('keys on the file: the same spelling in another file is not allowed', () => {
+      const other = fixture('src/y.tsx', '<div className="h-[34px]" />')
+      const rule = spacingRule({ 'src/x.tsx|h-[34px]': { count: 1, reason: 'fixture' } })
+      expect(scan(rule, [other])).toEqual([
+        'packages/web/src/y.tsx:1  h-[34px]',
+        'stale allowlist row src/x.tsx|h-[34px]: allows 1, found 0 – lower or delete it',
+      ])
+    })
+
+    it('fails growth: one more copy than the row allows reports every site', () => {
+      const grown = fixture('src/x.tsx', '<i className="size-[15px]" />', '<i className="size-[15px]" />')
+      const rule = spacingRule({ 'src/x.tsx|size-[15px]': { count: 1, reason: 'fixture' } })
+      expect(scan(rule, [grown])).toEqual([
+        'packages/web/src/x.tsx:1  size-[15px]  (allowlist row allows 1, found 2)',
+        'packages/web/src/x.tsx:2  size-[15px]  (allowlist row allows 1, found 2)',
+      ])
+    })
+
+    it('fails a stale row: fewer copies than the row allows', () => {
+      const shrunk = fixture('src/x.tsx', '<i className="size-[15px]" />')
+      const rule = spacingRule({ 'src/x.tsx|size-[15px]': { count: 2, reason: 'fixture' } })
+      expect(scan(rule, [shrunk])).toEqual([
+        'stale allowlist row src/x.tsx|size-[15px]: allows 2, found 1 – lower or delete it',
+      ])
+    })
+
+    it('ignores spellings inside comments, like every other rule', () => {
+      const commented = fixture('src/x.tsx', '// was h-[34px]', '/* md:min-h-[54px] */ const a = 1')
+      expect(scan(spacingRule({}), [commented])).toEqual([])
+    })
+
+    it(`every row names a scanned file, a count and a reason; exactly ${SPACING_ALLOWLIST_CEILING} rows`, () => {
+      const rels = new Set(sources.filter(classSources).map((f) => f.rel))
+      const problems: string[] = []
+      for (const [key, { count, reason }] of SPACING_ALLOWLIST) {
+        const [rel, token, ...rest] = key.split('|')
+        if (!rel || !token || rest.length > 0) problems.push(`${key}: key is not <rel>|<token>`)
+        else if (!rels.has(rel)) problems.push(`${key}: ${rel} is not a scanned shipped source`)
+        if (!Number.isInteger(count) || count < 1) problems.push(`${key}: count must be a positive integer`)
+        if (typeof reason !== 'string' || reason.trim() === '') problems.push(`${key}: reason is empty`)
+      }
+      expect(problems).toEqual([])
+      // The walker really read the files the seed names (an empty load would make every row stale,
+      // which is loud – but a guard should fail for the right reason).
+      expect(rels.has('src/components/app-shell.tsx')).toBe(true)
+      // Lowered by every PR that deletes a row; never raised to admit a new hand-typed pixel.
+      expect(SPACING_ALLOWLIST.size).toBe(SPACING_ALLOWLIST_CEILING)
+    })
+  })
 })

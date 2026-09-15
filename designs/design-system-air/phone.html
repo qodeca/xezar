@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Air – every screen at 375 px</title>
+<link rel="stylesheet" href="../../docs/design-system/cockpit.css">
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="chrome.css">
+<script src="theme.js"></script>
+</head>
+<body>
+<script src="bar.js" data-controls="theme accent density width"></script>
+
+<main class="doc">
+  <h1>Air – every screen at 375 px</h1>
+  <p class="lead">Each pair is one screen page twice, framed at a true 375 × 780 viewport: <strong>Today</strong> first, <strong>Proposed</strong> second. Each frame pins its own view; Theme, Accent, Density and Width on the bar follow into every frame. The pairs stack in a window under about 820 px, and under about 425 px each frame also shrinks with the window – to see a true 375 view there, open the screen page itself. Each note gives at most three values, as today (file:line) → token = px at Comfortable; the full list is at the foot of each screen page.</p>
+
+  <h2>Tasks</h2>
+  <div class="air-pair">
+    <figure><figcaption class="air-caption">Today · Tasks · 375 px</figcaption><div class="phone phone-375"><iframe data-src="tasks.html?v=today" title="Tasks – Today – 375 px"></iframe></div></figure>
+    <figure><figcaption class="air-caption">Proposed · Tasks · 375 px</figcaption><div class="phone phone-375"><iframe data-src="tasks.html?v=air" title="Tasks – Proposed – 375 px" loading="lazy"></iframe></div></figure>
+  </div>
+  <p class="note">Page gutter <code>p-3</code> = 12 (<code>tasks-overview.tsx:211</code>) → <code>p-4</code> = 16 · task card <code>px-3.5 py-3</code> = 14 / 12 (<code>tasks-overview.tsx:904</code>) → <code>p-inset</code> = 20 · mobile bar <code>h-11</code> = 44 (<code>app-shell.tsx:848</code>), unchanged. <a href="tasks.html#values">All values on Tasks</a></p>
+
+  <h2>Tasks – menu open</h2>
+  <div class="air-pair">
+    <figure><figcaption class="air-caption">Today · Tasks · menu open · 375 px</figcaption><div class="phone phone-375"><iframe data-src="tasks.html?drawer=open&amp;v=today" title="Tasks · menu open – Today – 375 px" loading="lazy"></iframe></div></figure>
+    <figure><figcaption class="air-caption">Proposed · Tasks · menu open · 375 px · Option A</figcaption><div class="phone phone-375"><iframe data-src="tasks.html?drawer=open&amp;v=air" title="Tasks · menu open – Proposed – 375 px" loading="lazy"></iframe></div></figure>
+  </div>
+  <p class="note">Drawer rows <code>h-11</code> = 44 in both views (<code>app-shell.tsx:572</code>; the <code>md:</code> height drops away) · New task <code>h-9</code> = 36 (<code>app-shell.tsx:509</code>) → <code>h-10</code> = 40 under open point 7, option A; option B keeps 36 · Close menu and Add project <code>size-11</code> = 44 (<code>app-shell.tsx:440, 740</code>), unchanged. Under both options the New-task button stays shorter than the 44 px rows below it – a question for the verdict. <a href="tasks.html#values">All values on Tasks</a></p>
+
+  <h2>Thread with dock</h2>
+  <div class="air-pair">
+    <figure><figcaption class="air-caption">Today · Thread · 375 px</figcaption><div class="phone phone-375"><iframe data-src="thread.html?v=today" title="Thread – Today – 375 px" loading="lazy"></iframe></div></figure>
+    <figure><figcaption class="air-caption">Proposed · Thread · 375 px</figcaption><div class="phone phone-375"><iframe data-src="thread.html?v=air" title="Thread – Proposed – 375 px" loading="lazy"></iframe></div></figure>
+  </div>
+  <p class="note">Row inside a turn <code>pb-2.5</code> = 10 (<code>thread-scroller.tsx:492</code>) → <code>pb-row</code> = 8 · between two speakers’ rows 10 → 24 (the outgoing speaker’s last row takes <code>pb-group</code>) · tool row <code>min-h-[28px]</code> = 28 (<code>thread-items.tsx:547</code>) → <code>min-h-8</code> = 32. At 375 the column <code>px-3 py-3</code> and the dock <code>px-3 pt-1 pb-2</code> stay as they are (<code>task-thread.tsx:307, 409</code>). <a href="thread.html#values">All values on the thread</a></p>
+
+  <h2>Dialog</h2>
+  <div class="air-pair">
+    <figure><figcaption class="air-caption">Today · Thread · Dialog · 375 px</figcaption><div class="phone phone-375"><iframe data-src="thread.html?state=dialog&amp;v=today" title="Thread · Dialog – Today – 375 px" loading="lazy"></iframe></div></figure>
+    <figure><figcaption class="air-caption">Proposed · Thread · Dialog · 375 px</figcaption><div class="phone phone-375"><iframe data-src="thread.html?state=dialog&amp;v=air" title="Thread · Dialog – Proposed – 375 px" loading="lazy"></iframe></div></figure>
+  </div>
+  <p class="note">Identical internals in both views, buttons included: <code>gap-4 p-6</code> (<code>alert-dialog.tsx:60</code>), and both footer buttons at the default size <code>h-9</code> = 36 (<code>alert-dialog.tsx:122, 135</code>; <code>md</code> stays <code>h-9</code>, README § 9.3). Only the page behind the scrim moves. <a href="thread.html#values">All values on the thread</a></p>
+
+  <h2>Changes</h2>
+  <div class="air-pair">
+    <figure><figcaption class="air-caption">Today · Changes · 375 px</figcaption><div class="phone phone-375"><iframe data-src="changes.html?v=today" title="Changes – Today – 375 px" loading="lazy"></iframe></div></figure>
+    <figure><figcaption class="air-caption">Proposed · Changes · 375 px</figcaption><div class="phone phone-375"><iframe data-src="changes.html?v=air" title="Changes – Proposed – 375 px" loading="lazy"></iframe></div></figure>
+  </div>
+  <p class="note">Title to tabs <code>mt-1.5</code> = 6 (<code>run-header.tsx:222</code>) → <code>mt-stack</code> = 12 · run header <code>px-3 pt-2</code> (<code>run-header.tsx:160</code>), unchanged at 375 · the diff, unchanged – code density is a feature (README § 9.2). <a href="changes.html#values">All values on Changes</a></p>
+
+  <h2>Settings → Agents</h2>
+  <div class="air-pair">
+    <figure><figcaption class="air-caption">Today · Settings · Agents · 375 px</figcaption><div class="phone phone-375"><iframe data-src="settings.html?section=agents&amp;v=today" title="Settings · Agents – Today – 375 px" loading="lazy"></iframe></div></figure>
+    <figure><figcaption class="air-caption">Proposed · Settings · Agents · 375 px</figcaption><div class="phone phone-375"><iframe data-src="settings.html?section=agents&amp;v=air" title="Settings · Agents – Proposed – 375 px" loading="lazy"></iframe></div></figure>
+  </div>
+  <p class="note">Between fields <code>gap-7</code> = 28 (<code>agents-section.tsx:163</code>) → <code>gap-section</code> = 32 · inside a field <code>gap-2</code> = 8 (<code>settings-field.tsx:21</code>) → <code>gap-stack</code> = 12 · Save, size <code>sm</code>, <code>h-[30px]</code> = 30 (<code>agents-section.tsx:269</code>, <code>button.tsx:24</code>) → <code>h-8</code> = 32. The container’s <code>p-4</code> is not in § 9.2 and stays 16. <a href="settings.html?section=agents#values">All values on Agents</a></p>
+
+  <h2>Settings → Appearance</h2>
+  <div class="air-pair">
+    <figure><figcaption class="air-caption">Today · Settings · Appearance · 375 px</figcaption><div class="phone phone-375"><iframe data-src="settings.html?section=appearance&amp;v=today" title="Settings · Appearance – Today – 375 px" loading="lazy"></iframe></div></figure>
+    <figure><figcaption class="air-caption">Proposed · Settings · Appearance · 375 px</figcaption><div class="phone phone-375"><iframe data-src="settings.html?section=appearance&amp;v=air" title="Settings · Appearance – Proposed – 375 px" loading="lazy"></iframe></div></figure>
+  </div>
+  <p class="note">Between fields <code>gap-7</code> = 28 (<code>appearance.tsx:120</code>) → <code>gap-section</code> = 32 · inside a field <code>gap-2</code> = 8 (<code>appearance.tsx:103</code>) → <code>gap-stack</code> = 12 · the density row, <code>inline-flex w-fit</code> with no wrap (<code>appearance.tsx:66</code>), gains Roomy and wraps inside its border. <a href="settings.html?section=appearance#values">All values on Appearance</a></p>
+
+  <h2>Inbox</h2>
+  <div class="air-pair">
+    <figure><figcaption class="air-caption">Today · Inbox · 375 px</figcaption><div class="phone phone-375"><iframe data-src="inbox.html?v=today" title="Inbox – Today – 375 px" loading="lazy"></iframe></div></figure>
+    <figure><figcaption class="air-caption">Proposed · Inbox · 375 px</figcaption><div class="phone phone-375"><iframe data-src="inbox.html?v=air" title="Inbox – Proposed – 375 px" loading="lazy"></iframe></div></figure>
+  </div>
+  <p class="note">Page gutter <code>p-3</code> = 12 (<code>inbox.tsx:93</code>) → <code>p-4</code> = 16 · between cards <code>gap-2.5</code> = 10 (<code>inbox.tsx:128</code>) → <code>gap-list</code> = 16 · card padding <code>p-4</code> = 16 (<code>inbox.tsx:227</code>) → <code>p-inset</code> = 20. <a href="inbox.html#values">All values on Inbox</a></p>
+</main>
+</body>
+</html>

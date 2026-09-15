@@ -1,0 +1,313 @@
+/* Air proposal – the task page. thread.html: run header, thread column, rows, bubble, tool rows and
+ * groups, ask card, review panel, composer dock, the dialog overlay and the loading state.
+ * changes.html: the same run header over the Changes tab's toolbar, tree and diff. Local replicas
+ * of surfaces cockpit.css lacks (README § 5 g); where cockpit.css has a ".base el" rule, an air-
+ * container mirrors it (.air-dock .composer textarea, .air-diffs .diff header). Custom properties
+ * live in the values block only (B-4) and in no other sheet (B-16).
+ *
+ * block order: rhythm → today → proposed → phone → open points
+ */
+
+/* values – owned by WP-2 */
+/* today – as shipped (packages/web/src) */
+:root[data-view='today'] {
+  --run-head-x: calc(var(--u) * 6);     /* run-header.tsx:160  md:px-6 */
+  --run-head-top: calc(var(--u) * 3);   /* run-header.tsx:160  md:pt-3 */
+  --title-gap: calc(var(--u) * 2.5);    /* run-header.tsx:222  md:mt-2.5 */
+  --thread-x: calc(var(--u) * 6);       /* task-thread.tsx:307  md:px-6 */
+  --thread-y: calc(var(--u) * 5);       /* task-thread.tsx:307  md:py-5 */
+  --turn-gap: calc(var(--u) * 2.5);     /* thread-scroller.tsx:410,492  pb-2.5 */
+  --speaker-gap: var(--turn-gap);       /* the same pb-2.5: no speaker boundary today */
+  --bubble-px: 15px;                    /* thread-items.tsx:121,167  px-[15px] */
+  --tool-h: 28px;                       /* thread-items.tsx:547  min-h-[28px] */
+  --tool-py: calc(var(--u) * 0.5);      /* thread-items.tsx:547  py-0.5 */
+  --trigger-h: 34px;                    /* thread-items.tsx:615  h-[34px] */
+  --nested-my: calc(var(--u) * 2);      /* thread-items.tsx:600  my-2 */
+  --ask-pad: calc(var(--u) * 3.5) calc(var(--u) * 4); /* ask-card.tsx:82  px-4 pt-3.5 pb-3.5 */
+  --ask-gap: calc(var(--u) * 4);        /* ask-card.tsx:87  gap-4 */
+  --review-gap: calc(var(--u) * 3);     /* review-panel.tsx:39  gap-3 */
+  --dock-top: calc(var(--u) * 1.5);     /* task-thread.tsx:409  md:pt-1.5 */
+  --dock-bottom: calc(var(--u) * 4);    /* task-thread.tsx:409  md:pb-4 */
+  --composer-min-h: 54px;               /* composer.tsx:525  md:min-h-[54px] */
+}
+
+/* proposed – README § 9.2 and § 9.3 */
+:root:not([data-view='today']) {
+  --run-head-x: var(--section);
+  --run-head-top: var(--group);
+  --title-gap: var(--stack);
+  --thread-x: var(--section);
+  --thread-y: var(--section);
+  --turn-gap: var(--row);
+  --speaker-gap: var(--group);          /* R-6b: the outgoing speaker's last row takes pb-group */
+  --bubble-px: calc(var(--u) * 4);
+  --tool-h: calc(var(--u) * 8);
+  --tool-py: calc(var(--u) * 1);
+  --trigger-h: calc(var(--u) * 9);
+  --nested-my: var(--stack);
+  --ask-pad: var(--inset);
+  --ask-gap: var(--list);
+  --review-gap: var(--stack);
+  --dock-top: var(--stack);
+  --dock-bottom: var(--list);
+  --composer-min-h: calc(var(--u) * 14); /* PR 3b */
+}
+
+/* phone (≤ 860 px): the md: prefixes drop away */
+@media (max-width: 860px) {
+  :root[data-view='today'] {
+    --title-gap: calc(var(--u) * 1.5);  /* run-header.tsx:222  mt-1.5 */
+  }
+
+  /* § 9.2 changes only the md: values of these, so both views keep the phone spelling. */
+  :root[data-view='today'],
+  :root:not([data-view='today']) {
+    --run-head-x: calc(var(--u) * 3);   /* run-header.tsx:160  px-3 */
+    --run-head-top: calc(var(--u) * 2); /* run-header.tsx:160  pt-2 */
+    --thread-x: calc(var(--u) * 3);     /* task-thread.tsx:307  px-3 */
+    --thread-y: calc(var(--u) * 3);     /* task-thread.tsx:307  py-3 */
+    --dock-top: calc(var(--u) * 1);     /* task-thread.tsx:409  pt-1 */
+    --dock-bottom: calc(var(--u) * 2);  /* task-thread.tsx:409  pb-2 */
+    --composer-min-h: calc(var(--u) * 11); /* composer.tsx:525  min-h-11 */
+  }
+}
+/* end values */
+
+/* ---------- states: thread.html?state=loading | dialog ---------- */
+/* shell.css draws .air-overlay unconditionally; it shows in the dialog state only. */
+:root:not([data-state='dialog']) .air-overlay { display: none; }
+:root:not([data-state='loading']) .air-loading { display: none; }
+/* thread-loading.tsx:11-21 replaces the whole route: no run header, thread or dock. */
+:root[data-state='loading'] .air-task > :not(.mobile-bar, .air-loading) { display: none; }
+
+/* Focus and anchors clear the sticky chrome (M11) through a scroll margin on the content, so the run
+ * header and the dock never make a scrolled page jump when they take focus (chrome.css). Bottom: the
+ * dock at rest – its padding, the textarea floor, the composer footer (32 px controls +
+ * composer.tsx:547 padding), borders, 1 px spare. */
+:root.air-thread .air-thread-col * {
+  scroll-margin-bottom: calc(var(--dock-top) + var(--composer-min-h) + var(--u) * 11.5 + 3px + var(--dock-bottom));
+}
+
+/* Top: the review bar plus the run header, both measured – --air-head-h (declared outside this
+ * sheet, 0 inside a frame) is the header's real height, so the clearance follows a wrapped title,
+ * a hidden step rail, either view and every density instead of estimating them. No width guard:
+ * the estimate it replaces held from 861 px only, which left focus parked under the header on a
+ * phone (WCAG 2.4.11). */
+:root.air-task-page .air-thread-col *,
+:root.air-task-page .air-git-bar *,
+:root.air-task-page .air-diff-body * {
+  scroll-margin-top: calc(var(--air-bar-h) + var(--air-head-h));
+}
+
+/* ---------- run header (run-header.tsx:158-300); replaces .task-head (cockpit.css:2043) ---------- */
+.air-run-head {
+  position: sticky;
+  top: var(--air-bar-h); /* md:sticky md:top-0, under the review bar */
+  z-index: 20;
+  padding: var(--run-head-top) var(--run-head-x) 0;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--background) 95%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+.air-run-in { width: 100%; max-width: var(--measure); margin: 0 auto; } /* :162 */
+.air-run-top { display: flex; min-width: 0; align-items: center; gap: calc(var(--u) * 2); } /* :163 */
+.air-title { display: flex; min-width: 0; align-items: center; gap: calc(var(--u) * 1); } /* :540 */
+.air-title h1 { min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; font-weight: 600; } /* :541 truncate; the prompt rides in title */
+.air-rename { flex-shrink: 0; padding: calc(var(--u) * 1); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--soft-foreground); opacity: 0; } /* :548 */
+.air-title:hover .air-rename,
+.air-rename:focus-visible { opacity: 1; }
+.air-run-status { display: flex; flex-shrink: 0; align-items: center; gap: calc(var(--u) * 2.5); margin-left: auto; } /* :165 */
+/* :721 md:mt-1.5 gap-x-2 md:gap-y-1 */
+.air-meta { display: flex; flex-wrap: wrap; align-items: center; gap: calc(var(--u) * 1) calc(var(--u) * 2); margin-top: calc(var(--u) * 1.5); font-size: 12px; color: var(--muted-foreground); }
+.air-sep { color: var(--soft-foreground); }
+/* :602 and diff-controls.tsx:82 */
+.air-branch { display: inline-flex; min-width: 0; align-items: center; gap: calc(var(--u) * 1); padding: 1px calc(var(--u) * 1.5); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--card); color: var(--foreground); font-family: var(--mono); font-size: 11px; font-weight: 500; }
+/* :625 className h-5 replaces the chip's h-[22px]; the proposed 24 px floor (shell.css) still holds. */
+.air-meta .air-refchip { height: calc(var(--u) * 5); }
+.air-usage { display: flex; flex-shrink: 0; align-items: center; gap: calc(var(--u) * 1.5); margin-left: auto; } /* :733 */
+/* :222. The row scrolls sideways rather than shrinking or wrapping its tabs, the way the shipped
+ * settings pill row does (cockpit.css:2248): at Roomy the tabs need 339 px, so a viewport narrower
+ * than that – a 327 px phone frame – used to push the whole page sideways instead. No scrollbar
+ * track: the row is one line of chrome and the tabs stay reachable by keyboard. */
+.air-tabs { display: flex; align-items: flex-end; gap: calc(var(--u) * 1); margin-top: var(--title-gap); overflow-x: auto; scrollbar-width: none; }
+.air-tabs .tab-link { flex-shrink: 0; height: calc(var(--u) * 8); padding: 0 calc(var(--u) * 3); } /* tab-link.tsx:30 h-8 px-3 */
+.air-run-actions { display: flex; align-items: center; gap: calc(var(--u) * 1); margin-left: auto; padding-bottom: calc(var(--u) * 1); } /* :236 */
+
+/* The step rail's one-line summary (run-header.tsx:293 md:pt-2 md:pb-1, step-rail.tsx:161-182). */
+.air-steps { padding: calc(var(--u) * 2) 0 calc(var(--u) * 1); border-top: 1px solid var(--border); }
+.air-steps button { display: flex; width: 100%; min-height: 30px; align-items: center; gap: calc(var(--u) * 2.5); padding: 0; border: 0; background: transparent; color: var(--muted-foreground); font-size: 12px; text-align: left; } /* :164 */
+.air-step-dots { display: flex; flex-shrink: 0; align-items: center; gap: calc(var(--u) * 1); }
+.air-step-dots .dot { width: calc(var(--u) * 1.5); height: calc(var(--u) * 1.5); } /* step-rail.tsx:132 size-1.5 */
+.air-step-name { min-width: 0; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: var(--foreground); }
+.air-step-of { flex-shrink: 0; color: var(--soft-foreground); }
+.air-step-bar { flex: 1; min-width: 36px; height: calc(var(--u) * 0.5); overflow: hidden; border-radius: 999px; background: var(--muted); }
+.air-step-bar i { display: block; width: 100%; height: 100%; border-radius: 999px; background: var(--pending); } /* every step done */
+
+/* ---------- thread column (task-thread.tsx:307): padding inside the measure ---------- */
+.air-thread-col {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: calc(var(--u) * 3.5); /* md:gap-3.5 between sections (not in § 9.2 – unchanged) */
+  width: 100%;
+  max-width: var(--measure);
+  margin: 0 auto;
+  padding: var(--thread-y) var(--thread-x);
+}
+
+.air-start { display: flex; align-items: center; gap: calc(var(--u) * 3); font-size: 11px; color: var(--soft-foreground); } /* task-thread.tsx:517 */
+.air-start::before,
+.air-start::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+/* ---------- rows: each pads its own bottom (thread-scroller.tsx:410, 492) ---------- */
+.air-row { display: flex; width: 100%; flex-direction: column; padding-bottom: var(--turn-gap); }
+.air-row.air-turn-end { padding-bottom: var(--speaker-gap); }
+.air-md { line-height: 1.6; }                   /* styles/index.css:498 .thread-markdown */
+.air-md > p { margin: 0.45em 0; }                /* index.css:512 */
+.air-md > :first-child { margin-top: 0; }        /* Streamdown's root [&>*:first-child]:mt-0 */
+.air-md > :last-child { margin-bottom: 0; }
+
+/* thread-items.tsx:167 md:max-w-[70%]. rounded-2xl emits no rule (index.css:281 resets --radius-*,
+ * no --radius-2xl), so the shipped bubble rounds only its bottom-right corner (rounded-br-md). */
+.air-bubble { align-self: flex-end; min-width: 0; max-width: 70%; padding: calc(var(--u) * 2.5) var(--bubble-px); border-bottom-right-radius: var(--radius); background: var(--muted); font-size: 13.5px; }
+.air-say { min-width: 0; font-size: 15px; } /* thread-items.tsx:240 */
+
+/* ---------- tool rows, groups (thread-items.tsx:532-631) ---------- */
+.air-tool { min-width: 0; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); }
+.air-tool.failed { border-color: color-mix(in srgb, var(--danger) 25%, transparent); }
+/* :547 */
+.air-tool-row { display: flex; width: 100%; min-height: var(--tool-h); align-items: center; gap: calc(var(--u) * 1.5); padding: var(--tool-py) calc(var(--u) * 2.5); border: 0; background: transparent; color: var(--foreground); font-size: 13px; text-align: left; }
+.air-tool-row .air-chev { width: 12px; height: 12px; color: var(--soft-foreground); }
+.air-tool-row .air-kind { width: 14px; height: 14px; color: var(--muted-foreground); }
+.air-tool-row .v { flex-shrink: 0; font-weight: 600; }
+.air-tool-row code { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--muted-foreground); }
+.air-tool-end { display: flex; flex-shrink: 0; align-items: center; gap: calc(var(--u) * 2); margin-left: auto; padding-left: calc(var(--u) * 2); font-size: 12px; color: var(--muted-foreground); } /* :569 */
+.air-exit { padding: 1px calc(var(--u) * 2); border-radius: 999px; font-family: var(--mono); font-size: 10.5px; font-weight: 600; } /* :579 */
+.air-exit.ok { background: color-mix(in srgb, var(--success) 10%, transparent); color: var(--success); }
+.air-exit.bad { background: color-mix(in srgb, var(--danger) 10%, transparent); color: var(--danger); }
+.air-tool-body { border-top: 1px solid var(--border); background: var(--card-2); } /* :589 */
+/* :600 gap-2 py-2.5 px-3 ml-4 my-2 border-l-2 */
+.air-nested { display: flex; flex-direction: column; gap: calc(var(--u) * 2); margin: var(--nested-my) 0 var(--nested-my) calc(var(--u) * 4); padding: calc(var(--u) * 2.5) calc(var(--u) * 3); border-left: 2px solid var(--border); }
+/* :615 -mx-2 px-2 */
+.air-ctx-trigger { display: flex; width: 100%; height: var(--trigger-h); align-items: center; gap: calc(var(--u) * 2); margin: 0 calc(var(--u) * -2); padding: 0 calc(var(--u) * 2); border: 0; border-radius: var(--radius); background: transparent; color: var(--muted-foreground); font-size: 13px; font-weight: 500; text-align: left; }
+.air-ctx-trigger .air-chev { width: 14px; height: 14px; color: var(--soft-foreground); }
+.air-ctx-list { display: flex; flex-direction: column; gap: calc(var(--u) * 1.5); padding: calc(var(--u) * 1.5) 0 0 calc(var(--u) * 4); } /* :623 */
+.air-ctx-trigger[aria-expanded='true'] .air-chev,
+.air-tool-row[aria-expanded='true'] .air-chev,
+.air-diffs .diff header .air-chev { transform: rotate(90deg); }
+
+/* ---------- ask card (ask-card.tsx:78-144, 171-224) ---------- */
+.air-ask { padding: var(--ask-pad); border: 1px solid color-mix(in srgb, var(--primary) 25%, transparent); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--primary) 4%, transparent); }
+.air-ask-head { margin: 0 0 calc(var(--u) * 2.5); font-size: 12px; font-weight: 500; color: var(--primary); } /* :84-85 */
+.air-ask-body { display: flex; flex-direction: column; gap: var(--ask-gap); } /* :87 */
+.air-q-head { display: flex; align-items: center; margin-bottom: calc(var(--u) * 0.5); } /* :173 */
+.air-q-tag { padding: calc(var(--u) * 0.5) calc(var(--u) * 1.5); border-radius: var(--radius); background: var(--primary); color: var(--primary-foreground); font-size: 10px; font-weight: 600; letter-spacing: 0.025em; text-transform: uppercase; } /* :174 */
+.air-q { margin: 0 0 calc(var(--u) * 2.5); overflow-wrap: break-word; font-size: 14px; font-weight: 600; } /* :181 */
+.air-opts { display: flex; flex-direction: column; gap: calc(var(--u) * 2); } /* :182 */
+.air-opt { display: flex; width: 100%; flex-direction: column; gap: calc(var(--u) * 0.5); padding: calc(var(--u) * 2.5) calc(var(--u) * 3.5); border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); color: var(--foreground); text-align: left; } /* :193 */
+.air-opt .l { overflow-wrap: break-word; font-size: 13.5px; font-weight: 600; }
+.air-opt .d { overflow-wrap: break-word; font-size: 12px; color: var(--muted-foreground); }
+.air-ask-foot { display: flex; align-items: center; gap: calc(var(--u) * 2.5); margin-top: calc(var(--u) * 3); } /* :109 */
+.air-hint { font-size: 11.5px; color: var(--soft-foreground); }
+
+/* ---------- review panel (review-panel.tsx:37-216, run-diff.tsx:61-127) ---------- */
+.air-review { display: flex; flex-direction: column; gap: var(--review-gap); }
+.air-review-banner { display: flex; align-items: center; gap: calc(var(--u) * 2.5); padding: calc(var(--u) * 2.5) calc(var(--u) * 3.5); border: 1px solid color-mix(in srgb, var(--violet) 30%, transparent); border-radius: var(--radius); background: color-mix(in srgb, var(--violet) 10%, transparent); } /* :42 */
+.air-review-banner .icon { color: var(--violet); }
+.air-review-banner p { min-width: 0; margin: 0; font-size: 13px; }
+.air-review-banner span { color: var(--muted-foreground); }
+.air-rd { display: flex; min-width: 0; flex-direction: column; gap: calc(var(--u) * 2); }
+.air-rd-file { min-width: 0; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); }
+.air-rd-file button { display: flex; width: 100%; align-items: center; gap: calc(var(--u) * 2); padding: calc(var(--u) * 2) calc(var(--u) * 3); border: 0; background: transparent; color: var(--foreground); text-align: left; } /* run-diff.tsx:100 */
+.air-rd-file .air-chev { width: 14px; height: 14px; color: var(--soft-foreground); }
+.air-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 12px; font-weight: 500; }
+.air-badge { flex-shrink: 0; padding: 1px calc(var(--u) * 1.5); border-radius: var(--radius-sm); background: var(--muted); font-size: 10px; font-weight: 500; color: var(--muted-foreground); }
+.air-stat { flex-shrink: 0; margin-left: auto; font-size: 11px; }
+.air-totals { display: flex; align-items: center; gap: calc(var(--u) * 2); margin: 0; padding: 0 calc(var(--u) * 1); font-size: 12px; color: var(--muted-foreground); }
+.air-review-actions { display: flex; flex-direction: column; gap: calc(var(--u) * 2); } /* :113 */
+.air-review .textarea { min-height: 52px; font-size: 13px; } /* :140 */
+.air-review-btns { display: flex; flex-wrap: wrap; align-items: center; gap: calc(var(--u) * 2); } /* :158 */
+.air-review-btns .air-accept { margin-left: auto; }
+
+/* ---------- composer dock (task-thread.tsx:407-489, composer.tsx:466-591) ---------- */
+/* :409 md:px-6 stays outside the dock's measure box (:417) */
+.air-dock { position: sticky; bottom: 0; z-index: 10; padding: var(--dock-top) calc(var(--u) * 6) var(--dock-bottom); background: var(--background); }
+.air-dock-in { display: flex; width: 100%; max-width: var(--measure); flex-direction: column; gap: calc(var(--u) * 2.5); margin: 0 auto; } /* :417 */
+.air-dock .composer textarea { min-height: var(--composer-min-h); padding: calc(var(--u) * 3) calc(var(--u) * 4) calc(var(--u) * 1); } /* :525 */
+.air-dock .composer .foot { gap: calc(var(--u) * 1.5) calc(var(--u) * 1); padding: calc(var(--u) * 1.5) calc(var(--u) * 2) calc(var(--u) * 2); } /* :547; cockpit.css:1923 has pt 4 */
+.air-foot-start { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: calc(var(--u) * 1); }
+.air-foot-end { display: flex; align-items: center; gap: calc(var(--u) * 1); margin-left: auto; }
+.air-pills { display: flex; align-items: center; gap: calc(var(--u) * 1.5); } /* :572 */
+.air-dock .air-sq { width: calc(var(--u) * 8); height: calc(var(--u) * 8); } /* attach, send: icon-sm + size-8 (:583, :674) */
+.air-dock .air-send { border-radius: var(--radius-sm); } /* icon-sm rounded-sm (button.tsx:26); cockpit.css:1936 draws it round */
+.air-dock .air-clip { width: 15px; height: 15px; }
+
+/* ---------- dialog (run-header.tsx:966-1003, alert-dialog.tsx:57-139): identical in both views ---------- */
+.air-dialog-head { display: flex; flex-direction: column; gap: calc(var(--u) * 2); text-align: center; } /* :73 */
+.air-dialog-run { display: block; margin-top: calc(var(--u) * 1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; color: var(--foreground); } /* run-header.tsx:978 */
+
+@media (min-width: 640px) {
+  .air-dialog-head { text-align: left; }
+}
+
+/* ---------- loading (thread-loading.tsx:11-21; centered-state.tsx:47-71 via .centered-state) ---------- */
+.air-loading { display: flex; flex: 1; flex-direction: column; justify-content: center; }
+
+/* ---------- changes.html (task-changes.tsx:150-219, git-toolbar.tsx:53-97): unchanged in both views ---------- */
+.air-git-bar { display: flex; flex-wrap: wrap; align-items: center; gap: calc(var(--u) * 1.5) calc(var(--u) * 2.5); padding: calc(var(--u) * 2) calc(var(--u) * 6); border-bottom: 1px solid var(--border); } /* :56 */
+.air-git-end { display: flex; align-items: center; gap: calc(var(--u) * 1); margin-left: auto; } /* :61 */
+.air-git-toggles { display: flex; align-items: center; gap: calc(var(--u) * 1); } /* :64 hidden md:flex */
+.air-mode { display: flex; align-items: center; padding: calc(var(--u) * 0.5); border: 1px solid var(--border); border-radius: var(--radius); } /* diff-controls.tsx:30 */
+.air-mode button { padding: calc(var(--u) * 0.5) calc(var(--u) * 2); border: 0; border-radius: 5px; background: transparent; color: var(--muted-foreground); font-size: 11px; font-weight: 500; } /* :68 */
+.air-mode button[aria-pressed='true'] { background: var(--muted); color: var(--foreground); }
+.air-changes { display: flex; flex: 1; align-items: flex-start; gap: calc(var(--u) * 5); padding: calc(var(--u) * 4) calc(var(--u) * 6); } /* task-changes.tsx:193 */
+/* :202 sticky top-40 lg:w-72: both are scale, so the density lever moves them. The 176 in the cap
+ * is not: it is the source's own --diff-sticky-top (10rem) + 1rem, two real rems. */
+.air-tree-pane { position: sticky; top: calc(var(--air-bar-h) + var(--u) * 40); width: calc(var(--u) * 72); max-height: calc(100dvh - var(--air-bar-h) - 176px); flex-shrink: 0; overflow-y: auto; overscroll-behavior: contain; }
+.air-tree ul { display: flex; flex-direction: column; gap: 1px; margin: 0; padding: 0; list-style: none; font-size: 13px; } /* changes-tree.tsx:24 */
+.air-tree button { display: flex; width: 100%; min-width: 0; align-items: center; gap: calc(var(--u) * 1.5); padding: calc(var(--u) * 1) calc(var(--u) * 1.5) calc(var(--u) * 1) 6px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--muted-foreground); text-align: left; } /* :68-69 pl 6 + depth × 14 */
+.air-tree .air-file { padding-left: 38px; } /* :123 24 + 1 × 14 */
+.air-tree button[aria-current='true'] { background: var(--muted); color: var(--foreground); font-weight: 500; }
+.air-tree .icon { width: 14px; height: 14px; }
+.air-tree .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.air-tree .air-dir .t { font-weight: 500; }
+.air-tree .added { color: var(--success); }
+.air-counts { flex-shrink: 0; margin-left: auto; padding-left: calc(var(--u) * 2); font-family: var(--mono); font-size: 11px; font-weight: 500; } /* :39 */
+.air-diffs { display: flex; min-width: 0; flex: 1; flex-direction: column; } /* diff-view.tsx:168 */
+.air-diffs > .air-totals { padding-bottom: calc(var(--u) * 3); } /* :170 px-1 pb-3 */
+.air-diff-slot { padding-bottom: calc(var(--u) * 3); } /* :189 */
+.air-diffs .diff { overflow: clip; } /* :312 overflow-clip, so the header can stick */
+.air-diffs .diff header { top: calc(var(--air-bar-h) + 160px); z-index: 10; padding: 0; } /* :318; --diff-sticky-top 10rem */
+.air-diffs .diff header button { display: flex; width: 100%; align-items: center; gap: calc(var(--u) * 2); padding: calc(var(--u) * 2) calc(var(--u) * 3); border: 0; background: transparent; color: var(--foreground); text-align: left; } /* :324 px-3 py-2; cockpit.css:1782 has 6 12 */
+.air-diffs .diff header .air-chev { width: 14px; height: 14px; color: var(--soft-foreground); }
+.air-diff-body { padding: calc(var(--u) * 1) 0; overflow-x: auto; } /* :460 py-1 leading-[1.7] */
+.air-diffs .diff .hunk { padding: calc(var(--u) * 0.5) calc(var(--u) * 4); white-space: pre; } /* :527 */
+.air-diffs .diff .gap { display: block; width: 100%; padding: calc(var(--u) * 0.5) calc(var(--u) * 4); border-inline: 0; font-family: inherit; text-align: left; } /* :548 */
+.air-diffs .diff .gutter { width: calc(var(--u) * 10); padding-right: calc(var(--u) * 2); } /* :578 */
+.air-diffs .diff .marker { width: calc(var(--u) * 4); } /* :602 */
+.air-diffs .diff .c { min-width: 0; flex: 1; padding-right: calc(var(--u) * 4); } /* :560 */
+
+@media (max-width: 1023px) {
+  .air-tree-pane { width: calc(var(--u) * 60); } /* w-60 below lg – scale, not a hand-set pixel */
+}
+
+/* ---------- phone (≤ 860 px) ---------- */
+@media (max-width: 860px) {
+  .air-run-head { position: relative; top: auto; } /* sticky from md only */
+  .air-steps { padding: calc(var(--u) * 1) 0 0; }
+  .air-steps button { min-height: calc(var(--u) * 7); gap: calc(var(--u) * 2); }
+  .air-thread-col { gap: calc(var(--u) * 2.5); }
+  .air-bubble { max-width: 78%; }
+  .air-dock { padding-inline: calc(var(--u) * 3); border-top: 1px solid var(--border); }
+  .air-dock-in { gap: calc(var(--u) * 1.5); }
+  .air-dock .composer textarea { padding: calc(var(--u) * 2.5) calc(var(--u) * 3) calc(var(--u) * 1); font-size: 16px; }
+  .air-dock .composer .foot { gap: calc(var(--u) * 1); padding: calc(var(--u) * 1) calc(var(--u) * 1.5) calc(var(--u) * 1.5); }
+  .air-git-bar,
+  .air-changes { padding-inline: calc(var(--u) * 4); }
+  .air-diffs .diff .line { white-space: pre-wrap; overflow-wrap: anywhere; } /* phones force wrap (task-changes.tsx:141) */
+
+  :root.air-thread .air-thread-col * {
+    scroll-margin-bottom: calc(var(--dock-top) + var(--composer-min-h) + var(--u) * 10.5 + 4px + var(--dock-bottom));
+  }
+}

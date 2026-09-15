@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Air – Inbox</title>
+<link rel="stylesheet" href="../../docs/design-system/cockpit.css">
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="chrome.css">
+<link rel="stylesheet" href="shell.css">
+<link rel="stylesheet" href="inbox.css">
+<script src="theme.js"></script>
+</head>
+<body>
+<script src="icons.js"></script>
+<script src="bar.js" data-controls="view theme accent density width" data-states="empty error" data-compare="inbox"></script>
+
+<!-- sidebar:start -->
+<div class="shell air-screen">
+<aside class="sidebar air-side">
+  <div class="sidebar-head">
+    <span class="logo" aria-hidden="true">X</span><span class="name">xezar</span>
+    <a class="btn icon ghost air-touch air-close air-phone-only" href="tasks.html" aria-label="Close menu"><svg class="icon air-glyph" aria-hidden="true"><use href="#i-x"/></svg></a>
+  </div>
+  <div class="new-task-row">
+    <button class="btn-new-task" type="button"><svg class="icon sm" aria-hidden="true"><use href="#i-plus"/></svg>New task <kbd aria-hidden="true">C</kbd></button>
+    <button class="btn icon md air-touch air-add" type="button" aria-label="Add project" title="Add project"><svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg></button>
+  </div>
+  <div class="air-all-band"><a href="#"><svg class="icon" aria-hidden="true"><use href="#i-layers"/></svg>All tasks</a></div>
+  <div class="air-projects">
+    <div class="air-project">
+      <button class="air-project-head on" type="button" aria-expanded="true"><svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg><span class="t">xezar</span><span class="nav-badge">2</span><span class="branch">main</span></button>
+      <div class="air-project-body">
+        <nav class="air-project-nav" aria-label="xezar navigation">
+          <a href="tasks.html"><svg class="icon" aria-hidden="true"><use href="#i-tasks"/></svg>Tasks</a>
+          <a href="inbox.html" aria-current="page"><svg class="icon" aria-hidden="true"><use href="#i-inbox"/></svg>Inbox<span class="nav-badge">5</span></a>
+          <a href="#"><svg class="icon" aria-hidden="true"><use href="#i-git"/></svg>Git</a>
+          <a href="#"><svg class="icon" aria-hidden="true"><use href="#i-github"/></svg>GitHub</a>
+          <a href="#"><svg class="icon" aria-hidden="true"><use href="#i-sparkles"/></svg>Skills</a>
+          <a href="#"><svg class="icon" aria-hidden="true"><use href="#i-workflow"/></svg>Workflows</a>
+          <a href="settings.html"><svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg>Settings</a>
+        </nav>
+        <div class="air-grp"><h2 class="quick-head">Needs you</h2><ul class="quick air-quick">
+          <li><span class="dot pending pulse"></span><span class="ref">#412</span><a class="t" href="thread.html">adding a retry to the failed-gate banner</a></li>
+          <li><span class="dot pending pulse"></span><span class="ref">#409</span><a class="t" href="thread.html">documenting the approval wait in the runner guide</a></li>
+        </ul></div>
+        <div class="air-grp"><h2 class="quick-head">Working</h2><ul class="quick air-quick">
+          <li><span class="dot violet pulse"></span><a class="t" href="thread.html">tightening the sidebar rhythm</a><span class="meta">9m</span></li>
+        </ul></div>
+        <div class="air-grp"><h2 class="quick-head">Recent</h2><ul class="quick air-quick">
+          <li><span class="dot success"></span><span class="ref">#405</span><a class="t" href="thread.html">pruning the orphan skill cache</a></li>
+          <li><span class="dot success"></span><a class="t" href="thread.html">syncing the root checkout</a><span class="meta">3h</span></li>
+          <li><span class="dot danger"></span><span class="ref">#398</span><a class="t" href="thread.html">moving the mutation gate to a schedule</a></li>
+          <li><span class="dot success"></span><span class="ref">#396</span><a class="t" href="thread.html">fixing the tasks badge count</a></li>
+          <li><span class="dot success"></span><a class="t" href="thread.html">renaming the release workflow step</a><span class="meta">1d</span></li>
+        </ul></div>
+        <a class="air-more" href="tasks.html">More…</a>
+      </div>
+    </div>
+    <div class="air-project"><button class="air-project-head" type="button" aria-expanded="false"><svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg><span class="t">docs-site</span><span class="branch">main</span></button></div>
+    <div class="air-project"><button class="air-project-head" type="button" aria-expanded="false"><svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg><span class="t">billing-api</span><span class="branch">release/2.4</span></button></div>
+  </div>
+  <div class="sidebar-foot">
+    <button class="air-search" type="button" title="Search — command palette (⌘K / Ctrl+K)"><svg class="icon sm" aria-hidden="true"><use href="#i-search"/></svg><span>Search…</span><kbd class="kbd" aria-hidden="true">⌘K</kbd></button>
+    <div class="air-foot-row">
+      <button class="air-tools" type="button"><span class="dot success"></span>Tools<svg class="icon xs" aria-hidden="true"><use href="#i-chevron"/></svg></button>
+      <span class="version-chip">v0.14.0</span>
+      <a class="btn icon ghost air-global" href="settings.html?section=appearance" aria-label="Global settings" title="Global settings"><svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg></a>
+      <button class="btn icon ghost air-sm" type="button" aria-label="Theme: dark. Switch to system." title="Theme: dark"><svg class="icon" aria-hidden="true"><use href="#i-moon"/></svg></button>
+    </div>
+  </div>
+</aside>
+<!-- sidebar:end -->
+<main class="main air-inbox">
+  <div class="mobile-bar">
+    <button class="btn icon ghost air-touch air-open-menu" type="button" aria-label="Open menu"><svg class="icon air-glyph" aria-hidden="true"><use href="#i-menu"/></svg></button>
+    <span class="title">Inbox</span>
+  </div>
+  <header class="page-head"><h1>Inbox</h1><p>Follow-ups agents suggested when they finished a task.</p></header>
+  <div class="air-inbox-body">
+    <!-- Invented entries. The source's per-card tooltips (the dot's "needs you", inbox.tsx:233, and
+         the Run / Dismiss / Acknowledge titles, :286, :298, :311) repeat on every card, so they are
+         left off to keep each title on the page unique (B-15). -->
+    <ul class="air-todo-list">
+      <li class="card air-todo">
+        <div class="air-todo-head">
+          <span class="dot pending pulse"></span>
+          <div class="air-todo-text">
+            <p class="air-todo-summary">Update the worktree guide: this PR moved the retention default from 7 to 14 days.</p>
+            <div class="air-todo-meta"><span>12m ago</span><span>docs</span><a href="thread.html">source task</a><a href="https://github.com/qodeca/xezar/pull/412" target="_blank" rel="noopener noreferrer">PR</a><span class="air-skill">skill: xezar-docs</span></div>
+          </div>
+          <div class="air-todo-actions"><button class="btn contrast air-sm" type="button"><svg class="icon xs" aria-hidden="true"><use href="#i-play"/></svg>Run</button><button class="btn ghost air-sm" type="button">Dismiss</button></div>
+        </div>
+        <div class="air-todo-engine"><button class="chip air-picker" type="button" aria-label="Runner">claude<svg class="icon xxs" aria-hidden="true"><use href="#i-chevron"/></svg></button><button class="chip air-picker" type="button" aria-label="Model">auto<svg class="icon xxs" aria-hidden="true"><use href="#i-chevron"/></svg></button></div>
+        <button class="air-todo-notes" type="button">+ Add instructions</button>
+      </li>
+      <li class="card air-todo">
+        <div class="air-todo-head">
+          <span class="dot pending pulse"></span>
+          <div class="air-todo-text">
+            <p class="air-todo-summary">Two call sites still read the per-repo memory limit directly. Route both through the workspace lookup and add a test that pins the more-specific-wins order, so a later refactor cannot quietly flip it back.</p>
+            <div class="air-todo-meta"><span>1h ago</span><span>follow-up</span><span>source task deleted</span><span class="air-skill">skill: xezar-testing</span></div>
+          </div>
+          <div class="air-todo-actions"><button class="btn contrast air-sm" type="button"><svg class="icon xs" aria-hidden="true"><use href="#i-play"/></svg>Run</button><button class="btn ghost air-sm" type="button">Dismiss</button></div>
+        </div>
+        <div class="air-todo-engine"><button class="chip air-picker" type="button" aria-label="Runner">codex<svg class="icon xxs" aria-hidden="true"><use href="#i-chevron"/></svg></button><button class="chip air-picker" type="button" aria-label="Model">auto<svg class="icon xxs" aria-hidden="true"><use href="#i-chevron"/></svg></button></div>
+        <button class="air-todo-notes" type="button">Edit instructions (added)</button>
+      </li>
+      <li class="card air-todo">
+        <div class="air-todo-head">
+          <span class="dot pending pulse"></span>
+          <div class="air-todo-text">
+            <p class="air-todo-summary">The gate run on this branch took 41 minutes; the browser suite may have run twice.</p>
+            <div class="air-todo-meta"><span>3h ago</span><span>note</span><a href="thread.html">source task</a></div>
+          </div>
+          <div class="air-todo-actions"><button class="btn contrast air-sm" type="button"><svg class="icon xs" aria-hidden="true"><use href="#i-check"/></svg>Acknowledge</button></div>
+        </div>
+      </li>
+      <li class="card air-todo">
+        <div class="air-todo-head">
+          <span class="dot pending pulse"></span>
+          <div class="air-todo-text">
+            <p class="air-todo-summary">Rename the two log lines that still print the old prefix.</p>
+            <div class="air-todo-meta"><span>5h ago</span><a href="thread.html">source task</a><a href="https://github.com/qodeca/xezar/pull/405" target="_blank" rel="noopener noreferrer">PR</a></div>
+          </div>
+          <div class="air-todo-actions"><button class="btn contrast air-sm" type="button"><svg class="icon xs" aria-hidden="true"><use href="#i-play"/></svg>Run</button><button class="btn ghost air-sm" type="button">Dismiss</button></div>
+        </div>
+        <div class="air-todo-engine"><button class="chip air-picker" type="button" aria-label="Runner">claude<svg class="icon xxs" aria-hidden="true"><use href="#i-chevron"/></svg></button><button class="chip air-picker" type="button" aria-label="Model">auto<svg class="icon xxs" aria-hidden="true"><use href="#i-chevron"/></svg></button></div>
+        <button class="air-todo-notes" type="button">+ Add instructions</button>
+      </li>
+      <li class="card air-todo">
+        <div class="air-todo-head">
+          <span class="dot pending pulse"></span>
+          <div class="air-todo-text">
+            <p class="air-todo-summary">Bump the markdown parser: the pinned version is two minors behind and its changelog lists the fix we need.</p>
+            <div class="air-todo-meta"><span>2d ago</span><span>dependencies</span><span class="air-skill">skill: xezar-dependencies</span></div>
+          </div>
+          <div class="air-todo-actions"><button class="btn contrast air-sm" type="button"><svg class="icon xs" aria-hidden="true"><use href="#i-play"/></svg>Run</button><button class="btn ghost air-sm" type="button">Dismiss</button></div>
+        </div>
+        <div class="air-todo-engine"><button class="chip air-picker" type="button" aria-label="Runner">claude<svg class="icon xxs" aria-hidden="true"><use href="#i-chevron"/></svg></button><button class="chip air-picker" type="button" aria-label="Model">auto<svg class="icon xxs" aria-hidden="true"><use href="#i-chevron"/></svg></button></div>
+        <button class="air-todo-notes" type="button">+ Add instructions</button>
+      </li>
+    </ul>
+    <!-- state=empty – inbox.tsx:119-125, verbatim -->
+    <div class="centered-state air-state air-state-empty">
+      <div class="air-cs-stack">
+        <div class="tile"><svg class="icon" aria-hidden="true"><use href="#i-inbox"/></svg></div>
+        <h2>Inbox empty</h2>
+        <p>Agents drop follow-up suggestions here when they finish a task.</p>
+      </div>
+    </div>
+    <!-- state=error – inbox.tsx:104-110; the subtitle is the server's message there, invented here -->
+    <div class="centered-state danger air-state air-state-error">
+      <div class="air-cs-stack">
+        <div class="tile"><svg class="icon" aria-hidden="true"><use href="#i-alert"/></svg></div>
+        <h2>Could not load the inbox</h2>
+        <p>The follow-up list stopped loading halfway. Reload to try again.</p>
+      </div>
+    </div>
+  </div>
+</main>
+</div>
+
+<section class="doc air-values" id="values" aria-labelledby="values-h">
+  <h2 id="values-h">Values on this screen</h2>
+  <p class="air-values-status"></p>
+  <div class="table-scroll">
+    <table class="decision-table">
+      <thead><tr><th scope="col">Where</th><th scope="col">Today (file:line)</th><th scope="col">Proposed (token = px at Comfortable)</th></tr></thead>
+      <tbody>
+        <tr data-probe=".air-inbox-body|padding-left" data-today="20" data-air="32" data-at="1280"><td>Page body, side gutter</td><td><code>md:p-5</code> = 20 (<code>inbox.tsx:93</code>)</td><td><code>md:p-section</code> = 32</td></tr>
+        <tr data-probe=".air-inbox-body|padding-top" data-today="20" data-air="32" data-at="1280"><td>Under the page header</td><td>the body starts at the gutter, 20 (<code>inbox.tsx:93</code>)</td><td><code>pt-section</code> = 32</td></tr>
+        <tr data-probe=".air-inbox-body|padding-bottom" data-today="20" data-air="32" data-at="1280"><td>Page body, bottom</td><td><code>md:pb-5</code> = 20 (<code>inbox.tsx:93</code>)</td><td>32 – follows the gutter (<em>inferred</em>: § 9.2 names <code>md:p-section</code>, not the <code>md:pb-5</code> reset)</td></tr>
+        <tr data-probe=".air-inbox-body|padding-left" data-today="12" data-air="16" data-at="375"><td>Page body, side gutter, phone</td><td><code>p-3</code> = 12 (<code>inbox.tsx:93</code>)</td><td><code>p-4</code> = 16</td></tr>
+        <tr data-probe=".air-inbox-body|padding-top" data-today="12" data-air="16" data-at="375"><td>Page body, top, phone</td><td><code>p-3</code> = 12 (<code>inbox.tsx:93</code>)</td><td><code>p-4</code> = 16</td></tr>
+        <tr data-probe=".air-inbox-body|padding-bottom" data-today="90" data-air="90" data-at="375"><td>Page body, bottom, phone</td><td><code>pb-[calc(90px+env(safe-area-inset-bottom))]</code> = 90 (<code>inbox.tsx:93</code>)</td><td>90 (not in § 9.2 – unchanged)</td></tr>
+        <tr data-probe=".air-inbox .page-head|height" data-today="56" data-air="56" data-at="1280"><td>Page header</td><td><code>h-14</code> = 56 (<code>inbox.tsx:84</code>)</td><td>56 (unchanged)</td></tr>
+        <tr data-probe=".air-inbox .page-head|padding-left" data-today="20" data-air="32" data-at="1280"><td>Page header, side padding</td><td><code>px-5</code> = 20 (<code>inbox.tsx:84</code>)</td><td><code>md:px-section</code> = 32 – in line with the 32 px gutter (§ 9.2, review NB-1)</td></tr>
+        <tr data-probe=".air-todo-list|row-gap" data-today="10" data-air="16"><td>Between cards</td><td><code>gap-2.5</code> = 10 (<code>inbox.tsx:128</code>)</td><td><code>gap-list</code> = 16</td></tr>
+        <tr data-probe=".air-todo-list|max-width" data-today="768" data-air="768"><td>List width</td><td><code>max-w-3xl</code> = 768 (<code>inbox.tsx:128</code>)</td><td>768 (a layout width – unchanged)</td></tr>
+        <tr data-probe=".air-todo|padding-top" data-today="16" data-air="20"><td>Card padding</td><td><code>p-4</code> = 16 (<code>inbox.tsx:227</code>)</td><td><code>p-inset</code> = 20</td></tr>
+        <tr data-probe=".air-todo|row-gap" data-today="10" data-air="10"><td>Inside a card, between rows</td><td><code>gap-2.5</code> = 10 (<code>inbox.tsx:227</code>)</td><td>10 (not in § 9.2 – unchanged); for the verdict</td></tr>
+        <tr data-probe=".air-todo-head|column-gap" data-today="12" data-air="12"><td>Card head, dot to text to actions</td><td><code>gap-3</code> = 12 (<code>inbox.tsx:229</code>)</td><td><code>gap-stack</code> = 12</td></tr>
+        <tr data-probe=".air-todo-head .dot|margin-top" data-today="5" data-air="6"><td>Status dot offset</td><td><code>mt-[5px]</code> = 5 (<code>inbox.tsx:234</code>)</td><td><code>mt-1.5</code> = 6 (nearest step – PR 3b decides)</td></tr>
+        <tr data-probe=".air-todo-meta|margin-top" data-today="6" data-air="8"><td>Summary to meta line</td><td><code>mt-1.5</code> = 6 (<code>inbox.tsx:242</code>)</td><td><code>mt-row</code> = 8</td></tr>
+        <tr data-probe=".air-todo-meta|column-gap" data-today="12" data-air="12"><td>Between meta items</td><td><code>gap-x-3 gap-y-1</code> = 12 / 4 (<code>inbox.tsx:242</code>)</td><td>12 / 4 (not in § 9.2 – unchanged)</td></tr>
+        <tr data-probe=".air-todo-actions|column-gap" data-today="6" data-air="6"><td>Between the actions</td><td><code>gap-1.5</code> = 6 (<code>inbox.tsx:278</code>)</td><td>6 (§ 9.2 keeps it)</td></tr>
+        <tr data-probe=".air-todo-actions .btn|height" data-today="30" data-air="32"><td>Run, Dismiss, Acknowledge</td><td><code>size="sm"</code>, <code>h-[30px]</code> = 30 (<code>inbox.tsx:284</code>, <code>button.tsx:24</code>)</td><td><code>h-8</code> = 32 (§ 9.3)</td></tr>
+        <tr data-probe=".air-todo-engine|padding-left" data-today="20" data-air="20"><td>Engine row and toggle indent</td><td><code>pl-5</code> = 20 (<code>inbox.tsx:326, 383</code>)</td><td>20 (not in § 9.2 – unchanged)</td></tr>
+        <tr data-probe=".air-todo-engine .air-picker|height" data-today="26" data-air="28"><td>Runner and model pills</td><td><code>h-[26px]</code> = 26 (<code>picker-pill.tsx:22</code>)</td><td><code>h-7</code> = 28, floored at 24 (§ 9.3)</td></tr>
+        <tr data-probe=".air-state-empty|padding-top" data-today="48" data-air="48"><td>Empty and page-error states</td><td><code>px-6 py-12</code> = 24 / 48 (<code>centered-state.tsx:51</code>)</td><td>unchanged (§ 9.2 l.240)</td></tr>
+        <tr data-probe=".air-cs-stack|row-gap" data-today="16" data-air="16"><td>Inside the state, tile to title to text</td><td><code>gap-4</code> = 16 (<code>centered-state.tsx:56</code>)</td><td>unchanged</td></tr>
+        <tr data-probe=".air-screen .mobile-bar|height" data-today="44" data-air="44" data-at="375"><td>Mobile bar</td><td><code>h-11</code> = 44 (<code>app-shell.tsx:848</code>)</td><td>44 (unchanged)</td></tr>
+        <tr data-probe=".air-open-menu|width" data-today="44" data-air="44" data-at="375"><td>Open menu (inert on this page)</td><td><code>size-11</code> = 44 (<code>app-shell.tsx:859</code>)</td><td>44 (unchanged)</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p><strong>For the verdict.</strong></p>
+  <ul>
+    <li>The card’s inner gap stays <code>gap-2.5</code> = 10 (<code>inbox.tsx:227</code>). § 9.2 moves the card padding and the gap between cards but does not name this one, so both views draw it unchanged. Proposed, a card’s rows sit 10 apart inside a 20 px inset.</li>
+    <li>The page header keeps <code>px-5</code> = 20 (<code>inbox.tsx:84</code>) against the proposed 32 px gutter – the same header-x question as on Tasks. Here the list is centred at 768, so the offset shows only once the list fills the body (a window under about 1100 px).</li>
+    <li>The status dot’s <code>mt-[5px]</code> is a tie between 4 and 6; it is drawn at 6 (nearest step – PR 3b decides).</li>
+    <li>At 375 the actions stay beside the summary (<code>shrink-0</code>, <code>inbox.tsx:278</code>), so the proposed 20 px inset narrows the summary column from 140 to 124 px and the five-card list grows from 1,298 to 1,477 px. At 1280 it grows from 722 to 804 px (measured at Comfortable).</li>
+  </ul>
+  <p><strong>Invented, and not drawn.</strong> Every summary, age, skill and link on this page is invented. The page-error subtitle is the server’s error text verbatim in the cockpit (<code>inbox.tsx:108</code>); the sentence drawn here is invented. Not drawn: the inbox-off state (<code>inbox.tsx:95-101</code>), the provider gate line under the pills (<code>:328-343</code>) and the open instructions composer (<code>:352-377</code>, closed by default, <code>:168</code>) – none is among the six states. In the empty and error states the sidebar’s Inbox badge goes away, as in the cockpit (<code>app-shell-container.tsx:119-121</code>).</p>
+</section>
+</body>
+</html>

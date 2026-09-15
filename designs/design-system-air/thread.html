@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en" class="air-thread air-task-page">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Air – Thread</title>
+<link rel="stylesheet" href="../../docs/design-system/cockpit.css">
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="chrome.css">
+<link rel="stylesheet" href="shell.css">
+<link rel="stylesheet" href="thread.css">
+<script src="theme.js"></script>
+</head>
+<body>
+<script src="icons.js"></script>
+<script src="bar.js" data-controls="view theme accent density width" data-compare="thread" data-states="loading dialog"></script>
+
+<!-- sidebar:start -->
+<div class="shell air-screen">
+<aside class="sidebar air-side">
+  <div class="sidebar-head">
+    <span class="logo" aria-hidden="true">X</span><span class="name">xezar</span>
+    <a class="btn icon ghost air-touch air-close air-phone-only" href="tasks.html" aria-label="Close menu"><svg class="icon air-glyph" aria-hidden="true"><use href="#i-x"/></svg></a>
+  </div>
+  <div class="new-task-row">
+    <button class="btn-new-task" type="button"><svg class="icon sm" aria-hidden="true"><use href="#i-plus"/></svg>New task <kbd aria-hidden="true">C</kbd></button>
+    <button class="btn icon md air-touch air-add" type="button" aria-label="Add project" title="Add project"><svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg></button>
+  </div>
+  <div class="air-all-band"><a href="#"><svg class="icon" aria-hidden="true"><use href="#i-layers"/></svg>All tasks</a></div>
+  <div class="air-projects">
+    <div class="air-project">
+      <button class="air-project-head on" type="button" aria-expanded="true"><svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg><span class="t">xezar</span><span class="nav-badge">2</span><span class="branch">main</span></button>
+      <div class="air-project-body">
+        <nav class="air-project-nav" aria-label="xezar navigation">
+          <a href="tasks.html" aria-current="page"><svg class="icon" aria-hidden="true"><use href="#i-tasks"/></svg>Tasks</a>
+          <a href="inbox.html"><svg class="icon" aria-hidden="true"><use href="#i-inbox"/></svg>Inbox<span class="nav-badge">5</span></a>
+          <a href="#"><svg class="icon" aria-hidden="true"><use href="#i-git"/></svg>Git</a>
+          <a href="#"><svg class="icon" aria-hidden="true"><use href="#i-github"/></svg>GitHub</a>
+          <a href="#"><svg class="icon" aria-hidden="true"><use href="#i-sparkles"/></svg>Skills</a>
+          <a href="#"><svg class="icon" aria-hidden="true"><use href="#i-workflow"/></svg>Workflows</a>
+          <a href="settings.html"><svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg>Settings</a>
+        </nav>
+        <div class="air-grp"><h2 class="quick-head">Needs you</h2><ul class="quick air-quick">
+          <li class="on"><span class="dot pending pulse"></span><span class="ref">#412</span><a class="t" href="thread.html" aria-current="page">adding a retry to the failed-gate banner</a></li>
+          <li><span class="dot pending pulse"></span><span class="ref">#409</span><a class="t" href="thread.html">documenting the approval wait in the runner guide</a></li>
+        </ul></div>
+        <div class="air-grp"><h2 class="quick-head">Working</h2><ul class="quick air-quick">
+          <li><span class="dot violet pulse"></span><a class="t" href="thread.html">tightening the sidebar rhythm</a><span class="meta">9m</span></li>
+        </ul></div>
+        <div class="air-grp"><h2 class="quick-head">Recent</h2><ul class="quick air-quick">
+          <li><span class="dot success"></span><span class="ref">#405</span><a class="t" href="thread.html">pruning the orphan skill cache</a></li>
+          <li><span class="dot success"></span><a class="t" href="thread.html">syncing the root checkout</a><span class="meta">3h</span></li>
+          <li><span class="dot danger"></span><span class="ref">#398</span><a class="t" href="thread.html">moving the mutation gate to a schedule</a></li>
+          <li><span class="dot success"></span><span class="ref">#396</span><a class="t" href="thread.html">fixing the tasks badge count</a></li>
+          <li><span class="dot success"></span><a class="t" href="thread.html">renaming the release workflow step</a><span class="meta">1d</span></li>
+        </ul></div>
+        <a class="air-more" href="tasks.html">More…</a>
+      </div>
+    </div>
+    <div class="air-project"><button class="air-project-head" type="button" aria-expanded="false"><svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg><span class="t">docs-site</span><span class="branch">main</span></button></div>
+    <div class="air-project"><button class="air-project-head" type="button" aria-expanded="false"><svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg><span class="t">billing-api</span><span class="branch">release/2.4</span></button></div>
+  </div>
+  <div class="sidebar-foot">
+    <button class="air-search" type="button" title="Search — command palette (⌘K / Ctrl+K)"><svg class="icon sm" aria-hidden="true"><use href="#i-search"/></svg><span>Search…</span><kbd class="kbd" aria-hidden="true">⌘K</kbd></button>
+    <div class="air-foot-row">
+      <button class="air-tools" type="button"><span class="dot success"></span>Tools<svg class="icon xs" aria-hidden="true"><use href="#i-chevron"/></svg></button>
+      <span class="version-chip">v0.14.0</span>
+      <a class="btn icon ghost air-global" href="settings.html?section=appearance" aria-label="Global settings" title="Global settings"><svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg></a>
+      <button class="btn icon ghost air-sm" type="button" aria-label="Theme: dark. Switch to system." title="Theme: dark"><svg class="icon" aria-hidden="true"><use href="#i-moon"/></svg></button>
+    </div>
+  </div>
+</aside>
+<!-- sidebar:end -->
+<main class="main air-task">
+  <div class="mobile-bar">
+    <button class="btn icon ghost air-touch air-open-menu" type="button" aria-label="Open menu"><svg class="icon air-glyph" aria-hidden="true"><use href="#i-menu"/></svg></button>
+    <span class="title">Tasks</span>
+  </div>
+
+  <div class="air-loading">
+    <div class="centered-state"><div class="tile"><svg class="icon spin" aria-hidden="true"><use href="#i-loader"/></svg></div><h1>Loading task…</h1><p>Fetching the run and its session transcript.</p></div>
+  </div>
+
+  <header class="air-run-head">
+    <div class="air-run-in">
+      <div class="air-run-top">
+        <div class="air-title"><h1 title="Add a Retry button to the failed-gate banner, so a gate that failed on a flaky test can run again from the thread without starting a new task">adding a retry to the failed-gate banner</h1><button class="air-rename" type="button" aria-label="Rename task"><svg class="icon sm" aria-hidden="true"><use href="#i-pencil"/></svg></button></div>
+        <span class="air-run-status">
+          <span class="pill"><span class="dot violet pulse"></span>needs review</span>
+          <button class="btn icon ghost air-sm air-phone-only" type="button" aria-label="Show run details" aria-expanded="false"><svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg></button>
+          <button class="btn icon ghost air-sm air-phone-only" type="button" aria-label="Run actions"><svg class="icon" aria-hidden="true"><use href="#i-ellipsis-vertical"/></svg></button>
+        </span>
+      </div>
+      <div class="air-meta air-desktop-only">
+        <span>feature</span><span class="air-sep" aria-hidden="true">·</span><span class="air-branch">xez/4f2a91c0</span><span class="air-sep" aria-hidden="true">·</span><span class="ref-chip violet air-refchip">#412</span><span class="air-sep" aria-hidden="true">·</span><span class="diff-stat"><span class="plus">+22</span> <span class="minus">−2</span></span>
+        <span class="air-usage"><span>$0.42</span><svg class="icon sm" aria-label="Claude Code" role="img"><use href="#i-bot"/></svg></span>
+      </div>
+      <div class="air-tabs">
+        <a class="tab-link" href="thread.html" aria-current="page">Session</a>
+        <a class="tab-link" href="changes.html">Changes</a>
+        <a class="tab-link" href="#">Commits</a>
+        <a class="tab-link" href="#">Files</a>
+        <span class="air-run-actions air-desktop-only">
+          <button class="btn air-sm" type="button"><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg>Finish</button>
+          <button class="btn air-sm" type="button"><svg class="icon" aria-hidden="true"><use href="#i-play"/></svg>Continue</button>
+          <button class="btn ghost air-sm" type="button"><svg class="icon" aria-hidden="true"><use href="#i-external-link"/></svg>Open in…</button>
+          <button class="btn ghost air-sm" type="button" title="Handoff notes — what the agent did and what's left"><svg class="icon" aria-hidden="true"><use href="#i-file"/></svg>Notes</button>
+          <button class="btn danger-ghost air-sm" type="button"><svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg>Delete</button>
+        </span>
+      </div>
+      <div class="air-steps"><button type="button" aria-expanded="false" aria-label="Workflow: handoff, step 3 of 3"><span class="air-step-dots"><span class="dot success"></span><span class="dot success"></span><span class="dot success"></span></span><span class="air-step-name">handoff</span><span class="air-step-of">step 3 of 3</span><span class="air-step-bar"><i></i></span><svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg></button></div>
+    </div>
+  </header>
+
+  <div class="air-thread-col">
+    <div class="air-start">Start of session</div>
+    <div class="air-rows">
+      <div class="air-row air-turn-end"><div class="air-bubble air-md"><p>Add a Retry button to the failed-gate banner, so a gate that failed on a flaky test can run again from the thread without starting a new task.</p></div></div>
+      <div class="air-row" id="speaker-2"><div class="air-say air-md"><p>I will start with how the banner renders a failed gate and where the gate result comes from.</p></div></div>
+      <div class="air-row"><div class="air-ctx"><button class="air-ctx-trigger" type="button" aria-expanded="true"><svg class="icon air-chev" aria-hidden="true"><use href="#i-chevron-right"/></svg>Explored 4 files · 2 searches</button>
+        <div class="air-ctx-list">
+          <div class="air-tool"><button class="air-tool-row" type="button" aria-expanded="false"><svg class="icon air-chev" aria-hidden="true"><use href="#i-chevron-right"/></svg><svg class="icon air-kind" aria-hidden="true"><use href="#i-file"/></svg><span class="v">Read</span><code>packages/web/src/components/gate-banner.tsx</code></button></div>
+          <div class="air-tool"><button class="air-tool-row" type="button" aria-expanded="false"><svg class="icon air-chev" aria-hidden="true"><use href="#i-chevron-right"/></svg><svg class="icon air-kind" aria-hidden="true"><use href="#i-search"/></svg><span class="v">Search</span><code>gateFailed in packages/web/src</code></button></div>
+          <div class="air-tool"><button class="air-tool-row" type="button" aria-expanded="false"><svg class="icon air-chev" aria-hidden="true"><use href="#i-chevron-right"/></svg><svg class="icon air-kind" aria-hidden="true"><use href="#i-file"/></svg><span class="v">Read</span><code>packages/web/src/routes/task-thread/task-thread.tsx</code></button></div>
+          <div class="air-tool"><button class="air-tool-row" type="button" aria-expanded="false"><svg class="icon air-chev" aria-hidden="true"><use href="#i-chevron-right"/></svg><svg class="icon air-kind" aria-hidden="true"><use href="#i-file"/></svg><span class="v">Read</span><code>packages/xezar/src/workflows/run.ts</code></button></div>
+          <div class="air-tool"><button class="air-tool-row" type="button" aria-expanded="false"><svg class="icon air-chev" aria-hidden="true"><use href="#i-chevron-right"/></svg><svg class="icon air-kind" aria-hidden="true"><use href="#i-search"/></svg><span class="v">Search</span><code>onFail.retry in packages/xezar/src</code></button></div>
+          <div class="air-tool"><button class="air-tool-row" type="button" aria-expanded="false"><svg class="icon air-chev" aria-hidden="true"><use href="#i-chevron-right"/></svg><svg class="icon air-kind" aria-hidden="true"><use href="#i-file"/></svg><span class="v">Read</span><code>packages/web/src/api/queries.ts</code></button></div>
+        </div></div></div>
+      <div class="air-row"><div class="air-tool"><button class="air-tool-row" type="button" aria-expanded="false"><svg class="icon air-chev" aria-hidden="true"><use href="#i-chevron-right"/></svg><svg class="icon air-kind" aria-hidden="true"><use href="#i-square-pen"/></svg><span class="v">Edit</span><code>packages/web/src/routes/task-thread/components/gate-banner/failed-gate-banner-with-retry-action.tsx</code></button></div></div>
+      <div class="air-row"><div class="air-tool failed"><button class="air-tool-row" type="button" aria-expanded="false"><svg class="icon air-chev" aria-hidden="true"><use href="#i-chevron-right"/></svg><svg class="icon air-kind" aria-hidden="true"><use href="#i-terminal"/></svg><span class="v">Ran</span><code>npm test -- packages/web/src/components/gate-banner.test.tsx</code><span class="air-tool-end">failed<span class="air-exit bad">1</span></span></button></div></div>
+      <div class="air-row air-turn-end"><div class="air-say air-md"><p>The new test fails: the banner keeps its old copy after a retry. Fixing that next.</p></div></div>
+      <div class="air-row air-turn-end"><div class="air-bubble air-md"><p>Keep the failure reason visible until the retry finishes.</p></div></div>
+      <div class="air-row"><div class="air-say air-md"><p>Good call. A sub-agent checks the banner copy while I wire the button.</p></div></div>
+      <div class="air-row"><div class="air-tool"><button class="air-tool-row" type="button" aria-expanded="true"><svg class="icon air-chev" aria-hidden="true"><use href="#i-chevron-right"/></svg><svg class="icon air-kind" aria-hidden="true"><use href="#i-bot"/></svg><span class="v">Task</span><code>check the banner copy against docs/design-system/writing.md</code></button>
+        <div class="air-tool-body"><div class="air-nested">
+          <div class="air-tool"><button class="air-tool-row" type="button" aria-expanded="false"><svg class="icon air-chev" aria-hidden="true"><use href="#i-chevron-right"/></svg><svg class="icon air-kind" aria-hidden="true"><use href="#i-file"/></svg><span class="v">Read</span><code>docs/design-system/writing.md</code></button></div>
+          <div class="air-tool"><button class="air-tool-row" type="button" aria-expanded="false"><svg class="icon air-chev" aria-hidden="true"><use href="#i-chevron-right"/></svg><svg class="icon air-kind" aria-hidden="true"><use href="#i-search"/></svg><span class="v">Search</span><code>Retry in packages/web/src</code></button></div>
+          <div class="air-say air-md"><p>Two strings need the spaced dash; the rest already match.</p></div>
+        </div></div></div></div>
+      <div class="air-row"><div class="air-tool"><button class="air-tool-row" type="button" aria-expanded="false"><svg class="icon air-chev" aria-hidden="true"><use href="#i-chevron-right"/></svg><svg class="icon air-kind" aria-hidden="true"><use href="#i-square-pen"/></svg><span class="v">Edit</span><code>packages/web/src/components/gate-banner.tsx</code></button></div></div>
+      <div class="air-row"><div class="air-tool"><button class="air-tool-row" type="button" aria-expanded="false"><svg class="icon air-chev" aria-hidden="true"><use href="#i-chevron-right"/></svg><svg class="icon air-kind" aria-hidden="true"><use href="#i-square-pen"/></svg><span class="v">Write</span><code>packages/web/src/components/gate-banner.test.tsx</code></button></div></div>
+      <div class="air-row"><div class="air-tool"><button class="air-tool-row" type="button" aria-expanded="false"><svg class="icon air-chev" aria-hidden="true"><use href="#i-chevron-right"/></svg><svg class="icon air-kind" aria-hidden="true"><use href="#i-terminal"/></svg><span class="v">Ran</span><code>npm run typecheck</code><span class="air-tool-end"><span class="air-exit ok">0</span></span></button></div></div>
+      <div class="air-row"><div class="air-tool"><button class="air-tool-row" type="button" aria-expanded="false"><svg class="icon air-chev" aria-hidden="true"><use href="#i-chevron-right"/></svg><svg class="icon air-kind" aria-hidden="true"><use href="#i-terminal"/></svg><span class="v">Ran</span><code>npm test -- packages/web/src/components</code><span class="air-tool-end"><span class="air-exit ok">0</span></span></button></div></div>
+      <div class="air-row air-turn-end"><div class="air-say air-md"><p>Typecheck and the component tests pass.</p><p>The banner now keeps the reason on screen while the retry runs, and the button is disabled until it finishes.</p></div></div>
+      <div class="air-row air-turn-end"><div class="air-bubble air-md"><p>Does it retry the whole gate or only the failed check?</p></div></div>
+      <div class="air-row"><div class="air-say air-md"><p>Only the failed check. The banner passes the step id, so a green lint never runs twice.</p></div></div>
+      <div class="air-row"><div class="air-tool"><button class="air-tool-row" type="button" aria-expanded="false"><svg class="icon air-chev" aria-hidden="true"><use href="#i-chevron-right"/></svg><svg class="icon air-kind" aria-hidden="true"><use href="#i-square-pen"/></svg><span class="v">Edit</span><code>packages/web/src/components/gate-banner.tsx</code></button></div></div>
+      <div class="air-row"><div class="air-tool"><button class="air-tool-row" type="button" aria-expanded="false"><svg class="icon air-chev" aria-hidden="true"><use href="#i-chevron-right"/></svg><svg class="icon air-kind" aria-hidden="true"><use href="#i-terminal"/></svg><span class="v">Ran</span><code>npm test -- packages/web/src/components/gate-banner.test.tsx</code><span class="air-tool-end"><span class="air-exit ok">0</span></span></button></div></div>
+      <div class="air-row"><div class="air-say air-md"><p>Done. Two choices are yours before this lands.</p></div></div>
+      <div class="air-row" id="ask-card"><div class="air-ask">
+        <p class="air-ask-head">The agent is asking</p>
+        <div class="air-ask-body">
+          <div role="group" aria-label="How many times may the banner retry a failed check?"><div class="air-q-head"><span class="air-q-tag">Retry</span></div><p class="air-q">How many times may the banner retry a failed check?</p>
+            <div class="air-opts"><button class="air-opt" type="button" aria-pressed="false"><span class="l">Once</span><span class="d">One retry, then the banner offers a new task.</span></button><button class="air-opt" type="button" aria-pressed="false"><span class="l">Until it passes</span><span class="d">No limit; each retry is logged in the thread.</span></button></div></div>
+          <div role="group" aria-label="Which label should the button carry?"><div class="air-q-head"><span class="air-q-tag">Copy</span></div><p class="air-q">Which label should the button carry?</p>
+            <div class="air-opts"><button class="air-opt" type="button" aria-pressed="false"><span class="l">Retry</span><span class="d">Short, like the other run actions.</span></button><button class="air-opt" type="button" aria-pressed="false"><span class="l">Run the check again</span><span class="d">Longer; says what happens.</span></button></div></div>
+        </div>
+        <div class="air-ask-foot"><button class="btn lime air-sm" type="button" disabled>Send answer &amp; reopen</button><span class="air-hint">the session has ended — sending reopens it</span></div>
+      </div></div>
+    </div>
+
+    <section class="air-review" aria-label="Review the changes">
+      <div class="air-review-banner"><svg class="icon" aria-hidden="true"><use href="#i-eye"/></svg><p><strong>Review the changes before anything lands.</strong> <span>Read the diff, send notes back, draft a PR — or accept. Nothing merges on its own.</span></p></div>
+      <div class="air-rd">
+        <p class="air-totals"><span>2 files changed</span><span class="diff-stat"><span class="plus">+22</span> <span class="minus">−2</span></span></p>
+        <div class="air-rd-file"><button type="button" aria-expanded="false"><svg class="icon air-chev" aria-hidden="true"><use href="#i-chevron-right"/></svg><span class="air-path">packages/web/src/components/gate-banner.tsx</span><span class="diff-stat air-stat"><span class="plus">+13</span> <span class="minus">−2</span></span></button></div>
+        <div class="air-rd-file"><button type="button" aria-expanded="false"><svg class="icon air-chev" aria-hidden="true"><use href="#i-chevron-right"/></svg><span class="air-path">packages/web/src/components/gate-banner.test.tsx</span><span class="air-badge">added</span><span class="diff-stat air-stat"><span class="plus">+9</span> <span class="minus">−0</span></span></button></div>
+      </div>
+      <div class="air-review-actions">
+        <textarea class="textarea" rows="2" aria-label="Notes for the agent" placeholder="Notes for the agent — what should change?"></textarea>
+        <div class="air-review-btns">
+          <button class="btn air-sm" type="button"><svg class="icon" aria-hidden="true"><use href="#i-corner-up-left"/></svg>Send back</button>
+          <button class="btn air-sm" type="button"><svg class="icon" aria-hidden="true"><use href="#i-pull-request"/></svg>Draft PR</button>
+          <button class="btn contrast air-sm air-accept" type="button"><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg>Accept</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="air-dock" id="dock">
+    <div class="air-dock-in">
+      <div class="composer">
+        <textarea rows="1" aria-label="Reply to the agent" placeholder="Continue — add a prompt, or send to just reopen the session…"></textarea>
+        <div class="foot">
+          <div class="air-foot-start"><button class="btn icon ghost air-sq" type="button" aria-label="Attach files"><svg class="icon air-clip" aria-hidden="true"><use href="#i-paperclip"/></svg></button></div>
+          <div class="air-foot-end">
+            <span class="air-pills"><button class="chip air-picker" type="button" aria-label="Agent">Claude Code<svg class="icon xxs" aria-hidden="true"><use href="#i-chevron"/></svg></button><button class="chip air-picker" type="button" aria-label="Model">Sonnet 4.5<svg class="icon xxs" aria-hidden="true"><use href="#i-chevron"/></svg></button></span>
+            <button class="btn icon lime air-sq air-send" type="button" aria-label="Continue"><svg class="icon" aria-hidden="true"><use href="#i-arrow-up"/></svg></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<div class="air-overlay">
+  <div class="dialog alert" role="alertdialog" aria-labelledby="delete-title" aria-describedby="delete-desc">
+    <div class="air-dialog-head">
+      <h2 class="title" id="delete-title">Delete this task?</h2>
+      <p class="desc" id="delete-desc">This removes the run, its transcript, its worktree and its branch. There is no undo.<span class="air-dialog-run" title="adding a retry to the failed-gate banner">adding a retry to the failed-gate banner</span></p>
+    </div>
+    <div class="footer"><button class="btn md" type="button">Keep it</button><button class="btn md danger" type="button">Delete</button></div>
+  </div>
+</div>
+</div>
+
+<section class="doc air-values" id="values" aria-labelledby="values-h">
+  <h2 id="values-h">Values on this screen</h2>
+  <p class="air-values-status"></p>
+  <p><strong>Every spacing number below is the Comfortable value.</strong> The proposal spells this screen’s spacing on the density unit (<code>calc(var(--u) * n)</code>), so it moves with the lever – 25 % larger at Roomy (24 → 30, 16 → 20, 12 → 15), 12.5 % smaller at Compact and 25 % smaller at Ultra – and that includes the dock’s 24 sides, the 44 composer floor at 375, the 32 attach and send, and the run header’s 12 / 8 and the thread column’s 12 at 375. Two rows are hand-set control pixels the proposal deliberately leaves alone, so they hold at every density: the dialog buttons at 36 (<code>.btn.md</code>, <code>cockpit.css:926</code>) and the dialog’s own 24 inset with its 16 gap and 448 width (<code>.dialog</code>, <code>cockpit.css:1423-1437</code>).</p>
+  <div class="table-scroll">
+    <table class="decision-table">
+      <thead><tr><th scope="col">Where</th><th scope="col">Today (file:line)</th><th scope="col">Proposed (token = px at Comfortable)</th></tr></thead>
+      <tbody>
+        <tr data-probe=".air-run-head|padding-left" data-today="24" data-air="32" data-at="1280"><td>Run header, sides</td><td><code>md:px-6</code> = 24 (<code>run-header.tsx:160</code>)</td><td><code>md:px-section</code> = 32</td></tr>
+        <tr data-probe=".air-run-head|padding-top" data-today="12" data-air="24" data-at="1280"><td>Run header, top</td><td><code>md:pt-3</code> = 12 (<code>run-header.tsx:160</code>)</td><td><code>md:pt-group</code> = 24</td></tr>
+        <tr data-probe=".air-run-head|padding-left" data-today="12" data-air="12" data-at="375"><td>Run header at 375</td><td><code>px-3 pt-2</code> = 12 / 8 (<code>run-header.tsx:160</code>)</td><td>12 / 8 (unchanged)</td></tr>
+        <tr data-probe=".air-tabs|margin-top" data-today="10" data-air="12" data-at="1280"><td>Title block to tabs</td><td><code>md:mt-2.5</code> = 10 (<code>run-header.tsx:222</code>)</td><td><code>mt-stack</code> = 12</td></tr>
+        <tr data-probe=".air-tabs|margin-top" data-today="6" data-air="12" data-at="375"><td>Title block to tabs at 375</td><td><code>mt-1.5</code> = 6 (<code>run-header.tsx:222</code>)</td><td><code>mt-stack</code> = 12</td></tr>
+        <tr data-probe=".air-run-actions .btn|height" data-today="30" data-air="32" data-at="1280"><td>Header actions (size <code>sm</code>)</td><td><code>h-[30px]</code> = 30 (<code>button.tsx:24</code>, <code>run-header.tsx:238</code>)</td><td><code>h-8</code> = 32</td></tr>
+        <tr data-probe=".air-thread-col|padding-left" data-today="24" data-air="32" data-at="1280"><td>Thread column, sides (inside the measure)</td><td><code>md:px-6</code> = 24 (<code>task-thread.tsx:307</code>)</td><td><code>md:px-section</code> = 32</td></tr>
+        <tr data-probe=".air-thread-col|padding-top" data-today="20" data-air="32" data-at="1280"><td>Thread column, top and bottom</td><td><code>md:py-5</code> = 20 (<code>task-thread.tsx:307</code>)</td><td><code>md:py-section</code> = 32</td></tr>
+        <tr data-probe=".air-thread-col|padding-left" data-today="12" data-air="12" data-at="375"><td>Thread column at 375</td><td><code>px-3 py-3</code> = 12 (<code>task-thread.tsx:307</code>)</td><td>12 (unchanged)</td></tr>
+        <tr><td>Between column sections</td><td><code>gap-2.5 md:gap-3.5</code> = 10 / 14 (<code>task-thread.tsx:307</code>)</td><td>10 / 14 (not in § 9.2 – unchanged)</td></tr>
+        <tr data-probe="#speaker-2|padding-bottom" data-today="10" data-air="8"><td>Row inside a turn</td><td><code>pb-2.5</code> = 10 (<code>thread-scroller.tsx:410, 492</code>)</td><td><code>pb-row</code> = 8</td></tr>
+        <tr data-probe=".air-turn-end|padding-bottom" data-today="10" data-air="24"><td>Between two speakers’ rows (next row’s top − the outgoing row’s content bottom)</td><td>the same <code>pb-2.5</code> = 10 – no boundary (<code>thread-scroller.tsx:410</code>)</td><td>the outgoing speaker’s last row takes <code>pb-group</code> instead of <code>pb-row</code> = 24 (R-6b; <code>thread-groups.ts</code> knows the boundary)</td></tr>
+        <tr data-probe=".air-bubble|padding-left" data-today="15" data-air="16"><td>User bubble, sides</td><td><code>px-[15px]</code> = 15 (<code>thread-items.tsx:167</code>)</td><td><code>px-4</code> = 16</td></tr>
+        <tr><td>User bubble corners</td><td>only bottom-right rounds: <code>rounded-2xl</code> emits no rule (<code>styles/index.css:281</code> resets <code>--radius-*</code>), <code>rounded-br-md</code> = 10 (<code>thread-items.tsx:167</code>)</td><td>as shipped (not in § 9.2 – unchanged)</td></tr>
+        <tr data-probe=".air-tool-row|min-height" data-today="28" data-air="32"><td>Tool row</td><td><code>min-h-[28px]</code> = 28 (<code>thread-items.tsx:547</code>)</td><td><code>min-h-8</code> = 32</td></tr>
+        <tr data-probe=".air-tool-row|padding-top" data-today="2" data-air="4"><td>Tool row, top and bottom</td><td><code>py-0.5</code> = 2 (<code>thread-items.tsx:547</code>)</td><td><code>py-1</code> = 4</td></tr>
+        <tr data-probe=".air-ctx-trigger|height" data-today="34" data-air="36"><td>Tool group trigger</td><td><code>h-[34px]</code> = 34 (<code>thread-items.tsx:615</code>)</td><td><code>h-9</code> = 36</td></tr>
+        <tr data-probe=".air-nested|margin-top" data-today="8" data-air="12"><td>Nested tool group</td><td><code>my-2</code> = 8 (<code>thread-items.tsx:600</code>)</td><td><code>my-stack</code> = 12</td></tr>
+        <tr data-probe=".air-ask|padding-top" data-today="14" data-air="20"><td>Ask card padding</td><td><code>px-4 pt-3.5 pb-3.5</code> = 16 / 14 (<code>ask-card.tsx:82</code>)</td><td><code>p-inset</code> = 20</td></tr>
+        <tr data-probe=".air-ask-body|row-gap" data-today="16" data-air="16"><td>Ask card, between questions</td><td><code>gap-4</code> = 16 (<code>ask-card.tsx:87</code>)</td><td><code>gap-list</code> = 16</td></tr>
+        <tr data-probe=".air-ask .btn|height" data-today="30" data-air="32"><td>Send answer (size <code>sm</code>)</td><td><code>h-[30px]</code> = 30 (<code>ask-card.tsx:110</code>)</td><td><code>h-8</code> = 32</td></tr>
+        <tr data-probe=".air-review|row-gap" data-today="12" data-air="12"><td>Review panel</td><td><code>gap-3</code> = 12 (<code>review-panel.tsx:39</code>)</td><td><code>gap-stack</code> = 12; banner <code>px-3.5 py-2.5</code> unchanged</td></tr>
+        <tr data-probe=".air-dock|padding-top" data-today="6" data-air="12" data-at="1280"><td>Dock, above the composer</td><td><code>md:pt-1.5</code> = 6 (<code>task-thread.tsx:409</code>)</td><td><code>md:pt-stack</code> = 12</td></tr>
+        <tr data-probe=".air-dock|padding-bottom" data-today="16" data-air="16" data-at="1280"><td>Dock, below the composer</td><td><code>md:pb-4</code> = 16 (<code>task-thread.tsx:409</code>)</td><td><code>md:pb-list</code> = 16</td></tr>
+        <tr data-probe=".air-dock|padding-top" data-today="4" data-air="4" data-at="375"><td>Dock at 375</td><td><code>px-3 pt-1 pb-2</code> = 12 / 4 / 8 (<code>task-thread.tsx:409</code>)</td><td>unchanged</td></tr>
+        <tr data-probe=".air-dock|padding-left" data-today="24" data-air="24" data-at="1280"><td>Dock sides (outside its measure box)</td><td><code>md:px-6</code> = 24 (<code>task-thread.tsx:409, 417</code>)</td><td>24 (not in § 9.2 – unchanged)</td></tr>
+        <tr data-probe=".air-dock .composer textarea|min-height" data-today="54" data-air="56" data-at="1280"><td>Composer floor</td><td><code>md:min-h-[54px]</code> = 54 (<code>composer.tsx:525</code>)</td><td><code>md:min-h-14</code> = 56 (PR 3b)</td></tr>
+        <tr data-probe=".air-dock .composer textarea|min-height" data-today="44" data-air="44" data-at="375"><td>Composer floor at 375</td><td><code>min-h-11</code> = 44 (<code>composer.tsx:525</code>)</td><td>44 (unchanged)</td></tr>
+        <tr data-probe=".air-dock .air-picker|height" data-today="26" data-air="28"><td>Agent and model pills</td><td><code>h-[26px]</code> = 26 (<code>picker-pill.tsx:22</code>)</td><td><code>h-7 min-h-[24px]</code> = 28, never under 24</td></tr>
+        <tr data-probe=".air-send|height" data-today="32" data-air="32"><td>Attach and send</td><td><code>size-8</code> = 32 (<code>composer.tsx:583, 674</code>)</td><td>32 (unchanged)</td></tr>
+        <tr data-probe=".air-overlay .dialog|padding-top" data-today="24" data-air="24"><td>Dialog “Delete this task?” – identical internals, buttons included</td><td><code>gap-4 p-6 sm:max-w-md</code> = 16 / 24 / 448 (<code>alert-dialog.tsx:60</code>)</td><td>unchanged (§ 9.2 l.237)</td></tr>
+        <tr data-probe=".air-overlay .btn.md|height" data-today="36" data-air="36"><td>Dialog buttons “Keep it” / “Delete”</td><td>default size <code>h-9</code> = 36 (<code>alert-dialog.tsx:122, 135</code>)</td><td>36 – <code>md</code> stays <code>h-9</code> (§ 9.3 l.251)</td></tr>
+        <tr data-probe=".air-loading .centered-state|padding-top" data-today="48" data-air="48"><td>Loading task (<code>?state=loading</code>)</td><td><code>px-6 py-12</code>, <code>gap-4</code> (<code>centered-state.tsx:51, 56</code>)</td><td>unchanged (§ 9.2 l.240)</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p><strong>Not drawn in the header.</strong> A review run also offers Mark unread, Pin and Archive (<code>run-header.tsx:267-300</code>, <code>run-actions.ts:100-110</code>). With them the tab row needs more than the 820 px measure at 1280 in both views, so the mockup leaves them out rather than scroll sideways; § 9.2 does not touch the row.</p>
+</section>
+</body>
+</html>
