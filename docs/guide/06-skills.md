@@ -32,27 +32,27 @@ When two skills have the same name, the first source below wins:
 5. Global `~/.agents/skills/`, then `~/.claude/skills/`.
 6. Configured team repositories.
 
-Missing directories are fine. Account selection does not switch the global skill library: skills are shared instructions, not account identity. A local skill with the same name can therefore hide a newer team definition; check its source when an update seems to have no effect.
+Missing directories are fine. Account selection does not switch the global skill library: skills are shared instructions, not account identity. A local skill with the same name can hide a newer team definition; check its source when an update seems to have no effect.
 
 ## To use team skills and control automatic updates
 
 The default team source is `qodeca/xezar-skills` at `main`. xezar reads it through a shared bare Git cache under `~/.cache/xez/skills/`; initial catalog loading runs in the background. Without network access, it can list the cached copy or an empty team catalog. **Refresh** requests a new catalog fetch.
 
-Installed-skill updates are separate. The updater checks tracked `qodeca/xezar-skills` installations in project and global scopes and applies available updates automatically by default. Checks use a six-hour cache window. Only names authorized by the installation lock file are eligible; other repositories and manually maintained folders are left alone. A missing lock file or unavailable `npx` is reported rather than treated as an installation to modify.
+Installed-skill updates are separate. The updater checks tracked `qodeca/xezar-skills` installations in project and global scopes and applies available updates automatically by default when xezar starts listening and when a project is added. Checks use a six-hour cache window. Opening update status in the cockpit checks only; it does not apply updates. There is no timer that applies new updates: use **Update now** when available, or let a later server start check and apply them. Only names authorized by the installation lock file are eligible; other repositories and manually maintained folders are left alone. A missing lock file is treated as current with the reason "installation is not tracked"; the Manage panel can therefore say "Installed xezar-skills are up to date" even when nothing is tracked. Check **Settings → Skills** for "No tracked xezar-skills installation found." Unavailable `npx` prevents update checks.
 
 To disable automatic application, turn off **Update xezar-skills automatically** in global **Settings → Skills**, or export `XEZ_SKILLS_AUTO_UPDATE=0` when no saved override is set. Background detection remains read-only when automatic application is off.
 
-For a different team catalog, set `skillsRepos` in project `.xezar/config.json`, for example:
+To keep the default catalog and personal selection, leave `skillsRepos` out of project `.xezar/config.json`. For a different team catalog, set it explicitly; replace this example repository with your own:
 
 ```json
 {
   "skillsRepos": [
-    { "repo": "qodeca/xezar-skills", "ref": "main" }
+    { "repo": "your-org/team-skills", "ref": "main" }
   ]
 }
 ```
 
-An explicit `skillsRepos` list defines the project's sources; an empty list disables team sources. A custom list is not filtered by the default catalog's personal selection.
+An explicit `skillsRepos` list defines the project's sources; an empty list disables team sources. Setting any `skillsRepos` value, even a list naming the default repository, ignores your personal selection and hides **Manage skills**, including its update buttons.
 
 ## To browse Skills and use the Manage panel
 
@@ -60,17 +60,17 @@ Open **Skills**, search the catalog and select a row to preview its body and sou
 
 All default team skills are initially enabled. Uncheck names you do not want offered. That selection follows you across projects through `~/.xezar/ui-state.json`; it filters the default team catalog, not local skill files. Clearing all checkboxes is a real empty selection.
 
-The Manage panel also shows installed-skill update status. Use **Check again**, then **Update now** when an update is available; failures can offer **Retry**. After files update, the panel may suggest `/xez-apply-upgrade-notes` for descriptor migrations in configured repositories. Updating skill files and applying repository upgrade notes are separate actions.
+The Manage panel also shows installed-skill update status. Its action changes with status: **Check again** when current, **Update now** when an update is available, **Retry** after a failed apply, or **Retry check** when status is unavailable. After files update, the panel may suggest `/xez-apply-upgrade-notes` for descriptor migrations in configured repositories. Updating skill files and applying repository upgrade notes are separate actions.
 
 ![Skills catalog and preview](../screenshots/0.15.0/skills-dark-1280.png)
 
 ## To change Settings → Skills
 
-Open global **Settings → Skills** to inspect tracked installation status and the automatic-update switch. A saved `skillsAutoUpdate` value in `~/.xezar/config.json` overrides the environment default. Use the control to follow the environment again when you want `XEZ_SKILLS_AUTO_UPDATE` to decide. For manual check and apply actions, return to **Skills → Manage skills**.
+Open global **Settings → Skills** to inspect tracked installation status and the automatic-update switch. A saved `skillsAutoUpdate` value in `~/.xezar/config.json` overrides the environment default. Choose **Use default** to clear the saved override and follow the environment again when you want `XEZ_SKILLS_AUTO_UPDATE` to decide. For manual check and apply actions, return to **Skills → Manage skills**.
 
 ## To migrate from the old repository
 
-If you explicitly configured the retired `open-mercato/skills` source, change that `skillsRepos` entry to `qodeca/xezar-skills` and refresh the catalog. Inspect local installations too: the current updater recognizes only the new repository, so it will not upgrade an old-source installation for you.
+If you explicitly configured the retired `open-mercato/skills` source, remove the `skillsRepos` key and refresh the catalog to restore the default `qodeca/xezar-skills` source with **Manage skills** and personal selection intact. Keeping an explicit key, even with the new default repository, hides that panel and bypasses the selection. Inspect local installations too: the current updater recognizes only the new repository, so it will not upgrade an old-source installation for you.
 
 Review workflow references using the old `om-` names and choose the matching current `xez-` names from the catalog. The compatibility mapping applies when reading the personal `importedSkills` selection: an old `om-` selection also admits the matching `xez-` skill without rewriting the saved list. It is not a general rewrite of workflow files or local skill copies. Preserve local edits when replacing an old installation.
 

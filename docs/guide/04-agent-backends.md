@@ -15,7 +15,7 @@ Choose an agent in the new-task composer. A workflow can also choose a different
 
 ## To check detection and binary paths
 
-xezar probes the agent binaries with `--version` and offers installed backends in the composer. Detection does not prove that an account is signed in. Open the chosen CLI once to log in or configure its provider before starting a task.
+xezar probes agent binaries with `--version` for its health check. The composer offers enabled backends whose account probes report that they are signed in; installing a CLI alone is not enough. Dry-run mode supplies a mock backend without a login. Open the chosen CLI once to log in or configure its provider before starting a task.
 
 If the executable is outside the server's `PATH`, export the matching variable before starting xezar: `XEZ_CLAUDE_BIN`, `XEZ_CODEX_BIN`, `XEZ_OPENCODE_BIN` or `XEZ_PI_BIN`. Use the executable's path as the value. A missing optional backend does not prevent the cockpit from starting.
 
@@ -23,7 +23,7 @@ If the executable is outside the server's `PATH`, export the matching variable b
 
 Open project **Settings → Agents** to select the default agent and per-agent model presets. You can override the choice for a task, or set `runner` and `model` in a workflow step. A step's model takes precedence over the task's model. Leaving a model on **auto (default)** lets the backend choose; OpenCode model IDs use `provider/model`.
 
-When model locking is enabled, the agent's native model settings take control and xezar omits model overrides. The Agents section also has a shared system prompt and the planner and namer model controls. Those two background-model controls apply to Claude; their defaults are `sonnet` and `haiku` respectively. `ANTHROPIC_MODEL`, when exported, also takes precedence over cockpit model presets.
+To lock models to native agent settings, set `XEZ_AGENT_MODELS_LOCKED=1` or `"modelsLocked": true` in global `~/.xezar/config.json` or project `.xezar/config.json`. Project **Settings → Agents** shows the locked model as read-only; it has no lock switch. While locked, requests that set a model override are refused with HTTP 409. The Agents section also has a shared system prompt and the planner and namer model controls. Those two background-model controls apply to Claude; their defaults are `sonnet` and `haiku` respectively. For Claude only, `ANTHROPIC_MODEL` supplies the native default when no cockpit preset is saved and the task model is left on **auto (default)**. A saved cockpit preset is layered over that default and the selected model is passed as `--model`.
 
 ![Project Agents settings](../screenshots/0.15.0/settings-agents-dark-1280.png)
 
@@ -50,7 +50,7 @@ Workflow agent steps accept `allowedTools` and `bashAllowlist`. Without override
 
 ## To make a project MCP server available to Codex
 
-Declare it in the project's trusted `.codex/config.toml`. Before starting or resuming a thread, xezar asks Codex for its effective configuration. It enables only MCP servers whose reported origins are entirely project configuration. A home configuration that adds a key to the same server makes that server ineligible.
+Declare it in the project's trusted `.codex/config.toml`. Before starting or resuming a thread, xezar asks Codex for its effective configuration. It leaves MCP servers whose reported origins are entirely project configuration as configured, and disables other servers. A home configuration that adds a key to the same server makes that server ineligible.
 
 xezar also disables plugins, apps and its own leader bridge for task runs. Do not name an unrelated server `xezar`: that name is reserved and disabled too. These are per-thread overrides; xezar does not rewrite your Codex configuration. If the app-server cannot answer `config/read`, the run fails instead of starting with unexamined tools. This isolation applies to Codex, not the other backends.
 
@@ -70,11 +70,12 @@ Secret redaction is enabled by default for persisted transcripts and free-text r
 
 Check the task's tool result and error messages before assuming the command succeeded. One known cause is a broken temporary directory: Claude Code's shell output can be lost even when a command's side effects have already happened. xezar normally creates and write-tests a private temporary directory for each task, then points `TMPDIR`, `TEMP` and `TMP` there.
 
-If startup reports a temporary-directory error, fix the named path's permissions or storage problem. If you deliberately set `XEZ_AGENT_TMPDIR=0`, restore the default and start a new task; that opt-out bypasses both the private directory and its preflight. Also check whether the selected backend actually permits the shell command using the tool-access table above.
+If a task fails before the agent starts with a temporary-directory error, fix the named path's permissions or storage problem. If you deliberately set `XEZ_AGENT_TMPDIR=0`, restore the default and start a new task; that opt-out bypasses both the private directory and its preflight. Also check whether the selected backend actually permits the shell command using the tool-access table above.
 
 ## Related settings / env / config
 
-- Project **Agents**: `defaultRunner`, `defaultModels`, `modelsLocked`, `systemPrompt`, `plannerModel`, `namerModel` in `.xezar/config.json`.
+- Project **Agents**: `defaultRunner`, `defaultModels`, `systemPrompt`, `plannerModel`, `namerModel` in `.xezar/config.json`.
+- Model lock: `XEZ_AGENT_MODELS_LOCKED=1` or `modelsLocked: true` in global or project configuration; shown read-only in **Agents**.
 - Global **Agent accounts** and **Resources**: account selections, usage-limit auto-resume and environment passthrough.
 - Binary, approval, sandbox, environment and redaction switches: [environment contract](../../.env.example).
 - [Workflows](05-workflows.md) explains per-step overrides; [Skills](06-skills.md) explains reusable instructions.

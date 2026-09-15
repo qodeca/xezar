@@ -1,10 +1,10 @@
 # Workflows
 
-Use a workflow to repeat an ordered sequence of agent work and shell checks for each task. Each agent step gets the task text and can use its own skill, backend and model; check steps give the sequence a concrete pass-or-fail result.
+Use a workflow to repeat an ordered sequence of agent work and shell checks for each task. Each agent step can use its own prompt, skill, backend and model; check steps give the sequence a concrete pass-or-fail result.
 
 ## To start with built-in quick-task
 
-Choose **quick-task** for one agent step that works on your prompt. It is available without a workflow file. For a reusable sequence, add a `.yaml` or `.yml` file directly under `.xezar/workflows/`. File workflows take precedence over built-ins with the same name. Invalid files are reported without preventing the other workflows from loading.
+Choose **quick-task** for one agent step that works on your prompt. It is available without a workflow file. For a reusable sequence, add a `.yaml` or `.yml` file directly under `.xezar/workflows/`. File workflows take precedence over built-ins with the same name. Invalid files are skipped without preventing other workflows from loading. Look for skipped-file messages in `xezar run` output or the `issues` field of `GET /api/v1/workflows`; a skipped file does not appear in the cockpit workflow list.
 
 ## To write the YAML format
 
@@ -28,7 +28,7 @@ steps:
       max: 2
 ```
 
-`{{task}}` expands to the task text entered by the user. For a sequence consisting only of skills, use:
+`{{task}}` expands to the task text entered by the user. Include it in a custom prompt to pass that text to the agent; a custom prompt without it omits the task text. If `prompt` is omitted, the default prompt supplies the task text. For a sequence consisting only of skills, use:
 
 ```yaml
 name: review-docs
@@ -49,7 +49,7 @@ A **check step** has `command`. Exit code zero passes; a non-zero exit fails or 
 
 Set `onFail.retry` to an earlier step's ID and `max` to a positive integer. In the example, a failed `verify` returns to `implement` at most twice, running the intervening sequence again. The failing command output is added to the retried agent's prompt. Omitting `max` defaults it to two retries.
 
-A retry target must exist and precede the check. Without a retry rule, or after its allowance is exhausted, the failed check fails the run. This is a check-failure repair loop; it does not automatically retry a failed agent step.
+A retry target must exist and precede the check. Without a retry rule, or after its allowance is exhausted, the failed check fails the run. This is a check-failure repair loop; it does not automatically retry a failed agent step. Put `onFail` on checks: it is accepted on agent steps but ignored there.
 
 ## To set an agent timeout
 
@@ -67,13 +67,13 @@ An agent at the very end can remain open for conversation; `XEZ:DONE` signals th
 
 Open **Workflows**, create a new workflow or select an existing one, and add skills from the palette to the canvas. Drag cards to reorder them; with the keyboard, focus a drag grip, press Space, move with arrow keys, then press Space again. The builder allows up to eight steps.
 
-Name the workflow and review the YAML preview before choosing **Save**. Saving over an existing name asks for confirmation. You can also ask the automatic chain creator to propose a sequence from a brief, then review and edit it before saving. A planner fallback is shown as a one-step proposal.
+Name the workflow and review the YAML preview before choosing **Save**. Saving asks for overwrite confirmation when the generated `<slug>.yaml` file already exists; different names can produce the same filename. Creating a file that shadows built-in `quick-task` needs no overwrite confirmation unless that file already exists. Choose **Auto** to propose a sequence from a brief, then review and edit it before saving. A planner fallback is shown as a one-step proposal.
 
 ![Workflows builder](../screenshots/0.15.0/workflows-dark-1280.png)
 
 ## To import or export a workflow
 
-Use **Import** to paste YAML into the builder. Parsing happens on the server; fix any reported validation errors before saving. **Export** downloads a YAML file and **Copy** puts YAML on the clipboard. A plain skill stack uses the compact `skills` form; checks, custom prompts, models, tools, retries or timeouts require full `steps` form.
+Use **Import** to paste YAML into the builder. Parsing happens on the server; fix any reported validation errors before saving. **Export** downloads a YAML file and **Copy** puts YAML on the clipboard. A plain skill stack uses the compact `skills` form; checks, prompt-only steps, custom prompts other than `{{task}}`, per-step runners or models, tools, retries, timeouts, or a step name that differs from its skill require full `steps` form.
 
 ## Related settings / env / config
 
