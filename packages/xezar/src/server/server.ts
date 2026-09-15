@@ -90,6 +90,7 @@ import { getTeamSkillsCached, refreshTeamSkills, waitForTeamSkills } from '../sk
 import { appendHandoffHeartbeat, handoffProgressExcerpt, readHandoff } from '../handoff.ts';
 import { markStarted, onTodosChanged, readTodos, removeTodo, todoTaskText, type TodoItem } from '../todos.ts';
 import type { RunEvent, RunRecord, RunStatus, RunStore } from '../runs/store.ts';
+import type { InstallChannel } from '../install-channel.ts';
 import {
   HistoryCursorError,
   deriveRunContextEvents,
@@ -223,6 +224,10 @@ export interface ServerDeps {
   store: RunStore;
   manager: RunManager;
   version: string;
+  /** Where this server came from (#442), from `detectInstallChannel` at boot. Optional so the
+   *  many test harnesses that build an app change nothing; absent answers `release` — the
+   *  no-badge direction. The real boot passes it, which the browser suite's health spec pins. */
+  channel?: InstallChannel;
   /** Mutable holder for the async npm-registry update check (#368) —
    *  `latest` appears once the registry answers with a newer version. */
   update?: { latest?: string };
@@ -1007,7 +1012,9 @@ async function probeWritableDir(dir: string, create: boolean): Promise<string | 
 // Annotating it `Hono` here would erase every route from the type and leave the typed client
 // with nothing to offer. See the `routed` assembly at the end of the function.
 export function createApp(deps: ServerDeps) {
-  const { version, update, bindHost, bootProjectId } = deps;
+  // Destructured, never read as a member: the audit-door guard (audit-origin-wiring.test.ts)
+  // counts every property access spelled like the audit-trail method as a possible door.
+  const { version, update, bindHost, bootProjectId, channel = 'release' } = deps;
   // Boot singletons keep DELIBERATELY distinct names (`boot*`): every
   // project-scoped handler must resolve its `{store, manager, root, dataDir,
   // launchKey}` from `c.get('project')` — a bare `store`/`repoRoot` in a
@@ -1451,6 +1458,7 @@ export function createApp(deps: ServerDeps) {
       // the key as always-present, which is a shape no client ever receives. The contract schema
       // says `.optional()`, and contract-parity.test.ts holds the two together.
       ...(update?.latest !== undefined ? { latestVersion: update.latest } : {}),
+      channel,
       // Health is CORS-open and, in hosted mode, reachable off the loopback —
       // so any site/host that reads it would learn the developer's absolute
       // checkout path and username (#431). Local mode keeps the full path (the

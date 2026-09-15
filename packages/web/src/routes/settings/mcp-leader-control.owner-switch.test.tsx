@@ -30,6 +30,7 @@ const fetchMock = vi.fn<typeof fetch>()
 
 const HEALTH: HealthResponse = {
   version: '0.1.5',
+  channel: 'release',
   projects: [],
   bootProject: 'alpha',
   repoRoot: '/home/me/Projects/alpha',

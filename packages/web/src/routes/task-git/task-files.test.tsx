@@ -35,6 +35,7 @@ const RUN: ApiRun = {
 
 const HEALTH: HealthResponse = {
   version: '0.0.0-test',
+  channel: 'release',
   projects: [],
   bootProject: 'default',
   repoRoot: '/repo',

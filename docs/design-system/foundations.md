@@ -124,7 +124,7 @@ How the tokens are meant to be read. This is the grammar every surface follows.
 | --- | --- | --- |
 | Status lives in the dot, never in the fill | `--success`, `--pending`, `--danger`, `--violet`, `--soft-foreground` | `StatusDot`; rows, pills and nav items stay neutral |
 | Violet means "a person is involved" | `--violet` | Inbox count badge, needs-review dot, running dot, unread marker, pin |
-| Red means broken | `--danger` | failed status, destructive actions, failing checks, deletions |
+| Red means broken | `--danger` | failed status, destructive actions, failing checks, deletions; one recorded exception: the development-build badge on the brand tile (decisions.md D-08) |
 | Green means finished well | `--success` | done status, passing checks, additions |
 | Amber means waiting | `--pending` (fill), `--pending-strong` (ink) | waiting dot, scheduled retry, version-update dot |
 | Blue means waiting on a reviewer | `--info` | reference chip `review-required` |
