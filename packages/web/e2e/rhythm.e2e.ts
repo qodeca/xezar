@@ -17,10 +17,15 @@ import record from './fixtures/thread-run.record.json'
  * Boots its own server (the thread fixture, same doctrine as task-thread.e2e.ts) so the
  * density this spec saves lands in the fixture's pinned `XEZ_HOME`, never in the shared
  * environment another spec reads.
+ *
+ * The second half reads the hand-typed pixels step 3b put back on the scale (§ 9.3): they must
+ * now shrink with the lever too, except the two chips, which an absolute 24 px floor holds up.
  */
 
 const sessionId = `e2e-rhythm-${process.pid}`
 const RUN_ID: string = record.id
+/** A second run carrying a pull request, so the task table and the quick list paint a reference chip. */
+const REFERENCE_RUN_ID = '3b0c5e2a-4d1f-4c8e-9a7b-2f6d8e1c0a93'
 
 /** Roomy and Compact for real can give fractional pixels; allow for rounding. */
 const TOLERANCE_PX = 0.5
@@ -128,6 +133,80 @@ function expectRhythm(actual: Rhythm, scale: number): void {
   expect(off).toEqual([])
 }
 
+type Controls = Record<
+  | 'navRow'
+  | 'newTask'
+  | 'brandGap'
+  | 'tableHeader'
+  | 'quickListPad'
+  | 'toolRow'
+  | 'pickerPill'
+  | 'tableReferenceChip'
+  | 'quickListReferenceChip',
+  number
+>
+
+/** The converted controls at Comfortable, and the floor the two chips never go under. */
+const CONTROLS: Controls = {
+  navRow: 36,
+  newTask: 40,
+  brandGap: 8,
+  tableHeader: 40,
+  quickListPad: 8,
+  toolRow: 32,
+  pickerPill: 28,
+  tableReferenceChip: 24,
+  quickListReferenceChip: 24,
+}
+const CHIP_FLOOR_PX = 24
+const FLOORED: ReadonlySet<keyof Controls> = new Set(['pickerPill', 'tableReferenceChip', 'quickListReferenceChip'])
+
+/** Heights through the rendered box, spacing through computed style – each on its own screen. */
+function measureControls(): Controls {
+  browser.goto(`${baseUrl}/p/${bootProject}/tasks/${RUN_ID}`)
+  browser.waitForFunction(`document.querySelector('[data-slot="tool-card"] > [data-slot="collapsible-trigger"]') !== null`)
+  const thread = browser.evaluate(`(() => {
+    const sidebar = document.querySelector('[data-slot="sidebar"]')
+    const height = (el) => (el ? el.getBoundingClientRect().height : -1)
+    const style = (el) => (el ? getComputedStyle(el) : null)
+    return {
+      navRow: height(sidebar.querySelector('nav a')),
+      newTask: height(sidebar.querySelector('a[href$="/new"]')),
+      brandGap: parseFloat(style(sidebar.querySelector('[data-slot="sidebar-brand"]'))?.columnGap ?? '-1'),
+      quickListPad: parseFloat(style(sidebar.querySelector('[data-slot="task-row"] > a:not([data-slot])'))?.paddingTop ?? '-1'),
+      quickListReferenceChip: height(sidebar.querySelector('[data-slot="task-row"] [data-slot="pr-chip"]')),
+      // The trigger's min-height, not its box: the box also holds the text line, which does not scale.
+      toolRow: parseFloat(style(document.querySelector('[data-slot="tool-card"] > [data-slot="collapsible-trigger"]'))?.minHeight ?? '-1'),
+    }
+  })()`) as Pick<Controls, 'navRow' | 'newTask' | 'brandGap' | 'quickListPad' | 'quickListReferenceChip' | 'toolRow'>
+
+  browser.goto(`${baseUrl}/p/${bootProject}`)
+  browser.waitForFunction(`document.querySelector('[data-route="tasks"] [data-slot="task-table-row"] [data-slot="pr-chip"]') !== null`)
+  const table = browser.evaluate(`(() => ({
+    tableHeader: document.querySelector('[data-route="tasks"] thead th').getBoundingClientRect().height,
+    tableReferenceChip: document.querySelector('[data-route="tasks"] [data-slot="task-table-row"] [data-slot="pr-chip"]').getBoundingClientRect().height,
+  }))()`) as Pick<Controls, 'tableHeader' | 'tableReferenceChip'>
+
+  browser.goto(`${baseUrl}/p/${bootProject}/new`)
+  browser.waitForFunction(`document.querySelector('[data-slot="model-pill"]') !== null`)
+  const composer = browser.evaluate(
+    `({ pickerPill: document.querySelector('[data-slot="model-pill"]').getBoundingClientRect().height })`,
+  ) as Pick<Controls, 'pickerPill'>
+
+  return { ...thread, ...table, ...composer }
+}
+
+function expectControls(actual: Controls, scale: number): void {
+  const off = (Object.entries(CONTROLS) as [keyof Controls, number][])
+    .map(([name, value]): [keyof Controls, number] => [
+      name,
+      FLOORED.has(name) ? Math.max(value * scale, CHIP_FLOOR_PX) : value * scale,
+    ])
+    .filter(([name, expected]) => !(Math.abs(actual[name] - expected) <= TOLERANCE_PX))
+    .map(([name, expected]) => `${name}: ${actual[name]}px, expected ${expected}px`)
+  expect(off).toEqual([])
+}
+
 function chooseDensity(value: 'comfortable' | 'roomy' | 'ultra'): void {
   browser.goto(`${baseUrl}/settings/global/appearance`)
   browser.waitForFunction(`document.querySelector('[data-slot="appearance-density"]') !== null`)
@@ -142,7 +221,14 @@ function chooseDensity(value: 'comfortable' | 'roomy' | 'ultra'): void {
 beforeAll(async () => {
   dataRoot = mkdtempSync(join(tmpdir(), 'xezar-e2e-rhythm-'))
   mkdirSync(join(dataRoot, '.local/xezar/runs'), { recursive: true })
-  writeFileSync(join(dataRoot, '.local/xezar/runs.json'), JSON.stringify([record], null, 2), 'utf8')
+  const referenceRun = {
+    ...record,
+    id: REFERENCE_RUN_ID,
+    title: 'Reference chip fixture',
+    task: 'Reference chip fixture',
+    pullRequestUrl: 'https://github.com/example/repo/pull/7',
+  }
+  writeFileSync(join(dataRoot, '.local/xezar/runs.json'), JSON.stringify([record, referenceRun], null, 2), 'utf8')
   copyFileSync(
     resolve(import.meta.dirname, 'fixtures/thread-run.ndjson'),
     join(dataRoot, '.local/xezar/runs', `${RUN_ID}.ndjson`),
@@ -186,6 +272,21 @@ describe('the rhythm tokens on the rendered cockpit', () => {
     chooseDensity('ultra')
     try {
       expectRhythm(measure(), 0.75)
+    } finally {
+      chooseDensity('comfortable')
+    }
+  })
+})
+
+describe('the pixels step 3b put back on the scale', () => {
+  it('ships the converted controls at Comfortable', () => {
+    expectControls(measureControls(), 1)
+  })
+
+  it('shrinks them to 75 % at Compact for real, and holds the chips at 24 px', () => {
+    chooseDensity('ultra')
+    try {
+      expectControls(measureControls(), 0.75)
     } finally {
       chooseDensity('comfortable')
     }

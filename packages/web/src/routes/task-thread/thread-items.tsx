@@ -544,7 +544,7 @@ export function ToolCard({
     >
       <CollapsibleTrigger
         disabled={!hasDetail}
-        className="group flex min-h-[28px] w-full items-center gap-1.5 px-2.5 py-0.5 text-left text-[13px] enabled:hover:bg-muted"
+        className="group flex min-h-8 w-full items-center gap-1.5 px-2.5 py-1 text-left text-[13px] enabled:hover:bg-muted"
       >
         <ChevronRightIcon
           aria-hidden

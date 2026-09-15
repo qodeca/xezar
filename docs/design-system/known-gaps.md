@@ -28,8 +28,8 @@ Counts are non-test files or occurrences in `packages/web/src`.
 
 ### G-03 Chip class copied instead of imported
 
-- **Differs**: `chipClass` (`components/picker-pill.tsx`) is re-declared verbatim in `components/prompt-template-menu.tsx:67` and `routes/settings/prompt-templates-section.tsx:345`, both with `disabled:opacity-50` instead of `opacity-55`. `components/facet-filter.tsx` adds a third chip height (`h-7` vs `h-[26px]`).
-- **Rule**: import `chipClass`; `h-[26px]` for composer chips, `h-7` for filter chips.
+- **Differs**: `chipClass` (`components/picker-pill.tsx`) is re-declared by hand in `components/prompt-template-menu.tsx:67` and `routes/settings/prompt-templates-section.tsx:345`, both with `disabled:opacity-50` instead of `opacity-55`. Both copies also keep the old `h-[26px]` and so miss the `h-7 min-h-[24px]` density-scaled height and 24 px floor. `components/facet-filter.tsx` spells its filter chip `h-7` without the floor.
+- **Rule**: import `chipClass` (`h-7 min-h-[24px]`) for composer chips; `h-7` for filter chips.
 - **Fix**: replace the two copies with the import; document the two heights as intentional or unify.
 
 ### G-04 `text-danger` vs `text-destructive`
@@ -186,7 +186,7 @@ for new work.
 | Class | Mockup value (shipped in `cockpit.css`) | Cockpit value | Source |
 | --- | --- | --- | --- |
 | `.btn` (small button) | 30px, `padding 0 12px`, weight 500, 12.5px | `h-[30px] px-2.5 text-[12.5px] font-semibold` | `components/ui/button.tsx` |
-| `.btn-new-task` | 34px | `h-9` (36px), `font-semibold` | `components/app-shell.tsx:516` |
+| `.btn-new-task` | 34px | `h-10` (40px), `font-semibold` | `components/app-shell.tsx:509` |
 | `.list-tabs span.on` | `bg card-2`, weight 500 | `bg-card font-semibold shadow-xs` | `components/task-quick-list.tsx:192` |
 | `.tasks-table th` | 11.5px, weight 500, no transform | `text-[11px] font-semibold tracking-[0.05em] uppercase` | `routes/tasks-overview.tsx:414-422` |
 | `.nav-badge.danger` | red badge | no red nav badge exists; the cockpit's badges are violet | design decision, pending review |

@@ -3,10 +3,6 @@
     "count": 2,
     "reason": "convert in 3b: glyph"
   },
-  "src/components/app-shell.tsx|gap-[9px]": {
-    "count": 1,
-    "reason": "convert in step 2 (§ 9.2, also § 9.3): brand row → gap-row"
-  },
   "src/components/app-shell.tsx|size-[15px]": {
     "count": 1,
     "reason": "convert in 3b: glyph"
@@ -14,10 +10,6 @@
   "src/components/app-shell.tsx|px-[5px]": {
     "count": 2,
     "reason": "convert in 3b: kbd hint"
-  },
-  "src/components/app-shell.tsx|md:h-[34px]": {
-    "count": 1,
-    "reason": "convert in step 2 (§ 9.2, also § 9.3): nav row → md:h-9"
   },
   "src/components/app-shell.tsx|size-[5px]": {
     "count": 1,
@@ -51,9 +43,9 @@
     "count": 1,
     "reason": "convert in 3b: segmented control → p-1"
   },
-  "src/components/picker-pill.tsx|h-[26px]": {
+  "src/components/picker-pill.tsx|min-h-[24px]": {
     "count": 1,
-    "reason": "convert in 3b: picker pill → h-7 plus a min-h-[24px] floor row (WCAG 2.2 SC 2.5.8)"
+    "reason": "WCAG 2.2 SC 2.5.8 floor: an absolute 24 px minimum height the density lever cannot shrink"
   },
   "src/components/pill.tsx|py-[3px]": {
     "count": 1,
@@ -63,17 +55,9 @@
     "count": 2,
     "reason": "convert in 3b: nearest scale step"
   },
-  "src/components/project-groups.tsx|md:h-[34px]": {
-    "count": 2,
-    "reason": "convert in step 2 or 3b: project nav rows (inferred to be § 9.2 sidebar nav rows) → md:h-9"
-  },
   "src/components/project-groups.tsx|px-[7px]": {
     "count": 1,
     "reason": "convert in 3b: badge"
-  },
-  "src/components/project-groups.tsx|ml-[14px]": {
-    "count": 1,
-    "reason": "convert in step 2 (§ 9.2, also § 9.3): group body → ml-3.5"
   },
   "src/components/project-groups.tsx|md:h-[30px]": {
     "count": 1,
@@ -83,13 +67,13 @@
     "count": 1,
     "reason": "convert in 3b: pill – floor candidate, keep it at or above 24 px (WCAG 2.2 SC 2.5.8)"
   },
-  "src/components/reference-chip.tsx|h-[22px]": {
-    "count": 1,
-    "reason": "convert in 3b: reference chip → h-6 plus a min-h-[24px] floor row (WCAG 2.2 SC 2.5.8)"
-  },
   "src/components/reference-chip.tsx|size-[6px]": {
     "count": 1,
     "reason": "convert in 3b: dot"
+  },
+  "src/components/reference-chip.tsx|min-h-[24px]": {
+    "count": 1,
+    "reason": "WCAG 2.2 SC 2.5.8 floor: an absolute 24 px minimum height the density lever cannot shrink"
   },
   "src/components/skills-import-panel.tsx|pl-[22px]": {
     "count": 1,
@@ -102,10 +86,6 @@
   "src/components/task-quick-list.tsx|p-[3px]": {
     "count": 1,
     "reason": "convert in 3b: segmented control"
-  },
-  "src/components/task-quick-list.tsx|py-[7px]": {
-    "count": 2,
-    "reason": "convert in step 2 (§ 9.2, also § 9.3): quick-list rows → py-2"
   },
   "src/components/task-quick-list.tsx|pl-[26px]": {
     "count": 1,
@@ -162,10 +142,6 @@
   "src/routes/global-tasks.tsx|p-[3px]": {
     "count": 1,
     "reason": "convert in 3b: segmented control"
-  },
-  "src/routes/global-tasks.tsx|h-[38px]": {
-    "count": 1,
-    "reason": "convert in step 2 (§ 9.2, also § 9.3): table header → h-10 (inferred same row as tasks-overview)"
   },
   "src/routes/inbox.tsx|mt-[5px]": {
     "count": 1,
@@ -243,10 +219,6 @@
     "count": 1,
     "reason": "convert in 3b: textarea minimum height"
   },
-  "src/routes/task-thread/thread-items.tsx|min-h-[28px]": {
-    "count": 1,
-    "reason": "convert in step 2 (§ 9.2, also § 9.3): tool row → min-h-8"
-  },
   "src/routes/task-thread/thread-items.tsx|h-[34px]": {
     "count": 1,
     "reason": "convert in 3b: group trigger → h-9"
@@ -262,10 +234,6 @@
   "src/routes/tasks-overview.tsx|size-[22px]": {
     "count": 1,
     "reason": "convert in 3b: glyph"
-  },
-  "src/routes/tasks-overview.tsx|h-[38px]": {
-    "count": 1,
-    "reason": "convert in step 2 (§ 9.2, also § 9.3): table header → h-10"
   },
   "src/routes/tasks-overview.tsx|size-[19px]": {
     "count": 1,

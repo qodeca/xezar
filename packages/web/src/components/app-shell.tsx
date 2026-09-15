@@ -487,7 +487,7 @@ function SidebarContent({
       // an `@min-[…]/sidebar:` query and returns when the user drags the column wider.
       className="@container/sidebar flex min-h-0 flex-1 flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
     >
-      <div className="flex items-center gap-[9px] px-3.5 pt-3.5 pb-2.5">
+      <div data-slot="sidebar-brand" className="flex items-center gap-row px-3.5 pt-3.5 pb-2.5">
         <BrandTile />
         <span className="text-[15px] font-semibold">xezar</span>
         {/* With project groups mounted the boot repo/branch is one group header among many —
@@ -506,7 +506,7 @@ function SidebarContent({
       </div>
 
       <div className="flex gap-1.5 px-2.5 pt-1 pb-2">
-        <Button asChild variant="contrast" className="relative min-w-0 flex-1 justify-center">
+        <Button asChild variant="contrast" className="relative h-10 min-w-0 flex-1 justify-center">
           {/* A Router Link since R4 Step 1.1: the React /new composer is real, so deliberate
               New task affordances stay inside the SPA. Full document loads of /new (the
               bookmarklet contract) land on the shell like any route (static-ui.ts) — the
@@ -567,9 +567,9 @@ function SidebarContent({
                   onClick={onNavigate}
                   aria-current={isActive ? 'page' : undefined}
                   className={cn(
-                    // h-[34px] is the mockup's desktop row. In the drawer these are touch targets, so
-                    // they relax to 44px — the one place the two framings legitimately differ.
-                    'flex h-11 w-full items-center gap-2.5 rounded-md px-2.5 text-[13.5px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:h-[34px]',
+                    // md:h-9 is the desktop row (36px on the scale). In the drawer these are touch targets,
+                    // so they relax to 44px — the one place the two framings legitimately differ.
+                    'flex h-11 w-full items-center gap-2.5 rounded-md px-2.5 text-[13.5px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:h-9',
                     isActive && 'bg-muted font-semibold text-foreground'
                   )}
                 >

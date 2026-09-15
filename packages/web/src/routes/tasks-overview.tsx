@@ -416,7 +416,7 @@ function Th({
       data-column-id={columnId}
       data-folded={folded || undefined}
       className={cn(
-        'h-[38px] border-b border-border px-3 text-left text-[11px] font-semibold tracking-[0.05em] whitespace-nowrap text-soft-foreground uppercase first:pl-4 last:pr-4',
+        'h-10 border-b border-border px-3 text-left text-[11px] font-semibold tracking-[0.05em] whitespace-nowrap text-soft-foreground uppercase first:pl-4 last:pr-4',
         right && 'text-right',
         folded && 'px-0 first:pl-0 last:pr-0',
       )}

@@ -209,7 +209,8 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Source**: `packages/web/src/components/app-shell.tsx`. Exports `AppShell`, `useSidebarNavigate`, `routeOwnsScrollArrival`, types `RepoChip`, `AppShellProps`.
 - **Props that matter**: `repo`, `inboxCount`, `unreadCount`, `skillsUpdateAvailable`, `version`, `latestVersion`, `taskQuickList`, `toolsMenu`, `forgeAvailable`, `inboxAvailable`, `automationsAvailable`, `singleProject`, `banner`, `projectGroups` (replaces the flat nav).
 - **Layout**: root `flex h-dvh overflow-hidden … pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]`; main column `grid grid-rows-[auto_auto_1fr_auto]` (mobile top bar · banner · scroller · composer); `<main data-slot="main" class="row-start-3 min-h-0 overflow-y-auto overscroll-contain">` is the only scroller. Desktop sidebar `hidden md:flex … border-r border-border bg-sidebar`, width from state (264–420px) with an ARIA `separator` resize handle. Mobile drawer is a `Sheet side="left"` at `w-[264px] bg-sidebar`.
-- **Nav row**: `flex h-11 w-full items-center gap-2.5 rounded-md px-2.5 text-[13.5px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:h-[34px]`; active adds `bg-muted font-semibold text-foreground` and `aria-current="page"`. The `md:h-[34px]` height moves to `md:h-9` in step 3b of #424.
+- **Nav row**: `flex h-11 w-full items-center gap-2.5 rounded-md px-2.5 text-[13.5px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:h-9`; active adds `bg-muted font-semibold text-foreground` and `aria-current="page"`.
+- **Brand row and New task**: brand row `flex items-center gap-row px-3.5 pt-3.5 pb-2.5`; the New task button is `contrast` at `h-10`, one step taller than the `md:h-9` nav rows (`decisions.md` D-07).
 - **Badges**: `ml-auto rounded-full bg-violet px-1.5 py-px text-[10.5px] font-semibold text-violet-foreground` (Inbox count, unread count); the Skills update marker is a `size-1.5` violet dot plus `sr-only` text.
 - **States**: drawer open/closed (closes on route change and when `(min-width: 768px)` matches), active route, absent data renders nothing (no repo chip, no badge at 0 or null).
 - **Rules**: DO add a nav item in `nav-items.ts`, never in the shell. DO keep the shell presentational; data lives in `AppShellContainer`. DO NOT add a second page scroller.
@@ -268,7 +269,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 
 - **Purpose**: the composer's single-choice bordered pill (runner, model, account).
 - **Source**: `packages/web/src/components/picker-pill.tsx`. Exports `chipClass`, `chevron`, `PickerPill`, `RunnerPill`, type `RunnerAccountChoice`.
-- **Look** (`chipClass`): `inline-flex h-[26px] items-center gap-1.5 rounded-full border border-border bg-card px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-55`.
+- **Look** (`chipClass`): `inline-flex h-7 min-h-[24px] items-center gap-1.5 rounded-full border border-border bg-card px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-55`. `h-7` rides the density lever (28 / 24.5 px at Comfortable / Compact); `min-h-[24px]` is an absolute floor, so at Compact for real it stays 24 px instead of 21 (WCAG 2.2 SC 2.5.8).
 - **Props**: `slot`, `ariaLabel`, `label`, `value`, `options[{value,label,desc?}]`, `onPick`, `disabled`, `readOnly`, `hint`, `disabledHint`, `status`.
 - **States**: enabled, read-only (`cursor-default`, no hover), disabled (bare button in a `title` span so the reason still shows), open menu (`DropdownMenuRadioGroup`), catalog status row.
 - **Rules**: DO import `chipClass` rather than copy it (two copies exist, G-03). The runner pill shows the raw backend id on purpose; product names come from `runner-label.ts` everywhere else.
@@ -358,7 +359,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 
 - **Purpose**: a task's PR or issue link with its state in colour, glyph and a hover card.
 - **Source**: `packages/web/src/components/reference-chip.tsx`. Exports `ReferenceChip`, `useCloseReferenceCard`.
-- **Look**: `inline-flex h-[22px] items-center gap-1 rounded-full border px-2 font-mono text-[11px] font-semibold`; tones `success` `border-success/40 text-success`, `danger`, `violet` (resting), `info`, `neutral` (`border-border text-muted-foreground`), `pending` (`border-pending-strong/45 text-pending-strong`), `conflict` (`border-conflict/45 text-conflict`); link chips add `hover:bg-{tone}/10`.
+- **Look**: `inline-flex h-6 min-h-[24px] items-center gap-1 rounded-full border px-2 font-mono text-[11px] font-semibold` – 24 px at every density: the `min-h-[24px]` floor (WCAG 2.2 SC 2.5.8) also holds a caller's shorter `h-5` (phone task card) or `h-auto` (quick list) at 24; tones `success` `border-success/40 text-success`, `danger`, `violet` (resting), `info`, `neutral` (`border-border text-muted-foreground`), `pending` (`border-pending-strong/45 text-pending-strong`), `conflict` (`border-conflict/45 text-conflict`); link chips add `hover:bg-{tone}/10`.
 - **States**: inert (non-http URL), unknown status, loading (`Checking GitHub…`), unavailable, not found, conflicting (warning triangle + `Resolve conflicts` action), open card (150ms open, 120ms close; never on touch).
 - **Accessibility**: `aria-label="Open the pull request for {task} — {label}"`; `role="dialog"` only when the card has an action, else `role="tooltip"`; Escape closes; Tab moves into the panel.
 - **Where used**: 3 files.
@@ -381,7 +382,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 
 - **Purpose**: the multi-project sidebar: one collapsible group per project with its own nav and quick list.
 - **Source**: `packages/web/src/components/project-groups.tsx`. Props `projects`, `bootProjectId`, `inboxAvailable`, `automationsAvailable`, `inboxCount`, `skillsUpdateAvailable`.
-- **Look**: header `flex h-11 w-full items-center gap-[7px] rounded-lg px-2 text-[13px] font-semibold … hover:bg-muted md:h-[34px]`, active `bg-muted`; body `ml-[14px] border-l border-border pl-2`; nav rows `md:h-[30px]`; missing project `opacity-55` with a `bg-danger/15 text-danger` chip `folder not found`.
+- **Look**: header `flex h-11 w-full items-center gap-[7px] rounded-lg px-2 text-[13px] font-semibold … hover:bg-muted md:h-9`, active `bg-muted`; body `ml-3.5 border-l border-border pl-2`; nav rows `md:h-[30px]`; missing project `opacity-55` with a `bg-danger/15 text-danger` chip `folder not found`.
 - **Accessibility**: `aria-expanded`, `aria-controls`, `<nav aria-label="{project} navigation">`.
 - **Where used**: 1 file.
 

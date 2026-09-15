@@ -17,9 +17,10 @@ import { RUNNERS } from '@/routes/new-task-form'
  * surface reuses the exact same runner/model control — one pill grammar, one place to change it.
  */
 
-/** The mockup's `.chip`: a quiet bordered pill that darkens on hover. */
+/** The mockup's `.chip`: a quiet bordered pill that darkens on hover. `h-7` rides the density lever;
+ *  `min-h-[24px]` is an absolute floor so it never drops under WCAG 2.2 SC 2.5.8's 24 px target. */
 export const chipClass =
-  'inline-flex h-[26px] items-center gap-1.5 rounded-full border border-border bg-card px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-55'
+  'inline-flex h-7 min-h-[24px] items-center gap-1.5 rounded-full border border-border bg-card px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-55'
 
 export const chevron = (
   <ChevronDownIcon aria-hidden="true" className="size-2.5 shrink-0 text-soft-foreground" />

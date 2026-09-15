@@ -144,8 +144,10 @@ export function ReferenceChip({
   // nothing is known, and nothing known must never colour a chip.
   const conflicting = kind === 'PR' && (explicitConflicting ?? entry.conflicting) === true
   const presentation = conflicting ? REFERENCE_CONFLICT : statusPresentation
+  // `h-6` rides the density lever; `min-h-[24px]` is an absolute floor (WCAG 2.2 SC 2.5.8), and
+  // it also holds a caller's shorter `h-5` at 24 px.
   const chipClass = cn(
-    'inline-flex h-[22px] items-center gap-1 rounded-full border px-2 font-mono text-[11px] font-semibold',
+    'inline-flex h-6 min-h-[24px] items-center gap-1 rounded-full border px-2 font-mono text-[11px] font-semibold',
     TONE_CLASS[presentation?.tone ?? 'violet'],
     className,
   )

@@ -728,7 +728,7 @@ function Th({ children, className }: { children: React.ReactNode; className?: st
     <th
       scope="col"
       className={cn(
-        'h-[38px] border-b border-border px-3 text-left text-[11px] font-semibold tracking-[0.05em] whitespace-nowrap text-soft-foreground uppercase first:pl-4 last:pr-4',
+        'h-10 border-b border-border px-3 text-left text-[11px] font-semibold tracking-[0.05em] whitespace-nowrap text-soft-foreground uppercase first:pl-4 last:pr-4',
         className,
       )}
     >
