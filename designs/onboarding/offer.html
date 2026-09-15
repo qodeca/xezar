@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Onboarding design – the post-update offer</title>
+<link rel="stylesheet" href="../../docs/design-system/cockpit.css">
+<link rel="stylesheet" href="styles.css">
+<script src="theme.js"></script>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-tasks" viewBox="0 0 24 24"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></symbol>
+  <symbol id="i-inbox" viewBox="0 0 24 24"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
+  <symbol id="i-git" viewBox="0 0 24 24"><line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></symbol>
+  <symbol id="i-github" viewBox="0 0 24 24"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.4 5.4 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></symbol>
+  <symbol id="i-sparkles" viewBox="0 0 24 24"><path d="M12 3l1.9 5.6L19.5 10l-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.4z"/></symbol>
+  <symbol id="i-workflow" viewBox="0 0 24 24"><rect width="8" height="8" x="3" y="3" rx="2"/><path d="M7 11v4a2 2 0 0 0 2 2h4"/><rect width="8" height="8" x="13" y="13" rx="2"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
+  <symbol id="i-compass" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></symbol>
+  <symbol id="i-rotate" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="18" y2="18"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+</svg>
+
+<nav class="doc-bar" aria-label="Design pages">
+  <span class="brand">Onboarding design</span>
+  <a href="index.html">Overview</a>
+  <a href="entry.html">Setup entry</a>
+  <a href="offer.html" aria-current="page">Post-update offer</a>
+  <a href="states.html">States</a>
+  <span class="spacer"></span>
+  <button class="theme-toggle" type="button" data-theme-toggle>Light / dark</button>
+</nav>
+
+<div class="doc">
+  <h1>The post-update offer</h1>
+  <p class="lead">When the running xezar or the pinned setup templates differ from what this project last checked against, one row appears above the page. It states what changed, offers exactly two actions, blocks nothing, and does not come back for the same pair.</p>
+  <p class="frame-label">Tasks · xezar changed from 0.14.0 to 0.15.0</p>
+</div>
+
+<div class="doc" style="max-width:1180px;padding-top:0">
+<div class="shell">
+
+  <aside class="sidebar">
+    <div class="sidebar-head">
+      <span class="logo" aria-hidden="true">X</span>
+      <span class="name">xezar</span>
+      <span class="where">acme-api / main</span>
+    </div>
+    <div class="new-task-row">
+      <button class="btn-new-task" type="button"><svg class="icon sm"><use href="#i-plus"/></svg>New task <kbd>C</kbd></button>
+      <button class="btn-icon" type="button" aria-label="Add project"><svg class="icon sm"><use href="#i-folder"/></svg></button>
+    </div>
+
+    <nav class="nav" aria-label="Main">
+      <a href="offer.html" aria-current="page"><svg class="icon"><use href="#i-tasks"/></svg>Tasks</a>
+      <a href="#"><svg class="icon"><use href="#i-inbox"/></svg>Inbox<span class="nav-badge">3</span></a>
+      <a href="#"><svg class="icon"><use href="#i-git"/></svg>Git</a>
+      <a href="#"><svg class="icon"><use href="#i-github"/></svg>GitHub</a>
+      <a href="#"><svg class="icon"><use href="#i-sparkles"/></svg>Skills</a>
+      <a href="#"><svg class="icon"><use href="#i-workflow"/></svg>Workflows</a>
+      <a href="entry.html"><svg class="icon"><use href="#i-settings"/></svg>Settings</a>
+    </nav>
+
+    <div class="list-tabs"><span class="on">Active 12</span><span>Archived 4</span></div>
+    <div class="quick-head">RECENT</div>
+    <ul class="quick">
+      <li><span class="dot success"></span><span class="ref">#118</span><span class="t">fixing the checkout total</span><span class="meta"><span class="plus">+42</span> <span class="minus">−9</span></span></li>
+      <li><span class="dot success"></span><span class="t">adding the invoice export</span><span class="meta">3h</span></li>
+      <li><span class="dot violet pulse"></span><span class="t">writing the release notes</span><span class="meta">4m</span></li>
+    </ul>
+
+    <div class="sidebar-foot">
+      <svg class="icon sm"><use href="#i-search"/></svg> Search…
+      <span style="margin-left:auto" class="mono">v0.15.0</span>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="mobile-bar">
+      <button class="btn-icon" type="button" aria-label="Open menu"><svg class="icon"><use href="#i-menu"/></svg></button>
+      <span class="title">Tasks</span>
+    </div>
+
+    <!-- NEW: the offer. Status tone, never alert: nothing is broken. -->
+    <div class="banner-row offer-row" role="status" aria-live="polite">
+      <span class="offer-text">
+        <strong>xezar changed since this project was last checked</strong> —
+        <span class="ident">0.15.0</span> now, <span class="ident">0.14.0</span> then.
+        A re-check compares this project's files against the pinned defaults and shows you the differences.
+      </span>
+      <span class="offer-actions">
+        <button class="btn" type="button"><svg class="icon sm"><use href="#i-rotate"/></svg>Re-check</button>
+        <button class="btn ghost" type="button">Later</button>
+      </span>
+    </div>
+
+    <header class="page-head">
+      <h1>Tasks</h1>
+      <p>12 active · 4 archived</p>
+    </header>
+
+    <div class="page-body">
+      <div class="table-scroll">
+        <table class="tasks-table">
+          <thead><tr><th>Status</th><th>Task</th><th>Workflow</th><th>Tool Name</th><th>Branch</th><th class="num">±</th></tr></thead>
+          <tbody>
+            <tr class="read"><td><span class="pill"><span class="dot violet pulse"></span>running</span></td><td class="title">writing the release notes</td><td>quick-task</td><td>Claude Code</td><td class="mono">xez/8c1d</td><td class="num"><span class="plus">+18</span> <span class="minus">−2</span></td></tr>
+            <tr class="read"><td><span class="pill"><span class="dot success"></span>done</span></td><td class="title">fixing the checkout total</td><td>quick-task</td><td>Codex</td><td class="mono">xez/3a09</td><td class="num"><span class="plus">+42</span> <span class="minus">−9</span></td></tr>
+            <tr class="read"><td><span class="pill"><span class="dot success"></span>done</span></td><td class="title">adding the invoice export</td><td>quick-task</td><td>Claude Code</td><td class="mono">xez/77b1</td><td class="num"><span class="plus">+130</span> <span class="minus">−14</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+</div>
+</div>
+
+<div class="doc">
+  <div class="note">
+    <strong>Why a status row and not an alert.</strong> Nothing is broken. In that row, the alert tone means an agent
+    provider failed. Using it for "a version changed" would teach people to ignore the row that matters. The offer has
+    no status dot at all: the sentence carries the whole meaning, and colour adds nothing to it.
+  </div>
+
+  <h2>One sentence shape, five situations</h2>
+  <p>The same grammar covers an upgrade, a downgrade, a development build and a template-only change. The words "update", "upgrade" and "newer" never appear, because a downgrade and a development build are changes to look at, not permission to migrate.</p>
+
+  <div class="state-grid">
+
+    <figure>
+      <figcaption>a. xezar moved forward<span>0.14.0 → 0.15.0</span></figcaption>
+      <div class="banner-row offer-row" role="status">
+        <span class="offer-text"><strong>xezar changed since this project was last checked</strong> — <span class="ident">0.15.0</span> now, <span class="ident">0.14.0</span> then. A re-check compares this project's files against the pinned defaults and shows you the differences.</span>
+        <span class="offer-actions">
+          <button class="btn" type="button"><svg class="icon sm"><use href="#i-rotate"/></svg>Re-check</button>
+          <button class="btn ghost" type="button">Later</button>
+        </span>
+      </div>
+    </figure>
+
+    <figure>
+      <figcaption>b. xezar moved back<span>0.15.0 → 0.14.2 — identical wording, no warning</span></figcaption>
+      <div class="banner-row offer-row" role="status">
+        <span class="offer-text"><strong>xezar changed since this project was last checked</strong> — <span class="ident">0.14.2</span> now, <span class="ident">0.15.0</span> then. A re-check compares this project's files against the pinned defaults and shows you the differences.</span>
+        <span class="offer-actions">
+          <button class="btn" type="button"><svg class="icon sm"><use href="#i-rotate"/></svg>Re-check</button>
+          <button class="btn ghost" type="button">Later</button>
+        </span>
+      </div>
+    </figure>
+
+    <figure>
+      <figcaption>c. a development build<span>0.15.0 → 0.16.0-dev — still just a change</span></figcaption>
+      <div class="banner-row offer-row" role="status">
+        <span class="offer-text"><strong>xezar changed since this project was last checked</strong> — <span class="ident">0.16.0-dev</span> now, <span class="ident">0.15.0</span> then. A re-check compares this project's files against the pinned defaults and shows you the differences.</span>
+        <span class="offer-actions">
+          <button class="btn" type="button"><svg class="icon sm"><use href="#i-rotate"/></svg>Re-check</button>
+          <button class="btn ghost" type="button">Later</button>
+        </span>
+      </div>
+    </figure>
+
+    <figure>
+      <figcaption>d. only the templates moved<span>xezar is the same version</span></figcaption>
+      <div class="banner-row offer-row" role="status">
+        <span class="offer-text"><strong>The setup templates changed since this project was last checked</strong> — <span class="ident">9f1a3b4</span> now, <span class="ident">2c20c60</span> then. A re-check compares this project's files against the pinned defaults and shows you the differences.</span>
+        <span class="offer-actions">
+          <button class="btn" type="button"><svg class="icon sm"><use href="#i-rotate"/></svg>Re-check</button>
+          <button class="btn ghost" type="button">Later</button>
+        </span>
+      </div>
+    </figure>
+
+    <figure>
+      <figcaption>e. both moved<span>the identities go to Settings, not into the row</span></figcaption>
+      <div class="banner-row offer-row" role="status">
+        <span class="offer-text"><strong>xezar and the setup templates changed since this project was last checked.</strong> A re-check compares this project's files against the pinned defaults and shows you the differences. <a href="entry.html">See the exact versions</a></span>
+        <span class="offer-actions">
+          <button class="btn" type="button"><svg class="icon sm"><use href="#i-rotate"/></svg>Re-check</button>
+          <button class="btn ghost" type="button">Later</button>
+        </span>
+      </div>
+    </figure>
+
+  </div>
+
+  <h2>What each action does</h2>
+  <div class="table-scroll">
+    <table class="decision-table">
+      <thead><tr><th>Action</th><th>What happens</th><th>What is written</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Re-check</td>
+          <td>The button becomes "Starting…" and is disabled. A task starts in <code>recheck</code> mode from the bundled launch definition. The cockpit opens that task. The row goes away.</td>
+          <td>The offer is recorded for the observed pair. "Last successfully checked" moves only when the task actually finishes its check.</td>
+        </tr>
+        <tr>
+          <td>Later</td>
+          <td>The row goes away at once and focus moves to the page heading. Nothing starts.</td>
+          <td>The offer is recorded for the observed pair, so restarting xezar on the same pair is quiet.</td>
+        </tr>
+        <tr>
+          <td>Neither — a restart</td>
+          <td>Nothing appears. The recorded pair still matches what is running.</td>
+          <td>Nothing.</td>
+        </tr>
+        <tr>
+          <td>Neither — xezar changes again</td>
+          <td>A new pair, so the row appears once more with the new versions.</td>
+          <td>The recorded pair is replaced and both timestamps are cleared for it, because a check of the old pair says nothing about the new one.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>The offer while a re-check is running</h2>
+  <p>Two clicks cannot start two checks. The row is replaced by a line that names the running task, with a way back to it.</p>
+  <div class="banner-row offer-row" role="status" style="max-width:900px">
+    <span class="offer-text"><span class="dot violet pulse" aria-hidden="true"></span> <strong>Re-checking this project</strong> — <a href="#">open the task</a> to answer its questions and accept its changes.</span>
+  </div>
+
+  <h2>What the offer is not</h2>
+  <ul>
+    <li><b>Not a run.</b> Nothing starts, and nothing is paid for, until a person presses Re-check or a leader calls for it.</li>
+    <li><b>Not a block.</b> The page below is fully usable while the row is there. Tab order reaches the row first, then the page.</li>
+    <li><b>Not a nag.</b> One appearance per version pair. Dismissing is remembered on disk, and a lost or deleted record simply means the row can appear once more — never that xezar stops working.</li>
+    <li><b>Not a promise.</b> The row says a version changed. It does not claim your project needs anything; only the check itself can say that.</li>
+  </ul>
+</div>
+
+</body>
+</html>

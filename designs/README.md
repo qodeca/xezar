@@ -37,4 +37,5 @@ The row below and the design README's own Status line must agree; the PR that ch
 |---|---|
 | [quality-checks](quality-checks/README.md) | In review – first `design-review` verdict FAIL (README §18); waiting for owner decisions and the fixes |
 | [decisions](decisions/README.md) | Draft, revision 2 – the owner-only decision gate ("Decisions" menu item, case cards, MCP blocking, scope check); the five-reviewer verdict and the owner interview applied; waiting for the first `design-review` |
+| [onboarding](onboarding/README.md) | Draft – the first-setup entry, the post-update Re-check / Later offer and the setup status surface (P2 of qodeca/xezar#464); ten owner questions in `onboarding/open-questions.md`; waiting for the first `design-review` |
 | [design-system-air](design-system-air/README.md) | Approved – step-0 `design-review` verdict PASS WITH FOLLOW-UPS (README § 16, PR #429); a design-system enhancement: rhythm tokens, looser between-block defaults, no hand-set pixels, a Roomy density; D-1..D-12 closed; NB-4 filed as #430; filed as qodeca/xezar#424 |
