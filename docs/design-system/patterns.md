@@ -131,7 +131,7 @@ Source: `routes/settings/settings-shell.tsx`, `routes/settings/settings-field.ts
 `routes/settings/appearance.tsx`, `routes/settings/resources-section.tsx`, `routes/settings/agents-section.tsx`.
 
 - Shell: desktop left nav `hidden w-52 … border-r border-border p-3 md:flex` (`aria-label="Settings sections"`), items `rounded-md px-2.5 py-2 text-[13px] font-medium`, active `bg-muted text-foreground`; on phone a horizontal pill row, active pill `bg-contrast text-contrast-foreground`. Sections come from `SETTINGS_SECTIONS` with `scope` `project | global`.
-- Field: `SettingsField({ title, hint, children })` → `<section class="flex flex-col gap-2"><h2 class="text-sm font-semibold">` + `<p class="text-[13px] text-muted-foreground">` + control. Three sections carry a private copy of it (G-13).
+- Field: `SettingsField({ title, hint, children })` → `<section class="flex flex-col gap-stack"><h2 class="text-sm font-semibold">` + `<p class="text-[13px] text-muted-foreground">` + control. Three sections carry a private copy of it (G-13). A pane lists its fields flat in `flex flex-col gap-section` (foundations.md §4.1).
 - Save behaviour, by control: selects and switches save on change and may toast the new state; textareas and numeric inputs keep a local draft and an explicit `Save` button disabled while unchanged; the table column folds write optimistically with a keepalive PUT.
 - Controls: `Input`, `Textarea`, `Switch`, the raw `<select>`/`<input type="number">` class (see Select in components.md), `Segmented` radio groups (`role="radiogroup"`, `rounded-md border border-border bg-card p-0.5`, checked `bg-muted text-foreground`).
 - Sentinels are spelled out in the hint (`0 = unlimited`, `Leave empty for no limit.`).

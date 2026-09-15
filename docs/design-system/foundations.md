@@ -179,7 +179,8 @@ Density changes only that token:
 
 | `data-density` | `--spacing` | Effect |
 | --- | --- | --- |
-| absent (comfortable) | `0.25rem` (Tailwind default) | shipped look |
+| `roomy` (proposed – ships with step 4 of #424) | `0.3125rem` (5px) | ~25% looser; not declared in `index.css` yet |
+| absent (comfortable) | `0.25rem` (declared in `@theme static`, Tailwind's default value) | shipped look |
 | `compact` | `0.21875rem` (3.5px) | ~12% tighter paddings, gaps and control heights |
 | `ultra` | `0.1875rem` (3px) | ~25% tighter |
 
@@ -188,6 +189,40 @@ outside the density lever; prefer scale units (`h-9`, `px-2`) unless the design 
 
 Common rhythm: `gap-1.5`/`gap-2` inside controls, `gap-2.5` in nav rows, `px-2.5` chips, `px-3.5` buttons,
 `p-6` dialogs, `px-4` page gutters on phone and `px-6` on desktop, `py-12` centered states.
+
+### 4.1 Rhythm
+
+Between blocks, a rhythm token. Inside a control, the numeric scale. Never a hand-typed pixel.
+
+Six named spacing steps name the distance *between* things. They are declared in `@theme static` as
+`calc(var(--spacing) * n)`, so the density lever scales them with everything else, and Tailwind mints a
+utility for each in every spacing namespace (`gap-stack`, `p-inset`, `md:px-section`, `mt-row`, `space-y-list`).
+Controls keep their own sizes on the numeric scale (`h-9`, `px-3.5`); a rhythm token never sets a control's height.
+
+| Token | Value | Units | Comfortable | Use |
+| --- | --- | --- | --- | --- |
+| `--spacing-row` | `calc(var(--spacing) * 2)` | 2 | 8px | rows of one thing: icon and label, a turn's own rows, chips in a line |
+| `--spacing-stack` | `calc(var(--spacing) * 3)` | 3 | 12px | lines inside one block: title → control → hint (the settings field) |
+| `--spacing-list` | `calc(var(--spacing) * 4)` | 4 | 16px | blocks in a list: cards, thread groups |
+| `--spacing-inset` | `calc(var(--spacing) * 5)` | 5 | 20px | inside a card (not `card`: that name is a colour token) |
+| `--spacing-group` | `calc(var(--spacing) * 6)` | 6 | 24px | a speaker change in the thread; the run header's top |
+| `--spacing-section` | `calc(var(--spacing) * 8)` | 8 | 32px | sections and settings fields; desktop page gutters, on both axes; under a page header |
+
+The same steps at each density:
+
+| Density | row | stack | list | inset | group | section |
+| --- | --- | --- | --- | --- | --- | --- |
+| Roomy (proposed – ships with step 4 of #424) | 10 | 15 | 20 | 25 | 30 | 40 |
+| Comfortable | 8 | 12 | 16 | 20 | 24 | 32 |
+| Compact | 7 | 10.5 | 14 | 17.5 | 21 | 28 |
+| Compact for real (`ultra`) | 6 | 9 | 12 | 15 | 18 | 24 |
+
+Compact and ultra give half-pixel values for some steps; that is already true of the numeric scale today.
+
+Adopted so far: the Settings panes – every section list is `gap-section` and every field is `gap-stack`
+(`routes/settings/settings-field.tsx`, its three private copies (G-13) and the notifications field). The rest of the cockpit still
+chooses its gaps per file (G-25). A seventh step is a design decision (`decisions.md` D-02), not a new token
+in one file.
 
 ## 5. Radius
 
@@ -215,7 +250,8 @@ Restrained by design; borders carry most separation. Stock steps are wiped; only
 | `--shadow-modal` | `0 16px 48px 0 rgba(0, 0, 0, 0.45)` | `0 16px 48px 0 rgba(0, 0, 0, 0.12)` | `shadow-modal` | dialogs, alert dialogs, sheets, toasts |
 
 `lib/utils.ts` teaches tailwind-merge that `shadow-modal` is a shadow step, so `cn('shadow-md', 'shadow-modal')`
-resolves to the modal shadow.
+resolves to the modal shadow, and that the six rhythm names (§4.1) are spacing steps, so `cn('p-4', 'p-inset')`
+resolves to `p-inset`.
 
 ## 7. Motion
 

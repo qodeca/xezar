@@ -27,6 +27,11 @@ responsive overrides. It MUST NOT:
   feature class instead (`.check-card`, `.rule-strip`);
 - contain a raw hex colour. The only hex in the repository's UI lives in `index.css`.
 
+Use the rhythm tokens for gaps between blocks in a mockup (`gap: var(--spacing-section)`,
+`padding: var(--spacing-inset)`; [foundations.md](foundations.md) §4.1). Inside a control, use the numeric
+scale (`calc(var(--spacing) * 9)`), never a hand-typed pixel, so the density switch moves the page as the
+cockpit does.
+
 If a mockup needs a look the shared sheet does not have and the cockpit does, add the class to
 `cockpit.css` with the cockpit's values and a source comment. If the cockpit does not have it either, it
 is a new component: put it in the local sheet and call it out in the README as a proposal.
@@ -50,7 +55,9 @@ the phone layout (375 px; the specimen phone frame is 390 px wide). The `states.
 
 Use the theme switch (`theme.js`) on every page. Check the page with `.light`, with
 `data-accent="violet"` and at `data-density="ultra"` on `<html>` (the specimen pages have controls for
-all four; a mockup only needs the light/dark toggle, the rest can be set in devtools).
+all four; a mockup only needs the light/dark toggle, the rest can be set in devtools). A fourth density,
+`data-density="roomy"`, is proposed – it ships with step 4 of #424; until then it is not a check a mockup
+must pass.
 
 ## 6. Mobile
 
