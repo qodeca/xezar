@@ -373,6 +373,7 @@ xezar projects                    # list: id, branch or status, path, tags
 xezar projects add ~/code/api     # register a folder (defaults to the current repo)
 xezar projects remove api         # drop the registry entry; the repo is untouched
 xezar projects tag api storefront backend   # set the grouping tags (no tags clears them)
+xezar projects port api 4400      # pin this project's cockpit port (no port clears it)
 ```
 
 These read and write `~/.xezar/config.json` directly, so they work with the
@@ -565,6 +566,11 @@ Useful environment variables:
 | `XEZ_WORKTREE_DEFAULT=1` | Seed the New Task Worktree default (`0` or `1`). Without a seed, eligible runs default on; a saved global Resources setting overrides it. |
 | `XEZ_DISABLE_REPO_LOCK=1` | **Dangerous escape hatch:** allow any run executing in the repository root — an explicit `worktree=false` run, non-Git degradation, or a continuation whose worktree cannot be restored — to proceed without Xezar’s repository-root lease. Agents can overwrite each other’s files or Git state; isolated worktree runs are unaffected. Off by default; only the exact value `1` enables it. |
 | `XEZ_SINGLE_PROJECT=1` | Opt into a launch-project-only cockpit: only the exact value `1` enables it. Project add, edit, checkout, folder browsing, and removal are refused and only the launch project is shown. Off by default; stored registry rows are retained, so unsetting it and restarting restores the full multi-project workspace without migration or data loss. |
+| `XEZ_PORT=4321` | The port `xezar` starts from. Without `-p/--port` and without this it starts from the port pinned for this project (`xezar projects port <id> <port>`), then the port it last listened on, then 4321 — and takes the next free port from there either way. A flag beats it, and a pinned project port beats it too, so a `XEZ_PORT` exported once in a shell profile cannot pull every project to one start port. Anything that is not a whole number from 0 to 65535 refuses the start with exit 1 before anything is claimed. |
+| `XEZ_OUTPUT=auto` | How `xezar serve` presents its activity: `auto`, `lines` or `rich`. A saved `cli.output` in `~/.xezar/config.json` overrides this default; `--output` overrides both. |
+| `XEZ_COLOR=auto` | Colour: `auto`, `always` or `never`. `NO_COLOR` with any non-empty value is honoured and outranks both a saved `cli.color` and this variable; an explicit `--color` outranks `NO_COLOR`; and a transport that must stay byte-exact — the MCP's JSON-RPC stdout — outranks all of them. |
+| `XEZ_LOG_LEVEL=info` | Diagnostic threshold: `debug`, `info`, `warn` or `error`. A saved `cli.logLevel` overrides this default; `--log-level` overrides both. |
+| `XEZ_QUIET=1` | Warnings and errors only; only the exact value `1` enables it, and `--quiet` is the flag. It raises the threshold but never lowers one you set higher. |
 | `XEZ_HIDE_TOKEN_USAGE=1` | Hide raw input/output token counts throughout the browser cockpit while leaving backend-reported cost visible. Only the exact value `1` enables it; telemetry and API payloads are unchanged, and a restart is required after changing it. |
 | `XEZ_HIDE_COST=1` | Hide backend-reported monetary cost throughout the browser cockpit while leaving raw input/output token counts visible. Only the exact value `1` enables it; telemetry and API payloads are unchanged, and a restart is required after changing it. |
 | `XEZ_HIDE_TOKEN_METRICS=1` | Legacy master switch that hides both token usage and cost. It takes precedence over the two independent flags; only the exact value `1` enables it, payloads are unchanged, and a restart is required. |
