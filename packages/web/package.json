@@ -7,6 +7,7 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
+    "capture:screenshots": "sh ../../scripts/test-env-up.sh && vitest run --config e2e/capture/vitest.config.ts",
     "dev": "vite",
     "test": "vitest run",
     "test:watch": "vitest",

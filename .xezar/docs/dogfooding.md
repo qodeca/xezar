@@ -12,6 +12,26 @@ Installation validation is reported in installation.md. Real-task entries follow
 
 ## Real-task entries
 
+### 2026-09-15 — #450 (the MCP leader door: `leader_events` attach, stop and status), `feature-implementation` step `implement`, `xezar-implementation`, Claude Code — real-task observed
+
+- Input: the spec from run `9130af8c` (19 AC, 30 test rows) on top of #451's merged strings; base `646bf37`.
+- Observed: **a named-break pass is cheap when it is a script, and it replaces `git stash`.** 47 breaks, each applied to one source file with a byte copy beside it, the named test run, the file restored and its hash checked; afterwards `git diff` matched a patch saved before the pass. No entry went on the stash stack every worktree shares. All 47 were red, including the two guard rows (T-10, T-17) that pass on the old source by design. Evidence: `red-proof/` in the task evidence directory.
+- Observed: **one break was red only by a 30 s timeout** (an observer that throws, with the service's catch removed, leaves `session/open` unanswered). A timeout is a real red here, but it is slower and says less than an assertion; it is quoted as such in the PR body.
+- Observed: **the parity inventory is a second consumer of a new action.** Adding `attach`/`status` to the coverage records made acceptance-parity A-05 fail until a real parity case (P-43) exercised them against the cockpit route. Lesson: a new MCP action needs its inventory records, its coverage-map rows and a parity case in the same change, not only the generated reference.
+- Observed: **the restart behaviour the spec left open was measured, not assumed:** an attachment ends with the xezar process; a Claude Code leader hears exactly one bridge notice; a reused `operationId` replays the old receipt and attaches nothing; a new key attaches again. The recovery text now says exactly that.
+- Observed: the kit docs in `.xezar/` changed in this PR, so the primary checkout needs a root-sync after merge before a leader reads the new attach rule from there.
+- Remaining limit: fixture-tested and composed-service-tested; no live Claude Code session has attached itself through the action in this task. The cockpit's `tsx` copy of the recovery phrases is a follow-up, not part of this change.
+
+### 2026-09-15 — #439 (the leader is MCP-only and attached for pushed events), `feature-implementation` step `implement`, `xezar-implementation`, Claude Code — real-task observed
+
+- Input: the read-only audit of run `93d7afd5` (`.local/erfana-lens-reports/leader-mcp-only-audit.md`, 101 rows, a three-PR plan). This task carried its prose and instruction-string rows in one PR; the code gaps (an MCP attach/stop/status action, a cursor on pushed events, the bridge advertising push it cannot deliver) stay follow-ups.
+- Observed: **the audit's main risk – stating a rule a leader cannot follow – was settled by the brief, not by the audit.** No MCP action attaches a leader, so every string that tells a leader to attach names the one HTTP call and the cockpit control, and says no MCP action exists yet. Lesson: when a rule outruns the capability, the rule text names the interim door and the gap row, rather than waiting for the feature or pretending it exists.
+- Observed: **a non-final agent step cannot wait for a peer's file by ending its turn.** A background poll notifies on a later turn, but ending the turn without `XEZ:DONE` fails the step; the wait (≈ 11 min) ran as a foreground poll bounded under the tool timeout.
+- Observed: `catalog-check.mjs` requires the `## Shared contract` tail to be byte-identical in all 19 skills, so the one leader sentence went into all 19 in one scripted replacement, checked before commit.
+- Evidence: red-first proof of the pins (7 failures with `bridge.ts`, `leader-delivery.ts` and `task-reads.ts` reverted to `main`, all green restored) in the task evidence directory (`red-proof.patch`, `red-proof.txt`).
+- Observed (code review of `ae4b0e8`): **the attach call named the unscoped route, which is bound to the cockpit's boot project**, so a leader in any other project would have attached the wrong one. Every surface now names `POST /api/v1/p/<projectId>/mcp/leader` with `project.id` from `discover_project`, and says OpenCode also sends `baseUrl` and `sessionId`. Red-first: with `bridge.ts`, `leader-delivery.ts` and `leader-events.ts` reverted to `ae4b0e8`, 3 pins failed. Lesson: when prose names an HTTP route, check which project the route is bound to, not only that it exists.
+- Remaining limit: no whole campaign has run under the rule yet; the strings are fixture-pinned, not observed in a live leader session in this task.
+
 ### 2026-09-15 — #424 step 4 (the Roomy density), `feature-implementation` step `implement`, `xezar-implementation`, Claude Code — real-task verified
 
 - Evidence: run 5f3baef2, base `40bb617`, commit `e64b3fe`; the red-first runs are listed in the PR body kept in the primary evidence directory (`pr-body.md`).

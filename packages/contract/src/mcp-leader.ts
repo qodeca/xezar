@@ -63,9 +63,13 @@ export const mcpLeaderActionInputSchema = z.union([
 ]);
 export type McpLeaderActionInput = z.infer<typeof mcpLeaderActionInputSchema>;
 
+/** Which leader client: one enum for the attached session below and for the MCP door (#450). */
+export const mcpLeaderClientSchema = z.enum(['opencode', 'pi', 'codex', 'claude-code']);
+export type McpLeaderClient = z.infer<typeof mcpLeaderClientSchema>;
+
 /** The leader session attached to the project, if any. */
 export const mcpLeaderSessionSchema = z.object({
-  client: z.enum(['opencode', 'pi', 'codex', 'claude-code']),
+  client: mcpLeaderClientSchema,
   state: z.literal('attached'),
 });
 export type McpLeaderSession = z.infer<typeof mcpLeaderSessionSchema>;
@@ -125,6 +129,96 @@ export const mcpLeaderStatusSchema = z.discriminatedUnion('available', [
   }),
 ]);
 export type McpLeaderStatus = z.infer<typeof mcpLeaderStatusSchema>;
+
+/**
+ * #450 — the MCP door to the same delivery path: `leader_events` actions `attach`, `stop` and
+ * `status`, for the CALLING MCP session only. The client is derived from that session (its bridge's
+ * client name, or the Codex thread its tool calls carry), never taken from an argument, and a
+ * leader never replaces or detaches a leader of another client. The route above is unchanged.
+ */
+
+/** Why xezar cannot push to this session's client. Additive: a new code is a new member. */
+export const mcpPushUnavailableCodeSchema = z.enum([
+  /** No event delivery for the project (the journal did not open), or the journal cannot be written. */
+  'delivery-unavailable',
+  /** `capabilities.localHandoff` is false: a leader is attached only from the machine that owns the checkout. */
+  'hosted-mode',
+  /** The session names no client xezar maps to a leader client. */
+  'client-unknown',
+  /** OpenCode: reached by an `opencode serve` address a person gives, never taken from an MCP session. */
+  'client-needs-address',
+  /** A Claude Code bridge that did not announce `leader/push`. */
+  'bridge-too-old',
+  /** A Claude Code bridge whose `initialize` handshake did not register `claude/channel`. */
+  'channel-not-advertised',
+]);
+export type McpPushUnavailableCode = z.infer<typeof mcpPushUnavailableCodeSchema>;
+
+export const mcpPushUnavailableSchema = z.object({ code: mcpPushUnavailableCodeSchema, message: z.string() });
+export type McpPushUnavailable = z.infer<typeof mcpPushUnavailableSchema>;
+
+/** Whether xezar can push to one session's client. */
+export const mcpPushCapabilitySchema = z.discriminatedUnion('canPush', [
+  z.object({ canPush: z.literal(true) }),
+  z.object({ canPush: z.literal(false), pushUnavailable: mcpPushUnavailableSchema }),
+]);
+export type McpPushCapability = z.infer<typeof mcpPushCapabilitySchema>;
+
+/** `leader_events` `status`: the route's status fields, plus what is true for THIS session. */
+export const mcpLeaderSelfStatusSchema = z.discriminatedUnion('available', [
+  z.object({ available: z.literal(false), reason: z.string() }),
+  z.object({
+    available: z.literal(true),
+    owner: mcpLeaderOwnerSchema.nullable(),
+    leader: mcpLeaderSessionSchema.nullable(),
+    delivery: mcpLeaderDeliverySchema.nullable(),
+    blocker: mcpLeaderBlockerSchema.nullable(),
+    canPush: z.boolean(),
+    pushUnavailable: mcpPushUnavailableSchema.nullable(),
+    self: z.object({
+      /** Derived from the session, never from an argument; `null` when xezar cannot tell. */
+      client: mcpLeaderClientSchema.nullable(),
+      /** This session is the project's live owner. */
+      isOwner: z.boolean(),
+      /** The attached leader is this session's own. */
+      attached: z.boolean(),
+    }),
+  }),
+]);
+export type McpLeaderSelfStatus = z.infer<typeof mcpLeaderSelfStatusSchema>;
+
+export const mcpLeaderDoorRefusalCodeSchema = z.enum([
+  'delivery-unavailable',
+  'hosted-mode',
+  'not-owner',
+  'client-unknown',
+  'client-needs-address',
+  'leader-attached-elsewhere',
+  'leader-not-this-session',
+  'attach-refused',
+]);
+export type McpLeaderDoorRefusalCode = z.infer<typeof mcpLeaderDoorRefusalCodeSchema>;
+
+/** `leader_events` `attach` / `stop`. A refusal changes nothing and names its own fix. */
+export const mcpLeaderDoorResultSchema = z.discriminatedUnion('ok', [
+  z.object({
+    ok: z.literal(true),
+    action: z.enum(['attach', 'stop']),
+    outcome: z.enum(['attached', 'already-attached', 'stopped', 'already-stopped']),
+    status: mcpLeaderSelfStatusSchema,
+  }),
+  z.object({
+    ok: z.literal(false),
+    action: z.enum(['attach', 'stop']),
+    code: mcpLeaderDoorRefusalCodeSchema,
+    message: z.string(),
+    fix: z.string(),
+    /** `attach-refused` only: the client's own recoverable reason (`claude-code-not-owner`, a Codex reason, pi's …). */
+    blocker: mcpLeaderBlockerSchema.nullable(),
+    status: mcpLeaderSelfStatusSchema,
+  }),
+]);
+export type McpLeaderDoorResult = z.infer<typeof mcpLeaderDoorResultSchema>;
 
 /**
  * A frame's `data` on the `mcp-leader` WebSocket topic (`/api/v1/ws`, #374 round 5): the answer

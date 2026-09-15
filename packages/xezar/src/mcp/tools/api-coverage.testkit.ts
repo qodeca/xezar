@@ -168,6 +168,12 @@ export const TOOL_ACTION_COVERAGE: Readonly<Record<string, ActionCoverage>> = {
 
   'leader_events:read': { serves: ['I-138', 'I-139', 'I-140'] },
   'leader_events:ack': { serves: ['I-140'] },
+  'leader_events:attach': { serves: ['I-142'] },
+  'leader_events:stop': {
+    unrecorded:
+      'detaches the calling session’s own leader; the cockpit has no stop control, only POST /api/v1/mcp/leader {action:"stop"}, so no inventory record names it (#450)',
+  },
+  'leader_events:status': { serves: ['I-141'] },
 };
 
 /**

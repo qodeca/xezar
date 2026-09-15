@@ -582,6 +582,7 @@ export function renderDispatch(dispatch: EventDispatch, rows: readonly McpJourna
       `Gap: ${dispatch.recovery.message} (oldest retained ${dispatch.recovery.oldestSeq ?? 'none'}, latest ${dispatch.recovery.latestSeq}).`,
     );
   }
-  lines.push('Read the current state with the xezar tools before acting, and acknowledge the events you have taken into account.');
+  // #450: the cursor the leader acks with, so it needs no read first.
+  lines.push(`Read the current state with the xezar tools before acting, and acknowledge the events you have taken into account. Acknowledge them with leader_events action ack and cursor ${dispatch.nextCursor}.`);
   return lines.join('\n');
 }

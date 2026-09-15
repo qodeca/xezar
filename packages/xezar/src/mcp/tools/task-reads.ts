@@ -26,7 +26,7 @@ import {
   type OwnershipScope,
 } from '../resource-ownership.ts';
 import type { ServiceDispatch } from '../service-adapter.ts';
-import { defineTool, errorResult, textResult, type McpToolContext, type McpToolResult } from '../tool.ts';
+import { NOT_CONNECTED_NEXT, defineTool, errorResult, textResult, type McpToolContext, type McpToolResult } from '../tool.ts';
 
 /**
  * `task_read` — the project leader's READ side of tasks (#91, epic #67): list and filter the
@@ -431,7 +431,7 @@ export const taskReadsTool = defineTool({
     `Pages are bounded: at most ${TASK_READ_PAGE_ITEMS} items and ${TASK_READ_RESULT_BUDGET_BYTES} bytes. When an answer has a nextCursor, call again with the same view, task and filters plus that cursor.`,
     'An item too large for one answer comes in parts ("part" of "parts"): join the "text" of every part in order, then parse it as JSON.',
     'The first answer of a task, history, context or handoff read (no cursor) carries the task’s "version": send it as expectedVersion when you then change that task (organise_work, execution_control, handoff_git, project_config). A change is refused if the task moved after this read.',
-    'This reads only the project this connection is bound to. Use it to assess state or recover after a lost answer, not to poll: task events are pushed.',
+    'This reads only the project this connection is bound to. Use it to assess state or recover after a lost answer, not to poll: task events are pushed to an attached leader (see leader_events).',
   ].join('\n'),
   inputSchema,
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -439,7 +439,7 @@ export const taskReadsTool = defineTool({
     const service = (ctx as TaskReadContext).service;
     if (!service) {
       return errorResult(
-        'task_read is not connected in this xezar yet: the running service did not hand MCP its task reads. Use the cockpit to read tasks.',
+        `task_read is not connected in this xezar yet: the running service did not hand MCP its task reads; nothing was read. ${NOT_CONNECTED_NEXT}`,
       );
     }
     const argIssue = checkArgs(args);

@@ -34,6 +34,7 @@ afterEach(() => {
 
 const HEALTH: HealthResponse = {
   version: '0.1.3',
+  channel: 'release',
   projects: [],
   bootProject: 'default',
   repoRoot: '/home/me/Projects/xezar',

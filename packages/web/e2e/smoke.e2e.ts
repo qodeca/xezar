@@ -226,6 +226,88 @@ describe('cockpit app shell', () => {
     browser.screenshot(`${artifactsDir}/shell-repo-chip.png`)
   })
 
+  it('reports this checkout as a development build and badges the brand tile without moving it (#442)', async () => {
+    // The e2e server boots `packages/xezar/dist/index.js` from this checkout, whose package root
+    // carries `src/index.ts` — so the REAL boot path must say `dev`. A server built without
+    // passing the detected channel to `startServer` answers `release` and fails here, which is the
+    // construction-site guard the unit tests (which build apps by hand) cannot provide.
+    const health = (await fetch(`${baseUrl}/api/v1/health`).then((r) => r.json())) as { channel?: string }
+    expect(health.channel).toBe('dev')
+
+    browser.goto(baseUrl + scoped('/'))
+    browser.waitForFunction(`document.querySelector('[data-slot="sidebar"] [data-slot="dev-badge"]') !== null`)
+    expect(browser.isVisible('[data-slot="sidebar"] [data-slot="dev-badge"]')).toBe(true)
+
+    // Geometry only a layout engine can answer: the tile keeps its 26px box, the badge is not
+    // clipped by the sidebar, and unwrapping the tile back to the bare release markup leaves the
+    // brand row exactly as tall as it was.
+    const box = browser.evaluate(`(() => {
+      const sidebar = document.querySelector('[data-slot="sidebar"]')
+      const tile = sidebar.querySelector('[data-slot="brand-tile"]')
+      const badge = sidebar.querySelector('[data-slot="dev-badge"]')
+      const row = tile.closest('[data-slot="sidebar-content"] > div')
+      const t = tile.getBoundingClientRect()
+      const b = badge.getBoundingClientRect()
+      const s = sidebar.getBoundingClientRect()
+      const withBadge = row.getBoundingClientRect().height
+      const wrapper = tile.parentElement
+      const clone = row.cloneNode(true)
+      row.after(clone)
+      const cloneTile = clone.querySelector('[data-slot="brand-tile"]')
+      cloneTile.parentElement.replaceWith(cloneTile)
+      const bare = clone.getBoundingClientRect().height
+      clone.remove()
+      return {
+        tile: [Math.round(t.width), Math.round(t.height)],
+        inside: b.top >= s.top && b.right <= s.right && b.width > 0,
+        overlaps: b.left < t.right && b.bottom > t.top,
+        wrapped: wrapper !== row,
+        withBadge,
+        bare,
+      }
+    })()`) as { tile: number[]; inside: boolean; overlaps: boolean; wrapped: boolean; withBadge: number; bare: number }
+
+    expect(box.tile).toEqual([26, 26])
+    expect(box.inside).toBe(true)
+    expect(box.overlaps).toBe(true)
+    expect(box.wrapped).toBe(true)
+    expect(box.withBadge).toBe(box.bare)
+    browser.screenshot(`${artifactsDir}/shell-dev-badge.png`)
+
+    // Computed styles only a real stylesheet can answer (design review B-1, NB-1). The letter is
+    // near-black under every accent and theme: `--primary-foreground` would pass under lime and
+    // turn white under violet. And the badge keeps one size in every density, because the tile
+    // it sits on never scales. Every attribute is restored so later specs see the boot's look.
+    const looks = browser.evaluate(`(() => {
+      const html = document.documentElement
+      const saved = { accent: html.getAttribute('data-accent'), density: html.getAttribute('data-density'), light: html.classList.contains('light') }
+      const badge = document.querySelector('[data-slot="sidebar"] [data-slot="dev-badge"]')
+      const letter = badge.querySelector('[aria-hidden="true"]')
+      const set = (name, value) => (value === null ? html.removeAttribute(name) : html.setAttribute(name, value))
+      const out = { ink: {}, size: {} }
+      for (const accent of [null, 'violet']) {
+        for (const light of [false, true]) {
+          set('data-accent', accent)
+          html.classList.toggle('light', light)
+          out.ink[(accent ?? 'lime') + (light ? '-light' : '-dark')] = getComputedStyle(letter).color
+        }
+      }
+      set('data-accent', saved.accent)
+      html.classList.toggle('light', saved.light)
+      for (const density of ['roomy', null, 'compact', 'ultra']) {
+        set('data-density', density)
+        const r = badge.getBoundingClientRect()
+        out.size[density ?? 'comfortable'] = [Math.round(r.width), Math.round(r.height)]
+      }
+      set('data-density', saved.density)
+      return out
+    })()`) as { ink: Record<string, string>; size: Record<string, number[]> }
+
+    const nearBlack = 'rgb(13, 13, 13)'
+    expect(looks.ink).toEqual({ 'lime-dark': nearBlack, 'lime-light': nearBlack, 'violet-dark': nearBlack, 'violet-light': nearBlack })
+    expect(looks.size).toEqual({ roomy: [14, 14], comfortable: [14, 14], compact: [14, 14], ultra: [14, 14] })
+  })
+
   it('marks exactly one nav item active, following the route', () => {
     const activeLabel = () =>
       browser.evaluate(

@@ -441,6 +441,11 @@ if (args.join(' ') === 'auth status --json') {
       async ({ read, port }) => {
         assert.equal(port, wantedPort, 'a free requested port is the port serve uses');
         assert.equal(await healthStatus(port), 200, 'GET /api/v1/health answers 200 on the booted port');
+        assert.equal(
+          await healthChannel(port),
+          'release',
+          'the installed tarball reports the release channel — no development-build badge (#442)',
+        );
         assert.match(
           read(),
           new RegExp(`cleaned 1 orphaned worktree\\(s\\): ${orphanId.slice(0, 8)}`),
@@ -552,6 +557,18 @@ async function healthStatus(port: number): Promise<number> {
     signal: AbortSignal.timeout(15_000),
   });
   return res.status;
+}
+
+/**
+ * The `channel` the booted server reports (#442). The tarball ships no `src/`, so an installed
+ * package must say `release` — even here, where the consumer sits under a task TMPDIR that is
+ * itself inside a git checkout.
+ */
+async function healthChannel(port: number): Promise<unknown> {
+  const res = await fetch(`http://127.0.0.1:${port}/api/v1/health`, {
+    signal: AbortSignal.timeout(15_000),
+  });
+  return ((await res.json()) as { channel?: unknown }).channel;
 }
 
 /**

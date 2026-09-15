@@ -363,6 +363,42 @@ describe('AppShell', () => {
       expect(screen.getAllByRole('link', { name: /Skills update available/ })).toHaveLength(1)
     })
 
+    describe('development-build badge on the brand tile (#442)', () => {
+      const badges = () => document.querySelectorAll('[data-slot="dev-badge"]')
+      const tile = () => sidebar().querySelector('[data-slot="brand-tile"]') as HTMLImageElement
+
+      it('marks a dev server with a red "D" in the sidebar and the drawer, announced in words', () => {
+        renderShell('/', { channel: 'dev' })
+        const badge = sidebar().querySelector('[data-slot="dev-badge"]') as HTMLElement
+        expect(badge).not.toBeNull()
+        expect(badge.getAttribute('title')).toBe('Development build')
+        expect(badge.className).toContain('bg-danger')
+        expect(badge.className).toContain('text-danger-ink')
+        expect(within(badge).getByText('D').getAttribute('aria-hidden')).toBe('true')
+        expect(within(badge).getByText('Development build').className).toContain('sr-only')
+        // The logo stays decorative and keeps its size — the badge overlays it, never resizes it.
+        expect(tile().getAttribute('alt')).toBe('')
+        expect(tile().className).toContain('size-[26px]')
+        expect(badge.className).toContain('absolute')
+        fireEvent.click(screen.getByRole('button', { name: 'Open menu' }))
+        expect(badges()).toHaveLength(2)
+      })
+
+      it('renders no badge and no wrapper for a release server', () => {
+        renderShell('/', { channel: 'release' })
+        expect(badges()).toHaveLength(0)
+        expect(screen.queryByText('Development build')).toBeNull()
+        expect(tile().parentElement?.getAttribute('data-slot')).not.toBe('dev-badge')
+        expect(tile().parentElement?.className).not.toContain('relative')
+      })
+
+      it('renders no badge when the channel is unknown (an older server omits it)', () => {
+        renderShell('/', { channel: undefined })
+        expect(badges()).toHaveLength(0)
+        expect(screen.queryByText('Development build')).toBeNull()
+      })
+    })
+
     it('renders no Skills marker without an actionable update', () => {
       renderShell()
       expect(document.querySelector('[data-slot="nav-update-marker"]')).toBeNull()

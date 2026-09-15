@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="400" viewBox="0 0 1280 400" role="img" aria-labelledby="title desc" style="font-family: ui-sans-serif, system-ui, sans-serif">
+<title id="title">xezar – parallel coding agents</title>
+<desc id="desc">A stylised cockpit with sidebar, parallel task table, and live thread. Illustrative content, not a screenshot.</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1L9 5L1 9" fill="none" stroke="#a3a3a3" stroke-width="1.5"/></marker><marker id="back" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1L9 5L1 9" fill="none" stroke="#a3a3a3" stroke-width="1.5"/></marker></defs>
+<rect x="0" y="0" width="1280" height="400" rx="0" fill="#0d0d0d" stroke="#0d0d0d"/>
+<g transform="translate(40 28) scale(.30)"><path d="M0 24C0 10.7452 10.7452 0 24 0H152C165.255 0 176 10.7452 176 24V152C176 165.255 165.255 176 152 176H24C10.7452 176 0 165.255 0 152V24Z" fill="url(#xezar_mark)"/>
+  <g stroke="#14121F" stroke-width="21" stroke-linecap="round">
+    <path d="M55 51L121 125"/>
+    <path d="M121 51L55 125"/>
+  </g>
+  <defs>
+    <linearGradient id="xezar_mark" x1="176" y1="-40" x2="20" y2="190" gradientUnits="userSpaceOnUse">
+      <stop offset="0.08" stop-color="#8B5CF6"/>
+      <stop offset="0.55" stop-color="#38BDF8"/>
+      <stop offset="1" stop-color="#5EEAD4"/>
+    </linearGradient>
+  </defs></g>
+<text x="110" y="68" font-size="38" font-weight="650" fill="#ffffff">xezar</text>
+<text x="40" y="126" font-size="38" font-weight="600" fill="#ffffff">Run parallel coding agents from one local cockpit</text>
+<rect x="40" y="158" width="1200" height="218" rx="12" fill="#171717" stroke="#262626"/>
+<rect x="40" y="158" width="190" height="218" rx="12" fill="#171717" stroke="#262626"/>
+<text x="60" y="195" font-size="24" font-weight="600" fill="#ffffff">Workspace</text>
+<rect x="54" y="213" width="162" height="42" rx="12" fill="#262626" stroke="#262626"/>
+<text x="68" y="242" font-size="24" font-weight="400" fill="#ffffff">Tasks</text>
+<text x="68" y="289" font-size="24" font-weight="400" fill="#a3a3a3">Workflows</text>
+<text x="68" y="336" font-size="24" font-weight="400" fill="#a3a3a3">Skills</text>
+<text x="258" y="198" font-size="24" font-weight="600" fill="#ffffff">Parallel tasks</text>
+<text x="772" y="198" font-size="24" font-weight="600" fill="#ffffff">Live thread</text>
+<path d="M744 175V356" fill="none" stroke="#262626" stroke-width="2"/>
+<circle cx="266" cy="236" r="5" fill="#8f86e8"/>
+<text x="284" y="244" font-size="24" font-weight="400" fill="#ffffff">Build the feature</text>
+<text x="609" y="244" font-size="22" font-weight="400" fill="#a3a3a3">Running</text>
+<circle cx="266" cy="284" r="5" fill="#8f86e8"/>
+<text x="284" y="292" font-size="24" font-weight="400" fill="#ffffff">Check the changes</text>
+<text x="609" y="292" font-size="22" font-weight="400" fill="#a3a3a3">Running</text>
+<circle cx="266" cy="332" r="5" fill="#7b7b7b"/>
+<text x="284" y="340" font-size="24" font-weight="400" fill="#ffffff">Write the guide</text>
+<text x="609" y="340" font-size="22" font-weight="400" fill="#a3a3a3">Queued</text>
+<rect x="770" y="216" width="442" height="58" rx="12" fill="#262626" stroke="#262626"/>
+<text x="790" y="252" font-size="24" font-weight="400" fill="#ffffff">Changes ready to inspect</text>
+<text x="790" y="308" font-size="24" font-weight="400" fill="#a3a3a3">Tools, output, and context</text>
+<rect x="790" y="330" width="286" height="8" rx="4" fill="#262626" stroke="#262626"/>
+<rect x="790" y="346" width="200" height="8" rx="4" fill="#262626" stroke="#262626"/>
+</svg>

@@ -299,7 +299,7 @@ export const discoverProjectTool = defineTool({
   name: 'discover_project',
   title: 'Discover the bound project',
   description:
-    'Read which xezar project this session is bound to, its effective capabilities and limits, and which actions are available. Every action that is unavailable or read-only says why. Call it at the start of a session and again after a person changes settings. It takes no arguments: the project comes from the connection, never from a parameter.',
+    'Read which xezar project this session is bound to, its effective capabilities and limits, and which actions are available. Every action that is unavailable or read-only says why. Call it at the start of a session and again after a person changes settings. It takes no arguments: the project comes from the connection, never from a parameter. A project leader works through these tools only, never the cockpit UI and never the HTTP API. Whether this session is attached as leader is not part of this answer: call leader_events with action status.',
   inputSchema: z.strictObject({}),
   annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
   async call(_args, ctx) {

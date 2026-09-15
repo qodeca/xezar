@@ -29,9 +29,12 @@ cp "$(npm root -g)/@qodeca/xezar/scripts/pi-leader-extension.ts" ~/.pi/agent/ext
 cp "$(npm root -g)/@qodeca/xezar/scripts/pi-leader-extension.ts" <project>/.pi/extensions/
 ```
 
-Then start pi **in the project directory** and attach the pi leader in the cockpit
-(`POST /api/v1/mcp/leader`, `{action: 'attach', client: 'pi'}`). There is nothing to configure: you
-paste no address and set no environment variable.
+Then start pi **in the project directory** and attach the pi leader: from pi, call `leader_events`
+action `attach` (#450 – xezar recognises pi by its MCP client name `pi-mcp-xezar`, read from the
+pi-mcp-adapter evidence and not re-measured), or a person uses **Settings → MCP connection → Attach
+leader**. There is nothing to configure: you paste no address and set no environment
+variable. Once attached, the leader works through the xezar MCP tools only and receives events as
+started turns; `leader_events` is the fallback while it is not attached (#439).
 
 ## What it does, exactly
 

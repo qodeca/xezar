@@ -1,5 +1,7 @@
 # Xezar UI project leader — pilot and operations guide
 
+> **Historical – superseded 2026-09-15 ([#439](https://github.com/qodeca/xezar/issues/439)).** This UI pilot is kept as a record. A project leader now works through the xezar MCP tools only – no cockpit UI, no HTTP API – attached so events are pushed; `leader_events` is the fallback and `gh` reads GitHub facts. See [the leader findings, § 11](../mcp-server/leader-dogfooding-2026-09-13.md#11-every-time-the-leader-left-the-mcp-channel-consolidated-2105).
+
 This temporary pilot coordinates through the existing Xezar UI. It does not implement or certify the future Xezar MCP server or built-in leader. The English [role prompt](../../prompts/xezar-ui-leader-prompt.md) contains the durable, standalone rules; this guide holds dated setup and operational details. The canonical file is `docs/prompts/xezar-ui-leader-prompt.md`, named for its host-neutral role.
 
 The [leader requirements](builtin-project-leader-requirements.md), [MCP contract](../mcp-server/mcp-project-leader-requirements.md) and [audited practice register](standard-process-source-audit.md) supply design context, not proof of installed pilot capabilities.

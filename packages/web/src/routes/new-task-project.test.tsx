@@ -62,6 +62,7 @@ afterEach(() => {
 
 const HEALTH: HealthResponse = {
   version: '0.1.3',
+  channel: 'release',
   repoRoot: '/home/u/xezar',
   repo: { root: '/home/u/xezar', branch: 'main' },
   defaultRunner: 'claude',

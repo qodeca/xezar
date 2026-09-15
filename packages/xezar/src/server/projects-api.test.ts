@@ -45,6 +45,7 @@ interface HealthBody {
   checks: unknown[];
   defaultRunner?: string;
   forge: unknown;
+  channel: 'release' | 'dev';
   capabilities: {
     localHandoff: boolean;
     followups: boolean;
@@ -781,6 +782,7 @@ describe('workspace projects API', () => {
         [
           'bootProject',
           'capabilities',
+          'channel',
           'checks',
           'defaultRunner',
           'forge',
@@ -792,6 +794,8 @@ describe('workspace projects API', () => {
       );
       // Pre-existing field values, unchanged by the workspace additions.
       expect(body.version).toBe('0.0.0-test');
+      // #442 — additive: the install channel. A test app gets no channel dep, so it answers 'release'.
+      expect(body.channel).toBe('release');
       expect(body.repoRoot).toBe(repoRoot);
       expect(body.repo).toBeNull(); // tmp dir — not a git repo
       expect(Array.isArray(body.checks)).toBe(true);
