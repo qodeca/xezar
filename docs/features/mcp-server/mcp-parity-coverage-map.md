@@ -8,11 +8,11 @@ Tracked by [#116](https://github.com/qodeca/xezar/issues/116) (Phase 8 of [epic 
 This page links every record of the closed inventory,
 [`mcp-ui-action-inventory.md`](mcp-ui-action-inventory.md), to the acceptance cases that prove it.
 It makes Definition of Done clause 1 measurable: coverage is judged against that inventory's
-140 records, never against a count of tools or endpoints.
+142 records, never against a count of tools or endpoints.
 
 ## How to read it
 
-- **Record → cases** lists every record with status `covered` (all 89), plus the `global` records a
+- **Record → cases** lists every record with status `covered` (all 91), plus the `global` records a
   case exercises as a refusal. A case marked **(BLOCKED)** would be named here but not passing; none
   is today (see [What is blocked](#what-is-blocked)).
 - **Case → records** lists every case in
@@ -199,6 +199,8 @@ run.
 | I-113 | covered | P-26, P-27 |
 | I-114 | covered | P-18 |
 | I-115 | global | P-29 |
+| I-141 | covered | P-43 |
+| I-142 | covered | P-43 |
 | I-117 | global | P-29 |
 | I-118 | global | P-29 |
 | I-119 | global | P-29 |
@@ -249,6 +251,7 @@ run.
 | P-20 | A-08, A-07 | I-033, I-034, I-038, I-039 | either side takes over the other’s task, and one transcript records both |
 | P-21 | A-08, A-05 | I-001, I-018, I-010, I-110 | the same work through either door leaves the same files: no MCP-only history or configuration |
 | P-22 | A-08 | I-138, I-139 | the leader is told about the human’s changes through its own project’s journal: what changed, in order, with the current state, and nothing of B or the workspace |
+| P-43 | A-08, A-05 | I-141, I-142 | a Claude Code leader attaches, reads and stops its own delivery over MCP, and the cockpit’s connection status and Attach leader see the same leader |
 | P-23 | A-09, A-05 | I-010, I-065, I-103, I-105, I-106, I-107, I-108, I-109 | a project setting written by the leader is the cockpit’s setting, byte for byte, B is untouched, and the system prompt never reaches a log |
 | P-24 | A-09, A-05 | I-104, I-007 | locked models are reported as a reason and refuse a model choice exactly as the cockpit does |
 | P-25 | A-09, A-08, A-05 | I-110 | the prompt-template list is read and replaced whole, and each door sees the other’s list |

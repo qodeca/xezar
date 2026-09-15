@@ -12,7 +12,7 @@ import { z } from 'zod';
 import type { AppType } from '../../server/app-type.ts';
 import { MCP_ORIGIN, McpServiceAdapter, type GetRunValue, type ServiceDispatch } from '../service-adapter.ts';
 import { staleRejectionIn } from '../stale-write.ts';
-import { defineTool, errorResult, textResult, type McpToolContext, type McpToolResult } from '../tool.ts';
+import { NOT_CONNECTED_NEXT, defineTool, errorResult, textResult, type McpToolContext, type McpToolResult } from '../tool.ts';
 
 /**
  * Execution control and session messaging for the bound project's own tasks (#94, F-08, F-09,
@@ -604,7 +604,7 @@ export function createExecutionControlTool(wait: (ms: number) => Promise<void> =
       const service = (ctx as ExecutionControlContext).service;
       if (!service) {
         return errorResult(
-          'execution_control is not connected to this cockpit\'s task services yet; nothing was changed. Report this blocker to the person; a leader does not switch to the cockpit.',
+          `execution_control is not connected to this cockpit's task services yet; nothing was changed. ${NOT_CONNECTED_NEXT}`,
         );
       }
       const projectId = ctx.project.id;

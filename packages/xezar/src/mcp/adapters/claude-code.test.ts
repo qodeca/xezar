@@ -35,7 +35,7 @@ function row(journalSeq: number, over: Partial<McpJournalRow> = {}): McpJournalR
 }
 
 function dispatch(rows: McpJournalRow[], recovery?: EventDispatch['recovery']): EventDispatch {
-  return { projectId: PROJECT, events: rows, ...(recovery ? { recovery } : {}) };
+  return { projectId: PROJECT, events: rows, nextCursor: 'cursor-after-page', ...(recovery ? { recovery } : {}) };
 }
 
 interface Harness {
@@ -115,7 +115,7 @@ describe('ClaudeCodeChannelAdapter.deliver', () => {
   it('refuses a dispatch for another project', async () => {
     // RED against: pushing a foreign project's rows to this leader.
     const h = harness();
-    await expect(h.adapter.deliver({ projectId: 'other', events: [row(1)] }, signal())).rejects.toThrow(/another project/);
+    await expect(h.adapter.deliver({ projectId: 'other', events: [row(1)], nextCursor: 'cursor-after-page' }, signal())).rejects.toThrow(/another project/);
   });
 });
 
@@ -181,6 +181,21 @@ describe('channelMeta — identifier keys only (§ 2.1)', () => {
     expect(meta.recovery).toBe('1');
     expect(meta.first_seq).toBeUndefined();
     for (const key of Object.keys(meta)) expect(key).toMatch(META_KEY);
+  });
+});
+
+describe('the cursor a pushed message names (#450, T-24)', () => {
+  it('carries next_cursor in meta, under Claude Code’s key rule, and names it in the last line of the text', () => {
+    // RED against: omitting `next_cursor` — the leader could not ack without reading first.
+    const rows = [row(4), row(7)];
+    const d: EventDispatch = { projectId: PROJECT, events: rows, nextCursor: 'alpha.cursor-7' };
+    const meta = channelMeta(d, rows);
+    expect(meta.next_cursor).toBe('alpha.cursor-7');
+    for (const key of Object.keys(meta)) expect(key).toMatch(META_KEY);
+    const lines = renderChannelContent(d, rows, 'ROLE').split('\n');
+    expect(lines.at(-1)).toBe(
+      'Read the current state with the xezar tools before acting. Once you have taken these events into account, acknowledge them: call leader_events with action ack, cursor alpha.cursor-7 and a new operationId. You do not need to read them first.',
+    );
   });
 });
 

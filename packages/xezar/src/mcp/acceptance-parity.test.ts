@@ -1027,6 +1027,45 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
         rmSync(home, { recursive: true, force: true });
       }
     });
+
+    parity('P-43', ['A-08', 'A-05'], ['I-141', 'I-142'], 'a Claude Code leader attaches, reads and stops its own delivery over MCP, and the cockpit’s connection status and Attach leader see the same leader', async () => {
+      const w = world();
+      // Composed exactly as P-22 composes it: the delivery path the route and the tool both reach.
+      w.a.journal.close();
+      await mergeWriteWorkspaceConfig((config) => {
+        const now = new Date().toISOString();
+        if (!config.projects.some((p) => p.id === PROJECT_A)) config.projects.push({ id: PROJECT_A, root: w.a.root, name: w.a.name, addedAt: now, lastOpenedAt: now, source: 'local' });
+      });
+      const home = realpathSync(mkdtempSync('/tmp/xzp43-'));
+      const service = await startMcpService({ projectId: PROJECT_A, version: 'parity', service: w.service, store: w.a.store, env: { ...process.env, XEZ_HOME: home } });
+      const leader = bridgeLeader({ kind: 'socket', path: service.path, project: { id: PROJECT_A, name: w.a.name } });
+      const door = async (args: Record<string, unknown>): Promise<Record<string, any>> =>
+        ((await leader.request('tools/call', { name: 'leader_events', arguments: withOperationId('leader_events', args) })) as McpToolResult).structuredContent as Record<string, any>;
+      const shared = (status: Record<string, any>) => ({ owner: status.owner, leader: status.leader, blocker: status.blocker?.code ?? null });
+      try {
+        // Claude Code opens the session: the bridge announces it, and it owns A.
+        await leader.request('initialize', { protocolVersion: '2025-11-25', clientInfo: { name: 'claude-code' } });
+        // I-141: the leader's status is the cockpit's connection status, plus what is true for it.
+        const before = await door({ action: 'status' });
+        expect(before).toMatchObject({ available: true, canPush: true, self: { client: 'claude-code', isOwner: true, attached: false } });
+        expect(shared(before)).toEqual(shared((await ui(w, '/mcp/leader')).body));
+        // I-142: the leader attaches ITSELF, and the cockpit sees the leader it attached.
+        expect(await door({ action: 'attach' })).toMatchObject({ ok: true, outcome: 'attached' });
+        expect((await ui(w, '/mcp/leader')).body).toMatchObject({ leader: { client: 'claude-code', state: 'attached' } });
+        expect(shared(await door({ action: 'status' }))).toEqual(shared((await ui(w, '/mcp/leader')).body));
+        // Stop through MCP, attach through the cockpit: each door sees the other's change.
+        expect(await door({ action: 'stop' })).toMatchObject({ ok: true, outcome: 'stopped' });
+        expect((await ui(w, '/mcp/leader')).body).toMatchObject({ leader: null });
+        expect((await ui(w, '/mcp/leader', 'POST', { action: 'attach', client: 'claude-code' })).status).toBe(200);
+        expect(await door({ action: 'status' })).toMatchObject({ leader: { client: 'claude-code' }, self: { attached: true } });
+        // Nothing of B reaches A's leader.
+        expect(leaked(JSON.stringify(await door({ action: 'status' })), w.b.names)).toEqual([]);
+      } finally {
+        await leader.close();
+        service.close();
+        rmSync(home, { recursive: true, force: true });
+      }
+    });
   });
 
   // =============================================================================================
@@ -1814,10 +1853,10 @@ describe('A-05 — the coverage matrix against the closed inventory', () => {
     if (blockedCases.length > 0) console.info(`[#116] blocked parity cases (not passing): ${blockedCases.join(', ')}`);
   });
 
-  it('the inventory is the closed 140-record one, with 89 covered records', () => {
+  it('the inventory is the closed 142-record one, with 91 covered records', () => {
     const inventory = readInventory();
-    expect(inventory.size).toBe(140);
-    expect([...inventory.values()].filter((s) => s === 'covered')).toHaveLength(89);
+    expect(inventory.size).toBe(142);
+    expect([...inventory.values()].filter((s) => s === 'covered')).toHaveLength(91);
   });
 
   it('every covered record maps to at least one case, and every case names inventory records', () => {
