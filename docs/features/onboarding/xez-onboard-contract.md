@@ -23,12 +23,12 @@ projects without requiring a software delivery process.
 
 Ask only unresolved choices: domain (software, campaign/marketing, research or
 other), intended outputs, independent versus leader operation, selected client if
-ambiguous, base branch when Git exists, and default/custom/no team skills source.
+ambiguous, base branch only with Git and ambiguous intent, and default/custom/no team skills source.
 Software pipeline customization is opt-in. QA/design questions apply only where
 such gates are relevant; existing mandated policy cannot be weakened.
 
-Use the existing `XEZ:ASK` contract with at most two options per question, a
-recommendation and free-text answers. A domain question may name all four domains
+Use the existing `XEZ:ASK` contract with exactly two options per question, first
+`(Recommended)`, plus free text. A domain question may name all four domains
 while presenting only two plausible suggestions. Keep inspect/ask/preview/apply/
 verify in the final interactive step. Unanswered required questions block dependent
 writes; timeout is not an answer. Existing scope authorization need not be repeated.
@@ -75,10 +75,14 @@ for the new pair. This avoids treating a previous successful check as current.
 Record offer time only after offering; record check time only after a successful
 scoped check. Keep report-only versus applied status and template provenance in
 the task result/checkpoint; the four-field state cannot encode those distinctions.
+Re-check baseline provenance is an open P2 decision; the candidate is to resolve
+previous bytes from the pinned `kitDigest` revision.
 
 Absent/corrupt/read-only state must not block boot or ordinary tasks. First use
 offers setup without inventing an upgrade baseline. A changed engine or kit offers
 **Re-check / Later**; it never launches an agent or edits project files automatically.
+Accepting **Re-check** authorizes inspection and preview only; applying needs an
+explicit choice against the concrete preview unless the brief names exact files and keys.
 Keep an offer timestamp when deferred so the same identity does not nag on restart.
 Manual re-check remains available. Concurrent offers need serialized identity-aware
 writes in P2; a stale task result cannot mark a newer identity successfully checked.
