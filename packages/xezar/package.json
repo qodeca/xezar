@@ -1,7 +1,7 @@
 {
   "name": "@qodeca/xezar",
   "version": "0.14.0",
-  "description": "Local cockpit for running and tracking AI agent tasks in your repo. Uses your logged-in `claude` CLI and `gh` — zero config, zero database.",
+  "description": "Local cockpit for running and tracking AI agent tasks in any project folder, with the Claude Code, Codex, OpenCode or pi CLI you already use — zero config, zero database.",
   "license": "MIT",
   "type": "module",
   "bin": {
@@ -25,7 +25,7 @@
   "scripts": {
     "prebuild": "node scripts/sync-readme.mjs",
     "build": "tsc",
-    "check:pack": "node scripts/check-pack.mjs",
+    "check:pack": "node --import tsx scripts/check-pack.mjs",
     "dev": "tsx src/index.ts",
     "install-as-command": "node scripts/install-as-command.mjs --mode link",
     "install-as-command:global": "node scripts/install-as-command.mjs --mode global",
