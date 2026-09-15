@@ -614,16 +614,25 @@ A field that looks like a secret is dropped, not masked, even when `XEZ_REDACT_S
 
 ### Events and replay
 
-This rule comes from [D-05 § 6](mcp-d05-async-event-contract-decision.md#6-decisions). Events reach a
-leader through `leader_events` and nothing else, as rows of the bound project's own journal. The
-unfiltered workspace stream is never forwarded.
+This rule comes from [D-05 § 6](mcp-d05-async-event-contract-decision.md#6-decisions). Events are
+rows of the bound project's own journal. An **attached** leader receives them as pushes – a
+`<channel source="xezar">` message in Claude Code, a started turn in Codex, OpenCode or pi – and that
+is the normal path (#439). `leader_events` reads the same rows and is the fallback for a leader that
+is not attached, and the catch-up after a gap. The unfiltered workspace stream is never forwarded.
+
+A project leader works through these MCP tools only, never the cockpit UI and never the HTTP API.
+The one exception is attaching: no MCP action attaches a leader yet, so a person uses **Settings →
+MCP connection → Attach leader**, or the leader makes one call,
+`POST /api/v1/mcp/leader {"action":"attach","client":"claude-code"}` (its own client name). GitHub
+facts – labels, review verdicts, merge state – are not carried by the MCP; a leader reads them with
+`gh`.
 
 - **Reading.** `read` returns the outstanding rows in order, each with a stable `eventId`, followed by
   the current state of the tasks they name. The state is the authority; an event is history.
 - **Acknowledging.** `ack` records a position. Until then, `read` repeats the same rows.
 - **Gaps.** `status: 'gap'` means rows after the position are no longer retained. Nothing is
   replayed, and the leader continues from `resumeCursor`.
-- **No polling.** Read on connect and when `hasMore` is true.
+- **No polling.** Attach once; read on connect, after a gap, and when `hasMore` is true.
 
 The journal keeps 10 000 rows per project, and never evicts a row younger than 14 days
 ([D-09 B-19](mcp-d09-limits-retention-packaging-decision.md)).

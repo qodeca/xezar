@@ -884,14 +884,23 @@ here or anywhere else in the cockpit. pi's MCP files are listed because the
 `pi-mcp-adapter` extension reads them — pi itself reads no MCP config, which is
 what **Settings → MCP connection** walks you through installing.
 
-### Waking a Claude Code leader (opt-in)
+### Running a project leader: MCP tools only, attached for pushed events
 
-A project leader you run reads its events with the `leader_events` MCP tool, so
-by default nothing is pushed to it: you pull. A **Claude Code** leader can also be
-**woken** when something happens in the project, over Claude Code Channels. This is
-opt-in and off by default — the zero-config default stays pull-only, and xezar
-gains no setting and no environment variable for it. The only switch is a flag you
-add when you start Claude Code:
+A project leader works through the xezar MCP tools only – not the cockpit UI and
+not the HTTP API. It is **attached**, so xezar pushes project events to it: a
+**Claude Code** leader receives them as `<channel source="xezar">` messages over
+Claude Code Channels, and an attached Codex, OpenCode or pi leader has a turn
+started in it. That is the normal path. Reading events with the `leader_events` MCP
+tool is the fallback for a leader that is not attached. GitHub facts – labels,
+review verdicts, merge state – are not carried by the MCP, so a leader reads them
+with `gh`.
+
+Nothing is pushed until a leader is attached, and xezar gains no setting and no
+environment variable for it. No MCP action attaches a leader yet: a person uses
+**Attach leader** under **Settings → MCP connection → Connection status**, or the
+leader makes that one HTTP call itself,
+`POST /api/v1/mcp/leader {"action":"attach","client":"claude-code"}` (with its own
+client name). For Claude Code the other switch is a flag you add when you start it:
 
 ```bash
 claude --dangerously-load-development-channels server:xezar
@@ -901,7 +910,8 @@ That flag is how Claude Code lets a server that is not on Anthropic's approved l
 push messages into your session. **Claude Code shows a warning every time you launch
 with it** — choose "I am using this for local development" if you accept it. Then
 use **Attach leader** under **Settings → MCP connection → Connection status**, the same
-control that attaches Codex, OpenCode and pi. Until it is attached, the leader reads events with `leader_events`.
+control that attaches Codex, OpenCode and pi, or
+`POST /api/v1/mcp/leader {"action":"attach","client":"claude-code"}`. Until it is attached, the leader reads events with `leader_events`.
 
 Channels are a Claude Code research preview, so the wake only works on a first-party
 login: they need a claude.ai or Anthropic Console API-key login, they do not work on
