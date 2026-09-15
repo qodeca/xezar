@@ -14,6 +14,9 @@
  *  - `web/dist/index.html` — the built shell every GET serves.
  *  - at least one `web/dist/assets/*` file — the hashed JS/CSS bundles; an
  *    index.html alone renders a blank page.
+ *  - NO `src/index.ts` — its presence is how a running xezar decides it is a
+ *    development build (`install-channel.ts`, #442). A tarball carrying it would
+ *    put the red "D" badge on every user's cockpit.
  */
 export function findPackGaps(packedFiles: readonly string[]): string[] {
   const gaps: string[] = [];
@@ -22,6 +25,9 @@ export function findPackGaps(packedFiles: readonly string[]): string[] {
   }
   if (!packedFiles.some((f) => f.startsWith('web/dist/assets/') && f.length > 'web/dist/assets/'.length)) {
     gaps.push('no web/dist/assets/* bundle in the tarball — the shell would load with no JS/CSS');
+  }
+  if (packedFiles.includes('src/index.ts')) {
+    gaps.push('src/index.ts is in the tarball — every installed cockpit would report channel "dev" and show the development-build badge (keep src out of `files`)');
   }
   return gaps;
 }
