@@ -995,7 +995,31 @@ describe('project_config: nothing identifies an account or leaks a secret', () =
     expect(JSON.stringify(codex.body)).toContain(PLAN_CODEX);
   });
 
-  it('no answer of any action contains an email address, an organisation name, a plan name or the launch key', async () => {
+  const calls: Array<Record<string, unknown>> = [
+    { action: 'get_config' },
+    { action: 'get_project' },
+    { action: 'get_prompt_templates' },
+    { action: 'get_limits' },
+    { action: 'get_capabilities' },
+    { action: 'get_account' },
+    { action: 'list_agent_config' },
+    ...PROJECT_SCOPE_IDS.map((fileId) => ({ action: 'read_agent_config', fileId })),
+    ...USER_SCOPE_IDS.map((fileId) => ({ action: 'read_agent_config', fileId })),
+    ...USER_SCOPE_IDS.map((fileId) => ({ action: 'write_agent_config', fileId, content: '{}', version: null })),
+    { action: 'list_workflows' },
+    { action: 'list_skills' },
+    { action: 'list_importable_skills' },
+    { action: 'check_skill_updates' },
+    { action: 'list_automations' },
+    { action: 'get_automation_log' },
+    { action: 'list_worktrees' },
+    { action: 'get_project', projectId: 'proj-b' },
+    ...Object.keys(REFUSED_ACTIONS).map((action) => ({ action })),
+  ];
+
+  // Each action gets its own fixture and timeout; a slow aggregate sweep must not
+  // time out and let teardown race the remaining privacy checks.
+  it.each(calls)('does not disclose identity, user config or the launch key: %j', async (args) => {
     process.env.XEZ_AUTOMATIONS = '1';
     const other = makeDir('xez-pc-second-claude-');
     const created = await cockpit('/api/v1/workspace/agent-profiles', 'POST', { provider: 'claude', configDir: other, label: EMAIL_LABEL });
@@ -1003,36 +1027,12 @@ describe('project_config: nothing identifies an account or leaks a secret', () =
     const launchKey = (await cockpit('/api/v1/p/proj-a/launch-key')).body.key as string;
     expect(launchKey.length).toBeGreaterThan(8);
 
-    const calls: Array<Record<string, unknown>> = [
-      { action: 'get_config' },
-      { action: 'get_project' },
-      { action: 'get_prompt_templates' },
-      { action: 'get_limits' },
-      { action: 'get_capabilities' },
-      { action: 'get_account' },
-      { action: 'list_agent_config' },
-      ...PROJECT_SCOPE_IDS.map((fileId) => ({ action: 'read_agent_config', fileId })),
-      ...USER_SCOPE_IDS.map((fileId) => ({ action: 'read_agent_config', fileId })),
-      ...USER_SCOPE_IDS.map((fileId) => ({ action: 'write_agent_config', fileId, content: '{}', version: null })),
-      { action: 'list_workflows' },
-      { action: 'list_skills' },
-      { action: 'list_importable_skills' },
-      { action: 'check_skill_updates' },
-      { action: 'list_automations' },
-      { action: 'get_automation_log' },
-      { action: 'list_worktrees' },
-      { action: 'get_project', projectId: 'proj-b' },
-      ...Object.keys(REFUSED_ACTIONS).map((action) => ({ action })),
-    ];
-    for (const args of calls) {
-      for (const project of ['a', 'b'] as const) {
-        const called = await invoke(args, { project });
-        for (const marker of IDENTITY_MARKERS) expect(called.json, `${String(args.action)} leaked ${marker}`).not.toContain(marker);
-        expect(called.json, `${String(args.action)} carries an email address`).not.toMatch(EMAIL_RE);
-        expect(called.json, `${String(args.action)} carries the launch key`).not.toContain(launchKey);
-        expect(called.json, `${String(args.action)} carries a user-scope file`).not.toContain(USER_MARKER);
-      }
+    for (const project of ['a', 'b'] as const) {
+      const called = await invoke(args, { project });
+      for (const marker of IDENTITY_MARKERS) expect(called.json, `${String(args.action)} leaked ${marker}`).not.toContain(marker);
+      expect(called.json, `${String(args.action)} carries an email address`).not.toMatch(EMAIL_RE);
+      expect(called.json, `${String(args.action)} carries the launch key`).not.toContain(launchKey);
+      expect(called.json, `${String(args.action)} carries a user-scope file`).not.toContain(USER_MARKER);
     }
   });
 });
-
