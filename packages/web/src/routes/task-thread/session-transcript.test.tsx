@@ -109,7 +109,7 @@ describe('transcript adapters and row building', () => {
             { kind: 'message', id: 'a2', role: 'assistant', text: 'Done' },
           ],
         },
-        { id: 'turn-2', userMessage: { text: 'Follow up' }, items: [{ kind: 'message', id: 'a3', role: 'assistant', text: 'Ok' }] },
+        { id: 'turn-2', userMessage: { text: 'Follow up', imageCount: 0, images: [] }, items: [{ kind: 'message', id: 'a3', role: 'assistant', text: 'Ok' }] },
       ],
     }
     const rows = buildTranscriptRows(
