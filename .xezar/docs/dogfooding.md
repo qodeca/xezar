@@ -12,6 +12,14 @@ Installation validation is reported in installation.md. Real-task entries follow
 
 ## Real-task entries
 
+### 2026-09-15 — #424 step 4 (the Roomy density), `feature-implementation` step `implement`, `xezar-implementation`, Claude Code — real-task verified
+
+- Evidence: run 5f3baef2, base `40bb617`, commit `e64b3fe`; the red-first runs are listed in the PR body kept in the primary evidence directory (`pr-body.md`).
+- Observed: **a risk the read-only context marked "inferred" was real, and the first test for it was red for the wrong reason.** The new "refused save reverts" test clicked Roomy, which did not exist before the fix, so its red proved nothing about the revert. Re-pointed at the existing `ultra` option on unchanged code, it was still red: an unchanged refetch keeps the same query `data` reference, so the "server wins" effect never re-ran and the unsaved choice stayed painted. Lesson (real-task verified): a red-first proof must fail on the behaviour, so prove it with inputs that exist before the change.
+- Observed: **ordering the edits gave a cleaner red-first proof than `git stash`, whose stack is shared by every worktree.** Tests first (all red), then the contract (workspace route green, per-repo route still red because the server kept its own enum), then the server import (green). The middle state is exactly the "server lags the contract" case the parity test cannot see.
+- Observed: the pre-paint stamp can be proven in the browser suite without racing React: evaluate the served page's inline head script on its own against a stand-in root and the real localStorage mirror. Each browser red-proof costs a rebuild, because `test-env-up.sh` serves a cached build keyed by source fingerprint.
+- Remaining limit: the density segments measure 31.5 px (Comfortable) and 34.5 px (Roomy) high at 375 px, under the 44 px phone touch target the epic names; older than this step and left to the design review.
+
 ### 2026-09-15 — epic #67 close-out (real-model A-19/A-23 for Claude Code and Codex), `testing-and-verification` step `tests`, `xezar-testing`, Claude Code — real-task verified
 
 - Evidence: primary `.local/xezar-tasks/a9a867a4-e1d4-4bba-83e0-f6a183671331/real-model-2026-09-15/` (`MANIFEST.sha256` `7f86d3bf…8f9e`); both legs PASSED on `a6d53b4`, clean tree.
