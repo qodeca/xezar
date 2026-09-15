@@ -1,0 +1,120 @@
+# quiet.txt – `--quiet` and the four log levels
+#
+# Lines that start with `#` are notes. xezar never prints them.
+# Same session as tty.txt scene 3, in a terminal at 80 columns.
+#
+#        1         2         3         4         5         6         7         8
+#2345678901234567890123456789012345678901234567890123456789012345678901234567890
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Scene 1 – xez --quiet
+# The banner shrinks to the one line a person or a script needs. No live
+# region, no summary. Only warnings and errors reach stderr.
+# ─────────────────────────────────────────────────────────────────────────────
+
+$ xez --quiet
+[stdout]
+  cockpit   http://localhost:4322
+
+[stderr]
+  10:12:08  error  a12bc345  check unit-tests failed — exit 1 · 2m 23s
+  10:14:30  warn   b98de765  needs you — “Pin vitest to 3.2.4 or allow 3.2.x?”
+                             http://localhost:4322/p/beta/tasks/b98de765
+  10:16:11  warn   http      409 POST /api/v1/p/:projectId/runs/:id/finish
+                             “no open session”
+  10:19:03  warn   provider  Codex needs sign-in — open Settings → Agents
+  10:19:04  error  b98de765  failed — Codex stopped · exit code not reported
+                             http://localhost:4322/p/beta/tasks/b98de765
+  10:21:40  error  http      500 GET /api/v1/p/:projectId/runs/:id/diff
+                             “internal error”
+^C
+
+# Quiet never hides: a port that was busy (the banner line under cockpit),
+# a non-loopback bind warning, a refused start, or any error. When the port
+# moved, the second cockpit line is printed even in quiet:
+#
+#   cockpit   http://localhost:4323
+#             4322 is used by another program — beta uses 4323 from now on
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Scene 2 – xez run --quiet "…"  (headless run, no cockpit)
+# Today `run` streams the transcript to stdout. With --quiet it prints only
+# the final status line. Exit codes are unchanged: 0 for done and review,
+# 1 for failed and cancelled.
+# ─────────────────────────────────────────────────────────────────────────────
+
+$ xez run --quiet "Tidy CHANGELOG headings"
+[stdout]
+  done — 2m 09s · 18.4k tokens
+$ echo $?
+0
+
+$ xez run --quiet "Fix the flaky ws test"
+[stderr]
+  10:44:02  error  3f9a2c10  check unit-tests failed — exit 1 · 1m 12s
+[stdout]
+  failed — step unit-tests · 4m 50s
+$ echo $?
+1
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Scene 3 – log levels. What each level adds, from narrowest to widest.
+# --quiet is the same as --log-level warn plus the short banner and no live
+# region. When both are given, the narrower one wins:
+# `--quiet --log-level error` shows errors only; `--quiet --log-level debug`
+# still shows warnings and errors only.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# --log-level error
+  10:12:08  error  a12bc345  check unit-tests failed — exit 1 · 2m 23s
+
+# --log-level warn   (adds)
+  10:14:30  warn   b98de765  needs you — “Pin vitest to 3.2.4 or allow 3.2.x?”
+                             http://localhost:4322/p/beta/tasks/b98de765
+
+# --log-level info   (the default; adds)
+  10:07:02  info   b98de765  started — implement · Codex
+  10:20:30  info   c4410f2e  done — 2m 09s · 18.4k tokens · $0.31
+
+# --log-level debug  (adds)
+  10:07:02  debug  b98de765  session opened — codex app-server pid 48210
+  10:07:03  debug  http      404 GET /api/v1/p/:projectId/runs/:id
+  10:07:03  debug  ws        topic health — 1 subscriber
+  10:07:04  debug  sse       workspace events — client connected (2 open)
+  10:08:00  debug  skills    update check — nothing new, next check 16:08
+  10:08:00  debug  registry  remembered port 4322 for beta
+
+# Debug is never permission to print a secret, a prompt, a request body,
+# a header, a query string or the launch key. The same cleaning rules apply
+# at every level (README.md § 10.5).
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Scene 4 – the levels as a table (what goes where)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Event                              Level   Live table   Summary
+# task queued, started, step started info    row          —
+# check passed                       info    —            —
+# check failed                       error   —            — (only the task’s own outcome counts)
+# needs you (question asked)         warn    row          —
+# needs review                       info    row          counted
+# done                               info    row removed  counted
+# failed                             error   row removed  counted
+# cancelled                          info    row removed  counted
+# paused for a usage limit           warn    scheduled    —
+# needs permission                   warn    row          —
+# agent stopped (exit, signal)       error   —            —
+# HTTP 5xx                           error   —            —
+# HTTP 400 401 403 409 413 422       warn    —            —
+# HTTP 404, other 4xx                debug   —            —
+# origin guard refused a request     warn    —            —
+# MCP ready, leader attach, detach   info    —            —
+# MCP unavailable                    warn    —            —
+# MCP session opened or closed       debug   —            —
+# skills updated                     info    —            —
+# skills update failed               warn    —            —
+# skills check with nothing new      debug   —            —
+# agent signed out / signed in       warn / info  —       —
+# update available                   info    —            —
+# port remembered                    debug   —            —
+# port not remembered (write failed) warn    —            —
