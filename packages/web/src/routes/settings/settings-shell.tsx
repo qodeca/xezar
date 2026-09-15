@@ -66,7 +66,7 @@ function SectionNav({
       aria-label="Settings sections"
       data-slot="settings-nav"
       data-scope={scope}
-      className="hidden w-52 shrink-0 flex-col gap-1 border-r border-border p-3 md:flex"
+      className="hidden w-52 shrink-0 flex-col gap-1 border-r border-border p-stack md:flex"
     >
       <NavLink
         to={settingsIndexPath(scope)}
@@ -177,7 +177,7 @@ export function SettingsSectionRoute({
     >
       {/* Desktop header — below `md` the shell's top bar already says "Settings". The
           breadcrumb is what tells the two areas apart at a glance (mockup: "Global settings"). */}
-      <header className="sticky top-0 z-10 hidden h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-5 md:flex">
+      <header className="sticky top-0 z-10 hidden h-14 shrink-0 items-center gap-3 border-b border-border bg-background md:flex md:px-section">
         <h1 className="text-base font-semibold">{section.title}</h1>
         <p className="text-[13px] text-soft-foreground">{section.description}</p>
         {scope === 'global' ? (
@@ -207,7 +207,7 @@ export function SettingsIndexRoute({ scope, capabilities }: {
   const global = scope === 'global'
   return (
     <div data-route={global ? 'settings-global' : 'settings'} className="flex min-h-full flex-col">
-      <header className="sticky top-0 z-10 hidden h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-5 md:flex">
+      <header className="sticky top-0 z-10 hidden h-14 shrink-0 items-center gap-3 border-b border-border bg-background md:flex md:px-section">
         <h1 className="text-base font-semibold">{global ? 'Global settings' : 'Settings'}</h1>
         <p className="text-[13px] text-soft-foreground">
           {global
@@ -219,7 +219,7 @@ export function SettingsIndexRoute({ scope, capabilities }: {
         <SectionNav scope={scope} activeId={null} capabilities={capabilities} />
         {/* No second h1 for small screens: the app shell's mobile top bar already titles the
             page "Settings" from the nav registry. */}
-        <div className="flex min-w-0 flex-1 flex-col p-3 pb-[calc(90px+env(safe-area-inset-bottom))] md:p-5 md:pb-5">
+        <div className="flex min-w-0 flex-1 flex-col p-4 pb-[calc(90px+env(safe-area-inset-bottom))] md:p-section md:pb-section">
           {/* The project area's index is a PAGE, not a menu: the folder, the registry facts, the
               concurrency ceiling and Remove. The global area has no such dashboard — nothing about
               the machine is per-project — so there the cards are the whole page.
@@ -229,10 +229,10 @@ export function SettingsIndexRoute({ scope, capabilities }: {
           <ul
             data-slot="settings-index"
             className={cn(
-              'mx-auto flex w-full max-w-2xl flex-col gap-2.5',
+              'mx-auto flex w-full max-w-2xl flex-col gap-list',
               // On desktop the left nav already lists every section, so in the project area the
               // cards would be the same menu twice. Small screens have no nav — there they ARE it.
-              global ? null : 'mt-7 md:hidden',
+              global ? null : 'mt-section md:hidden',
             )}
           >
             {visibleSettingsSections(scope, capabilities).map((section) => (
@@ -240,7 +240,7 @@ export function SettingsIndexRoute({ scope, capabilities }: {
                 <Link
                   to={settingsSectionPath(scope, section.id)}
                   data-section={section.id}
-                  className="flex items-center gap-3.5 rounded-lg border border-border bg-card p-4 shadow-xs transition-colors hover:bg-card-2"
+                  className="flex items-center gap-3.5 rounded-lg border border-border bg-card p-inset shadow-xs transition-colors hover:bg-card-2"
                 >
                   <span className="flex size-9 shrink-0 items-center justify-center rounded-md border border-border bg-muted text-muted-foreground">
                     <section.icon aria-hidden="true" className="size-4" />

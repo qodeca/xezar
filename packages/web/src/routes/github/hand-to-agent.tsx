@@ -244,7 +244,7 @@ export function HandToAgent({
     )
 
   return (
-    <section data-slot="gh-hand" className="mt-7 rounded-lg border border-border bg-card p-4">
+    <section data-slot="gh-hand" className="mt-7 rounded-lg border border-border bg-card p-inset">
       <h3 className="flex items-center gap-1.5 text-[11px] font-semibold tracking-[.04em] text-soft-foreground uppercase">
         <ZapIcon aria-hidden="true" className="size-3.5 text-violet" />
         Hand this to the agent

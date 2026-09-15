@@ -49,6 +49,8 @@ export interface TranscriptMessageActions {
 export interface TranscriptRowModel {
   key: string
   scope: string
+  /** True when the next row belongs to the other speaker (user ↔ agent). */
+  speakerEnd: boolean
   content:
     | { kind: 'user-message'; message: TranscriptUserMessage }
     | { kind: 'block'; block: ThreadBlock }
@@ -114,7 +116,16 @@ export function agentTranscriptSections(
   return [{ id: `agent:${agentId}`, entries }]
 }
 
-/** Pure flattening and grouping shared by document and panel surfaces. */
+type Speaker = 'user' | 'agent'
+
+const rowSpeaker = (content: TranscriptRowModel['content']): Speaker =>
+  content.kind === 'user-message' ||
+  (content.block.kind === 'entry' && content.block.entry.kind === 'message' && content.block.entry.role === 'user')
+    ? 'user'
+    : 'agent'
+
+/** Pure flattening and grouping shared by document and panel surfaces. Each row also learns
+ *  whether the speaker changes after it — the boundary the thread's group gap sits on. */
 export function buildTranscriptRows(
   sections: readonly TranscriptSection[],
   _runId: string,
@@ -125,6 +136,7 @@ export function buildTranscriptRows(
       rows.push({
         key: section.userMessageKey ?? `${section.id}:user`,
         scope: section.id,
+        speakerEnd: false,
         content: { kind: 'user-message', message: section.userMessage },
       })
     }
@@ -132,9 +144,14 @@ export function buildTranscriptRows(
       rows.push({
         key: `${section.id}:${block.id}`,
         scope: section.id,
+        speakerEnd: false,
         content: { kind: 'block', block },
       })
     }
+  }
+  for (let index = 0; index < rows.length - 1; index++) {
+    const row = rows[index]!
+    row.speakerEnd = rowSpeaker(row.content) !== rowSpeaker(rows[index + 1]!.content)
   }
   return rows
 }
@@ -157,6 +174,7 @@ export function SessionTranscript({
     () =>
       rowModels.map((row) => ({
         key: row.key,
+        speakerEnd: row.speakerEnd,
         node:
           row.content.kind === 'user-message' ? (
             <TranscriptUserBubble

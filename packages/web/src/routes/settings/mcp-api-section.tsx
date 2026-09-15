@@ -64,7 +64,7 @@ export function McpApiSection() {
   }
   if (!reference.data.available) {
     return (
-      <div className="mx-auto w-full max-w-2xl p-4 md:p-6">
+      <div className="mx-auto w-full max-w-2xl p-list md:p-group">
         <p data-slot="mcp-api-unavailable" role="status" className="rounded-md border border-border bg-card p-3 text-[13px] leading-relaxed text-foreground">
           <span className="font-medium">The MCP API reference is not available.</span> {reference.data.reason}{' '}
           The rest of the cockpit keeps working; <McpConnectionLink>MCP connection</McpConnectionLink> still shows the
@@ -491,7 +491,7 @@ function ToolEntry({
         </dl>
 
         {discriminator ? (
-          <section className="flex flex-col gap-2">
+          <section className="flex flex-col gap-stack">
             <h4 className="text-[13px] font-semibold text-foreground">
               Actions <span className="font-normal text-muted-foreground">(the <code className="font-mono">{discriminator.name}</code> argument)</span>
             </h4>
@@ -529,7 +529,7 @@ function ToolEntry({
           </section>
         ) : null}
 
-        <section className="flex flex-col gap-2">
+        <section className="flex flex-col gap-stack">
           <h4 className="text-[13px] font-semibold text-foreground">Arguments</h4>
           <ToolErrorBoundary fallback={unsupportedFallback}>
             <ArgumentsView tool={tool} discriminator={discriminator} refusedArguments={refusedArguments} />
@@ -611,7 +611,7 @@ export function McpApiReferenceView({ reference }: { reference: Available }) {
   return (
     <div
       data-slot="mcp-api-section"
-      className="mx-auto flex w-full max-w-3xl min-w-0 flex-col gap-section p-4 pb-[calc(90px+env(safe-area-inset-bottom))] md:p-6 md:pb-6"
+      className="mx-auto flex w-full max-w-3xl min-w-0 flex-col gap-section p-list pb-[calc(90px+env(safe-area-inset-bottom))] md:p-group md:pb-group"
     >
       {/* Header (§ 12.2 item 1, § 18.6): what this is, and in one line why nothing here runs a tool. */}
       <header data-slot="mcp-api-header" className="flex flex-col gap-2">
@@ -645,7 +645,7 @@ export function McpApiReferenceView({ reference }: { reference: Available }) {
       </header>
 
       {/* Summary (§ 18.2, amended): names, not counts — a reviewer acts on a name. */}
-      <section aria-labelledby="mcp-api-summary-title" className="flex flex-col gap-2">
+      <section aria-labelledby="mcp-api-summary-title" className="flex flex-col gap-stack">
         <h2 id="mcp-api-summary-title" className="text-sm font-semibold text-foreground">Summary</h2>
         <ul data-slot="mcp-api-summary" className="flex list-disc flex-col gap-1 pl-5 text-[13px] leading-relaxed text-foreground">
           {onlyHealth ? (
@@ -814,7 +814,7 @@ export function McpApiReferenceView({ reference }: { reference: Available }) {
 
       {/* Coverage (§ 12.2 item 6, § 18.7): not available here yet, and SAID, because a reviewer cannot
           notice a section that is simply not there. */}
-      <section id="mcp-coverage" aria-labelledby="mcp-api-coverage-title" className="flex scroll-mt-4 flex-col gap-2">
+      <section id="mcp-coverage" aria-labelledby="mcp-api-coverage-title" className="flex scroll-mt-4 flex-col gap-stack">
         <h2 id="mcp-api-coverage-title" className="text-sm font-semibold text-foreground">Cockpit coverage</h2>
         <p data-slot="mcp-api-coverage" className="text-[13px] leading-relaxed text-muted-foreground">
           This page does not show which cockpit actions each tool covers yet. The record-by-record mapping is in{' '}

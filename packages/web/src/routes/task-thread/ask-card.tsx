@@ -79,12 +79,12 @@ function PendingAsk({ ask, run }: { ask: ThreadAsk; run: ApiRun }) {
       data-slot="ask-card"
       data-resolved="false"
       data-delivery={delivery.mode}
-      className="rounded-lg border border-primary/25 bg-primary/[0.04] px-4 pt-3.5 pb-3.5"
+      className="rounded-lg border border-primary/25 bg-primary/[0.04] p-inset"
     >
       <div className="mb-2.5 flex items-center gap-2">
         <span className="text-xs font-medium text-primary">The agent is asking</span>
       </div>
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-list">
         {questions.map((question, index) => (
           <AskQuestionBlock
             key={question.id ?? index}

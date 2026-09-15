@@ -114,7 +114,7 @@ function ProjectsPane({
       // whose content is a six-column TABLE rather than a stack of form fields, and 2xl left the
       // Tags cell narrow enough to break `design-system` across two lines. The fields above keep
       // their own `max-w-sm`, so widening the column costs them nothing.
-      className="mx-auto flex w-full max-w-4xl flex-col gap-section p-4 pb-[calc(90px+env(safe-area-inset-bottom))] md:p-6 md:pb-6"
+      className="mx-auto flex w-full max-w-4xl flex-col gap-section p-list pb-[calc(90px+env(safe-area-inset-bottom))] md:p-group md:pb-group"
     >
       <WorkspaceRootField
         configKey="browseRoot"

@@ -48,6 +48,23 @@ describe('ThreadRows — the threshold-switched renderer', () => {
     expect(rendered[0]!.className).toContain('w-full')
   })
 
+  // Flat mode only: jsdom gives virtua a 0-height viewport and it mounts no row for a short
+  // list. Both modes read the same `rowSpacing`; rhythm.e2e.ts measures it in a real browser.
+  it('spaces rows with pb-row inside a turn and pb-group at a speaker change', () => {
+    const spaced: ThreadRow[] = [
+      { key: 'a', node: <p>a</p> },
+      { key: 'b', node: <p>b</p>, speakerEnd: true },
+      { key: 'c', node: <p>c</p> },
+    ]
+    render(<ThreadRows runId="r1" rows={spaced} mode="flat" controls={controls()} />)
+    const classes = (key: string) =>
+      document.querySelector(`[data-slot="thread-row"][data-row-key="${key}"]`)!.className.split(/\s+/)
+    expect(classes('a')).toContain('pb-row')
+    expect(classes('b')).toContain('pb-group')
+    expect(classes('b')).not.toContain('pb-row')
+    expect(classes('c')).toContain('pb-row')
+  })
+
   it('virtual mode mounts the virtua container instead', () => {
     render(<ThreadRows runId="r1" rows={rows(400)} mode="virtual" controls={controls()} />)
     const region = document.querySelector('[data-slot="thread-rows"]')!

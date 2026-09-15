@@ -302,9 +302,9 @@ export function ThreadView({
     <div data-route="task-thread" data-run-id={run.id} className="flex min-h-full flex-col">
       <RunHeader run={run} planTally={planTally} onMarkedUnread={() => onMarkedUnread?.(run.id)} />
 
-      {/* Row spacing lives on each thread row (pb-2.5, both render modes measure alike);
+      {/* Row spacing lives on each thread row (pb-row, pb-group at a speaker change; both render modes measure alike);
           this gap only separates the sections — rows, empty state, footer, review panel. */}
-      <div className="mx-auto flex w-full max-w-[var(--measure)] flex-1 flex-col gap-2.5 px-3 py-3 md:gap-3.5 md:px-6 md:py-5">
+      <div className="mx-auto flex w-full max-w-[var(--measure)] flex-1 flex-col gap-2.5 px-3 py-3 md:gap-3.5 md:px-section md:py-section">
         {history ? (
           <HistoryBoundary
             hasOlder={history.hasOlder}
@@ -406,7 +406,7 @@ export function ThreadView({
           publishes an inset. */}
       <div
         data-slot="thread-dock"
-        className="sticky bottom-[var(--kb,0px)] z-10 bg-background px-3 pt-1 pb-2 max-md:border-t max-md:border-border md:px-6 md:pt-1.5 md:pb-4"
+        className="sticky bottom-[var(--kb,0px)] z-10 bg-background px-3 pt-1 pb-2 max-md:border-t max-md:border-border md:px-section md:pt-stack md:pb-list"
       >
         {/* The jump pill floats over the thread, just above the dock, centered. */}
         {scroll.pillVisible ? (

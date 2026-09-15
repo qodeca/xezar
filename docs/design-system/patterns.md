@@ -40,7 +40,7 @@ Source: `routes/tasks-overview.tsx`, `routes/global-tasks.tsx`, `routes/inbox.ts
 The rule (8 of 14 headers):
 
 ```
-<header class="sticky top-0 z-10 hidden h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-5 md:flex">
+<header class="sticky top-0 z-10 hidden h-14 shrink-0 items-center gap-3 border-b border-border bg-background md:flex md:px-section">
   <h1 class="text-base font-semibold">Tasks</h1>
   <p class="text-[13px] text-muted-foreground">Markdown playbooks agents can follow.</p>
   …actions, tabs, a 240px search…
@@ -48,7 +48,7 @@ The rule (8 of 14 headers):
 ```
 
 - Hidden below `md` because the shell's mobile top bar already names the page.
-- The body below it is `flex flex-1 flex-col p-3 pb-[calc(90px+env(safe-area-inset-bottom))] md:p-5 md:pb-5`.
+- The body below it is `flex flex-1 flex-col p-4 pb-[calc(90px+env(safe-area-inset-bottom))] md:p-section md:pb-section`, so the body starts `section` under the header and the title lines up with the content (`decisions.md` D-03).
 - Variations that exist (G-01): the Git and GitHub pages use `bg-background/95 backdrop-blur` with `text-lg`; the run header is `text-[15px]` and sticky only from `md`; `/new` centres an `h1 text-lg`; Compare uses `text-xl`; Automations uses `text-2xl` inside a `max-w-6xl` frame.
 
 ## 4. Lists, cards and tables
@@ -57,10 +57,10 @@ Source: `routes/tasks-overview.tsx`, `routes/global-tasks.tsx`, `lib/task-column
 `lib/task-groups.ts`, `lib/read-state.ts`.
 
 - The desktop task table is driven by `TASK_COLUMNS` (`lib/task-columns.ts`): `Status, Task, Workflow, Tool Name, Model, Branch, ±, Ref, IN / OUT, Cost, CPU, Mem, Started`. Header, `colgroup` and every row consume that list. A new column is three coordinated additions there.
-- Wrapper `hidden overflow-x-auto rounded-lg border border-border bg-card shadow-xs md:block`; header cell `h-[38px] px-2.5 text-[11px] font-semibold tracking-[0.05em] uppercase text-soft-foreground`; body cell `h-11 px-2.5 whitespace-nowrap`; last row loses its bottom border; row `cursor-pointer hover:bg-muted` with clicks on `a, button, input` passing through. Foldable columns collapse to `42px` with an `aria-pressed` toggle in the header.
-- Below `md` the same rows render as cards: `rounded-lg border border-border bg-card px-3.5 py-3 shadow-xs`, a mono meta line (`workflow · tool · model · branch · diff · tokens · cost`) and an always-visible pin.
+- Wrapper `hidden overflow-x-auto rounded-lg border border-border bg-card shadow-xs md:block`; header cell `h-[38px] px-3 text-[11px] font-semibold tracking-[0.05em] uppercase text-soft-foreground`; body cell `h-11 px-3 whitespace-nowrap`; last row loses its bottom border; row `cursor-pointer hover:bg-muted` with clicks on `a, button, input` passing through. Foldable columns collapse to `42px` with an `aria-pressed` toggle in the header.
+- Below `md` the same rows render as cards, `gap-list` apart: `rounded-lg border border-border bg-card p-inset shadow-xs`, a mono meta line (`workflow · tool · model · branch · diff · tokens · cost`) and an always-visible pin.
 - Unread finished rows are `font-semibold text-foreground` with a trailing violet dot (`aria-label="unread"`, `title="Unread — not opened since it finished"`); read-done rows are `font-medium text-muted-foreground`.
-- Cards elsewhere: `rounded-lg border border-border bg-card` (+ `shadow-xs` when raised, `p-4` inside) is the spelling. The `Card` primitive is unused (G-02).
+- Cards elsewhere: `rounded-lg border border-border bg-card` (+ `shadow-xs` when raised, `p-inset` inside, `gap-list` between cards) is the spelling. The footer strip under a table sits `mt-list` below it. The `Card` primitive is unused (G-02).
 - Group headings on `/tasks`: `text-[12px] font-semibold tracking-[0.04em] uppercase text-soft-foreground` with a mono count.
 - Absent values print `—`; never a fabricated `0` or `$0.00`.
 

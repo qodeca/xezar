@@ -36,7 +36,7 @@ import { useFinishRun } from './use-finish-run'
  */
 export function ReviewPanel({ run }: { run: ApiRun }) {
   return (
-    <section data-slot="review-panel" aria-label="Review the changes" className="flex flex-col gap-3">
+    <section data-slot="review-panel" aria-label="Review the changes" className="flex flex-col gap-stack">
       <div
         data-slot="review-banner"
         className="flex items-center gap-2.5 rounded-md border border-violet/30 bg-violet/10 px-3.5 py-2.5"
