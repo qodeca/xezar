@@ -604,7 +604,7 @@ export function createExecutionControlTool(wait: (ms: number) => Promise<void> =
       const service = (ctx as ExecutionControlContext).service;
       if (!service) {
         return errorResult(
-          'execution_control is not connected to this cockpit\'s task services yet; nothing was changed. Use the cockpit for this action.',
+          'execution_control is not connected to this cockpit\'s task services yet; nothing was changed. Report this blocker to the person; a leader does not switch to the cockpit.',
         );
       }
       const projectId = ctx.project.id;

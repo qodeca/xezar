@@ -1,5 +1,7 @@
 # pi as an MCP leader client – runtime evidence (first half)
 
+> **Operating rule since 2026-09-15 ([#439](https://github.com/qodeca/xezar/issues/439)).** A project leader works through the xezar MCP tools only – no cockpit UI, no HTTP API – and is attached so events are pushed to it (`<channel source="xezar">` for Claude Code, a started turn for Codex, OpenCode and pi). `leader_events` is the fallback for a leader that is not attached, and `gh` reads GitHub facts. This record is kept as written; where it treats pulling as the leader's normal path or the cockpit as the leader's surface, the rule supersedes it. See [the leader findings, § 11](leader-dogfooding-2026-09-13.md#11-every-time-the-leader-left-the-mcp-channel-consolidated-2105).
+
 Issue: [#330](https://github.com/qodeca/xezar/issues/330), work package WP1. Part of
 [epic #67](https://github.com/qodeca/xezar/issues/67). Covers F-17, F-18, F-20, F-21, D-01, D-02, D-05 and the
 A-01 client leg of the [requirements](mcp-project-leader-requirements.md), for pi only.

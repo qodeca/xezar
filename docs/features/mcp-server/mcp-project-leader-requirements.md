@@ -142,7 +142,7 @@ Presentation-only changes, log lines and token counters do not trigger leader re
 ### S-01: connection and human collaboration
 
 1. Xezar creates local connection configuration for project A in its `.local/xezar/`.
-2. The user points the leader application at this connection once, following client-specific instructions. Connection data is not pasted into the conversation.
+2. The user points the leader application at this connection once, following client-specific instructions. Connection data is not pasted into the conversation. Under the owner's operating rule of 2026-09-15 (#439) the leader is then attached, so events are pushed to it; from here on it uses the MCP tools only, and `leader_events` is the fallback.
 3. The leader reads A's server-confirmed identity, configuration, and capabilities. It cannot switch to B.
 4. The leader chooses a workflow and starts a task; a human sees it in the UI, adds a requirement, and the leader reads that same change.
 
