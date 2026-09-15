@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Onboarding design – phone, 375 px</title>
+<link rel="stylesheet" href="../../docs/design-system/cockpit.css">
+<link rel="stylesheet" href="styles.css">
+<script src="theme.js"></script>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-compass" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></symbol>
+  <symbol id="i-rotate" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="18" y2="18"/></symbol>
+  <symbol id="i-tasks" viewBox="0 0 24 24"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></symbol>
+  <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></symbol>
+</svg>
+
+<nav class="doc-bar" aria-label="Design pages">
+  <span class="brand">Onboarding · phone</span>
+  <a href="index.html">Overview</a>
+  <span class="spacer"></span>
+  <button class="theme-toggle" type="button" data-theme-toggle>Light / dark</button>
+</nav>
+
+<!-- The shell below 860 px: the sidebar is a drawer, the desktop page header is hidden and the
+     mobile top bar names the page. The offer row keeps its place above the page. -->
+<div class="shell short">
+  <main class="main">
+    <div class="mobile-bar">
+      <button class="btn-icon" type="button" aria-label="Open menu"><svg class="icon"><use href="#i-menu"/></svg></button>
+      <span class="title">Tasks</span>
+    </div>
+
+    <div class="banner-row offer-row" role="status" aria-live="polite">
+      <span class="offer-text">
+        <strong>xezar changed since this project was last checked</strong> —
+        <span class="ident">0.15.0</span> now, <span class="ident">0.14.0</span> then.
+        A re-check compares this project's files against the pinned defaults and shows you the differences.
+      </span>
+      <span class="offer-actions">
+        <button class="btn" type="button"><svg class="icon sm"><use href="#i-rotate"/></svg>Re-check</button>
+        <button class="btn ghost" type="button">Later</button>
+      </span>
+    </div>
+
+    <div class="page-body">
+      <div class="centered-state primary">
+        <div class="tile"><svg class="icon"><use href="#i-tasks"/></svg></div>
+        <h1>No tasks yet</h1>
+        <p>Describe a task to get started.</p>
+        <div class="setup-aside">
+          <p>New to this project? An agent can look at it and prepare the files it needs. It shows you every change before anything is written.</p>
+          <button class="btn md" type="button"><svg class="icon sm"><use href="#i-compass"/></svg>Set up this project</button>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="doc" style="padding:24px 16px 48px">
+  <p class="frame-label">Settings → Project setup, same width</p>
+
+  <div class="card setup-card">
+    <div class="head">
+      <div class="grow">
+        <h3><span class="dot pending" aria-hidden="true"></span>Changed since the last check</h3>
+        <p>The last check finished against xezar 0.14.0. xezar 0.15.0 is running now. A re-check compares this project's files against the pinned defaults and shows you the differences.</p>
+      </div>
+      <div class="actions"><button class="btn md contrast" type="button"><svg class="icon sm"><use href="#i-rotate"/></svg>Re-check now</button></div>
+    </div>
+    <dl class="ident-list">
+      <div><dt>Last observed</dt><dd>xezar 0.15.0 · templates 9f1a3b4</dd></div>
+      <div><dt>Last offered</dt><dd class="absent">—<span class="sr-only">not recorded</span></dd></div>
+      <div><dt>Last successfully checked</dt><dd>xezar 0.14.0 · templates 2c20c60 <span class="when">— 2 Sep, 16:40</span></dd></div>
+    </dl>
+    <p class="setup-note">
+      <svg class="icon sm"><use href="#i-info"/></svg>
+      <span><strong>Setup starts an ordinary task.</strong> It appears in Tasks with every other task, and nothing runs on its own when xezar starts.</span>
+    </p>
+  </div>
+</div>
+
+</body>
+</html>
