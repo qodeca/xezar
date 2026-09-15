@@ -391,7 +391,7 @@ export function McpConnectionSurface({
   return (
     <div
       data-slot="mcp-connection-section"
-      className="mx-auto flex w-full max-w-2xl flex-col gap-7 p-4 pb-[calc(90px+env(safe-area-inset-bottom))] md:p-6 md:pb-6"
+      className="mx-auto flex w-full max-w-2xl flex-col gap-section p-4 pb-[calc(90px+env(safe-area-inset-bottom))] md:p-6 md:pb-6"
     >
       {/* Bound project identity — from the server's registry, never from a file. */}
       <SettingsField

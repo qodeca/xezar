@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Air – Compare at 1:1</title>
+<link rel="stylesheet" href="../../docs/design-system/cockpit.css">
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="chrome.css">
+<script src="theme.js"></script>
+<!-- One screen page twice at 1:1: Today above, Proposed below, both at the same anchor.
+     theme.js reads ?page, section, state, table, cta and at through its own checks (Object.hasOwn,
+     Set.has, the axis allowlist), builds both frames with new URL + searchParams and writes their
+     captions and titles; an unknown value falls back to Tasks or to that axis's default, and the
+     proposed caption names the open-point option it shows. Theme, Accent, Density and Width on the
+     bar follow into both frames, and each caption ends with the ones that are off their default.
+     The frames do not scroll together (that would need contentDocument, which fails from disk);
+     the shared anchors and the line at the end of the link row stand in for it. -->
+</head>
+<body class="air-compare" data-compare>
+<script src="bar.js" data-controls="theme accent density width"></script>
+<nav class="doc-bar" aria-label="Screens to compare">
+  <span class="brand">Screens</span>
+  <a href="compare.html?page=tasks">Tasks</a>
+  <a href="compare.html?page=thread">Thread</a>
+  <a href="compare.html?page=changes">Changes</a>
+  <a href="compare.html?page=settings&amp;section=agents">Settings → Agents</a>
+  <a href="compare.html?page=settings&amp;section=appearance">Settings → Appearance</a>
+  <a href="compare.html?page=inbox">Inbox</a>
+  <span class="brand">Thread at</span>
+  <a href="compare.html?page=thread&amp;at=speaker-2">speaker 2</a>
+  <a href="compare.html?page=thread&amp;at=ask-card">ask card</a>
+  <a href="compare.html?page=thread&amp;at=dock">dock</a>
+  <span class="brand">States</span>
+  <a href="compare.html?page=thread&amp;state=dialog">Dialog</a>
+  <a href="compare.html?page=thread&amp;state=loading">Loading</a>
+  <a href="compare.html?page=inbox&amp;state=empty">Empty</a>
+  <a href="compare.html?page=inbox&amp;state=error">Page error</a>
+  <a href="compare.html?page=settings&amp;section=agents&amp;state=error">Field error</a>
+  <a href="compare.html?page=settings&amp;section=accounts">Refusal</a>
+  <p class="air-note">Each frame scrolls on its own – there is no shared scroll, and at a 900 px window each is about 350 px tall. The Thread anchors above are the only ones that line the two up; for anything else below the fold, open the page itself and flip Show between today and proposed in place.</p>
+</nav>
+<main>
+<h1 class="sr-only">Air – today and proposed, stacked at 1:1</h1>
+<figure>
+  <figcaption class="air-caption">Today · Tasks · 1:1</figcaption>
+  <iframe data-compare-view="today" data-src="tasks.html?v=today" title="Tasks – Today – 1:1"></iframe>
+</figure>
+<figure>
+  <figcaption class="air-caption">Proposed · Tasks · 1:1</figcaption>
+  <iframe data-compare-view="air" data-src="tasks.html?v=air" title="Tasks – Proposed – 1:1"></iframe>
+</figure>
+</main>
+</body>
+</html>

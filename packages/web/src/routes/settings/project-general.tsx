@@ -80,7 +80,7 @@ export function ProjectGeneral({ capabilities }: { capabilities?: Pick<Capabilit
   const managesRegistry = capabilities?.singleProject !== true
 
   return (
-    <div data-slot="project-general" className="mx-auto flex w-full max-w-2xl flex-col gap-7">
+    <div data-slot="project-general" className="mx-auto flex w-full max-w-2xl flex-col gap-section">
       <ProjectFolderField />
       <ProjectFacts project={project} canRemove={managesRegistry} />
       {managesRegistry ? (

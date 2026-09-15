@@ -6,9 +6,15 @@ import { extendTailwindMerge } from 'tailwind-merge'
  * shadow *color* and let it coexist with `shadow-md` instead of overriding it. Teaching it the extra
  * step keeps "last utility wins" true for shadows too.
  * The radius scale needs no extension: sm/md/lg/xl are all stock names.
+ * The spacing scale does: the six rhythm steps (`--spacing-row` … `--spacing-section`, #424) mint
+ * `gap-stack`, `p-inset`, `md:px-section` and the rest, and without the theme entry `p-4 p-inset`
+ * would keep both classes.
  */
 const twMerge = extendTailwindMerge({
-  extend: { classGroups: { shadow: ['shadow-modal'] } },
+  extend: {
+    classGroups: { shadow: ['shadow-modal'] },
+    theme: { spacing: ['row', 'stack', 'list', 'inset', 'group', 'section'] },
+  },
 })
 
 /** Join conditional class names, letting later Tailwind utilities win over earlier conflicting ones. */

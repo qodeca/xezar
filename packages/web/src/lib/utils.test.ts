@@ -32,6 +32,23 @@ describe('cn', () => {
     ])('custom shadow step: $input', ({ input, expected }) => {
       expect(cn(...input)).toBe(expected)
     })
+
+    // Regression (#424): the rhythm steps (`--spacing-row` … `--spacing-section` in index.css) are
+    // ours too. Without the theme.spacing extension, tailwind-merge does not know `gap-stack` is a
+    // gap and keeps both classes, so a caller override would silently lose to the default.
+    it.each([
+      { input: ['p-4', 'p-inset'], expected: 'p-inset' },
+      { input: ['px-4', 'p-inset'], expected: 'p-inset' },
+      { input: ['gap-2', 'gap-stack'], expected: 'gap-stack' },
+      { input: ['gap-7', 'gap-section'], expected: 'gap-section' },
+      { input: ['gap-stack', 'gap-2'], expected: 'gap-2' },
+      { input: ['md:gap-7', 'md:gap-section'], expected: 'md:gap-section' },
+      { input: ['mt-1.5', 'mt-row'], expected: 'mt-row' },
+      { input: ['space-y-2', 'space-y-list'], expected: 'space-y-list' },
+      { input: ['pt-3', 'pt-group'], expected: 'pt-group' },
+    ])('rhythm spacing step: $input', ({ input, expected }) => {
+      expect(cn(...input)).toBe(expected)
+    })
   })
 
   it('lets a caller className override a component default', () => {

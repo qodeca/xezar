@@ -12,7 +12,7 @@
   .type-row:last-child { border-bottom: 0; }
   .type-row .k { width: 150px; flex-shrink: 0; font-family: var(--mono); font-size: 11px; color: var(--soft-foreground); }
   .space-row { display: flex; align-items: center; gap: 12px; padding: 4px 0; font-family: var(--mono); font-size: 11.5px; color: var(--muted-foreground); }
-  .space-row .k { width: 90px; flex-shrink: 0; }
+  .space-row .k { width: 130px; flex-shrink: 0; }
   .space-row .bar { height: 10px; background: var(--violet); border-radius: 2px; }
   .box-row { display: flex; flex-wrap: wrap; gap: 16px; }
   .box { display: grid; place-items: center; width: 120px; max-width: 100%; height: 72px; border: 1px solid var(--border); background: var(--card); font-family: var(--mono); font-size: 11px; color: var(--muted-foreground); text-align: center; }
@@ -105,15 +105,26 @@
   <h2>4. Spacing and density</h2>
   <p>Tailwind's <code>--spacing</code> unit is 0.25 rem by default. Compact sets it to 0.21875 rem and ultra to 0.1875 rem, so every <code>p-*</code>, <code>gap-*</code> and <code>h-*</code> utility shrinks together. Switch density in the bar.</p>
   <div class="frame pad">
-    <div class="space-row"><span class="k">1 · 4px</span><span class="bar" style="width:calc(var(--spacing, 0.25rem) * 1)"></span></div>
-    <div class="space-row"><span class="k">2 · 8px</span><span class="bar" style="width:calc(var(--spacing, 0.25rem) * 2)"></span></div>
-    <div class="space-row"><span class="k">3 · 12px</span><span class="bar" style="width:calc(var(--spacing, 0.25rem) * 3)"></span></div>
-    <div class="space-row"><span class="k">4 · 16px</span><span class="bar" style="width:calc(var(--spacing, 0.25rem) * 4)"></span></div>
-    <div class="space-row"><span class="k">6 · 24px</span><span class="bar" style="width:calc(var(--spacing, 0.25rem) * 6)"></span></div>
-    <div class="space-row"><span class="k">8 · 32px</span><span class="bar" style="width:calc(var(--spacing, 0.25rem) * 8)"></span></div>
-    <div class="space-row"><span class="k">12 · 48px</span><span class="bar" style="width:calc(var(--spacing, 0.25rem) * 12)"></span></div>
-    <div class="space-row"><span class="k">16 · 64px</span><span class="bar" style="width:calc(var(--spacing, 0.25rem) * 16)"></span></div>
+    <div class="space-row"><span class="k">1 · 4px</span><span class="bar" style="width:calc(var(--spacing) * 1)"></span></div>
+    <div class="space-row"><span class="k">2 · 8px</span><span class="bar" style="width:calc(var(--spacing) * 2)"></span></div>
+    <div class="space-row"><span class="k">3 · 12px</span><span class="bar" style="width:calc(var(--spacing) * 3)"></span></div>
+    <div class="space-row"><span class="k">4 · 16px</span><span class="bar" style="width:calc(var(--spacing) * 4)"></span></div>
+    <div class="space-row"><span class="k">6 · 24px</span><span class="bar" style="width:calc(var(--spacing) * 6)"></span></div>
+    <div class="space-row"><span class="k">8 · 32px</span><span class="bar" style="width:calc(var(--spacing) * 8)"></span></div>
+    <div class="space-row"><span class="k">12 · 48px</span><span class="bar" style="width:calc(var(--spacing) * 12)"></span></div>
+    <div class="space-row"><span class="k">16 · 64px</span><span class="bar" style="width:calc(var(--spacing) * 16)"></span></div>
     <div class="space-row"><span class="k">h-9 button</span><span class="density-demo"><svg class="icon sm" aria-hidden="true"><use href="#i-plus"/></svg> New task</span><span id="density-readout"></span></div>
+  </div>
+
+  <h3>4.1 Rhythm</h3>
+  <p>Between blocks, a rhythm token. Inside a control, the numeric scale. Never a hand-typed pixel. The six steps are built on <code>--spacing</code>, so the bars follow the density switch; the number after each bar is its measured width.</p>
+  <div class="frame pad">
+    <div class="space-row"><span class="k">row · 2 · 8px</span><span class="bar rhythm-bar" style="width:var(--spacing-row)"></span><span class="rhythm-readout"></span></div>
+    <div class="space-row"><span class="k">stack · 3 · 12px</span><span class="bar rhythm-bar" style="width:var(--spacing-stack)"></span><span class="rhythm-readout"></span></div>
+    <div class="space-row"><span class="k">list · 4 · 16px</span><span class="bar rhythm-bar" style="width:var(--spacing-list)"></span><span class="rhythm-readout"></span></div>
+    <div class="space-row"><span class="k">inset · 5 · 20px</span><span class="bar rhythm-bar" style="width:var(--spacing-inset)"></span><span class="rhythm-readout"></span></div>
+    <div class="space-row"><span class="k">group · 6 · 24px</span><span class="bar rhythm-bar" style="width:var(--spacing-group)"></span><span class="rhythm-readout"></span></div>
+    <div class="space-row"><span class="k">section · 8 · 32px</span><span class="bar rhythm-bar" style="width:var(--spacing-section)"></span><span class="rhythm-readout"></span></div>
   </div>
 
   <h2>5. Radius</h2>
@@ -216,7 +227,10 @@
         card.querySelector('.val').textContent = cs.getPropertyValue(name).trim() || '(unset)'
       })
       var m = document.getElementById('measure-readout'); if (m) m.textContent = cs.getPropertyValue('--measure').trim()
-      var d = document.getElementById('density-readout'); if (d) d.textContent = '--spacing ' + (cs.getPropertyValue('--spacing').trim() || '0.25rem (default)')
+      var d = document.getElementById('density-readout'); if (d) d.textContent = '--spacing ' + (cs.getPropertyValue('--spacing').trim())
+      document.querySelectorAll('.rhythm-bar').forEach(function (bar) {
+        bar.nextElementSibling.textContent = bar.getBoundingClientRect().width + 'px'
+      })
     }
     function run() { build(); fill() }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run); else run()

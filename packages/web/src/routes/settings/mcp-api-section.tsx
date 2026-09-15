@@ -611,7 +611,7 @@ export function McpApiReferenceView({ reference }: { reference: Available }) {
   return (
     <div
       data-slot="mcp-api-section"
-      className="mx-auto flex w-full max-w-3xl min-w-0 flex-col gap-7 p-4 pb-[calc(90px+env(safe-area-inset-bottom))] md:p-6 md:pb-6"
+      className="mx-auto flex w-full max-w-3xl min-w-0 flex-col gap-section p-4 pb-[calc(90px+env(safe-area-inset-bottom))] md:p-6 md:pb-6"
     >
       {/* Header (§ 12.2 item 1, § 18.6): what this is, and in one line why nothing here runs a tool. */}
       <header data-slot="mcp-api-header" className="flex flex-col gap-2">
