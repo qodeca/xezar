@@ -1,4 +1,4 @@
-# Xezar recipes
+# xezar recipes
 
 These recipes describe xezar's own cockpit. Source paths are implementation examples
 for this repository, not a file structure other projects should adopt. Start with
