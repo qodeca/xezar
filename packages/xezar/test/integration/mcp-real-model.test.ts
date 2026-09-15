@@ -667,14 +667,17 @@ test('[codex] a real model acknowledges an app-server-delivered event with the e
     const tee = join(out, 'bridge-tee.ndjson');
     mkdirSync(join(root, '.codex'), { recursive: true });
     writeFileSync(join(root, '.codex/config.toml'), `[mcp_servers.xezar]\ncommand = ${JSON.stringify(process.execPath)}\nargs = ${JSON.stringify([TEE, tee, process.execPath, DIST, 'mcp'])}\nenv = { XEZ_HOME = ${JSON.stringify(xezHome)}, XEZ_DRY_RUN = "1" }\n`);
-    const overrides = ['-c', 'approval_policy="never"', '-c', 'sandbox_mode="read-only"', '-c', 'check_for_update_on_startup=false'];
+    // Trust for the fixture project is passed per launch, so the app-server loads its .codex/config.toml.
+    const overrides = ['-c', 'approval_policy="never"', '-c', 'sandbox_mode="read-only"', '-c', 'check_for_update_on_startup=false', '-c', `projects.${JSON.stringify(root)}.trust_level="trusted"`];
     const appLog = join(out, 'app-server.log');
-    save('command.json', { appServer: [install.bin, ...overrides, 'app-server', '--listen', 'unix://'], tui: ['python3', '<claude-channel-pty.py>', install.bin, ...overrides, '--no-alt-screen', '-C', '<fixture project>', '<SERVE_STANDING + ready prompt>'], standing: SERVE_STANDING, codexHome: record.client && (record.client as any).home });
+    save('command.json', { appServer: [install.bin, ...overrides, 'app-server', '--listen', 'unix://'], tui: ['python3', '<claude-channel-pty.py>', install.bin, ...overrides, '--remote', 'unix://', '--no-alt-screen', '-C', '<fixture project>', '<SERVE_STANDING + ready prompt>'], standing: SERVE_STANDING, codexHome: record.client && (record.client as any).home });
     appServer = spawn(install.bin, [...overrides, 'app-server', '--listen', 'unix://'], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] });
     for (const stream of [appServer.stdout!, appServer.stderr!]) stream.on('data', (chunk) => appendFileSync(appLog, scrub(String(chunk))));
     await waitFor('the shared app-server control socket', () => (existsSync(controlSocket) ? true : undefined), 30_000);
     const prompt = `${SERVE_STANDING}\n\nNo event has arrived yet. Reply READY and do not call any tool now.`;
-    tui = spawn('python3', [CLAUDE_PTY, install.bin, ...overrides, '--no-alt-screen', '-C', root, prompt], { cwd: root, env, stdio: ['pipe', 'pipe', 'pipe'] });
+    // Decision record run F: in the owner's home a plain TUI kept its thread in-process (measured
+    // 2026-09-15: listed on the shared server, not loaded), so the TUI joins it explicitly.
+    tui = spawn('python3', [CLAUDE_PTY, install.bin, ...overrides, '--remote', 'unix://', '--no-alt-screen', '-C', root, prompt], { cwd: root, env, stdio: ['pipe', 'pipe', 'pipe'] });
     let screen = '';
     const answered = new Set<string>();
     const terminal = tui;
@@ -696,7 +699,10 @@ test('[codex] a real model acknowledges an app-server-delivered event with the e
     socket.on('message', (raw) => { appendFileSync(join(out, 'person-view.ndjson'), scrub(raw.toString()).slice(0, 4000) + '\n'); try { const message = JSON.parse(raw.toString()); if (typeof message.id === 'number' && !('method' in message)) { pending.get(message.id)?.(message); pending.delete(message.id); } } catch { /* not JSON */ } });
     const rpc = (method: string, params: unknown, ms = 60_000): Promise<any> => new Promise((done) => { const id = next++; const timer = setTimeout(() => { pending.delete(id); done({ error: { message: `no answer to ${method}` } }); }, ms); pending.set(id, (value) => { clearTimeout(timer); done(value); }); socket!.send(JSON.stringify({ id, method, params })); });
     await rpc('initialize', { clientInfo: { name: 'x67-codex-person', version: '0' } });
-    const threadId = await waitFor('the TUI thread', async () => ((await rpc('thread/list', { cwd: root, modelProviders: [] })).result?.data ?? [])[0]?.id as string | undefined, 120_000);
+    const threadId = await waitFor('the TUI thread loaded on the shared app-server', async () => {
+      const id = ((await rpc('thread/list', { cwd: root, modelProviders: [] })).result?.data ?? [])[0]?.id as string | undefined;
+      return id && ((await rpc('thread/loaded/list', {})).result?.data ?? []).includes(id) ? id : undefined;
+    }, 120_000).catch(() => { throw new Error('BLOCKED: the Codex TUI thread never loaded on the shared app-server'); });
     const configured = await rpc('config/read', { cwd: root });
     record.client = { ...(record.client as object), configuredModel: configured.result?.config?.model ?? null, configuredReasoningEffort: configured.result?.config?.model_reasoning_effort ?? null };
     await waitFor('the ready turn to finish', () => (/READY/.test(screen) ? true : undefined), 180_000).catch(() => undefined);
