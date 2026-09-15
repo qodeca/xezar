@@ -117,7 +117,7 @@ Also recorded while drawing:
 | Table rows | `h-11`, `px-2.5` | `h-11`, `px-3` | 0 height; +2 padding |
 | Table header | `h-[38px]` | `h-10` (40) | +2; on scale – delivered by PR 3b (§ 9.3) |
 | Table footer strip | `mt-3.5` | `mt-list` (16) | +2 |
-| Table wrapper on the task page | inside the gutter | keeps `px-section` – the table already scrolls sideways behind `overflow-x-auto`; if a review shows the 13-column table losing a useful column, exempt the wrapper | 0 |
+| Table wrapper on the task page | inside the gutter | keeps `px-section` – the table already scrolls sideways behind `overflow-x-auto` (D-11 = A, step-0 review) | 0 |
 | Global tasks page | `gap-3 p-3 md:p-5` | same as the page body | +12 |
 | Mobile task card | `px-3.5 py-3` | `p-inset` (20) | +6 / +8 |
 | Sidebar nav rows | `md:h-[34px]`, container `py-1.5` | `md:h-9` (36), groups `gap-stack` | +2; on scale – `md:h-9` delivered by PR 3b (§ 9.3), the group gap here |
@@ -130,9 +130,9 @@ Also recorded while drawing:
 | Diff and code views | `px-3 py-2`, `px-4 py-0.5`, `leading-[1.7]` | unchanged – code density is a feature | 0 |
 | Inline empty states, command palette | `py-6`, `py-10`, `top-[10vh]` | unchanged | 0 |
 | Centered state | `gap-4 px-6 py-12` | unchanged | 0 |
-| Settings section containers | `p-4 md:p-6` (`agents-section.tsx:163`, `appearance.tsx:120`; `accounts-section.tsx:147` with `gap-4`) – the page-body row above cites `settings-shell.tsx:222`, the settings index page only | unchanged – for the step-0 verdict | 0 |
-| Inbox card inside | `gap-2.5` (`inbox.tsx:227`) | unchanged – for the step-0 verdict | 0 |
-| Page header x | `px-5` (20) (`tasks-overview.tsx:156`, `inbox.tsx:84`, `settings-shell.tsx:180`) | unchanged – for the step-0 verdict; 12 px out of line with the 32 px body gutter | 0 |
+| Settings section containers | `p-4 md:p-6` (`agents-section.tsx:163`, `appearance.tsx:120`; `accounts-section.tsx:147` with `gap-4`) – the page-body row above cites `settings-shell.tsx:222`, the settings index page only | `p-list md:p-group` (16 / 24); the Agent accounts refusal keeps `gap-4` – inside one block (step-0 review NB-1) | 0 |
+| Inbox card inside | `gap-2.5` (`inbox.tsx:227`) | unchanged – inside one block (step-0 review NB-1) | 0 |
+| Page header x | `px-5` (20) (`tasks-overview.tsx:156`, `inbox.tsx:84`, `settings-shell.tsx:180`) | `md:px-section` (32) – the title lines up with the 32 px body gutter (step-0 review NB-1) | +12 |
 
 **One change, one owner.** Six rows above are § 9.3 conversions of a hand-set pixel, and each says *delivered by PR 3b (§ 9.3)*: the tool row, the table header, the nav-row height, the quick-list row, the brand gap and the project-group indent. PR 2 does not touch them, which is what the rollout (§ 9.6) already assumes on both sides – PR 3a seeds its allowlist with all 88 occurrences, and PR 2's before/after screenshots compare the rhythm alone.
 
@@ -149,6 +149,7 @@ Also recorded while drawing:
 | `h-[26px]` picker pill, `h-[22px]` reference chip | `h-7 min-h-[24px]`, `h-6 min-h-[24px]` | 28 / 24 px at the default; without a floor they fall to 21 / 18 px at Compact for real, under WCAG 2.2 SC 2.5.8's 24 px. The absolute `min-h-[24px]` holds them at 24 at every density; these two floors are the only allowlist rows PR 3b leaves behind |
 | `p-[3px]`, `py-[3px]`, `py-[7px]` | `p-1`, `py-1`, `py-2` | 4 / 4 / 8 px |
 | `md:min-h-[54px]` composer | `md:min-h-14` | 56 px |
+| `md:min-h-[30px]` step rail (`step-rail.tsx:164`) | `md:min-h-8` | 32 px; the mockup still draws 30 (`thread.css:139`) – PR 3a re-counts from the tree (step-0 review NB-2) |
 | `pl-[22px]`, `gap-[7px]`, `px-[5px]`, `gap-[9px]`, `ml-[14px]`, `mt-[5px]`, `pl-[15px]`, `pl-[26px]`, `px-[7px]` | nearest scale step | listed one by one in PR 3b's allowlist diff; `gap-[9px]` takes § 9.2's `gap-row` and `ml-[14px]` § 9.2's `ml-3.5` |
 | `w-[336px]`, `w-[264px]`, `max-h-[…]` | out of scope | widths and max-heights are layout facts; the rule does not cover `w` or `max-*` |
 | `size-[15px]` ×12, `size-[17px]` ×2 icon glyphs; `h-[3px]` ×3, `md:h-[3px]`, `h-[9px]` hairlines | PR 3b converts (`size-4`; `h-0.5` / `h-1` / `h-2`) or narrows the pattern to drop `size` and heights under 4 px – the implementer's call, recorded in the PR | 19 of the 88 matches are glyph sizes and hairlines, not spacing; AC 5's "exactly two rows" holds either way |

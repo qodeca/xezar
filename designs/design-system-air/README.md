@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Draft, revision 4 (2026-09-15) – a design-system enhancement: rhythm tokens, looser between-block defaults, no hand-set pixels, a Roomy density; the step-0 full-page mockup set (eight surfaces at 1280 and 375 px, six states, four densities, both themes, violet accent, wide width); D-1..D-10 closed and two open points (6 – task-table wrapper, 7 – New-task button) waiting for the step-0 `design-review` verdict. Revision 3 applied the four-reviewer verdict ([`review-2026-09-14.md`](review-2026-09-14.md)). Filed as [qodeca/xezar#424](https://github.com/qodeca/xezar/issues/424) (`enhancement`, `epic`, `risk-high`), an umbrella with steps 0 (full-page mockup) → 1 → 2 → 3a → 3b → 4. Nothing in `docs/design-system/` or `packages/web` changes until the step-0 mockup has its `design-review` verdict; that verdict gates step 1 onward (D-4). |
+| **Status** | Draft, revision 4 (2026-09-15) – a design-system enhancement: rhythm tokens, looser between-block defaults, no hand-set pixels, a Roomy density; the step-0 full-page mockup set (eight surfaces at 1280 and 375 px, six states, four densities, both themes, violet accent, wide width); D-1..D-12 closed. **Approved** – the step-0 `design-review` verdict is PASS WITH FOLLOW-UPS ([comment](https://github.com/qodeca/xezar/pull/429#issuecomment-5678658435), § 16); it chose D-11 and D-12. Revision 3 applied the four-reviewer verdict ([`review-2026-09-14.md`](review-2026-09-14.md)). Filed as [qodeca/xezar#424](https://github.com/qodeca/xezar/issues/424) (`enhancement`, `epic`, `risk-high`), an umbrella with steps 0 (full-page mockup) → 1 → 2 → 3a → 3b → 4. The step-0 verdict has landed, so step 1 onward may start (D-4). |
 | **Date** | 2026-09-15 |
 | **Mockup** | Open [`index.html`](index.html): a hub linking five 1:1 screen pages (flip Today \| Proposed in place), a stacked compare page, and three review aids (375 px pairs, states, appearance axes). No build, no server. |
 | **Replaces** | Nothing. This design changes the system's spacing rules, not a feature surface. |
@@ -375,10 +375,12 @@ Order (issue #424): step 0 → 1 → 2 → 3a → 3b → 4; the step-0 verdict g
 
 Decided on 2026-09-14 (owner): **D-1** change the default · **D-2** table rows stay 44 · **D-3** compact/ultra scale the new rhythm ("the layout should always look the same") · **D-4** a full-page mockup as step 0, whose verdict gates step 1 onward · **D-5** the pixel rule fails `npm test`, the validation gate · **D-6** settings stay flat, 28 → 32 · **D-7** one lever · **D-8** no flag · **D-9** PR 1 ships the tokens, the docs and the Settings field lists as its pilot, labelled `needs-design` + `needs-qa` · **D-10** two thread gaps · the scale 8/12/16/20/24/32 · Roomy stays and is 5 px per unit. The "option in the configuration" the owner asked for is that Roomy density; the looser rhythm ships as the default, with no flag (D-8). D-1..D-10 stay closed.
 
-**Open – pending the step-0 verdict.** Both switch live on `tasks.html`; the verdict's choices become D-11 and D-12.
+Decided at the step-0 verdict (2026-09-15, [design review](https://github.com/qodeca/xezar/pull/429#issuecomment-5678658435)). Both options still switch live on `tasks.html`; A is the decision.
 
-- **6 – Task-table wrapper:** A keeps `px-section` · B exempt, today's 20 px (*assumption*: "exempt" means today's gutter, not none).
-- **7 – New-task button:** A `h-10` · B `h-9`; at phone width both stay under the 44 px drawer rows.
+- **D-11 – Task-table wrapper: A, keeps `px-section`.** B gives back only 24 px (less than one column) and adds a gutter exception every future page would have to remember; with the header at `md:px-section` (NB-1) the title and the table edge line up at 32 px.
+- **D-12 – New-task button: A, `h-10` (40 px).** With B the button is the same height as the `md:h-9` nav rows under it; A keeps it taller (40 vs 36), which is § 9.3 note UI-7. At phone width it stays under the 44 px drawer rows – a separate, older issue (NB-4, #430).
+
+These numbers are this folder's items ("Air D-11", "Air D-12"), not `docs/design-system/decisions.md` ids; step 1 records the system-wide ones there (NB-7).
 
 Mockup-only departures are listed in § 5 (j) with reasons; they are not open decisions.
 
@@ -413,17 +415,25 @@ Mockup-only departures are listed in § 5 (j) with reasons; they are not open de
 
 ## 16. Design review
 
-Four reviews on 2026-09-14 (UX, UI, fact-check, plan): all PASS WITH CHANGES. Five blocking findings and eighteen should-fix items, consolidated with dispositions in [`review-2026-09-14.md`](review-2026-09-14.md); every decision the owner took (D-1..D-10) is applied and stays closed. The step-0 mockup set (revision 4) waits for its `design-review` verdict (D-4); that verdict gates step 1 onward.
+Four reviews on 2026-09-14 (UX, UI, fact-check, plan): all PASS WITH CHANGES. Five blocking findings and eighteen should-fix items, consolidated with dispositions in [`review-2026-09-14.md`](review-2026-09-14.md); every decision the owner took (D-1..D-10) is applied and stays closed. The step-0 mockup set (revision 4) has its `design-review` verdict below (D-4), so step 1 onward may start.
 
 ### Step 0 – the full-page mockup
 
-Pending. When the verdict lands, this section links the `## Design review` PR comment and gives each finding exactly one disposition – fixed in a named commit, filed as a `design-debt` issue, or accepted with a reason (SDLC.md § The design gate). The verdict's choices on open points 6 and 7 become D-11 and D-12 in § 13.
-
 | Field | Value |
 |---|---|
-| Comment | Pending |
-| Reviewed commit | Pending |
-| Reviewer role | Pending |
-| Themes and widths checked | Pending |
-| Verdict | Pending |
-| Findings and dispositions | Pending |
+| Comment | [`## Design review` on PR #429](https://github.com/qodeca/xezar/pull/429#issuecomment-5678658435) |
+| Reviewed commit | `4d3e0001dbce177f1b11e1e2edebee35ae1faebe` |
+| Reviewer role | Xezar `design-review` task, claude – independent, did not write the mockup |
+| Themes and widths checked | dark and light; lime and violet accent; 1280 × 900, 375 × 780, 1600 px wide; all four densities |
+| Verdict | **PASS WITH FOLLOW-UPS** – no blocking findings; `design-approved` applied |
+| Open points | 6 → D-11 = A, 7 → D-12 = A (§ 13) |
+
+| # | Finding | Disposition |
+|---|---|---|
+| NB-1 | Page header stays at `px-5` (20) while the body moves to 32, so the title is 12 px out of line | **Fixed in this PR:** the proposed header is `md:px-section` (`shell.css`, spelled on `--u`); the four § 9.2 rows in `handoff-values.md` updated (settings containers `p-list md:p-group`, Inbox card and refusal gaps stay inside one block) |
+| NB-2 | § 9.3 does not list the step rail's `md:min-h-[30px]` (`step-rail.tsx:164`) | **Fixed in this PR:** § 9.3 row `md:min-h-[30px]` → `md:min-h-8` added to `handoff-values.md`; the drawing stays, PR 3a re-counts from the tree |
+| NB-3 | `cockpit.css` base classes (sidebar head, New-task row, `.btn` gap, pill, composer, `kbd`, nav badge) stay fixed at every density in both views | **Accepted:** the comparison stays fair; § 5 (j) and § 14 already send `cockpit.css` fidelity rows to PR 2's known-gaps mockup-fidelity table, which lists these classes by name |
+| NB-4 | Phone drawer New-task button is 36 px today, 40 px with D-12 – under 44 px | **Filed** as `design-debt` [#430](https://github.com/qodeca/xezar/issues/430); older than Air, out of scope |
+| NB-5 | Compare frames at 1280 × 900 show only ~60–70 px of thread | **Accepted:** the in-place Today / Proposed flip is the main comparison, and the compare page says the frames are short |
+| NB-6 | Settings values table says `p-stack` = 12 is "the same at every density" | **Fixed in this PR:** now "12 at Comfortable – it scales with density: 9 / 10.5 / 12 / 15" (`settings.html`) |
+| NB-7 | Air D-3, D-5, D-7, D-11 and D-12 set system-wide rules but are not in `docs/design-system/decisions.md` | **Accepted for step 0:** step 1 (the first PR that changes `docs/design-system/`) records them in `decisions.md` and cites the folder's items as "Air D-n" |

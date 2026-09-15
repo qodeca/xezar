@@ -27,6 +27,10 @@
   background: var(--background);
 }
 
+/* Proposed: md:px-section, so the title lines up with the 32 px body gutter (D-11, review NB-1).
+ * The page head is hidden at phone width (cockpit.css .page-head), so no phone value is needed. */
+:root:not([data-view='today']) .air-screen .page-head { padding: 0 calc(var(--u) * 8); }
+
 /* ---------- CenteredState (centered-state.tsx:47-71), the shared empty/loading/error surface ---------- */
 /* cockpit.css:1592-1600 draws px-6 py-12 and gap-4 as a fixed 48 / 24 / 16. inbox.css re-spells the
  * Inbox states, so the thread's loading state – the one place that uses the bare component – has to
