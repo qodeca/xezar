@@ -1,0 +1,317 @@
+/* Air proposal – the app-shell replica the five screen pages share: sidebar, drawer, mobile bar,
+ * page head, opt-in control sizes, chip floors and the dialog overlay. Values come from styles.css;
+ * this sheet declares no custom properties (B-4). An air- class on the container mirrors a
+ * cockpit.css ".base el" rule (.air-quick li, .air-projects .quick-head); a surface cockpit.css
+ * lacks gets a local replica class (M5). Sizes are opt-in (R2-1): .air-sm on a source sm / icon-sm
+ * button, .air-touch on the 44 px icon buttons, .air-global on Global settings, .air-picker /
+ * .air-refchip on the two chips. No rule sizes a bare .btn or .btn.icon, so .btn.md stays 36.
+ * Departures from cockpit.css, both views (README § 5 j): .btn-new-task 34 → h-9, .sidebar-head
+ * gap 8 → 9, .quick li 32 → py-[7px], .sidebar-foot one row → two, .mobile-bar 52 → h-11, .btn sm
+ * px 12 / gap 6 / weight 500 → 10 / 7 / 600, .sidebar as tall as its content → one screen tall.
+ */
+
+/* Tailwind preflight gives the cockpit a 1.5 line box (tailwindcss/preflight.css:30, imported by
+ * styles/index.css:11); cockpit.css sets none, and rows sized by padding need it. */
+.air-screen { line-height: 1.5; }
+
+/* ---------- page head (tasks-overview.tsx:156, settings-shell.tsx:180): sticky top-0 z-10 ---------- */
+/* h-14 px-5 gap-3 are scale classes in both views, so they are re-spelled on the unit: cockpit.css
+ * :798-805 draws them as a fixed 56 / 20 / 12, which the density lever would miss. */
+.air-screen .page-head {
+  position: sticky;
+  top: var(--air-bar-h); /* under the review bar; chrome.css measures it so content clears both */
+  z-index: 10;
+  gap: calc(var(--u) * 3);
+  height: calc(var(--u) * 14);
+  padding: 0 calc(var(--u) * 5);
+  background: var(--background);
+}
+
+/* ---------- CenteredState (centered-state.tsx:47-71), the shared empty/loading/error surface ---------- */
+/* cockpit.css:1592-1600 draws px-6 py-12 and gap-4 as a fixed 48 / 24 / 16. inbox.css re-spells the
+ * Inbox states, so the thread's loading state – the one place that uses the bare component – has to
+ * be re-spelled too, or one component renders two ways under density. It lives here rather than in
+ * thread.css because the component is shared. Inbox's own gap sits on its inner max-w-md stack
+ * (inbox.css); thread.html has no such element, so here it sits on the state. The flex line
+ * inbox.css carries is not repeated: .air-loading already grows and centres (thread.css). */
+.air-loading .centered-state {
+  gap: calc(var(--u) * 4);
+  padding: calc(var(--u) * 12) calc(var(--u) * 6);
+}
+
+/* ---------- sidebar, multi-project mode (app-shell.tsx:458-640; project groups set, :531) ---------- */
+/* One screen tall, so the footer always shows: the app's shell is flex h-dvh overflow-hidden
+ * (app-shell.tsx:239) and stretches the aside (:307). Here the review bar sits above the shell,
+ * so the sidebar sticks under it; the project groups scroll inside. The phone drawer below makes
+ * it a fixed sheet (--air-bar-h is 0px there). */
+.air-side {
+  position: sticky;
+  top: var(--air-bar-h);
+  align-self: start;
+  height: calc(100dvh - var(--air-bar-h));
+}
+
+.air-side .sidebar-head { gap: var(--brand-gap); } /* app-shell.tsx:490; cockpit.css:551 has 8 */
+.air-side .air-close { margin: 0 calc(var(--u) * -2) 0 auto; } /* :504 ml-auto, :440 -mr-2 */
+.air-side .btn-new-task { height: var(--cta-h); } /* :509 h-9; cockpit.css:591 has 34 */
+
+/* The pinned All tasks band (app-shell.tsx:539, :667); its h-9 is on the scale already. */
+.air-all-band {
+  flex-shrink: 0;
+  padding: calc(var(--u) * 0.5) calc(var(--u) * 1.5) calc(var(--u) * 2);
+  border-bottom: 1px solid var(--border);
+}
+
+.air-all-band a {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--u) * 2.5);
+  height: calc(var(--u) * 9);
+  padding: 0 calc(var(--u) * 2.5);
+  border-radius: var(--radius);
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--foreground);
+  text-decoration: none;
+}
+
+.air-all-band .icon { color: color-mix(in srgb, var(--violet) 70%, transparent); }
+
+/* A group body's quick-list buckets are the sidebar's "groups" (§ 9.2 gap-stack): nav → bucket → bucket. */
+.air-side .air-grp { margin-top: var(--side-group-gap); }
+
+/* ---------- project groups (app-shell.tsx:544-551, project-groups.tsx) ---------- */
+.air-projects {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: calc(var(--u) * 1.5) calc(var(--u) * 1.5) calc(var(--u) * 2); /* app-shell.tsx:546 */
+}
+
+.air-project { margin-bottom: calc(var(--u) * 1); } /* project-groups.tsx:249 mb-1 */
+
+.air-project-head {
+  display: flex;
+  align-items: center;
+  gap: var(--project-gap);
+  width: 100%;
+  height: var(--project-h);
+  padding: 0 calc(var(--u) * 2);
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: transparent;
+  color: var(--foreground);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.air-project-head.on { background: var(--muted); }
+.air-project-head .icon { width: 12px; height: 12px; color: var(--muted-foreground); }
+.air-project-head[aria-expanded='false'] .icon { transform: rotate(-90deg); }
+.air-project-head .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* The count sits beside the name; the branch takes ml-auto (project-groups.tsx:276, :284). */
+.air-project-head .nav-badge { margin-left: 0; }
+
+.air-project-head .branch {
+  max-width: 92px;
+  margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--soft-foreground);
+}
+
+.air-project-body {
+  margin: calc(var(--u) * 1) 0 0 14px; /* project-groups.tsx:300 mt-1 ml-[14px] pl-2 border-l */
+  padding-left: calc(var(--u) * 2);
+  border-left: 1px solid var(--border);
+}
+
+.air-project-nav a {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--u) * 2.5);
+  height: var(--nested-h);
+  padding: 0 calc(var(--u) * 2.5);
+  border-radius: var(--radius);
+  color: var(--muted-foreground);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+/* project-groups.tsx:326 – the route's row in the scoped group. */
+.air-project-nav a[aria-current='page'] {
+  background: var(--muted);
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.air-project-nav a .icon { width: 14px; height: 14px; }
+
+.air-more {
+  display: flex;
+  align-items: center;
+  height: calc(var(--u) * 7); /* project-groups.tsx:383 md:h-7; h-9 in the drawer */
+  padding: 0 calc(var(--u) * 3);
+  border-radius: var(--radius);
+  color: var(--muted-foreground);
+  font-size: 12px;
+  text-decoration: none;
+}
+
+/* ---------- quick list in a group body (project-groups.tsx:356, task-quick-list.tsx:114-165) ---------- */
+.air-projects .quick-head {
+  margin: 0; /* an h2, as in the source */
+  padding: calc(var(--u) * 2.5) calc(var(--u) * 3) calc(var(--u) * 1); /* task-quick-list.tsx:144 */
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.air-quick { padding: 0; }
+
+.air-quick li {
+  height: auto; /* cockpit.css:724 fixes 32; the source pads the line (:248, :425) */
+  padding: var(--quick-py) calc(var(--u) * 2.5);
+}
+
+.air-quick li a { text-decoration: none; }
+
+/* ---------- footer (app-shell.tsx:625-639): two rows, never a wrap ---------- */
+.air-side .sidebar-foot {
+  flex-direction: column;
+  align-items: stretch;
+  gap: calc(var(--u) * 1.5);
+  padding: calc(var(--u) * 2.5) calc(var(--u) * 3.5); /* :627; cockpit.css:768 is one 10 px row */
+}
+
+.air-search {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--u) * 1.5);
+  width: 100%;
+  padding: calc(var(--u) * 1) calc(var(--u) * 2); /* app-shell.tsx:784 */
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--muted) 30%, transparent);
+  color: var(--soft-foreground);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+}
+
+.air-search .kbd { margin-left: auto; } /* app-shell.tsx:790 */
+
+.air-foot-row {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--u) * 2); /* app-shell.tsx:630 */
+}
+
+.air-tools {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--u) * 1.5);
+  padding: calc(var(--u) * 0.5) calc(var(--u) * 2); /* tools-menu.tsx:93 */
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+/* ---------- opt-in control sizes (R2-1) ---------- */
+/* sm, both views (button.tsx:12, :24 px-2.5 gap-[7px] font-semibold); cockpit.css:903-920 draws 12 / 6 / 500. */
+.air-screen .btn.air-sm { gap: 7px; height: var(--btn-h); font-weight: 600; }
+.air-screen .btn.air-sm:not(.icon) { padding: 0 calc(var(--u) * 2.5); }
+.air-screen .btn.icon.air-sm { width: var(--btn-icon); height: var(--btn-icon); } /* button.tsx:26 icon-sm */
+
+.air-screen .btn.icon.air-global {
+  width: 28px; /* app-shell.tsx:696 size-7 */
+  height: 28px;
+  margin-left: auto; /* :636 ml-auto */
+}
+
+.air-screen .air-touch .air-glyph { width: 17px; height: 17px; } /* app-shell.tsx:441, :861 size-[17px] */
+
+/* ---------- chips: README § 9.3 floors both at 24 px, the only raw px the proposal keeps ---------- */
+.air-screen .air-picker { height: var(--pill-h); }
+.air-screen .air-refchip { height: var(--refchip-h); }
+.air-screen .pill { padding-block: var(--status-pill-py); } /* the status pill, pill.tsx:26 */
+
+:root:not([data-view='today']) .air-screen .air-picker,
+:root:not([data-view='today']) .air-screen .air-refchip {
+  min-height: 24px;
+}
+
+/* ---------- dialog overlay (alert-dialog.tsx:42: fixed inset-0 z-50 bg-black/50) ---------- */
+/* Fixed below the bar (z 50), so the dialog stays in view on a tall page. The screen sheet
+ * decides when it shows (thread.css, under data-state='dialog'). */
+.air-overlay {
+  position: fixed;
+  inset: var(--air-bar-h) 0 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+/* ---------- phone ---------- */
+.scrim.air-drawer-scrim { display: none; }
+
+@media (max-width: 860px) {
+  /* The mobile top bar (app-shell.tsx:846-848): h-11 px-3 gap-2.5 bg-card; cockpit.css:2353 is 52. */
+  .air-screen .mobile-bar {
+    height: calc(var(--u) * 11);
+    gap: calc(var(--u) * 2.5);
+    padding: 0 calc(var(--u) * 3);
+    background: var(--card);
+  }
+
+  .air-screen .mobile-bar .title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 14.5px; /* app-shell.tsx:864 */
+  }
+
+  .air-screen .air-open-menu { margin-left: calc(var(--u) * -1.5); } /* app-shell.tsx:859 -ml-1.5 */
+
+  /* The 44 px touch targets: Close menu (:440), Add project (:740), Open menu (:859). */
+  .air-screen .btn.icon.air-touch { width: calc(var(--u) * 11); height: calc(var(--u) * 11); }
+
+  .air-all-band a { height: calc(var(--u) * 11); } /* app-shell.tsx:667 h-11 */
+  .air-more { height: calc(var(--u) * 9); } /* project-groups.tsx:383 h-9 */
+
+  /* The drawer (app-shell.tsx:420-448): the same sidebar as a 264 px sheet over a scrim. */
+  :root[data-drawer='open'] { overflow: hidden; }
+
+  :root[data-drawer='open'] .shell > .air-side {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 50; /* sheet.tsx:63 fixed z-50 shadow-modal; app-shell.tsx:428 w-[264px] bg-sidebar */
+    display: flex;
+    width: 264px;
+    max-width: 100%;
+    overflow-y: auto;
+    background: var(--sidebar);
+    box-shadow: var(--shadow-modal);
+  }
+
+  :root[data-drawer='open'] .air-drawer-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 49; /* sheet.tsx:39; both are z-50 in the source, the sheet painted last */
+    display: block;
+    padding: 0;
+    border-radius: 0;
+  }
+}

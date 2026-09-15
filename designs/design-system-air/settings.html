@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Air – Settings</title>
+<link rel="stylesheet" href="../../docs/design-system/cockpit.css">
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="chrome.css">
+<link rel="stylesheet" href="shell.css">
+<link rel="stylesheet" href="settings.css">
+<script src="theme.js"></script>
+</head>
+<body>
+<script src="icons.js"></script>
+<script src="bar.js" data-controls="view theme accent density width" data-sections="agents appearance accounts" data-states="error" data-compare="settings"></script>
+
+<!-- sidebar:start -->
+<div class="shell air-screen">
+<aside class="sidebar air-side">
+  <div class="sidebar-head">
+    <span class="logo" aria-hidden="true">X</span><span class="name">xezar</span>
+    <a class="btn icon ghost air-touch air-close air-phone-only" href="tasks.html" aria-label="Close menu"><svg class="icon air-glyph" aria-hidden="true"><use href="#i-x"/></svg></a>
+  </div>
+  <div class="new-task-row">
+    <button class="btn-new-task" type="button"><svg class="icon sm" aria-hidden="true"><use href="#i-plus"/></svg>New task <kbd aria-hidden="true">C</kbd></button>
+    <button class="btn icon md air-touch air-add" type="button" aria-label="Add project" title="Add project"><svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg></button>
+  </div>
+  <div class="air-all-band"><a href="#"><svg class="icon" aria-hidden="true"><use href="#i-layers"/></svg>All tasks</a></div>
+  <div class="air-projects">
+    <div class="air-project">
+      <button class="air-project-head on" type="button" aria-expanded="true"><svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg><span class="t">xezar</span><span class="nav-badge">2</span><span class="branch">main</span></button>
+      <div class="air-project-body">
+        <nav class="air-project-nav" aria-label="xezar navigation">
+          <a href="tasks.html"><svg class="icon" aria-hidden="true"><use href="#i-tasks"/></svg>Tasks</a>
+          <a href="inbox.html"><svg class="icon" aria-hidden="true"><use href="#i-inbox"/></svg>Inbox<span class="nav-badge">5</span></a>
+          <a href="#"><svg class="icon" aria-hidden="true"><use href="#i-git"/></svg>Git</a>
+          <a href="#"><svg class="icon" aria-hidden="true"><use href="#i-github"/></svg>GitHub</a>
+          <a href="#"><svg class="icon" aria-hidden="true"><use href="#i-sparkles"/></svg>Skills</a>
+          <a href="#"><svg class="icon" aria-hidden="true"><use href="#i-workflow"/></svg>Workflows</a>
+          <a href="settings.html" aria-current="page"><svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg>Settings</a>
+        </nav>
+        <div class="air-grp"><h2 class="quick-head">Needs you</h2><ul class="quick air-quick">
+          <li><span class="dot pending pulse"></span><span class="ref">#412</span><a class="t" href="thread.html">adding a retry to the failed-gate banner</a></li>
+          <li><span class="dot pending pulse"></span><span class="ref">#409</span><a class="t" href="thread.html">documenting the approval wait in the runner guide</a></li>
+        </ul></div>
+        <div class="air-grp"><h2 class="quick-head">Working</h2><ul class="quick air-quick">
+          <li><span class="dot violet pulse"></span><a class="t" href="thread.html">tightening the sidebar rhythm</a><span class="meta">9m</span></li>
+        </ul></div>
+        <div class="air-grp"><h2 class="quick-head">Recent</h2><ul class="quick air-quick">
+          <li><span class="dot success"></span><span class="ref">#405</span><a class="t" href="thread.html">pruning the orphan skill cache</a></li>
+          <li><span class="dot success"></span><a class="t" href="thread.html">syncing the root checkout</a><span class="meta">3h</span></li>
+          <li><span class="dot danger"></span><span class="ref">#398</span><a class="t" href="thread.html">moving the mutation gate to a schedule</a></li>
+          <li><span class="dot success"></span><span class="ref">#396</span><a class="t" href="thread.html">fixing the tasks badge count</a></li>
+          <li><span class="dot success"></span><a class="t" href="thread.html">renaming the release workflow step</a><span class="meta">1d</span></li>
+        </ul></div>
+        <a class="air-more" href="tasks.html">More…</a>
+      </div>
+    </div>
+    <div class="air-project"><button class="air-project-head" type="button" aria-expanded="false"><svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg><span class="t">docs-site</span><span class="branch">main</span></button></div>
+    <div class="air-project"><button class="air-project-head" type="button" aria-expanded="false"><svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg><span class="t">billing-api</span><span class="branch">release/2.4</span></button></div>
+  </div>
+  <div class="sidebar-foot">
+    <button class="air-search" type="button" title="Search — command palette (⌘K / Ctrl+K)"><svg class="icon sm" aria-hidden="true"><use href="#i-search"/></svg><span>Search…</span><kbd class="kbd" aria-hidden="true">⌘K</kbd></button>
+    <div class="air-foot-row">
+      <button class="air-tools" type="button"><span class="dot success"></span>Tools<svg class="icon xs" aria-hidden="true"><use href="#i-chevron"/></svg></button>
+      <span class="version-chip">v0.14.0</span>
+      <a class="btn icon ghost air-global" href="settings.html?section=appearance" aria-label="Global settings" title="Global settings"><svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg></a>
+      <button class="btn icon ghost air-sm" type="button" aria-label="Theme: dark. Switch to system." title="Theme: dark"><svg class="icon" aria-hidden="true"><use href="#i-moon"/></svg></button>
+    </div>
+  </div>
+</aside>
+<!-- sidebar:end -->
+<main class="main">
+  <div class="mobile-bar">
+    <button class="btn icon ghost air-touch air-open-menu" type="button" aria-label="Open menu"><svg class="icon air-glyph" aria-hidden="true"><use href="#i-menu"/></svg></button>
+    <span class="title">Settings</span>
+  </div>
+  <header class="page-head">
+    <h1><span class="air-when-agents">Agents</span><span class="air-when-appearance">Appearance</span><span class="air-when-accounts">Agent accounts</span></h1>
+    <p><span class="air-when-agents">Default runner, models and system prompt.</span><span class="air-when-appearance">Theme, accent and density.</span><span class="air-when-accounts">Second logins, and the agent and models a project uses when it has chosen none.</span></p>
+    <span class="air-scope-chip air-when-global">Global settings</span>
+  </header>
+  <div class="air-set">
+    <!-- Desktop nav, per scope (settings-shell.tsx:65-111). Project: Agents is real, the rest have no page. -->
+    <nav class="settings-nav air-set-nav air-when-agents" aria-label="Settings sections">
+      <a href="#"><svg class="icon" aria-hidden="true"><use href="#i-sliders-horizontal"/></svg>General</a>
+      <a href="settings.html?section=agents" aria-current="page"><svg class="icon" aria-hidden="true"><use href="#i-bot"/></svg>Agents</a>
+      <a href="#"><svg class="icon" aria-hidden="true"><use href="#i-file-cog"/></svg>Agent config</a>
+      <a href="#"><svg class="icon" aria-hidden="true"><use href="#i-folder-git-2"/></svg>Worktrees</a>
+      <a href="#"><svg class="icon" aria-hidden="true"><use href="#i-bookmark"/></svg>Bookmarklets</a>
+      <a href="#"><svg class="icon" aria-hidden="true"><use href="#i-notebook-pen"/></svg>Prompt templates</a>
+      <a href="#"><svg class="icon" aria-hidden="true"><use href="#i-plug"/></svg>MCP connection</a>
+      <a href="#"><svg class="icon" aria-hidden="true"><use href="#i-book-open"/></svg>MCP API</a>
+      <div class="air-nav-foot"><p>Project folder</p><button type="button" title="~/code/xezar — click to copy">~/code/xezar</button></div>
+    </nav>
+    <nav class="settings-nav air-set-nav air-when-appearance" aria-label="Settings sections">
+      <a href="#"><svg class="icon" aria-hidden="true"><use href="#i-sliders-horizontal"/></svg>General</a>
+      <a href="settings.html?section=appearance" aria-current="page"><svg class="icon" aria-hidden="true"><use href="#i-palette"/></svg>Appearance</a>
+      <a href="#"><svg class="icon" aria-hidden="true"><use href="#i-bell"/></svg>Notifications</a>
+      <a href="#"><svg class="icon" aria-hidden="true"><use href="#i-gauge"/></svg>Resources</a>
+      <a href="#"><svg class="icon" aria-hidden="true"><use href="#i-package-check"/></svg>Skills</a>
+      <a href="settings.html?section=accounts"><svg class="icon" aria-hidden="true"><use href="#i-id-card"/></svg>Agent accounts</a>
+      <a href="#"><svg class="icon" aria-hidden="true"><use href="#i-folders"/></svg>Projects</a>
+      <p class="air-nav-foot">Stored in ~/.xezar</p>
+    </nav>
+    <nav class="settings-nav air-set-nav air-when-accounts" aria-label="Settings sections">
+      <a href="#"><svg class="icon" aria-hidden="true"><use href="#i-sliders-horizontal"/></svg>General</a>
+      <a href="settings.html?section=appearance"><svg class="icon" aria-hidden="true"><use href="#i-palette"/></svg>Appearance</a>
+      <a href="#"><svg class="icon" aria-hidden="true"><use href="#i-bell"/></svg>Notifications</a>
+      <a href="#"><svg class="icon" aria-hidden="true"><use href="#i-gauge"/></svg>Resources</a>
+      <a href="#"><svg class="icon" aria-hidden="true"><use href="#i-package-check"/></svg>Skills</a>
+      <a href="settings.html?section=accounts" aria-current="page"><svg class="icon" aria-hidden="true"><use href="#i-id-card"/></svg>Agent accounts</a>
+      <a href="#"><svg class="icon" aria-hidden="true"><use href="#i-folders"/></svg>Projects</a>
+      <p class="air-nav-foot">Stored in ~/.xezar</p>
+    </nav>
+    <!-- Phone pills, the same split (settings-shell.tsx:116-160); General is never the current pill. -->
+    <nav class="settings-pills air-pills air-when-agents" aria-label="Settings sections">
+      <a href="#">General</a><a href="settings.html?section=agents" aria-current="page">Agents</a><a href="#">Agent config</a><a href="#">Worktrees</a>
+      <a href="#">Bookmarklets</a><a href="#">Prompt templates</a><a href="#">MCP connection</a><a href="#">MCP API</a>
+    </nav>
+    <nav class="settings-pills air-pills air-when-appearance" aria-label="Settings sections">
+      <a href="#">General</a><a href="settings.html?section=appearance" aria-current="page">Appearance</a><a href="#">Notifications</a>
+      <a href="#">Resources</a><a href="#">Skills</a><a href="settings.html?section=accounts">Agent accounts</a><a href="#">Projects</a>
+    </nav>
+    <nav class="settings-pills air-pills air-when-accounts" aria-label="Settings sections">
+      <a href="#">General</a><a href="settings.html?section=appearance">Appearance</a><a href="#">Notifications</a>
+      <a href="#">Resources</a><a href="#">Skills</a><a href="settings.html?section=accounts" aria-current="page">Agent accounts</a><a href="#">Projects</a>
+    </nav>
+
+    <div class="air-set-main">
+      <!-- Settings → Agents (agents-section.tsx:160-506): Providers, the default runner, then seven fields. -->
+      <div class="air-fields air-when-agents">
+        <section>
+          <div class="air-prov-head"><h2>Providers</h2><p class="air-hint">Connect the coding agents available on this computer.</p></div>
+          <div class="air-prov-list">
+            <div class="air-prov"><div><h3>Claude Code</h3><p class="air-prov-status"><span class="dot success"></span>Credentials found</p></div>
+              <div class="air-prov-actions"><button class="switch" type="button" role="switch" aria-checked="true" aria-label="Use Claude Code"></button></div></div>
+            <div class="air-prov"><div><h3>Codex</h3><p class="air-prov-status"><span class="dot success"></span>Credentials found</p></div>
+              <div class="air-prov-actions"><button class="switch" type="button" role="switch" aria-checked="true" aria-label="Use Codex"></button></div></div>
+            <div class="air-prov"><div><h3>OpenCode</h3><p class="air-prov-status"><span class="dot"></span>Not installed</p><p class="air-prov-note">Install OpenCode, then run <code>opencode auth login</code>.</p></div></div>
+            <div class="air-prov"><div><h3>pi</h3><p class="air-prov-status"><span class="dot pending"></span>Not connected</p></div>
+              <div class="air-prov-actions"><button class="switch" type="button" role="switch" aria-checked="true" aria-label="Use pi"></button><button class="btn ghost air-sm" type="button">Check again</button><button class="btn air-sm" type="button">Connect</button></div></div>
+          </div>
+        </section>
+        <section class="air-field">
+          <div><h2>Default runner</h2><p class="air-hint">Preselected for new tasks in THIS repo, and used by the chain planner. Each task can still pick another runner.</p></div>
+          <div class="radio-segment air-seg air-runner" role="radiogroup" aria-label="Default runner"><button type="button" role="radio" aria-checked="true">claude</button><button type="button" role="radio" aria-checked="false">codex</button><button type="button" role="radio" aria-checked="false" disabled>opencode</button><button type="button" role="radio" aria-checked="false" disabled>pi</button></div>
+        </section>
+        <section class="air-field">
+          <div><h2>Default models</h2><p class="air-hint">The model preselected in the composer for each runner. Auto lets the runner decide per task.</p></div>
+          <div class="air-models">
+            <label class="air-model"><span>claude</span><select class="native-select air-ctl" aria-label="Default model for claude"><option>auto (default)</option><option selected>sonnet</option></select></label>
+            <label class="air-model"><span>codex</span><select class="native-select air-ctl" aria-label="Default model for codex"><option>auto (default)</option></select></label>
+            <label class="air-model"><span>opencode</span><select class="native-select air-ctl" aria-label="Default model for opencode" disabled><option>auto (default)</option></select></label>
+            <label class="air-model"><span>pi</span><select class="native-select air-ctl" aria-label="Default model for pi" disabled><option>auto (default)</option></select></label>
+          </div>
+        </section>
+        <section class="air-field">
+          <div><h2>System prompt</h2><p class="air-hint">Extra instructions appended to every run, whichever runner executes it. This is the only place it is edited.</p></div>
+          <textarea class="textarea air-prompt" aria-label="System prompt" placeholder="Extra rules for every agent run — conventions, tone, review requirements…">Keep each commit small enough to review in one sitting.
+Run the unit gate before handing off, and say which commands ran.
+Write user-facing copy in sentence case.</textarea>
+          <div class="air-save-row air-when-ok"><button class="btn air-sm air-save" type="button">Save</button><p class="air-small">Leave empty and save to clear. Applied to new runs only.</p></div>
+          <div class="air-save-row air-when-error"><button class="btn air-sm" type="button" disabled>Save</button><p class="air-limit">20,412 characters — the limit is 20,000.</p></div>
+        </section>
+        <section class="air-field">
+          <div><h2>Live title updates</h2><p class="air-hint">Refresh a task's short title through the namer model as the run progresses. A manual rename always wins and stops updates for that task.</p></div>
+          <label class="air-switch-row"><button class="switch" type="button" role="switch" aria-checked="true" aria-label="Live title updates"></button><span>On (default)</span></label>
+        </section>
+        <section class="air-field">
+          <div><h2>Review changes before finishing</h2><p class="air-hint">When on, a task with changes pauses so you can Accept, Send back, or open a Draft PR. Autonomous tasks always skip this and finish on their own. Default: off — tasks finish without asking.</p></div>
+          <label class="air-switch-row"><button class="switch" type="button" role="switch" aria-checked="false" aria-label="Review changes before finishing"></button><span>Off (default)</span></label>
+        </section>
+        <section class="air-field">
+          <div><h2>Planner and namer models</h2><p class="air-hint">Two small background jobs: the planner turns a task into a chain of steps, the namer gives it its display title. Both are Claude aliases and are ignored when this project's default agent is not Claude.</p></div>
+          <div class="air-pn">
+            <label><span>Planner model</span><input class="input air-ctl air-md" type="text" aria-label="Planner model" value="sonnet" placeholder="sonnet"></label>
+            <label><span>Namer model</span><input class="input air-ctl air-md" type="text" aria-label="Namer model" value="haiku" placeholder="haiku"></label>
+          </div>
+          <div class="air-btn-row"><button class="btn air-sm" type="button" disabled>Save</button><button class="btn ghost air-sm" type="button">Use defaults</button></div>
+        </section>
+        <section class="air-field">
+          <div><h2>Team skill repositories</h2><p class="air-hint">Extra skill playbooks pulled from git, one per line: owner/name, a git URL, or a local path — add @branch for a ref other than main. This project's own .xezar/skills always wins. Leave empty to use no team skills.</p></div>
+          <textarea class="input air-ctl air-md air-mono" rows="3" aria-label="Team skill repositories" placeholder="qodeca/xezar-skills">acme/review-skills
+acme/release-skills@stable</textarea>
+          <div class="air-btn-row"><button class="btn air-sm" type="button" disabled>Save</button><button class="btn ghost air-sm" type="button">Use the shared catalog</button></div>
+        </section>
+        <section class="air-field">
+          <div><h2>Base branch</h2><p class="air-hint">New task worktrees branch from this and draft PRs target it. Also settable from the Git view.</p></div>
+          <select class="native-select air-ctl air-md" aria-label="Base branch"><option>follow checked-out branch (default)</option><option>main</option><option>release/2.4</option></select>
+        </section>
+      </div>
+
+      <!-- Global settings → Appearance (appearance.tsx:113-145). -->
+      <div class="air-fields air-appearance air-when-appearance">
+        <section class="air-field">
+          <div><h2>Theme</h2><p class="air-hint">System follows your OS preference. Applies to this browser.</p></div>
+          <div class="radio-segment air-seg" role="radiogroup" aria-label="Theme"><button type="button" role="radio" aria-checked="false"><svg class="icon sm" aria-hidden="true"><use href="#i-monitor"/></svg>System</button><button type="button" role="radio" aria-checked="false"><svg class="icon sm" aria-hidden="true"><use href="#i-sun"/></svg>Light</button><button type="button" role="radio" aria-checked="true"><svg class="icon sm" aria-hidden="true"><use href="#i-moon"/></svg>Dark</button></div>
+        </section>
+        <section class="air-field">
+          <div><h2>Accent</h2><p class="air-hint">The primary action color. Saved with this repo's cockpit state.</p></div>
+          <div class="radio-segment air-seg" role="radiogroup" aria-label="Accent"><button type="button" role="radio" aria-checked="true"><span class="air-swatch lime" aria-hidden="true"></span>Lime</button><button type="button" role="radio" aria-checked="false"><span class="air-swatch violet" aria-hidden="true"></span>Violet</button></div>
+        </section>
+        <section class="air-field">
+          <div><h2>Density</h2><p class="air-hint only-today">Compact tightens spacing across the cockpit — text stays the same size.</p><p class="air-hint only-air">Roomy adds space between things and the Compact options take it away — text stays the same size.</p></div>
+          <div class="radio-segment air-seg only-today" role="radiogroup" aria-label="Density"><button type="button" role="radio" aria-checked="true">Comfortable</button><button type="button" role="radio" aria-checked="false">Compact</button><button type="button" role="radio" aria-checked="false">Compact for real</button></div>
+          <div class="radio-segment air-seg air-density only-air" role="radiogroup" aria-label="Density"><button type="button" role="radio" aria-checked="false">Roomy</button><button type="button" role="radio" aria-checked="true">Comfortable</button><button type="button" role="radio" aria-checked="false">Compact</button><button type="button" role="radio" aria-checked="false">Compact for real</button></div>
+        </section>
+        <section class="air-field">
+          <div><h2>Reading width</h2><p class="air-hint">Wide lets a task's session and commits use more of the screen. Narrow keeps a comfortable reading column. The Changes tab is always full-width.</p></div>
+          <div class="radio-segment air-seg" role="radiogroup" aria-label="Reading width"><button type="button" role="radio" aria-checked="true">Narrow</button><button type="button" role="radio" aria-checked="false">Wide</button></div>
+        </section>
+      </div>
+
+      <!-- Global settings → Agent accounts in hosted mode: the refusal, verbatim (accounts-section.tsx:143-155). -->
+      <div class="air-refusal air-when-accounts">
+        <h2>Agent accounts</h2>
+        <p>Agent accounts are managed from the machine that owns the checkout — this cockpit runs in hosted mode.</p>
+      </div>
+    </div>
+  </div>
+</main>
+</div>
+
+<section class="doc air-values" id="values" aria-labelledby="values-h">
+  <h2 id="values-h">Values on this screen</h2>
+  <p class="air-values-status"></p>
+  <div class="table-scroll">
+    <table class="decision-table">
+      <thead><tr><th scope="col">Where</th><th scope="col">Today (file:line)</th><th scope="col">Proposed (token = px at Comfortable)</th></tr></thead>
+      <tbody>
+        <tr data-probe=".air-fields|row-gap" data-today="28" data-air="32"><td>Agents – between fields</td><td><code>gap-7</code> = 28 (<code>agents-section.tsx:163</code>)</td><td><code>gap-section</code> = 32 (§ 9.2, D-6)</td></tr>
+        <tr data-probe=".air-appearance|row-gap" data-today="28" data-air="32"><td>Appearance – between fields</td><td><code>gap-7</code> = 28 (<code>appearance.tsx:120</code>)</td><td><code>gap-section</code> = 32</td></tr>
+        <tr data-probe=".air-field|row-gap" data-today="8" data-air="12"><td>Inside a field – title and hint, control</td><td><code>gap-2</code> = 8 (<code>settings-field.tsx:21</code>; the local copies <code>agents-section.tsx:608</code>, <code>appearance.tsx:103</code>)</td><td><code>gap-stack</code> = 12 (§ 9.2, the PR 1 pilot)</td></tr>
+        <tr data-probe=".air-save|height" data-today="30" data-air="32"><td>Save and every other <code>sm</code> button</td><td><code>h-[30px]</code> = 30 (<code>agents-section.tsx:269</code>, <code>button.tsx:24</code>)</td><td><code>h-8</code> = 32 (§ 9.3 – the one visible control-size change)</td></tr>
+        <tr data-probe=".air-limit|font-size" data-today="11" data-air="11"><td>Over-limit line (<code>state=error</code>)</td><td><code>text-[11px] text-danger</code> beside a disabled Save (<code>agents-section.tsx:271, 276-279</code>)</td><td>11, unchanged</td></tr>
+        <tr data-probe=".air-fields|padding-left" data-today="24" data-air="24" data-at="1280"><td>Section containers</td><td><code>md:p-6</code> = 24 (<code>agents-section.tsx:163</code>, <code>appearance.tsx:120</code>, <code>accounts-section.tsx:147</code>)</td><td>24 (not in § 9.2 – unchanged, for the verdict)</td></tr>
+        <tr data-probe=".air-fields|padding-left" data-today="16" data-air="16" data-at="375"><td>Section containers, phone</td><td><code>p-4</code> = 16; bottom <code>pb-[calc(90px+…)]</code> (<code>agents-section.tsx:163</code>)</td><td>16 (not in § 9.2 – unchanged)</td></tr>
+        <tr data-probe=".air-refusal|row-gap" data-today="16" data-air="16"><td>Agent accounts refusal</td><td><code>gap-4 p-4 md:p-6</code> = 16 / 24 (<code>accounts-section.tsx:147</code>)</td><td>16 / 24 (not in § 9.2 – unchanged, for the verdict)</td></tr>
+        <tr data-probe=".air-set-nav|padding-top" data-today="12" data-air="12" data-at="1280"><td>Settings nav</td><td><code>w-52 gap-1 p-3</code> = 208 / 4 / 12 (<code>settings-shell.tsx:69</code>)</td><td><code>p-stack</code> = 12 – the same at every density (§ 9.2)</td></tr>
+        <tr data-probe=".air-set-nav a|padding-top" data-today="8" data-air="8" data-at="1280"><td>Settings nav row</td><td><code>px-2.5 py-2</code> = 10 / 8 (<code>settings-shell.tsx:93</code>)</td><td>unchanged (§ 9.2)</td></tr>
+        <tr data-probe=".air-screen .page-head|height" data-today="56" data-air="56" data-at="1280"><td>Settings header</td><td><code>h-14 gap-3 px-5</code> (<code>settings-shell.tsx:180</code>)</td><td>56, unchanged</td></tr>
+        <tr data-probe=".air-pills a|padding-left" data-today="12" data-air="12" data-at="375"><td>Section pills, phone</td><td><code>px-3 py-1.5</code> in a <code>px-3 py-2.5</code> row that scrolls sideways (<code>settings-shell.tsx:130, 149</code>)</td><td>unchanged</td></tr>
+        <tr data-probe=".air-prov-head|margin-bottom" data-today="8" data-air="8"><td>Providers – title to cards</td><td><code>mb-2</code> = 8 (<code>provider-settings.tsx:179</code>)</td><td>8 (not in § 9.2 – unchanged)</td></tr>
+        <tr data-probe=".air-prov|padding-top" data-today="12" data-air="12"><td>Provider card</td><td><code>px-3.5 py-3</code> = 14 / 12 (<code>provider-settings.tsx:227</code>)</td><td>14 / 12 (not in § 9.2 – unchanged)</td></tr>
+        <tr data-probe=".air-seg button|padding-left" data-today="12" data-air="12"><td>Segmented option</td><td><code>px-3 py-1.5</code> = 12 / 6 (<code>appearance.tsx:79</code>, <code>default-agent-picker.tsx:124</code>)</td><td>unchanged</td></tr>
+        <tr><td>Density row</td><td>Comfortable · Compact · Compact for real, <code>inline-flex w-fit</code>, no wrap (<code>appearance.tsx:36-40, 66</code>)</td><td>Roomy first (§ 9.4, copy § 8); the row wraps inside its border at 375 (R-7, PR 4)</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p><strong>For the verdict.</strong> The three section containers keep <code>p-4 md:p-6</code> in both views: § 9.2 does not assign them (its page-body row cites the index page, <code>settings-shell.tsx:222</code>). The refusal's <code>gap-4</code> is the same question.</p>
+  <p><strong>The field error</strong> is the Agents over-limit line, drawn as the source ships it: a <code>&lt;p&gt;</code> in <code>text-[11px] text-danger</code> beside a small disabled Save, with no <code>aria-invalid</code> or live region. It is the shipped counterpart of <code>.field-error</code> (<code>cockpit.css:1126</code>, also 11 px <code>--danger</code>), which no source file uses.</p>
+  <ul>
+    <li>Two menus: Agents sits in the project settings nav; Appearance and Agent accounts sit in the global nav, with the “Global settings” chip (<code>registry.tsx:99-198</code>, <code>settings-shell.tsx:183-186</code>).</li>
+    <li>The default state shows an edited system prompt, so its Save is enabled; the other two Saves match saved values and are disabled (<code>agents-section.tsx:375-380, 434</code>). The draft is shortened: the field grows with its text (<code>field-sizing: content</code>, <code>textarea.tsx:10</code>), so a real 20,412-character draft is far taller.</li>
+    <li>The drawn controls show their defaults (Dark, Lime, Comfortable, Narrow); the bar sets the page’s real axes.</li>
+    <li>Local corrections, both views: <code>sm</code> buttons use <code>px-2.5</code> and weight 600 (<code>button.tsx:12, 24</code>; <code>cockpit.css:903</code> has 12 and 500); pills are padded, not 28 px high (<code>settings-shell.tsx:138, 149</code>; <code>cockpit.css:2254</code>).</li>
+    <li>Not drawn: the General index pages (<code>settings-shell.tsx:202-280</code>), the other sections (<code>#</code> links) and the editable Agent accounts pane (<code>accounts-section.tsx:158</code> on).</li>
+  </ul>
+</section>
+</body>
+</html>

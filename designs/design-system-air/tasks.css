@@ -1,0 +1,205 @@
+/* Air proposal – the Tasks screen (tasks.html): page head, body, the 13-column table in its
+ * wrapper, the footer strip, the phone cards and the New-task FAB. Loaded after shell.css.
+ * Source: packages/web/src/routes/tasks-overview.tsx (a bare :n) and lib/task-columns.ts, file:line
+ * beside each today value. The table keeps .tasks-table as its base; .air-table re-spells the
+ * source's cells (README § 5 j: cockpit.css:1965-1976 pads 8/12 and 10/12, the source is h-[38px]
+ * and h-11 px-2.5 first:pl-4 last:pr-4).
+ *
+ * block order: rhythm → today → proposed → phone → open points
+ */
+
+/* values – owned by WP-1 */
+:root[data-view='today'] {
+  --th-h: 38px;                                         /* tasks-overview.tsx:419  h-[38px] */
+  --cell-px: calc(var(--u) * 2.5);                      /* tasks-overview.tsx:419, :514  px-2.5 */
+  --tabs-pad: 3px;                                      /* tasks-overview.tsx:158  p-[3px] */
+  --footer-mt: calc(var(--u) * 3.5);                    /* tasks-overview.tsx:291  mt-3.5 */
+  --mcard-pad: calc(var(--u) * 3) calc(var(--u) * 3.5); /* tasks-overview.tsx:904  px-3.5 py-3 */
+  --mcard-gap: calc(var(--u) * 2.5);                    /* tasks-overview.tsx:269  gap-2.5 */
+  --table-gutter: var(--gutter);                        /* tasks-overview.tsx:211, :219  inside the body padding */
+}
+
+:root:not([data-view='today']) {
+  --th-h: calc(var(--u) * 10);    /* § 9.3  h-10 */
+  --cell-px: calc(var(--u) * 3);  /* § 9.2  px-3 */
+  --tabs-pad: calc(var(--u) * 1); /* § 9.3  p-1 */
+  --footer-mt: var(--list);       /* § 9.2  mt-list */
+  --mcard-pad: var(--inset);      /* § 9.2  p-inset */
+  --mcard-gap: var(--list);       /* § 9.2  card list gap-list */
+  --table-gutter: var(--gutter);  /* open point 6, A: the wrapper keeps px-section (README:228) */
+}
+
+/* Open point 6, B: the wrapper is exempt and keeps today's 20 px (assumption: not 0). */
+:root:not([data-view='today'])[data-table='b'] {
+  --table-gutter: calc(var(--u) * 5);
+}
+/* end values */
+
+/* ---------- review chrome: open point 6 numbers under the bar, not part of the screen ---------- */
+.air-op6 { margin: 0; padding: 6px 24px; border-bottom: 1px solid var(--border); font-size: 12px; color: var(--muted-foreground); }
+.framed .air-op6 { display: none; }
+
+/* ---------- page head (:156-208); cockpit.css .page-head is the source's h-14 gap-3 px-5 ---------- */
+.air-tabs { display: inline-flex; gap: calc(var(--u) * 0.5); padding: var(--tabs-pad); border-radius: var(--radius-sm); background: var(--muted); }
+
+.air-tabs button { /* :392 flex h-7 gap-1.5 rounded-[7px] px-3 text-[12.5px] font-medium */
+  display: flex; align-items: center; justify-content: center; gap: calc(var(--u) * 1.5);
+  height: calc(var(--u) * 7); padding: 0 calc(var(--u) * 3); border: 0; border-radius: 7px;
+  background: transparent; color: var(--muted-foreground); font-size: 12.5px; font-weight: 500;
+}
+
+.air-tabs button[aria-pressed='true'] { background: var(--card); color: var(--foreground); font-weight: 600; box-shadow: var(--shadow-xs); }
+.air-tabs .n { font-family: var(--mono); font-size: 11px; font-variant-numeric: tabular-nums; }
+.air-head-fill { flex: 1; }
+.air-search-box { position: relative; width: calc(var(--u) * 60); } /* :195 w-60 */
+
+.air-search-box .icon { /* :197 absolute top-1/2 left-2.5 size-3.5 */
+  position: absolute; inset-block-start: 50%; inset-inline-start: calc(var(--u) * 2.5);
+  transform: translateY(-50%); color: var(--soft-foreground); pointer-events: none;
+}
+
+.air-search-box input { /* :206 h-9 w-full rounded-md border-input bg-card pr-3 pl-8 text-[13px] */
+  width: 100%; height: calc(var(--u) * 9); padding-block: 0; padding-inline: calc(var(--u) * 8) calc(var(--u) * 3);
+  border: 1px solid var(--input); border-radius: var(--radius-sm); background: var(--card);
+  color: var(--foreground); font: inherit; font-size: 13px;
+}
+
+/* ---------- body (:211): p-3 pb-[calc(90px+…)] md:p-5 md:pb-5 ---------- */
+.air-tasks-body { display: flex; flex: 1; flex-direction: column; padding: var(--body-top) var(--gutter) var(--gutter); }
+
+/* The wrapper (:217-219). Open point 6 moves only it: the body gutter plus this margin is --table-gutter. */
+.air-table-wrap {
+  margin-inline: calc(var(--table-gutter) - var(--gutter)); overflow-x: auto;
+  border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--card); box-shadow: var(--shadow-xs);
+}
+
+/* ---------- the table (:222-263); column widths are TASK_COLUMNS' (task-columns.ts:49-135) ---------- */
+/* Chrome treats a <col> width as preferred, not minimum: once the table overflows, a column shrinks to
+ * its content (the folded Branch renders 30, not 42). The cockpit uses the same markup (:222-234). */
+.air-table { width: 100%; min-width: 0; } /* :222 w-full; cockpit.css:1960's 760 is not the source */
+.air-table col[data-column-id='status'] { width: 116px; }
+.air-table col[data-column-id='workflow'], .air-table col[data-column-id='tool'] { width: 124px; }
+.air-table col[data-column-id='model'], .air-table col[data-column-id='tokens'] { width: 112px; }
+.air-table col[data-column-id='branch'] { width: 128px; }
+.air-table col[data-column-id='diff'] { width: 78px; }
+.air-table col[data-column-id='reference'], .air-table col[data-column-id='cost'] { width: 76px; }
+.air-table col[data-column-id='cpu'] { width: 68px; }
+.air-table col[data-column-id='memory'] { width: 88px; }
+.air-table col[data-column-id='started'] { width: 82px; }
+.air-table col[data-expanded='false'] { width: 42px; } /* :231, a folded column */
+
+.air-table th { /* :419 */
+  height: var(--th-h); padding: 0 var(--cell-px); white-space: nowrap;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--soft-foreground);
+}
+
+.air-table td { height: calc(var(--u) * 11); padding: 0 var(--cell-px); } /* :514 h-11 – the row, D-2 */
+.air-table th:first-child, .air-table td:first-child { padding-inline-start: calc(var(--u) * 4); }
+.air-table th:last-child, .air-table td:last-child { padding-inline-end: calc(var(--u) * 4); }
+.air-table [data-folded] { padding: 0; } /* :421, :732 px-0 first:pl-0 last:pr-0 */
+.air-table tbody tr { cursor: pointer; }
+.air-table tbody tr:last-child td { border-bottom: 0; } /* :249 */
+.air-table .r { text-align: right; }
+
+.air-fold { /* the fold toggle in a foldable header (:453-475): inline-flex h-8 w-full gap-1 px-0.5 */
+  display: inline-flex; align-items: center; gap: calc(var(--u) * 1); width: 100%; height: calc(var(--u) * 8);
+  padding: 0 calc(var(--u) * 0.5); border: 0; border-radius: var(--radius-sm); background: transparent;
+  color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit;
+}
+
+.air-table .r .air-fold { justify-content: flex-end; }
+.air-table [data-folded] .air-fold { justify-content: center; padding: 0; }
+.air-fold .xs { opacity: 0.55; }
+.air-table [data-folded] .air-fold .xs { opacity: 0.7; }
+
+/* ---------- cells (:636-856, components/task-agent.tsx, diff-stat.tsx) ---------- */
+.air-table td.air-task { min-width: 220px; max-width: 0; } /* :652 min-w-[220px] max-w-0 */
+.air-table td.air-clip { max-width: 0; }                   /* :664, :670 max-w-0 */
+.air-title { display: flex; align-items: center; gap: calc(var(--u) * 1.5); min-width: 0; } /* :766 */
+
+.air-title a { /* :771 min-w-0 truncate text-[13px] font-medium */
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 13px; font-weight: 500; color: var(--foreground); text-decoration: none;
+}
+
+.air-title .air-u, .air-card-head .air-u { font-weight: 600; }                 /* unread (:772, :915) */
+.air-title .air-rd, .air-card-head .air-rd { color: var(--muted-foreground); } /* read and done */
+
+.air-rename, .air-pin {
+  display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center;
+  padding: 0; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--soft-foreground);
+}
+
+.air-rename { padding: calc(var(--u) * 0.5); }                      /* :792 p-0.5 */
+.air-pin { width: calc(var(--u) * 5); height: calc(var(--u) * 5); } /* pin-toggle.tsx:46 size-5 */
+.air-table .air-pin { width: 19px; height: 19px; }                  /* :807 size-[19px] */
+.air-pin[aria-pressed='true'] svg { fill: currentColor; }           /* pin-toggle.tsx:51 */
+
+/* Revealed on row hover or focus; a pinned row keeps its pin lit (:792, :807). No transition here. */
+.air-table .air-rename, .air-table .air-pin { opacity: 0; }
+
+.air-table tr:hover .air-rename, .air-table tr:hover .air-pin, .air-table .air-rename:focus-visible,
+.air-table .air-pin:focus-visible, .air-table .air-pin[aria-pressed='true'] {
+  opacity: 1;
+}
+
+@media (hover: none) { .air-table .air-pin { opacity: 1; } } /* :807 no-hover:opacity-100 */
+
+.air-tool, .air-model { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted-foreground); }
+.air-tool, .air-table td.air-wf { font-size: 12.5px; color: var(--muted-foreground); } /* task-agent.tsx:52; :658 */
+.air-model { font-family: var(--mono); font-size: 11.5px; }                             /* task-agent.tsx:69 */
+.air-inh { color: var(--soft-foreground); }                                           /* inherited or auto */
+.air-diff { font-family: var(--mono); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.air-diff .a { color: var(--success); }
+.air-diff .d { color: var(--danger); }
+.air-dash { font-size: 12px; color: var(--soft-foreground); } /* :1005 */
+.air-num, .air-use, .air-queue { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.air-num { font-size: 12px; color: var(--muted-foreground); } /* :694, :708 */
+.air-age { font-size: 12px; color: var(--soft-foreground); font-variant-numeric: tabular-nums; } /* :715 */
+.air-table td.air-live { background: color-mix(in srgb, var(--violet) 5%, transparent); color: var(--foreground); font-size: 12px; font-weight: 500; } /* :848 */
+.air-peak { font-size: 11.5px; color: var(--soft-foreground); } /* :849 */
+.air-none { font-size: 12px; color: var(--soft-foreground); }   /* :850 */
+.air-queue { font-size: 11.5px; color: var(--soft-foreground); } /* :571 */
+
+/* ---------- footer strip (:286-301) ---------- */
+.air-strip { /* :291 mt-3.5 flex-wrap gap-2.5 rounded-lg border bg-card px-3.5 py-2.5 text-[12.5px] shadow-xs */
+  display: flex; flex-wrap: wrap; align-items: center; gap: calc(var(--u) * 2.5); margin-block-start: var(--footer-mt);
+  padding: calc(var(--u) * 2.5) calc(var(--u) * 3.5); /* not in § 9.2 – unchanged */
+  border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--card); box-shadow: var(--shadow-xs);
+  font-size: 12.5px; color: var(--muted-foreground);
+}
+
+.air-strip .icon { width: 15px; height: 15px; color: var(--soft-foreground); } /* :293 size-[15px] */
+.air-strip strong { font-weight: 600; color: var(--foreground); }
+.air-strip .btn { margin-inline-start: auto; } /* :298 md:ml-auto */
+
+/* ---------- phone cards (:269, :904-998) ---------- */
+.air-cards .task-card { padding: var(--mcard-pad); cursor: pointer; }
+.air-card-head { display: flex; align-items: flex-start; gap: calc(var(--u) * 2.5); } /* :906 */
+.air-card-head .pill { flex-shrink: 0; margin-block-start: 1px; }                   /* :907 mt-px */
+.air-card-head a { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 500; line-height: 1.35; color: var(--foreground); text-decoration: none; }
+.air-card-head > .dot { margin-block-start: calc(var(--u) * 1.5); }                 /* :927 mt-1.5 */
+.air-card-age { flex-shrink: 0; margin-block-start: calc(var(--u) * 0.5); font-size: 11.5px; color: var(--soft-foreground); font-variant-numeric: tabular-nums; }
+.air-cards .air-pin { margin-block-start: 1px; margin-inline-end: calc(var(--u) * -1); } /* :939 -mr-1 mt-px */
+.air-cards .meta { align-items: center; gap: calc(var(--u) * 1.5); margin-block-start: calc(var(--u) * 2); } /* :943 */
+.air-cards .meta i { font-style: normal; color: var(--soft-foreground); }
+.air-cards .air-diff { font-size: 11.5px; } /* :978 */
+.air-cards .air-refchip { height: calc(var(--u) * 5); } /* :996 h-5 over h-[22px]; the proposed 24 px floor wins */
+
+/* ---------- phone (≤ 860 px, the shell breakpoint; the source's md is 768) ---------- */
+.air-cards, .air-fab { display: none; }
+
+@media (max-width: 860px) {
+  .air-op6, .air-table-wrap { display: none; }
+  .air-tasks-body { padding-block-end: calc(90px + env(safe-area-inset-bottom)); } /* :211, clears the FAB */
+  .air-cards { display: flex; flex-direction: column; gap: var(--mcard-gap); }
+  .air-strip .btn { margin-inline-start: 0; }
+
+  .air-fab { /* :311 fixed right-4 bottom-[calc(16px+…)] z-20 size-14 rounded-full bg-primary shadow-modal */
+    position: fixed; inset-block-end: calc(16px + env(safe-area-inset-bottom)); inset-inline-end: calc(var(--u) * 4); z-index: 20;
+    display: inline-flex; align-items: center; justify-content: center; width: calc(var(--u) * 14); height: calc(var(--u) * 14);
+    padding: 0; border: 0; border-radius: 999px; background: var(--primary); color: var(--primary-foreground); box-shadow: var(--shadow-modal);
+  }
+
+  .air-fab .icon { width: 22px; height: 22px; } /* :313 size-[22px] */
+}

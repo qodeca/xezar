@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Air – Appearance axes</title>
+<link rel="stylesheet" href="../../docs/design-system/cockpit.css">
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="chrome.css">
+<script src="theme.js"></script>
+</head>
+<body>
+<script src="bar.js" data-controls="theme accent density width"></script>
+
+<main class="doc">
+  <h1>Air – appearance axes</h1>
+  <p class="lead">The proposed view under each appearance axis the cockpit has: four densities on the thread and on the Settings list, dark and light with both accents, and both reading widths. Each frame pins the axes its caption names; the bar sets the rest. At the other densities every proposed value is the Comfortable value × 1.25 (Roomy), × 0.875 (Compact) or × 0.75 (Compact for real).</p>
+
+  <h2>Density – the thread</h2>
+  <p>Four 1:1 frames of the proposed thread at full width, each opened at the second speaker’s first row (<code>#speaker-2</code>), so a row inside a turn and the gap between two speakers’ rows are both in view. One unit is 5 px at Roomy, 4 at Comfortable, 3.5 at Compact and 3 at Compact for real (<code>cockpit.css:182-188</code>, Roomy in <code>styles.css</code>); the six rhythm values follow it.</p>
+  <h3>Roomy</h3>
+  <figure class="air-figure">
+    <figcaption class="air-caption">Proposed · Thread · 1:1 · Roomy – row 10 · stack 15 · list 20 · inset 25 · group 30 · section 40</figcaption>
+    <iframe class="air-wide-frame" data-src="thread.html?v=air&amp;density=roomy#speaker-2" title="Thread – Proposed – 1:1 – Roomy"></iframe>
+  </figure>
+  <h3>Comfortable</h3>
+  <figure class="air-figure">
+    <figcaption class="air-caption">Proposed · Thread · 1:1 · Comfortable – row 8 · stack 12 · list 16 · inset 20 · group 24 · section 32</figcaption>
+    <iframe class="air-wide-frame" data-src="thread.html?v=air&amp;density=comfortable#speaker-2" title="Thread – Proposed – 1:1 – Comfortable" loading="lazy"></iframe>
+  </figure>
+  <h3>Compact</h3>
+  <figure class="air-figure">
+    <figcaption class="air-caption">Proposed · Thread · 1:1 · Compact – row 7 · stack 10.5 · list 14 · inset 17.5 · group 21 · section 28</figcaption>
+    <iframe class="air-wide-frame" data-src="thread.html?v=air&amp;density=compact#speaker-2" title="Thread – Proposed – 1:1 – Compact" loading="lazy"></iframe>
+  </figure>
+  <h3>Compact for real</h3>
+  <figure class="air-figure">
+    <figcaption class="air-caption">Proposed · Thread · 1:1 · Compact for real – row 6 · stack 9 · list 12 · inset 15 · group 18 · section 24</figcaption>
+    <iframe class="air-wide-frame" data-src="thread.html?v=air&amp;density=ultra#speaker-2" title="Thread – Proposed – 1:1 – Compact for real" loading="lazy"></iframe>
+  </figure>
+  <p class="note">Roomy does not exist today; it is the proposed fourth density (README § 9.4). Every proposed value rides the unit, so the page scales as one piece; today’s hand-set pixels would stay put. Flip <a href="thread.html">the thread</a> to Today at any density to see the difference.</p>
+
+  <h2>Density – the Settings list</h2>
+  <p>Settings → Appearance at 375 px, proposed, at each density: the field list, the density control itself and the phone touch targets. The mobile bar and Open menu are <code>h-11</code> and <code>size-11</code> (<code>app-shell.tsx:848, 859</code>), so they scale with the lever – proportional by D-3 (README § 10).</p>
+  <div class="air-pair">
+    <figure><figcaption class="air-caption">Proposed · Settings · Appearance · 375 px · Roomy – touch targets 55 px</figcaption><div class="phone phone-375"><iframe data-src="settings.html?section=appearance&amp;v=air&amp;density=roomy" title="Settings · Appearance – Proposed – 375 px – Roomy" loading="lazy"></iframe></div></figure>
+    <figure><figcaption class="air-caption">Proposed · Settings · Appearance · 375 px · Comfortable – touch targets 44 px</figcaption><div class="phone phone-375"><iframe data-src="settings.html?section=appearance&amp;v=air&amp;density=comfortable" title="Settings · Appearance – Proposed – 375 px – Comfortable" loading="lazy"></iframe></div></figure>
+    <figure><figcaption class="air-caption">Proposed · Settings · Appearance · 375 px · Compact – touch targets 38.5 px</figcaption><div class="phone phone-375"><iframe data-src="settings.html?section=appearance&amp;v=air&amp;density=compact" title="Settings · Appearance – Proposed – 375 px – Compact" loading="lazy"></iframe></div></figure>
+    <figure><figcaption class="air-caption">Proposed · Settings · Appearance · 375 px · Compact for real – touch targets 33 px</figcaption><div class="phone phone-375"><iframe data-src="settings.html?section=appearance&amp;v=air&amp;density=ultra" title="Settings · Appearance – Proposed – 375 px – Compact for real" loading="lazy"></iframe></div></figure>
+  </div>
+  <p class="note">The density control lists Roomy · Comfortable · Compact · Compact for real. Today it is <code>inline-flex w-fit</code> and cannot wrap (<code>appearance.tsx:66</code>); four options come to about 390 px against a column of about 343 px, so the proposed row wraps inside its own border – a new requirement for PR 4 (README § 9.4).</p>
+
+  <h2>Theme and accent</h2>
+  <p>The proposed thread at 375 px in dark and light, with the lime and violet accents. Spacing is identical in all four; nothing in the proposal is theme-specific.</p>
+  <div class="air-pair">
+    <figure><figcaption class="air-caption">Proposed · Thread · 375 px · dark, lime</figcaption><div class="phone phone-375"><iframe data-src="thread.html?v=air&amp;theme=dark&amp;accent=lime" title="Thread – Proposed – 375 px – dark, lime" loading="lazy"></iframe></div></figure>
+    <figure><figcaption class="air-caption">Proposed · Thread · 375 px · light, lime</figcaption><div class="phone phone-375"><iframe data-src="thread.html?v=air&amp;theme=light&amp;accent=lime" title="Thread – Proposed – 375 px – light, lime" loading="lazy"></iframe></div></figure>
+    <figure><figcaption class="air-caption">Proposed · Thread · 375 px · dark, violet</figcaption><div class="phone phone-375"><iframe data-src="thread.html?v=air&amp;theme=dark&amp;accent=violet" title="Thread – Proposed – 375 px – dark, violet" loading="lazy"></iframe></div></figure>
+    <figure><figcaption class="air-caption">Proposed · Thread · 375 px · light, violet</figcaption><div class="phone phone-375"><iframe data-src="thread.html?v=air&amp;theme=light&amp;accent=violet" title="Thread – Proposed – 375 px – light, violet" loading="lazy"></iframe></div></figure>
+  </div>
+  <p class="note"><strong>Dark with violet:</strong> the violet accent points <code>--primary</code> at violet (<code>cockpit.css:176-180</code>), so the send button (the default <code>primary</code> variant, <code>composer.tsx:576-583</code>, <code>button.tsx:16, 30</code>) and the running dot (<code>--violet</code>) share one colour – by design (<code>theming.md:74</code>). User bubbles sit on <code>--muted</code> (<code>thread-items.tsx:121</code>).</p>
+
+  <h2>Reading width</h2>
+  <p>Wide sets <code>--measure</code> to 1180 px; narrow is 820 (<code>cockpit.css:106, 190-192</code>). At a 1280 window the main column is 1016 px (1280 − 264, <code>cockpit.css:527</code>), under 1180, so wide only takes effect from 1444 px. These two frames are therefore a 1600 × 900 window shown at 70.75 % – the only scaled frames in the set. Their 1:1 links show the difference in a window of 1444 px or more.</p>
+  <h3>Narrow</h3>
+  <figure class="air-figure">
+    <figcaption class="air-caption">Proposed · Thread · narrow width · 1600 px window at 70.75 % – <a href="thread.html?v=air&amp;width=narrow">open it 1:1</a><span class="air-scaled-link"> (the scaled frame needs a window of 1180 px or more)</span></figcaption>
+    <div class="air-scaled"><iframe data-src="thread.html?v=air&amp;width=narrow" title="Thread – Proposed – 1600 px – narrow width" loading="lazy"></iframe></div>
+  </figure>
+  <p class="note">The column padding sits inside the measure (<code>task-thread.tsx:307</code>), so the text line is the measure less two gutters: 820 − 2 × 24 = 772 today → 820 − 2 × 32 = 756 proposed. The dock keeps <code>px-6</code> outside its own measure box (<code>task-thread.tsx:409, 417</code>), so the composer card overhangs the text by 24 px today and 32 px proposed.</p>
+  <h3>Wide</h3>
+  <figure class="air-figure">
+    <figcaption class="air-caption">Proposed · Thread · wide width · 1600 px window at 70.75 % – <a href="thread.html?v=air&amp;width=wide">open it 1:1</a><span class="air-scaled-link"> (the scaled frame needs a window of 1180 px or more)</span></figcaption>
+    <div class="air-scaled"><iframe data-src="thread.html?v=air&amp;width=wide" title="Thread – Proposed – 1600 px – wide width" loading="lazy"></iframe></div>
+  </figure>
+  <p class="note">The text line: 1180 − 2 × 24 = 1132 today → 1180 − 2 × 32 = 1116 proposed. The composer card overhangs it by 24 px today and 32 px proposed, as at narrow width.</p>
+</main>
+</body>
+</html>

@@ -1,0 +1,178 @@
+/* Air proposal – the Inbox screen (packages/web/src/routes/inbox.tsx): the route body, the card
+ * list, the card, and where the empty and page-error states sit. Loaded after cockpit.css,
+ * styles.css, chrome.css and shell.css. Screen values open the sheet (H3); every later rule reads
+ * them, or writes an unchanged value once with its source. The card is cockpit.css .card (1561)
+ * plus the local .air-todo layout; both states are cockpit.css .centered-state (1592) around the
+ * source's max-w-md stack.
+ *
+ * block order: rhythm → today → proposed → phone → open points
+ */
+
+/* values – owned by WP-4 */
+/* today – as shipped */
+:root[data-view='today'] {
+  --card-gap: calc(var(--u) * 2.5);    /* inbox.tsx:128  gap-2.5 */
+  --card-pad: calc(var(--u) * 4);      /* inbox.tsx:227  p-4 */
+  --card-head-gap: calc(var(--u) * 3); /* inbox.tsx:229  gap-3 */
+  --meta-mt: calc(var(--u) * 1.5);     /* inbox.tsx:242  mt-1.5 */
+  --dot-mt: 5px;                       /* inbox.tsx:234  mt-[5px], hand-set */
+}
+
+/* proposed – README § 9.2 (card rows) and § 9.3 l.257 (mt-[5px]) */
+:root:not([data-view='today']) {
+  --card-gap: var(--list);             /* gap-list = 16 */
+  --card-pad: var(--inset);            /* p-inset = 20 */
+  --card-head-gap: var(--stack);       /* gap-stack = 12 */
+  --meta-mt: var(--row);               /* mt-row = 8 */
+  --dot-mt: calc(var(--u) * 1.5);      /* 5 → 6 (nearest step – PR 3b decides) */
+}
+/* end values */
+
+/* ---------- the route body (inbox.tsx:93) ---------- */
+/* flex flex-1 flex-col p-3 pb-[calc(90px+…)] md:p-5 md:pb-5: the body fills the main column, so a
+ * centred state centres in it. --gutter and --body-top come from styles.css. */
+.air-inbox-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  padding: var(--body-top) var(--gutter) var(--gutter);
+}
+
+/* ---------- the list (inbox.tsx:128): mx-auto flex w-full max-w-3xl flex-col ---------- */
+.air-todo-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--card-gap);
+  width: 100%;
+  max-width: 48rem; /* max-w-3xl = 768, a layout width – unchanged */
+  margin: 0 auto;
+  padding: 0;
+  list-style: none;
+}
+
+/* ---------- the card (inbox.tsx:227): flex flex-col rounded-lg border bg-card shadow-xs ---------- */
+.air-todo {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--u) * 2.5); /* inbox.tsx:227 gap-2.5 = 10 – not in § 9.2, unchanged in both views; for the verdict */
+  padding: var(--card-pad);
+}
+
+/* head (inbox.tsx:229): flex items-start; the status dot drops mt-[5px] (:234) */
+.air-todo-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--card-head-gap);
+}
+
+.air-todo-head .dot { margin-top: var(--dot-mt); }
+
+.air-todo-text { flex: 1 1 0%; min-width: 0; } /* inbox.tsx:236 min-w-0 flex-1 */
+
+/* inbox.tsx:237  text-sm leading-snug font-medium text-foreground */
+.air-todo-summary {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.375;
+  font-weight: 500;
+  color: var(--foreground);
+}
+
+/* inbox.tsx:242  flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-soft-foreground */
+.air-todo-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(var(--u) * 1) calc(var(--u) * 3);
+  margin-top: var(--meta-mt);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--soft-foreground);
+}
+
+/* inbox.tsx:251, 266, 383  text-muted-foreground underline decoration-border underline-offset-2 */
+.air-todo-meta a,
+.air-todo-notes {
+  color: var(--muted-foreground);
+  text-decoration: underline;
+  text-decoration-color: var(--border);
+  text-underline-offset: 2px;
+}
+
+.air-todo-meta a:hover, .air-todo-notes:hover { color: var(--foreground); }
+
+.air-todo-meta .air-skill { font-family: var(--mono); } /* inbox.tsx:272 font-mono */
+
+/* actions (inbox.tsx:278): flex shrink-0 items-center gap-1.5 self-center – § 9.2 keeps them */
+.air-todo-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-self: center;
+  align-items: center;
+  gap: calc(var(--u) * 1.5);
+}
+
+/* engine row (inbox.tsx:326): flex flex-wrap items-center gap-2 pl-5 – not in § 9.2, unchanged */
+.air-todo-engine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(var(--u) * 2);
+  padding-left: calc(var(--u) * 5);
+}
+
+.air-todo-engine .icon { color: var(--soft-foreground); } /* picker-pill.tsx:25 chevron */
+
+/* the closed instructions toggle (inbox.tsx:383): self-start pl-5 text-xs font-medium */
+.air-todo-notes {
+  align-self: flex-start;
+  padding: 0 0 0 calc(var(--u) * 5);
+  border: 0;
+  background: none;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+/* ---------- the empty and page-error states (inbox.tsx:104-125) ---------- */
+/* CenteredState (centered-state.tsx:51-67), unchanged in both views (§ 9.2 l.240). cockpit.css
+ * .centered-state spells px-6 py-12 and gap-4 in fixed px on one element; the source puts the gap
+ * on a max-w-md stack and both on the scale, so density reaches them. */
+.air-inbox .air-state { display: none; }
+
+:root[data-state='empty'] .air-inbox .air-state-empty,
+:root[data-state='error'] .air-inbox .air-state-error {
+  display: flex;
+}
+
+:root[data-state='empty'] .air-todo-list,
+:root[data-state='error'] .air-todo-list { display: none; }
+
+.air-inbox .centered-state {
+  flex: 1 1 auto;
+  padding: calc(var(--u) * 12) calc(var(--u) * 6);
+}
+
+.air-cs-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--u) * 4);
+  width: 100%;
+  max-width: 28rem; /* max-w-md = 448 */
+}
+
+.air-cs-stack h2 { line-height: 32px; } /* text-2xl */
+.air-cs-stack p { line-height: 20px; }  /* text-sm */
+
+/* No badge while the list is unknown or empty (app-shell-container.tsx:119-121, project-groups.tsx:334). */
+:root[data-state='empty'] .air-project-nav .nav-badge,
+:root[data-state='error'] .air-project-nav .nav-badge { display: none; }
+
+/* ---------- phone (≤ 860 px, the mockup's shell breakpoint; the app's md is 768) ---------- */
+@media (max-width: 860px) {
+  .air-inbox-body {
+    padding-bottom: calc(90px + env(safe-area-inset-bottom, 0px)); /* inbox.tsx:93, hand-set – not in § 9.2, unchanged */
+  }
+}
