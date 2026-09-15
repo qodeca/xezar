@@ -700,6 +700,7 @@ duplicate vitest test to move a percentage.
 | A-20 the open cockpit follows MCP changes; A-01/A-17/A-23 the MCP connection screen | browser | `packages/web/e2e/mcp-live-sync.e2e.ts:194,232`, `mcp-collaboration.e2e.ts` | yes (`ui-e2e`) |
 | A-01, A-17, A-18, A-19, A-20, A-23 with REAL Claude Code, Codex and OpenCode clients | node:test integration harness | `test/integration/mcp-real-clients.test.ts` | **no** – run by hand; results in `docs/features/mcp-server/mcp-client-acceptance-record.md` |
 | A-19 / A-23 pi real-model reaction (#373) | node:test integration harness | `test/integration/mcp-real-model.test.ts` | **no** – opt-in local model; exact nonce + cursor MCP ack, scripted request-only control; missing target is NOT-RUN |
+| A-19 / A-23 Claude Code and Codex real-model reaction (#67) | node:test integration harness | `test/integration/mcp-real-model.test.ts` (`[claude-code]`, `[codex]`) | **no** – opt-in with `XEZ_REAL_MODEL_CLIENTS`, paid, the client's own login; exact run-id nonce + cursor ack observed on the wire and in `leader-cursors.json`; no scripted control in these two legs (the judge's own controls are unit cases in the same file) |
 
 The last two rows are outside every gate by design: they need installed CLIs and the real-model
 leg needs an explicitly supplied local endpoint. Their evidence is only as current as the last
@@ -962,3 +963,25 @@ headers are redacted. No fast gate starts pi or the
 endpoint; browser coverage is separate and not applicable to this test-only change.
 Results, exact argv, revision/dirty state, model requests, delivery and ack ledger are saved
 under `.local/qa/mcp-real-model/<stamp>/`; task handoff preserves a copy in primary evidence.
+
+### Manual Claude Code and Codex real-model reaction (#67)
+
+The same file carries two more legs, off unless named in `XEZ_REAL_MODEL_CLIENTS`:
+
+```sh
+XEZ_REAL_MODEL_CLIENTS=claude-code,codex TMPDIR=/tmp node --import ../../scripts/test-local-state.mjs --import tsx --test --test-name-pattern 'claude-code\]|codex\]' test/integration/mcp-real-model.test.ts
+```
+
+They are paid and use each client's own login and configured model: Claude Code from its default
+config directory (`XEZ_REAL_MODEL_CLAUDE_MODEL`, default `sonnet`), Codex from the home its installed
+`codex` wrapper pins (else `~/.codex`). The harness reads no credential. Each leg starts a real
+`xezar serve` over a throwaway repository, attaches the client as leader through the cockpit route,
+causes one `task.done` event and waits 120 s for `leader_events ack` with `operationId`
+`react-<run id>` and the `nextCursor` of the model's own post-delivery read. A pass-through stdio tee
+(`test/helpers/mcp-stdio-tee.mjs`) between the client and the bridge records the calls; the service's
+`leader-cursors.json` must confirm the ack. Unlike the pi leg there is no scripted control run: the
+product delivery path for these clients was already measured with scripted endpoints in
+`mcp-real-clients.test.ts`. Known side effects on the owner's machine: each run answers the client's
+folder-trust screen for a `/tmp` fixture path, which the client may remember in its own config (Codex writes it to `config.toml`), and both
+clients keep the session in their own history. The Codex leg refuses to run while an app-server is
+already listening in that home.
