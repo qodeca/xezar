@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 /**
  * `scripts/sync-readme.mjs` copies the root README into the package that npm publishes (#287).
- * The root README's relative links (`docs/screenshots/*.png`, `docs/server-install/*.md`,
+ * The root README's relative links (`docs/assets/readme/*.svg`, `docs/server-install/*.md`,
  * `LICENSE`) are right on GitHub and point at nothing inside the package, so on npmjs.com every
  * screenshot and guide link was broken. These cases hold the copy to absolute links, and hold the
  * root README to the relative ones GitHub needs.
@@ -46,13 +46,14 @@ describe('sync-readme: the README npm publishes', () => {
     const synced = absolutizeReadmeLinks(root, githubRepoUrl(manifest.repository.url));
 
     expect(relativeTargets(synced)).toEqual([]);
-    expect(synced).toContain(`](https://raw.githubusercontent.com/qodeca/xezar/main/docs/screenshots/task-view.png)`);
+    expect(synced).toContain(`srcset="https://raw.githubusercontent.com/qodeca/xezar/main/docs/assets/readme/hero-dark.svg"`);
+    expect(synced).toContain(`src="https://raw.githubusercontent.com/qodeca/xezar/main/docs/assets/readme/hero-light.svg"`);
     expect(synced).toContain(`](${REPO}/blob/main/LICENSE)`);
   });
 
   it('leaves the root README itself relative, because those links are right on GitHub', () => {
     const root = readFileSync(resolve(repoRoot, 'README.md'), 'utf8');
-    expect(root).toContain('](docs/screenshots/task-view.png)');
+    expect(root).toContain('srcset="docs/assets/readme/hero-dark.svg"');
     expect(relativeTargets(root).length).toBeGreaterThan(0);
   });
 
