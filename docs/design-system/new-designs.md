@@ -54,10 +54,10 @@ the phone layout (375 px; the specimen phone frame is 390 px wide). The `states.
 ## 5. Behave under every appearance
 
 Use the theme switch (`theme.js`) on every page. Check the page with `.light`, with
-`data-accent="violet"` and at `data-density="ultra"` on `<html>` (the specimen pages have controls for
-all four; a mockup only needs the light/dark toggle, the rest can be set in devtools). A fourth density,
-`data-density="roomy"`, is proposed – it ships with step 4 of #424; until then it is not a check a mockup
-must pass.
+`data-accent="violet"`, at `data-density="roomy"` and at `data-density="ultra"` on `<html>` (the specimen
+pages have controls for all four; a mockup only needs the light/dark toggle, the rest can be set in
+devtools). Roomy is the loose end of the density range and ultra the tight end, so a page that holds at
+both holds at comfortable and compact in between.
 
 ## 6. Mobile
 

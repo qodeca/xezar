@@ -43,13 +43,18 @@ const AppearanceContext = React.createContext<AppearanceContextValue | null>(nul
  *
  *  Writes go through `PUT /api/workspace/ui-state` with the FULL `appearance` object every
  *  time: the server merges ui-state shallowly (top-level keys), so a partial `{ accent }`
- *  would drop the stored density. On a failed write the server truth is re-fetched and
- *  re-applied — the control must not claim a persistence the file never got.
+ *  would drop the stored density. On a failed write the choice from before the click is put
+ *  back (control, root attribute and mirror) and the server truth is re-fetched — the control
+ *  must not claim a persistence the file never got. The restore cannot be left to the refetch:
+ *  an unchanged GET answer keeps the same `data` reference, so the "server wins" effect never
+ *  re-runs (an older server refusing `roomy` is exactly that case).
  */
 export function AppearanceProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient()
   const uiState = useWorkspaceUiState()
   const [appearance, setAppearanceState] = React.useState<Appearance>(readStoredAppearance)
+  // Counts saves so a slow failure never undoes a newer click the user made meanwhile.
+  const latestSave = React.useRef(0)
 
   // The server's word wins over the mirror — including "no appearance key" meaning defaults,
   // so wiping ui-state.json honestly resets every browser that visits.
@@ -67,14 +72,19 @@ export function AppearanceProvider({ children }: { children: React.ReactNode }) 
   }, [appearance])
 
   const save = React.useCallback(
-    (next: Appearance) => {
+    (next: Appearance, previous: Appearance) => {
+      const saveId = ++latestSave.current
       setAppearanceState(next)
       writeStoredAppearance(next)
       putWorkspaceUiState({ appearance: next })
         .then((merged) => queryClient.setQueryData(workspaceQueryKeys.uiState, merged))
         .catch((error: unknown) => {
           toast(error instanceof Error ? error.message : String(error), { tone: 'danger' })
-          // Fall back to the server's truth rather than keep painting an unsaved choice.
+          // Stop painting the unsaved choice, then fall back to the server's truth.
+          if (saveId === latestSave.current) {
+            setAppearanceState(previous)
+            writeStoredAppearance(previous)
+          }
           void queryClient.invalidateQueries({ queryKey: workspaceQueryKeys.uiState })
         })
     },
@@ -82,15 +92,15 @@ export function AppearanceProvider({ children }: { children: React.ReactNode }) 
   )
 
   const setAccent = React.useCallback(
-    (accent: Accent) => save({ ...appearance, accent }),
+    (accent: Accent) => save({ ...appearance, accent }, appearance),
     [save, appearance],
   )
   const setDensity = React.useCallback(
-    (density: Density) => save({ ...appearance, density }),
+    (density: Density) => save({ ...appearance, density }, appearance),
     [save, appearance],
   )
   const setWidth = React.useCallback(
-    (width: Width) => save({ ...appearance, width }),
+    (width: Width) => save({ ...appearance, width }, appearance),
     [save, appearance],
   )
 

@@ -8,7 +8,7 @@ component styles.
 | --- | --- | --- | --- |
 | Theme | `light`, `dark`, `system` | class `light` (or not) + inline `color-scheme` | `.light` |
 | Accent | `lime`, `violet` | `data-accent="violet"` | the attribute |
-| Density | `comfortable`, `compact`, `ultra` | `data-density="compact"` or `"ultra"` | the attribute |
+| Density | `roomy`, `comfortable`, `compact`, `ultra` | `data-density="roomy"`, `"compact"` or `"ultra"` | the attribute |
 | Reading width | `narrow`, `wide` | `data-width="wide"` | the attribute |
 
 Sources: `packages/web/src/lib/theme.ts`, `packages/web/src/lib/appearance.ts`,
@@ -72,6 +72,7 @@ A mockup or a new surface is accepted only when all of these hold:
 | --- | --- | --- |
 | Light and dark | Every colour comes from a token, so both themes render without a `dark:` variant. Contrast: body ink on `--background`, `--muted-foreground` on `--card`, status ink (`--info`, `--conflict`, `--pending-strong`) on both grounds. | Toggle `.light` on the specimen page; run the guardian test. |
 | Violet accent | Nothing breaks when `--primary` is violet. Do not use `--primary` where "brand lime" is meant; use `--accent-lime` (the brand tile does). Do not rely on lime and violet being different colours to carry meaning (the running dot is `--violet`, a CTA is `--primary`; under the violet accent they match by design). | Set `data-accent="violet"` on the specimen page. |
+| Roomy density | Paddings, gaps and control heights grow with `--spacing`; nothing wraps into an unreadable column or pushes a control out of reach at 375 px. | Set `data-density="roomy"`. |
 | Compact and ultra density | Rows, chips and buttons shrink with `--spacing`; nothing overflows or overlaps. Fixed-pixel controls stay legible. | Set `data-density="ultra"`. |
 | Wide reading width | Columns that read `--measure` open up; full-width surfaces are unaffected. | Set `data-width="wide"`. |
 | System theme | The page follows an OS change without a reload. | `ThemeProvider` handles it; a mockup only needs `.light` to work. |

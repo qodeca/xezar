@@ -127,4 +127,106 @@ describe('settings → appearance against the live dry-run server', () => {
       `document.documentElement.dataset.density === undefined && document.documentElement.dataset.accent === undefined`,
     )
   })
+
+  // #424 step 4 — the loose end of the same one-token lever.
+  it('roomy density loosens the scale by 25%, saves, and survives a cold load', async () => {
+    const header = `document.querySelector('[data-route="settings-global-appearance"] header')`
+    expect(Number(browser.evaluate(`${header}.offsetHeight`))).toBe(56)
+
+    const density = '[data-slot="appearance-density"]'
+    expect(browser.evaluate(`[...document.querySelectorAll('${density} [role="radio"]')].map((r) => r.dataset.value).join(',')`)).toBe(
+      'roomy,comfortable,compact,ultra',
+    )
+
+    // Keyboard: every option is its own tab stop. From Comfortable, Shift+Tab reaches Roomy and
+    // Enter selects it; Tab goes back and Space selects Comfortable again.
+    browser.evaluate(`document.querySelector('${density} [data-value="comfortable"]').focus()`)
+    browser.press('Shift+Tab')
+    expect(browser.evaluate(`document.activeElement?.dataset.value`)).toBe('roomy')
+    browser.press('Enter')
+    browser.waitForFunction(`document.documentElement.dataset.density === 'roomy'`)
+    // The same 14 units at 5px/unit.
+    expect(Number(browser.evaluate(`${header}.offsetHeight`))).toBe(70)
+    await waitForServerAppearance((a) => a.density === 'roomy')
+    browser.press('Tab')
+    browser.press(' ')
+    browser.waitForFunction(`document.documentElement.dataset.density === undefined`)
+    await waitForServerAppearance((a) => a.density === 'comfortable')
+
+    browser.click(`${density} [data-value="roomy"]`)
+    browser.waitForFunction(`document.documentElement.dataset.density === 'roomy'`)
+    await waitForServerAppearance((a) => a.density === 'roomy')
+    expect(browser.evaluate(`localStorage.getItem('xez-density')`)).toBe('roomy')
+
+    // Pre-paint: run the SERVED page's inline head script on its own — no bundle, no React —
+    // against a stand-in root and the real mirror. It must stamp roomy by itself, or a cold load
+    // paints comfortable first and jumps when the provider mounts.
+    const stamped = browser.evaluate(`(() => {
+      const xhr = new XMLHttpRequest()
+      xhr.open('GET', '/settings/global/appearance', false)
+      xhr.send()
+      const html = new DOMParser().parseFromString(xhr.responseText, 'text/html')
+      const script = [...html.head.querySelectorAll('script:not([src])')].find((s) => s.textContent.includes('xez-density'))
+      const root = { classList: { toggle() {} }, style: {}, dataset: {} }
+      new Function('document', 'localStorage', 'matchMedia', script.textContent)(
+        { documentElement: root },
+        localStorage,
+        () => ({ matches: false }),
+      )
+      return root.dataset.density ?? 'absent'
+    })()`)
+    expect(stamped).toBe('roomy')
+
+    browser.goto(`${baseUrl}/settings/global/appearance`)
+    browser.waitForFunction(`document.documentElement.dataset.density === 'roomy'`)
+    expect(browser.count(`${density} [data-value="roomy"][aria-checked="true"]`)).toBe(1)
+  })
+
+  it('at 375px every density option stays reachable at every density, with no sideways scroll', async () => {
+    const density = '[data-slot="appearance-density"]'
+    const values = ['roomy', 'comfortable', 'compact', 'ultra']
+    browser.setViewport(375, 812)
+    try {
+      browser.goto(`${baseUrl}/settings/global/appearance`)
+      browser.waitForFunction(`document.querySelector('${density}') !== null`)
+      const segmentHeights: Record<string, number> = {}
+      for (const active of values) {
+        browser.click(`${density} [data-value="${active}"]`)
+        browser.waitForFunction(
+          active === 'comfortable'
+            ? `document.documentElement.dataset.density === undefined`
+            : `document.documentElement.dataset.density === '${active}'`,
+        )
+        await waitForServerAppearance((a) => a.density === active)
+        const report = browser.evaluate(`(() => {
+          document.querySelector('${density}').scrollIntoView({ block: 'center' })
+          const vw = document.documentElement.clientWidth
+          const problems = []
+          for (const button of document.querySelectorAll('${density} [role="radio"]')) {
+            const r = button.getBoundingClientRect()
+            if (r.left < 0 || r.right > vw) problems.push(button.dataset.value + ' outside the viewport')
+            const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+            if (!hit || !button.contains(hit)) problems.push(button.dataset.value + ' covered or clipped')
+          }
+          const section = document.querySelector('[data-slot="appearance-section"]')
+          if (document.scrollingElement.scrollWidth > vw) problems.push('page scrolls sideways')
+          if (section.scrollWidth > section.clientWidth) problems.push('appearance section overflows')
+          const height = document.querySelector('${density} [role="radio"]').getBoundingClientRect().height
+          return JSON.stringify({ problems, height })
+        })()`) as string
+        const { problems, height } = JSON.parse(report) as { problems: string[]; height: number }
+        expect(problems, `at density ${active}`).toEqual([])
+        segmentHeights[active] = height
+      }
+      // Recorded for the design review (touch targets), not asserted: segment height is older
+      // than Roomy and changing it is outside #424 step 4.
+      console.info(`[settings-appearance] density segment height at 375px: ${JSON.stringify(segmentHeights)}`)
+      browser.screenshot(`${artifactsDir}/settings-appearance-density-375.png`)
+    } finally {
+      browser.setViewport(DESKTOP.width, DESKTOP.height)
+      browser.click(`${density} [data-value="comfortable"]`)
+      browser.waitForFunction(`document.documentElement.dataset.density === undefined`)
+      await waitForServerAppearance((a) => a.density === 'comfortable')
+    }
+  })
 })

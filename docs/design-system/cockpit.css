@@ -186,6 +186,10 @@
   --ring: var(--violet);
 }
 
+:root[data-density='roomy'] {
+  --spacing: 0.3125rem;
+}
+
 :root[data-density='compact'] {
   --spacing: 0.21875rem;
 }

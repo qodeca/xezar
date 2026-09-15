@@ -179,7 +179,7 @@ Density changes only that token:
 
 | `data-density` | `--spacing` | Effect |
 | --- | --- | --- |
-| `roomy` (proposed – ships with step 4 of #424) | `0.3125rem` (5px) | ~25% looser; not declared in `index.css` yet |
+| `roomy` | `0.3125rem` (5px) | ~25% looser paddings, gaps and control heights |
 | absent (comfortable) | `0.25rem` (declared in `@theme static`, Tailwind's default value) | shipped look |
 | `compact` | `0.21875rem` (3.5px) | ~12% tighter paddings, gaps and control heights |
 | `ultra` | `0.1875rem` (3px) | ~25% tighter |
@@ -212,7 +212,7 @@ The same steps at each density:
 
 | Density | row | stack | list | inset | group | section |
 | --- | --- | --- | --- | --- | --- | --- |
-| Roomy (proposed – ships with step 4 of #424) | 10 | 15 | 20 | 25 | 30 | 40 |
+| Roomy | 10 | 15 | 20 | 25 | 30 | 40 |
 | Comfortable | 8 | 12 | 16 | 20 | 24 | 32 |
 | Compact | 7 | 10.5 | 14 | 17.5 | 21 | 28 |
 | Compact for real (`ultra`) | 6 | 9 | 12 | 15 | 18 | 24 |

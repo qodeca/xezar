@@ -20,10 +20,13 @@ export const WIDTH_STORAGE_KEY = 'xez-width'
  *  `:root[data-accent="violet"]`). More accents = more token families there, nothing here. */
 export type Accent = 'lime' | 'violet'
 
-/** Density shrinks Tailwind v4's one spacing token (`--spacing`, default 4px/unit) so every
- *  padding/gap/control height tightens while type stays full-size: `compact` → 3.5px (~12%),
- *  `ultra` ("Compact for real") → 3px (~25%). See the `:root[data-density]` blocks in index.css. */
-export type Density = 'comfortable' | 'compact' | 'ultra'
+/** Density scales Tailwind v4's one spacing token (`--spacing`, default 4px/unit) so every
+ *  padding/gap/control height moves while type stays full-size: `roomy` → 5px (+25%),
+ *  `compact` → 3.5px (~12% tighter), `ultra` ("Compact for real") → 3px (~25% tighter). See the
+ *  `:root[data-density]` blocks in index.css. The list is copied by hand into the pre-paint
+ *  script in `packages/web/index.html` and the specimen bar (`docs/design-system/specimens/
+ *  specimen.js`) — change all three together. */
+export type Density = 'roomy' | 'comfortable' | 'compact' | 'ultra'
 
 /** Reading width flips the one `--measure` token that caps the task-view column (index.css
  *  `:root[data-width="wide"]`): `narrow` is the shipped 820px reading column; `wide` opens it
@@ -46,7 +49,9 @@ export function normalizeAccent(raw: unknown): Accent {
 }
 
 export function normalizeDensity(raw: unknown): Density {
-  return raw === 'comfortable' || raw === 'compact' || raw === 'ultra' ? raw : DEFAULT_DENSITY
+  return raw === 'roomy' || raw === 'comfortable' || raw === 'compact' || raw === 'ultra'
+    ? raw
+    : DEFAULT_DENSITY
 }
 
 export function normalizeWidth(raw: unknown): Width {

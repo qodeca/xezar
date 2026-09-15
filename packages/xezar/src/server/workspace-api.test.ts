@@ -572,6 +572,19 @@ describe('the workspace settings API (step 2.7)', () => {
     });
   });
 
+  it('round-trips the roomy density (#424 step 4)', async () => {
+    const res = await putUiState({ appearance: { density: 'roomy' } });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ appearance: { density: 'roomy' } });
+    expect(rawUiState()).toEqual({ appearance: { density: 'roomy' } });
+  });
+
+  it('rejects an unknown density without writing state', async () => {
+    const res = await putUiState({ appearance: { density: 'spacious' } });
+    expect(res.status).toBe(400);
+    expect(() => readFileSync(workspaceUiStatePath(), 'utf8')).toThrow();
+  });
+
   it('rejects an out-of-enum reading width instead of silently dropping it', async () => {
     const res = await putUiState({ appearance: { width: 'ultrawide' } });
     expect(res.status).toBe(400);
