@@ -123,7 +123,7 @@ function PromptTemplatesForm({ initial }: { initial: PromptTemplate[] }) {
   return (
     <div
       data-slot="prompt-templates-section"
-      className="mx-auto flex w-full max-w-2xl flex-col gap-7 p-4 pb-[calc(90px+env(safe-area-inset-bottom))] md:p-6 md:pb-6"
+      className="mx-auto flex w-full max-w-2xl flex-col gap-section p-4 pb-[calc(90px+env(safe-area-inset-bottom))] md:p-6 md:pb-6"
     >
       <Field
         title="Prompt templates"
@@ -390,7 +390,7 @@ function TemplateSkillsPicker({
 /** The Appearance/Agents sections' field chassis — same rhythm, so Settings reads as one surface. */
 function Field({ title, hint, children }: { title: string; hint: string; children: ReactNode }) {
   return (
-    <section className="flex flex-col gap-2">
+    <section className="flex flex-col gap-stack">
       <div>
         <h2 className="text-sm font-semibold text-foreground">{title}</h2>
         <p className="text-[13px] text-muted-foreground">{hint}</p>

@@ -267,7 +267,12 @@
   --measure: 1180px;
 }
 
-/* ---------- tokens: radius + shadow ----------
+/* ---------- tokens: spacing rhythm + radius + shadow ----------
+ * `--spacing` is declared here at its default so the rhythm tokens below always resolve; the
+ * density blocks above stay unlayered and still outrank it. The rhythm tokens name the distance
+ * BETWEEN blocks (foundations.md §4.1) and are `calc(var(--spacing) * n)`, so the density lever
+ * scales them at use time. There is no `--spacing-*: initial` – Tailwind ships no named spacing
+ * steps to wipe.
  * These two scales are declared in a plain `@theme` (not `@theme inline`) because their token names
  * ARE Tailwind's own namespace keys — one declaration both defines `var(--radius-lg)` for hand-written
  * CSS and wires the `rounded-lg` / `shadow-md` utilities. Routing them through `@theme inline` instead
@@ -278,6 +283,16 @@
  */
 
 @theme static {
+  --spacing: 0.25rem; /* 4px per unit – declared, so the rhythm tokens resolve everywhere */
+
+  /* Rhythm: the distance between things. Controls keep their own heights. */
+  --spacing-row: calc(var(--spacing) * 2); /* 8px – rows of one thing: icon + label, chips in a line */
+  --spacing-stack: calc(var(--spacing) * 3); /* 12px – lines inside one block: title → control → hint */
+  --spacing-list: calc(var(--spacing) * 4); /* 16px – blocks in a list: cards, thread groups */
+  --spacing-inset: calc(var(--spacing) * 5); /* 20px – inside a card (not `card`: that is a colour token) */
+  --spacing-group: calc(var(--spacing) * 6); /* 24px – a speaker change; the run header's top */
+  --spacing-section: calc(var(--spacing) * 8); /* 32px – sections and settings fields; desktop gutters */
+
   --radius-*: initial;
   --radius-sm: 8px;
   --radius: 10px; /* default control radius — no namespace suffix, so it makes no utility of its own */
