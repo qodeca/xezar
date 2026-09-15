@@ -144,7 +144,7 @@ HTTP API.
 | Bookmarklet grammar, launch key never in the DOM | cockpit unit | `routes.test.tsx:763-767` | C |
 | SSE cache patching, multi-project scoping, reconnect | cockpit unit | `api/global-events.test.tsx:252,373,652,724,746` | C |
 | WebSocket topic bus, ref-counting, watchdog | cockpit unit | `api/ws.test.ts:92,106,188,236` | C |
-| Design-system rules (no raw hex, no `dark:`, no `100vh`) | cockpit unit | `design-guardian.test.ts` | C |
+| Design-system rules (no raw hex, no `dark:`, no `100vh`, no hand-typed spacing px) | cockpit unit | `design-guardian.test.ts` | C |
 | Bundle chunking config | cockpit unit | `vite-config.test.ts` | C |
 | The e2e suite's one-worker pin, and its deletion of `VITEST_MAX_WORKERS` | cockpit unit | `e2e-file-parallelism.test.ts` — one case per half: the env var is neutralized, and `fileParallelism: false` still states the intent declaratively | C |
 | Task-table Tool Name / Model columns (recorded vs inherited, verbatim model, mixed-chain `+N`, the phone card) | cockpit unit | `lib/runner-label.test.ts`; `routes/tasks-overview.test.tsx` (the "Tool Name and Model columns" describe); `routes/global-tasks.test.tsx` (same describe) | C |
