@@ -1,5 +1,7 @@
 # Codex: waking an existing leader session
 
+> **Operating rule since 2026-09-15 ([#439](https://github.com/qodeca/xezar/issues/439)).** A project leader works through the xezar MCP tools only – no cockpit UI, no HTTP API – and is attached so events are pushed to it (`<channel source="xezar">` for Claude Code, a started turn for Codex, OpenCode and pi). `leader_events` is the fallback for a leader that is not attached, and `gh` reads GitHub facts. This record is kept as written; where it treats pulling as the leader's normal path or the cockpit as the leader's surface, the rule supersedes it. See [the leader findings, § 11](leader-dogfooding-2026-09-13.md#11-every-time-the-leader-left-the-mcp-channel-consolidated-2105).
+
 Decision date: **2026-09-13**. Part of [#374](https://github.com/qodeca/xezar/issues/374)
 and [#73](https://github.com/qodeca/xezar/issues/73). Source revision:
 `85a8e953573efac13091258e06968986fd5b117f`. Installed client: **codex-cli 0.154.0**,

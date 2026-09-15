@@ -6,6 +6,7 @@
 
 ## ✨ Features
 
+- ✨ **A red "D" on the logo tells you the cockpit is the development build.** (#442) When xezar runs from a source checkout – `npm run dev`, the checkout's own `dist`, or an `npm link` – the X logo in the sidebar and the phone menu carries a small red badge with a dark "D", announced as "Development build". The released package from npm shows the plain logo, with no badge and no placeholder. xezar decides this by itself (a checkout has `packages/xezar/src/index.ts`, the published package never does), so there is no setting or flag. `GET /api/v1/health` gains a top-level `channel` field, `"dev"` or `"release"`; every other field is unchanged, and `npm run check:pack` now refuses a tarball that would ship `src/index.ts`.
 - ✨ **Settings has a little more room, and the design system gains a rhythm scale.** (part of #424) Settings fields now sit 32 px apart instead of 28, and a field's title, control and hint 12 px apart instead of 8, at the default density; Compact and Compact for real scale the same change down. Behind it are six named spacing steps – `row`, `stack`, `list`, `inset`, `group` and `section` (8 to 32 px) – built on the density unit and documented in `docs/design-system/foundations.md` §4.1. No other page changes yet, and there is no setting or flag.
 - ✨ **The whole cockpit has more space between blocks.** (part of #424) Page gutters grow from 20 to 32 px on desktop and from 12 to 16 px on phone, and a page body starts 32 px under its header. Cards get 20 px inside and 16 px between them. In a thread, rows of one turn sit 8 px apart and a change of speaker opens 24 px. The run header, composer dock, Inbox, task table cells, provider banner and sidebar groups loosen to match. This is the shipped default with no switch; Compact and Compact for real scale the same spacing down, so no density reproduces the old look. Table rows stay 44 px, and no text size, colour or radius changes.
 - ✨ **A new Roomy density.** (part of #424) Settings → Appearance offers Roomy first, at the loose end of the density setting: the spacing unit is 5 px instead of Comfortable's 4, so every gap, gutter and padding is 25 % larger while text stays the same size.
@@ -21,14 +22,18 @@
 - ✨ **A Claude Code leader can be woken by a project event, over Claude Code Channels.** (#374, part
   of #73) Until now a project leader you run pulled its events with the `leader_events` MCP tool and
   nothing was pushed to it. A **Claude Code** leader can now be **woken**: xezar turns a project event
-  into a `notifications/claude/channel` message in the running session. It is **opt-in and off by
-  default** — the zero-config default stays pull-only, and xezar gains no setting and no environment
-  variable. The only switch is a flag you add when you launch Claude Code from the project root:
+  into a `notifications/claude/channel` message in the running session. Nothing is pushed until a
+  leader is attached, and xezar gains no setting and no environment variable; an attached leader
+  receiving pushed events is the normal path, and the `leader_events` pull is the fallback (#439).
+  For Claude Code the other switch is a flag you add when you launch it from the project root:
   `claude --dangerously-load-development-channels server:xezar`. That flag is how Claude Code lets a
   server that is not on Anthropic's approved list push messages into your session, and **Claude Code
   shows a warning on every launch** with it — choose "I am using this for local development" if you
   accept it. Then use **Attach leader** in **Settings → MCP connection** → Connection status, the
-  same control that attaches Codex, OpenCode and pi. Channels are a Claude Code
+  same control that attaches Codex, OpenCode and pi, or make the one call
+  `POST /api/v1/p/<projectId>/mcp/leader {"action":"attach","client":"claude-code"}`
+  against the cockpit (`http://127.0.0.1:4321` by default), where `<projectId>` is `project.id` from
+  `discover_project`. Channels are a Claude Code
   research preview: they need a claude.ai or Anthropic Console API-key login, they do not work on
   Amazon Bedrock, Google Vertex or Microsoft Foundry, a Team or Enterprise admin must turn them on,
   and they are off while `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` is set. When a condition is not
@@ -111,6 +116,7 @@ fix: If the leader is working, nothing is needed. Otherwise check that Claude Co
   later step and then failing readiness with an empty branch.
 
 ## 📝 Specs & Documentation
+- 📝 **A project leader works through the MCP tools only, attached so events are pushed.** (related #439) The owner's operating rule of 2026-09-15 is now stated in the README, `AGENTS.md`, the MCP API reference, the dogfooding findings and the `.xezar` kit: a leader uses the xezar MCP tools, never the cockpit UI or the HTTP API; it is attached so events arrive as `<channel source="xezar">` messages (a started turn for Codex, OpenCode and pi); `leader_events` is the fallback for a leader that is not attached; `gh` stays the way to read GitHub facts. The strings a leader reads follow it: the MCP `initialize` instructions and the `leader_events`, `discover_project` and `health` descriptions no longer promise pushes to an unattached session and name the attach door (Settings → MCP connection → Attach leader, or `POST /api/v1/p/<projectId>/mcp/leader {"action":"attach","client":"claude-code"}` against the cockpit, with `<projectId>` from `discover_project` and the leader's own client – OpenCode also sends `baseUrl` and `sessionId`), the `no-leader-session` blocker names it too, the role text pushed with each event states the rule, and a tool that is not connected tells the leader to report the blocker instead of using the cockpit. No behaviour changes; there is still no MCP action that attaches a leader.
 - 📝 **MCP real-model leg for A-19 passed post-release on pi.** (#373) The manual measurement uses the bare model id and verifies nonce/cursor acknowledgement. The logged revision is `7aa4a0258cd99852ff0a6878dff1c96257f49024`, stamp `2026-09-13T17-43-42.875Z`, model `deepseek-v4-flash-vision`, and the ack arrived +15.8 s after delivery in a 120 s window.
 - 📝 **MCP real-model leg for A-19/A-23 passed for Claude Code and Codex.** (part of #67) On revision `a6d53b4bccfe07803a792c54ff335432d4ad0b49` (`main` at `ab28cb0` plus test-only commits), a real model read a delivered `task.done` event and acknowledged it through `leader_events` with the exact run-id nonce and the cursor of its own read: Claude Code 2.1.272 with `sonnet` over Channels (stamp `2026-09-15T10-42-29.522Z`, ack +8.6 s) and Codex CLI 0.154.0 with `gpt-6-astra` through its shared app-server (stamp `2026-09-15T10-41-35.784Z`, ack +11.9 s), each with the owner's own login. OpenCode is out of scope for this clause by the owner's decision of 2026-09-13 (#340). The Definition of Done record now reads 8 of 8, clause 2 by the owner's acceptance of 2026-09-15: the rows span three revisions and never all passed on one.
 - 📝 **`SDLC.md`, `CODE_REVIEW.md` and `CONTRIBUTING.md` name the kit roles.** (#396) The process documents

@@ -38,7 +38,7 @@ Evidence level: **observed** in one live session, by the leader itself. Times ar
 
 ## 4. Findings so far, ranked by how much they cost the leader
 
-1. **No push to the leader** (#374). Every wait is a poll. This is the campaign's own subject.
+1. **No push to the leader** (#374). Every wait is a poll. This is the campaign's own subject. *(Superseded 2026-09-15: pushes reach a leader on a main-built cockpit once it is attached, #439; see the owner's rule under § 11.)*
 2. **No single-issue read.** Reading the campaign's issues took `gh`.
 3. **Inbox has no hygiene tools.** A leader cannot filter, page by date, or sweep it.
 4. **Event journal has no origin filter for fixtures.** Test runs pollute the leader's first read.
@@ -288,8 +288,12 @@ The owner's goal is a leader that needs nothing but the MCP. This table lists ev
 | 27 | Learn what "recovered 11 run(s)" did to each task after the restart | `ps` on the cockpit's children, `task_read history` per task | `task_read list` shows the same `running`/`queued` statuses before and after; nothing marks a run as resumed, when, or with which session id. Worse (seen 22:22 in `leader_events`): the resume is journaled as `instruction.added` with `origin: "human"` – "a human sent the task a new instruction" – so the event feed tells the leader a person steered six tasks that nobody touched | gap, medium | a `resumedAt` (and `resumeCount`) field on the task view, and a `task.resumed` leader event per recovered run |
 | 28 | Reap agent CLIs orphaned by a cockpit stop (three `claude` processes with ppid 1 after SIGTERM) | `ps`, `kill <pid>` | none; `health` and `task_read` know nothing about the child processes; the next cockpit would resume the same sessions beside the orphans | **gap, high** | the cockpit stops its agent children on SIGTERM (process group) and, on start, refuses to resume a run whose previous CLI pid is still alive; `task_read task` shows the agent pid / process state |
 | 20 | Commit the findings doc to main at the end | will be a docs task or `handoff_git branch` + commit | `handoff_git commit/push/create_pr` act on a TASK's worktree only; the primary checkout's own change has no MCP path except `worktree:false` tasks | gap, low | `handoff_git commit` on the main checkout when `worktree:false` was used |
+| 29 | Attach the leader so events are pushed to it (added 2026-09-15, #439) | one HTTP call, `POST /api/v1/p/<projectId>/mcp/leader {"action":"attach","client":"claude-code"}` against the cockpit, `<projectId>` from `discover_project` – the unscoped route is the boot project's (or a person's Settings → MCP connection → Attach leader) | none – no MCP action for attach/detach; `leader_events` only reads and acks, and the leader cannot read its own delivery status or blocker | **gap, high** | `leader_events` `attach` / `stop` / `status` calling the same controller as the route, own session only, refused in hosted mode like the route |
+| 30 | Read GitHub facts – labels, review verdicts, merge state (added 2026-09-15, #439) | `gh pr view`, `gh pr checks`, `gh api …/comments` | partial reads exist (rows 5–7) but no labels, no verdict summary, no merge commit; the MCP does not carry these facts | **gap, accepted** – `gh` stays the way to read them under the owner's rule | label and verdict reads in the GitHub tools (rows 1, 5, 7) |
 
 Rule adopted from here on: try the MCP read first, fall back to `gh` or disk only when the table says gap, and add a row for anything new.
+
+**Owner's operating rule, 2026-09-15 (#439).** The project leader works through the xezar MCP tools only – no cockpit UI, no HTTP API – and is attached so that events are pushed to it as `<channel source="xezar">` messages. `leader_events` pull is the fallback for a leader that is not attached, not the normal path. `gh` stays the way to read GitHub facts (labels, verdicts, merge state), because the MCP does not carry them (row 30). The one HTTP call the rule still needs is the attach itself (row 29).
 
 ## 12. Trust ledger per model (owner, 21:20: "stop using a model that repeatedly cannot handle the workload; end with the models we trust")
 
@@ -360,7 +364,7 @@ Written at the end of the session (owner, 22:00: "finish all of the gh issues yo
 
 ### 14.1 The verdict in one paragraph
 
-Xezar already does the hard part: it runs many agents in isolated worktrees, on four backends and a dozen models, and the kit's gates catch real defects before a PR opens. A leader can run a whole campaign through the MCP for the **happy path** – start, read, steer, push, open a PR, mark it ready, merge through an integration task. What it cannot yet do through the MCP is everything that happens when the path is not happy: notice that a task or the cockpit itself has gone quiet, resume a workflow after a failed step, set a PR's title, body and labels, file or comment on an issue, or learn how long anything took. Those are the gaps that made the leader reach for `gh`, `ps` and the disk about forty times today (§ 11). Reliability, not capability, is the missing half: two cockpit restarts in one evening each silently turned six in-flight tasks into "done" runs whose gates never sealed, and the kit's own verification cost more machine time than the writing it verified.
+Xezar already does the hard part: it runs many agents in isolated worktrees, on four backends and a dozen models, and the kit's gates catch real defects before a PR opens. A leader can run a whole campaign through the MCP for the **happy path** (under the owner's rule of 2026-09-15 it does so attached, with events pushed – § 11, #439) – start, read, steer, push, open a PR, mark it ready, merge through an integration task. What it cannot yet do through the MCP is everything that happens when the path is not happy: notice that a task or the cockpit itself has gone quiet, resume a workflow after a failed step, set a PR's title, body and labels, file or comment on an issue, or learn how long anything took. Those are the gaps that made the leader reach for `gh`, `ps` and the disk about forty times today (§ 11). Reliability, not capability, is the missing half: two cockpit restarts in one evening each silently turned six in-flight tasks into "done" runs whose gates never sealed, and the kit's own verification cost more machine time than the writing it verified.
 
 ### 14.2 The biggest finding, from the owner at 07:05 on 2026-09-14: a feature nobody asked for
 
@@ -418,7 +422,7 @@ Rule that held all evening: route by the *kind* of work, not by capability rank;
 5. **Kit ergonomics**: the writing step is named for writing; `continue` resumes; readiness failure messages say what to do; the skill text stops telling the agent to run the full gate the kit will run again.
 6. **Changelog fragments** so parallel PRs stop conflicting on one line (see § 14.4 item 7); the release role already knows how to fold them.
 7. **Hygiene tools**: inbox `since`/`stale`/sweep; fixture-origin filter on events; prune orphaned test servers (eight `xezar serve` and six `cezar` processes from old worktrees were alive on the host for days).
-8. **Leader onboarding**: the MCP reference is good; add a "leader playbook" page with the argument shapes that bit today (`task_create source`, `ready expectedHeadSha`, `read_results_evidence runId`, full ids only) so the first hour is not spent on validation errors.
+8. **Leader onboarding**: the playbook opens with the owner's rule of 2026-09-15 (§ 11): MCP tools only, attached for pushed events, `leader_events` as the fallback, `gh` for GitHub facts. The MCP reference is good; add a "leader playbook" page with the argument shapes that bit today (`task_create source`, `ready expectedHeadSha`, `read_results_evidence runId`, full ids only) so the first hour is not spent on validation errors.
 9. **A product gate.** A `needs-owner` label, set by the kit whenever a diff adds or removes a user-facing surface (a route, a cockpit control, a setting, a CLI flag, a public command) that no linked issue names, cleared only by the owner; the leader's steering may not clear it. Without it the review loop invents product (§ 14.2).
 
 ### 14.7 Numbers (filled at close)
@@ -437,7 +441,7 @@ Window: 12:16 2026-09-13 (cockpit up) to the last merge (see § 5 for the close)
 | Paid cost (only the claude runner reports cost) | 284.03 USD: opus 107.59 · fable 102.87 · sonnet 62.35 (44.46 of it on one bug fix, #356) · haiku 8.84 (19 runs) · unset model 2.39. Codex reports no cost; pi ran on the local model for free |
 | Tokens (all runners) | 477.9 M |
 | Kit `gates` step | 22 sealed runs, 117 min in the step, 5.3 min average – the agent-side gate runs before the step are not in the step record, so the true gate time is 2–4× this (§ 13) |
-| Leader fallbacks off the MCP channel | 28 distinct kinds (§ 11); roughly 60 `gh`, `ps`, `jq` and disk reads over the day and the night |
+| Leader fallbacks off the MCP channel | 28 distinct kinds at the close (§ 11; rows 29 and 30 added 2026-09-15); roughly 60 `gh`, `ps`, `jq` and disk reads over the day and the night |
 | Cockpit deaths | 2 (22:00 and one earlier restart), 6 runs falsely `done` per death |
 | Wall clock | 12:16 2026-09-13 → 05:10 2026-09-14, 17 h; the leader session ran unattended from 22:20 |
 

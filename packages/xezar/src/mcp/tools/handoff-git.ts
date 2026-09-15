@@ -634,7 +634,7 @@ export const handoffGitTool = defineTool({
     const service = (ctx as HandoffContext).service;
     if (!service) {
       return errorResult(
-        'handoff_git is not connected in this xezar yet: the running service did not hand MCP its git operations. Use the cockpit.',
+        'handoff_git is not connected in this xezar yet: the running service did not hand MCP its git operations; nothing was changed. Report this blocker to the person; a leader does not switch to the cockpit.',
       );
     }
     const problem = argumentProblem(args);

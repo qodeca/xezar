@@ -28,6 +28,7 @@ import { McpConnectionSection } from './mcp-connection-section'
 
 const FULL: HealthResponse = {
   version: '0.14.0',
+  channel: 'release',
   projects: [
     { id: 'xezar', name: 'xezar' },
     { id: 'other', name: 'secret-other-project' },

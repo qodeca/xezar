@@ -12,7 +12,7 @@ everything else. Use the table to find the part you need.
 | [design-system/](design-system/README.md) | The cockpit's UX/UI design system: tokens, components, patterns, writing, HTML specimens and the shared mockup stylesheet. Every new design and UI change follows it. | Designers, contributors and coding agents |
 | [testing/](testing/) | The browser suite ([agent-browser.md](testing/agent-browser.md)), where local data lives ([local-data.md](testing/local-data.md)) and which suite covers which behaviour ([coverage-gaps.md](testing/coverage-gaps.md)). | Contributors |
 | [lessons/](lessons/changing-working-mechanisms.md) | Worked examples behind the rules in [AGENTS.md](../AGENTS.md). | Contributors and coding agents |
-| [prompts/](prompts/xezar-ui-leader-prompt.md) | The role prompt for the UI project-leader pilot. | Maintainers running that pilot |
+| [prompts/](prompts/xezar-ui-leader-prompt.md) | The role prompt for the UI project-leader pilot – historical since 2026-09-15: a project leader now works through the MCP tools only (#439). | Maintainers reading that pilot's record |
 | [screenshots/](screenshots/) | Images the root README shows. | — |
 | [features/](features/README.md) | The internal engineering and decision record, one directory per feature. | Engineers and reviewers |
 

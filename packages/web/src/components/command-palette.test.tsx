@@ -102,6 +102,7 @@ function project(overrides: Partial<ProjectListEntry> & { id: string }): Project
 function health(forgeAvailable: boolean, automations = false): HealthResponse {
   return {
     version: '0.0.0-test',
+    channel: 'release',
     projects: [],
     bootProject: 'default',
     repoRoot: '/repo',

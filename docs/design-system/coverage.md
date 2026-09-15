@@ -174,6 +174,7 @@ Each entry maps a utility name to a theme token. Listed in foundations.md §1.7;
 | `packages/web/src/components/add-project-dialog.tsx` | AddProjectDialog | components.md §2 AddProjectDialog and CloneProjectDialog | Documented |
 | `packages/web/src/components/app-shell-container.tsx` | AppShellContainer | components.md §2 AppShellContainer | Documented |
 | `packages/web/src/components/app-shell.tsx` | AppShell | components.md §2 AppShell | Documented with known gap (G-14) |
+| `packages/web/src/components/app-shell.tsx` | BrandTile development-build badge (private, #442) | components.md §2 AppShell, Brand tile and development-build badge; decisions.md D-08 | Documented |
 | `packages/web/src/components/appearance-provider.tsx` | AppearanceProvider | components.md §2 AppearanceProvider | Not applicable – context only, no markup (components.md §2 AppearanceProvider). |
 | `packages/web/src/components/centered-state.tsx` | CenteredState, TwinkleBackdrop | components.md §2 CenteredState and TwinkleBackdrop | Documented with known gap (G-05) |
 | `packages/web/src/components/clone-project-dialog.tsx` | CloneProjectDialog | components.md §2 AddProjectDialog and CloneProjectDialog | Documented |
