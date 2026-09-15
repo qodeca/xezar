@@ -17,6 +17,7 @@ const MUTATION_DIR = join(REPO_ROOT, 'packages/xezar/mutation');
 type Step = { name?: string; id?: string; if?: string; uses?: string; run?: string; with?: Record<string, unknown>; env?: Record<string, string> };
 type Job = {
   needs?: string | string[];
+  name?: string;
   if?: string;
   permissions?: Record<string, string>;
   'timeout-minutes'?: number;
@@ -107,7 +108,7 @@ describe('the nightly MCP mutation workflow (#377)', () => {
     const called = [...text.matchAll(/npm run (?:--silent )?([\w:-]+)/g)].map((m) => m[1]!);
     expect(called.length).toBeGreaterThan(3);
     for (const name of new Set(called)) expect(scripts[name], `package.json names ${name}`).toBeDefined();
-    for (const name of ['test:mutation:mcp:plan', 'test:mutation:mcp:shard', 'test:mutation:mcp:report', 'test:mutation:mcp:issue']) {
+    for (const name of ['test:mutation:mcp:plan', 'test:mutation:mcp:shard', 'test:mutation:mcp:report', 'test:mutation:mcp:issue', 'test:mutation:mcp:survivors']) {
       expect(called, name).toContain(name);
     }
   });
@@ -128,6 +129,56 @@ describe('the nightly MCP mutation workflow (#377)', () => {
     const files = [WORKFLOW, ...readdirSync(MUTATION_DIR).map((name) => join(MUTATION_DIR, name))];
     expect(files.length).toBeGreaterThanOrEqual(5);
     for (const file of files) expect(readFileSync(file, 'utf8'), file).not.toMatch(floor);
+  });
+});
+
+describe('new survivors and the forced red path (#377, PR 2)', () => {
+  const FORCED = "github.event_name == 'workflow_dispatch' && inputs.force_red";
+
+  it('offers a boolean `force_red` dispatch input that is off by default', () => {
+    const dispatch = wf.on.workflow_dispatch as { inputs: Record<string, { type: string; default: unknown }> };
+    expect(Object.keys(dispatch.inputs)).toEqual(['force_red']);
+    expect(dispatch.inputs.force_red).toMatchObject({ type: 'boolean', default: false });
+  });
+
+  it('skips the shards on a forced run only, and makes the aggregate write a red verdict for it', () => {
+    // A scheduled run has no `inputs`, so the condition must also check the event, or a missing input
+    // could skip a real night.
+    expect(wf.jobs.mutants!.if).toBe(`\${{ !(${FORCED}) }}`);
+    const aggregate = step('report', /sum the shards/i);
+    expect(aggregate.env?.FORCE_RED).toBe(`\${{ ${FORCED} }}`);
+    const run = aggregate.run!;
+    // The forced branch comes first and leaves `verdict=red`; only the aggregate's success sets green.
+    expect(run.indexOf('"$FORCE_RED" = "true"')).toBeGreaterThan(run.indexOf('verdict=red'));
+    expect(run.indexOf('"$FORCE_RED" = "true"')).toBeLessThan(run.indexOf('verdict=green'));
+    expect(run.match(/verdict=green/g)).toHaveLength(1);
+  });
+
+  it('groups survivors without ever touching the verdict, and uploads only a complete run’s list', () => {
+    const group = step('report', /group the survivors/i);
+    expect(group.id).toBe('survivors');
+    expect(group.run).toContain('npm run --silent test:mutation:mcp:survivors -- group');
+    expect(group.run).not.toMatch(/verdict/);
+    expect(group.if).toContain(`!(${FORCED})`);
+    // A failed grouping still reaches the issue, as `unknown`, not as zero.
+    expect(group.run).toContain('echo "new=unknown"');
+    const previous = step('report', /previous main run/i) as Step & { 'continue-on-error'?: boolean };
+    expect(previous['continue-on-error']).toBe(true);
+    const upload = step('report', /upload this run/i);
+    expect(upload.if).toBe("${{ steps.survivors.outputs.complete == 'true' }}");
+    expect(upload.with).toMatchObject({ name: 'mutation-survivors', 'include-hidden-files': true, overwrite: true });
+  });
+
+  it('hands the tracking-issue step the run id and the new-survivor count, before the final red step', () => {
+    const issue = step('report', /tracking issue/i);
+    expect(issue.env?.NEW_SURVIVORS).toBe('${{ steps.survivors.outputs.new }}');
+    expect(issue.run).toContain('--run-id "$GITHUB_RUN_ID"');
+    expect(issue.run).toContain('--new-survivors "$NEW_SURVIVORS"');
+    const names = steps('report').map((s) => s.name ?? '');
+    const at = (re: RegExp) => names.findIndex((n) => re.test(n));
+    expect(at(/sum the shards/i)).toBeLessThan(at(/group the survivors/i));
+    expect(at(/group the survivors/i)).toBeLessThan(at(/tracking issue/i));
+    expect(at(/tracking issue/i)).toBe(names.length - 2);
   });
 });
 

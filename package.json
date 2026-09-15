@@ -36,6 +36,7 @@
     "test:mutation:mcp:shard": "stryker run packages/xezar/mutation/stryker.shard.config.mjs",
     "test:mutation:mcp:report": "node packages/xezar/mutation/aggregate.mjs",
     "test:mutation:mcp:issue": "node packages/xezar/mutation/tracking-issue.mjs",
+    "test:mutation:mcp:survivors": "node packages/xezar/mutation/survivors.mjs",
     "test:unit": "npm run test:unit -w @qodeca/xezar",
     "test:package": "npm run test:package -w @qodeca/xezar",
     "test:e2e": "sh scripts/e2e.sh",
