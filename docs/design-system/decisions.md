@@ -23,9 +23,9 @@ The next five records carry the decisions of the "air" design (`designs/design-s
 | --- | --- |
 | **Date** | 2026-09-14 (owner); recorded 2026-09-15 |
 | **Status** | Accepted – tokens and the Settings pilot shipped in step 1 of #424 |
-| **Context** | The cockpit had one spacing lever, `--spacing`, and no names for the distance between blocks: every gap was a bare number chosen per file (`known-gaps.md` G-25). A reviewer had no rule to cite. |
+| **Context** | The cockpit had one spacing lever, `--spacing`, and no names for the distance between blocks: every gap was a bare number chosen per file (`known-gaps.md` G-25, deleted in step 2). A reviewer had no rule to cite. |
 | **Decision** | Six named steps on the density unit: `--spacing-row` 2, `--spacing-stack` 3, `--spacing-list` 4, `--spacing-inset` 5, `--spacing-group` 6 and `--spacing-section` 8 units (8 / 12 / 16 / 20 / 24 / 32 px at Comfortable), declared as `calc(var(--spacing) * n)` in `@theme static`. Between blocks, a rhythm token; inside a control, the numeric scale. Names avoid `inline` / `block` (they would mint `.inset-inline` / `.inset-block`) and `card` (a colour token). Settings stay one flat list: `section` between fields, `stack` inside one (Air D-6). |
-| **Consequences** | `foundations.md` §4.1 documents the scale; `lib/utils.ts` teaches tailwind-merge the six names. A seventh step needs a new record here. Step 2 of #424 moves the rest of the cockpit onto the scale and closes G-25. |
+| **Consequences** | `foundations.md` §4.1 documents the scale; `lib/utils.ts` teaches tailwind-merge the six names. A seventh step needs a new record here. Step 2 of #424 moved the rest of the cockpit onto the scale and deleted G-25. |
 | **Source** | `designs/design-system-air/README.md` § 9.1 and § 13 (Air D-6, Air D-9, the scale); issue #424 step 1. |
 
 ### D-03 Page gutters are `section` on both axes
@@ -33,10 +33,10 @@ The next five records carry the decisions of the "air" design (`designs/design-s
 | | |
 | --- | --- |
 | **Date** | 2026-09-14 (owner); 2026-09-15 (step-0 design review) |
-| **Status** | Accepted, applied in step 2 of #424 |
+| **Status** | Accepted – applied in step 2 of #424 |
 | **Context** | Page bodies use `p-3 … md:p-5` (12 / 20 px), and the page body starts at the gutter. The air design dropped a separate `page` step: a gutter is the same distance as a section break. The step-0 review ruled on the two open exceptions: the task-table wrapper and the page header. |
 | **Decision** | From `md:` up, the page gutter is `section` (32 px) on both axes, and the page body starts `section` under the header. The task-table wrapper keeps `px-section` – no exemption (Air D-11, option A) – and the page header takes `md:px-section`, so the title lines up with the content. On phone the gutter is `p-4`. |
-| **Consequences** | Step 2 changes `patterns.md` §3 and every page body and header. A page that wants a different gutter needs a new record. |
+| **Consequences** | Step 2 changed `patterns.md` §3 and every page body and header. A page that wants a different gutter needs a new record. |
 | **Source** | `designs/design-system-air/README.md` § 9.1, § 11 and § 13; the step-0 `## Design review` on PR #429 (open point 6 → Air D-11, finding NB-1). |
 
 ### D-04 One density lever scales rhythm and control size together

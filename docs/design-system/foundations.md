@@ -188,7 +188,7 @@ Type sizes do not change with density. Any px value you write by hand (`h-[34px]
 outside the density lever; prefer scale units (`h-9`, `px-2`) unless the design fixes a pixel on purpose.
 
 Common rhythm: `gap-1.5`/`gap-2` inside controls, `gap-2.5` in nav rows, `px-2.5` chips, `px-3.5` buttons,
-`p-6` dialogs, `px-4` page gutters on phone and `px-6` on desktop, `py-12` centered states.
+`p-6` dialogs, `p-4` page gutters on phone and `md:p-section` on desktop, `py-12` centered states. Between blocks, §4.1.
 
 ### 4.1 Rhythm
 
@@ -219,10 +219,26 @@ The same steps at each density:
 
 Compact and ultra give half-pixel values for some steps; that is already true of the numeric scale today.
 
-Adopted so far: the Settings panes – every section list is `gap-section` and every field is `gap-stack`
-(`routes/settings/settings-field.tsx`, its three private copies (G-13) and the notifications field). The rest of the cockpit still
-chooses its gaps per file (G-25). A seventh step is a design decision (`decisions.md` D-02), not a new token
-in one file.
+Where the cockpit uses them (step 2 of #424):
+
+| Surface | Spelling |
+| --- | --- |
+| Page header | `h-14 … md:px-section` |
+| Page body | `p-4 … md:p-section md:pb-section` |
+| Settings section container | `p-list … md:p-group`; section list `gap-section`; field `gap-stack` |
+| Settings sidebar | `p-stack` |
+| Card and card list | `p-inset` inside; `gap-list` between |
+| Thread row | `pb-row` inside a turn; `pb-group` on the last row before the other speaker |
+| Thread column and composer dock | `md:px-section md:py-section`; dock `md:pt-stack md:pb-list` |
+| Run header | `md:px-section md:pt-group`; tab row `mt-stack` |
+| Task table cell | `px-3` (rows stay `h-11`); footer strip `mt-list` |
+| Banner row | `min-h-10 px-section` |
+
+The Settings panes that are not a list of fields say so in their own spelling: Agent config is one editor
+pane (`gap-list` between its tab bar and its files), the Agent accounts refusal is one block (`gap-4`), and
+Bookmarklets has no list container. Hand-typed pixels still in the tree (the nav-row, tool-row and
+table-header heights, the quick-list rows, the brand gap and the group indent) move onto the scale in step 3b.
+A seventh step is a design decision (`decisions.md` D-02), not a new token in one file.
 
 ## 5. Radius
 

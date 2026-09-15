@@ -8,7 +8,7 @@ to-do list: an entry becomes a `design-debt` issue on the triggers [CONTRIBUTING
 names, and a fix arrives as its own change with the entry deleted.
 
 Ids are never reused: a deleted entry retires its number, so a new entry takes the next number after the
-highest ever used. G-01..G-23 and G-25 are live, G-24 is retired, and the next free id is G-26.
+highest ever used. G-01..G-23 are live, G-24 and G-25 are retired, and the next free id is G-26.
 
 Counts are non-test files or occurrences in `packages/web/src`.
 
@@ -166,12 +166,6 @@ Counts are non-test files or occurrences in `packages/web/src`.
 - **Rule**: keep the tokens; do not add more small text in `--soft-foreground` on light, and keep the badge count announced in words.
 - **Fix**: darken light `--soft-foreground` to about `#767676` (4.5:1) and revisit the danger pair; then re-check every specimen swatch.
 
-### G-25 No rhythm scale; between-block spacing is chosen per file
-
-- **Differs**: the six rhythm tokens exist (`styles/index.css` `@theme static`, foundations.md §4.1), but only the Settings panes use them (`gap-section` between fields, `gap-stack` inside one). Everywhere else the gap between blocks is a bare number picked per file: thread rows `pb-2.5` (`routes/task-thread/thread-scroller.tsx`), cards `p-4` with `gap-2.5` between them (`routes/inbox.tsx`), page bodies `p-3 … md:p-5` (`routes/settings/settings-shell.tsx`, `routes/global-tasks.tsx`).
-- **Rule**: the rhythm tokens – a gap between blocks is `row`, `stack`, `list`, `inset`, `group` or `section`; the settings fields already use them.
-- **Fix**: step 2 of #424 moves the cockpit onto the tokens (design `designs/design-system-air/` § 9.2) and deletes this entry, with a `design-debt` issue linked for the sibling mockups.
-
 ## Comment vs code
 
 | Comment says | Code does | Where |
@@ -198,6 +192,10 @@ for new work.
 | `.nav-badge.danger` | red badge | no red nav badge exists; the cockpit's badges are violet | design decision, pending review |
 | `.qc-empty` | dashed box, 40px icon, 15px title | `CenteredState`: 72px tile, `text-2xl` | `components/centered-state.tsx` |
 | `.qc-skeleton` | sheen sweep | `animate-pulse rounded-md bg-accent` | `components/ui/skeleton.tsx` |
+| `.task-body` | `padding 18px 24px 24px`, fixed px | thread column `md:px-section md:py-section` (32 px on the density unit) | `routes/task-thread/task-thread.tsx:307` |
+| `.task-head h1`, `.task-head .row` | `margin 8px 0 10px`, fixed px | tab row `mt-stack` (12 px) under the title | `routes/task-thread/run-header.tsx:222` |
+| `.quick-head` | `padding 12px 22px 4px`, fixed px | bucket heading `px-3 pt-stack pb-1` | `components/task-quick-list.tsx:144` |
+| `.tasks-table td` | `padding 10px 12px`, height from content | `h-11 px-3` | `routes/tasks-overview.tsx:514` |
 | `.qc-toast` | card surface with a success icon | `bg-contrast text-contrast-foreground`, no icon | `components/ui/toaster.tsx` |
 | `--diff-add` / `--diff-del` (removed) | mockup-only aliases | `text-success` / `text-danger` | `components/diff-stat.tsx` |
 | `.qc-alert` | card with a danger-tinted border and icon | `banner-row` with the `alert` tone | `components/provider-banner.tsx` |

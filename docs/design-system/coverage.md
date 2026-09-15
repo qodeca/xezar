@@ -79,12 +79,12 @@ Source: `packages/web/src/styles/index.css`. Every token below has both theme va
 | Token | Documented in | Status |
 | --- | --- | --- |
 | `--spacing` | foundations.md §4 (default value) | Documented |
-| `--spacing-row` | foundations.md §4.1 | Documented with known gap (G-25) |
-| `--spacing-stack` | foundations.md §4.1 | Documented with known gap (G-25) |
-| `--spacing-list` | foundations.md §4.1 | Documented with known gap (G-25) |
-| `--spacing-inset` | foundations.md §4.1 | Documented with known gap (G-25) |
-| `--spacing-group` | foundations.md §4.1 | Documented with known gap (G-25) |
-| `--spacing-section` | foundations.md §4.1 | Documented with known gap (G-25) |
+| `--spacing-row` | foundations.md §4.1 | Documented |
+| `--spacing-stack` | foundations.md §4.1 | Documented |
+| `--spacing-list` | foundations.md §4.1 | Documented |
+| `--spacing-inset` | foundations.md §4.1 | Documented |
+| `--spacing-group` | foundations.md §4.1 | Documented |
+| `--spacing-section` | foundations.md §4.1 | Documented |
 | `--radius-sm` | foundations.md §5 | Documented |
 | `--radius` | foundations.md §5 | Documented |
 | `--radius-lg` | foundations.md §5 | Documented |
@@ -240,7 +240,7 @@ Each entry maps a utility name to a theme token. Listed in foundations.md §1.7;
 | 5. Status | patterns.md §5 | `specimens/patterns.html` | Documented with known gap (G-04) |
 | 6. Empty, loading and error states | patterns.md §6 | `specimens/patterns.html` | Documented with known gap (G-05, G-08) |
 | 7. Dialogs, sheets, command palette, toasts and notifications | patterns.md §7 | `specimens/patterns.html` | Documented with known gap (G-10, G-16) |
-| 8. Settings and forms | patterns.md §8 | `specimens/patterns.html` | Documented with known gap (G-11, G-12, G-13, G-22, G-25) |
+| 8. Settings and forms | patterns.md §8 | `specimens/patterns.html` | Documented with known gap (G-11, G-12, G-13, G-22) |
 | 9. The mobile drawer | patterns.md §9 | `specimens/patterns.html` | Documented |
 | 10. Live updates | patterns.md §10 | `specimens/patterns.html` | Documented |
 
