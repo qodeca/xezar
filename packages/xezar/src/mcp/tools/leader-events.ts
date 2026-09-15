@@ -23,9 +23,11 @@ import { defineTool, errorResult, textResult, type McpToolContext, type McpToolR
  * At-least-once, no repeated effect (N-10): a read before the ack returns the same rows again, each
  * with its stable `eventId`, which is how the leader drops a duplicate.
  *
- * What this is NOT: push. One read when the leader connects, and a next page only because an answer
- * said `hasMore` — no timer, no status poll, no subscription (N-06). Live delivery to a connected
- * client (F-20, `LeaderFeed`) and a model reaction to an event (A-19) are Phase 6.
+ * What this tool itself is NOT: push. One read when the leader connects, and a next page only
+ * because an answer said `hasMore` — no timer, no status poll, no subscription (N-06). Push lives in
+ * `LeaderDelivery` (#374/#404) and is the normal path for an ATTACHED leader; this tool is the
+ * fallback for a leader that is not attached, and the catch-up after a gap (#439). Attaching itself
+ * is still a cockpit control or `POST /api/v1/p/<projectId>/mcp/leader`, not an action here.
  *
  * F-15: rows are scrubbed with this host's secret list on the way out (the journal already scrubs a
  * summary; a subject id is prose a writer chose too). Cursors are never touched: they are the
@@ -85,15 +87,16 @@ export const leaderEventsInputSchema = z
 export type LeaderEventsInput = z.output<typeof leaderEventsInputSchema>;
 
 const NOT_CONNECTED =
-  "leader_events is not connected to this project's event journal; nothing was read or acknowledged.";
+  "leader_events is not connected to this project's event journal; nothing was read or acknowledged. Report this to the person; do not fall back to the cockpit.";
 
 export const leaderEventsTool = defineTool({
   name: 'leader_events',
   title: 'Read and acknowledge project events',
   description: [
     "Read this project's significant events (task outcomes, questions, quality gates, human changes, executor availability) since you last acknowledged them, and acknowledge them.",
+    'An attached leader is sent these events instead: xezar pushes them (a `<channel source="xezar">` message to Claude Code, a started turn in Codex, OpenCode or pi). This tool is the fallback for a leader that is not attached, and the way to catch up after a gap. Attach with Settings → MCP connection → Attach leader, or `POST /api/v1/p/<projectId>/mcp/leader {"action":"attach","client":"claude-code"}` against the cockpit (`http://127.0.0.1:4321` by default), where `<projectId>` is `project.id` from `discover_project`; the client is your own (`claude-code`, `codex` or `pi`; OpenCode also needs `baseUrl` and `sessionId`). No MCP action attaches a leader yet.',
     'Call read when you connect or reconnect. It returns the outstanding events in order, each with a stable eventId and a standing (current, superseded or unjudged), then the current state of the tasks they name — the state is the authority, an event is history.',
-    'When hasMore is true, read again at once; otherwise do not poll — call read again on your next connection.',
+    'When hasMore is true, read again at once; otherwise do not poll — call read again on your next connection, or when a pushed event names a gap.',
     'After you have taken a page into account, ack its nextCursor. Until you do, read returns the same events again, so drop any eventId you already handled. Acknowledging an older cursor changes nothing.',
     'status "gap" means events after your position are no longer retained: nothing is replayed, the current state is included, and you continue by acking resumeCursor.',
   ].join('\n'),
