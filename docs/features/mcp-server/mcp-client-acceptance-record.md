@@ -31,6 +31,15 @@ original run's base `df80a7e` (08:07), and the suite had not been run between. E
 for every client. The 2026-09-11 observations are kept below, marked as history, because a record that quietly
 overwrites what it once measured cannot be checked.
 
+**Real-model update, 2026-09-15 ([epic #67](https://github.com/qodeca/xezar/issues/67)).** A-19's real-model
+clause, and A-23's reaction half with it, now **PASSED** for **pi** (2026-09-13, `7aa4a02`, #373),
+**Claude Code** and **Codex** (both 2026-09-15, `a6d53b4`). **OpenCode is out of scope for the real-model clause
+by the project owner's decision of 2026-09-13** (5 of 5 stalled runs; reaction reporting still open as
+[#340](https://github.com/qodeca/xezar/issues/340)) and was not run. Push delivery and attach now exist for
+Claude Code (Channels, #404) and Codex (shared app-server, #403). Per-client revision, stamp, model and judge are
+in [the Definition of Done record § Real-model reaction](mcp-definition-of-done-record.md#real-model-reaction-a-19--a-23-per-client).
+The table below is the 2026-09-12 run; its A-19 and A-23 cells now name both readings.
+
 ## Answer first
 
 | Case | Claude Code | Codex | OpenCode | pi | Product-level checks | What is missing |
@@ -38,9 +47,9 @@ overwrites what it once measured cannot be checked.
 | **A-01** setup | client leg **PASSED** | client leg **NOT RE-RUN** — its harness leg failed for a fixture reason, and Codex itself reaches A (see A-01) | client leg **PASSED** | client leg **PASSED**; the `approveTools` edge path **FAILED** | connection file: **PASSED** (#262); tools reach the service: **PASSED** | A gated pi tool blocks instead of ending; and a harness defect in the Codex leg |
 | **A-17** competing owner | **PASSED** (FAILED before #302) | **PASSED** (was FAILED) | **PASSED** (was FAILED) | **PASSED** | second bridge refused: **PASSED**; same-owner concurrency and project B: pass | Nothing — **A-17 is PASSED** since #302 |
 | **A-18** liveness, fencing, restart | — | — | — | **PASSED** (pi owning A, and a restart on pi's own side) | **PASSED** (was FAILED): idle owner, crash hand-over, stale fencing and restart fencing all hold | Nothing measured here; the adapter's 10-minute idle close was not re-run (WP1 measured it) |
-| **A-19** delivery and model reaction | **BLOCKED** | **BLOCKED** | **BLOCKED** | **BLOCKED** on the real-model clause alone — delivery, the reaction and the absence of a polling turn are all **executed** | acceptance vs result and journal emission: **PASSED** | For pi: only a real model's decision. For the three: no attach path exists for them at all. |
-| **A-20** live sync | — | — | — | the no-recursive-loop clause: **PASSED** | cockpit half (browser): **PASSED**; leader half: **BLOCKED** on that one clause | For the three, the clause still needs a delivery path; for pi it is observed |
-| **A-23** exclusive owner | **BLOCKED** (was FAILED) | **BLOCKED** on reaction; its setup row is A-01's, so NOT RE-RUN | **BLOCKED** (was FAILED) | **BLOCKED** | — | Only reaction (A-19). Exclusivity now holds for all four; the built-in-leader half is **NOT RUN** (out of scope) |
+| **A-19** delivery and model reaction | **PASSED** 2026-09-15 on `a6d53b4` (real model, Channels push); BLOCKED on `1e1113c` | **PASSED** 2026-09-15 on `a6d53b4` (real model, shared app-server); BLOCKED on `1e1113c` | **OUT OF SCOPE** for the real-model clause (owner, 2026-09-13, #340); BLOCKED on `1e1113c` | **PASSED** 2026-09-13 on `7aa4a02` (real model); BLOCKED on `1e1113c` on the real-model clause alone | acceptance vs result and journal emission: **PASSED** | Nothing for pi, Claude Code and Codex; not all on one revision. OpenCode not run by decision. |
+| **A-20** live sync | — | — | — | the no-recursive-loop clause: **PASSED** | cockpit half (browser): **PASSED**; leader half: **BLOCKED** on that one clause | On `1e1113c` the three had no delivery path; Claude Code and Codex have one since 2026-09-13 (#403, #404) but this clause was not re-measured for them; for pi it is observed |
+| **A-23** exclusive owner | reaction half **PASSED** with A-19 (2026-09-15); BLOCKED on `1e1113c` (was FAILED) | reaction half **PASSED** with A-19 (2026-09-15); on `1e1113c` BLOCKED and its setup row NOT RE-RUN (A-01 passed on `ed579e63`) | reaction half **OUT OF SCOPE** (owner, 2026-09-13, #340); BLOCKED on `1e1113c` (was FAILED) | reaction half **PASSED** with A-19 (2026-09-13); BLOCKED on `1e1113c` | — | Exclusivity holds for all four; the built-in-leader half is **NOT RUN** (out of scope) |
 
 **A-01, A-17 and A-18 pass as wholes; A-19, A-20 and A-23 are BLOCKED, and for pi only on the clause no § 9
 fixture may observe.** What changed since 2026-09-11 is ownership (#302) and a delivery path for one client
@@ -272,7 +281,13 @@ defaults the bridge was gone between 601 s and 661 s after the last call and ano
 restart fencing, for the same reason A-17 failed — ownership was not wired. Task survival and restart survival
 passed then too.
 
-### A-19 — acceptance, delivery and a real model reaction: BLOCKED per client
+### A-19 — acceptance, delivery and a real model reaction: PASSED for pi, Claude Code and Codex; OpenCode out of scope
+
+**2026-09-15.** The real-model clause PASSED for pi (`7aa4a02`, 2026-09-13), Claude Code and Codex (`a6d53b4`,
+2026-09-15): in each, a real model called `leader_events ack` with the exact nonce and the exact cursor within
+120 s of delivery — see [§ Real-model reaction](mcp-definition-of-done-record.md#real-model-reaction-a-19--a-23-per-client).
+OpenCode is out of scope for that clause by the owner's decision of 2026-09-13 (#340). The rest of this section
+is the 2026-09-12 run on `1e1113c`, kept as measured.
 
 Product half, PASSED (real `xezar serve`):
 
@@ -307,17 +322,15 @@ Every request was counted at that endpoint's own log, never read from pi. This i
 #358's count of 1: a different fixture, a different revision, and pi reached through its own MCP adapter rather
 than with `--no-extensions`.
 
-Claude Code, Codex and OpenCode, **BLOCKED**:
+Claude Code, Codex and OpenCode were **BLOCKED** on `1e1113c`:
 
-- **No attach path exists for them.** `LeaderDelivery.#act` builds a target for `opencode` and `pi` only, and the
-  contract's `client` enum (`packages/contract/src/mcp-leader.ts`) is `['opencode', 'pi']`. A Claude Code or
-  Codex session in a terminal has no address xezar could attach to; an OpenCode one has (`opencode serve`) but
-  was not run here. Read from source on this revision, not re-measured. Note that the original run's stated
-  reason — "nothing in the running service constructs an `EventController` or any client adapter" — is no longer
-  true: #311 constructs both.
-- **A real model reaction** is not observable in a § 9 fixture, for the same reason it is not for pi.
-- **Missing:** an adapter and an attach path for those clients, and a real model reaction (F-20). Leader
-  decision: outside release 0.14.0. Not passed on documentation.
+- **On that revision the delivery side covered only OpenCode and pi.** The contract's leader `client` enum was
+  `['opencode', 'pi']`. That is superseded: Claude Code attaches over Channels (#404) and Codex through its shared
+  app-server (#403), both merged 2026-09-13, and both delivered a real event to a real model on 2026-09-15.
+  An OpenCode session had an address (`opencode serve`) but was not run here, and is now out of scope for the
+  real-model clause by the owner's decision of 2026-09-13 (#340).
+- **A real model reaction** was not observable in a § 9 fixture then; the owner authorized the clients' own
+  logins for the 2026-09-15 legs.
 
 ### A-20 — live sync: cockpit half PASSED, leader half BLOCKED on one clause
 
@@ -339,7 +352,7 @@ Leader half (real `xezar serve`):
 | Reconnect reconciles (a fresh session reads the human's edit and the leader's title) | met |
 | Reconnect re-delivers what was not acknowledged, and nothing after `ack` | met |
 | The leader's own significant effect (it cancelled a task) is origin `leader` with the operation that caused it | met |
-| **No recursive leader loop from echoes, logs, tokens or visual changes** | **BLOCKED** for a leader with no attach path; **PASSED for pi** — see below |
+| **No recursive leader loop from echoes, logs, tokens or visual changes** | **BLOCKED** on `1e1113c` for the clients then without a delivery path (Claude Code and Codex gained one on 2026-09-13; not re-measured for this clause); **PASSED for pi** — see below |
 
 **The loop clause, for pi: PASSED.** It was BLOCKED in the original run because nothing delivered rows to a
 leader, so neither a loop nor its absence could be seen. For pi something does deliver, so the clause itself is
@@ -358,12 +371,13 @@ per client. One of those rows needed a correction to the harness rather than to 
 | Check | Claude Code | Codex | OpenCode | pi |
 | --- | --- | --- | --- | --- |
 | Local setup (A-01 client leg) | met | not re-run (A-01's harness defect) | met | met |
-| Reaction (A-19) | BLOCKED | BLOCKED | BLOCKED | BLOCKED on the real-model clause alone |
+| Reaction (A-19) | **PASSED** 2026-09-15 (`a6d53b4`); BLOCKED on `1e1113c` | **PASSED** 2026-09-15 (`a6d53b4`); BLOCKED on `1e1113c` | **OUT OF SCOPE** (owner, 2026-09-13, #340); BLOCKED on `1e1113c` | **PASSED** 2026-09-13 (`7aa4a02`); BLOCKED on `1e1113c` on the real-model clause alone |
 | Exclusive owner against another owner of A | **met** (A-17; not met before #302) | **met** | **met** | **met** |
 | No covert second leader | **met** | **met** | **met** | **met** |
 
-So A-23 is now BLOCKED rather than FAILED, for every client, and on one clause: a real model's decision. Its
-exclusivity half, which was the whole of its failure in the original run, holds.
+So on `1e1113c` A-23 was BLOCKED rather than FAILED, for every client, and on one clause: a real model's
+decision. Its exclusivity half, which was the whole of its failure in the original run, holds. Since then the
+reaction half PASSED for pi, Claude Code and Codex; OpenCode's is out of scope by the owner's decision (#340).
 
 The built-in-leader half is **NOT RUN**: the built-in leader is specified separately and is out of scope for
 #118. A second native client stood in as "the other owner", which is enough to show the rule IS enforced.

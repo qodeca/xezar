@@ -3,6 +3,7 @@ import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
+import WebSocket from 'ws';
 import { createConnection, type Socket } from 'node:net';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
@@ -371,6 +372,380 @@ test('[pi] a real model acknowledges the delivered nonce and cursor', { timeout:
       save('results.json', record);
       throw error;
     } finally { rmSync(scratch, { recursive: true, force: true }); }
+    t.diagnostic(`evidence: ${out}; verdict: ${record.verdict}`);
+  }
+});
+
+// ---- #67: the same real-model clause for Claude Code and Codex ------------------------------------
+/**
+ * The pi leg above hands the page to pi's extension socket itself. Claude Code and Codex have no such
+ * socket: their delivery path is the product's own (`xezar serve` → LeaderDelivery → the Claude
+ * Channels push or the Codex app-server turn), exactly as the scripted legs in mcp-real-clients.test.ts
+ * drive it. So these legs reuse that world (real serve, real bridge, real client on a PTY) and replace
+ * only the scripted endpoint with the client's own configured real model and account — the owner
+ * authorized that paid usage for #67 on 2026-09-15. Opt in per client with
+ * XEZ_REAL_MODEL_CLIENTS=claude-code,codex; without it both legs skip as NOT-RUN.
+ *
+ * The judge keeps the pi leg's rule — an exact nonce AND an exact cursor in a new ack within 120 s — with
+ * the nonce moved to where a serve-delivered row can carry one: the run id the service mints for the
+ * event's task (row summaries are fixed text). The pushed message carries no cursor, so the model must
+ * read the page itself; the cursor it acks must be the nextCursor of a read, made after delivery, whose
+ * page holds the event. Both halves are observed in the transport (a pass-through tee between the client
+ * and the real bridge, test/helpers/mcp-stdio-tee.mjs) and confirmed in the service's own
+ * leader-cursors.json. Model prose, a request, or an ack of anything else cannot pass.
+ */
+const SERVE_STANDING = 'You are a xezar project leader in a test. When a xezar event notification arrives: first call the xezar leader_events tool with action read; then call leader_events with action ack, cursor equal to the nextCursor that read returned, and operationId equal to react-<run id>, where <run id> is the full id of the run named in the task.done event. Do not use any other tool, do not poll, and do not acknowledge before an event arrives. After the ack, stop.';
+const TEE = join(ROOT, 'packages/xezar/test/helpers/mcp-stdio-tee.mjs');
+const DIST = join(ROOT, 'packages/xezar/dist/index.js');
+const CLAUDE_PTY = join(ROOT, 'packages/xezar/test/helpers/claude-channel-pty.py');
+
+type TeeFrame = { at: number; dir: 'client' | 'bridge'; line: string };
+type ToolCall = { at: number; name?: string; args: Record<string, any>; answeredAt?: number; structured?: any; isError?: boolean };
+
+function toolCalls(frames: readonly TeeFrame[]): ToolCall[] {
+  const byId = new Map<string, ToolCall>();
+  const calls: ToolCall[] = [];
+  for (const frame of frames) {
+    let message: any;
+    try { message = JSON.parse(frame.line); } catch { continue; }
+    if (frame.dir === 'client' && message.method === 'tools/call') {
+      const call: ToolCall = { at: frame.at, name: message.params?.name, args: message.params?.arguments ?? {} };
+      calls.push(call);
+      byId.set(JSON.stringify(message.id), call);
+    } else if (frame.dir === 'bridge' && message.id !== undefined && byId.has(JSON.stringify(message.id))) {
+      const call = byId.get(JSON.stringify(message.id))!;
+      call.answeredAt = frame.at;
+      call.structured = message.result?.structuredContent;
+      call.isError = message.error !== undefined || message.result?.isError === true;
+    }
+  }
+  return calls;
+}
+
+function serveJudge(calls: readonly ToolCall[], runId: string, rowSeq: number, deliveredAt: number): { verdict: 'waiting' | 'PASSED' | 'FAILED'; reason: string } {
+  const operationId = `react-${runId}`;
+  const events = calls.filter((call) => call.name === 'leader_events' && !call.isError);
+  const acks = events.filter((call) => call.args.action === 'ack' && call.args.operationId === operationId);
+  if (acks.some((ack) => ack.at < deliveredAt)) return { verdict: 'FAILED', reason: 'the nonce ack predates delivery' };
+  const cursors = new Set(events
+    .filter((call) => call.args.action === 'read' && call.at >= deliveredAt && Array.isArray(call.structured?.events)
+      && call.structured.events.some((row: any) => row?.subject?.id === runId && row?.journalSeq === rowSeq))
+    .map((call) => call.structured.nextCursor));
+  if (acks.some((ack) => ack.answeredAt !== undefined && !cursors.has(ack.args.cursor))) return { verdict: 'FAILED', reason: 'the nonce ack names a cursor no post-delivery read of the event returned' };
+  const good = acks.find((ack) => cursors.has(ack.args.cursor) && ack.at - deliveredAt <= WINDOW_MS && (ack.structured?.ackedSeq ?? -1) >= rowSeq);
+  return good ? { verdict: 'PASSED', reason: 'exact nonce and cursor acked through the event' } : { verdict: 'waiting', reason: 'no qualifying ack yet' };
+}
+
+test('serve judge rejects request-only, wrong nonce, wrong cursor, pre-delivery, unread-cursor and late acknowledgements', () => {
+  const runId = '0f3c9a1e-5b7d-4c2a-9e8f-1a2b3c4d5e6f';
+  const read = (at: number, cursor = 'c1', subject = runId): ToolCall => ({ at, name: 'leader_events', args: { action: 'read' }, answeredAt: at + 1, structured: { nextCursor: cursor, events: [{ subject: { id: subject }, journalSeq: 7 }] } });
+  const ack = (at: number, extra: Record<string, any> = {}, ackedSeq = 7): ToolCall => ({ at, name: 'leader_events', args: { action: 'ack', cursor: 'c1', operationId: `react-${runId}`, ...extra }, answeredAt: at + 1, structured: { status: 'acked', ackedSeq } });
+  assert.equal(serveJudge([read(110), ack(120)], runId, 7, 100).verdict, 'PASSED');
+  assert.equal(serveJudge([], runId, 7, 100).verdict, 'waiting');
+  assert.equal(serveJudge([read(110)], runId, 7, 100).verdict, 'waiting');
+  assert.equal(serveJudge([read(110), ack(120, { operationId: 'react-someone-else' })], runId, 7, 100).verdict, 'waiting');
+  assert.equal(serveJudge([read(110), ack(120, { cursor: 'forged' })], runId, 7, 100).verdict, 'FAILED');
+  assert.equal(serveJudge([read(110, 'c1', 'other-run'), ack(120)], runId, 7, 100).verdict, 'FAILED');
+  assert.equal(serveJudge([read(90), ack(95)], runId, 7, 100).verdict, 'FAILED');
+  assert.equal(serveJudge([read(110), ack(100 + WINDOW_MS + 1)], runId, 7, 100).verdict, 'waiting');
+  assert.equal(serveJudge([read(110), ack(120, {}, 6)], runId, 7, 100).verdict, 'waiting');
+  assert.equal(serveJudge([read(110), { ...ack(120), isError: true }], runId, 7, 100).verdict, 'waiting');
+});
+
+test('the tee reconstructs tool calls with their answers from a frame log', () => {
+  const frames: TeeFrame[] = [
+    { at: 1, dir: 'client', line: JSON.stringify({ jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'leader_events', arguments: { action: 'read' } } }) },
+    { at: 2, dir: 'bridge', line: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/claude/channel', params: { content: 'x' } }) },
+    { at: 3, dir: 'bridge', line: JSON.stringify({ jsonrpc: '2.0', id: 4, result: { structuredContent: { nextCursor: 'c' } } }) },
+    { at: 4, dir: 'client', line: 'not json' },
+  ];
+  assert.deepEqual(toolCalls(frames), [{ at: 1, name: 'leader_events', args: { action: 'read' }, answeredAt: 3, structured: { nextCursor: 'c' }, isError: false }]);
+});
+
+const AGENT_VARS = /^(ANTHROPIC_|OPENAI_|CODEX_|CLAUDE|OPENCODE_|PI_|XDG_|XEZ_|GITHUB_TOKEN$|GH_TOKEN$|VITEST|NODE_OPTIONS$)/;
+function clientEnv(extra: Record<string, string>): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const [name, value] of Object.entries(process.env)) if (!AGENT_VARS.test(name)) env[name] = value;
+  return { ...env, TERM: 'xterm-256color', TMPDIR: '/tmp', ...extra };
+}
+
+async function waitFor<T>(what: string, probe: () => T | undefined | Promise<T | undefined>, ms: number): Promise<T> {
+  const end = Date.now() + ms;
+  for (;;) {
+    const value = await probe();
+    if (value !== undefined) return value;
+    if (Date.now() > end) throw new Error(`timed out waiting for ${what}`);
+    await delay(250);
+  }
+}
+
+function fixtureRepo(base: string): string {
+  const root = join(base, 'project');
+  mkdirSync(root, { recursive: true });
+  writeFileSync(join(root, 'README.md'), '# fixture\n');
+  for (const args of [['init', '-q', '-b', 'main'], ['add', 'README.md'], ['-c', 'user.name=fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-q', '-m', 'fixture']]) execFileSync('git', args, { cwd: root });
+  return realpathSync(root);
+}
+
+type Serve = { child: ChildProcess; base: string; projectId: string; log: string };
+async function startServe(root: string, xezHome: string, codexHome: string, out: string, scratch: string): Promise<Serve> {
+  const log = join(out, 'serve.log');
+  const env = clientEnv({ XEZ_DRY_RUN: '1', XEZ_HOME: xezHome, XEZ_SKILLS_AUTO_UPDATE: '0', CLAUDE_CONFIG_DIR: join(scratch, 'serve-claude'), CODEX_HOME: codexHome, OPENCODE_CONFIG_DIR: join(scratch, 'serve-opencode') });
+  const child = spawn(process.execPath, [DIST, '--repo', root, '--port', '0', '--no-open'], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] });
+  for (const stream of [child.stdout!, child.stderr!]) stream.on('data', (chunk) => appendFileSync(log, chunk));
+  const base = await waitFor('serve port', () => {
+    const match = existsSync(log) ? /cockpit → http:\/\/localhost:(\d+)/.exec(readFileSync(log, 'utf8')) : null;
+    return match ? `http://127.0.0.1:${match[1]}` : undefined;
+  }, 60_000);
+  await waitFor('serve health', async () => { try { return (await fetch(`${base}/api/v1/health`)).ok || undefined; } catch { return undefined; } }, 60_000);
+  const projectId = ((await (await fetch(`${base}/api/v1/projects`)).json()) as { bootProject: string }).bootProject;
+  await waitFor('serve MCP socket', () => (existsSync(join(xezHome, 'ipc', `${projectId}.sock`)) ? true : undefined), 15_000);
+  return { child, base, projectId, log };
+}
+
+async function cockpitCall(serve: Serve, path: string, method = 'GET', body?: unknown): Promise<{ status: number; json: any }> {
+  const res = await fetch(`${serve.base}${path}`, { method, headers: { origin: serve.base, ...(body === undefined ? {} : { 'content-type': 'application/json' }) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+  const text = await res.text();
+  try { return { status: res.status, json: JSON.parse(text) }; } catch { return { status: res.status, json: text }; }
+}
+
+const journalRows = (root: string): any[] => {
+  const file = join(root, '.local/xezar/mcp/event-journal.ndjson');
+  return existsSync(file) ? readFileSync(file, 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line)) : [];
+};
+const teeFrames = (file: string): TeeFrame[] => existsSync(file) ? readFileSync(file, 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line)) : [];
+const plainScreen = (text: string): string => text.replace(/\x1b\][^\x07\x1b]*(\x07|\x1b\\)/g, '').replace(/\x1b\[[0-9;?<>=]*[ -\/]*[@-~]/g, '');
+// Account e-mail addresses in a client's banner are personal data, not evidence.
+const scrub = (text: string): string => text.replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[EMAIL]');
+
+function optedIn(client: string): boolean {
+  return (process.env.XEZ_REAL_MODEL_CLIENTS ?? '').split(',').map((name) => name.trim()).includes(client);
+}
+
+/** The shared middle of both legs: cause one task.done row through the human's door, then judge. */
+async function reactToOneEvent(opts: { serve: Serve; root: string; tee: string; record: Record<string, unknown>; deliveredWhen: (runId: string, frames: TeeFrame[]) => number | undefined }): Promise<void> {
+  const { serve, root, tee, record } = opts;
+  const created = await cockpitCall(serve, '/api/v1/runs', 'POST', { workflow: 'quick-task', task: 'mock:done a task whose completion is the event the leader must react to', worktree: false, autonomous: true });
+  const runId: string | undefined = created.json?.id;
+  const createdAt = Date.now();
+  assert.ok(runId, `the run was not created: ${created.status}`);
+  const row = await waitFor('the task.done journal row', () => journalRows(root).find((entry) => entry.subject?.id === runId && entry.kind === 'task.done'), 90_000);
+  const deliveredAt = await waitFor('delivery of the event to the client', () => opts.deliveredWhen(runId, teeFrames(tee)), 90_000).catch(() => undefined);
+  record.event = { runId, createdAt, eventId: row.eventId, journalSeq: row.journalSeq, deliveredAt: deliveredAt ?? null };
+  if (deliveredAt === undefined) throw new Error('BLOCKED: the event was not observed reaching the client within 90 s');
+  // Pre-delivery guard measured from run creation, the earliest moment the nonce existed anywhere.
+  const judgeNow = () => serveJudge(toolCalls(teeFrames(tee)), runId, row.journalSeq, Math.min(createdAt, deliveredAt));
+  const settled = await waitFor('a judged reaction', () => (judgeNow().verdict === 'waiting' ? undefined : judgeNow()), WINDOW_MS).catch(() => judgeNow());
+  await delay(5_000); // a later wrong ack still invalidates the reaction
+  const final = judgeNow();
+  const cursorsFile = join(root, '.local/xezar/mcp/leader-cursors.json');
+  const serviceState = existsSync(cursorsFile) ? JSON.parse(readFileSync(cursorsFile, 'utf8')) : null;
+  const serviceAcked = serviceState?.ackedByLeader === false ? null : serviceState?.acked?.seq ?? null;
+  record.toolCalls = toolCalls(teeFrames(tee)).filter((call) => call.at >= createdAt - 60_000);
+  record.serviceCursors = serviceState;
+  record.judge = { first: settled, final };
+  if (final.verdict !== 'PASSED' || settled.verdict !== 'PASSED') throw new Error(`FAILED: ${final.reason}`);
+  if (typeof serviceAcked !== 'number' || serviceAcked < row.journalSeq) throw new Error(`FAILED: the service's leader-cursors.json acked seq ${serviceAcked} does not cover #${row.journalSeq}`);
+  record.verdict = 'PASSED';
+  record.summary = 'Real model read the delivered event and called leader_events ack with the exact run-id nonce and the nextCursor of its own post-delivery read; the service cursor advanced';
+}
+
+function legRecord(client: string, stamp: string): Record<string, unknown> {
+  return {
+    case: 'A-19', client, stamp, windowMs: WINDOW_MS, verdict: 'NOT-RUN',
+    revision: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim(),
+    dirty: execFileSync('git', ['status', '--porcelain'], { cwd: ROOT, encoding: 'utf8' }).trim() !== '',
+    invocation: { executable: process.execPath, args: [...process.execArgv, ...process.argv.slice(1)], env: { XEZ_REAL_MODEL_CLIENTS: process.env.XEZ_REAL_MODEL_CLIENTS ?? null } },
+    sourceHashes: Object.fromEntries(['packages/xezar/test/integration/mcp-real-model.test.ts', 'packages/xezar/test/helpers/mcp-stdio-tee.mjs', 'packages/xezar/test/helpers/claude-channel-pty.py'].map((path) => [path, createHash('sha256').update(readFileSync(join(ROOT, path))).digest('hex')])),
+  };
+}
+
+async function stopChild(child: ChildProcess | undefined): Promise<void> {
+  if (!child || child.exitCode !== null || child.signalCode !== null) return;
+  child.kill('SIGTERM');
+  await Promise.race([new Promise<void>((done) => child.once('exit', () => done())), delay(5_000)]);
+  if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+}
+
+test('[claude-code] a real model acknowledges a Channels-delivered event with the exact nonce and cursor', { timeout: 900_000 }, async (t) => {
+  const stamp = new Date().toISOString().replaceAll(':', '-');
+  const record = legRecord('claude-code', stamp);
+  if (!optedIn('claude-code')) return t.skip('XEZ_REAL_MODEL_CLIENTS does not name claude-code; leg NOT-RUN');
+  const out = join(ROOT, '.local/qa/mcp-real-model', `${stamp}-claude-code`);
+  mkdirSync(out, { recursive: true });
+  const save = (name: string, value: unknown) => writeFileSync(join(out, name), scrub(JSON.stringify(value, null, 2)) + '\n');
+  const scratch = realpathSync(mkdtempSync('/tmp/x67c-'));
+  const model = process.env.XEZ_REAL_MODEL_CLAUDE_MODEL ?? 'sonnet';
+  let serve: Serve | undefined;
+  let child: ChildProcess | undefined;
+  try {
+    const bin = execFileSync('which', ['claude'], { encoding: 'utf8' }).trim();
+    const env = clientEnv({});
+    record.client = { bin, version: execFileSync(bin, ['--version'], { encoding: 'utf8', env, timeout: 20_000 }).trim(), model, account: 'the owner\'s own Claude Code login (default config directory); no key handled by this harness' };
+    const root = fixtureRepo(scratch);
+    const xezHome = join(scratch, 'x');
+    serve = await startServe(root, xezHome, join(scratch, 'serve-codex'), out, scratch);
+    const tee = join(out, 'bridge-tee.ndjson');
+    const mcpConfig = join(scratch, 'mcp.json');
+    writeFileSync(mcpConfig, JSON.stringify({ mcpServers: { xezar: { command: process.execPath, args: [TEE, tee, process.execPath, DIST, 'mcp'], env: { XEZ_HOME: xezHome, XEZ_DRY_RUN: '1' } } } }));
+    const args = ['--model', model, '--strict-mcp-config', '--mcp-config', mcpConfig, '--allowedTools', 'mcp__xezar__leader_events', '--append-system-prompt', SERVE_STANDING, '--dangerously-load-development-channels', 'server:xezar'];
+    save('command.json', { command: 'python3', args: [CLAUDE_PTY, bin, ...args.map((arg) => (arg === SERVE_STANDING ? '<SERVE_STANDING>' : arg))], standing: SERVE_STANDING, cwd: '<fixture project>' });
+    child = spawn('python3', [CLAUDE_PTY, bin, ...args], { cwd: root, env, stdio: ['pipe', 'pipe', 'pipe'] });
+    let screen = '';
+    const answered = new Set<string>();
+    for (const stream of [child.stdout!, child.stderr!]) stream.on('data', (chunk: Buffer) => {
+      appendFileSync(join(out, 'claude.pty.log'), scrub(chunk.toString('utf8')));
+      screen += plainScreen(chunk.toString('utf8'));
+      // The launch's own one-time screens, answered as the person would; nothing else is typed.
+      // The trust screen's cursor starts on "No, exit", so the person moves down to "Yes" first.
+      for (const [name, pattern, keys] of [['trust', /Yes,?\s*I\s*trust\s*this\s*folder/i, '\x1b[B'], ['channels', /I\s*am\s*using\s*this\s*for\s*local\s*development/, '']] as const) {
+        if (!answered.has(name) && pattern.test(screen.slice(-4000))) {
+          answered.add(name); screen = '';
+          setTimeout(() => { if (keys) child?.stdin?.write(keys); setTimeout(() => child?.stdin?.write('\r'), 400); }, 700);
+          appendFileSync(join(out, 'human-input.log'), `${Date.now()} ${name}: ${keys ? 'Down, ' : ''}Enter\n`);
+        }
+      }
+    });
+    await waitFor('Claude Code to own the project over MCP', async () => ((await cockpitCall(serve!, '/api/v1/mcp/leader')).json?.delivery ? true : undefined), 120_000);
+    const attach = await cockpitCall(serve, '/api/v1/mcp/leader', 'POST', { action: 'attach', client: 'claude-code' });
+    record.attach = { status: attach.status, leader: attach.json?.leader ?? attach.json?.error };
+    assert.equal(attach.status, 200, 'attach claude-code');
+    await delay(15_000);
+    await reactToOneEvent({ serve, root, tee, record, deliveredWhen: (runId, frames) => frames.find((frame) => frame.dir === 'bridge' && frame.line.includes('notifications/claude/channel') && frame.line.includes(runId))?.at });
+  } catch (error) {
+    if (record.verdict !== 'PASSED') {
+      const message = String(error instanceof Error ? error.message : error);
+      record.verdict = message.startsWith('FAILED') ? 'FAILED' : 'BLOCKED';
+      record.summary = message;
+    }
+    throw error;
+  } finally {
+    await stopChild(child);
+    await stopChild(serve?.child);
+    save('results.json', record);
+    rmSync(scratch, { recursive: true, force: true });
+    t.diagnostic(`evidence: ${out}; verdict: ${record.verdict}`);
+  }
+});
+
+function codexInstall(): { bin: string; home: string; wrapper?: string } {
+  // The owner's installed `codex` may be a wrapper that pins its own CODEX_HOME; that home IS the
+  // configured profile (model, auth), so the leg uses it and runs the real binary behind the wrapper.
+  const candidates = [...new Set(execFileSync('which', ['-a', 'codex'], { encoding: 'utf8' }).split('\n').filter(Boolean))];
+  let home = join(process.env.HOME ?? '/', '.codex');
+  let wrapper: string | undefined;
+  for (const candidate of candidates) {
+    const head = readFileSync(candidate).subarray(0, 4096).toString('utf8');
+    const pinned = head.startsWith('#!') ? /CODEX_HOME=(\S+)/.exec(head) : null;
+    if (pinned) { wrapper ??= candidate; home = pinned[1]!; continue; }
+    return { bin: candidate, home, ...(wrapper ? { wrapper } : {}) };
+  }
+  throw new Error('BLOCKED: no codex binary behind the wrappers on PATH');
+}
+
+test('[codex] a real model acknowledges an app-server-delivered event with the exact nonce and cursor', { timeout: 900_000 }, async (t) => {
+  const stamp = new Date().toISOString().replaceAll(':', '-');
+  const record = legRecord('codex', stamp);
+  if (!optedIn('codex')) return t.skip('XEZ_REAL_MODEL_CLIENTS does not name codex; leg NOT-RUN');
+  const out = join(ROOT, '.local/qa/mcp-real-model', `${stamp}-codex`);
+  mkdirSync(out, { recursive: true });
+  const save = (name: string, value: unknown) => writeFileSync(join(out, name), scrub(JSON.stringify(value, null, 2)) + '\n');
+  const scratch = realpathSync(mkdtempSync('/tmp/x67x-'));
+  let serve: Serve | undefined;
+  let appServer: ChildProcess | undefined;
+  let tui: ChildProcess | undefined;
+  let socket: WebSocket | undefined;
+  try {
+    const install = codexInstall();
+    const env = clientEnv({ CODEX_HOME: install.home });
+    record.client = { bin: install.bin, wrapper: install.wrapper ?? null, home: install.home.replace(process.env.HOME ?? '\0', '~'), version: execFileSync(install.bin, ['--version'], { encoding: 'utf8', env, timeout: 20_000 }).trim(), account: 'the owner\'s own Codex login in that home; no credential read or copied by this harness' };
+    const controlSocket = join(install.home, 'app-server-control', 'app-server-control.sock');
+    if (existsSync(controlSocket)) throw new Error('BLOCKED: a Codex app-server is already listening in the owner\'s home; the leg will not share or replace it');
+    const root = fixtureRepo(scratch);
+    const xezHome = join(scratch, 'x');
+    serve = await startServe(root, xezHome, install.home, out, scratch);
+    const tee = join(out, 'bridge-tee.ndjson');
+    mkdirSync(join(root, '.codex'), { recursive: true });
+    writeFileSync(join(root, '.codex/config.toml'), `[mcp_servers.xezar]\ncommand = ${JSON.stringify(process.execPath)}\nargs = ${JSON.stringify([TEE, tee, process.execPath, DIST, 'mcp'])}\nenv = { XEZ_HOME = ${JSON.stringify(xezHome)}, XEZ_DRY_RUN = "1" }\n`);
+    // Trust for the fixture project is passed per launch, so the app-server loads its .codex/config.toml.
+    const overrides = ['-c', 'approval_policy="never"', '-c', 'sandbox_mode="read-only"', '-c', 'check_for_update_on_startup=false', '-c', `projects.${JSON.stringify(root)}.trust_level="trusted"`];
+    const appLog = join(out, 'app-server.log');
+    save('command.json', { appServer: [install.bin, ...overrides, 'app-server', '--listen', 'unix://'], tui: ['python3', '<claude-channel-pty.py>', install.bin, ...overrides, '--remote', 'unix://', '--no-alt-screen', '-C', '<fixture project>', '<SERVE_STANDING + ready prompt>'], standing: SERVE_STANDING, codexHome: record.client && (record.client as any).home });
+    appServer = spawn(install.bin, [...overrides, 'app-server', '--listen', 'unix://'], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] });
+    for (const stream of [appServer.stdout!, appServer.stderr!]) stream.on('data', (chunk) => appendFileSync(appLog, scrub(String(chunk))));
+    await waitFor('the shared app-server control socket', () => (existsSync(controlSocket) ? true : undefined), 30_000);
+    const prompt = `${SERVE_STANDING}\n\nNo event has arrived yet. Reply READY and do not call any tool now.`;
+    // Decision record run F: in the owner's home a plain TUI kept its thread in-process (measured
+    // 2026-09-15: listed on the shared server, not loaded), so the TUI joins it explicitly.
+    tui = spawn('python3', [CLAUDE_PTY, install.bin, ...overrides, '--remote', 'unix://', '--no-alt-screen', '-C', root, prompt], { cwd: root, env, stdio: ['pipe', 'pipe', 'pipe'] });
+    let screen = '';
+    const answered = new Set<string>();
+    const terminal = tui;
+    for (const stream of [terminal.stdout!, terminal.stderr!]) stream.on('data', (chunk: Buffer) => {
+      const text = chunk.toString('latin1');
+      appendFileSync(join(out, 'codex-tui.pty.log'), scrub(chunk.toString('utf8')));
+      if (text.includes('\x1b[6n')) terminal.stdin!.write('\x1b[1;1R');
+      if (text.includes('\x1b[c')) terminal.stdin!.write('\x1b[?1;2c');
+      screen += plainScreen(text);
+      if (!answered.has('trust') && /trust\s*(the\s*files\s*in\s*)?this\s*(folder|directory)|Do\s*you\s*trust/i.test(screen.slice(-4000))) {
+        answered.add('trust'); screen = ''; setTimeout(() => terminal.stdin!.write('\r'), 700); appendFileSync(join(out, 'human-input.log'), `${Date.now()} trust: Enter\n`);
+      }
+    });
+    // The person's side, as in the scripted Codex leg: find the TUI's thread and have Codex call a
+    // xezar tool for it so the bridge announces the thread. No event is delivered this way.
+    socket = await new Promise<WebSocket>((done, reject) => { const ws = new WebSocket(`ws+unix://${controlSocket}:/`, { perMessageDeflate: false }); ws.once('open', () => done(ws)); ws.once('error', reject); });
+    let next = 1;
+    const pending = new Map<number, (value: any) => void>();
+    socket.on('message', (raw) => { appendFileSync(join(out, 'person-view.ndjson'), scrub(raw.toString()).slice(0, 4000) + '\n'); try { const message = JSON.parse(raw.toString()); if (typeof message.id === 'number' && !('method' in message)) { pending.get(message.id)?.(message); pending.delete(message.id); } } catch { /* not JSON */ } });
+    const rpc = (method: string, params: unknown, ms = 60_000): Promise<any> => new Promise((done) => { const id = next++; const timer = setTimeout(() => { pending.delete(id); done({ error: { message: `no answer to ${method}` } }); }, ms); pending.set(id, (value) => { clearTimeout(timer); done(value); }); socket!.send(JSON.stringify({ id, method, params })); });
+    await rpc('initialize', { clientInfo: { name: 'x67-codex-person', version: '0' } });
+    const threadId = await waitFor('the TUI thread loaded on the shared app-server', async () => {
+      const id = ((await rpc('thread/list', { cwd: root, modelProviders: [] })).result?.data ?? [])[0]?.id as string | undefined;
+      return id && ((await rpc('thread/loaded/list', {})).result?.data ?? []).includes(id) ? id : undefined;
+    }, 120_000).catch(() => { throw new Error('BLOCKED: the Codex TUI thread never loaded on the shared app-server'); });
+    const configured = await rpc('config/read', { cwd: root });
+    record.client = { ...(record.client as object), configuredModel: configured.result?.config?.model ?? null, configuredReasoningEffort: configured.result?.config?.model_reasoning_effort ?? null };
+    await waitFor('the ready turn to finish', () => (/READY/.test(screen) ? true : undefined), 180_000).catch(() => undefined);
+    await rpc('thread/name/set', { threadId, name: 'Xezar real-model fixture' });
+    const call = await rpc('mcpServer/tool/call', { server: 'xezar', threadId, tool: 'task_read', arguments: { view: 'list', archived: 'include' } }, 120_000);
+    record.announce = call.error ?? (call.result?.isError ? 'tool error' : 'answered');
+    const leaderRoute = `/api/v1/p/${serve.projectId}/mcp/leader`;
+    await waitFor('the owner to be Codex', async () => ((await cockpitCall(serve!, leaderRoute)).json?.owner?.client === 'codex' ? true : undefined), 60_000);
+    const attach = await cockpitCall(serve, leaderRoute, 'POST', { action: 'attach', client: 'codex' });
+    record.attach = { status: attach.status, leader: attach.json?.leader ?? attach.json?.error };
+    assert.equal(attach.status, 200, 'attach codex');
+    await waitFor('an unblocked Codex leader', async () => ((await cockpitCall(serve!, leaderRoute)).json?.blocker === null ? true : undefined), 60_000);
+    await delay(10_000);
+    const leaderBefore = (await cockpitCall(serve, leaderRoute)).json?.delivery?.deliveredSeq ?? 0;
+    record.leaderBefore = leaderBefore;
+    await reactToOneEvent({
+      serve, root, tee, record,
+      // Codex delivery happens inside app-server, not on the bridge; the service's own deliveredSeq
+      // reaching the row is the delivery observation, polled here and stamped when first seen.
+      deliveredWhen: (runId) => {
+        const row = journalRows(root).find((entry) => entry.subject?.id === runId && entry.kind === 'task.done');
+        if (!row) return undefined;
+        const seen = (record as any).__delivered as number | undefined;
+        if (seen) return seen;
+        void cockpitCall(serve!, leaderRoute).then((status) => { if ((status.json?.delivery?.deliveredSeq ?? 0) >= row.journalSeq) (record as any).__delivered ??= Date.now(); });
+        return undefined;
+      },
+    });
+  } catch (error) {
+    if (record.verdict !== 'PASSED') {
+      const message = String(error instanceof Error ? error.message : error);
+      record.verdict = message.startsWith('FAILED') ? 'FAILED' : 'BLOCKED';
+      record.summary = message;
+    }
+    throw error;
+  } finally {
+    delete (record as any).__delivered;
+    socket?.close();
+    await stopChild(tui);
+    await stopChild(appServer);
+    await stopChild(serve?.child);
+    save('results.json', record);
+    rmSync(scratch, { recursive: true, force: true });
     t.diagnostic(`evidence: ${out}; verdict: ${record.verdict}`);
   }
 });

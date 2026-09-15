@@ -9,22 +9,37 @@ explicitly leaves the MCP clauses to this page.
 
 ## Answer first
 
-**Five of the eight clauses hold on the candidate revision. Three do not: clause 2, clause 3 and
-clause 8.** The gate does not close green. Clauses 2 and 3 fail on one thing between them — a real
-model's reaction, and push delivery to the three original clients, both already placed outside
-release 0.14.0 by the leader's decision of 2026-09-11. Clause 8 fails because neither of its two
-sign-offs has ever been written down.
+**Eight of the eight clauses hold as of 2026-09-15 — seven on evidence, one (clause 2) by the project
+owner's acceptance.** Clause 2 is not met on one revision, and this record does not say it is.
+
+- **Clause 3 now holds for every client in scope.** A real model reacted to a delivered xezar event
+  for **pi** (2026-09-13, `7aa4a02`), **Claude Code** and **Codex** (both 2026-09-15, `a6d53b4`) —
+  see [§ Real-model reaction](#real-model-reaction-a-19--a-23-per-client). Push delivery to Claude Code
+  and Codex is built (#403, #404; #374 closed). **OpenCode is out of scope for the real-model clause
+  by the project owner's decision of 2026-09-13** (5 of 5 stalled runs; its reaction reporting is still
+  open as [#340](https://github.com/qodeca/xezar/issues/340)).
+- **Clause 8 holds.** Both sign-offs are written down, on
+  [#119](https://github.com/qodeca/xezar/issues/119#issuecomment-5646331208) (2026-09-12).
+- **Clause 2 is MET BY OWNER ACCEPTANCE (2026-09-15).** The project owner accepted the real-model
+  evidence on three revisions — pi on `7aa4a02`, Claude Code and Codex on `a6d53b4` — as sufficient,
+  with no pi re-run, and OpenCode out of scope (#340). A-01–A-23 have still never all passed on
+  **one** revision: the whole suite ran on `ed579e63`, and the rows that were BLOCKED or FAILED there
+  (A-20's leader half, pi's `approveTools` edge, fixed by #411) have not been re-run on a common
+  revision since.
+
+The verdicts below from 2026-09-12 are kept as they were measured; where a later measurement changed
+one, the table says which and when.
 
 | Clause | Verdict |
 | --- | --- |
-| 1 — every UI business action classified; every project action has a working MCP equivalent | **MET on coverage.** The "product-owner-approved" half is the clause 8 gap. |
-| 2 — all of A-01–A-23 pass on the same release-candidate revision | **NOT MET.** A-19 (pi) and A-23 (pi) PASSED in post-release measurement; A-19 remains BLOCKED for claude-code, codex and opencode (no attach path); A-20's leader half is BLOCKED. |
-| 3 — stale writes, idempotency, survival, ownership, async delivery **and model reaction**, live UI, unchanged quality | **NOT MET on one of seven items** — the real model reaction. The other six pass. |
+| 1 — every UI business action classified; every project action has a working MCP equivalent | **MET.** Coverage measured below; the product owner's approval is the clause 8 sign-off on #119. |
+| 2 — all of A-01–A-23 pass on the same release-candidate revision | **MET BY OWNER ACCEPTANCE (2026-09-15)**, not on one revision. The owner accepted the real-model evidence on three revisions — pi on `7aa4a02`, Claude Code and Codex on `a6d53b4` — with OpenCode out of scope (#340). A-20's leader half and pi's `approveTools` edge were BLOCKED/FAILED on `ed579e63` and not re-run on a common revision. |
+| 3 — stale writes, idempotency, survival, ownership, async delivery **and model reaction**, live UI, unchanged quality | **MET for the in-scope clients** (2026-09-15). The real model reaction was observed for pi, claude-code and codex; OpenCode is out of scope by the owner's decision of 2026-09-13 (#340). Was NOT MET on `ed579e63`. |
 | 4 — D-01–D-09 resolved as needed; the documentation states the actual mechanism | **MET.** |
 | 5 — the settings matrix removes ambiguity; negative tests cover each resource family | **MET** on `5834b36` (this record's own commit); one family (`local_handoff`) was uncovered on `ed579e63` and is covered by the two tests that commit adds. |
 | 6 — the complete human/leader flow, with no built-in leader, no global administration and no new release engine hidden in it | **MET.** |
 | 7 — the repository quality gate; reviewable integration tests and evidence | **MET** for every command run here; the canonical gate is this task's own gate stage. |
-| 8 — product approves coverage, the responsible engineer approves the technical evidence; known limitations contradict no obligatory criterion | **NOT MET.** Neither sign-off exists as a written artefact. The limitation half is met (§ PI-08). |
+| 8 — product approves coverage, the responsible engineer approves the technical evidence; known limitations contradict no obligatory criterion | **MET.** Both sign-offs are written on [#119](https://github.com/qodeca/xezar/issues/119#issuecomment-5646331208) (2026-09-12, against `ed579e63`). The limitation half is met (§ PI-08). The 2026-09-15 real-model evidence postdates those sign-offs. |
 
 ## The revision
 
@@ -66,8 +81,9 @@ its initial FAILED classification to NOT-RUN; `results.json` preserves that corr
 original classification. The transcript records `401 Unauthorized`;
 authentication must be supplied through `XEZ_REAL_MODEL_API_KEY` before inference can be
 measured. No personal pi configuration or credentials were read. A request count alone and a
-model's “I reacted” text remain insufficient to pass. This does not change Clause 2's NOT MET
-verdict or convert any claude-code, codex or opencode result.
+model's “I reacted” text remain insufficient to pass. This did not change Clause 2's NOT MET
+verdict at the time (since met by owner acceptance, 2026-09-15) or convert any claude-code, codex or opencode result. (The Claude Code and Codex results were
+measured separately on 2026-09-15 — § Real-model reaction.)
 
 ## How to read it
 
@@ -122,7 +138,7 @@ Fixture configurations referenced in the table:
 | **A-18** | F2 + F3 | (bridges), pi | model silence keeps ownership, a crash hands over to exactly one successor, the stale owner is fenced, a started task survives, a service restart ends every session and keeps the work, and a pi-side restart drops and re-attaches the link | **PASSED** |
 | **A-19** | F2 | (service events) | acceptance in 38 ms, result later; the journal holds the three rows (E-01, E-02) | **PASSED** |
 | **A-19** | F3 | pi | 10 of 10 measured checks met: 1 model request caused by the delivered event, 0 more in the quiet window | **BLOCKED** — the real-model clause alone |
-| **A-19** | F3 | claude-code, codex, opencode | no attach path exists for these clients (`LeaderDelivery.#act` and the contract's `client` enum admit `opencode` and `pi` only) | **BLOCKED** |
+| **A-19** | F3 | claude-code, codex, opencode | on `ed579e63` the leader delivery side covered only `opencode` and `pi`; Claude Code (Channels, #404) and Codex (app-server, #403) were added on 2026-09-13 | **BLOCKED** on `ed579e63` — superseded for claude-code and codex by § Real-model reaction; opencode out of scope (owner, 2026-09-13, #340) |
 | **A-20** | F4 | (real browser) | a leader's MCP rename appears in the open task list with no reload; a change made across a lost-server gap appears after reconnect | **PASSED** |
 | **A-20** | F3 | pi | a delivered event's own reaction starts no further leader turn — 1 model request in the session's whole life, cursors at rest after 45 s | **PASSED** |
 | **A-20** | F2 | (leader half) | every listed check met — mutation reaches the stream, human edits reach the journal, reconnect reconciles and re-delivers only what was unacknowledged, the leader's own effect is marked as its echo — but the no-recursive-loop clause cannot be observed without push delivery | **BLOCKED** |
@@ -172,8 +188,9 @@ the bridge's announced client name), and the two clients coexist in one status p
 (`leader-delivery.test.ts`, "Codex and Claude Code coexist"). The combined journey was re-run in
 the unit and composition suites only; a fresh review and QA on the merged head follow.
 
-The A-19/A-23 Claude Code **real-model clause remains BLOCKED** until a separate decision names
-an account that may be used. This is the only blocked Claude Channels acceptance clause; a scripted
+The A-19/A-23 Claude Code **real-model clause was BLOCKED** here until a separate decision named
+an account that may be used; the owner authorized that usage on 2026-09-15 and the clause PASSED —
+see § Real-model reaction. This is the only blocked Claude Channels acceptance clause; a scripted
 endpoint is not a real model. It does not certify the whole MCP feature: the complete real-client
 suite still fails the existing pi `approveTools` case (#369), and independent design/QA and current
 CI remain required before merge. The full-suite result on this repair was 30 tests: 20 passed,
@@ -196,25 +213,72 @@ case added, removed or re-pointed without updating that page fails `npm test`.
 `global` and `presentation` are the two statuses deliberately without an MCP equivalent, and both
 state their reason in the inventory (`:45`, `:46`).
 
-**What is missing is the approval, not the coverage.** No sentence anywhere records a product-owner
-approval of this classification. The twelve decisions of 2026-09-10 are attributed to "the project
-leader" (`mcp-ui-action-inventory.md:56`) and the product owner is named only as audience (`:4`).
-That is the first half of clause 8.
+**What was missing on 2026-09-12 was the approval, not the coverage.** No sentence in these documents
+records a product-owner approval of this classification. The twelve decisions of 2026-09-10 are
+attributed to "the project leader" (`mcp-ui-action-inventory.md:56`) and the product owner is named
+only as audience (`:4`). That is the first half of clause 8, since written down on
+[#119](https://github.com/qodeca/xezar/issues/119#issuecomment-5646331208) — see clause 8.
 
-### Clause 2 — all of A-01–A-23 on one revision: NOT MET
+### Real-model reaction (A-19 / A-23), per client
+
+The judge in every leg is the same rule: within 120 s of delivery a real model must call
+`leader_events ack` with an **exact nonce** in `operationId` and the **exact cursor** of a page that
+holds the event. A request, model prose, a stale ack or a wrong cursor cannot pass (the judges'
+own negative controls are in `packages/xezar/test/integration/mcp-real-model.test.ts`). A-23's
+reaction half reads A-19's result; its setup and exclusivity halves are unchanged from `ed579e63`.
+
+| Client | A-19 real-model | A-23 reaction half | Revision | Run (UTC stamp) | Model | Delivery path |
+| --- | --- | --- | --- | --- | --- | --- |
+| pi 0.85.1 | **PASSED** — ack +15.8 s after delivery | **PASSED** | `7aa4a0258cd99852ff0a6878dff1c96257f49024` | `2026-09-13T17-43-42.875Z` | `deepseek-v4-flash-vision`, local endpoint | the pi leader extension's socket |
+| Claude Code 2.1.272 | **PASSED** — read +5.8 s, ack +8.6 s after the channel push | **PASSED** | `a6d53b4bccfe07803a792c54ff335432d4ad0b49` | `2026-09-15T10-42-29.522Z` | `sonnet` alias (the TUI showed Sonnet 5), the owner's own login | real `xezar serve` → Channels push (`--dangerously-load-development-channels server:xezar`) |
+| Codex CLI 0.154.0 | **PASSED** — read +6.9 s, ack +11.9 s after delivery | **PASSED** | `a6d53b4bccfe07803a792c54ff335432d4ad0b49` | `2026-09-15T10-41-35.784Z` | `gpt-6-astra`, reasoning `medium` (the owner's configured default), the owner's own login | real `xezar serve` → the shared app-server (`codex app-server --listen unix://`, TUI `--remote unix://`) |
+| OpenCode | **OUT OF SCOPE** | **OUT OF SCOPE** | — | — | — | Owner's decision of 2026-09-13: OpenCode dropped after 5 of 5 stalled runs; reaction reporting open as [#340](https://github.com/qodeca/xezar/issues/340). Not run. |
+
+`a6d53b4` is `main` at `ab28cb0` plus test-only commits (the two new legs and a stdio tee helper); no
+product file differs from `main`. For Claude Code and Codex the nonce is the run id xezar mints for the
+task whose `task.done` row is the event, because a serve-delivered row's summary is fixed text; the
+pushed message carries no cursor, so the model had to call `leader_events read` itself and ack that
+read's `nextCursor`. Both halves were observed on the wire (a pass-through tee between the client and
+the real bridge) and confirmed in the service's `leader-cursors.json` (`ackedByLeader: true`, acked
+seq covering the row). In both TUIs the model's reaction is visible ("task finished. I marked it as
+seen." / "Acknowledged.").
+
+Two earlier attempts on the way were harness defects, kept in the evidence and not counted: the
+Claude Code folder-trust screen defaults to "No, exit" (`2026-09-15T10-35-59.329Z`, BLOCKED), and a
+plain Codex TUI in the owner's home kept its thread in-process (`2026-09-15T10-39-25.395Z`, BLOCKED:
+`thread not found`). A first Claude Code PASS (`2026-09-15T10-38-23.107Z`) ran with an uncommitted
+harness fix and was re-run on the clean revision above.
+
+Reproduce, after `npm run build:server`, from `packages/xezar` (paid: uses each client's own login):
+
+```sh
+XEZ_REAL_MODEL_CLIENTS=claude-code,codex TMPDIR=/tmp node --import ../../scripts/test-local-state.mjs --import tsx --test --test-name-pattern 'claude-code\]|codex\]' test/integration/mcp-real-model.test.ts
+```
+
+Evidence (private, never committed, no credential): `.local/xezar-tasks/a9a867a4-e1d4-4bba-83e0-f6a183671331/real-model-2026-09-15/`,
+`MANIFEST.sha256` SHA-256 `7f86d3bff8fd3420f15a738874fd2a927194af8e5ddec63eb087470fbedb8f9e`.
+
+### Clause 2 — all of A-01–A-23 on one revision: MET BY OWNER ACCEPTANCE (2026-09-15)
+
+**Owner decision, 2026-09-15:** the real-model evidence on three revisions — pi on `7aa4a02`, Claude Code
+and Codex on `a6d53b4` — is accepted as sufficient, with no pi re-run; OpenCode is out of scope (#340).
+The measured facts below are unchanged: the rows do not all pass on one revision.
 
 Eighteen of the twenty-three rows pass on `ed579e63`. **A-20 (leader half) is BLOCKED**, and the A-01
 `approveTools` edge path FAILED. **A-19 and A-23 are now PASSED for pi** in a post-release manual
 measurement (stamp `2026-09-13T17-43-42.875Z`, revision `7aa4a0258cd99852ff0a6878dff1c96257f49024`),
-**but remain BLOCKED for Claude Code, Codex and OpenCode** (no attach path). BLOCKED on even one
-client means the clause does not hold, however narrow the remaining blockers are.
+and **for Claude Code and Codex on 2026-09-15** (revision `a6d53b4`); OpenCode is out of scope for the
+real-model clause by the owner's decision of 2026-09-13 (#340). On evidence alone the clause would not
+hold: these passes sit on three revisions (`ed579e63`, `7aa4a02`, `a6d53b4`), and A-20's leader half and
+pi's `approveTools` edge (fixed by #411) have not been re-run on a common one. It is met by the owner's
+acceptance above, not by one run.
 
 A-19 passed with exact nonce and cursor acknowledgement from a real model (`deepseek-v4-flash-vision`);
 the measurement window was 120 s and the ack arrived +15.8 s after delivery. A-23 is dependent on A-19
-and passes with it for pi. For Claude Code, Codex and OpenCode there is no attach path yet — this
-record documents only the pi result and marks the other three clients' A-19 as still BLOCKED.
+and passes with it for pi, Claude Code and Codex. Per-client stamps, models and timings are in
+§ Real-model reaction.
 
-### Clause 3 — no required outcome deferred as optional: NOT MET on one item
+### Clause 3 — no required outcome deferred as optional: MET for the in-scope clients (was NOT MET on one item)
 
 | Required outcome | Verdict | Where |
 | --- | --- | --- |
@@ -222,7 +286,7 @@ record documents only the pi result and marks the other three clients' A-19 as s
 | idempotency | **PASSES** | A-14; required `operationId`, `<projectId>/<operationId>` receipts, collision refused, a real `SIGKILL` between effect and receipt recorded UNVERIFIED and never repeated |
 | task survival | **PASSES** | A-15, A-18; the task survives its owner, a service restart and the client going away |
 | exclusive ownership | **PASSES** | A-17, A-18, all four clients; wired by #302/#305 |
-| **async delivery and model reaction** | **DOES NOT PASS** | delivery executed (pi); the real model reaction is BLOCKED for every client |
+| **async delivery and model reaction** | **PASSES** (2026-09-15) | push delivery built for pi, Claude Code (#404) and Codex (#403); a real model reacted for all three (§ Real-model reaction). OpenCode out of scope by owner decision 2026-09-13 (#340). Did not pass on `ed579e63`. |
 | live UI updates | **PASSES** | A-20 cockpit half, real browser |
 | unchanged quality | **PASSES** | A-22; weakening a gate is refused, not offered as an approval option |
 
@@ -342,7 +406,20 @@ The MCP integration tests and the UI/MCP evidence are reviewable: the harness is
 test/integration/mcp-real-clients.test.ts`, and it writes `environment.json`, `results.json`,
 `results.md` and one transcript per process.
 
-### Clause 8 — the two sign-offs: NOT MET
+### Clause 8 — the two sign-offs: MET (was NOT MET when this record was first written)
+
+Both sign-offs were recorded on 2026-09-12, against `ed579e63`, in
+[#119 comment 5646331208](https://github.com/qodeca/xezar/issues/119#issuecomment-5646331208):
+
+- **Product sign-off — the project owner.** Shown this record's verdict of 5 of 8 with each failing
+  clause named, the owner approved publication ("publish it, you have my approval"). Read precisely:
+  the approval is of the record as it stood, coverage included; it does not name the classification
+  document by file.
+- **Engineer sign-off — the project leader.** Approves the technical evidence and states what it does
+  not attest: that clauses 2 and 3 were met, or that any BLOCKED row was exercised.
+- Both sign-offs predate the 2026-09-15 real-model evidence; nobody has signed that evidence yet.
+
+The original 2026-09-12 finding, kept as history:
 
 - **Product approval of leader-action coverage: not recorded.** Searched
   `mcp-ui-action-inventory.md`, `mcp-parity-coverage-map.md` and
@@ -379,13 +456,13 @@ Why it contradicts no obligatory criterion:
   [the extension guide](pi-leader-extension.md#one-thing-to-leave-alone-approvetools) and in
   [D-04 § 3.4](mcp-d04-connection-file-decision.md#34-pi) — merged as #370/#371 in `ed579e6`, which is
   the candidate revision itself.
-- **It adds nothing to A-19 or A-23.** Both are already BLOCKED, for an unrelated reason, for all
+- **It adds nothing to A-19 or A-23.** On `ed579e63` both were already BLOCKED, for an unrelated reason, for all
   four clients.
 - **An interactive pi answers its own dialog and does not hang**, so the limitation bites only where
   nobody is watching — which is exactly the case #369 is filed for.
 
-The other known limitations carried into this record — no push delivery for the three original
-clients, no real model reaction, audit retention open (D-06 row 14), D-09's U-1…U-6, and the
+The other known limitations carried into this record on 2026-09-12 — no push delivery for the three original
+clients and no real model reaction (both since closed for Claude Code and Codex; OpenCode out of scope by the owner's decision of 2026-09-13, #340), audit retention open (D-06 row 14), D-09's U-1…U-6, and the
 built-in-leader half of A-23 being out of scope — each sit **on top of** a clause that is already
 recorded as not met (clauses 2 and 3) or outside this epic. None of them turns a MET clause into a
 contradiction.

@@ -12,6 +12,14 @@ Installation validation is reported in installation.md. Real-task entries follow
 
 ## Real-task entries
 
+### 2026-09-15 — epic #67 close-out (real-model A-19/A-23 for Claude Code and Codex), `testing-and-verification` step `tests`, `xezar-testing`, Claude Code — real-task verified
+
+- Evidence: primary `.local/xezar-tasks/a9a867a4-e1d4-4bba-83e0-f6a183671331/real-model-2026-09-15/` (`MANIFEST.sha256` `7f86d3bf…8f9e`); both legs PASSED on `a6d53b4`, clean tree.
+- Observed: **one `strings | grep` over a 222 MB native Codex binary pushed the task's process tree past the 12 GB memory limit (exit 137) and the leader had to restart the step.** Lesson (real-task verified): answer "which config key exists" from `--help`, the repo's own adapters and existing harnesses, never by scanning a vendor binary; on a shared machine, one heavy command at a time.
+- Observed: **the pi real-model harness could not simply be pointed at Claude Code or Codex.** pi's leg hands the page to its extension socket itself, while these two clients are reached only through the product's `xezar serve` delivery path, and a serve-delivered row carries fixed summary text (no place for pi's nonce) and no cursor. The reuse that worked kept pi's judge rule and moved the nonce to the run id xezar mints, observing the ack on the wire with a pass-through tee and confirming it in `leader-cursors.json`. Lesson: "reuse the procedure" means reuse the judge and the evidence shape; the delivery wiring follows the product path of each client.
+- Observed: two harness defects surfaced only against the owner's real profiles, not the isolated fixtures: Claude Code's folder-trust screen defaults to "No, exit" (an Enter closes the client), and a plain Codex TUI in the owner's home kept its thread in-process instead of joining the shared app-server (decision record run F's `--remote unix://` fixed it). Both failed attempts are kept as BLOCKED evidence, not counted.
+- Remaining limit: clause 2 of the Definition of Done still needs every A-row on one revision; OpenCode is out of scope by the owner's decision (#340).
+
 ### 2026-09-15 — #377 PR 1 (the MCP mutation gate, nightly on GitHub Actions), `feature-implementation` step `implement`, `xezar-implementation`, Claude Code — fixture-tested
 
 - Evidence: run acc2508d, base `ab28cb0`, branch `xez/acc2508d`. 23 named breaks with their red logs under `implement/red-proofs/`, a live one-file Stryker run of the shard config and the aggregate CLI over its real report under `implement/live/`, and `implement/infra-tests.log`, all in the primary evidence directory.
