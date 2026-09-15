@@ -205,7 +205,7 @@ function row(over: Partial<McpJournalRow> = {}): McpJournalRow {
   } as McpJournalRow;
 }
 
-const dispatchOf = (...events: McpJournalRow[]): EventDispatch => ({ projectId: 'alpha', events });
+const dispatchOf = (...events: McpJournalRow[]): EventDispatch => ({ projectId: 'alpha', events, nextCursor: 'cursor-after-page' });
 const live = () => new AbortController().signal;
 const until = async (pred: () => boolean, ms = 2_000) => {
   const end = Date.now() + ms;
@@ -256,9 +256,13 @@ describe('the delivery hierarchy — prompt_async is the route, terminal input i
   it('states a gap the controller detected, even with no rows to carry', async () => {
     const { adapter } = adapterFor();
     const recovery = { required: 'current-state' as const, oldestSeq: 40, latestSeq: 90, message: 'Some events are gone.' };
-    await adapter.deliver({ projectId: 'alpha', events: [], recovery }, live());
+    await adapter.deliver({ projectId: 'alpha', events: [], recovery, nextCursor: 'cursor-after-page' }, live());
     expect(oc.submissions[0]!.body.parts[0]!.text).toContain('Gap: Some events are gone. (oldest retained 40, latest 90).');
-    expect(renderDispatch({ projectId: 'alpha', events: [], recovery }, [])).not.toContain('Significant events');
+    expect(renderDispatch({ projectId: 'alpha', events: [], recovery, nextCursor: 'cursor-after-page' }, [])).not.toContain('Significant events');
+    // #450 (T-25): a gap names the cursor that acks through it.
+    expect(renderDispatch({ projectId: 'alpha', events: [], recovery, nextCursor: 'cursor-after-page' }, [])).toContain(
+      'Acknowledge them with leader_events action ack and cursor cursor-after-page.',
+    );
   });
 });
 

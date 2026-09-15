@@ -896,13 +896,14 @@ review verdicts, merge state – are not carried by the MCP, so a leader reads t
 with `gh`.
 
 Nothing is pushed until a leader is attached, and xezar gains no setting and no
-environment variable for it. No MCP action attaches a leader yet: a person uses
-**Attach leader** under **Settings → MCP connection → Connection status**, or the
-leader makes that one HTTP call itself,
-`POST /api/v1/p/<projectId>/mcp/leader {"action":"attach","client":"claude-code"}`
-against the cockpit (`http://127.0.0.1:4321` by default), where `<projectId>` is
-`project.id` from `discover_project`. The client is the leader's own – `claude-code`,
-`codex` or `pi`; OpenCode also needs `baseUrl` and `sessionId`. For Claude Code the other switch is a flag you add when you start it:
+environment variable for it. The leader attaches itself with `leader_events` action
+`attach`: xezar takes the client from the leader's own MCP session (Claude Code, Codex or
+pi), so it names nothing, and `leader_events` action `status` says whether it is attached
+and can receive pushes. Each pushed event names the cursor to acknowledge, so no read is
+needed. An attachment ends when xezar restarts; the leader checks `status` and attaches
+again. A person can still attach a leader with **Attach leader** under
+**Settings → MCP connection → Connection status**, and an OpenCode leader is attached
+only that way. For Claude Code the other switch is a flag you add when you start it:
 
 ```bash
 claude --dangerously-load-development-channels server:xezar
@@ -911,9 +912,9 @@ claude --dangerously-load-development-channels server:xezar
 That flag is how Claude Code lets a server that is not on Anthropic's approved list
 push messages into your session. **Claude Code shows a warning every time you launch
 with it** — choose "I am using this for local development" if you accept it. Then
-use **Attach leader** under **Settings → MCP connection → Connection status**, the same
-control that attaches Codex, OpenCode and pi, or the project-scoped call above,
-`POST /api/v1/p/<projectId>/mcp/leader {"action":"attach","client":"claude-code"}`. Until it is attached, the leader reads events with `leader_events`.
+let the leader call `leader_events` action `attach`, or use **Attach leader** under
+**Settings → MCP connection → Connection status**, the same control that attaches Codex,
+OpenCode and pi. Until it is attached, the leader reads events with `leader_events`.
 
 Channels are a Claude Code research preview, so the wake only works on a first-party
 login: they need a claude.ai or Anthropic Console API-key login, they do not work on
@@ -932,6 +933,10 @@ fix: Start Claude Code in this project with --dangerously-load-development-chann
 **`claude-code-bridge-too-old`** — This Claude Code session is connected through an older xezar MCP bridge that cannot push events. Events are kept in the journal.
 
 fix: Restart Claude Code so it starts the current xezar bridge (npx -y @qodeca/xezar mcp), then attach it again.
+
+**`claude-code-channel-not-advertised`** — This Claude Code session connected while xezar could not push to it, so its xezar MCP server did not register the channel and a pushed event would never reach the model. Events are kept in the journal.
+
+fix: Reconnect the xezar MCP server in Claude Code (/mcp, then reconnect xezar) or restart Claude Code while the cockpit runs, then attach it again (from Claude Code: leader_events with action attach). Until then, read events with leader_events.
 
 **`claude-code-push-unconfirmed`** — xezar pushed events to the attached Claude Code session, and they are not acknowledged yet. Claude Code does not confirm delivery, so xezar cannot tell a leader that is still working from one that never received them. Nothing is lost: the events stay in the journal.
 

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { REFUSED_ARGUMENTS, buildMcpApiReference } from './api-reference.ts';
 import { defineTool, textResult, type McpTool } from './tool.ts';
 import { REFUSED_ACTIONS } from './tools/project-config.ts';
+import { leaderEventsTool } from './tools/leader-events.ts';
 
 /**
  * #352 — the branches of `buildMcpApiReference` that today's registry cannot reach.
@@ -117,5 +118,10 @@ describe('buildMcpApiReference — the listings the live registry does not produ
     // listing does not contain at all.
     setRegistry([stubTool('some_other_tool', z.object({ [REFUSED.argument]: z.string().optional().describe(reason) }))]);
     expect(build().refusedArguments).toEqual([]);
+  });
+
+  it('#450 T-30: the real leader_events listing shows operationId required by ack, attach and stop, and by nothing else', () => {
+    setRegistry([leaderEventsTool]);
+    expect(build().guards).toEqual([{ tool: 'leader_events', argument: 'operationId', everyCall: false, requiredBy: ['ack', 'attach', 'stop'] }]);
   });
 });
