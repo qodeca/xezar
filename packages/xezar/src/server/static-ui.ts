@@ -56,11 +56,19 @@ export const BUILD_HINT_HTML = `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>xezar — cockpit files missing</title>
 <style>
-  body { margin: 0; display: grid; place-items: center; min-height: 100dvh;
+  body { margin: 0; display: grid; grid-template-columns: minmax(0, 1fr); place-items: center; min-height: 100dvh;
          font: 15px/1.6 system-ui, sans-serif; background: #101014; color: #e8e8ea; }
-  main { max-width: 34rem; padding: 2rem; }
-  code { font-family: ui-monospace, monospace; background: #1c1c22; border-radius: 6px; padding: 2px 6px; }
+  main { box-sizing: border-box; width: 100%; max-width: 34rem; padding: 2rem; }
+  code { font-family: ui-monospace, monospace; background: #1c1c22; border-radius: 6px; padding: 2px 6px;
+         white-space: nowrap; }
   p { color: #a0a0aa; }
+  p.command { overflow-x: auto; }
+  @media (max-width: 400px) { main { padding: 2rem 1.25rem; } }
+  @media (prefers-color-scheme: light) {
+    body { background: #ffffff; color: #18181b; }
+    code { background: #f0f0f2; }
+    p { color: #52525b; }
+  }
 </style>
 </head>
 <body>
@@ -68,8 +76,10 @@ export const BUILD_HINT_HTML = `<!doctype html>
   <h1>The cockpit files are missing</h1>
   <p>xezar is running, but this installation has no browser interface (<code>web/dist</code>).
   Your tasks and project files are not affected.</p>
-  <p>Reinstall xezar &mdash; for example <code>npm install -g @qodeca/xezar@latest</code>,
-  or start it with <code>npx @qodeca/xezar@latest</code> &mdash; then reload this page.</p>
+  <p>Reinstall xezar, then reload this page:</p>
+  <p class="command"><code>npm install -g @qodeca/xezar@latest</code></p>
+  <p>Or stop xezar and start it again with this command, then open the address it prints:</p>
+  <p class="command"><code>npx @qodeca/xezar@latest</code></p>
 </main>
 </body>
 </html>
