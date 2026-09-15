@@ -18,7 +18,7 @@ The stored workspace `followups` choice wins over the environment: **On** and **
 
 1. Open the project's **Inbox** and read a suggestion. Follow its source-task or PR link when you need context.
 2. Expand **Add instructions** to add your requirements, or insert a template. These instructions are appended to the suggested task text.
-3. Choose an available agent and model where offered, then choose **Run**. The agent pill appears when there is more than one usable agent or account to choose from; a locked model is read-only. **Run** remains disabled until a provider is connected; follow **Configure providers** if needed.
+3. Choose an available agent and model where offered, then choose **Run**. The agent pill appears when there is more than one usable agent to choose from; a locked model is read-only. **Run** remains disabled until a provider is connected; follow **Configure providers** if needed.
 4. xezar opens the new task. It uses the suggested skill if that skill is available, otherwise `quick-task`.
 
 Choose **Dismiss** to remove a runnable suggestion without starting it. Informational notes offer **Acknowledge** instead. Extra instructions belong to the open card and do not survive a page reload.
@@ -31,9 +31,9 @@ Choose **Dismiss** to remove a runnable suggestion without starting it. Informat
 2. Turn on **Notify when an agent needs you**.
 3. Allow notifications when the browser asks. If permission was already denied, change the cockpit's permission in the browser's site settings.
 
-Notifications are off by default. With permission granted, a task in the project open in the cockpit changing into waiting, review, or failure can notify you while the tab is hidden or its window is minimised. A visible window behind another app does not count. Usage-limit failures with an auto-resume scheduled do not notify. Loading a task that already needs attention does not replay an old notification, and repeated updates with the same status do not notify again.
+Notifications are off by default. With notifications enabled and permission granted, a task changing into waiting, review, or failure can notify you while the tab is hidden or its window is minimised. A visible window behind another app does not count. Usage-limit failures with an auto-resume scheduled do not notify. Loading a task that already needs attention does not replay an old notification, and repeated updates with the same status do not notify again.
 
-Notifications for other projects are not covered here.
+Notification coverage after switching projects has not been verified; use the cockpit's attention indicators to check tasks. Cross-project notification delivery is not guaranteed.
 
 The preference is shared through workspace UI state, but browser permission is separate. If the browser does not support notifications, the toggle is unavailable. Delivery can also be unavailable in browsers that cannot create these page notifications; use the cockpit's attention indicators to check tasks there.
 
