@@ -6,14 +6,14 @@ everything else. Use the table to find the part you need.
 | Path | What it holds | For |
 | --- | --- | --- |
 | [server-install/](server-install/README.md) | Host xezar on a server and reach it from another machine. | Users |
-| [project-layout.md](project-layout.md) | The `.xezar/` directory, discovery precedence and the legacy migration command. | Users and contributors |
+| [project-layout.md](project-layout.md) | The maintained `.xezar/` kit, local runtime data and by-hand migration from the old layout. | Users and contributors |
 | [publishing.md](publishing.md) | How a release reaches npm through the manual Release workflow. | Maintainers |
-| [releases/](releases/0.14.0-definition-of-done.md) | What "done" means for a release beyond its features, and how it is assessed. | Maintainers and reviewers |
+| [releases/](releases/0.14.0-definition-of-done.md) | The historical 0.14.0 release criteria and owner decisions. | Maintainers and reviewers |
 | [design-system/](design-system/README.md) | The cockpit's UX/UI design system: tokens, components, patterns, writing, HTML specimens and the shared mockup stylesheet. Every new design and UI change follows it. | Designers, contributors and coding agents |
 | [testing/](testing/) | The browser suite ([agent-browser.md](testing/agent-browser.md)), where local data lives ([local-data.md](testing/local-data.md)) and which suite covers which behaviour ([coverage-gaps.md](testing/coverage-gaps.md)). | Contributors |
 | [lessons/](lessons/changing-working-mechanisms.md) | Worked examples behind the rules in [AGENTS.md](../AGENTS.md). | Contributors and coding agents |
-| [prompts/](prompts/xezar-ui-leader-prompt.md) | The role prompt for the UI project-leader pilot – historical since 2026-09-15: a project leader now works through the MCP tools only (#439). | Maintainers reading that pilot's record |
-| [screenshots/](screenshots/) | Images the root README shows. | — |
+| [research/](research/qwen-code-backend-2026-09-13.md) | Dated research, including Qwen Code backend feasibility; not a product requirement. | Engineers |
+| [screenshots/](screenshots/) | Legacy PNG captures from 2026-09-08; these predate the current cockpit and are retained under their existing names. | — |
 | [features/](features/README.md) | The internal engineering and decision record, one directory per feature. | Engineers and reviewers |
 
 ## `features/` is a record, not a manual

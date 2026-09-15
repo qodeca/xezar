@@ -34,16 +34,18 @@ Closed by #43 (`serve` in `test/e2e/package-cli.test.ts`) and #62 (`init` in `pr
 
 ## 2. What "the suites" means
 
+File counts re-counted on `bb271fc`, 2026-09-15 (source inventory, not a new full-suite coverage measurement).
+
 | Suite | Command | Runner | Runs in CI? | Size (measured) |
 |---|---|---|---|---|
-| Server unit | `npm test` (project `server`) | vitest, node env | yes | 200 `*.test.ts` under `packages/xezar/src` |
-| Cockpit unit | `npm test` (project `web`) | vitest, jsdom | yes | 162 `*.test.ts(x)` under `packages/web/src` |
+| Server unit | `npm test` (project `server`) | vitest, node env | yes | 272 `*.test.ts` under `packages/xezar/src` |
+| Cockpit unit | `npm test` (project `web`) | vitest, jsdom | yes | 173 `*.test.ts(x)` under `packages/web/src` |
 | Api-client unit | `npm test` (project `api-client`) | vitest, node env | yes | 2 files |
-| Contract unit | `npm test` (project `contract`) | vitest, node env | yes | 2 files |
-| node:test core | `npm run test:unit` | node:test | yes | 10 files, `packages/xezar/test/unit/` |
-| Packaged CLI e2e | `npm run test:package` | node:test | yes | 4 files, `packages/xezar/test/e2e/` |
-| Browser e2e | `npm run test:e2e` | vitest + agent-browser + real Chrome | yes – its own `ui-e2e` job (#128) | 35 files, `packages/web/e2e/` |
-| Manual QA | `needs-qa` label | human | n/a | `SDLC.md:67-75` |
+| Contract unit | `npm test` (project `contract`) | vitest, node env | yes | 4 files |
+| node:test core | `npm run test:unit` | node:test | yes | 14 files, `packages/xezar/test/unit/` |
+| Packaged CLI e2e | `npm run test:package` | node:test | yes | 5 files, `packages/xezar/test/e2e/` |
+| Browser e2e | `npm run test:e2e` | vitest + agent-browser + real Chrome | yes – its own `ui-e2e` job (#128) | 39 files, `packages/web/e2e/` |
+| Manual QA | `needs-qa` label | human | n/a | `SDLC.md` § The QA gate |
 | Design review | `needs-design` label + `## Design review` comment | design reviewer (human or `design-review` workflow) | n/a | `SDLC.md` § The design gate |
 
 One structural note that changes how the tables below read: the six `contract-parity*.test.ts`
@@ -56,9 +58,9 @@ package. They never call a handler, so they are not evidence that a route behave
 
 ## 3. Behaviour inventory
 
-Derived from the `AGENTS.md` task-routing table, the 27 chained route families in
+Derived from the `AGENTS.md` task-routing table, the 29 chained route families in
 `packages/xezar/src/server/server.ts`, the cockpit routes in `packages/web/src/routes.tsx`, the CLI
-dispatch in `packages/xezar/src/index.ts:130-179`, and the run lifecycle in
+dispatch in the `switch (command)` in `packages/xezar/src/index.ts`, and the run lifecycle in
 `packages/xezar/src/workflows/run.ts`.
 
 Status key: **C** covered, **P** partially covered, **N** no test found in the suites examined,
@@ -70,18 +72,19 @@ Status key: **C** covered, **P** partially covered, **N** no test found in the s
 |---|---|---|---|
 | `--version` / `-v` prints bare version, works outside a git repo | node:test | `test/unit/cli-version.test.ts:36,45,62` | C |
 | `--help` lists commands and flags | node:test | `test/unit/cli-version.test.ts:68` | C |
-| `run "<task>"` executes a workflow headless, exits 0 on `done` and `review` | packaged e2e | `test/e2e/package-cli.test.ts:82` | C |
-| `run` refuses a disabled or unauthenticated provider | packaged e2e | `test/e2e/package-cli.test.ts:108,148` | C |
-| `projects list/add/remove/tag` | packaged e2e + server unit | `test/e2e/package-cli.test.ts:180`; `src/workspace/projects-cli.test.ts:16,234` | C |
-| `server-install` (platforms, flags, unknown platform) | packaged e2e | `test/e2e/package-cli.test.ts:199,225,230,242` | C |
-| `server-uninstall` | packaged e2e | `test/e2e/package-cli.test.ts:213` | C |
+| `run "<task>"` executes a workflow headless, exits 0 on `done` and `review` | packaged e2e | `test/e2e/package-cli.test.ts` | C |
+| `run` refuses a disabled or unauthenticated provider | packaged e2e | `test/e2e/package-cli.test.ts` | C |
+| `projects list/add/remove/tag` | packaged e2e + server unit | `test/e2e/package-cli.test.ts`; `src/workspace/projects-cli.test.ts:16,234` | C |
+| `server-install` (platforms, flags, unknown platform) | packaged e2e | `test/e2e/package-cli.test.ts` | C |
+| `server-uninstall` | packaged e2e | `test/e2e/package-cli.test.ts` | C |
 | `init` scaffolds `.xezar/` and never overwrites | server unit | `project-kit-cli.test.ts:20,29` — spawns the real CLI and asserts both halves | C |
-| `serve` boots: port auto-pick, orphan-worktree prune, `.local/.gitignore` upkeep | packaged CLI e2e | `test/e2e/package-cli.test.ts:442,484,490,454,459` boots the default command against the installed tarball (#43). No test found for `--repo`, `--bind-host` or `--no-open` | C |
-| `server-deploy` | packaged e2e | `test/e2e/package-cli.test.ts:271,284,291` — help text, a real `--platform ubuntu --yes` invocation, and the unknown-platform exit 1 (#56) | C |
-| **unknown command → exit 1 + help** | none | `src/index.ts:175-178` not exercised by any spawn found | **N** |
+| `serve` boots: port auto-pick, orphan-worktree prune, `.local/.gitignore` upkeep | packaged CLI e2e | `test/e2e/package-cli.test.ts` boots the default command against the installed tarball (#43). No test found for `--repo`, `--bind-host` or `--no-open` | C |
+| `server-deploy` | packaged e2e | `test/e2e/package-cli.test.ts` — help text, a real `--platform ubuntu --yes` invocation, and the unknown-platform exit 1 (#56) | C |
+| **unknown command → exit 1 + help** | none | the `default` arm of `src/index.ts` not exercised by any spawn found | **N** |
+| `mcp` bridge subcommand | server unit (child process) | `src/mcp/cli.test.ts` | C |
 | npm package surface: bins, `exports`, tarball contents | packaged e2e + build | `test/e2e/package-exports.test.ts`; `scripts/check-pack.mjs` via `npm run build` | C |
 
-### 3.2 HTTP API – 27 route families, plus four cross-cutting concerns (`packages/xezar/src/server/server.ts`)
+### 3.2 HTTP API – 29 route families, plus four cross-cutting concerns (`packages/xezar/src/server/server.ts`)
 
 Families are named by their **chained builder** (`const <name>Routes = new Hono()…`), not by line
 number. The line numbers this table used to carry had rotted in both directions and sent readers to
@@ -121,6 +124,8 @@ HTTP API.
 | WebSocket bus `/api/v1/ws` | server unit | `ws.test.ts:108-266` (hub), `:312,354` (upgrade guard) | C |
 | Route registration and alias parity | server unit | `route-parity.test.ts:158,206,215`; `versioned-surface.test.ts:93,108`; `bc-route-inventory.test.ts:119` | C |
 | Contract ↔ route shape agreement | typecheck | `contract-parity*.test.ts`, `typed-bodies.test.ts` – compile-time only | C (types), N (behaviour) |
+| MCP reference (`mcpReferenceRoutes`) | server unit | `server/mcp-reference-route.test.ts`, `server/mcp-reference-route.unavailable.test.ts` (see 10.5) | C |
+| MCP leader (`mcpLeaderRoutes`) | server unit | `server/mcp-leader-topic.test.ts`, `mcp/push-delivery.test.ts` | C |
 
 ### 3.3 Cockpit journeys (`packages/web/src/routes.tsx`)
 
@@ -157,14 +162,14 @@ HTTP API.
 | Behaviour | Suite | Strongest evidence | Status |
 |---|---|---|---|
 | queued → running under the workspace cap | server unit | `workflows/run-lease.test.ts:180`, `workspace-semaphore.test.ts:134` | C |
-| running → review (gate on, non-autonomous, changes) | server unit | `workflows/run.test.ts:710` | C |
-| running → done (gate off, or no changes) | server unit | `workflows/run.test.ts:704,724` | C |
+| running → review (gate on, non-autonomous, changes) | server unit | `workflows/run.test.ts` | C |
+| running → done (gate off, or no changes) | server unit | `workflows/run.test.ts` | C |
 | worktree creation fails → run marked `failed` before any step | server unit | `workflows/run-isolation.test.ts:55-69` | C |
-| `XEZ:MONITORING` parks the run; wake timer and operator wake | server unit | `workflows/run.test.ts:909-955,1005`; `runs/store.test.ts:179,195` | C |
+| `XEZ:MONITORING` parks the run; wake timer and operator wake | server unit | `workflows/run.test.ts`; `runs/store.test.ts:179,195` | C |
 | `runContinuation` keeps step tools (the second `ActiveRun` site) | server unit | `workflows/continuation-tools.test.ts:50` | C |
 | `maxParallel` across projects, and `refresh()` raising it | server unit | `workspace-semaphore.test.ts:134,264,475` | C |
-| Message delivery into a live run | server unit (indirect) | `workflows/run.test.ts:1052,1978`; no direct unit test of `deliverMessage` by name | C |
-| Autonomous nudge actually delivered at turn end | server unit | `run-autonomous-nudge.test.ts:180,246` asserts delivery from BOTH `ActiveRun` sites (`execute` and `runContinuation`) since #59, closing the asymmetry with its twin `MONITORING_WAKE_NUDGE` at `run.test.ts:1005-1021`; `recover-autonomous.test.ts:26-84` covers the recovered flag | C |
+| Message delivery into a live run | server unit (indirect) | `workflows/run.test.ts`; no direct unit test of `deliverMessage` by name | C |
+| Autonomous nudge actually delivered at turn end | server unit | `run-autonomous-nudge.test.ts` asserts delivery from BOTH `ActiveRun` sites (`execute` and `runContinuation`) since #59, closing the asymmetry with its twin `MONITORING_WAKE_NUDGE` at `run.test.ts:1005-1021`; `recover-autonomous.test.ts:26-84` covers the recovered flag | C |
 | Legacy `runs.json` shapes still parse (`claude-cli`, absent optional fields) | server unit | `runs/store.test.ts:1754-1821` | C |
 | NDJSON history paging and live cursor replay | server unit | `runs/event-history.test.ts:69,200` | C |
 | Task-diff anchoring (`resolveTaskDiffBase`) | server unit | `src/git-diff-base.test.ts` | C |
@@ -203,6 +208,7 @@ appears above.
 | `packages/xezar/src/` (loose files) | 91.9 % | 80.8 % | 3.1, 3.4, and gaps R8, R19 |
 | `packages/xezar/src/agent-config/` | 97.2 % | 88.2 % | 3.2 (agent-config family) |
 | `packages/xezar/src/automations/` | 92.7 % | 74.6 % | 3.2 (automations family) |
+| `packages/xezar/src/mcp/` | See 10.10 | See 10.10 | MCP-only floor measured separately, including the pi extension |
 | `packages/xezar/src/core/` | 95.2 % | 84.2 % | 3.5 |
 | `packages/xezar/src/release/` | 95.5 % | 90.9 % | 3.1 (npm package surface) + `test/e2e/release.test.ts` |
 | `packages/xezar/src/runs/` | 96.8 % | 89.3 % | 3.4 |
@@ -231,7 +237,7 @@ the file table carry today's numbers ONLY — two snapshots in one table get quo
 while section 5 keeps the `e437c24` value beside each row, because there the movement is the
 point.
 
-**Scope limit, and it matters.** The run measures only what `npm test` executes – the three vitest
+**Scope limit, and it matters.** The run measures only what `npm test` executes – the four vitest
 projects. It does **not** measure `npm run test:unit` (node:test), `npm run test:package`
 (packaged CLI) or `npm run test:e2e` (browser). A file the packaged-CLI suite exercises still reads
 as 0 % here, and a file no suite touches also reads as 0 %. The report cannot tell those two apart,
@@ -261,7 +267,7 @@ moved 0→1, 0→2, 6→10 and 8→1.
 ### Where high line coverage coexists with an untested behaviour
 
 - ~~`packages/contract` measures 97.6 % lines and has zero tests of its own and no vitest project at
-  all.~~ **Closed (#120)** — it is now a vitest project with two co-located test files. The line
+  all.~~ **Closed (#120)** — it is now a vitest project with four co-located test files. The line
   coverage was incidental at the time of measurement; the shape is kept here because it is the
   general warning: a high number can be entirely other packages' doing.
 - `packages/web/src/components/task-agent.tsx` has **no co-located test**. Its coverage is incidental,
@@ -292,7 +298,7 @@ moved 0→1, 0→2, 6→10 and 8→1.
   `server-install`, `server-uninstall`, `server-deploy`, `--help` and `--version` are all exercised
   by the node:test suites that CI does run, and `init` by `project-kit-cli.test.ts`. Its 0 % is a
   measurement artefact for every one of those paths, `serve` included since #43:
-  `test/e2e/package-cli.test.ts:433-495` boots the packaged CLI's default command and asserts port
+  `test/e2e/package-cli.test.ts` boots the packaged CLI's default command and asserts port
   fallback, orphan prune and `.local/.gitignore` upkeep, in a suite CI runs.
 - `packages/xezar/src/planner.ts` measures 85.4 % lines here (37.5 % at `e437c24`) while
   `test/unit/planner.test.ts` covers two of its functions in a suite this run does not see. The
@@ -385,9 +391,9 @@ Two warnings that outlived the audit, because they are what this table is *for*:
 | # | Gap | Why it ranks here | Evidence | Issue |
 |---|---|---|---|---|
 | ~~R1~~ | ~~Browser e2e suite never runs in CI, and its skip path exits 0~~ — **closed** | fixed by #128: a separate `ui-e2e` job runs the suite and passes only on a literal `TEST_E2E_STATUS=passed` line, so the skip path fails the job instead of reading green | `ci.yml` `ui-e2e` job | #60 |
-| ~~R2~~ | ~~`packages/contract` has no vitest project and no tests~~ — **closed** | fixed by #120: the root config lists four projects and the package has two test files | `vitest.config.ts` | #61 |
+| ~~R2~~ | ~~`packages/contract` has no vitest project and no tests~~ — **closed** | fixed by #120: the root config lists four projects and the package has four test files as of 2026-09-15 | `vitest.config.ts` | #61 |
 | ~~R3~~ | ~~`xezar init` has no test at any level~~ — **closed** | `project-kit-cli.test.ts` spawns the real CLI and covers both the scaffold and the never-overwrite half | `project-kit-cli.test.ts:20,29` | #62 |
-| ~~R4~~ | ~~`xezar serve` boot path has no CLI-level test~~ — **closed** | fixed by #43: the packaged CLI boots its default command and all three named behaviours are asserted | `test/e2e/package-cli.test.ts:442,484,490` (requested port, then auto-pick off a squatted one), `:454` (orphan prune), `:459` (`.local/.gitignore`) | #43 |
+| ~~R4~~ | ~~`xezar serve` boot path has no CLI-level test~~ — **closed** | fixed by #43: the packaged CLI boots its default command and all three named behaviours are asserted | `test/e2e/package-cli.test.ts` (requested port, then auto-pick off a squatted one), the “cleaned 1 orphaned worktree” and `.local/.gitignore` assertions | #43 |
 | ~~R5~~ | ~~`server/git.ts` at 27.6 % branches~~ — **closed** | fixed by #44: 16 repository-shape cases, so the rise to 86.2 % branches is deliberate, not incidental | `server/git.test.ts:66-250` — nested dir, detached HEAD, bare repo, submodule, linked worktree, deleted dir | #44 |
 | ~~R6~~ | ~~`backend-detect.ts` probes only asserted for `pi`~~ — **closed** | fixed by #45: every agent CLI is probed by name, with a timeout, and with the missing/non-zero case parameterised over all five binaries | `core/backend-detect.test.ts:115-131,141-155,176-207` | #45 |
 | ~~R7~~ | ~~`workflows/load.ts` at 40 % branches~~ — **closed** | fixed by #46: per-file degradation and built-in restoration both asserted | `workflows/load.test.ts:47,61,70,87,115` (degradation), `:180,199,216` (built-ins come back) | #46 |
@@ -400,10 +406,10 @@ Two warnings that outlived the audit, because they are what this table is *for*:
 | ~~R14~~ | ~~`GET /launch-key` has no behavioural assertion~~ — **closed** | fixed by #53: the served key equals the one persisted in that project's `.local/xezar/launch-key`, is repeated rather than regenerated, is generated when absent, differs per project, and stays behind the Host/Origin guard | `launch-key-api.test.ts:112-190` | #53 |
 | ~~R15~~ | ~~`createRunner` dispatch only asserted for `pi`~~ — **closed** | fixed by #54: one case per `RUNNER_IDS` entry, with no id served by the default arm | `core/runner-factory.test.ts:52,60,85` (each id), `:98,104,123,154` (unknown id, legacy `claude-cli`) | #54 |
 | ~~R16~~ | ~~OpenCode runner teardown bypasses its golden mock server~~ — **closed** | the suite now drives the real `mock-opencode-serve.mjs`, removing the asymmetry with codex | `opencode-server-runner.test.ts` | #55 |
-| ~~R17~~ | ~~`server-install` steps/ui/platforms at 50-63 % branches, `server-deploy` untested~~ — **closed** | `server-deploy` now has help-text, real-invocation and unknown-platform coverage, and the install steps/ui gained tests with it | `test/e2e/package-cli.test.ts:271,284,291` | #56 |
+| ~~R17~~ | ~~`server-install` steps/ui/platforms at 50-63 % branches, `server-deploy` untested~~ — **closed** | `server-deploy` now has help-text, real-invocation and unknown-platform coverage, and the install steps/ui gained tests with it | `test/e2e/package-cli.test.ts` | #56 |
 | ~~R18~~ | ~~`skills-remote.ts` at 41.8 % branches~~ — **closed** | fixed by #57 (scheduler) and the git half now runs against a real local bare clone | `skills-remote.test.ts:6-27`; `test/unit/skills-remote.test.ts:447,473`; `skills-remote-git.test.ts` | #57 |
 | ~~R19~~ | ~~`planner.ts` at 20 % branches, `update-check.ts` absent from coverage~~ — **closed** | fixed by #58: seven `planChain` degradation cases and a full `update-check` suite. The planner's 57.6 % branches is still the lowest number in the file table above, so the row is worth re-reading before anyone edits that module | `test/unit/planner.test.ts:165-215`; `update-check.test.ts:50-195` | #58 |
-| ~~R20~~ | ~~Autonomous nudge delivery has no direct test~~ — **closed** | fixed by #59, and at BOTH `ActiveRun` construction sites — the asymmetry `AGENTS.md` warns about is exactly what the test covers | `run-autonomous-nudge.test.ts:180` (via `execute`), `:246` (via `runContinuation`), plus four guards at `:213,230,290,312` | #59 |
+| ~~R20~~ | ~~Autonomous nudge delivery has no direct test~~ — **closed** | fixed by #59, and at BOTH `ActiveRun` construction sites — the asymmetry `AGENTS.md` warns about is exactly what the test covers | `run-autonomous-nudge.test.ts` (via `execute`), the `runContinuation` case and its four guards | #59 |
 
 ---
 
@@ -417,9 +423,9 @@ exception survives: the enabled automations flow (R9) sits behind `XEZ_AUTOMATIO
 neither `scripts/e2e.sh` nor the CI job sets, so that spec self-skips and the BROWSER-level flow
 stays ungated — the unit-level flow does run.
 
-**Covered only by manual QA.** `SDLC.md:89` states plainly that user-facing changes need the
+**Covered only by manual QA.** `SDLC.md` § The QA gate states plainly that user-facing changes need the
 separate real-browser QA, and `CODE_REVIEW.md:3` repeats that `test:e2e` is "the QA layer", not part
-of the review gate. `SDLC.md:71` allows a self-QA exception with attached evidence. So the last line
+of the review gate. `SDLC.md` § The QA gate allows a self-QA exception with attached evidence. So the last line
 of defence for cockpit rendering is a human running a browser and writing down what they saw.
 
 **Covered by typecheck, not by `npm test`.** The six `contract-parity*.test.ts` files and
@@ -525,9 +531,9 @@ quoting a number.
 `npm run test:coverage:mcp` – vitest's `server` project, restricted to the MCP test files
 (`packages/xezar/src/mcp/`, `packages/xezar/src/server/mcp-*`,
 `packages/xezar/src/server/stale-write-routes*`), v8 provider, coverage included over
-`packages/xezar/src/mcp/**` minus `*.testkit.ts`, and a per-file threshold of 80 % lines and 80 %
+`packages/xezar/src/mcp/**` and `packages/xezar/scripts/pi-leader-extension.ts`, excluding `*.testkit.ts`, and a per-file threshold of 80 % lines and 80 %
 branches. It writes to `.local/coverage/mcp/` and exits non-zero naming each file under the floor.
-About 40 seconds on the machine that measured it; it does not run the other ~200 server test files,
+The 2026-09-15 run took 65.99 seconds (55 test files, 1,273 tests); it excludes unrelated server tests,
 which is the point – coverage a module picks up from an unrelated test was never aimed at it.
 
 What it cannot see is listed in 10.4. It is not in CI and not in `.xezar/pipeline/config.json`. It was
@@ -679,10 +685,11 @@ direct tests took a median 6.9 s end to end, a survivor needed a full MCP scope 
 to be sure, and the 158 mutants took 68 minutes over three parallel copies. The sample's *inferred*
 "5 000–8 000 mutants" for a real StrykerJS run was **too low**: Stryker generates **12 530** on this
 scope. The real run, its cost and its score are in 10.8 – it was adopted as a release gate on the
-sample's recommendation, that step was removed on 2026-09-12, it has run nightly on GitHub Actions
-since #377, and the per-PR form stays the named break SDLC.md requires.
+sample's recommendation, that step was removed on 2026-09-12, and nightly GitHub Actions runs were scheduled by #433 on 2026-09-15, and the per-PR form stays the named break SDLC.md requires.
 
 ### 10.4 Held by a suite v8 cannot see
+
+Manual instructions: [real-model runbooks](../features/mcp-server/mcp-client-acceptance-record.md#manual-real-model-runbooks).
 
 These behaviours are tested, in suites `npm run test:coverage:mcp` does not measure. They are
 recorded here so "covered elsewhere" is a fact with a file and a line, and so nobody writes a
@@ -695,10 +702,10 @@ duplicate vitest test to move a percentage.
 | A-16 absent or corrupt MCP state starts fresh, warns once, keeps the bad bytes; no two owners after a restart | node:test | `test/unit/mcp-durability.test.ts:416,466,558` | yes |
 | A-21 reconnect: valid cursor, cursor past retention, duplicates and out-of-order rows | node:test | `test/unit/mcp-durability.test.ts:587-667` | yes |
 | A-02, A-03, A-04, A-12 project isolation, partial success, foreign cursors, connection file kept out of Git | node:test | `test/unit/mcp-isolation.test.ts:73-299` (skipped on Windows) | yes |
-| A-16 an UPGRADED packaged cockpit with MCP state corrupt, deleted, hard-restarted | packaged CLI | `test/e2e/mcp-upgrade.test.ts:214` | yes (`npm run test:package`) |
-| `xez mcp` as a real subprocess: handshake, absent bridge, service down, a neighbour on the port, and a directory xezar never served answering `not-registered` (the branch at `index.ts:395`) | server unit, but the bridge runs in a CHILD process v8 does not follow | `src/mcp/cli.test.ts:120,153,165,199,203` | yes |
+| A-16 an UPGRADED packaged cockpit with MCP state corrupt, deleted, hard-restarted | packaged CLI | `test/e2e/mcp-upgrade.test.ts` (packaged upgrade case) | yes (`npm run test:package`) |
+| `xez mcp` as a real subprocess: handshake, absent bridge, service down, a neighbour on the port, and a directory xezar never served answering `not-registered` (the branch at `mcp/index.ts` (`not-registered`)) | server unit, but the bridge runs in a CHILD process v8 does not follow | `src/mcp/cli.test.ts:120,153,165,199,203` | yes |
 | A-20 the open cockpit follows MCP changes; A-01/A-17/A-23 the MCP connection screen | browser | `packages/web/e2e/mcp-live-sync.e2e.ts:194,232`, `mcp-collaboration.e2e.ts` | yes (`ui-e2e`) |
-| A-01, A-17, A-18, A-19, A-20, A-23 with REAL Claude Code, Codex and OpenCode clients | node:test integration harness | `test/integration/mcp-real-clients.test.ts` | **no** – run by hand; results in `docs/features/mcp-server/mcp-client-acceptance-record.md` |
+| A-01, A-17, A-18, A-19, A-20, A-23 with REAL Claude Code, Codex, OpenCode and pi clients | node:test integration harness | `test/integration/mcp-real-clients.test.ts` | **no** – run by hand; results in `docs/features/mcp-server/mcp-client-acceptance-record.md` |
 | A-19 / A-23 pi real-model reaction (#373) | node:test integration harness | `test/integration/mcp-real-model.test.ts` | **no** – opt-in local model; exact nonce + cursor MCP ack, scripted request-only control; missing target is NOT-RUN |
 | A-19 / A-23 Claude Code and Codex real-model reaction (#67) | node:test integration harness | `test/integration/mcp-real-model.test.ts` (`[claude-code]`, `[codex]`) | **no** – opt-in with `XEZ_REAL_MODEL_CLIENTS`, paid, the client's own login; exact run-id nonce + cursor ack observed on the wire and in `leader-cursors.json`; no scripted control in these two legs (the judge's own controls are unit cases in the same file) |
 
@@ -718,7 +725,7 @@ refuse has a test that makes it refuse.
 | `leaderNamesItsOperation` (`mcp-journal.ts`) – a `leader` row without its operation id | `event-journal.test.ts:169`, `echo-guard.test.ts:122`, `event-catalog.test.ts:513` |
 | The other `mcp-*.ts` files | Declarations only – no refinement, transform or function. Their shapes are pinned where they are parsed (the tool suites) and by `contract-parity*.test.ts` at compile time. |
 
-The MCP routes in `server.ts`, file-level coverage being meaningless for two routes in a 5 600-line
+The MCP routes in `server.ts`, file-level coverage being meaningless for two routes in a 6 000-line
 file:
 
 | Route | Test |
@@ -805,17 +812,15 @@ sit in. #311's diff touches **none** of those lines: it adds a session observer 
 push-delivery wiring to `index.ts`, beside them. So they were tested instead of exempted
 (`service-answers.test.ts`, each case red against a named break in #335), and both are above the
 floor now. What was left uncovered in `service.ts` and why: the `closed` answer to `session/open`
-(`service.ts:255-257`) goes to a connection that is already gone, so nothing can observe it; the
-`String(err)` arms at `247` and `284` only change a log line; `chmod` failing after `listen`
-(`124-125`) and an `lstat` error other than ENOENT (`151`) need a filesystem that fails on cue. In
-`index.ts`, the unregistered-directory answer (`395`) is held by `cli.test.ts:199` in a child process
+(`service.ts`, closed connection handling) goes to a connection that is already gone, so nothing can observe it; the
+`String(err)` logging arms only change a log line; `chmod` failing after `listen`
+(`service.ts`, post-listen chmod) and an `lstat` error other than ENOENT (`service.ts`, lstat handling) need a filesystem that fails on cue. In
+`index.ts`, the unregistered-directory answer (`status: 'not-registered'`) is held by `cli.test.ts:199` in a child process
 (10.4), and was not duplicated.
 
-Done in #352, recorded in 10.9. After #311 merges: re-run `npm run test:coverage:mcp` on `main` – #311 adds `leader-delivery.ts` and
-`project-leaders.ts`, which have never been measured – close what remains with tests shown red, and
-only then make the command a CI step.
+Done in #352, recorded in 10.9; the later measurement is in 10.10. CI adoption remains separate work.
 
-### 10.7 Branches no real input reaches (found, not fixed – the source is frozen by #311)
+### 10.7 Branches no real input reaches (dated finding while #311 was in flight)
 
 - `tools/results-evidence.ts:467` – the "never end a text page inside a surrogate pair" guard
   cannot fire. A page end inside a pair costs 6 escaped bytes; completing the pair costs 4, so the
@@ -830,11 +835,13 @@ only then make the command a CI step.
 suites alone (`packages/xezar/vitest.mutation.config.ts`, the same files 10.1 measures). Config
 and its reasons: `packages/xezar/stryker.config.mjs`.
 
-**Read this first: it runs nightly against `main` on GitHub Actions** (`.github/workflows/mutation.yml`,
-#377), and on a manual dispatch – never on a pull request, never in `npm test` and never in the
-release path. From 2026-09-12 until #377 it ran nowhere automatically. Before that it was a
+**Read this first: it is scheduled nightly against `main` on GitHub Actions** (`.github/workflows/mutation.yml`,
+#433, added 2026-09-15), and supports manual dispatch – never on a pull request, never in `npm test` and never in the
+release path. From 2026-09-12 until #433 it ran nowhere automatically. Before that it was a
 **release** gate – the `release` and `release-prep` workflows ran it as their first check step,
-before anything was authored – and that step was removed (#378).
+before anything was authored – and that step was removed (#378). The first manual run on
+2026-09-15 was red on a missing-shard failure (#443); no scheduled run had occurred at the
+2026-09-15 observation. See 10.10 for the run IDs and limits.
 
 Four things made the release path the wrong position, and none of them is about the gate's
 quality:
@@ -906,7 +913,7 @@ survivors in #338 are what raises it.
 3. **675 mutants have no coverage at all.** They are counted in the score (as not detected), and
    they are where the coverage floor and this gate say the same thing twice.
 4. **Static mutants are not measured.** 1 238 of them – module-level tables, regexes and schema
-   declarations – would need all 932 MCP tests each, which is what made the first attempt a ~60-hour
+   declarations – would need all ~930 MCP tests (2026-09-12) each, which is what made the first attempt a ~60-hour
    run. What they would have measured is pinned where the value is used (10.5).
 5. **It measures the MCP suites only.** A mutant killed by a suite v8 cannot see (10.4) still counts
    as survived here, because this run does not execute those suites. Check 10.4 before writing a
@@ -924,8 +931,8 @@ The floor shipped with #335 and was red from that day: three thresholds failed o
 that is red the day it ships is not a gate, so this is the record that it is not any more.
 
 **Measured 2026-09-12, branch `xez/692d3584` off `7bcb258`, `npm run test:coverage:mcp`, exit 0 –
-45 test files, 931 tests, no `ERROR:` line.** Aggregate 97.03 % lines, 86.06 % branches. The three
-files the errors named:
+45 test files, 931 tests, no `ERROR:` line.** Aggregate 97.03 % lines, 86.06 % branches. The two
+files listed below:
 
 | File | Lines before (`d8c1dc4`) | Branches before | Lines now | Branches now |
 |---|---|---|---|---|
@@ -949,56 +956,65 @@ an entry in `.xezar/pipeline/config.json` – 10.1 says it stays out "until it p
 condition is met. That is a separate PR: it needs the CI job written and its ~40 s measured on a
 2-core runner, and it should land before the next MCP PR meets a gate nobody runs for them.
 
-### Manual pi real-model reaction (#373)
+### 10.10 Re-measurement — 2026-09-15, source baseline `bb271fc`
 
-After `npm run build:server`, run from `packages/xezar`:
+`npm run test:coverage:mcp` **passed**, 55 test files / 1,273 tests, 65.99 seconds.
+Source and coverage configuration match `main` at `bb271fc`; the working diff was documentation only.
+The command’s 40 included source files all meet **80 % lines and 80 % branches**; no exemption is active.
+Aggregate: **97.33 % lines, 86.28 % branches**. The nearest branch floor is `mcp/index.ts` at exactly
+80 %, so one uncovered branch can make it fail. `bridge.ts` is at 81.87 %, superseding 10.9’s ranking.
+The historical tables above retain their dates; quote this table only for this revision.
 
-```sh
-TMPDIR=/tmp node --import ../../scripts/test-local-state.mjs --import tsx --test test/integration/mcp-real-model.test.ts
-```
+Paths below are relative to `packages/xezar/`. Scope is the root `package.json` command:
+`src/mcp/**` plus `scripts/pi-leader-extension.ts`, excluding `*.testkit.ts`.
 
-This is the owner’s manual command, exactly like `mcp-real-clients.test.ts`. All three
-`XEZ_REAL_MODEL_*` variables must come from the operator’s environment (see `.env.example`).
-Export `XEZ_REAL_MODEL_API_KEY` from the authorized
-provider-key variable in your shell, e.g. `export XEZ_REAL_MODEL_API_KEY="$LOCAL_MODEL_API_KEY"`.
-`pi-runner.ts` passes its child environment to pi; pi resolves authentication from its selected
-provider configuration under `PI_CODING_AGENT_DIR` (`profileEnv` in `core/agent-profiles.ts`).
-The runner does not supply a universal default key. This harness reads no personal provider
-configuration: obtain the same endpoint key through its authorized environment source.
-The proxy keeps that key in memory and forwards it as a bearer header; isolated pi uses a dummy
-fixture credential. Never paste a key into a command argument, tracked file, or evidence.
+| File | Lines % | Branches % |
+| --- | ---: | ---: |
+| `scripts/pi-leader-extension.ts` | 100.00 | 82.85 |
+| `src/mcp/api-reference.ts` | 100.00 | 100.00 |
+| `src/mcp/audit-trail.ts` | 98.97 | 94.79 |
+| `src/mcp/bridge.ts` | 93.72 | 81.87 |
+| `src/mcp/connection-file.ts` | 100.00 | 100.00 |
+| `src/mcp/echo-guard.ts` | 100.00 | 96.00 |
+| `src/mcp/event-catalog.ts` | 97.18 | 92.62 |
+| `src/mcp/event-controller.ts` | 94.34 | 92.39 |
+| `src/mcp/event-journal.ts` | 98.90 | 87.61 |
+| `src/mcp/index.ts` | 86.50 | 80.00 |
+| `src/mcp/ipc.ts` | 100.00 | 100.00 |
+| `src/mcp/leader-delivery.ts` | 99.09 | 86.28 |
+| `src/mcp/operation-receipts.ts` | 94.77 | 85.38 |
+| `src/mcp/project-catalogs.ts` | 100.00 | 100.00 |
+| `src/mcp/project-leaders.ts` | 100.00 | 100.00 |
+| `src/mcp/protocol.ts` | 100.00 | 100.00 |
+| `src/mcp/reconnect.ts` | 99.32 | 91.39 |
+| `src/mcp/resource-ownership.ts` | 97.95 | 92.45 |
+| `src/mcp/service-adapter.ts` | 97.77 | 92.30 |
+| `src/mcp/service.ts` | 92.95 | 84.61 |
+| `src/mcp/session-binding.ts` | 100.00 | 96.96 |
+| `src/mcp/stale-write.ts` | 100.00 | 89.79 |
+| `src/mcp/tool.ts` | 100.00 | 100.00 |
+| `src/mcp/adapters/claude-code.ts` | 100.00 | 94.73 |
+| `src/mcp/adapters/codex-link.ts` | 100.00 | 81.60 |
+| `src/mcp/adapters/codex.ts` | 98.23 | 84.12 |
+| `src/mcp/adapters/opencode.ts` | 95.87 | 84.39 |
+| `src/mcp/adapters/pi-link.ts` | 94.11 | 85.36 |
+| `src/mcp/adapters/pi.ts` | 100.00 | 90.00 |
+| `src/mcp/tools/discovery.ts` | 97.14 | 93.10 |
+| `src/mcp/tools/execution-control.ts` | 98.91 | 88.65 |
+| `src/mcp/tools/handoff-git.ts` | 96.96 | 82.18 |
+| `src/mcp/tools/index.ts` | 100.00 | 100.00 |
+| `src/mcp/tools/leader-events.ts` | 95.34 | 93.18 |
+| `src/mcp/tools/local-handoff.ts` | 100.00 | 87.35 |
+| `src/mcp/tools/project-config.ts` | 98.39 | 82.67 |
+| `src/mcp/tools/results-evidence.ts` | 98.55 | 80.58 |
+| `src/mcp/tools/task-create.ts` | 97.33 | 86.95 |
+| `src/mcp/tools/task-reads.ts` | 98.43 | 85.04 |
+| `src/mcp/tools/work-organisation.ts` | 97.20 | 84.88 |
 
-The harness installs pinned `pi-mcp-adapter@2.32.1` into a disposable HOME (network required),
-then drives the real pi leader extension and shared A/B MCP service. The deterministic judge
-controls cover an exact ack, absent ack, wrong nonce/cursor, pre-delivery and late ack. The
-scripted integration control proves that a model request and “I reacted” text cannot pass.
-The live model has 120 seconds to call `leader_events` ack with the delivered nonce and cursor.
-A missing URL, model or key, or HTTP 401/403 from the bounded `/models` probe, is node:test
-SKIPPED / NOT-RUN. Only a reached model that times out or sends an incorrect ack is a FAILED
-model verdict. The evidence scan separately fails on any leaked key, and recorded Authorization
-headers are redacted. No fast gate starts pi or the
-endpoint; browser coverage is separate and not applicable to this test-only change.
-Results, exact argv, revision/dirty state, model requests, delivery and ack ledger are saved
-under `.local/qa/mcp-real-model/<stamp>/`; task handoff preserves a copy in primary evidence.
-
-### Manual Claude Code and Codex real-model reaction (#67)
-
-The same file carries two more legs, off unless named in `XEZ_REAL_MODEL_CLIENTS`:
-
-```sh
-XEZ_REAL_MODEL_CLIENTS=claude-code,codex TMPDIR=/tmp node --import ../../scripts/test-local-state.mjs --import tsx --test --test-name-pattern 'claude-code\]|codex\]' test/integration/mcp-real-model.test.ts
-```
-
-They are paid and use each client's own login and configured model: Claude Code from its default
-config directory (`XEZ_REAL_MODEL_CLAUDE_MODEL`, default `sonnet`), Codex from the home its installed
-`codex` wrapper pins (else `~/.codex`). The harness reads no credential. Each leg starts a real
-`xezar serve` over a throwaway repository, attaches the client as leader through the cockpit route,
-causes one `task.done` event and waits 120 s for `leader_events ack` with `operationId`
-`react-<run id>` and the `nextCursor` of the model's own post-delivery read. A pass-through stdio tee
-(`test/helpers/mcp-stdio-tee.mjs`) between the client and the bridge records the calls; the service's
-`leader-cursors.json` must confirm the ack. Unlike the pi leg there is no scripted control run: the
-product delivery path for these clients was already measured with scripted endpoints in
-`mcp-real-clients.test.ts`. Known side effects on the owner's machine: each run answers the client's
-folder-trust screen for a `/tmp` fixture path, which the client may remember in its own config (Codex writes it to `config.toml`), and both
-clients keep the session in their own history. The Codex leg refuses to run while an app-server is
-already listening in that home.
+**Mutation scheduling is separate evidence.** #433 added `mutation.yml` on 2026-09-15. As observed
+on 2026-09-15, GitHub listed two manual dispatches and no scheduled run: the first
+([34967462757](https://github.com/qodeca/xezar/actions/runs/34967462757)) failed with missing shard
+results; [#443](https://github.com/qodeca/xezar/issues/443) tracks that failure. The second dispatch
+was still running. The 10.8 score/spread is the dated 2026-09-12 laptop run, not the current CI score.
+No mutation run was started by this docs sweep. Neither a configured schedule nor this passing
+coverage command proves a successful nightly mutation run.
