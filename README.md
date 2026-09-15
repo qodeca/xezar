@@ -899,8 +899,10 @@ Nothing is pushed until a leader is attached, and xezar gains no setting and no
 environment variable for it. No MCP action attaches a leader yet: a person uses
 **Attach leader** under **Settings → MCP connection → Connection status**, or the
 leader makes that one HTTP call itself,
-`POST /api/v1/mcp/leader {"action":"attach","client":"claude-code"}` (with its own
-client name). For Claude Code the other switch is a flag you add when you start it:
+`POST /api/v1/p/<projectId>/mcp/leader {"action":"attach","client":"claude-code"}`
+against the cockpit (`http://127.0.0.1:4321` by default), where `<projectId>` is
+`project.id` from `discover_project`. The client is the leader's own – `claude-code`,
+`codex` or `pi`; OpenCode also needs `baseUrl` and `sessionId`. For Claude Code the other switch is a flag you add when you start it:
 
 ```bash
 claude --dangerously-load-development-channels server:xezar
@@ -910,8 +912,8 @@ That flag is how Claude Code lets a server that is not on Anthropic's approved l
 push messages into your session. **Claude Code shows a warning every time you launch
 with it** — choose "I am using this for local development" if you accept it. Then
 use **Attach leader** under **Settings → MCP connection → Connection status**, the same
-control that attaches Codex, OpenCode and pi, or
-`POST /api/v1/mcp/leader {"action":"attach","client":"claude-code"}`. Until it is attached, the leader reads events with `leader_events`.
+control that attaches Codex, OpenCode and pi, or the project-scoped call above,
+`POST /api/v1/p/<projectId>/mcp/leader {"action":"attach","client":"claude-code"}`. Until it is attached, the leader reads events with `leader_events`.
 
 Channels are a Claude Code research preview, so the wake only works on a first-party
 login: they need a claude.ai or Anthropic Console API-key login, they do not work on

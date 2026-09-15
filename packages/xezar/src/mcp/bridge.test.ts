@@ -422,14 +422,17 @@ describe('Claude Code channel handshake (#374)', () => {
     // attach door is named because no MCP action attaches a leader.
     expect(instructions).toContain('Once this session is attached, events from xezar are pushed to it as `<channel source="xezar" …>` messages');
     expect(instructions).toContain('While nothing is attached, read them with the `leader_events` tool');
-    expect(instructions).toContain('`POST /api/v1/mcp/leader {"action":"attach","client":"claude-code"}`');
+    // #439 review: the scoped route, because the unscoped one is bound to the cockpit's boot project.
+    expect(instructions).toContain('`POST /api/v1/p/<projectId>/mcp/leader {"action":"attach","client":"claude-code"}` against the cockpit (`http://127.0.0.1:4321` by default), where `<projectId>` is `project.id` from `discover_project`');
+    expect(instructions).toContain('OpenCode also needs `baseUrl` and `sessionId`');
+    expect(instructions).not.toContain('POST /api/v1/mcp/leader');
     expect(instructions).not.toContain('Events from xezar arrive as');
     b.input.end();
     await b.done;
   });
 
   it('keeps the complete non-Claude initialize answer byte-identical to the main constant', async () => {
-    const baseInstructions = 'xezar controls coding-agent tasks for the one project this session was started in. Call `health` to check that the xezar cockpit is running for it. A project leader works through these tools only, never the cockpit UI and never the HTTP API, apart from the one attach call. This session receives no pushed events until it is attached: read events with the `leader_events` tool. Attach with Settings → MCP connection → Attach leader, or `POST /api/v1/mcp/leader {"action":"attach","client":"claude-code"}` (the client name is your own).';
+    const baseInstructions = 'xezar controls coding-agent tasks for the one project this session was started in. Call `health` to check that the xezar cockpit is running for it. A project leader works through these tools only, never the cockpit UI and never the HTTP API, apart from the one attach call. This session receives no pushed events until it is attached: read events with the `leader_events` tool. Attach with Settings → MCP connection → Attach leader, or `POST /api/v1/p/<projectId>/mcp/leader {"action":"attach","client":"claude-code"}` against the cockpit (`http://127.0.0.1:4321` by default), where `<projectId>` is `project.id` from `discover_project`. The client is your own (`claude-code`, `codex` or `pi`; OpenCode also needs `baseUrl` and `sessionId`).';
     const b = bridge({ target: socketTarget('/nonexistent') });
     const init = await b.request('initialize', { protocolVersion: '2025-11-25', clientInfo: { name: 'codex' } });
     expect(JSON.stringify(init.result)).toBe(JSON.stringify({ protocolVersion: '2025-11-25', capabilities: SERVER_CAPABILITIES, serverInfo: { name: 'xezar', title: 'xezar', version: '1.2.3' }, instructions: baseInstructions }));

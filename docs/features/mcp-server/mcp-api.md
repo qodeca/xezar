@@ -375,7 +375,7 @@ Unknown arguments are rejected.
 ### `leader_events`
 
 > Read this project's significant events (task outcomes, questions, quality gates, human changes, executor availability) since you last acknowledged them, and acknowledge them.
-> An attached leader is sent these events instead: xezar pushes them (a `<channel source="xezar">` message to Claude Code, a started turn in Codex, OpenCode or pi). This tool is the fallback for a leader that is not attached, and the way to catch up after a gap. Attach with Settings → MCP connection → Attach leader, or `POST /api/v1/mcp/leader {"action":"attach","client":"claude-code"}` (your own client name); no MCP action attaches a leader yet.
+> An attached leader is sent these events instead: xezar pushes them (a `<channel source="xezar">` message to Claude Code, a started turn in Codex, OpenCode or pi). This tool is the fallback for a leader that is not attached, and the way to catch up after a gap. Attach with Settings → MCP connection → Attach leader, or `POST /api/v1/p/<projectId>/mcp/leader {"action":"attach","client":"claude-code"}` against the cockpit (`http://127.0.0.1:4321` by default), where `<projectId>` is `project.id` from `discover_project`; the client is your own (`claude-code`, `codex` or `pi`; OpenCode also needs `baseUrl` and `sessionId`). No MCP action attaches a leader yet.
 > Call read when you connect or reconnect. It returns the outstanding events in order, each with a stable eventId and a standing (current, superseded or unjudged), then the current state of the tasks they name — the state is the authority, an event is history.
 > When hasMore is true, read again at once; otherwise do not poll — call read again on your next connection, or when a pushed event names a gap.
 > After you have taken a page into account, ack its nextCursor. Until you do, read returns the same events again, so drop any eventId you already handled. Acknowledging an older cursor changes nothing.
@@ -623,7 +623,9 @@ is not attached, and the catch-up after a gap. The unfiltered workspace stream i
 A project leader works through these MCP tools only, never the cockpit UI and never the HTTP API.
 The one exception is attaching: no MCP action attaches a leader yet, so a person uses **Settings →
 MCP connection → Attach leader**, or the leader makes one call,
-`POST /api/v1/mcp/leader {"action":"attach","client":"claude-code"}` (its own client name). GitHub
+`POST /api/v1/p/<projectId>/mcp/leader {"action":"attach","client":"claude-code"}` against the cockpit
+(`http://127.0.0.1:4321` by default), where `<projectId>` is `project.id` from `discover_project`. The
+client is the leader's own (`claude-code`, `codex` or `pi`; OpenCode also needs `baseUrl` and `sessionId`). GitHub
 facts – labels, review verdicts, merge state – are not carried by the MCP; a leader reads them with
 `gh`.
 

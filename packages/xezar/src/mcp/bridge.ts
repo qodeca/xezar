@@ -95,10 +95,13 @@ export const HEALTH_TOOL = {
 } as const;
 
 // #439: a project leader drives xezar through these tools only. The attach call named here is the
-// one HTTP request it may make, because no MCP action attaches a leader yet.
+// one HTTP request it may make, because no MCP action attaches a leader yet. It is the project-scoped
+// route: the unscoped `/api/v1/mcp/leader` is bound to the cockpit's boot project, not this one.
 const ATTACH_DOOR =
-  'Attach with Settings → MCP connection → Attach leader, or `POST /api/v1/mcp/leader ' +
-  '{"action":"attach","client":"claude-code"}` (the client name is your own).';
+  'Attach with Settings → MCP connection → Attach leader, or `POST /api/v1/p/<projectId>/mcp/leader ' +
+  '{"action":"attach","client":"claude-code"}` against the cockpit (`http://127.0.0.1:4321` by default), ' +
+  'where `<projectId>` is `project.id` from `discover_project`. The client is your own ' +
+  '(`claude-code`, `codex` or `pi`; OpenCode also needs `baseUrl` and `sessionId`).';
 
 const INSTRUCTIONS =
   'xezar controls coding-agent tasks for the one project this session was started in. ' +
