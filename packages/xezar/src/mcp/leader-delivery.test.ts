@@ -1037,6 +1037,10 @@ describe('no leader attached: the blocker says who reads, who can be attached, a
     expect(blocker?.fix).toContain('opencode serve');
     // Claude Code: the flag, the tool call, the attach.
     expect(blocker?.fix).toContain('--dangerously-load-development-channels server:xezar');
+    // #439: attached is the normal path, the pull the fallback, and the fix names the attach door.
+    expect(blocker?.message).toContain('Attached is how a leader normally receives them; reading with leader_events is the fallback.');
+    expect(blocker?.fix).toContain('Settings → MCP connection → Attach leader, or POST /api/v1/mcp/leader {"action":"attach","client":"claude-code"}');
+    expect(blocker?.fix).toContain('no MCP action attaches a leader yet');
   });
 });
 

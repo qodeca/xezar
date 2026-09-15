@@ -654,7 +654,9 @@ export const organiseWorkTool = defineTool({
   async call(args, ctx) {
     const { service } = ctx as ServiceBoundContext;
     if (!service) {
-      return errorResult('organise_work is not connected to this xezar service yet, so it changed nothing. Use the cockpit for now.');
+      return errorResult(
+        'organise_work is not connected to this xezar service yet, so it changed nothing. Report this blocker to the person; a leader does not switch to the cockpit.',
+      );
     }
     return perform(new WorkOrganisation(ctx.project.id, service), ctx.project.root, args);
   },

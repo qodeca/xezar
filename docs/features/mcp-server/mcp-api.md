@@ -94,7 +94,7 @@ of truth. Nested object and array-item properties appear as dotted paths.
 <!-- mcp-api:arguments:start -->
 ### `health`
 
-> Report whether the xezar cockpit is running for the project this session was started in, and which project that is.
+> Report whether the xezar cockpit is running for the project this session was started in, and which project that is. It does not say whether this session is attached as leader; the session instructions say how to attach.
 
 Takes no arguments. Unknown arguments are rejected.
 
@@ -108,7 +108,7 @@ Takes no arguments. Unknown arguments are rejected.
 > Pages are bounded: at most 100 items and 40000 bytes. When an answer has a nextCursor, call again with the same view, task and filters plus that cursor.
 > An item too large for one answer comes in parts ("part" of "parts"): join the "text" of every part in order, then parse it as JSON.
 > The first answer of a task, history, context or handoff read (no cursor) carries the task’s "version": send it as expectedVersion when you then change that task (organise_work, execution_control, handoff_git, project_config). A change is refused if the task moved after this read.
-> This reads only the project this connection is bound to. Use it to assess state or recover after a lost answer, not to poll: task events are pushed.
+> This reads only the project this connection is bound to. Use it to assess state or recover after a lost answer, not to poll: task events are pushed to an attached leader (see leader_events).
 
 Unknown arguments are rejected.
 
@@ -156,7 +156,7 @@ Unknown arguments are rejected.
 
 ### `discover_project`
 
-> Read which xezar project this session is bound to, its effective capabilities and limits, and which actions are available. Every action that is unavailable or read-only says why. Call it at the start of a session and again after a person changes settings. It takes no arguments: the project comes from the connection, never from a parameter.
+> Read which xezar project this session is bound to, its effective capabilities and limits, and which actions are available. Every action that is unavailable or read-only says why. Call it at the start of a session and again after a person changes settings. It takes no arguments: the project comes from the connection, never from a parameter. A project leader works through these tools only, never the cockpit UI and never the HTTP API, apart from the one call that attaches it (see leader_events); whether this session is attached is not part of this answer.
 
 Takes no arguments. Unknown arguments are rejected.
 
@@ -375,8 +375,9 @@ Unknown arguments are rejected.
 ### `leader_events`
 
 > Read this project's significant events (task outcomes, questions, quality gates, human changes, executor availability) since you last acknowledged them, and acknowledge them.
+> An attached leader is sent these events instead: xezar pushes them (a `<channel source="xezar">` message to Claude Code, a started turn in Codex, OpenCode or pi). This tool is the fallback for a leader that is not attached, and the way to catch up after a gap. Attach with Settings → MCP connection → Attach leader, or `POST /api/v1/mcp/leader {"action":"attach","client":"claude-code"}` (your own client name); no MCP action attaches a leader yet.
 > Call read when you connect or reconnect. It returns the outstanding events in order, each with a stable eventId and a standing (current, superseded or unjudged), then the current state of the tasks they name — the state is the authority, an event is history.
-> When hasMore is true, read again at once; otherwise do not poll — call read again on your next connection.
+> When hasMore is true, read again at once; otherwise do not poll — call read again on your next connection, or when a pushed event names a gap.
 > After you have taken a page into account, ack its nextCursor. Until you do, read returns the same events again, so drop any eventId you already handled. Acknowledging an older cursor changes nothing.
 > status "gap" means events after your position are no longer retained: nothing is replayed, the current state is included, and you continue by acking resumeCursor.
 

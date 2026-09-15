@@ -104,6 +104,7 @@ import type { McpSessionTransport } from './service.ts';
 export const LEADER_ROLE_INSTRUCTION = [
   'You are the project leader for this xezar project.',
   'You plan and coordinate the work through the xezar MCP tools: start tasks, read their results, answer their questions and hand finished work off.',
+  'Use only these tools: never the cockpit UI and never its HTTP API. Read GitHub facts (labels, review verdicts, merge state) with `gh`, which the MCP does not carry.',
   'You do not edit files yourself; tasks do the work in their own worktrees.',
 ].join('\n');
 
@@ -115,8 +116,8 @@ export const LEADER_ROLE_INSTRUCTION = [
 const NO_LEADER: McpLeaderBlocker = {
   code: 'no-leader-session',
   message:
-    'No leader session is attached to this project, so events are kept in the journal, not pushed. MCP notifications start no turn on their own. A pi without xezar’s leader extension reads its events with the leader_events tool, and so does any leader until it is attached. A Claude Code session started with --dangerously-load-development-channels server:xezar, a Codex session running on Codex’s shared local app-server, an OpenCode session you run with `opencode serve`, or a pi running xezar’s leader extension can be attached, so events start a turn in it.',
-  fix: 'Keep using leader_events from your own leader, or attach one. For Claude Code: start it in this project with --dangerously-load-development-channels server:xezar, let it call a xezar tool once, then attach it. For Codex: run it on Codex’s shared local app-server (`codex app-server --listen unix://`, in the Codex home xezar uses), let the session call a xezar tool once (for example leader_events) so xezar can find it, then attach it; if that is refused, fix what the refusal names and retry. For OpenCode, attach the session you run with `opencode serve`. For pi, attach it while it runs xezar’s leader extension.',
+    'No leader session is attached to this project, so events are kept in the journal, not pushed. Attached is how a leader normally receives them; reading with leader_events is the fallback. MCP notifications start no turn on their own. A pi without xezar’s leader extension reads its events with the leader_events tool, and so does any leader until it is attached. A Claude Code session started with --dangerously-load-development-channels server:xezar, a Codex session running on Codex’s shared local app-server, an OpenCode session you run with `opencode serve`, or a pi running xezar’s leader extension can be attached, so events start a turn in it.',
+  fix: 'Attach your leader: Settings → MCP connection → Attach leader, or POST /api/v1/mcp/leader {"action":"attach","client":"claude-code"} (the client name is your own); no MCP action attaches a leader yet. Until it is attached, keep using leader_events from it. For Claude Code: start it in this project with --dangerously-load-development-channels server:xezar, let it call a xezar tool once, then attach it. For Codex: run it on Codex’s shared local app-server (`codex app-server --listen unix://`, in the Codex home xezar uses), let the session call a xezar tool once (for example leader_events) so xezar can find it, then attach it; if that is refused, fix what the refusal names and retry. For OpenCode, attach the session you run with `opencode serve`. For pi, attach it while it runs xezar’s leader extension.',
 };
 
 /**

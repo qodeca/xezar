@@ -416,13 +416,20 @@ describe('Claude Code channel handshake (#374)', () => {
     const b = bridge({ target: socketTarget('/nonexistent') });
     const init = await b.request('initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'claude-code', version: '2.1.270' } });
     expect(init.result).toMatchObject({ capabilities: { tools: { listChanged: false }, experimental: { 'claude/channel': {} } } });
-    expect(String((init.result as { instructions?: string }).instructions)).toContain('<channel source="xezar"');
+    const instructions = String((init.result as { instructions?: string }).instructions);
+    expect(instructions).toContain('<channel source="xezar"');
+    // #439: pushes are promised only once the session is attached; the pull is the fallback, and the
+    // attach door is named because no MCP action attaches a leader.
+    expect(instructions).toContain('Once this session is attached, events from xezar are pushed to it as `<channel source="xezar" …>` messages');
+    expect(instructions).toContain('While nothing is attached, read them with the `leader_events` tool');
+    expect(instructions).toContain('`POST /api/v1/mcp/leader {"action":"attach","client":"claude-code"}`');
+    expect(instructions).not.toContain('Events from xezar arrive as');
     b.input.end();
     await b.done;
   });
 
   it('keeps the complete non-Claude initialize answer byte-identical to the main constant', async () => {
-    const baseInstructions = 'xezar controls coding-agent tasks for the one project this session was started in. Call `health` to check that the xezar cockpit is running for it.';
+    const baseInstructions = 'xezar controls coding-agent tasks for the one project this session was started in. Call `health` to check that the xezar cockpit is running for it. A project leader works through these tools only, never the cockpit UI and never the HTTP API, apart from the one attach call. This session receives no pushed events until it is attached: read events with the `leader_events` tool. Attach with Settings → MCP connection → Attach leader, or `POST /api/v1/mcp/leader {"action":"attach","client":"claude-code"}` (the client name is your own).';
     const b = bridge({ target: socketTarget('/nonexistent') });
     const init = await b.request('initialize', { protocolVersion: '2025-11-25', clientInfo: { name: 'codex' } });
     expect(JSON.stringify(init.result)).toBe(JSON.stringify({ protocolVersion: '2025-11-25', capabilities: SERVER_CAPABILITIES, serverInfo: { name: 'xezar', title: 'xezar', version: '1.2.3' }, instructions: baseInstructions }));
