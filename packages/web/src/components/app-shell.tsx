@@ -737,7 +737,7 @@ function AddProjectMenu() {
           size="icon"
           aria-label="Add project"
           title="Add project"
-          className="size-11 shrink-0 md:size-9"
+          className="size-11 shrink-0 md:size-10"
         >
           <FolderOpenIcon className="size-4" aria-hidden="true" />
         </Button>

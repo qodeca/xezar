@@ -608,7 +608,7 @@ svg.icon.xxs {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  height: 34px;
+  height: calc(var(--spacing) * 10);
   border: 0;
   border-radius: var(--radius);
   background: var(--contrast);
@@ -643,6 +643,12 @@ svg.icon.xxs {
   border-radius: var(--radius);
   background: var(--card);
   color: var(--foreground);
+}
+
+/* Add project beside New task: one height with it (D-07, cockpit `md:size-10`). */
+.new-task-row .btn-icon {
+  width: calc(var(--spacing) * 10);
+  height: calc(var(--spacing) * 10);
 }
 
 .nav {
