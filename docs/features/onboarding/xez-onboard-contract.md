@@ -46,8 +46,10 @@ policy and unrelated bytes preserved. Refuse stale previews and path escapes.
   Missing descriptors/companions leave this optional portion explicitly incomplete.
 - One appropriate project agent guidance file; adapt local evidence and link
   existing policy. Never install another project's kit or competing policy copies.
-- Root `.gitignore`: `.local/` protection before local evidence/backups; report
-  already tracked runtime files without silently untracking or deleting them.
+- Git projects only: root `.gitignore` provides `.local/` protection before local
+  evidence/backups; report already tracked runtime files without silently untracking
+  or deleting them. In non-Git projects, keep originals under `.local/` for recovery;
+  no VCS ignore applies.
 - Chosen leader client only: `.mcp.json` for Claude Code, `.codex/config.toml`
   for Codex, `.pi/mcp.json` for pi. Merge targeted entries; preserve other servers.
   OpenCode leader setup needs a supported version-matched reference; do not guess.
