@@ -838,7 +838,9 @@ function VersionChip({ version, latestVersion }: { version: string; latestVersio
  *  On a development build (#442, decisions.md D-08) a red "D" badge sits on the tile's top-right
  *  corner, so a from-source cockpit cannot be mistaken for the released one. The badge is
  *  absolutely positioned over the tile's own box, so the tile stays 26px and the brand row keeps
- *  its height. Any other channel returns the bare `<img>` exactly as before — no wrapper, no
+ *  its height. Its size and offsets are percentages OF THAT BOX (54% ≈ 14px, 15% ≈ 4px) rather
+ *  than spacing units, because the tile never scales with density and the badge must not either.
+ *  The letter is `--danger-ink`, not `--primary-foreground`, which follows the accent. Any other channel returns the bare `<img>` exactly as before — no wrapper, no
  *  placeholder. The image stays decorative (`alt=""`); the badge carries the words. */
 function BrandTile({ channel }: { channel: HealthResponse['channel'] | null }) {
   const tile = (
@@ -857,7 +859,7 @@ function BrandTile({ channel }: { channel: HealthResponse['channel'] | null }) {
       <span
         data-slot="dev-badge"
         title="Development build"
-        className="absolute -top-1 -right-1 grid size-3.5 place-items-center rounded-full bg-danger text-[9px] leading-none font-semibold text-primary-foreground ring-2 ring-sidebar"
+        className="absolute -top-[15%] -right-[15%] grid size-[54%] place-items-center rounded-full bg-danger text-[9px] leading-none font-semibold text-danger-ink ring-2 ring-sidebar"
       >
         <span aria-hidden="true">D</span>
         <span className="sr-only">Development build</span>

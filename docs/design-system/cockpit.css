@@ -87,6 +87,7 @@
 
   --danger: #ef4444;
   --danger-foreground: #ffffff;
+  --danger-ink: #0d0d0d;
   --success: #10b981;
   --pending: #fbbf24;
   --info: #93c5fd;
@@ -584,8 +585,9 @@ svg.icon.xxs {
   font-size: 13px;
 }
 
-/* Development-build badge (#442, decisions.md D-08): `absolute -top-1 -right-1 size-3.5
-   rounded-full bg-danger text-[9px] font-semibold text-primary-foreground ring-2 ring-sidebar`.
+/* Development-build badge (#442, decisions.md D-08): `absolute -top-[15%] -right-[15%] size-[54%]
+   rounded-full bg-danger text-[9px] font-semibold text-danger-ink ring-2 ring-sidebar`. Sized as a
+   share of the fixed 26px logo, so it does not follow the density lever.
    Wrap the logo in .logo-wrap; release builds render the bare logo. */
 .logo-wrap {
   position: relative;
@@ -595,15 +597,15 @@ svg.icon.xxs {
 
 .dev-badge {
   position: absolute;
-  top: calc(var(--spacing) * -1);
-  right: calc(var(--spacing) * -1);
+  top: -15%;
+  right: -15%;
   display: grid;
   place-items: center;
-  width: calc(var(--spacing) * 3.5);
-  height: calc(var(--spacing) * 3.5);
+  width: 54%;
+  height: 54%;
   border-radius: 999px;
   background: var(--danger);
-  color: var(--primary-foreground);
+  color: var(--danger-ink);
   box-shadow: 0 0 0 2px var(--sidebar);
   font-size: 9px;
   font-weight: 600;

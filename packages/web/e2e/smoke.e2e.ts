@@ -273,6 +273,39 @@ describe('cockpit app shell', () => {
     expect(box.wrapped).toBe(true)
     expect(box.withBadge).toBe(box.bare)
     browser.screenshot(`${artifactsDir}/shell-dev-badge.png`)
+
+    // Computed styles only a real stylesheet can answer (design review B-1, NB-1). The letter is
+    // near-black under every accent and theme: `--primary-foreground` would pass under lime and
+    // turn white under violet. And the badge keeps one size in every density, because the tile
+    // it sits on never scales. Every attribute is restored so later specs see the boot's look.
+    const looks = browser.evaluate(`(() => {
+      const html = document.documentElement
+      const saved = { accent: html.getAttribute('data-accent'), density: html.getAttribute('data-density'), light: html.classList.contains('light') }
+      const badge = document.querySelector('[data-slot="sidebar"] [data-slot="dev-badge"]')
+      const letter = badge.querySelector('[aria-hidden="true"]')
+      const set = (name, value) => (value === null ? html.removeAttribute(name) : html.setAttribute(name, value))
+      const out = { ink: {}, size: {} }
+      for (const accent of [null, 'violet']) {
+        for (const light of [false, true]) {
+          set('data-accent', accent)
+          html.classList.toggle('light', light)
+          out.ink[(accent ?? 'lime') + (light ? '-light' : '-dark')] = getComputedStyle(letter).color
+        }
+      }
+      set('data-accent', saved.accent)
+      html.classList.toggle('light', saved.light)
+      for (const density of ['roomy', null, 'compact', 'ultra']) {
+        set('data-density', density)
+        const r = badge.getBoundingClientRect()
+        out.size[density ?? 'comfortable'] = [Math.round(r.width), Math.round(r.height)]
+      }
+      set('data-density', saved.density)
+      return out
+    })()`) as { ink: Record<string, string>; size: Record<string, number[]> }
+
+    const nearBlack = 'rgb(13, 13, 13)'
+    expect(looks.ink).toEqual({ 'lime-dark': nearBlack, 'lime-light': nearBlack, 'violet-dark': nearBlack, 'violet-light': nearBlack })
+    expect(looks.size).toEqual({ roomy: [14, 14], comfortable: [14, 14], compact: [14, 14], ultra: [14, 14] })
   })
 
   it('marks exactly one nav item active, following the route', () => {

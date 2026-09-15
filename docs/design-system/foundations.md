@@ -54,6 +54,7 @@ token has no utility and is read with `var(--name)`.
 | --- | --- | --- | --- | --- |
 | `--danger` | `#ef4444` | same | Failed, destructive, deletions. | `bg-danger`, `text-danger` |
 | `--danger-foreground` | `#ffffff` | same | Ink on `--danger`. | `text-danger-foreground` |
+| `--danger-ink` | `#0d0d0d` | same | Near-black ink on `--danger` where white fails AA at small sizes (about 5.1:1; white is 3.8:1, G-23). Does not follow the accent, unlike `--primary-foreground`. Used by the development-build badge only (decisions.md D-08). | `text-danger-ink` |
 | `--success` | `#10b981` | same | Done, passed, additions. | `bg-success`, `text-success` |
 | `--pending` | `#fbbf24` | same | Waiting, scheduled, in progress. Fill only: dots and spinners. Never text. | `bg-pending` |
 | `--pending-strong` | `#fbbf24` | `#b45309` | The ink version of pending. Amber-700 on light so it stays readable. | `text-pending-strong` |
@@ -110,7 +111,7 @@ The `@theme inline` block turns each token into a Tailwind colour. `inline` mean
 `--color-sidebar`, `--color-muted`, `--color-muted-foreground`, `--color-soft-foreground`, `--color-border`,
 `--color-input`, `--color-contrast`, `--color-contrast-foreground`, `--color-primary`,
 `--color-primary-foreground`, `--color-violet`, `--color-violet-foreground`, `--color-ring`, `--color-danger`,
-`--color-danger-foreground`, `--color-success`, `--color-pending`, `--color-pending-strong`, `--color-info`,
+`--color-danger-foreground`, `--color-danger-ink`, `--color-success`, `--color-pending`, `--color-pending-strong`, `--color-info`,
 `--color-conflict`, `--color-diff-add`, `--color-diff-add-strong`, `--color-diff-del`,
 `--color-diff-del-strong`, `--color-popover`, `--color-popover-foreground`, `--color-accent`,
 `--color-accent-foreground`, `--color-secondary`, `--color-secondary-foreground`, `--color-destructive`,
@@ -162,6 +163,7 @@ Sizes the cockpit actually uses (from the components and routes):
 | `text-[11px] font-semibold tracking-[.04em] uppercase` | section eyebrows ("Used by", "Content") |
 | `text-[10.5px] font-semibold` | nav count badges, the skill source tag |
 | `text-[10px]` | the version chip, diff status badges |
+| `text-[9px] font-semibold` | the development-build "D" on the brand tile (decisions.md D-08); the smallest size, one letter only |
 
 Weights: 400 body, 500 labels and rows, 600 active or emphasised (active nav, active tab, unread row,
 headings). Nothing heavier than 600 except the brand tile.
@@ -188,6 +190,9 @@ Type sizes do not change with density. Any px value you write by hand (`h-[34px]
 outside the density lever; prefer scale units (`h-9`, `px-2`) unless the design fixes a pixel on purpose.
 The one pixel the design fixes on purpose is a floor: `min-h-[24px]` on the composer picker pill (`chipClass`)
 and the reference chip holds each at WCAG 2.2 SC 2.5.8's 24 px when the density lever would shrink it below.
+One more size is fixed on purpose, without a pixel: the development-build badge is `size-[54%]` with
+`-top-[15%] -right-[15%]` of the fixed `size-[26px]` brand tile it sits on (about 14 px and 4 px). A scale unit
+would grow and shrink the badge with density while the tile stays put (decisions.md D-08).
 
 Common rhythm: `gap-1.5`/`gap-2` inside controls, `gap-2.5` in nav rows, `px-2.5` chips, `px-3.5` buttons,
 `p-6` dialogs, `p-4` page gutters on phone and `md:p-section` on desktop, `py-12` centered states. Between blocks, §4.1.

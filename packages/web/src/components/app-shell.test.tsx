@@ -373,7 +373,7 @@ describe('AppShell', () => {
         expect(badge).not.toBeNull()
         expect(badge.getAttribute('title')).toBe('Development build')
         expect(badge.className).toContain('bg-danger')
-        expect(badge.className).toContain('text-primary-foreground')
+        expect(badge.className).toContain('text-danger-ink')
         expect(within(badge).getByText('D').getAttribute('aria-hidden')).toBe('true')
         expect(within(badge).getByText('Development build').className).toContain('sr-only')
         // The logo stays decorative and keeps its size — the badge overlays it, never resizes it.
