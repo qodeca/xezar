@@ -130,6 +130,8 @@ export async function startMcpService(opts: StartMcpServiceOptions): Promise<Mcp
       context: {
         ...(opts.service ? { service: opts.service } : {}),
         ...(parts.leaderEvents ? { leaderEvents: parts.leaderEvents } : {}),
+        // #450: `leader_events` attach, stop and status reach the same delivery path as the route.
+        ...(delivery ? { leaderControl: delivery } : {}),
       },
       door: parts.door,
       // The owner claims live beside the store the cockpit writes (D-02.8).
@@ -144,6 +146,8 @@ export async function startMcpService(opts: StartMcpServiceOptions): Promise<Mcp
               opened: (key, transport) => delivery.sessionOpened(key, transport),
               closed: (key) => delivery.sessionClosed(key),
               codexAnnounced: (key, announcement) => delivery.codexAnnounced(key, announcement),
+              // #450: answered in `session/open`, so the bridge registers the channel only when a push can arrive.
+              pushCapability: (key, transport) => delivery.pushCapability(key, transport),
             },
           }
         : {}),

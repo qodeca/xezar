@@ -37,7 +37,7 @@ import {
   type OwnershipScope,
 } from '../resource-ownership.ts';
 import { McpServiceAdapter, type ServiceDispatch } from '../service-adapter.ts';
-import { defineTool, errorResult, textResult, type McpToolContext, type McpToolResult } from '../tool.ts';
+import { NOT_CONNECTED_NEXT, defineTool, errorResult, textResult, type McpToolContext, type McpToolResult } from '../tool.ts';
 
 /**
  * `read_results_evidence` (#95, F-10, M-08, M-10, M-11): the leader's reads of what a task
@@ -244,7 +244,7 @@ const NOTES = {
 
 const NOT_FOUND = 'not found in this project';
 const NOT_CONNECTED =
-  'read_results_evidence is not connected to the running cockpit (the tool context carries no service entry). Nothing was read.';
+  `read_results_evidence is not connected to the running cockpit (the tool context carries no service entry). Nothing was read. ${NOT_CONNECTED_NEXT}`;
 const MOVED = 'The working tree moved while it was being read, twice. Read it again.';
 
 // ---- the tool -----------------------------------------------------------------

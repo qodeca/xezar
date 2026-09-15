@@ -51,6 +51,10 @@ Both columns reconcile to 140, recomputed from the rows rather than carried over
 are: `+7 covered` (I-042, I-097, I-102, I-110, I-113, I-128, I-129), `+2 global` (I-093, I-122),
 `+3 presentation` (I-014, I-081, I-095).
 
+After #450 (2026-09-15): two records added to section G for the leader connection the cockpit already
+had (I-141 status, I-142 Attach leader), both covered. Covered 91, total 142. The closed record above
+is otherwise unchanged.
+
 ## Resolved open decisions (2026-09-10)
 
 The twelve rows that stood open are decided by the project leader. Each entry gives the decision, the
@@ -123,7 +127,7 @@ issue claimed, and what the source says at `9fdcf0e`.
 Nothing else disagreed. No row's file was missing, and no named symbol failed to resolve anywhere in
 the files examined.
 
-## The inventory — 140 records
+## The inventory — 142 records
 
 Status values: **covered** = a project business action MCP must be able to perform or read;
 **global** = the effect reaches the workspace or another project, so no MCP write (a safe effective
@@ -265,7 +269,7 @@ The issue's heading for this section read "20 records"; it holds 19. The 140 tot
 | I-101 | `automations.tsx` "View log" → `getAutomationLog` (`GET /automation-log?automationId=`, `automationLogQuerySchema`); per-row GitHub and task links; live refresh on the `automation-change` workspace event | same capability gate | automation id → ordered check records with result, reason, GitHub link, launched run | — | project | Read the automation log. Same ownership rule as I-100 | covered |
 | I-102 | `DELETE /automations/:id` (`packages/xezar/src/server/server.ts:3364`) and `POST /automation-log/:receiptId/retry` (`:3448`) — both chained in `automationsRoutes` (`:3261`) | **no cockpit control found.** No matching api-client method exists in `packages/web/src/api/client.ts` (verified by grep for `automations[':id'].$delete` and for any retry method) and no control appears in `automations.tsx` | id / receipt id → deleted automation, retried receipt | retry 409s when the receipt is not `launch-error`, already carries a `runId`, or has no stored `candidate` (`server.ts:3453`–`:3454`) | project | **Decided 2026-09-10 (D-102).** Expose both. They are project-scoped, already-validated routes, and deleting a dead automation or retrying a failed receipt is daily leader work; without them a leader can create an automation it can never remove. **This is an MCP surface that EXCEEDS the current cockpit**, and section 6's *a route is not proof of a visible action* still stands — this is a decision, not a default | covered |
 
-### G. Project settings — 14 records
+### G. Project settings — 16 records
 
 The registry declares scope **per section, never per field** — `packages/web/src/routes/settings/registry.tsx`:
 `export type SettingsScope = 'project' | 'global'`, with the comment
@@ -289,6 +293,8 @@ Project-scope sections: `agents`, `agent-config`, `worktrees`, `bookmarklets`, `
 | I-114 | `packages/web/src/routes/settings/project-location.tsx` `ProjectFolderField`, `OpenWithMenu` → `POST /open-in` (`openTargetsRoutes`, `openProjectInSchema`); `GET /open-targets`; Copy path | hosted mode returns no targets | target id → the project root opened locally | — | project + **the xezar host machine** | Same rule as I-044: report the missing desktop capability explicitly; never promise a launch on the client's machine (M-19) | covered |
 | I-115 | `packages/web/src/routes/settings/provider-settings.tsx` `ProviderSettings` "Connect" → `POST /providers/connect`; "Check again" → `GET /providers/status?refresh=1`; "Try again" → `POST /providers/:provider/retry`; "Copy command" | rendered **inside the project-scoped Agents section**, but every route is workspace-level | provider id, `authFailureId` → local login terminal spawned, status re-probed | Connect writes the vendor CLI's own credential store, entirely outside xezar | **GLOBAL / local machine** | **None for the writes.** F-12: global accounts cannot be administered. **Safe effective read only** — the leader may learn that a provider is usable, and no more (F-03) | global |
 | I-116 | `packages/web/src/routes/settings/bookmarklets-section.tsx` auto-start checkbox and filter box | always | component-local `useState`, never persisted | — | browser-local, ephemeral | None | presentation |
+| I-141 | `packages/web/src/routes/settings/mcp-leader-control.tsx` connection status ← `GET /api/v1/mcp/leader` and the `mcp-leader` topic | while Settings → MCP connection is open | none → owner, leader, delivery, blocker | `localHandoff` for the topic | project | Read who owns the project, whether a leader is attached, the delivery cursors and what blocks delivery; for a leader, whether its own session is attached and can receive pushes. Added 2026-09-15 (#450) | covered |
+| I-142 | `mcp-leader-control.tsx` "Attach leader" → `POST /api/v1/mcp/leader` | a person attaches a leader | client (+ OpenCode address) → status or 409 reason | hosted mode 409 | project | Attach the project leader so events are pushed to it. Added 2026-09-15 (#450). The person may attach any client; a leader attaches only its own session | covered |
 
 ### H. Global and workspace settings — 16 records
 

@@ -8,7 +8,8 @@ to-do list: an entry becomes a `design-debt` issue on the triggers [CONTRIBUTING
 names, and a fix arrives as its own change with the entry deleted.
 
 Ids are never reused: a deleted entry retires its number, so a new entry takes the next number after the
-highest ever used. G-01..G-23 are live, G-24 and G-25 are retired, and the next free id is G-26.
+highest ever used. G-01..G-23 and G-26..G-28 are live, G-24 and G-25 are retired, and the next free id is
+G-29.
 
 Counts are non-test files or occurrences in `packages/web/src`.
 
@@ -165,6 +166,24 @@ Counts are non-test files or occurrences in `packages/web/src`.
 - **Differs**: `--soft-foreground` is `#a3a3a3` in `.light` (`styles/index.css:198`) – 2.5:1 on `--background`, 2.4:1 on `--muted` – and it colours 10–12.5 px text (eyebrows, hints, chip counts, table headers). `--danger-foreground` (`#ffffff`) on `--danger` (`#ef4444`) is 3.8:1 for the danger button and the danger toast. `--violet-foreground` on `--violet` is 3.1:1 for the nav badge (accepted in `styles/index.css` beside the token). AA needs 4.5:1 for text this size.
 - **Rule**: keep the tokens; do not add more small text in `--soft-foreground` on light, and keep the badge count announced in words.
 - **Fix**: darken light `--soft-foreground` to about `#767676` (4.5:1) and revisit the danger pair; then re-check every specimen swatch.
+
+### G-26 The thread header shows scrolled content through it
+
+- **Differs**: the task thread's header is `bg-background/95 … backdrop-blur md:sticky` (`routes/task-thread/run-header.tsx:160`), so thread content scrolled under it stays faintly readable beside the title and meta line, most visibly in light theme. The canonical page header (G-01) is opaque.
+- **Rule**: an opaque sticky header for new work.
+- **Fix**: make the run header opaque, or strong enough that text behind it does not read. Seen in the 0.15.0 docs captures (#448, design review NB-2).
+
+### G-27 The Tasks table gives the task title the least width
+
+- **Differs**: the Task column has no width and is meant to take the remainder (`lib/task-columns.ts:38`), but its cell is `min-w-[220px] max-w-0` (`routes/tasks-overview.tsx`) inside an auto-layout table, so it stays at 220 px and titles cut at about 20 characters while fixed columns keep theirs. With every column open the fixed widths alone pass 1,000 px, so at 1280 px beside the sidebar the table scrolls sideways and IN / OUT is cut off.
+- **Rule**: new columns take a fixed width; the title is the column that grows.
+- **Fix**: let the Task column absorb the free width (fixed table layout, or no `max-w-0` on the title cell) and re-check the fold defaults at 1280. Seen in the 0.15.0 docs captures (#448, design review NB-7).
+
+### G-28 The version chip truncates at Roomy density
+
+- **Differs**: at Roomy the sidebar footer leaves the version chip too little room, and its `truncate` span (`components/app-shell.tsx:822`) reads `v0.1…`. Comfortable and Compact show the whole version.
+- **Rule**: a version number is never truncated.
+- **Fix**: give the chip `shrink-0` and let the footer's other controls give way first. Seen in the 0.15.0 docs captures (#448, design review NB-9).
 
 ## Comment vs code
 

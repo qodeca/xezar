@@ -45,7 +45,8 @@ export const CHANNEL_INCOMPATIBLE_PROTOCOL_VERSION = '2026-07-28';
  * message xezar sends becomes a model turn in a Claude Code session the person started with
  * `--dangerously-load-development-channels server:xezar` (the wake decision record § 2.1). It is
  * added ONLY for a `claude-code` client — every other client keeps the exact capabilities it has
- * today — through `serverCapabilitiesFor`.
+ * today — through `serverCapabilitiesFor`, and (#450) only when the bridge decided a push can arrive:
+ * the service said it can push, or could not be reached yet.
  *
  * `claude/channel/permission` is DELIBERATELY NOT declared here or anywhere: declaring it would
  * route Claude Code's own tool-approval prompts to xezar and let a message answer them, and xezar
@@ -54,11 +55,15 @@ export const CHANNEL_INCOMPATIBLE_PROTOCOL_VERSION = '2026-07-28';
  */
 export const CLAUDE_CHANNEL_CAPABILITY = { experimental: { 'claude/channel': {} } } as const;
 
-/** Which client this bridge is serving, learned from `initialize`'s `clientInfo.name`. */
+/**
+ * Which client this bridge is serving, learned from `initialize`'s `clientInfo.name`, and whether the
+ * channel should be registered for it (#450). `channel` never adds anything for another client.
+ */
 export function serverCapabilitiesFor(
   clientName: string | undefined,
+  channel: boolean,
 ): typeof SERVER_CAPABILITIES | (typeof SERVER_CAPABILITIES & typeof CLAUDE_CHANNEL_CAPABILITY) {
-  return clientName === 'claude-code' ? { ...SERVER_CAPABILITIES, ...CLAUDE_CHANNEL_CAPABILITY } : SERVER_CAPABILITIES;
+  return clientName === 'claude-code' && channel ? { ...SERVER_CAPABILITIES, ...CLAUDE_CHANNEL_CAPABILITY } : SERVER_CAPABILITIES;
 }
 
 export const JSONRPC_ERRORS = {

@@ -58,6 +58,7 @@ const NO_OPERATION_ID: Readonly<Record<string, string>> = {
   'local_handoff:list_apps': 'reads which apps the host has; it opens none of them',
   'leader_events:read':
     'at-least-once delivery: a repeated read is MEANT to return the same rows again, until an ack moves the position. It does write — `markDelivered` persists `deliveredSeq` to `<dataDir>/mcp/leader-cursors.json` (`leader-events.ts` → `reconnect.ts`) — but that write is monotonic non-model bookkeeping a repeat cannot move further, and every consumer of the position (`owedAfter`, the `GET /api/v1/mcp/leader` blocker) reads the ACKED seq and never `deliveredSeq`. A receipt over the read would answer the replay with the receipt instead of the rows, which is exactly the break at-least-once delivery exists to prevent',
+  'leader_events:status': 'reads this session’s attachment, push capability and delivery state; it attaches and detaches nothing (#450)',
   'project_config:get_config': 'reads the project settings',
   'project_config:get_project': 'reads the registry entry',
   'project_config:get_prompt_templates': 'reads the follow-up prompt templates',

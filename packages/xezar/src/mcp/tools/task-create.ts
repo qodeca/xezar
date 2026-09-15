@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { modelConflictsWithRunner } from '../../core/model-presets.ts';
 import type { AppType } from '../../server/app-type.ts';
 import { McpServiceAdapter, type ServiceDispatch, type StartRunValue } from '../service-adapter.ts';
-import { defineTool, errorResult, textResult, type McpToolContext, type McpToolResult } from '../tool.ts';
+import { NOT_CONNECTED_NEXT, defineTool, errorResult, textResult, type McpToolContext, type McpToolResult } from '../tool.ts';
 
 /**
  * `task_create` — create and plan tasks with the composer form's options, defaults and validation
@@ -117,7 +117,7 @@ export const taskCreateTool = defineTool({
   async call(args, ctx) {
     const service = (ctx as TaskCreateContext).service;
     if (!service) {
-      return errorResult('task_create is not connected to the xezar service in this session.');
+      return errorResult(`task_create is not connected to the xezar service in this session; nothing was created. ${NOT_CONNECTED_NEXT}`);
     }
     const refused = fieldRefusal(args);
     if (refused) return errorResult(refused);
