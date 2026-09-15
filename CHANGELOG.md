@@ -1,5 +1,7 @@
 # Unreleased
 
+- docs: staleness sweep area A (#447)
+
 ## 🐛 Bug Fixes
 - 🐛 fix(test): the Claude Code adapter's source guard (no process, no environment – #311) now ignores the helper functions Stryker injects into the file it reads, so the nightly mutation run's dry run no longer fails on Stryker's own `process.env` read; a real `child_process` or `process.env` in the adapter still fails it (#436, #377).
 - 🐛 Fix agent-config API tests reading inherited agent homes; isolate all four agent config directories and HOME per test (#362).
@@ -1027,46 +1029,6 @@ addition is `--version` / `-v` on the CLI.
 
 ---
 
-# Renamed to Xezar (2026-09-08)
-
-**Cezar is now Xezar.** Same tool, new identity: published as
-[`@qodeca/xezar`](https://www.npmjs.com/package/@qodeca/xezar) from
-[`qodeca/xezar`](https://github.com/qodeca/xezar), providing the `xezar` and `xez` commands.
-
-```bash
-npm install -g @qodeca/xezar
-```
-
-Xezar is an **independent application**, not an upgrade of Cezar. It keeps its own state —
-`~/.xezar/`, `.ai/xezar/`, `~/.cache/xez/` — and never reads, moves or deletes anything Cezar
-owns. An existing Cezar install keeps working, untouched, side by side.
-
-Everything a user has to change is listed in
-[BACKWARD_COMPATIBILITY.md → "The Xezar rename"](BACKWARD_COMPATIBILITY.md#the-xezar-rename--a-deliberate-clean-break-0101).
-The short version:
-
-- `CEZ_*` environment variables are now `XEZ_*` (see `.env.example`).
-- Agent markers `CEZ:DONE` / `CEZ:ASK` / … are now `XEZ:DONE` / `XEZ:ASK` / … — update any skill
-  or prompt that emits them.
-- Cockpit browser preferences (theme, accent, density, sidebar width, unsent drafts) reset once,
-  because they live under new storage keys.
-- Copy your history across by hand if you want it: `cp -R ~/.cezar/ ~/.xezar/` and
-  `cp -R .ai/cezar/ .ai/xezar/`. Both are plain files.
-
-Also in this release: the unscoped `cezar-cli` alias package is retired — there is now exactly
-one published package — and automatic npm publishing (PR previews, `develop` snapshots and the
-nightly channel) is gone. Releases are manual, owner-triggered and go straight to `latest`; see
-[docs/publishing.md](docs/publishing.md).
-
-> **About the entries below.** Everything under this line was written while the product was
-> called Cezar, published first as `@pat-lewczuk/cezar` and then as the pre-rename scoped package
-> with the unscoped `cezar-cli` alias. The entries keep the wording that was true when they were
-> written, because a changelog records what actually shipped; the one exception is that the
-> pre-rename organisation's name and its issue links were removed on 2026-09-13. The old packages
-> remain on npm, unchanged.
-
----
-
 # 0.11.0 (2026-09-09)
 
 ## Highlights
@@ -1146,6 +1108,46 @@ documentation, which the published package does not carry.
   publisher had never been created despite `docs/publishing.md` recording that it had — that guide
   now says so plainly, and documents the `Allow npm publish` permission whose absence produces a
   404 that reads as if the package did not exist. (#9)
+
+---
+
+# Renamed to Xezar (2026-09-08)
+
+**Cezar is now Xezar.** Same tool, new identity: published as
+[`@qodeca/xezar`](https://www.npmjs.com/package/@qodeca/xezar) from
+[`qodeca/xezar`](https://github.com/qodeca/xezar), providing the `xezar` and `xez` commands.
+
+```bash
+npm install -g @qodeca/xezar
+```
+
+Xezar is an **independent application**, not an upgrade of Cezar. It keeps its own state —
+`~/.xezar/`, `.ai/xezar/`, `~/.cache/xez/` — and never reads, moves or deletes anything Cezar
+owns. An existing Cezar install keeps working, untouched, side by side.
+
+Everything a user has to change is listed in
+[BACKWARD_COMPATIBILITY.md → "The Xezar rename"](BACKWARD_COMPATIBILITY.md#the-xezar-rename--a-deliberate-clean-break-0101).
+The short version:
+
+- `CEZ_*` environment variables are now `XEZ_*` (see `.env.example`).
+- Agent markers `CEZ:DONE` / `CEZ:ASK` / … are now `XEZ:DONE` / `XEZ:ASK` / … — update any skill
+  or prompt that emits them.
+- Cockpit browser preferences (theme, accent, density, sidebar width, unsent drafts) reset once,
+  because they live under new storage keys.
+- Copy your history across by hand if you want it: `cp -R ~/.cezar/ ~/.xezar/` and
+  `cp -R .ai/cezar/ .ai/xezar/`. Both are plain files.
+
+Also in this release: the unscoped `cezar-cli` alias package is retired — there is now exactly
+one published package — and automatic npm publishing (PR previews, `develop` snapshots and the
+nightly channel) is gone. Releases are manual, owner-triggered and go straight to `latest`; see
+[docs/publishing.md](docs/publishing.md).
+
+> **About the entries below.** Everything under this line was written while the product was
+> called Cezar, published first as `@pat-lewczuk/cezar` and then as the pre-rename scoped package
+> with the unscoped `cezar-cli` alias. The entries keep the wording that was true when they were
+> written, because a changelog records what actually shipped; the one exception is that the
+> pre-rename organisation's name and its issue links were removed on 2026-09-13. The old packages
+> remain on npm, unchanged.
 
 ---
 
