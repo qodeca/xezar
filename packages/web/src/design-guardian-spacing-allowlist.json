@@ -1,0 +1,282 @@
+{
+  "src/components/app-shell.tsx|size-[17px]": {
+    "count": 2,
+    "reason": "convert in 3b: glyph"
+  },
+  "src/components/app-shell.tsx|gap-[9px]": {
+    "count": 1,
+    "reason": "convert in step 2 (§ 9.2, also § 9.3): brand row → gap-row"
+  },
+  "src/components/app-shell.tsx|size-[15px]": {
+    "count": 1,
+    "reason": "convert in 3b: glyph"
+  },
+  "src/components/app-shell.tsx|px-[5px]": {
+    "count": 2,
+    "reason": "convert in 3b: kbd hint"
+  },
+  "src/components/app-shell.tsx|md:h-[34px]": {
+    "count": 1,
+    "reason": "convert in step 2 (§ 9.2, also § 9.3): nav row → md:h-9"
+  },
+  "src/components/app-shell.tsx|size-[5px]": {
+    "count": 1,
+    "reason": "convert in 3b: status dot"
+  },
+  "src/components/app-shell.tsx|size-[26px]": {
+    "count": 1,
+    "reason": "convert in 3b: project avatar"
+  },
+  "src/components/centered-state.tsx|size-[72px]": {
+    "count": 1,
+    "reason": "convert in 3b: icon tile – § 9.2 leaves the centered state unchanged, so 3b decides"
+  },
+  "src/components/centered-state.tsx|size-[3px]": {
+    "count": 1,
+    "reason": "convert in 3b: dot"
+  },
+  "src/components/command-palette.tsx|min-h-[14rem]": {
+    "count": 1,
+    "reason": "convert in 3b: list height – on the scale it would grow and shrink with density, 3b decides"
+  },
+  "src/components/composer/composer.tsx|md:min-h-[54px]": {
+    "count": 1,
+    "reason": "convert in 3b: composer row → md:min-h-14 (§ 9.2 note)"
+  },
+  "src/components/composer/composer.tsx|size-[15px]": {
+    "count": 1,
+    "reason": "convert in 3b: glyph"
+  },
+  "src/components/facet-filter.tsx|p-[3px]": {
+    "count": 1,
+    "reason": "convert in 3b: segmented control → p-1"
+  },
+  "src/components/picker-pill.tsx|h-[26px]": {
+    "count": 1,
+    "reason": "convert in 3b: picker pill → h-7 plus a min-h-[24px] floor row (WCAG 2.2 SC 2.5.8)"
+  },
+  "src/components/pill.tsx|py-[3px]": {
+    "count": 1,
+    "reason": "convert in 3b: pill → py-1"
+  },
+  "src/components/project-groups.tsx|gap-[7px]": {
+    "count": 2,
+    "reason": "convert in 3b: nearest scale step"
+  },
+  "src/components/project-groups.tsx|md:h-[34px]": {
+    "count": 2,
+    "reason": "convert in step 2 or 3b: project nav rows (inferred to be § 9.2 sidebar nav rows) → md:h-9"
+  },
+  "src/components/project-groups.tsx|px-[7px]": {
+    "count": 1,
+    "reason": "convert in 3b: badge"
+  },
+  "src/components/project-groups.tsx|ml-[14px]": {
+    "count": 1,
+    "reason": "convert in step 2 (§ 9.2, also § 9.3): group body → ml-3.5"
+  },
+  "src/components/project-groups.tsx|md:h-[30px]": {
+    "count": 1,
+    "reason": "convert in 3b: nested nav row → md:h-8"
+  },
+  "src/components/prompt-template-menu.tsx|h-[26px]": {
+    "count": 1,
+    "reason": "convert in 3b: pill – floor candidate, keep it at or above 24 px (WCAG 2.2 SC 2.5.8)"
+  },
+  "src/components/reference-chip.tsx|h-[22px]": {
+    "count": 1,
+    "reason": "convert in 3b: reference chip → h-6 plus a min-h-[24px] floor row (WCAG 2.2 SC 2.5.8)"
+  },
+  "src/components/reference-chip.tsx|size-[6px]": {
+    "count": 1,
+    "reason": "convert in 3b: dot"
+  },
+  "src/components/skills-import-panel.tsx|pl-[22px]": {
+    "count": 1,
+    "reason": "convert in 3b: indent"
+  },
+  "src/components/status-dot.tsx|size-[7px]": {
+    "count": 1,
+    "reason": "convert in 3b: status dot – status-dot.test.tsx and quick-list.e2e.ts assert 7 px"
+  },
+  "src/components/task-quick-list.tsx|p-[3px]": {
+    "count": 1,
+    "reason": "convert in 3b: segmented control"
+  },
+  "src/components/task-quick-list.tsx|py-[7px]": {
+    "count": 2,
+    "reason": "convert in step 2 (§ 9.2, also § 9.3): quick-list rows → py-2"
+  },
+  "src/components/task-quick-list.tsx|pl-[26px]": {
+    "count": 1,
+    "reason": "convert in 3b: indent"
+  },
+  "src/components/task-quick-list.tsx|gap-[2px]": {
+    "count": 1,
+    "reason": "convert in 3b: → gap-0.5"
+  },
+  "src/components/task-quick-list.tsx|size-[15px]": {
+    "count": 1,
+    "reason": "convert in 3b: badge"
+  },
+  "src/components/tools-menu.tsx|size-[11px]": {
+    "count": 1,
+    "reason": "convert in 3b: glyph"
+  },
+  "src/components/tools-menu.tsx|pl-[15px]": {
+    "count": 1,
+    "reason": "convert in 3b: indent"
+  },
+  "src/components/ui/button.tsx|gap-[7px]": {
+    "count": 1,
+    "reason": "convert in 3b: button primitive gap"
+  },
+  "src/components/ui/button.tsx|h-[30px]": {
+    "count": 1,
+    "reason": "convert in 3b: button → h-8 (button.test.tsx asserts the spelling)"
+  },
+  "src/components/ui/button.tsx|size-[30px]": {
+    "count": 1,
+    "reason": "convert in 3b: icon button → size-8 (button.test.tsx asserts the spelling)"
+  },
+  "src/components/ui/switch.tsx|h-[1.15rem]": {
+    "count": 1,
+    "reason": "convert in 3b: shadcn switch default, not in § 9.3 – 3b decides"
+  },
+  "src/components/ui/tabs.tsx|p-[3px]": {
+    "count": 1,
+    "reason": "convert in 3b: shadcn tabs default"
+  },
+  "src/routes/github/github.tsx|size-[9px]": {
+    "count": 1,
+    "reason": "convert in 3b: glyph"
+  },
+  "src/routes/github/github.tsx|pl-[22px]": {
+    "count": 2,
+    "reason": "convert in 3b: indent"
+  },
+  "src/routes/github/hand-to-agent.tsx|px-[5px]": {
+    "count": 1,
+    "reason": "convert in 3b: kbd hint"
+  },
+  "src/routes/global-tasks.tsx|p-[3px]": {
+    "count": 1,
+    "reason": "convert in 3b: segmented control"
+  },
+  "src/routes/global-tasks.tsx|h-[38px]": {
+    "count": 1,
+    "reason": "convert in step 2 (§ 9.2, also § 9.3): table header → h-10 (inferred same row as tasks-overview)"
+  },
+  "src/routes/inbox.tsx|mt-[5px]": {
+    "count": 1,
+    "reason": "convert in 3b: § 9.3 list"
+  },
+  "src/routes/new-task.tsx|px-[5px]": {
+    "count": 1,
+    "reason": "convert in 3b: kbd hint"
+  },
+  "src/routes/new-task.tsx|p-[3px]": {
+    "count": 1,
+    "reason": "convert in 3b: segmented control"
+  },
+  "src/routes/new-task.tsx|h-[30px]": {
+    "count": 1,
+    "reason": "convert in 3b: pill button – floor candidate, keep it at or above 24 px"
+  },
+  "src/routes/settings/agent-config-section.tsx|h-[26rem]": {
+    "count": 1,
+    "reason": "convert in 3b: editor height – on the scale it would grow and shrink with density, 3b decides"
+  },
+  "src/routes/settings/prompt-templates-section.tsx|h-[26px]": {
+    "count": 1,
+    "reason": "convert in 3b: pill – floor candidate, keep it at or above 24 px (WCAG 2.2 SC 2.5.8)"
+  },
+  "src/routes/skills.tsx|pl-[22px]": {
+    "count": 3,
+    "reason": "convert in 3b: indent"
+  },
+  "src/routes/task-thread/agents-dock.tsx|h-[3px]": {
+    "count": 1,
+    "reason": "convert in 3b: hairline"
+  },
+  "src/routes/task-thread/agents-dock.tsx|gap-[7px]": {
+    "count": 1,
+    "reason": "convert in 3b: list gap"
+  },
+  "src/routes/task-thread/agents-dock.tsx|size-[15px]": {
+    "count": 4,
+    "reason": "convert in 3b: glyph"
+  },
+  "src/routes/task-thread/plan-dock.tsx|md:h-[3px]": {
+    "count": 1,
+    "reason": "convert in 3b: hairline (plan-dock.test.tsx asserts the spelling)"
+  },
+  "src/routes/task-thread/plan-dock.tsx|gap-[7px]": {
+    "count": 1,
+    "reason": "convert in 3b: list gap"
+  },
+  "src/routes/task-thread/plan-dock.tsx|size-[15px]": {
+    "count": 4,
+    "reason": "convert in 3b: glyph"
+  },
+  "src/routes/task-thread/review-panel.tsx|min-h-[52px]": {
+    "count": 1,
+    "reason": "convert in 3b: textarea minimum height"
+  },
+  "src/routes/task-thread/step-rail.tsx|min-h-[22px]": {
+    "count": 1,
+    "reason": "convert in 3b: step row"
+  },
+  "src/routes/task-thread/step-rail.tsx|size-[13px]": {
+    "count": 1,
+    "reason": "convert in 3b: glyph"
+  },
+  "src/routes/task-thread/step-rail.tsx|md:min-h-[30px]": {
+    "count": 1,
+    "reason": "convert in 3b: step row (step-rail.test.tsx asserts the spelling)"
+  },
+  "src/routes/task-thread/thread-items.tsx|px-[15px]": {
+    "count": 2,
+    "reason": "convert in 3b: message bubble → px-4"
+  },
+  "src/routes/task-thread/thread-items.tsx|min-h-[60px]": {
+    "count": 1,
+    "reason": "convert in 3b: textarea minimum height"
+  },
+  "src/routes/task-thread/thread-items.tsx|min-h-[28px]": {
+    "count": 1,
+    "reason": "convert in step 2 (§ 9.2, also § 9.3): tool row → min-h-8"
+  },
+  "src/routes/task-thread/thread-items.tsx|h-[34px]": {
+    "count": 1,
+    "reason": "convert in 3b: group trigger → h-9"
+  },
+  "src/routes/tasks-overview.tsx|p-[3px]": {
+    "count": 1,
+    "reason": "convert in 3b: segmented control"
+  },
+  "src/routes/tasks-overview.tsx|size-[15px]": {
+    "count": 1,
+    "reason": "convert in 3b: glyph"
+  },
+  "src/routes/tasks-overview.tsx|size-[22px]": {
+    "count": 1,
+    "reason": "convert in 3b: glyph"
+  },
+  "src/routes/tasks-overview.tsx|h-[38px]": {
+    "count": 1,
+    "reason": "convert in step 2 (§ 9.2, also § 9.3): table header → h-10"
+  },
+  "src/routes/tasks-overview.tsx|size-[19px]": {
+    "count": 1,
+    "reason": "convert in 3b: pin button, interactive and under 24 px today – floor candidate"
+  },
+  "src/routes/workflows/workflows.tsx|h-[3px]": {
+    "count": 2,
+    "reason": "convert in 3b: hairline"
+  },
+  "src/routes/workflows/workflows.tsx|h-[9px]": {
+    "count": 1,
+    "reason": "convert in 3b: connector"
+  }
+}

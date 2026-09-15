@@ -330,7 +330,7 @@ export interface McpCapabilitiesViewProps {
  */
 export function McpCapabilitiesView({ capabilities, constraints, failingChecks, errors = {} }: McpCapabilitiesViewProps) {
   return (
-    <div data-slot="mcp-capabilities" className="flex min-w-0 flex-col gap-7">
+    <div data-slot="mcp-capabilities" className="flex min-w-0 flex-col gap-section">
       <SettingsField
         title="What the leader can do"
         hint="Full authority over this project, including deleting tasks and merging. There are no roles or per-action permissions to set."

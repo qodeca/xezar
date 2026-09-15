@@ -1,0 +1,236 @@
+/* Air proposal – Settings (settings.html): Settings → Agents (project scope), → Appearance and
+ * → Agent accounts (global scope, registry.tsx:99-198), inside the app shell (app.tsx:54). One page,
+ * three sections switched by <html data-section>; data-state='error' draws the Agents over-limit line.
+ * Local replicas where the source differs from cockpit.css: .air-field (a flat list, not
+ * .settings-field 2271), .air-pills a (padded, not 28 px, 2251), .air-seg on .radio-segment (1300).
+ * Scale values are calc(var(--u) * n), so the density lever moves them as it does in the app.
+ *
+ * block order: rhythm → today → proposed → phone → open points
+ * (rhythm lives in styles.css; this sheet has no phone or open-point values)
+ */
+
+/* values – owned by WP-3 */
+:root[data-view='today'] {
+  --settings-nav-pad: calc(var(--u) * 3); /* settings-shell.tsx:69  p-3 */
+  --fields-gap: calc(var(--u) * 7);       /* agents-section.tsx:163, appearance.tsx:120  gap-7 */
+  --field-gap: calc(var(--u) * 2);        /* settings-field.tsx:21, agents-section.tsx:608, appearance.tsx:103  gap-2 */
+}
+
+:root:not([data-view='today']) {
+  --settings-nav-pad: var(--stack);       /* p-stack (§ 9.2) – 12, as today, at every density */
+  --fields-gap: var(--section);           /* gap-section (§ 9.2, D-6) */
+  --field-gap: var(--stack);              /* gap-stack (§ 9.2, the PR 1 pilot) */
+}
+/* end values */
+
+/* ---------- which section, which state ---------- */
+:root:not([data-section='agents']) .air-when-agents,
+:root:not([data-section='appearance']) .air-when-appearance,
+:root:not([data-section='accounts']) .air-when-accounts,
+:root[data-section='agents'] .air-when-global,
+:root:not([data-state='error']) .air-when-error,
+:root[data-state='error'] .air-when-ok { display: none; }
+
+/* The sidebar is drawn in the Agents state: xezar scoped, its Settings row current
+ * (project-groups.tsx:127, :314; nav-items.ts:106). A global route scopes no project (:95), so no
+ * group is active and no row lights. */
+:root:not([data-section='agents']) .air-project-head.on { background: transparent; }
+
+:root:not([data-section='agents']) .air-project-nav a[aria-current='page'] {
+  background: transparent;
+  color: var(--muted-foreground);
+  font-weight: 500;
+}
+
+/* ---------- header (settings-shell.tsx:180-187; .page-head is h-14 gap-3 px-5 already) ---------- */
+.air-scope-chip { margin-left: auto; font-size: 11px; color: var(--soft-foreground); } /* :184 */
+
+/* ---------- the nav beside the section (settings-shell.tsx:189-194) ---------- */
+.air-set { display: flex; flex: 1 1 auto; }
+.air-set-main { display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; }
+
+/* .settings-nav (cockpit.css:2212) with the source's scale values: w-52 gap-1 p-3 (:69), rows (:93). */
+.air-set-nav {
+  flex-shrink: 0;
+  width: calc(var(--u) * 52);
+  gap: calc(var(--u) * 1);
+  padding: var(--settings-nav-pad);
+}
+
+.air-set-nav a { gap: calc(var(--u) * 2.5); padding: calc(var(--u) * 2) calc(var(--u) * 2.5); }
+
+/* The nav footer: "Stored in ~/.xezar" (:107) or the project folder (project-location.tsx:89-99). */
+.air-nav-foot {
+  margin: auto 0 0;
+  padding: calc(var(--u) * 3) calc(var(--u) * 2.5) 0;
+  font-size: 11px;
+  color: var(--soft-foreground);
+}
+
+.air-nav-foot p { margin: 0; }
+
+.air-nav-foot button {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+
+/* Phone pills (:130, :138, :149): the row scrolls sideways inside itself, as shipped. */
+.air-pills { flex-shrink: 0; gap: calc(var(--u) * 1.5); padding: calc(var(--u) * 2.5) calc(var(--u) * 3); }
+
+.air-pills a {
+  height: auto; /* cockpit.css:2254 fixes 28; the source pads a 13 px line */
+  padding: calc(var(--u) * 1.5) calc(var(--u) * 3);
+  background: var(--card);
+  font-size: 13px;
+}
+
+@media (min-width: 861px) {
+  .air-pills { display: none; }
+}
+
+/* ---------- section containers: mx-auto max-w-2xl p-4 md:p-6, unchanged in both views (M1) ---------- */
+.air-fields,
+.air-refusal {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 42rem; /* max-w-2xl */
+  margin: 0 auto;
+  padding: calc(var(--u) * 6); /* agents-section.tsx:163, appearance.tsx:120, accounts-section.tsx:147 */
+}
+
+.air-fields { gap: var(--fields-gap); }
+.air-refusal { gap: calc(var(--u) * 4); } /* accounts-section.tsx:147 gap-4 */
+
+/* ---------- a field: title and hint, then the control (settings-field.tsx:20-27) ---------- */
+.air-field { display: flex; flex-direction: column; gap: var(--field-gap); margin: 0; }
+.air-set h2 { margin: 0; font-size: 14px; line-height: 20px; font-weight: 600; color: var(--foreground); }
+.air-hint { margin: 0; font-size: 13px; color: var(--muted-foreground); } /* settings-field.tsx:24 */
+.air-small { margin: 0; font-size: 11px; color: var(--soft-foreground); } /* agents-section.tsx:282 */
+.air-limit { margin: 0; font-size: 11px; color: var(--danger); } /* agents-section.tsx:277 */
+.air-refusal p { margin: 0; font-size: 13px; color: var(--soft-foreground); } /* accounts-section.tsx:150 */
+
+/* ---------- Providers (provider-settings.tsx:178-337): not in § 9.2, unchanged ---------- */
+.air-prov-head { margin-bottom: calc(var(--u) * 2); } /* :179 mb-2 */
+.air-prov-list { display: flex; flex-direction: column; gap: calc(var(--u) * 2); } /* :209 */
+
+.air-prov {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: calc(var(--u) * 3); /* :229 */
+  padding: calc(var(--u) * 3) calc(var(--u) * 3.5); /* :227 px-3.5 py-3 */
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+
+.air-prov h3 { margin: 0; font-size: 13px; font-weight: 600; } /* :231 */
+
+.air-prov-status,
+.air-prov-note {
+  margin: calc(var(--u) * 1) 0 0; /* :232 mt-1 text-xs */
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted-foreground);
+}
+
+.air-prov-status { display: flex; align-items: center; gap: calc(var(--u) * 2); }
+.air-prov-note { margin-top: calc(var(--u) * 1.5); color: var(--soft-foreground); } /* :238 */
+
+/* provider-settings.tsx:250; agents-section.tsx:369, :428 */
+.air-prov-actions,
+.air-btn-row { display: flex; align-items: center; gap: calc(var(--u) * 2); }
+
+/* ---------- controls agents-section.tsx writes by hand: px-3 py-1.5 text-sm (:237, :352, :426, :490) ---------- */
+.air-fields .air-ctl {
+  height: auto;
+  min-height: 0;
+  padding: calc(var(--u) * 1.5) calc(var(--u) * 3);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.air-fields .air-md { max-width: 28rem; } /* max-w-md */
+.air-fields .air-mono { font-family: var(--mono); }
+
+/* The Textarea primitive (textarea.tsx:10, px-3 py-2) with min-h-32 max-w-xl (agents-section.tsx:263). */
+.air-fields .air-prompt {
+  min-height: calc(var(--u) * 32);
+  max-width: 36rem;
+  padding: calc(var(--u) * 2) calc(var(--u) * 3);
+}
+
+.air-models { display: flex; flex-direction: column; gap: calc(var(--u) * 2); max-width: 28rem; } /* :182 */
+.air-model { display: flex; align-items: center; gap: calc(var(--u) * 3); } /* :210 */
+
+.air-model span {
+  flex-shrink: 0;
+  width: calc(var(--u) * 24); /* :211 w-24 font-mono text-xs */
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted-foreground);
+}
+
+.air-pn { display: grid; gap: calc(var(--u) * 4); } /* :341 grid gap-4 sm:grid-cols-2 */
+
+@media (min-width: 640px) {
+  .air-pn { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.air-pn label { display: grid; gap: calc(var(--u) * 1.5); font-size: 14px; line-height: 20px; } /* :342 */
+.air-pn label > span { font-weight: 500; }
+
+/* :265 flex max-w-xl items-center gap-3 */
+.air-save-row { display: flex; max-width: 36rem; align-items: center; gap: calc(var(--u) * 3); }
+
+.air-switch-row {
+  display: flex;
+  width: fit-content; /* :293 flex w-fit items-center gap-3; the state word, :306 */
+  align-items: center;
+  gap: calc(var(--u) * 3);
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+
+/* ---------- segmented radio groups (.radio-segment, cockpit.css:1300) ---------- */
+/* appearance.tsx:66, :79 and default-agent-picker.tsx:86, :124: gap-0.5 p-0.5; options px-3 py-1.5. */
+.air-seg { width: fit-content; gap: calc(var(--u) * 0.5); padding: calc(var(--u) * 0.5); }
+.air-seg button { gap: calc(var(--u) * 2); padding: calc(var(--u) * 1.5) calc(var(--u) * 3); line-height: 1.5; }
+.air-seg button[disabled] { opacity: 0.5; cursor: not-allowed; } /* default-agent-picker.tsx:124 */
+.air-runner button { font-family: var(--mono); } /* :124 font-mono */
+
+/* appearance.tsx:87-91 size-3 rounded-full border */
+.air-swatch { width: calc(var(--u) * 3); height: calc(var(--u) * 3); border: 1px solid var(--border); border-radius: 999px; }
+.air-swatch.lime { background: var(--accent-lime); }
+.air-swatch.violet { background: var(--violet); }
+
+/* Proposed: the Segmented chassis wraps inside its own border. Four density options (≈ 390 px) outgrow
+ * a 343 px phone column; today's inline-flex w-fit row cannot wrap (appearance.tsx:66). R-7, PR 4. */
+:root:not([data-view='today']) .air-seg:not(.air-runner) { flex-wrap: wrap; }
+
+/* ---------- phone (≤ 860 px, the mockup's shell breakpoint; the app's md is 768) ---------- */
+@media (max-width: 860px) {
+  .air-set { flex-direction: column; }
+
+  .air-fields,
+  .air-refusal {
+    padding: calc(var(--u) * 4); /* p-4 */
+  }
+
+  .air-fields {
+    padding-bottom: calc(90px + env(safe-area-inset-bottom, 0px)); /* pb-[calc(90px+…)] – hand-set */
+  }
+}

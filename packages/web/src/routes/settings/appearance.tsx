@@ -100,7 +100,7 @@ function Segmented<V extends string>({
 
 function Field({ title, hint, children }: { title: string; hint: string; children: ReactNode }) {
   return (
-    <section className="flex flex-col gap-2">
+    <section className="flex flex-col gap-stack">
       <div>
         <h2 className="text-sm font-semibold text-foreground">{title}</h2>
         <p className="text-[13px] text-muted-foreground">{hint}</p>
@@ -117,7 +117,7 @@ export function AppearanceSection() {
   return (
     <div
       data-slot="appearance-section"
-      className="mx-auto flex w-full max-w-2xl flex-col gap-7 p-4 pb-[calc(90px+env(safe-area-inset-bottom))] md:p-6 md:pb-6"
+      className="mx-auto flex w-full max-w-2xl flex-col gap-section p-4 pb-[calc(90px+env(safe-area-inset-bottom))] md:p-6 md:pb-6"
     >
       <Field title="Theme" hint="System follows your OS preference. Applies to this browser.">
         <Segmented slot="appearance-theme" label="Theme" value={theme} options={THEME_OPTIONS} onChange={setTheme} />

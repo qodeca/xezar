@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| **Status** | Draft, revision 3 (2026-09-14 late evening) – the four-reviewer verdict ([`review-2026-09-14.md`](review-2026-09-14.md)) and the owner's decisions D-1..D-10 applied. No decision is open ([§13](#13-open-decisions)). Filed as [qodeca/xezar#424](https://github.com/qodeca/xezar/issues/424) (`enhancement`, `epic`, `risk-high`), an umbrella with steps 0 (full-page mockup) → 1 → 2 → 3a → 3b → 4. Nothing in `docs/design-system/` or `packages/web` changes until the step-0 mockup has its `design-review` verdict; that verdict gates step 1 onward (D-4). |
-| **Date** | 2026-09-14 |
-| **Mockup** | Open [`index.html`](index.html) in a browser: seven surfaces, today beside proposed, same markup twice, with a density select (including the proposed Roomy) and the light/dark toggle. No build needed. |
+| **Status** | Draft, revision 4 (2026-09-15) – a design-system enhancement: rhythm tokens, looser between-block defaults, no hand-set pixels, a Roomy density; the step-0 full-page mockup set (eight surfaces at 1280 and 375 px, six states, four densities, both themes, violet accent, wide width); D-1..D-12 closed. **Approved** – the step-0 `design-review` verdict is PASS WITH FOLLOW-UPS ([comment](https://github.com/qodeca/xezar/pull/429#issuecomment-5678658435), § 16); it chose D-11 and D-12. Revision 3 applied the four-reviewer verdict ([`review-2026-09-14.md`](review-2026-09-14.md)). Filed as [qodeca/xezar#424](https://github.com/qodeca/xezar/issues/424) (`enhancement`, `epic`, `risk-high`), an umbrella with steps 0 (full-page mockup) → 1 → 2 → 3a → 3b → 4. The step-0 verdict has landed, so step 1 onward may start (D-4). |
+| **Date** | 2026-09-15 |
+| **Mockup** | Open [`index.html`](index.html): a hub linking five 1:1 screen pages (flip Today \| Proposed in place), a stacked compare page, and three review aids (375 px pairs, states, appearance axes). No build, no server. |
 | **Replaces** | Nothing. This design changes the system's spacing rules, not a feature surface. |
 | **Comes from** | The owner, 2026-09-14: "the entire design system requires more air – more space between elements on the pages." |
 | **Facts** | Every number below was read from the files it cites on 2026-09-14 and re-checked by the fact-check reviewer. Inferred statements are marked *inferred*. |
@@ -83,7 +83,7 @@ The ones that decide a control's size:
 | `h-[26px]` picker pill, `h-[22px]` reference chip | `picker-pill.tsx:22`, `prompt-template-menu.tsx:67`, `prompt-templates-section.tsx:345`; `reference-chip.tsx:148`; `components.md:271, 360` |
 | `p-[3px]` segmented, `py-[3px]` pill, `py-[7px]` quick-list row | `components.md:288, 263`; `task-quick-list.tsx:248` |
 
-Each is a place the density lever cannot reach. At `ultra` the page tightens around them and they stay put, which is why `ultra` looks uneven rather than uniformly tight – the mockup's density select shows it on the "today" column.
+Each is a place the density lever cannot reach. At `ultra` the page tightens around them and they stay put, which is why `ultra` looks uneven rather than uniformly tight – the mockup's density select shows it in the today view.
 
 ### 2.4 Line heights and small text
 
@@ -123,34 +123,99 @@ Assistant text `text-[15px] leading-[1.65]`, user bubble `13.5px leading-[1.55]`
 
 ## 5. Files
 
+Twenty-three files, flat in this folder (the designs lint reads it non-recursively). Every page links `../../docs/design-system/cockpit.css` as its first stylesheet; the local sheets hold feature rules only, with the exceptions listed after the table.
+
 | File | What it is |
 |---|---|
-| [`index.html`](index.html) | The examples: seven pairs, today beside proposed, density select, theme toggle |
-| [`styles.css`](styles.css) | The two value sets (`.ex.today` from the files, `.ex.air` from the tokens) and the example chrome; feature rules only, on top of `../../docs/design-system/cockpit.css`. One intentional exception to `designs/README.md` § "never redeclares a token": it declares the proposed `:root[data-density='roomy'] { --spacing: 0.3125rem }`, because that value is the proposal. |
-| [`theme.js`](theme.js) | The mockup's light/dark and density switches |
-| [`review-2026-09-14.md`](review-2026-09-14.md) | The four-reviewer record with every finding's disposition |
+| [`index.html`](index.html) | The hub: how to review, the page and URL tables, where 375 px is true, the review check → page and URL table, open points 6 and 7 as four links, the questions for the verdict, what is not drawn, the rhythm bars |
+| [`tasks.html`](tasks.html) | Screen page – Tasks: the multi-project sidebar, New task and Add project, the 13-column table (14 rows) in its wrapper, the footer strip; at 375 px the mobile bar, the task cards, the New-task FAB and the phone drawer (`?drawer=open`); open points 6 and 7, with the table widths measured at 1280 × 900 (`#op6`) |
+| [`thread.html`](thread.html) | Screen page – the task page: run header, about 20 thread rows over five speaker changes, a tool group with a nested group, the ask card, the review panel, the composer dock; `?state=loading` and `?state=dialog` ("Delete this task?") |
+| [`changes.html`](changes.html) | Screen page – the Changes tab under the same run header: toolbar, file tree and diff; the diff is unchanged |
+| [`settings.html`](settings.html) | Screen page – Settings → Agents (project nav, nine blocks), → Appearance and → Agent accounts (global nav), switched by `?section=`; `?state=error` draws the Agents over-limit line |
+| [`inbox.html`](inbox.html) | Screen page – the Inbox: five cards; `?state=empty` and `?state=error` |
+| [`compare.html`](compare.html) | Review aid – one screen page twice at 1:1, Today above and Proposed below, at the same anchor (`?page=`, `section`, `state`, `at`) |
+| [`phone.html`](phone.html) | Review aid – eight screens as 375 × 780 pairs, Today beside Proposed, each with up to three changed values |
+| [`states.html`](states.html) | Review aid – the six-state map and five 375 px pairs (empty, loading, field error, page error, refusal), each linked at 1280 in both views and in `compare.html`. The field error is the Agents over-limit line (`agents-section.tsx:277-279`), the shipped counterpart of `.field-error` (`cockpit.css:1126`, also 11 px `--danger`), which no source file uses |
+| [`appearance.html`](appearance.html) | Review aid – the proposed view at four densities (the thread at 1:1, the Settings list at 375 px), dark and light with lime and violet, and both reading widths in a 1600 px window at 70.75 % – the only scaled frames |
+| [`styles.css`](styles.css) | Cross-screen values: `--u`, the root size, Roomy, the six rhythm values (proposed view only), the cross-screen role variables of both views, the phone and open-point-7 overrides, `--air-bar-h` |
+| [`chrome.css`](chrome.css) | Review chrome, not part of a drawn screen: the bar, the Show and open-point radios with their focus ring, figures and captions, `.phone-375`, `.air-pair`, the wide and scaled frames, the compare layout, the values table, the rhythm bars. Declares one custom property, `--air-head-h` (`:137`): the clearance rule that reads it runs on every page and this is the only sheet all ten load, so declaring it in `shell.css` would leave an unresolvable `var()` – and a dropped declaration – on the aid pages. The reason is in the sheet header (`:5-7`); `styles.css` keeps its pair, `--air-bar-h` |
+| [`shell.css`](shell.css) | The app-shell replica the five screen pages share: sidebar, drawer, mobile bar, page head, opt-in control sizes (`.air-sm`, `.air-touch`, Global settings at 28 px), the two chip floors, the dialog overlay. Declares no custom property |
+| [`tasks.css`](tasks.css) | Tasks: its value block, then the table, wrapper, footer strip and phone cards |
+| [`thread.css`](thread.css) | The task page: its value block, then the run header, thread column, rows, bubble, tool rows and groups, ask card, review panel, dock, dialog overlay and loading state; the Changes tab's toolbar, tree and diff |
+| [`settings.css`](settings.css) | Settings: its value block, then the nav, the pills, the `.air-field` list, the `.air-seg` density control and the refusal |
+| [`inbox.css`](inbox.css) | Inbox: its value block, then the list, the card and where the two states sit |
+| [`theme.js`](theme.js) | View state for every page: one frozen axis table read URL → browser storage → default and stamped on `<html>` before first paint; frames get `.framed` and read the URL only; same-folder links are rebuilt from their authored `href`; builds the compare frames |
+| [`bar.js`](bar.js) | Renders the review bar from `theme.js`'s axis table with DOM calls only: the page nav, Show, the axis selects, Section and State, the open-point radios, the "Compare at 1280" link, the status and note lines; reports two measured heights – the bar's, and the in-page sticky head's, through one `ResizeObserver` over `.air-screen .page-head, .air-screen .air-run-head` writing `--air-head-measured`. Focus clearance is measured, never estimated: the thread's was 0 at 375 px and is 117 px |
+| [`icons.js`](icons.js) | The lucide sprite every page shares: 72 symbols from one constant template; no page keeps a local sprite |
+| [`review-2026-09-14.md`](review-2026-09-14.md) | The four-reviewer record with every finding's disposition (revision 3; historical) |
+| [`handoff-values.md`](handoff-values.md) | The four value tables this handoff keeps out of line: § 5 (d) role variables, § 5 (j) mockup-only departures, § 9.2 new defaults, § 9.3 pixel conversions. Same section numbers as here – nothing is renumbered |
+| [`README.md`](README.md) | This handoff |
+
+**One sidebar, five copies.** The five screen pages carry the same sidebar block verbatim between `<!-- sidebar:start -->` and `<!-- sidebar:end -->`; only the current item differs – `aria-current="page"` on a nav link, and `class="on"` on the task's quick-list row in `thread.html` and `changes.html`. Strip those two and the five blocks must be identical:
+
+```sh
+cd designs/design-system-air && for f in tasks thread changes settings inbox; do sed -n '/sidebar:start/,/sidebar:end/p' "$f.html" | sed 's/ aria-current="page"//g; s/ class="on"//' > "${TMPDIR:-/tmp}/sb-$f"; done; for f in thread changes settings inbox; do diff "${TMPDIR:-/tmp}/sb-tasks" "${TMPDIR:-/tmp}/sb-$f"; done  # no output = parity
+```
+
+A `s/ on//` strip is not enough: the quick-list row spells it `<li class="on">`, so the class has to be removed with its attribute.
+
+**Local exceptions.** A design's local sheet holds feature rules only and never redeclares a token or copies a base class (`designs/README.md`, `new-designs.md` § 2). Where a mockup needs a look the cockpit has and `cockpit.css` lacks, `new-designs.md:30-31` adds the class to `cockpit.css` – but step 0 may not touch `docs/design-system/` until its verdict is in. What the mockup does instead:
+
+- **(a) Roomy.** `styles.css` declares `:root[data-density='roomy'] { --spacing: 0.3125rem }`, the one cockpit token the mockup redeclares, because that value is the proposal (§ 9.4).
+- **(b) The unit and the root size.** `--u: var(--spacing, 0.25rem)` is one Tailwind spacing unit; a scale value is `calc(var(--u) * n)`, so the density lever moves it as it does in the app. `:root { font-size: 16px }` restores the cockpit's rem: `cockpit.css:203-211` sets `html, body { font-size: 14px }`, which made every unit, at every density, 12.5 % small. That one rule sizes the root *and* the body, so raising the root raises the body text with it; `styles.css` adds `body { font-size: 14px }` to put it back. The override is mockup-only and becomes obsolete once step 1 splits that rule.
+- **(c) Rhythm values.** The six rhythm values (`--row` 8 · `--stack` 12 · `--list` 16 · `--inset` 20 · `--group` 24 · `--section` 32) are declared for the proposed view only, and on `.ex.air` for the hub's bars, under short local names; PR 1 names them `--spacing-<name>` in `index.css` and `cockpit.css`.
+- **(d) Role variables.** Each drawn value that differs between the views is a role variable, declared in exactly one sheet: `styles.css` for cross-screen values, the first block of each screen sheet for its own. Today is raw px where the source hand-sets a value, so the density lever misses it as it does in the app, and `calc(var(--u) * n)` – written `u × n` in the table – where the source uses the scale. Proposed is a rhythm value or `u × n`.
+
+  These ~45 role variable names – `--u`, `--gutter`, `--turn-gap`, `--cta-h` and the rest – exist only in this folder and never ship: they are how a page with no build step holds both views' values at once. The shipping spelling is the § 9.2 utility (`mt-list`, `p-inset`, `md:px-section`).
+
+  The table – name · sheet · today (source) · proposed, and the values written once as literals – is in [`handoff-values.md`](handoff-values.md) § 5 (d).
+- **(e) Frames and view switches.** `.phone-375` on the shared `.phone` (390 px wide, `cockpit.css:461`) makes a 377 × 782 box: a 375 × 780 viewport inside the 1 px border, because `cockpit.css:196-199` is border-box. `.only-today` / `.only-air` show markup that exists in one view only, such as the density options and hint; `.air-phone-only` / `.air-desktop-only` do the same for the two widths. The aid pages' frames carry `loading="lazy"`, which Chrome honours over http – `phone.html` holds 8 of its 16 frames until you scroll – and ignores completely on `file://`, where all 16 load at once (measured). Nothing is lost either way, since everything loads on scroll; a reviewer who double-clicks the page just pays for every frame up front. Not a bug.
+- **(f) URL keys.** Every axis, state and section is a URL key, read by `theme.js` through one allowlist; an unknown value falls back to the default. A frame reads the URL only and never writes storage. A change on the bar goes to storage first and then to the address bar; a page opened from disk may refuse the second, and the bar says so.
+
+  | Key | Values | Default | On `<html>` | Kept in storage | Pages |
+  |---|---|---|---|---|---|
+  | `theme` | dark, light | dark | `.light` | `air-mock-theme` | all |
+  | `accent` | lime, violet | lime | `data-accent` | `air-mock-accent` | all |
+  | `density` | roomy, comfortable, compact, ultra | comfortable | `data-density` (absent at comfortable) | `air-mock-density` | all |
+  | `width` | narrow, wide | narrow | `data-width="wide"` | `air-mock-width` | all |
+  | `v` | today, air | air | `data-view` | `air-mock-view` | screen pages |
+  | `table`, `cta` | a, b | a | `data-table`, `data-cta` | no | tasks |
+  | `drawer` | open | none | `data-drawer` (takes effect at 860 px and below) | no | tasks |
+  | `state` | thread: loading, dialog · inbox: empty, error · settings: error | none | `data-state` | no | thread, inbox, settings |
+  | `section` | agents, appearance, accounts | agents | `data-section` | no | settings |
+  | `page`, `at`, `section`, `state` | page: tasks, thread, changes, settings, inbox · at: speaker-2, ask-card, dock (thread) · section, state: the target page's lists | tasks / none | – | no | compare |
+- **(g) Local replicas.** Surfaces `cockpit.css` has no class for are drawn with local `air-` classes: the thread column, user bubble, assistant text, tool row and group, ask card, run header (`.air-run-head`), Inbox card layout, composer dock, drawer and settings field list (`.air-field`). Where `cockpit.css` has a `.base el` rule, an `air-` container mirrors its selector shape (`.air-quick li`, `.air-table th`, `.air-dock .composer textarea`, `.air-diffs .diff header`), so a today value is not lost to specificity. They stay local because step 0 may not touch `docs/design-system/`.
+- **(h) Shell breakpoint.** The replica switches to the phone shell at 860 px, `cockpit.css`'s breakpoint, not the app's `md` at 768 px; the review widths, 1280 and 375, sit clear of both.
+- **(i) Captions.** Figure captions use `--muted-foreground`, not `.frame-label`, whose `--soft-foreground` is about 2.5:1 in light (`cockpit.css:378`).
+- **(j) Mockup-only departures.** Where a `cockpit.css` base class disagrees with the source, the mockup draws the source value in both views, through a local replica or a mirrored selector, and leaves `cockpit.css` as it is. `known-gaps.md` cannot change in step 0; PR 2 adds the rows it does not fix to the mockup-fidelity table (§ 14).
+
+  The table – class · `cockpit.css` · source · what the mockup draws – and the notes recorded while drawing are in [`handoff-values.md`](handoff-values.md) § 5 (j).
 
 ## 6. Screens
 
-The mockup is one page of pairs. Each pair is the same markup twice; the tag line on each frame gives the numbers at the default density.
+The step-0 mockup (D-4) draws the cockpit's own screens at 1:1, twice: **Today** as shipped, every value read from `packages/web/src` and cited file:line in each page's values table, and **Proposed** – the end state after PR 4. Scope: eight surfaces – Tasks (table, sidebar, New-task button), a thread, the composer dock, a dialog, the diff (the Changes tab), Settings → Agents, Settings → Appearance and the Inbox – at 1280 and 375 px, in six states (§ 7), both themes, the violet accent, four densities and the wide width.
 
-| Pair | Today | Proposed | Shows |
-|---|---|---|---|
-| 1 Settings fields | gap 8 · fields 28, flat · gutter 20 | stack 12 · fields section 32, flat · gutter 32 | title → control → hint, five fields |
-| 2 Card list | cards 10 apart · 16 inside · button 30 | list 16 apart · inset 20 inside · button 32 | Inbox / hub / phone task cards |
-| 3 Thread | every row 10 apart · tool row 28 · gutter 20 | row 8 inside a turn · group 24 at a speaker change · tool row 32 · gutter 32 | user bubble, assistant text, tool rows |
-| 4 Page header and task head | header `h-14` · body at 20 · task head 18/24/14 | header `h-14` · body at 32 · task head 32/32/16 | the space under a header |
-| 5 Sidebar | rows 34 (hand-set) · groups 6 apart | rows 36 (`h-9`) · groups stack 12 apart | nav, NEEDS YOU, WORKING |
-| 6 Task table | rows 44 · cells 10 · header 38 (hand-set) | rows 44 · cells 12 · header 40 (`h-10`) | the one surface that does not grow |
-| 7 Rhythm scale | – | six bars: 8 / 12 / 16 / 20 / 24 / 32 | the tokens |
+| Page | Surface | How the views compare |
+|---|---|---|
+| `tasks.html` | Tasks: sidebar, New task, the 13-column table, the footer strip; at 375 px the task cards and the phone drawer | flip; open points 6 and 7 (§ 13) |
+| `thread.html` | the task page: run header, thread, ask card, review panel, composer dock; the delete dialog and the loading state | flip |
+| `changes.html` | the Changes tab: the same run header over the toolbar, file tree and diff | flip |
+| `settings.html` | Settings → Agents, → Appearance (Roomy · Comfortable · Compact · Compact for real, copy per § 8) and → Agent accounts (the refusal) | flip |
+| `inbox.html` | the Inbox card list; the empty and page-error states | flip |
+| `compare.html` | any of the five pages, Today above and Proposed below, both 1:1 at the same anchor | both at once |
+| `phone.html` | eight screens as 375 px pairs | side by side |
+| `states.html` | the six-state map and five 375 px pairs | side by side |
+| `appearance.html` | the proposed view at four densities, dark and light with both accents, both reading widths | per axis |
 
-Still missing from the page, to be added on the step-0 full-page mockup (D-4), whose verdict gates step 1 onward: a 375 px frame, the composer dock, a field with an inline error, a dialog, a diff view.
+**Comparison model.** At 1280 a screen page flips Today \| Proposed in place – a radio on the review bar, no reload, so the scroll position holds and a 2–4 px change shows as movement – and `compare.html` stacks both views of one page at 1:1. At 375 the aid pages show the two views side by side in 375 × 780 frames. AC 1 is met by the flip plus the stacked compare page (1:1, both at once). Each screen page ends with a values table: where, today (file:line), proposed (token = px at Comfortable).
+
+The retired pair 1 drew the settings gutter as 20 → 32; the source is 24 (`md:p-6`, `agents-section.tsx:163`), and § 9.2 does not assign it – see the "unchanged – for the step-0 verdict" rows at the end of § 9.2.
 
 ## 7. States
 
 The density select on the mockup's bar sets `data-density` on `<html>`, the way `AppearanceProvider` does in the cockpit (`components.md:226-229`).
 
-| Density | `--spacing` | Today's column | Proposed column |
+| Density | `--spacing` | Today view | Proposed view |
 |---|---|---|---|
 | Roomy (proposed) | `0.3125rem` (5 px) | scale units grow, hand-set pixels stay – uneven | +25 %, every value an integer (10 / 15 / 20 / 25 / 30 / 40) |
 | Comfortable (default) | `0.25rem` (4 px) | the shipped look | 8 / 12 / 16 / 20 / 24 / 32 |
@@ -158,6 +223,20 @@ The density select on the mockup's bar sets `data-density` on `<html>`, the way 
 | Compact for real | `0.1875rem` (3 px) | uneven – nav rows, tool rows, table header and buttons stay put | 6 / 9 / 12 / 15 / 18 / 24 – still looser between blocks than today's default |
 
 Compact and ultra give half-pixel values for some steps; that is already true of the numeric scale today and is recorded in foundations § 4.1, not hidden. Both themes render through `cockpit.css`; nothing in the sheet is theme-specific.
+
+The six states of `new-designs.md` § 4 appear once each, on their natural surface, at 1280 and 375 px. `states.html` holds the 375 px pairs and links each state at 1280 in both views and in `compare.html`.
+
+| State | Surface | Page and URL | Copy, as shipped |
+|---|---|---|---|
+| Default | every screen | each screen page | – |
+| Empty | Inbox | `inbox.html?state=empty` | "Inbox empty" / "Agents drop follow-up suggestions here when they finish a task." (`inbox.tsx:119-125`) |
+| Loading | task page | `thread.html?state=loading` | "Loading task…" / "Fetching the run and its session transcript." (`thread-loading.tsx:17-18`) |
+| Error, field | Settings → Agents, System prompt | `settings.html?section=agents&state=error` | "20,412 characters — the limit is 20,000." beside a disabled Save (`agents-section.tsx:269-279`) – the over-limit line, the shipped counterpart of `.field-error` (§ 5) |
+| Error, page | Inbox | `inbox.html?state=error` | "Could not load the inbox" and the server's message, danger tone (`inbox.tsx:104-110`) |
+| Refusal | Settings → Agent accounts, hosted mode | `settings.html?section=accounts` | "Agent accounts are managed from the machine that owns the checkout — this cockpit runs in hosted mode." (`accounts-section.tsx:149-153`) |
+| Phone | every screen | `phone.html`; any screen page in a 375 px window | – |
+
+Every state, section and appearance axis is a URL key; the keys are in § 5 (f).
 
 ## 8. Copy deck
 
@@ -202,63 +281,15 @@ Two more pieces belong to PR 1:
 
 ### 9.2 New defaults, surface by surface (PR 2 – the cockpit)
 
-| Surface | Today | Proposed | Delta |
-|---|---|---|---|
-| Thread row inside a turn | `pb-2.5` (10) | `pb-row` (8) | −2 |
-| Thread row at a speaker change | `pb-2.5` (10) | `pt-group` on the first row of the new speaker – `thread-groups.ts` already knows the boundary (24) | +14 |
-| Thread column gutters | `md:px-6 md:py-5` | `md:px-section md:py-section` (32) | +8 / +12 |
-| Tool row | `min-h-[28px] py-0.5` | `min-h-8 py-1` (32) | +4; on scale |
-| Nested tool group | `my-2` | `my-stack` (12) | +4 |
-| Ask card body | `gap-4` | `gap-list` | 0 |
-| Ask card padding | `px-4 pt-3.5 pb-3.5` | `p-inset` (20) | +4 |
-| Settings field inside | `gap-2` (8) | `gap-stack` (12) | +4 |
-| Settings fields between (flat, D-6) | `gap-7` (28) | `gap-section` (32) | +4 |
-| Settings sidebar | `gap-1 p-3`; rows `px-2.5 py-2` | `gap-1 p-stack`; rows unchanged | 0 / 0 |
-| Card padding (inbox, hub, task card) | `p-4` (16) | `p-inset` (20) | +4 |
-| Card list gap | `gap-2.5` (10) | `gap-list` (16) | +6 |
-| Inbox card internals | head `gap-3`, meta `mt-1.5`, actions `gap-1.5` | head `gap-stack`; meta `mt-row`; actions unchanged | +0 / +2 |
-| Page body gutters | `p-3 md:p-5` | `p-4 md:p-section` (16 / 32) | +4 / +12 |
-| Under the page header | body starts at the gutter | `pt-section` (32) | +12 |
-| Run header (task page) | `md:px-6 md:pt-3`; title `md:mt-2.5` | `md:px-section md:pt-group`; title `mt-stack` | +8 / +12 / +2 |
-| Composer dock | `md:pt-1.5 md:pb-4` | `md:pt-stack md:pb-list` | +6 / 0 |
-| Composer card internals | `md:min-h-[54px] md:px-4 md:pt-3` | unchanged (control-internal); `min-h-[54px]` → `min-h-14` (56) in PR 3b | – |
-| Table rows | `h-11`, `px-2.5` | `h-11`, `px-3` | 0 height; +2 padding |
-| Table header | `h-[38px]` | `h-10` (40) | +2; on scale |
-| Table footer strip | `mt-3.5` | `mt-list` (16) | +2 |
-| Table wrapper on the task page | inside the gutter | keeps `px-section` – the table already scrolls sideways behind `overflow-x-auto`; if a review shows the 13-column table losing a useful column, exempt the wrapper | 0 |
-| Global tasks page | `gap-3 p-3 md:p-5` | same as the page body | +12 |
-| Mobile task card | `px-3.5 py-3` | `p-inset` (20) | +6 / +8 |
-| Sidebar nav rows | `md:h-[34px]`, container `py-1.5` | `md:h-9` (36), groups `gap-stack` | +2; on scale |
-| Sidebar quick-list rows | `py-[7px]` (32) | `py-2` (34) | +2; on scale |
-| Sidebar brand / footer rows | `gap-[9px]`, `gap-1.5` | `gap-row`, unchanged | −1 / 0 |
-| Project-group body | `mt-1 ml-[14px] pl-2` | `mt-1 ml-3.5 pl-2` | 0; on scale |
-| Banner row | `min-h-9 px-4` | `min-h-10 px-section` | +4 / +16 |
-| Review panel | `gap-3`; banner `px-3.5 py-2.5` | `gap-stack`; banner unchanged | 0 |
-| Dialog / sheet / popover / menu / tooltip / toast / select / command | control-internal (`ui/*`) | unchanged | 0 |
-| Diff and code views | `px-3 py-2`, `px-4 py-0.5`, `leading-[1.7]` | unchanged – code density is a feature | 0 |
-| Inline empty states, command palette | `py-6`, `py-10`, `top-[10vh]` | unchanged | 0 |
-| Centered state | `gap-4 px-6 py-12` | unchanged | 0 |
+The table – surface · today · proposed · delta – is in [`handoff-values.md`](handoff-values.md) § 9.2. Six of its rows are § 9.3 conversions of a hand-set pixel and are marked *delivered by PR 3b (§ 9.3)* there, so PR 2 leaves them alone: PR 3a still seeds its allowlist with all 88 occurrences, and PR 2's screenshots compare the rhythm alone (§ 9.6).
 
-Effect on a page: a settings page with five fields grows ~40 px; a thread of 30 rows with 10 speaker changes grows about 80 px between rows (−2 × 30 + 14 × 10) plus 20 px of gutter; the task table does not grow in height; the sidebar gains 2 px per row and 12 px between groups. All *inferred* from the deltas; PR 2 reports measured `document.scrollHeight` before and after (AC 4).
+**Left to step 2 or 3b: the two sticky offsets on the Changes tab.** The tree pane is `sticky top-40 … w-60 lg:w-72` (`task-changes.tsx:202`), so the mockup spells it on the density unit (`top: calc(var(--air-bar-h) + var(--u) * 40)`, `width: calc(var(--u) * 72)`). The diff file header is pinned by `[--diff-sticky-top:10rem]` (`:193`) – a real rem, so it keeps its 160 px. Measured in Chrome: at Comfortable both stick at 230 px under the review bar; at Roomy the pane sticks at 270 and the diff header at 230, a 40 px mismatch. The mockup is faithful here – the shipped product does the same, because `top-40` rides the lever and a rem does not; the old mockup hid it by hard-coding both. The PR that converts these picks one: move the diff header onto the scale, or keep the rem and accept the gap.
+
+Effect on a page: a settings page with five fields grows ~40 px; a thread of 30 rows with 10 speaker changes grows about 100 px between rows (−2 × 20 + 14 × 10: the 20 rows inside a turn lose 2 each, the 10 speaker-change rows gain 14 each) plus 24 px of gutter (the column's top and bottom padding each grow 20 → 32); the task table does not grow in height; the sidebar gains 2 px per row and 12 px between groups. All *inferred* from the deltas; PR 2 reports measured `document.scrollHeight` before and after (AC 4).
 
 ### 9.3 Pixels back on the scale (PR 3a rule, PR 3b conversions)
 
-| Today | Proposed | Note |
-|---|---|---|
-| `md:h-[34px]` nav row | `md:h-9` | 36 px; `.btn-new-task` above it is `h-9` too – take the CTA to `h-10` so the hierarchy holds (UI-7), or prove it on the screenshot |
-| `md:h-[30px]` nested nav | `md:h-8` | 32 px |
-| `h-[38px]` table header | `h-10` | 40 px |
-| `h-[30px]`, `size-[30px]` button | `h-8`, `size-8` | 32 px – the one visible control-size change; `md` stays `h-9`; `button.test.tsx:38-41` updates with it |
-| `px-[15px]` bubble | `px-4` | 16 px |
-| `min-h-[28px]` tool row, `h-[34px]` group trigger | `min-h-8`, `h-9` | 32 / 36 px |
-| `h-[26px]` picker pill, `h-[22px]` reference chip | `h-7 min-h-[24px]`, `h-6 min-h-[24px]` | 28 / 24 px at the default; without a floor they fall to 21 / 18 px at Compact for real, under WCAG 2.2 SC 2.5.8's 24 px. The absolute `min-h-[24px]` holds them at 24 at every density; these two floors are the only allowlist rows PR 3b leaves behind |
-| `p-[3px]`, `py-[3px]`, `py-[7px]` | `p-1`, `py-1`, `py-2` | 4 / 4 / 8 px |
-| `md:min-h-[54px]` composer | `md:min-h-14` | 56 px |
-| `pl-[22px]`, `gap-[7px]`, `px-[5px]`, `gap-[9px]`, `ml-[14px]`, `mt-[5px]`, `pl-[15px]`, `pl-[26px]`, `px-[7px]` | nearest scale step | listed one by one in PR 3b's allowlist diff |
-| `w-[336px]`, `w-[264px]`, `max-h-[…]` | out of scope | widths and max-heights are layout facts; the rule does not cover `w` or `max-*` |
-| `size-[15px]` ×12, `size-[17px]` ×2 icon glyphs; `h-[3px]` ×3, `md:h-[3px]`, `h-[9px]` hairlines | PR 3b converts (`size-4`; `h-0.5` / `h-1` / `h-2`) or narrows the pattern to drop `size` and heights under 4 px – the implementer's call, recorded in the PR | 19 of the 88 matches are glyph sizes and hairlines, not spacing; AC 5's "exactly two rows" holds either way |
-| `pb-[calc(90px+env(safe-area-inset-bottom))]` | one shared class `pb-dock` | a layout fact, not a density concern |
-| `rounded-[18px]`, `rounded-[6px]` | unchanged | radius is a non-goal (§ 4) |
+The conversion table – today · proposed · note – is in [`handoff-values.md`](handoff-values.md) § 9.3.
 
 Guardian rule (new, `design-guardian.test.ts`, modelled on `unknown-color-token` (`:145-161`), the one rule with a `violates` hook – but that hook sees only the match, not the file):
 
@@ -274,6 +305,7 @@ Guardian rule (new, `design-guardian.test.ts`, modelled on `unknown-color-token`
 - **Pre-paint.** `packages/web/index.html:36-38` stamps `data-density` only for `compact`/`ultra`; Roomy would paint Comfortable and jump. Add the value there.
 - **Old versions.** The read path returns the stored string untouched (`workspace/ui-state.ts:25-37`); an older cockpit falls back through `normalizeDensity`, an older server rejects the PUT with 400 and the cockpit toasts and refetches (`appearance-provider.tsx:73-75`). Server and cockpit ship together, so this only matters for mixed versions. BACKWARD_COMPATIBILITY.md gets one line under the UI-state surface.
 - Settings → Appearance gains "Roomy" ahead of "Comfortable" (`appearance.tsx:36-40`); hint copy per § 8.
+- At 375 px the four density options (about 390 px, measured in the step-0 mockup) overflow the column (about 343 px): `Segmented` is `inline-flex w-fit` with no wrap (`appearance.tsx:66`). PR 4 wraps the row inside its border, so every option stays reachable at every density.
 
 ### 9.5 Documentation and tests that change
 
@@ -303,7 +335,7 @@ Guardian rule (new, `design-guardian.test.ts`, modelled on `unknown-color-token`
 
 | Step | Content | Gate | Measure |
 |---|---|---|---|
-| Step 0 – mockup | A full-page before/after mockup in this folder (D-4): Tasks, a thread, Settings → Agents, Inbox, at 1280 and 375 px, both themes; plus the five missing frames from § 6 | the `design-review` verdict – it gates step 1 onward | the verdict |
+| Step 0 – mockup | A full-page before/after mockup in this folder (D-4): Tasks (table, sidebar, New task, phone drawer), a thread with its dock, Changes, Settings → Agents, → Appearance (Roomy · Comfortable · Compact · Compact for real), → Agent accounts (refusal), Inbox and a dialog; at 1280 and 375 px; both themes, the violet accent, four densities and the wide width; the six states | the `design-review` verdict – it gates step 1 onward | the verdict |
 | PR 1 | `--spacing` + six tokens in `index.css` and `cockpit.css`, `tailwind-merge`, foundations § 4.1, specimens, G-25, and the Settings field-list pilot (D-9) | `needs-design` + `needs-qa` – the pilot ships; drift test | the specimen bars at 8/12/16/20/24/32 from disk (AC 2) |
 | PR 2 | § 9.2 across `packages/web/src`; G-25 deleted | `needs-design` + `needs-qa`; before/after screenshots at 1280 and 375, both themes, comfortable and ultra; `npm run test:e2e` | measured page heights (AC 4); `rhythm.e2e.ts` (AC 3) |
 | PR 3a | the guardian rule, the widened `Rule` hook, the allowlist seeded with the 88 occurrences, the fixture self-test | `skip-design` (no rendered change) | allowlist pinned at 88 rows |
@@ -323,14 +355,15 @@ Order (issue #424): step 0 → 1 → 2 → 3a → 3b → 4; the step-0 verdict g
 
 - Phone gutters grow from 12 to 16 px (`p-3` → `p-4`); `section` (32 px) applies at `md:` (768 px) and up.
 - Nothing scrolls sideways at 375 px: the rhythm adds vertical space only; the table keeps `.table-scroll`; `a11y-sweep.e2e.ts` (390 / 1440) and `ios-sweep.e2e.ts` stay green.
+- One container scrolls sideways on purpose: the run header's tab row, `overflow-x: auto` on `.air-tabs` – the treatment the shipped settings pill row already has (`cockpit.css:2248`). Measured: at a true 375 px viewport nothing overflows at any density; the row needs 339 px at Roomy, so below 327 px it scrolls inside itself rather than pushing the page. Intentional, not a defect, and step 2 keeps that rule when it converts the real component.
 - Roomy on a phone: rows 55 px – opt-in.
-- The mockup's pairs stack to one column under 900 px; each frame keeps its own gutter. A 375 px frame joins the step-0 full-page mockup (D-4).
+- The mockup's screen pages render the true 375 px view in a 375 px window. The aid pages' 375 px frames shrink below their own width in a window narrower than about 425 px. The review bar is sticky from 861 px and static at 860 px and below. Focus and anchors clear it through a scroll margin on the page's content (`chrome.css`, `thread.css`), not a root `scroll-padding-top`.
 
 ## 12. Acceptance criteria
 
 1. `index.css` and `cockpit.css` declare `--spacing` and the six `--spacing-*` tokens with byte-identical value strings; each is named in `foundations.md`; `npm test -- packages/web/src/design-system-drift.test.ts` is green.
 2. `specimens/foundations.html` opened **from disk** shows the six rhythm bars at 8 / 12 / 16 / 20 / 24 / 32 px.
-3. `packages/web/e2e/rhythm.e2e.ts` asserts through `getComputedStyle` at the default density: a thread row inside a turn 8, a speaker-change row 24, card padding 20, card-list gap 16, settings field gap 12, settings list gap 32, desktop page padding 32, page body top 32 – and 75 % of each at `data-density='ultra'`, 125 % at `roomy`.
+3. `packages/web/e2e/rhythm.e2e.ts` asserts through `getComputedStyle` at the default density: a thread row inside a turn 8, the gap between two speakers' rows 24, card padding 20, card-list gap 16, settings field gap 12, settings list gap 32, desktop page padding 32, page body top 32 – and 75 % of each at `data-density='ultra'`, 125 % at `roomy`.
 4. PR 2 reports measured `document.scrollHeight` for Tasks, a 30-row thread, Settings → Agents and Inbox at 1280×900, before and after.
 5. `no-arbitrary-spacing` exists with an allowlist seeded at 88 rows in PR 3a; fixture lines `h-[34px]`, `size-[30px]` and `md:min-h-[54px]` each fail it against an empty allowlist, proved red-then-green; after PR 3b the allowlist holds exactly two rows – the `min-h-[24px]` floors on `picker-pill.tsx` and `reference-chip.tsx` – each with a written reason.
 6. Touch targets ≥ 44 px on phone at Roomy and Comfortable, no smaller than today at Compact and Compact for real, and no interactive target under 24 px at any density – the two chips carry `min-h-[24px]`.
@@ -340,7 +373,16 @@ Order (issue #424): step 0 → 1 → 2 → 3a → 3b → 4; the step-0 verdict g
 
 ## 13. Open decisions
 
-Decided on 2026-09-14 (owner): **D-1** change the default · **D-2** table rows stay 44 · **D-3** compact/ultra scale the new rhythm ("the layout should always look the same") · **D-4** a full-page mockup as step 0, whose verdict gates step 1 onward · **D-5** the pixel rule fails `npm test`, the validation gate · **D-6** settings stay flat, 28 → 32 · **D-7** one lever · **D-8** no flag · **D-9** PR 1 ships the tokens, the docs and the Settings field lists as its pilot, labelled `needs-design` + `needs-qa` · **D-10** two thread gaps · the scale 8/12/16/20/24/32 · Roomy stays and is 5 px per unit. The "option in the configuration" the owner asked for is that Roomy density; the looser rhythm ships as the default, with no flag (D-8). **No decision remains open.**
+Decided on 2026-09-14 (owner): **D-1** change the default · **D-2** table rows stay 44 · **D-3** compact/ultra scale the new rhythm ("the layout should always look the same") · **D-4** a full-page mockup as step 0, whose verdict gates step 1 onward · **D-5** the pixel rule fails `npm test`, the validation gate · **D-6** settings stay flat, 28 → 32 · **D-7** one lever · **D-8** no flag · **D-9** PR 1 ships the tokens, the docs and the Settings field lists as its pilot, labelled `needs-design` + `needs-qa` · **D-10** two thread gaps · the scale 8/12/16/20/24/32 · Roomy stays and is 5 px per unit. The "option in the configuration" the owner asked for is that Roomy density; the looser rhythm ships as the default, with no flag (D-8). D-1..D-10 stay closed.
+
+Decided at the step-0 verdict (2026-09-15, [design review](https://github.com/qodeca/xezar/pull/429#issuecomment-5678658435)). Both options still switch live on `tasks.html`; A is the decision.
+
+- **D-11 – Task-table wrapper: A, keeps `px-section`.** B gives back only 24 px (less than one column) and adds a gutter exception every future page would have to remember; with the header at `md:px-section` (NB-1) the title and the table edge line up at 32 px.
+- **D-12 – New-task button: A, `h-10` (40 px).** With B the button is the same height as the `md:h-9` nav rows under it; A keeps it taller (40 vs 36), which is § 9.3 note UI-7. At phone width it stays under the 44 px drawer rows – a separate, older issue (NB-4, #430).
+
+These numbers are this folder's items ("Air D-11", "Air D-12"), not `docs/design-system/decisions.md` ids; step 1 records the system-wide ones there (NB-7).
+
+Mockup-only departures are listed in § 5 (j) with reasons; they are not open decisions.
 
 ## 14. Risks
 
@@ -373,4 +415,25 @@ Decided on 2026-09-14 (owner): **D-1** change the default · **D-2** table rows 
 
 ## 16. Design review
 
-Four reviews on 2026-09-14 (UX, UI, fact-check, plan): all PASS WITH CHANGES. Five blocking findings and eighteen should-fix items, consolidated with dispositions in [`review-2026-09-14.md`](review-2026-09-14.md); Every decision the owner took (D-1..D-10) is applied and none is open. The `design-review` kit verdict on the step-0 full-page mockup (D-4) is pending; it gates step 1 onward.
+Four reviews on 2026-09-14 (UX, UI, fact-check, plan): all PASS WITH CHANGES. Five blocking findings and eighteen should-fix items, consolidated with dispositions in [`review-2026-09-14.md`](review-2026-09-14.md); every decision the owner took (D-1..D-10) is applied and stays closed. The step-0 mockup set (revision 4) has its `design-review` verdict below (D-4), so step 1 onward may start.
+
+### Step 0 – the full-page mockup
+
+| Field | Value |
+|---|---|
+| Comment | [`## Design review` on PR #429](https://github.com/qodeca/xezar/pull/429#issuecomment-5678658435) |
+| Reviewed commit | `4d3e0001dbce177f1b11e1e2edebee35ae1faebe` |
+| Reviewer role | Xezar `design-review` task, claude – independent, did not write the mockup |
+| Themes and widths checked | dark and light; lime and violet accent; 1280 × 900, 375 × 780, 1600 px wide; all four densities |
+| Verdict | **PASS WITH FOLLOW-UPS** – no blocking findings; `design-approved` applied |
+| Open points | 6 → D-11 = A, 7 → D-12 = A (§ 13) |
+
+| # | Finding | Disposition |
+|---|---|---|
+| NB-1 | Page header stays at `px-5` (20) while the body moves to 32, so the title is 12 px out of line | **Fixed in this PR:** the proposed header is `md:px-section` (`shell.css`, spelled on `--u`); the four § 9.2 rows in `handoff-values.md` updated (settings containers `p-list md:p-group`, Inbox card and refusal gaps stay inside one block) |
+| NB-2 | § 9.3 does not list the step rail's `md:min-h-[30px]` (`step-rail.tsx:164`) | **Fixed in this PR:** § 9.3 row `md:min-h-[30px]` → `md:min-h-8` added to `handoff-values.md`; the drawing stays, PR 3a re-counts from the tree |
+| NB-3 | `cockpit.css` base classes (sidebar head, New-task row, `.btn` gap, pill, composer, `kbd`, nav badge) stay fixed at every density in both views | **Accepted:** the comparison stays fair; § 5 (j) and § 14 already send `cockpit.css` fidelity rows to PR 2's known-gaps mockup-fidelity table, which lists these classes by name |
+| NB-4 | Phone drawer New-task button is 36 px today, 40 px with D-12 – under 44 px | **Filed** as `design-debt` [#430](https://github.com/qodeca/xezar/issues/430); older than Air, out of scope |
+| NB-5 | Compare frames at 1280 × 900 show only ~60–70 px of thread | **Accepted:** the in-place Today / Proposed flip is the main comparison, and the compare page says the frames are short |
+| NB-6 | Settings values table says `p-stack` = 12 is "the same at every density" | **Fixed in this PR:** now "12 at Comfortable – it scales with density: 9 / 10.5 / 12 / 15" (`settings.html`) |
+| NB-7 | Air D-3, D-5, D-7, D-11 and D-12 set system-wide rules but are not in `docs/design-system/decisions.md` | **Accepted for step 0:** step 1 (the first PR that changes `docs/design-system/`) records them in `decisions.md` and cites the folder's items as "Air D-n" |

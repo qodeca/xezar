@@ -1,351 +1,114 @@
-/* Air proposal – example sheet. Loaded AFTER ../../docs/design-system/cockpit.css.
+/* Air proposal – cross-screen values for the step-0 mockup. Loaded after
+ * ../../docs/design-system/cockpit.css and before chrome.css, shell.css and a screen sheet.
  *
- * Every example is built twice from the same markup: `.ex.today` uses the cockpit's shipped values
- * (read from the files on 2026-09-14; hand-set pixels stay hand-set, so the density lever misses
- * them, exactly as it does in the cockpit), `.ex.air` uses the proposal's rhythm tokens. Both derive
- * from Tailwind's one spacing unit, `--spacing` (4px per unit), so the density select on the doc bar
- * scales both columns the way the cockpit would. */
+ * theme.js stamps one of two value sets on <html data-view> before first paint:
+ *  - today: the cockpit as shipped, read from packages/web/src (file:line beside each value).
+ *    A hand-set pixel stays raw px, so the density lever misses it as it does in the cockpit;
+ *    a scale value is calc(var(--u) * n), so density scales it.
+ *  - proposed (the default): README § 9, the end state after PR 4.
+ * Screen-only values open each screen sheet. Each custom property is declared in one sheet
+ * only (B-16); chrome.css and shell.css declare none (B-4).
+ *
+ * block order: rhythm → today → proposed → phone → open points
+ */
 
+/* One Tailwind spacing unit. --spacing is undeclared at Comfortable (the fallback, cockpit.css:481).
+ * rem must be the cockpit's 16 px: styles/index.css sets no root size, but cockpit.css:203-211 sets
+ * html AND body to 14px in one rule, which would make every unit, at every density, 12.5 % small. */
 :root {
+  font-size: 16px;
   --u: var(--spacing, 0.25rem);
+  /* bar.js writes --air-bar-measured from a ResizeObserver; 96px holds until it has measured. */
+  --air-bar-h: var(--air-bar-measured, 96px);
+}
+/* Base text stays 14 px. Stated here, never inherited: the root override above wins only the html
+ * half of that combined rule, so a rewrite leaving body unset would take every page 14 → 16 px. */
+body {
+  font-size: 14px;
 }
 
-/* The proposed fourth density. cockpit.css already declares compact and ultra. */
+/* The proposed fourth density: 5 px per unit, +25 %, the mirror of ultra's −25 % (cockpit.css:186-188). */
 :root[data-density='roomy'] {
-  --spacing: 0.3125rem; /* 5px per unit, +25 % – the mirror of ultra's −25 % */
+  --spacing: 0.3125rem;
 }
 
-/* ---------- the proposed rhythm tokens (README § 9.1, revision 2) ---------- */
-.ex.air {
-  --row: calc(var(--u) * 2);      /*  8px */
-  --stack: calc(var(--u) * 3);    /* 12px */
-  --list: calc(var(--u) * 4);     /* 16px */
-  --inset: calc(var(--u) * 5);    /* 20px – inside a card. NOT --card: that is the card colour. */
-  --group: calc(var(--u) * 6);    /* 24px */
-  --section: calc(var(--u) * 8);  /* 32px */
+/* A frame hides the bar (cockpit.css:338), so nothing sits under it. */
+:root.framed {
+  --air-bar-h: 0px;
+}
 
-  --turn-gap: var(--row);                 /* rows inside one speaker's turn */
-  --speaker-gap: var(--group);            /* at a speaker change */
-  --tool-h: calc(var(--u) * 8);
-  --field-gap: var(--stack);
-  --fields-gap: var(--section);           /* D-6: flat list, 28 → 32 */
-  --card-pad: var(--inset);
-  --card-inner: var(--stack);
-  --card-gap: var(--list);
+/* ---------- rhythm – the proposed set only (README § 9.1) ---------- */
+:root:not([data-view='today']),
+.ex.air {
+  --row: calc(var(--u) * 2);     /*  8 */
+  --stack: calc(var(--u) * 3);   /* 12 */
+  --list: calc(var(--u) * 4);    /* 16 */
+  --inset: calc(var(--u) * 5);   /* 20 – inside a card; not --card, the card colour */
+  --group: calc(var(--u) * 6);   /* 24 */
+  --section: calc(var(--u) * 8); /* 32 */
+}
+
+/* ---------- today – as shipped ---------- */
+:root[data-view='today'] {
+  --gutter: calc(var(--u) * 5);  /* tasks-overview.tsx:211, inbox.tsx:93  md:p-5 */
+  --body-top: var(--gutter);     /* the body starts at the gutter */
+  --btn-h: 30px;                 /* button.tsx:24  sm h-[30px] – .air-sm buttons only */
+  --btn-icon: 30px;              /* button.tsx:26  icon-sm size-[30px] */
+  --pill-h: 26px;                /* picker-pill.tsx:22  h-[26px] */
+  --refchip-h: 22px;             /* reference-chip.tsx:148  h-[22px] */
+  --status-pill-py: 3px;         /* pill.tsx:26  py-[3px] */
+  --brand-gap: 9px;              /* app-shell.tsx:490  gap-[9px] */
+  --cta-h: calc(var(--u) * 9);   /* button.tsx:23 default h-9, app-shell.tsx:509 */
+  --side-group-gap: 0;           /* no gap of its own: a bucket heading's pt-2.5 (task-quick-list.tsx:144) */
+  --project-h: 34px;             /* project-groups.tsx:221,260  md:h-[34px] */
+  --nested-h: 30px;              /* project-groups.tsx:325  md:h-[30px] */
+  --project-gap: 7px;            /* project-groups.tsx:221,260  gap-[7px] */
+  --quick-py: 7px;               /* task-quick-list.tsx:248,425  py-[7px] */
+}
+
+/* ---------- proposed – README § 9.2 and § 9.3 ---------- */
+:root:not([data-view='today']) {
   --gutter: var(--section);
   --body-top: var(--section);
-  --nav-h: calc(var(--u) * 9);
-  --nav-group-gap: var(--stack);
-  --cell-px: calc(var(--u) * 3);
-  --th-h: calc(var(--u) * 10);
-  --head-top: var(--section);
-  --head-x: var(--section);
-  --head-bottom: var(--list);
   --btn-h: calc(var(--u) * 8);
+  --btn-icon: calc(var(--u) * 8);
+  --pill-h: calc(var(--u) * 7);      /* both chips floor at 24px in shell.css (§ 9.3) */
+  --refchip-h: calc(var(--u) * 6);
+  --status-pill-py: calc(var(--u) * 1); /* py-1 (§ 9.3) */
+  --brand-gap: var(--row);
+  --cta-h: calc(var(--u) * 10);      /* open point 7, option A (README:248) */
+  --side-group-gap: var(--stack);
+  --project-h: calc(var(--u) * 9);
+  --nested-h: calc(var(--u) * 8);
+  --project-gap: calc(var(--u) * 2); /* 7 → 8 (nearest step – PR 3b decides) */
+  --quick-py: calc(var(--u) * 2);
 }
 
-/* ---------- today's values, as shipped ---------- */
-.ex.today {
-  --turn-gap: calc(var(--u) * 2.5);      /* thread-scroller.tsx:492  pb-2.5 on every row */
-  --speaker-gap: var(--turn-gap);        /* today a speaker change is spaced like any row */
-  --tool-h: 28px;                        /* thread-items.tsx:547     min-h-[28px] – outside the lever */
-  --field-gap: calc(var(--u) * 2);       /* settings-field.tsx:21    gap-2 */
-  --fields-gap: calc(var(--u) * 7);      /* appearance.tsx:120 gap-7 – flat list, no group level in the cockpit */
-  --group-gap: calc(var(--u) * 7);       /* appearance.tsx:120       gap-7 */
-  --card-pad: calc(var(--u) * 4);        /* inbox.tsx:227            p-4 */
-  --card-inner: calc(var(--u) * 2.5);    /* inbox.tsx:227            gap-2.5 inside the card */
-  --card-gap: calc(var(--u) * 2.5);      /* inbox.tsx:128            gap-2.5 */
-  --gutter: calc(var(--u) * 5);          /* patterns.md:51           md:p-5 */
-  --body-top: calc(var(--u) * 5);        /* same – the body starts at the gutter */
-  --nav-h: 34px;                         /* app-shell.tsx:572        md:h-[34px] – outside the lever */
-  --nav-group-gap: calc(var(--u) * 1.5); /* app-shell.tsx:555 py-1.5 – the container padding; groups have no gap of their own */
-  --cell-px: calc(var(--u) * 2.5);       /* tasks-overview.tsx:514   px-2.5 */
-  --th-h: 38px;                          /* tasks-overview.tsx:419   h-[38px] – outside the lever */
-  --head-top: 18px;                      /* cockpit.css:2043         .task-head padding 18px 24px 14px */
-  --head-x: 24px;
-  --head-bottom: 14px;
-  --btn-h: 30px;                         /* known-gaps.md:185        h-[30px] – outside the lever */
+/* ---------- phone (≤ 860 px: the cockpit.css shell breakpoint; the app's md is 768) ---------- */
+@media (max-width: 860px) {
+  :root {
+    --air-bar-h: 0px; /* the bar is static here */
+  }
+
+  :root[data-view='today'] {
+    --gutter: calc(var(--u) * 3); /* tasks-overview.tsx:211, inbox.tsx:93  p-3 */
+  }
+
+  :root:not([data-view='today']) {
+    --gutter: calc(var(--u) * 4);
+    --body-top: calc(var(--u) * 4);
+  }
+
+  /* Drawer rows are touch targets in both views: the md: prefix drops away. */
+  :root[data-view='today'],
+  :root:not([data-view='today']) {
+    --project-h: calc(var(--u) * 11); /* project-groups.tsx:260  h-11 */
+    --nested-h: calc(var(--u) * 11);  /* project-groups.tsx:325  h-11 */
+  }
 }
 
-/* ---------- shared example chrome ---------- */
-.pair {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr));
-  gap: 20px;
-  align-items: start;
-}
-
-.ex {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--background);
-  overflow: hidden;
-}
-
-.ex .tag {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  border-bottom: 1px solid var(--border);
-  background: color-mix(in srgb, var(--muted) 50%, transparent);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--muted-foreground);
-}
-
-.ex.air .tag {
-  color: var(--primary);
-}
-
-.ex .tag .px {
-  margin-left: auto;
-  font-family: var(--mono);
-  font-weight: 400;
-  letter-spacing: 0;
-  text-transform: none;
-  color: var(--soft-foreground);
-}
-
-/* ---------- 1 · settings fields ---------- */
-.ex-settings {
-  padding: var(--gutter);
-  display: flex;
-  flex-direction: column;
-  gap: var(--group-gap);
-}
-
-.ex-group {
-  display: flex;
-  flex-direction: column;
-  gap: var(--fields-gap);
-}
-
-.ex-group > h3 {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.ex-field {
-  display: flex;
-  flex-direction: column;
-  gap: var(--field-gap);
-}
-
-.ex-field .label {
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.ex-field .input {
-  height: calc(var(--u) * 9);
-  padding: 0 calc(var(--u) * 3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--card);
-  color: var(--foreground);
-  font: inherit;
-  font-size: 14px;
-}
-
-.ex-field .field-hint {
-  margin: 0;
-  font-size: 12px;
-  color: var(--muted-foreground);
-}
-
-/* ---------- 2 · card list ---------- */
-.ex-cards {
-  padding: var(--gutter);
-  display: flex;
-  flex-direction: column;
-  gap: var(--card-gap);
-}
-
-.ex-card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--card-inner);
-  padding: var(--card-pad);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--card);
-  box-shadow: var(--shadow-xs);
-}
-
-.ex-card .title {
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.ex-card p {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--muted-foreground);
-}
-
-.ex-card .meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: calc(var(--u) * 1.5) calc(var(--u) * 3);
-  font-size: 12px;
-  color: var(--soft-foreground);
-}
-
-.ex-card .actions {
-  display: flex;
-  gap: calc(var(--u) * 1.5);
-}
-
-.ex .btn {
-  height: var(--btn-h);
-}
-
-/* ---------- 3 · thread ---------- */
-.ex-thread {
-  padding: var(--gutter);
-  display: flex;
-  flex-direction: column;
-}
-
-.ex-turn {
-  padding-bottom: var(--turn-gap);
-}
-
-/* The first row of a new speaker: the speaker gap replaces the row gap above it. */
-.ex-turn.speaker {
-  padding-top: calc(var(--speaker-gap) - var(--turn-gap));
-}
-
-.ex-turn.user {
-  align-self: flex-end;
-  max-width: 78%;
-}
-
-.ex-turn.user .bubble {
-  padding: calc(var(--u) * 2.5) calc(var(--u) * 4);
-  border-radius: var(--radius-xl) var(--radius-xl) var(--radius) var(--radius-xl);
-  background: var(--muted);
-  font-size: 13.5px;
-  line-height: 1.55;
-}
-
-.ex-turn.assistant p {
-  margin: 0 0 0.45em;
-  font-size: 15px;
-  line-height: 1.65;
-}
-
-.ex-tool {
-  display: flex;
-  align-items: center;
-  gap: calc(var(--u) * 1.5);
-  min-height: var(--tool-h);
-  padding: calc(var(--u) * 0.5) calc(var(--u) * 2.5);
-  border-radius: var(--radius);
-  font-family: var(--mono);
-  font-size: 12.5px;
-  color: var(--muted-foreground);
-}
-
-.ex-tool .k {
-  color: var(--foreground);
-}
-
-/* ---------- 4 · page header and body ---------- */
-.ex-page .head {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  height: calc(var(--u) * 14);
-  padding: 0 var(--gutter);
-  border-bottom: 1px solid var(--border);
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.ex-page .body {
-  padding: var(--body-top) var(--gutter) var(--gutter);
-  display: flex;
-  flex-direction: column;
-  gap: var(--card-gap);
-}
-
-.ex-page .task-head {
-  padding: var(--head-top) var(--head-x) var(--head-bottom);
-  border-bottom: 1px solid var(--border);
-}
-
-.ex-page .task-head h1 {
-  margin: 8px 0 10px;
-  font-size: 18px;
-  line-height: 1.35;
-}
-
-/* ---------- 5 · sidebar ---------- */
-.ex-side {
-  width: 264px;
-  max-width: 100%;
-  background: var(--sidebar);
-  display: flex;
-  flex-direction: column;
-  gap: var(--nav-group-gap);
-  padding: calc(var(--u) * 1.5) 0;
-}
-
-.ex-side .nav a {
-  height: var(--nav-h);
-}
-
-/* ---------- 6 · table ---------- */
-.ex-table .tasks-table th {
-  height: var(--th-h);
-  padding: 0 var(--cell-px);
-}
-
-.ex-table .tasks-table td {
-  height: calc(var(--u) * 11);
-  padding: 0 var(--cell-px);
-}
-
-/* ---------- 7 · rhythm bars ---------- */
-.bars {
-  display: grid;
-  gap: calc(var(--u) * 2);
-  padding: calc(var(--u) * 4);
-}
-
-.bar {
-  display: grid;
-  grid-template-columns: 90px 1fr 60px;
-  align-items: center;
-  gap: 12px;
-  font-size: 12px;
-  color: var(--muted-foreground);
-}
-
-.bar i {
-  display: block;
-  height: 14px;
-  border-radius: 4px;
-  background: var(--primary);
-  opacity: 0.85;
-}
-
-.bar .v {
-  font-family: var(--mono);
-  color: var(--soft-foreground);
-  text-align: right;
-}
-
-.doc-bar label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--muted-foreground);
+/* ---------- open points (the proposed view only) ---------- */
+/* 7 – New-task button: option B keeps today's h-9 (README:248). */
+:root:not([data-view='today'])[data-cta='b'] {
+  --cta-h: calc(var(--u) * 9);
 }

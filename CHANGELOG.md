@@ -5,6 +5,7 @@
 
 ## ✨ Features
 
+- ✨ **Settings has a little more room, and the design system gains a rhythm scale.** (part of #424) Settings fields now sit 32 px apart instead of 28, and a field's title, control and hint 12 px apart instead of 8, at the default density; Compact and Compact for real scale the same change down. Behind it are six named spacing steps – `row`, `stack`, `list`, `inset`, `group` and `section` (8 to 32 px) – built on the density unit and documented in `docs/design-system/foundations.md` §4.1. No other page changes yet, and there is no setting or flag.
 - ✨ **Codex leaders can opt into project-event delivery through their existing local app-server.** (#374, part of #73)
   - Wired: the Codex session's own `xezar mcp` bridge announces only its thread id (Codex passes the MCP server no `CODEX_HOME`). `xezar serve` looks for the control socket in its own Codex home – `CODEX_HOME` when the serve process has one, else `~/.codex` – and trusts it only after the app-server's `initialize` answer names that same home. It attaches only when exactly one thread is both saved for this project folder and loaded, and it is the announced one. It never starts Codex, a daemon or a thread, and it holds the thread's subscription only while it hands an event over, so an exited TUI's thread unloads normally. An approval or question already open at attach, or opened later, is never spoken over. A hand-off whose acceptance was lost is checked against the thread's own turns before anything is sent again, also after a re-attach. After the TUI or the app-server goes, events stay in the journal for `leader_events`, and the cockpit names a recoverable blocker.
   - Measured once with the real bridge, service and a real `codex app-server --listen unix://` (codex-cli 0.154.0, macOS, scripted model endpoint): one event-caused model request and none more in a 30-second quiet window, shown in the person's own TUI; the wrong-home, missing-socket and unloaded-thread refusals; TUI exit and app-server exit.
@@ -47,6 +48,8 @@ fix: Restart Claude Code so it starts the current xezar bridge (npx -y @qodeca/x
 
 fix: If the leader is working, nothing is needed. Otherwise check that Claude Code was started with --dangerously-load-development-channels server:xezar and that its startup notice says channels from server:xezar inject into the session. Channels need a claude.ai or Console API-key login, do not work on Bedrock, Vertex or Foundry, must be enabled by a Team or Enterprise admin, and are off while CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC is set. Until then, read events with leader_events.
 
+## 🔒 Security
+- 🔒 **Two high-severity advisories in shipped dependencies are fixed.** (#426) `smol-toml` 1.7.0 → 1.8.0 fixes GHSA-7w5x-hrqm-74c2: a malformed TOML document – a comment with no trailing newline inside an array or inline table – made the parser loop for ever at full CPU, and xezar parses TOML agent config with it. Its minimum is now 1.7.1, so every install of `@qodeca/xezar` gets the fix, not only builds from the lockfile. The cockpit's `react-router` 7.18.1 → 7.18.3 fixes GHSA-qwww-vcr4-c8h2, which affects only the unstable RSC APIs; the cockpit uses only `BrowserRouter`, so that bump is precautionary. The dev-only `nanoid` (3.3.19) and `undici` (7.29.1) move too, and `npm audit` reports no high or critical finding.
 
 ## 🐛 Fixes
 - 🐛 Stamp the private cockpit workspace and its internal dependency ranges during releases, so minor and major bump PRs keep npm workspaces linked. (#382)
@@ -140,6 +143,19 @@ fix: If the leader is working, nothing is needed. Otherwise check that Claude Co
   `.xezar/pipeline/config.json` and `.ai/trackers/github.md` is `.xezar/pipeline/trackers/github.md`;
   the `.ai/` directory is gone from the repository, and `pipeline` joined the fingerprinted kit set
   (`tree_fingerprint` in `.xezar/checks/lib/common.sh`).
+- 🚀 **The MCP mutation gate runs nightly on GitHub Actions.** (part of #377) A new
+  `.github/workflows/mutation.yml` runs `npm run test:mutation:mcp`'s scope against `main` every
+  night and on manual dispatch – never on a pull request and never in the release path. The scope
+  is split across six parallel jobs so no job meets GitHub's 6-hour limit; each job runs with no
+  floor of its own, and one aggregate step applies the unchanged 80 % `thresholds.break` from
+  `packages/xezar/stryker.config.mjs` to the summed counts. It fails closed on a missing or broken
+  shard report, a shard or run that tested nothing, and a file reported twice, outside its shard or
+  never. On `main` a red night files, comments on or reopens one `mutation-nightly` issue, and the
+  next green night closes it. The scripts live in `packages/xezar/mutation/`, outside the npm
+  tarball. `publishing-surface.test.ts` now forbids publish power by role – only `release.yml` may
+  hold `id-token` or a publish command – instead of pinning the list of workflow files. Not yet
+  live-verified: the first dispatched run on `main` happens after merge. Telling new survivors from
+  known ones is the second half of #377.
 
 ## 🐛 Bug Fixes
 - 🐛 **The cockpit's take-over hint now shows the correct CLI for each backend.** The pi runner

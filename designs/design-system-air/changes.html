@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en" class="air-task-page">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Air – Changes</title>
+<link rel="stylesheet" href="../../docs/design-system/cockpit.css">
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="chrome.css">
+<link rel="stylesheet" href="shell.css">
+<link rel="stylesheet" href="thread.css">
+<script src="theme.js"></script>
+</head>
+<body>
+<script src="icons.js"></script>
+<script src="bar.js" data-controls="view theme accent density width" data-compare="changes"></script>
+
+<!-- sidebar:start -->
+<div class="shell air-screen">
+<aside class="sidebar air-side">
+  <div class="sidebar-head">
+    <span class="logo" aria-hidden="true">X</span><span class="name">xezar</span>
+    <a class="btn icon ghost air-touch air-close air-phone-only" href="tasks.html" aria-label="Close menu"><svg class="icon air-glyph" aria-hidden="true"><use href="#i-x"/></svg></a>
+  </div>
+  <div class="new-task-row">
+    <button class="btn-new-task" type="button"><svg class="icon sm" aria-hidden="true"><use href="#i-plus"/></svg>New task <kbd aria-hidden="true">C</kbd></button>
+    <button class="btn icon md air-touch air-add" type="button" aria-label="Add project" title="Add project"><svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg></button>
+  </div>
+  <div class="air-all-band"><a href="#"><svg class="icon" aria-hidden="true"><use href="#i-layers"/></svg>All tasks</a></div>
+  <div class="air-projects">
+    <div class="air-project">
+      <button class="air-project-head on" type="button" aria-expanded="true"><svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg><span class="t">xezar</span><span class="nav-badge">2</span><span class="branch">main</span></button>
+      <div class="air-project-body">
+        <nav class="air-project-nav" aria-label="xezar navigation">
+          <a href="tasks.html" aria-current="page"><svg class="icon" aria-hidden="true"><use href="#i-tasks"/></svg>Tasks</a>
+          <a href="inbox.html"><svg class="icon" aria-hidden="true"><use href="#i-inbox"/></svg>Inbox<span class="nav-badge">5</span></a>
+          <a href="#"><svg class="icon" aria-hidden="true"><use href="#i-git"/></svg>Git</a>
+          <a href="#"><svg class="icon" aria-hidden="true"><use href="#i-github"/></svg>GitHub</a>
+          <a href="#"><svg class="icon" aria-hidden="true"><use href="#i-sparkles"/></svg>Skills</a>
+          <a href="#"><svg class="icon" aria-hidden="true"><use href="#i-workflow"/></svg>Workflows</a>
+          <a href="settings.html"><svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg>Settings</a>
+        </nav>
+        <div class="air-grp"><h2 class="quick-head">Needs you</h2><ul class="quick air-quick">
+          <li class="on"><span class="dot pending pulse"></span><span class="ref">#412</span><a class="t" href="thread.html" aria-current="page">adding a retry to the failed-gate banner</a></li>
+          <li><span class="dot pending pulse"></span><span class="ref">#409</span><a class="t" href="thread.html">documenting the approval wait in the runner guide</a></li>
+        </ul></div>
+        <div class="air-grp"><h2 class="quick-head">Working</h2><ul class="quick air-quick">
+          <li><span class="dot violet pulse"></span><a class="t" href="thread.html">tightening the sidebar rhythm</a><span class="meta">9m</span></li>
+        </ul></div>
+        <div class="air-grp"><h2 class="quick-head">Recent</h2><ul class="quick air-quick">
+          <li><span class="dot success"></span><span class="ref">#405</span><a class="t" href="thread.html">pruning the orphan skill cache</a></li>
+          <li><span class="dot success"></span><a class="t" href="thread.html">syncing the root checkout</a><span class="meta">3h</span></li>
+          <li><span class="dot danger"></span><span class="ref">#398</span><a class="t" href="thread.html">moving the mutation gate to a schedule</a></li>
+          <li><span class="dot success"></span><span class="ref">#396</span><a class="t" href="thread.html">fixing the tasks badge count</a></li>
+          <li><span class="dot success"></span><a class="t" href="thread.html">renaming the release workflow step</a><span class="meta">1d</span></li>
+        </ul></div>
+        <a class="air-more" href="tasks.html">More…</a>
+      </div>
+    </div>
+    <div class="air-project"><button class="air-project-head" type="button" aria-expanded="false"><svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg><span class="t">docs-site</span><span class="branch">main</span></button></div>
+    <div class="air-project"><button class="air-project-head" type="button" aria-expanded="false"><svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg><span class="t">billing-api</span><span class="branch">release/2.4</span></button></div>
+  </div>
+  <div class="sidebar-foot">
+    <button class="air-search" type="button" title="Search — command palette (⌘K / Ctrl+K)"><svg class="icon sm" aria-hidden="true"><use href="#i-search"/></svg><span>Search…</span><kbd class="kbd" aria-hidden="true">⌘K</kbd></button>
+    <div class="air-foot-row">
+      <button class="air-tools" type="button"><span class="dot success"></span>Tools<svg class="icon xs" aria-hidden="true"><use href="#i-chevron"/></svg></button>
+      <span class="version-chip">v0.14.0</span>
+      <a class="btn icon ghost air-global" href="settings.html?section=appearance" aria-label="Global settings" title="Global settings"><svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg></a>
+      <button class="btn icon ghost air-sm" type="button" aria-label="Theme: dark. Switch to system." title="Theme: dark"><svg class="icon" aria-hidden="true"><use href="#i-moon"/></svg></button>
+    </div>
+  </div>
+</aside>
+<!-- sidebar:end -->
+<main class="main air-task">
+  <div class="mobile-bar">
+    <button class="btn icon ghost air-touch air-open-menu" type="button" aria-label="Open menu"><svg class="icon air-glyph" aria-hidden="true"><use href="#i-menu"/></svg></button>
+    <span class="title">Tasks</span>
+  </div>
+
+  <header class="air-run-head">
+    <div class="air-run-in">
+      <div class="air-run-top">
+        <div class="air-title"><h1 title="Add a Retry button to the failed-gate banner, so a gate that failed on a flaky test can run again from the thread without starting a new task">adding a retry to the failed-gate banner</h1><button class="air-rename" type="button" aria-label="Rename task"><svg class="icon sm" aria-hidden="true"><use href="#i-pencil"/></svg></button></div>
+        <span class="air-run-status">
+          <span class="pill"><span class="dot violet pulse"></span>needs review</span>
+          <button class="btn icon ghost air-sm air-phone-only" type="button" aria-label="Show run details" aria-expanded="false"><svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg></button>
+          <button class="btn icon ghost air-sm air-phone-only" type="button" aria-label="Run actions"><svg class="icon" aria-hidden="true"><use href="#i-ellipsis-vertical"/></svg></button>
+        </span>
+      </div>
+      <div class="air-meta air-desktop-only">
+        <span>feature</span><span class="air-sep" aria-hidden="true">·</span><span class="air-branch">xez/4f2a91c0</span><span class="air-sep" aria-hidden="true">·</span><span class="ref-chip violet air-refchip">#412</span><span class="air-sep" aria-hidden="true">·</span><span class="diff-stat"><span class="plus">+22</span> <span class="minus">−2</span></span>
+        <span class="air-usage"><span>$0.42</span><svg class="icon sm" aria-label="Claude Code" role="img"><use href="#i-bot"/></svg></span>
+      </div>
+      <div class="air-tabs">
+        <a class="tab-link" href="thread.html">Session</a>
+        <a class="tab-link" href="changes.html" aria-current="page">Changes</a>
+        <a class="tab-link" href="#">Commits</a>
+        <a class="tab-link" href="#">Files</a>
+        <span class="air-run-actions air-desktop-only">
+          <button class="btn air-sm" type="button"><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg>Finish</button>
+          <button class="btn air-sm" type="button"><svg class="icon" aria-hidden="true"><use href="#i-play"/></svg>Continue</button>
+          <button class="btn ghost air-sm" type="button"><svg class="icon" aria-hidden="true"><use href="#i-external-link"/></svg>Open in…</button>
+          <button class="btn ghost air-sm" type="button" title="Handoff notes — what the agent did and what's left"><svg class="icon" aria-hidden="true"><use href="#i-file"/></svg>Notes</button>
+          <button class="btn danger-ghost air-sm" type="button"><svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg>Delete</button>
+        </span>
+      </div>
+      <div class="air-steps"><button type="button" aria-expanded="false" aria-label="Workflow: handoff, step 3 of 3"><span class="air-step-dots"><span class="dot success"></span><span class="dot success"></span><span class="dot success"></span></span><span class="air-step-name">handoff</span><span class="air-step-of">step 3 of 3</span><span class="air-step-bar"><i></i></span><svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg></button></div>
+    </div>
+  </header>
+
+  <div class="air-git-bar">
+    <span class="air-branch"><svg class="icon xs" aria-hidden="true"><use href="#i-branch"/></svg>xez/4f2a91c0</span>
+    <span class="diff-stat"><span class="plus">+22</span> <span class="minus">−2</span></span>
+    <span class="air-git-end">
+      <span class="air-git-toggles air-desktop-only"><span class="air-mode" role="group" aria-label="Diff layout"><button type="button" aria-pressed="true">Unified</button><button type="button" aria-pressed="false">Split</button></span><button class="btn icon ghost air-sm" type="button" aria-pressed="false" aria-label="Wrap long lines" title="Wrap long lines"><svg class="icon" aria-hidden="true"><use href="#i-text-wrap"/></svg></button></span>
+      <button class="btn air-sm" type="button"><svg class="icon" aria-hidden="true"><use href="#i-upload"/></svg>Push</button>
+      <button class="btn lime air-sm" type="button"><svg class="icon" aria-hidden="true"><use href="#i-pull-request"/></svg>Create PR</button>
+      <button class="btn icon ghost air-sm" type="button" aria-label="More git actions"><svg class="icon" aria-hidden="true"><use href="#i-ellipsis-vertical"/></svg></button>
+    </span>
+  </div>
+
+  <div class="air-changes">
+    <aside class="air-tree-pane air-desktop-only">
+      <nav class="air-tree" aria-label="Changed files"><ul>
+        <li><button class="air-dir" type="button" aria-expanded="true"><svg class="icon air-chev" aria-hidden="true"><use href="#i-chevron"/></svg><svg class="icon" aria-hidden="true"><use href="#i-folder-plain"/></svg><span class="t">packages/web/src/components</span><span class="air-counts"><span class="plus">+22</span> <span class="minus">−2</span></span></button>
+          <ul>
+            <li><button class="air-file" type="button" aria-current="true"><svg class="icon" aria-hidden="true"><use href="#i-file-plain"/></svg><span class="t">gate-banner.tsx</span><span class="air-counts"><span class="plus">+13</span> <span class="minus">−2</span></span></button></li>
+            <li><button class="air-file" type="button"><svg class="icon added" aria-hidden="true"><use href="#i-file-plain"/></svg><span class="t">gate-banner.test.tsx</span><span class="air-counts"><span class="plus">+9</span></span></button></li>
+          </ul></li>
+      </ul></nav>
+    </aside>
+
+    <div class="air-diffs">
+      <p class="air-totals"><span>2 files changed</span><span class="diff-stat"><span class="plus">+22</span> <span class="minus">−2</span></span></p>
+      <div class="air-diff-slot"><section class="diff">
+        <header><button type="button" aria-expanded="true"><svg class="icon air-chev" aria-hidden="true"><use href="#i-chevron-right"/></svg><span class="air-path">packages/web/src/components/gate-banner.tsx</span><span class="diff-stat air-stat"><span class="plus">+13</span> <span class="minus">−2</span></span></button></header>
+        <div class="air-diff-body">
+          <button class="gap" type="button">⋯ 11 unchanged lines — expand</button>
+          <div class="hunk">@@ -12,4 +12,12 @@ export function GateBanner({ run }: { run: ApiRun }) {</div>
+          <div class="line"><span class="gutter">12</span><span class="gutter">12</span><span class="marker"> </span><span class="c">  <span class="syn-key">const</span> failed = <span class="syn-fn">gateFailed</span>(run)</span></div>
+          <div class="line"><span class="gutter">13</span><span class="gutter">13</span><span class="marker"> </span><span class="c">  <span class="syn-key">if</span> (!failed) <span class="syn-key">return</span> <span class="syn-key">null</span></span></div>
+          <div class="line del"><span class="gutter">14</span><span class="gutter"></span><span class="marker">−</span><span class="c">  <span class="syn-key">return</span> <mark>&lt;p className=<span class="syn-str">"text-danger"</span>&gt;{failed.reason}&lt;/p&gt;</mark></span></div>
+          <div class="line add"><span class="gutter"></span><span class="gutter">14</span><span class="marker">+</span><span class="c">  <span class="syn-key">const</span> retry = <span class="syn-fn">useRetryCheck</span>(run.id)</span></div>
+          <div class="line add"><span class="gutter"></span><span class="gutter">15</span><span class="marker">+</span><span class="c">  <span class="syn-key">return</span> <mark>(</mark></span></div>
+          <div class="line add"><span class="gutter"></span><span class="gutter">16</span><span class="marker">+</span><span class="c">    &lt;div className=<span class="syn-str">"flex items-center gap-2.5"</span>&gt;</span></div>
+          <div class="line add"><span class="gutter"></span><span class="gutter">17</span><span class="marker">+</span><span class="c">      &lt;p className=<span class="syn-str">"text-danger"</span>&gt;{failed.reason}&lt;/p&gt;</span></div>
+          <div class="line add"><span class="gutter"></span><span class="gutter">18</span><span class="marker">+</span><span class="c">      &lt;Button size=<span class="syn-str">"sm"</span> disabled={retry.isPending} onClick={() =&gt; retry.<span class="syn-fn">mutate</span>(failed.stepId)}&gt;</span></div>
+          <div class="line add"><span class="gutter"></span><span class="gutter">19</span><span class="marker">+</span><span class="c">        Retry</span></div>
+          <div class="line add"><span class="gutter"></span><span class="gutter">20</span><span class="marker">+</span><span class="c">      &lt;/Button&gt;</span></div>
+          <div class="line add"><span class="gutter"></span><span class="gutter">21</span><span class="marker">+</span><span class="c">    &lt;/div&gt;</span></div>
+          <div class="line add"><span class="gutter"></span><span class="gutter">22</span><span class="marker">+</span><span class="c">  )</span></div>
+          <div class="line"><span class="gutter">15</span><span class="gutter">23</span><span class="marker"> </span><span class="c">}</span></div>
+          <button class="gap" type="button">⋯ 18 unchanged lines — expand</button>
+          <div class="hunk">@@ -34,4 +42,7 @@ function gateFailed(run: ApiRun) {</div>
+          <div class="line"><span class="gutter">34</span><span class="gutter">42</span><span class="marker"> </span><span class="c">  <span class="syn-key">const</span> step = run.steps.<span class="syn-fn">find</span>((s) =&gt; s.status === <span class="syn-str">'failed'</span>)</span></div>
+          <div class="line"><span class="gutter">35</span><span class="gutter">43</span><span class="marker"> </span><span class="c">  <span class="syn-key">if</span> (!step) <span class="syn-key">return</span> undefined</span></div>
+          <div class="line del"><span class="gutter">36</span><span class="gutter"></span><span class="marker">−</span><span class="c">  <span class="syn-key">return</span> { <mark>reason: step.error ?? <span class="syn-str">'Gate failed'</span> }</mark></span></div>
+          <div class="line add"><span class="gutter"></span><span class="gutter">44</span><span class="marker">+</span><span class="c">  <span class="syn-key">return</span> {</span></div>
+          <div class="line add"><span class="gutter"></span><span class="gutter">45</span><span class="marker">+</span><span class="c">    <mark>stepId: step.id,</mark></span></div>
+          <div class="line add"><span class="gutter"></span><span class="gutter">46</span><span class="marker">+</span><span class="c">    reason: step.error ?? <span class="syn-str">'Gate failed'</span>,</span></div>
+          <div class="line add"><span class="gutter"></span><span class="gutter">47</span><span class="marker">+</span><span class="c">  }</span></div>
+          <div class="line"><span class="gutter">37</span><span class="gutter">48</span><span class="marker"> </span><span class="c">}</span></div>
+          <button class="gap" type="button">⋯ unchanged lines to end of file — expand</button>
+        </div>
+      </section></div>
+      <div class="air-diff-slot"><section class="diff">
+        <header><button type="button" aria-expanded="true"><svg class="icon air-chev" aria-hidden="true"><use href="#i-chevron-right"/></svg><span class="air-path">packages/web/src/components/gate-banner.test.tsx</span><span class="air-badge">added</span><span class="diff-stat air-stat"><span class="plus">+9</span> <span class="minus">−0</span></span></button></header>
+        <div class="air-diff-body">
+          <div class="hunk">@@ -0,0 +1,9 @@</div>
+          <div class="line add"><span class="gutter"></span><span class="gutter">1</span><span class="marker">+</span><span class="c"><span class="syn-key">import</span> { render, screen } <span class="syn-key">from</span> <span class="syn-str">'@testing-library/react'</span></span></div>
+          <div class="line add"><span class="gutter"></span><span class="gutter">2</span><span class="marker">+</span><span class="c"><span class="syn-key">import</span> { GateBanner } <span class="syn-key">from</span> <span class="syn-str">'./gate-banner'</span></span></div>
+          <div class="line add"><span class="gutter"></span><span class="gutter">3</span><span class="marker">+</span><span class="c"><span class="syn-key">import</span> { failedRun } <span class="syn-key">from</span> <span class="syn-str">'../test/fixtures'</span></span></div>
+          <div class="line add"><span class="gutter"></span><span class="gutter">4</span><span class="marker">+</span><span class="c"> </span></div>
+          <div class="line add"><span class="gutter"></span><span class="gutter">5</span><span class="marker">+</span><span class="c"><span class="syn-fn">it</span>(<span class="syn-str">'offers a retry for the failed check'</span>, () =&gt; {</span></div>
+          <div class="line add"><span class="gutter"></span><span class="gutter">6</span><span class="marker">+</span><span class="c">  <span class="syn-fn">render</span>(&lt;GateBanner run={failedRun} /&gt;)</span></div>
+          <div class="line add"><span class="gutter"></span><span class="gutter">7</span><span class="marker">+</span><span class="c">  <span class="syn-key">const</span> button = screen.<span class="syn-fn">getByRole</span>(<span class="syn-str">'button'</span>, { name: <span class="syn-str">'Retry'</span> })</span></div>
+          <div class="line add"><span class="gutter"></span><span class="gutter">8</span><span class="marker">+</span><span class="c">  <span class="syn-fn">expect</span>(button).<span class="syn-fn">toBeEnabled</span>()</span></div>
+          <div class="line add"><span class="gutter"></span><span class="gutter">9</span><span class="marker">+</span><span class="c">})</span></div>
+        </div>
+      </section></div>
+    </div>
+  </div>
+</main>
+</div>
+
+<section class="doc air-values" id="values" aria-labelledby="values-h">
+  <h2 id="values-h">Values on this screen</h2>
+  <p class="air-values-status"></p>
+  <p>The diff is unchanged in both views – code density is a feature (§ 9.2 l.238). Only the run header above it moves. Two containers around the diff are not named in § 9.2, so both views draw them as shipped – a question for the verdict.</p>
+  <p><strong>Every spacing number below is the Comfortable value.</strong> The proposal spells this screen’s spacing on the density unit (<code>calc(var(--u) * n)</code>), so it moves with the lever – 25 % larger at Roomy (24 → 30, 16 → 20, 12 → 15, and the file tree 288 → 360), 12.5 % smaller at Compact and 25 % smaller at Ultra. One row is not spacing and holds at every density: <strong>Diff lines 20.4</strong> is typography – <code>.diff</code> sets <code>font-size: 12px</code> and <code>line-height: 1.7</code> (<code>cockpit.css:1766-1774</code>), and the proposal leaves both alone.</p>
+  <div class="table-scroll">
+    <table class="decision-table">
+      <thead><tr><th scope="col">Where</th><th scope="col">Today (file:line)</th><th scope="col">Proposed (token = px at Comfortable)</th></tr></thead>
+      <tbody>
+        <tr data-probe=".air-run-head|padding-left" data-today="24" data-air="32" data-at="1280"><td>Run header, sides</td><td><code>md:px-6</code> = 24 (<code>run-header.tsx:160</code>)</td><td><code>md:px-section</code> = 32</td></tr>
+        <tr data-probe=".air-run-head|padding-top" data-today="12" data-air="24" data-at="1280"><td>Run header, top</td><td><code>md:pt-3</code> = 12 (<code>run-header.tsx:160</code>)</td><td><code>md:pt-group</code> = 24</td></tr>
+        <tr data-probe=".air-tabs|margin-top" data-today="10" data-air="12" data-at="1280"><td>Title block to tabs</td><td><code>md:mt-2.5</code> = 10 (<code>run-header.tsx:222</code>)</td><td><code>mt-stack</code> = 12</td></tr>
+        <tr data-probe=".air-tabs|margin-top" data-today="6" data-air="12" data-at="375"><td>Title block to tabs at 375</td><td><code>mt-1.5</code> = 6 (<code>run-header.tsx:222</code>)</td><td><code>mt-stack</code> = 12</td></tr>
+        <tr data-probe=".air-run-actions .btn|height" data-today="30" data-air="32" data-at="1280"><td>Header actions (size <code>sm</code>)</td><td><code>h-[30px]</code> = 30 (<code>button.tsx:24</code>)</td><td><code>h-8</code> = 32</td></tr>
+        <tr data-probe=".air-git-bar .btn.lime|height" data-today="30" data-air="32"><td>Toolbar actions (size <code>sm</code>)</td><td><code>h-[30px]</code> = 30 (<code>git-toolbar.tsx:150-160</code>)</td><td><code>h-8</code> = 32</td></tr>
+        <tr data-probe=".air-git-bar|padding-left" data-today="24" data-air="24" data-at="1280"><td>Toolbar sides</td><td><code>px-4 py-2 md:px-6</code> = 16 / 8 / 24 (<code>git-toolbar.tsx:56</code>)</td><td>as shipped (not in § 9.2 – unchanged)</td></tr>
+        <tr data-probe=".air-git-bar|padding-left" data-today="16" data-air="16" data-at="375"><td>Toolbar sides at 375</td><td><code>px-4</code> = 16 (<code>git-toolbar.tsx:56</code>)</td><td>as shipped (not in § 9.2 – unchanged)</td></tr>
+        <tr data-probe=".air-changes|padding-left" data-today="24" data-air="24" data-at="1280"><td>Changes body, sides</td><td><code>gap-5 px-4 py-4 md:px-6</code> = 20 / 16 / 16 / 24 (<code>task-changes.tsx:193</code>)</td><td>as shipped (not in § 9.2 – unchanged)</td></tr>
+        <tr data-probe=".air-changes|padding-top" data-today="16" data-air="16"><td>Changes body, top</td><td><code>py-4</code> = 16 (<code>task-changes.tsx:193</code>)</td><td>as shipped (not in § 9.2 – unchanged)</td></tr>
+        <tr data-probe=".air-tree-pane|width" data-today="288" data-air="288" data-at="1280"><td>File tree</td><td><code>w-60 lg:w-72</code> = 288 at 1280 at Comfortable, hidden under <code>md</code> (<code>task-changes.tsx:202</code>)</td><td><code>w-72</code> = <code>calc(var(--u) * 72)</code> = 288 at Comfortable, 360 at Roomy (<code>w-60</code> below <code>lg</code>); the width follows the density unit rather than a fixed pixel, in both views</td></tr>
+        <tr data-probe=".air-diffs > .air-totals|padding-bottom" data-today="12" data-air="12"><td>Totals line</td><td><code>px-1 pb-3</code> = 4 / 12 (<code>diff-view.tsx:170</code>)</td><td>unchanged (§ 9.2 l.238)</td></tr>
+        <tr data-probe=".air-diff-slot|padding-bottom" data-today="12" data-air="12"><td>Between file cards</td><td><code>pb-3</code> = 12 (<code>diff-view.tsx:189</code>)</td><td>unchanged</td></tr>
+        <tr data-probe=".air-diffs .diff header button|padding-top" data-today="8" data-air="8"><td>File header</td><td><code>px-3 py-2</code> = 12 / 8 (<code>diff-view.tsx:324</code>; <code>cockpit.css:1782</code> draws 6)</td><td>unchanged</td></tr>
+        <tr data-probe=".air-diff-body|line-height" data-today="20.4" data-air="20.4"><td>Diff lines</td><td><code>py-1 text-xs leading-[1.7]</code> = 12 px × 1.7 (<code>diff-view.tsx:460</code>)</td><td>unchanged</td></tr>
+        <tr data-probe=".air-diffs .diff .hunk|padding-left" data-today="16" data-air="16"><td>Hunk and gap rows</td><td><code>px-4 py-0.5</code> = 16 / 2 (<code>diff-view.tsx:527, 538</code>)</td><td>unchanged</td></tr>
+        <tr data-probe=".air-diffs .diff .gutter|width" data-today="40" data-air="40"><td>Line-number gutters</td><td><code>w-10 pr-2</code> = 40 / 8 (<code>diff-view.tsx:578</code>)</td><td>unchanged</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>Toolbar actions use the labels in <code>lib/git-actions.ts</code>; which of them show depends on the branch. At 375 the tree and the layout toggles hide, and lines wrap (<code>task-changes.tsx:140-141, 202</code>).</p>
+</section>
+</body>
+</html>
