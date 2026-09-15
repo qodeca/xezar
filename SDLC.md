@@ -16,6 +16,52 @@ Work enters through two paths: a free-form task brief handed to an agent, or a f
 - **Design reviewer** — reviews UI-in-scope work against `docs/design-system/` and the design's handoff before it merges. Never the author of the change. May be a human or the `design-review` workflow (`.xezar/skills/xezar-ux-design.md` in review mode); referenced by role, never by name.
 - **Maintainer** — owns branch protection, the label taxonomy, the config, and this document; arbitrates when gates conflict.
 
+## Campaign notes
+
+A campaign is a set of related issues and PRs the project leader drives over several sessions. Keep one Markdown note per campaign in the **primary checkout** at `.local/xezar-campaigns/<yyyy-mm-dd>-<slug>.md`, so reclaiming a task worktree cannot remove it. The root `.gitignore` rule `/.local/` already ignores this runtime state; no new ignore line is needed. Xezar must still start and work without these notes – they are written during coordination, never required configuration.
+
+Claude Code memory or Codex memory may hold a pointer to the campaign file, never its only copy: leader-tool memory is per machine and per tool. The in-session task list is the short view; the file is the full view that survives a new session or context-window compaction.
+
+Keep these records in the note:
+
+- **Done** – completed items and their outcomes.
+- **Open items** – for every item, the issue, PR and current head SHA, Xezar run id(s), last verdict and the single next step. Say `none` or `unknown` where a reference or verdict does not yet exist; do not omit the field.
+- **Owner decisions** – the date and the owner's exact words, with a link to the issue or decision record where applicable.
+- **Standing rules** – runner routing, gate cap, merge order and attribution rules for this campaign.
+- **Restart and re-attach** – the checkout, verified cockpit start command and connection details, and the steps to re-attach the leader and reconcile active runs. Record no credentials; label unverified instructions as such.
+
+Update the note at every milestone – a merge, a review, QA or design verdict, an owner decision, a new item or a blocker. Updating it is the last act of handling that event, **before reporting to the owner**.
+
+Reading the note is the first act of a new session and the first act after compaction, **before dispatching any task**. In its first message, the leader states which campaign file it read. Reconcile recorded heads, verdicts and running tasks with current state before acting; mark missing information as unknown rather than reconstructing it from memory.
+
+The note is a coordination aid, not evidence. Task evidence stays in the primary checkout's `.local/xezar-tasks/<runId>/`; decisions that change the product go to [the decision log](docs/design-system/decisions.md) or the issue. A checkpoint still names the run id under the [parallel-work guidance](.xezar/docs/parallel-tasks.md). Link to those records from the note; maintained documentation must not depend on a private campaign file.
+
+Use this short template, filling in the campaign's actual references and instructions:
+
+```md
+# <Campaign name>
+Updated: <date and time>
+
+## Done
+- <Issue / PR – outcome>
+
+## Open items
+- Issue: <#>; PR: <#>; head SHA: <sha>; Xezar run id(s): <ids>
+  Last verdict: <kind, result, source>; next step: <one action>
+  Blocker: <none or dependency / missing decision>
+
+## Owner decisions
+- <yyyy-mm-dd> – "<exact words>" – <record link>
+
+## Standing rules
+- Runner routing: <rule>; gate cap: <rule>
+- Merge order: <rule>; attribution: <rule>
+
+## Restart and re-attach
+- Checkout / cockpit start command / connection: <verified details>
+- Leader re-attachment and active-run reconciliation: <steps>
+```
+
 ## Ticket lifecycle
 
 | Stage | What happens | Driven by | Done when |
