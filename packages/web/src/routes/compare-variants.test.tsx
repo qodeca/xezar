@@ -241,6 +241,10 @@ describe('✔ Pick this one', () => {
     expect(sent.filter((r) => r.method === 'POST')).toHaveLength(0)
     expect(screen.getByText('Pick variant A?')).not.toBeNull()
     expect(screen.getByText(/cancelled if still open, archived/)).not.toBeNull()
+    // The pick moves the winner to review only when the review setting is on (off by default),
+    // so the confirm must not promise review (#481 design review B-1).
+    expect(screen.getByText(/Variant A is kept with its changes/)).not.toBeNull()
+    expect(screen.queryByText(/go on to review/)).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: /Pick variant A/ }))
     await waitFor(() => expect(screen.queryByTestId('thread-probe')).not.toBeNull())

@@ -100,7 +100,7 @@ function createPrAction(state: GitActionState): GitAction {
   // The server refuses `POST /pr` while the engine owns the run — mirror it honestly here
   // rather than letting the click discover the 409.
   if (isActive(state.status)) {
-    return disabled('Create PR unavailable — the run is still active; wait for the review gate')
+    return disabled('Create PR unavailable — the run is still active; wait until it finishes')
   }
   return { id: 'create-pr', label: 'Create PR', enabled: true }
 }
