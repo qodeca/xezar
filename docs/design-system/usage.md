@@ -51,8 +51,13 @@ not a delivered fix or a claim that the control passes browser checks.
 **Inputs:** a reproduction at each density, labelled and icon-only trigger states,
 empty and populated template lists, the disabled case and the caller's sizing
 classes. Start at `packages/web/src/components/prompt-template-menu.tsx:55` and
-`packages/web/src/components/picker-pill.tsx:20`; inspect the insertion caller in
-`packages/web/src/components/composer/composer.tsx`.
+`packages/web/src/components/picker-pill.tsx:20`. Inspect all three render sites:
+`packages/web/src/routes/new-task.tsx:615` (icon-only),
+`packages/web/src/routes/github/hand-to-agent.tsx:286` and
+`packages/web/src/routes/inbox.tsx:367` (labelled). Follow insertion and caret return
+through `packages/web/src/components/composer/composer.tsx:173` for `/new`,
+`packages/web/src/routes/github/hand-to-agent.tsx:145` for GitHub and
+`packages/web/src/routes/inbox.tsx:175` for Inbox.
 
 **Pages read:** components §§ PickerPill and PromptTemplateMenu; patterns §7;
 foundations §4; behaviour §1; writing §4; decisions D-04 and D-06; known gaps G-03.
@@ -61,8 +66,9 @@ Then complete the chip, phone target and keyboard rows in the verification matri
 **Reuse plan:** import `chipClass` from `picker-pill.tsx` for the trigger instead
 of copying its classes. Keep the existing Popover and Command composition in
 `prompt-template-menu.tsx`. Preserve its accessible label and the deliberate
-`onCloseAutoFocus` handling that lets the composer restore the caret. Check both
-trigger forms and caller overrides; sharing a class alone proves no rendered size.
+`onCloseAutoFocus` handling that lets each caller restore the caret. Check both
+trigger forms and sizing overrides at all three render sites; sharing a class
+alone proves no rendered size.
 
 **Decisions and gaps:** D-04 keeps density on one lever; D-06 forbids adding an
 arbitrary spacing exception. G-03 names this copied chip and another copy in
@@ -74,7 +80,8 @@ shared sizing rule requires a recorded decision, not a silent new allowlist row.
 
 **Evidence to produce:** before/after target measurements and screenshots at
 375 px and desktop in both themes, for all four densities; keyboard opening,
-selection, Escape and caret return results; disabled and empty-list observations;
+selection, Escape and caret return results for `/new`, GitHub and Inbox;
+disabled and empty-list observations;
 focused regression results and guardian/drift output. This trigger is absent for
 an empty template list in the inspected source. Record loading, fetch error and
 refusal at the owning caller if applicable. If the fix changes no data operation,
@@ -101,8 +108,9 @@ components §§ Input, Button and CenteredState; foundations §4.1; theming;
 behaviour §§1–4; writing §§1–4; decisions D-02–D-06; known gaps G-05, G-13 and G-23.
 Use the verification matrix to plan the design's state and appearance captures.
 
-**Reuse plan:** keep the settings shell and registry; compose `SettingsField`,
-`Input` and `Button` from `packages/web/src/components/ui/`. Use the existing
+**Reuse plan:** keep the settings shell and registry; compose `SettingsField` from
+`packages/web/src/routes/settings/settings-field.tsx:11` with `Input` and `Button`
+from `packages/web/src/components/ui/`. Use the existing
 `CenteredState` for a page-level state and the toaster for a mutation failure.
 Follow the flat settings list pattern: named rhythm between fields, numeric
 spacing inside controls. Text changes keep a local draft and explicit Save;
