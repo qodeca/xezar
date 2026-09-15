@@ -5,9 +5,11 @@ import { availableParallelism } from 'node:os'
 // docs/testing/coverage-gaps.md § 10.3; the per-PR form is the named break SDLC.md requires).
 // It was the `release` / `release-prep` workflows' first check step until 2026-09-12; that step
 // was removed because a release-only gate gets its first real exercise at the most expensive
-// moment (#375) and its repair lives in somebody else's PR. **Right now it runs nowhere
-// automatically** – it is a manual command, and #377 owns giving it a schedule. The scope and
-// the floor below are unchanged.
+// moment (#375) and its repair lives in somebody else's PR. **It runs nightly against `main`** in
+// `.github/workflows/mutation.yml` (#377), split across six jobs by `mutation/shards.mjs`; each
+// job runs `mutation/stryker.shard.config.mjs` (this file with no `break`), and
+// `mutation/aggregate.mjs` reads `mutate` and `thresholds.break` from HERE – this file is the only
+// place the scope and the floor are written. The scope and the floor below are unchanged.
 // Run from the repository root: every path below is relative to it.
 //
 // Two guarantees this file carries, and what each is for:
@@ -29,7 +31,7 @@ export default {
   // A STATIC mutant sits in code that runs once, when its module loads – constant tables,
   // module-level regexes and schema declarations – so no single test covers it and Stryker must
   // run all 932 MCP tests for each one. With them in, Stryker estimated ~60 hours on this scope
-  // (measured 2026-09-11); without them a run fits a release. They are reported as Ignored,
+  // (measured 2026-09-11); without them a full run takes hours, not days. They are reported as Ignored,
   // never as killed, and what they would have measured is pinned where the value is USED, the
   // same argument coverage-gaps.md § 10.5 makes for zod declarations.
   ignoreStatic: true,

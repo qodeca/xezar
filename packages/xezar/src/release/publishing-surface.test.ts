@@ -13,6 +13,12 @@ import { describe, expect, it } from 'vitest';
  * that no human asked for. They were removed with the Xezar rename, and this test is what keeps
  * them removed: a reinstated snapshot job, or an `NPM_TOKEN` that creeps back into `ci.yml`,
  * fails here rather than being noticed after it has already published.
+ *
+ * The rule is by ROLE, not by file list. A scheduled workflow is allowed — the nightly MCP mutation
+ * gate (`mutation.yml`, #377) is one — as long as it has no publish power. The danger in the old
+ * nightly cron was never the schedule; it was the credential and the publish command inside it.
+ * So `release.yml` is the one workflow that may hold `id-token: write` or a publish command, and
+ * every other workflow, whatever its name or trigger, must hold neither.
  */
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
@@ -23,9 +29,14 @@ const workflows = () =>
     .filter((name) => name.endsWith('.yml') || name.endsWith('.yaml'))
     .map((name) => ({ name, body: readFileSync(join(workflowDir, name), 'utf8') }));
 
+/** Commands that put something on the registry. `npm pack --dry-run` is fine and wanted. */
+const PUBLISH_COMMANDS = [/npm\s+publish/, /release-snapshot/, /dist-tag/, /publish-snapshot/];
+
 describe('publishing surface', () => {
-  it('ships exactly two workflows: CI and the manual release', () => {
-    expect(workflows().map((w) => w.name).sort()).toEqual(['ci.yml', 'release.yml']);
+  it('ships the manual release workflow and ordinary CI', () => {
+    const names = workflows().map((w) => w.name);
+    expect(names).toContain('release.yml');
+    expect(names).toContain('ci.yml');
   });
 
   it('stores no npm token anywhere — publishing is OIDC trusted publishing', () => {
@@ -42,14 +53,19 @@ describe('publishing surface', () => {
     expect(withIdToken.map((w) => w.name)).toEqual(['release.yml']);
   });
 
-  it('keeps every publish command out of ordinary CI', () => {
-    const ci = workflows().find((w) => w.name === 'ci.yml');
-    expect(ci).toBeDefined();
-    // `npm pack --dry-run` is fine and wanted; an actual publish is not.
-    expect(ci!.body).not.toMatch(/npm\s+publish/);
-    expect(ci!.body).not.toMatch(/release-snapshot/);
-    expect(ci!.body).not.toMatch(/dist-tag/);
-    expect(ci!.body).not.toMatch(/publish-snapshot/);
+  it('keeps every publish command out of every workflow but the release', () => {
+    const others = workflows().filter((w) => w.name !== 'release.yml');
+    // The populated-input control: with no other workflow found, "none of them publishes" is true
+    // of nothing. `ci.yml` always exists, so an empty list means the scan broke.
+    expect(others.map((w) => w.name)).toContain('ci.yml');
+    for (const w of others) {
+      for (const command of PUBLISH_COMMANDS) {
+        expect(w.body, `${w.name} must not publish (${command})`).not.toMatch(command);
+      }
+    }
+    // And the release really does publish, so the patterns above are not matching nothing.
+    const release = workflows().find((w) => w.name === 'release.yml')!.body;
+    expect(release).toMatch(/scripts\/release\.mjs/);
   });
 
   it('lets the release fire only from an explicit manual dispatch', () => {
@@ -96,8 +112,9 @@ describe('publishing surface', () => {
   });
 
   it('keeps the MCP mutation run (Stryker) out of what a user installs', () => {
-    // #333: Stryker is a release gate over the MCP code, and a devDependency only. A user who
-    // installs @qodeca/xezar must get neither its ~140 packages nor its config files.
+    // #333: Stryker is the MCP mutation gate — nightly on GitHub Actions since #377 — and a
+    // devDependency only. A user who installs @qodeca/xezar must get neither its ~140 packages nor
+    // its config files, nor the shard/aggregate/tracking-issue scripts in `mutation/`.
     const manifest = JSON.parse(
       readFileSync(join(repoRoot, 'packages', 'xezar', 'package.json'), 'utf8'),
     ) as Record<string, unknown> & { files: string[]; devDependencies: Record<string, string> };
@@ -115,7 +132,9 @@ describe('publishing surface', () => {
       }),
     ) as Array<{ files: Array<{ path: string }> }>;
     const runFiles = ['stryker.config.mjs', 'vitest.mutation.config.ts'];
-    const shipped = packed[0]!.files.map((f) => f.path).filter((p) => runFiles.includes(p) || p.startsWith('.stryker-tmp/'));
+    const shipped = packed[0]!.files
+      .map((f) => f.path)
+      .filter((p) => runFiles.includes(p) || p.startsWith('.stryker-tmp/') || p.startsWith('mutation/'));
     expect(shipped, 'the mutation run must not reach the tarball').toEqual([]);
   }, 60_000);
 });

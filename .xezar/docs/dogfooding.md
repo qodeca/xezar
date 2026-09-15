@@ -12,6 +12,14 @@ Installation validation is reported in installation.md. Real-task entries follow
 
 ## Real-task entries
 
+### 2026-09-15 — #377 PR 1 (the MCP mutation gate, nightly on GitHub Actions), `feature-implementation` step `implement`, `xezar-implementation`, Claude Code — fixture-tested
+
+- Evidence: run acc2508d, base `ab28cb0`, branch `xez/acc2508d`. 23 named breaks with their red logs under `implement/red-proofs/`, a live one-file Stryker run of the shard config and the aggregate CLI over its real report under `implement/live/`, and `implement/infra-tests.log`, all in the primary evidence directory.
+- Observed: **a deferred draft kept outside git was a good start and still had six defects a fresh read found in minutes.** The leader's read-only analysis listed them with file:line (weekly cadence, issue steps on any ref, search-index lookup, scripts in the wrong folder, npm scripts that did not exist, one unverified action SHA), and a seventh surfaced while building: the report job was skipped when the planner failed, so the one failure that measures nothing also told nobody. Lesson (recommended): hand an implementer the draft AND an independent verdict on it; the verdict is what turned "copy it" into "copy it and fix these".
+- Observed: **Stryker's JSON report leaves out a file that yields no mutant at all** (`mutation-test-report-helper.js` builds `files` from mutant results only). The owner's fail-closed rule for a never-reported file is kept, and the failure now names that cause once, so a type-only file joining the scope reads as a fixable config line rather than a mystery. Observed, not yet met in practice: no current MCP file is type-only on the heuristic checked.
+- Observed: **a comment can trip the guard it describes.** The workflow's own header said "no `id-token`", and the new structure test that forbids the string in the file failed on the comment. Lesson (real-task verified): when a guard greps a file for a forbidden word, write the prose about that word without it.
+- Remaining limit: nothing here ran on GitHub Actions. The first dispatched green run on `main` and a forced red run that files, then closes, the tracking issue happen after merge; until then the workflow is fixture-tested only.
+
 ### 2026-09-14 — PR #404 merge-review round (the retained attachment after an owner change), `address-review-findings` step `address`, `xezar-review-response`, Claude Code — real-task verified
 
 - Evidence: run fbb70b02, own branch `xez/fbb70b02` on `main` = `569ab63`, merge of the PR head `c919de9` (no conflicts), then one fix commit pushed to the PR branch `xez/bf8ac01c`. `address/red-control.log`, `green-control.log`, `red-coexist.log`, `green-coexist.log`, `typecheck.log` and `coverage-mcp.log` in the primary evidence directory.

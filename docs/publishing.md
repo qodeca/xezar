@@ -75,12 +75,14 @@ session as well — it fails only when it has *neither* an OIDC endpoint nor a t
    gate is no longer part of this path, and a release does not wait on it.** It ran as the
    `release` / `release-prep` workflows' first check step until 2026-09-12; that step is gone,
    because a nearly four-hour measurement whose only repair is a stronger test in somebody else's
-   PR must not hold a finished release. **It currently runs nowhere automatically** —
-   `npm run test:mutation:mcp` is a manual command, and **#377 owns giving it a schedule**. Run
-   it by hand if you want the current score before you cut; a survivor is a weak test to fix in
-   its own PR, not a reason to hold a release that passed the full canonical gate and QA. Why it
-   moved, and the unchanged 80 % floor:
-   [coverage-gaps.md § 10.8](testing/coverage-gaps.md#108-the-gate-that-is-between-homes-stryker-over-the-mcp-code).
+   PR must not hold a finished release. **It runs nightly against `main`** instead
+   (`.github/workflows/mutation.yml`, #377): read the latest run, or the open `mutation-nightly`
+   issue, if you want the current score before you cut. A survivor is a weak test to fix in its
+   own PR, not a reason to hold a release that passed the full canonical gate and QA. The nightly
+   workflow holds no npm credential and no publish command, and
+   `packages/xezar/src/release/publishing-surface.test.ts` keeps it that way. Why it moved, and the
+   unchanged 80 % floor:
+   [coverage-gaps.md § 10.8](testing/coverage-gaps.md#108-the-nightly-gate-stryker-over-the-mcp-code).
 2. Go to **Actions → Release → Run workflow**, pick the branch (`main`, or a `release/*`
    maintenance branch) and the bump:
 
