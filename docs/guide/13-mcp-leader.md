@@ -142,17 +142,17 @@ Attached leaders receive pushed events: channel messages for Claude Code, starte
 { "action": "read" }
 ```
 
-Read the returned events and current task state, act on them, then acknowledge the last handled event's returned cursor with a client-generated operation ID:
+Process every event in the page using the returned current task state, then acknowledge that response's `nextCursor` with a client-generated operation ID. Individual events do not carry a cursor:
 
 ```json
 {
   "action": "ack",
-  "cursor": "<returned cursor>",
+  "cursor": "<nextCursor from the processed page>",
   "operationId": "leader-ack-example-0001"
 }
 ```
 
-Replace the cursor placeholder; use a new operation ID for a new acknowledgement and reuse it only to repeat that same acknowledgement. A read does not acknowledge anything, so unacknowledged events can appear again. If the response reports a gap, reconcile the supplied current state and recovery guidance before acknowledging its `resumeCursor`. Treat cursors as opaque; another project's cursor is refused.
+Replace the cursor placeholder; use a new operation ID for a new acknowledgement and reuse it only to repeat that same acknowledgement. A read does not acknowledge anything, so unacknowledged events can appear again. If `hasMore` is `true`, read the next page immediately after acknowledging the processed page; otherwise do not poll. Read again on your next connection or when a pushed event names a gap. If the response reports a gap, reconcile the supplied current state and recovery guidance before acknowledging `gap.resumeCursor`. Treat cursors as opaque; another project's cursor is refused.
 
 ## To understand the limits
 

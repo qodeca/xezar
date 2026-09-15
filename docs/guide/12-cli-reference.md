@@ -64,11 +64,11 @@ Configure your agent to launch `xezar mcp` (or `npx -y @qodeca/xezar mcp`) in th
 
 | Command | Purpose |
 | --- | --- |
-| `xezar server-install` | Interactive server-install wizard. |
+| `xezar server-install --platform ubuntu-vps` | Interactive Ubuntu server-install wizard. |
 | `xezar server-deploy` | Redeploy a version, reload the service and verify it. |
 | `xezar server-uninstall` | Reverse a server installation. |
 
-Use the [server-install guide](../server-install/README.md) for prerequisites and provider-specific procedures. `--domain` selects a named instance; a new domain during install creates an independent instance. Deploy/uninstall can recover the platform from that instance's saved state.
+Use the [server-install guide](../server-install/README.md) for prerequisites and provider-specific procedures. On `ubuntu-vps` only, `--domain` selects a named instance; a new domain during install creates an independent instance. Deploy/uninstall can recover the platform from that instance's saved state.
 
 ## To look up every flag
 
@@ -79,8 +79,8 @@ Use the [server-install guide](../server-install/README.md) for prerequisites an
 | `--workflow <name>` | `run`: workflow name, default `quick-task`. |
 | `--model <model>` | `run`: task model override. |
 | `--no-open` | `serve`: do not open the browser. |
-| `--platform <id>` | Server commands: `ubuntu-vps` or `macosx-ngrok`. |
-| `--domain <host>` | Server commands: select the domain's instance; install can create a second independent one. |
+| `--platform <id>` | Server commands: `ubuntu-vps` or `macosx-ngrok`. Required for install; optional for deploy/uninstall only when saved instance state supplies it. |
+| `--domain <host>` | `ubuntu-vps` server commands only: select the domain's instance; install can create a second independent one. |
 | `--bind-host <host>` | `serve` / `server-install`: bind host, default `127.0.0.1`. |
 | `--external-proxy` | Ubuntu server install: an existing proxy owns ports 80/443; install the service without nginx/certbot. That proxy must provide TLS and authentication. |
 | `--yes` | Server commands: accept safe defaults; does not automatically authorize sudo. |
