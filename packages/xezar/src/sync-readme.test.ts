@@ -30,6 +30,8 @@ function relativeTargets(markdown: string): string[] {
   const targets = [
     ...[...prose.matchAll(/\]\(\s*([^)\s]+)/g)].map((m) => m[1]!),
     ...[...prose.matchAll(/\s(?:src|href)="([^"]+)"/gi)].map((m) => m[1]!),
+    // A `srcset` holds comma-separated candidates, each a URL plus an optional width/density descriptor.
+    ...[...prose.matchAll(/\ssrcset="([^"]+)"/gi)].flatMap((m) => m[1]!.split(',').map((c) => c.trim().split(/\s+/)[0]!)),
     ...[...prose.matchAll(/^ {0,3}\[(?!\^)[^\]]+\]:[ \t]*(\S+)/gm)].map((m) => m[1]!),
   ];
   return targets.filter((t) => !/^(#|[a-z][a-z0-9+.-]*:)/i.test(t));
@@ -68,6 +70,19 @@ describe('sync-readme: the README npm publishes', () => {
       '[![shot](https://raw.githubusercontent.com/qodeca/xezar/main/docs/screenshots/a.png)](https://raw.githubusercontent.com/qodeca/xezar/main/docs/screenshots/a.png)',
       `<img src="https://raw.githubusercontent.com/qodeca/xezar/main/docs/logo.svg" alt="logo"> <a href="${REPO}/blob/main/docs/README.md">map</a>`,
       `[ref]: ${REPO}/blob/main/docs/project-layout.md`,
+    ]);
+  });
+
+  it('rewrites every candidate of a <picture> srcset, keeping its descriptor, so the dark/light hero resolves on npm', async () => {
+    const { absolutizeReadmeLinks } = await load();
+    const input = [
+      '<source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/hero-dark.svg">',
+      '<source srcset="docs/a.png 1x, ./docs/b.png 2x, https://example.com/c.png 3x">',
+    ].join('\n');
+
+    expect(absolutizeReadmeLinks(input, REPO).split('\n')).toEqual([
+      '<source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/qodeca/xezar/main/docs/assets/readme/hero-dark.svg">',
+      '<source srcset="https://raw.githubusercontent.com/qodeca/xezar/main/docs/a.png 1x, https://raw.githubusercontent.com/qodeca/xezar/main/docs/b.png 2x, https://example.com/c.png 3x">',
     ]);
   });
 

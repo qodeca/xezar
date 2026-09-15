@@ -10,8 +10,9 @@
 // The copy is not byte-for-byte: every relative link and image source is rewritten to an
 // absolute GitHub URL (#287). The root README's `docs/...` and `LICENSE` links are right on
 // GitHub, but the published package contains neither, so on npmjs.com every screenshot and
-// every guide link was broken. Links inside code (fenced blocks, inline code spans) are left
-// alone, because there they are examples, not links.
+// every guide link was broken. `srcset` candidates are rewritten too, for the `<picture>` hero.
+// Links inside code (fenced blocks, inline code spans) are left alone, because there they are
+// examples, not links.
 //
 // Runs as `prebuild`, so `npm run build` (and the release pipeline, which builds first) always
 // packs a current copy. `check:pack` is the gate that notices if this ever stops happening.
@@ -52,6 +53,10 @@ function rewriteProse(text, repoUrl) {
   return text
     .replace(/(\]\()(\s*)([^)\s]+)/g, (_, open, space, target) => `${open}${space}${absolute(target, repoUrl)}`)
     .replace(/(\s(?:src|href)=")([^"]+)(")/gi, (_, open, target, close) => `${open}${absolute(target, repoUrl)}${close}`)
+    // A `<picture><source srcset>` (the dark/light hero) lists comma-separated candidates, each a URL
+    // with an optional `1x` / `640w` descriptor; every URL is rewritten and the descriptors kept.
+    .replace(/(\ssrcset=")([^"]+)(")/gi, (_, open, list, close) =>
+      `${open}${list.split(',').map((candidate) => candidate.replace(/^(\s*)(\S+)/, (__, space, target) => `${space}${absolute(target, repoUrl)}`)).join(',')}${close}`)
     .replace(/^( {0,3}\[(?!\^)[^\]]+\]:[ \t]*)(\S+)/gm, (_, open, target) => `${open}${absolute(target, repoUrl)}`);
 }
 
