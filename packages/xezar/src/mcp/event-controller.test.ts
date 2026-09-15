@@ -660,3 +660,41 @@ describe('the D-05 § 6.6 cursors', () => {
     expect(() => start(journal, owner, new FakeClient())).toThrow(/different projects/);
   });
 });
+
+describe('#450 — every dispatch names the journal cursor the leader acks with', () => {
+  it('T-23: a dispatch carries its page’s own cursor, so a read after it starts at the next row', async () => {
+    // RED against: building the dispatch without `nextCursor` (or with the controller's old position).
+    const journal = openJournal();
+    const owner = ownerFor();
+    await owner.acquire('session-a');
+    const client = new FakeClient();
+    await startedFor(journal, owner, client);
+    appendMany(journal, 150);
+    await settle();
+    expect(client.dispatches.map((d) => d.events.length)).toEqual([100, 50]);
+    const [first, second] = client.dispatches as [EventDispatch, EventDispatch];
+    const page = journal.read({ limit: 100 });
+    expect(page.status === 'ok' && page.nextCursor).toBe(first.nextCursor);
+    const afterFirst = journal.read({ cursor: first.nextCursor });
+    expect(afterFirst.status === 'ok' && afterFirst.events[0]?.journalSeq).toBe(101);
+    const afterSecond = journal.read({ cursor: second.nextCursor });
+    expect(afterSecond).toMatchObject({ status: 'ok', events: [] });
+  });
+
+  it('T-23: a gap dispatch’s cursor acks through the gap', async () => {
+    const journal = openJournal();
+    appendMany(journal, 2);
+    mkdirSync(join(dataDir, 'mcp'), { recursive: true });
+    writeFileSync(
+      join(dataDir, 'mcp', 'event-controller.json'),
+      JSON.stringify({ v: 1, projectId: 'alpha', epoch: 'a-journal-that-was-deleted', deliveredSeq: 9, ackedSeq: 9, reactedSeq: 9 }),
+    );
+    const owner = ownerFor();
+    await owner.acquire('session-a');
+    const client = new FakeClient();
+    await startedFor(journal, owner, client);
+    const gap = client.dispatches[0]!;
+    expect(gap.recovery).toBeDefined();
+    expect(journal.read({ cursor: gap.nextCursor })).toMatchObject({ status: 'ok', events: [] });
+  });
+});
