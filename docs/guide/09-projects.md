@@ -8,11 +8,12 @@ Start xezar in a project, then use the sidebar's project groups to open another 
 
 ## To add a project in the cockpit
 
-1. Choose **Add project → Open local folder**.
-2. Browse to the folder on the machine running xezar and choose **Add project**. An ordinary folder does not have to be a Git repository.
-3. To make a new checkout instead, choose **Add project → Clone from GitHub**, enter the repository, review the target folder, and choose **Clone**.
+Open the icon-only **Add project** button and choose one of its alternatives:
 
-**Global settings → Projects** controls the **Default browse folder** and **Default checkout folder**. The folder picker cannot navigate above its browse root; GitHub checkouts land under the checkout folder using the project name. Cloning uses the server machine's GitHub access.
+- **Open local folder…**: browse to the folder on the machine running xezar and choose **Add project**. An ordinary folder does not have to be a Git repository.
+- **Clone from GitHub…**: enter the repository, review or edit **Folder name** (initially the repository name), and choose **Clone**.
+
+**Global settings → Projects** controls the **Default browse folder** and **Default checkout folder**. The folder picker cannot navigate above its browse root; GitHub checkouts land under the checkout folder using the chosen folder name. Cloning runs `gh repo clone` on the server machine, requires `gh` and its GitHub access, accepts only github.com repositories, and refuses an existing target folder.
 
 ## To add or remove projects from the terminal
 
@@ -25,15 +26,15 @@ xezar projects add
 xezar projects remove PROJECT_ID
 ```
 
-Replace the path and `PROJECT_ID` with your own values; the list command prints the IDs. With no directory argument, `add` uses `--repo` when supplied, otherwise the current project directory. Adding the same resolved folder again keeps its existing entry.
+Replace the path and `PROJECT_ID` with your own values; the list command prints the IDs. With no directory argument, `add` registers the Git root of `--repo` when supplied, otherwise of the current directory (or the directory itself outside Git). An explicit `add <dir>` registers that exact folder. Adding a non-folder, your home directory itself, or a task worktree is refused. Adding the same resolved folder again keeps its existing entry.
 
-To remove a project in the cockpit, open **Global settings → Projects**, choose its remove button, and confirm **Remove from list**. You can also remove the current project from its Settings overview. Removal unregisters it; its folder, Git history, and `.local/xezar/` task history stay on disk.
+To remove a project in the cockpit, open **Global settings → Projects**, choose its remove button, and confirm **Remove from list**. You can also remove the current project from its Settings overview. Removal unregisters it; its folder, Git history, and `.local/xezar/` task history stay on disk. Removal also deletes the registry tags and **Max parallel** cap: set them again after re-adding, and recreate bookmarklets made for the old project ID.
 
-The cockpit refuses removal of the project it started in or one with running tasks. The registry-only CLI can remove the usual startup project; starting xezar there again registers it again.
+The cockpit refuses removal of the project it started in or one with queued, running, or waiting tasks. The registry-only CLI does not check those task states and can remove the usual startup project; starting xezar there again registers it again.
 
 ## To group related projects with tags
 
-In **Global settings → Projects**, add the same tag to related repositories, such as `storefront` on a web app and its API. Tags ignore case for duplicates and trim surrounding spaces.
+In **Global settings → Projects**, add the same tag to related repositories, such as `storefront` on a web app and its API. Tags ignore case for duplicates and trim surrounding spaces. They are sorted, limited to 20 tags, and cut to 32 characters each.
 
 You can replace a project's complete tag list from the terminal:
 
@@ -47,7 +48,7 @@ Run `xezar projects tag PROJECT_ID` with no tags to clear them. Tags group proje
 
 Open **All tasks**. Search across projects, filter the list, and choose grouping by project, tag, status, or workflow. Switch between **Active** and **Archived**, then open a task to return to its own project.
 
-The filters and grouping are kept in the URL, so you can bookmark a useful view. A shared tag brings related repositories into the same view; use **Untagged** to find projects without tags.
+The filters, grouping, search text, and Active/Archived choice are kept in the URL, so you can bookmark a useful view. A shared tag brings related repositories into the same view; **Untagged** filters tasks belonging to projects without tags and appears only when some tag exists in the workspace.
 
 ![All tasks across tagged projects](../screenshots/0.15.0/all-tasks-dark-1280.png)
 
@@ -61,15 +62,15 @@ A non-Git folder runs one task at a time. See [Worktrees and Git](03-worktrees-a
 
 ## To handle a missing project
 
-A deleted or moved folder remains listed as missing, and its project pages cannot start a working project context. Restore the folder at its recorded path, or remove the stale registry entry and add the new location. A folder that exists without Git is shown as **not a git repo**, which is different from missing.
+A deleted or moved folder is labeled **folder not found**, and its project pages cannot start a working project context. Restore the folder at its recorded path, or remove the stale registry entry and add the new location, then restore its tags and cap and recreate its bookmarklets. A folder that exists without Git is shown as **no git repo**, which is different from **folder not found**. The CLI uses **not a git repo** and **missing** for these states.
 
 ## Related settings / env / config
 
-- **Project Settings overview**: folder, status, task cap, and removal.
+- **Settings overview**: folder, status, task cap, and removal.
 - **Global settings → Projects**: registry, tags, caps, browse root, and checkout root.
 - `~/.xezar/config.json`: `projects[]` and workspace resource limits; `XEZ_HOME` selects a different workspace home.
-- `XEZ_BROWSE_ROOT` / `XEZ_PROJECTS_DIR`: inherited browse/checkout locations when no stored choice supersedes them.
-- `XEZ_SINGLE_PROJECT=1`: restricts the cockpit to its startup project and disables registry add/remove/tag operations, including the CLI mutations.
+- `XEZ_BROWSE_ROOT` / `XEZ_PROJECTS_DIR`: set browse/checkout locations **before the first start**. Startup registration saves these defaults into workspace config; change them afterwards in **Global settings → Projects**, not by changing the variables.
+- `XEZ_SINGLE_PROJECT=1`: restricts the cockpit to its startup project and disables registry add/remove/tag operations, including the CLI mutations. It also disables Max parallel edits, cloning, and folder browsing. Startup registration still happens for `serve`, `run`, and even `xezar projects`.
 - [Settings reference](10-settings-reference.md) and the [environment contract](../../.env.example).
 
 Describes xezar 0.15.0.
