@@ -12,7 +12,7 @@ If the requested worktree cannot be created, the task fails before workflow exec
 
 Turn **Worktree** off in the composer when the task should work directly in the project's working tree. xezar does not create a task branch in this mode. Changes affect the files you already have open there.
 
-By default, xezar gives one in-place task at a time exclusive access to that working tree. This is the repository-root lease: another in-place run waits until it can acquire it. The lease coordinates xezar runs; it is not a lock on edits you make in an external editor. Parallel variants always use worktrees, so their Worktree control cannot be turned off.
+By default, the repository-root lease coordinates in-place runs inside this cockpit: one run holds the lease for its whole lifetime, including idle waits between turns, while another waits to acquire it. The lease belongs to one project’s run manager process; a separate headless `xezar run` process does not share it. It does not lock edits you make in an external editor. Parallel variants always use worktrees, so their Worktree control cannot be turned off.
 
 ## To work in a non-Git folder
 
@@ -56,7 +56,7 @@ Check which working tree you intend to inspect: task tabs show the task's locati
 
 ## To choose the base branch
 
-Open **Git → Branches** and use **Agents’ base branch**. This saves `baseBranch` in `.xezar/config.json` for new task worktrees and their eventual PR target. A blank choice uses the current branch at run creation.
+Open **Git → Branches** and use **Agents’ base branch**. This saves `baseBranch` in `.xezar/config.json` for new task worktrees and their eventual PR target. A blank choice uses the branch checked out when the run starts, after it leaves the queue.
 
 For a configured branch, xezar can use its local or `origin` reference, preferring the remote reference when the local one is not up to date with it. If the configured name cannot be resolved, the thread records a note and the task uses the currently checked-out branch. An existing task retains its recorded fork point when the project setting changes.
 

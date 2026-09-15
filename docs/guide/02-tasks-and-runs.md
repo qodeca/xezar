@@ -4,7 +4,7 @@ Use the task views to start work, follow an agent, answer questions and inspect 
 
 ## To use the composer
 
-Open **New task**, check the selected project and describe the result you want. Choose a skill or workflow, an agent and a model. With no skill or workflow selected, the task runs as one plain agent step. The composer also offers attachments, parallel variants, **Worktree**, **Autonomous** and **Plan first**.
+Open **New task** in the project you want and describe the result. The project picker appears only when more than one project is available. Choose a skill or workflow and a model; the agent picker appears only when there is more than one usable agent or an account choice. With no skill or workflow selected, the task runs as one plain agent step. The composer also offers attachments, parallel variants, **Worktree**, **Autonomous** and **Plan first**.
 
 ![New-task composer](../screenshots/0.15.0/new-task-dark-1280.png)
 
@@ -34,19 +34,19 @@ Use the paperclip, paste files or drop them into the composer. Images, PDF and p
 
 ## To talk to a running agent
 
-Open the thread, type in the composer and choose **Send**. Use it to add a constraint, answer a question or point out a problem. When the agent presents answer options, select an option or type your own answer. Read its next response to confirm how it used the message.
+Open the thread, type in the composer and choose the send (arrow) button. Use it to add a constraint, answer a question or point out a problem. When the agent presents answer options, select an option or type your own answer. Read its next response to confirm how it used the message.
 
 ![Task thread with agent messages and tool activity](../screenshots/0.15.0/task-thread-dark-1280.png)
 
 ## To manage the queue and edit a queued prompt
 
-A queued task's thread shows its queue position. Use **Edit the prompt** on the initial prompt while it is still queued. You can also add messages for the agent to receive when the task starts, and edit or remove those queued messages. These controls stop being queued-prompt edits once execution begins.
+A queued task's thread shows its queue position. Use the pencil button (**Edit the prompt**) on the initial prompt while it is still queued. You can also add messages, which are folded into the prompt before the run starts, and edit or remove those queued messages. These controls stop being queued-prompt edits once execution begins.
 
 Open global **Settings → Resources** to inspect the workspace parallel limit. Project limits can narrow workspace capacity, so a queued task does not necessarily mean an agent is broken.
 
 ## To use Autonomous
 
-Turn on **Autonomous** in the composer when the agent should keep working without pausing for your answers. xezar prompts it to continue when it would otherwise wait. Autonomous runs skip the optional review gate. This does not make xezar merge the result; inspect the finished task and its checks before integrating it.
+Turn on **Autonomous** in the composer when the agent should keep working without pausing for your answers. xezar prompts it to continue when it would otherwise wait, up to 40 automatic continuation nudges per run. **Plan first** forces Autonomous off and disables its toggle. Autonomous runs skip the optional review gate. This does not make xezar merge the result; inspect the finished task and its checks before integrating it.
 
 ## To use Plan first
 
@@ -56,7 +56,7 @@ Select **Plan first**, describe the task and submit it to request a proposed cha
 
 Choose **×2 variants** or **×3 variants** before starting. Variants require Git and always use separate worktrees. Open **Compare** for the group to inspect each variant's status, usage, progress excerpt and full diff.
 
-Wait until all variants have stopped before choosing **Pick this one**. Read the confirmation carefully: the other variants are archived, and their worktrees and branches are removed with no undo. The chosen variant goes to review.
+Wait until all variants have stopped before choosing **Pick this one**. Read the confirmation carefully: the other variants are archived, and their worktrees and branches are removed with no undo. If the review gate is on and the chosen variant is not autonomous and has changes, it moves to review; otherwise a done variant stays done.
 
 ![Side-by-side variant comparison](../screenshots/0.15.0/compare-variants-dark-1280.png)
 
@@ -82,7 +82,7 @@ At **Needs review**, read the diff. Enter corrections and choose **Send back** t
 
 ## To create a draft PR
 
-Use **Draft PR** in the review panel after inspecting the changes. The operation needs a task worktree and GitHub access through `gh`; it pushes the task branch and opens a draft pull request. If the task already has a PR, the panel links to it instead. When automatic PR creation is unavailable, read the error and any manual command offered before taking the next step. Merging remains a separate action.
+Use **Draft PR** in the review panel after inspecting the changes. The operation needs a task worktree, an `origin` remote and GitHub access through `gh`; it pushes the task branch and opens a draft pull request. Successful creation marks the task done. If the task already has a PR, the panel links to it instead. When automatic PR creation is unavailable, read the error and any manual command offered before taking the next step. Merging remains a separate action.
 
 ## To continue, cancel, archive or open in a terminal
 
@@ -90,7 +90,7 @@ Use **Draft PR** in the review panel after inspecting the changes. The operation
 - **Cancel**: stop a running, waiting or queued task.
 - **Finish**: close a waiting session, or accept a task at review.
 - **Archive**: put an inactive task aside; **Unarchive** brings it back. Archiving is separate from deleting the task.
-- **Open in…**: choose an available local application or agent CLI. The same backend can resume a stopped task's recorded session; a different backend starts fresh. A running task's CLI launch also starts fresh rather than attaching another CLI to the active session.
+- **Open in…** (desktop only): a task with a worktree offers available local applications and agent CLIs. A task without a worktree offers only **Terminal (resume session)**, when its session can be resumed. On phones, the action menu has a plain **Terminal** item when available. The same backend can resume a stopped task's recorded session; a different backend starts fresh. A running task's CLI launch also starts fresh rather than attaching another CLI to the active session.
 
 Local terminal handoff depends on local-machine capability; it is unavailable in hosted mode.
 

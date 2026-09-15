@@ -4,7 +4,7 @@ Use xezar to give coding tasks to an agent and follow its work in a browser. Thi
 
 ## To check prerequisites
 
-Have Node.js 20 or newer and npm available. Install Git to use isolated task branches and the Git views. For real agent work, install and sign in to a supported agent CLI: Claude Code, Codex, OpenCode or pi. GitHub features also need `gh`; you can start a local task without it.
+Have Node.js 20 or newer and npm available. Install Git to use isolated task branches and the Git views. For real agent work, install and sign in to a supported agent CLI: Claude Code, Codex, OpenCode or pi. GitHub features also need `gh`; `GITHUB_TOKEN` is the authentication fallback when `gh` is not signed in. You can start a local task without it.
 
 ## To install xezar
 
