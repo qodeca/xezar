@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Air – States</title>
+<link rel="stylesheet" href="../../docs/design-system/cockpit.css">
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="chrome.css">
+<script src="theme.js"></script>
+</head>
+<body>
+<script src="bar.js" data-controls="theme accent density width"></script>
+
+<main class="doc">
+  <h1>Air – states</h1>
+  <p class="lead">Six states, each on its natural surface, at 375 and 1280 px. The map says where each one lives. Below it, every non-default state is a 375 px pair – <strong>Today</strong> first, <strong>Proposed</strong> second – with links to open it at 1280 in either view, or stacked in the compare page. The centered state and the dialog are unchanged by the proposal; what moves is the page around them.</p>
+
+  <h2>The six states</h2>
+  <div class="table-scroll">
+    <table class="decision-table">
+      <thead><tr><th scope="col">State</th><th scope="col">Surface</th><th scope="col">Page</th><th scope="col">Copy, as shipped</th></tr></thead>
+      <tbody>
+        <tr><td>Default</td><td>every screen</td><td>each screen page · <a href="compare.html">compare</a></td><td>–</td></tr>
+        <tr><td>Empty</td><td>Inbox</td><td><a href="#empty">375 pair</a> · <code>inbox.html?state=empty</code></td><td>“Inbox empty” / “Agents drop follow-up suggestions here when they finish a task.” (<code>inbox.tsx:119-125</code>)</td></tr>
+        <tr><td>Loading</td><td>task page</td><td><a href="#loading">375 pair</a> · <code>thread.html?state=loading</code></td><td>“Loading task…” / “Fetching the run and its session transcript.” (<code>thread-loading.tsx:17-18</code>)</td></tr>
+        <tr><td>Error, field</td><td>Settings → Agents, System prompt</td><td><a href="#field-error">375 pair</a> · <code>settings.html?section=agents&amp;state=error</code></td><td>“20,412 characters — the limit is 20,000.” beside a disabled Save (<code>agents-section.tsx:269-279</code>)</td></tr>
+        <tr><td>Error, page</td><td>Inbox</td><td><a href="#page-error">375 pair</a> · <code>inbox.html?state=error</code></td><td>“Could not load the inbox” and the server’s message, danger tone (<code>inbox.tsx:104-110</code>)</td></tr>
+        <tr><td>Refusal</td><td>Settings → Agent accounts, hosted mode</td><td><a href="#refusal">375 pair</a> · <code>settings.html?section=accounts</code></td><td>“Agent accounts are managed from the machine that owns the checkout — this cockpit runs in hosted mode.” (<code>accounts-section.tsx:149-153</code>)</td></tr>
+        <tr><td>Phone</td><td>every screen</td><td><a href="phone.html">375 px pairs</a></td><td>–</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="empty">Empty – Inbox</h2>
+  <div class="air-pair">
+    <figure><figcaption class="air-caption">Today · Inbox · Empty · 375 px</figcaption><div class="phone phone-375"><iframe data-src="inbox.html?state=empty&amp;v=today" title="Inbox · Empty – Today – 375 px"></iframe></div></figure>
+    <figure><figcaption class="air-caption">Proposed · Inbox · Empty · 375 px</figcaption><div class="phone phone-375"><iframe data-src="inbox.html?state=empty&amp;v=air" title="Inbox · Empty – Proposed – 375 px" loading="lazy"></iframe></div></figure>
+  </div>
+  <p class="note">A centered state, identical in both views: <code>px-6 py-12</code> around a <code>max-w-md</code> stack with <code>gap-4</code> (<code>centered-state.tsx:51, 56</code>). Only the page around it moves.</p>
+  <p>Open the empty inbox at 1280: <a href="inbox.html?state=empty&amp;v=today">Today</a> · <a href="inbox.html?state=empty&amp;v=air">Proposed</a> · <a href="compare.html?page=inbox&amp;state=empty">Compare</a></p>
+
+  <h2 id="loading">Loading – task page</h2>
+  <div class="air-pair">
+    <figure><figcaption class="air-caption">Today · Thread · Loading · 375 px</figcaption><div class="phone phone-375"><iframe data-src="thread.html?state=loading&amp;v=today" title="Thread · Loading – Today – 375 px" loading="lazy"></iframe></div></figure>
+    <figure><figcaption class="air-caption">Proposed · Thread · Loading · 375 px</figcaption><div class="phone phone-375"><iframe data-src="thread.html?state=loading&amp;v=air" title="Thread · Loading – Proposed – 375 px" loading="lazy"></iframe></div></figure>
+  </div>
+  <p class="note">The same centered state, identical in both views (<code>thread-loading.tsx:14-19</code>). Its icon spins only when motion is allowed (<code>motion-safe:animate-spin</code>, <code>thread-loading.tsx:15</code>).</p>
+  <p>Open the loading task at 1280: <a href="thread.html?state=loading&amp;v=today">Today</a> · <a href="thread.html?state=loading&amp;v=air">Proposed</a> · <a href="compare.html?page=thread&amp;state=loading">Compare</a></p>
+
+  <h2 id="field-error">Error in a field – Settings → Agents</h2>
+  <div class="air-pair">
+    <figure><figcaption class="air-caption">Today · Settings · Agents · Field error · 375 px</figcaption><div class="phone phone-375"><iframe data-src="settings.html?section=agents&amp;state=error&amp;v=today" title="Settings · Field error – Today – 375 px" loading="lazy"></iframe></div></figure>
+    <figure><figcaption class="air-caption">Proposed · Settings · Agents · Field error · 375 px</figcaption><div class="phone phone-375"><iframe data-src="settings.html?section=agents&amp;state=error&amp;v=air" title="Settings · Field error – Proposed – 375 px" loading="lazy"></iframe></div></figure>
+  </div>
+  <p class="note"><strong>The field error is the Agents over-limit line</strong>, drawn as shipped: a <code>&lt;p&gt;</code> in <code>text-[11px] text-danger</code> beside a disabled small Save (<code>agents-section.tsx:269-279</code>). It is the shipped counterpart of <code>.field-error</code> (<code>cockpit.css:1126</code>, also 11 px <code>--danger</code>), which no source file uses. The line itself is unchanged; Save goes 30 → 32 (<code>sm</code>, <code>button.tsx:24</code> → <code>h-8</code>).</p>
+  <p>Open the field error at 1280: <a href="settings.html?section=agents&amp;state=error&amp;v=today">Today</a> · <a href="settings.html?section=agents&amp;state=error&amp;v=air">Proposed</a> · <a href="compare.html?page=settings&amp;section=agents&amp;state=error">Compare</a></p>
+
+  <h2 id="page-error">Error on a page – Inbox</h2>
+  <div class="air-pair">
+    <figure><figcaption class="air-caption">Today · Inbox · Page error · 375 px</figcaption><div class="phone phone-375"><iframe data-src="inbox.html?state=error&amp;v=today" title="Inbox · Page error – Today – 375 px" loading="lazy"></iframe></div></figure>
+    <figure><figcaption class="air-caption">Proposed · Inbox · Page error · 375 px</figcaption><div class="phone phone-375"><iframe data-src="inbox.html?state=error&amp;v=air" title="Inbox · Page error – Proposed – 375 px" loading="lazy"></iframe></div></figure>
+  </div>
+  <p class="note">A centered state in the danger tone: “Could not load the inbox”, with the server’s message as the subtitle (<code>inbox.tsx:104-110</code>). Identical in both views.</p>
+  <p>Open the inbox error at 1280: <a href="inbox.html?state=error&amp;v=today">Today</a> · <a href="inbox.html?state=error&amp;v=air">Proposed</a> · <a href="compare.html?page=inbox&amp;state=error">Compare</a></p>
+
+  <h2 id="refusal">Refusal – Settings → Agent accounts</h2>
+  <div class="air-pair">
+    <figure><figcaption class="air-caption">Today · Settings · Agent accounts · 375 px</figcaption><div class="phone phone-375"><iframe data-src="settings.html?section=accounts&amp;v=today" title="Settings · Agent accounts – Today – 375 px" loading="lazy"></iframe></div></figure>
+    <figure><figcaption class="air-caption">Proposed · Settings · Agent accounts · 375 px</figcaption><div class="phone phone-375"><iframe data-src="settings.html?section=accounts&amp;v=air" title="Settings · Agent accounts – Proposed – 375 px" loading="lazy"></iframe></div></figure>
+  </div>
+  <p class="note">Verbatim from <code>accounts-section.tsx:143-155</code>: a plain heading and paragraph, not a card. Its container, <code>gap-4 p-4 md:p-6</code> (<code>accounts-section.tsx:147</code>), is not in § 9.2, so both views draw it unchanged – a question for the verdict.</p>
+  <p>Open the refusal at 1280: <a href="settings.html?section=accounts&amp;v=today">Today</a> · <a href="settings.html?section=accounts&amp;v=air">Proposed</a> · <a href="compare.html?page=settings&amp;section=accounts">Compare</a></p>
+</main>
+</body>
+</html>

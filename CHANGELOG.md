@@ -47,6 +47,8 @@ fix: Restart Claude Code so it starts the current xezar bridge (npx -y @qodeca/x
 
 fix: If the leader is working, nothing is needed. Otherwise check that Claude Code was started with --dangerously-load-development-channels server:xezar and that its startup notice says channels from server:xezar inject into the session. Channels need a claude.ai or Console API-key login, do not work on Bedrock, Vertex or Foundry, must be enabled by a Team or Enterprise admin, and are off while CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC is set. Until then, read events with leader_events.
 
+## 🔒 Security
+- 🔒 **Two high-severity advisories in shipped dependencies are fixed.** (#426) `smol-toml` 1.7.0 → 1.8.0 fixes GHSA-7w5x-hrqm-74c2: a malformed TOML document – a comment with no trailing newline inside an array or inline table – made the parser loop for ever at full CPU, and xezar parses TOML agent config with it. Its minimum is now 1.7.1, so every install of `@qodeca/xezar` gets the fix, not only builds from the lockfile. The cockpit's `react-router` 7.18.1 → 7.18.3 fixes GHSA-qwww-vcr4-c8h2, which affects only the unstable RSC APIs; the cockpit uses only `BrowserRouter`, so that bump is precautionary. The dev-only `nanoid` (3.3.19) and `undici` (7.29.1) move too, and `npm audit` reports no high or critical finding.
 
 ## 🐛 Fixes
 - 🐛 Stamp the private cockpit workspace and its internal dependency ranges during releases, so minor and major bump PRs keep npm workspaces linked. (#382)
