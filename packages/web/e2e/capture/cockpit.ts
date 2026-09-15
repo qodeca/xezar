@@ -13,7 +13,7 @@ import { createFixtureRepo } from './fixture-repo'
  * gate — and nothing read from the developer's machine.
  *
  * Why not the shared test env: that instance boots with every opt-in OFF (the browser suite
- * exercises the default route), and its registry and run list are shared with 41 specs. The
+ * exercises the default route), and its registry and run list are shared with every browser spec. The
  * captures need a fixed, rich state that nothing else touches.
  */
 
@@ -76,6 +76,13 @@ export async function bootCockpit(): Promise<Cockpit> {
     XEZ_NO_BANNER: '1',
   })
   delete env.ANTHROPIC_MODEL
+  // Run from inside a xezar task, the harness inherits that task's own handoff and follow-up
+  // files. An agent process the fixture server starts without its own per-run values (a probe,
+  // not a run) would otherwise write mock notes into the CALLING task's handoff and the real
+  // follow-up inbox — observed once from a hand-booted dry-run server during this work.
+  delete env.XEZ_HANDOFF_FILE
+  delete env.XEZ_TODOS_FILE
+  delete env.XEZ_TASK_ID
   const server = spawn(
     process.execPath,
     [xezarCli, 'serve', '--repo', demoRoot, '--port', String(port), '--no-open'],
