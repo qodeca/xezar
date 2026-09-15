@@ -12,6 +12,15 @@ Installation validation is reported in installation.md. Real-task entries follow
 
 ## Real-task entries
 
+### 2026-09-15 — #439 (the leader is MCP-only and attached for pushed events), `feature-implementation` step `implement`, `xezar-implementation`, Claude Code — real-task observed
+
+- Input: the read-only audit of run `93d7afd5` (`.local/erfana-lens-reports/leader-mcp-only-audit.md`, 101 rows, a three-PR plan). This task carried its prose and instruction-string rows in one PR; the code gaps (an MCP attach/stop/status action, a cursor on pushed events, the bridge advertising push it cannot deliver) stay follow-ups.
+- Observed: **the audit's main risk – stating a rule a leader cannot follow – was settled by the brief, not by the audit.** No MCP action attaches a leader, so every string that tells a leader to attach names the one HTTP call and the cockpit control, and says no MCP action exists yet. Lesson: when a rule outruns the capability, the rule text names the interim door and the gap row, rather than waiting for the feature or pretending it exists.
+- Observed: **a non-final agent step cannot wait for a peer's file by ending its turn.** A background poll notifies on a later turn, but ending the turn without `XEZ:DONE` fails the step; the wait (≈ 11 min) ran as a foreground poll bounded under the tool timeout.
+- Observed: `catalog-check.mjs` requires the `## Shared contract` tail to be byte-identical in all 19 skills, so the one leader sentence went into all 19 in one scripted replacement, checked before commit.
+- Evidence: red-first proof of the pins (7 failures with the strings reverted, all green restored) in the task evidence directory (`red-proof.patch`, `red-proof.txt`).
+- Remaining limit: no whole campaign has run under the rule yet; the strings are fixture-pinned, not observed in a live leader session in this task.
+
 ### 2026-09-15 — #424 step 4 (the Roomy density), `feature-implementation` step `implement`, `xezar-implementation`, Claude Code — real-task verified
 
 - Evidence: run 5f3baef2, base `40bb617`, commit `e64b3fe`; the red-first runs are listed in the PR body kept in the primary evidence directory (`pr-body.md`).
