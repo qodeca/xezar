@@ -2,19 +2,19 @@
 # Make a fresh Xezar task worktree usable, and record what the task is working on.
 #
 # Xezar checks out tracked files and nothing else: a new worktree has no node_modules,
-# no dist, no coverage. The project config schema (`packages/xezar/src/config.ts:33-107`)
+# no dist, no coverage. The project config schema (`packages/xezar/src/config.ts`, `configSchema`)
 # has no `setup` / `postCreate` key and the migration compatibility record is explicit
 # that no setup hook may be invented, so a check step is the supported way to bootstrap.
 # Check steps run in the same cwd as the agent steps, i.e. the worktree
-# (`src/workflows/run.ts:3669`, `spawn('bash', ['-lc', command], { cwd: state.cwd,
+# (`src/workflows/run.ts`, `spawn('bash', ['-lc', command], { cwd: state.cwd,
 # env: process.env })`).
 #
 # It must be a FIRST step, never a last one: a workflow whose last step is a `command:`
 # step is not interactive, which would silence XEZ:ASK and XEZ:DONE for the whole run
-# (`src/workflows/run.ts:2799` — `interactive = i === lastAgentIdx && i === steps.length - 1`).
+# (`src/workflows/run.ts` — `interactive = i === lastAgentIdx && i === workflow.steps.length - 1`).
 #
 # Idempotent by construction. `onFail.retry` jumps back to the named earlier step
-# (`src/workflows/run.ts:2838-2846`), so a gate failure that loops back to the
+# (`src/workflows/run.ts`, `step.onFail.retry`), so a gate failure that loops back to the
 # implementation step does NOT re-run this one. Everything here must therefore be safe to
 # skip on the second pass, and anything that can go stale during the run — the installed
 # dependencies — is re-checked by the gates instead.
@@ -162,7 +162,7 @@ printf '  npm          %s\n' "$(npm --version)"
 
 # --- Base freshness ------------------------------------------------------------------
 # Xezar resolves the fork point without fetching — "agents fetch, they never pull"
-# (`packages/xezar/src/git-worktree.ts:55-66`) — so the worktree is only as current as the
+# (`packages/xezar/src/git-worktree.ts`, `createWorktree`) — so the worktree is only as current as the
 # primary checkout's origin ref was at creation time. Report the gap; never rewrite
 # history to close it. Rebasing is a human decision.
 if git fetch --quiet origin "$BASE_BRANCH" 2>/dev/null; then
@@ -193,8 +193,8 @@ fi
 
 # --- Manifest ---------------------------------------------------------------------------
 # The one channel that survives the worktree. Retention reclaims a finished worktree's
-# DIRECTORY (keeping the xez/<id8> branch — `src/runs/retention.ts:61-76`), the startup
-# orphan sweep removes both (`src/git-worktree.ts:569-592`), and the cockpit's Delete
+# DIRECTORY (keeping the xez/<id8> branch — `src/runs/retention.ts`, `reclaimWorktrees`), the startup
+# orphan sweep removes both (`src/git-worktree.ts`, `pruneOrphans`), and the cockpit's Delete
 # action removes the run, its worktree and its branch with no undo — so anything
 # git-ignored written inside the worktree is destroyed without warning. The engine's own
 # per-run scratch at `.local/xezar/tmp/<runId>` (`src/runs/agent-tmpdir.ts`) is reaped too.

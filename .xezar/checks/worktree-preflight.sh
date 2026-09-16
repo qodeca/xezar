@@ -7,17 +7,18 @@
 # that the checkout it was started in really is that worktree, and refuses to let the
 # task proceed when it is not.
 #
-# The refusal that matters most: on resume, the cockpit falls back to the PRIMARY
-# checkout when it cannot re-materialize a reclaimed worktree —
-# `packages/xezar/src/workflows/run.ts:2236-2239`:
+# The refusal that matters most: a legacy resume with no remaining isolation identity
+# can reach the PRIMARY checkout. Current recorded isolated runs fail closed first;
+# the remaining cwd fallback is in
+# `packages/xezar/src/workflows/run.ts`:
 #   const cwd = record?.worktreePath && existsSync(record.worktreePath)
 #     ? record.worktreePath : this.repoRoot;
 # A run that quietly landed there would edit the human's working tree. This check turns
 # that silent fallback into a stopped run.
 #
 # It relies on NO cockpit environment variable. A workflow `command:` step is spawned with
-# the manager process's own environment (`packages/xezar/src/workflows/run.ts:3669`),
-# while `XEZ_TASK_ID` is exported only to the spawned agent (`:759-761`). Identity is
+# the manager process's own environment (`packages/xezar/src/workflows/run.ts`, `runCheckStep`),
+# while `XEZ_TASK_ID` is exported only to the spawned agent (`RunManager.agentEnv`). Identity is
 # therefore derived from the worktree path.
 #
 # Usage:
@@ -297,8 +298,8 @@ fi
 
 # --- Ignore hygiene -------------------------------------------------------------------
 # The cockpit autosaves with `git add -A` and `--no-verify` at every turn end, at run
-# finalize and before a draft PR (`packages/xezar/src/git-worktree.ts:308-346`, called at
-# `src/workflows/run.ts:2576` and `:2864`; only the `periodic` timer is opt-in). Everything
+# finalize and before a draft PR (`packages/xezar/src/git-worktree.ts`, `autosaveCommit`, called by
+# `src/workflows/run.ts`; only the `periodic` timer is opt-in). Everything
 # that must not be committed has to be ignored BEFORE the first turn ends, and .local/ must
 # never become tracked — otherwise scratch evidence lands in the branch and in the PR.
 # Directory rules are probed through a child path (".local/probe", not ".local"): a
