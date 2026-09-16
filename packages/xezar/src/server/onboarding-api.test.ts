@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -176,6 +177,122 @@ describe('the onboarding API', () => {
     // Liveness, not existence. A finished setup task must not leave the card stuck on "Re-checking".
     active.delete(setup.id);
     expect((await get()).checkingRunId).toBeNull();
+  });
+
+  /**
+   * "Two clicks cannot start two checks" (`AC-13`, design § 7.2), through the route every door
+   * leads to — the three cockpit buttons and a leader's `task_create` alike (QA `8d6a08ca`, QA-1).
+   *
+   * The manager here is a fixture, and it models exactly the property the real one has and the
+   * guard depends on: `startRun` makes the run live SYNCHRONOUSLY (the real one pushes onto
+   * `queue`, which `isActive` reads), so the second request cannot arrive between the create and
+   * the run becoming visible.
+   */
+  describe('starting a setup task twice', () => {
+    let started: number;
+
+    const withManager = () => {
+      started = 0;
+      const manager = {
+        isActive: (id: string) => active.has(id),
+        startRun: (workflow: { name: string }, input: { task: string }) => {
+          started += 1;
+          const run = store.createRun({
+            title: input.task,
+            workflow: workflow.name,
+            task: input.task,
+            steps: [{ id: 'setup', name: 'Set up this project', kind: 'agent' as const }],
+          });
+          active.add(run.id);
+          return run;
+        },
+      };
+      app = createApp({ repoRoot, store, manager: manager as unknown as RunManager, version: '0.15.0' });
+    };
+
+    const start = (workflow: string) =>
+      apiRequest(app, '/api/v1/runs', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ workflow, task: 'Re-check this project' }),
+      });
+
+    const setupRuns = () => store.listRuns().filter((r) => r.workflow === ONBOARDING_WORKFLOW_ID);
+
+    beforeEach(withManager);
+
+    it('answers the check already running instead of starting a second one, 200 ms apart', async () => {
+      const first = await start(ONBOARDING_WORKFLOW_ID);
+      expect(first.status).toBe(201);
+      const firstRun = (await first.json()) as { id: string };
+
+      // The gesture QA measured: two separate presses, roughly 50–400 ms apart. In that window the
+      // browser's own `isPending` is already false again, which is why the guard cannot live there.
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      const second = await start(ONBOARDING_WORKFLOW_ID);
+      expect(second.status).toBe(201);
+      // The same task, so the caller's own `onSuccess` navigates to the check that is running
+      // rather than showing an error for a request that got what it asked for.
+      expect((await second.json()) as { id: string }).toMatchObject({ id: firstRun.id });
+
+      expect(started).toBe(1);
+      expect(setupRuns()).toHaveLength(1);
+      expect((await get())).toMatchObject({ state: 'checking', checkingRunId: firstRun.id });
+    });
+
+    it('holds for two starts in flight at once, which is the case a UI guard can never cover', async () => {
+      const [a, b] = await Promise.all([start(ONBOARDING_WORKFLOW_ID), start(ONBOARDING_WORKFLOW_ID)]);
+      expect([a.status, b.status]).toEqual([201, 201]);
+      expect(started).toBe(1);
+      expect(setupRuns()).toHaveLength(1);
+    });
+
+    it('starts a second check once the first one is no longer running', async () => {
+      const first = await start(ONBOARDING_WORKFLOW_ID);
+      const firstRun = (await first.json()) as { id: string };
+      active.delete(firstRun.id);
+
+      const second = await start(ONBOARDING_WORKFLOW_ID);
+      expect(((await second.json()) as { id: string }).id).not.toBe(firstRun.id);
+      expect(started).toBe(2);
+    });
+
+    it('never gets in the way of an ordinary task', async () => {
+      await start(ONBOARDING_WORKFLOW_ID);
+      const ordinary = await start('quick-task');
+      expect(ordinary.status).toBe(201);
+      // Two ordinary tasks at once is the product's whole point; only the launch definition is
+      // narrowed, and only while one of its own runs is live.
+      expect((await start('quick-task')).status).toBe(201);
+      expect(started).toBe(3);
+      expect(setupRuns()).toHaveLength(1);
+    });
+
+    it('answers a variants request in the shape that branch promises', async () => {
+      // No cockpit surface asks for variants of the launch definition; a leader posting the body
+      // by hand can, and the ×N branch has its own create call, so it needs its own guard. Variants
+      // live in worktrees, so the branch is only reachable at all inside a git repository.
+      execFileSync('git', ['init', '-q'], { cwd: repoRoot });
+      // `getRepoInfo` reads the current branch, which does not resolve before the first commit.
+      execFileSync(
+        'git',
+        ['-c', 'user.email=t@e.st', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'init'],
+        { cwd: repoRoot },
+      );
+      const first = await start(ONBOARDING_WORKFLOW_ID);
+      const firstRun = (await first.json()) as { id: string };
+      const res = await apiRequest(app, '/api/v1/runs', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ workflow: ONBOARDING_WORKFLOW_ID, task: 'again', variants: 2 }),
+      });
+      expect(res.status).toBe(201);
+      expect((await res.json()) as { runs: { id: string }[] }).toMatchObject({
+        runs: [{ id: firstRun.id }],
+      });
+      expect(started).toBe(1);
+    });
   });
 
   /**

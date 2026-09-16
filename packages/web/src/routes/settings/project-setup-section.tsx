@@ -1,7 +1,7 @@
 import { CompassIcon, InfoIcon, LockIcon, RotateCwIcon } from 'lucide-react'
 import { useState } from 'react'
 
-import { useOnboarding, useStartSetupTask } from '@/api/queries'
+import { useOnboarding, useSetupStart } from '@/api/queries'
 import { CenteredState } from '@/components/centered-state'
 import { StatusDot, type StatusDotTone } from '@/components/status-dot'
 import { Button } from '@/components/ui/button'
@@ -31,7 +31,7 @@ export function ProjectSetupSection() {
     // One muted line. No skeleton, and above all no premature "Not set up yet" — a state that has
     // not answered yet must not be shown as a state.
     return (
-      <p data-slot="project-setup-loading" className="p-4 text-[13px] text-soft-foreground md:p-6">
+      <p data-slot="project-setup-loading" className="p-4 text-[13px] text-muted-foreground md:p-6">
         Loading project setup…
       </p>
     )
@@ -69,7 +69,7 @@ function dotTone(status: OnboardingStatus): StatusDotTone {
 
 function ProjectSetupCard({ status, hosted }: { status: OnboardingStatus; hosted: boolean }) {
   const navigate = useNavigate()
-  const start = useStartSetupTask()
+  const start = useSetupStart()
   const [startError, setStartError] = useState<string | null>(null)
   const mode = setupMode(status)
   const running = status.state === 'checking' && status.checkingRunId
@@ -115,7 +115,7 @@ function ProjectSetupCard({ status, hosted }: { status: OnboardingStatus; hosted
               ) : (
                 <Button
                   variant={status.state === 'set-up' ? 'outline' : 'contrast'}
-                  disabled={!status.available || start.isPending}
+                  disabled={!status.available || start.pending}
                   {...(status.available ? {} : { 'aria-describedby': 'project-setup-why' })}
                   data-action="start-setup"
                   className="max-md:h-11 max-md:w-full"
@@ -132,7 +132,7 @@ function ProjectSetupCard({ status, hosted }: { status: OnboardingStatus; hosted
                   }}
                 >
                   {mode === 'setup' ? <CompassIcon aria-hidden="true" /> : <RotateCwIcon aria-hidden="true" />}
-                  {start.isPending ? 'Starting…' : setupActionLabel(status)}
+                  {start.pending ? 'Starting…' : setupActionLabel(status)}
                 </Button>
               )}
             </div>

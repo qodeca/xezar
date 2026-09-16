@@ -29,7 +29,10 @@ const base: OnboardingStatus = {
   launch: { workflowId: 'project-setup', modes: ['setup', 'preview', 'recheck'] },
 }
 
-function renderRow(over: Partial<OnboardingStatus> = {}, props: { pending?: boolean } = {}) {
+function renderRow(
+  over: Partial<OnboardingStatus> = {},
+  props: { pending?: boolean; atSettings?: boolean } = {},
+) {
   const onRecheck = vi.fn()
   const onLater = vi.fn()
   render(
@@ -37,6 +40,7 @@ function renderRow(over: Partial<OnboardingStatus> = {}, props: { pending?: bool
       <OnboardingOfferRow
         status={{ ...base, ...over }}
         pending={props.pending ?? false}
+        atSettings={props.atSettings ?? false}
         onRecheck={onRecheck}
         onLater={onLater}
       />
@@ -111,6 +115,17 @@ describe('the offer row', () => {
     cleanup()
     renderRow({ lastChecked: { engineVersion: '0.14.0', kitDigest: '2c20c60aaa', at: '2026-09-02T16:40:00.000Z' } })
     expect(screen.getByRole('link', { name: 'See the exact versions' })).toBeTruthy()
+  })
+
+  it('drops the link, and only the link, on the page it points at', () => {
+    // Design review of #497, NB-6. The row is in the shell's banner slot, so it renders on Settings
+    // → Project setup too, where both identities are already on the page below it.
+    cleanup()
+    const { row } = renderRow({ lastChecked: { engineVersion: '0.14.0', kitDigest: '2c20c60aaa', at: '2026-09-02T16:40:00.000Z' } }, { atSettings: true })
+    expect(screen.queryByRole('link', { name: 'See the exact versions' })).toBeNull()
+    // The sentence and both actions stay: this is still the place the offer is answered.
+    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual(['Re-check', 'Later'])
+    expect(row()?.textContent).toContain('since this project was last checked')
   })
 
   it('keeps Later working, and gives the disabled Re-check a readable reason', () => {

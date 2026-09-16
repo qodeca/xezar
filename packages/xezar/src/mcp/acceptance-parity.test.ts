@@ -1258,6 +1258,15 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
       // And while it runs, both doors say so instead of offering a second one (`AC-13`).
       expect((await ui(w, '/onboarding')).body).toMatchObject({ state: 'checking', checkingRunId: created.subject.id });
       expect((await mcp(w, 'discover_project', {})).onboarding).toMatchObject({ state: 'checking' });
+
+      // `AC-13` is a rule about TASKS, not about clicks, so the MCP door is held to it too, and
+      // with a FRESH `operationId`: the receipt layer's replay would otherwise answer this without
+      // the guard ever running, which would prove nothing about a leader that simply asks twice.
+      const setupRuns = () => w.a.store.listRuns().filter((r) => r.workflow === workflowId);
+      expect(setupRuns()).toHaveLength(1);
+      const again = await mcp(w, 'task_create', { operationId: op(), prompt: 'set this project up', source: { source: 'workflow', ref: workflowId } });
+      expect(again).toMatchObject({ accepted: true, subject: { id: created.subject.id } });
+      expect(setupRuns()).toHaveLength(1);
     });
 
     parity(

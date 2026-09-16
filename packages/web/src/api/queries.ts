@@ -1,8 +1,12 @@
 import { useMutation, useQueries, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { mergeProviderStatusResponse } from '@/lib/provider-status'
-import type { McpLeaderActionInput, McpLeaderStatus } from '@qodeca/xezar-api-client'
+import type {
+  CreateRunResponse,
+  McpLeaderActionInput,
+  McpLeaderStatus,
+} from '@qodeca/xezar-api-client'
 
 import {
   ApiError,
@@ -1142,6 +1146,57 @@ export function useStartSetupTask() {
 /** The bundled launch definition's id. Server-side it is `ONBOARDING_WORKFLOW_ID`; the two are
  *  pinned together by `onboarding-api.test.ts`, which reads the id off the route's own answer. */
 export const ONBOARDING_WORKFLOW = 'project-setup'
+
+/**
+ * The visible half of "two clicks cannot start two checks" (#464 P2, `AC-13`).
+ *
+ * The rule is ENFORCED on the server, at the one place a setup task is created, so a second press
+ * cannot cost a second agent run whatever the browser does. This hook is what the person SEES: the
+ * control stays disabled and says "Starting…" for the whole gap the mutation alone does not cover.
+ *
+ * `isPending` is false again as soon as the POST settles — QA measured ~30 ms — while the status
+ * read that replaces the control with the running line lands around 500 ms later. In between,
+ * `start.isPending` says "idle" about a check that is already on its way. So the latch is held from
+ * the press until the NEXT onboarding read lands, whatever it says: `state: "checking"` normally,
+ * but also a read that says something else, so a check that finished instantly, a record that could
+ * not be written, or a failing query all release the control instead of freezing it.
+ *
+ * One hook for all three entries, for the same reason `useStartSetupTask` is one hook: three
+ * spellings of the same rule is how two of them end up wrong.
+ */
+export function useSetupStart() {
+  const start = useStartSetupTask()
+  const onboarding = useOnboarding()
+  const [latched, setLatched] = useState(false)
+  const pressedAt = useRef(0)
+  const readAt = Math.max(onboarding.dataUpdatedAt, onboarding.errorUpdatedAt)
+
+  useEffect(() => {
+    if (latched && readAt > pressedAt.current) setLatched(false)
+  }, [latched, readAt])
+
+  const pending = start.isPending || latched
+
+  const mutate = (
+    mode: CockpitSetupMode,
+    options?: { onSuccess?: (run: CreateRunResponse) => void; onError?: (error: Error) => void },
+  ) => {
+    // The press that arrives inside the window is not an error and not a second request — the
+    // check the person is asking for is already being started.
+    if (pending) return
+    pressedAt.current = Date.now()
+    setLatched(true)
+    start.mutate(mode, {
+      onSuccess: options?.onSuccess,
+      onError: (error: Error) => {
+        setLatched(false)
+        options?.onError?.(error)
+      },
+    })
+  }
+
+  return { pending, mutate }
+}
 
 /** The MCP API reference (#284). The tool list is fixed for the life of the server process
  *  (`listChanged: false`), so it is fetched once: no polling, no topic, no refetch on focus. */

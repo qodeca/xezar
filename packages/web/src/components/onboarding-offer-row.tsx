@@ -22,12 +22,17 @@ import { Button } from './ui/button'
 export function OnboardingOfferRow({
   status,
   pending,
+  atSettings = false,
   onRecheck,
   onLater,
 }: {
   status: OnboardingStatus | undefined
   /** A click is in flight — both actions disable and the primary shows the pending label. */
   pending: boolean
+  /** The reader is already on Settings → Project setup, with both identities on the page below
+   *  (design review of #497, NB-6). The sentence and the two actions stay; only the link that
+   *  points at this very page goes, because a link to where you are is not an offer. */
+  atSettings?: boolean
   onRecheck: () => void
   onLater: () => void
 }) {
@@ -41,7 +46,7 @@ export function OnboardingOfferRow({
         data-slot="onboarding-offer"
         data-offer-state="checking"
         role="status"
-        className="flex min-h-10 flex-wrap items-center gap-row border-b border-border bg-muted/50 px-section py-row text-sm text-muted-foreground md:flex-nowrap md:py-0"
+        className="flex min-h-10 flex-wrap items-center gap-row border-b border-border bg-muted/50 px-section py-row text-sm text-muted-foreground md:flex-nowrap"
       >
         <span className="min-w-0">
           <strong className="font-semibold text-foreground">Re-checking this project</strong> — open
@@ -63,12 +68,12 @@ export function OnboardingOfferRow({
       data-offer-state="pending"
       role="status"
       aria-live="polite"
-      className="flex min-h-10 flex-wrap items-center gap-row border-b border-border bg-muted/50 px-section py-row text-sm text-muted-foreground md:flex-nowrap md:py-0"
+      className="flex min-h-10 flex-wrap items-center gap-row border-b border-border bg-muted/50 px-section py-row text-sm text-muted-foreground md:flex-nowrap"
     >
       <span className="min-w-0">
         <strong className="font-semibold text-foreground">{copy.lead}</strong>
         {copy.rest}
-        {copy.linkToSettings ? (
+        {copy.linkToSettings && !atSettings ? (
           <>
             {' '}
             <Link

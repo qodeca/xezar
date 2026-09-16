@@ -57,6 +57,12 @@ export type OnboardingState = z.infer<typeof onboardingStateSchema>;
  * `modes` carries all three the skill contract names, including `preview`; the cockpit
  * deliberately surfaces only `setup` and `recheck` (report-only is a property of a brief, not of
  * a button), but a leader that cannot see `preview` cannot dispatch a report-only check.
+ *
+ * Starting this definition is IDEMPOTENT while one of its runs is live: a create that arrives
+ * while `checkingRunId` is set answers that run rather than starting a second one (`AC-13`). The
+ * rule sits at the create route, so it is the same answer for the cockpit's buttons and for a
+ * leader's `task_create` — including a second `task_create` under a fresh `operationId`, which the
+ * receipt layer's replay would not have caught.
  */
 export const onboardingLaunchSchema = z.object({
   workflowId: z.string(),

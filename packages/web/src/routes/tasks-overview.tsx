@@ -36,7 +36,7 @@ import {
   usePinRun,
   useReferenceProjectId,
   useRuns,
-  useStartSetupTask,
+  useSetupStart,
 } from '@/api/queries'
 import type { RunRecord, Runner } from '@qodeca/xezar-api-client'
 import { CenteredState } from '@/components/centered-state'
@@ -1130,7 +1130,7 @@ export function TasksOverviewRoute() {
 function SetupAside() {
   const onboarding = useOnboarding()
   const navigate = useNavigate()
-  const start = useStartSetupTask()
+  const start = useSetupStart()
   const status = onboarding.data
   if (!status || !status.available) return null
   if (status.state !== 'never' && status.state !== 'unknown') return null
@@ -1144,7 +1144,11 @@ function SetupAside() {
       <Button
         variant="outline"
         data-action="start-setup"
-        disabled={start.isPending}
+        // `max-md:h-11` is the phone touch target `foundations.md` § 12 asks for. The offer row and
+        // the Settings card already carried it; this button sat at 36 px because `CenteredState`
+        // actions do (design review of #497, NB-2).
+        className="max-md:h-11"
+        disabled={start.pending}
         onClick={() => {
           start.mutate('setup', {
             onSuccess: (run) => {
@@ -1155,7 +1159,7 @@ function SetupAside() {
         }}
       >
         <CompassIcon aria-hidden="true" />
-        {start.isPending ? 'Starting…' : 'Set up this project'}
+        {start.pending ? 'Starting…' : 'Set up this project'}
       </Button>
     </div>
   )

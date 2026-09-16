@@ -200,6 +200,25 @@ describe('Settings → Project setup', () => {
     expect(created.body).not.toHaveProperty('steps')
   })
 
+  it('sends one create for two presses of the start control (AC-13)', async () => {
+    // The visible half of design § 7.2. The rule itself is ENFORCED on the server, at the one place
+    // a setup task is created — `onboarding-api.test.ts` § starting a setup task twice — so this
+    // covers what the person sees, not what stops the second agent run. The whole pending window,
+    // including the gap after the mutation settles, is held by `useSetupStart` and pinned in
+    // `setup-start.test.tsx`; the card itself navigates away, so it cannot show that window.
+    serve(onboarding(), { status: 201, body: { id: 'run-9' } })
+    renderSection()
+    await waitFor(() => expect(card()).not.toBeNull())
+    const button = screen.getByRole('button', { name: /Set up this project/ })
+    fireEvent.click(button)
+    fireEvent.click(button)
+    await waitFor(() => expect(requests.some((r) => r.url === '/api/v1/runs')).toBe(true))
+    // `fetch` is asynchronous, so a second create would not be recorded yet at this point: give it
+    // time to arrive, or this passes against the bug it is here to catch.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)))
+    expect(requests.filter((r) => r.url === '/api/v1/runs' && r.method === 'POST')).toHaveLength(1)
+  })
+
   it('shows a failure to start in the server’s own words, inside the card', async () => {
     serve(onboarding(), { status: 409, body: { error: 'No agent backend is available, so the task was not created.' } })
     renderSection()

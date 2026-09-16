@@ -2,8 +2,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 
 import { postOnboardingOffered } from '@/api/client'
-import { queryKeys, useOnboarding, useStartSetupTask } from '@/api/queries'
-import { useNavigate } from '@/lib/project-router'
+import { queryKeys, useOnboarding, useSetupStart } from '@/api/queries'
+import { useNavigate, useProjectMatch } from '@/lib/project-router'
 import { setupMode } from '@/lib/onboarding'
 import type { OnboardingOfferedInput } from '@qodeca/xezar-api-client'
 
@@ -27,6 +27,10 @@ export function OnboardingOfferContainer() {
   const onboarding = useOnboarding()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  // The row is in the shell's banner slot, so it is on every route — including the one its own
+  // link points at (design review of #497, NB-6). `useProjectMatch` ignores the `/p/:projectId`
+  // prefix, so this holds for a scoped route too.
+  const atSettings = useProjectMatch('/settings/project-setup') !== null
   const [dismissedThisSession, setDismissedThisSession] = useState(false)
 
   const later = useMutation({
@@ -39,7 +43,7 @@ export function OnboardingOfferContainer() {
     onError: (error: Error) => toast(error.message, { tone: 'danger' }),
   })
 
-  const start = useStartSetupTask()
+  const start = useSetupStart()
 
   if (onboarding.isError || !onboarding.data) return null
   const status = onboarding.data
@@ -55,7 +59,8 @@ export function OnboardingOfferContainer() {
   return (
     <OnboardingOfferRow
       status={status}
-      pending={start.isPending || later.isPending}
+      pending={start.pending || later.isPending}
+      atSettings={atSettings}
       onRecheck={() => {
         start.mutate(setupMode(status), {
           onSuccess: (run) => {
