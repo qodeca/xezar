@@ -83,27 +83,38 @@ if (step === 'readiness' && !fs.existsSync('repaired')) process.exit(1);\n`);
 export function order(root: string): string[] { return readFileSync(join(root, 'order.txt'), 'utf8').trim().split('\n'); }
 export function repair(spec: AgentRunSpec) { appendFileSync(join(spec.cwd, 'order.txt'), 'repair\n'); writeFileSync(join(spec.cwd, 'repaired'), 'yes'); }
 
-/** Capture only long provider appointments; engine I/O, polling and short lifecycle timers stay real. */
+/** Advance quota appointments only. Shared quota holds still read Date.now; I/O timers stay real. */
 export function providerClock() {
   let now = Date.now();
-  const original = globalThis.setTimeout;
-  const appointments: Array<{ at: number; fire: () => void; timer: ReturnType<typeof setTimeout> }> = [];
+  const appointments = new Map<NodeJS.Timeout, { at: number; fire: () => void }>();
   const date = vi.spyOn(Date, 'now').mockImplementation(() => now);
-  const timers = vi.spyOn(globalThis, 'setTimeout').mockImplementation(((callback: (...args: unknown[]) => void, ms?: number, ...args: unknown[]) => {
-    const fire = () => callback(...args);
-    const timer = original(fire, ms);
-    if (ms !== undefined && ms >= 30_000 && ms < 300_000) appointments.push({ at: now + ms, fire, timer });
-    return timer;
-  }) as typeof setTimeout);
+  const timer = {
+    schedule(callback: () => void, delay: number) {
+      const fire = () => { appointments.delete(handle); callback(); };
+      const handle = setTimeout(fire, delay);
+      appointments.set(handle, { at: now + delay, fire });
+      return handle;
+    },
+    cancel(handle: NodeJS.Timeout) {
+      clearTimeout(handle);
+      appointments.delete(handle);
+    },
+  };
   return {
+    timer,
     reset: (seconds = 60) => Math.floor(now / 1000) + seconds,
     advanceTo(at: number) {
       now = at;
-      for (const appointment of appointments.splice(0)) {
-        if (appointment.at <= now) { clearTimeout(appointment.timer); appointment.fire(); }
-        else appointments.push(appointment);
+      for (const [handle, appointment] of [...appointments]) {
+        if (appointments.has(handle) && appointment.at <= now) {
+          timer.cancel(handle);
+          appointment.fire();
+        }
       }
     },
-    restore() { timers.mockRestore(); date.mockRestore(); },
+    restore() {
+      for (const handle of appointments.keys()) timer.cancel(handle);
+      date.mockRestore();
+    },
   };
 }

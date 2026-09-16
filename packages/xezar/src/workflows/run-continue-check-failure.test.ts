@@ -23,7 +23,7 @@ describe('G8 Continue preserves the failed check and workflow tail', () => {
         ? (spec: import('../core/agent-runner.ts').AgentRunSpec) => appendFileSync(join(spec.cwd, 'order.txt'), 'repair\n') : repair };
       const runner = scriptedRunner(mode === 'usage resume'
         ? [{}, { error: `Claude AI usage limit reached|${reset}` }, repairing] : [{}, repairing]);
-      let manager = new RunManager(store, root);
+      let manager = new RunManager(store, root, { autoResumeTimer: clock.timer });
       try {
         const def = checkFailureWorkflow(root);
         const record = manager.startRun(def, { task: 'repair checks', worktree: false });
@@ -34,7 +34,7 @@ describe('G8 Continue preserves the failed check and workflow tail', () => {
         if (mode === 'restart then MCP continue') {
           await manager.quiesce(); store.flush();
           store = RunStore.open(join(root, 'data'));
-          manager = new RunManager(store, root);
+          manager = new RunManager(store, root, { autoResumeTimer: clock.timer });
         }
         store.on('run', (run: RunRecord) => {
           if (run.id === record.id && run.status === 'done' &&

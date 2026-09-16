@@ -37,9 +37,21 @@ function calls(h: Harness, manager: RunManager) {
       }))),
   };
 }
+function receiptsFor(texts: string[], eventId: string) {
+  // Match the rendered event line, never a transport correlation ID or a longer row ID.
+  return texts.filter(text => text.includes(`- ${eventId} `));
+}
+it('receipt matching excludes Codex correlation IDs and longer event IDs but retains duplicates', () => {
+  const correlation = 'xezar-event:matrix:3c85f1c7:1';
+  const row = '- matrix:3 E-01 task.done';
+  const texts = [correlation, `${correlation} - matrix:2 E-04 instruction.added`, '- matrix:30 E-01 task.done', row];
+  expect(receiptsFor(texts, 'matrix:3')).toEqual([row]);
+  expect(receiptsFor([...texts, row], 'matrix:3')).toEqual([row, row]);
+});
+
 async function receipt(h: Harness, row: McpJournalRow) {
   await h.settle();
-  expect(h.texts().filter(text => text.includes(row.eventId)), `peer received ${row.kind} ${row.eventId}`).toHaveLength(1);
+  expect(receiptsFor(h.texts(), row.eventId), `peer received ${row.kind} ${row.eventId}`).toHaveLength(1);
   // Transport receipt is not leader acknowledgement.
   const status = h.delivery.status();
   expect(status.available && status.delivery?.ackedSeq).toBe(0);
@@ -107,7 +119,7 @@ for (const client of DELIVERY_CLIENTS) describe(`engine incidents → ${client}`
     const reset = clock.reset();
     const runner = scriptedRunner([{ error: `Claude AI usage limit reached|${reset}` },
       mode === 'repeat limit' ? { error: `Claude AI usage limit reached|${clock.reset(180)}` } : {}]); cleanup.push(runner.restore);
-    const manager = new RunManager(h.store, h.root, { semaphore: new WorkspaceSemaphore({ initial: { autoResumeOnUsageLimit: mode !== 'disabled' } }) }); cleanup.push(() => manager.quiesce());
+    const manager = new RunManager(h.store, h.root, { autoResumeTimer: clock.timer, semaphore: new WorkspaceSemaphore({ initial: { autoResumeOnUsageLimit: mode !== 'disabled' } }) }); cleanup.push(() => manager.quiesce());
     const run = manager.startRun(SINGLE_STEP, { task: 'quota', worktree: false });
     await terminal(h.store, run.id);
     expect(h.store.getRun(run.id)?.status).toBe('failed');

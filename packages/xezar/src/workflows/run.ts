@@ -678,6 +678,11 @@ export class RunManager {
    *  from the record rather than losing the wait. Runs here are `failed` and therefore NOT in
    *  `active`, which is why the timer cannot live on an `ActiveRun` like the monitoring one. */
   private readonly autoResumeTimers = new Map<string, NodeJS.Timeout>();
+  /** Only quota appointments use this seam; transport/lifecycle timers remain independent. */
+  private readonly autoResumeTimer: {
+    schedule: (callback: () => void, delay: number) => NodeJS.Timeout;
+    cancel: (timer: NodeJS.Timeout) => void;
+  };
   /** Wake-ups for the instant a live resume's proof window closes (#285). The hold lifts by
    *  derivation, and a derived release is not an event, so these are only the pump that notices;
    *  the hold itself stays on the records. */
@@ -805,8 +810,12 @@ export class RunManager {
   constructor(
     private readonly store: RunStore,
     private readonly repoRoot: string,
-    options: { semaphore?: WorkspaceSemaphore; resumeProofMs?: number } = {},
+    options: { semaphore?: WorkspaceSemaphore; resumeProofMs?: number; autoResumeTimer?: RunManager['autoResumeTimer'] } = {},
   ) {
+    this.autoResumeTimer = options.autoResumeTimer ?? {
+      schedule: (callback, delay) => setTimeout(callback, delay),
+      cancel: timer => clearTimeout(timer),
+    };
     this.dataDir = store.dataDir;
     this.semaphore = options.semaphore ?? new WorkspaceSemaphore();
     this.resumeProofMs = options.resumeProofMs ?? AUTO_RESUME_PROOF_MS;
@@ -883,7 +892,7 @@ export class RunManager {
       state.releaseRepoRoot?.();
       state.releaseRepoRoot = undefined;
     }
-    for (const timer of this.autoResumeTimers.values()) clearTimeout(timer);
+    for (const timer of this.autoResumeTimers.values()) this.autoResumeTimer.cancel(timer);
     this.autoResumeTimers.clear();
     for (const timer of this.resumeProofTimers) clearTimeout(timer);
     this.resumeProofTimers.clear();
@@ -1665,7 +1674,7 @@ export class RunManager {
   /** Publish the deadline on the record (the cockpit's only source) and arm the timer for it. */
   private armAutoResume(runId: string, deadline: number): void {
     this.store.updateRun(runId, { autoResumeAt: new Date(deadline).toISOString() });
-    const timer = setTimeout(() => this.fireAutoResume(runId), Math.max(0, deadline - Date.now()));
+    const timer = this.autoResumeTimer.schedule(() => this.fireAutoResume(runId), Math.max(0, deadline - Date.now()));
     timer.unref?.();
     this.autoResumeTimers.set(runId, timer);
   }
@@ -1997,7 +2006,7 @@ export class RunManager {
    *  caller is a fresh epoch: a human Continue, or a resume that re-stamps its own count. */
   private clearAutoResume(runId: string): void {
     const timer = this.autoResumeTimers.get(runId);
-    if (timer) clearTimeout(timer);
+    if (timer) this.autoResumeTimer.cancel(timer);
     this.autoResumeTimers.delete(runId);
     const run = this.store.getRun(runId);
     if (!run) return;

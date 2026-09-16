@@ -825,6 +825,7 @@ describe('G9 deterministic quota recovery', () => {
       const runner = scriptedRunner([{ error: `Claude AI usage limit reached|${reset}` },
         mode === 'repeat limit' ? { error: `Claude AI usage limit reached|${clock.reset(180)}` } : {}]);
       const manager = new RunManager(store, root, {
+        autoResumeTimer: clock.timer,
         semaphore: new WorkspaceSemaphore({ initial: { autoResumeOnUsageLimit: mode !== 'disabled' } }),
       });
       try {
@@ -864,7 +865,7 @@ describe('G9 account/project quota isolation', () => {
     const clock = providerClock(); const reset = clock.reset();
     const runner = scriptedRunner([{ error: `Claude AI usage limit reached|${reset}` }, {}, {}, {}]);
     const semaphore = new WorkspaceSemaphore({ initial: { maxParallel: 2 } });
-    const managers = roots.map((root, i) => new RunManager(stores[i]!, root, { semaphore }));
+    const managers = roots.map((root, i) => new RunManager(stores[i]!, root, { semaphore, autoResumeTimer: clock.timer }));
     try {
       const limited = managers[0]!.startRun(SINGLE_STEP, { task: 'limited', worktree: false });
       await terminal(stores[0]!, limited.id);
