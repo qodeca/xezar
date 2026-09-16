@@ -53,14 +53,18 @@ This skill does not make the UI change, choose the design or write the review. N
 
 ## Route by task
 
-Filenames are repo-relative under `docs/design-system/`.
+Filenames are repo-relative under `docs/design-system/`. Start with [usage](../../../docs/design-system/usage.md) to scope the task; finish every route with [verification](../../../docs/design-system/verification.md) to identify required evidence. For task tables/pins, threads/composers, settings, overlays or states, open [recipes](../../../docs/design-system/recipes.md) before the pattern and component references. For review/status transitions open [lifecycle](../../../docs/design-system/lifecycle.md); for mockups, handoffs, captures or retirement open [storage](../../../docs/design-system/storage.md). Return these reading requirements to the caller; this routing skill writes none of those outputs.
 
 | Task | Read, in order | Then |
 | --- | --- | --- |
-| New mockup in `designs/<feature>/` | `new-designs.md` → `patterns.md` → `components.md` → `writing.md` | Link `../../docs/design-system/cockpit.css` first and keep only feature rules in the local `styles.css`; open `specimens/index.html` beside the page. |
+| New mockup in `designs/<feature>/` | `new-designs.md` → `recipes.md` → `patterns.md` → `components.md` → `writing.md` | Link `../../docs/design-system/cockpit.css` first and keep only feature rules in the local `styles.css`; open `specimens/index.html` beside the page. |
 | New or changed UI in `packages/web` | `components.md` (reuse before building) → `patterns.md` → `foundations.md` → `behaviour.md` → `writing.md` | Run the drift test and update `coverage.md` and `cockpit.css` in the same commit. |
-| Review of a design or a UI change | `known-gaps.md` (so a gap is not repeated) → `patterns.md` → `components.md` → `behaviour.md` | Check the rules below, then the states and the copy; a departure needs a reason in the PR or in the design's open decisions. The checklist and the verdict words live in `.xezar/skills/xezar-ux-design.md` § Review mode; post the verdict as a `## Design review` PR comment. |
+| Review of a design or a UI change | `known-gaps.md` (so a gap is not repeated) → `patterns.md` → `components.md` → `behaviour.md` | Check the rules below, then the states and the copy; a departure needs a reason in the PR or in the design's open decisions. The checklist and the verdict words live in `.xezar/skills/xezar-ux-design.md` § Review mode; the caller’s read-only reviewer posts the verdict as a `## Design review` PR comment, following `lifecycle.md` and `storage.md`. |
 | Theme, accent, density or width | `theming.md` → `foundations.md` | Keep `packages/web/index.html` pre-paint and `lib/theme.ts` + `lib/appearance.ts` in step. |
+
+## Output ownership
+
+The design author owns the static mockup and developer README handoff in `designs/<feature>/`, including a Pending review section in the feature README and Draft status in both the feature README and index. The read-only reviewer owns the verdict and review evidence, never tree edits. The author links the verdict, disposes findings and reconciles both status locations under `lifecycle.md`; Approved needs a passing verdict on identified content and all dispositions. Record owner acceptance of exact scope/revision externally in the issue or PR; neither a label nor a finished run is acceptance. `storage.md` separates safe durable captures from private working evidence. SDLC owns label authority, exceptions and gates; routing does not skip any stage.
 
 ## The rules
 
