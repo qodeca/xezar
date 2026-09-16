@@ -83,6 +83,11 @@ Export variables before starting xezar, for example `XEZ_REVIEW_GATE=1 xezar`. T
 | `XEZ_REMOTE=1` | Hosted-mode capabilities; hides local-machine handoffs. |
 | `XEZ_BROWSE_ROOT`, `XEZ_PROJECTS_DIR` | Seeds for the two stored folder settings above. |
 | `XEZ_HOME` | Global state directory; empty means `~/.xezar`. |
+| `XEZ_PORT=4321` | The port `xezar` starts from, then the next free port above it. Without `-p/--port` and without this variable the start port is the one pinned for this project (`xezar projects port <id> <port>`), then the port it last listened on, then `4321`. A flag beats this variable, and a pinned project port beats it too, so a `XEZ_PORT` exported once in a shell profile cannot pull every project to one start port. A value that is not a whole number from 0 to 65535 refuses the start with exit 1 before anything is claimed. `--port 0` asks the operating system for any free port and is never remembered. |
+| `XEZ_OUTPUT=auto` | How `xezar serve` presents its activity: `auto` (the default), `lines` or `rich`. A saved `cli.output` overrides this variable; `--output` overrides both. |
+| `XEZ_COLOR=auto` | Colour: `auto` (the default), `always` or `never`. `NO_COLOR` with any non-empty value is honoured and outranks both a saved `cli.color` and this variable; an explicit `--color` outranks `NO_COLOR`; and a transport that must stay byte-exact — the MCP's JSON-RPC stdout — outranks all of them. |
+| `XEZ_LOG_LEVEL=info` | Diagnostic threshold: `debug`, `info` (the default), `warn` or `error`. A saved `cli.logLevel` overrides this variable; `--log-level` overrides both. |
+| `XEZ_QUIET=1` | Warnings and errors only; only the exact value `1` enables it, and `--quiet` is the flag. It raises the threshold but never lowers one you set higher. |
 | `XEZ_CLAUDE_BIN`, `XEZ_CODEX_BIN`, `XEZ_OPENCODE_BIN`, `XEZ_PI_BIN` | Override backend executable discovery on `PATH`. |
 | `XEZ_CODEX_REASONING` | `auto` (default), `concise`, `detailed` or `none`; unknown values use `auto`. |
 | `XEZ_APPROVAL_GATE=1` | Claude `acceptEdits` approval mode instead of the default denial of tools needing approval. |

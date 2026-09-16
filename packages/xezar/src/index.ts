@@ -38,6 +38,19 @@ import { checkForUpdate } from './update-check.ts';
 import { detectInstallChannel } from './install-channel.ts';
 import { printSkillsBanner } from './skills-banner.ts';
 import { loadWorkspaceConfig } from './workspace/config.ts';
+import {
+  CliSettingsError,
+  parseCliInvocation,
+  resolveCliSettings,
+  PORT_MAX,
+  type CliInvocation,
+} from './cli-settings.ts';
+import {
+  firstUnreservedPort,
+  portsReservedByOtherProjects,
+  readStoredCliSettings,
+  rememberLastListen,
+} from './workspace/port-memory.ts';
 import { runMigrations } from './workspace/migrations.ts';
 import { registerProject, shouldRegisterProject } from './workspace/projects.ts';
 import { runProjectsCommand } from './workspace/projects-cli.ts';
@@ -51,7 +64,8 @@ Usage:
   xezar run "<task>"        run a task headless in the terminal
   xezar init                scaffold .xezar/ (example workflow + skill)
   xezar projects            list the projects this cockpit serves
-                            (also: projects add [<dir>] · projects remove <id>)
+                            (also: projects add [<dir>] · projects remove <id>
+                             · projects port <id> [<port>])
   xezar mcp                 MCP bridge for a coding agent — the agent starts it
                             (stdio), in a project whose cockpit is running
   xezar server-install      interactive wizard to host xezar on a server
@@ -59,8 +73,16 @@ Usage:
   xezar server-uninstall    reverse a server-install
 
 Options:
-  -p, --port <n>              cockpit port (default 4321; server-install: this
-                              instance's loopback port — auto-picked per domain)
+  -p, --port <0..65535>       cockpit port. Without it: this project's saved port,
+                              then XEZ_PORT, then the port it last listened on,
+                              then 4321 — and the next free one from there.
+                              \`--port 0\` asks the OS for any free port.
+                              (server-install: this instance's loopback port —
+                              auto-picked per domain, never from serve memory)
+      --output <mode>         serve activity: auto (default), lines, rich
+      --color <when>          auto (default), always, never (NO_COLOR honoured)
+      --log-level <level>     debug, info (default), warn, error
+  -q, --quiet                 warnings and errors only
       --repo <dir>            repo to operate on (default: cwd)
       --workflow <name>       workflow for \`run\` (default: quick-task)
       --model <model>         model override for \`run\`
@@ -91,7 +113,14 @@ workflows in .xezar/workflows/.`;
 async function main(): Promise<void> {
   const { values, positionals } = parseArgs({
     options: {
-      port: { type: 'string', short: 'p', default: '4321' },
+      // No `default` any more (#467): the fallback is no longer a constant but a
+      // precedence chain that needs the registry, so "the flag was not given" has to
+      // stay observable here. That also retires the argv sniff below.
+      port: { type: 'string', short: 'p' },
+      output: { type: 'string' },
+      color: { type: 'string' },
+      'log-level': { type: 'string' },
+      quiet: { type: 'boolean', short: 'q', default: false },
       repo: { type: 'string' },
       workflow: { type: 'string' },
       model: { type: 'string' },
@@ -109,13 +138,10 @@ async function main(): Promise<void> {
     allowPositionals: true,
   });
 
-  // `port` carries a default, so its presence can't tell an explicit `--port`
-  // from the fallback. server-install needs that distinction (explicit port
-  // wins; otherwise a new named instance auto-picks a free one), so detect the
-  // flag straight from argv.
-  const portExplicit = process.argv
-    .slice(2)
-    .some((a) => a === '-p' || a === '--port' || a.startsWith('--port=') || a.startsWith('-p='));
+  // server-install needs to know whether a port was actually asked for (explicit port wins;
+  // otherwise a new named instance auto-picks a free one). With the `default` gone, the
+  // parsed value answers that directly — no argv sniffing, and no `-p=` spelling to guess at.
+  const portExplicit = values.port !== undefined;
 
   if (values.help) {
     console.log(HELP);
@@ -129,6 +155,28 @@ async function main(): Promise<void> {
     return;
   }
 
+  // Flags and environment are validated FIRST, before the registry is read, before the
+  // project writer claim and before any listener (`multi-instance.md` § 9). A refused
+  // invocation must touch nothing: `xez --port 43a1` is a typo, not a half-started cockpit.
+  let invocation: CliInvocation;
+  try {
+    invocation = parseCliInvocation(
+      {
+        ...(values.port !== undefined ? { port: values.port } : {}),
+        ...(values.output !== undefined ? { output: values.output } : {}),
+        ...(values.color !== undefined ? { color: values.color } : {}),
+        ...(values['log-level'] !== undefined ? { logLevel: values['log-level'] } : {}),
+        quiet: Boolean(values.quiet),
+      },
+      process.env,
+    );
+  } catch (err) {
+    if (!(err instanceof CliSettingsError)) throw err;
+    console.error(`error  ${err.message}`);
+    process.exitCode = 1;
+    return;
+  }
+
   const command = positionals[0] ?? 'serve';
   const cwd = resolve(values.repo ?? process.cwd());
   const repoInfo = await getRepoInfo(cwd);
@@ -136,7 +184,7 @@ async function main(): Promise<void> {
 
   switch (command) {
     case 'serve':
-      await serveCommand(repoRoot, Number(values.port), !values['no-open'], values['bind-host']);
+      await serveCommand(repoRoot, invocation, !values['no-open'], values['bind-host']);
       return;
     case 'run':
       await runCommand(repoRoot, positionals.slice(1).join(' ').trim(), values.workflow, values.model);
@@ -170,7 +218,10 @@ async function main(): Promise<void> {
         reconfigure: values.reconfigure,
         reinstall: Boolean(values.reinstall),
         domain: values.domain,
-        port: portExplicit ? Number(values.port) : undefined,
+        // server-install keeps its OWN port semantics: an explicit port, or a port this
+        // installer picks per domain from its own state. `serve`'s memory never reaches
+        // here — a hosted instance's port belongs to its systemd unit and its nginx site.
+        port: portExplicit ? invocation.flagPort : undefined,
         externalProxy: Boolean(values['external-proxy']),
         bindHost: values['bind-host'],
       });
@@ -226,11 +277,34 @@ async function initWorkspace(repoRoot: string): Promise<string | undefined> {
 
 async function serveCommand(
   repoRoot: string,
-  preferredPort: number,
+  invocation: CliInvocation,
   openBrowser: boolean,
   bindHost?: string,
 ): Promise<void> {
   const bootProjectId = await initWorkspace(repoRoot);
+  // The registry is read AFTER registration, so a first start in a repo already sees its own
+  // row. Everything below is best-effort: a home that cannot be read resolves to "nothing
+  // stored", which is the 4321 default and the behaviour every xezar before this had.
+  const stored = await readStoredCliSettings(bootProjectId);
+  const settings = resolveCliSettings(invocation, stored, {
+    isTty: process.stderr.isTTY === true,
+  });
+  // One line per mangled stored value, then the key is treated as absent (A10). A file
+  // someone's editor broke must never be the reason a cockpit does not start.
+  for (const warning of settings.warnings) console.warn(warning);
+  // PR 3 consumes `settings` for the renderer; PR 2 resolves the values and renders nothing
+  // new. Referenced here so a future reader sees where the object is meant to be threaded.
+  void settings.output;
+
+  // Skipping applies only when the start port came from memory or from the 4321 default: a
+  // port a PERSON asked for is tried as asked, however busy the registry thinks it is.
+  const reserved =
+    settings.port.explicit || !stored.config
+      ? new Set<number>()
+      : portsReservedByOtherProjects(stored.config, bootProjectId);
+  const requestedPort = settings.port.ephemeral
+    ? settings.port.value
+    : firstUnreservedPort(settings.port.value, reserved);
   // ONE workspace semaphore for the whole process (spec 2026-07-20, step 2.5):
   // the boot manager and every lazily-built project context count their runs
   // against the same `resources.maxParallel`. The boot refresh() below is the
@@ -307,12 +381,12 @@ async function serveCommand(
     onApp: (built) => {
       app = built;
     },
-  }, preferredPort);
+  }, requestedPort);
   // Nothing below may claim a cockpit before the bind really succeeded (#238): the port
   // comes from the listening server itself, never from an earlier "is it free" probe.
   let port: number;
   try {
-    port = await listenOnFreePort(server, preferredPort, bindHost ?? '127.0.0.1');
+    port = await listenOnFreePort(server, requestedPort, bindHost ?? '127.0.0.1', reserved);
   } catch (err) {
     store.flush();
     throw err;
@@ -328,6 +402,19 @@ async function serveCommand(
         `    and make sure this interface is not reachable from the internet.\n`,
     );
   }
+  // Remember the address this project's cockpit really holds (#467) — AFTER the bind, with
+  // the port the listener reported, never the one that was requested. A `--port 0` start is
+  // deliberately not remembered: "any free port" is a request for anything, and storing the
+  // 53122 the OS handed out would make the next plain `xez` start at a random high port.
+  // Best-effort in every direction: no row, no home, or a home that cannot be written costs
+  // one warning and nothing else (`error-cases.txt` A11).
+  if (bootProjectId && !settings.port.ephemeral) {
+    const remembered = await rememberLastListen(bootProjectId, port, bindHost ?? '127.0.0.1');
+    if (!remembered) {
+      console.warn(`[xez] could not remember port ${port} for this project — the cockpit works anyway`);
+    }
+  }
+
   // The boot project's MCP socket (#86, D-01 § 5.4), composed over the same app and store
   // the cockpit uses (#243). Fire-and-forget: it never delays or fails boot (N-07), and a
   // failure is one warning.
@@ -363,7 +450,7 @@ async function serveCommand(
     console.log(`  ${mark} ${check.name.padEnd(6)} ${detail}`);
   }
   // `--port 0` asks the OS for any port; getting one is not "busy".
-  if (port !== preferredPort && preferredPort !== 0) console.log(`  (port ${preferredPort} was busy — using ${port})`);
+  if (port !== requestedPort && requestedPort !== 0) console.log(`  (port ${requestedPort} was busy — using ${port})`);
   console.log(`\n  cockpit → ${url}\n`);
   // Silenced by XEZ_NO_BANNER=1 or by dismissing the cockpit's banner (#391).
   await printSkillsBanner(repoRoot);
@@ -417,14 +504,21 @@ async function startMcpSocket(opts: {
   }
 }
 
-/** How many ports `serve` tries: the requested one and the 49 after it. */
+/** How many BINDS `serve` tries before giving up. Ports skipped for another project do not
+ *  spend from this budget — see `listenOnFreePort`. */
 const PORT_SPAN = 50;
 
 /**
  * Wait for `server` — whose first `listen(first, host)` is already under way — to really
  * listen, and resolve the port it bound. A busy port moves the SAME server to the next one
  * (BACKWARD_COMPATIBILITY.md §1/§3: "auto-picks the next free port"), until PORT_SPAN
- * candidates are used up; any other bind error, or running out, rejects with one clear line.
+ * binds are used up or the range would pass 65535; any other bind error, or running out,
+ * rejects with one clear line.
+ *
+ * `reserved` (#467) names ports OTHER registered projects hold or remember. It is populated
+ * only when the start port came from memory or from the 4321 default — never for a port a
+ * person asked for — and it exists to stop two projects that are rarely both running from
+ * swapping ports on every restart, which breaks every bookmark they had.
  *
  * This replaces a probe that proved a port free and then released it, which let anything
  * take the port before the real bind and left a printed cockpit URL with nobody behind it
@@ -434,27 +528,47 @@ const PORT_SPAN = 50;
  * must not be called here: it emits `close`, which `startServer` treats as the end of the
  * server and uses to stop its schedulers.
  */
-function listenOnFreePort(server: Server, first: number, host: string): Promise<number> {
-  const last = first + PORT_SPAN - 1;
+function listenOnFreePort(
+  server: Server,
+  first: number,
+  host: string,
+  reserved: ReadonlySet<number> = new Set(),
+): Promise<number> {
   return new Promise((resolvePort, reject) => {
     let port = first;
+    // How many binds have been ATTEMPTED. A port skipped because another project holds it
+    // costs nothing from this budget: the guarantee is "at most 50 binds", and spending the
+    // budget on ports we never even tried would shrink the real range without saying so.
+    let attempts = 1;
+    let last = first;
     const fail = (message: string) => {
       server.off('error', onError);
       server.off('listening', onListening);
       reject(new Error(message));
     };
+    /** The next port to bind: one past the current one, then past anything reserved. */
+    const advance = (): number | null => {
+      let next = port + 1;
+      while (next <= PORT_MAX && reserved.has(next)) next += 1;
+      return next <= PORT_MAX ? next : null;
+    };
     const onError = (err: NodeJS.ErrnoException) => {
       if (err.code !== 'EADDRINUSE') {
         fail(`cannot listen on ${host}:${port} (${err.message})`);
-      } else if (port >= last) {
+        return;
+      }
+      const next = attempts >= PORT_SPAN ? null : advance();
+      if (next === null) {
         fail(`no free port in ${first}–${last} on ${host}; free one or pass --port <port>`);
-      } else {
-        port += 1;
-        try {
-          server.listen(port, host);
-        } catch (listenErr) {
-          fail(`cannot listen on ${host}:${port} (${listenErr instanceof Error ? listenErr.message : String(listenErr)})`);
-        }
+        return;
+      }
+      port = next;
+      last = next;
+      attempts += 1;
+      try {
+        server.listen(port, host);
+      } catch (listenErr) {
+        fail(`cannot listen on ${host}:${port} (${listenErr instanceof Error ? listenErr.message : String(listenErr)})`);
       }
     };
     const onListening = () => {
