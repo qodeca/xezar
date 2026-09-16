@@ -121,6 +121,7 @@ fix: If the leader is working, nothing is needed. Otherwise check that Claude Co
 
 ## 📝 Specs & Documentation
 - 📝 **A project leader works through the MCP tools only, attached so events are pushed.** (related #439) The owner's operating rule of 2026-09-15 is now stated in the README, `AGENTS.md`, the MCP API reference, the dogfooding findings and the `.xezar` kit: a leader uses the xezar MCP tools, never the cockpit UI or the HTTP API; it is attached so events arrive as `<channel source="xezar">` messages (a started turn for Codex, OpenCode and pi); `leader_events` is the fallback for a leader that is not attached; `gh` stays the way to read GitHub facts. The strings a leader reads follow it: the MCP `initialize` instructions and the `leader_events`, `discover_project` and `health` descriptions no longer promise pushes to an unattached session and name the attach door (Settings → MCP connection → Attach leader, or `POST /api/v1/p/<projectId>/mcp/leader {"action":"attach","client":"claude-code"}` against the cockpit, with `<projectId>` from `discover_project` and the leader's own client – OpenCode also sends `baseUrl` and `sessionId`), the `no-leader-session` blocker names it too, the role text pushed with each event states the rule, and a tool that is not connected tells the leader to report the blocker instead of using the cockpit. No behaviour changes; there is still no MCP action that attaches a leader. #450, in this release, adds that action (✨ above), and the strings now name it instead of the HTTP call.
+- 📝 **Staleness sweep area A: root contracts.** (#447)
 - 📝 **MCP real-model leg for A-19 passed post-release on pi.** (#373) The manual measurement uses the bare model id and verifies nonce/cursor acknowledgement. The logged revision is `7aa4a0258cd99852ff0a6878dff1c96257f49024`, stamp `2026-09-13T17-43-42.875Z`, model `deepseek-v4-flash-vision`, and the ack arrived +15.8 s after delivery in a 120 s window.
 - 📝 **MCP real-model leg for A-19/A-23 passed for Claude Code and Codex.** (part of #67) On revision `a6d53b4bccfe07803a792c54ff335432d4ad0b49` (`main` at `ab28cb0` plus test-only commits), a real model read a delivered `task.done` event and acknowledged it through `leader_events` with the exact run-id nonce and the cursor of its own read: Claude Code 2.1.272 with `sonnet` over Channels (stamp `2026-09-15T10-42-29.522Z`, ack +8.6 s) and Codex CLI 0.154.0 with `gpt-6-astra` through its shared app-server (stamp `2026-09-15T10-41-35.784Z`, ack +11.9 s), each with the owner's own login. OpenCode is out of scope for this clause by the owner's decision of 2026-09-13 (#340). The Definition of Done record now reads 8 of 8, clause 2 by the owner's acceptance of 2026-09-15: the rows span three revisions and never all passed on one.
 - 📝 **`SDLC.md`, `CODE_REVIEW.md` and `CONTRIBUTING.md` name the kit roles.** (#396) The process documents
@@ -1031,46 +1032,6 @@ addition is `--version` / `-v` on the CLI.
 
 ---
 
-# Renamed to Xezar (2026-09-08)
-
-**Cezar is now Xezar.** Same tool, new identity: published as
-[`@qodeca/xezar`](https://www.npmjs.com/package/@qodeca/xezar) from
-[`qodeca/xezar`](https://github.com/qodeca/xezar), providing the `xezar` and `xez` commands.
-
-```bash
-npm install -g @qodeca/xezar
-```
-
-Xezar is an **independent application**, not an upgrade of Cezar. It keeps its own state —
-`~/.xezar/`, `.ai/xezar/`, `~/.cache/xez/` — and never reads, moves or deletes anything Cezar
-owns. An existing Cezar install keeps working, untouched, side by side.
-
-Everything a user has to change is listed in
-[BACKWARD_COMPATIBILITY.md → "The Xezar rename"](BACKWARD_COMPATIBILITY.md#the-xezar-rename--a-deliberate-clean-break-0101).
-The short version:
-
-- `CEZ_*` environment variables are now `XEZ_*` (see `.env.example`).
-- Agent markers `CEZ:DONE` / `CEZ:ASK` / … are now `XEZ:DONE` / `XEZ:ASK` / … — update any skill
-  or prompt that emits them.
-- Cockpit browser preferences (theme, accent, density, sidebar width, unsent drafts) reset once,
-  because they live under new storage keys.
-- Copy your history across by hand if you want it: `cp -R ~/.cezar/ ~/.xezar/` and
-  `cp -R .ai/cezar/ .ai/xezar/`. Both are plain files.
-
-Also in this release: the unscoped `cezar-cli` alias package is retired — there is now exactly
-one published package — and automatic npm publishing (PR previews, `develop` snapshots and the
-nightly channel) is gone. Releases are manual, owner-triggered and go straight to `latest`; see
-[docs/publishing.md](docs/publishing.md).
-
-> **About the entries below.** Everything under this line was written while the product was
-> called Cezar, published first as `@pat-lewczuk/cezar` and then as the pre-rename scoped package
-> with the unscoped `cezar-cli` alias. The entries keep the wording that was true when they were
-> written, because a changelog records what actually shipped; the one exception is that the
-> pre-rename organisation's name and its issue links were removed on 2026-09-13. The old packages
-> remain on npm, unchanged.
-
----
-
 # 0.11.0 (2026-09-09)
 
 ## Highlights
@@ -1150,6 +1111,46 @@ documentation, which the published package does not carry.
   publisher had never been created despite `docs/publishing.md` recording that it had — that guide
   now says so plainly, and documents the `Allow npm publish` permission whose absence produces a
   404 that reads as if the package did not exist. (#9)
+
+---
+
+# Renamed to Xezar (2026-09-08)
+
+**Cezar is now Xezar.** Same tool, new identity: published as
+[`@qodeca/xezar`](https://www.npmjs.com/package/@qodeca/xezar) from
+[`qodeca/xezar`](https://github.com/qodeca/xezar), providing the `xezar` and `xez` commands.
+
+```bash
+npm install -g @qodeca/xezar
+```
+
+Xezar is an **independent application**, not an upgrade of Cezar. It keeps its own state —
+`~/.xezar/`, `.ai/xezar/`, `~/.cache/xez/` — and never reads, moves or deletes anything Cezar
+owns. An existing Cezar install keeps working, untouched, side by side.
+
+Everything a user has to change is listed in
+[BACKWARD_COMPATIBILITY.md → "The Xezar rename"](BACKWARD_COMPATIBILITY.md#the-xezar-rename--a-deliberate-clean-break-0101).
+The short version:
+
+- `CEZ_*` environment variables are now `XEZ_*` (see `.env.example`).
+- Agent markers `CEZ:DONE` / `CEZ:ASK` / … are now `XEZ:DONE` / `XEZ:ASK` / … — update any skill
+  or prompt that emits them.
+- Cockpit browser preferences (theme, accent, density, sidebar width, unsent drafts) reset once,
+  because they live under new storage keys.
+- Copy your history across by hand if you want it: `cp -R ~/.cezar/ ~/.xezar/` and
+  `cp -R .ai/cezar/ .ai/xezar/`. Both are plain files.
+
+Also in this release: the unscoped `cezar-cli` alias package is retired — there is now exactly
+one published package — and automatic npm publishing (PR previews, `develop` snapshots and the
+nightly channel) is gone. Releases are manual, owner-triggered and go straight to `latest`; see
+[docs/publishing.md](docs/publishing.md).
+
+> **About the entries below.** Everything under this line was written while the product was
+> called Cezar, published first as `@pat-lewczuk/cezar` and then as the pre-rename scoped package
+> with the unscoped `cezar-cli` alias. The entries keep the wording that was true when they were
+> written, because a changelog records what actually shipped; the one exception is that the
+> pre-rename organisation's name and its issue links were removed on 2026-09-13. The old packages
+> remain on npm, unchanged.
 
 ---
 
