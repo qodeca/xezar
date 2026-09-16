@@ -77,6 +77,95 @@ Updated: <date and time>
 | Merge | `.xezar/checks/integration-preflight.sh` reports, read-only, whether a PR can merge now and what blocks it otherwise. The `integration` workflow (`xezar-integration`) re-checks every gate and squash-merges. | `integration` workflow (`xezar-integration`), or a human | PR squash-merged into `main` |
 | Post-merge housekeeping | Close issues the merged PR fixes; comment on issues whose PRs were closed without merging; turn leftover asks or review comments into tracked follow-up issues. | The integrating human or leader; `xezar-integration` verifies issue scope after merge, and `.xezar/docs/close-out.md` sets how each scope item is disposed | Tracker reconciled, follow-ups filed |
 
+## Task phases
+
+The table above says what happens to a **ticket**. This section says what happens inside one **task** — one agent run, or one person's sitting — and what that task writes down. The two describe the same work: a lifecycle stage is delivered by one or more of the phases below.
+
+This section adds no label, changes no gate exception, and adds no command to the validation gate. It names the order the existing pieces run in, and the facts each phase leaves behind so the next one does not have to guess. Where those facts are written — the primary checkout's `.local/xezar-tasks/<runId>/`, never a worktree that can be reclaimed — and the field names are in [.xezar/docs/phase-record.md](.xezar/docs/phase-record.md).
+
+| Phase | What it settles | What it records |
+|---|---|---|
+| Triage and preflight | The work is real, unclaimed and runnable here; the task is on its own branch in its own checkout. | Capability inventory (which tools, backends and networks are actually available), the chosen **depth**, and the inputs' **maturity** |
+| Analysis | What the change must do, in criteria a reader can check. | Accepted acceptance criteria, each with an ID, and the authority that accepted them |
+| Discovery and plan | Which files change, which contracts are affected, and how it will be proven. | The plan, plus its plan review — and a UI design review when the change is UI in scope |
+| Author | The change itself: code, tests, docs, and a focused self-review. | Commits, the self-review rounds used, and the documentation applicability decision |
+| Readiness | Nothing unresolved blocks a gate run. | `BLOCKED` when a required decision, an unavailable check or an exhausted counter stands in the way |
+| Canonical checks | The validation gate, with the security assessment resolved **before** any quality verdict. | Complete logs, real outcomes, and the security result as its own record |
+| Seal | The evidence belongs to this exact candidate. | The head SHA the evidence was taken at, hashed |
+| Handoff | A reviewable PR exists. It changes no content and makes no late commit. | PR number, head SHA, labels and their stated reasons |
+| Independent review | Whether the solution is sound, read-only, by someone other than the author. | The review verdict at a named head, with each finding's disposition ([CODE_REVIEW.md](CODE_REVIEW.md)) |
+| AC verification | Whether each accepted criterion is actually met. | Each AC ID mapped to the evidence that satisfies it, at the current head |
+| QA and design gate | Whether it works, and whether it is the right surface — two different questions. | The `## QA` and `## Design review` comments the gates below already define |
+| Integration | Whether every applicable verdict, label and CI check is green at the reviewed head. | The merge commit, and the tracker reconciliation after it |
+
+A required decision that is not yours, a required check that is unavailable, or an exhausted repair counter ends the phase as **blocked**: write the `BLOCKED` record, keep the evidence, let independent work continue, and never proceed by lowering a severity or a threshold. Silence from the owner grants nothing.
+
+### Depth
+
+Three levels. Pick the highest that applies; a small line count or an `enhancement` label alone cannot pull a change down a level.
+
+- **small** — one bounded surface with known behaviour. Short assessments may be combined, and the plan can be a paragraph.
+- **standard** — a feature, or several components. Full plan and full independent review.
+- **high-risk** — a trust boundary, a state migration, concurrency, API or state-file compatibility, or broad impact across the tree. Adds explicit recovery, compatibility and adversarial evidence, and normally a second reader on the risky part.
+
+Depth scales the weight of each phase, never whether a phase happened: every phase above is accounted for at every depth, including as an explicit "not applicable, because …". A programme larger than one task is split into bounded tasks, not given a fourth level.
+
+Depth and the `risk-high` label answer nearly the same question from two sides — depth sizes the work, `risk-high` warns the reviewer — and they normally agree. A high-risk depth without `risk-high` on the PR says why in the PR body.
+
+### Maturity of the inputs
+
+Maturity is what the task was handed, and it is separate from depth. The ladder is: **issue only** → **accepted analysis** → **complete spec** → **spec plus approved design**.
+
+**A file's existence is not maturity.** A spec that exists but has no readable criteria, no accepted authority, stale dependency assumptions or a missing design is not a complete spec, and a `designs/<feature>/` directory whose README is not Approved is not an approved design. Validate the inputs before discovering the same ground again: exact readable criteria, the authority that accepted them, the contracts the change touches, current dependency assumptions, and applicable design evidence. A missing or stale part returns to targeted discovery. It never quietly becomes permission to start coding.
+
+### Ownership
+
+- **Review roles never edit the author's checkout.** Code review, design review, QA and AC verification are read-only and get their own task on immutable inputs. Findings go back to the original author's repair task, on the original branch and PR.
+- **An implementation agent never marks its own work independently approved.** A self-review is the author's own evidence and says so. `qa-approved`, `design-approved` and an approving code review come from someone else — except through the two written self-verification exceptions the QA and design gates below already define, which exist precisely so that the exception is auditable.
+- Role is not a backend. Author, reviewer and QA are jobs, not model pins; any available backend may hold any of them, subject to the separation above.
+
+### Self-review inside the author phase, and the repair counters
+
+The author phase carries a focused self-review: assess the plan before editing, assess the completed change, and check it is actually ready for an independent reader. It is an author's own quality step, not a substitute for the independent review, the design review or QA.
+
+**At most two self-review fix rounds per candidate.** Count each round durably before you apply it. An initial assessment and a final verification are not fix rounds.
+
+That budget is a third one, next to the two that already exist, and none of them substitutes for another:
+
+| Counter | Limit | Scope |
+|---|---|---|
+| Self-review fix rounds | 2 | Inside one candidate's authoring work |
+| Workflow gate-repair returns | 2 | A gated workflow returning to development |
+| Quality-gate repairs of the same failure | 2 | The same failing check, repeated |
+
+Gate-driven re-entry, a Continue, a switch to a different backend and a replacement run all **continue** an existing count. None of them starts a fresh allowance. Every repair records what triggered it and which counters it consumed. An exhausted counter blocks another repair: stop, report the remaining failure with its evidence, and never lower a severity, a threshold or a mandatory check to get past it (F-22 already says no exemption, label or request for permission waives a mandatory check). Missing or unknown counter history reads as unknown, not as zero, and blocks another repair until it is reconciled. Genuinely new scope needs a new accepted plan — not the same finding under a new name.
+
+### Security before the quality verdict
+
+The security assessment belongs inside the canonical check run, as a named stage of it — not a separate approval, and not an extra workflow step. It produces its own structured result, and that result is read **before** anyone gives a quality verdict. It is required whenever code or security capabilities apply, and it waives no existing policy requirement.
+
+**Today it is a written record, not a command.** The check that emits the result is sequenced follow-up work (#469); until it lands, the author writes the stage's result into the phase record and an absent result reads as unknown. What the stage must contain does not wait for the command:
+
+- For a code change: use the project-approved dependency, secret and static checks; validate the expected inputs and scope first; run what is available with a bounded execution; classify findings under the rules in [CODE_REVIEW.md](CODE_REVIEW.md) § Security. An unavailable required scanner, a parse error, an empty inventory where one was expected, or an interrupted scan is recorded as **unknown** — never as a pass.
+- A changed trust boundary also gets a human or a security reviewer. Automation cannot prove that an authorization decision is correct.
+- For non-code work: record the code-security applicability decision and the artefact that supports it, and run the checks that do fit — source verification, confidential-data handling, claim checking against the supplied criteria. Software fixtures inside otherwise non-code work still get software checks. Mixed work takes the union.
+- Discovery must not require new network access or a tool install. An unavailable required capability blocks that stage of the work; it never blocks xezar from starting.
+
+### AC verification is not the quality review
+
+They answer different questions, and one never stands in for the other:
+
+- **AC verification** maps each accepted acceptance-criterion ID to the evidence that satisfies it, at the current candidate head. It is a semantic check of *did we build what was accepted*.
+- **The quality review** answers *is this solution sound* against [CODE_REVIEW.md](CODE_REVIEW.md).
+
+A change that is sound and misses an accepted criterion is not done. A change that meets every criterion with a design the review refuses is not done either.
+
+### Naming the break
+
+[§ The MCP test floor](#the-mcp-test-floor) requires every test on that scope to be shown failing without the behaviour it covers. **The technique is general; the 80 % per-file coverage floor is not.** Every meaningful new behaviour test, anywhere in this repository, names a concrete regression — the file, the line and the change (a flipped condition, a swapped operator, a deleted call) — and records an actual failing run: either before the fix, or after re-applying the break in an isolated fixture. Quote the assertion that failed.
+
+A guard test that pins a behaviour nobody should change may pass both ways and is worth keeping — but the record says which kind each test is, and a test that passes both ways is never the only proof of a regression. AGENTS.md § Changing a mechanism that already works describes how to take the red run; this section generalizes **when it is expected**, not how it is done.
+
 ## Label state machine
 
 This section lists only labels that exist in `qodeca/xezar`. Verify with `gh label list --limit 200`, and create a label before this document tells anyone to apply it — a step that names a label the repository does not have stops the flow at its first `gh` call. The reproducible create list lives in `.xezar/pipeline/trackers/github.md` under **ensure-label-taxonomy**.
