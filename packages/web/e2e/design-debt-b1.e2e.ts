@@ -369,6 +369,9 @@ function sweep(): Sweep {
   )
   overflow.push(read<Overflow>(`__overflow('/settings/global/accounts')`))
 
+  // A 44px shell bar can leave this control partly below the phone viewport. Bring the
+  // whole target into view before a pointer click; the driver may accept partial visibility.
+  browser.evaluate(`document.querySelector('${ADD_ACCOUNT}').scrollIntoView({ block: 'center' })`)
   browser.click(ADD_ACCOUNT)
   browser.waitForFunction(`document.querySelector('${DIALOG_CLOSE}') !== null`)
   waitStill(ADD_ACCOUNT_DIALOG)

@@ -41,17 +41,13 @@ import {
   writeStoredSidebarWidth,
 } from '@/lib/sidebar-width'
 import { cn } from '@/lib/utils'
+import { useIsDesktop } from '@/lib/use-desktop'
 // The xezar brand mark. A `public/` asset, not a bundled import: the service serves the
 // same file at this exact path (`GET /xezar.svg` — the favicon index.html points at), so
 // a second, hashed URL for the same picture would be one cache entry too many. Vite serves
 // `public/` at the root in dev and copies it into the build, so the path holds in both.
 // Its own gradient + rounded corners ARE the tile.
 const brandLogoUrl = '/xezar.svg'
-
-/** Tailwind's `md`. The drawer is the `<md` affordance, so this must stay in step with the
- *  `md:hidden` / `md:flex` classes below — they are the same breakpoint expressed twice, once
- *  for CSS and once for the state machine. */
-const DESKTOP_MEDIA_QUERY = '(min-width: 768px)'
 
 export type RepoChip = {
   name: string
@@ -208,16 +204,10 @@ export function AppShell({
 
   // The drawer must not outlive its breakpoint: widening past `md` reveals the real sidebar, and
   // an open drawer would leave a focus-trapping modal over an already-visible nav.
+  const desktop = useIsDesktop()
   React.useEffect(() => {
-    const query = window.matchMedia?.(DESKTOP_MEDIA_QUERY)
-    if (!query) return
-    if (query.matches) setMenuOpen(false)
-    const onChange = (event: MediaQueryListEvent) => {
-      if (event.matches) setMenuOpen(false)
-    }
-    query.addEventListener('change', onChange)
-    return () => query.removeEventListener('change', onChange)
-  }, [])
+    if (desktop) setMenuOpen(false)
+  }, [desktop])
 
   const nav = {
     activeTo,
@@ -443,9 +433,9 @@ function MobileNavDrawer({ onNavigate, ...props }: NavProps & { onNavigate: () =
         onNavigate={onNavigate}
         headerAction={
           <SheetClose asChild>
-            {/* size-11: the ≥44px touch target the spec's mobile rules require. */}
+            {/* Button supplies the absolute phone floor independently of size-11. */}
             <Button variant="ghost" size="icon" aria-label="Close menu" className="-mr-2 size-11">
-              <XIcon className="size-[17px]" aria-hidden="true" />
+              <XIcon className="size-4" aria-hidden="true" />
             </Button>
           </SheetClose>
         }
@@ -514,20 +504,20 @@ function SidebarContent({
       </div>
 
       <div className="flex gap-1.5 px-2.5 pt-1 pb-2">
-        <Button asChild variant="contrast" className="relative h-10 min-w-0 flex-1 justify-center">
+        <Button asChild variant="contrast" className="relative min-h-tap min-w-0 flex-1 justify-center md:h-10 md:min-h-0">
           {/* A Router Link since R4 Step 1.1: the React /new composer is real, so deliberate
               New task affordances stay inside the SPA. Full document loads of /new (the
               bookmarklet contract) land on the shell like any route (static-ui.ts) — the
               React composer has owned auto-start parity since R4 Step 1.3. */}
           <Link to="/new" onClick={onNavigate}>
-            <PlusIcon className="size-[15px]" aria-hidden="true" />
+            <PlusIcon className="size-4" aria-hidden="true" />
             New task
             {/* Decorative: the `c`-to-create accelerator is registered in the command palette.
                 (⌘N is also bound there, but only the desktop shell receives it — the browser
                 reserves ⌘N for a new window — so the chip advertises the one that always works.) */}
             <kbd
               aria-hidden="true"
-              className="absolute right-2.5 rounded-[5px] border border-b-2 border-contrast-foreground/25 bg-transparent px-[5px] py-px font-mono text-[10.5px] font-medium text-contrast-foreground/60"
+              className="absolute right-2.5 rounded-[5px] border border-b-2 border-contrast-foreground/25 bg-transparent px-1.5 py-px font-mono text-[10.5px] font-medium text-contrast-foreground/60"
             >
               C
             </kbd>
@@ -577,39 +567,22 @@ function SidebarContent({
                   className={cn(
                     // md:h-9 is the desktop row (36px on the scale). In the drawer these are touch targets,
                     // so they relax to 44px — the one place the two framings legitimately differ.
-                    'flex h-11 w-full items-center gap-2.5 rounded-md px-2.5 text-[13.5px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:h-9',
+                    'flex min-h-tap w-full items-center gap-2.5 rounded-md px-2.5 text-[13.5px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:h-9 md:min-h-0',
                     isActive && 'bg-muted font-semibold text-foreground'
                   )}
                 >
                   <Icon className="size-4 shrink-0" aria-hidden="true" />
                   {item.label}
                   {item.badge === 'inbox-count' && inboxCount ? (
-                    <span
-                      data-slot="nav-badge"
-                      className="ml-auto rounded-full bg-violet px-1.5 py-px text-[10.5px] font-semibold text-violet-foreground"
-                    >
-                      {inboxCount}
-                    </span>
+                    <NavBadge>{inboxCount}</NavBadge>
                   ) : null}
                   {/* Unread done items (#unread-done-items): same violet count grammar as the
                       Inbox badge — the two share the "needs a human" hue. */}
                   {item.badge === 'tasks-unread' && unreadCount ? (
-                    <span
-                      data-slot="nav-unread-badge"
-                      title={`${unreadCount} unread finished ${unreadCount === 1 ? 'task' : 'tasks'}`}
-                      className="ml-auto rounded-full bg-violet px-1.5 py-px text-[10.5px] font-semibold text-violet-foreground"
-                    >
-                      {unreadCount}
-                    </span>
+                    <NavBadge data-slot="nav-unread-badge" title={`${unreadCount} unread finished ${unreadCount === 1 ? 'task' : 'tasks'}`}>{unreadCount}</NavBadge>
                   ) : null}
                   {item.badge === 'skills-update' && skillsUpdateAvailable ? (
-                    <span
-                      data-slot="nav-update-marker"
-                      className="ml-auto flex items-center"
-                    >
-                      <span className="size-1.5 rounded-full bg-violet" aria-hidden="true" />
-                      <span className="sr-only">Skills update available</span>
-                    </span>
+                    <SkillsUpdateMarker />
                   ) : null}
                 </Link>
               )
@@ -672,7 +645,7 @@ function AllTasksLink({ onNavigate }: { onNavigate?: () => void }) {
       // rows are muted. The violet icon is the one spot of accent — the same hue the tag chips
       // and this page's own selected filters use, so the door and the room match.
       className={cn(
-        'flex h-11 w-full items-center gap-2.5 rounded-md px-2.5 text-[13.5px] font-semibold text-foreground transition-colors hover:bg-muted md:h-9',
+        'flex min-h-tap w-full items-center gap-2.5 rounded-md px-2.5 text-[13.5px] font-semibold text-foreground transition-colors hover:bg-muted md:h-9 md:min-h-0',
         isActive && 'bg-muted',
       )}
     >
@@ -734,6 +707,7 @@ function GlobalSettingsLink({
  * cheaper half of the trade.
  */
 function AddProjectMenu() {
+  const trigger = React.useRef<HTMLButtonElement>(null)
   const [browsing, setBrowsing] = React.useState(false)
   const [cloning, setCloning] = React.useState(false)
   return (
@@ -743,6 +717,7 @@ function AddProjectMenu() {
         <Button
           variant="outline"
           size="icon"
+          ref={trigger}
           aria-label="Add project"
           title="Add project"
           className="size-11 shrink-0 md:size-10"
@@ -761,8 +736,8 @@ function AddProjectMenu() {
           Clone from GitHub…
         </DropdownMenuItem>
       </DropdownMenuContent>
-      {browsing ? <AddProjectDialog open onOpenChange={setBrowsing} /> : null}
-      {cloning ? <CloneProjectDialog open onOpenChange={setCloning} /> : null}
+      {browsing ? <AddProjectDialog open onOpenChange={setBrowsing} returnFocusRef={trigger} /> : null}
+      {cloning ? <CloneProjectDialog open onOpenChange={setCloning} returnFocusRef={trigger} /> : null}
     </DropdownMenu>
   )
 }
@@ -789,13 +764,13 @@ function CommandPaletteHint() {
       data-slot="command-palette-hint"
       title="Search — command palette (⌘K / Ctrl+K)"
       onClick={() => openCommandPalette()}
-      className="flex w-full items-center gap-1.5 rounded-md border border-border bg-muted/30 px-2 py-1 text-left text-xs font-medium text-soft-foreground transition-colors hover:bg-muted hover:text-foreground"
+      className="flex min-h-tap w-full items-center gap-1.5 rounded-md border border-border bg-muted/30 px-2 py-1 text-left text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:min-h-chip focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
     >
       <SearchIcon className="size-3.5 shrink-0" aria-hidden="true" />
       <span className="truncate">Search…</span>
       <kbd
         aria-hidden="true"
-        className="ml-auto shrink-0 rounded-[5px] border border-b-2 border-border bg-card px-[5px] py-px font-mono text-[10.5px] font-medium text-muted-foreground"
+        className="ml-auto shrink-0 rounded-[5px] border border-b-2 border-border bg-card px-1.5 py-px font-mono text-[10.5px] font-medium text-muted-foreground"
       >
         {commandShortcutHint('k')}
       </kbd>
@@ -817,16 +792,16 @@ function CommandPaletteHint() {
  * the semver, and the `title` keeps the whole string — which is why the tooltip is now there
  * even with no update to announce.
  */
-function VersionChip({ version, latestVersion }: { version: string; latestVersion: string | null }) {
+export function VersionChip({ version, latestVersion }: { version: string; latestVersion: string | null }) {
   const updateAvailable = Boolean(latestVersion && latestVersion !== version)
   return (
     <span
       data-slot="version-chip"
       data-update-available={updateAvailable ? 'true' : undefined}
       title={updateAvailable ? `v${version} — update available: v${latestVersion}` : `v${version}`}
-      className="flex min-w-0 items-center gap-1 rounded-full border border-border px-1.5 py-px font-mono text-[10px] font-medium text-soft-foreground"
+      className="flex min-h-chip min-w-0 items-center gap-1 rounded-full border border-border px-1.5 py-px font-mono text-[10px] font-medium text-soft-foreground"
     >
-      {updateAvailable ? <StatusDot tone="pending" pulse className="size-[5px] shrink-0" /> : null}
+      {updateAvailable ? <StatusDot tone="pending" pulse className="size-1.5 shrink-0" /> : null}
       <span className="truncate">v{version}</span>
     </span>
   )
@@ -837,9 +812,9 @@ function VersionChip({ version, latestVersion }: { version: string; latestVersio
  *
  *  On a development build (#442, decisions.md D-08) a red "D" badge sits on the tile's top-right
  *  corner, so a from-source cockpit cannot be mistaken for the released one. The badge is
- *  absolutely positioned over the tile's own box, so the tile stays 26px and the brand row keeps
- *  its height. Its size and offsets are percentages OF THAT BOX (54% ≈ 14px, 15% ≈ 4px) rather
- *  than spacing units, because the tile never scales with density and the badge must not either.
+ *  absolutely positioned over the tile's own box, so the tile follows the spacing scale and the brand row keeps
+ *  its height. Its size and offsets are percentages OF THAT BOX (54% size, 15% offset) rather
+ *  than spacing units, so the badge follows its tile at every density.
  *  The letter is `--danger-ink`, not `--primary-foreground`, which follows the accent. Any other channel returns the bare `<img>` exactly as before — no wrapper, no
  *  placeholder. The image stays decorative (`alt=""`); the badge carries the words. */
 function BrandTile({ channel }: { channel: HealthResponse['channel'] | null }) {
@@ -849,7 +824,7 @@ function BrandTile({ channel }: { channel: HealthResponse['channel'] | null }) {
       alt=""
       aria-hidden="true"
       data-slot="brand-tile"
-      className="size-[26px] shrink-0 rounded-sm"
+      className="size-7 shrink-0 rounded-sm"
     />
   )
   if (channel !== 'dev') return tile
@@ -875,7 +850,7 @@ function MobileTopBar({ title }: { title: string }) {
       data-slot="mobile-top-bar"
       className="row-start-1 border-b border-border bg-card pt-[env(safe-area-inset-top)] md:hidden"
     >
-      <div className="flex h-11 items-center gap-2.5 px-3">
+      <div className="flex min-h-tap items-center gap-2.5 px-3">
         {/* A real SheetTrigger rather than an onClick that flips our state: it is what registers
             the button as the dialog's trigger, which is what Radix restores focus to on close —
             with a bare onClick, closing the drawer drops focus on <body>. It also carries the
@@ -888,7 +863,7 @@ function MobileTopBar({ title }: { title: string }) {
             // 44px: the minimum touch target, overriding the 36px desktop icon-button size.
             className="-ml-1.5 size-11"
           >
-            <MenuIcon className="size-[17px]" aria-hidden="true" />
+            <MenuIcon className="size-4" aria-hidden="true" />
           </Button>
         </SheetTrigger>
         <span className="truncate text-[14.5px] font-semibold">{title}</span>
@@ -897,4 +872,22 @@ function MobileTopBar({ title }: { title: string }) {
       </div>
     </header>
   )
+}
+
+/** Shared shell count grammar; callers retain their accessible label and data slot. */
+export function NavBadge({ className, ...props }: React.ComponentProps<'span'>) {
+  return <span data-slot="nav-badge" {...props} className={cn('ml-auto inline-flex min-h-chip shrink-0 items-center rounded-full bg-violet px-1.5 py-px text-[10.5px] font-semibold text-violet-foreground', className)} />
+}
+
+export function SkillsUpdateMarker() {
+  return (
+    <span data-slot="nav-update-marker" className="ml-auto flex items-center">
+      <StatusDot tone="violet" className="size-1.5" aria-hidden="true" />
+      <span className="sr-only">Skills update available</span>
+    </span>
+  )
+}
+
+export function MissingProjectBadge() {
+  return <span data-slot="project-missing" className="inline-flex min-h-chip shrink-0 items-center rounded-full bg-danger px-2 py-px text-[10px] font-medium text-danger-foreground">folder not found</span>
 }

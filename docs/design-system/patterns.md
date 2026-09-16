@@ -37,7 +37,9 @@ Never add a nav link in the shell or the palette by hand.
 Source: `routes/tasks-overview.tsx`, `routes/global-tasks.tsx`, `routes/inbox.tsx`, `routes/skills.tsx`,
 `routes/workflows/workflows.tsx`, `routes/settings/settings-shell.tsx`.
 
-The rule (8 of 14 headers):
+The shared `PageHeader` export in `components/centered-state.tsx` accepts `title`, optional children and `className`. It uses a wrapping `min-h-14` desktop header with `md:px-section`; existing route consumers migrate in their assigned batches.
+
+The existing canonical markup (8 of 14 headers):
 
 ```
 <header class="sticky top-0 z-10 hidden h-14 shrink-0 items-center gap-3 border-b border-border bg-background md:flex md:px-section">
@@ -106,6 +108,7 @@ Source: `components/centered-state.tsx`, the six `*-loading.tsx` routes, `compon
 | Feature off | `CenteredState` saying what is off and the env var that turns it on. | "The follow-up inbox is off" / "Agents are not asked to leave follow-ups. Set XEZ_FOLLOWUPS=1 and restart xezar to turn the inbox on." |
 | Loading a page | `CenteredState` with `<LoaderCircleIcon className="motion-safe:animate-spin"/>`, "Loading X…" and a "Fetching …" subtitle. | "Loading task…" / "Fetching the run and its session transcript." |
 | Loading inside a surface | one muted line, `px-4 py-6 text-center text-xs text-soft-foreground`. | "Loading changes…" |
+| Route render error | `RouteErrorBoundary` renders `CenteredState tone="danger"` inside an alert; Retry resets the boundary, and navigation also recovers. | "Could not display this page" / "Retry" |
 | Load error | `CenteredState tone="danger"` with `TriangleAlertIcon`, a cockpit-written title and the server message as subtitle. | "Could not load this task" / `{error.message}` |
 | Mutation error | `toast(error.message, { tone: 'danger' })`. | – |
 | Inline validation | a sibling `<p class="text-[11px] text-danger">`; when valid the same slot holds a `text-soft-foreground` hint. | "Enter a whole number from 1 to 60 minutes." |

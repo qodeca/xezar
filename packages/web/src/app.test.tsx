@@ -278,11 +278,11 @@ describe('<App /> — the boot shell', () => {
       view.rerender(<App />)
       await screen.findByRole('alert')
       expect(document.querySelector('[data-slot="app-shell"]')).not.toBeNull()
-      expect(screen.getByText('This page could not be displayed.')).toBeTruthy()
+      expect(screen.getByText('Could not display this page')).toBeTruthy()
       await waitFor(() => expect(topics.subscribeTopic.mock.calls.filter(([topic]) => topic === 'health')).toHaveLength(1))
       expect(topics.release).not.toHaveBeenCalled()
       routeHole.renderNode = () => <p>Recovered route</p>
-      fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
       await screen.findByText('Recovered route')
       expect(screen.queryByRole('alert')).toBeNull()
       expect(topics.subscribeTopic.mock.calls.filter(([topic]) => topic === 'health')).toHaveLength(1)

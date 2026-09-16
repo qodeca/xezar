@@ -378,7 +378,7 @@ describe('AppShell', () => {
         expect(within(badge).getByText('Development build').className).toContain('sr-only')
         // The logo stays decorative and keeps its size — the badge overlays it, never resizes it.
         expect(tile().getAttribute('alt')).toBe('')
-        expect(tile().className).toContain('size-[26px]')
+        expect(tile().className).toContain('size-7')
         expect(badge.className).toContain('absolute')
         fireEvent.click(screen.getByRole('button', { name: 'Open menu' }))
         expect(badges()).toHaveLength(2)
@@ -498,7 +498,7 @@ describe('AppShell', () => {
       expect(bar).not.toBeNull()
       expect(bar.className).toContain('md:hidden')
       // The row is exactly the 44px touch baseline; its menu button keeps that same target.
-      expect(bar.firstElementChild?.className).toContain('h-11')
+      expect(bar.firstElementChild?.className).toContain('min-h-tap')
       expect(within(bar).getByRole('button', { name: 'Open menu' }).className).toContain('size-11')
     })
 
