@@ -14,10 +14,12 @@ import { scopeTo, useActiveProjectId, useNavigate } from '@/lib/project-router'
 import type { ProjectListEntry, RunIndexEntry, RunRecord } from '@qodeca/xezar-api-client'
 import { visibleNavItems } from '@/components/nav-items'
 import { StatusDot } from '@/components/status-dot'
+import { MissingProjectBadge } from '@/components/app-shell'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { NEXT_THEME } from '@/components/theme-toggle'
 import { useTheme } from '@/components/theme-provider'
 import {
-  CommandDialog,
+  Command,
   CommandEmpty,
   CommandGroup,
   CommandInput,
@@ -216,8 +218,13 @@ export function orderProjects(
 export function CommandPalette() {
   const [open, setOpen] = React.useState(false)
   const navigate = useNavigate()
+  const returnFocus = React.useRef<HTMLElement | null>(null)
+  const changeOpen = React.useCallback((next: boolean) => {
+    if (next) returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    setOpen(next)
+  }, [])
 
-  useCommandShortcut('k', () => setOpen((current) => !current))
+  useCommandShortcut('k', () => changeOpen(!open))
   const newTask = React.useCallback(() => {
     setOpen(false)
     navigate('/new')
@@ -229,35 +236,32 @@ export function CommandPalette() {
   useKeyShortcut('c', newTask)
 
   React.useEffect(() => {
-    const onOpen = () => setOpen(true)
+    const onOpen = () => changeOpen(true)
     window.addEventListener(OPEN_COMMAND_PALETTE_EVENT, onOpen)
     return () => window.removeEventListener(OPEN_COMMAND_PALETTE_EVENT, onOpen)
-  }, [])
+  }, [changeOpen])
 
   return (
-    <CommandDialog
-      open={open}
-      onOpenChange={setOpen}
-      title="Command palette"
-      description="Search projects, tasks, views, actions, and skills"
-      showCloseButton={false}
-      filter={paletteScore}
-      // Two overrides of the shared dialog, both for this surface only — every other dialog in
-      // the cockpit is a form, which wants to stay narrow and centred.
-      //
-      // WIDTH: wider than the `sm:max-w-lg` default and growing with the viewport. This dialog
-      // lists task titles from every project, and at 32rem the useful half of a title truncates.
-      //
-      // TOP: pinned, replacing `top-1/2 -translate-y-1/2`. A centred dialog re-centres every time
-      // the result count changes, so the whole modal — search box included — jumps under the
-      // cursor as you type. Anchored near the top it only ever grows downward, and the input you
-      // are typing into never moves.
-      className="top-[10vh] translate-y-0 sm:max-w-2xl lg:max-w-3xl xl:max-w-4xl"
-    >
-      {/* The body mounts only while the dialog is open (Radix portals nothing when closed), so
-          its queries — notably the skills fetch — run on first open, never on app boot. */}
-      <PaletteContent close={() => setOpen(false)} />
-    </CommandDialog>
+    <Dialog open={open} onOpenChange={changeOpen}>
+      <DialogContent
+        showCloseButton={false}
+        className="top-[10vh] translate-y-0 overflow-hidden p-0 sm:max-w-2xl lg:max-w-3xl xl:max-w-4xl"
+        onCloseAutoFocus={(event) => {
+          event.preventDefault()
+          const target = returnFocus.current
+          if (target?.isConnected && target.getClientRects().length > 0) target.focus()
+          else document.querySelector<HTMLElement>('[data-slot="mobile-top-bar"] button, [data-slot="command-palette-hint"]')?.focus()
+        }}
+      >
+        <DialogHeader className="sr-only">
+          <DialogTitle>Command palette</DialogTitle>
+          <DialogDescription>Search projects, tasks, views, actions, and skills</DialogDescription>
+        </DialogHeader>
+        <Command filter={paletteScore} className="**:data-[slot=command-input-wrapper]:h-12 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-group]]:px-2 [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3">
+          <PaletteContent close={() => changeOpen(false)} />
+        </Command>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -299,7 +303,7 @@ function TaskItem({
       {showProject && projectName ? (
         <span
           data-slot="palette-task-project"
-          className="shrink-0 truncate text-xs text-soft-foreground"
+          className="max-w-24 shrink-0 truncate text-xs text-muted-foreground"
         >
           {projectName}
         </span>
@@ -409,7 +413,7 @@ function PaletteContent({ close }: { close: () => void }) {
           to the viewport instead, so a large screen actually shows the list it has room for.
           `min-h` keeps a short result set from collapsing the box to nothing, which would move
           the bottom edge as violently as the old centring moved the top. */}
-      <CommandList className="max-h-[55vh] min-h-[14rem] sm:max-h-[60vh] lg:max-h-[68vh]">
+      <CommandList className="max-h-[55vh] min-h-56 sm:max-h-[60vh] lg:max-h-[68vh]">
         <CommandEmpty>Nothing matches.</CommandEmpty>
 
         {/* First, headless, and the row an empty query pre-selects: opening ⌘K and pressing
@@ -509,9 +513,9 @@ function PaletteContent({ close }: { close: () => void }) {
                   <FolderOpenIcon aria-hidden="true" />
                   <span className="min-w-0 flex-1 truncate">{project.name}</span>
                   {missing ? (
-                    <span className="shrink-0 text-xs text-soft-foreground">folder not found</span>
+                    <MissingProjectBadge />
                   ) : project.branch !== undefined ? (
-                    <span className="shrink-0 font-mono text-xs text-soft-foreground">
+                    <span className="max-w-24 shrink-0 truncate font-mono text-xs text-muted-foreground">
                       {project.branch}
                     </span>
                   ) : null}

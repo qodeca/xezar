@@ -1,36 +1,4 @@
 {
-  "src/components/app-shell.tsx|size-[17px]": {
-    "count": 2,
-    "reason": "convert in 3b: glyph"
-  },
-  "src/components/app-shell.tsx|size-[15px]": {
-    "count": 1,
-    "reason": "convert in 3b: glyph"
-  },
-  "src/components/app-shell.tsx|px-[5px]": {
-    "count": 2,
-    "reason": "convert in 3b: kbd hint"
-  },
-  "src/components/app-shell.tsx|size-[5px]": {
-    "count": 1,
-    "reason": "convert in 3b: status dot"
-  },
-  "src/components/app-shell.tsx|size-[26px]": {
-    "count": 1,
-    "reason": "convert in 3b: project avatar"
-  },
-  "src/components/centered-state.tsx|size-[72px]": {
-    "count": 1,
-    "reason": "convert in 3b: icon tile – § 9.2 leaves the centered state unchanged, so 3b decides"
-  },
-  "src/components/centered-state.tsx|size-[3px]": {
-    "count": 1,
-    "reason": "convert in 3b: dot"
-  },
-  "src/components/command-palette.tsx|min-h-[14rem]": {
-    "count": 1,
-    "reason": "convert in 3b: list height – on the scale it would grow and shrink with density, 3b decides"
-  },
   "src/components/composer/composer.tsx|md:min-h-[54px]": {
     "count": 1,
     "reason": "convert in 3b: composer row → md:min-h-14 (§ 9.2 note)"
@@ -50,18 +18,6 @@
   "src/components/pill.tsx|py-[3px]": {
     "count": 1,
     "reason": "convert in 3b: pill → py-1"
-  },
-  "src/components/project-groups.tsx|gap-[7px]": {
-    "count": 2,
-    "reason": "convert in 3b: nearest scale step"
-  },
-  "src/components/project-groups.tsx|px-[7px]": {
-    "count": 1,
-    "reason": "convert in 3b: badge"
-  },
-  "src/components/project-groups.tsx|md:h-[30px]": {
-    "count": 1,
-    "reason": "convert in 3b: nested nav row → md:h-8"
   },
   "src/components/prompt-template-menu.tsx|h-[26px]": {
     "count": 1,

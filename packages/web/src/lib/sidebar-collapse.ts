@@ -1,3 +1,5 @@
+import { readSidebarStorage, writeSidebarStorage } from './sidebar-width'
+
 /**
  * The multi-project sidebar's per-project collapse map — per BROWSER, not per workspace.
  *
@@ -26,21 +28,11 @@ export function normalizeCollapsed(raw: unknown): SidebarCollapsed {
 }
 
 export function readStoredCollapsed(): SidebarCollapsed {
-  try {
-    const raw = localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY)
-    return raw === null ? {} : normalizeCollapsed(JSON.parse(raw))
-  } catch {
-    // Absent, private mode, or non-JSON — the defaults below still give every group an answer.
-    return {}
-  }
+  return readSidebarStorage(SIDEBAR_COLLAPSED_STORAGE_KEY, (raw) => normalizeCollapsed(JSON.parse(raw)), {})
 }
 
 export function writeStoredCollapsed(collapsed: SidebarCollapsed): void {
-  try {
-    localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, JSON.stringify(collapsed))
-  } catch {
-    // Private mode / storage full — the collapse still applies for this page.
-  }
+  writeSidebarStorage(SIDEBAR_COLLAPSED_STORAGE_KEY, JSON.stringify(collapsed))
 }
 
 /**

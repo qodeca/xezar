@@ -62,7 +62,7 @@ export function FolderBrowser({
       </p>
 
       {listing.isError ? (
-        <p data-slot="fs-error" className="min-w-0 break-words text-[13px] text-danger">
+        <p role="alert" data-slot="fs-error" className="min-w-0 break-words text-[13px] text-danger">
           {listing.error instanceof Error ? listing.error.message : 'could not list that folder'}
         </p>
       ) : (
@@ -77,7 +77,7 @@ export function FolderBrowser({
                 type="button"
                 data-slot="fs-up"
                 onClick={() => onEnter(parent)}
-                className="flex flex-1 items-center gap-2 px-3 py-2 text-left text-[13px] hover:bg-muted"
+                className="flex min-h-tap min-w-tap flex-1 items-center gap-2 px-3 py-2 text-left text-[13px] hover:bg-muted md:min-h-0 md:min-w-0 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring/50"
               >
                 <CornerLeftUpIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
                 Up one level
@@ -93,7 +93,7 @@ export function FolderBrowser({
                 onClick={() => onSelect(dir)}
                 onDoubleClick={() => onEnter(dir.path)}
                 className={cn(
-                  'flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left text-[13px] hover:bg-muted',
+                  'flex min-h-tap min-w-tap flex-1 items-center gap-2 px-3 py-2 text-left text-[13px] hover:bg-muted md:min-h-0 md:min-w-0 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring/50',
                   selected?.path === dir.path && 'bg-muted',
                 )}
               >
@@ -109,7 +109,7 @@ export function FolderBrowser({
                 data-slot="fs-enter"
                 aria-label={`Open ${dir.name}`}
                 onClick={() => onEnter(dir.path)}
-                className="flex shrink-0 items-center px-2.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                className="flex min-h-tap min-w-tap shrink-0 items-center justify-center px-2.5 text-muted-foreground hover:bg-muted hover:text-foreground md:min-h-0 md:min-w-0 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring/50"
               >
                 <ChevronRightIcon className="size-3.5" aria-hidden="true" />
               </button>

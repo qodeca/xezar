@@ -1,6 +1,9 @@
 import { Component, type ReactNode } from 'react'
 import { useLocation } from 'react-router'
 
+import { AlertTriangleIcon } from 'lucide-react'
+import { CenteredState } from './centered-state'
+
 import { Button } from './ui/button'
 
 type Props = { children: ReactNode; locationKey: string }
@@ -23,10 +26,14 @@ class PageBoundary extends Component<Props, State> {
   override render() {
     if (!this.state.failed) return this.props.children
     return (
-      <div role="alert" className="flex flex-col items-start gap-3 p-6">
-        <h1 className="text-lg font-semibold">This page could not be displayed.</h1>
-        <p className="text-sm text-muted-foreground">Try again, or open another page from the sidebar.</p>
-        <Button onClick={() => this.setState({ failed: false })}>Try again</Button>
+      <div role="alert" className="min-h-full">
+        <CenteredState
+          icon={<AlertTriangleIcon aria-hidden="true" />}
+          tone="danger"
+          title="Could not display this page"
+          subtitle="Retry, or open another page from the sidebar."
+          actions={<Button onClick={() => this.setState({ failed: false })}>Retry</Button>}
+        />
       </div>
     )
   }

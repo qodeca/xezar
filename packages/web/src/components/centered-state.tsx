@@ -14,7 +14,7 @@ const tileTone: Record<CenteredStateTone, string> = {
 
 /**
  * The one template for every loading/paused/error/empty state (spec, "Design system"):
- * a 72px tinted icon tile, a `text-2xl` title, a muted subtitle, an actions row. Views never
+ * a density-scaled tinted icon tile, a `text-2xl` title, a muted subtitle, an actions row. Views never
  * hand-roll a centered message — they say which tone this moment is and what to do next.
  *
  * `backdrop` opts into the twinkle scatter. It is for hero/empty/lifecycle surfaces ONLY —
@@ -57,7 +57,7 @@ export function CenteredState({
         <div
           data-slot="centered-state-tile"
           className={cn(
-            "flex size-[72px] items-center justify-center rounded-[18px] border [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-7",
+            "flex size-18 items-center justify-center rounded-[18px] border [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-7",
             tileTone[tone]
           )}
         >
@@ -66,7 +66,7 @@ export function CenteredState({
         <Heading className="text-2xl font-semibold text-balance text-foreground">{title}</Heading>
         {subtitle ? <p className="text-sm text-pretty text-muted-foreground">{subtitle}</p> : null}
         {children ? <div className="w-full pt-2">{children}</div> : null}
-        {actions ? <div className="flex items-center justify-center gap-3 pt-2">{actions}</div> : null}
+        {actions ? <div className="flex flex-wrap items-center justify-center gap-3 pt-2">{actions}</div> : null}
       </div>
     </div>
   )
@@ -131,7 +131,7 @@ export function TwinkleBackdrop({ className }: { className?: string }) {
           key={index}
           className={cn(
             'absolute rounded-[1px] motion-safe:animate-pulse',
-            tw.size === 3 ? 'size-[3px]' : 'size-0.5',
+            tw.size === 3 ? 'size-0.75' : 'size-0.5',
             twinkleTone[tw.tone]
           )}
           style={{
@@ -144,5 +144,19 @@ export function TwinkleBackdrop({ className }: { className?: string }) {
         />
       ))}
     </div>
+  )
+}
+
+/** Desktop page heading; the shell supplies the phone heading. Actions wrap instead of clipping. */
+export function PageHeader({ title, children, className }: {
+  title: string
+  children?: ReactNode
+  className?: string
+}) {
+  return (
+    <header data-slot="page-header" className={cn('sticky top-0 z-10 hidden min-h-14 flex-wrap items-center gap-row border-b border-border bg-background px-4 py-2 md:flex md:px-section', className)}>
+      <h1 className="min-w-0 flex-1 text-base font-semibold break-words">{title}</h1>
+      {children}
+    </header>
   )
 }
