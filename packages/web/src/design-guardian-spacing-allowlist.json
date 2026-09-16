@@ -79,10 +79,6 @@
     "count": 1,
     "reason": "convert in 3b: indent"
   },
-  "src/components/status-dot.tsx|size-[7px]": {
-    "count": 1,
-    "reason": "convert in 3b: status dot – status-dot.test.tsx and quick-list.e2e.ts assert 7 px"
-  },
   "src/components/task-quick-list.tsx|p-[3px]": {
     "count": 1,
     "reason": "convert in 3b: segmented control"
@@ -106,26 +102,6 @@
   "src/components/tools-menu.tsx|pl-[15px]": {
     "count": 1,
     "reason": "convert in 3b: indent"
-  },
-  "src/components/ui/button.tsx|gap-[7px]": {
-    "count": 1,
-    "reason": "convert in 3b: button primitive gap"
-  },
-  "src/components/ui/button.tsx|h-[30px]": {
-    "count": 1,
-    "reason": "convert in 3b: button → h-8 (button.test.tsx asserts the spelling)"
-  },
-  "src/components/ui/button.tsx|size-[30px]": {
-    "count": 1,
-    "reason": "convert in 3b: icon button → size-8 (button.test.tsx asserts the spelling)"
-  },
-  "src/components/ui/switch.tsx|h-[1.15rem]": {
-    "count": 1,
-    "reason": "convert in 3b: shadcn switch default, not in § 9.3 – 3b decides"
-  },
-  "src/components/ui/tabs.tsx|p-[3px]": {
-    "count": 1,
-    "reason": "convert in 3b: shadcn tabs default"
   },
   "src/routes/github/github.tsx|size-[9px]": {
     "count": 1,

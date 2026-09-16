@@ -117,13 +117,14 @@ describe('Popover shim', () => {
     expect(screen.getByTestId('clipper').contains(content)).toBe(false)
   })
 
-  it('renders the description as a <p> and the title as a plain div', () => {
+  it('renders the description as a <p> and the title as the h2 it is typed as', () => {
     renderOpenPopover()
 
     expect(document.querySelector('[data-slot="popover-description"]')?.tagName).toBe('P')
-    // A div, deliberately: `PopoverTitle` is typed as an h2 but rendered as a div so it never
-    // injects a heading level into a page whose outline it knows nothing about.
-    expect(document.querySelector('[data-slot="popover-title"]')?.tagName).toBe('DIV')
+    // `PopoverTitle` was typed `h2` and rendered a `div` (G-23's sibling, G-07). A popover is its
+    // own labelled region, so the heading belongs in the outline: without it a screen-reader user
+    // gets a panel with a name but nothing to navigate to.
+    expect(document.querySelector('[data-slot="popover-title"]')?.tagName).toBe('H2')
   })
 
   it('merges a caller className into the content instead of dropping the base classes', () => {

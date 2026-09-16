@@ -23,6 +23,7 @@ describe('Button', () => {
       { variant: 'contrast', expected: ['bg-contrast', 'text-contrast-foreground'] },
       { variant: 'outline', expected: ['border-border', 'bg-card'] },
       { variant: 'ghost', expected: ['text-muted-foreground'] },
+      { variant: 'danger', expected: ['bg-danger', 'text-danger-foreground'] },
       { variant: 'danger-ghost', expected: ['text-danger'] },
     ] as const)('$variant', ({ variant, expected }) => {
       render(<Button variant={variant}>Label</Button>)
@@ -36,9 +37,9 @@ describe('Button', () => {
   describe('size → class mapping', () => {
     it.each([
       { size: 'default', expected: ['h-9', 'px-3.5'] },
-      { size: 'sm', expected: ['h-[30px]', 'rounded-sm'] },
+      { size: 'sm', expected: ['h-7.5', 'rounded-sm'] },
       { size: 'icon', expected: ['size-9'] },
-      { size: 'icon-sm', expected: ['size-[30px]', 'rounded-sm'] },
+      { size: 'icon-sm', expected: ['size-7.5', 'rounded-sm'] },
     ] as const)('$size', ({ size, expected }) => {
       render(<Button size={size}>Label</Button>)
       const button = screen.getByRole('button')
