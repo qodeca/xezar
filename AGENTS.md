@@ -18,6 +18,53 @@ Practical rules:
 - Never trade a working default for a knob.
 - Adding, renaming, or removing a `XEZ_*` env var — or changing what its default does, or giving it a STORED config key that supersedes it at runtime — MUST update `.env.example` in the same commit (and the README env table when the var is user-facing). That last case is the one people miss: `XEZ_FOLLOWUPS` and `XEZ_ENV_PASSTHROUGH` are now boot-time defaults behind a stored workspace key, so the var still exists and no longer decides. `.env.example` is the env contract's single documentation surface; an undocumented env var is a bug.
 
+## Generic instructions
+
+Released Xezar must never contain instructions specific to a particular project. Every
+instruction we ship must suit any project — software, an advertising agency, scientific
+research — while keeping enough detail for Xezar to work correctly. This covers text read
+by people **and** agents: prompts, built-ins, init output, MCP descriptions and guidance,
+cockpit copy, recovery pages, the npm README and bundled examples.
+
+Practical rules:
+
+- Start with the user's outcome, inputs, deliverable and constraints. Never prescribe this
+  repository's names, paths, people or process.
+- Discover capabilities before giving instructions: Git for versioning and isolation,
+  GitHub when relevant for issues and PRs, existing checks for verification. Without them,
+  deliver locally and name the evidence that is unavailable; never invent a check.
+- Prefer plan, draft, review, verify, revise and deliver. Explain product terms in plain
+  words, such as “isolated working copy (Git worktree)”.
+- Keep the operational contract precise: current project and task identity, available tools,
+  result locations, resume steps, questions, completion, failure and authority boundaries.
+  Generic wording must preserve protocol markers, schemas, retries and refusal behavior.
+- Separate supplied evidence from assumptions, and proposed criteria from acceptance.
+  A finished tool call or a successful command is not approval of the result.
+- Keep specialization conditional. A software workflow may describe software precisely;
+  the default must remain useful without a software pipeline.
+- Use three labeled examples: software — repair a calculation and run existing relevant
+  tests; advertising agency — draft a campaign brief and check audience, budget and claims
+  against supplied material; scientific research — revise a paper section and check citations,
+  methods and stated limitations against provided sources. No example authorizes publication.
+
+The owner's Q1 decision (2026-09-16, [#466](https://github.com/qodeca/xezar/issues/466))
+allows exact capability references: shipped help **may** name a client's own instruction file,
+such as `AGENTS.md` or `CLAUDE.md`, to say what that client reads. It must **never** tell users
+to adopt Xezar's own files or process — `SDLC.md`, `repo-gates`, the `.xezar/` files, kit,
+checks or workflows, or our AGENTS/CODE_REVIEW conventions. Preserve user-authored guidance
+and supported client filenames; neither is permission to distribute our project instructions.
+
+[PR #481](https://github.com/qodeca/xezar/pull/481) adds the enforcement: the instruction-producer
+guard `packages/xezar/src/release/generic-instructions.test.ts` and the `check:pack` scan of
+actual packed-archive text. The producer guard and archive scan complement each other; a word
+list alone cannot establish that instructions work across domains. Exceptions for capability
+references, package/provider identity, product documentation/support links or legal attribution
+must identify the exact field and fragment, carry a reason and review reference, and have a
+negative test proving adjacent project instructions still fail. Never exempt a whole file or
+instruction paragraph; never widen the shrinking allowance for outstanding repairs.
+
+A string a user will read ships generic; a rule this repo follows stays in AGENTS.md/SDLC.md/.xezar.
+
 ## Changing a mechanism that already works
 
 Replacing working behavior is the highest-risk change in this repo, and it fails in a
