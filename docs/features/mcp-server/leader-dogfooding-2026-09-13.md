@@ -21,6 +21,8 @@ Evidence level: **observed** in one live session, by the leader itself. Times ar
 | Load the tools | no | Claude Code loads MCP tools at session start only. The leader session had to exit and `claude --continue`. The cockpit's connection screen does not say this. |
 | First contact | yes | `health` → `{"status":"running","xezarVersion":"0.14.0","project":{"id":"xezar"}}`. `discover_project` gave agents, tools, limits and the action list in one call. Good. |
 
+*Superseded: the current Claude Code launch step ("Load the tools" above) is documented in [`docs/guide/13-mcp-leader.md`](../../guide/13-mcp-leader.md) § Launch.*
+
 ## 2. Reading the project
 
 | Need | Tool used | Verdict |
