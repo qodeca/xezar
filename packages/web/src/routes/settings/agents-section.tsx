@@ -94,7 +94,13 @@ function AgentsForm({
   providerStatus: ReturnType<typeof useProviderStatus>
 }) {
   const repo = useRepo()
+  const projects = useProjects()
+  const scope = useProjectScope()
   const queryClient = useQueryClient()
+  // #466: the review step names the draft-PR action only for a project whose remote is on GitHub;
+  // any other project (no Git, no remote, another host) still gets Accept and Send back.
+  const activeProjectId = scope.projectId ?? projects.data?.bootProject
+  const onGithub = projects.data?.projects.find((project) => project.id === activeProjectId)?.forge === 'github'
 
   const save = useMutation({
     mutationFn: (patch: SetConfigInput) => putConfig(patch),
@@ -312,7 +318,7 @@ function AgentsForm({
 
       <Field
         title="Review changes before finishing"
-        hint="When on, a task with changes pauses so you can Accept, Send back, or open a Draft PR. Autonomous tasks always skip this and finish on their own. Default: off — tasks finish without asking."
+        hint={`When on, a task with changes pauses so you can Accept or Send back${onGithub ? ', or open a draft pull request on GitHub' : ''}. Autonomous tasks always skip this and finish on their own. Default: off — tasks finish without asking.`}
       >
         <label className="flex w-fit items-center gap-3">
           <Switch
@@ -323,7 +329,7 @@ function AgentsForm({
             onCheckedChange={(checked) =>
               save.mutate(
                 { reviewGate: checked },
-                { onSuccess: () => toast(checked ? 'Review gate on' : 'Review gate off') },
+                { onSuccess: () => toast(checked ? 'Review changes on' : 'Review changes off') },
               )
             }
           />

@@ -121,4 +121,6 @@ Press **⌘K / Ctrl+K** to open the palette. Search for a view, project, task, o
 - Browser storage: theme and the appearance mirror. Native agent configuration files are separate from xezar's settings.
 - `XEZ_REVIEW_GATE`, `XEZ_TITLE_UPDATES`, `XEZ_FOLLOWUPS`, `XEZ_ENV_PASSTHROUGH`, `XEZ_SKILLS_AUTO_UPDATE`, `XEZ_AUTONOMOUS_DEFAULT`, and `XEZ_WORKTREE_DEFAULT` provide defaults where the corresponding stored setting has no opinion. See the [environment contract](../../.env.example) for precedence and startup details.
 
+Next: [Configuration reference](11-configuration-reference.md)
+
 Describes xezar 0.15.0.

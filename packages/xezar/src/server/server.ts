@@ -1372,7 +1372,7 @@ export function createApp(deps: ServerDeps) {
   let hintLogged = false;
   const serveShell = (c: Context): Response | undefined => {
     const distIndex = join(distDir, 'index.html');
-    // existsSync per request, like the reads below: `npm run build:web` in a
+    // existsSync per request, like the reads below: a web build or reinstall under a
     // running cockpit takes effect on the next reload, no restart.
     const target = resolveGetRequest({
       path: c.req.path,
@@ -1380,11 +1380,11 @@ export function createApp(deps: ServerDeps) {
     });
     if (target === 'passthrough') return undefined;
     if (target === 'build-hint') {
-      // Dev-only state (the tarball ships web/dist): serve the built-in hint
-      // page instead of the app — the legacy fallback UI was deleted in R7.
+      // The tarball ships web/dist, so this is a damaged install or an unbuilt source
+      // checkout: serve the built-in recovery page — the legacy fallback UI was deleted in R7.
       if (!hintLogged) {
         hintLogged = true;
-        console.log('xezar: web/dist is missing — run `npm run build:web` to build the cockpit');
+        console.log('xezar: the cockpit files (web/dist) are missing — reinstall xezar, or build the web interface when running from source');
       }
       return new Response(BUILD_HINT_HTML, {
         headers: { 'content-type': HTML_TYPE },

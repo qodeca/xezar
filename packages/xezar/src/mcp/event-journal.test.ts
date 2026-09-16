@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  MCP_JOURNAL_MIN_RETENTION_DAYS,
   MCP_JOURNAL_PAGE_BYTES,
   MCP_JOURNAL_PAGE_ROWS,
   MCP_JOURNAL_RETAINED_ROWS,
@@ -246,6 +247,29 @@ describe('the per-project event journal (#103)', () => {
 
       expect(journal.oldestSeq).toBe(1);
       expect(page(journal.read({ cursor: fromStart })).events[0]?.journalSeq).toBe(2);
+    });
+
+    /**
+     * #460 § 4. The floors under the leader-facing promise: "at-least-once within retained durable
+     * state" is only true while BOTH hold, so both are pinned here as numbers and as behaviour. The
+     * numbers are also what the `leader_events` description and the docs quote, and lowering either
+     * one silently weakens a guarantee a compacted leader has already acted on.
+     */
+    it('#460: keeps at least the newest 10 000 rows even when every row is older than 14 days', () => {
+      // RED against: lowering `MCP_JOURNAL_RETAINED_ROWS`, or evicting on age alone (dropping the
+      // `rows.length - drop > RETAINED_ROWS` half of the condition), which would leave a leader that
+      // has been away for a fortnight with an unnecessary gap.
+      expect(MCP_JOURNAL_RETAINED_ROWS).toBe(10_000);
+      expect(MCP_JOURNAL_MIN_RETENTION_DAYS).toBe(14);
+      writeFixture(MCP_JOURNAL_RETAINED_ROWS, T0 - 400 * DAY);
+      const journal = openJournal({ now: () => T0 });
+      expect(journal.oldestSeq).toBe(1);
+      expect(page(journal.read({ limit: MCP_JOURNAL_PAGE_ROWS })).events).toHaveLength(MCP_JOURNAL_PAGE_ROWS);
+
+      // One more row: the count stays at the floor, and it is the OLDEST that leaves, never a newer one.
+      journal.append(event(MCP_JOURNAL_RETAINED_ROWS + 1));
+      expect(journal.oldestSeq).toBe(2);
+      expect(journal.latestSeq).toBe(MCP_JOURNAL_RETAINED_ROWS + 1);
     });
 
     it('rewrites the file once evicted rows reach the retained count, keeping surviving lines verbatim', () => {

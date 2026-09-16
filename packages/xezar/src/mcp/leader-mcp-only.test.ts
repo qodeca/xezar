@@ -122,6 +122,32 @@ describe('no leader-facing string names the HTTP attach route (#450, T-26)', () 
     expect(JSON.stringify(tools.map(toolListing))).toContain('leader_events with action status');
   });
 
+  /**
+   * #460 § 4 (T-13). The compaction recovery is guidance a model ACTS on, and it only works if the
+   * model reads it at runtime — so it is pinned on the two surfaces a leader actually receives: the
+   * `tools/list` description and every `initialize` instructions variant. Themes, not one long
+   * string: the wording may be edited, but none of the five may quietly disappear, and the guarantee
+   * may never be restated as exactly-once.
+   */
+  it('#460 T-13: the leader_events description states the compaction recovery and the honest guarantee', () => {
+    // RED against: reverting the compaction instruction, or promising exactly-once delivery.
+    const listing = tools.map(toolListing).find((tool) => tool.name === 'leader_events');
+    const description = String(listing?.description ?? '');
+    expect(description).toContain('After context compaction, call leader_events with action read and no cursor');
+    expect(description).toContain('including events pushed but not acknowledged');
+    expect(description).toContain('A transport receipt is not an acknowledgement.');
+    expect(description).toContain('Do not poll while idle.');
+    expect(description).toContain('reconcile the returned current state before acknowledging resumeCursor');
+    // The guarantee, exactly as #460 § 4 states it — and never stronger.
+    expect(description).toContain('at-least-once within retained durable state, not exactly-once');
+    expect(description).toContain('at least the newest 10000 events');
+    expect(description).toContain('evicts none younger than 14 days');
+    expect(description).toContain('at most 100 events or 40000 bytes');
+    expect(description).toContain('cumulative, monotonic and idempotent');
+    expect(description).toContain('Nothing already delivered to this session is pushed again on a timer.');
+    expect(description).not.toMatch(/exactly.once delivery|guaranteed once|never lost/i);
+  });
+
   it('every initialize instructions variant', async () => {
     // RED against: re-adding `ATTACH_DOOR` to the instructions.
     const variants = {
@@ -136,6 +162,20 @@ describe('no leader-facing string names the HTTP attach route (#450, T-26)', () 
     }
     expect(variants.other).toContain('Attach this session with `leader_events` action `attach`');
     expect(variants.channel).toContain('Attach this session with `leader_events` action `attach`');
+    // #460 T-13: EVERY variant carries the compaction recovery — a leader that cannot be pushed to
+    // needs it most, and a leader that can still loses in-flight messages to a compaction.
+    for (const [label, value] of Object.entries(variants)) {
+      for (const phrase of [
+        'After context compaction, call `leader_events` with action `read` and no cursor',
+        'including events pushed but not acknowledged',
+        'A transport receipt is not an acknowledgement.',
+        'at-least-once within retained durable state, not exactly-once',
+        'reconcile the returned current state before acknowledging resumeCursor',
+        'Do not poll while idle.',
+      ]) {
+        expect(value, `${label} is missing: ${phrase}`).toContain(phrase);
+      }
+    }
   });
 
   it('every blocker and door refusal, the pushed text and the stop notice', async () => {
