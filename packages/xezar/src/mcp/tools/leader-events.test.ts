@@ -1,6 +1,16 @@
-import type { McpLeaderDoorResult, McpLeaderSelfStatus } from '@qodeca/xezar-contract';
-import { describe, expect, it } from 'vitest';
+import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import {
+  MCP_JOURNAL_MIN_RETENTION_DAYS,
+  MCP_JOURNAL_PAGE_ROWS,
+  MCP_JOURNAL_RETAINED_ROWS,
+  type McpJournalAppendInput,
+  type McpLeaderDoorResult,
+  type McpLeaderSelfStatus,
+} from '@qodeca/xezar-contract';
+import { afterEach, describe, expect, it } from 'vitest';
 
+import { EventJournal } from '../event-journal.ts';
+import { LeaderCursors, type StateReader } from '../reconnect.ts';
 import type { McpToolContext, McpToolResult } from '../tool.ts';
 import { type LeaderControlPort, leaderEventsInputSchema, leaderEventsTool } from './leader-events.ts';
 
@@ -139,5 +149,155 @@ describe('leader_events door headlines (#450, T-3)', () => {
       expect(firstLine(result)).toBe(`Nothing was ${action === 'attach' ? 'attached' : 'detached'}: Hosted. Run locally.`);
       expect(result.structuredContent).toEqual(refusal);
     }
+  });
+});
+
+/**
+ * #460 § 4 (T-11, T-12) — the compaction recovery, over the REAL journal and the REAL cursors. A
+ * compacted leader is told to call `read` with no cursor, so these cases pin what that call answers:
+ * every retained row that was never acknowledged, in order, paged, with stable ids; an honest error
+ * or gap for a cursor it cannot serve; and an honest empty answer when there is nothing. Delivery is
+ * at-least-once WITHIN RETAINED DURABLE STATE, so "we could not find it" and "there is nothing" must
+ * never read the same.
+ */
+describe('#460 § 4 — reading after a compaction, over a real journal', () => {
+  const dirs: string[] = [];
+  const journals: EventJournal[] = [];
+
+  afterEach(() => {
+    for (const journal of journals.splice(0)) journal.close();
+    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  /** One project's journal, cursors and a stub state reader — the three parts the tool composes. */
+  function wired(projectId = 'alpha', now?: () => number) {
+    const dataDir = realpathSync(mkdtempSync('/tmp/xzle-'));
+    dirs.push(dataDir);
+    const journal = EventJournal.open({ dataDir, projectId, secretValues: [], warn: () => {}, ...(now ? { now } : {}) });
+    journals.push(journal);
+    const cursors = LeaderCursors.open({ dataDir, projectId, journal, warn: () => {} });
+    const readState: StateReader = () => ({ latestSeq: journal.latestSeq, tasks: [], complete: true });
+    return { dataDir, journal, cursors, leaderEvents: { journal, cursors, readState, secretValues: [] } };
+  }
+
+  const row = (n: number): McpJournalAppendInput => ({
+    category: 'E-01',
+    kind: 'task.terminal',
+    subject: { type: 'run', id: `run-${n}`, version: null },
+    origin: 'system',
+    causedBy: null,
+    summary: `task ${n} finished`,
+  });
+
+  interface ReadOut {
+    status: 'ok';
+    events: Array<{ eventId: string; journalSeq: number }>;
+    nextCursor: string;
+    hasMore: boolean;
+    position: { deliveredSeq: number; ackedSeq: number };
+  }
+  interface GapOut {
+    status: 'gap';
+    gap: { oldestSeq: number | null; latestSeq: number; resumeCursor: string; recovery: { required: string } };
+  }
+
+  const read = async (leaderEvents: unknown, args: Record<string, unknown> = {}): Promise<McpToolResult> =>
+    call({ action: 'read', ...args }, { leaderEvents });
+
+  it('replays every retained unacknowledged row, paged, and only ack moves the acknowledgement', async () => {
+    // RED against: advancing the ack on a read or on transport receipt (`markDelivered` → `ack`),
+    // and against dropping the page bound so one answer returns every row with no `nextCursor`.
+    const { journal, cursors, leaderEvents } = wired();
+    for (let n = 1; n <= MCP_JOURNAL_PAGE_ROWS + 50; n++) journal.append(row(n));
+
+    // The compaction recovery itself: no cursor, so it starts from the last explicit acknowledgement.
+    const first = (await read(leaderEvents)).structuredContent as unknown as ReadOut;
+    expect(first.status).toBe('ok');
+    expect(first.events).toHaveLength(MCP_JOURNAL_PAGE_ROWS);
+    expect(first.events[0]!.journalSeq).toBe(1);
+    expect(first.hasMore).toBe(true);
+    // Handing the rows over is delivery, never acknowledgement.
+    expect(first.position).toMatchObject({ deliveredSeq: MCP_JOURNAL_PAGE_ROWS, ackedSeq: 0 });
+
+    // `hasMore` is exhausted through `nextCursor`, and the page bound is what ends each page.
+    const second = (await read(leaderEvents, { cursor: first.nextCursor })).structuredContent as unknown as ReadOut;
+    expect(second.events).toHaveLength(50);
+    expect(second.hasMore).toBe(false);
+    expect(second.events[0]!.journalSeq).toBe(MCP_JOURNAL_PAGE_ROWS + 1);
+    expect(second.position.ackedSeq).toBe(0);
+
+    // Until it is acknowledged, the same read answers the same ids — that is the at-least-once the
+    // leader deduplicates against, and it is why a compacted leader loses nothing.
+    const again = (await read(leaderEvents)).structuredContent as unknown as ReadOut;
+    expect(again.events.map((event) => event.eventId)).toEqual(first.events.map((event) => event.eventId));
+
+    // Only `ack` moves it: cumulative, monotonic and idempotent.
+    const acked = await call({ action: 'ack', cursor: second.nextCursor, operationId: 'op-ack-460-001' }, { leaderEvents });
+    expect(acked.structuredContent).toMatchObject({ status: 'acked', ackedSeq: MCP_JOURNAL_PAGE_ROWS + 50 });
+    expect((await call({ action: 'ack', cursor: second.nextCursor, operationId: 'op-ack-460-002' }, { leaderEvents })).structuredContent)
+      .toMatchObject({ status: 'no-op', ackedSeq: MCP_JOURNAL_PAGE_ROWS + 50 });
+    expect((await call({ action: 'ack', cursor: first.nextCursor, operationId: 'op-ack-460-003' }, { leaderEvents })).structuredContent)
+      .toMatchObject({ status: 'no-op', ackedSeq: MCP_JOURNAL_PAGE_ROWS + 50 });
+    expect(cursors.position().ackedSeq).toBe(MCP_JOURNAL_PAGE_ROWS + 50);
+
+    // Acknowledged rows are not replayed by default…
+    const done = (await read(leaderEvents)).structuredContent as unknown as ReadOut;
+    expect(done.events).toEqual([]);
+    // …and a retained earlier cursor rewinds the READ only, never the acknowledgement.
+    const rewound = (await read(leaderEvents, { cursor: first.nextCursor })).structuredContent as unknown as ReadOut;
+    expect(rewound.events[0]!.journalSeq).toBe(MCP_JOURNAL_PAGE_ROWS + 1);
+    expect(rewound.position.ackedSeq).toBe(MCP_JOURNAL_PAGE_ROWS + 50);
+  });
+
+  it('answers an expired, foreign or malformed cursor honestly, and an empty journal honestly too', async () => {
+    // RED against: answering a cursor it cannot serve with an empty page — "we lost your rows" and
+    // "nothing happened" would then read the same, which is the one thing a gap exists to prevent.
+    const empty = wired();
+    const nothing = (await read(empty.leaderEvents)).structuredContent as unknown as ReadOut;
+    expect(nothing).toMatchObject({ status: 'ok', events: [], hasMore: false });
+    expect((await read(empty.leaderEvents)).content[0]!.text).toContain('No outstanding events.');
+
+    // Malformed: refused outright, and the answer says nothing was read.
+    for (const cursor of ['not-a-cursor', Buffer.from('{}', 'utf8').toString('base64url')]) {
+      const refused = await read(empty.leaderEvents, { cursor });
+      expect(refused.isError).toBe(true);
+      expect(refused.structuredContent).toEqual({ error: 'invalid_cursor', message: expect.any(String) });
+      expect(text(refused)).toContain('Nothing was read.');
+    }
+    // The same cursor through `ack` says nothing was acknowledged, and moves nothing.
+    const badAck = await call({ action: 'ack', cursor: 'not-a-cursor', operationId: 'op-ack-460-004' }, { leaderEvents: empty.leaderEvents });
+    expect(badAck.isError).toBe(true);
+    expect(text(badAck)).toContain('Nothing was acknowledged.');
+    expect(empty.cursors.position().ackedSeq).toBe(0);
+
+    // Foreign: another project's cursor is refused before this journal's contents are consulted.
+    const other = wired('bravo');
+    other.journal.append(row(1));
+    const foreign = ((await read(other.leaderEvents)).structuredContent as unknown as ReadOut).nextCursor;
+    const crossed = await read(empty.leaderEvents, { cursor: foreign });
+    expect(crossed.isError).toBe(true);
+    expect(crossed.structuredContent).toEqual({ error: 'cursor_project_mismatch', message: expect.any(String) });
+    expect(JSON.stringify(crossed)).not.toContain('bravo');
+
+    // Expired: retention evicted the rows the cursor asked for, so it is an EXPLICIT gap with the
+    // current state beside it and a `resumeCursor` to continue from — never a silent empty page.
+    let now = Date.parse('2026-09-01T00:00:00.000Z');
+    const aged = wired('charlie', () => now);
+    for (let n = 1; n <= MCP_JOURNAL_RETAINED_ROWS; n++) aged.journal.append(row(n));
+    // A cursor that points AT a row retention later evicted — rows #2 and #3 are what it still owes.
+    const early = ((await read(aged.leaderEvents, { limit: 1 })).structuredContent as unknown as ReadOut).nextCursor;
+    now += (MCP_JOURNAL_MIN_RETENTION_DAYS + 1) * 24 * 60 * 60 * 1_000;
+    aged.journal.append(row(MCP_JOURNAL_RETAINED_ROWS + 1));
+    aged.journal.append(row(MCP_JOURNAL_RETAINED_ROWS + 2));
+    expect(aged.journal.oldestSeq).toBe(3);
+    const gapResult = await read(aged.leaderEvents, { cursor: early });
+    expect(gapResult.isError).toBeFalsy();
+    expect(text(gapResult)).toMatch(/^GAP: /);
+    const gap = gapResult.structuredContent as unknown as GapOut;
+    expect(gap).toMatchObject({ status: 'gap', gap: { oldestSeq: 3, recovery: { required: 'current-state' } } });
+    expect(gap).not.toHaveProperty('events');
+    // Recovery: the resume cursor is a real one, and acknowledging it is what continues.
+    const resumed = (await read(aged.leaderEvents, { cursor: gap.gap.resumeCursor })).structuredContent as unknown as ReadOut;
+    expect(resumed.events[0]!.journalSeq).toBe(3);
   });
 });

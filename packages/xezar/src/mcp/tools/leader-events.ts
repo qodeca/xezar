@@ -1,6 +1,9 @@
 import { z } from 'zod';
 import {
+  MCP_JOURNAL_MIN_RETENTION_DAYS,
+  MCP_JOURNAL_PAGE_BYTES,
   MCP_JOURNAL_PAGE_ROWS,
+  MCP_JOURNAL_RETAINED_ROWS,
   mcpJournalCursorSchema,
   operationIdSchema,
   type McpLeaderDoorResult,
@@ -28,6 +31,15 @@ import { defineTool, errorResult, textResult, type McpToolContext, type McpToolR
  *
  * At-least-once, no repeated effect (N-10): a read before the ack returns the same rows again, each
  * with its stable `eventId`, which is how the leader drops a duplicate.
+ *
+ * #460 § 4 — the guarantee stated exactly, because a compacted leader acts on this text. At-least-once
+ * WITHIN RETAINED DURABLE STATE: never exactly-once, and never a promise about deleted or corrupt
+ * runtime state. Retention is D-09 B-19 (the newest `MCP_JOURNAL_RETAINED_ROWS`, and nothing younger
+ * than `MCP_JOURNAL_MIN_RETENTION_DAYS` days), pages are B-02/B-01, and anything older is the explicit
+ * `gap` above, never silence. Reading or receiving a row never advances the ack — only `ack` does
+ * (`LeaderCursors.markDelivered` vs `ack`) — and 0.15.0 re-pushes nothing on a timer: a row already
+ * delivered in this session is recovered by a READ, which is why the description tells the leader to
+ * read after a compaction.
  *
  * What this tool itself is NOT: push. One read when the leader connects, and a next page only
  * because an answer said `hasMore` — no timer, no status poll, no subscription (N-06). Push lives in
@@ -133,6 +145,12 @@ export const leaderEventsTool = defineTool({
     'When hasMore is true, read again at once; otherwise do not poll.',
     'After you have taken a page into account, ack its nextCursor. Until you do, read returns the same events again, so drop any eventId you already handled. Acknowledging an older cursor changes nothing.',
     'status "gap" means events after your position are no longer retained: nothing is replayed, the current state is included, and you continue by acking resumeCursor.',
+    // #460 § 4, verbatim: the one recovery a compacted leader must be told, because after a
+    // compaction it cannot know which pushed messages it still holds. Read replays what was pushed
+    // and never acked, so the recovery is a read — not a re-push, and not a poll.
+    'After context compaction, call leader_events with action read and no cursor before relying on prior pushes. It replays retained events after your last explicit acknowledgement, including events pushed but not acknowledged. Read every page using nextCursor while hasMore is true. Deduplicate by eventId, reconcile current task state, then acknowledge only the events you have accounted for. A transport receipt is not an acknowledgement. Already acknowledged events are not replayed by default; use a retained earlier cursor if you deliberately need history. If the journal reports a gap, reconcile the returned current state before acknowledging resumeCursor. Do not poll while idle.',
+    // #460 § 4: the guarantee stated as it is, not stronger. The numbers are D-09 B-19/B-01/B-02.
+    `Delivery is at-least-once within retained durable state, not exactly-once: xezar retains at least the newest ${MCP_JOURNAL_RETAINED_ROWS} events and evicts none younger than ${MCP_JOURNAL_MIN_RETENTION_DAYS} days, and a page carries at most ${MCP_JOURNAL_PAGE_ROWS} events or ${MCP_JOURNAL_PAGE_BYTES} bytes. Events outside that are reported as an explicit gap, never as silence. Acknowledgement is cumulative, monotonic and idempotent, and only your ack moves it: reading or receiving an event does not. Nothing already delivered to this session is pushed again on a timer.`,
   ].join('\n'),
   inputSchema: leaderEventsInputSchema,
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },

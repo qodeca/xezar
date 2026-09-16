@@ -381,6 +381,8 @@ Unknown arguments are rejected.
 > When hasMore is true, read again at once; otherwise do not poll.
 > After you have taken a page into account, ack its nextCursor. Until you do, read returns the same events again, so drop any eventId you already handled. Acknowledging an older cursor changes nothing.
 > status "gap" means events after your position are no longer retained: nothing is replayed, the current state is included, and you continue by acking resumeCursor.
+> After context compaction, call leader_events with action read and no cursor before relying on prior pushes. It replays retained events after your last explicit acknowledgement, including events pushed but not acknowledged. Read every page using nextCursor while hasMore is true. Deduplicate by eventId, reconcile current task state, then acknowledge only the events you have accounted for. A transport receipt is not an acknowledgement. Already acknowledged events are not replayed by default; use a retained earlier cursor if you deliberately need history. If the journal reports a gap, reconcile the returned current state before acknowledging resumeCursor. Do not poll while idle.
+> Delivery is at-least-once within retained durable state, not exactly-once: xezar retains at least the newest 10000 events and evicts none younger than 14 days, and a page carries at most 100 events or 40000 bytes. Events outside that are reported as an explicit gap, never as silence. Acknowledgement is cumulative, monotonic and idempotent, and only your ack moves it: reading or receiving an event does not. Nothing already delivered to this session is pushed again on a timer.
 
 Unknown arguments are rejected.
 
@@ -646,9 +648,25 @@ carried by the MCP; a leader reads them with `gh`.
 - **No polling.** Attach once; read on connect, after a gap, and when `hasMore` is true.
 - **Reused keys.** `attach` and `stop` carry an `operationId`, so a reused key replays its receipt –
   also after a restart that ended the attachment. Use a new key for every attach.
+- **After a context compaction** (#460 § 4). A compacted leader cannot know which pushed messages it
+  still holds, and xezar re-pushes nothing on a timer, so the recovery is a read: call `leader_events`
+  with action `read` and no cursor before relying on prior pushes. It replays the retained events
+  after the last explicit acknowledgement, *including events that were pushed but never acknowledged*.
+  Read every page with `nextCursor` while `hasMore` is true, deduplicate by `eventId`, reconcile the
+  current task state, then acknowledge only what has been accounted for. A transport receipt is not an
+  acknowledgement. Acknowledged events are not replayed by default – a retained earlier cursor rewinds
+  the read deliberately, and never moves the acknowledgement. On a gap, reconcile the returned current
+  state before acknowledging `resumeCursor`. Do not poll while idle.
 
-The journal keeps 10 000 rows per project, and never evicts a row younger than 14 days
-([D-09 B-19](mcp-d09-limits-retention-packaging-decision.md)).
+**The guarantee, stated exactly.** Delivery is **at-least-once within retained durable state** – not
+exactly-once, and not a promise about deleted or corrupt runtime state. The journal retains at least
+the newest 10 000 rows per project and evicts no row younger than 14 days
+([D-09 B-19](mcp-d09-limits-retention-packaging-decision.md)); a page carries at most 100 rows or
+40 000 bytes (B-02 / B-01). Anything outside that is an explicit gap, never silence. A read or a
+transport receipt never advances the acknowledgement; only `ack` does, and it is cumulative, monotonic
+and idempotent, so an older or duplicate cursor is a successful no-op. In 0.15.0 no timer re-pushes a
+row already delivered to a session – existing transport retry and heartbeat are unchanged, and a
+delivered-but-unacknowledged row is recovered by a read.
 
 ### The connection file
 

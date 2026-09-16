@@ -15,7 +15,7 @@
 
 <!-- UI in scope = any non-test .tsx under packages/web/src/routes or packages/web/src/components, index.css, cockpit.css, or anything under designs/. SDLC.md § The design gate. -->
 - [ ] Not UI in scope
-- [ ] UI in scope – `needs-design` applied. Design: `designs/<feature>/` or "fix-sized"
+- [ ] UI in scope – `needs-design` applied (outside contributors: a maintainer applies it). Design: `designs/<feature>/` or "fix-sized"
 - [ ] `skip-design`, because: <rendered output unchanged – say why>
 
 Design review evidence: <link to the "## Design review" comment or the design README section>

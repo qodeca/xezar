@@ -4,8 +4,8 @@
 # Usage:  .xezar/checks/repo-gates.sh [--fast] [--list]
 #   --fast  skip `npm ci` ONLY when the installed dependencies
 #           still match the manifests. `--fast` is a request, not a promise: freshness is
-#           verified against a fingerprint of package-lock.json, npm-shrinkwrap.json and
-#           every workspace package.json, and a stale or missing stamp installs anyway.
+#           verified against a fingerprint of package-lock.json, npm-shrinkwrap.json, root/workspace package.json,
+#           .npmrc, patches/ and the Node/npm versions, and a stale or missing stamp installs anyway.
 #           "node_modules exists" is deliberately NOT the test — an agent that touched the
 #           lockfile mid-run leaves node_modules stale, and judging that tree would be a
 #           false green.
