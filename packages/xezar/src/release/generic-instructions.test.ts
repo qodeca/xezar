@@ -117,7 +117,6 @@ async function manifest(): Promise<Producer[]> {
   ];
 }
 
-const P3 = '#466 P3 after #450/#460';
 const CAPABILITY = "names a client's own instruction file as what that client reads — a capability reference (owner decision 2026-09-16)";
 
 /**
@@ -137,17 +136,12 @@ const EXCEPTION_CEILING = 0;
 const NATIVE_FILE_EXCEPTIONS: readonly ContentException[] = [];
 const NATIVE_FILE_EXCEPTION_CEILING = 0;
 
-/** Software-only framing the audit found (F03, F04, F15, F31, F24), each owned by a work package. */
-const FRAMING_EXCEPTIONS: readonly ContentException[] = [
-  { rule: 'software-only-framing', file: 'packages/xezar/src/mcp/bridge.ts', fragment: 'xezar controls coding-agent tasks', reason: 'F15 — MCP initialize instructions', ref: P3 },
-  { rule: 'software-only-framing', file: 'packages/xezar/src/mcp/leader-delivery.ts#LEADER_ROLE_INSTRUCTION', fragment: 'Read GitHub facts', reason: 'F04 — leader role', ref: P3 },
-  { rule: 'software-only-framing', file: 'packages/xezar/src/mcp/leader-delivery.ts#LEADER_ROLE_INSTRUCTION', fragment: 'in their own worktrees', reason: 'F03 — leader role', ref: P3 },
-  { rule: 'software-only-framing', file: 'packages/xezar/src/mcp/leader-delivery.ts', fragment: 'Read GitHub facts', reason: 'F04 — leader role source', ref: P3 },
-  { rule: 'software-only-framing', file: 'packages/xezar/src/mcp/leader-delivery.ts', fragment: 'in their own worktrees', reason: 'F03 — leader role source', ref: P3 },
-  { rule: 'software-only-framing', file: 'mcp-tool:leader_events', fragment: 'quality gates', reason: 'F31 — leader_events description', ref: P3 },
-  { rule: 'software-only-framing', file: 'packages/xezar/src/mcp/tools/leader-events.ts', fragment: 'quality gates', reason: 'F31 — leader_events description source', ref: P3 },
-];
-const FRAMING_EXCEPTION_CEILING = 7;
+/**
+ * Software-only framing the audit found (F03, F04, F15, F31), each owned by a work package. Empty
+ * since #466 P3 rewrote the MCP strings; any new hit fails.
+ */
+const FRAMING_EXCEPTIONS: readonly ContentException[] = [];
+const FRAMING_EXCEPTION_CEILING = 0;
 
 function scan(producers: readonly Producer[], rules = PROJECT_SPECIFIC_RULES, exceptions: readonly ContentException[] = EXCEPTIONS) {
   const used = new Set<ContentException>();

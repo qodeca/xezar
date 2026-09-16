@@ -115,7 +115,7 @@ export const COMPACTION_RECOVERY =
 // #439: a project leader drives xezar through these tools only. #450: attaching is one of them too, so
 // no leader-facing string names an HTTP route any more.
 const BASE =
-  'xezar controls coding-agent tasks for the one project this session was started in. ' +
+  'xezar runs AI agent tasks for the one project this session was started in. ' +
   'Call `health` to check that the xezar cockpit is running for it. ' +
   'A project leader works through these tools only, never the cockpit UI and never the HTTP API. ' +
   'This session receives no pushed events until it is attached.';

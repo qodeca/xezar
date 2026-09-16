@@ -63,7 +63,17 @@ describe('an unconnected tool never sends a leader to the cockpit (#439, #450 T-
 describe('the role text pushed with every event states the MCP-only rule (#439)', () => {
   it('names the tools as the only surface and `gh` as the source of GitHub facts', () => {
     expect(LEADER_ROLE_INSTRUCTION).toContain('Use only these tools: never the cockpit UI and never its HTTP API.');
-    expect(LEADER_ROLE_INSTRUCTION).toContain('Read GitHub facts (labels, review verdicts, merge state) with `gh`');
+    expect(LEADER_ROLE_INSTRUCTION).toContain('get GitHub facts (labels, review verdicts, merge state) from `gh`, which the MCP does not carry.');
+  });
+
+  it('suits any project: GitHub and worktrees are conditional, and a missing capability has a path (#466 P3)', () => {
+    // RED against: the unconditional "Read GitHub facts … with `gh`" and "in their own worktrees" role (F03, F04, F19).
+    expect(LEADER_ROLE_INSTRUCTION).toContain('When the project uses GitHub and `gh` is available, get GitHub facts');
+    expect(LEADER_ROLE_INSTRUCTION).not.toMatch(/in their own worktrees/);
+    expect(LEADER_ROLE_INSTRUCTION).toContain('an isolated working copy (a Git worktree) or in the project folder');
+    expect(LEADER_ROLE_INSTRUCTION).toContain('deliver the result locally and say which evidence is unavailable; never invent a check.');
+    expect(LEADER_ROLE_INSTRUCTION).toContain('read the current task state before acting on an older event');
+    expect(LEADER_ROLE_INSTRUCTION).toContain('take a decision that is not yours to the person');
   });
 });
 
