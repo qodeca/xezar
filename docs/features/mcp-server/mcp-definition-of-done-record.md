@@ -19,7 +19,7 @@ owner's acceptance.** Clause 2 is not met on one revision, and this record does 
   see [§ Real-model reaction](#real-model-reaction-a-19--a-23-per-client). Push delivery to Claude Code
   and Codex is built (#403, #404; #374 closed). **OpenCode is out of scope for the real-model clause
   by the project owner's decision of 2026-09-13** (5 of 5 stalled runs; its reaction reporting is still
-  open as [#340](https://github.com/qodeca/xezar/issues/340)).
+  open as [#340](https://github.com/qodeca/xezar/issues/340); see the [unpursued wake decision](mcp-wake-opencode-decision.md)).
 - **Clause 8 holds.** Both sign-offs are written down, on
   [#119](https://github.com/qodeca/xezar/issues/119#issuecomment-5646331208) (2026-09-12).
 - **Clause 2 is MET BY OWNER ACCEPTANCE (2026-09-15).** The project owner accepted the real-model
@@ -194,7 +194,7 @@ The A-19/A-23 Claude Code **real-model clause was BLOCKED** here until a separat
 an account that may be used; the owner authorized that usage on 2026-09-15 and the clause PASSED —
 see § Real-model reaction. This is the only blocked Claude Channels acceptance clause; a scripted
 endpoint is not a real model. It does not certify the whole MCP feature: the complete real-client
-suite still fails the existing pi `approveTools` case (#369), and independent design/QA and current
+suite still failed the existing pi `approveTools` case (#369) at that time (fixed later by #411), and independent design/QA and current
 CI remain required before merge. The full-suite result on this repair was 30 tests: 20 passed,
 1 failed (pi approval), 9 TODO; the two new Claude PTY cases passed. This records the failure,
 not an exemption from it.
@@ -306,8 +306,8 @@ behaviour in [D-02](mcp-d02-session-binding-decision.md) and
 | D-04 connection file | [`mcp-d04-connection-file-decision.md`](mcp-d04-connection-file-decision.md), with the #262 implementation note at `:13-26` | Resolved; A-01's product leg measures the file. **The pre-implementation § D-04.6 still argues F-15 "in terms of the token"; there is no token field, and `:18-21` retracts it.** Worth a follow-up edit; it changes no verdict. |
 | D-05 async event contract | [`mcp-d05-async-event-contract-decision.md`](mcp-d05-async-event-contract-decision.md) | Decided; the catalog and no-polling rule ship. Its § 4 is why "the client received it" is not A-19. |
 | D-06 versioning, idempotency, audit | [`mcp-d06-versioning-idempotency-audit-decision.md`](mcp-d06-versioning-idempotency-audit-decision.md) | Decided and shipped. **Audit retention stays Open** (row 14), and the trail records the `mcp` origin only for 0.14.0 (row 16). Neither blocks a released version. |
-| D-07 merge/publication | requirements § 10 (`:234`, "Settled"), applied as inventory record I-076, traced in [`mcp-api.md`](mcp-api.md) `:745` | Settled; P-35 and P-38 measure it. |
-| D-08 goal decisions and local hand-off | requirements § 10 (`:235`); the shipped tool text at `mcp-api.md:364` and `local-handoff.ts:33` | Settled for its two in-scope halves. Its third half — "built-in/native handover respects the single owner" — is **out of this epic by design** and is recorded NOT RUN in the acceptance harness. |
+| D-07 merge/publication | requirements § 10 (row D-07, “Settled”), applied as inventory record I-076, traced in [`mcp-api.md`](mcp-api.md) `:745` | Settled; P-35 and P-38 measure it. |
+| D-08 goal decisions and local hand-off | requirements § 10 (row D-08); the shipped tool text at `mcp-api.md:364` and `local-handoff.ts:33` | Settled for its two in-scope halves. Its third half — "built-in/native handover respects the single owner" — is **out of this epic by design** and is recorded NOT RUN in the acceptance harness. |
 | D-09 limits, retention, packaging | [`mcp-d09-limits-retention-packaging-decision.md`](mcp-d09-limits-retention-packaging-decision.md) | Bounds decided. **U-1…U-6 remain unresolved** (token cost per client, audit retention count, real bridge startup, Windows/Linux paths, Claude `MCP_TIMEOUT`, load). None is an obligatory criterion. |
 
 The clause's second sentence, item by item:
@@ -316,8 +316,8 @@ The clause's second sentence, item by item:
 | --- | --- |
 | the actual transport | `mcp-api.md:48-51` — JSON-RPC 2.0, newline-framed, on the stdio of `xezar mcp`, forwarded over the project's local socket |
 | the startup method | `mcp-api.md:48-50`; `mcp-d01-transport-decision.md` § 4 — spawned by the MCP client, never by a user and never by a service manager |
-| the connection file | `mcp-api.md:630-634`; `mcp-d04-connection-file-decision.md:85-91`; `CHANGELOG.md:88-92` |
-| the supported clients | requirements `:15` — Claude Code, Codex, OpenCode and pi, the last through the third-party `pi-mcp-adapter`; per-client setup in D-04 § 3 |
+| the connection file | `mcp-api.md:630-634`; `mcp-d04-connection-file-decision.md:85-91`; `CHANGELOG.md` § 0.14.0 (`mcp-connection.json`) |
+| the supported clients | requirements § 1 (supported clients) — Claude Code, Codex, OpenCode and pi, the last through the third-party `pi-mcp-adapter`; per-client setup in D-04 § 3 |
 | the project/owner enforcement model | `mcp-api.md:487-493`; `mcp-d02-session-binding-decision.md` § 3–5 |
 | the limitations | `mcp-api.md:648-663`; `mcp-client-compatibility.md:105`; each decision record's own unproven/unresolved section; and § PI-08 below |
 | setup without secrets in conversation | `mcp-d04-connection-file-decision.md:19-21` — there is no token field, so F-15 holds by construction; `mcp-api.md:655-659`; measured by A-12 |
@@ -362,15 +362,14 @@ The flow is demonstrated end to end, in two layers:
 **No built-in leader implementation is hidden here.** The ability was removed, not merely unused:
 commit **`188b0c5`** — *"xezar starts no agent process; a leader is attached, never spawned (#309,
 owner decision on #311)"*, 297 insertions against 1971 deletions. Today
-`packages/contract/src/mcp-leader.ts:31-44` admits only `attach` and `stop`, and
-`packages/xezar/src/server/server.ts:5598` says why. The pin is behavioural, not a comment:
-`packages/xezar/src/mcp/push-delivery.test.ts:732` plants executable stand-in `claude` and `codex`
+`mcpLeaderActionInputSchema` (`packages/contract/src/mcp-leader.ts`) admits only `attach` and `stop`, and
+the comment above `mcpLeaderRoutes` in `packages/xezar/src/server/server.ts` says why. The pin is behavioural, not a comment:
+`packages/xezar/src/mcp/push-delivery.test.ts` (the “starts no agent process” case) plants executable stand-in `claude` and `codex`
 binaries that touch a marker file, points `XEZ_CLAUDE_BIN` and `XEZ_CODEX_BIN` at them, POSTs three
 `start` bodies and one `resume`, expects **400** for each, and then asserts neither marker exists.
-Two adapters are **retained but unconstructed** — `adapters/claude-code.ts` is 61 lines with no
-imports and one function returning `route: 'none'`, and `adapters/codex.ts` says at `:26-30` that
-nothing in the product constructs it. That is worth knowing, and it is not a leader: neither can open
-a connection.
+On `ed579e63`, two adapters were retained but unconstructed. Since #403/#404,
+`LeaderDelivery` constructs the Claude Code and Codex adapters for attached sessions. Neither
+spawns an agent process; the `start`/`resume` refusal remains pinned by the test above.
 
 **No global administration is added.** Every global-reaching action is an explicit entry in
 `project-config.ts:182-268`'s refusal table that names its boundary and dispatches nothing, and a
@@ -380,7 +379,9 @@ project at all; the tenth, `local_handoff`, launches an application on the host 
 `capabilities.localHandoff`. `PUT /agent-config/:id` still answers 409 when `localHandoff` is false,
 measured by P-27.
 
-**No new release engine is added.** `.github/workflows/` holds exactly two workflows;
+**No new release engine is added.** Since the measurement below, `mutation.yml` added nightly analysis (#433) and #412 fixed release stamping. There are now three workflows; `release.yml` remains the only publisher. Tag `v0.14.0` now exists.
+
+Historical observation on `ed579e63`: `.github/workflows/` holds exactly two workflows;
 `release.yml` is `workflow_dispatch`-only and is the only path that publishes; `ci.yml` carries no
 npm credential. `git log v0.13.1..HEAD -- .github/workflows/ scripts/release.mjs` returns **zero
 commits** — the release machinery is byte-identical to 0.13.1's. `handoff_git` invokes the cockpit's
@@ -444,7 +445,7 @@ until answered, and nothing in xezar answers one. Measured blast radius, unwiden
 the default path is unaffected (an ordinary pi task finishes in 2.8 s with the gate on, because the
 runner's default `--tools` allowlist offers no `xezar_*` tool), a step that names an `xezar_*` tool
 while gated fails at ~121 s on the runner's timeout, and a leader reaction turn waits for ever. This
-is **not met**, by the project owner's decision of 2026-09-12: the fix is
+was **not met** at the 2026-09-12 assessment. It was fixed after 0.14.0 by #411: xezar’s pi runner answers the dialog. The original follow-up was
 [#369](https://github.com/qodeca/xezar/issues/369), deliberately outside this release.
 
 Why it contradicts no obligatory criterion:
@@ -452,10 +453,10 @@ Why it contradicts no obligatory criterion:
 - **A-01's obligatory outcome is the documented one-time setup**, and that passes for pi on
   `ed579e63`. `approveTools` is the user's own key and the zero-config default sets no gate, so the
   failing configuration is one the user must create deliberately.
-- **The released product tells the user not to create it.** The guidance is on the cockpit's own pi
-  setup card (`packages/web/src/routes/settings/mcp-connection-section.tsx:208`, pinned by a test at
-  `mcp-connection-section.test.tsx:307`), in
-  [the extension guide](pi-leader-extension.md#one-thing-to-leave-alone-approvetools) and in
+- **On `ed579e63` the card said to leave xezar’s tools ungated.** Since #411, the cockpit’s pi
+  setup card explains that xezar answers the dialog (`mcp-connection-section.tsx`, pinned by
+  the `mcp-connection-section.test.tsx` case naming “xezar answers the dialog (#369)”). See
+  [the extension guide](pi-leader-extension.md#approvetools-who-answers-the-dialog) and
   [D-04 § 3.4](mcp-d04-connection-file-decision.md#34-pi) — merged as #370/#371 in `ed579e6`, which is
   the candidate revision itself.
 - **It adds nothing to A-19 or A-23.** On `ed579e63` both were already BLOCKED, for an unrelated reason, for all

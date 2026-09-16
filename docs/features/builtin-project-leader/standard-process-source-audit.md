@@ -1,5 +1,10 @@
 # Standard process source audit and transfer register
 
+> **Status update — 2026-09-15:** The audited baseline was adapted for this repository’s own kit; see
+> [installation qualification](../../../.xezar/docs/installation.md). Product-wide kit distribution is not
+> implemented. The original three-client qualification recommendation is dated evidence; the separate built-in
+> pi decision remains #336.
+
 Status: **completed static source-to-requirements audit; no implementation or runtime certification**. Audit date: **2026-09-09**.
 
 The user's readiness signal released the current `daxko-platform` **`.ai/xezar/`** baseline at Git commit **`240783084fad65fca78f380ac2b409deb5ae8414`**. The source checkout was clean when read. The retired `.ai/cezar/` tree was not used. References to retired behavior inside current documents are classified as history, not active product requirements.

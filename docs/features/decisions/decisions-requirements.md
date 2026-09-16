@@ -1,8 +1,12 @@
 # Decisions – an owner-only decision gate: requirements
 
+> **Status update — 2026-09-15:** Not implemented (`runStatusSchema` has no `decision` state). Design revision
+> 2 supersedes the first draft reviewed below; it applies the U-/G-findings and owner interview. This is a
+> requirement record, not current product behavior.
+
 Status: **requirements draft, agreed with the owner on 2026-09-14; not yet implemented.** Audience: product owner and engineering team.
 Inputs: the [grill-me interview record](decisions-grill-record-2026-09-14.md) (20 locked decisions, cited below as *D-n*), the [five-reviewer verdict](decisions-design-review-2026-09-14.md) on the first design draft (cited as *R-n*), the campaign finding in [leader-dogfooding-2026-09-13.md § 14.2](../mcp-server/leader-dogfooding-2026-09-13.md), and MCP requirement F-09 in [mcp-project-leader-requirements.md](../mcp-server/mcp-project-leader-requirements.md).
-Design: `designs/decisions/` (the first draft predates this document and is being revised against it).
+Design: `designs/decisions/` (revision 2 applies the review and owner-interview findings; implementation remains unbuilt).
 
 Baseline: xezar `0c4fbde` (main, 2026-09-14). Bare `#n` means `qodeca/xezar`.
 
@@ -98,7 +102,7 @@ Out of scope for this version (each is a deliberate non-goal, not a gap):
 
 | ID | Requirement |
 | --- | --- |
-| F-19 | No fifth MCP tool. Cases are read through `task_read view: 'decisions'` (paged, sealed cursor) and changed through two `execution_control` actions, `open_decision` and `record_decision`, which inherit `operationId` (required on both; a retried `open_decision` returns the first receipt and opens nothing twice), the stale-version discipline (the case token, F-17) and the refusal vocabulary (R-11). `open_decision` takes `{runId, category, question, plain, why, recommended?, evidence?}`; a call without `plain` is refused. |
+| F-19 | No new MCP tool. Cases are read through `task_read view: 'decisions'` (paged, sealed cursor) and changed through two `execution_control` actions, `open_decision` and `record_decision`, which inherit `operationId` (required on both; a retried `open_decision` returns the first receipt and opens nothing twice), the stale-version discipline (the case token, F-17) and the refusal vocabulary (R-11). `open_decision` takes `{runId, category, question, plain, why, recommended?, evidence?}`; a call without `plain` is refused. |
 | F-20 | `record_decision` MUST require `ownerWords` (non-empty, bounded at 1 000 characters) and stores `channel: 'mcp'`; on a `delegated` case (F-31) it requires `reason` instead and refuses `ownerWords`, so a relayed answer and a leader's own answer can never be confused in the record. The words land on the run's NDJSON and in the case; never in `mcp-audit.ndjson`, which carries digests only. Whether the agent receives the words verbatim or only the option label is OD-6. A leader that opens and records the same case is allowed (non-goal) but the record shows both operation ids and the seconds between them. |
 | F-21 | A `decision` journal kind MUST be delivered to the leader like `question.asked`: `decision.requested` with the question, the plain text, the options and the derived list of refused moves; `decision.recorded`, `decision.reopened`, `decision.voided`, `decision.not-a-decision`, `decision.delegated` (with the owner's guidance; the leader may now answer with a `reason`), `decision.taken-back`, and `scope.reported` for the report-only net. The refusal message of every blocked tool names the case and says: take the question to the owner, record the answer with `record_decision` – or, on a delegated case, decide and record with a reason. |
 | F-22 | The leader's base role instruction (`mcp/leader-delivery.ts`) MUST gain one line: never put new user-facing scope into a brief and never change what "done" means – open a case. The kit's reviewer skills MUST say that a finding which asks for new scope is a case for the owner, not a defect for the author (this is how the motivating case started). |
