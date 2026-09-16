@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
   "source": {
-    "repository": "daxko-platform",
+    "repository": "reference source kit",
     "directory": ".ai/xezar",
     "commit": "240783084fad65fca78f380ac2b409deb5ae8414",
     "trackedFiles": 56
   },
-  "note": "Maintained kit provenance/content inventory. Not a runtime seal or a claim of real-task validation. This manifest excludes its own bytes.",
+  "note": "Frozen 2026-09-09 source-baseline provenance snapshot; not the current kit inventory. Historical file hashes are preserved; source path labels are anonymized, with target paths unchanged. Not a runtime seal or a claim of real-task validation. This manifest excludes its own bytes.",
   "files": {
     "checks/bootstrap.sh": "e918cc4c874b487eca15667307fac26a61821f115e4334b895590231180e9601",
     "checks/catalog-check.mjs": "a229d8e6027473154d53c6e1e1984cd4ba62a6d3db38b32e51b5cf4af3214a81",
@@ -189,59 +189,59 @@
       "target": "docs/worktrees.md",
       "sourceBlob": "ea036308545a027c478f3c09f18499ebb1a9d5fe"
     },
-    ".ai/xezar/skills/daxko-bug-investigation.md": {
+    ".ai/xezar/skills/reference-bug-investigation.md": {
       "target": "skills/xezar-bug-investigation.md",
       "sourceBlob": "b3a9b8eb64a46f33108de7cf5a7b8d472f43d838"
     },
-    ".ai/xezar/skills/daxko-business-analysis.md": {
+    ".ai/xezar/skills/reference-business-analysis.md": {
       "target": "skills/xezar-business-analysis.md",
       "sourceBlob": "c2aa93e24adf69457b62f416d7288abddf7b251f"
     },
-    ".ai/xezar/skills/daxko-code-review.md": {
+    ".ai/xezar/skills/reference-code-review.md": {
       "target": "skills/xezar-code-review.md",
       "sourceBlob": "31227f3a53074314315098686add5187811009bc"
     },
-    ".ai/xezar/skills/daxko-dependency-maintenance.md": {
+    ".ai/xezar/skills/reference-dependency-maintenance.md": {
       "target": "skills/xezar-dependency-maintenance.md",
       "sourceBlob": "e2e7681b670459d841a0df2e34945ad4c58d3038"
     },
-    ".ai/xezar/skills/daxko-docs-maintenance.md": {
+    ".ai/xezar/skills/reference-docs-maintenance.md": {
       "target": "skills/xezar-docs-maintenance.md",
       "sourceBlob": "b7cc3b451ae368d623013c70a07aab7606b418ae"
     },
-    ".ai/xezar/skills/daxko-handoff-draft-pr.md": {
+    ".ai/xezar/skills/reference-handoff-draft-pr.md": {
       "target": "skills/xezar-handoff-draft-pr.md",
       "sourceBlob": "bcf9097dd0d2627a146b7226430ad101cdcbf3ae"
     },
-    ".ai/xezar/skills/daxko-implementation.md": {
+    ".ai/xezar/skills/reference-implementation.md": {
       "target": "skills/xezar-implementation.md",
       "sourceBlob": "ce1bbc7bf7995db686ae76a4f2a01ffba57dcc7e"
     },
-    ".ai/xezar/skills/daxko-integration.md": {
+    ".ai/xezar/skills/reference-integration.md": {
       "target": "skills/xezar-integration.md",
       "sourceBlob": "c3a35035b3a9211fd4d0c51139e2708c68780fab"
     },
-    ".ai/xezar/skills/daxko-issue-triage.md": {
+    ".ai/xezar/skills/reference-issue-triage.md": {
       "target": "skills/xezar-issue-triage.md",
       "sourceBlob": "6cf01f73c373cd92e7c4edc0cb1267df292e5daf"
     },
-    ".ai/xezar/skills/daxko-planning-spec.md": {
+    ".ai/xezar/skills/reference-planning-spec.md": {
       "target": "skills/xezar-planning-spec.md",
       "sourceBlob": "8b4c49c68f52c7785a55c70d055c4b180add09a5"
     },
-    ".ai/xezar/skills/daxko-quality-gates.md": {
+    ".ai/xezar/skills/reference-quality-gates.md": {
       "target": "skills/xezar-quality-gates.md",
       "sourceBlob": "b8acc18ed741e99dabdb7c15cd910a4ce49ca0b4"
     },
-    ".ai/xezar/skills/daxko-release-prep.md": {
+    ".ai/xezar/skills/reference-release-prep.md": {
       "target": "skills/xezar-release-prep.md",
       "sourceBlob": "037cf1cfceb5748cbd2117a893276b66b2e9f7e6"
     },
-    ".ai/xezar/skills/daxko-review-response.md": {
+    ".ai/xezar/skills/reference-review-response.md": {
       "target": "skills/xezar-review-response.md",
       "sourceBlob": "676729f4a0b8ef7ad0d4486ad11743285a0b3a47"
     },
-    ".ai/xezar/skills/daxko-testing.md": {
+    ".ai/xezar/skills/reference-testing.md": {
       "target": "skills/xezar-testing.md",
       "sourceBlob": "6d6ea7cf89a91a8d15a4d743497c638546bf9d17"
     },
