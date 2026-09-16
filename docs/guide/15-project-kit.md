@@ -4,7 +4,7 @@ Use a project kit to keep reusable agent instructions and workflows beside your 
 
 ## To find the project's kit
 
-The repository-root `.xezar/` directory holds project configuration, [workflows](05-workflows.md) and [skills](06-skills.md). A project can also keep its own checks, documentation and guidance there. It is separate from `.local/xezar/` execution data and the per-user `~/.xezar/` workspace settings.
+The repository-root `.xezar/` directory holds project configuration, [workflows](05-workflows.md) and [skills](06-skills.md). A project can also keep its own checks, documentation and guidance there. Its files are ordinary project files: you review and version them with the rest of the project. [Guided setup](01-getting-started.md#to-let-an-agent-set-up-this-project-optional) can prepare the configuration for you. To run a project leader over the project, see [MCP project leader](13-mcp-leader.md). It is separate from `.local/xezar/` execution data and the per-user `~/.xezar/` workspace settings.
 
 An absent kit leaves defaults in place. There is no fallback to the old `.ai/xezar/` kit location. One collision guard applies when the kit path would be the workspace home: the kit goes under `.local/xezar/kit` instead, protecting the user's global settings. See [Project layout](../project-layout.md) for the directory rules and migration guidance.
 
@@ -48,21 +48,53 @@ A local definition can therefore hide a team skill with the same name. Missing d
 
 ## To add optional project configuration
 
-You do not need `.xezar/config.json` to start. Add only the keys you want to set; the [project configuration schema](../../packages/xezar/src/config.ts) defines the supported keys. Examples include `baseBranch`, `defaultRunner`, `defaultModels`, `systemPrompt`, `worktreeRetention` and `reviewGate`.
+`.xezar/config.json` holds this project's own choices, such as the base branch or the default agent. It travels with the project, so everyone who opens the project gets the same choices. You do not need it to start: a missing file behaves like the defaults below, and an unreadable or invalid file falls back to them without blocking startup. Add only the keys you want to change. [Guided setup](01-getting-started.md#to-let-an-agent-set-up-this-project-optional) writes only these real keys; your domain, outputs and way of working go into the instruction file instead.
 
-Keep these distinctions in mind:
+The [project configuration schema](../../packages/xezar/src/config.ts) defines these keys:
+
+| Key | Default when absent |
+| --- | --- |
+| `skillsRepos` | `[{ "repo": "qodeca/xezar-skills", "ref": "main" }]`, subject to your personal skill selection |
+| `worktreeRetention` | The workspace retention default, otherwise 10 |
+| `memoryLimitMb` | No project override; the workspace ceiling applies |
+| `defaultRunner` | The machine's `agentDefaults.runner`, otherwise `claude` |
+| `defaultModels` | The machine's `agentDefaults.models`; otherwise no preset |
+| `plannerModel` | `sonnet` |
+| `namerModel` | `haiku` |
+| `liveTitleUpdates` | `XEZ_TITLE_UPDATES` decides (on by default) |
+| `reviewGate` | `XEZ_REVIEW_GATE` decides (off by default) |
+| `baseBranch` | The branch currently checked out |
+| `systemPrompt` | No extra instructions |
+| `modelsLocked` | Not locked by this project |
+| `maxParallel` | 2 in the schema, but ignored: see below |
+
+The [Configuration reference](11-configuration-reference.md#to-configure-this-project-xezarconfigjson) gives the accepted values and full precedence for each key. Keep these distinctions in mind:
 
 - A stored `reviewGate` value wins over `XEZ_REVIEW_GATE`; with neither enabled, the gate is off. Autonomous runs skip it.
 - Leaving `skillsRepos` absent keeps the default `qodeca/xezar-skills` catalog and personal selection. An explicit list replaces the sources; `[]` disables team sources. Any explicit list bypasses personal selection and hides **Manage skills**, even if it names the default repository.
-- Per-project `memoryLimitMb` can override the workspace ceiling. The old project-file `maxParallel` key no longer controls enforcement; workspace resources and the project's registry entry govern concurrency.
+- `maxParallel` no longer controls how many tasks run. Concurrency is machine state: set it in `~/.xezar/config.json` under `resources.maxParallel`, or per project in the registry entry `projects[].maxParallel`.
+- A positive `memoryLimitMb` in a registered project overrides the machine's memory ceiling. A memory ceiling usually describes a computer, not a project, so a shared project is often better without it; set it per machine in `~/.xezar/config.json` under `resources.memoryLimitMb`.
 
-These project settings are separate from `~/.xezar/config.json`. Do not copy the workspace registry into your project's kit.
+## To keep machine settings out of the project
+
+`~/.xezar/config.json` is separate from the project's file. It belongs to you and your computer, never to a project, and it holds:
+
+- The project registry (`projects`), including each project's optional `maxParallel` and tags.
+- Resource limits under `resources`: `maxParallel`, `maxMonitoringSessions`, `monitoringWakeIntervalMinutes`, `autoResumeOnUsageLimit`, `idleTimeoutMinutes`, `memoryLimitMb` and `worktreeRetentionDefault`.
+- Machine-wide agent defaults (`agentDefaults`), disabled providers, New Task defaults, and stored switches such as `skillsAutoUpdate`, `followups`, `agentEnvPassthrough` and `modelsLocked`.
+- Folder settings: `browseRoot` and `projectsDir`.
+
+Its keys and defaults are listed in the [Configuration reference](11-configuration-reference.md#to-configure-the-workspace-xezarconfigjson), and the [workspace schema](../../packages/xezar/src/workspace/config.ts) defines them. Do not copy this file, or its registry, into a project. Guided setup never writes it.
 
 ## To add an optional agent pipeline
 
-[Guided setup](01-getting-started.md#to-let-an-agent-set-up-this-project-optional) can optionally add `.xezar/pipeline/config.json`, a project's own agent-delivery pipeline configuration. That file's shape belongs to the `xez-setup-agent-pipeline` skill, not to the engine. The skill itself comes from the default public team-skills source, with a pinned fallback bundled in xezar so setup still works offline or when that source cannot be reached.
+A software project can add an agent delivery pipeline: a configuration file, `.xezar/pipeline/config.json`, that describes the project's delivery stages. Most projects do not need one, and xezar works without it.
 
-This step is opt-in: decline it, or skip the question, and setup writes no pipeline file — the rest of setup still applies. Running setup again later can add it without repeating what you already accepted.
+To add one, accept the pipeline option during [guided setup](01-getting-started.md#to-let-an-agent-set-up-this-project-optional). Setup then uses the public `xez-setup-agent-pipeline` skill from the default team-skills source, `qodeca/xezar-skills`. That skill, not xezar, owns the file's shape.
+
+Setup itself follows a reviewed, pinned revision of the public setup skill. xezar also bundles a complete setup prompt as a fallback, so setup still runs offline or without the team-skills source. If the pipeline skill cannot be found in that case, setup reports the pipeline part as incomplete. It does not guess the file.
+
+To skip it, decline the option. Setup then writes no pipeline file, and the rest of setup still applies. You can add the pipeline later with another setup or re-check task.
 
 ## To learn from xezar's own kit
 
