@@ -541,3 +541,11 @@ run can reach is breaking under section 1's rule, so it is recorded here rather 
 ## When in doubt
 
 If a change might break any surface above, say so in the PR description, label the PR `risk-high`, and route it through the review + QA gates in `SDLC.md`. A silent break found in review is a blocker per `CODE_REVIEW.md`.
+
+## MCP decision-only run versions (#449, #530), 2026-09-16
+
+Run-version semantics change for every execution_control action and other run-version guards: the opaque rev1 token now uses an automatically persisted decision revision, not transcript sequence. A→B→A decisions still conflict across restart; transcript-only progress does not. The digest namespace changes so pre-upgrade tokens conflict: clients must read current state and decide again once after upgrade. No token parsing was supported. Legacy runs initialize without configuration; decisionRevision is an optional additive record field. Downgrading loses the new revision and requires a fresh read; no history or task content is migrated or deleted.
+
+Only accepted effects reserve their specific delayed transition. Accepted cancellation acknowledgements remain suppressed; rejected operations and successful running steering cannot suppress independent later outcomes. Existing journal rows remain untouched. The user-facing API paths, action schemas and refusal shapes remain unchanged.
+
+Participant `user-message` input also advances the decision revision; it is steering, not agent telemetry.

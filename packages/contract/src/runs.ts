@@ -146,6 +146,8 @@ export type ProcessUsage = z.infer<typeof processUsageSchema>;
  */
 export const runRecordSchema = z.object({
   id: z.string(),
+  /** Automatically maintained decision revision; absent in legacy records. */
+  decisionRevision: z.number().int().nonnegative().optional(),
   title: z.string(),
   /** Display title (#389): auto-derived from the first agent turn, or the user's inline edit
    *  (`PATCH /runs/:id` sets it together with `title`). Show `titleSummary ?? title`. */

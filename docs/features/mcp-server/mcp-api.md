@@ -135,7 +135,7 @@ Unknown arguments are rejected.
 > answer_question — answer the task's pending question by its questionId, with the option labels (answers) or free text; only the pending question can be answered, and a closed session is reopened to deliver it.
 > edit_queued_message / remove_queued_message — change a message stacked on a queued task.
 > cancel_auto_resume — stop a scheduled automatic resume after a usage limit.
-> Every action needs expectedVersion: the `version` task_read (view task) returned for this task. If the task changed since you read it, nothing is applied and the answer is status "conflict" with error "stale_version": read it again and decide again. A running task's version moves as its agent works, so read it right before acting.
+> Every action needs expectedVersion: the `version` task_read (view task) returned for this task. If the task changed since you read it, nothing is applied and the answer is status "conflict" with error "stale_version": read it again and decide again. The token tracks decision state, including changes later reversed; transcript, tool and usage progress alone never invalidate it.
 > Targets tasks only by run id in the bound project; there is no process-level control. Plan approval and decisions outside the approved goal stay with the human.
 
 Unknown arguments are rejected.
@@ -1020,3 +1020,13 @@ changes a tool. Each finding is reported for a separate decision.
 6. **I-080 has no GitHub argument.** `task_create` takes no issue or pull-request reference, so the
    leader must write the reference into `prompt` itself, as the cockpit's `composeGithubTask` does.
    The outcome is reachable, but the "same ref-prepending rule" is the client's job.
+
+## Decision versions and operation attribution
+
+The task version tracks a persisted, monotonic decision revision: status, archive/pin flags, title/title origin, auto-resume, task brief, queued messages, step identity/status, branch and workflow. Participant input advances it too. Transcript/tool/usage progress alone does not change it. This applies to every execution_control action and every other run-version guard; reversing a decision still invalidates an older token. On stale_version, re-read task_read and make a new decision with a new operationId; never blindly retry currentVersion.
+
+Run tokens remain opaque `rev1` strings; the revision slot is decision-only and the digest is domain-separated from older transcript tokens. Legacy records initialize automatically. Re-read once after upgrade; no configuration or manual migration is needed.
+
+Only an accepted effect may reserve a specific delayed transition: an accepted cancel reserves `cancelled`, consumed or discarded at the next status transition. Its acknowledgement remains echo-suppressed. Successful steering of an already-running task does not reserve completion; a waiting task’s answer consumes its immediate running transition, and later outcomes remain system-originated and pushed. Rejected operations lose echo ownership and their own pending intent without deleting a newer operation’s intent. Synchronous acknowledgements still see ownership registered before dispatch. Existing journal rows are immutable.
+
+Participant `user-message` input also advances the decision revision; it is steering, not agent telemetry.

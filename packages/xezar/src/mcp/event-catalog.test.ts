@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { RunStore, type RunRecord } from '../runs/store.ts';
 import type { WorkspaceEventBus } from '../server/server.ts';
-import { EventCatalog, withEventOrigin, type WorkspaceEventSource } from './event-catalog.ts';
+import { EventCatalog, withEventOrigin, expectEventTransition, type WorkspaceEventSource } from './event-catalog.ts';
 import { EventJournal } from './event-journal.ts';
 import { runVersion } from './stale-write.ts';
 
@@ -700,7 +700,7 @@ describe('origin: a human cancel and an MCP cancel differ only by who issued the
     const human = startedRun();
     const leader = startedRun();
     // The route only asks the manager to interrupt; the status is written later, outside the call.
-    withEventOrigin({ origin: 'leader', causedBy: LEADER_OP, runId: leader.id }, () => ({ cancelled: true }));
+    withEventOrigin({ origin: 'leader', causedBy: LEADER_OP, runId: leader.id }, () => { expectEventTransition(leader.id, 'cancelled'); return { cancelled: true }; });
     await new Promise((resolve) => setImmediate(resolve));
     for (const run of [human, leader]) {
       store.updateStep(run.id, run.steps[0]!.id, { status: 'cancelled' });
@@ -715,7 +715,7 @@ describe('origin: a human cancel and an MCP cancel differ only by who issued the
 
   it('spends an intent on one transition only', () => {
     const run = startedRun();
-    withEventOrigin({ origin: 'leader', causedBy: LEADER_OP, runId: run.id }, () => undefined);
+    withEventOrigin({ origin: 'leader', causedBy: LEADER_OP, runId: run.id }, () => expectEventTransition(run.id, 'waiting'));
     store.updateRun(run.id, { status: 'waiting' });
     store.updateRun(run.id, { status: 'running' });
     store.updateRun(run.id, { status: 'done' });
