@@ -1,0 +1,96 @@
+/* cli-terminal – feature rules only. Tokens and base classes come from cockpit.css. */
+
+/* A terminal sample. The page theme stands in for a light or dark terminal theme. */
+.term {
+  margin: 0;
+  padding: var(--spacing-inset);
+  overflow-x: auto;
+  background: var(--card);
+  color: var(--foreground);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.55;
+  white-space: pre;
+  tab-size: 8;
+}
+
+/* The ANSI roles of README § 9.2, each mapped to the cockpit token it mirrors. */
+.term .a-red { color: var(--danger); }
+.term .a-yellow { color: var(--pending-strong); }
+.term .a-magenta { color: var(--violet); }
+.term .a-cyan { color: var(--info); }
+.term .a-green { color: var(--success); }
+.term .a-dim { color: var(--muted-foreground); }
+.term .a-bold { font-weight: 700; }
+
+/* A whole sample with colour switched off, to show the words still carry it. */
+.term.no-color span { color: inherit; font-weight: inherit; }
+
+/* Other projects – the sidebar group of multi-instance.md § 6. */
+.other-projects {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 1);
+  padding: calc(var(--spacing) * 2) calc(var(--spacing) * 2.5) calc(var(--spacing) * 3);
+}
+
+.other-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: calc(var(--spacing) * 2);
+  row-gap: calc(var(--spacing) * 1);
+  min-height: calc(var(--spacing) * 9);
+  padding: calc(var(--spacing) * 1) calc(var(--spacing) * 2.5);
+  border-radius: var(--radius);
+  color: var(--muted-foreground);
+  font-size: 13.5px;
+  text-decoration: none;
+}
+
+a.other-row:hover {
+  background: var(--muted);
+  color: var(--foreground);
+}
+
+.other-row .name {
+  color: var(--foreground);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.other-row .state {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 1.5);
+  font-size: 12px;
+}
+
+.other-row .port {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.other-row .actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--spacing) * 1.5);
+  flex-basis: 100%;
+}
+
+.other-row .hint {
+  flex-basis: 100%;
+  font-size: 12px;
+}
+
+.other-frame {
+  max-width: 300px;
+  background: var(--sidebar);
+}
+
+@media (max-width: 860px) {
+  .other-frame { max-width: none; }
+  .other-row { min-height: 44px; }
+  .other-row .btn { height: 44px; }
+}
