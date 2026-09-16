@@ -83,6 +83,10 @@ session as well — it fails only when it has *neither* an OIDC endpoint nor a t
    `packages/xezar/src/release/publishing-surface.test.ts` keeps it that way. Why it moved, and the
    unchanged 80 % floor:
    [coverage-gaps.md § 10.8](testing/coverage-gaps.md#108-the-nightly-gate-stryker-over-the-mcp-code).
+   The generic-instructions guard (`packages/xezar/src/release/generic-instructions.test.ts`)
+   and `check:pack` packed-archive scan that [PR #481](https://github.com/qodeca/xezar/pull/481)
+   adds must both be green on the release candidate; include their results, the candidate SHA
+   and the fresh archive scan evidence in the release PR.
 2. Go to **Actions → Release → Run workflow**, pick the branch (`main`, or a `release/*`
    maintenance branch) and the bump:
 
