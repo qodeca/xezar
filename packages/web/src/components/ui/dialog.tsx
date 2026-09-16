@@ -77,7 +77,7 @@ function DialogContent({
             // focus-on-anything ring, so a mouse click no longer paints one. The `before:` overlay is the 44px phone hit
             // area: the icon is 16px and this control sits in a corner, so the target grows
             // around it without moving the glyph. Released at `md:`.
-            className="absolute top-4 right-4 rounded-sm opacity-70 ring-offset-background transition-opacity outline-none before:absolute before:top-1/2 before:left-1/2 before:size-tap before:-translate-x-1/2 before:-translate-y-1/2 before:content-[''] hover:opacity-100 focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none md:before:hidden data-[state=open]:bg-accent data-[state=open]:text-muted-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
+            className="absolute top-4 right-4 rounded-sm opacity-70 transition-opacity outline-none before:absolute before:top-1/2 before:left-1/2 before:size-tap before:-translate-x-1/2 before:-translate-y-1/2 before:content-[''] hover:opacity-100 focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none md:before:hidden data-[state=open]:bg-accent data-[state=open]:text-muted-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
           >
             <XIcon />
             <span className="sr-only">Close</span>

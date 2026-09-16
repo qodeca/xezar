@@ -141,25 +141,59 @@ describe('B1 geometry: primitives carry the absolute phone target floor', () => 
     // from here rather than from a second, half-adopted primitive.
     expect(nativeFieldClass).toContain('min-h-tap')
     expect(nativeFieldClass).toContain('md:min-h-0')
+
+    // …and the same iOS rule `Input` itself carries (design review NB-3): Safari zooms the page
+    // when a focused field's text is under 16px, and this string is about to be copied into two
+    // dozen raw `<input>`/`<select>` sites. A flat `text-sm` is that zoom, waiting.
+    expect(nativeFieldClass).toContain('text-base')
+    expect(nativeFieldClass).toContain('md:text-sm')
+    expect(nativeFieldClass).not.toMatch(/(?<![\w:-])text-sm/)
   })
 
-  it('every primitive that sizes a row or a control spells the floor or says why not', () => {
-    // A guard against the floor being added to four files and forgotten in the fifth.
-    const REQUIRE_TAP = [
-      'button.tsx',
-      'command.tsx',
-      'dialog.tsx',
-      'dropdown-menu.tsx',
-      'input.tsx',
-      'sheet.tsx',
-      'switch.tsx',
-      'tabs.tsx',
+  it('every primitive that sizes a row or a control spells the floor on the axes that need it', () => {
+    // A guard against the floor being added to four files and forgotten in the fifth — and, since
+    // B1-QA-1, against it being added on ONE AXIS and called done. The old sweep accepted any of
+    // the three spellings anywhere in the file, so `tabs.tsx` passed on `min-h-tap` alone while a
+    // two-character tab label ("pi") rendered 30.88px wide at ultra. Which axes a primitive needs
+    // is a property of how its control is sized, so it is stated per file rather than guessed:
+    //
+    //  - `both`    the control is content-sized on BOTH axes, so a short label can shrink it.
+    //  - `height`  the control stretches to its container's width (`w-full`, `flex-1` in a column),
+    //              so only the height can fall under the floor.
+    //  - `overlay` the drawn control IS the design and must not grow, so a centred
+    //              `before:size-tap` carries both axes at once.
+    const REQUIRE_TAP: { file: string; axes: 'both' | 'height' | 'overlay' }[] = [
+      { file: 'button.tsx', axes: 'both' },
+      { file: 'command.tsx', axes: 'height' },
+      { file: 'dialog.tsx', axes: 'overlay' },
+      { file: 'dropdown-menu.tsx', axes: 'height' },
+      { file: 'input.tsx', axes: 'height' },
+      { file: 'sheet.tsx', axes: 'overlay' },
+      { file: 'switch.tsx', axes: 'overlay' },
+      { file: 'tabs.tsx', axes: 'both' },
     ]
-    const missing = primitiveSources()
-      .filter(({ name }) => REQUIRE_TAP.includes(name))
-      .filter(({ source }) => !/(min-h-tap|min-w-tap|before:size-tap)/.test(source))
-      .map(({ name }) => name)
-    expect(missing, 'primitives with an interactive row but no absolute phone floor').toEqual([])
+    const NEEDED = {
+      both: ['min-h-tap', 'min-w-tap'],
+      height: ['min-h-tap'],
+      overlay: ['before:size-tap'],
+    } as const
+    // …and every floor must still be released at `md:`, or desktop silently grows with it.
+    const RELEASE = {
+      'min-h-tap': 'md:min-h-0',
+      'min-w-tap': 'md:min-w-0',
+      'before:size-tap': 'md:before:hidden',
+    } as const
+
+    const sources = new Map(primitiveSources().map(({ name, source }) => [name, source]))
+    const missing = REQUIRE_TAP.flatMap(({ file, axes }) => {
+      const source = sources.get(file)
+      if (source === undefined) return [`${file}: not found`]
+      return NEEDED[axes].flatMap((floor) => [
+        ...(source.includes(floor) ? [] : [`${file}: no ${floor}`]),
+        ...(source.includes(RELEASE[floor]) ? [] : [`${file}: no ${RELEASE[floor]} to release ${floor}`]),
+      ])
+    })
+    expect(missing, 'primitives with an interactive control but no absolute phone floor').toEqual([])
   })
 
   it('no primitive hand-types a spacing pixel any more', () => {

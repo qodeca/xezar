@@ -356,8 +356,15 @@ function sweep(): Sweep {
   // --- agent accounts: Tabs, a small Button, and the Dialog close overlay --------------------
   browser.goto(`${baseUrl}/settings/global/accounts`)
   browser.waitForFunction(`document.querySelector('${ACCOUNTS_TABS} [data-slot="tabs-trigger"]') !== null`)
+  // EVERY trigger, not the first one. A tab is as wide as its label, so measuring only the widest
+  // label in the strip is how `pi` shipped 30.88px wide at ultra (B1-QA-1) past a green suite.
   targets.push(
-    read<Target>(`__measure('Tabs trigger', '${ACCOUNTS_TABS} [data-slot="tabs-trigger"]')`),
+    ...read<Target[]>(
+      `[...document.querySelectorAll('${ACCOUNTS_TABS} [data-slot="tabs-trigger"]')].map((el) => {
+        const b = __rect(el);
+        return { name: 'Tabs trigger (' + el.textContent.trim() + ')', w: b.w, h: b.h };
+      })`,
+    ),
     read<Target>(`__measure('Button size=sm (Add account)', '${ADD_ACCOUNT}')`),
   )
   overflow.push(read<Overflow>(`__overflow('/settings/global/accounts')`))
@@ -480,6 +487,20 @@ describe('B1 geometry at 375px: every phone target is 44 x 44 for real', () => {
       (primitive) => !covered.includes(primitive),
     )
     expect(missing, 'REQUIRE_TAP primitives with no rendered measurement').toEqual([])
+  })
+
+  it('the SHORTEST tab label is 44px wide at Compact for real (B1-QA-1)', () => {
+    // The regression case QA asked to land with the fix, stated the way the defect was: a
+    // two-character label at the smallest density, measured, not inspected. `min-h-tap` alone let
+    // this render 30.88 x 44 — right height, unreachable width — and the whole strip had to be
+    // measured for it to show, because the other three labels are wide enough to hide it.
+    const tabs = sweepOf('ultra').targets.filter((target) => target.name.startsWith('Tabs trigger'))
+    expect(tabs.length, 'no tab trigger was measured at ultra').toBeGreaterThanOrEqual(4)
+    const narrowest = tabs.reduce((a, b) => (a.w <= b.w ? a : b))
+    expect(
+      narrowest.w,
+      `narrowest tab at ultra is ${narrowest.name} at ${narrowest.w} x ${narrowest.h}px`,
+    ).toBeGreaterThanOrEqual(TAP_PX - TOLERANCE_PX)
   })
 
   it('holds the 24px chip floor at every density', () => {

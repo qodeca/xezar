@@ -44,7 +44,7 @@ token has no utility and is read with `var(--name)`.
 | `--primary` | `var(--accent-lime)` | same | The active accent: primary button, checked switch, text selection, the ghost-code caret. Settings → Appearance can repoint it (see [theming.md](theming.md)). | `bg-primary`, `text-primary` |
 | `--primary-foreground` | `#0d0d0d` | same | Ink on `--primary`. | `text-primary-foreground` |
 | `--violet` | `#8f86e8` | same | "Needs a person" and "running": the Inbox badge, the running dot, the review dot, pins, the reference chip's resting look. | `bg-violet`, `text-violet` |
-| `--violet-foreground` | `#0d0d0d` | same | Ink on `--violet` (the Inbox count badge, 10.5px). Near-black in both themes: white on this violet is 3.1:1, the near-black 6.2:1. | `text-violet-foreground` |
+| `--violet-foreground` | `#0d0d0d` | same | Ink on `--violet` — and, under the violet accent, on every primary surface: `--primary-foreground` resolves to this token, so it inks every primary Button, the selected facet chip and the facet checkbox, not just the Inbox count badge (10.5px). Near-black in both themes: white on this violet is 3.1:1, the near-black 6.2:1 — which is also what makes the two accents ink their primary the same way. | `text-violet-foreground` |
 | `--ring` | `#a8f372` | `#171717` | Focus ring colour. Used as `ring-ring/50`. | `ring-ring` |
 | `--grad` | `linear-gradient(135deg, #b4f372 12%, #eefb63 58%, #bc9aff 100%)` | same | Brand gradient (lime → yellow → violet). Read with `var(--grad)`. | – |
 

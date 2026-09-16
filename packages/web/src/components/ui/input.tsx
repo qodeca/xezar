@@ -7,10 +7,14 @@ import { cn } from "@/lib/utils"
  * settings fields and the repository branch picker do, for the platform's own dropdown behaviour
  * (G-11). Exported from the field primitive rather than wrapped in a `NativeSelect` component so
  * there is one string to fix and no second, half-adopted primitive. `min-h-tap` is the same
- * absolute 44px phone floor `Input` itself carries.
+ * absolute 44px phone floor `Input` itself carries, and `text-base … md:text-sm` is the same iOS
+ * rule: Safari zooms the page when a focused field's text is under 16px, and this string is
+ * about to be copied into two dozen raw `<input>`/`<select>` sites (design review NB-3). It
+ * inherited a flat `text-sm` from the settings pages it replaces; that is harmless on a
+ * `<select>`, which opens a picker, and is exactly the zoom on an `<input>`.
  */
 export const nativeFieldClass =
-  "h-9 min-h-tap w-full rounded-md border border-input bg-card px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 md:min-h-0"
+  "h-9 min-h-tap w-full rounded-md border border-input bg-card px-3 text-base shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 md:min-h-0 md:text-sm"
 
 function Input({ className, type, ...props }: React.ComponentProps<"input">) {
   return (
