@@ -12,6 +12,15 @@ Installation validation is reported in installation.md. Real-task entries follow
 
 ## Real-task entries
 
+### 2026-09-16 — #453 batch B4 (task lists, pins, chips and pills), `feature-implementation` step `implement`, `xezar-implementation`, Claude Code — real-task observed
+
+- Input: the accepted B4 row of the #453 batch plan, the design-debt inventory and B3 (`09b4e8d`) with its two design-review findings folded in.
+- Observed: **the browser suite's click is a mouse, even with touch emulation on.** A `+N` list that opens on `pointerenter` (and deliberately ignores touch) opened under the provider's click and was toggled shut by the same click, so the list looked missing. Opening it from the keyboard measures the phone state honestly; a spec that must prove a tap uses `tapAt`, which is also a mouse stream. Treat "the element flashed and vanished" as this before suspecting the component.
+- Observed: **a phone-only DOM branch doubles every jsdom query.** Rendering the new phone toolbar and cards next to the desktop header made 63 existing unit tests find two matches. Rendering the phone branch only when `useIsDesktop()` is false kept the unit suites unchanged, because jsdom has no `matchMedia` and counts as a desktop; the phone branch is then proven in the browser spec and in unit tests that stub `matchMedia`.
+- Observed: **a fixed contrast sweep finds token debt outside the batch.** Light `--success`, `--danger` and `--violet` fail 4.5:1 as small text on the task lists. A batch that may not change tokens records the three colours in known-gaps and names them in the spec, so any other colour still fails.
+- Regression/control: seven named source breaks (two card guards, clipboard success-on-rejection, both byte precisions, a 28 px pin, a chip without a hit area) each turned the matching B4 unit test red; the stash red was an honest import failure, not a behaviour red. The 375 px matrix passed 12/12 at four densities.
+- Remaining limit: the browser matrix was not itself run against a broken build; its targets are proven red by the unit breaks only.
+
 ### 2026-09-16 — #464 P3 (leader setup verification and recovery), `feature-implementation` step `implement`, `xezar-implementation`, Codex — real-task observed
 
 - Input: accepted ONB-04/07/13/14 from the onboarding spec; base `a2fc084`; public `xez-onboard` pinned at `2c20c60`, with the installed cache at `efb7109`.
