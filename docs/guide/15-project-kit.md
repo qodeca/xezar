@@ -4,7 +4,7 @@ Use a project kit to keep reusable agent instructions and workflows beside your 
 
 ## To find the project's kit
 
-The repository-root `.xezar/` directory holds project configuration, workflows and skills. A project can also keep its own checks, documentation and guidance there. It is separate from `.local/xezar/` execution data and the per-user `~/.xezar/` workspace settings.
+The repository-root `.xezar/` directory holds project configuration, [workflows](05-workflows.md) and [skills](06-skills.md). A project can also keep its own checks, documentation and guidance there. It is separate from `.local/xezar/` execution data and the per-user `~/.xezar/` workspace settings.
 
 An absent kit leaves defaults in place. There is no fallback to the old `.ai/xezar/` kit location. One collision guard applies when the kit path would be the workspace home: the kit goes under `.local/xezar/kit` instead, protecting the user's global settings. See [Project layout](../project-layout.md) for the directory rules and migration guidance.
 
@@ -70,5 +70,7 @@ Browse its [directory guide](../../.xezar/CLAUDE.md) and [kit overview](../../.x
 - `.xezar/config.json`: optional project settings; [schema](../../packages/xezar/src/config.ts).
 - `~/.xezar/config.json`: separate workspace settings and project registry.
 - `XEZ_REVIEW_GATE`, `XEZ_SKILLS_AUTO_UPDATE`, `XEZ_HOME`: see the [environment contract](../../.env.example), including stored-setting precedence.
+
+Next: [Troubleshooting and FAQ](16-troubleshooting-faq.md)
 
 Describes xezar 0.15.0.

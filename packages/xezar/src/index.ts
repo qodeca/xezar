@@ -55,9 +55,10 @@ import { runMigrations } from './workspace/migrations.ts';
 import { registerProject, shouldRegisterProject } from './workspace/projects.ts';
 import { runProjectsCommand } from './workspace/projects-cli.ts';
 import { WorkspaceSemaphore } from './workspace/semaphore.ts';
+import { discoverProjectCheck, fixAndVerifyWorkflow, PROJECT_CONVENTIONS_SKILL } from './init-kit.ts';
 import { resolveCapabilities } from './server/capabilities.ts';
 
-const HELP = `xezar — local cockpit for AI agent tasks in your repo
+const HELP = `xezar — local cockpit for AI agent tasks in any project folder
 
 Usage:
   xezar                     start the cockpit (server + GUI) for the current repo
@@ -105,7 +106,8 @@ Options:
   -h, --help                  show this help
   -v, --version               print the version and exit
 
-Zero config: uses your logged-in \`claude\` CLI (and \`gh\` for GitHub bits).
+Zero config: uses the agent CLI you are already logged in to (Claude Code, Codex,
+OpenCode or pi), and \`gh\` only for GitHub features in a GitHub project.
 Skills live in .ai/skills/, .xezar/skills/ and your team skills repo
 (default qodeca/xezar-skills; override via .xezar/config.json);
 workflows in .xezar/workflows/.`;
@@ -856,47 +858,30 @@ function initCommand(repoRoot: string): void {
   mkdirSync(workflowsDir, { recursive: true });
   mkdirSync(skillsDir, { recursive: true });
 
+  const check = discoverProjectCheck(repoRoot);
   const examples: Array<{ path: string; content: string }> = [
-    {
-      path: join(workflowsDir, 'fix-and-verify.yaml'),
-      content: `name: fix-and-verify
-description: Implement the task, then run your test command; on failure the agent retries with the failing output.
-steps:
-  - id: implement
-    name: Implement
-    prompt: "{{task}}"
-  - id: verify
-    name: Verify
-    command: "echo 'replace me with: npm test / yarn test / pytest'"
-    onFail:
-      retry: implement
-      max: 2
-`,
-    },
-    {
-      path: join(skillsDir, 'project-conventions.md'),
-      content: `---
-name: project-conventions
-description: House rules the agent should follow in this repo.
----
-
-# Project conventions
-
-- Describe your stack, style and testing conventions here.
-- Reference this skill from a workflow step via \`skill: project-conventions\`.
-`,
-    },
+    { path: join(workflowsDir, 'fix-and-verify.yaml'), content: fixAndVerifyWorkflow(check) },
+    { path: join(skillsDir, 'project-conventions.md'), content: PROJECT_CONVENTIONS_SKILL },
   ];
 
+  let wroteWorkflow = false;
   for (const example of examples) {
     if (existsSync(example.path)) {
       console.log(`  = ${example.path} (exists, left untouched)`);
     } else {
       writeFileSync(example.path, example.content, 'utf8');
       console.log(`  + ${example.path}`);
+      if (example === examples[0]) wroteWorkflow = true;
     }
   }
   ensureDataGitignore(repoRoot);
+  if (wroteWorkflow) {
+    console.log(
+      check
+        ? `\nVerification: fix-and-verify runs \`${check.command}\`, found in ${check.source}.`
+        : '\nVerification: no verification command is configured, so fix-and-verify ends with a review step that reports what it could not verify.',
+    );
+  }
   console.log('\nDone. Start the cockpit with: npx xezar');
 }
 

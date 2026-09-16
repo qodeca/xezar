@@ -1,0 +1,286 @@
+/* Onboarding – static design mockup (issue #464, P2).
+ *
+ * Feature-specific rules only. Tokens (both themes), the base layer, the design-doc chrome, the app
+ * shell and every base component class come from the shared design-system stylesheet, linked BEFORE
+ * this file in every page: ../../docs/design-system/cockpit.css. Never redeclare a token or a base
+ * class here; extend it with a feature class instead. This file is a design reference, never
+ * shipped code – the cockpit must not import it.
+ *
+ * Rhythm between blocks uses the rhythm tokens (--spacing-row/stack/list/inset/group/section);
+ * sizes inside a control use calc(var(--spacing) * n), so the density lever moves this page the way
+ * it moves the cockpit. No raw hex anywhere.
+ */
+
+/* ---------- 1. The post-update offer row ---------- */
+
+/* Extends .banner-row (the shell's provider banner row, components/provider-banner.tsx). The offer
+ * is a status, not an alert: neutral fill, `role="status"`, and it never blocks the page below. */
+.offer-row {
+  flex-wrap: wrap;
+  padding-top: calc(var(--spacing) * 2);
+  padding-bottom: calc(var(--spacing) * 2);
+  font-size: 13px;
+}
+
+.offer-row .offer-text {
+  flex: 1 1 22rem;
+  min-width: 0;
+  line-height: 1.5;
+}
+
+.offer-row .offer-text strong {
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+/* Two identities, side by side, so "what changed" is readable without opening anything. */
+.offer-row .ident {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--foreground);
+  white-space: nowrap;
+}
+
+.offer-row .offer-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: calc(var(--spacing) * 1.5);
+  margin-left: auto;
+}
+
+/* ---------- 2. The setup entry ---------- */
+
+/* The secondary line under the first-task hero: one sentence plus one outline action. It sits below
+ * CenteredState's own `.actions`, so the composer and "describe a task" stay the primary path. */
+.setup-aside {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-stack);
+  max-width: 28rem;
+  margin-top: var(--spacing-section);
+  padding-top: var(--spacing-inset);
+  border-top: 1px solid var(--border);
+}
+
+.setup-aside p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted-foreground);
+  text-wrap: pretty;
+}
+
+/* The Settings → Project setup pane: one card that carries the state, the action and the identities. */
+.setup-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-inset);
+  padding: var(--spacing-inset);
+}
+
+.setup-card .head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-row);
+}
+
+.setup-card .head .grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.setup-card .head h3 {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 2);
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.setup-card .head p {
+  margin: calc(var(--spacing) * 1) 0 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted-foreground);
+  text-wrap: pretty;
+}
+
+.setup-card .head .actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: calc(var(--spacing) * 1.5);
+}
+
+/* A reason a control is disabled or absent. Always visible text, never a tooltip only, and wired to
+ * the control with aria-describedby. */
+.setup-card .reason {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+
+.setup-card .reason b {
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+/* ---------- 3. The identity rows ---------- */
+
+/* Last observed / last offered / last checked. Identities are ids, so they are mono; an absent value
+ * prints an em dash, never a fabricated version or date. */
+.ident-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+  padding: var(--spacing-stack) var(--spacing-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card-2);
+}
+
+.ident-list > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: calc(var(--spacing) * 1) calc(var(--spacing) * 3);
+  padding: calc(var(--spacing) * 1.5) 0;
+}
+
+.ident-list > div + div {
+  border-top: 1px solid var(--border);
+}
+
+.ident-list dt {
+  flex: 0 0 9.5rem;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+
+.ident-list dd {
+  flex: 1 1 12rem;
+  min-width: 0;
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--foreground);
+  overflow-wrap: anywhere;
+}
+
+.ident-list dd.absent {
+  font-family: var(--sans);
+  color: var(--soft-foreground);
+}
+
+.ident-list dd .when {
+  font-family: var(--sans);
+  color: var(--soft-foreground);
+}
+
+/* A second surface step inside the card for the one sentence that explains an unusual state
+ * (unknown provenance, dismissed, hosted mode). Page → card → hint, the cockpit's elevation rule. */
+.setup-note {
+  display: flex;
+  align-items: flex-start;
+  gap: calc(var(--spacing) * 2.5);
+  margin: 0;
+  padding: calc(var(--spacing) * 2.5) calc(var(--spacing) * 3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card-2);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--muted-foreground);
+}
+
+.setup-note svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--soft-foreground);
+}
+
+.setup-note strong {
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+/* ---------- 4. The mockup's own scaffolding ---------- */
+
+/* A labelled slice of a screen on the states page. Doc chrome, not cockpit UI. */
+.state-grid {
+  display: grid;
+  gap: var(--spacing-section);
+}
+
+@media (min-width: 900px) {
+  .state-grid.two {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.state-grid > figure {
+  margin: 0;
+  min-width: 0;
+}
+
+.state-grid > figure > figcaption {
+  margin-bottom: calc(var(--spacing) * 2);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--soft-foreground);
+}
+
+.state-grid > figure > figcaption span {
+  display: block;
+  margin-top: 2px;
+  font-weight: 400;
+  color: var(--muted-foreground);
+}
+
+/* ---------- 5. Phone (375 px) ---------- */
+
+@media (max-width: 860px) {
+  .offer-row {
+    align-items: flex-start;
+    padding: calc(var(--spacing) * 2.5) calc(var(--spacing) * 4);
+  }
+
+  .offer-row .offer-actions {
+    width: 100%;
+    margin-left: 0;
+    margin-top: calc(var(--spacing) * 2);
+  }
+
+  /* 44px touch targets on phone (foundations.md §12). The CenteredState action is included on
+   * purpose: the shipped component leaves its actions at the default h-9, which is 36px on a phone
+   * (known-gaps candidate), and a new surface must not inherit that. */
+  .offer-row .offer-actions .btn,
+  .setup-card .head .actions .btn,
+  .setup-aside .btn,
+  .centered-state .actions .btn {
+    height: calc(var(--spacing) * 11);
+    flex: 1 1 auto;
+  }
+
+  .setup-card .head {
+    flex-wrap: wrap;
+  }
+
+  .setup-card .head .actions {
+    width: 100%;
+  }
+
+  /* Label above value, so nothing needs horizontal room it does not have. */
+  .ident-list dt {
+    flex: 1 1 100%;
+  }
+
+  .ident-list dd {
+    flex: 1 1 100%;
+  }
+}

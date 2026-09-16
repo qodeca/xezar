@@ -136,6 +136,16 @@ What lives where under `docs/`, and who each part is for, is mapped in
 [docs/README.md](docs/README.md). `docs/features/` is the internal engineering and decision
 record, not a user guide.
 
+### Shipped text is generic
+
+Follow [AGENTS.md § Generic instructions](AGENTS.md#generic-instructions) for every string
+Xezar ships to a person or agent. To add an allowed exception to the guard introduced in
+[PR #481](https://github.com/qodeca/xezar/pull/481), name the exact field (producer location
+and text fragment), the matching rule, the reason and the review reference. Add a negative
+test showing that a project-specific instruction beside it still fails. Never exempt a whole
+file or paragraph, or widen the shrinking allowance for outstanding repairs. Naming a client's
+own instruction file as a capability is allowed; asking users to adopt Xezar's kit or process is not.
+
 ## Commits and pull requests
 
 Commit messages and pull-request titles follow [Conventional Commits](https://www.conventionalcommits.org/):
