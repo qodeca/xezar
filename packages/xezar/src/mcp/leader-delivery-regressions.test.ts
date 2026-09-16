@@ -360,14 +360,37 @@ for (const client of DELIVERY_CLIENTS) describe(`#532 causal matrix / ${client}`
 });
 
 // #532 G3: question identity/content is decision input even when status remains waiting.
-// Existing implementation increments only for user-message and the record projection, so a
-// replacement ask currently leaves the old token valid. Keep the engine unchanged in this slice.
-it.fails.each(['new-id', 'same-id-new-content'] as const)('question replacement %s must invalidate an already-waiting decision', replacement => {
+// #534: replacements must invalidate even a decision made while already waiting.
+it.each(['new-id', 'same-id-new-content'] as const)('question replacement %s must invalidate an already-waiting decision', async replacement => {
   const run = running();
-  store.appendEvent(run.id, { type: 'ask.requested', requestId: 'original', questions: [{ question: 'First?' }] });
+  const questions = [{ header: 'Choice', question: 'First?', options: [{ label: 'Yes' }, { label: 'No' }] }];
+  const original = { type: 'ask.requested', requestId: 'original', questions };
+  store.appendEvent(run.id, original);
   store.updateRun(run.id, { status: 'waiting' });
   const token = runVersion(store, run.id);
-  store.appendEvent(run.id, { type: 'ask.requested', requestId: replacement === 'new-id' ? 'replacement' : 'original', questions: [{ question: 'Different decision?' }] });
+  const revision = run.decisionRevision!;
+  const requestId = replacement === 'new-id' ? 'replacement' : 'original';
+  store.appendEvent(run.id, {
+    ...original, requestId,
+    questions: replacement === 'new-id' ? questions : [{ ...questions[0], question: 'Different decision?' }],
+  });
+  expect(runVersion(store, run.id)).not.toBe(token);
+  expect(run.decisionRevision).toBe(revision + 1);
+  const result = await executionControlTool.call(executionControlTool.inputSchema.parse({
+    action: 'answer_question', runId: run.id, questionId: requestId,
+    text: 'Yes', expectedVersion: token, operationId: `replaced-${replacement}`,
+  }), ctx);
+  expect(JSON.parse((result.content[0] as { text: string }).text)).toMatchObject({ applied: false, error: 'stale_version' });
+  expect(sent).not.toHaveBeenCalled();
+  const persisted = JSON.parse(readFileSync(join(store.dataDir, 'runs.json'), 'utf8')).find((record: { id: string }) => record.id === run.id);
+  expect(persisted.decisionRevision).toBe(revision + 1);
+  expect(persisted.decisionQuestion).toEqual(run.decisionQuestion);
+  const reopened = RunStore.open(store.dataDir, { keepLive: true });
+  expect(runVersion(reopened, run.id)).toBe(runVersion(store, run.id));
+  reopened.flush();
+  // A→B→A still rejects the original token, despite returning to the original question.
+  store.appendEvent(run.id, original);
+  expect(run.decisionRevision).toBe(revision + 2);
   expect(runVersion(store, run.id)).not.toBe(token);
 });
 

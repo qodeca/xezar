@@ -12,6 +12,9 @@ import { taskVerdictIssueSchema, taskVerdictSchema } from './task-verdict.ts';
 // the observation, and the monitor that writes it imports the one definition.
 import { stepProgressSchema } from './run-progress.ts';
 
+/** Persisted decision input, without duplicating question content in the run record. */
+export const decisionQuestionSchema = z.object({ id: z.string(), digest: z.string() });
+
 /**
  * The RUNS family of `/api/v1` — a task's record, its lifecycle mutations, and the artifacts
  * (queued prompt stack, commits, git actions) that hang off one run.
@@ -148,6 +151,8 @@ export const runRecordSchema = z.object({
   id: z.string(),
   /** Automatically maintained decision revision; absent in legacy records. */
   decisionRevision: z.number().int().nonnegative().optional(),
+  /** Pending question identity and content digest; absent on legacy records. */
+  decisionQuestion: decisionQuestionSchema.optional(),
   title: z.string(),
   /** Display title (#389): auto-derived from the first agent turn, or the user's inline edit
    *  (`PATCH /runs/:id` sets it together with `title`). Show `titleSummary ?? title`. */

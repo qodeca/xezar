@@ -18,7 +18,7 @@ import { codexControlHome } from './adapters/codex-link.ts';
 import { AuditTrail, type AuditChannel } from './audit-trail.ts';
 import { runBridge, type ServiceTarget } from './bridge.ts';
 import { writeMcpConnectionFile } from './connection-file.ts';
-import { EchoGuard } from './echo-guard.ts';
+import { EchoGuard, operationNotApplied } from './echo-guard.ts';
 import { EventCatalog, withEventOrigin, type WorkspaceEventSource } from './event-catalog.ts';
 import { EventJournal } from './event-journal.ts';
 import { mcpSocketLocation } from './ipc.ts';
@@ -388,7 +388,8 @@ async function idempotent(
         call.warn(`[xez] MCP tool ${call.toolName} failed: ${err instanceof Error ? err.message : String(err)}`);
         throw err;
       }
-      if (fresh.isError) return { outcome: 'rejected', errorCode: 'tool refused' };
+      // A structured no-effect refusal is known, even without MCP's isError flag (#536).
+      if (fresh.isError || operationNotApplied(fresh)) return { outcome: 'rejected', errorCode: 'tool refused' };
       const ref = resourceOf(fresh);
       return { outcome: 'ok', resultRef: ref ? { kind: ref.kind, id: ref.id } : { kind: 'operation', id: call.operationId } };
     },
