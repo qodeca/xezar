@@ -27,14 +27,14 @@
   <a href="patterns.html">Patterns</a>
   <span class="spacer"></span>
   <label>Accent <select name="accent" data-appearance="accent" aria-label="Accent"><option value="lime">Lime</option><option value="violet">Violet</option></select></label>
-  <label>Density <select name="density" data-appearance="density" aria-label="Density"><option value="comfortable">Comfortable</option><option value="roomy">Roomy</option><option value="compact">Compact</option><option value="ultra">Ultra</option></select></label>
+  <label>Density <select name="density" data-appearance="density" aria-label="Density"><option value="comfortable">Comfortable</option><option value="roomy">Roomy</option><option value="compact">Compact</option><option value="ultra">Compact for real</option></select></label>
   <label>Width <select name="width" data-appearance="width" aria-label="Reading width"><option value="normal">Normal</option><option value="wide">Wide</option></select></label>
   <button type="button" class="theme-toggle" data-theme-toggle>Toggle theme</button>
 </nav>
 
 <main class="doc">
   <h1>Components</h1>
-  <p class="lead">The shadcn primitives in <code>packages/web/src/components/ui/</code> and the shared components in <code>packages/web/src/components/</code>, with their variants and states. Each entry names its source; the props, do/don't and accessibility notes are in <a class="link" href="../components.md">components.md</a>. Press Tab anywhere to see the focus ring.</p>
+  <p class="lead">The shadcn primitives in <code>packages/web/src/components/ui/</code> and the shared components in <code>packages/web/src/components/</code>, with selected variants and states (the disabled Tabs trigger is not drawn). Each entry names its source; the props, do/don't and accessibility notes are in <a class="link" href="../components.md">components.md</a>. Press Tab anywhere to see the focus ring.</p>
 
   <h2>1. Primitives</h2>
 
@@ -152,7 +152,7 @@
   </div>
 
   <h3>Popover</h3>
-  <div class="src">ui/popover.tsx · 288 px wide · <code>PopoverTitle</code> renders a div (G-07)</div>
+  <div class="src">ui/popover.tsx · w-72 (288 px at comfortable; follows density) · <code>PopoverTitle</code> renders a div (G-07)</div>
   <div class="frame pad float-row">
     <div class="popover"><div class="title">Retention</div><p class="desc" style="margin:4px 0 10px">Keep the worktree after the run finishes.</p><button class="switch sm" type="button" role="switch" aria-checked="true" aria-label="Keep worktree"></button></div>
   </div>
@@ -377,8 +377,8 @@
     <div class="note" style="margin:0;max-width:320px"><strong>No skills yet.</strong> Add a Markdown file to <code>.xezar/skills/</code> and it appears here.</div>
   </div>
 
-  <h3>Code, syntax colours and the ghost-code backdrop</h3>
-  <div class="src">code-editor.tsx · ghost-code-backdrop.tsx · icons.tsx · the seven <code>--syn-*</code> tokens</div>
+  <h3>Syntax colours</h3>
+  <div class="src">icons.tsx · the seven <code>--syn-*</code> tokens</div>
   <div class="output">
     <pre><span class="syn-key">import</span> <span class="syn-punc">{</span> <span class="syn-var">z</span> <span class="syn-punc">}</span> <span class="syn-key">from</span> <span class="syn-str">'zod'</span>
 <span class="syn-com">// every response shape is a schema</span>
@@ -391,7 +391,7 @@
     <li><b>CommandPalette, ToolsMenu, OpenInMenu, PromptTemplateMenu, DefaultAgentPicker</b> – compositions of Command, DropdownMenu and Popover above.</li>
     <li><b>AddProjectDialog, CloneProjectDialog, FolderBrowser</b> – the Dialog above with an Input and a folder list.</li>
     <li><b>ThemeProvider, ThemeToggle, AppearanceProvider, LastLocationController, RouteErrorBoundary</b> – behaviour, not markup; the doc bar is the specimen's theme toggle. RouteErrorBoundary renders the danger CenteredState.</li>
-    <li><b>ZoomableImage, image-preview</b> – a picture that opens full-size in a Dialog.</li>
+    <li><b>ZoomableImage, image-preview</b> – a picture that opens full-size in a Dialog. Also not drawn: CodeEditor (CodeMirror), GhostCodeBackdrop (the /new typewriter texture) and TwinkleBackdrop (the decorative empty-home backdrop).</li>
   </ul>
 </main>
 </body>

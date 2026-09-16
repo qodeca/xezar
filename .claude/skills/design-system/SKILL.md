@@ -92,7 +92,7 @@ For a mockup: open `docs/design-system/specimens/index.html` beside the page, in
 
 When this file and `docs/design-system/` disagree, the docs win – fix this file. The drift test guards tokens and components, not prose.
 
-A user may override a prose-owned rule (7–15) for one task only with a written reason; the override goes into the PR description or the design's open decisions, and the rule itself is changed only in `docs/design-system/`. A rule owned by a test (1–6, 14, 17) is never waived in prose – an exception changes the test in its own commit, with the reason.
+A user may override a prose-owned rule (7–13, 15) for one task only with a written reason; the override goes into the PR description or the design's open decisions, and the rule itself is changed only in `docs/design-system/`. A rule owned by a test (1–6, 14, 17) is never waived in prose – an exception changes the test in its own commit, with the reason.
 
 ## Terminal state
 

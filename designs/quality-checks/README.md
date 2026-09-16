@@ -43,7 +43,7 @@ Measured on this repository's live data on 2026-09-13 (`GET /api/v1/p/xezar/runs
 Code facts behind the problem:
 
 - The list is built in the browser from every non-archived task with a failed check step: `failingQualityChecks`, `packages/web/src/routes/settings/mcp-capabilities.tsx:256`.
-- Continue on a failed task appends a `continue-N` step (`packages/xezar/src/workflows/run.ts:2707`). `settleSuccess` (`run.ts:4124`) never looks at the steps.
+- Continue on a failed task appends a `continue-N` step (`packages/xezar/src/workflows/run.ts:2707`). `settleSuccess` (`run.ts:4130`) never looks at the steps.
 - No route or button re-runs a single step.
 - The leader never reads the Settings page. It gets check results through `task_read`, `read_results_evidence` and `leader_events`.
 

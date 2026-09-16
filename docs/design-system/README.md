@@ -11,14 +11,14 @@ Two readers: a coding agent that must find the right rule fast, and a person who
 | Composing a task table, thread/composer, settings page, overlay or state display | [recipes.md](recipes.md) → [patterns.md](patterns.md) → [components.md](components.md) | Follow the recipe’s source links, copy rules, density and phone checks; use [verification.md](verification.md) to record evidence. |
 | Making a new mockup in `designs/<feature>/` | [new-designs.md](new-designs.md) → [patterns.md](patterns.md) → [components.md](components.md) → [writing.md](writing.md) | Link `cockpit.css`, keep only feature rules in the local `styles.css`, open [specimens/](specimens/index.html) beside your page and compare. |
 | Adding or changing UI in `packages/web` | [components.md](components.md) (reuse before you build) → [patterns.md](patterns.md) → [foundations.md](foundations.md) → [behaviour.md](behaviour.md) → [writing.md](writing.md) | Run `npm test -- packages/web/src/design-system-drift.test.ts`. A new token, primitive or shared component needs its entry and a row in [coverage.md](coverage.md) in the same commit. |
-| Reviewing a design or a UI change | [known-gaps.md](known-gaps.md) (so you do not repeat one) → [patterns.md](patterns.md) → [components.md](components.md) → [behaviour.md](behaviour.md) | Check the ten rules below, then the states and the copy. A departure from a documented pattern needs a reason in the PR or the design's open decisions. Post the verdict as a `## Design review` PR comment (SDLC.md § The design gate); the `design-review` workflow does this. |
+| Reviewing a design or a UI change | [known-gaps.md](known-gaps.md) (so you do not repeat one) → [patterns.md](patterns.md) → [components.md](components.md) → [behaviour.md](behaviour.md) | Check the eleven rules below, then the states and the copy. A departure from a documented pattern needs a reason in the PR or the design's open decisions. Post the verdict as a `## Design review` PR comment (SDLC.md § The design gate); the `design-review` workflow does this. |
 | Changing the theme, accent, density or width behaviour | [theming.md](theming.md) → [foundations.md](foundations.md) | Keep the pre-paint script in `packages/web/index.html` and the two libs it mirrors in step. |
 | Moving a design through review, implementation or retirement | [lifecycle.md](lifecycle.md) | Identify the actor, required evidence and next transition; keep the design status and review verdict aligned. |
 | Saving mockups, screenshots or design decisions | [storage.md](storage.md) | Choose the maintained artifact location, record capture provenance and keep private working evidence out of versioned documentation. |
 
 ## The rules that never bend
 
-Each holds today and `packages/web/src/design-guardian.test.ts` or the drift test enforces most of them. Written once, here; the other files refer back.
+Each holds today and `packages/web/src/design-guardian.test.ts` or the drift test enforces most of them. Written once, here; the other files refer back. Eleven rules; counts read on 2026-09-16.
 
 1. **Tokens only.** No raw hex, rgb or named colour outside `packages/web/src/styles/index.css`. Use the Tailwind utility a token maps to (`bg-card`, `text-muted-foreground`, `border-border`).
 2. **No `dark:` variants.** Dark is the default; `.light` overrides 26 tokens. A component that needs a theme-specific value gets a token, not a variant.
@@ -30,6 +30,8 @@ Each holds today and `packages/web/src/design-guardian.test.ts` or the drift tes
 8. **Backend names come from `lib/runner-label.ts`.** `claude` is "Claude Code", `codex` is "Codex", `opencode` is "OpenCode", `pi` is "pi". A fifth backend is a compile error there, on purpose.
 9. **The per-project task table is `lib/task-columns.ts`.** Header, colgroup and rows read `TASK_COLUMNS`; a column is added there, never as a loose `<td>`.
 10. **Words carry meaning; colour and icon reinforce.** Every state has its own sentence. Every control has a label. Every action works from the keyboard and shows the `:focus-visible` ring. Nothing scrolls sideways at 375 px.
+
+11. **Between blocks, a rhythm token; never a hand-typed spacing pixel.** Use `gap-stack`, `p-inset`, `md:px-section` ([foundations.md](foundations.md) §4.1) between blocks and the numeric scale inside a control. The `no-arbitrary-spacing` guardian rule fails a new `p-[7px]` or `h-[34px]` (`decisions.md` D-06).
 
 ## What is in this folder
 
