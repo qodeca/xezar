@@ -8,7 +8,7 @@ Tracked by [#116](https://github.com/qodeca/xezar/issues/116) (Phase 8 of [epic 
 This page links every record of the closed inventory,
 [`mcp-ui-action-inventory.md`](mcp-ui-action-inventory.md), to the acceptance cases that prove it.
 It makes Definition of Done clause 1 measurable: coverage is judged against that inventory's
-142 records, never against a count of tools or endpoints.
+143 records, never against a count of tools or endpoints.
 
 ## How to read it
 
@@ -169,6 +169,7 @@ run.
 | I-075 | covered | P-34, P-35 |
 | I-076 | covered | P-35, P-38 |
 | I-080 | covered | P-01 |
+| I-147 | covered | P-02 |
 | I-083 | covered | P-39 |
 | I-085 | covered | P-03 |
 | I-086 | covered | P-39 |
@@ -234,7 +235,7 @@ run.
 | Case | Acceptance | Records | What it proves |
 | --- | --- | --- | --- |
 | P-01 | A-06, A-05 | I-001, I-007, I-009, I-080 | a start with the form’s values lands the same record through either door, with the same refusals |
-| P-02 | A-06 | I-094 | a start from a project skill runs that skill, as the skills panel’s start does |
+| P-02 | A-06 | I-094, I-147 | a start from a project skill runs that skill, as the skills panel’s and the GitHub tab’s New issue start do |
 | P-03 | A-06, A-05 | I-002, I-085 | a plan request answers the steps, rationale and fallback the cockpit’s planner answers |
 | P-04 | A-06, A-05 | I-003 | a start from an edited step list runs exactly that list, as the plan review’s start does |
 | P-05 | A-06, A-05 | I-005 | saving a step list asks the same overwrite decision and writes the same workflow file |

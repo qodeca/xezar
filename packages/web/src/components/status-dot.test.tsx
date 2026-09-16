@@ -42,7 +42,9 @@ describe('StatusDot', () => {
   it('renders at the design system 7px size', () => {
     const dot = renderDot(<StatusDot />)
 
-    expect(dot.className).toContain('size-[7px]')
+    // `size-1.75` is 7px at comfortable and follows the density lever; `quick-list.e2e.ts`
+    // resolves the same rule against the real CSS and still measures 7px.
+    expect(dot.className).toContain('size-1.75')
     expect(dot.className).toContain('rounded-full')
   })
 

@@ -41,7 +41,9 @@ Sources: `packages/web/src/lib/theme.ts`, `packages/web/src/lib/appearance.ts`,
   [foundations.md § 4](foundations.md#4-spacing-and-density) for the values.
 - Type sizes never change with density. A hand-typed spacing or height pixel (`h-[34px]`) opts out
   of the lever, and a new occurrence fails the `no-arbitrary-spacing` guardian rule; use scale units.
-  The chip floors are intentional fixed pixels; existing allowlisted debt is tracked in #445.
+- Target sizes are the one thing density must NOT reach: `--spacing-tap` (44 px) and `--spacing-chip`
+  (24 px) are flat pixels for that reason (foundations.md § 4). Remaining hand-typed chip floors are
+  allowlisted debt tracked in #445 and convert batch by batch.
 - Stored like the accent (`appearance.density`, mirror `xez-density`).
 
 ## Reading width

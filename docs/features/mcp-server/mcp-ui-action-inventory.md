@@ -57,13 +57,19 @@ are: `+7 covered` (I-042, I-097, I-102, I-110, I-113, I-128, I-129), `+2 global`
 `+3 presentation` (I-014, I-081, I-095).
 
 After #450 (2026-09-15): two records added to section G for the leader connection the cockpit already
-had (I-141 status, I-142 Attach leader), both covered. Covered 91, total 142. The closed record above
-is otherwise unchanged.
+had (I-141 status, I-142 Attach leader), both covered. Covered 91, total 142.
 
 After #464 P2 (2026-09-16): four records added to section G for the project-setup surface the same PR
 introduces (I-143 state read, I-144 start the setup or re-check task, I-145 record the offer,
 I-146 learn that an offer is pending), all covered. Covered 95, total 146. The closed record above is
 otherwise unchanged.
+
+After #468 (2026-09-16): one record added to section E for the GitHub tab's New issue control
+(I-147), covered. Covered 96, total 147. It names no new tool: the control is `task_create` with a
+skill source, which is the owner's parity rule met by the same change that ships the button. The
+record is I-147 rather than I-143 because #464 P2 landed on `main` first and took I-143 through
+I-146; the two changes are independent and both are kept. The closed record above is otherwise
+unchanged.
 
 ## Resolved open decisions (2026-09-10)
 
@@ -137,7 +143,7 @@ issue claimed, and what the source says at `9fdcf0e`.
 Nothing else disagreed. No row's file was missing, and no named symbol failed to resolve anywhere in
 the files examined.
 
-## The inventory — 146 records
+## The inventory — 147 records
 
 Status values: **covered** = a project business action MCP must be able to perform or read;
 **global** = the effect reaches the workspace or another project, so no MCP write (a safe effective
@@ -235,7 +241,7 @@ The issue's heading for this section read "20 records"; it holds 19. The 140 tot
 | I-067 | `repo-branches.tsx` `ForgePullRequests`/`PullRequestRow` with `ChecksBadge` | mounted **only** when `health.forge.available` | none → up to 20 open PRs | degrades in payload (`available:false` + reason), never throws | project (forge read) | Covered by the GitHub reads in section E | presentation |
 | I-068 | `packages/web/src/routes/settings/worktrees-panel.tsx` `WorktreesPanel` "Reclaim now" (`POST /worktrees/reclaim`, `reclaimBodySchema`) and `WorktreeRow` "Delete" (`POST /runs/:id/remove-worktree`) — both behind confirm dialogs; `GET /worktrees` | always; delete removes the worktree **and its branch**, not recoverable | none → reclaimed/removed worktrees | reclaim keeps branches; the same active-work protections as the CLI path | project, **destructive** | M-17: inspect and clean worktrees, project only, same protections. Autonomous — no duplicated confirmation click | covered |
 
-### E. GitHub — 14 records
+### E. GitHub — 15 records
 
 | ID | UI source and symbol | Availability | Inputs → outputs | Validation / quality rules | Effect scope | Required MCP equivalent (outcome) | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -253,6 +259,7 @@ The issue's heading for this section read "20 records"; it holds 19. The 140 tot
 | I-080 | `hand-to-agent.tsx` `data-slot="gh-custom-prompt"` + "Run agent on this issue/PR" (⌘/Ctrl+Enter also submits) → `createRun(githubRunBody(...))` | disabled while pending or `!resolved.canRun` | prompt text (pre-filled with `githubTaskRef(item)` — verb + `#N: title` + URL, **no body**, #524) → queued task + "View task →" | `packages/web/src/lib/github-task.ts` `githubRunBody`: workflow → `{workflow, task}`; else skills → `{steps: skillChainSteps(skills), task}`; else → `{workflow:'quick-task', task}`. `composeGithubTask` prepends the item ref unless `mentionsItem()` already matches. A skill selection also bumps `ui-state.skillUsage` | project | Start a task from a GitHub issue or PR with the same three body shapes and the same ref-prepending rule | covered |
 | I-081 | `github.tsx` `TabLink` Issues/Pull requests → `saveGithubView` → `putUiState({githubView})` | bare `/github` restores the remembered sub-tab | tab id → persisted preference | optimistic cache patch, then PUT; failure → danger toast + invalidate | **project-local ui-state file** | **None — decided 2026-09-10 (D-81).** A remembered sub-tab with no business meaning. Treating it as project data would need a tool per gesture, which M-20 forbids | presentation |
 | I-082 | `github.tsx` external "open on GitHub" links, PR Conversation/Changes sub-tabs, `GithubDetail` empty and not-found states | `isHttpUrl` guard on every external href | navigation | href protocol guard | presentation | None | presentation |
+| I-147 | `packages/web/src/routes/github/new-issue-dialog.tsx` `NewIssueButton` (`data-action="gh-new-issue"`, and `gh-new-issue-empty` under an empty list) → `NewIssueDialog` → `createRun(newIssueRunBody(...))` | the tab is available (`gh.available`); the control is absent while it loads, when it errored and on the unavailable screen | the person's brief → a queued task on the issue-filing skill, plus a `role="status"` strip while it runs | `packages/web/src/routes/github/new-issue-task.ts`: the skill is found by the `…issue-create` naming convention (nearest copy wins) and the body is the composer's own `buildCreateRunBody`; never `autonomous`, so the person approves the exact text through the task's own question. The brief survives close, reload and a refused start (`new-issue-draft.ts`). **No issue-mutation route exists and none is added** | project | Start the same scoped skill task with a brief for the bound project: `task_create` action `start`, `source: {source:'skill', ref:<the project's issue-create skill>}`, `autonomous: false`. Added 2026-09-16 (#468). **No issue-create tool** — the cockpit cannot file an issue directly either, and starting a task is not approval to file | covered |
 
 ### F. Workflows, skills and automations — 20 records
 

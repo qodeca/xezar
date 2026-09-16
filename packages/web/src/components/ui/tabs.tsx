@@ -25,8 +25,10 @@ function Tabs({
   )
 }
 
+/* The horizontal track is `h-fit` on phone so its triggers can take their 44px floor and the
+ * track grows to hold them; `md:` restores the fixed `h-9` segmented control. */
 const tabsListVariants = cva(
-  "group/tabs-list inline-flex w-fit items-center justify-center rounded-md p-[3px] text-muted-foreground group-data-[orientation=horizontal]/tabs:h-9 group-data-[orientation=vertical]/tabs:h-fit group-data-[orientation=vertical]/tabs:flex-col data-[variant=line]:rounded-none",
+  "group/tabs-list inline-flex w-fit items-center justify-center rounded-md p-0.75 text-muted-foreground group-data-[orientation=horizontal]/tabs:h-fit group-data-[orientation=vertical]/tabs:h-fit group-data-[orientation=vertical]/tabs:flex-col data-[variant=line]:rounded-none md:group-data-[orientation=horizontal]/tabs:h-9",
   {
     variants: {
       variant: {
@@ -64,7 +66,12 @@ function TabsTrigger({
     <TabsPrimitive.Trigger
       data-slot="tabs-trigger"
       className={cn(
-        "relative inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-sm border border-transparent px-3 py-1 text-[12.5px] font-medium whitespace-nowrap text-muted-foreground transition-all group-data-[orientation=vertical]/tabs:w-full group-data-[orientation=vertical]/tabs:justify-start hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 group-data-[variant=default]/tabs-list:data-[state=active]:shadow-xs group-data-[variant=line]/tabs-list:data-[state=active]:shadow-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        // `min-h-tap min-w-tap … md:min-h-0 md:min-w-0`: the absolute 44px phone hit area, on BOTH
+        // axes. The trigger, not the track, is the target, so the floor lives here and the track
+        // follows it. The width half is not decoration: a trigger is as wide as its label, so the
+        // two-character `pi` tab rendered 36.88px wide at comfortable and 30.88px at ultra with
+        // `min-h-tap` alone (B1-QA-1) — `flex-1` distributes spare room but never invents any.
+        "relative inline-flex h-[calc(100%-1px)] min-h-tap min-w-tap flex-1 items-center justify-center gap-1.5 rounded-sm border border-transparent px-3 py-1 text-[12.5px] font-medium whitespace-nowrap text-muted-foreground transition-all group-data-[orientation=vertical]/tabs:w-full group-data-[orientation=vertical]/tabs:justify-start md:min-h-0 md:min-w-0 hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 group-data-[variant=default]/tabs-list:data-[state=active]:shadow-xs group-data-[variant=line]/tabs-list:data-[state=active]:shadow-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         "group-data-[variant=line]/tabs-list:bg-transparent group-data-[variant=line]/tabs-list:data-[state=active]:bg-transparent",
         // Mockup `.seg > button.active`: the active segment lifts to the card surface and goes semibold.
         "data-[state=active]:bg-card data-[state=active]:font-semibold data-[state=active]:text-foreground",

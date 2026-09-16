@@ -61,6 +61,12 @@ import { allLabels, filterGithubItems, labelChipStyle, shouldSearchForge } from 
 import { GithubLoading } from './github-loading'
 import { HandToAgent } from './hand-to-agent'
 import { readFollowupSelection, writeFollowupSelection } from './hand-to-agent-draft'
+import {
+  IssueDraftStrip,
+  NewIssueButton,
+  NewIssueDialog,
+  newIssueCopy,
+} from './new-issue-dialog'
 
 /**
  * `/github` — the forge tab rebuilt in React (R6 Step 1.1, spec §"GitHub tab (forge tab)"):
@@ -276,6 +282,14 @@ export function GithubRoute({
     [skillsData, skillUsage],
   )
   const [queued, setQueued] = useState<ReadonlyMap<string, string>>(new Map())
+  // "New issue" (#468, PR 5). Route state, beside the pickers above, so opening an item and
+  // coming back does not lose a dialog the person had open — and so BOTH entry points (the tab
+  // row and the empty list) drive one dialog rather than two copies of it. The brief itself lives
+  // in its own store, not here: it has to survive a reload and a refused start too.
+  const [newIssueOpen, setNewIssueOpen] = useState(false)
+  // Which run is the draft this tab started. Stored the way `queued` is; the strip then reads the
+  // LIVE record from the runs cache, which the global SSE stream already patches — no poll.
+  const [issueDraftRunId, setIssueDraftRunId] = useState<string | null>(null)
   // List filtering (#gh-filter): free-text search (by #id or any text) + a label narrow.
   const [query, setQuery] = useState('')
   const [labelFilter, setLabelFilter] = useState<readonly string[]>([])
@@ -529,13 +543,22 @@ export function GithubRoute({
               {gh.syncedAt ? `synced ${shortAge(gh.syncedAt)} ago` : 'refresh'}
             </button>
           </div>
-          <div data-slot="gh-tabs" className="mt-2.5 flex items-end gap-1">
+          {/* The action sits at the END of the tab row, not as a third tab — it starts something
+              rather than navigating. `flex-wrap` plus `w-full md:w-auto` is what the narrow pane
+              needs: two counts and a button cannot share 375 px without truncating a count, and a
+              truncated count is a wrong number, so the button takes its own full-width row
+              instead. Never icon-only. */}
+          <div data-slot="gh-tabs" className="mt-2.5 flex flex-wrap items-end gap-1">
             <TabLink to="/github" active={view === 'issues'} onClick={() => saveGithubView('issues')}>
               Issues · {countLabel(gh.issues.length)}
             </TabLink>
             <TabLink to="/github/prs" active={view === 'prs'} onClick={() => saveGithubView('prs')}>
               Pull requests · {countLabel(gh.prs.length)}
             </TabLink>
+            <NewIssueButton
+              onOpen={() => setNewIssueOpen(true)}
+              className="mb-1 w-full justify-center md:ml-auto md:w-auto"
+            />
           </div>
           <div className="mt-2.5 flex items-center gap-2 pb-3">
             <div className="relative min-w-0 flex-1">
@@ -562,16 +585,38 @@ export function GithubRoute({
           </div>
         </header>
 
+        {/* A draft this tab started, while it runs and when it asks. It never answers the
+            question: the thread's own card shows the exact body being approved. */}
+        <IssueDraftStrip runId={issueDraftRunId} />
+
         {items.length === 0 ? (
           // Nothing in the OPEN list matched. Rather than the old flat "no match" — which was a
           // lie whenever the item existed but was closed or merged (#730) — report what the forge
           // search found, is finding, or could not do. No verdict to report (the hits below are
           // the answer) means no wrapper at all, so its padding cannot leave a gap.
-          emptyState && (
-            <div data-slot="gh-empty" className="px-4 py-4 text-sm text-soft-foreground">
-              {emptyState}
-            </div>
-          )
+          <div>
+            {emptyState && (
+              <div data-slot="gh-empty" className="px-4 py-4 text-sm text-soft-foreground">
+                {emptyState}
+              </div>
+            )}
+            {/* The second entry, where the decision to file is most often made: the list was
+                searched and answered nothing. Not while a search is still in flight, and not when
+                the forge found the item after all — neither is "nothing exists". */}
+            {searchHits.length === 0 && !searching ? (
+              <div
+                data-slot="gh-empty-new-issue"
+                className="border-t border-border px-4 py-4 text-sm text-soft-foreground"
+              >
+                <p>{newIssueCopy.emptyListLead}</p>
+                <NewIssueButton
+                  slot="gh-new-issue-empty"
+                  onOpen={() => setNewIssueOpen(true)}
+                  className="mt-stack w-full justify-center sm:w-auto"
+                />
+              </div>
+            ) : null}
+          </div>
         ) : (
           <ul data-slot="gh-rows" className="flex flex-col gap-0.5 px-2 py-2">
             {items.map((item) => (
@@ -660,6 +705,19 @@ export function GithubRoute({
           />
         )}
       </section>
+
+      {/* One dialog for both entry points. `prefill` is the list's own search text (OQ-4): the
+          person's words are the best available first sentence, and the box stays editable. */}
+      <NewIssueDialog
+        open={newIssueOpen}
+        onOpenChange={setNewIssueOpen}
+        repo={gh.repo ?? null}
+        prefill={query.trim()}
+        skills={skillsData ?? []}
+        engine={engine}
+        onEngineChange={setEngine}
+        onStarted={setIssueDraftRunId}
+      />
     </div>
   )
 }

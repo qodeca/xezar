@@ -788,6 +788,7 @@ business outcome as the cockpit is the separate [parity coverage map](mcp-parity
 | I-075 | Inspect merge readiness before merging (M-12) | `handoff_git:merge_state`, `read_results_evidence:pr_merge_state` |
 | I-076 | D-07 is settled: invoke the existing merge autonomously, no duplicated confirmation click, preserving every quality, branch and state check… | `handoff_git:merge` |
 | I-080 | Start a task from a GitHub issue or PR with the same three body shapes and the same ref-prepending rule | `task_create:start` |
+| I-147 | Start the same scoped skill task with a brief for the bound project: `task_create` action `start`, `source: {source:'skill', ref:<the proje… | `task_create:start` |
 | I-083 | Read the workflow catalog including each entry's source | `project_config:list_workflows` |
 | I-085 | Same outcome as I-002 — one planning capability, two surfaces | `task_create:plan` |
 | I-086 | Validate a workflow definition without saving it | `project_config:parse_workflow` |
@@ -874,7 +875,7 @@ Roles:
 | `organise_work:start_inbox_item` | I-026 |  |  |  |
 | `organise_work:remove_inbox_item` | I-027 |  |  |  |
 | `organise_work:pick_variant` | I-030 |  |  |  |
-| `task_create:start` | I-001, I-003, I-007, I-008, I-009, I-080, I-094, I-144 |  |  |  |
+| `task_create:start` | I-001, I-003, I-007, I-008, I-009, I-080, I-094, I-144, I-147 |  |  |  |
 | `task_create:plan` | I-002, I-085 |  |  |  |
 | `task_create:start_from_inbox` | I-026 |  |  |  |
 | `task_create:save_plan` | I-005 |  |  |  |

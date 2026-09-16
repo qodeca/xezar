@@ -433,6 +433,22 @@ export class AgentBrowser {
     this.run(['set', 'viewport', String(width), String(height)])
   }
 
+  /**
+   * operation: interact (`set media`) — the emulated reader preferences.
+   *
+   * `prefers-reduced-motion` is a REAL behavior of this app (every floating surface is
+   * `motion-safe:`, every looping animation carries `motion-reduce:animate-none`), and it is the
+   * one rule a class scan can only see spelled, never honoured. Omitting `reducedMotion` clears
+   * it — the CLI takes the preference as a positional flag, so "not passed" is "no preference".
+   *
+   * A spec that sets this must assert `matchMedia('(prefers-reduced-motion: reduce)').matches`
+   * before it concludes anything: an emulation that silently did nothing and a cockpit that
+   * correctly stopped animating look identical from the outside.
+   */
+  setMedia(scheme: 'dark' | 'light', { reducedMotion = false } = {}): void {
+    this.run(reducedMotion ? ['set', 'media', scheme, 'reduced-motion'] : ['set', 'media', scheme])
+  }
+
   /** operation: interact (`click`). */
   click(selector: string): void {
     try {

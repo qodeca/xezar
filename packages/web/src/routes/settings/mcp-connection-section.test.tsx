@@ -908,8 +908,10 @@ describe('MCP connection section — the leader status, live (round 5 on #403)',
     await waitFor(() => expect(view.state()).toBe('owner'))
     const attach = view.container.querySelector('[data-slot="mcp-leader-attach-button"]')!
     expect(attach.className.split(' ')).toEqual(expect.arrayContaining(['h-11', 'md:h-9']))
-    expect(attach.className.split(' ')).not.toContain('h-[30px]')
-    expect(view.container.querySelector('[data-slot="mcp-leader-refresh"]')!.className.split(' ')).toContain('h-[30px]')
+    expect(attach.className.split(' ')).not.toContain('h-7.5')
+    // `h-7.5` is the `sm` Button height — 30 px at comfortable, the same size the hand-typed
+    // `h-[30px]` held before #453 B1 put it on the spacing scale. Refresh is still the small one.
+    expect(view.container.querySelector('[data-slot="mcp-leader-refresh"]')!.className.split(' ')).toContain('h-7.5')
   })
 })
 describe('MCP connection section — the Claude Code wake copy (#374, O-1 / AC-9)', () => {

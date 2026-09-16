@@ -68,8 +68,8 @@
     <span class="state"><span class="badge link">link</span><small>link</small></span>
   </div>
 
-  <h3>Card</h3>
-  <div class="src">ui/card.tsx has no importers (G-02, G-20). The cockpit's card is the ad-hoc string <code>rounded-lg border border-border bg-card</code>.</div>
+  <h3>The card (no primitive)</h3>
+  <div class="src">There is no card primitive: the dead <code>ui/card.tsx</code> was removed in #453 B1. The cockpit's card is the ad-hoc string <code>rounded-lg border border-border bg-card</code>, with <code>p-inset</code> inside and <code>gap-list</code> between cards.</div>
   <div class="frame pad float-row">
     <div class="card pad" style="width:280px;max-width:100%"><b style="font-size:14px">Card</b><p style="margin:6px 0 0;font-size:13px;color:var(--muted-foreground)">Border, <code>--card</code> background, <code>--radius-lg</code>, <code>--shadow-xs</code>.</p></div>
   </div>
@@ -152,7 +152,7 @@
   </div>
 
   <h3>Popover</h3>
-  <div class="src">ui/popover.tsx · w-72 (288 px at comfortable; follows density) · <code>PopoverTitle</code> renders a div (G-07)</div>
+  <div class="src">ui/popover.tsx · w-72 (288 px at comfortable; follows density) · <code>PopoverTitle</code> renders the <code>h2</code> it is typed as</div>
   <div class="frame pad float-row">
     <div class="popover"><div class="title">Retention</div><p class="desc" style="margin:4px 0 10px">Keep the worktree after the run finishes.</p><button class="switch sm" type="button" role="switch" aria-checked="true" aria-label="Keep worktree"></button></div>
   </div>
@@ -164,8 +164,8 @@
     <span class="tooltip" role="tooltip">Runs the task in the repository working tree instead of a worktree.</span>
   </div>
 
-  <h3>Input, Textarea, Label, Select</h3>
-  <div class="src">ui/input.tsx · ui/textarea.tsx · ui/label.tsx · ui/select.tsx (no importers, G-11; settings use a native <code>&lt;select&gt;</code>)</div>
+  <h3>Input, Textarea, Label, native select</h3>
+  <div class="src">ui/input.tsx · ui/textarea.tsx · ui/label.tsx · the dead <code>ui/select.tsx</code> was removed in #453 B1; settings keep a native <code>&lt;select&gt;</code> and wear <code>nativeFieldClass</code> from <code>ui/input.tsx</code> (G-11)</div>
   <div class="frame pad float-row">
     <div class="field"><label class="label" for="i1">Task title</label><input class="input" id="i1" placeholder="What should the agent do?"><p class="field-hint">Shown in the sidebar and the task list.</p></div>
     <div class="field"><label class="label" for="i2">Max parallel</label><input class="input" id="i2" value="12" aria-invalid="true" aria-describedby="i2e"><p class="field-error" id="i2e">Enter a whole number from 1 to 8.</p></div>
@@ -175,7 +175,7 @@
   </div>
 
   <h3>Switch</h3>
-  <div class="src">ui/switch.tsx · default and sm · checked uses <code>--primary</code></div>
+  <div class="src">ui/switch.tsx · default (18 px track) and sm · checked uses <code>--primary</code> · on phone a centred 44 px <code>before:size-tap</code> overlay carries the tap, so the track keeps its size</div>
   <div class="frame pad states">
     <span class="state"><button class="switch" type="button" role="switch" aria-checked="false" aria-label="Off"></button><small>off</small></span>
     <span class="state"><button class="switch" type="button" role="switch" aria-checked="true" aria-label="On"></button><small>on</small></span>
@@ -184,16 +184,15 @@
   </div>
 
   <h3>Tabs</h3>
-  <div class="src">ui/tabs.tsx · default (filled list) and line variant</div>
+  <div class="src">ui/tabs.tsx · default (filled list) and line variant · the trigger carries the 44 px phone floor, so the horizontal track is <code>h-fit</code> below <code>md</code></div>
   <div class="frame pad stack">
     <div class="tabs" role="tablist"><button type="button" role="tab" aria-selected="true">Steps</button><button type="button" role="tab" aria-selected="false">Changes</button><button type="button" role="tab" aria-selected="false">Git</button></div>
     <div class="tabs line" role="tablist"><button type="button" role="tab" aria-selected="true">Overview</button><button type="button" role="tab" aria-selected="false">Files</button><button type="button" role="tab" aria-selected="false">History</button></div>
   </div>
 
-  <h3>Separator, ScrollArea, Skeleton</h3>
-  <div class="src">ui/separator.tsx and ui/scroll-area.tsx have no importers (G-20) · ui/skeleton.tsx animates without a reduced-motion guard (G-08)</div>
+  <h3>Skeleton</h3>
+  <div class="src">ui/skeleton.tsx · the pulse carries <code>motion-reduce:animate-none</code> · the dead <code>ui/separator.tsx</code> and <code>ui/scroll-area.tsx</code> were removed in #453 B1; rules use <code>border-t border-border</code> or <code>divide-y</code>, and scrolling is native <code>overflow-y-auto overscroll-contain</code></div>
   <div class="frame pad stack">
-    <div class="separator"></div>
     <div class="skeleton" style="width:60%"></div>
     <div class="skeleton" style="width:40%"></div>
     <div class="skeleton" style="width:80%;height:32px"></div>
