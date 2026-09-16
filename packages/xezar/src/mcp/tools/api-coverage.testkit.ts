@@ -71,7 +71,9 @@ export const TOOL_ACTION_COVERAGE: Readonly<Record<string, ActionCoverage>> = {
 
   // I-080: the tool takes no GitHub reference; the leader writes the reference into `prompt`, as the
   // cockpit's `composeGithubTask` prepends it, and picks the workflow or skill steps itself.
-  'task_create:start': { serves: ['I-001', 'I-003', 'I-007', 'I-008', 'I-009', 'I-080', 'I-094'] },
+  // I-143: the GitHub tab's New issue control is `task_create` with a skill source and
+  // `autonomous: false` — the owner's UI↔MCP parity rule met without a new tool (#468).
+  'task_create:start': { serves: ['I-001', 'I-003', 'I-007', 'I-008', 'I-009', 'I-080', 'I-094', 'I-143'] },
   'task_create:plan': { serves: ['I-002', 'I-085'] },
   'task_create:start_from_inbox': { serves: ['I-026'] },
   'task_create:save_plan': { serves: ['I-005'] },

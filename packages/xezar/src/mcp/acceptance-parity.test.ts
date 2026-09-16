@@ -395,7 +395,7 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
       expect(w.a.store.listRuns().length).toBe(before);
     });
 
-    parity('P-02', ['A-06'], ['I-094'], 'a start from a project skill runs that skill, as the skills panel’s start does', async () => {
+    parity('P-02', ['A-06'], ['I-094', 'I-143'], 'a start from a project skill runs that skill, as the skills panel’s and the GitHub tab’s New issue start do', async () => {
       const w = world();
       mkdirSync(join(w.a.root, '.xezar', 'skills'), { recursive: true });
       writeFileSync(join(w.a.root, '.xezar', 'skills', 'parity-notes.md'), '---\nname: parity-notes\ndescription: parity skill\n---\nApply the notes.\n', 'utf8');
@@ -1853,10 +1853,10 @@ describe('A-05 — the coverage matrix against the closed inventory', () => {
     if (blockedCases.length > 0) console.info(`[#116] blocked parity cases (not passing): ${blockedCases.join(', ')}`);
   });
 
-  it('the inventory is the closed 142-record one, with 91 covered records', () => {
+  it('the inventory is the closed 143-record one, with 92 covered records', () => {
     const inventory = readInventory();
-    expect(inventory.size).toBe(142);
-    expect([...inventory.values()].filter((s) => s === 'covered')).toHaveLength(91);
+    expect(inventory.size).toBe(143);
+    expect([...inventory.values()].filter((s) => s === 'covered')).toHaveLength(92);
   });
 
   it('every covered record maps to at least one case, and every case names inventory records', () => {
