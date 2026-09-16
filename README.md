@@ -227,8 +227,9 @@ setup, keep four results separate: a project snippet is only **files prepared**;
 result proves **connected**; `leader_events` attach/status proves **attached**; and a real pushed
 event or an attached-session `read` proves **delivery verified**. After xezar restarts, the
 attachment is gone even though journal cursors remain: call a tool, check status, attach with a new
-operation ID and read retained events again. See the [project-leader guide](docs/guide/13-mcp-leader.md)
-and canonical [MCP tool reference](docs/features/mcp-server/mcp-api.md).
+operation ID and read retained events again. The canonical end-to-end setup, launch, verification and
+recovery instructions for Claude Code, Codex, pi and OpenCode are in the
+[project-leader guide](docs/guide/13-mcp-leader.md).
 
 <details>
 <summary>Waking a Claude Code leader: requirements and recovery</summary>
@@ -242,7 +243,7 @@ Launch with `claude --dangerously-load-development-channels server:xezar` to let
 
 </details>
 
-More → [MCP tool reference](docs/features/mcp-server/mcp-api.md)
+More → [Run each supported client as the project leader](docs/guide/13-mcp-leader.md)
 
 ## Remote access
 
