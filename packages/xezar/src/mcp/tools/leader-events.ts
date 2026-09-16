@@ -141,7 +141,7 @@ export const leaderEventsTool = defineTool({
   name: 'leader_events',
   title: 'Attach, read and acknowledge project events',
   description: [
-    "Attach this session as the project's leader so xezar pushes its significant events to it (task outcomes, questions, quality gates, human changes, executor availability), and read and acknowledge those events.",
+    "Attach this session as the project's leader so xezar pushes its significant events to it (task outcomes, questions, required check results, human changes, executor availability), and read and acknowledge those events.",
     'attach: make this session the leader xezar pushes events to – a `<channel source="xezar">` message in Claude Code, a started turn in Codex or pi. The client is this session’s own; you never name it. Call it once per session with a new operationId, and again when status says you are not attached. stop: detach this session. status: whether this session is attached and can receive pushes, the delivery cursors, and what blocks delivery. An OpenCode leader is attached by a person in Settings → MCP connection.',
     'Each pushed message names the cursor of its last event. Once you have taken the events into account, ack that cursor. No read is needed.',
     'Leader setup has four separate states: files prepared (a project snippet only), connected (a real MCP tool call reached this project), attached (this session owns the attachment), and delivery verified (a real pushed event or an attached-session replay check). Never call a snippet ready. After a restart, status and attach must be repeated with a new operationId before delivery is verified again.',
