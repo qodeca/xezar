@@ -18,16 +18,19 @@ test.after(() => { for (const dir of dirs) rmSync(dir, { recursive: true, force:
 function fixture(failed = false) {
   const dir = mkdtempSync(join(root, 'gate-test-')); dirs.push(dir);
   mkdirSync(join(dir, 'barriers'));
-  const entries = [2,3,4,5,6].map(index => ({index,name:`gate ${index}`,command:command(`
+  // The application phase is gates 3-7 of `repo-gates.sh`'s canonical list: 3 typecheck,
+  // 4 npm test, 5 test:unit, 6 build, 7 test:package. Gate 1 is the install and gate 2 is the
+  // security stage, both serial and both ahead of this phase.
+  const entries = [3,4,5,6,7].map(index => ({index,name:`gate ${index}`,command:command(`
     const fs=require('node:fs'), p=${JSON.stringify(join(dir,'barriers'))};
     fs.writeFileSync(p+'/${index}.start','');
     const wait=async(name)=>{const end=Date.now()+5000;while(!fs.existsSync(p+'/'+name)){if(Date.now()>end)throw Error('barrier '+name);await new Promise(r=>setTimeout(r,10));}};
     (async()=>{
-      if(${index}===2){await wait('3.start');await wait('4.start');}
-      if(${index}===5 && !fs.existsSync(p+'/2.end'))throw Error('build before typecheck');
-      if(${index}===6 && !fs.existsSync(p+'/5.end'))throw Error('package before build');
+      if(${index}===3){await wait('4.start');await wait('5.start');}
+      if(${index}===6 && !fs.existsSync(p+'/3.end'))throw Error('build before typecheck');
+      if(${index}===7 && !fs.existsSync(p+'/6.end'))throw Error('package before build');
       fs.writeFileSync(p+'/${index}.end','');
-      process.exitCode=${failed && index===2 ? 9 : 0};
+      process.exitCode=${failed && index===3 ? 9 : 0};
     })().catch(e=>{console.error(e);process.exitCode=1});
   `)}));
   const begin=spawnSync(process.execPath,[results,'begin','--dir',dir,'--json',JSON.stringify({attemptId:'fixture',required:entries.map(e=>e.name)})],{encoding:'utf8'});
@@ -53,13 +56,13 @@ test('failed typecheck retains later build/package evidence and cannot certify',
  const f=fixture(true);execute(f);const r=collect(f);assert.equal(r.status,0,r.stderr);
  const record=JSON.parse(readFileSync(join(f.dir,'result.json')));
  assert.equal(record.result,'failed');assert.equal(record.commands.length,5);
- assert.ok(existsSync(join(f.dir,'barriers/6.end')));
+ assert.ok(existsSync(join(f.dir,'barriers/7.end')));
 });
 for(const corruption of ['missing','malformed','identity','command']) test(`worker ${corruption} leaves the aggregate incomplete`,()=>{
- const f=fixture();execute(f);const file=join(f.dir,'workers/6.json');
+ const f=fixture();execute(f);const file=join(f.dir,'workers/7.json');
  if(corruption==='missing')rmSync(file);
  if(corruption==='malformed')writeFileSync(file,'{');
- if(corruption==='identity'){const e=JSON.parse(readFileSync(file));e.name='gate 2';writeFileSync(file,JSON.stringify(e));}
+ if(corruption==='identity'){const e=JSON.parse(readFileSync(file));e.name='gate 3';writeFileSync(file,JSON.stringify(e));}
  if(corruption==='command'){const e=JSON.parse(readFileSync(file));e.command='true';writeFileSync(file,JSON.stringify(e));}
  assert.notEqual(collect(f).status,0);assert.equal(existsSync(join(f.dir,'result.json')),false);
 });
@@ -70,7 +73,7 @@ test('a published pass cannot conceal a nonzero worker exit', () => {
  writeFileSync(wrapper,`. ${quote(library)}\neval "$(declare -f gate_run | sed '1s/gate_run/original_gate_run/')"\ngate_run() { original_gate_run "$@"; return 19; }\n`);
  const r=spawnSync(process.execPath,[scheduler,wrapper,'application',JSON.stringify(f.entries)],{env:f.env,encoding:'utf8',timeout:15000});
  assert.notEqual(r.status,0);
- assert.equal(JSON.parse(readFileSync(join(f.dir,'workers/2.json'))).status,'passed');
+ assert.equal(JSON.parse(readFileSync(join(f.dir,'workers/3.json'))).status,'passed');
  assert.equal(existsSync(join(f.dir,'result.json')),false);
 });
 
@@ -86,7 +89,7 @@ test('positional worker arguments preserve spaces, quotes and literal shell synt
 test('failed parent summary output cannot complete the attempt', () => {
  const f=fixture();execute(f);
  // Close stdout: portable write failure, without depending on Linux /dev/full.
- const r=spawnSync('bash',['-c','. "$1"; exec 1>&-; gate_collect_worker 2 "$2" "$3" || exit 1; node "$GATE_RESULTS_MJS" complete --dir "$GATE_ATTEMPT_DIR" --json "{}"','summary',library,f.entries[0].name,f.entries[0].command],{env:f.env,encoding:'utf8'});
+ const r=spawnSync('bash',['-c','. "$1"; exec 1>&-; gate_collect_worker 3 "$2" "$3" || exit 1; node "$GATE_RESULTS_MJS" complete --dir "$GATE_ATTEMPT_DIR" --json "{}"','summary',library,f.entries[0].name,f.entries[0].command],{env:f.env,encoding:'utf8'});
  assert.notEqual(r.status,0);assert.equal(existsSync(join(f.dir,'result.json')),false);
 });
 
@@ -101,9 +104,18 @@ function outerFixture(body) {
  const git=(...args)=>{const r=spawnSync('git',args,{cwd:dir,encoding:'utf8'});assert.equal(r.status,0,r.stderr);};
  git('init','-q','-b','main');writeFileSync(join(dir,'.gitignore'),'.local/\n');
  git('add','.gitignore');git('-c','user.name=fixture','-c','user.email=fixture@example.invalid','commit','-qm','fixture');
+ // A CANDIDATE, not an empty branch. Gate 2 is the security stage and it refuses a change set
+ // that enumerated nothing over a base it could read — a branch sitting on its own merge-base is
+ // exactly that shape (#503 review M1). The base ref is therefore a separate branch left behind
+ // at the first commit, so this fixture's HEAD really carries one added file for the stage to look
+ // at, the way a real task does.
+ git('branch','fixture-base');
+ mkdirSync(join(dir,'src'),{recursive:true});writeFileSync(join(dir,'src/fixture.ts'),'export const fixture = 1;\n');
+ git('add','src/fixture.ts');git('-c','user.name=fixture','-c','user.email=fixture@example.invalid','commit','-qm','candidate');
  // Replace only path/environment discovery. Execution, recording and supervision are real.
  writeFileSync(join(target,'lib/common.sh'),`
- resolve_task_paths() { TASK_CWD="$PWD"; TASK_ID=fixture; TASK_ID_SOURCE=fixture; HEAD_SHA=$(git rev-parse HEAD); IS_WORKTREE=0; BRANCH=main; BASE_BRANCH=main; }
+ resolve_task_paths() { TASK_CWD="$PWD"; TASK_ID=fixture; TASK_ID_SOURCE=fixture; HEAD_SHA=$(git rev-parse HEAD); IS_WORKTREE=0; BRANCH=main; BASE_BRANCH=fixture-base; }
+ task_evidence_dir() { printf '%s/no-evidence' "$PWD"; }
  deps_are_fresh() { return 0; }
  deps_resolve_in_task() { [ ! -f "$PWD/borrowed" ] || { echo "fixture: workspace packages borrowed" >&2; return 1; }; }
  task_gates_dir() { printf '%s/gates' "$PWD"; }
@@ -205,12 +217,12 @@ test('control: an install whose workspace packages resolve inside the task runs 
 
 test('ordinary build failure still runs package and records aggregate failure',()=>{
  const f=fixture();
- const build=f.entries.find(e=>e.index===5);
- build.command=command(`const fs=require('node:fs');if(!fs.existsSync(${JSON.stringify(join(f.dir,'barriers/2.end'))}))throw Error('build before typecheck');fs.writeFileSync(${JSON.stringify(join(f.dir,'barriers/5.end'))},'');process.exitCode=3;`);
+ const build=f.entries.find(e=>e.index===6);
+ build.command=command(`const fs=require('node:fs');if(!fs.existsSync(${JSON.stringify(join(f.dir,'barriers/3.end'))}))throw Error('build before typecheck');fs.writeFileSync(${JSON.stringify(join(f.dir,'barriers/6.end'))},'');process.exitCode=3;`);
  execute(f);const collected=collect(f);assert.equal(collected.status,0,collected.stderr);
  const record=JSON.parse(readFileSync(join(f.dir,'result.json')));
  assert.equal(record.result,'failed');assert.equal(record.commands.length,5);
- assert.equal(record.commands.find(e=>e.name==='gate 5').status,'failed');
- assert.equal(record.commands.find(e=>e.name==='gate 6').status,'passed');
- assert.ok(existsSync(join(f.dir,'barriers/6.end')));
+ assert.equal(record.commands.find(e=>e.name==='gate 6').status,'failed');
+ assert.equal(record.commands.find(e=>e.name==='gate 7').status,'passed');
+ assert.ok(existsSync(join(f.dir,'barriers/7.end')));
 });

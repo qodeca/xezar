@@ -126,6 +126,13 @@ if [ -f "$EVIDENCE_DIR/BLOCKED" ]; then
 fi
 note "blocked       no BLOCKED file"
 
+# The repair budget survives the resume because it lives in this run's own evidence directory,
+# keyed by run id, in the PRIMARY checkout — the same place the gate attempts live. A Continue,
+# a backend switch and a replacement run therefore CONTINUE the count; none of them starts a
+# fresh allowance, and `resume-free-budget` is the falsifier that says so.
+printf '\n'
+"$SCRIPT_DIR/phase-record.sh" counters 2>/dev/null | sed 's/^/  /'
+
 # --- 3. Input readiness -----------------------------------------------------------------------
 step "3. dependency and input readiness"
 DEPS_FRESH=0
@@ -198,12 +205,24 @@ else
   note "gates         re-run (the sealed evidence is not eligible for this revision)"
 fi
 
+# A gate-driven re-entry is a REPAIR RETURN, and the workflow gets two. An exhausted counter —
+# or a history nobody can account for, which reads as unknown and not as zero — blocks another
+# one here, before the resume spends a full gate run to arrive at the same refusal. This is the
+# gate-return counter only: the self-review and quality-repair budgets are separate and none of
+# them substitutes for another, so a spent self-review budget never blocks a re-run of the gates.
+GATE_RETURN_BLOCKED=0
+if [ "$NEED_GATES" -eq 1 ] && "$SCRIPT_DIR/phase-record.sh" counters --exhausted gate-return >/dev/null 2>&1; then
+  GATE_RETURN_BLOCKED=1
+  note "budget        the \"gate-return\" counter is EXHAUSTED or its history is unknown"
+fi
+
 if [ "$DRY_RUN" -eq 1 ]; then
   printf '\n--- dry run ---\n'
   printf '  deps install  %s\n' "$([ "$DEPS_FRESH" -eq 1 ] && printf 'no' || printf 'yes, as the first gate')"
   printf '  gates         %s\n' "$([ "$NEED_GATES" -eq 1 ] && printf 'would re-run' || printf 'would be reused')"
   printf '  seal          %s\n' "$([ "$NEED_GATES" -eq 1 ] && printf 'would be re-recorded' || printf 'unchanged')"
   printf '  tree          %s\n' "$([ "$DIRTY" -eq 1 ] && printf 'DIRTY — commit before the gates, or the seal will refuse it' || printf 'clean')"
+  printf '  budget        %s\n' "$([ "$GATE_RETURN_BLOCKED" -eq 1 ] && printf 'BLOCKED — the gate-return counter is spent or unknown' || printf 'a gate-return round is available')"
   printf '\nDRY RUN: nothing was run and nothing was written.\n'
   if [ "$NEED_GATES" -eq 1 ]; then
     printf 'A required stage is outstanding, so this exits 2. A dry run reports a PLAN; it never\n'
@@ -216,6 +235,15 @@ if [ "$DRY_RUN" -eq 1 ]; then
 fi
 
 if [ "$NEED_GATES" -eq 1 ]; then
+  if [ "$GATE_RETURN_BLOCKED" -eq 1 ]; then
+    printf '\nRESUME REFUSED: a gate re-run here is a gate-repair return, and that counter is spent or\n' >&2
+    printf 'its history is unknown. Unknown is not zero. Stop and report the remaining failure with its\n' >&2
+    printf 'evidence; never lower a severity, a threshold or a mandatory check to get past it, and never\n' >&2
+    printf 'pay for this round out of a different counter — none of the three substitutes for another.\n' >&2
+    printf 'Reconcile an unknown history first: bash .xezar/checks/phase-record.sh counters init --none\n' >&2
+    printf '(or --predecessor <runId> for a replacement run). Genuinely new scope needs a new accepted plan.\n' >&2
+    exit 1
+  fi
   if [ "$DIRTY" -eq 1 ]; then
     printf '\nRESUME REFUSED: the tree has uncommitted changes and the gates are about to run.\n' >&2
     printf 'Sealing would refuse the result anyway — certification is about a committed revision,\n' >&2

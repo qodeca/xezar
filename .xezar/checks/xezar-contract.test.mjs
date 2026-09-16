@@ -32,6 +32,62 @@ test('canonical gates match the five actual validation commands in exact order',
  const scripts=JSON.parse(fs.readFileSync(path.join(repo,'package.json'))).scripts;
  for(const c of agreed){const name=c==='npm test'?'test':c.slice('npm run '.length);assert.ok(scripts[name]);}
 });
+
+// #469 P2. Security is resolved BEFORE any quality verdict, and that is a position in the list the
+// runner executes — not a sentence someone has to remember. Gate 1 installs, gate 2 is the security
+// stage, and every gate that produces a quality signal comes after it. The lane schedule in
+// `lib/gate-parallel.mjs` is keyed to those positions, so a renumbering that misses it is caught here.
+test('the security stage is gate 2, ahead of every gate that produces a quality signal',()=>{
+ const list=JSON.parse(exec('bash',[path.join(checks,'repo-gates.sh'),'--list','--json']));
+ const index=list.gates.findIndex(g=>g.command==='.xezar/checks/security-scan.sh');
+ assert.equal(index,1,'the security stage must be the second gate');
+ const agreed=JSON.parse(fs.readFileSync(path.join(repo,'.xezar/pipeline/config.json'))).validation.commands;
+ for(const c of agreed)assert.ok(list.gates.findIndex(g=>g.command===c)>index,`${c} must run after the security stage`);
+ // Adding the stage is a command-list change, and that is the point: a seal produced by the old
+ // list can never be back-dated onto the new one.
+ assert.match(list.commandListId,/^[0-9a-f]{64}$/);
+ const lanes=fs.readFileSync(path.join(checks,'lib/gate-parallel.mjs'),'utf8');
+ const application=list.gates.map((g,i)=>[g.command,i+1]).filter(([c])=>agreed.includes(c)).map(([,i])=>i);
+ assert.ok(lanes.includes(`APPLICATION_GATES = [${application.join(', ')}]`),'gate-parallel.mjs lanes must use the canonical positions');
+});
+
+// The two executable halves of the phase contract ship, and they ship runnable. A check step runs
+// them through `bash`, but the gate runs `.xezar/checks/security-scan.sh` directly.
+test('the phase record and the security stage ship as runnable kit checks',()=>{
+ for(const name of ['security-scan.sh','phase-record.sh']){
+  const file=path.join(checks,name);
+  assert.ok(fs.existsSync(file),name);
+  assert.ok(fs.statSync(file).mode&0o111,`${name} must be executable`);
+ }
+ assert.ok(fs.existsSync(path.join(checks,'lib/security-scan.mjs')));
+ // Every role carries the two commands in its shared tail, because that tail is what an agent
+ // actually reads mid-task. A rule only this file knows is a rule nobody runs.
+ for(const skill of fs.readdirSync(path.join(kit,'skills'))){
+  const body=fs.readFileSync(path.join(kit,'skills',skill),'utf8');
+  assert.match(body,/phase-record\.sh set <NAME>/,skill);
+  assert.match(body,/phase-record\.sh counter /,skill);
+  assert.match(body,/security-scan\.sh/,skill);
+ }
+});
+
+// Readiness refuses a writing task whose phase record is incomplete, and the predicate names the
+// record. Behaviour is proved in `infra-tests.sh`; this pins that the eight names and the readiness
+// modes stay the ones the contract documents, in the one place that reads the real script.
+test('readiness and the evidence step both consult the phase record',()=>{
+ const preflight=fs.readFileSync(path.join(checks,'worktree-preflight.sh'),'utf8');
+ assert.match(preflight,/phase-record\.sh" check --predicates/);
+ const record=fs.readFileSync(path.join(checks,'phase-record.sh'),'utf8');
+ for(const name of ['CAPABILITY','DEPTH','MATURITY','CRITERIA','PLAN','SELF_REVIEW','DOCS','COUNTERS']){
+  assert.ok(record.includes(`"${name}|phase.`),name);
+ }
+ const doc=fs.readFileSync(path.join(kit,'docs/phase-record.md'),'utf8');
+ for(const name of ['CAPABILITY','DEPTH','MATURITY','CRITERIA','PLAN','SELF_REVIEW','DOCS','COUNTERS'])assert.ok(doc.includes(name),name);
+ // Three counters, two rounds each, and none of them a substitute for another.
+ assert.match(record,/COUNTER_KINDS="self-review gate-return quality-repair"/);
+ assert.match(record,/COUNTER_LIMIT=2/);
+ // A resume continues the count; it never starts a fresh allowance.
+ assert.match(fs.readFileSync(path.join(checks,'resume-complete.sh'),'utf8'),/counters --exhausted gate-return/);
+});
 test('bootstraps only the kit into an uncommitted fresh worktree, preserving application/history/secrets',()=>{
  const root=fixture();fs.writeFileSync(path.join(root,'unrelated.txt'),'do not copy');fs.writeFileSync(path.join(root,'.xezar','launch-key'),'fixture-secret');fs.mkdirSync(path.join(root,'.local/xezar/runs'),{recursive:true});fs.writeFileSync(path.join(root,'.local/xezar/runs','fixture'),'do not copy');
  const wt=worktree(root);const head=git(wt,'rev-parse','HEAD');const r=bootstrap(root,wt);assert.equal(r.status,0,r.stderr);assert.ok(fs.existsSync(path.join(wt,'.xezar/checks/repo-gates.sh')));assert.ok(!fs.existsSync(path.join(wt,'unrelated.txt')));assert.ok(!fs.existsSync(path.join(wt,'.local/xezar/launch-key')));assert.ok(!fs.existsSync(path.join(wt,'.local/xezar/runs')));assert.equal(git(wt,'rev-parse','HEAD'),head);assert.equal(git(wt,'status','--porcelain'),'');
