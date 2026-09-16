@@ -98,7 +98,7 @@ const inputSchema = z.strictObject({
   view: z
     .enum(VIEWS)
     .describe(
-      'list = the project’s tasks (summaries, newest first); task = one task’s full record; history = one task’s event history, newest page first; context = the plan and agent episode that frame a task’s history; handoff = a task’s handoff journal (markdown); inbox = the project’s Inbox items; group = one variant group, its tasks side by side.',
+      'list = the project’s tasks (summaries, newest first); task = one task’s full record; history = one task’s event history, newest page first; context = the plan and agent episode that frame a task’s history; handoff = a task’s handoff journal (markdown); inbox = the project’s Inbox items; group = one variant group, its tasks side by side. The task record includes reported reviewer verdicts when available. Each names its role, reviewed commit and label evidence state. Missing or partial evidence is not approval. Compare the reviewed commit with the target before acting; task done alone proves no quality gate.',
     ),
   taskId: idSchema.optional().describe('Task id. Required for task, history, context and handoff.'),
   groupId: idSchema

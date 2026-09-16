@@ -88,9 +88,13 @@ describe('RunManager agent-profile resolution', () => {
       // `XEZ_ENV_PASSTHROUGH` shine through, the same leak `XEZ_TODOS_FILE` guards against.
       'XEZ_ENV_PASSTHROUGH',
       'XEZ_HANDOFF_FILE',
+      // The step this spawn is (#460). Always present, empty when the caller named no step, for
+      // the same reason `XEZ_TODOS_FILE` is — an omitted key lets a PARENT xezar's step id through.
+      'XEZ_STEP_ID',
       'XEZ_TASK_ID',
       'XEZ_TODOS_FILE',
     ]);
+    expect(env.XEZ_STEP_ID).toBe('');
     expect(env.CLAUDE_CONFIG_DIR).toBeUndefined();
     expect(env.CODEX_HOME).toBeUndefined();
   });

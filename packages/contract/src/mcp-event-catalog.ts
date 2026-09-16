@@ -46,6 +46,11 @@ export const MCP_EVENT_KIND_CATEGORY = {
   'gate.passed': 'E-03',
   'gate.failed': 'E-03',
   'result.ready': 'E-03',
+  /** A reviewer's own report was recorded on a task (#460) — a quality-gate RESULT, and a third
+   *  kind under E-03 for the same reason `result.ready` is one: a human's judgement about the work
+   *  is not the same thing as a command that exited zero, and a consumer must be able to tell them
+   *  apart without reading the summary. Emitted only after the report is durably on the run. */
+  'verdict.posted': 'E-03',
   // E-04 — only ever with `origin: 'human'`.
   'goal.changed': 'E-04',
   'instruction.added': 'E-04',

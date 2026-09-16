@@ -9,6 +9,7 @@ import {
   type McpJournalCategory,
   type McpJournalRow,
   type ProviderStatus,
+  type TaskVerdict,
 } from '@qodeca/xezar-contract';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -66,6 +67,14 @@ beforeEach(() => {
 afterEach(() => {
   catalog.detach();
   journal.close();
+  // `flush()` before the directory goes, or the store's 300 ms debounced save outlives the whole
+  // FILE — its 46 cases finish in ~55 ms — and then `console.error`s an ENOENT for a `runs.json`
+  // whose directory this line just deleted. The failing write is harmless; the LOG is not. Vitest
+  // ships console output to the main process over the worker rpc, so a log emitted after the file
+  // ended races the environment teardown that closes it, and the loser is an unhandled
+  // `EnvironmentTeardownError: Closing rpc while "onUserConsoleLog" was pending` — one error, zero
+  // failed tests, `npm test` exit 1. It surfaced on the second gate run of an unchanged tree.
+  store.flush();
   rmSync(dataDir, { recursive: true, force: true });
 });
 
@@ -90,6 +99,26 @@ function startedRun(steps?: RunRecord['steps'][number]['kind'][]): RunRecord {
   store.updateRun(run.id, { status: 'running', startedAt: new Date().toISOString() });
   store.updateStep(run.id, run.steps[0]!.id, { status: 'running', iterations: 1 });
   return run;
+}
+
+const REVIEWED_SHA = 'a'.repeat(40);
+
+/** A reviewer report as the engine records one (#460): on the run, not yet announced. */
+function pendingVerdict(runId: string, stepId: string, id = 'report-1'): TaskVerdict {
+  return {
+    id,
+    taskId: runId,
+    stepId,
+    role: 'code-review',
+    verdict: 'APPROVE',
+    reviewedHeadSha: REVIEWED_SHA,
+    summary: 'no blocking findings',
+    recordedAt: new Date().toISOString(),
+    labels: { requestedAdd: [], requestedRemove: [], observed: ['enhancement'], state: 'verified' },
+    source: 'task-reported',
+    ingestedAt: new Date().toISOString(),
+    publication: 'pending',
+  };
 }
 
 function waitingRun(): RunRecord {
@@ -313,6 +342,14 @@ describe('every other kind the catalog emits', () => {
       origin: 'system',
       act: () => bus.emit('provider-status', { provider: 'codex', status: 'connected', enabled: true }),
     },
+    {
+      kind: 'verdict.posted',
+      origin: 'system',
+      act: () => {
+        const run = startedRun();
+        store.updateRun(run.id, { verdicts: [pendingVerdict(run.id, run.steps[0]!.id)] });
+      },
+    },
   ];
 
   it('lists every kind of the contract once, between the two tables', () => {
@@ -327,6 +364,109 @@ describe('every other kind the catalog emits', () => {
     expect(matching[0]!.category).toBe(MCP_EVENT_KIND_CATEGORY[kind]);
     expect(matching[0]!.origin).toBe(origin);
     expect(mcpCatalogEventSchema.safeParse(matching[0]).success).toBe(true);
+  });
+
+  /**
+   * #460 — the announcement half of a reviewer report. The named break these guard is "clear
+   * pending before append, or generate a fresh report id during recovery" (T-3) and "omit packet
+   * persistence or collapse every successful verdict to APPROVE" (T-1). The two-pending case adds
+   * a third: "iterate a snapshot of the pending reports" — the mark-announced write re-enters this
+   * derivation synchronously, so a snapshot double-announces every report after the first.
+   */
+  describe('reviewer verdicts (#460)', () => {
+    it('summarises the role, the exact verdict, the reviewed sha, the report id and the label state', () => {
+      const run = startedRun();
+      store.updateRun(run.id, {
+        verdicts: [
+          {
+            ...pendingVerdict(run.id, run.steps[0]!.id, 'report-42'),
+            role: 'design-review',
+            verdict: 'PASS WITH FOLLOW-UPS',
+            labels: { requestedAdd: [], requestedRemove: [], state: 'unavailable' },
+          },
+        ],
+      });
+
+      const [row] = rows().filter((candidate) => candidate.kind === 'verdict.posted');
+      expect(row?.summary).toBe(
+        `design-review verdict PASS WITH FOLLOW-UPS on ${REVIEWED_SHA} (report report-42, label evidence unavailable)`,
+      );
+    });
+
+    it('marks the report announced, so a second snapshot of the same run writes no second row', () => {
+      const run = startedRun();
+      store.updateRun(run.id, { verdicts: [pendingVerdict(run.id, run.steps[0]!.id)] });
+      // Any later touch of the record re-enters the derivation.
+      store.updateRun(run.id, { titleSummary: 'reviewed' });
+      store.updateRun(run.id, { status: 'done', finishedAt: new Date().toISOString() });
+
+      expect(rows().filter((row) => row.kind === 'verdict.posted')).toHaveLength(1);
+      expect(store.getRun(run.id)?.verdicts?.[0]?.publication).toBe('announced');
+    });
+
+    it('announces a report a crashed process left pending, once, on the next attach', () => {
+      const run = startedRun();
+      // The engine's write landed; nothing ever announced it. Detach first so this attach is the
+      // first journal the record has met.
+      catalog.detach();
+      store.updateRun(run.id, { verdicts: [pendingVerdict(run.id, run.steps[0]!.id, 'survivor')] });
+
+      catalog = EventCatalog.attach({ journal, store, workspaceEvents: bus, providerBaseline: CONNECTED });
+      const afterFirst = rows().filter((row) => row.kind === 'verdict.posted');
+      // And a second restart must not produce a second logical report under the same id.
+      catalog.detach();
+      catalog = EventCatalog.attach({ journal, store, workspaceEvents: bus, providerBaseline: CONNECTED });
+
+      expect(afterFirst).toHaveLength(1);
+      expect(afterFirst[0]?.summary).toContain('report survivor');
+      expect(rows().filter((row) => row.kind === 'verdict.posted')).toHaveLength(1);
+    });
+
+    it('announces TWO pending reports on one run exactly once each', () => {
+      const run = startedRun();
+      const stepId = run.steps[0]!.id;
+      // Two roles reported and nothing announced either — what a xezar that ran with no journal
+      // attached leaves behind, and what the attach-recovery loop then finds.
+      catalog.detach();
+      store.updateRun(run.id, {
+        verdicts: [
+          pendingVerdict(run.id, stepId, 'report-a'),
+          { ...pendingVerdict(run.id, stepId, 'report-b'), role: 'qa', verdict: 'PASS' },
+        ],
+      });
+
+      catalog = EventCatalog.attach({ journal, store, workspaceEvents: bus, providerBaseline: CONNECTED });
+
+      // Marking the first announced writes through the store, and that write re-enters the run
+      // derivation SYNCHRONOUSLY. A snapshot taken before the loop would announce `report-b` in
+      // the nested pass and then again in the outer one.
+      const posted = rows().filter((row) => row.kind === 'verdict.posted');
+      expect(posted.map((row) => row.subject.id)).toEqual([run.id, run.id]);
+      expect(posted.filter((row) => row.summary.includes('report report-a'))).toHaveLength(1);
+      expect(posted.filter((row) => row.summary.includes('report report-b'))).toHaveLength(1);
+      expect(store.getRun(run.id)?.verdicts?.every((verdict) => verdict.publication === 'announced')).toBe(true);
+    });
+
+    it('says on the completion row whether any verdict is recorded', () => {
+      const reviewed = startedRun();
+      store.updateRun(reviewed.id, { verdicts: [pendingVerdict(reviewed.id, reviewed.steps[0]!.id)] });
+      store.updateRun(reviewed.id, { status: 'done', finishedAt: new Date().toISOString() });
+      const bare = startedRun();
+      store.updateRun(bare.id, { status: 'done', finishedAt: new Date().toISOString() });
+
+      const summaries = rows()
+        .filter((row) => row.kind === 'task.done')
+        .map((row) => row.summary);
+      expect(summaries).toEqual(['task finished: done, 1 reviewer verdict recorded', 'task finished: done, no reviewer verdict recorded']);
+    });
+
+    it('puts the verdict row before the completion row — it happened first', () => {
+      const run = startedRun();
+      store.updateRun(run.id, { verdicts: [pendingVerdict(run.id, run.steps[0]!.id)] });
+      store.updateRun(run.id, { status: 'done', finishedAt: new Date().toISOString() });
+
+      expect(rows().map((row) => row.kind)).toEqual(['verdict.posted', 'task.done']);
+    });
   });
 
   it('writes the result and the gate as different kinds — review is not a quality gate (F-11)', () => {

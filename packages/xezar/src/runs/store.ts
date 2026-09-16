@@ -5,6 +5,9 @@ import { randomUUID } from 'node:crypto';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
+// The reviewer-report shapes (#460) come from the contract package, not from a second copy here:
+// they go out on every run route, and one definition is what keeps the wire and the file identical.
+import { taskVerdictIssueSchema, taskVerdictSchema } from '@qodeca/xezar-contract';
 import { collectSecretValues, redactDeep, redactSecrets } from '../core/secret-redaction.ts';
 // Pure, dependency-free reference helpers — the same sanity bound the marker parser applies.
 import { MAX_REF } from './task-refs.ts';
@@ -289,6 +292,18 @@ export const runRecordSchema = z.object({
   currentStepId: z.string().optional(),
   error: z.string().optional(),
   steps: z.array(stepStateSchema),
+  /** Reviewer reports recorded by this run's own steps (#460), at most one per
+   *  role. The CONTRACT's schema, imported rather than restated: this shape goes
+   *  out on every run route, and a second declaration here is how the two drift.
+   *
+   *  `.catch(undefined)` for the same reason `workflowDef` has it — a hand-edited
+   *  or future-shaped entry must drop its own field, never take the whole index
+   *  down with it (the loader `safeParse`s the array). Absent reads as "no
+   *  reviewer report", which is exactly what every record written before #460
+   *  carries and exactly what it means. */
+  verdicts: z.array(taskVerdictSchema).optional().catch(undefined),
+  /** Reviewer reports this run refused, and why (#460). Same `.catch` rule. */
+  verdictIssues: z.array(taskVerdictIssueSchema).optional().catch(undefined),
   /** Full workflow definition, persisted so a `queued` run can be re-enqueued
    *  after a restart (#367) — including ad-hoc "(planned)" chains that exist
    *  nowhere else.
