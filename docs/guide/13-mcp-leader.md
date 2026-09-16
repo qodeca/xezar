@@ -141,7 +141,7 @@ The [tool registry](../../packages/xezar/src/mcp/tools/index.ts) has ten service
 | `health` | Check whether the bound project's cockpit is running. |
 | `discover_project` | Read project identity, capabilities, limits and available actions. |
 | `task_read` | Inspect tasks and their history. |
-| `task_create` | Create a task with explicit source and execution options. |
+| `task_create` | Create a task with explicit source and execution options; use action `start` with the project's issue-filing skill and `autonomous: false` to start the same approval-required issue draft as **New issue** on the GitHub tab. |
 | `execution_control` | Control execution and communicate with a task session. |
 | `organise_work` | Organize tasks, including queue and archive operations. |
 | `handoff_git` | Supported repository, commit, push, PR and merge operations, subject to their checks. |
