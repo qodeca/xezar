@@ -8,6 +8,8 @@ import {
   type McpDiscoveryAgent,
   type McpDiscoveryLimits,
   type McpDiscoveryToolCheck,
+  onboardingStatusSchema,
+  type OnboardingStatus,
   type ProviderStatusResponse,
   type Runner,
 } from '@qodeca/xezar-contract';
@@ -20,6 +22,9 @@ import { resolveCapabilities } from '../../server/capabilities.ts';
 import { resolveForge } from '../../server/forge/index.ts';
 import { getRepoInfo } from '../../server/git.ts';
 import { loadWorkspaceConfig } from '../../workspace/config.ts';
+import { projectDataDir } from '../../project-data-paths.ts';
+import { observedIdentity, onboardingStatus } from '../../onboarding/status.ts';
+import type { ServiceDispatch } from '../service-adapter.ts';
 import { defineTool, textResult, type McpToolContext } from '../tool.ts';
 
 /**
@@ -44,7 +49,13 @@ export interface DiscoveryFacts {
   config: { baseBranch: string | null; modelsLocked: boolean };
   providers: ProviderStatusResponse;
   limits: McpDiscoveryLimits;
+  /** This project's setup state (#464 P2) — see `collectOnboarding` for where it comes from. */
+  onboarding: OnboardingStatus;
 }
+
+/** `discover_project` reads the onboarding block through the service when it has one — see
+ *  `collectOnboarding`. Same shape `project_config` declares for the same reason. */
+export type DiscoveryContext = McpToolContext & { readonly service?: ServiceDispatch };
 
 const RUNNERS: readonly Runner[] = ['claude', 'codex', 'opencode', 'pi'];
 const LABEL: Record<Runner, string> = { claude: 'Claude Code', codex: 'Codex', opencode: 'OpenCode', pi: 'pi' };
@@ -121,6 +132,7 @@ export function buildDiscovery(facts: DiscoveryFacts): McpDiscovery {
     tools: (['gh', 'git'] as const).map((name) => toolCheck(name, facts)),
     limits: facts.limits,
     actions,
+    onboarding: facts.onboarding,
   });
 }
 
@@ -230,8 +242,46 @@ export function bindHostFromArgv(argv: readonly string[] = process.argv): string
   return undefined;
 }
 
+/**
+ * This project's setup state, read the same way the cockpit reads it (#464 P2, `AC-17`).
+ *
+ * When the tool has the service's in-process entry — which it does in every running xezar — this
+ * IS the cockpit's own `GET /onboarding`, byte for byte, so the leader and the person can never be
+ * told different things about whether a check happened. N-02 also asks for exactly that: the MCP
+ * reaches project state through the routes, not around them.
+ *
+ * Without a service (a tool called directly, as `discovery.test.ts` does) it falls back to the
+ * shared derivation with no running-task id, because the run store lives behind the service. The
+ * fallback is narrower, never wrong: `checkingRunId: null` says "not known to be running", and the
+ * leader's own `organise_work` is where a running task is listed anyway.
+ */
+export async function collectOnboarding(
+  ctx: DiscoveryContext,
+  checks: Awaited<ReturnType<typeof detectEnvironment>>,
+  localHandoff: boolean,
+): Promise<OnboardingStatus> {
+  const observed = observedIdentity(ctx.xezarVersion);
+  if (ctx.service) {
+    try {
+      const res = await ctx.service.request(
+        `http://xezar.invalid/api/v1/p/${encodeURIComponent(ctx.project.id)}/onboarding`,
+        { headers: { host: 'xezar.invalid' } },
+      );
+      if (res.ok) return onboardingStatusSchema.parse(await res.json());
+    } catch {
+      // The route is the preferred source, never a required one: discovery must keep answering.
+    }
+  }
+  return onboardingStatus(projectDataDir(ctx.project.root), {
+    observed,
+    checks,
+    localHandoff,
+    checkingRunId: null,
+  });
+}
+
 export async function collectDiscoveryFacts(
-  ctx: McpToolContext,
+  ctx: DiscoveryContext,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<DiscoveryFacts> {
   const root = ctx.project.root;
@@ -251,6 +301,7 @@ export async function collectDiscoveryFacts(
   const resources = workspace.resources;
   const projectMaxParallel = own?.maxParallel ?? null;
   const projectMemoryLimitMb = typeof config.memoryLimitMb === 'number' && config.memoryLimitMb > 0 ? config.memoryLimitMb : null;
+  const capabilities = resolveCapabilities(env, bindHostFromArgv(), workspace.followups);
   return {
     project: ctx.project,
     xezarVersion: ctx.xezarVersion,
@@ -259,8 +310,9 @@ export async function collectDiscoveryFacts(
       checks,
       defaultRunner: config.defaultRunner,
       forge: forge ? { kind: forge.kind, ...availability } : null,
-      capabilities: resolveCapabilities(env, bindHostFromArgv(), workspace.followups),
+      capabilities,
     },
+    onboarding: await collectOnboarding(ctx, checks, capabilities.localHandoff),
     config: { baseBranch: config.baseBranch ?? null, modelsLocked: agentModelsLocked(root, env) },
     providers,
     limits: {
@@ -289,20 +341,43 @@ export function discoveryText(discovery: McpDiscovery): string {
   const lines = [
     `Bound to xezar project "${discovery.project.name}" (id ${discovery.project.id}).`,
     ...closed.map((a) => `${a.status === 'read-only' ? 'Read-only' : 'Unavailable'}: ${a.label} — ${a.reason}`),
+    onboardingLine(discovery.onboarding),
     '',
     JSON.stringify(discovery, null, 2),
   ];
   return lines.join('\n');
 }
 
+/**
+ * The setup state as one sentence (#464 P2).
+ *
+ * It states a fact and stops. There is deliberately no "you should re-check": an offer is not a
+ * run, and a leader deciding to spend a task on one is a decision, not a prompt this answer makes
+ * for it.
+ */
+function onboardingLine(onboarding: OnboardingStatus): string {
+  switch (onboarding.state) {
+    case 'checking':
+      return `Setup: a check is running (task ${onboarding.checkingRunId ?? 'unknown'}).`;
+    case 'set-up':
+      return `Setup: a check finished against xezar ${onboarding.lastChecked?.engineVersion} and setup templates ${onboarding.lastChecked?.kitDigest}.`;
+    case 'changed':
+      return `Setup: the last finished check covered xezar ${onboarding.lastChecked?.engineVersion} and setup templates ${onboarding.lastChecked?.kitDigest}; xezar ${onboarding.observed.engineVersion} and templates ${onboarding.observed.kitDigest} are running now.${onboarding.offerPending ? ' The offer for this pair has not been made yet.' : ''}`;
+    case 'unknown':
+      return 'Setup: this project\'s setup history could not be read, so nothing is known about what was checked.';
+    default:
+      return 'Setup: no finished check has been recorded for this project.';
+  }
+}
+
 export const discoverProjectTool = defineTool({
   name: 'discover_project',
   title: 'Discover the bound project',
   description:
-    'Read which xezar project this session is bound to, its effective capabilities and limits, and which actions are available. Every action that is unavailable or read-only says why. Call it at the start of a session and again after a person changes settings. It takes no arguments: the project comes from the connection, never from a parameter. A project leader works through these tools only, never the cockpit UI and never the HTTP API. Whether this session is attached as leader is not part of this answer: call leader_events with action status.',
+    'Read which xezar project this session is bound to, its effective capabilities and limits, and which actions are available. Every action that is unavailable or read-only says why. The answer also carries the project setup block: which identity is running, which was offered, which a finished check actually covered, whether setup can run here at all, and the launch definition to name when dispatching one. Reading it changes nothing and authorises nothing. Call it at the start of a session and again after a person changes settings. It takes no arguments: the project comes from the connection, never from a parameter. A project leader works through these tools only, never the cockpit UI and never the HTTP API. Whether this session is attached as leader is not part of this answer: call leader_events with action status.',
   inputSchema: z.strictObject({}),
   annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
-  async call(_args, ctx) {
+  async call(_args, ctx: DiscoveryContext) {
     const discovery = buildDiscovery(await collectDiscoveryFacts(ctx));
     return textResult(discoveryText(discovery), discovery);
   },

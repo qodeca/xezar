@@ -53,7 +53,7 @@ describe('loadWorkflows', () => {
 
     // The two valid workflows survive their neighbour. This is the whole point:
     // one bad file must not evict the user's working workflows from the list.
-    expect(workflows.map((w) => w.name)).toEqual(['alpha', 'beta', 'quick-task']);
+    expect(workflows.map((w) => w.name)).toEqual(['alpha', 'beta', 'project-setup', 'quick-task']);
     expect(issues.map((i) => i.path)).toEqual([broken]);
     expect(issues[0]?.message).toBeTruthy();
   });
@@ -78,7 +78,7 @@ describe('loadWorkflows', () => {
 
     const { workflows, issues } = await loadWorkflows(root);
 
-    expect(workflows.map((w) => w.name)).toEqual(['ok', 'quick-task']);
+    expect(workflows.map((w) => w.name)).toEqual(['ok', 'project-setup', 'quick-task']);
     expect(issues).toHaveLength(1);
     expect(issues[0]?.path).toBe(both);
     expect(issues[0]?.message).toContain('either an agent step');
@@ -106,7 +106,7 @@ describe('loadWorkflows', () => {
 
     const { workflows, issues } = await loadWorkflows(root);
 
-    expect(workflows.map((w) => w.name)).toEqual(['ok', 'quick-task']);
+    expect(workflows.map((w) => w.name)).toEqual(['ok', 'project-setup', 'quick-task']);
     expect(issues).toHaveLength(1);
     expect(issues[0]?.path).toBe(backwards);
     expect(issues[0]?.message).toContain('must reference an earlier step');
@@ -120,7 +120,7 @@ describe('loadWorkflows', () => {
 
     const { workflows, issues } = await loadWorkflows(root);
 
-    expect(workflows.map((w) => w.name)).toEqual(['ok', 'quick-task']);
+    expect(workflows.map((w) => w.name)).toEqual(['ok', 'project-setup', 'quick-task']);
     expect(issues.map((i) => i.path)).toEqual([join(root, WORKFLOWS_DIR, 'nested.yaml')]);
   });
 
@@ -128,14 +128,14 @@ describe('loadWorkflows', () => {
 
   it('loads cleanly when the workflows directory is absent', async () => {
     const { workflows, issues } = await loadWorkflows(root);
-    expect(workflows.map((w) => w.name)).toEqual(['quick-task']);
+    expect(workflows.map((w) => w.name)).toEqual(['project-setup', 'quick-task']);
     expect(issues).toEqual([]);
   });
 
   it('loads cleanly when the workflows directory exists but is empty', async () => {
     mkdirSync(join(root, WORKFLOWS_DIR), { recursive: true });
     const { workflows, issues } = await loadWorkflows(root);
-    expect(workflows.map((w) => w.name)).toEqual(['quick-task']);
+    expect(workflows.map((w) => w.name)).toEqual(['project-setup', 'quick-task']);
     expect(issues).toEqual([]);
   });
 
@@ -151,7 +151,7 @@ describe('loadWorkflows', () => {
 
     const { workflows, issues } = await loadWorkflows(root);
 
-    expect(workflows.map((w) => w.name)).toEqual(['lower', 'quick-task', 'short', 'shouty']);
+    expect(workflows.map((w) => w.name)).toEqual(['lower', 'project-setup', 'quick-task', 'short', 'shouty']);
     expect(issues).toEqual([]);
   });
 
@@ -172,28 +172,32 @@ describe('loadWorkflows', () => {
     // 'quick-task' sorts between them, so a list that merely appended the
     // built-in would come out in a different order than this.
     const { workflows } = await loadWorkflows(root);
-    expect(workflows.map((w) => w.name)).toEqual(['apple', 'quick-task', 'zebra']);
+    expect(workflows.map((w) => w.name)).toEqual(['apple', 'project-setup', 'quick-task', 'zebra']);
   });
 
   // ---- the built-ins --------------------------------------------------------------------
 
   it('always offers the built-in quick-task, and brings it back when a user file is deleted', async () => {
     mkdirSync(join(root, WORKFLOWS_DIR), { recursive: true });
+    // Two built-ins now (#464 P2 added `project-setup`), so every assertion below looks the
+    // entry up BY NAME: an index would silently start checking the other built-in.
+    const quickOf = (list: Awaited<ReturnType<typeof loadWorkflows>>) =>
+      list.workflows.find((w) => w.name === 'quick-task');
     const builtInOnly = await loadWorkflows(root);
-    expect(builtInOnly.workflows.map((w) => w.name)).toEqual(['quick-task']);
-    expect(builtInOnly.workflows[0]?.source).toBe('built-in');
+    expect(builtInOnly.workflows.map((w) => w.name)).toEqual(['project-setup', 'quick-task']);
+    expect(quickOf(builtInOnly)?.source).toBe('built-in');
 
     const override = workflow('quick-task.yaml', valid('quick-task'));
     const shadowed = await loadWorkflows(root);
-    expect(shadowed.workflows.map((w) => w.name)).toEqual(['quick-task']);
-    expect(shadowed.workflows[0]?.source).toBe('file');
+    expect(shadowed.workflows.map((w) => w.name)).toEqual(['project-setup', 'quick-task']);
+    expect(quickOf(shadowed)?.source).toBe('file');
 
     // AGENTS.md: "built-ins always come back after delete".
     rmSync(override);
     const restored = await loadWorkflows(root);
-    expect(restored.workflows.map((w) => w.name)).toEqual(['quick-task']);
-    expect(restored.workflows[0]?.source).toBe('built-in');
-    expect(restored.workflows[0]?.path).toBeUndefined();
+    expect(restored.workflows.map((w) => w.name)).toEqual(['project-setup', 'quick-task']);
+    expect(quickOf(restored)?.source).toBe('built-in');
+    expect(quickOf(restored)?.path).toBeUndefined();
   });
 
   it('lets a user file of the same name win over the built-in while it exists', async () => {
@@ -221,7 +225,7 @@ describe('loadWorkflows', () => {
     const { workflows, issues } = await loadWorkflows(root);
 
     expect(issues.map((i) => i.path)).toEqual([broken]);
-    expect(workflows.map((w) => w.name)).toEqual(['quick-task']);
-    expect(workflows[0]?.source).toBe('built-in');
+    expect(workflows.map((w) => w.name)).toEqual(['project-setup', 'quick-task']);
+    expect(workflows.find((w) => w.name === 'quick-task')?.source).toBe('built-in');
   });
 });

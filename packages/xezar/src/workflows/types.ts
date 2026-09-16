@@ -281,3 +281,50 @@ export const QUICK_TASK_WORKFLOW: WorkflowDef = {
     },
   ],
 };
+
+/**
+ * The bundled launch definition behind "Set up this project" and "Re-check now" (#464 P2).
+ *
+ * It is an ORDINARY task and that is the whole point: it appears in the task list like any other,
+ * it can be opened and cancelled, and nothing starts it except a person's click or a leader's
+ * call. Being a catalog entry rather than an inline chain is what lets a project leader dispatch
+ * the same thing through `task_create` by name, which is the UI ↔ MCP parity rule.
+ *
+ * The step names the public `xez-onboard` skill, and the prompt below is deliberately complete on
+ * its own: when the skill cannot be resolved (offline, no team collection) the runner degrades to
+ * "running with the plain prompt" (`run.ts`), and the setup still has to work — a machine with no
+ * network is exactly where it is most needed.
+ *
+ * The wording stays generic per #466: a project may be software, a campaign, research or anything
+ * else, and no string here tells anyone to adopt xezar's own working files or process. The
+ * concrete file list comes from the task's own preview, where it is about the user's project.
+ */
+export const PROJECT_SETUP_WORKFLOW: WorkflowDef = {
+  name: 'project-setup',
+  description: 'Look at this project and prepare the files it needs — you see every change first.',
+  source: 'built-in',
+  steps: [
+    {
+      id: 'setup',
+      name: 'Set up this project',
+      skill: 'xez-onboard',
+      prompt: [
+        'Prepare this project so an agent can work in it well.',
+        '',
+        'Work in this order, and stop at any point where you need an answer:',
+        '1. Look at what is already here — the existing guidance, conventions and decisions. Adapt',
+        '   to them; never replace a policy the project already states.',
+        '2. Ask only what you genuinely cannot tell from the project itself, two options at a time,',
+        '   with the recommended one first. A project may be software, a campaign, research or',
+        '   something else entirely, and it does not need a delivery process to be worth preparing.',
+        '3. Show a per-file preview of every change before writing anything, and write only what the',
+        '   person accepts. Keep custom content and unrelated bytes exactly as they are.',
+        '4. Finish by reporting what changed, what you did not do and why, and the numbered steps',
+        '   that are left for a person to do themselves.',
+        '',
+        'The brief for this run:',
+        '{{task}}',
+      ].join('\n'),
+    },
+  ],
+};

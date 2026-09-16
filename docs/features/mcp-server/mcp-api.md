@@ -156,7 +156,7 @@ Unknown arguments are rejected.
 
 ### `discover_project`
 
-> Read which xezar project this session is bound to, its effective capabilities and limits, and which actions are available. Every action that is unavailable or read-only says why. Call it at the start of a session and again after a person changes settings. It takes no arguments: the project comes from the connection, never from a parameter. A project leader works through these tools only, never the cockpit UI and never the HTTP API. Whether this session is attached as leader is not part of this answer: call leader_events with action status.
+> Read which xezar project this session is bound to, its effective capabilities and limits, and which actions are available. Every action that is unavailable or read-only says why. The answer also carries the project setup block: which identity is running, which was offered, which a finished check actually covered, whether setup can run here at all, and the launch definition to name when dispatching one. Reading it changes nothing and authorises nothing. Call it at the start of a session and again after a person changes settings. It takes no arguments: the project comes from the connection, never from a parameter. A project leader works through these tools only, never the cockpit UI and never the HTTP API. Whether this session is attached as leader is not part of this answer: call leader_events with action status.
 
 Takes no arguments. Unknown arguments are rejected.
 
@@ -286,7 +286,7 @@ Unknown arguments are rejected.
 
 | Argument | Type | Required | Limits | Description (verbatim from the schema) |
 | --- | --- | --- | --- | --- |
-| `action` | `get_config` \| `set_config` \| `get_project` \| `set_project` \| `get_prompt_templates` \| `set_prompt_templates` \| `get_limits` \| `get_capabilities` \| `get_account` \| `list_agent_config` \| `read_agent_config` \| `write_agent_config` \| `list_workflows` \| `parse_workflow` \| `save_workflow` \| `delete_workflow` \| `list_skills` \| `get_skill` \| `list_importable_skills` \| `refresh_skills` \| `check_skill_updates` \| `list_automations` \| `get_automation` \| `create_automation` \| `update_automation` \| `delete_automation` \| `enable_automation` \| `pause_automation` \| `check_automation` \| `get_automation_check` \| `get_automation_log` \| `retry_automation_receipt` \| `list_worktrees` \| `reclaim_worktrees` \| `remove_worktree` \| `set_provider_enabled` \| `connect_provider` \| `retry_provider` \| `create_account` \| `update_account` \| `remove_account` \| `select_account` \| `check_account_status` \| `get_account_details` \| `open_account_file` \| `set_workspace_config` \| `set_workspace_ui_state` \| `browse_folders` \| `add_project` \| `clone_project` \| `remove_project` \| `apply_skill_updates` \| `import_skills` \| `get_launch_key` \| `open_in_app` | yes |  | What to do in the project this connection is bound to. Actions outside the project boundary (workspace settings, accounts, the project registry, host folders) are answered with a refusal that names the boundary. |
+| `action` | `get_config` \| `set_config` \| `get_project` \| `set_project` \| `get_prompt_templates` \| `set_prompt_templates` \| `get_limits` \| `get_capabilities` \| `get_account` \| `list_agent_config` \| `read_agent_config` \| `write_agent_config` \| `list_workflows` \| `parse_workflow` \| `save_workflow` \| `delete_workflow` \| `list_skills` \| `get_skill` \| `list_importable_skills` \| `refresh_skills` \| `check_skill_updates` \| `list_automations` \| `get_automation` \| `create_automation` \| `update_automation` \| `delete_automation` \| `enable_automation` \| `pause_automation` \| `check_automation` \| `get_automation_check` \| `get_automation_log` \| `retry_automation_receipt` \| `list_worktrees` \| `reclaim_worktrees` \| `remove_worktree` \| `dismiss_onboarding_offer` \| `set_provider_enabled` \| `connect_provider` \| `retry_provider` \| `create_account` \| `update_account` \| `remove_account` \| `select_account` \| `check_account_status` \| `get_account_details` \| `open_account_file` \| `set_workspace_config` \| `set_workspace_ui_state` \| `browse_folders` \| `add_project` \| `clone_project` \| `remove_project` \| `apply_skill_updates` \| `import_skills` \| `get_launch_key` \| `open_in_app` | yes |  | What to do in the project this connection is bound to. Actions outside the project boundary (workspace settings, accounts, the project registry, host folders) are answered with a refusal that names the boundary. |
 | `projectId` | any | no |  | Never accepted: the project is the one this connection is bound to, and a call that names one is refused. |
 | `config` | object | no |  | set_config: the project's own settings to change. null clears a key back to its default. |
 | `config.baseBranch` | string or null | no | min length 1, max length 200 |  |
@@ -357,6 +357,9 @@ Unknown arguments are rejected.
 | `logQuery.limit` | integer | no | min 1, max 100 |  |
 | `runId` | string | no | min length 1, max length 128 | remove_worktree: the task's run id. |
 | `expectedVersion` | string | no | min length 1, max length 512 | remove_worktree: the `version` task_read returned for the task. If the task changed since, nothing is removed. |
+| `onboardingIdentity` | object | no |  | dismiss_onboarding_offer: the `onboarding.observed` pair discover_project returned to you. If the running identity has moved on since that read, the answer is a conflict and nothing is written. Omit it to dismiss whatever is running now. |
+| `onboardingIdentity.engineVersion` | string | yes |  |  |
+| `onboardingIdentity.kitDigest` | string | yes |  |  |
 | `operationId` | string | no | min length 8, max length 128, pattern `^[A-Za-z0-9_.:-]+$` | Client-generated key for this operation (8–128 chars). Required by every action that changes something and refused by every action that only reads. Reuse it only to repeat the same operation: a repeat returns the first answer and changes nothing twice. |
 
 ### `local_handoff`
@@ -813,6 +816,10 @@ business outcome as the cockpit is the separate [parity coverage map](mcp-parity
 | I-114 | Same rule as I-044: report the missing desktop capability explicitly; never promise a launch on the client's machine (M-19) | `discover_project`, `local_handoff:list_apps`, `local_handoff:open_project_in_app` |
 | I-141 | Read who owns the project, whether a leader is attached, the delivery cursors and what blocks delivery; for a leader, whether its own sessi… | `leader_events:status` |
 | I-142 | Attach the project leader so events are pushed to it. | `leader_events:attach` |
+| I-143 | Read this project's setup state: which identity is running, which was offered, which a finished check actually covered, and whether setup c… | `discover_project` |
+| I-144 | Create the setup or re-check task from the bundled launch definition `discover_project.onboarding.launch.workflowId` names. | `task_create:start` |
+| I-145 | Record that the offer was made for this identity, so the same pair does not offer again. | `project_config:dismiss_onboarding_offer` |
+| I-146 | Learn that the running identity differs from the last one a finished check covered, as a pull. | `discover_project` |
 | I-128 | Decided 2026-09-10 (D-128). | `project_config:get_project`, `project_config:set_project`, `project_config:get_limits` |
 | I-129 | Decided 2026-09-10 (D-129). | `project_config:get_project`, `project_config:set_project` |
 | I-133 | The capability set itself is the requirement, not the nav. | `discover_project`, `project_config:get_capabilities` |
@@ -849,7 +856,7 @@ Roles:
 | `execution_control:edit_queued_message` | I-035 |  |  |  |
 | `execution_control:remove_queued_message` | I-035 |  |  |  |
 | `execution_control:cancel_auto_resume` | I-040 |  |  |  |
-| `discover_project` | I-007, I-008, I-042, I-044, I-104, I-114, I-133, I-136 |  |  |  |
+| `discover_project` | I-007, I-008, I-042, I-044, I-104, I-114, I-133, I-136, I-143, I-146 |  |  |  |
 | `organise_work:list_queue` | I-035 |  |  |  |
 | `organise_work:set_title` | I-018 |  |  |  |
 | `organise_work:edit_brief` | I-035 |  |  |  |
@@ -867,7 +874,7 @@ Roles:
 | `organise_work:start_inbox_item` | I-026 |  |  |  |
 | `organise_work:remove_inbox_item` | I-027 |  |  |  |
 | `organise_work:pick_variant` | I-030 |  |  |  |
-| `task_create:start` | I-001, I-003, I-007, I-008, I-009, I-080, I-094 |  |  |  |
+| `task_create:start` | I-001, I-003, I-007, I-008, I-009, I-080, I-094, I-144 |  |  |  |
 | `task_create:plan` | I-002, I-085 |  |  |  |
 | `task_create:start_from_inbox` | I-026 |  |  |  |
 | `task_create:save_plan` | I-005 |  |  |  |
@@ -930,6 +937,7 @@ Roles:
 | `project_config:retry_automation_receipt` | I-102 |  |  |  |
 | `project_config:list_worktrees` | I-068 |  |  |  |
 | `project_config:reclaim_worktrees` | I-068 |  |  |  |
+| `project_config:dismiss_onboarding_offer` | I-145 |  |  |  |
 | `project_config:remove_worktree` | I-068 |  |  |  |
 | `project_config:set_provider_enabled` |  |  | I-115 |  |
 | `project_config:connect_provider` |  |  | I-115, I-123 |  |

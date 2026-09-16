@@ -192,6 +192,8 @@ Each entry maps a utility name to a theme token. Listed in foundations.md §1.7;
 | `packages/web/src/components/last-location-controller.tsx` | LastLocationController | components.md §2 LastLocationController | Not applicable – renders nothing; it stores the last route (components.md §2 LastLocationController). |
 | `packages/web/src/components/list-view.tsx` | ListView | components.md §2 ListView | Documented |
 | `packages/web/src/components/nav-items.ts` | NavItems | components.md §2 NavItems | Not applicable – data only; the nav item list the sidebar renders (components.md §2 NavItems). |
+| `packages/web/src/components/onboarding-offer-container.tsx` | OnboardingOfferContainer | components.md §2 OnboardingOfferRow and OnboardingOfferContainer | Documented |
+| `packages/web/src/components/onboarding-offer-row.tsx` | OnboardingOfferRow | components.md §2 OnboardingOfferRow and OnboardingOfferContainer | Documented |
 | `packages/web/src/components/open-in-menu.tsx` | OpenInMenu | components.md §2 OpenInMenu | Documented |
 | `packages/web/src/components/picker-pill.tsx` | PickerPill, RunnerPill | components.md §2 PickerPill and RunnerPill | Documented with known gap (G-03) |
 | `packages/web/src/components/pill.tsx` | Pill | components.md §2 Pill | Documented |
