@@ -74,6 +74,7 @@ const MAINTAINED_SKILLS = new Set([
   "xezar-handoff-draft-pr",
   "xezar-implementation",
   "xezar-integration",
+  "xezar-issue-create",
   "xezar-issue-triage",
   "xezar-planning-spec",
   "xezar-qa",
