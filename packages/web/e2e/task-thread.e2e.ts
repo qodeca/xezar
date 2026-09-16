@@ -306,7 +306,9 @@ describe('task thread', () => {
   })
 
   it('a card is closed by default and expands to its mono output (the #381 behavior)', () => {
-    const bash = '[data-slot="tool-card"][data-kind="execute"]'
+    // The fixture also includes the workflow check's execute card. Target the transcript's
+    // git-status card by its persisted tool id, not whichever execute card is first.
+    const bash = '[data-slot="tool-card"][data-tool-id="toolu_mock_1"]'
     expect(browser.count(`${bash} [data-slot="tool-output"]`)).toBe(0)
     browser.click(`${bash} [data-slot="collapsible-trigger"]`)
     browser.waitForFunction(`document.querySelector('${bash} [data-slot="tool-output"] pre') !== null`)
