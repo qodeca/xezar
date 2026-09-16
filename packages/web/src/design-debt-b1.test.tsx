@@ -55,6 +55,32 @@ function classTokens(source: string): string[] {
   return [...source.matchAll(/[\w[\]$:./&*=,'\\-]*animate-[\w-]+/g)].map((m) => m[0])
 }
 
+/**
+ * The class string one token sits in — the `"…"`, `'…'` or backtick literal that encloses it.
+ *
+ * `motion-reduce:animate-none` is a class on the SAME element as the animation it switches off, so
+ * "is this occurrence guarded?" is a question about one class string and never about the file.
+ * Asking the file is fail-open: one guard anywhere exempts every animation in it, and a second,
+ * unguarded spinner added to a file that already carries a guard passes green (AGENTS.md § *A
+ * fail-open helper needs a populated-input guarantee, or it lies*). A token that sits inside no
+ * literal is enclosed by nothing and is therefore never exempt.
+ */
+function enclosingClassString(source: string, at: number): string {
+  for (const literal of source.matchAll(/"[^"\n]*"|'[^'\n]*'|`[^`]*`/g)) {
+    const start = literal.index
+    if (start <= at && at < start + literal[0].length) return literal[0]
+  }
+  return ''
+}
+
+/** Looping animations that nothing on their own element switches off, one entry per occurrence. */
+function unguardedLoopingAnimations(name: string, source: string): string[] {
+  return [...source.matchAll(/[\w[\]$:./&*=,'\\-]*animate-(?:pulse|spin|bounce|ping)\b/g)]
+    .filter((match) => !match[0].includes('motion-safe:'))
+    .filter((match) => !/motion-reduce:animate-none/.test(enclosingClassString(source, match.index)))
+    .map((match) => `${name}: ${match[0]}`)
+}
+
 // ---------------------------------------------------------------------------
 // GEOMETRY — the absolute phone target floor (owner decision Q2: 44px at EVERY density)
 // ---------------------------------------------------------------------------
@@ -176,14 +202,46 @@ describe('B1 motion: no primitive animates against the reader preference', () =>
   })
 
   it('every looping animation in a primitive can be switched off', () => {
-    const unguarded = primitiveSources().flatMap(({ name, source }) =>
-      classTokens(source)
-        .filter((token) => /animate-(pulse|spin|bounce|ping)\b/.test(token))
-        .filter((token) => !token.includes('motion-safe:'))
-        .filter(() => !/motion-reduce:animate-none/.test(source))
-        .map((token) => `${name}: ${token}`)
-    )
+    // `status-dot.tsx` lives outside `components/ui` and carries the batch's other looping
+    // animation, so the scan reaches it too rather than leaving one B1 file unscanned.
+    const scanned = [
+      ...primitiveSources(),
+      {
+        name: 'status-dot.tsx',
+        source: stripComments(readFileSync(path.join(WEB_ROOT, 'components', 'status-dot.tsx'), 'utf8')),
+      },
+    ]
+    const unguarded = scanned.flatMap(({ name, source }) => unguardedLoopingAnimations(name, source))
     expect(unguarded, 'looping animations with no reduced-motion escape').toEqual([])
+  })
+
+  it('a second unguarded looping animation in an already-guarded file goes red', () => {
+    // The fixture the per-FILE predicate let through: one guarded pulse and one unguarded spinner
+    // in one file. Asked about the file, the answer is "guarded". Asked about the occurrence, it
+    // is not — and the occurrence is what renders.
+    const twoInOneFile = [
+      'const a = cn("animate-pulse rounded-md bg-accent motion-reduce:animate-none", className)',
+      'const b = cn("animate-spin size-4 text-muted-foreground", className)',
+    ].join('\n')
+    expect(unguardedLoopingAnimations('fixture.tsx', twoInOneFile)).toEqual([
+      'fixture.tsx: animate-spin',
+    ])
+
+    // …and the scan is not simply always red: the guarded occurrence on its own stays green.
+    expect(
+      unguardedLoopingAnimations(
+        'fixture.tsx',
+        'const a = cn("animate-pulse motion-reduce:animate-none", className)'
+      )
+    ).toEqual([])
+
+    // A guard in a DIFFERENT class string does not reach across to the unguarded one.
+    expect(
+      unguardedLoopingAnimations(
+        'fixture.tsx',
+        'const a = cn("motion-reduce:animate-none", "animate-spin size-4")'
+      )
+    ).toEqual(['fixture.tsx: animate-spin'])
   })
 
   it('Skeleton and a pulsing StatusDot both stop under reduced motion', () => {
