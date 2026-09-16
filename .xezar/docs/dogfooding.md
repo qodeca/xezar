@@ -21,6 +21,13 @@ Installation validation is reported in installation.md. Real-task entries follow
 - Observed: the design verdict says nine non-blocking findings but enumerates ten. The response inventories all ten rather than treating the headline count as scope.
 - Limit: fixtures and real PTY captures verify behavior; the author does not confer independent QA or design approval. The original draft and labels remain unchanged.
 
+### 2026-09-16 — issue 468, `docs-maintenance`, `xezar-docs-maintenance` — real-task observed
+
+- Goal: document the shipped GitHub-tab issue-draft launcher, its approval boundary, the local issue-filing wrapper, and the equivalent MCP task action.
+- Observed: the launcher is intentionally a task start, not an issue mutation — it selects the nearest available issue-filing skill and omits autonomous execution, while the MCP call makes the equivalent `autonomous: false` explicit. The documentation must preserve that distinction or it incorrectly grants authority by describing a button as a create operation.
+- Control: the guide claims were checked against the UI launcher, its task-body helper, the local wrapper, and the MCP task-create source; the focused release guard, relative-link check, typecheck, build/package scan, and canonical fast gate are recorded in the task evidence.
+- Remaining limit: no browser interaction or live issue creation was run for this prose-only task; the documentation states source-verified behavior rather than claiming a new live filing exercise.
+
 ### 2026-09-16 — #467 PR 3 (the CLI activity renderer), `feature-implementation` step `implement`, `xezar-implementation`, Claude Code — real-task observed
 
 - Input: the approved terminal design (#482, `designs/cli-terminal/`), the owner's spec § 11 AC-06…AC-13, and PR 2 (`cli-settings.ts`) already on main; base `c0ce42a`.
