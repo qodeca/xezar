@@ -116,7 +116,7 @@ export function CloneProjectDialog({
         <DialogHeader>
           <DialogTitle>Clone from GitHub</DialogTitle>
           <DialogDescription>
-            xezar clones with <code>gh</code> into your checkout root and adds the result as a project.
+            xezar clones the GitHub repository into your configured projects folder, then adds it as a project.
           </DialogDescription>
         </DialogHeader>
 

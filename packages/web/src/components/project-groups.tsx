@@ -264,9 +264,7 @@ function ProjectGroup({
           aria-hidden="true"
         />
         <span className="truncate">{project.name}</span>
-        {waiting ? (
-          <NavBadge data-slot="project-attention" title={`${waiting} task${waiting === 1 ? '' : 's'} need${waiting === 1 ? 's' : ''} you`} className="ml-0">{waiting}</NavBadge>
-        ) : null}
+        <NavBadge data-slot="project-attention" title={`${project.name}: ${waiting} task${waiting === 1 ? '' : 's'} need${waiting === 1 ? 's' : ''} you`} className="ml-0">{waiting}</NavBadge>
         {project.branch ? (
           <span
             data-slot="project-branch"
@@ -320,11 +318,11 @@ function ProjectGroup({
                   {/* `/api/todos` is fetched for the active scope only, so only the active
                       group has a real count to show — a badge on the others would be the active
                       project's number wearing someone else's name. */}
-                  {item.badge === 'inbox-count' && active && inboxCount ? (
+                  {item.badge === 'inbox-count' && active ? (
                     <NavBadge>{inboxCount}</NavBadge>
                   ) : null}
-                  {item.badge === 'skills-update' && active && skillsUpdateAvailable ? (
-                    <SkillsUpdateMarker />
+                  {item.badge === 'skills-update' && active ? (
+                    <SkillsUpdateMarker available={Boolean(skillsUpdateAvailable)} />
                   ) : null}
                 </Link>
               )

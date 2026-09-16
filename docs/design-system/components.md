@@ -178,14 +178,13 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 ### AppShell
 
 - **Purpose**: the presentational shell: fixed sidebar plus one scrolling main region.
-- **Source**: `packages/web/src/components/app-shell.tsx`. Exports `AppShell`, `useSidebarNavigate`, `routeOwnsScrollArrival`, `NavBadge`, `SkillsUpdateMarker`, `MissingProjectBadge`, `VersionChip`, types `RepoChip`, `AppShellProps`.
+- **Source**: `packages/web/src/components/app-shell.tsx`. Exports `AppShell`, `useSidebarNavigate`, `routeOwnsScrollArrival`, types `RepoChip`, `AppShellProps`.
 - **Props that matter**: `repo`, `inboxCount`, `unreadCount`, `skillsUpdateAvailable`, `version`, `latestVersion`, `channel` (development-build badge), `taskQuickList`, `toolsMenu`, `forgeAvailable`, `inboxAvailable`, `automationsAvailable`, `singleProject`, `banner`, `projectGroups` (replaces the flat nav).
 - **Layout**: root `flex h-dvh overflow-hidden … pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]`; main column `grid grid-rows-[auto_auto_1fr_auto]` (mobile top bar · banner · scroller · composer); `<main data-slot="main" class="row-start-3 min-h-0 overflow-y-auto overscroll-contain">` is the only scroller. Desktop sidebar `hidden md:flex … border-r border-border bg-sidebar`, width from state (264–420px) with an ARIA `separator` resize handle. Mobile drawer is a `Sheet side="left"` at `w-[264px] bg-sidebar`.
-- **Nav row**: `flex min-h-tap w-full items-center gap-2.5 rounded-md px-2.5 text-[13.5px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:h-9 md:min-h-0`; active adds `bg-muted font-semibold text-foreground` and `aria-current="page"`.
-- **Brand row and New task**: brand row `flex items-center gap-row px-3.5 pt-3.5 pb-2.5`; the New task button is `contrast` with the absolute `min-h-tap` phone floor and `md:h-10 md:min-h-0`, one step taller than the `md:h-9` nav rows (`decisions.md` D-07); the Add project icon button beside it (multi-project only) is `size-11 md:size-10`, so on desktop the two share one height.
-- **Badges**: shared `NavBadge` (`min-h-chip`) uses `ml-auto rounded-full bg-violet px-1.5 py-px text-[10.5px] font-semibold text-violet-foreground` (Inbox count, unread count); the Skills update marker is a `size-1.5` violet dot plus `sr-only` text.
-- **Brand tile and development-build badge** (#442, decisions.md D-08): the private `BrandTile` renders `/xezar.svg` as `<img data-slot="brand-tile" alt="" aria-hidden="true" class="size-7 shrink-0 rounded-sm">`. When the `channel` prop is `'dev'` it wraps the image in `relative flex shrink-0` and adds `<span data-slot="dev-badge" title="Development build" class="absolute -top-[15%] -right-[15%] grid size-[54%] place-items-center rounded-full bg-danger text-[9px] leading-none font-semibold text-danger-ink ring-2 ring-sidebar">` holding an `aria-hidden` "D" and `sr-only` "Development build". The badge size is a share of the tile, so both follow the density scale together, and the letter is `--danger-ink` (near-black in both themes and under every accent). Any other value renders the bare image. `AppShellContainer` passes `health.channel ?? null`.
-- **Storage**: `readSidebarStorage` / `writeSidebarStorage` are exported from `lib/sidebar-width.ts` and shared with collapse storage. Existing keys, width bounds, explicit false entries and unavailable-storage fallbacks are unchanged.
+- **Nav row**: `flex h-11 w-full items-center gap-2.5 rounded-md px-2.5 text-[13.5px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:h-9`; active adds `bg-muted font-semibold text-foreground` and `aria-current="page"`.
+- **Brand row and New task**: brand row `flex items-center gap-row px-3.5 pt-3.5 pb-2.5`; the New task button is `contrast` at `h-10`, one step taller than the `md:h-9` nav rows (`decisions.md` D-07); the Add project icon button beside it (multi-project only) is `size-11 md:size-10`, so on desktop the two share one height.
+- **Badges**: `ml-auto rounded-full bg-violet px-1.5 py-px text-[10.5px] font-semibold text-violet-foreground` (Inbox count, unread count); the Skills update marker is a `size-1.5` violet dot plus `sr-only` text.
+- **Brand tile and development-build badge** (#442, decisions.md D-08): the private `BrandTile` renders `/xezar.svg` as `<img data-slot="brand-tile" alt="" aria-hidden="true" class="size-[26px] shrink-0 rounded-sm">`. When the `channel` prop is `'dev'` it wraps the image in `relative flex shrink-0` and adds `<span data-slot="dev-badge" title="Development build" class="absolute -top-[15%] -right-[15%] grid size-[54%] place-items-center rounded-full bg-danger text-[9px] leading-none font-semibold text-danger-ink ring-2 ring-sidebar">` holding an `aria-hidden` "D" and `sr-only` "Development build". The badge size is a share of the tile, so it is the same in every density, and the letter is `--danger-ink` (near-black in both themes and under every accent). Any other value renders the bare image. `AppShellContainer` passes `health.channel ?? null`.
 - **States**: drawer open/closed (closes on route change and when `(min-width: 768px)` matches), active route, absent data renders nothing (no repo chip, no badge at 0 or null).
 - **Rules**: DO add a nav item in `nav-items.ts`, never in the shell. DO keep the shell presentational; data lives in `AppShellContainer`. DO NOT add a second page scroller.
 - **Accessibility**: `<nav aria-label="Main">`, `aria-current`, `SheetTitle` "Navigation" (`sr-only`), `aria-label="Open menu"` / `"Close menu"`, resize handle `role="separator" aria-orientation="vertical" aria-valuenow/min/max` with arrow, Home and End keys.
@@ -216,18 +215,12 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 ### CenteredState and TwinkleBackdrop
 
 - **Purpose**: the one template for loading, paused, error and empty states. "Views never hand-roll a centered message."
-- **Source**: `packages/web/src/components/centered-state.tsx`. Exports `CenteredState`, `TwinkleBackdrop`, `PageHeader`, type `CenteredStateTone`.
+- **Source**: `packages/web/src/components/centered-state.tsx`. Exports `CenteredState`, `TwinkleBackdrop`, type `CenteredStateTone`.
 - **Props**: `icon` (required), `title` (required), `subtitle`, `children`, `actions`, `tone` `neutral | primary | danger` (default `neutral`), `backdrop` (default `false`), `heading` `h1 | h2` (default `h1`), `className`.
-- **Look**: root `flex min-h-full flex-1 flex-col items-center justify-center px-6 py-12 text-center`; tile `size-18 rounded-[18px] border` with tone `neutral` = `border-border bg-card text-foreground shadow-xs`, `primary` = `border-primary/25 bg-primary/15 text-primary`, `danger` = `border-danger/20 bg-danger/15 text-danger`; title `text-2xl font-semibold text-balance`; subtitle `text-sm text-pretty text-muted-foreground`; actions `flex flex-wrap gap-3 pt-2`.
-- **Rules**: DO use `heading="h2"` under an existing page heading. DO use `tone="danger"` with the server message as the subtitle for load errors. DO reserve `backdrop` for the hero empty state (first task, `/new`). DO NOT hand-roll a centered message (`skills-loading.tsx` remains a later consumer; G-05).
+- **Look**: root `flex min-h-full flex-1 flex-col items-center justify-center px-6 py-12 text-center`; tile `size-[72px] rounded-[18px] border` with tone `neutral` = `border-border bg-card text-foreground shadow-xs`, `primary` = `border-primary/25 bg-primary/15 text-primary`, `danger` = `border-danger/20 bg-danger/15 text-danger`; title `text-2xl font-semibold text-balance`; subtitle `text-sm text-pretty text-muted-foreground`; actions `flex gap-3 pt-2`.
+- **Rules**: DO use `heading="h2"` under an existing page heading. DO use `tone="danger"` with the server message as the subtitle for load errors. DO reserve `backdrop` for the hero empty state (first task, `/new`). DO NOT hand-roll a centered message (the route error boundary and `skills-loading.tsx` do; G-05).
 - **Accessibility**: the backdrop is `aria-hidden` and `pointer-events-none`; twinkles are `motion-safe:animate-pulse`.
 - **Where used**: 39 files.
-
-### PageHeader
-
-- **Source**: exported from `components/centered-state.tsx`; no separate component file.
-- **Props**: required `title`, optional `children` (actions or supporting content) and `className`.
-- **Pattern**: desktop-only sticky header, `min-h-14`, `md:px-section`, `h1 text-base font-semibold`; wraps long content. The shell supplies the phone title. Existing route consumers migrate in their assigned batches.
 
 ### StatusDot
 
@@ -362,7 +355,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 
 - **Purpose**: the multi-project sidebar: one collapsible group per project with its own nav and quick list.
 - **Source**: `packages/web/src/components/project-groups.tsx`. Props `projects`, `bootProjectId`, `inboxAvailable`, `automationsAvailable`, `inboxCount`, `skillsUpdateAvailable`.
-- **Look**: header `flex min-h-tap w-full items-center gap-2 rounded-lg px-2 text-[13px] font-semibold … hover:bg-muted md:h-9`, active `bg-muted`; body `ml-3.5 border-l border-border pl-2`; nav rows `md:h-8 md:min-h-0`; missing project stays inert with the shared `bg-danger text-danger-foreground` chip `folder not found` (4.5:1 small-text floor).
+- **Look**: header `flex h-11 w-full items-center gap-[7px] rounded-lg px-2 text-[13px] font-semibold … hover:bg-muted md:h-9`, active `bg-muted`; body `ml-3.5 border-l border-border pl-2`; nav rows `md:h-[30px]`; missing project `opacity-55` with a `bg-danger/15 text-danger` chip `folder not found`.
 - **Accessibility**: `aria-expanded`, `aria-controls`, `<nav aria-label="{project} navigation">`.
 - **Where used**: 1 file.
 
@@ -378,8 +371,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 
 - **Purpose**: ⌘K: projects, tasks, views, actions, skills.
 - **Source**: `packages/web/src/components/command-palette.tsx`. Exports `CommandPalette`, `openCommandPalette`, `OPEN_COMMAND_PALETTE_EVENT`, `paletteScore`, `mergeTasks`, `partitionTasks`, `orderRuns`, `orderProjects`.
-- **Look**: dialog `top-[10vh] translate-y-0 sm:max-w-2xl lg:max-w-3xl xl:max-w-4xl`, list `max-h-[55vh] min-h-56 sm:max-h-[60vh] lg:max-h-[68vh]`.
-- **Focus**: captures the opener and returns focus after dismissal; the palette composes `DialogContent` and `Command` so the close-focus handler belongs to this surface. Missing projects use the same danger badge as the shell and remain disabled.
+- **Look**: dialog `top-[10vh] translate-y-0 sm:max-w-2xl lg:max-w-3xl xl:max-w-4xl`, list `max-h-[55vh] min-h-[14rem] sm:max-h-[60vh] lg:max-h-[68vh]`.
 - **Shortcuts**: ⌘/Ctrl+K toggle, ⌘/Ctrl+N and `c` open `/new`.
 - **Copy**: placeholder `Search projects, tasks, views, actions, skills…`; groups `Recently finished`, `Views`, `Projects`, `Tasks`, `Actions`, `Skills`; `Nothing matches.`; `Toggle theme`.
 - **Where used**: 2 files.
@@ -402,8 +394,8 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 ### AddProjectDialog and CloneProjectDialog
 
 - **Purpose**: "Add project → Open local folder" and "Clone from GitHub".
-- **Source**: `packages/web/src/components/add-project-dialog.tsx`, `packages/web/src/components/clone-project-dialog.tsx`. Props `open`, `onOpenChange`, optional `returnFocusRef` (the Add project trigger).
-- **States**: pending (`Adding…` / `Cloning…`, inputs disabled, close swallowed while cloning), error alert with the server's words, `text-foreground` and a `border-danger` left rule (including light-theme contrast), live clone progress line `font-mono text-[11.5px]`.
+- **Source**: `packages/web/src/components/add-project-dialog.tsx`, `packages/web/src/components/clone-project-dialog.tsx`. Props `open`, `onOpenChange`.
+- **States**: pending (`Adding…` / `Cloning…`, inputs disabled, close swallowed while cloning), error paragraph `text-[13px] text-danger` with the server's words, live clone progress line `font-mono text-[11.5px]`.
 - **Copy**: `Open local folder`, `Pick the folder xezar should run in. Git repos are marked; any folder works.`, `Clone from GitHub`, `Repository`, `Folder name`, `Cancel`, `Add project`, `Clone`.
 - **Where used**: 1 file each (`app-shell.tsx`).
 
@@ -411,8 +403,8 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 
 - **Purpose**: server-side folder picker shared by Add project and Add agent account.
 - **Source**: `packages/web/src/components/folder-browser.tsx`. Exports `FolderBrowser`, `useBrowseTarget`. Props `path`, `selected`, `onSelect`, `onEnter`, `decorate`, `emptyHint` (required), `showHidden`.
-- **Look**: list `max-h-64 divide-y divide-border/60 overflow-y-auto overscroll-contain rounded-md border border-border`; rows and separate Open controls have `min-h-tap min-w-tap` below `md`, a focus-visible ring and `px-3 py-2 text-[13px] hover:bg-muted`; selected `bg-muted` + `aria-pressed`.
-- **States**: `Loading…`, a readable foreground error alert with a danger left rule (`could not list that folder`), empty (`emptyHint`), truncated note.
+- **Look**: list `max-h-64 divide-y divide-border/60 overflow-y-auto overscroll-contain rounded-md border border-border`; row `px-3 py-2 text-[13px] hover:bg-muted`, selected `bg-muted` + `aria-pressed`.
+- **States**: `Loading…`, error `could not list that folder`, empty (`emptyHint`), truncated note.
 - **Where used**: 2 files.
 
 ### DefaultAgentPicker
@@ -464,7 +456,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 
 - **Purpose**: keeps the shell alive when a routed page throws; resets on navigation.
 - **Source**: `packages/web/src/components/route-error-boundary.tsx`.
-- **Copy**: `Could not display this page`, `Retry, or open another page from the sidebar.`, button `Retry`; `CenteredState tone="danger"` inside `role="alert"`. Retry and navigation still recover independently.
+- **Copy**: `This page could not be displayed.` (`h1 text-lg font-semibold`), `Try again, or open another page from the sidebar.`, button `Try again`; container `role="alert"`.
 - **Where used**: 1 file (`app.tsx`).
 
 ### RunNotifications

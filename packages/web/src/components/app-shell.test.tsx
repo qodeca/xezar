@@ -52,6 +52,26 @@ const sidebar = () => document.querySelector('[data-slot="sidebar"]') as HTMLEle
 const footer = () => document.querySelector('[data-slot="sidebar-footer"]') as HTMLElement
 
 describe('AppShell', () => {
+  it('keeps each navigation live-region owner mounted across background updates', () => {
+    const shell = (inboxCount: number, unreadCount: number, skillsUpdateAvailable: boolean) => (
+      <ThemeProvider><MemoryRouter><AppShell inboxCount={inboxCount} unreadCount={unreadCount} skillsUpdateAvailable={skillsUpdateAvailable}>content</AppShell></MemoryRouter></ThemeProvider>
+    )
+    const view = render(shell(0, 0, false))
+    const owners = within(nav()).getAllByRole('status')
+    expect(owners).toHaveLength(3)
+    expect(owners.map((owner) => owner.textContent)).toEqual(['', '', ''])
+    view.rerender(shell(2, 3, true))
+    expect(within(nav()).getAllByRole('status')).toEqual(owners)
+    expect(owners.map((owner) => owner.textContent)).toEqual([
+      '3 unread finished tasks', 'Inbox: 2', 'Skills update available',
+    ])
+    for (const owner of owners) {
+      expect(owner.getAttribute('role')).toBe('status')
+      expect(owner.textContent).not.toContain('GitHub')
+    }
+    expect(nav().getAttribute('aria-live')).toBeNull()
+  })
+
   it('renders the routed view in the main region', () => {
     renderShell('/', {}, <p>route content</p>)
     expect(within(screen.getByRole('main')).getByText('route content')).toBeTruthy()
@@ -378,7 +398,7 @@ describe('AppShell', () => {
         expect(within(badge).getByText('Development build').className).toContain('sr-only')
         // The logo stays decorative and keeps its size — the badge overlays it, never resizes it.
         expect(tile().getAttribute('alt')).toBe('')
-        expect(tile().className).toContain('size-7')
+        expect(tile().className).toContain('size-6.5')
         expect(badge.className).toContain('absolute')
         fireEvent.click(screen.getByRole('button', { name: 'Open menu' }))
         expect(badges()).toHaveLength(2)

@@ -29,6 +29,35 @@ describe('B2 shared states and helpers', () => {
     expect(screen.getByText('Skills update available')).toBeTruthy()
   })
 
+  it.each([
+    [undefined, 'Inbox: 3'],
+    ['3 unread finished tasks', '3 unread finished tasks'],
+    ['Research: 3 tasks need you', 'Research: 3 tasks need you'],
+  ])('keeps the count live-region owner through 0 → count (%s)', (title, message) => {
+    const view = render(<NavBadge title={title}>{0}</NavBadge>)
+    const owner = screen.getByRole('status')
+    expect(owner.getAttribute('role')).toBe('status')
+    expect(owner.getAttribute('aria-atomic')).toBe('true')
+    expect(owner.textContent).toBe('')
+    expect(document.querySelector('[data-slot="nav-badge"]')).toBeNull()
+    view.rerender(<NavBadge title={title}>{3}</NavBadge>)
+    expect(screen.getByRole('status')).toBe(owner)
+    expect(owner.textContent).toBe(message)
+    view.rerender(<NavBadge title={title}>{0}</NavBadge>)
+    expect(screen.getByRole('status')).toBe(owner)
+    expect(owner.textContent).toBe('')
+  })
+
+  it('keeps the Skills live-region owner before an update becomes available', () => {
+    const view = render(<SkillsUpdateMarker available={false} />)
+    const owner = screen.getByRole('status')
+    expect(owner.getAttribute('role')).toBe('status')
+    expect(owner.textContent).toBe('')
+    view.rerender(<SkillsUpdateMarker available />)
+    expect(screen.getByRole('status')).toBe(owner)
+    expect(owner.textContent).toBe('Skills update available')
+  })
+
   it('T-0 route error stays a danger alert with a working retry, never an empty state', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     let broken = true

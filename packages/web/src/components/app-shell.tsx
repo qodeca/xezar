@@ -573,16 +573,16 @@ function SidebarContent({
                 >
                   <Icon className="size-4 shrink-0" aria-hidden="true" />
                   {item.label}
-                  {item.badge === 'inbox-count' && inboxCount ? (
+                  {item.badge === 'inbox-count' ? (
                     <NavBadge>{inboxCount}</NavBadge>
                   ) : null}
                   {/* Unread done items (#unread-done-items): same violet count grammar as the
                       Inbox badge — the two share the "needs a human" hue. */}
-                  {item.badge === 'tasks-unread' && unreadCount ? (
+                  {item.badge === 'tasks-unread' ? (
                     <NavBadge data-slot="nav-unread-badge" title={`${unreadCount} unread finished ${unreadCount === 1 ? 'task' : 'tasks'}`}>{unreadCount}</NavBadge>
                   ) : null}
-                  {item.badge === 'skills-update' && skillsUpdateAvailable ? (
-                    <SkillsUpdateMarker />
+                  {item.badge === 'skills-update' ? (
+                    <SkillsUpdateMarker available={Boolean(skillsUpdateAvailable)} />
                   ) : null}
                 </Link>
               )
@@ -824,7 +824,9 @@ function BrandTile({ channel }: { channel: HealthResponse['channel'] | null }) {
       alt=""
       aria-hidden="true"
       data-slot="brand-tile"
-      className="size-7 shrink-0 rounded-sm"
+      // Brand geometry is fixed across density settings, including its percentage-sized dev badge.
+      style={{ '--spacing': '0.25rem' } as React.CSSProperties}
+      className="size-6.5 shrink-0 rounded-sm"
     />
   )
   if (channel !== 'dev') return tile
@@ -874,16 +876,33 @@ function MobileTopBar({ title }: { title: string }) {
   )
 }
 
-/** Shared shell count grammar; callers retain their accessible label and data slot. */
-export function NavBadge({ className, ...props }: React.ComponentProps<'span'>) {
-  return <span data-slot="nav-badge" {...props} className={cn('ml-auto inline-flex min-h-chip shrink-0 items-center rounded-full bg-violet px-1.5 py-px text-[10.5px] font-semibold text-violet-foreground', className)} />
+/** Keep the live owner mounted at zero; announce only the count, not the navigation.
+ * role=status is implicitly polite. Avoid redundant aria-live: Radix exempts that
+ * attribute from modal background hiding, exposing the sidebar behind dialogs.
+ */
+export function NavBadge({ className, children, title, ...props }: React.ComponentProps<'span'>) {
+  const visible = Boolean(children)
+  return (
+    <>
+      <span role="status" aria-atomic="true" className="sr-only">
+        {visible ? title ?? `Inbox: ${children}` : ''}
+      </span>
+      {visible ? (
+        <span data-slot="nav-badge" {...props} title={title} aria-hidden="true" className={cn('ml-auto inline-flex min-h-chip shrink-0 items-center rounded-full bg-violet px-1.5 py-px text-[10.5px] font-semibold text-violet-foreground', className)}>{children}</span>
+      ) : null}
+    </>
+  )
 }
 
-export function SkillsUpdateMarker() {
+export function SkillsUpdateMarker({ available = true }: { available?: boolean }) {
   return (
-    <span data-slot="nav-update-marker" className="ml-auto flex items-center">
-      <StatusDot tone="violet" className="size-1.5" aria-hidden="true" />
-      <span className="sr-only">Skills update available</span>
+    <span role="status" aria-atomic="true" className="contents">
+      {available ? (
+        <span data-slot="nav-update-marker" className="ml-auto flex items-center">
+          <StatusDot tone="violet" className="size-1.5" aria-hidden="true" />
+          <span className="sr-only">Skills update available</span>
+        </span>
+      ) : null}
     </span>
   )
 }
