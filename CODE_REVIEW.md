@@ -14,7 +14,7 @@ How to review a diff in this repository. Applies to humans and to the `code-revi
 
 ### TypeScript strictness
 
-- `tsconfig.json` has `strict`, `noUncheckedIndexedAccess`, `noImplicitOverride` — the diff must compile without weakening them.
+- Every workspace `tsconfig.json` (`packages/{xezar,contract,api-client,web}/tsconfig.json`) sets `strict`, `noUncheckedIndexedAccess`, `noImplicitOverride` — the diff must compile without weakening them.
 - No `any`, no non-null assertions to silence the checker; prefer narrowing, `unknown` + zod, or explicit optional handling. Indexed access is checked — `arr[0]` is `T | undefined`, handle it.
 - ESM with NodeNext resolution plus `allowImportingTsExtensions` and `rewriteRelativeImportExtensions` (`packages/xezar/tsconfig.json`): relative imports name the real `.ts` file, and tsc rewrites the extension in `dist` and in the emitted `.d.ts`, so the published package is still plain resolvable ESM. `node:`-prefixed builtins.
 
@@ -66,7 +66,7 @@ How to review a diff in this repository. Applies to humans and to the `code-revi
 
 ### MCP test floor
 
-- A diff touching `packages/xezar/src/mcp/**`, `packages/contract/src/mcp-*.ts` or an MCP route in `server.ts` leaves every file it changes at or above the floor of `npm run test:coverage:mcp` and lowers none; any other file below the floor must already carry its exemption or sequencing record in `docs/testing/coverage-gaps.md` § 10 (`SDLC.md` § The MCP test floor).
+- A diff touching `packages/xezar/src/mcp/**`, `packages/xezar/scripts/pi-leader-extension.ts`, `packages/contract/src/mcp-*.ts` or an MCP route in `server.ts` leaves every file it changes at or above the floor of `npm run test:coverage:mcp` and lowers none; any other file below the floor must already carry its exemption or sequencing record in `docs/testing/coverage-gaps.md` § 10 (`SDLC.md` § The MCP test floor).
 - Every new or changed test on that scope arrives with a named break and its quoted red output. Re-apply at least one break per test file and run the test: a test that stays green with its behaviour broken is a finding, whatever the percentage says.
 
 ## Severity guidance

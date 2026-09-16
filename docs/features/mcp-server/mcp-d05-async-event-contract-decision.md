@@ -1,5 +1,9 @@
 # D-05 — the async event and tool contract
 
+> **Status update — 2026-09-15:** Implemented in Phase 5 (#72). The original spike is superseded where noted:
+> retention is independent of acknowledgement (D-09 B-19), and the task acceptance result carries neither
+> `journalSeq` nor `expectedVersion`. Original anchors remain at `9fdcf0e`.
+
 Status: **decision record with executed evidence**. It closes the **Open** decision D-05 in section 10 of
 [the MCP requirements contract](mcp-project-leader-requirements.md). It ships **no production surface**:
 Phase 5 ([#72](https://github.com/qodeca/xezar/issues/72)) implements what is decided here.
@@ -367,7 +371,7 @@ outcomes and A-19 says a notification in a log is not proof of reaction.
 | Cursor | Advanced by | Meaning | Drives retention? |
 | --- | --- | --- | --- |
 | `deliveredSeq` | the adapter, non-model | the transport handed the row to the client process | no |
-| `ackedSeq` | the leader, by an explicit tool call | the leader has durably taken the row into account | **yes** |
+| `ackedSeq` | the leader, by an explicit tool call | the leader has durably taken the row into account | no — D-09 B-19 retention is count-and-age based, independent of acknowledgement |
 | `reactedSeq` | the adapter, non-model | a model turn carrying that row was actually started | no |
 
 - The ack is **monotonic and idempotent**: an ack for a `journalSeq` at or below `ackedSeq` is a successful
@@ -407,6 +411,10 @@ strength of § 3 and § 4 rather than on the recommendation.
 
 ### 6.8 The tool-call side of a long operation — **Decided**
 
+**Implementation divergence:** `task-create.ts` returns no `journalSeq` or `expectedVersion`;
+the JSON and field requirements below are the original decision, not the current response.
+D-06 § 9.2 names the uncertain outcome `unverified`.
+
 A start mutation returns **promptly**, with an ordinary (non-error) tool result whose text block is a
 compact JSON object:
 
@@ -421,7 +429,7 @@ compact JSON object:
 }
 ```
 
-- `status` is a closed set: `accepted | running | done | failed | cancelled | conflict | uncertain`. It
+- `status` is a closed set: `accepted | running | done | failed | cancelled | conflict | unverified`. It
   matches N-05 (“accepted/running/terminal or explicit uncertain”) and the labels § 13 U-M07 asks the UI to
   show. **An acknowledgement is never reported as completed.**
 - `journalSeq` is the journal position **at acceptance**. It is what lets a leader ask for “everything after

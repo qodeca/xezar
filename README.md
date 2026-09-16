@@ -1,39 +1,28 @@
 <div align="center">
 
-# xezar ⚡
+<h1>xezar</h1>
 
-**Parallel coding agents orchestrator** — a local cockpit for running and
-tracking AI coding-agent tasks in your repo.
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/hero-dark.svg"><img src="docs/assets/readme/hero-light.svg" width="100%" alt="Illustration of the xezar cockpit with parallel tasks, a queue and a live agent thread"></picture>
 
-Type a task, pick a workflow and an agent — **Claude Code, Codex, OpenCode or pi
-(the latter two experimental), or a mix of them per step** — and watch it work live: steps, tool calls,
-tokens, diffs, in a browser cockpit that runs entirely on your machine.
-Your CLI logins, your `gh`, your files. No accounts, no database, no cloud.
-
-🔥 **Fire and forget.** Queue a stack of autonomous coding and maintenance
-tasks and let them run — xezar orchestrates them across isolated worktrees,
-in parallel. Flip the **Autonomous** flag
-and a run never stops to ask; it just finishes. Leave it on a VPS and you get
-a dev team that's *always on* — a mobile-friendly cockpit you can check from
-your phone, working your backlog while you're away.
-
-[A look inside](#a-look-inside) · [What xezar does best](#what-xezar-does-best) · [What it solves](#what-it-solves) · [Who it's for](#who-its-for) · [Quick start](#quick-start) · [How it works](#how-it-works) · [Core concepts](#core-concepts) · [Cockpit tour](#cockpit-tour) · [Agent backends](#coding-agent-backends) · [Remote access](#remote-access-host-xezar-on-a-server)
+**Run parallel coding agents from one local cockpit.**
 
 [![CI](https://github.com/qodeca/xezar/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/qodeca/xezar/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/@qodeca/xezar?color=cb3837&logo=npm)](https://www.npmjs.com/package/@qodeca/xezar)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Node 20+](https://img.shields.io/badge/Node-20%2B-339933)
-![TypeScript 7.x](https://img.shields.io/badge/TypeScript-7.x-3178c6)
-![Zero config](https://img.shields.io/badge/config-zero-success)
-![No database](https://img.shields.io/badge/database-none-success)
+
+[Tour](#60-second-tour) · [Features](#features) · [How it works](#how-it-works) · [User guide](#user-guide) · [Backends](#agent-backends) · [Contributing](#contributing)
 
 </div>
+
+Type a task, pick a workflow and choose **Claude Code, Codex, OpenCode or pi**.
+You can mix agents per step and watch them work live in a browser cockpit on your machine.
+Git tasks get their own worktree by default. Overflow waits in a queue. Nothing merges without you.
+xezar uses your CLI logins, your `gh` and your files. No xezar account, database or cloud service.
 
 > **Project status: early.** xezar is 0.x and moves fast. This repository opened on 2026-09-07; the
 > code is older and shipped before under the name Cezar. Expect rough edges, and expect breaking
 > changes in minor releases – each one is called out in the [CHANGELOG](CHANGELOG.md).
-
----
 
 ```bash
 npm install -g @qodeca/xezar
@@ -41,859 +30,158 @@ cd your-repo
 xezar        # → cockpit at http://localhost:4321
 ```
 
-That is the whole setup. If your `claude` CLI is logged in (Pro/Max) and
-`gh` is authenticated, there is nothing else to configure. The maintained project kit lives in `.xezar/`; runtime lives in `.local/xezar/`
-inside your repo — plain JSON, NDJSON and Markdown you can `cat` and fix by hand.
+That is the whole setup. If your `claude` CLI is logged in and `gh` is authenticated, there is nothing
+else to configure. Runtime lives in `.local/xezar/` inside your repo – plain JSON, NDJSON and Markdown
+you can `cat` and fix by hand.
 
-## A look inside
+## 60-second tour
 
-Click any thumbnail for the full-size screenshot.
+<a href="docs/screenshots/0.15.0/tour.gif"><img src="docs/screenshots/0.15.0/tour.gif" width="100%" alt="A short loop of the cockpit: tasks running in parallel, the queue starting, a live thread and the Inbox"></a>
 
-| Orchestrate parallel agents | Watch a run live | Parallel variants |
-|:--:|:--:|:--:|
-| [![The Tasks view — parallel runs, a queue with positions, per-run cost and peak memory, and a variants compare card](docs/screenshots/task-view.png)](docs/screenshots/task-view.png) | [![A running task streaming agent text, tool calls and screenshots live](docs/screenshots/live-run.png)](docs/screenshots/live-run.png) | [![Two competing variants of the same task compared side by side — pick the winner](docs/screenshots/variants-compare.png)](docs/screenshots/variants-compare.png) |
-| *Run and queue many tasks at once — each in its own worktree — with live status, cost and peak memory per run.* | *Every step, tool call, token and screenshot — streamed as it happens.* | *Run a task ×2/×3 in isolated worktrees, compare the diffs, keep one.* |
-| **Workflow builder** | **GitHub, one click away** | **Skills + fire-and-forget** |
-| [![The workflow builder — drag skills into an ordered chain of agent steps and shell checks](docs/screenshots/workflow-builder.png)](docs/screenshots/workflow-builder.png) | [![The GitHub tab — hand an open issue to the agent with a workflow and skills](docs/screenshots/github-issues.png)](docs/screenshots/github-issues.png) | [![The task composer — pick a skill playbook and flip the Autonomous flag to run unattended](docs/screenshots/skills-autonomous.png)](docs/screenshots/skills-autonomous.png) |
-| *Stitch skills and shell checks into a reusable YAML chain, no code.* | *Open issues and PRs via your `gh` — run the agent straight on an issue.* | *Pick a Markdown skill and flip **Autonomous** — the run never stops to ask, so you can walk away.* |
+<table>
+<tr>
+<td width="33%"><a href="docs/screenshots/0.15.0/task-thread-dark-1280.png"><picture><source media="(prefers-color-scheme: light)" srcset="docs/screenshots/0.15.0/task-thread-light-1280.png"><img src="docs/screenshots/0.15.0/task-thread-dark-1280.png" alt="A running task streaming agent text, tool calls and results live"></picture></a></td>
+<td width="33%"><a href="docs/screenshots/0.15.0/compare-variants-dark-1280.png"><picture><source media="(prefers-color-scheme: light)" srcset="docs/screenshots/0.15.0/compare-variants-light-1280.png"><img src="docs/screenshots/0.15.0/compare-variants-dark-1280.png" alt="Two variants of the same task compared side by side"></picture></a></td>
+<td width="33%"><a href="docs/screenshots/0.15.0/github-issues-dark-1280.png"><picture><source media="(prefers-color-scheme: light)" srcset="docs/screenshots/0.15.0/github-issues-light-1280.png"><img src="docs/screenshots/0.15.0/github-issues-dark-1280.png" alt="The GitHub view handing an open issue to an agent"></picture></a></td>
+</tr>
+<tr>
+<td align="center"><b>Watch a run live</b><br>Every step, tool call and token as it happens.</td>
+<td align="center"><b>Compare variants</b><br>Run a task ×2 or ×3, keep the best diff.</td>
+<td align="center"><b>Work the tracker</b><br>Hand a GitHub issue to an agent in one click.</td>
+</tr>
+</table>
 
----
+More → [Tasks and runs](docs/guide/02-tasks-and-runs.md)
 
-## What xezar does best 🏆
+## Features
 
-Plenty of tools wrap a single coding agent in a nicer window — a "Codex GUI", a
-conductor-style app, one-agent front-ends. xezar's bet is different. Three things
-it does better than any of them:
+- <img src="docs/assets/readme/icons/parallel-runs.svg" width="32" height="32" alt=""> **Parallel runs** – many agents at once, each followed live.
+- <img src="docs/assets/readme/icons/worktrees.svg" width="32" height="32" alt=""> **Worktrees** – git tasks default to their own `xez/<id8>` branch.
+- <img src="docs/assets/readme/icons/agents.svg" width="32" height="32" alt=""> **Four backends** – Claude Code, Codex, OpenCode, pi, mixed per step.
+- <img src="docs/assets/readme/icons/workflows.svg" width="32" height="32" alt=""> **Workflows** – short YAML chains of agent steps and shell checks.
+- <img src="docs/assets/readme/icons/skills.svg" width="32" height="32" alt=""> **Skills** – Markdown playbooks, local or from a team repo.
+- <img src="docs/assets/readme/icons/review-pr.svg" width="32" height="32" alt=""> **Review gate + draft PR** – optional; xezar never auto-merges.
+- <img src="docs/assets/readme/icons/github.svg" width="32" height="32" alt=""> **GitHub** – issues and PRs through your own `gh`.
+- <img src="docs/assets/readme/icons/local-only.svg" width="32" height="32" alt=""> **Local only** – no account, no database, no cloud service.
+- <img src="docs/assets/readme/icons/phone-friendly.svg" width="32" height="32" alt=""> **Phone-friendly** – host it on a server, manage tasks from your phone.
+- <img src="docs/assets/readme/icons/mcp-leader.svg" width="32" height="32" alt=""> **MCP leader** – an agent of yours drives the project through xezar's MCP tools.
+- <img src="docs/assets/readme/icons/queue-memory.svg" width="32" height="32" alt=""> **Queue + memory ceiling** – overflow waits; a run over its ceiling pauses.
+- <img src="docs/assets/readme/icons/density.svg" width="32" height="32" alt=""> **Themes and density** – dark, light or system, two accents, Roomy to Compact.
 
-- 🪶 **Genuinely zero config.** Run `xezar` in your repo and you're going —
-  no wizard, no API keys, no env vars, no schema, no database. It rides the
-  `claude` / `codex` / `opencode` / `pi` logins and the `gh` you already have, and every
-  missing piece degrades gracefully instead of blocking you.
-- 🖥️ **Built for a server (VPS mode).** xezar is made to live on a **VPS, cloud,
-  or dedicated box** as an always-on janitor for your repo — headless-first, with
-  a mobile-friendly cockpit you drive from anywhere. It's a coding server you can
-  actually watch, not a desktop app bolted onto one machine.
-- 🔀 **Parallel + autonomous orchestration.** The real edge: xezar runs **many
-  agents at once** in isolated worktrees, **queues** the overflow, and pushes each
-  one **autonomously** through skill playbooks — fire-and-forget. This is exactly
-  what single-agent GUIs don't do well: they babysit one agent, while xezar
-  orchestrates a whole team and drains your backlog while you're away.
-
----
-
-## What it solves
-
-Most "AI coding agent" tooling makes you choose between a **terminal** you can't
-see into once it's running, and a **cloud product** that wants your API key, your
-code on their servers, and an account. xezar is the third option: the agents run
-locally under *your* subscription, a cockpit shows you exactly what they're doing,
-and an orchestrator keeps a whole queue of them moving.
-
-- 👀 **No visibility into a running agent.** A headless `claude` run is a black box
-  until it finishes. xezar streams every step — agent text, each tool call and
-  its result, tokens and cost per step — live, and keeps the full replay.
-- 🧩 **One agent, one working tree, one thing at a time.** Kick off a second task and
-  it fights the first over your files. In a git repo xezar runs each task in its
-  **own git worktree** by default, so two (or three) agents work in parallel
-  without stepping on each other — or on the branch you're editing. (Flip the
-  composer's **Worktree** toggle off to run in your working tree instead; a
-  non-git folder always runs in place, one task at a time.)
-- 🗂️ **A backlog that needs babysitting.** Queue a stack of tasks and xezar
-  **orchestrates** them: it runs up to your parallel limit and holds the rest in
-  an ordered queue. Point it at a GitHub issue and it runs straight on that, so
-  working the tracker down stops being a manual chore. Turn on the opt-in
-  **Inbox** (Settings → Resources, or `XEZ_FOLLOWUPS=1`) and an agent's leftover follow-ups become the
-  next tasks too — one click each.
-- 🤖 **"Autonomous" means you still have to sit there.** Flip the **Autonomous**
-  flag and a run never parks to ask — it keeps going until the task is done. Pair
-  it with a **skill** (a Markdown playbook) and you've got fire-and-forget
-  automation: hand off "fix this", "upgrade that", "triage these" and walk away.
-- ✅ **The agent finishes and you have to trust it.** Turn on the optional
-  **review gate** (Settings → Agents, or `XEZ_REVIEW_GATE=1`) and a run with a
-  diff parks in `review`: inspect the diff, send notes back into the same
-  session, or push a **draft PR**. It is off by default and autonomous runs
-  always skip it — their diff simply waits in the worktree. Either way, xezar
-  never auto-merges.
-- ♻️ **Losing a session when it fails.** Every run records its `claude` session id.
-  Take it over interactively in one click (`claude --resume <id>`), or continue it
-  in-process from the cockpit.
-- 🔀 **Locked into one agent vendor.** Most tools wed you to a single CLI. xezar
-  drives **Claude Code, Codex, OpenCode and pi (the last two experimental)** through one runner seam — set a
-  default, pick a backend per task, or mix them inside one workflow (implement
-  with one agent, review with another) — and through **OpenCode** you can point
-  a run at **open-source or local models**, not just the big vendors. See
-  [Agent backends](#coding-agent-backends).
-- 🖥️ **Close the laptop and the work stops.** A local agent only runs while your
-  machine is on and awake. Put xezar on a **VPS, cloud box, or dedicated server**
-  and the cockpit becomes the GUI for an **always-on AI coding team** — kick off,
-  watch and steer tasks from your laptop or **phone**, on the train or between
-  meetings, while the agents keep grinding through the backlog back on the server.
-- ⚡ **Setup tax.** No wizard, no env vars, no schema. Skills are Markdown, workflows
-  are short YAML, and everything degrades: no `gh` → works without PRs, no network
-  → local skills still load, no `.ai/skills` → the bare prompt still runs.
-
----
-
-## Who it's for
-
-- **Solo devs and small teams** who want the leverage of coding agents without
-  handing their code and keys to a SaaS — the agent runs on your subscription,
-  on your machine.
-- **`claude` CLI power users** who love headless runs but want to *see* them,
-  compare a few attempts side by side, and review a diff before it lands.
-- **Anyone with a backlog** who'd rather queue three tasks into isolated worktrees
-  and pick the winners than babysit one terminal.
-- **Teams with shared conventions** who want their playbooks (skills) pulled from
-  a git repo, applied consistently, with zero per-project setup.
-
----
-
-## Quick start
-
-**Prerequisites:** Node 20+, at least one logged-in agent CLI — the
-[`claude` CLI](https://github.com/anthropics/claude-code) (Pro/Max subscription),
-the [`codex` CLI](https://github.com/openai/codex),
-[OpenCode](https://opencode.ai), or [pi](https://github.com/badlogic/pi-mono) —
-and, optionally, `git` and the `gh` CLI.
-
-Install it once, then run it in any repo:
-
-```bash
-npm install -g @qodeca/xezar   # installs the `xezar` and `xez` commands
-cd your-repo
-xezar                          # start the cockpit for the current repo
-```
-
-Prefer not to install anything?
-
-```bash
-npx @qodeca/xezar              # same thing, fetched on demand
-```
-
-The cockpit opens at `http://localhost:4321` (auto-picks the next free port if
-busy). Type a task, pick a workflow, hit **Start**. That's it.
-
-```bash
-xezar run "add a --json flag to the export command"   # headless, CI-friendly
-xezar init                                            # scaffold .xezar/
-```
-
-Both the `xezar` and `xez` commands are installed, so once it's on your PATH you
-can run either. No API key is ever used — xezar shells out to whichever agent
-CLIs you are already logged into, `claude` by default.
-
-To upgrade later: `npm install -g @qodeca/xezar@latest`.
-
-> **Working on xezar itself?** [Local development](#local-development) shows how
-> to get a global `xezar` command straight off your checkout
-> (`npm run install-as-command`) — no publish needed.
-
-> **Just kicking the tires?** Set `XEZ_DRY_RUN=1` to run against a bundled mock
-> instead of the real CLI — the whole cockpit works with no `claude` login, so
-> you can explore runs, diffs, variants and the review gate offline.
-
----
+**Zero config.** No API keys, environment variables or configuration files are required.
+xezar uses your existing agent logins and `gh`. Missing tools leave a smaller working cockpit.
+**Autonomous** lets a run continue without stopping for answers.
 
 ## How it works
 
-You describe a task. xezar runs it as a **workflow** — an ordered list of agent
-steps and shell checks — shelling out to your locally installed agent CLI
-(Claude Code by default; Codex, OpenCode and pi are drop-in alternatives, per
-task or per step). In a git repo each task gets its own worktree by default — switch
-the composer's **Worktree** toggle off to run in the repo working tree (under
-xezar's repository-root lease), and a non-git directory runs in place. A git
-task that asks for a worktree it cannot create stops as `failed`; it never falls
-back to your checkout. The cockpit streams every event live. With the optional
-review gate on (`XEZ_REVIEW_GATE=1` or Settings → Agents; off by default,
-skipped by autonomous runs) a run with a diff parks at `review` for you to
-inspect.
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/architecture-dark.svg"><img src="docs/assets/readme/architecture-light.svg" width="100%" alt="The browser cockpit connects to the local xezar service, which drives agent CLIs in worktrees by default and reaches GitHub through gh; an MCP leader attaches to the service"></picture>
 
-```
-   you type a task
-        │
-        ▼
-   ┌─────────────┐   optional: Plan → AI drafts a chain of steps you approve
-   │  workflow   │   (agent steps + shell checks, with bounded onFail retries)
-   └─────────────┘
-        │
-        ▼
-   ┌──────────────────────────────┐     ┌───────────────────────────────┐
-   │  git worktree per task       │     │  agent CLI  (your login)      │
-   │  (default: isolated branch)  │◄───►│ claude · codex · opencode · pi│
-   └──────────────────────────────┘     │  Bash open · no prompts       │
-        │                                 └───────────────────────────────┘
-        │  agent text · tool calls · tool results · tokens · cost
-        ▼
-   ┌──────────────┐  SSE (replay + live)   ┌──────────────────────────┐
-   │ .local/xezar/│ ─────────────────────► │  cockpit  localhost:4321 │
-   │ JSON·NDJSON  │                        │  Tasks · Git · GitHub ·  │
-   │ ·Markdown    │                        │  Skills · Workflows      │
-   └──────────────┘                        └──────────────────────────┘
-                                                  │
-                                          optional review gate (XEZ_REVIEW_GATE=1):
-                                          read the diff → send notes back ·
-                                          draft PR · finish
-```
+1. You describe a task; xezar runs it as a **workflow** – agent steps plus shell checks, with bounded `onFail` retries.
+2. Each step shells out to an agent CLI you are logged into – **your subscription, no API key**.
+3. Git tasks run in their own worktree by default; a non-git folder runs in place, one task at a time.
+   Turn **Worktree** off to run in your checkout under the repository-root lease, which serializes tasks there.
+4. Every event is written to `.local/xezar/` and streamed to the cockpit over SSE, replay included.
+5. With the optional review gate on, a run with a diff waits in `review`; you merge, never xezar.
 
-When a check fails, the workflow can loop back to an earlier step (bounded by
-`max`) with the failing output appended to the retried agent's prompt. Whether a
-run with changes rests in `review` depends on the optional review gate above;
-with it off (the default) the run settles to `done` and the diff stays in the
-worktree. Nothing auto-merges either way: merging is always your move.
+More → [Worktrees and git](docs/guide/03-worktrees-and-git.md)
 
----
+## User guide
 
-## Core concepts
+- [Getting started](docs/guide/01-getting-started.md) – install, first task and dry run.
+- [Tasks and runs](docs/guide/02-tasks-and-runs.md) – composer, queue, variants and review.
+- [Worktrees and git](docs/guide/03-worktrees-and-git.md) – branches, retention and diffs.
 
-Three words, no jargon — **task**, **skill**, **chain**:
+More guide chapters are coming. The reference sections below cover backends, configuration and hosting.
 
-- 📋 **Tasks** are the unit of work. Every task is a **run**: `queued → running →
-  review / done / failed / cancelled`, with a live event log, per-step token and
-  cost usage, cancel/delete, and — when the optional review gate is on — a
-  `review` stop for anything with a diff. Attach
-  screenshots, PDFs, `.txt` or `.md` files to the task (paperclip, ⌘V or drag-drop;
-  the agent gets each one as a real file on disk), or send follow-up messages into
-  the live session while it works.
-- 📖 **Skills** are Markdown playbooks. Drop them in `.ai/skills/` or
-  `.xezar/skills/`, or pull them from a shared **team skills repo** (a bare
-  git clone cached globally in `~/.cache/xez/`). A workflow step references one by
-  `skill: <name>` and its body becomes the agent's extra system prompt — so you
-  shape *how* the agent reasons without touching code.
-- 🔗 **Chains (workflows)** stitch steps into a pipeline: agent steps plus shell
-  checks, with bounded `onFail` retry loops. Write the YAML yourself, build one by
-  drag-ordering skills in the **Workflows** tab, or press **Plan first** and let the
-  AI draft a chain for your task that you review, trim and start. The built-in
-  `quick-task` (one agent step) works with zero setup.
+## Quick start
 
-Six moves that make the cockpit worth the browser tab:
-
-- 🗃️ **Queue + orchestration.** Start as many tasks as you like: xezar runs up to
-  `maxParallel` at once across every project (default **2**; a non-git directory
-  always runs one) and
-  holds the rest in a FIFO queue with visible positions (`#1`, `#2`, …). Cancel a
-  queued task before it starts; the queue even survives a cockpit restart —
-  everything still `queued` is re-enqueued in order. It's the orchestration layer
-  that turns "one agent at a time" into a backlog that drains itself.
-- 🧠 **Memory-aware runs.** Each run's whole process tree is sampled (~2 s) for CPU
-  and RSS, and its **peak memory** is recorded and shown in the task table. The
-  per-task **memory ceiling** (`memoryLimitMb`) is **on out of the box**: with no
-  setting at all xezar derives a host-sized ceiling from your machine's RAM, and a
-  run that crosses it is *paused* — freeing its tree so the queue keeps advancing —
-  and resumes on demand. Adjust it in **Settings → Resources**; an explicit
-  `"memoryLimitMb": null` still means *no limit*, and a repo that sets its own value
-  overrides the workspace ceiling for its own runs. Event logs are append-only NDJSON and streamed rather than re-serialized,
-  and live UI deltas are coalesced so they never hit disk.
-- 🪞 **Parallel variants (×2 / ×3).** Run the same task as competing agents in
-  separate worktrees, then compare their diffs side by side and **pick** one —
-  the losers are archived and their worktrees cleaned up.
-- 🧹 **Bounded worktree disk.** By default each git task runs in its own full checkout, so a busy
-  cockpit would otherwise grow without limit. xezar keeps only the last
-  `worktreeRetention` **finished** worktrees on disk (default **10**, itself a
-  workspace setting — `resources.worktreeRetentionDefault`, which every project
-  without its own value inherits; `0` = unlimited) and reclaims the rest — directory only, the `xez/<id8>` branch is
-  always kept, so the work stays recoverable. Settings → Resources shows every
-  worktree's disk use with per-row delete and a **Reclaim now** button.
-- 🛡️ **Review gate (optional, off by default).** Turn it on in Settings → Agents
-  (`reviewGate` in `.xezar/config.json`, which wins when set) or with exactly
-  `XEZ_REVIEW_GATE=1`, and a finished, non-autonomous run with changes waits in
-  `review`. Read the diff, type notes that go straight back into the agent's
-  session, or push a `gh pr create --draft`. Autonomous runs always skip the
-  gate and finish as `done`. Gate on or off, you stay the merge button — xezar
-  never auto-merges.
-- 📱 **Runs on your coding server, drives from your pocket.** The cockpit is a
-  responsive web app streaming over SSE, so the box running xezar can be a
-  **VPS, cloud, or dedicated server** you never sit in front of. Point a browser
-  — laptop or **phone** — at it and run an **always-on coding team** on the move:
-  start tasks, watch them live, and hit the review gate from anywhere.
-
----
-
-## Cockpit tour
-
-Nine views, one browser window, all live over Server-Sent Events (seven by default — the Inbox and Automations are each opt-in):
-
-| View | What's in it |
-|---|---|
-| **Tasks** | Every task with its status, the tool and model it ran on, live event stream (agent text · tool calls · tool results · pasted/generated screenshots and file attachments), tokens and cost. Continue, cancel, open in terminal (`claude --resume`), review the diff, or push a draft PR. |
-| **All tasks** | Every *registered project's* tasks in one table, filtered and grouped by tag, project, status or workflow — see [Grouping connected repositories](#grouping-connected-repositories-tags-and-the-all-tasks-page). Appears once a second project is registered. |
-| **Inbox** | **Opt-in**, hidden by default. Turn it on in **Settings → Resources** (the stored choice wins and needs no restart) or start with `XEZ_FOLLOWUPS=1`. Follow-ups an agent left behind (`todos.json`) — one click turns a suggestion into the next task, pre-wired to its suggested skill. Off, agents are never asked to leave follow-ups; each task's own **Notes** handoff journal is unaffected. |
-| **Git** | Branch, working-tree status, diff vs HEAD, recent commits (click one for its inline patch + GitHub link), and the configurable base branch that worktrees fork from and PRs target. |
-| **GitHub** | Open issues and PRs of the repo's origin, read through your logged-in `gh`. Hand an issue straight to the agent — pick a workflow and skills, one click runs it. |
-| **Automations** | **Opt-in** (`XEZ_AUTOMATIONS=1`; hidden by default). Scheduled GitHub watches: each automation polls on its own interval and launches a task when its bounded filter matches. Test a filter before enabling it, and read the per-check log. |
-| **Skills** | Local skills plus the team skills repo, with a rendered body + prompt preview. Refresh pulls the latest from the remote. The Manage panel curates which team skills appear; the selection is stored in the workspace UI state. |
-| **Workflows** | Build a chain by drag-ordering skills, save it as portable YAML, import/export, or delete. Built-ins always come back. |
-| **Settings** | Appearance (dark/light theme, accent, density), agent backends and their own config files, agent accounts, notifications, machine resources, projects, and skill-update checks. |
-
-The cockpit is a React app served pre-built from the package — running `xezar`
-needs no dev server on your machine — with a dark/light
-theme, a ⌘K command palette, and bookmarklets that launch a task straight from
-a GitHub page.
-
----
-
-## Multiple projects, one cockpit
-
-One `xezar serve` hosts **every repo you work in**, not just the one you started
-it in. Each repo xezar boots in registers itself in a per-user registry at
-`~/.xezar/config.json` — the workspace file that also holds the global knobs
-(the parallel cap, the memory ceiling, the idle timeout, the default worktree retention, the Inbox switch, the agent env passthrough list, the browse root, and the checkout root). Nothing is added to
-the repo: per-project state stays exactly where it was, in that repo's
-`.local/xezar/`.
-
-Every view is project-scoped:
-
-```
-/p/<projectId>/            tasks · git · github · skills · workflows · settings
-```
-
-`<projectId>` is a slug derived from the folder name (`my-app`, then `my-app-2`
-on a collision), and `/p/default/…` always means the project xezar was started
-in. The sidebar shows one collapsible group per project — each with its own nav
-and task list — and the new-task composer names the project it will run in.
-
-**Adding a project** — the **+** button beside *New task*:
-
-- 📂 **Open local folder…** browses from the configured browse root
-  (**Settings → Projects**, default `~/`) in a folder picker and
-  registers the folder you pick.
-- ⬇️ **Clone from GitHub…** clones with your logged-in `gh` into the checkout
-  root (**Settings → Projects**, default `~/xezar/projects`) with live progress,
-  then registers the clone. Close the dialog and the clone is killed and its
-  partial directory removed.
-
-Removing a project (**Settings → Projects**) drops the registry entry only — the
-repo and its `.local/xezar/` are never touched, so re-adding it later finds all its
-tasks intact. The project xezar is currently serving can't be removed: it
-re-registers itself at the next start.
-
-**From the terminal** — the same registry, no cockpit required (handy over ssh):
+**Prerequisites:** Node 20+ and at least one logged-in agent CLI – [`claude`](https://github.com/anthropics/claude-code),
+[`codex`](https://github.com/openai/codex), [OpenCode](https://opencode.ai) or [pi](https://github.com/badlogic/pi-mono) –
+plus, optionally, `git` and `gh`. The package installs both the `xezar` and `xez` commands.
 
 ```bash
-xezar projects                    # list: id, branch or status, path, tags
-xezar projects add ~/code/api     # register a folder (defaults to the current repo)
-xezar projects remove api         # drop the registry entry; the repo is untouched
-xezar projects tag api storefront backend   # set the grouping tags (no tags clears them)
+npx @qodeca/xezar                                     # no install: fetched on demand
+xezar run "add a --json flag to the export command"   # headless, CI-friendly
+xezar init                                            # scaffold .xezar/
+npm install -g @qodeca/xezar@latest                   # upgrade
 ```
 
-These read and write `~/.xezar/config.json` directly, so they work with the
-server stopped, and `XEZ_HOME` selects which workspace they operate on.
+The cockpit picks the next free port when 4321 is busy. **Try it offline:** `XEZ_DRY_RUN=1`
+runs a bundled mock instead of a real agent, so the whole cockpit works offline with no login.
 
-Settings split along the same line: **General** (the project's folder, its
-registry facts, its parallel-task ceiling, and Remove), **Agents**, **Agent
-config** (each agent's own settings, MCP and memory files), **Worktrees**,
-**Bookmarklets** and **Prompt templates** describe one repo and live under
-`/p/<projectId>/settings`; **Appearance**, **Notifications**, **Resources**,
-**Skills** (update checks), **Agent accounts** and **Projects** are yours or the
-machine's and live at `/settings/global`.
+More → [Getting started](docs/guide/01-getting-started.md)
 
-### Grouping connected repositories: tags and the All tasks page
+## Agent backends
 
-Work rarely stops at a repo boundary. A storefront is an API, a web app and a
-design system; a platform is a handful of services plus the infra that runs
-them. **Tags** are how you say so, and **All tasks** is where saying so pays off.
+| Backend | How xezar drives it | Tool access |
+|---|---|---|
+| **Claude Code** (default) | Headless `stream-json` mode | `allowedTools` (`bashAllowlist` scopes `Bash`); unapproved tools denied without prompting; the default list includes unrestricted `Bash` |
+| **Codex** | `codex app-server`, JSON-RPC over stdio | Ignores `allowedTools`; `danger-full-access` with no approvals (`XEZ_CODEX_NETWORK=0` for the network-blocked sandbox) |
+| **OpenCode** _(experimental)_ | `opencode serve`, HTTP + SSE | Ignores `allowedTools`; every permission auto-approved |
+| **pi** _(experimental)_ | `--mode rpc` over JSONL | `allowedTools` mapped onto pi's `--tools`; a `bashAllowlist` disables `Bash` |
 
-**Tag a repo** in **Settings → Projects**: type into the *Tags* cell on its row
-and press Enter (comma works too; the × on a chip, or Backspace in an empty
-field, removes one). The field **autocompletes from the tags already used in the
-workspace** — click the field to see them all, arrow keys and Enter to pick —
-which is what keeps the second repo landing on the first one's spelling instead
-of inventing `store-front` next to `storefront`. Anything not on the list is
-just typed. A tag is a free-form label — `storefront`, `infra`, `client-acme` —
-and a project can carry several, because a repo can belong to more than one
-piece of work. Tags are trimmed, deduplicated case-insensitively (`API` and
-`api` are one tag) and stored in `~/.xezar/config.json` beside the rest of the
-registry, so they are yours and this machine's, never something added to the
-repo.
+Backends are detected locally, with Claude offered when none is found. Model choices come from
+local discovery and configuration, with fallback choices when discovery is unavailable.
+Choose a backend in config (`defaultRunner`), per task or per workflow step (`runner:`); the most specific wins.
 
-**All tasks** — the top item in the sidebar, `/tasks`, or `⌘K → All tasks` —
-then shows every registered project's work in one table:
+## Configuration
 
-- **Filter** by tag, status and workflow. Tags are one-click chips; status and
-  workflow are searchable multi-selects. Every facet ORs inside itself and ANDs
-  across, so *"anything running or waiting in storefront or infra"* is one set
-  of clicks. Each option carries how many tasks it would leave, so a filter that
-  would empty the table says so before you click it. The search box matches
-  title, project, workflow, branch and tags.
-- **Group by** tag, project, status or workflow — click the pressed one again to
-  ungroup. Grouping by tag is the reason tags exist: three repos tagged
-  `storefront` become one section, and a repo tagged twice appears under both —
-  it genuinely belongs to both.
+Nothing is required. `.xezar/config.json` (per repo) and `~/.xezar/config.json` (per user) are optional,
+and the cockpit's Settings write them for you. Every user-facing `XEZ_*` variable is listed below.
+xezar never loads a `.env` file; export variables in your shell.
 
-The filters, the grouping and the Active/Archived tab live in the **URL**, so a
-filtered view survives a refresh, pastes into a chat, and sits in a bookmark —
-`/tasks?tag=storefront&status=running&group=tag` is a link to exactly what you
-were looking at. Only what you changed shows up: Active is the default, so the
-Archived view is `?archived=1` and a normal link carries no key for it.
+<details>
+<summary>Environment variables</summary>
 
-Each row shows **every** PR and issue it references — a task opened on an issue
-that landed a PR shows both — plus its cost and live CPU/memory, and can be
-marked **read/unread** (the eye) or **archived** (or restored) right there. Every task title, project name and project group heading links into that
-project, so the thread, its diff and its worktree are one click away and stay
-exactly where they were.
-
-There is deliberately **no project filter**: narrowing this page to one project
-is that project's own Tasks page, which is a better version of the same answer
-(live updates, the full column set, the composer). So picking a project *leaves*
-for it rather than turning the global view into a worse local one.
-
-Nothing else in xezar reads tags, on purpose: a tag is a lens, not a permission,
-a queue or a routing rule. Removing one changes what you see and nothing else.
-
-> The page reads a workspace-wide index capped at the newest 200 tasks per
-> project — it says so, and names the projects it capped, rather than showing a
-> short list as if it were complete. Older tasks are always in that project's own
-> Tasks page.
-
-**Old page URLs keep working.** Every unprefixed page path — `/`, `/tasks/<id>`,
-`/settings` — still answers, bound to the project xezar was started in; the
-cockpit redirects flat paths to their `/p/<boot>/…` twin, so existing bookmarks
-and bookmarklets need no change. The HTTP API is the exception: it moved to
-`/api/v1/…` (see the CHANGELOG), so a script that calls it needs the extra
-segment.
-
-> **Hosted cockpit?** The folder picker is confined to the independent browse
-> root. Set `XEZ_BROWSE_ROOT` narrowly before first boot (or save it in
-> **Settings → Projects**) when a remote viewer should not enumerate the host's
-> whole home. Clones continue to use the separate checkout root.
-
----
-
-## Workflow format
-
-See [project layout and legacy migration](docs/project-layout.md) for directory precedence and the offline migration command.
-
-A workflow is a small YAML file in `.xezar/workflows/`:
-
-```yaml
-name: fix-and-verify
-description: Implement the task, then verify; retry with failing output on red.
-steps:
-  - id: implement
-    name: Implement
-    prompt: "{{task}}"
-    skill: project-conventions   # optional — from .ai/skills or .xezar/skills
-    # model: opus                # optional per-step model override
-    # runner: codex              # optional per-step backend: claude · codex · opencode · pi
-    # allowedTools: [Read, Edit, Write, Grep, Glob, Bash]
-    # timeout: 90m               # optional per-step wall clock: 45s · 90m · 2h · none
-  - id: verify
-    name: Verify
-    command: "npm test"          # a check step: exit 0 passes
-    onFail:
-      retry: implement           # loop back to an earlier step…
-      max: 2                     # …at most twice
-```
-
-`{{task}}` is replaced with the task text you typed. When a check fails and loops
-back, its failing output is appended to the retried agent's prompt so the next
-attempt can see what broke.
-
-### How long a step may run
-
-Every agent step has a wall clock. Leave `timeout` out and nothing changes: the
-workflow's **last** step stays open for your follow-ups with no cap, and every
-**earlier** agent step is killed after **30 minutes** — which is fine for a
-review or a docs pass, and too short for a long investigate-and-implement step.
-`timeout` is how that step asks for more:
-
-```yaml
-  - id: investigate
-    prompt: "{{task}}"
-    timeout: 3h                  # this step only
-```
-
-- `45s`, `90m`, `2h` — whole numbers with `s`, `m` or `h`. Nothing else parses:
-  `90 minutes`, `1.5h` and `30d` are load-time errors, and so is `0s` (say
-  `none` if you mean no cap). The ceiling is `596h`, where Node's own timer
-  stops being able to count.
-- `none` — no wall clock at all. The step ends when the agent ends.
-- The field belongs to an **agent** step. A check step is a shell command, and
-  putting `timeout` on one is a load-time error rather than a key that quietly
-  does nothing.
-
-**All four backends honour it.** `claude`, `codex`, `opencode` and `pi` each arm
-the deadline from the same per-step value; on `claude`, `codex` and `pi` a step
-that overruns is interrupted and then `SIGKILL`ed after a short grace period,
-while `opencode` interrupts and waits for the session to close.
-
-Prefer skills over steps? A workflow can also be written in the portable
-shorthand — an ordered list of skill names, each becoming one agent step:
-
-```yaml
-name: triage-and-fix
-skills: [reproduce, root-cause, implement, self-review]
-```
-
----
-
-## How it runs agents
-
-xezar shells out to your locally installed, logged-in agent CLI —
-**your subscription, no API key**. With the default Claude Code backend that
-means headless `stream-json` mode, tool access via `--allowedTools`, with
-unapproved tools denied without prompting (`--permission-mode dontAsk`) inside
-the task's worktree — but note the zero-config default list (`Read`, `Edit`,
-`Write`, `Grep`, `Glob`, `Bash`) grants unrestricted `Bash` unless a step sets
-`bashAllowlist`, so treat a run as having full shell access in its worktree,
-not a sandboxed allowlist. Set `XEZ_APPROVAL_GATE=1` to opt into Claude's
-interactive approval UI. Codex and OpenCode are driven through their own
-native protocols and don't honor `allowedTools` at all — see
-[Coding agent backends](#coding-agent-backends) for what each one actually
-locks down. Nothing runs on a server you don't own.
-
-Useful environment variables:
-
-| Var | Effect |
+| Env var | Effect |
 |---|---|
-| `XEZ_DRY_RUN=1` | Use the bundled mock instead of the real `claude` CLI — the entire cockpit works offline, for demos and development. |
-| `XEZ_AGENT_MODELS_LOCKED=1` | Globally lock each runner to the model configured in its native Claude/Codex/OpenCode settings while keeping runner selection available. Exact `1` also delegates authentication and provider enablement to those native agents, so Xezar skips its credential probes and provider-disable preferences. Existing Xezar presets are preserved but ignored, and an environment change requires a restart. The config-file equivalent is `"modelsLocked": true` in global `~/.xezar/config.json` or one repository's `.xezar/config.json`; config-file locks do not disable provider checks. |
+| `XEZ_DRY_RUN=1` | Use bundled mock agents; the cockpit works offline without a login. |
+| `XEZ_AGENT_MODELS_LOCKED=1` | Lock models to native agent settings. Exact `1` also delegates provider checks to agents. Restart required. Stored `modelsLocked: true` locks models only. |
 | `XEZ_APPROVAL_GATE=1` | Opt into Claude's interactive approval UI; by default, unapproved tools are denied without interrupting the run. |
-| `XEZ_FOLLOWUPS=1` | Turn on the global follow-up **Inbox**: agents are asked to leave follow-ups in `todos.json` when they finish, and the Inbox view appears. Off by default — each task's own **Notes** handoff journal runs either way. The Settings → Resources toggle overrides this default and needs no restart. |
-| `XEZ_AUTOMATIONS=1` | Turn on **GitHub automations**: the Automations view appears and xezar polls GitHub on each enabled automation's interval, launching tasks from what it finds. Off by default, and only the exact value `1` enables it — without it nothing polls GitHub, the automations endpoints answer `409`, and the nav item is absent. Read at boot, so restart after changing it; definitions, receipts and high-watermarks are retained, so unsetting it and restarting restores the feature without migration or data loss. |
-| `XEZ_AUTOSAVE=1` | Re-enable the periodic (90 s) autosave commit in task worktrees. Off by default (#471) — turn-end and pre-PR flushes always run, so branches still end complete. Every autosave names its trigger in the commit subject (`xezar autosave (periodic)` vs `(turn end)` / `(run finalize)` / `(pre-PR)`), so the flushes you keep are distinguishable from the timer you disabled. |
+| `XEZ_FOLLOWUPS=1` | Enable the follow-up Inbox (default off). Settings → Resources overrides this without restart; task Notes work either way. |
+| `XEZ_AUTOMATIONS=1` | Enable scheduled GitHub automations (default off, exact `1`, restart required). Definitions survive disabling it. |
+| `XEZ_AUTOSAVE=1` | Enable periodic 90-second worktree commits (default off). Turn-end and pre-PR flushes always run. |
 | `XEZ_CLAUDE_BIN=/path/to/claude` | Override which `claude` binary is used. |
 | `XEZ_CODEX_BIN=/path/to/codex` | Override which `codex` binary is used. |
-| `XEZ_CODEX_REASONING=concise` | The reasoning summary Codex is asked for on each turn: `auto` (the default, so the reasoning thread is visible), `concise`, `detailed`, or `none` to opt out. An unrecognised value falls back to `auto`. |
+| `XEZ_CODEX_REASONING=concise` | Codex reasoning summary: `auto` (default), `concise`, `detailed` or `none`; unknown values use `auto`. |
 | `XEZ_OPENCODE_BIN=/path/to/opencode` | Override which `opencode` binary is used. |
 | `XEZ_PI_BIN=/path/to/pi` | Override which `pi` binary is used. |
-| `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `PI_CODING_AGENT_DIR` | The agents' **own** variables, honoured where the vendor documents one. Setting one moves that agent's **default account** — the config folder xezar discovers, credentials included. pi's variable moves its whole `~/.pi/agent` (settings, models **and** `auth.json`), which is why pi can carry accounts and OpenCode cannot; re-verified against pi 0.85.1 on 2026-09-12. A *second* login of the same CLI is deliberately not an environment setting, since one process-wide value cannot differ per project: add it under **Settings → Agent accounts** and pick it per project. |
-| `OPENCODE_CONFIG_DIR` | Where xezar looks for OpenCode's config, ahead of `$XDG_CONFIG_HOME/opencode` (default `~/.config/opencode`). Config **only** — OpenCode keeps credentials in `~/.local/share/opencode`, so this moves settings without moving the account, which is why OpenCode cannot carry Agent accounts. |
+| `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `PI_CODING_AGENT_DIR` | Move the agent’s default account, including credentials (`CODEX_HOME` for Codex, `PI_CODING_AGENT_DIR` for pi). Add second logins in Settings → Agent accounts. |
+| `OPENCODE_CONFIG_DIR` | Move OpenCode configuration; credentials remain in `~/.local/share/opencode`. Defaults to `$XDG_CONFIG_HOME/opencode` or `~/.config/opencode`. |
 | `XEZ_BROWSE_ROOT=~/` | Default root for **Add project → Open local folder…**. The picker cannot navigate above it; a saved workspace value overrides the environment default and must name an existing folder. |
 | `XEZ_PROJECTS_DIR=~/xezar/projects` | Default destination for **Clone from GitHub**. Saved workspace settings override it, and missing directories are created recursively. |
-| `XEZ_SKILLS_AUTO_UPDATE=0` | Disable automatic checks and updates for `npx skills`-tracked `qodeca/xezar-skills` installations. On by default; a saved global Skills setting overrides this environment default. Checks are delayed, bounded, cached, and non-blocking. |
+| `XEZ_SKILLS_AUTO_UPDATE=0` | Disable automatic application of tracked team-skill updates (default on). Saved global Skills settings override it; read-only detection continues. |
 | `XEZ_AUTONOMOUS_DEFAULT=0` | Seed the New Task Autonomous default (`0` or `1`). Without a seed, skills default on and workflows off; a saved global Resources setting overrides it. |
 | `XEZ_WORKTREE_DEFAULT=1` | Seed the New Task Worktree default (`0` or `1`). Without a seed, eligible runs default on; a saved global Resources setting overrides it. |
-| `XEZ_DISABLE_REPO_LOCK=1` | **Dangerous escape hatch:** allow any run executing in the repository root — an explicit `worktree=false` run, non-Git degradation, or a continuation whose worktree cannot be restored — to proceed without Xezar’s repository-root lease. Agents can overwrite each other’s files or Git state; isolated worktree runs are unaffected. Off by default; only the exact value `1` enables it. |
-| `XEZ_SINGLE_PROJECT=1` | Opt into a launch-project-only cockpit: only the exact value `1` enables it. Project add, edit, checkout, folder browsing, and removal are refused and only the launch project is shown. Off by default; stored registry rows are retained, so unsetting it and restarting restores the full multi-project workspace without migration or data loss. |
-| `XEZ_HIDE_TOKEN_USAGE=1` | Hide raw input/output token counts throughout the browser cockpit while leaving backend-reported cost visible. Only the exact value `1` enables it; telemetry and API payloads are unchanged, and a restart is required after changing it. |
-| `XEZ_HIDE_COST=1` | Hide backend-reported monetary cost throughout the browser cockpit while leaving raw input/output token counts visible. Only the exact value `1` enables it; telemetry and API payloads are unchanged, and a restart is required after changing it. |
-| `XEZ_HIDE_TOKEN_METRICS=1` | Legacy master switch that hides both token usage and cost. It takes precedence over the two independent flags; only the exact value `1` enables it, payloads are unchanged, and a restart is required. |
+| `XEZ_DISABLE_REPO_LOCK=1` | Bypass the repository-root lease (default off, exact `1`). Concurrent agents may overwrite files or Git state. Isolated worktrees are unaffected. |
+| `XEZ_SINGLE_PROJECT=1` | Show only the launch project and refuse project management (default off, exact `1`). Restart required; registry rows are retained. |
+| `XEZ_HIDE_TOKEN_USAGE=1` | Hide token counts, keeping cost visible (default off, exact `1`, restart required). API data is unchanged. |
+| `XEZ_HIDE_COST=1` | Hide cost, keeping token counts visible (default off, exact `1`, restart required). API data is unchanged. |
+| `XEZ_HIDE_TOKEN_METRICS=1` | Legacy switch hiding both counts and cost; overrides the two flags above (default off, exact `1`, restart required). |
 | `GITHUB_TOKEN` | Fallback for GitHub reads/PRs when `gh` isn't authenticated. |
-| `XEZ_ENV_PASSTHROUGH=A,B` | Forward these extra host env vars to spawned agents. By default agents get a least-privilege env (safe shell/toolchain vars + the backend's own auth + `GITHUB_TOKEN` + `XEZ_*`), not your full environment — use this to add a var an agent needs. The Settings → Resources control overrides this default and needs no restart. |
-| `XEZ_AGENT_ENV_FULL=1` | Escape hatch: give spawned agents the full host environment (pre-hardening behavior). Off by default; only set it if you understand that this hands every host secret to the agent process. |
-| `XEZ_AGENT_TMPDIR=0` | Stop giving each task its own temp directory and hand agents the host `TMPDIR` again (pre-#785 behavior). On by default: every run gets `TMPDIR`/`TEMP`/`TMP` pointing at `.local/xezar/tmp/<task-id>`, created and write-probed before the agent spawns and reaped when the run ends, so concurrent tasks stop sharing one directory and a task refuses to start rather than run against a temp directory that silently swallows its shell output (see Troubleshooting below). Only an exact `0` disables it, and it disables the whole thing — the pre-spawn check included, so this stays an escape hatch you can actually take. |
-| `XEZ_REDACT_SECRETS=0` | Disable scrubbing of credential values/token shapes from the on-disk state (the NDJSON transcript and the free-text fields of `runs.json`). On by default; leave it on. Best-effort defense-in-depth, not a guarantee: it catches known token shapes and the values of your own secret-named env vars, so a credential in neither category can still get through. |
+| `XEZ_ENV_PASSTHROUGH=A,B` | Forward extra host variables to agents. Settings → Resources overrides this without restart; the default environment is restricted. |
+| `XEZ_AGENT_ENV_FULL=1` | Give agents the full host environment, including host secrets (default off). |
+| `XEZ_AGENT_TMPDIR=0` | Disable per-task temp directories and their write check; use host `TMPDIR` instead. Default: isolated, checked directories cleaned at run end. |
+| `XEZ_REDACT_SECRETS=0` | Disable best-effort credential scrubbing in saved state (default on). Scrubbing cannot guarantee every secret is caught. |
 | `XEZ_TITLE_UPDATES=0` | Turn off the live task-title refresh (namer re-runs on each turn end). The Settings → Agents toggle overrides this default. |
-| `XEZ_AUTONAME=0` | Disable ALL LLM task naming (creation + live) — titles stay heuristic (`437: /xez-auto-review-pr`). Under `XEZ_DRY_RUN=1` naming is already off unless forced with `XEZ_AUTONAME=1`. |
-| `XEZ_REVIEW_GATE=1` | Turn ON the optional diff-first review gate (#489): a successful, non-autonomous run with changes parks at `review` (Accept / Send back / Draft PR) instead of finishing. Off by default — changed runs settle to `done` with the diff left in the worktree. Only `1` enables. The Settings → Agents toggle overrides this; autonomous runs always skip it. |
-| `XEZ_NO_BANNER=1` | Skip the `qodeca/xezar-skills` banner on `xezar serve` startup. (The cockpit no longer shows a banner — its skills now live on the Skills page's Manage panel — so this env var is the terminal banner's only switch.) |
-| `VITE_XEZ_API_BASE=http://localhost:4321` | **Build time only**, and only when the cockpit bundle is deployed apart from the service it talks to. Empty (the default) means "the origin that served this page", which is right for both normal cases: the CLI serves the bundle itself, and `npm run dev` proxies `/api` to the local service. A deployment that must be configured without a rebuild can put `<meta name="xez-api-base" content="…">` in the served HTML instead, which wins over this. |
+| `XEZ_AUTONAME=0` | Disable all LLM task naming, keeping heuristic titles. Naming is off in dry runs unless forced with `1`. |
+| `XEZ_REVIEW_GATE=1` | Enable review for successful non-autonomous runs with changes (default off, exact `1`). Settings → Agents overrides it. |
+| `XEZ_NO_BANNER=1` | Hide the team-skills banner at `xezar serve` startup. |
+| `VITE_XEZ_API_BASE=http://localhost:4321` | Build-time API origin for a separately hosted cockpit; default is same-origin. A served `xez-api-base` meta tag overrides it. |
+| `XEZ_REMOTE=1` | Hide conveniences that open files or applications on the host machine. Off by default. |
+| `XEZ_API_PORT=4321` | Pin the API port used by the development launcher; otherwise it discovers a free port. |
+| `XEZ_CODEX_NETWORK=0` | Use Codex's network-blocked workspace-write sandbox; default is full access. |
+| `XEZ_HOME=/path/to/state` | Move global state and the project registry from `~/.xezar`; empty uses the default. |
 
-### Troubleshooting: the agent's shell returns nothing
+Defaults and internal test variables: [`.env.example`](.env.example).
 
-**Symptom.** A task on the Claude backend keeps working, but every shell command
-comes back with no output and a spurious non-zero exit status — `echo hello`
-included. Redirecting into a file inside the worktree still produces the right
-content, so the commands genuinely run; only the *capture* is lost. Codex tasks
-on the same machine are unaffected, because that backend streams over stdio
-pipes instead of round-tripping a command's output through a temp file.
+</details>
 
-**Diagnosis.** The temp directory the agent was given is out of space or out of
-quota. One line tells you:
+## Project leader (MCP)
 
-```bash
-echo probe > "${TMPDIR:-/tmp}/probe"   # "Disk quota exceeded" / "No space left on device"
-df -i "${TMPDIR:-/tmp}"                # a tmpfs can exhaust inodes long before bytes
-```
-
-Under quota the file is *created* and the write then fails, so the backend reads
-back a zero-byte capture file and hands the agent an empty result.
-
-**Fix.** Since #785 xezar gives each task its own `TMPDIR` under
-`.local/xezar/tmp/<task-id>` and write-probes it before spawning, so a broken temp
-directory fails the task with `agent temp directory is not writable: …` on the
-task thread instead of corrupting its work. If you see that error, free space on
-the disk holding the repo. `XEZ_AGENT_TMPDIR=0` turns the whole mechanism off —
-per-task directory and pre-spawn check alike — and hands agents the host
-`TMPDIR` again, which is the way out if the check itself is wrong on your
-platform.
-
----
-
-## Coding agent backends
-
-xezar is not married to one vendor. Every agent step runs through a single
-`AgentRunner` seam with four built-in backends:
-
-| Backend | CLI | How xezar drives it | Tool access |
-|---|---|---|---|
-| **Claude Code** (default) | [`claude`](https://github.com/anthropics/claude-code) | Headless `stream-json` mode. | Per-tool `--allowedTools` (`bashAllowlist` scopes `Bash`); `dontAsk` denies unapproved tools without prompting (`XEZ_APPROVAL_GATE=1` → `acceptEdits` + approval UI). |
-| **Codex** | [`codex`](https://github.com/openai/codex) | `codex app-server` — JSON-RPC over stdio, the same transport the Codex IDE extensions use. | Ignores `allowedTools`; the default auto mode uses `danger-full-access` with `approvalPolicy: never` (`XEZ_CODEX_NETWORK=0` opts into the network-blocked `workspace-write` sandbox). |
-| **OpenCode** _(experimental)_ | [`opencode`](https://opencode.ai) | `opencode serve` — a local HTTP server with an SSE event stream. | Ignores `allowedTools` entirely; every permission is auto-approved. |
-| **pi** _(experimental)_ | [`pi`](https://github.com/badlogic/pi-mono) | Persistent `--mode rpc` over JSONL; models are picked with the `provider/model` convention. | Maps `allowedTools` onto pi's `--tools` allowlist; a configured `bashAllowlist` disables Bash because pi cannot express command-prefix rules. |
-
-> ⚠️ **OpenCode and pi support are experimental.** Both runners work but are less
-> battle-tested than the Claude Code and Codex backends, and OpenCode auto-approves
-> every permission (it ignores `allowedTools`). Treat them as previews and expect
-> rough edges.
-
-On startup xezar probes which CLIs are installed and the cockpit only offers
-the backends it found — install any one of the four and you're operational.
-
-### Codex runs and MCP servers
-
-> 💥 **Changed in the next minor release** (#324, #323). A Codex run xezar starts
-> no longer loads the MCP servers, plugins or apps from your own Codex config.
-
-A Codex task run used to load every MCP server and plugin in
-`$CODEX_HOME/config.toml` (your browser, the Messages plugin, ChatGPT
-connectors), and `approvalPolicy: never` let the agent call them with no prompt.
-Now, before each thread starts or resumes, xezar asks the Codex app-server which
-servers it would load (`config/read`) and switches off, for that thread only:
-
-- every server that **your own** config contributes – a server set in
-  `~/.codex/config.toml`, or a project server your home config adds a key to
-  (an `env` entry, for example);
-- **xezar's own leader bridge**, even when the project declares it: a task run
-  is not your leader. xezar knows the bridge by its launch line
-  (`npx -y @qodeca/xezar mcp`, `xezar mcp`, `xez mcp`, `env … xezar mcp`,
-  `sh -c "…"`, or `node …/@qodeca/xezar/dist/index.js mcp`) and by the name
-  `xezar`, which is **reserved**;
-- Codex **plugins** and **apps**.
-
-Your config files are not changed, and the run transcript names the servers it
-switched off. To give Codex runs a server:
-
-1. Declare it in the project's own `.codex/config.toml`, and trust the project in
-   Codex. Only servers **that file alone** declares are loaded.
-2. Keep your home config from adding keys to it. A key from `~/.codex/config.toml`
-   makes the server yours, and it is switched off.
-3. Do not call it `xezar`. A project server with that name is treated as the
-   bridge and switched off; rename it.
-
-A Codex CLI that cannot answer `config/read` now **fails the run** with a
-message, where it used to start. Update Codex (`npm i -g @openai/codex`).
-There is no setting and no environment variable for this. Claude Code, OpenCode
-and pi runs are unchanged. The details are in `BACKWARD_COMPATIBILITY.md`.
-
-**Models come from your own machine.** The model picker does not ship a list of
-vendor releases that goes stale between xezar versions. For each backend xezar
-reads what *your host* currently offers — Claude Code's `list_models` control
-request, the Codex app-server's `model/list`, `opencode models`, and for pi its
-own `models.json` and `settings.json` (in `~/.pi/agent`, or wherever
-`PI_CODING_AGENT_DIR` points) — and shows exactly that, in
-that order, so a model your account gained yesterday is selectable today with no
-xezar release, and one your provider retired stops being offered. Discovery is
-read-only, costs no tokens, and is cached briefly in memory. If a CLI is
-missing, logged out, too old or slow — or pi has no providers configured yet —
-the picker quietly falls back to that runner's built-in entries (`auto` plus
-Claude's tier aliases) and says so in a status row. `auto` — send no
-model at all and let the CLI decide — is always available, and a model you
-pinned by hand stays selectable even when it is no longer advertised.
-
-**OpenCode connection checks include native model configuration.** A LAN/local
-provider can be configured without stored login credentials. When
-`opencode auth list` reports no stored or environment credentials, xezar also
-runs `opencode models`:
-
-- A successful listing with a recognized `provider/model` marks OpenCode as
-  configured. Connect recognizes that state without opening a login terminal.
-  The Providers card says **Configured**, rather than **Credentials found**.
-- A successful empty listing leaves OpenCode **Not connected**. Connect opens
-  `opencode auth login` to configure credentials.
-- A failed, unrecognized or timed-out listing reports **Could not verify**,
-  rather than assuming login is needed. Each CLI probe has a ten-second timeout.
-
-If OpenCode works directly but xezar asks you to connect, compare
-`opencode auth list` and `opencode models` from the same project directory and
-environment used by xezar. Zero credentials alone does not mean a local provider
-needs login. A model listing establishes configuration, not endpoint health or
-successful inference; an authentication rejection from an actual task still
-overrides the probe result and requires attention. Xezar does not add credentials
-or change OpenCode's provider configuration during these checks.
-
-**Pick a backend at three levels** (most specific wins):
-
-1. **Config default** — `"defaultRunner": "codex"` in `.xezar/config.json`.
-2. **Per task** — the backend picker next to the task box in the cockpit.
-3. **Per workflow step** — `runner:` on any step in the YAML.
-
-Per-step overrides are what make **mixed-agent strategies** a one-liner:
-implement with one agent, review with another, and let a shell check referee:
-
-```yaml
-name: implement-and-cross-review
-steps:
-  - id: implement
-    name: Implement
-    prompt: "{{task}}"
-    runner: codex                # one vendor writes the code…
-  - id: review
-    name: Cross-review
-    prompt: "Review the diff produced for: {{task}}. Fix real issues only."
-    runner: claude               # …another one reviews it
-  - id: verify
-    name: Verify
-    command: "npm test"
-    onFail: { retry: implement, max: 2 }
-```
-
-Parallel variants (×2/×3) of one task share that task's backend — mixing
-happens per task and per step, not inside a variant group.
-
-The seam is deliberately small: a backend is one class implementing the
-`AgentRunner` interface (`packages/xezar/src/core/agent-runner.ts`) that turns a prompt into
-a stream of normalized events. `pi` was added exactly that way; other CLIs —
-aider, whatever ships next — can slot into the same seam.
-
----
-
-## Remote access (host xezar on a server)
-
-xezar runs on `localhost` by default. To reach the cockpit from another machine —
-a shared team box, a VPS, your phone — put an **authenticated public front** in
-front of it. The built-in installer does this interactively, per **platform
-strategy**, and never escalates silently: every privileged command is printed
-and verified, and it ends with a real authenticated end-to-end check.
-
-```bash
-xezar server-install   --platform ubuntu-vps   # stand it up
-xezar server-deploy    --platform ubuntu-vps   # roll out a new version (reload the service)
-xezar server-uninstall --platform ubuntu-vps   # reverse it
-
-# host a SECOND cockpit for another domain on the same box (ubuntu-vps):
-xezar server-install   --platform ubuntu-vps --domain shop.example.com
-```
-
-On `ubuntu-vps` a single host can run several independent cockpits — add
-`--domain <host>` and each gets its own port, nginx site, login and service; a
-new domain never resumes or clobbers the first install.
-
-**Already running a reverse proxy?** If Dokploy, Coolify, Caddy or your own
-nginx already owns `:80/:443`, xezar's would fight it for the ports. Install the
-service only and let your proxy front it:
-
-```bash
-xezar server-install --platform ubuntu-vps \
-  --external-proxy --domain xezar.example.com --bind-host 172.17.0.1
-```
-
-`--bind-host` is only needed when the proxy runs in a **container** (Traefik
-can't reach the host's loopback); a host-installed proxy uses the `127.0.0.1`
-default. In this mode **your proxy must enforce authentication** — xezar has
-none of its own. [Details →](docs/server-install/ubuntu-vps.md#the-box-already-has-a-reverse-proxy-dokploy-coolify-caddy)
-
-| Provider | `--platform` | Public front | Guide |
-|----------|--------------|--------------|-------|
-| Ubuntu / Debian VPS | `ubuntu-vps` | nginx + Let's Encrypt HTTPS, htpasswd login, systemd | [Step-by-step →](docs/server-install/ubuntu-vps.md) |
-| Ubuntu + existing proxy | `ubuntu-vps --external-proxy` | your Dokploy/Traefik/Caddy front; xezar ships the service only | [Step-by-step →](docs/server-install/ubuntu-vps.md#the-box-already-has-a-reverse-proxy-dokploy-coolify-caddy) |
-| macOS + ngrok | `macosx-ngrok` | ngrok tunnel + `--basic-auth`, launchd | [Step-by-step →](docs/server-install/macosx-ngrok.md) |
-
-See the **[Remote access overview](docs/server-install/README.md)** for how it
-works and how to redeploy new versions.
-
----
-
-## Configuration (optional)
-
-Zero config is the default — everything below is opt-in via
-`.xezar/config.json` (a missing or invalid file simply uses the defaults, and
-never blocks startup):
-
-```jsonc
-{
-  "skillsRepos": [{ "repo": "qodeca/xezar-skills", "ref": "main" }], // team skills; [] disables
-  // Team-skill repos are code-trusted: a skill body becomes an agent system prompt.
-  // Only owner/name, https/ssh URLs, or local paths (`/abs`, `./rel`, `~/dir`,
-  // `C:\dir`) are accepted — no ext::/fd:: transport helpers. Write a relative
-  // path as `./name`, not a bare `name`. Pin `ref` to a full commit SHA to freeze
-  // the source against a moving branch head — xezar verifies it resolves to
-  // exactly that commit, and reports it as `team.commit`.
-  "worktreeRetention": 10,   // keep the last N finished worktrees on disk; 0 = unlimited (branch always kept)
-  "defaultRunner": "claude", // agent backend: "claude" (default) · "codex" · "opencode" · "pi"
-  "modelsLocked": true,      // optional: native per-runner model is fixed/read-only; runner stays selectable
-  "plannerModel": "sonnet",  // model the "Plan first" button uses to draft chains
-  "baseBranch": "develop"    // branch worktrees fork from + PRs target (also settable in the Git tab)
-}
-```
-
-### Migrating from the previous team skills repository
-
-Up to and including 0.14.0 the default team skills repository was `open-mercato/skills` and its skills were
-named `om-*`. The default is now `qodeca/xezar-skills`, the same collection under `xez-*` names.
-xezar does not migrate an existing install, and the updater no longer recognises the old
-source, so a repository that installed the old set with `npx skills` moves by hand:
-
-```sh
-npx skills remove om-fix om-code-review … -p   # every om-* name in skills-lock.json; -g for a global install
-npx skills add qodeca/xezar-skills --skill '*'
-rm -rf ~/.cache/xez/skills/open-mercato__skills .claude/skills/om-*   # optional: orphaned clone cache and materialised copies
-```
-
-The last line is deliberate housekeeping – nothing reads those paths any more, and deleting them
-is always safe. A curated Manage-skills selection that still names `om-*` skills keeps working:
-xezar reads each `om-<name>` as `xez-<name>` and never rewrites the stored list. To keep loading
-the old repository instead, set `"skillsRepos": [{ "repo": "open-mercato/skills" }]` in
-`.xezar/config.json`: its skills load and are all enabled (a repo that names its own
-`skillsRepos` gates nothing), but they are no longer updated automatically.
-
-Put the same `"modelsLocked": true` key in `~/.xezar/config.json` to apply it
-to every registered project. When the key is absent or `false` in both config
-files (and `XEZ_AGENT_MODELS_LOCKED` is not `1`), each runner's normal model
-selector uses that runner's discovered model list. While locked, the model is
-shown read-only and follows the selected runner's native settings; the runner
-itself remains selectable.
-
-Run data (`runs.json`, NDJSON event logs, worktrees, `todos.json`) is
-git-ignored automatically; your workflows and skills stay committable.
-
-Settings that belong to *you* rather than to a repo — the parallel cap
-(`maxParallel`, default **2**), the per-task memory ceiling, the **idle timeout**
-(`idleTimeoutMinutes`, default **15**), the default worktree retention
-(`worktreeRetentionDefault`), the Inbox switch and the agent env passthrough list,
-and the checkout root — live once in `~/.xezar/config.json`, alongside the
-[project registry](#multiple-projects-one-cockpit), and are edited from
-**Settings → Resources** and **Settings → Projects**.
-
-The idle timeout is how long a task parked at `waiting` keeps its agent session
-alive with nobody talking to it. After it expires the session is closed. Set it to
-**Never** if you run long interactive sessions and would rather keep them — a
-waiting task holds no parallel-task slot, so your queue keeps moving either way,
-but its agent process stays alive and keeps using memory until you send it a
-message or cancel it.
-
-A `maxParallel` left over in a repo's `.xezar/config.json` is imported into the
-workspace file the first time xezar boots there, and ignored afterwards. A per-repo
-`memoryLimitMb` behaves differently on purpose: it is still honoured, and overrides
-the workspace ceiling for runs in that repo.
-
-### Editing the agents' own config (Settings → Agent config)
-
-xezar picks *which* agent runs; **Settings → Agent config** lets you edit *how* it
-behaves — the raw config files Claude, Codex, OpenCode and pi read for settings,
-MCP, and memory. In the multi-project cockpit the section is project-scoped:
-repo-relative files resolve from the selected project's root, while user-scope
-files continue to resolve from the agent's home.
-
-Each file keeps its native format and vendor-documented precedence. Tracked
-files reach task worktrees after commit; Claude's gitignored personal layer is
-seeded into each run's worktree. Editing is a local-machine capability, so a
-hosted cockpit (`XEZ_REMOTE=1`) is read-only and never serves home-file contents.
-
-**Next minor release: individual config-file symlinks are no longer supported.**
-Reads and writes refuse them with HTTP 409, and the listing marks them read-only.
-Replace a file link with a regular config file to edit it. Directory links below
-an agent home or repository must stay within that root; relocating the entire
-configured home to a dotfiles directory still works. This prevents a catalogued
-filename from exposing an uncatalogued credential file (#363).
-
-Only files whose whole contents are safe to hand back are listed. pi keeps its
-credentials (`auth.json`) and its custom-provider catalogue with the API keys in
-it (`models.json`) in the same folder as its settings, and neither is editable
-here or anywhere else in the cockpit. pi's MCP files are listed because the
-`pi-mcp-adapter` extension reads them — pi itself reads no MCP config, which is
-what **Settings → MCP connection** walks you through installing.
-
-### Running a project leader: MCP tools only, attached for pushed events
-
-A project leader works through the xezar MCP tools only – not the cockpit UI and
-not the HTTP API. It is **attached**, so xezar pushes project events to it: a
-**Claude Code** leader receives them as `<channel source="xezar">` messages over
-Claude Code Channels, and an attached Codex, OpenCode or pi leader has a turn
-started in it. That is the normal path. Reading events with the `leader_events` MCP
-tool is the fallback for a leader that is not attached. GitHub facts – labels,
-review verdicts, merge state – are not carried by the MCP, so a leader reads them
-with `gh`.
+A project leader works through the xezar MCP tools only – not the cockpit UI and not the HTTP API.
+Start the bridge from your agent with `npx -y @qodeca/xezar mcp`.
+xezar pushes project events to the attached leader.
 
 Nothing is pushed until a leader is attached, and xezar gains no setting and no
 environment variable for it. The leader attaches itself with `leader_events` action
@@ -927,156 +215,64 @@ no-op.
 
 A person can still attach a leader with **Attach leader** under
 **Settings → MCP connection → Connection status**, and an OpenCode leader is attached
-only that way. For Claude Code the other switch is a flag you add when you start it:
+only that way.
+An unattached leader reads events with `leader_events`. Use `gh` for GitHub facts.
 
-```bash
-claude --dangerously-load-development-channels server:xezar
+<details>
+<summary>Waking a Claude Code leader: requirements and recovery</summary>
+
+Launch with `claude --dangerously-load-development-channels server:xezar` to let xezar wake this leader. The flag lets a custom server push messages into your session because custom servers are not on the channel allowlist. Claude Code shows a confirmation screen on every launch: choose "I am using this for local development" if you accept it. Then let the leader call `leader_events` action `attach`, or use **Attach leader** under **Settings → MCP connection → Connection status**, the same control that attaches Codex, OpenCode and pi. Until it is attached, the leader reads events with `leader_events`. The feature-flag service must be reachable and enable Channels. A Team or Enterprise admin must enable Channels. Channels need a claude.ai or Anthropic Console API-key login, do not work on Bedrock, Vertex or Foundry, and are off while CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC is set.
+
+- **`claude-code-not-owner`** – The MCP session that owns this project is not a Claude Code session, so there is no Claude Code leader to push events to. Events are kept in the journal. fix: Start Claude Code in this project with --dangerously-load-development-channels server:xezar, let it call a xezar tool once, then attach it again.
+- **`claude-code-bridge-too-old`** – This Claude Code session is connected through an older xezar MCP bridge that cannot push events. Events are kept in the journal. fix: Restart Claude Code so it starts the current xezar bridge (npx -y @qodeca/xezar mcp), then attach it again.
+- **`claude-code-channel-not-advertised`** — This Claude Code session connected while xezar could not push to it, so its xezar MCP server did not register the channel and a pushed event would never reach the model. Events are kept in the journal. fix: Reconnect the xezar MCP server in Claude Code (/mcp, then reconnect xezar) or restart Claude Code while the cockpit runs, then attach it again (from Claude Code: leader_events with action attach). Until then, read events with leader_events.
+- **`claude-code-push-unconfirmed`** – xezar pushed events to the attached Claude Code session, and they are not acknowledged yet. Claude Code does not confirm delivery, so xezar cannot tell a leader that is still working from one that never received them. Nothing is lost: the events stay in the journal. fix: If the leader is working, nothing is needed. Otherwise check the launch flag and the Channels requirements above. Until then, read events with leader_events.
+
+</details>
+
+More → [MCP tool reference](docs/features/mcp-server/mcp-api.md)
+
+## Remote access
+
+xezar binds to `127.0.0.1` by default (this machine only). To reach it from a phone or another machine, `xezar server-install` puts an
+authenticated front before it – see the [Remote access overview](docs/server-install/README.md).
+
+## Upgrading to 0.15.0
+
+### Codex runs and MCP servers
+
+A Codex run no longer loads the MCP servers, plugins or apps from your own Codex config (#324). To give
+Codex runs a server, declare it in the project's own `.codex/config.toml`, trust the project in Codex,
+keep `~/.codex/config.toml` from adding keys to it, and do not name it `xezar` (reserved for xezar's
+leader bridge). A Codex CLI that cannot answer `config/read` fails the run – update it with
+`npm i -g @openai/codex`. Details: [`BACKWARD_COMPATIBILITY.md`](BACKWARD_COMPATIBILITY.md).
+
+### Team skills repository
+
+The default team skills repository moved from `open-mercato/skills` (`om-*`) to `qodeca/xezar-skills`
+(`xez-*`). A curated selection naming `om-*` keeps working. Move an `npx skills` install by hand:
+
+```sh
+npx skills remove om-fix om-code-review … -p   # every om-* name in skills-lock.json; -g for a global install
+npx skills add qodeca/xezar-skills --skill '*'
+rm -rf ~/.cache/xez/skills/open-mercato__skills .claude/skills/om-*   # optional: orphaned clone cache and copies
 ```
 
-That flag is how Claude Code lets a server that is not on Anthropic's approved list
-push messages into your session. **Claude Code shows a warning every time you launch
-with it** — choose "I am using this for local development" if you accept it. Then
-let the leader call `leader_events` action `attach`, or use **Attach leader** under
-**Settings → MCP connection → Connection status**, the same control that attaches Codex,
-OpenCode and pi. Until it is attached, the leader reads events with `leader_events`.
+To keep the old collection, set `"skillsRepos": [{ "repo": "open-mercato/skills" }]` in `.xezar/config.json`
+(loaded and enabled, no longer auto-updated).
 
-Channels are a Claude Code research preview, so the wake only works on a first-party
-login: they need a claude.ai or Anthropic Console API-key login, they do not work on
-Amazon Bedrock, Google Vertex or Microsoft Foundry, a Team or Enterprise admin must
-turn them on, and they are off while `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` is
-set. When any of those is not met the event is **never lost** — it stays in the
-journal and the cockpit shows a recoverable reason with a remedy. Use **Attach leader** under **Settings → MCP connection → Connection status**.
-Until it is attached, read events with `leader_events`.
+### Agent config symlinks
 
-Launch with `claude --dangerously-load-development-channels server:xezar` to let xezar wake this leader. The flag lets a custom server push messages into your session because custom servers are not on the channel allowlist. Claude Code shows a confirmation screen on every launch: choose “I am using this for local development” if you accept it. The feature-flag service must be reachable and enable Channels. A Team or Enterprise admin must enable Channels. Channels need a claude.ai or Anthropic Console API-key login, do not work on Bedrock, Vertex or Foundry, and are off while CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC is set.
-
-**`claude-code-not-owner`** — The MCP session that owns this project is not a Claude Code session, so there is no Claude Code leader to push events to. Events are kept in the journal.
-
-fix: Start Claude Code in this project with --dangerously-load-development-channels server:xezar, let it call a xezar tool once, then attach it again.
-
-**`claude-code-bridge-too-old`** — This Claude Code session is connected through an older xezar MCP bridge that cannot push events. Events are kept in the journal.
-
-fix: Restart Claude Code so it starts the current xezar bridge (npx -y @qodeca/xezar mcp), then attach it again.
-
-**`claude-code-channel-not-advertised`** — This Claude Code session connected while xezar could not push to it, so its xezar MCP server did not register the channel and a pushed event would never reach the model. Events are kept in the journal.
-
-fix: Reconnect the xezar MCP server in Claude Code (/mcp, then reconnect xezar) or restart Claude Code while the cockpit runs, then attach it again (from Claude Code: leader_events with action attach). Until then, read events with leader_events.
-
-**`claude-code-push-unconfirmed`** — xezar pushed events to the attached Claude Code session, and they are not acknowledged yet. Claude Code does not confirm delivery, so xezar cannot tell a leader that is still working from one that never received them. Nothing is lost: the events stay in the journal.
-
-fix: If the leader is working, nothing is needed. Otherwise check that Claude Code was started with --dangerously-load-development-channels server:xezar and that its startup notice says channels from server:xezar inject into the session. Channels need a claude.ai or Console API-key login, do not work on Bedrock, Vertex or Foundry, must be enabled by a Team or Enterprise admin, and are off while CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC is set. Until then, read events with leader_events.
-
-
----
-
-## Local development
-
-End-to-end, from a fresh clone to a global `xezar` command you can run in **any**
-repo on your machine — no npm publish required.
-
-**1. Prerequisites** — Node 20+ and `git` (plus at least one logged-in agent CLI,
-as in [Quick start](#quick-start)).
-
-**2. Clone & install**
-
-```bash
-git clone https://github.com/qodeca/xezar.git
-cd xezar
-npm install
-```
-
-**3. Build** — compiles the server (`tsc → packages/xezar/dist/`), folds the
-contract into `dist/contract/` so the published tarball resolves it, and builds
-the cockpit (`vite build → packages/xezar/web/dist/`), then runs the pack gate:
-
-```bash
-npm run build
-```
-
-**4. Install as a global command** — build + put `xezar` / `xez` on
-your PATH pointing at *this checkout*:
-
-```bash
-npm run install-as-command            # live link (default) — see the change loop below
-#   or: npm run install-as-command:global   # self-contained snapshot copy
-```
-
-Now `cd` into any other repo and run it:
-
-```bash
-cd ~/some-other-project
-xezar            # cockpit for that repo, straight off your checkout
-xez --help       # same binary under its short name
-```
-
-**5. The change loop**
-
-- **Link mode** (default): edit source → `npm run build` → the global command
-  reflects it immediately. No relink needed. (It is a live symlink into this
-  checkout — don't move or delete the checkout while it's linked.)
-- **Snapshot mode** (`:global`): re-run `npm run install-as-command:global` to
-  refresh the installed copy. It survives moving/deleting the checkout.
-
-**6. Uninstall**
-
-```bash
-npm run uninstall-as-command    # removes xezar / xez (either flavor)
-```
-
-**7. Troubleshooting**
-
-- **`xezar: command not found`** after install → your npm global bin dir isn't on
-  PATH. The script prints the exact dir; add it to your shell profile
-  (`export PATH="$(npm prefix -g)/bin:$PATH"`).
-- **`EACCES` / permission denied** → your global prefix is root-owned. Point npm
-  at a user-writable one and retry — **never** sudo:
-  `npm config set prefix ~/.npm-global`.
-- **Already installed the published `@qodeca/xezar` globally?** The
-  link/snapshot install replaces it; `uninstall-as-command` removes ours, and
-  `npm i -g @qodeca/xezar` brings the published one back.
-
-### In-checkout scripts
-
-```bash
-npm run dev          # server (API :4321) + Vite dev server, opens the cockpit in the browser
-npm run dev:server   # tsx packages/xezar/src/index.ts — the API server alone
-npm run dev:web      # Vite dev server alone (proxies /api to :4321)
-npm run build        # tsc → packages/xezar/dist/, vite build → packages/xezar/web/dist/, then the pack gate
-npm run typecheck    # contract + api-client + server + web (tsc --noEmit)
-npm test             # vitest — server + cockpit unit suites
-npm run test:unit    # node:test — fast core-module tests
-npm run test:package # pack/install and exercise the built CLI
-npm run test:e2e     # real-browser cockpit suite (agent-browser)
-```
-
-Coverage is measured separately, and is not part of the validation gate:
-`npm run test:coverage` runs the vitest suites under the v8 provider and writes line and branch
-numbers to `.local/coverage/`. The behaviour-led gap analysis built from it lives in
-[docs/testing/coverage-gaps.md](docs/testing/coverage-gaps.md).
-The MCP server is the one scope held to a floor: `npm run test:coverage:mcp` measures it alone
-and fails any file under 80 % lines or branches – see
-[SDLC.md § The MCP test floor](SDLC.md#the-mcp-test-floor).
-
-The stack is deliberately small: **TypeScript** (strict, ESM), **Hono** + SSE for
-the server, **Zod** at every boundary, **YAML** for workflows, and a **React 19 +
-Vite + Tailwind v4 + shadcn/ui** cockpit shipped pre-built in `packages/xezar/web/dist/` — the
-published package carries the built app, so `npx` users never run a bundler.
-Every module is meant to be read in one sitting.
-
-What lives where under `docs/`, and who each part is for, is mapped in
-[docs/README.md](docs/README.md). `docs/features/` is the internal engineering and decision
-record, not a user guide.
-
----
+Settings → Agent config no longer follows an individual config-file symlink: reads and writes answer
+409 and the file is listed read-only (#363). Replace the link with a regular file; relocating a whole
+agent home still works.
 
 ## Contributing
 
-Bug reports, ideas and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) is the short path
-from a change to a merged pull request. Report security problems privately, as described in
-[SECURITY.md](SECURITY.md).
-
----
+Bug reports, ideas and pull requests are welcome – [CONTRIBUTING.md](CONTRIBUTING.md) is the path from a
+change to a merged pull request, including local development. Report security problems privately, as
+described in [SECURITY.md](SECURITY.md).
 
 ## License
 
-**MIT** © Patryk Lewczuk — full text in [LICENSE](LICENSE).
+**MIT** © Patryk Lewczuk – full text in [LICENSE](LICENSE).

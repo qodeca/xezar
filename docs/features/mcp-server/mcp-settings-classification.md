@@ -1,5 +1,9 @@
 # MCP settings classification (D-03) — field by field
 
+> **Status update — 2026-09-15:** Implemented in `tools/project-config.ts`. The named routes and symbols
+> (`resolveProjectScope`, `hostedProfileRefusal`, `findConfigFile`, `projectsRoutes`) replace drifted
+> `server.ts` line anchors; other source anchors retain the `9fdcf0e` baseline.
+
 Status: **classification record; the feature is implemented** (`packages/xezar/src/mcp/tools/project-config.ts` applies this classification). Date: 2026-09-10; status updated 2026-09-11.
 Audience: product owner and engineering team.
 Baseline: Xezar revision `9fdcf0e878999783db6c2a69dec93a7d00ccea44` (v0.13.1) and the current repository
@@ -12,8 +16,7 @@ product boundary is **settled** and this document does not reopen it: *project w
 effective capability/limit reads from shared settings*. What this document decides is which field
 falls where.
 
-This is a decision table, not a tool catalog. It assigns no tool names, defines no transport, and
-claims no implementation. The companion inventory of UI actions is
+This is a decision table, not a tool catalog. It assigns no tool names and defines no transport. The companion inventory of UI actions is
 `mcp-ui-action-inventory.md` (a sibling document written in parallel; this document cites it by name
 and never edits it).
 
@@ -47,19 +50,19 @@ at the baseline revision.
 
 | Id | The enforcement | Where it lives | Status today |
 | --- | --- | --- | --- |
-| **E-BIND** | The project is resolved from a trusted binding and never from a caller-supplied parameter. The HTTP seam is the scope-resolver middleware `resolveProjectScope`, which sets `c.get('project')` for every project-scoped route. | `packages/xezar/src/server/server.ts:1334`; `packages/xezar/src/server/project-context.ts` `ProjectContexts.context` | Exists for project-scoped ROUTES. For MCP it must become the only source of the project id (F-01, F-16, section 8). |
-| **E-409-LOCAL** | Writing agent config is a local-machine capability: `PUT /api/v1/p/:projectId/agent-config/:id` answers **409** whenever `capabilities().localHandoff` is false. **This 409 closes a hooks-based remote-code-execution path — config files may define hooks and MCP commands. No classification in this document routes around it, and every agent-config row names it.** | `packages/xezar/src/server/server.ts:5384`; `packages/xezar/src/server/capabilities.ts` `resolveCapabilities` | Exists. Must not be weakened, bypassed, or re-implemented anywhere else. |
-| **E-409-PROFILE** | Every agent-account route answers 409 (`hostedProfileRefusal`) when `capabilities().localHandoff` is false, and `GET /workspace/agent-profiles` withholds the whole listing rather than serving it read-only. | `packages/xezar/src/server/server.ts:1989`, `:2045`, `:2111`, `:2147`, `:2167`, `:2218`, `:2271`; listing at `:1955` | Exists. |
-| **E-SCOPE-USER** | A catalog file whose `ConfigFileDef.scope` is `'user'` is refused for MCP, keyed off the catalog **field** and never off path matching. | `packages/xezar/src/agent-config/catalog.ts` `ConfigFileDef.scope`; resolved per request by `findConfigFile(id)` at `packages/xezar/src/server/server.ts:5365` | **Does not exist yet.** `listAgentConfig` sets `writable: editable` for every file regardless of scope (`packages/xezar/src/agent-config/service.ts:109`), so today the only gate is E-409-LOCAL. This is MCP-layer work, listed in §7. |
-| **E-SINGLE** | `PATCH`/`DELETE /api/v1/projects/:projectId` answer 409 in single-project mode. | `packages/xezar/src/server/server.ts:2441` (PATCH), `:2360` (DELETE) | Exists. Defence in depth only — it is not the project binding. |
+| **E-BIND** | The project is resolved from a trusted binding and never from a caller-supplied parameter. The HTTP seam is the scope-resolver middleware `resolveProjectScope`, which sets `c.get('project')` for every project-scoped route. | `packages/xezar/src/server/server.ts`; `packages/xezar/src/server/project-context.ts` `ProjectContexts.context` | Exists for project-scoped routes and MCP: `session-binding.ts` supplies the trusted project to the tool context. |
+| **E-409-LOCAL** | Writing agent config is a local-machine capability: `PUT /api/v1/p/:projectId/agent-config/:id` answers **409** whenever `capabilities().localHandoff` is false. **This 409 closes a hooks-based remote-code-execution path — config files may define hooks and MCP commands. No classification in this document routes around it, and every agent-config row names it.** | `packages/xezar/src/server/server.ts`; `packages/xezar/src/server/capabilities.ts` `resolveCapabilities` | Exists. Must not be weakened, bypassed, or re-implemented anywhere else. |
+| **E-409-PROFILE** | Every agent-account route answers 409 (`hostedProfileRefusal`) when `capabilities().localHandoff` is false, and `GET /workspace/agent-profiles` withholds the whole listing rather than serving it read-only. | `packages/xezar/src/server/server.ts`; listing at the named route | Exists. |
+| **E-SCOPE-USER** | A catalog file whose `ConfigFileDef.scope` is `'user'` is refused for MCP, keyed off the catalog **field** and never off path matching. | `packages/xezar/src/agent-config/catalog.ts` `ConfigFileDef.scope`; resolved per request by `findConfigFile(id)` at `packages/xezar/src/server/server.ts` | Exists for MCP since #262 (`tools/project-config.ts`); see § 7. |
+| **E-SINGLE** | `PATCH`/`DELETE /api/v1/projects/:projectId` answer 409 in single-project mode. | `packages/xezar/src/server/server.ts` (PATCH), the named route (DELETE) | Exists. Defence in depth only — it is not the project binding. |
 | **E-CONTRACT** | The bounds a write may take are the zod schemas in `packages/contract`, unchanged: `setConfigInputSchema` and `setWorkspaceConfigInputSchema` (`packages/contract/src/workspace.ts:379`, `:94`), `updateProjectInputSchema` (`packages/contract/src/projects.ts:133`), `uiStateSchema` / `workspaceUiStateSchema` / `setWorkspaceUiStateInputSchema` (`packages/contract/src/workspace.ts:167`, `:229`, `:277`), `setAgentConfigInputSchema` (`packages/contract/src/agent-config.ts:84`). | `packages/contract/src/*`; validated as route middleware through `packages/xezar/src/server/validators.ts` | Exists. MCP reuses these; it never declares a parallel shape and never widens one. |
-| **E-NARROW** | A workspace-level response that lists every project is narrowed to the bound project's own entry before it reaches the leader; the full listing is never proxied. | `GET /api/v1/projects` (`server.ts:2333`), `GET /workspace/agent-profiles` (`:1955`) | **Does not exist yet** — both routes are workspace-level and single-mount by design. MCP-layer work, §7. |
+| **E-NARROW** | A workspace-level response that lists every project is narrowed to the bound project's own entry before it reaches the leader; the full listing is never proxied. | `GET /api/v1/projects` (`server.ts`), `GET /workspace/agent-profiles` (the named route) | Exists for MCP since #262 (`tools/project-config.ts`); see § 7. |
 
 **The four routes that carry a `projectId` the caller chose** are the ones E-BIND has to cover
 first, because their route scope is not a binding: `PATCH /api/v1/projects/:projectId`,
 `DELETE /api/v1/projects/:projectId`, `PUT /api/v1/workspace/agent-profiles/selection` (a
-`projectId` in the BODY, `server.ts:2219`) and the three `workspace/skills-update` routes (a
-`projectId` in the body or query, `server.ts:2735`–`:2751`).
+`projectId` in the BODY, `server.ts`) and the three `workspace/skills-update` routes (a
+`projectId` in the body or query, `server.ts`).
 
 ---
 
@@ -98,7 +101,7 @@ path or content: `modelsLocked` on `GET /api/v1/p/:projectId/config`
 (F-03). It may not toggle `enabled`.
 
 **Reason.** `disabledProviders` is a workspace-wide key: the handler merge-writes it into
-`~/.xezar/config.json` (`server.ts:1727`–`:1732`), so a write from project A's leader changes
+`~/.xezar/config.json` (`server.ts`), so a write from project A's leader changes
 project B.
 
 **Enforcement.** E-BIND plus the absence of any MCP write path to
@@ -121,7 +124,7 @@ handle and display label** for its own project — never the account identity.
 (`packages/xezar/src/workspace/agent-accounts.ts`), and the value names an account identity, which
 F-12 and N-01 restrict.
 
-**Enforcement.** E-409-PROFILE, E-BIND (the `projectId` is in the request body, `server.ts:2219`)
+**Enforcement.** E-409-PROFILE, E-BIND (the `projectId` is in the request body, `server.ts`)
 and E-NARROW. The read resolves through `selectionFor(store, repoRoot, provider)`
 (`agent-accounts.ts:280`) for the BOUND root only, and reports two fields:
 `AgentAccount.id` (the local handle, bounded by `AGENT_ACCOUNT_ID_RE`) and `AgentAccount.label`.
@@ -133,7 +136,7 @@ one deliberate, localHandoff-gated identity read in the product and stays outsid
 
 **Rejected alternative.** Allowing the per-project selection write. F-12 states global accounts
 cannot be administered, and the selection is stored in the accounts file precisely because it
-belongs to the accounts, not to the registry (`server.ts:2211`–`:2213`).
+belongs to the accounts, not to the registry (`server.ts`).
 
 ### D-03-4 — Per-project `maxParallel` and `tags` → `project-write`; Remove → `excluded`
 
@@ -156,11 +159,11 @@ leader's own binding. It is irreversible shared state from the leader's point of
 capability whose success makes every subsequent call meaningless is not a project action.
 
 **Enforcement.** E-BIND is the whole of it, and it is not optional here: `projectsRoutes` is a
-WORKSPACE-level, single-mount family (`server.ts:2332`, mounted at `:5654`), so the `:projectId`
+WORKSPACE-level, single-mount family (`server.ts`, mounted at `:5654`), so the `:projectId`
 path parameter is caller-supplied and carries no binding of its own. The MCP layer must substitute
 the bound project's id and refuse — never forward — a `projectId` a client names, including the
 reserved `default` alias, which the handler resolves through `resolveBootProject()`
-(`server.ts:2451`) to whatever project this server booted in. E-CONTRACT keeps the bounds
+(`server.ts`) to whatever project this server booted in. E-CONTRACT keeps the bounds
 (`updateProjectInputSchema`: `maxParallel` integer 1–16 or `null`, `tags` at most 20 entries of at
 most 32 characters). E-SINGLE remains as defence in depth.
 
@@ -214,13 +217,13 @@ workspace-level otherwise. All are under `/api/v1`.
 ### 4.1 Project → Agents — `packages/web/src/routes/settings/agents-section.tsx`
 
 Every row except the last four writes `PUT /p/:projectId/config`, bounded by `setConfigInputSchema`
-and merged into that repo's own `.xezar/config.json` (`server.ts:5204`).
+and merged into that repo's own `.xezar/config.json` (`server.ts`).
 
 | Field / action | Status | Reason | Enforcing code path | Withheld |
 | --- | --- | --- | --- | --- |
 | `defaultRunner` | project-write | Names the agent this repo runs by default; effect is confined to this checkout's config file. | E-BIND, E-CONTRACT (`setConfigInputSchema.defaultRunner`, `workspace.ts:381`) | — |
-| `defaultModels.{claude,codex,opencode,pi}` | project-write | Per-runner model preset for this repo only; merged per runner so one write never clobbers another. | E-BIND, E-CONTRACT (`workspace.ts:383`); refused 409 when `agentModelsLocked(repoRoot)` (`server.ts:5208`) | — |
-| `modelsLocked` (read) | safe-effective-read | The one effective consequence of the excluded user-scope files: whether native agent settings are authoritative. A boolean, and a boolean is the whole answer. | Derived by `agentModelsLocked` / `readAgentModelDefaults` (`packages/xezar/src/agent-config/models.ts`), served by `configAnswer` (`server.ts:5166`) | Which file locked it, its path, its contents, and any account identity inside it. |
+| `defaultModels.{claude,codex,opencode,pi}` | project-write | Per-runner model preset for this repo only; merged per runner so one write never clobbers another. | E-BIND, E-CONTRACT (`workspace.ts:383`); refused 409 when `agentModelsLocked(repoRoot)` (`server.ts`) | — |
+| `modelsLocked` (read) | safe-effective-read | The one effective consequence of the excluded user-scope files: whether native agent settings are authoritative. A boolean, and a boolean is the whole answer. | Derived by `agentModelsLocked` / `readAgentModelDefaults` (`packages/xezar/src/agent-config/models.ts`), served by `configAnswer` (`server.ts`) | Which file locked it, its path, its contents, and any account identity inside it. |
 | `systemPrompt` | project-write | Extra instructions for this repo's runs; capped at 20 000 characters by the schema. | E-BIND, E-CONTRACT (`workspace.ts:382`) | — |
 | `liveTitleUpdates` | project-write | Tri-state per repo; `null` clears back to the `XEZ_TITLE_UPDATES` default. | E-BIND, E-CONTRACT (`workspace.ts:397`) | — |
 | `reviewGate` | project-write | Tri-state per repo; `null` clears back to the `XEZ_REVIEW_GATE` default (OFF). Not a quality control — F-22 gates are unaffected by it. | E-BIND, E-CONTRACT (`workspace.ts:399`) | — |
@@ -229,10 +232,10 @@ and merged into that repo's own `.xezar/config.json` (`server.ts:5204`).
 | `baseBranch` | project-write | This repo's branch base; `null` restores "follow checked-out branch". | E-BIND, E-CONTRACT (`workspace.ts:380`) | — |
 | Default agent picker — ACCOUNT half (`useSelectAgentProfile` → `PUT /workspace/agent-profiles/selection`) | safe-effective-read | **D-03-3.** Writes a global personal file and names an account identity. | E-409-PROFILE, E-BIND, E-NARROW; read through `selectionFor` (`agent-accounts.ts:280`) | Email/login/credential, `configDir`/`path`, other projects' selections, the machine-wide `defaults` map. |
 | Providers card — `status` and `hint` per provider (`GET /providers/status`) | safe-effective-read | F-03: the leader must know which dependencies are usable and why one is not. Coarse states only: `connected` / `disconnected` / `not-installed` / `unknown`. | `providerConnectionStateSchema` (`workspace.ts:465`); `ProviderAuth.status()` | Credentials, account identity, raw CLI output (the schema's own stated boundary), `profileId`, and the login `command` string. |
-| Providers card — `enabled` toggle (`PUT /providers/:provider/enabled`) | safe-effective-read | **D-03-2.** `disabledProviders` is workspace-wide. The leader reads `enabled`; it never writes it. | Workspace merge-write at `server.ts:1727`; no MCP write path | The other projects that the same key governs — expressed as: the leader is told a provider is off, not offered the switch. |
-| Providers card — Connect (`POST /providers/connect`) | excluded | Opens a **terminal on the host machine** (`openTerminal`, `server.ts:1825`) and, with a `profileId`, names an account's absolute path. Section 3 excludes arbitrary operating-system processes; M-22 excludes global login sessions. | E-409-PROFILE for the named-account spelling (`server.ts:1774`); no MCP path for either | Everything: the command, the path, and the terminal. |
-| Providers card — Try again (`POST /providers/:provider/retry`) | excluded | `clearRuntimeAuthFailure` clears a workspace-wide provider incident (`server.ts:1753`), so project A's leader would clear project B's warning. The leader reports the blocker instead (F-09, F-22). | No MCP write path | — |
-| Providers card — Check again (refresh) | safe-effective-read | A refresh of the same coarse status; it spawns a probe, so MCP serves the cached answer and refreshes only on explicit demand, as `GET /workspace/agent-profiles` already does for its own listing (`server.ts:1881`). | `GET /providers/status?refresh=1` (`server.ts:1711`) | Same as the `status` row. |
+| Providers card — `enabled` toggle (`PUT /providers/:provider/enabled`) | safe-effective-read | **D-03-2.** `disabledProviders` is workspace-wide. The leader reads `enabled`; it never writes it. | Workspace merge-write at `server.ts`; no MCP write path | The other projects that the same key governs — expressed as: the leader is told a provider is off, not offered the switch. |
+| Providers card — Connect (`POST /providers/connect`) | excluded | Opens a **terminal on the host machine** (`openTerminal`, `server.ts`) and, with a `profileId`, names an account's absolute path. Section 3 excludes arbitrary operating-system processes; M-22 excludes global login sessions. | E-409-PROFILE for the named-account spelling (`server.ts`); no MCP path for either | Everything: the command, the path, and the terminal. |
+| Providers card — Try again (`POST /providers/:provider/retry`) | excluded | `clearRuntimeAuthFailure` clears a workspace-wide provider incident (`server.ts`), so project A's leader would clear project B's warning. The leader reports the blocker instead (F-09, F-22). | No MCP write path | — |
+| Providers card — Check again (refresh) | safe-effective-read | A refresh of the same coarse status; it spawns a probe, so MCP serves the cached answer and refreshes only on explicit demand, as `GET /workspace/agent-profiles` already does for its own listing (`server.ts`). | `GET /providers/status?refresh=1` (`server.ts`) | Same as the `status` row. |
 | `dismissedProviderAuthFailures` (workspace ui-state) | excluded | Workspace-wide record of which incident a BROWSER dismissed (presentation). Nothing about execution depends on it. | `workspaceUiStateSchema.dismissedProviderAuthFailures` (`workspace.ts:241`) | — |
 
 ### 4.2 Project → Agent config — `agent-config-section.tsx`
@@ -242,10 +245,10 @@ Rows are by catalog entry (`packages/xezar/src/agent-config/catalog.ts` `CONFIG_
 
 | Field / action | Status | Reason | Enforcing code path | Withheld |
 | --- | --- | --- | --- | --- |
-| `claude.user.settings`, `claude.user.memory`, `codex.user.config`, `codex.user.memory`, `opencode.user.config`, `opencode.user.memory` — read AND write | excluded | **D-03-1.** The six `scope: 'user'` entries; home files shared by every project on the machine. | E-SCOPE-USER (`ConfigFileDef.scope`, `catalog.ts:52`; `findConfigFile` at `server.ts:5365`) **plus E-409-LOCAL** (`server.ts:5384`) | Their content, their absolute paths, and their existence beyond the `modelsLocked` boolean. |
-| `claude.project.settings`, `claude.local.settings`, `claude.project.memory`, `claude.local.memory`, `project.agents` (`<repo>/AGENTS.md`) — write | project-write | In-repo files belonging to this checkout. `.local` entries are gitignored personal layers seeded into the run's worktree (`seeded: true`), still inside this project. | E-BIND, **E-409-LOCAL** (`server.ts:5384`), E-CONTRACT (`setAgentConfigInputSchema`, content ≤ 2 000 000 bytes, `version` as the stale-write token) | — |
-| The same five — read | project-write | This project's own files. Byte-exact; xezar never re-serialises a file it opened. | E-BIND; `readConfigFile` (`server.ts:5375`); hosted-mode 409 for `tracked === 'outside-repo'` (`server.ts:5367`) — which none of these five are | — |
-| `claude.project.mcp` (`.mcp.json`), `codex.project.config`, `opencode.project.config` — write | project-write | In-repo project files. Full content, exactly as the cockpit writes them. | E-BIND, **E-409-LOCAL** (`server.ts:5384`), E-CONTRACT | — |
+| `claude.user.settings`, `claude.user.memory`, `codex.user.config`, `codex.user.memory`, `opencode.user.config`, `opencode.user.memory` — read AND write | excluded | **D-03-1.** The six `scope: 'user'` entries; home files shared by every project on the machine. | E-SCOPE-USER (`ConfigFileDef.scope`, `catalog.ts:52`; `findConfigFile` at `server.ts`) **plus E-409-LOCAL** (`server.ts`) | Their content, their absolute paths, and their existence beyond the `modelsLocked` boolean. |
+| `claude.project.settings`, `claude.local.settings`, `claude.project.memory`, `claude.local.memory`, `project.agents` (`<repo>/AGENTS.md`) — write | project-write | In-repo files belonging to this checkout. `.local` entries are gitignored personal layers seeded into the run's worktree (`seeded: true`), still inside this project. | E-BIND, **E-409-LOCAL** (`server.ts`), E-CONTRACT (`setAgentConfigInputSchema`, content ≤ 2 000 000 bytes, `version` as the stale-write token) | — |
+| The same five — read | project-write | This project's own files. Byte-exact; xezar never re-serialises a file it opened. | E-BIND; `readConfigFile` (`server.ts`); hosted-mode 409 for `tracked === 'outside-repo'` (`server.ts`) — which none of these five are | — |
+| `claude.project.mcp` (`.mcp.json`), `codex.project.config`, `opencode.project.config` — write | project-write | In-repo project files. Full content, exactly as the cockpit writes them. | E-BIND, **E-409-LOCAL** (`server.ts`), E-CONTRACT | — |
 | The same three — read | safe-effective-read | **Asymmetric by ruling.** These are the project files with `holdsMcp: true` (`catalog.ts:154`, `:228`, `:273`). An MCP server definition's argument values are the classic place a token is pasted, so the read returns STRUCTURE only: server names, transport kind, argument shape. | E-BIND; the response is built from the parsed file, never from its bytes | Every argument VALUE — command strings, `args`, `env`, headers, URLs, tokens — and the file content itself (F-15). Target: elide the MCP section only, in a file that also holds ordinary settings. Safe fallback while that is unbuilt: structure-only for the whole file, which narrows and never widens. |
 | `userMcp` block (`~/.claude.json` server names) | excluded | Claude's own home state file, shared by every project. The cockpit itself withholds it whenever `editable` is false. | `readUserMcpServers` (`packages/xezar/src/agent-config/service.ts:64`); withheld at `:117` | The path, the server names, and the file. |
 | `writable` / `readOnlyReason` flags | safe-effective-read | Whether agent config may be edited at all here — the honest capability behind E-409-LOCAL. | `listAgentConfig` (`service.ts:109`–`:110`) | Nothing beyond the boolean and its one-line reason. |
@@ -264,14 +267,14 @@ Rows are by catalog entry (`packages/xezar/src/agent-config/catalog.ts` `CONFIG_
 | Field / action | Status | Reason | Enforcing code path | Withheld |
 | --- | --- | --- | --- | --- |
 | One-click launch (auto-submit) checkbox | excluded | Local component state, never persisted, no server effect *(presentation)*. | `useState` in `BookmarkletPanel` (`bookmarklets-section.tsx:64`) | — |
-| Bookmarklet generation, and `GET /p/:projectId/launch-key` | excluded | The generated `javascript:` URL embeds the project's launch key, which is a **secret**. F-15: credentials must not enter tool responses, history or event logs. A browser bookmark is also meaningless to a leader that is not a browser. | `launchKeyResponseSchema` (`packages/contract/src/projects.ts:191`) and its own rule — *the value never renders as text, never logs*; route at `server.ts:3046` | The launch key, and every URL containing it. |
+| Bookmarklet generation, and `GET /p/:projectId/launch-key` | excluded | The generated `javascript:` URL embeds the project's launch key, which is a **secret**. F-15: credentials must not enter tool responses, history or event logs. A browser bookmark is also meaningless to a leader that is not a browser. | `launchKeyResponseSchema` (`packages/contract/src/projects.ts:191`) and its own rule — *the value never renders as text, never logs*; route at `server.ts` | The launch key, and every URL containing it. |
 | Skill list shown in the panel (`GET /p/:projectId/skills`) | project-write | This project's skill catalog, which F-05 requires the leader to inspect anyway. | E-BIND | — |
 
 ### 4.5 Project → Prompt templates — `prompt-templates-section.tsx`
 
 | Field / action | Status | Reason | Enforcing code path | Withheld |
 | --- | --- | --- | --- | --- |
-| `promptTemplates` | project-write | Per-repo follow-up snippets in `.local/xezar/ui-state.json`. Exposed as a **whole-list read and replace**: `PUT /p/:projectId/ui-state` merges shallowly at the top level (`server.ts:3104`), so a per-item write would silently clobber the rest of the list. | E-BIND, E-CONTRACT (`uiStateSchema.promptTemplates`, `workspace.ts:197`; key cap `capUiStateKeys`) | — |
+| `promptTemplates` | project-write | Per-repo follow-up snippets in `.local/xezar/ui-state.json`. Exposed as a **whole-list read and replace**: `PUT /p/:projectId/ui-state` merges shallowly at the top level (`server.ts`), so a per-item write would silently clobber the rest of the list. | E-BIND, E-CONTRACT (`uiStateSchema.promptTemplates`, `workspace.ts:197`; key cap `capUiStateKeys`) | — |
 
 ### 4.6 Project settings index → General — `project-general.tsx`, `project-location.tsx`
 
@@ -280,12 +283,12 @@ Rows are by catalog entry (`packages/xezar/src/agent-config/catalog.ts` `CONFIG_
 
 | Field / action | Status | Reason | Enforcing code path | Withheld |
 | --- | --- | --- | --- | --- |
-| Project folder (`root`) | project-write | The bound project's own absolute root — the string every worktree and git command already resolves against, and F-03 requires the leader to discover the bound project. | E-BIND, E-NARROW (read from the bound registry entry, never from the listing) | In hosted mode the server already trims the root to a basename in `/health` (`server.ts:1475`); MCP follows the same rule rather than inventing a second one. |
+| Project folder (`root`) | project-write | The bound project's own absolute root — the string every worktree and git command already resolves against, and F-03 requires the leader to discover the bound project. | E-BIND, E-NARROW (read from the bound registry entry, never from the listing) | In hosted mode the server already trims the root to a basename in `/health` (`server.ts`); MCP follows the same rule rather than inventing a second one. |
 | Copy path | excluded | Browser clipboard *(presentation)*. | — | — |
-| Open with… (`POST /p/:projectId/open-in`) | excluded | Launches a desktop application on the machine hosting xezar. M-19 requires an unavailable desktop capability to be **reported**, not promised on the client's machine; the route already 409s in hosted mode (`server.ts:4422`). | `openProjectInSchema` (`projects.ts:577`); hosted refusal at `server.ts:4422` | — |
-| Desktop-handoff availability (`GET /open-targets`) | safe-effective-read | The honest capability behind the row above: whether local handoff exists at all. The route already answers `[]` in hosted mode. | `server.ts:4414` (`capabilities().localHandoff ? detectOpenTargets() : []`) | The ids and labels of the applications installed on the host. The leader learns "unavailable", not the machine's software inventory. |
+| Open with… (`POST /p/:projectId/open-in`) | excluded | Launches a desktop application on the machine hosting xezar. M-19 requires an unavailable desktop capability to be **reported**, not promised on the client's machine; the route already 409s in hosted mode (`server.ts`). | `openProjectInSchema` (`projects.ts:577`); hosted refusal at `server.ts` | — |
+| Desktop-handoff availability (`GET /open-targets`) | safe-effective-read | The honest capability behind the row above: whether local handoff exists at all. The route already answers `[]` in hosted mode. | `server.ts` (`capabilities().localHandoff ? detectOpenTargets() : []`) | The ids and labels of the applications installed on the host. The leader learns "unavailable", not the machine's software inventory. |
 | Project facts — `name`, `status`, `branch`, `addedAt`, `lastOpenedAt`, `source` | project-write | Facts about the bound project, re-probed on every registry read. | E-BIND, E-NARROW | Every other registry row. |
-| Max parallel tasks (`MaxParallelSelect` → `PATCH /projects/:projectId`) | project-write | **D-03-4.** Bound project only. | E-BIND (the family is workspace-level and single-mount, `server.ts:2332`), E-CONTRACT (`updateProjectInputSchema.maxParallel`), E-SINGLE | The workspace-level `resources.maxParallel`, which is never writable from here. |
+| Max parallel tasks (`MaxParallelSelect` → `PATCH /projects/:projectId`) | project-write | **D-03-4.** Bound project only. | E-BIND (the family is workspace-level and single-mount, `server.ts`), E-CONTRACT (`updateProjectInputSchema.maxParallel`), E-SINGLE | The workspace-level `resources.maxParallel`, which is never writable from here. |
 | Remove from workspace (`useProjectRemoval` → `DELETE /projects/:projectId`) | excluded | **D-03-4.** Deregisters the project and destroys the leader's own binding. | No MCP path; E-SINGLE and the server's own 409s (running tasks, boot project) remain | — |
 
 ### 4.7 Global → Appearance — `appearance.tsx`
@@ -324,9 +327,9 @@ Every key here is enforced workspace-wide by `WorkspaceSemaphore`
 
 | Field / action | Status | Reason | Enforcing code path | Withheld |
 | --- | --- | --- | --- | --- |
-| `skillsAutoUpdate` / `effectiveSkillsAutoUpdate` | safe-effective-read | A workspace key in `~/.xezar/config.json`; stored `null` inherits `XEZ_SKILLS_AUTO_UPDATE`. | `skillsUpdateResponse` re-stamps it on the way out (`server.ts:2728`–`:2731`) | The host environment behind the inherited answer, and the global install locations the updater writes to. |
-| Check for skill updates (`POST /workspace/skills-update/check`) | safe-effective-read | A POST that is a read in effect: it probes and reports, changing nothing on disk. M-14 flags this family as global despite carrying a `projectId`. | `server.ts:2744`; `resolveSkillsUpdateRoot` — and **E-BIND**, because the `projectId` is caller-supplied | Other projects' scope states. The response carries a `scopes` array covering `project` AND `global` (`skillsUpdateScopeStateSchema`, `workspace.ts:431`); the leader's read is narrowed to its own project's scope plus the global availability flag and reason. |
-| Apply skill updates (`POST /workspace/skills-update/apply`) | excluded | Rewrites installed skill files at GLOBAL scope, which every project on the machine then reads. M-14 and M-21. | `server.ts:2751`; no MCP path | — |
+| `skillsAutoUpdate` / `effectiveSkillsAutoUpdate` | safe-effective-read | A workspace key in `~/.xezar/config.json`; stored `null` inherits `XEZ_SKILLS_AUTO_UPDATE`. | `skillsUpdateResponse` re-stamps it on the way out (`server.ts`) | The host environment behind the inherited answer, and the global install locations the updater writes to. |
+| Check for skill updates (`POST /workspace/skills-update/check`) | safe-effective-read | A POST that is a read in effect: it probes and reports, changing nothing on disk. M-14 flags this family as global despite carrying a `projectId`. | `server.ts`; `resolveSkillsUpdateRoot` — and **E-BIND**, because the `projectId` is caller-supplied | Other projects' scope states. The response carries a `scopes` array covering `project` AND `global` (`skillsUpdateScopeStateSchema`, `workspace.ts:431`); the leader's read is narrowed to its own project's scope plus the global availability flag and reason. |
+| Apply skill updates (`POST /workspace/skills-update/apply`) | excluded | Rewrites installed skill files at GLOBAL scope, which every project on the machine then reads. M-14 and M-21. | `server.ts`; no MCP path | — |
 | Installation status line | safe-effective-read | The human-readable reason a check is unavailable (F-03). | `skillsUpdateStateSchema.status` / `scopes[].reason` (`workspace.ts:445`) | Absolute install paths. |
 
 ### 4.11 Global → Agent accounts — `accounts-section.tsx`, `add-account-dialog.tsx`
@@ -334,30 +337,30 @@ Every key here is enforced workspace-wide by `WorkspaceSemaphore`
 | Field / action | Status | Reason | Enforcing code path | Withheld |
 | --- | --- | --- | --- | --- |
 | Effective account for the bound project (read) | safe-effective-read | **D-03-3.** Reported as a local profile **handle** and a **display label**. | E-409-PROFILE, E-BIND, E-NARROW; `selectionFor` (`agent-accounts.ts:280`) | Email, login, credential; `configDir` and `path`; other projects' selections; the machine-wide `defaults` map; every other account row. |
-| Account listing (`GET /workspace/agent-profiles`) | excluded | Lists every account and every project's selection, and echoes absolute paths carrying the username — the same disclosure `/health` trims in hosted mode. | `server.ts:1955`; E-409-PROFILE | The listing entirely. Only the narrowed read above survives. |
-| Per-project selection write, and the machine-wide default write (`projectId: null`) | excluded | **D-03-3.** A global personal file, naming an account identity. | `server.ts:2214`–`:2264`; E-409-PROFILE | — |
-| Add account (`POST /workspace/agent-profiles`) | excluded | Creates a second login on the machine and points an agent at a host directory. F-12, M-22. | `server.ts:1988`; E-409-PROFILE | — |
-| Rename account (`PATCH /workspace/agent-profiles/:id`) | excluded | Global account administration. | `server.ts:2040`; E-409-PROFILE | — |
-| Remove account (`DELETE /workspace/agent-profiles/:id`) | excluded | Global account administration, irreversible for every project. | `server.ts:2267`; E-409-PROFILE | — |
-| Connect an account (`POST /providers/connect` with `profileId`) | excluded | A host terminal plus an account path. See §4.1. | `server.ts:1774` | — |
-| Re-check an account (`GET /workspace/agent-profiles/:id/status`) | excluded | Probes one named account's login; naming the account is the disclosure. | `server.ts:2106`; E-409-PROFILE | — |
-| **Show details (`GET /workspace/agent-profiles/:id/details`)** | excluded | **This is the account-identity read** — email, organization and similar claims from the agents' own auth files. F-12 and N-01 restrict it absolutely, and its module states it is answered to exactly one route, never joined, never logged. | `readAccountIdentity` (`packages/xezar/src/agent-config/account-identity.ts`); route at `server.ts:2144`; E-409-PROFILE | Everything it returns. |
-| Open an account's folder or file (`POST /workspace/agent-profiles/:id/open`) | excluded | Opens home-directory content in a local application. | `server.ts:2162`; E-409-PROFILE | — |
-| "Defaults for new projects" — `agentDefaults.runner`, `agentDefaults.models.*` | excluded | Machine-wide seed keys. Nothing is lost: the leader already reads the EFFECTIVE runner and models for its own project on `GET /p/:projectId/config` (`configAnswer`, `server.ts:5167`–`:5176`), so reporting the machine-wide key would add a fact about the machine and no capability. | `workspaceConfigResponseSchema.agentDefaults` (`workspace.ts:75`); no MCP path | — |
+| Account listing (`GET /workspace/agent-profiles`) | excluded | Lists every account and every project's selection, and echoes absolute paths carrying the username — the same disclosure `/health` trims in hosted mode. | `server.ts`; E-409-PROFILE | The listing entirely. Only the narrowed read above survives. |
+| Per-project selection write, and the machine-wide default write (`projectId: null`) | excluded | **D-03-3.** A global personal file, naming an account identity. | `server.ts`; E-409-PROFILE | — |
+| Add account (`POST /workspace/agent-profiles`) | excluded | Creates a second login on the machine and points an agent at a host directory. F-12, M-22. | `server.ts`; E-409-PROFILE | — |
+| Rename account (`PATCH /workspace/agent-profiles/:id`) | excluded | Global account administration. | `server.ts`; E-409-PROFILE | — |
+| Remove account (`DELETE /workspace/agent-profiles/:id`) | excluded | Global account administration, irreversible for every project. | `server.ts`; E-409-PROFILE | — |
+| Connect an account (`POST /providers/connect` with `profileId`) | excluded | A host terminal plus an account path. See §4.1. | `server.ts` | — |
+| Re-check an account (`GET /workspace/agent-profiles/:id/status`) | excluded | Probes one named account's login; naming the account is the disclosure. | `server.ts`; E-409-PROFILE | — |
+| **Show details (`GET /workspace/agent-profiles/:id/details`)** | excluded | **This is the account-identity read** — email, organization and similar claims from the agents' own auth files. F-12 and N-01 restrict it absolutely, and its module states it is answered to exactly one route, never joined, never logged. | `readAccountIdentity` (`packages/xezar/src/agent-config/account-identity.ts`); route at `server.ts`; E-409-PROFILE | Everything it returns. |
+| Open an account's folder or file (`POST /workspace/agent-profiles/:id/open`) | excluded | Opens home-directory content in a local application. | `server.ts`; E-409-PROFILE | — |
+| "Defaults for new projects" — `agentDefaults.runner`, `agentDefaults.models.*` | excluded | Machine-wide seed keys. Nothing is lost: the leader already reads the EFFECTIVE runner and models for its own project on `GET /p/:projectId/config` (`configAnswer`, `server.ts`), so reporting the machine-wide key would add a fact about the machine and no capability. | `workspaceConfigResponseSchema.agentDefaults` (`workspace.ts:75`); no MCP path | — |
 | Agent installed / version rows | safe-effective-read | Which agents this host can run — an availability fact F-03 requires, with an understandable reason when one is missing. | `GET /health` checks | Install paths, home directories, account identity. |
 
 ### 4.12 Global → Projects — `projects-section.tsx`
 
 | Field / action | Status | Reason | Enforcing code path | Withheld |
 | --- | --- | --- | --- | --- |
-| Registry listing (`GET /projects`) | excluded | Every other project's name, absolute root, branch, tags and status. N-01: an inaccessible resource must not reveal another project's name, content or existence. | `server.ts:2333`; E-NARROW reduces it to the bound entry (§4.6) | The whole list except the bound project's own row. |
-| Add project (`POST /projects`) | excluded | Registers a new project in the workspace registry — the definition of managing multiple projects (section 3). | `server.ts:2353` | — |
-| Clone from GitHub (`POST /projects/checkout`) | excluded | Creates a checkout on the host outside the bound project and registers it. | `server.ts:2508` | — |
+| Registry listing (`GET /projects`) | excluded | Every other project's name, absolute root, branch, tags and status. N-01: an inaccessible resource must not reveal another project's name, content or existence. | `server.ts`; E-NARROW reduces it to the bound entry (§4.6) | The whole list except the bound project's own row. |
+| Add project (`POST /projects`) | excluded | Registers a new project in the workspace registry — the definition of managing multiple projects (section 3). | `server.ts` | — |
+| Clone from GitHub (`POST /projects/checkout`) | excluded | Creates a checkout on the host outside the bound project and registers it. | `server.ts` | — |
 | Folder browser (`GET /fs/browse`) | excluded | Lists host directories outside the bound project. A-04 requires forbidden paths to be rejected. | `fsBrowseResponseSchema` (`projects.ts:173`) | — |
 | `browseRoot`, `projectsDir` | excluded | They parameterise only the two excluded actions above, and they disclose host paths outside this project. | `setWorkspaceConfigInputSchema` (`workspace.ts:95`–`:96`) | — |
 | Per-row Max parallel — **bound project** | project-write | **D-03-4.** See §4.6. | E-BIND, E-CONTRACT, E-SINGLE | — |
 | Per-row Max parallel — any other project | excluded | Another project's limit. | E-BIND refuses the foreign `projectId` before the route is reached | — |
-| Tags — **bound project** | project-write | **D-03-4.** Whole-list replace; there is no add-one/remove-one spelling, and the server normalises (trim, dedupe case-insensitively, sort). | E-BIND, E-CONTRACT (`updateProjectInputSchema.tags`); normalisation at `server.ts:2485` | — |
+| Tags — **bound project** | project-write | **D-03-4.** Whole-list replace; there is no add-one/remove-one spelling, and the server normalises (trim, dedupe case-insensitively, sort). | E-BIND, E-CONTRACT (`updateProjectInputSchema.tags`); normalisation at `server.ts` | — |
 | Tags — any other project | excluded | Another project's data. | E-BIND | — |
 | Tag autocomplete vocabulary (`allProjectTags(registry.projects)`) | excluded | It is built from EVERY project's tags, so serving it would leak the workspace's other projects through a field that looks like an autocomplete convenience. | `projects-section.tsx:258` | The vocabulary. The leader reads and writes its own project's tags only. |
 | Per-row Remove | excluded | **D-03-4.** | See §4.6 | — |
@@ -390,7 +393,7 @@ because a schema field is reachable whether or not a control exists.
 | Field | Status | Reason | Enforcing code path |
 | --- | --- | --- | --- |
 | `setConfigInputSchema.maxParallel` (the repo's own `.xezar/config.json`) | excluded | **Inert.** Since Phase 2 the scheduler ignores a per-repo `maxParallel`: `loadResourceLimits` builds its override map from the REGISTRY entry (`semaphore.ts:163`–`:166`), not from the repo file. Exposing this write would report a change that never happens; the live control is D-03-4's registry write. | `workspace.ts:391`; `semaphore.ts:395` |
-| `setConfigInputSchema.memoryLimitMb` (the repo's own `.xezar/config.json`) | project-write | **Live, and local in effect.** `loadResourceLimits` reads each registered repo's own config (`semaphore.ts:171`–`:179`) and `projectMemoryLimitMb(repoRoot)` applies it to that root alone (`:284`). `PUT /config` refreshes the semaphore when the key is named (`server.ts:5294`), so the write takes effect without a restart. | E-BIND, E-CONTRACT (`workspace.ts:393`) |
+| `setConfigInputSchema.memoryLimitMb` (the repo's own `.xezar/config.json`) | project-write | **Live, and local in effect.** `loadResourceLimits` reads each registered repo's own config (`semaphore.ts:171`–`:179`) and `projectMemoryLimitMb(repoRoot)` applies it to that root alone (`:284`). `PUT /config` refreshes the semaphore when the key is named (`server.ts`), so the write takes effect without a restart. | E-BIND, E-CONTRACT (`workspace.ts:393`) |
 | `setWorkspaceUiStateInputSchema` bounds (`WORKSPACE_UI_STATE_MAX_KEYS`, `TASK_TABLE_MAX_COLUMNS`) | excluded | Write-side bounds on a bag every row above excludes. | `workspace.ts:269`–`:320` |
 
 ### 4.15 The remaining controls — presentation
@@ -443,7 +446,7 @@ re-derive them.
   `configResponseSchema`. `projects.ts` holds `updateProjectInputSchema` (`:133`) and the registry,
   folder-picker and launch-key shapes. AGENTS.md § The HTTP API is right that
   `setConfigInputSchema` sits in the contract with an unused `server.ts` duplicate validating the
-  real route (`setConfigSchema`, `server.ts:5305` ff.) — only the file was mis-stated.
+  real route (`setConfigSchema`, `server.ts` ff.) — only the file was mis-stated.
 - **C-2 — the per-project concurrency cap and the per-project memory ceiling are read from
   DIFFERENT files.** `maxParallel` comes from the registry entry in `~/.xezar/config.json`
   (`semaphore.ts:165`); `memoryLimitMb` comes from each repo's own `.xezar/config.json`
@@ -454,10 +457,7 @@ re-derive them.
   `appearance-provider.tsx` calls `putWorkspaceUiState({ appearance })`. Both schemas still declare
   an `appearance` key, so the per-repo copy is legacy. Classified `excluded` either way; recorded
   because a classifier trusting the hint would file it as a project write.
-- **C-4 — there is no scope-aware write gate on agent config today.** `listAgentConfig` sets
-  `writable: editable` for every catalog file (`service.ts:109`), and the only per-file refusal is
-  the hosted-mode 409 for `tracked === 'outside-repo'` on the READ (`server.ts:5367`). D-03-1's
-  enforcement (E-SCOPE-USER) is therefore new work, not an existing check being cited.
+- **C-4 — resolved since #262.** MCP agent-config reads and writes refuse catalog entries with user scope (`tools/project-config.ts`, `E-SCOPE-USER`). `listAgentConfig` sets `writable: editable && !refusal` (`agent-config/service.ts`).
 - **C-5 — `ProjectGeneral` is not a settings-registry section.** `SETTINGS_SECTIONS`
   (`registry.tsx:92`) has five project entries and seven global ones, of which `keyboard` is
   `hidden`; `project-general.tsx`, `project-location.tsx`, `remove-project.tsx`,
@@ -468,10 +468,10 @@ re-derive them.
 
 ---
 
-## 7. What engineering must build for this classification to hold
+## 7. What engineering built for this classification
 
-The matrix cites the enforcement each row needs. Three of those enforcements do not exist yet, and
-naming them is part of removing the ambiguity Definition-of-Done clause 5 asks about.
+The matrix cites the enforcement each row needs. The three enforcements below now exist in `tools/project-config.ts` (since #262).
+Their scope checks and narrowing settle the ambiguity Definition-of-Done clause 5 asks about.
 
 1. **E-SCOPE-USER** — a refusal keyed off `ConfigFileDef.scope === 'user'`, applied to MCP reads and
    writes of agent config. Never path matching.
