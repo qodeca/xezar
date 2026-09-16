@@ -548,7 +548,7 @@ function AccountRow({ account, onRemove }: { account: AgentProfile; onRemove: ()
             size="sm"
             data-action="account-recheck"
             disabled={recheck.isPending}
-            title="Re-probe this account's login now, instead of waiting for the cached answer"
+            title="Re-probe this account’s login now, instead of waiting for the cached answer"
             onClick={() =>
               recheck.mutate(routeId, {
                 onError: (error: Error) => toast(error.message, { tone: 'danger' }),

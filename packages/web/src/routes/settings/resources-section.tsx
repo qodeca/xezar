@@ -419,7 +419,7 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
 
       <SettingsField
         title="Per-task memory limit"
-        hint="When a task's whole process tree crosses this, the engine pauses it with a warning and starts the next queued task. Leave empty for no limit."
+        hint="When a task’s whole process tree crosses this, the engine pauses it with a warning and starts the next queued task. Leave empty for no limit."
       >
         <div className="flex items-center gap-2">
           <input
@@ -504,7 +504,7 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
 
       <SettingsField
         title="Follow-up Inbox"
-        hint="When on, agents are asked to leave follow-ups when they finish and the Inbox view appears. Each task's own Notes journal runs either way."
+        hint="When on, agents are asked to leave follow-ups when they finish and the Inbox view appears. Each task’s own Notes journal runs either way."
       >
         <select
           aria-label="Follow-up Inbox"
@@ -530,7 +530,7 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
 
       <SettingsField
         title="Extra variables agents receive"
-        hint="Agents get a least-privilege environment by default — safe shell and toolchain variables, the backend's own auth, GITHUB_TOKEN and xezar's own. Name any others here, comma-separated."
+        hint="Agents get a least-privilege environment by default — safe shell and toolchain variables, the backend’s own auth, GITHUB_TOKEN and xezar’s own. Name any others here, comma-separated."
       >
         <div className="flex flex-col gap-2">
           <input

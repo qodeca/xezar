@@ -478,7 +478,7 @@ export function McpConnectionSurface({
       {operations ? (
         <SettingsField
           title="Operation outcomes"
-          hint="What happened to the leader's recent operations: accepted, running, completed, failed, not applied or being verified."
+          hint="What happened to the leader’s recent operations: accepted, running, completed, failed, not applied or being verified."
         >
           <div data-slot="mcp-operations" aria-live="polite" className="min-w-0">
             {operations.length ? (

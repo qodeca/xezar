@@ -128,7 +128,7 @@ function PromptTemplatesForm({ initial }: { initial: PromptTemplate[] }) {
     >
       <SettingsField
         title="Prompt templates"
-        hint="Reusable snippets you can insert into a prompt — the new-task composer, the GitHub hand-over, and the Inbox's “Add instructions” box all offer this list. Assign a template to a skill and it fills the prompt in for you when you pick that skill, as long as you have not typed anything yet."
+        hint="Reusable snippets you can insert into a prompt — the new-task composer, the GitHub hand-over and the Inbox’s “Add instructions” box all offer this list. Assign a template to a skill and it fills the prompt in for you when you pick that skill, as long as you have not typed anything yet."
       >
         <div data-slot="prompt-template-list" className="flex flex-col gap-3">
           {templates.length === 0 ? (

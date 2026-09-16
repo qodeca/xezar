@@ -297,7 +297,7 @@ function AgentsForm({
 
       <SettingsField
         title="Live title updates"
-        hint="Refresh a task's short title through the namer model as the run progresses. A manual rename always wins and stops updates for that task."
+        hint="Refresh a task’s short title through the namer model as the run progresses. A manual rename always wins and stops updates for that task."
       >
         <label className="flex w-fit items-center gap-3">
           <Switch
@@ -345,7 +345,7 @@ function AgentsForm({
 
       <SettingsField
         title="Planner and namer models"
-        hint="Two small background jobs: the planner turns a task into a chain of steps, the namer gives it its display title. Both are Claude aliases and are ignored when this project's default agent is not Claude."
+        hint="Two small background jobs: the planner turns a task into a chain of steps, the namer gives it its display title. Both are Claude aliases and are ignored when this project’s default agent is not Claude."
       >
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="grid gap-1.5 text-sm">

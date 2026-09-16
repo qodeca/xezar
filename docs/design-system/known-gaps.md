@@ -8,8 +8,8 @@ to-do list: an entry becomes a `design-debt` issue on the triggers [CONTRIBUTING
 names, and a fix arrives as its own change with the entry deleted.
 
 Ids are never reused: a deleted entry retires its number, so a new entry takes the next number after the
-highest ever used. G-01..G-23 and G-26..G-28 are live, G-24 and G-25 are retired, and the next free id is
-G-29.
+highest ever used. G-01..G-23 and G-26..G-30 are live, G-24 and G-25 are retired, and the next free id is
+G-31.
 
 Counts are non-test files or occurrences in `packages/web/src`. Corrected counts in G-02, G-06,
 G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the original inventory date.
@@ -84,7 +84,7 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Differs**: `rounded-md border border-input bg-card px-3 py-1.5` on raw selects and inputs at 23 sites (`routes/settings/resources-section.tsx` ×13, `agents-section.tsx` ×6, `projects-section.tsx:217`, `accounts-section.tsx:426`, `worktrees-section.tsx:108`, `routes/repo-git/repo-branches.tsx:162`); `components/ui/select.tsx` has 0 importers.
 - **Rule**: the raw control class for settings (it is what ships).
 - **Fix**: decide between adopting `Select` and deleting it; extract the raw class into a `NativeSelect` component.
-- **Status (#453 batch B3, settings)**: all 28 raw settings fields (the 22 listed plus `projects-section.tsx` ×2, `accounts-section.tsx:700` and `add-account-dialog.tsx` ×3) wear `nativeFieldClass` from `components/ui/input.tsx`, so they reach 44 px on a phone. Still open: `routes/repo-git/repo-branches.tsx` (B7).
+- **Status (#453 batch B3, settings)**: all 28 raw settings fields (the 22 listed plus `projects-section.tsx` ×2, `accounts-section.tsx:700` and `add-account-dialog.tsx` ×3) wear `nativeFieldClass` from `components/ui/input.tsx`, so they reach 44 px on a phone. Still open: `routes/repo-git/repo-branches.tsx` (B6).
 
 ### G-12 Search input markup duplicated
 
@@ -124,7 +124,7 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 | Oxford comma | omitted (25) | present (2) | `routes/settings/agents-section.tsx:315`, `notifications-section.tsx:97` |
 
 - **Fix**: one copy pass over the minority sites; a `no-en-dash-in-ui` guardian rule.
-- **Status (#453 batch B3, settings)**: the settings rows are fixed – "Could not load …" in all ten settings sites, "Retry" in provider settings, "Filter skills…", "Nothing matches." for the bookmarklet filter, the em dash in `mcp-api-section.tsx`, curly apostrophes in `appearance.tsx` and `project-general.tsx`, and no Oxford comma in `agents-section.tsx` and `notifications-section.tsx`. Still open (B4, B5, B7): the other rows. The guardian rule is not added.
+- **Status (#453 batch B3, settings)**: the settings rows are fixed – "Could not load …" in all ten settings sites, "Retry" in provider settings, "Filter skills…", "Nothing matches." for the bookmarklet filter, the em dash in `mcp-api-section.tsx`, curly apostrophes in `appearance.tsx`, `project-general.tsx` and the hints of `agents-section.tsx`, `resources-section.tsx`, `mcp-connection-section.tsx`, `projects-section.tsx`, `accounts-section.tsx` and `prompt-templates-section.tsx`, and no Oxford comma in `agents-section.tsx`, `notifications-section.tsx` and `prompt-templates-section.tsx`. Still open (B4, B5, B7): the other rows. The guardian rule is not added.
 
 ### G-16 Toast punctuation
 
@@ -192,6 +192,14 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Differs**: at Roomy the sidebar footer leaves the version chip too little room, and its `truncate` span (`components/app-shell.tsx:822`) reads `v0.1…`. Comfortable and Compact show the whole version.
 - **Rule**: a version number is never truncated.
 - **Fix**: give the chip `shrink-0` and let the footer's other controls give way first. Seen in the 0.15.0 docs captures (#448, design review NB-9).
+
+### G-29 The default-agent picker is under 44 px on a phone
+
+- **Differs**: the Settings → Agents and Agent accounts default-agent radios (`components/default-agent-picker.tsx:124`) measure 28.5–34.5 px tall at 390 px across the four densities, the only Settings target below the 44 px floor; owner: batch B4 of #453 (Q06), found in the B3 design review (#519, NB-1).
+
+### G-30 The registered-projects table scrolls sideways on a phone
+
+- **Differs**: at 390 px the Global → Projects "Registered projects" table (`routes/settings/projects-section.tsx:277`) scrolls inside its box (567 px of content in 356 px), squeezing the Project column to 60 px, instead of reflowing as cards below `md`; pre-existing, owner: batch B4 of #453, found in the B3 design review (#519, NB-2).
 
 ## Comment vs code
 
