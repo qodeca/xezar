@@ -584,6 +584,29 @@ describe('T-9 advisory only and honest recovery (break: cancel the task on a sta
     expect(report.reasons()).toEqual(['silence']);
   });
 
+  it('clears the finished step when a second step starts between ticks and when the run ends', () => {
+    const run = startedRun({ kinds: ['agent', 'agent'] });
+    advance(STALL_QUIET_MS);
+    timers.fire();
+    expect(store.getRun(run.id)?.steps[0]?.progress?.stall?.reason).toBe('silence');
+
+    store.updateStep(run.id, 'step-0', { status: 'done', finishedAt: new Date(clock).toISOString() });
+    store.updateStep(run.id, 'step-1', {
+      status: 'running',
+      iterations: 1,
+      startedAt: new Date(clock).toISOString(),
+    });
+    timers.fire();
+
+    expect(store.getRun(run.id)?.steps[0]?.progress?.stall).toBeUndefined();
+
+    store.updateStep(run.id, 'step-1', { status: 'done', finishedAt: new Date(clock).toISOString() });
+    store.updateRun(run.id, { status: 'done', finishedAt: new Date(clock).toISOString() });
+    timers.fire();
+
+    expect(store.getRun(run.id)?.steps[0]?.progress?.stall).toBeUndefined();
+  });
+
   it('treats a retry of the same step as a new episode with its own baseline', () => {
     const run = startedRun();
     advance(STALL_QUIET_MS);

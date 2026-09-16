@@ -353,6 +353,7 @@ export class StallMonitor {
     const key = episodeKey(step);
     const existing = this.#episodes.get(runId);
     if (existing && existing.key === key) return existing;
+    if (existing) this.#endEpisode(runId, existing);
     const recorded = step.progress?.lastActivityAt ?? null;
     const recordedMs = recorded === null ? Number.NaN : Date.parse(recorded);
     const startedMs = Date.parse(step.startedAt ?? '');
@@ -426,15 +427,20 @@ export class StallMonitor {
   #endEpisodes(live: ReadonlySet<string>): void {
     for (const [runId, episode] of [...this.#episodes]) {
       if (live.has(runId)) continue;
-      this.#episodes.delete(runId);
-      if (!episode.silenceStalled && !episode.deadlineWarned) continue;
-      // The step is over. Its journal rows keep the history; the record must stop claiming a
-      // suspicion about something that is no longer running.
-      const step = this.#store.getRun(runId)?.steps.find((candidate) => candidate.id === episode.stepId);
-      if (!step?.progress?.stall) continue;
-      const { stall: _cleared, ...rest } = step.progress;
-      this.#store.updateStep(runId, episode.stepId, { progress: rest });
+      this.#endEpisode(runId, episode);
     }
+  }
+
+  /** End one execution, including a step replaced between two ticks of the same live run. */
+  #endEpisode(runId: string, episode: Episode): void {
+    this.#episodes.delete(runId);
+    if (!episode.silenceStalled && !episode.deadlineWarned) return;
+    // The step is over. Its journal rows keep the history; the record must stop claiming a
+    // suspicion about something that is no longer running.
+    const step = this.#store.getRun(runId)?.steps.find((candidate) => candidate.id === episode.stepId);
+    if (!step?.progress?.stall) return;
+    const { stall: _cleared, ...rest } = step.progress;
+    this.#store.updateStep(runId, episode.stepId, { progress: rest });
   }
 
   /**
