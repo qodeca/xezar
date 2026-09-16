@@ -12,6 +12,15 @@ Installation validation is reported in installation.md. Real-task entries follow
 
 ## Real-task entries
 
+### 2026-09-16 — #468 PR 2 (`xezar-issue-create`, a local wrapper over the shared `xez-issue-create`), `feature-implementation` step `implement`, `xezar-implementation`, Claude Code — real-task observed
+
+- Input: the merged contract note `docs/features/issue-filing/xez-issue-create-contract.md` (#473) and the shared skill in `qodeca/xezar-skills` at `b2308e9`; base `52442a7`.
+- Observed: **the kit's skill inventory is pinned in exactly two numbers and neither is in the catalog check.** `catalog-check.mjs` deliberately counts nothing (its own comment says an orphan skill is normal here), so adding a file passes it; `xezar-contract.test.mjs` is where `19` and `20` live, and both went red on the new file before they were bumped. That red was free evidence and is quoted as the count red-proof.
+- Observed: **a new `xezar-*` skill is silently optional until it is listed in `MAINTAINED_SKILLS`.** Until then `catalog-check.mjs` treats it as a custom skill, so dropping its shared contract does not fail the catalog even though the shared tail is present. The name had to be added for the maintained-role negative control to go red, which is the honest shape: the list, not the prefix, is what makes a role maintained.
+- Observed: **the repo's own tracker doc and the shared skill's GitHub mapping disagree about filing.** `.xezar/pipeline/trackers/github.md` `create-issue` interpolates the body into `--body "<body>"` and `search-issues` reads `--state open` only; the shared `references/trackers/github.md` requires `--body-file`, `--state all` and separate `--label` arguments. The wrapper states the precedence in its own text rather than editing the pipeline file, which a parallel task owns this wave.
+- Observed: `task_create` defaults a **skill** source to autonomous when the project is configured `source-dependent` (`packages/xezar/src/mcp/tools/task-create.ts`). That is exactly the case the upstream IF-07 row calls out, so the wrapper repeats explicitly that a `task_create` skill source is not a filing grant.
+- Remaining limit: **adapted and fixture-tested only.** The fixtures assert the wrapper's bytes; the upstream IF-01–IF-14 agent-behaviour checklist is not run, no issue was filed through the role, and the pinned revision is not checked against the upstream collection by any automation. See installation.md for the qualification row.
+
 ### 2026-09-15 — #450 (the MCP leader door: `leader_events` attach, stop and status), `feature-implementation` step `implement`, `xezar-implementation`, Claude Code — real-task observed
 
 - Input: the spec from run `9130af8c` (19 AC, 30 test rows) on top of #451's merged strings; base `646bf37`.
