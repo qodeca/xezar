@@ -26,7 +26,7 @@ import { loadWorkflows } from './workflows/load.ts';
 import { startServer, WorkspaceEventBus } from './server/server.ts';
 // Type-only: erased at run time, so the MCP module stays a lazy import (N-07).
 import type { ServiceDispatch } from './mcp/service-adapter.ts';
-import type { ProviderStatus } from '@qodeca/xezar-contract';
+import type { McpJournalRow, ProviderStatus } from '@qodeca/xezar-contract';
 import {
   ProviderRuntimeAuthObserver,
   recoverWithProviderRuntimeAuthObservation,
@@ -489,6 +489,9 @@ async function serveCommand(
         return applyProviderEnablement(discovered, (await loadWorkspaceConfig()).disabledProviders).providers;
       },
       localHandoff: () => resolveCapabilities(process.env, bindHost).localHandoff,
+      // Stall advisories, reviewer verdicts and executor changes reach the terminal as the MCP
+      // journal wrote them (#467, PR 4), rather than as a second derivation of the same facts.
+      onEventRow: (row) => terminal.onEventRow(row),
       // The MCP socket opens asynchronously, so its own line is the only honest place to say it
       // is ready: the banner is printed before it listens, and a banner that claims an unopened
       // socket is the `false-mcp-ready` break (AC-10).
@@ -579,6 +582,8 @@ async function startMcpSocket(opts: {
   workspaceEvents: WorkspaceEventBus;
   providerBaseline: () => Promise<readonly ProviderStatus[]>;
   localHandoff: () => boolean;
+  /** Every journal row as it is appended, for the terminal's activity lines. */
+  onEventRow: (row: McpJournalRow) => void;
   /**
    * Where the one unavailability line goes (#467, PR 3).
    *
@@ -596,6 +601,7 @@ async function startMcpSocket(opts: {
       workspaceEvents: opts.workspaceEvents,
       providerBaseline: opts.providerBaseline,
       localHandoff: opts.localHandoff,
+      onEventRow: opts.onEventRow,
       ...(opts.service ? { service: opts.service } : {}),
     });
   } catch (err) {

@@ -17,6 +17,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { entry, TerminalRenderer, REDRAW_INTERVAL_MS, type RendererClock, type RenderStream } from './renderer.ts';
 import { UTF8_GLYPHS } from './format.ts';
 
+import type { TerminalEvent } from './event-names.ts';
 import type { TaskRow } from './activity.ts';
 
 const ESC = '\u001b';
@@ -133,7 +134,7 @@ function makeRenderer(
   return { renderer, stream, clock };
 }
 
-function info(message: string, event = 'task.started') {
+function info(message: string, event: TerminalEvent = 'task.started') {
   return entry({ level: 'info', subject: 'a12bc345', message, event, fields: [['run', 'a12bc345']] });
 }
 

@@ -6,6 +6,7 @@ import {
   type AuditResource,
   type OperationAnswer,
   type OperationResultRef,
+  type McpJournalRow,
   type ProviderStatus,
 } from '@qodeca/xezar-contract';
 import { collectSecretValues } from '../core/secret-redaction.ts';
@@ -65,6 +66,11 @@ export interface StartMcpServiceOptions {
   /** Test seam: the event controller's heartbeat (#309). Production uses its 30 s. */
   readonly leader?: { readonly heartbeatMs?: number };
   readonly localHandoff?: () => boolean;
+  /**
+   * Every journal row as it is durably appended — the terminal's activity lines (#467). Live rows
+   * only, never a replay; released with the service. A listener's throw never reaches the journal.
+   */
+  readonly onEventRow?: (row: McpJournalRow) => void;
 }
 
 /**
@@ -91,6 +97,7 @@ export async function startMcpService(opts: StartMcpServiceOptions): Promise<Mcp
     env: opts.env ?? process.env,
     warn,
   });
+  const stopRows = parts.journal && opts.onEventRow ? parts.journal.subscribe(opts.onEventRow) : undefined;
   // Built here rather than by the socket, because push delivery reads it too (#309). It writes
   // nothing until a session opens.
   const ownership = opts.ownership ?? new ProjectOwnership({ dataDir, projectId: project.id });
@@ -117,6 +124,7 @@ export async function startMcpService(opts: StartMcpServiceOptions): Promise<Mcp
   const unregisterLeader = delivery ? registerProjectLeader(project.id, delivery) : undefined;
   // Controllers and any leader first, while the journal they read is still open.
   const closeDelivery = (): void => {
+    stopRows?.();
     unregisterLeader?.();
     delivery?.close();
   };

@@ -347,6 +347,14 @@ that is **new output on stderr**. The rules a script may rely on:
   on a normal exit and on Ctrl-C. Narrower than that, `auto` prints lines and no table.
 - **`--quiet` cannot hide a failure.** It keeps warnings, errors, the real bound URL and each task's
   final status; information lines, recovery notices and the live region go.
+- **`event=` names are the MCP catalog's where the catalog has one** (#467, PR 4;
+  `packages/xezar/src/terminal/event-names.ts`): the same fact is found under the same name in a
+  plain log and in a leader's journal. A park with no structured question is `task.blocked`, a
+  routine successful check is a `debug` line, and check lines carry `result_scope`. The
+  terminal-only names are a closed list. Renaming or removing a name, or reusing a catalog kind with
+  a different meaning, is breaking; adding a name or a field is not. The journal-sourced lines
+  (`task.stalled`, `task.resumed`, `verdict.posted`, `executor.*`, E-04/E-05 kinds) need the
+  project's MCP service and are absent without it.
 - Nothing here cancels a task or stops the service. A closed output (`EPIPE`) stops the *drawing*,
   and the runs and the HTTP server carry on.
 

@@ -12,6 +12,15 @@ Installation validation is reported in installation.md. Real-task entries follow
 
 ## Real-task entries
 
+### 2026-09-16 — #467 PR 4 (terminal activity ↔ MCP contracts), `feature-implementation` step `implement`, `xezar-implementation`, Claude Code — real-task observed
+
+- Input: the #467 plan row 4, merged PR 2/3 and base `1975121` carrying #450, #460 and #523.
+- Observed: **a free-string event field let two surfaces drift without any test noticing.** PR 3 typed `ActivityEntry.event` as `string` and re-spelled catalog kinds as literals; #460 then split `waiting` into `question.asked` and `task.blocked`, and the terminal kept the old name. Typing the field as the contract's `McpEventKind` plus a closed terminal-only list, with a `Record<McpEventKind, …>` source table, turns the next catalog kind into a compile error instead of a silent divergence.
+- Observed: **not every catalog fact can be re-derived from the store.** The stall monitor's record shows only the current suspicion, so a silence that resumes under an active deadline warning leaves the record unchanged while the journal writes `task.resumed`. The terminal therefore prints those kinds from the journal row (a new `onEventRow` hook on the MCP service) instead of running a second monitor.
+- Observed (tooling): a whole-fix `git stash push -- $SRC` in zsh passed the file list as ONE path, so nothing was stashed, and the "red" run exited 0 against the fixed code. The output said `warning: could not open directory` and nothing else failed. A `bash -c` wrapper was then refused by the permission layer. The proof was redone by committing and checking the base versions of the source files out over the commit, which also avoids the shared stash stack. Lesson: in zsh, quote nothing and use an array, or do not use variables for path lists; and treat a red run that exits 0 as a broken proof, not as a green guard.
+- Regression/control: 12 named breaks in `packages/xezar/test/red-proofs.mjs` (10 red, 2 guards that pass both ways by design); whole-fix swap: 5 tests failed, 58 passed, then 74/74 passed. `npm run test:coverage:mcp` held the per-file 80/80 floor (`mcp/index.ts` 86.82 % lines, 80.85 % branches).
+- Remaining limit: fixture-tested. The journal-sourced lines were not watched live in a real terminal; terminal QA remains for the QA stage.
+
 ### 2026-09-16 — #464 P3 (leader setup verification and recovery), `feature-implementation` step `implement`, `xezar-implementation`, Codex — real-task observed
 
 - Input: accepted ONB-04/07/13/14 from the onboarding spec; base `a2fc084`; public `xez-onboard` pinned at `2c20c60`, with the installed cache at `efb7109`.

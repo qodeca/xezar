@@ -117,6 +117,7 @@ Press **⌘K / Ctrl+K** to open the palette. Search for a view, project, task, o
 
 - `.xezar/config.json`: project agent defaults, system prompt, review gate, base branch, team skills, worktree retention, `liveTitleUpdates`, `plannerModel` / `namerModel`, and `memoryLimitMb`.
 - `~/.xezar/config.json`: workspace resources, project registry, fallback agent/models, stored Inbox choice, skill-update choice, `disabledProviders`, `composerDefaults`, `agentEnvPassthrough`, `browseRoot` / `projectsDir`, and `modelsLocked`.
+- Terminal output (`cli.output`, `cli.color`, `cli.logLevel`) and each project's cockpit port have no control in Settings. Set them with command-line flags, environment variables, `xezar projects port`, or `~/.xezar/config.json`; see the [CLI reference](12-cli-reference.md#live-activity-in-the-terminal).
 - `~/.xezar/ui-state.json`: global appearance and notification preferences; project `.local/xezar/ui-state.json`: prompt templates.
 - Browser storage: theme and the appearance mirror. Native agent configuration files are separate from xezar's settings.
 - `XEZ_REVIEW_GATE`, `XEZ_TITLE_UPDATES`, `XEZ_FOLLOWUPS`, `XEZ_ENV_PASSTHROUGH`, `XEZ_SKILLS_AUTO_UPDATE`, `XEZ_AUTONOMOUS_DEFAULT`, and `XEZ_WORKTREE_DEFAULT` provide defaults where the corresponding stored setting has no opinion. See the [environment contract](../../.env.example) for precedence and startup details.

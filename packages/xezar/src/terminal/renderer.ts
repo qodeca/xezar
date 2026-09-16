@@ -47,6 +47,7 @@ import { logfmt, type LogfmtValue } from './logfmt.ts';
 import { createPainter, paintLine, type Painter } from './paint.ts';
 import { sanitizeText } from './sanitize.ts';
 
+import type { TerminalEvent } from './event-names.ts';
 import type { RenderMode } from './mode.ts';
 
 /** Move the cursor up `n` lines. */
@@ -628,7 +629,7 @@ export function entry(input: {
   projectId?: string;
   subject: string;
   message: string;
-  event: string;
+  event: TerminalEvent;
   continuation?: readonly string[];
   fields?: ActivityEntry['fields'];
   at?: Date;

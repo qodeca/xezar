@@ -6,7 +6,7 @@ import { PassThrough } from 'node:stream';
 import type { Hono } from 'hono';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { MCP_SESSION_EXPIRED_CODE, MCP_SESSION_EXPIRED_REASON, MCP_STALE_VERSION_GUIDANCE } from '@qodeca/xezar-contract';
+import { MCP_SESSION_EXPIRED_CODE, MCP_SESSION_EXPIRED_REASON, MCP_STALE_VERSION_GUIDANCE, type McpJournalRow } from '@qodeca/xezar-contract';
 
 import { assertIsolated, createAbWorld, leaked, resultText, snapshotChanges, type AbWorld } from '../../test/helpers/ab-fixture.ts';
 import { projectDataDir } from '../project-data-paths.ts';
@@ -155,8 +155,11 @@ async function composedCockpit(maxParallel: number) {
 type ComposedCockpit = Awaited<ReturnType<typeof composedCockpit>>;
 
 /** `startMcpService` exactly as `xezar serve` calls it, with an idempotent close for restarts. */
-async function serveComposed(c: ComposedCockpit): Promise<{ close(): void }> {
-  const handle = await startMcpService({ projectId: c.id, version: COMPOSED_VERSION, service: c.app, store: c.store, warn: () => {} });
+async function serveComposed(
+  c: ComposedCockpit,
+  extra: { onEventRow?: (row: McpJournalRow) => void } = {},
+): Promise<{ close(): void }> {
+  const handle = await startMcpService({ projectId: c.id, version: COMPOSED_VERSION, service: c.app, store: c.store, warn: () => {}, ...extra });
   let open = true;
   const close = (): void => {
     if (!open) return;
@@ -282,13 +285,13 @@ async function leaderAck(leader: Leader, cursor: string): Promise<{ status: stri
 }
 
 /** The rows the catalog actually wrote, straight from the journal file on disk. */
-function journalRowsOnDisk(dataDir: string): Array<{ kind: string; subject: { id: string } }> {
+function journalRowsOnDisk(dataDir: string): Array<{ eventId: string; kind: string; subject: { id: string } }> {
   const path = join(dataDir, 'mcp', 'event-journal.ndjson');
   if (!existsSync(path)) return [];
   return readFileSync(path, 'utf8')
     .split('\n')
     .filter(Boolean)
-    .map((line) => JSON.parse(line) as { kind: string; subject: { id: string } });
+    .map((line) => JSON.parse(line) as { eventId: string; kind: string; subject: { id: string } });
 }
 
 // ---- A-13 ----------------------------------------------------------------------------------------
@@ -644,6 +647,25 @@ describe('A-15 — a task completes while the client is offline (F-19–F-21, N-
     expect(effects).toBe(1);
     receipts.close();
   });
+
+  it('through the composed MCP service: every appended row reaches `onEventRow` live, and nothing after close (#467, PR 4)', async () => {
+    // RED against: a service that never subscribes the hook, and one that leaves it subscribed
+    // after close — a terminal line for a journal the service already let go of.
+    const c = await composedCockpit(2);
+    const seen: McpJournalRow[] = [];
+    const service = await serveComposed(c, { onEventRow: (row) => seen.push(row) });
+    const id = await humanStarts(c, 'mock:done finished while the terminal watched');
+    await until('the task to finish', () => c.store.getRun(id)?.status === 'done');
+    await until('its row at the hook', () => seen.some((row) => row.kind === 'task.done' && row.subject.id === id));
+    const onDisk = journalRowsOnDisk(c.dataDir).find((row) => row.kind === 'task.done' && row.subject.id === id);
+    expect(seen.find((row) => row.kind === 'task.done' && row.subject.id === id)?.eventId).toBe(onDisk?.eventId);
+
+    service.close();
+    const count = seen.length;
+    const after = await humanStarts(c, 'mock:done finished after the service closed');
+    await until('the later task to finish', () => c.store.getRun(after)?.status === 'done');
+    expect(seen).toHaveLength(count);
+  }, 60_000);
 
   it('through the composed MCP service: a task that finishes with no leader connected is delivered by leader_events on reconnect, with its current state; a redelivery repeats no effect', async () => {
     const c = await composedCockpit(2);
