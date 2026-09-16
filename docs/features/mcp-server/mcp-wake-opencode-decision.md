@@ -1,5 +1,10 @@
 # OpenCode: waking a running leader — decision record
 
+> **Status update — 2026-09-15:** **Not pursued / superseded** — the owner put OpenCode leader real-model wake
+> out of scope on 2026-09-13. The proposed implementation task was not filed;
+> [#340](https://github.com/qodeca/xezar/issues/340) remains open. This is the dated research record, not
+> shipped wake guidance.
+
 > **Operating rule since 2026-09-15 ([#439](https://github.com/qodeca/xezar/issues/439)).** A project leader works through the xezar MCP tools only – no cockpit UI, no HTTP API – and is attached so events are pushed to it (`<channel source="xezar">` for Claude Code, a started turn for Codex, OpenCode and pi). `leader_events` is the fallback for a leader that is not attached, and `gh` reads GitHub facts. This record is kept as written; where it treats pulling as the leader's normal path or the cockpit as the leader's surface, the rule supersedes it. See [the leader findings, § 11](leader-dogfooding-2026-09-13.md#11-every-time-the-leader-left-the-mcp-channel-consolidated-2105).
 
 Status: **spike decision record with executed evidence**. It answers the OpenCode leg of
@@ -7,7 +12,7 @@ Status: **spike decision record with executed evidence**. It answers the OpenCod
 what is really missing for a project event to wake a running OpenCode leader, and how to close it. It
 ships **no production code**; the fixture and driver scripts that produced the evidence stay out of this
 commit. The Codex leg ([`mcp-wake-codex-decision.md`](mcp-wake-codex-decision.md)) and the Claude Code leg
-(`mcp-wake-claude-code-decision.md`, PR [#401](https://github.com/qodeca/xezar/pull/401), not yet merged)
+([Claude Code wake decision](mcp-wake-claude-code-decision.md), since merged)
 are separate records; this one follows their shape.
 
 Date: **2026-09-13**. Repository revision: `dc4784ab566b90b7aef7b5a35786af3223e414a9` (branch `xez/c3d056aa`).
@@ -275,7 +280,7 @@ What remains is discovery, the cockpit surface, and one recorded bug — none of
 | The cockpit lists this project's sessions on a discovered server and attaches the chosen one | Real service + cockpit test asserting the attach POST reaches `LeaderDelivery.#act` with the right `sessionId`. **A-23 exclusivity/usable setup.** |
 | A real project event still causes exactly one model turn end to end, through the cockpit-driven attach rather than a hand-typed curl | Re-run of § 2.2's measurement through the new attach path: one event POST at the endpoint, zero further in a 30 s quiet window. **A-19 F2/F3 reaction.** |
 | `reactedSeq` agrees between the status route and `leader_events`, regardless of where `opencode serve` was started relative to the project | Fixture reproducing #340's outside-the-project case, red before the fix, green after; `leader_events` and status polled side by side. **A-19 recovery; closes #340.** |
-| Existing safety rules (idle/permission gating, tool restriction, echo guard, replay dedup) are unaffected | The adapter's existing 31-case test suite (`opencode.test.ts`) stays green with no rule weakened. |
+| Existing safety rules (idle/permission gating, tool restriction, echo guard, replay dedup) are unaffected | The adapter's existing 32-case test suite (`opencode.test.ts`) stays green with no rule weakened. |
 
 This task can close **#340** as the same wiring, since the reordering and the `markReacted()` caller are
 exactly its two causes. It does **not** by itself flip A-19/A-23 to PASSED release-wide: those clauses
