@@ -383,7 +383,8 @@ async function respond(userText, imageCount) {
   }
 
   // Spec 008: a planning call (marked `[xez-planner]` in the user prompt)
-  // gets a canned chain plan. The `code-review` skill is deliberately made up:
+  // gets a canned chain plan — a SOFTWARE example scenario, labeled as such in its rationale, not
+  // a generic default and not real validation (#466). The `code-review` skill is deliberately made up:
   // the planner's sanitizer strips unknown skills, and the step survives on
   // its prompt — which is exactly the path worth exercising in dry runs.
   if (userText.includes('[xez-planner]')) {
@@ -394,7 +395,7 @@ async function respond(userText, imageCount) {
         { name: 'Verify', command: 'npm test' },
         { name: 'Review', skill: 'code-review', prompt: 'Review the changes for {{task}}' },
       ],
-      rationale: 'Implement, verify with tests, then review.',
+      rationale: 'Implement, verify with tests, then review. (A software example from the dry-run mock: nothing was run or checked.)',
     });
     emit({
       type: 'assistant',
@@ -486,7 +487,7 @@ async function respond(userText, imageCount) {
       type: 'assistant',
       message: {
         role: 'assistant',
-        content: [{ type: 'text', text: `Done with the first pass — opened a draft PR: https://github.com/qodeca/demo/pull/123. Anything to adjust? (dry-run mock)${refsMarkers}${doneMarker}${monitoringMarker}${askMarker}` }],
+        content: [{ type: 'text', text: `Done with the first pass — opened a draft PR: https://github.com/example-org/example-project/pull/123 (a fictional example). Anything to adjust? (dry-run mock)${refsMarkers}${doneMarker}${monitoringMarker}${askMarker}` }],
         usage: { input_tokens: 300, output_tokens: 90 },
       },
     });

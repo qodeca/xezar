@@ -587,7 +587,7 @@ export function pastedAttachmentsText(attachments: PersistedAttachment[]): strin
     `The user attached ${attachments.length} pasted file${attachments.length > 1 ? 's' : ''}, ` +
     `also saved on disk at:\n${list}\n` +
     `When the task involves saving, uploading, attaching, or transforming the pasted content ` +
-    `(e.g. attaching to a GitHub issue/PR, copying into the repo), operate on these files — do ` +
+    `(e.g. adding it to the project's files or attaching it where the task says), operate on these files — do ` +
     `not attempt to reconstruct them from the conversation.`
   );
 }
