@@ -212,6 +212,7 @@ export function attachRunStoreActivity(store: RunStore, options: ActivitySourceO
     options.emit(entry({
       at: new Date(),
       level: input.level,
+      ...(options.projectId ? { projectId: options.projectId } : {}),
       subject: input.run.id.slice(0, 8),
       message: input.message,
       event: input.event,

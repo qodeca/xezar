@@ -40,6 +40,15 @@ const CASES = [
     "test": "packages/xezar/src/terminal/index.test.ts"
 },
 {
+    "name": "later-project-attribution",
+    "ac": "AC-06",
+    "why": "later-project activity attributed to the boot project",
+    "file": "packages/xezar/src/terminal/activity-source.ts",
+    "find": "      ...(options.projectId ? { projectId: options.projectId } : {}),",
+    "replace": "      ...(false ? { projectId: options.projectId } : {}),",
+    "test": "packages/xezar/src/terminal/index.test.ts"
+},
+{
     "name": "unsanitized-step-name",
     "ac": "AC-11",
     "why": "unsanitized step name",

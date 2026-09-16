@@ -230,9 +230,13 @@ it('recovery-replayed-for-later-projects: suppresses recovery until that context
   store.emit('run', { ...run, status: 'failed', error: 'interrupted' });
   store.emit('run', run);
   expect(stream.text).not.toContain('task.failed');
+  expect(stream.text).not.toContain('reason=interrupted');
   expect(terminal.renderer.failedCount).toBe(0);
   contexts.emit('built', { id: 'later', store: store.asStore });
   store.emit('run', { ...run, status: 'failed', error: 'real failure' });
+  const failure = stream.lines().find((line) => line.includes('event=task.failed'));
+  expect(failure).toContain('project=later');
+  expect(failure).not.toContain('project=beta');
   expect(terminal.renderer.failedCount).toBe(1);
   terminal.stop();
   expect(stream.text).toContain('failed=1');

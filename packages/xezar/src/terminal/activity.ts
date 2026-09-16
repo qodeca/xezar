@@ -41,6 +41,8 @@ const STATE_ORDER = new Map<TaskState, number>(TASK_STATES.map((s, i) => [s, i])
 export interface ActivityEntry {
   at: Date;
   level: ActivityLevel;
+  /** The project that owns this entry. Preferred over the renderer's boot-project fallback. */
+  projectId?: string;
   /** A task's first 8 id characters, or a source word (`http`, `mcp`, `xezar`, `registry`). */
   subject: string;
   /** The human message. Already sanitized by whoever built it. */

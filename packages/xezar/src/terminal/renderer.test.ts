@@ -201,6 +201,31 @@ describe('plain output — AC-09', () => {
     );
   });
 
+  it('prefers the entry owner over the renderer boot project', () => {
+    const stream = new FakeStream({ isTTY: false });
+    const { renderer } = makeRenderer({ stream, mode: 'plain' });
+    renderer.log(
+      entry({
+        level: 'error',
+        projectId: 'later',
+        subject: 'a12bc345',
+        message: 'failed',
+        event: 'task.failed',
+      }),
+    );
+    expect(stream.text).toContain('project=later');
+    expect(stream.text).not.toContain('project=beta');
+  });
+
+  it('sanitizes the entry owner before it reaches plain output', () => {
+    const stream = new FakeStream({ isTTY: false });
+    const { renderer } = makeRenderer({ stream, mode: 'plain' });
+    const projectId = ['later', String.fromCharCode(27), '[2J', '\nforged'].join('');
+    renderer.log(entry({ level: 'error', projectId, subject: 'a12bc345', message: 'failed', event: 'task.failed' }));
+    expect(stream.text).not.toMatch(/[\u001b\u009b]/);
+    expect(stream.text.trimEnd().split('\n')).toHaveLength(1);
+  });
+
   it('draws no live region — there is nothing to redraw in a file', () => {
     const stream = new FakeStream({ isTTY: false });
     const { renderer } = makeRenderer({ stream, mode: 'plain' });

@@ -226,9 +226,10 @@ export class TerminalRenderer {
 
   private renderEntry(entry: ActivityEntry): string[] {
     if (this.mode === 'plain') {
+      const projectId = entry.projectId ?? this.projectId;
       const fields: Array<readonly [string, LogfmtValue]> = [
         ['level', entry.level],
-        ...(this.projectId ? ([['project', this.projectId]] as const) : []),
+        ...(projectId ? ([['project', projectId]] as const) : []),
         ['event', entry.event],
         ...(entry.fields ?? []),
       ];
@@ -624,6 +625,7 @@ export class TerminalRenderer {
 /** Sanitize the human text and every string field before either output format sees it. */
 export function entry(input: {
   level: ActivityLevel;
+  projectId?: string;
   subject: string;
   message: string;
   event: string;
@@ -634,6 +636,7 @@ export function entry(input: {
   return {
     at: input.at ?? new Date(),
     level: input.level,
+    ...(input.projectId ? { projectId: sanitizeText(input.projectId) } : {}),
     subject: sanitizeText(input.subject, { maxWidth: 8 }),
     message: sanitizeText(input.message),
     event: input.event,
