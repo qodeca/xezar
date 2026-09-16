@@ -5,6 +5,9 @@ import { mcpVersionTokenSchema } from './mcp-versioning.ts';
 // The chain shapes belong to the workflows family; the run record embeds one, so this file
 // consumes them rather than redeclaring. One-way on purpose — see the header of `./workflows.ts`.
 import { workflowDefSchema, workflowStepDefSchema } from './workflows.ts';
+// Reviewer reports (#460). Declared in their own file because they are a shape in their own
+// right — the run record merely CARRIES them, and the persistence schema imports the same one.
+import { taskVerdictIssueSchema, taskVerdictSchema } from './task-verdict.ts';
 
 /**
  * The RUNS family of `/api/v1` — a task's record, its lifecycle mutations, and the artifacts
@@ -262,6 +265,16 @@ export const runRecordSchema = z.object({
   currentStepId: z.string().optional(),
   error: z.string().optional(),
   steps: z.array(stepStateSchema),
+  /**
+   * Reviewer reports this task's own steps recorded (#460) — at most one per role, so at most
+   * three. Absent on every run that had no reviewer step and on every record written before this,
+   * and ABSENT IS NOT A PASS: a task that finished `done` with no `verdicts` has passed no quality
+   * gate that anything here can attest to.
+   */
+  verdicts: z.array(taskVerdictSchema).optional(),
+  /** Reviewer reports that could not be recorded, and why (#460). Present so a refused packet is
+   *  visibly different from no packet — it never yields a verdict either way. */
+  verdictIssues: z.array(taskVerdictIssueSchema).optional(),
   /**
    * The persisted workflow definition, so a `queued` run survives a restart — including the ad-hoc
    * "(planned)" chains that exist nowhere else.

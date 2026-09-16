@@ -15,7 +15,7 @@ Format per entry: `### D-nn <title>`, then Date, Status, Context, Decision, Cons
 | **Consequences** | Until decided, the mockup keeps the red badge and its README says so in Open decisions. The implementing PR must not ship either colour before this record closes. If violet wins, the design's D3 row and its `states.html` badge change; if red wins, `new-designs.md` §3 gains the exception and `patterns.md` §2 (sidebar navigation and badges) records the second badge colour. |
 | **Source** | PR #384 review (the design-system docs), which surfaced the conflict between the design's D3 and `new-designs.md` §3. |
 
-The next five records carry the decisions of the "air" design (`designs/design-system-air/`, issue #424) that bind the whole system. That folder numbers its own decisions; they are cited here as **Air D-n** so they are not read as ids of this file (step-0 design review, finding NB-7).
+The next six records (D-02 to D-07; counts read on 2026-09-16) carry the decisions of the "air" design (`designs/design-system-air/`, issue #424) that bind the whole system. That folder numbers its own decisions; they are cited here as **Air D-n** so they are not read as ids of this file (step-0 design review, finding NB-7).
 
 ### D-02 Six-step rhythm scale for the space between blocks
 
@@ -58,7 +58,7 @@ The next five records carry the decisions of the "air" design (`designs/design-s
 | **Status** | Accepted – in force from step 1 of #424 |
 | **Context** | A visible spacing change could hide behind a setting or an `XEZ_*` flag. AGENTS.md § Zero config: never trade a working default for a knob. |
 | **Decision** | The rhythm is the shipped default at every density (Air D-1, Air D-8). There is no flag, no environment variable and no toggle. The only choice a user gets is the density setting. |
-| **Consequences** | Every step of #424 changes the default path directly and carries `needs-design` + `needs-qa`. `.env.example` does not change. |
+| **Consequences** | Every UI step of #424 (1, 2, 3b, 4) changed the default path directly and passed the design and QA gates (`design-approved` + `qa-approved` on #432, #437, #438, #441); step 3a (#431) changed only the test gate and carried `skip-design` + `skip-qa`. `.env.example` does not change. |
 | **Source** | `designs/design-system-air/README.md` § 13 (Air D-1, Air D-8). |
 
 ### D-06 A hand-typed spacing pixel fails `npm test`

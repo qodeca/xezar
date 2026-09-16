@@ -2,12 +2,12 @@
 
 | | |
 |---|---|
-| **Status** | Draft, revision 4 (2026-09-15) – a design-system enhancement: rhythm tokens, looser between-block defaults, no hand-set pixels, a Roomy density; the step-0 full-page mockup set (eight surfaces at 1280 and 375 px, six states, four densities, both themes, violet accent, wide width); D-1..D-12 closed. **Approved** – the step-0 `design-review` verdict is PASS WITH FOLLOW-UPS ([comment](https://github.com/qodeca/xezar/pull/429#issuecomment-5678658435), § 16); it chose D-11 and D-12. Revision 3 applied the four-reviewer verdict ([`review-2026-09-14.md`](review-2026-09-14.md)). Filed as [qodeca/xezar#424](https://github.com/qodeca/xezar/issues/424) (`enhancement`, `epic`, `risk-high`), an umbrella with steps 0 (full-page mockup) → 1 → 2 → 3a → 3b → 4. The step-0 verdict has landed, so step 1 onward may start (D-4). |
+| **Status** | Implemented (PRs #429, #432, #431, #437, #438, #441). #424 closed on 2026-09-15; remaining allowlist conversion is tracked in #445. D-1..D-12 closed; the step-0 verdict was PASS WITH FOLLOW-UPS ([comment](https://github.com/qodeca/xezar/pull/429#issuecomment-5678658435), § 16). Revision 3 applied the four-reviewer verdict ([`review-2026-09-14.md`](review-2026-09-14.md)). The mockup preserves the pre-#424 Today view beside the proposal. |
 | **Date** | 2026-09-15 |
 | **Mockup** | Open [`index.html`](index.html): a hub linking five 1:1 screen pages (flip Today \| Proposed in place), a stacked compare page, and three review aids (375 px pairs, states, appearance axes). No build, no server. |
 | **Replaces** | Nothing. This design changes the system's spacing rules, not a feature surface. |
 | **Comes from** | The owner, 2026-09-14: "the entire design system requires more air – more space between elements on the pages." |
-| **Facts** | Every number below was read from the files it cites on 2026-09-14 and re-checked by the fact-check reviewer. Inferred statements are marked *inferred*. |
+| **Facts** | The proposal and its source line numbers are historical evidence from 2026-09-14, not a current-code inventory. Rollout outcomes below distinguish shipped work from targets. Allowlist counts read on 2026-09-16: 70 rows / 86 occurrences at #431 (`673c6ed`), 62 rows / 76 occurrences at this sweep; the remaining conversion is #445. Inferred statements are marked *inferred*. |
 
 ## 1. Summary
 
@@ -91,7 +91,7 @@ Assistant text `text-[15px] leading-[1.65]`, user bubble `13.5px leading-[1.55]`
 
 ### 2.5 Not recorded as a gap
 
-`known-gaps.md` holds 23 entries (G-01..G-23); none is about spacing, density, gutters or rhythm. G-24 was used once and deleted (`design-guardian.test.ts:60` still cites it), so the next free id is **G-25**. Without an entry a reviewer has no rule to point at.
+On 2026-09-14, `known-gaps.md` held 23 entries (G-01..G-23); none is about spacing, density, gutters or rhythm. G-24 was used once and deleted (`design-guardian.test.ts:60` still cites it), so the next free id was **G-25**. G-25 was recorded in step 1 and deleted in step 2. This is the original problem statement, not the current gap inventory.
 
 ## 3. Users and jobs
 
@@ -159,11 +159,11 @@ cd designs/design-system-air && for f in tasks thread changes settings inbox; do
 
 A `s/ on//` strip is not enough: the quick-list row spells it `<li class="on">`, so the class has to be removed with its attribute.
 
-**Local exceptions.** A design's local sheet holds feature rules only and never redeclares a token or copies a base class (`designs/README.md`, `new-designs.md` § 2). Where a mockup needs a look the cockpit has and `cockpit.css` lacks, `new-designs.md:30-31` adds the class to `cockpit.css` – but step 0 may not touch `docs/design-system/` until its verdict is in. What the mockup does instead:
+**Local exceptions.** A design's local sheet holds feature rules only and never redeclares a token or copies a base class (`designs/README.md`, `new-designs.md` § 2). Where a mockup needs a look the cockpit has and `cockpit.css` lacks, `new-designs.md:30-31` adds the class to `cockpit.css` – but step 0 could not touch `docs/design-system/` before its verdict. Steps 1–4 have since added the tokens and Roomy block there. What the mockup did instead:
 
-- **(a) Roomy.** `styles.css` declares `:root[data-density='roomy'] { --spacing: 0.3125rem }`, the one cockpit token the mockup redeclares, because that value is the proposal (§ 9.4).
-- **(b) The unit and the root size.** `--u: var(--spacing, 0.25rem)` is one Tailwind spacing unit; a scale value is `calc(var(--u) * n)`, so the density lever moves it as it does in the app. `:root { font-size: 16px }` restores the cockpit's rem: `cockpit.css:203-211` sets `html, body { font-size: 14px }`, which made every unit, at every density, 12.5 % small. That one rule sizes the root *and* the body, so raising the root raises the body text with it; `styles.css` adds `body { font-size: 14px }` to put it back. The override is mockup-only and becomes obsolete once step 1 splits that rule.
-- **(c) Rhythm values.** The six rhythm values (`--row` 8 · `--stack` 12 · `--list` 16 · `--inset` 20 · `--group` 24 · `--section` 32) are declared for the proposed view only, and on `.ex.air` for the hub's bars, under short local names; PR 1 names them `--spacing-<name>` in `index.css` and `cockpit.css`.
+- **(a) Roomy.** Shipped in step 4: `cockpit.css` now declares `:root[data-density='roomy'] { --spacing: 0.3125rem }`, so the duplicate local block in `styles.css` is removed.
+- **(b) The unit and the root size.** `--u: var(--spacing, 0.25rem)` is one Tailwind spacing unit. Step 0 needed local 16 px root / 14 px body overrides because the shared sheet combined both selectors. Step 1 split them (`cockpit.css` now sets `html` to 16 px and `body` to 14 px), so `styles.css` no longer carries those overrides.
+- **(c) Rhythm values.** The six rhythm values (`--row` 8 · `--stack` 12 · `--list` 16 · `--inset` 20 · `--group` 24 · `--section` 32) are declared for the proposed view only, and on `.ex.air` for the hub's bars, under short local names; PR 1 (#432) named them `--spacing-<name>` in `index.css` and `cockpit.css`. The mockup keeps its short local names so the historical Today view does not change.
 - **(d) Role variables.** Each drawn value that differs between the views is a role variable, declared in exactly one sheet: `styles.css` for cross-screen values, the first block of each screen sheet for its own. Today is raw px where the source hand-sets a value, so the density lever misses it as it does in the app, and `calc(var(--u) * n)` – written `u × n` in the table – where the source uses the scale. Proposed is a rhythm value or `u × n`.
 
   These ~45 role variable names – `--u`, `--gutter`, `--turn-gap`, `--cta-h` and the rest – exist only in this folder and never ship: they are how a page with no build step holds both views' values at once. The shipping spelling is the § 9.2 utility (`mt-list`, `p-inset`, `md:px-section`).
@@ -184,16 +184,16 @@ A `s/ on//` strip is not enough: the quick-list row spells it `<li class="on">`,
   | `state` | thread: loading, dialog · inbox: empty, error · settings: error | none | `data-state` | no | thread, inbox, settings |
   | `section` | agents, appearance, accounts | agents | `data-section` | no | settings |
   | `page`, `at`, `section`, `state` | page: tasks, thread, changes, settings, inbox · at: speaker-2, ask-card, dock (thread) · section, state: the target page's lists | tasks / none | – | no | compare |
-- **(g) Local replicas.** Surfaces `cockpit.css` has no class for are drawn with local `air-` classes: the thread column, user bubble, assistant text, tool row and group, ask card, run header (`.air-run-head`), Inbox card layout, composer dock, drawer and settings field list (`.air-field`). Where `cockpit.css` has a `.base el` rule, an `air-` container mirrors its selector shape (`.air-quick li`, `.air-table th`, `.air-dock .composer textarea`, `.air-diffs .diff header`), so a today value is not lost to specificity. They stay local because step 0 may not touch `docs/design-system/`.
+- **(g) Local replicas.** Surfaces `cockpit.css` has no class for are drawn with local `air-` classes: the thread column, user bubble, assistant text, tool row and group, ask card, run header (`.air-run-head`), Inbox card layout, composer dock, drawer and settings field list (`.air-field`). Where `cockpit.css` has a `.base el` rule, an `air-` container mirrors its selector shape (`.air-quick li`, `.air-table th`, `.air-dock .composer textarea`, `.air-diffs .diff header`), so a today value is not lost to specificity. They stayed local because step 0 could not touch `docs/design-system/`; they preserve the pre-#424 Today view.
 - **(h) Shell breakpoint.** The replica switches to the phone shell at 860 px, `cockpit.css`'s breakpoint, not the app's `md` at 768 px; the review widths, 1280 and 375, sit clear of both.
 - **(i) Captions.** Figure captions use `--muted-foreground`, not `.frame-label`, whose `--soft-foreground` is about 2.5:1 in light (`cockpit.css:378`).
-- **(j) Mockup-only departures.** Where a `cockpit.css` base class disagrees with the source, the mockup draws the source value in both views, through a local replica or a mirrored selector, and leaves `cockpit.css` as it is. `known-gaps.md` cannot change in step 0; PR 2 adds the rows it does not fix to the mockup-fidelity table (§ 14).
+- **(j) Mockup-only departures.** Where a `cockpit.css` base class disagrees with the source, the mockup draws the source value in both views, through a local replica or a mirrored selector, and leaves `cockpit.css` as it is. `known-gaps.md` could not change in step 0. Step 2 (#437) updated the Mockup fidelity table for the classes it restyled; the remaining § 5 (j) rows are not recorded there (open).
 
   The table – class · `cockpit.css` · source · what the mockup draws – and the notes recorded while drawing are in [`handoff-values.md`](handoff-values.md) § 5 (j).
 
 ## 6. Screens
 
-The step-0 mockup (D-4) draws the cockpit's own screens at 1:1, twice: **Today** as shipped, every value read from `packages/web/src` and cited file:line in each page's values table, and **Proposed** – the end state after PR 4. Scope: eight surfaces – Tasks (table, sidebar, New-task button), a thread, the composer dock, a dialog, the diff (the Changes tab), Settings → Agents, Settings → Appearance and the Inbox – at 1280 and 375 px, in six states (§ 7), both themes, the violet accent, four densities and the wide width.
+The step-0 mockup (D-4) draws the cockpit's own screens at 1:1, twice: **Today** before #424, every value read from `packages/web/src` on 2026-09-14 and cited file:line at that revision in each page's values table, and **Proposed** – the end state after PR 4. Scope: eight surfaces – Tasks (table, sidebar, New-task button), a thread, the composer dock, a dialog, the diff (the Changes tab), Settings → Agents, Settings → Appearance and the Inbox – at 1280 and 375 px, in six states (§ 7), both themes, the violet accent, four densities and the wide width.
 
 | Page | Surface | How the views compare |
 |---|---|---|
@@ -209,7 +209,7 @@ The step-0 mockup (D-4) draws the cockpit's own screens at 1:1, twice: **Today**
 
 **Comparison model.** At 1280 a screen page flips Today \| Proposed in place – a radio on the review bar, no reload, so the scroll position holds and a 2–4 px change shows as movement – and `compare.html` stacks both views of one page at 1:1. At 375 the aid pages show the two views side by side in 375 × 780 frames. AC 1 is met by the flip plus the stacked compare page (1:1, both at once). Each screen page ends with a values table: where, today (file:line), proposed (token = px at Comfortable).
 
-The retired pair 1 drew the settings gutter as 20 → 32; the source is 24 (`md:p-6`, `agents-section.tsx:163`), and § 9.2 does not assign it – see the "unchanged – for the step-0 verdict" rows at the end of § 9.2.
+The retired pair 1 drew the settings gutter as 20 → 32; the source was 24 (`md:p-6`, `agents-section.tsx:163`). The step-0 review (NB-1) assigned it `p-list md:p-group` – the "Settings section containers" row of `handoff-values.md` § 9.2, shipped in step 2.
 
 ## 7. States
 
@@ -281,9 +281,9 @@ Two more pieces belong to PR 1:
 
 ### 9.2 New defaults, surface by surface (PR 2 – the cockpit)
 
-The table – surface · today · proposed · delta – is in [`handoff-values.md`](handoff-values.md) § 9.2. Six of its rows are § 9.3 conversions of a hand-set pixel and are marked *delivered by PR 3b (§ 9.3)* there, so PR 2 leaves them alone: PR 3a still seeds its allowlist with all 88 occurrences, and PR 2's screenshots compare the rhythm alone (§ 9.6).
+The table – surface · today · proposed · delta – is in [`handoff-values.md`](handoff-values.md) § 9.2. Six of its rows are § 9.3 conversions of a hand-set pixel and are marked *delivered by PR 3b (§ 9.3)* there, so PR 2 leaves them alone: PR 3a seeded its allowlist from that step’s tree (70 rows, 86 occurrences in #431; counts read on 2026-09-16), and PR 2's screenshots compare the rhythm alone (§ 9.6).
 
-**Left to step 2 or 3b: the two sticky offsets on the Changes tab.** The tree pane is `sticky top-40 … w-60 lg:w-72` (`task-changes.tsx:202`), so the mockup spells it on the density unit (`top: calc(var(--air-bar-h) + var(--u) * 40)`, `width: calc(var(--u) * 72)`). The diff file header is pinned by `[--diff-sticky-top:10rem]` (`:193`) – a real rem, so it keeps its 160 px. Measured in Chrome: at Comfortable both stick at 230 px under the review bar; at Roomy the pane sticks at 270 and the diff header at 230, a 40 px mismatch. The mockup is faithful here – the shipped product does the same, because `top-40` rides the lever and a rem does not; the old mockup hid it by hard-coding both. The PR that converts these picks one: move the diff header onto the scale, or keep the rem and accept the gap.
+**Not converted by #424: the two sticky offsets on the Changes tab.** The tree pane is `sticky top-40 … w-60 lg:w-72` (`task-changes.tsx:202`), so the mockup spells it on the density unit (`top: calc(var(--air-bar-h) + var(--u) * 40)`, `width: calc(var(--u) * 72)`). The diff file header is pinned by `[--diff-sticky-top:10rem]` (`:193`) – a real rem, so it keeps its 160 px. Measured in Chrome: at Comfortable both stick at 230 px under the review bar; at Roomy the pane sticks at 270 and the diff header at 230, a 40 px mismatch. The mockup is faithful here – the shipped product does the same, because `top-40` rides the lever and a rem does not; the old mockup hid it by hard-coding both. Still open after step 3b (`task-changes.tsx:193,202`, checked on 2026-09-16); a follow-up must choose between moving the diff header onto the scale and keeping the rem with the gap. It belongs with #445 or a separate issue (inferred).
 
 Effect on a page: a settings page with five fields grows ~40 px; a thread of 30 rows with 10 speaker changes grows about 100 px between rows (−2 × 20 + 14 × 10: the 20 rows inside a turn lose 2 each, the 10 speaker-change rows gain 14 each) plus 24 px of gutter (the column's top and bottom padding each grow 20 → 32); the task table does not grow in height; the sidebar gains 2 px per row and 12 px between groups. All *inferred* from the deltas; PR 2 reports measured `document.scrollHeight` before and after (AC 4).
 
@@ -294,7 +294,7 @@ The conversion table – today · proposed · note – is in [`handoff-values.md
 Guardian rule (new, `design-guardian.test.ts`, modelled on `unknown-color-token` (`:145-161`), the one rule with a `violates` hook – but that hook sees only the match, not the file):
 
 - name `no-arbitrary-spacing`; pattern `(?<![\w-])(?:[a-z]+:)*(?:p|px|py|pt|pb|pl|pr|m|mx|my|mt|mb|ml|mr|gap|gap-x|gap-y|space-x|space-y|h|min-h|size)-\[\d+(?:\.\d+)?(?:px|rem|em)\]` – a left boundary so `max-w-[336px]` is not read as `w-[336px]`; `px|rem|em`; heights and `size` in, widths and `max-*` out.
-- allowlist keyed on `file:spelling`, seeded in PR 3a with today's 88 occurrences, each row carrying a reason or "convert in 3b". The `Rule` hooks cannot express that today – `allowed(rel)` sees only the file and `violates(match)` only the match (`design-guardian.test.ts:35-45`) – so PR 3a widens the hook to `violates(match, file)` as part of the rule. A fixture self-test proves `h-[34px]`, `size-[30px]` and `md:min-h-[54px]` each fail against an empty allowlist (the `git stash` red-then-green method AGENTS.md requires).
+- allowlist keyed on `file|spelling` in `packages/web/src/design-guardian-spacing-allowlist.json`, each row with a count and reason. PR 3a (#431) kept the `violates(match)` hook and added a per-occurrence map instead of widening the hook. Its seed was 70 rows / 86 occurrences (counts read on 2026-09-16 at `673c6ed`). Fixture self-tests pin rejection against an empty allowlist.
 - It **fails `npm test`** – the validation gate, not the build (D-5). Owned by a test, never waived in prose.
 
 ### 9.4 The Roomy option (PR 4 – appearance)
@@ -321,26 +321,28 @@ Guardian rule (new, `design-guardian.test.ts`, modelled on `unknown-color-token`
 | `docs/design-system/theming.md` | Roomy in the density paragraph |
 | `.claude/skills/design-system/SKILL.md` | rule 17 (§ 8) |
 | `.xezar/skills/xezar-ux-design.md:36` | the review checklist names the four densities |
-| `packages/web/src/design-guardian.test.ts` | the `no-arbitrary-spacing` rule, the widened `violates(match, file)` hook, the allowlist, the fixture self-test |
+| `packages/web/src/design-guardian.test.ts` | the `no-arbitrary-spacing` rule, the per-occurrence allowlist map (the `violates(match)` hook stayed unchanged), the allowlist, the fixture self-test |
 | `packages/web/src/design-system-drift.test.ts` | `THEME_SELECTORS` gains `roomy` |
 | `packages/web/src/lib/utils.ts` (+ test) | `tailwind-merge` `theme.spacing` extension |
 | `packages/web/index.html` | pre-paint density stamp |
 | `packages/contract/src/workspace.ts`, `packages/xezar/src/server/server.ts` | the enum; export the density schema from the contract, import it in the server, delete only the duplicated const |
-| `packages/web/src/components/ui/button.test.tsx` | the `h-8` / `size-8` assertions |
+| `packages/web/src/components/ui/button.test.tsx` | the `h-8` / `size-8` assertions – not done in #424 (the small button is still `h-[30px]`); left to #445 |
 | `packages/web/e2e/rhythm.e2e.ts` (new) | AC 3 |
 | `BACKWARD_COMPATIBILITY.md` | the appearance value |
-| `designs/quality-checks`, `designs/decisions` | adopt the tokens in their next revision; a `design-debt` issue keeps the lifecycle clock honest |
+| `designs/quality-checks`, `designs/decisions` | adopt the tokens in their next revision – #435 |
 
 ### 9.6 Rollout
 
-| Step | Content | Gate | Measure |
-|---|---|---|---|
-| Step 0 – mockup | A full-page before/after mockup in this folder (D-4): Tasks (table, sidebar, New task, phone drawer), a thread with its dock, Changes, Settings → Agents, → Appearance (Roomy · Comfortable · Compact · Compact for real), → Agent accounts (refusal), Inbox and a dialog; at 1280 and 375 px; both themes, the violet accent, four densities and the wide width; the six states | the `design-review` verdict – it gates step 1 onward | the verdict |
-| PR 1 | `--spacing` + six tokens in `index.css` and `cockpit.css`, `tailwind-merge`, foundations § 4.1, specimens, G-25, and the Settings field-list pilot (D-9) | `needs-design` + `needs-qa` – the pilot ships; drift test | the specimen bars at 8/12/16/20/24/32 from disk (AC 2) |
-| PR 2 | § 9.2 across `packages/web/src`; G-25 deleted | `needs-design` + `needs-qa`; before/after screenshots at 1280 and 375, both themes, comfortable and ultra; `npm run test:e2e` | measured page heights (AC 4); `rhythm.e2e.ts` (AC 3) |
-| PR 3a | the guardian rule, the widened `Rule` hook, the allowlist seeded with the 88 occurrences, the fixture self-test | `skip-design` (no rendered change) | allowlist pinned at 88 rows |
-| PR 3b | § 9.3 conversions; `button.test.tsx`; the known-gaps chip row | `needs-design` + `needs-qa`; `npm run test:e2e` (the suite asserts real geometry: `task-thread.e2e.ts:452`, `quick-list.e2e.ts:271-276, 650-668`, `diff-scroll.e2e.ts:38, 254-287`) | allowlist exactly 2 – the `min-h-[24px]` floors on the picker pill and the reference chip – each with a written reason |
-| PR 4 | Roomy: the density schema exported from the contract and imported by the server (duplicate deleted), `normalizeDensity`, pre-paint, `THEME_SELECTORS`, Settings option, BC note, release note | `needs-design`; contract parity | AC 8 |
+The gates and measurements below describe the rollout plan; the Merged column records delivery. #424 closed on 2026-09-15; the allowlist burn-down moved to #445.
+
+| Step | Content | Gate | Measure | Merged |
+|---|---|---|---|---|
+| Step 0 – mockup | A full-page before/after mockup in this folder (D-4): Tasks (table, sidebar, New task, phone drawer), a thread with its dock, Changes, Settings → Agents, → Appearance (Roomy · Comfortable · Compact · Compact for real), → Agent accounts (refusal), Inbox and a dialog; at 1280 and 375 px; both themes, the violet accent, four densities and the wide width; the six states | the `design-review` verdict – it gates step 1 onward | the verdict | #429 (`c1919e8`) |
+| PR 1 | `--spacing` + six tokens in `index.css` and `cockpit.css`, `tailwind-merge`, foundations § 4.1, specimens, G-25, and the Settings field-list pilot (D-9) | `needs-design` + `needs-qa` – the pilot ships; drift test | the specimen bars at 8/12/16/20/24/32 from disk (AC 2) | #432 (`d0c5def`) |
+| PR 2 | § 9.2 across `packages/web/src`; G-25 deleted | `needs-design` + `needs-qa`; before/after screenshots at 1280 and 375, both themes, comfortable and ultra; `npm run test:e2e` | measured page heights (AC 4); `rhythm.e2e.ts` (AC 3) | #437 (`aa6416d`) |
+| PR 3a | the guardian rule, per-occurrence map, allowlist seeded at 70 rows / 86 occurrences (counts read on 2026-09-16 at `673c6ed`), fixture self-test | `skip-design` (no rendered change) | allowlist seeded at 70 rows | #431 (`673c6ed`) |
+| PR 3b | § 9.3 conversions; `button.test.tsx`; the known-gaps chip row | `needs-design` + `needs-qa`; `npm run test:e2e` (the suite asserts real geometry: `task-thread.e2e.ts:452`, `quick-list.e2e.ts:271-276, 650-668`, `diff-scroll.e2e.ts:38, 254-287`) | target: two chip-floor rows; #441 left 62 rows / 76 occurrences (counts read on 2026-09-16); burn-down in #445 | #441 (`00ee895`) |
+| PR 4 | Roomy: the density schema exported from the contract and imported by the server (duplicate deleted), `normalizeDensity`, pre-paint, `THEME_SELECTORS`, Settings option, BC note, release note | `needs-design`; contract parity | AC 8 | #438 (`8d29ea3`) |
 
 Order (issue #424): step 0 → 1 → 2 → 3a → 3b → 4; the step-0 verdict gates step 1 onward. 3b after 2 so PR 2's screenshots compare rhythm alone.
 
@@ -348,7 +350,7 @@ Order (issue #424): step 0 → 1 → 2 → 3a → 3b → 4; the step-0 verdict g
 
 - Nothing changes for screen readers: the same elements, the same order, the same names.
 - Touch targets stay `h-11` (44 px) on phone at Comfortable and grow at Roomy (55 px). At Compact and Compact for real they shrink as they do today (38.5 / 33 px) – the density lever is proportional by decision D-3; the cockpit's own foundations § 12 only promises 44 px at the default (*inferred*: `foundations.md:301` says `h-11` on phone, shrink at `md:`).
-- The two small interactive chips – the `h-[26px]` picker pill and the `h-[22px]` reference chip – are floored at an absolute `min-h-[24px]` in PR 3b, so they meet WCAG 2.2 SC 2.5.8's 24 px at every density; today's hand-set 26 / 22 px chips do not. The floors are the two allowlist rows the rule keeps.
+- The two small interactive chips – the `h-[26px]` picker pill and the `h-[22px]` reference chip – are floored at an absolute `min-h-[24px]` in PR 3b, so they meet WCAG 2.2 SC 2.5.8's 24 px at every density; today's hand-set 26 / 22 px chips do not. The two permanent floor rows remain alongside the conversion debt tracked in #445.
 - Type sizes and line heights are untouched, so the G-23 contrast gap is neither better nor worse. Focus rings, motion, colour: untouched.
 
 ## 11. Responsive
@@ -365,7 +367,7 @@ Order (issue #424): step 0 → 1 → 2 → 3a → 3b → 4; the step-0 verdict g
 2. `specimens/foundations.html` opened **from disk** shows the six rhythm bars at 8 / 12 / 16 / 20 / 24 / 32 px.
 3. `packages/web/e2e/rhythm.e2e.ts` asserts through `getComputedStyle` at the default density: a thread row inside a turn 8, the gap between two speakers' rows 24, card padding 20, card-list gap 16, settings field gap 12, settings list gap 32, desktop page padding 32, page body top 32 – and 75 % of each at `data-density='ultra'`, 125 % at `roomy`.
 4. PR 2 reports measured `document.scrollHeight` for Tasks, a 30-row thread, Settings → Agents and Inbox at 1280×900, before and after.
-5. `no-arbitrary-spacing` exists with an allowlist seeded at 88 rows in PR 3a; fixture lines `h-[34px]`, `size-[30px]` and `md:min-h-[54px]` each fail it against an empty allowlist, proved red-then-green; after PR 3b the allowlist holds exactly two rows – the `min-h-[24px]` floors on `picker-pill.tsx` and `reference-chip.tsx` – each with a written reason.
+5. The original target was an allowlist containing only the two `min-h-[24px]` chip floors after PR 3b, with red/green fixture proofs for new arbitrary pixels. **Not met by #424:** #431 seeded 70 rows / 86 occurrences; after #441, 62 rows / 76 occurrences remain (counts read on 2026-09-16). #445 carries the burn-down.
 6. Touch targets ≥ 44 px on phone at Roomy and Comfortable, no smaller than today at Compact and Compact for real, and no interactive target under 24 px at any density – the two chips carry `min-h-[24px]`.
 7. Nothing scrolls sideways at 375 and 390 px; both themes pass the design-system review checklist.
 8. Roomy round-trips: the contract enum accepts it and the server imports that schema with no second copy left in `server.ts`, `contract-parity*` and `typed-bodies` green; `normalizeDensity('roomy') === 'roomy'`; `index.html` stamps it before first paint on a cold load; an older cockpit falls back to Comfortable; BACKWARD_COMPATIBILITY.md carries the line.
@@ -380,7 +382,7 @@ Decided at the step-0 verdict (2026-09-15, [design review](https://github.com/qo
 - **D-11 – Task-table wrapper: A, keeps `px-section`.** B gives back only 24 px (less than one column) and adds a gutter exception every future page would have to remember; with the header at `md:px-section` (NB-1) the title and the table edge line up at 32 px.
 - **D-12 – New-task button: A, `h-10` (40 px).** With B the button is the same height as the `md:h-9` nav rows under it; A keeps it taller (40 vs 36), which is § 9.3 note UI-7. At phone width it stays under the 44 px drawer rows – a separate, older issue (NB-4, #430).
 
-These numbers are this folder's items ("Air D-11", "Air D-12"), not `docs/design-system/decisions.md` ids; step 1 records the system-wide ones there (NB-7).
+These numbers are this folder's items ("Air D-11", "Air D-12"), not `docs/design-system/decisions.md` ids; step 1 recorded the system-wide ones there as D-02..D-07 (NB-7).
 
 Mockup-only departures are listed in § 5 (j) with reasons; they are not open decisions.
 
@@ -393,9 +395,9 @@ Mockup-only departures are listed in § 5 (j) with reasons; they are not open de
 | Roomy fails to save | the enum in the contract and the server duplicate | PR 4 exports the schema from the contract and imports it in the server, deleting only the duplicated const; contract parity proves the two unions match |
 | The browser suite asserts real geometry | `task-thread.e2e.ts:452` (44 px bar), `quick-list.e2e.ts` (7 px dot, 264 px layout), `diff-scroll.e2e.ts` (card heights) | run `npm run test:e2e` in PR 2 and 3b; screenshots are artifacts, not goldens – nothing to rebase |
 | `cn()` merges stop resolving for the new utilities | `p-4 p-inset` both kept | `tailwind-merge` extension in PR 1, with a test |
-| Small interactive chips drop under 24 px | the `h-[26px]` picker pill and the `h-[22px]` reference chip on the scale give 21 / 18 px at Compact for real | PR 3b floors both at an absolute `min-h-[24px]`; those two floors are the only allowlist rows left |
+| Small interactive chips drop under 24 px | the `h-[26px]` picker pill and the `h-[22px]` reference chip on the scale give 21 / 18 px at Compact for real | PR 3b floors both at an absolute `min-h-[24px]`; the two-floor target remains unmet; #445 carries the remaining conversion |
 | The mockup sheet drifts from the cockpit | `cockpit.css` mirrors about 106 spacing-bearing classes by hand | the drift test covers tokens, not class paddings; PR 2 updates both in one commit; leftovers go in the known-gaps mockup-fidelity table |
-| Sibling mockups go stale | `designs/quality-checks`, `designs/decisions` draw today's rhythm; the lifecycle clock reverts an unimplemented Approved design after two releases | a `design-debt` issue in PR 2 |
+| Sibling mockups go stale | `designs/quality-checks`, `designs/decisions` draw today's rhythm; the lifecycle clock reverts an unimplemented Approved design after two releases | #435 (filed in step 2) |
 | The kit's review checklist names density values | `xezar-ux-design.md:36`, `new-designs.md:51-54` | updated in PR 4 |
 | `calc()` tokens cost | none in kind – every Tailwind spacing utility is already `calc(var(--spacing) * n)` | accepted |
 | "Air" becomes taste in every review | reviewers argue numbers | the tokens end it: a gap is a token or it is wrong |
@@ -415,7 +417,7 @@ Mockup-only departures are listed in § 5 (j) with reasons; they are not open de
 
 ## 16. Design review
 
-Four reviews on 2026-09-14 (UX, UI, fact-check, plan): all PASS WITH CHANGES. Five blocking findings and eighteen should-fix items, consolidated with dispositions in [`review-2026-09-14.md`](review-2026-09-14.md); every decision the owner took (D-1..D-10) is applied and stays closed. The step-0 mockup set (revision 4) has its `design-review` verdict below (D-4), so step 1 onward may start.
+Four reviews on 2026-09-14 (UX, UI, fact-check, plan): all PASS WITH CHANGES. Five blocking findings and eighteen should-fix items, consolidated with dispositions in [`review-2026-09-14.md`](review-2026-09-14.md); every decision the owner took (D-1..D-10) is applied and stays closed. The step-0 mockup set (revision 4) has its `design-review` verdict below (D-4); steps 1–4 followed (§ 9.6).
 
 ### Step 0 – the full-page mockup
 
@@ -436,4 +438,4 @@ Four reviews on 2026-09-14 (UX, UI, fact-check, plan): all PASS WITH CHANGES. Fi
 | NB-4 | Phone drawer New-task button is 36 px today, 40 px with D-12 – under 44 px | **Filed** as `design-debt` [#430](https://github.com/qodeca/xezar/issues/430); older than Air, out of scope |
 | NB-5 | Compare frames at 1280 × 900 show only ~60–70 px of thread | **Accepted:** the in-place Today / Proposed flip is the main comparison, and the compare page says the frames are short |
 | NB-6 | Settings values table says `p-stack` = 12 is "the same at every density" | **Fixed in this PR:** now "12 at Comfortable – it scales with density: 9 / 10.5 / 12 / 15" (`settings.html`) |
-| NB-7 | Air D-3, D-5, D-7, D-11 and D-12 set system-wide rules but are not in `docs/design-system/decisions.md` | **Accepted for step 0:** step 1 (the first PR that changes `docs/design-system/`) records them in `decisions.md` and cites the folder's items as "Air D-n" |
+| NB-7 | Air D-3, D-5, D-7, D-11 and D-12 set system-wide rules but are not in `docs/design-system/decisions.md` | **Accepted for step 0; done in step 1:** recorded as `decisions.md` D-02..D-07, citing the folder's items as "Air D-n" |
