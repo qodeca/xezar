@@ -166,7 +166,7 @@ green deploy means the cockpit is actually serving the new version.
   package under `~/.npm/_npx` and reuses it on restart, so `server-deploy` first
   **clears that cached `@qodeca/xezar` build** and then restarts — the next launch
   re-resolves the latest published version. (Before this, a restart silently
-  kept running the cached version — see #696.) `server-deploy` alone is enough.
+  kept running the cached version — see pre-rename issue 696.) `server-deploy` alone is enough.
 
 The installer is also **idempotent** if you need to change the setup itself:
 
@@ -234,7 +234,8 @@ What differs per instance:
 ## Uninstall
 
 ```bash
-node packages/xezar/dist/index.js server-uninstall --platform ubuntu-vps
+xezar server-uninstall --platform ubuntu-vps
+# From a checkout: node packages/xezar/dist/index.js server-uninstall --platform ubuntu-vps
 ```
 
 Removes what xezar **owns**: the nginx vhost, htpasswd, systemd unit, and boot
@@ -258,6 +259,6 @@ break other vhosts).
 | nginx won't start: `Address already in use` | Another proxy (Dokploy/Coolify → Traefik, Caddy) owns :80/:443. Re-run with `--external-proxy` (see above). `sudo ss -ltnp \| grep -E ':80\|:443'` shows who holds them. |
 | `run server-install as a normal sudo-capable user, not root` | You're `root`. `adduser xezar && usermod -aG sudo xezar`, `su - xezar`, log your agent CLI in **as that user**, then re-run. |
 | External-proxy install: proxy returns 502 | Traefik runs in a container and can't reach `127.0.0.1`. Reinstall with `--bind-host 172.17.0.1` (or your `docker0` address). |
-| Cockpit stuck on an old version after `server-deploy` | npx-based unit whose cache wasn't refreshed (fixed in #696 — `server-deploy` now clears it). Manual: `rm -rf ~/.npm/_npx` as the service user, then restart the unit — `systemctl --user restart xezar` for the default, or `sudo systemctl restart xezar` / `xezar-<slug>` for a system unit or a named instance. |
+| Cockpit stuck on an old version after `server-deploy` | npx-based unit whose cache wasn't refreshed (fixed in pre-rename issue 696 — `server-deploy` now clears it). Manual: `rm -rf ~/.npm/_npx` as the service user, then restart the unit — `systemctl --user restart xezar` for the default, or `sudo systemctl restart xezar` / `xezar-<slug>` for a system unit or a named instance. |
 
 ← Back to [Remote access overview](./README.md)

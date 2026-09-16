@@ -1,6 +1,9 @@
 # Result and evidence fields a leader needs to assess a revision
 
-Status: **field record; implemented by the `read_results_evidence` MCP tool** (`packages/xezar/src/mcp/tools/results-evidence.ts`, #95). Date: 2026-09-10; status updated 2026-09-11.
+> **Status update — 2026-09-15:** **Partially implemented, with different carriers.** The table below
+> supersedes the planned “to be added” fields; original `path:line` observations remain at `9fdcf0e`.
+
+Status: **field record; partly implemented by the `read_results_evidence` MCP tool** (`packages/xezar/src/mcp/tools/results-evidence.ts`, #95). Date: 2026-09-10; status updated 2026-09-11.
 Audience: engineering. Baseline revision: `9fdcf0e878999783db6c2a69dec93a7d00ccea44`.
 
 Delivers [#78](https://github.com/qodeca/xezar/issues/78), Phase 1 of [epic #67](https://github.com/qodeca/xezar/issues/67),
@@ -10,9 +13,21 @@ against § 13's closing subsection ("Process-evidence implications from the 2026
 separately and cited here by name only.
 
 This is an agreed field list plus the reconciliation that produced it. It is **not** a schema change, a route
-change or a protocol design: Phase 3 turns the "to be added" rows below into zod. Every symbol below was read in
+change or a protocol design. The proposed contract additions were not implemented as written. Every symbol below was read in
 the source at the baseline revision and is cited `path:line`. Where a requirements document and the source
 disagreed, the source won and the disagreement is recorded under [Corrections](#10-corrections).
+
+## What shipped (checked 2026-09-15)
+
+| Planned field | Current carrier or gap |
+| --- | --- |
+| Commit timestamp (`RunCommit.committedAt`) | The MCP tool enriches commit results with `committedAt` from Git; the HTTP `RunCommit` contract was not extended. |
+| Changes/commit `headSha` and `baseSha` | MCP `revision.headSha` and revision metadata identify the read; the proposed HTTP contract fields were not added. |
+| `RunRecord.diffStat.sha` | Not built. MCP reports `diffStat.measuredAtSha: null` and explains that the cached count may describe an older head. |
+| `StepState.checkOutcome`, `exitCode`, `signal` | Not built. Per-check outcomes are not recorded; `done` is not a check pass. |
+| Per-check `headSha` / `completedAt` | Not built. `freshness` compares the current read against `expectedHeadSha`; it cannot certify a check’s revision or completion time. |
+
+Source: `packages/xezar/src/mcp/tools/results-evidence.ts` (`revisionSchema`, `envelopeSchema`, `NOTES`, commit enrichment); the proposed additions remain absent from `packages/contract/src`.
 
 ## 1. The one rule
 

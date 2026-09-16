@@ -1,5 +1,12 @@
 # D-01 — local MCP transport and bridge architecture
 
+> **Status update — 2026-09-15:** Implemented by #86 (bridge) and #99 (owner). The dated spike below is
+> superseded for current setup by [D-04 § 3](mcp-d04-connection-file-decision.md); source anchors refer to
+> `9fdcf0e`. It measured three clients; pi was added as a fourth by #330. Windows named pipes were not built:
+> `ipc.ts` reports Windows unavailable. Wake was later decided per client; see the [Claude
+> Code](mcp-wake-claude-code-decision.md), [Codex](mcp-wake-codex-decision.md) and
+> [DoD](mcp-definition-of-done-record.md) records.
+
 Decision record. Date: **2026-09-10**. Spike for [#79](https://github.com/qodeca/xezar/issues/79),
 phase 2 of [epic #67](https://github.com/qodeca/xezar/issues/67).
 
@@ -427,13 +434,15 @@ observed, in the modes examined only.*
 **Discovering it — one one-time step per client, and there is no way around that.** *Executed and
 observed (E8), and consistent with F-14 and the compatibility report.*
 
+**Superseded setup:** use [D-04 § 3](mcp-d04-connection-file-decision.md), which records trusted project Codex configuration and the setup shown in the cockpit.
+
 | Client | Where the one-time entry goes | Observed cost |
 | --- | --- | --- |
 | Claude Code | `claude mcp add --scope local xezar -- xez mcp` (writes the user's own Claude config, not the repo), or a repo-root `.mcp.json` | `--scope local` connected immediately (E1). A repo-root `.mcp.json` is discovered but sits at `⏸ Pending approval` until the user approves it interactively (E8). |
 | OpenCode | project `opencode.json`, `"type": "local"`, `"command": ["xez", "mcp"]` | Read and connected with no approval step (E2). |
 | Codex | the per-user `config.toml` under `CODEX_HOME`: `[mcp_servers.xezar] command = "xez"`, `args = ["mcp"]` | Connected (E3). A repo-level `.codex/config.toml` was **not** picked up — § 9.2. |
 
-**Technical proposal, not decided here:** that `xez mcp setup [--client claude|codex|opencode]`
+**Not adopted — D-04 § 3 chose per-client cockpit copy.** Historical proposal: `xez mcp setup [--client claude|codex|opencode]`
 prints or writes that one-time entry, so the user runs one command instead of editing a file. The
 name, the write-vs-print behaviour and the interaction with the F-14 descriptor belong to **D-04**,
 which owns the connection file. This record only establishes that the step is unavoidable and that

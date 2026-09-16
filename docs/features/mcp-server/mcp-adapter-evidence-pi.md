@@ -1,5 +1,12 @@
 # pi as an MCP leader client – runtime evidence (first half)
 
+> **Status update — 2026-09-15:** Historical measurements, **superseded** where later outcomes exist: PI-4
+> closed by #373 (real-model reaction passed 2026-09-13); PI-6 fixed after 0.14.0 by #411 (#369), with
+> interactive approval cards and autonomous Deny. `core/pi-runner.ts` now handles `extension_ui_request`;
+> `CLIENT_WORDS` in `leader-delivery.ts` fixes the client name in `no-owner-session`. See the [DoD
+> record](mcp-definition-of-done-record.md) and [approval
+> guide](pi-leader-extension.md#approvetools-who-answers-the-dialog).
+
 > **Operating rule since 2026-09-15 ([#439](https://github.com/qodeca/xezar/issues/439)).** A project leader works through the xezar MCP tools only – no cockpit UI, no HTTP API – and is attached so events are pushed to it (`<channel source="xezar">` for Claude Code, a started turn for Codex, OpenCode and pi). `leader_events` is the fallback for a leader that is not attached, and `gh` reads GitHub facts. This record is kept as written; where it treats pulling as the leader's normal path or the cockpit as the leader's surface, the rule supersedes it. See [the leader findings, § 11](leader-dogfooding-2026-09-13.md#11-every-time-the-leader-left-the-mcp-channel-consolidated-2105).
 
 Issue: [#330](https://github.com/qodeca/xezar/issues/330), work package WP1. Part of
@@ -248,7 +255,7 @@ Each blocker keeps pi in scope. None is solved by polling.
 | PI-1 | No pi reaction adapter. Tier 2 was driven by the harness here. | `adapters/pi.ts` over pi RPC, wired into #311's controller (WP2). | Open, waits for #311 |
 | PI-2 | A pi session the user opened in their own terminal. pi's RPC reaches only a process the adapter started. | pi's extension API can start a turn from inside pi (`pi.sendMessage(…, { triggerTurn: true })`, `docs/extensions.md`), so a xezar pi extension could. **Documentation only**, not run. The same open question as the spike's OB-1 to OB-3. | Open |
 | PI-3 | The model is not told why it was refused as the second client, and pi marks the refusal as a success. | The occupied reason needs its own path to the model (spike decision 7). For pi the adapter owns what the model sees. | Open, shared with the three |
-| PI-4 (the spike's OB-5) | No real-model reaction. | A run with a real model account on the release-candidate revision, after an account decision. | Open |
+| PI-4 (the spike's OB-5) | No real-model reaction. | A run with a real model account on the release-candidate revision, after an account decision. | Closed by #373; historical status: open |
 | PI-5 | The capability is third-party and moves fast. 2.33.0 was published before this record was finished, and was not tested. | Pin the verified version in setup guidance, and re-run this record's scenarios on an adapter upgrade. | Open |
 
 ## Corrections and observations against earlier documents
@@ -341,7 +348,7 @@ minimums.
   accepts `{action: 'attach', client: 'pi'}` and answers `409` with pi's own recoverable reason,
   `pi-not-addressable` (`R-04`). **This half does NOT close A-19 for pi**, and says so plainly below: pi's RPC
   is stdio-only, so no address exists for a pi the person runs in their own terminal. See
-  [What this does not close](#what-this-does-not-close).
+  [What this does not close](#what-this-did-not-close-as-it-stood-before-the-extension).
 - **A real model reaction is still UNVERIFIED**, as it is for all four clients. Every turn here reached a
   scripted local endpoint. That proves pi really started a turn and really sent an inference request carrying
   the event. It does not prove what a real model decides. OB-5 / PI-4 stays open.
@@ -655,7 +662,7 @@ types is not.
 
 ## Tests and red proof
 
-`packages/xezar/src/mcp/adapters/pi.test.ts`: 41 tests. `adapters/pi-link.test.ts`: 15, over a real Unix
+`packages/xezar/src/mcp/adapters/pi.test.ts`: 41 tests at this run (42 as of 2026-09-15). `adapters/pi-link.test.ts`: 15, over a real Unix
 socket. `adapters/pi-leader-extension.test.ts`: 29, driving the SHIPPED extension itself — it had none
 for one round of review, and the root `test:coverage:mcp` include now names it so the MCP floor really
 applies rather than being claimed (95.97 % statements, 82.85 % branches, 100 % lines). `leader-delivery.test.ts` gains two for the pi attach
@@ -693,9 +700,9 @@ written for a lost answer found it before the first green run.
 | PI-1 | No pi reaction adapter | **CLOSED.** `adapters/pi.ts` exists, is tested, and is now really constructed in production: `LeaderDelivery.#piTarget()` reads the leader descriptor, dials the socket through `adapters/pi-link.ts` and builds the adapter from it (`E-04`). The wording here was wrong for one round — it claimed this before any producer existed — and the regression test for that is `leader-delivery.test.ts` § "the link is really produced", red against break B10. |
 | PI-2 | A pi session the person opened in their own terminal cannot be reached | **CLOSED, by a shipped artifact.** pi's RPC really is stdio-only and spawn-only, re-confirmed twice — so the link comes from INSIDE pi instead: `scripts/pi-leader-extension.ts` opens a socket and announces it. Proven end to end against real pi 0.85.1 (`E-01`–`E-13`). It is opt-in: no extension, no descriptor, and the old behaviour is unchanged. |
 | PI-3 | The model is not told why it was refused as the second client | Open, shared with the three. Untouched here. |
-| PI-4 (OB-5) | No real-model reaction | Open, shared with all four. Untouched here. |
+| PI-4 (OB-5) | No real-model reaction | Closed by #373; historical status: open, shared with all four. Untouched here. |
 | PI-5 | The capability is third-party and moves fast | Open. This half needed no `pi-mcp-adapter`; WP5 does. |
-| PI-6 | A xezar tool gated behind `approveTools` makes a pi xezar runs wait until it is killed | Open, and **documented rather than fixed in 0.14.0** by the owner's decision of 2026-09-12. Added after this half, from #330 WP5's QA. The gated call opens the extension's approval dialog (`extension_ui_request`, `method: "select"`); the frame carries no `timeout`, `docs/rpc.md` says such a dialog blocks until answered, and nothing in xezar answers it. Measured through a real `xezar serve`: an ordinary pi task **unaffected at 2.8 s** with the gate on (the runner's default `--tools` allowlist offers no `xezar_*` tool, so the dialog never fires), a step naming `xezar_health` **failed at 121 s** (`pi CLI timed out after 2m and was killed`), the same step ungated done in 3.0 s. An interactive pi answers its own dialog and does not hang. `approveTools` is the user's own key and the zero-config default sets no gate. Guidance — leave xezar's tools ungated — is on the pi setup card, in [the extension guide](pi-leader-extension.md#one-thing-to-leave-alone-approvetools) and in [D-04 § 3.4](mcp-d04-connection-file-decision.md#34-pi). The fix is [#369](https://github.com/qodeca/xezar/issues/369). |
+| PI-6 | A xezar tool gated behind `approveTools` makes a pi xezar runs wait until it is killed | **Fixed after 0.14.0 by #411 (#369).** Historical result: open, and **documented rather than fixed in 0.14.0** by the owner's decision of 2026-09-12. Added after this half, from #330 WP5's QA. The gated call opens the extension's approval dialog (`extension_ui_request`, `method: "select"`); the frame carries no `timeout`, `docs/rpc.md` says such a dialog blocks until answered, and nothing in xezar answers it. Measured through a real `xezar serve`: an ordinary pi task **unaffected at 2.8 s** with the gate on (the runner's default `--tools` allowlist offers no `xezar_*` tool, so the dialog never fires), a step naming `xezar_health` **failed at 121 s** (`pi CLI timed out after 2m and was killed`), the same step ungated done in 3.0 s. An interactive pi answers its own dialog and does not hang. `approveTools` is the user's own key and the zero-config default sets no gate. Guidance — leave xezar's tools ungated — is on the pi setup card, in [the extension guide](pi-leader-extension.md#approvetools-who-answers-the-dialog) and in [D-04 § 3.4](mcp-d04-connection-file-decision.md#34-pi). The fix is [#369](https://github.com/qodeca/xezar/issues/369). |
 
 ## Evidence location
 
@@ -888,6 +895,8 @@ scenario quietly lost a guarantee nobody had written down.
 
 ## One wording defect, observed and not fixed here
 
+Status 2026-09-15: `CLIENT_WORDS` in `leader-delivery.ts` now names the actual client in `no-owner-session`; the defect described below is historical.
+
 With a **pi** leader attached and no owner session, `no-owner-session`'s message reads "OpenCode connects its
 xezar MCP server only when it first needs it" and its fix is "Let the attached OpenCode session call a xezar tool
 once". The code and the shape are right, the events are kept and nothing is lost; the words are for the wrong
@@ -902,7 +911,7 @@ product. It is `leader-delivery.ts`'s wording rather than this record's scope, a
 | PI-3 | The model is not told why it was refused as the second client | **Open, shared with all four.** Measured again here: pi's model was offered 0 xezar tools and no reason; the occupied text reached the operator's notice channel only. |
 | PI-4 (OB-5) | No real-model reaction | **Open, shared with all four.** Everything around it is now executed for pi. |
 | PI-5 | The capability is third-party and moves fast | Open. This half needed `pi-mcp-adapter` 2.32.1; the registry answered 2.33.0 as latest on WP1's run date and 2.33.0 is still **not tested**. |
-| **PI-6 (new)** | A xezar tool gated behind `approveTools` blocks a headless pi for ever | **Open, and it FAILS PI-08.** See above. Owner's call on #330. |
+| **PI-6 (new)** | A xezar tool gated behind `approveTools` blocks a headless pi for ever | **Fixed by #411 (#369).** It failed PI-08 on `1e1113c`; the re-run is recorded in the acceptance record. |
 
 ## Evidence location
 

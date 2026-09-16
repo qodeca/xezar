@@ -20,7 +20,7 @@ Three consumers, one definition:
 
 1. **Node-free.** No `node:*`, no `fs`, no `process`. These files are compiled into the api-client,
    which is bundled into a browser. This package's own tsconfig sets `lib: ["ES2022"]` and
-   `types: []`, and the api-client that bundles it does the same — so a Node import fails to
+   `types: []`, and the api-client that bundles it also sets `types: []` — so a Node import fails to
    compile here first and downstream second. The invariant is enforced, not documented.
 2. **No imports outside this directory** except `zod`. A copied file has to compile in a package
    that has none of the server's module graph.

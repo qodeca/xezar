@@ -46,12 +46,14 @@ The table below is the 2026-09-12 run; its A-19 and A-23 cells now name both rea
 
 | Case | Claude Code | Codex | OpenCode | pi | Product-level checks | What is missing |
 | --- | --- | --- | --- | --- | --- | --- |
-| **A-01** setup | client leg **PASSED** | client leg **NOT RE-RUN** — its harness leg failed for a fixture reason, and Codex itself reaches A (see A-01) | client leg **PASSED** | client leg **PASSED**; the `approveTools` edge path **FAILED** | connection file: **PASSED** (#262); tools reach the service: **PASSED** | A gated pi tool blocks instead of ending; and a harness defect in the Codex leg |
+| **A-01** setup | client leg **PASSED** | client leg **NOT RE-RUN** — its harness leg failed for a fixture reason, and Codex itself reaches A (see A-01) | client leg **PASSED** | client leg **PASSED**; the `approveTools` edge path **PASSED** on re-run 2026-09-13 (#369; failed on `1e1113c`) | connection file: **PASSED** (#262); tools reach the service: **PASSED** | The Codex harness defect in this dated run (A-01 passed later on `ed579e63`) |
 | **A-17** competing owner | **PASSED** (FAILED before #302) | **PASSED** (was FAILED) | **PASSED** (was FAILED) | **PASSED** | second bridge refused: **PASSED**; same-owner concurrency and project B: pass | Nothing — **A-17 is PASSED** since #302 |
 | **A-18** liveness, fencing, restart | — | — | — | **PASSED** (pi owning A, and a restart on pi's own side) | **PASSED** (was FAILED): idle owner, crash hand-over, stale fencing and restart fencing all hold | Nothing measured here; the adapter's 10-minute idle close was not re-run (WP1 measured it) |
 | **A-19** delivery and model reaction | **PASSED** 2026-09-15 on `a6d53b4` (real model, Channels push); BLOCKED on `1e1113c` | **PASSED** 2026-09-15 on `a6d53b4` (real model, shared app-server); BLOCKED on `1e1113c` | **OUT OF SCOPE** for the real-model clause (owner, 2026-09-13, #340); BLOCKED on `1e1113c` | **PASSED** 2026-09-13 on `7aa4a02` (real model); BLOCKED on `1e1113c` on the real-model clause alone | acceptance vs result and journal emission: **PASSED** | Nothing for pi, Claude Code and Codex; not all on one revision. OpenCode not run by decision. |
 | **A-20** live sync | — | — | — | the no-recursive-loop clause: **PASSED** | cockpit half (browser): **PASSED**; leader half: **BLOCKED** on that one clause | On `1e1113c` the three had no delivery path; Claude Code and Codex have one since 2026-09-13 (#403, #404) but this clause was not re-measured for them; for pi it is observed |
 | **A-23** exclusive owner | reaction half **PASSED** with A-19 (2026-09-15); BLOCKED on `1e1113c` (was FAILED) | reaction half **PASSED** with A-19 (2026-09-15); on `1e1113c` BLOCKED and its setup row NOT RE-RUN (A-01 passed on `ed579e63`) | reaction half **OUT OF SCOPE** (owner, 2026-09-13, #340); BLOCKED on `1e1113c` (was FAILED) | reaction half **PASSED** with A-19 (2026-09-13); BLOCKED on `1e1113c` | — | Exclusivity holds for all four; the built-in-leader half is **NOT RUN** (out of scope) |
+
+**Historical summary on `1e1113c` (2026-09-12), superseded for A-19/A-23 by the answer-first table:**
 
 **A-01, A-17 and A-18 pass as wholes; A-19, A-20 and A-23 are BLOCKED, and for pi only on the clause no § 9
 fixture may observe.** What changed since 2026-09-11 is ownership (#302) and a delivery path for one client
@@ -60,8 +62,9 @@ client — so A-19 is BLOCKED for all four and A-23 with it. The leader decided 
 reaction and multi-project MCP are outside release 0.14.0; exclusive ownership, which the same decision put
 outside it, landed anyway. This record passes nothing on documentation.
 
-**One row FAILS and it is pi's**: a xezar tool the person gated behind pi-mcp-adapter's `approveTools` makes a
-headless pi wait for ever. It is reported to the owner on #330 rather than settled here — see A-01.
+The one row that **FAILED** on `1e1113c`, pi `approveTools`, was fixed by #369 and
+**PASSED** on re-run (A-01). Since then the real-model clause passed for pi, Claude Code and Codex;
+OpenCode real-model reaction is out of scope by owner decision.
 
 ## How to read this record
 
@@ -196,7 +199,7 @@ follow-up, not a finding about Codex, and the 2026-09-11 Codex verdict stands as
 | The gated call does not hang when nobody can answer | **FAILED** — no `agent_settled` in 30 s past the dialog. The frame carries **no `timeout`**, and pi's `docs/rpc.md` § Extension UI Requests says a dialog blocks until the client sends `extension_ui_response` and auto-resolves only when a `timeout` is present |
 | Answering it closes the turn, and the refusal is reported | **PASSED** — `extension_ui_response` with `Deny` ended the turn at once and the model was told `approval_denied`: "The user declined approval to run MCP tool \"health\" on server \"xezar\"." |
 
-So the named state PI-08 asks for exists, and nothing reaches it: **no part of xezar answers such a dialog** —
+On `1e1113c` (fixed since #411), the named state PI-08 asks for exists, and nothing reaches it: **no part of xezar answers such a dialog** —
 `core/pi-runner.ts`, `scripts/pi-leader-extension.ts` and `mcp/adapters/pi.ts` never mention
 `extension_ui_request`. A person at their own pi TUI answers it themselves, so an interactive leader does
 not hang; it bites where nobody is watching, which is the case A-19 exists for. **Reported to the owner on #330
@@ -368,7 +371,7 @@ per client. One of those rows needed a correction to the harness rather than to 
 `leader_events` `ack` call did not carry an `operationId`, which #264 made required, so it answered
 "ack needs operationId" and a behaviour that works read as missing.
 
-### A-23 — one exclusive owner across clients: BLOCKED per client (FAILED in the original run)
+### A-23 — one exclusive owner across clients: reaction PASSED for pi, Claude Code and Codex; OpenCode reaction out of scope; built-in-leader half NOT RUN (FAILED in the original run)
 
 | Check | Claude Code | Codex | OpenCode | pi |
 | --- | --- | --- | --- | --- |
@@ -460,5 +463,64 @@ D-02 (occupied and expired errors, § 4; restart, § 5), D-04 (connection file, 
 
 For pi specifically (#330): PI-02 (reaches A through the real bridge), PI-04 (a delivered event starts a turn,
 and the same pi process still sees every xezar tool), PI-07 (a pi column on the same revision as the other
-three), PI-08 (the edge paths — pi missing is NOT RUN, and `approveTools` **FAILED**). The two halves of pi's own
+three), PI-08 (the edge paths — pi missing is NOT RUN, and `approveTools` FAILED on `1e1113c`, PASSED after #369). The two halves of pi's own
 record are `mcp-adapter-evidence-pi.md`; this record holds the acceptance verdicts.
+
+## Manual real-model runbooks
+
+Moved from the coverage analysis on 2026-09-15. These are opt-in operator instructions,
+not tests executed by the documentation sweep. Run the commands below from `packages/xezar`.
+
+### Manual pi real-model reaction (#373)
+
+After `npm run build:server`, run from `packages/xezar`:
+
+```sh
+TMPDIR=/tmp node --import ../../scripts/test-local-state.mjs --import tsx --test test/integration/mcp-real-model.test.ts
+```
+
+This is the owner’s manual command, exactly like `mcp-real-clients.test.ts`. All three
+`XEZ_REAL_MODEL_*` variables must come from the operator’s environment (see `.env.example`).
+Export `XEZ_REAL_MODEL_API_KEY` from the authorized
+provider-key variable in your shell, e.g. `export XEZ_REAL_MODEL_API_KEY="$LOCAL_MODEL_API_KEY"`.
+`pi-runner.ts` passes its child environment to pi; pi resolves authentication from its selected
+provider configuration under `PI_CODING_AGENT_DIR` (`profileEnv` in `core/agent-profiles.ts`).
+The runner does not supply a universal default key. This harness reads no personal provider
+configuration: obtain the same endpoint key through its authorized environment source.
+The proxy keeps that key in memory and forwards it as a bearer header; isolated pi uses a dummy
+fixture credential. Never paste a key into a command argument, tracked file, or evidence.
+
+The harness installs pinned `pi-mcp-adapter@2.32.1` into a disposable HOME (network required),
+then drives the real pi leader extension and shared A/B MCP service. The deterministic judge
+controls cover an exact ack, absent ack, wrong nonce/cursor, pre-delivery and late ack. The
+scripted integration control proves that a model request and “I reacted” text cannot pass.
+The live model has 120 seconds to call `leader_events` ack with the delivered nonce and cursor.
+A missing URL, model or key, or HTTP 401/403 from the bounded `/models` probe, is node:test
+SKIPPED / NOT-RUN. Only a reached model that times out or sends an incorrect ack is a FAILED
+model verdict. The evidence scan separately fails on any leaked key, and recorded Authorization
+headers are redacted. No fast gate starts pi or the
+endpoint; browser coverage is separate and not applicable to this test-only change.
+Results, exact argv, revision/dirty state, model requests, delivery and ack ledger are saved
+under `.local/qa/mcp-real-model/<stamp>/`; task handoff preserves a copy in primary evidence.
+
+### Manual Claude Code and Codex real-model reaction (#67)
+
+The same file carries two more legs, off unless named in `XEZ_REAL_MODEL_CLIENTS`:
+
+```sh
+XEZ_REAL_MODEL_CLIENTS=claude-code,codex TMPDIR=/tmp node --import ../../scripts/test-local-state.mjs --import tsx --test --test-name-pattern 'claude-code\]|codex\]' test/integration/mcp-real-model.test.ts
+```
+
+They are paid and use each client's own login and configured model: Claude Code from its default
+config directory (`XEZ_REAL_MODEL_CLAUDE_MODEL`, default `sonnet`), Codex from the home its installed
+`codex` wrapper pins (else `~/.codex`). The harness reads no credential. Each leg starts a real
+`xezar serve` over a throwaway repository, attaches the client as leader through the cockpit route,
+causes one `task.done` event and waits 120 s for `leader_events ack` with `operationId`
+`react-<run id>` and the `nextCursor` of the model's own post-delivery read. A pass-through stdio tee
+(`test/helpers/mcp-stdio-tee.mjs`) between the client and the bridge records the calls; the service's
+`leader-cursors.json` must confirm the ack. Unlike the pi leg there is no scripted control run: the
+product delivery path for these clients was already measured with scripted endpoints in
+`mcp-real-clients.test.ts`. Known side effects on the owner's machine: each run answers the client's
+folder-trust screen for a `/tmp` fixture path, which the client may remember in its own config (Codex writes it to `config.toml`), and both
+clients keep the session in their own history. The Codex leg refuses to run while an app-server is
+already listening in that home.
