@@ -52,6 +52,8 @@ import {
   readStoredCliSettings,
   rememberLastListen,
 } from './workspace/port-memory.ts';
+import { entry as activityEntry, startTerminalActivity, type TerminalActivity } from './terminal/index.ts';
+import { formatDuration, formatTokens, glyphsFor } from './terminal/format.ts';
 import { runMigrations } from './workspace/migrations.ts';
 import { registerProject, shouldRegisterProject } from './workspace/projects.ts';
 import { runProjectsCommand } from './workspace/projects-cli.ts';
@@ -82,6 +84,8 @@ Options:
                               (server-install: this instance's loopback port —
                               auto-picked per domain, never from serve memory)
       --output <mode>         serve activity: auto (default), lines, rich
+                              lines   one line per event, no live table
+                                      (use with a screen reader)
       --color <when>          auto (default), always, never (NO_COLOR honoured)
       --log-level <level>     debug, info (default), warn, error
   -q, --quiet                 warnings and errors only
@@ -190,7 +194,7 @@ async function main(): Promise<void> {
       await serveCommand(repoRoot, invocation, !values['no-open'], values['bind-host']);
       return;
     case 'run':
-      await runCommand(repoRoot, positionals.slice(1).join(' ').trim(), values.workflow, values.model);
+      await runCommand(repoRoot, positionals.slice(1).join(' ').trim(), values.workflow, values.model, invocation.quiet);
       return;
     case 'init':
       initCommand(repoRoot);
@@ -292,12 +296,7 @@ async function serveCommand(
   const settings = resolveCliSettings(invocation, stored, {
     isTty: process.stderr.isTTY === true,
   });
-  // One line per mangled stored value, then the key is treated as absent (A10). A file
-  // someone's editor broke must never be the reason a cockpit does not start.
-  for (const warning of settings.warnings) console.warn(warning);
-  // PR 3 consumes `settings` for the renderer; PR 2 resolves the values and renders nothing
-  // new. Referenced here so a future reader sees where the object is meant to be threaded.
-  void settings.output;
+  const glyphs = glyphsFor();
 
   // Skipping applies only when the start port came from memory or from the 4321 default: a
   // port a PERSON asked for is tried as asked, however busy the registry thinks it is.
@@ -317,6 +316,32 @@ async function serveCommand(
   // keepLive + recover() (#367): runs that were queued/running/waiting when
   // the previous process exited are re-queued or resumed instead of failed.
   const store = openStore(repoRoot, { keepLive: true });
+  // The terminal starts HERE — after the store exists and before anything recovers it (#467,
+  // PR 3, analysis § 6(d)). Attaching later would miss the first transitions of every task the
+  // previous process left live, which is AC-06's `late-subscribe`. Attaching here means the
+  // recovery sweep is seen too, so the source seeds those records instead of announcing them.
+  const terminal = startTerminalActivity({
+    settings,
+    store,
+    ...(bootProjectId ? { projectId: bootProjectId } : {}),
+  });
+  // One line per mangled stored value, then the key is treated as absent (A10). A file
+  // someone's editor broke must never be the reason a cockpit does not start.
+  for (const warning of settings.warnings) {
+    const detail = warning.replace(/^\[xez] /, '');
+    terminal.log(
+      activityEntry({
+        level: 'warn',
+        subject: 'registry',
+        message: detail,
+        event: 'registry.invalid',
+        // The message is the human surface and is NOT in the plain output, which carries the
+        // event name and the fields only. Which key was broken, and what the value was, is the
+        // entire content of this warning — so it travels as a field or it is lost.
+        fields: [['detail', detail]],
+      }),
+    );
+  }
   const manager = new RunManager(store, repoRoot, { semaphore });
   const providerAuth = new ProviderAuthService();
   const workspaceEvents = new WorkspaceEventBus();
@@ -356,6 +381,8 @@ async function serveCommand(
     providerRuntimeAuth,
   );
   if (recovered > 0) console.log(`  recovered ${recovered} run(s) from the previous session`);
+  // Recovery is over: from here a status change is news, and a `failed` really is an outcome.
+  terminal.endRecovery();
 
   // Update discovery (#368) — fire-and-forget; the banner prints whenever the
   // registry answers and /api/v1/health picks it up for the GUI chip.
@@ -384,6 +411,11 @@ async function serveCommand(
     onApp: (built) => {
       app = built;
     },
+    // Every project built later gets its own subscription, taken before ITS recovery, and
+    // released when its context is disposed (#467, PR 3).
+    onContexts: terminal.onContexts,
+    // One safe line per returned 4xx and thrown 5xx. Observe-only: the response is untouched.
+    onHttpFailure: terminal.onHttpFailure,
   }, requestedPort);
   // Nothing below may claim a cockpit before the bind really succeeded (#238): the port
   // comes from the listening server itself, never from an earlier "is it free" probe.
@@ -391,9 +423,18 @@ async function serveCommand(
   try {
     port = await listenOnFreePort(server, requestedPort, bindHost ?? '127.0.0.1', reserved);
   } catch (err) {
+    // The terminal goes first: a bind failure is the one moment a live region must not be left
+    // on screen, and the error below is the only thing a person should see.
+    terminal.stop({ stillRunning: 0 });
     store.flush();
     throw err;
   }
+  terminal.setUrl(`http://localhost:${port}`, {
+    port,
+    requestedPort,
+    // `--port 0` asks the OS for any port, so getting a different one is not "busy".
+    ...(requestedPort !== 0 && port !== requestedPort ? { reason: 'busy' } : {}),
+  });
   // SECURITY: xezar executes agents. A non-loopback bind exposes that box to
   // whatever can reach the interface, and xezar itself has NO auth — it is only
   // for a deliberate hosted setup where a reverse proxy in front provides TLS +
@@ -412,10 +453,21 @@ async function serveCommand(
   // Best-effort in every direction: no row, no home, or a home that cannot be written costs
   // one warning and nothing else (`error-cases.txt` A11).
   if (bootProjectId && !settings.port.ephemeral) {
-    const remembered = await rememberLastListen(bootProjectId, port, bindHost ?? '127.0.0.1');
-    if (!remembered) {
-      console.warn(`[xez] could not remember port ${port} for this project — the cockpit works anyway`);
-    }
+    const remembered = (await rememberLastListen(bootProjectId, port, bindHost ?? '127.0.0.1')) !== null;
+    terminal.log(
+      activityEntry({
+        level: remembered ? 'debug' : 'warn',
+        subject: 'registry',
+        message: remembered
+          ? `remembered port ${port} for this project`
+          : `could not remember port ${port} for this project ${glyphs.dash} the cockpit works anyway`,
+        event: 'registry.port',
+        fields: [
+          ['port', port],
+          ['remembered', remembered],
+        ],
+      }),
+    );
   }
 
   // The boot project's MCP socket (#86, D-01 § 5.4), composed over the same app and store
@@ -437,30 +489,68 @@ async function serveCommand(
         return applyProviderEnablement(discovered, (await loadWorkspaceConfig()).disabledProviders).providers;
       },
       localHandoff: () => resolveCapabilities(process.env, bindHost).localHandoff,
+      // The MCP socket opens asynchronously, so its own line is the only honest place to say it
+      // is ready: the banner is printed before it listens, and a banner that claims an unopened
+      // socket is the `false-mcp-ready` break (AC-10).
+      onUnavailable: (reason) =>
+        terminal.log(
+          activityEntry({
+            level: 'warn',
+            subject: 'mcp',
+            message: `unavailable ${glyphs.dash} ${reason}. The cockpit works without it.`,
+            event: 'mcp.unavailable',
+            fields: [['reason', reason]],
+          }),
+        ),
     }).then((handle) => {
       // A shutdown that won the race still releases what the late start composed.
       if (stopping) handle?.close();
       else mcpService = handle;
+      if (handle && !stopping) {
+        terminal.log(
+          activityEntry({
+            level: 'info',
+            subject: 'mcp',
+            message: `ready ${glyphs.dash} run xez mcp in this project folder`,
+            event: 'mcp.ready',
+          }),
+        );
+      }
     });
   }
   const url = `http://localhost:${port}`;
 
-  console.log(`\n  xezar v${version} — ${repoRoot}`);
-  console.log(`  ${repo ? `branch ${repo.branch}` : 'not a git repository (tasks run in place, one at a time; repo view is empty)'}`);
-  for (const check of checks) {
-    const mark = check.available ? '✓' : '✗';
-    const detail = check.available ? (check.version ?? 'ok') : (check.hint ?? 'missing');
-    console.log(`  ${mark} ${check.name.padEnd(6)} ${detail}`);
+  // The stdout banner is unchanged, byte for byte, for every start that is not `--quiet`
+  // (`open-questions.md` Q-11: `xez | tee` and scripts that read the URL keep working). Quiet
+  // shrinks it to what a person or a script needs — which is new behaviour of a new flag, not a
+  // change to the default (`quiet.txt` scene 1).
+  if (!settings.quiet) {
+    console.log(`\n  xezar v${version} — ${repoRoot}`);
+    console.log(`  ${repo ? `branch ${repo.branch}` : 'not a git repository (tasks run in place, one at a time; repo view is empty)'}`);
+    for (const check of checks) {
+      const mark = check.available ? '✓' : '✗';
+      const detail = check.available ? (check.version ?? 'ok') : (check.hint ?? 'missing');
+      console.log(`  ${mark} ${check.name.padEnd(6)} ${detail}`);
+    }
   }
+  // Printed in EVERY mode, quiet included: a port that moved is the difference between a
+  // bookmark that works and one that does not, and quiet may never hide it (`quiet.txt`).
   // `--port 0` asks the OS for any port; getting one is not "busy".
   if (port !== requestedPort && requestedPort !== 0) console.log(`  (port ${requestedPort} was busy — using ${port})`);
-  console.log(`\n  cockpit → ${url}\n`);
-  // Silenced by XEZ_NO_BANNER=1 or by dismissing the cockpit's banner (#391).
-  await printSkillsBanner(repoRoot);
+  console.log(`${settings.quiet ? '' : '\n'}  cockpit → ${url}\n`);
+  // Silenced by XEZ_NO_BANNER=1 or by dismissing the cockpit's banner (#391), and by quiet.
+  if (!settings.quiet) await printSkillsBanner(repoRoot);
 
+  let shuttingDown = false;
   const shutdown = () => {
+    // A second Ctrl-C exits at once and prints nothing more (`tty.txt` scene 5).
+    if (shuttingDown) process.exit(0);
+    shuttingDown = true;
     stopping = true;
-    // MCP first, so no MCP listener is still attached while the store flushes.
+    // The terminal first: the live region has to be erased and the cursor restored while there
+    // is still a process to do it. `stop()` never throws, so nothing below can be skipped.
+    terminal.stop({ ...(repo ? { projectName: bootProjectId ?? repo.branch } : {}) });
+    // MCP next, so no MCP listener is still attached while the store flushes.
     mcpService?.close();
     store.flush();
     process.exit(0);
@@ -488,6 +578,13 @@ async function startMcpSocket(opts: {
   workspaceEvents: WorkspaceEventBus;
   providerBaseline: () => Promise<readonly ProviderStatus[]>;
   localHandoff: () => boolean;
+  /**
+   * Where the one unavailability line goes (#467, PR 3).
+   *
+   * Required rather than optional on purpose: two spellings of the same warning is how a message
+   * a person greps for quietly becomes two, and there is exactly one caller.
+   */
+  onUnavailable: (reason: string) => void;
 }): Promise<{ close(): void } | undefined> {
   try {
     const { startMcpService } = await import('./mcp/index.ts');
@@ -502,7 +599,7 @@ async function startMcpSocket(opts: {
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.warn(`[xez] MCP bridge unavailable for this project (${message}) — the cockpit works without it`);
+    opts.onUnavailable(message);
     return undefined;
   }
 }
@@ -605,6 +702,7 @@ async function runCommand(
   task: string,
   workflowName: string | undefined,
   model: string | undefined,
+  quiet = false,
 ): Promise<void> {
   if (!task) {
     console.error('usage: xezar run "<task>" [--workflow name] [--model model]');
@@ -654,7 +752,15 @@ async function runCommand(
   await semaphore.refresh();
   const manager = new RunManager(store, repoRoot, { semaphore });
 
+  // The stdout transcript is the DEFAULT and is unchanged (BACKWARD_COMPATIBILITY.md § 1).
+  // `--quiet` — a flag that did not exist before this release, so nothing that works today
+  // changes — prints only the final status line, and keeps the agent's own errors on stderr
+  // (`designs/cli-terminal/quiet.txt` scene 2).
   store.on('event', ({ event }) => {
+    if (quiet) {
+      if (event.type === 'error') console.error(`  ✗ ${String(event.message ?? '')}`);
+      return;
+    }
     switch (event.type) {
       case 'text':
         console.log(String(event.text ?? ''));
@@ -691,6 +797,19 @@ async function runCommand(
   });
   store.flush();
   const record = store.getRun(run.id);
+  if (quiet) {
+    // One line, the final status, on stdout. Exit codes are UNCHANGED: 0 for done and review,
+    // 1 for failed and cancelled — a script that reads `$?` sees exactly what it always did.
+    const glyphs = glyphsFor();
+    const from = record ? Date.parse(record.startedAt ?? record.createdAt) : Number.NaN;
+    const facts: string[] = [];
+    if (!Number.isNaN(from)) facts.push(formatDuration(Date.now() - from));
+    if (record && record.tokensUsed > 0) facts.push(`${formatTokens(record.tokensUsed)} tokens`);
+    const state = final === 'review' ? 'needs review' : final;
+    console.log(`  ${state}${facts.length > 0 ? ` ${glyphs.dash} ${facts.join(` ${glyphs.dot} `)}` : ''}`);
+    process.exitCode = final === 'done' || final === 'review' ? 0 : 1;
+    return;
+  }
   if (final === 'review') {
     console.log(`\n  changes ready for review on branch ${record?.branch ?? '?'} — inspect them in the cockpit: npx xezar`);
   }
