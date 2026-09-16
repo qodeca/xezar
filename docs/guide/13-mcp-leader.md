@@ -77,7 +77,7 @@ Claude Code shows the development-channel warning on every launch. Accept it onl
 
 **Restart and compaction recovery.** After a cockpit restart, call a real tool, check `status`, attach with a new operation ID, then call `read` with no cursor. After a client restart or context compaction, also begin with `read` and no cursor. Page with `nextCursor` while `hasMore` is true, deduplicate by `eventId`, reconcile current task state, and acknowledge only the processed cursor. Historical counters do not prove current delivery.
 
-**Tips and tricks.** Start the cockpit before the new Claude Code session so the bridge can advertise the channel. A `claude-code-bridge-too-old` blocker means the client must restart the current bridge. A `push-unconfirmed` blocker does not mean the row was lost: inspect the session and journal, then acknowledge only after the event has been handled.
+**Tips and tricks.** Start the cockpit before the new Claude Code session so the bridge can advertise the channel. A `claude-code-bridge-too-old` blocker means the client must restart the current bridge. A `claude-code-push-unconfirmed` blocker does not mean the row was lost: inspect the session and journal, then acknowledge only after the event has been handled.
 
 ### Codex
 
@@ -189,20 +189,26 @@ In a running pi, `/reload` rebuilds the extension runtime. Because reload also t
 
 The file is project scope. The written form is deterministic; `opencode mcp add` is interactive.
 
-**Launch.** Choose an explicit loopback address so the value to enter in xezar is unambiguous, then attach the TUI to that server:
+**Launch.** Choose an explicit loopback address so the value to enter in xezar is unambiguous, then start the server and pick the session **before** opening a TUI on it — `opencode attach <url>` with no `--session` starts a **new** session, so attaching blind can land the TUI on a session xezar was never told about:
 
 ```sh
 opencode serve --hostname 127.0.0.1 --port 4096
-opencode attach http://127.0.0.1:4096
-```
-
-The **Server address** is therefore `http://127.0.0.1:4096`. OpenCode's [documented server API](https://opencode.ai/docs/server/) says `GET /session` lists that server's sessions:
-
-```sh
 curl --fail --silent http://127.0.0.1:4096/session
 ```
 
-Choose the `id` of the session whose `directory` is the project root. In xezar, a person opens **Settings → MCP connection → Connection status**, chooses OpenCode when the client picker is shown, enters that address and session ID, then chooses **Attach leader**. xezar checks the session exists and refuses one whose directory is another project.
+OpenCode's [documented server API](https://opencode.ai/docs/server/) says `GET /session` lists that server's sessions. Choose the `id` of the session whose `directory` is the project root. If none exists yet, create one deterministically instead of attaching blind:
+
+```sh
+curl --fail --silent -X POST http://127.0.0.1:4096/session
+```
+
+Then attach the TUI to that exact session with the CLI's own `--session` flag ([CLI reference](https://opencode.ai/docs/cli/)):
+
+```sh
+opencode attach http://127.0.0.1:4096 --session <id>
+```
+
+The **Server address** is therefore `http://127.0.0.1:4096` and the **Session id** is the `id` you picked or created. In xezar, a person opens **Settings → MCP connection → Connection status**, chooses OpenCode when the client picker is shown, enters that address and session ID, then chooses **Attach leader**. xezar checks the session exists and refuses one whose directory is another project. If `OPENCODE_SERVER_PASSWORD` is set, the server requires HTTP basic auth on these requests, so a plain `curl` with no credentials fails.
 
 **First contact.** In the intended OpenCode session call `health`, then `discover_project`. OpenCode is the attachment exception: `leader_events` cannot supply its HTTP address, so the person performs the attach in Settings. Back in the OpenCode session, call `leader_events` action `status` to inspect attachment and delivery, then call `read` once to establish the replay path.
 
