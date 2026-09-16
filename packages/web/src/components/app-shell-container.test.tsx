@@ -1,5 +1,5 @@
 import { QueryClientProvider, type QueryClient } from '@tanstack/react-query'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -362,7 +362,7 @@ describe('sidebar wiring', () => {
     })
     renderShell('/p/xezar/')
 
-    const banner = await screen.findByRole('status')
+    const banner = await within(document.querySelector('[data-slot="banner-slot"]') as HTMLElement).findByRole('status')
     expect(banner.textContent).toContain('No agent provider credentials were found.')
     expect(document.querySelector('[data-slot="banner-slot"]')?.contains(banner)).toBe(true)
   })
@@ -405,7 +405,7 @@ describe('sidebar wiring', () => {
     )
     expect(screen.getByText('route content')).toBeTruthy()
     expect(document.querySelector('[data-slot="app-shell"]')).not.toBeNull()
-    expect(screen.queryByRole('status')).toBeNull()
+    expect(within(document.querySelector('[data-slot="banner-slot"]') as HTMLElement).queryByRole('status')).toBeNull()
   })
 
   it('keeps the shell and route content when a successful provider response is malformed', async () => {
@@ -426,7 +426,7 @@ describe('sidebar wiring', () => {
     )
     expect(screen.getByText('route content')).toBeTruthy()
     expect(document.querySelector('[data-slot="app-shell"]')).not.toBeNull()
-    expect(screen.queryByRole('status')).toBeNull()
+    expect(within(document.querySelector('[data-slot="banner-slot"]') as HTMLElement).queryByRole('status')).toBeNull()
     expect(screen.queryByText(secret)).toBeNull()
   })
 })

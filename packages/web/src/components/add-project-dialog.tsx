@@ -1,3 +1,4 @@
+import type { RefObject } from 'react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
 
@@ -33,9 +34,11 @@ import { FolderBrowser, useBrowseTarget } from '@/components/folder-browser'
 export function AddProjectDialog({
   open,
   onOpenChange,
+  returnFocusRef,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
+  returnFocusRef?: RefObject<HTMLElement | null>
 }) {
   // `null` = the independently configured browse root. The dialog never spells that path itself
   // — it only ever echoes what it was told.
@@ -74,7 +77,14 @@ export function AddProjectDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent data-slot="add-project-dialog" className="sm:max-w-lg">
+      <DialogContent data-slot="add-project-dialog" className="sm:max-w-lg"
+        onCloseAutoFocus={(event) => {
+          if (returnFocusRef?.current?.isConnected) {
+            event.preventDefault()
+            returnFocusRef.current.focus()
+          }
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Open local folder</DialogTitle>
           <DialogDescription>
@@ -91,12 +101,12 @@ export function AddProjectDialog({
           decorate={(dir) => (
             <>
               {dir.isRepo ? (
-                <Badge variant="outline" className="shrink-0 text-[10px]">
+                <Badge variant="outline" className="min-h-chip shrink-0 text-[10px]">
                   git
                 </Badge>
               ) : null}
               {registered.has(dir.path) ? (
-                <Badge variant="ghost" className="shrink-0 text-[10px] text-muted-foreground">
+                <Badge variant="ghost" className="min-h-chip shrink-0 text-[10px] text-muted-foreground">
                   already added
                 </Badge>
               ) : null}
@@ -105,7 +115,7 @@ export function AddProjectDialog({
         />
 
         {register.isError ? (
-          <p data-slot="add-project-error" className="min-w-0 break-words text-[13px] text-danger">
+          <p role="alert" data-slot="add-project-error" className="min-w-0 border-l-2 border-danger pl-3 text-[13px] break-words text-foreground">
             {register.error instanceof Error ? register.error.message : 'could not add that folder'}
           </p>
         ) : null}
