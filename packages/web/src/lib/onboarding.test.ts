@@ -36,6 +36,7 @@ const base: OnboardingStatus = {
   lastChecked: null,
   checkingRunId: null,
   launch: { workflowId: 'project-setup', modes: ['setup', 'preview', 'recheck'] },
+  issueFiling: { status: 'available', reason: null, skill: 'xez-issue-create' },
 }
 
 const status = (over: Partial<OnboardingStatus>): OnboardingStatus => ({ ...base, ...over })

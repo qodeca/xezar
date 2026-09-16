@@ -102,13 +102,14 @@ import { readRunIndexFromDisk } from '../runs/run-index.ts';
 import { isV2WireEventType } from '../runs/ui-event-sink.ts';
 import type { McpApiReference } from '@qodeca/xezar-contract';
 import { mcpLeaderActionInputSchema, type McpLeaderStatus } from '@qodeca/xezar-contract';
-import { onboardingOfferedInputSchema } from '@qodeca/xezar-contract';
+import { onboardingOfferedInputSchema, type OnboardingStatus } from '@qodeca/xezar-contract';
 import {
   ONBOARDING_WORKFLOW_ID,
   observedIdentity,
   onboardingStatus,
 } from '../onboarding/status.ts';
 import { activeSetupRunId } from '../onboarding/active.ts';
+import { discoverIssueFiling } from '../onboarding/issue-filing.ts';
 import { recordOffered } from '../onboarding/state.ts';
 import { watchSetupCompletion } from '../onboarding/watch.ts';
 import {
@@ -4762,6 +4763,21 @@ export function createApp(deps: ServerDeps) {
   const activeSetupRun = (project: ProjectContext): string | null =>
     activeSetupRunId(project.store, project.manager);
 
+  /** The one onboarding answer both routes send — including the issue-filing check (#468). */
+  const projectOnboardingStatus = async (
+    project: ProjectContext,
+    observed: ReturnType<typeof observedIdentity>,
+  ): Promise<OnboardingStatus> => {
+    const checks = await detectEnvironment();
+    return onboardingStatus(project.dataDir, {
+      observed,
+      checks,
+      localHandoff: capabilities().localHandoff,
+      checkingRunId: activeSetupRun(project),
+      issueFiling: await discoverIssueFiling(project.root, checks),
+    });
+  };
+
   const onboardingRoutes = new Hono<ProjectApiEnv>()
     /**
      * The one read behind all three surfaces. Deliberately READ-ONLY: it creates no record,
@@ -4771,12 +4787,7 @@ export function createApp(deps: ServerDeps) {
     .get('/onboarding', async (c) => {
       const project = c.get('project');
       return c.json(
-        await onboardingStatus(project.dataDir, {
-          observed: observedIdentity(version),
-          checks: await detectEnvironment(),
-          localHandoff: capabilities().localHandoff,
-          checkingRunId: activeSetupRun(project),
-        }),
+        await projectOnboardingStatus(project, observedIdentity(version)),
       );
     })
 
@@ -4805,12 +4816,7 @@ export function createApp(deps: ServerDeps) {
             : ('conflict' as const);
         return c.json({
           status: status === 'written' ? ('recorded' as const) : status,
-          onboarding: await onboardingStatus(project.dataDir, {
-            observed,
-            checks: await detectEnvironment(),
-            localHandoff: capabilities().localHandoff,
-            checkingRunId: activeSetupRun(project),
-          }),
+          onboarding: await projectOnboardingStatus(project, observed),
         });
       },
     );

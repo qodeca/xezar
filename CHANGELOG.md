@@ -2,6 +2,7 @@
 
 - docs(guide): make the MCP project-leader guide the canonical per-client setup, launch, delivery and recovery reference (#515, PR 1)
 - docs(guide): filing an issue from the cockpit and the issue-filing skill (#468, step 4)
+- feat(onboarding): project setup now discovers whether issue filing works here (GitHub CLI signed in, a GitHub remote, the `xez-issue-create` skill) and reports it – `issueFiling` on `GET /api/v1/onboarding` and in `discover_project`, plus an "Issue filing:" line in the setup and re-check report; a missing part is a reason, never an error (#468, step 3)
 
 ## 💥 Breaking defaults
 

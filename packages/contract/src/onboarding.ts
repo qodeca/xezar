@@ -71,6 +71,27 @@ export const onboardingLaunchSchema = z.object({
 export type OnboardingLaunch = z.infer<typeof onboardingLaunchSchema>;
 
 /**
+ * Whether this project can file a tracker issue through the shared issue-filing skill (#468,
+ * step 3). Discovered on every read, never configured and never stored.
+ *
+ * - `available`: the GitHub CLI is installed and signed in, the repository has a GitHub remote,
+ *   and the skill named in `skill` is in this project's skill catalog.
+ * - `unavailable`: at least one of those is missing — `reason` names every missing one.
+ * - `unknown`: nothing is known to be missing, but the shared skills collection has not finished
+ *   loading, so the skill's presence is not yet a fact.
+ *
+ * `reason` is `null` exactly when `available`. It is written by xezar itself, never forwarded from
+ * a CLI, so it cannot quote an account or an organisation.
+ */
+export const onboardingIssueFilingSchema = z.object({
+  status: z.enum(['available', 'unavailable', 'unknown']),
+  reason: z.string().nullable(),
+  /** The skill a task selects to file an issue. */
+  skill: z.string(),
+});
+export type OnboardingIssueFiling = z.infer<typeof onboardingIssueFilingSchema>;
+
+/**
  * `GET /api/v1/p/:projectId/onboarding` — everything the three surfaces read, for ONE project.
  *
  * Every optional-looking field is `.nullable()` rather than `.optional()` on purpose: a key
@@ -100,6 +121,8 @@ export const onboardingStatusSchema = z.object({
   /** The active check task, when one is running — the "Open the task" target. */
   checkingRunId: z.string().nullable(),
   launch: onboardingLaunchSchema,
+  /** Whether issue filing works in this project, and why not (#468). */
+  issueFiling: onboardingIssueFilingSchema,
 });
 export type OnboardingStatus = z.infer<typeof onboardingStatusSchema>;
 

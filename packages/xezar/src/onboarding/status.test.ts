@@ -38,6 +38,8 @@ const NO_AGENT: BackendCheck[] = [
   { name: 'git', available: true },
 ];
 
+const ISSUE_FILING = { status: 'available', reason: null, skill: 'xez-issue-create' } as const;
+
 const ok = (record: OnboardingRead['record']): OnboardingRead => ({ status: 'ok', record });
 const absent: OnboardingRead = { status: 'absent', record: null };
 const corrupt: OnboardingRead = { status: 'corrupt', record: null };
@@ -48,6 +50,7 @@ const derive = (read: OnboardingRead, over: { checks?: BackendCheck[]; localHand
     checks: over.checks ?? AGENT,
     localHandoff: over.localHandoff ?? true,
     checkingRunId: over.checkingRunId ?? null,
+    issueFiling: ISSUE_FILING,
   });
 
 describe('the five states', () => {
@@ -159,5 +162,26 @@ describe('availability and mode', () => {
     for (const forbidden of [/\.xezar/, /\bkit\b/i, /\bSDLC\b/, /\bworkflow/i, /\bskill/i]) {
       expect(NO_BACKEND_REASON).not.toMatch(forbidden);
     }
+  });
+});
+
+describe('issue filing (#468)', () => {
+  it('carries the discovered answer through unchanged, whatever the setup state', () => {
+    const closed = {
+      status: 'unavailable',
+      reason: 'Not available: The GitHub CLI (gh) is not installed. A person can install it and run `gh auth login`.',
+      skill: 'xez-issue-create',
+    } as const;
+    for (const read of [absent, corrupt]) {
+      const status = deriveOnboardingStatus(read, {
+        observed: OBSERVED,
+        checks: NO_AGENT,
+        localHandoff: false,
+        checkingRunId: 'run-1',
+        issueFiling: closed,
+      });
+      expect(status.issueFiling).toEqual(closed);
+    }
+    expect(derive(absent).issueFiling).toEqual(ISSUE_FILING);
   });
 });

@@ -127,6 +127,11 @@ async function probePi(): Promise<BackendCheck> {
   }
 }
 
+/** The `gh` hint for "installed, not signed in". Exported so a caller can tell that case from
+ *  "not installed" without re-probing (onboarding's issue-filing check, #468). */
+export const GH_NOT_AUTHENTICATED_HINT =
+  'gh is installed but not authenticated — run `gh auth login` (only needed for PR creation)';
+
 async function probeGh(): Promise<BackendCheck> {
   try {
     const { stdout } = await exec('gh', ['auth', 'token'], { timeout: 10_000 });
@@ -136,11 +141,7 @@ async function probeGh(): Promise<BackendCheck> {
     // `gh` ran cleanly but printed no token (cleared keyring entry, wrapper
     // script, truncated config). The CLI is installed — do not blame the install
     // — so this gets its own hint rather than the catch branch's wording.
-    return {
-      name: 'gh',
-      available: false,
-      hint: 'gh is installed but not authenticated — run `gh auth login` (only needed for PR creation)',
-    };
+    return { name: 'gh', available: false, hint: GH_NOT_AUTHENTICATED_HINT };
   } catch {
     return {
       name: 'gh',
