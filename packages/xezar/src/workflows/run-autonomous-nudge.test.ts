@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { RunStore, type RunRecord } from '../runs/store.ts';
 import { MAX_AUTO_CONTINUES, RunManager } from './run.ts';
 import type { WorkflowDef } from './types.ts';
+import { COMPLETION_VARIANTS, scriptedRunner, SINGLE_STEP as INCIDENT_STEP, terminal } from './engine-incidents.testkit.ts';
 import { WorkspaceSemaphore } from '../workspace/semaphore.ts';
 
 const run = promisify(execFile);
@@ -394,4 +395,31 @@ describe('the autonomous turn-end nudge (#489, gap R20)', () => {
     expect(store.getRun(record.id)?.monitoringWakeAt).toBeUndefined();
   }, 30_000);
 
+});
+
+// #532 G7 / #524: the accepted incident syntax is a standalone DONE line followed by a checkpoint.
+// Current engine defect: run.ts DONE_MARKER_RE requires the marker at the end of the entire turn.
+describe('G7 completion-marker incident', () => {
+  it.fails.each(COMPLETION_VARIANTS.flatMap(variant => [false, true].map(continued => ({ ...variant, continued }))))(
+    '$name (continued=$continued) closes before an autonomous nudge', async variant => {
+      const root = mkdtempSync(join(tmpdir(), 'xez-g7-'));
+      const store = RunStore.open(join(root, 'data'));
+      const runner = scriptedRunner(variant.continued ? [{}, variant] : [variant]);
+      const manager = new RunManager(store, root);
+      try {
+        const record = manager.startRun(INCIDENT_STEP, { task: 'review', worktree: false, autonomous: true });
+        if (variant.continued) {
+          await terminal(store, record.id);
+          expect(manager.continueRun(record.id, { text: 'complete the review' })).toEqual({ ok: true });
+        }
+        await expect.poll(() => runner.messages.length > 0 ||
+          (runner.specs.length === (variant.continued ? 2 : 1) && store.getRun(record.id)?.status === 'done')).toBe(true);
+        expect(runner.messages, '#524: completion must precede nudge').toHaveLength(0);
+        await terminal(store, record.id);
+        expect(store.getRun(record.id)?.status).toBe('done');
+        expect(runner.specs).toHaveLength(variant.continued ? 2 : 1);
+        expect(store.readEvents(record.id).filter(e => e.type === 'note' && String(e.message).includes('autonomous —'))).toHaveLength(0);
+      } finally { await manager.quiesce(); store.flush(); runner.restore(); rmSync(root, { recursive: true, force: true }); }
+    },
+  );
 });
