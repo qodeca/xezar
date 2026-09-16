@@ -34,6 +34,18 @@ Open the task's **Changes** view and choose **Create PR**. If the optional revie
 
 The push uses Git's own credentials. `GITHUB_TOKEN` authenticates `gh`; `GITHUB_TOKEN` and `GH_TOKEN`, when set, are also forwarded to every agent process, so give them only the access those tasks need.
 
+## Filing an issue from the cockpit
+
+On the **GitHub** tab, choose **New issue** at the end of the **Issues** and **Pull requests** tabs. When an Issues search finds no items, the empty result also offers **New issue**. Describe the problem or requested outcome, then choose **Start drafting**. The control starts an ordinary task using the nearest available issue-filing skill; it does not create an issue directly.
+
+The task turns the brief and any supplied evidence into a well-formed draft. It covers the outcome or problem, type, impact, scope, reproduction steps and expected versus actual behaviour for a bug, testable acceptance criteria, evidence, and related items. It searches open and closed issues for duplicates before proposing the draft. A duplicate is reported rather than changed.
+
+Starting a draft is not filing. The cockpit starts this task non-autonomously. In an interactive task, the task shows the destination, title, body, labels, and assumptions, then asks a person to **Create** or **Revise**; nothing is created without that approval. A leader uses the same rule: starting the task alone is not approval. A brief that explicitly authorizes filing can allow the skill to file within those stated bounds; otherwise it retains a draft. Approval to file does not approve implementation or broaden the work.
+
+This entry is available only when the GitHub tab is available. Without `gh`, authentication, or a reachable repository, the tab reports its availability reason and the control is unavailable. If no issue-filing skill is installed, the dialog explains that it cannot start the draft and leaves the brief intact. Offline, a cached skill can still be selected, but the task cannot search GitHub or create an issue until the required GitHub access is available. You can instead prepare the issue outside the cockpit and file it when access returns.
+
+The task creates at most one new issue. It does not edit, comment on, relabel, reopen, or close an existing issue, and it does not implement the issue it drafts. Use issue triage for an existing report, and use a separate task for any follow-on work.
+
 ## To launch from a GitHub page with a bookmarklet
 
 1. Open the project's **Settings → Bookmarklets**.

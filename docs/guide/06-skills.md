@@ -64,6 +64,10 @@ The Manage panel also shows installed-skill update status. Its action changes wi
 
 ![Skills catalog and preview](../screenshots/0.15.0/skills-dark-1280.png)
 
+## To use the issue-filing skill
+
+Use an issue-filing skill when you have a problem or proposal that does not yet have an issue. It drafts and, after the required approval, can create one new issue; issue triage instead reads an existing issue and returns a verdict without changing it. The issue-filing procedure comes from the shared skills collection at a pinned revision, so a project receives a reviewed common procedure rather than a moving copy. A project can add a local wrapper with its own tracker, templates, label policy, and evidence requirements; that nearer wrapper takes precedence over the shared skill.
+
 ## To change Settings → Skills
 
 Open global **Settings → Skills** to inspect tracked installation status and the automatic-update switch. A saved `skillsAutoUpdate` value in `~/.xezar/config.json` overrides the environment default. Choose **Use default** to clear the saved override and follow the environment again when you want `XEZ_SKILLS_AUTO_UPDATE` to decide. For manual check and apply actions, return to **Skills → Manage skills**.

@@ -60,9 +60,11 @@ These project settings are separate from `~/.xezar/config.json`. Do not copy the
 
 ## To learn from xezar's own kit
 
-The xezar repository's kit contains **18 workflow YAML files and 19 skill Markdown files** at the source revision used for this guide. It includes documentation maintenance, bug investigation, implementation, review, testing and release workflows, alongside checks and pipeline guidance.
+The xezar repository's kit contains **18 workflow YAML files and 20 skill Markdown files** at the source revision used for this guide. It includes documentation maintenance, bug investigation, implementation, review, testing and release workflows, alongside checks and pipeline guidance.
 
 Browse its [directory guide](../../.xezar/CLAUDE.md) and [kit overview](../../.xezar/docs/README.md) as an example of one project's development process. Those roles, gates and release rules belong to the xezar project. They are not prerequisites for using the product, and `xezar init` does not generate them.
+
+The kit can also wrap a shared skill locally. For example, its issue-filing wrapper adds the project's tracker, templates, labels, and evidence rules to a pinned shared procedure, while the catalog entry makes that adapted skill discoverable for a quick task. Keep the shared procedure upstream and make project-specific policy a small local layer, so updating the pinned revision remains a deliberate reviewable change.
 
 ## Related settings / env / config
 
