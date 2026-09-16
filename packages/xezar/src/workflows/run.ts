@@ -75,6 +75,10 @@ import {
 } from './types.ts';
 
 const CHECK_OUTPUT_CAP = 20_000;
+/** How rarely a check step's output chunks report liveness (#460 § 2). One per second is far
+ *  finer than the 5-minute quiet window it feeds, and keeps a megabyte of output from becoming
+ *  a megabyte of in-process notifications. */
+const CHECK_ACTIVITY_THROTTLE_MS = 1_000;
 
 async function configuredModelProvider(
   backend: RunnerId,
@@ -2908,6 +2912,13 @@ export class RunManager {
       startedAt: new Date().toISOString(),
       sessionId,
       backend,
+      // The SECOND site that starts an agent step (#460 § 2). A Continue reuses the step id with
+      // a new `startedAt`, so leaving the previous episode's progress behind would hand the stall
+      // monitor a deadline that expired before this turn began — and a `stall` observation about
+      // an execution that ended. This session spawns with `timeoutMs: 0` (see below): an
+      // interactive turn has no wall clock, so there is no deadline to warn about and nothing has
+      // been observed yet.
+      progress: { lastActivityAt: null, effectiveTimeoutMs: null, deadlineAt: null },
     });
     this.store.appendEvent(runId, { type: 'step-start', stepId, name: 'Continue', kind: 'agent', iteration: 1 });
     // An automatic resume's turn is now live. If it is still running when the proof window
@@ -3499,7 +3510,7 @@ export class RunManager {
         continue;
       }
 
-      const { ok, output } = await this.runCheckStep(state, step, emit);
+      const { ok, output } = await this.runCheckStep(runId, state, step, emit);
       if (state.cancelled) break;
       if (ok) {
         this.finishStep(runId, step.id, 'done', undefined, emit);
@@ -3798,9 +3809,33 @@ export class RunManager {
       if (err instanceof AgentTempDirError) return err.message;
       throw err;
     }
-    this.store.updateStep(runId, step.id, { profileId: stepProfile.profileId });
-
     const runner = createRunner(stepBackend);
+    // Advisory liveness (#460 § 2): record the wall clock this step is ACTUALLY spawning with,
+    // once, here — the one place that knows both the step's own `timeout` and which backend is
+    // about to run it. `0` is the interactive "no wall clock" and becomes `null` (unlimited);
+    // an absent step timeout falls through to THIS runner's own default rather than an assumed
+    // thirty minutes, so a backend with a different one reports a different deadline. A runner
+    // that reports no default leaves the deadline unknown, which warns about nothing.
+    const configuredTimeoutMs = stepTimeoutMs(step, interactive);
+    const effectiveTimeoutMs =
+      configuredTimeoutMs === 0 ? null : (configuredTimeoutMs ?? runner.defaultTimeoutMs ?? null);
+    const startedMs = Date.parse(
+      this.store.getRun(runId)?.steps.find((candidate) => candidate.id === step.id)?.startedAt ?? '',
+    );
+    this.store.updateStep(runId, step.id, {
+      profileId: stepProfile.profileId,
+      progress: {
+        // A fresh execution episode has shown nothing yet, and that is UNKNOWN rather than now:
+        // stamping the start here would make a step that never speaks look freshly active.
+        lastActivityAt: null,
+        effectiveTimeoutMs,
+        deadlineAt:
+          effectiveTimeoutMs !== null && Number.isFinite(startedMs)
+            ? new Date(startedMs + effectiveTimeoutMs).toISOString()
+            : null,
+      },
+    });
+
     let session: AgentSession;
     state.currentStepId = step.id;
     this.beginUsageInvocation(runId, state, step.id);
@@ -4364,6 +4399,7 @@ export class RunManager {
   }
 
   private runCheckStep(
+    runId: string,
     state: ActiveRun,
     step: WorkflowStepDef,
     emit: (event: { type: string; stepId?: string; [k: string]: unknown }) => void,
@@ -4376,7 +4412,19 @@ export class RunManager {
       state.interrupt = () => child.kill('SIGTERM');
 
       let output = '';
+      // A check's output is recorded as ONE `check-output` line when the command exits, so on the
+      // event bus a `npm test` that prints every second is indistinguishable from a hung one. The
+      // chunk itself is the liveness signal (#460 § 2); it writes nothing and is throttled, since
+      // a chatty command produces thousands of chunks and one per second is all a 5-minute quiet
+      // window can use. Capped output keeps accumulating exactly as before — a command still
+      // truncated but still running is still alive, so the signal deliberately outlives the cap.
+      let lastNoted = 0;
       const collect = (chunk: Buffer) => {
+        const now = Date.now();
+        if (now - lastNoted >= CHECK_ACTIVITY_THROTTLE_MS) {
+          lastNoted = now;
+          this.store.noteActivity(runId, step.id);
+        }
         if (output.length < CHECK_OUTPUT_CAP) {
           output += chunk.toString('utf8');
           if (output.length >= CHECK_OUTPUT_CAP) output += '\n… (output truncated)';

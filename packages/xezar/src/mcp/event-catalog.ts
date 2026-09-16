@@ -1,6 +1,8 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import {
   MCP_EVENT_KIND_CATEGORY,
+  STALL_DEADLINE_RATIO,
+  STALL_QUIET_MS,
   mcpJournalOperationIdSchema,
   providerStatusSchema,
   type McpEventKind,
@@ -9,10 +11,12 @@ import {
   type McpJournalOrigin,
   type McpJournalRow,
   type ProviderStatus,
+  type StallReason,
 } from '@qodeca/xezar-contract';
 
 import type { RunEvent, RunRecord, RunStore } from '../runs/store.ts';
 import { markTaskVerdictAnnounced } from '../runs/task-verdicts.ts';
+import { StallMonitor } from './stall-monitor.ts';
 import { runVersion } from './stale-write.ts';
 
 /**
@@ -30,7 +34,10 @@ import { runVersion } from './stale-write.ts';
  *
  * WHAT ENTERS, derived rather than forwarded (D-05 § 5.1 — a terminal status is not an event type):
  *  - E-01  a run status transition to `done` / `failed` / `cancelled`, or to `waiting` WITHOUT a
- *          structured question (`task.blocked` — the run cannot go on without input);
+ *          structured question (`task.blocked` — the run cannot go on without input), and the
+ *          advisory `task.stalled` / `task.resumed` pair reported by the stall monitor this
+ *          catalog starts (`./stall-monitor.ts`, #460 § 2) — an observation that an executing
+ *          step looks quiet, which stops nothing and proves nothing;
  *  - E-02  a transition to `waiting` that follows an `ask.requested` line (`question.asked`), and a
  *          human `user-message` to a run that was `waiting` (`question.answered`);
  *  - E-03  a CHECK step settling `done`/`failed` (a quality gate), and a transition to `review` —
@@ -193,6 +200,8 @@ export class EventCatalog {
   readonly #runs = new Map<string, RunMemory>();
   readonly #executors = new Map<string, boolean>();
   readonly #unsubscribe: Array<() => void> = [];
+  /** The advisory stall monitor this catalog started (#460 § 2), stopped by `detach`. */
+  #stall: StallMonitor | undefined;
   #warned = false;
 
   private constructor(options: EventCatalogOptions) {
@@ -234,11 +243,26 @@ export class EventCatalog {
     // The stable report id is what makes this safe to run on every attach: an already-announced
     // report is `announced` and is passed over, so recovery produces one row, never a second.
     for (const run of options.store.listRuns()) catalog.#guard(() => catalog.#announceVerdicts(run.id));
+    // The advisory stall monitor (#460 § 2) rides the catalog's own lifetime, because that is
+    // exactly the lifetime it needs: one per project, over the same store, reporting through this
+    // catalog and stopped when this catalog stops. Composing it separately would have meant a
+    // second attach and a second teardown for one timer — and a teardown that ran in the wrong
+    // order would leave a tick writing rows into a closed journal.
+    //
+    // It is the same degradation rule as every other part: a monitor that cannot start is one
+    // warning and a smaller MCP, never a catalog that fails to attach.
+    catalog.#guard(() => {
+      catalog.#stall = StallMonitor.attach({ store: options.store, report: catalog, warn: catalog.#warn });
+    });
     return catalog;
   }
 
   /** Stop listening. Every subscription `attach` made is released — none outlives the catalog. */
   detach(): void {
+    // The monitor first: its tick reports THROUGH this catalog, so a tick after the unsubscribes
+    // but before its own cancel would derive a row from a catalog that has stopped listening.
+    this.#stall?.detach();
+    this.#stall = undefined;
     for (const unsubscribe of this.#unsubscribe.splice(0)) unsubscribe();
     this.#runs.clear();
     this.#executors.clear();
@@ -264,6 +288,34 @@ export class EventCatalog {
     return this.#guard(() =>
       this.#append(kind, { type: 'workflow', id: input.name.slice(0, SUBJECT_ID_MAX), version: input.version ?? null },
         this.#originOr('human'), `workflow "${clip(input.name, 120)}" ${input.change}`),
+    );
+  }
+
+  /**
+   * E-01: an executing step looks stuck (#460 § 2). Reported by the stall monitor, which is the
+   * only thing that knows; the catalog's job here is the same as for E-05 — turn a reported
+   * observation into one row, with this door's origin and the summary-only rule kept.
+   *
+   * The wording says outright that it is advisory and that nothing was stopped, because the
+   * cheapest way for a reader to misuse this row is to treat it as a failure. The numbers come
+   * from the contract constants rather than the prose, so the row can never describe a window
+   * the monitor does not use.
+   */
+  taskStalled(input: { runId: string; stepId: string; reason: StallReason; since: string }): void {
+    this.#guard(() =>
+      this.#appendRun('task.stalled', input.runId, this.#originOr('system'), stallSummary(input.stepId, input.reason)),
+    );
+  }
+
+  /** E-01: real agent activity returned to a step this catalog reported quiet (#460 § 2). */
+  taskResumed(input: { runId: string; stepId: string }): void {
+    this.#guard(() =>
+      this.#appendRun(
+        'task.resumed',
+        input.runId,
+        this.#originOr('system'),
+        `task resumed: agent activity returned at step ${clip(input.stepId, 80)}`,
+      ),
     );
   }
 
@@ -512,6 +564,20 @@ function verdictAvailability(run: RunRecord): string {
   const count = run.verdicts?.length ?? 0;
   if (count === 0) return 'no reviewer verdict recorded';
   return count === 1 ? '1 reviewer verdict recorded' : `${count} reviewer verdicts recorded`;
+}
+
+/**
+ * One stall observation, as a journal SUMMARY. It names the step, the condition and — in the
+ * same sentence — that nothing was stopped, so a row read on its own cannot be mistaken for a
+ * failure. The full picture (when activity was last seen, the deadline, the observation's own
+ * timestamps) is on the task record; D-05's summary-only rule keeps it from being copied here.
+ */
+function stallSummary(stepId: string, reason: StallReason): string {
+  const step = clip(stepId, 80);
+  const advisory = 'advisory — the task is still running and nothing was stopped';
+  return reason === 'silence'
+    ? `task may be stalled: step ${step} has shown no agent activity for ${STALL_QUIET_MS / 60_000} minutes (${advisory})`
+    : `task may be stalled: step ${step} has used ${Math.round(STALL_DEADLINE_RATIO * 100)}% of its time limit (${advisory})`;
 }
 
 function questionSummary(count: number): string {
