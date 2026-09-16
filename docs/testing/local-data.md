@@ -11,14 +11,14 @@ be included by an autosave, commit, package, or project-kit snapshot.
 | `.local/xezar/` | Engine run index, transcripts, attachments, handoffs, todos, UI state, automation state/logs/locks, temporary run directories and Git worktrees. |
 | `.local/qa/` | Test environment descriptor, bootstrap lock, build fingerprint, logs, screenshots, isolated Xezar home and vendor configuration sandboxes. |
 | `.local/test-tmp/` | Unique temporary fixtures used by Vitest, node:test and inherited child tools. Each test owns cleanup of its own fixture. A Git ceiling prevents fixtures without a repository from discovering the parent checkout. One exception: when the checkout under test is itself a xezar task worktree (`…/.local/xezar/worktrees/<runId>/`), scratch moves to a per-checkout `xezar-test-tmp-<hash>` directory under the OS temp dir instead, because the workspace registry refuses every project root beneath that ancestor and the temp repos the tests create would be refused with it (#19). Same ceiling, same per-fixture cleanup. |
-| `.local/runs/`, `.local/analysis/` | New agentic run records and working analyses selected by the maintained agentic config. |
-| `.local/legacy-qa/`, `.local/legacy-agentic/`, `.local/legacy-xezar/` | Preserved legacy local records. These are archives, not disposable caches. Ignored custom legacy kit files are kept local rather than accidentally published as maintained files. |
+| `.local/runs/`, `.local/analysis/` | New agentic run records and working analyses selected by `paths.runs` and `paths.analysis` in `.xezar/pipeline/config.json`. |
+| `.local/legacy-qa/`, `.local/legacy-agentic/` | Preserved legacy local records. These are archives, not disposable caches.  |
 | Primary checkout `.local/xezar-tasks/<runId>/` | Durable kit evidence, attempts and checkpoints, outside the task worktree that retention may remove. |
 | Primary checkout `.local/xezar-tests/`, `.local/xezar-kit/` | Kit fixtures and bootstrap snapshot bookkeeping. |
 
 The inventory covered all tracked project scripts and configuration, engine path producers,
 Git/worktree retention, QA launch/stop scripts, every browser test artifact consumer,
-unit/package-test temporary directories, and the existing `.ai` directory names. Historical
+unit/package-test temporary directories, and the `.ai` directory names in use before the layout move (#11). Historical
 changelog/source-audit paths remain historical facts; they are not current write targets.
 
 ## Existing projects
