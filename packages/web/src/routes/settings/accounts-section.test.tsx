@@ -843,6 +843,38 @@ describe('the add-account dialog', () => {
     })
   })
 
+  // #453 B3 design review NB-4: the dialog is mounted only while open, so Escape unmounted it and
+  // dropped keyboard focus on <body> instead of the "Add account" button that opened it.
+  it('Escape hands keyboard focus back to the Add account button', async () => {
+    serve({ editable: true, profileCapableProviders: ['claude', 'codex'],
+      defaults: {},
+      selections: {}, profiles: DEFAULTS })
+    renderAccounts()
+    await waitFor(() => expect(document.querySelector('[data-action="accounts-add"]')).not.toBeNull())
+    const opener = document.querySelector<HTMLButtonElement>('[data-action="accounts-add"][data-provider="claude"]')!
+    opener.focus()
+    fireEvent.click(opener)
+    const dialog = await waitFor(() => {
+      const element = document.querySelector('[data-slot="add-account-dialog"]')
+      expect(element?.contains(document.activeElement)).toBe(true)
+      return element!
+    })
+    fireEvent.keyDown(dialog, { key: 'Escape' })
+    await waitFor(() => expect(document.querySelector('[data-slot="add-account-dialog"]')).toBeNull())
+    await waitFor(() => expect(document.activeElement).toBe(opener))
+  })
+
+  // #453 B3 design review NB-5: the Agent select names products, not backend ids.
+  it('the Agent select shows product names and keeps the ids as values', async () => {
+    serve({ editable: true, profileCapableProviders: ['claude', 'codex'],
+      defaults: {},
+      selections: {}, profiles: DEFAULTS })
+    renderAccounts()
+    await openDialog()
+    const options = [...document.querySelectorAll<HTMLOptionElement>('[data-slot="add-account-provider"] option')]
+    expect(options.map((o) => [o.value, o.textContent])).toEqual([['claude', 'Claude Code'], ['codex', 'Codex']])
+  })
+
   it('refuses an empty folder without sending anything', async () => {
     serve({ editable: true, profileCapableProviders: ['claude', 'codex'],
       defaults: {},

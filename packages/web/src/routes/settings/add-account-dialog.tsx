@@ -14,7 +14,10 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { toast } from '@/components/ui/toaster'
+import { runnerLabel } from '@/lib/runner-label'
 import { cn } from '@/lib/utils'
+
+import { useReturnFocus } from './remove-project'
 
 /**
  * The folder this dialog SUGGESTS for a second account, per provider.
@@ -76,6 +79,7 @@ export function AddAccountDialog({
   const [configDir, setConfigDir] = useState('')
   const [browsing, setBrowsing] = useState(false)
   const create = useCreateAgentProfile()
+  const returnFocus = useReturnFocus(open)
 
   const trimmed = configDir.trim()
 
@@ -111,7 +115,7 @@ export function AddAccountDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent data-slot="add-account-dialog" className="sm:max-w-lg">
+      <DialogContent data-slot="add-account-dialog" className="sm:max-w-lg" onCloseAutoFocus={returnFocus}>
         <DialogHeader>
           <DialogTitle>Add agent account</DialogTitle>
           <DialogDescription>
@@ -132,7 +136,7 @@ export function AddAccountDialog({
             >
               {providers.map((id) => (
                 <option key={id} value={id}>
-                  {id}
+                  {runnerLabel(id)}
                 </option>
               ))}
             </select>
