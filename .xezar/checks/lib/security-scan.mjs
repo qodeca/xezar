@@ -22,10 +22,14 @@
 // THE FAIL-OPEN TRAP THIS AVOIDS (AGENTS.md § Changing a mechanism that already works). Against
 // an empty input, "we never loaded the list" and "no match" are the same branch. So an empty
 // inventory where one was expected is `unknown` at the check level and a REFUSAL at the stage
-// level: a code change that enumerated zero files did not pass, it failed to look.
+// level: a change set that enumerated zero files did not pass, it failed to look. The refusal is
+// driven off the INVENTORY, so it is reachable from this driver; the two run shapes the kit
+// documents as legitimately empty declare themselves with `--empty-declared`, and the
+// declaration is recorded in the result.
 //
 // Usage:
 //   node security-scan.mjs --cwd <dir> --base <sha> --head <sha> [--out <file>] [--quiet]
+//                          [--empty-declared "<why this candidate legitimately changes nothing>"]
 //
 // Exit codes: 0 resolved (pass / unknown / not-applicable) · 1 refused (findings, or the stage
 // could not look) · 2 usage.
@@ -219,10 +223,13 @@ export function scanSecrets(addedByFile) {
   let allowed = 0;
   for (const [file, lines] of addedByFile) {
     for (const { line, text } of lines) {
-      for (const pattern of SECRET_PATTERNS) {
-        if (!pattern.re.test(text)) continue;
-        if (text.includes(ALLOW_MARKER)) { allowed++; continue; }
-        // The VALUE is never copied into evidence — only where it is and what shape it has.
+      const matching = SECRET_PATTERNS.filter((pattern) => pattern.re.test(text));
+      if (matching.length === 0) continue;
+      // The marker is per LINE, so a line matching two rules is ONE allowed line. Counting it per
+      // matching rule made the result text ("N line(s) carry an explicit allow marker") false.
+      if (text.includes(ALLOW_MARKER)) { allowed++; continue; }
+      // The VALUE is never copied into evidence — only where it is and what shape it has.
+      for (const pattern of matching) {
         findings.push({ file, line, rule: pattern.name, detail: `an added line matches ${pattern.name}` });
       }
     }
@@ -248,9 +255,11 @@ export function scanKillByPattern(addedByFile) {
     if (!KILL_SCANNED_EXTENSIONS.has(extensionOf(file))) continue;
     for (const { line, text } of lines) {
       if (isCommentLine(text)) continue;
-      for (const rule of KILL_BY_PATTERN) {
-        if (!rule.re.test(text)) continue;
-        if (text.includes(ALLOW_MARKER)) { allowed++; continue; }
+      const matching = KILL_BY_PATTERN.filter((rule) => rule.re.test(text));
+      if (matching.length === 0) continue;
+      // Per LINE, for the same reason as `scanSecrets` above.
+      if (text.includes(ALLOW_MARKER)) { allowed++; continue; }
+      for (const rule of matching) {
         findings.push({
           file,
           line,
@@ -349,10 +358,20 @@ export function assess({ files, addedByFile, truncated }) {
   );
 
   const blocking = checks.filter((c) => c.status === "findings");
+  // `trust-boundary` is deliberately OUT of the rollup (#503 review N1). `unknown` in this stage
+  // means "the check could not look", and this one DID look — it found a named boundary and
+  // recorded it. `phase-record.md` says `reviewerRequired` is recorded separately and does not
+  // fail the gate, but feeding the same fact into the rollup made the sealed headline read
+  // `unknown` for routine work (3 of the last 5 merges on main, two of them only because
+  // `.env.example` is both a named boundary AND a file AGENTS.md § Zero config requires changing
+  // beside any XEZ_* var). A stage that says "withhold the verdict" on routine work is the noise
+  // this file's own rule table argues against. The per-check entry and the flag both stay; only
+  // the rollup stops treating a recorded fact as an unanswered question.
+  const rollup = checks.filter((c) => c.name !== "trust-boundary");
   let status;
   if (blocking.length > 0) status = "findings";
   else if (!applies) status = "not-applicable";
-  else if (checks.some((c) => c.status === "unknown")) status = "unknown";
+  else if (rollup.some((c) => c.status === "unknown")) status = "unknown";
   else status = "pass";
 
   return {
@@ -376,6 +395,10 @@ function main() {
   const cwd = args.cwd || die(EXIT_USAGE, "--cwd is required");
   const head = args.head || die(EXIT_USAGE, "--head is required");
   const base = args.base;
+  // The ONE declared exception to the empty-inventory refusal below, and the DRIVER declares it.
+  // Inferring it here would re-create the hole: this file cannot tell "the run legitimately has
+  // no commits of its own" from "the run was asked to change source and enumerated nothing".
+  const emptyDeclared = typeof args["empty-declared"] === "string" ? args["empty-declared"] : null;
 
   let files = [];
   let diffText = "";
@@ -419,9 +442,18 @@ function main() {
     result = assess({ files, addedByFile: addedLinesByFile(diffText), truncated });
   }
 
-  // THE EMPTY-INVENTORY REFUSAL. A code change that enumerated zero files did not pass; it
-  // failed to look. `empty-scan-green` is the falsifier this line exists for.
-  const emptyWhereExpected = result.decision === "yes" && result.inventory.total === 0;
+  // THE EMPTY-INVENTORY REFUSAL. A change set that enumerated zero files did not pass; it failed
+  // to look. It is driven off the INVENTORY, not off `assess`'s decision: `assess` early-returns
+  // `decision: "no"` for a zero-file inventory, so the old `decision === "yes" && total === 0`
+  // form was unreachable from this driver and its named break went green either way (#503 review
+  // M1). "Could not read the input" is a separate question and `readFailure` already answers it.
+  //
+  // The exception is DECLARED, never inferred: a run whose fix landed on another branch
+  // (`DELIVERED`) or that only verified an existing revision (`VERIFICATION`) is documented to
+  // carry no commits of its own, so its empty change set is expected. The driver passes the
+  // reason, it is recorded in the result, and the stage still resolves `unknown` — which is not a
+  // pass. `empty-scan-green` is the falsifier both halves exist for.
+  const emptyWhereExpected = readFailure === null && result.inventory.total === 0 && emptyDeclared === null;
   const refused = readFailure !== null || result.status === "findings" || emptyWhereExpected;
 
   const record = {
@@ -432,13 +464,14 @@ function main() {
     base: base ?? null,
     head,
     ...result,
+    emptyDeclared,
     refused,
     refusedReason: readFailure
       ? "the change set could not be read"
       : result.status === "findings"
         ? `blocking findings in: ${result.blocking.join(", ")}`
         : emptyWhereExpected
-          ? "a code capability applies but zero files were enumerated — the stage did not look"
+          ? "the base was resolved and the diff was readable, and zero files were enumerated over it — the stage did not look. A run that legitimately carries no commits of its own declares that (DELIVERED, VERIFICATION); nothing declared it here."
           : null,
   };
   record.digest = createHash("sha256").update(JSON.stringify(record)).digest("hex");
@@ -460,6 +493,9 @@ function main() {
       for (const f of c.findings ?? []) {
         process.stdout.write(`      ${f.file}${f.line ? `:${f.line}` : ""} [${f.rule}] ${f.detail}\n`);
       }
+    }
+    if (record.emptyDeclared) {
+      process.stdout.write(`empty declared   ${record.emptyDeclared}\n`);
     }
     if (record.reviewerRequired) {
       process.stdout.write("reviewer         REQUIRED — a named trust boundary changed:\n");

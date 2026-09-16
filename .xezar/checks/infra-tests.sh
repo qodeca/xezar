@@ -2148,6 +2148,32 @@ scan_json "$sw" "$WORK/scan-env.json" && bad "an added .env file refuses the sta
 sw="$(scan_fixture scan-envexample .env.example 'API_KEY=')"
 expect_ok "an added .env.example does not" scan_json "$sw" "$WORK/scan-envexample.json"
 
+# The allow marker is per LINE (#503 review N5). This URL matches TWO rules at once —
+# `url-userinfo-credential` and `anthropic-key` — so a marked line is ONE allowed line, and the
+# count in the result text has to say so.
+two_rule_literal='const u = "https://svc:sk-ant-0123456789abcdefghijklmn@example.com"; // security-scan:allow'  # security-scan:allow
+sw="$(scan_fixture scan-two-rules src/two.ts "$two_rule_literal")"
+expect_ok "a marked line matching two rules is not reported" scan_json "$sw" "$WORK/scan-two-rules.json"
+secrets_detail="$(node -e '
+  const r = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+  process.stdout.write(String(r.checks.find((c) => c.name === "secrets")?.detail));' "$WORK/scan-two-rules.json")"
+case "$secrets_detail" in
+  *"1 line(s) carry an explicit allow marker"*) ok "and it is counted as one allowed line, not one per matching rule" ;;
+  *) bad "and it is counted as one allowed line, not one per matching rule" "$secrets_detail" ;;
+esac
+
+# A named trust boundary is a RECORDED fact, not an unanswered question (#503 review N1).
+# `reviewerRequired` carries it and the docs say it does not fail the gate, so it stays out of the
+# `unknown` rollup — otherwise every ordinary change under the HTTP surface, the MCP tools, the
+# workspace registry, CI's own workflows or `.env.example` sealed a headline that tells the
+# reviewer to withhold a verdict on routine work.
+sw="$(scan_fixture scan-trust packages/xezar/src/server/thing.ts 'export const thing = 1;')"
+expect_ok "a changed trust boundary resolves the stage" scan_json "$sw" "$WORK/scan-trust.json"
+[ "$(scan_status "$WORK/scan-trust.json" status)" = "pass" ] && ok "and does not turn the sealed headline into unknown" \
+  || bad "and does not turn the sealed headline into unknown" "status=$(scan_status "$WORK/scan-trust.json" status)"
+[ "$(scan_status "$WORK/scan-trust.json" reviewerRequired)" = "true" ] && ok "and still records that a reviewer is required" \
+  || bad "and still records that a reviewer is required" "reviewerRequired=$(scan_status "$WORK/scan-trust.json" reviewerRequired)"
+
 # The #156 rule as a check rather than a paragraph: a kill by command-line pattern in an
 # executable file is a finding, and the same text in a comment is not.
 kill_literal="$(printf 'pk%sll -f "repo-gates.sh --fast"' i)"
@@ -2172,6 +2198,35 @@ node "$SCAN_MJS" --cwd "$sw" --head "$(git -C "$sw" rev-parse HEAD)" --out "$WOR
   || ok "empty-scan-green: an unreadable change set refuses, it does not pass"
 [ "$(scan_status "$WORK/scan-nobase.json" status)" = "unknown" ] && ok "and it is recorded as unknown" \
   || bad "and it is recorded as unknown" "status=$(scan_status "$WORK/scan-nobase.json" status)"
+
+# `empty-scan-green`, the reachable half (#503 review M1). A base that WAS resolved and a diff that
+# WAS readable, over a branch sitting on its own merge-base, enumerate zero files. That is the
+# shape a real task hits — a branch with no commits over its base — and it used to resolve
+# `unknown` and seal, because the refusal was driven off `assess`'s decision, which early-returns
+# "no" for an empty inventory and so could never satisfy `decision === "yes"`. The term was inert
+# and its named break went green either way. The refusal is now driven off the INVENTORY.
+sw="$(add_worktree "$(make_fixture scan-empty-branch)" "$RUN_A")"
+scan_json "$sw" "$WORK/scan-empty-branch.json" \
+  && bad "empty-scan-green: a branch at its own merge-base refuses, it does not pass" "the scan exited 0" \
+  || ok "empty-scan-green: a branch at its own merge-base refuses, it does not pass"
+[ "$(scan_status "$WORK/scan-empty-branch.json" refused)" = "true" ] && ok "and the result records the refusal, so sealing cannot accept it" \
+  || bad "and the result records the refusal, so sealing cannot accept it" "refused=$(scan_status "$WORK/scan-empty-branch.json" refused)"
+
+# The ONE declared exception, and it is declared by the DRIVER, never inferred here: a run whose
+# fix landed on another branch (`DELIVERED`) or that only verified an existing revision
+# (`VERIFICATION`) is documented to carry no commits of its own (§7b, §7d). Its empty change set
+# is expected, the reason is recorded in the result, and the stage still says `unknown` — an
+# explicit exception a reviewer reads, never a silent pass.
+node "$SCAN_MJS" --cwd "$sw" --base "$(git -C "$sw" merge-base HEAD main)" \
+  --head "$(git -C "$sw" rev-parse HEAD)" --empty-declared "this run recorded DELIVERED" \
+  --out "$WORK/scan-empty-declared.json" --quiet \
+  && ok "a declared-empty change set resolves instead of refusing" \
+  || bad "a declared-empty change set resolves instead of refusing" "the scan exited non-zero"
+[ "$(scan_status "$WORK/scan-empty-declared.json" status)" = "unknown" ] && ok "and it is still recorded as unknown, never a pass" \
+  || bad "and it is still recorded as unknown, never a pass" "status=$(scan_status "$WORK/scan-empty-declared.json" status)"
+[ "$(scan_status "$WORK/scan-empty-declared.json" emptyDeclared)" = "this run recorded DELIVERED" ] \
+  && ok "and the declaration itself is in the record" \
+  || bad "and the declaration itself is in the record" "emptyDeclared=$(scan_status "$WORK/scan-empty-declared.json" emptyDeclared)"
 
 # `security-after-quality`: an attempt whose canonical list requires the security stage, sealed
 # with no security result, is refused. A quality verdict cannot come before a result nobody has.
@@ -2225,6 +2280,44 @@ sec_index="$(printf '%s' "$LIST_JSON" | node -e '
     const g=JSON.parse(raw).gates; process.stdout.write(String(g.findIndex(x=>x.command===".xezar/checks/security-scan.sh")+1));});')"
 [ "$sec_index" = "2" ] && ok "the security stage is gate 2, before every quality gate" \
   || bad "the security stage is gate 2, before every quality gate" "it is gate $sec_index"
+
+# The two silent fail-opens (#503 review N2). Both had the same shape as the Major: an error
+# stream discarded, so "we looked and there is nothing" and "we could not look" arrived as the
+# same empty answer — and the empty answer switched a requirement OFF.
+#
+# (a) The sealer asks the LIVE canonical list whether a security stage exists. A list that cannot
+# be produced or parsed must refuse the seal, not decide that the requirement is absent.
+root="$(make_fixture gate-list-unreadable)"
+wt="$(add_worktree_with_work "$root" "$RUN_A")"
+CHECKS="$root/.xezar/checks"
+PF="$CHECKS/worktree-preflight.sh"
+drive "$wt" "$CHECKS" "$LIST_ID" "$REQUIRED_ALL" "${ALL_PASS[@]}" > /dev/null
+expect_ok "a readable canonical gate list seals" run_in "$wt" "$PF" --record-gate-evidence
+mv "$CHECKS/repo-gates.sh" "$CHECKS/repo-gates.real.sh"
+cat > "$CHECKS/repo-gates.sh" <<'GATE_LIST_STUB'
+#!/usr/bin/env bash
+# Fixture stub: `--list` still works, `--list --json` answers with something unparseable.
+for a in "$@"; do
+  if [ "$a" = "--json" ]; then printf 'this is not json\n'; exit 0; fi
+done
+exec "$(cd "$(dirname "$0")" && pwd -P)/repo-gates.real.sh" "$@"
+GATE_LIST_STUB
+chmod +x "$CHECKS/repo-gates.sh"
+expect_fail "an unparseable canonical gate list refuses the seal instead of switching the security requirement off" \
+  "could not be measured" run_in "$wt" "$PF" --record-gate-evidence
+
+# (b) Readiness asks `phase-record.sh` which records are missing. That producer exits 1 with NO
+# stdout when it cannot resolve the run id, and a discarded exit status read that silence as
+# "every record is present".
+root="$(make_fixture phase-record-silent)"
+wt="$(add_worktree_with_work "$root" "$RUN_A")"
+CHECKS="$root/.xezar/checks"
+PF="$CHECKS/worktree-preflight.sh"
+expect_ok "readiness passes while the phase-record producer answers" run_in "$wt" "$PF" --readiness
+printf '#!/usr/bin/env bash\nexit 1\n' > "$CHECKS/phase-record.sh"
+chmod +x "$CHECKS/phase-record.sh"
+expect_fail "a phase-record producer that fails without a word refuses readiness instead of passing it" \
+  "could not be measured" run_in "$wt" "$PF" --readiness
 
 # --- 8. Manifest safety ------------------------------------------------------------------------------
 printf '\n-- manifest --\n'

@@ -104,9 +104,18 @@ function outerFixture(body) {
  const git=(...args)=>{const r=spawnSync('git',args,{cwd:dir,encoding:'utf8'});assert.equal(r.status,0,r.stderr);};
  git('init','-q','-b','main');writeFileSync(join(dir,'.gitignore'),'.local/\n');
  git('add','.gitignore');git('-c','user.name=fixture','-c','user.email=fixture@example.invalid','commit','-qm','fixture');
+ // A CANDIDATE, not an empty branch. Gate 2 is the security stage and it refuses a change set
+ // that enumerated nothing over a base it could read — a branch sitting on its own merge-base is
+ // exactly that shape (#503 review M1). The base ref is therefore a separate branch left behind
+ // at the first commit, so this fixture's HEAD really carries one added file for the stage to look
+ // at, the way a real task does.
+ git('branch','fixture-base');
+ mkdirSync(join(dir,'src'),{recursive:true});writeFileSync(join(dir,'src/fixture.ts'),'export const fixture = 1;\n');
+ git('add','src/fixture.ts');git('-c','user.name=fixture','-c','user.email=fixture@example.invalid','commit','-qm','candidate');
  // Replace only path/environment discovery. Execution, recording and supervision are real.
  writeFileSync(join(target,'lib/common.sh'),`
- resolve_task_paths() { TASK_CWD="$PWD"; TASK_ID=fixture; TASK_ID_SOURCE=fixture; HEAD_SHA=$(git rev-parse HEAD); IS_WORKTREE=0; BRANCH=main; BASE_BRANCH=main; }
+ resolve_task_paths() { TASK_CWD="$PWD"; TASK_ID=fixture; TASK_ID_SOURCE=fixture; HEAD_SHA=$(git rev-parse HEAD); IS_WORKTREE=0; BRANCH=main; BASE_BRANCH=fixture-base; }
+ task_evidence_dir() { printf '%s/no-evidence' "$PWD"; }
  deps_are_fresh() { return 0; }
  deps_resolve_in_task() { [ ! -f "$PWD/borrowed" ] || { echo "fixture: workspace packages borrowed" >&2; return 1; }; }
  task_gates_dir() { printf '%s/gates' "$PWD"; }

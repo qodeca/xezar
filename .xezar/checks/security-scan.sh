@@ -72,9 +72,28 @@ if [ -z "$BASE_SHA" ]; then
   BASE_SHA="$(git -C "$TASK_CWD" merge-base HEAD "$base_ref" 2>/dev/null || printf '')"
 fi
 
+# THE ONE DECLARED EXCEPTION to the empty-inventory refusal, and it is declared HERE because
+# only the task's own records answer it. A run whose fix landed on the PR's own branch
+# (`DELIVERED`, #402) or that only verified a revision it was never asked to change
+# (`VERIFICATION`, §7d) legitimately carries no commits of its own — readiness is documented to
+# accept exactly those two shapes with an empty branch — so its empty change set is expected
+# rather than a hole the stage fell into. The scanner cannot tell the two apart from the diff
+# alone, so it refuses unless something declares it, and the declaration lands in the result
+# where a reviewer reads it. Nothing else is ever declared here.
+EMPTY_DECLARED=""
+EV_DIR="$(task_evidence_dir 2>/dev/null || printf '')"
+if [ -n "$EV_DIR" ]; then
+  if [ -f "$EV_DIR/DELIVERED" ]; then
+    EMPTY_DECLARED="this run recorded DELIVERED: the fix landed on another branch, so this branch carries no change set to scan"
+  elif [ -f "$EV_DIR/VERIFICATION" ]; then
+    EMPTY_DECLARED="this run recorded VERIFICATION: it verified an existing revision and was never asked to change source"
+  fi
+fi
+
 printf '=== security stage ===\n'
 printf 'base           %s\n' "${BASE_SHA:-<unresolved>}"
 printf 'head           %s\n' "${HEAD_SHA:-<unresolved>}"
+[ -n "$EMPTY_DECLARED" ] && printf 'empty declared %s\n' "$EMPTY_DECLARED"
 if [ -z "$OUT" ]; then
   printf 'record         NOT RECORDED — no gate attempt is running and no --out was given.\n'
   printf '               The seal refuses an attempt with no security result, so this run\n'
@@ -84,6 +103,7 @@ fi
 args=(--cwd "$TASK_CWD" --head "${HEAD_SHA:-}")
 [ -n "$BASE_SHA" ] && args+=(--base "$BASE_SHA")
 [ -n "$OUT" ] && args+=(--out "$OUT")
+[ -n "$EMPTY_DECLARED" ] && args+=(--empty-declared "$EMPTY_DECLARED")
 
 node "$SCRIPT_DIR/lib/security-scan.mjs" "${args[@]}"
 rc=$?

@@ -372,10 +372,21 @@ if [ "$MODE" = "readiness" ] || [ "$MODE" = "record-gate-evidence" ] || [ "$MODE
   # shipped template or a mutable label standing in for this task's own accepted input.
   if [ "$MODE" = "readiness" ] || [ "$MODE" = "record-gate-evidence" ]; then
     if [ -n "${TASK_ID:-}" ]; then
+      # THE PRODUCER'S EXIT STATUS IS READ (#503 review N2). This used to be a process
+      # substitution whose status was discarded, and `phase-record.sh` exits 1 with NO stdout
+      # when it cannot resolve the run id — so "the writer could not look" and "there is nothing
+      # to refuse" were the same silence, and readiness passed with no phase record at all. That
+      # is the same empty-input fail-open the security stage's own refusal exists for. A refusal
+      # always arrives WITH lines, so non-zero AND empty is the unmeasured case, and it fails.
+      phase_predicates="$("$SCRIPT_DIR/phase-record.sh" check --predicates 2>/dev/null)"
+      phase_rc=$?
+      if [ "$phase_rc" -ne 0 ] && [ -z "$phase_predicates" ]; then
+        fail phase.record-readable "the phase record could not be read: phase-record.sh check exited $phase_rc and reported nothing, so whether this task's phase dispositions exist could not be measured. An unmeasured record is not an absent refusal. Run bash .xezar/checks/phase-record.sh check from the task worktree xezar created and fix what it reports."
+      fi
       while IFS='|' read -r predicate message; do
         [ -n "$predicate" ] || continue
         fail "$predicate" "$message"
-      done < <("$SCRIPT_DIR/phase-record.sh" check --predicates 2>/dev/null)
+      done <<< "$phase_predicates"
     fi
   fi
 
@@ -522,19 +533,34 @@ if [ ${#failures[@]} -eq 0 ] && [ "$MODE" = "record-gate-evidence" ]; then
   # The security stage's name in the CURRENT canonical list. The sealer requires the attempt to
   # carry that stage's structured result, and taking the name from the live list — rather than
   # from the record being sealed — is what stops a record from deciding whether it has to have
-  # one. An empty answer here means the list has no security stage and the requirement is off.
-  security_gate="$("$SCRIPT_DIR/repo-gates.sh" --list --json 2>/dev/null | node -e '
+  # one. An empty answer means the list carries no security stage and the requirement is off.
+  #
+  # WHICH IS WHY THE LIST HAS TO BE READ SUCCESSFULLY FIRST (#503 review N2). Every error stream
+  # here used to be discarded, so a list that could not be produced or parsed switched the whole
+  # sealing requirement off, silently — "we looked and there is none" and "we could not look"
+  # were the same empty string. `gate-results.mjs` already separates the two for
+  # `--command-list-id` (unmeasured becomes an unknown input); this now does the same, and the
+  # node reader no longer swallows a parse error.
+  gate_list_json="$("$SCRIPT_DIR/repo-gates.sh" --list --json 2>/dev/null)"
+  gate_list_rc=$?
+  security_gate=""
+  security_gate_measured=0
+  if [ "$gate_list_rc" -eq 0 ] && [ -n "$gate_list_json" ]; then
+    security_gate="$(printf '%s' "$gate_list_json" | node -e '
       let raw = "";
       process.stdin.on("data", (d) => (raw += d)).on("end", () => {
-        try {
-          const gate = JSON.parse(raw).gates.find((g) => g.command === ".xezar/checks/security-scan.sh");
-          if (gate) process.stdout.write(gate.name);
-        } catch {}
-      });' 2>/dev/null)"
+        const gate = JSON.parse(raw).gates.find((g) => g.command === ".xezar/checks/security-scan.sh");
+        if (gate) process.stdout.write(gate.name);
+      });' 2>/dev/null)" && security_gate_measured=1
+  fi
   dirty=false
   task_tree_is_dirty && dirty=true
 
-  if seal_digest="$(node "$SCRIPT_DIR/lib/gate-results.mjs" seal \
+  if [ "$security_gate_measured" -eq 0 ]; then
+    # Nothing is sealed until the list reads. Sealing here would record a pass whose security
+    # requirement was decided by a failure to look.
+    fail evidence.gate-list-readable "the canonical gate list could not be read (repo-gates.sh --list --json exited $gate_list_rc, or its output could not be parsed), so whether this attempt must carry a security result could not be measured. An unmeasured requirement is not an absent one. Run bash .xezar/checks/repo-gates.sh --list --json and fix what it reports."
+  elif seal_digest="$(node "$SCRIPT_DIR/lib/gate-results.mjs" seal \
     --manifest "$manifest" \
     --gates-root "$(task_gates_dir)" \
     --json "$(_gate_json \

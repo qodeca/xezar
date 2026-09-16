@@ -115,14 +115,6 @@ print_counters() {
   done
 }
 
-counters_exhausted() {
-  local kind
-  for kind in $COUNTER_KINDS; do
-    [ "$(counter_used "$kind")" -ge "$COUNTER_LIMIT" ] && return 0
-  done
-  return 1
-}
-
 counters_over_limit() {
   local kind
   for kind in $COUNTER_KINDS; do
