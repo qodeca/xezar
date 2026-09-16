@@ -1,6 +1,6 @@
 # Coverage
 
-One row per token, primitive, shared component and pattern. `packages/web/src/design-system-drift.test.ts` reads this file: every primitive and shared component path must appear here in backticks, and every custom property in `packages/web/src/styles/index.css` must appear as `` `--name` `` somewhere in `docs/design-system/*.md`.
+One row per token, primitive, shared component and pattern. `packages/web/src/design-system-drift.test.ts` reads this file: every primitive and shared component path must appear here in backticks, and every custom property in `packages/web/src/styles/index.css` must appear as `` `--name` `` in `foundations.md` or `theming.md` (a mention in another file does not count).
 
 Status values:
 
@@ -10,7 +10,7 @@ Status values:
 
 ## 1. Tokens
 
-Source: `packages/web/src/styles/index.css`. Every token below has both theme values in `foundations.md` and is carried verbatim by `cockpit.css` (the drift test compares them).
+Source: `packages/web/src/styles/index.css`. Every theme token and static scale below has its value (both themes where `.light` overrides it) in `foundations.md` and is carried verbatim by `cockpit.css` (the drift test compares them). The `@theme inline` mapping in §1.4 is Tailwind wiring: documented, exempt from the stylesheet check.
 
 ### 1.1 Theme tokens (`:root`, overridden in `.light` where noted)
 
@@ -23,7 +23,7 @@ Source: `packages/web/src/styles/index.css`. Every token below has both theme va
 | `--sidebar` | yes | foundations.md §1.1 | Documented |
 | `--muted` | yes | foundations.md §1.1 | Documented |
 | `--muted-foreground` | yes | foundations.md §1.1 | Documented |
-| `--soft-foreground` | yes | foundations.md §1.1 | Documented |
+| `--soft-foreground` | yes | foundations.md §1.1 | Documented with known gap (G-23) |
 | `--border` | yes | foundations.md §1.1 | Documented |
 | `--input` | yes | foundations.md §1.1 | Documented |
 | `--contrast` | yes | foundations.md §1.1 | Documented |
@@ -242,7 +242,7 @@ Each entry maps a utility name to a theme token. Listed in foundations.md §1.7;
 | 6. Empty, loading and error states | patterns.md §6 | `specimens/patterns.html` | Documented with known gap (G-05, G-08) |
 | 7. Dialogs, sheets, command palette, toasts and notifications | patterns.md §7 | `specimens/patterns.html` | Documented with known gap (G-10, G-16) |
 | 8. Settings and forms | patterns.md §8 | `specimens/patterns.html` | Documented with known gap (G-11, G-12, G-13, G-22) |
-| 9. The mobile drawer | patterns.md §9 | `specimens/patterns.html` | Documented |
+| 9. The mobile drawer | patterns.md §9 | `specimens/patterns.html`, `specimens/mobile.html` | Documented |
 | 10. Live updates | patterns.md §10 | `specimens/patterns.html` | Documented |
 
 ## 5. Foundations, behaviour and writing
@@ -251,19 +251,17 @@ Each entry maps a utility name to a theme token. Listed in foundations.md §1.7;
 | --- | --- | --- | --- |
 | Colour roles | foundations.md §2 | `specimens/foundations.html` | Documented with known gap (G-04) |
 | Typography | foundations.md §3 | `specimens/foundations.html` | Documented |
-| Spacing and density | foundations.md §4, theming.md | `specimens/foundations.html` | Documented |
+| Spacing, rhythm and density | foundations.md §4, §4.1, theming.md §Density | `specimens/foundations.html` | Documented |
 | Radius | foundations.md §5 | `specimens/foundations.html` | Documented |
 | Shadow | foundations.md §6 | `specimens/foundations.html` | Documented |
 | Motion and reduced motion | foundations.md §7, behaviour.md | `specimens/foundations.html` | Documented with known gap (G-06, G-08) |
 | Iconography | foundations.md §8 | `specimens/foundations.html` | Documented with known gap (G-19) |
 | Layout and reading width | foundations.md §9, theming.md | `specimens/foundations.html` | Documented |
-| Breakpoints | foundations.md §10, behaviour.md | – | Documented |
-| `no-hover:` | foundations.md §11 | – | Documented with known gap (G-21) |
-| Safe areas and the keyboard | foundations.md §12 | – | Documented |
+| Breakpoints | foundations.md §10, behaviour.md | `specimens/foundations.html` | Documented |
+| `no-hover:` | foundations.md §11 | `specimens/foundations.html` | Documented with known gap (G-21) |
+| Safe areas and the keyboard | foundations.md §12 | `specimens/foundations.html`, `specimens/mobile.html` | Documented |
 | Base layer (`border-color`, `html`/`body` height and overflow, placeholder, scrollbars) | foundations.md §13 | – | Documented |
-| Theming (theme, accent, density, width, pre-paint) | theming.md | every specimen's doc bar | Documented |
+| Theming (theme, accent, density, width, pre-paint) | theming.md | the doc bar of index, foundations, components and patterns (mobile.html: theme only) | Documented |
 | Keyboard, focus and announcements | behaviour.md | `specimens/components.html` | Documented with known gap (G-06) |
 | UX writing | writing.md | – | Documented with known gap (G-15, G-16) |
 | Number formatting | writing.md | – | Documented with known gap (G-18) |
-
-MCP connection Claude recovery guidance uses Collapsible and a ghost Button, with wrapping text and token colours. Attachment and live status go through the one shared leader control (`mcp-leader-control.tsx`, #403 merged with #404): Claude Code is one row of its client table (`attach: 'direct'`), the status is live over the `mcp-leader` WebSocket topic while the section is on screen, and no client-specific attach action exists. When the server retains an attachment whose client no longer owns the project (a `*-not-owner` blocker), the control shows its client selector again, defaulting to the owner, with one sentence saying that attaching replaces the retained leader.

@@ -12,26 +12,12 @@
  * block order: rhythm → today → proposed → phone → open points
  */
 
-/* One Tailwind spacing unit. --spacing is undeclared at Comfortable (the fallback, cockpit.css:481).
- * rem must be the cockpit's 16 px: styles/index.css sets no root size, but cockpit.css:203-211 sets
- * html AND body to 14px in one rule, which would make every unit, at every density, 12.5 % small. */
+/* One Tailwind spacing unit. */
 :root {
-  font-size: 16px;
   --u: var(--spacing, 0.25rem);
   /* bar.js writes --air-bar-measured from a ResizeObserver; 96px holds until it has measured. */
   --air-bar-h: var(--air-bar-measured, 96px);
 }
-/* Base text stays 14 px. Stated here, never inherited: the root override above wins only the html
- * half of that combined rule, so a rewrite leaving body unset would take every page 14 → 16 px. */
-body {
-  font-size: 14px;
-}
-
-/* The proposed fourth density: 5 px per unit, +25 %, the mirror of ultra's −25 % (cockpit.css:186-188). */
-:root[data-density='roomy'] {
-  --spacing: 0.3125rem;
-}
-
 /* A frame hides the bar (cockpit.css:338), so nothing sits under it. */
 :root.framed {
   --air-bar-h: 0px;

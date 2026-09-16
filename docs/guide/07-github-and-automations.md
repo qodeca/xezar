@@ -74,4 +74,6 @@ Choose **View log** on the automation. Each record shows its result and time, an
 - `XEZ_AUTOMATIONS=1`: enables automations at server startup; there is no Automations switch in Resources.
 - [Settings reference](10-settings-reference.md) and the [environment contract](../../.env.example).
 
+Next: [Inbox, notifications, and prompt templates](08-inbox-notifications-templates.md)
+
 Describes xezar 0.15.0.

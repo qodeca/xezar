@@ -81,4 +81,6 @@ Use **Import** to paste YAML into the builder. Parsing happens on the server; fi
 - Project **Settings → Agents** supplies backend and model defaults; global **Settings → Resources** controls idle-session limits.
 - [Agent backends](04-agent-backends.md) and [Skills](06-skills.md) explain the choices within agent steps.
 
+Next: [Skills](06-skills.md)
+
 Describes xezar 0.15.0.

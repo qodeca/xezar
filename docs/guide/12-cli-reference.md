@@ -97,4 +97,6 @@ Flags are parsed globally, but only the command consumers listed above use them.
 - `.xezar/config.json` supplies project defaults; `~/.xezar/config.json` supplies registry and resource settings. [Project layout](../project-layout.md) explains maintained files and runtime state.
 - [CLI source](../../packages/xezar/src/index.ts) and [projects command source](../../packages/xezar/src/workspace/projects-cli.ts).
 
+Next: [MCP project leader](13-mcp-leader.md)
+
 Describes xezar 0.15.0.
