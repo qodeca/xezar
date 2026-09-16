@@ -141,7 +141,9 @@ export function AddAccountDialog({
               ))}
             </select>
           </label>
-          <label className="flex min-w-0 flex-1 items-center gap-2 text-[13px]">
+          {/* `min-w-48` wraps the name to its own row on a phone rather than squeezing it beside a
+              long agent name. */}
+          <label className="flex min-w-48 flex-1 items-center gap-2 text-[13px]">
             <span className="shrink-0 text-muted-foreground">Name</span>
             <input
               type="text"
