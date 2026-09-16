@@ -118,6 +118,41 @@ $ cd ~/Projects/beta && xez
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Scene 3b – later in beta: lines from the MCP event journal (#460, #467
+# PR 4). A stall advisory, a reviewer verdict, the resume, then a park with no
+# question for contrast. Output of the shipped renderer at 80 columns; the
+# live region is left out.
+# ─────────────────────────────────────────────────────────────────────────────
+
+[stderr]
+  10:26:02  warn   e5b7c3d9  task may be stalled: step implement has shown no a…
+                             still running — nothing was stopped
+                             http://localhost:4322/p/beta/tasks/e5b7c3d9
+  10:26:48  info   a12bc345  code-review verdict REQUEST CHANGES on 3f9c2e1d8b7…
+  10:27:05  info   e5b7c3d9  task resumed: agent activity returned at step impl…
+  10:28:12  warn   e5b7c3d9  needs you — waiting for an answer
+                             http://localhost:4322/p/beta/tasks/e5b7c3d9
+
+# Notes on scene 3b
+# - Stalled is advisory; blocked is a fact. The stall line says “may be
+#   stalled” and is always followed by “still running — nothing was stopped”:
+#   the journal summary ends with the same words, but a row this wide cuts
+#   them off. The task URL comes next, as under a question. A stall changes
+#   nothing in the table: e5b7c3d9 stays “running”.
+# - The park line (`task.blocked`) is a fact: the task cannot go on without
+#   input, so its table state becomes “needs you” and the needs-you count
+#   rises.
+# - `task.resumed` is info and has no URL: nothing needs a person.
+# - The stall, verdict and resume messages are the journal row’s summary,
+#   printed as it is, so the terminal and the MCP leader read the same words
+#   (README.md § 10.2). The verdict is the reviewer’s own word, never
+#   shortened or translated (`PASS WITH FOLLOW-UPS` reads as itself). A
+#   summary longer than the row is cut with …; the plain line keeps all of it
+#   (non-tty.txt).
+# - With ASCII glyphs the added line reads “still running - nothing was
+#   stopped”.
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Scene 4 – more than 10 active tasks. The table shows 10 rows, needs-you and
 # needs-review first, then running, then queued; oldest first inside each.
 # ─────────────────────────────────────────────────────────────────────────────

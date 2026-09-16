@@ -31,7 +31,7 @@ While the cockpit runs, the terminal shows what happens in the project: tasks qu
 | --- | --- |
 | `auto` (default) | A live table of active tasks above the activity lines on a terminal at least 60 columns wide; one line per event on a narrower terminal; plain lines when the output is a file, a pipe, CI or `TERM=dumb`. |
 | `lines` | One line per event and no live table anywhere. Use this with a screen reader or for a log file. |
-| `rich` | Asks for the live table. Where `auto` would not draw one, xezar prints one notice and uses lines instead. |
+| `rich` | Asks for the live table. On a terminal narrower than 60 columns you get one line per event, as with `auto`, and no notice. When the output is a file, a pipe, CI or `TERM=dumb`, xezar prints one notice first and then writes plain lines: `event=output.fallback asked=rich using=plain` with the reason (`stderr is not a terminal`, `CI is set` or `TERM is dumb`). |
 
 Plain lines are `key=value` records with a UTC timestamp, for example:
 
@@ -56,7 +56,7 @@ Every line carries an `event=` name. Where the event is also something the proje
 
 Names for the terminal only: `task.queued`, `task.started`, `step.started`, `xezar.ready`, `xezar.stopping`, `xezar.stopped`, `session.summary`, `mcp.ready`, `mcp.unavailable`, `registry.port`, `registry.invalid`, `http.error`, `http.refused`, `http.repeated`, `output.fallback` and `output.folded`.
 
-Some lines come from the project's MCP event journal rather than from the task itself: an advisory that a step looks stalled (`task.stalled`, a warning; nothing is stopped) and the matching `task.resumed`, a recorded reviewer verdict, an agent provider becoming available or unavailable, and configuration or workflow changes. These need the project's MCP service, which the cockpit starts on its own; when the terminal says `mcp · unavailable`, those lines are absent and everything else still works.
+Some lines come from the project's MCP event journal rather than from the task itself: an advisory that a step looks stalled (`task.stalled`, a warning followed by the line `still running — nothing was stopped` and the task link; nothing is stopped, unlike `task.blocked`, where the task really waits for you) and the matching `task.resumed`, a recorded reviewer verdict, an agent provider becoming available or unavailable, and configuration or workflow changes. These need the project's MCP service, which the cockpit starts on its own; when the terminal says `mcp · unavailable`, those lines are absent and everything else still works.
 
 A check step marked `resultScope: routine` in its workflow prints its success at `debug` level only, because routine successes are not news; its failure is always an error.
 

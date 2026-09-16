@@ -236,7 +236,7 @@ export function startTerminalActivity(options: TerminalActivityOptions): Termina
     log: (activity) => emit(activity),
     onEventRow: (row) => {
       if (renderer.isStopped) return;
-      const line = journalRowEntry(row, { url: () => url, ...(options.projectId ? { projectId: options.projectId } : {}) });
+      const line = journalRowEntry(row, { url: () => url, dash: glyphs.dash, ...(options.projectId ? { projectId: options.projectId } : {}) });
       if (line) emit(line);
     },
     stop: (stopOptions = {}) => {

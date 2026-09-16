@@ -32,6 +32,8 @@ export interface JournalActivityOptions {
   /** The cockpit URL, for the task link under a stall warning. */
   url?: () => string | undefined;
   projectId?: string;
+  /** The session's clause dash (`Glyphs.dash`); an em dash when not given. */
+  dash?: string;
 }
 
 /** Subject column for a row that is not about one task. */
@@ -58,6 +60,11 @@ export function journalRowEntry(row: McpJournalRow, options: JournalActivityOpti
   const link = isRun && kind === 'task.stalled' && base && options.projectId
     ? `${base}/p/${options.projectId}/tasks/${id8}`
     : undefined;
+  // A stall is advisory and a park is a fact (#460). The summary says so at its END, which a wide
+  // row or a 3-line narrow block cuts off, so a human line repeats it on a line of its own.
+  const continuation = kind === 'task.stalled'
+    ? [`still running ${options.dash ?? '—'} nothing was stopped`, ...(link ? [link] : [])]
+    : [];
   return entry({
     at: new Date(row.ts),
     level: source.level,
@@ -65,12 +72,13 @@ export function journalRowEntry(row: McpJournalRow, options: JournalActivityOpti
     subject: isRun ? id8 : (SUBJECT_FOR[row.subject.type] ?? 'xezar'),
     message: row.summary,
     event: kind,
-    ...(link ? { continuation: [link] } : {}),
+    ...(continuation.length > 0 ? { continuation } : {}),
     fields: [
       ...(isRun ? ([['run', id8]] as const) : ([[row.subject.type, row.subject.id]] as const)),
       ['origin', row.origin],
       ['seq', row.journalSeq],
       ['summary', row.summary],
+      ...(link ? ([['url', link]] as const) : []),
     ],
   });
 }

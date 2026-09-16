@@ -1,6 +1,6 @@
 # CLI terminal – live activity, settings and one cockpit per project
 
-Status: **Draft** – round 1 findings (B-1 … B-3, NB-1 … NB-8) addressed, waiting for the second `design-review`. Issue #467, PR 1 of the CLI plan. Base `main` at `bb271fc`.
+Status: **Draft** – round 1 findings (B-1 … B-3, NB-1 … NB-8) addressed; the review at `d4bfacb` (B-1, B-2, NB-1) is addressed in the PR #528 response, and the next `design-review` is pending (§ 18). Issue #467, PR 1 of the CLI plan. Base `main` at `bb271fc`.
 
 This folder designs a surface that is not a web page: what `xez` prints in a terminal. It also designs the one cockpit change that follows from running one xezar per project (the project switcher). No code changes here.
 
@@ -200,7 +200,7 @@ W = `~/.xezar/config.json`; P = that file’s `projects[]` entry for this projec
 
 Stored over environment follows the `followups` / `agentEnvPassthrough` pattern. The flag always wins.
 
-**`auto` output**, decided once at start and again on resize: `rich` when stderr is a TTY, `CI` is unset or empty, `TERM` is not `dumb` and the width is at least 60; `lines` on a TTY narrower than 60 (with the one-line live summary, `tty-narrow.txt`); `plain` otherwise. Explicit `rich` on a non-TTY falls back to `plain` with one `output.fallback` line. Explicit `lines` is honoured anywhere.
+**`auto` output**, decided once at start and again on resize: `rich` when stderr is a TTY, `CI` is unset or empty, `TERM` is not `dumb` and the width is at least 60; `lines` on a TTY narrower than 60 (with the one-line live summary, `tty-narrow.txt`); `plain` otherwise. Explicit `rich` where `auto` would pick `plain` (stderr not a TTY, `CI` set, `TERM=dumb`) falls back to `plain` with one `output.fallback` line that names the reason (`non-tty.txt`). Explicit `rich` on a capable TTY narrower than 60 is not a fallback: it uses `lines` with the one-line summary and prints no notice. Explicit `lines` is honoured anywhere.
 
 **Colour detection** (`auto`): colour when the output is `rich` or `lines` and stderr is a TTY and `TERM` is not `dumb`. `always` colours `rich` and `lines` even through a pipe; `plain` never has colour. `NO_COLOR` set to any non-empty value turns colour off unless `--color always` is passed (no-color.org leaves explicit user choice above the variable). `FORCE_COLOR` is not read; picocolors reads it and `--color` from `process.argv` on its own, so the renderer builds its colours with `createColors(enabled)` from this resolution only.
 
@@ -292,8 +292,9 @@ As the analysis § 6(d) proposes: subscribe to the boot `RunStore` before recove
 | Check step settled | info / error (a `routine` pass is debug) | `check <step> passed — …` / `failed — exit <n> …` | `gate.passed` / `gate.failed`, with `result_scope` | – (never counted as failed, § 6.3) |
 | Question asked | warn | `needs you — “<question>”` + URL | `question.asked` | state `needs you` |
 | Waiting with no structured question | warn | `needs you — waiting for an answer` + URL | `task.blocked` (PR 4, as the catalog) | state `needs you` |
-| Step looks stalled / active again (advisory, #460) | warn / info | the journal row's summary; stall carries the task URL | `task.stalled` / `task.resumed` (from the MCP journal) | – |
-| Reviewer verdict recorded (#460) | info | the journal row's summary, in the reviewer's own words | `verdict.posted` (from the MCP journal) | – |
+| Step looks stalled (advisory, #460) | warn | the journal row's summary, then `still running — nothing was stopped` and the task URL, each on its own line (`tty.txt` scene 3b, `tty-narrow.txt` scene 2b) | `task.stalled` (from the MCP journal; plain adds `url`) | – (stays `running`; never counted) |
+| Step active again (#460) | info | the journal row's summary, no URL (same scenes) | `task.resumed` (from the MCP journal) | – |
+| Reviewer verdict recorded (#460) | info | the journal row's summary, with the reviewer's own verdict word (same scenes) | `verdict.posted` (from the MCP journal) | – |
 | Configuration or workflow changed | info | `config · …` / `workflow · …` | `config.changed`, `workflow.saved`, `workflow.deleted`, `agent-config.changed` (from the MCP journal) | – |
 | A person edited a queued task or sent a message | debug | the journal row's summary | `goal.changed`, `instruction.*` (from the MCP journal) | – |
 | Question answered | info | `answered — running again` | `question.answered` | state `running` |
@@ -320,6 +321,8 @@ As the analysis § 6(d) proposes: subscribe to the boot `RunStore` before recove
 | Stop | info | `xezar · stopping — …` + summary | `xezar.stopping`, `session.summary`, `xezar.stopped` (new) | region erased |
 
 Names marked “new” are not catalog kinds. Where the catalog has a name, the meaning and name are reused. PR 4 reconciled this table with #450 and #460: `packages/xezar/src/terminal/event-names.ts` types every `event=` as the contract's `McpEventKind` or one of a closed list of terminal-only names, and says for each catalog kind whether the run-store bridge or the MCP journal row prints it, so no fact prints twice. A routine successful check uses the same rule as leader delivery (`isLeaderSignificant`). Journal-sourced lines need the project's MCP service; without it they are absent. Rows whose names are not in that list are not printed yet: `worktree.*`, `task.recovered`, `task.monitoring`, `task.paused`, `permission.asked`, `leader.attached` / `leader.detached`, `mcp.session`, `skills.*` and `update.available`. Provider sign-in changes print as `executor.*` from the journal.
+
+**Stalled is advisory; blocked is a fact.** `task.stalled` says a step may be stuck while the task goes on: it is a warning, the table state stays `running`, and nothing is counted. `task.blocked` says the task cannot go on without input: the state becomes `needs you`. The journal summary says “nothing was stopped” only at its end, which a wide row or a three-line narrow block cuts off, so the human stall line always adds `still running — nothing was stopped` (`still running - nothing was stopped` with ASCII glyphs) on its own line, before the URL. The exact rows in all three modes are `tty.txt` scene 3b (80 columns), `tty-narrow.txt` scene 2b (40 columns) and the 08:26–08:28 lines of `non-tty.txt` (plain). Journal summaries are printed as the journal wrote them, so the terminal and the MCP leader read the same words: `task may be stalled: step <step> has shown no agent activity for 5 minutes (advisory — the task is still running and nothing was stopped)`, or `… has used 80% of its time limit (…)`; `task resumed: agent activity returned at step <step>`; `<role> verdict <VERDICT> on <commit> (report <id>, <label evidence>)`. They keep the journal's colon and parentheses rather than the terminal copy deck's ` — ` form; changing them changes what the leader reads, so it is not done here. The added line is terminal copy and follows § 9.
 
 ### 10.3 Output modes
 
@@ -489,6 +492,8 @@ Questions for the review are in `open-questions.md` (Q-1 … Q-12). Departures f
 ## 18. Design review
 
 Round 1 (`ec2b935`, FAIL): B-1 one dim rule (§ 9.2); B-2 terminal colour departure for `running`/`monitoring` (§ 14, Q-6); B-3 failed counts are task outcomes only (§ 6.3). Non-blocking NB-1 … NB-8 addressed in §§ 6.3, 7, 9, 9.1, 9.2, 10.2, 11, 14, `open-questions.md` Q-2 and `switcher.html`. Round 2 pending.
+
+Review at `d4bfacb` (PR #528, REQUEST CHANGES): B-1 exact rows for `task.stalled`, `task.resumed` and `verdict.posted` in rich, 40-column and plain output (`tty.txt` scene 3b, `tty-narrow.txt` scene 2b, `non-tty.txt`), with the stall line `still running — nothing was stopped` (§ 10.2); B-2 explicit `rich` falls back to `plain` with a notice only off a TTY, in CI or with `TERM=dumb`, and uses `lines` without a notice on a narrow TTY (§ 8, `non-tty.txt`, CLI guide); NB-1 overview status updated. Next design review pending.
 
 ### PR 3 review response: bounded follow-ups
 
