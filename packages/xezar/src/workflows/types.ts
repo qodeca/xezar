@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { RUNNER_IDS } from '../core/agent-runner.ts';
+import { leaderSetupFallbackInstructions } from '../onboarding/leader-setup.ts';
 
 /**
  * Node's `setTimeout` ceiling (2^31-1 ms ≈ 24.8 days). A longer delay does not
@@ -321,6 +322,8 @@ export const PROJECT_SETUP_WORKFLOW: WorkflowDef = {
         '   person accepts. Keep custom content and unrelated bytes exactly as they are.',
         '4. Finish by reporting what changed, what you did not do and why, and the numbered steps',
         '   that are left for a person to do themselves.',
+        '',
+        leaderSetupFallbackInstructions(),
         '',
         'The brief for this run:',
         '{{task}}',

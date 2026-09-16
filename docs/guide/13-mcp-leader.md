@@ -8,6 +8,20 @@ The operating rule is **xezar MCP tools for project coordination**. The leader d
 
 A connection is bound to one project, with one owning client at a time. The cockpit remains usable by a person alongside the leader. Configuring MCP, acquiring ownership and attaching for push delivery are distinct: having a config file does not prove the session is connected, and a connected session is not automatically attached.
 
+Use these four labels in setup results; none implies the next one:
+
+| State | Evidence |
+| --- | --- |
+| **Files prepared** | The chosen client's project snippet exists in a reviewable candidate. It may still need integration, trust, sign-in or an adapter. |
+| **Connected** | That client made a real xezar MCP tool call for this project. A generated snippet or process start is not evidence. |
+| **Attached** | `leader_events` action `attach` succeeded and `status` says this calling session owns the attachment. |
+| **Delivery verified** | While attached, the session received a real pushed event or called `leader_events` action `read` and inspected its replay or gap answer. Old durable cursor numbers alone do not prove the current session. |
+
+Do not summarize these as “ready” while a later row is pending. Report the server's blocker and fix,
+an unavailable `gh` or network-dependent package resolution as unavailable, and a read-only home as
+no authority to mutate personal configuration. Hosted mode cannot perform local attachment. These
+limits do not prevent independent tasks or preparation of a reviewable project-only snippet.
+
 ## To start `xezar mcp` from your agent
 
 Start the local cockpit first. Then configure the agent below from the project root and start its session there. The client launches `npx -y @qodeca/xezar mcp` over stdio; it forwards calls to the project's running service. Do not start it as another cockpit server.
@@ -122,6 +136,11 @@ Then verify attachment and push capability:
 
 `status` reports whether this session is attached and can receive pushes, its delivery cursors and any delivery blockers. If it says the session is not attached, attach again with a new `operationId`. Reuse an operation ID only to repeat the same call after a lost answer; replaying an old attach receipt does not establish a new attachment.
 
+The text result also names the current onboarding evidence. A successful status call first proves
+**connected**. A successful attach proves **attached**, not delivery. While attached, call `read`
+once (or account for a real pushed event) to record **delivery verified**. A blocker remains visible
+even when replay works; replay verification is not a promise that push is currently available.
+
 To detach this session, call:
 
 ```json
@@ -171,6 +190,13 @@ Process every event in the page using the returned current task state, then ackn
 ```
 
 Replace the cursor placeholder; use a new operation ID for a new acknowledgement and reuse it only to repeat that same acknowledgement. A read does not acknowledge anything, so unacknowledged events can appear again. If `hasMore` is `true`, read the next page immediately after acknowledging the processed page; otherwise do not poll. Read again on your next connection or when a pushed event names a gap. If the response reports a gap, reconcile the supplied current state and recovery guidance before acknowledging `gap.resumeCursor`. Treat cursors as opaque; another project's cursor is refused.
+
+After a xezar restart, the journal and explicit acknowledgement can survive but the attachment does
+not. Make a real tool call, call `status`, attach again with a new operation ID, then use `read` with
+no cursor before relying on prior pushes. `task.stalled` is only an advisory observation and stops
+nothing. A task completion does not prove a pending reviewer verdict. Replay is at-least-once within
+retained durable state, bounded by the retention and page limits below; a gap is a recovery state,
+not delivery proof, until its current state has been reconciled.
 
 ## To understand the limits
 

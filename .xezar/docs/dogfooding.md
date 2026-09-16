@@ -12,6 +12,14 @@ Installation validation is reported in installation.md. Real-task entries follow
 
 ## Real-task entries
 
+### 2026-09-16 — #464 P3 (leader setup verification and recovery), `feature-implementation` step `implement`, `xezar-implementation`, Codex — real-task observed
+
+- Input: accepted ONB-04/07/13/14 from the onboarding spec; base `a2fc084`; public `xez-onboard` pinned at `2c20c60`, with the installed cache at `efb7109`.
+- Observed: **the external skill's safety sentence outlived the engine capability it guarded.** Its client reference correctly said not to invent an attach action when #450 had not landed; on this base `leader_events` already has `attach` and `status`. The built-in `project-setup` prompt is the offline fallback and is also delivered beside the skill, so P3 puts the current snippets, prerequisites and four-state checklist in one engine-owned helper consumed by that prompt, while the runtime tool remains the authority for actual capability. No loader, precedence rule or second attachment mechanism was added.
+- Observed: **durable delivery counters are the wrong proof after restart.** The journal and acknowledgement survive while attachment does not. The verifier therefore reports an attached status as **attached**, even with non-zero historical counters, and promotes only the current attached-session `read` response to **delivery verified**. The named break that trusted counters turned both the helper and door integration cases red.
+- Regression/control: six assertions failed under the combined named breaks (Claude flag/refusal, Codex same-home, pi keep-alive/ownership, status-versus-delivery and attached replay); the restored focused suite passed 20/20. Private red output is in this run's durable evidence.
+- Remaining limit: fixture-tested for generated snippets and the existing fake attachment/replay path. The live Claude Code, Codex and pi legs require the live leader harness and remain not run; no runtime-performance conclusion follows.
+
 ### 2026-09-16 — PR #502 / #468 PR 5, REVIEW RESPONSE (`address-review-findings`, `xezar-review-response`, Claude Code) — real-task observed
 
 - Input: the `## Code review` comment on PR #502 at head `3e713c5` (REQUEST CHANGES, one major, two minors, one nit). Author run `a73071e0` was already done and its worktree reclaimable, so the reclaimed-owner recipe applied: own branch off `origin/main`, `git merge` the PR head, work, then one named-ref push to `xez/a73071e0`.
@@ -780,4 +788,3 @@ Installation validation is reported in installation.md. Real-task entries follow
 - Observed: `gh pr review --approve` is refused with `Can not approve your own pull request` whenever the authoring task and the reviewing task share the GitHub account, which is always in this setup. The review still has to exist as a durable artifact, so post it with `gh pr comment` and say in the text why it is a comment. `integration-preflight.sh` already understands this — it reported `policy for main requires 0 approving reviews` and named the authority record as the review that matters.
 - Regression/control: no source change, so no red-proof applies. The controls run were the full canonical gate on the exact merged head (7/7 pass, 419 infra fixtures), GitHub CI on the same head, `npm run test:e2e` = `TEST_E2E_STATUS=passed` with a real Chrome, and a post-merge tree comparison (`git diff <squash-commit> <reviewed-head>` empty) proving the merged content is what was reviewed.
 - Remaining limit: one macOS machine. The Chrome profile was locked by another local session, so the workflow canvas was never clicked through visually — the cockpit code was exercised as a module and over HTTP instead. `--force-with-lease` was never observed being REFUSED, so the "someone else moved the branch" stop path is untested.
-

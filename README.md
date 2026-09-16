@@ -216,7 +216,13 @@ no-op.
 A person can still attach a leader with **Attach leader** under
 **Settings → MCP connection → Connection status**, and an OpenCode leader is attached
 only that way.
-An unattached leader reads events with `leader_events`. Use `gh` for GitHub facts.
+An unattached leader reads events with `leader_events`. Use `gh` for GitHub facts. During project
+setup, keep four results separate: a project snippet is only **files prepared**; a real MCP tool
+result proves **connected**; `leader_events` attach/status proves **attached**; and a real pushed
+event or an attached-session `read` proves **delivery verified**. After xezar restarts, the
+attachment is gone even though journal cursors remain: call a tool, check status, attach with a new
+operation ID and read retained events again. See the [project-leader guide](docs/guide/13-mcp-leader.md)
+and canonical [MCP tool reference](docs/features/mcp-server/mcp-api.md).
 
 <details>
 <summary>Waking a Claude Code leader: requirements and recovery</summary>
