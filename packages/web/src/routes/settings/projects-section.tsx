@@ -574,7 +574,7 @@ export function ProjectTagsEditor({
                 if (last !== undefined) remove(last)
               }
             }}
-            className={cn(nativeFieldClass, 'h-6 w-16 min-w-0 flex-1 px-1.5')}
+            className={cn(nativeFieldClass, 'h-6 w-16 min-w-0 flex-1 px-1.5 md:text-xs')}
           />
         </PopoverAnchor>
         <PopoverContent

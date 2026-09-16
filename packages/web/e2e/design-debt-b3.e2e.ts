@@ -33,7 +33,7 @@ let project: string
 let emulationSocket: WebSocket | undefined
 
 const GLOBAL_SECTIONS = ['appearance', 'notifications', 'resources', 'skills', 'accounts', 'projects'] as const
-const PROJECT_SECTIONS = ['agents', 'agent-config', 'worktrees', 'bookmarklets', 'prompt-templates', 'mcp-connection', 'mcp-api'] as const
+const PROJECT_SECTIONS = ['agents', 'agent-config', 'project-setup', 'worktrees', 'bookmarklets', 'prompt-templates', 'mcp-connection', 'mcp-api'] as const
 
 function read<T>(expression: string): T {
   return JSON.parse(browser.evaluate(`JSON.stringify((() => { return (${expression}) })())`) as string) as T
@@ -289,6 +289,7 @@ it('T-3 selects save on change; number fields write nothing before Save', () => 
   const field = '[data-slot="resources-worktree-retention"]'
   browser.fill(field, '7')
   browser.press('Tab')
+  // A bounded window for "nothing is written", not a wait for a state.
   browser.waitForFunction(`new Promise(done => setTimeout(() => done(true), 500))`)
   expect(writes(), 'no write before Save').toEqual([])
   browser.evaluate(`document.querySelector('[data-action="resources-save-retention"]').scrollIntoView({ block: 'center' })`)

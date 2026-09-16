@@ -119,7 +119,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 ### Input
 
 - **Purpose**: single-line text field.
-- **Source**: `packages/web/src/components/ui/input.tsx`. Exports `Input` and `nativeFieldClass` — the class a pane that keeps a raw `<select>`/`<input>` on purpose wears (settings fields, the branch picker; G-11). It lives on the field primitive so there is one string to fix and no second, half-adopted primitive.
+- **Source**: `packages/web/src/components/ui/input.tsx`. Exports `Input` and `nativeFieldClass` — the class a pane that keeps a raw `<select>`/`<input>` on purpose wears (settings fields, the branch picker; G-11). It lives on the field primitive so there is one string to fix and no second, half-adopted primitive. A field inside a chip row may narrow its desktop text with a later `md:text-xs` (the projects tag input), which `cn` merges over the `md:text-sm` default; its phone size stays `text-base`.
 - **Look**: `h-9 min-h-tap w-full rounded-md border border-input bg-card px-3 py-1 text-base shadow-xs … placeholder:text-soft-foreground md:min-h-0 md:text-sm`; focus `focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50`; invalid `aria-invalid:border-destructive aria-invalid:ring-destructive/20`; disabled `pointer-events-none cursor-not-allowed opacity-50`.
 - **Rules**: DO keep `text-base` on phone (iOS zooms below 16px). DO pair with `Label htmlFor` or `aria-label`. Two routes hand-roll the search input markup instead of using Input (G-12); new search fields use `Input`.
 - **Where used**: 10 files.
