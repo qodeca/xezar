@@ -23,6 +23,7 @@ import { resolveForge } from '../../server/forge/index.ts';
 import { getRepoInfo } from '../../server/git.ts';
 import { loadWorkspaceConfig } from '../../workspace/config.ts';
 import { projectDataDir } from '../../project-data-paths.ts';
+import { discoverIssueFiling } from '../../onboarding/issue-filing.ts';
 import { observedIdentity, onboardingStatus } from '../../onboarding/status.ts';
 import { readOnboardingThroughService, type ServiceDispatch } from '../service-adapter.ts';
 import { defineTool, textResult, type McpToolContext } from '../tool.ts';
@@ -272,6 +273,7 @@ export async function collectOnboarding(
     checks,
     localHandoff,
     checkingRunId: null,
+    issueFiling: await discoverIssueFiling(ctx.project.root, checks),
   });
 }
 
@@ -337,6 +339,7 @@ export function discoveryText(discovery: McpDiscovery): string {
     `Bound to xezar project "${discovery.project.name}" (id ${discovery.project.id}).`,
     ...closed.map((a) => `${a.status === 'read-only' ? 'Read-only' : 'Unavailable'}: ${a.label} — ${a.reason}`),
     onboardingLine(discovery.onboarding),
+    issueFilingLine(discovery.onboarding.issueFiling),
     '',
     JSON.stringify(discovery, null, 2),
   ];
@@ -365,11 +368,19 @@ function onboardingLine(onboarding: OnboardingStatus): string {
   }
 }
 
+/** Whether issue filing works here (#468), as a fact — like the setup line, it asks for nothing. */
+function issueFilingLine(issueFiling: OnboardingStatus['issueFiling']): string {
+  if (issueFiling.status === 'available' || !issueFiling.reason) {
+    return `Issue filing: available (skill ${issueFiling.skill}).`;
+  }
+  return `Issue filing: ${issueFiling.reason.charAt(0).toLowerCase()}${issueFiling.reason.slice(1)}`;
+}
+
 export const discoverProjectTool = defineTool({
   name: 'discover_project',
   title: 'Discover the bound project',
   description:
-    'Read which xezar project this session is bound to, its effective capabilities and limits, and which actions are available. Every action that is unavailable or read-only says why. The answer also carries the project setup block: which identity is running, which was offered, which a finished check actually covered, whether setup can run here at all, and the launch definition to name when dispatching one. Reading it changes nothing and authorises nothing. Call it at the start of a session and again after a person changes settings. It takes no arguments: the project comes from the connection, never from a parameter. A project leader works through these tools only, never the cockpit UI and never the HTTP API. Whether this session is attached as leader is not part of this answer: call leader_events with action status.',
+    'Read which xezar project this session is bound to, its effective capabilities and limits, and which actions are available. Every action that is unavailable or read-only says why. The answer also carries the project setup block: which identity is running, which was offered, which a finished check actually covered, whether setup can run here at all, the launch definition to name when dispatching one, and whether issue filing works here (the skill to select, or why not). Reading it changes nothing and authorises nothing. Call it at the start of a session and again after a person changes settings. It takes no arguments: the project comes from the connection, never from a parameter. A project leader works through these tools only, never the cockpit UI and never the HTTP API. Whether this session is attached as leader is not part of this answer: call leader_events with action status.',
   inputSchema: z.strictObject({}),
   annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
   async call(_args, ctx: DiscoveryContext) {

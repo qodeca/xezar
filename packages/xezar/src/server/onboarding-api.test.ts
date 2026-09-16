@@ -37,6 +37,10 @@ describe('the onboarding API', () => {
     process.env.XEZ_DRY_RUN = '1';
     repoRoot = mkdtempSync(join(tmpdir(), 'xez-onboarding-'));
     mkdirSync(join(repoRoot, '.local/xezar'), { recursive: true });
+    // No team skills: the issue-filing check (#468) reads the skill catalog, and a background clone
+    // finishing between two reads would make the repeat-read case below nondeterministic.
+    mkdirSync(join(repoRoot, '.xezar'), { recursive: true });
+    writeFileSync(join(repoRoot, '.xezar', 'config.json'), '{"skillsRepos": []}\n', 'utf8');
     store = RunStore.open(join(repoRoot, '.local/xezar'));
     active = new Set<string>();
     app = createApp({
@@ -84,6 +88,17 @@ describe('the onboarding API', () => {
       launch: { workflowId: ONBOARDING_WORKFLOW_ID, modes: ['setup', 'preview', 'recheck'] },
     });
     // The rule this whole route is shaped around: reading is not writing.
+    expect(existsSync(statePath())).toBe(false);
+  });
+
+  it('reports the issue-filing capability as a reason, not an error, where it cannot work (#468)', async () => {
+    // A repository with no remote: nothing to file into. Initialised explicitly, because the test
+    // scratch directory can itself sit inside a checkout that HAS a GitHub remote.
+    execFileSync('git', ['init', '-q', repoRoot]);
+    execFileSync('git', ['-C', repoRoot, '-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-q', '--allow-empty', '-m', 'init']);
+    const body = await get();
+    expect(body.issueFiling).toMatchObject({ status: 'unavailable', skill: 'xez-issue-create' });
+    expect((body.issueFiling as { reason: string }).reason).toMatch(/^Not available: .*has no remote/);
     expect(existsSync(statePath())).toBe(false);
   });
 

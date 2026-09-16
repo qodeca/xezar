@@ -137,3 +137,20 @@ Pending reviewer verdicts stay pending; `task.stalled` stays advisory; replay re
 at-least-once only within the documented retention and page limits. Hosted mode, an unavailable
 client/adapter/network/`gh`, and a read-only home are precise unavailable or pending outcomes;
 none authorises local attachment, personal-config mutation or a readiness claim.
+
+## Issue-filing discovery (#468, step 3)
+
+Setup reports whether this project can file tracker issues through the shared
+`xez-issue-create` skill. It needs three parts: the GitHub CLI installed and signed
+in, a GitHub remote, and the skill in the project's skill catalog (local skill
+folders or the shared collection, after the person's import choices). The engine
+discovers all three on every read and stores nothing; there is no setting and no
+environment variable.
+
+`GET /api/v1/onboarding` and `discover_project` carry the same
+`issueFiling: {status, reason, skill}` block. `status` is `available`,
+`unavailable` (the `reason` names every missing part) or `unknown` (nothing is known
+to be missing, but the shared collection has not finished loading). The setup and
+re-check report ends with `Issue filing: available` or
+`Issue filing: not available: <reason>`. A missing part is a finding, never a setup
+failure, and setup never installs, signs in or changes anything to fix it.

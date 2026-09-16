@@ -27,6 +27,7 @@ const base: OnboardingStatus = {
   lastChecked: { engineVersion: '0.14.0', kitDigest: '9f1a3b4fff', at: '2026-09-02T16:40:00.000Z' },
   checkingRunId: null,
   launch: { workflowId: 'project-setup', modes: ['setup', 'preview', 'recheck'] },
+  issueFiling: { status: 'available', reason: null, skill: 'xez-issue-create' },
 }
 
 function renderRow(

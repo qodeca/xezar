@@ -1,4 +1,4 @@
-import type { OnboardingStatus } from '@qodeca/xezar-contract';
+import type { OnboardingIssueFiling, OnboardingStatus } from '@qodeca/xezar-contract';
 import type { BackendCheck } from '../core/backend-detect.ts';
 import {
   carriedCheck,
@@ -70,6 +70,9 @@ export interface OnboardingStatusInput {
   localHandoff: boolean;
   /** The id of an ACTIVE check task for this project, when one exists. */
   checkingRunId?: string | null;
+  /** `discoverIssueFiling()`'s answer (#468). Required so no caller can forget it and report a
+   *  capability nobody looked at. */
+  issueFiling: OnboardingIssueFiling;
 }
 
 /**
@@ -119,6 +122,7 @@ export function deriveOnboardingStatus(
     lastChecked: checked,
     checkingRunId,
     launch: { workflowId: ONBOARDING_WORKFLOW_ID, modes: [...ONBOARDING_MODES] },
+    issueFiling: { ...input.issueFiling },
   };
 }
 

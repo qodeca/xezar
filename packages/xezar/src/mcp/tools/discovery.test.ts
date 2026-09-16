@@ -7,7 +7,7 @@ import { mcpDiscoverySchema, type HealthResponse, type McpDiscovery } from '@qod
 import { BUNDLED_TEMPLATES_DIGEST } from '../../onboarding/status.ts';
 import { mergeWriteWorkspaceConfig } from '../../workspace/config.ts';
 import { toolListing } from '../tool.ts';
-import { bindHostFromArgv, buildDiscovery, discoverProjectTool, type DiscoveryFacts } from './discovery.ts';
+import { bindHostFromArgv, buildDiscovery, discoverProjectTool, discoveryText, type DiscoveryFacts } from './discovery.ts';
 
 // The bound project and one OTHER registered project whose name and id must never surface (N-01).
 const BOUND = { id: 'alpha-app', name: 'alpha-app', root: '/work/alpha-app' };
@@ -63,6 +63,7 @@ function neverSetUp(
     lastChecked: null,
     checkingRunId: null,
     launch: { workflowId: 'project-setup', modes: ['setup', 'preview', 'recheck'] },
+    issueFiling: { status: 'available', reason: null, skill: 'xez-issue-create' },
     ...overrides,
   };
 }
@@ -328,6 +329,15 @@ describe('discover_project — the tool', () => {
     return dir;
   };
 
+  /** A project root whose config switches team skills off: the issue-filing check (#468) reads the
+   *  skill catalog, and no background clone may reach the network from a unit test. */
+  const projectDir = (prefix: string) => {
+    const dir = tempDir(prefix);
+    mkdirSync(join(dir, '.xezar'), { recursive: true });
+    writeFileSync(join(dir, '.xezar', 'config.json'), '{"skillsRepos": []}\n', 'utf8');
+    return dir;
+  };
+
   beforeEach(() => {
     process.env.XEZ_HOME = tempDir('xez-discovery-home-');
     process.env.XEZ_DRY_RUN = '1';
@@ -349,7 +359,7 @@ describe('discover_project — the tool', () => {
   });
 
   it('answers for the bound project from real state, with another project registered beside it', async () => {
-    const root = tempDir('xez-discovery-a-');
+    const root = projectDir('xez-discovery-a-');
     execFileSync('git', ['init', '-q', '-b', 'main', root]);
     // A branch exists only once it has a commit; `getRepoInfo` reads an unborn HEAD as "no repo".
     execFileSync('git', ['-C', root, '-c', 'user.name=t', '-c', 'user.email=t@t.invalid', 'commit', '-q', '--allow-empty', '-m', 'init']);
@@ -388,7 +398,9 @@ describe('discover_project — the tool', () => {
   it('carries the project setup block, and reads it off the real record', async () => {
     // UI ↔ MCP parity (owner rule, 2026-09-16) and `AC-17`: a leader and a person looking at the
     // same project must not be told different things about whether a check happened.
-    const root = tempDir('xez-discovery-onboarding-');
+    const root = projectDir('xez-discovery-onboarding-');
+    execFileSync('git', ['init', '-q', root]);
+    execFileSync('git', ['-C', root, '-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-q', '--allow-empty', '-m', 'init']);
     mkdirSync(join(root, '.local/xezar'), { recursive: true });
     writeFileSync(
       join(root, '.local/xezar/onboarding-state.json'),
@@ -418,7 +430,32 @@ describe('discover_project — the tool', () => {
     const text = result.content[0]!.text;
     expect(text).toContain('Setup: the last finished check covered xezar 1.0.0');
     expect(text).not.toMatch(/you should re-check/i);
+    // Issue filing (#468) rides in the same block the cockpit reads: a repository with no remote
+    // is closed — with the reason, never an error.
+    expect(discovery.onboarding.issueFiling).toMatchObject({ status: 'unavailable', skill: 'xez-issue-create' });
+    expect(discovery.onboarding.issueFiling.reason).toMatch(/has no remote/);
+    expect(text).toContain('Issue filing: not available: ');
   }, 60_000);
+
+  it('states the issue-filing fact in the text block, for both answers', () => {
+    const open = discoveryText(buildDiscovery(facts()));
+    expect(open).toContain('Issue filing: available (skill xez-issue-create).');
+    const closed = discoveryText(
+      buildDiscovery(
+        facts({
+          onboarding: {
+            issueFiling: {
+              status: 'unavailable',
+              reason: 'Not available: The GitHub CLI (gh) is not signed in. A person can run `gh auth login`.',
+              skill: 'xez-issue-create',
+            },
+          },
+        }),
+      ),
+    );
+    expect(closed).toContain('Issue filing: not available: The GitHub CLI (gh) is not signed in.');
+    expect(closed).not.toContain('Issue filing: available');
+  });
 
   it('reads --bind-host from the serving process, in both spellings', () => {
     expect(bindHostFromArgv(['node', 'xezar', 'serve'])).toBeUndefined();

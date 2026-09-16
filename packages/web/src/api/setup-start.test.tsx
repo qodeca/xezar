@@ -34,6 +34,7 @@ const STATUS: OnboardingStatus = {
   lastChecked: { engineVersion: '0.14.0', kitDigest: '2c20c60', at: '2026-09-02T16:40:00.000Z' },
   checkingRunId: null,
   launch: { workflowId: 'project-setup', modes: ['setup', 'preview', 'recheck'] },
+  issueFiling: { status: 'available', reason: null, skill: 'xez-issue-create' },
 }
 
 let creates: number
