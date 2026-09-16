@@ -531,6 +531,7 @@ export function ToolCard({
   return (
     <Collapsible
       data-slot="tool-card"
+      data-tool-id={item.id}
       data-status={item.status}
       data-kind={item.toolKind}
       open={open}
