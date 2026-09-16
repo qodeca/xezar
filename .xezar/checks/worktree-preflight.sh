@@ -355,6 +355,30 @@ if [ "$MODE" = "readiness" ] || [ "$MODE" = "record-gate-evidence" ] || [ "$MODE
     fi
   fi
 
+  # --- The phase record and the accepted-criteria input ----------------------------------
+  #
+  # `SDLC.md` § Task phases names the dispositions one task records and `.xezar/docs/phase-record.md`
+  # names the files. Until this check both were prose: nothing created a record and nothing noticed
+  # when a phase left none — and a disposition nobody wrote is indistinguishable from a phase
+  # nobody ran. That is the `phase-hole` failure, and readiness is where it has to stop, for the
+  # same reason BLOCKED does: a second here, or a full gate run to reach the same answer.
+  #
+  # Scoped to the phases that have ALREADY RUN by the time readiness does. The read-only roles
+  # (code-review, design-review, qa, business-analysis, research) never reach this mode at all, so
+  # nothing here asks a reviewer for an author's facts.
+  #
+  # `CRITERIA` is the AC INPUT, and it is validated rather than merely counted: a file that exists
+  # but names no criterion and no accepting authority is the `template-is-acceptance` failure — a
+  # shipped template or a mutable label standing in for this task's own accepted input.
+  if [ "$MODE" = "readiness" ] || [ "$MODE" = "record-gate-evidence" ]; then
+    if [ -n "${TASK_ID:-}" ]; then
+      while IFS='|' read -r predicate message; do
+        [ -n "$predicate" ] || continue
+        fail "$predicate" "$message"
+      done < <("$SCRIPT_DIR/phase-record.sh" check --predicates 2>/dev/null)
+    fi
+  fi
+
   # --- The branch carries this task's work (#312) ---------------------------------------
   #
   # No BLOCKED file is ABSENT input, not a verdict: it cannot tell "decided, and done" from "the
@@ -495,6 +519,18 @@ if [ ${#failures[@]} -eq 0 ] && [ "$MODE" = "record-gate-evidence" ]; then
   manifest="$(task_manifest_path)"
   # `--list` runs no gate; it prints the canonical list and its digest and exits.
   command_list_id="$("$SCRIPT_DIR/repo-gates.sh" --list 2>/dev/null | awk '/^commandListId/{print $2}')"
+  # The security stage's name in the CURRENT canonical list. The sealer requires the attempt to
+  # carry that stage's structured result, and taking the name from the live list — rather than
+  # from the record being sealed — is what stops a record from deciding whether it has to have
+  # one. An empty answer here means the list has no security stage and the requirement is off.
+  security_gate="$("$SCRIPT_DIR/repo-gates.sh" --list --json 2>/dev/null | node -e '
+      let raw = "";
+      process.stdin.on("data", (d) => (raw += d)).on("end", () => {
+        try {
+          const gate = JSON.parse(raw).gates.find((g) => g.command === ".xezar/checks/security-scan.sh");
+          if (gate) process.stdout.write(gate.name);
+        } catch {}
+      });' 2>/dev/null)"
   dirty=false
   task_tree_is_dirty && dirty=true
 
@@ -506,11 +542,17 @@ if [ ${#failures[@]} -eq 0 ] && [ "$MODE" = "record-gate-evidence" ]; then
       "treeSha=$(head_tree_sha)" \
       "branch=$BRANCH" \
       "commandListId=$command_list_id" \
+      "securityGate=$security_gate" \
       "treeFingerprint=$(tree_fingerprint)" \
       "depsFingerprint=$(deps_fingerprint)" \
       "dirty:j=$dirty")")"; then
     info "gate evidence sealed  $HEAD_SHA"
     info "result digest         $seal_digest"
+    security_status="$(node "$SCRIPT_DIR/lib/manifest.mjs" "$manifest" --get gateEvidence.security.status 2>/dev/null)"
+    if [ -n "$security_status" ]; then
+      info "security stage        $security_status$([ "$(node "$SCRIPT_DIR/lib/manifest.mjs" "$manifest" --get gateEvidence.security.reviewerRequired 2>/dev/null)" = "true" ] && printf ' — a named trust boundary changed; a human or a security reviewer is required' || printf '')"
+      [ "$security_status" = "unknown" ] && info "                      unknown is NOT a pass: the reviewer reads the result before any quality verdict"
+    fi
   else
     # No blanket "just re-run the gates" here. That advice was wrong for the one case that most
     # needed it: a malformed newest attempt whose order could not be recovered could not be
@@ -561,6 +603,14 @@ if [ ${#failures[@]} -eq 0 ] && [ "$MODE" = "verify-gate-evidence" ]; then
       else
         info "gate evidence unchanged ($current)"
         info "gate evidence currently eligible"
+        # The security stage's verdict travels with the handoff. A reviewer must be able to read
+        # it from the PR without re-running anything, and `unknown` must arrive as `unknown`.
+        security_status="$(node "$SCRIPT_DIR/lib/manifest.mjs" "$manifest" --get gateEvidence.security.status 2>/dev/null)"
+        if [ -n "$security_status" ]; then
+          info "security stage        $security_status (sealed)"
+          [ "$(node "$SCRIPT_DIR/lib/manifest.mjs" "$manifest" --get gateEvidence.security.reviewerRequired 2>/dev/null)" = "true" ] &&
+            info "                      a named trust boundary changed — say so in the pull request body"
+        fi
       fi
     fi
   fi

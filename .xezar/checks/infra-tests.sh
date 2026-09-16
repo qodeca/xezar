@@ -136,6 +136,23 @@ make_fixture() {
 # overriding it, which no caller used — and which could have created a fixture-owned ref outside the
 # two names `fixture_ref_snapshot` watches, leaving the §25 backstop silently blind to it. A
 # creation path the detector cannot see is worse than no parameter, and nothing needed it.
+# The phase record an author leaves behind, seeded so a fixture starts where a real readiness check
+# starts: with the dispositions already written. Readiness refuses without them (§7g), so a fixture
+# that omitted them would be testing the phase-record refusal in every unrelated case instead of
+# the one it is about. The cases that DO test it delete one of these on purpose.
+seed_phase_record() {
+  local dir="$1/.local/xezar-tasks/$2"
+  mkdir -p "$dir" || return 1
+  printf 'backends: fixture. network: none. scanners: none required.\n' > "$dir/CAPABILITY"
+  printf 'small — one bounded fixture surface with known behaviour\n' > "$dir/DEPTH"
+  printf 'accepted analysis — the fixture brief names the behaviour under test\n' > "$dir/MATURITY"
+  printf 'AC-1: the fixture behaves as the case asserts\naccepted-by: the fixture itself, at build time\n' > "$dir/CRITERIA"
+  printf 'files: the fixture worktree. proof: the assertions in this suite.\n' > "$dir/PLAN"
+  printf 'rounds: 0 — nothing to revise in a synthetic fixture\n' > "$dir/SELF_REVIEW"
+  printf 'not applicable: a fixture ships no documentation\n' > "$dir/DOCS"
+  printf '# Repair counters for fixture run %s.\nhistory: complete — no predecessor run\n' "$2" > "$dir/COUNTERS"
+}
+
 add_worktree() {
   local root runid="$2" suffix
   # Prove the target FIRST, and then use the proved canonical path — not the argument.
@@ -150,6 +167,7 @@ add_worktree() {
   suffix="$(printf '%s' "$runid" | cut -c1-8)"
   # Absolute, so a stray working directory cannot re-base it.
   git -C "$root" worktree add -q -b "xez/$suffix" "$root/.local/xezar/worktrees/$runid" main || return 1
+  seed_phase_record "$root" "$runid" || return 1
   printf '%s/.local/xezar/worktrees/%s' "$root" "$runid"
 }
 
@@ -832,6 +850,28 @@ for spec in "$@"; do
   case "$spec" in
     '!chmod-logs:'*) chmod "${spec#!chmod-logs:}" "$GATE_LOG_DIR" ;;
     '!rm-log:'*)     rm -f "$GATE_LOG_DIR/${spec#!rm-log:}" ;;
+    '!security'*)
+      # The security stage writes its own structured result into the attempt; sealing refuses an
+      # attempt without one. `!security` writes a resolved result, `!security:<status>` picks the
+      # status, and `!security:head=<sha>` writes one that belongs to a different candidate.
+      arg="${spec#!security}"; arg="${arg#:}"
+      node -e '
+        const fs = require("node:fs");
+        const [dir, head, arg] = process.argv.slice(1);
+        const status = arg.startsWith("head=") ? "pass" : (arg || "pass");
+        const about = arg.startsWith("head=") ? arg.slice(5) : head;
+        fs.writeFileSync(`${dir}/security.json`, JSON.stringify({
+          schemaVersion: 1, kind: "xezar.security-result",
+          startedAt: new Date().toISOString(), endedAt: new Date().toISOString(),
+          base: null, head: about,
+          decision: "yes", decisionReason: "fixture", 
+          inventory: { total: 1, code: 1, other: 0, truncated: false },
+          checks: [{ name: "secrets", status, detail: "fixture", findings: [] }],
+          trustBoundaries: [], reviewerRequired: false,
+          status, blocking: [], refused: false, refusedReason: null, digest: "fixture",
+        }, null, 2));
+      ' "$GATE_ATTEMPT_DIR" "$HEAD_SHA" "$arg"
+      ;;
     *)
       name="${spec%%::*}"
       body="${spec#*::}"
@@ -872,6 +912,9 @@ while IFS= read -r n; do ALL_PASS+=("$n::true"); done < <(printf '%s' "$REQUIRED
   let raw = ""; process.stdin.on("data", (d) => (raw += d)).on("end", () => {
     for (const n of JSON.parse(raw)) process.stdout.write(`${n}\n`);
   });')
+# The security stage's structured result. A real gate run writes it from `security-scan.sh`, and
+# sealing refuses an attempt without one, so the shape of a green run includes it.
+ALL_PASS+=('!security')
 
 out="$(drive "$wt" "$CHECKS" "$LIST_ID" '["a","b"]' 'a::true' 'b::exit 3')"
 att="$(attempt_dir_of "$out")"
@@ -1155,10 +1198,11 @@ expect_fail "a record edited after sealing no longer matches its digest" \
   "changed after sealing" run_in "$root" "$CHECKS/verify-evidence.sh" "$RUN_A"
 cp "$WORK/pristine-result.json" "$result_path"
 expect_ok "restoring the record restores verification" run_in "$root" "$CHECKS/verify-evidence.sh" "$RUN_A"
-printf 'rewritten\n' > "$(dirname "$result_path")/logs/02-npm-run-typecheck.log"
+typecheck_log="$(dirname "$result_path")/logs/$(node -e 'const r=JSON.parse(require("node:fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(r.commands.find(c=>c.name==="npm run typecheck").log)' "$result_path")"
+printf 'rewritten\n' > "$typecheck_log"
 expect_fail "a rewritten log no longer matches its sealed digest" \
   "no longer matches its sealed digest" run_in "$root" "$CHECKS/verify-evidence.sh" "$RUN_A"
-rm "$(dirname "$result_path")/logs/02-npm-run-typecheck.log"
+rm "$typecheck_log"
 expect_fail "a deleted log is a missing log, not an absent problem" \
   "missing or unreadable" run_in "$root" "$CHECKS/verify-evidence.sh" "$RUN_A"
 
@@ -1910,6 +1954,278 @@ expect_fail "a record with no base line is refused" \
 
 rm -f "$ev/DELIVERED"
 
+# --- 7g. The phase record, and the accepted-criteria input (#469) ---------------------------------
+#
+# `SDLC.md` § Task phases names the dispositions a task records and `.xezar/docs/phase-record.md`
+# names the files. Before this check both were prose: nothing created a record and nothing noticed
+# when a phase left none — and a disposition nobody wrote is indistinguishable from a phase nobody
+# ran. Named break: `phase-hole`, one required record removed at a time.
+printf '\n-- phase record --\n'
+root="$(make_fixture phase-record)"
+wt="$(add_worktree_with_work "$root" "$RUN_A")"
+PF="$root/.xezar/checks/worktree-preflight.sh"
+PR_SH="$root/.xezar/checks/phase-record.sh"
+ev="$root/.local/xezar-tasks/$RUN_A"
+
+# The control first: a complete record passes, so every refusal below is about the record it removed.
+expect_ok "a complete phase record passes readiness" run_in "$wt" "$PF" --readiness
+
+# `phase-hole`: each required record, removed on its own, refuses readiness by its own predicate.
+for record in CAPABILITY:phase.capability DEPTH:phase.depth MATURITY:phase.maturity \
+              CRITERIA:phase.criteria PLAN:phase.plan SELF_REVIEW:phase.self-review \
+              DOCS:phase.docs COUNTERS:phase.counters; do
+  name="${record%%:*}"; predicate="${record#*:}"
+  mv "$ev/$name" "$ev/.$name.hidden"
+  expect_fail "phase-hole: a missing $name record refuses readiness" \
+    "$predicate" run_in "$wt" "$PF" --readiness
+  mv "$ev/.$name.hidden" "$ev/$name"
+done
+expect_ok "restoring the records restores readiness" run_in "$wt" "$PF" --readiness
+
+# The stop cannot be skipped by a resumed or hand-driven run: the evidence step asks it too.
+mv "$ev/DEPTH" "$ev/.DEPTH.hidden"
+expect_fail "and the evidence step refuses the same hole" \
+  "phase.depth" run_in "$wt" "$PF" --record-gate-evidence
+mv "$ev/.DEPTH.hidden" "$ev/DEPTH"
+
+# `template-is-acceptance`: a CRITERIA file that exists but names no criterion and no accepting
+# authority is not acceptance. A shipped template and a mutable label pass a bare existence test.
+printf 'TODO: fill this in before starting.\n' > "$ev/CRITERIA"
+expect_fail "template-is-acceptance: criteria with no criterion ID are refused" \
+  "names no acceptance criterion" run_in "$wt" "$PF" --readiness
+printf 'AC-1: the thing works\n' > "$ev/CRITERIA"
+expect_fail "template-is-acceptance: criteria with no accepting authority are refused" \
+  "accepted-by" run_in "$wt" "$PF" --readiness
+printf 'AC-1: the thing works\naccepted-by: the owner, 2026-09-16\n' > "$ev/CRITERIA"
+expect_ok "criteria with an ID and an accepting authority pass" run_in "$wt" "$PF" --readiness
+
+# An empty record is not a record. `set` refuses to write one rather than leaving a file that
+# passes an existence test and says nothing.
+expect_fail "an empty record is refused by the writer" \
+  "says nothing" run_in "$wt" bash -c "printf '' | '$PR_SH' set DEPTH"
+expect_ok "the writer writes a record from its argument" \
+  run_in "$wt" "$PR_SH" set DEPTH "standard — several components"
+[ "$(cat "$ev/DEPTH")" = "standard — several components" ] && ok "and the argument is what lands on disk" \
+  || bad "and the argument is what lands on disk" "got '$(cat "$ev/DEPTH")'"
+
+# A record name is a file name in a directory this run owns; a traversal is refused, not followed.
+expect_fail "a record name that escapes the evidence directory is refused" \
+  "is not a record name" run_in "$wt" "$PR_SH" set ../../escaped "x"
+
+# The read-only roles never reach either mode, so none of them is ever asked for an author's facts.
+if grep -q -- '--readiness\|--record-gate-evidence' \
+  "$REPO_ROOT/.xezar/workflows/code-review.yaml" "$REPO_ROOT/.xezar/workflows/qa.yaml" \
+  "$REPO_ROOT/.xezar/workflows/design-review.yaml" "$REPO_ROOT/.xezar/workflows/business-analysis.yaml" \
+  "$REPO_ROOT/.xezar/workflows/research.yaml"; then
+  bad "read-only roles are never asked for the author's phase facts" "a read-only workflow now runs a gated preflight mode"
+else
+  ok "read-only roles are never asked for the author's phase facts"
+fi
+
+# --- 7h. The three durable repair counters (#469) -------------------------------------------------
+#
+# Named breaks: `forged-counter` (a total edited past its limit) and `resume-free-budget` (a
+# replacement run treating unknown history as zero).
+printf '\n-- repair counters --\n'
+root="$(make_fixture counters)"
+wt="$(add_worktree_with_work "$root" "$RUN_A")"
+wt_b="$(add_worktree_with_work "$root" "$RUN_B")"
+PF="$root/.xezar/checks/worktree-preflight.sh"
+PR_SH="$root/.xezar/checks/phase-record.sh"
+ev="$root/.local/xezar-tasks/$RUN_A"
+ev_b="$root/.local/xezar-tasks/$RUN_B"
+
+# Two rounds, and the third is refused. Each round is written BEFORE it is applied.
+expect_ok "the first self-review round is granted" \
+  run_in "$wt" "$PR_SH" counter self-review --trigger "the self-review found a hole"
+expect_ok "and the second" \
+  run_in "$wt" "$PR_SH" counter self-review --trigger "and another"
+expect_fail "a third self-review round is refused" \
+  "EXHAUSTED" run_in "$wt" "$PR_SH" counter self-review --trigger "one more"
+
+# None of the three substitutes for another: a spent self-review budget does not touch the others.
+expect_ok "a spent counter does not spend a different one" \
+  run_in "$wt" "$PR_SH" counter gate-return --trigger "the gates failed"
+# And a spent budget alone does not stop the workflow — only a repair past it does.
+expect_ok "an exhausted counter still passes readiness while it is not over its limit" \
+  run_in "$wt" "$PF" --readiness
+
+# `forged-counter`: a total edited past its limit is refused, not read as "two, near enough".
+printf 'counter=self-review round=3 at=2026-01-01T00:00:00Z trigger=forged\n' >> "$ev/COUNTERS"
+expect_fail "forged-counter: a count over its limit refuses readiness" \
+  "phase.counters" run_in "$wt" "$PF" --readiness
+grep -v 'trigger=forged' "$ev/COUNTERS" > "$ev/COUNTERS.tmp" && mv "$ev/COUNTERS.tmp" "$ev/COUNTERS"
+expect_ok "removing the forged row restores readiness" run_in "$wt" "$PF" --readiness
+
+# A COUNTERS record with no `history:` line is unknown history, not zero.
+printf '# counters\ncounter=self-review round=1 at=x trigger=y\n' > "$ev/COUNTERS"
+expect_fail "a counters record with no history line refuses readiness" \
+  "phase.counters" run_in "$wt" "$PF" --readiness
+expect_fail "and the writer refuses another round against it" \
+  "UNKNOWN" run_in "$wt" "$PR_SH" counter quality-repair --trigger "x"
+
+# `resume-free-budget`: a replacement run gets a fresh evidence directory. An absent COUNTERS file
+# there means "nobody reconciled this", never "nothing has happened", so a repair is blocked until
+# a person declares the history — and `--predecessor` carries the predecessor's totals forward.
+printf '# counters for %s\nhistory: complete — no predecessor\ncounter=self-review round=1 at=x trigger=a\ncounter=self-review round=2 at=x trigger=b\n' "$RUN_A" > "$ev/COUNTERS"
+mv "$ev_b/COUNTERS" "$ev_b/.COUNTERS.hidden"
+expect_fail "resume-free-budget: a replacement run with no history is blocked, not reset to zero" \
+  "UNKNOWN" run_in "$wt_b" "$PR_SH" counter self-review --trigger "starting over"
+expect_ok "declaring the predecessor reconciles the history" \
+  run_in "$wt_b" "$PR_SH" counters init --predecessor "$RUN_A"
+expect_fail "and the carried-forward budget is still spent" \
+  "EXHAUSTED" run_in "$wt_b" "$PR_SH" counter self-review --trigger "starting over"
+# The control that proves the carry is real rather than a blanket refusal: a counter the
+# predecessor never touched is still available in the replacement run.
+expect_ok "a counter the predecessor never spent is still available" \
+  run_in "$wt_b" "$PR_SH" counter quality-repair --trigger "a genuinely new failure"
+
+# A resume is a continuation of the count, never a fresh allowance: with the gate-return budget
+# spent, `resume-complete.sh` refuses to run the gates rather than paying for the answer first.
+RESUME="$root/.xezar/checks/resume-complete.sh"
+printf '# counters for %s\nhistory: complete — no predecessor\ncounter=gate-return round=1 at=x trigger=a\ncounter=gate-return round=2 at=x trigger=b\n' "$RUN_A" > "$ev/COUNTERS"
+expect_fail "a resume with a spent gate-return budget refuses to re-run the gates" \
+  "that counter is spent" run_in "$wt" "$RESUME"
+printf '# counters for %s\nhistory: complete — no predecessor\ncounter=gate-return round=1 at=x trigger=a\n' "$RUN_A" > "$ev/COUNTERS"
+resume_out="$(run_in "$wt" "$RESUME" --dry-run 2>&1)"
+printf '%s' "$resume_out" | grep -q 'a gate-return round is available' \
+  && ok "a resume with budget left reports the plan instead" \
+  || bad "a resume with budget left reports the plan instead" "$(printf '%s' "$resume_out" | tail -5)"
+printf '%s' "$resume_out" | grep -q 'gate-return     1 of 2 used' \
+  && ok "and the resume prints what the budget has already spent" \
+  || bad "and the resume prints what the budget has already spent" "$(printf '%s' "$resume_out" | tail -20)"
+
+# --- 6g. The security stage inside the canonical run (#469) ---------------------------------------
+#
+# Named breaks: `security-after-quality` (an attempt sealed with no security result),
+# `stale-security-head` (a result about another candidate), `empty-scan-green` (a code change that
+# enumerated nothing and called it clean).
+printf '\n-- security stage --\n'
+SCAN_MJS="$SCRIPT_DIR/lib/security-scan.mjs"
+scan_fixture() {
+  local name="$1" file="$2" content="$3" scan_root scan_wt
+  scan_root="$(make_fixture "$name")" || return 1
+  scan_wt="$(add_worktree "$scan_root" "$RUN_A")" || return 1
+  mkdir -p "$(dirname "$scan_wt/$file")"
+  printf '%s\n' "$content" > "$scan_wt/$file"
+  git -C "$scan_wt" -c user.email=t@t -c user.name=t add -A >/dev/null
+  git -C "$scan_wt" -c user.email=t@t -c user.name=t commit -qm "candidate"
+  printf '%s' "$scan_wt"
+}
+scan_json() {
+  node "$SCAN_MJS" --cwd "$1" --base "$(git -C "$1" merge-base HEAD main)" \
+    --head "$(git -C "$1" rev-parse HEAD)" --out "$2" --quiet
+}
+scan_status() { node -e 'process.stdout.write(String(JSON.parse(require("node:fs").readFileSync(process.argv[1],"utf8"))[process.argv[2]]))' "$1" "$2"; }
+
+# A secret-shaped literal in an added line is a finding, and the stage refuses.
+# The fixture literals below are assembled rather than typed where a rule of this repository bans
+# the plain text: `xezar-contract.test.mjs` refuses `pkill`/`killall` in any kit shell script, and
+# the security scan itself reads this file. The scanner still sees the real string in the fixture.
+secret_literal='export const token = "ghp_0123456789abcdefghijklmnopqrstuvwxyz";'  # security-scan:allow
+sw="$(scan_fixture scan-secret src/config.ts "$secret_literal")"
+scan_json "$sw" "$WORK/scan-secret.json" && bad "an added credential literal refuses the stage" "the scan exited 0" \
+  || ok "an added credential literal refuses the stage"
+[ "$(scan_status "$WORK/scan-secret.json" status)" = "findings" ] && ok "and records it as findings, not as unknown" \
+  || bad "and records it as findings, not as unknown" "status=$(scan_status "$WORK/scan-secret.json" status)"
+
+# Documentation is scanned too, on purpose: a real token in a README is a real leak, and a rule
+# that stopped at the file extension would miss the commonest one.
+sw="$(scan_fixture scan-secret-prose docs/note.md "$secret_literal")"
+scan_json "$sw" "$WORK/scan-prose.json" && bad "a credential literal in documentation is a finding too" "the scan exited 0" \
+  || ok "a credential literal in documentation is a finding too"
+
+# The one escape, and it is per LINE: a source line carrying the allow marker is not reported, and
+# the result records how many lines used it. A scanner has to be able to name the thing it bans.
+sw="$(scan_fixture scan-secret-allowed src/rules.ts "${secret_literal} // security-scan:allow")"
+expect_ok "a line carrying the allow marker is not reported" scan_json "$sw" "$WORK/scan-allowed.json"
+
+# A credential-shaped PATH is a finding whatever is inside it; `.env.example` is the env CONTRACT
+# and is required to be tracked, so it is not.
+sw="$(scan_fixture scan-envfile .env 'API_KEY=whatever')"
+scan_json "$sw" "$WORK/scan-env.json" && bad "an added .env file refuses the stage" "the scan exited 0" \
+  || ok "an added .env file refuses the stage"
+sw="$(scan_fixture scan-envexample .env.example 'API_KEY=')"
+expect_ok "an added .env.example does not" scan_json "$sw" "$WORK/scan-envexample.json"
+
+# The #156 rule as a check rather than a paragraph: a kill by command-line pattern in an
+# executable file is a finding, and the same text in a comment is not.
+kill_literal="$(printf 'pk%sll -f "repo-gates.sh --fast"' i)"
+sw="$(scan_fixture scan-kill-pattern tool.sh "$kill_literal")"
+scan_json "$sw" "$WORK/scan-kill-pattern.json" && bad "killing by command-line pattern refuses the stage" "the scan exited 0" \
+  || ok "killing by command-line pattern refuses the stage"
+sw="$(scan_fixture scan-kill-comment tool.sh "# never run $kill_literal here")"
+expect_ok "the same pattern inside a comment does not" scan_json "$sw" "$WORK/scan-kill-comment.json"
+
+# A dependency input that changed records `unknown`, because the advisory database needs the
+# network and discovery must not require one. Unknown is not a pass and it is not a failure either.
+sw="$(scan_fixture scan-deps package-lock.json '{"lockfileVersion": 3}')"
+expect_ok "a changed lockfile resolves the stage" scan_json "$sw" "$WORK/scan-deps.json"
+[ "$(scan_status "$WORK/scan-deps.json" status)" = "unknown" ] && ok "and records the dependency check as unknown, never a pass" \
+  || bad "and records the dependency check as unknown, never a pass" "status=$(scan_status "$WORK/scan-deps.json" status)"
+
+# `empty-scan-green`: a base that cannot be read is an unreadable input, not an empty one. The
+# stage has no opinion and says so by refusing.
+sw="$(scan_fixture scan-nobase src/a.ts 'export const a = 1;')"
+node "$SCAN_MJS" --cwd "$sw" --head "$(git -C "$sw" rev-parse HEAD)" --out "$WORK/scan-nobase.json" --quiet \
+  && bad "empty-scan-green: an unreadable change set refuses, it does not pass" "the scan exited 0" \
+  || ok "empty-scan-green: an unreadable change set refuses, it does not pass"
+[ "$(scan_status "$WORK/scan-nobase.json" status)" = "unknown" ] && ok "and it is recorded as unknown" \
+  || bad "and it is recorded as unknown" "status=$(scan_status "$WORK/scan-nobase.json" status)"
+
+# `security-after-quality`: an attempt whose canonical list requires the security stage, sealed
+# with no security result, is refused. A quality verdict cannot come before a result nobody has.
+root="$(make_fixture security-seal)"
+wt="$(add_worktree_with_work "$root" "$RUN_A")"
+CHECKS="$root/.xezar/checks"
+PF="$CHECKS/worktree-preflight.sh"
+SEC_GATE=".xezar/checks/security-scan.sh"
+list_has_security=0
+printf '%s' "$REQUIRED_ALL" | grep -q -- "$SEC_GATE" && list_has_security=1
+[ "$list_has_security" -eq 1 ] && ok "the canonical gate list carries the security stage" \
+  || bad "the canonical gate list carries the security stage" "$REQUIRED_ALL"
+
+drive "$wt" "$CHECKS" "$LIST_ID" "$REQUIRED_ALL" "${ALL_PASS[@]}" > /dev/null
+expect_ok "an attempt carrying its security result seals" run_in "$wt" "$PF" --record-gate-evidence
+sealed_security="$(node "$CHECKS/lib/manifest.mjs" "$root/.local/xezar-tasks/$RUN_A/manifest.json" --get gateEvidence.security.status)"
+[ "$sealed_security" = "pass" ] && ok "and the seal carries the security status" \
+  || bad "and the seal carries the security status" "got '$sealed_security'"
+
+out="$(drive "$wt" "$CHECKS" "$LIST_ID" "$REQUIRED_ALL" "${ALL_PASS[@]}")"
+rm -f "$(attempt_dir_of "$out")/security.json"
+expect_fail "security-after-quality: an attempt with no security result cannot be sealed" \
+  "no readable security result" run_in "$wt" "$PF" --record-gate-evidence
+
+# `stale-security-head`: a result about a different candidate is not this candidate's evidence.
+drive "$wt" "$CHECKS" "$LIST_ID" "$REQUIRED_ALL" "${ALL_PASS[@]}" '!security:head=0000000000000000000000000000000000000000' > /dev/null
+expect_fail "stale-security-head: a result about another head is refused" \
+  "belongs to a different candidate" run_in "$wt" "$PF" --record-gate-evidence
+
+# A refused scan cannot be sealed either, even when every other gate is green.
+drive "$wt" "$CHECKS" "$LIST_ID" "$REQUIRED_ALL" "${ALL_PASS[@]}" > /dev/null
+node -e '
+  const fs=require("node:fs"),p=process.argv[1];
+  const r=JSON.parse(fs.readFileSync(p,"utf8"));r.refused=true;r.refusedReason="fixture refusal";
+  fs.writeFileSync(p,JSON.stringify(r));' "$(attempt_dir_of "$(drive "$wt" "$CHECKS" "$LIST_ID" "$REQUIRED_ALL" "${ALL_PASS[@]}")")/security.json"
+expect_fail "a refused security stage cannot be sealed" \
+  "the security stage refused" run_in "$wt" "$PF" --record-gate-evidence
+
+# An honest `unknown` is sealed AS unknown. This is the case the contract exists for: the stage
+# could not settle something, the seal says so, and the reviewer reads it — it is never rewritten.
+drive "$wt" "$CHECKS" "$LIST_ID" "$REQUIRED_ALL" "${ALL_PASS[@]}" '!security:unknown' > /dev/null
+expect_ok "an unknown security result still seals" run_in "$wt" "$PF" --record-gate-evidence
+sealed_security="$(node "$CHECKS/lib/manifest.mjs" "$root/.local/xezar-tasks/$RUN_A/manifest.json" --get gateEvidence.security.status)"
+[ "$sealed_security" = "unknown" ] && ok "and it is sealed as unknown, not rewritten to a pass" \
+  || bad "and it is sealed as unknown, not rewritten to a pass" "got '$sealed_security'"
+
+# The canonical list keeps its shape: the security stage runs before every quality gate, and the
+# repository-check tail stays last. Both are positions the contract depends on.
+sec_index="$(printf '%s' "$LIST_JSON" | node -e '
+  let raw=""; process.stdin.on("data",d=>raw+=d).on("end",()=>{
+    const g=JSON.parse(raw).gates; process.stdout.write(String(g.findIndex(x=>x.command===".xezar/checks/security-scan.sh")+1));});')"
+[ "$sec_index" = "2" ] && ok "the security stage is gate 2, before every quality gate" \
+  || bad "the security stage is gate 2, before every quality gate" "it is gate $sec_index"
+
 # --- 8. Manifest safety ------------------------------------------------------------------------------
 printf '\n-- manifest --\n'
 root="$(make_fixture manifest)"
@@ -2129,9 +2445,16 @@ expect_fail "a failed install fails the setup step" \
 expect_fail "setup aborts in the primary checkout without installing" \
   "the preflight failed" \
   env -u XEZ_TASK_ID -u DOGFOOD_ALLOW_ROOT_BOOTSTRAP PATH="$WORK/bin-ok:$PATH" bash -c "cd '$root' && '$SETUP'"
-[ -d "$root/.local/xezar-tasks" ] \
-  && bad "an aborted setup writes no evidence" "an evidence directory was created" \
-  || ok "an aborted setup writes no evidence"
+# "No evidence" means no evidence THIS setup created. The fixture's own worktree already carries
+# the author's seeded phase record under `.local/xezar-tasks/$RUN_A`, so the assertion is that
+# nothing else appeared — a bare "the directory does not exist" would now pass for the wrong reason.
+aborted_evidence="$(ls -1 "$root/.local/xezar-tasks" 2>/dev/null | grep -v "^$RUN_A\$" | tr '\n' ' ')"
+[ -z "$aborted_evidence" ] \
+  && ok "an aborted setup writes no evidence" \
+  || bad "an aborted setup writes no evidence" "an evidence directory was created: $aborted_evidence"
+[ -f "$root/.local/xezar-tasks/$RUN_A/manifest.json" ] \
+  && bad "an aborted setup writes no manifest" "a manifest was created" \
+  || ok "an aborted setup writes no manifest"
 
 # #286: an install that leaves a workspace package resolving from the primary checkout must fail
 # setup loudly, and must not stamp the tree current. The stub npm installs nothing, which is the

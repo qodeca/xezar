@@ -16,6 +16,19 @@ Resolve it with the shared helper rather than by hand — `.xezar/checks/lib/com
 
 What must never enter it: secrets, credentials, `.env` contents, personal agent configuration, and source content unrelated to this task. A report that would need one of those says "not recorded" instead.
 
+## Writing it
+
+One command, so nobody has to remember eight file names or where they go:
+
+```sh
+bash .xezar/checks/phase-record.sh set DEPTH "small — one bounded surface, known behaviour"
+bash .xezar/checks/phase-record.sh set CRITERIA < criteria.md   # or pipe it on stdin
+bash .xezar/checks/phase-record.sh list                         # what is present, what is absent
+bash .xezar/checks/phase-record.sh check                        # what readiness will refuse
+```
+
+`check` is the same code readiness runs, so it answers the question before the workflow asks it. Run it while you are still authoring; a missing record found there costs a second, and found at readiness costs the step.
+
 ## What each phase records
 
 | Phase | Record | Holds |
@@ -36,28 +49,58 @@ What must never enter it: secrets, credentials, `.env` contents, personal agent 
 
 A phase that does not apply still writes its record, saying **not applicable and why**. "Not applicable" is a finding; an absent file is not.
 
-**Three of these records already exist and already have teeth; the rest are named by this contract and enforced by sequenced follow-up work (#469).** Do not overload the three:
+### What readiness refuses without
+
+`worktree-preflight.sh --readiness` and `--record-gate-evidence` require the eight records whose phase has already run by the time they do: `CAPABILITY`, `DEPTH`, `MATURITY`, `CRITERIA`, `PLAN`, `SELF_REVIEW`, `DOCS` and `COUNTERS`. Each refusal names the record, the predicate (`phase.depth`, `phase.criteria`, …) and the command that writes it.
+
+The read-only roles — code review, design review, QA, business analysis, research — never run either mode, so none of them is ever asked for an author's facts.
+
+`CRITERIA` is validated rather than counted, because it is the **AC input** and an empty rung of the maturity ladder is the failure this closes. It needs at least one `<ID>: <what a reader can check>` line and an `accepted-by: <authority and when>` line. A file that exists, a shipped template and a mutable label are not acceptance.
+
+`SECURITY` and `AC_VERIFICATION` are not on that list, for opposite reasons: the security result is produced by the gate run itself (below), and AC verification happens at the current head, after the candidate exists.
+
+### The four records that carry their own rules
 
 - `BLOCKED` stops readiness before anyone pays for a gate run, and it outranks every other record.
 - `DELIVERED` is the review-response case only — a fix pushed to the PR's own branch, leaving this task's branch empty. Three lines: `branch`, `head`, `base`, checked live against the remote.
 - `VERIFICATION` is the verify-only case only — this run verified an existing revision and was never asked to change source. It is `verified:` plus `findings:`, and it is why readiness accepts an empty branch. It is **not** the acceptance-criteria mapping; that is `AC_VERIFICATION`, above, and the two are different questions.
+- `COUNTERS` is written by `phase-record.sh counters`, never by hand — see below.
 
 ## Counters
 
-Three durable counters, defined in `SDLC.md` § Self-review inside the author phase and none of them a substitute for another: **two** self-review fix rounds per candidate, **two** workflow gate-repair returns, **two** quality-gate repairs of the same failure.
+Three durable counters, defined in `SDLC.md` § "Self-review inside the author phase, and the repair counters", and none of them a substitute for another: **two** self-review fix rounds per candidate, **two** workflow gate-repair returns, **two** quality-gate repairs of the same failure.
 
 Each is written to `COUNTERS` **before** the round it allows, not after — a round that is applied and then not recorded is the failure mode this record exists to close. Each entry names what triggered the repair and which counter it consumed.
 
-Gate re-entry, a Continue, a new backend and a replacement run all continue an existing count. A replacement therefore recovers its predecessor's attempt IDs and consumed budgets first: missing history reads as **unknown**, not as zero, and blocks another repair until it is reconciled. An exhausted counter blocks another repair outright — stop and report, and never lower a severity, a threshold or a mandatory check to get past it.
+```sh
+bash .xezar/checks/phase-record.sh counters init --none        # a fresh candidate, no predecessor
+bash .xezar/checks/phase-record.sh counters init --predecessor <runId>   # a replacement run
+bash .xezar/checks/phase-record.sh counter self-review --trigger "review found X"
+bash .xezar/checks/phase-record.sh counters                    # what is used and what is left
+```
 
-## The security applicability decision
+**The history is declared before the first repair, not inferred from an empty file.** `counter` refuses outright when `COUNTERS` has no `history:` line, because a replacement run gets a fresh evidence directory and an absent file there means "nobody has reconciled this", not "nothing has happened". `--predecessor` carries the predecessor's totals forward; `--none` is the explicit claim that there is no predecessor.
 
-`SECURITY` records the decision before it records a result: does a code or security capability apply to this change at all?
+Gate re-entry, a Continue, a new backend and a replacement run all continue an existing count. Missing history reads as **unknown**, not as zero, and blocks another repair until it is reconciled. An exhausted counter blocks another repair outright — stop and report, and never lower a severity, a threshold or a mandatory check to get past it, and never pay for one counter's round out of another.
 
-- **Yes** — the applicable project-approved dependency, secret and static checks, with real outcomes. An unavailable required scanner, a parse error, an empty inventory where one was expected, or an interrupted scan is written as **unknown**. Unknown is not a pass, and a reviewer reads this file before giving a quality verdict.
-- **No** — the artefact or change set that supports saying so, plus the checks that do fit the work: source verification, confidential-data handling, claim checking against the supplied criteria. Software fixtures inside otherwise non-code work still get software checks. Mixed work takes the union of both.
+Two checks enforce it beyond the writer: readiness refuses a `COUNTERS` record whose count is **over** its limit (a hand-edited or forged total), and `resume-complete.sh` refuses to re-run the gates when the `gate-return` counter is spent or unknown — a resumed run is a continuation of the count, never a fresh allowance.
 
-The executable check that emits this result is sequenced follow-up work (#469). Until it lands the stage is a written record here, and an absent result reads as unknown rather than as a pass.
+## The security result
+
+**It is produced by a command, not typed.** `.xezar/checks/security-scan.sh` is gate 2 of the canonical list — straight after the install and ahead of every gate that produces a quality signal — and it writes its structured result to `security.json` inside that gate attempt, next to the logs. `worktree-preflight.sh --record-gate-evidence` refuses to seal an attempt that carries no such result, and the seal records its status, so a reviewer reads a fact rather than the author's summary of one.
+
+The result records the decision before it records an outcome: does a code or security capability apply to this change at all?
+
+- **Yes** — the applicable project-approved secret, credential-path, executable-pattern and dependency-input checks, each with a real outcome. An unavailable scanner, a parse error, an empty inventory where one was expected, or an interrupted scan is written as **unknown**. Unknown is not a pass, and the reviewer reads it before giving a quality verdict.
+- **No** — the change set that supports saying so, plus the checks that do fit the work: source verification, confidential-data handling, claim checking against the supplied criteria. Software fixtures inside otherwise non-code work still get software checks. Mixed work takes the union of both.
+
+Four statuses, and only the first is a pass: `pass`, `findings` (the gate fails), `unknown`, `not-applicable`. A candidate whose decision is "yes" and whose inventory is **empty** is refused rather than passed — it did not look.
+
+`reviewerRequired` is recorded separately. A change to a named trust boundary — the HTTP surface, agent config, the MCP tools, the workspace registry, CI's own workflows, the env contract — does not fail the gate, because automation cannot prove that an authorization decision is correct. It records that a human or a security reviewer is required, and the handoff says so.
+
+One suppression exists and it is per LINE: a source line carrying `security-scan:allow` is not reported, and the count of allowed lines is recorded in the result. It is there because a scanner has to be able to name the thing it bans and a fixture has to be able to contain one. Never use it on a real finding, and never exempt a file or a rule.
+
+Anything the command cannot answer still belongs in a written `SECURITY` record beside it — a specialist's reading of a changed trust boundary, or a check that this project has not automated.
 
 ## What does not go in the pipeline config
 
