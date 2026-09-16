@@ -23,7 +23,7 @@ Source: `packages/web/src/styles/index.css`. Every theme token and static scale 
 | `--sidebar` | yes | foundations.md §1.1 | Documented |
 | `--muted` | yes | foundations.md §1.1 | Documented |
 | `--muted-foreground` | yes | foundations.md §1.1 | Documented |
-| `--soft-foreground` | yes | foundations.md §1.1 | Documented with known gap (G-23) |
+| `--soft-foreground` | yes | foundations.md §1.1 | Documented |
 | `--border` | yes | foundations.md §1.1 | Documented |
 | `--input` | yes | foundations.md §1.1 | Documented |
 | `--contrast` | yes | foundations.md §1.1 | Documented |
@@ -85,6 +85,8 @@ Source: `packages/web/src/styles/index.css`. Every theme token and static scale 
 | `--spacing-inset` | foundations.md §4.1 | Documented |
 | `--spacing-group` | foundations.md §4.1 | Documented |
 | `--spacing-section` | foundations.md §4.1 | Documented |
+| `--spacing-tap` | foundations.md §4, §4.1 | Documented |
+| `--spacing-chip` | foundations.md §4, §4.1 | Documented |
 | `--radius-sm` | foundations.md §5 | Documented |
 | `--radius` | foundations.md §5 | Documented |
 | `--radius-lg` | foundations.md §5 | Documented |
@@ -147,25 +149,21 @@ Each entry maps a utility name to a theme token. Listed in foundations.md §1.7;
 | --- | --- | --- | --- |
 | `packages/web/src/components/ui/alert-dialog.tsx` | AlertDialog | components.md §1 AlertDialog | Documented |
 | `packages/web/src/components/ui/badge.tsx` | Badge | components.md §1 Badge | Documented |
-| `packages/web/src/components/ui/button.tsx` | Button | components.md §1 Button | Documented with known gap (G-10) |
-| `packages/web/src/components/ui/card.tsx` | Card | components.md §1 Card | Documented with known gap (G-02, G-20) |
+| `packages/web/src/components/ui/button.tsx` | Button | components.md §1 Button | Documented with known gap (G-10 consumers; the `danger` variant they adopt now exists) |
 | `packages/web/src/components/ui/collapsible.tsx` | Collapsible | components.md §1 Collapsible | Documented |
 | `packages/web/src/components/ui/command.tsx` | Command | components.md §1 Command | Documented |
-| `packages/web/src/components/ui/dialog.tsx` | Dialog | components.md §1 Dialog | Documented with known gap (G-06) |
+| `packages/web/src/components/ui/dialog.tsx` | Dialog | components.md §1 Dialog | Documented |
 | `packages/web/src/components/ui/dropdown-menu.tsx` | DropdownMenu | components.md §1 DropdownMenu | Documented with known gap (G-07) |
 | `packages/web/src/components/ui/input.tsx` | Input | components.md §1 Input | Documented with known gap (G-12) |
 | `packages/web/src/components/ui/label.tsx` | Label | components.md §1 Label | Documented |
-| `packages/web/src/components/ui/popover.tsx` | Popover | components.md §1 Popover | Documented with known gap (G-07) |
-| `packages/web/src/components/ui/scroll-area.tsx` | ScrollArea | components.md §1 ScrollArea | Documented with known gap (G-20) |
-| `packages/web/src/components/ui/select.tsx` | Select | components.md §1 Select | Documented with known gap (G-11, G-20) |
-| `packages/web/src/components/ui/separator.tsx` | Separator | components.md §1 Separator | Documented with known gap (G-20) |
+| `packages/web/src/components/ui/popover.tsx` | Popover | components.md §1 Popover | Documented |
 | `packages/web/src/components/ui/sheet.tsx` | Sheet | components.md §1 Sheet | Documented |
-| `packages/web/src/components/ui/skeleton.tsx` | Skeleton | components.md §1 Skeleton | Documented with known gap (G-08) |
+| `packages/web/src/components/ui/skeleton.tsx` | Skeleton | components.md §1 Skeleton | Documented |
 | `packages/web/src/components/ui/switch.tsx` | Switch | components.md §1 Switch | Documented |
 | `packages/web/src/components/ui/tabs.tsx` | Tabs | components.md §1 Tabs | Documented |
 | `packages/web/src/components/ui/textarea.tsx` | Textarea | components.md §1 Textarea | Documented with known gap (G-07) |
-| `packages/web/src/components/ui/toaster.tsx` | Toaster | components.md §1 Toaster | Documented with known gap (G-16) |
-| `packages/web/src/components/ui/tooltip.tsx` | Tooltip | components.md §1 Tooltip | Documented with known gap (G-06) |
+| `packages/web/src/components/ui/toaster.tsx` | Toaster | components.md §1 Toaster | Documented with known gap (G-16 wording; the danger tone's ink now clears AA) |
+| `packages/web/src/components/ui/tooltip.tsx` | Tooltip | components.md §1 Tooltip | Documented |
 
 ## 3. Shared components (`packages/web/src/components/`, `composer/`, `diff/`)
 
@@ -209,7 +207,7 @@ Each entry maps a utility name to a theme token. Listed in foundations.md §1.7;
 | `packages/web/src/components/skill-detail.tsx` | SkillDetail | components.md §2 SkillDetail, SkillEmptyHint, SkillsImportPanel | Documented |
 | `packages/web/src/components/skill-empty-hint.tsx` | SkillEmptyHint | components.md §2 SkillDetail, SkillEmptyHint, SkillsImportPanel | Documented |
 | `packages/web/src/components/skills-import-panel.tsx` | SkillsImportPanel | components.md §2 SkillDetail, SkillEmptyHint, SkillsImportPanel | Documented |
-| `packages/web/src/components/status-dot.tsx` | StatusDot | components.md §2 StatusDot | Documented with known gap (G-08) |
+| `packages/web/src/components/status-dot.tsx` | StatusDot | components.md §2 StatusDot | Documented with known gap (G-08 hand-rolled dots in routes; StatusDot itself now guards its pulse) |
 | `packages/web/src/components/tab-link.tsx` | TabLink | components.md §2 TabLink | Documented |
 | `packages/web/src/components/task-agent.tsx` | TaskAgent cells | components.md §2 TaskAgent cells | Documented |
 | `packages/web/src/components/task-quick-list.tsx` | TaskQuickList | components.md §2 TaskQuickList | Documented |
@@ -254,7 +252,7 @@ Each entry maps a utility name to a theme token. Listed in foundations.md §1.7;
 | Spacing, rhythm and density | foundations.md §4, §4.1, theming.md §Density | `specimens/foundations.html` | Documented |
 | Radius | foundations.md §5 | `specimens/foundations.html` | Documented |
 | Shadow | foundations.md §6 | `specimens/foundations.html` | Documented |
-| Motion and reduced motion | foundations.md §7, behaviour.md | `specimens/foundations.html` | Documented with known gap (G-06, G-08) |
+| Motion and reduced motion | foundations.md §7, behaviour.md | `specimens/foundations.html` | Documented with known gap (G-08 outside the primitives; every `components/ui` animation is now `motion-safe:`) |
 | Iconography | foundations.md §8 | `specimens/foundations.html` | Documented with known gap (G-19) |
 | Layout and reading width | foundations.md §9, theming.md | `specimens/foundations.html` | Documented |
 | Breakpoints | foundations.md §10, behaviour.md | `specimens/foundations.html` | Documented |
@@ -262,6 +260,6 @@ Each entry maps a utility name to a theme token. Listed in foundations.md §1.7;
 | Safe areas and the keyboard | foundations.md §12 | `specimens/foundations.html`, `specimens/mobile.html` | Documented |
 | Base layer (`border-color`, `html`/`body` height and overflow, placeholder, scrollbars) | foundations.md §13 | – | Documented |
 | Theming (theme, accent, density, width, pre-paint) | theming.md | the doc bar of index, foundations, components and patterns (mobile.html: theme only) | Documented |
-| Keyboard, focus and announcements | behaviour.md | `specimens/components.html` | Documented with known gap (G-06) |
+| Keyboard, focus and announcements | behaviour.md | `specimens/components.html` | Documented |
 | UX writing | writing.md | – | Documented with known gap (G-15, G-16) |
 | Number formatting | writing.md | – | Documented with known gap (G-18) |
