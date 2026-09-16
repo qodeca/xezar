@@ -397,9 +397,12 @@ export function NewIssueDialog({
             >
               {start.isPending ? newIssueCopy.startPending : newIssueCopy.start}
             </Button>
+            {/* The hand-off box's key cap, with its horizontal padding on the spacing scale
+                rather than the hand-typed `px-[5px]` that surface still carries: a fixed pixel
+                would stay put while the density lever moved everything around it. */}
             <kbd
               aria-hidden="true"
-              className="rounded-[5px] border border-b-2 border-border bg-card px-[5px] py-px font-mono text-[10.5px] font-medium text-muted-foreground"
+              className="rounded-sm border border-b-2 border-border bg-card px-1 py-px font-mono text-[10.5px] font-medium text-muted-foreground"
             >
               {submitShortcutHint()}
             </kbd>
