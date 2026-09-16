@@ -10,7 +10,8 @@ import type { RunRecord } from './store.ts';
  *
  *  - `task`: a queued run's brief stays editable until the scheduler picks it up, and a human
  *    editing it is the "edits its brief" case § 4.1 names;
- *  - `queuedMessages[].text`, not only the id: a queued follow-up is editable in the same way.
+ *  - `queuedMessages[].text`, not only the id: a queued follow-up is editable in the same way;
+ *  - `decisionQuestion`: answering depends on the pending question ID and content (#534).
  *
  * Left out on purpose: telemetry (`tokensUsed`, `inputTokens`, `outputTokens`, `costUsd`,
  * `peakRssBytes`, `peakProcCount`, `diffStat`, the per-step counters), presentation (`seenAt`, and
@@ -26,6 +27,7 @@ export function runDecisionProjection(run: RunRecord): unknown {
     titleOrigin: run.titleOrigin,
     autoResumeAt: run.autoResumeAt,
     task: run.task,
+    question: run.decisionQuestion,
     queuedMessages: run.queuedMessages?.map((message) => ({ id: message.id, text: message.text })),
     steps: run.steps.map((step) => ({ id: step.id, status: step.status })),
     branch: run.branch,
