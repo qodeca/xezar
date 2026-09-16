@@ -227,12 +227,14 @@ class CodexSession implements AgentSession {
         }
       } finally {
         if (deadline) clearTimeout(deadline);
-        if (killTimer) clearTimeout(killTimer);
         if (this.autoEndTimer) clearTimeout(this.autoEndTimer);
         this.stdinOpen = false;
       }
 
+      // Destroying stdout ends the read loop before the timeout escalation's
+      // grace period. Keep that escalation armed until the child is gone.
       const exitCode = await waitForCodexAppServerExit(this.child);
+      if (killTimer) clearTimeout(killTimer);
       if (this.eofTermTimer) clearTimeout(this.eofTermTimer);
       if (this.eofKillTimer) clearTimeout(this.eofKillTimer);
       this.rpc.rejectPending();

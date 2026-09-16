@@ -288,12 +288,14 @@ export class ClaudeCliRunner implements AgentRunner {
         if (!timedOut) throw err;
       } finally {
         if (deadline) clearTimeout(deadline);
-        if (killTimer) clearTimeout(killTimer);
         if (autoEndTimer) clearTimeout(autoEndTimer);
         stdinOpen = false;
       }
 
+      // Destroying stdout ends the read loop before the timeout escalation's
+      // grace period. Keep that escalation armed until the child is gone.
       const exitCode = await waitForExit(child);
+      if (killTimer) clearTimeout(killTimer);
       if (eofTermTimer) clearTimeout(eofTermTimer);
       if (eofKillTimer) clearTimeout(eofKillTimer);
 

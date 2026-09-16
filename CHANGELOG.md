@@ -1,5 +1,6 @@
 # Unreleased
 
+- fix(runners): keep timeout SIGKILL escalation armed until Claude and Codex child processes exit (#462)
 - docs(guide): getting started and project kit pages for the onboarding flow – guided setup, re-check offer, project and machine configuration, optional agent pipeline (#464, P4)
 - docs(guide): make the MCP project-leader guide the canonical per-client setup, launch, delivery and recovery reference (#515, PR 1)
 - docs(guide): filing an issue from the cockpit and the issue-filing skill (#468, step 4)

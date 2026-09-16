@@ -78,6 +78,61 @@ describe('a teardown xezar initiated (codex app-server)', () => {
 });
 
 /**
+ * #462 — destroying stdout ends the read loop before the timeout's SIGKILL
+ * grace period. The escalation must outlive that loop for a real app-server
+ * child that catches SIGTERM and deliberately keeps running.
+ */
+describe('wall-clock timeout for a real Codex child that ignores SIGTERM', () => {
+  const mockBin = fileURLToPath(
+    new URL('./__fixtures__/codex/mock-codex-app-server.mjs', import.meta.url),
+  );
+
+  it.skipIf(process.platform === 'win32')(
+    'keeps the SIGKILL escalation armed until the child exits',
+    async () => {
+      const events: AgentEvent[] = [];
+      const session = new CodexAppServerRunner({ bin: mockBin, timeoutMs: 100 }).startSession(
+        {
+          userPrompt: 'check the working tree',
+          cwd: process.cwd(),
+          env: { MOCK_CODEX_IGNORE_EOF: '1', MOCK_CODEX_IGNORE_SIGTERM: '1' },
+        },
+        (event) => events.push(event),
+      );
+      const pid = session.pid;
+      const startedAt = Date.now();
+
+      try {
+        const result = await Promise.race([
+          session.result,
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('session stayed pending after the SIGKILL grace period')), 13_000),
+          ),
+        ]);
+
+        expect(Date.now() - startedAt).toBeGreaterThanOrEqual(KILL_GRACE_MS - 500);
+        expect(result.text).toBe('Checking the working tree.');
+        expect(events).toContainEqual({
+          type: 'error',
+          message: 'codex app-server timed out after 0m and was killed',
+        });
+        expect(events.at(-1)).toEqual({ type: 'done' });
+        expect(() => process.kill(pid!, 0)).toThrow();
+      } finally {
+        if (pid) {
+          try {
+            process.kill(pid, 'SIGKILL');
+          } catch {
+            // The expected path already reaped it.
+          }
+        }
+      }
+    },
+    15_000,
+  );
+});
+
+/**
  * #844 — the runner's own SIGTERM sets `ChildProcess.killed`, so a watchdog
  * gated on `!child.killed` refused to escalate for exactly the app-server it
  * was written for: one that handles the signal and keeps running. The guard now
