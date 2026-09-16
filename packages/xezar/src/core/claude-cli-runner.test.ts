@@ -132,6 +132,60 @@ describe('a teardown xezar initiated', () => {
 });
 
 /**
+ * #462 — the deadline destroys stdout before the SIGKILL grace period ends.
+ * Clearing that escalation timer when the read loop ends leaves a real child
+ * that handles and ignores SIGTERM alive, with `session.result` waiting for it.
+ */
+describe('wall-clock timeout for a real Claude child that ignores SIGTERM', () => {
+  it.skipIf(process.platform === 'win32')(
+    'keeps the SIGKILL escalation armed until the child exits',
+    async () => {
+      const stubBin = fileURLToPath(
+        new URL('./__fixtures__/claude/stub-ignores-eof-exits-143.mjs', import.meta.url),
+      );
+      const events: AgentEvent[] = [];
+      const session = new ClaudeCliRunner({ bin: stubBin, timeoutMs: 100 }).startSession(
+        {
+          userPrompt: 'do it',
+          cwd: process.cwd(),
+          env: { MOCK_CLAUDE_IGNORE_SIGTERM: '1' },
+        },
+        (event) => events.push(event),
+      );
+      const pid = session.pid;
+      const startedAt = Date.now();
+
+      try {
+        const result = await Promise.race([
+          session.result,
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('session stayed pending after the SIGKILL grace period')), 13_000),
+          ),
+        ]);
+
+        expect(Date.now() - startedAt).toBeGreaterThanOrEqual(KILL_GRACE_MS - 500);
+        expect(result.text).toBe('work done');
+        expect(events).toContainEqual({
+          type: 'error',
+          message: 'claude CLI timed out after 0m and was killed',
+        });
+        expect(events.at(-1)).toEqual({ type: 'done' });
+        expect(() => process.kill(pid!, 0)).toThrow();
+      } finally {
+        if (pid) {
+          try {
+            process.kill(pid, 'SIGKILL');
+          } catch {
+            // The expected path already reaped it.
+          }
+        }
+      }
+    },
+    15_000,
+  );
+});
+
+/**
  * #844 — the watchdogs used to ask `!child.killed` before escalating, but Node
  * sets `killed` the moment a signal is *delivered*. claude installs its own
  * SIGTERM handler, so the flag went true while the process ran on and the

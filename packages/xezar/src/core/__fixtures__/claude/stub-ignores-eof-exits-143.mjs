@@ -5,6 +5,7 @@
 // itself, exiting 143 instead of dying from the signal.
 
 process.on('SIGTERM', () => {
+  if (process.env.MOCK_CLAUDE_IGNORE_SIGTERM === '1') return;
   // Claude reports this final frame while reacting to xezar's teardown
   // signal. It describes our interruption, not an agent failure.
   process.stdout.write(

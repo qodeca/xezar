@@ -84,7 +84,9 @@ function isolationProblem(config) {
 
 const ignoreEof = process.env.MOCK_CODEX_IGNORE_EOF === '1';
 if (ignoreEof) {
-  process.on('SIGTERM', () => process.exit(143));
+  process.on('SIGTERM', () => {
+    if (process.env.MOCK_CODEX_IGNORE_SIGTERM !== '1') process.exit(143);
+  });
   // Keep the event loop alive so EOF alone can never end the process.
   setInterval(() => {}, 60_000);
 }
