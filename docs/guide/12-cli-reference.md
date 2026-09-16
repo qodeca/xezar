@@ -9,7 +9,65 @@ xezar
 xezar serve --repo /path/to/project --port 4321 --no-open
 ```
 
-With no command, `serve` starts the server and browser cockpit. The default bind host is `127.0.0.1` and the starting port is 4321. If that port is busy, xezar tries the next one: **50 candidates total**, the requested port through requested port + 49, including when `--port` is explicit. Other bind failures, or exhausting that range, fail startup. Use the URL printed after the server binds.
+With no command, `serve` starts the server and browser cockpit. The default bind host is `127.0.0.1`. If the starting port is busy, xezar tries the next one: **50 candidates total**, the starting port through starting port + 49, including when `--port` is explicit. Other bind failures, or exhausting that range, fail startup. Use the URL printed after the server binds; when the port moved, the banner says which port was asked for.
+
+### Which port a project starts from
+
+Each project remembers the port its cockpit last listened on, so a bookmark keeps working and several projects can run side by side on one computer, each on its own port. The starting port is the first of these that is set:
+
+1. `-p` / `--port` on the command line.
+2. A port you pinned for the project with `xezar projects port <id> <port>`.
+3. The `XEZ_PORT` environment variable.
+4. The port this project last listened on.
+5. `4321`.
+
+A pinned port beats `XEZ_PORT` on purpose: a variable exported once in a shell profile must not pull every project to the same port. `--port 0` asks the operating system for any free port and is never remembered. A value that is not a whole number from 0 to 65535 stops the start with exit code 1 before anything is claimed. Remembering is best effort: when the workspace file cannot be written, the cockpit still starts and the terminal shows one warning.
+
+### Live activity in the terminal
+
+While the cockpit runs, the terminal shows what happens in the project: tasks queued, started, waiting for you, ready for review, finished, failed or cancelled; check steps that passed or failed; and failed cockpit requests. The boot banner and the `cockpit → <url>` line stay on standard output, unchanged. All activity goes to standard error, so `xezar serve | tee cockpit.out` still captures only the banner.
+
+| Mode (`--output`) | What you see |
+| --- | --- |
+| `auto` (default) | A live table of active tasks above the activity lines on a terminal at least 60 columns wide; one line per event on a narrower terminal; plain lines when the output is a file, a pipe, CI or `TERM=dumb`. |
+| `lines` | One line per event and no live table anywhere. Use this with a screen reader or for a log file. |
+| `rich` | Asks for the live table. Where `auto` would not draw one, xezar prints one notice and uses lines instead. |
+
+Plain lines are `key=value` records with a UTC timestamp, for example:
+
+```text
+2026-09-16T12:05:10.000Z level=error project=alpha event=gate.failed run=b98de765 step=unit-tests result_scope=stage exit=1 duration_ms=143118
+```
+
+Every line carries an `event=` name. Where the event is also something the project leader receives over MCP, the name is the same one the [MCP leader](13-mcp-leader.md) sees — for example `task.done`, `task.blocked`, `question.asked`, `gate.failed` or `verdict.posted` — so one search finds a fact in both places.
+
+| Names shared with MCP | Meaning |
+| --- | --- |
+| `task.done`, `task.failed`, `task.cancelled` | The task finished with that outcome. |
+| `task.blocked` | The task is waiting for input without a structured question. |
+| `question.asked`, `question.answered` | The agent asked a question; someone answered it. |
+| `result.ready` | The result is ready for review. |
+| `gate.passed`, `gate.failed` | A check step settled. `result_scope` is `routine` or `stage`. |
+| `task.stalled`, `task.resumed` | A step looks quiet or near its time limit (advisory); activity returned. |
+| `verdict.posted` | A reviewer's verdict was recorded on the task. |
+| `executor.available`, `executor.unavailable` | An agent provider can or cannot take work. |
+| `config.changed`, `workflow.saved`, `workflow.deleted`, `agent-config.changed` | A change that affects how tasks run. |
+| `goal.changed`, `instruction.added`, `instruction.queued`, `instruction.edited`, `instruction.removed` | A person changed a task's prompt or messages (shown at `debug`). |
+
+Names for the terminal only: `task.queued`, `task.started`, `step.started`, `xezar.ready`, `xezar.stopping`, `xezar.stopped`, `session.summary`, `mcp.ready`, `mcp.unavailable`, `registry.port`, `registry.invalid`, `http.error`, `http.refused`, `http.repeated`, `output.fallback` and `output.folded`.
+
+Some lines come from the project's MCP event journal rather than from the task itself: an advisory that a step looks stalled (`task.stalled`, a warning; nothing is stopped) and the matching `task.resumed`, a recorded reviewer verdict, an agent provider becoming available or unavailable, and configuration or workflow changes. These need the project's MCP service, which the cockpit starts on its own; when the terminal says `mcp · unavailable`, those lines are absent and everything else still works.
+
+A check step marked `resultScope: routine` in its workflow prints its success at `debug` level only, because routine successes are not news; its failure is always an error.
+
+| Flag | Environment | Effect |
+| --- | --- | --- |
+| `--output <auto\|lines\|rich>` | `XEZ_OUTPUT` | Presentation, as above. |
+| `--color <auto\|always\|never>` | `XEZ_COLOR`, `NO_COLOR` | Colour. Every coloured state also has a written label. Files, pipes, CI and `TERM=dumb` never receive colour or cursor movement. |
+| `--log-level <debug\|info\|warn\|error>` | `XEZ_LOG_LEVEL` | Lowest level shown. Default `info`. |
+| `-q`, `--quiet` | `XEZ_QUIET=1` | Warnings and errors only. The banner shrinks to the cockpit URL, there is no live table, and failures are never hidden. |
+
+A flag beats a saved value in `~/.xezar/config.json` (`cli.output`, `cli.color`, `cli.logLevel`), and a saved value beats the environment variable. The [configuration reference](11-configuration-reference.md) has the exact rules. When you stop the cockpit, the terminal prints a short summary of what finished in this session and how many tasks are still running (not with `--quiet`).
 
 `--no-open` suppresses browser opening. `--repo` selects the directory; otherwise the current directory is used. Inside Git, xezar resolves that directory to the repository root; outside Git, it uses the directory itself.
 
@@ -31,6 +89,8 @@ xezar run "Review the parser" --workflow quick-task --model sonnet
 | `failed` or `cancelled` | 1 |
 | Missing task text, unknown workflow, or a required provider unavailable at preflight | 1 |
 
+With `--quiet`, `run` prints only the final status line and the agent's own errors instead of the full transcript.
+
 The terminal waiter ends on those four task statuses. A task parked at `waiting` or `monitoring` is not a completed headless run; there is no follow-up text prompt in this command.
 
 ## To scaffold a kit: `init`
@@ -51,14 +111,15 @@ These commands edit/read the workspace registry directly and work without a runn
 | `xezar projects add [<dir>]` | Register the explicit directory; without one use the resolved `--repo`/current project. |
 | `xezar projects remove <id>` | Remove the registry entry without deleting the repository. `rm` is an alias for `remove`. |
 | `xezar projects tag <id> [<tag>…]` | Replace the project's grouping tags; omitting tags clears them. |
+| `xezar projects port <id> [<port>]` | Pin the port the project's cockpit starts from; omitting the port clears the pin. See [Which port a project starts from](#which-port-a-project-starts-from). |
 
 Use an ID from the listing for remove/tag. Registration rejects missing/non-directory paths, your home directory and task worktrees. Tags are trimmed, deduplicated case-insensitively and sorted; the first spelling is preserved. Successful commands return 0; usage errors, unknown IDs and refused registrations return 1.
 
-With `XEZ_SINGLE_PROJECT=1`, listing is limited to the launch project and add/remove/tag are refused. CLI removal is a registry operation: it does not perform the cockpit's active-task removal check. Check your tasks before removing an entry.
+With `XEZ_SINGLE_PROJECT=1`, listing is limited to the launch project and add/remove/tag/port are refused. CLI removal is a registry operation: it does not perform the cockpit's active-task removal check. Check your tasks before removing an entry.
 
 ## To connect an agent: `mcp`
 
-Configure your agent to launch `xezar mcp` (or `npx -y @qodeca/xezar mcp`) in the project whose cockpit is already running. It is a stdio MCP bridge, not an interactive terminal command. It starts no cockpit server, opens no HTTP port and does not register projects. Its tools are listed in the [MCP API reference](../features/mcp-server/mcp-api.md).
+Configure your agent to launch `xezar mcp` (or `npx -y @qodeca/xezar mcp`) in the project whose cockpit is already running. It is a stdio MCP bridge, not an interactive terminal command. It starts no cockpit server, opens no HTTP port, does not register projects and has no port setting: it finds the running cockpit through the project folder, whatever port that cockpit uses. Its standard output carries only MCP messages, whatever the output and colour settings say. Its tools are listed in the [MCP API reference](../features/mcp-server/mcp-api.md); setting up and attaching a leader is described in [MCP project leader](13-mcp-leader.md). The cockpit's terminal prints `mcp · ready` once the project's MCP service listens.
 
 ## To install, deploy or remove a hosted instance
 
@@ -74,7 +135,11 @@ Use the [server-install guide](../server-install/README.md) for prerequisites an
 
 | Flag | Applies to / meaning |
 | --- | --- |
-| `-p`, `--port <n>` | `serve`: starting port, default 4321, with retry above. `server-install`: explicit instance port; without it, a new named instance chooses a free port. |
+| `-p`, `--port <0..65535>` | `serve`: starting port, with retry above; without it, the order in [Which port a project starts from](#which-port-a-project-starts-from). `0` asks for any free port. `server-install`: explicit instance port; without it, a new named instance chooses a free port and never uses the remembered `serve` port. |
+| `--output <mode>` | `serve`: `auto` (default), `lines` or `rich`. |
+| `--color <when>` | `serve`: `auto` (default), `always` or `never`. |
+| `--log-level <level>` | `serve`: `debug`, `info` (default), `warn` or `error`. |
+| `-q`, `--quiet` | `serve` and `run`: warnings, errors and results only. |
 | `--repo <dir>` | Project directory, default current directory (Git-root resolution above). |
 | `--workflow <name>` | `run`: workflow name, default `quick-task`. |
 | `--model <model>` | `run`: task model override. |
@@ -93,7 +158,8 @@ Flags are parsed globally, but only the command consumers listed above use them.
 
 ## Related settings / env / config
 
-- [Environment contract](../../.env.example): backend paths, `XEZ_HOME`, `XEZ_SINGLE_PROJECT`, `XEZ_REMOTE` and mock mode.
+- [Environment contract](../../.env.example): backend paths, `XEZ_HOME`, `XEZ_SINGLE_PROJECT`, `XEZ_REMOTE`, mock mode, and the port and terminal-output variables `XEZ_PORT`, `XEZ_OUTPUT`, `XEZ_COLOR`, `XEZ_LOG_LEVEL` and `XEZ_QUIET`.
+- [Troubleshooting](16-troubleshooting-faq.md) for a busy port or a cockpit that will not start.
 - `.xezar/config.json` supplies project defaults; `~/.xezar/config.json` supplies registry and resource settings. [Project layout](../project-layout.md) explains maintained files and runtime state.
 - [CLI source](../../packages/xezar/src/index.ts) and [projects command source](../../packages/xezar/src/workspace/projects-cli.ts).
 

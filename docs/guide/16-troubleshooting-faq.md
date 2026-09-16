@@ -12,12 +12,13 @@ Read the Git error after the prefix. Check the selected base branch and inspect 
 
 ### The port is busy
 
-A normal launch tries port `4321` and then higher ports when the address is in use. Use the URL actually printed in the terminal. If the whole search range is occupied, the error is `no free port in … on …; free one or pass --port <port>`.
+A normal launch starts from the port this project used last time (or the one you pinned), else `4321`, and then tries higher ports when the address is in use. Use the URL actually printed in the terminal. The [CLI reference](12-cli-reference.md#which-port-a-project-starts-from) lists the full order. If the whole search range is occupied, the error is `no free port in … on …; free one or pass --port <port>`.
 
-Choose another starting port, for example:
+Choose another starting port for one launch, or pin one for the project, for example:
 
 ```sh
 xezar --port 4400
+xezar projects port <id> 4400
 ```
 
 A different error, `cannot listen on …`, includes the underlying listener error; changing ports is not a fix for every bind failure.
@@ -89,7 +90,7 @@ For a suspected vulnerability, follow [SECURITY.md](../../SECURITY.md) and repor
 
 ## Related settings / env / config
 
-- `--port`, `--repo`: select the starting port and project.
+- `--port`, `--repo`: select the starting port and project; `--output lines` and `--log-level debug` show more of what the cockpit is doing in the terminal. See the [CLI reference](12-cli-reference.md#live-activity-in-the-terminal).
 - Global **Settings → Resources**: `resources.autoResumeOnUsageLimit` in `~/.xezar/config.json`.
 - Global **Settings → Skills**: `skillsAutoUpdate`, which overrides `XEZ_SKILLS_AUTO_UPDATE` when stored.
 - `XEZ_HOME`, `XEZ_HIDE_TOKEN_USAGE`, `XEZ_HIDE_COST`, `XEZ_HIDE_TOKEN_METRICS`, `XEZ_DRY_RUN`: [environment contract](../../.env.example).

@@ -290,6 +290,7 @@ reconciled.
 ## Related settings / env / config
 
 - Project **Settings → MCP connection**: setup, status and attachment; **MCP API**: read-only tool reference.
+- [CLI reference](12-cli-reference.md#to-connect-an-agent-mcp): `xezar mcp` itself, and the terminal lines that carry the same event names a leader receives (`task.done`, `task.stalled`, `verdict.posted` and the rest).
 - [MCP API reference](../features/mcp-server/mcp-api.md), [connection UI source](../../packages/web/src/routes/settings/mcp-connection-section.tsx), [leader control source](../../packages/web/src/routes/settings/mcp-leader-control.tsx).
 - [Environment contract](../../.env.example): `XEZ_HOME`, `CODEX_HOME` and hosted-mode settings. Client config belongs to the agent; xezar runtime connection files belong under `.local/xezar/`.
 

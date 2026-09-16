@@ -289,8 +289,13 @@ As the analysis § 6(d) proposes: subscribe to the boot `RunStore` before recove
 | Runs recovered | info | `xezar · recovered <n> tasks from the previous session` | `task.recovered` | rows appear |
 | Task queued | info | `<id8> · queued — “<title>”` | `task.queued` (new) | row |
 | Task started / step started | info | `started — …` / `step i/n …` | `task.started` (new) / `step.started` (new) | row updates |
-| Check step settled | info / error | `check <step> passed — …` / `failed — exit <n> …` | `gate.passed` / `gate.failed` | – (never counted as failed, § 6.3) |
+| Check step settled | info / error (a `routine` pass is debug) | `check <step> passed — …` / `failed — exit <n> …` | `gate.passed` / `gate.failed`, with `result_scope` | – (never counted as failed, § 6.3) |
 | Question asked | warn | `needs you — “<question>”` + URL | `question.asked` | state `needs you` |
+| Waiting with no structured question | warn | `needs you — waiting for an answer` + URL | `task.blocked` (PR 4, as the catalog) | state `needs you` |
+| Step looks stalled / active again (advisory, #460) | warn / info | the journal row's summary; stall carries the task URL | `task.stalled` / `task.resumed` (from the MCP journal) | – |
+| Reviewer verdict recorded (#460) | info | the journal row's summary, in the reviewer's own words | `verdict.posted` (from the MCP journal) | – |
+| Configuration or workflow changed | info | `config · …` / `workflow · …` | `config.changed`, `workflow.saved`, `workflow.deleted`, `agent-config.changed` (from the MCP journal) | – |
+| A person edited a queued task or sent a message | debug | the journal row's summary | `goal.changed`, `instruction.*` (from the MCP journal) | – |
 | Question answered | info | `answered — running again` | `question.answered` | state `running` |
 | Review | info | `needs review — …` | `result.ready` | state `needs review` |
 | Done | info | `done — …` | `task.done` | row removed, counted |
@@ -314,7 +319,7 @@ As the analysis § 6(d) proposes: subscribe to the boot `RunStore` before recove
 | Port remembered / not remembered | debug / warn | `registry · …` | `registry.port` (new) | – |
 | Stop | info | `xezar · stopping — …` + summary | `xezar.stopping`, `session.summary`, `xezar.stopped` (new) | region erased |
 
-Names marked “new” are not in `mcp/event-catalog.ts`. Where the catalog has a name, the meaning and name are reused. #460’s significance and verdict policy must be reconciled before PR 3 fixes these meanings.
+Names marked “new” are not catalog kinds. Where the catalog has a name, the meaning and name are reused. PR 4 reconciled this table with #450 and #460: `packages/xezar/src/terminal/event-names.ts` types every `event=` as the contract's `McpEventKind` or one of a closed list of terminal-only names, and says for each catalog kind whether the run-store bridge or the MCP journal row prints it, so no fact prints twice. A routine successful check uses the same rule as leader delivery (`isLeaderSignificant`). Journal-sourced lines need the project's MCP service; without it they are absent. Rows whose names are not in that list are not printed yet: `worktree.*`, `task.recovered`, `task.monitoring`, `task.paused`, `permission.asked`, `leader.attached` / `leader.detached`, `mcp.session`, `skills.*` and `update.available`. Provider sign-in changes print as `executor.*` from the journal.
 
 ### 10.3 Output modes
 

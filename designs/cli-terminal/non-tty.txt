@@ -33,8 +33,8 @@
 2026-09-15T08:06:12.131Z level=info project=beta event=mcp.ready
 2026-09-15T08:06:13.402Z level=info project=beta event=update.available latest=0.16.1 running=0.16.0
 2026-09-15T08:07:02.918Z level=info project=beta event=task.started run=b98de765 step=implement agent=codex title="Bump vitest to 3.2"
-2026-09-15T08:09:45.330Z level=info project=beta event=gate.passed run=a12bc345 step=typecheck duration_ms=41022
-2026-09-15T08:12:08.771Z level=error project=beta event=gate.failed run=a12bc345 step=unit-tests exit=1 duration_ms=143118
+2026-09-15T08:09:45.330Z level=info project=beta event=gate.passed run=a12bc345 step=typecheck result_scope=stage duration_ms=41022
+2026-09-15T08:12:08.771Z level=error project=beta event=gate.failed run=a12bc345 step=unit-tests result_scope=stage exit=1 duration_ms=143118
 2026-09-15T08:12:09.002Z level=info project=beta event=step.started run=a12bc345 step=repair index=3 total=4 agent=claude
 2026-09-15T08:14:30.515Z level=warn project=beta event=question.asked run=b98de765 question="Pin vitest to 3.2.4 or allow 3.2.x?" url=http://localhost:4323/p/beta/tasks/b98de765
 2026-09-15T08:15:02.040Z level=info project=beta event=leader.attached client=claude-code
@@ -50,12 +50,11 @@
 2026-09-15T08:31:40.019Z level=info project=beta event=session.summary duration_ms=1528000 done=3 review=1 failed=1 cancelled=0 still_running=2
 2026-09-15T08:31:40.020Z level=info project=beta event=xezar.stopped
 
-# Event names reuse the MCP event catalog where the meaning is the same
-# (`task.done`, `task.failed`, `task.cancelled`, `result.ready`,
-# `question.asked`, `question.answered`, `gate.passed`, `gate.failed`,
-# `executor.available`, `executor.unavailable`; packages/xezar/src/mcp/
-# event-catalog.ts). Names the catalog does not have are new and listed in
-# README.md § 10.2.
+# Event names are the MCP event catalog's kinds wherever the catalog has one
+# (the contract's `McpEventKind`), and a closed list of terminal-only names
+# otherwise (packages/xezar/src/terminal/event-names.ts, #467 PR 4). A park
+# with no structured question is `task.blocked`; a routine check that passed
+# is `debug`. README.md § 10.2 lists every name.
 #
 # `tokens` and `cost_usd` are left out under XEZ_HIDE_TOKEN_USAGE=1 and
 # XEZ_HIDE_COST=1. `exit=unknown` is written when the agent reported no code;

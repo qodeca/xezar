@@ -42,3 +42,12 @@ describe('the terminal event vocabulary', () => {
     expect(catalogPrinted).toEqual(storeOwned);
   });
 });
+
+describe('the CLI guide', () => {
+  it('lists every name the terminal can print', () => {
+    // The guide promises a complete list; a new name without a guide entry breaks that promise.
+    const guide = readFileSync(new URL('../../../../docs/guide/12-cli-reference.md', import.meta.url), 'utf8');
+    const missing = [...catalogKinds, ...TERMINAL_ONLY_EVENTS].filter((name) => !guide.includes(`\`${name}\``));
+    expect(missing).toEqual([]);
+  });
+});
