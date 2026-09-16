@@ -35,9 +35,12 @@ import { entry } from './renderer.ts';
 import { RUNNER_IDS, type RunnerId } from '../core/agent-runner.ts';
 import { formatCost, formatDuration, formatTokens, type Glyphs } from './format.ts';
 import { sanitizeText } from './sanitize.ts';
+import { isLeaderSignificant } from '../mcp/event-significance.ts';
 
+import type { WorkflowResultScope } from '@qodeca/xezar-contract';
 import type { RunRecord, RunStatus, RunStore, RunEvent, StepState } from '../runs/store.ts';
 import type { ActivityEntry, ActivityLevel, TaskState } from './activity.ts';
+import type { TerminalEvent } from './event-names.ts';
 
 /**
  * Backend id → product name.
@@ -205,7 +208,7 @@ export function attachRunStoreActivity(store: RunStore, options: ActivitySourceO
     level: ActivityLevel;
     run: RunRecord;
     message: string;
-    event: string;
+    event: TerminalEvent;
     continuation?: readonly string[];
     fields?: ActivityEntry['fields'];
   }): void {
@@ -305,11 +308,14 @@ export function attachRunStoreActivity(store: RunStore, options: ActivitySourceO
       }
       case 'waiting': {
         const question = memoryEntry?.question;
+        // The catalog's split (#460): a park that follows a structured question is
+        // `question.asked`; a park with none is `task.blocked` — the task cannot go on without
+        // input, but nobody asked anything a person could answer by picking an option.
         emit({
           level: 'warn',
           run,
           message: question ? `needs you ${dash} ${quoted(question)}` : `needs you ${dash} waiting for an answer`,
-          event: 'question.asked',
+          event: question ? 'question.asked' : 'task.blocked',
           ...(url ? { continuation: [url] } : {}),
           fields: [
             ...(question ? ([['question', sanitizeText(question, { maxWidth: 200 })]] as const) : []),
@@ -441,13 +447,24 @@ export function attachRunStoreActivity(store: RunStore, options: ActivitySourceO
         const finished = Date.parse(step.finishedAt ?? '') || Date.now();
         const duration = Number.isNaN(started) ? undefined : formatDuration(finished - started);
         const durationMs = Number.isNaN(started) ? undefined : finished - started;
+        // The same scope the catalog stamps on its gate row, so both surfaces agree on which
+        // passes are routine. A definition without one is a stage gate, as there.
+        const resultScope: WorkflowResultScope =
+          run.workflowDef?.steps.find((candidate) => candidate.id === step.id)?.resultScope ?? 'stage';
         if (status === 'done') {
+          // A routine successful check wakes no leader (`isLeaderSignificant`), and it is not
+          // news in the terminal either: it drops to `debug`, where `--log-level debug` finds it.
+          const significant = isLeaderSignificant({ kind: 'gate.passed', gate: { stepId: step.id, resultScope } });
           emit({
-            level: 'info',
+            level: significant ? 'info' : 'debug',
             run,
             message: `check ${step.id} passed${duration ? ` ${dash} ${duration}` : ''}`,
             event: 'gate.passed',
-            fields: [['step', step.id], ...(durationMs !== undefined ? ([['duration_ms', durationMs]] as const) : [])],
+            fields: [
+              ['step', step.id],
+              ['result_scope', resultScope],
+              ...(durationMs !== undefined ? ([['duration_ms', durationMs]] as const) : []),
+            ],
           });
           return;
         }
@@ -464,6 +481,7 @@ export function attachRunStoreActivity(store: RunStore, options: ActivitySourceO
           event: 'gate.failed',
           fields: [
             ['step', step.id],
+            ['result_scope', resultScope],
             ['exit', exit === undefined || exit < 0 ? 'unknown' : exit],
             ...(durationMs !== undefined ? ([['duration_ms', durationMs]] as const) : []),
           ],

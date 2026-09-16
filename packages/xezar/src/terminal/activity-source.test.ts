@@ -177,6 +177,20 @@ describe('status transitions', () => {
     expect(h.messages().at(-1)).toBe('needs you — waiting for an answer');
   });
 
+  it('names a park with no structured question `task.blocked`, the catalog kind, never `question.asked` (#467, PR 4)', () => {
+    // RED against: the PR 3 mapping, which printed `question.asked` for every park. The MCP
+    // catalog (#460) writes `task.blocked` for exactly this transition, and one `grep` across a
+    // terminal log and a journal must find the same fact under the same name.
+    const store = new FakeStore();
+    const h = harness(store);
+    h.source.endRecovery();
+    store.put(record({ id: 'c1', status: 'running' }));
+    store.put(record({ id: 'c1', status: 'waiting' }));
+    expect(h.entries.at(-1)).toMatchObject({ event: 'task.blocked', level: 'warn' });
+    expect(h.rows.get('c1')?.state).toBe('needs you');
+    expect(h.events()).not.toContain('question.asked');
+  });
+
   it('an answer moves the task back to running with its own line', () => {
     const store = new FakeStore();
     const h = harness(store);
@@ -274,6 +288,36 @@ describe('check steps', () => {
     expect(h.entries.at(-1)?.event).toBe('gate.passed');
     expect(h.entries.at(-1)?.level).toBe('info');
     expect(h.failedTasks).toBe(0);
+  });
+
+  it('a ROUTINE successful check drops to debug, as it wakes no leader; a stage check and every failure do not (#467, PR 4)', () => {
+    // RED against: printing every pass at `info`, which is the terminal disagreeing with
+    // `isLeaderSignificant` about the same row. `result_scope` is the catalog's own field.
+    const store = new FakeStore();
+    const h = harness(store);
+    h.source.endRecovery();
+    const workflowDef = {
+      name: 'gated',
+      steps: [
+        { id: 'typecheck', command: 'npm run typecheck', resultScope: 'routine' },
+        { id: 'unit-tests', command: 'npm test', resultScope: 'routine' },
+      ],
+    };
+    store.put(record({ id: 'r1', status: 'running', steps, workflowDef } as unknown as RunRecord));
+    store.event('r1', { type: 'step-end', stepId: 'typecheck', status: 'done' });
+    expect(h.entries.at(-1)).toMatchObject({ event: 'gate.passed', level: 'debug' });
+    expect(h.entries.at(-1)?.fields).toContainEqual(['result_scope', 'routine']);
+
+    store.event('r1', { type: 'check-output', stepId: 'unit-tests', exitCode: 1 });
+    store.event('r1', { type: 'step-end', stepId: 'unit-tests', status: 'failed' });
+    expect(h.entries.at(-1)).toMatchObject({ event: 'gate.failed', level: 'error' });
+    expect(h.entries.at(-1)?.fields).toContainEqual(['result_scope', 'routine']);
+
+    // No definition, or no scope on it: a stage gate, as the catalog reads it.
+    store.put(record({ id: 's1', status: 'running', steps }));
+    store.event('s1', { type: 'step-end', stepId: 'typecheck', status: 'done' });
+    expect(h.entries.at(-1)).toMatchObject({ event: 'gate.passed', level: 'info' });
+    expect(h.entries.at(-1)?.fields).toContainEqual(['result_scope', 'stage']);
   });
 
   it('prints a failed check as an error with its exit code, and never counts it as a failed task', () => {

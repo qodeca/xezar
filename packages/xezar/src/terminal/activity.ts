@@ -16,6 +16,7 @@ import { formatClock, padEndTo, padStartTo, type Glyphs } from './format.ts';
 
 import type { LogLevel } from '../cli-settings.ts';
 import type { LogfmtValue } from './logfmt.ts';
+import type { TerminalEvent } from './event-names.ts';
 
 export type ActivityLevel = LogLevel;
 
@@ -49,8 +50,8 @@ export interface ActivityEntry {
   message: string;
   /** Extra lines belonging to the SAME entry — a task URL, a server's own message. */
   continuation?: readonly string[];
-  /** The plain-output `event=` name. */
-  event: string;
+  /** The plain-output `event=` name: a catalog kind or a terminal-only name (`event-names.ts`). */
+  event: TerminalEvent;
   /** The plain-output fields, in the order they are printed. */
   fields?: ReadonlyArray<readonly [string, LogfmtValue]>;
   /** Set on the entries folding must never touch, whatever the level says. */
