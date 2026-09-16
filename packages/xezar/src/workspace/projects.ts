@@ -251,6 +251,26 @@ async function probeRoot(root: string): Promise<RootProbe> {
 }
 
 /**
+ * The ONE place a registry entry becomes an API entry (#467). Every route that answers with
+ * a project goes through it — `GET /projects`, `POST /projects` and `PATCH /projects/:id` —
+ * so the wire shape cannot differ between them.
+ *
+ * What it does beyond the spread: it DROPS the CLI keys. `cli.port` is a terminal preference
+ * and `lastListen` is an address hint that is stale the moment the process that wrote it
+ * exits, and the registry schema is `.passthrough()`, so without this both would ride onto
+ * the wire as undeclared fields the contract does not describe. The cockpit's answer to
+ * "which other projects run, and where" is the DERIVED `instance?` field of the switcher
+ * design, not these raw values.
+ */
+export function toProjectListEntry(
+  project: WorkspaceProject,
+  probe: RootProbe,
+): ProjectListEntry {
+  const { cli: _cli, lastListen: _lastListen, ...rest } = project;
+  return { ...rest, ...probe };
+}
+
+/**
  * One root's `status` (+`branch`) through the same TTL cache `listProjects`
  * uses. Exported for `POST /api/projects` (step 4.2): the register route
  * answers with the freshly registered entry and must hand the cockpit the
@@ -280,7 +300,7 @@ export async function listProjects(selector?: ProjectListSelector): Promise<Proj
     ? config.projects.filter((project) => project.id === selector.projectId)
     : config.projects;
   return Promise.all(
-    projects.map(async (project) => ({ ...project, ...(await probeRoot(project.root)) })),
+    projects.map(async (project) => toProjectListEntry(project, await probeRoot(project.root))),
   );
 }
 
