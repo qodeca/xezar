@@ -275,4 +275,5 @@ described in [SECURITY.md](SECURITY.md).
 
 ## License
 
-**MIT** © Patryk Lewczuk – full text in [LICENSE](LICENSE).
+**MIT** © Qodeca – full text in [LICENSE](LICENSE).
+Xezar is based on work done in [open-mercato/cezar](https://github.com/open-mercato/cezar).
