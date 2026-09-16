@@ -32,15 +32,16 @@ Sources: `packages/web/src/lib/theme.ts`, `packages/web/src/lib/appearance.ts`,
   `--primary-foreground` and `--ring` at the violet tokens. Lime is the shipped look and needs no attribute.
 - Adding an accent means one new block in `index.css` and one entry in `ACCENT_OPTIONS`
   (`routes/settings/appearance.tsx`). Nothing else changes.
-- Stored server-side in `ui-state.json` (`appearance.accent`) so it follows the repo, and mirrored to
-  localStorage `xez-accent` for the pre-paint script.
+- Stored in the workspace-wide `~/.xezar/ui-state.json` (`appearance.accent`, through
+  `PUT /api/v1/workspace/ui-state`), so it follows the person across every project, and mirrored to localStorage `xez-accent` for the pre-paint script.
 
 ## Density
 
 - `data-density` changes only `--spacing` (Tailwind's one spacing token). See
   [foundations.md § 4](foundations.md#4-spacing-and-density) for the values.
-- Type sizes never change with density. A design that fixes pixel heights by hand
-  (`h-[34px]`) opts out of the lever; use scale units where the density should apply.
+- Type sizes never change with density. A hand-typed spacing or height pixel (`h-[34px]`) opts out
+  of the lever, and a new occurrence fails the `no-arbitrary-spacing` guardian rule; use scale units.
+  The chip floors are intentional fixed pixels; existing allowlisted debt is tracked in #445.
 - Stored like the accent (`appearance.density`, mirror `xez-density`).
 
 ## Reading width
@@ -77,5 +78,6 @@ A mockup or a new surface is accepted only when all of these hold:
 | Wide reading width | Columns that read `--measure` open up; full-width surfaces are unaffected. | Set `data-width="wide"`. |
 | System theme | The page follows an OS change without a reload. | `ThemeProvider` handles it; a mockup only needs `.light` to work. |
 
-The specimen pages in `docs/design-system/specimens/` have controls for theme, accent, density and width
-so every one of these can be checked without the app.
+The index, foundations, components and patterns specimen pages have controls for theme, accent,
+density and width. The mobile page has only a theme toggle when opened on its own; inside the
+patterns iframe it inherits the parent appearance settings.

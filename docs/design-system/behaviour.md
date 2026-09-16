@@ -1,7 +1,7 @@
 # Behaviour
 
 Keyboard, focus, announcements, responsive rules, motion and theming as the code does them.
-Counts are from `packages/web/src` (non-test files) on 2026-09-13.
+Inventory counts read on 2026-09-16 from non-test `.ts`/`.tsx` in `packages/web/src`: literal occurrences, with breakpoint prefixes matched at a boundary (excluding `max-` prefixes).
 
 ## 1. Keyboard and focus
 
@@ -18,8 +18,8 @@ Counts are from `packages/web/src` (non-test files) on 2026-09-13.
 
 Focus rules:
 
-- The focus ring is `focus-visible:ring-[3px] focus-visible:ring-ring/50` with `outline-none` (58 route
-  sites, all primitives). The dialog and sheet close buttons still use the older `focus:ring-2` (G-06).
+- The focus ring is `focus-visible:ring-[3px] focus-visible:ring-ring/50` with `outline-none` (59 occurrences: eight in primitives,
+  51 outside `components/ui`). The dialog and sheet close buttons still use the older `focus:ring-2` (G-06).
 - A hover-revealed control MUST also reveal on `focus-visible` (`focus-visible:opacity-100`) and on
   `no-hover:` devices. A zero-width hidden control stays focusable; never `hidden` it.
 - Dialogs and sheets trap focus through Radix; the mobile drawer button is a real `SheetTrigger` so closing
@@ -33,12 +33,13 @@ Focus rules:
 
 ## 2. Announcements
 
-- `aria-live="polite"` regions: 10, all polite, none assertive. Examples: the composer dictation transcript,
+- Polite live regions: 11 — 10 literal `aria-live="polite"` attributes plus the conditional
+  `aria-live` in `mcp-connection-section.tsx`; none assertive. Examples: the composer dictation transcript,
   the thread history loader (`sr-only`), the MCP connection status and operations, the skills update card,
   the GitHub merge box.
-- `role="status"`: 19 sites (toasts, the running spinner, monitoring schedule lines, the provider status
-  banner, the dictation bar). `role="alert"`: 10 sites (inline errors, the provider auth banner, the route
-  error boundary).
+- `role="status"`: 20 sites (toasts, the running spinner, monitoring schedule lines, the provider status
+  banner, the dictation bar). `role="alert"`: 11 sites (inline errors, the provider auth banner, the route
+  error boundary and the MCP leader refusal line).
 - `aria-busy`: the thread history boundary and the "Plan first" radio while planning.
 - Status dots that stand alone get `role="img"` and `aria-label` from `attention.label`; the unread marker
   is `aria-label="unread"`.
@@ -51,8 +52,8 @@ is `role="alert"`. A toast is `role="status"`.
 
 | Prefix | Count | What it does |
 | --- | --- | --- |
-| `sm:` | 53 | dialog widths, footer direction, plan-review full-screen below `sm` |
-| `md:` | 193 | the one layout switch: sidebar vs drawer, desktop header vs mobile top bar, table vs cards, 16px vs 14px inputs, `h-11` vs `md:h-9` rows, tree pane shown, diff forced to unified + wrap below |
+| `sm:` | 54 | dialog widths, footer direction, plan-review full-screen below `sm` |
+| `md:` | 203 | the one layout switch: sidebar vs drawer, desktop header vs mobile top bar, table vs cards, 16px vs 14px inputs, `h-11` vs `md:h-9` rows, tree pane shown, diff forced to unified + wrap below |
 | `lg:` | 11 | wider diff tree pane, one global-table column |
 | `xl:` | 12 | global-table column degradation, the ghost-code backdrop (`max-xl:hidden`) |
 | `max-md:` | 8 | phone-only borders and margins |
@@ -72,11 +73,11 @@ is `role="alert"`. A toast is `role="status"`.
 
 ## 4. Motion
 
-- `transition-colors` (60) is the default hover transition. `transition-transform` (16) rotates chevrons.
+- `transition-colors` (61) is the default hover transition. `transition-transform` (16) rotates chevrons.
   `transition-opacity` (6) reveals row actions.
 - `animate-spin` (18): twelve are `motion-safe:animate-spin`; the step rail adds `motion-reduce:animate-none`;
   five are unguarded (G-08).
-- `animate-pulse` (9): guarded in the docks, step rail, composer and twinkles; unguarded in `StatusDot`,
+- `animate-pulse` (10): guarded in the docks, step rail, composer and twinkles; unguarded in `StatusDot`,
   `Skeleton` and two `/new` sites (G-08).
 - `animate-in` / `animate-out` from `tw-animate-css` on Radix `data-[state]` and on toasts (toasts are
   `motion-safe:`).

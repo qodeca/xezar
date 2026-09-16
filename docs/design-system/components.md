@@ -3,7 +3,7 @@
 Every primitive in `packages/web/src/components/ui/` and every shared module in
 `packages/web/src/components/` (including `composer/` and `diff/`). One entry per file, in a fixed order:
 purpose · source · variants and props that matter · states · rules · accessibility · where used.
-"Where used" counts importing files outside tests on 2026-09-13. Class strings are quoted from the source.
+"Where used" counts importing files outside tests. Button, Collapsible, Input, Label and StatusDot counts read on 2026-09-16; other importer counts retain the 2026-09-13 inventory. Class strings are quoted from the source.
 
 Definitions the drift test uses:
 
@@ -13,7 +13,7 @@ Definitions the drift test uses:
   (`nav-items.ts`, `composer-text.ts`, `diff/types.ts`) count: they carry rules a design must know.
 
 Shared foundations: `components.json` (shadcn `new-york`, base colour `neutral`, CSS variables, lucide);
-`lib/utils.ts` exports `cn` (`twMerge(clsx(...))`, taught that `shadow-modal` is a shadow step).
+`lib/utils.ts` exports `cn` (`twMerge(clsx(...))`, taught that `shadow-modal` is a shadow step and the six rhythm names are spacing steps).
 Every primitive sets `data-slot="<name>"`; variant-bearing ones add `data-variant` / `data-size`. Radix
 comes from the single `radix-ui` package; there is no `sonner`, the toast is hand-rolled.
 
@@ -27,9 +27,9 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Sizes** (`size`, default `default`): `default` = `h-9 px-3.5 text-[13.5px]`; `sm` = `h-[30px] rounded-sm px-2.5 text-[12.5px]`; `icon` = `size-9`; `icon-sm` = `size-[30px] rounded-sm`.
 - **Base**: `inline-flex … gap-[7px] rounded-md font-semibold … focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50`; unsized svg children become `size-4`. `asChild` renders a Radix `Slot`.
 - **States**: hover (brightness or background), focus-visible ring, disabled (50% opacity, no pointer events), pending (caller swaps the label to `Verb-ing…` and disables).
-- **Rules**: DO use `contrast` for the sidebar CTA and dialog confirms, `primary` for the one send/start action on a surface, `outline` for cancel, `ghost` for icon buttons, `danger-ghost` for destructive row actions. DO NOT hand-write `bg-danger text-danger-foreground` on a confirm when the confirm is destructive; the three current copies are known gap G-10. DO NOT add a `secondary` variant.
+- **Rules**: DO use `contrast` for the sidebar CTA and dialog confirms, `primary` for the one send/start action on a surface, `outline` for cancel, `ghost` for icon buttons, `danger-ghost` for destructive row actions. DO NOT hand-write `bg-danger text-danger-foreground` on a confirm when the confirm is destructive; the four current copies (counts read on 2026-09-16) are known gap G-10. DO NOT add a `secondary` variant.
 - **Accessibility**: an icon-only button MUST carry `aria-label`. Touch targets on phone are `size-11`.
-- **Where used**: 44 files (most-imported primitive).
+- **Where used**: 46 files (most-imported primitive).
 
 ### Badge
 
@@ -54,7 +54,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Purpose**: unstyled open/close wrapper (Radix).
 - **Source**: `packages/web/src/components/ui/collapsible.tsx`. Exports `Collapsible`, `CollapsibleTrigger`, `CollapsibleContent`. Adds only `data-slot`.
 - **Rules**: the trigger MUST be a real button (Radix supplies `aria-expanded`). Rotate the chevron with `rotate-90` (`-rotate-90` when collapsed) and `transition-transform`.
-- **Where used**: 4 files (`run-diff.tsx`, `compare-variants.tsx`, `task-thread/step-rail.tsx`, `task-thread/thread-items.tsx`).
+- **Where used**: 5 files (`run-diff.tsx`, `compare-variants.tsx`, `settings/mcp-connection-section.tsx`, `task-thread/step-rail.tsx`, `task-thread/thread-items.tsx`).
 
 ### Command
 
@@ -130,7 +130,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Source**: `packages/web/src/components/ui/input.tsx`. Exports `Input`.
 - **Look**: `h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-base shadow-xs … placeholder:text-soft-foreground md:text-sm`; focus `focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50`; invalid `aria-invalid:border-destructive aria-invalid:ring-destructive/20`; disabled `pointer-events-none cursor-not-allowed opacity-50`.
 - **Rules**: DO keep `text-base` on phone (iOS zooms below 16px). DO pair with `Label htmlFor` or `aria-label`. Two routes hand-roll the search input markup instead of using Input (G-12); new search fields use `Input`.
-- **Where used**: 9 files.
+- **Where used**: 10 files.
 
 ### Textarea
 
@@ -144,13 +144,13 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 
 - **Purpose**: form label (Radix).
 - **Source**: `packages/web/src/components/ui/label.tsx`. Class `flex items-center gap-2 text-sm leading-none font-medium select-none`; dims with a disabled `peer` or `group`.
-- **Where used**: 2 files (`clone-project-dialog.tsx`, `routes/automations/automations.tsx`).
+- **Where used**: 3 files (`clone-project-dialog.tsx`, `routes/automations/automations.tsx`, `routes/settings/mcp-leader-control.tsx`).
 
 ### Select
 
 - **Purpose**: stock shadcn select.
 - **Source**: `packages/web/src/components/ui/select.tsx`. `SelectTrigger size` `sm | default` (`h-8` / `h-9`); `SelectContent position` defaults to `item-aligned`.
-- **Rules**: unused. Settings pages render a raw `<select>` with a raw class of the shape `block w-full rounded-md border border-input bg-card px-3 py-1.5 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50` – that exact string at two sites (`routes/settings/agents-section.tsx:237`, `routes/repo-git/repo-branches.tsx:162`), width and focus variants at eight more (G-11). That raw select is the rule for new settings work until the gap is closed.
+- **Rules**: unused. Settings pages render a raw `<select>` with a raw class of the shape `block w-full rounded-md border border-input bg-card px-3 py-1.5 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50` – that exact string at two sites (`routes/settings/agents-section.tsx:237`, `routes/repo-git/repo-branches.tsx:162`), the shared `rounded-md border border-input bg-card px-3 py-1.5` substring appears at 23 sites including these two (counts read on 2026-09-16; G-11). That raw select is the rule for new settings work until the gap is closed.
 - **Where used**: 0 files.
 
 ### Switch
@@ -256,7 +256,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Source**: `packages/web/src/components/status-dot.tsx`. Exports `StatusDot`, `statusDotVariants`, type `StatusDotTone`.
 - **Variants**: `tone` `success | pending | danger | violet | neutral` (default `neutral`) → `bg-success | bg-pending | bg-danger | bg-violet | bg-soft-foreground`; `pulse` adds `animate-pulse`. Base `inline-block size-[7px] shrink-0 rounded-full`.
 - **Rules**: DO derive tone and pulse from `deriveAttention(run)`. DO give it `role="img"` and `aria-label={attention.label}` when it stands alone. DO NOT hand-roll a dot (three ad-hoc dots exist, G-08).
-- **Where used**: 12 files.
+- **Where used**: 14 files.
 
 ### Pill
 
