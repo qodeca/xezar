@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { z } from 'zod';
 // The reviewer-report shapes (#460) come from the contract package, not from a second copy here:
 // they go out on every run route, and one definition is what keeps the wire and the file identical.
-import { taskVerdictIssueSchema, taskVerdictSchema } from '@qodeca/xezar-contract';
+import { stepProgressSchema, taskVerdictIssueSchema, taskVerdictSchema } from '@qodeca/xezar-contract';
 import { collectSecretValues, redactDeep, redactSecrets } from '../core/secret-redaction.ts';
 // Pure, dependency-free reference helpers — the same sanity bound the marker parser applies.
 import { MAX_REF } from './task-refs.ts';
@@ -93,6 +93,11 @@ const stepStateSchema = z.object({
   profileId: z.string().optional(),
   /** Dollar cost reported by the claude CLI for this step's turns. */
   costUsd: z.number().optional(),
+  /** Advisory liveness of this step (#460) — the CONTRACT's shape, imported rather than
+   *  restated, so the file and the wire cannot disagree. `.catch(undefined)` like `verdicts`:
+   *  a hand-edited or future-shaped value drops its own field instead of taking the record
+   *  (and therefore every run in the index) down with it. Absent means unknown, not healthy. */
+  progress: stepProgressSchema.optional().catch(undefined),
 });
 
 /** One prompt message stacked onto a run while it waits for a free agent slot
@@ -1261,6 +1266,25 @@ export class RunStore extends EventEmitter {
     const full: RunEvent = this.redact({ ...event, seq: this.nextSeq(runId), ts: new Date().toISOString() });
     this.emit('event', { runId, event: full });
     return full;
+  }
+
+  /**
+   * Report that a step is DOING something, without producing an event at all (#460 § 2).
+   *
+   * There is exactly one kind of progress the transcript cannot show: a check step's output
+   * arrives as stdout/stderr chunks and is recorded as ONE `check-output` line when the command
+   * exits, so a `npm test` that prints a line a second is, on the event bus, perfectly silent for
+   * its whole run. A liveness monitor reading only the bus would call every long check stalled.
+   *
+   * This is deliberately not an event: it writes nothing, persists nothing, allocates no `seq`
+   * and reaches no SSE stream or journal — it only wakes an in-process listener. The alternative
+   * was an ephemeral frame, which would have put a synthetic heartbeat on the live wire that the
+   * cockpit, the replay dedup and the event catalog would each have had to learn to ignore. The
+   * existing `check-output` record at exit is untouched, which is the point: this adds a signal
+   * without changing what anything already reads.
+   */
+  noteActivity(runId: string, stepId?: string): void {
+    this.emit('activity', { runId, ...(stepId === undefined ? {} : { stepId }) });
   }
 
   /** Lazily-collected concrete secret values from the host env (#427). */

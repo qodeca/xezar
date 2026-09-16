@@ -350,6 +350,24 @@ describe('every other kind the catalog emits', () => {
         store.updateRun(run.id, { verdicts: [pendingVerdict(run.id, run.steps[0]!.id)] });
       },
     },
+    // The advisory liveness pair (#460 § 2). Reported to the catalog by the stall monitor, the
+    // way the E-05 writers report theirs — the monitor's own arithmetic is `stall-monitor.test.ts`.
+    {
+      kind: 'task.stalled',
+      origin: 'system',
+      act: () => {
+        const run = startedRun();
+        catalog.taskStalled({ runId: run.id, stepId: run.steps[0]!.id, reason: 'silence', since: new Date().toISOString() });
+      },
+    },
+    {
+      kind: 'task.resumed',
+      origin: 'system',
+      act: () => {
+        const run = startedRun();
+        catalog.taskResumed({ runId: run.id, stepId: run.steps[0]!.id });
+      },
+    },
   ];
 
   it('lists every kind of the contract once, between the two tables', () => {
@@ -466,6 +484,48 @@ describe('every other kind the catalog emits', () => {
       store.updateRun(run.id, { status: 'done', finishedAt: new Date().toISOString() });
 
       expect(rows().map((row) => row.kind)).toEqual(['verdict.posted', 'task.done']);
+    });
+  });
+
+  /**
+   * #460 § 2 — the advisory stall rows. Their WORDING is load-bearing: a row read on its own is
+   * the only thing a leader has, and one that omitted "nothing was stopped" would be read as a
+   * failure. Break it guards: drop the advisory clause, or copy the observation's timestamps into
+   * the summary instead of leaving them on the record (D-05's summary-only rule).
+   */
+  describe('advisory stall rows (#460)', () => {
+    it('names the condition, the step and that nothing was stopped', () => {
+      const run = startedRun();
+      const since = new Date().toISOString();
+      catalog.taskStalled({ runId: run.id, stepId: 'step-0', reason: 'silence', since });
+      catalog.taskStalled({ runId: run.id, stepId: 'step-0', reason: 'timeout-near', since });
+      catalog.taskResumed({ runId: run.id, stepId: 'step-0' });
+
+      expect(rows().map((row) => [row.kind, row.summary])).toEqual([
+        ['task.stalled', 'task may be stalled: step step-0 has shown no agent activity for 5 minutes (advisory — the task is still running and nothing was stopped)'],
+        ['task.stalled', 'task may be stalled: step step-0 has used 80% of its time limit (advisory — the task is still running and nothing was stopped)'],
+        ['task.resumed', 'task resumed: agent activity returned at step step-0'],
+      ]);
+    });
+
+    it('keeps the summary a summary — no timestamps, no transcript', () => {
+      const run = startedRun();
+      const since = '2026-09-16T10:00:00.000Z';
+      catalog.taskStalled({ runId: run.id, stepId: 'step-0', reason: 'silence', since });
+      expect(rows()[0]!.summary).not.toContain(since);
+    });
+
+    it('stays E-01 and `system`, whoever the current MCP call belongs to', () => {
+      const run = startedRun();
+      // A leader reading its own events must not see its read attributed as the cause of a stall.
+      withEventOrigin({ origin: 'leader', causedBy: LEADER_OP }, () =>
+        catalog.taskStalled({ runId: run.id, stepId: 'step-0', reason: 'silence', since: new Date().toISOString() }),
+      );
+      const [row] = rows();
+      expect(row!.category).toBe('E-01');
+      // Inside a leader call the origin is the door's, exactly as every other derivation here.
+      expect(row!.origin).toBe('leader');
+      expect(row!.causedBy).toBe(LEADER_OP);
     });
   });
 
@@ -675,14 +735,22 @@ describe('lifecycle of the catalog itself', () => {
     ]);
   });
 
-  it('releases every subscription on detach', () => {
-    const baseline = { run: store.listenerCount('run'), event: store.listenerCount('event'), deleted: store.listenerCount('deleted') };
+  it('releases every subscription on detach — the stall monitor it started included', () => {
+    const before = {
+      run: store.listenerCount('run'),
+      event: store.listenerCount('event'),
+      activity: store.listenerCount('activity'),
+      deleted: store.listenerCount('deleted'),
+    };
     expect(bus.listeners.size).toBe(1);
     catalog.detach();
     expect(bus.listeners.size).toBe(0);
-    expect(store.listenerCount('run')).toBe(baseline.run - 1);
-    expect(store.listenerCount('event')).toBe(baseline.event - 1);
-    expect(store.listenerCount('deleted')).toBe(baseline.deleted - 1);
+    // Down to what an un-attached store carries: the catalog's own subscriptions AND the stall
+    // monitor's (#460 § 2), which rides this lifetime and must not outlive it.
+    for (const channel of ['run', 'event', 'activity', 'deleted'] as const) {
+      expect(store.listenerCount(channel), channel).toBe(0);
+      expect(before[channel], `${channel} was subscribed while attached`).toBeGreaterThan(0);
+    }
     const run = startedRun();
     store.updateRun(run.id, { status: 'done' });
     expect(rows()).toEqual([]);

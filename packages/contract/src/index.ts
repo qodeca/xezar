@@ -7,6 +7,7 @@ export * from './health.ts';
 export * from './resume-command.ts';
 export * from './mcp-ownership.ts';
 export * from './task-verdict.ts';
+export * from './run-progress.ts';
 export * from './runs.ts';
 export * from './repo.ts';
 export * from './github.ts';
