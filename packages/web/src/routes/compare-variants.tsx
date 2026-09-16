@@ -182,7 +182,7 @@ function CompareView({
           <AlertDialogHeader>
             <AlertDialogTitle>Pick variant {confirming?.variant}?</AlertDialogTitle>
             <AlertDialogDescription>
-              Variant {confirming?.variant}'s changes go to the review gate. The other{' '}
+              Variant {confirming?.variant} is kept with its changes. The other{' '}
               {variants.length - 1 === 1 ? 'variant is' : `${variants.length - 1} variants are`}{' '}
               cancelled if still open, archived, and their worktrees and branches removed. There is
               no undo.

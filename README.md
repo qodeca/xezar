@@ -189,7 +189,31 @@ environment variable for it. The leader attaches itself with `leader_events` act
 pi), so it names nothing, and `leader_events` action `status` says whether it is attached
 and can receive pushes. Each pushed event names the cursor to acknowledge, so no read is
 needed. An attachment ends when xezar restarts; the leader checks `status` and attaches
-again. A person can still attach a leader with **Attach leader** under
+again.
+
+**After a context compaction the leader reads, it does not wait.** A compaction drops
+whatever pushed messages were still in the leader's context, and xezar re-pushes nothing
+on a timer. So the leader's own instructions should say: after context compaction, call
+`leader_events` with action `read` and no cursor before relying on prior pushes. It
+replays the retained events after the last explicit acknowledgement, including events
+that were pushed but never acknowledged. Read every page with `nextCursor` while
+`hasMore` is true, deduplicate by `eventId`, reconcile the current task state, then
+acknowledge only the events accounted for – a transport receipt is not an
+acknowledgement. Already acknowledged events are not replayed; a retained earlier cursor
+rewinds the read on purpose and never moves the acknowledgement. If the journal reports a
+gap, reconcile the returned current state before acknowledging `resumeCursor`. Do not
+poll while idle. xezar ships that same text in the tool description and in the MCP
+`initialize` instructions, so a leader reads it at runtime.
+
+Delivery is **at-least-once within retained durable state** – not exactly-once, and not a
+promise about runtime state you deleted. The journal keeps at least the newest 10 000
+events per project and evicts none younger than 14 days; one page carries at most 100
+events or 40 000 bytes. Anything older comes back as an explicit gap, never as silence.
+Only `ack` moves the position – reading an event or receiving it does not – and `ack` is
+cumulative, monotonic and idempotent, so an older or repeated cursor is a successful
+no-op.
+
+A person can still attach a leader with **Attach leader** under
 **Settings → MCP connection → Connection status**, and an OpenCode leader is attached
 only that way.
 An unattached leader reads events with `leader_events`. Use `gh` for GitHub facts.
