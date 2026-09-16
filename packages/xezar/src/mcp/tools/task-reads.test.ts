@@ -225,6 +225,53 @@ describe.skipIf(isWindows)('task_read — the task, history, Inbox and variant-g
     );
   });
 
+  /**
+   * #460 T-1 — the reviewer's report rides the record a leader already reads, in the reviewer's
+   * own words. Named break: omit packet persistence, or collapse every successful verdict to
+   * APPROVE. The paging, the summary projection and the handoff markdown are unchanged by it.
+   */
+  it('returns reported reviewer verdicts inside the task record, verbatim, and changes nothing else', async () => {
+    const sha = 'c'.repeat(40);
+    const reviewed = task(storeA, 'Reviewed', { createdAt: '2026-09-16T10:00:00Z' });
+    const handoff = '# Handoff\n\n## Progress log\n\n- reviewed\n';
+    writeFileSync(handoffPath(join(rootA, '.local/xezar'), reviewed), handoff, 'utf8');
+    storeA.updateRun(reviewed, {
+      verdicts: [
+        {
+          id: 'design-1',
+          taskId: reviewed,
+          stepId: 'review',
+          role: 'design-review',
+          verdict: 'PASS WITH FOLLOW-UPS',
+          reviewedHeadSha: sha,
+          summary: 'two non-blocking findings',
+          recordedAt: '2026-09-16T10:05:00.000Z',
+          labels: { requestedAdd: ['design-approved'], requestedRemove: ['needs-design'], observed: ['design-approved'], state: 'verified' },
+          source: 'task-reported',
+          ingestedAt: '2026-09-16T10:05:01.000Z',
+          publication: 'announced',
+        },
+      ],
+    });
+
+    const answer = await read(socketA, { view: 'task', taskId: reviewed });
+    const record = answer.task as { verdicts?: Array<Record<string, unknown>> };
+
+    // Still byte-identical to what the cockpit's own route answers.
+    expect(record).toEqual(await cockpit(`/api/v1/p/${idA}/runs/${reviewed}`));
+    expect(record.verdicts).toHaveLength(1);
+    // Verbatim — a third outcome that is neither PASS nor FAIL survives the whole read path.
+    expect(record.verdicts?.[0]?.verdict).toBe('PASS WITH FOLLOW-UPS');
+    expect(record.verdicts?.[0]?.role).toBe('design-review');
+    expect(record.verdicts?.[0]?.reviewedHeadSha).toBe(sha);
+    expect(record.verdicts?.[0]?.source).toBe('task-reported');
+
+    // The slim list row and the handoff markdown are untouched by the new field.
+    const list = await read(socketA, { view: 'list' });
+    expect((list.tasks as Array<Record<string, unknown>>).every((row) => !('verdicts' in row))).toBe(true);
+    expect((await read(socketA, { view: 'handoff', taskId: reviewed })).markdown).toBe(handoff);
+  });
+
   it('reads the Inbox as the cockpit does, and never lets "off" read as "empty"', async () => {
     const todos = [{ id: 'todo-1', ts: '2026-07-17T00:00:00.000Z', summary: 'a follow-up', runnable: false }];
     writeFileSync(join(rootA, '.local/xezar/todos.json'), JSON.stringify(todos), 'utf8');

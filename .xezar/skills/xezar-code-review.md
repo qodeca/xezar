@@ -9,6 +9,43 @@ Initialize evidence with worktree-setup.sh --readonly-init. Review an immutable 
 
 Inputs: immutable candidate head/base, accepted scope and existing validation evidence. Output: consequence-ranked findings with exact locations and reviewed/unread boundaries. Never edit/adopt the candidate, including same-account peer PRs; return repairs to its author. Tool lists are not a universal sandbox. For a diff touching `packages/web` UI, check design-system compliance against `docs/design-system/README.md` and cite the PR's `## Design review` comment; a missing comment is a finding, not a substitute review.
 
+Verdict vocabulary: `APPROVE` or `REQUEST CHANGES` (`SDLC.md` § Review loop — the reviewer approves or requests changes). Post it as a PR comment whose first line is `## Code review`, carrying the reviewed commit sha, the verdict and every finding; `gh pr review --approve` fails on your own account's PR, so the comment plus the label is the evidence.
+
+## Record the verdict on the task record
+
+After the comment is posted and the labels you are authorized to move have been attempted, write ONE JSON packet to `${XEZ_HANDOFF_FILE}.verdict.json`. The engine reads it when this step settles and puts the verdict on the task record, where the leader reads it with `task_read view=task`. A verdict that exists only in a comment is one the leader must go and parse; this is the machine-readable half of the same report, never a replacement for it.
+
+Write it atomically — write `${XEZ_HANDOFF_FILE}.verdict.json.tmp`, then `mv` it onto the final name. Never redirect into the final path: a half-written packet is refused and costs you the report.
+
+Order matters: post the comment, then attempt the labels, then write the packet. The packet records what the labels actually DID, so it cannot honestly be written before they were tried.
+
+```json
+{
+  "id": "code-review-<short sha>-<task id first 8>",
+  "taskId": "<$XEZ_TASK_ID>",
+  "stepId": "<this step's id>",
+  "role": "code-review",
+  "verdict": "APPROVE",
+  "reviewedHeadSha": "<the full 40-character sha you reviewed>",
+  "summary": "<one or two sentences, at most 2000 characters>",
+  "recordedAt": "<ISO-8601, now>",
+  "evidenceUrl": "<optional: the URL of the comment you posted>",
+  "labels": { "requestedAdd": [], "requestedRemove": [], "observed": [], "state": "verified" }
+}
+```
+
+`id` is stable for THIS report: re-writing it with identical content is a no-op, and the same id with different content is refused. `reviewedHeadSha` is never abbreviated and never the branch's current head when that is not what you read.
+
+`labels` is evidence, not intent. `requestedAdd` / `requestedRemove` are what you asked `gh` to do (empty arrays when you asked for nothing). Then read the labels back and set:
+
+- `"state": "verified"` with `observed` (what you read back) and `observedAt`, when every request applied;
+- `"state": "partial"` with the same two fields, when some applied or the read-back disagrees;
+- `"state": "unavailable"` and NO `observed` key at all, when you could not read or write them. An empty `observed` under `unavailable` is refused: "we looked and there were none" and "we could not look" must never be the same value.
+
+A failed label operation never changes your verdict — a posted `REQUEST CHANGES` stays `REQUEST CHANGES` with `unavailable` label evidence.
+
+Bounds the engine enforces: at most 40 KB, a regular file and never a symlink, and `taskId`/`stepId` must be this task and this step. A packet failing any of them records a refusal on the task and yields no verdict at all — the leader then sees "refused", which is what it should see.
+
 ## Shared contract
 
 Before reading kit files in a standalone skill run, if `.xezar/checks/bootstrap.sh` is absent, run `bash "$(git rev-parse --path-format=absolute --git-common-dir)/../.xezar/checks/bootstrap.sh"`. If unavailable or refused, stop with that specific blocker. Never fabricate commands or copy runtime. Workflow launches already perform this step.

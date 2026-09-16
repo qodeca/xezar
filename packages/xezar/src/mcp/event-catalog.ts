@@ -12,6 +12,7 @@ import {
 } from '@qodeca/xezar-contract';
 
 import type { RunEvent, RunRecord, RunStore } from '../runs/store.ts';
+import { markTaskVerdictAnnounced } from '../runs/task-verdicts.ts';
 import { runVersion } from './stale-write.ts';
 
 /**
@@ -228,6 +229,11 @@ export class EventCatalog {
         }),
       );
     }
+    // Reviewer reports (#460) recorded but never announced — a xezar that died between the run
+    // write and the journal append, or one that had no journal attached when the report landed.
+    // The stable report id is what makes this safe to run on every attach: an already-announced
+    // report is `announced` and is passed over, so recovery produces one row, never a second.
+    for (const run of options.store.listRuns()) catalog.#guard(() => catalog.#announceVerdicts(run.id));
     return catalog;
   }
 
@@ -303,14 +309,40 @@ export class EventCatalog {
       if (!queued.has(id)) this.#humanChange('instruction.removed', run.id, 'a queued message was removed');
     }
 
+    // E-03 — a reviewer's report was recorded. Last in this method so the nested store write the
+    // announcement makes re-enters `#onRun` only after every other derivation above has run; by
+    // then this run's memory is already current, so the re-entry derives nothing at all.
+    this.#announceVerdicts(run.id);
+
     if (statusChanged) this.#onStatus(run, before);
+  }
+
+  /**
+   * Announce every reviewer report on this run that has not been announced yet (#460), then mark
+   * each one announced.
+   *
+   * The row goes out FIRST and the mark second, which is the only order that cannot lose a report:
+   * a crash between them leaves `pending`, and the next attach announces it. The reverse order
+   * would leave a report marked announced that nothing ever announced. A duplicated row after a
+   * crash is the cost, and it is the cheap side — the row carries the report's own stable id, so a
+   * consumer that sees two knows they are one report.
+   */
+  #announceVerdicts(runId: string): void {
+    const pending = (this.#store.getRun(runId)?.verdicts ?? []).filter((verdict) => verdict.publication === 'pending');
+    for (const verdict of pending) {
+      this.#appendRun('verdict.posted', runId, this.#originOr('system'), verdictSummary(verdict));
+      markTaskVerdictAnnounced(this.#store, runId, verdict.id);
+    }
   }
 
   #onStatus(run: RunRecord, before: RunMemory): void {
     const origin = this.#transitionOrigin(run.id, run.status === 'cancelled' ? 'human' : 'system');
     switch (run.status) {
       case 'done':
-        this.#appendRun('task.done', run.id, origin, 'task finished: done');
+        // The completion row says whether any reviewer report is on the record (#460). "Finished"
+        // is an execution fact; a reader that has only that one has no way to tell a reviewed task
+        // from an unreviewed one, and the cheapest way for it to guess wrong is to assume.
+        this.#appendRun('task.done', run.id, origin, `task finished: done, ${verdictAvailability(run)}`);
         return;
       case 'failed': {
         const step = run.steps.find((candidate) => candidate.status === 'failed');
@@ -441,6 +473,31 @@ function isAvailable(row: ProviderStatus): boolean {
 function describeUnavailable(row: ProviderStatus): string {
   if (row.enabled === false) return 'disabled';
   return row.status;
+}
+
+/**
+ * One reviewer report, as a journal SUMMARY: role, the reviewer's exact word, the commit it was
+ * made against, the report's id and how good the label evidence is. Everything and no more — the
+ * full packet is read from the task record, and D-05's summary-only rule is what keeps a journal
+ * row from becoming a second copy of the data.
+ *
+ * The verdict is never abbreviated or translated: `PASS WITH FOLLOW-UPS` reads as itself.
+ */
+function verdictSummary(verdict: NonNullable<RunRecord['verdicts']>[number]): string {
+  const labels =
+    verdict.labels.state === 'verified'
+      ? 'labels verified'
+      : verdict.labels.state === 'partial'
+        ? 'label evidence partial'
+        : 'label evidence unavailable';
+  return `${verdict.role} verdict ${verdict.verdict} on ${verdict.reviewedHeadSha} (report ${clip(verdict.id, 80)}, ${labels})`;
+}
+
+/** What the completion row says about reviewer reports — plural-correct, and explicit about none. */
+function verdictAvailability(run: RunRecord): string {
+  const count = run.verdicts?.length ?? 0;
+  if (count === 0) return 'no reviewer verdict recorded';
+  return count === 1 ? '1 reviewer verdict recorded' : `${count} reviewer verdicts recorded`;
 }
 
 function questionSummary(count: number): string {

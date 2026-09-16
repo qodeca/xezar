@@ -42,6 +42,41 @@ Verdict vocabulary: PASS, PASS WITH FOLLOW-UPS, FAIL. Findings are numbered B-n 
 
 Output: exactly one PR comment whose first line is `## Design review`, posted with `gh pr comment`, carrying the reviewed commit SHA, the reviewer role, the themes and widths checked, the verdict and every finding. When there is no PR, the same text is the run's final message and the requester places it. Never edit the tree; the author links the comment from the README's `## Design review` section. Move labels (`design-approved`, `needs-design`) only when the assignment says so. End the turn with `XEZ:DONE` right after the verdict: a review has nothing to wait for, and a headless run has no channel to answer a question (the first real run stayed in `waiting` for this reason).
 
+### Record the verdict on the task record
+
+In review mode only. After the comment is posted and any labels the assignment authorizes have been attempted, write ONE JSON packet to `${XEZ_HANDOFF_FILE}.verdict.json`. The engine reads it when this step settles and puts the verdict on the task record, where the leader reads it with `task_read view=task`. A verdict that exists only in a comment is one the leader must go and parse; this is the machine-readable half of the same report, never a replacement for it.
+
+Write it atomically — write `${XEZ_HANDOFF_FILE}.verdict.json.tmp`, then `mv` it onto the final name. Never redirect into the final path: a half-written packet is refused and costs you the report.
+
+Order matters: post the comment, then attempt the labels, then write the packet. The packet records what the labels actually DID, so it cannot honestly be written before they were tried.
+
+```json
+{
+  "id": "design-review-<short sha>-<task id first 8>",
+  "taskId": "<$XEZ_TASK_ID>",
+  "stepId": "<this step's id>",
+  "role": "design-review",
+  "verdict": "PASS WITH FOLLOW-UPS",
+  "reviewedHeadSha": "<the full 40-character sha you reviewed>",
+  "summary": "<one or two sentences, at most 2000 characters>",
+  "recordedAt": "<ISO-8601, now>",
+  "evidenceUrl": "<optional: the URL of the comment you posted>",
+  "labels": { "requestedAdd": [], "requestedRemove": [], "observed": [], "state": "verified" }
+}
+```
+
+`verdict` is `PASS`, `PASS WITH FOLLOW-UPS` or `FAIL`, written exactly as posted. `PASS WITH FOLLOW-UPS` is its own outcome: never write it as `PASS`, or the non-blocking findings disappear from the record. `id` is stable for THIS report — the same id with identical content is a no-op, the same id with different content is refused — and `reviewedHeadSha` is never abbreviated.
+
+`labels` is evidence, not intent. `requestedAdd` / `requestedRemove` are what you asked `gh` to do (empty arrays when you asked for nothing, which is the usual case for this role). Then read the labels back and set:
+
+- `"state": "verified"` with `observed` (what you read back) and `observedAt`, when every request applied;
+- `"state": "partial"` with the same two fields, when some applied or the read-back disagrees;
+- `"state": "unavailable"` and NO `observed` key at all, when you could not read or write them. An empty `observed` under `unavailable` is refused: "we looked and there were none" and "we could not look" must never be the same value.
+
+A failed label operation never changes your verdict. A posted `FAIL` stays `FAIL` with `unavailable` label evidence.
+
+Bounds the engine enforces: at most 40 KB, a regular file and never a symlink, and `taskId`/`stepId` must be this task and this step. A packet failing any of them records a refusal on the task and yields no verdict at all — the leader then sees "refused", which is what it should see.
+
 ## Shared contract
 
 Before reading kit files in a standalone skill run, if `.xezar/checks/bootstrap.sh` is absent, run `bash "$(git rev-parse --path-format=absolute --git-common-dir)/../.xezar/checks/bootstrap.sh"`. If unavailable or refused, stop with that specific blocker. Never fabricate commands or copy runtime. Workflow launches already perform this step.

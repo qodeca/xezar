@@ -6,7 +6,7 @@
 // events + a terminal `result`), and exits when stdin closes (EOF).
 
 import { createInterface } from 'node:readline';
-import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const emit = (obj) => process.stdout.write(`${JSON.stringify(obj)}\n`);
@@ -74,6 +74,33 @@ function writeHandoffAndTodo() {
   }
 }
 
+// A reviewing agent writes one JSON packet beside its handoff file, atomically, after it has
+// posted its review. `mock:verdict:<role>:<verdict>:<stepId>` reproduces exactly that, so the
+// engine's collection of it can be exercised without a model and without a forge.
+function writeVerdictPacket(userText) {
+  const match = /mock:verdict:([a-z-]+):([A-Z][A-Z -]*[A-Z]):([A-Za-z0-9._-]+)/.exec(userText);
+  const handoff = process.env.XEZ_HANDOFF_FILE;
+  if (!match || !handoff) return;
+  try {
+    const packet = {
+      id: `mock-${match[3]}`,
+      taskId: process.env.XEZ_TASK_ID,
+      stepId: match[3],
+      role: match[1],
+      verdict: match[2],
+      reviewedHeadSha: 'f'.repeat(40),
+      summary: 'mock review (dry run)',
+      recordedAt: new Date().toISOString(),
+      labels: { requestedAdd: [], requestedRemove: [], observed: [], state: 'verified' },
+    };
+    const target = `${handoff}.verdict.json`;
+    writeFileSync(`${target}.tmp`, JSON.stringify(packet), 'utf8');
+    renameSync(`${target}.tmp`, target);
+  } catch {
+    // best effort — the mock still answers without a packet
+  }
+}
+
 async function respond(userText, imageCount) {
   turn += 1;
   await sleep(250);
@@ -137,6 +164,10 @@ async function respond(userText, imageCount) {
   const refsMarkers = userText.includes('mock:refs')
     ? '\nXEZ:PR=4242\nXEZ:ISSUE=17\nXEZ:TITLE=implementing marker refs'
     : '';
+
+  // `mock:verdict:<role>:<verdict>:<stepId>` → drop a reviewer packet next to the handoff file,
+  // the way a reviewing agent does, so the engine's collection path is testable dry.
+  writeVerdictPacket(userText);
 
   // `mock:slow` → hold the turn for ~25 s so queue states are observable.
   if (userText.includes('mock:slow')) await sleep(25_000);

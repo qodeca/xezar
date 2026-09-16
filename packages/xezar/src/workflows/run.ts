@@ -45,6 +45,8 @@ import { loadConfig, resolveWorktreeRetention } from '../config.ts';
 import { autosaveCommit, createWorktree, resolveBaseRef, worktreeDiff, worktreeShortstat } from '../git-worktree.ts';
 import { getHeadCommit, getRepoInfo } from '../server/git.ts';
 import { loadWorkflows } from './load.ts';
+import { ingestTaskVerdict } from '../runs/task-verdicts.ts';
+
 import type { QueuedMessage, RunRecord, RunStore, StepState } from '../runs/store.ts';
 import { reclaimWorktrees, rematerializeReclaimedWorktree } from '../runs/retention.ts';
 import {
@@ -3169,6 +3171,9 @@ export class RunManager {
         appendHandoffHeartbeat(this.dataDir, runId, `step "${stepId}" complete — status=cancelled`);
       } else {
         this.store.updateStep(runId, stepId, { status: 'done', finishedAt: finishedAt() });
+        // Same collection point the workflow path uses (#460) — a Continue is how a reviewer step
+        // is re-run, and a report left by one must reach the record exactly as the first run's did.
+        this.takeStepVerdict(runId, stepId);
         this.store.appendEvent(runId, { type: 'step-end', stepId, status: 'done' });
         await this.settleSuccess(runId);
         appendHandoffHeartbeat(this.dataDir, runId, `step "${stepId}" complete — status=done`);
@@ -3178,6 +3183,7 @@ export class RunManager {
       sink.sessionEnded('error', message);
       await endTurn();
       this.store.updateStep(runId, stepId, { status: 'failed', error: message, finishedAt: finishedAt() });
+      this.takeStepVerdict(runId, stepId);
       appendHandoffHeartbeat(this.dataDir, runId, `step "${stepId}" complete — status=failed`);
       this.store.updateRun(runId, {
         status: 'failed',
@@ -4389,8 +4395,28 @@ export class RunManager {
       error,
       finishedAt: new Date().toISOString(),
     });
+    this.takeStepVerdict(runId, stepId);
     emit({ type: 'step-end', stepId, status, ...(error ? { error } : {}) });
     appendHandoffHeartbeat(this.dataDir, runId, `step "${stepId}" complete — status=${status}`);
+  }
+
+  /**
+   * Collect the reviewer report this AGENT step left behind, if it left one (#460).
+   *
+   * At settlement, after the step's own status is written and before the run's: the verdict
+   * happened during the step, so it is recorded in that order, and a leader reading the completion
+   * row already has it. Agent steps only — a check step runs a command and reports no review, and
+   * letting one collect would hand it a packet a later agent step is the addressee of.
+   *
+   * A FAILED step is collected from too. A reviewer that posted FAIL and then hit something else
+   * still posted FAIL, and dropping the report on the way out is the one outcome
+   * `BACKWARD_COMPATIBILITY.md` §3 calls out: a recorded failure must not be erasable by a later
+   * unrelated problem.
+   */
+  private takeStepVerdict(runId: string, stepId: string): void {
+    const step = this.store.getRun(runId)?.steps.find((candidate) => candidate.id === stepId);
+    if (step?.kind !== 'agent') return;
+    ingestTaskVerdict(this.store, this.dataDir, runId, stepId);
   }
 }
 
