@@ -14,6 +14,8 @@ import { LeaderDelivery } from './leader-delivery.ts';
 import { runDecisionProjection, runVersion, guardedRunMutation } from './stale-write.ts';
 import { executionControlTool } from './tools/execution-control.ts';
 import { taskReadsTool } from './tools/task-reads.ts';
+import { DELIVERY_CLIENTS, deliveryHarness } from './leader-delivery.testkit.ts';
+import { organiseWorkTool } from './tools/work-organisation.ts';
 import type { McpTool, McpToolContext } from './tool.ts';
 
 // Regressions reproduced on 248ea8a; agent processes and transport are recording seams.
@@ -275,4 +277,143 @@ it('pre-dispatch ownership suppresses a synchronous acknowledgement, then forget
     return { content: [{ type: 'text', text: JSON.stringify({ applied: false }) }] };
   }));
   expect(guard.isOwn('sync-ack')).toBe(false);
+});
+
+const outcomes = ['done', 'failed', 'cancelled', 'review', 'blocked', 'ask-before-wait', 'ask-after-wait'] as const;
+type MatrixHarness = Awaited<ReturnType<typeof deliveryHarness>>;
+function outcomeAfter(h: MatrixHarness, runId: string, outcome: typeof outcomes[number]) {
+  h.store.updateRun(runId, { status: 'running' });
+  const ask = () => h.store.appendEvent(runId, { type: 'ask.requested', requestId: 'later-question', questions: [{ question: 'Next decision?' }] });
+  if (outcome === 'ask-before-wait') ask();
+  h.store.updateRun(runId, { status: ['blocked', 'ask-before-wait', 'ask-after-wait'].includes(outcome) ? 'waiting' : outcome as 'done' | 'failed' | 'cancelled' | 'review' });
+  if (outcome === 'ask-after-wait') ask();
+  const page = h.journal.read();
+  if (page.status !== 'ok') throw new Error('unexpected gap');
+  const row = page.events.at(-1);
+  if (!row) throw new Error('missing outcome');
+  return row;
+}
+
+// #532 G2 extends #531 through the real controller and all four receiving peers.
+// Named breaks: unconditional pendingIntents.set; retained explicit-refusal ownership;
+// consume without expected status; leaked settled async origin; erase newer intent on old refusal.
+for (const client of DELIVERY_CLIENTS) describe(`#532 causal matrix / ${client}`, () => {
+  const rejected = ['send_message', 'cancel', 'continue', 'answer_question', 'pin', 'set_title', 'edit_brief'] as const;
+  for (const action of rejected) {
+    it.each(outcomes)(`rejected ${action} then %s remains actionable`, async outcome => {
+      const h = await deliveryHarness(client);
+      try {
+        const run = h.store.createRun({ title: 'before', task: 'before', workflow: 'fixture', steps: [{ id: 'agent', name: 'Agent', kind: 'agent' }] });
+        h.store.updateStep(run.id, 'agent', { status: 'running', sessionId: 'session' });
+        h.store.updateRun(run.id, { status: action === 'continue' ? 'done' : action === 'edit_brief' ? 'queued' : action === 'answer_question' ? 'waiting' : 'running' });
+        if (action === 'answer_question') h.store.appendEvent(run.id, { type: 'ask.requested', requestId: 'original', questions: [{ header: 'Choice', question: 'Proceed?', options: [{ label: 'Yes' }, { label: 'No' }] }] });
+        const effects = vi.fn(() => true);
+        const manager = { isActive: () => true, sendMessage: effects, cancel: effects, continueRun: effects, editTask: effects } as unknown as RunManager;
+        const app = createApp({ repoRoot: h.root, store: h.store, manager, version: '0.0.0-test', providerAuth: connectedProviderAuth() });
+        const context = { project: { id: 'default', name: 'fixture', root: h.root }, xezarVersion: '0.0.0-test', service: app } as McpToolContext;
+        const read = await taskReadsTool.call(taskReadsTool.inputSchema.parse({ view: 'task', taskId: run.id }), context);
+        const token = JSON.parse((read.content[0] as { text: string }).text).version;
+        h.store.setPinned(run.id, true);
+        const tool = ['pin', 'set_title', 'edit_brief'].includes(action) ? organiseWorkTool : executionControlTool;
+        const args = { action, runId: run.id, expectedVersion: token, operationId: `rejected-${action}`, ...(['send_message', 'continue', 'answer_question'].includes(action) ? { text: 'Yes' } : {}), ...(action === 'answer_question' ? { questionId: 'original' } : {}), ...(action === 'set_title' ? { title: 'new' } : {}), ...(action === 'edit_brief' ? { task: 'new' } : {}) };
+        const result = await h.guard.issue(args.operationId, () => withEventOrigin({ origin: 'leader', causedBy: args.operationId, runId: run.id }, () => tool.call(tool.inputSchema.parse(args), context)));
+        expect(JSON.parse((result.content[0] as { text: string }).text)).toMatchObject({ applied: false, error: 'stale_version' });
+        expect(effects).not.toHaveBeenCalled();
+        expect(h.guard.isOwn(args.operationId)).toBe(false);
+        const row = outcomeAfter(h, run.id, outcome);
+        expect(row).toMatchObject({ origin: outcome === 'cancelled' ? 'human' : 'system', causedBy: null });
+        await h.settle();
+        expect(h.texts().join('\n')).toContain(row.eventId);
+      } finally { await h.close(); }
+    });
+  }
+
+  for (const action of ['send_message', 'answer_question'] as const) {
+    it.each(outcomes)(`accepted ${action} then unrelated %s remains actionable after async settlement`, async outcome => {
+      const h = await deliveryHarness(client);
+      try {
+        const run = h.store.createRun({ title: 'accepted', task: 'accepted', workflow: 'fixture', steps: [{ id: 'agent', name: 'Agent', kind: 'agent' }] });
+        h.store.updateStep(run.id, 'agent', { status: 'running', sessionId: 'session' });
+        h.store.updateRun(run.id, { status: action === 'answer_question' ? 'waiting' : 'running' });
+        if (action === 'answer_question') h.store.appendEvent(run.id, { type: 'ask.requested', requestId: 'original', questions: [{ header: 'Choice', question: 'Proceed?', options: [{ label: 'Yes' }, { label: 'No' }] }] });
+        let finish: () => void = () => { throw new Error('effect never ran'); };
+        let row: McpJournalRow | undefined;
+        const effect = vi.fn(() => {
+          h.store.updateRun(run.id, { status: 'running' });
+          void new Promise<void>(resolve => { finish = resolve; }).then(() => { row = outcomeAfter(h, run.id, outcome); });
+          return true;
+        });
+        const manager = { isActive: () => true, sendMessage: effect } as unknown as RunManager;
+        const app = createApp({ repoRoot: h.root, store: h.store, manager, version: '0.0.0-test', providerAuth: connectedProviderAuth() });
+        const context = { project: { id: 'default', name: 'fixture', root: h.root }, xezarVersion: '0.0.0-test', service: app } as McpToolContext;
+        const args = { action, runId: run.id, expectedVersion: runVersion(h.store, run.id), operationId: `accepted-${action}`, text: 'Yes', ...(action === 'answer_question' ? { questionId: 'original' } : {}) };
+        const result = await h.guard.issue(args.operationId, () => withEventOrigin({ origin: 'leader', causedBy: args.operationId, runId: run.id }, () => executionControlTool.call(executionControlTool.inputSchema.parse(args), context)));
+        expect(JSON.parse((result.content[0] as { text: string }).text)).toMatchObject({ accepted: true });
+        expect(effect).toHaveBeenCalledOnce();
+        finish(); await Promise.resolve();
+        expect(row).toMatchObject({ origin: outcome === 'cancelled' ? 'human' : 'system', causedBy: null });
+        await h.settle();
+        expect(h.texts().join('\n')).toContain(row?.eventId);
+      } finally { await h.close(); }
+    });
+  }
+});
+
+// #532 G3: question identity/content is decision input even when status remains waiting.
+// Existing implementation increments only for user-message and the record projection, so a
+// replacement ask currently leaves the old token valid. Keep the engine unchanged in this slice.
+it.fails.each(['new-id', 'same-id-new-content'] as const)('question replacement %s must invalidate an already-waiting decision', replacement => {
+  const run = running();
+  store.appendEvent(run.id, { type: 'ask.requested', requestId: 'original', questions: [{ question: 'First?' }] });
+  store.updateRun(run.id, { status: 'waiting' });
+  const token = runVersion(store, run.id);
+  store.appendEvent(run.id, { type: 'ask.requested', requestId: replacement === 'new-id' ? 'replacement' : 'original', questions: [{ question: 'Different decision?' }] });
+  expect(runVersion(store, run.id)).not.toBe(token);
+});
+
+for (const client of DELIVERY_CLIENTS) describe(`#532 delayed intent arbitration / ${client}`, () => {
+  it('own accepted cancelled acknowledgement stays suppressed but an unrelated failed outcome is delivered', async () => {
+    const h = await deliveryHarness(client);
+    try {
+      const run = h.store.createRun({ title: 'cancel', task: 'cancel', workflow: 'fixture', steps: [] });
+      h.store.updateRun(run.id, { status: 'running' });
+      await h.guard.issue('accepted-cancel-matrix', () => withEventOrigin({ origin: 'leader', causedBy: 'accepted-cancel-matrix', runId: run.id }, () => expectEventTransition(run.id, 'cancelled')));
+      const dispatch = vi.spyOn(h.delivery, 'deliver');
+      h.store.updateRun(run.id, { status: 'cancelled' });
+      await vi.waitFor(() => expect(dispatch).toHaveBeenCalledOnce()); await dispatch.mock.results[0]?.value;
+      expect(h.texts()).toEqual([]);
+      const page = h.journal.read();
+      if (page.status !== 'ok') throw new Error('gap');
+      expect(page.events.at(-1)).toMatchObject({ kind: 'task.cancelled', origin: 'leader', causedBy: 'accepted-cancel-matrix' });
+      const next = h.store.createRun({ title: 'not cancelled', task: 'outcome', workflow: 'fixture', steps: [] });
+      h.store.updateRun(next.id, { status: 'running' });
+      await h.guard.issue('unrelated-cancel-matrix', () => withEventOrigin({ origin: 'leader', causedBy: 'unrelated-cancel-matrix', runId: next.id }, () => expectEventTransition(next.id, 'cancelled')));
+      h.store.updateRun(next.id, { status: 'failed' });
+      await h.settle();
+      expect(h.texts()).toHaveLength(1);
+      expect(h.texts()[0]).toContain('task.failed');
+      expect(h.texts()[0]).toContain('system');
+    } finally { await h.close(); }
+  });
+
+  it('an older explicit rejection cannot erase a newer foreign leader intent', async () => {
+    const h = await deliveryHarness(client);
+    try {
+      const run = h.store.createRun({ title: 'race', task: 'race', workflow: 'fixture', steps: [] });
+      h.store.updateRun(run.id, { status: 'running' });
+      let settle: (result: { applied: false }) => void = () => { throw new Error('not started'); };
+      const old = h.guard.issue('older-operation', () => withEventOrigin({ origin: 'leader', causedBy: 'older-operation', runId: run.id }, () => {
+        expectEventTransition(run.id, 'cancelled'); return new Promise<{ applied: false }>(resolve => { settle = resolve; });
+      }));
+      withEventOrigin({ origin: 'leader', causedBy: 'foreign-operation', runId: run.id }, () => expectEventTransition(run.id, 'cancelled'));
+      settle({ applied: false }); await old;
+      h.store.updateRun(run.id, { status: 'cancelled' });
+      const page = h.journal.read();
+      if (page.status !== 'ok') throw new Error('gap');
+      expect(page.events.at(-1)).toMatchObject({ causedBy: 'foreign-operation', origin: 'leader' });
+      await h.settle();
+      expect(h.texts()).toHaveLength(1);
+      expect(h.texts()[0]).toContain('task.cancelled');
+    } finally { await h.close(); }
+  });
 });

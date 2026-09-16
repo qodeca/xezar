@@ -343,3 +343,41 @@ describe('#264 — a replay under the same operationId returns the first answer 
     expect((await client.call('leader_events', { action: 'read' })).structuredContent).toMatchObject({ events: [] });
   });
 });
+
+// #532 G10: structured refusal currently settles as `ok` in index.ts (only isError is checked).
+// These expected failures isolate the receipt assertion; effect/persistence controls remain ordinary tests.
+describe('#532 structured stale refusal through the composed MCP door', () => {
+  for (const action of ['cancel', 'send_message'] as const) {
+    async function scenario() {
+      const c = await cockpit();
+      const rec = recording(c.app);
+      let handle = await startMcpService({ projectId: c.id, version: VERSION, service: rec.service, store: c.store });
+      closers.push(() => handle.close());
+      const client = agent(c.root);
+      const runId = await queuedTask(client, `refusal-task-${action}`);
+      const token = await versionOf(client, runId);
+      c.store.setPinned(runId, true);
+      const args = { action, runId, expectedVersion: token, operationId: `refusal-${action}`, ...(action === 'send_message' ? { text: 'must not send' } : {}) };
+      const before = structuredClone(c.store.getRun(runId));
+      const first = await client.call('execution_control', args);
+      expect(body(first)).toMatchObject({ applied: false, error: 'stale_version' });
+      expect(c.store.getRun(runId)).toEqual(before);
+      c.store.setPinned(runId, false);
+      const dispatches = rec.seen.filter(entry => entry.startsWith('POST')).length;
+      const second = await client.call('execution_control', args);
+      handle.close();
+      handle = await startMcpService({ projectId: c.id, version: VERSION, service: rec.service, store: c.store });
+      const third = await agent(c.root).call('execution_control', args);
+      expect(third).toEqual(second);
+      expect(rec.seen.filter(entry => entry.startsWith('POST'))).toHaveLength(dispatches);
+      expect(c.store.getRun(runId)?.queuedMessages ?? []).toEqual([]);
+      expect(c.store.getRun(runId)?.status).toBe('queued');
+      return second;
+    }
+    it(`${action}: a rejected operation never dispatches again after state changes and reopen`, async () => { await scenario(); });
+    it.fails(`${action}: defect — applied:false must replay as rejected, not ok`, async () => {
+      const answer = await scenario();
+      expect(answer.structuredContent).toMatchObject({ status: 'rejected', replayed: true });
+    });
+  }
+});
