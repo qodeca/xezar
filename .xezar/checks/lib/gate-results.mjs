@@ -74,6 +74,10 @@ import { dirname, join, resolve, sep } from "node:path";
 export const SCHEMA_VERSION = 1;
 const ATTEMPT_KIND = "xezar.gate-attempt";
 const SEAL_KIND = "xezar.gate-seal";
+const SECURITY_KIND = "xezar.security-result";
+const SECURITY_FILE = "security.json";
+/** Every value the security stage may record. `pass` is the only one that is a pass. */
+const SECURITY_STATUSES = new Set(["pass", "findings", "unknown", "not-applicable"]);
 
 /** Where a sequence number is claimed, under the run's gates root. */
 const RESERVATIONS = ".sequences";
@@ -476,6 +480,48 @@ export function attemptFailures(record) {
   return problems;
 }
 
+/**
+ * The security stage's own structured result, read from the attempt it belongs to.
+ *
+ * Returned as `{ ok, reason, result }` rather than thrown, because every refusal here has to be
+ * printable next to the others. The ONE thing this never does is treat an absent or unreadable
+ * file as "nothing to report": against a missing input, "the scan found nothing" and "no scan
+ * happened" are the same silence, and only one of them is a pass.
+ */
+export function readSecurityResult(attemptDir, expectedHead) {
+  const path = join(attemptDir, SECURITY_FILE);
+  let record;
+  try {
+    refuseSymlink(path, "security result");
+    record = JSON.parse(readFileSync(path, "utf8"));
+  } catch (error) {
+    return {
+      ok: false,
+      reason:
+        `the attempt carries no readable security result at ${path} (${error?.code ?? error?.message ?? error}). ` +
+        "The security stage runs inside the gates and writes it; an attempt without one never resolved security, " +
+        "and an unresolved security stage cannot precede a quality verdict. Re-run .xezar/checks/repo-gates.sh.",
+    };
+  }
+  if (record?.kind !== SECURITY_KIND) return { ok: false, reason: `${path} is not a ${SECURITY_KIND} record` };
+  if (record?.schemaVersion !== SCHEMA_VERSION) {
+    return { ok: false, reason: `${path} uses unsupported security schema version ${record?.schemaVersion}` };
+  }
+  if (!SECURITY_STATUSES.has(record.status)) {
+    return { ok: false, reason: `${path} records status "${record.status}", which is not one of ${[...SECURITY_STATUSES].join(", ")}` };
+  }
+  if (record.refused === true) {
+    return { ok: false, reason: `the security stage refused this candidate: ${record.refusedReason ?? "no reason recorded"}` };
+  }
+  if (expectedHead && record.head !== expectedHead) {
+    return {
+      ok: false,
+      reason: `the security result is about ${record.head}, not the attempt's head ${expectedHead} — it belongs to a different candidate`,
+    };
+  }
+  return { ok: true, result: record };
+}
+
 // --- subcommands -----------------------------------------------------------------------
 
 function cmdBegin(args) {
@@ -717,6 +763,7 @@ function cmdSeal(args) {
     );
   }
   const refusals = [];
+  let securityResult = null;
   if (!latest) {
     for (const attempt of tied) refusals.push(`tied at sequence ${attempt.sequence ?? "<unknown>"}: ${attempt.dir} (${attemptOutcome(attempt)})`);
     refusals.push(
@@ -780,6 +827,23 @@ function cmdSeal(args) {
     if (expected.dirty === true) {
       refusals.push("the task tree has uncommitted changes — commit them and re-run the gates before sealing");
     }
+
+    // SECURITY IS RESOLVED BEFORE ANY QUALITY VERDICT, and the seal is where that stops being a
+    // sentence. `securityGate` is the gate's name in the CURRENT canonical list, passed by the
+    // caller — not read from the record, because a record that under-reports its own required
+    // list would then decide whether it has to carry a security result.
+    if (expected.securityGate) {
+      if (!(record.required ?? []).includes(expected.securityGate)) {
+        refusals.push(
+          `the canonical list requires the security stage "${expected.securityGate}", and this attempt does not ` +
+            "list it as required. It was recorded against a different list of gates — re-run .xezar/checks/repo-gates.sh.",
+        );
+      } else {
+        const security = readSecurityResult(latest.dir, record.headSha);
+        if (!security.ok) refusals.push(security.reason);
+        else securityResult = security.result;
+      }
+    }
   }
 
   if (refusals.length > 0) {
@@ -815,6 +879,21 @@ function cmdSeal(args) {
     fingerprint: record.after?.treeFingerprint,
     depsFingerprint: record.after?.depsFingerprint,
     repo: record.repo,
+    // The security stage's own verdict, carried in the seal so a reviewer reads a recorded fact
+    // rather than the author's summary of one. `unknown` is carried as `unknown` — it is never
+    // rewritten to a pass, and `reviewerRequired` says when automation could not settle it.
+    security: securityResult
+      ? {
+          status: securityResult.status,
+          decision: securityResult.decision,
+          decisionReason: securityResult.decisionReason,
+          reviewerRequired: securityResult.reviewerRequired === true,
+          inventory: securityResult.inventory,
+          checks: (securityResult.checks ?? []).map((c) => ({ name: c.name, status: c.status })),
+          digest: securityResult.digest,
+          resultPath: join(latest.dir, SECURITY_FILE),
+        }
+      : null,
     // Every other attempt for this head that does not itself pass — malformed, interrupted, or
     // COMPLETED AND FAILED — carried forward by name. Superseding an attempt must not mean
     // forgetting it: the bytes stay on disk and the seal says out loud that they are there.

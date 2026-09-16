@@ -36,8 +36,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # `--list`, for the command-list id and for the sealing check. Commands are written
 # repo-relative on purpose: an absolute path would make the id differ between checkouts and
 # no two machines could ever agree that they ran the same list.
+#
+# The security stage sits at position TWO, immediately after the install and before every gate
+# that produces a quality signal. That placement is the contract, not a preference: SDLC.md
+# § Security before the quality verdict requires the security result to be resolved before
+# anyone gives a quality verdict, and putting it in the list's order is what makes the runner
+# execute the rule rather than ask people to remember it. It is a kit check, like
+# `repository-checks.sh`, so `.xezar/pipeline/config.json`'s `validation.commands` — the five npm
+# commands a person runs by hand — is unchanged and still matches this list in order.
 GATE_NAMES=(
   "npm ci"
+  ".xezar/checks/security-scan.sh"
   "npm run typecheck"
   "npm test"
   "npm run test:unit"
@@ -47,6 +56,7 @@ GATE_NAMES=(
 )
 GATE_COMMANDS=(
   "npm ci"
+  ".xezar/checks/security-scan.sh"
   "npm run typecheck"
   "npm test"
   "npm run test:unit"
@@ -185,8 +195,12 @@ else
     write_deps_stamp || exit 1
   fi
 fi
-gate_phase application 2 3 4 5 6 || exit 1
-gate_phase serial 7 || exit 1
+# Security first, alone, and before any quality gate. A failing security stage stops the run
+# here: there is no point paying for a build to find out what the scan already refused, and a
+# quality verdict given ahead of the security result is the order this exists to prevent.
+gate_phase serial 2 || exit 1
+gate_phase application 3 4 5 6 7 || exit 1
+gate_phase serial 8 || exit 1
 
 printf '\n==================== SUMMARY ====================\n'
 # Publishing result.json is the completion commit point. Bash may defer a signal
