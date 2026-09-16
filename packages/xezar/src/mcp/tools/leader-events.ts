@@ -13,6 +13,7 @@ import {
 } from '@qodeca/xezar-contract';
 
 import { redactDeep } from '../../core/secret-redaction.ts';
+import { leaderSetupVerificationLine } from '../../onboarding/leader-setup.ts';
 import type { EventJournal } from '../event-journal.ts';
 import { McpJournalCursorError } from '../event-journal.ts';
 import { reconnect, type LeaderCursors, type ReconnectAnswer, type StateReader } from '../reconnect.ts';
@@ -143,6 +144,7 @@ export const leaderEventsTool = defineTool({
     "Attach this session as the project's leader so xezar pushes its significant events to it (task outcomes, questions, quality gates, human changes, executor availability), and read and acknowledge those events.",
     'attach: make this session the leader xezar pushes events to – a `<channel source="xezar">` message in Claude Code, a started turn in Codex or pi. The client is this session’s own; you never name it. Call it once per session with a new operationId, and again when status says you are not attached. stop: detach this session. status: whether this session is attached and can receive pushes, the delivery cursors, and what blocks delivery. An OpenCode leader is attached by a person in Settings → MCP connection.',
     'Each pushed message names the cursor of its last event. Once you have taken the events into account, ack that cursor. No read is needed.',
+    'Leader setup has four separate states: files prepared (a project snippet only), connected (a real MCP tool call reached this project), attached (this session owns the attachment), and delivery verified (a real pushed event or an attached-session replay check). Never call a snippet ready. After a restart, status and attach must be repeated with a new operationId before delivery is verified again.',
     'read is the fallback: call it when you connect or reconnect, when you are not attached, or when a pushed message names a gap. It returns the outstanding events in order, each with a stable eventId and a standing (current, superseded or unjudged), then the current state of the tasks they name — the state is the authority, an event is history.',
     'When hasMore is true, read again at once; otherwise do not poll.',
     'After you have taken a page into account, ack its nextCursor. Until you do, read returns the same events again, so drop any eventId you already handled. Acknowledging an older cursor changes nothing.',
@@ -169,7 +171,8 @@ export const leaderEventsTool = defineTool({
     const port = (ctx as LeaderEventsContext).leaderEvents;
     if (!port) return errorResult(NOT_CONNECTED);
     try {
-      return args.action === 'ack' ? ack(port, args.cursor!) : read(port, args);
+      const status = leaderControl && sessionKey !== undefined ? leaderControl.sessionStatus(sessionKey) : undefined;
+      return args.action === 'ack' ? ack(port, args.cursor!) : read(port, args, status);
     } catch (err) {
       if (err instanceof McpJournalCursorError) {
         return errorResult(`${err.rejection.message}. Nothing was ${args.action === 'ack' ? 'acknowledged' : 'read'}.`, {
@@ -184,7 +187,7 @@ export const leaderEventsTool = defineTool({
 const CLIENT_NAMES = { 'claude-code': 'Claude Code', codex: 'Codex', opencode: 'OpenCode', pi: 'pi' } as const;
 
 function statusResult(status: McpLeaderSelfStatus): McpToolResult {
-  return textResult(`${statusHeadline(status)}\n${JSON.stringify(status)}`, status);
+  return textResult(`${statusHeadline(status)}\n${leaderSetupVerificationLine(status)}\n${JSON.stringify(status)}`, status);
 }
 
 /** The authoritative first line of a status (D-05). */
@@ -206,7 +209,10 @@ function statusHeadline(status: McpLeaderSelfStatus): string {
 function doorResult(result: McpLeaderDoorResult): McpToolResult {
   if (!result.ok) {
     const verb = result.action === 'attach' ? 'attached' : 'detached';
-    return errorResult(`Nothing was ${verb}: ${result.message} ${result.fix}\n${JSON.stringify(result)}`, result);
+    return errorResult(
+      `Nothing was ${verb}: ${result.message} ${result.fix}\n${leaderSetupVerificationLine(result.status)}\n${JSON.stringify(result)}`,
+      result,
+    );
   }
   const status = result.status;
   const name = status.available && status.leader !== null ? CLIENT_NAMES[status.leader.client] : undefined;
@@ -218,10 +224,10 @@ function doorResult(result: McpLeaderDoorResult): McpToolResult {
         : result.outcome === 'stopped'
           ? 'Detached this session. Events are kept in the journal and no longer pushed; read them with leader_events.'
           : 'No leader is attached; nothing changed.';
-  return textResult(`${headline}\n${JSON.stringify(result)}`, result);
+  return textResult(`${headline}\n${leaderSetupVerificationLine(status)}\n${JSON.stringify(result)}`, result);
 }
 
-function read(port: LeaderEventsPort, args: LeaderEventsInput): McpToolResult {
+function read(port: LeaderEventsPort, args: LeaderEventsInput, status?: McpLeaderSelfStatus): McpToolResult {
   const answer = reconnect({
     journal: port.journal,
     cursors: port.cursors,
@@ -234,7 +240,7 @@ function read(port: LeaderEventsPort, args: LeaderEventsInput): McpToolResult {
   if (last !== undefined) port.cursors.markDelivered(last);
   const position = port.cursors.position();
   const structured = shape(answer, position, port.secretValues);
-  return textResult(`${headline(answer)}\n${JSON.stringify(structured)}`, structured);
+  return textResult(`${headline(answer)}\n${leaderSetupVerificationLine(status, { replayChecked: status?.available === true && status.self.attached })}\n${JSON.stringify(structured)}`, structured);
 }
 
 function ack(port: LeaderEventsPort, cursor: string): McpToolResult {

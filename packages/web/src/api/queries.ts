@@ -1136,9 +1136,12 @@ export function useStartSetupTask() {
   return useMutation({
     mutationFn: (mode: CockpitSetupMode) =>
       createRun({ workflow: ONBOARDING_WORKFLOW, task: setupBrief(mode) }),
-    onSuccess: () => {
+    onSuccess: async () => {
       void queryClient.invalidateQueries({ queryKey: [scope, 'runs'] })
-      void queryClient.invalidateQueries({ queryKey: [scope, 'onboarding'] })
+      // Keep the mutation pending until the authoritative status read settles. TanStack awaits a
+      // promise returned by onSuccess, so this also gives useSetupStart an exact completion signal
+      // without trying to order two observations by their millisecond timestamps.
+      await queryClient.invalidateQueries({ queryKey: [scope, 'onboarding'] })
     },
   })
 }
@@ -1166,14 +1169,8 @@ export const ONBOARDING_WORKFLOW = 'project-setup'
  */
 export function useSetupStart() {
   const start = useStartSetupTask()
-  const onboarding = useOnboarding()
+  useOnboarding()
   const [latched, setLatched] = useState(false)
-  const pressedAt = useRef(0)
-  const readAt = Math.max(onboarding.dataUpdatedAt, onboarding.errorUpdatedAt)
-
-  useEffect(() => {
-    if (latched && readAt > pressedAt.current) setLatched(false)
-  }, [latched, readAt])
 
   const pending = start.isPending || latched
 
@@ -1184,10 +1181,12 @@ export function useSetupStart() {
     // The press that arrives inside the window is not an error and not a second request — the
     // check the person is asking for is already being started.
     if (pending) return
-    pressedAt.current = Date.now()
     setLatched(true)
     start.mutate(mode, {
-      onSuccess: options?.onSuccess,
+      onSuccess: (run) => {
+        setLatched(false)
+        options?.onSuccess?.(run)
+      },
       onError: (error: Error) => {
         setLatched(false)
         options?.onError?.(error)
