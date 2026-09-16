@@ -4,6 +4,7 @@ import type { McpJournalRow } from '@qodeca/xezar-contract';
 
 import type { CodexAppServerMessage } from '../../core/codex-app-server-transport.ts';
 import type { EventDispatch, ReactionAdapter } from '../event-controller.ts';
+import { omittedRoutineLine } from '../event-significance.ts';
 
 /**
  * The Codex reaction adapter (#109, Phase 6 of #67): the client-specific half the event controller
@@ -573,6 +574,8 @@ export function renderCodexEventMessage(dispatch: EventDispatch): string {
     const cause = row.causedBy === null ? '' : `, caused by operation ${row.causedBy}`;
     lines.push(`- ${row.eventId} ${row.category} ${row.kind} on ${subject} (origin ${row.origin}${cause}): ${JSON.stringify(row.summary)}`);
   }
+  const omitted = omittedRoutineLine(dispatch.omittedRoutineCount);
+  if (omitted !== undefined) lines.push(omitted);
   const last = dispatch.events.at(-1)?.journalSeq;
   lines.push(
     last === undefined

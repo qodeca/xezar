@@ -172,6 +172,14 @@ export class EventJournal {
     return this.#cursorAt(this.#latestSeq);
   }
 
+  /** The opaque cursor through a retained position, used by filtered push delivery only. */
+  cursorAt(journalSeq: number): string {
+    if (!Number.isSafeInteger(journalSeq) || journalSeq < 0 || journalSeq > this.#latestSeq) {
+      throw new RangeError('a journal cursor position must be within this journal');
+    }
+    return this.#cursorAt(journalSeq);
+  }
+
   /** Release this file so a later `open` (a restart, in a test) may take it. */
   close(): void {
     if (this.#closed) return;
@@ -208,6 +216,13 @@ export class EventJournal {
       // F-15: a summary is prose an emitter composed, so it is scrubbed like transcript text is.
       summary: redactSecrets(parsed.summary, this.#secretValues),
       ...(parsed.source === undefined ? {} : { source: parsed.source }),
+      ...(parsed.gate === undefined ? {} : {
+        gate: {
+          ...parsed.gate,
+          // F-15 applies to bounded routing metadata too: workflow ids are author-controlled.
+          stepId: redactSecrets(parsed.gate.stepId, this.#secretValues),
+        },
+      }),
     });
     const line = JSON.stringify(row);
     try {

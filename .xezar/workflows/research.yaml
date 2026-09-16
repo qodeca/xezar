@@ -16,9 +16,11 @@ steps:
   - id: kit
     name: Snapshot the local project kit
     command: 'bash "$(git rev-parse --path-format=absolute --git-common-dir)/../.xezar/checks/bootstrap.sh"'
+    resultScope: routine
   - id: preflight
     name: Verify worktree isolation
     command: ".xezar/checks/worktree-preflight.sh"
+    resultScope: routine
   - id: research
     name: Research, cite and report
     prompt: "{{task}}"

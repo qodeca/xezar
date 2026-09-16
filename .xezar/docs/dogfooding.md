@@ -12,6 +12,15 @@ Installation validation is reported in installation.md. Real-task entries follow
 
 ## Real-task entries
 
+### 2026-09-16 — #460 PR 4 (MCP leader event significance), `feature-implementation` step `implement`, `xezar-implementation`, Codex — real-task observed
+
+- Input: AC-12–AC-16 and T-15–T-20 from the leader completeness spec; base `a2fc084` (PR 3). Installed skill SHA-256 `4b4600b2be30359f219edb800f250954852e6373605069b5130f3702a0e7b39`; spec digest `32a783f640bbf7c8e37147887cfded79324b33b2d02bda236584125165b374d6`.
+- Observed: **adding a shared workflow field changes a supposedly agent-only derived schema unless that construction site explicitly removes it.** `project-config.ts` derives its strict MCP writer from `workflowStepDefSchema.shape`; adding check-only `resultScope` to the shared shape would otherwise admit it into the agent writer. The implementation now removes `resultScope` alongside `command` and `onFail`, and the existing strict boundary remains the source of truth.
+- Observed: **bounded routing metadata is still a secret-persistence surface.** The pre-existing F-15 composition test made the first focused suite red because a secret-shaped check id was scrubbed in `summary` but survived in the new `gate.stepId`. Applying the existing secret scrubber at journal append fixed the whole persistence boundary; the named test then passed. A narrow schema and “not transcript” are not substitutes for redaction of author-controlled identifiers.
+- Observed: **a filtered push needs three positions, not two:** durable acknowledgement, last visible delivery, and a private scan position that may pass hidden rows. Keeping trailing routine rows behind the visible cursor preserves #450 acknowledgement semantics while still preventing hidden-only pages from waking a leader; restart re-derives the private progress from the raw journal.
+- Regression/control: T-15–T-19 each has a named red break in the primary task evidence; the exact-base and final coverage runs show every changed MCP file at or above its prior line/branch percentages and above the 80%/80% floor. T-20 requires a real attached leader and remains not run here.
+- Remaining limit: real-client acceptance is intentionally deferred to QA; this authoring step proves all four adapter renderers and delivery semantics with fixtures, not a live client attachment.
+
 ### 2026-09-16 — PR #502 / #468 PR 5, REVIEW RESPONSE (`address-review-findings`, `xezar-review-response`, Claude Code) — real-task observed
 
 - Input: the `## Code review` comment on PR #502 at head `3e713c5` (REQUEST CHANGES, one major, two minors, one nit). Author run `a73071e0` was already done and its worktree reclaimable, so the reclaimed-owner recipe applied: own branch off `origin/main`, `git merge` the PR head, work, then one named-ref push to `xez/a73071e0`.
@@ -780,4 +789,3 @@ Installation validation is reported in installation.md. Real-task entries follow
 - Observed: `gh pr review --approve` is refused with `Can not approve your own pull request` whenever the authoring task and the reviewing task share the GitHub account, which is always in this setup. The review still has to exist as a durable artifact, so post it with `gh pr comment` and say in the text why it is a comment. `integration-preflight.sh` already understands this — it reported `policy for main requires 0 approving reviews` and named the authority record as the review that matters.
 - Regression/control: no source change, so no red-proof applies. The controls run were the full canonical gate on the exact merged head (7/7 pass, 419 infra fixtures), GitHub CI on the same head, `npm run test:e2e` = `TEST_E2E_STATUS=passed` with a real Chrome, and a post-merge tree comparison (`git diff <squash-commit> <reviewed-head>` empty) proving the merged content is what was reviewed.
 - Remaining limit: one macOS machine. The Chrome profile was locked by another local session, so the workflow canvas was never clicked through visually — the cockpit code was exercised as a module and over HTTP instead. `--force-with-lease` was never observed being REFUSED, so the "someone else moved the branch" stop path is untested.
-

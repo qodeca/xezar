@@ -1,6 +1,7 @@
 import { MCP_JOURNAL_RETAINED_ROWS, type McpJournalRow } from '@qodeca/xezar-contract';
 
 import type { EventDispatch, ReactionAdapter } from '../event-controller.ts';
+import { omittedRoutineLine } from '../event-significance.ts';
 
 /**
  * The pi reaction adapter (#330 WP2, Phase 6 of #67): the client-specific half the non-model event
@@ -520,6 +521,8 @@ export function renderPiDispatch(
       `Gap: ${dispatch.recovery.message} (oldest retained ${dispatch.recovery.oldestSeq ?? 'none'}, latest ${dispatch.recovery.latestSeq}).`,
     );
   }
+  const omitted = omittedRoutineLine(dispatch.omittedRoutineCount);
+  if (omitted !== undefined) lines.push(omitted);
   // #450: the cursor the leader acks with, so it needs no read first.
   lines.push(`Read the current state with the xezar tools before acting, and acknowledge the events you have taken into account. Acknowledge them with leader_events action ack and cursor ${dispatch.nextCursor}.`);
   lines.push(`${marker} rows=${rows.map(rowKey).join(',')}`);

@@ -129,6 +129,16 @@ test('the step schema refuses a timeout on a check step — a shell command has 
   assert.match(parsed.error?.issues[0]?.message ?? '', /a check step \(command\) has no wall clock/);
 });
 
+test('T-19: resultScope is optional on checks, defaults by absence, and is refused on agent steps', () => {
+  const legacy = workflowStepSchema.parse({ id: 'verify', command: 'npm test' });
+  assert.equal(legacy.resultScope, undefined);
+  assert.equal(workflowStepSchema.parse({ id: 'setup', command: 'npm ci', resultScope: 'routine' }).resultScope, 'routine');
+  assert.equal(workflowStepSchema.parse({ id: 'gates', command: 'npm test', resultScope: 'stage' }).resultScope, 'stage');
+  const agent = workflowStepSchema.safeParse({ id: 'work', prompt: '{{task}}', resultScope: 'routine' });
+  assert.equal(agent.success, false);
+  assert.match(agent.error?.issues.at(-1)?.message ?? '', /resultScope applies only to a check step/);
+});
+
 test('a workflow FILE with a per-step timeout loads', () => {
   const parsed = workflowFileSchema.safeParse({
     name: 'long-investigate',

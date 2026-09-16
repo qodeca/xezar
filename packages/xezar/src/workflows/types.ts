@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { workflowResultScopeSchema } from '@qodeca/xezar-contract';
 import { RUNNER_IDS } from '../core/agent-runner.ts';
 
 /**
@@ -79,6 +80,8 @@ export const workflowStepSchema = z
     timeout: stepTimeoutSchema.optional(),
     // check step
     command: z.string().optional(),
+    /** Successful routine checks stay in the journal but do not wake an attached leader. */
+    resultScope: workflowResultScopeSchema.optional(),
     onFail: z
       .object({
         retry: z.string().min(1),
@@ -93,6 +96,9 @@ export const workflowStepSchema = z
   // clock there. Saying so at load time beats a key that quietly does nothing.
   .refine((s) => !(s.command && s.timeout !== undefined), {
     message: 'timeout applies to an agent step; a check step (command) has no wall clock',
+  })
+  .refine((s) => !(s.resultScope !== undefined && !s.command), {
+    message: 'resultScope applies only to a check step (command)',
   });
 
 /**
@@ -167,7 +173,7 @@ export function skillStackOf(steps: WorkflowStepDef[]): string[] | null {
     if (stepKind(s) !== 'agent' || !s.skill) return null;
     if (s.prompt !== undefined && s.prompt !== '{{task}}') return null;
     if (s.name !== undefined && s.name !== s.skill) return null;
-    if (s.model || s.runner || s.allowedTools || s.bashAllowlist || s.onFail) return null;
+    if (s.model || s.runner || s.allowedTools || s.bashAllowlist || s.onFail || s.resultScope) return null;
     if (s.timeout !== undefined) return null; // the compact form cannot carry it
     skills.push(s.skill);
   }
