@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os';
 import { basename, join, relative } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { CONFIG_FILES } from '../../agent-config/catalog.ts';
+import { BUNDLED_TEMPLATES_DIGEST } from '../../onboarding/status.ts';
 import { RunStore } from '../../runs/store.ts';
 import { ProjectContexts, type ProjectContextSource } from '../../server/project-context.ts';
 import { connectedProviderAuth } from '../../server/provider-auth.testkit.ts';
@@ -724,7 +725,7 @@ describe('project_config: workflows', () => {
     const builtIn = await invoke({ action: 'delete_workflow', name: 'quick-task' });
     expect(builtIn.structured).toMatchObject({ status: 400, error: 'built-in workflows cannot be deleted' });
     value(await invoke({ action: 'delete_workflow', name: 'Review chain' }));
-    expect(value(await invoke({ action: 'list_workflows' })).workflows.map((w: { name: string }) => w.name)).toEqual(['quick-task']);
+    expect(value(await invoke({ action: 'list_workflows' })).workflows.map((w: { name: string }) => w.name)).toEqual(['project-setup', 'quick-task']);
     expect(snapshot(ws.roots.b)).toEqual(bBefore);
   });
 
@@ -980,6 +981,79 @@ describe('project_config: worktrees', () => {
     const spy = spyService();
     expect((await invoke({ action: 'remove_worktree', runId: '..' }, { service: spy })).result.isError).toBe(true);
     expect(spy.requests).toEqual([]);
+  });
+});
+
+describe('project_config: dismiss_onboarding_offer', () => {
+  /** The record as the cockpit's own route would leave it. Written directly because the point of
+   *  these cases is what the ACTION does to it, not how it came to exist. */
+  const seedChangedIdentity = (which: 'a' | 'b' = 'a') => {
+    const dir = join(ws.roots[which], '.local/xezar');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, 'onboarding-state.json'),
+      JSON.stringify({
+        engineVersion: '0.0.0-test',
+        kitDigest: BUNDLED_TEMPLATES_DIGEST,
+        lastOfferedAt: null,
+        lastCheckedAt: null,
+        checked: { engineVersion: '0.0.0-old', kitDigest: BUNDLED_TEMPLATES_DIGEST, at: '2026-09-02T16:40:00.000Z' },
+      }),
+      'utf8',
+    );
+  };
+
+  const record = (which: 'a' | 'b' = 'a') =>
+    JSON.parse(readFileSync(join(ws.roots[which], '.local/xezar/onboarding-state.json'), 'utf8')) as Record<string, unknown>;
+
+  it('records the offer for the running identity and stops it coming back', async () => {
+    seedChangedIdentity();
+    const result = value(await invoke({ action: 'dismiss_onboarding_offer' })) as {
+      status: string;
+      onboarding: { offerPending: boolean; dismissed: boolean };
+    };
+    expect(result.status).toBe('recorded');
+    expect(result.onboarding).toMatchObject({ offerPending: false, dismissed: true });
+    expect(record().lastOfferedAt).toEqual(expect.any(String));
+    // It writes disposable scratch and nothing else — no task, no project file.
+    expect(snapshot(ws.roots.a)['.local/xezar/onboarding-state.json']).toBeUndefined();
+  });
+
+  it('answers a conflict and writes nothing when the leader acts on a stale read', async () => {
+    seedChangedIdentity();
+    const result = value(
+      await invoke({
+        action: 'dismiss_onboarding_offer',
+        onboardingIdentity: { engineVersion: '0.0.0-old', kitDigest: BUNDLED_TEMPLATES_DIGEST },
+      }),
+    ) as { status: string };
+    expect(result.status).toBe('conflict');
+    // Nothing recorded: dismissing a pair nobody was shown would swallow the real offer.
+    expect(record().lastOfferedAt).toBeNull();
+  });
+
+  it('needs an operation key, refuses a task version, and never names a project', async () => {
+    // It CHANGES something, so `operationId` is required (D-06 § 5.2).
+    expect(projectConfigTool.inputSchema.safeParse({ action: 'dismiss_onboarding_offer' }).success).toBe(false);
+    // `expectedVersion` is a task's version and this action touches no task.
+    expect(
+      projectConfigTool.inputSchema.safeParse({
+        action: 'dismiss_onboarding_offer',
+        operationId: 'op-12345678',
+        expectedVersion: 'v1',
+      }).success,
+    ).toBe(false);
+    const refused = await invoke({ action: 'dismiss_onboarding_offer', projectId: 'proj-b' });
+    expect(refused.result.isError).toBe(true);
+    expect(refused.structured).toMatchObject({ refused: true, boundary: 'project-binding' });
+  });
+
+  it('acts on the bound project alone', async () => {
+    seedChangedIdentity('a');
+    seedChangedIdentity('b');
+    await invoke({ action: 'dismiss_onboarding_offer' }, { project: 'a' });
+    expect(record('a').lastOfferedAt).toEqual(expect.any(String));
+    expect(record('b').lastOfferedAt).toBeNull();
   });
 });
 

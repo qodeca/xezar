@@ -102,6 +102,13 @@ import { readRunIndexFromDisk } from '../runs/run-index.ts';
 import { isV2WireEventType } from '../runs/ui-event-sink.ts';
 import type { McpApiReference } from '@qodeca/xezar-contract';
 import { mcpLeaderActionInputSchema, type McpLeaderStatus } from '@qodeca/xezar-contract';
+import { onboardingOfferedInputSchema } from '@qodeca/xezar-contract';
+import {
+  ONBOARDING_WORKFLOW_ID,
+  observedIdentity,
+  onboardingStatus,
+} from '../onboarding/status.ts';
+import { recordOffered } from '../onboarding/state.ts';
 import {
   githubPrReadyInputSchema,
   runEventsQuerySchema,
@@ -4652,6 +4659,75 @@ export function createApp(deps: ServerDeps) {
 
   const reclaimBodySchema = z.object({}).passthrough();
 
+  // ---- chained family: onboarding (project-scoped) ----
+  /**
+   * The setup task this project is running right now, if any (#464 P2).
+   *
+   * "One check at a time" is a UI rule with real money behind it: two clicks on Re-check must not
+   * create two agent runs (`AC-13`). The store is the only place that knows, and `isActive` is the
+   * same liveness test every other route uses, so the answer cannot drift from the task list.
+   */
+  const activeSetupRunId = (project: ProjectContext): string | null => {
+    for (const run of project.store.listRuns()) {
+      if (run.workflow !== ONBOARDING_WORKFLOW_ID) continue;
+      if (project.manager.isActive(run.id)) return run.id;
+    }
+    return null;
+  };
+
+  const onboardingRoutes = new Hono<ProjectApiEnv>()
+    /**
+     * The one read behind all three surfaces. Deliberately READ-ONLY: it creates no record,
+     * refreshes nothing and starts nothing, which is both the zero-config promise (`AC-03`) and
+     * what lets this GET answer byte-identically under its three URL spellings.
+     */
+    .get('/onboarding', async (c) => {
+      const project = c.get('project');
+      return c.json(
+        await onboardingStatus(project.dataDir, {
+          observed: observedIdentity(version),
+          checks: await detectEnvironment(),
+          localHandoff: capabilities().localHandoff,
+          checkingRunId: activeSetupRunId(project),
+        }),
+      );
+    })
+
+    /**
+     * "Later" — record that the offer was made for the identity the caller was SHOWN.
+     *
+     * The body carries that identity rather than letting the server assume its own: if the running
+     * pair moved between the read and the press, writing "offered" against the new pair would
+     * swallow an offer nobody ever saw. That case answers `conflict` and writes nothing, which is
+     * also the answer a leader gets when it acts on a stale read.
+     *
+     * A record that cannot be written answers `unwritable` rather than an error: the record is
+     * disposable scratch, so a read-only disk costs the memory of one dismissal and nothing else
+     * (`AC-09`).
+     */
+    .post(
+      '/onboarding/offered',
+      jsonZodValidator(() => onboardingOfferedInputSchema),
+      async (c) => {
+        const project = c.get('project');
+        const body = c.req.valid('json');
+        const observed = observedIdentity(version);
+        const status =
+          body.engineVersion === observed.engineVersion && body.kitDigest === observed.kitDigest
+            ? (await recordOffered(project.dataDir, observed)).status
+            : ('conflict' as const);
+        return c.json({
+          status: status === 'written' ? ('recorded' as const) : status,
+          onboarding: await onboardingStatus(project.dataDir, {
+            observed,
+            checks: await detectEnvironment(),
+            localHandoff: capabilities().localHandoff,
+            checkingRunId: activeSetupRunId(project),
+          }),
+        });
+      },
+    );
+
   /**
    * "The inbox is on and this entry exists" — the 409/404 half of `POST /todos/:id/start`, lifted
    * out of the handler and in FRONT of the body validator.
@@ -5646,6 +5722,7 @@ export function createApp(deps: ServerDeps) {
     .route('/', groupsRoutes)
     .route('/', openTargetsRoutes)
     .route('/', worktreesRoutes)
+    .route('/', onboardingRoutes)
     .route('/', todosRoutes)
     .route('/', sseRoutes)
     .route('/', githubRoutes)

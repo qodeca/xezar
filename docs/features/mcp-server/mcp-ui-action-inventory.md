@@ -60,6 +60,11 @@ After #450 (2026-09-15): two records added to section G for the leader connectio
 had (I-141 status, I-142 Attach leader), both covered. Covered 91, total 142. The closed record above
 is otherwise unchanged.
 
+After #464 P2 (2026-09-16): four records added to section G for the project-setup surface the same PR
+introduces (I-143 state read, I-144 start the setup or re-check task, I-145 record the offer,
+I-146 learn that an offer is pending), all covered. Covered 95, total 146. The closed record above is
+otherwise unchanged.
+
 ## Resolved open decisions (2026-09-10)
 
 The twelve rows that stood open are decided by the project leader. Each entry gives the decision, the
@@ -132,7 +137,7 @@ issue claimed, and what the source says at `9fdcf0e`.
 Nothing else disagreed. No row's file was missing, and no named symbol failed to resolve anywhere in
 the files examined.
 
-## The inventory — 142 records
+## The inventory — 146 records
 
 Status values: **covered** = a project business action MCP must be able to perform or read;
 **global** = the effect reaches the workspace or another project, so no MCP write (a safe effective
@@ -274,7 +279,7 @@ The issue's heading for this section read "20 records"; it holds 19. The 140 tot
 | I-101 | `automations.tsx` "View log" → `getAutomationLog` (`GET /automation-log?automationId=`, `automationLogQuerySchema`); per-row GitHub and task links; live refresh on the `automation-change` workspace event | same capability gate | automation id → ordered check records with result, reason, GitHub link, launched run | — | project | Read the automation log. Same ownership rule as I-100 | covered |
 | I-102 | `DELETE /automations/:id` (`packages/xezar/src/server/server.ts:3364`) and `POST /automation-log/:receiptId/retry` (`:3448`) — both chained in `automationsRoutes` (`:3261`) | **no cockpit control found.** No matching api-client method exists in `packages/web/src/api/client.ts` (verified by grep for `automations[':id'].$delete` and for any retry method) and no control appears in `automations.tsx` | id / receipt id → deleted automation, retried receipt | retry 409s when the receipt is not `launch-error`, already carries a `runId`, or has no stored `candidate` (`server.ts:3453`–`:3454`) | project | **Decided 2026-09-10 (D-102).** Expose both. They are project-scoped, already-validated routes, and deleting a dead automation or retrying a failed receipt is daily leader work; without them a leader can create an automation it can never remove. **This is an MCP surface that EXCEEDS the current cockpit**, and section 6's *a route is not proof of a visible action* still stands — this is a decision, not a default | covered |
 
-### G. Project settings — 16 records
+### G. Project settings — 20 records
 
 The registry declares scope **per section, never per field** — `packages/web/src/routes/settings/registry.tsx`:
 `export type SettingsScope = 'project' | 'global'`, with the comment
@@ -300,6 +305,10 @@ Project-scope sections: `agents`, `agent-config`, `worktrees`, `bookmarklets`, `
 | I-116 | `packages/web/src/routes/settings/bookmarklets-section.tsx` auto-start checkbox and filter box | always | component-local `useState`, never persisted | — | browser-local, ephemeral | None | presentation |
 | I-141 | `packages/web/src/routes/settings/mcp-leader-control.tsx` connection status ← `GET /api/v1/mcp/leader` and the `mcp-leader` topic | while Settings → MCP connection is open | none → owner, leader, delivery, blocker | `localHandoff` for the topic | project | Read who owns the project, whether a leader is attached, the delivery cursors and what blocks delivery; for a leader, whether its own session is attached and can receive pushes. Added 2026-09-15 (#450) | covered |
 | I-142 | `mcp-leader-control.tsx` "Attach leader" → `POST /api/v1/mcp/leader` | a person attaches a leader | client (+ OpenCode address) → status or 409 reason | hosted mode 409 | project | Attach the project leader so events are pushed to it. Added 2026-09-15 (#450). The person may attach any client; a leader attaches only its own session | covered |
+| I-143 | `packages/web/src/routes/settings/project-setup-section.tsx` state read ← `GET /api/v1/p/:projectId/onboarding` | whenever the section is open | none → state, provenance, three identity pairs, availability and its reason, and the bundled launch definition | none; a missing record reads `never`, a corrupt one `unknown`, and neither ever errors | project | Read this project's setup state: which identity is running, which was offered, which a finished check actually covered, and whether setup can run here at all. Added 2026-09-16 (#464 P2) | covered |
+| I-144 | `project-setup-section.tsx` and `tasks-overview.tsx` "Set up this project" / "Re-check now" → `POST /api/v1/p/:projectId/runs` | an agent backend is available | mode (`setup` \| `recheck`) → the created task | refused with the server's own words when no backend is available; one check at a time per project | project | Create the setup or re-check task from the bundled launch definition `discover_project.onboarding.launch.workflowId` names. Added 2026-09-16 (#464 P2) | covered |
+| I-145 | `packages/web/src/components/onboarding-offer-row.tsx` offer row "Later" → `POST /api/v1/p/:projectId/onboarding/offered` | an offer is pending for the observed identity | the observed identity → the recorded pair | answered `conflict` when the observed identity moved since the read, `unwritable` when the record could not be persisted; both write nothing | project | Record that the offer was made for this identity, so the same pair does not offer again. Added 2026-09-16 (#464 P2) | covered |
+| I-146 | `onboarding-offer-row.tsx` offer-row presence ← the same read as I-143 | a changed identity that has not been offered, with no check running | none → whether an offer is pending, and what changed | never shown without a baseline | project | Learn that the running identity differs from the last one a finished check covered, as a pull. Added 2026-09-16 (#464 P2) | covered |
 
 ### H. Global and workspace settings — 16 records
 

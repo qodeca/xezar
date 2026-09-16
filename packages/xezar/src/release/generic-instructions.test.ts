@@ -15,7 +15,7 @@ import { buildNamerPrompt, NAMER_SYSTEM_PROMPT } from '../runs/auto-name.ts';
 import { BUILD_HINT_HTML } from '../server/static-ui.ts';
 import { loadWorkflows } from '../workflows/load.ts';
 import { pastedAttachmentsText } from '../workflows/run.ts';
-import { QUICK_TASK_WORKFLOW } from '../workflows/types.ts';
+import { PROJECT_SETUP_WORKFLOW, QUICK_TASK_WORKFLOW } from '../workflows/types.ts';
 import {
   NATIVE_INSTRUCTION_FILE_RULE,
   PROJECT_SPECIFIC_RULES,
@@ -80,6 +80,7 @@ async function manifest(): Promise<Producer[]> {
   return [
     // ---- what every agent task is told ----
     { producer: 'built-in workflow', location: 'packages/xezar/src/workflows/types.ts#QUICK_TASK_WORKFLOW', text: JSON.stringify(QUICK_TASK_WORKFLOW) },
+    { producer: 'built-in workflow', location: 'packages/xezar/src/workflows/types.ts#PROJECT_SETUP_WORKFLOW', text: JSON.stringify(PROJECT_SETUP_WORKFLOW) },
     { producer: 'handoff contract', location: 'packages/xezar/src/handoff.ts#HANDOFF_ONLY_INSTRUCTIONS', text: HANDOFF_ONLY_INSTRUCTIONS },
     { producer: 'follow-up contract', location: 'packages/xezar/src/handoff.ts#FOLLOWUP_INSTRUCTIONS', text: FOLLOWUP_INSTRUCTIONS },
     source('handoff module', 'packages/xezar/src/handoff.ts'),
@@ -180,7 +181,7 @@ describe('generic instructions (#466)', () => {
     try {
       const { workflows } = await loadWorkflows(empty);
       const builtIns = workflows.filter((w) => w.source === 'built-in');
-      expect(builtIns.map((w) => w.name)).toEqual([QUICK_TASK_WORKFLOW.name]);
+      expect(builtIns.map((w) => w.name)).toEqual([PROJECT_SETUP_WORKFLOW.name, QUICK_TASK_WORKFLOW.name].sort());
     } finally {
       rmSync(empty, { recursive: true, force: true });
     }

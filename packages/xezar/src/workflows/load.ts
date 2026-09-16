@@ -3,6 +3,7 @@ import { extname, join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { projectKitDir } from '../project-kit-paths.ts';
 import {
+  PROJECT_SETUP_WORKFLOW,
   QUICK_TASK_WORKFLOW,
   normalizeWorkflowDoc,
   stepsIssue,
@@ -22,7 +23,8 @@ export interface WorkflowLoadIssue {
 }
 
 /**
- * Load the workflow catalog: the built-in `quick-task` plus every
+ * Load the workflow catalog: the built-ins (`quick-task`, and `project-setup` — the bundled
+ * launch definition behind "Set up this project", #464 P2) plus every
  * `.xezar/workflows/*.{yaml,yml}` in the repo. File workflows win name
  * collisions with built-ins. Invalid files are reported, never fatal.
  */
@@ -68,7 +70,7 @@ export async function loadWorkflows(
   const fileNames = new Set(fromFiles.map((w) => w.name));
   const workflows = [
     ...fromFiles,
-    ...[QUICK_TASK_WORKFLOW].filter((w) => !fileNames.has(w.name)),
+    ...[QUICK_TASK_WORKFLOW, PROJECT_SETUP_WORKFLOW].filter((w) => !fileNames.has(w.name)),
   ];
   workflows.sort((a, b) => a.name.localeCompare(b.name));
   return { workflows, issues };

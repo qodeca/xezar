@@ -15,6 +15,7 @@ import {
   type AbWorld,
   type AbWorldOptions,
 } from '../../test/helpers/ab-fixture.ts';
+import { BUNDLED_TEMPLATES_DIGEST, ONBOARDING_WORKFLOW_ID } from '../onboarding/status.ts';
 import type { RunRecord } from '../runs/store.ts';
 import { mergeWriteWorkspaceConfig } from '../workspace/config.ts';
 import { runBridge, type ServiceTarget } from './bridge.ts';
@@ -1208,6 +1209,57 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
       expect(JSON.stringify(entry(PROJECT_B))).toBe(bBefore);
     });
 
+    parity('P-44', ['A-09', 'A-08', 'A-05'], ['I-143', 'I-144', 'I-145', 'I-146'], 'the leader reads this project’s setup state, dispatches the bundled setup task and records the offer, and the cockpit sees the same thing', async () => {
+      const w = world();
+      const stateFile = join(w.a.root, '.local/xezar/onboarding-state.json');
+      // A project a check once covered, on a xezar that has moved on since. This is the ONLY
+      // state that produces an offer, and the whole point of the case is that both doors agree
+      // on it — a leader and a person must not be told different things about what was checked.
+      writeFileSync(
+        stateFile,
+        `${JSON.stringify({
+          engineVersion: 'parity',
+          kitDigest: BUNDLED_TEMPLATES_DIGEST,
+          lastOfferedAt: null,
+          lastCheckedAt: null,
+          checked: { engineVersion: 'older', kitDigest: BUNDLED_TEMPLATES_DIGEST, at: '2026-09-02T16:40:00.000Z' },
+        })}\n`,
+        'utf8',
+      );
+
+      // I-143 + I-146: the pull. `discover_project` carries the same answer the cockpit's read gives.
+      const discovery = await mcp(w, 'discover_project', {});
+      const uiRead = await ui(w, '/onboarding');
+      expect(uiRead.status).toBe(200);
+      expect(discovery.onboarding).toEqual(uiRead.body);
+      expect(discovery.onboarding).toMatchObject({
+        state: 'changed',
+        offerPending: true,
+        lastChecked: { engineVersion: 'older' },
+        launch: { workflowId: ONBOARDING_WORKFLOW_ID },
+      });
+
+      // I-145: the dismissal. It records the offer and nothing else, and the cockpit's own read
+      // agrees that the row is gone for this identity.
+      const bBefore = existsSync(join(w.b.root, '.local/xezar/onboarding-state.json'));
+      const dismissed = await mcp(w, 'project_config', { action: 'dismiss_onboarding_offer', operationId: op() });
+      expect(dismissed.result).toMatchObject({ status: 'recorded', onboarding: { offerPending: false, dismissed: true } });
+      expect((await ui(w, '/onboarding')).body).toMatchObject({ offerPending: false, dismissed: true });
+      // B never had a record and still does not: a project-scoped write stays in its project.
+      expect(existsSync(join(w.b.root, '.local/xezar/onboarding-state.json'))).toBe(bBefore);
+
+      // I-144: the leader dispatches the SAME launch definition the cockpit's button names, by the
+      // id the read just gave it — no guessing, and no second definition to drift.
+      const workflowId = discovery.onboarding.launch.workflowId as string;
+      expect(((await mcp(w, 'project_config', { action: 'list_workflows' })).result.workflows as Array<{ name: string }>).map((wf) => wf.name)).toContain(workflowId);
+      const created = await mcp(w, 'task_create', { operationId: op(), prompt: 'set this project up', source: { source: 'workflow', ref: workflowId } });
+      expect(created).toMatchObject({ accepted: true, subject: { type: 'run' } });
+      expect(run(w, created.subject.id as string)).toMatchObject({ workflow: workflowId });
+      // And while it runs, both doors say so instead of offering a second one (`AC-13`).
+      expect((await ui(w, '/onboarding')).body).toMatchObject({ state: 'checking', checkingRunId: created.subject.id });
+      expect((await mcp(w, 'discover_project', {})).onboarding).toMatchObject({ state: 'checking' });
+    });
+
     parity(
       'P-29',
       ['A-09', 'A-11'],
@@ -1853,10 +1905,10 @@ describe('A-05 — the coverage matrix against the closed inventory', () => {
     if (blockedCases.length > 0) console.info(`[#116] blocked parity cases (not passing): ${blockedCases.join(', ')}`);
   });
 
-  it('the inventory is the closed 142-record one, with 91 covered records', () => {
+  it('the inventory is the closed 146-record one, with 95 covered records', () => {
     const inventory = readInventory();
-    expect(inventory.size).toBe(142);
-    expect([...inventory.values()].filter((s) => s === 'covered')).toHaveLength(91);
+    expect(inventory.size).toBe(146);
+    expect([...inventory.values()].filter((s) => s === 'covered')).toHaveLength(95);
   });
 
   it('every covered record maps to at least one case, and every case names inventory records', () => {

@@ -70,6 +70,29 @@ const buildClient = (service: ServiceDispatch) =>
     },
   });
 
+/**
+ * Read this project's onboarding state through the cockpit's own route (#464 P2).
+ *
+ * Exported so `discover_project` reaches the SAME answer the cockpit reads, rather than deriving
+ * a second one — which is the drift `AC-17` forbids and which a second derivation produced the
+ * first time it was tried: the local one could not see the run store, so a running check read as
+ * a pending offer. `null` when the service refuses or answers something unexpected; the caller
+ * decides what to do without it.
+ */
+export async function readOnboardingThroughService(
+  service: ServiceDispatch,
+  projectId: string,
+): Promise<unknown | null> {
+  try {
+    const res = await buildClient(service).api.v1.p[':projectId'].onboarding.$get({
+      param: { projectId },
+    });
+    return res.ok ? ((await res.json()) as unknown) : null;
+  } catch {
+    return null;
+  }
+}
+
 type ScopedApi = ReturnType<typeof buildClient>['api']['v1']['p'][':projectId'];
 type RunsApi = ScopedApi['runs'];
 type RunApi = RunsApi[':id'];

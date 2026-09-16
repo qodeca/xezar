@@ -27,6 +27,9 @@ import type {
   ChangesPayload,
   CheckoutProjectInput,
   ConfigResponse,
+  OnboardingOfferedInput,
+  OnboardingOfferedResponse,
+  OnboardingStatus,
   ReclaimWorktreesResponse,
   RemoveWorktreeResponse,
   WorktreesResponse,
@@ -2001,6 +2004,33 @@ export async function reclaimWorktrees(): Promise<ReclaimWorktreesResponse> {
       json: {},
     }),
     '/worktrees/reclaim',
+  )
+}
+
+/** This project's setup state (#464 P2) — the one read behind the Tasks entry, the offer row and
+ *  Settings → Project setup. Read-only: it creates no record and starts nothing. */
+export async function getOnboarding(opts?: ReadOptions): Promise<OnboardingStatus> {
+  return unwrap(
+    await xez.api.v1.p[':projectId'].onboarding.$get(
+      { param: { projectId: queryScope() } },
+      init(opts),
+    ),
+    '/onboarding',
+  )
+}
+
+/** "Later" on the offer row: record that the offer was made for the identity the page was SHOWN,
+ *  so the same pair does not offer again. A pair that moved since the read answers `conflict` and
+ *  writes nothing; a record that cannot be written answers `unwritable`. Always 200. */
+export async function postOnboardingOffered(
+  input: OnboardingOfferedInput,
+): Promise<OnboardingOfferedResponse> {
+  return unwrap(
+    await xez.api.v1.p[':projectId'].onboarding.offered.$post({
+      param: { projectId: queryScope() },
+      json: input,
+    }),
+    '/onboarding/offered',
   )
 }
 

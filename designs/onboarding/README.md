@@ -1,6 +1,7 @@
 # Onboarding – first-setup entry and post-update offer
 
-**Status: Draft.** Design review pending (§ 15). Static mockups only, no product code.
+**Status: Approved.** Design review PASS WITH FOLLOW-UPS (§ 20); every finding has a disposition.
+Static mockups only — the product code lands in the P2 implementation PR.
 Covers **P2** of [qodeca/xezar#464](https://github.com/qodeca/xezar/issues/464).
 Date: 2026-09-16. Author: the kit `design` workflow (`xezar-ux-design`, authoring mode).
 
@@ -369,8 +370,10 @@ Two rules the implementing PR must not skip: a tool change without regenerating 
 The bar this repository already holds, applied here:
 
 - **Keyboard.** Re-check, Later, Set up this project, Re-check now, Retry and Open the task are real
-  `<button>`s and `<a>`s. The offer row sits before the page body in DOM order, so one Tab from the
-  page start reaches it. Nothing here is reachable only by hover or only by pointer.
+  `<button>`s and `<a>`s. The offer row sits before any page CONTENT in DOM order — after the shell's
+  own nav, which comes first on every page — so tabbing forward reaches it before anything on the
+  page itself, exactly as `AC-16` states it. Nothing here is reachable only by hover or only by
+  pointer.
 - **Focus.** The shipped `:focus-visible` ring (`ring-[3px] ring-ring/50`) is untouched. Dismissing the
   row moves focus to the page heading, so a keyboard user is never left on a removed element; the same
   applies when Re-check navigates to the task.
@@ -551,9 +554,30 @@ merged with step 4.
 
 ## 20. Design review
 
-**Pending.**
+**PASS WITH FOLLOW-UPS**, on [PR #489](https://github.com/qodeca/xezar/pull/489) — the
+`## Design review` comment of the `design-review` workflow (reviewed commit `c72c23f`, base `b6d3954`).
+No blocking findings; `design-approved` applied. Every recommendation of
+[`open-questions.md`](open-questions.md) OQ-1…OQ-10 was found sound and is taken.
 
-The `design-review` workflow (or a human design reviewer) posts a `## Design review` comment on the
-PR that carries this folder. When it lands, this section links that comment and gives every finding a
-disposition — fixed, filed as a `design-debt` issue, or accepted with a reason — and the row in
-[`designs/README.md`](../README.md) moves to Approved.
+Disposition of the seven non-blocking findings, all carried by the P2 implementation PR:
+
+| Finding | Disposition |
+| --- | --- |
+| **NB-1** — "kit" is user-facing in `entry.html` | **Fixed.** Four substitutions in `entry.html`, "kit" → "templates". The product copy never used it: `packages/web/src/lib/onboarding.ts` builds every identity label as "xezar {engine} · templates {digest}", and `onboarding.test.ts` fails on `/kit/i` in any shipped string. |
+| **NB-2** — the changed-identity card has no templates-only wording | **Fixed.** `setupBody` now has the same three variants the offer row has (`changedClause`), and the templates-only case is a test. |
+| **NB-3** — the local sheet overrides a shipped base class | **Fixed by not shipping it.** The mockup's `.centered-state .actions .btn` phone override has no counterpart in the product: the setup block sets its own `h-11` on its own button and touches no base class, so the departure disappeared rather than needing a known-gaps entry. |
+| **NB-4** — new 12 px copy uses the token G-23 records as below AA | **Fixed.** The identity rows use `text-muted-foreground` for the label and the `— {when}` suffix, and the absent `—` inherits `text-foreground`; the sub-AA token is not used on this surface. |
+| **NB-5** — § 11 overstates what DOM order gives | **Fixed.** § 11 now matches `AC-16` ("before any page content"), which was already the accurate statement. |
+| **NB-6** — `launch.modes` understates the launch definition | **Fixed.** `discover_project.onboarding.launch.modes` carries all three modes (`setup`, `preview`, `recheck`); the cockpit deliberately surfaces two, and `lib/onboarding.ts`'s `CockpitSetupMode` is the narrower type that says so. |
+| **NB-7** — the hero sentence assumes a software project | **Fixed.** `SETUP_HERO_SENTENCE` leads with the generic promise and names no software-shaped nouns; a test fails on `/ignore rules|pipeline/i`. |
+
+One item of the design is **not** in the P2 implementation and is named here rather than left
+implied: the `leader_events` push kind for a pending offer (§ 10, the second row of the MCP parity
+table). The **pull** half is delivered in full — `discover_project.onboarding` carries the state,
+the identities and the launch definition — so the owner's UI ↔ MCP parity rule is met: every
+capability the cockpit has here is reachable through the MCP. The push is additive on top of that,
+and it needs an emission point that does not exist yet (an identity change is a fact derived on
+read, not an event anything fires), so inventing one belongs in its own change.
+
+§ 11's verification note still stands: keyboard order, focus movement and screen-reader output are
+covered by unit tests in the implementation PR and by the browser suite, not by this folder.
