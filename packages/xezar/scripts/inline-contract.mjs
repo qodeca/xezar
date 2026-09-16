@@ -69,6 +69,10 @@ await build({
   platform: 'neutral',
   target: 'es2022',
   external: ['zod'],
+  // The bundle is published; the contract's source comments are notes for developing xezar (#466).
+  // esbuild keeps comments inside object literals unless whitespace is minified, so it is.
+  legalComments: 'none',
+  minifyWhitespace: true,
 });
 
 // `tsc` is located through the module graph rather than a guessed `node_modules` path, because
@@ -94,6 +98,8 @@ execFileSync(
     'false',
     '--sourceMap',
     'false',
+    '--removeComments',
+    'true',
     '--outDir',
     outdir,
   ],

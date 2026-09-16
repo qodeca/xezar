@@ -2,16 +2,17 @@
  *
  *  The React cockpit built to `web/dist` is the only web UI — the legacy
  *  vanilla page (`web/app.js` + friends) was deleted in phase R7 of the cockpit
- *  redesign. A checkout without a build
- *  gets a small built-in hint page (`build-hint`), never a 404.
+ *  redesign. An installation without it gets a small built-in recovery page
+ *  (`build-hint`), never a 404.
  */
 export type IndexTarget = 'dist' | 'build-hint';
 
 /** Pick the response for `/`, given whether the build exists.
  *
- *  The published tarball always ships `web/dist`, so `build-hint` is a dev-only
- *  state (a fresh checkout that never ran `npm run build:web`) — the spec's
- *  degradation matrix answers it with a plain "run the build" page.
+ *  The published tarball always ships `web/dist`, so `build-hint` means a damaged
+ *  installation or an unbuilt source checkout. The page is shipped to every user,
+ *  so it speaks to the installed product (#466): reinstall, never a build command
+ *  of xezar's own repository.
  */
 export function resolveIndexHtml(opts: { distExists: boolean }): IndexTarget {
   return opts.distExists ? 'dist' : 'build-hint';
@@ -44,28 +45,41 @@ export function resolveGetRequest(opts: { path: string; distExists: boolean }): 
   return resolveIndexHtml({ distExists });
 }
 
-/** The dev fallback page served for every shell route when `web/dist` is
- *  missing (spec degradation matrix: "run `npm run dev:web` or
- *  `npm run build:web`"). Built into the server so it needs no files on disk. */
+/** The recovery page served for every shell route when `web/dist` is missing.
+ *  Built into the server so it needs no files on disk. It ships in every
+ *  installation, so it tells a user how to repair the product they installed —
+ *  development instructions for xezar itself live in the contributor docs (#466). */
 export const BUILD_HINT_HTML = `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>xezar — build the cockpit</title>
+<title>xezar — cockpit files missing</title>
 <style>
-  body { margin: 0; display: grid; place-items: center; min-height: 100dvh;
+  body { margin: 0; display: grid; grid-template-columns: minmax(0, 1fr); place-items: center; min-height: 100dvh;
          font: 15px/1.6 system-ui, sans-serif; background: #101014; color: #e8e8ea; }
-  main { max-width: 34rem; padding: 2rem; }
-  code { font-family: ui-monospace, monospace; background: #1c1c22; border-radius: 6px; padding: 2px 6px; }
+  main { box-sizing: border-box; width: 100%; max-width: 34rem; padding: 2rem; }
+  code { font-family: ui-monospace, monospace; background: #1c1c22; border-radius: 6px; padding: 2px 6px;
+         white-space: nowrap; }
   p { color: #a0a0aa; }
+  p.command { overflow-x: auto; }
+  @media (max-width: 400px) { main { padding: 2rem 1.25rem; } }
+  @media (prefers-color-scheme: light) {
+    body { background: #ffffff; color: #18181b; }
+    code { background: #f0f0f2; }
+    p { color: #52525b; }
+  }
 </style>
 </head>
 <body>
 <main>
-  <h1>The cockpit isn&rsquo;t built yet</h1>
-  <p>This checkout has no <code>web/dist</code>. Run <code>npm run build:web</code>
-  and reload — or use <code>npm run dev:web</code> for the live dev server.</p>
+  <h1>The cockpit files are missing</h1>
+  <p>xezar is running, but this installation has no browser interface (<code>web/dist</code>).
+  Your tasks and project files are not affected.</p>
+  <p>Reinstall xezar, then reload this page:</p>
+  <p class="command"><code>npm install -g @qodeca/xezar@latest</code></p>
+  <p>Or stop xezar and start it again with this command, then open the address it prints:</p>
+  <p class="command"><code>npx @qodeca/xezar@latest</code></p>
 </main>
 </body>
 </html>

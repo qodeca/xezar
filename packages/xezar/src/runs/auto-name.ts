@@ -49,9 +49,9 @@ export function liveTitleUpdatesEnabled(
 }
 
 export const NAMER_SYSTEM_PROMPT =
-  'You are a task-naming assistant for an AI coding agent cockpit. Respond with ONLY a JSON object: ' +
+  'You are a task-naming assistant for a cockpit that runs AI agent tasks on any kind of project work. Respond with ONLY a JSON object: ' +
   '{"title": string, "pr"?: number, "issue"?: number}. Rules: "title" is a terse lowercase gerund phrase ' +
-  'naming the task INTENT (e.g. "implementing cr fixes", "verifying pr ui"), at most 40 characters, no ' +
+  'naming the task INTENT (e.g. "fixing pricing calculation", "drafting campaign brief", "revising methods section"), at most 40 characters, no ' +
   'trailing period, and NEVER a restatement of an assistant reply. When the task is about a GitHub pull ' +
   'request or issue, set "pr" or "issue" to that number and do NOT repeat the number inside the title ' +
   'text. Never invent a number that is not in the task.';
