@@ -62,7 +62,7 @@ export function FolderBrowser({
       </p>
 
       {listing.isError ? (
-        <p role="alert" data-slot="fs-error" className="min-w-0 break-words text-[13px] text-danger">
+        <p role="alert" data-slot="fs-error" className="min-w-0 border-l-2 border-danger pl-3 text-[13px] break-words text-foreground">
           {listing.error instanceof Error ? listing.error.message : 'could not list that folder'}
         </p>
       ) : (

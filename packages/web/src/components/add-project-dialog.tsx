@@ -115,7 +115,7 @@ export function AddProjectDialog({
         />
 
         {register.isError ? (
-          <p role="alert" data-slot="add-project-error" className="min-w-0 break-words text-[13px] text-danger">
+          <p role="alert" data-slot="add-project-error" className="min-w-0 border-l-2 border-danger pl-3 text-[13px] break-words text-foreground">
             {register.error instanceof Error ? register.error.message : 'could not add that folder'}
           </p>
         ) : null}

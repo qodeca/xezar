@@ -49,11 +49,6 @@ import { useIsDesktop } from '@/lib/use-desktop'
 // Its own gradient + rounded corners ARE the tile.
 const brandLogoUrl = '/xezar.svg'
 
-/** Tailwind's `md`. The drawer is the `<md` affordance, so this must stay in step with the
- *  `md:hidden` / `md:flex` classes below — they are the same breakpoint expressed twice, once
- *  for CSS and once for the state machine. */
-
-
 export type RepoChip = {
   name: string
   branch: string
@@ -438,7 +433,7 @@ function MobileNavDrawer({ onNavigate, ...props }: NavProps & { onNavigate: () =
         onNavigate={onNavigate}
         headerAction={
           <SheetClose asChild>
-            {/* size-11: the ≥44px touch target the spec's mobile rules require. */}
+            {/* Button supplies the absolute phone floor independently of size-11. */}
             <Button variant="ghost" size="icon" aria-label="Close menu" className="-mr-2 size-11">
               <XIcon className="size-4" aria-hidden="true" />
             </Button>
@@ -818,7 +813,7 @@ export function VersionChip({ version, latestVersion }: { version: string; lates
  *  On a development build (#442, decisions.md D-08) a red "D" badge sits on the tile's top-right
  *  corner, so a from-source cockpit cannot be mistaken for the released one. The badge is
  *  absolutely positioned over the tile's own box, so the tile follows the spacing scale and the brand row keeps
- *  its height. Its size and offsets are percentages OF THAT BOX (54% ≈ 14px, 15% ≈ 4px) rather
+ *  its height. Its size and offsets are percentages OF THAT BOX (54% size, 15% offset) rather
  *  than spacing units, so the badge follows its tile at every density.
  *  The letter is `--danger-ink`, not `--primary-foreground`, which follows the accent. Any other channel returns the bare `<img>` exactly as before — no wrapper, no
  *  placeholder. The image stays decorative (`alt=""`); the badge carries the words. */
@@ -894,5 +889,5 @@ export function SkillsUpdateMarker() {
 }
 
 export function MissingProjectBadge() {
-  return <span data-slot="project-missing" className="inline-flex min-h-chip shrink-0 items-center rounded-full bg-danger/15 px-2 py-px text-[10px] font-medium text-danger">folder not found</span>
+  return <span data-slot="project-missing" className="inline-flex min-h-chip shrink-0 items-center rounded-full bg-danger px-2 py-px text-[10px] font-medium text-danger-foreground">folder not found</span>
 }

@@ -241,6 +241,8 @@ export function CommandPalette() {
     return () => window.removeEventListener(OPEN_COMMAND_PALETTE_EVENT, onOpen)
   }, [changeOpen])
 
+  // Compose the primitives here: this trigger-less palette owns focus return. The top anchor
+  // keeps search still when results change; the viewport-aware width fits cross-project titles.
   return (
     <Dialog open={open} onOpenChange={changeOpen}>
       <DialogContent
@@ -250,14 +252,18 @@ export function CommandPalette() {
           event.preventDefault()
           const target = returnFocus.current
           if (target?.isConnected && target.getClientRects().length > 0) target.focus()
-          else document.querySelector<HTMLElement>('[data-slot="mobile-top-bar"] button, [data-slot="command-palette-hint"]')?.focus()
+          else {
+            const fallback = [...document.querySelectorAll<HTMLElement>('[data-slot="mobile-top-bar"] button, [data-slot="command-palette-hint"]')]
+              .find((element) => element.getClientRects().length > 0)
+            fallback?.focus()
+          }
         }}
       >
         <DialogHeader className="sr-only">
           <DialogTitle>Command palette</DialogTitle>
           <DialogDescription>Search projects, tasks, views, actions, and skills</DialogDescription>
         </DialogHeader>
-        <Command filter={paletteScore} className="**:data-[slot=command-input-wrapper]:h-12 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-group]]:px-2 [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3">
+        <Command filter={paletteScore} className="**:data-[slot=command-input-wrapper]:h-12 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-group]]:px-2 [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-input-wrapper]_svg]:size-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]_svg]:size-5 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3">
           <PaletteContent close={() => changeOpen(false)} />
         </Command>
       </DialogContent>
@@ -508,6 +514,7 @@ function PaletteContent({ close }: { close: () => void }) {
                   data-slot="palette-project"
                   data-project-id={project.id}
                   disabled={missing}
+                  className={missing ? 'data-[disabled=true]:opacity-100' : undefined}
                   onSelect={() => goProject(project.id)}
                 >
                   <FolderOpenIcon aria-hidden="true" />

@@ -1,13 +1,15 @@
-import { spawn, type ChildProcess } from 'node:child_process'
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { AgentBrowser, bootProjectId, fixtureServeEnv, removeDataRoot, stopFixtureServer, xezarCli } from './agent-browser'
+import { AgentBrowser, bootProjectId, fixtureServeEnv, readTestEnv, removeDataRoot, stopFixtureServer, xezarCli } from './agent-browser'
 
 // B2 owns its server and browser; no writes to the shared QA workspace or a real account.
 // Fixture replies below exercise UI failure/pending states, not server authorization.
+const sessionId = `e2e-b2-${process.pid}`
+const artifacts = resolve(import.meta.dirname, '../../../.local/qa/b2-captures')
 const densities = ['comfortable', 'roomy', 'compact', 'ultra'] as const
 const drawer = '[data-slot="mobile-nav-drawer"]'
 const menu = '[data-slot="mobile-top-bar"] button'
@@ -16,6 +18,7 @@ let server: ChildProcess
 let root: string
 let url: string
 let project: string
+let emulationSocket: WebSocket | undefined
 
 function read<T>(expression: string): T {
   return JSON.parse(browser.evaluate(`JSON.stringify((() => { return (${expression}) })())`) as string) as T
@@ -105,7 +108,10 @@ function fixtureReplies(mode = 'ready') {
           {name:'A very long project folder name that must never push its Open button out',path:'/fixture/long-parent-folder/child',isRepo:true}
         ]});
       }
-      if(target.endsWith('/projects/checkout')) return answer({error:'Clone refused for this fixture'},409);
+      if(target.endsWith('/projects/checkout')) {
+        if(window.__b2Mode==='pending') await new Promise(resolve=>window.__b2CheckoutRelease=resolve);
+        return answer({error:'Clone refused for this fixture'},409);
+      }
       if(target.endsWith('/projects') && init?.method==='POST') return answer({error:'Project registration refused'},409);
       return window.__b2Fetch(input,init);
     };
@@ -139,14 +145,50 @@ beforeAll(async () => {
   for(let n=0;n<60;n++){try{if((await fetch(`${url}/api/v1/health`)).ok){healthy=true;break}}catch{} await new Promise(r=>setTimeout(r,250))}
   if(!healthy)throw new Error('B2 fixture server did not start')
   project=await bootProjectId(url)
-  browser=AgentBrowser.open(`e2e-b2-${process.pid}`)
+  browser=AgentBrowser.open(sessionId)
+  browser.goto(url)
+  // Attach only to this provider session's active page. Device presets do not enable touch;
+  // keep this CDP session alive so Chromium retains its real input/media emulation.
+  const cli=(...args:string[])=>{
+    const result=JSON.parse(execFileSync(readTestEnv().browser.command,
+      ['--session',sessionId,...args,'--json'],{encoding:'utf8',timeout:60_000}))
+    if(!result.success)throw new Error('B2 provider command failed')
+    return result.data
+  }
+  const socket=new WebSocket(cli('get','cdp-url').cdpUrl)
+  emulationSocket=socket
+  await new Promise<void>((done,fail)=>{
+    const timeout=setTimeout(()=>fail(new Error('B2 emulation connection timed out')),5_000)
+    socket.onopen=()=>{clearTimeout(timeout);done()};socket.onerror=()=>{clearTimeout(timeout);fail(new Error('B2 emulation connection failed'))}
+  })
+  let nextId=0
+  const pending=new Map<number,{resolve:(value:any)=>void;reject:(reason:Error)=>void}>()
+  socket.onmessage=event=>{
+    const message=JSON.parse(String(event.data)),request=pending.get(message.id)
+    if(!request)return
+    pending.delete(message.id)
+    if(message.error)request.reject(new Error(JSON.stringify(message.error)));else request.resolve(message.result)
+  }
+  const send=(method:string,params:object,session?:string)=>new Promise<any>((done,fail)=>{
+    const id=++nextId,timeout=setTimeout(()=>{pending.delete(id);fail(new Error('B2 emulation command timed out'))},5_000)
+    pending.set(id,{resolve:value=>{clearTimeout(timeout);done(value)},reject:error=>{clearTimeout(timeout);fail(error)}})
+    socket.send(JSON.stringify({id,method,params,...(session?{sessionId:session}:{})}))
+  })
+  const tab=cli('tab','list').tabs.find((tab:{active:boolean})=>tab.active)
+  if(!tab)throw new Error('B2 provider has no active page')
+  const attached=await send('Target.attachToTarget',{targetId:tab.targetId,flatten:true})
+  await send('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:1},attached.sessionId)
+  await send('Emulation.setEmulatedMedia',{features:[{name:'hover',value:'none'},{name:'pointer',value:'coarse'}]},attached.sessionId)
   browser.setViewport(375,812)
+  mkdirSync(artifacts,{recursive:true})
 },60_000)
-afterAll(async()=>{browser?.close();await stopFixtureServer(server);if(root)await removeDataRoot(root)})
+afterAll(async()=>{emulationSocket?.close();browser?.close();await stopFixtureServer(server);if(root)await removeDataRoot(root)})
 
 describe('B2 phone matrix',()=>{
   it.each(densities)('T-2/T-0 every shell, palette, folder and clone target at %s',densityValue=>{
     density(densityValue);home();fixtureReplies()
+    expect(read(`innerWidth`)).toBe(375)
+    expect(read(`matchMedia('(hover: none)').matches`)).toBe(true)
     assertGeometry('[data-slot="mobile-top-bar"]')
     openDrawer(); assertGeometry(drawer)
     expect(browser.text(`${drawer} [data-slot="project-missing"]`)).toBe('folder not found')
@@ -156,8 +198,14 @@ describe('B2 phone matrix',()=>{
     expect(browser.text('[data-slot="add-project-error"]')).toBe('Project registration refused')
     assertGeometry('[data-slot="add-project-dialog"]');close('[data-slot="add-project-dialog"]')
     browser.waitForFunction(`document.activeElement?.getAttribute('aria-label')==='Add project'`)
+    read(`(() => {window.__b2Mode='pending';return true})()`)
     openClone();assertGeometry('[data-slot="clone-project-dialog"]') // includes disabled Clone
-    browser.fill('[data-slot="clone-url"]','example/project');browser.press('Enter');wait('[data-slot="clone-error"]')
+    browser.fill('[data-slot="clone-url"]','example/project');browser.press('Enter');wait('[data-slot="clone-progress"]')
+    assertGeometry('[data-slot="clone-project-dialog"]')
+    browser.press('Escape')
+    expect(read(`document.querySelector('[data-slot="clone-project-dialog"]')!==null`)).toBe(true)
+    read(`(() => {window.__b2CheckoutRelease();return true})()`)
+    wait('[data-slot="clone-error"]')
     expect(browser.text('[data-slot="clone-error"]')).toBe('Clone refused for this fixture')
     assertGeometry('[data-slot="clone-project-dialog"]');close('[data-slot="clone-project-dialog"]')
     close(drawer)
@@ -165,6 +213,16 @@ describe('B2 phone matrix',()=>{
     assertGeometry('[data-slot="dialog-content"]:has([cmdk-root])')
     expect(browser.text('[data-slot="dialog-content"]:has([cmdk-root]) [data-slot="project-missing"]')).toBe('folder not found')
     close('[data-slot="dialog-content"]:has([cmdk-root])')
+    // Keep the flat shell in the same density matrix, without changing another test's registry.
+    const configPath=join(root,'.xez-home/config.json'), saved=readFileSync(configPath,'utf8')
+    try {
+      const config=JSON.parse(saved);config.projects=config.projects.filter((p:{id:string})=>p.id===project)
+      writeFileSync(configPath,JSON.stringify(config))
+      home();openDrawer();browser.waitForFunction(`document.querySelector('${drawer} nav[aria-label="Main"]')!==null`)
+      assertGeometry(drawer)
+      browser.click(`${drawer} a[href$="/new"]`)
+      browser.waitForFunction(`location.pathname.endsWith('/new') && document.querySelector('${drawer}')===null`)
+    } finally {writeFileSync(configPath,saved)}
   },240_000)
 })
 
@@ -237,4 +295,67 @@ it.each(['light','dark','system'])('appearance %s with lime/violet preserves she
     openLocal();wait('[data-slot="fs-dir"]');assertGeometry('[data-slot="add-project-dialog"]');close('[data-slot="add-project-dialog"]');close(drawer)
   }
   browser.setMedia('light')
+},180_000)
+
+
+it('project dialogs trap keyboard focus and return it to Add project', () => {
+  home();fixtureReplies();openDrawer()
+  for (const kind of ['local','clone']) {
+    if(kind==='local')openLocal();else openClone()
+    const selector=kind==='local'?'[data-slot="add-project-dialog"]':'[data-slot="clone-project-dialog"]'
+    expect(read(`document.querySelector('${selector}').contains(document.activeElement)`)).toBe(true)
+    for(const key of ['Tab','Tab','Tab','Tab','Tab','Tab','Shift+Tab','Shift+Tab']){
+      browser.press(key)
+      expect(read(`document.querySelector('${selector}').contains(document.activeElement)`)).toBe(true)
+    }
+    read(`(() => {document.querySelector('${selector} [data-slot="dialog-close"]').focus();return true})()`)
+    browser.press('Enter')
+    browser.waitForFunction(`document.querySelector('${selector}')===null`)
+    browser.waitForFunction(`document.activeElement?.getAttribute('aria-label')==='Add project'`)
+    expect(read(`document.activeElement?.getAttribute('aria-label')`)).toBe('Add project')
+  }
+  close(drawer)
+},120_000)
+
+// Convert computed CSS colours through Canvas, so oklch/sRGB and alpha use the browser's own
+// colour parser. Composite all ancestor backgrounds; exempt genuinely disabled controls only.
+function contrast(scope: string) {
+  return read<{name:string;ratio:number}[]>(`(() => {
+    const surface=document.querySelector(${JSON.stringify(scope)});
+    if(!surface)throw new Error('No contrast surface');
+    const canvas=document.createElement('canvas');canvas.width=canvas.height=1;
+    const ctx=canvas.getContext('2d',{willReadFrequently:true});
+    const rgba=value=>{ctx.clearRect(0,0,1,1);ctx.fillStyle=value;ctx.fillRect(0,0,1,1);return [...ctx.getImageData(0,0,1,1).data].map((x,i)=>i===3?x/255:x)};
+    const over=(fg,bg)=>fg.slice(0,3).map((v,i)=>v*fg[3]+bg[i]*(1-fg[3]));
+    const lum=c=>c.map(v=>v/255).map(v=>v<=0.04045?v/12.92:((v+0.055)/1.055)**2.4).reduce((sum,v,i)=>sum+v*[0.2126,0.7152,0.0722][i],0);
+    return [...surface.querySelectorAll('*')].filter(el=>el.getClientRects().length && [...el.childNodes].some(n=>n.nodeType===3 && n.textContent.trim()) && !el.closest('[aria-hidden="true"], [disabled], [data-disabled="true"], [data-slot="tools-menu"], [data-slot="task-quick-list"]')).map(el=>{
+      const chain=[];for(let p=el;p;p=p.parentElement)chain.unshift(p);
+      let bg=[255,255,255];for(const node of chain)bg=over(rgba(getComputedStyle(node).backgroundColor),bg);
+      const fg=over(rgba(getComputedStyle(el).color),bg),a=lum(fg),b=lum(bg);
+      return {name:el.textContent.trim().slice(0,80),ratio:(Math.max(a,b)+0.05)/(Math.min(a,b)+0.05)};
+    });
+  })()`)
+}
+
+it.each(['light','dark'])('small shell/dialog text has composited contrast in %s with both accents',theme=>{
+  for(const accent of ['lime','violet']){
+    home();browser.goto(`${url}/settings/global/appearance`);wait('[data-slot="appearance-accent"]')
+    browser.click(`[data-slot="appearance-accent"] [data-value="${accent}"]`)
+    read(`(() => {localStorage.setItem('xez-theme','${theme}');return true})()`)
+    home();fixtureReplies();openDrawer()
+    const samples=contrast(drawer)
+    browser.screenshot(join(artifacts,`${theme}-${accent}-drawer.png`),{viewport:true})
+    openLocal();wait('[data-slot="fs-dir"]');samples.push(...contrast('[data-slot="add-project-dialog"]'))
+    browser.screenshot(join(artifacts,`${theme}-${accent}-folder.png`),{viewport:true})
+    browser.click('[data-slot="add-project-confirm"]');wait('[data-slot="add-project-error"]')
+    samples.push(...contrast('[data-slot="add-project-dialog"]'))
+    read(`(() => {window.__b2Mode='error';return true})()`);browser.click('[data-slot="fs-up"]');wait('[data-slot="fs-error"]')
+    samples.push(...contrast('[data-slot="add-project-dialog"]'))
+    close('[data-slot="add-project-dialog"]');openClone();samples.push(...contrast('[data-slot="clone-project-dialog"]'))
+    browser.fill('[data-slot="clone-url"]','example/project');browser.press('Enter');wait('[data-slot="clone-error"]')
+    samples.push(...contrast('[data-slot="clone-project-dialog"]'))
+    close('[data-slot="clone-project-dialog"]');close(drawer)
+    expect(samples.length).toBeGreaterThan(0)
+    expect(samples.filter(s=>s.ratio<4.5),`${theme}/${accent} small text below 4.5:1`).toEqual([])
+  }
 },180_000)

@@ -190,7 +190,7 @@ export function CloneProjectDialog({
         ) : null}
 
         {checkout.isError ? (
-          <p role="alert" data-slot="clone-error" className="min-w-0 break-words text-[13px] text-danger">
+          <p role="alert" data-slot="clone-error" className="min-w-0 border-l-2 border-danger pl-3 text-[13px] break-words text-foreground">
             {checkout.error instanceof Error ? checkout.error.message : 'could not clone that repository'}
           </p>
         ) : null}
