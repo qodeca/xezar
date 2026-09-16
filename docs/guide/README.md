@@ -18,7 +18,7 @@ Start with Getting started below, then follow the Next links to read the guide i
 12. [CLI reference](12-cli-reference.md) — Find commands, flags and headless execution options.
 13. [MCP project leader](13-mcp-leader.md) — Connect a project leader and use the MCP tools.
 14. [Remote access](14-remote-access.md) — Host the cockpit and access it through an authenticated endpoint.
-15. [Project kit](15-project-kit.md) — Create and maintain project-local workflows and skills.
+15. [Project kit](15-project-kit.md) — Create and maintain project-local workflows and skills, set project configuration and add an optional agent pipeline.
 16. [Troubleshooting and FAQ](16-troubleshooting-faq.md) — Diagnose failures, understand usage and get help.
 
 For contributing to xezar itself, read [CONTRIBUTING.md](../../CONTRIBUTING.md) and [AGENTS.md](../../AGENTS.md).
