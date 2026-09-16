@@ -39,7 +39,9 @@ const COVERAGE_DOC = 'docs/features/mcp-server/mcp-api.md'
 const ENUM_PREVIEW = 10
 const DISCRIMINATORS = ['action', 'view', 'read'] as const
 const FOCUS_RING = 'outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50'
-const LINK = `rounded-sm underline underline-offset-2 ${FOCUS_RING}`
+// `min-h-tap min-w-tap … md:`: every link and link-styled button on this page is a 44px phone target
+// (Q2 on #453), even inside a sentence; `md:` hands the inline text geometry back.
+const LINK = `inline-flex min-h-tap min-w-tap items-center rounded-sm underline underline-offset-2 md:min-h-0 md:min-w-0 ${FOCUS_RING}`
 
 export function McpApiSection() {
   const reference = useMcpApiReference()
@@ -128,7 +130,7 @@ function EffectLabel({ annotations }: { annotations: McpToolAnnotations | undefi
       <span className="font-medium text-foreground">Changes project state</span>
     ) : (
       <span className="font-medium text-foreground">
-        Read-only: not stated <span className="font-normal text-muted-foreground">– clients assume it may change state</span>
+        Read-only: not stated <span className="font-normal text-muted-foreground">— clients assume it may change state</span>
       </span>
     )
   // An omitted destructive hint on a tool that may change state is read as destructive (S7).
@@ -137,7 +139,7 @@ function EffectLabel({ annotations }: { annotations: McpToolAnnotations | undefi
       <span className="font-medium text-conflict">
         {a.destructiveHint === true ? 'Destructive' : 'Destructive: not stated'}{' '}
         <span className="font-normal text-muted-foreground">
-          {a.destructiveHint === true ? '– may delete or overwrite' : '– clients assume it may delete or overwrite'}
+          {a.destructiveHint === true ? '— may delete or overwrite' : '— clients assume it may delete or overwrite'}
         </span>
       </span>
     )
@@ -157,7 +159,7 @@ function hintWords(a: McpToolAnnotations | undefined, key: keyof McpToolAnnotati
   if (value === true) return 'yes'
   if (value === false) return 'no'
   const assumed = key === 'destructiveHint' || key === 'openWorldHint' ? 'yes' : 'no'
-  return `not stated – clients assume ${assumed}`
+  return `not stated — clients assume ${assumed}`
 }
 
 /**
@@ -169,7 +171,7 @@ function hintWords(a: McpToolAnnotations | undefined, key: keyof McpToolAnnotati
 function GuardWords({ tool, name, guard, performing }: { tool: McpToolListing; name: string; guard: McpGuard | undefined; performing: number }) {
   const properties = isObject(tool.inputSchema.properties) ? tool.inputSchema.properties : {}
   if (!(name in properties)) return <>not taken</>
-  if (!guard) return <>optional in the schema – which actions need it is not stated</>
+  if (!guard) return <>optional in the schema — which actions need it is not stated</>
   if (guard.everyCall) return <>required on every call</>
   if (guard.requiredBy.length === 0) return <>{discriminatorOf(tool) ? 'optional for every action' : 'optional'}</>
   return (
@@ -198,7 +200,7 @@ interface ArgumentRow {
   description: string | null
 }
 
-/** A JSON Schema type in words ("text", "whole number", "list of text", "object – 5 fields"). */
+/** A JSON Schema type in words ("text", "whole number", "list of text", "object — 5 fields"). */
 function typeWords(schema: unknown): string {
   if (!isObject(schema)) throw new UnsupportedSchema('a schema that is not an object')
   for (const keyword of UNSUPPORTED_KEYWORDS) if (keyword in schema) throw new UnsupportedSchema(keyword)
@@ -221,7 +223,7 @@ function typeWords(schema: unknown): string {
     case 'array':
       return schema.items === undefined ? 'list' : `list of ${typeWords(schema.items)}`
     case 'object': {
-      if (isObject(schema.properties)) return `object – ${plural(Object.keys(schema.properties).length, 'field')}`
+      if (isObject(schema.properties)) return `object — ${plural(Object.keys(schema.properties).length, 'field')}`
       if (isObject(schema.additionalProperties)) return `map of text to ${typeWords(schema.additionalProperties)}`
       return 'object'
     }
@@ -295,7 +297,7 @@ function ArgumentsView({
           <ArgumentDetail row={row} discriminator={discriminator?.name === row.path ? discriminator : null} />
           {nested.length ? (
             <details className="mt-2">
-              <summary className={`cursor-pointer rounded-sm text-[12px] font-medium text-foreground ${FOCUS_RING}`}>
+              <summary className={`min-h-tap cursor-pointer rounded-sm py-3 text-[12px] font-medium text-foreground md:min-h-0 md:py-0 ${FOCUS_RING}`}>
                 Its {plural(nested.length, 'nested field')}
               </summary>
               <ul className="mt-2 flex flex-col gap-2 border-l border-border pl-3">
@@ -312,7 +314,7 @@ function ArgumentsView({
       {refusedArguments.map((r) => (
         <li key={r.argument} data-slot="mcp-api-refused-argument" className="rounded-md border border-border bg-muted p-2.5 text-[13px]">
           <span className="font-mono break-all text-foreground">{r.argument}</span>{' '}
-          <span className="font-medium text-foreground">Refused – never accepted.</span>{' '}
+          <span className="font-medium text-foreground">Refused — never accepted.</span>{' '}
           <span className="text-muted-foreground">{r.reason}</span>
         </li>
       ))}
@@ -380,7 +382,7 @@ class ToolErrorBoundary extends Component<{ children: ReactNode; fallback: React
 function RawSchema({ tool, open = false }: { tool: McpToolListing; open?: boolean }) {
   return (
     <details open={open} data-slot="mcp-api-raw-schema">
-      <summary className={`cursor-pointer rounded-sm text-[12px] font-medium text-foreground ${FOCUS_RING}`}>JSON Schema</summary>
+      <summary className={`min-h-tap cursor-pointer rounded-sm py-3 text-[12px] font-medium text-foreground md:min-h-0 md:py-0 ${FOCUS_RING}`}>JSON Schema</summary>
       <div className="mt-2 max-w-full overflow-x-auto rounded-md border border-border bg-muted">
         <pre className="p-3 font-mono text-[11px] leading-relaxed break-all whitespace-pre-wrap text-foreground">
           {JSON.stringify(tool.inputSchema, null, 2)}
@@ -631,7 +633,7 @@ export function McpApiReferenceView({ reference }: { reference: Available }) {
             second leader on this project, and a project has exactly one. No tool call is ever sent from this page.
           </p>
           <details className="mt-1">
-            <summary className={`cursor-pointer rounded-sm text-[12px] font-medium ${FOCUS_RING}`}>Why?</summary>
+            <summary className={`min-h-tap cursor-pointer rounded-sm py-3 text-[12px] font-medium md:min-h-0 md:py-0 ${FOCUS_RING}`}>Why?</summary>
             <ul className="mt-2 flex list-disc flex-col gap-1 pl-5 text-muted-foreground">
               <li>One owner: exactly one MCP client may own a project; a call from here would take over the leader or act beside it as a second owner.</li>
               <li>Session binding: a session is bound to one project and fenced by its owner; the cockpit is not that session.</li>
@@ -686,14 +688,14 @@ export function McpApiReferenceView({ reference }: { reference: Available }) {
           ) : null}
           <li>
             What it will not do: {plural(reference.notExposed.length, 'thing')} never exposed,{' '}
-            {plural(refusedTotal, 'action')} and {plural(reference.refusedArguments.length, 'argument')} always refused –{' '}
+            {plural(refusedTotal, 'action')} and {plural(reference.refusedArguments.length, 'argument')} always refused —{' '}
             <a href="#mcp-refusals" className={LINK}>
               see the refusals
             </a>
             .
           </li>
           <li data-slot="mcp-api-summary-coverage">
-            Cockpit coverage is not shown on this page –{' '}
+            Cockpit coverage is not shown on this page —{' '}
             <a href="#mcp-coverage" className={LINK}>
               where it is recorded
             </a>
@@ -709,7 +711,7 @@ export function McpApiReferenceView({ reference }: { reference: Available }) {
           <fieldset className="flex flex-wrap gap-x-3 gap-y-1 text-[13px]">
             <legend className="sr-only">Show tools by effect</legend>
             {FILTERS.map((f) => (
-              <label key={f.value} className="flex items-center gap-1.5 text-foreground">
+              <label key={f.value} className="flex min-h-tap min-w-tap items-center gap-1.5 text-foreground md:min-h-0 md:min-w-0">
                 <input
                   type="radio"
                   name="mcp-api-effect-filter"
@@ -805,7 +807,7 @@ export function McpApiReferenceView({ reference }: { reference: Available }) {
         <div className="flex flex-col gap-2">
           <h3 className="text-[13px] font-semibold text-foreground">Refused at call time</h3>
           <p className="text-[13px] leading-relaxed text-muted-foreground">
-            Some refusals depend on the state at the moment of the call – a stale <code className="font-mono">expectedVersion</code>{' '}
+            Some refusals depend on the state at the moment of the call — a stale <code className="font-mono">expectedVersion</code>{' '}
             answered as a conflict, or a second client refused because the project already has an owner. They arrive as
             tool results; each tool’s description above says how.
           </p>

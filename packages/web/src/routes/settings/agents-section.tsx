@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { BotIcon } from 'lucide-react'
-import { useState, type ReactNode } from 'react'
+import { useState } from 'react'
 
 import { putConfig } from '@/api/client'
 import {
@@ -17,9 +17,11 @@ import { useProjectScope } from '@/api/project-scope-context'
 import type { ConfigResponse, Runner, SetConfigInput } from '@qodeca/xezar-api-client'
 import { CenteredState } from '@/components/centered-state'
 import { Button } from '@/components/ui/button'
+import { nativeFieldClass } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/components/ui/toaster'
+import { cn } from '@/lib/utils'
 import { providerStatusFor } from '@/lib/provider-status'
 import {
   DefaultAgentPicker,
@@ -28,6 +30,7 @@ import {
 } from '@/components/default-agent-picker'
 import { modelCatalogStatus, modelsForRunner, RUNNERS } from '@/routes/new-task-form'
 import { ProviderSettings } from './provider-settings'
+import { SettingsField } from './settings-field'
 
 /**
  * Settings → Agents (R6 Step 1.5, spec §"Settings"): today's scattered `PUT /api/config` knobs
@@ -75,7 +78,7 @@ export function AgentsSection() {
       <CenteredState
         icon={<BotIcon />}
         tone="danger"
-        title="Agent settings did not load"
+        title="Could not load agent settings"
         subtitle={config.error.message}
         heading="h2"
       />
@@ -177,7 +180,7 @@ function AgentsForm({
         onPick={(runner) => save.mutate({ defaultRunner: runner })}
       />
 
-      <Field
+      <SettingsField
         title="Default models"
         hint={
           config.modelsLocked
@@ -221,7 +224,7 @@ function AgentsForm({
                     data-slot="agents-model"
                     data-runner={runner.id}
                     title="Model selection is locked to native coding-agent settings."
-                    className="block w-full rounded-md border border-input bg-card px-3 py-1.5 text-sm shadow-xs"
+                    className={cn(nativeFieldClass, 'block')}
                   >
                     {configuredModelLabel}
                   </output>
@@ -240,7 +243,7 @@ function AgentsForm({
                         >,
                       })
                     }
-                    className="block w-full rounded-md border border-input bg-card px-3 py-1.5 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
+                    className={cn(nativeFieldClass, 'block')}
                   >
                     {modelOptions.map((model) => (
                       <option key={model.id} value={model.id}>
@@ -254,9 +257,9 @@ function AgentsForm({
             )
           })}
         </div>
-      </Field>
+      </SettingsField>
 
-      <Field
+      <SettingsField
         title="System prompt"
         hint="Extra instructions appended to every run, whichever runner executes it. This is the only place it is edited."
       >
@@ -290,9 +293,9 @@ function AgentsForm({
             </p>
           )}
         </div>
-      </Field>
+      </SettingsField>
 
-      <Field
+      <SettingsField
         title="Live title updates"
         hint="Refresh a task's short title through the namer model as the run progresses. A manual rename always wins and stops updates for that task."
       >
@@ -314,9 +317,9 @@ function AgentsForm({
             {config.liveTitleUpdates === null && ' (default)'}
           </span>
         </label>
-      </Field>
+      </SettingsField>
 
-      <Field
+      <SettingsField
         title="Review changes before finishing"
         hint={`When on, a task with changes pauses so you can Accept or Send back${onGithub ? ', or open a draft pull request on GitHub' : ''}. Autonomous tasks always skip this and finish on their own. Default: off — tasks finish without asking.`}
       >
@@ -338,9 +341,9 @@ function AgentsForm({
             {config.reviewGate === null && ' (default)'}
           </span>
         </label>
-      </Field>
+      </SettingsField>
 
-      <Field
+      <SettingsField
         title="Planner and namer models"
         hint="Two small background jobs: the planner turns a task into a chain of steps, the namer gives it its display title. Both are Claude aliases and are ignored when this project's default agent is not Claude."
       >
@@ -355,7 +358,7 @@ function AgentsForm({
               disabled={save.isPending}
               placeholder="sonnet"
               onChange={(event) => setPlanner(event.target.value)}
-              className="block w-full max-w-md rounded-md border border-input bg-card px-3 py-1.5 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
+              className={cn(nativeFieldClass, 'block max-w-md')}
             />
           </label>
           <label className="grid gap-1.5 text-sm">
@@ -368,7 +371,7 @@ function AgentsForm({
               disabled={save.isPending}
               placeholder="haiku"
               onChange={(event) => setNamer(event.target.value)}
-              className="block w-full max-w-md rounded-md border border-input bg-card px-3 py-1.5 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
+              className={cn(nativeFieldClass, 'block max-w-md')}
             />
           </label>
         </div>
@@ -415,11 +418,11 @@ function AgentsForm({
             Use defaults
           </Button>
         </div>
-      </Field>
+      </SettingsField>
 
-      <Field
+      <SettingsField
         title="Team skill repositories"
-        hint="Extra skill playbooks pulled from git, one per line: owner/name, a git URL, or a local path — add @branch for a ref other than main. This project's own .xezar/skills always wins. Leave empty to use no team skills."
+        hint="Extra skill playbooks pulled from git, one per line: owner/name, a git URL or a local path — add @branch for a ref other than main. This project’s own .xezar/skills always wins. Leave empty to use no team skills."
       >
         <textarea
           aria-label="Team skill repositories"
@@ -429,7 +432,7 @@ function AgentsForm({
           disabled={save.isPending}
           placeholder="qodeca/xezar-skills"
           onChange={(event) => setSkillsRepos(event.target.value)}
-          className="block w-full max-w-md rounded-md border border-input bg-card px-3 py-1.5 font-mono text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
+          className={cn(nativeFieldClass, 'block max-w-md font-mono')}
         />
         <div className="flex items-center gap-2">
           <Button
@@ -480,9 +483,9 @@ function AgentsForm({
             One source per line, at most {SKILLS_REPOS_MAX}.
           </p>
         ) : null}
-      </Field>
+      </SettingsField>
 
-      <Field
+      <SettingsField
         title="Base branch"
         hint="New task worktrees branch from this and draft PRs target it. Also settable from the Git view."
       >
@@ -493,7 +496,7 @@ function AgentsForm({
             value={config.baseBranch ?? ''}
             disabled={save.isPending}
             onChange={(event) => save.mutate({ baseBranch: event.target.value || null })}
-            className="block w-full max-w-md rounded-md border border-input bg-card px-3 py-1.5 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
+            className={cn(nativeFieldClass, 'block max-w-md')}
           >
             <option value="">follow checked-out branch (default)</option>
             {repo.data.branches.map((name) => (
@@ -507,7 +510,7 @@ function AgentsForm({
             {repo.isPending ? 'Loading branches…' : 'Not a git repository — tasks run in place, no branching.'}
           </p>
         )}
-      </Field>
+      </SettingsField>
     </div>
   )
 }
@@ -562,7 +565,7 @@ function DefaultAgentField({
   const hasAccounts = hasAgentAccounts(rows)
 
   return (
-    <Field
+    <SettingsField
       title={hasAccounts ? 'Default agent' : 'Default runner'}
       hint={
         hasAccounts
@@ -604,19 +607,6 @@ function DefaultAgentField({
           that account’s folder.
         </p>
       ) : null}
-    </Field>
-  )
-}
-
-/** The Appearance section's field chassis — same rhythm, so Settings reads as one surface. */
-function Field({ title, hint, children }: { title: string; hint: string; children: ReactNode }) {
-  return (
-    <section className="flex flex-col gap-stack">
-      <div>
-        <h2 className="text-sm font-semibold text-foreground">{title}</h2>
-        <p className="text-[13px] text-muted-foreground">{hint}</p>
-      </div>
-      {children}
-    </section>
+    </SettingsField>
   )
 }

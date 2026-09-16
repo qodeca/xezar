@@ -18,6 +18,7 @@ import {
 } from '@qodeca/xezar-api-client'
 import { CenteredState } from '@/components/centered-state'
 import { Button } from '@/components/ui/button'
+import { nativeFieldClass } from '@/components/ui/input'
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import { toast } from '@/components/ui/toaster'
 import { allProjectTags, suggestTags } from '@/lib/project-tags'
@@ -91,7 +92,7 @@ export function ProjectsSection() {
       <CenteredState
         icon={<FoldersIcon />}
         tone="danger"
-        title="Project settings did not load"
+        title="Could not load project settings"
         subtitle={(config.error ?? projects.error)?.message}
         heading="h2"
       />
@@ -214,7 +215,7 @@ function WorkspaceRootField({
             // the field, so leaving it up would be a lie about the current value.
             if (save.isError) save.reset()
           }}
-          className="block w-full max-w-sm rounded-md border border-input bg-card px-3 py-1.5 font-mono text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-invalid:border-danger disabled:opacity-50"
+          className={cn(nativeFieldClass, 'block max-w-sm font-mono aria-invalid:border-danger')}
         />
         <Button
           type="button"
@@ -573,7 +574,7 @@ export function ProjectTagsEditor({
                 if (last !== undefined) remove(last)
               }
             }}
-            className="h-6 w-16 min-w-0 flex-1 rounded-md border border-input bg-card px-1.5 text-[12px] outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
+            className={cn(nativeFieldClass, 'h-6 w-16 min-w-0 flex-1 px-1.5')}
           />
         </PopoverAnchor>
         <PopoverContent
@@ -675,7 +676,7 @@ export function MaxParallelSelect({
           },
         )
       }}
-      className="block w-44 rounded-md border border-input bg-card px-2 py-1.5 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
+      className={cn(nativeFieldClass, 'block w-44')}
     >
       <option value="">Inherit workspace ({workspaceMax})</option>
       {Array.from(

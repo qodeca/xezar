@@ -98,7 +98,7 @@ export function BookmarkletPanel({ skills }: { skills: readonly Skill[] }) {
         to open this cockpit directly. The cockpit must be running: <span className="font-mono">npx xezar</span>.
       </p>
 
-      <label className="mt-4 flex items-center gap-2 text-[13px] font-medium">
+      <label className="mt-4 flex min-h-tap items-center gap-2 text-[13px] font-medium md:min-h-0">
         <input
           type="checkbox"
           data-slot="bm-auto"
@@ -140,7 +140,7 @@ export function BookmarkletPanel({ skills }: { skills: readonly Skill[] }) {
         ) : (
           <p className="text-xs text-soft-foreground">
             {skills.length > 0
-              ? '(no skills match)'
+              ? 'Nothing matches.'
               : '(no skills yet — the generic launcher above still works)'}
           </p>
         )}
@@ -167,7 +167,7 @@ function BookmarkletRow({ label, url, hint }: { label: string; url: string; hint
     }
   }
   return (
-    <div data-slot="bm-row" className="flex min-w-0 items-center gap-2.5">
+    <div data-slot="bm-row" className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
       {/* A drag SOURCE only — the cockpit page never executes the javascript: URL itself
           (spec 011 §5), so a plain click just explains the gesture. */}
       <a
@@ -179,17 +179,17 @@ function BookmarkletRow({ label, url, hint }: { label: string; url: string; hint
           event.preventDefault()
           toast('Drag me to your bookmarks bar')
         }}
-        className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1 font-mono text-xs font-medium text-foreground shadow-xs transition-colors hover:bg-muted"
+        className="inline-flex min-h-tap max-w-full min-w-0 items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1 font-mono text-xs font-medium text-foreground shadow-xs transition-colors hover:bg-muted md:min-h-0"
       >
         <ZapIcon aria-hidden="true" className="size-3 text-primary" />
-        {label}
+        <span className="truncate">{label}</span>
       </a>
       <button
         type="button"
         data-slot="bm-copy"
         title="Copy the bookmarklet URL"
         onClick={() => void copy()}
-        className="shrink-0 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+        className="inline-flex min-h-tap min-w-tap shrink-0 items-center justify-center rounded-sm text-xs font-medium text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-0 md:min-w-0"
       >
         Copy
       </button>

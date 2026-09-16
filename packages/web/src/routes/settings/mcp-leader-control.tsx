@@ -269,7 +269,7 @@ export function McpLeaderPanel({
                     data-value={choice}
                     onClick={() => setPicked(choice)}
                     className={cn(
-                      'rounded-sm px-3 py-1.5 text-[13px] font-medium transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
+                      'inline-flex min-h-tap min-w-tap items-center justify-center rounded-sm px-3 py-1.5 text-[13px] font-medium transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-0 md:min-w-0',
                       checked ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground',
                     )}
                   >
