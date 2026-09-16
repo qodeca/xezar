@@ -168,7 +168,7 @@ describe('PromptTemplateMenu', () => {
       renderMenu()
       await openMenu()
 
-      fireEvent.change(screen.getByPlaceholderText('search templates…'), {
+      fireEvent.change(screen.getByPlaceholderText('Search templates…'), {
         target: { value: 'docs' },
       })
 
@@ -182,7 +182,7 @@ describe('PromptTemplateMenu', () => {
       renderMenu()
       await openMenu()
 
-      fireEvent.change(screen.getByPlaceholderText('search templates…'), {
+      fireEvent.change(screen.getByPlaceholderText('Search templates…'), {
         target: { value: 'covering' },
       })
 
@@ -196,7 +196,7 @@ describe('PromptTemplateMenu', () => {
       renderMenu()
       await openMenu()
 
-      fireEvent.change(screen.getByPlaceholderText('search templates…'), {
+      fireEvent.change(screen.getByPlaceholderText('Search templates…'), {
         target: { value: 'xez-review' },
       })
 
@@ -214,7 +214,7 @@ describe('PromptTemplateMenu', () => {
       const scrollTo = vi.fn()
       Object.defineProperty(list, 'scrollTo', { value: scrollTo, configurable: true })
 
-      fireEvent.input(screen.getByPlaceholderText('search templates…'), {
+      fireEvent.input(screen.getByPlaceholderText('Search templates…'), {
         target: { value: 'zzzz' },
       })
 

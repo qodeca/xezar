@@ -6,12 +6,11 @@ import {
   EyeOffIcon,
   LayersIcon,
   ListChecksIcon,
-  SearchIcon,
   SearchXIcon,
   XIcon,
 } from 'lucide-react'
 import * as React from 'react'
-import { Link, useSearchParams } from 'react-router'
+import { Link, useNavigate, useSearchParams } from 'react-router'
 
 import { archiveProjectRun, setProjectRunRead } from '@/api/client'
 import {
@@ -37,13 +36,14 @@ import { toast } from '@/components/ui/toaster'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { deriveAttention } from '@/lib/attention'
 import { shortAge } from '@/lib/format'
+import { TASK_TD_CLASS } from '@/lib/task-columns'
 import {
   formatCost,
   taskReferences,
   usageCells,
   type TaskReference,
-  type UsageCell,
 } from '@/lib/tasks-table'
+import { modelLabel, runnerLabel } from '@/lib/runner-label'
 import {
   GROUP_BY_OPTIONS,
   NO_FILTERS,
@@ -75,8 +75,21 @@ import { allProjectTags } from '@/lib/project-tags'
 import { canBeUnread, isReadDoneItem, isUnread } from '@/lib/read-state'
 import { runTitle, type ListView } from '@/lib/task-groups'
 import { usageMetricVisibility } from '@/lib/token-metrics'
+import { useIsDesktop } from '@/lib/use-desktop'
 import { useNow } from '@/lib/use-now'
 import { cn } from '@/lib/utils'
+import {
+  CARD_TITLE_CLASS,
+  CHIP_SLOT,
+  Dash,
+  ListViewTabs,
+  Sep,
+  SearchField,
+  TaskTh,
+  UsageTd,
+  cardTitleWeight,
+  isOwnClick,
+} from '@/routes/tasks-overview'
 
 /**
  * The global Tasks page at `/tasks` — every registered project's work in one table.
@@ -250,6 +263,7 @@ export function GlobalTasksRoute() {
     if (sharedView !== view) setSharedView(view)
   }, [view, sharedView, setSharedView])
   const now = useNow(30_000)
+  const desktop = useIsDesktop()
 
   /**
    * `replace`, always: filtering is one continuous gesture, and a history entry per click would
@@ -350,7 +364,7 @@ export function GlobalTasksRoute() {
         <CenteredState
           icon={<LayersIcon />}
           tone="danger"
-          title="Tasks across projects did not load"
+          title="Could not load tasks across projects"
           subtitle={(index.error ?? projects.error)?.message}
         />
       </div>
@@ -358,44 +372,44 @@ export function GlobalTasksRoute() {
   }
 
   const search = (
-    <div className="relative w-full md:w-60">
-      <SearchIcon
-        className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-soft-foreground"
-        aria-hidden="true"
-      />
-      <input
-        type="text"
-        value={queryDraft}
-        onChange={(event) => setQueryDraft(event.target.value)}
-        placeholder="Search every project…"
-        aria-label="Search tasks across projects"
-        className="h-9 w-full rounded-md border border-input bg-card pr-3 pl-8 text-[13px] text-foreground outline-none placeholder:text-soft-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-      />
-    </div>
+    <SearchField
+      value={queryDraft}
+      onChange={setQueryDraft}
+      placeholder="Search every project…"
+      label="Search tasks across projects"
+      className="md:w-60"
+    />
+  )
+  const tabs = <ListViewTabs view={view} onSelect={setView} />
+  const count = (
+    <span data-slot="global-tasks-count" className="text-[12.5px] text-soft-foreground tabular-nums">
+      {visible.length} of {tasks.length}
+    </span>
   )
 
   return (
     <div data-route="global-tasks" className="flex min-h-full flex-col">
       <header className="sticky top-0 z-10 hidden h-14 shrink-0 items-center gap-3 border-b border-border bg-background md:flex md:px-section">
         <h1 className="text-base font-semibold">All tasks</h1>
-        <div className="inline-flex gap-0.5 rounded-md bg-muted p-[3px]">
-          <ViewTab view="active" current={view} onSelect={setView}>
-            Active
-          </ViewTab>
-          <ViewTab view="archived" current={view} onSelect={setView}>
-            Archived
-          </ViewTab>
-        </div>
+        {tabs}
         <div className="flex-1" />
-        <span data-slot="global-tasks-count" className="text-[12.5px] text-soft-foreground tabular-nums">
-          {visible.length} of {tasks.length}
-        </span>
+        {count}
         {search}
       </header>
 
       <div className="flex flex-1 flex-col gap-3 p-4 pb-[calc(90px+env(safe-area-inset-bottom))] md:p-section md:pb-section">
-        {/* Below `md` the header above is hidden, so the search box rides here instead. */}
-        <div className="md:hidden">{search}</div>
+        {/* Below `md` the header above is hidden, so its tabs, count and search ride here instead
+            (#453 G-17): the Archived view is reachable on a phone too. Mounted on a phone only, and
+            with no `md:hidden` of its own (see the same toolbar in `tasks-overview.tsx`). */}
+        {desktop ? null : (
+          <div data-slot="global-tasks-phone-toolbar" className="flex flex-col gap-stack">
+            <div className="flex items-center justify-between gap-row">
+              {tabs}
+              {count}
+            </div>
+            {search}
+          </div>
+        )}
 
         <FilterBar
           filters={filters}
@@ -437,7 +451,7 @@ export function GlobalTasksRoute() {
                       <Link
                         to={scopeTo(group.key, '/')}
                         data-slot="group-project-link"
-                        className="hover:text-foreground hover:underline"
+                        className="inline-flex min-h-tap items-center rounded-sm outline-none hover:text-foreground hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-0"
                       >
                         {group.label}
                       </Link>
@@ -450,6 +464,7 @@ export function GlobalTasksRoute() {
                   </h2>
                 )}
                 <TaskTable
+                  desktop={desktop}
                   tasks={group.tasks}
                   now={now}
                   showProject={groupBy !== 'project'}
@@ -464,37 +479,6 @@ export function GlobalTasksRoute() {
         )}
       </div>
     </div>
-  )
-}
-
-function ViewTab({
-  view,
-  current,
-  onSelect,
-  children,
-}: {
-  view: ListView
-  current: ListView
-  onSelect: (view: ListView) => void
-  children: React.ReactNode
-}) {
-  const isActive = view === current
-  return (
-    <button
-      type="button"
-      data-slot="overview-tab"
-      data-view={view}
-      // Same rationale as the per-project table's tabs: these filter one list in place, they do
-      // not switch panels — `aria-pressed` is what that actually is.
-      aria-pressed={isActive}
-      onClick={() => onSelect(view)}
-      className={cn(
-        'flex h-7 items-center justify-center rounded-[7px] px-3 text-[12.5px] font-medium text-muted-foreground',
-        isActive && 'bg-card font-semibold text-foreground shadow-xs',
-      )}
-    >
-      {children}
-    </button>
   )
 }
 
@@ -602,7 +586,7 @@ function FilterBar({
             type="button"
             data-action="clear-filters"
             onClick={onClearAll}
-            className="ml-auto inline-flex h-7 items-center gap-1 rounded-full px-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+            className="ml-auto inline-flex h-7 min-h-tap items-center gap-1 rounded-full px-2 text-xs font-medium text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-0"
           >
             <XIcon className="size-3" aria-hidden="true" />
             Clear
@@ -641,7 +625,10 @@ function FilterBar({
         // since the pane that fixes it is two clicks away and outside this page.
         <p data-slot="no-tags-hint" className="text-[11px] text-soft-foreground">
           Tag connected repositories in{' '}
-          <Link to="/settings/global/projects" className="font-medium text-violet hover:underline">
+          <Link
+            to="/settings/global/projects"
+            className="inline-flex min-h-tap items-center rounded-sm font-medium text-violet outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-0"
+          >
             Settings → Projects
           </Link>{' '}
           to group their tasks together here.
@@ -651,17 +638,7 @@ function FilterBar({
   )
 }
 
-/** The rows. One table per group, so a group heading owns its own header row rather than
- *  floating above a shared one that would scroll away from it. */
-function TaskTable({
-  tasks,
-  now,
-  showProject,
-  onArchive,
-  onSetRead,
-  busy,
-  showCost,
-}: {
+interface TaskRowsProps {
   tasks: readonly GlobalTask[]
   now: number
   showProject: boolean
@@ -669,7 +646,33 @@ function TaskTable({
   onSetRead: (task: GlobalTask, read: boolean) => void
   busy: boolean
   showCost: boolean
-}) {
+}
+
+/**
+ * The rows. One table per group, so a group heading owns its own header row rather than
+ * floating above a shared one that would scroll away from it.
+ *
+ * Below `md` the same rows render as cards (#453 G-17), the per-project page's own pattern: a
+ * table that hid Tags, Workflow, Tool, Model, Cost, CPU and Mem at phone width was losing the
+ * information, and the cards carry all of it plus every row action.
+ */
+function TaskTable({ desktop, ...props }: TaskRowsProps & { desktop: boolean }) {
+  // One or the other, never both: this page can paint hundreds of rows, each with reference
+  // chips, and a hidden twin of every one would double that for nothing.
+  if (desktop) return <TaskTableRows {...props} />
+  return (
+    // The row actions name themselves in a tooltip, as they do in the table.
+    <TooltipProvider>
+      <div data-slot="global-task-cards" className="flex flex-col gap-list">
+        {props.tasks.map((task) => (
+          <GlobalTaskCard key={`${task.run.projectId}/${task.run.id}`} {...props} task={task} />
+        ))}
+      </div>
+    </TooltipProvider>
+  )
+}
+
+function TaskTableRows({ tasks, now, showProject, onArchive, onSetRead, busy, showCost }: TaskRowsProps) {
   return (
     <div
       data-slot="global-tasks-table"
@@ -683,24 +686,24 @@ function TaskTable({
                 up. A cross-project list is scanned by title; everything else is the answer to a
                 question you ask about a row you already found. */}
             <tr>
-              <Th className="w-[104px]">Status</Th>
-              <Th>Task</Th>
-              {showProject ? <Th className="w-[124px]">Project</Th> : null}
-              <Th className="hidden w-[120px] xl:table-cell">Tags</Th>
-              <Th className="w-[84px]">Ref</Th>
-              <Th className="hidden w-[108px] xl:table-cell">Workflow</Th>
-              {/* Same degradation policy as Tags, Workflow, CPU and Mem: this page has no card
-                  fallback, so a column that cannot fit is hidden rather than allowed to push the
-                  table into horizontal scrolling at phone width. */}
-              <Th className="hidden w-[124px] xl:table-cell">Tool Name</Th>
-              <Th className="hidden w-[112px] xl:table-cell">Model</Th>
-              {showCost ? <Th className="hidden w-[64px] text-right lg:table-cell">Cost</Th> : null}
-              <Th className="hidden w-[56px] text-right xl:table-cell">CPU</Th>
-              <Th className="hidden w-[84px] text-right xl:table-cell">Mem</Th>
-              <Th className="w-[56px] text-right">Age</Th>
-              <Th className="w-[64px] text-right">
+              <TaskTh className="w-[104px]">Status</TaskTh>
+              <TaskTh>Task</TaskTh>
+              {showProject ? <TaskTh className="w-[124px]">Project</TaskTh> : null}
+              <TaskTh className="hidden w-[120px] xl:table-cell">Tags</TaskTh>
+              <TaskTh className="w-[84px]">Ref</TaskTh>
+              <TaskTh className="hidden w-[108px] xl:table-cell">Workflow</TaskTh>
+              {/* Same degradation policy as Tags, Workflow, CPU and Mem: between `md` and `xl` a
+                  column that cannot fit is hidden rather than allowed to push the table into
+                  horizontal scrolling. Below `md` the cards carry every one of them. */}
+              <TaskTh className="hidden w-[124px] xl:table-cell">Tool name</TaskTh>
+              <TaskTh className="hidden w-[112px] xl:table-cell">Model</TaskTh>
+              {showCost ? <TaskTh className="hidden w-[64px] text-right lg:table-cell">Cost</TaskTh> : null}
+              <TaskTh className="hidden w-[56px] text-right xl:table-cell">CPU</TaskTh>
+              <TaskTh className="hidden w-[84px] text-right xl:table-cell">Mem</TaskTh>
+              <TaskTh className="w-[56px] text-right">Age</TaskTh>
+              <TaskTh className="w-[64px] text-right">
                 <span className="sr-only">Actions</span>
-              </Th>
+              </TaskTh>
             </tr>
           </thead>
           <tbody className="[&>tr:last-child>td]:border-b-0">
@@ -723,21 +726,7 @@ function TaskTable({
   )
 }
 
-function Th({ children, className }: { children: React.ReactNode; className?: string }) {
-  return (
-    <th
-      scope="col"
-      className={cn(
-        'h-10 border-b border-border px-3 text-left text-[11px] font-semibold tracking-[0.05em] whitespace-nowrap text-soft-foreground uppercase first:pl-4 last:pr-4',
-        className,
-      )}
-    >
-      {children}
-    </th>
-  )
-}
-
-const TD_BASE = 'h-11 border-b border-border px-3 whitespace-nowrap first:pl-4 last:pr-4'
+const TD_BASE = TASK_TD_CLASS
 
 /**
  * One cross-project run.
@@ -869,8 +858,8 @@ function TaskRow({
           {formatCost(run.costUsd) || <Dash />}
         </td>
       ) : null}
-      <UsageTd column="cpu" cell={usage.cpu} />
-      <UsageTd column="memory" cell={usage.mem} />
+      <UsageTd column="cpu" cell={usage.cpu} className="hidden xl:table-cell" />
+      <UsageTd column="memory" cell={usage.mem} className="hidden xl:table-cell" />
       <td className={cn(TD_BASE, 'text-right text-xs text-soft-foreground tabular-nums')}>
         {shortAge(run.startedAt ?? run.createdAt, now)}
       </td>
@@ -881,6 +870,131 @@ function TaskRow({
         </span>
       </td>
     </tr>
+  )
+}
+
+/** A row's icon action: `size-7` in the table, the absolute 44 px target in a phone card (#453 Q35). */
+const ROW_ACTION =
+  'inline-flex size-7 min-h-tap min-w-tap items-center justify-center rounded-md transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none disabled:cursor-wait disabled:opacity-50 md:min-h-0 md:min-w-0'
+
+/**
+ * One cross-project run as a phone card (#453 G-17) — the per-project `TaskCard` grammar with this
+ * page's extra facts: the project, the tags and every reference.
+ *
+ * The card is a click target for the task, but a click on any link or button inside it belongs to
+ * that control: the project, a reference, the `+N` list, and the read and archive actions.
+ */
+function GlobalTaskCard({
+  task,
+  now,
+  showProject,
+  onArchive,
+  onSetRead,
+  busy,
+  showCost,
+}: TaskRowsProps & { task: GlobalTask }) {
+  const navigate = useNavigate()
+  const { run } = task
+  const attention = deriveAttention(run)
+  const to = scopeTo(run.projectId, `/tasks/${run.id}`)
+  const unread = isUnread(run)
+  const references = taskReferences(run, task.project?.repoUrl)
+  const cost = formatCost(run.costUsd)
+  const usage = usageCells(run, run.usage)
+  const model = modelLabel(run.model)
+  const hasActions = canBeUnread(run) || run.archived || ARCHIVABLE_STATUSES.has(run.status)
+
+  return (
+    <div
+      data-slot="global-task-card"
+      data-run-id={run.id}
+      data-project={run.projectId}
+      onClick={(event) => {
+        if (isOwnClick(event)) void navigate(to)
+      }}
+      className="cursor-pointer rounded-lg border border-border bg-card p-inset shadow-xs"
+    >
+      <div className="flex items-start gap-2.5">
+        <Pill dot={attention.tone} pulse={attention.pulse} className="shrink-0">
+          {attention.label}
+        </Pill>
+        <Link to={to} className={cn(CARD_TITLE_CLASS, cardTitleWeight(run))}>
+          {runTitle(run)}
+        </Link>
+        {unread ? (
+          <StatusDot
+            tone="violet"
+            role="img"
+            aria-label="unread"
+            title="Unread — not opened since it finished"
+            className="mt-1.5 shrink-0"
+          />
+        ) : null}
+        <span className="mt-0.5 shrink-0 text-[11.5px] text-soft-foreground tabular-nums">
+          {shortAge(run.startedAt ?? run.createdAt, now)}
+        </span>
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-1.5 font-mono text-[11.5px] font-medium text-muted-foreground tabular-nums">
+        <span>{run.workflow}</span>
+        <Sep />
+        <span data-slot="global-task-card-tool" className={cn(run.runnerInherited && 'text-soft-foreground')}>
+          {runnerLabel(run.runner, run.stepBackends ?? 0)}
+        </span>
+        <Sep />
+        <span data-slot="global-task-card-model" className={cn(model.auto && 'text-soft-foreground')}>
+          {model.text}
+        </span>
+        {showCost && cost ? (
+          <>
+            <Sep />
+            <span>{cost}</span>
+          </>
+        ) : null}
+        {usage.cpu.text ? (
+          <>
+            <Sep />
+            <span data-usage-kind={usage.cpu.kind} title={usage.cpu.title}>
+              CPU {usage.cpu.text}
+            </span>
+          </>
+        ) : null}
+        {usage.mem.text ? (
+          <>
+            <Sep />
+            <span data-usage-kind={usage.mem.kind} title={usage.mem.title}>
+              Mem {usage.mem.text}
+            </span>
+          </>
+        ) : null}
+      </div>
+      {task.tags.length > 0 ? (
+        <div className="mt-2 flex flex-wrap items-center gap-1">
+          {task.tags.map((tag) => (
+            <TagChip key={tag} tag={tag} />
+          ))}
+        </div>
+      ) : null}
+      {showProject || references.length > 0 || hasActions ? (
+        <div className="mt-2 flex flex-wrap items-center gap-x-2.5">
+          {showProject ? (
+            <Link
+              to={scopeTo(run.projectId, '/')}
+              data-slot="global-task-card-project"
+              className="inline-flex min-h-tap max-w-full min-w-0 items-center rounded-sm text-[12.5px] text-muted-foreground outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            >
+              <span className="truncate">{task.projectName}</span>
+            </Link>
+          ) : null}
+          {references.length > 0 ? <ReferenceChips references={references} run={run} /> : null}
+          {hasActions ? (
+            <span className="ml-auto inline-flex items-center gap-0.5">
+              <ReadToggle task={task} busy={busy} onSetRead={onSetRead} />
+              <ArchiveToggle task={task} busy={busy} onArchive={onArchive} />
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
   )
 }
 
@@ -919,10 +1033,7 @@ function ReadToggle({
           aria-label={label}
           disabled={busy}
           onClick={() => onSetRead(task, unread)}
-          className={cn(
-            'inline-flex size-7 items-center justify-center rounded-md transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none disabled:cursor-wait disabled:opacity-50',
-            unread ? 'text-violet' : 'text-soft-foreground',
-          )}
+          className={cn(ROW_ACTION, unread ? 'text-violet' : 'text-soft-foreground')}
         >
           <Icon className="size-3.5" aria-hidden="true" />
         </button>
@@ -967,7 +1078,7 @@ function ArchiveToggle({
           aria-label={label}
           disabled={busy}
           onClick={() => onArchive(task, !archived)}
-          className="inline-flex size-7 items-center justify-center rounded-md text-soft-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none disabled:cursor-wait disabled:opacity-50"
+          className={cn(ROW_ACTION, 'text-soft-foreground')}
         >
           <Icon className="size-3.5" aria-hidden="true" />
         </button>
@@ -999,10 +1110,10 @@ function ReferenceChips({
     // `flex-nowrap` and `shrink-0`, both load-bearing: wrapping put the chips on two lines AND
     // broke `Issue #5119` across its own fixed-height pill, so the text sat outside the border.
     // A reference is one atom — it either fits on the row or it moves into the `+N` popover.
-    <span className="flex flex-nowrap items-center gap-1">
+    <span className="flex flex-nowrap items-center gap-1.5">
       {shown.map((reference) => (
+        <span key={`${reference.kind}#${reference.number}`} className={CHIP_SLOT}>
         <ReferenceChip
-          key={`${reference.kind}#${reference.number}`}
           reference={reference}
           taskTitle={title}
           // Named per chip HERE and nowhere else: this page's rows come from different projects,
@@ -1020,6 +1131,7 @@ function ReferenceChips({
           }
           className="shrink-0"
         />
+        </span>
       ))}
       {hidden > 0 ? (
         <ReferenceOverflow
@@ -1106,7 +1218,7 @@ function ReferenceOverflow({
           onClick={() => {
             openedByHover.current = false
           }}
-          className="shrink-0 rounded-full px-1 text-[11px] font-medium text-soft-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+          className="inline-flex min-h-tap min-w-tap shrink-0 items-center justify-center rounded-full px-1 text-[11px] font-medium text-soft-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none md:min-h-0 md:min-w-0"
         >
           +{hidden}
         </button>
@@ -1127,12 +1239,9 @@ function ReferenceOverflow({
         <p className="px-1 pb-1.5 text-[10.5px] text-soft-foreground">References</p>
         <span className="flex flex-col items-start gap-1">
           {references.map((reference) => (
-            <ReferenceChip
-              key={`${reference.kind}#${reference.number}`}
-              reference={reference}
-              taskTitle={taskTitle}
-              projectId={projectId}
-            />
+            <span key={`${reference.kind}#${reference.number}`} className={CHIP_SLOT}>
+              <ReferenceChip reference={reference} taskTitle={taskTitle} projectId={projectId} />
+            </span>
           ))}
         </span>
       </PopoverContent>
@@ -1161,34 +1270,6 @@ export function TagChip({ tag, className }: { tag: string; className?: string })
       {tag}
     </span>
   )
-}
-
-/**
- * One CPU or Mem cell — the per-project table's exact grammar, so the two read alike: a LIVE
- * sample is emphasized, a finished run's persisted peak is dimmed and says so, and anything
- * else is an honest em dash rather than an invented zero.
- */
-function UsageTd({ column, cell }: { column: 'cpu' | 'memory'; cell: UsageCell }) {
-  return (
-    <td
-      data-usage={column === 'memory' ? 'mem' : column}
-      data-usage-kind={cell.kind}
-      title={cell.title}
-      className={cn(
-        TD_BASE,
-        'hidden text-right font-mono tabular-nums xl:table-cell',
-        cell.kind === 'live' && 'bg-violet/5 text-xs font-medium text-foreground',
-        cell.kind === 'peak' && 'text-[11.5px] text-soft-foreground',
-        cell.kind === 'none' && 'text-xs text-soft-foreground',
-      )}
-    >
-      {cell.text || '—'}
-    </td>
-  )
-}
-
-function Dash() {
-  return <span className="text-xs text-soft-foreground">—</span>
 }
 
 /** What an empty global list honestly means, given how it got empty. */

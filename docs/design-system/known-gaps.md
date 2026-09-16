@@ -8,8 +8,8 @@ to-do list: an entry becomes a `design-debt` issue on the triggers [CONTRIBUTING
 names, and a fix arrives as its own change with the entry deleted.
 
 Ids are never reused: a deleted entry retires its number, so a new entry takes the next number after the
-highest ever used. G-01..G-23 and G-26..G-30 are live, G-24 and G-25 are retired, and the next free id is
-G-31.
+highest ever used. G-01..G-23, G-26..G-28 and G-30 are live, G-24, G-25 and G-29 are retired, and the
+next free id is G-31.
 
 Counts are non-test files or occurrences in `packages/web/src`. Corrected counts in G-02, G-06,
 G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the original inventory date.
@@ -33,7 +33,8 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Differs**: `chipClass` (`components/picker-pill.tsx`) is re-declared by hand in `components/prompt-template-menu.tsx:67` and `routes/settings/prompt-templates-section.tsx:345`, both with `disabled:opacity-50` instead of `opacity-55`. Both copies also keep the old `h-[26px]` and so miss the `h-7 min-h-[24px]` density-scaled height and 24 px floor. `components/facet-filter.tsx` spells its filter chip `h-7` without the floor, so it is 21 px at Compact for real – under the 24 px minimum target size of WCAG 2.2 SC 2.5.8. This predates step 3b of #424.
 - **Rule**: import `chipClass` (`h-7 min-h-[24px]`) for composer chips; `h-7` for filter chips.
 - **Fix**: replace the two copies with the import; document the two heights as intentional or unify.
-- **Status (#453 batch B3, settings)**: the settings copy is fixed: `prompt-templates-section.tsx` spells the `chipClass` look (`h-7`, `md:min-h-chip`, `disabled:opacity-55`) and grows to `min-h-tap` below `md`; its skill chips carry the same floors. It is spelled locally because B4 owns `chipClass`. Still open (B4): `prompt-template-menu.tsx` and `facet-filter.tsx`.
+- **Status (#453 batch B3, settings)**: the settings copy is fixed: `prompt-templates-section.tsx` spells the `chipClass` look (`h-7`, `md:min-h-chip`, `disabled:opacity-55`) and grows to `min-h-tap` below `md`; its skill chips carry the same floors. It is spelled locally because B4 owns `chipClass`.
+- **Status (#453 batch B4, task lists)**: fixed – `prompt-template-menu.tsx:70` imports `chipClass` (icon-only adds `w-7 min-w-chip px-0`), and `facet-filter.tsx:38` spells one `FILTER_CHIP` for the facet trigger and `ToggleChip`: `h-7`, `md:min-h-chip` on a desktop, `min-h-tap min-w-tap` below `md`. `chipClass` itself keeps `min-h-[24px]` (S12) and grows to 44 px with `max-md:min-h-tap max-md:min-w-tap`. The two heights stay: the composer chip and the filter chip are both `h-7` with a 24 px floor. The entry stays until B8 retires it.
 
 ### G-04 `text-danger` vs `text-destructive`
 
@@ -91,6 +92,7 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Differs**: a character-identical wrapper + `SearchIcon` + raw `<input>` in `routes/tasks-overview.tsx:195-208` and `routes/global-tasks.tsx:360-375`; `routes/skills.tsx:122-129` uses `Input`.
 - **Rule**: `Input` with a leading icon.
 - **Fix**: extract `SearchField`.
+- **Status (#453 batch B4, task lists)**: `SearchField` (`routes/tasks-overview.tsx:431`) wraps `Input` with the leading icon; both task pages use it, so their search reaches 44 px on a phone. Still open (B7): `routes/skills.tsx` and the other search inputs.
 
 ### G-13 Settings field chassis copied three times
 
@@ -102,6 +104,7 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 ### G-14 Duplicated shell helpers
 
 - **Differs**: the violet nav badge class is declared four times (`components/app-shell.tsx:581,592`, `components/project-groups.tsx:276,337`) and the Skills update marker twice; "folder not found" renders as a danger chip in `project-groups.tsx:229` and as soft text in `command-palette.tsx:503`; `(min-width: 768px)` is subscribed inline in `app-shell.tsx:206-215` and the shape copied in `ghost-code-backdrop.tsx:210-222` while `lib/use-desktop.ts` exists; `lib/sidebar-width.ts` and `lib/sidebar-collapse.ts` repeat the same read/normalise/write triple.
+- **Also (#453 batch B4)**: `useIsDesktop()` asks `(min-width: 768px)` while Tailwind's `md:` is `48rem`. They agree only at the default 16 px font size. The Tasks pages' phone toolbar and the global cards are gated by the hook alone, so they are never hidden twice, but with a larger default font size a width between 768 px and `48rem` shows neither the header nor the phone toolbar. Fix with the hook (`lib/use-desktop.ts`, outside B4): query `48rem`.
 - **Rule**: one `NavBadge`; the danger chip for a missing project; `useIsDesktop()`.
 - **Fix**: extract `NavBadge`; reuse the hook; share a storage helper.
 
@@ -124,6 +127,7 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 | Oxford comma | omitted (25) | present (2) | `routes/settings/agents-section.tsx:315`, `notifications-section.tsx:97` |
 
 - **Fix**: one copy pass over the minority sites; a `no-en-dash-in-ui` guardian rule.
+- **Status (#453 batch B4, task lists)**: fixed rows – "Tool name" (`lib/task-columns.ts:62`), "Could not load tasks across projects" (`routes/global-tasks.tsx:367`) and "Search templates…" (`components/prompt-template-menu.tsx`). Still open (B5, B7): the placeholders in `routes/new-task.tsx` and `routes/github/hand-to-agent.tsx`, and the other rows.
 - **Status (#453 batch B3, settings)**: the settings rows are fixed – "Could not load …" in all ten settings sites, "Retry" in provider settings, "Filter skills…", "Nothing matches." for the bookmarklet filter, the em dash in `mcp-api-section.tsx`, curly apostrophes in `appearance.tsx`, `project-general.tsx` and the hints of `agents-section.tsx`, `resources-section.tsx`, `mcp-connection-section.tsx`, `projects-section.tsx`, `accounts-section.tsx` and `prompt-templates-section.tsx`, and no Oxford comma in `agents-section.tsx`, `notifications-section.tsx` and `prompt-templates-section.tsx`. Still open (B4, B5, B7): the other rows. The guardian rule is not added.
 
 ### G-16 Toast punctuation
@@ -131,24 +135,28 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Differs**: success toasts with a period ("Team skills refreshed.", "Command copied to clipboard.") vs without ("Worktree path copied", "Worktree removed"), roughly 6 to 8; "Command copied to clipboard." and "Command copied" are the same event in two files.
 - **Rule**: no period on a short fragment; a period on a full sentence with a clause.
 - **Fix**: normalise the ~14 toasts; share one `copyToClipboard` helper (three copies exist in `run-header.tsx`, `review-panel.tsx`, `task-changes.tsx`).
+- **Status (#453 batch B4, task lists)**: the helper exists – `copyText` in `lib/clipboard-result.ts` answers `{ ok: true }` or `{ ok: false, reason }` and never throws, so a refused or missing clipboard is never reported as copied. It has no consumer yet. Still open (B5, B6, B7): move the three copies onto it and normalise the toasts.
 
 ### G-17 Two hand-written task tables
 
 - **Differs**: `routes/tasks-overview.tsx` is driven by `TASK_COLUMNS`; `routes/global-tasks.tsx:656-740` hard-codes its columns with an identical `Th` and `TD_BASE` and duplicates `UsageTd`/`Dash`; it degrades by hiding columns at `lg:`/`xl:` instead of cards.
 - **Rule**: `task-columns.ts` for the per-project table; the global table is documented as separate.
 - **Fix**: share `Th`, `TD_BASE`, `UsageTd`; decide whether the global table should fold like the other.
+- **Status (#453 batch B4, task lists)**: fixed – `TASK_TH_CLASS` and `TASK_TD_CLASS` (`lib/task-columns.ts:143,145`) and `USAGE_CELL_CLASS` (`lib/tasks-table.ts:355`) are the one grammar; both tables render the exported `TaskTh` and `UsageTd` (`routes/tasks-overview.tsx:464,900`) and share `Dash`. Below `md` the global page renders cards (`GlobalTaskCard`, `routes/global-tasks.tsx:887`) with the same facts as the project cards, so it no longer only hides columns. The entry stays until B8 retires it.
 
 ### G-18 Number formatting has two byte formatters
 
 - **Differs**: `lib/tasks-table.ts:29-34` rounds MB and kB to whole numbers; `routes/task-git/worktree-files.ts:37-38` keeps one decimal.
 - **Rule**: `formatMem` in `lib/tasks-table.ts`.
 - **Fix**: import it in `worktree-files.ts`.
+- **Status (#453 batch B4, task lists)**: one formatter with two named contracts – `formatBytes(bytes, 'memory' | 'file')` (`lib/tasks-table.ts:54`); `formatMem` is its memory form, and the file form matches `formatFileSize` byte for byte (pinned in `design-debt-b4.test.tsx`). The precisions differ on purpose: memory rounds, file sizes keep one decimal. Still open (B6): `routes/task-git/worktree-files.ts:36` still has its own copy.
 
 ### G-19 One-off icon sizes
 
 - **Differs**: `size-[15px]` ×12, `size-[22px]`, `size-[19px]`, `size-[13px]`, `size-[9px]` (`routes/github/github.tsx:527`) beside the `size-3` / `size-3.5` / `size-4` scale.
 - **Rule**: the scale.
 - **Fix**: round the one-offs to the nearest step.
+- **Status (#453 batch B4, task lists)**: the task-list one-offs are gone – `size-4` for the compare icon and the variant letter, `size-5.5` for the new-task button icon, and no fixed size on the table pin (`routes/tasks-overview.tsx`, `components/task-quick-list.tsx`), `size-1.5` for the reference status dot. Still open (B5, B7): `composer/composer.tsx`, `task-thread/agents-dock.tsx`, `plan-dock.tsx`, `step-rail.tsx` and `github/github.tsx`.
 
 ### G-20 Dead primitives
 
@@ -161,6 +169,7 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Differs**: `index.css:29-31` says "Reach for this on any control that is hidden until hover"; `no-hover:` is used at exactly two sites (`components/task-quick-list.tsx:339`, `routes/tasks-overview.tsx:807`). The composer's attachment remove overlay (`components/composer/composer.tsx:504`) reveals on `group-hover` and `group-focus-visible` only.
 - **Rule**: `no-hover:` on every hover-revealed control.
 - **Fix**: add the variant to the composer overlay and audit `group-hover` sites.
+- **Status (#453 batch B4, task lists)**: the task lists are done – the pin (`components/pin-toggle.tsx`), the drawer row pin (`components/task-quick-list.tsx:340`) and the table's rename pencil and pin (`routes/tasks-overview.tsx:853,868`) show on a no-hover device and grow to 44 px there. Still open (B5): the composer overlay, and the run header's rename pencil (`routes/task-thread/run-header.tsx:544`), which is `opacity-0` and about 22 px on a phone.
 
 ### G-22 Save behaviour split inside one pane
 
@@ -174,6 +183,7 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Differs**: `--soft-foreground` is `#a3a3a3` in `.light` (`styles/index.css:198`) – 2.5:1 on `--background`, 2.4:1 on `--muted` – and it colours 10–12.5 px text (eyebrows, hints, chip counts, table headers). `--danger-foreground` (`#ffffff`) on `--danger` (`#ef4444`) is 3.8:1 for the danger button and the danger toast. `--violet-foreground` on `--violet` is 3.1:1 for the nav badge (accepted in `styles/index.css` beside the token). AA needs 4.5:1 for text this size.
 - **Rule**: keep the tokens; do not add more small text in `--soft-foreground` on light, and keep the badge count announced in words.
 - **Fix**: darken light `--soft-foreground` to about `#767676` (4.5:1) and revisit the danger pair; then re-check every specimen swatch.
+- **Also measured (#453 batch B4, 375 px, light theme)**: three ink tokens are below 4.5:1 as small text on the task lists – `--success` (`#10b981`) 2.5:1 and `--danger` (`#ef4444`) 3.8:1 in the `+`/`−` diff counts (`components/diff-stat.tsx`), and `--violet` (`#8f86e8`) 3.1:1 in a reference chip with no forge status (`components/reference-chip.tsx`). The dark theme passes. B4 may not change a token, so `e2e/design-debt-b4.e2e.ts` reports these three colours and fails on any other. Owner: a token change after B1, through B8 reconciliation.
 
 ### G-26 The thread header shows scrolled content through it
 
@@ -193,13 +203,9 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Rule**: a version number is never truncated.
 - **Fix**: give the chip `shrink-0` and let the footer's other controls give way first. Seen in the 0.15.0 docs captures (#448, design review NB-9).
 
-### G-29 The default-agent picker is under 44 px on a phone
-
-- **Differs**: the Settings → Agents and Agent accounts default-agent radios (`components/default-agent-picker.tsx:124`) measure 28.5–34.5 px tall at 390 px across the four densities, the only Settings target below the 44 px floor; owner: batch B4 of #453 (Q06), found in the B3 design review (#519, NB-1).
-
 ### G-30 The registered-projects table scrolls sideways on a phone
 
-- **Differs**: at 390 px the Global → Projects "Registered projects" table (`routes/settings/projects-section.tsx:277`) scrolls inside its box (567 px of content in 356 px), squeezing the Project column to 60 px, instead of reflowing as cards below `md`; pre-existing, owner: batch B4 of #453, found in the B3 design review (#519, NB-2).
+- **Differs**: at 390 px the Global → Projects "Registered projects" table (`routes/settings/projects-section.tsx:277`) scrolls inside its box (567 px of content in 356 px), squeezing the Project column to 60 px, instead of reflowing as cards below `md`; pre-existing, found in the B3 design review (#519, NB-2). Owner: B8 reconciliation of #453. It was given to B4, but `projects-section.tsx` is in no remaining batch manifest (B3 owned it and has merged), so the fix needs a manifest revision first.
 
 ## Comment vs code
 
@@ -208,7 +214,7 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 | "Views never hand-roll a centered message" | the error boundary, `skills-loading.tsx` and `PageState` do | `components/centered-state.tsx:17-18` (G-05) |
 | pulse follows the "quiet motion" rule | no reduced-motion guard | `components/status-dot.tsx:8-9,21` (G-08) |
 | `run-diff.tsx` is an interim to be replaced by `DiffFileBody`'s successor | the successor shipped; two consumers were never migrated | `components/run-diff.tsx:17,145-150` (G-09) |
-| "Reach for this on any control that is hidden until hover" | two sites use it | `styles/index.css:29-31` (G-21) |
+| "Reach for this on any control that is hidden until hover" | the task lists use it; the composer overlay and the run header pencil do not | `styles/index.css:29-31` (G-21) |
 | `PopoverTitle` is typed `h2` | renders a `div` | `components/ui/popover.tsx:67-70` (G-07) |
 | the reference tones share `StatusDot`'s five roles | `ReferenceStatusTone` adds `info` and `conflict`, which `StatusDot` cannot paint | `lib/reference-status.ts:11-13`, `components/reference-chip.tsx:469` |
 
@@ -222,16 +228,16 @@ for new work.
 | --- | --- | --- | --- |
 | `.btn` (small button) | 30px, `padding 0 12px`, weight 500, 12.5px | `h-[30px] px-2.5 text-[12.5px] font-semibold` | `components/ui/button.tsx` |
 | `.btn-new-task` | `calc(var(--spacing) * 10)` (40px), weight 500; `.new-task-row .btn-icon` matches at 40px | `h-10` (40px), `font-semibold`; Add project `size-11 md:size-10` | `components/app-shell.tsx:509`, `components/app-shell.tsx:740` |
-| `.quick li` | fixed `height: 32px`, `padding 0 10px` | row from content: link `py-2` (35.5px at Comfortable, scales with density) | `components/task-quick-list.tsx:425` |
-| `.list-tabs span.on` | `bg card-2`, weight 500 | `bg-card font-semibold shadow-xs` | `components/task-quick-list.tsx:192` |
-| `.tasks-table th` | 11.5px, weight 500, no transform | `text-[11px] font-semibold tracking-[0.05em] uppercase` | `routes/tasks-overview.tsx:414-422` |
+| `.quick li` | fixed `height: 32px`, `padding 0 10px` | row from content: link `py-2` (35.5px at Comfortable, scales with density), 44 px below `md` | `components/task-quick-list.tsx:432` |
+| `.list-tabs span.on` | `bg card-2`, weight 500 | `bg-card font-semibold shadow-xs` | `components/task-quick-list.tsx:193` |
+| `.tasks-table th` | 11.5px, weight 500, no transform | `text-[11px] font-semibold tracking-[0.05em] uppercase` | `TASK_TH_CLASS`, `lib/task-columns.ts:143` |
 | `.nav-badge.danger` | red badge | no red nav badge exists; the cockpit's badges are violet | design decision, pending review |
 | `.qc-empty` | dashed box, 40px icon, 15px title | `CenteredState`: 72px tile, `text-2xl` | `components/centered-state.tsx` |
 | `.qc-skeleton` | sheen sweep | `animate-pulse rounded-md bg-accent` | `components/ui/skeleton.tsx` |
 | `.task-body` | `padding 18px 24px 24px`, fixed px | thread column `md:px-section md:py-section` (32 px on the density unit) | `routes/task-thread/task-thread.tsx:307` |
 | `.task-head h1`, `.task-head .row` | `margin 8px 0 10px`, fixed px | tab row `mt-stack` (12 px) under the title | `routes/task-thread/run-header.tsx:222` |
 | `.quick-head` | `padding 12px 22px 4px`, fixed px | bucket heading `px-3 pt-stack pb-1` | `components/task-quick-list.tsx:144` |
-| `.tasks-table td` | `padding 10px 12px`, height from content | `h-11 px-3` | `routes/tasks-overview.tsx:514` |
+| `.tasks-table td` | `padding 10px 12px`, height from content | `h-11 px-3` | `TASK_TD_CLASS`, `lib/task-columns.ts:145` |
 | `.qc-toast` | card surface with a success icon | `bg-contrast text-contrast-foreground`, no icon | `components/ui/toaster.tsx` |
 | `--diff-add` / `--diff-del` (removed) | mockup-only aliases | `text-success` / `text-danger` | `components/diff-stat.tsx` |
 | `.qc-alert` | card with a danger-tinted border and icon | `banner-row` with the `alert` tone | `components/provider-banner.tsx` |

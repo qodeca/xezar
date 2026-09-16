@@ -816,7 +816,7 @@ describe('Add instructions', () => {
       expect(document.querySelectorAll('[data-slot="prompt-template-option"]').length).toBeGreaterThan(1),
     )
 
-    fireEvent.change(screen.getByPlaceholderText('search templates…'), { target: { value: 'docs' } })
+    fireEvent.change(screen.getByPlaceholderText('Search templates…'), { target: { value: 'docs' } })
     await waitFor(() =>
       expect(document.querySelectorAll('[data-slot="prompt-template-option"]')).toHaveLength(1),
     )
