@@ -1,6 +1,7 @@
 # Onboarding – first-setup entry and post-update offer
 
-**Status: Draft.** Design review pending (§ 15). Static mockups only, no product code.
+**Status: Approved.** Design review PASS WITH FOLLOW-UPS (§ 20); every finding has a disposition.
+Static mockups only — the product code lands in the P2 implementation PR.
 Covers **P2** of [qodeca/xezar#464](https://github.com/qodeca/xezar/issues/464).
 Date: 2026-09-16. Author: the kit `design` workflow (`xezar-ux-design`, authoring mode).
 
@@ -210,7 +211,7 @@ substitutions. A value that is not recorded prints `—`.
 | Body — changed | The last check finished against xezar {engine}. xezar {engine} is running now. A re-check compares this project's files against the pinned defaults and shows you the differences. |
 | Body — dismissed | The last check finished against xezar {engine}. xezar {engine} is running now. You chose Later, so the notice above the page will not come back for this version. |
 | Heading — unknown provenance | Provenance unknown |
-| Body — unknown provenance | There is no record of a previous check for this project. A re-check can still read what is here and show you the pinned defaults, but it cannot tell your own edits from an older default, so it will not replace a file on its own. |
+| Body — unknown provenance | A record of earlier checks exists for this project and cannot be read, so nothing here can say what was checked or when. A re-check can still read what is here and show you the pinned defaults, but it cannot tell your own edits from an older default, so it will not replace a file on its own. |
 | Heading — re-check running | Re-checking |
 | Body — re-check running | A task is comparing this project's files against the pinned defaults. It may ask you a question, and it writes nothing until you accept its preview. |
 | Button — set up | Set up this project |
@@ -238,6 +239,14 @@ substitutions. A value that is not recorded prints `—`.
 | Observed is not checked | **Observed is not checked.** "Last observed" is what is running now. Only a check that finished moves "Last successfully checked" — a partial or failed check leaves it where it was. |
 | Re-check is always here | **A re-check is always here.** Choosing Later hides the notice for this version only. It never turns the check off. |
 | Unknown provenance is not an error | **This is not an error.** The record is local scratch. Deleting it loses the history of checks and nothing else — xezar and your tasks work exactly as before. |
+
+**Deleted is not unreadable** (QA-2 of #497, and the one place this deck stated two rules). Deleting
+the record reads **Not set up yet**, not **Provenance unknown**: an ABSENT record is `never` and a
+record that exists and cannot be read is `unknown`. § 7.1 row 1 is the rule; the note above is about
+what deleting the record COSTS — the history of checks — and not about which heading follows it. The
+distinction is deliberate and is protected in `BACKWARD_COMPATIBILITY.md`: collapsing the two is how
+a fail-open branch ends up claiming a check that never happened. The narrow cost is real and
+accepted: a project that was checked, whose scratch file is then deleted, reads as never set up.
 | Hosted mode | **One part finishes elsewhere.** Connecting an agent on your own computer is done from the machine that owns the checkout — this cockpit runs in hosted mode. Setup prepares that file here and leaves the last step to a person on that machine. |
 | Running check | "Last successfully checked" moves only when this task finishes its check. A cancelled or failed check leaves it where it is. |
 
@@ -369,8 +378,10 @@ Two rules the implementing PR must not skip: a tool change without regenerating 
 The bar this repository already holds, applied here:
 
 - **Keyboard.** Re-check, Later, Set up this project, Re-check now, Retry and Open the task are real
-  `<button>`s and `<a>`s. The offer row sits before the page body in DOM order, so one Tab from the
-  page start reaches it. Nothing here is reachable only by hover or only by pointer.
+  `<button>`s and `<a>`s. The offer row sits before any page CONTENT in DOM order — after the shell's
+  own nav, which comes first on every page — so tabbing forward reaches it before anything on the
+  page itself, exactly as `AC-16` states it. Nothing here is reachable only by hover or only by
+  pointer.
 - **Focus.** The shipped `:focus-visible` ring (`ring-[3px] ring-ring/50`) is untouched. Dismissing the
   row moves focus to the page heading, so a keyboard user is never left on a removed element; the same
   applies when Re-check navigates to the task.
@@ -551,9 +562,64 @@ merged with step 4.
 
 ## 20. Design review
 
-**Pending.**
+**PASS WITH FOLLOW-UPS**, on [PR #489](https://github.com/qodeca/xezar/pull/489) — the
+`## Design review` comment of the `design-review` workflow (reviewed commit `c72c23f`, base `b6d3954`).
+No blocking findings; `design-approved` applied. Every recommendation of
+[`open-questions.md`](open-questions.md) OQ-1…OQ-10 was found sound and is taken.
 
-The `design-review` workflow (or a human design reviewer) posts a `## Design review` comment on the
-PR that carries this folder. When it lands, this section links that comment and gives every finding a
-disposition — fixed, filed as a `design-debt` issue, or accepted with a reason — and the row in
-[`designs/README.md`](../README.md) moves to Approved.
+Disposition of the seven non-blocking findings, all carried by the P2 implementation PR:
+
+| Finding | Disposition |
+| --- | --- |
+| **NB-1** — "kit" is user-facing in `entry.html` | **Fixed.** Four substitutions in `entry.html`, "kit" → "templates". The product copy never used it: `packages/web/src/lib/onboarding.ts` builds every identity label as "xezar {engine} · templates {digest}", and `onboarding.test.ts` fails on `/kit/i` in any shipped string. |
+| **NB-2** — the changed-identity card has no templates-only wording | **Fixed.** `setupBody` now has the same three variants the offer row has (`changedClause`), and the templates-only case is a test. |
+| **NB-3** — the local sheet overrides a shipped base class | **Fixed**, and this row was wrong until the #497 review measured it. The claim held for the offer row and the Settings card, which both carry `max-md:h-11`; the Tasks hero button did not, and sat at 36 px inside `CenteredState`'s actions row. It now carries `max-md:h-11` too, so all three setup controls are 44 px on a phone and no base class is overridden. |
+| **NB-4** — new 12 px copy uses the token G-23 records as below AA | **Fixed**, and this row was wrong until the #497 review measured it. The card itself was clean (6.69:1), but the loading line — the first thing a person sees — was 13 px `text-soft-foreground`, measured at 2.52:1 on light. It now uses `text-muted-foreground`, so the sub-AA token really is absent from this surface. |
+| **NB-5** — § 11 overstates what DOM order gives | **Fixed.** § 11 now matches `AC-16` ("before any page content"), which was already the accurate statement. |
+| **NB-6** — `launch.modes` understates the launch definition | **Fixed.** `discover_project.onboarding.launch.modes` carries all three modes (`setup`, `preview`, `recheck`); the cockpit deliberately surfaces two, and `lib/onboarding.ts`'s `CockpitSetupMode` is the narrower type that says so. |
+| **NB-7** — the hero sentence assumes a software project | **Fixed.** `SETUP_HERO_SENTENCE` leads with the generic promise and names no software-shaped nouns; a test fails on `/ignore rules|pipeline/i`. |
+
+### The implementing PR's own design review (#497)
+
+**PASS WITH FOLLOW-UPS** again, on [PR #497](https://github.com/qodeca/xezar/pull/497) (reviewed
+commit `addeef6`, base `main`). No blocking findings; `design-approved` applied. Three of the six
+were places where the table above claimed a #489 follow-up was fixed and the built cockpit said
+otherwise — those two rows are corrected in place above, which is the honest record.
+
+| Finding | Disposition |
+| --- | --- |
+| **NB-1** — the setup task's own title reads `/xez-onboard` followed by the machine brief | **Filed as design debt, not fixed here.** Both repairs the review offers change a shipped mechanism rather than this surface: a title the launch definition carries needs a new `title` field on `WorkflowDef` and on the YAML schema every workflow file is read through, and the alternative changes `makeRunTitle`'s `/{skill}` rule for every workflow that names a skill. Either belongs in its own change with its own review, and the review filed this non-blocking for the reason that bounds it — the auto-namer replaces the title within seconds in ordinary use. |
+| **NB-2** — the Tasks hero setup button is 36 px on a phone | **Fixed.** `max-md:h-11` on that button (`tasks-overview.tsx`), so all three setup controls now measure 44 px at 375 px. The #489 NB-3 row above is corrected. |
+| **NB-3** — the offer row loses its vertical padding where its sentence wraps | **Fixed.** `md:py-0` dropped from both shapes of the row, so `py-row` holds at every width — the mockup's own rule (`styles.css:18-23`). `ProviderBanner` keeps `md:py-0`, because its copy is short and never wraps; `components.md` now says which row does which and why. |
+| **NB-4** — the loading line uses the sub-AA token G-23 prohibits | **Fixed.** That line is `text-muted-foreground` now. The second half of the finding — `G-05` spells the in-surface muted line as centred `text-xs`, and this one is left-aligned at 13 px — is **accepted with a reason**: the section's own idiom is a left-aligned 13 px line (`text-[13px]`, the settings-pane idiom the guardian allows at 205 existing sites), and centring one loading line would make it the odd one out among its four neighbouring sections. |
+| **NB-5** — in the hero the optional block is read before the primary action | **Filed as design debt, not fixed here.** The fix needs a new `footer` slot on `CenteredState`, a shared component eleven other surfaces render, and the review states the ranking still reads correctly by weight. Changing a shared primitive's layout contract inside a review response is exactly the shape of change that breaks a default nobody wrote down. |
+| **NB-6** — the offer row appears on the very page its link points at | **Fixed.** The container passes `atSettings` and the row drops the **See the exact versions** link on Settings → Project setup. Only the link goes: the sentence and both actions stay, because that page is still where the offer is answered. |
+
+### Independent QA (#497)
+
+The QA run returned one blocking finding, `QA-1` — two presses of **Re-check** about 200 ms apart
+started two setup tasks, against `AC-13` and § 7.2 of this deck. It is **fixed**, and not where it
+was found: the rule is now enforced server-side at the one place a setup task is created, so it
+covers the three cockpit controls and a project leader's own `task_create` alike, and the pending
+state the design asks for is held until the status read lands rather than until the create settles.
+
+QA's two non-blocking findings, both dispositioned by QA as needing no code change:
+
+- **QA-2** — deleting the record reads "Not set up yet", not "Provenance unknown". The deck stated
+  both rules: § 7.1 row 1 gives "no record" to **Not set up yet**, and § 8.3's note is written for
+  the deleted-record case. **The deck is reconciled in favour of what shipped** — see the note added
+  to § 8.3. An absent record reads `never`, a record that exists and cannot be read reads `unknown`,
+  and keeping those two apart is what stops a fail-open branch claiming a check that never happened.
+- **QA-3** — the check-running line renders on a never-set-up project. **Accepted.** It is one of the
+  row's own listed states, it carries no offer actions, and its copy is § 8.4 verbatim.
+
+One item of the design is **not** in the P2 implementation and is named here rather than left
+implied: the `leader_events` push kind for a pending offer (§ 10, the second row of the MCP parity
+table). The **pull** half is delivered in full — `discover_project.onboarding` carries the state,
+the identities and the launch definition — so the owner's UI ↔ MCP parity rule is met: every
+capability the cockpit has here is reachable through the MCP. The push is additive on top of that,
+and it needs an emission point that does not exist yet (an identity change is a fact derived on
+read, not an event anything fires), so inventing one belongs in its own change.
+
+§ 11's verification note still stands: keyboard order, focus movement and screen-reader output are
+covered by unit tests in the implementation PR and by the browser suite, not by this folder.

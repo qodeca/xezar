@@ -62,7 +62,7 @@ describe('project kit layout', () => {
       expect(projectKitDir(root)).toBe(join(root, '.xezar'));
       expect((await loadConfig(root)).baseBranch).not.toBe('old-custom');
       expect(agentModelsLocked(root, {})).toBe(false);
-      expect((await loadWorkflows(root)).workflows.map(w => w.name)).toEqual(['quick-task']);
+      expect((await loadWorkflows(root)).workflows.map(w => w.name)).toEqual(['project-setup', 'quick-task']);
       expect((await discoverSkills(root)).map(s => s.name)).not.toContain('old-custom');
     }
     expect(readFileSync(join(root, '.ai/xezar/config.json'), 'utf8')).toBe(before);
@@ -75,6 +75,6 @@ describe('project kit layout', () => {
     expect((await loadConfig(root)).baseBranch).toBe('new-custom');
     expect((await loadWorkflows(root)).workflows.map(w => w.name)).not.toContain('old-custom');
     rmSync(join(root, '.xezar/workflows'), { recursive: true });
-    expect((await loadWorkflows(root)).workflows.map(w => w.name)).toEqual(['quick-task']);
+    expect((await loadWorkflows(root)).workflows.map(w => w.name)).toEqual(['project-setup', 'quick-task']);
   });
 });

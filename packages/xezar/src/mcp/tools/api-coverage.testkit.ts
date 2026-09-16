@@ -49,7 +49,7 @@ export const TOOL_ACTION_COVERAGE: Readonly<Record<string, ActionCoverage>> = {
   'execution_control:remove_queued_message': { serves: ['I-035'] },
   'execution_control:cancel_auto_resume': { serves: ['I-040'] },
 
-  discover_project: { serves: ['I-007', 'I-008', 'I-042', 'I-044', 'I-104', 'I-114', 'I-133', 'I-136'] },
+  discover_project: { serves: ['I-007', 'I-008', 'I-042', 'I-044', 'I-104', 'I-114', 'I-133', 'I-136', 'I-143', 'I-146'] },
 
   'organise_work:list_queue': { serves: ['I-035'] },
   'organise_work:set_title': { serves: ['I-018'] },
@@ -71,7 +71,7 @@ export const TOOL_ACTION_COVERAGE: Readonly<Record<string, ActionCoverage>> = {
 
   // I-080: the tool takes no GitHub reference; the leader writes the reference into `prompt`, as the
   // cockpit's `composeGithubTask` prepends it, and picks the workflow or skill steps itself.
-  'task_create:start': { serves: ['I-001', 'I-003', 'I-007', 'I-008', 'I-009', 'I-080', 'I-094'] },
+  'task_create:start': { serves: ['I-001', 'I-003', 'I-007', 'I-008', 'I-009', 'I-080', 'I-094', 'I-144'] },
   'task_create:plan': { serves: ['I-002', 'I-085'] },
   'task_create:start_from_inbox': { serves: ['I-026'] },
   'task_create:save_plan': { serves: ['I-005'] },
@@ -137,6 +137,7 @@ export const TOOL_ACTION_COVERAGE: Readonly<Record<string, ActionCoverage>> = {
   'project_config:retry_automation_receipt': { serves: ['I-102'] },
   'project_config:list_worktrees': { serves: ['I-068'] },
   'project_config:reclaim_worktrees': { serves: ['I-068'] },
+  'project_config:dismiss_onboarding_offer': { serves: ['I-145'] },
   'project_config:remove_worktree': { serves: ['I-068'] },
   'project_config:set_provider_enabled': { refuses: ['I-115'] },
   'project_config:connect_provider': { refuses: ['I-115', 'I-123'] },

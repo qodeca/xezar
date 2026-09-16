@@ -1,8 +1,12 @@
 import { useMutation, useQueries, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { mergeProviderStatusResponse } from '@/lib/provider-status'
-import type { McpLeaderActionInput, McpLeaderStatus } from '@qodeca/xezar-api-client'
+import type {
+  CreateRunResponse,
+  McpLeaderActionInput,
+  McpLeaderStatus,
+} from '@qodeca/xezar-api-client'
 
 import {
   ApiError,
@@ -10,6 +14,7 @@ import {
   checkoutProject,
   connectProvider,
   continueRun,
+  createRun,
   continueProjectRun,
   createAgentProfile,
   getAgentConfig,
@@ -57,6 +62,7 @@ import {
   getSkillsUpdate,
   checkSkillsUpdate,
   applySkillsUpdate,
+  getOnboarding,
   getWorktrees,
   getMcpApiReference,
   getMcpLeader,
@@ -85,6 +91,7 @@ import { useProjectScope } from './project-scope-context'
 import { isReferenceStatus } from '@/lib/reference-status'
 import { githubRepoBase } from '@/lib/tasks-table'
 import { normalizeTagsForDisplay } from '@/lib/project-tags'
+import { setupBrief, type CockpitSetupMode } from '@/lib/onboarding'
 import type { ContinueOptions } from './client'
 import type {
   CheckoutProjectInput,
@@ -190,6 +197,10 @@ export const queryKeys = {
   /** The worktree management panel (`GET /api/worktrees`, #483). */
   get worktrees() {
     return [queryScope(), 'worktrees'] as const
+  },
+  /** This project's setup state (`GET /api/v1/onboarding`, #464 P2). */
+  get onboarding() {
+    return [queryScope(), 'onboarding'] as const
   },
   /** The read-only MCP API reference (`GET /api/v1/mcp/reference`, #284). */
   get mcpApiReference() {
@@ -1089,6 +1100,102 @@ export function useWorktrees() {
     queryKey: queryKeys.worktrees,
     queryFn: ({ signal }) => getWorktrees({ signal }),
   })
+}
+
+/**
+ * This project's setup state (#464 P2).
+ *
+ * **No `refetchInterval` and no WebSocket topic**, deliberately. The state changes when a setup
+ * task finishes, which is already a `run` event on the one global SSE stream. A poll here would
+ * wake the browser for a screen whose answer changes a handful of times in a project's whole life.
+ *
+ * That only works because BOTH halves of the stream carry this key, and the first round of this
+ * feature shipped with one of them: `global-events.tsx` invalidates it from a setup run's terminal
+ * `run` event (the connected tab) AND from `reconcile()` (a reconnect, or a tab coming back).
+ * Without the pair, `checking` never clears — this query has no interval, the client defaults turn
+ * off the focus and reconnect refetches, and the offer row is mounted for the life of the app, so
+ * `staleTime` never gets a remount to fire on. Half the sites is half a fix.
+ */
+export function useOnboarding() {
+  return useQuery({
+    queryKey: queryKeys.onboarding,
+    queryFn: ({ signal }) => getOnboarding({ signal }),
+  })
+}
+
+/**
+ * Start the setup or re-check task (#464 P2).
+ *
+ * One hook for all three entries — the Tasks hero, the Settings card and the offer row — so the
+ * three cannot start subtly different tasks. It creates an ORDINARY task from the bundled launch
+ * definition: it lands in the task list, it can be opened, and it can be cancelled.
+ */
+export function useStartSetupTask() {
+  const queryClient = useQueryClient()
+  const scope = queryScope()
+  return useMutation({
+    mutationFn: (mode: CockpitSetupMode) =>
+      createRun({ workflow: ONBOARDING_WORKFLOW, task: setupBrief(mode) }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: [scope, 'runs'] })
+      void queryClient.invalidateQueries({ queryKey: [scope, 'onboarding'] })
+    },
+  })
+}
+
+/** The bundled launch definition's id. Server-side it is `ONBOARDING_WORKFLOW_ID`; the two are
+ *  pinned together by `onboarding-api.test.ts`, which reads the id off the route's own answer. */
+export const ONBOARDING_WORKFLOW = 'project-setup'
+
+/**
+ * The visible half of "two clicks cannot start two checks" (#464 P2, `AC-13`).
+ *
+ * The rule is ENFORCED on the server, at the one place a setup task is created, so a second press
+ * cannot cost a second agent run whatever the browser does. This hook is what the person SEES: the
+ * control stays disabled and says "Starting…" for the whole gap the mutation alone does not cover.
+ *
+ * `isPending` is false again as soon as the POST settles — QA measured ~30 ms — while the status
+ * read that replaces the control with the running line lands around 500 ms later. In between,
+ * `start.isPending` says "idle" about a check that is already on its way. So the latch is held from
+ * the press until the NEXT onboarding read lands, whatever it says: `state: "checking"` normally,
+ * but also a read that says something else, so a check that finished instantly, a record that could
+ * not be written, or a failing query all release the control instead of freezing it.
+ *
+ * One hook for all three entries, for the same reason `useStartSetupTask` is one hook: three
+ * spellings of the same rule is how two of them end up wrong.
+ */
+export function useSetupStart() {
+  const start = useStartSetupTask()
+  const onboarding = useOnboarding()
+  const [latched, setLatched] = useState(false)
+  const pressedAt = useRef(0)
+  const readAt = Math.max(onboarding.dataUpdatedAt, onboarding.errorUpdatedAt)
+
+  useEffect(() => {
+    if (latched && readAt > pressedAt.current) setLatched(false)
+  }, [latched, readAt])
+
+  const pending = start.isPending || latched
+
+  const mutate = (
+    mode: CockpitSetupMode,
+    options?: { onSuccess?: (run: CreateRunResponse) => void; onError?: (error: Error) => void },
+  ) => {
+    // The press that arrives inside the window is not an error and not a second request — the
+    // check the person is asking for is already being started.
+    if (pending) return
+    pressedAt.current = Date.now()
+    setLatched(true)
+    start.mutate(mode, {
+      onSuccess: options?.onSuccess,
+      onError: (error: Error) => {
+        setLatched(false)
+        options?.onError?.(error)
+      },
+    })
+  }
+
+  return { pending, mutate }
 }
 
 /** The MCP API reference (#284). The tool list is fixed for the life of the server process

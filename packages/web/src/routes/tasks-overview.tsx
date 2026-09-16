@@ -7,6 +7,7 @@ import {
   ChevronsRightIcon,
   Clock3Icon,
   CoinsIcon,
+  CompassIcon,
   CpuIcon,
   DollarSignIcon,
   FileDiffIcon,
@@ -27,7 +28,16 @@ import { Link, useNavigate } from '@/lib/project-router'
 
 import { archiveFinished, markAllRunsSeen, patchRun } from '@/api/client'
 import { useRunUsage } from '@/api/global-events'
-import { queryKeys, useConfig, useHealth, usePinRun, useReferenceProjectId, useRuns } from '@/api/queries'
+import {
+  queryKeys,
+  useConfig,
+  useHealth,
+  useOnboarding,
+  usePinRun,
+  useReferenceProjectId,
+  useRuns,
+  useSetupStart,
+} from '@/api/queries'
 import type { RunRecord, Runner } from '@qodeca/xezar-api-client'
 import { CenteredState } from '@/components/centered-state'
 import { DiffStatLabel } from '@/components/diff-stat'
@@ -43,6 +53,7 @@ import { Button } from '@/components/ui/button'
 import { toast } from '@/components/ui/toaster'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { ModelNameCell, ToolNameCell } from '@/components/task-agent'
+import { SETUP_HERO_SENTENCE } from '@/lib/onboarding'
 import { deriveAttention } from '@/lib/attention'
 import { shortAge } from '@/lib/format'
 import { isReadDoneItem, isUnread, unreadDoneCount } from '@/lib/read-state'
@@ -359,7 +370,9 @@ function TasksEmptyState({ view, query }: { view: ListView; query: string }) {
               </Link>
             </Button>
           }
-        />
+        >
+          <SetupAside />
+        </CenteredState>
       )}
     </div>
   )
@@ -1100,5 +1113,54 @@ export function TasksOverviewRoute() {
         columnsPending={taskTableColumns.isPending}
       />
     </ReferenceStatusProvider>
+  )
+}
+
+/**
+ * The setup entry on a fresh project (#464 P2) — a quieter second block under the hero's own rule.
+ *
+ * The ranking is the whole point. The composer below is still the primary path and still focused;
+ * this sits under a separator, in muted text, behind an `outline` button, and says setup is
+ * optional. Typing a task and sending it must keep working with no setup, no network and no
+ * configuration.
+ *
+ * It renders nothing at all when the entry does not apply — no agent backend, a project that has
+ * already been checked, or a check already running — so the hero never offers a dead action.
+ */
+function SetupAside() {
+  const onboarding = useOnboarding()
+  const navigate = useNavigate()
+  const start = useSetupStart()
+  const status = onboarding.data
+  if (!status || !status.available) return null
+  if (status.state !== 'never' && status.state !== 'unknown') return null
+
+  return (
+    <div
+      data-slot="tasks-setup-aside"
+      className="flex flex-col items-center gap-stack border-t border-border pt-list text-center"
+    >
+      <p className="text-[13px] leading-relaxed text-muted-foreground">{SETUP_HERO_SENTENCE}</p>
+      <Button
+        variant="outline"
+        data-action="start-setup"
+        // `max-md:h-11` is the phone touch target `foundations.md` § 12 asks for. The offer row and
+        // the Settings card already carried it; this button sat at 36 px because `CenteredState`
+        // actions do (design review of #497, NB-2).
+        className="max-md:h-11"
+        disabled={start.pending}
+        onClick={() => {
+          start.mutate('setup', {
+            onSuccess: (run) => {
+              if ('id' in run) navigate(`/tasks/${run.id}`)
+            },
+            onError: (error: Error) => toast(error.message, { tone: 'danger' }),
+          })
+        }}
+      >
+        <CompassIcon aria-hidden="true" />
+        {start.pending ? 'Starting…' : 'Set up this project'}
+      </Button>
+    </div>
   )
 }

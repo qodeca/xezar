@@ -44,7 +44,11 @@ function renderOverview(props: Partial<ComponentProps<typeof TasksOverview>> = {
   const onArchiveFinished = props.onArchiveFinished ?? vi.fn()
   const onMarkAllRead = props.onMarkAllRead ?? vi.fn()
   const onRename = props.onRename ?? vi.fn()
+  // The hero's setup entry (#464 P2) reads `useOnboarding`, so the overview now needs a client.
+  // Nothing is seeded: an unanswered onboarding query renders no setup block, which is exactly
+  // the "do not show a state that has not answered yet" rule.
   const utils = render(
+    <QueryClientProvider client={createQueryClient()}>
     <MemoryRouter initialEntries={['/']}>
       <LocationProbe />
       <Routes>
@@ -68,6 +72,7 @@ function renderOverview(props: Partial<ComponentProps<typeof TasksOverview>> = {
         <Route path="*" element={null} />
       </Routes>
     </MemoryRouter>
+    </QueryClientProvider>
   )
   return { ...utils, onViewChange, onArchiveFinished, onMarkAllRead, onRename }
 }

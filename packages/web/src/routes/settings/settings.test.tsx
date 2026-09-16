@@ -126,7 +126,7 @@ afterEach(() => {
   document.documentElement.classList.remove('light')
 })
 
-const PROJECT_SECTIONS = ['agents', 'agent-config', 'worktrees', 'bookmarklets', 'prompt-templates', 'mcp-connection', 'mcp-api']
+const PROJECT_SECTIONS = ['agents', 'agent-config', 'project-setup', 'worktrees', 'bookmarklets', 'prompt-templates', 'mcp-connection', 'mcp-api']
 const GLOBAL_SECTIONS = [
   'appearance',
   'notifications',

@@ -238,7 +238,7 @@
   {
     "name": "discover_project",
     "title": "Discover the bound project",
-    "description": "Read which xezar project this session is bound to, its effective capabilities and limits, and which actions are available. Every action that is unavailable or read-only says why. Call it at the start of a session and again after a person changes settings. It takes no arguments: the project comes from the connection, never from a parameter. A project leader works through these tools only, never the cockpit UI and never the HTTP API. Whether this session is attached as leader is not part of this answer: call leader_events with action status.",
+    "description": "Read which xezar project this session is bound to, its effective capabilities and limits, and which actions are available. Every action that is unavailable or read-only says why. The answer also carries the project setup block: which identity is running, which was offered, which a finished check actually covered, whether setup can run here at all, and the launch definition to name when dispatching one. Reading it changes nothing and authorises nothing. Call it at the start of a session and again after a person changes settings. It takes no arguments: the project comes from the connection, never from a parameter. A project leader works through these tools only, never the cockpit UI and never the HTTP API. Whether this session is attached as leader is not part of this answer: call leader_events with action status.",
     "inputSchema": {
       "type": "object",
       "properties": {},
@@ -855,6 +855,7 @@
             "list_worktrees",
             "reclaim_worktrees",
             "remove_worktree",
+            "dismiss_onboarding_offer",
             "set_provider_enabled",
             "connect_provider",
             "retry_provider",
@@ -1384,6 +1385,22 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 512
+        },
+        "onboardingIdentity": {
+          "description": "dismiss_onboarding_offer: the `onboarding.observed` pair discover_project returned to you. If the running identity has moved on since that read, the answer is a conflict and nothing is written. Omit it to dismiss whatever is running now.",
+          "type": "object",
+          "properties": {
+            "engineVersion": {
+              "type": "string"
+            },
+            "kitDigest": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "engineVersion",
+            "kitDigest"
+          ]
         },
         "operationId": {
           "description": "Client-generated key for this operation (8–128 chars). Required by every action that changes something and refused by every action that only reads. Reuse it only to repeat the same operation: a repeat returns the first answer and changes nothing twice.",

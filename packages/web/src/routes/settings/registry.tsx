@@ -3,6 +3,7 @@ import {
   BookOpenIcon,
   BookmarkIcon,
   BotIcon,
+  CompassIcon,
   FileCogIcon,
   FolderGit2Icon,
   FoldersIcon,
@@ -26,6 +27,7 @@ import { BookmarkletsSection } from './bookmarklets-section'
 import { McpApiSection } from './mcp-api-section'
 import { McpConnectionSection } from './mcp-connection-section'
 import { NotificationsSection } from './notifications-section'
+import { ProjectSetupSection } from './project-setup-section'
 import { ProjectsSection } from './projects-section'
 import { PromptTemplatesSection } from './prompt-templates-section'
 import { ResourcesSection } from './resources-section'
@@ -54,6 +56,7 @@ export type SettingsSectionId =
   | 'accounts'
   | 'agents'
   | 'agent-config'
+  | 'project-setup'
   | 'resources'
   | 'worktrees'
   | 'projects'
@@ -111,6 +114,14 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     description: 'Edit the coding agents’ own config files, per scope.',
     icon: FileCogIcon,
     component: AgentConfigSection,
+    scope: 'project',
+  },
+  {
+    id: 'project-setup',
+    title: 'Project setup',
+    description: 'Let an agent prepare this project, and see what was checked and when.',
+    icon: CompassIcon,
+    component: ProjectSetupSection,
     scope: 'project',
   },
   {

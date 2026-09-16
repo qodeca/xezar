@@ -6,6 +6,8 @@ import {
   automationEventSchema,
   automationLogResultSchema,
   mcpExpectedVersionSchema,
+  onboardingIdentitySchema,
+  onboardingStatusSchema,
   operationIdSchema,
   runIdParamSchema,
   saveWorkflowInputSchema,
@@ -142,6 +144,7 @@ export const PROJECT_CONFIG_ACTIONS = [
   'list_worktrees',
   'reclaim_worktrees',
   'remove_worktree',
+  'dismiss_onboarding_offer',
 ] as const;
 export type ProjectConfigAction = (typeof PROJECT_CONFIG_ACTIONS)[number];
 
@@ -289,6 +292,7 @@ type Field =
   | 'receiptId'
   | 'logQuery'
   | 'runId'
+  | 'onboardingIdentity'
   | 'expectedVersion'
   | 'operationId';
 
@@ -312,6 +316,7 @@ const FIELDS: readonly Field[] = [
   'receiptId',
   'logQuery',
   'runId',
+  'onboardingIdentity',
   'expectedVersion',
   'operationId',
 ];
@@ -370,6 +375,10 @@ const ACTION_FIELDS: Record<ProjectConfigAction, { required: readonly Field[]; o
   reclaim_worktrees: { required: ['operationId'], optional: [] },
   // Removing a task's worktree changes that task, so it needs its version (#250, N-03).
   remove_worktree: { required: ['runId', 'expectedVersion', 'operationId'], optional: [] },
+  // Recording an offer changes project scratch, so it needs an operation key. `expectedVersion`
+  // would be wrong here: it touches no task, and there is no task version to be stale against
+  // (#464 P2). `onboardingIdentity` is the optional stale guard instead — see its description.
+  dismiss_onboarding_offer: { required: ['operationId'], optional: ['onboardingIdentity'] },
 };
 
 const isRefused = (action: string): action is RefusedAction => Object.hasOwn(REFUSED_ACTIONS, action);
@@ -473,6 +482,11 @@ export const projectConfigInputSchema = z
     expectedVersion: mcpExpectedVersionSchema
       .optional()
       .describe('remove_worktree: the `version` task_read returned for the task. If the task changed since, nothing is removed.'),
+    onboardingIdentity: onboardingIdentitySchema
+      .optional()
+      .describe(
+        'dismiss_onboarding_offer: the `onboarding.observed` pair discover_project returned to you. If the running identity has moved on since that read, the answer is a conflict and nothing is written. Omit it to dismiss whatever is running now.',
+      ),
     operationId: operationIdSchema
       .optional()
       .describe(
@@ -1269,7 +1283,41 @@ async function run(args: ProjectConfigInput & { action: ProjectConfigAction }, s
       );
       return answer.ok ? ok(action, { ...(answer.value as object), runId: id }) : fail(answer);
     }
+
+    /**
+     * Record that the post-update offer was made for this project (#464 P2, OQ-9).
+     *
+     * It writes DISPOSABLE RUNTIME SCRATCH, not configuration: `.local/xezar/onboarding-state.json`
+     * only remembers that the offer happened, so the same identity does not offer twice. Deleting
+     * the file loses that memory and nothing else. It is here rather than on `organise_work`
+     * because it touches no task at all.
+     *
+     * It starts nothing and authorises nothing. A re-check is an ordinary task, dispatched with
+     * `task_create` naming `discover_project.onboarding.launch.workflowId`.
+     */
+    case 'dismiss_onboarding_offer': {
+      const identity = args.onboardingIdentity ?? (await observedOnboardingIdentity(s));
+      if (!identity) return invalid(action, 'this project\'s setup state could not be read, so there is no offer to record.');
+      const answer = await settle<unknown>(
+        s.api.p[':projectId'].onboarding.offered.$post({ param: scope, json: identity }),
+        [200],
+      );
+      return answer.ok ? ok(action, answer.value) : fail(answer);
+    }
   }
+}
+
+/** The identity the service says is running, for a leader that did not pin one. */
+async function observedOnboardingIdentity(
+  s: Session,
+): Promise<{ engineVersion: string; kitDigest: string } | null> {
+  const answer = await settle<unknown>(
+    s.api.p[':projectId'].onboarding.$get({ param: { projectId: s.projectId } }),
+    [200],
+  );
+  if (!answer.ok) return null;
+  const parsed = onboardingStatusSchema.safeParse(answer.value);
+  return parsed.success ? parsed.data.observed : null;
 }
 
 export const projectConfigTool = defineTool({

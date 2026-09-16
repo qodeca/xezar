@@ -102,6 +102,15 @@ import { readRunIndexFromDisk } from '../runs/run-index.ts';
 import { isV2WireEventType } from '../runs/ui-event-sink.ts';
 import type { McpApiReference } from '@qodeca/xezar-contract';
 import { mcpLeaderActionInputSchema, type McpLeaderStatus } from '@qodeca/xezar-contract';
+import { onboardingOfferedInputSchema } from '@qodeca/xezar-contract';
+import {
+  ONBOARDING_WORKFLOW_ID,
+  observedIdentity,
+  onboardingStatus,
+} from '../onboarding/status.ts';
+import { activeSetupRunId } from '../onboarding/active.ts';
+import { recordOffered } from '../onboarding/state.ts';
+import { watchSetupCompletion } from '../onboarding/watch.ts';
 import {
   githubPrReadyInputSchema,
   runEventsQuerySchema,
@@ -1205,6 +1214,19 @@ export function createApp(deps: ServerDeps) {
   }
   contexts.onStoreCreated((store) => providerRuntimeAuth.watch(store));
   contexts.onContextBuilt((ctx) => providerRuntimeAuth.watch(ctx.store));
+
+  // The transition out of `checking` (#464 P2): a setup run that reached `done` having finished
+  // its promised scope stamps `lastChecked`, which is what makes `set-up`, `changed` and the
+  // post-update offer reachable at all. Attached at the same three points the observer above is,
+  // and for the same reason — every store this process holds, boot and lazy alike, or the state
+  // machine has a state with no exit on the default path.
+  watchSetupCompletion(bootContext.store, version);
+  for (const id of contexts.ids()) {
+    const ctx = contexts.peek(id);
+    if (ctx) watchSetupCompletion(ctx.store, version);
+  }
+  contexts.onStoreCreated((store) => watchSetupCompletion(store, version));
+  contexts.onContextBuilt((ctx) => watchSetupCompletion(ctx.store, version));
 
   const app = new Hono();
 
@@ -3638,7 +3660,7 @@ export function createApp(deps: ServerDeps) {
     })
 
     .post('/runs', jsonZodValidator(startRunSchema), async (c) => {
-      const { root: repoRoot, dataDir, manager } = c.get('project');
+      const { root: repoRoot, dataDir, manager, store } = c.get('project');
       const parsed = { data: c.req.valid('json') };
       if (agentModelsLocked(repoRoot) && parsed.data.model?.trim()) {
         return c.json({ error: AGENT_MODELS_LOCKED_ERROR }, 409);
@@ -3658,6 +3680,37 @@ export function createApp(deps: ServerDeps) {
         workflow = workflows.find((w) => w.name === parsed.data.workflow);
         if (!workflow) return c.json({ error: `unknown workflow: ${parsed.data.workflow}` }, 404);
       }
+      /**
+       * "Two clicks cannot start two checks" (#464 P2, `AC-13`) — enforced HERE, at the one place
+       * a setup task is ever created, because every door leads through it: the Tasks hero, the
+       * Settings card, the offer row's Re-check, and a project leader's `task_create` naming
+       * `onboarding.launch.workflowId`. A guard in the cockpit would have covered three of those
+       * four, and QA measured why it did not even cover the three: the POST settles in ~30 ms while
+       * the status read that flips the row to "Re-checking" lands ~500 ms later, so the button is
+       * live again for the whole gap between them.
+       *
+       * The key is (this project, the bundled launch definition). Within one running engine that
+       * IS the observed identity pair — `observedIdentity()` answers the same `{engineVersion,
+       * kitDigest}` for the life of the process — and it is the stronger of the two, because a
+       * second check of a DIFFERENT pair would still cost a second agent run.
+       *
+       * A start that arrives while one is in flight is answered with the run already running,
+       * `201` and all, rather than a `409`: the caller asked for a check of this project and there
+       * is one, so every surface's `onSuccess` navigates to the real task instead of showing an
+       * error for a request that got exactly what it wanted. The shape is the record `POST /runs`
+       * always answers, so the contract is unchanged.
+       *
+       * Both call sites below are written so NOTHING is awaited between the test and the create.
+       * That is what makes this atomic: node runs one handler body at a time between awaits, and
+       * `startRun` pushes onto `queue` synchronously, so `isActive` is true for the first request's
+       * run before the second request can be resumed.
+       */
+      const definition = workflow;
+      const setupAlreadyRunning = (): RunRecord | null => {
+        if (definition.name !== ONBOARDING_WORKFLOW_ID) return null;
+        const runId = activeSetupRunId(store, manager);
+        return runId ? (store.getRun(runId) ?? null) : null;
+      };
       const fallback = parsed.data.runner ?? (await loadConfig(repoRoot)).defaultRunner;
       const blocked = await providerActionError(providersRequiredByWorkflow(workflow, fallback));
       if (blocked) return c.json({ error: blocked }, 409);
@@ -3701,12 +3754,19 @@ export function createApp(deps: ServerDeps) {
             400,
           );
         }
+        // Same guard, in the shape this branch promises: the ×N caller reads `runs`, and the one
+        // check already running is the whole answer. (No cockpit surface asks for variants of the
+        // launch definition; this is here so the rule holds for every body the route accepts.)
+        const inFlight = setupAlreadyRunning();
+        if (inFlight) return c.json({ runs: [inFlight] }, 201);
         const runs = manager.startVariants(workflow, input, variants);
         // The entry points at the first variant — the thread the composer navigates to.
         const first = runs[0];
         if (parsed.data.todoId && first) await noteTodoStarted(dataDir, parsed.data.todoId, first.id);
         return c.json({ runs }, 201);
       }
+      const inFlightSetup = setupAlreadyRunning();
+      if (inFlightSetup) return c.json(inFlightSetup, 201);
       const run = manager.startRun(workflow, input);
       if (parsed.data.todoId) await noteTodoStarted(dataDir, parsed.data.todoId, run.id);
       return c.json(run, 201);
@@ -4652,6 +4712,71 @@ export function createApp(deps: ServerDeps) {
     });
 
   const reclaimBodySchema = z.object({}).passthrough();
+
+  // ---- chained family: onboarding (project-scoped) ----
+  /**
+   * The setup task this project is running right now, if any (#464 P2).
+   *
+   * "One check at a time" is a UI rule with real money behind it: two clicks on Re-check must not
+   * create two agent runs (`AC-13`). The predicate itself lives in `onboarding/active.ts` and is
+   * shared with the guard in `POST /runs`, so what this GET REPORTS and what the create route
+   * ENFORCES cannot drift apart.
+   */
+  const activeSetupRun = (project: ProjectContext): string | null =>
+    activeSetupRunId(project.store, project.manager);
+
+  const onboardingRoutes = new Hono<ProjectApiEnv>()
+    /**
+     * The one read behind all three surfaces. Deliberately READ-ONLY: it creates no record,
+     * refreshes nothing and starts nothing, which is both the zero-config promise (`AC-03`) and
+     * what lets this GET answer byte-identically under its three URL spellings.
+     */
+    .get('/onboarding', async (c) => {
+      const project = c.get('project');
+      return c.json(
+        await onboardingStatus(project.dataDir, {
+          observed: observedIdentity(version),
+          checks: await detectEnvironment(),
+          localHandoff: capabilities().localHandoff,
+          checkingRunId: activeSetupRun(project),
+        }),
+      );
+    })
+
+    /**
+     * "Later" — record that the offer was made for the identity the caller was SHOWN.
+     *
+     * The body carries that identity rather than letting the server assume its own: if the running
+     * pair moved between the read and the press, writing "offered" against the new pair would
+     * swallow an offer nobody ever saw. That case answers `conflict` and writes nothing, which is
+     * also the answer a leader gets when it acts on a stale read.
+     *
+     * A record that cannot be written answers `unwritable` rather than an error: the record is
+     * disposable scratch, so a read-only disk costs the memory of one dismissal and nothing else
+     * (`AC-09`).
+     */
+    .post(
+      '/onboarding/offered',
+      jsonZodValidator(() => onboardingOfferedInputSchema),
+      async (c) => {
+        const project = c.get('project');
+        const body = c.req.valid('json');
+        const observed = observedIdentity(version);
+        const status =
+          body.engineVersion === observed.engineVersion && body.kitDigest === observed.kitDigest
+            ? (await recordOffered(project.dataDir, observed)).status
+            : ('conflict' as const);
+        return c.json({
+          status: status === 'written' ? ('recorded' as const) : status,
+          onboarding: await onboardingStatus(project.dataDir, {
+            observed,
+            checks: await detectEnvironment(),
+            localHandoff: capabilities().localHandoff,
+            checkingRunId: activeSetupRun(project),
+          }),
+        });
+      },
+    );
 
   /**
    * "The inbox is on and this entry exists" — the 409/404 half of `POST /todos/:id/start`, lifted
@@ -5647,6 +5772,7 @@ export function createApp(deps: ServerDeps) {
     .route('/', groupsRoutes)
     .route('/', openTargetsRoutes)
     .route('/', worktreesRoutes)
+    .route('/', onboardingRoutes)
     .route('/', todosRoutes)
     .route('/', sseRoutes)
     .route('/', githubRoutes)

@@ -502,6 +502,14 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Copy**: `Provider authentication failed during a task: {labels}.`, `Open agent settings`, `No agent provider is enabled.`, `No connected provider could be verified.`, `No agent provider credentials were found.`, `Configure providers`.
 - **Where used**: 1 file each.
 
+### OnboardingOfferRow and OnboardingOfferContainer
+
+- **Purpose**: the second row in the shell's banner slot — the post-update setup offer (#464 P2), with exactly two actions, Re-check and Later, and the running-check line that replaces it.
+- **Source**: `packages/web/src/components/onboarding-offer-row.tsx`, `packages/web/src/components/onboarding-offer-container.tsx`. Its text rules live in `packages/web/src/lib/onboarding.ts`, not in the component.
+- **Look**: the status banner row `flex min-h-10 flex-wrap items-center gap-row border-b border-border bg-muted/50 px-section py-row text-sm text-muted-foreground md:flex-nowrap`, an `outline` and a `ghost` Button trailing. It keeps `py-row` at every width, unlike `ProviderBanner`, whose `md:py-0` is safe only because its copy never wraps: this row names two identity pairs and wraps to two lines on an ordinary laptop, where `md:py-0` left 40 px of text flush to both borders (design review of #497, NB-3). Deliberately **no status dot and never the alert tone**: nothing is broken, and the alert tone in that row means an agent provider failed. Under `md` both actions go full width at `h-11` (44 px).
+- **Copy**: `xezar changed since this project was last checked`, `The setup templates changed since this project was last checked`, `xezar and the setup templates changed since this project was last checked.`, `See the exact versions`, `Re-checking this project`, `Open the task`, `Re-check`, `Later`, `Starting…`.
+- **Where used**: 1 file (`app-shell-container.tsx`, beside `ProviderBannerContainer`). Being in the banner slot puts it on every route, so the container passes `atSettings` on Settings → Project setup and the row drops the link that points at the page the reader is already on — the sentence and both actions stay (NB-6).
+
 ### SkillDetail, SkillEmptyHint, SkillsImportPanel
 
 - **Purpose**: the one skill detail rendering (`SkillDetailBody`, `SkillPreviewDialog`, `SkillSourceTag`); the shared "no skills yet" copy; the team skills panel with its update card.

@@ -20,6 +20,8 @@ import type {
   repoCommitPayloadSchema,
   repoResponseSchema,
   worktreeEntrySchema,
+  onboardingOfferedResponseSchema,
+  onboardingStatusSchema,
   worktreesResponseSchema,
 } from '@qodeca/xezar-contract';
 import type { AppType } from './app-type.ts';
@@ -104,6 +106,8 @@ describe('src/contract github + repo schemas match the routes exactly', () => {
 
   type Worktrees200 = InferResponseType<typeof client.api.v1.worktrees.$get, 200>;
   type ReclaimWorktrees200 = InferResponseType<typeof client.api.v1.worktrees.reclaim.$post, 200>;
+  type Onboarding200 = InferResponseType<typeof client.api.v1.onboarding.$get, 200>;
+  type OnboardingOffered200 = InferResponseType<typeof client.api.v1.onboarding.offered.$post, 200>;
 
   type _Checks = [
     Assert<Exact<z.infer<typeof githubDataSchema>, Github200>>,
@@ -124,6 +128,8 @@ describe('src/contract github + repo schemas match the routes exactly', () => {
     Assert<Exact<z.infer<typeof worktreeEntrySchema>, RunFiles200>>,
     Assert<Exact<z.infer<typeof worktreesResponseSchema>, Worktrees200>>,
     Assert<Exact<z.infer<typeof reclaimWorktreesResponseSchema>, ReclaimWorktrees200>>,
+    Assert<Exact<z.infer<typeof onboardingStatusSchema>, Onboarding200>>,
+    Assert<Exact<z.infer<typeof onboardingOfferedResponseSchema>, OnboardingOffered200>>,
   ];
 
   it('is enforced by tsc, not at runtime', () => {

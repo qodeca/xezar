@@ -1,7 +1,15 @@
-import { CheckIcon, FolderOpenIcon, LayersIcon, MoonIcon, PlusIcon } from 'lucide-react'
+import { CheckIcon, CompassIcon, FolderOpenIcon, LayersIcon, MoonIcon, PlusIcon } from 'lucide-react'
 import * as React from 'react'
 import { useNavigate as useRouterNavigate } from 'react-router'
-import { useHealth, useProjects, useRuns, useRunsIndex, useSkills, useUiState } from '@/api/queries'
+import {
+  useHealth,
+  useOnboarding,
+  useProjects,
+  useRuns,
+  useRunsIndex,
+  useSkills,
+  useUiState,
+} from '@/api/queries'
 import { scopeTo, useActiveProjectId, useNavigate } from '@/lib/project-router'
 import type { ProjectListEntry, RunIndexEntry, RunRecord } from '@qodeca/xezar-api-client'
 import { visibleNavItems } from '@/components/nav-items'
@@ -325,6 +333,7 @@ function PaletteContent({ close }: { close: () => void }) {
   // Health is cached by the shell's chips; here it gates the forge-gated Views row (R6 1.1) —
   // the palette must not offer a GitHub view the sidebar honestly hides.
   const health = useHealth()
+  const onboarding = useOnboarding()
   const now = Date.now()
 
   // Same threshold as the sidebar's grouped nav (`app-shell-container.tsx`): with one registered
@@ -531,6 +540,20 @@ function PaletteContent({ close }: { close: () => void }) {
         ) : null}
 
         <CommandGroup heading="Actions">
+          {/* The setup entry is the hardest thing here to find once the empty state is gone
+              (OQ-10). Same availability rule as every other entry, so the palette never offers a
+              dead action: hidden when no agent backend was found. */}
+          {onboarding.data?.available === true ? (
+            <CommandItem
+              value="action set up this project setup onboarding"
+              data-slot="palette-action"
+              data-action="project-setup"
+              onSelect={() => go('/settings/project-setup')}
+            >
+              <CompassIcon aria-hidden="true" />
+              Set up this project
+            </CommandItem>
+          ) : null}
           <CommandItem
             value="action toggle theme"
             data-slot="palette-action"

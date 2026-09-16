@@ -1,9 +1,10 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mcpDiscoverySchema, type HealthResponse, type McpDiscovery } from '@qodeca/xezar-contract';
+import { BUNDLED_TEMPLATES_DIGEST } from '../../onboarding/status.ts';
 import { mergeWriteWorkspaceConfig } from '../../workspace/config.ts';
 import { toolListing } from '../tool.ts';
 import { bindHostFromArgv, buildDiscovery, discoverProjectTool, type DiscoveryFacts } from './discovery.ts';
@@ -45,10 +46,39 @@ function fullHealth(overrides: Partial<HealthResponse> = {}): HealthResponse {
   };
 }
 
-function facts(overrides: { health?: Partial<HealthResponse>; config?: Partial<DiscoveryFacts['config']>; providers?: DiscoveryFacts['providers'] } = {}): DiscoveryFacts {
+/** The onboarding block of a project nothing has checked yet — the state a fresh fixture is in. */
+function neverSetUp(
+  overrides: Partial<DiscoveryFacts['onboarding']> = {},
+): DiscoveryFacts['onboarding'] {
+  return {
+    state: 'never',
+    provenance: 'unknown',
+    available: true,
+    unavailableReason: null,
+    localHandoff: true,
+    offerPending: false,
+    dismissed: false,
+    observed: { engineVersion: '9.9.9', kitDigest: '2c20c60' },
+    lastOffered: null,
+    lastChecked: null,
+    checkingRunId: null,
+    launch: { workflowId: 'project-setup', modes: ['setup', 'preview', 'recheck'] },
+    ...overrides,
+  };
+}
+
+function facts(
+  overrides: {
+    health?: Partial<HealthResponse>;
+    config?: Partial<DiscoveryFacts['config']>;
+    providers?: DiscoveryFacts['providers'];
+    onboarding?: Partial<DiscoveryFacts['onboarding']>;
+  } = {},
+): DiscoveryFacts {
   return {
     project: BOUND,
     xezarVersion: '9.9.9',
+    onboarding: neverSetUp(overrides.onboarding),
     health: fullHealth(overrides.health),
     config: { baseBranch: 'main', modelsLocked: false, ...overrides.config },
     providers: overrides.providers ?? {
@@ -353,6 +383,41 @@ describe('discover_project — the tool', () => {
       expect(wire).not.toContain('bootProject');
       expect(wire).not.toContain('"projects"');
     }
+  }, 60_000);
+
+  it('carries the project setup block, and reads it off the real record', async () => {
+    // UI ↔ MCP parity (owner rule, 2026-09-16) and `AC-17`: a leader and a person looking at the
+    // same project must not be told different things about whether a check happened.
+    const root = tempDir('xez-discovery-onboarding-');
+    mkdirSync(join(root, '.local/xezar'), { recursive: true });
+    writeFileSync(
+      join(root, '.local/xezar/onboarding-state.json'),
+      JSON.stringify({
+        engineVersion: '1.2.3',
+        kitDigest: BUNDLED_TEMPLATES_DIGEST,
+        lastOfferedAt: null,
+        lastCheckedAt: null,
+        checked: { engineVersion: '1.0.0', kitDigest: BUNDLED_TEMPLATES_DIGEST, at: '2026-09-02T16:40:00.000Z' },
+      }),
+      'utf8',
+    );
+
+    const result = await discoverProjectTool.call({}, { project: { id: 'proj-a', name: 'Project A', root }, xezarVersion: '1.2.3' });
+    const discovery = mcpDiscoverySchema.parse(result.structuredContent);
+
+    expect(discovery.onboarding).toMatchObject({
+      state: 'changed',
+      provenance: 'recorded',
+      offerPending: true,
+      observed: { engineVersion: '1.2.3', kitDigest: BUNDLED_TEMPLATES_DIGEST },
+      lastChecked: { engineVersion: '1.0.0', at: '2026-09-02T16:40:00.000Z' },
+      launch: { workflowId: 'project-setup', modes: ['setup', 'preview', 'recheck'] },
+    });
+    // The text block is what a model actually reads (D-05), and it must state the fact without
+    // turning it into an instruction to spend a task.
+    const text = result.content[0]!.text;
+    expect(text).toContain('Setup: the last finished check covered xezar 1.0.0');
+    expect(text).not.toMatch(/you should re-check/i);
   }, 60_000);
 
   it('reads --bind-host from the serving process, in both spellings', () => {

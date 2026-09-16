@@ -18,6 +18,7 @@ import { getRepoInfo } from './server/git.ts';
 import { DEFAULT_WORKTREE_RETENTION, loadConfig, resolveWorktreeRetention } from './config.ts';
 import { reclaimWorktrees } from './runs/retention.ts';
 import { armRepoHandle } from './runs/arm-repo-handle.ts';
+import { watchSetupCompletion } from './onboarding/watch.ts';
 import { RunStore } from './runs/store.ts';
 import { ownProjectData } from './runs/project-writer.ts';
 import { RunManager } from './workflows/run.ts';
@@ -894,6 +895,10 @@ function openStore(repoRoot: string, opts?: { keepLive?: boolean }): RunStore {
   // Repo-scope the referenced tier (#945) — see `armRepoHandle`. Background, never awaited: a
   // `gh`-less or offline machine keeps working exactly as it did, just unscoped.
   armRepoHandle(store, repoRoot);
+  // A finished setup task stamps "last successfully checked" (#464 P2) — here as well as in
+  // `createApp`, because `xezar run` executes a workflow with no server at all, and a check that
+  // ran headlessly is still a check that finished.
+  watchSetupCompletion(store, readOwnVersion());
   ensureDataGitignore(repoRoot);
   return store;
 }
