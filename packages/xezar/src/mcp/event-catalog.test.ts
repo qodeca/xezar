@@ -17,6 +17,7 @@ import { RunStore, type RunRecord } from '../runs/store.ts';
 import type { WorkspaceEventBus } from '../server/server.ts';
 import { EventCatalog, withEventOrigin, expectEventTransition, type WorkspaceEventSource } from './event-catalog.ts';
 import { EventJournal } from './event-journal.ts';
+import { StallMonitor } from './stall-monitor.ts';
 import { runVersion } from './stale-write.ts';
 
 /**
@@ -515,9 +516,9 @@ describe('every other kind the catalog emits', () => {
       expect(rows()[0]!.summary).not.toContain(since);
     });
 
-    it('stays E-01 and `system`, whoever the current MCP call belongs to', () => {
+    it('keeps E-01 and the active leader dispatch origin (D-05 causal door)', () => {
       const run = startedRun();
-      // A leader reading its own events must not see its read attributed as the cause of a stall.
+      // Direct catalog calls inherit the live dispatch (D-05 §6.3); monitor ticks below are system observations.
       withEventOrigin({ origin: 'leader', causedBy: LEADER_OP }, () =>
         catalog.taskStalled({ runId: run.id, stepId: 'step-0', reason: 'silence', since: new Date().toISOString() }),
       );
@@ -814,5 +815,29 @@ describe('lifecycle of the catalog itself', () => {
     expect(() => store.updateRun(run.id, { status: 'done' })).not.toThrow();
     expect(store.getRun(run.id)?.status).toBe('done');
     expect(warn).toHaveBeenCalledTimes(1);
+  });
+});
+
+// #460 §2 / G9: silence recovery is an observation, never a quota-resume synonym.
+describe('G9 observed advisory origin', () => {
+  it('only a real silence episode produces a system resume after a rejected leader call', async () => {
+    let now = Date.now(); let tick = () => {};
+    const monitor = StallMonitor.attach({ store, report: catalog, now: () => now,
+      schedule: fn => { tick = fn; return { cancel() {} }; } });
+    try {
+      const run = startedRun();
+      await withEventOrigin({ origin: 'leader', causedBy: 'rejected-advisory', runId: run.id },
+        async () => ({ applied: false }));
+      tick(); now += 1000;
+      store.appendEvent(run.id, { type: 'text', stepId: 'step-0', text: 'first activity' }); tick();
+      expect(rows()).toEqual([]);
+      now += 300_001; tick(); tick();
+      expect(rows().map(row => row.kind)).toEqual(['task.stalled']);
+      store.appendEvent(run.id, { type: 'text', stepId: 'step-0', text: 'back' }); tick(); tick();
+      expect(rows().map(row => [row.kind, row.category, row.origin, row.causedBy])).toEqual([
+        ['task.stalled', 'E-01', 'system', null], ['task.resumed', 'E-01', 'system', null],
+      ]);
+      expect(store.getRun(run.id)?.status).toBe('running');
+    } finally { monitor.detach(); }
   });
 });

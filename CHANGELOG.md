@@ -1,5 +1,6 @@
 # Unreleased
 
+- test(engine): cover completion-marker, failed-check continuation, and quota-to-leader incidents (#532, G7/G8/G9).
 - test(mcp): cover fragile leader delivery, causal outcomes, decision tokens and receipt replay invariants (#532, slice 1).
 
 - Fixed: #449 — decision-only run versions keep busy-task steering valid while detecting reversed decisions.
