@@ -135,7 +135,7 @@ describe('settings → bookmarklets against the live dry-run server', () => {
     // A filter that matches nothing says so rather than rendering an empty void.
     browser.fill('[data-slot="bm-filter"]', 'zzz-no-such-skill')
     browser.waitForFunction(
-      `document.querySelector('[data-slot="bm-list"]').textContent.includes('(no skills match)')`,
+      `document.querySelector('[data-slot="bm-list"]').textContent.includes('Nothing matches.')`,
     )
     clearFilter()
     browser.waitForFunction(

@@ -131,11 +131,12 @@ Source: `routes/settings/settings-shell.tsx`, `routes/settings/settings-field.ts
 `routes/settings/appearance.tsx`, `routes/settings/resources-section.tsx`, `routes/settings/agents-section.tsx`.
 
 - Shell: desktop left nav `hidden w-52 … border-r border-border p-stack md:flex` (`aria-label="Settings sections"`), items `rounded-md px-2.5 py-2 text-[13px] font-medium`, active `bg-muted text-foreground`; on phone a horizontal pill row, active pill `bg-contrast text-contrast-foreground`. Sections come from `SETTINGS_SECTIONS` with `scope` `project | global`.
-- Field: `SettingsField({ title, hint, children })` → `<section class="flex flex-col gap-stack"><h2 class="text-sm font-semibold">` + `<p class="text-[13px] text-muted-foreground">` + control. Three sections carry a private copy of it (G-13). A pane lists its fields flat in `flex flex-col gap-section` (foundations.md §4.1).
+- Field: `SettingsField({ title, hint, children })` → `<section class="flex flex-col gap-stack"><h2 class="text-sm font-semibold">` + `<p class="text-[13px] text-muted-foreground">` + control. Every section renders through it; do not declare a private copy. A pane lists its fields flat in `flex flex-col gap-section` (foundations.md §4.1).
 - Save behaviour, by control: selects and switches save on change and may toast the new state; textareas and numeric inputs keep a local draft and an explicit `Save` button disabled while unchanged; the table column folds write optimistically with a keepalive PUT.
-- Controls: `Input`, `Textarea`, `Switch`, the raw `<select>`/`<input type="number">` class (see Select in components.md), `Segmented` radio groups (`role="radiogroup"`, `rounded-md border border-border bg-card p-0.5`, checked `bg-muted text-foreground`).
+- Controls: `Input`, `Textarea`, `Switch`, raw `<select>`/`<input>` fields wearing `nativeFieldClass` (see Input in components.md), `Segmented` radio groups (`role="radiogroup"`, `rounded-md border border-border bg-card p-0.5`, checked `bg-muted text-foreground`; each segment `min-h-tap min-w-tap md:min-h-0 md:min-w-0` with the shared `focus-visible:ring-[3px]` ring).
+- Phone targets: below `md` every settings target is at least 44 × 44 px at every density – the section pills, segments, text links (`inline-flex min-h-tap … md:min-h-0`, including links inside a sentence), a checkbox through its `<label>`, and settings chips (`min-h-tap md:min-h-chip`). `e2e/design-debt-b3.e2e.ts` measures every settings route and its open dialogs.
 - Sentinels are spelled out in the hint (`0 = unlimited`, `Leave empty for no limit.`).
-- Danger zone: `Remove` in `text-danger`, confirmed by an `AlertDialog`.
+- Danger zone: `Remove` in `text-danger` (wrapping inside the button when the name is long), confirmed by an `AlertDialog` whose action wears `buttonVariants({ variant: 'danger' })`, whose cancel reads `Keep it`, and whose header is `min-w-0` so a long path cannot widen it. A confirm opened from state returns focus to its opener through `useReturnFocus` (`routes/settings/remove-project.tsx`).
 
 ## 9. The mobile drawer
 

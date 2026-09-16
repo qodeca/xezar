@@ -268,7 +268,7 @@ describe('assigning a template to a skill', () => {
       expect(document.querySelectorAll('[data-slot="prompt-template-skill-option"]')).toHaveLength(2),
     )
 
-    const searchInput = document.querySelector<HTMLInputElement>('[placeholder="search skills…"]')!
+    const searchInput = document.querySelector<HTMLInputElement>('[placeholder="Filter skills…"]')!
     fireEvent.change(searchInput, { target: { value: 'fix' } })
 
     await waitFor(() =>

@@ -91,14 +91,6 @@
     "count": 1,
     "reason": "convert in 3b: pill button – floor candidate, keep it at or above 24 px"
   },
-  "src/routes/settings/agent-config-section.tsx|h-[26rem]": {
-    "count": 1,
-    "reason": "convert in 3b: editor height – on the scale it would grow and shrink with density, 3b decides"
-  },
-  "src/routes/settings/prompt-templates-section.tsx|h-[26px]": {
-    "count": 1,
-    "reason": "convert in 3b: pill – floor candidate, keep it at or above 24 px (WCAG 2.2 SC 2.5.8)"
-  },
   "src/routes/skills.tsx|pl-[22px]": {
     "count": 3,
     "reason": "convert in 3b: indent"

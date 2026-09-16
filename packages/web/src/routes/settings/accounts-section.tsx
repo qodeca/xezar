@@ -42,16 +42,19 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
+import { nativeFieldClass } from '@/components/ui/input'
 import { RUNNER_LABEL } from '@/lib/runner-label'
 import { StatusDot, type StatusDotTone } from '@/components/status-dot'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from '@/components/ui/toaster'
+import { cn } from '@/lib/utils'
 import { OpenInMenu, cliTargetRunner } from '@/components/open-in-menu'
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import { DefaultAgentPicker, agentPickerRows } from '@/components/default-agent-picker'
 import { modelCatalogStatus, modelsForRunner, RUNNERS } from '@/routes/new-task-form'
 import { AddAccountDialog } from './add-account-dialog'
+import { useReturnFocus } from './remove-project'
 
 /**
  * Global settings → Agent accounts.
@@ -120,7 +123,7 @@ export function AccountsSection() {
       <CenteredState
         icon={<IdCardIcon />}
         tone="danger"
-        title="Agent accounts did not load"
+        title="Could not load agent accounts"
         subtitle={profiles.error.message}
         heading="h2"
       />
@@ -133,6 +136,7 @@ function AccountsPane({ data }: { data: AgentProfilesResponse }) {
   const health = useHealth()
   const [adding, setAdding] = useState<ProviderId | null>(null)
   const [confirming, setConfirming] = useState<AgentProfile | null>(null)
+  const returnFocus = useReturnFocus(confirming !== null)
   const remove = useRemoveAgentProfile()
 
   // Every agent gets a tab, including one that cannot carry a second login: the tab is where its
@@ -210,8 +214,8 @@ function AccountsPane({ data }: { data: AgentProfilesResponse }) {
       ) : null}
 
       <AlertDialog open={confirming !== null} onOpenChange={(open) => !open && setConfirming(null)}>
-        <AlertDialogContent data-slot="accounts-remove-confirm">
-          <AlertDialogHeader>
+        <AlertDialogContent data-slot="accounts-remove-confirm" onCloseAutoFocus={returnFocus}>
+          <AlertDialogHeader className="min-w-0">
             <AlertDialogTitle>Remove “{confirming?.label}”?</AlertDialogTitle>
             <AlertDialogDescription>
               This only forgets the account. Nothing in {confirming?.configDir} is deleted — not
@@ -220,9 +224,10 @@ function AccountsPane({ data }: { data: AgentProfilesResponse }) {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>Keep it</AlertDialogCancel>
             <AlertDialogAction
               data-action="accounts-remove-confirm"
+              className={buttonVariants({ variant: 'danger' })}
               disabled={remove.isPending}
               onClick={() => {
                 const target = confirming
@@ -423,7 +428,7 @@ function DefaultsForNewProjects({ profiles }: { profiles: AgentProfilesResponse 
                   },
                 })
               }
-              className="block w-full max-w-xs rounded-md border border-input bg-card px-3 py-1.5 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
+              className={cn(nativeFieldClass, 'block max-w-xs')}
             >
               {modelsForRunner(entry.id, catalogs[entry.id].data, [models[entry.id]]).map((model) => (
                 <option key={model.id} value={model.id}>
@@ -475,7 +480,7 @@ function AccountRow({ account, onRemove }: { account: AgentProfile; onRemove: ()
           <div className="flex items-center gap-2">
             <span className="text-[13px] font-medium text-foreground">{account.label}</span>
             {account.isDefault ? (
-              <Badge variant="ghost" className="shrink-0 text-[10px] text-muted-foreground">
+              <Badge variant="ghost" className="min-h-chip shrink-0 text-[10px] text-muted-foreground">
                 discovered
               </Badge>
             ) : null}
@@ -697,7 +702,7 @@ function AccountDetails({
                 data-slot="account-rename-input"
                 value={draft}
                 onChange={(event) => setDraft(event.target.value)}
-                className="w-48 rounded-md border border-input bg-card px-2 py-1 text-xs outline-none focus-visible:border-ring"
+                className={cn(nativeFieldClass, 'w-48')}
               />
               <Button
                 type="button"

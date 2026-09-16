@@ -295,7 +295,7 @@ export function ProviderSettings() {
                           )
                         }
                       >
-                        Try again
+                        Retry
                       </Button>
                     ) : null}
                   </div>

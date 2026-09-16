@@ -169,11 +169,11 @@ describe('ProviderSettings', () => {
     expect(screen.getByRole('switch', { name: 'Use Codex' })).toBeTruthy()
 
     expect(within(card('opencode')).getByRole('button', { name: 'Connect' })).toBeTruthy()
-    expect(within(card('opencode')).getByRole('button', { name: 'Try again' })).toBeTruthy()
+    expect(within(card('opencode')).getByRole('button', { name: 'Retry' })).toBeTruthy()
     expect(within(card('opencode')).getByText(/xezar cannot validate.*task/i)).toBeTruthy()
     fireEvent.click(within(card('opencode')).getByRole('button', { name: 'Check again' }))
     await within(card('opencode')).findByText('Not connected')
-    expect(within(card('opencode')).getByRole('button', { name: 'Try again' })).toBeTruthy()
+    expect(within(card('opencode')).getByRole('button', { name: 'Retry' })).toBeTruthy()
   })
 
   it('describes unknown as a verification failure and never as disconnected', async () => {
@@ -465,13 +465,13 @@ describe('ProviderSettings', () => {
     const toggle = await screen.findByRole('switch', { name: 'Use Claude Code' })
     fireEvent.click(toggle)
     await within(card('claude')).findByText('Disabled')
-    fireEvent.click(within(card('claude')).getByRole('button', { name: 'Try again' }))
+    fireEvent.click(within(card('claude')).getByRole('button', { name: 'Retry' }))
     await within(card('claude')).findByText('Credentials found')
 
     await act(() => failure.resolve(json({ error: 'Provider preference could not be saved.' }, 500)))
     await within(card('claude')).findByText('Credentials found')
     expect(within(card('claude')).queryByText('Disabled')).toBeNull()
-    expect(within(card('claude')).queryByRole('button', { name: 'Try again' })).toBeNull()
+    expect(within(card('claude')).queryByRole('button', { name: 'Retry' })).toBeNull()
   })
 
   it('preserves a newer runtime incident from the provider-status cache when a toggle fails', async () => {
@@ -493,7 +493,7 @@ describe('ProviderSettings', () => {
         }),
       )
     })
-    await within(card('claude')).findByRole('button', { name: 'Try again' })
+    await within(card('claude')).findByRole('button', { name: 'Retry' })
 
     await act(() => failure.resolve(json({ error: 'Provider preference could not be saved.' }, 500)))
     await within(card('claude')).findByText('Not connected')
@@ -525,7 +525,7 @@ describe('ProviderSettings', () => {
     })
     renderSettings()
 
-    fireEvent.click(await within(card('opencode')).findByRole('button', { name: 'Try again' }))
+    fireEvent.click(await within(card('opencode')).findByRole('button', { name: 'Retry' }))
     await waitFor(() =>
       expect(requests).toContainEqual({
         method: 'POST',
@@ -548,9 +548,9 @@ describe('ProviderSettings', () => {
     serve({ status: incidentStatus, retry: { error: 'That incident is no longer current.' }, retryCode: 409 })
     renderSettings()
 
-    fireEvent.click(await within(card('codex')).findByRole('button', { name: 'Try again' }))
+    fireEvent.click(await within(card('codex')).findByRole('button', { name: 'Retry' }))
     expect(await within(card('codex')).findByText('Not connected')).toBeTruthy()
-    expect(within(card('codex')).getByRole('button', { name: 'Try again' })).toBeTruthy()
+    expect(within(card('codex')).getByRole('button', { name: 'Retry' })).toBeTruthy()
     expect(await screen.findByText('That incident is no longer current.')).toBeTruthy()
   })
 })

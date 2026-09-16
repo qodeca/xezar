@@ -89,8 +89,8 @@ export function ProjectGeneral({ capabilities }: { capabilities?: Pick<Capabilit
             title="Max parallel tasks"
             hint={
               config.data
-                ? `How many of this project's tasks may run at once. The workspace limit (${config.data.resources.maxParallel}) still applies as an overall ceiling, so a higher value here has no extra effect until that one is raised.`
-                : "How many of this project's tasks may run at once. The workspace limit still applies as an overall ceiling."
+                ? `How many of this project’s tasks may run at once. The workspace limit (${config.data.resources.maxParallel}) still applies as an overall ceiling, so a higher value here has no extra effect until that one is raised.`
+                : "How many of this project’s tasks may run at once. The workspace limit still applies as an overall ceiling."
             }
           >
             {config.data ? (
@@ -198,7 +198,8 @@ function RemoveProject({ project, bootProject }: { project: ProjectListEntry; bo
           title={isBoot ? 'xezar is serving this project — it re-registers itself at every start' : undefined}
           disabled={isBoot || remove.isPending}
           onClick={() => setConfirming(project)}
-          className="text-danger"
+          // A long project name wraps inside the button instead of pushing it off a phone screen.
+          className="h-auto max-w-full py-1.5 text-left whitespace-normal text-danger"
         >
           Remove {project.name}
         </Button>

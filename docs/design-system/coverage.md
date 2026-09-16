@@ -241,7 +241,7 @@ Each entry maps a utility name to a theme token. Listed in foundations.md §1.7;
 | 5. Status | patterns.md §5 | `specimens/patterns.html` | Documented with known gap (G-04) |
 | 6. Empty, loading and error states | patterns.md §6 | `specimens/patterns.html` | Documented with known gap (G-05, G-08) |
 | 7. Dialogs, sheets, command palette, toasts and notifications | patterns.md §7 | `specimens/patterns.html` | Documented with known gap (G-10, G-16) |
-| 8. Settings and forms | patterns.md §8 | `specimens/patterns.html` | Documented with known gap (G-11, G-12, G-13, G-22) |
+| 8. Settings and forms | patterns.md §8 | `specimens/patterns.html` | Documented with known gap (G-11, G-12; G-13 fixed and G-22 verified intentional in #453 B3) |
 | 9. The mobile drawer | patterns.md §9 | `specimens/patterns.html`, `specimens/mobile.html` | Documented |
 | 10. Live updates | patterns.md §10 | `specimens/patterns.html` | Documented |
 

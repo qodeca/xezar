@@ -239,7 +239,7 @@ args = ["-y", "@qodeca/xezar", "mcp"]`}
               target="_blank"
               rel="noreferrer"
               data-slot="mcp-client-pi-adapter-link"
-              className="rounded-sm underline underline-offset-2 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              className="inline-flex min-h-tap items-center rounded-sm underline underline-offset-2 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-0"
             >
               source on GitHub
             </a>
@@ -287,7 +287,7 @@ args = ["-y", "@qodeca/xezar", "mcp"]`}
                 target="_blank"
                 rel="noreferrer"
                 data-slot="mcp-client-pi-approve-tools-issue"
-                className="rounded-sm underline underline-offset-2 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                className="inline-flex min-h-tap items-center rounded-sm underline underline-offset-2 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-0"
               >
                 issue 369
               </a>
@@ -508,7 +508,7 @@ export function McpConnectionSurface({
         <Link
           to="/settings/mcp-api"
           data-slot="mcp-api-link"
-          className="rounded-sm font-medium underline underline-offset-2 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          className="inline-flex min-h-tap items-center rounded-sm font-medium underline underline-offset-2 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-0"
         >
           See every tool this server exposes
         </Link>{' '}
