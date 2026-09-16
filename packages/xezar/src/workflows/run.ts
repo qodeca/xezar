@@ -45,6 +45,8 @@ import { loadConfig, resolveWorktreeRetention } from '../config.ts';
 import { autosaveCommit, createWorktree, resolveBaseRef, worktreeDiff, worktreeShortstat } from '../git-worktree.ts';
 import { getHeadCommit, getRepoInfo } from '../server/git.ts';
 import { loadWorkflows } from './load.ts';
+import { ingestTaskVerdict } from '../runs/task-verdicts.ts';
+
 import type { QueuedMessage, RunRecord, RunStore, StepState } from '../runs/store.ts';
 import { reclaimWorktrees, rematerializeReclaimedWorktree } from '../runs/retention.ts';
 import {
@@ -1052,15 +1054,27 @@ export class RunManager {
    *  write follow-ups into the parent's inbox despite the opt-out. Empty is the
    *  established "absent" spelling — consumers guard with `if (todosFile)`.
    *
+   *  `XEZ_STEP_ID` is the id of the step this spawn IS, and it is the only
+   *  source an agent has for that value. A reviewer's verdict packet (#460) has
+   *  to name its own step, and the engine hard-refuses a mismatch
+   *  (`runs/task-verdicts.ts`); without this variable the only way to derive it
+   *  was to read the handoff header for the workflow name and then the workflow
+   *  YAML for the step, which nothing told a reviewer to do — and a wrong guess
+   *  costs the whole verdict silently. Set to `''` rather than omitted when the
+   *  caller has no step (the pre-spawn seam), for the same reason
+   *  `XEZ_TODOS_FILE` is: an omitted key would let a PARENT xezar's own
+   *  `XEZ_STEP_ID` shine through and name a step of a different task.
+   *
    *  `TMPDIR`/`TEMP`/`TMP` (#785) point at this run's own scratch directory
    *  instead of the machine-wide one every agent used to share. Created and
    *  write-probed here, on the last common path before a spawn, so an unusable
    *  temp directory throws `AgentTempDirError` at the caller rather than
    *  turning into empty command output inside a running agent. */
-  private agentEnv(runId: string, generateFollowups = true): Record<string, string> {
+  private agentEnv(runId: string, stepId = '', generateFollowups = true): Record<string, string> {
     return {
       XEZ_HANDOFF_FILE: handoffPath(this.dataDir, runId),
       XEZ_TASK_ID: runId,
+      XEZ_STEP_ID: stepId,
       XEZ_TODOS_FILE: generateFollowups ? todosPath(this.dataDir) : '',
       // The stored env-passthrough list (F), carried on the per-run env so it reaches EVERY
       // backend through the one path they all share (`buildChildEnv(spec.env)`) — no runner
@@ -1095,14 +1109,14 @@ export class RunManager {
   private async agentEnvForStep(
     runId: string,
     backend: RunnerId,
-    options: { generateFollowups?: boolean; recordedProfileId?: string } = {},
+    options: { generateFollowups?: boolean; recordedProfileId?: string; stepId?: string } = {},
   ): Promise<{ env: Record<string, string>; profileId: string }> {
     const run = this.store.getRun(runId);
     const profileId = options.recordedProfileId
       ?? (backend === (run?.runner ?? 'claude') ? run?.agentProfile : undefined);
     const resolved = await resolveProfileEnvForRoot(this.repoRoot, backend, profileId);
     return {
-      env: { ...this.agentEnv(runId, options.generateFollowups), ...resolved.env },
+      env: { ...this.agentEnv(runId, options.stepId, options.generateFollowups), ...resolved.env },
       profileId: resolved.profile.id,
     };
   }
@@ -3086,6 +3100,9 @@ export class RunManager {
       continueProfile = await this.agentEnvForStep(runId, continueBackend, {
         generateFollowups,
         recordedProfileId: resumedProfileId,
+        // The id this continuation SETTLES under, which is the id `takeStepVerdict` checks a
+        // verdict packet against (#460) — not the owning step's, when the two differ.
+        stepId,
       });
     } catch (err) {
       if (!(err instanceof AgentTempDirError)) throw err;
@@ -3169,6 +3186,9 @@ export class RunManager {
         appendHandoffHeartbeat(this.dataDir, runId, `step "${stepId}" complete — status=cancelled`);
       } else {
         this.store.updateStep(runId, stepId, { status: 'done', finishedAt: finishedAt() });
+        // Same collection point the workflow path uses (#460) — a Continue is how a reviewer step
+        // is re-run, and a report left by one must reach the record exactly as the first run's did.
+        this.takeStepVerdict(runId, stepId);
         this.store.appendEvent(runId, { type: 'step-end', stepId, status: 'done' });
         await this.settleSuccess(runId);
         appendHandoffHeartbeat(this.dataDir, runId, `step "${stepId}" complete — status=done`);
@@ -3178,6 +3198,7 @@ export class RunManager {
       sink.sessionEnded('error', message);
       await endTurn();
       this.store.updateStep(runId, stepId, { status: 'failed', error: message, finishedAt: finishedAt() });
+      this.takeStepVerdict(runId, stepId);
       appendHandoffHeartbeat(this.dataDir, runId, `step "${stepId}" complete — status=failed`);
       this.store.updateRun(runId, {
         status: 'failed',
@@ -3771,6 +3792,7 @@ export class RunManager {
     try {
       stepProfile = await this.agentEnvForStep(runId, stepBackend, {
         generateFollowups: this.semaphore.followupsEnabled() && input.generateFollowups !== false,
+        stepId: step.id,
       });
     } catch (err) {
       if (err instanceof AgentTempDirError) return err.message;
@@ -4389,8 +4411,28 @@ export class RunManager {
       error,
       finishedAt: new Date().toISOString(),
     });
+    this.takeStepVerdict(runId, stepId);
     emit({ type: 'step-end', stepId, status, ...(error ? { error } : {}) });
     appendHandoffHeartbeat(this.dataDir, runId, `step "${stepId}" complete — status=${status}`);
+  }
+
+  /**
+   * Collect the reviewer report this AGENT step left behind, if it left one (#460).
+   *
+   * At settlement, after the step's own status is written and before the run's: the verdict
+   * happened during the step, so it is recorded in that order, and a leader reading the completion
+   * row already has it. Agent steps only — a check step runs a command and reports no review, and
+   * letting one collect would hand it a packet a later agent step is the addressee of.
+   *
+   * A FAILED step is collected from too. A reviewer that posted FAIL and then hit something else
+   * still posted FAIL, and dropping the report on the way out is the one outcome
+   * `BACKWARD_COMPATIBILITY.md` §3 calls out: a recorded failure must not be erasable by a later
+   * unrelated problem.
+   */
+  private takeStepVerdict(runId: string, stepId: string): void {
+    const step = this.store.getRun(runId)?.steps.find((candidate) => candidate.id === stepId);
+    if (step?.kind !== 'agent') return;
+    ingestTaskVerdict(this.store, this.dataDir, runId, stepId);
   }
 }
 
