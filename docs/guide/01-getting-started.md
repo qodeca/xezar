@@ -56,7 +56,7 @@ In the cockpit, open the project's **Settings → Agents** to check provider ava
 
 Setup is optional. You can create ordinary tasks without ever running it.
 
-On a fresh project's Tasks page, and on **Settings → Project setup**, xezar offers a guided setup: "New to this project? An agent can look at it and prepare the files it needs, and it shows you every change before anything is written." Choose **Set up this project** to start it. Without an available agent backend the button stays disabled and xezar shows the reason: "Setup unavailable — no agent backend was found. Install Claude Code, Codex, OpenCode or pi, sign in, then open this page again."
+On a fresh project's Tasks page, xezar offers a guided setup: "New to this project? An agent can look at it and prepare the files it needs, and it shows you every change before anything is written." **Settings → Project setup** offers the same setup under **Guided setup**. Choose **Set up this project** to start it. Without an available agent backend the button stays disabled and xezar shows the reason: "Setup unavailable — no agent backend was found. Install Claude Code, Codex, OpenCode or pi, sign in, then open this page again."
 
 The button creates an ordinary task from the built-in `project-setup` workflow. It appears in the task list, and you can open or cancel it like any other task. Nothing starts it except your click or a project leader's request.
 
@@ -89,9 +89,9 @@ It never changes your home-folder settings, trusts a project, signs you in, inst
 
 ## To re-check after an update
 
-When xezar or its bundled setup templates change after this project was checked, xezar offers a re-check. It never starts one on its own. The offer is a notice above the Tasks page, and the same state stays on **Settings → Project setup**.
+When xezar or its bundled setup templates change after this project was checked, xezar offers a re-check. It never starts one on its own. The offer is a notice at the top of the cockpit, on every page of the project, and the same state stays on **Settings → Project setup**.
 
-- **Re-check now** starts an ordinary task that compares this project's files with the current defaults and previews the differences. Nothing is applied until you accept a preview.
+- **Re-check** on the notice (or **Re-check now** on **Settings → Project setup**) starts an ordinary task that compares this project's files with the current defaults and previews the differences. Nothing is applied until you accept a preview.
 - **Later** hides the notice for this version. The re-check stays available from **Settings → Project setup**.
 
 **Settings → Project setup** shows one state: Not set up yet, Set up, Changed since the last check, Re-checking, or Provenance unknown. It also shows **Last observed** (the xezar version and templates running now), **Last offered** and **Last successfully checked**. Only a check that finishes moves **Last successfully checked**. A cancelled or failed check leaves it where it was.

@@ -92,7 +92,9 @@ A software project can add an agent delivery pipeline: a configuration file, `.x
 
 To add one, accept the pipeline option during [guided setup](01-getting-started.md#to-let-an-agent-set-up-this-project-optional). Setup then uses the public `xez-setup-agent-pipeline` skill from the default team-skills source, `qodeca/xezar-skills`. That skill, not xezar, owns the file's shape.
 
-Setup itself follows a reviewed, pinned revision of the public setup skill. xezar also bundles a complete setup prompt as a fallback, so setup still runs offline or without the team-skills source. If the pipeline skill cannot be found in that case, setup reports the pipeline part as incomplete. It does not guess the file.
+Setup itself uses the public `xez-onboard` skill from your team-skills source. xezar records which reviewed revision of the setup templates it bundles, but only to know when to offer a re-check; it does not load the skill at that revision. When the public setup skill is loaded and the pipeline skill cannot be found, that setup skill reports the pipeline part as incomplete instead of guessing the file.
+
+xezar also bundles its own setup prompt as a fallback, so setup still runs offline or without a team-skills source. That prompt only inspects the project, asks what it cannot tell, shows a per-file preview, writes what you accept and reports the result. It has no pipeline step of its own.
 
 To skip it, decline the option. Setup then writes no pipeline file, and the rest of setup still applies. You can add the pipeline later with another setup or re-check task.
 
