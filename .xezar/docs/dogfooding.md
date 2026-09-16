@@ -12,6 +12,13 @@ Installation validation is reported in installation.md. Real-task entries follow
 
 ## Real-task entries
 
+### 2026-09-16 — issue 468, `docs-maintenance`, `xezar-docs-maintenance` — real-task observed
+
+- Goal: document the shipped GitHub-tab issue-draft launcher, its approval boundary, the local issue-filing wrapper, and the equivalent MCP task action.
+- Observed: the launcher is intentionally a task start, not an issue mutation — it selects the nearest available issue-filing skill and omits autonomous execution, while the MCP call makes the equivalent `autonomous: false` explicit. The documentation must preserve that distinction or it incorrectly grants authority by describing a button as a create operation.
+- Control: the guide claims were checked against the UI launcher, its task-body helper, the local wrapper, and the MCP task-create source; the focused release guard, relative-link check, typecheck, build/package scan, and canonical fast gate are recorded in the task evidence.
+- Remaining limit: no browser interaction or live issue creation was run for this prose-only task; the documentation states source-verified behavior rather than claiming a new live filing exercise.
+
 ### 2026-09-16 — PR #502 / #468 PR 5, REVIEW RESPONSE (`address-review-findings`, `xezar-review-response`, Claude Code) — real-task observed
 
 - Input: the `## Code review` comment on PR #502 at head `3e713c5` (REQUEST CHANGES, one major, two minors, one nit). Author run `a73071e0` was already done and its worktree reclaimable, so the reclaimed-owner recipe applied: own branch off `origin/main`, `git merge` the PR head, work, then one named-ref push to `xez/a73071e0`.
@@ -780,4 +787,3 @@ Installation validation is reported in installation.md. Real-task entries follow
 - Observed: `gh pr review --approve` is refused with `Can not approve your own pull request` whenever the authoring task and the reviewing task share the GitHub account, which is always in this setup. The review still has to exist as a durable artifact, so post it with `gh pr comment` and say in the text why it is a comment. `integration-preflight.sh` already understands this — it reported `policy for main requires 0 approving reviews` and named the authority record as the review that matters.
 - Regression/control: no source change, so no red-proof applies. The controls run were the full canonical gate on the exact merged head (7/7 pass, 419 infra fixtures), GitHub CI on the same head, `npm run test:e2e` = `TEST_E2E_STATUS=passed` with a real Chrome, and a post-merge tree comparison (`git diff <squash-commit> <reviewed-head>` empty) proving the merged content is what was reviewed.
 - Remaining limit: one macOS machine. The Chrome profile was locked by another local session, so the workflow canvas was never clicked through visually — the cockpit code was exercised as a module and over HTTP instead. `--force-with-lease` was never observed being REFUSED, so the "someone else moved the branch" stop path is untested.
-

@@ -10,7 +10,7 @@ Start with Getting started below, then follow the Next links to read the guide i
 4. [Agent backends](04-agent-backends.md) — Choose a backend, account and model.
 5. [Workflows](05-workflows.md) — Create, run, import and export workflow steps.
 6. [Skills](06-skills.md) — Write, discover and manage reusable agent instructions.
-7. [GitHub and automations](07-github-and-automations.md) — Browse GitHub, hand off issues and enable automations.
+7. [GitHub and automations](07-github-and-automations.md) — Browse GitHub, draft an issue, hand off issues and enable automations.
 8. [Inbox, notifications, and prompt templates](08-inbox-notifications-templates.md) — Act on follow-ups, receive notifications and reuse prompts.
 9. [Projects](09-projects.md) — Register projects, group them with tags and set task limits.
 10. [Settings reference](10-settings-reference.md) — Find project and workspace controls in the cockpit.
