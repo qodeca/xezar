@@ -92,7 +92,7 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Differs**: a character-identical wrapper + `SearchIcon` + raw `<input>` in `routes/tasks-overview.tsx:195-208` and `routes/global-tasks.tsx:360-375`; `routes/skills.tsx:122-129` uses `Input`.
 - **Rule**: `Input` with a leading icon.
 - **Fix**: extract `SearchField`.
-- **Status (#453 batch B4, task lists)**: `SearchField` (`routes/tasks-overview.tsx:429`) wraps `Input` with the leading icon; both task pages use it, so their search reaches 44 px on a phone. Still open (B7): `routes/skills.tsx` and the other search inputs.
+- **Status (#453 batch B4, task lists)**: `SearchField` (`routes/tasks-overview.tsx:431`) wraps `Input` with the leading icon; both task pages use it, so their search reaches 44 px on a phone. Still open (B7): `routes/skills.tsx` and the other search inputs.
 
 ### G-13 Settings field chassis copied three times
 
@@ -127,7 +127,7 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 | Oxford comma | omitted (25) | present (2) | `routes/settings/agents-section.tsx:315`, `notifications-section.tsx:97` |
 
 - **Fix**: one copy pass over the minority sites; a `no-en-dash-in-ui` guardian rule.
-- **Status (#453 batch B4, task lists)**: fixed rows – "Tool name" (`lib/task-columns.ts:62`), "Could not load tasks across projects" (`routes/global-tasks.tsx:366`) and "Search templates…" (`components/prompt-template-menu.tsx`). Still open (B5, B7): the placeholders in `routes/new-task.tsx` and `routes/github/hand-to-agent.tsx`, and the other rows.
+- **Status (#453 batch B4, task lists)**: fixed rows – "Tool name" (`lib/task-columns.ts:62`), "Could not load tasks across projects" (`routes/global-tasks.tsx:367`) and "Search templates…" (`components/prompt-template-menu.tsx`). Still open (B5, B7): the placeholders in `routes/new-task.tsx` and `routes/github/hand-to-agent.tsx`, and the other rows.
 - **Status (#453 batch B3, settings)**: the settings rows are fixed – "Could not load …" in all ten settings sites, "Retry" in provider settings, "Filter skills…", "Nothing matches." for the bookmarklet filter, the em dash in `mcp-api-section.tsx`, curly apostrophes in `appearance.tsx`, `project-general.tsx` and the hints of `agents-section.tsx`, `resources-section.tsx`, `mcp-connection-section.tsx`, `projects-section.tsx`, `accounts-section.tsx` and `prompt-templates-section.tsx`, and no Oxford comma in `agents-section.tsx`, `notifications-section.tsx` and `prompt-templates-section.tsx`. Still open (B4, B5, B7): the other rows. The guardian rule is not added.
 
 ### G-16 Toast punctuation
@@ -142,7 +142,7 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Differs**: `routes/tasks-overview.tsx` is driven by `TASK_COLUMNS`; `routes/global-tasks.tsx:656-740` hard-codes its columns with an identical `Th` and `TD_BASE` and duplicates `UsageTd`/`Dash`; it degrades by hiding columns at `lg:`/`xl:` instead of cards.
 - **Rule**: `task-columns.ts` for the per-project table; the global table is documented as separate.
 - **Fix**: share `Th`, `TD_BASE`, `UsageTd`; decide whether the global table should fold like the other.
-- **Status (#453 batch B4, task lists)**: fixed – `TASK_TH_CLASS` and `TASK_TD_CLASS` (`lib/task-columns.ts:143,145`) and `USAGE_CELL_CLASS` (`lib/tasks-table.ts:369`) are the one grammar; both tables render the exported `TaskTh` and `UsageTd` (`routes/tasks-overview.tsx:462,899`) and share `Dash`. Below `md` the global page renders cards (`GlobalTaskCard`, `routes/global-tasks.tsx:885`) with the same facts as the project cards, so it no longer only hides columns. The entry stays until B8 retires it.
+- **Status (#453 batch B4, task lists)**: fixed – `TASK_TH_CLASS` and `TASK_TD_CLASS` (`lib/task-columns.ts:143,145`) and `USAGE_CELL_CLASS` (`lib/tasks-table.ts:355`) are the one grammar; both tables render the exported `TaskTh` and `UsageTd` (`routes/tasks-overview.tsx:464,900`) and share `Dash`. Below `md` the global page renders cards (`GlobalTaskCard`, `routes/global-tasks.tsx:887`) with the same facts as the project cards, so it no longer only hides columns. The entry stays until B8 retires it.
 
 ### G-18 Number formatting has two byte formatters
 
@@ -169,7 +169,7 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Differs**: `index.css:29-31` says "Reach for this on any control that is hidden until hover"; `no-hover:` is used at exactly two sites (`components/task-quick-list.tsx:339`, `routes/tasks-overview.tsx:807`). The composer's attachment remove overlay (`components/composer/composer.tsx:504`) reveals on `group-hover` and `group-focus-visible` only.
 - **Rule**: `no-hover:` on every hover-revealed control.
 - **Fix**: add the variant to the composer overlay and audit `group-hover` sites.
-- **Status (#453 batch B4, task lists)**: the task lists are done – the pin (`components/pin-toggle.tsx`), the drawer row pin (`components/task-quick-list.tsx:340`) and the table's rename pencil and pin (`routes/tasks-overview.tsx:852,867`) show on a no-hover device and grow to 44 px there. Still open (B5): the composer overlay, and the run header's rename pencil (`routes/task-thread/run-header.tsx:544`), which is `opacity-0` and about 22 px on a phone.
+- **Status (#453 batch B4, task lists)**: the task lists are done – the pin (`components/pin-toggle.tsx`), the drawer row pin (`components/task-quick-list.tsx:340`) and the table's rename pencil and pin (`routes/tasks-overview.tsx:853,868`) show on a no-hover device and grow to 44 px there. Still open (B5): the composer overlay, and the run header's rename pencil (`routes/task-thread/run-header.tsx:544`), which is `opacity-0` and about 22 px on a phone.
 
 ### G-22 Save behaviour split inside one pane
 
