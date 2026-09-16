@@ -303,6 +303,25 @@ describe('task thread', () => {
     // Re-expand so the desktop screenshot below captures the full checklist.
     browser.click('[data-slot="plan-dock"] button')
     browser.waitForFunction(`document.querySelector('[data-slot="plan-dock"]').dataset.state === 'open'`)
+    // The re-opened dock grows below the transcript, and the reader pinned to the tail follows it
+    // down over the next frames (#446). Wait until the scroller rests at the tail: a scroll-into-
+    // view issued inside that window is taken back by the re-pin, so the next test's click lands
+    // on whatever card the tail brought under the pointer instead of its own.
+    browser.evaluate(`(() => {
+      const main = document.querySelector('[data-slot="main"]')
+      let last = '', still = 0
+      window.__xezDockSettled = false
+      const tick = () => {
+        const maxTop = main.scrollHeight - main.clientHeight
+        const key = main.scrollTop + '/' + maxTop
+        still = key === last && maxTop - main.scrollTop < 2 ? still + 1 : 0
+        last = key
+        if (still >= 10) window.__xezDockSettled = true
+        else requestAnimationFrame(tick)
+      }
+      requestAnimationFrame(tick)
+    })()`)
+    browser.waitForFunction('window.__xezDockSettled === true')
   })
 
   it('a card is closed by default and expands to its mono output (the #381 behavior)', () => {
