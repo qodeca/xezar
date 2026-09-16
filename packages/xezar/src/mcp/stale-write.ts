@@ -10,6 +10,8 @@ import {
   type VersionedMutationDone,
 } from '@qodeca/xezar-contract';
 import type { RunRecord, RunStore } from '../runs/store.ts';
+import { runDecisionProjection } from '../runs/decision-projection.ts';
+export { runDecisionProjection } from '../runs/decision-projection.ts';
 
 /**
  * Stale-write rejection for leader mutations (#100) — the mechanism D-06 chose for N-03
@@ -46,10 +48,8 @@ import type { RunRecord, RunStore } from '../runs/store.ts';
 export interface VersionedSnapshot {
   readonly ref: McpVersionedResourceRef;
   /**
-   * For a run-scoped resource, its highest event `seq`; absent for a resource with no event stream
-   * (a config file, an automation). This half catches A→B→A — a human who changes something and
-   * changes it back leaves the projection byte-identical, but not the event counter, because `seq`
-   * is monotonic and never reused, even across a restart (`RunStore.rehydrateSeq`).
+   * For a run, the persisted decision-only revision. It advances on every projection change,
+   * including A→B→A, before the store broadcasts the new state. Telemetry never advances it.
    */
   readonly seq?: number;
   /** The decision projection. Canonicalized and digested; its content never leaves this module. */
@@ -195,63 +195,15 @@ function isThenable(value: unknown): value is PromiseLike<unknown> {
 
 export const RUN_RESOURCE_KIND = 'run';
 
-/**
- * A run's decision projection (D-06 § 4.3).
- *
- * D-06 proposed `status`, `archived`, `pinned`, `title`, `titleOrigin`, `autoResumeAt`,
- * `queuedMessages[].id`, `steps[].id`/`steps[].status`, `branch` and `workflow`, and left the list
- * to be reviewed against `runRecordSchema`. Reviewed against it, two additions follow from the
- * rule itself — every field a leader mutation of a run WRITES:
- *
- *  - `task`: a queued run's brief stays editable until the scheduler picks it up, and a human
- *    editing it is the "edits its brief" case § 4.1 names;
- *  - `queuedMessages[].text`, not only the id: a queued follow-up is editable in the same way.
- *
- * Left out on purpose: telemetry (`tokensUsed`, `inputTokens`, `outputTokens`, `costUsd`,
- * `peakRssBytes`, `peakProcCount`, `diffStat`, the per-step counters), presentation (`seenAt`, and
- * the `archivedAt`/`pinnedAt` stamps whose flags ARE covered), and everything derived by the server
- * for display (`titleSummary`, the referenced PR/issue tiers).
- */
-export function runDecisionProjection(run: RunRecord): unknown {
-  return {
-    status: run.status,
-    archived: run.archived,
-    pinned: run.pinned,
-    title: run.title,
-    titleOrigin: run.titleOrigin,
-    autoResumeAt: run.autoResumeAt,
-    task: run.task,
-    queuedMessages: run.queuedMessages?.map((message) => ({ id: message.id, text: message.text })),
-    steps: run.steps.map((step) => ({ id: step.id, status: step.status })),
-    branch: run.branch,
-    workflow: run.workflow,
-  };
-}
-
-/**
- * The run's highest event `seq` on disk.
- *
- * D-06 names the highest ALLOCATED seq. The allocation counter is private to the store, so this
- * reads the persisted one: it moves on every persisted event and never goes backwards, which is the
- * property the token needs. The only allocations it cannot see are `emitEphemeral`'s, which are
- * presentation-only and never persisted — § 4.3 would exclude them anyway.
- */
-function highestEventSeq(store: RunStore, runId: string): number {
-  let max = 0;
-  for (const event of store.readEvents(runId)) {
-    if (typeof event.seq === 'number' && event.seq > max) max = event.seq;
-  }
-  return max;
-}
-
 /** A run as the check sees it right now, or `undefined` when there is no such run. */
 export function runVersionSnapshot(store: RunStore, runId: string): VersionedSnapshot | undefined {
   const run = store.getRun(runId);
   if (!run) return undefined;
   return {
     ref: { kind: RUN_RESOURCE_KIND, id: runId },
-    seq: highestEventSeq(store, runId),
-    projection: runDecisionProjection(run),
+    seq: run.decisionRevision ?? 0,
+    // Domain separation invalidates pre-upgrade transcript-sequence tokens.
+    projection: { decision: runDecisionProjection(run) },
   };
 }
 

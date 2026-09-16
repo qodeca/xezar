@@ -17,6 +17,7 @@ import {
 import type { RunEvent, RunRecord, RunStore } from '../runs/store.ts';
 import { markTaskVerdictAnnounced } from '../runs/task-verdicts.ts';
 import { StallMonitor } from './stall-monitor.ts';
+import { operationNotApplied } from './echo-guard.ts';
 import { runVersion } from './stale-write.ts';
 
 /**
@@ -108,7 +109,13 @@ function currentOrigin(): EventOriginContext | undefined {
  * per run; consumed by the run's next status transition, whether or not that transition writes a
  * row, so an intent never outlives the change it was for by more than one transition.
  */
-const pendingIntents = new Map<string, EventOriginContext>();
+const pendingIntents = new Map<string, { context: EventOriginContext; status: RunRecord['status'] }>();
+
+/** Only an accepted effect may register the specific delayed transition it will cause. */
+export function expectEventTransition(runId: string, status: RunRecord['status']): void {
+  const context = currentOrigin();
+  if (context) pendingIntents.set(runId, { context, status });
+}
 
 /**
  * Run `fn` as a change caused by `context`. The MCP door wraps each dispatched operation in this;
@@ -122,10 +129,13 @@ export function withEventOrigin<T>(context: EventOriginContext, fn: () => T): T 
   if (context.origin !== 'leader' && context.causedBy !== null) {
     throw new Error('only a leader change carries an operation id');
   }
-  if (context.runId !== undefined) pendingIntents.set(context.runId, context);
   const scope = { context, live: true };
-  const end = (): void => {
+  const end = (result?: unknown): void => {
     scope.live = false;
+    if (operationNotApplied(result) && context.runId !== undefined &&
+        pendingIntents.get(context.runId)?.context === context) {
+      pendingIntents.delete(context.runId);
+    }
   };
   let result: T;
   try {
@@ -139,7 +149,7 @@ export function withEventOrigin<T>(context: EventOriginContext, fn: () => T): T 
   if (pending !== null && typeof pending === 'object' && typeof pending.then === 'function') {
     (result as PromiseLike<unknown>).then(end, end);
   } else {
-    end();
+    end(result);
   }
   return result;
 }
@@ -406,7 +416,7 @@ export class EventCatalog {
   }
 
   #onStatus(run: RunRecord, before: RunMemory): void {
-    const origin = this.#transitionOrigin(run.id, run.status === 'cancelled' ? 'human' : 'system');
+    const origin = this.#transitionOrigin(run.id, run.status, run.status === 'cancelled' ? 'human' : 'system');
     switch (run.status) {
       case 'done':
         // The completion row says whether any reviewer report is on the record (#460). "Finished"
@@ -469,11 +479,11 @@ export class EventCatalog {
 
   /** The origin of a status transition: the current call, else an intent left for this run, else
    *  the default. Consumes the intent either way — it was for this transition. */
-  #transitionOrigin(runId: string, fallback: McpJournalOrigin): EventOriginContext {
+  #transitionOrigin(runId: string, status: RunRecord['status'], fallback: McpJournalOrigin): EventOriginContext {
     const current = currentOrigin();
     const intent = pendingIntents.get(runId);
     pendingIntents.delete(runId);
-    return current ?? intent ?? { origin: fallback, causedBy: null };
+    return current ?? (intent?.status === status ? intent.context : undefined) ?? { origin: fallback, causedBy: null };
   }
 
   #originOr(fallback: McpJournalOrigin): EventOriginContext {

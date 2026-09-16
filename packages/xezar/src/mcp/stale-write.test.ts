@@ -114,7 +114,7 @@ describe('acceptance 1 — a human changed the run after the leader read it', ()
     expect(store.getRun(run.id)?.title).toBe('renamed by a human');
   });
 
-  it('rejects when a human only appended to the run history — the seq half catches A→B→A', () => {
+  it('rejects when a human only appended to the run history — participant input is a decision', () => {
     const run = createRun();
     const stale = runVersion(store, run.id);
     // Nothing in the decision projection moves, but the run's history does: a human sent a message.

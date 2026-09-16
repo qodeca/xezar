@@ -1,3 +1,4 @@
+import { expectEventTransition } from '../mcp/event-catalog.ts';
 import { EventCorrectionError } from '../runs/event-corrections.ts';
 import { validateLegacyHistoryResume } from '../runs/event-history.ts';
 import { projectDataDir } from '../project-data-paths.ts';
@@ -3914,6 +3915,7 @@ export function createApp(deps: ServerDeps) {
       const stale = staleRunWrite(store, id, c.req.valid('json').expectedVersion);
       if (stale) return c.json(stale, 409);
       const cancelled = manager.cancel(id);
+      if (cancelled && store.getRun(id)?.status !== 'cancelled') expectEventTransition(id, 'cancelled');
       return c.json({ cancelled });
     })
 

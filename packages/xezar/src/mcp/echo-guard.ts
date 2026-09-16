@@ -102,6 +102,10 @@ class BoundedSet {
     if (this.#items.size > this.max) this.#items.delete(this.#items.values().next().value as string);
   }
 
+  delete(value: string): void {
+    this.#items.delete(value);
+  }
+
   clear(): void {
     this.#items.clear();
   }
@@ -130,7 +134,9 @@ export class EchoGuard {
    */
   async issue<T>(operationId: string, dispatch: () => T | Promise<T>): Promise<T> {
     this.#own.add(mcpJournalOperationIdSchema.parse(operationId));
-    return dispatch();
+    const result = await dispatch();
+    if (operationNotApplied(result)) this.#own.delete(operationId);
+    return result;
   }
 
   /** Whether `operationId` is one this guard issued. */
@@ -186,4 +192,19 @@ export function attachLeaderFeed(options: {
     if (verdict.deliver) deliver(verdict.row);
     else onDrop?.(verdict.reason, row);
   });
+}
+
+/** Only an explicit no-effect result permits forgetting pre-dispatch ownership. */
+export function operationNotApplied(result: unknown): boolean {
+  if (result === null || typeof result !== 'object') return false;
+  if ('applied' in result && result.applied === false) return true;
+  if (!('content' in result) || !Array.isArray(result.content)) return false;
+  const block = result.content[0];
+  if (block?.type !== 'text') return false;
+  try {
+    const body: unknown = JSON.parse(block.text);
+    return body !== null && typeof body === 'object' && 'applied' in body && body.applied === false;
+  } catch {
+    return false;
+  }
 }

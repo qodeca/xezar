@@ -1,3 +1,4 @@
+import { runDecisionProjection } from './decision-projection.ts';
 import { acquireHistoryView } from './event-corrections.ts';
 import { ensureProjectDataIgnored } from '../project-data-paths.ts';
 import { EventEmitter } from 'node:events';
@@ -116,6 +117,8 @@ const queuedMessageSchema = z.object({
  *  parse `runs.json` — see `reconcileLoadedRun` for why a second parser is a correctness risk. */
 export const runRecordSchema = z.object({
   id: z.string(),
+  /** Automatically maintained decision revision; absent in legacy records. */
+  decisionRevision: z.number().int().nonnegative().optional(),
   title: z.string(),
   /** Display title (#389): the auto-derived summary of the first agent turn,
    *  or the user's inline edit (`PATCH /api/runs/:id` sets it together with
@@ -686,6 +689,7 @@ export function reconcileLoadedRun(run: RunRecord, opts?: { keepLive?: boolean }
  */
 export class RunStore extends EventEmitter {
   private runs = new Map<string, RunRecord>();
+  private decisionProjections = new Map<string, string>();
   private saveTimer: NodeJS.Timeout | null = null;
   /** The repository this project IS (#945), armed after `open()` by `setRepoHandle`. Undefined
    *  until it arrives and `null` when it cannot be known — both mean "unscoped", which is
@@ -703,19 +707,26 @@ export class RunStore extends EventEmitter {
     mkdirSync(join(dataDir, 'runs'), { recursive: true });
     const store = new RunStore(dataDir);
     const indexPath = join(dataDir, 'runs.json');
+    let decisionChanged = false;
     if (existsSync(indexPath)) {
       try {
         const raw = JSON.parse(readFileSync(indexPath, 'utf8'));
         const parsed = z.array(runRecordSchema).safeParse(raw);
         if (parsed.success) {
           for (const run of parsed.data) {
-            store.runs.set(run.id, reconcileLoadedRun(run, opts));
+            store.decisionProjections.set(run.id, JSON.stringify(runDecisionProjection(run)));
+            if (run.decisionRevision === undefined) decisionChanged = true;
+            run.decisionRevision ??= 0;
+            const reconciled = reconcileLoadedRun(run, opts);
+            store.runs.set(run.id, reconciled);
+            if (store.trackDecision(reconciled)) decisionChanged = true;
           }
         }
       } catch {
         // corrupt index — start fresh; event files stay on disk untouched
       }
     }
+    if (decisionChanged) store.saveNow();
     return store;
   }
 
@@ -1081,6 +1092,11 @@ export class RunStore extends EventEmitter {
     // Sync append keeps event order without a write queue; local NDJSON
     // appends at agent-event rates are effectively free.
     appendFileSync(this.eventsPath(runId), `${JSON.stringify(full)}\n`, 'utf8');
+    // A participant's input is a decision, unlike agent transcript/tool/usage progress.
+    if (full.type === 'user-message') {
+      run.decisionRevision = (run.decisionRevision ?? 0) + 1;
+      this.saveNow();
+    }
     this.emit('event', { runId, event: full });
 
     // The janitor trick: agents print the PR URL after `gh pr create` — the
@@ -1347,6 +1363,7 @@ export class RunStore extends EventEmitter {
         // best effort — the index is authoritative
       }
       this.seqs.delete(id);
+      this.decisionProjections.delete(id);
       this.scheduleSave();
       this.emit('deleted', id);
     }
@@ -1401,8 +1418,20 @@ export class RunStore extends EventEmitter {
     return join(this.dataDir, 'runs', `${runId}-images`);
   }
 
+  private trackDecision(run: RunRecord): boolean {
+    const projection = JSON.stringify(runDecisionProjection(run));
+    const previous = this.decisionProjections.get(run.id);
+    run.decisionRevision ??= 0;
+    if (previous === projection) return false;
+    if (previous !== undefined) run.decisionRevision++;
+    this.decisionProjections.set(run.id, projection);
+    return true;
+  }
+
   private touch(run: RunRecord): void {
-    this.scheduleSave();
+    // Persist decision changes before publishing their token. Even A→B→A must survive restart.
+    if (this.trackDecision(run)) this.saveNow();
+    else this.scheduleSave();
     this.emit('run', run);
   }
 
@@ -1414,6 +1443,7 @@ export class RunStore extends EventEmitter {
     ];
     for (const stale of stalePool) {
       this.runs.delete(stale.id);
+      this.decisionProjections.delete(stale.id);
       try {
         rmSync(this.eventsPath(stale.id), { force: true });
         rmSync(this.handoffPath(stale.id), { force: true });

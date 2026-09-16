@@ -595,7 +595,7 @@ export function createExecutionControlTool(wait: (ms: number) => Promise<void> =
       'answer_question — answer the task\'s pending question by its questionId, with the option labels (answers) or free text; only the pending question can be answered, and a closed session is reopened to deliver it.',
       'edit_queued_message / remove_queued_message — change a message stacked on a queued task.',
       'cancel_auto_resume — stop a scheduled automatic resume after a usage limit.',
-      'Every action needs expectedVersion: the `version` task_read (view task) returned for this task. If the task changed since you read it, nothing is applied and the answer is status "conflict" with error "stale_version": read it again and decide again. A running task\'s version moves as its agent works, so read it right before acting.',
+      'Every action needs expectedVersion: the `version` task_read (view task) returned for this task. If the task changed since you read it, nothing is applied and the answer is status "conflict" with error "stale_version": read it again and decide again. The token tracks decision state, including changes later reversed; transcript, tool and usage progress alone never invalidate it.',
       'Targets tasks only by run id in the bound project; there is no process-level control. Plan approval and decisions outside the approved goal stay with the human.',
     ].join('\n'),
     inputSchema: executionControlInputSchema,
