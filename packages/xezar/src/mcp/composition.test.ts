@@ -401,7 +401,12 @@ describe('N-07: composition can never break ordinary startup', () => {
       return res?.ok ? res : undefined;
     });
     expect(health.status).toBe(200);
-    await untilAsync('the MCP warning', async () => (stderr.includes('MCP bridge unavailable') ? true : undefined));
+    // Since #467 PR 3 the warning is an activity line rather than a bare `console.warn`, so off
+    // a terminal it is one logfmt row — and the module's own reason is carried in its `reason`
+    // field, which is what the next assertion still reads.
+    await untilAsync('the MCP warning', async () =>
+      stderr.includes('event=mcp.unavailable') ? true : undefined,
+    );
     expect(stderr).toMatch(/too long for a local socket/);
     // Still serving after the failure was reported.
     expect((await fetch(`${base}/api/v1/health`)).status).toBe(200);

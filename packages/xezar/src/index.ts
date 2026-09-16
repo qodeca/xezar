@@ -327,12 +327,17 @@ async function serveCommand(
   // One line per mangled stored value, then the key is treated as absent (A10). A file
   // someone's editor broke must never be the reason a cockpit does not start.
   for (const warning of settings.warnings) {
+    const detail = warning.replace(/^\[xez] /, '');
     terminal.log(
       activityEntry({
         level: 'warn',
         subject: 'registry',
-        message: warning.replace(/^\[xez] /, ''),
+        message: detail,
         event: 'registry.invalid',
+        // The message is the human surface and is NOT in the plain output, which carries the
+        // event name and the fields only. Which key was broken, and what the value was, is the
+        // entire content of this warning — so it travels as a field or it is lost.
+        fields: [['detail', detail]],
       }),
     );
   }
@@ -572,8 +577,13 @@ async function startMcpSocket(opts: {
   workspaceEvents: WorkspaceEventBus;
   providerBaseline: () => Promise<readonly ProviderStatus[]>;
   localHandoff: () => boolean;
-  /** Where the one unavailability line goes. Absent keeps the previous `console.warn`. */
-  onUnavailable?: (reason: string) => void;
+  /**
+   * Where the one unavailability line goes (#467, PR 3).
+   *
+   * Required rather than optional on purpose: two spellings of the same warning is how a message
+   * a person greps for quietly becomes two, and there is exactly one caller.
+   */
+  onUnavailable: (reason: string) => void;
 }): Promise<{ close(): void } | undefined> {
   try {
     const { startMcpService } = await import('./mcp/index.ts');
@@ -588,8 +598,7 @@ async function startMcpSocket(opts: {
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    if (opts.onUnavailable) opts.onUnavailable(message);
-    else console.warn(`[xez] MCP bridge unavailable for this project (${message}) — the cockpit works without it`);
+    opts.onUnavailable(message);
     return undefined;
   }
 }
