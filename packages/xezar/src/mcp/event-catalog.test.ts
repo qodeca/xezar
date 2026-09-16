@@ -67,6 +67,14 @@ beforeEach(() => {
 afterEach(() => {
   catalog.detach();
   journal.close();
+  // `flush()` before the directory goes, or the store's 300 ms debounced save outlives the whole
+  // FILE — its 46 cases finish in ~55 ms — and then `console.error`s an ENOENT for a `runs.json`
+  // whose directory this line just deleted. The failing write is harmless; the LOG is not. Vitest
+  // ships console output to the main process over the worker rpc, so a log emitted after the file
+  // ended races the environment teardown that closes it, and the loser is an unhandled
+  // `EnvironmentTeardownError: Closing rpc while "onUserConsoleLog" was pending` — one error, zero
+  // failed tests, `npm test` exit 1. It surfaced on the second gate run of an unchanged tree.
+  store.flush();
   rmSync(dataDir, { recursive: true, force: true });
 });
 

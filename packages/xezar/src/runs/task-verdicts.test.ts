@@ -30,6 +30,10 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // Same reason as `mcp/event-catalog.test.ts`: an unflushed store keeps a 300 ms debounced save
+  // scheduled, it fires long after this file is done, and the ENOENT it logs into the directory
+  // deleted on the next line reaches vitest as a console message with no worker left to take it.
+  store.flush();
   rmSync(dataDir, { recursive: true, force: true });
 });
 
