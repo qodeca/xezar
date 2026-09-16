@@ -212,4 +212,30 @@ describe('Settings → Project setup', () => {
     )
     expect(document.querySelector('[data-slot="project-setup-error"]')?.getAttribute('role')).toBe('alert')
   })
+
+  it('names none of xezar’s own working files or process, in any state (#466)', async () => {
+    // Review round 1 finding 5. The pure copy rules are guarded in `lib/onboarding.test.ts`; this
+    // covers what the section itself writes — the title, the intro, the three notes and the row
+    // labels — which live in JSX and no list of exported strings can ever reach.
+    const cases: Array<{ status: Partial<OnboardingStatus>; localHandoff?: boolean }> = [
+      { status: {} },
+      { status: { state: 'checking', checkingRunId: 'run-1', provenance: 'recorded' } },
+      { status: { state: 'set-up', provenance: 'recorded', lastChecked: { ...OBSERVED, at: '2026-09-02T16:40:00.000Z' } } },
+      { status: { state: 'changed', provenance: 'recorded', lastChecked: { ...OLD, at: '2026-09-02T16:40:00.000Z' }, dismissed: true } },
+      { status: { state: 'unknown' } },
+      { status: { available: false, unavailableReason: 'Setup unavailable — no agent backend was found.' } },
+      { status: {}, localHandoff: false },
+    ]
+    for (const { status, localHandoff } of cases) {
+      cleanup()
+      serve(onboarding(status))
+      renderSection({ localHandoff })
+      await waitFor(() => expect(card()).not.toBeNull())
+      const text = document.querySelector('[data-slot="project-setup-section"]')?.textContent ?? ''
+      expect(text.length).toBeGreaterThan(0)
+      for (const forbidden of [/\.xezar/, /\bkit\b/i, /\bSDLC\b/, /\bworkflow/i, /\bskill/i]) {
+        expect(text).not.toMatch(forbidden)
+      }
+    }
+  })
 })

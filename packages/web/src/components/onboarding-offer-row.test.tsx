@@ -128,4 +128,23 @@ describe('the offer row', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Later' }))
     expect(onLater).toHaveBeenCalledTimes(1)
   })
+
+  it('names none of xezar’s own working files or process, in any shape (#466)', () => {
+    // Review round 1 finding 5: the pure copy rules are guarded in `lib/onboarding.test.ts`, and
+    // this covers what the component itself writes — the labels, the link and the disabled reason,
+    // which live in JSX and are the strings that list can never see.
+    for (const over of [
+      {},
+      { lastChecked: { engineVersion: '0.14.0', kitDigest: '2c20c60aaa', at: '2026-09-02T16:40:00.000Z' } },
+      { available: false, unavailableReason: 'Setup unavailable — no agent backend was found.' },
+    ]) {
+      cleanup()
+      const { row } = renderRow(over)
+      const text = row()?.textContent ?? ''
+      expect(text.length).toBeGreaterThan(0)
+      for (const forbidden of [/\.xezar/, /\bkit\b/i, /\bSDLC\b/, /\bworkflow/i, /\bskill/i]) {
+        expect(text).not.toMatch(forbidden)
+      }
+    }
+  })
 })
