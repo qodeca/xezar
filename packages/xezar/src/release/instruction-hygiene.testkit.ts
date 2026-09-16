@@ -100,15 +100,10 @@ export function releaseArchiveRules(repoRoot: string): ContentRule[] {
 export const RELEASE_ARCHIVE_EXCEPTIONS: readonly ContentException[] = [
   { rule: 'owner-name', file: 'LICENSE', fragment: 'Copyright (c) 2026 Patryk Lewczuk', reason: 'legal attribution the MIT licence requires', ref: '#466' },
   { rule: 'owner-name', file: 'README.md', fragment: '**MIT** © Patryk Lewczuk', reason: 'licence attribution in the README', ref: '#466' },
-  { rule: 'own-source-path', file: 'README.md', fragment: 'packages/xezar/src/core/agent-runner.ts', reason: 'README architecture section — the npm README split is #448', ref: '#466 P2 (#448)' },
-  { rule: 'own-source-path', file: 'README.md', fragment: 'npm run dev:server', reason: 'README "Local development" block — moves out of the npm README in #448', ref: '#466 P2 (#448)' },
-  { rule: 'own-build-command', file: 'README.md', fragment: 'npm run dev:web', reason: 'README "Local development" block — moves out of the npm README in #448', ref: '#466 P2 (#448)' },
-  { rule: 'own-local-path', file: 'README.md', fragment: '.local/coverage/', reason: 'README "Local development" block — moves out of the npm README in #448', ref: '#466 P2 (#448)' },
-  { rule: 'own-process-doc', file: 'README.md', fragment: 'SDLC.md', reason: 'README "Local development" block — moves out of the npm README in #448', ref: '#466 P2 (#448)' },
 ];
 
 /** The most exceptions the archive may carry. Lower it when one is removed; never raise it. */
-export const RELEASE_ARCHIVE_EXCEPTION_CEILING = 7;
+export const RELEASE_ARCHIVE_EXCEPTION_CEILING = 2;
 
 /**
  * Source text with its comments blanked out and everything else — code, strings, template text,

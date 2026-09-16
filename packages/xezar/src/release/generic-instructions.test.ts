@@ -117,7 +117,6 @@ async function manifest(): Promise<Producer[]> {
 }
 
 const P3 = '#466 P3 after #450/#460';
-const P2 = '#466 P2 (#448)';
 const CAPABILITY = "names a client's own instruction file as what that client reads — a capability reference (owner decision 2026-09-16)";
 
 /**
@@ -126,16 +125,11 @@ const CAPABILITY = "names a client's own instruction file as what that client re
  * Remove an entry when its work package lands, and lower the ceiling with it.
  */
 const EXCEPTIONS: readonly ContentException[] = [
-  // P2 — the npm README is copied from the root README, which #448 is splitting.
-  { rule: 'own-source-path', file: 'packages/xezar/README.md', fragment: 'packages/xezar/src/core/agent-runner.ts', reason: 'README architecture section', ref: P2 },
-  { rule: 'own-source-path', file: 'packages/xezar/README.md', fragment: 'npm run dev:server', reason: 'README "Local development" block', ref: P2 },
-  { rule: 'own-build-command', file: 'packages/xezar/README.md', fragment: 'npm run dev:web', reason: 'README "Local development" block', ref: P2 },
-  { rule: 'own-process-doc', file: 'packages/xezar/README.md', fragment: 'SDLC.md', reason: 'README "Local development" block', ref: P2 },
   { rule: 'owner-name', file: 'packages/xezar/README.md', fragment: '**MIT** © Patryk Lewczuk', reason: 'licence attribution', ref: '#466' },
 ];
 
 /** The most exceptions this guard may carry. Lower it when one is removed; never raise it. */
-const EXCEPTION_CEILING = 5;
+const EXCEPTION_CEILING = 1;
 
 /**
  * Native instruction-file names, each allowed only where it is a capability reference. Exact
@@ -153,9 +147,8 @@ const FRAMING_EXCEPTIONS: readonly ContentException[] = [
   { rule: 'software-only-framing', file: 'packages/xezar/src/mcp/leader-delivery.ts', fragment: 'in their own worktrees', reason: 'F03 — leader role source', ref: P3 },
   { rule: 'software-only-framing', file: 'mcp-tool:leader_events', fragment: 'quality gates', reason: 'F31 — leader_events description', ref: P3 },
   { rule: 'software-only-framing', file: 'packages/xezar/src/mcp/tools/leader-events.ts', fragment: 'quality gates', reason: 'F31 — leader_events description source', ref: P3 },
-  { rule: 'software-only-framing', file: 'packages/xezar/README.md', fragment: 'tracking AI coding-agent tasks in your repo', reason: 'F24 — README introduction', ref: P2 },
 ];
-const FRAMING_EXCEPTION_CEILING = 8;
+const FRAMING_EXCEPTION_CEILING = 7;
 
 function scan(producers: readonly Producer[], rules = PROJECT_SPECIFIC_RULES, exceptions: readonly ContentException[] = EXCEPTIONS) {
   const used = new Set<ContentException>();
