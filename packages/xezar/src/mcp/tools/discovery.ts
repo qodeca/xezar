@@ -24,7 +24,7 @@ import { getRepoInfo } from '../../server/git.ts';
 import { loadWorkspaceConfig } from '../../workspace/config.ts';
 import { projectDataDir } from '../../project-data-paths.ts';
 import { observedIdentity, onboardingStatus } from '../../onboarding/status.ts';
-import type { ServiceDispatch } from '../service-adapter.ts';
+import { readOnboardingThroughService, type ServiceDispatch } from '../service-adapter.ts';
 import { defineTool, textResult, type McpToolContext } from '../tool.ts';
 
 /**
@@ -262,15 +262,10 @@ export async function collectOnboarding(
 ): Promise<OnboardingStatus> {
   const observed = observedIdentity(ctx.xezarVersion);
   if (ctx.service) {
-    try {
-      const res = await ctx.service.request(
-        `http://xezar.invalid/api/v1/p/${encodeURIComponent(ctx.project.id)}/onboarding`,
-        { headers: { host: 'xezar.invalid' } },
-      );
-      if (res.ok) return onboardingStatusSchema.parse(await res.json());
-    } catch {
-      // The route is the preferred source, never a required one: discovery must keep answering.
-    }
+    const answer = await readOnboardingThroughService(ctx.service, ctx.project.id);
+    const parsed = onboardingStatusSchema.safeParse(answer);
+    // The route is the preferred source, never a required one: discovery must keep answering.
+    if (parsed.success) return parsed.data;
   }
   return onboardingStatus(projectDataDir(ctx.project.root), {
     observed,

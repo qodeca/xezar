@@ -201,6 +201,10 @@ run.
 | I-115 | global | P-29 |
 | I-141 | covered | P-43 |
 | I-142 | covered | P-43 |
+| I-143 | covered | P-44 |
+| I-144 | covered | P-44 |
+| I-145 | covered | P-44 |
+| I-146 | covered | P-44 |
 | I-117 | global | P-29 |
 | I-118 | global | P-29 |
 | I-119 | global | P-29 |
@@ -258,6 +262,7 @@ run.
 | P-26 | A-09, A-05 | I-111, I-113 | an agent config file is written through the cockpit’s own route, a stale write is refused, and an MCP-carrying file is read as structure only |
 | P-27 | A-09, A-11 | I-111, I-113 | in hosted mode an agent config write is refused with the cockpit’s own 409, through MCP too |
 | P-28 | A-09, A-08, A-05 | I-128, I-129 | the bound project’s own cap and tags are written to its registry entry only, and each door sees the other’s |
+| P-44 | A-09, A-08, A-05 | I-143, I-144, I-145, I-146 | the leader reads this project’s setup state, dispatches the bundled setup task and records the offer, and the cockpit sees the same thing |
 | P-29 | A-09, A-11 | I-012, I-024, I-092, I-093, I-112, I-115, I-117, I-118, I-119, I-120, I-121, I-122, I-123, I-124, I-125, I-126, I-127, I-130, I-131, I-132 | every global-source, home-file, shared-account and limit write is refused with its boundary, dispatches nothing, and no approval parameter changes that |
 | P-30 | A-10, A-05 | I-033, I-041, I-045, I-049, I-052, I-053, I-054 | a result, its files, diff, commits and handoff read the same as the cockpit’s, with references and origin as fields, and `done` is not proof |
 | P-31 | A-10, A-05 | I-055, I-054, I-052 | after a commit moves the SHA, earlier evidence reads as stale, and the commit is the one the cockpit makes |
