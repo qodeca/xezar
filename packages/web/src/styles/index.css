@@ -99,7 +99,10 @@
   --sidebar: var(--card);
   --muted: #262626;
   --muted-foreground: #a3a3a3;
-  --soft-foreground: #7b7b7b;
+  /* Tertiary ink, and it colours 10–12.5px text (eyebrows, hints, table headers), so it owes AA's
+   * 4.5:1 on every surface it is printed on — including `--muted` (#262626), the darkest of them.
+   * The old #7b7b7b was 3.6:1 there and 4.2:1 on `--card` (G-23). */
+  --soft-foreground: #909090;
   --border: #262626;
   --input: #262626;
   --contrast: #ebebeb;
@@ -111,14 +114,20 @@
   --primary: var(--accent-lime);
   --primary-foreground: #0d0d0d;
   --violet: #8f86e8;
-  /* Text/icons printed *on* --violet (the Inbox count badge). White in both themes — the violet
-   * never lightens enough for ink to pass AA against it. */
-  --violet-foreground: #ffffff;
+  /* Text/icons printed *on* --violet (the Inbox count badge). Near-black, not white: the badge
+   * count is 10.5px text and white on this violet is 3.1:1, under AA's 4.5:1 (G-23). Dark ink on
+   * the same violet is 6.2:1. Its own literal rather than `var(--danger-ink)` — the violet family
+   * is not the danger family and the two must be free to move apart. */
+  --violet-foreground: #0d0d0d;
   --ring: #a8f372;
 
   /* status */
   --danger: #ef4444;
-  --danger-foreground: #ffffff;
+  /* Ink on --danger, for the destructive button and the danger toast. Points at --danger-ink
+   * because white on this red is 3.8:1 and fails AA at the 13px the button label uses (G-23);
+   * the near-black is 5.1:1. --danger itself is unchanged, so every red fill, dot and
+   * `text-danger` keeps its 5.2:1 on the dark ground. */
+  --danger-foreground: var(--danger-ink);
   /* Near-black ink on --danger where white fails AA (the development-build "D", D-08). Not
    * --primary-foreground: that one follows the active accent and turns white under violet. */
   --danger-ink: #0d0d0d;
@@ -198,7 +207,11 @@
   --sidebar: #fafafa;
   --muted: #f7f7f7;
   --muted-foreground: #5c5c5c;
-  --soft-foreground: #a3a3a3;
+  /* The light counterpart of the dark ramp's tertiary ink, and the same 4.5:1 obligation: the old
+   * #a3a3a3 was 2.5:1 on white and 2.4:1 on `--muted` (G-23). #6f6f6f clears 4.5:1 on `--muted`
+   * (#f7f7f7), the darkest surface it prints on, and stays a visible step above
+   * `--muted-foreground`. */
+  --soft-foreground: #6f6f6f;
   --border: #ebebeb;
   --input: #ebebeb;
   --contrast: #262626;
@@ -302,6 +315,14 @@
   --spacing-inset: calc(var(--spacing) * 5); /* 20px – inside a card (not `card`: that is a colour token) */
   --spacing-group: calc(var(--spacing) * 6); /* 24px – a speaker change; the run header's top */
   --spacing-section: calc(var(--spacing) * 8); /* 32px – sections and settings fields; desktop gutters */
+
+  /* Pointer targets. Deliberately NOT `calc(var(--spacing) * n)`: a phone target has to stay 44px
+   * at every density (#453, owner decision Q2), and the density lever would take `h-11` to
+   * 44 / 55 / 38.5 / 33px at comfortable / roomy / compact / ultra — two of those miss the floor.
+   * Spelled `min-h-tap` / `min-w-tap` / `size-tap` on phone and released at `md:`, where the
+   * pointer is a mouse and the density lever governs again. */
+  --spacing-tap: 44px; /* 44px – the absolute phone hit-area floor, at every density */
+  --spacing-chip: 24px; /* 24px – the separate chip minimum (WCAG 2.2 SC 2.5.8); never a phone pass */
 
   --radius-*: initial;
   --radius-sm: 8px;

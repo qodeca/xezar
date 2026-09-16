@@ -155,7 +155,7 @@
     <span class="shimmer" style="font-size:13px;font-weight:500">Thinking…</span><span style="font-size:12px;color:var(--muted-foreground)">.shimmer 1.8s</span>
     <svg class="icon spin" aria-hidden="true"><use href="#i-loader"/></svg><span style="font-size:12px;color:var(--muted-foreground)">.spin 1s</span>
   </div>
-  <div class="note"><strong>Reduced motion.</strong> The cockpit guards some animations with <code>motion-reduce:</code> and leaves others running (known gap G-08). The specimen stylesheet stops all of them; that is the rule new work follows.</div>
+  <div class="note"><strong>Reduced motion.</strong> Every animation in <code>components/ui</code> is guarded — <code>motion-safe:</code> on the overlay, menu, popover and tooltip transitions, <code>motion-reduce:animate-none</code> on the status dot and the skeleton. A few route-level pulses and spinners are still unguarded (known gap G-08). The specimen stylesheet stops all of them; that is the rule new work follows.</div>
 
   <h2>8. Iconography</h2>
   <p>Lucide, stroke 2, on <code>currentColor</code>. House size is 14 px (<code>size-3.5</code>); 16 px in headers and empty states; 12 px in dense rows; 10 px inside chips.</p>

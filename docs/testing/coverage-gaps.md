@@ -357,14 +357,13 @@ one. What the unit suite holds instead is `moveStep` as a pure function
 Files absent from the report entirely: `packages/xezar/src/index.ts`,
 `packages/xezar/src/core/ui-events.ts`, `packages/xezar/src/server/app-type.ts`,
 `packages/xezar/src/server/forge/types.ts`,
-`packages/xezar/src/agent-config/model-settings/types.ts`, `packages/web/src/main.tsx`,
-`packages/web/src/components/diff/types.ts`, and four `components/ui/*` primitives —
-`card.tsx`, `scroll-area.tsx`, `select.tsx` and `separator.tsx`. The `types.ts` and `app-type.ts`
-entries are type-only modules and are **excluded** as not testable. The four primitives are absent
-for a more interesting reason: `grep -rn "ui/card\|ui/scroll-area\|ui/select\|ui/separator"
-packages/web/src` returns nothing, so no module imports them and none is ever loaded. They are dead
-shadcn scaffolding, not a coverage gap. `update-check.ts`, `app.tsx` and `task-commits.tsx` have
-since joined the report.
+`packages/xezar/src/agent-config/model-settings/types.ts`, `packages/web/src/main.tsx` and
+`packages/web/src/components/diff/types.ts`. The `types.ts` and `app-type.ts` entries are type-only
+modules and are **excluded** as not testable. Four `components/ui/*` primitives — `card.tsx`,
+`scroll-area.tsx`, `select.tsx` and `separator.tsx` — used to be absent for a more interesting
+reason: nothing imported them, so none was ever loaded. They were dead shadcn scaffolding rather
+than a coverage gap, and #453 batch B1 deleted them. `update-check.ts`, `app.tsx` and
+`task-commits.tsx` have since joined the report.
 
 ---
 

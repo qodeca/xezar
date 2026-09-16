@@ -18,8 +18,9 @@ Inventory counts read on 2026-09-16 from non-test `.ts`/`.tsx` in `packages/web/
 
 Focus rules:
 
-- The focus ring is `focus-visible:ring-[3px] focus-visible:ring-ring/50` with `outline-none` (59 occurrences: eight in primitives,
-  51 outside `components/ui`). The dialog and sheet close buttons still use the older `focus:ring-2` (G-06).
+- The focus ring is `focus-visible:ring-[3px] focus-visible:ring-ring/50` with `outline-none`, everywhere: ten primitives
+  and 51 sites outside `components/ui`. The dialog and sheet close buttons were the last two on the older
+  focus-on-anything ring and now carry this one (counts read on 2026-09-16).
 - A hover-revealed control MUST also reveal on `focus-visible` (`focus-visible:opacity-100`) and on
   `no-hover:` devices. A zero-width hidden control stays focusable; never `hidden` it.
 - Dialogs and sheets trap focus through Radix; the mobile drawer button is a real `SheetTrigger` so closing
@@ -69,18 +70,23 @@ is `role="alert"`. A toast is `role="status"`.
 - Viewport: `h-dvh` on the shell, `100dvh` in `calc()` for bounded panes, `80dvh` / `85dvh` for tall dialogs.
   `100vh` and `h-screen` are banned.
 - Keyboard: `--kb` from `lib/keyboard-inset.ts`; the thread dock sits at `bottom-[var(--kb,0px)]`.
-- Touch: 44px targets on phone (`h-11`, `size-11`, `size-14` FAB); the touch pin is `size-7`.
+- Touch: 44 px targets on phone AT EVERY DENSITY. The primitives pin the floor with `min-h-tap` / `min-w-tap`
+  (or a centred `before:size-tap` overlay where the control's visible size is the design — the switch track,
+  the dialog and sheet close glyphs) and release it at `md:`. A density-scaled `h-11` / `size-11` is 38.5 px at
+  compact and 33 px at ultra, so it is a shape, not a floor; route-level controls still spelling it that way
+  convert in their own batches. The touch pin is `size-7` (#453 B4).
 
 ## 4. Motion
 
 - `transition-colors` (61) is the default hover transition. `transition-transform` (16) rotates chevrons.
   `transition-opacity` (6) reveals row actions.
 - `animate-spin` (18): twelve are `motion-safe:animate-spin`; the step rail adds `motion-reduce:animate-none`;
-  five are unguarded (G-08).
-- `animate-pulse` (10): guarded in the docks, step rail, composer and twinkles; unguarded in `StatusDot`,
-  `Skeleton` and two `/new` sites (G-08).
-- `animate-in` / `animate-out` from `tw-animate-css` on Radix `data-[state]` and on toasts (toasts are
-  `motion-safe:`).
+  five route-level spinners are still unguarded (G-08).
+- `animate-pulse` (10): guarded in the docks, step rail, composer, twinkles and — since #453 B1 — in `StatusDot`
+  and `Skeleton`; two `/new` sites are still unguarded (G-08).
+- `animate-in` / `animate-out` from `tw-animate-css` on Radix `data-[state]` and on toasts. Every occurrence in
+  `components/ui` is `motion-safe:`, so no overlay, menu, popover or tooltip moves for a reader who asked the OS
+  for no animation; the sheet adds `motion-reduce:transition-none` for the transition its slide rides on.
 - `.shimmer` and the ghost-code typewriter are CSS-guarded; the accept celebration and the animated diff
   totals are JS-guarded (`prefersReducedMotion()` renders nothing / jumps to the value).
 
