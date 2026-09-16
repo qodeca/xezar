@@ -1,14 +1,24 @@
 // Fixed application-gate dependency schedule. Workers never mutate attempt.json.
+//
+// THE INDEXES ARE POSITIONS IN `repo-gates.sh`'s canonical list, one-based. The application
+// phase is gates 3–7 — typecheck, npm test, test:unit, build, test:package — and the lanes below
+// encode AGENTS.md § Validation's schedule: `typecheck → build → test:package` in one lane, with
+// `npm test` and `npm run test:unit` beside it. Gate 1 is the install and gate 2 is the security
+// stage, both serial and both before this phase; gate 8 is the repository-check tail.
+// Renumbering the canonical list means renumbering here AND in `gate-parallel.test.mjs`.
 import { spawn } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+
+const APPLICATION_GATES = [3, 4, 5, 6, 7];
+const APPLICATION_LANES = [[3, 6, 7], [4], [5]];
 
 const [library, mode, rawEntries] = process.argv.slice(2);
 const entries = JSON.parse(rawEntries);
 const byIndex = new Map(entries.map((entry) => [entry.index, entry]));
 if (!['application', 'serial'].includes(mode) || !entries.length || byIndex.size !== entries.length ||
     entries.some(e => !Number.isInteger(e.index) || e.index < 1 || typeof e.name !== 'string' || !e.name || typeof e.command !== 'string' || !e.command) ||
-    mode === 'application' && (entries.length !== 5 || [2, 3, 4, 5, 6].some(i => !byIndex.has(i)))) {
+    mode === 'application' && (entries.length !== APPLICATION_GATES.length || APPLICATION_GATES.some(i => !byIndex.has(i)))) {
   throw new Error('invalid gate phase');
 }
 if (process.platform === 'win32') throw new Error('gate process-group supervision requires a POSIX host');
@@ -90,5 +100,5 @@ async function lane(indices) {
     await run(byIndex.get(index)); // ordinary failure never skips a successor
   }
 }
-await Promise.all((mode === 'application' ? [[2, 5, 6], [3], [4]] : [entries.map(e => e.index)]).map(lane));
+await Promise.all((mode === 'application' ? APPLICATION_LANES : [entries.map(e => e.index)]).map(lane));
 process.exitCode = stopped ? 130 : infrastructureFailed ? 1 : 0;

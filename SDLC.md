@@ -93,7 +93,7 @@ This section adds no label, changes no gate exception, and adds no command to th
 | Canonical checks | The validation gate, with the security assessment resolved **before** any quality verdict. | Complete logs, real outcomes, and the security result as its own record |
 | Seal | The evidence belongs to this exact candidate. | The head SHA the evidence was taken at, hashed |
 | Handoff | A reviewable PR exists. It changes no content and makes no late commit. | PR number, head SHA, labels and their stated reasons |
-| Independent review | Whether the solution is sound, read-only, by someone other than the author. | The review verdict at a named head, with each finding's disposition ([CODE_REVIEW.md](CODE_REVIEW.md)) |
+| Independent review | Whether the solution is sound, read-only, by someone other than the author. Architecture is a **named section of this review**, not a task of its own: the reviewer checks the boundary changes against the plan, and scales that section by risk. | The review verdict at a named head, with each finding's disposition ([CODE_REVIEW.md](CODE_REVIEW.md)) |
 | AC verification | Whether each accepted criterion is actually met. | Each AC ID mapped to the evidence that satisfies it, at the current head |
 | QA and design gate | Whether it works, and whether it is the right surface — two different questions. | The `## QA` and `## Design review` comments the gates below already define |
 | Integration | Whether every applicable verdict, label and CI check is green at the reviewed head. | The merge commit, and the tracker reconciliation after it |
@@ -138,13 +138,13 @@ That budget is a third one, next to the two that already exist, and none of them
 | Workflow gate-repair returns | 2 | A gated workflow returning to development |
 | Quality-gate repairs of the same failure | 2 | The same failing check, repeated |
 
-Gate-driven re-entry, a Continue, a switch to a different backend and a replacement run all **continue** an existing count. None of them starts a fresh allowance. Every repair records what triggered it and which counters it consumed. An exhausted counter blocks another repair: stop, report the remaining failure with its evidence, and never lower a severity, a threshold or a mandatory check to get past it (F-22 already says no exemption, label or request for permission waives a mandatory check). Missing or unknown counter history reads as unknown, not as zero, and blocks another repair until it is reconciled. Genuinely new scope needs a new accepted plan — not the same finding under a new name.
+Gate-driven re-entry, a Continue, a switch to a different backend and a replacement run all **continue** an existing count. None of them starts a fresh allowance. Every repair records what triggered it and which counters it consumed. An exhausted counter blocks another repair: stop, report the remaining failure with its evidence, and never lower a severity, a threshold or a mandatory check to get past it (F-22, in [docs/features/mcp-server/mcp-project-leader-requirements.md](docs/features/mcp-server/mcp-project-leader-requirements.md), already says no exemption, label or request for permission waives a mandatory check). Missing or unknown counter history reads as unknown, not as zero, and blocks another repair until it is reconciled. Genuinely new scope needs a new accepted plan — not the same finding under a new name.
 
 ### Security before the quality verdict
 
 The security assessment belongs inside the canonical check run, as a named stage of it — not a separate approval, and not an extra workflow step. It produces its own structured result, and that result is read **before** anyone gives a quality verdict. It is required whenever code or security capabilities apply, and it waives no existing policy requirement.
 
-**Today it is a written record, not a command.** The check that emits the result is sequenced follow-up work (#469); until it lands, the author writes the stage's result into the phase record and an absent result reads as unknown. What the stage must contain does not wait for the command:
+**It is a command.** `.xezar/checks/security-scan.sh` is gate 2 of the canonical list — straight after the install, ahead of every gate that produces a quality signal — and it writes its structured result into the gate attempt. Sealing refuses an attempt that carries no such result, and the seal records its status, so "security was resolved first" is the order the runner executes rather than a claim the author makes. Details and the four statuses are in [.xezar/docs/phase-record.md](.xezar/docs/phase-record.md) § The security result; anything the command cannot answer still goes in a written `SECURITY` record beside it.
 
 - For a code change: use the project-approved dependency, secret and static checks; validate the expected inputs and scope first; run what is available with a bounded execution; classify findings under the rules in [CODE_REVIEW.md](CODE_REVIEW.md) § Security. An unavailable required scanner, a parse error, an empty inventory where one was expected, or an interrupted scan is recorded as **unknown** — never as a pass.
 - A changed trust boundary also gets a human or a security reviewer. Automation cannot prove that an authorization decision is correct.
@@ -159,6 +159,10 @@ They answer different questions, and one never stands in for the other:
 - **The quality review** answers *is this solution sound* against [CODE_REVIEW.md](CODE_REVIEW.md).
 
 A change that is sound and misses an accepted criterion is not done. A change that meets every criterion with a design the review refuses is not done either.
+
+**Who does it today.** The author records the AC mapping in the phase record (`AC_VERIFICATION`), and it is the author's own evidence — a self-verification, which certifies nothing on its own. The independent half is performed by the **reviewer inside the code-review task**, which reads that record as an input and says so when it is absent ([CODE_REVIEW.md](CODE_REVIEW.md) § What a review consumes). There is no separate AC-verification role, and adding one is not planned: a reviewer already holds the immutable candidate and the accepted criteria, and a second read-only task for the same head would duplicate the work without adding an independent reader.
+
+The criteria themselves are an **input**, not something the author invents at this point: readiness refuses a task whose `CRITERIA` record names no criterion ID and no accepting authority.
 
 ### Naming the break
 
