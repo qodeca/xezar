@@ -97,13 +97,10 @@ export function releaseArchiveRules(repoRoot: string): ContentRule[] {
  * Reviewed exceptions for the packed archive. Shrinking only: `check:pack` fails on an exception
  * that no longer matches, and on more exceptions than the ceiling.
  */
-export const RELEASE_ARCHIVE_EXCEPTIONS: readonly ContentException[] = [
-  { rule: 'owner-name', file: 'LICENSE', fragment: 'Copyright (c) 2026 Patryk Lewczuk', reason: 'legal attribution the MIT licence requires', ref: '#466' },
-  { rule: 'owner-name', file: 'README.md', fragment: '**MIT** © Patryk Lewczuk', reason: 'licence attribution in the README', ref: '#466' },
-];
+export const RELEASE_ARCHIVE_EXCEPTIONS: readonly ContentException[] = [];
 
 /** The most exceptions the archive may carry. Lower it when one is removed; never raise it. */
-export const RELEASE_ARCHIVE_EXCEPTION_CEILING = 2;
+export const RELEASE_ARCHIVE_EXCEPTION_CEILING = 0;
 
 /**
  * Source text with its comments blanked out and everything else — code, strings, template text,
