@@ -239,7 +239,7 @@ describe('xezar projects CLI', () => {
 
   it('documents the single-project mutation restriction in usage output', async () => {
     expect(await run('frobnicate')).toBe(1);
-    expect(io.err.join('\n')).toContain('add/remove/tag are unavailable when XEZ_SINGLE_PROJECT=1');
+    expect(io.err.join('\n')).toContain('add/remove/tag/port are unavailable when XEZ_SINGLE_PROJECT=1');
   });
 
   /** The terminal twin of Settings -> Projects' Tags cell. */
@@ -286,6 +286,71 @@ describe('xezar projects CLI', () => {
     it('needs an id', async () => {
       expect(await run('tag')).toBe(1);
       expect(io.err.join('\n')).toContain('xezar projects [list]');
+    });
+  });
+
+  // `xezar projects port` (#467) — the ONLY writer of `projects[].cli.port`. A start never
+  // writes that key: `--port` and `XEZ_PORT` are instructions for one launch, and persisting
+  // them would silently promote a one-off into configuration.
+  describe('port', () => {
+    it('pins a port and clears it again, storing no key when there is none', async () => {
+      await run('add', makeRepo('api'));
+      const id = (await loadWorkspaceConfig()).projects[0]!.id;
+
+      expect(await run('port', id, '4400')).toBe(0);
+      expect((await loadWorkspaceConfig()).projects[0]!.cli).toEqual({ port: 4400 });
+      expect(io.out.join('\n')).toContain('port 4400');
+
+      expect(await run('port', id)).toBe(0);
+      const stored = (await loadWorkspaceConfig()).projects.find((p) => p.id === id)!;
+      expect(Object.keys(stored)).not.toContain('cli');
+      expect(io.out.join('\n')).toContain('no port set');
+    });
+
+    it('refuses a value that is not a port rather than storing it', async () => {
+      await run('add', makeRepo('api'));
+      const id = (await loadWorkspaceConfig()).projects[0]!.id;
+
+      for (const bad of ['abc', '99999', '-1', '4.5']) {
+        io.err.length = 0;
+        expect(await run('port', id, bad)).toBe(1);
+        expect(io.err.join('\n')).toContain('port must be a whole number from 0 to 65535');
+      }
+      expect((await loadWorkspaceConfig()).projects[0]!.cli).toBeUndefined();
+    });
+
+    it('leaves the rest of the entry, including tags, untouched', async () => {
+      await run('add', makeRepo('api'));
+      const id = (await loadWorkspaceConfig()).projects[0]!.id;
+      await run('tag', id, 'infra');
+
+      await run('port', id, '4400');
+
+      const stored = (await loadWorkspaceConfig()).projects.find((p) => p.id === id)!;
+      expect(stored.tags).toEqual(['infra']);
+      expect(stored.cli).toEqual({ port: 4400 });
+    });
+
+    it('refuses an unknown id and needs an id at all', async () => {
+      expect(await run('port', 'nope', '4400')).toBe(1);
+      expect(io.err.join('\n')).toContain('unknown project: nope');
+      io.err.length = 0;
+      expect(await run('port')).toBe(1);
+      expect(io.err.join('\n')).toContain('xezar projects [list]');
+    });
+
+    it('is refused in single-project mode, like every other mutation', async () => {
+      const existing = await registerProject(makeRepo('existing'));
+
+      expect(
+        await runProjectsCommand(['port', existing.id, '4400'], {
+          defaultRoot: repos,
+          env: { XEZ_SINGLE_PROJECT: '1' },
+          io,
+        }),
+      ).toBe(1);
+      expect(io.err).toEqual(['single-project mode is enabled; editing projects is disabled']);
+      expect((await loadWorkspaceConfig()).projects[0]!.cli).toBeUndefined();
     });
   });
 });
