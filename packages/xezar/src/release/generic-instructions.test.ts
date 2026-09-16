@@ -125,12 +125,10 @@ const CAPABILITY = "names a client's own instruction file as what that client re
  * an exception that stops matching fails this test, and the list may not grow past the ceiling.
  * Remove an entry when its work package lands, and lower the ceiling with it.
  */
-const EXCEPTIONS: readonly ContentException[] = [
-  { rule: 'owner-name', file: 'packages/xezar/README.md', fragment: '**MIT** © Patryk Lewczuk', reason: 'licence attribution', ref: '#466' },
-];
+const EXCEPTIONS: readonly ContentException[] = [];
 
 /** The most exceptions this guard may carry. Lower it when one is removed; never raise it. */
-const EXCEPTION_CEILING = 1;
+const EXCEPTION_CEILING = 0;
 
 /**
  * Native instruction-file names, each allowed only where it is a capability reference. Exact
