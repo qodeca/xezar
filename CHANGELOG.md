@@ -1,6 +1,9 @@
 # Unreleased
 
 - test(engine): cover completion-marker, failed-check continuation, and quota-to-leader incidents (#532, G7/G8/G9).
+- Fixed: known MCP `applied:false` refusals replay as rejected after retry or restart (#536).
+- Fixed: replacing a pending question invalidates and persists the MCP decision token (#534).
+
 - test(mcp): cover fragile leader delivery, causal outcomes, decision tokens and receipt replay invariants (#532, slice 1).
 
 - Fixed: #449 — decision-only run versions keep busy-task steering valid while detecting reversed decisions.

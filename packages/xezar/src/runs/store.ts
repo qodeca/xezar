@@ -2,13 +2,13 @@ import { runDecisionProjection } from './decision-projection.ts';
 import { acquireHistoryView } from './event-corrections.ts';
 import { ensureProjectDataIgnored } from '../project-data-paths.ts';
 import { EventEmitter } from 'node:events';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
 // The reviewer-report shapes (#460) come from the contract package, not from a second copy here:
 // they go out on every run route, and one definition is what keeps the wire and the file identical.
-import { stepProgressSchema, taskVerdictIssueSchema, taskVerdictSchema } from '@qodeca/xezar-contract';
+import { decisionQuestionSchema, stepProgressSchema, taskVerdictIssueSchema, taskVerdictSchema } from '@qodeca/xezar-contract';
 import { collectSecretValues, redactDeep, redactSecrets } from '../core/secret-redaction.ts';
 // Pure, dependency-free reference helpers — the same sanity bound the marker parser applies.
 import { MAX_REF } from './task-refs.ts';
@@ -119,6 +119,8 @@ export const runRecordSchema = z.object({
   id: z.string(),
   /** Automatically maintained decision revision; absent in legacy records. */
   decisionRevision: z.number().int().nonnegative().optional(),
+  /** Pending question identity and content digest; absent on legacy records. */
+  decisionQuestion: decisionQuestionSchema.optional(),
   title: z.string(),
   /** Display title (#389): the auto-derived summary of the first agent turn,
    *  or the user's inline edit (`PATCH /api/runs/:id` sets it together with
@@ -1092,8 +1094,18 @@ export class RunStore extends EventEmitter {
     // Sync append keeps event order without a write queue; local NDJSON
     // appends at agent-event rates are effectively free.
     appendFileSync(this.eventsPath(runId), `${JSON.stringify(full)}\n`, 'utf8');
-    // A participant's input is a decision, unlike agent transcript/tool/usage progress.
+    if (full.type === 'ask.requested' && typeof full.requestId === 'string' && Array.isArray(full.questions)) {
+      run.decisionQuestion = {
+        id: full.requestId,
+        digest: createHash('sha256').update(JSON.stringify(full.questions)).digest('hex'),
+      };
+      // Publish only after the replacement revision is durable, even while already waiting (#534).
+      if (this.trackDecision(run)) this.saveNow();
+    }
+    // A participant's input resolves the pending ask and is always one new decision.
     if (full.type === 'user-message') {
+      delete run.decisionQuestion;
+      this.decisionProjections.set(run.id, JSON.stringify(runDecisionProjection(run)));
       run.decisionRevision = (run.decisionRevision ?? 0) + 1;
       this.saveNow();
     }

@@ -344,8 +344,8 @@ describe('#264 — a replay under the same operationId returns the first answer 
   });
 });
 
-// #532 G10: structured refusal currently settles as `ok` in index.ts (only isError is checked).
-// These expected failures isolate the receipt assertion; effect/persistence controls remain ordinary tests.
+// #536: known refusals must remain rejected across retries and service reopen.
+// The companion controls pin non-repetition independently of receipt classification.
 describe('#532 structured stale refusal through the composed MCP door', () => {
   for (const action of ['cancel', 'send_message'] as const) {
     async function scenario() {
@@ -375,7 +375,7 @@ describe('#532 structured stale refusal through the composed MCP door', () => {
       return second;
     }
     it(`${action}: a rejected operation never dispatches again after state changes and reopen`, async () => { await scenario(); });
-    it.fails(`${action}: defect — applied:false must replay as rejected, not ok`, async () => {
+    it(`${action}: defect — applied:false must replay as rejected, not ok`, async () => {
       const answer = await scenario();
       expect(answer.structuredContent).toMatchObject({ status: 'rejected', replayed: true });
     });
