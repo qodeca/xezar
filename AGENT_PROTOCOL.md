@@ -3,9 +3,9 @@
 xezar runs coding-agent CLIs behind **one backend-agnostic seam** and renders
 every backend through **one normalized event vocabulary**. This document is the
 operational contract for that seam: what a runner must implement, what it must
-emit, how the emissions are tested, and what a *new* runner (e.g. `pi`, PR #387)
+emit, how the emissions are tested, and what a *new* runner (e.g. `pi`, pre-rename PR 387)
 has to satisfy to be a first-class backend rather than a second-class one. `pi`
-(PR #387) was the last one added, and §9 is its worked example.
+(pre-rename PR 387) was the last one added, and §9 is its worked example.
 
 It is the concise, load-bearing contract. The code
 in `packages/xezar/src/core/` implements it; this file cites the code. When the two
@@ -38,11 +38,16 @@ type RunnerId     = (typeof RUNNER_IDS)[number];                   // user-selec
 type AgentBackend = RunnerId | 'claude-cli';                       // + legacy id, still parses
 ```
 
-`RUNNER_IDS` is the tuple every other enumeration derives from — the zod schemas
-(config, run store, workflow steps, the API bodies), the server-install
-"at least one agent CLI" gate, and the CLI-handoff registry. Re-listing the ids
-by hand is how a runner silently goes missing from one seam (#387 review); use
-`RUNNER_IDS` / `isRunnerId()` instead.
+`RUNNER_IDS` is the tuple the server’s enumerations derive from — the zod schemas
+in `packages/xezar` (config, run store, workflow steps, request bodies), the
+server-install "at least one agent CLI" gate, and the CLI-handoff registry.
+Some lists still repeat the literals: `runnerSchema` in `packages/contract/src/health.ts`,
+`UiBackend` in `ui-events.ts` and its api-client mirror, and `BackendCheck.name`
+in `backend-detect.ts`, among others. Find the remaining copies with
+`rg "'claude', 'codex', 'opencode', 'pi'" packages` and update them for a new runner;
+the contract cannot import the server.
+Inside `packages/xezar`, use `RUNNER_IDS` / `isRunnerId()` where possible — re-listing
+ids is how a runner silently goes missing from one seam (pre-rename PR 387 review).
 
 `claude-cli` is a **legacy** backend id kept so old `runs.json` records and
 NDJSON transcripts still parse; `createRunner` maps it onto `claude`. Follow that
@@ -73,7 +78,7 @@ A live session over one spawned process, alive between turns:
 ```ts
 interface AgentSession {
   result: Promise<AgentRunResult>;   // resolves when the process exits
-  readonly pid?: number;             // root of the run's process tree (resource telemetry, #348)
+  readonly pid?: number;             // root of the run's process tree (resource telemetry, pre-rename issue 348)
   sendMessage(content: ContentBlock[]): boolean;  // false when closed
   end(): void;                       // graceful: end input, SIGTERM→SIGKILL watchdog
   interrupt(): void;                 // hard stop (cancel)
@@ -81,7 +86,7 @@ interface AgentSession {
 }
 ```
 
-A termination the runner itself caused is **not** an agent failure (#703).
+A termination the runner itself caused is **not** an agent failure (pre-rename issue 703).
 `end()` arms a SIGTERM→SIGKILL watchdog for CLIs that ignore EOF, and
 `interrupt()` signals outright; the agent CLIs install their own handlers and
 exit `128 + signal`. A runner MUST therefore record that it sent the signal and
@@ -99,7 +104,7 @@ not cosmetic: #156 was five agent CLIs SIGTERMed by a peer task's unscoped
 into a day of forensics; the named signal turns it into one read.
 
 That watchdog MUST gate its SIGKILL escalation on real termination, never on
-`ChildProcess.killed` (#844). Node sets `killed` when a signal is *delivered*,
+`ChildProcess.killed` (pre-rename issue 844). Node sets `killed` when a signal is *delivered*,
 so the watchdog's own SIGTERM flips it while the CLI — which handles the
 signal — keeps running, and the escalation written for exactly that case is
 skipped. Use `trackChildExit(child)` (`packages/xezar/src/core/agent-runner.ts`),
@@ -110,8 +115,8 @@ obligation.** `AgentRunSpec.timeoutMs` is not advisory: when it expires a runner
 escalate to `SIGKILL` after `KILL_GRACE_MS`, gated on `trackChildExit` exactly as above.
 Leaving it at a single `interrupt()` is what made a step's `timeout:` enforceable on some
 backends and merely a suggestion on another — the defect was invisible because the
-escalation branch existed in the source and simply never ran. `claude-cli-runner.ts` is the
-reference implementation; a new runner should mirror it rather than invent a variant.
+escalation branch existed in the source and simply never ran. `pi-runner.ts` is the
+reference implementation (for the deadline path; its `timeoutKillTimer` is cleared only after `waitForExit`); a new runner should mirror it rather than invent a variant.
 
 Two constraints on that path are load-bearing and neither is inferable from the code
 around them:
@@ -126,6 +131,10 @@ around them:
   ship an escalation that is present in the diff, reviewed, and dead.
 
 `SessionOptions`:
+
+- `autonomous?` — nobody is watching: a backend’s native blocking question
+  (pi extension dialog, #369) is refused at once and recorded as a note, never
+  raised as an ask card.
 
 - `autoEndAfterFirstTurn?` — single-turn behavior for non-interactive workflow
   steps; interactive sessions control `end()` themselves.
@@ -144,12 +153,12 @@ Notable fields (full doc-comments in the source):
   `model?`, `timeoutMs?`, `env?` (merged over `process.env` — carries
   `XEZ_HANDOFF_FILE` / `XEZ_TODOS_FILE` / `XEZ_TASK_ID`).
 - `allowedTools?` / `bashAllowlist?` / `additionalDirectories?` — tool access.
-  **Caveat (#430):** the zero-config default (`DEFAULT_ALLOWED_TOOLS`) includes
+  **Caveat (pre-rename issue 430):** the zero-config default (`DEFAULT_ALLOWED_TOOLS`) includes
   unrestricted `Bash`, and Codex/OpenCode do not honor `allowedTools` at all.
   Treat the default `auto` permission mode as full shell access, not a
   sandbox: Codex uses `danger-full-access` with `approvalPolicy: never`, and
   OpenCode auto-approves every permission. Configurable restrictive modes are
-  specified by `2026-07-17-permission-modes` (#475).
+  specified by `2026-07-17-permission-modes` (pre-rename issue 475).
 - **Codex MCP isolation (#324):** before `thread/start` / `thread/resume` the
   Codex runner calls `config/read` for the run's cwd and passes a `config`
   override that switches off every MCP server not declared solely by the
@@ -165,7 +174,7 @@ Use the shared helper so the mapping is uniform:
 
 ```ts
 prependSystemPrompt(spec.systemPrompt, spec.userPrompt)
-// claude:          --append-system-prompt   (native channel, do NOT prepend)
+// claude, pi:      --append-system-prompt   (native channel, do NOT prepend)
 // codex / opencode: prepended here
 ```
 
@@ -284,11 +293,11 @@ type UiEvent =
   | UiImageEvent;            // 'image'            — itemId?, mediaType, data (base64; manager re-emits URL)
 ```
 
-**AskUser (`ask.requested`, #473, #565).** The portable path remains
+**AskUser (`ask.requested`, pre-rename issues 473 and 565).** The portable path remains
 backend-neutral: the agent asks a structured
 multiple-choice question by ending a turn with a `XEZ:ASK <json>` control marker
 (a sibling of `XEZ:DONE` / `XEZ:MONITORING`); the RunManager detects it on the
-*assembled* turn text — uniform across claude, codex and opencode with no mapper
+*assembled* turn text — uniform across every runner with no mapper
 work — validates the payload (`packages/xezar/src/core/ask.ts`, modeled on Claude Code's
 `AskUserQuestion`: 1–4 questions, 2–4 options each, `header` ≤12 chars), emits
 `ask.requested` and parks the run `waiting` — in the workflow's last agent step, the
@@ -324,7 +333,7 @@ worse.
 Two bounded forgiveness layers sit **under** that schema, and neither loosens
 it. `normalizeAskRequest` recovers presentation drift (unknown keys dropped, an
 over-long `header`/`description` clipped) — never counts, never choices.
-`closeUnbalancedJson` (#936) recovers the one syntax slip agents actually make:
+`closeUnbalancedJson` (pre-rename issue 936) recovers the one syntax slip agents actually make:
 a payload complete except for its closing brackets, because a hand-written
 one-line blob dropped a trailing `}` or the output-token limit cut the stream.
 It appends the missing closers and re-parses, but only when the payload ends on
@@ -370,7 +379,7 @@ runs all four.
 | reasoning item | `thinking` blocks | `reasoning` items (+ `textDelta`) | `reasoning` parts |
 | tool item | `tool_use`→running, `tool_result`→completed/failed, `permission_denials`→`declined` | `commandExecution`→execute (+`exitCode`, `outputDelta`), `fileChange`→edit (`diffs`), `mcpToolCall`→other, `webSearch`→fetch, collaboration spawn→task | tool parts (state `pending/running/completed/error→failed`, `patch` parts→`diffs`) |
 | `item.delta` `output` (live terminal) | *(none — card fills on completion; per-capability degradation)* | `item/commandExecution/outputDelta` | running-state metadata |
-| `plan.updated` | `TodoWrite` input | `todoList` / `plan` items | `todowrite` tool |
+| `plan.updated` | `TodoWrite` input | `turn/plan/updated` notification (plan-mode `plan` items fold in only until `turn/plan/updated` has spoken in the current turn) | `todowrite` tool |
 | subagent nesting (`parentItemId`) | `parent_tool_use_id` | collaboration receiver thread id (review mode remains childless) | child-session parts under a `subtask` |
 | `usage.updated` | `result.usage` + `total_cost_usd` | `thread/tokenUsage/updated` (no USD) | `message.updated` tokens/cost + `step-finish` |
 
@@ -415,7 +424,7 @@ or a new fixture set forgets one — a named row fails. The matrix:
 - sub-agent task items (Task / review-mode span / subtask parts) — one item per
   sub-agent: codex's `enteredReviewMode`/`exitedReviewMode` pair folds into a
   single `task` item with a running→completed lifecycle, so a consumer counting
-  task items counts agents, not frames (#474)
+  task items counts agents, not frames (pre-rename issue 474)
 - `usage.updated` with raw token counts
 - `turn.completed` with a `stopReason`
 - `turn.completed` with per-turn DIRECTIONAL usage (`usage.input` and
@@ -442,10 +451,10 @@ these events get persisted as NDJSON), and asserts `toStrictEqual` against the
 `.expected.json`. The same `.expected.json` files feed the parity test in §6.
 
 > Verify fixtures against **upstream wire shapes**, never against your own
-> assumptions. PR #443's root cause was a fixture that encoded an *assumed*
+> assumptions. Pre-rename PR 443's root cause was a fixture that encoded an *assumed*
 > codex shape (`todoList` items that the app-server never emits), which hid a bug
 > where a codex plan never rendered at all. When adding a fixture, cite the
-> upstream schema/source it was derived from, as #443 did.
+> upstream schema/source it was derived from, as pre-rename PR 443 did.
 
 ## 8. Persistence & transport
 
@@ -462,11 +471,11 @@ these events get persisted as NDJSON), and asserts `toStrictEqual` against the
 
 ---
 
-## 9. Adding a new runner (the #387 `pi` checklist, as it was actually done)
+## 9. Adding a new runner (the pre-rename PR 387 `pi` checklist, as it was actually done)
 
 A new backend is a **single class behind the seam** plus its mapper, fixtures and
 the parity row — never backend-specific types leaking past
-`packages/xezar/src/core/`. PR #387 added `pi` and enumerated every place the
+`packages/xezar/src/core/`. Pre-rename PR 387 added `pi` and enumerated every place the
 runner union was duplicated; that list is the concrete map, and the union now
 derives from one `RUNNER_IDS` tuple in `agent-runner.ts` so most of it is
 typecheck-enforced rather than hand-tracked.
@@ -481,7 +490,9 @@ To be first-class:
    escalates SIGTERM→SIGKILL gated on `trackChildExit`, and each records that the runner
    sent the signal so the exit settles on the normal path, and report a `128 + signal` exit the
    runner did NOT cause through `foreignSignalExitMessage`. See § the termination rules above;
-   `claude-cli-runner.ts` is the reference. A backend's NATIVE question — a request that blocks
+   `pi-runner.ts` is the reference for the deadline path; `claude-cli-runner.ts` for the
+   `end()` SIGTERM→SIGKILL watchdog (but not its timer cleanup). No runner covers all three yet.
+   A backend's NATIVE question — a request that blocks
    the turn until the client answers — must never wait unbounded: bridge it onto `ask.requested`
    and answer it from the next `sendMessage`, refuse it explicitly when
    `SessionOptions.autonomous` is set, and cancel it at `end()`/`interrupt()` (codex's
@@ -507,22 +518,25 @@ To be first-class:
    row must pass. (If the backend has no wire parent attribution, document the
    nesting cell's substitute the way codex's review-mode items are handled.)
 8. **Plumbing** — the run-store `runner` enum, workflow step schema, the
-   `POST /api/v1/runs` / `PUT /api/v1/config` bodies, `resumeCommand()`, the web
-   `Runner` type, composer pills/presets, and Settings → Agents. Keep additive
+   `POST /api/v1/runs` / `PUT /api/v1/config` bodies, `resumeCommand()`
+   (`packages/contract/src/resume-command.ts`), the contract’s `runnerSchema`
+   (`packages/contract/src/health.ts`, which the cockpit’s `Runner` type is inferred from),
+   `RUNNER_LABEL` in `packages/web/src/lib/runner-label.ts`, composer pills/presets,
+   and Settings → Agents. Keep additive
    so old `runs.json` records still parse (the `runner` enum keeps `claude-cli`
    parseable — follow that precedent).
-9. **Model selection** — accept `provider/model` where relevant; #387 documents
-   the existing inconsistencies (opencode drops a bare model silently) — do not
-   reproduce a silent-drop. A backend with no default provider gets no entry in
-   `BACKEND_MODEL_MAP`'s default column, so a bare id fails loud.
+9. **Model selection** — accept `provider/model` where relevant, and never silently
+   drop or substitute a model. A backend with no default provider gets no
+   `defaultProvider` in `BACKEND_MODEL_MAP` (`model-identity.ts`), so a bare id
+   fails loud — opencode and pi already work this way.
 10. **Credentials** — one entry in `BACKEND_ALLOW_PREFIXES` (`agent-env.ts`):
    `buildChildEnv` is least-privilege per backend, so a multi-provider runner
    must receive credentials for every provider its own model ids can name
    without widening other backends.
 
-## 10. The plan channel (PR #443)
+## 10. The plan channel (pre-rename PR 443)
 
-PR #443 hardened `plan.updated` after finding the plan never reached the cockpit
+Pre-rename PR 443 hardened `plan.updated` after finding the plan never reached the cockpit
 dock — for a different reason on each backend. It has landed; the rules below are
 current behaviour, and any new runner should follow them:
 
@@ -539,7 +553,7 @@ current behaviour, and any new runner should follow them:
 - **General** — `plan.updated` is full-replacement; only a genuinely empty list
   clears the dock (a malformed frame maps to zero events, never a wipe).
 
-The `plan.updated` **event name and payload structure are unchanged**; #443
+The `plan.updated` **event name and payload structure are unchanged**; pre-rename PR 443
 extended the *handling*, not the wire shape. `PlanStatus` has since gained a fourth
 value, `cancelled` — see §3.
 

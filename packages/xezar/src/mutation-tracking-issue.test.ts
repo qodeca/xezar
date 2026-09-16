@@ -11,7 +11,11 @@ import { describe, expect, it } from 'vitest';
 const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 
 type Issue = { number: number; state: string; body?: string | null };
-type Decision = { action: 'skip' | 'none' | 'create' | 'comment' | 'reopen' | 'close'; number?: number; reason: string };
+type Decision = {
+  action: 'skip' | 'none' | 'create' | 'comment' | 'reopen' | 'close' | 'note' | 'create-closed';
+  number?: number;
+  reason: string;
+};
 type TrackingModule = {
   LABEL: string;
   MARKER: string;
@@ -19,13 +23,18 @@ type TrackingModule = {
   TITLE: string;
   normaliseVerdict: (value: unknown) => 'green' | 'red';
   findTrackingIssue: (issues: unknown) => Issue | undefined;
-  decide: (input: { verdict: unknown; ref: string | undefined; issues: unknown }) => Decision;
-  ghCommands: (decision: Decision, summary: string) => string[][];
+  runMarker: (runId: string | number) => string;
+  parseNewSurvivors: (value: unknown) => number | null | undefined;
+  alreadyPosted: (issue: { body?: string | null }, comments: unknown, runId: string | number) => boolean;
+  decide: (input: { verdict: unknown; ref: string | undefined; issues: unknown; newSurvivors?: number | null }) => Decision;
+  ghCommands: (decision: Decision, summary: string, runId?: string | number) => string[][];
   syncTrackingIssue: (options: {
     verdict: unknown;
     ref: string | undefined;
     summary: string;
     gh: (args: string[]) => string;
+    runId?: string | number;
+    newSurvivors?: number | null;
   }) => Decision;
 };
 
@@ -166,5 +175,113 @@ describe('carrying the decision out through gh', () => {
   it('fails the step when gh answers something that is not JSON', () => {
     const gh = (args: string[]) => (args[1] === 'list' ? 'HTTP 502' : '');
     expect(() => t.syncTrackingIssue({ verdict: 'red', ref: MAIN, summary: 'S', gh })).toThrow(/did not answer JSON/);
+  });
+});
+
+describe('the early note: new survivors on a green night (#377, owner decision 2026-09-15)', () => {
+  it('stays green and notes new survivors on the closed issue — a comment, never a reopen', () => {
+    // Named break: drop the note branch from `decide`, and a green night with new survivors does nothing.
+    expect(t.decide({ verdict: 'green', ref: MAIN, issues: [tracked(501, 'CLOSED')], newSurvivors: 3 })).toMatchObject({
+      action: 'note',
+      number: 501,
+    });
+    expect(t.ghCommands({ action: 'note', number: 501, reason: '' }, 'S')).toEqual([['issue', 'comment', '501', '--body', 'S']]);
+  });
+
+  it('keeps the green close when the issue is open, with the new survivors in that one comment', () => {
+    expect(t.decide({ verdict: 'green', ref: MAIN, issues: [tracked(501, 'OPEN')], newSurvivors: 3 })).toMatchObject({ action: 'close', number: 501 });
+  });
+
+  it('files the note as a closed issue when there is no tracking issue at all', () => {
+    expect(t.decide({ verdict: 'green', ref: MAIN, issues: [], newSurvivors: 2 }).action).toBe('create-closed');
+    const calls: string[][] = [];
+    const gh = (args: string[]) => {
+      calls.push(args);
+      if (args[1] === 'list') return '[]';
+      if (args[1] === 'create') return 'https://github.com/qodeca/xezar/issues/612\n';
+      return '';
+    };
+    t.syncTrackingIssue({ verdict: 'green', ref: MAIN, summary: 'S', gh, runId: 42, newSurvivors: 2 });
+    expect(calls.slice(2).map((c) => c.slice(0, 3))).toEqual([
+      ['issue', 'create', '--title'],
+      ['issue', 'close', '612'],
+    ]);
+  });
+
+  it('adds nothing on a green night with no new survivors, and nothing changes for a red one', () => {
+    // The control: the note is about NEW survivors, not about survivors.
+    expect(t.decide({ verdict: 'green', ref: MAIN, issues: [tracked(501, 'CLOSED')], newSurvivors: 0 }).action).toBe('none');
+    expect(t.decide({ verdict: 'green', ref: MAIN, issues: [], newSurvivors: 0 }).action).toBe('none');
+    expect(t.decide({ verdict: 'green', ref: MAIN, issues: [tracked(501, 'CLOSED')] }).action).toBe('none');
+    // Below the floor the verdict is red, and red decides — new survivors or not.
+    expect(t.decide({ verdict: 'red', ref: MAIN, issues: [tracked(501, 'CLOSED')], newSurvivors: 9 }).action).toBe('reopen');
+    expect(t.decide({ verdict: 'red', ref: MAIN, issues: [tracked(501, 'OPEN')], newSurvivors: 0 }).action).toBe('comment');
+  });
+
+  it('treats a grouping that did not run as worth a note, not as "nothing new"', () => {
+    expect(t.parseNewSurvivors('unknown')).toBeNull();
+    expect(t.parseNewSurvivors('')).toBeNull();
+    expect(t.parseNewSurvivors('4')).toBe(4);
+    expect(t.parseNewSurvivors('0')).toBe(0);
+    expect(t.parseNewSurvivors(undefined)).toBeUndefined();
+    expect(t.decide({ verdict: 'green', ref: MAIN, issues: [tracked(501, 'CLOSED')], newSurvivors: null })).toMatchObject({ action: 'note' });
+  });
+
+  it('never notes off main', () => {
+    expect(t.decide({ verdict: 'green', ref: 'refs/heads/feature', issues: [tracked(501, 'CLOSED')], newSurvivors: 3 }).action).toBe('skip');
+  });
+});
+
+describe('one comment per run', () => {
+  const RUN = 34999068325;
+
+  it('stamps every body with the run, so a re-run can see what it already posted', () => {
+    expect(t.runMarker(RUN)).toBe('<!-- xezar:mutation-nightly run=34999068325 -->');
+    const [create] = t.ghCommands({ action: 'create', reason: '' }, 'S', RUN);
+    expect(create![create!.indexOf('--body') + 1]).toBe(`${t.MARKER}\n\n${t.runMarker(RUN)}\nS`);
+    expect(t.ghCommands({ action: 'reopen', number: 5, reason: '' }, 'S', RUN)[1]).toEqual(['issue', 'comment', '5', '--body', `${t.runMarker(RUN)}\nS`]);
+  });
+
+  const syncWith = (issue: Issue, comments: { body: string }[], verdict: string, newSurvivors?: number) => {
+    const calls: string[][] = [];
+    const gh = (args: string[]) => {
+      calls.push(args);
+      if (args[1] === 'list') return JSON.stringify([issue]);
+      if (args[1] === 'view') return JSON.stringify({ comments });
+      return '';
+    };
+    const decision = t.syncTrackingIssue({ verdict, ref: MAIN, summary: 'S', gh, runId: RUN, newSurvivors });
+    return { decision, acted: calls.filter((c) => c[0] === 'issue' && !['list', 'view'].includes(c[1]!)) };
+  };
+
+  it('posts no second comment when this run already commented — a re-run of the report job', () => {
+    // Named break: skip the `alreadyPosted` check in `syncTrackingIssue`, and the re-run comments twice.
+    const again = syncWith(tracked(501, 'OPEN'), [{ body: 'someone else' }, { body: `${t.runMarker(RUN)}\nS` }], 'red');
+    expect(again.decision.action).toBe('comment');
+    expect(again.acted).toEqual([]);
+  });
+
+  it('still changes the issue state on a re-run, and skips only the comment', () => {
+    const reopen = syncWith(tracked(501, 'CLOSED'), [{ body: `${t.runMarker(RUN)}\nS` }], 'red');
+    expect(reopen.acted).toEqual([['issue', 'reopen', '501']]);
+    const close = syncWith(tracked(501, 'OPEN'), [{ body: `${t.runMarker(RUN)}\nS` }], 'green', 2);
+    expect(close.acted).toEqual([['issue', 'close', '501']]);
+  });
+
+  it('counts an issue this run created as already posted', () => {
+    const created = { number: 501, state: 'OPEN', body: `${t.MARKER}\n\n${t.runMarker(RUN)}\nS` };
+    expect(syncWith(created, [], 'red').acted).toEqual([]);
+  });
+
+  it('comments normally when only OTHER runs have posted — the control', () => {
+    const other = syncWith(tracked(501, 'CLOSED'), [{ body: `${t.runMarker(RUN - 1)}\nS` }], 'green', 1);
+    expect(other.decision.action).toBe('note');
+    expect(other.acted).toEqual([['issue', 'comment', '501', '--body', `${t.runMarker(RUN)}\nS`]]);
+  });
+
+  it('refuses a comment list it could not read, instead of posting a duplicate', () => {
+    expect(() => t.alreadyPosted({ body: '' }, undefined, RUN)).toThrow(/not an array/);
+    const gh = (args: string[]) => (args[1] === 'list' ? JSON.stringify([tracked(501, 'OPEN')]) : args[1] === 'view' ? 'HTTP 502' : '');
+    expect(() => t.syncTrackingIssue({ verdict: 'red', ref: MAIN, summary: 'S', gh, runId: RUN })).toThrow(/did not answer JSON/);
   });
 });
