@@ -167,6 +167,8 @@ export interface ReactionAdapter {
  */
 export interface DeliveryReceipt {
   readonly handedThrough: number | null;
+  /** Explicit false when no part of the dispatch, including its metadata, reached the client. */
+  readonly dispatchDelivered?: boolean;
 }
 
 export type EventControllerState = 'inert' | 'idle' | 'dispatching' | 'recovering' | 'disconnected' | 'ended';
@@ -466,12 +468,19 @@ export class EventController {
         this.#warnedDelivery = false;
         this.#state = 'idle';
         this.#position = next.scanCursor;
-        this.#omittedRoutineCount = next.trailingOmittedRoutineCount;
         this.#recovery = undefined;
+        const receipt = delivered.receipt;
+        // An echo-only dispatch can settle without handing the leader either its row or the
+        // omission metadata accumulated before it. Keep that metadata cumulative until a real
+        // dispatch carries it; absent `dispatchDelivered` retains every adapter's old contract.
+        this.#omittedRoutineCount =
+          receipt?.dispatchDelivered === false
+            ? (next.dispatch.omittedRoutineCount ?? 0) + next.trailingOmittedRoutineCount
+            : next.trailingOmittedRoutineCount;
         if (next.lastSeq !== undefined) {
           // Only rows REALLY handed over count as delivered; a receipt says which (the leader's own
           // echoes are settled but never delivered). A redelivery never lowers the count.
-          const handed = delivered.receipt === undefined ? next.lastSeq : delivered.receipt.handedThrough;
+          const handed = receipt === undefined ? next.lastSeq : receipt.handedThrough;
           if (handed !== null) this.#delivered = Math.max(this.#delivered, handed);
         }
         this.#persist();
