@@ -1,5 +1,7 @@
 # Unreleased
 
+- docs(guide): filing an issue from the cockpit and the issue-filing skill (#468, step 4)
+
 ## 💥 Breaking defaults
 
 - 💥 **`xezar` remembers which port a project ran on, and starts there next time.** (#467, PR 2) This changes a default, accepted by the owner on 2026-09-16 and shipped through the minor-release path in `BACKWARD_COMPATIBILITY.md`. Without `-p/--port`, a project now starts from the port you pinned for it (`xezar projects port <id> <port>`), then `XEZ_PORT`, then the port it last listened on, then 4321 — and takes the next free port from there, exactly as before. A start from memory or from 4321 also steps over ports other registered projects hold or remember, so two projects stop swapping ports and breaking each other's bookmarks. **`xezar --port 4321` restores the old start point** for one launch, and `xezar projects port <id> 4321` makes that permanent. Unchanged: the 50-bind budget (a port skipped for another project does not spend from it), the 65535 ceiling, `EADDRINUSE`-only retry, the printed port always being the one the server really holds, `--port 0` (which ignores memory and is never remembered), every exit code, and `server-install`'s own ports, which are never reinterpreted with `serve` memory.
