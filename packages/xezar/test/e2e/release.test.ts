@@ -120,6 +120,46 @@ function runScript(fixtureRoot: string, args: string[], extraEnv: Record<string,
   return execFile(process.execPath, [script, ...args], { env, maxBuffer: 10 * 1024 * 1024 });
 }
 
+const runGit = (fixtureRoot: string, args: string[]) => execFile('git', args, { cwd: fixtureRoot });
+
+test('the version-bump staging path commits every manifest the release script stamps', { timeout: 120_000 }, async () => {
+  const root = await makeFixture('0.1.5');
+  const output = join(tmpdir(), `xezar-release-output-${process.pid}-${Date.now()}.txt`);
+  try {
+    // Exercise the command the workflow will run, rather than duplicating its manifest list in
+    // this fixture. Before #461, this leaves web/package.json modified after the bump commit.
+    const workflow = await readFile(join(repoRoot, '.github', 'workflows', 'release.yml'), 'utf8');
+    const staging = workflow.match(/^\s+git add (packages\/[^\n]+)$/m)?.[1];
+    assert.ok(staging, 'the version-bump PR must have a git add command');
+    const stagedPaths = staging.split(' ');
+    const stampedPaths = [
+      'packages/contract/package.json',
+      'packages/api-client/package.json',
+      'packages/web/package.json',
+      'packages/xezar/package.json',
+    ];
+    assert.deepEqual(stagedPaths, stampedPaths, 'the staging command must name every stamped manifest');
+
+    await runGit(root, ['init', '--quiet']);
+    await runGit(root, ['config', 'user.name', 'release fixture']);
+    await runGit(root, ['config', 'user.email', 'release-fixture@example.test']);
+    await runGit(root, ['add', '.']);
+    await runGit(root, ['commit', '--quiet', '-m', 'fixture base']);
+
+    await runScript(root, ['patch', '--dry-run'], { GITHUB_OUTPUT: output });
+    await runGit(root, ['add', ...stagedPaths]);
+    await runGit(root, ['commit', '--quiet', '-m', 'chore(release): v0.1.6']);
+
+    const { stdout: status } = await runGit(root, ['status', '--porcelain']);
+    assert.equal(status, '', 'the bump commit must leave no stamped manifest unstaged');
+    const { stdout: committed } = await runGit(root, ['show', '--format=', '--name-only', 'HEAD']);
+    assert.deepEqual(committed.trim().split('\n').sort(), [...stampedPaths].sort());
+  } finally {
+    await rm(output, { force: true });
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('a patch bump stamps every manifest, keeps the caret ranges, and emits the version', { timeout: 120_000 }, async () => {
   const root = await makeFixture('0.1.5');
   try {
