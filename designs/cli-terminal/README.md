@@ -153,7 +153,7 @@ The still-running sentence is left out at zero.
 | Default | Banner, activity lines, live table | `tty.txt` 2–3 |
 | Empty (first use) | `No active tasks — start one at …/new` | `tty.txt` 1 |
 | Empty (narrow) | `No active tasks` | `tty-narrow.txt` 4 |
-| Loading | Banner lines 1 and 2 (version, project, branch, path) print first, before the agent and tool version checks and before the bind, so the terminal is never blank while those run. The `cockpit`, `agents` and `tools` lines follow once the port is bound and the checks answer; there is no “starting” word or spinner. MCP becomes ready later and announces itself with its own line; it is never shown as ready before it listens. The time from line 1 to the `cockpit` line is not measured yet: PR 3 measures it on this repository and records it here. | `tty.txt` 1 |
+| Loading | Banner lines 1 and 2 (version, project, branch, path) print first, before the agent and tool version checks and before the bind, so the terminal is never blank while those run. The `cockpit`, `agents` and `tools` lines follow once the port is bound and the checks answer; there is no “starting” word or spinner. MCP becomes ready later and announces itself with its own line; it is never shown as ready before it listens. **Measured on 2026-09-16 (PR 3), and it does not work that way yet:** on this repository, on a fresh single-project start with the agent CLIs mocked, the terminal is blank for a median **606 ms** (5 runs, 478–642 ms) and then the whole banner — version, branch, every check and the `cockpit` line — arrives in one piece, **0 ms** apart. The split above needs the banner itself rewritten to § 6.1, which PR 3 did not do (see § 14). So the wait this row exists to cover is about six tenths of a second of nothing, not a partial banner. | `tty.txt` 1 |
 | Error – refused start | `error` + `fix` lines, exit 1, nothing claimed | `error-cases.txt` A6–A9, B1–B3 |
 | Error – while running | `error` activity line with the task URL | `tty.txt` 3, `error-cases.txt` D, E |
 | Refusal | HTTP 409 from a hosted-mode or local-machine guard is a `warn` line with the server’s own message; the cockpit’s refusal copy is unchanged | `error-cases.txt` E |
@@ -230,6 +230,7 @@ Rules from `docs/design-system/writing.md`, applied to the terminal: sentence ca
 | Check passed | `check <step> passed — <duration>` |
 | Check failed | `check <step> failed — exit <code> · <duration>` |
 | Question | `needs you — “<question>”` |
+| Question without supplied text | `needs you — waiting for an answer` (plain output omits `question=`) |
 | Answered | `answered — running again` |
 | Review | `needs review — <duration> · <tokens> tokens` |
 | Done | `done — <duration> · <tokens> tokens · <cost>` |
@@ -246,7 +247,7 @@ Rules from `docs/design-system/writing.md`, applied to the terminal: sentence ca
 | Empty table | `No active tasks — start one at <url>/p/<project>/new` |
 | Live summary, wide | `4 active — 1 needs review · 2 running · 1 queued — 1 failed since start` |
 | Live summary, narrow | `2 active — 2 running — 1 failed` |
-| Overflow | `+<n> more queued — see <url>/p/<project>/tasks` |
+| Overflow | `+<n> more <state> — see <url>/p/<project>/tasks` (the hidden rows’ state, or `tasks` for mixed states) |
 | Folded burst | `<n> more info lines in the last second were folded — see the cockpit` |
 | Stopping | `stopping — <n> tasks are still running` |
 | Stopped | `xezar stopped for <project>.` |
@@ -320,11 +321,13 @@ Names marked “new” are not in `mcp/event-catalog.ts`. Where the catalog has 
 | Mode | When | Streams | Format | Live region | Colour |
 |---|---|---|---|---|---|
 | `rich` | auto on a capable TTY ≥ 60 columns | banner stdout, rest stderr | human lines | table | yes |
-| `lines` | auto on a TTY < 60; or asked | same | human lines | one-line summary on a TTY, none elsewhere | on a TTY, or `--color always` |
+| `lines` | auto on a TTY < 60; or asked | same | human lines | one-line summary on a capable TTY outside CI, none elsewhere | only on a capable TTY outside CI |
 | `plain` | auto off a TTY, in CI, `TERM=dumb`; or asked | same | logfmt, UTC ISO-8601 ms | none | never |
 | `--quiet` | any mode | banner reduced to the cockpit line(s) | as the mode | none | as the mode |
 
 logfmt: `<time> level=<l> project=<id> event=<name> key=value …`; a value with a space, `"`, `=` or no characters is double-quoted, `"` and `\` escaped with `\`.
+
+HTTP diagnostic rows also include `request_id=<8 hex>` to correlate a request without exposing its headers or body.
 
 Unchanged: `run` keeps its stdout transcript (with `--quiet`, only the final status line); `init`, `projects`, `--help`, `--version` keep stdout; `xez mcp` writes JSON-RPC only to stdout and never starts a renderer.
 
@@ -445,6 +448,7 @@ Questions for the review are in `open-questions.md` (Q-1 … Q-12). Departures f
 | `--port 0` not remembered | Q-4 |
 | Port skipping | Q-5 |
 | The analysis kept the shared cockpit as default | Replaced by owner decision 2 |
+| **§ 6.1's boot banner is not what PR 3 ships.** The terminal still prints the pre-#467 banner — `xezar v<version> — <path>`, `branch <branch>`, one `✓` line per agent and tool, then `cockpit → <url>` — instead of the three-block compact form above | PR 3's own scope pins the `serve` **stdout** contract, and the `cockpit → <url>` spelling is parsed by two test files inside `packages/xezar/src/mcp/`, a directory PR 3 was told not to edit while #460 PR 3 is in flight. Everything § 6.2 to § 6.4 covers — the activity lines, the live region and the session summary, all on stderr — IS shipped. The banner needs its own change, with the eight call sites that read `cockpit → ` updated in the same commit; it is listed as a follow-up on PR 3 rather than done badly here |
 
 ## 15. Delivery plan
 
@@ -480,3 +484,18 @@ Questions for the review are in `open-questions.md` (Q-1 … Q-12). Departures f
 ## 18. Design review
 
 Round 1 (`ec2b935`, FAIL): B-1 one dim rule (§ 9.2); B-2 terminal colour departure for `running`/`monitoring` (§ 14, Q-6); B-3 failed counts are task outcomes only (§ 6.3). Non-blocking NB-1 … NB-8 addressed in §§ 6.3, 7, 9, 9.1, 9.2, 10.2, 11, 14, `open-questions.md` Q-2 and `switcher.html`. Round 2 pending.
+
+### PR 3 review response: bounded follow-ups
+
+The PR #505 response preserves the accepted AC-01–AC-14 frame. These non-blocking
+review findings remain proposed follow-ups under issue #467, not independent acceptance:
+
+- NB-1: success green and project bold remain with the compact-banner/colour follow-up; state words remain readable and unchanged.
+- NB-2: recovery-settled outcomes and `task.recovered` need a separate distinction between historical recovery and new outcomes; suppressing transient recovery failures remains mandatory (AC-06).
+- NB-5: retaining the closing quote on a width-truncated activity message remains a copy/layout follow-up; sanitization and bounded widths remain mandatory.
+- NB-6: accepting explicit `--output plain` belongs to the settings-contract follow-up; this response preserves the existing flag vocabulary and records the unshipped design option.
+- NB-10: sharing terminal/cockpit status words through the contract remains scope owed by issue #467; current labels agree, but this response does not claim the shared vocabulary shipped.
+
+The unchanged stdout banner also retains its port-note position and lacks the staged loading
+banner; both stay with the previously declared § 6.1 follow-up. QA and design must re-review
+the delivered head; these dispositions do not clear either gate.
