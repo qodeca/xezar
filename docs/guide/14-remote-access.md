@@ -73,4 +73,6 @@ For a named Ubuntu instance, include its `--domain`. Uninstall reverses the inst
 - `--platform`, `--external-proxy`, `--domain`, `--reconfigure`: installer choices; see the [installation overview](../server-install/README.md).
 - `XEZ_HOME`: workspace-state location for the service user. See the [environment contract](../../.env.example).
 
+Next: [Project kit](15-project-kit.md)
+
 Describes xezar 0.15.0.

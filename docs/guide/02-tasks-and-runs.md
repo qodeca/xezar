@@ -106,4 +106,6 @@ Choose **Notes** in the task header or action menu. It renders the task's handof
 - `XEZ_AUTONOMOUS_DEFAULT` and `XEZ_WORKTREE_DEFAULT`: inherited composer defaults; stored workspace choices take precedence.
 - `XEZ_AUTOSAVE`: periodic worktree commits. See the [environment contract](../../.env.example) for its default.
 
+Next: [Worktrees and Git](03-worktrees-and-git.md)
+
 Describes xezar 0.15.0.

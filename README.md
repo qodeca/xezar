@@ -91,7 +91,7 @@ More → [Worktrees and git](docs/guide/03-worktrees-and-git.md)
 - [Tasks and runs](docs/guide/02-tasks-and-runs.md) – composer, queue, variants and review.
 - [Worktrees and git](docs/guide/03-worktrees-and-git.md) – branches, retention and diffs.
 
-More guide chapters are coming. The reference sections below cover backends, configuration and hosting.
+[Read the complete 16-part user guide](docs/guide/README.md) for backends, workflows, settings, configuration, hosting and troubleshooting.
 
 ## Quick start
 
