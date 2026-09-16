@@ -85,6 +85,12 @@ export class ClaudeCliRunner implements AgentRunner {
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_RUN_TIMEOUT_MS;
   }
 
+  /** What a spec with no `timeoutMs` falls through to here (#460) — the SAME field the session
+   *  reads, so a reported deadline and the one that actually kills cannot drift apart. */
+  get defaultTimeoutMs(): number {
+    return this.timeoutMs;
+  }
+
   /** One-shot run: start a session and auto-end it after the first turn. */
   run(spec: AgentRunSpec, onEvent?: (event: AgentEvent) => void): Promise<AgentRunResult> {
     return this.startSession(spec, onEvent, { autoEndAfterFirstTurn: true }).result;

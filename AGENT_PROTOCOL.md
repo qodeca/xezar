@@ -58,6 +58,7 @@ precedent — never repurpose or remove a shipped id.
 ```ts
 interface AgentRunner {
   readonly backend: AgentBackend;
+  readonly defaultTimeoutMs?: number;   // what a spec with no `timeoutMs` falls through to
   run(spec: AgentRunSpec, onEvent?: (e: AgentEvent) => void): Promise<AgentRunResult>;
   startSession(spec: AgentRunSpec, onEvent?: (e: AgentEvent) => void, opts?: SessionOptions): AgentSession;
   interrupt(): Promise<void>;
@@ -65,6 +66,11 @@ interface AgentRunner {
 ```
 
 - `run()` is a one-shot convenience; `startSession()` is the real contract.
+- `defaultTimeoutMs` (#460) is REPORTED, never set: `AgentRunSpec.timeoutMs` still decides, and
+  this only says what an absent one falls through to, so a caller can name a step's deadline
+  without re-deriving a number per backend. Return the same field the session reads, or the two
+  will drift. It is optional, and absent means UNKNOWN — a caller then has no deadline to speak
+  of rather than a guessed one — so an existing runner and a test double stay valid without it.
 - Each backend runs as a **persistent process** so multi-turn follow-ups,
   `waiting`, interrupt and resume all work: claude = stream-json over
   stdin/stdout; codex = `codex app-server` JSON-RPC 2.0 (JSONL) over
