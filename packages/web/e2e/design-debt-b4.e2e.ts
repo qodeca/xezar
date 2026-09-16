@@ -188,7 +188,6 @@ beforeAll(async () => {
   if (!healthy) throw new Error('B4 fixture server did not start')
   project = await bootProjectId(url)
   browser = AgentBrowser.open(sessionId)
-  browser.goto(url)
   // Touch and no-hover emulation over the provider's own CDP endpoint, kept alive for the suite
   // (device presets alone do not switch `(hover: none)` on) — the B2/B3 recipe.
   const cli = (...args: string[]) => {
@@ -196,6 +195,11 @@ beforeAll(async () => {
     if (!result.success) throw new Error('B4 provider command failed')
     return result.data
   }
+  // Launched as a hover device. Chrome ignores a `hover` media override, so turning touch
+  // emulation off only returns the MACHINE's hover type — and a headless Linux runner has no
+  // mouse, so it stays `(hover: none)` there. This setting is re-applied on each page load, while
+  // touch emulation still wins over it. One setting only: the provider splits `--args` on commas.
+  cli('--args', '--blink-settings=primaryHoverType=2', 'open', url)
   const socket = new WebSocket(cli('get', 'cdp-url').cdpUrl)
   emulationSocket = socket
   await new Promise<void>((done, fail) => {

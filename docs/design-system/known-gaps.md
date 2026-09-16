@@ -8,8 +8,8 @@ to-do list: an entry becomes a `design-debt` issue on the triggers [CONTRIBUTING
 names, and a fix arrives as its own change with the entry deleted.
 
 Ids are never reused: a deleted entry retires its number, so a new entry takes the next number after the
-highest ever used. G-01..G-23, G-26..G-28, G-30 and G-31 are live, G-24, G-25 and G-29 are retired, and
-the next free id is G-32.
+highest ever used. G-01..G-23, G-26..G-28 and G-30..G-33 are live, G-24, G-25 and G-29 are retired, and
+the next free id is G-34.
 
 Counts are non-test files or occurrences in `packages/web/src`. Corrected counts in G-02, G-06,
 G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the original inventory date.
@@ -212,6 +212,18 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Differs**: a conflicting pull request's panel takes `role="dialog"` so its "Resolve conflicts" button can be reached (`components/reference-chip.tsx:395`), but the dialog has no accessible name, so axe-core 4.12.1 reports `aria-dialog-name` on every surface, density and theme; the chip that opens it is named. Pre-existing on `main`; found by the axe pass for #453 B4 design-review finding B-1.
 - **Rule**: a `role="dialog"` always carries a name, for example `aria-labelledby` pointing at the text that already heads it.
 - **Fix**: name the panel from its first line (the reference and its status) and add the axe rule to the B4 browser pass. Owner: B8 reconciliation of #453; `reference-chip.tsx` is outside the B4 source change.
+
+### G-32 The phone run header opens partly under the top bar
+
+- **Differs**: on a phone the task thread opens scrolled to its end, and the run header scrolls with it (it is sticky only from `md`, `routes/task-thread/run-header.tsx:160`). With a thread slightly taller than the screen, the header's first row sits under the top bar. Measured at 375 px on the `subagents-run` fixture: the page scrolls 25 px on `main` and 37 px with the B4 44 px run tabs, so the "Run actions" button (`run-header.tsx:895`) shows 27 px of 44 before B4 and 15 px after. Its centre is then under the top bar (`components/app-shell.tsx:855`), which is why a click there is refused. Pre-existing; B4's taller tabs add 12 px. Found by the #529 CI run (`e2e/design-debt-b1.e2e.ts`, which now scrolls the button into view first).
+- **Rule**: a control in the page's first row is fully visible when the page opens.
+- **Fix**: open a short thread at its top, or keep the phone run header's first row visible. Owner: B5 (`run-header.tsx`) or B8 reconciliation of #453; the thread's scroll behaviour is outside B4.
+
+### G-33 The composer footer reflows after the model pill enables
+
+- **Differs**: on a phone, one or two frames after the composer's model pill (`components/engine-pills.tsx:204`) stops being disabled, the footer reflows. Measured at 375 px: before B4 the pill moves 28 px sideways; with the B4 44 px phone pills it wraps to the next line (from y 218 to y 266). A click aimed at the first position then misses. A person cannot tap that fast (the move is under 25 ms), but a test can. Pre-existing; B4's larger pills turn the shift into a wrap. `e2e/design-debt-b1.e2e.ts` now waits until the pill holds still.
+- **Rule**: a control is in its final place when it becomes enabled.
+- **Fix**: reserve the footer's space before the late content arrives, or enable the pill in the same render. Owner: B5 (composer) or B8 reconciliation of #453.
 
 ## Comment vs code
 
