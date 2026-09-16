@@ -18,7 +18,7 @@ Their full outputs were produced in the leader session's scratchpad and are cond
 
 | # | Finding | Evidence | Found by | Status after the interview |
 | --- | --- | --- | --- | --- |
-| R-1 | **The scope check anchors on the leader's brief, which named the drift.** The round-4 brief for #403 told the agent to address the QA fail whose only finding was the missing control. A check that asks "what does the mandate not name" answers "nothing". | `.local/xezar/runs.json` briefs `58db5bb0`, `9a6de2f2`, `6f8c1c1e`; dogfooding § 5 lines 211–212 | business | Resolved by decisions 6, 7 and 15: the brief stays part of the mandate, but a **brief-vs-issue check at leader task creation** opens the case before the task runs. Without an issue the brief is the truth (accepted hole). |
+| R-1 | **The scope check anchors on the leader's brief, which named the drift.** The round-4 brief for #403 told the agent to address the QA fail whose only finding was the missing control. A check that asks "what does the mandate not name" answers "nothing". | `.local/xezar/runs.json` briefs `58db5bb0`, `9a6de2f2`, `6f8c1c1e`; dogfooding § 9 (18:56 QA failure and 18:57 attach decision) | business | Resolved by decisions 6, 7 and 15: the brief stays part of the mandate, but a **brief-vs-issue check at leader task creation** opens the case before the task runs. Without an issue the brief is the truth (accepted hole). |
 | R-2 | **The check runs after the PR exists, and merging is a different run.** `settleSuccess` fires when the workflow ends; the kit's `handoff` step has already pushed and opened the PR; the merge is an integration run using `gh`. A block "when the branch belongs to that run" never sees the integration run. | `packages/xezar/src/workflows/run.ts:4130`; `.xezar/workflows/feature-implementation.yaml`; `.xezar/skills/xezar-integration.md:8` | business, engineering | Partly resolved by decision 7 (the creation-time net) and decision 9 (the diff check is report-only in v1). The **cross-run PR binding** (refuse `ready`/`merge` for any PR that carries an open case) is a requirement (F-13). |
 | R-3 | **`waiting` is not a durable park.** It means "agent session open, ball in the user's court" and has on-by-default exits nobody in the design fires: the 15-minute idle timer, restart recovery (`recover()` settles every `waiting` run), the autonomous nudge, the monitoring wake timer, usage-limit auto-resume. The scope check as placed runs after the session closed, so a run parked there can be neither continued nor messaged. | `run.ts:3695,3718-3725,4242-4257,1504-1514,3209-3219,4273-4289`; `core/ui-events.ts:347-349` | engineering, solution | Resolved by decision 12: a **new settled task state**, no open session, no timer, `recover()` leaves it alone. Decision 3 goes further: the state also frees the slot. |
 | R-4 | **A case raised in a non-final step fails the run.** `unfinishedStepReason` fails any non-final agent step whose turn ends on an ask; the run goes `failed`; a Continue after that never runs the rest of the chain. Every kit writing step is non-final. | `run.ts:127-140, 3839, 2707-2709`; `BACKWARD_COMPATIBILITY.md` § 8 | engineering, solution | Resolved by decisions 4 and 5: the chain is **suspended at the step**; the resume stays inside the step (session resume, or a fresh agent re-running the same step). New engine machinery; its own delivery step. |
@@ -33,7 +33,7 @@ Their full outputs were produced in the leader session's scratchpad and are cond
 | --- | --- | --- | --- |
 | R-9 | `mandate` frozen at creation is the wrong instant: `task` is editable while queued and folds with `queuedMessages` at dequeue. Freeze at dequeue from the folded text; keep `createdBy` and `source` at creation; record later `edit_brief` calls as amendments. | engineering, solution | Adopted (F-6). |
 | R-10 | The case should live **on the run record**, not in a separate `decisions.json`: the workspace SSE carries only run snapshots, so a separate file cannot feed the nav badge or the multi-project counts; every live surface already reads run records. Keep the NDJSON events for history. | engineering | Adopted (F-16); the solution reviewer's journal-plus-snapshot alternative is recorded as rejected. |
-| R-11 | The MCP tool must require `operationId` (a retried `open` would open a second blocking case) and reuse the existing families rather than add a fifth tool: `task_read view: 'decisions'`, and `execution_control` actions `open_decision` / `record_decision`. | solution | Adopted (F-19, F-20). |
+| R-11 | The MCP tool must require `operationId` (a retried `open` would open a second blocking case) and reuse the existing families rather than add a new tool: `task_read view: 'decisions'`, and `execution_control` actions `open_decision` / `record_decision`. | solution | Adopted (F-19, F-20). |
 | R-12 | `blocks[]` is policy stored as data; derive it from the state, put it on the wire, never persist it. | solution | Adopted (F-12). |
 | R-13 | A third origin vocabulary (`raisedBy.kind`, `via`) beside `human\|leader\|system` and `ui\|mcp\|automation\|cli`, and `via` proposed as a tool argument where both existing vocabularies are server-derived. Use `raisedBy: task-agent \| leader \| scope-check` (a role, not an origin) and `channel: ui \| mcp` (server-derived). | solution | Adopted (F-16), with a fourth role `brief-check` for the creation-time net. |
 | R-14 | The version guard on a case must be the case's own token (`rev1:decision:<caseId>:…`), not the run's, which moves with every event. | solution | Adopted (F-17). |
@@ -52,6 +52,8 @@ Their full outputs were produced in the leader session's scratchpad and are cond
 | R-27 | Smaller first slice: kit text changes now; the marker, the record action and the 409s with an owner-only variant of the ask card; the scope check as a non-blocking report replayed on the campaign PRs; the page and tab when there are more than 0–3 cases at a time. | business | Partly adopted: decision 9 (report first) and decision 17 (the contract ships together). The page ships with the first release because decision 19 needs "the morning tells me the count". |
 
 ## 3. UX and UI findings on the mockups
+
+Applied in design revision 2 (2026-09-14); superseded as a to-do list and retained as the review record.
 
 The UX verdict was FAIL. These are the findings that survive the requirements rewrite and must be fixed in `designs/decisions/`; the rest were either superseded by the new state (the "task stays `waiting`" praise in "What passed" is now wrong) or are recorded in [§ 4](#4-findings-superseded-by-the-requirements).
 
@@ -86,7 +88,7 @@ What the reviewers said is right and must be kept: zero raw colour; status colou
 - "Deciding sends a `user-message` and the run continues" – replaced by decisions 3–5 (re-queue; resume inside the step).
 - "Block the scheduler" – vacuous (the scheduler dequeues `queued` only) and replaced by the state itself.
 - "A case parks at `waiting` and blocks `send_message`" – the composer is still disabled while a case is open, but the block now follows from the state, not from a route check.
-- `human_decision` as a fifth MCP tool – replaced by actions on `execution_control` and a `task_read` view.
+- `human_decision` as a new MCP tool – replaced by actions on `execution_control` and a `task_read` view.
 - `decisions.json` – replaced by the case on the run record.
 
 ## 5. Open questions the reviewers raised that the owner has not yet answered
@@ -94,6 +96,8 @@ What the reviewers said is right and must be kept: zero raw colour; status colou
 Carried into [decisions-requirements.md § 11](decisions-requirements.md#11-open-decisions): headless `xezar run` (OD-3); one open case per run or many (OD-1); a case whose task failed or finished (OD-2); may the leader reopen (OD-4); the scope check's runner, model and cost attribution (OD-5); verbatim `ownerWords` to the agent (OD-6); a ship threshold for false alarms (OD-7); per-project categories (OD-8).
 
 ## 6. The draft against the requirements – gap list (leader session, 2026-09-14 evening)
+
+Applied in design revision 2 (2026-09-14); superseded as a to-do list and retained as the review record.
 
 Read after [decisions-requirements.md](decisions-requirements.md) was written. Each row says what the draft in `designs/decisions/` shows, what the requirement says, and what changes. G-n rows are requirement gaps; the U-n rows of § 3 are the design-system fixes and are not repeated.
 

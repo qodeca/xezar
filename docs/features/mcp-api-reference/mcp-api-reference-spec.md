@@ -1,10 +1,23 @@
 # MCP API reference – requirements and technical solution
 
-Status: **specification for owner review; nothing here is implemented by this document**. Date: 2026-09-11.
+> **Status update — 2026-09-15:** Partially implemented. This original design is superseded where the shipped
+> contract differs: artifact, generated reference, drift test, route and Settings → MCP API shipped;
+> CT-01/R-04’s shipped coverage declaration and CV-05/CV-08’s coverage view did not. Those requirements remain
+> unbuilt, not waived. Historical findings and source anchors below refer to `ef4b768`.
+
+## Shipped contract and resolved questions
+
+- `buildMcpApiReference(xezarVersion)` imports the registry itself. The available HTTP response contains `available`, `xezarVersion`, `protocolVersions`, `capabilities`, `tools`, `refusedActions`, `refusedArguments`, `guards`, and `notExposed` (`packages/contract/src/mcp-api-reference.ts`). The proposed per-tool `actions`/`result` and top-level `coverage`/`unserved`/`origins` were not built. The unavailable response is `{ available: false, reason }`; see [the HTTP inventory](../../../BACKWARD_COMPATIBILITY.md).
+- The actual drift check uses `toMatchFileSnapshot` on the committed Markdown and regeneration with `-u` (`mcp-api-doc.test.ts`). This supersedes § 8.2’s rejection of snapshots; reviewable committed output is still required.
+- Findings 2/J-4 describe the original tools-only protocol. Since #404, `serverCapabilitiesFor` additionally advertises `experimental["claude/channel"]` to Claude Code and the bridge emits channel notifications. Finding 7’s “not implemented” requirement header was corrected by #261.
+- Question 3: the implemented mapping uses an unrecorded justification for `handoff_git:ready` (`tools/api-coverage.testkit.ts`); this records the implementation choice, not a new owner decision.
+- Questions 4/5: the page shipped in 0.14.0 as project Settings → MCP API (`SETTINGS_SECTIONS`). It explicitly says cockpit coverage is not shown. Questions 1/2 retain their original open proposals; no new decision is inferred here.
+
+Status: **partially implemented**, as recorded above. Original specification date: 2026-09-11; status updated 2026-09-15.
 Audience: the project owner first, then the engineers who build it.
 
 Tracked by [#263](https://github.com/qodeca/xezar/issues/263). Related: [#261](https://github.com/qodeca/xezar/issues/261)
-(the generated reference, in flight), [#262](https://github.com/qodeca/xezar/issues/262) (four leader gaps, in flight),
+(the generated reference, closed), [#262](https://github.com/qodeca/xezar/issues/262) (four leader gaps, closed),
 [epic #67](https://github.com/qodeca/xezar/issues/67).
 
 **Baseline revision:** `ef4b7683ebbbcd17c1ede26b7fd4f870546e7e74` (`main`, 2026-09-11). Every file, symbol and count
@@ -208,12 +221,12 @@ reference fails `npm test`, which is a required CI check, so it cannot merge.** 
 | This specification | `docs/features/mcp-api-reference/mcp-api-reference-spec.md` | No | #263 |
 | Machine-readable reference (AR-01) | `docs/features/mcp-server/mcp-api.json` | Yes, checked by DR-01 | #261 (merged in #268) |
 | Human-readable reference (RF-01) | `docs/features/mcp-server/mcp-api.md` | Prose by hand, tables generated, checked by DR-02 | #261 (merged in #268) |
-| Coverage and result declaration (CT-01) | `packages/xezar/src/mcp/api-reference.ts` – **a shipped module, not a `.testkit.ts`** | No – declared data plus one builder function | Implementation issue to be filed |
+| Coverage declaration (CT-01) | `packages/xezar/src/mcp/tools/api-coverage.testkit.ts` (test-only; R-04 not implemented). Refusals/not-exposed metadata and the builder live in `packages/xezar/src/mcp/api-reference.ts`. | No | Coverage remains unbuilt as a shipped declaration; reference implemented by #284 (PR #291), #301 |
 | Drift tests | `packages/xezar/src/mcp/mcp-api-doc.test.ts` | – | #261 (merged in #268) |
-| Response schema (NF-05) | `packages/contract/src/mcp-api-reference.ts`, exported from `packages/contract/src/index.ts` | – | Implementation issue |
-| Read-only route (section 11) | a `mcpReferenceRoutes` family in `packages/xezar/src/server/server.ts`, chained into `v1` | – | Implementation issue |
-| Cockpit page (section 12) | `packages/web/src/routes/settings/mcp-api-section.tsx` plus one entry in `registry.tsx` | – | Implementation issue |
-| Route inventory line | `BACKWARD_COMPATIBILITY.md` § 2 | – | Implementation issue |
+| Response schema (NF-05) | `packages/contract/src/mcp-api-reference.ts`, exported from `packages/contract/src/index.ts` | – | #284 (PR #291), #301 |
+| Read-only route (section 11) | a `mcpReferenceRoutes` family in `packages/xezar/src/server/server.ts`, chained into `v1` | – | #284 (PR #291), #301 |
+| Cockpit page (section 12) | `packages/web/src/routes/settings/mcp-api-section.tsx` plus one entry in `registry.tsx` | – | #284 (PR #291), #301 |
+| Route inventory line | `BACKWARD_COMPATIBILITY.md` § 2 | – | #284 (PR #291), #301 |
 
 The paths of the two generated documents follow the sibling brief for #261 so the two tasks do not collide. The
 declaration module is the one deliberate change to that brief: see [Part 4](#part-4--current-state-honestly).
@@ -255,7 +268,7 @@ input):
 - **Refusal rows:** `{ tool: 'project_config', action: 'set_workspace_config', records: ['I-1xx'] }`, pointing at the
   `global` records the refusal enforces.
 - **Result declarations:** per tool, the status field, its words, and whether a refusal is an error result (section 10.4).
-- **One builder,** `buildMcpApiReference(tools, healthTool)`, which joins the live listing with the declaration. The
+- **One builder,** `buildMcpApiReference(xezarVersion)`, which joins the live listing with the declaration. The
   route and the tests call the same builder.
 
 The module lives in `src/mcp/`, not in `src/mcp/tools/`, because `tools/index.ts` is an append-only file shared by
@@ -573,14 +586,6 @@ Observed on 2026-09-11 around 08:10 UTC (`gh pr list -R qodeca/xezar --state ope
 - **No open pull request** at the time of observation.
 - Open `release-0.14.0` issues: #262, #261, #119 (close the Definition of Done on one candidate revision), #117, #75,
   #74, #73, #71, #67.
-
-### What is being built right now
-
-| Task | Issue | What it is doing | Observed state |
-| --- | --- | --- | --- |
-| `36587b7b` (docs-maintenance) | #261 | The generated reference: `mcp-api.json`, `mcp-api.md`, the drift test and the coverage mapping; also the stale "not implemented" line and an `AGENTS.md` pointer. | Started 07:54 UTC. Two untracked files so far: `packages/xezar/src/mcp/mcp-api-doc.test.ts` and `packages/xezar/src/mcp/tools/api-coverage.testkit.ts`. No commit, no branch on the remote. |
-| `b9b4feb6` (feature-implementation) | #262 | Four leader gaps: `handoff_git` can mark a draft PR ready; check whether a task's base branch is reachable; refuse a `save_workflow` overwrite that drops a check step; write D-04's connection file. | Started 07:54 UTC. Uncommitted edits in `handoff-git.ts`, `project-config.ts`, `server.ts`, `BACKWARD_COMPATIBILITY.md` and a new `connection-file.ts`. |
-| `4a46f0d5` (testing) | #117 | Executing the test gate checks for the durability suite. | Branch `xez/4a46f0d5` carries the suite commits already merged via PR #253 plus merges of `main`. |
 
 ### What this specification changes about that work
 
@@ -1364,5 +1369,4 @@ route, a contract schema, a Settings section and a manual QA pass.
   must include it; roughly one implementation task plus QA.
 
 *Note from the design pass (added, #296):* the page has since shipped (#291), without the action declaration and without
-the coverage section – the two parts that answer a reviewer's questions 2 and 3 (18.1). If the page stays in 0.14.0, it
-should ship with them, or at least say on the page that they are missing (18.7). The recommendation above is unchanged.
+the coverage section. 0.14.0 shipped the page without coverage; the page says so (#301).

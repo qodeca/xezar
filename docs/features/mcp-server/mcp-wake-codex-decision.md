@@ -1,12 +1,16 @@
 # Codex: waking an existing leader session
 
+> **Status update — 2026-09-15:** Implemented by #403; the dated spike below is superseded for readiness.
+> A-19/A-23 real-model acceptance is recorded in the [DoD record](mcp-definition-of-done-record.md); a
+> same-revision cross-client run was not done.
+
 > **Operating rule since 2026-09-15 ([#439](https://github.com/qodeca/xezar/issues/439)).** A project leader works through the xezar MCP tools only – no cockpit UI, no HTTP API – and is attached so events are pushed to it (`<channel source="xezar">` for Claude Code, a started turn for Codex, OpenCode and pi). `leader_events` is the fallback for a leader that is not attached, and `gh` reads GitHub facts. This record is kept as written; where it treats pulling as the leader's normal path or the cockpit as the leader's surface, the rule supersedes it. See [the leader findings, § 11](leader-dogfooding-2026-09-13.md#11-every-time-the-leader-left-the-mcp-channel-consolidated-2105).
 
 Decision date: **2026-09-13**. Part of [#374](https://github.com/qodeca/xezar/issues/374)
 and [#73](https://github.com/qodeca/xezar/issues/73). Source revision:
 `85a8e953573efac13091258e06968986fd5b117f`. Installed client: **codex-cli 0.154.0**,
-macOS 26.6.2, arm64. This is a research decision, not a shipped connection feature or
-an A-19/A-23 pass.
+macOS 26.6.2, arm64. This is the dated research decision, since implemented by #403.
+Current A-19/A-23 acceptance is in the DoD record.
 
 ## Decision
 
@@ -258,7 +262,7 @@ not already executed product behavior.
 | A real project completion event traverses journal → controller → new `#act` branch → existing Codex TUI | Real service/bridge/TUI harness with request bodies and correlated notifications, not a hand-written `turn/start` alone. Named fixture: one event request and zero subsequent requests for at least 30 s. Include default-title accounting separately. **A-19 F2/F3; A-23 reaction.** |
 | Busy, approval and disconnect boundaries neither lose nor duplicate events | Active steer, wrong expected turn, prompt already open at attach, provider failure, lost acceptance response, reconnect/replay, expiry/fencing, duplicate event and own-operation echo tests. Count model requests; prove meaningful regressions red without the fix. **A-19 reaction/recovery; A-23 exclusive owner.** |
 | Recoverable missing capability and resource cleanup | Missing daemon/npm-only installation, readonly home, socket permission failure, Stop, TUI exit and daemon exit preserve journal/pull behavior and close only xezar resources. No event or heartbeat causes model polling. **A-19 idle behavior; A-23 usable setup.** |
-| Actual model behavior and release-wide status are reported honestly | Follow the [DoD record](mcp-definition-of-done-record.md): a scripted endpoint proves a turn/request, not a real model's decision. The real-model clause and same-candidate cross-client A-23 remain pending until separately executed with authorized routing. This Codex slice cannot close #374 or #73. |
+| Actual model behavior and release-wide status are reported honestly | Follow the [DoD record](mcp-definition-of-done-record.md): a scripted endpoint proves a turn/request, not a real model's decision. The real-model clause was met by owner acceptance (DoD record, 2026-09-15); a same-revision cross-client run was not done. This Codex slice cannot close #374 or #73. |
 
 Active-turn/approval routing across multiple app-server clients, live ownership
 metadata discovery, replay after an ambiguous send, Linux/Windows behavior, and a

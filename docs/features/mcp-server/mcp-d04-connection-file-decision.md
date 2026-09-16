@@ -1,5 +1,8 @@
 # D-04 — the connection file and the one-time client setup
 
+> **Status update — 2026-09-15:** Implemented; the implementation note below supersedes the original spike
+> where they differ. Original observations remain dated at `9fdcf0e`.
+
 Status: **decision record for a spike. It ships no production code.** Date: 2026-09-10.
 Decides: **D-04** (section 10 of the [MCP requirements](mcp-project-leader-requirements.md)).
 Covers: **F-14**, **F-15**, **U-M01**, and the connection-file half of **A-01** and **A-12**.
@@ -13,13 +16,14 @@ Baseline read for this record: worktree of `qodeca/xezar` at branch `xez/455024a
 **Implementation note, added 2026-09-11 by [#262](https://github.com/qodeca/xezar/issues/262).** The
 writer is `packages/xezar/src/mcp/connection-file.ts`, called by `startMcpService` once the MCP socket
 listens (not on every `ProjectContexts.build()`: the MCP service is where the socket, and therefore
-`endpoint`, exists). Two points differ from the record below, both on purpose:
+`endpoint`, exists). Three points differ from the record below:
 
 - **There is no `token` field.** D-04.5 added a token only because the transport was still open. D-01
   then chose a per-project Unix socket and made *which socket the peer connected to* the binding (D-01
   § 6), so a token would be a secret that nothing checks. With no secret in the file, F-15 holds by
   construction.
 - **`endpoint` is `{ "socket": "<path>" }`**, D-01's socket path.
+- **No `--project` flag was built.** `xez mcp` uses the global `--repo` flag; absent it, the CLI starts from the current working directory.
 
 Everything else is as decided: the path, `schemaVersion: 1`, the `project` and `service` labels, the
 atomic temp-file-plus-rename at mode `0600`, `ensureProjectDataIgnored` before the first write, and a
@@ -238,10 +242,9 @@ file.
 
 **The change `AGENTS.md` actually asks for is therefore not a pattern — it is two things:**
 
-1. **Add the filename to the guard's fixture list.** `packages/xezar/src/tracked-files.test.ts:45-54`
-   holds a `localRuntime` array that names every engine-written file by name and asserts each is
-   ignored, both in this repository and in a fresh `git init` fixture (`:96` and `:112`). Add
-   `'mcp-connection.json'` and `'mcp-connection.json.tmp'` to that array. This is what "keep
+1. **Add the filename to the guard's fixture list.** `packages/xezar/src/tracked-files.test.ts`
+   now lists both `mcp-connection.json` and `mcp-connection.json.tmp` in `engineOnly`,
+   with ignore assertions in repository and fresh Git fixtures. This is what "keep
    `.local/.gitignore` maintenance in sync with any new state file" means in practice here: the rule
    is blanket, so the thing that goes out of sync is the *guard's inventory*, not the rule. The file
    header of that test records why the inventory is guarded by name — a rename once moved the ignore

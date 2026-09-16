@@ -1,5 +1,9 @@
 # Leader dogfooding record – 2026-09-13
 
+> **Status update — 2026-09-15:** Dated campaign observations; superseded claims retain their observation
+> time. Current acceptance is in the [DoD record](mcp-definition-of-done-record.md). A historical “running”
+> entry records the state observed then, not a task still running today.
+
 A Claude Code session (`claude --continue`, Claude Code 2.1.270) acted as the project leader for
 xezar through the `xezar` MCP bridge. The bridge ran from source (`tsx packages/xezar/src/index.ts mcp`) all day; the cockpit ran the built `dist/` from 12:16 to 22:13 (same commit as `main`, rebuilt at 21:43) and `npm run dev` from 22:13 on – the owner asked for the development server at 22:12, and the header of an earlier draft wrongly said `npm run dev` for the whole day.
 The campaign: issues #383, #374, #373 and the epic #73. This file records, from the leader's seat,

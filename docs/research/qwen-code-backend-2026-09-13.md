@@ -1,5 +1,9 @@
 # Qwen Code as a fifth xezar backend – feasibility report
 
+> **Status update — 2026-09-15:** Research only; Qwen Code is not a shipped backend
+> (`packages/contract/src/health.ts`, `runnerSchema`). External vendor/version findings below remain dated
+> 2026-09-13 evidence and were not re-verified in this sweep.
+
 Date: 2026-09-13. Prepared by the project leader from four parallel research passes (product facts, xezar touchpoints, runner template, fit and risks). Every claim is marked **verified** (read at the cited source, or measured on this machine) or **unverified**. Nothing in xezar was changed for this report.
 
 ## 1. Answer in one paragraph
@@ -41,7 +45,7 @@ The touchpoint sweep found the fifth-backend work is mostly typed and therefore 
 | --- | --- | --- |
 | Contract | ~5 | `runnerSchema` in `packages/contract/src/health.ts:4` (cascades into ~20 cockpit compile errors by design); per-runner model bags in `workspace.ts` (8 spots); `agent-profiles.ts:101`; the api-client `UiBackend` mirror |
 | Runner core | 3 new + ~12 edits | `qwen-runner.ts` (template: `claude-cli-runner.ts`, 568 lines, the termination reference), `qwen-ui-mapper.ts`, `qwen-model-catalog.ts`; `RUNNER_IDS` in `agent-runner.ts:24` is the single source; `BACKEND_ALLOW_PREFIXES`, `BACKEND_MODEL_MAP`, `PROFILE_ENV_VAR` + `PROFILE_DIR_MARKERS`, `RUNNER_DISPLAY_NAME`, `provider-auth.ts` descriptor |
-| Service | ~15 | models adapter table in `server.ts:1031`, `resumeCommand()` at `server.ts:6176`, `open-in-app.ts` CLI row, `paths.ts` home slot, workspace config/accounts/profiles bags, agent-config catalog rows (dated, verified against the real CLI), `seed.ts` decision |
+| Service | ~15 | `RunnerModelCatalog` in `core/runner-model-catalog.ts`, `resumeCommand()` in `packages/contract/src/resume-command.ts`, `open-in-app.ts` CLI row, `paths.ts` home slot, workspace config/accounts/profiles bags, agent-config catalog rows (dated, verified against the real CLI), `seed.ts` decision |
 | MCP / leader | ~4 (+3 if wakeable) | `discovery.ts:49` and `task-create.ts:225` runner lists (the latter is a plain array – no compile error, easy to miss); adapter + link + extension only if the wake path is built; regenerate `mcp-api.md` |
 | Cockpit | ~15 | `runner-label.ts` (typed so a fifth backend is a compile error), `new-task-form.ts` (4 spots incl. `PROVIDER_SPANNING_RUNNERS`), `queries.ts` one extra literal hook call, `thread-state.ts:72,195` two hand-written unions, settings descriptors/accounts/provider settings/MCP capabilities |
 | Docs | ~10 | `AGENT_PROTOCOL.md` §9 checklist (predates accounts, model discovery, provider auth and leader delivery – worth rewriting anyway), `AGENTS.md` four spots, README ~15 spots + `XEZ_QWEN_BIN` row, `.env.example` same commit, BC additive entries, CHANGELOG, agent-browser pins |

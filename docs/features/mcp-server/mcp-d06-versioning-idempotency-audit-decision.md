@@ -1,13 +1,20 @@
 # D-06 decision — version checks, durable operation keys, and the audit record
 
+> **Status update — 2026-09-15:** Phase 4 implemented versioning, receipts and audit, but **per-action crash
+> reconciliation (§ 9.3) and predicted run ids (§ 12.1) were not built as written**. Every production
+> operation-key call records `reconcile: { kind: 'none' }` (`mcp/index.ts`); dangling intents therefore remain
+> `unverified`. `run-by-key` is registered but receives no production predicate; `predictRunId` has only test
+> callers, and `Store.createRun` still uses `randomUUID()`. [Enhancement
+> #472](https://github.com/qodeca/xezar/issues/472) tracks wiring both. This note supersedes the
+> implementation promises below; original evidence stays at `9fdcf0e`.
+
 Status: **decision record from a spike. It ships no production code.** Date: 2026-09-10.
 Issue: [#83](https://github.com/qodeca/xezar/issues/83), phase 2 of [epic #67](https://github.com/qodeca/xezar/issues/67).
 Closes decision row **D-06** of the [MCP requirements](mcp-project-leader-requirements.md) § 10.
 Covers **N-03**, **N-04**, **N-08**, **N-10**; acceptance cases **A-13**, **A-14**, **A-16**, **UX-M04**.
 
 Source baseline for every claim below: `9fdcf0e878999783db6c2a69dec93a7d00ccea44`
-(`git rev-parse HEAD`, executed and observed). Phase 4 implements this record; nothing here has
-been implemented.
+(`git rev-parse HEAD`, executed and observed). Phase 4 implemented this record except the § 9.3 and § 12.1 wiring described in the status update.
 
 ## 0. How to read this record
 
@@ -429,7 +436,7 @@ not closed here, because it needs the final projection field list to evaluate.
   "resultRef": { "kind": "run", "id": "<id>" },                   // settled + ok only
   "expectedVersion": "<token the caller sent>",
   "origin": "mcp",
-  "ownerGeneration": 7,
+  "ownerGeneration": "<fencing token>",
   "reconcile": { "kind": "run-by-key" },                          // intent only, see § 9.3
   "startedAt": "<iso>",
   "settledAt": "<iso>"                                            // settled only
@@ -658,6 +665,10 @@ external outcome". This record supplies the protocol name for the state those ro
 
 ### 9.3 Decision — reconciliation, executably
 
+**Not built as written (2026-09-15):** production calls all record `none`, so dangling intents
+remain `unverified`; the registered `run-by-key` reconciler receives no production predicate.
+[Enhancement #472](https://github.com/qodeca/xezar/issues/472) tracks this wiring.
+
 **Decision.** Each action declares a **reconciler** beside itself. A reconciler answers exactly one
 question — *did this effect happen?* — using an **idempotent read**, never a write. The predicate it
 needs is recorded in the `intent` line at step 3 of § 7.3, **before** the effect, because after a
@@ -745,7 +756,7 @@ existing.
 | `resource` | `{ kind, id }` — never a path, never content | SHOULD |
 | `outcome` | `ok` / `rejected` / `not-applied` / `unverified` | SHOULD |
 | `origin` | `ui` \| `mcp` \| `automation` \| `cli` | **MUST be server-derived** (§ 10.4) |
-| `ownerGeneration` | number, or absent for non-MCP origins | SHOULD |
+| `ownerGeneration` | number — the fencing token’s millisecond prefix (`audit-trail.ts`, `fencingTokenMs`); absent for non-MCP origins | SHOULD |
 | `operationKey` | string, absent for non-MCP origins | SHOULD |
 | `versionToken` | the `expectedVersion` the caller sent | SHOULD |
 | `payloadDigest` | SHA-256 hex | SHOULD |
@@ -881,6 +892,9 @@ explains why the obvious one was refused, and § 13.3 records what that refusal 
 rule itself.
 
 ### 12.1 No new persisted field — a predicted run id instead
+
+**Not built as written (2026-09-15):** `Store.createRun` accepts no id and still uses `randomUUID()`.
+`predictRunId` has only test callers; [#472](https://github.com/qodeca/xezar/issues/472) tracks production integration.
 
 The obvious design was an optional `mcpOperationKey` on `runRecordSchema`, giving `run-by-key`
 (§ 9.3) a handle to search on. **Reading the source refuted it**, and the refutation is worth
