@@ -18,9 +18,14 @@ import { RUNNERS } from '@/routes/new-task-form'
  */
 
 /** The mockup's `.chip`: a quiet bordered pill that darkens on hover. `h-7` rides the density lever;
- *  `min-h-[24px]` is an absolute floor so it never drops under WCAG 2.2 SC 2.5.8's 24 px target. */
+ *  `min-h-[24px]` is an absolute floor so it never drops under WCAG 2.2 SC 2.5.8's 24 px target.
+ *
+ *  The 24 px floor is the DESKTOP minimum only. Below `md` a finger is the pointer, so the chip
+ *  grows to the absolute 44 px phone target (`max-md:min-h-tap min-w-tap`, #453 A-03) at every
+ *  density — 24 px is never a phone pass. `max-md:` rather than `min-h-tap md:min-h-[24px]` so the
+ *  floor stays one unprefixed literal the spacing guardian counts. */
 export const chipClass =
-  'inline-flex h-7 min-h-[24px] items-center gap-1.5 rounded-full border border-border bg-card px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-55'
+  'inline-flex h-7 min-h-[24px] items-center justify-center gap-1.5 rounded-full border border-border bg-card px-2.5 text-xs font-medium text-muted-foreground transition-colors outline-none hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-55 max-md:min-h-tap max-md:min-w-tap'
 
 export const chevron = (
   <ChevronDownIcon aria-hidden="true" className="size-2.5 shrink-0 text-soft-foreground" />

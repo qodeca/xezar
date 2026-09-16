@@ -120,8 +120,9 @@ export function DefaultAgentPicker({
               disabled || !providerConnected || (hasAccountChoice && accountDisabled)
             }
             onClick={() => onPick(row.runner.id, row.account, hasAccountChoice)}
+            // `min-h-tap min-w-tap … md:`: a 44 px phone target at every density (#453 G-29, Q06).
             className={cn(
-              'rounded-sm px-3 py-1.5 text-left font-mono text-[13px] font-medium transition-colors disabled:opacity-50',
+              'min-h-tap min-w-tap rounded-sm px-3 py-1.5 text-left font-mono text-[13px] font-medium transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50 md:min-h-0 md:min-w-0',
               checked ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground',
             )}
           >

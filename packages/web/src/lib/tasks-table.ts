@@ -23,15 +23,50 @@ export const TERMINAL_STATUSES: ReadonlySet<RunStatus> = new Set(['done', 'faile
 const FINISHED_STATUSES: ReadonlySet<RunStatus> = new Set(['done', 'failed', 'cancelled'])
 
 /**
- * Humanized RSS — `612 MB`, `1.2 GB`. Ported from the legacy `fmtBytes` (ps gives KB, the store
- * keeps bytes) so both cockpits print the same number for the same sample. '' for nothing —
- * the cell renders its own em dash, `0 kB` would claim a measurement that never happened.
+ * The two byte-precision contracts, as one formatter (#453 G-18). They differ on purpose and must
+ * stay different:
+ *
+ *  - `memory` — RSS for a task row: `612 MB`, `1.2 GB`. Whole kB and MB, because a process never
+ *    needs bytes and a table cell wants the short number. Ported from the legacy `fmtBytes`.
+ *  - `file` — a file's size: `312 B`, `4.6 kB`, `1.2 MB`. One decimal and real bytes, because a
+ *    file that grew by 300 bytes has changed and rounding that away would hide it. There is no GB
+ *    step: a preview never gets near one.
+ *
+ * Shared so the mechanics (1024 steps, units, spacing) live once; the precision is the caller's
+ * choice, never a rounding decided here.
+ */
+export type BytePrecision = 'memory' | 'file'
+
+/** Largest step first; `min` is where a step starts, `per` is one unit in bytes. */
+const BYTE_STEPS: Record<BytePrecision, ReadonlyArray<{ min: number; per: number; unit: string; digits: number }>> = {
+  memory: [
+    { min: 1024 ** 3, per: 1024 ** 3, unit: 'GB', digits: 1 },
+    { min: 1024 ** 2, per: 1024 ** 2, unit: 'MB', digits: 0 },
+    // No bytes step: RSS below a kilobyte still prints in kB (`0 kB`, `1 kB`), as it always has.
+    { min: 0, per: 1024, unit: 'kB', digits: 0 },
+  ],
+  file: [
+    { min: 1024 ** 2, per: 1024 ** 2, unit: 'MB', digits: 1 },
+    { min: 1024, per: 1024, unit: 'kB', digits: 1 },
+  ],
+}
+
+export function formatBytes(bytes: number, precision: BytePrecision): string {
+  for (const { min, per, unit, digits } of BYTE_STEPS[precision]) {
+    if (bytes < min) continue
+    const size = bytes / per
+    return `${digits === 0 ? Math.round(size) : size.toFixed(digits)} ${unit}`
+  }
+  return `${bytes} B`
+}
+
+/**
+ * Humanized RSS — `612 MB`, `1.2 GB` (the `memory` contract above). '' for nothing — the cell
+ * renders its own em dash, `0 kB` would claim a measurement that never happened.
  */
 export function formatMem(bytes: number | undefined): string {
   if (!bytes) return ''
-  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`
-  if (bytes >= 1024 ** 2) return `${Math.round(bytes / 1024 ** 2)} MB`
-  return `${Math.round(bytes / 1024)} kB`
+  return formatBytes(bytes, 'memory')
 }
 
 /** `$0.31` / `$12` — two decimals until the cents stop mattering. Legacy `fmtCost`; '' when the
@@ -313,6 +348,14 @@ export interface UsageCell {
   kind: 'live' | 'peak' | 'none'
   /** Tooltip for the peak cell — says the number is history, not a reading. */
   title?: string
+}
+
+/** How a CPU or Mem cell reads, per `UsageCell.kind` — shared by both task tables (#453 G-17): a
+ *  live sample is emphasized, a finished run's peak is dimmed, anything else is a quiet dash. */
+export const USAGE_CELL_CLASS: Record<UsageCell['kind'], string> = {
+  live: 'bg-violet/5 text-xs font-medium text-foreground',
+  peak: 'text-[11.5px] text-soft-foreground',
+  none: 'text-xs text-soft-foreground',
 }
 
 /**

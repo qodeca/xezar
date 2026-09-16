@@ -27,7 +27,7 @@ Source: `components/app-shell.tsx`, `components/nav-items.ts`, `components/proje
 - Nav item: icon `size-4`, label `text-[13.5px] font-medium`, row `h-11 md:h-9 rounded-md px-2.5`; active `bg-muted font-semibold text-foreground` and `aria-current="page"`.
 - Badges: a violet count (`rounded-full bg-violet px-1.5 py-px text-[10.5px] font-semibold text-violet-foreground`) means "a person is wanted" (Inbox count, unread finished tasks). A `size-1.5` violet dot with `sr-only` text marks a Skills update. No badge while the count is unknown; none at zero.
 - Multi-project: from the second registered project the flat nav becomes collapsible project groups, each with its own nav and quick list; only the expanded group fetches.
-- Quick list buckets, in order: `Pinned`, `Needs you`, `Working`, `Recent` (`Archived` in the other view); rows show dot · title · reference chip · age · pin.
+- Quick list buckets, in order: `Pinned`, `Needs you`, `Working`, `Recent` (`Archived` in the other view); rows show dot · title · reference chip · age · pin. In the phone drawer every row, tab and pin is a 44 px target and the pin is always shown.
 
 Rule: add a nav item by adding a row to `NAV_ITEMS` with a `match` list and, if gated, a capability flag.
 Never add a nav link in the shell or the palette by hand.
@@ -56,16 +56,18 @@ The rule (8 of 14 headers):
 Source: `routes/tasks-overview.tsx`, `routes/global-tasks.tsx`, `lib/task-columns.ts`, `lib/tasks-table.ts`,
 `lib/task-groups.ts`, `lib/read-state.ts`.
 
-- The desktop task table is driven by `TASK_COLUMNS` (`lib/task-columns.ts`): `Status, Task, Workflow, Tool Name, Model, Branch, ±, Ref, IN / OUT, Cost, CPU, Mem, Started`. Header, `colgroup` and every row consume that list. A new column is three coordinated additions there.
-- Wrapper `hidden overflow-x-auto rounded-lg border border-border bg-card shadow-xs md:block`; header cell `h-10 px-3 text-[11px] font-semibold tracking-[0.05em] uppercase text-soft-foreground`; body cell `h-11 px-3 whitespace-nowrap`; last row loses its bottom border; row `cursor-pointer hover:bg-muted` with clicks on `a, button, input` passing through. Foldable columns collapse to `42px` with an `aria-pressed` toggle in the header.
-- Below `md` the same rows render as cards, `gap-list` apart: `rounded-lg border border-border bg-card p-inset shadow-xs`, a mono meta line (`workflow · tool · model · branch · diff · tokens · cost`) and an always-visible pin.
+- The desktop task table is driven by `TASK_COLUMNS` (`lib/task-columns.ts`): `Status, Task, Workflow, Tool name, Model, Branch, ±, Ref, IN / OUT, Cost, CPU, Mem, Started`. Header, `colgroup` and every row consume that list. A new column is three coordinated additions there.
+- Wrapper `hidden overflow-x-auto rounded-lg border border-border bg-card shadow-xs md:block`; header cell `TASK_TH_CLASS` (`h-10 px-3 text-[11px] font-semibold tracking-[0.05em] uppercase text-soft-foreground`) and body cell `TASK_TD_CLASS` (`h-11 px-3 whitespace-nowrap`), both from `lib/task-columns.ts` and rendered by both tables through `TaskTh` and `UsageTd`; last row loses its bottom border; row `cursor-pointer hover:bg-muted` with clicks on `a, button, input` passing through. Foldable columns collapse to `42px` with an `aria-pressed` toggle in the header.
+- Below `md` the same rows render as cards, `gap-list` apart: `rounded-lg border border-border bg-card p-inset shadow-xs`, a mono meta line (`workflow · tool · model · branch · diff · tokens · cost`) and an always-visible pin. The global Tasks page renders the same card (`GlobalTaskCard`) with its project link, reference chips and read/archive actions. A tap on the card opens the task; a tap on a nested link or button does only its own job.
+- Phone targets: every control in a card, a row and the phone toolbar is 44 px at every density (`min-h-tap … md:min-h-0`). A 24 px reference chip sits on a 44 px line (`CHIP_SLOT`) and carries a 44 px `::before` hit area, so neighbouring chips never overlap. The card title link grows to 44 px with a negative top margin, so the card does not grow.
+- Phone toolbar: below `md` the header is hidden, so both Tasks pages render its controls at the top of the body – the Active/Archived tabs (`ListViewTabs`), the page actions or the count, and the search (`SearchField`).
 - Unread finished rows are `font-semibold text-foreground` with a trailing violet dot (`aria-label="unread"`, `title="Unread — not opened since it finished"`); read-done rows are `font-medium text-muted-foreground`.
 - Cards elsewhere: `rounded-lg border border-border bg-card` (+ `shadow-xs` when raised, `p-inset` inside, `gap-list` between cards) is the spelling. The footer strip under a table sits `mt-list` below it. The `Card` primitive is unused (G-02).
 - Group headings on `/tasks`: `text-[12px] font-semibold tracking-[0.04em] uppercase text-soft-foreground` with a mono count.
 - Absent values print `—`; never a fabricated `0` or `$0.00`.
 
 Rule: the task table goes through `task-columns.ts`; a cell that shows a runner or model goes through
-`task-agent.tsx`; any other table copies the header and cell classes above.
+`task-agent.tsx`; any other table uses `TASK_TH_CLASS` and `TASK_TD_CLASS` rather than copying them.
 
 ## 5. Status
 

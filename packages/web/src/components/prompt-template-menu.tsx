@@ -11,6 +11,7 @@ import {
   CommandList,
   CommandSeparator,
 } from '@/components/ui/command'
+import { chipClass } from '@/components/picker-pill'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import type { PromptTemplate } from '@/lib/prompt-templates'
 import { multiWordFilter } from '@/lib/skills'
@@ -63,11 +64,10 @@ export function PromptTemplateMenu({
           aria-label="Insert a prompt template"
           title="Insert a prompt template"
           disabled={disabled}
-          className={cn(
-            'inline-flex h-[26px] items-center gap-1.5 rounded-full border border-border bg-card text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50',
-            iconOnly ? 'w-[26px] justify-center px-0' : 'px-2.5',
-            triggerClassName,
-          )}
+          // The composer chip itself (`chipClass`, #453 G-03), not a copy of it: the same density
+          // height, 24 px desktop floor, 44 px phone target and `opacity-55` disabled state. The
+          // icon-only form is a circle that never narrows under the chip floor either.
+          className={cn(chipClass, iconOnly && 'w-7 min-w-chip px-0', triggerClassName)}
         >
           <NotebookPenIcon aria-hidden="true" className="size-3 shrink-0 text-violet" />
           {iconOnly ? null : (
@@ -90,7 +90,7 @@ export function PromptTemplateMenu({
       >
         <Command filter={multiWordFilter}>
           <CommandInput
-            placeholder="search templates…"
+            placeholder="Search templates…"
             onInput={() => listRef.current?.scrollTo(0, 0)}
           />
           <CommandList

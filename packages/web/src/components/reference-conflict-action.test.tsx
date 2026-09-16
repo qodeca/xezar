@@ -116,6 +116,15 @@ describe('ResolveConflictsButton', () => {
     await waitFor(() => expect(screen.getByText(/Task reopened — resolving conflicts in PR #864/)).not.toBeNull())
   })
 
+  it('is a 44 px phone target: the panel height does not override the button floor (#453 Q19)', () => {
+    renderButton(run('running'))
+    // `h-7` sets the desktop height; `min-h-tap` from the Button primitive must survive the merge,
+    // because min-height wins over height on a phone.
+    expect(button().className).toContain('min-h-tap')
+    expect(button().className).toContain('md:min-h-0')
+    expect(button().className).toContain('h-7')
+  })
+
   it('says why instead of pretending, when there is no session to reach', async () => {
     // A closed run that never recorded a session has nothing to reopen. A button that looked
     // pressable and then quietly did nothing would be worse than one that explains itself.

@@ -27,7 +27,9 @@ export function TabLink({
       aria-current={active ? 'page' : undefined}
       onClick={onClick}
       className={cn(
-        '-mb-px flex h-8 items-center rounded-t-md border-b-2 px-3 text-[13px] font-medium',
+        // `min-h-tap … md:min-h-0`: a 44 px phone target at every density (#453 Q24); `h-8` is
+        // the desktop row.
+        '-mb-px flex h-8 min-h-tap min-w-tap items-center justify-center rounded-t-md border-b-2 px-3 text-[13px] font-medium outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-0 md:min-w-0',
         active
           ? 'border-foreground font-semibold text-foreground'
           : 'border-transparent text-muted-foreground hover:bg-muted hover:text-foreground',

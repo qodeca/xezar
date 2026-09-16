@@ -733,7 +733,7 @@ svg.icon.xxs {
   display: flex;
   gap: 4px;
   margin: 8px 10px 4px;
-  padding: 3px;
+  padding: calc(var(--spacing) * 0.75);
   border-radius: var(--radius);
   background: var(--background);
 }
@@ -946,7 +946,7 @@ svg.icon.xxs {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 10px;
+  padding: calc(var(--spacing) * 1) 10px;
   border-radius: 999px;
   background: var(--muted);
   color: var(--muted-foreground);
@@ -1274,6 +1274,10 @@ svg.icon.xxs {
   font-size: 12.5px;
   font-weight: 500;
   cursor: pointer;
+}
+
+.segmented {
+  padding: calc(var(--spacing) * 0.75);
 }
 
 .segmented button {
@@ -1716,7 +1720,8 @@ svg.icon.xxs {
   color: var(--soft-foreground);
 }
 
-/* Chips: the composer picker pill (`chipClass`) and the filter chips */
+/* Chips: the composer picker pill (`chipClass`) and the filter chips (`FILTER_CHIP`). Both are
+   `h-7` on the density lever with a 24 px floor; below 768 px both are 44 px phone targets. */
 .chip {
   display: inline-flex;
   align-items: center;
@@ -1736,10 +1741,6 @@ svg.icon.xxs {
 .chip:hover {
   background: var(--muted);
   color: var(--foreground);
-}
-
-.chip.filter {
-  height: 28px;
 }
 
 .chip.active {
@@ -1763,6 +1764,22 @@ svg.icon.xxs {
 .chip[disabled] {
   opacity: 0.55;
   pointer-events: none;
+}
+
+/* Phone targets (#453 B4): below `md` every task-list row, tab, segment and chip is 44 px at every
+   density. A 24 px reference chip keeps its look and gets a 44 px hit area instead. */
+@media (max-width: 767.98px) {
+  .chip,
+  .segmented button,
+  .list-tabs button {
+    min-width: var(--spacing-tap);
+    min-height: var(--spacing-tap);
+  }
+
+  .quick li {
+    height: auto;
+    min-height: var(--spacing-tap);
+  }
 }
 
 .chip .count {

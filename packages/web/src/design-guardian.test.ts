@@ -140,7 +140,7 @@ const OWNED_ELSEWHERE = new Set(['black', 'white'])
 const SPACING_ALLOWLIST: ReadonlyMap<string, AllowedOccurrence> = new Map(
   Object.entries(spacingAllowlistJson as Record<string, AllowedOccurrence>),
 )
-const SPACING_ALLOWLIST_CEILING = 43
+const SPACING_ALLOWLIST_CEILING = 30
 
 const RULES: Rule[] = [
   {

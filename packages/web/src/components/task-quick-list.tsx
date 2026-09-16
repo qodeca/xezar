@@ -72,7 +72,7 @@ export function TaskQuickList({
       {/* Sticky, not scrolled away: the tabs say what you are looking at, and a long Recent list
           must not be able to hide that the view is filtered. */}
       <div className="sticky top-0 z-10 bg-sidebar pt-2 pb-1">
-        <div className="inline-flex w-full gap-0.5 rounded-md bg-muted p-[3px]">
+        <div className="inline-flex w-full gap-0.5 rounded-md bg-muted p-0.75">
           <ViewTab view="active" current={view} onSelect={onViewChange} count={counts.active}>
             Active
             {/* The one reason to look at a tab you are not on. */}
@@ -187,8 +187,9 @@ function ViewTab({
       // switch between panels — `aria-pressed` is what that actually is.
       aria-pressed={isActive}
       onClick={() => onSelect(view)}
+      // `min-h-tap … md:min-h-0`: a 44 px target in the phone drawer at every density (#453 Q25).
       className={cn(
-        'flex h-7 flex-1 items-center justify-center gap-1.5 rounded-[7px] text-[12.5px] font-medium text-muted-foreground',
+        'flex h-7 min-h-tap flex-1 items-center justify-center gap-1.5 rounded-[7px] text-[12.5px] font-medium text-muted-foreground outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-0',
         isActive && 'bg-card font-semibold text-foreground shadow-xs'
       )}
     >
@@ -245,7 +246,7 @@ function Row({
           data-group-id={row.groupId}
           aria-expanded={expanded}
           onClick={() => onToggle(row.groupId)}
-          className="flex min-w-0 flex-1 items-center gap-2 px-2.5 py-2 text-left"
+          className="flex min-h-tap min-w-0 flex-1 items-center gap-2 px-2.5 py-2 text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-0"
         >
           <ChevronDownIcon
             className={cn('size-3 shrink-0 text-soft-foreground transition-transform', !expanded && '-rotate-90')}
@@ -263,7 +264,7 @@ function Row({
           data-slot="group-compare"
           title="Compare the variants"
           aria-label={`Compare the variants of ${row.title}`}
-          className="mr-1.5 inline-flex size-6 shrink-0 items-center justify-center rounded-sm text-soft-foreground hover:bg-violet/10 hover:text-violet"
+          className="mr-1.5 inline-flex size-6 min-h-tap min-w-tap shrink-0 items-center justify-center rounded-sm text-soft-foreground outline-none hover:bg-violet/10 hover:text-violet focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-0 md:min-w-0"
         >
           <ScaleIcon className="size-3.5" aria-hidden="true" />
         </Link>
@@ -325,18 +326,23 @@ function Row({
  *  - `group-hover` — the pointer.
  *  - `group-focus-within` — the keyboard, on the row's own link.
  *  - `no-hover` — a device that CANNOT hover, where the first two never fire and a
- *    hover-revealed control is simply unreachable. This is the phone and tablet case; the
- *    drawer keeps the sidebar's fixed 264px, so the width rule applies there too and the pin
- *    still cannot be permanent — it is bigger instead (`size-7`), because a 20px target under a
- *    thumb is not a target. See the variant's definition in `styles/index.css`.
+ *    hover-revealed control is simply unreachable. See the variant's definition in
+ *    `styles/index.css`.
+ *  - `max-md` — the phone drawer, whatever the pointer. A finger is the likely one there, and
+ *    a control that appears only under a hover the user may not have is not a phone target.
  *  - `data-[pinned=true]` — an already-pinned row, where the pin is a fact about the row rather
  *    than an offer, and hiding it would leave `Pinned` unexplained.
+ *
+ * In the first two cases (#453 A-03) `PinToggle` itself makes the box the absolute 44 px hit area
+ * (`min-w-tap` outranks this `w-0`); a 20px target under a thumb is not a target. The drawer keeps
+ * the sidebar's fixed 264px, which is why the title's floor still leaves room for it.
  */
 const ROW_PIN_CLASS =
   'w-0 overflow-hidden opacity-0' +
+  ' max-md:mr-1 max-md:opacity-100' +
   ' group-hover/task-row:mr-1 group-hover/task-row:w-5 group-hover/task-row:opacity-100' +
   ' group-focus-within/task-row:mr-1 group-focus-within/task-row:w-5 group-focus-within/task-row:opacity-100' +
-  ' no-hover:mr-1 no-hover:size-7 no-hover:opacity-100' +
+  ' no-hover:mr-1 no-hover:opacity-100' +
   ' data-[pinned=true]:mr-1 data-[pinned=true]:w-5 data-[pinned=true]:opacity-100'
 
 function RunRow({
@@ -399,8 +405,8 @@ function RunRow({
         isActive && 'bg-muted',
         // The indent a member row wears under an expanded group tile. One padding declaration,
         // not two: `cn` is tailwind-merge, so this REPLACES the `pl-2.5` above rather than losing
-        // to it — 26px = the row's own 10px plus the 16px indent.
-        variant && 'pl-[26px]'
+        // to it — `pl-6.5` = the row's own `2.5` plus a `4` indent, on the density lever.
+        variant && 'pl-6.5'
       )}
     >
       {/* Outside the Link so it can lead the reference chip. The dot is a status indicator, not a
@@ -413,7 +419,7 @@ function RunRow({
           run={run}
           reference={reference}
           compact
-          className="h-auto shrink-0 gap-[2px] px-1.5 py-px text-[10.5px]"
+          className="h-auto shrink-0 gap-0.5 px-1.5 py-px text-[10.5px]"
         />
       ) : null}
       <Link
@@ -422,10 +428,11 @@ function RunRow({
         // visible text drop — so hover always gives back everything the column could not show.
         title={title}
         aria-current={isActive ? 'page' : undefined}
-        className="flex min-w-0 flex-1 items-center gap-2 py-2 pr-2.5"
+        // `min-h-tap … md:min-h-0`: the row is a 44 px target in the phone drawer (#453 Q25).
+        className="flex min-h-tap min-w-0 flex-1 items-center gap-2 py-2 pr-2.5 md:min-h-0"
       >
         {variant ? (
-          <span className="inline-flex size-[15px] shrink-0 items-center justify-center rounded-full bg-violet/15 font-mono text-[9.5px] font-semibold text-violet">
+          <span className="inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-violet/15 font-mono text-[9.5px] font-semibold text-violet">
             {run.variant ?? '?'}
           </span>
         ) : null}

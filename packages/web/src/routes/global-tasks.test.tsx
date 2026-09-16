@@ -816,7 +816,7 @@ describe('global tasks page', () => {
       await screen.findByText('Add checkout endpoint')
 
       const headers = [...document.querySelectorAll('[data-slot="global-tasks-table"] th')]
-      const tool = headers.find((cell) => cell.textContent === 'Tool Name')
+      const tool = headers.find((cell) => cell.textContent === 'Tool name')
       const model = headers.find((cell) => cell.textContent === 'Model')
       const workflow = headers.find((cell) => cell.textContent === 'Workflow')
       // Immediately after Workflow, and on Workflow's own degradation policy: this page has no
@@ -1157,7 +1157,7 @@ describe('global tasks page', () => {
 
     // The query retries a 5xx once with a backoff, so this settles later than the happy paths.
     expect(
-      await screen.findByText('Tasks across projects did not load', {}, { timeout: 5000 }),
+      await screen.findByText('Could not load tasks across projects', {}, { timeout: 5000 }),
     ).toBeTruthy()
   })
 })

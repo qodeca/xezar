@@ -193,14 +193,14 @@ Each entry maps a utility name to a theme token. Listed in foundations.md §1.7;
 | `packages/web/src/components/onboarding-offer-container.tsx` | OnboardingOfferContainer | components.md §2 OnboardingOfferRow and OnboardingOfferContainer | Documented |
 | `packages/web/src/components/onboarding-offer-row.tsx` | OnboardingOfferRow | components.md §2 OnboardingOfferRow and OnboardingOfferContainer | Documented |
 | `packages/web/src/components/open-in-menu.tsx` | OpenInMenu | components.md §2 OpenInMenu | Documented |
-| `packages/web/src/components/picker-pill.tsx` | PickerPill, RunnerPill | components.md §2 PickerPill and RunnerPill | Documented with known gap (G-03) |
+| `packages/web/src/components/picker-pill.tsx` | PickerPill, RunnerPill | components.md §2 PickerPill and RunnerPill | Documented (G-03 fixed in #453 B4) |
 | `packages/web/src/components/pill.tsx` | Pill | components.md §2 Pill | Documented |
 | `packages/web/src/components/pin-toggle.tsx` | PinToggle | components.md §2 PinToggle | Documented |
 | `packages/web/src/components/project-groups.tsx` | ProjectGroups | components.md §2 ProjectGroups | Documented with known gap (G-14) |
 | `packages/web/src/components/prompt-template-menu.tsx` | PromptTemplateMenu | components.md §2 PromptTemplateMenu | Documented |
 | `packages/web/src/components/provider-banner-container.tsx` | ProviderBannerContainer | components.md §2 ProviderBanner and ProviderBannerContainer | Documented |
 | `packages/web/src/components/provider-banner.tsx` | ProviderBanner | components.md §2 ProviderBanner and ProviderBannerContainer | Documented |
-| `packages/web/src/components/reference-chip.tsx` | ReferenceChip | components.md §2 ReferenceChip | Documented |
+| `packages/web/src/components/reference-chip.tsx` | ReferenceChip | components.md §2 ReferenceChip | Documented with known gap (G-23, light violet ink) |
 | `packages/web/src/components/reference-conflict-action.tsx` | ReferenceConflictAction | components.md §2 ReferenceConflictAction | Documented |
 | `packages/web/src/components/reference-status.tsx` | ReferenceStatus registry | components.md §2 ReferenceStatus registry | Not applicable – a registry of status → tone/label; rendered by ReferenceChip (components.md §2 ReferenceStatus registry). |
 | `packages/web/src/components/route-error-boundary.tsx` | RouteErrorBoundary | components.md §2 RouteErrorBoundary | Documented |
@@ -237,7 +237,7 @@ Each entry maps a utility name to a theme token. Listed in foundations.md §1.7;
 | 1. App shell | patterns.md §1 | `specimens/patterns.html` | Documented with known gap (G-14) |
 | 2. Sidebar navigation and badges | patterns.md §2 | `specimens/patterns.html` | Documented with known gap (G-14) |
 | 3. Page headers | patterns.md §3 | `specimens/patterns.html` | Documented with known gap (G-01) |
-| 4. Lists, cards and tables | patterns.md §4 | `specimens/patterns.html` | Documented with known gap (G-02, G-17) |
+| 4. Lists, cards and tables | patterns.md §4 | `specimens/patterns.html` | Documented with known gap (G-02, G-23; G-17 fixed in #453 B4) |
 | 5. Status | patterns.md §5 | `specimens/patterns.html` | Documented with known gap (G-04) |
 | 6. Empty, loading and error states | patterns.md §6 | `specimens/patterns.html` | Documented with known gap (G-05, G-08) |
 | 7. Dialogs, sheets, command palette, toasts and notifications | patterns.md §7 | `specimens/patterns.html` | Documented with known gap (G-10, G-16) |
@@ -258,10 +258,10 @@ Each entry maps a utility name to a theme token. Listed in foundations.md §1.7;
 | Iconography | foundations.md §8 | `specimens/foundations.html` | Documented with known gap (G-19) |
 | Layout and reading width | foundations.md §9, theming.md | `specimens/foundations.html` | Documented |
 | Breakpoints | foundations.md §10, behaviour.md | `specimens/foundations.html` | Documented |
-| `no-hover:` | foundations.md §11 | `specimens/foundations.html` | Documented with known gap (G-21) |
+| `no-hover:` | foundations.md §11 | `specimens/foundations.html` | Documented with known gap (G-21; task lists fixed in #453 B4) |
 | Safe areas and the keyboard | foundations.md §12 | `specimens/foundations.html`, `specimens/mobile.html` | Documented |
 | Base layer (`border-color`, `html`/`body` height and overflow, placeholder, scrollbars) | foundations.md §13 | – | Documented |
 | Theming (theme, accent, density, width, pre-paint) | theming.md | the doc bar of index, foundations, components and patterns (mobile.html: theme only) | Documented |
 | Keyboard, focus and announcements | behaviour.md | `specimens/components.html` | Documented |
 | UX writing | writing.md | – | Documented with known gap (G-15, G-16) |
-| Number formatting | writing.md | – | Documented with known gap (G-18) |
+| Number formatting | writing.md | – | Documented with known gap (G-18; one formatter since #453 B4, the worktree-files copy is open) |

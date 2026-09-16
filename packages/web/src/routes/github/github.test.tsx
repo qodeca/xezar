@@ -2351,7 +2351,7 @@ describe('the follow-up prompt template menu (#413)', () => {
     const all = document.querySelectorAll('[data-slot="prompt-template-option"]').length
     expect(all).toBeGreaterThan(1)
 
-    fireEvent.change(screen.getByPlaceholderText('search templates…'), { target: { value: 'docs' } })
+    fireEvent.change(screen.getByPlaceholderText('Search templates…'), { target: { value: 'docs' } })
     await waitFor(() =>
       expect(document.querySelectorAll('[data-slot="prompt-template-option"]')).toHaveLength(1),
     )
@@ -2364,7 +2364,7 @@ describe('the follow-up prompt template menu (#413)', () => {
 
     await openTemplateMenu()
     // "unrelated refactors" appears only in the body of the keep-minimal template.
-    fireEvent.change(screen.getByPlaceholderText('search templates…'), {
+    fireEvent.change(screen.getByPlaceholderText('Search templates…'), {
       target: { value: 'unrelated refactors' },
     })
     await waitFor(() =>

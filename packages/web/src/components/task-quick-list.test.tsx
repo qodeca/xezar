@@ -557,8 +557,12 @@ describe('TaskQuickList', () => {
       renderList({ runs: [run({ id: 'plain', status: 'done' })], onTogglePin: vi.fn() })
       const pin = document.querySelector('[data-slot="pin-toggle"]') as HTMLElement
       expect(pin.className).toContain('no-hover:opacity-100')
-      // …and big enough for a thumb there, where 20px is not a target.
-      expect(pin.className).toContain('no-hover:size-7')
+      // …and the absolute 44 px target there, where 20px is not a target (#453 A-03) — the
+      // drawer below `md` shows it at that size whatever the pointer.
+      expect(pin.className).toContain('no-hover:min-h-tap')
+      expect(pin.className).toContain('no-hover:min-w-tap')
+      expect(pin.className).toContain('max-md:opacity-100')
+      expect(pin.className).toContain('min-w-tap')
       // The quiet default survives for pointer devices: still zero-width until hovered.
       expect(pin.className).toContain('w-0')
       expect(pin.className).toContain('group-hover/task-row:w-5')

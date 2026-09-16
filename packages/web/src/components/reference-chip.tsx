@@ -59,6 +59,17 @@ const TONE_HOVER: Record<ReferenceStatusTone, string> = {
   conflict: 'hover:bg-conflict/10',
 }
 
+/**
+ * The link chip's phone hit area (#453 A-03). Below `md` a finger is the pointer and 24 px is never
+ * a pass, but a chip that grew to 44 px would turn every row and card it sits in into a stack of
+ * tall capsules. So the chip keeps its look and owns a centred `::before` that is `tap` tall and at
+ * least `tap` wide — the Switch's recipe. The overlay belongs to the link, so a tap on it opens the
+ * reference and never the row. A caller must leave the overlay room: no other target within
+ * `(44 − chip height) / 2` above or below it.
+ */
+const PHONE_HIT_AREA =
+  "relative before:absolute before:top-1/2 before:left-1/2 before:h-tap before:w-full before:min-w-tap before:-translate-x-1/2 before:-translate-y-1/2 before:content-[''] md:before:hidden"
+
 /** One glyph per status, borrowed from the vocabulary GitHub itself uses, so the icon is legible
  *  before the tooltip is read. `checks-pending` has none: it renders the pulsing dot instead,
  *  which is the design system's own mark for a state that is still moving. */
@@ -201,7 +212,12 @@ export function ReferenceChip({
         // element is a browser popup fighting a designed one.
         title={tooltip ? undefined : url}
         aria-label={ariaLabel}
-        className={cn(chipClass, TONE_HOVER[presentation?.tone ?? 'violet'])}
+        className={cn(
+          chipClass,
+          PHONE_HIT_AREA,
+          'outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
+          TONE_HOVER[presentation?.tone ?? 'violet'],
+        )}
       >
         {body}
         <ArrowUpRightIcon className="size-2.5" aria-hidden="true" />
@@ -468,7 +484,7 @@ function lowerFirst(text: string): string {
 function StatusGlyph({ status }: { status?: ReferenceStatus }) {
   if (!status) return null
   if (status === 'checks-pending') {
-    return <StatusDot tone="pending" pulse className="size-[6px]" aria-hidden="true" />
+    return <StatusDot tone="pending" pulse className="size-1.5" aria-hidden="true" />
   }
   const Icon = STATUS_ICON[status]
   return Icon ? <Icon className="size-2.5 shrink-0" aria-hidden="true" /> : null
