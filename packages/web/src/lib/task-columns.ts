@@ -59,7 +59,7 @@ export const TASK_COLUMNS = [
   },
   {
     id: 'tool',
-    label: 'Tool Name',
+    label: 'Tool name',
     canFold: true,
     defaultExpanded: true,
     align: 'left',
@@ -134,6 +134,15 @@ export const TASK_COLUMNS = [
     icon: 'started',
   },
 ] as const satisfies readonly TaskColumnDefinition[]
+
+/**
+ * The cell grammar BOTH task tables paint (#453 G-17): the per-project table above and the global
+ * `/tasks` table, which keeps its own column set (a project column, tags, no folding) but must not
+ * keep its own copy of the look. A header or body cell change is made here, once.
+ */
+export const TASK_TH_CLASS =
+  'h-10 border-b border-border px-3 text-left text-[11px] font-semibold tracking-[0.05em] whitespace-nowrap text-soft-foreground uppercase first:pl-4 last:pr-4'
+export const TASK_TD_CLASS = 'h-11 border-b border-border px-3 whitespace-nowrap first:pl-4 last:pr-4'
 
 export type NormalizedExpandedColumns = Partial<Record<TaskColumnId, boolean>>
 

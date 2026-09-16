@@ -50,14 +50,17 @@ import { TaskReferenceChip } from '@/components/reference-conflict-action'
 import { ReferenceStatusProvider } from '@/components/reference-status'
 import { StatusDot } from '@/components/status-dot'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { toast } from '@/components/ui/toaster'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { ModelNameCell, ToolNameCell } from '@/components/task-agent'
 import { SETUP_HERO_SENTENCE } from '@/lib/onboarding'
 import { deriveAttention } from '@/lib/attention'
 import { shortAge } from '@/lib/format'
-import { isReadDoneItem, isUnread, unreadDoneCount } from '@/lib/read-state'
+import { isReadDoneItem, isUnread, unreadDoneCount, type ReadStateInput } from '@/lib/read-state'
 import {
+  TASK_TD_CLASS,
+  TASK_TH_CLASS,
   isColumnExpanded,
   normalizeExpandedColumns,
   taskColumnsForCapabilities,
@@ -75,12 +78,14 @@ import {
   formatCost,
   scheduledResume,
   taskReference,
+  USAGE_CELL_CLASS,
   usageCells,
   workflowLabel,
   type UsageCell,
 } from '@/lib/tasks-table'
 import { usageMetricVisibility } from '@/lib/token-metrics'
 import { useTaskTableColumns } from '@/lib/use-task-table-columns'
+import { useIsDesktop } from '@/lib/use-desktop'
 import { useNow } from '@/lib/use-now'
 import { cn } from '@/lib/utils'
 
@@ -159,6 +164,35 @@ export function TasksOverview({
   // nowhere to show its result — and one that outlives the view, since un-archiving would then
   // drop the task at the top of the active list by a click that looked like it did nothing.
   const pinToggle = view === 'archived' ? undefined : onTogglePin
+  const desktop = useIsDesktop()
+
+  const tabs = (
+    <ListViewTabs
+      view={view}
+      onSelect={onViewChange}
+      counts={{ active: counts.active, archived: counts.archived }}
+    />
+  )
+  const actions = (
+    <>
+      {/* Count-gated, like the broom beside it: offered only while there is unread history to
+          clear (#unread-done-items). Archived runs are never unread, so this only ever lights
+          on the Active tab in practice — no need to also gate on `view`. */}
+      {unread > 0 ? (
+        <Button type="button" variant="ghost" size="sm" data-slot="mark-all-read" onClick={onMarkAllRead}>
+          <CheckCheckIcon className="size-3.5" aria-hidden="true" />
+          Mark all read
+        </Button>
+      ) : null}
+      {/* Only when there is something to sweep, like the legacy header's count-gated broom. */}
+      {view === 'active' && finished > 0 ? (
+        <Button type="button" variant="ghost" size="sm" data-slot="archive-finished" onClick={onArchiveFinished}>
+          <ArchiveIcon className="size-3.5" aria-hidden="true" />
+          Archive finished
+        </Button>
+      ) : null}
+    </>
+  )
 
   return (
     <div data-route="tasks" className="flex min-h-full flex-col">
@@ -166,60 +200,27 @@ export function TasksOverview({
           carries the shared Active/Archived tabs — repeating them here would be a third copy. */}
       <header className="sticky top-0 z-10 hidden h-14 shrink-0 items-center gap-3 border-b border-border bg-background md:flex md:px-section">
         <h1 className="text-base font-semibold">Tasks</h1>
-        <div className="inline-flex gap-0.5 rounded-md bg-muted p-[3px]">
-          <OverviewTab view="active" current={view} onSelect={onViewChange} count={counts.active}>
-            Active
-          </OverviewTab>
-          <OverviewTab view="archived" current={view} onSelect={onViewChange} count={counts.archived}>
-            Archived
-          </OverviewTab>
-        </div>
+        {tabs}
         <div className="flex-1" />
-        {/* Count-gated, like the broom beside it: offered only while there is unread history to
-            clear (#unread-done-items). Archived runs are never unread, so this only ever lights
-            on the Active tab in practice — no need to also gate on `view`. */}
-        {unread > 0 ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            data-slot="mark-all-read"
-            onClick={onMarkAllRead}
-          >
-            <CheckCheckIcon className="size-3.5" aria-hidden="true" />
-            Mark all read
-          </Button>
-        ) : null}
-        {/* Only when there is something to sweep, like the legacy header's count-gated broom. */}
-        {view === 'active' && finished > 0 ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            data-slot="archive-finished"
-            onClick={onArchiveFinished}
-          >
-            <ArchiveIcon className="size-3.5" aria-hidden="true" />
-            Archive finished
-          </Button>
-        ) : null}
-        <div className="relative w-60">
-          <SearchIcon
-            className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-soft-foreground"
-            aria-hidden="true"
-          />
-          <input
-            type="text"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search tasks…"
-            aria-label="Search tasks"
-            className="h-9 w-full rounded-md border border-input bg-card pr-3 pl-8 text-[13px] text-foreground outline-none placeholder:text-soft-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-          />
-        </div>
+        {actions}
+        <SearchField value={query} onChange={setQuery} placeholder="Search tasks…" label="Search tasks" className="w-60" />
       </header>
 
       <div className="flex flex-1 flex-col p-4 pb-[calc(90px+env(safe-area-inset-bottom))] md:p-section md:pb-section">
+        {/* Below `md` the header is hidden, so its tabs, actions and search ride here (#453 G-17):
+            a phone keeps every action the desktop header offers. Mounted on a phone only, so a
+            desktop page has one of each control rather than a hidden twin. No `md:hidden` as well: that
+            is a rem query and the hook a px one, so with a non-default font size the two could
+            disagree and hide the only copy. */}
+        {desktop ? null : (
+          <div data-slot="tasks-phone-toolbar" className="mb-list flex flex-col gap-stack">
+            <div className="flex flex-wrap items-center gap-row">
+              {tabs}
+              {actions}
+            </div>
+            <SearchField value={query} onChange={setQuery} placeholder="Search tasks…" label="Search tasks" />
+          </div>
+        )}
         {runs === undefined ? null : visible.length === 0 ? (
           <TasksEmptyState view={view} query={query} />
         ) : (
@@ -301,7 +302,7 @@ export function TasksOverview({
             data-group-id={group.groupId}
             className="mt-list flex flex-wrap items-center gap-2.5 rounded-lg border border-border bg-card px-3.5 py-2.5 text-[12.5px] text-muted-foreground shadow-xs"
           >
-            <ScaleIcon className="size-[15px] shrink-0 text-soft-foreground" aria-hidden="true" />
+            <ScaleIcon className="size-4 shrink-0 text-soft-foreground" aria-hidden="true" />
             <span>
               <strong className="font-semibold text-foreground">{group.title}</strong> — {group.count} variants
               finished
@@ -319,9 +320,10 @@ export function TasksOverview({
         to="/new"
         data-slot="new-task-fab"
         aria-label="New task"
-        className="fixed right-4 bottom-[calc(16px+env(safe-area-inset-bottom))] z-20 inline-flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-modal md:hidden"
+        // `min-h-tap min-w-tap`: `size-14` rides the density lever and is 42 px at Compact for real.
+        className="fixed right-4 bottom-[calc(16px+env(safe-area-inset-bottom))] z-20 inline-flex size-14 min-h-tap min-w-tap items-center justify-center rounded-full bg-primary text-primary-foreground shadow-modal outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 md:hidden"
       >
-        <PlusIcon className="size-[22px]" aria-hidden="true" />
+        <PlusIcon className="size-5.5" aria-hidden="true" />
       </Link>
     </div>
   )
@@ -378,61 +380,106 @@ function TasksEmptyState({ view, query }: { view: ListView; query: string }) {
   )
 }
 
-function OverviewTab({
+/**
+ * The Active/Archived toggle of both task tables (#453 G-17) — the project table passes counts,
+ * the global one does not. Toggle buttons rather than a tablist: these filter one list in place,
+ * they do not switch panels, so `aria-pressed` is what they are.
+ */
+export function ListViewTabs({
   view,
-  current,
   onSelect,
-  count,
-  children,
+  counts,
 }: {
   view: ListView
-  current: ListView
   onSelect: (view: ListView) => void
-  count: number
-  children: React.ReactNode
+  /** No "0": an empty view says so by being empty. Omit to show no counts at all. */
+  counts?: Record<ListView, number>
 }) {
-  const isActive = view === current
   return (
-    <button
-      type="button"
-      data-slot="overview-tab"
-      data-view={view}
-      // Same rationale as the sidebar's tabs: these filter one list in place, they do not switch
-      // panels — `aria-pressed` is what that actually is.
-      aria-pressed={isActive}
-      onClick={() => onSelect(view)}
-      className={cn(
-        'flex h-7 items-center justify-center gap-1.5 rounded-[7px] px-3 text-[12.5px] font-medium text-muted-foreground',
-        isActive && 'bg-card font-semibold text-foreground shadow-xs'
-      )}
-    >
-      {children}
-      {count > 0 ? <span className="font-mono text-[11px] tabular-nums">{count}</span> : null}
-    </button>
+    <div className="inline-flex gap-0.5 rounded-md bg-muted p-0.75">
+      {(['active', 'archived'] as const).map((option) => {
+        const isActive = option === view
+        const count = counts?.[option] ?? 0
+        return (
+          <button
+            key={option}
+            type="button"
+            data-slot="overview-tab"
+            data-view={option}
+            aria-pressed={isActive}
+            onClick={() => onSelect(option)}
+            // `min-h-tap … md:min-h-0`: a 44 px phone target at every density (#453 Q85).
+            className={cn(
+              'flex h-7 min-h-tap items-center justify-center gap-1.5 rounded-[7px] px-3 text-[12.5px] font-medium text-muted-foreground outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-0',
+              isActive && 'bg-card font-semibold text-foreground shadow-xs',
+            )}
+          >
+            {option === 'active' ? 'Active' : 'Archived'}
+            {count > 0 ? <span className="font-mono text-[11px] tabular-nums">{count}</span> : null}
+          </button>
+        )
+      })}
+    </div>
   )
 }
 
-function Th({
+/**
+ * The search box of both task tables (#453 G-12): the `Input` primitive with a leading icon, so
+ * its phone target, focus ring and iOS text size are the primitive's. The caller owns the value
+ * and the width.
+ */
+export function SearchField({
+  value,
+  onChange,
+  placeholder,
+  label,
+  className,
+}: {
+  value: string
+  onChange: (value: string) => void
+  placeholder: string
+  /** The accessible name — a placeholder is not a label. */
+  label: string
+  className?: string
+}) {
+  return (
+    <div className={cn('relative w-full', className)}>
+      <SearchIcon
+        className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-soft-foreground"
+        aria-hidden="true"
+      />
+      <Input
+        type="text"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        aria-label={label}
+        className="pl-8 md:text-[13px]"
+      />
+    </div>
+  )
+}
+
+/** A task-table header cell — the one look both tables use (`TASK_TH_CLASS`). */
+export function TaskTh({
   children,
   right = false,
   columnId,
   folded = false,
+  className,
 }: {
   children: React.ReactNode
   right?: boolean
-  columnId: TaskColumnId
+  columnId?: TaskColumnId
   folded?: boolean
+  className?: string
 }) {
   return (
     <th
       scope="col"
       data-column-id={columnId}
       data-folded={folded || undefined}
-      className={cn(
-        'h-10 border-b border-border px-3 text-left text-[11px] font-semibold tracking-[0.05em] whitespace-nowrap text-soft-foreground uppercase first:pl-4 last:pr-4',
-        right && 'text-right',
-        folded && 'px-0 first:pl-0 last:pr-0',
-      )}
+      className={cn(TASK_TH_CLASS, right && 'text-right', folded && 'px-0 first:pl-0 last:pr-0', className)}
     >
       {children}
     </th>
@@ -452,15 +499,15 @@ function TaskColumnHeader({
 }) {
   if (!column.canFold) {
     return (
-      <Th columnId={column.id} right={column.align === 'right'}>
+      <TaskTh columnId={column.id} right={column.align === 'right'}>
         {column.label}
-      </Th>
+      </TaskTh>
     )
   }
 
   const action = expanded ? 'Fold' : 'Expand'
   return (
-    <Th columnId={column.id} right={column.align === 'right'} folded={!expanded}>
+    <TaskTh columnId={column.id} right={column.align === 'right'} folded={!expanded}>
       <Tooltip>
         <TooltipTrigger asChild>
           <button
@@ -490,7 +537,7 @@ function TaskColumnHeader({
         </TooltipTrigger>
         <TooltipContent side="top">{column.label} · {action} column</TooltipContent>
       </Tooltip>
-    </Th>
+    </TaskTh>
   )
 }
 
@@ -524,7 +571,7 @@ function TaskColumnIconView({ icon }: { icon?: TaskColumnIcon }) {
   }
 }
 
-const TD_BASE = 'h-11 border-b border-border px-3 whitespace-nowrap first:pl-4 last:pr-4'
+const TD_BASE = TASK_TD_CLASS
 
 /**
  * One run, one row.
@@ -567,8 +614,7 @@ function TableRow({
       data-slot="task-table-row"
       data-run-id={run.id}
       onClick={(event) => {
-        if ((event.target as Element).closest('a, button, input')) return
-        navigate(to)
+        if (isOwnClick(event, 'a, button, input')) navigate(to)
       }}
       className="group/row cursor-pointer hover:bg-muted"
     >
@@ -797,12 +843,14 @@ function TitleCell({
           className="shrink-0"
         />
       ) : null}
+      {/* Revealed like the pin (#453 G-21): hover, keyboard focus, and always on a device that
+          cannot hover — where it is also the 44 px touch target the pin is. */}
       <button
         type="button"
         data-slot="row-rename"
         aria-label="Rename task"
         onClick={editor.begin}
-        className="shrink-0 rounded-sm p-0.5 text-soft-foreground opacity-0 transition-opacity group-hover/row:opacity-100 hover:text-foreground focus-visible:opacity-100 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+        className="inline-flex shrink-0 items-center justify-center rounded-sm p-0.5 text-soft-foreground opacity-0 transition-opacity group-hover/row:opacity-100 hover:text-foreground focus-visible:opacity-100 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none no-hover:min-h-tap no-hover:min-w-tap no-hover:opacity-100"
       >
         <PencilIcon className="size-3" aria-hidden="true" />
       </button>
@@ -817,7 +865,7 @@ function TitleCell({
         <PinToggle
           pinned={Boolean(run.pinned)}
           onToggle={(pinned) => onTogglePin(run, pinned)}
-          className="size-[19px] opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 no-hover:opacity-100 data-[pinned=true]:opacity-100"
+          className="opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 no-hover:opacity-100 data-[pinned=true]:opacity-100"
         />
       ) : null}
     </span>
@@ -848,20 +896,23 @@ function UsageTds({
   )
 }
 
-function UsageTd({ column, cell }: { column: 'cpu' | 'memory'; cell: UsageCell }) {
+/** One CPU or Mem cell — the grammar both task tables share (#453 G-17). */
+export function UsageTd({
+  column,
+  cell,
+  className,
+}: {
+  column: 'cpu' | 'memory'
+  cell: UsageCell
+  className?: string
+}) {
   return (
     <td
       data-usage={column === 'memory' ? 'mem' : column}
       data-column-id={column}
       data-usage-kind={cell.kind}
       title={cell.title}
-      className={cn(
-        TD_BASE,
-        'text-right font-mono tabular-nums',
-        cell.kind === 'live' && 'bg-violet/5 text-xs font-medium text-foreground',
-        cell.kind === 'peak' && 'text-[11.5px] text-soft-foreground',
-        cell.kind === 'none' && 'text-xs text-soft-foreground'
-      )}
+      className={cn(TD_BASE, 'text-right font-mono tabular-nums', USAGE_CELL_CLASS[cell.kind], className)}
     >
       {cell.text || '—'}
     </td>
@@ -911,8 +962,7 @@ function TaskCard({
       onClick={(event) => {
         // `button` as well as `a` since the card grew the pin (#935): a control inside the card
         // owns its own click, exactly as the desktop row has always had it.
-        if ((event.target as Element).closest('a, button')) return
-        navigate(to)
+        if (isOwnClick(event)) navigate(to)
       }}
       className="cursor-pointer rounded-lg border border-border bg-card p-inset shadow-xs"
     >
@@ -923,10 +973,7 @@ function TaskCard({
         </Pill>
         <Link
           to={to}
-          className={cn(
-            'min-w-0 flex-1 text-[13.5px] leading-[1.35]',
-            unread ? 'font-semibold text-foreground' : readDone ? 'font-medium text-muted-foreground' : 'font-medium'
-          )}
+          className={cn(CARD_TITLE_CLASS, cardTitleWeight(run))}
         >
           {runTitle(run)}
         </Link>
@@ -945,11 +992,13 @@ function TaskCard({
         </span>
         {/* Always visible here, not hover-revealed: a card has no hover to speak of on the
             device it exists for, and it is the only place a pin can be set or seen on mobile. */}
+        {/* A 44 px box on the device cards exist for (#453 A-03); the negative margins keep the
+            icon where it was and let the box reach into the card's own padding, not the text. */}
         {onTogglePin ? (
           <PinToggle
             pinned={Boolean(run.pinned)}
             onToggle={(pinned) => onTogglePin(run, pinned)}
-            className="-mr-1 mt-px"
+            className="-mt-2.5 -mr-3"
           />
         ) : null}
       </div>
@@ -1006,19 +1055,50 @@ function TaskCard({
           </>
         )}
         {reference ? (
-          <TaskReferenceChip run={run} reference={reference} className="h-5" />
+          <span className={CHIP_SLOT}>
+            <TaskReferenceChip run={run} reference={reference} className="h-5" />
+          </span>
         ) : null}
       </div>
     </div>
   )
 }
 
+/**
+ * Whether a click on a task row or card is the row's own (#453 T-4): not on a nested control, and
+ * not from a portal. A reference card or the `+N` list renders in a portal, and React bubbles its
+ * events through the row that owns it even though the DOM does not — so a tap on the empty part
+ * of an open popover would otherwise open the task behind it.
+ */
+export function isOwnClick(event: React.MouseEvent<HTMLElement>, controls = 'a, button'): boolean {
+  const target = event.target as Element
+  return event.currentTarget.contains(target) && target.closest(controls) === null
+}
+
+/**
+ * The line a reference chip sits on in a phone card (#453 A-03). The chip keeps its small look
+ * and owns a 44 px hit area; this slot makes the line at least that tall, so the hit area never
+ * reaches a neighbouring line's controls when the meta line wraps.
+ */
+export const CHIP_SLOT = 'inline-flex min-h-tap items-center md:min-h-0'
+
+/**
+ * A phone card's title link (#453 G-17): at least the 44 px target, reaching `2.5` up into the
+ * card's padding so the first line still starts level with the status pill.
+ */
+export const CARD_TITLE_CLASS = '-mt-2.5 block min-h-tap min-w-0 flex-1 pt-2.5 text-[13.5px] leading-[1.35]'
+
+/** Read/unread weight — promote an unread done item, dim a read one (#unread-done-items). */
+export function cardTitleWeight(run: ReadStateInput): string {
+  return isUnread(run) ? 'font-semibold text-foreground' : isReadDoneItem(run) ? 'font-medium text-muted-foreground' : 'font-medium'
+}
+
 /** An honest em dash: this cell has nothing true to show. */
-function Dash() {
+export function Dash() {
   return <span className="text-xs text-soft-foreground">—</span>
 }
 
-function Sep() {
+export function Sep() {
   return (
     <span className="text-soft-foreground" aria-hidden="true">
       ·

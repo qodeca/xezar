@@ -42,8 +42,11 @@ export function PinToggle({
         event.stopPropagation()
         onToggle(!pinned)
       }}
+      // `min-h-tap min-w-tap`: the absolute 44 px hit area (#453 A-03) wherever a finger is the
+      // pointer – below `md`, and on any device that cannot hover (a tablet in landscape is ≥md).
+      // The icon stays `size-3`; only the box grows. `size-5` is the desktop mouse target.
       className={cn(
-        'inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-soft-foreground transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none',
+        'inline-flex size-5 min-h-tap min-w-tap shrink-0 items-center justify-center rounded-sm text-soft-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-0 md:min-w-0 no-hover:min-h-tap no-hover:min-w-tap',
         pinned && 'text-violet hover:text-violet',
         className,
       )}

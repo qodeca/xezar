@@ -30,6 +30,14 @@ import { cn } from '@/lib/utils'
  * shuts after each tick makes the common case three round trips.
  */
 
+/**
+ * The filter chip's shape (#453 G-03): `h-7` rides the density lever, `min-h-chip` holds the 24 px
+ * desktop floor (WCAG 2.2 SC 2.5.8) that `h-7` alone missed at Compact for real, and below `md` the
+ * chip is the absolute 44 px phone target at every density. Tone classes are the caller's.
+ */
+const FILTER_CHIP =
+  'inline-flex h-7 min-h-tap min-w-tap items-center justify-center gap-1.5 rounded-full border px-2.5 text-xs font-medium transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-chip md:min-w-0'
+
 export interface FacetOption {
   value: string
   label: string
@@ -78,10 +86,7 @@ export function FacetFilter({
           data-slot={`facet-${slot}`}
           data-active={active ? 'true' : undefined}
           aria-label={`Filter by ${label.toLowerCase()}`}
-          className={cn(
-            'inline-flex h-7 items-center gap-1.5 rounded-full border border-border bg-card px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
-            active && 'border-violet/40 bg-violet/10 text-foreground',
-          )}
+          className={cn(FILTER_CHIP, 'border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground', active && 'border-violet/40 bg-violet/10 text-foreground')}
         >
           <span className={cn(active && 'text-soft-foreground')}>{label}</span>
           {active ? <span className="max-w-[140px] truncate font-semibold">{summary}</span> : null}
@@ -136,7 +141,7 @@ export function FacetFilter({
               type="button"
               data-action={`facet-${slot}-clear`}
               onClick={() => onClear()}
-              className="w-full rounded-sm px-2 py-1.5 text-left text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+              className="min-h-tap w-full rounded-sm px-2 py-1.5 text-left text-xs font-medium text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-0"
             >
               Clear {label.toLowerCase()}
             </button>
@@ -179,7 +184,7 @@ export function ToggleChip({
       aria-pressed={selected}
       onClick={onToggle}
       className={cn(
-        'inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium transition-colors',
+        FILTER_CHIP,
         tone === 'tag'
           ? 'border-violet/25 bg-violet/10 text-violet hover:bg-violet/20'
           : 'border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground',
@@ -229,7 +234,7 @@ export function SegmentedControl<T extends string>({
       data-slot={slot}
       role="group"
       aria-label={label}
-      className="inline-flex gap-0.5 rounded-md bg-muted p-[3px]"
+      className="inline-flex gap-0.5 rounded-md bg-muted p-0.75"
     >
       {options.map((option) => {
         const isActive = option.value === value
@@ -242,8 +247,9 @@ export function SegmentedControl<T extends string>({
             // `aria-pressed` is also the honest reading of a toggle that can be released.
             aria-pressed={isActive}
             onClick={() => onChange(option.value)}
+            // `min-h-tap min-w-tap … md:`: a 44 px phone target at every density (#453 Q10).
             className={cn(
-              'flex h-6 items-center justify-center rounded-[6px] px-2.5 text-[12px] font-medium text-muted-foreground transition-colors hover:text-foreground',
+              'flex h-6 min-h-tap min-w-tap items-center justify-center rounded-[6px] px-2.5 text-[12px] font-medium text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-0 md:min-w-0',
               isActive && 'bg-card font-semibold text-foreground shadow-xs',
             )}
           >

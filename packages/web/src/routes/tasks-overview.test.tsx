@@ -409,7 +409,7 @@ describe('TasksOverview — the table', () => {
       'Status',
       'Task',
       'Workflow',
-      'Tool Name',
+      'Tool name',
       'Model',
       'Branch',
       '±',

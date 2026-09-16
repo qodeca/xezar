@@ -68,7 +68,8 @@ export function TitleEditInput({ editor, className }: { editor: TitleEditor; cla
         }
       }}
       className={cn(
-        'w-full min-w-0 rounded-sm border border-border bg-card px-1.5 py-0.5 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
+        // `min-h-tap … md:min-h-0`: the field is a 44 px target on a phone (#453 Q09).
+        'min-h-tap w-full min-w-0 rounded-sm border border-border bg-card px-1.5 py-0.5 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-0',
         className
       )}
     />

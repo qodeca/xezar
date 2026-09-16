@@ -234,7 +234,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 
 - **Purpose**: the neutral status chip. Colour lives in the dot, never in the fill.
 - **Source**: `packages/web/src/components/pill.tsx`. Props `dot?: StatusDotTone`, `pulse?: boolean`, span props.
-- **Look**: `inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-[3px] text-xs font-medium whitespace-nowrap text-muted-foreground`.
+- **Look**: `inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-xs font-medium whitespace-nowrap text-muted-foreground` (`py-1` rides the density lever, #453 B4).
 - **Rules**: DO render `attention.label` (lower case) inside. DO NOT tint the pill background by status.
 - **Where used**: 4 files (`compare-variants.tsx`, `global-tasks.tsx`, `task-thread/run-header.tsx`, `tasks-overview.tsx`).
 
@@ -242,10 +242,10 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 
 - **Purpose**: the composer's single-choice bordered pill (runner, model, account).
 - **Source**: `packages/web/src/components/picker-pill.tsx`. Exports `chipClass`, `chevron`, `PickerPill`, `RunnerPill`, type `RunnerAccountChoice`.
-- **Look** (`chipClass`): `inline-flex h-7 min-h-[24px] items-center gap-1.5 rounded-full border border-border bg-card px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-55`. `h-7` rides the density lever (28 / 24.5 px at Comfortable / Compact); `min-h-[24px]` is an absolute floor, so at Compact for real it stays 24 px instead of 21 (WCAG 2.2 SC 2.5.8).
+- **Look** (`chipClass`): `inline-flex h-7 min-h-[24px] items-center gap-1.5 rounded-full border border-border bg-card px-2.5 text-xs font-medium text-muted-foreground transition-colors outline-none hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-55 max-md:min-h-tap max-md:min-w-tap`. `h-7` rides the density lever (28 / 24.5 px at Comfortable / Compact); `min-h-[24px]` is an absolute floor, so at Compact for real it stays 24 px instead of 21 (WCAG 2.2 SC 2.5.8). Below `md` the chip is a 44 px phone target at every density; `max-md:` keeps the unprefixed 24 px floor for the desktop.
 - **Props**: `slot`, `ariaLabel`, `label`, `value`, `options[{value,label,desc?}]`, `onPick`, `disabled`, `readOnly`, `hint`, `disabledHint`, `status`.
 - **States**: enabled, read-only (`cursor-default`, no hover), disabled (bare button in a `title` span so the reason still shows), open menu (`DropdownMenuRadioGroup`), catalog status row.
-- **Rules**: DO import `chipClass` rather than copy it (two copies exist, G-03). The runner pill shows the raw backend id on purpose; product names come from `runner-label.ts` everywhere else.
+- **Rules**: DO import `chipClass` rather than copy it (`PromptTemplateMenu` does; the settings copy is G-03). The runner pill shows the raw backend id on purpose; product names come from `runner-label.ts` everywhere else.
 - **Where used**: 5 files.
 
 ### EnginePills
@@ -259,7 +259,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 
 - **Purpose**: the global Tasks page filters.
 - **Source**: `packages/web/src/components/facet-filter.tsx`.
-- **Look**: FacetFilter trigger `inline-flex h-7 items-center gap-1.5 rounded-full border border-border bg-card px-2.5 text-xs font-medium text-muted-foreground …`, active `border-violet/40 bg-violet/10 text-foreground`; checkbox `size-4 rounded-[4px] border`, checked `border-violet bg-violet text-violet-foreground`; ToggleChip `tag` tone `border-violet/25 bg-violet/10 text-violet`, selected `border-violet bg-violet text-violet-foreground`; SegmentedControl `inline-flex gap-0.5 rounded-md bg-muted p-[3px]`, segment `h-6 rounded-[6px] px-2.5 text-[12px] font-medium`, active `bg-card font-semibold text-foreground shadow-xs`.
+- **Look**: one filter chip (`FILTER_CHIP`) for the FacetFilter trigger and ToggleChip: `inline-flex h-7 min-h-tap min-w-tap items-center justify-center gap-1.5 rounded-full border px-2.5 text-xs font-medium … md:min-h-chip md:min-w-0` – 44 px on a phone, 24 px floor on a desktop. FacetFilter trigger `border-border bg-card text-muted-foreground`, active `border-violet/40 bg-violet/10 text-foreground`; checkbox `size-4 rounded-[4px] border`, checked `border-violet bg-violet text-violet-foreground`; ToggleChip `tag` tone `border-violet/25 bg-violet/10 text-violet`, selected `border-violet bg-violet text-violet-foreground`; SegmentedControl `inline-flex gap-0.5 rounded-md bg-muted p-0.75`, segment `h-6 min-h-tap min-w-tap rounded-[6px] px-2.5 text-[12px] font-medium md:min-h-0 md:min-w-0`; the Clear row in the facet list is `min-h-tap md:min-h-0`; active `bg-card font-semibold text-foreground shadow-xs`.
 - **Rules**: a filter that re-slices one list uses `aria-pressed`, not a tablist. Counts show `0` on purpose.
 - **Accessibility**: `aria-label="Filter by {label}"`, `role="option" aria-checked`, `role="group"`.
 - **Copy**: `Nothing to filter by`, `Search {label}…`, `Clear {label}`, `{n} selected`.
@@ -269,7 +269,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 
 - **Purpose**: one underline tab for URL-backed segments (Session | Changes | Files; Changes | Commits | Branches).
 - **Source**: `packages/web/src/components/tab-link.tsx`. Props `to`, `active`, `onClick`, `children`.
-- **Look**: `-mb-px flex h-8 items-center rounded-t-md border-b-2 px-3 text-[13px] font-medium`; active `border-foreground font-semibold text-foreground`; inactive `border-transparent text-muted-foreground hover:bg-muted hover:text-foreground`.
+- **Look**: `-mb-px flex h-8 min-h-tap min-w-tap items-center justify-center rounded-t-md border-b-2 px-3 text-[13px] font-medium md:min-h-0 md:min-w-0` (44 px on a phone); active `border-foreground font-semibold text-foreground`; inactive `border-transparent text-muted-foreground hover:bg-muted hover:text-foreground`.
 - **Accessibility**: a real `<Link>` with `aria-current="page"`.
 - **Where used**: 3 files.
 
@@ -285,14 +285,14 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Source**: `packages/web/src/components/task-quick-list.tsx`. Exports `TaskQuickList`, `QuickListBuckets`, `TaskQuickListContainer`.
 - **Look**: bucket heading `px-3 pt-stack pb-1 text-[11px] font-semibold tracking-[0.04em] uppercase`, so sidebar groups sit `stack` apart.
 - **States**: nothing until runs load (no skeleton, no false empty); empty `No tasks yet — describe one.` / `Nothing archived yet.`; active row `bg-muted` + `aria-current="page"`; unread row `font-semibold` with a trailing violet dot `aria-label="unread"`; read-done `font-medium text-muted-foreground`; group tile `aria-expanded`.
-- **Rules**: the width-priority rule: the title is the only element allowed to grow; everything else must be droppable. The pin is hover-revealed with `group-hover`, `group-focus-within`, `no-hover:` and `data-[pinned=true]` reveals, zero-width when hidden. Dot, chip and pin are siblings of the link, never children.
+- **Rules**: the width-priority rule: the title is the only element allowed to grow; everything else must be droppable. The pin is hover-revealed with `group-hover`, `group-focus-within`, `no-hover:` and `data-[pinned=true]` reveals, zero-width when hidden; below `md` (the phone drawer) and on a no-hover device it is always shown. Dot, chip and pin are siblings of the link, never children. Below `md` the tabs, the group tile, the compare link and every row link are 44 px tall (`min-h-tap … md:min-h-0`).
 - **Where used**: 2 files.
 
 ### PinToggle
 
 - **Purpose**: the one pin button for every task list surface.
 - **Source**: `packages/web/src/components/pin-toggle.tsx`. Props `pinned`, `onToggle`, `className`.
-- **Look**: `size-5 rounded-sm text-soft-foreground hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50`; pinned `text-violet` with a filled icon.
+- **Look**: `size-5 min-h-tap min-w-tap rounded-sm text-soft-foreground hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-0 md:min-w-0 no-hover:min-h-tap no-hover:min-w-tap`; pinned `text-violet` with a filled icon. 44 px on a phone and on a no-hover tablet, 20 px beside a desktop row.
 - **Rules**: never disabled during the mutation; the caller decides visibility (hover reveal).
 - **Accessibility**: `aria-pressed`, `aria-label="Pin task" / "Unpin task"`, `title="Pin to the top of the list"`.
 - **Where used**: 2 files.
@@ -314,7 +314,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 
 ### TaskAgent cells
 
-- **Purpose**: the Tool Name and Model table cells.
+- **Purpose**: the Tool name and Model table cells.
 - **Source**: `packages/web/src/components/task-agent.tsx`. Exports `ToolNameCell`, `ModelNameCell`.
 - **Look**: `block truncate text-[12.5px]` (tool) / `font-mono text-[11.5px]` (model); `text-soft-foreground` when inherited or auto.
 - **Rules**: text rules come from `lib/runner-label.ts`; a model id prints verbatim.
@@ -324,7 +324,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 
 - **Purpose**: the one inline-rename state machine (run header h1 and the table Task cell).
 - **Source**: `packages/web/src/components/editable-title.tsx`. Exports `useTitleEditor`, `TitleEditInput`.
-- **Look**: input `rounded-sm border border-border bg-card px-1.5 py-0.5 focus-visible:ring-[3px] focus-visible:ring-ring/50`.
+- **Look**: input `min-h-tap rounded-sm border border-border bg-card px-1.5 py-0.5 focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-0` (44 px on a phone).
 - **Accessibility**: `aria-label="Task title"`, Enter commits, Escape cancels, blur commits once.
 - **Where used**: 2 files.
 
@@ -332,7 +332,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 
 - **Purpose**: a task's PR or issue link with its state in colour, glyph and a hover card.
 - **Source**: `packages/web/src/components/reference-chip.tsx`. Exports `ReferenceChip`, `useCloseReferenceCard`.
-- **Look**: `inline-flex h-6 min-h-[24px] items-center gap-1 rounded-full border px-2 font-mono text-[11px] font-semibold` – never under 24 px (WCAG 2.2 SC 2.5.8): `h-6` rides the lever (24 at Comfortable, 30 at Roomy) and `min-h-[24px]` holds it at 24 at Compact and Compact for real, and under a caller's shorter `h-5` (phone task card) or `h-auto` (quick list); tones `success` `border-success/40 text-success`, `danger`, `violet` (resting), `info`, `neutral` (`border-border text-muted-foreground`), `pending` (`border-pending-strong/45 text-pending-strong`), `conflict` (`border-conflict/45 text-conflict`); link chips add `hover:bg-{tone}/10`.
+- **Look**: `inline-flex h-6 min-h-[24px] items-center gap-1 rounded-full border px-2 font-mono text-[11px] font-semibold` – never under 24 px (WCAG 2.2 SC 2.5.8): `h-6` rides the lever (24 at Comfortable, 30 at Roomy) and `min-h-[24px]` holds it at 24 at Compact and Compact for real, and under a caller's shorter `h-5` (phone task card) or `h-auto` (quick list); tones `success` `border-success/40 text-success`, `danger`, `violet` (resting), `info`, `neutral` (`border-border text-muted-foreground`), `pending` (`border-pending-strong/45 text-pending-strong`), `conflict` (`border-conflict/45 text-conflict`); link chips add `hover:bg-{tone}/10`. Below `md` a link chip keeps its 24 px look and gets a centred 44 px `::before` hit area (`PHONE_HIT_AREA`); callers set it on a 44 px line (`CHIP_SLOT` in `routes/tasks-overview.tsx`) so two chips' hit areas never overlap. An inert chip is not a target and gets none.
 - **States**: inert (non-http URL), unknown status, loading (`Checking GitHub…`), unavailable, not found, conflicting (warning triangle + `Resolve conflicts` action), open card (150ms open, 120ms close; never on touch).
 - **Accessibility**: `aria-label="Open the pull request for {task} — {label}"`; `role="dialog"` only when the card has an action, else `role="tooltip"`; Escape closes; Tab moves into the panel.
 - **Where used**: 3 files.
@@ -411,7 +411,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 
 - **Purpose**: "which agent, and which login" as one flat radio list, shared by repo and global settings.
 - **Source**: `packages/web/src/components/default-agent-picker.tsx`. Exports `DefaultAgentPicker`, `agentPickerRows`, `hasAgentAccounts`.
-- **Look**: `rounded-md border border-border bg-card p-0.5`; row `rounded-sm px-3 py-1.5 font-mono text-[13px] font-medium`, checked `bg-muted text-foreground`.
+- **Look**: `rounded-md border border-border bg-card p-0.5`; row `min-h-tap min-w-tap rounded-sm px-3 py-1.5 font-mono text-[13px] font-medium md:min-h-0 md:min-w-0` with the focus ring, checked `bg-muted text-foreground`. 44 px on a phone.
 - **Accessibility**: `role="radiogroup" aria-label="Default runner"`, `role="radio" aria-checked`.
 - **Where used**: 2 files.
 
@@ -419,8 +419,9 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 
 - **Purpose**: "Insert a template" trigger for the three follow-up composers.
 - **Source**: `packages/web/src/components/prompt-template-menu.tsx`. Props `templates`, `onInsert`, `triggerClassName`, `disabled`, `iconOnly`.
+- **Look**: the trigger is `chipClass` (icon-only adds `w-7 min-w-chip px-0`), so it is 44 px on a phone.
 - **Rules**: renders nothing when the list is empty; prevents `onCloseAutoFocus` so the caret restore survives.
-- **Copy**: `templates`, `search templates…`, `Insert a template`, `Edit templates…`.
+- **Copy**: `templates`, `Search templates…`, `Insert a template`, `Edit templates…`.
 - **Where used**: 3 files.
 
 ### Composer

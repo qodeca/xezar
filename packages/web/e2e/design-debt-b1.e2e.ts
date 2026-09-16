@@ -253,6 +253,24 @@ function waitStill(selector: string): void {
   )
 }
 
+/**
+ * Until an enabled control has held its position for 250 ms. The composer footer reflows a frame
+ * or two after the model pill enables, and with 44 px phone pills that reflow wraps the pill onto
+ * the next line, so a click aimed at the first position misses it (#453).
+ */
+function waitPlaced(selector: string): void {
+  browser.waitForFunction(
+    `(() => {
+      const el = document.querySelector('${selector}');
+      if (el === null || el.disabled) return false;
+      const box = el.getBoundingClientRect();
+      const at = box.x + ',' + box.y, now = performance.now();
+      if (window.__placed?.at !== at) { window.__placed = { at, since: now }; return false }
+      return now - window.__placed.since >= 250;
+    })()`,
+  )
+}
+
 function openDrawer(): void {
   browser.click(MENU_BUTTON)
   browser.waitForFunction(DRAWER_SETTLED)
@@ -329,9 +347,7 @@ function sweep(): Sweep {
 
   // --- the composer: the icon-sm Button, the chip floor and a DropdownMenu -------------------
   browser.goto(`${baseUrl}/p/${bootProject}/new`)
-  browser.waitForFunction(
-    `document.querySelector('${MODEL_PILL}') !== null && !document.querySelector('${MODEL_PILL}').disabled`,
-  )
+  waitPlaced(MODEL_PILL)
   targets.push(
     read<Target>(
       `__measure('Button size=icon-sm (composer)', '[data-slot="composer"] button[aria-label="Start task"], [data-slot="composer"] button[aria-label="Plan task"]')`,
@@ -396,6 +412,9 @@ function sweep(): Sweep {
   targets.push(
     read<Target>(`__measure('Button size=icon-sm (Run actions)', 'button[aria-label="Run actions"]')`),
   )
+  // The thread opens scrolled to its end and the phone run header is not sticky, so the header
+  // can sit partly under the top bar. Bring the control into view first, as a finger would (#453).
+  browser.evaluate(`document.querySelector('button[aria-label="Run actions"]').scrollIntoView({ block: 'center' })`)
   browser.click('button[aria-label="Run actions"]')
   browser.waitForFunction(`document.querySelector('[data-slot="run-actions-menu"] [data-slot="dropdown-menu-item"]') !== null`)
   waitStill('[data-slot="run-actions-menu"]')
@@ -647,9 +666,7 @@ describe('B1 motion: prefers-reduced-motion actually stops the cockpit moving', 
     browser.waitForFunction(`document.querySelector('[cmdk-root]') === null`)
 
     browser.goto(`${baseUrl}/p/${bootProject}/new`)
-    browser.waitForFunction(
-      `document.querySelector('${MODEL_PILL}') !== null && !document.querySelector('${MODEL_PILL}').disabled`,
-    )
+    waitPlaced(MODEL_PILL)
     browser.click(MODEL_PILL)
     browser.waitForFunction(`document.querySelectorAll('[data-slot="dropdown-menu-radio-item"]').length > 0`)
     waitStill('[data-slot="dropdown-menu-content"]')

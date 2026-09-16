@@ -12,6 +12,14 @@ Installation validation is reported in installation.md. Real-task entries follow
 
 ## Real-task entries
 
+### 2026-09-16 — #453 B4 review response round 1 (design finding B-1), `address-review-findings` step `address`, `xezar-review-response`, Claude Code — real-task observed
+
+- Input: design review of PR #529 at `b5e46db` (REQUEST CHANGES, B-1: the conflict action had no browser measurement); `main` at `248ea8a`.
+- Observed: **the dry-run forge is not an unavailable forge.** It answers `available: true` with no statuses, and a reference with no status drops any remembered conflict, so seeding the cockpit's `sessionStorage` memory painted nothing. Answering the one `ref-status` request through the browser provider's `network route` for the test's duration gave a deterministic conflicting PR.
+- Observed: **a red proof must actually shrink the target.** `min-h-0` lost to the Button's `min-h-tap` in the stylesheet order, and `max-h-7` lost to it because min-height wins over max-height; both runs stayed green. Only `min-h-0!` produced the 28 px failure on all 12 panels. A red proof that stays green is a broken proof, not a guard.
+- Regression/control: the B4 spec passed 16/16 with the new conflict matrix; the named break failed it; an ad-hoc axe-core 4.12.1 pass over the same 48 panels found one pre-existing rule (`aria-dialog-name`, recorded as known-gaps G-31).
+- Remaining limit: axe is not a repository dependency, so the committed spec carries structural checks instead of the axe rule.
+
 ### 2026-09-16 — #467 PR 4 (terminal activity ↔ MCP contracts), `feature-implementation` step `implement`, `xezar-implementation`, Claude Code — real-task observed
 
 - Input: the #467 plan row 4, merged PR 2/3 and base `1975121` carrying #450, #460 and #523.
@@ -20,6 +28,15 @@ Installation validation is reported in installation.md. Real-task entries follow
 - Observed (tooling): a whole-fix `git stash push -- $SRC` in zsh passed the file list as ONE path, so nothing was stashed, and the "red" run exited 0 against the fixed code. The output said `warning: could not open directory` and nothing else failed. A `bash -c` wrapper was then refused by the permission layer. The proof was redone by committing and checking the base versions of the source files out over the commit, which also avoids the shared stash stack. Lesson: in zsh, quote nothing and use an array, or do not use variables for path lists; and treat a red run that exits 0 as a broken proof, not as a green guard.
 - Regression/control: 12 named breaks in `packages/xezar/test/red-proofs.mjs` (10 red, 2 guards that pass both ways by design); whole-fix swap: 5 tests failed, 58 passed, then 74/74 passed. `npm run test:coverage:mcp` held the per-file 80/80 floor (`mcp/index.ts` 86.82 % lines, 80.85 % branches).
 - Remaining limit: fixture-tested. The journal-sourced lines were not watched live in a real terminal; terminal QA remains for the QA stage.
+
+### 2026-09-16 — #453 batch B4 (task lists, pins, chips and pills), `feature-implementation` step `implement`, `xezar-implementation`, Claude Code — real-task observed
+
+- Input: the accepted B4 row of the #453 batch plan, the design-debt inventory and B3 (`09b4e8d`) with its two design-review findings folded in.
+- Observed: **the browser suite's click is a mouse, even with touch emulation on.** A `+N` list that opens on `pointerenter` (and deliberately ignores touch) opened under the provider's click and was toggled shut by the same click, so the list looked missing. Opening it from the keyboard measures the phone state honestly; a spec that must prove a tap uses `tapAt`, which is also a mouse stream. Treat "the element flashed and vanished" as this before suspecting the component.
+- Observed: **a phone-only DOM branch doubles every jsdom query.** Rendering the new phone toolbar and cards next to the desktop header made 63 existing unit tests find two matches. Rendering the phone branch only when `useIsDesktop()` is false kept the unit suites unchanged, because jsdom has no `matchMedia` and counts as a desktop; the phone branch is then proven in the browser spec and in unit tests that stub `matchMedia`.
+- Observed: **a fixed contrast sweep finds token debt outside the batch.** Light `--success`, `--danger` and `--violet` fail 4.5:1 as small text on the task lists. A batch that may not change tokens records the three colours in known-gaps and names them in the spec, so any other colour still fails.
+- Regression/control: seven named source breaks (two card guards, clipboard success-on-rejection, both byte precisions, a 28 px pin, a chip without a hit area) each turned the matching B4 unit test red; the stash red was an honest import failure, not a behaviour red. The 375 px matrix passed 12/12 at four densities.
+- Remaining limit: the browser matrix was not itself run against a broken build; its targets are proven red by the unit breaks only.
 
 ### 2026-09-16 — #464 P3 (leader setup verification and recovery), `feature-implementation` step `implement`, `xezar-implementation`, Codex — real-task observed
 

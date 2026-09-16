@@ -9,7 +9,7 @@ source. Where usage is split, the rule is the majority form and the minority is 
 
 | Rule | Evidence |
 | --- | --- |
-| Sentence case everywhere: headings, labels, buttons, menu items, tabs. Proper nouns keep their case (`GitHub`, `MCP`, `CPU`). | 58 of 60 headings; 130 of 130 button labels. "Global settings", "Agent accounts", "Defaults for new projects" (`settings/registry.tsx`, `accounts-section.tsx`). Exception: the column label "Tool Name" (`lib/task-columns.ts:62`). |
+| Sentence case everywhere: headings, labels, buttons, menu items, tabs. Proper nouns keep their case (`GitHub`, `MCP`, `CPU`). | 58 of 60 headings; 130 of 130 button labels. "Global settings", "Agent accounts", "Defaults for new projects" (`settings/registry.tsx`, `accounts-section.tsx`). |
 | `xezar` is always lower case, even at the start of a sentence. | 212 occurrences, 0 of "Xezar". "xezar MCP server" (`mcp-api-section.tsx`). The app calls itself "the cockpit" in prose. |
 | No trailing period on headings, labels, buttons, tooltips, empty-state titles. Descriptions, hints, subtitles and bodies are full sentences with a period. | 20 of 20 empty titles without a period; 18 of 18 subtitles with one. |
 | The ellipsis is one character, `…`, never `...`. | 134 to 1. "Loading task…", "Search tasks…". |
@@ -81,8 +81,8 @@ Markdown files into .xezar/skills/, …".
   the repo-wide error doctrine ("400/409/500 alike: the server's own words, verbatim",
   `agents-section.tsx:109`).
 - Load-error titles: "Could not load X" (14 sites: "Could not load skills", "Could not load the inbox",
-  "Could not load this task"). The settings pages say "X did not load" (9 sites); new copy uses
-  "Could not load X" (G-15).
+  "Could not load this task", "Could not load tasks across projects"). No "X did not load" title
+  remains (#453 B3 fixed settings, B4 the global Tasks page).
 - Disabled-action reasons: "{Thing} unavailable — {why}": "Commit unavailable — no changes to commit",
   "Push unavailable — no remote configured" (`lib/git-actions.ts`).
 - Refusals name the consequence and who can act, never the phrase "not available in hosted mode":
@@ -132,8 +132,8 @@ Form dialogs use a plain phrase, no question mark: "Commit changes", "Add agent 
   project. The rest wait in the queue.", "0 = unlimited", "Leave empty for no limit."
 - Placeholder: either an example value ("~/xezar/projects", "sonnet", "owner/repo or
   https://github.com/owner/repo") or an instruction ending in `…` ("Search tasks…",
-  "Describe a task for the agent — / for skills…"). Sentence case; six lower-case "search …" placeholders
-  are the minority (G-15).
+  "Describe a task for the agent — / for skills…"). Sentence case; four lower-case "search …" placeholders
+  remain, in `routes/new-task.tsx` and `routes/github/hand-to-agent.tsx` (G-15).
 - "Filter" for narrowing a local list ("Filter skills…", "Filter labels…"); "Search" for a search box
   ("Search tasks…", "Search every project…").
 
