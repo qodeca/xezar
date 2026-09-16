@@ -8,6 +8,9 @@ import { workflowDefSchema, workflowStepDefSchema } from './workflows.ts';
 // Reviewer reports (#460). Declared in their own file because they are a shape in their own
 // right — the run record merely CARRIES them, and the persistence schema imports the same one.
 import { taskVerdictIssueSchema, taskVerdictSchema } from './task-verdict.ts';
+// Advisory step liveness (#460 § 2), in its own file for the same reason: the step record CARRIES
+// the observation, and the monitor that writes it imports the one definition.
+import { stepProgressSchema } from './run-progress.ts';
 
 /**
  * The RUNS family of `/api/v1` — a task's record, its lifecycle mutations, and the artifacts
@@ -91,6 +94,11 @@ export const stepStateSchema = z.object({
    *  selection. Absent on records written before accounts existed. */
   profileId: z.string().optional(),
   costUsd: z.number().optional(),
+  /** Advisory liveness of this step (#460): when it last showed activity, the wall clock it
+   *  spawned with, and whether anything currently looks stalled. Absent on every record written
+   *  before this, on check steps that resolved no timeout, and whenever nothing has observed the
+   *  step yet — and absent is UNKNOWN, never "healthy". Nothing here changes what runs. */
+  progress: stepProgressSchema.optional(),
 });
 export type StepState = z.infer<typeof stepStateSchema>;
 

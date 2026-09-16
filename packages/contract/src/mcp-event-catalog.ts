@@ -36,6 +36,19 @@ export const MCP_EVENT_KIND_CATEGORY = {
   'task.cancelled': 'E-01',
   /** The run parked at `waiting` with no structured question: it cannot go on without input. */
   'task.blocked': 'E-01',
+  /**
+   * An executing step looks stuck (#460 § 2) — no agent activity for the quiet window, or most
+   * of a finite step timeout spent. ADVISORY: it proves no deadlock, stops nothing and moves no
+   * deadline, and it is an E-01 row because it is a statement about whether the task can still
+   * reach an outcome, which is the one thing E-01 is about. A distinct kind from `task.blocked`
+   * on purpose: blocked is a fact the engine knows (the run parked and will not move without
+   * input), stalled is a suspicion a reader must go and check.
+   */
+  'task.stalled': 'E-01',
+  /** Real agent activity returned to a step that was reported quiet. Never written without a
+   *  preceding `task.stalled` for that step's episode — a resume with nothing to resume from
+   *  would be noise, and the pair is what makes the advisory readable as a span. */
+  'task.resumed': 'E-01',
   // E-02
   /** The agent raised a structured question (`ask.requested`) and parked at `waiting`. */
   'question.asked': 'E-02',

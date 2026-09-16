@@ -4,6 +4,8 @@ import {
   MCP_JOURNAL_PAGE_BYTES,
   MCP_JOURNAL_PAGE_ROWS,
   MCP_JOURNAL_RETAINED_ROWS,
+  STALL_DEADLINE_RATIO,
+  STALL_QUIET_MS,
   mcpJournalCursorSchema,
   operationIdSchema,
   type McpLeaderDoorResult,
@@ -145,6 +147,9 @@ export const leaderEventsTool = defineTool({
     'When hasMore is true, read again at once; otherwise do not poll.',
     'After you have taken a page into account, ack its nextCursor. Until you do, read returns the same events again, so drop any eventId you already handled. Acknowledging an older cursor changes nothing.',
     'status "gap" means events after your position are no longer retained: nothing is replayed, the current state is included, and you continue by acking resumeCursor.',
+    // #460 § 2: the advisory is only safe if the leader is told, in the same breath, what it does
+    // NOT mean. A reader that treats this row as a failure would cancel working tasks.
+    `task.stalled is an advisory observation: no transcript activity for ${STALL_QUIET_MS / 60_000} minutes, or at least ${Math.round(STALL_DEADLINE_RATIO * 100)}% of a finite step timeout used. It does not prove a deadlock and does not stop the task. Read the task before deciding whether to steer or cancel it. task.resumed says activity came back.`,
     // #460 § 4, verbatim: the one recovery a compacted leader must be told, because after a
     // compaction it cannot know which pushed messages it still holds. Read replays what was pushed
     // and never acked, so the recovery is a read — not a re-push, and not a poll.
