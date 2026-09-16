@@ -13,6 +13,7 @@
 
 ## 🐛 Bug Fixes
 
+- 🐛 Update Hono and its Node adapter to clear the shipped server advisories. (#428)
 - A live task now stays pinned to its tail when the late current-state response mounts the Plan and Agents docks; slower machines no longer leave the thread exactly 130 px above the bottom.
 - Terminal recovery now preserves the boot banner and counts only new task failures, including projects opened later. Step text is sanitized before display, quiet mode has no live region, and pipes remain free of escape codes even when colour is requested.
 - 🐛 fix(test): the Claude Code adapter's source guard (no process, no environment – #311) now ignores the helper functions Stryker injects into the file it reads, so the nightly mutation run's dry run no longer fails on Stryker's own `process.env` read; a real `child_process` or `process.env` in the adapter still fails it (#436, #377).
