@@ -215,6 +215,8 @@ import { openInTerminal } from './open-in-terminal.ts';
 import { agentCliRunner, detectOpenTargets, openFileInDefaultApp, openInApp } from './open-in-app.ts';
 import { createDraftPr } from './pr.ts';
 import { ProviderRuntimeAuthObserver } from './provider-auth-runtime.ts';
+// Pure helper + type only: the renderer itself never enters the server's import graph.
+import { httpDiagnosticsMiddleware, type HttpFailure } from '../terminal/http-diagnostics.ts';
 import {
   providerForActiveRun,
   providerForExistingRun,
@@ -313,6 +315,28 @@ export interface ServerDeps {
   /** `startServer` only: handed the app it built, so the MCP socket (src/index.ts) dispatches
    *  into the SAME route table in-process (#243). `createApp` ignores it. */
   onApp?: (app: ReturnType<typeof createApp>) => void;
+  /**
+   * Handed the project-context map this server built (#467, PR 3), the same way `onApp` hands
+   * over the app.
+   *
+   * `serve` owns the boot store directly but has no reference to the map that builds every
+   * LATER project's store, so a terminal renderer could not subscribe to one. Rather than
+   * making the CLI construct and inject a map — which would move the ownership of every
+   * project's lifecycle out of the server for one subscriber — the map it already builds is
+   * offered. Optional and observe-only: no caller, no change.
+   */
+  onContexts?: (contexts: ProjectContexts) => void;
+  /**
+   * One safe diagnostic per failed HTTP request (#467, PR 3) — a 4xx a handler RETURNED as well
+   * as a 5xx something threw. Additive and optional: without it not one middleware is
+   * registered and the route table is byte-identical, which is what keeps every existing test
+   * and the published surface unchanged.
+   *
+   * The callback is handed the method, the route TEMPLATE, the status and the server's own
+   * message — never the request body, the query string or a header. It is called once per
+   * failure and never delays or alters the response (`packages/xezar/src/terminal/`).
+   */
+  onHttpFailure?: (failure: HttpFailure) => void;
 }
 
 // ---- project-scoped routing (multi-project spec, step 2.2) -----------------
@@ -1214,6 +1238,9 @@ export function createApp(deps: ServerDeps) {
   }
   contexts.onStoreCreated((store) => providerRuntimeAuth.watch(store));
   contexts.onContextBuilt((ctx) => providerRuntimeAuth.watch(ctx.store));
+  // Offered AFTER this server's own subscriptions, so a terminal renderer attaching here sees a
+  // store the service is already watching rather than one mid-wiring (#467, PR 3).
+  deps.onContexts?.(contexts);
 
   // The transition out of `checking` (#464 P2): a setup run that reached `done` having finished
   // its promised scope stamps `lastChecked`, which is what makes `set-up`, `changed` and the
@@ -1233,6 +1260,16 @@ export function createApp(deps: ServerDeps) {
   // Reject oversized request bodies before they reach any handler (#429). GETs
   // and SSE carry no body, so this only ever gates the mutating routes.
   app.use('*', bodyLimit({ maxSize: GLOBAL_BODY_LIMIT }));
+
+  // ---- safe HTTP diagnostics (#467, PR 3) ----------------------------------
+  // Registered ONLY when a caller asked for it, and deliberately OUTSIDE the origin guard
+  // below, so a request the guard refuses is still reported: an invisible 403 is exactly the
+  // kind of refusal a person spends an afternoon on.
+  //
+  // The middleware itself lives beside the renderer, where its two paths — a returned 4xx and a
+  // thrown 5xx — can be tested without a server. It observes and never intervenes.
+  const onHttpFailure = deps.onHttpFailure;
+  if (onHttpFailure) app.use('/api/*', httpDiagnosticsMiddleware(onHttpFailure));
 
   // ---- request-origin guard (#426) -----------------------------------------
   // This server executes agents with shell access — "start a task" ≈ run code

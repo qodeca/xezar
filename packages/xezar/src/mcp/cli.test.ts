@@ -158,8 +158,14 @@ describe('xez mcp against a real xezar (#86 acceptance)', () => {
     expect(typeof health.version).toBe('string');
     expect((await fetch(`${cockpit.base}/`)).status).toBe(200);
     expect((await fetch(`${cockpit.base}/api/v1/runs`)).status).toBe(200);
-    await until('the MCP warning', async () => (cockpit.stderr().includes('MCP bridge unavailable') ? true : undefined));
-    expect(cockpit.stderr().match(/MCP bridge unavailable/g)).toHaveLength(1);
+    // Since #467 PR 3 the warning is an activity line rather than a bare `console.warn`, so off
+    // a terminal it arrives as one logfmt row. The guarantee is the same one this case always
+    // made: it is on stderr, it says why, and it is printed exactly ONCE.
+    await until('the MCP warning', async () =>
+      cockpit.stderr().includes('event=mcp.unavailable') ? true : undefined,
+    );
+    expect(cockpit.stderr().match(/event=mcp\.unavailable/g)).toHaveLength(1);
+    expect(cockpit.stderr()).toMatch(/level=warn/);
   }, 60_000);
 
   it('with the xezar service not running, the bridge still handshakes and fails readably instead of hanging', async () => {

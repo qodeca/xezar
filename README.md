@@ -167,6 +167,12 @@ xezar never loads a `.env` file; export variables in your shell.
 | `XEZ_AUTONAME=0` | Disable all LLM task naming, keeping heuristic titles. Naming is off in dry runs unless forced with `1`. |
 | `XEZ_REVIEW_GATE=1` | Enable review for successful non-autonomous runs with changes (default off, exact `1`). Settings → Agents overrides it. |
 | `XEZ_NO_BANNER=1` | Hide the team-skills banner at `xezar serve` startup. |
+| `XEZ_PORT=4321` | The port `xezar serve` starts from, then the next free one. `-p/--port` beats it, and so does a port pinned for the project (`xezar projects port <id> <port>`), so one export in a shell profile cannot pull every project to the same start port. A value that is not a whole number from 0 to 65535 refuses the start. |
+| `XEZ_OUTPUT=auto` | How `xezar serve` shows what is happening: `auto` (default — a live table on a wide terminal, one line per event elsewhere), `lines` (never a table; the screen-reader and log-file answer), `rich`. A saved `cli.output` overrides it; `--output` overrides both. |
+| `XEZ_COLOR=auto` | Colour: `auto` (default), `always`, `never`. Colour only ever reinforces a word that is already there, so turning it off loses nothing. In `serve`, pipes, CI and `TERM=dumb` suppress colour even with `always`. |
+| `NO_COLOR=1` | Any non-empty value turns colour off. It outranks `XEZ_COLOR` and a saved `cli.color`; an explicit `--color` beats it. |
+| `XEZ_LOG_LEVEL=info` | How much `xezar serve` says: `debug`, `info` (default), `warn`, `error`. A saved `cli.logLevel` overrides it; `--log-level` overrides both. |
+| `XEZ_QUIET=1` | Warnings and errors only (exact `1`; `--quiet` is the flag). The cockpit URL, each task's final status and every bind or exposure failure are still printed — quiet can never hide a failure. It raises the threshold but never lowers one you set higher. |
 | `VITE_XEZ_API_BASE=http://localhost:4321` | Build-time API origin for a separately hosted cockpit; default is same-origin. A served `xez-api-base` meta tag overrides it. |
 | `XEZ_REMOTE=1` | Hide conveniences that open files or applications on the host machine. Off by default. |
 | `XEZ_API_PORT=4321` | Pin the API port used by the development launcher; otherwise it discovers a free port. |

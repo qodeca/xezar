@@ -322,8 +322,33 @@ and is never reinterpreted with `serve` memory.
 `cli.output`; `--color <auto|always|never>` / `XEZ_COLOR` + `NO_COLOR` / `cli.color`;
 `--log-level <debug|info|warn|error>` / `XEZ_LOG_LEVEL` / `cli.logLevel`; `-q/--quiet` / `XEZ_QUIET`.
 Stored beats environment for the three stored ones, following `followups` / `agentEnvPassthrough`;
-a flag beats both. They are accepted and resolved as of this release and rendered by the terminal
-renderer that follows it — no output changes here.
+a flag beats both.
+
+**What `serve` now prints, and where — a changed default.** Until this release `xezar serve` printed
+its banner and then went almost silent. It now reports what the projects in it are doing, and all of
+that is **new output on stderr**. The rules a script may rely on:
+
+- **stdout is unchanged, byte for byte.** The banner, the agent and tool checks and the
+  `cockpit → <url>` line are exactly what they were, in the same order, on the same stream, so
+  `xezar serve | tee`, a wrapper that greps the URL, and a log file that captures only stdout all
+  keep working. `run`'s transcript, `init`, `projects`, `--help` and `--version` are untouched, and
+  `xezar mcp` still writes JSON-RPC to stdout and nothing else under every one of the new flags.
+- **Off a terminal there is not one escape byte.** A file, a pipe, a non-empty `CI` or `TERM=dumb`
+  gets append-only plain lines — `<ISO time> level=<level> …` — or uncoloured human lines when
+  `--output lines` is explicit, and no cursor movement, even with `--color always`, *even when
+  `--output rich` was asked for*. The refusal prints one `output.fallback` line and nothing else.
+- **On a terminal** at least 60 columns wide, the last few lines are a live region that is redrawn
+  in place: a table of active tasks, at most 10 rows plus an overflow count, at most four redraws a
+  second and only while something changes. It is erased on the way out and the cursor is restored,
+  on a normal exit and on Ctrl-C. Narrower than that, `auto` prints lines and no table.
+- **`--quiet` cannot hide a failure.** It keeps warnings, errors, the real bound URL and each task's
+  final status; information lines, recovery notices and the live region go.
+- Nothing here cancels a task or stops the service. A closed output (`EPIPE`) stops the *drawing*,
+  and the runs and the HTTP server carry on.
+
+**The way back:** `--output lines` for human activity lines (a one-line live summary on a capable terminal),
+`--quiet` for warnings and errors only, `NO_COLOR=1` for no colour. Redirecting stderr
+(`2>/dev/null`) restores the old near-silence exactly, because every new line is on that stream.
 
 **How a bad value behaves.** An explicit one (a flag, or an `XEZ_*` someone typed) refuses the start
 with the accepted values and exit 1, before the registry is read, before the project writer claim
