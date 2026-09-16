@@ -52,7 +52,7 @@ This is a checkout build command. The published package is meant to include the 
 
 ## Does it send my code anywhere?
 
-xezar keeps its run state on disk and has no xezar cloud service. It launches agent backends and passes them your task and working directory. Those agent CLIs communicate with their configured model providers; prompts and code an agent reads can therefore leave your machine. Check the provider and account you use before giving it sensitive work. “Local cockpit” is not a promise of offline model execution.
+xezar keeps its run state on disk and has no xezar cloud service. It launches [agent backends](04-agent-backends.md) and passes them your task and working directory. Those agent CLIs communicate with their configured model providers; prompts and code an agent reads can therefore leave your machine. Check the provider and account you use before giving it sensitive work. “Local cockpit” is not a promise of offline model execution.
 
 xezar itself also makes network requests. By default it loads the `qodeca/xezar-skills` team catalog from GitHub, checks npm for a newer xezar version, and can check and automatically update tracked installations of those skills. GitHub features use `gh` to communicate with GitHub. These are separate from the agent's model traffic; the skills updater is not the only network activity.
 
@@ -94,5 +94,7 @@ For a suspected vulnerability, follow [SECURITY.md](../../SECURITY.md) and repor
 - Global **Settings → Skills**: `skillsAutoUpdate`, which overrides `XEZ_SKILLS_AUTO_UPDATE` when stored.
 - `XEZ_HOME`, `XEZ_HIDE_TOKEN_USAGE`, `XEZ_HIDE_COST`, `XEZ_HIDE_TOKEN_METRICS`, `XEZ_DRY_RUN`: [environment contract](../../.env.example).
 - [Security policy](../../SECURITY.md) and [project layout](../project-layout.md): boundaries and state locations.
+
+Next: [User guide index](README.md)
 
 Describes xezar 0.15.0.

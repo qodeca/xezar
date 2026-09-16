@@ -80,4 +80,6 @@ If a task fails before the agent starts with a temporary-directory error, fix th
 - Binary, approval, sandbox, environment and redaction switches: [environment contract](../../.env.example).
 - [Workflows](05-workflows.md) explains per-step overrides; [Skills](06-skills.md) explains reusable instructions.
 
+Next: [Workflows](05-workflows.md)
+
 Describes xezar 0.15.0.

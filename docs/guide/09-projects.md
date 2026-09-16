@@ -73,4 +73,6 @@ A deleted or moved folder is labeled **folder not found**, and its project pages
 - `XEZ_SINGLE_PROJECT=1`: restricts the cockpit to its startup project and disables registry add/remove/tag operations, including the CLI mutations. It also disables Max parallel edits, cloning, and folder browsing. Startup registration still happens for `serve`, `run`, and even `xezar projects`.
 - [Settings reference](10-settings-reference.md) and the [environment contract](../../.env.example).
 
+Next: [Settings reference](10-settings-reference.md)
+
 Describes xezar 0.15.0.
