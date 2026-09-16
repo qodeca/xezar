@@ -2,6 +2,7 @@ import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, vi } from 'vitest';
 import type { AgentEvent, AgentRunResult, AgentRunSpec, SessionOptions } from '../core/agent-runner.ts';
+import { V1TextCoalescer } from '../core/v1-text-coalescer.ts';
 import * as factory from '../core/runner-factory.ts';
 import type { RunStore } from '../runs/store.ts';
 import type { WorkflowDef } from './types.ts';
@@ -10,11 +11,10 @@ export const INCIDENT_FINAL = 'XEZ:DONE\nCheckpoint: PR #522 at 43b59fb – APPR
 export const COMPLETION_VARIANTS = [
   { name: 'checkpoint', chunks: [INCIDENT_FINAL] },
   { name: 'CRLF whitespace', chunks: ['  XEZ:DONE  \r\nCheckpoint: review posted.\r\n  '] },
-  { name: 'split marker at end', chunks: ['XEZ:', 'DO', 'NE'] },
-  { name: 'split chunks', chunks: ['XEZ:', 'DO', 'NE\nCheckpoint: review posted.'] },
+  { name: 'split chunks', streamed: true, chunks: ['XEZ:', 'DO', 'NE\nCheckpoint: review posted.'] },
   { name: 'v2 final with v1 compatibility text', chunks: [INCIDENT_FINAL], v2: true },
 ] as const;
-export interface ScriptedTurn { chunks?: readonly string[]; v2?: boolean; error?: string; before?: (spec: AgentRunSpec) => void }
+export interface ScriptedTurn { chunks?: readonly string[]; v2?: boolean; streamed?: boolean; error?: string; before?: (spec: AgentRunSpec) => void }
 
 /** Only the agent process is replaced. A rejected nudge is recorded, never allowed to spin 40 turns. */
 export function scriptedRunner(turns: ScriptedTurn[]) {
@@ -37,11 +37,23 @@ export function scriptedRunner(turns: ScriptedTurn[]) {
         turn.before?.(spec);
         emit({ type: 'session', sessionId: spec.sessionId ?? 'scripted-session' });
         if (turn.error) { emit({ type: 'error', message: turn.error }); end(); return; }
-        if (turn.v2) options?.onUiEvent?.({ type: 'item.completed', item: {
+        if (turn.streamed) {
+          // Runners emit whole v1 blocks, never deltas. Exercise the actual production coalescer.
+          const coalescer = new V1TextCoalescer(value => emit({ type: 'text', text: value }));
+          options?.onUiEvent?.({ type: 'item.started', item: {
+            id: 'final-message', kind: 'message', role: 'assistant', phase: 'final', text: '',
+          } });
+          for (const delta of turn.chunks ?? ['XEZ:DONE']) {
+            coalescer.append('final-message', delta);
+            options?.onUiEvent?.({ type: 'item.delta', itemId: 'final-message', field: 'text', delta });
+          }
+          coalescer.complete('final-message');
+        } else {
+          for (const block of turn.chunks ?? ['XEZ:DONE']) emit({ type: 'text', text: block });
+        }
+        if (turn.v2 || turn.streamed) options?.onUiEvent?.({ type: 'item.completed', item: {
           id: 'final-message', kind: 'message', role: 'assistant', phase: 'final', text,
         } });
-        // Protocol v2 is additive: real runners also emit v1 text for engine marker recognition.
-        for (const chunk of turn.chunks ?? ['XEZ:DONE']) emit({ type: 'text', text: chunk });
         emit({ type: 'turn-end' });
         if (options?.autoEndAfterFirstTurn) end();
       });

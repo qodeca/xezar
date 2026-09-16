@@ -46,9 +46,9 @@ async function receipt(h: Harness, row: McpJournalRow) {
 }
 
 for (const client of DELIVERY_CLIENTS) describe(`engine incidents → ${client}`, () => {
-  it('G7 last-line control delivers one completion without a second turn', async () => {
+  it.each([false, true])('G7 last-line control streamed=%s delivers one completion without a second turn', async streamed => {
     const h = await deliveryHarness(client); cleanup.push(h.close);
-    const runner = scriptedRunner([{}]); cleanup.push(runner.restore);
+    const runner = scriptedRunner([streamed ? { streamed: true, chunks: ['XEZ:', 'DO', 'NE'] } : {}]); cleanup.push(runner.restore);
     const manager = new RunManager(h.store, h.root); cleanup.push(() => manager.quiesce());
     const run = manager.startRun(SINGLE_STEP, { task: 'review', worktree: false, autonomous: true });
     await expect.poll(() => runner.messages.length > 0 || h.store.getRun(run.id)?.status === 'done').toBe(true);
