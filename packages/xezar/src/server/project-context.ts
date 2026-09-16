@@ -118,9 +118,11 @@ export class ProjectContexts {
    */
   private readonly generations = new Map<string, number>();
   /** Live store-created subscribers; invoked before RunManager recovery. */
-  private readonly storeListeners = new Set<(store: RunStore) => void>();
+  private readonly storeListeners = new Set<(store: RunStore, projectId: string) => void>();
   /** Live `onContextBuilt` subscribers (workspace SSE, step 2.8). */
   private readonly builtListeners = new Set<(ctx: ProjectContext) => void>();
+  /** Live `onContextDisposed` subscribers (#467, PR 3) — see the method for why they exist. */
+  private readonly disposedListeners = new Set<(projectId: string) => void>();
   /** One semaphore for every manager this map builds — injected by boot,
    *  private-but-shared otherwise. */
   private readonly semaphore: WorkspaceSemaphore;
@@ -203,18 +205,51 @@ export class ProjectContexts {
    * stays generic so backend-specific observers do not leak into the context
    * map. Returns an unsubscribe.
    */
-  onStoreCreated(listener: (store: RunStore) => void): () => void {
+  /**
+   * The project id is handed over beside the store (#467, PR 3).
+   *
+   * A `RunRecord` does not say which project it belongs to — project identity is which store
+   * emitted it — so a subscriber that renders several projects had no safe way to label what it
+   * received. Additive: the parameter is second, so every existing one-argument listener
+   * (`providerRuntimeAuth.watch`) keeps compiling and behaving identically.
+   */
+  onStoreCreated(listener: (store: RunStore, projectId: string) => void): () => void {
     this.storeListeners.add(listener);
     return () => this.storeListeners.delete(listener);
   }
 
+  /**
+   * Subscribe to a context going away (#467, PR 3).
+   *
+   * `teardown` calls `store.removeAllListeners()`, which does detach a subscriber's handlers —
+   * but it tells them nothing, so anything holding per-project state (a terminal's table rows,
+   * a cache) keeps it for a project that no longer exists. This is the notification for that,
+   * and it fires after the teardown has finished, so a listener never sees a half-released
+   * context. Returns an unsubscribe.
+   */
+  onContextDisposed(listener: (projectId: string) => void): () => void {
+    this.disposedListeners.add(listener);
+    return () => this.disposedListeners.delete(listener);
+  }
+
   /** A listener throwing must never fail the build (its store is usable). */
-  private notifyStoreCreated(store: RunStore): void {
+  private notifyStoreCreated(store: RunStore, projectId: string): void {
     for (const listener of [...this.storeListeners]) {
       try {
-        listener(store);
+        listener(store, projectId);
       } catch {
         // subscriber's problem — context construction can continue
+      }
+    }
+  }
+
+  /** A listener throwing must never fail a dispose (the context is already released). */
+  private notifyDisposed(projectId: string): void {
+    for (const listener of [...this.disposedListeners]) {
+      try {
+        listener(projectId);
+      } catch {
+        // subscriber's problem — the context is gone either way
       }
     }
   }
@@ -301,8 +336,14 @@ export class ProjectContexts {
       await pending.promise.catch(() => undefined);
       if (this.building.get(projectId) === pending) this.building.delete(projectId);
     }
-    if (!ctx) return pending !== undefined;
+    if (!ctx) {
+      if (pending !== undefined) this.notifyDisposed(projectId);
+      return pending !== undefined;
+    }
     await teardown(ctx);
+    // After the teardown, never before: a listener releasing its own per-project state must not
+    // be able to observe a context that is half-released (#467, PR 3).
+    this.notifyDisposed(projectId);
     return true;
   }
 
@@ -327,7 +368,7 @@ export class ProjectContexts {
     const automationStore = this.deps.automationStore?.(project.id, project.root)
       ?? AutomationStore.open(dataDir);
     reconcileAutomationReceipts(automationStore, store);
-    this.notifyStoreCreated(store);
+    this.notifyStoreCreated(store, project.id);
     const manager = new RunManager(store, project.root, { semaphore: this.semaphore });
     try {
       const launchKey = ensureLaunchKey(dataDir);

@@ -153,7 +153,7 @@ The still-running sentence is left out at zero.
 | Default | Banner, activity lines, live table | `tty.txt` 2–3 |
 | Empty (first use) | `No active tasks — start one at …/new` | `tty.txt` 1 |
 | Empty (narrow) | `No active tasks` | `tty-narrow.txt` 4 |
-| Loading | Banner lines 1 and 2 (version, project, branch, path) print first, before the agent and tool version checks and before the bind, so the terminal is never blank while those run. The `cockpit`, `agents` and `tools` lines follow once the port is bound and the checks answer; there is no “starting” word or spinner. MCP becomes ready later and announces itself with its own line; it is never shown as ready before it listens. The time from line 1 to the `cockpit` line is not measured yet: PR 3 measures it on this repository and records it here. | `tty.txt` 1 |
+| Loading | Banner lines 1 and 2 (version, project, branch, path) print first, before the agent and tool version checks and before the bind, so the terminal is never blank while those run. The `cockpit`, `agents` and `tools` lines follow once the port is bound and the checks answer; there is no “starting” word or spinner. MCP becomes ready later and announces itself with its own line; it is never shown as ready before it listens. **Measured on 2026-09-16 (PR 3), and it does not work that way yet:** on this repository, on a fresh single-project start with the agent CLIs mocked, the terminal is blank for a median **606 ms** (5 runs, 478–642 ms) and then the whole banner — version, branch, every check and the `cockpit` line — arrives in one piece, **0 ms** apart. The split above needs the banner itself rewritten to § 6.1, which PR 3 did not do (see § 14). So the wait this row exists to cover is about six tenths of a second of nothing, not a partial banner. | `tty.txt` 1 |
 | Error – refused start | `error` + `fix` lines, exit 1, nothing claimed | `error-cases.txt` A6–A9, B1–B3 |
 | Error – while running | `error` activity line with the task URL | `tty.txt` 3, `error-cases.txt` D, E |
 | Refusal | HTTP 409 from a hosted-mode or local-machine guard is a `warn` line with the server’s own message; the cockpit’s refusal copy is unchanged | `error-cases.txt` E |
@@ -445,6 +445,7 @@ Questions for the review are in `open-questions.md` (Q-1 … Q-12). Departures f
 | `--port 0` not remembered | Q-4 |
 | Port skipping | Q-5 |
 | The analysis kept the shared cockpit as default | Replaced by owner decision 2 |
+| **§ 6.1's boot banner is not what PR 3 ships.** The terminal still prints the pre-#467 banner — `xezar v<version> — <path>`, `branch <branch>`, one `✓` line per agent and tool, then `cockpit → <url>` — instead of the three-block compact form above | PR 3's own scope pins the `serve` **stdout** contract, and the `cockpit → <url>` spelling is parsed by two test files inside `packages/xezar/src/mcp/`, a directory PR 3 was told not to edit while #460 PR 3 is in flight. Everything § 6.2 to § 6.4 covers — the activity lines, the live region and the session summary, all on stderr — IS shipped. The banner needs its own change, with the eight call sites that read `cockpit → ` updated in the same commit; it is listed as a follow-up on PR 3 rather than done badly here |
 
 ## 15. Delivery plan
 
