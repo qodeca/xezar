@@ -361,7 +361,9 @@ describe('every other kind the catalog emits', () => {
   /**
    * #460 — the announcement half of a reviewer report. The named break these guard is "clear
    * pending before append, or generate a fresh report id during recovery" (T-3) and "omit packet
-   * persistence or collapse every successful verdict to APPROVE" (T-1).
+   * persistence or collapse every successful verdict to APPROVE" (T-1). The two-pending case adds
+   * a third: "iterate a snapshot of the pending reports" — the mark-announced write re-enters this
+   * derivation synchronously, so a snapshot double-announces every report after the first.
    */
   describe('reviewer verdicts (#460)', () => {
     it('summarises the role, the exact verdict, the reviewed sha, the report id and the label state', () => {
@@ -410,6 +412,31 @@ describe('every other kind the catalog emits', () => {
       expect(afterFirst).toHaveLength(1);
       expect(afterFirst[0]?.summary).toContain('report survivor');
       expect(rows().filter((row) => row.kind === 'verdict.posted')).toHaveLength(1);
+    });
+
+    it('announces TWO pending reports on one run exactly once each', () => {
+      const run = startedRun();
+      const stepId = run.steps[0]!.id;
+      // Two roles reported and nothing announced either — what a xezar that ran with no journal
+      // attached leaves behind, and what the attach-recovery loop then finds.
+      catalog.detach();
+      store.updateRun(run.id, {
+        verdicts: [
+          pendingVerdict(run.id, stepId, 'report-a'),
+          { ...pendingVerdict(run.id, stepId, 'report-b'), role: 'qa', verdict: 'PASS' },
+        ],
+      });
+
+      catalog = EventCatalog.attach({ journal, store, workspaceEvents: bus, providerBaseline: CONNECTED });
+
+      // Marking the first announced writes through the store, and that write re-enters the run
+      // derivation SYNCHRONOUSLY. A snapshot taken before the loop would announce `report-b` in
+      // the nested pass and then again in the outer one.
+      const posted = rows().filter((row) => row.kind === 'verdict.posted');
+      expect(posted.map((row) => row.subject.id)).toEqual([run.id, run.id]);
+      expect(posted.filter((row) => row.summary.includes('report report-a'))).toHaveLength(1);
+      expect(posted.filter((row) => row.summary.includes('report report-b'))).toHaveLength(1);
+      expect(store.getRun(run.id)?.verdicts?.every((verdict) => verdict.publication === 'announced')).toBe(true);
     });
 
     it('says on the completion row whether any verdict is recorded', () => {

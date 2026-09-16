@@ -31,7 +31,7 @@ capability**: the authority is exactly one file at one path, read at one moment.
 | The read | `task_read view=task`, unchanged except for its description |
 | The producer | the versioned reviewer instructions in `.xezar/skills/` (project files, not shipped code) |
 
-## The four rules that are load-bearing
+## The five rules that are load-bearing
 
 **The vocabulary is per role and is never translated.** A code review APPROVEs or REQUESTs CHANGES; QA
 PASSes or FAILs; a design review has a third outcome, `PASS WITH FOLLOW-UPS`, which is neither. A shared
@@ -47,11 +47,25 @@ means "we read them and there were none"; `"unavailable"` carries no `observed` 
 fail-open reader those would be the same empty array, so the schema refuses `unavailable` WITH a list.
 
 **Publication is two durable steps, so a crash between them is recoverable.** The packet is written to the
-run as `publication: 'pending'` before anything announces it; the announcer appends the journal row and
-then flips it to `announced`. A process that dies in the gap leaves a `pending` record which the next
+run as `publication: 'pending'` and FLUSHED to disk before anything announces it; the announcer appends the
+journal row and then flips it to `announced`. The flush is not decoration: the run store's ordinary write
+is a 300 ms debounce and the journal's append is immediate, so without it the row could reach disk before
+the record it announces — the exact inversion this rule exists to rule out. The packet file is removed
+only after that flush, so the worst a crash costs is a re-offer at the next step, which the stable `id`
+makes a no-op. A process that dies in the gap leaves a `pending` record which the next
 `EventCatalog.attach` announces, keyed on the report's own stable `id`: one logical report, never zero and
 never two. The reverse order — mark first, announce second — would lose reports instead of duplicating
-rows, which is the worse half of the trade.
+rows, which is the worse half of the trade. The announcer re-reads the run on every pass rather than
+walking a snapshot, because marking one report announced re-enters the run derivation synchronously and a
+snapshot would announce every later pending report twice.
+
+**A reviewer is told its own step id; it never guesses one.** The engine hard-refuses a packet whose
+`stepId` is not the settling step's, so the value has to come from somewhere. It comes from `XEZ_STEP_ID`,
+set on the agent's environment beside `XEZ_TASK_ID` and `XEZ_HANDOFF_FILE` for every agent step (empty
+when there is no step, never omitted, so a nested xezar's own step id cannot shine through). The three
+reviewer instructions cite it exactly as they cite `$XEZ_TASK_ID`; before it existed the only derivation
+was to read the handoff header for the workflow name and then the workflow file for the step id, which
+nothing told a reviewer to do, and an obvious-looking guess cost the whole verdict silently.
 
 ## What is refused, and how a refusal looks
 
@@ -62,9 +76,13 @@ swapped between the two is still caught); anything over 40 KB; anything that is 
 packet shape; a packet naming another task or another step of this one; and an already-recorded `id`
 carrying different content. A refused packet yields no verdict of any kind.
 
-The packet is consumed (removed) after any attempt that read it, so one report is never re-offered to a
-later step. The durable copy is the run record, which is why reclaiming a worktree cannot take a recorded
-verdict with it.
+A packet that cannot even be LOOKED UP is refused too. Only `ENOENT` means "this task reported nothing";
+a permission error or an unreadable directory is a failure to look, and the whole point of the refusal
+path is that a failure to look never reads as an absence.
+
+The packet is consumed (removed) after the record — or the refusal note — is durably written, so one
+report is never re-offered to a later step and a crash never costs both the packet and the record. The
+durable copy is the run record, which is why reclaiming a worktree cannot take a recorded verdict with it.
 
 ## What was deliberately NOT built
 
@@ -77,8 +95,10 @@ verdict with it.
 
 ## Verification
 
-`packages/xezar/src/runs/task-verdicts.test.ts` holds T-1 … T-5 of the accepted spec, each describe block
-quoting the named break it guards. `packages/xezar/src/workflows/run-verdict-collection.test.ts` proves the
-engine wiring end to end under `XEZ_DRY_RUN=1`. `packages/xezar/src/mcp/event-catalog.test.ts` covers the
-announcement, the restart reconciliation and the completion summary;
+`packages/xezar/src/runs/task-verdicts.test.ts` holds T-1 … T-5 of the accepted spec, plus T-6 from the
+code review of this PR (durability, consume-last and the lookup failure); each describe block quotes the
+named break it guards. `packages/xezar/src/workflows/run-verdict-collection.test.ts` proves the engine
+wiring end to end under `XEZ_DRY_RUN=1`, including that the agent really receives `XEZ_STEP_ID` — the
+mock builds its packet from that variable alone. `packages/xezar/src/mcp/event-catalog.test.ts` covers the
+announcement, the restart reconciliation, the two-pending-report case and the completion summary;
 `packages/xezar/src/mcp/tools/task-reads.test.ts` covers the leader's read.

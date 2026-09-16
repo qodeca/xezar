@@ -326,12 +326,26 @@ export class EventCatalog {
    * would leave a report marked announced that nothing ever announced. A duplicated row after a
    * crash is the cost, and it is the cheap side — the row carries the report's own stable id, so a
    * consumer that sees two knows they are one report.
+   *
+   * The run is RE-READ on every pass rather than iterated as a snapshot, and that is the whole
+   * correctness of the loop when a run holds more than one pending report (the schema allows
+   * `TASK_VERDICT_MAX_CURRENT`, and a xezar that ran with no journal attached accumulates them).
+   * `markTaskVerdictAnnounced` writes through the store, whose `touch()` emits `run` SYNCHRONOUSLY,
+   * which re-enters `#onRun` and therefore this method; the nested call announces every report
+   * still pending. A stale snapshot would then walk on and append a SECOND row for each of them —
+   * `markTaskVerdictAnnounced` is a no-op by then and corrects nothing. `announced` bounds the loop
+   * so an id that will not flip is passed over rather than spun on.
    */
   #announceVerdicts(runId: string): void {
-    const pending = (this.#store.getRun(runId)?.verdicts ?? []).filter((verdict) => verdict.publication === 'pending');
-    for (const verdict of pending) {
-      this.#appendRun('verdict.posted', runId, this.#originOr('system'), verdictSummary(verdict));
-      markTaskVerdictAnnounced(this.#store, runId, verdict.id);
+    const announced = new Set<string>();
+    for (;;) {
+      const next = (this.#store.getRun(runId)?.verdicts ?? []).find(
+        (verdict) => verdict.publication === 'pending' && !announced.has(verdict.id),
+      );
+      if (!next) return;
+      announced.add(next.id);
+      this.#appendRun('verdict.posted', runId, this.#originOr('system'), verdictSummary(next));
+      markTaskVerdictAnnounced(this.#store, runId, next.id);
     }
   }
 

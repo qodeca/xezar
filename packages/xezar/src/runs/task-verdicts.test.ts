@@ -506,3 +506,83 @@ describe('T-5 — evidence bounds hold (break: skip the redaction guard, or disc
     expect(existsSync(file)).toBe(false);
   });
 });
+
+// ---- T-6 (review of PR 2, findings 3 and 4) ------------------------------------------------------
+
+describe('T-6 — the record is durable before the packet is gone (break: drop the flush after the verdict write, consume the packet before the record is written, or read any lstat failure as "no packet")', () => {
+  /** The index exactly as it is ON DISK — not the store's memory, which is what the debounce hides. */
+  function onDiskRun(runId: string): Record<string, unknown> | undefined {
+    const path = join(dataDir, 'runs.json');
+    if (!existsSync(path)) return undefined;
+    const rows = JSON.parse(readFileSync(path, 'utf8')) as Array<Record<string, unknown>>;
+    return rows.find((entry) => entry.id === runId);
+  }
+
+  it('has the verdict on disk the moment ingestion returns, not 300 ms later', () => {
+    const run = startedRun();
+    writePacket(run.id, packetFor(run.id));
+
+    expect(ingestTaskVerdict(store, dataDir, run.id, 'review')?.outcome).toBe('recorded');
+
+    // No timer advanced, no flush by the test: the ordering claim in BACKWARD_COMPATIBILITY.md §2
+    // is that the record is durable BEFORE anything announces it, and the announcer's journal
+    // append is immediate. A debounced-only write would leave this empty.
+    const verdicts = onDiskRun(run.id)?.verdicts as Array<Record<string, unknown>> | undefined;
+    expect(verdicts?.[0]).toMatchObject({ id: 'report-1', publication: 'pending' });
+  });
+
+  it('keeps the packet when the record write fails, so nothing is lost with nothing recorded', () => {
+    const run = startedRun();
+    const file = writePacket(run.id, packetFor(run.id));
+    const realUpdate = store.updateRun.bind(store);
+    store.updateRun = (() => {
+      throw new Error('the index could not be written');
+    }) as unknown as RunStore['updateRun'];
+
+    try {
+      // Never throws at the caller — a reviewer report is evidence about a task, not the task.
+      expect(ingestTaskVerdict(store, dataDir, run.id, 'review')).toBeUndefined();
+    } finally {
+      store.updateRun = realUpdate;
+    }
+
+    // Consuming before the write would have removed this and left no record either — the packet,
+    // the verdict and the recoverability all lost in one gap.
+    expect(existsSync(file)).toBe(true);
+    expect(verdictsOf(run.id)).toEqual([]);
+  });
+
+  it('records a refusal durably too, before the bad packet is removed', () => {
+    const run = startedRun();
+    const file = writePacket(run.id, 'not json at all');
+
+    expect(ingestTaskVerdict(store, dataDir, run.id, 'review')?.outcome).toBe('refused');
+
+    expect(existsSync(file)).toBe(false);
+    expect(onDiskRun(run.id)?.verdictIssues).toHaveLength(1);
+  });
+
+  it('refuses when the packet cannot even be looked up, rather than reading it as "nothing reported"', () => {
+    const run = startedRun();
+    const file = taskVerdictPacketPath(dataDir, run.id);
+    const dir = dirname(file);
+    mkdirSync(dir, { recursive: true });
+    chmodSync(dir, 0o000);
+    let result;
+    try {
+      result = ingestTaskVerdict(store, dataDir, run.id, 'review');
+    } finally {
+      chmodSync(dir, 0o700);
+    }
+
+    // Root can traverse a 000 directory, so the lookup simply succeeds there and finds nothing;
+    // the assertion that holds either way is that a failure to LOOK is never a silent absence.
+    if (result === undefined) {
+      expect(process.getuid?.()).toBe(0);
+    } else {
+      expect(result.outcome).toBe('refused');
+      expect(issuesOf(run.id)[0]?.reason).toContain('could not be looked up');
+    }
+    expect(verdictsOf(run.id)).toEqual([]);
+  });
+});

@@ -43,10 +43,16 @@ import type { RunRecord, RunStore } from './store.ts';
  *    earlier step's leftover packet from being collected by whatever runs next.
  *  - a packet reusing an already-recorded id with DIFFERENT content. One report may be re-reported
  *    (a retry, a recovery) and stay one report; it may not quietly become a different one.
+ *  - a packet that cannot even be LOOKED UP. `ENOENT` is the one lookup failure that means "this
+ *    task reported nothing"; a permission error is a failure to look, and the whole rule above is
+ *    that a failure to look never reads as an absence.
  *
- * ORDER. The packet is written to the run with `publication: 'pending'` BEFORE anything announces
- * it, so a process that dies in the gap leaves a recoverable record rather than a lost verdict or
- * a second one — see `taskVerdictSchema`'s note and the announcement side in `mcp/event-catalog.ts`.
+ * ORDER. The packet is written to the run with `publication: 'pending'` and FLUSHED to disk before
+ * anything announces it, and the packet file is only removed after that — so a process that dies
+ * anywhere in the sequence leaves either a re-readable packet or a recoverable record, never a lost
+ * verdict and never a second one. The run store's ordinary write is a 300 ms debounce and the
+ * journal's append is immediate, so without the flush the announcement row could reach disk before
+ * the record it announces. See `taskVerdictSchema`'s note and `mcp/event-catalog.ts`.
  */
 
 /** Where a task's reviewer packet is read from: its handoff journal's path plus one suffix. */
@@ -95,8 +101,13 @@ function readPacketFile(file: string): { ok: true; text: string } | { ok: false;
   let onDisk;
   try {
     onDisk = lstatSync(file);
-  } catch {
-    return undefined; // no packet — the ordinary case for every non-reviewing task
+  } catch (err) {
+    // ENOENT is the ordinary case for every non-reviewing task and is the ONLY one that means
+    // "nothing was reported". Anything else — a permission error, an unreadable directory — is a
+    // failure to look, and the module's own rule is that those never read as an absence.
+    if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') return undefined;
+    const detail = err instanceof Error ? err.message : String(err);
+    return { ok: false, reason: `the reviewer packet could not be looked up (${detail})` };
   }
   if (!onDisk.isFile()) return { ok: false, reason: 'the reviewer packet is not a regular file' };
   if (onDisk.size > TASK_VERDICT_MAX_BYTES) {
@@ -161,30 +172,29 @@ function ingest(store: RunStore, dataDir: string, runId: string, stepId: string)
   const file = taskVerdictPacketPath(dataDir, runId);
   const read = readPacketFile(file);
   if (read === undefined) return undefined;
-  // Whatever happens next, this packet has been seen. Consuming it here is what keeps one report
-  // from being re-offered at every later step of the same chain.
-  consume(file);
-  if (!read.ok) {
-    recordIssue(store, run, stepId, read.reason);
-    return { outcome: 'refused', reason: read.reason };
-  }
+  // A refusal is recorded, made durable, and only THEN is the packet removed. Consuming is what
+  // stops the same bad packet being re-offered at every later step of the chain, and doing it last
+  // means a crash in the middle costs a re-offer rather than the note explaining the refusal.
+  const refuse = (reason: string): TaskVerdictIngestion => {
+    recordIssue(store, run, stepId, reason);
+    store.flush();
+    consume(file);
+    return { outcome: 'refused', reason };
+  };
+  if (!read.ok) return refuse(read.reason);
 
   let json: unknown;
   try {
     json = JSON.parse(read.text);
   } catch {
-    const reason = 'the reviewer packet is not valid JSON';
-    recordIssue(store, run, stepId, reason);
-    return { outcome: 'refused', reason };
+    return refuse('the reviewer packet is not valid JSON');
   }
 
   const parsed = taskVerdictPacketSchema.safeParse(json);
   if (!parsed.success) {
     // The message names the failing FIELDS, never their values: the packet is untrusted text.
     const fields = [...new Set(parsed.error.issues.map((issue) => issue.path.join('.') || '(root)'))].slice(0, 8);
-    const reason = `the reviewer packet does not match the verdict schema (${fields.join(', ')})`;
-    recordIssue(store, run, stepId, reason);
-    return { outcome: 'refused', reason };
+    return refuse(`the reviewer packet does not match the verdict schema (${fields.join(', ')})`);
   }
 
   // F-15's own scrubber, over the whole packet: `summary` is the reviewer's prose and the label
@@ -192,27 +202,19 @@ function ingest(store: RunStore, dataDir: string, runId: string, stepId: string)
   // nothing about this field, so it is scrubbed here, before it is written.
   const packet = redactDeep(parsed.data, collectSecretValues());
 
-  if (packet.taskId !== runId) {
-    const reason = 'the reviewer packet reports on a different task';
-    recordIssue(store, run, stepId, reason);
-    return { outcome: 'refused', reason };
-  }
-  if (packet.stepId !== stepId) {
-    const reason = 'the reviewer packet reports on a different step of this task';
-    recordIssue(store, run, stepId, reason);
-    return { outcome: 'refused', reason };
-  }
+  if (packet.taskId !== runId) return refuse('the reviewer packet reports on a different task');
+  if (packet.stepId !== stepId) return refuse('the reviewer packet reports on a different step of this task');
 
   const existing = run.verdicts ?? [];
   const sameId = existing.find((candidate) => candidate.id === packet.id);
   if (sameId) {
     if (!sameReport(reportedPart(sameId), packet)) {
-      const reason = 'a different report already carries this report id';
-      recordIssue(store, run, stepId, reason);
-      return { outcome: 'refused', reason };
+      return refuse('a different report already carries this report id');
     }
     // The same report, reported again — a retry or a recovery. One logical report, so nothing is
-    // written and nothing is announced a second time.
+    // written and nothing is announced a second time. The record already holds it, so the packet
+    // has done its job and is consumed.
+    consume(file);
     return { outcome: 'unchanged', verdict: sameId };
   }
 
@@ -226,6 +228,17 @@ function ingest(store: RunStore, dataDir: string, runId: string, stepId: string)
   // every other role exactly as it was.
   const kept = [...existing.filter((candidate) => candidate.role !== packet.role), verdict];
   store.updateRun(runId, { verdicts: kept });
+  // Then DURABLY, and only then is the packet gone. Both halves are load-bearing:
+  //
+  //  - `updateRun` alone mutates memory and arms a 300 ms DEBOUNCED index save, while the journal
+  //    row the announcer appends is an immediate `appendFileSync`. Without the flush the row can
+  //    reach disk before the record it announces — the exact inversion the two-step publication
+  //    exists to rule out.
+  //  - consuming BEFORE the record is written puts the packet, the verdict and the recoverability
+  //    in one gap: a crash there loses all three. Consuming after costs at worst a re-offer at the
+  //    next step, which the stable report id turns into `unchanged`.
+  store.flush();
+  consume(file);
   return { outcome: 'recorded', verdict };
 }
 

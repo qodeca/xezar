@@ -54,7 +54,7 @@ Order matters: post the comment, then attempt the labels, then write the packet.
 {
   "id": "design-review-<short sha>-<task id first 8>",
   "taskId": "<$XEZ_TASK_ID>",
-  "stepId": "<this step's id>",
+  "stepId": "<$XEZ_STEP_ID>",
   "role": "design-review",
   "verdict": "PASS WITH FOLLOW-UPS",
   "reviewedHeadSha": "<the full 40-character sha you reviewed>",
@@ -64,6 +64,8 @@ Order matters: post the comment, then attempt the labels, then write the packet.
   "labels": { "requestedAdd": [], "requestedRemove": [], "observed": [], "state": "verified" }
 }
 ```
+
+`taskId` and `stepId` are read from the environment this step runs under — `$XEZ_TASK_ID` and `$XEZ_STEP_ID`, both set for you. Never guess either one and never substitute the workflow name or the role: the engine compares `stepId` to the settling step's own id, and a mismatch refuses the packet and yields no verdict at all.
 
 `verdict` is `PASS`, `PASS WITH FOLLOW-UPS` or `FAIL`, written exactly as posted. `PASS WITH FOLLOW-UPS` is its own outcome: never write it as `PASS`, or the non-blocking findings disappear from the record. `id` is stable for THIS report — the same id with identical content is a no-op, the same id with different content is refused — and `reviewedHeadSha` is never abbreviated.
 

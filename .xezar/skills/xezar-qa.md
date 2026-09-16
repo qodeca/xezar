@@ -29,7 +29,7 @@ Order matters: post the comment, then attempt the labels, then write the packet.
 {
   "id": "qa-<short sha>-<task id first 8>",
   "taskId": "<$XEZ_TASK_ID>",
-  "stepId": "<this step's id>",
+  "stepId": "<$XEZ_STEP_ID>",
   "role": "qa",
   "verdict": "PASS",
   "reviewedHeadSha": "<the full 40-character sha you exercised>",
@@ -39,6 +39,8 @@ Order matters: post the comment, then attempt the labels, then write the packet.
   "labels": { "requestedAdd": ["qa-approved"], "requestedRemove": ["needs-qa"], "observed": ["qa-approved"], "state": "verified" }
 }
 ```
+
+`taskId` and `stepId` are read from the environment this step runs under — `$XEZ_TASK_ID` and `$XEZ_STEP_ID`, both set for you. Never guess either one and never substitute the workflow name or the role: the engine compares `stepId` to the settling step's own id, and a mismatch refuses the packet and yields no verdict at all.
 
 `verdict` is `PASS` or `FAIL` and nothing else — this role has no third outcome, and a QA `PASS` is never business acceptance. `id` is stable for THIS report: the same id with identical content is a no-op, the same id with different content is refused. `reviewedHeadSha` is never abbreviated and never the branch's current head when that is not what you exercised.
 

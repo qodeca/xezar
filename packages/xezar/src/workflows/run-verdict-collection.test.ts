@@ -23,7 +23,8 @@ const GIT_ID = ['-c', 'user.name=test', '-c', 'user.email=test@local'];
  * `XEZ_DRY_RUN=1`, where the bundled mock drops the packet exactly as a reviewing agent does
  * (`mock:verdict:<role>:<verdict>:<stepId>`).
  *
- * Named break: omit the collection call from step settlement, or let a check step collect.
+ * Named break: omit the collection call from step settlement, or let a check step collect — and,
+ * for the packet the mock builds from `$XEZ_STEP_ID` alone, omit `XEZ_STEP_ID` from the step env.
  */
 describe('a reviewer packet is collected at its own step (#460)', () => {
   let repoRoot: string;
@@ -97,6 +98,18 @@ describe('a reviewer packet is collected at its own step (#460)', () => {
     expect(verdicts[0]?.publication).toBe('pending');
     // And consumed, so no later step of the same chain is offered it again.
     expect(existsSync(taskVerdictPacketPath(dataDir, id))).toBe(false);
+  }, 45_000);
+
+  it('gives the agent its own step id, so a packet built from $XEZ_STEP_ID is accepted', async () => {
+    // No step id in the token: the mock reads `XEZ_STEP_ID` exactly as the three reviewer skills
+    // are told to. Before that variable existed a reviewer had nothing to read and the obvious
+    // guesses ("code-review", the workflow name) were all refused, costing the whole verdict.
+    const id = await runToEnd('mock:done mock:verdict:code-review:APPROVE');
+
+    const verdicts = store.getRun(id)?.verdicts ?? [];
+    expect(verdicts).toHaveLength(1);
+    expect(verdicts[0]?.stepId).toBe('review');
+    expect(store.getRun(id)?.verdictIssues).toBeUndefined();
   }, 45_000);
 
   it('refuses a packet naming a step other than the one that settled, and records why', async () => {

@@ -75,17 +75,23 @@ function writeHandoffAndTodo() {
 }
 
 // A reviewing agent writes one JSON packet beside its handoff file, atomically, after it has
-// posted its review. `mock:verdict:<role>:<verdict>:<stepId>` reproduces exactly that, so the
+// posted its review. `mock:verdict:<role>:<verdict>[:<stepId>]` reproduces exactly that, so the
 // engine's collection of it can be exercised without a model and without a forge.
+//
+// The step id is OPTIONAL, and leaving it off is the interesting case: the mock then reads
+// `XEZ_STEP_ID` exactly as a real reviewer skill is told to, so a run that omits it proves the
+// variable reaches the agent at all. Spelling it out stays available for the negative cases.
 function writeVerdictPacket(userText) {
-  const match = /mock:verdict:([a-z-]+):([A-Z][A-Z -]*[A-Z]):([A-Za-z0-9._-]+)/.exec(userText);
+  const match = /mock:verdict:([a-z-]+):([A-Z][A-Z -]*[A-Z])(?::([A-Za-z0-9._-]+))?/.exec(userText);
   const handoff = process.env.XEZ_HANDOFF_FILE;
   if (!match || !handoff) return;
+  const stepId = match[3] ?? process.env.XEZ_STEP_ID;
+  if (!stepId) return;
   try {
     const packet = {
-      id: `mock-${match[3]}`,
+      id: `mock-${stepId}`,
       taskId: process.env.XEZ_TASK_ID,
-      stepId: match[3],
+      stepId,
       role: match[1],
       verdict: match[2],
       reviewedHeadSha: 'f'.repeat(40),
