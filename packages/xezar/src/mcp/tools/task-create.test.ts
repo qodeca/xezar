@@ -864,3 +864,111 @@ describe('task_create in the registry', () => {
     expect(tools.filter((tool) => tool.name === 'task_create')).toEqual([taskCreateTool]);
   });
 });
+
+/**
+ * UI ↔ MCP parity for the GitHub tab's **New issue** control (#468, PR 5; inventory I-147).
+ *
+ * Owner rule, 2026-09-16: a capability the cockpit gains must be reachable by the leader, which
+ * never opens the cockpit. The control needs no new tool and no new action — it is `task_create`
+ * with a skill source — so the parity worth pinning is that the two doors send the SAME body, and
+ * that neither of them files an issue itself.
+ *
+ * The cockpit half is loaded from the dialog's own module, not restated here, for the same reason
+ * the composer rows above load `new-task-form.ts`: a copy would pass while the two drifted.
+ */
+describe('task_create as the New issue control’s MCP counterpart (#468, I-147)', () => {
+  interface WebIssueControl {
+    findIssueCreateSkill(skills: readonly { name: string; source: string }[]): { name: string } | null;
+    newIssueRunBody(
+      brief: string,
+      skillName: string | null,
+      engine: {
+        runner: Runner;
+        runnerExplicit: boolean;
+        defaultRunner?: Runner;
+        model: string;
+        modelsLocked?: boolean;
+        account: string | null;
+      },
+      followupsAvailable?: boolean,
+    ): CreateRunInput;
+  }
+
+  let control: WebIssueControl;
+  beforeAll(async () => {
+    control = (await import(
+      /* @vite-ignore */ fileURLToPath(new URL('../../../../web/src/routes/github/new-issue-task.ts', import.meta.url))
+    )) as unknown as WebIssueControl;
+  });
+
+  const SKILL = 'demo-issue-create';
+  const BRIEF = 'The GitHub tab has no way to file an issue from the place the decision is made.';
+
+  /** What the dialog would POST for this project, from the same service state the tool reads. */
+  async function dialogBody(f: Fixture): Promise<CreateRunInput> {
+    const s = await cockpitState(f.app);
+    const runners = web.usableRunners(s.providers);
+    const defaultRunner = s.config.defaultRunner;
+    const runner = web.resolveRunner(null, runners, defaultRunner ?? 'claude');
+    const modelsLocked = s.config.modelsLocked === true;
+    const skill = control.findIssueCreateSkill(s.skills as unknown as { name: string; source: string }[]);
+    const body = control.newIssueRunBody(
+      BRIEF,
+      skill?.name ?? null,
+      {
+        runner,
+        runnerExplicit: false,
+        defaultRunner,
+        model: web.resolveModel(null, runner, s.config.defaultModels),
+        modelsLocked,
+        account: null,
+      },
+      s.health.capabilities.followups,
+    );
+    return JSON.parse(JSON.stringify(body)) as CreateRunInput;
+  }
+
+  it('sends the same body as the dialog for the same brief, skill and project', async () => {
+    const f = setup({ skills: [{ name: SKILL }] });
+    // The leader's call: the brief in its own words, the same skill, and the one option the
+    // button's promise fixes — never autonomous, because the person approves the exact text.
+    const result = await callTool(f, {
+      operationId: 'op-issue-0001',
+      prompt: BRIEF,
+      source: { source: 'skill', ref: SKILL },
+      autonomous: false,
+    });
+
+    expect(json(result)).toMatchObject({
+      accepted: true,
+      effective: { source: { source: 'skill', ref: SKILL }, autonomous: false },
+    });
+    expect(startBodies(f)).toEqual([await dialogBody(f)]);
+    // The whole feature, both doors: an ordinary task and nothing else. No issue route exists to
+    // call, and neither path invents one.
+    expect(f.calls.filter((c) => c.method !== 'GET').map((c) => c.path)).toEqual([`/api/v1/p/${PROJECT}/runs`]);
+  });
+
+  it('refuses the skill the project does not have, and creates nothing — the dialog’s own answer', async () => {
+    const f = setup({ skills: [] });
+    const result = await callTool(f, {
+      operationId: 'op-issue-0002',
+      prompt: BRIEF,
+      source: { source: 'skill', ref: SKILL },
+      autonomous: false,
+    });
+    expect(result.isError).toBe(true);
+    expect(message(result)).toMatch(/unknown skill/);
+    expect(startBodies(f)).toEqual([]);
+    // And the dialog reaches the same place from the same state: no skill to select.
+    const s = await cockpitState(f.app);
+    expect(control.findIssueCreateSkill(s.skills as unknown as { name: string; source: string }[])).toBeNull();
+  });
+
+  it('the ordinary-task fallback matches too: the same brief, on quick-task, with no skill', async () => {
+    const f = setup({ skills: [] });
+    const result = await callTool(f, { operationId: 'op-issue-0003', prompt: BRIEF, autonomous: false });
+    expect(json(result)).toMatchObject({ accepted: true });
+    expect(startBodies(f)).toEqual([await dialogBody(f)]);
+  });
+});
