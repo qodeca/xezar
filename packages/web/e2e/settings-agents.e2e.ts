@@ -126,10 +126,12 @@ describe('settings → agents against the live dry-run server', () => {
   })
 
   it('per-runner model preset: select writes the runner key, others untouched', async () => {
+    const before = await waitForConfig(() => true)
     setSelect('[data-slot="agents-model"][data-runner="claude"]', 'opus')
     const config = await waitForConfig((c) => c.defaultModels.claude === 'opus')
-    expect(config.defaultModels.codex).toBeUndefined()
-    expect(config.defaultModels.opencode).toBeUndefined()
+    for (const runner of ['codex', 'opencode', 'pi']) {
+      expect(config.defaultModels[runner]).toEqual(before.defaultModels[runner])
+    }
   })
 
   it('system prompt: explicit save persists the trimmed text', async () => {
