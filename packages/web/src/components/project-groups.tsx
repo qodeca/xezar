@@ -4,7 +4,7 @@ import { useLocation } from 'react-router'
 
 import { useHealth, usePinRun, useProjectRuns } from '@/api/queries'
 import type { ProjectListEntry } from '@qodeca/xezar-api-client'
-import { useSidebarNavigate } from '@/components/app-shell'
+import { MissingProjectBadge, NavBadge, SkillsUpdateMarker, useSidebarNavigate } from '@/components/app-shell'
 import { useListView } from '@/components/list-view'
 import { activeNavPath, visibleNavItems } from '@/components/nav-items'
 import { ReferenceStatusProvider } from '@/components/reference-status'
@@ -218,16 +218,11 @@ function ProjectGroup({
         <div
           data-slot="project-group-header"
           title={`${project.root} is gone — remove it in Global settings → Projects`}
-          className="flex h-11 w-full items-center gap-[7px] rounded-lg px-2 text-[13px] font-semibold opacity-55 md:h-9"
+          className="flex min-h-tap w-full items-center gap-2 rounded-lg px-2 text-[13px] font-semibold md:h-9 md:min-h-0"
         >
           <span className="w-3 shrink-0" aria-hidden="true" />
           <span className="truncate">{project.name}</span>
-          <span
-            data-slot="project-missing"
-            className="ml-auto shrink-0 rounded-full bg-danger/15 px-[7px] py-px text-[10px] font-medium text-danger"
-          >
-            folder not found
-          </span>
+          <MissingProjectBadge />
         </div>
       </div>
     )
@@ -257,31 +252,23 @@ function ProjectGroup({
         className={cn(
           // 44px touch target in the drawer, the 36px scale row on desktop — the same
           // relaxation the flat nav makes.
-          'flex h-11 w-full items-center gap-[7px] rounded-lg px-2 text-left text-[13px] font-semibold transition-colors hover:bg-muted md:h-9',
+          'flex min-h-tap w-full items-center gap-2 rounded-lg px-2 text-left text-[13px] font-semibold transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 md:h-9 md:min-h-0',
           active && 'bg-muted',
         )}
       >
         <ChevronDownIcon
           className={cn(
-            'size-3 shrink-0 text-muted-foreground transition-transform',
+            'size-3 shrink-0 text-muted-foreground motion-safe:transition-transform',
             collapsed && '-rotate-90',
           )}
           aria-hidden="true"
         />
         <span className="truncate">{project.name}</span>
-        {waiting ? (
-          <span
-            data-slot="project-attention"
-            title={`${waiting} task${waiting === 1 ? '' : 's'} need${waiting === 1 ? 's' : ''} you`}
-            className="shrink-0 rounded-full bg-violet px-1.5 py-px text-[10.5px] font-semibold text-violet-foreground"
-          >
-            {waiting}
-          </span>
-        ) : null}
+        <NavBadge data-slot="project-attention" title={`${project.name}: ${waiting} task${waiting === 1 ? '' : 's'} need${waiting === 1 ? 's' : ''} you`} className="ml-0">{waiting}</NavBadge>
         {project.branch ? (
           <span
             data-slot="project-branch"
-            className="ml-auto max-w-[92px] truncate font-mono text-[10.5px] font-medium text-soft-foreground"
+            className="ml-auto max-w-[92px] truncate font-mono text-[10.5px] font-medium text-muted-foreground"
           >
             {project.branch}
           </span>
@@ -322,7 +309,7 @@ function ProjectGroup({
                   onClick={onNavigate}
                   aria-current={isActive ? 'page' : undefined}
                   className={cn(
-                    'flex h-11 w-full items-center gap-2.5 rounded-md px-2.5 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:h-[30px]',
+                    'flex min-h-tap w-full items-center gap-2.5 rounded-md px-2.5 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:h-8 md:min-h-0',
                     isActive && 'bg-muted font-semibold text-foreground',
                   )}
                 >
@@ -331,19 +318,11 @@ function ProjectGroup({
                   {/* `/api/todos` is fetched for the active scope only, so only the active
                       group has a real count to show — a badge on the others would be the active
                       project's number wearing someone else's name. */}
-                  {item.badge === 'inbox-count' && active && inboxCount ? (
-                    <span
-                      data-slot="nav-badge"
-                      className="ml-auto rounded-full bg-violet px-1.5 py-px text-[10.5px] font-semibold text-violet-foreground"
-                    >
-                      {inboxCount}
-                    </span>
+                  {item.badge === 'inbox-count' && active ? (
+                    <NavBadge>{inboxCount}</NavBadge>
                   ) : null}
-                  {item.badge === 'skills-update' && active && skillsUpdateAvailable ? (
-                    <span data-slot="nav-update-marker" className="ml-auto flex items-center">
-                      <span className="size-1.5 rounded-full bg-violet" aria-hidden="true" />
-                      <span className="sr-only">Skills update available</span>
-                    </span>
+                  {item.badge === 'skills-update' && active ? (
+                    <SkillsUpdateMarker available={Boolean(skillsUpdateAvailable)} />
                   ) : null}
                 </Link>
               )
@@ -380,7 +359,7 @@ function ProjectGroup({
             to={scopeTo(project.id, '/')}
             onClick={onNavigate}
             data-slot="project-group-more"
-            className="flex h-9 items-center rounded-md px-3 text-[12px] text-muted-foreground transition-colors hover:text-foreground md:h-7"
+            className="flex min-h-tap items-center rounded-md px-3 text-[12px] text-muted-foreground transition-colors hover:text-foreground md:h-7 md:min-h-0"
           >
             More…
           </Link>

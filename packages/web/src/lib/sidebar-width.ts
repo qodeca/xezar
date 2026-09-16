@@ -43,23 +43,28 @@ export function clampSidebarWidth(raw: unknown): number {
 
 /** The stored width, or the default when storage is empty, unreadable (private mode) or junk. */
 export function readStoredSidebarWidth(): number {
+  return readSidebarStorage(SIDEBAR_WIDTH_STORAGE_KEY, clampSidebarWidth, DEFAULT_SIDEBAR_WIDTH)
+}
+
+/** Persist a width using the same bounds as the reader. */
+export function writeStoredSidebarWidth(width: number): void {
+  writeSidebarStorage(SIDEBAR_WIDTH_STORAGE_KEY, String(clampSidebarWidth(width)))
+}
+
+/** Browser preferences are optional: unavailable or corrupt storage preserves the caller's default. */
+export function readSidebarStorage<T>(key: string, parse: (raw: string) => T, fallback: T): T {
   try {
-    const raw = localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY)
-    // An absent key is the default, not a `Number(null) === 0` clamped up to the minimum. Same
-    // answer today, but only by coincidence — say what is meant.
-    if (raw === null) return DEFAULT_SIDEBAR_WIDTH
-    return clampSidebarWidth(raw)
+    const raw = localStorage.getItem(key)
+    return raw === null ? fallback : parse(raw)
   } catch {
-    return DEFAULT_SIDEBAR_WIDTH
+    return fallback
   }
 }
 
-/** Persist a width. Clamped on the way in as well as on the way out, so a bad value can never be
- *  written in the first place and an already-bad one can never be read back. */
-export function writeStoredSidebarWidth(width: number): void {
+export function writeSidebarStorage(key: string, value: string): void {
   try {
-    localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(clampSidebarWidth(width)))
+    localStorage.setItem(key, value)
   } catch {
-    // Private mode / storage disabled — the width still applies for this page.
+    // The in-memory preference still applies when storage is unavailable or full.
   }
 }

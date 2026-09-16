@@ -1,3 +1,4 @@
+import type { RefObject } from 'react'
 import { SettingsIcon } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link as RouterLink, useNavigate } from 'react-router'
@@ -39,9 +40,11 @@ import { Label } from '@/components/ui/label'
 export function CloneProjectDialog({
   open,
   onOpenChange,
+  returnFocusRef,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
+  returnFocusRef?: RefObject<HTMLElement | null>
 }) {
   const [url, setUrl] = useState('')
   const [name, setName] = useState('')
@@ -102,11 +105,18 @@ export function CloneProjectDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => (checkout.isPending ? undefined : onOpenChange(next))}>
-      <DialogContent data-slot="clone-project-dialog" className="sm:max-w-lg">
+      <DialogContent data-slot="clone-project-dialog" className="sm:max-w-lg"
+        onCloseAutoFocus={(event) => {
+          if (returnFocusRef?.current?.isConnected) {
+            event.preventDefault()
+            returnFocusRef.current.focus()
+          }
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Clone from GitHub</DialogTitle>
           <DialogDescription>
-            xezar clones with <code>gh</code> into your checkout root and adds the result as a project.
+            xezar clones the GitHub repository into your configured projects folder, then adds it as a project.
           </DialogDescription>
         </DialogHeader>
 
@@ -180,7 +190,7 @@ export function CloneProjectDialog({
         ) : null}
 
         {checkout.isError ? (
-          <p data-slot="clone-error" className="text-[13px] text-danger">
+          <p role="alert" data-slot="clone-error" className="min-w-0 border-l-2 border-danger pl-3 text-[13px] break-words text-foreground">
             {checkout.error instanceof Error ? checkout.error.message : 'could not clone that repository'}
           </p>
         ) : null}
