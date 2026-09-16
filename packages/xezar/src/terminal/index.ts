@@ -15,6 +15,7 @@
 import { resolveCapabilities } from '../server/capabilities.ts';
 import { wrapTo } from './activity.ts';
 import { attachRunStoreActivity, type ActivitySource } from './activity-source.ts';
+import { journalRowEntry } from './journal-source.ts';
 import { glyphsFor, formatDuration, type Glyphs } from './format.ts';
 import { HttpDiagnostics, type HttpFailure } from './http-diagnostics.ts';
 import { isCapableTty, readTerminalFacts, resolveOnResize, resolveRender, type RenderMode } from './mode.ts';
@@ -25,6 +26,7 @@ import type { ResolvedCliSettings } from '../cli-settings.ts';
 import type { ProjectContexts } from '../server/project-context.ts';
 import type { RunStore } from '../runs/store.ts';
 import type { ActivityEntry } from './activity.ts';
+import type { McpJournalRow } from '@qodeca/xezar-contract';
 
 export interface TerminalActivityOptions {
   settings: ResolvedCliSettings;
@@ -60,6 +62,12 @@ export interface TerminalActivity {
   endRecovery(): void;
   /** One activity line, from a caller that is not a store (MCP, registry, ports). */
   log(entry: ActivityEntry): void;
+  /**
+   * One boot-project journal row as it was appended (#467, PR 4). Hand to the MCP service as
+   * `onEventRow`. Prints only the catalog kinds the store bridge cannot derive
+   * (`CATALOG_KIND_SOURCE`); every other row is ignored.
+   */
+  onEventRow(row: McpJournalRow): void;
   /** Erase the region, print the session summary, restore the cursor, release everything. */
   stop(options?: { stillRunning?: number; projectName?: string }): void;
 }
@@ -226,6 +234,11 @@ export function startTerminalActivity(options: TerminalActivityOptions): Termina
       if (!options.settings.quiet && isCapableTty(facts) && !facts.ci) renderer.startDisplay();
     },
     log: (activity) => emit(activity),
+    onEventRow: (row) => {
+      if (renderer.isStopped) return;
+      const line = journalRowEntry(row, { url: () => url, dash: glyphs.dash, ...(options.projectId ? { projectId: options.projectId } : {}) });
+      if (line) emit(line);
+    },
     stop: (stopOptions = {}) => {
       if (renderer.isStopped) return;
       const stillRunning = stopOptions.stillRunning ?? renderer.activeRows.length;

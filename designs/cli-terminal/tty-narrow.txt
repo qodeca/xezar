@@ -47,8 +47,8 @@ $ xez
   10:14:30 warn  b98de765
     needs you — “Pin vitest to 3.2.4 or
     allow 3.2.x?”
-    http://localhost:4322/p/beta/tasks/
-    b98de765
+    http://localhost:4322/p/beta/tasks/b
+    98de765
   10:16:11 warn  http
     409 POST /api/v1/p/:projectId/runs/
     :id/finish — “no open session”
@@ -62,7 +62,44 @@ $ xez
 # asked a question, was answered, then failed, so it is no longer active and
 # no longer needs you: 2 tasks are active and 1 failed. Parts that do not fit
 # are left out from the right with …; the needs-you count never is. It never wraps, so a redraw never leaves debris.
-# The URL is the one exception to “at most 3 lines”: a URL is never cut.
+# The URL and the stall line of scene 2b are the exceptions to “at most 3
+# lines”: they are never cut. A URL wraps at the 40th column, wherever that
+# falls.
+
+# ───────────────────────────────────────
+# Scene 2b – lines from the MCP event
+# journal (#460): stall advisory, verdict,
+# resume, then a park for contrast
+# ───────────────────────────────────────
+
+[stderr]
+  10:26:02 warn  e5b7c3d9
+    task may be stalled: step implement
+    has shown no agent activity for 5
+    minutes (advisory — the task is …
+    still running — nothing was stopped
+    http://localhost:4322/p/beta/tasks/e
+    5b7c3d9
+  10:26:48 info  a12bc345
+    code-review verdict REQUEST CHANGES
+    on
+    3f9c2e1d8b7a6f5e4d3c2b1a0f9e8d7c6b5…
+  10:27:05 info  e5b7c3d9
+    task resumed: agent activity
+    returned at step implement
+  10:28:12 warn  e5b7c3d9
+    needs you — waiting for an answer
+    http://localhost:4322/p/beta/tasks/e
+    5b7c3d9
+
+# Stalled is advisory; blocked is a fact. The 3-line cut removes the end of
+# the stall summary, where it says nothing was stopped, so “still running —
+# nothing was stopped” is its own line and is always printed, like the URL
+# after it. The live summary does not count a stall; the park adds 1 to
+# “needs you”.
+# The verdict line keeps the reviewer’s own word in full. The long commit
+# id does not fit beside it, so it wraps to its own line and is cut with ….
+# The plain line keeps the whole summary (non-tty.txt).
 
 # ───────────────────────────────────────
 # Scene 3 – resize from 80 to 40 columns

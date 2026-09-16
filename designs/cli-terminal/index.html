@@ -21,15 +21,15 @@
 <main class="doc">
   <h1>CLI terminal – live activity and one cockpit per project</h1>
   <p class="lead">What <code>xez</code> prints in a terminal: a short banner, one line per thing that happened, and a small live table of active tasks. Each project runs in its own xezar on a port it keeps. Words carry every state; colour only reinforces them.</p>
-  <p>Status: Draft, waiting for the first design review. Issue #467. The exact terminal output is in the text files below – this page only shows how the colours read in a light and a dark theme. Developer handoff: <a class="link" href="README.md">README.md</a>.</p>
+  <p>Status: Draft. Design review round 1 is done and its findings are addressed; the next design review is pending. Issue #467. The exact terminal output is in the text files below – this page only shows how the colours read in a light and a dark theme. Developer handoff: <a class="link" href="README.md">README.md</a>.</p>
 
   <h2>Files</h2>
   <div class="table-scroll">
     <table class="decision-table">
       <thead><tr><th scope="col">File</th><th scope="col">What it shows</th></tr></thead>
       <tbody>
-        <tr><td><a class="link" href="tty.txt">tty.txt</a></td><td>A terminal at 80 columns: first start, a second project, live activity with the table, more than 10 tasks, the stop summary.</td></tr>
-        <tr><td><a class="link" href="tty-narrow.txt">tty-narrow.txt</a></td><td>A terminal at 40 columns, and a resize from 80 to 40.</td></tr>
+        <tr><td><a class="link" href="tty.txt">tty.txt</a></td><td>A terminal at 80 columns: first start, a second project, live activity with the table, a stall advisory and a reviewer verdict, more than 10 tasks, the stop summary.</td></tr>
+        <tr><td><a class="link" href="tty-narrow.txt">tty-narrow.txt</a></td><td>A terminal at 40 columns, the same stall and verdict lines, and a resize from 80 to 40.</td></tr>
         <tr><td><a class="link" href="non-tty.txt">non-tty.txt</a></td><td>Output to a file, a pipe or CI: plain banner and one logfmt line per event.</td></tr>
         <tr><td><a class="link" href="quiet.txt">quiet.txt</a></td><td><code>--quiet</code>, <code>run --quiet</code> and the four log levels.</td></tr>
         <tr><td><a class="link" href="error-cases.txt">error-cases.txt</a></td><td>Every refusal and failure: ports, a second instance, MCP, tasks, HTTP, skills, exposure, untrusted text, bursts.</td></tr>

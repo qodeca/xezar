@@ -273,3 +273,41 @@ it('uses a singular pronoun when one task remains at shutdown', () => {
   terminal.stop({ stillRunning: 1 });
   expect(stream.text).toContain('1 task was still running. xezar picks it up on the next start.');
 });
+
+describe('MCP journal rows (#467, PR 4)', () => {
+  const stalled = {
+    eventId: 'beta:3',
+    journalSeq: 3,
+    ts: '2026-09-16T12:04:09.000Z',
+    projectId: 'beta',
+    category: 'E-01',
+    kind: 'task.stalled',
+    subject: { type: 'run', id: 'a12bc345-0000', version: null },
+    origin: 'system',
+    causedBy: null,
+    summary: 'task may be stalled: step implement has used 80% of its time limit (advisory — the task is still running and nothing was stopped)',
+  } as const;
+
+  it('prints a stall advisory the journal wrote, with the task link once the cockpit listens', () => {
+    const stream = new FakeStream();
+    const terminal = start(stream);
+    terminal.setUrl('http://localhost:4321', { port: 4321 });
+    terminal.onEventRow({ ...stalled });
+    const line = stream.lines().find((l) => l.includes('event=task.stalled'));
+    expect(line).toBeDefined();
+    expect(line).toContain('level=warn');
+    expect(line).toContain('project=beta');
+    expect(line).toContain('run=a12bc345');
+  });
+
+  it('prints nothing for a row the store bridge owns, and nothing after stop', () => {
+    const stream = new FakeStream();
+    const terminal = start(stream);
+    terminal.onEventRow({ ...stalled, kind: 'task.done', summary: 'task finished: done, no reviewer verdict recorded' });
+    expect(stream.text).not.toContain('event=task.done');
+    terminal.stop();
+    const before = stream.text;
+    terminal.onEventRow({ ...stalled });
+    expect(stream.text).toBe(before);
+  });
+});

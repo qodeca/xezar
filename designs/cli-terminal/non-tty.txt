@@ -33,8 +33,8 @@
 2026-09-15T08:06:12.131Z level=info project=beta event=mcp.ready
 2026-09-15T08:06:13.402Z level=info project=beta event=update.available latest=0.16.1 running=0.16.0
 2026-09-15T08:07:02.918Z level=info project=beta event=task.started run=b98de765 step=implement agent=codex title="Bump vitest to 3.2"
-2026-09-15T08:09:45.330Z level=info project=beta event=gate.passed run=a12bc345 step=typecheck duration_ms=41022
-2026-09-15T08:12:08.771Z level=error project=beta event=gate.failed run=a12bc345 step=unit-tests exit=1 duration_ms=143118
+2026-09-15T08:09:45.330Z level=info project=beta event=gate.passed run=a12bc345 step=typecheck result_scope=stage duration_ms=41022
+2026-09-15T08:12:08.771Z level=error project=beta event=gate.failed run=a12bc345 step=unit-tests result_scope=stage exit=1 duration_ms=143118
 2026-09-15T08:12:09.002Z level=info project=beta event=step.started run=a12bc345 step=repair index=3 total=4 agent=claude
 2026-09-15T08:14:30.515Z level=warn project=beta event=question.asked run=b98de765 question="Pin vitest to 3.2.4 or allow 3.2.x?" url=http://localhost:4323/p/beta/tasks/b98de765
 2026-09-15T08:15:02.040Z level=info project=beta event=leader.attached client=claude-code
@@ -46,16 +46,28 @@
 2026-09-15T08:20:30.441Z level=info project=beta event=task.done run=c4410f2e duration_ms=129004 tokens=18412 cost_usd=0.31
 2026-09-15T08:21:12.093Z level=info project=beta event=result.ready run=a12bc345 duration_ms=899310 tokens=96233
 2026-09-15T08:21:40.777Z level=error project=beta event=http.error method=GET route=/api/v1/p/:projectId/runs/:id/diff status=500 message="internal error"
+2026-09-15T08:26:02.000Z level=warn project=beta event=task.stalled run=e5b7c3d9 origin=system seq=41 summary="task may be stalled: step implement has shown no agent activity for 5 minutes (advisory — the task is still running and nothing was stopped)" url=http://localhost:4323/p/beta/tasks/e5b7c3d9
+2026-09-15T08:26:48.000Z level=info project=beta event=verdict.posted run=a12bc345 origin=system seq=42 summary="code-review verdict REQUEST CHANGES on 3f9c2e1d8b7a6f5e4d3c2b1a0f9e8d7c6b5a4f3e (report cr-7, labels verified)"
+2026-09-15T08:27:05.000Z level=info project=beta event=task.resumed run=e5b7c3d9 origin=system seq=43 summary="task resumed: agent activity returned at step implement"
+2026-09-15T08:28:12.000Z level=warn project=beta event=task.blocked run=e5b7c3d9 url=http://localhost:4323/p/beta/tasks/e5b7c3d9
 2026-09-15T08:31:40.002Z level=info project=beta event=xezar.stopping running=2
 2026-09-15T08:31:40.019Z level=info project=beta event=session.summary duration_ms=1528000 done=3 review=1 failed=1 cancelled=0 still_running=2
 2026-09-15T08:31:40.020Z level=info project=beta event=xezar.stopped
 
-# Event names reuse the MCP event catalog where the meaning is the same
-# (`task.done`, `task.failed`, `task.cancelled`, `result.ready`,
-# `question.asked`, `question.answered`, `gate.passed`, `gate.failed`,
-# `executor.available`, `executor.unavailable`; packages/xezar/src/mcp/
-# event-catalog.ts). Names the catalog does not have are new and listed in
-# README.md § 10.2.
+# Event names are the MCP event catalog's kinds wherever the catalog has one
+# (the contract's `McpEventKind`), and a closed list of terminal-only names
+# otherwise (packages/xezar/src/terminal/event-names.ts, #467 PR 4). A park
+# with no structured question is `task.blocked`; a routine check that passed
+# is `debug`. README.md § 10.2 lists every name.
+#
+# Stalled is advisory; blocked is a fact. `task.stalled` (08:26:02) is
+# `level=warn`, its `summary` ends by saying the task is still running and
+# nothing was stopped, and the task is unchanged. `task.blocked` (08:28:12) is
+# the task waiting for input. `task.stalled`, `task.resumed` and
+# `verdict.posted` come from the MCP event journal: `origin` and `seq` are the
+# journal row's, `summary` is its text in full (plain output never cuts it)
+# and the verdict word is the reviewer's own. Of the three, only the stall
+# carries `url`. Without the MCP service these lines are absent.
 #
 # `tokens` and `cost_usd` are left out under XEZ_HIDE_TOKEN_USAGE=1 and
 # XEZ_HIDE_COST=1. `exit=unknown` is written when the agent reported no code;
@@ -64,7 +76,11 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Rich output asked for, but stderr is not a terminal
 #   xez --output rich 2> activity.log
-# One line, once, first in the file. Then plain lines as above.
+# One line, once, first in the file. Then plain lines as above. The reason
+# is "stderr is not a terminal", "CI is set" or "TERM is dumb"; only these
+# three fall back to plain, and only they print this notice. A capable
+# terminal narrower than 60 columns is not a fallback: `--output rich` there
+# prints human lines with the one-line summary (tty-narrow.txt) and no notice.
 # `--output lines` is honoured anywhere: it writes the human lines of tty.txt,
 # without the live region, to a file too.
 # ─────────────────────────────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Prove every new regression test RED before it was green (#467, PR 3).
+ * Prove every new regression test RED before it was green (#467, PR 3 and PR 4).
  *
  * A test written after the diagnosis passes against the bug more often than anyone expects, and
  * a green-either-way test is how the same regression ships twice (AGENTS.md § Changing a
@@ -319,6 +319,114 @@ const CASES = [
     replace: `options.stream ?? (process.stdout as unknown as RenderStream)`,
     test: 'node:packages/xezar/test/unit/serve-streams.test.ts',
   },
+{
+    "name": "blocked-printed-as-question",
+    "ac": "PR4",
+    "why": "a park without a question keeps the PR 3 name",
+    "file": "packages/xezar/src/terminal/activity-source.ts",
+    "find": "event: question ? 'question.asked' : 'task.blocked',",
+    "replace": "event: 'question.asked',",
+    "test": "packages/xezar/src/terminal/activity-source.test.ts"
+},
+{
+    "name": "routine-pass-at-info",
+    "ac": "PR4",
+    "why": "terminal disagrees with isLeaderSignificant",
+    "file": "packages/xezar/src/terminal/activity-source.ts",
+    "find": "level: significant ? 'info' : 'debug',",
+    "replace": "level: 'info',",
+    "test": "packages/xezar/src/terminal/activity-source.test.ts"
+},
+{
+    "name": "result-scope-dropped",
+    "ac": "PR4",
+    "why": "gate line loses the catalog result scope",
+    "file": "packages/xezar/src/terminal/activity-source.ts",
+    "find": "['step', step.id],\n              ['result_scope', resultScope],",
+    "replace": "['step', step.id],",
+    "test": "packages/xezar/src/terminal/activity-source.test.ts"
+},
+{
+    "name": "journal-duplicates-store-kinds",
+    "ac": "PR4",
+    "why": "journal rows the store bridge already prints are printed again",
+    "file": "packages/xezar/src/terminal/journal-source.ts",
+    "find": "if (source.from !== 'journal') return undefined;",
+    "replace": "",
+    "test": "packages/xezar/src/terminal/journal-source.test.ts"
+},
+{
+    "name": "journal-guesses-unknown-kind",
+    "ac": "PR4",
+    "why": "an unknown kind is printed with a guessed level",
+    "file": "packages/xezar/src/terminal/journal-source.ts",
+    "find": "if (!Object.hasOwn(CATALOG_KIND_SOURCE, row.kind)) return undefined;\n  const kind = row.kind as keyof typeof CATALOG_KIND_SOURCE;\n  const source: CatalogKindSource = CATALOG_KIND_SOURCE[kind];",
+    "replace": "const kind = row.kind as keyof typeof CATALOG_KIND_SOURCE;\n  const source: CatalogKindSource = CATALOG_KIND_SOURCE[kind] ?? { from: 'journal', level: 'info' };",
+    "test": "packages/xezar/src/terminal/journal-source.test.ts"
+},
+{
+    "name": "stall-not-printed",
+    "ac": "PR4",
+    "why": "the stall advisory is left to the store, which never prints it",
+    "file": "packages/xezar/src/terminal/event-names.ts",
+    "find": "'task.stalled': { from: 'journal', level: 'warn' },",
+    "replace": "'task.stalled': { from: 'store' },",
+    "test": "packages/xezar/src/terminal/journal-source.test.ts"
+},
+{
+    "name": "store-bridge-table-drift",
+    "ac": "PR4",
+    "why": "the table and the store bridge disagree on who prints a kind",
+    "file": "packages/xezar/src/terminal/event-names.ts",
+    "find": "'task.blocked': { from: 'store' },",
+    "replace": "'task.blocked': { from: 'journal', level: 'warn' },",
+    "test": "packages/xezar/src/terminal/event-names.test.ts"
+},
+{
+    "name": "terminal-only-name-collides",
+    "ac": "PR4",
+    "why": "a terminal-only name reuses a catalog kind",
+    "file": "packages/xezar/src/terminal/event-names.ts",
+    "find": "  'task.queued',\n",
+    "replace": "  'task.queued',\n  'task.done',\n",
+    "test": "packages/xezar/src/terminal/event-names.test.ts"
+},
+{
+    "name": "terminal-drops-journal-rows",
+    "ac": "PR4",
+    "why": "serve hands rows over and the terminal prints none",
+    "file": "packages/xezar/src/terminal/index.ts",
+    "find": "if (line) emit(line);",
+    "replace": "void line;",
+    "test": "packages/xezar/src/terminal/index.test.ts"
+},
+{
+    "name": "journal-rows-after-stop",
+    "ac": "PR4",
+    "why": "a row after stop still reaches the stream",
+    "file": "packages/xezar/src/terminal/index.ts",
+    "find": "if (renderer.isStopped) return;\n      const line = journalRowEntry",
+    "replace": "const line = journalRowEntry",
+    "test": "packages/xezar/src/terminal/index.test.ts"
+},
+{
+    "name": "hook-never-subscribed",
+    "ac": "PR4",
+    "why": "the MCP service ignores onEventRow",
+    "file": "packages/xezar/src/mcp/index.ts",
+    "find": "parts.journal.subscribe(opts.onEventRow)",
+    "replace": "undefined",
+    "test": "packages/xezar/src/mcp/acceptance-durability.test.ts -t onEventRow"
+},
+{
+    "name": "hook-not-released",
+    "ac": "PR4",
+    "why": "the hook stays subscribed after close",
+    "file": "packages/xezar/src/mcp/index.ts",
+    "find": "    stopRows?.();\n    unregisterLeader?.();",
+    "replace": "    unregisterLeader?.();",
+    "test": "packages/xezar/src/mcp/acceptance-durability.test.ts -t onEventRow"
+},
 ];
 
 function run(cmd, args, opts = {}) {
