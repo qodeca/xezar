@@ -393,9 +393,9 @@ const projectConfigWriteSchema = setConfigInputSchema.omit({ maxParallel: true }
 const projectRegistryWriteSchema = z.strictObject(updateProjectInputSchema.shape);
 const promptTemplatesSchema = uiStateSchema.shape.promptTemplates.unwrap();
 
-// Agent steps only — `command` and the check step's `onFail` are not keys here, and the object is
+// Agent steps only — `command`, `resultScope` and the check step's `onFail` are not keys here, and the object is
 // strict, so a check step is refused rather than silently turned into something else.
-const { command: _command, onFail: _onFail, ...agentStepShape } = workflowStepDefSchema.shape;
+const { command: _command, resultScope: _resultScope, onFail: _onFail, ...agentStepShape } = workflowStepDefSchema.shape;
 const agentStepSchema = z.strictObject(agentStepShape).refine((step) => Boolean(step.prompt ?? step.skill), {
   message: 'a step needs a prompt or a skill; check steps (shell commands) cannot be saved through MCP',
 });

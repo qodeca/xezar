@@ -324,6 +324,10 @@ Only E-01–E-06. The row envelope (the shape measured in E7):
   every row and is carried through replay unchanged.
 - The row carries a **summary, never a payload**. No diff, no transcript text, no file content, no token
   counter. A leader that wants the artefact calls a read tool, which is bounded and paginated (N-06).
+- A gate-result row may additionally carry bounded routing metadata
+  `gate: {stepId, resultScope: "routine" | "stage"}`. It says which authored check settled and whether
+  a successful result is routine setup or a stage result; it is not command output or transcript data.
+  Absence is the legacy shape and means stage for delivery. The journal retains both scopes unchanged.
 - **Decided, negative:** `item.started` / `item.completed` / `tool-call` / `tool-result` / `text` /
   `token-usage` / `cost` never enter the journal. In the measured sample the four highest-volume of those
   types alone are **1848 of 2061** persisted events (§ 9), and requirements § 6 says presentation changes,

@@ -145,6 +145,15 @@ describe('the per-project event journal (#103)', () => {
     expect(page(journal.read()).events.map((row) => row.journalSeq)).toEqual([1, 2, 3]);
   });
 
+  it('rejects a filtered-delivery cursor outside the journal range', () => {
+    const journal = openJournal();
+    journal.append(event(1));
+
+    expect(() => journal.cursorAt(-1)).toThrow(RangeError);
+    expect(() => journal.cursorAt(2)).toThrow(RangeError);
+    expect(page(journal.read({ cursor: journal.cursorAt(1) })).events).toEqual([]);
+  });
+
   it('stores origin, causedBy, subject version and source on every row, and replays them unchanged', () => {
     const journal = openJournal();
     journal.append(event(1, { origin: 'leader', causedBy: 'op-000000001', source: { runId: 'run-1', runSeq: 331 } }));

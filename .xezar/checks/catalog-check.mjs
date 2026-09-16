@@ -37,7 +37,9 @@ const err = (where, message) => errors.push(`${where}: ${message}`);
 // 6cd4aaa3605e8bcddf7bafd8f05ac96881ee35cc (0.10.1) and cited `:13-44` / `:51-60`; those
 // ranges no longer hold, which is why this note records what was actually opened.
 //
-// The re-read added one key: `timeout`, declared at `:79` (its scalar `stepTimeoutSchema`
+// The 2026-09-16 re-read added `resultScope`, the check-only significance enum declared beside
+// `command` in both the contract and runtime schemas. The earlier re-read added `timeout`, declared
+// at `:79` (its scalar `stepTimeoutSchema`
 // at `:38-41`, and refused on a check step by the refine at `:94-96`). It is the per-step
 // wall clock #22 introduced. Until this set learned it, a workflow that set a fully
 // supported `timeout` was rejected below as an unknown step key that "would do nothing" —
@@ -58,6 +60,7 @@ const STEP_KEYS = new Set([
   "allowedTools",
   "bashAllowlist",
   "command",
+  "resultScope",
   "onFail",
   "timeout",
 ]);
@@ -271,6 +274,12 @@ function checkWorkflow(file, doc) {
       const script = step.command.split(/\s+/)[0];
       if (script.startsWith(".xezar/checks/") && !existsSync(join(root, script))) {
         err(at, `runs "${script}", which does not exist`);
+      }
+    }
+    if (step.resultScope !== undefined) {
+      if (!isCheck) err(at, "resultScope applies only to a check step (command)");
+      if (step.resultScope !== "routine" && step.resultScope !== "stage") {
+        err(at, `resultScope must be "routine" or "stage" (got "${step.resultScope}")`);
       }
     }
     if (step.onFail) {

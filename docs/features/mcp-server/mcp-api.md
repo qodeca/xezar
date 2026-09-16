@@ -222,6 +222,7 @@ Unknown arguments are rejected.
 | `steps[].bashAllowlist` | array of string | no |  |  |
 | `steps[].timeout` | string | no |  |  |
 | `steps[].command` | string | no |  |  |
+| `steps[].resultScope` | `routine` \| `stage` | no |  |  |
 | `steps[].onFail` | object | no |  |  |
 | `steps[].onFail.retry` | string | yes | min length 1 |  |
 | `steps[].onFail.max` | integer | no | max 9007199254740991, default `2` |  |
@@ -385,6 +386,7 @@ Unknown arguments are rejected.
 > After you have taken a page into account, ack its nextCursor. Until you do, read returns the same events again, so drop any eventId you already handled. Acknowledging an older cursor changes nothing.
 > status "gap" means events after your position are no longer retained: nothing is replayed, the current state is included, and you continue by acking resumeCursor.
 > task.stalled is an advisory observation: no transcript activity for 5 minutes, or at least 80% of a finite step timeout used. It does not prove a deadlock and does not stop the task. Read the task before deciding whether to steer or cancel it. task.resumed says activity came back.
+> Pushes omit routine successful setup checks. They include failures and stage results; omittedRoutineCount counts routine passes covered by a pushed cursor. Acknowledging that cursor also accounts for those routine passes. leader_events read returns the full retained journal, including omitted passes.
 > After context compaction, call leader_events with action read and no cursor before relying on prior pushes. It replays retained events after your last explicit acknowledgement, including events pushed but not acknowledged. Read every page using nextCursor while hasMore is true. Deduplicate by eventId, reconcile current task state, then acknowledge only the events you have accounted for. A transport receipt is not an acknowledgement. Already acknowledged events are not replayed by default; use a retained earlier cursor if you deliberately need history. If the journal reports a gap, reconcile the returned current state before acknowledging resumeCursor. Do not poll while idle.
 > Delivery is at-least-once within retained durable state, not exactly-once: xezar retains at least the newest 10000 events and evicts none younger than 14 days, and a page carries at most 100 events or 40000 bytes. Events outside that are reported as an explicit gap, never as silence. Acknowledgement is cumulative, monotonic and idempotent, and only your ack moves it: reading or receiving an event does not. Nothing already delivered to this session is pushed again on a timer.
 
@@ -641,6 +643,10 @@ carried by the MCP; a leader reads them with `gh`.
 - **Pushed cursor.** Each pushed message names the cursor of its last event (`next_cursor` on a
   Claude Code channel message). Ack that cursor once the events are taken into account; no read is
   needed.
+- **Significance.** Pushes omit routine successful setup checks. They include failures and stage
+  results; `omittedRoutineCount` counts routine passes covered by a pushed cursor. Acknowledging that
+  cursor also accounts for those routine passes. `leader_events read` returns the full retained
+  journal, including omitted passes.
 - **Restart.** An attachment lives as long as the xezar process. After a restart the leader calls
   `status` and attaches again; events wait in the journal meanwhile. A Claude Code leader whose channel
   is registered gets one notice from its bridge when xezar stops.
