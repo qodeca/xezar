@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Issue filing design – overview</title>
+<link rel="stylesheet" href="../../docs/design-system/cockpit.css">
+<link rel="stylesheet" href="styles.css">
+<script src="theme.js"></script>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-github" viewBox="0 0 24 24"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.4 5.4 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
+</svg>
+
+<nav class="doc-bar" aria-label="Design pages">
+  <span class="brand">Issue filing</span>
+  <a href="index.html" aria-current="page">Overview</a>
+  <a href="entry.html">Entry</a>
+  <a href="states.html">States</a>
+  <a href="phone.html">Phone</a>
+  <span class="spacer"></span>
+  <button class="theme-toggle" type="button" data-theme-toggle>Light / dark</button>
+</nav>
+
+<div class="doc">
+  <h1>New issue in the GitHub tab – UI design</h1>
+  <p class="lead">A person reading the GitHub tab decides an issue is missing. Today the only way to file one is to leave xezar for github.com, or to write a task by hand and hope it files a good issue. This design adds one control in that tab. It opens a task draft with the issue-create skill and this project already chosen, collects a brief in the person's own words and starts an ordinary task. It files nothing: approval stays with the agent's Create or Revise question in the task.</p>
+
+  <p style="font-size:12px;color:var(--soft-foreground)">Status: draft for design review (<code>xezar-ux-design</code>, authoring mode). Static mockup, not shipped code. Tokens and type come from <code>docs/design-system/cockpit.css</code>, which mirrors <code>packages/web/src/styles/index.css</code>. Covers PR 5 of <a class="link" href="https://github.com/qodeca/xezar/issues/468">qodeca/xezar#468</a>, on the owner decisions of 2026-09-16 and the consumer boundary in <code>docs/features/issue-filing/xez-issue-create-contract.md</code>. Developer handoff, full specs, copy deck, MCP parity and test expectations: <a class="link" href="README.md">README.md</a>. Owner questions: <a class="link" href="open-questions.md">open-questions.md</a>.</p>
+
+  <h2>Pages</h2>
+  <div class="table-scroll">
+    <table class="decision-table">
+      <thead><tr><th>Page</th><th>What it shows</th></tr></thead>
+      <tbody>
+        <tr><td><a class="link" href="entry.html">Entry</a></td><td>Where <b>New issue</b> lives in the GitHub tab, the second entry in the empty list, the draft dialog itself, and the strip the running draft puts back into the tab.</td></tr>
+        <tr><td><a class="link" href="states.html">States</a></td><td>Every state: empty brief, starting, skill unavailable, hosted mode, no <code>gh</code>, loading, tab error, start failed, running, waiting on Create/Revise, stale list — and the shipped <code>AskCard</code> the question is answered in.</td></tr>
+        <tr><td><a class="link" href="phone.html">Phone</a></td><td>375 px: the action leaves the tab row, the dialog fills the width and the footer stacks under the thumb.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>The one distinction a person must never miss</h2>
+  <p class="note"><strong>Starting the task is not filing the issue.</strong> Every surface in this design says it in words before it says it in anything else: the dialog's description, a standing note above the footer, the button label <b>Start drafting</b> rather than <i>Create</i> or <i>File</i>, and the strip that reports <i>Drafting an issue</i> while the task runs. Filing happens exactly once, at the agent's Create / Revise question inside the task thread. No colour, icon or tone carries this: remove every colour from the page and the sentences still say it.</p>
+
+  <h2>Design decisions</h2>
+  <div class="table-scroll">
+    <table class="decision-table">
+      <thead><tr><th>Decision</th><th>Choice</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td>Placement</td><td>End of the GitHub tab's tab row, pushed right, on both the Issues and the Pull requests view</td><td>It is the screen a person is on when they conclude an issue is missing, and the list they just searched is the duplicate check. It costs no nav item, no new route and no keyboard shortcut. It is not a third tab: a tab changes what you are looking at, this starts work.</td></tr>
+        <tr><td>Second entry</td><td>The list's empty state, when the local narrow and the forge search both found nothing</td><td>That is the strongest moment in the whole flow — the person has just proved to themselves that the issue does not exist. Offering it there is the only place the duplicate-first rule is free.</td></tr>
+        <tr><td>Not a route</td><td>A <code>Dialog</code>, not <code>/github/new</code> and not the <code>/new</code> composer</td><td>The brief is one field. A route change loses the list being read, and the composer asks for a workflow, a runner, variants and a worktree — six decisions for a person who has one sentence to write. The composer stays reachable for anyone who wants those options.</td></tr>
+        <tr><td>Button label</td><td><b>Start drafting</b>, never <i>Create</i> or <i>File</i></td><td>The label is the strongest promise on the screen. <i>Create</i> would be a lie: this call starts a task.</td></tr>
+        <tr><td>The skill is named, not chosen</td><td>A read-only <code>xezar-issue-create</code> chip plus <b>View skill</b></td><td>A picker would invite a person to run something else under a button that says <i>New issue</i>. Naming it keeps the promise inspectable without making it a decision.</td></tr>
+        <tr><td>Project preselected</td><td>The route's own project, stated as text in the dialog</td><td>The GitHub tab is project-scoped already. Showing the destination repository and the project as text, before the box, is what makes the later “file into <code>qodeca/xezar</code>” question unsurprising.</td></tr>
+        <tr><td>Backend pills kept</td><td>The existing <code>EnginePills</code>, exactly as <code>hand-to-agent.tsx</code> uses them</td><td>Every other place that starts a task from this tab offers them, and the provider gate ("Connect an agent provider") is already written there. A second grammar for the same choice is a divergence.</td></tr>
+        <tr><td>Skill unavailable shows the control</td><td>The button stays; the dialog carries the explanation and keeps the brief</td><td>Hiding it turns a missing capability into a missing feature and sends a person looking for a button that exists elsewhere. The dialog names what is lost — template intake, closed-issue duplicate search, the approval step — offers an ordinary task with the same text, and installs nothing.</td></tr>
+        <tr><td>Hosted mode is not a refusal</td><td>The control works; one line names whose GitHub login files the issue</td><td>Starting a task is not a local-machine capability, so there is no 409 to render. What genuinely differs is that the host machine's <code>gh</code> login is the author. Inventing a refusal would be false; staying silent would be worse.</td></tr>
+        <tr><td>No <code>gh</code>, no remote</td><td>No control at all; the tab's existing explainer stands unchanged</td><td>There is no destination to name, and the header that would carry the button is not rendered on that screen. The skill's local-draft fallback is still reachable from the ordinary composer. <b>Open question OQ-1.</b></td></tr>
+        <tr><td>Loading and tab error</td><td>No control</td><td>A button that names a repository the cockpit has not read yet would be a guess.</td></tr>
+        <tr><td>The question has one home</td><td>The strip links to the task; the Create / Revise chips are only in the thread's <code>AskCard</code></td><td>Two places to answer one question is two places that can disagree, and the thread is where the exact title and body being approved are visible. The strip reports; it never answers.</td></tr>
+        <tr><td>One strip, not a list</td><td>At most one issue-draft strip per project</td><td>Filing is a single-owner operation in the contract. Several drafts at once is a race the design should not encourage; a second start is still possible and simply replaces what the strip points at.</td></tr>
+        <tr><td>No “just filed” badge</td><td>The filed issue appears in the list on the next refresh; a stale list says so and offers <b>Refresh</b></td><td>A badge held in browser memory would vanish on reload and would claim a list state the tab has not read. Saying “this list was synced before that” is true at every moment.</td></tr>
+        <tr><td>No new endpoint</td><td><code>POST /api/v1/p/:projectId/runs</code>, the call this tab already makes</td><td>The contract note and the owner decision both forbid a direct issue-mutation route. The surface adds no server capability at all.</td></tr>
+        <tr><td>MCP parity in the same PR</td><td><code>task_create</code> with <code>source: {source:'skill', ref:'xezar-issue-create'}</code></td><td>Owner rule, 2026-09-16: a new cockpit capability must be reachable by the leader too. The tool already exists and needs no new action — the handoff pins the exact call so the implementation PR ships and tests both.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Phone preview</h2>
+  <p>The phone page at 390 px. The <b>New issue</b> action leaves the tab row and becomes a full-width 44 px row under it, the draft strip wraps its link to full width, the dialog footer stacks in <code>column-reverse</code> so <b>Start drafting</b> is the top of the stack with <b>Cancel</b> under it, and nothing scrolls sideways at 375 px.</p>
+  <div class="phone"><iframe src="phone.html" title="Issue filing at phone width"></iframe></div>
+
+  <h2>Accessibility checklist for the build</h2>
+  <ul>
+    <li><b>New issue</b> is a real <code>&lt;button&gt;</code> inside the tab row, reached by Tab straight after the two tabs, with the cockpit's <code>:focus-visible</code> ring.</li>
+    <li>Opening the dialog moves focus to the brief textarea; closing it returns focus to the button that opened it. The shipped <code>Dialog</code> does both — do not override <code>onCloseAutoFocus</code>.</li>
+    <li>Escape closes the dialog and the typed brief survives, because the draft is stored, not held in component state.</li>
+    <li>⌘/Ctrl+Enter starts from inside the textarea, announced through <code>aria-keyshortcuts</code>, exactly as the hand-off box does. A bare Enter inserts a newline.</li>
+    <li>The disabled <b>Start drafting</b> carries its reason as visible text linked by <code>aria-describedby</code> — never a <code>title</code> alone.</li>
+    <li>The draft strip is <code>role="status"</code>: it is announced politely when it appears and when it changes to “is asking”, and it never steals focus.</li>
+    <li>A failed start is <code>role="alert"</code> inside the dialog, above the footer, with the brief still on screen.</li>
+    <li>No state is carried by colour: the strip's sentence names the state with the dot removed, and the amber text is <code>--pending-strong</code>, never the soft <code>--pending</code>.</li>
+    <li>Touch targets are 44 px on phone; both themes work through tokens only, with no <code>dark:</code> variant and no raw colour.</li>
+  </ul>
+</div>
+
+</body>
+</html>
