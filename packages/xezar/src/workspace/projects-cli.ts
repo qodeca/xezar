@@ -1,5 +1,6 @@
 import { stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { parsePortValue, PORT_MAX, PORT_MIN } from '../cli-settings.ts';
 import { workspaceConfigPath } from '../paths.ts';
 import { loadWorkspaceConfig, mergeWriteWorkspaceConfig } from './config.ts';
 import {
@@ -37,8 +38,10 @@ const USAGE = `usage:
   xezar projects remove <id>   drop a registry entry (the repo is untouched)
   xezar projects tag <id> [<tag>…]
                                set the grouping tags of a project (none clears them)
+  xezar projects port <id> [<port>]
+                               pin the cockpit port of a project (none clears it)
 
-  add/remove/tag are unavailable when XEZ_SINGLE_PROJECT=1`;
+  add/remove/tag/port are unavailable when XEZ_SINGLE_PROJECT=1`;
 
 const SINGLE_PROJECT_ADD_ERROR = 'single-project mode is enabled; adding projects is disabled';
 const SINGLE_PROJECT_REMOVE_ERROR = 'single-project mode is enabled; removing projects is disabled';
@@ -78,6 +81,12 @@ export async function runProjectsCommand(
         return 1;
       }
       return tagCommand(rest[0], rest.slice(1), io);
+    case 'port':
+      if (singleProject) {
+        io.error(SINGLE_PROJECT_EDIT_ERROR);
+        return 1;
+      }
+      return portCommand(rest[0], rest[1], io);
     default:
       io.error(`unknown projects subcommand: ${sub}\n`);
       io.error(USAGE);
@@ -204,6 +213,62 @@ async function tagCommand(
     normalized === undefined
       ? `  = ${id} (no tags)`
       : `  = ${id}  [${normalized.join(' ')}]`,
+  );
+  return 0;
+}
+
+/**
+ * `xezar projects port <id> [<port>]` (#467) — the ONLY writer of `projects[].cli.port`.
+ *
+ * That key is a person's deliberate choice of port for a project, which is exactly why a
+ * start never writes it: `--port` and `XEZ_PORT` are instructions for one launch, and
+ * persisting them would silently promote a one-off into configuration. Omitting the port
+ * clears the preference, the same grammar `tag` uses for clearing tags.
+ *
+ * A port that is not a port is refused here rather than stored, so the value in the file is
+ * always one the resolver will accept — the same rule `normalizeProjectTags` follows for tags.
+ */
+async function portCommand(
+  id: string | undefined,
+  port: string | undefined,
+  io: ProjectsCommandIo,
+): Promise<number> {
+  if (!id) {
+    io.error(USAGE);
+    return 1;
+  }
+  let value: number | undefined;
+  if (port !== undefined) {
+    const parsed = parsePortValue(port);
+    if (parsed === null) {
+      io.error(`port must be a whole number from ${PORT_MIN} to ${PORT_MAX} — got “${port}”.`);
+      return 1;
+    }
+    value = parsed;
+  }
+  let known = false;
+  await mergeWriteWorkspaceConfig((config) => {
+    const entry = config.projects.find((project) => project.id === id);
+    if (!entry) return;
+    known = true;
+    // In place, so `.passthrough()` keys survive; the key is DELETED rather than set to a
+    // sentinel, because "no preference" is an absent key everywhere else in this file.
+    if (value === undefined) {
+      if (entry.cli) delete entry.cli.port;
+      // An empty `cli` object carries no information — drop it rather than leave `{}` behind.
+      if (entry.cli && Object.keys(entry.cli).length === 0) delete entry.cli;
+    } else {
+      entry.cli = { ...(entry.cli ?? {}), port: value };
+    }
+  });
+  if (!known) {
+    io.error(`unknown project: ${id}`);
+    return 1;
+  }
+  io.log(
+    value === undefined
+      ? `  = ${id} (no port set — it starts from its remembered port, then 4321)`
+      : `  = ${id}  port ${value}`,
   );
   return 0;
 }
