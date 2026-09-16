@@ -39,7 +39,8 @@ function PopoverContent({
         sideOffset={sideOffset}
         collisionPadding={keyboardAwareCollisionPadding(insets, collisionPadding)}
         className={cn(
-          "z-50 w-72 origin-(--radix-popover-content-transform-origin) rounded-md border bg-popover p-4 text-popover-foreground shadow-md outline-hidden data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
+          // `motion-safe:` on the two animate utilities — see dialog.tsx (A-05).
+          "z-50 w-72 origin-(--radix-popover-content-transform-origin) rounded-md border bg-popover p-4 text-popover-foreground shadow-md outline-hidden motion-safe:data-[state=closed]:animate-out motion-safe:data-[state=open]:animate-in data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
           className
         )}
         {...props}
@@ -64,9 +65,12 @@ function PopoverHeader({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
+/** The popover's heading. It is an `h2` element, not just an `h2` TYPE: the prop type has always
+ *  said `h2` while the markup rendered a `div` (G-07), so a screen-reader user got a popover with
+ *  no heading in the document outline and no way to jump to it. */
 function PopoverTitle({ className, ...props }: React.ComponentProps<"h2">) {
   return (
-    <div
+    <h2
       data-slot="popover-title"
       className={cn("font-medium", className)}
       {...props}

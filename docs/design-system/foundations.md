@@ -30,7 +30,7 @@ token has no utility and is read with `var(--name)`.
 | `--sidebar` | `var(--card)` | `#fafafa` | The sidebar rail. Its own token because light wants a tint below the white card so the rail reads as chrome. | `bg-sidebar` |
 | `--muted` | `#262626` | `#f7f7f7` | Hover fill, chips, the segmented control track, menu item focus. | `bg-muted` |
 | `--muted-foreground` | `#a3a3a3` | `#5c5c5c` | Secondary ink: descriptions, inactive nav, chip text. | `text-muted-foreground` |
-| `--soft-foreground` | `#7b7b7b` | `#a3a3a3` | Tertiary ink: placeholders, table headers, timestamps, the neutral status dot. | `text-soft-foreground` |
+| `--soft-foreground` | `#909090` | `#6f6f6f` | Tertiary ink: placeholders, table headers, timestamps, the neutral status dot. It colours 10–12.5px text, so it clears AA's 4.5:1 on every surface it prints on, `--muted` included. | `text-soft-foreground` |
 | `--border` | `#262626` | `#ebebeb` | Every border. The base layer sets `border-color: var(--border)` on `*`. | `border-border` |
 | `--input` | `#262626` | `#ebebeb` | Input and textarea borders, the unchecked switch track. | `border-input`, `bg-input` |
 | `--contrast` | `#ebebeb` | `#262626` | Inverse surface: the `contrast` button, tooltips, default toasts. | `bg-contrast` |
@@ -44,7 +44,7 @@ token has no utility and is read with `var(--name)`.
 | `--primary` | `var(--accent-lime)` | same | The active accent: primary button, checked switch, text selection, the ghost-code caret. Settings → Appearance can repoint it (see [theming.md](theming.md)). | `bg-primary`, `text-primary` |
 | `--primary-foreground` | `#0d0d0d` | same | Ink on `--primary`. | `text-primary-foreground` |
 | `--violet` | `#8f86e8` | same | "Needs a person" and "running": the Inbox badge, the running dot, the review dot, pins, the reference chip's resting look. | `bg-violet`, `text-violet` |
-| `--violet-foreground` | `#ffffff` | same | Ink on `--violet`. White in both themes; the violet never lightens enough for dark ink. | `text-violet-foreground` |
+| `--violet-foreground` | `#0d0d0d` | same | Ink on `--violet` (the Inbox count badge, 10.5px). Near-black in both themes: white on this violet is 3.1:1, the near-black 6.2:1. | `text-violet-foreground` |
 | `--ring` | `#a8f372` | `#171717` | Focus ring colour. Used as `ring-ring/50`. | `ring-ring` |
 | `--grad` | `linear-gradient(135deg, #b4f372 12%, #eefb63 58%, #bc9aff 100%)` | same | Brand gradient (lime → yellow → violet). Read with `var(--grad)`. | – |
 
@@ -53,8 +53,8 @@ token has no utility and is read with `var(--name)`.
 | Token | Dark | Light | Meaning | Utility |
 | --- | --- | --- | --- | --- |
 | `--danger` | `#ef4444` | same | Failed, destructive, deletions. | `bg-danger`, `text-danger` |
-| `--danger-foreground` | `#ffffff` | same | Ink on `--danger`. | `text-danger-foreground` |
-| `--danger-ink` | `#0d0d0d` | same | Near-black ink on `--danger` where white fails AA at small sizes (about 5.1:1; white is 3.8:1, G-23). Does not follow the accent, unlike `--primary-foreground`. Used by the development-build badge only (decisions.md D-08). | `text-danger-ink` |
+| `--danger-foreground` | `var(--danger-ink)` | same | Ink on `--danger` (the destructive button, the danger toast). Points at `--danger-ink` because white on this red is 3.8:1. | `text-danger-foreground` |
+| `--danger-ink` | `#0d0d0d` | same | Near-black ink on `--danger` (about 5.1:1; white is 3.8:1). Does not follow the accent, unlike `--primary-foreground`. `--danger-foreground` now points at it, so every label printed on the red reads; the development-build badge keeps naming it directly (decisions.md D-08). | `text-danger-ink` |
 | `--success` | `#10b981` | same | Done, passed, additions. | `bg-success`, `text-success` |
 | `--pending` | `#fbbf24` | same | Waiting, scheduled, in progress. Fill only: dots and spinners. Never text. | `bg-pending` |
 | `--pending-strong` | `#fbbf24` | `#b45309` | The ink version of pending. Amber-700 on light so it stays readable. | `text-pending-strong` |
@@ -189,8 +189,14 @@ Density changes only that token:
 Type sizes do not change with density. A spacing or control-size pixel written by hand (`h-[34px]`,
 `px-[7px]`) is outside the density lever, and the `no-arbitrary-spacing` guardian rule fails a new
 occurrence (`decisions.md` D-06); use scale units (`h-9`, `px-2`).
-The one pixel the design fixes on purpose is a floor: `min-h-[24px]` on the composer picker pill (`chipClass`)
-and the reference chip holds each at WCAG 2.2 SC 2.5.8's 24 px when the density lever would shrink it below.
+Two tokens are deliberately OUTSIDE the density lever, because a target size is a hand size, not a taste:
+`--spacing-tap` (44 px) is the phone hit-area floor and `--spacing-chip` (24 px) is the separate chip minimum
+(WCAG 2.2 SC 2.5.8). They are flat pixels, not `calc(var(--spacing) * n)` — `h-11` is 44 / 55 / 38.5 / 33 px at
+comfortable / roomy / compact / ultra, so a density-scaled height misses the floor at two of the four settings.
+Spell them `min-h-tap` / `min-w-tap` / `size-tap` on phone and release them at `md:`, where the pointer is a
+mouse; `min-h-chip` is the chip floor and is never a phone pass on its own.
+The older hand-typed spelling of that chip floor, `min-h-[24px]` on the composer picker pill (`chipClass`)
+and the reference chip, is the same 24 px and converts to the token in its own batch (#453 B4).
 One more size is fixed on purpose, without a pixel: the development-build badge is `size-[54%]` with
 `-top-[15%] -right-[15%]` of the fixed `size-[26px]` brand tile it sits on (about 14 px and 4 px). A scale unit
 would grow and shrink the badge with density while the tile stays put (decisions.md D-08).
@@ -215,6 +221,8 @@ Controls keep their own sizes on the numeric scale (`h-9`, `px-3.5`); a rhythm t
 | `--spacing-inset` | `calc(var(--spacing) * 5)` | 5 | 20px | inside a card (not `card`: that name is a colour token) |
 | `--spacing-group` | `calc(var(--spacing) * 6)` | 6 | 24px | a speaker change in the thread; the run header's top |
 | `--spacing-section` | `calc(var(--spacing) * 8)` | 8 | 32px | sections and settings fields; desktop page gutters, on both axes; under a page header |
+| `--spacing-tap` | `44px` | – | 44px | the absolute phone hit-area floor, at every density (`min-h-tap`, `min-w-tap`, `size-tap`) |
+| `--spacing-chip` | `24px` | – | 24px | the separate chip minimum, at every density (`min-h-chip`) |
 
 The same steps at each density:
 
@@ -286,12 +294,12 @@ primitives need. There is no motion token scale.
 
 | Motion | Where | Reduced motion |
 | --- | --- | --- |
-| `animate-pulse` | status dots (`pulse`), twinkle backdrop, skeleton | twinkles use `motion-safe:animate-pulse`; the composer dictation dot adds `motion-reduce:animate-none`; `StatusDot` and `Skeleton` do not guard (known gap G-08) |
+| `animate-pulse` | status dots (`pulse`), twinkle backdrop, skeleton | twinkles use `motion-safe:animate-pulse`; `StatusDot`, `Skeleton` and the composer dictation dot add `motion-reduce:animate-none`. Route-level pulses outside the primitives are still being converted (G-08) |
 | `animate-spin` | refresh and loading icons | `motion-safe:animate-spin` in the skills update card |
 | `.shimmer` | running tool-card titles (muted → foreground sweep, 1.8s) | falls back to a plain muted title |
 | ghost code typewriter | the `/new` hero backdrop (`.ghost-code-line`, `steps(n)`) | renders every line fully typed and static |
-| `animate-in fade-in-0 zoom-in-95` (+ `slide-in-from-*`) | dialogs (`duration-200`), menus, popovers, tooltips, select | not guarded |
-| `slide-in-from-left` / `slide-out-to-left` | the sheet drawer (in 500ms, out 300ms) | not guarded |
+| `motion-safe:…animate-in` / `…animate-out` (+ `fade-*`, `zoom-*`, `slide-in-from-*`) | dialogs and alert dialogs (`duration-200`), menus, popovers, tooltips | the surface appears and disappears with no movement |
+| `slide-in-from-left` / `slide-out-to-left` | the sheet drawer (in 500ms, out 300ms) | `motion-safe:` on the animation plus `motion-reduce:transition-none`; the drawer appears in place |
 | `motion-safe:animate-in … slide-in-from-right-4 duration-200` | toasts | instant appear and disappear |
 | `transition-colors` | hover on nav rows, chips, buttons | – |
 | `transition-[color,box-shadow]` | focus ring on inputs, badges | – |
@@ -360,7 +368,9 @@ the pin button in `task-quick-list.tsx` (`no-hover:mr-1 no-hover:size-7 no-hover
 - iOS does not shrink the layout viewport for the keyboard, so `lib/keyboard-inset.ts` keeps `--kb` on
   `:root` and the thread dock sits at `bottom-[var(--kb,0px)]`. Popovers add the inset to their collision
   padding.
-- Touch targets are `size-11` / `h-11` (44px) on phone and shrink at `md:`.
+- Touch targets are 44 px on phone AT EVERY DENSITY. Pin the floor with `min-h-tap` / `min-w-tap` (or `size-tap`
+  for an overlay on a control whose visible size is the design, like the switch track) and release it at `md:`.
+  `size-11` / `h-11` alone is not the floor: the density lever takes it to 38.5 px at compact and 33 px at ultra.
 - Never `h-screen` or `100vh` (guardian rule `no-100vh`).
 
 ## 13. Base layer

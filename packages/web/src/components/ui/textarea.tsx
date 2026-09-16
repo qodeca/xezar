@@ -7,6 +7,9 @@ function Textarea({ className, ...props }: React.ComponentProps<"textarea">) {
     <textarea
       data-slot="textarea"
       className={cn(
+        // No `min-h-tap` here on purpose: `min-h-16` is 64px at comfortable and still 48px at
+        // "Compact for real", so the density lever never takes this control under the 44px phone
+        // floor and a second `min-h-*` would only fight the first one.
         "flex field-sizing-content min-h-16 w-full resize-none rounded-md border border-input bg-card px-3 py-2 text-base shadow-xs transition-[color,box-shadow] outline-none placeholder:text-soft-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 md:text-sm",
         className
       )}

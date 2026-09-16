@@ -23,12 +23,12 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 
 - **Purpose**: every clickable action. Two filled CTAs, two quiet shapes, one destructive shape.
 - **Source**: `packages/web/src/components/ui/button.tsx`. Exports `Button`, `buttonVariants`.
-- **Variants** (`variant`, default `primary`): `primary` = `bg-primary text-primary-foreground hover:brightness-[0.96]`; `contrast` = `bg-contrast text-contrast-foreground hover:brightness-[0.96]`; `outline` = `border border-border bg-card hover:bg-muted`; `ghost` = `text-muted-foreground hover:bg-muted hover:text-foreground`; `danger-ghost` = `text-danger hover:bg-danger/10`. There is deliberately no `secondary`, `destructive` or `link`.
-- **Sizes** (`size`, default `default`): `default` = `h-9 px-3.5 text-[13.5px]`; `sm` = `h-[30px] rounded-sm px-2.5 text-[12.5px]`; `icon` = `size-9`; `icon-sm` = `size-[30px] rounded-sm`.
-- **Base**: `inline-flex … gap-[7px] rounded-md font-semibold … focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50`; unsized svg children become `size-4`. `asChild` renders a Radix `Slot`.
+- **Variants** (`variant`, default `primary`): `primary` = `bg-primary text-primary-foreground hover:brightness-[0.96]`; `contrast` = `bg-contrast text-contrast-foreground hover:brightness-[0.96]`; `outline` = `border border-border bg-card hover:bg-muted`; `ghost` = `text-muted-foreground hover:bg-muted hover:text-foreground`; `danger` = `bg-danger text-danger-foreground hover:brightness-[0.96]`; `danger-ghost` = `text-danger hover:bg-danger/10`. There is deliberately no `secondary`, `destructive` or `link`.
+- **Sizes** (`size`, default `default`): `default` = `h-9 px-3.5 text-[13.5px]`; `sm` = `h-7.5 rounded-sm px-2.5 text-[12.5px]`; `icon` = `size-9`; `icon-sm` = `size-7.5 rounded-sm`. Every size also carries `min-h-tap min-w-tap md:min-h-0 md:min-w-0` — the absolute 44 px phone floor, released at `md:` (foundations.md §4).
+- **Base**: `inline-flex … gap-1.75 rounded-md font-semibold … focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50`; unsized svg children become `size-4`. `asChild` renders a Radix `Slot`.
 - **States**: hover (brightness or background), focus-visible ring, disabled (50% opacity, no pointer events), pending (caller swaps the label to `Verb-ing…` and disables).
-- **Rules**: DO use `contrast` for the sidebar CTA and dialog confirms, `primary` for the one send/start action on a surface, `outline` for cancel, `ghost` for icon buttons, `danger-ghost` for destructive row actions. DO NOT hand-write `bg-danger text-danger-foreground` on a confirm when the confirm is destructive; the four current copies (counts read on 2026-09-16) are known gap G-10. DO NOT add a `secondary` variant.
-- **Accessibility**: an icon-only button MUST carry `aria-label`. Touch targets on phone are `size-11`.
+- **Rules**: DO use `contrast` for the sidebar CTA and dialog confirms, `primary` for the one send/start action on a surface, `outline` for cancel, `ghost` for icon buttons, `danger` for a solid destructive confirm, `danger-ghost` for destructive row actions. DO NOT hand-write `bg-danger text-danger-foreground` on a destructive confirm — use `variant="danger"`; the four remaining hand-written copies adopt it in their own batches (known gap G-10). DO NOT add a `secondary` variant.
+- **Accessibility**: an icon-only button MUST carry `aria-label`. Every size meets the 44 px phone target at every density through `min-h-tap` / `min-w-tap`; a caller no longer adds `size-11` for that.
 - **Where used**: 46 files (most-imported primitive).
 
 ### Badge
@@ -40,14 +40,6 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Rules**: DO use `outline` and `ghost` (the two variants the cockpit uses). DO NOT use Badge for run status; that is `Pill` + `StatusDot`.
 - **Accessibility**: plain span; no role.
 - **Where used**: 3 files (`add-project-dialog.tsx`, `settings/accounts-section.tsx`, `settings/agent-config-section.tsx`).
-
-### Card
-
-- **Purpose**: stock shadcn card (`Card`, `CardHeader`, `CardTitle`, `CardDescription`, `CardAction`, `CardContent`, `CardFooter`).
-- **Source**: `packages/web/src/components/ui/card.tsx`. Root class `flex flex-col gap-6 rounded-lg border bg-card py-6 text-card-foreground shadow-xs`.
-- **States**: none.
-- **Rules**: the cockpit does not use this primitive. The card spelling in use is the ad-hoc `rounded-lg border border-border bg-card` (22 sites in 15 files) with `shadow-xs` where it is a raised container. That ad-hoc string, with `p-inset` inside and `gap-list` between cards, is the rule for new work (known gap G-02). DO NOT introduce a third spelling (`rounded-xl border bg-card p-4` exists twice, in `routes/automations/automations.tsx`).
-- **Where used**: 0 files.
 
 ### Collapsible
 
@@ -61,7 +53,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Purpose**: cmdk list and the `CommandDialog` wrapper for the palette and every searchable picker.
 - **Source**: `packages/web/src/components/ui/command.tsx`. Exports `Command`, `CommandDialog`, `CommandInput`, `CommandList`, `CommandEmpty`, `CommandGroup`, `CommandItem`, `CommandShortcut`, `CommandSeparator`.
 - **Props that matter**: `CommandDialog` takes `title` (default `"Command Palette"`), `description` (default `"Search for a command to run..."`, both rendered `sr-only`), `showCloseButton` (default `true`), and a custom `filter` forwarded to cmdk so a dialog can rank its own results.
-- **States**: `CommandItem` uses `data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground` and `data-[disabled=true]:opacity-50`; input `h-12`, items `px-2 py-3`.
+- **States**: `CommandItem` uses `data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground` and `data-[disabled=true]:opacity-50`; input `h-12`, items `px-2 py-3`. The input, its wrapper and every item carry `min-h-tap md:min-h-0` — the 44 px phone floor.
 - **Rules**: DO give every dialog a `title` and `description` (the default description is the one `...` in the codebase; pass your own). DO render `<CommandEmpty>Nothing matches.</CommandEmpty>`. DO NOT rely on the default subsequence scorer for id-like data; pass `filter` (see `paletteScore`).
 - **Accessibility**: the sr-only header names the dialog; cmdk drives arrow keys and selection without moving DOM focus.
 - **Where used**: 8 files (`command-palette.tsx`, `composer/composer.tsx`, `facet-filter.tsx`, `prompt-template-menu.tsx`, `routes/github/github.tsx`, `routes/github/hand-to-agent.tsx`, `routes/new-task.tsx`, …).
@@ -72,7 +64,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Source**: `packages/web/src/components/ui/dialog.tsx`. Exports `Dialog`, `DialogClose`, `DialogContent`, `DialogDescription`, `DialogFooter`, `DialogHeader`, `DialogOverlay`, `DialogPortal`, `DialogTitle`, `DialogTrigger`.
 - **Props that matter**: `DialogContent showCloseButton` (default `true`); `DialogFooter showCloseButton` (default `false`, renders an `outline` "Close" button).
 - **Look**: overlay `bg-black/50` with fade; content `w-full max-w-[calc(100%-2rem)] gap-4 rounded-lg border bg-card p-6 shadow-modal duration-200 … zoom-in-95 sm:max-w-lg`; footer `flex flex-col-reverse gap-2 sm:flex-row sm:justify-end`.
-- **States**: open/closed animations on `data-[state]`; close button `opacity-70 hover:opacity-100` with a `focus:ring-2` ring (the older idiom, known gap G-06).
+- **States**: open/closed animations on `data-[state]`, all `motion-safe:`; close button `opacity-70 hover:opacity-100` with the shared `focus-visible:ring-[3px] focus-visible:ring-ring/50` ring and a centred `before:size-tap` overlay that gives the 16 px glyph a 44 px phone target without moving it.
 - **Rules**: DO put the cancel button first in DOM order and the confirm last (the footer reverses on phone so the confirm sits on top). DO use `AlertDialog` instead when the action is destructive. DO NOT nest a scroller taller than `max-h-[80dvh]` (skill preview) without `overflow-y-auto`.
 - **Accessibility**: always render `DialogTitle` (`sr-only` if visually elsewhere) and a `DialogDescription`, or pass `aria-describedby={undefined}` deliberately.
 - **Where used**: 9 files.
@@ -92,7 +84,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Purpose**: a side drawer (a Radix Dialog anchored to an edge).
 - **Source**: `packages/web/src/components/ui/sheet.tsx`. Exports `Sheet`, `SheetTrigger`, `SheetClose`, `SheetContent`, `SheetHeader`, `SheetFooter`, `SheetTitle`, `SheetDescription`.
 - **Props that matter**: `side` (`top | right | bottom | left`, default `right`), `showCloseButton` (default `true`). Left/right are `w-3/4 sm:max-w-sm`; the shell overrides to `w-[264px]`.
-- **Look**: `bg-background shadow-modal`, slide in 500ms, out 300ms.
+- **Look**: `bg-background shadow-modal`, slide in 500ms, out 300ms, `motion-safe:` on both directions plus `motion-reduce:transition-none`. Its close button matches the dialog's: shared focus-visible ring, `before:size-tap` phone overlay.
 - **Rules**: DO use `side="left"` for navigation (the mobile drawer) and `right` for detail drill-downs (sub-agent sheet). DO give it an `sr-only` `SheetTitle`.
 - **Where used**: 2 files (`app-shell.tsx`, `task-thread/subagent-sheet.tsx`).
 
@@ -101,8 +93,8 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Purpose**: action menus and radio pickers.
 - **Source**: `packages/web/src/components/ui/dropdown-menu.tsx`. Exports the full Radix set (`DropdownMenu`, `Trigger`, `Content`, `Group`, `Label`, `Item`, `CheckboxItem`, `RadioGroup`, `RadioItem`, `Separator`, `Shortcut`, `Sub`, `SubTrigger`, `SubContent`, `Portal`).
 - **Props that matter**: `Content sideOffset` default `4`; `Item variant` `default | destructive` (`data-[variant=destructive]:text-destructive`); `inset` on item, label and sub-trigger.
-- **Look**: content `min-w-[8rem] rounded-md border bg-popover p-1 shadow-md` with slide/zoom animations; items `focus:bg-accent`.
-- **Rules**: DO use `DropdownMenuRadioGroup` for single-choice pills (`PickerPill`). DO use `variant="destructive"` for delete/cancel items. Indicators sit on the left (Select's sit on the right, G-07).
+- **Look**: content `min-w-[8rem] rounded-md border bg-popover p-1 shadow-md` with `motion-safe:` slide/zoom animations; items `focus:bg-accent`. Every row type (item, checkbox, radio, sub-trigger) carries `min-h-tap md:min-h-0` — the 44 px phone floor.
+- **Rules**: DO use `DropdownMenuRadioGroup` for single-choice pills (`PickerPill`). DO use `variant="destructive"` for delete/cancel items. Indicators sit on the left.
 - **Where used**: 7 files (`app-shell.tsx`, `open-in-menu.tsx`, `picker-pill.tsx`, `tools-menu.tsx`, `settings/accounts-section.tsx`, `task-git/git-toolbar.tsx`, `task-thread/run-header.tsx`).
 
 ### Popover
@@ -112,7 +104,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Props that matter**: `align` default `center`, `sideOffset` default `4`; `collisionPadding` is merged with the keyboard insets (`keyboardAwareCollisionPadding`) so a popover near the composer clears the iOS keyboard.
 - **Look**: `w-72 rounded-md border bg-popover p-4 shadow-md` with slide/zoom animations.
 - **Rules**: DO prevent `onOpenAutoFocus` when the popover opens from hover or from typing (the reference chip, the composer menu). DO clamp lists to `--radix-popover-content-available-height`.
-- **Accessibility**: `PopoverTitle` renders a `div` although typed as `h2` (G-07).
+- **Accessibility**: `PopoverTitle` renders the `h2` it is typed as, so the panel's name is in the heading outline.
 - **Where used**: 10 files.
 
 ### Tooltip
@@ -120,15 +112,15 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Purpose**: short hover label.
 - **Source**: `packages/web/src/components/ui/tooltip.tsx`. Exports `Tooltip`, `TooltipTrigger`, `TooltipContent`, `TooltipProvider`.
 - **Props that matter**: `TooltipProvider delayDuration` default `0`; `TooltipContent sideOffset` default `0`; the arrow always renders. `Tooltip` does not self-wrap in a provider.
-- **Look**: `bg-contrast text-contrast-foreground rounded-md px-3 py-1.5 text-xs text-balance`, `animate-in fade-in-0 zoom-in-95` (unconditional, G-06).
+- **Look**: `bg-contrast text-contrast-foreground rounded-md px-3 py-1.5 text-xs text-balance`; the enter/exit animation hangs off `data-[state]` and is `motion-safe:`, like every other floating surface.
 - **Rules**: DO wrap the table in one `TooltipProvider`. DO prefer the native `title` attribute for tooltips that merely add information (~110 sites); Tooltip is for the column header toggles. DO NOT rely on a tooltip as the only carrier of meaning on touch.
 - **Where used**: 2 files (`routes/global-tasks.tsx`, `routes/tasks-overview.tsx`).
 
 ### Input
 
 - **Purpose**: single-line text field.
-- **Source**: `packages/web/src/components/ui/input.tsx`. Exports `Input`.
-- **Look**: `h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-base shadow-xs … placeholder:text-soft-foreground md:text-sm`; focus `focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50`; invalid `aria-invalid:border-destructive aria-invalid:ring-destructive/20`; disabled `pointer-events-none cursor-not-allowed opacity-50`.
+- **Source**: `packages/web/src/components/ui/input.tsx`. Exports `Input` and `nativeFieldClass` — the class a pane that keeps a raw `<select>`/`<input>` on purpose wears (settings fields, the branch picker; G-11). It lives on the field primitive so there is one string to fix and no second, half-adopted primitive.
+- **Look**: `h-9 min-h-tap w-full rounded-md border border-input bg-card px-3 py-1 text-base shadow-xs … placeholder:text-soft-foreground md:min-h-0 md:text-sm`; focus `focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50`; invalid `aria-invalid:border-destructive aria-invalid:ring-destructive/20`; disabled `pointer-events-none cursor-not-allowed opacity-50`.
 - **Rules**: DO keep `text-base` on phone (iOS zooms below 16px). DO pair with `Label htmlFor` or `aria-label`. Two routes hand-roll the search input markup instead of using Input (G-12); new search fields use `Input`.
 - **Where used**: 10 files.
 
@@ -136,7 +128,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 
 - **Purpose**: multi-line field that grows with content.
 - **Source**: `packages/web/src/components/ui/textarea.tsx`. Exports `Textarea`.
-- **Look**: `field-sizing-content min-h-16 w-full resize-none rounded-md border border-input bg-card px-3 py-2 text-base shadow-xs … md:text-sm`; same focus and invalid rings as Input; disabled has no `pointer-events-none` (G-07).
+- **Look**: `field-sizing-content min-h-16 w-full resize-none rounded-md border border-input bg-card px-3 py-2 text-base shadow-xs … md:text-sm`; same focus and invalid rings as Input; disabled has no `pointer-events-none` (G-07). No `min-h-tap`: `min-h-16` is 64 px at comfortable and still 48 px at the tightest density, so it is above the phone floor already.
 - **Rules**: DO submit with ⌘↵ / Ctrl+↵ (`isSubmitShortcut`) and keep plain Enter as a newline in dialogs. DO save on an explicit button for long text; never PUT on every keystroke.
 - **Where used**: 8 files.
 
@@ -146,20 +138,13 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Source**: `packages/web/src/components/ui/label.tsx`. Class `flex items-center gap-2 text-sm leading-none font-medium select-none`; dims with a disabled `peer` or `group`.
 - **Where used**: 3 files (`clone-project-dialog.tsx`, `routes/automations/automations.tsx`, `routes/settings/mcp-leader-control.tsx`).
 
-### Select
-
-- **Purpose**: stock shadcn select.
-- **Source**: `packages/web/src/components/ui/select.tsx`. `SelectTrigger size` `sm | default` (`h-8` / `h-9`); `SelectContent position` defaults to `item-aligned`.
-- **Rules**: unused. Settings pages render a raw `<select>` with a raw class of the shape `block w-full rounded-md border border-input bg-card px-3 py-1.5 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50` – that exact string at two sites (`routes/settings/agents-section.tsx:237`, `routes/repo-git/repo-branches.tsx:162`), the shared `rounded-md border border-input bg-card px-3 py-1.5` substring appears at 23 sites including these two (counts read on 2026-09-16; G-11). That raw select is the rule for new settings work until the gap is closed.
-- **Where used**: 0 files.
-
 ### Switch
 
 - **Purpose**: on/off preference.
-- **Source**: `packages/web/src/components/ui/switch.tsx`. `size` `sm | default`; track `data-[state=checked]:bg-primary data-[state=unchecked]:bg-input`; thumb `bg-background` (equals `--primary-foreground` in dark, so no `dark:` needed).
+- **Source**: `packages/web/src/components/ui/switch.tsx`. `size` `sm | default` (track `h-4.5 w-8` / `h-3.5 w-6`); track `data-[state=checked]:bg-primary data-[state=unchecked]:bg-input`; thumb `bg-background` (equals `--primary-foreground` in dark, so no `dark:` needed).
 - **States**: checked/unchecked, focus-visible ring, disabled 50%.
 - **Rules**: DO save on change and toast the new state (`Live title updates on`). DO put the visible label in a `SettingsField` title.
-- **Accessibility**: `role="switch"` and `aria-checked` from Radix; label via `aria-label` or `aria-labelledby`.
+- **Accessibility**: `role="switch"` and `aria-checked` from Radix; label via `aria-label` or `aria-labelledby`. The root IS the visible track, so the 44 px phone target is a centred `before:size-tap` overlay on it rather than a 44 px pill; it is released at `md:`.
 - **Where used**: 4 files (settings: agents, notifications, provider, skills).
 
 ### Tabs
@@ -167,28 +152,15 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Purpose**: segmented tabs (Radix).
 - **Source**: `packages/web/src/components/ui/tabs.tsx`. Exports `Tabs`, `TabsList`, `TabsTrigger`, `TabsContent`, `tabsListVariants`.
 - **Variants** (`TabsList variant`, default `default`): `default` = `bg-muted` track, active trigger `bg-card font-semibold text-foreground shadow-xs`; `line` = transparent track with a `after:` underline on the active trigger. Trigger text `text-[12.5px] font-medium`.
+- **Targets**: the trigger carries `min-h-tap md:min-h-0`, so a horizontal track is `h-fit` on phone and grows to hold its triggers; `md:` restores the fixed `h-9` segmented control.
 - **Rules**: DO use Tabs for real panel switching. For URL-backed segments use `TabLink`; for filters that re-slice one list use `aria-pressed` toggle buttons (`SegmentedControl`, the Active/Archived tabs).
 - **Where used**: 1 file (`settings/accounts-section.tsx`).
-
-### Separator
-
-- **Purpose**: 1px rule. `decorative` defaults to `true`.
-- **Source**: `packages/web/src/components/ui/separator.tsx`.
-- **Rules**: unused; routes use `border-t border-border` or `divide-y`. Either is fine.
-- **Where used**: 0 files.
-
-### ScrollArea
-
-- **Purpose**: stock Radix scroll area.
-- **Source**: `packages/web/src/components/ui/scroll-area.tsx`. Always renders a vertical `ScrollBar`.
-- **Rules**: unused. The cockpit relies on native `overflow-y-auto overscroll-contain` and the slim 8px scrollbars from the base layer.
-- **Where used**: 0 files.
 
 ### Skeleton
 
 - **Purpose**: loading placeholder block.
-- **Source**: `packages/web/src/components/ui/skeleton.tsx`. Class `animate-pulse rounded-md bg-accent`.
-- **Rules**: prefer `CenteredState` with a spinner for page-level loading (six `*-loading.tsx` routes do). Skeleton is for list rows whose shape is known (GitHub list). The pulse has no reduced-motion guard (G-08).
+- **Source**: `packages/web/src/components/ui/skeleton.tsx`. Class `animate-pulse rounded-md bg-accent motion-reduce:animate-none`.
+- **Rules**: prefer `CenteredState` with a spinner for page-level loading (six `*-loading.tsx` routes do). Skeleton is for list rows whose shape is known (GitHub list). The shape, not the pulse, carries the meaning, so the pulse stops under reduced motion.
 - **Where used**: 1 file (`routes/github/github.tsx`).
 
 ### Toaster
@@ -255,7 +227,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Purpose**: the 7px dot, the design system's single carrier of status colour.
 - **Source**: `packages/web/src/components/status-dot.tsx`. Exports `StatusDot`, `statusDotVariants`, type `StatusDotTone`.
 - **Variants**: `tone` `success | pending | danger | violet | neutral` (default `neutral`) → `bg-success | bg-pending | bg-danger | bg-violet | bg-soft-foreground`; `pulse` adds `animate-pulse`. Base `inline-block size-[7px] shrink-0 rounded-full`.
-- **Rules**: DO derive tone and pulse from `deriveAttention(run)`. DO give it `role="img"` and `aria-label={attention.label}` when it stands alone. DO NOT hand-roll a dot (three ad-hoc dots exist, G-08).
+- **Rules**: DO derive tone and pulse from `deriveAttention(run)`. DO give it `role="img"` and `aria-label={attention.label}` when it stands alone. The pulse carries `motion-reduce:animate-none`; the colour is what names the state. DO NOT hand-roll a dot (three ad-hoc dots exist, G-08).
 - **Where used**: 14 files.
 
 ### Pill
