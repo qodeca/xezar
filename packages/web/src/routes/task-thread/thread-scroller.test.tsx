@@ -538,14 +538,16 @@ describe('JumpToLatestPill', () => {
 describe('useThreadScroll — content growth', () => {
   /** A `ResizeObserver` that hands the test its callback, so growth can be driven frame by frame. */
   function mountWithObserver(viewKey: string) {
-    const callbacks: ResizeObserverCallback[] = []
+    const observers: Array<{ callback: ResizeObserverCallback; targets: Set<Element> }> = []
     vi.stubGlobal(
       'ResizeObserver',
       class {
+        readonly record: { callback: ResizeObserverCallback; targets: Set<Element> }
         constructor(callback: ResizeObserverCallback) {
-          callbacks.push(callback)
+          this.record = { callback, targets: new Set() }
+          observers.push(this.record)
         }
-        observe() {}
+        observe(target: Element) { this.record.targets.add(target) }
         unobserve() {}
         disconnect() {}
       },
@@ -556,12 +558,17 @@ describe('useThreadScroll — content growth', () => {
       controls = useThreadScroll(viewKey)
       return (
         <main data-slot="main">
-          <div ref={controls.attachContent} />
+          <div data-route="task-thread">
+            <div ref={controls.attachContent} />
+            <div data-slot="thread-dock" />
+          </div>
         </main>
       )
     }
     render(<Harness />)
     const scroller = document.querySelector<HTMLElement>('[data-slot="main"]')!
+    const content = document.querySelector<HTMLElement>('[data-route="task-thread"] > div:first-child')!
+    const dock = document.querySelector<HTMLElement>('[data-slot="thread-dock"]')!
     Object.defineProperties(scroller, {
       scrollTop: { value: 0, writable: true, configurable: true },
       clientHeight: { value: 400, configurable: true },
@@ -572,13 +579,22 @@ describe('useThreadScroll — content growth', () => {
       get controls() {
         return controls
       },
+      resize(target: Element) {
+        act(() => {
+          for (const { callback, targets } of observers) {
+            if (targets.has(target)) callback([], {} as ResizeObserver)
+          }
+        })
+      },
       /** The transcript grows to `height`, and the observer fires as the browser's would. */
       growTo(height: number) {
         // `scrollHeight` is read-only on the DOM type; the harness redefined it as writable above.
         ;(scroller as unknown as { scrollHeight: number }).scrollHeight = height
-        act(() => {
-          for (const callback of callbacks) callback([], {} as ResizeObserver)
-        })
+        this.resize(content)
+      },
+      growDockTo(height: number) {
+        ;(scroller as unknown as { scrollHeight: number }).scrollHeight = height
+        this.resize(dock)
       },
     }
   }
@@ -592,6 +608,29 @@ describe('useThreadScroll — content growth', () => {
     // Another streamed block: still pinned, so still at the bottom.
     view.growTo(6_000)
     expect(view.scroller.scrollTop).toBe(5_600)
+  })
+
+  it('follows late route-dock growth to the tail while the reader is pinned', () => {
+    const view = mountWithObserver('grow-dock-stuck:main')
+
+    view.growTo(4_000)
+    expect(view.scroller.scrollTop).toBe(3_600)
+
+    // The compact current-state response mounts the Plan and Agents docks after the transcript.
+    // Their fixed growth is outside `[data-slot=thread-rows]`, but it is still part of the one
+    // shell scroller and a reader who was stuck must remain at its new bottom (#446).
+    view.growDockTo(4_130)
+    expect(view.scroller.scrollTop).toBe(3_730)
+  })
+
+  it('leaves a parked reader alone when the route dock grows', () => {
+    const view = mountWithObserver('grow-dock-parked:main')
+    view.growTo(4_000)
+    act(() => fireEvent.wheel(view.scroller, { deltaY: -120 }))
+    view.scroller.scrollTop = 1_200
+
+    view.growDockTo(4_130)
+    expect(view.scroller.scrollTop).toBe(1_200)
   })
 
   it('holds a cached offset that is not reachable yet, and rides the growing bottom toward it', () => {
