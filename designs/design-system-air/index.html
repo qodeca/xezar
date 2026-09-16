@@ -14,8 +14,8 @@
 
 <main class="doc">
   <h1>Air – how to review the step-0 mockup</h1>
-  <p class="lead">Step 0 of <a href="https://github.com/qodeca/xezar/issues/424">qodeca/xezar#424</a>. Each screen is the cockpit drawn twice at 1:1: <strong>Today</strong>, as shipped, with every value read from <code>packages/web/src</code>, and <strong>Proposed</strong>, the end state after PR 4 of the <a href="README.md">README</a> – rhythm tokens, looser gaps between blocks, no hand-set pixels and a Roomy density. Controls keep their size; only the space between things moves. Every task, path and message on these pages is invented.</p>
-  <p class="note"><strong>Status:</strong> draft, waiting for its <code>design-review</code> verdict, which gates step 1 onward. The owner’s decisions D-1..D-10 are closed; open points 6 and 7 are for the verdict to decide (README § 13).</p>
+  <p class="lead">Step 0 of <a href="https://github.com/qodeca/xezar/issues/424">qodeca/xezar#424</a>. Each screen is the cockpit drawn twice at 1:1: <strong>Today</strong>, before #424 (read on 2026-09-14), with values from <code>packages/web/src</code>, and <strong>Proposed</strong>, the end state after PR 4 of the <a href="README.md">README</a> – rhythm tokens, looser gaps between blocks, no hand-set pixels and a Roomy density. Controls keep their size; only the space between things moves. Every task, path and message on these pages is invented.</p>
+  <p class="note"><strong>Status:</strong> implemented under #424 (closed 2026-09-15). The <code>design-review</code> chose A for both open points (D-11, D-12, README § 13). Today preserves the pre-#424 cockpit; the proposal shipped with remaining allowlist conversion in #445.</p>
 
   <h2>How to review</h2>
   <ol>
@@ -101,13 +101,13 @@
   </div>
 
   <h2>Open points 6 and 7</h2>
-  <p>Two values README § 9.2 and § 9.3 leave open. Both switch live on Tasks, in the proposed view; the today view has no options. The verdict’s choices become D-11 and D-12 in README § 13.</p>
+  <p>Two values README § 9.2 and § 9.3 left open. The step-0 verdict chose A for both (D-11 and D-12, README § 13). Both options still switch live on Tasks.</p>
   <ul>
     <li><strong>6 – task-table wrapper:</strong> <a href="tasks.html?table=a&amp;v=air">A – keeps the section gutter, 32 px</a> · <a href="tasks.html?table=b&amp;v=air">B – exempt, today’s 20 px</a></li>
     <li><strong>7 – New-task button:</strong> <a href="tasks.html?cta=a&amp;v=air">A – 40 px</a> · <a href="tasks.html?cta=b&amp;v=air">B – 36 px</a>. At 375 px the button sits in the drawer: see the “Tasks – menu open” pair on <a href="phone.html">375 px</a>.</li>
   </ul>
 
-  <h2>Questions for the verdict</h2>
+  <h2>Questions the verdict answered</h2>
   <ol>
     <li><strong>Open point 6.</strong> At 1280 the proposed table is 1389 px wide (1349 today). A shows 950 px and hides 439; B shows 974 and hides 415. Both cut IN / OUT and hide Cost, CPU, Mem and Started. Is B’s extra 24 px worth a second gutter rule? Under B the footer strip keeps the 32 px gutter while the table moves to 20, so the two sit 12 px out of line.</li>
     <li><strong>What “exempt” means.</strong> B draws today’s 20 px gutter, an assumption; README § 9.2 says only “exempt the wrapper”, which could also mean no gutter at all. Which one?</li>

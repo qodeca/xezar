@@ -1,0 +1,469 @@
+/* Issue filing – "New issue" in the GitHub tab. Static design mockup (issue #468, PR 5).
+ *
+ * Feature-specific rules only. Tokens (both themes), the base layer, the design-doc chrome, the app
+ * shell and every base component class come from the shared design-system stylesheet, linked BEFORE
+ * this file in every page: ../../docs/design-system/cockpit.css. Never redeclare a token or a base
+ * class here; extend it with a feature class instead. This file is a design reference, never
+ * shipped code – the cockpit must not import it.
+ *
+ * Rhythm between blocks uses the rhythm tokens (--spacing-row/stack/list/inset/group/section);
+ * sizes inside a control use calc(var(--spacing) * n), so the density lever moves this page the way
+ * it moves the cockpit. No raw hex anywhere.
+ */
+
+/* ---------- 1. The GitHub tab's list pane (context for the new control) ---------- */
+
+/* A slice of `packages/web/src/routes/github/github.tsx` — the list pane at its desktop width of
+ * 360px, so the new control can be judged where it actually sits. Cockpit UI, not doc chrome. */
+.gh-pane {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 24rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--background);
+  overflow: hidden;
+}
+
+.gh-pane.wide {
+  max-width: none;
+}
+
+.gh-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-row);
+  padding: var(--spacing-stack) var(--spacing-list) var(--spacing-stack);
+  border-bottom: 1px solid var(--border);
+  background: var(--background);
+}
+
+.gh-head .title-row {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 2.5);
+  min-width: 0;
+}
+
+.gh-head .title-row h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.gh-head .repo {
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--soft-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gh-head .synced {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 1);
+  margin-left: auto;
+  flex-shrink: 0;
+  padding: 0 calc(var(--spacing) * 1.5);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--soft-foreground);
+}
+
+/* The tab row. `New issue` is pushed to its end with `margin-left:auto`, so it reads as an action
+ * on the list rather than a third tab. The tabs themselves are the shipped `.tab-link`. */
+.gh-tabrow {
+  display: flex;
+  align-items: flex-end;
+  gap: calc(var(--spacing) * 1);
+}
+
+.gh-tabrow .btn-new-issue {
+  margin-left: auto;
+  margin-bottom: calc(var(--spacing) * 1);
+  flex-shrink: 0;
+}
+
+.gh-search-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-row);
+}
+
+.gh-search-row .grow {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.gh-search-row .grow svg {
+  position: absolute;
+  top: 50%;
+  left: calc(var(--spacing) * 2);
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: var(--soft-foreground);
+}
+
+.gh-search-row .input {
+  padding-left: calc(var(--spacing) * 7);
+}
+
+/* Issue rows, shortened: they exist so the entry can be read in place, not to re-specify the row. */
+.gh-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: var(--spacing-row);
+  list-style: none;
+}
+
+.gh-rows li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: calc(var(--spacing) * 2) calc(var(--spacing) * 2.5);
+  border-radius: var(--radius-sm);
+}
+
+.gh-rows li.on {
+  background: var(--card-2);
+}
+
+.gh-rows .t {
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--foreground);
+}
+
+.gh-rows .meta {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--soft-foreground);
+}
+
+/* The list's own empty state, with the second entry point under it. */
+.gh-empty {
+  padding: var(--spacing-list);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--soft-foreground);
+}
+
+.gh-empty p {
+  margin: 0;
+}
+
+.gh-empty .then {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-row);
+  margin-top: var(--spacing-stack);
+  padding-top: var(--spacing-stack);
+  border-top: 1px solid var(--border);
+}
+
+.gh-empty .then span {
+  flex: 1 1 10rem;
+  min-width: 0;
+  color: var(--muted-foreground);
+}
+
+/* ---------- 2. The draft strip: one running issue draft, seen from the tab ---------- */
+
+/* Sits directly under the tab row. It never renders the Create/Revise chips itself – answering an
+ * ask happens in the task thread, the one place the cockpit puts an AskCard. */
+.draft-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-row);
+  padding: calc(var(--spacing) * 2) calc(var(--spacing) * 3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card-2);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+
+.draft-strip .what {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.draft-strip .what strong {
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.draft-strip .link {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* The waiting variant. The amber is carried by the dot; the words say "is asking you" on their own,
+ * and the text colour stays --pending-strong, never the soft --pending (design system rule 3). */
+.draft-strip.waiting {
+  border-color: color-mix(in srgb, var(--pending-strong) 40%, transparent);
+}
+
+.draft-strip.waiting .what strong {
+  color: var(--pending-strong);
+}
+
+/* ---------- 3. The New issue dialog ---------- */
+
+/* Extends the shipped `.dialog` (ui/dialog.tsx). Wider than the 512px default because the brief is
+ * a multi-line box and the exact-destination row must not wrap mid-identifier. */
+.issue-dialog {
+  max-width: 34rem;
+}
+
+.issue-dialog .gh-field {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 1.5);
+}
+
+.issue-dialog .textarea {
+  min-height: calc(var(--spacing) * 28);
+  font-size: 13px;
+}
+
+/* The destination row: where this issue would go, stated before anything is typed. */
+.dest-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(var(--spacing) * 1) calc(var(--spacing) * 2);
+  font-size: 12.5px;
+  color: var(--muted-foreground);
+}
+
+.dest-row .val {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--foreground);
+  overflow-wrap: anywhere;
+}
+
+/* The options row: what runs it, and on which backend. */
+.opt-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-row);
+}
+
+/* The standing note every variant of the dialog carries: starting is not filing. Page → card →
+ * note, the cockpit's elevation rule. */
+.issue-note {
+  display: flex;
+  align-items: flex-start;
+  gap: calc(var(--spacing) * 2.5);
+  margin: 0;
+  padding: calc(var(--spacing) * 2.5) calc(var(--spacing) * 3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card-2);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--muted-foreground);
+}
+
+.issue-note svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--soft-foreground);
+}
+
+.issue-note strong {
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+/* The unavailable-skill variant. Conflict border, because this is a capability that is missing, not
+ * a failure – and the sentence says which one. */
+.issue-note.gap {
+  border-color: color-mix(in srgb, var(--conflict) 45%, transparent);
+}
+
+.issue-note.gap svg {
+  color: var(--conflict);
+}
+
+.issue-note .actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--spacing) * 1.5);
+  margin-top: calc(var(--spacing) * 2);
+}
+
+/* A failed start, inside the dialog, above the footer: the brief must stay on screen. */
+.issue-error {
+  margin: 0;
+  padding: calc(var(--spacing) * 2.5) calc(var(--spacing) * 3);
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--danger);
+}
+
+.issue-dialog .footer .hint {
+  margin-right: auto;
+  font-size: 11.5px;
+  color: var(--soft-foreground);
+}
+
+/* ---------- 4. A static reproduction of the shipped AskCard ---------- */
+
+/* NOT a new component. `routes/task-thread/ask-card.tsx` already renders this; the shared stylesheet
+ * has no base class for it, so the states page reproduces it here to show the Create / Revise
+ * question this design hands off to. Values mirror the component's Tailwind classes. Nothing in the
+ * cockpit changes for it — if the shared sheet ever grows an `.ask-card`, delete this block. */
+.ask-demo {
+  padding: var(--spacing-inset);
+  border: 1px solid color-mix(in srgb, var(--primary) 25%, transparent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--primary) 4%, var(--card));
+}
+
+.ask-demo .who {
+  margin: 0 0 var(--spacing-stack);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--primary);
+}
+
+.ask-demo .q {
+  margin: calc(var(--spacing) * 1.5) 0 var(--spacing-stack);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--foreground);
+  text-wrap: pretty;
+}
+
+.ask-demo .options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-row);
+}
+
+.ask-demo .options button {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: calc(var(--spacing) * 2.5) calc(var(--spacing) * 3.5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  text-align: left;
+  cursor: pointer;
+}
+
+.ask-demo .options button .l {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.ask-demo .options button .d {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+.ask-demo .hint {
+  margin: var(--spacing-stack) 0 0;
+  font-size: 11.5px;
+  color: var(--soft-foreground);
+}
+
+/* ---------- 5. The mockup's own scaffolding ---------- */
+
+/* A labelled slice of a screen on the states page. Doc chrome, not cockpit UI. */
+.state-grid {
+  display: grid;
+  gap: var(--spacing-section);
+}
+
+@media (min-width: 980px) {
+  .state-grid.two {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.state-grid > figure {
+  margin: 0;
+  min-width: 0;
+}
+
+.state-grid > figure > figcaption {
+  margin-bottom: calc(var(--spacing) * 2);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--soft-foreground);
+}
+
+.state-grid > figure > figcaption span {
+  display: block;
+  margin-top: 2px;
+  font-weight: 400;
+  color: var(--muted-foreground);
+}
+
+/* ---------- 6. Phone (375 px) ---------- */
+
+@media (max-width: 860px) {
+  .gh-pane {
+    max-width: none;
+  }
+
+  /* The action leaves the tab row on a phone: two tabs plus a button do not fit at 375px without
+   * truncating a count. It becomes a full-width row of its own, directly under the tabs. */
+  .gh-tabrow {
+    flex-wrap: wrap;
+  }
+
+  .gh-tabrow .btn-new-issue {
+    order: 3;
+    width: 100%;
+    margin-left: 0;
+    margin-top: var(--spacing-row);
+    justify-content: center;
+  }
+
+  /* 44px touch targets on phone (foundations.md §12). */
+  .gh-tabrow .btn-new-issue,
+  .issue-dialog .footer .btn,
+  .issue-note .actions .btn,
+  .gh-empty .then .btn {
+    height: calc(var(--spacing) * 11);
+  }
+
+  .issue-dialog .footer .hint {
+    margin-right: 0;
+    margin-bottom: calc(var(--spacing) * 1);
+    text-align: center;
+  }
+
+  .draft-strip .link {
+    width: 100%;
+  }
+
+  .scrim {
+    padding: var(--spacing-list) calc(var(--spacing) * 3);
+  }
+}
