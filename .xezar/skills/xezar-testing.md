@@ -3,6 +3,8 @@ name: xezar-testing
 description: Strengthen and execute meaningful tests
 ---
 
+# Strengthen and execute meaningful tests
+
 Add meaningful verification for the approved scope. Use the installed pinned runner through npm test -- <filter>, never npx fetching tools. Follow fixture isolation and positive/negative controls. Keep real tracked source/build scripts inside tool scope while excluding generated/runtime worktrees. No thresholds lowered. Full final gates use repo-gates; browser QA is separate and requires its prerequisites and actual task authority.
 
 Inputs: behavior/AC and current coverage evidence. Output: deterministic tests of observable boundaries and error paths, identifying unit, integration and browser coverage separately. Missing dependencies or unchanged-source failures are not passes or proof of environmental cause.
@@ -32,4 +34,4 @@ which matches identically and signals nothing.
 
 Derive durable evidence with `.xezar/checks/lib/common.sh` (`resolve_task_paths`, `task_evidence_dir`): primary `.local/xezar-tasks/<runId>/`, not the task's reclaimable `.local` or engine tmp. Keep checkpoints concise. Never copy secrets, credentials, `.env`, personal agent configuration or unrelated source content. Reports distinguish observed, fixture-tested, live-verified and unknown. Record relevant dogfooding observations using `.xezar/docs/dogfooding.md`.
 
-Role boundaries: inputs and accepted criteria govern the output; an agent ending done does not certify the artifact. Before handoff inspect the deliverable, current head/base and all remaining stages. Recover predecessor attempt IDs and both consumed repair budgets before a replacement; missing history is unknown, not a fresh allowance. For delivery, takeover, readiness and pilot records use .xezar/docs/ui-operations.md; for snapshot/current-policy reconciliation use .xezar/docs/recovery.md. Preserve these guarantees on standalone, fresh, Continue and restart paths.
+Role boundaries: inputs and accepted criteria govern the output; an agent ending done does not certify the artifact. Before handoff inspect the deliverable, current head/base and all remaining stages. Recover predecessor attempt IDs and both consumed repair budgets before a replacement; missing history is unknown, not a fresh allowance. For delivery, takeover and readiness records use .xezar/docs/ui-operations.md; for snapshot/current-policy reconciliation use .xezar/docs/recovery.md. Preserve these guarantees on standalone, fresh, Continue and restart paths.

@@ -20,9 +20,9 @@
 #
 # ENVIRONMENT WARNING — the reason TASK_ID is derived, not read.
 # Xezar exports XEZ_TASK_ID only to the spawned AGENT (agent step environment,
-# `packages/xezar/src/workflows/run.ts:759-761`, alongside XEZ_HANDOFF_FILE and
+# `packages/xezar/src/workflows/run.ts`, `RunManager.agentEnv`, alongside XEZ_HANDOFF_FILE and
 # XEZ_TODOS_FILE). A workflow `command:` step is still spawned with the manager
-# process's own environment (`src/workflows/run.ts:3669`), which has no XEZ_TASK_ID.
+# process's own environment (`src/workflows/run.ts`, `runCheckStep`), which has no XEZ_TASK_ID.
 # Every check step here must therefore work with XEZ_TASK_ID unset. The authoritative
 # identity is the worktree directory name, because Xezar names it after the run id.
 #
@@ -30,14 +30,14 @@
 # original checkout at 6cd4aaa3605e8bcddf7bafd8f05ac96881ee35cc, package `@qodeca/xezar` 0.10.1;
 # directory paths updated for the .xezar/.local layout;
 # paths are relative to `packages/xezar/`):
-#   - src/git-worktree.ts:18  worktrees directory = '.local/xezar/worktrees'
-#   - src/git-worktree.ts:46  branchFor() = `xez/${runId.slice(0, 8)}`
-#   - src/config.ts:33-107          the project config schema, read from .xezar/config.json
+#   - src/git-worktree.ts  worktrees directory = '.local/xezar/worktrees'
+#   - src/git-worktree.ts  branchFor() = `xez/${runId.slice(0, 8)}`
+#   - src/config.ts  configSchema: the project config schema, read from .xezar/config.json
 # There is no XEZ_RUN_ID. Do not invent one.
 #
-# Every `src/…:NN` citation in these checks was read at that commit. They are source
-# observations, not records of a live run: the actual Xezar lifecycle is qualified
-# separately (migration M2).
+# Source references name files and nearby symbols rather than unstable line numbers.
+# These are code observations, not records of a live run: the actual Xezar lifecycle
+# is qualified separately in docs/installation.md and docs/dogfooding.md.
 
 # Xezar's worktree parent, relative to the primary checkout.
 XEZAR_WORKTREES_RELDIR=".local/xezar/worktrees"
@@ -67,7 +67,7 @@ valid_task_id() {
 # worktree.
 #
 # The legacy `cez/` prefix is deliberately NOT accepted here. Xezar restores `xez/<id8>`
-# and nothing else (`src/runs/retention.ts:61-76` re-creates the worktree and reattaches
+# and nothing else (`src/runs/retention.ts`, `rematerializeReclaimedWorktree`, re-creates the worktree and reattaches
 # `xez/<id8>`), so a worktree sitting on a Cezar-era branch would lose that work on
 # reclaim; and accepting both prefixes would make the guard the one place where the
 # migration is only half done. Historical `cez/*` branches stay in the repository,
