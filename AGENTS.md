@@ -160,7 +160,8 @@ each new test failing against a named break. Neither half passes alone – see
 `npm run test:mutation:mcp`: StrykerJS over the same code and the same suites, never run by
 `npm test` or by per-PR CI because a full run takes hours. **It runs nightly against `main`** in
 `.github/workflows/mutation.yml` (#377), split across six jobs whose counts are summed before the
-one floor is applied, and a red night files or updates a `mutation-nightly` issue. Same scope,
+one floor is applied, and a red night files or updates a `mutation-nightly` issue, which also gets a
+note when new survivors appear on a green night. Same scope,
 same 80 % floor
 ([coverage-gaps.md § 10.8](docs/testing/coverage-gaps.md#108-the-nightly-gate-stryker-over-the-mcp-code)).
 
