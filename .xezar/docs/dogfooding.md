@@ -12,6 +12,14 @@ Installation validation is reported in installation.md. Real-task entries follow
 
 ## Real-task entries
 
+### 2026-09-16 — #453 B4 review response round 1 (design finding B-1), `address-review-findings` step `address`, `xezar-review-response`, Claude Code — real-task observed
+
+- Input: design review of PR #529 at `b5e46db` (REQUEST CHANGES, B-1: the conflict action had no browser measurement); `main` at `248ea8a`.
+- Observed: **the dry-run forge is not an unavailable forge.** It answers `available: true` with no statuses, and a reference with no status drops any remembered conflict, so seeding the cockpit's `sessionStorage` memory painted nothing. Answering the one `ref-status` request through the browser provider's `network route` for the test's duration gave a deterministic conflicting PR.
+- Observed: **a red proof must actually shrink the target.** `min-h-0` lost to the Button's `min-h-tap` in the stylesheet order, and `max-h-7` lost to it because min-height wins over max-height; both runs stayed green. Only `min-h-0!` produced the 28 px failure on all 12 panels. A red proof that stays green is a broken proof, not a guard.
+- Regression/control: the B4 spec passed 16/16 with the new conflict matrix; the named break failed it; an ad-hoc axe-core 4.12.1 pass over the same 48 panels found one pre-existing rule (`aria-dialog-name`, recorded as known-gaps G-31).
+- Remaining limit: axe is not a repository dependency, so the committed spec carries structural checks instead of the axe rule.
+
 ### 2026-09-16 — #467 PR 4 (terminal activity ↔ MCP contracts), `feature-implementation` step `implement`, `xezar-implementation`, Claude Code — real-task observed
 
 - Input: the #467 plan row 4, merged PR 2/3 and base `1975121` carrying #450, #460 and #523.

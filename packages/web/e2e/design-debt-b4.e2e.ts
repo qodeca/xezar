@@ -21,7 +21,10 @@ import record from './fixtures/subagents-run.record.json'
  * reference list, the prompt-template menu, the rename field, the run header's tabs and the
  * default-agent picker. Separately it holds the 24 px chip floor at every density on a desktop,
  * checks a no-hover tablet, drives a nested pin tap and a card tap, keyboard focus on the table's
- * hover-revealed controls, reduced motion and composited small-text contrast.
+ * hover-revealed controls, reduced motion and composited small-text contrast. The "Resolve
+ * conflicts" action (`reference-conflict-action`) is measured the same way at every density in
+ * light and dark, open and disabled, on the project cards, the drawer's quick list and the global
+ * cards, from a conflicting pull request seeded where the cockpit remembers one.
  *
  * It owns its server over a throwaway data root: it pins a task and changes the density, neither
  * of which may land in the shared environment.
@@ -49,6 +52,8 @@ const RUNS = [
     title: LONG,
     task: LONG,
     status: 'review',
+    // No recorded agent session, so its conflict action is the DISABLED one, with its reason.
+    steps: record.steps.map((step) => ({ ...step, sessionId: undefined })),
     createdAt: '2026-09-16T09:00:00.000Z',
     pinned: true,
     branch: 'xez/b4-review-with-a-long-branch-name',
@@ -70,6 +75,8 @@ const RUNS = [
     finishedAt: '2026-09-16T10:30:00.000Z',
     issueNumber: 12,
     referencedIssueUrl: 'https://github.com/example/repo/issues/12',
+    // A session to resume, so its conflict action is the ENABLED one.
+    pullRequestUrl: 'https://github.com/example/repo/pull/9',
   },
   { ...record, id: 'b4-var-a', groupId: 'b4-group', variant: 'A', title: 'Variant task (A)', task: 'Variant task', createdAt: '2026-09-16T07:00:00.000Z', finishedAt: '2026-09-16T07:10:00.000Z', seenAt: NOW },
   { ...record, id: 'b4-var-b', groupId: 'b4-group', variant: 'B', title: 'Variant task (B)', task: 'Variant task', runner: 'codex', createdAt: '2026-09-16T07:00:00.000Z', finishedAt: '2026-09-16T07:12:00.000Z', seenAt: NOW },
@@ -312,6 +319,115 @@ describe('B4 phone matrix', () => {
   }, 300_000)
 })
 
+// "Resolve conflicts" needs a pull request the forge calls conflicting, and the dry-run forge
+// answers every number with no status at all. So, for this test only, the provider answers the
+// one request the chips make — `ref-status` — with what a real forge says about a conflicting PR:
+// PR #7 on `b4-review` (no session: the disabled action and its reason) and PR #9 on `b4-unread`
+// (a session to resume: the enabled action). Every other reference keeps its no-status answer.
+const CONFLICT_ROUTE = '**/github/ref-status*'
+const CONFLICT_ANSWER = JSON.stringify({ available: true, prs: { 7: 'review-required', 9: 'review-required' }, issues: {}, conflicts: [7, 9], recheckAfterMs: 600_000 })
+function provider(...args: string[]) {
+  const result = JSON.parse(execFileSync(readTestEnv().browser.command, ['--session', sessionId, ...args, '--json'], { encoding: 'utf8', timeout: 60_000 }))
+  if (!result.success) throw new Error(`B4 provider command failed: ${args[0]} ${args[1]}`)
+}
+const CONFLICT_CARD = '[data-slot="reference-status-card"][data-state="open"]'
+const CONFLICT_ACTION = `${CONFLICT_CARD} [data-slot="reference-conflict-action"]`
+const conflictMeasured = new Map<string, Map<string, string>>()
+
+function theme(value: 'light' | 'dark') {
+  read(`(() => { localStorage.setItem('xez-theme', '${value}'); return true })()`)
+  browser.setMedia(value)
+}
+
+/** Opens a conflicting chip's panel from the keyboard (the provider's click is a mouse, see `+N`)
+ *  and checks what it says about itself. Returns the failures; the panel is left open. */
+function openConflict(chip: string, enabled: boolean): string[] {
+  const failures: string[] = []
+  wait(chip, false)
+  read(`(() => { const el = document.querySelector(${JSON.stringify(chip)}); el.scrollIntoView({ block: 'center' }); el.focus(); return true })()`)
+  wait(CONFLICT_ACTION)
+  browser.waitForFunction(`document.querySelector(${JSON.stringify(CONFLICT_ACTION)}).disabled === ${!enabled}`)
+  const facts = read<{ role: string | null; popup: string | null; expanded: string | null; label: string; reason: string; overlap: boolean; outside: boolean }>(`(() => {
+    const chip = document.querySelector(${JSON.stringify(chip)}), card = document.querySelector(${JSON.stringify(CONFLICT_CARD)});
+    const button = card.querySelector('[data-slot="reference-conflict-action"]');
+    const a = chip.getBoundingClientRect(), b = button.getBoundingClientRect(), c = card.getBoundingClientRect();
+    return {
+      role: card.getAttribute('role'), popup: chip.getAttribute('aria-haspopup'), expanded: chip.getAttribute('aria-expanded'),
+      label: button.textContent.trim(), reason: button.nextElementSibling?.textContent.trim() ?? '',
+      overlap: Math.min(a.right, b.right) - Math.max(a.left, b.left) > 0.5 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 0.5,
+      outside: c.left < -0.5 || c.right > innerWidth + 0.5,
+    };
+  })()`)
+  if (facts.role !== 'dialog') failures.push(`${chip}: panel role is ${facts.role}, not dialog`)
+  if (facts.popup !== 'dialog' || facts.expanded !== 'true') failures.push(`${chip}: chip announces aria-haspopup=${facts.popup} aria-expanded=${facts.expanded}`)
+  if (facts.label !== 'Resolve conflicts') failures.push(`${chip}: action reads "${facts.label}"`)
+  if (!enabled && !facts.reason) failures.push(`${chip}: the disabled action does not say why`)
+  if (enabled && facts.reason) failures.push(`${chip}: the enabled action carries a refusal: ${facts.reason}`)
+  if (facts.overlap) failures.push(`${chip}: the action covers its own chip`)
+  if (facts.outside) failures.push(`${chip}: the panel leaves the viewport`)
+  for (const s of contrast(CONFLICT_CARD).filter((s) => s.ratio < 4.5)) failures.push(`${chip}: panel text ${s.name} ${s.color} ${s.ratio}:1`)
+  return failures
+}
+
+function closeConflict() {
+  browser.press('Escape')
+  waitGone(CONFLICT_CARD)
+}
+
+describe('B4 conflict action (B-1)', () => {
+  it.each(densities)('T-4/T-0 "Resolve conflicts", open and disabled, in light and dark at %s', (value) => {
+    density(value)
+    const failures: string[] = []
+    const seen = new Map<string, string>()
+    provider('network', 'route', CONFLICT_ROUTE, '--body', CONFLICT_ANSWER)
+    try {
+      for (const scheme of ['light', 'dark'] as const) {
+        theme(scheme)
+        const panel = (label: string, chip: string, enabled: boolean) => {
+          const name = `${label}, ${enabled ? 'open' : 'disabled'} (${scheme})`
+          failures.push(...openConflict(chip, enabled).map((f) => `${name}: ${f}`))
+          collect(name, CONFLICT_CARD, failures, seen)
+        }
+
+        visit(`/p/${project}/`, '[data-slot="task-card"][data-run-id="b4-review"]')
+        expect(read(`matchMedia('(hover: none)').matches`)).toBe(true)
+        const card = (id: string) => `[data-slot="task-card"][data-run-id="${id}"] [data-slot="pr-chip"][data-conflicting="true"]`
+        panel('project card', card('b4-unread'), true)
+        // The enabled action is reachable from the chip by Tab, and Escape brings focus back.
+        browser.press('Tab')
+        browser.waitForFunction(`document.activeElement?.dataset.slot === 'reference-conflict-action'`)
+        closeConflict()
+        panel('project card', card('b4-review'), false)
+        closeConflict()
+
+        openDrawer()
+        const row = (id: string) => `${DRAWER} [data-slot="task-row"][data-run-id="${id}"] [data-slot="pr-chip"][data-conflicting="true"]`
+        panel('drawer quick list', row('b4-unread'), true)
+        closeConflict()
+        if (!read<boolean>(`document.querySelector('${DRAWER}') !== null`)) openDrawer()
+        panel('drawer quick list', row('b4-review'), false)
+        closeConflict()
+
+        visit('/tasks', '[data-slot="global-task-card"][data-run-id="b4-review"]')
+        const global = (id: string) => `[data-slot="global-task-card"][data-run-id="${id}"] [data-slot="pr-chip"][data-conflicting="true"]`
+        panel('global card', global('b4-unread'), true)
+        closeConflict()
+        panel('global card', global('b4-review'), false)
+        closeConflict()
+      }
+    } finally {
+      theme('light')
+      provider('network', 'unroute', CONFLICT_ROUTE)
+      // The cockpit remembers answers for the tab's lifetime; forget these so no later test paints
+      // a status the dry-run forge never gave.
+      read(`(() => { sessionStorage.removeItem('xez.reference-statuses.v1'); sessionStorage.removeItem('xez.reference-conflicts.v1'); return true })()`)
+      browser.goto('about:blank')
+    }
+    conflictMeasured.set(value, seen)
+    expect(failures, `conflict action at ${value}`).toEqual([])
+  }, 300_000)
+})
+
 it('T-4 the chip floor holds at 24 px at every density on a desktop, where 44 px is not asked', async () => {
   const short: string[] = []
   for (const value of densities) {
@@ -468,5 +584,7 @@ it.each(['light', 'dark'] as const)('small task-list text has composited contras
 it('records what the phone matrix measured', () => {
   // Written for the pull request: surface → number of targets measured, per density.
   writeFileSync(join(artifacts, 'matrix.json'), JSON.stringify(Object.fromEntries([...measured].map(([d, m]) => [d, Object.fromEntries(m)])), null, 2))
+  writeFileSync(join(artifacts, 'conflict-matrix.json'), JSON.stringify(Object.fromEntries([...conflictMeasured].map(([d, m]) => [d, Object.fromEntries(m)])), null, 2))
   expect(measured.size).toBe(densities.length)
+  expect(conflictMeasured.size).toBe(densities.length)
 })

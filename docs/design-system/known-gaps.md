@@ -8,8 +8,8 @@ to-do list: an entry becomes a `design-debt` issue on the triggers [CONTRIBUTING
 names, and a fix arrives as its own change with the entry deleted.
 
 Ids are never reused: a deleted entry retires its number, so a new entry takes the next number after the
-highest ever used. G-01..G-23, G-26..G-28 and G-30 are live, G-24, G-25 and G-29 are retired, and the
-next free id is G-31.
+highest ever used. G-01..G-23, G-26..G-28, G-30 and G-31 are live, G-24, G-25 and G-29 are retired, and
+the next free id is G-32.
 
 Counts are non-test files or occurrences in `packages/web/src`. Corrected counts in G-02, G-06,
 G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the original inventory date.
@@ -206,6 +206,12 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 ### G-30 The registered-projects table scrolls sideways on a phone
 
 - **Differs**: at 390 px the Global → Projects "Registered projects" table (`routes/settings/projects-section.tsx:277`) scrolls inside its box (567 px of content in 356 px), squeezing the Project column to 60 px, instead of reflowing as cards below `md`; pre-existing, found in the B3 design review (#519, NB-2). Owner: B8 reconciliation of #453. It was given to B4, but `projects-section.tsx` is in no remaining batch manifest (B3 owned it and has merged), so the fix needs a manifest revision first.
+
+### G-31 The reference panel is an unnamed dialog
+
+- **Differs**: a conflicting pull request's panel takes `role="dialog"` so its "Resolve conflicts" button can be reached (`components/reference-chip.tsx:395`), but the dialog has no accessible name, so axe-core 4.12.1 reports `aria-dialog-name` on every surface, density and theme; the chip that opens it is named. Pre-existing on `main`; found by the axe pass for #453 B4 design-review finding B-1.
+- **Rule**: a `role="dialog"` always carries a name, for example `aria-labelledby` pointing at the text that already heads it.
+- **Fix**: name the panel from its first line (the reference and its status) and add the axe rule to the B4 browser pass. Owner: B8 reconciliation of #453; `reference-chip.tsx` is outside the B4 source change.
 
 ## Comment vs code
 
