@@ -15,6 +15,7 @@ import {
   guardedMutation,
   guardedRunMutation,
   runVersion,
+  runDecisionProjection,
   versionToken,
 } from './stale-write.ts';
 
@@ -329,5 +330,48 @@ describe('canonicalJson', () => {
 
   it('keeps array order and writes undefined array items as null, like JSON.stringify', () => {
     expect(canonicalJson([3, undefined, { z: undefined, y: null }])).toBe('[3,null,{"y":null}]');
+  });
+});
+
+// #532 G3; named breaks: remove participant revision increment/save; reset revision on open;
+// omit boot reconciliation's trackDecision; remove the decision-v1 digest namespace.
+describe('#532 durable decision boundaries', () => {
+  it('identical participant input is a new decision each time and persists without flush', () => {
+    const run = createRun();
+    const tokens = [runVersion(store, run.id)];
+    for (let i = 0; i < 2; i++) {
+      store.appendEvent(run.id, { type: 'user-message', text: 'same instruction' });
+      tokens.push(runVersion(store, run.id));
+      const reopened = RunStore.open(dataDir, { keepLive: true });
+      expect(runVersion(reopened, run.id)).toBe(tokens.at(-1));
+      reopened.flush();
+    }
+    expect(new Set(tokens).size).toBe(3);
+  });
+
+  it.each(['running', 'waiting', 'queued'] as const)('boot reconciliation of %s invalidates only the changed decision', status => {
+    const run = createRun();
+    store.updateStep(run.id, 'task', { status: 'running', sessionId: 'session' });
+    store.updateRun(run.id, { status, activity: 'monitoring' });
+    const token = runVersion(store, run.id);
+    const revision = run.decisionRevision ?? 0;
+    const live = RunStore.open(dataDir, { keepLive: true });
+    expect(runVersion(live, run.id)).toBe(token);
+    live.flush();
+    const recovered = RunStore.open(dataDir);
+    expect(recovered.getRun(run.id)?.status).toBe('failed');
+    expect(recovered.getRun(run.id)?.decisionRevision).toBe(revision + 1);
+    expect(runVersion(recovered, run.id)).not.toBe(token);
+    const again = RunStore.open(dataDir);
+    expect(runVersion(again, run.id)).toBe(runVersion(recovered, run.id));
+    recovered.flush(); again.flush();
+  });
+
+  it('rejects a pre-upgrade token even when its sequence and projection match', () => {
+    const run = createRun();
+    const legacy = versionToken({ ref: { kind: 'run', id: run.id }, seq: 0, projection: runDecisionProjection(run) });
+    const apply = vi.fn();
+    expect(guardedRunMutation(store, run.id, legacy, apply).status).toBe('conflict');
+    expect(apply).not.toHaveBeenCalled();
   });
 });

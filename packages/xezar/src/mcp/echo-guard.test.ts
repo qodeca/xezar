@@ -555,3 +555,33 @@ describe('N-01: workspace-only events never reach a project-bound session', () =
     );
   });
 });
+
+// #532 G10. Named breaks: keep ownership on explicit refusal; forget on parse failure/throw.
+describe('#532 result certainty truth table', () => {
+  it.each([
+    ['direct refusal', { applied: false }, false],
+    ['wrapped refusal', { content: [{ type: 'text', text: '{"applied":false}' }] }, false],
+    ['applied', { applied: true }, true],
+    ['malformed', { content: [{ type: 'text', text: '{' }] }, true],
+    ['empty text', { content: [{ type: 'text', text: '' }] }, true],
+    ['empty blocks', { content: [] }, true],
+    ['null text', { content: [{ type: 'text', text: 'null' }] }, true],
+    ['null', null, true],
+    ['unknown', {}, true],
+  ])('%s preserves only uncertain or applied ownership', async (_name, result, own) => {
+    const guard = new EchoGuard({ projectId: PROJECT });
+    await guard.issue(OWN_OP, () => result);
+    expect(guard.isOwn(OWN_OP)).toBe(own);
+    expect(guard.admit(row({ origin: 'leader', causedBy: OWN_OP })).deliver).toBe(!own);
+    expect(guard.admit(row({ eventId: `${PROJECT}:2`, journalSeq: 2, origin: 'leader', causedBy: 'another-leader' })).deliver).toBe(true);
+  });
+
+  it('a throw after an effect cannot claim nothing applied or forget ownership', async () => {
+    const guard = new EchoGuard({ projectId: PROJECT });
+    let effects = 0;
+    await expect(guard.issue(OWN_OP, () => { effects++; throw new Error('response lost'); })).rejects.toThrow('response lost');
+    expect(effects).toBe(1);
+    expect(guard.isOwn(OWN_OP)).toBe(true);
+    expect(guard.admit(row({ origin: 'leader', causedBy: OWN_OP }))).toEqual({ deliver: false, reason: 'own-echo' });
+  });
+});

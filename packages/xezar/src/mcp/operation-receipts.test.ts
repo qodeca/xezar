@@ -720,3 +720,28 @@ describe('predicted run ids (D-06 § 12.1)', () => {
     expect(z.uuid().safeParse(predictRunId('p', 'op-00000001')).success).toBe(true);
   });
 });
+
+// #532 G10. Named break: settle a thrown effect as rejected, or execute an uncertain replay again.
+describe('#532 known refusal versus uncertain effect across reopen', () => {
+  it.each(['rejected', 'throw', 'lost-response'] as const)('%s never repeats the effect on a retry or reopen', async kind => {
+    let effects = 0;
+    const request: OperationRequest = {
+      projectId: PROJECT, operationId: `certainty-${kind}`, action: 'executionControl.cancel',
+      payload: { runId: 'task', expectedVersion: 'old' }, reconcile: { kind: 'none' },
+      effect: () => {
+        if (kind === 'rejected') return { outcome: 'rejected', errorCode: 'stale_version' };
+        if (kind === 'lost-response') effects++;
+        throw new Error(kind);
+      },
+    };
+    const first = await open().execute(request);
+    expect(first.status).toBe(kind === 'rejected' ? 'rejected' : 'unverified');
+    // State has moved: a blind retry would now apply. The original receipt must still win.
+    request.effect = () => { effects++; return { outcome: 'ok', resultRef: { kind: 'run', id: 'task' } }; };
+    const second = await open().execute(request);
+    const third = await open().execute(request);
+    expect(second.status).toBe(first.status);
+    expect(third).toEqual(second);
+    expect(effects).toBe(kind === 'lost-response' ? 1 : 0);
+  });
+});

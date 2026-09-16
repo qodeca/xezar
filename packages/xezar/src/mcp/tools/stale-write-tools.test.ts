@@ -369,3 +369,40 @@ describe('task_read hands out the version (#250)', () => {
     expect(list).not.toHaveProperty('version');
   });
 });
+
+// #532 G3: named break is restoring highestEventSeq in runVersion. Reuse the existing legal
+// action fixtures; every interleaving is independent, never hidden inside one combined update.
+describe('#532 transcript interleaving at every execution/organisation action', () => {
+  const traffic: Array<[string, (id: string) => void]> = [
+    ['text', id => { store.appendEvent(id, { type: 'text', text: 'progress' }); }],
+    ['tool-call', id => { store.appendEvent(id, { type: 'tool-call', name: 'Read', input: {} }); }],
+    ['tool-result', id => { store.appendEvent(id, { type: 'tool-result', output: 'read' }); }],
+    ['usage', id => { store.appendEvent(id, { type: 'usage.updated', usage: { total: 42 } }); }],
+    ['lifecycle', id => { store.appendEvent(id, { type: 'lifecycle', message: 'still working' }); }],
+    ['presentation', id => { store.appendEvent(id, { type: 'note', message: 'display only' }); store.setRead(id); store.updateRun(id, { titleSummary: 'summary', costUsd: 1 }); }],
+  ];
+  for (const [label, advance] of traffic) {
+    it.each(CASES.filter(c => c.tool === executionControlTool || c.tool === organiseWorkTool))(`$name after ${label}`, async c => {
+      const run = newRun();
+      c.prepare?.(run.id);
+      const token = await readVersion(run.id);
+      advance(run.id);
+      calls.length = 0; dispatched.length = 0;
+      const result = await call(c.tool, { ...c.args(run.id), expectedVersion: token });
+      expect(result.isError, text(result)).toBeFalsy();
+      expect(text(result)).not.toMatch(/stale_version|"applied":false/);
+      expect(dispatched.filter(path => !path.startsWith('GET '))).toHaveLength(1);
+      if (c.effect) expect(calls).toEqual([c.effect]);
+      const current = store.getRun(run.id);
+      switch (c.args(run.id).action) {
+        case 'set_title': expect(current?.title).toBe('the leader’s title'); break;
+        case 'pin': expect(current?.pinned).toBe(true); break;
+        case 'unpin': expect(current?.pinned).toBeFalsy(); break;
+        case 'archive': expect(current?.archived).toBe(true); break;
+        case 'restore': expect(current?.archived).toBeFalsy(); break;
+        case 'delete': expect(current).toBeUndefined(); break;
+        case 'pick_variant': expect(text(result)).toContain(run.id); break;
+      }
+    });
+  }
+});
