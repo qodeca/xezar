@@ -12,6 +12,15 @@ Installation validation is reported in installation.md. Real-task entries follow
 
 ## Real-task entries
 
+### 2026-09-16 — #464 P3 (leader setup verification and recovery), `feature-implementation` step `implement`, `xezar-implementation`, Codex — real-task observed
+
+- Input: accepted ONB-04/07/13/14 from the onboarding spec; base `a2fc084`; public `xez-onboard` pinned at `2c20c60`, with the installed cache at `efb7109`.
+- Observed: **the external skill's safety sentence outlived the engine capability it guarded.** Its client reference correctly said not to invent an attach action when #450 had not landed; on this base `leader_events` already has `attach` and `status`. The built-in `project-setup` prompt is the offline fallback and is also delivered beside the skill, so P3 puts the current snippets, prerequisites and four-state checklist in one engine-owned helper consumed by that prompt, while the runtime tool remains the authority for actual capability. No loader, precedence rule or second attachment mechanism was added.
+- Observed: **durable delivery counters are the wrong proof after restart.** The journal and acknowledgement survive while attachment does not. The verifier therefore reports an attached status as **attached**, even with non-zero historical counters, and promotes only the current attached-session `read` response to **delivery verified**. The named break that trusted counters turned both the helper and door integration cases red.
+- Observed (gate repair): **the full suite exposed a millisecond-ordering race in the merged P2 setup latch.** The control recorded `Date.now()` on press and released only when React Query's refreshed-status timestamp was greater. Under the loaded gate both observations shared one millisecond, so the real read landed while the control stayed pending. Freezing `Date.now()` made the existing release case deterministically red; awaiting the authoritative onboarding invalidation now provides the completion signal without using wall time.
+- Regression/control: six assertions failed under the combined named breaks (Claude flag/refusal, Codex same-home, pi keep-alive/ownership, status-versus-delivery and attached replay); the restored focused suite passed 20/20. Private red output is in this run's durable evidence.
+- Remaining limit: fixture-tested for generated snippets and the existing fake attachment/replay path. The live Claude Code, Codex and pi legs require the live leader harness and remain not run; no runtime-performance conclusion follows.
+
 ### 2026-09-16 — #505 review response, `address-review-findings`, `xezar-review-response`, Codex — fixture-tested
 
 - Input: the three independent verdicts on `12ed0cd`; own task branch based on `c702fdd`, with the reviewed candidate merged in before repairs.

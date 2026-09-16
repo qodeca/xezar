@@ -147,8 +147,67 @@ describe('leader_events door headlines (#450, T-3)', () => {
       const result = await withPort({ [action]: refusal }, { action, ...op });
       expect(result.isError).toBe(true);
       expect(firstLine(result)).toBe(`Nothing was ${action === 'attach' ? 'attached' : 'detached'}: Hosted. Run locally.`);
+      expect(text(result)).toContain('Leader setup: connected');
+      expect(text(result)).not.toContain('Leader setup: attached');
       expect(result.structuredContent).toEqual(refusal);
     }
+  });
+});
+
+describe('leader setup verification and restart recovery (#464 P3, ONB-04/13/14)', () => {
+  it('advances only from a real call, to attach, to an attached-session replay check', async () => {
+    // RED against: deleting `leaderSetupVerificationLine` from status/door/read, or marking status
+    // alone as delivery verified.
+    const detachedNow = { ...attached, leader: null, self: { client: 'claude-code' as const, isOwner: true, attached: false } };
+    const statusPort = port({ status: detachedNow });
+    expect(text(await call({ action: 'status' }, { leaderControl: statusPort.control, sessionKey: 's' }))).toContain(
+      'Leader setup: connected',
+    );
+
+    const attachPort = port({
+      status: attached,
+      attach: { ok: true, action: 'attach', outcome: 'attached', status: attached },
+    });
+    expect(text(await call(
+      { action: 'attach', operationId: 'op-onboard-attach-0001' },
+      { leaderControl: attachPort.control, sessionKey: 's' },
+    ))).toContain('Leader setup: attached');
+
+    const dir = realpathSync(mkdtempSync('/tmp/xzle-onboard-'));
+    const journal = EventJournal.open({ dataDir: dir, projectId: 'alpha', secretValues: [], warn: () => {} });
+    const cursors = LeaderCursors.open({ dataDir: dir, projectId: 'alpha', journal, warn: () => {} });
+    const leaderEvents = {
+      journal,
+      cursors,
+      readState: (() => ({ latestSeq: journal.latestSeq, tasks: [], complete: true })) as StateReader,
+      secretValues: [],
+    };
+    try {
+      expect(text(await call(
+        { action: 'read' },
+        { leaderEvents, leaderControl: attachPort.control, sessionKey: 's' },
+      ))).toContain('Leader setup: delivery verified');
+    } finally {
+      journal.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('returns to connected after restart instead of trusting durable delivery counters', async () => {
+    // RED against: promoting durable cursor counters after a restart, or saying an attachment
+    // survives a process restart. The existing #450 push-delivery test holds the real lifecycle;
+    // this pins the leader-facing report after it.
+    const afterRestart: McpLeaderSelfStatus = {
+      ...attached,
+      leader: null,
+      delivery: { state: 'idle', deliveredSeq: 7, ackedSeq: 7, reactedSeq: 7, latestSeq: 7 },
+      self: { client: 'claude-code', isOwner: true, attached: false },
+    };
+    const restarted = port({ status: afterRestart });
+    const result = await call({ action: 'status' }, { leaderControl: restarted.control, sessionKey: 'new-session' });
+    expect(text(result)).toContain('Leader setup: connected');
+    expect(text(result)).not.toContain('Leader setup: delivery verified');
+    expect(firstLine(result)).toContain('not attached');
   });
 });
 

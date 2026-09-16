@@ -1,9 +1,10 @@
-# Onboarding skill contract for P2
+# Onboarding skill contract for P2 and P3
 
 P1 provides `xez-onboard` in the public `qodeca/xezar-skills` collection.
 P2 consumes its reviewed, pinned revision and bundles a fallback with the same
-entrypoint, references and templates. This note defines that artifact boundary;
-it does not implement a setup entry, update watcher, state writer or fallback.
+entrypoint, references and templates. P3 adds leader snippets and the verification
+checklist to that fallback and the existing `leader_events` result; it does not add
+another attachment/status mechanism.
 Related: #464. The skill supports software, campaign/marketing, research and other
 projects without requiring a software delivery process.
 
@@ -111,3 +112,28 @@ done and why, and a numbered list of remaining user actions: integrate, trust/lo
 start the selected client, call a tool, attach using the supported control and verify
 delivery. Omit inapplicable leader steps for independent operation. No snippet or
 successful command alone proves connection, attachment, delivery or business acceptance.
+
+## Leader verification and restart recovery (P3)
+
+The result uses four ordered labels and names the evidence for each: **files prepared**
+means the chosen project-only snippet is in the candidate; **connected** needs a real xezar
+MCP tool result for this project; **attached** needs `leader_events` attach plus status for
+the calling session; **delivery verified** needs a real pushed event or an attached-session
+`leader_events` read. A durable cursor may come from an earlier process and is not
+current-session proof by itself.
+
+Claude Code still leaves its channel launch flag, warning and provider/administrator
+restrictions to the person. Codex still needs project trust and, for push, the shared local
+app-server under the same Codex home xezar uses. pi still needs a compatible adapter and the
+leader extension for pushed turns; its keep-alive session can own the project connection.
+OpenCode has no bundled snippet in this revision and is attached by a person through its
+supported control. See the canonical [MCP project-leader guide](../../guide/13-mcp-leader.md)
+and generated [MCP tool reference](../mcp-server/mcp-api.md).
+
+After xezar restarts, a leader calls a real tool, reads `leader_events` status, attaches with
+a new operation ID, then reads with no cursor before relying on prior pushes. It pages while
+`hasMore`, reconciles a gap before acknowledging `resumeCursor`, and never polls while idle.
+Pending reviewer verdicts stay pending; `task.stalled` stays advisory; replay remains
+at-least-once only within the documented retention and page limits. Hosted mode, an unavailable
+client/adapter/network/`gh`, and a read-only home are precise unavailable or pending outcomes;
+none authorises local attachment, personal-config mutation or a readiness claim.
