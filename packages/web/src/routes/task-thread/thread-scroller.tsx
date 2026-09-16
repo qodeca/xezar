@@ -343,9 +343,12 @@ export function useThreadScroll(
     window.addEventListener('pointerup', onPointerUp, { passive: true })
     scroller.addEventListener('keydown', onKey)
 
-    // Content growth (streamed items, replay, virtua's total-size updates) re-applies the
-    // stick or the pending restore. jsdom has no ResizeObserver; the hook degrades to
-    // arrival-only behavior there, which is exactly what component tests exercise.
+    // Content OR route-dock growth re-applies the stick or the pending restore. The compact
+    // current-state request races the transcript request: on a slow machine the rows can paint
+    // first, then the Plan and Agents docks add 130px below them. Observing only `content` left
+    // a stuck reader exactly that far from the tail (#446). Panel transcripts have no route dock,
+    // so the second target is deliberately optional. jsdom has no ResizeObserver; the hook
+    // degrades to arrival-only behavior there, which is exactly what component tests exercise.
     let observer: ResizeObserver | undefined
     let observedHeight = -1
     if (typeof ResizeObserver !== 'undefined') {
@@ -369,6 +372,8 @@ export function useThreadScroll(
         }
       })
       observer.observe(content)
+      const dock = content.closest('[data-route="task-thread"]')?.querySelector('[data-slot="thread-dock"]')
+      if (dock) observer.observe(dock)
     }
 
     return () => {

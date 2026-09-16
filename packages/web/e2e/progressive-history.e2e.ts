@@ -155,10 +155,15 @@ function navigateAndSampleArrival(runId: string): Arrival {
         ${JSON.stringify(`[data-route="task-thread"][data-run-id="${runId}"]`)},
       )
       const ready = destination?.querySelector('[data-slot="thread-rows"]')
+      // The transcript page and compact current-state context load in parallel. Capture frames
+      // as soon as rows exist (the near-zero flash guard needs every one), but do not call the
+      // destination settled until the two fixture-owned docks from context have mounted too.
+      const contextReady = destination?.querySelector('[data-slot="plan-dock"]')
+        && destination?.querySelector('[data-slot="agents-dock"]')
       if (main && ready) {
         const previous = window.__xezArrivalSamples[window.__xezArrivalSamples.length - 1]
         const next = { top: main.scrollTop, maxTop: main.scrollHeight - main.clientHeight }
-        still = previous && previous.top === next.top && previous.maxTop === next.maxTop
+        still = contextReady && previous && previous.top === next.top && previous.maxTop === next.maxTop
           ? still + 1
           : 0
         window.__xezArrivalSamples.push(next)
@@ -362,6 +367,22 @@ describe('progressive long-session history', () => {
 
     // Warm both query caches first. The destination transcript, not a loading placeholder, is
     // the surface whose paint ordering this regression measures.
+    // Force the runner ordering from #446 deterministically: rows first, compact current-state
+    // context second. Before the product observed route-dock growth, the late Plan + Agents docks
+    // left the live viewport exactly 130px from the bottom. The delay changes only ordering; the
+    // sampler above still captures every destination-transcript frame from the first row paint.
+    browser.evaluate(`(() => {
+      const originalFetch = window.fetch
+      let delayed = false
+      window.fetch = async (...args) => {
+        const url = String(args[0] instanceof Request ? args[0].url : args[0])
+        if (!delayed && url.includes('/runs/${RUN_B_ID}/history-context')) {
+          delayed = true
+          await new Promise((resolveDelay) => setTimeout(resolveDelay, 500))
+        }
+        return originalFetch(...args)
+      }
+    })()`)
     const firstTailArrival = navigateAndSampleArrival(RUN_B_ID)
     expect(firstTailArrival.settled.maxTop - firstTailArrival.settled.top).toBeLessThan(NEAR_TAIL_PX)
     const departure = parkCurrentThread()
