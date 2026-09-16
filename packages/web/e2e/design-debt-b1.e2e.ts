@@ -38,9 +38,10 @@ import record from './fixtures/subagents-run.record.json'
  *  6. focus entry on the dialog and the sheet, the `focus-visible` ring idiom on both close
  *     buttons (ring for a keyboard reader, none for a mouse press), and focus return — which
  *     measurement split in two: the nav drawer, which has a real Radix trigger, hands focus back
- *     to it, while a Dialog or Sheet mounted from state with no trigger drops focus on `<body>`.
- *     That second half is an existing defect in files outside B1's manifest and is PINNED here,
- *     red in CI, rather than left as a sentence in a pull request.
+ *     to it, while a Sheet mounted from state with no trigger drops focus on `<body>`. That second
+ *     half is an existing defect in files outside B1's manifest and is PINNED here, red in CI,
+ *     rather than left as a sentence in a pull request. The add-account dialog was pinned the same
+ *     way until #453 B3 (NB-4) wired its focus return; it now asserts focus on its trigger.
  *
  * Boot doctrine is `agents-dock.e2e.ts`'s: this spec owns its server over a throwaway `dataRoot`,
  * because it needs a replayed sub-agent fan-out (the only Sheet in the cockpit that renders the
@@ -860,18 +861,18 @@ describe('B1 focus: the dialog and sheet closes enter, ring and return', () => {
     )
   }
 
-  it('pins the surfaces that drop focus on close — a defect B1 did not cause and does not own', () => {
-    // MEASURED, not assumed, and it is the opposite of the case above: a Dialog or Sheet mounted
-    // from state with NO Radix trigger has nothing to restore focus to, so closing it lands a
+  it('pins focus return on the two state-mounted surfaces — the dialog restores it, the sheet does not yet', () => {
+    // MEASURED, not assumed: a Dialog or Sheet mounted from state with NO Radix trigger has
+    // nothing to restore focus to unless its owner wires `onCloseAutoFocus`, so closing it lands a
     // keyboard reader on `<body>` — at the top of the document, with the whole page to walk
-    // again. Reproduced on the add-account dialog with the trigger genuinely focused first, and
+    // again. Reproduced first on the add-account dialog with the trigger genuinely focused, and
     // on the sub-agent sheet; the nav drawer, which HAS a trigger, restores correctly.
     //
-    // B1 changed these two close buttons' ring classes and nothing else — the restore is Radix's
-    // and the trigger wiring lives in `routes/settings/accounts-section.tsx` and
-    // `routes/task-thread/subagent-sheet.tsx`, both outside B1's file manifest. This case exists
-    // so the defect is red in CI rather than true only in a PR comment: the batch that fixes the
-    // wiring flips these two expectations and moves the check up to the case above.
+    // B1 changed these two close buttons' ring classes and nothing else — the trigger wiring lives
+    // in `routes/settings/accounts-section.tsx` and `routes/task-thread/subagent-sheet.tsx`, both
+    // outside B1's file manifest. This case exists so the defect is red in CI rather than true
+    // only in a PR comment: the batch that fixes the wiring flips its expectation. #453 B3 (NB-4)
+    // did that for the dialog; the sheet's half is still the pinned defect.
     browser.goto(`${baseUrl}/settings/global/accounts`)
     browser.waitForFunction(`document.querySelector('${ADD_ACCOUNT}') !== null`)
     read<boolean>(`(() => { document.querySelector('${ADD_ACCOUNT}').focus({ focusVisible: true }); return true })()`)
@@ -879,16 +880,29 @@ describe('B1 focus: the dialog and sheet closes enter, ring and return', () => {
     browser.waitForFunction(`document.querySelector('${DIALOG_CLOSE}') !== null`)
     browser.press('Escape')
     browser.waitForFunction(`document.querySelector('${ADD_ACCOUNT_DIALOG}') === null`)
-    const afterDialog = activeName()
+    // Radix restores focus from its unmount path, which can land after the node is gone, so wait
+    // for it rather than sample once. Every Button carries `data-slot="button"`, so `activeName()`
+    // cannot tell the trigger from any other button: name the trigger only when focus is on that
+    // exact element, and print whatever holds focus if it never gets there.
+    let afterDialog: string
+    try {
+      browser.waitForFunction(`document.activeElement?.matches('${ADD_ACCOUNT}') === true`)
+      afterDialog = 'accounts-add'
+    } catch {
+      afterDialog = activeName()
+    }
 
     openSubagentSheet()
     browser.press('Escape')
     browser.waitForFunction(`document.querySelector('${SUBAGENT_SHEET}') === null`)
     const afterSheet = activeName()
 
+    // #453 B3 NB-4 fixed the add-account half: the dialog now hands focus back to the "Add
+    // account" trigger it was opened from, so that half asserts the RESTORED state. The sub-agent
+    // sheet is still unwired and stays pinned on `<body>`.
     expect(
       { dialog: afterDialog, sheet: afterSheet },
       'focus return changed — update this case and move the surface to the trigger case above',
-    ).toEqual({ dialog: 'body', sheet: 'body' })
+    ).toEqual({ dialog: 'accounts-add', sheet: 'body' })
   }, 180_000)
 })

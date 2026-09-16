@@ -30,7 +30,7 @@ export function SkillsSection() {
       <CenteredState
         icon={<PackageCheckIcon />}
         tone="danger"
-        title="Skill settings did not load"
+        title="Could not load skill settings"
         subtitle={config.error.message}
         heading="h2"
       />

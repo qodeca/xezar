@@ -75,7 +75,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 - **Source**: `packages/web/src/components/ui/alert-dialog.tsx`. Exports the Radix parts plus `AlertDialogAction` (styled `buttonVariants({ variant: "contrast" })`) and `AlertDialogCancel` (`outline`).
 - **Look**: same overlay and content as Dialog with `sm:max-w-md`, no close button.
 - **States**: no outside-click dismiss; focus starts on the cancel action.
-- **Rules**: DO title it as a question (`Delete this task?`), state the consequence, add `There is no undo.` when true, and word the cancel as the kept outcome (`Keep it`). DO tint a destructive action with `bg-danger text-danger-foreground hover:brightness-[0.96]`. DO NOT use it for a non-destructive form.
+- **Rules**: DO title it as a question (`Delete this task?`), state the consequence, add `There is no undo.` when true, and word the cancel as the kept outcome (`Keep it`). DO tint a destructive action with `className={buttonVariants({ variant: "danger" })}`, never a copied class string. DO return focus to the opener when the dialog is opened from state rather than from an `AlertDialogTrigger` (`onCloseAutoFocus`; settings use `useReturnFocus`). DO NOT use it for a non-destructive form.
 - **Accessibility**: `role="alertdialog"` from Radix.
 - **Where used**: 8 files (`compare-variants.tsx`, `plan-review.tsx`, `settings/accounts-section.tsx`, `settings/remove-project.tsx`, `settings/worktrees-panel.tsx`, `task-thread/link-safety-dialog.tsx`, `task-thread/run-header.tsx`, `workflows/workflows.tsx`).
 
@@ -119,7 +119,7 @@ comes from the single `radix-ui` package; there is no `sonner`, the toast is han
 ### Input
 
 - **Purpose**: single-line text field.
-- **Source**: `packages/web/src/components/ui/input.tsx`. Exports `Input` and `nativeFieldClass` — the class a pane that keeps a raw `<select>`/`<input>` on purpose wears (settings fields, the branch picker; G-11). It lives on the field primitive so there is one string to fix and no second, half-adopted primitive.
+- **Source**: `packages/web/src/components/ui/input.tsx`. Exports `Input` and `nativeFieldClass` — the class a pane that keeps a raw `<select>`/`<input>` on purpose wears (settings fields, the branch picker; G-11). It lives on the field primitive so there is one string to fix and no second, half-adopted primitive. A field inside a chip row may narrow its desktop text with a later `md:text-xs` (the projects tag input), which `cn` merges over the `md:text-sm` default; its phone size stays `text-base`.
 - **Look**: `h-9 min-h-tap w-full rounded-md border border-input bg-card px-3 py-1 text-base shadow-xs … placeholder:text-soft-foreground md:min-h-0 md:text-sm`; focus `focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50`; invalid `aria-invalid:border-destructive aria-invalid:ring-destructive/20`; disabled `pointer-events-none cursor-not-allowed opacity-50`.
 - **Rules**: DO keep `text-base` on phone (iOS zooms below 16px). DO pair with `Label htmlFor` or `aria-label`. Two routes hand-roll the search input markup instead of using Input (G-12); new search fields use `Input`.
 - **Where used**: 10 files.

@@ -71,7 +71,7 @@ export function ProjectFolderField() {
             data-action="project-location-copy"
             title="Copy the project folder path"
             onClick={() => copyPath(root)}
-            className="text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+            className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-sm text-xs font-medium text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-0 md:min-w-0"
           >
             Copy
           </button>

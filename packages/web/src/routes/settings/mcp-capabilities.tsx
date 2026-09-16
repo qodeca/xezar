@@ -417,7 +417,7 @@ export function McpCapabilitiesView({ capabilities, constraints, failingChecks, 
                   <Link
                     to={`/tasks/${check.runId}`}
                     data-slot="mcp-quality-open"
-                    className="mt-2 inline-flex rounded-sm text-[12px] font-medium text-foreground underline underline-offset-2 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                    className="mt-2 inline-flex min-h-tap items-center rounded-sm text-[12px] font-medium text-foreground underline underline-offset-2 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-0"
                   >
                     Open task: {check.title}
                   </Link>

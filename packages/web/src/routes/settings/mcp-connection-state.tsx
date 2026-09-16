@@ -235,7 +235,7 @@ export function McpConnectionState({ state }: { state: McpConnectionState }) {
             state.task ? (
               <Link
                 to={state.task.href}
-                className="inline-flex items-center gap-1 text-[13px] font-medium text-foreground underline underline-offset-4"
+                className="inline-flex min-h-tap items-center gap-1 text-[13px] font-medium text-foreground underline underline-offset-4 md:min-h-0"
               >
                 Open the task
               </Link>

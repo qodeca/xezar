@@ -8,8 +8,8 @@ to-do list: an entry becomes a `design-debt` issue on the triggers [CONTRIBUTING
 names, and a fix arrives as its own change with the entry deleted.
 
 Ids are never reused: a deleted entry retires its number, so a new entry takes the next number after the
-highest ever used. G-01..G-23 and G-26..G-28 are live, G-24 and G-25 are retired, and the next free id is
-G-29.
+highest ever used. G-01..G-23 and G-26..G-30 are live, G-24 and G-25 are retired, and the next free id is
+G-31.
 
 Counts are non-test files or occurrences in `packages/web/src`. Corrected counts in G-02, G-06,
 G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the original inventory date.
@@ -33,12 +33,14 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Differs**: `chipClass` (`components/picker-pill.tsx`) is re-declared by hand in `components/prompt-template-menu.tsx:67` and `routes/settings/prompt-templates-section.tsx:345`, both with `disabled:opacity-50` instead of `opacity-55`. Both copies also keep the old `h-[26px]` and so miss the `h-7 min-h-[24px]` density-scaled height and 24 px floor. `components/facet-filter.tsx` spells its filter chip `h-7` without the floor, so it is 21 px at Compact for real – under the 24 px minimum target size of WCAG 2.2 SC 2.5.8. This predates step 3b of #424.
 - **Rule**: import `chipClass` (`h-7 min-h-[24px]`) for composer chips; `h-7` for filter chips.
 - **Fix**: replace the two copies with the import; document the two heights as intentional or unify.
+- **Status (#453 batch B3, settings)**: the settings copy is fixed: `prompt-templates-section.tsx` spells the `chipClass` look (`h-7`, `md:min-h-chip`, `disabled:opacity-55`) and grows to `min-h-tap` below `md`; its skill chips carry the same floors. It is spelled locally because B4 owns `chipClass`. Still open (B4): `prompt-template-menu.tsx` and `facet-filter.tsx`.
 
 ### G-04 `text-danger` vs `text-destructive`
 
 - **Differs**: `text-danger` ×63 in routes and components; `text-destructive` ×4 (`routes/automations/automations.tsx:195`, `routes/settings/agent-config-section.tsx:298,311`, `components/skills-import-panel.tsx:350`). The `--destructive` alias exists for the shadcn primitives.
 - **Rule**: `text-danger` in app code. Dominant and newer.
 - **Fix**: replace the four sites.
+- **Status (#453 batch B3, settings)**: `agent-config-section.tsx` now uses `text-danger`, `border-danger/40` and `bg-danger/10`. Still open (B7): `automations.tsx:195`, `skills-import-panel.tsx:350`.
 
 ### G-05 Hand-rolled centered messages
 
@@ -75,12 +77,14 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Differs**: `bg-danger text-danger-foreground hover:brightness-[0.96]` copied in `routes/settings/remove-project.tsx:78`, `routes/settings/worktrees-panel.tsx:162`, `routes/task-thread/run-header.tsx:990`, `routes/workflows/workflows.tsx:668`; the irreversible overwrite confirm in `workflows.tsx:648` is unstyled; the same file uses "Keep it" and "Keep the file".
 - **Rule**: tint every irreversible confirm; cancel reads "Keep it" unless a more specific kept outcome exists.
 - **Fix**: add a `danger` Button variant and use it in `AlertDialogAction`.
+- **Status (#453 batch B3, settings)**: `remove-project.tsx`, `worktrees-panel.tsx` and the agent-account remove confirm pass `buttonVariants({ variant: 'danger' })` to `AlertDialogAction`, cancel with "Keep it", and hand focus back to the opener (`useReturnFocus`); the per-row worktree Delete is `danger-ghost`. Still open: `task-thread/run-header.tsx` (B5), `workflows/workflows.tsx` (B7).
 
 ### G-11 Raw `<select>` in settings while the Select primitive is unused
 
 - **Differs**: `rounded-md border border-input bg-card px-3 py-1.5` on raw selects and inputs at 23 sites (`routes/settings/resources-section.tsx` ×13, `agents-section.tsx` ×6, `projects-section.tsx:217`, `accounts-section.tsx:426`, `worktrees-section.tsx:108`, `routes/repo-git/repo-branches.tsx:162`); `components/ui/select.tsx` has 0 importers.
 - **Rule**: the raw control class for settings (it is what ships).
 - **Fix**: decide between adopting `Select` and deleting it; extract the raw class into a `NativeSelect` component.
+- **Status (#453 batch B3, settings)**: all 28 raw settings fields (the 22 listed plus `projects-section.tsx` ×2, `accounts-section.tsx:700` and `add-account-dialog.tsx` ×3) wear `nativeFieldClass` from `components/ui/input.tsx`, so they reach 44 px on a phone. Still open: `routes/repo-git/repo-branches.tsx` (B6).
 
 ### G-12 Search input markup duplicated
 
@@ -93,6 +97,7 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Differs**: `routes/settings/settings-field.tsx` (7 importers) vs private `Field` in `routes/settings/appearance.tsx:101-111`, `routes/settings/prompt-templates-section.tsx:391-400`, `routes/settings/agents-section.tsx:606-615`.
 - **Rule**: `SettingsField`.
 - **Fix**: replace the three copies.
+- **Status (#453 batch B3, settings)**: fixed – the three private copies are gone and all three sections render `SettingsField`. The entry stays until the final #453 reconciliation (B8) retires it.
 
 ### G-14 Duplicated shell helpers
 
@@ -119,6 +124,7 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 | Oxford comma | omitted (25) | present (2) | `routes/settings/agents-section.tsx:315`, `notifications-section.tsx:97` |
 
 - **Fix**: one copy pass over the minority sites; a `no-en-dash-in-ui` guardian rule.
+- **Status (#453 batch B3, settings)**: the settings rows are fixed – "Could not load …" in all ten settings sites, "Retry" in provider settings, "Filter skills…", "Nothing matches." for the bookmarklet filter, the em dash in `mcp-api-section.tsx`, curly apostrophes in `appearance.tsx`, `project-general.tsx` and the hints of `agents-section.tsx`, `resources-section.tsx`, `mcp-connection-section.tsx`, `projects-section.tsx`, `accounts-section.tsx` and `prompt-templates-section.tsx`, and no Oxford comma in `agents-section.tsx`, `notifications-section.tsx` and `prompt-templates-section.tsx`. Still open (B4, B5, B7): the other rows. The guardian rule is not added.
 
 ### G-16 Toast punctuation
 
@@ -161,6 +167,7 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Differs**: `routes/settings/resources-section.tsx` saves selects on change (245-252) but needs an explicit Save for the wake interval (327).
 - **Rule**: on-change for selects and switches; explicit Save for text and numbers (this is what the pane does).
 - **Fix**: none needed beyond the rule; document per control.
+- **Status (#453 batch B3, settings)**: verified intentional, not a defect. `design-debt-b3.test.tsx` and `e2e/design-debt-b3.e2e.ts` pin it: a select writes on change, a number field writes nothing until Save.
 
 ### G-23 Small text below AA contrast in three token pairs
 
@@ -185,6 +192,14 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Differs**: at Roomy the sidebar footer leaves the version chip too little room, and its `truncate` span (`components/app-shell.tsx:822`) reads `v0.1…`. Comfortable and Compact show the whole version.
 - **Rule**: a version number is never truncated.
 - **Fix**: give the chip `shrink-0` and let the footer's other controls give way first. Seen in the 0.15.0 docs captures (#448, design review NB-9).
+
+### G-29 The default-agent picker is under 44 px on a phone
+
+- **Differs**: the Settings → Agents and Agent accounts default-agent radios (`components/default-agent-picker.tsx:124`) measure 28.5–34.5 px tall at 390 px across the four densities, the only Settings target below the 44 px floor; owner: batch B4 of #453 (Q06), found in the B3 design review (#519, NB-1).
+
+### G-30 The registered-projects table scrolls sideways on a phone
+
+- **Differs**: at 390 px the Global → Projects "Registered projects" table (`routes/settings/projects-section.tsx:277`) scrolls inside its box (567 px of content in 356 px), squeezing the Project column to 60 px, instead of reflowing as cards below `md`; pre-existing, owner: batch B4 of #453, found in the B3 design review (#519, NB-2).
 
 ## Comment vs code
 

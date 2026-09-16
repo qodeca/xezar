@@ -1,3 +1,5 @@
+import { useLayoutEffect, useRef, type SyntheticEvent } from 'react'
+
 import { useRemoveProject } from '@/api/queries'
 import type { ProjectListEntry } from '@qodeca/xezar-api-client'
 import {
@@ -10,6 +12,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { buttonVariants } from '@/components/ui/button'
 import { toast } from '@/components/ui/toaster'
 
 /**
@@ -47,6 +50,30 @@ export function useProjectRemoval() {
   }
 }
 
+/**
+ * Focus return for a confirmation opened from STATE rather than from a Radix trigger (#453 B3).
+ * Radix hands focus back only to its own trigger; these dialogs have none, so a Cancel or Escape
+ * dropped keyboard focus on `<body>`. The opener is read in a layout effect — before Radix's
+ * focus scope moves focus into the dialog — and restored in `onCloseAutoFocus` while it is still
+ * in the document (a removed row's button is not, and then Radix's default applies).
+ */
+export function useReturnFocus(open: boolean) {
+  const opener = useRef<HTMLElement | null>(null)
+  useLayoutEffect(() => {
+    if (open && opener.current === null && document.activeElement instanceof HTMLElement) {
+      opener.current = document.activeElement
+    }
+  }, [open])
+  return (event: SyntheticEvent | Event) => {
+    const target = opener.current
+    opener.current = null
+    if (target?.isConnected) {
+      event.preventDefault()
+      target.focus()
+    }
+  }
+}
+
 /** The confirm step. `project` doubles as the open state — `null` while it is closed. */
 export function RemoveProjectDialog({
   project,
@@ -57,10 +84,12 @@ export function RemoveProjectDialog({
   onOpenChange: (open: boolean) => void
   onConfirm: () => void
 }) {
+  const returnFocus = useReturnFocus(project !== null)
   return (
     <AlertDialog open={project !== null} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
+      <AlertDialogContent onCloseAutoFocus={returnFocus}>
+        {/* `min-w-0`: the grid item may shrink, so the truncated path below cannot widen the dialog past a phone screen. */}
+        <AlertDialogHeader className="min-w-0">
           <AlertDialogTitle>Remove {project?.name} from the workspace?</AlertDialogTitle>
           <AlertDialogDescription>
             This only unregisters the project — <strong>nothing on disk is deleted</strong>. The
@@ -75,7 +104,7 @@ export function RemoveProjectDialog({
           <AlertDialogCancel>Keep it</AlertDialogCancel>
           <AlertDialogAction
             data-action="projects-confirm-remove"
-            className="bg-danger text-danger-foreground hover:brightness-[0.96]"
+            className={buttonVariants({ variant: 'danger' })}
             onClick={onConfirm}
           >
             Remove from list

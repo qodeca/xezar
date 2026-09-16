@@ -1,11 +1,13 @@
 import { MonitorIcon, MoonIcon, SunIcon } from 'lucide-react'
-import type { ComponentType, ReactNode, SVGProps } from 'react'
+import type { ComponentType, SVGProps } from 'react'
 
 import { useAppearance } from '@/components/appearance-provider'
 import { useTheme } from '@/components/theme-provider'
 import { cn } from '@/lib/utils'
 import type { Accent, Density, Width } from '@/lib/appearance'
 import type { Theme } from '@/lib/theme'
+
+import { SettingsField } from './settings-field'
 
 /**
  * Settings → Appearance (R6 Step 1.3, spec §"Settings").
@@ -78,8 +80,10 @@ function Segmented<V extends string>({
             aria-checked={checked}
             data-value={option.value}
             onClick={() => onChange(option.value)}
+            // `min-h-tap min-w-tap … md:` is the absolute 44px phone hit area at every density (A-01);
+            // the explicit focus ring is the same one Button wears, so keyboard users see the segment.
             className={cn(
-              'flex items-center gap-2 rounded-sm px-3 py-1.5 text-[13px] font-medium transition-colors',
+              'flex min-h-tap min-w-tap items-center justify-center gap-2 rounded-sm px-3 py-1.5 text-[13px] font-medium transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-0 md:min-w-0',
               checked
                 ? 'bg-muted text-foreground'
                 : 'text-muted-foreground hover:text-foreground',
@@ -101,18 +105,6 @@ function Segmented<V extends string>({
   )
 }
 
-function Field({ title, hint, children }: { title: string; hint: string; children: ReactNode }) {
-  return (
-    <section className="flex flex-col gap-stack">
-      <div>
-        <h2 className="text-sm font-semibold text-foreground">{title}</h2>
-        <p className="text-[13px] text-muted-foreground">{hint}</p>
-      </div>
-      {children}
-    </section>
-  )
-}
-
 export function AppearanceSection() {
   const { theme, setTheme } = useTheme()
   const { accent, density, width, setAccent, setDensity, setWidth } = useAppearance()
@@ -122,27 +114,27 @@ export function AppearanceSection() {
       data-slot="appearance-section"
       className="mx-auto flex w-full max-w-2xl flex-col gap-section p-list pb-[calc(90px+env(safe-area-inset-bottom))] md:p-group md:pb-group"
     >
-      <Field title="Theme" hint="System follows your OS preference. Applies to this browser.">
+      <SettingsField title="Theme" hint="System follows your OS preference. Applies to this browser.">
         <Segmented slot="appearance-theme" label="Theme" value={theme} options={THEME_OPTIONS} onChange={setTheme} />
-      </Field>
+      </SettingsField>
 
-      <Field title="Accent" hint="The primary action color. Saved with this repo's cockpit state.">
+      <SettingsField title="Accent" hint="The primary action color. Saved for you on this computer and used in every project.">
         <Segmented slot="appearance-accent" label="Accent" value={accent} options={ACCENT_OPTIONS} onChange={setAccent} />
-      </Field>
+      </SettingsField>
 
-      <Field
+      <SettingsField
         title="Density"
         hint="Roomy adds space between things and the Compact options take it away — text stays the same size."
       >
         <Segmented slot="appearance-density" label="Density" value={density} options={DENSITY_OPTIONS} onChange={setDensity} />
-      </Field>
+      </SettingsField>
 
-      <Field
+      <SettingsField
         title="Reading width"
-        hint="Wide lets a task's session and commits use more of the screen. Narrow keeps a comfortable reading column. The Changes tab is always full-width."
+        hint="Wide lets a task’s session and commits use more of the screen. Narrow keeps a comfortable reading column. The Changes tab is always full-width."
       >
         <Segmented slot="appearance-width" label="Reading width" value={width} options={WIDTH_OPTIONS} onChange={setWidth} />
-      </Field>
+      </SettingsField>
     </div>
   )
 }

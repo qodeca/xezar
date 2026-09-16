@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { CheckIcon, ChevronDownIcon, NotebookPenIcon, PlusIcon, SparklesIcon, XIcon } from 'lucide-react'
-import { useRef, useState, type ReactNode } from 'react'
+import { useRef, useState } from 'react'
 
 import { putUiState } from '@/api/client'
 import { queryKeys, useSkills, useUiState } from '@/api/queries'
@@ -27,6 +27,7 @@ import {
 } from '@/lib/prompt-templates'
 import { isProjectSkill, partitionSkillsForDisplay, searchSkills, skillKeywords } from '@/lib/skills'
 import { cn } from '@/lib/utils'
+import { SettingsField } from './settings-field'
 
 /**
  * Settings → Prompt templates (#413): "add the settings pane for editing these prompt templates
@@ -54,7 +55,7 @@ export function PromptTemplatesSection() {
       <CenteredState
         icon={<NotebookPenIcon />}
         tone="danger"
-        title="Prompt templates did not load"
+        title="Could not load prompt templates"
         subtitle={uiState.error.message}
         heading="h2"
       />
@@ -125,9 +126,9 @@ function PromptTemplatesForm({ initial }: { initial: PromptTemplate[] }) {
       data-slot="prompt-templates-section"
       className="mx-auto flex w-full max-w-2xl flex-col gap-section p-list pb-[calc(90px+env(safe-area-inset-bottom))] md:p-group md:pb-group"
     >
-      <Field
+      <SettingsField
         title="Prompt templates"
-        hint="Reusable snippets you can insert into a prompt — the new-task composer, the GitHub hand-over, and the Inbox's “Add instructions” box all offer this list. Assign a template to a skill and it fills the prompt in for you when you pick that skill, as long as you have not typed anything yet."
+        hint="Reusable snippets you can insert into a prompt — the new-task composer, the GitHub hand-over and the Inbox’s “Add instructions” box all offer this list. Assign a template to a skill and it fills the prompt in for you when you pick that skill, as long as you have not typed anything yet."
       >
         <div data-slot="prompt-template-list" className="flex flex-col gap-3">
           {templates.length === 0 ? (
@@ -168,7 +169,7 @@ function PromptTemplatesForm({ initial }: { initial: PromptTemplate[] }) {
                   value={template.text}
                   maxLength={2000}
                   onChange={(event) => updateTemplate(template.id, { text: event.target.value })}
-                  className="min-h-14 text-[13px]"
+                  className="md:text-[13px]"
                 />
                 <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
                   <TemplateSkillsPicker
@@ -188,7 +189,7 @@ function PromptTemplatesForm({ initial }: { initial: PromptTemplate[] }) {
                       data-skill={name}
                       title={`Stop applying “${template.label}” automatically with ${name}`}
                       onClick={() => toggleTemplateSkill(template.id, name)}
-                      className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2 py-px font-mono text-[11px] font-medium text-foreground transition-colors hover:bg-danger/10 hover:text-danger"
+                      className="inline-flex min-h-tap min-w-tap items-center justify-center gap-1 rounded-full border border-border bg-muted px-2 py-px font-mono text-[11px] font-medium text-foreground transition-colors outline-none hover:bg-danger/10 hover:text-danger focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-chip md:min-w-0"
                     >
                       {name}
                       <XIcon aria-hidden="true" className="size-3" />
@@ -219,7 +220,7 @@ function PromptTemplatesForm({ initial }: { initial: PromptTemplate[] }) {
             value={newText}
             maxLength={2000}
             onChange={(event) => setNewText(event.target.value)}
-            className="min-h-14 text-[13px]"
+            className="md:text-[13px]"
           />
           <Button
             type="button"
@@ -262,7 +263,7 @@ function PromptTemplatesForm({ initial }: { initial: PromptTemplate[] }) {
             </p>
           ) : null}
         </div>
-      </Field>
+      </SettingsField>
     </div>
   )
 }
@@ -342,7 +343,9 @@ function TemplateSkillsPicker({
           title="Pick the skills this template applies itself to"
           disabled={skills.length === 0}
           className={cn(
-            'inline-flex h-[26px] items-center gap-1.5 rounded-full border border-border bg-card px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-50',
+            // The picker-pill chip look (`chipClass`: density-scaled `h-7`, 24px `min-h-chip` floor,
+            // `opacity-55` when disabled), grown to the 44px phone hit area below `md` (G-03, Q2).
+            'inline-flex h-7 min-h-tap items-center gap-1.5 rounded-full border border-border bg-card px-2.5 text-xs font-medium text-muted-foreground transition-colors outline-none hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-55 md:min-h-chip',
             selected.length > 0 && 'border-foreground/60 font-semibold text-foreground',
           )}
         >
@@ -354,7 +357,7 @@ function TemplateSkillsPicker({
       <PopoverContent align="start" sideOffset={8} className="w-[336px] max-w-[calc(100vw-2rem)] p-0">
         <Command shouldFilter={false}>
           <CommandInput
-            placeholder="search skills…"
+            placeholder="Filter skills…"
             value={search}
             onValueChange={setSearch}
             onInput={() => listRef.current?.scrollTo(0, 0)}
@@ -384,18 +387,5 @@ function TemplateSkillsPicker({
         </Command>
       </PopoverContent>
     </Popover>
-  )
-}
-
-/** The Appearance/Agents sections' field chassis — same rhythm, so Settings reads as one surface. */
-function Field({ title, hint, children }: { title: string; hint: string; children: ReactNode }) {
-  return (
-    <section className="flex flex-col gap-stack">
-      <div>
-        <h2 className="text-sm font-semibold text-foreground">{title}</h2>
-        <p className="text-[13px] text-muted-foreground">{hint}</p>
-      </div>
-      {children}
-    </section>
   )
 }

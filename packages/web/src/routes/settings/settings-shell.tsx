@@ -135,7 +135,7 @@ function SectionPills({
         to={settingsIndexPath(scope)}
         end
         data-slot="settings-nav-index"
-        className="rounded-full border border-border bg-card px-3 py-1.5 text-[13px] font-medium whitespace-nowrap text-muted-foreground transition-colors"
+        className="inline-flex min-h-tap shrink-0 items-center rounded-full border border-border bg-card px-3 py-1.5 text-[13px] font-medium whitespace-nowrap text-muted-foreground transition-colors"
       >
         General
       </NavLink>
@@ -146,7 +146,8 @@ function SectionPills({
           data-section={section.id}
           aria-current={section.id === activeId ? 'page' : undefined}
           className={cn(
-            'rounded-full border px-3 py-1.5 text-[13px] font-medium whitespace-nowrap transition-colors',
+            // `min-h-tap`: the pill row is the phone's only section nav, so each pill is a 44px target.
+            'inline-flex min-h-tap shrink-0 items-center rounded-full border px-3 py-1.5 text-[13px] font-medium whitespace-nowrap transition-colors',
             section.id === activeId
               ? 'border-transparent bg-contrast text-contrast-foreground'
               : 'border-border bg-card text-muted-foreground',
@@ -265,7 +266,7 @@ export function SettingsIndexRoute({ scope, capabilities }: {
                 <RouterLink
                   to={settingsIndexPath('global')}
                   data-slot="settings-global-link"
-                  className="underline underline-offset-2 hover:text-foreground"
+                  className="inline-flex min-h-tap items-center underline underline-offset-2 hover:text-foreground md:min-h-0"
                 >
                   Global settings
                 </RouterLink>

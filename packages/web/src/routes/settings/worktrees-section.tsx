@@ -7,7 +7,9 @@ import { queryKeys, useConfig } from '@/api/queries'
 import type { ConfigResponse, SetConfigInput } from '@qodeca/xezar-api-client'
 import { CenteredState } from '@/components/centered-state'
 import { Button } from '@/components/ui/button'
+import { nativeFieldClass } from '@/components/ui/input'
 import { toast } from '@/components/ui/toaster'
+import { cn } from '@/lib/utils'
 import { SettingsField } from './settings-field'
 import { WorktreesPanel } from './worktrees-panel'
 
@@ -40,7 +42,7 @@ export function WorktreesSection() {
       <CenteredState
         icon={<FolderGit2Icon />}
         tone="danger"
-        title="Worktree settings did not load"
+        title="Could not load worktree settings"
         subtitle={config.error.message}
         heading="h2"
       />
@@ -105,7 +107,7 @@ function WorktreesForm({ config }: { config: ConfigResponse }) {
             value={retention}
             disabled={save.isPending}
             onChange={(event) => setRetention(event.target.value)}
-            className="block w-32 rounded-md border border-input bg-card px-3 py-1.5 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
+            className={cn(nativeFieldClass, 'block w-32')}
           />
           <span className="text-xs text-soft-foreground">worktrees</span>
           <Button
