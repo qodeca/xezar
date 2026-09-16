@@ -82,6 +82,7 @@ async function harness() {
 
 afterEach(() => {
   cleanup()
+  vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })
 
@@ -119,6 +120,9 @@ describe('useSetupStart', () => {
     // Deliberately NOT `checking`: a check that finished before the read, or a record that could
     // not be written, must release the control too. Holding until one particular answer arrives is
     // how a pending state becomes permanent.
+    // Keep both observations inside one millisecond: a timestamp comparison must not mistake an
+    // answered read for the old one and leave the control pending forever.
+    vi.spyOn(Date, 'now').mockReturnValue(1_789_549_400_000)
     serve({ reads: 2, after: { ...STATUS, state: 'set-up', offerPending: false } })
     const { result } = await harness()
     act(() => result.current.mutate('recheck'))
