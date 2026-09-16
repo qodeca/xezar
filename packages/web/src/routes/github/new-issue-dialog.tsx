@@ -79,7 +79,7 @@ export const newIssueCopy = {
   skillMissingPlain: 'Start an ordinary task',
   skillMissingManage: 'Manage skills',
   hosted:
-    'This cockpit runs in hosted mode. The task runs on the machine hosting xezar and the issue is filed with that machine’s login, not yours. Agent accounts are not offered here.',
+    'This cockpit runs in hosted mode. The task runs on the machine hosting xezar and the issue is filed with that machine’s GitHub login, not yours. Agent accounts are not offered here.',
   emptyListLead:
     'An agent can draft one, check for duplicates once more and show you the text before it is filed.',
 } as const
@@ -147,6 +147,10 @@ export function NewIssueDialog({
 }) {
   const { projectId } = useProjectScope()
   const [brief, setBrief] = useState(() => readIssueBrief(projectId))
+  // "This text is the person's own, not words we offered." A brief restored from the store is
+  // already theirs, so it counts as touched from the very first render — otherwise the write
+  // effect below would read the restored draft as a seed and delete it on mount.
+  const [touched, setTouched] = useState(() => brief !== '')
   const briefRef = useRef<HTMLTextAreaElement>(null)
   const queryClient = useQueryClient()
   const resolved = useResolvedEngine(engine)
@@ -164,7 +168,8 @@ export function NewIssueDialog({
     null
 
   // The pre-fill is offered, never persisted: a dialog opened from an empty search and closed
-  // again must leave no draft behind (OQ-4). So it seeds an EMPTY box on open and nothing else.
+  // again must leave no draft behind (OQ-4). So it seeds an EMPTY box on open and nothing else —
+  // and seeding deliberately does NOT set `touched`, which is the whole guarantee.
   useEffect(() => {
     if (!open) return
     setBrief((current) => (current === '' ? prefill : current))
@@ -172,9 +177,14 @@ export function NewIssueDialog({
     // box that rewrote itself under the person would be worse than not offering the words at all.
   }, [open])
 
+  // Persisting is gated on `touched`, not on the value, and that is the difference between
+  // "offered" and "authored": seeding writes nothing, so a close, an Escape and a reload all leave
+  // the store exactly as they found it. Clearing on close would look equivalent and is not — it
+  // loses the words of somebody who typed and then pressed Escape.
   useEffect(() => {
+    if (!touched) return
     writeIssueBrief(projectId, brief)
-  }, [projectId, brief])
+  }, [projectId, brief, touched])
 
   const start = useMutation({
     mutationFn: async (withSkill: boolean) => {
@@ -204,6 +214,9 @@ export function NewIssueDialog({
       // exists anywhere and would lose it on the next mount.
       writeIssueBrief(projectId, '')
       setBrief('')
+      // Spent means untouched again: the next open is a fresh dialog, so a pre-fill offered into
+      // it must not inherit this run's authorship and persist itself.
+      setTouched(false)
       onOpenChange(false)
       void queryClient.invalidateQueries({ queryKey: queryKeys.runs.all })
     },
@@ -271,7 +284,10 @@ export function NewIssueDialog({
               aria-keyshortcuts="Control+Enter Meta+Enter"
               value={brief}
               disabled={start.isPending}
-              onChange={(event) => setBrief(event.target.value)}
+              onChange={(event) => {
+                setTouched(true)
+                setBrief(event.target.value)
+              }}
               onKeyDown={submitShortcut}
               placeholder={newIssueCopy.briefPlaceholder}
               className="min-h-28 text-[13px]"
@@ -296,6 +312,12 @@ export function NewIssueDialog({
                 className="rounded-sm font-mono text-[11px] font-medium text-muted-foreground underline underline-offset-4 hover:text-foreground"
               >
                 {newIssueCopy.viewSkill}
+                {/* WHICH procedure is about to run. The lookup accepts any `*-issue-create` from
+                    three sources and picks one silently (`findIssueCreateSkill`), so the label
+                    alone would leave a person unable to tell a project wrapper from the shared
+                    copy without opening the preview. The approved deck names the LABEL; the
+                    resolved name beside it is data, the same as the destination row above. */}
+                <span className="text-soft-foreground"> · {skill.name}</span>
               </button>
             ) : null}
             {!resolved.providerPending && !resolved.canRun ? (

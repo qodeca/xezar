@@ -253,6 +253,19 @@ async function openDialog(entry = '/github') {
 
 const type = (text: string) => fireEvent.change(briefField(), { target: { value: text } })
 
+/** Every brief the draft store holds right now, across every project key. Read through
+ *  `localStorage` itself rather than through the module, so the assertion is about what survives
+ *  a reload and not about what the module would tell us. */
+const storedBriefs = () =>
+  Object.keys(localStorage)
+    .filter((k) => k.startsWith('xez-new-issue-brief:'))
+    .sort()
+    .map((k) => localStorage.getItem(k))
+
+/** Put words in the list's search box — the source of the dialog's pre-fill (OQ-4). */
+const search = (text: string) =>
+  fireEvent.change(screen.getByLabelText('Search issues'), { target: { value: text } })
+
 // ---- the control -------------------------------------------------------------------------------
 
 describe('the New issue control', () => {
@@ -400,12 +413,85 @@ describe('starting an issue draft', () => {
     await waitFor(() => expect(startButton()!.disabled).toBe(false))
   })
 
+  it('names WHICH issue-filing skill it resolved, not just that there is one', async () => {
+    stubFetch()
+    await openDialog()
+    const link = document.querySelector('[data-slot="gh-new-issue-view-skill"]')!
+    expect(link.textContent).toContain(newIssueCopy.viewSkill)
+    // The project's own wrapper, the copy the lookup actually picked — three sources can supply a
+    // `*-issue-create` and the label alone would not say which procedure is about to run.
+    expect(link.textContent).toContain('demo-issue-create')
+  })
+
   it('names the reason the disabled start is disabled, and links it to the button', async () => {
     stubFetch()
     await openDialog()
     expect(startButton()!.disabled).toBe(true)
     const reasonId = startButton()!.getAttribute('aria-describedby')!
     expect(document.getElementById(reasonId)?.textContent).toBe(newIssueCopy.emptyBriefHint)
+  })
+})
+
+// ---- the pre-fill and the draft store ---------------------------------------------------------------
+
+/**
+ * OQ-4's second sentence, which AC-6 alone does not cover:
+ *
+ *   "The draft store must treat a pre-fill as untouched, so it is not persisted as a draft for a
+ *    dialog the person closed without typing." (`designs/issue-filing/open-questions.md:83-84`)
+ *
+ * AC-6 above asserts that a brief SURVIVES, and passes whether or not the pre-fill is persisted.
+ * These three cases split the two halves apart, so neither can pass for the other's reason:
+ * seeding alone must never write, editing must always write, and a stored draft must outrank the
+ * seed AND survive being outranked.
+ */
+describe('the pre-fill and the draft store (OQ-4)', () => {
+  it('leaves no draft behind when a pre-filled dialog is closed untouched', async () => {
+    stubFetch()
+    renderAt('/github')
+    await waitFor(() => expect(newIssueButton()).not.toBeNull())
+    search('worktree lease')
+    fireEvent.click(newIssueButton()!)
+    await waitFor(() => expect(briefField().value).toBe('worktree lease'))
+
+    // Cancel without typing a character. The words were OFFERED; nothing was authored.
+    fireEvent.click(screen.getByRole('button', { name: newIssueCopy.cancel }))
+    await waitFor(() => expect(document.querySelector('[data-slot="gh-new-issue-brief"]')).toBeNull())
+    expect(storedBriefs()).toEqual([])
+  })
+
+  it('persists the brief as a draft as soon as the person edits the pre-fill', async () => {
+    stubFetch()
+    renderAt('/github')
+    await waitFor(() => expect(newIssueButton()).not.toBeNull())
+    search('worktree lease')
+    fireEvent.click(newIssueButton()!)
+    await waitFor(() => expect(briefField().value).toBe('worktree lease'))
+
+    // Editing it is authoring it — and the pre-fill stays editable, which is the other half of
+    // OQ-4's decision ("offered, as the first line, editable").
+    type('worktree lease is dropped when the run is reclaimed')
+    await waitFor(() =>
+      expect(storedBriefs()).toEqual(['worktree lease is dropped when the run is reclaimed']),
+    )
+    fireEvent.click(screen.getByRole('button', { name: newIssueCopy.cancel }))
+    await waitFor(() => expect(document.querySelector('[data-slot="gh-new-issue-brief"]')).toBeNull())
+    expect(storedBriefs()).toEqual(['worktree lease is dropped when the run is reclaimed'])
+  })
+
+  it('lets a stored draft win over the pre-fill, and never deletes it', async () => {
+    localStorage.setItem('xez-new-issue-brief:default', 'The brief I started yesterday.')
+    stubFetch()
+    renderAt('/github')
+    await waitFor(() => expect(newIssueButton()).not.toBeNull())
+    search('worktree lease')
+    fireEvent.click(newIssueButton()!)
+    await waitFor(() => expect(briefField()).not.toBeNull())
+
+    expect(briefField().value).toBe('The brief I started yesterday.')
+    // A guard that keyed off "untouched" alone would read the restored draft as a seed and wipe
+    // it on the very next effect — the failure mode the correction has to avoid.
+    expect(storedBriefs()).toEqual(['The brief I started yesterday.'])
   })
 })
 
@@ -509,6 +595,16 @@ describe('the skill lookup and the run body', () => {
     expect(findIssueCreateSkill([UNRELATED_SKILL])).toBeNull()
     // A suffix, not a substring: a skill that merely mentions the words is not the procedure.
     expect(findIssueCreateSkill([{ ...UNRELATED_SKILL, name: 'issue-create-helper' }])).toBeNull()
+  })
+
+  it('breaks a tie between two equally near copies by the catalog’s own order', () => {
+    // `ai`, `xezar` and `agents` all rank 0, so two repository-local copies are separated only by
+    // the order the catalog hands them over. The sort is stable, so that order is the answer — and
+    // this pins it, because the rank cases above pass whichever copy wins a tie.
+    const inAi: Skill = { ...PROJECT_SKILL, name: 'alpha-issue-create', source: 'ai' }
+    const inXezar: Skill = { ...PROJECT_SKILL, name: 'beta-issue-create', source: 'xezar' }
+    expect(findIssueCreateSkill([inAi, inXezar])?.name).toBe('alpha-issue-create')
+    expect(findIssueCreateSkill([inXezar, inAi])?.name).toBe('beta-issue-create')
   })
 
   it('never sends an autonomous flag, and never a worktree override', () => {
