@@ -188,6 +188,30 @@ describe(`diff virtualization on a generated ${FIXTURE_FILES}-file changeset`, (
   it('keeps the per-file header sticky while virtualized — the layout hazard virtua poses', () => {
     openChanges('virtual')
     browser.waitForFunction(`(() => { ${MAIN}.scrollTop = 900; return true })()`)
+    // Then AIM the fold at the middle of a card, instead of trusting 900 to land inside one.
+    //
+    // A fixed offset makes this test a hostage of every card height in the fixture, and the
+    // first two cards are xezar's OWN state (`XEZ_HOME` is pinned inside the fixture repo, so
+    // `.xez-home/config.json` and its `.bak` lead the changeset and are hundreds of pixels
+    // tall). #467 added five lines to that file — `serve` now remembers `lastListen` — which
+    // grew card one from 626 px to 728 px and moved its bottom edge from 101 px ABOVE the
+    // fold to 1 px below it. Nothing about sticky changed; the fold simply stopped cutting a
+    // card, the `straddling` guard below reported "the sticky check did not run", and the job
+    // went red on a branch that never touched the cockpit. Derive the scroll from real layout
+    // and the guard measures sticky again, on any fixture and any card height.
+    browser.waitForFunction(`(() => {
+      const scroller = ${MAIN}
+      const fold = scroller.getBoundingClientRect().top
+      const boxes = [...document.querySelectorAll('[data-slot="diff-file"]')]
+        .map((card) => card.getBoundingClientRect())
+        .sort((a, b) => a.top - b.top)
+      // The first card that reaches past the fold: the one the fold can be moved INTO without
+      // leaving the window virtua has mounted.
+      const target = boxes.find((box) => box.bottom > fold)
+      if (!target) return false
+      scroller.scrollTop += Math.round(target.top - fold + target.height / 2)
+      return true
+    })()`)
 
     // A header whose card still covers the viewport top must be pinned AT that top edge, not
     // scrolled away with its card. virtua absolutely-positions every item, which is exactly

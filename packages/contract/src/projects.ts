@@ -60,6 +60,12 @@ export const projectListEntrySchema = z.object({
    * directly.
    */
   tags: z.array(z.string()).optional(),
+  // NOT here, on purpose (#467): `projects[].cli.port` and `projects[].lastListen` are stored
+  // in `~/.xezar/config.json` and stripped before this shape is built
+  // (`toProjectListEntry`). They are terminal settings and a stale address hint; the cockpit's
+  // answer to "which other projects run, and where" is the DERIVED `instance?` field the
+  // switcher PR adds (`designs/cli-terminal/multi-instance.md` § 6), which carries a checked
+  // state rather than a value that is out of date the moment a process exits.
 });
 export type ProjectListEntry = z.infer<typeof projectListEntrySchema>;
 

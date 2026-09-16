@@ -194,6 +194,7 @@ import {
   registerProject,
   removeProject,
   shouldRegisterProject,
+  toProjectListEntry,
   type ProjectListEntry,
 } from '../workspace/projects.ts';
 import { WorkspaceSemaphore } from '../workspace/semaphore.ts';
@@ -2547,7 +2548,7 @@ export function createApp(deps: ServerDeps) {
       // `PUT /api/workspace/config` fires for a workspace-cap change.
       await deps.semaphore?.refresh();
       const body: UpdateProjectResponse = {
-        project: { ...updated, ...(await probeProjectStatus(updated.root)) },
+        project: toProjectListEntry(updated, await probeProjectStatus(updated.root)),
       };
       return c.json(body);
     })
@@ -2698,7 +2699,7 @@ export function createApp(deps: ServerDeps) {
     let project: ProjectListEntry;
     try {
       const entry = await registerProject(requested, source);
-      project = { ...entry, ...(await probeProjectStatus(entry.root)) };
+      project = toProjectListEntry(entry, await probeProjectStatus(entry.root));
     } catch (err) {
       // e.g. a read-only home — nothing was persisted (atomic tmp+rename).
       return {

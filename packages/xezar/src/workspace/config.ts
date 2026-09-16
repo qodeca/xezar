@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { PROJECT_TAGS_MAX, PROJECT_TAG_MAX_LENGTH } from '@qodeca/xezar-contract';
 import { PROVIDER_IDS, type ProviderId } from '../core/provider-auth.ts';
 import { assertXezarHomeWriteIsSandboxed, workspaceConfigPath } from '../paths.ts';
+import { withWorkspaceConfigLock } from './config-lock.ts';
 
 /**
  * `~/.xezar/config.json` — the per-user workspace config + project registry
@@ -30,6 +31,51 @@ import { assertXezarHomeWriteIsSandboxed, workspaceConfigPath } from '../paths.t
 
 /** `id` slug rule — mirrors the spec: `^[a-z0-9][a-z0-9-]{0,63}$`. */
 export const PROJECT_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
+
+/**
+ * The CLI keys (#467) — port, presentation, colour and diagnostic level.
+ *
+ * These five values are declared `z.unknown()` on purpose, which is the one place in this
+ * file that does NOT follow the usual "type it and `.catch` it" shape. A per-key `.catch`
+ * would drop a mangled value HERE, silently, and the accepted behaviour is that a bad stored
+ * value degrades to absent with ONE warning naming the key (`error-cases.txt` A10) — a
+ * warning nothing can print if the loader already threw the value away.
+ *
+ * So the vocabulary lives in exactly one module, `cli-settings.ts`, which validates the same
+ * values whether they came from a flag, the environment or this file, and which is also the
+ * one place that decides "refuse" (explicit) versus "warn and ignore" (stored). The schema's
+ * job here is only the one the house rules actually require of it: never fail the load.
+ */
+const projectCliSchema = z
+  .object({
+    /** The port a person chose for this project. Validated by `cli-settings.ts`. */
+    port: z.unknown().optional(),
+  })
+  .passthrough();
+
+const lastListenSchema = z
+  .object({
+    port: z.unknown().optional(),
+    /** The address that was bound — `127.0.0.1` unless `--bind-host` said otherwise. Recorded
+     *  so a later check probes the right address; never used to CHOOSE a bind address. */
+    host: z.unknown().optional(),
+    observedAt: z.unknown().optional(),
+  })
+  .passthrough();
+
+/**
+ * Workspace-wide terminal presentation defaults (#467). Stored beats environment here, the
+ * same way `followups` and `agentEnvPassthrough` do: an `XEZ_OUTPUT` exported once in a shell
+ * profile must not outrank a preference someone deliberately saved. Absent stays absent — the
+ * tri-state is what keeps "never chosen" distinguishable from "chosen".
+ */
+const workspaceCliSchema = z
+  .object({
+    output: z.unknown().optional(),
+    color: z.unknown().optional(),
+    logLevel: z.unknown().optional(),
+  })
+  .passthrough();
 
 /**
  * One registry entry. `id` + `root` are load-bearing (an entry without them is
@@ -63,6 +109,24 @@ const workspaceProjectSchema = z
       .max(PROJECT_TAGS_MAX)
       .optional()
       .catch(undefined),
+    /**
+     * This project's terminal preferences (#467). Today one key: `port`, the port a person
+     * CHOSE for this project. A preference, not a hint — it outranks `XEZ_PORT` and survives
+     * a start that had to move on because it was busy (`error-cases.txt` A4).
+     *
+     * Never written by a start, by `--port` or by `XEZ_PORT`: a flag is an instruction for one
+     * launch, and persisting it would silently turn it into configuration.
+     */
+    cli: projectCliSchema.optional().catch(undefined),
+    /**
+     * Where this project's cockpit last really listened (#467). A HINT, not a claim: it is
+     * stale the moment the process ends, so it carries no pid, no lease and no socket path,
+     * and nothing may render it as "running" without a liveness check of its own.
+     *
+     * Written once, right after `listen` succeeds — never before, and never for a `--port 0`
+     * start, whose OS-chosen port means "anything" rather than "this one from now on".
+     */
+    lastListen: lastListenSchema.optional().catch(undefined),
   })
   .passthrough();
 
@@ -333,6 +397,9 @@ const workspaceConfigSchema = z
     disabledProviders: disabledProvidersSchema,
     /** Machine-wide agent/model defaults for repos that set none of their own. */
     agentDefaults: agentDefaultsSchema.default(() => ({})).catch(() => ({})),
+    /** Workspace-wide terminal presentation defaults (#467). Optional with no default: an
+     *  absent `cli` must stay distinguishable from one whose keys someone chose. */
+    cli: workspaceCliSchema.optional().catch(undefined),
     /** Per-entry salvage: a corrupt entry is dropped, the rest of the registry
      *  survives (a whole-array `.catch([])` would evict every project over one
      *  bad row). */
@@ -528,6 +595,15 @@ export function atomicWriteJsonSync(path: string, value: unknown): void {
  * Returns the config that was written. Throws on write failure (e.g. a
  * read-only home) — degrading is the caller's policy, per house rules.
  *
+ * Since #467 the whole read→mutate→write runs under a bounded CROSS-PROCESS lock
+ * (`config-lock.ts`), because re-reading immediately before writing narrows the lost-update
+ * window without closing it — and one cockpit per project makes several instances start at
+ * the same moment, each remembering its own port, so that window is now hit deliberately
+ * rather than by accident. Every writer inherits the lock by calling this function: `serve`,
+ * `xez projects`, the settings routes, migrations and the MCP. The lock is bounded and
+ * fail-open (see that module), so a held or unwritable lock degrades to exactly the 0.15
+ * behaviour with one warning, and never blocks a start.
+ *
  * The path is resolved ONCE, before the `await`, and the same value feeds the
  * read and the write. Resolving it twice used to lose the whole registry:
  * `workspaceConfigPath()` re-reads `XEZ_HOME` on every call, so if the variable
@@ -541,6 +617,14 @@ export async function mergeWriteWorkspaceConfig(
   mutator: (config: WorkspaceConfig) => WorkspaceConfig | void,
 ): Promise<WorkspaceConfig> {
   const path = workspaceConfigPath();
+  return withWorkspaceConfigLock(path, () => mergeWriteLocked(path, mutator));
+}
+
+/** The read-modify-write itself. Only ever called with the lock held (or knowingly without). */
+async function mergeWriteLocked(
+  path: string,
+  mutator: (config: WorkspaceConfig) => WorkspaceConfig | void,
+): Promise<WorkspaceConfig> {
   const current = await loadWorkspaceConfig(path);
   const next = mutator(current) ?? current;
   atomicWriteJsonSync(path, next);
