@@ -23,7 +23,7 @@ steps:
     skill: xezar-release-prep
     timeout: 2h
   - id: readiness
-    name: Confirm the task is not blocked
+    name: Confirm the phase record is complete and nothing blocks
     command: ".xezar/checks/worktree-preflight.sh --readiness"
     resultScope: stage
   - id: gates
