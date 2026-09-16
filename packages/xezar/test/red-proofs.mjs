@@ -30,6 +30,114 @@ const T = 'packages/xezar/src/terminal';
  * expected to pass both ways and is reported as a guard, never as a red proof.
  */
 const CASES = [
+{
+    "name": "recovery-replayed-for-later-projects",
+    "ac": "AC-06",
+    "why": "recovery replayed for later projects",
+    "file": "packages/xezar/src/terminal/index.ts",
+    "find": "builtUnsubscribe = contexts.onContextBuilt((ctx) => sources.get(ctx.id)?.endRecovery());",
+    "replace": "builtUnsubscribe = contexts.onContextBuilt((ctx) => sources.get(ctx.id)?.endRecovery());\n      contexts.onStoreCreated((_store, id) => sources.get(id)?.endRecovery());",
+    "test": "packages/xezar/src/terminal/index.test.ts"
+},
+{
+    "name": "unsanitized-step-name",
+    "ac": "AC-11",
+    "why": "unsanitized step name",
+    "file": "packages/xezar/src/terminal/activity-source.ts",
+    "find": "options.emit(entry({",
+    "replace": "options.emit(({",
+    "test": "packages/xezar/src/terminal/activity-source.test.ts"
+},
+{
+    "name": "unsanitized-step-cell",
+    "ac": "AC-11",
+    "why": "unsanitized step cell",
+    "file": "packages/xezar/src/terminal/activity.ts",
+    "find": "cutToWidth(sanitizeText(row.step),",
+    "replace": "cutToWidth(row.step,",
+    "test": "packages/xezar/src/terminal/activity.test.ts"
+},
+{
+    "name": "recovered-banner-erased",
+    "ac": "AC-08",
+    "why": "recovered banner erased",
+    "file": "packages/xezar/src/terminal/index.ts",
+    "find": "liveRegion: false,",
+    "replace": "liveRegion: true,",
+    "test": "node:packages/xezar/test/unit/serve-pty.test.ts"
+},
+{
+    "name": "quiet-live-region",
+    "ac": "AC-09",
+    "why": "quiet live region",
+    "file": "packages/xezar/src/terminal/index.ts",
+    "find": "!options.settings.quiet && isCapableTty(facts)",
+    "replace": "isCapableTty(facts)",
+    "test": "packages/xezar/src/terminal/index.test.ts"
+},
+{
+    "name": "existing-context-missed",
+    "ac": "AC-06",
+    "why": "existing context missed",
+    "file": "packages/xezar/src/terminal/index.ts",
+    "find": "for (const id of contexts.ids())",
+    "replace": "for (const id of [] as string[])",
+    "test": "packages/xezar/src/terminal/index.test.ts"
+},
+{
+    "name": "step-name-instead-of-id",
+    "ac": "AC-08",
+    "why": "step name instead of id",
+    "file": "packages/xezar/src/terminal/activity-source.ts",
+    "find": "{ step: step.id }",
+    "replace": "{ step: step.name }",
+    "test": "packages/xezar/src/terminal/activity-source.test.ts"
+},
+{
+    "name": "missing-initial-step",
+    "ac": "AC-06",
+    "why": "missing initial step",
+    "file": "packages/xezar/src/terminal/activity-source.ts",
+    "find": "currentStep(run) ?? run.steps.find((s) => s.status === 'pending')",
+    "replace": "currentStep(run)",
+    "test": "packages/xezar/src/terminal/activity-source.test.ts"
+},
+{
+    "name": "plain-stop-missing",
+    "ac": "AC-08",
+    "why": "plain stop missing",
+    "file": "packages/xezar/src/terminal/index.ts",
+    "find": "event: 'xezar.stopping'",
+    "replace": "event: 'xezar.other'",
+    "test": "packages/xezar/src/terminal/index.test.ts"
+},
+{
+    "name": "singular-stop-pronoun",
+    "ac": "AC-08",
+    "why": "singular stop pronoun",
+    "file": "packages/xezar/src/terminal/index.ts",
+    "find": "${stillRunning === 1 ? 'it' : 'them'}",
+    "replace": "them",
+    "test": "packages/xezar/src/terminal/index.test.ts"
+},
+{
+    "name": "colour-forced-in-pipe",
+    "ac": "AC-09",
+    "why": "colour forced in pipe",
+    "file": "packages/xezar/src/terminal/mode.ts",
+    "find": "mode !== 'plain' && capable && !ci && color !== 'never'",
+    "replace": "mode !== 'plain' && color !== 'never'",
+    "test": "packages/xezar/src/terminal/mode.test.ts"
+},
+{
+    "name": "untrusted-logfmt-field",
+    "ac": "AC-11",
+    "why": "untrusted logfmt field",
+    "file": "packages/xezar/src/terminal/renderer.ts",
+    "find": "typeof value === 'string' ? sanitizeText(value) : value",
+    "replace": "value",
+    "test": "packages/xezar/src/terminal/logfmt.test.ts"
+},
   {
     name: 'terminal-injection',
     ac: 'AC-11',

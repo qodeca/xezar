@@ -330,18 +330,19 @@ that is **new output on stderr**. The rules a script may rely on:
   keep working. `run`'s transcript, `init`, `projects`, `--help` and `--version` are untouched, and
   `xezar mcp` still writes JSON-RPC to stdout and nothing else under every one of the new flags.
 - **Off a terminal there is not one escape byte.** A file, a pipe, a non-empty `CI` or `TERM=dumb`
-  gets append-only plain lines — `<ISO time> level=<level> …` — and no cursor movement, *even when
+  gets append-only plain lines — `<ISO time> level=<level> …` — or uncoloured human lines when
+  `--output lines` is explicit, and no cursor movement, even with `--color always`, *even when
   `--output rich` was asked for*. The refusal prints one `output.fallback` line and nothing else.
 - **On a terminal** at least 60 columns wide, the last few lines are a live region that is redrawn
   in place: a table of active tasks, at most 10 rows plus an overflow count, at most four redraws a
   second and only while something changes. It is erased on the way out and the cursor is restored,
   on a normal exit and on Ctrl-C. Narrower than that, `auto` prints lines and no table.
 - **`--quiet` cannot hide a failure.** It keeps warnings, errors, the real bound URL and each task's
-  final status; only the information lines go.
+  final status; information lines, recovery notices and the live region go.
 - Nothing here cancels a task or stops the service. A closed output (`EPIPE`) stops the *drawing*,
   and the runs and the HTTP server carry on.
 
-**The way back:** `--output lines` for one line per event and no live region anywhere,
+**The way back:** `--output lines` for human activity lines (a one-line live summary on a capable terminal),
 `--quiet` for warnings and errors only, `NO_COLOR=1` for no colour. Redirecting stderr
 (`2>/dev/null`) restores the old near-silence exactly, because every new line is on that stream.
 

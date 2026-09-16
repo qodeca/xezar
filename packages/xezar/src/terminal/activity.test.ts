@@ -283,3 +283,11 @@ describe('the level filter', () => {
     expect(passesLevel('debug', 'debug')).toBe(true);
   });
 });
+
+it('sanitizes the step cell before measuring and truncating it', () => {
+  const lines = formatRegion([row({ id: 'a', state: 'running', step: 'deploy\u001b[2J\nforged' })], {
+    columns: 80, glyphs: G, failedSinceStart: 0, nowMs: 0,
+  });
+  expect(lines.join('\n')).not.toContain('\u001b');
+  expect(lines).toHaveLength(4);
+});

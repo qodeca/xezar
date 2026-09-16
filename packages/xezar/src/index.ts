@@ -380,7 +380,7 @@ async function serveCommand(
     () => manager.recover(),
     providerRuntimeAuth,
   );
-  if (recovered > 0) console.log(`  recovered ${recovered} run(s) from the previous session`);
+  if (recovered > 0 && !settings.quiet) console.log(`  recovered ${recovered} run(s) from the previous session`);
   // Recovery is over: from here a status change is news, and a `failed` really is an outcome.
   terminal.endRecovery();
 
@@ -540,6 +540,7 @@ async function serveCommand(
   console.log(`${settings.quiet ? '' : '\n'}  cockpit → ${url}\n`);
   // Silenced by XEZ_NO_BANNER=1 or by dismissing the cockpit's banner (#391), and by quiet.
   if (!settings.quiet) await printSkillsBanner(repoRoot);
+  terminal.startDisplay();
 
   let shuttingDown = false;
   const shutdown = () => {

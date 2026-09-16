@@ -7,6 +7,8 @@
 - 💥 **`xezar serve` now tells you what your tasks are doing, on stderr.** (#467, PR 3) It used to print a banner and then go almost silent, so the only way to see that a task had finished, failed or was waiting for you was to open the browser. It now reports each of those as it happens. Every new line is on **stderr**: stdout keeps the banner, the agent and tool checks and the `cockpit → <url>` line byte for byte, so anything that pipes, tees or greps stdout is unaffected, and `xezar mcp` still writes JSON-RPC and nothing else. Off a terminal — a file, a pipe, a non-empty `CI`, `TERM=dumb` — the output is plain append-only lines with **no escape byte at all**, even when `--output rich` was asked for. **`2>/dev/null` restores the old near-silence exactly**, and `--output lines` keeps the words without the live table.
 
 ## 🐛 Bug Fixes
+
+- Terminal recovery now preserves the boot banner and counts only new task failures, including projects opened later. Step text is sanitized before display, quiet mode has no live region, and pipes remain free of escape codes even when colour is requested.
 - 🐛 fix(test): the Claude Code adapter's source guard (no process, no environment – #311) now ignores the helper functions Stryker injects into the file it reads, so the nightly mutation run's dry run no longer fails on Stryker's own `process.env` read; a real `child_process` or `process.env` in the adapter still fails it (#436, #377).
 - 🐛 Fix agent-config API tests reading inherited agent homes; isolate all four agent config directories and HOME per test (#362).
 

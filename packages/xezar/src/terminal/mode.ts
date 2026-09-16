@@ -66,7 +66,7 @@ export function isCapableTty(facts: TerminalFacts): boolean {
 /** The width to lay out for: the stream's own answer, or 80 on a TTY that will not say. */
 export function resolveColumns(facts: TerminalFacts): number {
   if (typeof facts.columns === 'number' && facts.columns > 0) return facts.columns;
-  return facts.isTty ? ASSUMED_COLUMNS : ASSUMED_COLUMNS;
+  return ASSUMED_COLUMNS;
 }
 
 export interface ResolvedRender {
@@ -106,12 +106,12 @@ export function resolveRender(
     // Honoured anywhere — including a file. This is the screen-reader answer.
     mode = 'lines';
   } else if (output === 'rich') {
-    if (!capable) {
+    if (!capable || ci) {
       mode = 'plain';
       fallback = {
         asked: 'rich',
         using: 'plain',
-        reason: facts.isTty ? 'TERM is dumb' : 'stderr is not a terminal',
+        reason: ci ? 'CI is set' : facts.isTty ? 'TERM is dumb' : 'stderr is not a terminal',
       };
     } else if (columns < NARROW_COLUMNS) {
       // Not a fallback: an explicit `rich` on a narrow terminal is still human lines, and the
@@ -128,7 +128,7 @@ export function resolveRender(
   }
 
   const colorEnabled =
-    mode === 'plain' ? false : color === 'never' ? false : color === 'always' ? true : capable;
+    mode !== 'plain' && capable && !ci && color !== 'never';
 
   return {
     mode,

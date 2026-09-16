@@ -230,6 +230,7 @@ Rules from `docs/design-system/writing.md`, applied to the terminal: sentence ca
 | Check passed | `check <step> passed — <duration>` |
 | Check failed | `check <step> failed — exit <code> · <duration>` |
 | Question | `needs you — “<question>”` |
+| Question without supplied text | `needs you — waiting for an answer` (plain output omits `question=`) |
 | Answered | `answered — running again` |
 | Review | `needs review — <duration> · <tokens> tokens` |
 | Done | `done — <duration> · <tokens> tokens · <cost>` |
@@ -246,7 +247,7 @@ Rules from `docs/design-system/writing.md`, applied to the terminal: sentence ca
 | Empty table | `No active tasks — start one at <url>/p/<project>/new` |
 | Live summary, wide | `4 active — 1 needs review · 2 running · 1 queued — 1 failed since start` |
 | Live summary, narrow | `2 active — 2 running — 1 failed` |
-| Overflow | `+<n> more queued — see <url>/p/<project>/tasks` |
+| Overflow | `+<n> more <state> — see <url>/p/<project>/tasks` (the hidden rows’ state, or `tasks` for mixed states) |
 | Folded burst | `<n> more info lines in the last second were folded — see the cockpit` |
 | Stopping | `stopping — <n> tasks are still running` |
 | Stopped | `xezar stopped for <project>.` |
@@ -320,11 +321,13 @@ Names marked “new” are not in `mcp/event-catalog.ts`. Where the catalog has 
 | Mode | When | Streams | Format | Live region | Colour |
 |---|---|---|---|---|---|
 | `rich` | auto on a capable TTY ≥ 60 columns | banner stdout, rest stderr | human lines | table | yes |
-| `lines` | auto on a TTY < 60; or asked | same | human lines | one-line summary on a TTY, none elsewhere | on a TTY, or `--color always` |
+| `lines` | auto on a TTY < 60; or asked | same | human lines | one-line summary on a capable TTY outside CI, none elsewhere | only on a capable TTY outside CI |
 | `plain` | auto off a TTY, in CI, `TERM=dumb`; or asked | same | logfmt, UTC ISO-8601 ms | none | never |
 | `--quiet` | any mode | banner reduced to the cockpit line(s) | as the mode | none | as the mode |
 
 logfmt: `<time> level=<l> project=<id> event=<name> key=value …`; a value with a space, `"`, `=` or no characters is double-quoted, `"` and `\` escaped with `\`.
+
+HTTP diagnostic rows also include `request_id=<8 hex>` to correlate a request without exposing its headers or body.
 
 Unchanged: `run` keeps its stdout transcript (with `--quiet`, only the final status line); `init`, `projects`, `--help`, `--version` keep stdout; `xez mcp` writes JSON-RPC only to stdout and never starts a renderer.
 
@@ -481,3 +484,18 @@ Questions for the review are in `open-questions.md` (Q-1 … Q-12). Departures f
 ## 18. Design review
 
 Round 1 (`ec2b935`, FAIL): B-1 one dim rule (§ 9.2); B-2 terminal colour departure for `running`/`monitoring` (§ 14, Q-6); B-3 failed counts are task outcomes only (§ 6.3). Non-blocking NB-1 … NB-8 addressed in §§ 6.3, 7, 9, 9.1, 9.2, 10.2, 11, 14, `open-questions.md` Q-2 and `switcher.html`. Round 2 pending.
+
+### PR 3 review response: bounded follow-ups
+
+The PR #505 response preserves the accepted AC-01–AC-14 frame. These non-blocking
+review findings remain proposed follow-ups under issue #467, not independent acceptance:
+
+- NB-1: success green and project bold remain with the compact-banner/colour follow-up; state words remain readable and unchanged.
+- NB-2: recovery-settled outcomes and `task.recovered` need a separate distinction between historical recovery and new outcomes; suppressing transient recovery failures remains mandatory (AC-06).
+- NB-5: retaining the closing quote on a width-truncated activity message remains a copy/layout follow-up; sanitization and bounded widths remain mandatory.
+- NB-6: accepting explicit `--output plain` belongs to the settings-contract follow-up; this response preserves the existing flag vocabulary and records the unshipped design option.
+- NB-10: sharing terminal/cockpit status words through the contract remains scope owed by issue #467; current labels agree, but this response does not claim the shared vocabulary shipped.
+
+The unchanged stdout banner also retains its port-note position and lacks the staged loading
+banner; both stay with the previously declared § 6.1 follow-up. QA and design must re-review
+the delivered head; these dispositions do not clear either gate.

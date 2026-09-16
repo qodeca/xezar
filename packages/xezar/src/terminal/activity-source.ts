@@ -31,6 +31,7 @@
  * point is ordinary and prints everything.
  */
 
+import { entry } from './renderer.ts';
 import { RUNNER_IDS, type RunnerId } from '../core/agent-runner.ts';
 import { formatCost, formatDuration, formatTokens, type Glyphs } from './format.ts';
 import { sanitizeText } from './sanitize.ts';
@@ -177,7 +178,7 @@ export function attachRunStoreActivity(store: RunStore, options: ActivitySourceO
     options.setRow({
       id: run.id,
       state: rowState(run),
-      ...(step?.name ? { step: step.name } : {}),
+      ...(step?.id ? { step: step.id } : {}),
       ...(agent ? { agent } : {}),
       startedAtMs: Date.parse(run.startedAt ?? run.createdAt) || Date.now(),
       title: run.titleSummary ?? run.title,
@@ -208,7 +209,7 @@ export function attachRunStoreActivity(store: RunStore, options: ActivitySourceO
     continuation?: readonly string[];
     fields?: ActivityEntry['fields'];
   }): void {
-    options.emit({
+    options.emit(entry({
       at: new Date(),
       level: input.level,
       subject: input.run.id.slice(0, 8),
@@ -216,7 +217,7 @@ export function attachRunStoreActivity(store: RunStore, options: ActivitySourceO
       event: input.event,
       ...(input.continuation ? { continuation: input.continuation } : {}),
       fields: [['run', input.run.id.slice(0, 8)], ...(input.fields ?? [])],
-    });
+    }));
   }
 
   function onRun(run: RunRecord): void {
@@ -286,16 +287,16 @@ export function attachRunStoreActivity(store: RunStore, options: ActivitySourceO
           return;
         }
         if (previous === 'running') return;
-        const step = currentStep(run);
+        const step = currentStep(run) ?? run.steps.find((s) => s.status === 'pending');
         const agent = productName(run.runner);
-        const facts = [step?.name, agent].filter((v): v is string => !!v).join(` ${dot} `);
+        const facts = [step?.id, agent].filter((v): v is string => !!v).join(` ${dot} `);
         emit({
           level: 'info',
           run,
           message: `started${facts ? ` ${dash} ${facts}` : ''}`,
           event: 'task.started',
           fields: [
-            ...(step?.name ? ([['step', step.name]] as const) : []),
+            ...(step?.id ? ([['step', step.id]] as const) : []),
             ...(run.runner ? ([['agent', run.runner]] as const) : []),
           ],
         });
@@ -415,10 +416,10 @@ export function attachRunStoreActivity(store: RunStore, options: ActivitySourceO
         emit({
           level: 'info',
           run,
-          message: `step ${index + 1}/${run.steps.length} ${step.name} started${agent ? ` ${dot} ${agent}` : ''}`,
+          message: `step ${index + 1}/${run.steps.length} ${step.id} started${agent ? ` ${dot} ${agent}` : ''}`,
           event: 'step.started',
           fields: [
-            ['step', step.name],
+            ['step', step.id],
             ['index', index + 1],
             ['total', run.steps.length],
             ...(agent ? ([['agent', step.backend ?? run.runner ?? '']] as const) : []),
@@ -443,9 +444,9 @@ export function attachRunStoreActivity(store: RunStore, options: ActivitySourceO
           emit({
             level: 'info',
             run,
-            message: `check ${step.name} passed${duration ? ` ${dash} ${duration}` : ''}`,
+            message: `check ${step.id} passed${duration ? ` ${dash} ${duration}` : ''}`,
             event: 'gate.passed',
-            fields: [['step', step.name], ...(durationMs !== undefined ? ([['duration_ms', durationMs]] as const) : [])],
+            fields: [['step', step.id], ...(durationMs !== undefined ? ([['duration_ms', durationMs]] as const) : [])],
           });
           return;
         }
@@ -458,10 +459,10 @@ export function attachRunStoreActivity(store: RunStore, options: ActivitySourceO
         emit({
           level: 'error',
           run,
-          message: `check ${step.name} failed ${dash} ${exitText}${duration ? ` ${dot} ${duration}` : ''}`,
+          message: `check ${step.id} failed ${dash} ${exitText}${duration ? ` ${dot} ${duration}` : ''}`,
           event: 'gate.failed',
           fields: [
-            ['step', step.name],
+            ['step', step.id],
             ['exit', exit === undefined || exit < 0 ? 'unknown' : exit],
             ...(durationMs !== undefined ? ([['duration_ms', durationMs]] as const) : []),
           ],
@@ -553,7 +554,7 @@ function failureCause(
   }
   const failedStep = run.steps.find((s) => s.status === 'failed');
   if (failedStep) {
-    return { text: `step ${failedStep.name} ${dot} exit code not reported`, reason, exit: 'unknown' };
+    return { text: `step ${failedStep.id} ${dot} exit code not reported`, reason, exit: 'unknown' };
   }
   return { text: `${agent} stopped ${dot} exit code not reported`, reason, exit: 'unknown' };
 }

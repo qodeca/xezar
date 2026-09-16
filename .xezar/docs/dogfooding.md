@@ -12,6 +12,14 @@ Installation validation is reported in installation.md. Real-task entries follow
 
 ## Real-task entries
 
+### 2026-09-16 — #505 review response, `address-review-findings`, `xezar-review-response`, Codex — fixture-tested
+
+- Input: the three independent verdicts on `12ed0cd`; own task branch based on `c702fdd`, with the reviewed candidate merged in before repairs.
+- Observed: recovery suppression needs the lifecycle of each store, not the lifetime of the terminal. A second project opened after boot still has historical recovery writes; closing suppression on context publication keeps those writes out of the failed count.
+- Observed: an empty-store PTY boot misses the banner-corruption case. Seeding twelve waiting records made the first-live-region ordering assertion fail against the old source and pass with display activation after the complete banner.
+- Observed: the design verdict says nine non-blocking findings but enumerates ten. The response inventories all ten rather than treating the headline count as scope.
+- Limit: fixtures and real PTY captures verify behavior; the author does not confer independent QA or design approval. The original draft and labels remain unchanged.
+
 ### 2026-09-16 — #467 PR 3 (the CLI activity renderer), `feature-implementation` step `implement`, `xezar-implementation`, Claude Code — real-task observed
 
 - Input: the approved terminal design (#482, `designs/cli-terminal/`), the owner's spec § 11 AC-06…AC-13, and PR 2 (`cli-settings.ts`) already on main; base `c0ce42a`.

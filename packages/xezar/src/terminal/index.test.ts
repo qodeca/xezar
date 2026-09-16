@@ -21,7 +21,8 @@ import { UTF8_GLYPHS } from './format.ts';
 import { entry } from './renderer.ts';
 
 import type { ResolvedCliSettings } from '../cli-settings.ts';
-import type { RunStore } from '../runs/store.ts';
+import type { ProjectContexts, ProjectContext } from '../server/project-context.ts';
+import type { RunRecord, RunStore } from '../runs/store.ts';
 import type { RenderStream } from './renderer.ts';
 
 class FakeStream extends EventEmitter {
@@ -53,8 +54,9 @@ class FakeStream extends EventEmitter {
 
 /** A store with the four members the activity source touches, and no files behind it. */
 class FakeStore extends EventEmitter {
-  listRuns(): [] {
-    return [];
+  records: RunRecord[] = [];
+  listRuns(): RunRecord[] {
+    return this.records;
   }
   getRun(): undefined {
     return undefined;
@@ -79,7 +81,7 @@ function settings(over: Partial<ResolvedCliSettings> = {}): ResolvedCliSettings 
 }
 
 function start(stream: FakeStream, over: Partial<ResolvedCliSettings> = {}) {
-  return startTerminalActivity({
+  const terminal = startTerminalActivity({
     settings: settings(over),
     store: new FakeStore().asStore,
     projectId: 'beta',
@@ -87,6 +89,8 @@ function start(stream: FakeStream, over: Partial<ResolvedCliSettings> = {}) {
     env: {},
     glyphs: UTF8_GLYPHS,
   });
+  terminal.startDisplay?.();
+  return terminal;
 }
 
 describe('the boot event', () => {
@@ -172,6 +176,9 @@ describe('stopping', () => {
     expect(summary).toHaveLength(1);
     expect(summary[0]).toContain('still_running=2');
     expect(stream.text).not.toContain('Session summary');
+    expect(stream.text.indexOf('event=xezar.stopping')).toBeGreaterThanOrEqual(0);
+    expect(stream.text.indexOf('event=xezar.stopping')).toBeLessThan(stream.text.indexOf('event=session.summary'));
+    expect(stream.text.indexOf('event=xezar.stopped')).toBeGreaterThan(stream.text.indexOf('event=session.summary'));
   });
 
   it('under quiet the block goes, and so does the info line — nothing is invented', () => {
@@ -197,4 +204,68 @@ describe('stopping', () => {
     expect(stream.text).toContain('\u001b[?25h');
     expect(terminal.renderer.isStopped).toBe(true);
   });
+});
+
+class FakeContexts extends EventEmitter {
+  existing = new Map<string, ProjectContext>();
+  ids() { return [...this.existing.keys()]; }
+  peek(id: string) { return this.existing.get(id); }
+  onStoreCreated(fn: (store: RunStore, id: string) => void) { this.on('store', fn); return () => this.off('store', fn); }
+  onContextBuilt(fn: (ctx: ProjectContext) => void) { this.on('built', fn); return () => this.off('built', fn); }
+  onContextDisposed(fn: (id: string) => void) { this.on('disposed', fn); return () => this.off('disposed', fn); }
+}
+function liveRecord(): RunRecord {
+  return { id: 'recovered', title: 'A task', status: 'running', createdAt: new Date().toISOString(), tokensUsed: 0, steps: [] } as unknown as RunRecord;
+}
+it('recovery-replayed-for-later-projects: suppresses recovery until that context is published', () => {
+  const stream = new FakeStream();
+  const terminal = start(stream);
+  const contexts = new FakeContexts();
+  terminal.onContexts(contexts as unknown as ProjectContexts);
+  terminal.endRecovery();
+  const store = new FakeStore();
+  const run = liveRecord();
+  store.records = [run];
+  contexts.emit('store', store.asStore, 'later');
+  store.emit('run', { ...run, status: 'failed', error: 'interrupted' });
+  store.emit('run', run);
+  expect(stream.text).not.toContain('task.failed');
+  expect(terminal.renderer.failedCount).toBe(0);
+  contexts.emit('built', { id: 'later', store: store.asStore });
+  store.emit('run', { ...run, status: 'failed', error: 'real failure' });
+  expect(terminal.renderer.failedCount).toBe(1);
+  terminal.stop();
+  expect(stream.text).toContain('failed=1');
+  expect(store.listenerCount('run')).toBe(0);
+  expect(contexts.listenerCount('built')).toBe(0);
+});
+it('attaches to contexts already published before the callback', () => {
+  const stream = new FakeStream();
+  const terminal = start(stream);
+  const contexts = new FakeContexts();
+  const store = new FakeStore();
+  store.records = [liveRecord()];
+  contexts.existing.set('existing', { id: 'existing', store: store.asStore } as ProjectContext);
+  terminal.onContexts(contexts as unknown as ProjectContexts);
+  expect(terminal.renderer.activeRows).toHaveLength(1);
+  store.emit('run', { ...liveRecord(), status: 'failed' });
+  expect(terminal.renderer.failedCount).toBe(1);
+  terminal.stop();
+});
+it('quiet never creates a live region, including after resize and seeded rows', () => {
+  const stream = new FakeStream({ columns: 80 });
+  const terminal = start(stream, { quiet: true, effectiveLogLevel: 'warn' });
+  terminal.renderer.setRow({ id: 'a', state: 'running', title: 'A task', startedAtMs: Date.now() });
+  terminal.renderer.setMode('rich', 100);
+  terminal.log(entry({ level: 'error', subject: 'a', message: 'failed', event: 'task.failed' }));
+  terminal.stop();
+  expect(stream.text).toContain('failed');
+  expect(stream.text).not.toMatch(/active tasks|Session summary|\u001b\[[0-9;?]*[AHJhl]/);
+});
+
+it('uses a singular pronoun when one task remains at shutdown', () => {
+  const stream = new FakeStream({ columns: 160 });
+  const terminal = start(stream);
+  terminal.stop({ stillRunning: 1 });
+  expect(stream.text).toContain('1 task was still running. xezar picks it up on the next start.');
 });

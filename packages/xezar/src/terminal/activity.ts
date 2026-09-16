@@ -406,7 +406,7 @@ function taskRowLine(row: TaskRow, layout: TableLayout, options: RegionOptions):
     padEndTo(cutToWidth(row.state, layout.state, glyphs.ellipsis), layout.state),
   ];
   if (layout.step !== undefined) {
-    const step = row.step ? cutToWidth(row.step, layout.step, glyphs.ellipsis) : glyphs.missing;
+    const step = row.step ? cutToWidth(sanitizeText(row.step), layout.step, glyphs.ellipsis) : glyphs.missing;
     cells.push(padEndTo(step, layout.step));
   }
   if (layout.agent !== undefined) {

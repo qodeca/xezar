@@ -111,6 +111,8 @@ export interface RendererOptions {
   url?: string;
   glyphs?: Glyphs;
   clock?: RendererClock;
+  /** Disable decoration during boot or for quiet output. */
+  liveRegion?: boolean;
 }
 
 /**
@@ -130,6 +132,7 @@ export class TerminalRenderer {
 
   /** How many lines the live region occupied at the last write. 0 = nothing to erase. */
   private regionLines = 0;
+  private liveRegion: boolean;
   /** Durable lines built since the last write, waiting for the next one. */
   private pending: string[] = [];
   private rows = new Map<string, TaskRow>();
@@ -157,6 +160,7 @@ export class TerminalRenderer {
 
   constructor(options: RendererOptions) {
     this.stream = options.stream;
+    this.liveRegion = options.liveRegion ?? true;
     this.clock = options.clock ?? REAL_CLOCK;
     this.mode = options.mode;
     this.columns = options.columns;
@@ -176,9 +180,15 @@ export class TerminalRenderer {
    * does: not one cursor movement, not one escape byte, even when `rich` was asked for.
    */
   get hasRegion(): boolean {
-    if (this.stopped) return false;
+    if (this.stopped || !this.liveRegion) return false;
     if (this.mode === 'plain') return false;
     return this.stream.isTTY === true;
+  }
+
+  /** Enable the region only after the stdout banner is complete. */
+  startDisplay(): void {
+    this.liveRegion = true;
+    this.markRegionDirty();
   }
 
   /** The cockpit URL, once the bind has really happened. */
@@ -611,7 +621,7 @@ export class TerminalRenderer {
   }
 }
 
-/** Build one entry, sanitizing the message and every continuation on the way in. */
+/** Sanitize the human text and every string field before either output format sees it. */
 export function entry(input: {
   level: ActivityLevel;
   subject: string;
@@ -630,6 +640,7 @@ export function entry(input: {
     ...(input.continuation
       ? { continuation: input.continuation.map((line) => sanitizeText(line)).filter((l) => l !== '') }
       : {}),
-    ...(input.fields ? { fields: input.fields } : {}),
+    ...(input.fields ? { fields: input.fields.map(([key, value]) =>
+      [key, typeof value === 'string' ? sanitizeText(value) : value] as const) } : {}),
   };
 }

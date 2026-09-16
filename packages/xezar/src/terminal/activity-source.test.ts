@@ -409,3 +409,31 @@ function step(id: string, status: string, kind: 'agent' | 'check' = 'agent') {
     finishedAt: new Date().toISOString(),
   } as RunRecord['steps'][number];
 }
+
+it('unsanitized-step-name: every step-derived entry is single-line and escape/secret-free', () => {
+  const store = new FakeStore();
+  const h = harness(store);
+  h.source.endRecovery();
+  const hostile = 'deploy\u001b[2J\u001b]8;;https://invalid.test\u0007click\nforged AKIAIOSFODNN7EXAMPLE';
+  const malicious = { ...step(hostile, 'running', 'check'), name: hostile };
+  store.put(record({ id: 'a1', status: 'running', currentStepId: hostile, steps: [malicious] }));
+  store.event('a1', { type: 'step-end', stepId: hostile, status: 'failed' });
+  store.put(record({ id: 'a1', status: 'failed', steps: [{ ...malicious, status: 'failed' }] }));
+  for (const e of h.entries) {
+    const strings = [e.message, ...(e.continuation ?? []), ...(e.fields ?? []).map(([, v]) => String(v))];
+    for (const text of strings) expect(text).not.toMatch(/\u001b|\n|AKIAIOSFODNN7EXAMPLE/);
+  }
+  expect(h.events()).toEqual(['task.started', 'gate.failed', 'task.failed']);
+});
+it('uses step ids in the row and started entry before currentStepId is assigned', () => {
+  const store = new FakeStore();
+  const h = harness(store);
+  h.source.endRecovery();
+  const first = { ...step('task', 'pending'), name: 'Do the task' };
+  store.put(record({ id: 'a1', status: 'running', steps: [first] }));
+  expect(h.messages()).toEqual(['started — task · Claude Code']);
+  expect(h.entries[0]?.fields).toContainEqual(['step', 'task']);
+  store.put(record({ id: 'a1', status: 'running', currentStepId: 'task', steps: [{ ...first, status: 'running' }] }));
+  expect(h.rows.get('a1')?.step).toBe('task');
+  expect(h.events()).toEqual(['task.started']);
+});

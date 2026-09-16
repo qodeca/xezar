@@ -310,7 +310,6 @@ export class HttpDiagnostics {
   /** Print every pending fold line and release the timers. Called at shutdown. */
   stop(): void {
     if (this.stopped) return;
-    this.stopped = false;
     for (const [key, state] of [...this.folds]) this.flush(key, state);
     this.stopped = true;
     this.folds.clear();

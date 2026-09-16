@@ -4,6 +4,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { realpathSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { after, test } from 'node:test';
+import { RunStore } from '../../src/runs/store.ts';
 
 /**
  * AC-08, on a REAL terminal (#467, PR 3).
@@ -24,8 +25,8 @@ import { after, test } from 'node:test';
  *   runs past the terminal's width at either size.
  *
  * The capture needs a pseudo-terminal, which Node has none of, so the helper is Python's `pty`.
- * Where python3 is absent the suite SKIPS rather than passes: an unavailable check is unknown,
- * never a pass.
+ * Where python3 is absent locally the suite SKIPS: the check is unknown, never a pass.
+ * CI fails immediately instead of silently accepting missing terminal evidence.
  */
 
 const packageRoot = resolve(import.meta.dirname, '../..');
@@ -48,6 +49,7 @@ function hasPython(): boolean {
 }
 
 const pythonAvailable = hasPython();
+assert.ok(pythonAvailable || !process.env.CI, 'CI requires python3 with the pty module');
 const fixtureRoot = await mkdtemp(join(realpathSync('/tmp'), 'xez-pty-'));
 after(async () => {
   await rm(fixtureRoot, { recursive: true, force: true });
@@ -189,4 +191,30 @@ test('40 columns: lines, not a table, and still no line past the edge', { skip: 
   }
 
   assert.ok(raw.includes(SHOW_CURSOR), 'the cursor is restored at 40 columns too');
+});
+
+test('recovered boot keeps the banner above the first live region', { skip: !pythonAvailable && 'python3 with pty unavailable' }, async () => {
+  const repo = await makeRepo('pty-recovered');
+  const store = RunStore.open(join(repo, '.local', 'xezar'));
+  for (let i = 0; i < 12; i++) {
+    const run = store.createRun({ title: `Recovered task ${i}`, task: 'A task', workflow: 'quick-task', steps: [] });
+    store.updateRun(run.id, { status: 'waiting' });
+  }
+  store.flush();
+  const raw = captureServe(repo, join(fixtureRoot, 'home-recovered'), 80);
+  const banner = raw.indexOf('cockpit');
+  const region = raw.indexOf(HIDE_CURSOR);
+  assert.ok(banner >= 0, 'cockpit URL is printed');
+  assert.ok(region > banner, 'recovered boot must print the cockpit banner before the first live region');
+  assert.match(raw, /Session summary/);
+});
+test('quiet recovered boot has only the URL on stdout and no live region', { skip: !pythonAvailable && 'python3 with pty unavailable' }, async () => {
+  const repo = await makeRepo('pty-quiet-recovered');
+  const store = RunStore.open(join(repo, '.local', 'xezar'));
+  const run = store.createRun({ title: 'Recovered task', task: 'A task', workflow: 'quick-task', steps: [] });
+  store.updateRun(run.id, { status: 'waiting' });
+  store.flush();
+  const raw = captureServe(repo, join(fixtureRoot, 'home-quiet-recovered'), 80, ['--quiet']);
+  assert.match(raw, /cockpit/);
+  assert.doesNotMatch(raw, /recovered \d|active tasks|Session summary|\u001b\[[0-9;?]*[AHJhl]/);
 });

@@ -17,7 +17,7 @@ import { wrapTo } from './activity.ts';
 import { attachRunStoreActivity, type ActivitySource } from './activity-source.ts';
 import { glyphsFor, formatDuration, type Glyphs } from './format.ts';
 import { HttpDiagnostics, type HttpFailure } from './http-diagnostics.ts';
-import { readTerminalFacts, resolveOnResize, resolveRender, type RenderMode } from './mode.ts';
+import { isCapableTty, readTerminalFacts, resolveOnResize, resolveRender, type RenderMode } from './mode.ts';
 import { entry, TerminalRenderer, type RenderStream } from './renderer.ts';
 import { cutToWidth, displayWidth, sanitizeText } from './sanitize.ts';
 
@@ -54,6 +54,8 @@ export interface TerminalActivity {
    * produces the `xezar.ready` line in plain output and nothing at all on a terminal (§ 10.2).
    */
   setUrl(url: string, boot?: { port: number; requestedPort?: number; reason?: string }): void;
+  /** Called after all stdout boot output has finished. */
+  startDisplay(): void;
   /** Boot recovery is over; everything from here prints normally. */
   endRecovery(): void;
   /** One activity line, from a caller that is not a store (MCP, registry, ports). */
@@ -80,6 +82,7 @@ export function startTerminalActivity(options: TerminalActivityOptions): Termina
   const capabilities = resolveCapabilities(env);
   const renderer = new TerminalRenderer({
     stream,
+    liveRegion: false,
     mode: render.mode,
     columns: render.columns,
     colorEnabled: render.colorEnabled,
@@ -161,12 +164,12 @@ export function startTerminalActivity(options: TerminalActivityOptions): Termina
   });
   /** Every project's source, so a dispose releases exactly its own. */
   const sources = new Map<string, ActivitySource>();
-  let recoveryEnded = false;
 
   const http = new HttpDiagnostics({ emit, glyphs });
 
   let disposeUnsubscribe: (() => void) | undefined;
   let storeUnsubscribe: (() => void) | undefined;
+  let builtUnsubscribe: (() => void) | undefined;
 
   return {
     renderer,
@@ -175,14 +178,19 @@ export function startTerminalActivity(options: TerminalActivityOptions): Termina
     },
     onHttpFailure: (failure) => http.record(failure),
     onContexts: (contexts) => {
-      storeUnsubscribe = contexts.onStoreCreated((store, projectId) => {
-        // Before that project's own `manager.recover()`, which is what the seam is for. A
-        // project built later has nothing to seed, so its recovery window closes at once.
-        const source = attachRunStoreActivity(store, { ...sourceOptions, projectId });
-        if (recoveryEnded) source.endRecovery();
+      const attach = (store: RunStore, projectId: string): ActivitySource => {
         sources.get(projectId)?.detach();
+        const source = attachRunStoreActivity(store, { ...sourceOptions, projectId });
         sources.set(projectId, source);
-      });
+        return source;
+      };
+      storeUnsubscribe = contexts.onStoreCreated(attach);
+      // Publication follows this project's recovery, even when it was opened long after boot.
+      builtUnsubscribe = contexts.onContextBuilt((ctx) => sources.get(ctx.id)?.endRecovery());
+      for (const id of contexts.ids()) {
+        const ctx = contexts.peek(id);
+        if (ctx) attach(ctx.store, id).endRecovery();
+      }
       disposeUnsubscribe = contexts.onContextDisposed((projectId) => {
         sources.get(projectId)?.detach();
         sources.delete(projectId);
@@ -212,9 +220,10 @@ export function startTerminalActivity(options: TerminalActivityOptions): Termina
       );
     },
     endRecovery: () => {
-      recoveryEnded = true;
       bootSource.endRecovery();
-      for (const source of sources.values()) source.endRecovery();
+    },
+    startDisplay: () => {
+      if (!options.settings.quiet && isCapableTty(facts) && !facts.ci) renderer.startDisplay();
     },
     log: (activity) => emit(activity),
     stop: (stopOptions = {}) => {
@@ -225,7 +234,15 @@ export function startTerminalActivity(options: TerminalActivityOptions): Termina
       for (const source of sources.values()) source.detach();
       sources.clear();
       storeUnsubscribe?.();
+      builtUnsubscribe?.();
       disposeUnsubscribe?.();
+
+      if (render.mode === 'plain') {
+        emit(entry({
+          level: 'info', subject: 'xezar', message: 'stopping', event: 'xezar.stopping',
+          fields: [['still_running', stillRunning]],
+        }));
+      }
 
       // One activity line in EVERY mode, carrying the counts as fields — that is what a machine
       // reading the plain output gets, and what `tty.txt` 149 shows above the human block. Under
@@ -261,6 +278,11 @@ export function startTerminalActivity(options: TerminalActivityOptions): Termina
             stopOptions.projectName,
           ),
         );
+      }
+      if (render.mode === 'plain') {
+        emit(entry({
+          level: 'info', subject: 'xezar', message: 'stopped', event: 'xezar.stopped',
+        }));
       }
       renderer.stop();
     },
@@ -303,7 +325,7 @@ function summaryLines(
   // Left out at zero: "0 tasks were still running" is a sentence nobody needs to read.
   if (stillRunning > 0) {
     const subject = stillRunning === 1 ? '1 task was' : `${stillRunning} tasks were`;
-    const sentence = `${subject} still running. xezar picks them up on the next start.`;
+    const sentence = `${subject} still running. xezar picks ${stillRunning === 1 ? 'it' : 'them'} up on the next start.`;
     lines.push(...wrapTo(sentence, room, 4, glyphs.ellipsis).map((line) => `    ${line}`));
   }
   const who = projectName

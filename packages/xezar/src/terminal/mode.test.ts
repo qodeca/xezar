@@ -63,9 +63,8 @@ describe('an explicit --output rich', () => {
     expect(out.fallback?.reason).toBe('TERM is dumb');
   });
 
-  it('is honoured on a build machine that IS a capable terminal', () => {
-    // `auto` avoids animation in CI; an explicit ask is a person's decision, not a guess.
-    expect(resolveRender('rich', 'auto', { ...TTY, ci: 'true' }).mode).toBe('rich');
+  it('falls back on CI even with a capable terminal', () => {
+    expect(resolveRender('rich', 'auto', { ...TTY, ci: 'true' }).mode).toBe('plain');
   });
 
   it('is lines, not a fallback, on a narrow terminal — nothing was refused', () => {
@@ -82,9 +81,9 @@ describe('an explicit --output lines', () => {
     expect(resolveRender('lines', 'auto', { ...TTY, term: 'dumb' }).mode).toBe('lines');
   });
 
-  it('is not coloured in a file unless --color always says so', () => {
+  it('is never coloured in a file, including --color always', () => {
     expect(resolveRender('lines', 'auto', PIPE).colorEnabled).toBe(false);
-    expect(resolveRender('lines', 'always', PIPE).colorEnabled).toBe(true);
+    expect(resolveRender('lines', 'always', PIPE).colorEnabled).toBe(false);
   });
 });
 
@@ -100,8 +99,8 @@ describe('colour', () => {
     expect(resolveRender('auto', 'never', TTY).colorEnabled).toBe(false);
   });
 
-  it('honours --color always through a pipe in lines mode', () => {
-    expect(resolveRender('lines', 'always', PIPE).colorEnabled).toBe(true);
+  it('keeps lines colour-free through a pipe even with --color always', () => {
+    expect(resolveRender('lines', 'always', PIPE).colorEnabled).toBe(false);
   });
 });
 
@@ -137,4 +136,13 @@ describe('an unknown width', () => {
   it('lays out for 80 columns rather than refusing to draw', () => {
     expect(resolveRender('auto', 'auto', { isTty: true, term: 'xterm' }).columns).toBe(80);
   });
+});
+
+it('CI and dumb transports have no decoration even with explicit lines/rich and always colour', () => {
+  for (const facts of [PIPE, { ...TTY, ci: '1' }, { ...TTY, term: 'dumb' }]) {
+    for (const mode of ['auto', 'lines', 'rich'] as const) {
+      expect(resolveRender(mode, 'always', facts).colorEnabled).toBe(false);
+      if (mode === 'rich') expect(resolveRender(mode, 'always', facts).mode).toBe('plain');
+    }
+  }
 });
