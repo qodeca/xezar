@@ -81,4 +81,6 @@ Review workflow references using the old `om-` names and choose the matching cur
 - `XEZ_SKILLS_AUTO_UPDATE` and `XEZ_NO_BANNER`: [environment contract](../../.env.example). Hiding the banner does not disable the catalog.
 - [Workflows](05-workflows.md) explains skill chains; [Agent backends](04-agent-backends.md) explains the tools an agent receives.
 
+Next: [GitHub and automations](07-github-and-automations.md)
+
 Describes xezar 0.15.0.

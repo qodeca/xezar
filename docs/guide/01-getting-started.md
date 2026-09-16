@@ -110,4 +110,6 @@ For a workspace reset, remove the whole `~/.xezar/` directory, or the directory 
 - `XEZ_HOME`: choose a different workspace-state directory.
 - `.xezar/config.json`: optional project configuration. See the [environment contract](../../.env.example) for environment defaults.
 
+Next: [Tasks and runs](02-tasks-and-runs.md)
+
 Describes xezar 0.15.0.

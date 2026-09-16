@@ -124,4 +124,6 @@ Export variables before starting xezar, for example `XEZ_REVIEW_GATE=1 xezar`. T
 - Project **Settings → Agents** and **Worktrees** expose project preferences; global **Resources**, **Projects**, **Skills** and **Agent accounts** expose workspace preferences.
 - [Full environment contract](../../.env.example), [project layout](../project-layout.md), [project schema](../../packages/xezar/src/config.ts), [workspace schema](../../packages/xezar/src/workspace/config.ts) and [account store](../../packages/xezar/src/workspace/agent-accounts.ts).
 
+Next: [CLI reference](12-cli-reference.md)
+
 Describes xezar 0.15.0.

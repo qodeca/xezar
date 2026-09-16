@@ -187,4 +187,6 @@ Replace the cursor placeholder; use a new operation ID for a new acknowledgement
 - [MCP API reference](../features/mcp-server/mcp-api.md), [connection UI source](../../packages/web/src/routes/settings/mcp-connection-section.tsx), [leader control source](../../packages/web/src/routes/settings/mcp-leader-control.tsx).
 - [Environment contract](../../.env.example): `XEZ_HOME`, `CODEX_HOME` and hosted-mode settings. Client config belongs to the agent; xezar runtime connection files belong under `.local/xezar/`.
 
+Next: [Remote access](14-remote-access.md)
+
 Describes xezar 0.15.0.

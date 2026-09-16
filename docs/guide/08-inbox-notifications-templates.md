@@ -55,4 +55,6 @@ Remove entries you no longer need and save, or choose **Reset to defaults**, the
 - **Settings → Prompt templates**: `promptTemplates` in the project's `.local/xezar/ui-state.json`.
 - [Settings reference](10-settings-reference.md) and the [environment contract](../../.env.example).
 
+Next: [Projects](09-projects.md)
+
 Describes xezar 0.15.0.
