@@ -13,6 +13,10 @@ import { runnerSchema } from './health.ts';
 
 // ---- workflows (`GET/POST /workflows`, `DELETE /workflows/:name`, `POST /workflows/parse`) ----
 
+/** Whether a successful check is routine setup or a stage result worth pushing to a leader. */
+export const workflowResultScopeSchema = z.enum(['routine', 'stage']);
+export type WorkflowResultScope = z.infer<typeof workflowResultScopeSchema>;
+
 /**
  * One step of a chain: either an agent step (`prompt`/`skill`) or a check step (`command`).
  *
@@ -39,6 +43,8 @@ export const workflowStepDefSchema = z
     timeout: z.string().optional(),
     // check step
     command: z.string().optional(),
+    /** Absent preserves the historical behaviour: a successful check is a significant stage result. */
+    resultScope: workflowResultScopeSchema.optional(),
     onFail: z
       .object({
         retry: z.string().min(1),
@@ -48,6 +54,9 @@ export const workflowStepDefSchema = z
   })
   .refine((s) => Boolean(s.command) !== Boolean(s.prompt ?? s.skill), {
     message: 'a step is either an agent step (prompt/skill) or a check step (command), not both',
+  })
+  .refine((s) => !(s.resultScope !== undefined && !s.command), {
+    message: 'resultScope applies only to a check step (command)',
   });
 export type WorkflowStepDef = z.infer<typeof workflowStepDefSchema>;
 

@@ -511,7 +511,7 @@ export class LeaderDelivery implements ReactionAdapter, ProjectLeaderPort {
     // settled, so nothing is waiting for it.
     if (events.length === 0 && dispatch.recovery === undefined) {
       if (last !== undefined) leader.settledThrough = Math.max(leader.settledThrough, last);
-      return { handedThrough: null };
+      return { handedThrough: null, dispatchDelivered: false };
     }
     await this.#observed(leader, signal, () => leader.adapter.deliver({ ...dispatch, events }, signal));
     if (last !== undefined) leader.settledThrough = Math.max(leader.settledThrough, last);

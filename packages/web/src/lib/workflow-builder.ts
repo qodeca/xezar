@@ -26,7 +26,7 @@ export function skillStack(steps: readonly WorkflowStepDef[]): string[] | null {
     if (s.command || !s.skill) return null
     if (s.prompt !== undefined && s.prompt !== '{{task}}') return null
     if (s.name !== undefined && s.name !== s.skill) return null
-    if (s.model || s.runner || s.allowedTools || s.bashAllowlist || s.onFail) return null
+    if (s.model || s.runner || s.allowedTools || s.bashAllowlist || s.onFail || s.resultScope) return null
     if (s.timeout !== undefined) return null // the compact form cannot carry a per-step timeout
     skills.push(s.skill)
   }
@@ -122,6 +122,7 @@ export function workflowYaml(
       // for. Round-tripping it out of the YAML would silently reset that step to 30 minutes.
       if (s.timeout) lines.push(`    timeout: ${yamlScalar(s.timeout)}`)
       if (s.command) lines.push(...yamlBlock('command', s.command, 4))
+      if (s.resultScope) lines.push(`    resultScope: ${s.resultScope}`)
       if (s.onFail) {
         lines.push('    onFail:', `      retry: ${yamlScalar(s.onFail.retry)}`, `      max: ${s.onFail.max ?? 2}`)
       }

@@ -30,6 +30,14 @@ Installation validation is reported in installation.md. Real-task entries follow
 - Lesson (recommended): when one shell scroller owns content and a sticky in-flow dock, observing only the transcript is not observing scroll geometry. Name every independently loading region that can change `scrollHeight`, then apply the existing reader-intent rule to its resize instead of teaching a test to wait past the defect.
 - Remaining limit: the deterministic delay is fixture-only and verifies the exact historical ordering in real Chrome; GitHub CI on the draft PR remains the runner confirmation. Panel transcripts deliberately have no route dock and retain content-only observation.
 
+### 2026-09-16 — PR #512 review response (#460 PR 4), `address-review-findings`, `xezar-review-response`, Codex — real-task observed
+
+- Input: the immutable Major on `fd4caf5`, clean-build QA, and an own task branch from current `main` with the PR head merged before repair.
+- Observed: **a receipt saying no row was handed through does not say whether dispatch metadata reached the leader.** The own-echo path returned `handedThrough: null` without pushing anything, while recovery-only delivery also returns `handedThrough: null` after pushing its metadata. An explicit `dispatchDelivered: false` only on the former keeps `omittedRoutineCount` cumulative without duplicating metadata that really was delivered.
+- Regression: the real `EchoGuard` → `LeaderDelivery` → `EventController` → Claude channel test appends routine pass, own echo, then terminal task. With the controller repair stashed it failed because the seq-3 push lacked `omitted_routine_count: "1"`; restored, all 56 focused tests passed and raw read retained seq 1–3.
+- Observed: the Xezar process restarted while `infra-tests.sh` was still running. Its partial passing output remained conversation evidence but the command outcome became unknown, so the fixture run was restarted from the beginning rather than reported as passed.
+- Remaining limit: this response revalidates the merged candidate locally; independent review/QA and CI remain separate evidence for the new head.
+
 ### 2026-09-16 — #505 review response, `address-review-findings`, `xezar-review-response`, Codex — fixture-tested
 
 - Input: the three independent verdicts on `12ed0cd`; own task branch based on `c702fdd`, with the reviewed candidate merged in before repairs.

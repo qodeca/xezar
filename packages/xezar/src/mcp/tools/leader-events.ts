@@ -152,6 +152,7 @@ export const leaderEventsTool = defineTool({
     // #460 § 2: the advisory is only safe if the leader is told, in the same breath, what it does
     // NOT mean. A reader that treats this row as a failure would cancel working tasks.
     `task.stalled is an advisory observation: no transcript activity for ${STALL_QUIET_MS / 60_000} minutes, or at least ${Math.round(STALL_DEADLINE_RATIO * 100)}% of a finite step timeout used. It does not prove a deadlock and does not stop the task. Read the task before deciding whether to steer or cancel it. task.resumed says activity came back.`,
+    'Pushes omit routine successful setup checks. They include failures and stage results; omittedRoutineCount counts routine passes covered by a pushed cursor. Acknowledging that cursor also accounts for those routine passes. leader_events read returns the full retained journal, including omitted passes.',
     // #460 § 4, verbatim: the one recovery a compacted leader must be told, because after a
     // compaction it cannot know which pushed messages it still holds. Read replays what was pushed
     // and never acked, so the recovery is a read — not a re-push, and not a poll.
