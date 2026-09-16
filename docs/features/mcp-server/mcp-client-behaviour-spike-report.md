@@ -1,5 +1,12 @@
 # MCP client behaviour spike – runtime report
 
+> **Status update — 2026-09-15:** Historical spike, **superseded** by the [Claude Code wake
+> decision](mcp-wake-claude-code-decision.md), [Codex wake decision](mcp-wake-codex-decision.md) and [DoD
+> record](mcp-definition-of-done-record.md). OB-1 closed by #404; OB-2 by #403. OB-3: OpenCode attach shipped
+> in #311, real-model reaction is out of scope (owner, 2026-09-13; #340). OB-5 closed for pi (`7aa4a02`),
+> Claude Code and Codex (`a6d53b4`) under the recorded acceptance. The measurements below retain their
+> original dates.
+
 Issue: [#85](https://github.com/qodeca/xezar/issues/85), Phase 2 of [epic #67](https://github.com/qodeca/xezar/issues/67). Covers D-01, D-05, F-17, F-20, F-21, A-19 and A-23 of the [requirements](mcp-project-leader-requirements.md). Technical appendix to the [client compatibility report](mcp-client-compatibility.md).
 
 Run date: **2026-09-10**, 21:36–21:54 UTC. Repository base: `057ea48`. This is a spike: it records a decision and its evidence and ships no production code. The throwaway server, model endpoint and drivers used here were never committed.

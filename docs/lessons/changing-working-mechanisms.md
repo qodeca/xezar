@@ -1,11 +1,11 @@
 # Lessons: changing a mechanism that already works
 
-The worked examples behind the seven rules in [AGENTS.md](../../AGENTS.md) § Changing a
+The worked examples behind six of the seven rules in [AGENTS.md](../../AGENTS.md) § Changing a
 mechanism that already works. The rules live there because a session needs them; the
 narratives live here because a session only needs them when a rule is disputed.
 
-Every incident below predates the rename; its number is a pre-rename issue number, kept as a
-label.
+Every incident below except the `importedSkills` example (#394) predates the rename; those numbers are pre-rename issue numbers, kept as
+labels.
 
 ## Why this class of change is the riskiest
 

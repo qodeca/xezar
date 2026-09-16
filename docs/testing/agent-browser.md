@@ -218,8 +218,7 @@ an instance booted with different pins is never reused — the same rule
 `paths.test.ts`); `XEZ_HOME` is separate and pins only what xezar itself writes.
 `agentHomePaths()` has a fourth slot, pi, and it CAN be pinned — pi documents
 `PI_CODING_AGENT_DIR` and reads it, and `agentHomePaths().pi` resolves through it
-(re-verified against pi 0.85.1 on 2026-09-12, #329; this page previously said no such
-variable existed). The boot does not set it yet, so today the suite still starts pi from
+(re-verified against pi 0.85.1 on 2026-09-12, #329). The boot does not set it yet, so today the suite still starts pi from
 the developer's own `~/.pi/agent`. Pinning it is a deliberate follow-up, not a one-line
 addition, and takes three coordinated changes:
 

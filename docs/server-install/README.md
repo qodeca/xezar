@@ -44,11 +44,16 @@ platforms slot in without touching the engine.
 2. **Public front** — stand up the reverse proxy / tunnel that terminates
    TLS and challenges every request for a login.
 3. **Identity** — a username + password (type your own or auto-generate a
-   strong one). xezar stores only a hash; the app stays bound to loopback.
+   strong one). `ubuntu-vps` stores a password hash in its htpasswd file.
+   `macosx-ngrok` stores the plaintext login in its ngrok launchd plist, mode
+   `0600`. The app binds to loopback by default. On `ubuntu-vps`,
+   `--external-proxy --bind-host 172.17.0.1` explicitly binds it to an interface
+   the external proxy can reach instead (see [external-proxy setup](ubuntu-vps.md)).
 4. **Autostart** — a service (systemd / launchd) that starts xezar now and
    keeps it up across reboots.
-5. **Verify** — confirm an anonymous request is challenged **and** an
-   authenticated one reaches xezar.
+5. **Verify** — on `ubuntu-vps`, confirm the anonymous challenge and
+   authenticated response. On `macosx-ngrok`, confirm the tunnel came up;
+   the installer does not probe its authentication gate.
 
 The order differs by provider: `ubuntu-vps` runs deps → public front (+identity)
 → SSL → autostart → verify; `macosx-ngrok` runs deps → autostart → tunnel (public

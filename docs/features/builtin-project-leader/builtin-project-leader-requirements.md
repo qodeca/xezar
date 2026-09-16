@@ -1,6 +1,14 @@
 # Built-in project leader and standard process kit — requirements draft
 
-Status: **requirements draft; the feature is not implemented**. Updated: 2026-09-09.
+> **Status update — 2026-09-15:** The built-in conversation and distributed kit remain unimplemented. The
+> shipped MCP dependency covers single ownership (L-F01), operation keys and stale writes (L-F34), event
+> delivery (L-F08/L-F25) and a fixed base role instruction (part of L-F33; no per-project customization). Its
+> current acceptance supersedes the old MCP readiness assessment below; see the [DoD
+> record](../mcp-server/mcp-definition-of-done-record.md). MCP supports four clients; amending this separate
+> built-in requirement to add pi remains the owner decision in
+> [#336](https://github.com/qodeca/xezar/issues/336).
+
+Status: **requirements draft; built-in UI and distributed kit not implemented; MCP dependency shipped**. Updated: 2026-09-15.
 Audience: product owner, product designer, and engineering team. This document records agreed outcomes, technical implications, proposals, and unresolved implementation decisions. It is not a claim that current backends or browser APIs already meet them.
 
 **Reference-baseline status: audited after the user's readiness signal, 2026-09-09.** The current `.ai/xezar/` source is pinned at `240783084fad65fca78f380ac2b409deb5ae8414`. The [source audit and transfer register](standard-process-source-audit.md) contains the full file inventory, distinct practice mappings, source conflicts and evidence limits. The retired source tree is not the baseline. This is a static requirements audit, not an implemented kit or a runtime test. No automatic source monitoring is enabled.
@@ -406,7 +414,7 @@ This document is the standalone product contract for the built-in leader and com
 
 **Ready for planning:** yes, for the agreed leader behavior and interfaces. The kit role/process mapping is pinned and audited; candidate implementation evidence is still required. **Ready for bounded implementation/design:** conversation and panel, structured questions, plan modes, pause/reconciliation state machine, user-only instruction editing, immutable kit history scaffolding, and backend adapters can be developed against a project-MCP fixture. All are subject to the final interface and real-backend verification.
 
-**Not ready for whole-scope implementation sign-off or completion:** MCP event-to-model adapters for all three clients are not runtime-certified; process evidence schemas, resource/hosting-policy enforcement and recovery behavior need engineering design and candidate tests. The source readiness dependency is closed. Complete transfer still requires L-A27 and the new detailed L-A34–47 cases; static source coverage cannot replace them.
+**Not ready for whole-scope implementation sign-off or completion:** MCP event-to-model adapters exist for all four MCP clients; the [DoD record](../mcp-server/mcp-definition-of-done-record.md) gives their current acceptance and the OpenCode real-model scope exception; process evidence schemas, resource/hosting-policy enforcement and recovery behavior need engineering design and candidate tests. The source readiness dependency is closed. Complete transfer still requires L-A27 and the new detailed L-A34–47 cases; static source coverage cannot replace them.
 
 Required dependency contract: project-bound local MCP grants one logical owner, full project operations, safe shared reads, conflict rejection and operation-key idempotency. It acknowledges asynchronous work, pushes significant events and replays outstanding events plus state after reconnect. UI remains concurrent and updates automatically. Built-in and external clients cannot simultaneously own the project; design handover without a manual disconnect control.
 
