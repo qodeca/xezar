@@ -12,6 +12,7 @@ import {
   type ProjectOwnership,
 } from '../workspace/project-owner.ts';
 import { McpJournalCursorError, type EventJournal } from './event-journal.ts';
+import { isLeaderSignificant } from './event-significance.ts';
 
 /**
  * The non-model event controller (#107): it follows ONE project's event journal (#103) on behalf
@@ -28,12 +29,11 @@ import { McpJournalCursorError, type EventJournal } from './event-journal.ts';
  *   E-01–E-06 for exactly one project. The journal is also the QUEUE: undelivered rows are the
  *   journal between this controller's position and its head, so the queue is durable, gapless and
  *   bounded by B-19 retention, and no event lives only in this object's memory.
- * - **Coalescing.** D-05 N3 decided *no coalescing window*: rows are never merged, delayed or
- *   dropped. What coalesces is DISPATCHES: at most one is in flight, and every row that arrived
- *   before it starts rides in it, up to one journal page (B-20, 100 rows; B-01, 40 000 bytes).
- *   So a burst of N rows appended in one tick reaches the adapter as `ceil(N / 100)` dispatches,
- *   each row intact and in `journalSeq` order, and rows that arrive while a dispatch is in flight
- *   go out together in the next one.
+ * - **Coalescing and significance.** D-05 N3 decided *no coalescing window*: visible rows are never
+ *   merged or rewritten. PR 4 of #460 excludes only an explicitly routine `gate.passed` at this
+ *   delivery seam; the journal still retains it and explicit reads still return it. At most one
+ *   dispatch is in flight, with up to one journal page scanned at a time (B-20, 100 rows; B-01,
+ *   40 000 bytes). Hidden-only pages advance the private scan without an empty adapter call.
  * WHOSE FACTS ARE WHOSE. This controller serves one SESSION, and its cursors belong to the project's
  * journal. Whether the leader is reachable is a fact about the LEADER, so it is not kept here: the
  * adapter records it (`LeaderDelivery`), and it therefore survives a session change and is never
@@ -126,18 +126,21 @@ export interface EventRecovery {
   readonly message: string;
 }
 
-/** One dispatch: consecutive journal rows, oldest first, never merged, never rewritten. */
+/** One dispatch: visible journal rows in original order, never merged or rewritten. */
 export interface EventDispatch {
   readonly projectId: string;
   readonly events: readonly McpJournalRow[];
   /** Present when a gap was detected: read current state before acting on `events`. */
   readonly recovery?: EventRecovery;
   /**
-   * #450: the journal's own cursor after the page this dispatch was cut from — what the leader acks
-   * with `leader_events` once it has taken the events into account, with no read first. For a gap it
-   * acks through the gap. It covers rows the leader caused itself too, and acking past them is right.
+   * #450: the journal's opaque cursor through the last visible row — what the leader acks with
+   * `leader_events` once it has taken the events into account, with no read first. For a gap with no
+   * visible row it acks through the scanned recovery page. It covers counted routine passes before
+   * that position and rows the leader caused itself too; acking past both is deliberate.
    */
   readonly nextCursor: string;
+  /** Routine successful checks covered by `nextCursor` but intentionally absent from `events`. */
+  readonly omittedRoutineCount?: number;
 }
 
 /**
@@ -164,6 +167,8 @@ export interface ReactionAdapter {
  */
 export interface DeliveryReceipt {
   readonly handedThrough: number | null;
+  /** Explicit false when no part of the dispatch, including its metadata, reached the client. */
+  readonly dispatchDelivered?: boolean;
 }
 
 export type EventControllerState = 'inert' | 'idle' | 'dispatching' | 'recovering' | 'disconnected' | 'ended';
@@ -200,7 +205,7 @@ export type EventControllerStart =
 
 export interface EventControllerOptions {
   /** The bound project's journal — the one `EventJournal.open` returned for it. */
-  journal: Pick<EventJournal, 'projectId' | 'rowsPath' | 'epoch' | 'latestSeq' | 'oldestSeq' | 'headCursor' | 'read' | 'subscribe'>;
+  journal: Pick<EventJournal, 'projectId' | 'rowsPath' | 'epoch' | 'latestSeq' | 'oldestSeq' | 'headCursor' | 'cursorAt' | 'read' | 'subscribe'>;
   /** The bound project's owner slot. Read, never acquired or released, by this controller. */
   ownership: Pick<ProjectOwnership, 'projectId' | 'sessionToken' | 'state'>;
   /** The key the transport acquired the lease with — the logical session this controller serves. */
@@ -252,8 +257,10 @@ export class EventController {
   readonly #closed = new AbortController();
 
   #state: EventControllerState;
-  /** Read strictly after this cursor next; `undefined` reads from the oldest retained row. */
+  /** Private scan cursor. It may pass omitted rows and is never exposed as delivered or acked. */
   #position: string | undefined;
+  /** Routine successes scanned after the preceding visible push and not yet covered by one. */
+  #omittedRoutineCount = 0;
   /** The newest row really handed to the client, in this or an earlier session of this epoch. */
   #delivered = 0;
   /** An explicit acknowledgement through `ack()` — only when there is no leader record. */
@@ -460,12 +467,20 @@ export class EventController {
         }
         this.#warnedDelivery = false;
         this.#state = 'idle';
-        this.#position = next.nextCursor;
+        this.#position = next.scanCursor;
         this.#recovery = undefined;
+        const receipt = delivered.receipt;
+        // An echo-only dispatch can settle without handing the leader either its row or the
+        // omission metadata accumulated before it. Keep that metadata cumulative until a real
+        // dispatch carries it; absent `dispatchDelivered` retains every adapter's old contract.
+        this.#omittedRoutineCount =
+          receipt?.dispatchDelivered === false
+            ? (next.dispatch.omittedRoutineCount ?? 0) + next.trailingOmittedRoutineCount
+            : next.trailingOmittedRoutineCount;
         if (next.lastSeq !== undefined) {
           // Only rows REALLY handed over count as delivered; a receipt says which (the leader's own
           // echoes are settled but never delivered). A redelivery never lowers the count.
-          const handed = delivered.receipt === undefined ? next.lastSeq : delivered.receipt.handedThrough;
+          const handed = receipt === undefined ? next.lastSeq : receipt.handedThrough;
           if (handed !== null) this.#delivered = Math.max(this.#delivered, handed);
         }
         this.#persist();
@@ -476,7 +491,12 @@ export class EventController {
   }
 
   /** The next dispatch, read from the journal itself. `undefined` when nothing is outstanding. */
-  #next(): { dispatch: EventDispatch; nextCursor: string; lastSeq?: number } | undefined {
+  #next(): {
+    dispatch: EventDispatch;
+    scanCursor: string;
+    trailingOmittedRoutineCount: number;
+    lastSeq?: number;
+  } | undefined {
     for (;;) {
       let page;
       try {
@@ -485,11 +505,13 @@ export class EventController {
         if (!(err instanceof McpJournalCursorError)) throw err;
         // Our own cursor refused: state the gap and start again from the oldest retained row.
         this.#position = undefined;
+        this.#omittedRoutineCount = 0;
         this.#recovery = this.#gap();
         continue;
       }
       if (page.status === 'cursor_too_old') {
         this.#position = page.resumeCursor;
+        this.#omittedRoutineCount = 0;
         this.#recovery = this.#gap();
         continue;
       }
@@ -499,15 +521,38 @@ export class EventController {
         this.#position = page.nextCursor;
         continue;
       }
-      if (events.length === 0 && this.#recovery === undefined) return undefined;
+      const visible = events.filter(isLeaderSignificant);
+      const omitted = events.length - visible.length;
+      if (visible.length === 0 && this.#recovery === undefined) {
+        if (events.length === 0) return undefined;
+        this.#position = page.nextCursor;
+        this.#omittedRoutineCount += omitted;
+        if (page.hasMore) continue;
+        return undefined;
+      }
+
+      const lastVisibleSeq = visible.at(-1)?.journalSeq;
+      const throughVisible = lastVisibleSeq === undefined
+        ? omitted
+        : events.filter((row) => row.journalSeq <= lastVisibleSeq && !isLeaderSignificant(row)).length;
+      const trailingOmittedRoutineCount = omitted - throughVisible;
+      const omittedRoutineCount = this.#omittedRoutineCount + throughVisible;
+      // A recovery is itself significant. With no visible row, its cursor covers this scanned page;
+      // otherwise the public cursor stops at the last visible row and trailing omissions stay private.
+      const nextCursor = lastVisibleSeq === undefined ? page.nextCursor : this.#journal.cursorAt(lastVisibleSeq);
       const dispatch: EventDispatch = {
         projectId: this.projectId,
-        events,
-        nextCursor: page.nextCursor,
+        events: visible,
+        nextCursor,
+        ...(omittedRoutineCount === 0 ? {} : { omittedRoutineCount }),
         ...(this.#recovery === undefined ? {} : { recovery: this.#recovery }),
       };
-      const lastSeq = events.at(-1)?.journalSeq;
-      return { dispatch, nextCursor: page.nextCursor, ...(lastSeq === undefined ? {} : { lastSeq }) };
+      return {
+        dispatch,
+        scanCursor: page.nextCursor,
+        trailingOmittedRoutineCount: lastVisibleSeq === undefined ? 0 : trailingOmittedRoutineCount,
+        ...(lastVisibleSeq === undefined ? {} : { lastSeq: lastVisibleSeq }),
+      };
     }
   }
 
@@ -589,6 +634,7 @@ export class EventController {
     this.#acked = own && this.#leaderRecord === undefined ? Math.min(own.ackedSeq, journal.latestSeq) : 0;
     const firstRetained = journal.oldestSeq ?? journal.latestSeq + 1;
     this.#position = undefined;
+    this.#omittedRoutineCount = 0;
     let gap: boolean;
     if (this.#leaderRecord !== undefined) {
       // One acknowledgement (#332): owed is what the leader's own record says, never this file.

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { mcpLeaderDoorResultSchema, mcpLeaderSelfStatusSchema, mcpLeaderStatusSchema, mcpLeaderTopicSchema } from '@qodeca/xezar-contract';
 
 import { CodexAttachError } from './adapters/codex-link.ts';
+import { EchoGuard } from './echo-guard.ts';
 import { EventJournal } from './event-journal.ts';
 import { LeaderDelivery, leaderClientOf } from './leader-delivery.ts';
 
@@ -36,7 +37,7 @@ afterEach(() => {
 });
 
 /** A journal of its own, and the owner slot answering as the case needs. */
-function delivery(owns: boolean, warnings: string[] = []) {
+function delivery(owns: boolean, warnings: string[] = [], guard?: Pick<EchoGuard, 'isOwn'>) {
   const dataDir = tmp();
   const journal = EventJournal.open({ dataDir, projectId: PROJECT, secretValues: [], warn: () => {} });
   journals.push(journal);
@@ -49,7 +50,7 @@ function delivery(owns: boolean, warnings: string[] = []) {
       sessionToken: () => (owns ? 'token' : undefined),
       state: () => 'owned',
     },
-    guard: undefined,
+    guard,
     warn: (message) => warnings.push(message),
     heartbeatMs: 200,
   });
@@ -522,6 +523,54 @@ describe('attaching Claude Code: the channel push travels down the owner session
     // Reaction is never observed for Claude Code, so reactedSeq stays 0 even after delivery.
     const status = made.status();
     expect(status.available && status.delivery).toMatchObject({ deliveredSeq: 1, reactedSeq: 0 });
+  });
+
+  it('keeps routine omission metadata until a dispatch survives the real own-echo guard', async () => {
+    // RED against: resetting EventController.#omittedRoutineCount after LeaderDelivery settles the
+    // echo-only dispatch without pushing it. The task row then arrives with no omission metadata.
+    const guard = new EchoGuard({ projectId: PROJECT });
+    const { delivery: made, journal } = delivery(true, [], guard);
+    const t = channelTransport();
+    made.sessionOpened('session-1', t.transport as never);
+    expect((await made.act({ action: 'attach', client: 'claude-code' })).ok).toBe(true);
+
+    journal.append({
+      category: 'E-03',
+      kind: 'gate.passed',
+      subject: { type: 'run', id: 'run-gates', version: 'routine-1' },
+      origin: 'system',
+      causedBy: null,
+      summary: 'routine check passed',
+      gate: { stepId: 'routine-check', resultScope: 'routine' },
+    });
+    const operationId = 'review-512-own-operation';
+    await guard.issue(operationId, () =>
+      journal.append({
+        category: 'E-05',
+        kind: 'config.changed',
+        subject: { type: 'config', id: 'project', version: null },
+        origin: 'leader',
+        causedBy: operationId,
+        summary: 'leader changed the base branch',
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(t.pushed).toHaveLength(0);
+
+    journal.append({
+      category: 'E-01',
+      kind: 'task.terminal',
+      subject: { type: 'run', id: 'run-finished', version: null },
+      origin: 'system',
+      causedBy: null,
+      summary: 'task finished',
+    });
+    await until('the task push after the own echo', () => t.pushed.length === 1);
+
+    expect(t.pushed[0]?.meta).toMatchObject({ last_seq: '3', omitted_routine_count: '1' });
+    expect(t.pushed[0]?.content).toContain('omittedRoutineCount: 1 routine successful check');
+    const raw = journal.read();
+    expect(raw.status === 'ok' ? raw.events.map((event) => event.journalSeq) : []).toEqual([1, 2, 3]);
   });
 
   it('refuses attach when the owner session is not a Claude Code session, keeping the previous leader', async () => {

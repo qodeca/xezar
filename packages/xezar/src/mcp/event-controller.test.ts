@@ -74,6 +74,18 @@ function event(n: number): McpJournalAppendInput {
   };
 }
 
+function gateEvent(n: number, resultScope: 'routine' | 'stage', kind: 'gate.passed' | 'gate.failed' = 'gate.passed'): McpJournalAppendInput {
+  return {
+    category: 'E-03',
+    kind,
+    subject: { type: 'run', id: 'run-gates', version: `v-${n}` },
+    origin: 'system',
+    causedBy: null,
+    summary: `${kind} ${n}`,
+    gate: { stepId: `check-${n}`, resultScope },
+  };
+}
+
 function appendMany(journal: EventJournal, count: number): void {
   const from = journal.latestSeq + 1;
   for (let n = from; n < from + count; n++) journal.append(event(n));
@@ -632,6 +644,21 @@ describe('the D-05 § 6.6 cursors', () => {
     expect(client.dispatches[0]?.recovery?.required).toBe('current-state');
   });
 
+  it('keeps delivering in memory and warns once when its cursor state cannot be written', async () => {
+    const journal = openJournal();
+    mkdirSync(join(dataDir, 'mcp', 'event-controller.json.tmp'));
+    const owner = ownerFor();
+    await owner.acquire('session-a');
+    const client = new FakeClient();
+    const warnings: string[] = [];
+    await startedFor(journal, owner, client, { warn: (message) => warnings.push(message) });
+
+    journal.append(event(1));
+    await settle();
+    expect(client.deliveredIds()).toEqual(['alpha:1']);
+    expect(warnings).toEqual([expect.stringContaining('cursors are kept in memory only')]);
+  });
+
   it('logs an internal error once instead of throwing into the cockpit, and recovers at the next heartbeat', async () => {
     const journal = openJournal();
     const owner = ownerFor();
@@ -696,5 +723,99 @@ describe('#450 — every dispatch names the journal cursor the leader acks with'
     const gap = client.dispatches[0]!;
     expect(gap.recovery).toBeDefined();
     expect(journal.read({ cursor: gap.nextCursor })).toMatchObject({ status: 'ok', events: [] });
+  });
+});
+
+describe('T-16/T-17 — routine-success filtering keeps scan, delivery and ack positions separate', () => {
+  it('crosses more than one hidden-only page without a turn, then pushes one failure at the last visible cursor', async () => {
+    // RED against: stopping after the first hidden page, or exposing the scanned page-end cursor.
+    const journal = openJournal();
+    const owner = ownerFor();
+    await owner.acquire('session-a');
+    const client = new FakeClient();
+    const controller = await startedFor(journal, owner, client);
+
+    for (let n = 1; n <= MCP_JOURNAL_PAGE_ROWS + 1; n++) journal.append(gateEvent(n, 'routine'));
+    journal.append(gateEvent(MCP_JOURNAL_PAGE_ROWS + 2, 'routine', 'gate.failed'));
+    await settle();
+
+    expect(client.dispatches).toHaveLength(1);
+    expect(client.deliveredIds()).toEqual([`alpha:${MCP_JOURNAL_PAGE_ROWS + 2}`]);
+    expect(client.dispatches[0]?.omittedRoutineCount).toBe(MCP_JOURNAL_PAGE_ROWS + 1);
+    expect(client.turns).toBe(1);
+    expect(controller.status().ackedSeq).toBe(0);
+    const afterVisible = journal.read({ cursor: client.dispatches[0]!.nextCursor });
+    expect(afterVisible).toMatchObject({ status: 'ok', events: [] });
+    const raw = journal.read();
+    expect(raw.status === 'ok' ? raw.events : []).toHaveLength(MCP_JOURNAL_PAGE_ROWS);
+    const rawTail = raw.status === 'ok' ? journal.read({ cursor: raw.nextCursor }) : raw;
+    expect(rawTail.status === 'ok' ? rawTail.events : []).toHaveLength(2);
+  });
+
+  it('keeps trailing hidden rows past the pushed cursor and counts them on the next visible push', async () => {
+    // RED against: using the scanned page cursor rather than the last visible row's cursor.
+    const journal = openJournal();
+    const owner = ownerFor();
+    await owner.acquire('session-a');
+    const client = new FakeClient();
+    const controller = await startedFor(journal, owner, client);
+
+    journal.append(gateEvent(1, 'stage'));
+    journal.append(gateEvent(2, 'routine'));
+    await settle();
+
+    expect(client.dispatches).toHaveLength(1);
+    expect(client.dispatches[0]?.omittedRoutineCount).toBeUndefined();
+    const trailing = journal.read({ cursor: client.dispatches[0]!.nextCursor });
+    expect(trailing.status === 'ok' ? trailing.events.map((row) => row.journalSeq) : []).toEqual([2]);
+    expect(controller.status().ackedSeq).toBe(0);
+
+    journal.append(event(3));
+    await settle();
+    expect(client.dispatches).toHaveLength(2);
+    expect(client.dispatches[1]?.events.map((row) => row.journalSeq)).toEqual([3]);
+    expect(client.dispatches[1]?.omittedRoutineCount).toBe(1);
+    expect(controller.status().ackedSeq).toBe(0);
+    expect(controller.ack(3)).toMatchObject({ status: 'advanced', seq: 3 });
+  });
+
+  it('restarts its private scan from durable acknowledgement and keeps raw omitted rows readable', async () => {
+    const journal = openJournal();
+    const owner = ownerFor();
+    await owner.acquire('session-a');
+    const first = new FakeClient();
+    const firstController = await startedFor(journal, owner, first);
+    journal.append(gateEvent(1, 'routine'));
+    journal.append(event(2));
+    await settle();
+    expect(first.deliveredIds()).toEqual(['alpha:2']);
+    firstController.close();
+
+    const second = new FakeClient();
+    await startedFor(journal, owner, second);
+    expect(second.deliveredIds()).toEqual(['alpha:2']);
+    expect(second.dispatches[0]?.omittedRoutineCount).toBe(1);
+    const raw = journal.read();
+    expect(raw.status === 'ok' ? raw.events.map((row) => row.journalSeq) : []).toEqual([1, 2]);
+  });
+
+  it('pushes a retention gap even when every surrounding retained row is routine', async () => {
+    const journal = openJournal();
+    journal.append(gateEvent(1, 'routine'));
+    writeFileSync(
+      join(dataDir, 'mcp', 'event-controller.json'),
+      JSON.stringify({ v: 1, projectId: 'alpha', epoch: 'recreated-journal', deliveredSeq: 7, ackedSeq: 7, reactedSeq: 7 }),
+    );
+    const owner = ownerFor();
+    await owner.acquire('session-a');
+    const client = new FakeClient();
+    await startedFor(journal, owner, client);
+
+    expect(client.dispatches).toHaveLength(1);
+    expect(client.dispatches[0]).toMatchObject({
+      events: [],
+      omittedRoutineCount: 1,
+      recovery: { required: 'current-state' },
+    });
   });
 });

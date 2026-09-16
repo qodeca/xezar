@@ -150,6 +150,13 @@ describe('workflowYaml', () => {
     })
   })
 
+  it('keeps a check resultScope when YAML is exported', () => {
+    expect(parse(workflowYaml('scoped', '', [{ ...CHECK, resultScope: 'routine' }]))).toEqual({
+      name: 'scoped',
+      steps: [{ id: 'tests', name: 'Run tests', command: 'npm test', resultScope: 'routine', onFail: { retry: 'fix', max: 2 } }],
+    })
+  })
+
   it('quotes scalars YAML would mistype and keeps plain ones bare', () => {
     const text = workflowYaml('true', '', [stackStep('2fast', 'no')])
     // `true`, `no` and `2fast` would parse as boolean/number-ish — they must come back strings.

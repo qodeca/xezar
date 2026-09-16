@@ -310,6 +310,28 @@ expect_fail "an invented step key is rejected (Xezar would silently strip it)" \
 # above, so a `mode:` key added to any real workflow fails there. There is no way to select a
 # skill "mode" from YAML — the only per-run channel is `{{task}}` substituted into `prompt:`.
 
+root="$(catalog_fixture result-scope)"
+cat > "$root/.xezar/workflows/w.yaml" <<'EOF'
+name: w
+steps:
+  - id: a
+    command: ".xezar/checks/repo-gates.sh"
+    resultScope: routine
+  - id: b
+    prompt: "{{task}}"
+    model: claude-opus-5
+EOF
+expect_ok "resultScope is accepted on a check step" \
+  node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+
+perl -0pi -e 's/resultScope: routine/resultScope: background/' "$root/.xezar/workflows/w.yaml"
+expect_fail "an unknown resultScope value is rejected" \
+  'resultScope must be "routine" or "stage"' node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+
+perl -0pi -e 's/    command: ".xezar\/checks\/repo-gates.sh"\n    resultScope: background/    prompt: "author"\n    resultScope: stage/' "$root/.xezar/workflows/w.yaml"
+expect_fail "resultScope on an agent step is rejected" \
+  "resultScope applies only to a check step" node "$SCRIPT_DIR/catalog-check.mjs" "$root"
+
 # --- The shared phase contract, and its negative controls -------------------------------------
 # Added 2026-09-09 (#116). Each case below is a workflow that Xezar loads happily and that would
 # then behave wrongly at run time, so the checker is the only thing standing between the mistake

@@ -345,8 +345,12 @@ export class EventCatalog {
       if (step.kind !== 'check' || before.steps.get(step.id) === step.status) continue;
       if (step.status === 'done' || step.status === 'failed') {
         const passed = step.status === 'done';
+        const definition = run.workflowDef?.steps.find((candidate) => candidate.id === step.id);
         this.#appendRun(passed ? 'gate.passed' : 'gate.failed', run.id, this.#originOr('system'),
-          `quality gate ${clip(step.id, 80)} ${passed ? 'passed' : 'failed'}`);
+          `quality gate ${clip(step.id, 80)} ${passed ? 'passed' : 'failed'}`, {
+            stepId: step.id,
+            resultScope: definition?.resultScope ?? 'stage',
+          });
       }
     }
 
@@ -476,8 +480,14 @@ export class EventCatalog {
     return currentOrigin() ?? { origin: fallback, causedBy: null };
   }
 
-  #appendRun(kind: McpEventKind, runId: string, origin: EventOriginContext, summary: string): void {
-    this.#append(kind, { type: 'run', id: runId, version: runVersion(this.#store, runId) ?? null }, origin, summary);
+  #appendRun(
+    kind: McpEventKind,
+    runId: string,
+    origin: EventOriginContext,
+    summary: string,
+    gate?: McpJournalAppendInput['gate'],
+  ): void {
+    this.#append(kind, { type: 'run', id: runId, version: runVersion(this.#store, runId) ?? null }, origin, summary, gate);
   }
 
   // ---- executors --------------------------------------------------------------------------------
@@ -501,6 +511,7 @@ export class EventCatalog {
     subject: { type: McpEventSubjectType; id: string; version: string | null },
     origin: EventOriginContext,
     summary: string,
+    gate?: McpJournalAppendInput['gate'],
   ): McpJournalRow | undefined {
     return this.#journal.append({
       category: MCP_EVENT_KIND_CATEGORY[kind],
@@ -509,6 +520,7 @@ export class EventCatalog {
       origin: origin.origin,
       causedBy: origin.causedBy,
       summary,
+      ...(gate === undefined ? {} : { gate }),
     });
   }
 
