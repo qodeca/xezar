@@ -2,6 +2,7 @@
 
 - docs(guide): make the MCP project-leader guide the canonical per-client setup, launch, delivery and recovery reference (#515, PR 1)
 - docs(guide): filing an issue from the cockpit and the issue-filing skill (#468, step 4)
+- docs(project): leader run guidance for contributors – per-client pointers and kit tips (#515, PR 2)
 
 ## 💥 Breaking defaults
 

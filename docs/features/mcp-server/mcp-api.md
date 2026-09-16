@@ -8,7 +8,9 @@ Contract it implements: [MCP requirements](mcp-project-leader-requirements.md).
 
 This page lets a person review the MCP server's design and API without reading the tool source.
 It covers what a client can call, what each call accepts and returns, and which inventory outcome
-each call serves.
+each call serves. For how to launch and configure Claude Code, Codex, pi or OpenCode as a project
+leader, see the end-user runbook [`docs/guide/13-mcp-leader.md`](../../guide/13-mcp-leader.md);
+this page does not repeat those per-client steps.
 
 Its machine-readable twin is [`mcp-api.json`](mcp-api.json). That file is exactly what `tools/list`
 answers: every tool's name, title, description, JSON Schema and annotations. You can diff it in a
