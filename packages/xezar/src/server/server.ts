@@ -109,6 +109,7 @@ import {
   onboardingStatus,
 } from '../onboarding/status.ts';
 import { recordOffered } from '../onboarding/state.ts';
+import { watchSetupCompletion } from '../onboarding/watch.ts';
 import {
   githubPrReadyInputSchema,
   runEventsQuerySchema,
@@ -1211,6 +1212,19 @@ export function createApp(deps: ServerDeps) {
   }
   contexts.onStoreCreated((store) => providerRuntimeAuth.watch(store));
   contexts.onContextBuilt((ctx) => providerRuntimeAuth.watch(ctx.store));
+
+  // The transition out of `checking` (#464 P2): a setup run that reached `done` having finished
+  // its promised scope stamps `lastChecked`, which is what makes `set-up`, `changed` and the
+  // post-update offer reachable at all. Attached at the same three points the observer above is,
+  // and for the same reason — every store this process holds, boot and lazy alike, or the state
+  // machine has a state with no exit on the default path.
+  watchSetupCompletion(bootContext.store, version);
+  for (const id of contexts.ids()) {
+    const ctx = contexts.peek(id);
+    if (ctx) watchSetupCompletion(ctx.store, version);
+  }
+  contexts.onStoreCreated((store) => watchSetupCompletion(store, version));
+  contexts.onContextBuilt((ctx) => watchSetupCompletion(ctx.store, version));
 
   const app = new Hono();
 

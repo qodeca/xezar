@@ -314,6 +314,52 @@ describe('useGlobalEvents — run events', () => {
     expect(invalidate).not.toHaveBeenCalledWith({ queryKey: queryKeys.runs.changes('r2') })
   })
 
+  /**
+   * The setup surfaces' half of the run event (#464 P2, review round 1 finding 2).
+   *
+   * The failure it pins: press **Set up this project**, the card switches to "Re-checking", the
+   * task ends \u2014 and the card stays on "Re-checking" for the rest of the browser session, because
+   * the server's correct answer never reaches this client. No knob and no human input in any
+   * case below; the run event is the whole default path.
+   */
+  describe('the setup state', () => {
+    const setupRun = (id: string, status: RunRecord['status']) =>
+      stampedRun(runRecord(id, { workflow: 'project-setup', status }))
+
+    it('refreshes when the setup task reaches a terminal status', () => {
+      const invalidate = vi.spyOn(client, 'invalidateQueries')
+      const { source } = mount()
+
+      for (const status of ['done', 'failed', 'cancelled', 'review'] as const) {
+        invalidate.mockClear()
+        source.emit('run', setupRun('setup-run', status))
+        expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.onboarding })
+      }
+    })
+
+    it('leaves it alone while that task is still going', () => {
+      // `checking` is the honest answer for as long as the run is active, and a refetch per token
+      // update would be a request flood for a sentence that has not changed.
+      const invalidate = vi.spyOn(client, 'invalidateQueries')
+      const { source } = mount()
+
+      source.emit('run', setupRun('setup-run', 'running'))
+      source.emit('run', setupRun('setup-run', 'waiting'))
+      source.emit('run', setupRun('setup-run', 'queued'))
+
+      expect(invalidate).not.toHaveBeenCalledWith({ queryKey: queryKeys.onboarding })
+    })
+
+    it('ignores an ordinary task finishing', () => {
+      const invalidate = vi.spyOn(client, 'invalidateQueries')
+      const { source } = mount()
+
+      source.emit('run', stampedRun(runRecord('r1', { status: 'done' })))
+
+      expect(invalidate).not.toHaveBeenCalledWith({ queryKey: queryKeys.onboarding })
+    })
+  })
+
   it('refreshes the cross-project index from ANOTHER project\u2019s run event', async () => {
     // The bug this covers: every non-active project's event was dropped before it touched
     // anything, so the global Tasks page — which spans the whole registry — heard nothing and ran
@@ -741,6 +787,10 @@ describe('useGlobalEvents — reconcile doctrine', () => {
       queryKeys.worktrees, // the Resources panel's list/total (#483)
       workspaceQueryKeys.providerStatus,
       queryKeys.mcpLeader, // the MCP leader status: its topic may have missed a change (#374, round 5 on #403)
+      // The setup state (#464 P2). It has no interval, no focus refetch and no reconnect refetch
+      // of its own, and its reader never remounts — so a setup task that finished while this
+      // client was away is invisible until a reload unless this list carries it.
+      queryKeys.onboarding,
     ])
   })
 
@@ -764,6 +814,7 @@ describe('useGlobalEvents — reconcile doctrine', () => {
       queryKeys.worktrees,
       workspaceQueryKeys.providerStatus,
       queryKeys.mcpLeader,
+      queryKeys.onboarding, // #464 P2 — see the reconnect case above
     ])
   })
 

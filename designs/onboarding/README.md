@@ -211,7 +211,7 @@ substitutions. A value that is not recorded prints `—`.
 | Body — changed | The last check finished against xezar {engine}. xezar {engine} is running now. A re-check compares this project's files against the pinned defaults and shows you the differences. |
 | Body — dismissed | The last check finished against xezar {engine}. xezar {engine} is running now. You chose Later, so the notice above the page will not come back for this version. |
 | Heading — unknown provenance | Provenance unknown |
-| Body — unknown provenance | There is no record of a previous check for this project. A re-check can still read what is here and show you the pinned defaults, but it cannot tell your own edits from an older default, so it will not replace a file on its own. |
+| Body — unknown provenance | A record of earlier checks exists for this project and cannot be read, so nothing here can say what was checked or when. A re-check can still read what is here and show you the pinned defaults, but it cannot tell your own edits from an older default, so it will not replace a file on its own. |
 | Heading — re-check running | Re-checking |
 | Body — re-check running | A task is comparing this project's files against the pinned defaults. It may ask you a question, and it writes nothing until you accept its preview. |
 | Button — set up | Set up this project |

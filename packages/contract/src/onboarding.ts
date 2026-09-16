@@ -36,14 +36,16 @@ export const onboardingStampSchema = z.object({
 export type OnboardingStamp = z.infer<typeof onboardingStampSchema>;
 
 /**
- * Which sentence the Settings card shows. Deliberately NOT a boolean pair: `unknown` (no
- * baseline) and `never` (a baseline that records no finished check) read the same to a naive
- * consumer and must not, because only `never` is honest about having looked.
+ * Which sentence the Settings card shows. Deliberately NOT a boolean pair: `never` (we looked and
+ * no check has finished) and `unknown` (there is a record and we cannot read it) read the same to
+ * a naive consumer and must not, because only `never` is a statement we have evidence for.
  *
- * - `never`    — a record exists for this identity and no check has finished for it
+ * - `never`    — no finished check is recorded. The record may be ABSENT (first use, and not an
+ *                error) or present with no finished check; both are "nothing has been checked yet"
  * - `set-up`   — a finished check covers the identity that is running now
  * - `changed`  — a finished check exists, for a DIFFERENT identity
- * - `unknown`  — the record is missing, empty or unreadable; provenance cannot be established
+ * - `unknown`  — a record EXISTS and could not be read (empty, unparseable, or a shape this
+ *                schema rejects); provenance cannot be established
  * - `checking` — a check task for this project is active
  */
 export const onboardingStateSchema = z.enum(['never', 'set-up', 'changed', 'unknown', 'checking']);

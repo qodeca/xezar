@@ -1102,9 +1102,15 @@ export function useWorktrees() {
  * This project's setup state (#464 P2).
  *
  * **No `refetchInterval` and no WebSocket topic**, deliberately. The state changes when a setup
- * task finishes, which is already a `run` event on the one global SSE stream, so the existing
- * reconciliation covers it exactly. A poll here would wake the browser for a screen whose answer
- * changes a handful of times in a project's whole life.
+ * task finishes, which is already a `run` event on the one global SSE stream. A poll here would
+ * wake the browser for a screen whose answer changes a handful of times in a project's whole life.
+ *
+ * That only works because BOTH halves of the stream carry this key, and the first round of this
+ * feature shipped with one of them: `global-events.tsx` invalidates it from a setup run's terminal
+ * `run` event (the connected tab) AND from `reconcile()` (a reconnect, or a tab coming back).
+ * Without the pair, `checking` never clears — this query has no interval, the client defaults turn
+ * off the focus and reconnect refetches, and the offer row is mounted for the life of the app, so
+ * `staleTime` never gets a remount to fire on. Half the sites is half a fix.
  */
 export function useOnboarding() {
   return useQuery({

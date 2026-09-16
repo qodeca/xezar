@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { onboardingStatePath, resetOnboardingWarnings } from '../onboarding/state.ts';
 import { BUNDLED_TEMPLATES_DIGEST, ONBOARDING_WORKFLOW_ID } from '../onboarding/status.ts';
+import { watchSetupCompletion } from '../onboarding/watch.ts';
 import { RunStore } from '../runs/store.ts';
 import type { RunManager } from '../workflows/run.ts';
 import { createApp } from './server.ts';
@@ -175,5 +176,84 @@ describe('the onboarding API', () => {
     // Liveness, not existence. A finished setup task must not leave the card stuck on "Re-checking".
     active.delete(setup.id);
     expect((await get()).checkingRunId).toBeNull();
+  });
+
+  /**
+   * The default path end to end (review round 1 finding 1): a setup task finishing is the ONLY
+   * thing that moves this route's answer off `never`, and nothing here hand-writes the record.
+   *
+   * `createApp` is what attaches the watcher, so this is the wiring under test and not a helper:
+   * asking for the handle again returns the one `createApp` installed, which is how the assertion
+   * awaits a write that is deliberately fire-and-forget.
+   */
+  describe('after a setup task finishes', () => {
+    const FINISHED_AT = '2026-09-16T04:00:00.000Z';
+    const settle = () => watchSetupCompletion(store, '0.15.0').idle();
+
+    const runSetup = (over: { status: 'done' | 'failed' | 'cancelled'; step: 'done' | 'cancelled' | 'failed' }) => {
+      const run = store.createRun({
+        title: 'set up',
+        workflow: ONBOARDING_WORKFLOW_ID,
+        task: 't',
+        steps: [{ id: 'setup', name: 'Set up this project', kind: 'agent' }],
+      });
+      active.add(run.id);
+      return {
+        id: run.id,
+        end: () => {
+          active.delete(run.id);
+          store.updateStep(run.id, 'setup', { status: over.step, finishedAt: FINISHED_AT });
+          store.updateRun(run.id, { status: over.status, finishedAt: FINISHED_AT });
+        },
+      };
+    };
+
+    it('answers `set-up`, with the identity and the moment the check really covered', async () => {
+      const run = runSetup({ status: 'done', step: 'done' });
+      expect((await get()).state).toBe('checking');
+
+      run.end();
+      await settle();
+
+      expect(await get()).toMatchObject({
+        state: 'set-up',
+        provenance: 'recorded',
+        offerPending: false,
+        checkingRunId: null,
+        lastChecked: { ...OBSERVED, at: FINISHED_AT },
+      });
+    });
+
+    it('answers `never` still, for a cancelled or a failed one (AC-12)', async () => {
+      runSetup({ status: 'cancelled', step: 'cancelled' }).end();
+      runSetup({ status: 'failed', step: 'failed' }).end();
+      await settle();
+
+      expect(await get()).toMatchObject({ state: 'never', lastChecked: null });
+      expect(existsSync(statePath())).toBe(false);
+    });
+
+    it('offers a re-check once the running identity moves past the finished one', async () => {
+      // The post-update offer, reached the way a user reaches it: a real check finishes, and a
+      // later xezar reads the record it left. Nothing in this case writes the file by hand.
+      runSetup({ status: 'done', step: 'done' }).end();
+      await settle();
+
+      const later = createApp({
+        repoRoot,
+        store,
+        manager: { isActive: (id: string) => active.has(id) } as unknown as RunManager,
+        version: '0.16.0',
+      });
+      const res = await apiRequest(later, '/api/v1/onboarding');
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({
+        state: 'changed',
+        offerPending: true,
+        dismissed: false,
+        observed: { engineVersion: '0.16.0', kitDigest: BUNDLED_TEMPLATES_DIGEST },
+        lastChecked: { ...OBSERVED, at: FINISHED_AT },
+      });
+    });
   });
 });

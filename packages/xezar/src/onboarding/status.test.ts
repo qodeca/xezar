@@ -151,4 +151,13 @@ describe('availability and mode', () => {
     });
     expect([...ONBOARDING_MODES]).toContain('preview');
   });
+
+  it('states the disabled reason without naming xezar’s own working files or process', () => {
+    // The server-side half of the #466 guard (review round 1 finding 5): the cockpit's own strings
+    // are held to this in `packages/web/src/lib/onboarding.test.ts`, and this sentence is the one
+    // shipped string of this deck that a user reads and that does NOT live there.
+    for (const forbidden of [/\.xezar/, /\bkit\b/i, /\bSDLC\b/, /\bworkflow/i, /\bskill/i]) {
+      expect(NO_BACKEND_REASON).not.toMatch(forbidden);
+    }
+  });
 });

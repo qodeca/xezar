@@ -125,7 +125,7 @@ export function setupBody(status: OnboardingStatus): string {
           : RECHECK_SENTENCE
       }`
     case 'unknown':
-      return 'There is no record of a previous check for this project. A re-check can still read what is here and show you the pinned defaults, but it cannot tell your own edits from an older default, so it will not replace a file on its own.'
+      return 'A record of earlier checks exists for this project and cannot be read, so nothing here can say what was checked or when. A re-check can still read what is here and show you the pinned defaults, but it cannot tell your own edits from an older default, so it will not replace a file on its own.'
     default:
       return 'No setup has been recorded for this project. You can still create ordinary tasks — setup is optional, and it is never required to start work.'
   }

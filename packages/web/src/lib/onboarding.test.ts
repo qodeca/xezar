@@ -10,6 +10,7 @@ import {
   setupBrief,
   setupHeading,
   setupMode,
+  HOSTED_SETUP_NOTE,
   SETUP_HERO_SENTENCE,
   shortDigest,
 } from './onboarding'
@@ -160,16 +161,37 @@ describe('the Settings card', () => {
 })
 
 describe('release hygiene (#466)', () => {
-  it('no shipped string names xezar’s own working files or process', () => {
-    const everything = [
+  /**
+   * EVERY string this module ships, not a sample of them (review round 1 finding 5): the first
+   * round covered the hero sentence, both briefs and the heading/body pair, which left the hosted
+   * note, all three offer sentences and the action labels outside the guard a PR body claimed
+   * covered "any shipped string". A string that is not in this list is not guarded, so a new
+   * export belongs here in the same commit.
+   */
+  const everyShippedString = () =>
+    [
       SETUP_HERO_SENTENCE,
+      HOSTED_SETUP_NOTE,
       setupBrief('setup'),
       setupBrief('recheck'),
       ...(['never', 'set-up', 'changed', 'unknown', 'checking'] as const).flatMap((state) => [
         setupHeading(status({ state })),
         setupBody(status({ state, lastChecked: { ...base.observed, at: '2026-09-02T16:40:00.000Z' } })),
+        setupActionLabel(status({ state })),
       ]),
+      // The offer row's three shapes — engine only, templates only, and both.
+      ...[
+        { engineVersion: '0.14.0', kitDigest: base.observed.kitDigest },
+        { engineVersion: base.observed.engineVersion, kitDigest: '0000000aaaaaaaa' },
+        { engineVersion: '0.14.0', kitDigest: '0000000aaaaaaaa' },
+      ].flatMap((checked) => {
+        const copy = offerCopy(changed(checked))
+        return copy ? [copy.lead, copy.rest] : []
+      }),
     ].join('\n')
+
+  it('no shipped string names xezar’s own working files or process', () => {
+    const everything = everyShippedString()
     for (const forbidden of [/\.xezar/, /\bkit\b/i, /\bSDLC\b/, /\bworkflow/i, /\bskill/i]) {
       expect(everything).not.toMatch(forbidden)
     }
