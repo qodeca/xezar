@@ -370,7 +370,7 @@ describe('#532 durable decision boundaries', () => {
   it('rejects a pre-upgrade token even when its sequence and projection match', () => {
     const run = createRun();
     const legacy = versionToken({ ref: { kind: 'run', id: run.id }, seq: 0, projection: runDecisionProjection(run) });
-    const apply = vi.fn();
+    const apply = vi.fn(() => undefined);
     expect(guardedRunMutation(store, run.id, legacy, apply).status).toBe('conflict');
     expect(apply).not.toHaveBeenCalled();
   });

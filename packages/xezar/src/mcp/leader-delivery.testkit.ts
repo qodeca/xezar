@@ -1,6 +1,9 @@
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import type { AddressInfo } from 'node:net';
+import { createServer as createSocketServer, type AddressInfo, type Socket } from 'node:net';
+import { WebSocketServer, type WebSocket } from 'ws';
+import { CODEX_CONTROL_SOCKET } from './adapters/codex-link.ts';
+import { piLeaderPath } from './adapters/pi-link.ts';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { expect, vi } from 'vitest';
@@ -36,39 +39,10 @@ export async function deliveryHarness(client: DeliveryClient) {
   const received: string[] = [];
   const requests: string[] = [];
   const ownership = new ProjectOwnership({ projectId: 'matrix', dataDir: store.dataDir });
-  const listeners = new Set<(message: Record<string, unknown>) => void>();
-  let closed = false;
-  const emit = (message: Record<string, unknown>) => { for (const listener of listeners) listener(message); };
-  const subscription = (listener: (message: Record<string, unknown>) => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
-  const codexLink = {
-    get closed() { return closed; }, subscribe: subscription, close() { closed = true; },
-    async request(method: string, params: Record<string, unknown>) {
-      requests.push(method);
-      if (method === 'thread/loaded/list') return { data: ['matrix-thread'] };
-      if (method === 'thread/resume') return { thread: { id: 'matrix-thread', status: { type: 'idle' } } };
-      if (method === 'thread/turns/list') return { data: [] };
-      if (method === 'turn/start') {
-        received.push(JSON.stringify(params));
-        queueMicrotask(() => emit({ method: 'item/started', params: { threadId: 'matrix-thread', item: { type: 'userMessage', clientId: params.clientUserMessageId } } }));
-        return { turn: { id: `turn-${received.length}`, status: 'inProgress' } };
-      }
-      return {};
-    },
-  };
-  const piLink = {
-    get closed() { return closed; }, subscribe: subscription, close() { closed = true; },
-    async request(command: Record<string, unknown>) {
-      requests.push(String(command.type));
-      if (command.type === 'get_state') return { success: true, data: { isStreaming: false, pendingMessageCount: 0 } };
-      if (command.type === 'get_messages') return { success: true, data: { messages: [] } };
-      received.push(JSON.stringify(command));
-      return { success: true };
-    },
-  };
-  const delivery = new LeaderDelivery({ projectId: 'matrix', projectRoot: root, journal, guard, ownership,
+  const codexHome = join(root, 'codex');
+  const delivery = new LeaderDelivery({ projectId: 'matrix', projectRoot: root, dataDir: store.dataDir, journal, guard, ownership,
     warn: () => {}, heartbeatMs: 60_000,
-    codexLeader: { home: () => join(root, 'codex'), connect: async () => ({ threadId: 'matrix-thread', link: codexLink, state: { waiting: false } }) },
-    piLeader: { read: () => ({ ok: true, descriptor: { schemaVersion: 1, session: { pid: 1, startedAt: 'fixture' }, endpoint: { socket: join(root, 'pi.sock') } } }), connect: () => piLink as never },
+    codexLeader: { home: () => codexHome },
   });
   const close = async () => {
     delivery.close();
@@ -79,6 +53,8 @@ export async function deliveryHarness(client: DeliveryClient) {
     rmSync(root, { recursive: true, force: true });
   };
   try {
+    if (client === 'codex') await fakeCodex(root, codexHome, received, requests, closers);
+    if (client === 'pi') await fakePi(root, store.dataDir, received, requests, closers);
     if (client === 'claude-code') {
       const socket = await listenMcpSocket({ project: { id: 'matrix', name: 'Matrix', root }, version: '0.0.0-test', tools,
         env: { ...process.env, XEZ_HOME: root }, dataDir: store.dataDir, ownership,
@@ -90,7 +66,7 @@ export async function deliveryHarness(client: DeliveryClient) {
       const input = new PassThrough(); const output = new PassThrough();
       const pending = new Map<number, (answer: unknown) => void>();
       const framer = new LineFramer(line => {
-        const msg = JSON.parse(line);
+        const msg = JSON.parse(line) as { id?: number; method?: string; params?: unknown; result?: unknown };
         if (msg.method === 'notifications/claude/channel') received.push(JSON.stringify(msg.params));
         if (msg.id !== undefined) { pending.get(msg.id)?.(msg.result); pending.delete(msg.id); }
       }, () => {});
@@ -109,8 +85,13 @@ export async function deliveryHarness(client: DeliveryClient) {
       delivery.sessionOpened('matrix-owner');
       if (client === 'codex') delivery.codexAnnounced('matrix-owner', { threadId: 'matrix-thread' });
     }
-    const peer = client === 'opencode' ? await fakeOpenCode(root, closers) : undefined;
-    expect(await delivery.act({ action: 'attach', client, ...(peer ? { baseUrl: peer.baseUrl, sessionId: SESSION } : {}) })).toMatchObject({ ok: true });
+    let peer: Awaited<ReturnType<typeof fakeOpenCode>> | undefined;
+    if (client === 'opencode') {
+      peer = await fakeOpenCode(root, closers);
+      expect(await delivery.act({ action: 'attach', client, baseUrl: peer.baseUrl, sessionId: SESSION })).toMatchObject({ ok: true });
+    } else {
+      expect(await delivery.act({ action: 'attach', client })).toMatchObject({ ok: true });
+    }
     return { root, store, journal, catalog, bus, guard, delivery, close,
       texts: () => peer ? peer.submissions.map(s => JSON.stringify(s)) : received,
       requests,
@@ -178,4 +159,70 @@ async function fakeOpenCode(directory: string, closers: Array<() => unknown>) {
     /** The event ids each submission carried, from its own `metadata.xezar` marker. */
     delivered: (): string[] => submissions.flatMap((s) => s.parts.flatMap((p) => (p.metadata?.xezar?.rows ?? []).map((key) => key.split('@')[0]!))),
   };
+}
+
+
+/** The client endpoints receive actual framed requests through the production link classes. */
+async function fakeCodex(project: string, home: string, received: string[], requests: string[], closers: Array<() => unknown>) {
+  mkdirSync(join(home, 'app-server-control'), { recursive: true, mode: 0o700 });
+  const server = createServer();
+  const wss = new WebSocketServer({ noServer: true });
+  const clients = new Set<WebSocket>();
+  server.on('upgrade', (request, socket, head) => {
+    wss.handleUpgrade(request, socket, head, client => {
+      clients.add(client);
+      client.on('message', raw => {
+        const frame = JSON.parse(raw.toString()) as { id?: number; method: string; params: Record<string, unknown> };
+        if (frame.id === undefined) return;
+        requests.push(frame.method);
+        let result: unknown = {};
+        switch (frame.method) {
+          case 'initialize': result = { codexHome: home, platformFamily: 'unix' }; break;
+          case 'thread/list': result = { data: [{ id: 'matrix-thread', cwd: project }], nextCursor: null }; break;
+          case 'thread/loaded/list': result = { data: ['matrix-thread'] }; break;
+          case 'thread/resume': result = { thread: { id: 'matrix-thread', status: { type: 'idle' }, turns: [] } }; break;
+          case 'thread/turns/list': result = { data: [] }; break;
+          case 'thread/unsubscribe': result = { status: 'unsubscribed' }; break;
+          case 'turn/start':
+            received.push(JSON.stringify(frame.params));
+            result = { turn: { id: `turn-${received.length}`, status: 'inProgress' } };
+            break;
+        }
+        client.send(JSON.stringify({ jsonrpc: '2.0', id: frame.id, result }));
+        if (frame.method === 'turn/start') client.send(JSON.stringify({ method: 'item/started', params: { threadId: 'matrix-thread', item: { type: 'userMessage', clientId: frame.params.clientUserMessageId } } }));
+      });
+    });
+  });
+  await new Promise<void>(resolve => server.listen(join(home, CODEX_CONTROL_SOCKET), resolve));
+  closers.push(async () => {
+    for (const client of clients) client.terminate();
+    await new Promise<void>(resolve => wss.close(() => resolve()));
+    await new Promise<void>(resolve => server.close(() => resolve()));
+  });
+}
+
+async function fakePi(root: string, dataDir: string, received: string[], requests: string[], closers: Array<() => unknown>) {
+  const path = join(root, 'pi.sock');
+  const sockets = new Set<Socket>();
+  const server = createSocketServer(socket => {
+    sockets.add(socket);
+    socket.on('close', () => sockets.delete(socket));
+    socket.on('error', () => {});
+    const framer = new LineFramer(line => {
+      const command = JSON.parse(line) as { id: string; type: string };
+      requests.push(command.type);
+      let data: unknown;
+      if (command.type === 'get_state') data = { isStreaming: false, pendingMessageCount: 0 };
+      else if (command.type === 'get_messages') data = { messages: [] };
+      else received.push(line);
+      socket.write(JSON.stringify({ type: 'response', id: command.id, command: command.type, success: true, ...(data === undefined ? {} : { data }) }) + '\n');
+    }, () => {});
+    socket.on('data', (chunk: Buffer) => framer.push(chunk));
+  });
+  await new Promise<void>(resolve => server.listen(path, resolve));
+  writeFileSync(piLeaderPath(dataDir), JSON.stringify({ schemaVersion: 1, session: { pid: process.pid, startedAt: 'fixture' }, endpoint: { socket: path } }), { mode: 0o600 });
+  closers.push(async () => {
+    for (const socket of sockets) socket.destroy();
+    await new Promise<void>(resolve => server.close(() => resolve()));
+  });
 }

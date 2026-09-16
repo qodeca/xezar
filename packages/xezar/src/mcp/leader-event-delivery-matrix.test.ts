@@ -48,7 +48,7 @@ function produce(h: Harness, variant: string) {
   }
   const page = h.journal.read();
   if (page.status !== 'ok') throw new Error('unexpected gap');
-  const row = page.events.findLast(r => r.kind === kind);
+  const row = page.events.filter(r => r.kind === kind).at(-1);
   expect(row, variant).toBeDefined();
   return row as McpJournalRow;
 }

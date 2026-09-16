@@ -24,7 +24,7 @@ const changes: Array<[string, (run: RunRecord) => Partial<RunRecord>]> = [
   ['queuedMessages.text', r => ({ queuedMessages: r.queuedMessages?.map(m => ({ ...m, text: 'B' })) })],
   ['steps.id', r => ({ steps: r.steps.map(s => ({ ...s, id: 'B' })) })],
   ['steps.status', r => ({ steps: r.steps.map(s => ({ ...s, status: 'done' })) })],
-  ['steps.add', r => ({ steps: [...r.steps, { id: 'extra', name: 'Extra', kind: 'check', status: 'pending' }] })],
+  ['steps.add', r => ({ steps: [...r.steps, { id: 'extra', name: 'Extra', kind: 'check', status: 'pending', iterations: 0, tokensUsed: 0 }] })],
   ['steps.remove', () => ({ steps: [] })],
   ['branch', () => ({ branch: 'B' })],
   ['workflow', () => ({ workflow: 'B' })],

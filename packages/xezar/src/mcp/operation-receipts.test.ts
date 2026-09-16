@@ -735,12 +735,12 @@ describe('#532 known refusal versus uncertain effect across reopen', () => {
       },
     };
     const first = await open().execute(request);
-    expect(first.status).toBe(kind === 'rejected' ? 'rejected' : 'unverified');
+    expect(first).toMatchObject({ status: kind === 'rejected' ? 'rejected' : 'unverified' });
     // State has moved: a blind retry would now apply. The original receipt must still win.
     request.effect = () => { effects++; return { outcome: 'ok', resultRef: { kind: 'run', id: 'task' } }; };
     const second = await open().execute(request);
     const third = await open().execute(request);
-    expect(second.status).toBe(first.status);
+    expect(second).toMatchObject({ status: kind === 'rejected' ? 'rejected' : 'unverified' });
     expect(third).toEqual(second);
     expect(effects).toBe(kind === 'lost-response' ? 1 : 0);
   });
