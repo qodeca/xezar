@@ -17,7 +17,7 @@ steps:
     command: ".xezar/checks/worktree-setup.sh"
   - id: design
     name: Design the surface
-    prompt: "{{task}}"
+    prompt: "Author the design for: {{task}}. Follow xezar-ux-design authoring instructions and docs/design-system/README.md: usage for scope, recipes for composition, verification for evidence, lifecycle for ownership and storage for artifacts. Own the static mockup and developer README handoff; finish focused checks and commits before the existing readiness, gates, evidence and PR handoff stages."
     skill: xezar-ux-design
     timeout: 2h
   - id: readiness
@@ -34,5 +34,5 @@ steps:
     command: ".xezar/checks/worktree-preflight.sh --record-gate-evidence"
   - id: handoff
     name: Draft PR into main
-    prompt: "Hand off the design of: {{task}}"
+    prompt: "Hand off the design of: {{task}}. Follow docs/design-system/lifecycle.md and docs/design-system/storage.md for ownership and evidence; verify the sealed head and open the draft PR with needs-design. The author already owns the mockup and README handoff; make no content changes here. Independent design review remains pending."
     skill: xezar-handoff-draft-pr

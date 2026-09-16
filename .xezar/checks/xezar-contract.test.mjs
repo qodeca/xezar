@@ -106,7 +106,7 @@ test('optional config discovery and malformed supplied config have distinct outc
 });
 test('runtime remains ignored including unknown future state; all maintained roles/docs exist',()=>{
  for(const file of ['.local/xezar/launch-key','.local/xezar/runs/a.json','.local/xezar/worktrees/a/file','.local/xezar-tasks/a/result.json'])assert.equal(spawnSync('git',['check-ignore','-q','--',file],{cwd:repo}).status,0,file);
- assert.equal(fs.readdirSync(path.join(kit,'skills')).filter(x=>x.endsWith('.md')).length,19);
+ assert.equal(fs.readdirSync(path.join(kit,'skills')).filter(x=>x.endsWith('.md')).length,20);
  for(const f of ['README.md','business-analysis.md','close-out.md','enhancement-ideas.md','parallel-tasks.md','recovery.md','ui-operations.md','worktrees.md','dogfooding.md'])assert.ok(fs.existsSync(path.join(kit,'docs',f)));
 });
 test('SDLC policy never maps unknown labels, failed QA or a missing design approval to merge eligibility',async()=>{
@@ -142,7 +142,7 @@ test('guidance covers semantic analysis, stage ownership, squash policy and evid
 test('guidance bans unscoped pattern kills and names the safe forms',()=>{
  const surfaces=[fs.readFileSync(path.join(kit,'CLAUDE.md'),'utf8'),
   ...fs.readdirSync(path.join(kit,'skills')).map((s)=>fs.readFileSync(path.join(kit,'skills',s),'utf8'))];
- assert.equal(surfaces.length,20);
+ assert.equal(surfaces.length,21);
  for(const body of surfaces){
   assert.match(body,/pkill -f/);            // the trap is named, not implied
   assert.match(body,/--append-system-prompt/); // and so is WHY it reaches peers
@@ -272,7 +272,41 @@ test('design is a writing role',()=>{
  assert.deepEqual(flow.steps[5].onFail,{retry:'design',max:2});
  assert.equal(flow.steps.at(-1).skill,'xezar-handoff-draft-pr');
 });
-for (const role of ['xezar-research','xezar-ux-design']) {
+// #468 PR 2: the filing procedure itself is distributed content (`xez-issue-create` in
+// qodeca/xezar-skills). This wrapper may only add Xezar's own policy on top, and it must say
+// WHICH upstream revision it was written against — an unpinned "see the shared skill" silently
+// re-points at whatever that collection looks like today, which is the whole reason the contract
+// note (#473) asks for a pinned consumer boundary. These are packaging assertions over the
+// wrapper's bytes; per the upstream IF-01..IF-14 checklist, static content cannot prove that an
+// agent obeys them, so the installation record must not claim real-task verification from these.
+test('xezar-issue-create names the pinned upstream revision it wraps',()=>{
+ const body=fs.readFileSync(path.join(kit,'skills/xezar-issue-create.md'),'utf8');
+ assert.match(body,/qodeca\/xezar-skills/);
+ assert.match(body,/xez-issue-create/);
+ assert.match(body,/\bb2308e9\b/);                 // the pin itself, not just "the shared skill"
+ assert.match(body,/skills\/xez-issue-create\//);  // where to read it in that collection
+ assert.match(body,/docs\/features\/issue-filing\/xez-issue-create-contract\.md/);
+});
+test('xezar-issue-create carries Xezar policy and creates nothing from an empty brief',()=>{
+ const body=fs.readFileSync(path.join(kit,'skills/xezar-issue-create.md'),'utf8');
+ assert.match(body,/An empty brief creates nothing/);
+ assert.match(body,/publish nothing until it is answered/);
+ assert.match(body,/qodeca\/xezar/);                        // this repo is the tracker
+ assert.match(body,/\.github\/ISSUE_TEMPLATE\/config\.yml/); // read the template config first
+ assert.match(body,/Never create taxonomy/);                 // existing labels only
+ assert.match(body,/authorized-autonomous-create/);
+ assert.match(body,/draft-only/);
+ assert.match(body,/XEZ:ASK/);
+ assert.match(body,/BLOCKED/);
+ assert.match(body,/at most one/);                           // never a second issue, never an edit
+});
+// Scope of #468 PR 2: the wrapper runs on the built-in `quick-task`. A kit workflow naming it
+// would be a new role with gates and a readiness step, which this change deliberately does not add.
+test('no kit workflow names xezar-issue-create',()=>{
+ for(const f of fs.readdirSync(path.join(kit,'workflows')))
+  assert.doesNotMatch(fs.readFileSync(path.join(kit,'workflows',f),'utf8'),/xezar-issue-create/,f);
+});
+for (const role of ['xezar-research','xezar-ux-design','xezar-issue-create']) {
  test(`${role} is a maintained role: dropping its shared contract fails the catalog`,()=>{
   const root=fixture();
   const skill=path.join(root,`.xezar/skills/${role}.md`);

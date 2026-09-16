@@ -2,7 +2,7 @@
 
 Every visual value the cockpit uses comes from one file: `packages/web/src/styles/index.css`. This page
 lists all of it. Dark is the default theme; `.light` on `<html>` flips the token values. Nothing here is
-invented: each value was read from the file on 2026-09-13, and the drift test
+invented: the initial values were read on 2026-09-13; rhythm tokens and Roomy density were added on 2026-09-15. The drift test
 (`packages/web/src/design-system-drift.test.ts`) fails when a token exists in the file but not here.
 
 Rules that follow from this page:
@@ -186,8 +186,9 @@ Density changes only that token:
 | `compact` | `0.21875rem` (3.5px) | ~12% tighter paddings, gaps and control heights |
 | `ultra` | `0.1875rem` (3px) | ~25% tighter |
 
-Type sizes do not change with density. Any px value you write by hand (`h-[34px]`, `px-[7px]`) is
-outside the density lever; prefer scale units (`h-9`, `px-2`) unless the design fixes a pixel on purpose.
+Type sizes do not change with density. A spacing or control-size pixel written by hand (`h-[34px]`,
+`px-[7px]`) is outside the density lever, and the `no-arbitrary-spacing` guardian rule fails a new
+occurrence (`decisions.md` D-06); use scale units (`h-9`, `px-2`).
 The one pixel the design fixes on purpose is a floor: `min-h-[24px]` on the composer picker pill (`chipClass`)
 and the reference chip holds each at WCAG 2.2 SC 2.5.8's 24 px when the density lever would shrink it below.
 One more size is fixed on purpose, without a pixel: the development-build badge is `size-[54%]` with
@@ -226,7 +227,7 @@ The same steps at each density:
 
 Compact and ultra give half-pixel values for some steps; that is already true of the numeric scale today.
 
-Where the cockpit uses them (step 2 of #424):
+Where the cockpit uses them:
 
 | Surface | Spelling |
 | --- | --- |
@@ -270,7 +271,7 @@ Restrained by design; borders carry most separation. Stock steps are wiped; only
 | Token | Dark | Light | Utility | Used for |
 | --- | --- | --- | --- | --- |
 | `--shadow-xs` | `0 1px 2px 0 rgba(10, 13, 20, 0.03)` | same | `shadow-xs` | cards, inputs, switches, the active tab, the composer |
-| `--shadow-sm` | `0 2px 4px 0 rgba(27, 28, 29, 0.04)` | same | `shadow-sm` | available, unused today |
+| `--shadow-sm` | `0 2px 4px 0 rgba(27, 28, 29, 0.04)` | same | `shadow-sm` | the active agent tab in Settings → Agent config (`routes/settings/agent-config-section.tsx:101`) |
 | `--shadow-md` | `0 16px 32px -12px rgba(14, 18, 27, 0.1)` | same | `shadow-md` | dropdown menus, popovers, select content |
 | `--shadow-modal` | `0 16px 48px 0 rgba(0, 0, 0, 0.45)` | `0 16px 48px 0 rgba(0, 0, 0, 0.12)` | `shadow-modal` | dialogs, alert dialogs, sheets, toasts |
 

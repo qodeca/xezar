@@ -11,7 +11,8 @@ Ids are never reused: a deleted entry retires its number, so a new entry takes t
 highest ever used. G-01..G-23 and G-26..G-28 are live, G-24 and G-25 are retired, and the next free id is
 G-29.
 
-Counts are non-test files or occurrences in `packages/web/src`.
+Counts are non-test files or occurrences in `packages/web/src`. Corrected counts in G-02, G-06,
+G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the original inventory date.
 
 ## Layout and composition
 
@@ -23,7 +24,7 @@ Counts are non-test files or occurrences in `packages/web/src`.
 
 ### G-02 Three card spellings and a dead primitive
 
-- **Differs**: `components/ui/card.tsx` (0 importers); ad-hoc `rounded-lg border border-border bg-card` (25 sites in 15 files); `rounded-xl border bg-card p-4` (`routes/automations/automations.tsx` ×2).
+- **Differs**: `components/ui/card.tsx` (0 importers); ad-hoc `rounded-lg border border-border bg-card` (22 sites in 15 files); `rounded-xl border bg-card p-4` (`routes/automations/automations.tsx:115,148`).
 - **Rule**: the ad-hoc string, plus `shadow-xs` for a raised container.
 - **Fix**: either delete `card.tsx` or restyle it to the ad-hoc look and adopt it. Migrate the two `rounded-xl` cards.
 
@@ -47,7 +48,7 @@ Counts are non-test files or occurrences in `packages/web/src`.
 
 ### G-06 Two focus-ring idioms and one unconditional animation
 
-- **Differs**: `focus-visible:ring-[3px] focus-visible:ring-ring/50` (eight primitives, 58 route sites) vs `focus:ring-2 focus:ring-ring focus:ring-offset-2` on the dialog and sheet close buttons (`components/ui/dialog.tsx:73`, `sheet.tsx:78`). `focus-visible:border-ring` is on six primitives but not `button.tsx` or `scroll-area.tsx`. `tooltip.tsx:45` applies `animate-in` unconditionally where every other floating surface gates on `data-[state=open]`.
+- **Differs**: `focus-visible:ring-[3px] focus-visible:ring-ring/50` (eight primitives, 51 sites outside `components/ui`) vs `focus:ring-2 focus:ring-ring focus:ring-offset-2` on the dialog and sheet close buttons (`components/ui/dialog.tsx:73`, `sheet.tsx:78`). `focus-visible:border-ring` is on six primitives but not `button.tsx` or `scroll-area.tsx`. `tooltip.tsx:45` applies `animate-in` unconditionally where every other floating surface gates on `data-[state=open]`.
 - **Rule**: the `focus-visible` ring.
 - **Fix**: restyle the two close buttons; gate the tooltip animation.
 
@@ -59,25 +60,25 @@ Counts are non-test files or occurrences in `packages/web/src`.
 
 ### G-08 Reduced-motion guards are inconsistent
 
-- **Differs**: `motion-safe:animate-spin` ×11, `motion-reduce:animate-none` ×5, but bare `animate-pulse` in `components/status-dot.tsx:21` (every pulsing dot), `components/ui/skeleton.tsx:7`, `routes/new-task.tsx:540,1399`; bare `animate-spin` in `routes/task-thread/thread-items.tsx:344,571` and `routes/github/github.tsx:955,1050`. `status-dot.tsx:8-9` cites the "quiet motion" rule while shipping no guard. Three dots are hand-rolled instead of `StatusDot` (`components/project-groups.tsx:344`, `components/app-shell.tsx:602`, `components/composer/composer.tsx:725`); only the composer's carries the guard.
+- **Differs**: `motion-safe:animate-spin` ×12, `motion-reduce:animate-none` ×5, but bare `animate-pulse` in `components/status-dot.tsx:21` (every pulsing dot), `components/ui/skeleton.tsx:7`, `routes/new-task.tsx:540,1399`; bare `animate-spin` in `routes/task-thread/thread-items.tsx:156,344,571` and `routes/github/github.tsx:955,1050`. `status-dot.tsx:8-9` cites the "quiet motion" rule while shipping no guard. Three dots are hand-rolled instead of `StatusDot` (`components/project-groups.tsx:344`, `components/app-shell.tsx:602`, `components/composer/composer.tsx:725`); only the composer's carries the guard.
 - **Rule**: new animation is `motion-safe:` or has `motion-reduce:animate-none`.
-- **Fix**: add `motion-reduce:animate-none` to `statusDotVariants` and `Skeleton`; guard the four spinners; replace the three ad-hoc dots.
+- **Fix**: add `motion-reduce:animate-none` to `statusDotVariants` and `Skeleton`; guard the five spinners; replace the three ad-hoc dots.
 
 ### G-09 Two diff renderers
 
-- **Differs**: `components/run-diff.tsx` (review panel, compare view: own parser via `lib/unified-diff`, no gutter, no word diff, 300-line clamp, its own status badge map without `copied`, a third inline `fileKey`) vs `components/diff/` (seven routes: gutters, word marks, split mode, virtualisation). `run-diff.tsx:19` calls itself "the honest R3 interim".
+- **Differs**: `components/run-diff.tsx` (review panel, compare view: own parser via `lib/unified-diff`, no gutter, no word diff, 300-line clamp, its own status badge map without `copied`, a third inline `fileKey`) vs `components/diff/` (seven routes: gutters, word marks, split mode, virtualisation). `run-diff.tsx:17` calls itself "the honest R3 interim".
 - **Rule**: `Diff` from `@/components/diff`.
 - **Fix**: migrate the review panel and compare view; delete `run-diff.tsx`.
 
 ### G-10 Destructive confirm styling is a copied string
 
-- **Differs**: `bg-danger text-danger-foreground hover:brightness-[0.96]` copied in `routes/settings/remove-project.tsx:78`, `routes/task-thread/run-header.tsx:990`, `routes/workflows/workflows.tsx:667`; the irreversible overwrite confirm in `workflows.tsx:658` is unstyled; the same file uses "Keep it" and "Keep the file".
+- **Differs**: `bg-danger text-danger-foreground hover:brightness-[0.96]` copied in `routes/settings/remove-project.tsx:78`, `routes/settings/worktrees-panel.tsx:162`, `routes/task-thread/run-header.tsx:990`, `routes/workflows/workflows.tsx:668`; the irreversible overwrite confirm in `workflows.tsx:648` is unstyled; the same file uses "Keep it" and "Keep the file".
 - **Rule**: tint every irreversible confirm; cancel reads "Keep it" unless a more specific kept outcome exists.
 - **Fix**: add a `danger` Button variant and use it in `AlertDialogAction`.
 
 ### G-11 Raw `<select>` in settings while the Select primitive is unused
 
-- **Differs**: `block w-full rounded-md border border-input bg-card px-3 py-1.5 text-sm shadow-xs …` on raw selects and number inputs ×5 (`routes/settings/resources-section.tsx:245,276,304,321`, `routes/settings/agents-section.tsx:238`); `components/ui/select.tsx` has 0 importers.
+- **Differs**: `rounded-md border border-input bg-card px-3 py-1.5` on raw selects and inputs at 23 sites (`routes/settings/resources-section.tsx` ×13, `agents-section.tsx` ×6, `projects-section.tsx:217`, `accounts-section.tsx:426`, `worktrees-section.tsx:108`, `routes/repo-git/repo-branches.tsx:162`); `components/ui/select.tsx` has 0 importers.
 - **Rule**: the raw control class for settings (it is what ships).
 - **Fix**: decide between adopting `Select` and deleting it; extract the raw class into a `NativeSelect` component.
 
@@ -103,11 +104,11 @@ Counts are non-test files or occurrences in `packages/web/src`.
 
 | What differs | Majority (the rule) | Minority | Where |
 | --- | --- | --- | --- |
-| Load-error title | "Could not load X" (14) | "X did not load" (9) | 8 of 9 under `routes/settings/` |
+| Load-error copy | "Could not load" (25 literal occurrences, case-insensitive) | "did not load" (10) | 9 of the 10 minority sites under `routes/settings/`, plus `routes/global-tasks.tsx` |
 | Retry label | "Retry" (5) | "Try again" (3) | `routes/settings/provider-settings.tsx` has both |
 | Search placeholder case | "Search tasks…" (12) | "search skills…" (6) | `routes/new-task.tsx`, `hand-to-agent.tsx`, `prompt-template-menu.tsx`, `prompt-templates-section.tsx` |
-| Dash | ` — ` (334) | ` – ` (10) | 9 in `routes/settings/mcp-api-section.tsx`, 1 in `mcp-connection-section.tsx:448` |
-| Negatives | "could not" (21) | "couldn’t" (7) | `routes/github/github.tsx` has both |
+| Dash | ` — ` | ` – ` (6 literal occurrences, including one comment) | `routes/settings/mcp-api-section.tsx:160,172,201,224,315,808` |
+| Negatives | "could not" | "couldn’t" (2, case-insensitive) | `routes/github/github.tsx:1252` (the file has both), `routes/task-thread/task-thread.tsx:540` |
 | Apostrophes | curly `’` (28) | straight `'` (~12) | `routes/settings/appearance.tsx`, `compare-loading.tsx`, `task-commits.tsx`, `project-general.tsx` |
 | Curly quotes | literal `“ ”` | `&ldquo;`/`&rdquo;` entities | `routes/workflows/workflows.tsx:641,658` |
 | Narrow-a-list verb | "Filter skills…" | "search skills…" | `routes/settings/prompt-templates-section.tsx:357` |
@@ -139,7 +140,7 @@ Counts are non-test files or occurrences in `packages/web/src`.
 
 ### G-19 One-off icon sizes
 
-- **Differs**: `size-[15px]` ×9, `size-[22px]`, `size-[19px]`, `size-[13px]`, `size-[9px]` (`routes/github/github.tsx:527`) beside the `size-3` / `size-3.5` / `size-4` scale.
+- **Differs**: `size-[15px]` ×12, `size-[22px]`, `size-[19px]`, `size-[13px]`, `size-[9px]` (`routes/github/github.tsx:527`) beside the `size-3` / `size-3.5` / `size-4` scale.
 - **Rule**: the scale.
 - **Fix**: round the one-offs to the nearest step.
 
@@ -157,7 +158,7 @@ Counts are non-test files or occurrences in `packages/web/src`.
 
 ### G-22 Save behaviour split inside one pane
 
-- **Differs**: `routes/settings/resources-section.tsx` saves selects on change (245-252) but needs an explicit Save for the wake interval (325).
+- **Differs**: `routes/settings/resources-section.tsx` saves selects on change (245-252) but needs an explicit Save for the wake interval (327).
 - **Rule**: on-change for selects and switches; explicit Save for text and numbers (this is what the pane does).
 - **Fix**: none needed beyond the rule; document per control.
 
@@ -191,7 +192,7 @@ Counts are non-test files or occurrences in `packages/web/src`.
 | --- | --- | --- |
 | "Views never hand-roll a centered message" | the error boundary, `skills-loading.tsx` and `PageState` do | `components/centered-state.tsx:17-18` (G-05) |
 | pulse follows the "quiet motion" rule | no reduced-motion guard | `components/status-dot.tsx:8-9,21` (G-08) |
-| `run-diff.tsx` is an interim to be replaced by `DiffFileBody`'s successor | the successor shipped; two consumers were never migrated | `components/run-diff.tsx:19,145-150` (G-09) |
+| `run-diff.tsx` is an interim to be replaced by `DiffFileBody`'s successor | the successor shipped; two consumers were never migrated | `components/run-diff.tsx:17,145-150` (G-09) |
 | "Reach for this on any control that is hidden until hover" | two sites use it | `styles/index.css:29-31` (G-21) |
 | `PopoverTitle` is typed `h2` | renders a `div` | `components/ui/popover.tsx:67-70` (G-07) |
 | the reference tones share `StatusDot`'s five roles | `ReferenceStatusTone` adds `info` and `conflict`, which `StatusDot` cannot paint | `lib/reference-status.ts:11-13`, `components/reference-chip.tsx:469` |
@@ -202,7 +203,7 @@ The shared stylesheet keeps the mockup's own class values so the quality-checks 
 Where those values differ from the cockpit, the delta is recorded here and the cockpit value is the rule
 for new work.
 
-| Class | Mockup value (shipped in `cockpit.css`) | Cockpit value | Source |
+| Class | Mockup value (`cockpit.css`; the `qc-` rows live in `designs/quality-checks/styles.css`) | Cockpit value | Source |
 | --- | --- | --- | --- |
 | `.btn` (small button) | 30px, `padding 0 12px`, weight 500, 12.5px | `h-[30px] px-2.5 text-[12.5px] font-semibold` | `components/ui/button.tsx` |
 | `.btn-new-task` | `calc(var(--spacing) * 10)` (40px), weight 500; `.new-task-row .btn-icon` matches at 40px | `h-10` (40px), `font-semibold`; Add project `size-11 md:size-10` | `components/app-shell.tsx:509`, `components/app-shell.tsx:740` |

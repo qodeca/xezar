@@ -17,6 +17,43 @@ Per `SDLC.md` § The QA gate, evidence is a PR comment whose first line is the h
 
 On PASS: apply `qa-approved` and remove `needs-qa`. On FAIL: remove `merge-queue`, post what failed as findings, and remove `qa-approved` if it was applied in error — a failed QA run is a hard block regardless of every other signal (`SDLC.md` § The QA gate). Never apply `qa`, `qa-failed`, `blocked` or `do-not-merge`: this repository does not define those labels; `.xezar/checks/lib/project-policy.mjs` refuses them as a fail-safe for a fork that does, not a vocabulary this role should reach for. This role is independent QA, not the self-QA exception (`qa-self-verified` is for the PR's own author signing off, never for this role).
 
+## Record the verdict on the task record
+
+After the `## QA` comment is posted and the labels above have been attempted, write ONE JSON packet to `${XEZ_HANDOFF_FILE}.verdict.json`. The engine reads it when this step settles and puts the verdict on the task record, where the leader reads it with `task_read view=task`. A verdict that exists only in a PR comment is one the leader must go and parse; this is the machine-readable half of the same report, never a replacement for it.
+
+Write it atomically — write `${XEZ_HANDOFF_FILE}.verdict.json.tmp`, then `mv` it onto the final name. Never redirect into the final path: a half-written packet is refused and costs you the report.
+
+Order matters: post the comment, then attempt the labels, then write the packet. The packet records what the labels actually DID, so it cannot honestly be written before they were tried.
+
+```json
+{
+  "id": "qa-<short sha>-<task id first 8>",
+  "taskId": "<$XEZ_TASK_ID>",
+  "stepId": "<$XEZ_STEP_ID>",
+  "role": "qa",
+  "verdict": "PASS",
+  "reviewedHeadSha": "<the full 40-character sha you exercised>",
+  "summary": "<one or two sentences, at most 2000 characters>",
+  "recordedAt": "<ISO-8601, now>",
+  "evidenceUrl": "<optional: the URL of the comment you posted>",
+  "labels": { "requestedAdd": ["qa-approved"], "requestedRemove": ["needs-qa"], "observed": ["qa-approved"], "state": "verified" }
+}
+```
+
+`taskId` and `stepId` are read from the environment this step runs under — `$XEZ_TASK_ID` and `$XEZ_STEP_ID`, both set for you. Never guess either one and never substitute the workflow name or the role: the engine compares `stepId` to the settling step's own id, and a mismatch refuses the packet and yields no verdict at all.
+
+`verdict` is `PASS` or `FAIL` and nothing else — this role has no third outcome, and a QA `PASS` is never business acceptance. `id` is stable for THIS report: the same id with identical content is a no-op, the same id with different content is refused. `reviewedHeadSha` is never abbreviated and never the branch's current head when that is not what you exercised.
+
+`labels` is evidence, not intent. `requestedAdd` / `requestedRemove` are what you asked `gh` to do (empty arrays when you asked for nothing). Then read the labels back and set:
+
+- `"state": "verified"` with `observed` (what you read back) and `observedAt`, when every request applied;
+- `"state": "partial"` with the same two fields, when some applied or the read-back disagrees;
+- `"state": "unavailable"` and NO `observed` key at all, when you could not read or write them. An empty `observed` under `unavailable` is refused: "we looked and there were none" and "we could not look" must never be the same value.
+
+A failed label operation never changes your verdict. A posted `FAIL` stays `FAIL` with `unavailable` label evidence — the hard block does not weaken because `gh` did.
+
+Bounds the engine enforces: at most 40 KB, a regular file and never a symlink, and `taskId`/`stepId` must be this task and this step. A packet failing any of them records a refusal on the task and yields no verdict at all — the leader then sees "refused", which is what it should see.
+
 ## Shared contract
 
 Before reading kit files in a standalone skill run, if `.xezar/checks/bootstrap.sh` is absent, run `bash "$(git rev-parse --path-format=absolute --git-common-dir)/../.xezar/checks/bootstrap.sh"`. If unavailable or refused, stop with that specific blocker. Never fabricate commands or copy runtime. Workflow launches already perform this step.

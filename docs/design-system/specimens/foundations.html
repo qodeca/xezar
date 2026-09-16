@@ -31,14 +31,14 @@
   <a href="patterns.html">Patterns</a>
   <span class="spacer"></span>
   <label>Accent <select name="accent" data-appearance="accent" aria-label="Accent"><option value="lime">Lime</option><option value="violet">Violet</option></select></label>
-  <label>Density <select name="density" data-appearance="density" aria-label="Density"><option value="comfortable">Comfortable</option><option value="roomy">Roomy</option><option value="compact">Compact</option><option value="ultra">Ultra</option></select></label>
+  <label>Density <select name="density" data-appearance="density" aria-label="Density"><option value="comfortable">Comfortable</option><option value="roomy">Roomy</option><option value="compact">Compact</option><option value="ultra">Compact for real</option></select></label>
   <label>Width <select name="width" data-appearance="width" aria-label="Reading width"><option value="normal">Normal</option><option value="wide">Wide</option></select></label>
   <button type="button" class="theme-toggle" data-theme-toggle>Toggle theme</button>
 </nav>
 
 <main class="doc">
   <h1>Foundations</h1>
-  <p class="lead">Every token from <code>packages/web/src/styles/index.css</code>, live. The value under each swatch is the computed value in the current theme, so toggle the theme and watch the 26 light overrides change. The rules are in <a class="link" href="../foundations.md">foundations.md</a>.</p>
+  <p class="lead">Theme-token swatches and the static scales from <code>packages/web/src/styles/index.css</code>, live. Swatch values are computed in the current theme; toggle to see the light overrides. Radius and shadow captions are static. The Tailwind utility mappings are documented, not drawn here. The rules are in <a class="link" href="../foundations.md">foundations.md</a>.</p>
 
   <h2>1. Colour tokens</h2>
   <p>Grouped as in foundations.md §1. Swatches are painted with <code>var(--token)</code>; aliases resolve to what they point at.</p>
@@ -85,17 +85,17 @@
   </div>
 
   <h2>3. Typography</h2>
-  <p>Body is 14 px Inter Variable on <code>--sans</code>; code and numbers use <code>--mono</code> (JetBrains Mono Variable). The Tailwind steps the cockpit uses, plus the arbitrary sizes it reaches for.</p>
+  <p>Body is 14 px Inter Variable on <code>--sans</code>; code and numbers use <code>--mono</code> (JetBrains Mono Variable). A selection of type steps, not the full inventory; foundations.md §3 lists the intervening arbitrary sizes and their uses.</p>
   <div class="frame pad">
-    <div class="type-row"><span class="k">text-2xl · 24px</span><span style="font-size:24px;font-weight:600">Tasks</span></div>
-    <div class="type-row"><span class="k">text-xl · 20px</span><span style="font-size:20px;font-weight:600">Settings</span></div>
+    <div class="type-row"><span class="k">text-2xl · 24px</span><span style="font-size:24px;font-weight:600">CenteredState title</span></div>
+    <div class="type-row"><span class="k">text-xl · 20px</span><span style="font-size:20px;font-weight:600">Compare variants</span></div>
     <div class="type-row"><span class="k">text-lg · 18px</span><span style="font-size:18px;font-weight:600">Fix the flaky test in store.test.ts</span></div>
     <div class="type-row"><span class="k">text-base · 16px</span><span style="font-size:16px">Body on phones (inputs never zoom).</span></div>
     <div class="type-row"><span class="k">text-sm · 14px</span><span style="font-size:14px">The default body size on desktop.</span></div>
     <div class="type-row"><span class="k">text-[13px]</span><span style="font-size:13px">Hints under a setting, table cells, secondary rows.</span></div>
     <div class="type-row"><span class="k">text-xs · 12px</span><span style="font-size:12px">Metadata, pills, chip labels.</span></div>
-    <div class="type-row"><span class="k">text-[11px]</span><span style="font-size:11px">Field errors and hints, eyebrows, version chips.</span></div>
-    <div class="type-row"><span class="k">text-[10px]</span><span style="font-size:10px">Diff status badges.</span></div>
+    <div class="type-row"><span class="k">text-[11px]</span><span style="font-size:11px">Section eyebrows.</span></div>
+    <div class="type-row"><span class="k">text-[10px]</span><span style="font-size:10px">Version chip and diff status badges.</span></div>
     <div class="type-row"><span class="k">font-mono</span><span class="mono">xez/1a2b3c4d · +59 −12 · 4.2k tokens · 0:42</span></div>
     <div class="type-row"><span class="k">weights</span><span style="font-weight:400">Regular 400</span><span style="font-weight:500">Medium 500</span><span style="font-weight:600">Semibold 600</span></div>
     <div class="type-row"><span class="k">.eyebrow</span><span class="eyebrow">Section label</span></div>

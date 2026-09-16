@@ -7,7 +7,9 @@ description: UX design for a user-facing surface
 
 Design how a person actually uses a surface: the flow, what they see first, and every state. Write it as design, with reasons, not as a list of controls. Two workflows run this skill: `design` (authoring, the questions below, output committed to `designs/<feature>/`) and `design-review` (the review mode at the end of this file). It is also read inside `plan-and-spec` (a UX design section in the spec) and `feature-implementation` (before changing a cockpit view) when a task touches a user-facing surface. Whichever way it is reached, its output is a mockup, a section or a verdict, never application code.
 
-Before anything else, read the design system: start at `docs/design-system/README.md`, then the pages it routes you to for a design (`foundations.md`, `components.md`, `patterns.md`, `writing.md`, `new-designs.md`) and `known-gaps.md`. Name the token, component and pattern you reuse by the name the design system gives it, and put every departure from it in the design's open decisions. A mockup in `designs/<feature>/` links `docs/design-system/cockpit.css` and keeps only feature-specific rules in its own stylesheet.
+Before anything else, read the design system: start at `docs/design-system/README.md`, then follow the task route and page-selection guidance below, including `known-gaps.md`. Name the token, component and pattern you reuse by the name the design system gives it, and put every departure from it in the design's open decisions. A mockup in `designs/<feature>/` links `docs/design-system/cockpit.css` and keeps only feature-specific rules in its own stylesheet.
+
+Read [usage](../../docs/design-system/usage.md) to scope the brief and [verification](../../docs/design-system/verification.md) before work and when recording results. For task tables/pins, threads/composers, settings, overlays or states, open [recipes](../../docs/design-system/recipes.md) before choosing components. Read [lifecycle](../../docs/design-system/lifecycle.md) for actors, exact-content acceptance, status transitions and review gates, and [storage](../../docs/design-system/storage.md) before creating mockups, handoffs or captures. These pages guide authoring and review; historical mockups are evidence, not current approved grammar.
 
 Answer each of these in prose:
 
@@ -23,15 +25,17 @@ Answer each of these in prose:
 
 Reuse the cockpit's existing patterns before inventing new ones, and name the component you reuse. Prior art from other products is `xezar-research` work: cite it with URL and read date, or mark it unverified. A design is verified by browser/manual QA per SDLC; an unavailable browser is not a pass.
 
-Inputs: the surface, its users' job and the accepted AC. Output: a UX design section covering the nine points above, with criteria a tester can check. Do not turn a design request into an implementation. In the `design` workflow the output is `designs/<feature>/`: `index.html` and one page per screen linking `../../docs/design-system/cockpit.css`, a local `styles.css` with feature rules only, and `README.md` with the headings `designs/README.md` lists plus a `## Design review` section reading "Pending". It is committed; the handoff PR carries `needs-design`.
+Inputs: the surface, its users' job and the accepted AC. Output: a UX design section covering the nine points above, with criteria a tester can check. Do not turn a design request into an implementation. In the `design` workflow the output is `designs/<feature>/`: `index.html` and one page per screen linking `../../docs/design-system/cockpit.css`, a local `styles.css` with feature rules only, and `README.md` with the headings `designs/README.md` lists plus a `## Design review` section reading "Pending". The author owns these files and registers Draft in both the feature README and `designs/README.md`. Commit the complete mockup and developer handoff after focused checks; the workflow then runs readiness, canonical gates and evidence sealing before its handoff step opens the draft PR with `needs-design`. The PR handoff step changes no design content. Store captures and provenance per `storage.md`; private evidence never becomes a maintained-document dependency.
 
 ## Review mode
 
-The `design-review` workflow runs this skill read-only. Inputs: a `designs/<feature>/` path or a PR number. For a PR, read `gh pr view` and `gh pr diff`, boot the cockpit per `docs/testing/agent-browser.md` and look at both themes at 375px and at desktop width; an unavailable browser is not a pass and is reported as such. Read in the order the design system's README gives its review route: `docs/design-system/known-gaps.md` → `patterns.md` → `components.md` → `behaviour.md`.
+The `design-review` workflow runs this skill read-only. Inputs: a `designs/<feature>/` path or a PR number. For a PR, read `gh pr view` and `gh pr diff`. Inspect the review target in a browser per `docs/testing/agent-browser.md`, in both themes at 375px and at desktop width; an unavailable browser is not a pass and is reported as such. Read in the order the design system's README gives its review route: `docs/design-system/known-gaps.md` → `patterns.md` → `components.md` → `behaviour.md`.
+
+Then open `recipes.md` for the affected composition, `verification.md` for the required evidence, `lifecycle.md` for the judged revision and transitions, and `storage.md` for capture provenance and evidence placement. Inspect static mockups from disk; review application changes in the running cockpit. Keep source-test results separate from rendered measurements and mark unavailable checks as not run.
 
 Check, in this order:
 
-- the ten rules in `docs/design-system/README.md`;
+- the eleven rules in `docs/design-system/README.md`;
 - the states of `new-designs.md` §4 – default, empty, loading, error, refusal, phone;
 - appearance per `new-designs.md` §5 – theme, accent, density, width;
 - the accessibility bar of point 7 above;
@@ -40,7 +44,44 @@ Check, in this order:
 
 Verdict vocabulary: PASS, PASS WITH FOLLOW-UPS, FAIL. Findings are numbered B-n (blocking) and NB-n (non-blocking); each names `file:line` or page + state and the rule it breaks. Judgement goes on points 1–9; what a test already catches (the guardian, the drift test, the designs lint) is not a finding.
 
-Output: exactly one PR comment whose first line is `## Design review`, posted with `gh pr comment`, carrying the reviewed commit SHA, the reviewer role, the themes and widths checked, the verdict and every finding. When there is no PR, the same text is the run's final message and the requester places it. Never edit the tree; the author links the comment from the README's `## Design review` section. Move labels (`design-approved`, `needs-design`) only when the assignment says so. End the turn with `XEZ:DONE` right after the verdict: a review has nothing to wait for, and a headless run has no channel to answer a question (the first real run stayed in `waiting` for this reason).
+Output: exactly one PR comment whose first line is `## Design review`, posted with `gh pr comment`, carrying the reviewed commit SHA, the reviewer role, the themes and widths checked, the verdict and every finding. When there is no PR, the same text is the run's final message and the requester places it. Never edit the tree; the author links the comment from the README's `## Design review` section, records every finding's disposition and updates both the feature README status and designs index per `lifecycle.md`. Approved requires PASS or PASS WITH FOLLOW-UPS on identified content plus all dispositions; FAIL or missing required evidence stays In review. Owner acceptance of exact scope/revision is recorded externally in the issue or PR, not inferred from labels. Keep safe review captures and their metadata per `storage.md`, with private working evidence in the durable task evidence directory. Move labels (`design-approved`, `needs-design`) only when the assignment says so. End the turn with `XEZ:DONE` right after the verdict: a review has nothing to wait for, and a headless run has no channel to answer a question (the first real run stayed in `waiting` for this reason).
+
+### Record the verdict on the task record
+
+In review mode only. After the comment is posted and any labels the assignment authorizes have been attempted, write ONE JSON packet to `${XEZ_HANDOFF_FILE}.verdict.json`. The engine reads it when this step settles and puts the verdict on the task record, where the leader reads it with `task_read view=task`. A verdict that exists only in a comment is one the leader must go and parse; this is the machine-readable half of the same report, never a replacement for it.
+
+Write it atomically — write `${XEZ_HANDOFF_FILE}.verdict.json.tmp`, then `mv` it onto the final name. Never redirect into the final path: a half-written packet is refused and costs you the report.
+
+Order matters: post the comment, then attempt the labels, then write the packet. The packet records what the labels actually DID, so it cannot honestly be written before they were tried.
+
+```json
+{
+  "id": "design-review-<short sha>-<task id first 8>",
+  "taskId": "<$XEZ_TASK_ID>",
+  "stepId": "<$XEZ_STEP_ID>",
+  "role": "design-review",
+  "verdict": "PASS WITH FOLLOW-UPS",
+  "reviewedHeadSha": "<the full 40-character sha you reviewed>",
+  "summary": "<one or two sentences, at most 2000 characters>",
+  "recordedAt": "<ISO-8601, now>",
+  "evidenceUrl": "<optional: the URL of the comment you posted>",
+  "labels": { "requestedAdd": [], "requestedRemove": [], "observed": [], "state": "verified" }
+}
+```
+
+`taskId` and `stepId` are read from the environment this step runs under — `$XEZ_TASK_ID` and `$XEZ_STEP_ID`, both set for you. Never guess either one and never substitute the workflow name or the role: the engine compares `stepId` to the settling step's own id, and a mismatch refuses the packet and yields no verdict at all.
+
+`verdict` is `PASS`, `PASS WITH FOLLOW-UPS` or `FAIL`, written exactly as posted. `PASS WITH FOLLOW-UPS` is its own outcome: never write it as `PASS`, or the non-blocking findings disappear from the record. `id` is stable for THIS report — the same id with identical content is a no-op, the same id with different content is refused — and `reviewedHeadSha` is never abbreviated.
+
+`labels` is evidence, not intent. `requestedAdd` / `requestedRemove` are what you asked `gh` to do (empty arrays when you asked for nothing, which is the usual case for this role). Then read the labels back and set:
+
+- `"state": "verified"` with `observed` (what you read back) and `observedAt`, when every request applied;
+- `"state": "partial"` with the same two fields, when some applied or the read-back disagrees;
+- `"state": "unavailable"` and NO `observed` key at all, when you could not read or write them. An empty `observed` under `unavailable` is refused: "we looked and there were none" and "we could not look" must never be the same value.
+
+A failed label operation never changes your verdict. A posted `FAIL` stays `FAIL` with `unavailable` label evidence.
+
+Bounds the engine enforces: at most 40 KB, a regular file and never a symlink, and `taskId`/`stepId` must be this task and this step. A packet failing any of them records a refusal on the task and yields no verdict at all — the leader then sees "refused", which is what it should see.
 
 ## Shared contract
 
