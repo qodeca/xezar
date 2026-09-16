@@ -6,6 +6,7 @@ import type { HealthResponse, SkillsUpdateState } from '@qodeca/xezar-api-client
 import { AppShell, type RepoChip } from '@/components/app-shell'
 import { CommandPalette } from '@/components/command-palette'
 import { ListViewProvider } from '@/components/list-view'
+import { OnboardingOfferContainer } from '@/components/onboarding-offer-container'
 import { ProviderBannerContainer } from '@/components/provider-banner-container'
 import { ProjectGroups } from '@/components/project-groups'
 import { TaskQuickListContainer } from '@/components/task-quick-list'
@@ -137,7 +138,15 @@ export function AppShellContainer({ children }: { children: ReactNode }) {
         inboxAvailable={inboxAvailable}
         // Hidden unless health reports the opt-in automations capability (#801).
         automationsAvailable={automationsAvailable}
-        banner={<ProviderBannerContainer />}
+        // Two rows in the one banner slot. The provider banner keeps its place and its meaning;
+        // the onboarding offer (#464 P2) sits under it in the status tone, and renders nothing
+        // whenever there is no pending offer — which is almost always.
+        banner={
+          <>
+            <ProviderBannerContainer />
+            <OnboardingOfferContainer />
+          </>
+        }
         singleProject={health.data?.capabilities.singleProject === true}
         taskQuickList={<TaskQuickListContainer />}
         // Present only in a multi-project workspace; `AppShell` renders the flat nav and the

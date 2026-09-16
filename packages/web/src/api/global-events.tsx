@@ -13,7 +13,7 @@ import {
   type UsageStore,
 } from './events'
 import { apiPath, getApiScope } from '@qodeca/xezar-api-client'
-import { queryKeys, useHealthSubscription, workspaceQueryKeys } from './queries'
+import { ONBOARDING_WORKFLOW, queryKeys, useHealthSubscription, workspaceQueryKeys } from './queries'
 import type {
   ApiRun,
   HealthResponse,
@@ -164,6 +164,18 @@ function reconcile(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: queryKeys.worktrees })
   void queryClient.invalidateQueries({ queryKey: workspaceQueryKeys.providerStatus })
   void queryClient.invalidateQueries({ queryKey: queryKeys.mcpLeader })
+  // The setup state (#464 P2). Its query has no interval, no focus refetch and no reconnect
+  // refetch, and its one reader is mounted for the life of the app — so if this list does not
+  // carry it, a setup task that finished while the tab was away leaves the surface on
+  // "Re-checking" until a full page reload. `applyGlobalEvent` covers the connected tab.
+  void queryClient.invalidateQueries({ queryKey: queryKeys.onboarding })
+}
+
+/** A run status that will not change again on its own. The setup surfaces care about the edge
+ *  into it, in BOTH directions: a finished check moves "last successfully checked", and a
+ *  cancelled or failed one still has to clear `checking`. */
+function isTerminalRunStatus(status: ApiRun['status']): boolean {
+  return status === 'done' || status === 'failed' || status === 'cancelled' || status === 'review'
 }
 
 /**
@@ -202,6 +214,17 @@ function applyGlobalEvent(queryClient: QueryClient, usage: UsageStore, event: Gl
       // A terminal transition can reclaim (or re-materialize) a worktree (#483); keep the
       // panel live. invalidateQueries only refetches while the panel is actually mounted.
       void queryClient.invalidateQueries({ queryKey: queryKeys.worktrees })
+      // The other half of the setup state (#464 P2, review round 1 finding 2). The server
+      // answers `checking` only while a setup run is ACTIVE, so the moment that run reaches a
+      // terminal status the cached answer is wrong — and nothing else would ever refetch it:
+      // `useOnboarding` has no interval, the client defaults turn off focus and reconnect
+      // refetches, and the offer row is mounted permanently, so its observer never remounts to
+      // notice `staleTime`. Narrowed to the launch definition's own runs: an ordinary task
+      // finishing changes nothing here, and a refetch per finished task would be a request the
+      // surface has no use for.
+      if (event.run.workflow === ONBOARDING_WORKFLOW && isTerminalRunStatus(event.run.status)) {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.onboarding })
+      }
       return
     }
     case 'run-deleted': {

@@ -10,6 +10,7 @@ import {
   checkoutProject,
   connectProvider,
   continueRun,
+  createRun,
   continueProjectRun,
   createAgentProfile,
   getAgentConfig,
@@ -57,6 +58,7 @@ import {
   getSkillsUpdate,
   checkSkillsUpdate,
   applySkillsUpdate,
+  getOnboarding,
   getWorktrees,
   getMcpApiReference,
   getMcpLeader,
@@ -85,6 +87,7 @@ import { useProjectScope } from './project-scope-context'
 import { isReferenceStatus } from '@/lib/reference-status'
 import { githubRepoBase } from '@/lib/tasks-table'
 import { normalizeTagsForDisplay } from '@/lib/project-tags'
+import { setupBrief, type CockpitSetupMode } from '@/lib/onboarding'
 import type { ContinueOptions } from './client'
 import type {
   CheckoutProjectInput,
@@ -190,6 +193,10 @@ export const queryKeys = {
   /** The worktree management panel (`GET /api/worktrees`, #483). */
   get worktrees() {
     return [queryScope(), 'worktrees'] as const
+  },
+  /** This project's setup state (`GET /api/v1/onboarding`, #464 P2). */
+  get onboarding() {
+    return [queryScope(), 'onboarding'] as const
   },
   /** The read-only MCP API reference (`GET /api/v1/mcp/reference`, #284). */
   get mcpApiReference() {
@@ -1090,6 +1097,51 @@ export function useWorktrees() {
     queryFn: ({ signal }) => getWorktrees({ signal }),
   })
 }
+
+/**
+ * This project's setup state (#464 P2).
+ *
+ * **No `refetchInterval` and no WebSocket topic**, deliberately. The state changes when a setup
+ * task finishes, which is already a `run` event on the one global SSE stream. A poll here would
+ * wake the browser for a screen whose answer changes a handful of times in a project's whole life.
+ *
+ * That only works because BOTH halves of the stream carry this key, and the first round of this
+ * feature shipped with one of them: `global-events.tsx` invalidates it from a setup run's terminal
+ * `run` event (the connected tab) AND from `reconcile()` (a reconnect, or a tab coming back).
+ * Without the pair, `checking` never clears — this query has no interval, the client defaults turn
+ * off the focus and reconnect refetches, and the offer row is mounted for the life of the app, so
+ * `staleTime` never gets a remount to fire on. Half the sites is half a fix.
+ */
+export function useOnboarding() {
+  return useQuery({
+    queryKey: queryKeys.onboarding,
+    queryFn: ({ signal }) => getOnboarding({ signal }),
+  })
+}
+
+/**
+ * Start the setup or re-check task (#464 P2).
+ *
+ * One hook for all three entries — the Tasks hero, the Settings card and the offer row — so the
+ * three cannot start subtly different tasks. It creates an ORDINARY task from the bundled launch
+ * definition: it lands in the task list, it can be opened, and it can be cancelled.
+ */
+export function useStartSetupTask() {
+  const queryClient = useQueryClient()
+  const scope = queryScope()
+  return useMutation({
+    mutationFn: (mode: CockpitSetupMode) =>
+      createRun({ workflow: ONBOARDING_WORKFLOW, task: setupBrief(mode) }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: [scope, 'runs'] })
+      void queryClient.invalidateQueries({ queryKey: [scope, 'onboarding'] })
+    },
+  })
+}
+
+/** The bundled launch definition's id. Server-side it is `ONBOARDING_WORKFLOW_ID`; the two are
+ *  pinned together by `onboarding-api.test.ts`, which reads the id off the route's own answer. */
+export const ONBOARDING_WORKFLOW = 'project-setup'
 
 /** The MCP API reference (#284). The tool list is fixed for the life of the server process
  *  (`listChanged: false`), so it is fetched once: no polling, no topic, no refetch on focus. */

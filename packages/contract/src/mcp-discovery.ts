@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { capabilitiesSchema, runnerSchema } from './health.ts';
+import { onboardingStatusSchema } from './onboarding.ts';
 import { providerConnectionStateSchema } from './workspace.ts';
 
 /**
@@ -116,5 +117,15 @@ export const mcpDiscoverySchema = z.strictObject({
   tools: z.array(mcpDiscoveryToolCheckSchema),
   limits: mcpDiscoveryLimitsSchema,
   actions: z.array(mcpDiscoveryActionSchema),
+  /**
+   * This project's setup state (#464 P2) — the same derivation the cockpit's Settings → Project
+   * setup section reads, so a leader and a person cannot be told different things about whether a
+   * check ever happened.
+   *
+   * It is a READ. Nothing here authorises a run: `state: "changed"` with `lastOffered` absent is a
+   * pending offer, and dispatching a check is a separate, deliberate `task_create` naming
+   * `launch.workflowId`.
+   */
+  onboarding: onboardingStatusSchema,
 });
 export type McpDiscovery = z.infer<typeof mcpDiscoverySchema>;
