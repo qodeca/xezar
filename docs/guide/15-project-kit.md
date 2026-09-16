@@ -58,6 +58,12 @@ Keep these distinctions in mind:
 
 These project settings are separate from `~/.xezar/config.json`. Do not copy the workspace registry into your project's kit.
 
+## To add an optional agent pipeline
+
+[Guided setup](01-getting-started.md#to-let-an-agent-set-up-this-project-optional) can optionally add `.xezar/pipeline/config.json`, a project's own agent-delivery pipeline configuration. That file's shape belongs to the `xez-setup-agent-pipeline` skill, not to the engine. The skill itself comes from the default public team-skills source, with a pinned fallback bundled in xezar so setup still works offline or when that source cannot be reached.
+
+This step is opt-in: decline it, or skip the question, and setup writes no pipeline file — the rest of setup still applies. Running setup again later can add it without repeating what you already accepted.
+
 ## To learn from xezar's own kit
 
 The xezar repository's kit contains **18 workflow YAML files and 20 skill Markdown files** at the source revision used for this guide. It includes documentation maintenance, bug investigation, implementation, review, testing and release workflows, alongside checks and pipeline guidance.
@@ -70,6 +76,7 @@ The kit can also wrap a shared skill locally. For example, its issue-filing wrap
 
 - `.xezar/workflows/` and `.xezar/skills/`: project-maintained workflow and instruction files.
 - `.xezar/config.json`: optional project settings; [schema](../../packages/xezar/src/config.ts).
+- `.xezar/pipeline/config.json`: optional agent-pipeline configuration added by [guided setup](01-getting-started.md#to-let-an-agent-set-up-this-project-optional); shape owned by the `xez-setup-agent-pipeline` skill.
 - `~/.xezar/config.json`: separate workspace settings and project registry.
 - `XEZ_REVIEW_GATE`, `XEZ_SKILLS_AUTO_UPDATE`, `XEZ_HOME`: see the [environment contract](../../.env.example), including stored-setting precedence.
 
