@@ -41,6 +41,9 @@ const PROJECT: ProjectListEntry = {
   source: 'local',
   status: 'ok',
 }
+/** Set by a test that needs the active project on GitHub (#466); every other test sees no forge. */
+let projectForge: 'github' | undefined
+const currentProject = (): ProjectListEntry => (projectForge ? { ...PROJECT, forge: projectForge } : PROJECT)
 
 /** One discovered profile per provider plus one extra Claude login. */
 const WITH_WORK_ACCOUNT: AgentProfilesResponse = {
@@ -192,7 +195,7 @@ function serve({
         return json({ selections })
       }
       if (url === '/api/v1/projects' && method === 'GET') {
-        return json({ projects: [PROJECT], bootProject: 'boot', projectsDir: '~/xezar/projects' })
+        return json({ projects: [currentProject()], bootProject: 'boot', projectsDir: '~/xezar/projects' })
       }
       // One catalog per discovery runner (#794): this screen renders a row per runner, so it
       // asks each host CLI separately rather than reusing Codex's answer everywhere.
@@ -219,7 +222,7 @@ function gateSeededClient() {
   // the Account picker disabled and let its assertions pass only because `fireEvent` ignores
   // `disabled`. This is the state the cockpit is really in by the time Settings paints.
   client.setQueryData(workspaceQueryKeys.projects, {
-    projects: [PROJECT],
+    projects: [currentProject()],
     bootProject: 'boot',
     projectsDir: '~/xezar/projects',
   })
@@ -403,6 +406,28 @@ describe('the agents form', () => {
     fireEvent.click(toggle)
     await waitFor(() => expect(puts()).toHaveLength(1))
     expect(puts()[0]?.body).toEqual({ reviewGate: true })
+  })
+
+  it('review changes: names the draft pull request only for a GitHub project, and toasts the setting by its name (#466)', async () => {
+    serve()
+    renderAt('/settings/agents')
+    await waitFor(() => expect(form()).not.toBeNull())
+    expect(document.body.textContent).toContain('pauses so you can Accept or Send back.')
+    expect(document.body.textContent).not.toMatch(/draft pull request|Draft PR/)
+    fireEvent.click(screen.getByLabelText('Review changes before finishing'))
+    await waitFor(() => expect(document.body.textContent).toContain('Review changes on'))
+    expect(document.body.textContent).not.toContain('Review gate')
+    cleanup()
+
+    projectForge = 'github'
+    try {
+      serve()
+      renderAt('/settings/agents')
+      await waitFor(() => expect(form()).not.toBeNull())
+      expect(document.body.textContent).toContain('pauses so you can Accept or Send back, or open a draft pull request on GitHub.')
+    } finally {
+      projectForge = undefined
+    }
   })
 
   it('default runner round-trips: click PUTs the patch and the control follows the answer', async () => {

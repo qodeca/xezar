@@ -94,6 +94,24 @@ export const HEALTH_TOOL = {
   annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
 } as const;
 
+/**
+ * #460 § 4. Told to EVERY client, attached or not, because a compaction is the one moment a leader
+ * cannot tell what it still holds: pushed messages that were in flight are simply gone from its
+ * context, and xezar re-pushes nothing on a timer. The recovery is therefore a read, and the text
+ * names all five things the leader must do — read after a compaction, expect retained unacked
+ * pushes, deduplicate and acknowledge explicitly, recover from a gap through the current state, and
+ * not poll while idle. Appended at the ONE place the instructions are answered, so no variant —
+ * pushed, unpushable or non-Claude — can be shipped without it.
+ */
+export const COMPACTION_RECOVERY =
+  'After context compaction, call `leader_events` with action `read` and no cursor before relying on prior pushes. ' +
+  'It replays retained events after your last explicit acknowledgement, including events pushed but not acknowledged. ' +
+  'Read every page using nextCursor while hasMore is true. Deduplicate by eventId, reconcile current task state, ' +
+  'then acknowledge only the events you have accounted for. A transport receipt is not an acknowledgement. ' +
+  'Delivery is at-least-once within retained durable state, not exactly-once. ' +
+  'If the journal reports a gap, reconcile the returned current state before acknowledging resumeCursor. ' +
+  'Do not poll while idle.';
+
 // #439: a project leader drives xezar through these tools only. #450: attaching is one of them too, so
 // no leader-facing string names an HTTP route any more.
 const BASE =
@@ -227,7 +245,9 @@ export function runBridge(opts: BridgeOptions): Promise<void> {
             protocolVersion: negotiateProtocolVersion(init.data.protocolVersion),
             capabilities: serverCapabilitiesFor(clientName, channel),
             serverInfo: { name: 'xezar', title: 'xezar', version: opts.version },
-            instructions: !claude ? INSTRUCTIONS : channel ? CHANNEL_INSTRUCTIONS : NO_PUSH_INSTRUCTIONS(push.reason ?? OLDER_SERVICE_REASON),
+            // #460 § 4: every variant ends with the compaction recovery, appended here rather than
+            // in each variant so a future fourth variant cannot ship without it.
+            instructions: `${!claude ? INSTRUCTIONS : channel ? CHANNEL_INSTRUCTIONS : NO_PUSH_INSTRUCTIONS(push.reason ?? OLDER_SERVICE_REASON)} ${COMPACTION_RECOVERY}`,
           });
         };
         void session.initialize().then(

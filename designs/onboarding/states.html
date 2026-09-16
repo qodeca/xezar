@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Onboarding design – every state</title>
+<link rel="stylesheet" href="../../docs/design-system/cockpit.css">
+<link rel="stylesheet" href="styles.css">
+<script src="theme.js"></script>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-compass" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></symbol>
+  <symbol id="i-rotate" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+  <symbol id="i-question" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></symbol>
+  <symbol id="i-loader" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.22-8.56"/></symbol>
+  <symbol id="i-tasks" viewBox="0 0 24 24"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="18" y2="18"/></symbol>
+  <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></symbol>
+</svg>
+
+<nav class="doc-bar" aria-label="Design pages">
+  <span class="brand">Onboarding design</span>
+  <a href="index.html">Overview</a>
+  <a href="entry.html">Setup entry</a>
+  <a href="offer.html">Post-update offer</a>
+  <a href="states.html" aria-current="page">States</a>
+  <span class="spacer"></span>
+  <button class="theme-toggle" type="button" data-theme-toggle>Light / dark</button>
+</nav>
+
+<div class="doc">
+  <h1>Every state</h1>
+  <p class="lead">Each state has its own sentence. No state is told by colour or by an icon alone, and no state claims a check that did not finish. Switch the theme in the bar above; narrow the window under 860&nbsp;px for the phone layout.</p>
+
+  <h2>1. The setup entry in Settings → Project setup</h2>
+
+  <div class="state-grid">
+
+    <figure>
+      <figcaption>1a. Never set up<span>no record, or a record with no finished check</span></figcaption>
+      <div class="card setup-card">
+        <div class="head">
+          <div class="grow">
+            <h3><span class="dot" aria-hidden="true"></span>Not set up yet</h3>
+            <p>No setup has been recorded for this project. You can still create ordinary tasks — setup is optional, and it is never required to start work.</p>
+          </div>
+          <div class="actions"><button class="btn md contrast" type="button"><svg class="icon sm"><use href="#i-compass"/></svg>Set up this project</button></div>
+        </div>
+        <dl class="ident-list">
+          <div><dt>Last observed</dt><dd>xezar 0.15.0 · templates 2c20c60</dd></div>
+          <div><dt>Last offered</dt><dd class="absent">—<span class="sr-only">not recorded</span></dd></div>
+          <div><dt>Last successfully checked</dt><dd class="absent">—<span class="sr-only">not recorded</span></dd></div>
+        </dl>
+      </div>
+    </figure>
+
+    <figure>
+      <figcaption>1b. Set up<span>a check finished against the identity that is running</span></figcaption>
+      <div class="card setup-card">
+        <div class="head">
+          <div class="grow">
+            <h3><span class="dot success" aria-hidden="true"></span>Set up</h3>
+            <p>The last check finished against xezar 0.15.0 and templates 2c20c60. A re-check compares this project's files against the pinned defaults and shows you the differences.</p>
+          </div>
+          <div class="actions"><button class="btn md" type="button"><svg class="icon sm"><use href="#i-rotate"/></svg>Re-check now</button></div>
+        </div>
+        <dl class="ident-list">
+          <div><dt>Last observed</dt><dd>xezar 0.15.0 · templates 2c20c60</dd></div>
+          <div><dt>Last offered</dt><dd class="absent">—<span class="sr-only">not recorded</span></dd></div>
+          <div><dt>Last successfully checked</dt><dd>xezar 0.15.0 · templates 2c20c60 <span class="when">— 14 Sep, 09:12</span></dd></div>
+        </dl>
+      </div>
+    </figure>
+
+    <figure>
+      <figcaption>1c. Changed identity<span>the twin of the offer row, for a person who came here instead</span></figcaption>
+      <div class="card setup-card">
+        <div class="head">
+          <div class="grow">
+            <h3><span class="dot pending" aria-hidden="true"></span>Changed since the last check</h3>
+            <p>The last check finished against xezar 0.14.0. xezar 0.15.0 is running now. A re-check compares this project's files against the pinned defaults and shows you the differences.</p>
+          </div>
+          <div class="actions"><button class="btn md contrast" type="button"><svg class="icon sm"><use href="#i-rotate"/></svg>Re-check now</button></div>
+        </div>
+        <dl class="ident-list">
+          <div><dt>Last observed</dt><dd>xezar 0.15.0 · templates 9f1a3b4</dd></div>
+          <div><dt>Last offered</dt><dd class="absent">—<span class="sr-only">not recorded</span></dd></div>
+          <div><dt>Last successfully checked</dt><dd>xezar 0.14.0 · templates 2c20c60 <span class="when">— 2 Sep, 16:40</span></dd></div>
+        </dl>
+      </div>
+    </figure>
+
+    <figure>
+      <figcaption>1d. Dismissed<span>after Later. The row is gone; the action never is</span></figcaption>
+      <div class="card setup-card">
+        <div class="head">
+          <div class="grow">
+            <h3><span class="dot pending" aria-hidden="true"></span>Changed since the last check</h3>
+            <p>The last check finished against xezar 0.14.0. xezar 0.15.0 is running now. You chose Later, so the notice above the page will not come back for this version.</p>
+          </div>
+          <div class="actions"><button class="btn md" type="button"><svg class="icon sm"><use href="#i-rotate"/></svg>Re-check now</button></div>
+        </div>
+        <dl class="ident-list">
+          <div><dt>Last observed</dt><dd>xezar 0.15.0 · templates 9f1a3b4</dd></div>
+          <div><dt>Last offered</dt><dd>xezar 0.15.0 · templates 9f1a3b4 <span class="when">— 16 Sep, 08:02</span></dd></div>
+          <div><dt>Last successfully checked</dt><dd>xezar 0.14.0 · templates 2c20c60 <span class="when">— 2 Sep, 16:40</span></dd></div>
+        </dl>
+        <p class="setup-note">
+          <svg class="icon sm"><use href="#i-info"/></svg>
+          <span><strong>A re-check is always here.</strong> Choosing Later hides the notice for this version only. It never turns the check off.</span>
+        </p>
+      </div>
+    </figure>
+
+  </div>
+
+  <h2>2. Unknown provenance, unavailable, hosted mode</h2>
+
+  <div class="state-grid">
+
+    <figure>
+      <figcaption>2a. Unknown provenance<span>the record is missing, empty or unreadable. No offer is ever shown</span></figcaption>
+      <div class="card setup-card">
+        <div class="head">
+          <div class="grow">
+            <h3><span class="dot" aria-hidden="true"></span>Provenance unknown</h3>
+            <p>There is no record of a previous check for this project. A re-check can still read what is here and show you the pinned defaults, but it cannot tell your own edits from an older default, so it will not replace a file on its own.</p>
+          </div>
+          <div class="actions"><button class="btn md contrast" type="button"><svg class="icon sm"><use href="#i-compass"/></svg>Set up this project</button></div>
+        </div>
+        <dl class="ident-list">
+          <div><dt>Last observed</dt><dd>xezar 0.15.0 · templates 2c20c60</dd></div>
+          <div><dt>Last offered</dt><dd class="absent">—<span class="sr-only">not recorded</span></dd></div>
+          <div><dt>Last successfully checked</dt><dd class="absent">—<span class="sr-only">not recorded</span></dd></div>
+        </dl>
+        <p class="setup-note">
+          <svg class="icon sm"><use href="#i-question"/></svg>
+          <span><strong>This is not an error.</strong> The record is local scratch. Deleting it loses the history of checks and nothing else — xezar and your tasks work exactly as before.</span>
+        </p>
+      </div>
+    </figure>
+
+    <figure>
+      <figcaption>2b. Unavailable<span>no agent backend was found. Disabled, with the reason as text</span></figcaption>
+      <div class="card setup-card">
+        <div class="head">
+          <div class="grow">
+            <h3><span class="dot" aria-hidden="true"></span>Not set up yet</h3>
+            <p>No setup has been recorded for this project.</p>
+          </div>
+          <div class="actions">
+            <button class="btn md" type="button" disabled aria-describedby="why-no-agent"><svg class="icon sm"><use href="#i-compass"/></svg>Set up this project</button>
+          </div>
+        </div>
+        <p class="reason" id="why-no-agent"><b>Setup unavailable</b> — no agent backend was found. Install Claude Code, Codex, OpenCode or pi, sign in, then open this page again.</p>
+        <dl class="ident-list">
+          <div><dt>Last observed</dt><dd>xezar 0.15.0 · templates 2c20c60</dd></div>
+          <div><dt>Last offered</dt><dd class="absent">—<span class="sr-only">not recorded</span></dd></div>
+          <div><dt>Last successfully checked</dt><dd class="absent">—<span class="sr-only">not recorded</span></dd></div>
+        </dl>
+      </div>
+    </figure>
+
+    <figure>
+      <figcaption>2c. Hosted mode<span>setup still runs; the local part says so in plain words</span></figcaption>
+      <div class="card setup-card">
+        <div class="head">
+          <div class="grow">
+            <h3><span class="dot" aria-hidden="true"></span>Not set up yet</h3>
+            <p>No setup has been recorded for this project. You can still create ordinary tasks — setup is optional, and it is never required to start work.</p>
+          </div>
+          <div class="actions"><button class="btn md contrast" type="button"><svg class="icon sm"><use href="#i-compass"/></svg>Set up this project</button></div>
+        </div>
+        <p class="setup-note">
+          <svg class="icon sm"><use href="#i-lock"/></svg>
+          <span><strong>One part finishes elsewhere.</strong> Connecting an agent on your own computer is done from the machine that owns the checkout — this cockpit runs in hosted mode. Setup prepares that file here and leaves the last step to a person on that machine.</span>
+        </p>
+        <dl class="ident-list">
+          <div><dt>Last observed</dt><dd>xezar 0.15.0 · templates 2c20c60</dd></div>
+          <div><dt>Last offered</dt><dd class="absent">—<span class="sr-only">not recorded</span></dd></div>
+          <div><dt>Last successfully checked</dt><dd class="absent">—<span class="sr-only">not recorded</span></dd></div>
+        </dl>
+      </div>
+    </figure>
+
+    <figure>
+      <figcaption>2d. Re-check running<span>one check at a time; the action points at the task</span></figcaption>
+      <div class="card setup-card">
+        <div class="head">
+          <div class="grow">
+            <h3><span class="dot violet pulse" aria-hidden="true"></span>Re-checking</h3>
+            <p>A task is comparing this project's files against the pinned defaults. It may ask you a question, and it writes nothing until you accept its preview.</p>
+          </div>
+          <div class="actions"><a class="btn md" href="#">Open the task</a></div>
+        </div>
+        <dl class="ident-list">
+          <div><dt>Last observed</dt><dd>xezar 0.15.0 · templates 9f1a3b4</dd></div>
+          <div><dt>Last offered</dt><dd>xezar 0.15.0 · templates 9f1a3b4 <span class="when">— 16 Sep, 08:02</span></dd></div>
+          <div><dt>Last successfully checked</dt><dd>xezar 0.14.0 · templates 2c20c60 <span class="when">— 2 Sep, 16:40</span></dd></div>
+        </dl>
+        <p class="setup-note">
+          <svg class="icon sm"><use href="#i-info"/></svg>
+          <span>"Last successfully checked" moves only when this task finishes its check. A cancelled or failed check leaves it where it is.</span>
+        </p>
+      </div>
+    </figure>
+
+  </div>
+
+  <h2>3. Loading and error</h2>
+
+  <div class="state-grid two">
+
+    <figure>
+      <figcaption>3a. Loading<span>one muted line inside the pane, no skeleton, no false empty</span></figcaption>
+      <div class="card" style="padding:0">
+        <div class="loading-line">Loading project setup…</div>
+      </div>
+    </figure>
+
+    <figure>
+      <figcaption>3b. Could not load<span>cockpit title, server message verbatim as the body</span></figcaption>
+      <div class="card">
+        <div class="centered-state danger">
+          <div class="tile"><svg class="icon"><use href="#i-alert"/></svg></div>
+          <h2>Could not load project setup</h2>
+          <p>EACCES: permission denied, open '.local/xezar/onboarding-state.json'</p>
+          <div class="actions"><button class="btn md" type="button">Retry</button></div>
+        </div>
+      </div>
+    </figure>
+
+    <figure>
+      <figcaption>3c. Starting a check<span>the pending label, per the cockpit's button rule</span></figcaption>
+      <div class="banner-row offer-row" role="status">
+        <span class="offer-text"><strong>xezar changed since this project was last checked</strong> — <span class="ident">0.15.0</span> now, <span class="ident">0.14.0</span> then. A re-check compares this project's files against the pinned defaults and shows you the differences.</span>
+        <span class="offer-actions">
+          <button class="btn" type="button" disabled>Starting…</button>
+          <button class="btn ghost" type="button" disabled>Later</button>
+        </span>
+      </div>
+    </figure>
+
+    <figure>
+      <figcaption>3d. The check could not start<span>the server's own words, once, as an alert line</span></figcaption>
+      <div class="card pad">
+        <p role="alert" style="margin:0;font-size:13px;line-height:1.5;color:var(--danger)">No agent backend is available, so the task was not created.</p>
+      </div>
+    </figure>
+
+  </div>
+
+  <h2>4. Where no offer appears at all</h2>
+  <div class="table-scroll">
+    <table class="decision-table">
+      <thead><tr><th>Situation</th><th>Offer row</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td>First ever open of a project</td><td>None</td><td>There is no baseline to compare against. The setup entry is the right offer, and it is already on the empty state.</td></tr>
+        <tr><td>Record missing, empty or unreadable</td><td>None</td><td>Inventing a previous identity would produce a comparison nobody can trust.</td></tr>
+        <tr><td>Same identity as the record</td><td>None</td><td>Nothing changed.</td></tr>
+        <tr><td>Changed identity, already offered</td><td>None</td><td>One appearance per pair. Settings still shows the change and the action.</td></tr>
+        <tr><td>A check for this pair is already running</td><td>Replaced by the running line</td><td>Two clicks must not start two checks.</td></tr>
+        <tr><td>The record cannot be written (read-only disk)</td><td>Shown once per session</td><td>The record is disposable. A cockpit that cannot write it still works; it simply cannot remember the dismissal past this session, and it never fails to boot.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>5. Phone, 375 px</h2>
+  <p>The offer's two actions go full width at 44 px. The identity rows put each label above its value. Nothing scrolls sideways.</p>
+
+  <div class="phone" style="width:375px">
+    <iframe src="phone.html" title="Onboarding surfaces at 375 px"></iframe>
+  </div>
+</div>
+
+</body>
+</html>
