@@ -441,9 +441,13 @@ describe('starting an issue draft', () => {
  *    dialog the person closed without typing." (`designs/issue-filing/open-questions.md:83-84`)
  *
  * AC-6 above asserts that a brief SURVIVES, and passes whether or not the pre-fill is persisted.
- * These three cases split the two halves apart, so neither can pass for the other's reason:
+ * These cases split the two halves apart, so neither can pass for the other's reason:
  * seeding alone must never write, editing must always write, and a stored draft must outrank the
  * seed AND survive being outranked.
+ *
+ * The first three each start from a fresh mount, so none of them crosses a close boundary. The
+ * last two do, because that is where M-1R lived (`## Code review — scoped re-check at 4b48d1d`):
+ * authorship raised in one open must not be inherited by the seed offered into the next one.
  */
 describe('the pre-fill and the draft store (OQ-4)', () => {
   it('leaves no draft behind when a pre-filled dialog is closed untouched', async () => {
@@ -492,6 +496,86 @@ describe('the pre-fill and the draft store (OQ-4)', () => {
     // A guard that keyed off "untouched" alone would read the restored draft as a seed and wipe
     // it on the very next effect — the failure mode the correction has to avoid.
     expect(storedBriefs()).toEqual(['The brief I started yesterday.'])
+  })
+
+  // M-1R, the case that crosses a close boundary. `NewIssueDialog` is mounted unconditionally by
+  // `github.tsx` (only the inner `<Dialog open>` toggles), so nothing about the dialog is torn
+  // down between opens: a flag raised in the first open is still raised in the second unless it
+  // is lowered on purpose. Red at 4b48d1d, where authorship was lowered only by a started run.
+  it('leaves no draft behind on a LATER untouched open, after an earlier edit was cleared', async () => {
+    stubFetch()
+    renderAt('/github')
+    await waitFor(() => expect(newIssueButton()).not.toBeNull())
+
+    // 1. Type something, then delete it again. The store is correctly emptied…
+    fireEvent.click(newIssueButton()!)
+    await waitFor(() => expect(briefField()).not.toBeNull())
+    type('a half-written thought')
+    await waitFor(() => expect(storedBriefs()).toEqual(['a half-written thought']))
+    type('')
+    await waitFor(() => expect(storedBriefs()).toEqual([]))
+
+    // 2. …and cancelling stores nothing. Still correct.
+    fireEvent.click(screen.getByRole('button', { name: newIssueCopy.cancel }))
+    await waitFor(() => expect(document.querySelector('[data-slot="gh-new-issue-brief"]')).toBeNull())
+    expect(storedBriefs()).toEqual([])
+
+    // 3. Search for something else and look again. The box is seeded, because it is empty.
+    search('worktree lease')
+    fireEvent.click(newIssueButton()!)
+    await waitFor(() => expect(briefField().value).toBe('worktree lease'))
+
+    // 4. Cancel without typing a character. These are words the person never typed, so the store
+    //    must be exactly as empty as it was — no matter what happened earlier in the session.
+    fireEvent.click(screen.getByRole('button', { name: newIssueCopy.cancel }))
+    await waitFor(() => expect(document.querySelector('[data-slot="gh-new-issue-brief"]')).toBeNull())
+    expect(storedBriefs()).toEqual([])
+  })
+
+  // The other side of the same boundary, and the reason the fix cannot simply clear on close: an
+  // authored draft must survive a reopen untouched, and the seed must not overwrite it.
+  it('keeps an authored draft across a close, and a later untouched open never overwrites it', async () => {
+    stubFetch()
+    renderAt('/github')
+    await waitFor(() => expect(newIssueButton()).not.toBeNull())
+
+    fireEvent.click(newIssueButton()!)
+    await waitFor(() => expect(briefField()).not.toBeNull())
+    type('The brief I really did write.')
+    await waitFor(() => expect(storedBriefs()).toEqual(['The brief I really did write.']))
+    fireEvent.click(screen.getByRole('button', { name: newIssueCopy.cancel }))
+    await waitFor(() => expect(document.querySelector('[data-slot="gh-new-issue-brief"]')).toBeNull())
+
+    // A different search behind the dialog, so an overwrite would be visible rather than a no-op.
+    search('worktree lease')
+    fireEvent.click(newIssueButton()!)
+    await waitFor(() => expect(briefField()).not.toBeNull())
+    expect(briefField().value).toBe('The brief I really did write.')
+
+    fireEvent.click(screen.getByRole('button', { name: newIssueCopy.cancel }))
+    await waitFor(() => expect(document.querySelector('[data-slot="gh-new-issue-brief"]')).toBeNull())
+    expect(storedBriefs()).toEqual(['The brief I really did write.'])
+  })
+
+  // The plain sequence, stated as its own guard so a future change to the reset point cannot
+  // quietly reintroduce a write on the second open.
+  it('leaves no draft behind across two consecutive untouched opens', async () => {
+    stubFetch()
+    renderAt('/github')
+    await waitFor(() => expect(newIssueButton()).not.toBeNull())
+
+    search('worktree lease')
+    fireEvent.click(newIssueButton()!)
+    await waitFor(() => expect(briefField().value).toBe('worktree lease'))
+    fireEvent.click(screen.getByRole('button', { name: newIssueCopy.cancel }))
+    await waitFor(() => expect(document.querySelector('[data-slot="gh-new-issue-brief"]')).toBeNull())
+    expect(storedBriefs()).toEqual([])
+
+    fireEvent.click(newIssueButton()!)
+    await waitFor(() => expect(briefField()).not.toBeNull())
+    fireEvent.click(screen.getByRole('button', { name: newIssueCopy.cancel }))
+    await waitFor(() => expect(document.querySelector('[data-slot="gh-new-issue-brief"]')).toBeNull())
+    expect(storedBriefs()).toEqual([])
   })
 })
 

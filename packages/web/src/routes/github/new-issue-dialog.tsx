@@ -167,14 +167,40 @@ export function NewIssueDialog({
     projectId ??
     null
 
+  // The live value of `brief`, for effects that must branch on it without listing it as a
+  // dependency. The open effect below is one: it must run on `open` alone (see its own comment),
+  // so it cannot read `brief` from the closure, which is a render behind.
+  const briefNow = useRef(brief)
+  briefNow.current = brief
+
   // The pre-fill is offered, never persisted: a dialog opened from an empty search and closed
-  // again must leave no draft behind (OQ-4). So it seeds an EMPTY box on open and nothing else —
-  // and seeding deliberately does NOT set `touched`, which is the whole guarantee.
+  // again must leave no draft behind (OQ-4). So it seeds an EMPTY box on open and nothing else.
+  //
+  // Seeding LOWERS `touched`, and that is the whole guarantee (M-1R). Not setting it was not
+  // enough: this component is mounted unconditionally by `github.tsx` (only the inner `<Dialog
+  // open>` toggles), so nothing is torn down between opens and authorship raised in one open
+  // survived into the next — where the seed then inherited it and was persisted as a draft the
+  // person never typed. Seeding is precisely the event that makes the content not the person's,
+  // so it is the right place to lower the flag: offered, not authored, even the second time.
   useEffect(() => {
     if (!open) return
-    setBrief((current) => (current === '' ? prefill : current))
+    // A stored or in-progress draft outranks the seed and keeps its own authorship: it is the
+    // person's text, so neither the value nor the flag may be touched here.
+    if (briefNow.current !== '') return
+    setTouched(false)
+    setBrief(prefill)
     // `prefill` is read at open time only — the search box keeps moving behind the dialog, and a
     // box that rewrote itself under the person would be worse than not offering the words at all.
+  }, [open])
+
+  // Closing ends this dialog's authorship too, so the flag cannot outlive the box it describes.
+  // The seed guard above already closes M-1R on its own; this is the same invariant stated where
+  // an instance ends, so a later change to the seeding rule cannot silently reopen it. It is safe
+  // because lowering the flag only ever suppresses a WRITE: an authored draft is already in the
+  // store, and the next character typed raises the flag again.
+  useEffect(() => {
+    if (open) return
+    setTouched(false)
   }, [open])
 
   // Persisting is gated on `touched`, not on the value, and that is the difference between
