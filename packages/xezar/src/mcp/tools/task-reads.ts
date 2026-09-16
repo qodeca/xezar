@@ -98,7 +98,7 @@ const inputSchema = z.strictObject({
   view: z
     .enum(VIEWS)
     .describe(
-      'list = the project’s tasks (summaries, newest first); task = one task’s full record; history = one task’s event history, newest page first; context = the plan and agent episode that frame a task’s history; handoff = a task’s handoff journal (markdown); inbox = the project’s Inbox items; group = one variant group, its tasks side by side. The task record includes reported reviewer verdicts when available. Each names its role, reviewed commit and label evidence state. Missing or partial evidence is not approval. Compare the reviewed commit with the target before acting; task done alone proves no quality gate.',
+      'list = the project’s tasks (summaries, newest first); task = one task’s full record; history = one task’s event history, newest page first; context = the plan and agent episode that frame a task’s history; handoff = a task’s handoff journal (markdown); inbox = the project’s Inbox items; group = one variant group, its tasks side by side. The task record includes reported reviewer verdicts when available. Each names its role, reviewed commit and label evidence state. Missing or partial evidence is not approval. Compare the reviewed commit with the target before acting; task done alone proves no quality gate. A running step may also carry an advisory progress observation — when it last showed activity, its time limit, and whether it currently looks quiet. It is an observation, not a fault: nothing is stopped, and an absent one means unobserved, not healthy.',
     ),
   taskId: idSchema.optional().describe('Task id. Required for task, history, context and handoff.'),
   groupId: idSchema

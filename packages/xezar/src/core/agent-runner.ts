@@ -228,6 +228,17 @@ export interface AgentSession {
 
 export interface AgentRunner {
   readonly backend: AgentBackend;
+  /**
+   * The wall clock this runner applies when a spec names none — what `AgentRunSpec.timeoutMs`
+   * falls through to (#460 § 2). Read-only and reported, never set: it exists so a caller can
+   * SAY when a step will be killed without re-deriving a number per backend, which is how the
+   * advisory deadline warning avoids guessing 30 minutes for everyone.
+   *
+   * Optional, and absent means UNKNOWN rather than unlimited: a runner that does not report one
+   * simply gets no deadline warning. Keeping it optional is also what lets a test double satisfy
+   * this interface exactly as it did before the field existed.
+   */
+  readonly defaultTimeoutMs?: number;
   run(spec: AgentRunSpec, onEvent?: (event: AgentEvent) => void): Promise<AgentRunResult>;
   startSession(
     spec: AgentRunSpec,
