@@ -1,6 +1,7 @@
 # Unreleased
 
 - docs(guide): filing an issue from the cockpit and the issue-filing skill (#468, step 4)
+- docs(project): leader run guidance for contributors – per-client pointers and kit tips (#515, PR 2)
 
 ## 💥 Breaking defaults
 
