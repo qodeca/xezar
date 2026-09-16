@@ -19,6 +19,10 @@
     "allowImportingTsExtensions": true,
     "rewriteRelativeImportExtensions": true,
     "declaration": true,
+    // The emitted JS and declarations are published, and the source comments are notes for
+    // developing xezar itself (issue numbers, this repository's rules and scripts). A released
+    // package carries none of them (#466); the release content check in check:pack enforces it.
+    "removeComments": true,
     "sourceMap": true,
     "outDir": "dist",
     "rootDir": "src"

@@ -12,6 +12,15 @@ Installation validation is reported in installation.md. Real-task entries follow
 
 ## Real-task entries
 
+### 2026-09-16 — #469 P1 (the local development-process contract), `feature-implementation` step `implement`, `xezar-implementation`, Claude Code — real-task observed
+
+- Input: the accepted analysis and owner decisions on #469 (three depth levels; code-security evidence whenever code or security capabilities apply; a capped author self-review beside the existing independent reviews). Documentation and shared skill prose only; base `52442a7`.
+- Observed: **the shared skill tail is a 19-file byte-equality contract, so editing it by hand is the wrong tool.** `catalog-check.mjs` compares everything after `## Shared contract\n` for string equality across every maintained role, so one stray space in one file fails the catalog with a message that names the file rather than the drift. Editing all 19 through one Node script with anchor strings that must each match exactly once made the equality a consequence of the method instead of something to re-verify. Mixed punctuation is the trap: the tail uses ASCII apostrophes, and typographic ones inserted by drafting had to be normalized in a second scripted pass.
+- Observed: **a contract page nearly overloaded an enforced record name.** The first draft gave the acceptance-criteria mapping the name `VERIFICATION`, which already means "this run verified an existing revision and made no commits" and is what lets readiness accept an empty branch (`xezar-testing`, `xezar-handoff-draft-pr`). Renaming it `AC_VERIFICATION` and listing `BLOCKED`, `DELIVERED` and `VERIFICATION` as the three records that already have teeth keeps a documentation PR from silently redefining a check's input. Lesson: before naming a record in prose, grep the kit for that name.
+- Observed: **kit prose pins are narrower than they look.** `xezar-contract.test.mjs` pins the gate list against `.xezar/pipeline/config.json`, the 18/19 role counts, the `.xezar/docs/` file list and the shared-contract equality — not SDLC or CODE_REVIEW wording, which greps confirmed no test asserts. Checking that first turned "which strings am I allowed to change" from a worry into a two-minute answer.
+- Observed: the depth record needed no `.xezar/pipeline/config.json` key: depth, maturity and counters are per-task facts, and that file travels to every checkout, so a key there would be the same false promise `maxParallel` already is.
+- Remaining limit: adapted and fixture-tested only. This PR is prose; the executable security stage, the readiness/AC input checks and the durable counter validation are the sequenced follow-up, and nothing here has yet been exercised by a task that had to obey it.
+
 ### 2026-09-15 — #450 (the MCP leader door: `leader_events` attach, stop and status), `feature-implementation` step `implement`, `xezar-implementation`, Claude Code — real-task observed
 
 - Input: the spec from run `9130af8c` (19 AC, 30 test rows) on top of #451's merged strings; base `646bf37`.

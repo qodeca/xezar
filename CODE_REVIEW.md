@@ -2,6 +2,18 @@
 
 How to review a diff in this repository. Applies to humans and to the `code-review` workflow (`xezar-code-review`) alike. The full validation gate in `.xezar/pipeline/config.json` must be green before a review verdict is meaningful: typecheck, the vitest unit/component suites (`npm test`), the node:test core-module suite (`npm run test:unit`), build (which includes the `check:pack` tarball gate), and the packaged CLI E2E (`npm run test:package`). The unit/component suites are the fast correctness gate; real-browser E2E (`npm run test:e2e`) remains the QA layer for user-facing changes.
 
+## What a review consumes
+
+A review is a verdict about one set of bytes. Read these before forming it, and name them in the verdict:
+
+- **The exact head.** State the commit SHA you reviewed. The verdict is valid for that SHA only: new candidate bytes invalidate it, and a re-push means re-reviewing at least the changed surface. A verdict that names no SHA is not evidence.
+- **The gate result for that head**, from the validation gate in `.xezar/pipeline/config.json`. A gate run taken at an earlier head, a skipped command, or a command whose log is missing is **unknown**, not green.
+- **The security result**, before you give a quality verdict (`SDLC.md` § Security before the quality verdict). It is a written record in the phase record today, not yet a command, so read it as one — an unavailable scanner, a parse error, an empty inventory where one was expected, an interrupted scan, or no record at all is **unknown**, and unknown is not a pass. Withhold the verdict and say what is missing instead of passing around it. A changed trust boundary needs a security reader, not a clean scan.
+- **The AC verification record** — each accepted acceptance-criterion ID mapped to its evidence at this head. It is a separate question from yours (`SDLC.md` § AC verification is not the quality review): a sound change that misses an accepted criterion is still not done, and a reviewer who finds the record absent says so rather than inferring it from the diff.
+- **The named breaks** for every new or changed behaviour test, with the quoted red output (`SDLC.md` § Naming the break). Re-apply at least one break and run the test. A test that stays green with its behaviour broken is a finding on any scope, not only the MCP one.
+
+**Reviewers do not edit the author's checkout.** A review is read-only and gets its own task; findings go back to the original author's repair task on the original branch and PR. An implementation agent never marks its own work independently approved — the two written self-verification exceptions in `SDLC.md` are the only path, and they are labelled so the exception is auditable.
+
 ## Review priorities (in order)
 
 1. **Correctness of the run lifecycle** — runs, steps, worktrees, sessions. A bug here loses user work.
@@ -77,3 +89,11 @@ How to review a diff in this repository. Applies to humans and to the `code-revi
 - **Nit**: wording, formatting, comment polish. Never blocks.
 
 Verdict: approve when there are no blockers or majors; otherwise request changes with each finding tagged by severity and file/line.
+
+## Disposing of findings
+
+- **Blockers and majors are fixed and verified**, at a named head, before the verdict flips. A promise to fix it later is not a disposition; neither is a downgraded severity. Re-check the fix at the new SHA — that is the only way the earlier evidence still means anything.
+- **Every minor and nit gets exactly one disposition**, written down: *fixed in `<sha>`*, *disputed* — with the evidence, saying what was read and why the finding does not hold — or *proposed for deferral*, naming the issue that will carry it. Silence is not a disposition, and an unanswered finding leaves the review open.
+- **The author disposes, the reviewer confirms.** Routing an undisputed finding back to the author is mechanical. Deciding a disputed one is adjudication, and adjudication is reserved to a person (`SDLC.md` § Ownership).
+- **A changed acceptance criterion, a waived mandatory requirement, or a reserved review/QA adjudication goes to the owner.** Neither a reviewer nor a leader can accept debt that changes what "done" means for this change. No label, exemption or request for permission waives a mandatory check.
+- **Repairs are counted.** The three durable counters in `SDLC.md` § Self-review inside the author phase apply to review repairs as well: when the applicable counter is exhausted, the finding stays open and the PR stops, rather than being re-graded until it fits.

@@ -71,4 +71,6 @@ Inspect and integrate the result separately; xezar does not automatically merge 
 - `XEZ_DISABLE_REPO_LOCK=1`: explicitly bypasses the in-place lease and allows overlap in the shared checkout. Leave it unset for serialization.
 - See the [environment contract](../../.env.example) for environment defaults.
 
+Next: [Agent backends](04-agent-backends.md)
+
 Describes xezar 0.15.0.
