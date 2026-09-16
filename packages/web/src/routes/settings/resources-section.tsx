@@ -8,7 +8,9 @@ import { useWorkspaceConfig, workspaceQueryKeys } from '@/api/queries'
 import type { SetWorkspaceConfigInput, WorkspaceConfigResponse } from '@qodeca/xezar-api-client'
 import { CenteredState } from '@/components/centered-state'
 import { Button } from '@/components/ui/button'
+import { nativeFieldClass } from '@/components/ui/input'
 import { toast } from '@/components/ui/toaster'
+import { cn } from '@/lib/utils'
 import { SettingsField } from './settings-field'
 
 /**
@@ -61,7 +63,7 @@ export function ResourcesSection() {
       <CenteredState
         icon={<GaugeIcon />}
         tone="danger"
-        title="Resource settings did not load"
+        title="Could not load resource settings"
         subtitle={config.error.message}
         heading="h2"
       />
@@ -248,7 +250,7 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
           value={config.resources.maxParallel}
           disabled={save.isPending}
           onChange={(event) => save.mutate({ resources: { maxParallel: Number(event.target.value) } })}
-          className="block w-28 rounded-md border border-input bg-card px-3 py-1.5 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
+          className={cn(nativeFieldClass, 'block w-28')}
         >
           {Array.from({ length: MAX_PARALLEL_MAX - MAX_PARALLEL_MIN + 1 }, (_, i) => i + MAX_PARALLEL_MIN).map(
             (n) => (
@@ -263,7 +265,7 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
           <Link
             to="/settings/global/projects"
             data-slot="resources-project-limits-link"
-            className="font-medium text-foreground underline decoration-border underline-offset-2 hover:decoration-foreground"
+            className="inline-flex min-h-tap items-center font-medium text-foreground underline decoration-border underline-offset-2 hover:decoration-foreground md:min-h-0"
           >
             Configure per-project limits
           </Link>
@@ -281,7 +283,7 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
           value={config.resources.maxMonitoringSessions ?? 2}
           disabled={save.isPending}
           onChange={(event) => save.mutate({ resources: { maxMonitoringSessions: Number(event.target.value) } })}
-          className="block w-28 rounded-md border border-input bg-card px-3 py-1.5 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
+          className={cn(nativeFieldClass, 'block w-28')}
         >
           {Array.from({ length: MAX_MONITORING_MAX + 1 }, (_, n) => (
             <option key={n} value={n}>{n}</option>
@@ -303,7 +305,7 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
             value={wakeMode}
             disabled={save.isPending}
             onChange={(event) => setWakeMode(event.target.value as 'park' | 'interval')}
-            className="rounded-md border border-input bg-card px-3 py-1.5 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
+            className={cn(nativeFieldClass, 'w-auto')}
           >
             <option value="park">Park until resumed</option>
             <option value="interval">Re-check on an interval</option>
@@ -319,7 +321,7 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
                 value={wakeInterval}
                 disabled={save.isPending}
                 onChange={(event) => setWakeInterval(event.target.value)}
-                className="block w-24 rounded-md border border-input bg-card px-3 py-1.5 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
+                className={cn(nativeFieldClass, 'block w-24')}
               />
               <span className="text-xs text-soft-foreground">minutes</span>
             </>
@@ -343,7 +345,7 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
           value={autoResume ? 'on' : 'off'}
           disabled={save.isPending}
           onChange={(event) => saveAutoResume(event.target.value === 'on')}
-          className="block w-28 rounded-md border border-input bg-card px-3 py-1.5 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
+          className={cn(nativeFieldClass, 'block w-28')}
         >
           <option value="on">On</option>
           <option value="off">Off</option>
@@ -364,7 +366,7 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
             value={idleMode}
             disabled={save.isPending}
             onChange={(event) => setIdleMode(event.target.value as 'never' | 'timeout')}
-            className="block w-40 rounded-md border border-input bg-card px-3 py-1.5 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
+            className={cn(nativeFieldClass, 'block w-40')}
           >
             <option value="timeout">Close after</option>
             <option value="never">Never close</option>
@@ -382,7 +384,7 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
                 value={idleMinutes}
                 disabled={save.isPending}
                 onChange={(event) => setIdleMinutes(event.target.value)}
-                className="block w-32 rounded-md border border-input bg-card px-3 py-1.5 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
+                className={cn(nativeFieldClass, 'block w-32')}
               />
               <span className="text-xs text-soft-foreground">minutes</span>
             </>
@@ -417,7 +419,7 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
 
       <SettingsField
         title="Per-task memory limit"
-        hint="When a task's whole process tree crosses this, the engine pauses it with a warning and starts the next queued task. Leave empty for no limit."
+        hint="When a task’s whole process tree crosses this, the engine pauses it with a warning and starts the next queued task. Leave empty for no limit."
       >
         <div className="flex items-center gap-2">
           <input
@@ -431,7 +433,7 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
             disabled={save.isPending}
             placeholder="no limit"
             onChange={(event) => setMemory(event.target.value)}
-            className="block w-32 rounded-md border border-input bg-card px-3 py-1.5 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
+            className={cn(nativeFieldClass, 'block w-32')}
           />
           <span className="text-xs text-soft-foreground">MiB</span>
           <Button
@@ -475,7 +477,7 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
             value={retention}
             disabled={save.isPending}
             onChange={(event) => setRetention(event.target.value)}
-            className="block w-32 rounded-md border border-input bg-card px-3 py-1.5 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
+            className={cn(nativeFieldClass, 'block w-32')}
           />
           <span className="text-xs text-soft-foreground">worktrees</span>
           <Button
@@ -502,7 +504,7 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
 
       <SettingsField
         title="Follow-up Inbox"
-        hint="When on, agents are asked to leave follow-ups when they finish and the Inbox view appears. Each task's own Notes journal runs either way."
+        hint="When on, agents are asked to leave follow-ups when they finish and the Inbox view appears. Each task’s own Notes journal runs either way."
       >
         <select
           aria-label="Follow-up Inbox"
@@ -512,7 +514,7 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
           onChange={(event) =>
             saveFollowups(event.target.value === 'inherit' ? null : event.target.value === 'on')
           }
-          className="block w-40 rounded-md border border-input bg-card px-3 py-1.5 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
+          className={cn(nativeFieldClass, 'block w-40')}
         >
           <option value="on">On</option>
           <option value="off">Off</option>
@@ -528,7 +530,7 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
 
       <SettingsField
         title="Extra variables agents receive"
-        hint="Agents get a least-privilege environment by default — safe shell and toolchain variables, the backend's own auth, GITHUB_TOKEN and xezar's own. Name any others here, comma-separated."
+        hint="Agents get a least-privilege environment by default — safe shell and toolchain variables, the backend’s own auth, GITHUB_TOKEN and xezar’s own. Name any others here, comma-separated."
       >
         <div className="flex flex-col gap-2">
           <input
@@ -539,7 +541,7 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
             disabled={save.isPending}
             placeholder="VITEST_MAX_WORKERS, MY_TOOL_DIR"
             onChange={(event) => setPassthrough(event.target.value)}
-            className="block w-full rounded-md border border-input bg-card px-3 py-1.5 font-mono text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
+            className={cn(nativeFieldClass, 'block font-mono')}
           />
           <div className="flex items-center gap-2">
             <Button
@@ -596,7 +598,7 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
               value={composerDefaults.autonomous === null ? 'inherit' : composerDefaults.autonomous ? 'on' : 'off'}
               disabled={save.isPending}
               onChange={(event) => saveComposerDefault('autonomous', event.target.value)}
-              className="rounded-md border border-input bg-card px-3 py-1.5 shadow-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              className={nativeFieldClass}
             >
               <option value="inherit">Inherit environment</option>
               <option value="on">On</option>
@@ -615,7 +617,7 @@ function ResourcesForm({ config }: { config: WorkspaceConfigResponse }) {
               value={composerDefaults.worktree === null ? 'inherit' : composerDefaults.worktree ? 'on' : 'off'}
               disabled={save.isPending}
               onChange={(event) => saveComposerDefault('worktree', event.target.value)}
-              className="rounded-md border border-input bg-card px-3 py-1.5 shadow-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              className={nativeFieldClass}
             >
               <option value="inherit">Inherit environment</option>
               <option value="on">On</option>

@@ -14,10 +14,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { toast } from '@/components/ui/toaster'
 import { formatMem } from '@/lib/tasks-table'
 import { shortAge } from '@/lib/format'
+import { useReturnFocus } from './remove-project'
 
 /** What the confirm dialog is about — a bulk reclaim, or one row's delete. */
 type Confirming = { kind: 'reclaim' } | { kind: 'delete'; runId: string; title: string } | null
@@ -35,6 +36,7 @@ export function WorktreesPanel() {
   const worktrees = useWorktrees()
   const queryClient = useQueryClient()
   const [confirming, setConfirming] = useState<Confirming>(null)
+  const returnFocus = useReturnFocus(confirming !== null)
   const refresh = () => queryClient.invalidateQueries({ queryKey: queryKeys.worktrees })
 
   const reclaim = useMutation({
@@ -69,7 +71,7 @@ export function WorktreesPanel() {
   if (worktrees.isError) {
     return (
       <p data-slot="worktrees-error" className="text-[13px] text-danger">
-        Worktrees did not load: {worktrees.error.message}
+        Could not load worktrees: {worktrees.error.message}
       </p>
     )
   }
@@ -136,8 +138,8 @@ export function WorktreesPanel() {
       </div>
 
       <AlertDialog open={confirming !== null} onOpenChange={(open) => !open && setConfirming(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
+        <AlertDialogContent onCloseAutoFocus={returnFocus}>
+          <AlertDialogHeader className="min-w-0">
             <AlertDialogTitle>
               {confirming?.kind === 'delete' ? 'Delete this worktree?' : 'Reclaim old worktrees?'}
             </AlertDialogTitle>
@@ -159,7 +161,7 @@ export function WorktreesPanel() {
             <AlertDialogCancel>Keep it</AlertDialogCancel>
             <AlertDialogAction
               data-action="worktrees-confirm"
-              className={confirming?.kind === 'delete' ? 'bg-danger text-danger-foreground hover:brightness-[0.96]' : undefined}
+              className={confirming?.kind === 'delete' ? buttonVariants({ variant: 'danger' }) : undefined}
               onClick={runConfirmed}
             >
               {confirming?.kind === 'delete' ? 'Delete' : 'Reclaim now'}
@@ -203,7 +205,7 @@ function WorktreeRow({
       <td className="px-3 py-2 text-right">
         <Button
           type="button"
-          variant="ghost"
+          variant="danger-ghost"
           size="sm"
           data-action="worktree-delete"
           aria-label={`Delete the worktree for ${worktree.title}`}

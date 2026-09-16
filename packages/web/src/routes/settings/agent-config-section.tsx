@@ -53,7 +53,7 @@ export function AgentConfigSection() {
       <CenteredState
         icon={<FileCogIcon />}
         tone="danger"
-        title="Agent config did not load"
+        title="Could not load agent config"
         subtitle={listing.error.message}
         heading="h2"
       />
@@ -97,13 +97,13 @@ function AgentConfigView({ listing, installed }: { listing: AgentConfigListing; 
             data-selected={d.id === agent.id}
             onClick={() => pickAgent(d.id)}
             className={cn(
-              'flex items-center gap-2 rounded-md px-3 py-1.5 text-[13px] transition-colors',
+              'flex min-h-tap min-w-tap items-center justify-center gap-2 rounded-md px-3 py-1.5 text-[13px] transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-0 md:min-w-0',
               d.id === agent.id ? 'bg-background font-semibold shadow-sm' : 'hover:bg-muted/60',
             )}
           >
             {d.label}
             {!installed.includes(d.id) && (
-              <Badge variant="outline" className="text-[10px] text-soft-foreground">
+              <Badge variant="outline" className="min-h-chip text-[10px] text-soft-foreground">
                 not installed
               </Badge>
             )}
@@ -173,13 +173,13 @@ function AgentPane({
                     data-selected={file.id === selectedId}
                     onClick={() => onSelect(file.id)}
                     className={cn(
-                      'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] transition-colors',
+                      'flex min-h-tap w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-0',
                       file.id === selectedId ? 'bg-primary/15 text-foreground' : 'hover:bg-muted/60',
                     )}
                   >
                     <span className="min-w-0 flex-1 truncate font-mono text-[12px]">{file.label}</span>
                     {file.seeded && (
-                      <Badge variant="outline" className="shrink-0 text-[10px]">
+                      <Badge variant="outline" className="min-h-chip shrink-0 text-[10px]">
                         seeded
                       </Badge>
                     )}
@@ -211,7 +211,7 @@ function UserMcpBlock({ userMcp }: { userMcp: NonNullable<AgentConfigListing['us
           <ul className="flex flex-wrap gap-1">
             {userMcp.servers.map((name) => (
               <li key={name}>
-                <Badge variant="outline" className="font-mono text-[11px]">
+                <Badge variant="outline" className="min-h-chip font-mono text-[11px]">
                   {name}
                 </Badge>
               </li>
@@ -271,14 +271,14 @@ export function FileEditor({ file }: { file: AgentConfigFile }) {
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-mono text-[13px]">{file.label}</span>
-        <Badge variant="outline" className="text-[10px] uppercase">
+        <Badge variant="outline" className="min-h-chip text-[10px] uppercase">
           {file.format}
         </Badge>
         <a
           href={file.docsUrl}
           target="_blank"
           rel="noreferrer"
-          className="text-[12px] text-soft-foreground underline hover:text-foreground"
+          className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-sm text-[12px] text-soft-foreground underline outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-0 md:min-w-0"
         >
           docs
         </a>
@@ -295,7 +295,7 @@ export function FileEditor({ file }: { file: AgentConfigFile }) {
       {fileQuery.isPending ? (
         <p className="text-[13px] text-soft-foreground">Loading file…</p>
       ) : fileQuery.isError ? (
-        <p className="text-[13px] text-destructive">{fileQuery.error.message}</p>
+        <p className="text-[13px] text-danger">{fileQuery.error.message}</p>
       ) : (
         <CodeEditor
           value={content}
@@ -303,19 +303,19 @@ export function FileEditor({ file }: { file: AgentConfigFile }) {
           readOnly={!canWrite}
           onChange={setDraft}
           aria-label={`${file.label} contents`}
-          className="h-[26rem]"
+          className="h-104"
         />
       )}
 
       {formatError && (
-        <p data-slot="agent-config-format-error" className="text-[12px] text-destructive">
+        <p data-slot="agent-config-format-error" className="text-[12px] text-danger">
           {formatError}
         </p>
       )}
       {conflict && (
         <div
           data-slot="agent-config-conflict"
-          className="flex items-center justify-between gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-[12px]"
+          className="flex items-center justify-between gap-2 rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-[12px]"
         >
           <span>The file changed on disk since you opened it.</span>
           <Button size="sm" variant="outline" onClick={() => void fileQuery.refetch()}>

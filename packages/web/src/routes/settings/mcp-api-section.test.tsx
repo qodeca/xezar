@@ -140,8 +140,8 @@ describe('MCP API — the tools come from the route, not from the page', () => {
     expect(summaryOf('health')).not.toContain('Destructive')
     expect(summaryOf('reader')).not.toContain('Destructive')
     expect(summaryOf('zz_invented_probe')).toContain('Changes project state')
-    expect(summaryOf('zz_invented_probe')).toContain('Destructive – may delete or overwrite')
-    expect(summaryOf('unstated_tool')).toContain('Read-only: not stated – clients assume it may change state')
+    expect(summaryOf('zz_invented_probe')).toContain('Destructive — may delete or overwrite')
+    expect(summaryOf('unstated_tool')).toContain('Read-only: not stated — clients assume it may change state')
     expect(summaryOf('weird_tool')).toContain('Changes project state')
     expect(summaryOf('weird_tool')).not.toContain('Destructive')
     // Action counts by kind: 16 that act plus the one refused.
@@ -228,7 +228,7 @@ describe('MCP API — an expanded tool', () => {
       li.textContent!.replace(/\s+/g, ' '),
     )
     expect(nested[0]).toContain('config.inner')
-    expect(nested[0]).toContain('object – 1 field')
+    expect(nested[0]).toContain('object — 1 field')
     expect(nested[1]).toContain('config.inner.leaf')
     expect(nested[1]).toContain('Required')
     expect(nested[1]).toContain('whole number')
@@ -250,7 +250,7 @@ describe('MCP API — an expanded tool', () => {
     expect(tool('zz_invented_probe').querySelector('[data-slot="mcp-api-expected-version"]')!.textContent).toBe('required on every call')
     // A guard the route does not describe is never guessed.
     expect(tool('unstated_tool').querySelector('[data-slot="mcp-api-operation-id"]')!.textContent).toBe(
-      'optional in the schema – which actions need it is not stated',
+      'optional in the schema — which actions need it is not stated',
     )
   })
 
@@ -274,8 +274,8 @@ describe('MCP API — an expanded tool', () => {
   it('shows every hint as words, with the protocol default where a hint is not stated', () => {
     renderView()
     const text = tool('unstated_tool').textContent!.replace(/\s+/g, ' ')
-    expect(text).toContain('Read-only:not stated – clients assume no')
-    expect(text).toContain('Idempotent:not stated – clients assume no')
+    expect(text).toContain('Read-only:not stated — clients assume no')
+    expect(text).toContain('Idempotent:not stated — clients assume no')
     expect(tool('health').textContent).toContain('Destructive:not applicable (read-only)')
   })
 
@@ -284,7 +284,7 @@ describe('MCP API — an expanded tool', () => {
     const probe = tool('zz_invented_probe')
     const inputs = [...probe.querySelectorAll('[data-slot="mcp-api-argument"]')].map((li) => li.textContent)
     expect(inputs.some((t) => t?.includes('projectId'))).toBe(false)
-    expect(probe.querySelector('[data-slot="mcp-api-refused-argument"]')!.textContent).toContain('Refused – never accepted.')
+    expect(probe.querySelector('[data-slot="mcp-api-refused-argument"]')!.textContent).toContain('Refused — never accepted.')
     // #301, A6: inside the tool a refused action shows its name under its boundary; the reason is
     // written once, in the refusals section.
     const actions = [...probe.querySelectorAll('[data-slot="mcp-api-action"]')].map((li) => li.textContent)

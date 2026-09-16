@@ -4,6 +4,7 @@ import { useCreateAgentProfile } from '@/api/queries'
 import type { FsBrowseDir, ProviderId } from '@qodeca/xezar-api-client'
 import { FolderBrowser } from '@/components/folder-browser'
 import { Button } from '@/components/ui/button'
+import { nativeFieldClass } from '@/components/ui/input'
 import {
   Dialog,
   DialogContent,
@@ -13,6 +14,10 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { toast } from '@/components/ui/toaster'
+import { runnerLabel } from '@/lib/runner-label'
+import { cn } from '@/lib/utils'
+
+import { useReturnFocus } from './remove-project'
 
 /**
  * The folder this dialog SUGGESTS for a second account, per provider.
@@ -74,6 +79,7 @@ export function AddAccountDialog({
   const [configDir, setConfigDir] = useState('')
   const [browsing, setBrowsing] = useState(false)
   const create = useCreateAgentProfile()
+  const returnFocus = useReturnFocus(open)
 
   const trimmed = configDir.trim()
 
@@ -109,7 +115,7 @@ export function AddAccountDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent data-slot="add-account-dialog" className="sm:max-w-lg">
+      <DialogContent data-slot="add-account-dialog" className="sm:max-w-lg" onCloseAutoFocus={returnFocus}>
         <DialogHeader>
           <DialogTitle>Add agent account</DialogTitle>
           <DialogDescription>
@@ -126,16 +132,18 @@ export function AddAccountDialog({
               data-slot="add-account-provider"
               value={provider}
               onChange={(event) => setProvider(event.target.value as ProviderId)}
-              className="rounded-md border border-input bg-card px-2 py-1 text-[13px] outline-none focus-visible:border-ring"
+              className={cn(nativeFieldClass, 'w-auto')}
             >
               {providers.map((id) => (
                 <option key={id} value={id}>
-                  {id}
+                  {runnerLabel(id)}
                 </option>
               ))}
             </select>
           </label>
-          <label className="flex min-w-0 flex-1 items-center gap-2 text-[13px]">
+          {/* `min-w-48` wraps the name to its own row on a phone rather than squeezing it beside a
+              long agent name. */}
+          <label className="flex min-w-48 flex-1 items-center gap-2 text-[13px]">
             <span className="shrink-0 text-muted-foreground">Name</span>
             <input
               type="text"
@@ -144,7 +152,7 @@ export function AddAccountDialog({
               value={label}
               placeholder="Work"
               onChange={(event) => setLabel(event.target.value)}
-              className="min-w-0 flex-1 rounded-md border border-input bg-card px-2 py-1 text-[13px] outline-none focus-visible:border-ring"
+              className={cn(nativeFieldClass, 'min-w-0 flex-1')}
             />
           </label>
         </div>
@@ -165,7 +173,7 @@ export function AddAccountDialog({
                 setSelected(null)
                 create.reset()
               }}
-              className="min-w-0 flex-1 rounded-md border border-input bg-card px-2 py-1 font-mono text-[12.5px] outline-none focus-visible:border-ring"
+              className={cn(nativeFieldClass, 'min-w-0 flex-1 font-mono')}
             />
             <Button
               type="button"
