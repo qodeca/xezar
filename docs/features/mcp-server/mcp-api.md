@@ -83,7 +83,7 @@ The `expectedVersion` and `operationId` columns read:
 | `read_results_evidence` | Read task results and evidence | Read what a task produced and the project's GitHub state, each answer identified by the revision it describes. | yes | no | yes | yes | — | — |
 | `project_config` | Project configuration | Read and change THIS project's own configuration: its settings (agent, models, system prompt, review gate, base branch, worktree retention, memory limit), its registry entry (concurrency cap and tags), prompt templates, in-repo agent config files, workflows, skills, GitHub automations and worktrees. | no | yes | no | no | some actions | some actions |
 | `local_handoff` | Open a task or the project in an app on the xezar host | Hand a task or the project off to a desktop app — a terminal resuming the task’s agent session, an editor, the file manager. | no | no | no | no | — | some actions |
-| `leader_events` | Attach, read and acknowledge project events | Attach this session as the project's leader so xezar pushes its significant events to it (task outcomes, questions, quality gates, human changes, executor availability), and read and acknowledge those events. | no | no | yes | no | — | some actions |
+| `leader_events` | Attach, read and acknowledge project events | Attach this session as the project's leader so xezar pushes its significant events to it (task outcomes, questions, required check results, human changes, executor availability), and read and acknowledge those events. | no | no | yes | no | — | some actions |
 <!-- mcp-api:tools:end -->
 
 ## Arguments
@@ -378,7 +378,7 @@ Unknown arguments are rejected.
 
 ### `leader_events`
 
-> Attach this session as the project's leader so xezar pushes its significant events to it (task outcomes, questions, quality gates, human changes, executor availability), and read and acknowledge those events.
+> Attach this session as the project's leader so xezar pushes its significant events to it (task outcomes, questions, required check results, human changes, executor availability), and read and acknowledge those events.
 > attach: make this session the leader xezar pushes events to – a `<channel source="xezar">` message in Claude Code, a started turn in Codex or pi. The client is this session’s own; you never name it. Call it once per session with a new operationId, and again when status says you are not attached. stop: detach this session. status: whether this session is attached and can receive pushes, the delivery cursors, and what blocks delivery. An OpenCode leader is attached by a person in Settings → MCP connection.
 > Each pushed message names the cursor of its last event. Once you have taken the events into account, ack that cursor. No read is needed.
 > Leader setup has four separate states: files prepared (a project snippet only), connected (a real MCP tool call reached this project), attached (this session owns the attachment), and delivery verified (a real pushed event or an attached-session replay check). Never call a snippet ready. After a restart, status and attach must be repeated with a new operationId before delivery is verified again.
