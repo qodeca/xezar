@@ -58,7 +58,7 @@ Written once, as literals, because both views draw them unchanged: the table row
 
 ## § 5 (j) Mockup-only departures
 
-Where a `cockpit.css` base class disagrees with the source, the mockup draws the source value in both views, through a local replica or a mirrored selector, and leaves `cockpit.css` as it is. `known-gaps.md` cannot change in step 0; PR 2 adds the rows it does not fix to the mockup-fidelity table (§ 14).
+Where a `cockpit.css` base class disagrees with the source, the mockup draws the source value in both views, through a local replica or a mirrored selector, and leaves `cockpit.css` as it is. `known-gaps.md` could not change in step 0. Step 2 (#437) updated the Mockup fidelity table for the classes it restyled; the remaining § 5 (j) rows are not recorded there (open).
 
 | Class | `cockpit.css` | Source | The mockup draws |
 |---|---|---|---|
@@ -134,7 +134,7 @@ Also recorded while drawing:
 | Inbox card inside | `gap-2.5` (`inbox.tsx:227`) | unchanged – inside one block (step-0 review NB-1) | 0 |
 | Page header x | `px-5` (20) (`tasks-overview.tsx:156`, `inbox.tsx:84`, `settings-shell.tsx:180`) | `md:px-section` (32) – the title lines up with the 32 px body gutter (step-0 review NB-1) | +12 |
 
-**One change, one owner.** Six rows above are § 9.3 conversions of a hand-set pixel, and each says *delivered by PR 3b (§ 9.3)*: the tool row, the table header, the nav-row height, the quick-list row, the brand gap and the project-group indent. PR 2 does not touch them, which is what the rollout (§ 9.6) already assumes on both sides – PR 3a seeds its allowlist with all 88 occurrences, and PR 2's before/after screenshots compare the rhythm alone.
+**One change, one owner.** Six rows above are § 9.3 conversions of a hand-set pixel, and each says *delivered by PR 3b (§ 9.3)*: the tool row, the table header, the nav-row height, the quick-list row, the brand gap and the project-group indent. PR 2 does not touch them, which is what the rollout (§ 9.6) already assumes on both sides – PR 3a seeded 70 rows / 86 occurrences in #431 (counts read on 2026-09-16 at `673c6ed`), and PR 2's before/after screenshots compare the rhythm alone.
 
 ## § 9.3 Pixels back on the scale (PR 3a rule, PR 3b conversions)
 
@@ -143,15 +143,15 @@ Also recorded while drawing:
 | `md:h-[34px]` nav row | `md:h-9` | 36 px; `.btn-new-task` above it is `h-9` too – take the CTA to `h-10` so the hierarchy holds (UI-7), or prove it on the screenshot |
 | `md:h-[30px]` nested nav | `md:h-8` | 32 px |
 | `h-[38px]` table header | `h-10` | 40 px |
-| `h-[30px]`, `size-[30px]` button | `h-8`, `size-8` | 32 px – the one visible control-size change; `md` stays `h-9`; `button.test.tsx:38-41` updates with it |
+| `h-[30px]`, `size-[30px]` button | `h-8`, `size-8` | 32 px – the one visible control-size change; `md` stays `h-9`; `button.test.tsx:38-41` was to update with it – not converted in #441; #445 |
 | `px-[15px]` bubble | `px-4` | 16 px |
 | `min-h-[28px]` tool row, `h-[34px]` group trigger | `min-h-8`, `h-9` | 32 / 36 px |
-| `h-[26px]` picker pill, `h-[22px]` reference chip | `h-7 min-h-[24px]`, `h-6 min-h-[24px]` | 28 / 24 px at the default; without a floor they fall to 21 / 18 px at Compact for real, under WCAG 2.2 SC 2.5.8's 24 px. The absolute `min-h-[24px]` holds them at 24 at every density; these two floors are the only allowlist rows PR 3b leaves behind |
+| `h-[26px]` picker pill, `h-[22px]` reference chip | `h-7 min-h-[24px]`, `h-6 min-h-[24px]` | 28 / 24 px at the default; without a floor they fall to 21 / 18 px at Compact for real, under WCAG 2.2 SC 2.5.8's 24 px. The absolute `min-h-[24px]` holds them at 24 at every density; these floors were the two-row target; #441 left 62 rows / 76 occurrences (counts read on 2026-09-16), with remaining conversion in #445 |
 | `p-[3px]`, `py-[3px]`, `py-[7px]` | `p-1`, `py-1`, `py-2` | 4 / 4 / 8 px |
 | `md:min-h-[54px]` composer | `md:min-h-14` | 56 px |
-| `md:min-h-[30px]` step rail (`step-rail.tsx:164`) | `md:min-h-8` | 32 px; the mockup still draws 30 (`thread.css:139`) – PR 3a re-counts from the tree (step-0 review NB-2) |
-| `pl-[22px]`, `gap-[7px]`, `px-[5px]`, `gap-[9px]`, `ml-[14px]`, `mt-[5px]`, `pl-[15px]`, `pl-[26px]`, `px-[7px]` | nearest scale step | listed one by one in PR 3b's allowlist diff; `gap-[9px]` takes § 9.2's `gap-row` and `ml-[14px]` § 9.2's `ml-3.5` |
+| `md:min-h-[30px]` step rail (`step-rail.tsx:164`) | `md:min-h-8` | 32 px; the mockup still draws 30 (`thread.css:139`) – still `md:min-h-[30px]` in the cockpit on 2026-09-16; #445 (step-0 review NB-2) |
+| `pl-[22px]`, `gap-[7px]`, `px-[5px]`, `gap-[9px]`, `ml-[14px]`, `mt-[5px]`, `pl-[15px]`, `pl-[26px]`, `px-[7px]` | nearest scale step | conversions remain tracked by #445; `gap-[9px]` takes § 9.2's `gap-row` and `ml-[14px]` § 9.2's `ml-3.5` |
 | `w-[336px]`, `w-[264px]`, `max-h-[…]` | out of scope | widths and max-heights are layout facts; the rule does not cover `w` or `max-*` |
-| `size-[15px]` ×12, `size-[17px]` ×2 icon glyphs; `h-[3px]` ×3, `md:h-[3px]`, `h-[9px]` hairlines | PR 3b converts (`size-4`; `h-0.5` / `h-1` / `h-2`) or narrows the pattern to drop `size` and heights under 4 px – the implementer's call, recorded in the PR | 19 of the 88 matches are glyph sizes and hairlines, not spacing; AC 5's "exactly two rows" holds either way |
+| `size-[15px]` ×12, `size-[17px]` ×2 icon glyphs; `h-[3px]` ×3, `md:h-[3px]`, `h-[9px]` hairlines | PR 3b converts (`size-4`; `h-0.5` / `h-1` / `h-2`) or narrows the pattern to drop `size` and heights under 4 px – the implementer's call, recorded in the PR | The original inventory counted glyph sizes and hairlines too; AC 5’s two-row target was not met by #424 (62 rows / 76 occurrences; counts read on 2026-09-16); #445 |
 | `pb-[calc(90px+env(safe-area-inset-bottom))]` | one shared class `pb-dock` | a layout fact, not a density concern |
 | `rounded-[18px]`, `rounded-[6px]` | unchanged | radius is a non-goal (§ 4) |

@@ -128,8 +128,7 @@ Form dialogs use a plain phrase, no question mark: "Commit changes", "Add agent 
 
 - Label: a sentence-case noun phrase, no colon: "Theme", "Reading width", "Max parallel tasks",
   "Auto-resume after a usage limit", "Notify when an agent needs you".
-- Hint: full sentences ending in a period, second person, sentinels spelled out: "Compact tightens
-  spacing across the cockpit — text stays the same size.", "How many tasks run at once across every
+- Hint: full sentences ending in a period, second person, sentinels spelled out: "Roomy adds space between things and the Compact options take it away — text stays the same size.", "How many tasks run at once across every
   project. The rest wait in the queue.", "0 = unlimited", "Leave empty for no limit."
 - Placeholder: either an example value ("~/xezar/projects", "sonnet", "owner/repo or
   https://github.com/owner/repo") or an instruction ending in `…` ("Search tasks…",
