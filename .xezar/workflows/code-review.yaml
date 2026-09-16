@@ -4,9 +4,11 @@ steps:
   - id: kit
     name: Snapshot the local project kit
     command: 'bash "$(git rev-parse --path-format=absolute --git-common-dir)/../.xezar/checks/bootstrap.sh"'
+    resultScope: routine
   - id: preflight
     name: Report the checkout
     command: ".xezar/checks/worktree-preflight.sh --allow-root"
+    resultScope: routine
   - id: review
     name: Review
     prompt: "{{task}}"

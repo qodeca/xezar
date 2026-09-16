@@ -19,12 +19,15 @@ steps:
   - id: kit
     name: Snapshot the local project kit
     command: 'bash "$(git rev-parse --path-format=absolute --git-common-dir)/../.xezar/checks/bootstrap.sh"'
+    resultScope: routine
   - id: preflight
     name: Verify worktree isolation
     command: ".xezar/checks/worktree-preflight.sh"
+    resultScope: routine
   - id: setup
     name: Prepare the worktree
     command: ".xezar/checks/worktree-setup.sh"
+    resultScope: routine
   # THE MCP MUTATION GATE IS NOT HERE ANY MORE. It used to be the first check step, before
   # anything was authored, and it is gone because a nearly four-hour measurement whose only
   # repair — a stronger test — lives in somebody else's pull request must not stand between a
@@ -43,15 +46,18 @@ steps:
   - id: readiness
     name: Confirm the task is not blocked
     command: ".xezar/checks/worktree-preflight.sh --readiness"
+    resultScope: stage
   - id: gates
     name: Quality gates
     command: ".xezar/checks/repo-gates.sh --fast"
+    resultScope: stage
     onFail:
       retry: changelog
       max: 2
   - id: evidence
     name: Seal the gate evidence
     command: ".xezar/checks/worktree-preflight.sh --record-gate-evidence"
+    resultScope: stage
   # The id is `handoff`, not `publish`: catalog-check.mjs' writing-workflow phase contract (#116)
   # requires that id after `evidence`, and this step IS the handoff — it pushes the branch and
   # opens the changelog PR — before it goes on to dispatch and merge.

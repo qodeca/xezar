@@ -1,6 +1,7 @@
 import type { McpJournalRow } from '@qodeca/xezar-contract';
 
 import type { EventDispatch, ReactionAdapter } from '../event-controller.ts';
+import { omittedRoutineLine } from '../event-significance.ts';
 
 /**
  * Claude Code and push delivery (#374, Phase 6 of #73). This is the reaction adapter for a Claude
@@ -168,6 +169,7 @@ export function channelMeta(dispatch: EventDispatch, rows: readonly McpJournalRo
   if (first !== undefined) meta.first_seq = String(first);
   if (last !== undefined) meta.last_seq = String(last);
   if (dispatch.recovery !== undefined) meta.recovery = '1';
+  if (dispatch.omittedRoutineCount !== undefined) meta.omitted_routine_count = String(dispatch.omittedRoutineCount);
   // #450: the cursor the leader acks with, so a pushed event needs no read.
   meta.next_cursor = dispatch.nextCursor;
   return meta;
@@ -198,6 +200,8 @@ export function renderChannelContent(dispatch: EventDispatch, rows: readonly Mcp
       `Gap: ${dispatch.recovery.message} (oldest retained ${dispatch.recovery.oldestSeq ?? 'none'}, latest ${dispatch.recovery.latestSeq}).`,
     );
   }
+  const omitted = omittedRoutineLine(dispatch.omittedRoutineCount);
+  if (omitted !== undefined) lines.push(omitted);
   lines.push(
     `Read the current state with the xezar tools before acting. Once you have taken these events into account, acknowledge them: call leader_events with action ack, cursor ${dispatch.nextCursor} and a new operationId. You do not need to read them first.`,
   );

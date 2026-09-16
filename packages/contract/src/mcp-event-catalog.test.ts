@@ -59,4 +59,19 @@ describe('mcpCatalogEventSchema — the catalog oracle refuses what the catalog 
       { path: 'origin', message: 'an E-04 row is a human change' },
     ]);
   });
+
+  it('T-19: accepts bounded gate routing metadata only on gate result rows', () => {
+    const gate = { stepId: 'setup', resultScope: 'routine' };
+    expect(issuesOf(row({ category: 'E-03', kind: 'gate.passed', gate }))).toEqual([]);
+    expect(issuesOf(row({ category: 'E-03', kind: 'gate.failed', gate }))).toEqual([]);
+    expect(issuesOf(row({ gate }))).toEqual([
+      { path: 'gate', message: 'gate metadata belongs only to gate.passed or gate.failed E-03 rows' },
+    ]);
+    expect(issuesOf(row({ category: 'E-03', kind: 'gate.passed', subject: { type: 'workflow', id: 'flow', version: null }, gate }))).toEqual([
+      { path: 'gate', message: 'gate metadata must name a run subject' },
+    ]);
+    expect(issuesOf(row({ category: 'E-03', kind: 'gate.passed', gate: { stepId: '', resultScope: 'routine' } }))).toEqual([
+      { path: 'gate.stepId', message: 'Too small: expected string to have >=1 characters' },
+    ]);
+  });
 });

@@ -111,5 +111,11 @@ export const mcpCatalogEventSchema = mcpJournalRowSchema.superRefine((row, ctx) 
   if (row.category === 'E-04' && row.origin !== 'human') {
     ctx.addIssue({ code: 'custom', path: ['origin'], message: 'an E-04 row is a human change' });
   }
+  if (row.gate !== undefined && (row.category !== 'E-03' || (row.kind !== 'gate.passed' && row.kind !== 'gate.failed'))) {
+    ctx.addIssue({ code: 'custom', path: ['gate'], message: 'gate metadata belongs only to gate.passed or gate.failed E-03 rows' });
+  }
+  if (row.gate !== undefined && row.subject.type !== 'run') {
+    ctx.addIssue({ code: 'custom', path: ['gate'], message: 'gate metadata must name a run subject' });
+  }
 });
 export type McpCatalogEvent = z.infer<typeof mcpCatalogEventSchema>;

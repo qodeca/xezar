@@ -16,6 +16,7 @@ steps:
   - id: kit
     name: Snapshot the local project kit
     command: 'bash "$(git rev-parse --path-format=absolute --git-common-dir)/../.xezar/checks/bootstrap.sh"'
+    resultScope: routine
   - id: sync
     name: Verify the root assignment, then fast-forward
     prompt: "{{task}}"

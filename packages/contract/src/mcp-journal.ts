@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { workflowResultScopeSchema } from './workflows.ts';
 
 import { RUN_HISTORY_PAGE_ITEMS } from './events.ts';
 
@@ -78,6 +79,13 @@ export const mcpJournalSourceSchema = z.object({
   runSeq: z.number().int().nonnegative(),
 });
 
+/** Bounded routing metadata for a workflow check result; never transcript or command output. */
+export const mcpJournalGateSchema = z.object({
+  stepId: z.string().min(1).max(256),
+  resultScope: workflowResultScopeSchema,
+});
+export type McpJournalGate = z.infer<typeof mcpJournalGateSchema>;
+
 /** `kind` is the finer machine label under a category; open for additive growth (D-05 § 6.3). */
 export const mcpJournalKindSchema = z.string().max(64).regex(/^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/);
 
@@ -89,6 +97,7 @@ const originFields = {
   causedBy: mcpJournalOperationIdSchema.nullable(),
   summary: z.string().min(1).max(MCP_JOURNAL_SUMMARY_MAX_CHARS),
   source: mcpJournalSourceSchema.optional(),
+  gate: mcpJournalGateSchema.optional(),
 };
 
 /** A `leader` row without its operation id would defeat the echo guard it exists for. */
@@ -137,6 +146,8 @@ export const mcpJournalPageSchema = z.object({
   /** `null` while the journal is empty. */
   oldestSeq: z.number().int().positive().nullable(),
   latestSeq: z.number().int().nonnegative(),
+  /** Push-only metadata when routine successful checks before this cursor were omitted. */
+  omittedRoutineCount: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
 });
 export type McpJournalPage = z.infer<typeof mcpJournalPageSchema>;
 

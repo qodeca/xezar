@@ -540,6 +540,40 @@ describe('every other kind the catalog emits', () => {
   });
 });
 
+describe('T-15 — gate result routing metadata is produced without dropping journal evidence', () => {
+  it.each([
+    { status: 'done' as const, resultScope: 'routine' as const, kind: 'gate.passed' },
+    { status: 'done' as const, resultScope: 'stage' as const, kind: 'gate.passed' },
+    { status: 'failed' as const, resultScope: 'routine' as const, kind: 'gate.failed' },
+  ])('$kind / $resultScope', ({ status, resultScope, kind }) => {
+    const run = startedRun(['check']);
+    const stepId = run.steps[0]!.id;
+    store.updateRun(run.id, {
+      workflowDef: {
+        name: 'classified-check',
+        source: 'file',
+        steps: [{ id: stepId, command: 'npm test', resultScope }],
+      },
+    });
+
+    store.updateStep(run.id, stepId, { status, ...(status === 'failed' ? { error: 'failed' } : {}) });
+
+    expect(rows()).toEqual([
+      expect.objectContaining({ kind, gate: { stepId, resultScope } }),
+    ]);
+  });
+
+  it('legacy workflow definitions without resultScope are journaled as stage results', () => {
+    const run = startedRun(['check']);
+    const stepId = run.steps[0]!.id;
+    store.updateRun(run.id, {
+      workflowDef: { name: 'legacy-check', source: 'file', steps: [{ id: stepId, command: 'npm test' }] },
+    });
+    store.updateStep(run.id, stepId, { status: 'done' });
+    expect(rows()[0]?.gate).toEqual({ stepId, resultScope: 'stage' });
+  });
+});
+
 describe('the exclusion: a whole task produces nothing but its outcome', () => {
   it('writes zero rows for token counters, log lines, ping, usage and presentation — then one for the completion', () => {
     const run = createRun(['agent', 'agent']);

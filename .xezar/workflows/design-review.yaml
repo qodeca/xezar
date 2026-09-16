@@ -8,9 +8,11 @@ steps:
   - id: kit
     name: Snapshot the local project kit
     command: 'bash "$(git rev-parse --path-format=absolute --git-common-dir)/../.xezar/checks/bootstrap.sh"'
+    resultScope: routine
   - id: preflight
     name: Report the checkout
     command: ".xezar/checks/worktree-preflight.sh --allow-root"
+    resultScope: routine
   - id: review
     name: Design review
     prompt: "Design review (see '## Review mode' in your skill): {{task}}. Follow docs/design-system/README.md through usage, recipes, verification, lifecycle and storage. Own only the read-only verdict and review evidence at the identified revision; the author owns mockup, README handoff and index updates. Preserve label authority and report unavailable checks honestly."

@@ -9,12 +9,15 @@ steps:
   - id: kit
     name: Snapshot the local project kit
     command: 'bash "$(git rev-parse --path-format=absolute --git-common-dir)/../.xezar/checks/bootstrap.sh"'
+    resultScope: routine
   - id: preflight
     name: Verify worktree isolation
     command: ".xezar/checks/worktree-preflight.sh"
+    resultScope: routine
   - id: setup
     name: Prepare the worktree
     command: ".xezar/checks/worktree-setup.sh"
+    resultScope: routine
   - id: design
     name: Design the surface
     prompt: "Author the design for: {{task}}. Follow xezar-ux-design authoring instructions and docs/design-system/README.md: usage for scope, recipes for composition, verification for evidence, lifecycle for ownership and storage for artifacts. Own the static mockup and developer README handoff; finish focused checks and commits before the existing readiness, gates, evidence and PR handoff stages."
@@ -23,15 +26,18 @@ steps:
   - id: readiness
     name: Confirm the task is not blocked
     command: ".xezar/checks/worktree-preflight.sh --readiness"
+    resultScope: stage
   - id: gates
     name: Quality gates
     command: ".xezar/checks/repo-gates.sh --fast"
+    resultScope: stage
     onFail:
       retry: design
       max: 2
   - id: evidence
     name: Seal the gate evidence
     command: ".xezar/checks/worktree-preflight.sh --record-gate-evidence"
+    resultScope: stage
   - id: handoff
     name: Draft PR into main
     prompt: "Hand off the design of: {{task}}. Follow docs/design-system/lifecycle.md and docs/design-system/storage.md for ownership and evidence; verify the sealed head and open the draft PR with needs-design. The author already owns the mockup and README handoff; make no content changes here. Independent design review remains pending."
