@@ -972,6 +972,65 @@ describe('#309 — push delivery in the running service (A-19 delivery, A-20 no-
     await until('the waiting row to be pushed', () => leader.channels.find((f) => f.content.includes(change.eventId)));
   }, 60_000);
 
+  /**
+   * #460 § 4 (T-10, T-11, T-14) against the merged #450 door. The compaction case, played out: a row
+   * is PUSHED and never acknowledged, the leader's context is lost with the cockpit, and the recovery
+   * is the read the tool description tells it to make. Three promises are measured together because
+   * each one makes the next honest — nothing is re-pushed on a timer, delivery is not acknowledgement,
+   * and the retained unacked row comes back with its own stable id.
+   */
+  it('#460 T-10/T-11/T-14: a pushed row left unacknowledged is never pushed twice, survives the restart, and comes back through read', async () => {
+    // RED against: re-pushing delivered rows on a timer (T-14's break), and against resetting the
+    // acknowledgement to what was DELIVERED when a session ends (T-10's break) — after either one a
+    // compacted leader's read returns nothing and the row is lost with the context that held it.
+    const c = await cockpit();
+    const first = await serve(c);
+    const leader = claudeAgent(c.root);
+    await leader.initialize();
+    await until('the owner session’s controller', async () => ((await c.status()) as { delivery: unknown }).delivery !== null || undefined);
+    okResult(await leader.call('leader_events', { action: 'attach' }));
+
+    // One row is pushed — and deliberately never acknowledged.
+    expect((await c.human('PUT', '/config', { baseBranch: 'develop' })).status).toBe(200);
+    const change = await until('the config row', () => journalRows(c.dataDir).find((row) => row.kind === 'config.changed' && row.origin === 'human'));
+    await until('the channel push', () => leader.channels.find((f) => f.content.includes(change.eventId)));
+
+    // T-14: several heartbeats pass (500 ms each). A row already delivered in this session is never
+    // dispatched again, and the transport receipt did not move the acknowledgement.
+    await new Promise((r) => setTimeout(r, 2_000));
+    expect(leader.channels.filter((f) => f.content.includes(change.eventId))).toHaveLength(1);
+    expect(okResult(await leader.call('leader_events', { action: 'status' })).structuredContent).toMatchObject({
+      delivery: { deliveredSeq: change.journalSeq, ackedSeq: 0 },
+    });
+
+    // The cockpit restarts, which is where the leader's own context usually goes too.
+    first.close();
+    await serve(c);
+    expect((await leader.callMessage('leader_events', { action: 'status' })).error?.code).toBe(-32081);
+
+    // T-10 / T-11: the recovery the description prescribes — read, no cursor. The retained unacked
+    // push comes back with the same eventId, and reading it still does not acknowledge it.
+    const replay = okResult(await leader.call('leader_events', { action: 'read' })).structuredContent as unknown as {
+      status: string;
+      events: Array<{ eventId: string }>;
+      nextCursor: string;
+      position: { ackedSeq: number };
+    };
+    expect(replay.status).toBe('ok');
+    expect(replay.events.map((event) => event.eventId)).toContain(change.eventId);
+    expect(replay.position.ackedSeq).toBe(0);
+
+    // Again until acknowledged, with the same ids: that is what the leader deduplicates against.
+    const again = okResult(await leader.call('leader_events', { action: 'read' })).structuredContent as unknown as { events: Array<{ eventId: string }> };
+    expect(again.events.map((event) => event.eventId)).toEqual(replay.events.map((event) => event.eventId));
+
+    // Only the ack moves the position, and a repeat of it is a successful no-op.
+    expect(okResult(await leader.call('leader_events', { action: 'ack', cursor: replay.nextCursor })).structuredContent).toMatchObject({ status: 'acked' });
+    expect(okResult(await leader.call('leader_events', { action: 'ack', cursor: replay.nextCursor })).structuredContent).toMatchObject({ status: 'no-op' });
+    const settled = okResult(await leader.call('leader_events', { action: 'read' })).structuredContent as unknown as { events: unknown[] };
+    expect(settled.events).toEqual([]);
+  }, 60_000);
+
   it('ends delivery with the service, and reports no delivery for a project whose MCP service is not running', async () => {
     const c = await cockpit();
     expect(await c.status()).toEqual({ available: false, reason: expect.any(String) });
