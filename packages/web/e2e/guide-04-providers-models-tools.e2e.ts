@@ -89,8 +89,10 @@ describe('guide 04 — agent backends', () => {
     browser.clickRole('button', 'Model')
     await browser.waitForRole('menuitemradio', 'auto')
     expect(browser.textOfRole('menuitemradio', 'auto')).toContain('Use your Codex default model')
+    // `waitForRole` itself is the assertion here — it throws if the item never appears — rather
+    // than a separate `hasRole(...).toBe(true)` re-check, whose own extra round trip to the
+    // browser is exactly the race a loaded CI runner can lose (#579 round 1).
     await browser.waitForRole('menuitemradio', 'GPT-6-Astra')
-    expect(browser.hasRole('menuitemradio', 'GPT-6-Astra')).toBe(true)
     expect(browser.hasRole('menuitemradio', 'opus')).toBe(false)
 
     // The composer remembers the last-chosen runner across a fresh navigation, so restore it to

@@ -95,9 +95,14 @@ describe('guide 13 — MCP project leader', () => {
   })
 
   it('reports the unattached state honestly — a real "no leader connected" reading, not a faked one', async () => {
+    // The heading is static; the status sentence itself comes from the connection check the page
+    // runs after mount, so it — not the heading — is what this test actually has to wait for
+    // (#579 round 1: waiting only for the heading, or re-checking the heading a second time
+    // right after its own wait, both raced this under CI load).
     await browser.waitForRole('heading', 'Connection status')
-    expect(browser.hasRole('heading', 'Connection status')).toBe(true)
-    expect(browser.hasText('The MCP service is not running for this project, so there is no event delivery to report.')).toBe(true)
+    await browser.waitForText(
+      'The MCP service is not running for this project, so there is no event delivery to report.',
+    )
     expect(browser.hasRole('button', 'Refresh')).toBe(true)
   })
 
@@ -109,18 +114,16 @@ describe('guide 13 — MCP project leader', () => {
     expect(health.capabilities.followups).toBe(false)
 
     await browser.waitForRole('heading', 'What the leader can do')
-    expect(browser.hasRole('heading', 'What the leader can do')).toBe(true)
+    await browser.waitForText('Why: GitHub automations are off on this xezar.')
     expect(browser.hasText('GitHub automations')).toBe(true)
-    expect(browser.hasText('Why: GitHub automations are off on this xezar.')).toBe(true)
+    await browser.waitForText('Why: The follow-up inbox is off for this workspace.')
     expect(browser.hasText('Follow-up inbox')).toBe(true)
-    expect(browser.hasText('Why: The follow-up inbox is off for this workspace.')).toBe(true)
   })
 
   it('"Shared limits" repeats the same workspace resource defaults guide 11 verifies', async () => {
     await browser.waitForRole('heading', 'Shared limits')
-    expect(browser.hasRole('heading', 'Shared limits')).toBe(true)
-    expect(browser.hasText('2 across all projects')).toBe(true)
-    expect(browser.hasText('8192 MiB')).toBe(true)
+    await browser.waitForText('2 across all projects')
+    await browser.waitForText('8192 MiB')
     expect(browser.hasRole('link', 'See every tool this server exposes')).toBe(true)
   })
 })

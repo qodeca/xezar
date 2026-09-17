@@ -148,6 +148,19 @@ export class GuideBrowser {
     throw new Error(`xezar e2e: role "${role}" named "${name}" never appeared`)
   }
 
+  /** Poll for `text` to appear anywhere in the page's visible text — the `hasText` counterpart to
+   *  `waitForRole`, for data-dependent prose (a fetched health/config value) that can render after
+   *  a static heading in the same section already exists. */
+  async waitForText(text: string, opts: { attempts?: number; intervalMs?: number } = {}): Promise<void> {
+    const attempts = opts.attempts ?? 40
+    const intervalMs = opts.intervalMs ?? 250
+    for (let i = 0; i < attempts; i += 1) {
+      if (this.hasText(text)) return
+      this.run(['wait', String(intervalMs)])
+    }
+    throw new Error(`xezar e2e: text "${text}" never appeared`)
+  }
+
   /** Poll for the URL to reach an exact value — navigation state, not markup. */
   async waitForUrl(url: string, opts: { attempts?: number; intervalMs?: number } = {}): Promise<void> {
     const attempts = opts.attempts ?? 40
