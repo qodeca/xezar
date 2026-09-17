@@ -15,3 +15,5 @@ Start with ui-operations.md, worktrees.md, recovery.md and dogfooding.md. Files 
 model-routing.md – which model and runner the leader dispatches for each task kind, with the evidence
 
 account-limits.md – what usage cannot be read, how the leader probes an account for its limit, and how to recover a lane once it is hit
+
+campaign-notes.md – the default folder layout for a campaign note once SDLC.md's single-file template outgrows one comfortable load
