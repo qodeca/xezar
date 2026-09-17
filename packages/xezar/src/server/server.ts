@@ -4915,9 +4915,13 @@ export function createApp(deps: ServerDeps) {
     // → 400, rather than passing as "no body" and silently starting a run).
     .post(
       '/todos/:id/start',
+      // The audit decorator FIRST, so the refusals `todoMustExist` answers — an Inbox that is off
+      // (409) and an entry that is not there (404) — are recorded like every other route-owned 4xx
+      // (#577). It only lets the chain run and reads the answer, so the status order below is
+      // unchanged.
+      ui.route('run.startFromInbox', { resource: { kind: 'inbox', param: 'id' } }),
       todoMustExist,
       jsonZodValidator(startTodoSchema, { absent: undefined, malformed: null }),
-      ui.route('run.startFromInbox', { resource: { kind: 'inbox', param: 'id' } }),
       async (c) => {
         const { root: repoRoot, dataDir, manager } = c.get('project');
         const id = c.req.param('id');

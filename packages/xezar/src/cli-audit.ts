@@ -2,7 +2,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { realpath } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import type { AuditActor, AuditResource } from '@qodeca/xezar-contract';
-import { AuditTrail, type AuditChannel, type AuditScope } from './mcp/audit-trail.ts';
+import { AuditTrail, doorAuditWarning, type AuditChannel, type AuditScope } from './mcp/audit-trail.ts';
 import { ensureProjectDataIgnored, projectDataDir } from './project-data-paths.ts';
 import { loadWorkspaceConfig } from './workspace/config.ts';
 import { allocateProjectSlug, shouldRegisterProject } from './workspace/projects.ts';
@@ -28,8 +28,9 @@ import { allocateProjectSlug, shouldRegisterProject } from './workspace/projects
  * purpose, whether or not it is registered yet or has ever run xezar before: its `.local/xezar/` is
  * created (and ignored) when it has none, exactly as a first `serve` would, and the command writes its
  * one record. A folder `shouldRegisterProject` excludes writes no record and no state, but never
- * silently — it prints the trail's one warning (the same `warned` latch a write failure uses) so a
- * reader can tell "never ran" from "ran without an audit record": `xezar projects list` in `$HOME`
+ * silently — it prints the project's one audit warning (the latch every door of that folder shares,
+ * with the bounded code `not_a_project_folder` and no path) so a reader can tell "never ran" from
+ * "ran without an audit record": `xezar projects list` in `$HOME`
  * must not create `~/.local/xezar/`, but it does warn once on stderr, and a nested `xezar` invocation
  * inside a task worktree warns the same way.
  *
@@ -134,7 +135,8 @@ export function cliAudit(
   options: { warn?: (message: string) => void } = {},
 ): CliAudit {
   let invocation: Promise<CliAuditScope | undefined> | undefined;
-  let warned = false;
+  const warn = options.warn ?? ((message: string) => console.warn(message));
+  const doorWarning = doorAuditWarning(warn);
   const scope = (): Promise<CliAuditScope | undefined> => (invocation ??= invocationScope(repoRoot));
   const write = async (
     settlement: { outcome: 'applied' } | { outcome: 'refused'; reason: string },
@@ -144,19 +146,15 @@ export function cliAudit(
     try {
       const where = target ?? (await scope());
       if (!where || !where.isProject) {
-        if (!warned) {
-          warned = true;
-          (options.warn ?? ((message: string) => console.warn(message)))(
-            `xezar: no audit record – ${repoRoot} is not a project folder (home directory or task worktree)`,
-          );
-        }
+        // The one warning of this folder, without the folder: a path is not for logs (#573 m3).
+        doorWarning(where?.dataDir, { code: 'not_a_project_folder' });
         return;
       }
       if (!existsSync(where.dataDir)) {
         ensureProjectDataIgnored(where.dataDir);
         mkdirSync(where.dataDir, { recursive: true, mode: 0o700 });
       }
-      const channel = channelFor(where, options.warn);
+      const channel = channelFor(where, warn);
       if (!channel) return;
       await channel.record(
         {
@@ -169,15 +167,10 @@ export function cliAudit(
       );
     } catch (err) {
       // Best effort by contract: the command's own result never depends on its audit record, and
-      // a record that could not be written says so once (spec § 7.2) — the trail's own write
-      // failures warn inside the trail; this covers the folder and channel setup before it.
-      if (!warned) {
-        warned = true;
-        const code = (err as NodeJS.ErrnoException | undefined)?.code ?? (err as Error | undefined)?.name ?? 'error';
-        (options.warn ?? ((message: string) => console.warn(message)))(
-          `xezar: audit trail write failed (${code}); the action continued without an audit record.`,
-        );
-      }
+      // a record that could not be written says so once (spec § 7.2, A7). The folder and channel
+      // setup share the project's one warning with the trail itself, and the error reaches the text
+      // only as a bounded code — never its message, which can name a path (#573 m3).
+      doorWarning(target?.dataDir ?? (await scope().catch(() => undefined))?.dataDir, err);
     }
   };
   return {

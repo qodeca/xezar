@@ -11,7 +11,8 @@ Node has no pseudo-terminal of its own, so this is the smallest thing that does.
      program measures is the size this script asked for;
   2. starts the command in its OWN session, so the interrupt below can only ever reach that one
      process group -- never this script, never a sibling, never anything else on the machine;
-  3. reads for `seconds`, sends one SIGINT (what a person pressing Ctrl-C sends), drains the
+  3. reads for `seconds` after the command's first output (waiting up to `seconds` more for it
+     to start at all), sends one SIGINT (what a person pressing Ctrl-C sends), drains the
      rest, and writes the raw bytes to stdout.
 
 Usage:  pty-capture.py <columns> <rows> <seconds> <command> [args...]
@@ -30,8 +31,20 @@ import termios
 import time
 
 
-def drain(master_fd, out, deadline):
-    """Read whatever is on the terminal until `deadline`, or until the far end closes."""
+def drain(master_fd, out, window, boot_wait=0.0):
+    """Read the terminal for `window` seconds, or until the far end closes.
+
+    With `boot_wait`, the window starts at the FIRST byte instead of at the call, and the whole
+    call still ends after `window + boot_wait` at the latest. The window is meant to watch a
+    program that is already up; on a loaded machine the child's own start-up ate all of it and
+    the capture came back empty, which reads as "the program printed nothing" rather than "it
+    had not started yet". The window is unchanged -- it just begins where it always meant to.
+    """
+    now = time.time()
+    deadline = now + window + boot_wait
+    if boot_wait <= 0:
+        deadline = now + window
+    started = boot_wait <= 0
     while time.time() < deadline:
         readable, _, _ = select.select([master_fd], [], [], 0.2)
         if not readable:
@@ -42,6 +55,9 @@ def drain(master_fd, out, deadline):
             return
         if not chunk:
             return
+        if not started:
+            started = True
+            deadline = min(deadline, time.time() + window)
         out.append(chunk)
 
 
@@ -79,7 +95,9 @@ def main():
     os.close(slave_fd)
 
     out = []
-    drain(master_fd, out, time.time() + seconds)
+    # Up to `seconds` of extra patience for the child to say anything at all, then `seconds` of
+    # watching it -- see `drain`.
+    drain(master_fd, out, seconds, boot_wait=seconds)
 
     # Stop it the way a person does. `killpg` on the child's OWN session id -- never a name,
     # never a pattern: a pattern would match every unrelated process this user happens to run.
@@ -87,7 +105,7 @@ def main():
         os.killpg(os.getpgid(child.pid), signal.SIGINT)
     except (ProcessLookupError, PermissionError):
         pass
-    drain(master_fd, out, time.time() + 4)
+    drain(master_fd, out, 4)
 
     try:
         child.wait(timeout=4)
