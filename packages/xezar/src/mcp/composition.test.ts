@@ -190,7 +190,8 @@ describe('the composed MCP service, through the real bridge and socket', () => {
       origin: 'mcp',
       actor: { type: 'mcp' },
       projectId: c.id,
-      action: 'taskCreate.start',
+      // #306 part 2: the shared inventory's id, the one the cockpit's `POST /runs` records too.
+      action: 'run.start',
       outcome: { status: 'applied' },
       resource: { kind: 'run', id: runId },
       operationKey: `${c.id}/op-compose-0001`,
@@ -232,7 +233,7 @@ describe('the composed MCP service, through the real bridge and socket', () => {
     expect(row).toMatchObject({ category: 'E-01', origin: 'leader' });
     // #264: the row names the leader's OWN operation key, the one it can replay the cancel under.
     expect(row.causedBy).toBe('op-compose-0004');
-    expect(auditLines(c.dataDir).map((entry) => entry.action)).toEqual(['taskCreate.start', 'executionControl.cancel']);
+    expect(auditLines(c.dataDir).map((entry) => entry.action)).toEqual(['run.start', 'run.cancel']);
     expect(auditLines(c.dataDir)[1]).toMatchObject({ origin: 'mcp', outcome: { status: 'applied' }, resource: { kind: 'run', id: queued.id } });
   });
 
@@ -335,8 +336,8 @@ describe('the composed MCP service, through the real bridge and socket', () => {
     expect(started.isError, JSON.stringify(started)).toBeFalsy();
 
     expect(auditLines(c.dataDir).map((entry) => [entry.seq, entry.action, entry.outcome])).toEqual([
-      [1, 'projectConfig.setWorkspaceConfig', { status: 'refused', reason: 'workspace_settings' }],
-      [2, 'taskCreate.start', { status: 'applied' }],
+      [1, 'workspace.config.set', { status: 'refused', reason: 'workspace_settings' }],
+      [2, 'run.start', { status: 'applied' }],
     ]);
     // One warning for the unrecorded call, carrying a code and never the call's own text.
     const auditWarnings = warnings.filter((m) => m.includes('audit trail'));

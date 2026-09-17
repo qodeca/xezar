@@ -15,8 +15,9 @@ import type { RunStore } from '../runs/store.ts';
 import { loadWorkspaceConfig } from '../workspace/config.ts';
 import { ProjectOwnership } from '../workspace/project-owner.ts';
 import { codexControlHome } from './adapters/codex-link.ts';
+import { classifyMcpCall } from './audit-inventory.ts';
 import { AuditTrail, type AuditChannel } from './audit-trail.ts';
-import { runBridge, type ServiceTarget } from './bridge.ts';
+import { runBridge, type BridgeOptions, type ServiceTarget } from './bridge.ts';
 import { writeMcpConnectionFile } from './connection-file.ts';
 import { EchoGuard, operationNotApplied } from './echo-guard.ts';
 import { EventCatalog, withEventOrigin, type WorkspaceEventSource } from './event-catalog.ts';
@@ -209,7 +210,9 @@ interface DoorInput {
  * - operation receipts (#101) for every call that carries an `operationId`;
  * - the echo guard (#106): the operation is recorded as this leader's own BEFORE it runs;
  * - the audit trail (#102, #306), stamped `mcp` because this is the MCP door (D-06 § 10.4 rule 1),
- *   written to `audit.ndjson` as v2 records.
+ *   written to `audit.ndjson` as v2 records. WHICH calls it records, and under which action id, is
+ *   the shared inventory's decision (`audit-inventory.ts`, spec § 6), not a tool annotation: a read
+ *   action inside a mutating tool writes nothing, and a mutation gets the id the cockpit door uses.
  *
  * Read-only tools pass straight through: a read has no effect to deduplicate, attribute or audit.
  *
@@ -299,6 +302,10 @@ function composeDoor(input: DoorInput): {
     const marked = (): Promise<McpToolResult> =>
       withEventOrigin({ origin: 'leader', causedBy, ...(target ? { runId: target.id } : {}) }, invoke);
     const issued = guard ? () => guard.issue(causedBy, marked) : marked;
+    // The audit's own classification, from the shared inventory. The receipt keeps `action`, its
+    // historical key: changing it would split an idempotency key across versions.
+    const audited = classifyMcpCall(tool.name, args);
+    const auditFor = audited.kind === 'mutation' ? audit : undefined;
     const op = {
       action,
       payload: args,
@@ -315,9 +322,11 @@ function composeDoor(input: DoorInput): {
           : await issued();
     } catch (err) {
       // The effect may have started: v2 has no honest outcome for that, so no record (spec § 3.2).
-      audit?.skip('effect_failed');
+      auditFor?.skip('effect_failed');
       throw err;
     }
+    if (audited.kind !== 'mutation' || !auditFor) return result;
+    const recorded = { ...op, action: audited.resolve(result) };
     // v2 has two outcomes, `applied` and `refused`, and `refused` promises nothing happened. So an
     // error result is recorded only when the tool itself says, in its structured answer, that it
     // refused before any effect; any other error may have come after the effect started, and the
@@ -328,11 +337,11 @@ function composeDoor(input: DoorInput): {
     // refusal (`refused: true` with its `boundary`), which dispatched nothing (spec § 6.2).
     const resource = resourceOf(result);
     const stale = staleRejectionOf(result);
-    const boundary = boundaryRefusalOf(result);
-    if (stale) audit?.record(op, { outcome: 'refused', reason: 'stale_version', resource: stale.resource });
-    else if (boundary) audit?.record(op, { outcome: 'refused', reason: boundary });
-    else if (result.isError) audit?.skip('tool_error');
-    else audit?.record(op, { outcome: 'applied', ...(resource ? { resource } : {}) });
+    const boundary = boundaryRefusalOf(result) ?? routeRefusalOf(result);
+    if (stale) auditFor.record(recorded, { outcome: 'refused', reason: 'stale_version', resource: stale.resource });
+    else if (boundary) auditFor.record(recorded, { outcome: 'refused', reason: boundary });
+    else if (result.isError) auditFor.skip('tool_error');
+    else auditFor.record(recorded, { outcome: 'applied', ...(resource ? { resource } : {}) });
     return result;
   };
 
@@ -411,7 +420,10 @@ function operationIdOf(args: Record<string, unknown>): string | undefined {
   return parsed.success ? parsed.data : undefined;
 }
 
-/** `task_create` + `start_from_inbox` → `taskCreate.startFromInbox`: the audit's dotted action id. */
+/**
+ * `task_create` + `start_from_inbox` → `taskCreate.startFromInbox`: the operation receipt's action key.
+ * The audit trail no longer uses it (#306 part 2): its action id comes from `audit-inventory.ts`.
+ */
 function actionId(toolName: string, action: unknown): string {
   const camel = (name: string): string => name.replace(/_([a-z0-9])/g, (_, c: string) => c.toUpperCase());
   return `${camel(toolName)}.${typeof action === 'string' ? camel(action) : 'call'}`;
@@ -446,6 +458,17 @@ function boundaryRefusalOf(result: McpToolResult): string | undefined {
   return /^[a-z][a-z-]{0,63}$/.test(content.boundary) ? content.boundary.replace(/-/g, '_') : undefined;
 }
 
+/**
+ * A route's own 4xx that a tool relayed as its structured answer (`project_config` puts the
+ * route's `status` there). The routes validate and refuse before any effect, so this is the same
+ * refusal the cockpit door records for that route, with the same `http_<status>` reason.
+ */
+function routeRefusalOf(result: McpToolResult): string | undefined {
+  if (!result.isError) return undefined;
+  const status = result.structuredContent?.status;
+  return typeof status === 'number' && Number.isInteger(status) && status >= 400 && status < 500 ? `http_${status}` : undefined;
+}
+
 /** The resource a result names: a tool's `subject`, or a receipt's `resultRef`. */
 function resourceOf(result: McpToolResult): AuditResource | undefined {
   const content = result.structuredContent;
@@ -460,7 +483,12 @@ function resourceOf(result: McpToolResult): AuditResource | undefined {
  * `xez mcp` — spawned by an MCP client with the session's project as its working
  * directory (D-01 § 4). Serves MCP on stdio until the client closes stdin.
  */
-export async function runMcpCommand(opts: { repoRoot: string; version: string }): Promise<void> {
+export async function runMcpCommand(opts: {
+  repoRoot: string;
+  version: string;
+  /** Told how the first `session/open` settled — the `cli.mcp` audit record (#306 part 2). */
+  onSessionOpen?: BridgeOptions['onSessionOpen'];
+}): Promise<void> {
   // stdout carries JSON-RPC and nothing else: one stray log line from any module
   // would corrupt the client's stream. Diagnostics go to stderr, which clients log.
   const toStderr = (...args: unknown[]): void => console.error(...args);
@@ -473,6 +501,7 @@ export async function runMcpCommand(opts: { repoRoot: string; version: string })
     version: opts.version,
     tools,
     resolveTarget: () => resolveMcpTarget(opts.repoRoot),
+    ...(opts.onSessionOpen ? { onSessionOpen: opts.onSessionOpen } : {}),
   });
 }
 
