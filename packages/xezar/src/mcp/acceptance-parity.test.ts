@@ -918,7 +918,7 @@ describe.skipIf(isWindows)('#116 parity and collaboration acceptance — A/B wor
         return [...hashFiles(w)]
           .filter(([path, hash]) => before.get(path) !== hash)
           .map(([path]) => norm(path))
-          .filter((path) => !/mcp-audit|event-journal/.test(path))
+          .filter((path) => !/\/audit\.ndjson|event-journal/.test(path))
           .sort();
       };
       const act = async (w: AbWorld, door: 'mcp' | 'ui'): Promise<{ delta: string[]; config: string; uiState: string; transcript: string[] }> => {

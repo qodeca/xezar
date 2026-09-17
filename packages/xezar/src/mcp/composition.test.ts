@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
@@ -14,7 +14,7 @@ import { WorkspaceEventBus, createApp } from '../server/server.ts';
 import { RunManager } from '../workflows/run.ts';
 import { registerProject } from '../workspace/projects.ts';
 import { WorkspaceSemaphore } from '../workspace/semaphore.ts';
-import { AUDIT_TRAIL_FILE } from './audit-trail.ts';
+import { AUDIT_TRAIL_FILE, LEGACY_AUDIT_TRAIL_FILE } from './audit-trail.ts';
 import { runBridge } from './bridge.ts';
 import { EventJournal } from './event-journal.ts';
 import { resolveMcpTarget, startMcpService } from './index.ts';
@@ -184,13 +184,21 @@ describe('the composed MCP service, through the real bridge and socket', () => {
     const entries = auditLines(c.dataDir);
     expect(entries).toHaveLength(2); // the start and its replay; the read is not an operation
     expect(entries[0]).toMatchObject({
+      v: 2,
+      seq: 1,
+      kind: 'action',
       origin: 'mcp',
+      actor: { type: 'mcp' },
       projectId: c.id,
       action: 'taskCreate.start',
-      outcome: 'ok',
+      outcome: { status: 'applied' },
       resource: { kind: 'run', id: runId },
       operationKey: `${c.id}/op-compose-0001`,
     });
+    expect(entries[1]).toMatchObject({ seq: 2, outcome: { status: 'applied' } });
+    // #306: no opt-in flag, the new file name, owner-only, and nothing under the legacy name.
+    expect(statSync(join(c.dataDir, 'audit.ndjson')).mode & 0o777).toBe(0o600);
+    expect(existsSync(join(c.dataDir, 'mcp-audit.ndjson'))).toBe(false);
 
     // #103: the project's journal is open while the service runs, and released by close().
     expect(existsSync(join(c.dataDir, 'mcp', 'event-journal.json'))).toBe(true);
@@ -225,7 +233,7 @@ describe('the composed MCP service, through the real bridge and socket', () => {
     // #264: the row names the leader's OWN operation key, the one it can replay the cancel under.
     expect(row.causedBy).toBe('op-compose-0004');
     expect(auditLines(c.dataDir).map((entry) => entry.action)).toEqual(['taskCreate.start', 'executionControl.cancel']);
-    expect(auditLines(c.dataDir)[1]).toMatchObject({ origin: 'mcp', outcome: 'ok', resource: { kind: 'run', id: queued.id } });
+    expect(auditLines(c.dataDir)[1]).toMatchObject({ origin: 'mcp', outcome: { status: 'applied' }, resource: { kind: 'run', id: queued.id } });
   });
 
   it("A-13: a leader write based on a stale read is refused, and the human's state stays byte-identical (#250)", async () => {
@@ -284,10 +292,11 @@ describe('the composed MCP service, through the real bridge and socket', () => {
     expect(bytes()).toEqual(before);
     expect(c.store.getRun(runId)).toMatchObject({ status: 'queued', title: 'the human’s title', task: 'the human’s brief' });
 
-    // The trail says what happened — rejected, with the version the decision was based on.
+    // The trail says what happened — refused, with the version the decision was based on.
     const rejected = auditLines(c.dataDir).slice(-attempts.length);
     for (const entry of rejected) {
-      expect(entry).toMatchObject({ origin: 'mcp', outcome: 'rejected', errorCode: 'stale_version', versionToken: leaderRead });
+      expect(entry).toMatchObject({ origin: 'mcp', outcome: { status: 'refused', reason: 'stale_version' }, versionToken: leaderRead });
+      expect(entry).not.toHaveProperty('errorCode');
     }
 
     // 4. Read again, decide again: the new decision goes through.
@@ -301,6 +310,39 @@ describe('the composed MCP service, through the real bridge and socket', () => {
     });
     expect(body(renamed)).toMatchObject({ status: 'done', run: { id: runId, title: 'the leader’s title' } });
     expect(c.store.getRun(runId)?.title).toBe('the leader’s title');
+  });
+
+  it('#306: a boundary refusal is recorded as refused, a tool error that may have started is not recorded, and the legacy file is never touched', async () => {
+    const c = await cockpit();
+    // A trail 0.15.0 left behind, under the old name.
+    const legacy = join(c.dataDir, LEGACY_AUDIT_TRAIL_FILE);
+    copyFileSync(fileURLToPath(new URL('../../test/fixtures/audit-0.15.0/data-dir/mcp-audit.ndjson', import.meta.url)), legacy);
+    const legacyBytes = readFileSync(legacy);
+    const warnings: string[] = [];
+    const handle = await startMcpService({ projectId: c.id, version: VERSION, service: c.app, store: c.store, warn: (m) => warnings.push(m) });
+    closers.push(() => handle.close());
+    const client = agent(c.root);
+
+    // Refused before any effect, and the tool says so in its structured answer (spec § 6.2).
+    const boundary = await client.call('project_config', { action: 'set_workspace_config', operationId: 'op-compose-0031' });
+    expect(boundary.isError, JSON.stringify(boundary)).toBe(true);
+    expect(boundary.structuredContent, JSON.stringify(boundary)).toBeDefined();
+    expect(boundary.structuredContent).toMatchObject({ refused: true, boundary: 'workspace-settings' });
+    // An error answer that does not say it refused: the effect may have started, so no record (spec § 3.2).
+    const failed = await client.call('execution_control', { action: 'cancel', runId: 'no-such-run', expectedVersion: 'rev1:run:no-such-run:1:0123456789ab', operationId: 'op-compose-0032' });
+    expect(failed.isError, JSON.stringify(failed)).toBe(true);
+    const started = await client.call('task_create', { action: 'start', operationId: 'op-compose-0033', prompt: 'hello' });
+    expect(started.isError, JSON.stringify(started)).toBeFalsy();
+
+    expect(auditLines(c.dataDir).map((entry) => [entry.seq, entry.action, entry.outcome])).toEqual([
+      [1, 'projectConfig.setWorkspaceConfig', { status: 'refused', reason: 'workspace_settings' }],
+      [2, 'taskCreate.start', { status: 'applied' }],
+    ]);
+    // One warning for the unrecorded call, carrying a code and never the call's own text.
+    const auditWarnings = warnings.filter((m) => m.includes('audit trail'));
+    expect(auditWarnings).toEqual(['xezar: audit trail write failed (tool_error); the action continued without an audit record.']);
+    // The legacy file is read-only: same bytes, and still where 0.15.0 left it.
+    expect(readFileSync(legacy).equals(legacyBytes)).toBe(true);
   });
 
   it('F-15: no secret from the host environment enters a journal row', async () => {

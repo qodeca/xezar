@@ -11,6 +11,14 @@ Loop: observe during real work → classify problem versus environment/unknown �
 Installation validation is reported in installation.md. Real-task entries follow; each names its evidence level.
 
 ## Real-task entries
+### 2026-09-17 — #306 part 1 (audit contract, `audit.ndjson`, legacy alias), `feature-implementation` step `implement`, `xezar-implementation`, Claude Code — real-task observed
+- Input: the accepted spec `audit-trail-origins-2026-09-17.md` § 13 PR 1 and the leader brief; base `2208b90`.
+- Observed: **a named break stayed green because the test read the name through the same constant as the code.** Renaming `AUDIT_TRAIL_FILE` left the door test passing, since it built its path from that constant. Pinning the literal file names in the door test turned the break red. A rename's proof must spell the name, not import it.
+- Observed: **a test fixture's copy of the door's classification drifted silently.** `test/helpers/ab-fixture.ts` re-implements the MCP door's audit outcome; after v2 removed `unverified`, it mapped tool errors to `refused` while the real door records nothing, and no assertion noticed. Self-review caught it by grepping the settlement call sites, not the type.
+- Observed: **a "written by the released version" fixture needs no second install when the writer is blob-identical at the tag.** `git rev-parse v0.15.0:<path>` equal to `HEAD:<path>` for the writer and schema, checked before any edit, made the current writer produce genuine 0.15.0 bytes; the frozen reader copy is pinned by its git blob hash inside the test, so no tag is needed in CI.
+- Observed (tooling, again): a zsh `$SRC` path list reached `git checkout` as one path and failed; a `bash -c` wrapper was refused by the permission layer. A short Python driver with argument arrays applied each break, ran the test and restored the file with `git checkout HEAD -- <file>`, which also avoids the shared stash stack.
+- Regression/control: 14 named breaks, each red alone; whole fix reverted to base: 39 of 51 audit tests red. `npm run test:coverage:mcp` held the per-file 80/80 floor.
+- Remaining limit: fixture-tested. The installed two-version upgrade test is #306 part 4.
 
 ### 2026-09-16 — #453 B4 review response round 1 (design finding B-1), `address-review-findings` step `address`, `xezar-review-response`, Claude Code — real-task observed
 

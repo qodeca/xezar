@@ -208,7 +208,8 @@ interface DoorInput {
  *   the leader's, with the operation that caused it;
  * - operation receipts (#101) for every call that carries an `operationId`;
  * - the echo guard (#106): the operation is recorded as this leader's own BEFORE it runs;
- * - the audit trail (#102), stamped `mcp` because this is the MCP door (D-06 § 10.4 rule 1).
+ * - the audit trail (#102, #306), stamped `mcp` because this is the MCP door (D-06 § 10.4 rule 1),
+ *   written to `audit.ndjson` as v2 records.
  *
  * Read-only tools pass straight through: a read has no effect to deduplicate, attribute or audit.
  *
@@ -313,24 +314,25 @@ function composeDoor(input: DoorInput): {
           ? await idempotent(receipts, { projectId, operationId, action, args, toolName: tool.name, issued, warn })
           : await issued();
     } catch (err) {
-      audit?.record(op, { outcome: 'unverified', errorCode: 'effect_failed' });
+      // The effect may have started: v2 has no honest outcome for that, so no record (spec § 3.2).
+      audit?.skip('effect_failed');
       throw err;
     }
-    // An error result may come from a refusal or from a failure after the effect started; the door
-    // cannot tell which, so it never claims `rejected` (nothing happened) on the tool's behalf. The
-    // one exception is the stale-version rejection (#250): the ROUTE refused it before any effect
-    // and says so (`applied: false`), so recording it as `ok` would put a write that never happened
-    // into the trail (D-06 § 4.4 rule 6).
+    // v2 has two outcomes, `applied` and `refused`, and `refused` promises nothing happened. So an
+    // error result is recorded only when the tool itself says, in its structured answer, that it
+    // refused before any effect; any other error may have come after the effect started, and the
+    // door records nothing rather than guess (spec § 3.2) — one warning per process says so.
+    // Two refusals are recognised: the stale-version rejection (#250), which the ROUTE refused
+    // before any effect and which is a non-error answer (recording it as `applied` would put a write
+    // that never happened into the trail, D-06 § 4.4 rule 6); and a `project_config` boundary
+    // refusal (`refused: true` with its `boundary`), which dispatched nothing (spec § 6.2).
     const resource = resourceOf(result);
     const stale = staleRejectionOf(result);
-    audit?.record(
-      op,
-      stale
-        ? { outcome: 'rejected', errorCode: 'stale_version', resource: stale.resource }
-        : result.isError
-          ? { outcome: 'unverified', errorCode: 'tool_error' }
-          : { outcome: 'ok', ...(resource ? { resource } : {}) },
-    );
+    const boundary = boundaryRefusalOf(result);
+    if (stale) audit?.record(op, { outcome: 'refused', reason: 'stale_version', resource: stale.resource });
+    else if (boundary) audit?.record(op, { outcome: 'refused', reason: boundary });
+    else if (result.isError) audit?.skip('tool_error');
+    else audit?.record(op, { outcome: 'applied', ...(resource ? { resource } : {}) });
     return result;
   };
 
@@ -431,6 +433,17 @@ function staleRejectionOf(result: McpToolResult) {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * The boundary a `project_config` refusal names (`refused: true`, `boundary: 'workspace-settings'`),
+ * as a v2 reason (`workspace_settings`). Such an answer dispatched nothing, so it is a real refusal.
+ */
+function boundaryRefusalOf(result: McpToolResult): string | undefined {
+  if (!result.isError) return undefined;
+  const content = result.structuredContent;
+  if (content?.refused !== true || typeof content.boundary !== 'string') return undefined;
+  return /^[a-z][a-z-]{0,63}$/.test(content.boundary) ? content.boundary.replace(/-/g, '_') : undefined;
 }
 
 /** The resource a result names: a tool's `subject`, or a receipt's `resultRef`. */

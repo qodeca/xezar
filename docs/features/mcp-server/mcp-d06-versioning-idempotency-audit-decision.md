@@ -766,6 +766,24 @@ The first six fields are exactly the six things N-04 names, one for one: action 
 The remaining five are the joins that make an entry investigable — without `operationKey` an audit
 trail cannot be tied to the receipt that explains it.
 
+**Record version 2 (2026-09-17, [#306](https://github.com/qodeca/xezar/issues/306) part 1).** The table
+above is the version 1 record, which 0.13.0–0.15.0 wrote to `mcp-audit.ndjson` and which is now read
+only as a legacy file (§ 10.5). The record written from 0.16.0 is version 2, defined in
+`packages/contract/src/audit.ts` and specified in the
+[four-origin audit specification](audit-trail-origins-2026-09-17.md) § 3. Its changes to this table:
+
+- `outcome` is `{ status: 'applied' }` or `{ status: 'refused', reason }`; `errorCode` is gone and
+  its value is `reason`. There is no `unverified` or `not-applied`: an operation whose effect may
+  have started is not recorded, and the writer warns once instead.
+- New: `v: 2`, `kind` (`action`, or a `rotated` marker), `seq` (grows by one per record in the file
+  set), `actor` (server-derived and door-specific; its `type` equals `origin`), and optional
+  `fieldNames` (key names of a configuration write, never values).
+- `ts` must be UTC. `ownerGeneration` and `operationKey` stay optional and are refused for any origin
+  other than `mcp`. Unknown keys are refused.
+
+The MUST and SHOULD split is unchanged: `projectId` and `origin` (now with `actor`) are MUST, every
+other field is SHOULD.
+
 ### 10.3 Decision — what is excluded, and why
 
 **MUST NOT be stored:** prompt and brief text; message bodies; file contents; diffs; command output;
@@ -818,6 +836,15 @@ proposal below for the 0.16.0 implementation. This is a local operational trail,
 security log: a local agent or person with shell access to the project can alter or delete the live
 and rotated audit files. This paragraph records the accepted design; it does not claim the pending
 writers or rotation already ship.
+
+**Implemented in 0.16.0 so far (#306 part 1).** The live file is `.local/xezar/audit.ndjson`,
+created with mode `0600`, holding version 2 records (§ 10.2). `mcp-audit.ndjson` is a read-only
+legacy alias: it is read, with the version 1 schema, only while `audit.ndjson` does not exist, it is
+never written, renamed, chmodded, rotated or deleted, and reading it prints one deprecation line per
+process. When both exist, the new file wins and the histories are never merged. The alias is removed
+no earlier than 0.18.0 and only through [#563](https://github.com/qodeca/xezar/issues/563). Not yet
+implemented: the cross-process lock, rotation at 10 MB with five files, and mode repair of an
+existing file (#306 part 3). Until then the trail is not bounded.
 
 **Superseded historical proposal:** store the
 audit trail as its own append-only NDJSON beside the receipts, with the same line-level quarantine
@@ -873,6 +900,12 @@ touched by the 2026-09-12 amendment. The 2026-09-17 follow-on in § 10.5 later a
 
 **Limit of this subsection.** It records scope and it corrects documents. It changes no field, no
 rule, no MUST and no SHOULD in § 10.2 through § 10.5, and it narrows no enum.
+
+**Update 2026-09-17 (#306 part 1).** The file named above is now `audit.ndjson`, with version 2
+records (§ 10.2, § 10.5). The scope decision still holds for this step: the only production writer is
+the MCP door (`.channel('mcp')` in `packages/xezar/src/mcp/index.ts`). The `ui`, `automation` and `cli`
+writers are #306 part 2, which supersedes #364. The origin enum now lives in
+`packages/contract/src/audit.ts`.
 
 ## 11. Scoped absence claims
 

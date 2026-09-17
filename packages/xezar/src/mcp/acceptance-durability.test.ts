@@ -900,7 +900,7 @@ describe('A-22 — global administration and weakening gates, including by an ap
     }
     expect(await (await w.cockpit('/api/v1/workspace/config')).text()).toBe(workspaceBefore);
     // The only change in A is the door's own audit record of each refused call (D-06 § 10).
-    expect(snapshotChanges(beforeA, w.snapshot('a')).filter((line) => !line.includes('mcp-audit') && line !== '~ audit')).toEqual([]);
+    expect(snapshotChanges(beforeA, w.snapshot('a')).filter((line) => !line.includes('/audit.ndjson') && line !== '~ audit')).toEqual([]);
   });
 
   it('only safe effective reads are allowed, and they carry no account identity or secret', async () => {
