@@ -278,6 +278,22 @@ verification.
   suite whose every test passed. The helpers await the exit and retry the removal, and
   still report a directory that genuinely cannot be deleted.
 
+### The user-guide flow package
+
+`packages/web/e2e/guide-*.e2e.ts` — one file per `docs/guide/` part, plus the shared
+`guide-browser.ts` helper — walk the flows each guide describes as a first-time reader would
+follow them, asserting only role, accessible-label or visible-text facts (never a class, id,
+`data-*` attribute or other selector coupled to implementation markup). `guide-04-providers-models-tools.e2e.ts`,
+`guide-10-settings.e2e.ts`, `guide-11-configuration.e2e.ts`, `guide-12-cli-reference.e2e.ts`,
+`guide-13-mcp-leader-control.e2e.ts`, `guide-14-local-hosted.e2e.ts`, `guide-15-project-kit.e2e.ts`
+and `guide-16-troubleshooting.e2e.ts` cover the guides Batch 5's cockpit restyle does not touch;
+`guide-14-local-hosted.e2e.ts` boots its own `XEZ_REMOTE=1` fixture (the shared suite server always
+runs local) and the rest reuse the shared instance. Each file's own header names the flows that
+cannot honestly cross a real boundary in dry-run and the lower-level or manual evidence that covers
+them instead. `guide-browser.ts` wraps `agent-browser find <locator> <value> [action]` — the CLI's
+own semantic-locator command — rather than the CSS-selector methods on `AgentBrowser`; it is the
+one new interaction helper this package adds, and existing specs are not retrofitted to it.
+
 ### The docs capture harness
 
 `packages/web/e2e/capture/` drives the same provider to produce the README and user-guide
