@@ -474,6 +474,14 @@ export interface ProjectRouteInfo {
  */
 const V1_PREFIX = '/api/v1';
 
+// Registration metadata, not a second route list (#547). Existing handlers own
+// the hosted refusal so validation/404 precedence and inferred contracts stay intact.
+const localHandoffRoute: import('hono').MiddlewareHandler = async (_c, next) => next();
+export function localHandoffRouteManifest(app: Hono): ProjectRouteInfo[] {
+  return app.routes.filter((route) => route.handler === localHandoffRoute)
+    .map(({ method, path }) => ({ method, path }));
+}
+
 /** Project scoping inside the versioned surface. The version is the OUTER dimension, so a
  *  consumer picks its API version once and then addresses projects inside it. */
 const V1_SCOPED_PREFIX = `${V1_PREFIX}/p/:projectId`;
@@ -2042,7 +2050,7 @@ export function createApp(deps: ServerDeps) {
       });
     })
 
-    .post('/workspace/agent-profiles', jsonZodValidator(() => createAgentProfileSchema), async (c) => {
+    .post('/workspace/agent-profiles', localHandoffRoute, jsonZodValidator(() => createAgentProfileSchema), async (c) => {
       if (!capabilities().localHandoff) return c.json(hostedProfileRefusal, 409);
       const { provider, configDir, label } = c.req.valid('json');
       if (!supportsProfiles(provider)) {
@@ -2096,6 +2104,7 @@ export function createApp(deps: ServerDeps) {
 
     .patch(
       '/workspace/agent-profiles/:id',
+      localHandoffRoute,
       paramZodValidator(z.object({ id: z.string() })),
       jsonZodValidator(() => updateAgentProfileSchema),
       async (c) => {
@@ -2162,6 +2171,7 @@ export function createApp(deps: ServerDeps) {
      */
     .get(
       '/workspace/agent-profiles/:id/status',
+      localHandoffRoute,
       paramZodValidator(z.object({ id: z.string() })),
       queryZodValidator(z.object({ refresh: queryValue.refine((v) => v === undefined || v === '1') }), { message: 'refresh must be 1 when provided' }),
       async (c) => {
@@ -2199,6 +2209,7 @@ export function createApp(deps: ServerDeps) {
      */
     .get(
       '/workspace/agent-profiles/:id/details',
+      localHandoffRoute,
       paramZodValidator(z.object({ id: z.string() })),
       async (c) => {
         if (!capabilities().localHandoff) return c.json(hostedProfileRefusal, 409);
@@ -2218,6 +2229,7 @@ export function createApp(deps: ServerDeps) {
      */
     .post(
       '/workspace/agent-profiles/:id/open',
+      localHandoffRoute,
       paramZodValidator(z.object({ id: z.string() })),
       jsonZodValidator(() => openAgentAccountFileSchema),
       async (c) => {
@@ -2270,6 +2282,7 @@ export function createApp(deps: ServerDeps) {
     // and nothing about it can be dropped by a xezar version that never heard of accounts.
     .put(
       '/workspace/agent-profiles/selection',
+      localHandoffRoute,
       jsonZodValidator(() => selectAgentProfileSchema),
       async (c) => {
         if (!capabilities().localHandoff) return c.json(hostedProfileRefusal, 409);
@@ -2323,6 +2336,7 @@ export function createApp(deps: ServerDeps) {
 
     .delete(
       '/workspace/agent-profiles/:id',
+      localHandoffRoute,
       paramZodValidator(z.object({ id: z.string() })),
       async (c) => {
         if (!capabilities().localHandoff) return c.json(hostedProfileRefusal, 409);
@@ -4098,7 +4112,7 @@ export function createApp(deps: ServerDeps) {
 
     // "Open in terminal" (spec 003): hand the session off to a real terminal —
     // in the task's worktree when it still exists (spec 006).
-    .post('/runs/:id/open-in-cli', async (c) => {
+    .post('/runs/:id/open-in-cli', localHandoffRoute, async (c) => {
       const { root: repoRoot, store } = c.get('project');
       const id = c.req.param('id');
       const run = store.getRun(id);
@@ -4140,7 +4154,7 @@ export function createApp(deps: ServerDeps) {
     })
 
     // Open a run's worktree (or the repo root) in the chosen local app.
-    .post('/runs/:id/open-in', jsonZodValidator(openInSchema), async (c) => {
+    .post('/runs/:id/open-in', localHandoffRoute, jsonZodValidator(openInSchema), async (c) => {
       const { root: repoRoot, store } = c.get('project');
       const id = c.req.param('id');
       const run = store.getRun(id);
@@ -4645,7 +4659,7 @@ export function createApp(deps: ServerDeps) {
     // above opens a task worktree and needs a run to name one; this is the repo the cockpit is
     // scoped to, which the scope middleware has already resolved — so no path is accepted from
     // the client and there is nothing to contain.
-    .post('/open-in', jsonZodValidator(openProjectInSchema), async (c) => {
+    .post('/open-in', localHandoffRoute, jsonZodValidator(openProjectInSchema), async (c) => {
       const { root } = c.get('project');
       if (!capabilities().localHandoff) {
         return c.json(
@@ -5710,7 +5724,7 @@ export function createApp(deps: ServerDeps) {
       return c.json(read);
     })
 
-    .put('/agent-config/:id', jsonZodValidator(setAgentConfigSchema), async (c) => {
+    .put('/agent-config/:id', localHandoffRoute, jsonZodValidator(setAgentConfigSchema), async (c) => {
       // Config files may define hooks and MCP commands, so writes remain a
       // local-machine capability and are re-gated on every request.
       if (!capabilities().localHandoff) {
@@ -5772,7 +5786,7 @@ export function createApp(deps: ServerDeps) {
     };
   const mcpLeaderRoutes = new Hono<ProjectApiEnv>()
     .get('/mcp/leader', (c) => c.json(mcpLeaderStatus(c.get('project').id)))
-    .post('/mcp/leader', jsonZodValidator(() => mcpLeaderActionInputSchema), async (c) => {
+    .post('/mcp/leader', localHandoffRoute, jsonZodValidator(() => mcpLeaderActionInputSchema), async (c) => {
       if (!capabilities().localHandoff) {
         return c.json({ error: 'a leader session is attached from the machine that owns the checkout (this cockpit runs in hosted mode)' }, 409);
       }
@@ -6239,7 +6253,9 @@ export function verifyWsUpgrade(req: IncomingMessage, bindHost?: string): WsUpgr
   const host = req.headers.host;
   const hostName = hostnameOfHost(host);
   const hosted = !resolveCapabilities(process.env, bindHost).localHandoff;
-  if (!hosted && !isLoopbackHostHeader(hostName)) return false;
+  // Hosted clients use HTTP/SSE through their authenticated proxy (#547).
+  // Keep the local native-client and Vite trust rules below unchanged.
+  if (hosted || !isLoopbackHostHeader(hostName)) return false;
   const origin = req.headers.origin;
   if (origin === undefined) return { trusted: true }; // non-browser client — no Origin to spoof
   // Scheme-checked, like the HTTP guard's comparison: `authorityOfOrigin` is
