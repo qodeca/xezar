@@ -1420,4 +1420,55 @@ describe('the MCP leader door (#450)', () => {
     expect(made.sessionStatus('s1')).toEqual({ available: false, reason: 'the MCP service for this project is stopping' });
     expect(await made.attachSession('s1')).toMatchObject({ ok: false, code: 'delivery-unavailable', status: { available: false } });
   });
+
+  /**
+   * #532 G4: an owner-session change (another MCP session taking the project — the ordinary case an
+   * OpenCode `xezar` MCP server connects lazily into) must never itself detach or replace the
+   * attached leader. OpenCode's leader is attached by a PERSON (`act`, the HTTP door), never derived
+   * from a session, so it is the sharpest instance of the rule — nothing about who currently owns the
+   * project may touch it, and the client-mismatched owner sessions that pass through in between never
+   * become the leader either. Claude Code is the contrast worth proving end to end, not just in
+   * status: its leader IS the live owner transport by design, so an owner switch to a new same-client
+   * session carries the attachment forward with no reattach call — but only correctly if a row
+   * appended after the switch is really pushed down the NEW session's bridge, never the old, closed
+   * one that would silently swallow it.
+   * Named break: calling `#detach()` from `sessionOpened` (an owner switch made "helpfully" clean up
+   * the previous leader) — a Claude Code or OpenCode person's attachment would be silently dropped
+   * the moment their coding agent reconnects, with no attach/stop call and no blocker explaining why.
+   */
+  it('G4: an owner-session switch alone never detaches or replaces the attached leader, OpenCode’s person-attach included', async () => {
+    const { made } = door();
+    made.sessionOpened('s1', claude());
+    expect(await made.act({ action: 'attach', client: 'opencode', baseUrl: 'http://127.0.0.1:1', sessionId: 'ses_g4owner00000000000001' })).toMatchObject({ ok: true });
+    expect(made.status()).toMatchObject({ leader: { client: 'opencode', state: 'attached' } });
+
+    // The session that owns the project changes twice, with no attach or stop call in between.
+    made.sessionOpened('s2', claude());
+    expect(made.status()).toMatchObject({ leader: { client: 'opencode', state: 'attached' }, blocker: null });
+    made.sessionClosed('s2');
+    made.sessionOpened('s3', { push: async () => {}, clientName: 'codex-mcp-client' });
+    expect(made.status()).toMatchObject({ leader: { client: 'opencode', state: 'attached' }, blocker: null });
+    // Neither of the sessions that merely OWNED the project in passing became the leader.
+    expect(self(made, 's3')).toMatchObject({ self: { client: 'codex', isOwner: true, attached: false } });
+
+    // Contrast: Claude Code's push target IS the live owner transport by design (the class comment:
+    // "the target is the owner MCP session itself"), so its attachment follows an owner switch to a
+    // new same-client session with no reattach call — but delivery must really follow it: the row
+    // appended after the switch reaches the NEW session's bridge, never the old, closed one.
+    const claudeCase = door({ heartbeatMs: 30 });
+    const c1 = claude();
+    claudeCase.made.sessionOpened('c1', c1);
+    expect(await claudeCase.made.attachSession('c1')).toMatchObject({ ok: true, outcome: 'attached' });
+    row(claudeCase.journal);
+    await until('c1 to receive the first push', () => c1.pushed.length > 0);
+
+    claudeCase.made.sessionClosed('c1');
+    const c2 = claude();
+    claudeCase.made.sessionOpened('c2', c2);
+    expect(self(claudeCase.made, 'c2').self).toMatchObject({ isOwner: true, attached: true });
+    row(claudeCase.journal);
+    await until('c2 to receive the second push', () => c2.pushed.length > 0);
+    // The old, closed session's bridge never received a row appended after it stopped owning.
+    expect(c1.pushed).toHaveLength(1);
+  });
 });
