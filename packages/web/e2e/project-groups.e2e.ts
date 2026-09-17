@@ -219,10 +219,22 @@ describe('the grouped multi-project sidebar', () => {
     gotoGrouped(scoped(bootProject, '/'))
 
     expect(browser.isVisible('[data-slot="project-groups"]')).toBe(true)
-    // The flat shell is genuinely gone, not merely covered: its nav and its single quick-list
-    // are the two surfaces `AppShell` swaps out for the group list.
+    // The flat shell is genuinely gone, not merely covered: its nav is the surface `AppShell`
+    // swaps out for the group list.
     expect(browser.count('[data-slot="sidebar"] nav[aria-label="Main"]')).toBe(0)
-    expect(browser.count('[data-slot="task-quick-list"]')).toBe(0)
+    // Navigation only (#546): an open group holds its nav and nothing else — no task rows, no
+    // bucket headings, no More… row. Every link inside the open body is a nav link.
+    expect(
+      browser.evaluate(`(() => {
+        const body = document.querySelector('aside [aria-expanded="true"] + *')
+        return {
+          links: body.querySelectorAll('a').length,
+          navLinks: body.querySelectorAll('nav a').length,
+          headings: body.querySelectorAll('h2, h3').length,
+          more: [...body.querySelectorAll('a')].filter((a) => a.textContent.trim() === 'More…').length,
+        }
+      })()`)
+    ).toEqual({ links: expectedNavHrefs(bootProject).length, navLinks: expectedNavHrefs(bootProject).length, headings: 0, more: 0 })
     // …and so is the repo chip, which the first group's header now says instead.
     expect(browser.count('[data-slot="repo-chip"]')).toBe(0)
 
@@ -274,12 +286,13 @@ describe('the grouped multi-project sidebar', () => {
         .map((a) => new URL(a.href).pathname)`)
     ).toEqual([scoped(bootProject, '/git')])
 
-    // Each group's door into its own tasks pane.
+    // Each group's door into its own tasks pane is its Tasks nav item (the More… row that
+    // followed the task list went with it in #546).
     expect(
       browser.evaluate(
-        `new URL(document.querySelector('${groupBody(ALPHA.id)} [data-slot="project-group-more"]').href).pathname`
+        `[...document.querySelectorAll('${groupBody(ALPHA.id)} nav a')].filter((a) => a.textContent.trim().startsWith('Tasks')).map((a) => new URL(a.href).pathname)`
       )
-    ).toBe(scoped(ALPHA.id, '/'))
+    ).toEqual([scoped(ALPHA.id, '/')])
   })
 
   it('persists a collapse in THIS browser, so a reload keeps it and the workspace file does not', async ({

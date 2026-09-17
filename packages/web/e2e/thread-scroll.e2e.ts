@@ -269,7 +269,7 @@ describe('thread virtualization on a 1,000-row transcript', () => {
     browser.click(`[data-slot="sidebar"] a[href="${scoped('/')}"]`)
     browser.waitForFunction(`document.querySelector('[data-route="task-thread"]') === null`)
 
-    // …and come back through the quick list.
+    // …and come back through the Tasks table's row link (the sidebar lists no tasks since #546).
     browser.click(`a[href="${scoped(`/tasks/${RUN_ID}`)}"]`)
     browser.waitForFunction(`document.querySelector('[data-slot="thread-rows"]') !== null`)
     // The replay re-grows the thread; the cached offset is re-applied until reachable.

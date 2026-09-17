@@ -92,7 +92,7 @@ import { cn } from '@/lib/utils'
 /**
  * The Tasks overview — the table that IS the home at `/` (spec, "Task list & table", per PR
  * #392: the Tasks nav always lands here, there is no list/table presentation toggle, and the
- * Active/Archived tabs in this header are the *same state* as the sidebar quick-list's tabs).
+ * Active/Archived tabs in this header are the *same state* as the global Tasks page's view).
  *
  * Presentational: sorting, search, queue numbers, usage-cell decisions and the compare strip
  * all come from the pure modules (`lib/task-groups.ts`, `lib/tasks-table.ts`,
@@ -796,8 +796,7 @@ function FoldedTd({ column }: { column: TaskColumnId }) {
 /**
  * The Task cell: the title as a real link, with the mockup's hover pencil (`tasks-home.html`
  * `.task-title .pencil`) flipping it into the shared inline-rename input. Same machine as the
- * run header's title — one edit, one PATCH. The quick-list's rows stay read-only on purpose:
- * at 13px-in-a-260px-sidebar there is no room for an input worth typing into.
+ * run header's title — one edit, one PATCH.
  */
 function TitleCell({
   run,

@@ -1,3 +1,9 @@
+# Unreleased
+
+## ✨ Features
+
+- ✨ **The sidebar is navigation-only.** (#546) The Active/Archived task switcher, task list, and `Search…` launcher have been removed from the sidebar. Manage and search tasks on the Tasks page, and open the command palette with `⌘K` on macOS or `Ctrl+K` elsewhere. Existing task badges, task data, APIs, and saved UI state are unchanged.
+
 # 0.15.0 (2026-09-17)
 
 ## Highlights

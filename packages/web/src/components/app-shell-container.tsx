@@ -9,7 +9,6 @@ import { ListViewProvider } from '@/components/list-view'
 import { OnboardingOfferContainer } from '@/components/onboarding-offer-container'
 import { ProviderBannerContainer } from '@/components/provider-banner-container'
 import { ProjectGroups } from '@/components/project-groups'
-import { TaskQuickListContainer } from '@/components/task-quick-list'
 import { ToolsMenu } from '@/components/tools-menu'
 import { useDocumentTitle } from '@/lib/use-document-title'
 import { useActiveProjectId } from '@/lib/project-router'
@@ -70,7 +69,7 @@ export function AppShellContainer({ children }: { children: ReactNode }) {
   const skillsUpdate = useSkillsUpdate(projectId ?? '', projectId !== null)
   const skillsUpdateAvailable = skillsUpdateMarkerOf(skillsUpdate.data)
   // Unread done items (#unread-done-items) for the Tasks badge. Reads the same active-scope run
-  // list the sidebar quick-list and Tasks table already hold — one cache entry, no extra fetch.
+  // list the Tasks table already holds — one cache entry, no extra fetch.
   const runs = useRuns()
   const registry = useProjects().data
   const titleContext = pageTitleContext(pathname)
@@ -104,7 +103,7 @@ export function AppShellContainer({ children }: { children: ReactNode }) {
   // Multi-project sidebar only from the SECOND project on (multi-project spec, "Sidebar").
   // With one registered project — or with the registry still loading, or unreachable — the
   // group header would say nothing the repo chip does not already say, so the shell keeps the
-  // flat nav + single quick-list it has always had. That degenerate case is the upgrade path:
+  // flat nav it has always had. That degenerate case is the upgrade path:
   // an existing user boots the new version in their usual repo and sees no difference.
   const projects = registry && registry.projects.length > 1 ? registry : null
   // Destructured rather than read as a member: the audit-door guard
@@ -113,9 +112,9 @@ export function AppShellContainer({ children }: { children: ReactNode }) {
   const { channel } = health.data ?? { channel: null }
 
   return (
-    // The Active/Archived filter is shared by the quick-list below and the Tasks table (Step 3.4),
-    // which renders in `children`. The provider goes here because this is the lowest node that has
-    // both of them under it — the spec requires the two sets of tabs to be one filter.
+    // The Active/Archived filter shared by the per-project Tasks table (Step 3.4) and the global
+    // Tasks page, both of which render in `children`. It sits above the routes so the choice
+    // survives moving between them; the sidebar no longer reads it (#546).
     <ListViewProvider>
       <AppShell
         repo={repoChipOf(health.data)}
@@ -148,9 +147,8 @@ export function AppShellContainer({ children }: { children: ReactNode }) {
           </>
         }
         singleProject={health.data?.capabilities.singleProject === true}
-        taskQuickList={<TaskQuickListContainer />}
-        // Present only in a multi-project workspace; `AppShell` renders the flat nav and the
-        // quick-list above whenever this slot is absent.
+        // Present only in a multi-project workspace; `AppShell` renders the flat nav whenever this
+        // slot is absent.
         projectGroups={
           projects ? (
             <ProjectGroups

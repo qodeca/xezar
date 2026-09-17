@@ -8,8 +8,7 @@ import { GlobalEventsProvider } from '@/api/global-events'
 import { queryKeys } from '@/api/queries'
 import { createQueryClient } from '@/api/query-client'
 import type { ProcessUsage, RunRecord } from '@qodeca/xezar-api-client'
-import { ListViewProvider } from '@/components/list-view'
-import { TaskQuickListContainer } from '@/components/task-quick-list'
+import { ListViewProvider, useListView } from '@/components/list-view'
 import { TasksOverview, TasksOverviewRoute } from '@/routes/tasks-overview'
 
 const NOW = Date.parse('2026-07-14T12:00:00.000Z')
@@ -128,7 +127,7 @@ describe('TasksOverview — the table', () => {
     expect(onToggleColumn).not.toHaveBeenCalled()
   })
 
-  it('renders one row per run, in the sidebar order (needs-you first, then recency)', () => {
+  it('renders one row per run, in sort order (needs-you first, then recency)', () => {
     renderOverview({
       runs: [
         run({ id: 'done1', title: 'Old done', createdAt: ago(3 * 3_600_000) }),
@@ -1159,8 +1158,9 @@ describe('TasksOverviewRoute — wired to the app', () => {
       <QueryClientProvider client={createQueryClient()}>
         <MemoryRouter>
           <ListViewProvider>
-            {/* The sidebar and the overview together, under ONE provider — the point under test. */}
-            <TaskQuickListContainer />
+            {/* Another reader of the shared filter beside the overview, under ONE provider — the
+                global Tasks page is the real one; this probe stands in for it. */}
+            <ListViewProbe />
             <TasksOverviewRoute />
           </ListViewProvider>
         </MemoryRouter>
@@ -1175,11 +1175,22 @@ describe('TasksOverviewRoute — wired to the app', () => {
     })
   }
 
-  const sidebarTab = (view: string) =>
-    document.querySelector(`[data-slot="view-tab"][data-view="${view}"]`) as HTMLElement
+  /** A second consumer of `useListView()` — what the global Tasks page is to this route. It
+   *  prints the shared value and can set it, so the test can flip the filter from outside the
+   *  overview (the sidebar tabs that once did this went away in #546). */
+  function ListViewProbe() {
+    const [view, setView] = useListView()
+    return (
+      <div>
+        <output aria-label="Shared list view">{view}</output>
+        <button type="button" onClick={() => setView('active')}>Probe: show active</button>
+      </div>
+    )
+  }
+
   const overviewTab = (view: string) =>
     document.querySelector(`[data-slot="overview-tab"][data-view="${view}"]`) as HTMLElement
-  const sidebarRow = (id: string) => document.querySelector(`[data-slot="task-row"][data-run-id="${id}"]`)
+  const sharedView = () => screen.getByLabelText('Shared list view').textContent
 
   it("takes the Tool column's default runner from the PROJECT config, not from health", async () => {
     // `/api/v1/health` describes the BOOT project and would name the wrong runner on a scoped
@@ -1211,21 +1222,19 @@ describe('TasksOverviewRoute — wired to the app', () => {
     )
   })
 
-  it('shares the Active/Archived state with the sidebar — either set of tabs flips both', async () => {
+  it('shares the Active/Archived state through the provider — either side flips both', async () => {
     renderApp([run({ id: 'act', status: 'running' }), run({ id: 'arc', status: 'done', archived: true })])
     await waitFor(() => expect(tableRow('act')).not.toBeNull())
-    expect(sidebarRow('act')).not.toBeNull()
+    expect(sharedView()).toBe('active')
 
-    // Flip in the table header → the sidebar follows.
+    // Flip in the table header → the other reader follows.
     fireEvent.click(overviewTab('archived'))
-    expect(sidebarTab('archived').getAttribute('aria-pressed')).toBe('true')
+    expect(sharedView()).toBe('archived')
     expect(tableRow('arc')).not.toBeNull()
     expect(tableRow('act')).toBeNull()
-    expect(sidebarRow('arc')).not.toBeNull()
-    expect(sidebarRow('act')).toBeNull()
 
-    // Flip back in the sidebar → the table follows.
-    fireEvent.click(sidebarTab('active'))
+    // Flip back from the other reader → the table follows.
+    fireEvent.click(screen.getByRole('button', { name: 'Probe: show active' }))
     expect(overviewTab('active').getAttribute('aria-pressed')).toBe('true')
     expect(tableRow('act')).not.toBeNull()
     expect(tableRow('arc')).toBeNull()

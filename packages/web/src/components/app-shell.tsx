@@ -4,7 +4,6 @@ import {
   LayersIcon,
   MenuIcon,
   PlusIcon,
-  SearchIcon,
   SettingsIcon,
   XIcon,
 } from 'lucide-react'
@@ -15,9 +14,7 @@ import { Link as RouterLink, matchPath, useLocation } from 'react-router'
 
 import { AddProjectDialog } from '@/components/add-project-dialog'
 import { CloneProjectDialog } from '@/components/clone-project-dialog'
-import { openCommandPalette } from '@/components/command-palette'
 import { GithubIcon } from '@/components/icons'
-import { commandShortcutHint } from '@/lib/use-command-shortcut'
 import { Link, stripProjectPrefix } from '@/lib/project-router'
 import { StatusDot } from '@/components/status-dot'
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -75,8 +72,6 @@ export type AppShellProps = {
   /** Where the server came from (#442). `dev` puts the red "D" badge on the brand tile;
    *  `release`, null or absent (an older server) renders the plain tile and no placeholder. */
   channel?: HealthResponse['channel'] | null
-  /** Step 3.3's grouped task quick-list. */
-  taskQuickList?: ReactNode
   /** Step 4.2's Tools dropdown trigger. */
   toolsMenu?: ReactNode
   /** Forge gating (R6 Step 1.1): `false` drops the GitHub nav item — see `visibleNavItems`.
@@ -98,16 +93,18 @@ export type AppShellProps = {
    *  replaced by the opt-in Import panel on the Skills page). */
   banner?: ReactNode
   /** Step 3.3's multi-project sidebar: one collapsible group per registered project, each
-   *  carrying its own nav + task list. When present it REPLACES the flat nav and the
-   *  `taskQuickList` slot (each group brings its own copies of both); absent — the registry
-   *  still loading, or unreachable — the shell renders the single-project sidebar it always
-   *  did, which is the honest degradation, not a special case. */
+   *  carrying its own nav. When present it REPLACES the flat nav (each group brings its own
+   *  copy); absent — the registry still loading, or unreachable — the shell renders the
+   *  single-project sidebar it always did, which is the honest degradation, not a special case.
+   *
+   *  Navigation only (#546): neither shape lists tasks. Tasks live on the Tasks pages, and the
+   *  command palette opens from the keyboard (⌘K / Ctrl+K) rather than from a sidebar control. */
   projectGroups?: ReactNode
 }
 
 /**
  * The drawer's close-on-navigate callback, published to whatever renders inside the sidebar's
- * slots (`projectGroups`, `taskQuickList`). The route-change effect already closes the drawer
+ * `projectGroups` slot. The route-change effect already closes the drawer
  * for every *changed* route; this covers re-clicking a link to the CURRENT route (per the spec,
  * Tasks navigates home even when already active), which changes no pathname at all. Undefined
  * on desktop, where there is nothing to close.
@@ -153,7 +150,6 @@ export function AppShell({
   version = null,
   latestVersion = null,
   channel = null,
-  taskQuickList,
   toolsMenu,
   forgeAvailable = true,
   inboxAvailable = true,
@@ -220,7 +216,6 @@ export function AppShell({
     version,
     latestVersion,
     channel,
-    taskQuickList,
     toolsMenu,
     projectGroups,
     singleProject,
@@ -278,7 +273,6 @@ type NavProps = {
   version: string | null
   latestVersion: string | null
   channel: HealthResponse['channel'] | null
-  taskQuickList?: ReactNode
   toolsMenu?: ReactNode
   projectGroups?: ReactNode
   singleProject: boolean
@@ -288,7 +282,8 @@ type NavProps = {
  * The desktop frame, from `md` up — 264px by default and draggable up to 420px (#788).
  *
  * The width is the user's, not the layout's: the sidebar is the app's primary navigation and its
- * rows carry task names, so the right column width depends on the screen someone is sitting at.
+ * rows carry project names and branches, so the right column width depends on the screen someone
+ * is sitting at.
  * It lives in `localStorage` rather than in the workspace config for exactly that reason — see
  * `lib/sidebar-width.ts`.
  *
@@ -445,7 +440,8 @@ function MobileNavDrawer({ onNavigate, ...props }: NavProps & { onNavigate: () =
 }
 
 /**
- * Everything inside the sidebar: brand lockup, New task CTA, nav, quick-list, footer. Framed by
+ * Everything inside the sidebar: brand lockup, New task CTA, nav, footer — navigation only, no task
+ * list and no search launcher (#546). Framed by
  * `Sidebar` on desktop and by `MobileNavDrawer` below `md` — the two callers differ only in the
  * box around this, which is what keeps the mobile nav from drifting away from the desktop one.
  *
@@ -462,7 +458,6 @@ function SidebarContent({
   version,
   latestVersion,
   channel,
-  taskQuickList,
   toolsMenu,
   projectGroups,
   singleProject,
@@ -479,11 +474,7 @@ function SidebarContent({
   return (
     <div
       data-slot="sidebar-content"
-      // `@container/sidebar` (#788): the sidebar is no longer one fixed width, so what its rows
-      // can afford to paint is a question about THIS column, not about the viewport. Everything
-      // inside that is droppable metadata — the quick-list's diff pair today — hides itself with
-      // an `@min-[…]/sidebar:` query and returns when the user drags the column wider.
-      className="@container/sidebar flex min-h-0 flex-1 flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
+      className="flex min-h-0 flex-1 flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
     >
       <div data-slot="sidebar-brand" className="flex items-center gap-row px-3.5 pt-3.5 pb-2.5">
         <BrandTile channel={channel} />
@@ -537,7 +528,7 @@ function SidebarContent({
           <div className="shrink-0 border-b border-border px-1.5 pt-0.5 pb-2">
             <AllTasksLink onNavigate={onNavigate} />
           </div>
-          {/* Step 3.3: one collapsible group per registered project — nav + task list per group.
+          {/* Step 3.3: one collapsible group per registered project — its own nav per group.
               The whole area scrolls as one (per the sidebar mockup); collapsed groups are one row. */}
           <div
             data-slot="project-groups"
@@ -550,7 +541,10 @@ function SidebarContent({
         </>
       ) : (
         <>
-          <nav aria-label="Main" className="px-2.5 py-1.5">
+          {/* `flex-1` + its own scroller: with no task list under it the nav is what fills the
+              column, so it is what pushes the footer to the bottom — and what scrolls on a
+              short window rather than clipping Settings. */}
+          <nav aria-label="Main" className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2.5 py-1.5">
             {items.map((item) => {
               const isActive = item.to === activeTo
               const Icon = item.icon
@@ -588,26 +582,13 @@ function SidebarContent({
               )
             })}
           </nav>
-
-          {/* The single-project quick-list (Needs you / Working / Recent). */}
-          <div
-            data-slot="task-quick-list"
-            className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2.5 pb-2"
-          >
-            {taskQuickList}
-          </div>
         </>
       )}
 
-      {/* Two deliberate rows, never a wrap (#702): the search bar owns line 1, the chrome controls
-       *  line 2. `flex-col` rather than `flex-wrap` on purpose — the previous single wrapping row
-       *  overflowed the 264px column and silently stranded the theme toggle on a line of its own,
-       *  and a column cannot regress into that no matter what a future control's width is. */}
-      <div
-        data-slot="sidebar-footer"
-        className="flex flex-col gap-1.5 border-t border-border px-3.5 py-2.5"
-      >
-        <CommandPaletteHint />
+      {/* One row of chrome controls, never a wrap (#702): a wrapping row once stranded the theme
+       *  toggle on a line of its own. The ⌘K search launcher that owned a row above it is gone
+       *  (#546) — the palette opens from the keyboard on every route. */}
+      <div data-slot="sidebar-footer" className="border-t border-border px-3.5 py-2.5">
         <div data-slot="sidebar-footer-controls" className="flex items-center gap-2">
           {/* SLOT — Step 4.2 mounts the Tools dropdown (aggregate status dot + tool versions) here. */}
           <div data-slot="tools-menu" className="shrink-0">
@@ -739,42 +720,6 @@ function AddProjectMenu() {
       {browsing ? <AddProjectDialog open onOpenChange={setBrowsing} returnFocusRef={trigger} /> : null}
       {cloning ? <CloneProjectDialog open onOpenChange={setCloning} returnFocusRef={trigger} /> : null}
     </DropdownMenu>
-  )
-}
-
-/**
- * The ⌘K discoverability affordance (Step 4.3): the footer's first row, shaped like a search
- * input — magnifier, a muted `Search…` label, the chord parked on the right. It was a chip
- * cut from the version chip's cloth until #702, where the footer's five chips overflowed the
- * 264px column; giving search the whole line is what makes the remaining controls fit on one
- * row, and it reads as the launcher it is rather than as a keyboard-shortcut footnote.
- *
- * Still a button, not an input: there is no search *here*: clicking opens the palette through
- * the same programmatic seam anything else would, and the palette owns the real input.
- *
- * No `aria-label`: the visible `Search…` already names it, and an override that merely drops
- * the ellipsis would make the accessible name diverge from the label a speech user reads
- * aloud (WCAG 2.5.3). The chord rides `commandShortcutHint` so the kbd shows Ctrl+K off Apple
- * hardware, per the spec's platform-symbol rule.
- */
-function CommandPaletteHint() {
-  return (
-    <button
-      type="button"
-      data-slot="command-palette-hint"
-      title="Search — command palette (⌘K / Ctrl+K)"
-      onClick={() => openCommandPalette()}
-      className="flex min-h-tap w-full items-center gap-1.5 rounded-md border border-border bg-muted/30 px-2 py-1 text-left text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:min-h-chip focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-    >
-      <SearchIcon className="size-3.5 shrink-0" aria-hidden="true" />
-      <span className="truncate">Search…</span>
-      <kbd
-        aria-hidden="true"
-        className="ml-auto shrink-0 rounded-[5px] border border-b-2 border-border bg-card px-1.5 py-px font-mono text-[10.5px] font-medium text-muted-foreground"
-      >
-        {commandShortcutHint('k')}
-      </kbd>
-    </button>
   )
 }
 

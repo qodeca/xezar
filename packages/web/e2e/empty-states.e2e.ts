@@ -11,7 +11,7 @@ import { AgentBrowser, bootProjectId, xezarCli, fixtureServeEnv, removeDataRoot,
  * The CenteredState surfaces (Step 4.1), in a real browser: the no-tasks hero on the overview
  * and the 404 with its way back home.
  *
- * Same per-spec boot pattern as quick-list.e2e.ts, but over an EMPTY repo: a fresh data dir with
+ * Same per-spec boot pattern as tasks-table.e2e.ts, but over an EMPTY repo: a fresh data dir with
  * no `runs.json` is not a contrived fixture — it is exactly what `npx @qodeca/xezar` serves on first
  * run, and the empty state is the first thing a new user sees. The store answers `[]`, honestly.
  */
@@ -113,6 +113,25 @@ describe('tasks overview — no tasks yet', () => {
     expect(backdrop?.squares).toBeGreaterThan(5)
 
     browser.screenshot(`${artifactsDir}/tasks-empty-no-tasks.png`)
+  })
+
+  // #546: the Tasks page owns the empty state. The sidebar is navigation only and says nothing
+  // about tasks — no second "No tasks yet", no Active/Archived tabs, no Search launcher.
+  it('leaves the empty state to the page: the sidebar stays navigation only', () => {
+    const sidebar = browser.evaluate(`(() => {
+      const aside = document.querySelector('aside')
+      return {
+        nav: aside.querySelectorAll('nav[aria-label="Main"] a').length,
+        emptyCopy: /No tasks yet/.test(aside.textContent),
+        tabs: [...aside.querySelectorAll('button, [role="tab"]')]
+          .filter((el) => /^(Active|Archived)\s*\d*$/.test(el.textContent.trim())).length,
+        search: [...aside.querySelectorAll('button')]
+          .filter((el) => /search/i.test(el.textContent + (el.getAttribute('aria-label') ?? ''))).length,
+      }
+    })()`) as { nav: number; emptyCopy: boolean; tabs: number; search: number }
+
+    expect(sidebar.nav).toBeGreaterThan(3)
+    expect(sidebar).toMatchObject({ emptyCopy: false, tabs: 0, search: 0 })
   })
 })
 

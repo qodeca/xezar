@@ -4,13 +4,12 @@ import type { ReactNode } from 'react'
 import type { ListView } from '@/lib/task-groups'
 
 /**
- * The Active/Archived filter, shared by the sidebar quick-list and (Step 3.4) the Tasks table.
+ * The Active/Archived filter, shared by the per-project Tasks table and the global Tasks page.
  *
- * The spec requires the table's tabs to "share state with the sidebar quick-list tabs", and the
- * legacy UI got that for free by keeping a single `state.listView` global. Two surfaces in two
- * subtrees need one value, so it is context rather than a `useState` in either of them — a
- * quick-list that switched to Archived while the table still showed Active would be two answers
- * to one question.
+ * The two pages are different routes, so a `useState` in either would reset the filter every time
+ * the user walks from one to the other — two answers to one question. Context above the routes
+ * keeps it one value. (The sidebar quick-list was the first reader of this state; the sidebar has
+ * listed no tasks since #546.)
  *
  * In-memory, not persisted: the legacy filter reset to Active on every reload, and a filter that
  * silently survives a restart hides runs the user does not know are hidden.

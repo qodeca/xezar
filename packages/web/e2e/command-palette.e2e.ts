@@ -14,7 +14,6 @@ const runId = `e2e-palette-${process.pid}`
 
 const ROOT = '[cmdk-root]'
 const INPUT = '[cmdk-input]'
-const HINT = '[data-slot="command-palette-hint"]'
 
 let browser: AgentBrowser
 let baseUrl: string
@@ -58,15 +57,26 @@ describe('command palette', () => {
     expect(browser.count(ROOT)).toBe(0)
   })
 
-  it('opens from the sidebar footer hint and closes on Escape', () => {
-    browser.waitForFunction(`document.querySelector('${HINT}') !== null`)
-    browser.click(HINT)
+  // #546: the sidebar's clickable `Search…` launcher is gone, so the keyboard is the only way in —
+  // and closing must hand focus back to a control that still exists, never to the removed hint.
+  it('has no sidebar launcher, closes on Escape and returns focus to where it was', () => {
+    browser.goto(baseUrl + '/')
+    browser.waitForFunction(`document.querySelector('aside nav[aria-label="Main"]') !== null`)
+    expect(
+      browser.evaluate(
+        `[...document.querySelectorAll('aside button')].filter((b) => /search/i.test(b.textContent + (b.getAttribute('aria-label') ?? ''))).length`,
+      ),
+    ).toBe(0)
+
+    browser.evaluate(`document.querySelector('aside nav[aria-label="Main"] a[href$="/git"]').focus()`)
+    browser.press('Control+k')
     browser.waitForFunction(`document.querySelector('${ROOT}') !== null`)
     expect(browser.isVisible(INPUT)).toBe(true)
 
     browser.press('Escape')
     browser.waitForFunction(`document.querySelector('${ROOT}') === null`)
     expect(browser.count(ROOT)).toBe(0)
+    browser.waitForFunction(`document.activeElement?.matches('aside nav[aria-label="Main"] a[href$="/git"]') === true`)
   })
 
   it('does not open while typing in a page input', () => {

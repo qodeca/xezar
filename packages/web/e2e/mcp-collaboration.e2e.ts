@@ -40,7 +40,8 @@ const PROTOCOL_VERSION = '2025-11-25'
 /** One interactive agent step: under `XEZ_DRY_RUN=1` the bundled mock answers and the task waits. */
 const AGENT_STEPS = [{ id: 'task', name: 'Task', prompt: '{{task}}' }]
 
-const ROW = '[data-slot="task-row"]'
+// The Tasks table row: the sidebar lists no tasks since #546, so the table is the live surface.
+const ROW = '[data-slot="task-table-row"]'
 /** Set once on the page after the first load. A reload or a hard navigation drops it, so every live
  *  assertion below also proves the cockpit got there WITHOUT one. */
 const SAME_PAGE = `window.__xzSamePage === true`
@@ -211,7 +212,8 @@ beforeAll(async () => {
   browser = AgentBrowser.open(session)
   browser.setViewport(1440, 900)
   browser.goto(`${baseUrl}/p/${project}/`)
-  browser.waitForFunction(`document.querySelector('[data-slot="quick-list"]') !== null`)
+  // The Tasks page has answered once: either its table or its empty state is on screen.
+  browser.waitForFunction(`document.querySelector('[data-slot="tasks-table"], [data-slot="tasks-empty"]') !== null`)
   browser.evaluate(`window.__xzSamePage = true`)
 }, 120_000)
 
