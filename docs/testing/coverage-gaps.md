@@ -199,6 +199,8 @@ HTTP API.
 | pi records an output-cap stop and an empty turn | server unit | `core/pi-empty-turn.test.ts`, plus the `pi/empty-turn-output-cap` golden fixture replayed by `pi-ui-mapper.test.ts` (#164) | C |
 | pi extension dialogs (`approveTools`) are answered, never left blocking | server unit + integration | `core/pi-dialog.test.ts` (pure frame → ask card / response), `pi-runner.test.ts` "#369" block (ask card raised, answer routed by dialog id, autonomous `Deny`, unsupported dialog cancelled, cancel at close; the `notify` guard passes both ways), and the A-01 `approveTools` leg of `test/integration/mcp-real-clients.test.ts`, which drives a REAL pi + pi-mcp-adapter through `PiRunner` in both modes — not in any gate (#369) | C |
 
+| A task-spawned claude / pi / opencode client never receives the project's `xezar` MCP bridge entry, and a broken or absent MCP config never stops the run | server unit | `core/worktree-off-mcp-isolation.test.ts` (#342, MP-11) — three `the seam` cases, one per backend, assert the actual launch input each CLI is given (claude argv `--strict-mcp-config` + overlay, pi's `--mcp-config` overlay file, opencode's `OPENCODE_CONFIG_CONTENT`); the eleven control cases pin `run-mcp-isolation.ts` (other project servers survive, absent ≠ unreadable, the note never names a bridge nobody declared). Named break `worktree-off-inherits-xezar` (revert the three runner files) measured 5 red of 16. **Not covered: any live four-client reproduction** — the only executed reproduction of the ownership collision is pi, in #342 itself | P |
+
 ### 3.6 Directory sweep – nothing silently absent
 
 Every top-level source directory in both large workspaces, with its measured coverage and where it

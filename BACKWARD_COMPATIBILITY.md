@@ -565,6 +565,60 @@ run can reach is breaking under section 1's rule, so it is recorded here rather 
   `codex-app-server-runner.test.ts` (under `MOCK_CODEX_AMBIENT` / `MOCK_CODEX_CONFIG_READ_ERROR`)
   pins the default; it fails against a runner that starts the thread without asking.
 
+## Claude Code, pi and OpenCode runs no longer load xezar's own MCP bridge (#342) — deliberate, 0.16.0
+
+#324 gave Codex runs this rule. The other three backends passed nothing, so a task client loaded
+whatever the person's and the project's config declared — including a `xezar` bridge entry. That is
+not only a tool-surface question: xezar's bridge takes the project's one OWNER slot the moment it
+connects, and a `keep-alive` entry connects at start-up with no prompt and no tool call. A task run
+started in the project root (`worktree: false`) therefore held the slot for its whole lifetime and
+the person's own leader session was refused `-32080 project occupied` until the task ended
+(observed with pi, #342). Changing what a default run can reach is breaking under section 1's rule,
+so it is recorded here rather than silently.
+
+- **Broken, Claude Code**: a task run now receives `--strict-mcp-config` together with a
+  `--mcp-config` overlay built from the project's own `.mcp.json` minus xezar's bridge. It
+  therefore no longer loads the MCP servers a person added for themselves in `~/.claude.json`, nor
+  anything a settings file would have enabled — the same narrowing Codex runs have had since
+  0.13.0. It is the only lever the CLI offers: without `--strict-mcp-config`, claude merges the
+  project file and the user file on top of the overlay and the bridge comes back.
+- **Broken, pi**: a task run is started with `--mcp-config` pointing at a private per-run file.
+  That file carries the pi agent directory's own `mcp.json` forward unchanged — the person's global
+  pi servers still load — and adds `"disabled": true` for xezar's bridge. The flag substitutes for
+  exactly one slot of the adapter's six-file chain, and the chain merges a server entry field by
+  field, so the flag survives the project files layered above it.
+- **Broken, OpenCode**: a task run is started with `OPENCODE_CONFIG_CONTENT` carrying
+  `{"mcp": {"xezar": {"enabled": false}}}`. That is the one layer OpenCode merges ABOVE the
+  project's own `opencode.json`; `OPENCODE_CONFIG` is merged below it and the project entry would
+  win. If a person already sets `OPENCODE_CONFIG_CONTENT` in their shell, xezar's value replaces it
+  for task runs.
+- **The reserved-name floor**: for pi and OpenCode the name `xezar` is switched off whether or not
+  a project file declares it, because discovery reads project files only and a bridge declared in
+  the person's own global config would otherwise contend in every project. An unrelated server
+  named `xezar` is switched off too; renaming it is the remedy — the same rule and the same remedy
+  as #324. A task client may therefore list one inert `xezar` entry marked disabled.
+- **Not broken**: every other MCP server a project declares still loads, for every backend; no
+  config file is read or written by xezar outside its own private temp overlay (never in the
+  project, mode 0600, removed when the session ends); `codex-run-isolation.ts` is untouched; the
+  v1/v2 event streams gain no type — the run transcript gets one ordinary `note`, and only when a
+  bridge was really declared or a config file could not be read. The reserved-name floor is
+  deliberately NOT reported as "switched off a bridge", or every run would say so.
+- **Worktree ON gets the same treatment.** A linked worktree is a checkout of the same commit and
+  carries the same committed config files. The observed worktree run bound no project only because
+  the bridge binds by repository root and task worktrees are never registered — a property of the
+  registry, not of the runner, so the seam does not lean on it.
+- **Fail-open, unlike Codex**: Codex fails a run closed when it cannot read its config, because
+  there xezar asks the live process and an unanswerable question means starting with servers nobody
+  saw. Here xezar reads files it can name, so an unreadable or malformed file degrades instead —
+  the run starts and says so once (§ Zero config). For Claude Code that means starting with no
+  project MCP servers until the file is fixed.
+- **Migration**: [docs/guide/13-mcp-leader.md](docs/guide/13-mcp-leader.md) § "To keep your leader
+  while tasks run in the same folder". Declare a server your tasks need in the project's own file,
+  and do not name an unrelated server `xezar`. Released as part of a **minor** version.
+- **No opt-out knob**: no stored key and no `XEZ_*` variable was added (§ Zero config: never trade
+  a working default for a knob). `core/worktree-off-mcp-isolation.test.ts` pins the default path;
+  it fails against runners that pass no isolation (named break `worktree-off-inherits-xezar`).
+
 ## Pi isolated runs stay in their task worktree (#537) — deliberate, 0.16.0
 
 A pi run in a linked task worktree already started with that worktree as its process directory,
