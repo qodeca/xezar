@@ -134,6 +134,16 @@ describe('release content check', () => {
     expect(findArchiveGaps(entriesOf(clean()))).toEqual([]);
   });
 
+  it.each([
+    'package/dist/contract/events.test.d.ts',
+    'package/dist/contract/events.spec.js',
+    'package/dist/contract/events.testkit.d.ts',
+    'package/dist/contract/__tests__/events.d.ts',
+  ])('rejects test artifacts from the packed archive: %s', (path) => {
+    const problems = findArchiveGaps(entriesOf([...clean(), { path, text: 'export {}\n' }]));
+    expect(problems).toEqual([`${path} is a test artifact and must not ship`]);
+  });
+
   it('passes a clean archive, and refuses to judge with no rules', () => {
     const entries = entriesOf(clean());
     expect(findContentLeaks(entries, RULES, []).leaks).toEqual([]);
