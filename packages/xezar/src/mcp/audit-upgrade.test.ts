@@ -95,6 +95,22 @@ async function writeEveryRecordKind(dir: string): Promise<string[]> {
       { outcome: 'refused', reason: 'unknown_workflow', resource: { kind: 'automation', id: 'auto-1' } },
     ),
     await trail.channel('cli').record({ action: 'cli.serve', actor: { command: 'serve' }, resource: { kind: 'project', id: PROJECT } }, { outcome: 'applied' }),
+    // #306 part 4 shapes: the outcomes #577 added, and the configuration writes whose `fieldNames`
+    // and digest the redaction seam derives (a key name and a hash, never a value).
+    await trail.channel('mcp').record(
+      { action: 'run.continue', resource: { kind: 'run', id: 'run-1' }, operationId: 'op-upgrade-0004' },
+      { outcome: 'refused', reason: 'conflict' },
+    ),
+    await trail.channel('mcp').record({ action: 'pr.merge', resource: { kind: 'pr', id: '575' } }, { outcome: 'refused', reason: 'stale_head' }),
+    await trail.channel('mcp').record({ action: 'run.git.commit', resource: { kind: 'run', id: 'run-1' } }, { outcome: 'refused', reason: 'quality_blocker' }),
+    await trail.channel('mcp').record(
+      { action: 'project.config.set', payload: { action: 'set_config', config: { baseBranch: 'main' } }, operationId: 'op-upgrade-0005' },
+      { outcome: 'applied' },
+    ),
+    await trail.channel('cli').record(
+      { action: 'cli.projects.tag', actor: { command: 'projects.tag' }, resource: { kind: 'project', id: PROJECT }, payload: { tags: ['release'] } },
+      { outcome: 'applied' },
+    ),
   ];
   expect(written.every((record) => record !== null)).toBe(true);
   const lines = readFileSync(auditTrailPath(dir), 'utf8').trim().split('\n');
@@ -125,7 +141,7 @@ describe('the frozen 0.15.0 reader is the released one', () => {
 describe('P1-A5: the 0.15.0 reader over every record this version writes', () => {
   it('never throws, keeps none of them, and quarantines each one — the measured break', async () => {
     const lines = await writeEveryRecordKind(join(root, 'fresh'));
-    expect(lines).toHaveLength(11);
+    expect(lines).toHaveLength(16);
     const perLine = lines.map((line) => {
       const result = readAudit0150(`${line}\n`, PROJECT);
       return { kind: (JSON.parse(line) as { kind: string; origin?: string }).origin ?? 'rotated', ...result };
@@ -140,6 +156,11 @@ describe('P1-A5: the 0.15.0 reader over every record this version writes', () =>
       ['mcp', 0, 1],
       ['ui', 0, 1],
       ['automation', 0, 1],
+      ['cli', 0, 1],
+      ['mcp', 0, 1],
+      ['mcp', 0, 1],
+      ['mcp', 0, 1],
+      ['mcp', 0, 1],
       ['cli', 0, 1],
       ['rotated', 0, 1],
     ]);
@@ -180,7 +201,7 @@ describe('P1-A6: 0.15.0 → this version → 0.15.0', () => {
     expect(readdirSync(dir).sort()).toEqual(['audit.ndjson', 'mcp-audit.ndjson']);
     const currentRead = upgraded.read();
     expect(currentRead.source).toBe('current');
-    expect(currentRead.entries.map((e) => (e as { seq: number }).seq)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(currentRead.entries.map((e) => (e as { seq: number }).seq)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
     expect(sha(readFileSync(legacyPath))).toBe(sha(legacyBytes));
 
     // DOWNGRADE. 0.15.0 reads its own file name: every entry it wrote is still there, unchanged.
@@ -200,8 +221,8 @@ describe('P1-A6: 0.15.0 → this version → 0.15.0', () => {
     const again = new AuditTrail({ projectId: PROJECT, dataDir: dir }, { now, warn });
     const reread = again.read();
     expect(reread.source).toBe('current');
-    // Only the ten v2 records: none of the six 0.15.0 entries is merged in.
-    expect(reread.entries).toHaveLength(10);
+    // Only the fifteen v2 records: none of the six 0.15.0 entries is merged in.
+    expect(reread.entries).toHaveLength(15);
     expect(existsSync(legacyPath)).toBe(true);
   });
 });

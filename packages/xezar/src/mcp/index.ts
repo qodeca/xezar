@@ -17,6 +17,7 @@ import { loadWorkspaceConfig } from '../workspace/config.ts';
 import { ProjectOwnership } from '../workspace/project-owner.ts';
 import { codexControlHome } from './adapters/codex-link.ts';
 import { answerRefusal, classifyMcpCall } from './audit-inventory.ts';
+import { conflictRefusalOf, failedAnswerOf, handoffGitRefusalOf } from './audit-answer-refusals.ts';
 import { notFoundRefusalOf } from './audit-not-found.ts';
 import { AuditTrail, type AuditChannel } from './audit-trail.ts';
 import { runBridge, type BridgeOptions, type ServiceTarget } from './bridge.ts';
@@ -287,7 +288,10 @@ function composeDoor(input: DoorInput): {
     closers.push(() => receipts.close());
   }
   const guard = attempt('echo guard', () => new EchoGuard({ projectId }));
-  const audit = attempt('audit trail', () => new AuditTrail({ projectId, dataDir }, { warn }).channel('mcp'));
+  // The service's own env secrets are this door's secrets: masked before the digest, like the host's (#306 part 4).
+  const audit = attempt('audit trail', () =>
+    new AuditTrail({ projectId, dataDir }, { warn, secretValues: () => secretValues }).channel('mcp'),
+  );
 
   const door: McpDoor = async ({ tool, args }, invoke) => {
     if (tool.annotations?.readOnlyHint === true) return invoke();
@@ -346,12 +350,16 @@ function composeDoor(input: DoorInput): {
       notPerformedOf(result) ??
       // A target this project does not have, looked up before any effect (#573).
       notFoundRefusalOf(tool.name, args.action, result) ??
+      // An ordinary answer that says nothing was done: a conflict, or a hand-off refused before its effect (#577).
+      conflictRefusalOf(result) ??
+      handoffGitRefusalOf(tool.name, result) ??
       (result.isError ? undefined : answerRefusal(recorded.action, result.structuredContent?.result));
     // Awaited, so the record is on disk when the leader sees the answer; `record` never rejects and
     // resolves within the lock's 2 s bound, so the answer itself never depends on it.
     if (stale) await auditFor.record(recorded, { outcome: 'refused', reason: 'stale_version', resource: stale.resource });
     else if (boundary) await auditFor.record(recorded, { outcome: 'refused', reason: boundary });
-    else if (result.isError) auditFor.skip('tool_error');
+    // A hand-off that failed in a way that may have followed its effect: no honest outcome, no record (#577).
+    else if (result.isError || failedAnswerOf(tool.name, result)) auditFor.skip('tool_error');
     else await auditFor.record(recorded, { outcome: 'applied', ...(resource ? { resource } : {}) });
     return result;
   };
