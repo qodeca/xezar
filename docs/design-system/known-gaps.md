@@ -8,8 +8,9 @@ to-do list: an entry becomes a `design-debt` issue on the triggers [CONTRIBUTING
 names, and a fix arrives as its own change with the entry deleted.
 
 Ids are never reused: a deleted entry retires its number, so a new entry takes the next number after the
-highest ever used. G-01..G-23, G-26..G-28 and G-30..G-41 are live, G-24, G-25 and G-29 are retired, and
-the next free id is G-42.
+highest ever used. G-01..G-23, G-26..G-28, G-30..G-42 and G-44..G-46 are live, G-24, G-25, G-29 and G-43
+are retired, and the next free id is G-47. G-43 was retired by decision [D-09](decisions.md#d-09-compares-pick-confirm-keeps-the-ordinary-contrast-action)
+(the B7 design review): the pick confirm keeps its ordinary `contrast` action on purpose.
 
 Counts are non-test files or occurrences in `packages/web/src`. Corrected counts in G-02, G-06,
 G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the original inventory date.
@@ -22,12 +23,14 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Rule**: the canonical form. It is the majority and the newest list pages use it.
 - **Fix**: extract a `PageHeader` component; migrate Git, GitHub, Compare and Automations. The run header is a different surface (editable title) and may stay.
 - **Status (#453 batch B6, Git tabs)**: the Git part is fixed – `routes/repo-git/repo-git.tsx` is opaque, its title is `text-base font-semibold` (visible from `md`, `sr-only` below it, where the phone top bar names the page) and it takes the run header's spacing, because its tabs live in the header and `PageHeader` hides below `md`. Every Git toolbar is `px-4 py-2 md:px-section` and every body `p-4 md:p-section`, repository and task tabs alike, so D-03 holds there: `e2e/design-debt-b6.e2e.ts` measures the title, toolbar and tree on one `section` gutter at Comfortable and Compact for real. Still open (B7): GitHub, Compare, Automations.
+- **Status (#453 batch B7, remaining routes)**: fixed for GitHub, Compare and Automations (#447 OD-1). The GitHub list header takes the Git page's shape – opaque, `px-4 pt-stack md:px-section md:pt-group`, tabs `mt-stack`, `h1 sr-only text-base font-semibold md:not-sr-only` – and its detail pane is `p-4 md:p-section`. Compare and Automations render the shared `PageHeader` with `className="flex"`, so it stays visible on a phone (the top bar there names only the area, and the task title or the sub-page title is what the page is about), the subtitle as a full-width second row, over the canonical page body `p-4 pb-[calc(90px+env(safe-area-inset-bottom))] md:p-section md:pb-section`. `e2e/design-debt-b7.e2e.ts` measures the title and the first card (Automations), the first variant column (Compare) and the list and detail gutters (GitHub) on one `section` gutter at Comfortable and Compact for real. Left as they are: the run header (a different surface) and `/new`'s centred hero title. Owner of the entry's retirement: B8.
 
 ### G-02 Three card spellings and a dead primitive
 
 - **Differs**: `components/ui/card.tsx` (0 importers); ad-hoc `rounded-lg border border-border bg-card` (22 sites in 15 files); `rounded-xl border bg-card p-4` (`routes/automations/automations.tsx:115,148`).
 - **Rule**: the ad-hoc string, plus `shadow-xs` for a raised container.
 - **Fix**: either delete `card.tsx` or restyle it to the ad-hoc look and adopt it. Migrate the two `rounded-xl` cards.
+- **Status (#453 batch B7, remaining routes)**: the two `rounded-xl` cards are migrated – Automations' cards, log rows and editor fieldsets are `rounded-lg border border-border bg-card p-inset shadow-xs`, and the GitHub merge box and the hand-off panel gained the `shadow-xs`. Still open: the dead `card.tsx` (G-20).
 
 ### G-03 Chip class copied instead of imported
 
@@ -43,12 +46,14 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Rule**: `text-danger` in app code. Dominant and newer.
 - **Fix**: replace the four sites.
 - **Status (#453 batch B3, settings)**: `agent-config-section.tsx` now uses `text-danger`, `border-danger/40` and `bg-danger/10`. Still open (B7): `automations.tsx:195`, `skills-import-panel.tsx:350`.
+- **Status (#453 batch B7, remaining routes)**: fixed – `automations.tsx` and `skills-import-panel.tsx` use `text-danger`, and `provider-banner.tsx` moved from `bg-destructive/10` to `bg-danger/10`. No app-code site outside `components/ui` spells `destructive` now; the entry stays until B8 retires it.
 
 ### G-05 Hand-rolled centered messages
 
 - **Differs**: `CenteredState` (60 usages) vs the route error boundary (`components/route-error-boundary.tsx`), `routes/skills-loading.tsx` (a bare centred paragraph), `PageState` in `routes/automations/automations.tsx:204` (dashed box), and ~19 inline "Loading…" lines. `centered-state.tsx:17-18` says "Views never hand-roll a centered message"; the code does.
 - **Rule**: `CenteredState` for page-level states; one muted line (`px-4 py-6 text-center text-xs text-soft-foreground`) inside a surface.
 - **Fix**: migrate the error boundary, `skills-loading.tsx` and `PageState`.
+- **Status (#453 batch B7, remaining routes)**: `PageState` is gone. Automations says loading with the in-surface muted line (`role="status"`), a failed load with a danger `CenteredState` ("Could not load automations", never a quiet line that reads like an empty list), an empty list and a missing automation with neutral `CenteredState`s. `skills-loading.tsx` keeps its muted line inside the page – that is this entry's own rule for a surface – on the `section` gutter. The error boundary is B2's.
 
 ### G-06 Two focus-ring idioms and one unconditional animation
 
@@ -69,6 +74,7 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Rule**: new animation is `motion-safe:` or has `motion-reduce:animate-none`.
 - **Fix**: add `motion-reduce:animate-none` to `statusDotVariants` and `Skeleton`; guard the five spinners; replace the three ad-hoc dots.
 - **Status (#453 batch B5, thread, composer and launch menus)**: the thread is done – the three `thread-items.tsx` spinners are `motion-safe:animate-spin`, and the composer's hand-rolled dictation dot is `StatusDot tone="danger" pulse`. `design-debt-b5.test.tsx` fails on a bare spin or pulse in any B5 file. Still open (B7): `routes/new-task.tsx`, `routes/github/github.tsx`.
+- **Status (#453 batch B7, remaining routes)**: fixed – the auto-start title and the busy Plan-first segment in `routes/new-task.tsx` are `motion-safe:animate-pulse`, the merge box's pending check and Refresh spinners in `routes/github/github.tsx` are `motion-safe:animate-spin`, and Compare's collapse chevron turns only under `motion-safe:`. `design-debt-b7.test.tsx` fails on a bare spin, pulse or transform transition in any B7 file; the browser suite checks that nothing loops under reduced motion on GitHub, Compare, New task and Workflows.
 
 ### G-09 Two diff renderers
 
@@ -84,6 +90,7 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Fix**: add a `danger` Button variant and use it in `AlertDialogAction`.
 - **Status (#453 batch B3, settings)**: `remove-project.tsx`, `worktrees-panel.tsx` and the agent-account remove confirm pass `buttonVariants({ variant: 'danger' })` to `AlertDialogAction`, cancel with "Keep it", and hand focus back to the opener (`useReturnFocus`); the per-row worktree Delete is `danger-ghost`. Still open: `task-thread/run-header.tsx` (B5), `workflows/workflows.tsx` (B7).
 - **Status (#453 batch B5, thread, composer and launch menus)**: the run confirm (`routes/task-thread/run-header.tsx`) wears `buttonVariants({ variant: 'danger' })` and cancels with "Keep it". Focus return was not changed: it does not use `useReturnFocus`, and when the dialog opened from the phone kebab closes, focus lands on `<body>`, not on "Run actions" (measured 375 px, dark Compact for real and light Comfortable; #571 design review NB-3). Fix it with `useReturnFocus` in B8, as B3 did. Still open: `workflows/workflows.tsx` (B7).
+- **Status (#453 batch B7, remaining routes)**: fixed – the Workflows overwrite and delete confirms both pass `buttonVariants({ variant: 'danger' })` to `AlertDialogAction` (the copied string is gone), both cancels read "Keep it", and the curly quotes are literal. The plan review's "Overwrite" of a saved chain (`routes/plan-review.tsx`) is a danger action too; its cancel keeps the more specific "Keep the existing chain", and its description ends "There is no undo." like the Workflows one (B7 design review NB-5). `e2e/design-debt-b7.e2e.ts` reads the computed background of the Workflows confirm against `--danger` and proves Escape keeps the file and hands focus back to Save (neither Workflows confirm has a trigger, so each returns focus to the button that asked). Compare's "Pick variant" confirm keeps the ordinary `contrast` action by decision [D-09](decisions.md#d-09-compares-pick-confirm-keeps-the-ordinary-contrast-action) (B7 design review NB-4), and it returns keyboard focus to the button that opened it through the shared `useReturnFocus` hook (NB-3).
 
 ### G-11 Raw `<select>` in settings while the Select primitive is unused
 
@@ -99,6 +106,7 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Rule**: `Input` with a leading icon.
 - **Fix**: extract `SearchField`.
 - **Status (#453 batch B4, task lists)**: `SearchField` (`routes/tasks-overview.tsx:431`) wraps `Input` with the leading icon; both task pages use it, so their search reaches 44 px on a phone. Still open (B7): `routes/skills.tsx` and the other search inputs.
+- **Status (#453 batch B7, remaining routes)**: every B7 search is `Input` with a leading `SearchIcon` – the GitHub list, the Skills catalog, the skills import panel and the Workflows palette – so each keeps its accessible name and reaches 44 px on a phone. They spell the wrapper locally rather than importing `SearchField`, which cannot carry their `data-slot` (G-42).
 
 ### G-13 Settings field chassis copied three times
 
@@ -137,6 +145,7 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Status (#546, navigation-only sidebar)**: the "Bucket label case" row is closed – the sidebar's `Needs you` bucket heading went with the sidebar task list, so the phrase now appears only as the lower-case attention label (`lib/attention.ts`).
 - **Status (#453 batch B5, thread, composer and launch menus)**: the negatives row's `routes/task-thread/task-thread.tsx` site reads "Could not load earlier items · Retry". Still open (B7): `routes/github/github.tsx`, the placeholders in `routes/new-task.tsx` and `routes/github/hand-to-agent.tsx`, and the workflows rows.
 - **Status (#453 batch B6, Git tabs)**: the apostrophes row's `task-commits.tsx` site is curly (“hasn’t”), and so are “merge commit’s” (`repo-commits.tsx`, `task-commits.tsx`), “repo’s” (`repo-git-loading.tsx`) and “task’s” (`commit-dialog.tsx`, `task-changes.tsx`, which used `&apos;`). Still open (B7): the other rows.
+- **Status (#453 batch B7, remaining routes)**: fixed rows – the negatives row ("Could not load comments", `routes/github/github.tsx`), the apostrophes row (`compare-loading.tsx`, and `&apos;` in `skills-import-panel.tsx`), the curly quotes row (`workflows.tsx`), the empty list row ("Nothing matches." in `workflows.tsx`, `skills.tsx` and `skills-import-panel.tsx`), and the placeholders in `routes/github/hand-to-agent.tsx` ("Search workflows…", "Search skills…"). Still open: the three lower-case placeholders in `routes/new-task.tsx` ("search projects…", "search skills & workflows…"). They are asserted verbatim by `routes/new-task-project.test.tsx`, which § B7's manifest does not list, so the batch did not change them; the PR records it under "Reconciliation needed". The guardian rule is not added.
 
 ### G-16 Toast punctuation
 
@@ -146,6 +155,7 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Status (#453 batch B4, task lists)**: the helper exists – `copyText` in `lib/clipboard-result.ts` answers `{ ok: true }` or `{ ok: false, reason }` and never throws, so a refused or missing clipboard is never reported as copied. It has no consumer yet. Still open (B5, B6, B7): move the three copies onto it and normalise the toasts.
 - **Status (#453 batch B5, thread, composer and launch menus)**: `run-header.tsx` (the resume hint, the terminal fallback and the worktree path) and `review-panel.tsx` (the manual merge line) copy through `copyText`; a refusal toasts the payload ("Run manually: …", "Path: …"), never "copied". Their toasts are fragments: "Command copied", "No terminal found — command copied", "Worktree path copied" (writing.md §13). Still open (B6, B7): `routes/task-git/task-changes.tsx` and `routes/skills.tsx`.
 - **Status (#453 batch B6, Git tabs)**: `routes/task-git/task-changes.tsx`'s terminal fallback copies through `copyText` and toasts the same fragment as the run header (“No terminal found — command copied”); a refusal shows “Run manually: …”. Still open (B7): `routes/skills.tsx`.
+- **Status (#453 batch B7, remaining routes)**: the fragments lost their period – "Team skills refreshed" (`routes/skills.tsx`), "xezar-skills updated" and "Some skill updates failed" (`components/skills-import-panel.tsx`), "Deleted “{name}”" (`routes/workflows/workflows.tsx`). The Workflows YAML Copy goes through `copyText`: it flips to "Copied" only when the clipboard took the text, and a refusal toasts "Could not copy the YAML — select it below instead". `writing.md` §13 still quotes the old "Team skills refreshed." (G-44).
 
 ### G-17 Two hand-written task tables
 
@@ -169,6 +179,7 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Fix**: round the one-offs to the nearest step.
 - **Status (#453 batch B4, task lists)**: the task-list one-offs are gone – `size-4` for the compare icon and the variant letter, `size-5.5` for the new-task button icon, and no fixed size on the table pin (`routes/tasks-overview.tsx`; the sidebar row pin was removed with the task list in #546), `size-1.5` for the reference status dot. Still open (B5, B7): `composer/composer.tsx`, `task-thread/agents-dock.tsx`, `plan-dock.tsx`, `step-rail.tsx` and `github/github.tsx`.
 - **Status (#453 batch B5, thread, composer and launch menus)**: `size-4` for the composer paperclip and the dock glyphs (was `size-[15px]` ×9), `size-3.5` for the step-rail icons (was `size-[13px]`), `size-3` for the Tools chevron (was `size-[11px]`). Still open (B7): `github/github.tsx`.
+- **Status (#453 batch B7, remaining routes)**: fixed – the GitHub refresh glyph is `size-2.5` (was `size-[9px]`). No `size-[…px]` icon remains in the B7 files.
 
 ### G-20 Dead primitives
 
@@ -293,11 +304,35 @@ G-08, G-11, G-15 and G-19: counts read on 2026-09-16. Other counts retain the or
 - **Rule**: one change has one name, whichever surface shows it.
 - **Fix**: make the two endpoints ask `git diff` for the same detection, then re-check both surfaces. This is server work, not a design-system change, so it wants its own issue. Owner: B8 reconciliation of #453, or a standalone issue.
 
+### G-42 `SearchField` cannot carry a slot, so four searches spell it by hand
+
+- **Differs**: `SearchField` (`routes/tasks-overview.tsx:431`) takes `value`, `onChange`, `placeholder`, `label` and `className` and spreads nothing else onto its `Input`. The GitHub list (`data-slot="gh-search"`, `type="search"`), the Skills catalog (`skills-filter`), the skills import panel (`import-filter`) and the Workflows palette (`wb-filter`) need their slot – tests and the browser suite find them by it – so #453 B7 spelled the same `relative` wrapper, `SearchIcon` and `Input pl-8 md:text-[13px]` four times instead of importing it.
+- **Rule**: one search field component.
+- **Fix**: let `SearchField` forward the rest of `Input`'s props (and move it out of a route module into `components/`), then replace the four spellings. `tasks-overview.tsx` is B4's file, so B7 did not change it. Owner: B8 reconciliation of #453.
+
+### G-44 Five documentation lines still describe the looks B7 replaced
+
+- **Differs**: `patterns.md` §3's "Variations that exist (G-01)" line still lists GitHub's `bg-background/95 backdrop-blur` + `text-lg`, Compare's `text-xl` and Automations' `text-2xl` frame; `components.md` §2 ProviderBanner still gives `gap-2 … bg-destructive/10 px-section` and CodeEditor "ring suppressed" (the frame now shows a `focus-within` ring); `writing.md` §13 quotes "Team skills refreshed." with a period; `writing.md` §4 still quotes "Keep the file" as a dismiss label, which B7 replaced with "Keep it" (`design-debt-b7.test.tsx` asserts the old string is gone) – found by the B7 design review, NB-7. #453 B7 may change only its manifest plus `known-gaps.md`, `coverage.md`, `cockpit.css` and the drift test, so those three files were not edited.
+- **Rule**: the design-system docs describe the code as it is.
+- **Fix**: update the four lines to the B7 spellings (this file's G-01, G-04, G-16 statuses and `coverage.md` say what they are), in one pass over `patterns.md`, `components.md` and `writing.md` §4 and §13. Owner: B8 reconciliation of #453.
+
+### G-45 Rendered Markdown's image actions are under the phone target
+
+- **Differs**: an image in rendered Markdown (a GitHub issue or pull request body, a comment) carries the Markdown library's own buttons – "Download image" at 24–40 px across the densities, and a hover-revealed download mark – beside the code-block copy button G-36 already records. Measured at 375 px by `e2e/design-debt-b7.e2e.ts`, which reports them in `known-g36-g45-markdown-actions.json` instead of passing them. The Markdown component (`routes/task-thread/markdown.tsx`) is B5's file, so B7 did not change it.
+- **Rule**: every phone target is 44 × 44 px (#453 Q2); a touch-only reader sees every action.
+- **Fix**: give the Markdown library's image and code-block actions the phone floor from `markdown.tsx`, as G-36 proposes for code blocks. Owner: B8 reconciliation of #453.
+
+### G-46 A GitHub label chip can sit below 4.5:1
+
+- **Differs**: a label chip (`routes/github/github.tsx`, `LabelChip`) is painted from the repository's own label colour (`github-filter.ts` blends it toward `--foreground`), so its small text follows data the cockpit does not choose: the dry-run label "enhancement" composites at 4.03:1 on the light theme. The browser suite reports label colours separately rather than passing or failing them.
+- **Rule**: small text is at least 4.5:1 on its actual surface.
+- **Fix**: raise the blend toward `--foreground` until the composited ratio clears 4.5:1 for any label colour, and pin it with a unit test over the extreme colours. Owner: B8 reconciliation of #453.
+
 ## Comment vs code
 
 | Comment says | Code does | Where |
 | --- | --- | --- |
-| "Views never hand-roll a centered message" | the error boundary, `skills-loading.tsx` and `PageState` do | `components/centered-state.tsx:17-18` (G-05) |
+| "Views never hand-roll a centered message" | the error boundary does (`PageState` is gone and `skills-loading.tsx` uses the in-surface line since #453 B7) | `components/centered-state.tsx:17-18` (G-05) |
 | pulse follows the "quiet motion" rule | no reduced-motion guard | `components/status-dot.tsx:8-9,21` (G-08) |
 | "Reach for this on any control that is hidden until hover" | the task lists, the thread's pencil and message actions, and the composer's remove mark use it (#453 B5) | `styles/index.css:29-31` (G-21) |
 | `PopoverTitle` is typed `h2` | renders a `div` | `components/ui/popover.tsx:67-70` (G-07) |

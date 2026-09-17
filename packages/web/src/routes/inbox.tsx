@@ -16,7 +16,7 @@ import { toast } from '@/components/ui/toaster'
 import { deriveAttention } from '@/lib/attention'
 import { shortAge } from '@/lib/format'
 import { insertTemplate, normalizePromptTemplates } from '@/lib/prompt-templates'
-import { isHttpUrl } from '@/lib/utils'
+import { cn, isHttpUrl } from '@/lib/utils'
 
 /**
  * `/inbox` — the follow-up inbox rebuilt in React (R6 Step 1.2, spec §"Skills, Workflows,
@@ -144,6 +144,13 @@ export function InboxRoute() {
   )
 }
 
+/** A link inside the meta line: quiet, and a 44 px target on a phone (#453 B7). */
+const META_LINK =
+  'inline-flex min-h-tap items-center text-muted-foreground underline decoration-border underline-offset-2 hover:text-foreground md:min-h-0'
+/** The instructions show/hide control: a text button with the same phone target. */
+const TOGGLE_LINK =
+  'inline-flex min-h-tap items-center rounded-sm text-xs font-medium text-muted-foreground underline decoration-border underline-offset-2 outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 md:min-h-0'
+
 function TodoCard({
   todo,
   /** null: no source task at all; false: it existed once but was deleted. */
@@ -224,14 +231,14 @@ function TodoCard({
     <li
       data-slot="todo-card"
       data-id={todo.id}
-      className="flex flex-col gap-2.5 rounded-lg border border-border bg-card p-inset shadow-xs"
+      className="flex flex-col gap-stack rounded-lg border border-border bg-card p-inset shadow-xs"
     >
       <div className="flex items-start gap-stack">
         <StatusDot
           tone={CARD_ATTENTION.tone}
           pulse={CARD_ATTENTION.pulse}
           title={CARD_ATTENTION.label}
-          className="mt-[5px]"
+          className="mt-1.25"
         />
         <div className="min-w-0 flex-1">
           <p data-slot="todo-summary" className="text-sm leading-snug font-medium text-foreground">
@@ -248,7 +255,7 @@ function TodoCard({
                 <Link
                   to={`/tasks/${todo.taskId}`}
                   data-slot="todo-source"
-                  className="text-muted-foreground underline decoration-border underline-offset-2 hover:text-foreground"
+                  className={META_LINK}
                 >
                   source task
                 </Link>
@@ -263,7 +270,7 @@ function TodoCard({
                 target="_blank"
                 rel="noopener noreferrer"
                 data-slot="todo-pr"
-                className="text-muted-foreground underline decoration-border underline-offset-2 hover:text-foreground"
+                className={META_LINK}
               >
                 PR
               </a>
@@ -323,7 +330,7 @@ function TodoCard({
           Indented under the summary, above the instructions composer, so the two per-card
           Run knobs (engine + prompt) read as one group. */}
       {runnable ? (
-        <div data-slot="todo-engine" className="flex flex-wrap items-center gap-2 pl-5">
+        <div data-slot="todo-engine" className="flex flex-wrap items-center gap-row pl-5">
           <EnginePills pick={engine} onChange={setEngine} disabled={busy || !resolved.canRun} />
           {!resolved.providerPending && !resolved.canRun ? (
             <span
@@ -335,7 +342,7 @@ function TodoCard({
                 : 'Connect an agent provider to run this follow-up.'}
               <Link
                 to="/settings/agents#providers"
-                className="font-medium text-foreground underline underline-offset-4"
+                className="inline-flex min-h-tap items-center font-medium text-foreground underline underline-offset-4 md:min-h-0"
               >
                 Configure providers
               </Link>
@@ -349,7 +356,7 @@ function TodoCard({
           composer there would be a dead end. */}
       {runnable ? (
         notesOpen ? (
-          <div data-slot="todo-instructions" className="flex flex-col gap-2 pl-5">
+          <div data-slot="todo-instructions" className="flex flex-col gap-row pl-5">
             <Textarea
               ref={notesRef}
               data-slot="todo-instructions-input"
@@ -363,13 +370,13 @@ function TodoCard({
               maxLength={20_000}
               className="min-h-16 text-[13px]"
             />
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-row">
               <PromptTemplateMenu templates={templates} onInsert={insertNotesTemplate} />
               <button
                 type="button"
                 data-slot="todo-instructions-hide"
                 onClick={() => setNotesOpen(false)}
-                className="text-xs font-medium text-muted-foreground underline decoration-border underline-offset-2 hover:text-foreground"
+                className={cn(TOGGLE_LINK, 'min-w-tap justify-center md:min-w-0')}
               >
                 Hide
               </button>
@@ -380,7 +387,7 @@ function TodoCard({
             type="button"
             data-slot="todo-instructions-toggle"
             onClick={() => setNotesOpen(true)}
-            className="self-start pl-5 text-xs font-medium text-muted-foreground underline decoration-border underline-offset-2 hover:text-foreground"
+            className={cn(TOGGLE_LINK, 'self-start pl-5')}
           >
             {/* A collapsed composer keeps its draft, and Run still carries it — so say so
                 rather than hiding instructions the next Run would silently send. */}
