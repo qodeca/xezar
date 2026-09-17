@@ -85,8 +85,8 @@ describe('A: a cockpit write and the equivalent MCP write differ only in origin'
     // A D-02.3 fencing token, `<wall-clock ms>-<UUIDv4>`, as the receipt journal is handed it.
     const mcpJoin = { operationId: 'op-0001-abcd', ownerGeneration: '1789080413148-0b6f1c2e-9d4a-4c3b-8e7f-5a6b7c8d9e0f' };
     // The cockpit has no operation id or owner generation; D-06 § 10.2 says both are absent for it.
-    trail.channel('ui').record({ ...pinOp('run-1'), ...mcpJoin }, { outcome: 'applied' });
-    trail.channel('mcp').record({ ...pinOp('run-1'), ...mcpJoin }, { outcome: 'applied' });
+    await trail.channel('ui').record({ ...pinOp('run-1'), ...mcpJoin }, { outcome: 'applied' });
+    await trail.channel('mcp').record({ ...pinOp('run-1'), ...mcpJoin }, { outcome: 'applied' });
 
     const [ui, mcp] = trail.read().entries as [AuditActionRecord, AuditActionRecord];
     expect(ui.operationKey).toBeUndefined();
@@ -99,10 +99,10 @@ describe('A: a cockpit write and the equivalent MCP write differ only in origin'
     expect(shared(mcp)).toEqual(shared(ui));
   });
 
-  it('ignores an origin or project the operation itself claims (D-06 § 10.4 rule 1)', () => {
+  it('ignores an origin or project the operation itself claims (D-06 § 10.4 rule 1)', async () => {
     const trail = new AuditTrail({ projectId: 'alpha', dataDir: dataDirOf('alpha') }, { now });
     const forged = { ...pinOp('run-1'), origin: 'ui', projectId: 'beta', actor: { type: 'ui' } } as AuditedOperation;
-    trail.channel('mcp').record(forged, { outcome: 'applied' });
+    await trail.channel('mcp').record(forged, { outcome: 'applied' });
     const [entry] = trail.read().entries as AuditActionRecord[];
     expect(entry?.origin).toBe('mcp');
     expect(entry?.actor).toEqual({ type: 'mcp' });
@@ -128,14 +128,14 @@ describe('B: a rejected operation records its refusal outcome', () => {
     });
   });
 
-  it('maps a route status onto the v2 outcomes: 4xx refused, 2xx applied, 5xx not recorded', () => {
+  it('maps a route status onto the v2 outcomes: 4xx refused, 2xx applied, 5xx not recorded', async () => {
     const warn = vi.fn();
     const trail = new AuditTrail({ projectId: 'alpha', dataDir: dataDirOf('alpha') }, { now, warn });
     const ui = trail.channel('ui');
-    expect(ui.recordStatus(pinOp('run-1'), 409)).not.toBeNull();
+    expect(await ui.recordStatus(pinOp('run-1'), 409)).not.toBeNull();
     // A 5xx may have come after the effect began; v2 has no honest word for that (spec § 3.2).
-    expect(ui.recordStatus(pinOp('run-1'), 500)).toBeNull();
-    expect(ui.recordStatus(pinOp('run-1'), 200)).not.toBeNull();
+    expect(await ui.recordStatus(pinOp('run-1'), 500)).toBeNull();
+    expect(await ui.recordStatus(pinOp('run-1'), 200)).not.toBeNull();
     expect(trail.read().entries.map((e) => e.outcome)).toEqual([
       { status: 'refused', reason: 'http_409' },
       { status: 'applied' },
@@ -164,7 +164,7 @@ describe('B: a rejected operation records its refusal outcome', () => {
     const trail = new AuditTrail({ projectId: 'alpha', dataDir: dataDirOf('alpha') }, { now });
     const op: AuditedOperation = { action: 'agentConfig.put', resource: { kind: 'config', id: 'claude.settings' } };
     // A human did it from the cockpit, successfully.
-    trail.channel('ui').record(op, { outcome: 'applied' });
+    await trail.channel('ui').record(op, { outcome: 'applied' });
     // The same action from MCP, where the caller's own gate refuses it (localHandoff false → 409).
     const effect = vi.fn();
     const localHandoff = false;
@@ -211,7 +211,7 @@ describe('C: a credential in the connection configuration never enters the trail
     await mcp.run({ ...pinOp('run-1'), ...loaded, operationId: 'op-honest-0001' } as AuditedOperation, () => 'done');
     // A client that echoes the secrets back in every identifier it controls.
     for (const secret of [loaded.token, loaded.credential]) {
-      mcp.record(
+      await mcp.record(
         {
           action: 'runs.get',
           resource: { kind: 'run', id: secret },
@@ -225,7 +225,7 @@ describe('C: a credential in the connection configuration never enters the trail
       );
     }
     // The cockpit door, handed the same object.
-    trail.channel('ui').record({ ...pinOp('run-2'), ...loaded } as AuditedOperation, { outcome: 'applied' });
+    await trail.channel('ui').record({ ...pinOp('run-2'), ...loaded } as AuditedOperation, { outcome: 'applied' });
 
     const raw = readFileSync(auditTrailPath(dataDir), 'utf8');
     // Populated-input guarantee: an empty trail would "contain no secret" too.
@@ -249,20 +249,20 @@ describe('C: a credential in the connection configuration never enters the trail
   });
 
   /** #272: the shape check was case-sensitive, so a lower-cased key id passed `clean()` verbatim. */
-  it('drops a credential-shaped identifier whatever its case', () => {
+  it('drops a credential-shaped identifier whatever its case', async () => {
     const dataDir = dataDirOf('alpha');
     const knownToken = 'deadbeefcafe0000feedface1234'; // fake, hex, as a caller would know it
     const trail = new AuditTrail({ projectId: 'alpha', dataDir }, { now, secretValues: () => [knownToken] });
     const mcp = trail.channel('mcp');
     const planted = ['akiafakefakefake0000', 'AkiaFakeFakeFake0000', 'asiafakefakefake0000', knownToken.toUpperCase()];
     for (const id of planted) {
-      mcp.record(
+      await mcp.record(
         { action: 'runs.get', resource: { kind: 'run', id }, operationId: id, expectedVersion: `rev1:run:${id}:3:0123456789ab` },
         { outcome: 'refused', reason: 'not_found' },
       );
     }
     // Control: an ordinary identifier survives, so the fix is not "drop everything".
-    mcp.record({ action: 'runs.get', resource: { kind: 'run', id: 'run-asia-0001' }, operationId: 'op-control-0001' }, { outcome: 'applied' });
+    await mcp.record({ action: 'runs.get', resource: { kind: 'run', id: 'run-asia-0001' }, operationId: 'op-control-0001' }, { outcome: 'applied' });
 
     const raw = readFileSync(auditTrailPath(dataDir), 'utf8');
     // Populated-input guarantee: every operation was written, only its secret-shaped fields dropped.
@@ -278,22 +278,22 @@ describe('C: a credential in the connection configuration never enters the trail
   });
 
   /** Guard (passes before and after #272): a non-string identifier is never written through. */
-  it('writes nothing when an identifier is not a string', () => {
+  it('writes nothing when an identifier is not a string', async () => {
     const warn = vi.fn();
     const trail = new AuditTrail({ projectId: 'alpha', dataDir: dataDirOf('alpha') }, { now, warn });
     const op = { action: 'runs.get', resource: { kind: 'run', id: 12345 } } as unknown as AuditedOperation;
-    expect(trail.channel('mcp').record(op, { outcome: 'applied' })).toBeNull();
+    expect(await trail.channel('mcp').record(op, { outcome: 'applied' })).toBeNull();
     expect(trail.read().entries).toEqual([]);
     expect(warn).toHaveBeenCalledTimes(1);
   });
 
-  it('refuses free text, paths and email addresses in identifier fields by shape', () => {
+  it('refuses free text, paths and email addresses in identifier fields by shape', async () => {
     const trail = new AuditTrail({ projectId: 'alpha', dataDir: dataDirOf('alpha') }, { now });
-    trail.channel('ui').record(
+    await trail.channel('ui').record(
       { action: 'runs.patch', resource: { kind: 'run', id: '/Users/someone/secret repo' } },
       { outcome: 'refused', reason: 'Invalid input: someone@example.com' },
     );
-    trail.channel('ui').record({ action: 'runs.patch', resource: { kind: 'run', id: 'someone@example.com' } }, { outcome: 'applied' });
+    await trail.channel('ui').record({ action: 'runs.patch', resource: { kind: 'run', id: 'someone@example.com' } }, { outcome: 'applied' });
     const raw = readFileSync(auditTrailPath(dataDirOf('alpha')), 'utf8');
     expect(raw).not.toContain('someone');
     expect(raw).not.toContain('/Users');
@@ -303,29 +303,29 @@ describe('C: a credential in the connection configuration never enters the trail
 
   // Both found by the #333 mutation sample: swapping the `||` of the action check for `&&`, and the
   // `>=` of the known-secret floor for `>`, each left every test in this file green.
-  it('refuses a whole entry whose ACTION carries a known secret, rather than writing the action', () => {
+  it('refuses a whole entry whose ACTION carries a known secret, rather than writing the action', async () => {
     const knownToken = 'deadbeefcafe0000feedface1234';
     const warn = vi.fn();
     const trail = new AuditTrail({ projectId: 'alpha', dataDir: dataDirOf('alpha') }, { now, warn, secretValues: () => [knownToken] });
     // A dotted id the action pattern accepts, whose second half is the secret.
-    expect(trail.channel('mcp').record({ action: `runs.${knownToken}`, operationId: 'op-leak-0001' }, { outcome: 'applied' })).toBeNull();
+    expect(await trail.channel('mcp').record({ action: `runs.${knownToken}`, operationId: 'op-leak-0001' }, { outcome: 'applied' })).toBeNull();
     // One warning, and it names no detail of the operation (the error class only).
     expect(warn).toHaveBeenCalledTimes(1);
     expect(String(warn.mock.calls[0]?.[0])).not.toContain(knownToken);
     // Control: the same caller's ordinary action is written, so the refusal is about the secret.
-    expect(trail.channel('mcp').record({ action: 'runs.get', operationId: 'op-fine-0001' }, { outcome: 'applied' })).not.toBeNull();
+    expect(await trail.channel('mcp').record({ action: 'runs.get', operationId: 'op-fine-0001' }, { outcome: 'applied' })).not.toBeNull();
     const raw = readFileSync(auditTrailPath(dataDirOf('alpha')), 'utf8');
     expect(raw).not.toContain(knownToken);
     expect(trail.read().entries.map((e) => e.action)).toEqual(['runs.get']);
   });
 
-  it('treats a caller secret of exactly the 12-character floor as a secret, and a shorter one as a word', () => {
+  it('treats a caller secret of exactly the 12-character floor as a secret, and a shorter one as a word', async () => {
     const atFloor = 'plainword-12';
     const belowFloor = 'plainword-1';
     expect([atFloor.length, belowFloor.length]).toEqual([12, 11]);
     const trail = new AuditTrail({ projectId: 'alpha', dataDir: dataDirOf('alpha') }, { now, secretValues: () => [atFloor, belowFloor] });
-    trail.channel('mcp').record({ action: 'runs.get', resource: { kind: 'run', id: atFloor }, operationId: 'op-floor-0001' }, { outcome: 'applied' });
-    trail.channel('mcp').record({ action: 'runs.get', resource: { kind: 'run', id: belowFloor }, operationId: 'op-floor-0002' }, { outcome: 'applied' });
+    await trail.channel('mcp').record({ action: 'runs.get', resource: { kind: 'run', id: atFloor }, operationId: 'op-floor-0001' }, { outcome: 'applied' });
+    await trail.channel('mcp').record({ action: 'runs.get', resource: { kind: 'run', id: belowFloor }, operationId: 'op-floor-0002' }, { outcome: 'applied' });
     const [secret, word] = trail.read().entries as AuditActionRecord[];
     expect(secret?.resource).toBeUndefined();
     expect(word?.resource).toEqual({ kind: 'run', id: belowFloor });
@@ -334,20 +334,20 @@ describe('C: a credential in the connection configuration never enters the trail
 });
 
 describe('D: an entry for project A is invisible to a reader scoped to project B (N-01)', () => {
-  it('keeps each project to its own trail', () => {
+  it('keeps each project to its own trail', async () => {
     const a = new AuditTrail({ projectId: 'alpha', dataDir: dataDirOf('alpha') }, { now });
     const b = new AuditTrail({ projectId: 'beta', dataDir: dataDirOf('beta') }, { now });
-    a.channel('mcp').record({ ...pinOp('run-a'), operationId: 'op-alpha-0001' }, { outcome: 'applied' });
+    await a.channel('mcp').record({ ...pinOp('run-a'), operationId: 'op-alpha-0001' }, { outcome: 'applied' });
 
     expect(a.read().entries).toHaveLength(1);
     expect(b.read()).toEqual({ source: 'current', entries: [], quarantined: 0 });
     expect(readFileSync(auditTrailPath(dataDirOf('alpha')), 'utf8')).not.toContain('beta');
   });
 
-  it('does not hand B an entry naming A even when one lands in B’s file, nor count it', () => {
+  it('does not hand B an entry naming A even when one lands in B’s file, nor count it', async () => {
     const betaDir = dataDirOf('beta');
     const b = new AuditTrail({ projectId: 'beta', dataDir: betaDir }, { now });
-    b.channel('ui').record(pinOp('run-b'), { outcome: 'applied' });
+    await b.channel('ui').record(pinOp('run-b'), { outcome: 'applied' });
     const foreign: AuditActionRecord = {
       v: 2,
       seq: 2,
@@ -375,12 +375,12 @@ describe('storage: written, never required', () => {
     expect(trail.read()).toEqual({ source: 'current', entries: [], quarantined: 0 });
   });
 
-  it('quarantines a torn or foreign-shaped line and keeps the rest', () => {
+  it('quarantines a torn or foreign-shaped line and keeps the rest', async () => {
     const dataDir = dataDirOf('alpha');
     const trail = new AuditTrail({ projectId: 'alpha', dataDir }, { now });
-    trail.channel('ui').record(pinOp('run-1'), { outcome: 'applied' });
+    await trail.channel('ui').record(pinOp('run-1'), { outcome: 'applied' });
     appendFileSync(auditTrailPath(dataDir), '{"v":2,"ts":"2026-09-1\n{"v":2,"note":"free text here"}\n');
-    trail.channel('mcp').record(pinOp('run-1'), { outcome: 'applied' });
+    await trail.channel('mcp').record(pinOp('run-1'), { outcome: 'applied' });
     const read = trail.read();
     expect(read.quarantined).toBe(2);
     expect(read.entries.map((e) => e.origin)).toEqual(['ui', 'mcp']);
@@ -393,7 +393,7 @@ describe('storage: written, never required', () => {
       const warn = vi.fn();
       const trail = new AuditTrail({ projectId: 'alpha', dataDir }, { now, warn });
       await expect(trail.channel('mcp').run(pinOp('run-1'), () => 'done')).resolves.toBe('done');
-      trail.channel('ui').record(pinOp('run-1'), { outcome: 'applied' });
+      await trail.channel('ui').record(pinOp('run-1'), { outcome: 'applied' });
       expect(warn).toHaveBeenCalledTimes(1);
       expect(warn.mock.calls[0]?.[0]).not.toContain(dataDir);
     } finally {
@@ -401,9 +401,9 @@ describe('storage: written, never required', () => {
     }
   });
 
-  it('writes the trail owner-only', () => {
+  it('writes the trail owner-only', async () => {
     const dataDir = dataDirOf('alpha');
-    new AuditTrail({ projectId: 'alpha', dataDir }, { now }).channel('ui').record(pinOp('run-1'), { outcome: 'applied' });
+    await new AuditTrail({ projectId: 'alpha', dataDir }, { now }).channel('ui').record(pinOp('run-1'), { outcome: 'applied' });
     expect(statSync(auditTrailPath(dataDir)).mode & 0o777).toBe(0o600);
   });
 
@@ -412,10 +412,10 @@ describe('storage: written, never required', () => {
     expect(() => new AuditTrail({ projectId: '../beta', dataDir: root })).toThrow(/resolved project id/);
   });
 
-  it('skips an operation whose action is not an action id rather than writing it', () => {
+  it('skips an operation whose action is not an action id rather than writing it', async () => {
     const warn = vi.fn();
     const trail = new AuditTrail({ projectId: 'alpha', dataDir: dataDirOf('alpha') }, { now, warn });
-    expect(trail.channel('ui').record({ action: 'please delete everything' }, { outcome: 'applied' })).toBeNull();
+    expect(await trail.channel('ui').record({ action: 'please delete everything' }, { outcome: 'applied' })).toBeNull();
     expect(trail.read().entries).toEqual([]);
     expect(warn).toHaveBeenCalledTimes(1);
   });
@@ -435,9 +435,9 @@ describe('payload digest (D-06 § 5.4)', () => {
     expect(payloadDigest({ image: Buffer.from('image bytes') })).toBe(payloadDigest({ image: bytes }));
   });
 
-  it('omits the digest rather than failing on a payload it cannot canonicalise', () => {
+  it('omits the digest rather than failing on a payload it cannot canonicalise', async () => {
     const trail = new AuditTrail({ projectId: 'alpha', dataDir: dataDirOf('alpha') }, { now });
-    trail.channel('ui').record({ action: 'runs.pin', payload: { n: Number.NaN } }, { outcome: 'applied' });
+    await trail.channel('ui').record({ action: 'runs.pin', payload: { n: Number.NaN } }, { outcome: 'applied' });
     const [entry] = trail.read().entries as AuditActionRecord[];
     expect(entry?.payloadDigest).toBeUndefined();
     expect(entry?.outcome).toEqual({ status: 'applied' });
@@ -445,41 +445,45 @@ describe('payload digest (D-06 § 5.4)', () => {
 });
 
 describe('#306 part 2: field names and a digest that never hashes a secret', () => {
-  it('keeps valid field names sorted and distinct, and drops a secret-shaped or malformed one', () => {
+  it('keeps valid field names sorted and distinct, and drops a secret-shaped or malformed one', async () => {
     const dataDir = dataDirOf('alpha');
     const knownToken = 'deadbeefcafe0000feedface1234';
     const trail = new AuditTrail({ projectId: 'alpha', dataDir }, { now, secretValues: () => [knownToken] });
-    const record = trail.channel('ui').record(
+    const record = await trail.channel('ui').record(
       { action: 'workspace.config.set', payload: { theme: 'dark' }, fieldNames: ['theme', 'density', 'theme', 'not a name', knownToken, '9lives'] },
       { outcome: 'applied' },
     );
     expect(record?.fieldNames).toEqual(['density', 'theme']);
-    const many = trail.channel('ui').record(
+    const many = await trail.channel('ui').record(
       { action: 'workspace.config.set', fieldNames: Array.from({ length: 80 }, (_, i) => `k${String(i).padStart(2, '0')}`) },
       { outcome: 'applied' },
     );
     expect(many?.fieldNames).toHaveLength(64);
   });
 
-  it('the payload digest is taken over the redacted payload, so it cannot confirm a guessed secret', () => {
+  it('the payload digest is taken over the redacted payload, so it cannot confirm a guessed secret', async () => {
     const dataDir = dataDirOf('alpha');
     const first = 'deadbeefcafe0000feedface1234';
     const second = 'feedface1234deadbeefcafe0000';
-    const digestFor = (secret: string) =>
-      new AuditTrail({ projectId: 'alpha', dataDir }, { now, secretValues: () => [secret] })
-        .channel('mcp')
-        .record({ action: 'workspace.config.set', payload: { note: `token ${secret}`, keep: 'visible' } }, { outcome: 'applied' })?.payloadDigest;
-    const a = digestFor(first);
-    const b = digestFor(second);
+    const digestFor = async (secret: string) =>
+      (
+        await new AuditTrail({ projectId: 'alpha', dataDir }, { now, secretValues: () => [secret] })
+          .channel('mcp')
+          .record({ action: 'workspace.config.set', payload: { note: `token ${secret}`, keep: 'visible' } }, { outcome: 'applied' })
+      )?.payloadDigest;
+    const a = await digestFor(first);
+    const b = await digestFor(second);
     // Populated-input guarantee: a digest was written, and it is not the digest of the raw payload.
     expect(a).toMatch(/^[0-9a-f]{64}$/);
     expect(a).not.toBe(payloadDigest({ note: `token ${first}`, keep: 'visible' }));
     // Two different secrets in the same place give the same digest: the secret never reached the hash.
     expect(b).toBe(a);
     // Control: a change outside the secret still changes the digest.
-    const other = new AuditTrail({ projectId: 'alpha', dataDir }, { now, secretValues: () => [first] })
-      .channel('mcp')
-      .record({ action: 'workspace.config.set', payload: { note: `token ${first}`, keep: 'changed' } }, { outcome: 'applied' })?.payloadDigest;
+    const other = (
+      await new AuditTrail({ projectId: 'alpha', dataDir }, { now, secretValues: () => [first] })
+        .channel('mcp')
+        .record({ action: 'workspace.config.set', payload: { note: `token ${first}`, keep: 'changed' } }, { outcome: 'applied' })
+    )?.payloadDigest;
     expect(other).not.toBe(a);
   });
 });

@@ -148,7 +148,10 @@ export const auditActionRecordSchema = auditBaseV2Schema
   });
 export type AuditActionRecord = z.infer<typeof auditActionRecordSchema>;
 
-/** The first line of a live file a rotation created. Defined now; rotation itself is later work. */
+/**
+ * The first line of a live file a rotation created (#306 part 3). `previousLastSeq` is the last
+ * sequence allocated before the rotation; the action that follows it takes the next one.
+ */
 export const auditRotatedRecordSchema = auditBaseV2Schema
   .extend({
     kind: z.literal('rotated'),

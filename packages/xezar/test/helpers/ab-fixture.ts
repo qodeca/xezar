@@ -582,7 +582,7 @@ export async function createAbWorld(options: AbWorldOptions = {}): Promise<AbWor
         const channel = sideOf(ctx.project)?.audit.channel('mcp');
         if (result.isError) channel?.skip('tool_error');
         else
-          channel?.record(
+          await channel?.record(
             {
               action: `mcp.${tool.name.replaceAll('_', '-')}`,
               payload: args,
@@ -624,7 +624,7 @@ export async function createAbWorld(options: AbWorldOptions = {}): Promise<AbWor
       });
     }
   }
-  auditB.channel('ui').record({ action: 'runs.pin', resource: { kind: 'run', id: seededB.ids.done }, payload: { pinned: true } }, { outcome: 'applied' });
+  await auditB.channel('ui').record({ action: 'runs.pin', resource: { kind: 'run', id: seededB.ids.done }, payload: { pinned: true } }, { outcome: 'applied' });
 
   const finish = (seeded: typeof seededA, journal: EventJournal, audit: AuditTrail, name: string): ProjectSide => {
     const { extraNames, ...rest } = seeded;
