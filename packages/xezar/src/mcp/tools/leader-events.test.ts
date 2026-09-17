@@ -1,4 +1,5 @@
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   MCP_JOURNAL_MIN_RETENTION_DAYS,
   MCP_JOURNAL_PAGE_ROWS,
@@ -358,5 +359,82 @@ describe('#460 § 4 — reading after a compaction, over a real journal', () => 
     // Recovery: the resume cursor is a real one, and acknowledging it is what continues.
     const resumed = (await read(aged.leaderEvents, { cursor: gap.gap.resumeCursor })).structuredContent as unknown as ReadOut;
     expect(resumed.events[0]!.journalSeq).toBe(3);
+  });
+
+  /**
+   * #532 G5 — the ack boundary at the MCP wire: a cursor minted by an epoch this journal no longer
+   * is (the journal was recreated — corruption, a deleted file, an upgrade) must never be applied or
+   * rewind the acknowledgement. `LeaderCursors.ack()` reads that cursor through the real journal, so
+   * this proves the epoch check the journal enforces on every read also protects `ack`.
+   * Named break: dropping `cursor.e !== this.#epoch` from `EventJournal.read`'s cursor check (keeping
+   * only the retention/`cursor.s` bound) — a stale cursor whose numeric position happens to still be
+   * "in range" of the new, unrelated journal would then be silently accepted.
+   */
+  it('G5: an ack cursor from a journal epoch that no longer exists is a no-op, never applied and never a rewind', async () => {
+    const w = wired();
+    for (let n = 1; n <= 3; n++) w.journal.append(row(n));
+    const firstRead = (await read(w.leaderEvents)).structuredContent as unknown as ReadOut;
+    const staleCursor = await call({ action: 'ack', cursor: firstRead.nextCursor, operationId: 'op-g5-ack-0001' }, { leaderEvents: w.leaderEvents });
+    expect(staleCursor.structuredContent).toMatchObject({ status: 'acked', ackedSeq: 3 });
+    expect(w.cursors.position().ackedSeq).toBe(3);
+
+    // The journal is recreated in place — a fresh epoch, numbering restarted — while the leader's
+    // cursors file (and the cursor string it minted) survive on disk, exactly as a corruption
+    // recovery or a deleted journal file would leave them.
+    w.journal.close();
+    rmSync(join(w.dataDir, 'mcp', 'event-journal.json'));
+    rmSync(join(w.dataDir, 'mcp', 'event-journal.ndjson'));
+    const freshJournal = EventJournal.open({ dataDir: w.dataDir, projectId: 'alpha', secretValues: [], warn: () => {} });
+    journals.push(freshJournal);
+    expect(freshJournal.epoch).not.toBe(w.journal.epoch);
+    const freshCursors = LeaderCursors.open({ dataDir: w.dataDir, projectId: 'alpha', journal: freshJournal, warn: () => {} });
+    const freshEvents = { journal: freshJournal, cursors: freshCursors, readState: (() => ({ latestSeq: freshJournal.latestSeq, tasks: [], complete: true })) as StateReader, secretValues: [] };
+
+    // The old epoch's cursor no longer names anything in this journal: acking it changes nothing.
+    const stale = await call({ action: 'ack', cursor: firstRead.nextCursor, operationId: 'op-g5-ack-0002' }, { leaderEvents: freshEvents });
+    expect(stale.isError).toBeFalsy();
+    expect(stale.structuredContent).toMatchObject({ status: 'no-op', ackedSeq: 0 });
+    expect(freshCursors.position()).toMatchObject({ ackedSeq: 0, deliveredSeq: 0 });
+  });
+
+  /**
+   * #532 G6 — restart/epoch recovery: a journal recreated while the leader's cursors survive reuses
+   * `journalSeq` and `eventId` from 1, so the leader's stale cursor must produce an honest GAP (never
+   * a silent empty read that reads as "nothing happened"), and the resume cursor it gives back must
+   * recover into the NEW epoch's own row — not a phantom of the old one with the same number.
+   * Named break: the same epoch check as G5, from the read side — proves a removed epoch check does
+   * not merely misbehave on ack, it turns the documented "read after a compaction" recovery the
+   * leader is told to rely on into either a silent gap or a thrown error instead of the honest one.
+   */
+  it('G6: a leader’s stale cursor across a recreated journal reads GAP, and recovers into the new epoch’s own row', async () => {
+    const w = wired();
+    w.journal.append(row(1));
+    const before = (await read(w.leaderEvents)).structuredContent as unknown as ReadOut;
+    await call({ action: 'ack', cursor: before.nextCursor, operationId: 'op-g6-ack-0001' }, { leaderEvents: w.leaderEvents });
+
+    w.journal.close();
+    rmSync(join(w.dataDir, 'mcp', 'event-journal.json'));
+    rmSync(join(w.dataDir, 'mcp', 'event-journal.ndjson'));
+    const freshJournal = EventJournal.open({ dataDir: w.dataDir, projectId: 'alpha', secretValues: [], warn: () => {} });
+    journals.push(freshJournal);
+    // journalSeq and eventId are reused from 1 — the fragile case the issue names by name.
+    freshJournal.append({ ...row(1), summary: 'a different task finished after the journal was recreated' });
+    const freshCursors = LeaderCursors.open({ dataDir: w.dataDir, projectId: 'alpha', journal: freshJournal, warn: () => {} });
+    const freshEvents = { journal: freshJournal, cursors: freshCursors, readState: (() => ({ latestSeq: freshJournal.latestSeq, tasks: [], complete: true })) as StateReader, secretValues: [] };
+
+    // The fallback the leader is told to use after any reconnect: read with no cursor.
+    const first = await read(freshEvents);
+    expect(first.isError).toBeFalsy();
+    expect(text(first)).toMatch(/^GAP: /);
+    const gap = first.structuredContent as unknown as GapOut;
+    expect(gap).toMatchObject({ status: 'gap', gap: { oldestSeq: 1, recovery: { required: 'current-state' } } });
+
+    // Recovery lands on the NEW epoch's own row #1, with its own content — never the old one's.
+    const recovered = (await read(freshEvents, { cursor: gap.gap.resumeCursor })).structuredContent as unknown as {
+      status: 'ok';
+      events: Array<{ eventId: string; journalSeq: number; summary: string }>;
+    };
+    expect(recovered.events).toHaveLength(1);
+    expect(recovered.events[0]).toMatchObject({ eventId: 'alpha:1', journalSeq: 1, summary: 'a different task finished after the journal was recreated' });
   });
 });
