@@ -95,17 +95,22 @@ describe('guide 13 — MCP project leader', () => {
   })
 
   it('reports the unattached state honestly — a real "no leader connected" reading, not a faked one', async () => {
-    // The heading is static; the status sentence itself comes from the page's own
-    // `GET /api/v1/mcp/leader` fetch (`useMcpLeader`, staleTime 0), which only starts once this
-    // panel mounts — so it, not the heading, is what this test actually has to wait for (#579
-    // round 1: waiting only for the heading, or re-checking the heading a second time right after
-    // its own wait, both raced this under CI load). The fetch itself is a cheap in-memory status
-    // read, but it still exceeded the suite's default 10s wait twice on a loaded CI runner (#579
-    // round 2), so it gets a longer, evidenced budget here.
+    // "Connection status" (`SettingsField title="Connection status"`,
+    // packages/web/src/routes/settings/mcp-connection-section.tsx) is a STATIC heading rendered
+    // regardless of query state — waiting on it says nothing about whether the panel underneath
+    // has settled (#579 round 3 re-read of the component: rounds 1-2 treated it as the thing to
+    // wait for, but it was never the gate). The real gate is `McpLeaderControl`'s own loading
+    // state (packages/web/src/routes/settings/mcp-leader-control.tsx): it renders
+    // "Loading the leader connection…" (`role="status"`) until `useMcpLeader`'s `GET
+    // /api/v1/mcp/leader` settles, then either the error branch or this panel. Waiting for that
+    // role to clear — rather than jumping straight to the final sentence — turns "never appeared"
+    // into two distinguishable failures: still loading (a real timeout) vs. loaded into a
+    // different state (a real bug this suite would then have evidence for, not a wait-budget
+    // question). #579 rounds 1-2 only ever saw the undifferentiated failure.
     await browser.waitForRole('heading', 'Connection status')
+    await browser.waitForRoleGone('status', 'Loading the leader connection…', { attempts: 80 })
     await browser.waitForText(
       'The MCP service is not running for this project, so there is no event delivery to report.',
-      { attempts: 80 },
     )
     expect(browser.hasRole('button', 'Refresh')).toBe(true)
   })
@@ -127,9 +132,24 @@ describe('guide 13 — MCP project leader', () => {
   it('"Shared limits" repeats the same workspace resource defaults guide 11 verifies', async () => {
     // `useWorkspaceConfig` (`GET /api/workspace/config`, a plain config read) — cheap, but the
     // same loaded-CI-runner evidence as above applies (#579 round 2).
+    //
+    // The memory ceiling is read from the SAME live endpoint the page itself reads, never a
+    // literal: `resources.memoryLimitMb` is `deriveDefaultMemoryLimitMb()`
+    // (packages/xezar/src/workspace/config.ts), `floor(totalMiB * 0.6 / 2)` clamped to
+    // `[1024, 8192]` off THIS HOST's own RAM — a hardcoded "8192 MiB" only matched a developer
+    // machine with >= ~27 GB and was structurally unreachable on a 16 GB CI runner (#579 round 3
+    // finding 2: `4915 MiB` there, never `8192 MiB`).
+    const workspaceConfig = (await (
+      await fetch(`${baseUrl}/api/v1/workspace/config`)
+    ).json()) as { resources: { memoryLimitMb: number | null } }
+    const memoryLimitMb = workspaceConfig.resources.memoryLimitMb
+    if (typeof memoryLimitMb !== 'number' || memoryLimitMb <= 0) {
+      throw new Error(`xezar e2e: expected a positive live memoryLimitMb, got ${String(memoryLimitMb)}`)
+    }
+
     await browser.waitForRole('heading', 'Shared limits')
     await browser.waitForText('2 across all projects', { attempts: 80 })
-    await browser.waitForText('8192 MiB', { attempts: 80 })
+    await browser.waitForText(`${memoryLimitMb} MiB`, { attempts: 80 })
     expect(browser.hasRole('link', 'See every tool this server exposes')).toBe(true)
   })
 })

@@ -148,6 +148,21 @@ export class GuideBrowser {
     throw new Error(`xezar e2e: role "${role}" named "${name}" never appeared`)
   }
 
+  /** Poll for a role+name to STOP existing — `waitForRole`'s negation, for a loading/pending
+   *  indicator that must clear before the settled content underneath it can be asserted. Waiting
+   *  on the settled text alone cannot tell "still loading" from "loaded, but not this state" —
+   *  this makes that distinction a real, separately-failing assertion instead of folding both
+   *  into one generic "never appeared" (#579 round 3). */
+  async waitForRoleGone(role: string, name: string, opts: { attempts?: number; intervalMs?: number } = {}): Promise<void> {
+    const attempts = opts.attempts ?? 40
+    const intervalMs = opts.intervalMs ?? 250
+    for (let i = 0; i < attempts; i += 1) {
+      if (!this.hasRole(role, name)) return
+      this.run(['wait', String(intervalMs)])
+    }
+    throw new Error(`xezar e2e: role "${role}" named "${name}" never disappeared`)
+  }
+
   /** Poll for `text` to appear anywhere in the page's visible text — the `hasText` counterpart to
    *  `waitForRole`, for data-dependent prose (a fetched health/config value) that can render after
    *  a static heading in the same section already exists. */

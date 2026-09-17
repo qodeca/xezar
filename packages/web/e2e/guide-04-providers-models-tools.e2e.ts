@@ -91,14 +91,13 @@ describe('guide 04 — agent backends', () => {
     expect(browser.textOfRole('menuitemradio', 'auto')).toContain('Use your Codex default model')
     // `waitForRole` itself is the assertion here — it throws if the item never appears — rather
     // than a separate `hasRole(...).toBe(true)` re-check, whose own extra round trip to the
-    // browser is exactly the race a loaded CI runner can lose (#579 round 1). This item's own
-    // data is not a cheap read: the server discovers it by spawning a real `codex app-server`
-    // subprocess and speaking JSON-RPC over stdio, bounded by that discovery's own
-    // `DEFAULT_DISCOVERY_TIMEOUT_MS = 5_000` (packages/xezar/src/core/codex-model-catalog.ts) —
-    // spawn + IPC + render can legitimately approach the default 10s wait on a loaded CI runner
-    // (#579 round 2), so this one wait gets a longer, evidenced budget rather than the suite-wide
-    // default.
-    await browser.waitForRole('menuitemradio', 'GPT-6-Astra', { attempts: 120 })
+    // browser is exactly the race a loaded CI runner can lose (#579 round 1). Asserts only what
+    // the dry-run server guarantees: under `XEZ_DRY_RUN=1` Codex's own catalog is a fixed,
+    // in-memory fixture list (`discoverCodexModels`'s `DRY_RUN_MODELS`,
+    // packages/xezar/src/core/codex-model-catalog.ts) rather than a real `codex app-server`
+    // model name — CI never has a real `codex` binary on PATH, so asserting a live-discovered
+    // model id (`GPT-6-Astra`, #579 round 3's finding) was structurally unreachable there.
+    await browser.waitForRole('menuitemradio', 'Mock Codex model')
     expect(browser.hasRole('menuitemradio', 'opus')).toBe(false)
 
     // The composer remembers the last-chosen runner across a fresh navigation, so restore it to
