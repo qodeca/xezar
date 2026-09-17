@@ -23,6 +23,26 @@
 
 ## ✨ Features
 
+- ✨ **A folder can own its whole xezar setup, so a clone runs the same way.** (#600, part 1 of 5)
+  Start `xez --single-project` once in a project folder and xezar keeps its settings, agent accounts
+  and project registry in `<project>/.xezar` — `config.json` (unchanged meaning), `workspace.json`,
+  `agent-accounts.json` and `workspace-ui.json` — with working files in `<project>/.local/xezar`,
+  and never opens `~/.xezar`. After that the folder decides: every `xez` started there is in the
+  mode, flag or no flag, so a teammate who clones the repository gets the same behaviour with no
+  host setup step. One terminal line names the mode and the folder, and `GET /api/v1/health`
+  reports `capabilities.singleProjectRoot`. A linked git worktree is never a project root, so xezar
+  tasks keep running against the project's own state. Nothing changes for anyone who does not pass
+  the flag: no migration, no conversion, and `~/.xezar` is untouched. `XEZ_SINGLE_PROJECT` keeps
+  its exact meaning — one project, no project management, global state — and is not deprecated; the
+  new mode is a separate superset with its own flag and its own capability key. A
+  `<project>/.xezar/workspace.json` that is corrupt or unwritable refuses the start with a named
+  error rather than quietly falling back to your global setup; the other three files degrade with
+  one warning as they always have. **Downgrade:** 0.15.0 in a single-project folder ignores the
+  project state and uses your global setup — an old binary cannot be taught a new rule, so it is
+  named rather than prevented, and nothing in the folder is damaged. This part ships the state
+  layout, the detection, the capability and the boot line; the cockpit badge, the refusals in all
+  three doors and the import from a global setup follow. Details:
+  `BACKWARD_COMPATIBILITY.md` § "Single-project ROOT mode".
 - ✨ **The sidebar is navigation-only.** (#546) The Active/Archived task switcher, task list, and `Search…` launcher have been removed from the sidebar. Manage and search tasks on the Tasks page, and open the command palette with `⌘K` on macOS or `Ctrl+K` elsewhere. Existing task badges, task data, APIs, and saved UI state are unchanged.
 - **The audit trail is bounded, and safe to share between processes.** (#306, part 3 of 4) A
   project's `.local/xezar/audit.ndjson` now rotates before it passes 10 MB (10,000,000 bytes) and
@@ -75,6 +95,17 @@
 
 ## 🐛 Fixes
 
+- 🐛 **A conversation image can be opened, read and left with the keyboard.** (#453)
+  The full-screen image preview in a task thread used to be a clickable picture over a
+  hand-rolled overlay: a keyboard reader could not open it at all, and once it was open there
+  was no way in or out except the Escape key. It is a proper dialog now — Enter or Space on the
+  thumbnail opens it, focus moves inside and stays there while you Tab, and Escape or the close
+  button in the corner hands focus back to the thumbnail you started from. The thumbnail and
+  the close button both reach the 44 px phone target, the close button stays on top of a
+  picture larger than the screen, and an image the server no longer has says so in words
+  instead of showing a broken picture. Two smaller repairs ship with it: on a phone a task
+  title now wraps to a second line instead of cutting off after about fifteen characters, and
+  a task's Files tab remembers which file you were reading when you come back to it.
 - 🐛 **The macOS ngrok tunnel no longer lets a remote client choose the audited proxy user.** (#572)
   In hosted mode, xezar's audit trail trusts an `X-Xezar-User` header sent by a loopback peer — the
   bundled nginx site sets it from the authenticated user and overwrites any client value, but the
@@ -93,6 +124,7 @@
 - 🐛 Balance the nightly MCP mutation gate's shards on measured per-file cost instead of byte size, raise the shard count from 6 to 9, and isolate the two files whose carried-over weight was still under-counted (`bridge.ts`, `tools/task-create.ts`) into their own shard, after two consecutive nightly runs were cancelled at the 5-hour job ceiling. (#443)
 - 🐛 **An OpenCode run no longer hangs on a permission ask.** (#578) OpenCode asks before a tool reaches a folder outside the task (the hand-off file, attachments, the run's own files), and nothing answered, so the run waited until its 30-minute step limit with no named cause. xezar now answers each ask at once and fails closed: a folder ask inside the run's own directories (symlinks resolved) is allowed for that one call; every other ask – a folder outside them, a web fetch, a shell command, a repeated-call warning – is denied and shown in the transcript. The same denial three times in a row, 20 denials in one session, or a reply OpenCode refuses stops the run with a named error. The claim that OpenCode approves every permission automatically is removed from the docs.
 - 🐛 **The OpenCode leader now gets the decision version on every pushed run event.** (#535, #532) `renderDispatch` in the OpenCode reaction adapter omitted `subject.version` from every rendered event, unlike the Claude Code, Codex and pi adapters, so an OpenCode leader could not pass it as `expectedVersion` without an extra `task_read`. The adapter now renders it the same way the other three do.
+- 🐛 **The Codex probe now honours `XEZ_DRY_RUN=1`, like the claude and pi probes beside it.** (#549) `GET /api/v1/health` under `XEZ_DRY_RUN=1` spawned the real system `codex --version`, writing `logs_2.sqlite` and `models_cache.json` into the real `~/.codex` even when `CODEX_HOME` is pinned to a sandbox — found by the QA of #579. `probeCodex` now answers with the same bundled mock the other backends already use, and never spawns anything.
 - 🐛 **A project re-registered outside the removal route no longer keeps serving its old, deleted folder.** (#591) `ProjectContexts` cached one `{store, manager, dataDir}` bundle per project id for the life of the process, and only the project-removal route ever threw it away — a second xezar process editing the registry, a hand edit to `~/.xezar/config.json`, or a test seeding it directly all left a re-registered id resolving to the FIRST folder's now-deleted `dataDir`, and a run against it crashed with `ENOENT`. Every scoped request now re-checks the id's current registry root before serving a cached context, and disposes and rebuilds it the same way removal would when the root has moved on.
 
 ## Tests

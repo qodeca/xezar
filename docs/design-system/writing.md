@@ -44,8 +44,10 @@ The one question heading is the `/new` hero: "What should the agent work on?"
 - Pending state replaces the label with the present participle and `…`: "Starting…", "Saving…",
   "Adding…", "Sending…", "Planning…", "Committing…", "Cloning…", "Updating…".
 - Toggles state the next state: "Hide details" / "Show details", "Hide folders" / "Browse…".
-- Dismiss buttons name the kept outcome: "Keep it", "Keep comparing", "Keep the file",
-  "Keep the existing chain" (7 sites) over a plain "Cancel" (3 sites, in non-destructive dialogs).
+- Dismiss buttons name the kept outcome: "Keep it" (6 sites), "Keep comparing",
+  "Keep the existing chain" over a plain "Cancel" (1 site, a non-destructive dialog). "Keep the
+  file" was listed here until #453 B7 replaced it with "Keep it"; `design-debt-b7.test.tsx`
+  asserts the old string is gone, so do not reintroduce it. Counts read 2026-09-17.
 - Destructive verbs are explicit: "Delete", "Remove from list", "Cancel the run", "Discard".
 - No "OK", no visible "Close" (the close button's `sr-only` text is "Close").
 - Retry: "Retry" (5 sites) over "Try again" (3 sites).
@@ -160,7 +162,7 @@ Form dialogs use a plain phrase, no question mark: "Commit changes", "Add agent 
 
 ## 13. Toasts and notifications
 
-- One short line. Success: "Worktree path copied", "Team skills refreshed.", "Account added — use
+- One short line. Success: "Worktree path copied", "Team skills refreshed", "Account added — use
   Connect to sign in", "{project} removed from the workspace — its files are untouched".
 - Errors: the server message, `tone: 'danger'`. Hand-written only when there is no server:
   "Could not copy the command".

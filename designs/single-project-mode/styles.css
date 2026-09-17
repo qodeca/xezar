@@ -1,0 +1,392 @@
+/* Single-project mode – static design mockup (issue #600, PR4 of the slicing spec).
+ *
+ * Feature-specific rules only. Tokens (both themes), the base layer, the design-doc chrome, the
+ * app shell and every base component class come from the shared design-system stylesheet, linked
+ * BEFORE this file in every page: ../../docs/design-system/cockpit.css. Never redeclare a token or
+ * a base class here; extend it with a feature class instead. This file is a design reference,
+ * never shipped code – the cockpit must not import it.
+ *
+ * Rhythm between blocks uses the rhythm tokens (--spacing-row/stack/list/inset/group/section);
+ * sizes inside a control use calc(var(--spacing) * n), so the density lever moves this page the
+ * way it moves the cockpit. No raw hex anywhere.
+ */
+
+/* ---------- 1. The mode badge ---------- */
+
+/* Extends .badge.outline (components/ui/badge.tsx, variant="outline"). Neutral on purpose: violet
+ * means "a person is wanted" (patterns.md §2) and danger is the dev build's own badge, so a third
+ * colour here would teach two different meanings for one row. The words carry the meaning; the
+ * folder icon only reinforces them. */
+.mode-badge {
+  gap: calc(var(--spacing) * 1.25);
+  padding: 1px 7px;
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+
+.mode-badge svg.icon {
+  width: 11px;
+  height: 11px;
+  color: var(--soft-foreground);
+}
+
+/* Line two of the brand block. The badge gets its own line rather than competing with the
+ * repo chip for the 264 px sidebar: at the widths this row really has, a badge on line one
+ * either truncates the repo/branch chip to "acme-a…" or truncates itself, and the one fact
+ * that changes what the whole cockpit can do must never be the thing that gets cut.
+ * Indented to the wordmark, so the block reads as one brand unit. */
+.mode-line {
+  display: flex;
+  align-items: center;
+  padding: 0 14px calc(var(--spacing) * 2.5);
+  /* 26 px brand tile + the brand row's own --spacing-row gap: the badge starts under "xezar". */
+  padding-left: calc(14px + 26px + var(--spacing-row));
+}
+
+/* The same badge in the phone top bar's free `data-slot="mobile-status"` slot
+ * (app-shell.tsx:819). Pushed right: the page title owns the left. */
+.mobile-bar .mode-badge {
+  margin-left: auto;
+}
+
+/* ---------- 2. Badge anatomy (design-doc only) ---------- */
+
+.anatomy {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-section);
+}
+
+.anatomy figure {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-row);
+  min-width: 15rem;
+}
+
+.anatomy figcaption {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--soft-foreground);
+}
+
+/* A brand block on its own, on the sidebar's own surface, so the badge is judged against the
+ * colour it really sits on. */
+.brand-demo {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--sidebar);
+  padding-bottom: calc(var(--spacing) * 1);
+  width: 264px;
+  max-width: 100%;
+}
+
+/* ---------- 3. Settings: the file each section writes ---------- */
+
+/* One line per settings section, directly under the section description. FR-9.3 is answered at
+ * section grain, not per field: a line on every field would repeat the same path five times in
+ * one pane and stop being read. */
+.file-note {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 1.5);
+  margin: calc(var(--spacing) * 1) 0 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--soft-foreground);
+}
+
+.file-note svg.icon {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+.file-note code {
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--foreground);
+}
+
+/* A settings pane in a mockup frame: the same flat field list the cockpit uses
+ * (patterns.md §8, `flex flex-col gap-section`). */
+.pane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-section);
+  max-width: 42rem;
+  padding: var(--spacing-inset);
+}
+
+.pane > .pane-head h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.pane > .pane-head p {
+  margin: calc(var(--spacing) * 1) 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+
+/* The settings section header's own right-hand scope chip
+ * (`data-slot="settings-scope-chip"`, settings-shell.tsx:181-190). */
+.scope-head {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-stack);
+  padding: 0 var(--spacing-inset);
+  height: calc(var(--spacing) * 14);
+  border-bottom: 1px solid var(--border);
+}
+
+.scope-head h1 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.scope-head p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--soft-foreground);
+}
+
+.scope-head .scope-chip {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--soft-foreground);
+  white-space: nowrap;
+}
+
+/* ---------- 4. The agent-account row ---------- */
+
+/* Extends .settings-row (routes/settings/accounts-section.tsx `account-row`) into the stacked
+ * shape the row already has: label line, path line, status line. */
+.acct {
+  flex-direction: column;
+  align-items: stretch;
+  gap: calc(var(--spacing) * 1.5);
+}
+
+.acct .top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-row);
+}
+
+.acct .label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--foreground);
+}
+
+.acct .acct-actions {
+  margin-left: auto;
+  display: flex;
+  flex-shrink: 0;
+  gap: calc(var(--spacing) * 1.5);
+}
+
+.acct .path {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--soft-foreground);
+  overflow-wrap: anywhere;
+}
+
+.acct .status {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: calc(var(--spacing) * 1.5);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+
+.acct .status .dot {
+  align-self: center;
+}
+
+/* The one sentence FR-6.2 and FR-6.3 share, byte for byte. It is the row's own copy here and the
+ * refusal a task gets there; it carries the missing path inline, because the refusal that reaches
+ * a task has no row above it to read the path from. */
+.acct .why {
+  color: var(--foreground);
+  overflow-wrap: anywhere;
+}
+
+.acct.unavailable {
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
+}
+
+/* The committed-account list, as one bordered list like the shipped section. */
+.acct-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-row);
+  margin: 0;
+  padding: 0;
+}
+
+/* The hosted-connection notice above the account list. A status, not an alert: nothing is broken,
+ * and the alert tone in the shell's banner row means a provider failed. Boxed rather than a
+ * full-bleed band because it belongs to this pane, not to the whole page. */
+.hosted-note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-row);
+  margin: 0;
+  padding: calc(var(--spacing) * 2.5) var(--spacing-stack);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--muted) 50%, transparent);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted-foreground);
+}
+
+.hosted-note svg.icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+/* ---------- 5. The refused task, quoted beside the row ---------- */
+
+/* A task-thread refusal line, so the reviewer can compare the two strings without opening the
+ * thread design. `role="alert"` in the build (writing.md §7). */
+.refusal-line {
+  display: flex;
+  gap: var(--spacing-row);
+  padding: var(--spacing-stack) var(--spacing-inset);
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--border));
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--foreground);
+}
+
+.refusal-line svg.icon {
+  flex-shrink: 0;
+  color: var(--danger);
+}
+
+/* ---------- 6. Side-by-side comparison (design-doc only) ---------- */
+
+/* Two shells beside each other at their real 264 px sidebar width, so "what changed" is a diff
+ * rather than a memory test. Stacks below the doc's own breakpoint. */
+.compare {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-section);
+}
+
+@media (max-width: 900px) {
+  .compare {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* A sidebar shown on its own, without a main pane beside it, at the real 264 px the shell gives
+ * it (.shell's first grid column) – the width is the whole point of the comparison. */
+.sidebar-only {
+  display: flex;
+  flex-direction: column;
+  width: 264px;
+  max-width: 100%;
+  min-height: 27rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--sidebar);
+  overflow: hidden;
+}
+
+/* ---------- 7. The palette and the composer footer ---------- */
+
+/* The palette centred on a scrim, as it really opens (patterns.md §7). */
+.palette-stage {
+  display: flex;
+  justify-content: center;
+  padding: var(--spacing-section) var(--spacing-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--contrast) 8%, var(--background));
+}
+
+/* A struck-through marker for the affordance the mode removes. Design-doc only: it never ships,
+ * and it is never the only cue – every removal is also named in words in the caption. */
+.gone {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 1.5);
+  padding: calc(var(--spacing) * 1) 10px;
+  border: 1px dashed color-mix(in srgb, var(--danger) 45%, var(--border));
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  text-decoration: line-through;
+}
+
+/* ---------- 8. States page ---------- */
+
+.state-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-section);
+}
+
+/* A skeleton row pair for the loading state, on the shared .skeleton base class. */
+.skeleton-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-row);
+  padding: var(--spacing-inset);
+}
+
+.skeleton-rows .skeleton.narrow {
+  width: 40%;
+}
+
+.skeleton-rows .skeleton.wide {
+  width: 72%;
+}
+
+/* ---------- 9. Phone (375 px) ---------- */
+
+@media (max-width: 420px) {
+  .pane,
+  .skeleton-rows {
+    padding: var(--spacing-stack);
+  }
+
+  .scope-head {
+    display: none; /* The desktop settings header hides below md; the mobile bar names the page. */
+  }
+
+  .acct .acct-actions {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  /* 44 px phone targets at every density (verification.md § Phone targets). */
+  .acct .acct-actions .btn {
+    flex: 1;
+    min-height: calc(var(--spacing) * 11);
+  }
+
+  .anatomy figure {
+    min-width: 0;
+  }
+}

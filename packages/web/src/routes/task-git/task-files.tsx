@@ -6,6 +6,7 @@ import { ApiError } from '@/api/client'
 import { useRun, useRunFile } from '@/api/queries'
 import type { ApiRun } from '@qodeca/xezar-api-client'
 import { CenteredState } from '@/components/centered-state'
+import { readFilesTabSelection, writeFilesTabSelection } from '@/lib/files-tab-selection'
 
 import { RunHeader } from '../task-thread/run-header'
 import { FilePreview } from './file-preview'
@@ -35,7 +36,13 @@ function FilesView({ run }: { run: ApiRun }) {
   // The root listing doubles as the "is there a worktree at all?" probe — a 409 here is the
   // server's answer for the whole view, same stance as the Changes tab's /changes 409.
   const root = useRunFile(run.id, '')
-  const [selected, setSelected] = useState<string | null>(null)
+  // Seeded from, and written back to, this browser tab's memory of the run (#453 B8, G-40): a
+  // trip to Changes or Session unmounts this route, and the reader's place must survive it.
+  const [selected, setSelected] = useState<string | null>(() => readFilesTabSelection(run.id))
+  const select = (path: string | null) => {
+    setSelected(path)
+    writeFilesTabSelection(run.id, path)
+  }
 
   const refused = root.isError && root.error instanceof ApiError && root.error.status === 409
 
@@ -68,7 +75,7 @@ function FilesView({ run }: { run: ApiRun }) {
             data-slot="files-tree-pane"
             className="w-full shrink-0 md:sticky md:top-[var(--diff-sticky-top)] md:max-h-[calc(100dvh_-_var(--diff-sticky-top)_-_1rem)] md:w-60 md:overflow-y-auto md:overscroll-contain lg:w-72"
           >
-            <FilesTree runId={run.id} selected={selected} onSelect={setSelected} />
+            <FilesTree runId={run.id} selected={selected} onSelect={select} />
           </aside>
           <FilePreview runId={run.id} path={selected} className="min-w-0 flex-1" />
         </div>
