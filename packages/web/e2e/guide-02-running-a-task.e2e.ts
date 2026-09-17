@@ -239,6 +239,13 @@ describe('guide 02 — tasks and runs', () => {
     // Accept — real, local, honest: it finishes the task without ever touching a forge (the
     // dry-run exception register classifies opening a real draft PR as forge-seam-stubbed,
     // covered by draft-pr-autosave.test.ts and cockpit-ownership.test.ts:320-354 instead).
+    //
+    // The sticky run header's own "Open in…" trigger can transiently sit at Accept's click
+    // point right as this panel first mounts — the header's height is still settling (a
+    // ResizeObserver tick), so waiting for the two elements to stop overlapping (round 2 of
+    // #590's review) is what makes this click land on Accept every time rather than only most
+    // of the time.
+    await browser.waitForUncoveredRole('button', 'Accept', 'button', 'Open in…')
     browser.clickRole('button', 'Accept')
     await waitForStatus(baseUrl, runId, ['done'])
   }, 30_000)

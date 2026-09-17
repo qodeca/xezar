@@ -15,6 +15,14 @@ import { readTestEnv } from './agent-browser'
 
 type FindLocator = 'role' | 'text' | 'label' | 'placeholder' | 'alt' | 'title'
 
+type Box = { x: number; y: number; width: number; height: number }
+
+/** Whether two viewport-relative boxes intersect — `get box`'s own coordinate space, so this
+ *  reads the same numbers `boxOfRole` returns with no unit conversion. */
+function boxesOverlap(a: Box, b: Box): boolean {
+  return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y
+}
+
 export class GuideBrowser {
   private constructor(
     private readonly bin: string,
@@ -143,6 +151,66 @@ export class GuideBrowser {
       throw new Error(`xezar e2e: no ${role} named "${name}" with a readable value in the current snapshot`)
     }
     return match[1] ?? ''
+  }
+
+  /** The live accessibility-tree reference (`@e1`, …) for the element with this role and
+   *  accessible name — `snapshot`'s own JSON `refs` map, still zero selectors: the lookup key
+   *  is the same role/name pair every other method here takes, never a class, id or `data-*`
+   *  attribute. Throws when no element matches, the same contract `textOfRole` already has. */
+  private refFor(role: string, name: string): string {
+    const snapshot = this.run(['snapshot', '-i']) as { refs?: Record<string, { role: string; name: string }> }
+    for (const [id, info] of Object.entries(snapshot.refs ?? {})) {
+      if (info.role === role && info.name === name) return `@${id}`
+    }
+    throw new Error(`xezar e2e: no ${role} named "${name}" in the current snapshot`)
+  }
+
+  /** The live bounding box of the element with this role and accessible name. */
+  boxOfRole(role: string, name: string): Box {
+    const raw = this.run(['get', 'box', this.refFor(role, name)])
+    return {
+      x: Number(raw.x ?? 0),
+      y: Number(raw.y ?? 0),
+      width: Number(raw.width ?? 0),
+      height: Number(raw.height ?? 0),
+    }
+  }
+
+  /** Scroll the element with this role and accessible name into view. */
+  scrollIntoViewRole(role: string, name: string): void {
+    this.run(['scrollintoview', this.refFor(role, name)])
+  }
+
+  /**
+   * Wait until the element with this role and accessible name is no longer geometrically
+   * overlapped by another named element — a sticky header whose own height is still settling
+   * (a `ResizeObserver` tick right after a new panel first mounts, moving the header's bottom
+   * edge by a few px) can otherwise sit directly at the target's click point for a frame or two,
+   * which `find … click` refuses rather than mis-landing the click on the wrong element.
+   *
+   * Scrolls the target into view first — the one position a sticky header can always reach is
+   * the very top of the viewport, so a target that starts there is the one this actually needs
+   * to guard. Polls the two live boxes rather than retrying the click itself: a failed click is
+   * indistinguishable from a different, real bug once retried blindly, while re-reading geometry
+   * only ever answers "is it still covered right now".
+   */
+  async waitForUncoveredRole(
+    role: string,
+    name: string,
+    coveringRole: string,
+    coveringName: string,
+    opts: { attempts?: number; intervalMs?: number } = {},
+  ): Promise<void> {
+    const attempts = opts.attempts ?? 40
+    const intervalMs = opts.intervalMs ?? 250
+    this.scrollIntoViewRole(role, name)
+    for (let i = 0; i < attempts; i += 1) {
+      const target = this.boxOfRole(role, name)
+      const covering = this.hasRole(coveringRole, coveringName) ? this.boxOfRole(coveringRole, coveringName) : null
+      if (covering === null || !boxesOverlap(target, covering)) return
+      this.run(['wait', String(intervalMs)])
+    }
+    throw new Error(`xezar e2e: ${role} "${name}" stayed covered by ${coveringRole} "${coveringName}"`)
   }
 
   /** Poll for a role+name to exist, the semantic-locator equivalent of `waitForFunction` — no
