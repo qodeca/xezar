@@ -14,6 +14,7 @@ import {
   stopFixtureServer,
   xezarCli,
 } from './agent-browser'
+import record from './fixtures/subagents-run.record.json'
 
 /**
  * Design-debt batch B8 in a real browser — the image preview (#453, A06 / AC-8 / T-8).
@@ -236,21 +237,13 @@ beforeAll(async () => {
   // The picture the preview enlarges, where `GET /runs/:id/images/:file` serves it from.
   writeFileSync(join(dataRoot, '.local/xezar/runs', `${RUN_ID}-images`, IMAGE), bigPng())
 
+  // The shared record fixture with this spec's own id: a hand-written record is rejected by the
+  // store's per-entry schema and the run then 404s, which reads as "the cockpit is broken" rather
+  // than "the fixture is wrong" (B1 seeds its review run the same way).
   writeFileSync(
     join(dataRoot, '.local/xezar/runs.json'),
     JSON.stringify(
-      [
-        {
-          id: RUN_ID,
-          task: 'Image preview fixture',
-          title: 'Image preview fixture',
-          status: 'done',
-          createdAt: '2026-09-17T10:00:00.000Z',
-          updatedAt: '2026-09-17T10:00:10.000Z',
-          runner: 'claude',
-          steps: [],
-        },
-      ],
+      [{ ...record, id: RUN_ID, title: 'Image preview fixture', task: 'Image preview fixture' }],
       null,
       2,
     ),
@@ -418,12 +411,21 @@ describe('#453 B8 — the image preview in a real browser', () => {
   it('composites the scrim to the documented 80 per cent black', () => {
     openThread()
     openPreview('Enter')
-    const alphas = read<number[]>(
+    // Read as STRINGS and parsed here, because Tailwind v4 serialises these as
+    // `oklab(0 0 0 / 0.5)` rather than `rgba(…)` — an `rgba`-only regex matched nothing and threw
+    // inside the page, which is a fixture bug wearing the costume of a layout finding.
+    const colours = read<string[]>(
       `[...document.querySelectorAll('[data-slot="dialog-overlay"],${LIGHTBOX}')]
-        .map((el) => getComputedStyle(el).backgroundColor)
-        .map((colour) => { const m = colour.match(/rgba?\\(([^)]+)\\)/); const parts = m[1].split(',').map((n) => parseFloat(n)); return parts.length > 3 ? parts[3] : 1 })`,
+        .map((el) => getComputedStyle(el).backgroundColor)`,
     )
-    expect(alphas.length).toBe(2)
+    expect(colours, 'the overlay and the content must both paint a scrim').toHaveLength(2)
+    const alphas = colours.map((colour) => {
+      const slash = colour.match(/\/\s*([\d.]+)\s*\)/)
+      const rgba = colour.match(/rgba?\([^)]*,\s*([\d.]+)\s*\)/)
+      return Number(slash?.[1] ?? rgba?.[1] ?? 1)
+    })
+    expect(alphas.every((alpha) => alpha > 0 && alpha <= 1), `unparsed scrim colours: ${colours.join(' + ')}`).toBe(true)
+
     const composite = 1 - alphas.reduce((clear, alpha) => clear * (1 - alpha), 1)
     expect(composite).toBeCloseTo(0.8, 2)
     closePreview()

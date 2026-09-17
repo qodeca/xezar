@@ -272,29 +272,111 @@ function waitPlaced(selector: string): void {
 }
 
 /**
- * Until a control is really there to be clicked: painted, enabled, fully inside the viewport, the
- * topmost thing at its own centre, and holding that position for 250 ms.
+ * Until a control is really there to be clicked: painted, enabled, fully inside the viewport, and
+ * the topmost thing at its own centre — then verified to be in the same place twice.
  *
- * This is the fix for #584. Two sites here scrolled a control into view and clicked it in the next
- * statement, and the click landed on whatever was at those coordinates a moment later. On the
- * thread that is not a load-dependent flake, which is why it reproduced alone on a quiet machine:
- * the thread scroller ends its restore with `behavior: 'smooth'` (`thread-scroller.tsx:217`) and
- * virtua keeps writing `scrollTop` while it measures newly mounted items, so the run header is
- * still MOVING several hundred milliseconds after the header exists. `scrollIntoView` competed
- * with that instead of settling it.
+ * This is the fix for #584. Two sites here scrolled a control into view and clicked it in the very
+ * next statement, so the click went to whatever was at those coordinates a moment later, and the
+ * `beforeAll` failed on "Run actions". `scrollIntoView` without `behavior: 'instant'` competes with
+ * the thread scroller, which ends its own restore with a SMOOTH scroll
+ * (`thread-scroller.tsx:217`) while virtua writes `scrollTop` from its measurement pass — so the
+ * run header keeps moving after it exists, which is why this reproduced alone on a quiet machine
+ * rather than only under load.
  *
- * The three conditions are each one of the ways the old code could be wrong, and none of them is a
- * retry, a longer timeout or a softer assertion: the box must stop moving (the smooth scroll and
- * virtua's corrections have finished), it must be inside the viewport (G-32's run header can sit
- * under the top bar), and `elementFromPoint` at its centre must be the control itself (the phone
- * top bar is the thing that was intercepting the click, and a click that hits the bar is a click
- * the control never sees). If any of them never becomes true the wait fails loudly, naming the
- * control — which is what a real regression here should look like.
+ * Each check is one of the ways the old code could be wrong, and none is a retry, a longer timeout
+ * or a softer assertion. The box must be inside the viewport (G-32's run header can sit partly
+ * under the top bar); `elementFromPoint` at its centre must be the control itself (the phone top
+ * bar is what was intercepting the click, and a click that lands on the bar is a click the control
+ * never sees); and the box must read the same twice, which is what says the scrolling has stopped.
+ * If the first two never become true the wait fails loudly naming the control, and a box that is
+ * still moving throws with both positions — either is what a real regression should look like.
+ *
+ * **The predicate is pure, and that is load-bearing.** The first version of this helper kept its
+ * own `window.__hittable` stamp to time a 250 ms hold, and it timed out every run: read back after
+ * 25 s of polling, `window.__hittable` was still `null`, so the provider's `wait --fn` predicate
+ * can READ page state (it observes `window.__samples` written by `eval` perfectly well) but its
+ * own writes do not survive between polls. A predicate here must therefore answer from the DOM
+ * alone; anything that needs to compare two moments in time is done from Node, as below, where the
+ * two reads are two separate calls and the gap between them is real.
  */
-function waitHittable(selector: string): void {
-  browser.evaluate(
-    `document.querySelector('${selector}').scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' })`,
+/** The nearest ancestor that actually scrolls, as an expression the page can evaluate. */
+const SCROLLER = (selector: string) => `(() => {
+  const el = document.querySelector('${selector}');
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    const style = getComputedStyle(p);
+    if (/(auto|scroll)/.test(style.overflowY) && p.scrollHeight > p.clientHeight) return p;
+  }
+  return document.scrollingElement;
+})()`
+
+/**
+ * Until the surface around a control stops growing and stops moving.
+ *
+ * This is the other half of #584, and the half that made it look intermittent. The thread REPLAYS
+ * its transcript — the fixture's events arrive over the event stream after the route mounts — and
+ * the scroller follows the new content to the bottom with `behavior: 'smooth'` each time
+ * (`thread-scroller.tsx:217`). So the run header is not settling into one position and staying
+ * there; it is pushed around for as long as events keep arriving. Clearing the top bar before the
+ * replay finishes is undone by the next chunk, which is why the same wait passed one run and timed
+ * out the next on the same machine.
+ *
+ * Stability is compared across TWO SEPARATE reads from Node, each a real round trip apart, because
+ * a `wait --fn` predicate cannot keep state of its own (see `waitHittable`). Bounded, and it throws
+ * with the last two readings rather than waiting forever.
+ */
+function waitQuiet(selector: string): void {
+  type Scroll = { top: number; height: number }
+  const state = () => read<Scroll>(`(() => { const s = ${SCROLLER(selector)}; return { top: s.scrollTop, height: s.scrollHeight } })()`)
+  let previous = state()
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    const current = state()
+    if (previous.top === current.top && previous.height === current.height) return
+    previous = current
+  }
+  throw new Error(
+    `design-debt-b1: the surface around ${selector} never went quiet — last scrollTop ${previous.top}, scrollHeight ${previous.height}`,
   )
+}
+
+function waitHittable(selector: string): void {
+  /**
+   * Bring the control into view AND out from under whatever fixed chrome covers it, then report
+   * where it ended up.
+   *
+   * `scrollIntoView({ block: 'center' })` alone is not enough here, and that is G-32 rather than a
+   * test problem: the thread restores its SAVED scroll position on every revisit, and when the
+   * thread is only a little taller than the screen the container cannot scroll far enough to
+   * centre the run header — so the header stays pinned near the top, under the phone top bar, and
+   * a click at its centre is refused. The loop does what a finger does: notice that something else
+   * is on top, drag the scroller back by exactly the overlap plus a small margin, and look again.
+   * Bounded, and it never touches the click — an overlap it cannot clear falls through to the wait
+   * below, which fails naming the control.
+   */
+  const scrollAndRead = () =>
+    read<{ x: number; y: number; w: number; h: number }>(
+      `(() => {
+        const el = document.querySelector('${selector}');
+        el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });
+        const scroller = ${SCROLLER(selector)};
+        for (let attempt = 0; attempt < 20; attempt += 1) {
+          const box = el.getBoundingClientRect();
+          const cx = box.left + box.width / 2, cy = box.top + box.height / 2;
+          const hit = document.elementFromPoint(cx, cy);
+          if (hit === null || hit === el || el.contains(hit)) break;
+          // How far down the control has to move to clear what is covering it.
+          const cover = hit.getBoundingClientRect();
+          const push = Math.ceil(cover.bottom - box.top) + 4;
+          if (push <= 0) break;
+          const before = scroller.scrollTop;
+          scroller.scrollTop = Math.max(0, before - push);
+          if (scroller.scrollTop === before) break; // already at the top: nothing left to give
+        }
+        return __rect(el);
+      })()`,
+    )
+
+  waitQuiet(selector)
+  scrollAndRead()
   browser.waitForFunction(
     `(() => {
       const el = document.querySelector('${selector}');
@@ -302,18 +384,18 @@ function waitHittable(selector: string): void {
       const box = el.getBoundingClientRect();
       if (box.width === 0 || box.height === 0) return false;
       if (box.top < 0 || box.left < 0 || box.bottom > window.innerHeight || box.right > window.innerWidth) return false;
-      const cx = box.left + box.width / 2, cy = box.top + box.height / 2;
-      const hit = document.elementFromPoint(cx, cy);
-      if (hit === null || !(hit === el || el.contains(hit))) return false;
-      const at = box.x + ',' + box.y, now = performance.now();
-      window.__hittable = window.__hittable ?? {};
-      if (window.__hittable['${selector}']?.at !== at) {
-        window.__hittable['${selector}'] = { at, since: now };
-        return false;
-      }
-      return now - window.__hittable['${selector}'].since >= 250;
+      const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+      return hit !== null && (hit === el || el.contains(hit));
     })()`,
   )
+
+  const first = scrollAndRead()
+  const second = scrollAndRead()
+  if (first.x !== second.x || first.y !== second.y) {
+    throw new Error(
+      `design-debt-b1: ${selector} is still moving — ${first.x},${first.y} then ${second.x},${second.y}`,
+    )
+  }
 }
 
 function openDrawer(): void {
@@ -325,8 +407,15 @@ function openDrawer(): void {
 function openSubagentSheet(): void {
   browser.goto(`${baseUrl}/p/${bootProject}/tasks/${RUN_ID}`)
   browser.waitForFunction(`document.querySelector('${DOCK}') !== null`)
+  // The same race as "Run actions" (#584), one surface lower: the dock sits at the END of a thread
+  // that is still restoring its scroll, so "the dock exists" is not "the dock's toggle is where a
+  // click will find it". Both clicks here go through `waitHittable` for that reason — and the
+  // agent rows only exist once the first click really landed, so a missed toggle used to surface
+  // as "waited for two agent rows and found none", several statements away from its cause.
+  waitHittable(`${DOCK} > button`)
   browser.click(`${DOCK} > button`)
   browser.waitForFunction(`document.querySelectorAll('${AGENT_ROW}').length === 2`)
+  waitHittable(`${AGENT_ROW}:nth-of-type(2) button`)
   browser.click(`${AGENT_ROW}:nth-of-type(2) button`)
   browser.waitForFunction(`document.querySelector('${SUBAGENT_SHEET}') !== null`)
   // It slides in over ~500 ms; a mid-flight rect is not the rest position this file measures.
