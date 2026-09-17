@@ -218,6 +218,7 @@ that turn (#524), including spaces/tabs and CRLF. A checkpoint after that line i
 the previous end-of-turn form remains accepted. Detection uses accumulated turn text before
 autonomous nudging, and DONE still wins over ASK/MONITORING. This broadens final-turn completion
 only: markerless turns, explicit monitoring and the non-final-step guard below retain their rules.
+Fenced examples never count as final-turn DONE markers, including unclosed fences.
 
 Continue on an interrupted workflow (#520) keeps the completed prefix. After the continued agent
 turn emits DONE, an interrupted agent step is completed, a failed check is rerun, and every later

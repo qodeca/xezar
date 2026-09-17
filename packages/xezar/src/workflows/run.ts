@@ -106,7 +106,24 @@ export const IDLE_TIMEOUT_MS = DEFAULT_IDLE_TIMEOUT_MINUTES * 60_000;
 const DONE_MARKER_RE = /XEZ:DONE\s*$/;
 // #524: a checkpoint may follow a standalone marker in the final turn.
 function hasFinalDoneMarker(text: string): boolean {
-  return /^[ \t]*XEZ:DONE[ \t]*\r?$/m.test(text) || DONE_MARKER_RE.test(text);
+  let fence: string | undefined;
+  const lines = text.trimEnd().split('\n');
+  for (const [index, line] of lines.entries()) {
+    const delimiter = /^[ \t]*(`{3,}|~{3,})(.*)\r?$/.exec(line);
+    if (fence) {
+      // Inner/shorter fences and info strings cannot close the outer fence.
+      if (delimiter && delimiter[1][0] === fence[0] &&
+          delimiter[1].length >= fence.length && delimiter[2].trim() === '') fence = undefined;
+      continue;
+    }
+    if (delimiter) {
+      fence = delimiter[1];
+      continue;
+    }
+    if (/^[ \t]*XEZ:DONE[ \t]*\r?$/.test(line) ||
+        (index === lines.length - 1 && DONE_MARKER_RE.test(line))) return true;
+  }
+  return false;
 }
 /**
  * Still-working marker from the agent contract (spec

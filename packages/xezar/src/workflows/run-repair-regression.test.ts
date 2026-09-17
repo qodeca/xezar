@@ -69,6 +69,49 @@ it.each(['XEZ:DONE\nCheckpoint: saved', ' \tXEZ:DONE \t\r\nCheckpoint: saved\r\n
   },
 );
 
+const fencedExamples = [
+  { name: 'reviewer backtick example', text: 'Example:\n```text\nXEZ:DONE\n```\nCheckpoint: saved' },
+  { name: 'tilde example with info string', text: 'Example:\n~~~text extra info\nXEZ:DONE\n~~~\nCheckpoint: saved' },
+  { name: 'unclosed backtick fence at end of turn', text: 'Example:\n```text\nXEZ:DONE' },
+  { name: 'unclosed tilde fence', text: 'Example:\n~~~text\nXEZ:DONE\nCheckpoint: saved' },
+  { name: 'nested shorter fence', text: '````markdown\n```text\nXEZ:DONE\n```\nXEZ:DONE\n````\nCheckpoint: saved' },
+  { name: 'nested opposite fence', text: '```markdown\n~~~text\nXEZ:DONE\n~~~\nXEZ:DONE\n```\nCheckpoint: saved' },
+  { name: 'info string does not close fence', text: '```text\n```still inside\nXEZ:DONE' },
+];
+
+async function finalTurn(text: string) {
+  const context = fixture([{ text }]);
+  let previous: string | undefined;
+  let completions = 0;
+  context.store.on('run', (record: RunRecord) => {
+    if (record.status === 'done' && previous !== 'done') completions++;
+    previous = record.status;
+  });
+  const run = context.manager.startRun(
+    { name: 'one', source: 'built-in', steps: [{ id: 'author', prompt: '{{task}}' }] },
+    { task: 'finish', worktree: false, autonomous: true },
+  );
+  await expect.poll(() => context.store.getRun(run.id)?.status)
+    .toSatisfy(status => status === 'waiting' || status === 'done');
+  return { ...context, status: context.store.getRun(run.id)?.status, completions };
+}
+
+it.each(fencedExamples)('ignores fenced DONE like a markerless final autonomous turn: $name', async ({ text }) => {
+  const control = await finalTurn('Example: completion marker omitted\nCheckpoint: saved');
+  expect(control.status).toBe('waiting');
+  const example = await finalTurn(text);
+  expect(example.status).toBe(control.status);
+  expect(example.nudges).toHaveBeenCalledTimes(control.nudges.mock.calls.length);
+  expect(example.completions).toBe(0);
+});
+
+it.each(fencedExamples.slice(0, 2))('completes once for a real DONE after a closed fenced example: $name', async ({ text }) => {
+  const result = await finalTurn(`${text}\n \tXEZ:DONE \t\r\nCheckpoint: saved\r\n`);
+  expect(result.status).toBe('done');
+  expect(result.completions).toBe(1);
+  expect(result.nudges).not.toHaveBeenCalled();
+});
+
 it.each([
   { repaired: true, legacyDone: false },
   { repaired: false, legacyDone: false },
